@@ -367,19 +367,22 @@ make test       # unit + integration tests
 Try Miabi without installing anything — at **<https://demo.miabi.io>**.
 
 The demo is seeded with **two independent customers across three workspaces**, so
-you can see Miabi's core idea first-hand: **shared hosting on Docker with true
-workspace isolation** — every app, database, domain, volume, and secret belongs to
-a workspace, and one tenant can never see or reach another's resources.
+you can see Miabi's core ideas first-hand: **shared hosting on Docker with true
+workspace isolation and role-based access** — every app, database, domain, volume,
+and secret belongs to a workspace, one tenant can never see or reach another's
+resources, and a member only sees the workspaces and permissions their role grants.
 
-Sign in as either customer (**password: `MiabiDemo2026`**):
+Sign in as any of these (**password: `MiabiDemo2026`**):
 
-| Sign in as | Workspaces | Represents |
-|------------|------------|------------|
-| `admin@acme.demo.miabi.io` | **Acme Inc Prod** · **Acme Inc Dev** | one org running prod + dev in separate, isolated workspaces |
-| `admin@startup.demo.miabi.io` | **Startup Prod** | a different tenant — its resources are invisible to Acme |
+| Sign in as | Workspaces | Role | Represents |
+|------------|------------|------|------------|
+| `admin@acme.demo.miabi.io` | **Acme Inc Prod** · **Acme Inc Dev** | Owner | one org running prod + dev in separate, isolated workspaces |
+| `dev@acme.demo.miabi.io` | **Acme Inc Dev** | Developer | a teammate scoped to a single workspace — can't see Acme Inc Prod, and has only Developer permissions |
+| `admin@startup.demo.miabi.io` | **Startup Prod** | Owner | a different tenant — its resources are invisible to Acme |
 
 Switch workspaces from the workspace picker to watch the entire console re-scope;
-sign in as the other customer to confirm the isolation boundary.
+sign in as the other customer to confirm the isolation boundary, or as
+`dev@acme.demo.miabi.io` to see a single-workspace, Developer-scoped view.
 
 > [!IMPORTANT]
 > These are **workspace accounts, not the platform admin.** They can't see the
