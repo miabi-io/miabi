@@ -59,6 +59,16 @@ func (r *Router) authRoutes() []okapi.RouteDefinition {
 		},
 		{
 			Method:      http.MethodPost,
+			Path:        "/complete-password-reset",
+			Group:       auth,
+			Middlewares: limited,
+			Handler:     okapi.H(r.h.auth.CompletePasswordReset),
+			Summary:     "Finish a forced password change (exchanges a reset-session token for a session)",
+			Request:     &handlers.CompletePasswordResetRequest{},
+			Response:    &dto.Response[handlers.AuthResponse]{},
+		},
+		{
+			Method:      http.MethodPost,
 			Path:        "/change-password",
 			Group:       auth,
 			Middlewares: protected,

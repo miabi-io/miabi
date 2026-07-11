@@ -7,6 +7,10 @@ const routes = [
   // Not guest-gated: a reset link from email must work even if a session exists.
   { path: '/reset-password', name: 'reset-password', component: () => import('@/views/auth/ResetPassword.vue'), meta: { title: 'Reset password' } },
   { path: '/oauth/callback', name: 'oauth-callback', component: () => import('@/views/auth/OAuthCallback.vue'), meta: { title: 'Signing in' } },
+  // Forced password change (admin-set/reset credential). The user holds only a
+  // short-lived reset token here, not a session; the guard gates it on a pending
+  // reset rather than on auth.
+  { path: '/change-password', name: 'change-password', component: () => import('@/views/auth/ChangePasswordRequired.vue'), meta: { title: 'Set a new password' } },
   {
     path: '/',
     component: () => import('@/layouts/DashboardLayout.vue'),
@@ -95,6 +99,13 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   const auth = useAuthStore()
+  // A pending forced password change holds only a short-lived reset token (no
+  // session): the change-password screen is the only route reachable until it's
+  // done, and it's unreachable otherwise.
+  if (auth.pendingReset) {
+    return to.name === 'change-password' ? true : { name: 'change-password' }
+  }
+  if (to.name === 'change-password') return { name: auth.isAuthenticated ? 'dashboard' : 'login' }
   if (to.meta.auth && !auth.isAuthenticated) return { name: 'login' }
   if (to.meta.guest && auth.isAuthenticated) return { name: 'dashboard' }
   if (to.meta.admin && !auth.isAdmin) return { name: 'dashboard' }

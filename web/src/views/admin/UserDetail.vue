@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useLicenseStore } from '@/stores/license'
 import type { AdminUserDetail, AdminEvent } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import { copyText } from '@/utils/clipboard'
 
 const route = useRoute()
 const router = useRouter()
@@ -174,6 +175,42 @@ function disableTwoFactor() {
         busy.value = false
       }
     },
+  }
+}
+
+// Admin password reset: the platform generates a new password, shown once here so
+// the admin can hand it to the user. Irreversible — the old password is discarded
+// and every session is signed out.
+const generatedPassword = ref<string | null>(null)
+const pwCopied = ref(false)
+function resetPassword() {
+  if (!user.value) return
+  const id = user.value.id
+  const name = user.value.name
+  confirmAction.value = {
+    title: 'Reset password?',
+    message: `Generate a new password for ${name}? This is irreversible: their current password stops working immediately, every active session is signed out, and the new password is shown only once.`,
+    confirmLabel: 'Reset password',
+    variant: 'danger',
+    run: async () => {
+      busy.value = true
+      try {
+        const res = await adminApi.resetUserPassword(id)
+        pwCopied.value = false
+        generatedPassword.value = res.data.data?.password ?? null
+        notify.success('Password reset')
+      } catch (e) {
+        notify.apiError(e)
+      } finally {
+        busy.value = false
+      }
+    },
+  }
+}
+async function copyGeneratedPassword() {
+  if (generatedPassword.value && (await copyText(generatedPassword.value))) {
+    pwCopied.value = true
+    notify.success('Password copied')
   }
 }
 
@@ -377,6 +414,9 @@ function eventSeverity(e: AdminEvent): string {
           </button>
           <button v-if="user.two_factor_enabled" class="btn btn-secondary btn-sm" :disabled="busy" @click="disableTwoFactor">
             <span class="mdi mdi-shield-off-outline"></span> Disable 2FA
+          </button>
+          <button class="btn btn-secondary btn-sm" :disabled="busy" @click="resetPassword" title="Generate a new password for this user (irreversible)">
+            <span class="mdi mdi-lock-reset"></span> Reset password
           </button>
           <!-- Pending deletion: cancel it, or force it through now (skip the grace period). -->
           <button v-if="pendingDeletion" class="btn btn-primary btn-sm" :disabled="busy" @click="cancelDeletion">
@@ -651,10 +691,54 @@ function eventSeverity(e: AdminEvent): string {
       @confirm="runConfirmAction"
       @cancel="confirmAction = null"
     />
+
+    <!-- New password: shown exactly once. The admin must copy it now and hand it
+         over out-of-band — it is not stored in clear and can't be shown again. -->
+    <div v-if="generatedPassword" class="modal-overlay" @click.self="generatedPassword = null">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>New password</h2>
+          <button class="btn-icon" aria-label="Close" @click="generatedPassword = null"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted" style="margin-top: 0">
+            A new password has been generated and every session was signed out. Copy it now and share
+            it with the user through a secure channel — <strong>it won't be shown again</strong>.
+          </p>
+          <div class="pw-reveal">
+            <code class="pw-value">{{ generatedPassword }}</code>
+            <button class="btn btn-secondary btn-sm" @click="copyGeneratedPassword">
+              <span class="mdi" :class="pwCopied ? 'mdi-check' : 'mdi-content-copy'"></span>
+              {{ pwCopied ? 'Copied' : 'Copy' }}
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary btn-sm" @click="generatedPassword = null">Done</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.pw-reveal {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.06));
+}
+.pw-value {
+  flex: 1;
+  font-family: var(--font-mono, monospace);
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  user-select: all;
+  word-break: break-all;
+}
 .del-banner {
   display: flex;
   align-items: center;

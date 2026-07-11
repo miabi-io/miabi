@@ -51,6 +51,14 @@ export const authApi = {
       new_password: newPassword,
     })
   },
+  // Finish a forced password change: exchange the short-lived reset token from
+  // login (plus a new password) for a real session.
+  completePasswordReset(resetToken: string, newPassword: string) {
+    return api.post<ApiResponse<AuthResponse>>('/auth/complete-password-reset', {
+      reset_token: resetToken,
+      new_password: newPassword,
+    })
+  },
 
   // --- Two-factor authentication (TOTP) ---
   setupTwoFactor() {

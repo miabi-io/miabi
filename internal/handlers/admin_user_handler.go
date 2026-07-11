@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"crypto/rand"
 	"errors"
 	"strconv"
 	"strings"
@@ -327,6 +328,9 @@ func (h *AdminUserHandler) Create(c *okapi.Context, req *AdminCreateUserRequest)
 		Role:            role,
 		Active:          true,
 		EmailVerifiedAt: &now,
+		// Admin-set password is temporary — force the user to set their own on first
+		// login.
+		MustChangePassword: true,
 	}
 	if err := h.users.Create(user); err != nil {
 		return c.AbortInternalServerError("failed to create user", err)
@@ -567,6 +571,57 @@ func (h *AdminUserHandler) DisableTwoFactor(c *okapi.Context) error {
 	h.db.Where("user_id = ?", target.ID).Delete(&models.TwoFactorRecoveryCode{})
 	h.record(c, "admin.user.2fa_disabled", target.ID, nil)
 	return message(c, "two-factor authentication disabled")
+}
+
+// AdminResetPasswordResponse carries the freshly generated password, returned
+// exactly once so the admin can hand it to the user (Miabi never stores it in
+// clear, only its bcrypt hash).
+type AdminResetPasswordResponse struct {
+	Password string `json:"password"`
+}
+
+// ResetPassword generates a new strong password for a user, replaces their
+// current one, and returns it ONCE. All the user's sessions are revoked so the
+// old credential stops working immediately. This is the admin account-recovery
+// path and is irreversible: the previous password is discarded, not recoverable.
+func (h *AdminUserHandler) ResetPassword(c *okapi.Context) error {
+	target, err := h.targetUser(c)
+	if err != nil {
+		return c.AbortNotFound("user not found")
+	}
+	pw, err := generatePassword()
+	if err != nil {
+		return c.AbortInternalServerError("failed to generate a password", err)
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
+	if err != nil {
+		return c.AbortInternalServerError("failed to hash password", err)
+	}
+	target.PasswordHash = string(hash)
+	target.MustChangePassword = true // the generated password is temporary
+	if err := h.users.Update(target); err != nil {
+		return c.AbortInternalServerError("failed to reset password", err)
+	}
+	// The old password is gone; sign the user out everywhere so no stale session
+	// keeps the account open past the reset.
+	h.revokeAll(c, target.ID)
+	h.record(c, "admin.user.password_reset", target.ID, nil)
+	return ok(c, AdminResetPasswordResponse{Password: pw})
+}
+
+// generatePassword returns a strong random password from an unambiguous alphabet
+// (no 0/O/1/l/I), backed by crypto/rand — used for admin-initiated resets.
+func generatePassword() (string, error) {
+	const alphabet = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	const n = 20
+	buf := make([]byte, n)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	for i, b := range buf {
+		buf[i] = alphabet[int(b)%len(alphabet)]
+	}
+	return string(buf), nil
 }
 
 // --- helpers ---

@@ -231,6 +231,11 @@ export interface AuthResponse {
   token?: string
   user?: User
   two_factor_required?: boolean
+  // Set when the credentials were valid but the account has an admin-set/reset
+  // password it must replace: no session is issued, and reset_token is a
+  // short-lived token exchanged (with a new password) for a real session.
+  must_change_password?: boolean
+  reset_token?: string
 }
 
 export interface TwoFactorSetup {

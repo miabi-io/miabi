@@ -157,6 +157,12 @@ type AuthResponse struct {
 	// TwoFactorRequired is true when the credentials were valid but the account
 	// needs a TOTP code; the client should re-submit login with two_factor_code.
 	TwoFactorRequired bool `json:"two_factor_required,omitempty"`
+	// MustChangePassword is true when the credentials were valid but the account
+	// has an admin-set/reset password it must replace. No session is issued;
+	// ResetToken is a short-lived, single-use token the client exchanges — via
+	// /auth/complete-password-reset with a new password — for a real session.
+	MustChangePassword bool   `json:"must_change_password,omitempty"`
+	ResetToken         string `json:"reset_token,omitempty"`
 }
 
 // Setup2FAResponse carries the new TOTP secret, its otpauth:// URL, and a
@@ -261,6 +267,18 @@ func (h *AuthHandler) Login(c *okapi.Context, req *LoginRequest) error {
 			return c.AbortUnauthorized("invalid two-factor code")
 		}
 	}
+	// Forced password change: the credentials (and 2FA) are valid, but the account
+	// has an admin-set/reset password. Issue a short-lived reset session instead of
+	// a real one — the user exchanges it for a session once they set their own
+	// password, so they never have to re-enter the admin-set one.
+	if user.MustChangePassword {
+		token, err := h.auth.CreateResetSession(c.Request().Context(), user.ID)
+		if err != nil {
+			return c.AbortInternalServerError("failed to start password reset", err)
+		}
+		h.audit.Record(audit.Entry{ActorID: &user.ID, Action: "user.password_change_required", TargetType: "user", IP: c.RealIP()})
+		return ok(c, AuthResponse{MustChangePassword: true, ResetToken: token})
+	}
 	now := time.Now()
 	user.LastLoginAt = &now
 	_ = h.users.Update(user)
@@ -269,6 +287,31 @@ func (h *AuthHandler) Login(c *okapi.Context, req *LoginRequest) error {
 		loginMeta["via"] = "ldap"
 	}
 	h.audit.Record(audit.Entry{ActorID: &user.ID, Action: "user.login", TargetType: "user", IP: c.RealIP(), Metadata: loginMeta})
+	return h.issue(c, user, 200)
+}
+
+// CompletePasswordResetRequest carries the reset token from login plus the new
+// password the user chose.
+type CompletePasswordResetRequest struct {
+	Body struct {
+		ResetToken  string `json:"reset_token" required:"true"`
+		NewPassword string `json:"new_password" required:"true" minLength:"8"`
+	} `json:"body"`
+}
+
+// CompletePasswordReset finishes the forced-change flow: it consumes the
+// short-lived reset token issued at login, sets the new password (clearing the
+// must-change flag), and issues a full session — so the user never re-enters the
+// admin-set password.
+func (h *AuthHandler) CompletePasswordReset(c *okapi.Context, req *CompletePasswordResetRequest) error {
+	user, err := h.auth.CompletePasswordReset(c.Request().Context(), req.Body.ResetToken, req.Body.NewPassword)
+	if err != nil {
+		return c.AbortUnauthorized("this password-reset session has expired — sign in again")
+	}
+	now := time.Now()
+	user.LastLoginAt = &now
+	_ = h.users.Update(user)
+	h.audit.Record(audit.Entry{ActorID: &user.ID, Action: "user.password_changed", TargetType: "user", IP: c.RealIP(), Metadata: map[string]any{"forced": true}})
 	return h.issue(c, user, 200)
 }
 
