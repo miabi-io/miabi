@@ -48,6 +48,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/events"
 	"github.com/miabi-io/miabi/internal/services/gitops"
 	"github.com/miabi-io/miabi/internal/services/gitrepo"
+	"github.com/miabi-io/miabi/internal/services/gpu"
 	"github.com/miabi-io/miabi/internal/services/housekeeping"
 	"github.com/miabi-io/miabi/internal/services/image"
 	"github.com/miabi-io/miabi/internal/services/job"
@@ -352,6 +353,15 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	auditLogger := audit.NewLogger(auditRepo, bus)
 	eventsService := events.NewService(appEventRepo, bus)
 	nodeClients := nodeManager.Clients()
+	// GPU inventory + scheduling: discovers each node's GPUs via a probe over the
+	// Docker API (no agent change), gates requests behind the AllowGPU capability +
+	// MaxGPUs quota, and resolves an app's request to concrete devices at deploy.
+	gpuService := gpu.NewService(repositories.NewGPUDeviceRepository(db), serverRepo, appRepo, nodeClients, gpu.Config{
+		Enabled:       cfg.GPUEnabled,
+		NvidiaRuntime: cfg.NvidiaRuntime,
+		ProbeImage:    cfg.GPUProbeImage,
+	})
+	gpuService.SetQuota(quotaService)
 	appService := application.NewService(appRepo, deploymentRepo, releaseRepo, volumeRepo, routeRepo, networkRepo, stackRepo, appPortRepo, appEventRepo, nodeClients, producer, eventsService)
 	// Lets the app service (re)publish host ports when a port-forward app gains a
 	// route, and clean a deleted app's bindings.
@@ -678,6 +688,29 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			_ = storageService.MeasureUsage(ctx)
 		}()
 	}
+
+	// GPU inventory sweep: probe each node for its physical GPUs and upsert the
+	// device rows the admin enables. Only when GPU support is switched on, so a
+	// no-GPU fleet pays nothing.
+	if cfg.GPUEnabled && cronManager != nil {
+		gpuEvery := cfg.GPUInventoryMinutes
+		if gpuEvery <= 0 {
+			gpuEvery = 30
+		}
+		if err := cronManager.RegisterTask("gpu_inventory", 0, "GPU device inventory", fmt.Sprintf("@every %dm", gpuEvery), func() error {
+			return gpuService.Inventory(context.Background())
+		}); err != nil {
+			logger.Warn("failed to register gpu inventory task", "error", err)
+		}
+		// Seed shortly after boot (off the startup path) so discovered cards show
+		// up without waiting a full interval.
+		go func() {
+			time.Sleep(45 * time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+			_ = gpuService.Inventory(ctx)
+		}()
+	}
 	// Gate user-created route hostnames on a registered domain (generated
 	// external-access routes bypass route.Service.Create, so they're exempt).
 	routeService.SetDomains(domainRepo)
@@ -956,6 +989,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Block stop/remove of managed containers from the admin node view unless the
 	// operator has explicitly disabled security enforcement (break-glass).
 	r.h.node.SetSecurityEnforcement(r.cfg.SecurityEnforcement)
+	// GPU inventory + admin device policy on the node detail page.
+	r.h.node.SetGPU(gpuService)
 
 	// Platform admins are always exempt — a misconfigured IdP must never lock the
 	// whole instance out.

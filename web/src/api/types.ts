@@ -34,6 +34,7 @@ export interface Plan {
   max_database_instance_size_mb: number
   max_storage_mb: number
   max_runners: number
+  max_gpus: number
   allow_custom_tls: boolean
   allow_privileged_host_mounts: boolean
   allow_shell_exec: boolean
@@ -41,6 +42,7 @@ export interface Plan {
   allow_dns_providers: boolean
   allow_custom_labels: boolean
   allow_platform_runners: boolean
+  allow_gpu: boolean
   security_profile: SecurityProfile
   // Let apps installed from an official marketplace template keep the image's own
   // default user even under the "restricted" security profile.
@@ -71,6 +73,7 @@ export interface WorkspaceQuotaOverride {
   max_database_instance_size_mb: number | null
   max_storage_mb: number | null
   max_runners: number | null
+  max_gpus: number | null
   allow_custom_tls: boolean | null
   allow_privileged_host_mounts: boolean | null
   allow_shell_exec: boolean | null
@@ -78,6 +81,7 @@ export interface WorkspaceQuotaOverride {
   allow_dns_providers: boolean | null
   allow_custom_labels: boolean | null
   allow_platform_runners: boolean | null
+  allow_gpu: boolean | null
   security_profile: SecurityProfile | null
   allow_official_image_user: boolean | null
 }
@@ -91,8 +95,8 @@ export interface ResourceUsage {
 export type WorkspaceLimits = Pick<Plan,
   | 'max_apps' | 'max_database_instances' | 'max_cron_jobs' | 'max_volumes' | 'max_networks'
   | 'max_api_keys' | 'max_members' | 'max_databases_per_instance' | 'max_cpu_cores' | 'max_memory_mb'
-  | 'max_database_instance_size_mb' | 'max_storage_mb' | 'max_runners' | 'allow_custom_tls' | 'allow_privileged_host_mounts'
-  | 'allow_shell_exec' | 'allow_shared_storage' | 'allow_dns_providers' | 'allow_custom_labels' | 'allow_platform_runners' | 'security_profile'
+  | 'max_database_instance_size_mb' | 'max_storage_mb' | 'max_runners' | 'max_gpus' | 'allow_custom_tls' | 'allow_privileged_host_mounts'
+  | 'allow_shell_exec' | 'allow_shared_storage' | 'allow_dns_providers' | 'allow_custom_labels' | 'allow_platform_runners' | 'allow_gpu' | 'security_profile'
   | 'allow_official_image_user'>
 
 export interface WorkspaceUsage {
@@ -790,6 +794,10 @@ export interface Application {
   canary_weight?: number
   memory_bytes?: number
   nano_cpus?: number
+  // GPU request (gated by the plan's allow_gpu). gpu_count = whole devices,
+  // gpu_kind narrows to a vendor/model.
+  gpu_count?: number
+  gpu_kind?: string
   restart_policy?: RestartPolicy
   image_pull_policy?: ImagePullPolicy
   // Cluster runtime (cluster mode). "service" runs the app as a replicated Swarm

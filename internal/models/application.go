@@ -295,6 +295,13 @@ type Application struct {
 	Port        int        `json:"port,omitempty"`                          // primary container port
 	MemoryBytes int64      `json:"memory_bytes"`                            // 0 = unlimited
 	NanoCPUs    int64      `json:"nano_cpus"`                               // 0 = unlimited; 1 core = 1e9
+	// GPUCount is the number of whole GPU units this app requests (0 = none). It
+	// is declarative on the app but only consumes quota while the app is running,
+	// and is resolved to concrete devices on the app's node at each deploy.
+	GPUCount int `json:"gpu_count" gorm:"not null;default:0"`
+	// GPUKind narrows the request to a vendor or model when set ("nvidia",
+	// "NVIDIA A100-…"); empty = any enabled GPU on the app's node.
+	GPUKind string `json:"gpu_kind,omitempty"`
 	// RestartPolicy is the Docker restart policy for the app's container.
 	// Defaults to unless-stopped (the platform's historical behavior).
 	RestartPolicy RestartPolicy `json:"restart_policy" gorm:"not null;default:unless-stopped"`

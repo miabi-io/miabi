@@ -682,10 +682,12 @@ func appResource(app *models.Application, ext, pub map[int]bool) declarative.Res
 			Publish:        pub[p.ContainerPort],
 		})
 	}
-	if app.MemoryBytes > 0 || app.NanoCPUs > 0 {
+	if app.MemoryBytes > 0 || app.NanoCPUs > 0 || app.GPUCount > 0 {
 		spec.Resources = &declarative.ResourceSpec{
-			Memory: strconv.FormatInt(app.MemoryBytes, 10), // bytes; canonical for diff
-			CPU:    strconv.FormatFloat(float64(app.NanoCPUs)/1e9, 'f', -1, 64),
+			Memory:  strconv.FormatInt(app.MemoryBytes, 10), // bytes; canonical for diff
+			CPU:     strconv.FormatFloat(float64(app.NanoCPUs)/1e9, 'f', -1, 64),
+			GPU:     app.GPUCount,
+			GPUKind: app.GPUKind,
 		}
 	}
 	env := map[string]string{}
@@ -1006,6 +1008,7 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 			mb, _ := spec.Resources.MemoryBytes()
 			nc, _ := spec.Resources.NanoCPUs()
 			app.MemoryBytes, app.NanoCPUs = mb, nc
+			app.GPUCount, app.GPUKind = spec.Resources.GPU, spec.Resources.GPUKind
 		}
 		// Reconcile user labels (built-in keys preserved) + annotations from the
 		// manifest, then re-stamp the digest built-in.
@@ -1184,6 +1187,7 @@ func (s *Service) createInput(ctx context.Context, m declarative.Meta, spec *dec
 	if spec.Resources != nil {
 		in.MemoryBytes, _ = spec.Resources.MemoryBytes()
 		in.NanoCPUs, _ = spec.Resources.NanoCPUs()
+		in.GPUCount, in.GPUKind = spec.Resources.GPU, spec.Resources.GPUKind
 	}
 	for _, p := range spec.Ports {
 		in.Ports = append(in.Ports, application.PortSpec{ContainerPort: p.Container, Scheme: p.Scheme, Protocol: p.Protocol})

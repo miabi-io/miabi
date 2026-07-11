@@ -32,6 +32,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/edgegateway"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 	"github.com/miabi-io/miabi/internal/services/events"
+	"github.com/miabi-io/miabi/internal/services/gpu"
 	"github.com/miabi-io/miabi/internal/services/image"
 	"github.com/miabi-io/miabi/internal/services/keyring"
 	"github.com/miabi-io/miabi/internal/services/monitoring"
@@ -327,6 +328,17 @@ func runServer(cli *okapicli.CLI) {
 			securityResolver := newSecurityResolver(cfg, securityQuota)
 			deployHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
 			deployHandler.SetBuilderPolicy(securityQuota)
+			// GPU scheduling for the embedded worker: capability + quota preflight and
+			// deploy-time device resolution for GPU apps.
+			gpuScheduler := gpu.NewService(
+				repositories.NewGPUDeviceRepository(res.db),
+				repositories.NewServerRepository(res.db),
+				repositories.NewApplicationRepository(res.db),
+				nodeClients,
+				gpu.Config{Enabled: cfg.GPUEnabled, NvidiaRuntime: cfg.NvidiaRuntime, ProbeImage: cfg.GPUProbeImage},
+			)
+			gpuScheduler.SetQuota(securityQuota)
+			deployHandler.SetGPU(gpuScheduler)
 			jobHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
 			// Managed-subnet allocator: overlay networks + remote-node network
 			// recreate draw from the Miabi pool, not Docker's default address pool.

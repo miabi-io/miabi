@@ -35,8 +35,26 @@ var (
 	})
 )
 
+// GPU inventory + allocation: how many devices are discovered vs enabled for
+// workloads, and how many GPU units running apps currently hold. Lets operators
+// see fleet GPU capacity and utilization.
+var (
+	gpuDevicesTotal = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "miabi_gpu_devices_total",
+		Help: "Number of physical GPU devices discovered across all nodes.",
+	})
+	gpuDevicesEnabled = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "miabi_gpu_devices_enabled",
+		Help: "Number of GPU devices enabled (offered to workloads).",
+	})
+	gpuAllocated = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "miabi_gpu_allocated",
+		Help: "GPU units currently held by running applications.",
+	})
+)
+
 func init() {
-	prometheus.MustRegister(buildInfo, subnetPoolUsed, subnetPoolTotal)
+	prometheus.MustRegister(buildInfo, subnetPoolUsed, subnetPoolTotal, gpuDevicesTotal, gpuDevicesEnabled, gpuAllocated)
 }
 
 // SetBuildInfo records the running build's version and commit.
@@ -48,6 +66,15 @@ func SetBuildInfo(version, commit string) {
 func SetSubnetPoolUsage(used, total int) {
 	subnetPoolUsed.Set(float64(used))
 	subnetPoolTotal.Set(float64(total))
+}
+
+// SetGPUStats records fleet GPU inventory and live allocation for the /metrics
+// scrape: total discovered devices, admin-enabled devices, and GPU units held by
+// running apps.
+func SetGPUStats(total, enabled, allocated int) {
+	gpuDevicesTotal.Set(float64(total))
+	gpuDevicesEnabled.Set(float64(enabled))
+	gpuAllocated.Set(float64(allocated))
 }
 
 // Handler returns the Prometheus scrape handler.

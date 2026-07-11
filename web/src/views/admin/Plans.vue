@@ -93,10 +93,10 @@ function blank(): PlanInput {
     max_apps: -1, max_database_instances: -1, max_cron_jobs: -1,
     max_volumes: -1, max_networks: -1, max_api_keys: -1, max_members: -1,
     max_databases_per_instance: -1, max_cpu_cores: -1, max_memory_mb: -1,
-    max_database_instance_size_mb: -1, max_storage_mb: -1, max_runners: -1,
+    max_database_instance_size_mb: -1, max_storage_mb: -1, max_runners: -1, max_gpus: 0,
     allow_custom_tls: true, allow_privileged_host_mounts: true, allow_shell_exec: true,
     allow_shared_storage: true, allow_dns_providers: true, allow_custom_labels: true,
-    allow_platform_runners: false,
+    allow_platform_runners: false, allow_gpu: false,
     security_profile: 'default',
     allow_official_image_user: false,
   }

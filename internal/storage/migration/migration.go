@@ -17,6 +17,7 @@ func Run(db *gorm.DB) error {
 		&models.UpgradeStep{},
 		&models.UpdateStatus{},
 		&models.Server{},
+		&models.GPUDevice{},
 		&models.User{},
 		&models.Session{},
 		&models.APIKey{},

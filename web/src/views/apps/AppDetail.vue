@@ -347,7 +347,7 @@ interface SettingsForm {
   stack_id: number | null; network_ids: number[]; ports: AppPort[]
   deploy_strategy: DeployStrategy; canary_initial_weight: number; canary_step_weight: number; canary_step_interval_seconds: number
   // Resources (0 = unlimited)
-  cpu_cores: number; memory_mb: number; restart_policy: RestartPolicy; image_pull_policy: ImagePullPolicy
+  cpu_cores: number; memory_mb: number; gpu_count: number; gpu_kind: string; restart_policy: RestartPolicy; image_pull_policy: ImagePullPolicy
   // Healthcheck
   hc_type: HealthcheckType; hc_path: string; hc_port: number | null; hc_command: string
   hc_interval: number; hc_timeout: number; hc_retries: number; hc_start_period: number
@@ -356,7 +356,7 @@ function emptySettingsForm(): SettingsForm {
   return {
     image: '', tag: '', command: '', registry_id: null, git_repository_id: null, git_repo: '', git_ref: '', build_method: 'auto', builder: '', stack_id: null, network_ids: [], ports: [],
     deploy_strategy: 'rolling', canary_initial_weight: 10, canary_step_weight: 20, canary_step_interval_seconds: 60,
-    cpu_cores: 0, memory_mb: 0, restart_policy: 'unless-stopped', image_pull_policy: 'always',
+    cpu_cores: 0, memory_mb: 0, gpu_count: 0, gpu_kind: '', restart_policy: 'unless-stopped', image_pull_policy: 'always',
     hc_type: 'none', hc_path: '/', hc_port: null, hc_command: '', hc_interval: 30, hc_timeout: 5, hc_retries: 3, hc_start_period: 0,
   }
 }
@@ -456,6 +456,11 @@ const containerLabels = ref<Record<string, string>>({})
 const newLabel = ref({ key: '', value: '' })
 const customLabelsAllowed = ref(false)
 
+// GPU access. Gated by the plan's allow_gpu capability (resolved from the usage
+// endpoint). When false the GPU controls are hidden entirely — no dangling field
+// that always 403s.
+const gpuAllowed = ref(false)
+
 // Delete dialog (type-to-confirm)
 const showDelete = ref(false)
 const deleteConfirm = ref('')
@@ -493,6 +498,8 @@ function syncSettingsForm() {
     canary_step_interval_seconds: app.value.canary_step_interval_seconds || 60,
     cpu_cores: app.value.nano_cpus ? +(app.value.nano_cpus / 1e9).toFixed(2) : 0,
     memory_mb: app.value.memory_bytes ? Math.round(app.value.memory_bytes / MB) : 0,
+    gpu_count: app.value.gpu_count || 0,
+    gpu_kind: app.value.gpu_kind || '',
     restart_policy: app.value.restart_policy || 'unless-stopped',
     image_pull_policy: app.value.image_pull_policy || 'always',
     hc_type: app.value.healthcheck_type || 'none',
@@ -517,12 +524,14 @@ async function loadApp() {
   // Resolve capabilities separately so a usage error never blocks the app from
   // loading; the shell icon simply stays hidden and the Labels panel read-only.
   try {
-    const caps = (await usageApi.get(wid.value)).data.data.capabilities
-    shellExecAllowed.value = caps.shell_exec
-    customLabelsAllowed.value = caps.custom_labels
+    const usage = (await usageApi.get(wid.value)).data.data
+    shellExecAllowed.value = usage.capabilities.shell_exec
+    customLabelsAllowed.value = usage.capabilities.custom_labels
+    gpuAllowed.value = !!usage.limits.allow_gpu
   } catch {
     shellExecAllowed.value = false
     customLabelsAllowed.value = false
+    gpuAllowed.value = false
   }
 }
 
@@ -701,6 +710,10 @@ async function saveSettings() {
       canary_step_interval_seconds: settingsForm.value.canary_step_interval_seconds,
       memory_bytes: Math.max(0, Math.round((settingsForm.value.memory_mb || 0) * MB)),
       nano_cpus: Math.max(0, Math.round((settingsForm.value.cpu_cores || 0) * 1e9)),
+      // Only send a GPU request when the plan allows it (the field is hidden
+      // otherwise), so a disallowed workspace never trips the 403.
+      gpu_count: gpuAllowed.value ? Math.max(0, Math.round(settingsForm.value.gpu_count || 0)) : 0,
+      gpu_kind: gpuAllowed.value ? settingsForm.value.gpu_kind.trim() : '',
       restart_policy: settingsForm.value.restart_policy,
       image_pull_policy: settingsForm.value.image_pull_policy,
       healthcheck_type: settingsForm.value.hc_type,
@@ -2429,6 +2442,18 @@ async function detachDatabase(d: AppDatabase) {
                 <span v-else-if="limits.max_memory_mb > 0">Max {{ limits.max_memory_mb }} MB. 0 = unlimited.</span>
                 <span v-else>0 = unlimited.</span>
               </p>
+            </div>
+          </div>
+          <div v-if="gpuAllowed" class="form-row">
+            <div class="form-group" style="flex: 1">
+              <label class="form-label">GPUs</label>
+              <input v-model.number="settingsForm.gpu_count" type="number" min="0" step="1" class="form-input" :disabled="!ws.canEdit" />
+              <p class="form-hint">Whole GPU devices to attach. 0 = none. Counts against the plan’s GPU quota while running.</p>
+            </div>
+            <div class="form-group" style="flex: 1">
+              <label class="form-label">GPU kind</label>
+              <input v-model="settingsForm.gpu_kind" type="text" placeholder="any" class="form-input" :disabled="!ws.canEdit || settingsForm.gpu_count < 1" />
+              <p class="form-hint">Narrow to a vendor/model (e.g. <code>nvidia</code>). Empty = any enabled GPU on the node.</p>
             </div>
           </div>
           <div class="form-group">

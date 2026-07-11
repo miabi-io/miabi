@@ -2,7 +2,7 @@
 import { onMounted, onBeforeUnmount, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
-import { nodesApi, type CreateNodePayload, type NodeWorkloads } from '@/api/nodes'
+import { nodesApi, type CreateNodePayload, type NodeWorkloads, type NodeGPUList, type GPUDevice } from '@/api/nodes'
 import { clusterApi } from '@/api/cluster'
 import { ACCESS_MODES, CONNECTIVITY_TYPES, nodeOptionDescription } from '@/constants/node'
 import type { Server, NodeStats, NodeHostMetrics, GatewayStatus, GatewayCandidate, GatewayUpdateProgress, StatsSample, Container, ContainerStat, DockerVolume, DockerNetwork, NodePortUsage, ClusterMember } from '@/api/types'
@@ -110,6 +110,7 @@ async function load() {
       try {
         stats.value = (await nodesApi.stats(id)).data.data
         await loadResources()
+        await loadGpus()
         startStatsPolling()
       } catch {
         offline.value = true
@@ -129,6 +130,43 @@ async function load() {
   }
 }
 onMounted(load)
+
+// --- GPUs ---
+const gpuInfo = ref<NodeGPUList | null>(null)
+const gpuBusy = ref<number | null>(null) // device id with an action in flight
+const gpuRescanning = ref(false)
+
+async function loadGpus() {
+  try {
+    gpuInfo.value = (await nodesApi.gpus(id)).data.data
+  } catch {
+    gpuInfo.value = null
+  }
+}
+async function setGpu(dev: GPUDevice, patch: { enabled?: boolean; shared?: boolean }) {
+  gpuBusy.value = dev.id
+  try {
+    const updated = (await nodesApi.updateGpu(id, dev.id, patch)).data.data
+    if (gpuInfo.value) {
+      gpuInfo.value.devices = gpuInfo.value.devices.map((d) => (d.id === updated.id ? updated : d))
+    }
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    gpuBusy.value = null
+  }
+}
+async function rescanGpus() {
+  gpuRescanning.value = true
+  try {
+    gpuInfo.value = (await nodesApi.rescanGpus(id)).data.data
+    notify.success('GPU rescan complete')
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    gpuRescanning.value = false
+  }
+}
 
 // --- Docker resources (containers / volumes / networks) ---
 const containers = ref<Container[]>([])
@@ -792,6 +830,55 @@ const gwBadge = computed(() => {
                 <div class="stat-sub">{{ usage ? usage.memSub : 'No data yet' }}</div>
               </div>
             </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- GPUs: discovered devices + admin enable/share policy. Only rendered when
+           platform GPU support is on. Devices arrive disabled until opted in. -->
+      <template v-if="gpuInfo && gpuInfo.enabled">
+        <h2 class="section-title">GPUs</h2>
+        <div class="card mb-4">
+          <div class="card-header">
+            <h2>Devices <span class="text-muted" style="font-weight: 400">{{ gpuInfo.devices.length }}</span></h2>
+            <button class="btn btn-sm btn-secondary" :disabled="gpuRescanning" @click="rescanGpus">
+              <span class="mdi" :class="gpuRescanning ? 'mdi-loading mdi-spin' : 'mdi-refresh'"></span>
+              {{ gpuRescanning ? 'Rescanning…' : 'Rescan GPUs' }}
+            </button>
+          </div>
+          <div v-if="!gpuInfo.toolkit_present" class="card-body">
+            <p class="text-muted">
+              GPUs may be present, but the NVIDIA Container Toolkit is not installed on this node.
+              Install it and rescan to inventory the devices.
+            </p>
+          </div>
+          <div v-else-if="!gpuInfo.devices.length" class="card-body">
+            <p class="text-muted">No GPUs discovered on this node yet.</p>
+          </div>
+          <div v-else class="table-wrapper">
+            <table>
+              <thead><tr><th>Model</th><th>UUID</th><th>Memory</th><th>Index</th><th>Enabled</th><th>Mode</th></tr></thead>
+              <tbody>
+                <tr v-for="dev in gpuInfo.devices" :key="dev.id">
+                  <td>{{ dev.model || dev.vendor }}</td>
+                  <td><code>{{ dev.uuid }}</code></td>
+                  <td>{{ dev.memory_mb ? dev.memory_mb + ' MiB' : '—' }}</td>
+                  <td>{{ dev.index }}</td>
+                  <td>
+                    <label class="switch">
+                      <input type="checkbox" :checked="dev.enabled" :disabled="gpuBusy === dev.id" @change="setGpu(dev, { enabled: !dev.enabled })" />
+                      <span>{{ dev.enabled ? 'Enabled' : 'Disabled' }}</span>
+                    </label>
+                  </td>
+                  <td>
+                    <select class="form-select form-select-sm" :value="String(dev.shared)" :disabled="gpuBusy === dev.id || !dev.enabled" @change="setGpu(dev, { shared: ($event.target as HTMLSelectElement).value === 'true' })">
+                      <option value="true">Shared</option>
+                      <option value="false">Dedicated</option>
+                    </select>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </template>

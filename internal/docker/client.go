@@ -58,6 +58,10 @@ func (e *engineClient) Info(ctx context.Context) (Info, error) {
 		return Info{}, err
 	}
 	ping, _ := e.cli.Ping(ctx)
+	runtimes := make([]string, 0, len(info.Runtimes))
+	for name := range info.Runtimes {
+		runtimes = append(runtimes, name)
+	}
 	return Info{
 		Name:          info.Name,
 		Version:       info.ServerVersion,
@@ -69,7 +73,32 @@ func (e *engineClient) Info(ctx context.Context) (Info, error) {
 		Images:        info.Images,
 		CPUs:          info.NCPU,
 		MemTotal:      info.MemTotal,
+		Runtimes:      runtimes,
 	}, nil
+}
+
+// toDeviceRequests maps Miabi GPU requests to Docker's DeviceRequest form. Each
+// request targets the "nvidia" device driver; DeviceIDs pins exact cards while a
+// nil DeviceIDs falls back to Count-of-any (-1 = all). An empty capability set
+// defaults to [["gpu"]].
+func toDeviceRequests(gpus []GPURequest) []container.DeviceRequest {
+	if len(gpus) == 0 {
+		return nil
+	}
+	out := make([]container.DeviceRequest, 0, len(gpus))
+	for _, g := range gpus {
+		dr := container.DeviceRequest{Driver: "nvidia", Capabilities: g.Capabilities}
+		if len(dr.Capabilities) == 0 {
+			dr.Capabilities = [][]string{{"gpu"}}
+		}
+		if len(g.DeviceIDs) > 0 {
+			dr.DeviceIDs = g.DeviceIDs
+		} else {
+			dr.Count = g.Count
+		}
+		out = append(out, dr)
+	}
+	return out
 }
 
 func (e *engineClient) ListContainers(ctx context.Context, all bool) ([]Container, error) {
@@ -250,9 +279,13 @@ func (e *engineClient) RunContainer(ctx context.Context, spec RunSpec) (string, 
 		}
 	}
 	hostCfg := &container.HostConfig{
-		PortBindings:  bindings,
-		Binds:         binds,
-		Resources:     container.Resources{Memory: spec.MemoryBytes, NanoCPUs: spec.NanoCPUs},
+		PortBindings: bindings,
+		Binds:        binds,
+		Resources: container.Resources{
+			Memory:         spec.MemoryBytes,
+			NanoCPUs:       spec.NanoCPUs,
+			DeviceRequests: toDeviceRequests(spec.GPUs),
+		},
 		RestartPolicy: restartPolicy(spec.RestartPolicy),
 		CapDrop:       spec.CapDrop,
 	}
@@ -341,8 +374,12 @@ func (e *engineClient) createOneShot(ctx context.Context, spec RunSpec) (string,
 
 	cfg := &container.Config{Image: spec.Image, Env: spec.Env, Entrypoint: spec.Entrypoint, Cmd: spec.Cmd, WorkingDir: spec.WorkingDir, Labels: labels}
 	hostCfg := &container.HostConfig{
-		Binds:     binds,
-		Resources: container.Resources{Memory: spec.MemoryBytes, NanoCPUs: spec.NanoCPUs},
+		Binds: binds,
+		Resources: container.Resources{
+			Memory:         spec.MemoryBytes,
+			NanoCPUs:       spec.NanoCPUs,
+			DeviceRequests: toDeviceRequests(spec.GPUs), // used by the GPU inventory probe
+		},
 	}
 
 	var netCfg *network.NetworkingConfig

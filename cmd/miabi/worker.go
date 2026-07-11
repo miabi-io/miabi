@@ -19,6 +19,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/dbupgrade"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 	"github.com/miabi-io/miabi/internal/services/events"
+	"github.com/miabi-io/miabi/internal/services/gpu"
 	"github.com/miabi-io/miabi/internal/services/image"
 	"github.com/miabi-io/miabi/internal/services/keyring"
 	"github.com/miabi-io/miabi/internal/services/node"
@@ -191,6 +192,17 @@ func runWorker() error {
 	securityResolver := newSecurityResolver(cfg, securityQuota)
 	deployHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
 	deployHandler.SetBuilderPolicy(securityQuota)
+	// GPU scheduling: capability + quota preflight and deploy-time device
+	// resolution for GPU apps.
+	gpuScheduler := gpu.NewService(
+		repositories.NewGPUDeviceRepository(db),
+		repositories.NewServerRepository(db),
+		appRepo,
+		nodeClients,
+		gpu.Config{Enabled: cfg.GPUEnabled, NvidiaRuntime: cfg.NvidiaRuntime, ProbeImage: cfg.GPUProbeImage},
+	)
+	gpuScheduler.SetQuota(securityQuota)
+	deployHandler.SetGPU(gpuScheduler)
 	jobHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
 	// Managed-subnet allocator: overlay networks + remote-node network recreate
 	// draw from the Miabi pool instead of Docker's default address pool.

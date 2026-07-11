@@ -293,6 +293,12 @@ func specFields(r Resource) map[string]string {
 			if nc != 0 {
 				f["resources.cpu"] = fmt.Sprintf("%d", nc)
 			}
+			if a.Resources.GPU != 0 {
+				f["resources.gpu"] = fmt.Sprintf("%d", a.Resources.GPU)
+			}
+			if a.Resources.GPUKind != "" {
+				f["resources.gpuKind"] = a.Resources.GPUKind
+			}
 		}
 		secret := map[string]bool{}
 		for _, k := range a.SecretEnv {

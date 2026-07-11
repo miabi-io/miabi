@@ -13,6 +13,9 @@ export interface AppRuntimeInput {
 export interface AppResourceInput {
   memory_bytes?: number
   nano_cpus?: number
+  // GPU request (gated by the plan's allow_gpu capability).
+  gpu_count?: number
+  gpu_kind?: string
   restart_policy?: RestartPolicy
   image_pull_policy?: ImagePullPolicy
   healthcheck_type?: HealthcheckType

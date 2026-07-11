@@ -34,6 +34,7 @@ const (
 	ResourceMembers              Resource = "members"
 	ResourceDatabasesPerInstance Resource = "databases_per_instance"
 	ResourceRunners              Resource = "runners"
+	ResourceGPUs                 Resource = "gpus"
 )
 
 // Capability is a boolean plan feature gate.
@@ -53,6 +54,10 @@ const (
 	// runners it is an arbitrary-code vector; when not granted the platform default
 	// builder is used instead.
 	CapCustomBuilder Capability = "custom_builder"
+	// CapGPU gates whether a workspace may request GPU devices for its apps.
+	// Device passthrough is privileged, so this is a hard gate (and incompatible
+	// with the restricted security profile); off by default like the others.
+	CapGPU Capability = "gpu"
 )
 
 // ErrQuotaExceeded and ErrCapabilityDenied are the sentinels handlers map to a
@@ -110,6 +115,7 @@ type Limits struct {
 	MaxDatabaseInstanceSizeMB int    `json:"max_database_instance_size_mb"`
 	MaxStorageMB              int    `json:"max_storage_mb"`
 	MaxRunners                int    `json:"max_runners"`
+	MaxGPUs                   int    `json:"max_gpus"`
 	AllowCustomTLS            bool   `json:"allow_custom_tls"`
 	AllowPrivilegedHostMounts bool   `json:"allow_privileged_host_mounts"`
 	AllowShellExec            bool   `json:"allow_shell_exec"`
@@ -118,6 +124,7 @@ type Limits struct {
 	AllowCustomLabels         bool   `json:"allow_custom_labels"`
 	AllowPlatformRunners      bool   `json:"allow_platform_runners"`
 	AllowCustomBuilder        bool   `json:"allow_custom_builder"`
+	AllowGPU                  bool   `json:"allow_gpu"`
 	SecurityProfile           string `json:"security_profile"`          // "default" | "restricted"
 	AllowOfficialImageUser    bool   `json:"allow_official_image_user"` // exempt official-template apps from the restricted UID
 }
@@ -127,10 +134,10 @@ func unlimited() Limits {
 		MaxApps: -1, MaxDatabaseInstances: -1, MaxCronJobs: -1, MaxVolumes: -1,
 		MaxNetworks: -1, MaxAPIKeys: -1, MaxMembers: -1, MaxDatabasesPerInstance: -1,
 		MaxCPUCores: -1, MaxMemoryMB: -1, MaxDatabaseInstanceSizeMB: -1, MaxStorageMB: -1,
-		MaxRunners:     -1,
+		MaxRunners: -1, MaxGPUs: -1,
 		AllowCustomTLS: true, AllowPrivilegedHostMounts: true, AllowShellExec: true,
 		AllowSharedStorage: true, AllowDNSProviders: true, AllowCustomLabels: true,
-		AllowPlatformRunners: true, AllowCustomBuilder: true,
+		AllowPlatformRunners: true, AllowCustomBuilder: true, AllowGPU: true,
 		SecurityProfile:        models.SecurityProfileDefault, // never restrict the platform workspace
 		AllowOfficialImageUser: true,
 	}
@@ -145,7 +152,7 @@ func limitsFromPlan(p *models.Plan) Limits {
 		MaxVolumes: p.MaxVolumes, MaxNetworks: p.MaxNetworks, MaxAPIKeys: p.MaxAPIKeys, MaxMembers: p.MaxMembers,
 		MaxDatabasesPerInstance: p.MaxDatabasesPerInstance, MaxCPUCores: p.MaxCPUCores, MaxMemoryMB: p.MaxMemoryMB,
 		MaxDatabaseInstanceSizeMB: p.MaxDatabaseInstanceSizeMB, MaxStorageMB: p.MaxStorageMB,
-		MaxRunners:     p.MaxRunners,
+		MaxRunners: p.MaxRunners, MaxGPUs: p.MaxGPUs,
 		AllowCustomTLS: p.AllowCustomTLS, AllowPrivilegedHostMounts: p.AllowPrivilegedHostMounts,
 		AllowShellExec:         p.AllowShellExec,
 		AllowSharedStorage:     p.AllowSharedStorage,
@@ -153,6 +160,7 @@ func limitsFromPlan(p *models.Plan) Limits {
 		AllowCustomLabels:      p.AllowCustomLabels,
 		AllowPlatformRunners:   p.AllowPlatformRunners,
 		AllowCustomBuilder:     p.AllowCustomBuilder,
+		AllowGPU:               p.AllowGPU,
 		SecurityProfile:        models.NormalizeSecurityProfile(p.SecurityProfile),
 		AllowOfficialImageUser: p.AllowOfficialImageUser,
 	}
@@ -185,6 +193,7 @@ func applyOverride(l Limits, o *models.WorkspaceQuota) Limits {
 	set(&l.MaxDatabaseInstanceSizeMB, o.MaxDatabaseInstanceSizeMB)
 	set(&l.MaxStorageMB, o.MaxStorageMB)
 	set(&l.MaxRunners, o.MaxRunners)
+	set(&l.MaxGPUs, o.MaxGPUs)
 	setb(&l.AllowCustomTLS, o.AllowCustomTLS)
 	setb(&l.AllowPrivilegedHostMounts, o.AllowPrivilegedHostMounts)
 	setb(&l.AllowShellExec, o.AllowShellExec)
@@ -193,6 +202,7 @@ func applyOverride(l Limits, o *models.WorkspaceQuota) Limits {
 	setb(&l.AllowCustomLabels, o.AllowCustomLabels)
 	setb(&l.AllowPlatformRunners, o.AllowPlatformRunners)
 	setb(&l.AllowCustomBuilder, o.AllowCustomBuilder)
+	setb(&l.AllowGPU, o.AllowGPU)
 	setb(&l.AllowOfficialImageUser, o.AllowOfficialImageUser)
 	if o.SecurityProfile != nil {
 		l.SecurityProfile = models.NormalizeSecurityProfile(*o.SecurityProfile)
@@ -220,6 +230,8 @@ func resourceLimit(l Limits, r Resource) int {
 		return l.MaxDatabasesPerInstance
 	case ResourceRunners:
 		return l.MaxRunners
+	case ResourceGPUs:
+		return l.MaxGPUs
 	default:
 		return -1
 	}
@@ -371,6 +383,8 @@ func (s *Service) Require(workspaceID uint, c Capability) error {
 		ok = l.AllowPlatformRunners
 	case CapCustomBuilder:
 		ok = l.AllowCustomBuilder
+	case CapGPU:
+		ok = l.AllowGPU
 	}
 	if ok {
 		return nil
@@ -412,6 +426,29 @@ func (s *Service) CheckComputeAdd(workspaceID uint, addNanoCPUs, addMemBytes int
 		if curMem+addMemBytes > capBytes {
 			return quotaExceeded("workspace memory %d MB exceeds the %d MB limit", (curMem+addMemBytes)/bytesPerMB, l.MaxMemoryMB)
 		}
+	}
+	return nil
+}
+
+// CheckGPURequest verifies that granting `requested` GPU units to an app keeps
+// the workspace's aggregate GPU allocation within the MaxGPUs cap. The current
+// allocation is the sum of GPUCount × replicas over the workspace's *running*
+// apps; excludeAppID drops the app being (re)deployed from that sum so a redeploy
+// does not double-count its own held units. A stopped app holds nothing.
+func (s *Service) CheckGPURequest(workspaceID uint, requested int, excludeAppID uint) error {
+	if !s.Enabled() || requested <= 0 {
+		return nil
+	}
+	limit := resourceLimit(s.EffectiveLimits(workspaceID), ResourceGPUs)
+	if limit < 0 {
+		return nil // unlimited
+	}
+	cur, err := s.apps.SumRunningGPUsByWorkspace(workspaceID, excludeAppID)
+	if err != nil {
+		return nil // fail open on a count error
+	}
+	if int(cur)+requested > limit {
+		return &QuotaError{Resource: ResourceGPUs, Used: int(cur) + requested, Limit: limit}
 	}
 	return nil
 }

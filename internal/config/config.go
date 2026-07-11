@@ -49,6 +49,18 @@ type Config struct {
 	// Setting it false is an escape hatch for break-glass operations.
 	SecurityEnforcement bool
 
+	// GPU management. GPUEnabled is the master off-switch: when false the control
+	// plane never probes nodes for GPUs and the UI hides all GPU controls (an
+	// air-gapped / no-GPU fleet pays nothing). NvidiaRuntime is the container
+	// runtime name that signals the NVIDIA Container Toolkit is present.
+	// GPUProbeImage is the one-shot image the inventory probe runs `nvidia-smi -q
+	// -x` in (point it at a mirror for air-gapped/registry-pinned fleets).
+	// GPUInventoryMinutes is the device rescan interval.
+	GPUEnabled          bool
+	NvidiaRuntime       string
+	GPUProbeImage       string
+	GPUInventoryMinutes int
+
 	// LicensePublicKey is the base64 Ed25519 public key used to verify a
 	// commercial license offline. In Enterprise builds a key is normally baked
 	// into the binary; this env override is for dev/test. Empty in Community.
@@ -406,6 +418,10 @@ func New() *Config {
 		MetricsEnabled:        goutils.EnvBool("MIABI_METRICS_ENABLED", false),
 		PlanEnforcement:       goutils.EnvBool("MIABI_PLAN_ENFORCEMENT", true),
 		SecurityEnforcement:   goutils.EnvBool("MIABI_SECURITY_ENFORCEMENT", true),
+		GPUEnabled:            goutils.EnvBool("MIABI_GPU_ENABLED", false),
+		NvidiaRuntime:         goutils.Env("MIABI_NVIDIA_RUNTIME", "nvidia"),
+		GPUProbeImage:         goutils.Env("MIABI_GPU_PROBE_IMAGE", "nvidia/cuda:12.4.1-base-ubuntu22.04"),
+		GPUInventoryMinutes:   goutils.EnvInt("MIABI_GPU_INVENTORY_MINUTES", 30),
 		LicensePublicKey:      goutils.Env("MIABI_LICENSE_PUBLIC_KEY", ""),
 		LicenseFile:           goutils.Env("MIABI_LICENSE_FILE", ""),
 		MetricsScrapeSeconds:  goutils.EnvInt("MIABI_METRICS_SCRAPE_SECONDS", 60),

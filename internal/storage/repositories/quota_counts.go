@@ -87,6 +87,32 @@ func (r *ApplicationRepository) SumResourcesByWorkspace(workspaceID, excludeAppI
 	return row.CPU, row.Mem, nil
 }
 
+// SumRunningGPUsByWorkspace returns the aggregate GPU units (GPUCount × replicas)
+// held by a workspace's *running* apps — the live allocation the GPU quota is
+// checked against. A stopped app holds nothing. excludeAppID = 0 excludes
+// nothing; pass the app being (re)deployed so its own units aren't double-counted.
+func (r *ApplicationRepository) SumRunningGPUsByWorkspace(workspaceID, excludeAppID uint) (int64, error) {
+	var total int64
+	q := r.db.Model(&models.Application{}).
+		Select("COALESCE(SUM(gpu_count * CASE WHEN replicas < 1 THEN 1 ELSE replicas END),0)").
+		Where("workspace_id = ? AND status = ? AND gpu_count > 0", workspaceID, models.AppStatusRunning)
+	if excludeAppID > 0 {
+		q = q.Where("id <> ?", excludeAppID)
+	}
+	err := q.Scan(&total).Error
+	return total, err
+}
+
+// SumRunningGPUs returns the total GPU units held by every running app across the
+// platform (for the miabi_gpu_allocated metric).
+func (r *ApplicationRepository) SumRunningGPUs() (int64, error) {
+	var total int64
+	err := r.db.Model(&models.Application{}).
+		Select("COALESCE(SUM(gpu_count * CASE WHEN replicas < 1 THEN 1 ELSE replicas END),0)").
+		Where("status = ? AND gpu_count > 0", models.AppStatusRunning).Scan(&total).Error
+	return total, err
+}
+
 // SumSizeByWorkspace returns the total declared volume size (bytes) in a workspace.
 func (r *VolumeRepository) SumSizeByWorkspace(workspaceID uint) (int64, error) {
 	var total int64

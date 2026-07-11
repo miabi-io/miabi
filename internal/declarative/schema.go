@@ -142,10 +142,14 @@ type MountSpec struct {
 	ReadOnly bool   `yaml:"readOnly,omitempty" json:"readOnly,omitempty"`
 }
 
-// ResourceSpec caps memory/CPU. Empty means unlimited.
+// ResourceSpec caps memory/CPU and requests GPUs. Empty/zero means unlimited/none.
 type ResourceSpec struct {
 	Memory string `yaml:"memory,omitempty" json:"memory,omitempty"` // e.g. "512Mi"
 	CPU    string `yaml:"cpu,omitempty" json:"cpu,omitempty"`       // e.g. "0.5"
+	// GPU is the number of whole GPU units the app requests (0 = none). GPUKind
+	// narrows the request to a vendor/model ("nvidia", "NVIDIA A100-…").
+	GPU     int    `yaml:"gpu,omitempty" json:"gpu,omitempty"`
+	GPUKind string `yaml:"gpuKind,omitempty" json:"gpuKind,omitempty"`
 }
 
 // StackSpec groups applications into one logical unit / network.

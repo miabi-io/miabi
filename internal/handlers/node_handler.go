@@ -21,6 +21,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/dockerimport"
 	"github.com/miabi-io/miabi/internal/services/edgegateway"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
+	"github.com/miabi-io/miabi/internal/services/gpu"
 	"github.com/miabi-io/miabi/internal/services/housekeeping"
 	"github.com/miabi-io/miabi/internal/services/node"
 )
@@ -50,6 +51,7 @@ type NodeHandler struct {
 	audit       *audit.Logger
 	bus         *eventbus.Bus
 	members     WorkspaceMembership
+	gpu         *gpu.Service // GPU inventory + admin device policy (nil = disabled)
 	// secEnforce blocks disruptive raw-Docker actions (stop/remove) on managed
 	// containers from the admin node view (MIABI_SECURITY_ENFORCEMENT, default on).
 	secEnforce bool
@@ -73,6 +75,10 @@ func (h *NodeHandler) SetMembership(m WorkspaceMembership) { h.members = m }
 // SetSecurityEnforcement toggles blocking of stop/remove on managed containers
 // from the admin node view (MIABI_SECURITY_ENFORCEMENT; default on).
 func (h *NodeHandler) SetSecurityEnforcement(on bool) { h.secEnforce = on }
+
+// SetGPU wires the GPU inventory/policy service (nil-safe; nil = GPU support
+// disabled, so the GPU endpoints report it off).
+func (h *NodeHandler) SetGPU(g *gpu.Service) { h.gpu = g }
 
 func NewNodeHandler(n *node.Service, mgr *nodes.Manager, gw *edgegateway.Service, importer *dockerimport.Service, housekeeper *housekeeping.Service, clusterEnricher SwarmEnricher, images ImageRef, controlURL string, auditLog *audit.Logger, bus *eventbus.Bus, hostProc string) *NodeHandler {
 	return &NodeHandler{
@@ -508,6 +514,102 @@ func (h *NodeHandler) Connect(c *okapi.Context) error {
 
 func bearer(h string) string {
 	return strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
+}
+
+// --- GPUs ---
+
+// GPUListResponse is a node's GPU inventory plus whether the node advertises the
+// NVIDIA runtime (so the UI can explain a node showing no cards).
+type GPUListResponse struct {
+	Enabled        bool               `json:"enabled"`         // platform GPU support on (MIABI_GPU_ENABLED)
+	ToolkitPresent bool               `json:"toolkit_present"` // node has the NVIDIA Container Toolkit
+	Devices        []models.GPUDevice `json:"devices"`
+}
+
+// UpdateGPURequest toggles a device's admin policy. Both fields are optional
+// (nil = leave unchanged).
+type UpdateGPURequest struct {
+	Body struct {
+		Enabled *bool `json:"enabled"`
+		Shared  *bool `json:"shared"`
+	} `json:"body"`
+}
+
+// ListGPUs returns the GPUs discovered on a node and the platform/node GPU
+// capability flags. Devices arrive disabled until an admin opts each one in.
+func (h *NodeHandler) ListGPUs(c *okapi.Context) error {
+	id, err := h.id(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid node id")
+	}
+	if h.gpu == nil || !h.gpu.Enabled() {
+		return ok(c, GPUListResponse{Enabled: false, Devices: []models.GPUDevice{}})
+	}
+	devices, err := h.gpu.Devices(id)
+	if err != nil {
+		return c.AbortInternalServerError("failed to list node GPUs", err)
+	}
+	if devices == nil {
+		devices = []models.GPUDevice{}
+	}
+	return ok(c, GPUListResponse{
+		Enabled:        true,
+		ToolkitPresent: h.gpu.NodeCapable(c.Request().Context(), id),
+		Devices:        devices,
+	})
+}
+
+// UpdateGPU applies admin policy (enable/disable, shared/dedicated) to one of a
+// node's GPUs.
+func (h *NodeHandler) UpdateGPU(c *okapi.Context, req *UpdateGPURequest) error {
+	id, err := h.id(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid node id")
+	}
+	gpuID, err := uintParam(c, "gpuID")
+	if err != nil {
+		return c.AbortBadRequest("invalid gpu id")
+	}
+	if h.gpu == nil || !h.gpu.Enabled() {
+		return c.AbortBadRequest("GPU support is disabled on this platform")
+	}
+	dev, err := h.gpu.SetDevice(id, gpuID, req.Body.Enabled, req.Body.Shared)
+	if err != nil {
+		if errors.Is(err, gpu.ErrDeviceNotOnNode) {
+			return c.AbortNotFound("gpu not found on this node")
+		}
+		return c.AbortInternalServerError("failed to update GPU", err)
+	}
+	h.record(c, "node.gpu.update", id)
+	return ok(c, dev)
+}
+
+// RescanGPUs re-runs the inventory probe on a node on demand (the admin "Rescan
+// GPUs" button) and returns the refreshed device list.
+func (h *NodeHandler) RescanGPUs(c *okapi.Context) error {
+	id, err := h.id(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid node id")
+	}
+	if h.gpu == nil || !h.gpu.Enabled() {
+		return c.AbortBadRequest("GPU support is disabled on this platform")
+	}
+	if _, err := h.gpu.InventoryNode(c.Request().Context(), id); err != nil {
+		return c.AbortInternalServerError("GPU rescan failed", err)
+	}
+	devices, err := h.gpu.Devices(id)
+	if err != nil {
+		return c.AbortInternalServerError("failed to list node GPUs", err)
+	}
+	if devices == nil {
+		devices = []models.GPUDevice{}
+	}
+	h.record(c, "node.gpu.rescan", id)
+	return ok(c, GPUListResponse{
+		Enabled:        true,
+		ToolkitPresent: h.gpu.NodeCapable(c.Request().Context(), id),
+		Devices:        devices,
+	})
 }
 
 func (h *NodeHandler) id(c *okapi.Context) (uint, error) {

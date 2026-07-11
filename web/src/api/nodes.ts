@@ -202,6 +202,29 @@ export interface PlaceableNode {
   cordoned: boolean
 }
 
+// A physical GPU discovered on a node. Admin policy (enabled, shared) is applied
+// per device; UUID/model/memory are read-only hardware facts.
+export interface GPUDevice {
+  id: number
+  server_id: number
+  uuid: string
+  index: number
+  vendor: string
+  model: string
+  memory_mb: number
+  enabled: boolean
+  shared: boolean
+  last_seen_at?: string | null
+}
+
+// GET /admin/nodes/{id}/gpus response: platform + node GPU capability plus the
+// discovered devices.
+export interface NodeGPUList {
+  enabled: boolean          // platform GPU support on (MIABI_GPU_ENABLED)
+  toolkit_present: boolean  // node has the NVIDIA Container Toolkit
+  devices: GPUDevice[]
+}
+
 export const nodesApi = {
   list: () => api.get<ApiResponse<Server[]>>('/admin/nodes'),
   // Workspace-accessible placement list (any authenticated user).
@@ -212,6 +235,12 @@ export const nodesApi = {
     api.put<ApiResponse<Server>>(`/admin/nodes/${id}`, payload),
   workloads: (id: number) =>
     api.get<ApiResponse<NodeWorkloads>>(`/admin/nodes/${id}/workloads`),
+
+  // GPUs: inventory + admin device policy.
+  gpus: (id: number) => api.get<ApiResponse<NodeGPUList>>(`/admin/nodes/${id}/gpus`),
+  updateGpu: (id: number, gpuID: number, payload: { enabled?: boolean; shared?: boolean }) =>
+    api.patch<ApiResponse<GPUDevice>>(`/admin/nodes/${id}/gpus/${gpuID}`, payload),
+  rescanGpus: (id: number) => api.post<ApiResponse<NodeGPUList>>(`/admin/nodes/${id}/gpus/rescan`),
   regenerateToken: (id: number) =>
     api.post<ApiResponse<{ token: string }>>(`/admin/nodes/${id}/token`),
   joinCommand: (id: number) =>

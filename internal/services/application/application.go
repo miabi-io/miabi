@@ -48,6 +48,8 @@ var (
 	ErrUnknownHostPreset      = errors.New("unknown host mount preset")
 	ErrHostMountNotPrivileged = errors.New("host mounts require a privileged workspace")
 
+	ErrInvalidGPUCount = errors.New("gpu_count must be between 0 and 64")
+
 	ErrClusterDisabled       = errors.New("cluster mode is not enabled; cannot run this application as a service")
 	ErrNotService            = errors.New("this operation is only valid for service-runtime (cluster) applications")
 	ErrLocalVolumeReplicated = errors.New("a replicated (replicas>1) service cannot mount a node-local volume; use a shared (nfs/cifs) volume or set replicas to 1")
@@ -88,6 +90,10 @@ type CreateInput struct {
 	Port            int
 	MemoryBytes     int64
 	NanoCPUs        int64
+	// GPUCount / GPUKind request whole GPU devices. Gated by the AllowGPU plan
+	// capability at create time; 0 = none.
+	GPUCount        int
+	GPUKind         string
 	RestartPolicy   models.RestartPolicy
 	ImagePullPolicy models.ImagePullPolicy
 	// Cluster runtime (cluster mode). RuntimeKind defaults to container; service
@@ -711,6 +717,15 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 	if err := s.validateResources(in.MemoryBytes, in.NanoCPUs); err != nil {
 		return nil, err
 	}
+	if err := validateGPUCount(in.GPUCount); err != nil {
+		return nil, err
+	}
+	// GPU access is a hard-gated plan capability (device passthrough is
+	// privileged): a workspace whose plan lacks AllowGPU cannot even save an app
+	// that requests one. Re-checked at deploy as defense-in-depth.
+	if err := s.gpuAllowed(workspaceID, in.GPUCount); err != nil {
+		return nil, err
+	}
 	// Placement: default to the local node; validate the chosen node accepts new
 	// placements (exists, not cordoned) and is reachable.
 	serverID := in.ServerID
@@ -745,7 +760,9 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 		Builder:     in.Builder, Buildpacks: in.Buildpacks, BuildEnv: in.BuildEnv,
 		RegistryID: in.RegistryID, GitRepositoryID: in.GitRepositoryID, StackID: in.StackID,
 		Command: in.Command, Port: in.Port,
-		MemoryBytes: in.MemoryBytes, NanoCPUs: in.NanoCPUs, RestartPolicy: normalizeRestartPolicy(in.RestartPolicy),
+		MemoryBytes: in.MemoryBytes, NanoCPUs: in.NanoCPUs,
+		GPUCount: in.GPUCount, GPUKind: strings.TrimSpace(in.GPUKind),
+		RestartPolicy: normalizeRestartPolicy(in.RestartPolicy),
 		ImagePullPolicy:      normalizeImagePullPolicy(in.ImagePullPolicy),
 		RuntimeKind:          in.RuntimeKind,
 		Replicas:             in.Replicas,
@@ -890,6 +907,15 @@ func (s *Service) Update(app *models.Application) error {
 	}
 	// Aggregate workspace compute, excluding this app's current contribution.
 	if err := s.quota.CheckComputeAdd(app.WorkspaceID, app.NanoCPUs, app.MemoryBytes, app.ID); err != nil {
+		return err
+	}
+	if err := validateGPUCount(app.GPUCount); err != nil {
+		return err
+	}
+	// Re-gate GPU on update so a workspace can't grant itself GPU access by editing
+	// an app after a plan downgrade. GPU quota is enforced at deploy (running apps).
+	app.GPUKind = strings.TrimSpace(app.GPUKind)
+	if err := s.gpuAllowed(app.WorkspaceID, app.GPUCount); err != nil {
 		return err
 	}
 	normalizeDeployConfig(app)
@@ -1767,6 +1793,24 @@ func (s *Service) customBuilderAllowed(workspaceID uint, builder string) error {
 		return nil
 	}
 	return s.quota.Require(workspaceID, quota.CapCustomBuilder)
+}
+
+// validateGPUCount bounds the requested GPU units. 0 = none; the upper bound is
+// a sanity cap (no single node exposes near this many whole cards).
+func validateGPUCount(gpuCount int) error {
+	if gpuCount < 0 || gpuCount > 64 {
+		return ErrInvalidGPUCount
+	}
+	return nil
+}
+
+// gpuAllowed gates a GPU request behind the workspace's AllowGPU plan capability.
+// A request of 0 (no GPU) always passes; nil quota (single-tenant) skips the gate.
+func (s *Service) gpuAllowed(workspaceID uint, gpuCount int) error {
+	if gpuCount <= 0 || s.quota == nil {
+		return nil
+	}
+	return s.quota.Require(workspaceID, quota.CapGPU)
 }
 
 // customLabelsAllowed resolves the two-layer admin gate: the global kill-switch

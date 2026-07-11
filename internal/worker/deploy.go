@@ -67,7 +67,36 @@ type DeployHandler struct {
 	buildDispatch     BuildDispatcher
 	registryHost      string        // MIABI_REGISTRY host runners push to / login
 	runnerWaitTimeout time.Duration // how long a deploy waits for a runner before failing
+
+	// GPU scheduling: capability/quota preflight + resolving a GPU request to
+	// concrete devices on the app's node. Optional; nil deploys ignore GPUs.
+	gpu GPUScheduler
 }
+
+// GPUScheduler validates and resolves an app's GPU request at deploy time.
+// Satisfied by *gpu.Service; nil means GPU handling is disabled.
+type GPUScheduler interface {
+	// Preflight enforces the plan capability + workspace GPU quota (no device
+	// binding). Returns nil when the app requests no GPU.
+	Preflight(app *models.Application) error
+	// ResolveDevices binds the app's GPU request to concrete devices on its node,
+	// given the node's advertised container runtimes. Returns nil when the app
+	// requests no GPU.
+	ResolveDevices(ctx context.Context, app *models.Application, runtimes []string) ([]docker.GPURequest, error)
+}
+
+// SetGPU wires the GPU scheduler (optional). Without it, a GPU request on an app
+// is ignored at deploy (the request-time capability gate still applies).
+func (h *DeployHandler) SetGPU(g GPUScheduler) { h.gpu = g }
+
+// ErrGPUWithCluster and ErrGPUWithRestrictedProfile are the deploy-time refusals
+// for GPU requests that conflict with an incompatible runtime or security
+// posture. Both fail the deploy clearly rather than silently dropping the GPU or
+// the conflicting setting.
+var (
+	ErrGPUWithCluster           = errors.New("GPU apps must run as a single container, not a clustered (replicated) service; set the runtime to container")
+	ErrGPUWithRestrictedProfile = errors.New("GPU device passthrough is incompatible with the restricted security profile; use the default profile for GPU apps")
+)
 
 // BuildDispatcher dispatches a git-source app's image build to a runner and
 // returns the pushed digest. Satisfied by *runners.Dispatcher.
@@ -361,6 +390,23 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 		}
 	}
 
+	// GPU pre-flight: capability + quota + runtime-incompatibility gates. Device
+	// binding happens in the container path once the node's runtime is known.
+	// Refuse GPU + cluster here (a GPU app must be single-container); the restricted
+	// profile conflict is checked in the container path where the profile resolves.
+	if app.GPUCount > 0 {
+		if app.RuntimeKind == models.RuntimeService {
+			_ = h.fail(dep, ErrGPUWithCluster)
+			return
+		}
+		if h.gpu != nil {
+			if err := h.gpu.Preflight(app); err != nil {
+				_ = h.fail(dep, err)
+				return
+			}
+		}
+	}
+
 	// Cluster apps run as a replicated Swarm service on the workspace overlay
 	// (the image is already resolved above), instead of a single container.
 	if app.RuntimeKind == models.RuntimeService {
@@ -450,6 +496,30 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 			return
 		}
 	}
+
+	// GPU device binding: resolve the app's GPU request to concrete devices on
+	// its node. Device passthrough is privileged, so it cannot coexist with the
+	// restricted profile's hardening contract — refuse rather than silently drop
+	// either. The node's runtimes gate whether it is GPU-capable at all.
+	var gpuReqs []docker.GPURequest
+	if app.GPUCount > 0 && h.gpu != nil {
+		if sec.Restricted() {
+			_ = h.fail(dep, ErrGPUWithRestrictedProfile)
+			return
+		}
+		info, err := h.eng(app).Info(ctx)
+		if err != nil {
+			_ = h.fail(dep, fmt.Errorf("inspect node runtimes: %w", err))
+			return
+		}
+		reqs, err := h.gpu.ResolveDevices(ctx, app, info.Runtimes)
+		if err != nil {
+			_ = h.fail(dep, err)
+			return
+		}
+		gpuReqs = reqs
+		h.log(dep, fmt.Sprintf("attaching %d GPU(s)", app.GPUCount))
+	}
 	spec := docker.RunSpec{
 		Name:             name,
 		Image:            image,
@@ -465,6 +535,7 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 		AliasesByNetwork: aliasesByNet,
 		MemoryBytes:      rc.MemoryBytes,
 		NanoCPUs:         rc.NanoCPUs,
+		GPUs:             gpuReqs,
 		RestartPolicy:    string(app.RestartPolicy),
 		Healthcheck:      buildHealthcheck(app),
 		Labels:           containerLabels(app, dep.ID),
