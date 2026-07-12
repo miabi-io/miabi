@@ -369,7 +369,14 @@ rand() {
 }
 
 # .env helpers.
-get_kv() { grep -E "^$1=" .env 2>/dev/null | head -n1 | cut -d= -f2-; }
+#
+# get_kv MUST NOT fail when the key is absent — an unset key is a normal state,
+# not an error. Optional settings ship COMMENTED OUT in .env.example (e.g.
+# MIABI_NETWORK_CIDR), so grep finds nothing and exits 1; under `set -euo
+# pipefail` that failure propagates out of the command substitution and trips the
+# ERR trap, killing the install. The trailing `|| true` makes "absent" mean
+# "empty string", which is what every caller already assumes via `${x:-default}`.
+get_kv() { grep -E "^$1=" .env 2>/dev/null | head -n1 | cut -d= -f2- || true; }
 set_kv() { sed -i "s|^$1=.*|$1=$2|" .env; }
 # Fill a key only when its current value is empty (idempotent self-heal).
 fill_if_blank() { [ -z "$(get_kv "$1")" ] && set_kv "$1" "$2" || true; }
@@ -442,7 +449,26 @@ if [ ! -f .env ]; then
   # is a one-way override that pins the setting out of the UI's reach. Declining
   # leaves the keys absent, so the registry stays UI-managed.
   if prompt_yn MIABI_REGISTRY_ENABLED 'Enable the built-in container registry?'; then
-    registry_host="$(prompt MIABI_REGISTRY_HOST 'Registry host' "registry.${domain}")"
+    # Validate: this host gets a public DNS record and its own TLS certificate, so
+    # a bad value (notably a stray "y" carried over from the previous y/N prompt)
+    # would have the gateway request a certificate for a nonsense name. Re-ask on
+    # a tty; fall back to the default when there is nobody to ask.
+    registry_host=""
+    for _ in 1 2 3; do
+      registry_host="$(prompt MIABI_REGISTRY_HOST 'Registry host' "registry.${domain}")"
+      case "$registry_host" in
+        *.*.*|*.*) case "$registry_host" in
+                     *[!a-zA-Z0-9.-]*|-*|.*|*.) ;;   # illegal chars / bad edges
+                     *) break ;;                     # looks like a hostname
+                   esac ;;
+      esac
+      warn "'${registry_host}' is not a valid hostname (expected something like registry.${domain})"
+      unset MIABI_REGISTRY_HOST                      # so prompt() asks again
+      [ -r /dev/tty ] && [ "${ASSUME_YES:-0}" != "1" ] || { registry_host="registry.${domain}"; break; }
+      registry_host=""
+    done
+    [ -n "$registry_host" ] || registry_host="registry.${domain}"
+
     set_or_append MIABI_REGISTRY_ENABLED true
     set_or_append MIABI_REGISTRY_HOST "$registry_host"
     ok "Registry enabled (host: ${registry_host})"

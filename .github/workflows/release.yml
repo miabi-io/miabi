@@ -25,6 +25,7 @@ env:
   # miabi/runner versions independently of the panel (0.0.x vs 1.0.x), so it
   # cannot inherit ${GITHUB_REF_NAME}: miabi/runner:1.0.0-beta.4 does not exist.
   RUNNER_VERSION: ${{ vars.RUNNER_VERSION || 'v0.0.7' }}
+  AGENT_VERSION: ${{ vars.AGENT_VERSION || 'v0.2.0' }}
 
 jobs:
   release:
@@ -152,17 +153,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Stamp and attach install.sh
+      - name: Stamp and attach the installers
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"   # docker tags drop the leading "v"
 
-          # GOMA_VERSION/RUNNER_VERSION may come from repository variables, so
-          # validate rather than trust: a typo would ship an installer pinning an
-          # image nobody published.
-          for v in GOMA_VERSION RUNNER_VERSION; do
+          # GOMA_VERSION/RUNNER_VERSION/AGENT_VERSION may come from repository
+          # variables, so validate rather than trust: a typo would ship an
+          # installer pinning an image nobody published.
+          for v in GOMA_VERSION RUNNER_VERSION AGENT_VERSION; do
             case "${!v}" in
               v[0-9]*) ;;
               *) echo "::error::$v must look like v1.2.3, got '${!v}'"; exit 1 ;;
@@ -184,6 +185,7 @@ jobs:
           assert_image "ghcr.io/miabi-io/miabi:${VERSION}"
           assert_image "jkaninda/goma-gateway:${GOMA_VERSION#v}"
           assert_image "miabi/runner:${RUNNER_VERSION#v}"
+          assert_image "miabi/agent:${AGENT_VERSION#v}"
 
           sed -i \
             -e "s|^MIABI_VERSION=.*|MIABI_VERSION=\"\${MIABI_VERSION:-${GITHUB_REF_NAME}}\"|" \
@@ -191,12 +193,22 @@ jobs:
             -e "s|^RUNNER_VERSION=.*|RUNNER_VERSION=\"\${RUNNER_VERSION:-${RUNNER_VERSION}}\"|" \
             deploy/install.sh
 
+          # The node-agent installer pins only the agent image it starts.
+          sed -i \
+            -e "s|^AGENT_VERSION=.*|AGENT_VERSION=\"\${AGENT_VERSION:-${AGENT_VERSION}}\"|" \
+            deploy/install-agent.sh
+
           # Fail loudly rather than shipping an installer that still says :latest.
           # -F (fixed string): the pattern contains `${...}`, and a `$` mid-regex
           # is an anchor in BSD grep, so a plain -q silently never matches.
           grep -qF "MIABI_VERSION=\"\${MIABI_VERSION:-${GITHUB_REF_NAME}}\"" deploy/install.sh
           grep -qF "GOMA_VERSION=\"\${GOMA_VERSION:-${GOMA_VERSION}}\"" deploy/install.sh
           grep -qF "RUNNER_VERSION=\"\${RUNNER_VERSION:-${RUNNER_VERSION}}\"" deploy/install.sh
+          grep -qF "AGENT_VERSION=\"\${AGENT_VERSION:-${AGENT_VERSION}}\"" deploy/install-agent.sh
           bash -n deploy/install.sh
+          bash -n deploy/install-agent.sh
 
-          gh release upload "${GITHUB_REF_NAME}" deploy/install.sh --clobber
+          gh release upload "${GITHUB_REF_NAME}" \
+            deploy/install.sh \
+            deploy/install-agent.sh \
+            --clobber
