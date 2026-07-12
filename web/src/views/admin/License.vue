@@ -139,7 +139,7 @@ async function remove() {
 
           <div v-if="isCommunity" class="text-muted community-note">
             This is the open-source Community Edition. Install an Enterprise license to
-            unlock SSO, custom roles, audit export, HA, white-label, and more.
+            unlock SSO, custom roles, audit export, white-label, and more.
           </div>
 
           <!-- Your Install ID: copied by the customer when purchasing a license. -->
@@ -152,9 +152,9 @@ async function remove() {
             </div>
             <code class="install-id-value">{{ view?.instance_install_id || '—' }}</code>
             <p class="text-muted text-sm install-id-help">
-              A unique ID for this Miabi instance. Provide it when purchasing a license at
-              <a href="https://customers.miabi.io" target="_blank" rel="noopener noreferrer">customers.miabi.io</a>
-              to bind the license to this deployment.
+              A unique ID for this Miabi instance. To unlock enterprise features, contact
+              <a href="mailto:sales@miabi.io">sales@miabi.io</a>
+              and provide this ID to bind the license to this deployment.
             </p>
           </div>
 

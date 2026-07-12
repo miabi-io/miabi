@@ -196,11 +196,11 @@ const CommunityPlanLimit = 3
 const CommunityNodeLimit = -1
 
 // CommunityRunnerLimit is the number of platform-shared (admin-managed) runners
-// allowed without the platform_runners entitlement. Community — and any license
-// lacking (or past grace on) the flag — may register a single shared runner, so a
-// solo operator gets one without a license; platform_runners lifts the cap to
-// unlimited. Owned (per-workspace) runners are always unlimited and unaffected.
-const CommunityRunnerLimit = 1
+// allowed without the platform_runners entitlement (-1 = unlimited). The shared
+// runner pool is available to the Community edition without a cap; the
+// platform_runners entitlement is reserved for future advanced scheduling.
+// Owned (per-workspace) runners are always unlimited and unaffected.
+const CommunityRunnerLimit = -1
 
 // Entitlements is the resolved, point-in-time view of the installed license.
 // State is one of "valid" | "grace" | "degraded" | "none" (community).
