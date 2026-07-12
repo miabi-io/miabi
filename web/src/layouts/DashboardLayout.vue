@@ -301,18 +301,6 @@ const licenseBanner = computed(() => {
   return null
 })
 
-// Community Edition upgrade prompt for admins. Require `loaded` so we don't show
-// it before the edition is known (the license store only loads for admins).
-const CE_BANNER_KEY = 'mb_ce_banner_dismissed'
-const ceBannerDismissed = ref(localStorage.getItem(CE_BANNER_KEY) === 'true')
-const showCEBanner = computed(
-  () => auth.isAdmin && license.loaded && license.isCommunity && !ceBannerDismissed.value,
-)
-function dismissCEBanner() {
-  ceBannerDismissed.value = true
-  localStorage.setItem(CE_BANNER_KEY, 'true')
-}
-
 // New-release notice (platform admins). Dismissal is stored server-side against
 // the version, not in localStorage: it must survive a browser change and it must
 // come back when the *next* version lands.
@@ -575,19 +563,6 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
             aria-label="Dismiss until the next release"
             @click="dismissUpdate"
           >
-            <span class="mdi mdi-close"></span>
-          </button>
-        </div>
-
-        <!-- Community Edition: gentle, dismissible upgrade prompt (admins). -->
-        <div v-if="showCEBanner" class="ce-banner">
-          <span class="mdi mdi-rocket-launch-outline ce-banner-icon"></span>
-          <span class="ce-banner-text">
-            You're running <strong>Miabi Community Edition</strong> — free and open source.
-            Unlock SSO &amp; SAML, custom roles, audit export, and SIEM streaming with Enterprise.
-          </span>
-          <router-link to="/admin/license" class="ce-banner-cta">Explore Enterprise →</router-link>
-          <button class="ce-banner-dismiss" title="Dismiss" aria-label="Dismiss" @click="dismissCEBanner">
             <span class="mdi mdi-close"></span>
           </button>
         </div>
