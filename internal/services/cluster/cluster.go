@@ -173,6 +173,11 @@ func (s *Service) capLocked() bool {
 type Status struct {
 	// Enabled mirrors CapCluster: the manager is a reachable swarm manager.
 	Enabled bool `json:"enabled"`
+	// Name is the operator's label for this cluster. Swarm identifies a cluster by an
+	// unreadable id and a manager address that moves, so without this the UI can only
+	// say "the cluster" — fine with one, useless once someone runs prod-eu-west-1 and
+	// prod-us-east-1. A label, not a step toward multi-cluster.
+	Name string `json:"name,omitempty"`
 	// LocalNodeState is the manager engine's swarm state (inactive on plain
 	// Docker).
 	LocalNodeState string `json:"local_node_state"`
@@ -221,6 +226,7 @@ func (s *Service) Status() Status {
 	defer s.mu.RUnlock()
 	st := Status{
 		Enabled:        s.capLocked(),
+		Name:           s.Name(),
 		LocalNodeState: s.info.LocalNodeState,
 		ManagerAddr:    s.info.NodeAddr,
 		NodeID:         s.info.NodeID,
@@ -362,7 +368,13 @@ func matchByHostname(swarmNodes map[string]docker.SwarmNode, srv *models.Server)
 // adopts a pre-existing swarm if Docker is already in one. advertiseAddr is the
 // address peers reach this manager on (its private/WG address); ignored when
 // adopting an existing swarm.
-func (s *Service) Enable(ctx context.Context, advertiseAddr string) (Status, error) {
+func (s *Service) Enable(ctx context.Context, advertiseAddr, name string) (Status, error) {
+	// Name it before the swarm exists: an unnamed cluster tends to stay unnamed.
+	if strings.TrimSpace(name) != "" {
+		if err := s.SetName(name); err != nil {
+			logger.Warn("could not store the cluster name", "error", err)
+		}
+	}
 	local := s.clients.Local()
 	info, err := local.Swarm(ctx)
 	if err != nil {

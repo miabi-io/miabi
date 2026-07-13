@@ -15,8 +15,10 @@ export const clusterApi = {
   joinToken: () => api.get<ApiResponse<ClusterJoinInstructions>>('/admin/cluster/join-token'),
   // advertiseAddr is the address swarm peers reach the manager on; required when
   // initializing a new swarm, ignored when adopting an existing one.
-  enable: (advertiseAddr: string) =>
-    api.post<ApiResponse<ClusterStatus>>('/admin/cluster/enable', { advertise_addr: advertiseAddr }),
+  enable: (advertiseAddr: string, name: string) =>
+    api.post<ApiResponse<ClusterStatus>>('/admin/cluster/enable', { advertise_addr: advertiseAddr, name }),
+  // A label, nothing more — one control plane drives one swarm.
+  rename: (name: string) => api.patch<ApiResponse<ClusterStatus>>('/admin/cluster', { name }),
   disable: () => api.post<ApiResponse<{ message: string }>>('/admin/cluster/disable'),
   // Convert workspace networks still on node-local bridges into cluster overlays,
   // so apps and databases reach each other across nodes. Enable already does this

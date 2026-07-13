@@ -60,6 +60,15 @@ func (r *Router) clusterRoutes() []okapi.RouteDefinition {
 			Summary:     "Disable cluster mode (swarm leave)",
 		},
 		{
+			Method:      http.MethodPatch,
+			Path:        "",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.cluster.Rename),
+			Summary:     "Rename the cluster",
+			Request:     &handlers.RenameClusterRequest{},
+		},
+		{
 			Method:      http.MethodPost,
 			Path:        "/network/apply",
 			Group:       g,

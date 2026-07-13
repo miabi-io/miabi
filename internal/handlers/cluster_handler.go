@@ -56,12 +56,16 @@ type EnableClusterRequest struct {
 		// private/WG address, host or host:port). Required when initializing a new
 		// swarm; ignored when adopting one Docker is already in.
 		AdvertiseAddr string `json:"advertise_addr"`
+		// Name labels the cluster. Swarm gives it an unreadable id and a manager address
+		// that moves, so without a name the UI can only say "the cluster" — which is fine
+		// with one and useless with two. Optional; nameable later.
+		Name string `json:"name"`
 	} `json:"body"`
 }
 
 // Enable puts the manager into swarm mode (or adopts an existing swarm).
 func (h *ClusterHandler) Enable(c *okapi.Context, req *EnableClusterRequest) error {
-	status, err := h.cluster.Enable(c.Request().Context(), req.Body.AdvertiseAddr)
+	status, err := h.cluster.Enable(c.Request().Context(), req.Body.AdvertiseAddr, req.Body.Name)
 	if err != nil {
 		if errors.Is(err, cluster.ErrAdvertiseAddrRequired) {
 			return c.AbortBadRequest("an advertise address is required to enable cluster mode")
@@ -102,6 +106,28 @@ func (h *ClusterHandler) ApplyNetworking(c *okapi.Context) error {
 		return c.AbortInternalServerError("failed to apply cluster networking", err)
 	}
 	h.record(c, "cluster.network.apply", 0)
+	return ok(c, h.clusterStatus(c))
+}
+
+// RenameClusterRequest relabels the cluster.
+type RenameClusterRequest struct {
+	Body struct {
+		// Name is the operator's label. Empty clears it — someone who no longer wants a
+		// label should be able to drop it, not be stuck with one.
+		Name string `json:"name"`
+	} `json:"body"`
+}
+
+// Rename labels the cluster. It is a label and nothing more — one control plane drives
+// one swarm, and this is not a step toward managing several.
+func (h *ClusterHandler) Rename(c *okapi.Context, req *RenameClusterRequest) error {
+	if err := h.cluster.SetName(req.Body.Name); err != nil {
+		if errors.Is(err, cluster.ErrNameTooLong) {
+			return c.AbortBadRequest(err.Error())
+		}
+		return c.AbortInternalServerError("failed to rename the cluster", err)
+	}
+	h.record(c, "cluster.rename", 0)
 	return ok(c, h.clusterStatus(c))
 }
 

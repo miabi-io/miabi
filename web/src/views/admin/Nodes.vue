@@ -31,6 +31,19 @@ const nodeCount = computed(() => nodes.value.length)
 const limited = computed(() => nodeLimit.value >= 0)
 const atNodeLimit = computed(() => limited.value && nodeCount.value >= nodeLimit.value)
 
+// "I added this machine" vs "the swarm brought this machine" are different things: one
+// is a placement target an operator chose, the other exists because it is in the swarm.
+// A badge says which; this lets you look at one kind at a time.
+const originFilter = ref<'all' | 'added' | 'cluster'>('all')
+const addedCount = computed(() => nodes.value.filter((n) => !n.auto_joined).length)
+const clusterCount = computed(() => nodes.value.filter((n) => n.auto_joined).length)
+const visibleNodes = computed(() => {
+  const list = nodes.value
+  if (originFilter.value === 'added') return list.filter((n) => !n.auto_joined)
+  if (originFilter.value === 'cluster') return list.filter((n) => n.auto_joined)
+  return list
+})
+
 async function load() {
   loading.value = true
   try {
@@ -56,6 +69,30 @@ const ingressAttachCmd = computed(() =>
 const clusterBusy = ref(false)
 const showEnable = ref(false)
 const advertiseAddr = ref('')
+// A cluster has no name of its own — Swarm gives it an unreadable id and a manager
+// address that moves. Without a label the UI can only say "the cluster", which is fine
+// with one and useless once someone runs prod-eu-west-1 and prod-us-east-1.
+const clusterName = ref('')
+const renaming = ref(false)
+const renameDraft = ref('')
+
+async function saveClusterName() {
+  const name = renameDraft.value.trim()
+  renaming.value = false
+  clusterBusy.value = true
+  try {
+    cluster.value = (await clusterApi.rename(name)).data.data
+    notify.success(name ? `Cluster renamed to “${name}”` : 'Cluster name cleared')
+  } catch (e) {
+    notify.apiError(e, 'Failed to rename the cluster')
+  } finally {
+    clusterBusy.value = false
+  }
+}
+function startRename() {
+  renameDraft.value = cluster.value?.name ?? ''
+  renaming.value = true
+}
 
 // Workspace networks still on node-local bridges. While cluster mode is on, these
 // workspaces have NO cross-node connectivity: their apps and databases sit on
@@ -220,6 +257,7 @@ function verdictClass(r: NetCheckResult): string {
 
 function openEnable() {
   void loadPreflight()
+  clusterName.value = ''
   // Prefill with the manager's known address as a sensible default; the admin
   // should use the private/WG address peers can reach.
   const mgr = nodes.value.find((n) => n.is_local)
@@ -230,7 +268,7 @@ function openEnable() {
 async function enableCluster() {
   clusterBusy.value = true
   try {
-    cluster.value = (await clusterApi.enable(advertiseAddr.value.trim())).data.data
+    cluster.value = (await clusterApi.enable(advertiseAddr.value.trim(), clusterName.value.trim())).data.data
     showEnable.value = false
     notify.success('Cluster mode enabled')
     load()
@@ -496,7 +534,33 @@ function swarmClass(n: Server): string {
         <span class="mdi" :class="clusterEnabled ? 'mdi-lan-connect' : 'mdi-lan-disconnect'" style="font-size: 22px"></span>
         <div>
           <div class="cluster-bar-title">
-            Cluster networking
+            <!-- Name it, or the UI can only say "the cluster" — fine with one, useless
+                 once someone runs prod-eu-west-1 and prod-us-east-1. -->
+            <template v-if="clusterEnabled && cluster.name && !renaming">
+              {{ cluster.name }}
+              <button type="button" class="btn-icon btn-icon-muted" title="Rename cluster" @click="startRename">
+                <span class="mdi mdi-pencil-outline" style="font-size: 13px"></span>
+              </button>
+            </template>
+            <template v-else-if="clusterEnabled && !renaming">
+              Cluster networking
+              <button type="button" class="btn-icon btn-icon-muted" title="Name this cluster" @click="startRename">
+                <span class="mdi mdi-pencil-outline" style="font-size: 13px"></span>
+              </button>
+            </template>
+            <form v-else-if="renaming" class="rename-form" @submit.prevent="saveClusterName">
+              <input
+                v-model="renameDraft"
+                class="form-input"
+                maxlength="40"
+                placeholder="e.g. prod-eu-west-1"
+                autofocus
+                @keyup.esc="renaming = false"
+              />
+              <button type="submit" class="btn btn-primary btn-sm" :disabled="clusterBusy">Save</button>
+              <button type="button" class="btn btn-secondary btn-sm" @click="renaming = false">Cancel</button>
+            </form>
+            <template v-else>Cluster networking</template>
             <span class="badge" :class="clusterEnabled ? 'badge-success' : 'badge-muted'">{{ clusterEnabled ? 'enabled' : 'disabled' }}</span>
           </div>
           <div class="cell-sub">
@@ -626,6 +690,25 @@ function swarmClass(n: Server): string {
     </div>
 
     <div class="card">
+      <!-- Only worth showing once the swarm has actually brought a node in: with none,
+           every node is one an admin added and the filter is noise. -->
+      <div v-if="clusterCount > 0" class="origin-filter">
+        <button type="button" :class="{ active: originFilter === 'all' }" @click="originFilter = 'all'">
+          All <span class="count">{{ nodes.length }}</span>
+        </button>
+        <button type="button" :class="{ active: originFilter === 'added' }" @click="originFilter = 'added'">
+          Added <span class="count">{{ addedCount }}</span>
+        </button>
+        <button
+          type="button"
+          :class="{ active: originFilter === 'cluster' }"
+          title="Nodes the swarm brought in: the agent registered itself, rather than an admin adding the machine"
+          @click="originFilter = 'cluster'"
+        >
+          From the cluster <span class="count">{{ clusterCount }}</span>
+        </button>
+      </div>
+
       <div v-if="loading && nodes.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="nodes.length === 0" class="empty-state">
         <span class="mdi mdi-server-network" style="font-size: 44px; color: var(--text-muted)"></span>
@@ -637,7 +720,7 @@ function swarmClass(n: Server): string {
         <table>
           <thead><tr><th>Name</th><th>Role</th><th>Access</th><th>Connectivity</th><th>Status</th><th v-if="clusterEnabled">Swarm</th><th>Agent</th><th>Created</th></tr></thead>
           <tbody>
-            <tr v-for="n in nodes" :key="n.id" class="row-clickable" @click="router.push(`/admin/nodes/${n.id}`)">
+            <tr v-for="n in visibleNodes" :key="n.id" class="row-clickable" @click="router.push(`/admin/nodes/${n.id}`)">
               <td>
                 <div class="cell-id">
                   <span class="avatar avatar-sm"><span class="mdi mdi-server" style="font-size: 14px"></span></span>
@@ -871,6 +954,16 @@ function swarmClass(n: Server): string {
                   </table>
                 </details>
               </template>
+
+              <div class="form-group">
+                <label class="form-label">Cluster name <span class="text-muted">(optional)</span></label>
+                <input v-model="clusterName" class="form-input" maxlength="40" placeholder="e.g. prod-eu-west-1" />
+                <p class="form-hint">
+                  A label for this cluster. Swarm identifies it by an unreadable id and a manager
+                  address that moves, so without a name the panel can only say “the cluster”. You can
+                  set it later.
+                </p>
+              </div>
 
               <div class="form-group" style="margin-bottom: 0">
                 <label class="form-label">Advertise address</label>
@@ -1176,6 +1269,42 @@ Apps scheduled on those nodes will stop showing metrics, stats and a shell. The 
 .pf-table td {
   padding: 4px 8px 4px 0;
   vertical-align: top;
+}
+.rename-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.rename-form .form-input {
+  width: 180px;
+  padding: 3px 8px;
+  font-size: 13px;
+}
+.origin-filter {
+  display: flex;
+  gap: 4px;
+  padding: 10px 14px 0;
+  font-size: 12px;
+}
+.origin-filter button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.origin-filter button.active {
+  border-color: var(--border);
+  background: var(--bg-subtle, rgba(127, 127, 127, 0.1));
+  color: var(--text);
+}
+.origin-filter .count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
 }
 .ca-mode {
   display: flex;

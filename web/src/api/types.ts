@@ -1460,6 +1460,9 @@ export type SwarmRole = 'leader' | 'manager' | 'worker' | 'standalone'
 // ClusterStatus is the manager's swarm capability + state.
 export interface ClusterStatus {
   enabled: boolean
+  // The operator's label for this cluster. Swarm identifies it by an unreadable id and
+  // a manager address that moves, so without this the UI can only say "the cluster".
+  name?: string
   local_node_state: string
   manager_addr?: string
   node_id?: string
