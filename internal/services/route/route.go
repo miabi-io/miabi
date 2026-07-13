@@ -1172,10 +1172,9 @@ func routePort(rt *models.Route, app *models.Application) int {
 	return port
 }
 
-// backendsFor builds the central proxy's upstreams for an app's route. For a
-// local node it uses the node-local DNS alias; for a port-forward node it targets
-// the node's published host port. Canary weighting works on node-local DNS only;
-// a port-forward node routes all traffic to the stable host port.
+// backendsFor builds the central proxy's upstreams for an app's route: the app's
+// DNS alias where the gateway can reach it, otherwise a published host port on its
+// node (see useAliasUpstream).
 func (s *Service) backendsFor(app *models.Application, port int) []proxy.Backend {
 	srv, _ := s.servers.FindByID(app.ServerID)
 	if s.useAliasUpstream(srv) {
@@ -1195,16 +1194,15 @@ func (s *Service) backendsFor(app *models.Application, port int) []proxy.Backend
 // useAliasUpstream reports whether the gateway can dial the app by its DNS alias
 // rather than a published host port on its node.
 //
-// True for the local node and for edge-gateway nodes (both already share a
-// network with the gateway that serves them), and — the change here — for a
-// port-forward node once cluster mode is on: the app then sits on the shared
-// ingress overlay, which the central gateway has joined, so its alias resolves
-// from anywhere in the cluster and no host port is published at all.
+// True for the local node and for edge-gateway nodes (each already shares a network
+// with the gateway that serves it), and for a port-forward node once cluster mode is
+// on: the app then sits on the shared ingress overlay, which the central gateway has
+// joined, so its alias resolves from anywhere in the cluster and no host port is
+// published at all.
 //
-// This also restores canary weighting on remote nodes. The host-port upstream can
-// only name one container, so a canary on a port-forward node silently received
-// 0% of traffic while the UI reported its configured weight; aliasBackends carries
-// the split.
+// Canary weighting depends on this. A host-port upstream can only name one
+// container, so it always sends 100% to the stable release; only an alias upstream
+// can carry the weighted split (see aliasBackends).
 func (s *Service) useAliasUpstream(srv *models.Server) bool {
 	return !isRemotePortForward(srv) || s.clusterOn()
 }

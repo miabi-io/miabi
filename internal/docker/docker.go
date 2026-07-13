@@ -166,6 +166,11 @@ type Client interface {
 	// ServiceTaskContainerID resolves a running task container of the named
 	// service on this engine, for logs/stats/exec/top. ErrNotFound if none here.
 	ServiceTaskContainerID(ctx context.Context, serviceName string) (string, error)
+	// StreamServiceLogs streams a swarm service's logs from the MANAGER, aggregated
+	// across every task wherever it was scheduled. This is the only way to read the
+	// logs of a task on a swarm node Miabi has no Docker client for (an unmanaged
+	// member with no agent) — the manager pulls them over the swarm control plane.
+	StreamServiceLogs(ctx context.Context, serviceName string, follow bool, tail string, sink func(LogLine) error) error
 	CreateOverlayNetwork(ctx context.Context, name string) (id string, err error)
 
 	// Close releases the underlying connection.

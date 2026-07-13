@@ -14,12 +14,22 @@ import (
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/nodes"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
 // ErrNoActiveContainer is returned when an app has no running release.
 var ErrNoActiveContainer = errors.New("application has no active container")
+
+// ErrTaskOnUnmanagedNode is the user-facing form of nodes.ErrTaskUnreachable: the
+// app IS running, but on a swarm node with no Miabi agent, so there is no engine to
+// read its container's resource usage through. Docker offers no manager-side
+// equivalent of stats, so this is a hard limit, not a bug. Logs are unaffected —
+// the manager aggregates those (see StreamAppLogs).
+var ErrTaskOnUnmanagedNode = errors.New(
+	"this app's task runs on a swarm node with no Miabi agent, so its resource usage cannot be read. " +
+		"Add the node to Miabi (install the agent) to see metrics, stats and a shell")
 
 // errStopStream stops a stats stream after enough samples.
 var errStopStream = errors.New("stop")
@@ -28,6 +38,9 @@ var errStopStream = errors.New("stop")
 // and log/stat streams reach an app's container on whichever node it runs.
 type NodeDocker interface {
 	For(serverID uint) (docker.Client, error)
+	// ForServiceTask finds the engine holding a swarm service's task container.
+	// A service has no fixed node, and only the node running the task can see it.
+	ForServiceTask(ctx context.Context, serviceName string) (docker.Client, string, error)
 }
 
 // ServerInfo resolves a node record by id, so the overview can label each app
@@ -86,18 +99,29 @@ func (s *Service) appEngine(ctx context.Context, workspaceID, appID uint) (docke
 		return nil, "", ErrNoActiveContainer
 	}
 	if app.RuntimeKind == models.RuntimeService {
-		mgr := s.eng(0) // the service's tasks are visible from the manager
-		cid, cerr := mgr.ServiceTaskContainerID(ctx, node.AppAlias(app))
-		if cerr != nil {
-			return nil, "", ErrNoActiveContainer
-		}
-		return mgr, cid, nil
+		return s.serviceEngine(ctx, app)
 	}
 	cid, err := s.activeContainer(appID)
 	if err != nil {
 		return nil, "", err
 	}
 	return s.eng(app.ServerID), cid, nil
+}
+
+// serviceEngine resolves the Docker client and container id holding a cluster
+// (service) app's task, translating the registry's outcome into this package's
+// errors. Only metrics/stats need it — logs go through the manager instead, which
+// works even when the task is unreachable (see StreamAppLogs).
+func (s *Service) serviceEngine(ctx context.Context, app *models.Application) (docker.Client, string, error) {
+	dc, cid, err := s.clients.ForServiceTask(ctx, node.AppAlias(app))
+	switch {
+	case err == nil:
+		return dc, cid, nil
+	case errors.Is(err, nodes.ErrTaskUnreachable):
+		return nil, "", ErrTaskOnUnmanagedNode
+	default:
+		return nil, "", ErrNoActiveContainer
+	}
 }
 
 // AppMetrics returns a single resource-usage sample for an app's active container.
@@ -121,13 +145,35 @@ func (s *Service) StreamAppMetrics(ctx context.Context, workspaceID, appID uint,
 // StreamAppLogs streams the active container's runtime logs (stdout/stderr),
 // starting with the last `tail` lines. When follow is true it then follows live
 // output until the context is cancelled; when false it returns after the tail.
+//
+// A cluster (service) app is read from the MANAGER via `docker service logs`, not
+// from a container. That is deliberate and is the only thing that works in general:
+// Swarm may have placed the task on a node Miabi has no Docker client for (an
+// unmanaged swarm member with no agent), and the manager can still pull its logs
+// over the swarm control plane. It also aggregates every replica, which reading a
+// single container never could.
 func (s *Service) StreamAppLogs(ctx context.Context, workspaceID, appID uint, follow bool, tail string, sink func(docker.LogLine) error) error {
-	dc, cid, err := s.appEngine(ctx, workspaceID, appID)
+	app, err := s.apps.FindInWorkspace(workspaceID, appID)
 	if err != nil {
-		return err
+		return ErrNoActiveContainer
 	}
 	if tail == "" {
 		tail = "200"
+	}
+	if app.RuntimeKind == models.RuntimeService {
+		mgr, merr := s.clients.For(0)
+		if merr != nil {
+			return ErrNoActiveContainer
+		}
+		lerr := mgr.StreamServiceLogs(ctx, node.AppAlias(app), follow, tail, sink)
+		if errors.Is(lerr, docker.ErrNotFound) {
+			return ErrNoActiveContainer // the service does not exist (never deployed / removed)
+		}
+		return lerr
+	}
+	dc, cid, err := s.appEngine(ctx, workspaceID, appID)
+	if err != nil {
+		return err
 	}
 	return dc.StreamLogs(ctx, cid, follow, tail, sink)
 }
@@ -149,9 +195,12 @@ type WorkspaceSample struct {
 	NetTxBytes       uint64    `json:"net_tx_bytes"`
 }
 
-// sampleTarget is one running container to sample, on a specific node.
+// sampleTarget is one running container to sample, together with the engine that
+// can actually see it. It holds the resolved client rather than a node id because a
+// cluster (service) app has no fixed node — Swarm places its task wherever it
+// likes, and only that node's engine can read the container.
 type sampleTarget struct {
-	serverID    uint
+	dc          docker.Client
 	containerID string
 }
 
@@ -172,14 +221,16 @@ func (s *Service) workspaceTargets(ctx context.Context, workspaceID uint) []samp
 				continue
 			}
 			if a.RuntimeKind == models.RuntimeService {
-				// A cluster (service) app's task container is visible from the manager.
-				if cid, err := s.eng(0).ServiceTaskContainerID(ctx, node.AppAlias(&a)); err == nil && cid != "" {
-					targets = append(targets, sampleTarget{serverID: 0, containerID: cid})
+				// Sample the task wherever Swarm placed it. A task on an unmanaged swarm
+				// node is absent from the aggregate: there is no engine to read it through,
+				// and Docker has no manager-side stats to fall back on.
+				if dc, cid, err := s.clients.ForServiceTask(ctx, node.AppAlias(&a)); err == nil {
+					targets = append(targets, sampleTarget{dc: dc, containerID: cid})
 				}
 				continue
 			}
 			if cid, err := s.activeContainer(a.ID); err == nil {
-				targets = append(targets, sampleTarget{serverID: a.ServerID, containerID: cid})
+				targets = append(targets, sampleTarget{dc: s.eng(a.ServerID), containerID: cid})
 			}
 		}
 	}
@@ -187,7 +238,7 @@ func (s *Service) workspaceTargets(ctx context.Context, workspaceID uint) []samp
 		for i := range dbs {
 			d := dbs[i]
 			if d.Status == models.DBStatusRunning && d.ContainerID != "" {
-				targets = append(targets, sampleTarget{serverID: d.ServerID, containerID: d.ContainerID})
+				targets = append(targets, sampleTarget{dc: s.eng(d.ServerID), containerID: d.ContainerID})
 			}
 		}
 	}
@@ -212,7 +263,7 @@ func (s *Service) WorkspaceLiveUsage(ctx context.Context, workspaceID uint) (Wor
 		wg.Add(1)
 		go func(t sampleTarget) {
 			defer wg.Done()
-			sample, err := s.sample(ctx, s.eng(t.serverID), t.containerID)
+			sample, err := s.sample(ctx, t.dc, t.containerID)
 			if err != nil {
 				return
 			}

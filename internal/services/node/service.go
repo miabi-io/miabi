@@ -91,12 +91,6 @@ func NewAppAlias(token string, appID uint) string {
 	return fmt.Sprintf("mb-app-%s-%d", token, appID)
 }
 
-// (Removed: WorkspaceOverlay. A service used to attach to a dedicated
-// "mb-ws-<id>-overlay" that nothing else ever joined, so it could reach other
-// services but not its own database — a plain container on the *workspace*
-// network. Both now share the workspace's networks, which are overlays in cluster
-// mode. See services/network and the worker's serviceNetworks.)
-
 // IngressOverlay is the single shared, attachable Swarm overlay the central Goma
 // gateway joins to reach every clustered app's service VIP for public (north-
 // south) ingress. Cluster (service) apps attach to it in addition to their

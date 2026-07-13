@@ -574,14 +574,9 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 	_ = h.deployments.Update(dep)
 	h.publishStatus(dep, models.DeploymentDeploying)
 
-	// The app's workspace networks — the SAME networks the workspace's databases and
-	// container apps are on. In cluster mode they are swarm overlays (attachable,
-	// encrypted), so a service reaches a database by its DNS alias on any node.
-	//
-	// This used to attach a service-only overlay (node.WorkspaceOverlay) that
-	// nothing else ever joined: a service could talk to other services, but its own
-	// database — a plain container on the workspace network — was in a different DNS
-	// namespace entirely, so the alias simply did not resolve.
+	// The app's workspace networks — the SAME ones the workspace's databases and
+	// container apps are on, so a service resolves a database by its alias on any
+	// node. A service-only network would leave it unable to see its own database.
 	svcNets, nerr := h.serviceNetworks(ctx, mgr, app)
 	if nerr != nil {
 		_ = h.fail(dep, nerr)

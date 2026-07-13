@@ -39,6 +39,12 @@ func (h *MonitoringHandler) AppMetrics(c *okapi.Context) error {
 	}
 	sample, err := h.svc.AppMetrics(c.Request().Context(), middlewares.WorkspaceID(c), appID)
 	if err != nil {
+		// A task on an unmanaged swarm node is a distinct, explainable state — the app
+		// IS running, we just have no engine to read its container through. Saying "no
+		// active container" about a service Swarm reports as 1/1 is simply false.
+		if errors.Is(err, monitoring.ErrTaskOnUnmanagedNode) {
+			return c.AbortWithError(409, err)
+		}
 		if errors.Is(err, monitoring.ErrNoActiveContainer) {
 			return c.AbortWithError(409, err)
 		}
@@ -136,7 +142,7 @@ func (h *MonitoringHandler) AppMetricsStream(c *okapi.Context) error {
 	err = h.svc.StreamAppMetrics(c.Request().Context(), middlewares.WorkspaceID(c), appID, func(s docker.StatsSample) error {
 		return c.SSESendJSON(s)
 	})
-	if errors.Is(err, monitoring.ErrNoActiveContainer) {
+	if errors.Is(err, monitoring.ErrTaskOnUnmanagedNode) || errors.Is(err, monitoring.ErrNoActiveContainer) {
 		return c.AbortWithError(409, err)
 	}
 	return err
