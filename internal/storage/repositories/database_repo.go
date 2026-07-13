@@ -21,6 +21,17 @@ func NewDatabaseRepository(db *gorm.DB) *DatabaseRepository { return &DatabaseRe
 func (r *DatabaseRepository) Create(d *models.DatabaseInstance) error { return r.db.Create(d).Error }
 func (r *DatabaseRepository) Update(d *models.DatabaseInstance) error { return r.db.Save(d).Error }
 
+// RetargetNetwork repoints every instance pinned to the old Docker network at the
+// new one. An instance stores its network by name (models.DatabaseInstance
+// .NetworkName), so replacing the workspace network — as the bridge -> overlay
+// migration does — must carry the instances across or their helper jobs would
+// attach to a network that no longer exists.
+func (r *DatabaseRepository) RetargetNetwork(oldName, newName string) error {
+	return r.db.Model(&models.DatabaseInstance{}).
+		Where("network_name = ?", oldName).
+		Update("network_name", newName).Error
+}
+
 // Delete removes an instance and its logical database records (the server
 // container holds the actual data, so dropping it removes those databases).
 func (r *DatabaseRepository) Delete(id uint) error {

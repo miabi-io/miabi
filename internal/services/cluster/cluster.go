@@ -73,6 +73,37 @@ type Service struct {
 	// up -d) can't leave clustered apps publicly dark for longer than a refresh
 	// interval. Optional (nil = no-op); wired after construction.
 	ingressReconciler func(context.Context) error
+
+	// networkMigrator converts every workspace's node-local bridge into a swarm
+	// overlay, so containers reach each other across nodes. Run once, when the
+	// admin turns cluster mode on — never on upgrade and never implicitly, because
+	// it briefly drops in-flight connections inside each workspace. Optional
+	// (nil = no-op); wired after construction. See services/network.Migrate.
+	networkMigrator func(context.Context) error
+	// networkRollback is its inverse, run on Disable *before* leaving the swarm:
+	// the overlays die with the swarm, so every workspace must be back on a bridge
+	// first or it would be left pointing at a network that no longer exists.
+	networkRollback func(context.Context) error
+}
+
+// SetNetworkMigrator wires the workspace-network driver conversion: `migrate`
+// (bridge -> overlay) runs on Enable, `rollback` (overlay -> bridge) on Disable.
+// Nil-safe; nil leaves networks on whatever driver they already have.
+func (s *Service) SetNetworkMigrator(migrate, rollback func(context.Context) error) {
+	s.networkMigrator, s.networkRollback = migrate, rollback
+}
+
+// migrateNetworks converts workspace bridges to overlays now that swarm is up.
+// Best-effort at the call site: a failure is logged and reported per workspace by
+// the migration itself, and leaves those workspaces on their bridge (i.e. exactly
+// as they are today) rather than failing the whole enable.
+func (s *Service) migrateNetworks(ctx context.Context) {
+	if s.networkMigrator == nil {
+		return
+	}
+	if err := s.networkMigrator(ctx); err != nil {
+		logger.Warn("cluster enabled, but migrating workspace networks to overlays failed", "error", err)
+	}
 }
 
 // NewService builds the cluster service. Call Refresh once at boot to populate
@@ -281,6 +312,7 @@ func (s *Service) Enable(ctx context.Context, advertiseAddr string) (Status, err
 			return Status{}, errors.New("docker is in swarm mode but this engine is not a reachable manager")
 		}
 		s.ensureIngressOverlay(ctx)
+		s.migrateNetworks(ctx)
 		logger.Info("adopted existing docker swarm", "node_id", info.NodeID)
 		return s.Status(), nil
 	}
@@ -295,6 +327,8 @@ func (s *Service) Enable(ctx context.Context, advertiseAddr string) (Status, err
 	logger.Info("initialized docker swarm", "node_id", nodeID, "advertise", addr)
 	s.Refresh(ctx)
 	s.ensureIngressOverlay(ctx)
+	// Refresh first: the migration refuses to run until CapCluster() is true.
+	s.migrateNetworks(ctx)
 	return s.Status(), nil
 }
 
@@ -316,6 +350,15 @@ func (s *Service) ensureIngressOverlay(ctx context.Context) {
 func (s *Service) Disable(ctx context.Context) error {
 	if !s.CapCluster() {
 		return ErrNotEnabled
+	}
+	// Put every workspace back on a node-local bridge FIRST. Overlays only exist
+	// inside the swarm, so leaving it with workspaces still on one would strand
+	// every app and database on a network that no longer exists. This is the one
+	// step in Disable that must not be best-effort.
+	if s.networkRollback != nil {
+		if err := s.networkRollback(ctx); err != nil {
+			return fmt.Errorf("could not move workspace networks back to bridges; cluster mode left enabled: %w", err)
+		}
 	}
 	servers, err := s.nodes.List(ctx)
 	if err == nil {

@@ -106,7 +106,9 @@ func (e *engineClient) InspectContainer(ctx context.Context, id string) (Contain
 			if ep == nil || ep.IPAddress == "" {
 				continue
 			}
-			nets = append(nets, ContainerNetwork{Name: name, IPAddress: ep.IPAddress, Gateway: ep.Gateway})
+			nets = append(nets, ContainerNetwork{
+				Name: name, IPAddress: ep.IPAddress, Gateway: ep.Gateway, Aliases: ep.Aliases,
+			})
 		}
 	}
 	return Container{

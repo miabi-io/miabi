@@ -4,6 +4,9 @@
 package main
 
 import (
+	"context"
+	"time"
+
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/config"
 	"github.com/miabi-io/miabi/internal/docker"
@@ -14,6 +17,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/application"
 	"github.com/miabi-io/miabi/internal/services/backup"
 	"github.com/miabi-io/miabi/internal/services/backupsettings"
+	"github.com/miabi-io/miabi/internal/services/cluster"
 	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/services/database"
 	"github.com/miabi-io/miabi/internal/services/dbupgrade"
@@ -197,6 +201,16 @@ func runWorker() error {
 	subnetAllocator := newSubnetAllocator(cfg, db)
 	deployHandler.SetAllocator(subnetAllocator)
 	jobHandler.SetAllocator(subnetAllocator)
+	// Cluster mode: a routed app also joins the shared ingress overlay, so the
+	// central gateway reaches it on any node without a published host port. The
+	// standalone worker detects swarm state itself (the control plane's cluster
+	// service lives in the server process) and re-detects on interval, so enabling
+	// cluster mode does not require a worker restart.
+	clusterService := cluster.NewService(nodeClients, node.NewService(repositories.NewServerRepository(db), dockerClient))
+	clusterService.Refresh(context.Background())
+	go clusterService.RefreshLoop(context.Background(), 30*time.Second)
+	deployHandler.SetCluster(clusterService)
+	jobHandler.SetCluster(clusterService)
 	// Git builds run on runners; here the resolver supplies the admin-controlled
 	// builder image (passed to the runner) and the image catalog records provenance.
 	deployHandler.SetBuildProvenance(

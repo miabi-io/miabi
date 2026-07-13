@@ -307,6 +307,16 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	networkService := network.NewService(networkRepo, dockerClient)
 	networkService.SetQuota(quotaService)
 	networkService.SetAllocator(subnetAllocator)
+	// Cluster mode: a workspace network is a swarm overlay (spans nodes) instead of
+	// a node-local bridge, and existing bridges are converted when the admin enables
+	// cluster networking. Off (the single-node default), everything stays a bridge.
+	networkService.SetCluster(clusterService)
+	networkService.SetClients(nodeManager.Clients())
+	networkService.SetMigrationDeps(serverRepo, repositories.NewDatabaseRepository(db))
+	clusterService.SetNetworkMigrator(
+		func(ctx context.Context) error { _, err := networkService.Migrate(ctx); return err },
+		func(ctx context.Context) error { _, err := networkService.Rollback(ctx); return err },
+	)
 	workspaceService := workspace.NewService(workspaceRepo, userRepo, networkService)
 	workspaceService.SetPlans(planRepo)
 	workspaceService.SetQuota(quotaService)
@@ -376,6 +386,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// `docker compose up -d` can't leave clustered apps publicly dark), plus once now
 	// so a fresh boot doesn't wait a whole refresh interval.
 	clusterService.SetIngressReconciler(proxyReconciler.ReconcileIngressGateway)
+	// In cluster mode the gateway reaches a remote app over the ingress overlay by
+	// its DNS alias, so no host port is published for it — and canary weights, which
+	// the port-forward upstream cannot carry, start working on remote nodes.
+	routeService.SetCluster(clusterService)
 	go func() { _ = proxyReconciler.ReconcileIngressGateway(context.Background()) }()
 	// Auto port-forwarding: when a port-forward app gains a route, redeploy it so
 	// the node actually publishes the allocated host port the gateway targets.
@@ -808,7 +822,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			dnsProvider:    handlers.NewDNSProviderHandler(dnsProviderService, auditLogger),
 			middleware:     handlers.NewMiddlewareHandler(middlewareService, auditLogger),
 			portBinding:    handlers.NewPortBindingHandler(portBindingService, auditLogger),
-			database:       handlers.NewDatabaseHandler(databaseService, appService, forwardService, secretService, userRepo, auditLogger),
+			database:       handlers.NewDatabaseHandler(databaseService, appService, forwardService, secretService, userRepo, auditLogger, clusterService),
 			job:            handlers.NewJobHandler(jobService, auditLogger),
 			secret:         handlers.NewSecretHandler(secretService, auditLogger),
 			certificate:    handlers.NewCertificateHandler(certificateService, auditLogger),

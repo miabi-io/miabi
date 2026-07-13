@@ -32,11 +32,27 @@ var (
 	ErrInvalidDriver = errors.New("unsupported network driver")
 )
 
+// ClusterCap reports whether the manager engine is a reachable swarm manager
+// (cluster mode on). Implemented by services/cluster. A workspace network is a
+// swarm-scoped overlay in cluster mode and a node-local bridge otherwise.
+type ClusterCap interface {
+	CapCluster() bool
+}
+
 type Service struct {
 	repo   *repositories.NetworkRepository
 	docker docker.Client
 	quota  *quota.Service
 	alloc  *netalloc.Service
+	// cluster decides the driver a new workspace network gets. nil (or cluster
+	// mode off) keeps today's behavior exactly: plain bridges, no swarm.
+	cluster ClusterCap
+	// clients/servers/dbs are needed only by the bridge -> overlay migration, which
+	// has to move containers on every node and repoint the database instances
+	// pinned to the network by name. See migrate.go.
+	clients Resolver
+	servers Servers
+	dbs     DBInstances
 }
 
 func NewService(repo *repositories.NetworkRepository, dockerClient docker.Client) *Service {
@@ -49,6 +65,23 @@ func (s *Service) SetQuota(q *quota.Service) { s.quota = q }
 // SetAllocator wires the subnet allocator so managed networks get a Miabi-carved
 // subnet instead of Docker's default pool (nil-safe; nil = Docker default pool).
 func (s *Service) SetAllocator(a *netalloc.Service) { s.alloc = a }
+
+// SetCluster wires swarm detection (nil-safe; nil = never cluster mode, so
+// workspace networks stay bridges — the single-node default).
+func (s *Service) SetCluster(c ClusterCap) { s.cluster = c }
+
+// SetClients wires the per-node Docker client registry used by the migration.
+func (s *Service) SetClients(r Resolver) { s.clients = r }
+
+// clusterOn reports whether new workspace networks should be swarm overlays.
+func (s *Service) clusterOn() bool { return s.cluster != nil && s.cluster.CapCluster() }
+
+// DriverBridge and DriverOverlay are the two drivers a workspace network can be
+// provisioned with. Overlay spans nodes (requires swarm); bridge is node-local.
+const (
+	DriverBridge  = "bridge"
+	DriverOverlay = "overlay"
+)
 
 type Input struct {
 	// Name is the desired unique slug handle; it is normalized to canonical slug
@@ -100,16 +133,16 @@ func (s *Service) create(ctx context.Context, workspaceID uint, in Input, isDefa
 			return nil, err
 		}
 	}
-	driver := in.Driver
-	if driver == "" {
-		driver = "bridge"
+	driver, err := s.driverFor(in.Driver)
+	if err != nil {
+		return nil, err
 	}
-	switch driver {
-	case "bridge", "overlay", "macvlan", "ipvlan":
-	default:
-		return nil, fmt.Errorf("%w: unsupported network driver %q", ErrInvalidDriver, driver)
-	}
+	// Overlays always carry the suffix, bridges never do — the invariant that makes
+	// the driver conversion (both ways) deterministic. See migrate.go.
 	dockerName := fmt.Sprintf("mb-ws%d-%s", workspaceID, randHex(6))
+	if driver == DriverOverlay {
+		dockerName += overlaySuffix
+	}
 	dockerCreated := false
 	if err := s.provisionDockerNetwork(ctx, dockerName, driver, in.Internal); err != nil {
 		// The platform-managed default network must always have a record, even when
@@ -142,16 +175,60 @@ func (s *Service) create(ctx context.Context, workspaceID uint, in Input, isDefa
 	return net, nil
 }
 
+// driverFor picks the Docker driver for a new workspace network. An explicit
+// driver from the caller always wins. Otherwise: in cluster mode the network must
+// span nodes, so it is a swarm overlay; without cluster mode it stays a
+// node-local bridge — exactly today's single-node behavior.
+func (s *Service) driverFor(explicit string) (string, error) {
+	driver := strings.TrimSpace(explicit)
+	if driver == "" {
+		if s.clusterOn() {
+			return DriverOverlay, nil
+		}
+		return DriverBridge, nil
+	}
+	switch driver {
+	case DriverBridge, DriverOverlay, "macvlan", "ipvlan":
+		return driver, nil
+	default:
+		return "", fmt.Errorf("%w: unsupported network driver %q", ErrInvalidDriver, driver)
+	}
+}
+
 // provisionDockerNetwork creates the Docker network, preferring a Miabi-allocated
 // subnet (via the allocator) over Docker's default address pool.
+//
+// An overlay is created on the *manager* engine (s.docker) and is swarm-scoped:
+// Docker materializes it on a worker only once a container there attaches, so it
+// is never created per node. See the worker's syncNetworks.
 func (s *Service) provisionDockerNetwork(ctx context.Context, dockerName, driver string, internal bool) error {
-	spec := docker.NetworkSpec{Name: dockerName, Driver: driver, Internal: internal}
+	spec := networkSpec(dockerName, driver, internal)
 	if s.alloc != nil {
-		_, _, err := s.alloc.EnsureManaged(ctx, s.docker, spec, 0, models.NetAllocKindWorkspace)
+		_, _, err := s.alloc.EnsureManaged(ctx, s.docker, spec, 0, allocKind(driver))
 		return err
 	}
 	_, err := s.docker.CreateNetworkSpec(ctx, spec)
 	return err
+}
+
+// networkSpec builds the Docker spec for a workspace network. An overlay must be
+// Attachable (plain, non-service containers join it — apps and databases alike)
+// and Encrypted (it is the only thing protecting east-west traffic between nodes;
+// no WireGuard underlay is in play).
+func networkSpec(dockerName, driver string, internal bool) docker.NetworkSpec {
+	spec := docker.NetworkSpec{Name: dockerName, Driver: driver, Internal: internal}
+	if driver == DriverOverlay {
+		spec.Attachable = true
+		spec.Encrypted = true
+	}
+	return spec
+}
+
+func allocKind(driver string) string {
+	if driver == DriverOverlay {
+		return models.NetAllocKindOverlay
+	}
+	return models.NetAllocKindWorkspace
 }
 
 func (s *Service) Get(workspaceID, id uint) (*models.Network, error) {

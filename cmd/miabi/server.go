@@ -333,6 +333,10 @@ func runServer(cli *okapicli.CLI) {
 			subnetAllocator := newSubnetAllocator(cfg, res.db)
 			deployHandler.SetAllocator(subnetAllocator)
 			jobHandler.SetAllocator(subnetAllocator)
+			// Cluster mode: a routed app also joins the shared ingress overlay, so the
+			// central gateway reaches it on any node without a published host port.
+			deployHandler.SetCluster(clusterService)
+			jobHandler.SetCluster(clusterService)
 			// Git builds run on runners; here the image resolver supplies the
 			// admin-controlled builder image (passed to the runner) and the image
 			// catalog records build provenance.

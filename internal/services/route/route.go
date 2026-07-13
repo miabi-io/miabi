@@ -117,9 +117,22 @@ type Service struct {
 	wsPolicy    WorkspacePolicy
 	dnsAddr     DNSAddresser
 	reloader    EdgeReloader
+	cluster     ClusterCap
 	minPort     int
 	maxPort     int
 }
+
+// ClusterCap reports whether the manager engine is a reachable swarm manager.
+// Implemented by services/cluster.
+type ClusterCap interface {
+	CapCluster() bool
+}
+
+// SetCluster wires swarm detection (nil-safe; nil = never cluster mode, so
+// remote nodes keep being reached by published host port).
+func (s *Service) SetCluster(c ClusterCap) { s.cluster = c }
+
+func (s *Service) clusterOn() bool { return s.cluster != nil && s.cluster.CapCluster() }
 
 // EdgeReloader notifies edge-gateway nodes to pull their configuration
 // immediately after a change, instead of waiting for their HTTP-provider poll
@@ -1165,18 +1178,35 @@ func routePort(rt *models.Route, app *models.Application) int {
 // a port-forward node routes all traffic to the stable host port.
 func (s *Service) backendsFor(app *models.Application, port int) []proxy.Backend {
 	srv, _ := s.servers.FindByID(app.ServerID)
-	if isRemotePortForward(srv) {
-		// The host port for a port-forward node is a control-plane resource: it is
-		// auto-provisioned (and auto-approved) when an app is attached to a route,
-		// so admins never manage these bindings manually.
-		hp, _ := s.ensureRemotePort(app, srv, port)
-		if hp > 0 && strings.TrimSpace(srv.Address) != "" {
-			return []proxy.Backend{{Endpoint: fmt.Sprintf("%s://%s:%d", portScheme(app, port), srv.Address, hp)}}
-		}
-		// No host port allocated or no node address — no usable upstream.
-		return nil
+	if s.useAliasUpstream(srv) {
+		return aliasBackends(app, port, portScheme(app, port))
 	}
-	return aliasBackends(app, port, portScheme(app, port))
+	// The host port for a port-forward node is a control-plane resource: it is
+	// auto-provisioned (and auto-approved) when an app is attached to a route, so
+	// admins never manage these bindings manually.
+	hp, _ := s.ensureRemotePort(app, srv, port)
+	if hp > 0 && strings.TrimSpace(srv.Address) != "" {
+		return []proxy.Backend{{Endpoint: fmt.Sprintf("%s://%s:%d", portScheme(app, port), srv.Address, hp)}}
+	}
+	// No host port allocated or no node address — no usable upstream.
+	return nil
+}
+
+// useAliasUpstream reports whether the gateway can dial the app by its DNS alias
+// rather than a published host port on its node.
+//
+// True for the local node and for edge-gateway nodes (both already share a
+// network with the gateway that serves them), and — the change here — for a
+// port-forward node once cluster mode is on: the app then sits on the shared
+// ingress overlay, which the central gateway has joined, so its alias resolves
+// from anywhere in the cluster and no host port is published at all.
+//
+// This also restores canary weighting on remote nodes. The host-port upstream can
+// only name one container, so a canary on a port-forward node silently received
+// 0% of traffic while the UI reported its configured weight; aliasBackends carries
+// the split.
+func (s *Service) useAliasUpstream(srv *models.Server) bool {
+	return !isRemotePortForward(srv) || s.clusterOn()
 }
 
 // isRemotePortForward reports whether srv is a remote node reached by publishing

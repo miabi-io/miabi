@@ -56,6 +56,11 @@ type ContainerNetwork struct {
 	Name      string `json:"name"`
 	IPAddress string `json:"ip_address"`
 	Gateway   string `json:"gateway,omitempty"`
+	// Aliases are the container's DNS aliases on this network. They are the only
+	// stable way to address it, so moving a container between networks (see the
+	// bridge -> overlay migration in services/network) must carry them across
+	// verbatim rather than recomputing them.
+	Aliases []string `json:"aliases,omitempty"`
 }
 
 // ContainerConfig is the full inspected configuration of a container, used by

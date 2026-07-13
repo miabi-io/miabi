@@ -14,6 +14,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/services/netalloc"
+	"github.com/miabi-io/miabi/internal/services/network"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
@@ -80,7 +81,23 @@ type runtimeBuilder struct {
 	// alloc carves a pool subnet when recreating a workspace network on a node so
 	// remote nodes get the same subnet as the control plane (nil = Docker default).
 	alloc *netalloc.Service
+	// cluster reports whether the manager is a swarm manager. In cluster mode a
+	// routed app also joins the shared ingress overlay, so the central gateway can
+	// reach it on any node without a published host port (nil = never cluster).
+	cluster ClusterCap
 }
+
+// ClusterCap reports whether the manager engine is a reachable swarm manager.
+// Implemented by services/cluster.
+type ClusterCap interface {
+	CapCluster() bool
+}
+
+// SetCluster wires swarm detection (nil-safe). Shared by the deploy and job
+// handlers (both embed *runtimeBuilder).
+func (b *runtimeBuilder) SetCluster(c ClusterCap) { b.cluster = c }
+
+func (b *runtimeBuilder) clusterOn() bool { return b.cluster != nil && b.cluster.CapCluster() }
 
 // SetAllocator wires the subnet allocator used when recreating networks on a
 // node (nil-safe). Shared by the deploy and job handlers.
@@ -183,6 +200,18 @@ func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Cli
 	var networks []string
 	if b.appHasRoutes(app.ID) {
 		networks = append(networks, node.AppNetwork)
+		// In cluster mode the central gateway reaches a routed app over the shared
+		// ingress overlay instead of a published host port on its node, so the app
+		// joins that overlay too. Only the globally-unique upstream alias is
+		// registered (RunSpec.NetworkAliases) — never app.Name, which is
+		// workspace-scoped — exactly as deployService does for service apps.
+		//
+		// The overlay itself is created and re-asserted by services/cluster (on
+		// enable and on every refresh); a worker node could not create it anyway,
+		// since an overlay is swarm-scoped.
+		if b.clusterOn() {
+			networks = append(networks, node.IngressOverlay)
+		}
 	}
 	for _, n := range app.Networks {
 		networks = append(networks, n.DockerName)
@@ -269,6 +298,13 @@ func (b *runtimeBuilder) syncNetworks(ctx context.Context, eng docker.Client, ap
 	}
 	for _, n := range app.Networks {
 		if have[n.DockerName] {
+			continue
+		}
+		// An overlay is swarm-scoped: it is created once on the manager, and Docker
+		// materializes it on this node the moment a container attaches. A worker
+		// cannot create one (and must not try), so there is nothing to do here — the
+		// network simply won't be listed until the first attachment.
+		if n.Driver == network.DriverOverlay {
 			continue
 		}
 		spec := docker.NetworkSpec{Name: n.DockerName, Driver: n.Driver, Internal: n.Internal}
