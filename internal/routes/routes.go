@@ -565,6 +565,16 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// The network check runs socat probe containers on each node; it reuses the
 	// port-forward relay image rather than introducing another one to pull.
 	clusterService.SetNetCheckImage(imageResolver, cfg.ForwardRelayImage)
+	// The global agent service: Swarm carries the agent to every worker, each agent
+	// registers itself from the swarm node id its own engine reports, and the manager
+	// verifies that id against its own membership before trusting the shared token.
+	clusterService.SetAgentDeps(
+		cluster.NewSettingsTokenStore(repositories.NewSettingRepository(db)),
+		nodeService,
+		cfg.ControlURL,
+		imageResolver,
+		"miabi/agent:latest", // fallback only; the image catalog is the source of truth
+	)
 	backupService.SetImageResolver(imageResolver)
 	backupService.SetLogStore(logStore) // externalize backup run logs to the shared store
 	// Volume backup: archives a volume to the workspace S3 target (volume-bkup).

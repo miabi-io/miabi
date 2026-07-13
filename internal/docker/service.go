@@ -24,11 +24,15 @@ import (
 // replicas, placement constraints, and rolling-update tuning. Swarm schedules
 // the tasks and load-balances a virtual IP across them.
 type ServiceSpec struct {
-	Name           string
-	Image          string
-	Env            []string          // KEY=VALUE
-	Cmd            []string          // command args (ContainerSpec.Args); nil keeps the image default
-	Replicas       uint64            // 0 is treated as 1
+	Name     string
+	Image    string
+	Env      []string // KEY=VALUE
+	Cmd      []string // command args (ContainerSpec.Args); nil keeps the image default
+	Replicas uint64   // 0 is treated as 1 (ignored when Global)
+	// Global runs exactly one task on EVERY node the constraints allow, including
+	// nodes that join later. It is how a per-node daemon is deployed to a swarm
+	// without touching each host: the scheduler ships it, and keeps shipping it.
+	Global         bool
 	Networks       []string          // swarm-scoped (overlay) network names to attach
 	NetworkAliases []string          // DNS aliases applied on each attached network
 	Mounts         map[string]string // volume name -> container path
@@ -170,10 +174,16 @@ func buildSwarmServiceSpec(spec ServiceSpec) swarm.ServiceSpec {
 		task.Networks = append(task.Networks, swarm.NetworkAttachmentConfig{Target: spec.IngressNetwork, Aliases: aliases})
 	}
 
+	// Global mode has no replica count: one task per eligible node, forever.
+	mode := swarm.ServiceMode{Replicated: &swarm.ReplicatedService{Replicas: &replicas}}
+	if spec.Global {
+		mode = swarm.ServiceMode{Global: &swarm.GlobalService{}}
+	}
+
 	s := swarm.ServiceSpec{
 		Annotations:  swarm.Annotations{Name: spec.Name, Labels: labels},
 		TaskTemplate: task,
-		Mode:         swarm.ServiceMode{Replicated: &swarm.ReplicatedService{Replicas: &replicas}},
+		Mode:         mode,
 		EndpointSpec: &swarm.EndpointSpec{Mode: swarm.ResolutionModeVIP},
 	}
 	if spec.UpdateParallelism > 0 || spec.UpdateDelay > 0 {
@@ -358,6 +368,23 @@ func (e *engineClient) ServiceTaskContainerID(ctx context.Context, serviceName s
 		return fallback, nil
 	}
 	return "", ErrNotFound
+}
+
+// ServiceEnv returns a service's environment. It is how a caller answers a question
+// about how a service was configured without re-deriving it from stored state.
+//
+// The result can carry secrets (a service's env usually does), so it is for the
+// service layer to inspect — never to return to a client. Callers must extract the
+// fact they need and discard the rest.
+func (e *engineClient) ServiceEnv(ctx context.Context, idOrName string) ([]string, error) {
+	svc, _, err := e.cli.ServiceInspectWithRaw(ctx, idOrName, types.ServiceInspectOptions{})
+	if err != nil {
+		return nil, wrapNotFound(err)
+	}
+	if cs := svc.Spec.TaskTemplate.ContainerSpec; cs != nil {
+		return cs.Env, nil
+	}
+	return nil, nil
 }
 
 // StreamServiceLogs streams a swarm service's logs, aggregated across every task

@@ -343,6 +343,112 @@ func (s *Service) WorkloadImpact(id uint) (apps int64, databases int64, err erro
 	return s.repo.CountWorkloads(id)
 }
 
+// FindBySwarmNodeID resolves the node backing a swarm node id.
+func (s *Service) FindBySwarmNodeID(swarmNodeID string) (*models.Server, error) {
+	return s.repo.FindBySwarmNodeID(swarmNodeID)
+}
+
+// RegisterClusterNode creates the record for a swarm worker that registered itself
+// through the global agent service.
+//
+// The caller (cluster.AuthenticateAgent) has already verified the swarm node id is a
+// member of THIS swarm, so this is not an open registration endpoint — the machine is
+// one the swarm already trusts.
+//
+// The node is marked AutoJoined: the cluster brought it in, an admin did not. It has
+// no join token of its own (it authenticates with the cluster token), and it defaults
+// to port-forward connectivity like any other node — which in cluster mode is moot,
+// since ingress reaches it over the overlay.
+func (s *Service) RegisterClusterNode(swarmNodeID, hostname string) (*models.Server, error) {
+	if err := s.checkNodeLimit(); err != nil {
+		return nil, err
+	}
+	name := strings.TrimSpace(hostname)
+	if name == "" {
+		name = "node-" + shortID(swarmNodeID)
+	}
+	srv := &models.Server{
+		Name:           uniqueName(s.repo, name),
+		Slug:           slug.Make(name, shortID(swarmNodeID)),
+		IsLocal:        false,
+		Role:           models.RoleNode,
+		AccessMode:     models.AccessAgent,
+		Connectivity:   models.ConnectivityPortForward,
+		Status:         models.ServerStatusUnknown,
+		SwarmNodeID:    swarmNodeID,
+		AutoJoined:     true,
+		PublicHostname: strings.TrimSpace(hostname),
+	}
+	if err := s.repo.Create(srv); err != nil {
+		return nil, err
+	}
+	logger.Info("registered a swarm worker as a Miabi node",
+		"node", srv.ID, "name", srv.Name, "swarm_node_id", swarmNodeID)
+	return srv, nil
+}
+
+// uniqueName avoids colliding with an existing node's (unique) name.
+func uniqueName(repo *repositories.ServerRepository, name string) string {
+	servers, err := repo.List()
+	if err != nil {
+		return name
+	}
+	taken := map[string]bool{}
+	for i := range servers {
+		taken[strings.ToLower(servers[i].Name)] = true
+	}
+	if !taken[strings.ToLower(name)] {
+		return name
+	}
+	for i := 2; i < 100; i++ {
+		candidate := fmt.Sprintf("%s-%d", name, i)
+		if !taken[strings.ToLower(candidate)] {
+			return candidate
+		}
+	}
+	return name
+}
+
+func shortID(id string) string {
+	if len(id) > 8 {
+		return id[:8]
+	}
+	return id
+}
+
+// LearnSwarmNodeID records the swarm node id the agent read from its own Docker
+// engine at connect (X-Agent-Swarm-Node-ID).
+//
+// This is how a Miabi node gets mapped to its swarm node in every case, not just
+// the one where Miabi did the joining. The control plane can only fill SwarmNodeID
+// itself when it ran the `swarm join` (see cluster.JoinNode); a host joined with
+// `docker swarm join`, or one that was already a member when Miabi met it, stayed
+// unmapped forever. That is not cosmetic — an unmapped node cannot be resolved from
+// a service's task, which is precisely what makes a replica's logs and metrics
+// unreachable. The node is the authority on which node it is, so let it say.
+//
+// Unlike LearnEndpoint this OVERWRITES: a node can leave one swarm and join
+// another, and its own report is always more current than ours. An empty value is
+// ignored rather than treated as "left the swarm" — an older agent sends nothing at
+// all, and we must not wipe a good id because of it. The leave paths clear it
+// explicitly (cluster.LeaveNode).
+func (s *Service) LearnSwarmNodeID(id uint, swarmNodeID string) {
+	swarmNodeID = strings.TrimSpace(swarmNodeID)
+	if swarmNodeID == "" {
+		return
+	}
+	srv, err := s.repo.FindByID(id)
+	if err != nil || srv.SwarmNodeID == swarmNodeID {
+		return
+	}
+	if err := s.SetSwarmNodeID(id, swarmNodeID); err != nil {
+		logger.Warn("failed to persist the swarm node id reported by the agent",
+			"node", id, "swarm_node_id", swarmNodeID, "error", err)
+		return
+	}
+	logger.Info("learned a node's swarm id from its agent", "node", id, "swarm_node_id", swarmNodeID)
+}
+
 // LearnEndpoint fills a node's public IP and/or hostname discovered from its
 // agent connection, so an admin doesn't have to know them when adding the node:
 // ip is the agent's source address as seen by the control plane, hostname is
@@ -690,8 +796,9 @@ func (s *Service) SetSwarmNodeID(id uint, swarmNodeID string) error {
 	if srv.SwarmNodeID == swarmNodeID {
 		return nil
 	}
-	srv.SwarmNodeID = swarmNodeID
-	return s.repo.Update(srv)
+	// Column-scoped: the row is also written on the same agent connect by
+	// MarkConnected and LearnEndpoint, and a full Save from each would race them.
+	return s.repo.UpdateSwarmNodeID(id, swarmNodeID)
 }
 
 // NameBySwarmNodeID resolves a swarm node id to a node's Miabi display name, so

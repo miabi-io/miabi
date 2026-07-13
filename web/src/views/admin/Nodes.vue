@@ -13,7 +13,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { copyText } from '@/utils/clipboard'
 import type {
   Server, ServerConnectivity, ClusterStatus, ClusterJoinInstructions,
-  ClusterPreflight, NetCheck, NetCheckResult,
+  ClusterPreflight, NetCheck, NetCheckResult, ControlPlaneCert,
 } from '@/api/types'
 
 const notify = useNotificationStore()
@@ -119,6 +119,99 @@ async function runNetCheck() {
     netChecking.value = false
   }
 }
+// The global agent service. A swarm worker with no agent runs tasks perfectly well —
+// Swarm ships them to it and never involves Miabi — but Miabi holds no Docker client
+// for it, so an app scheduled there has no metrics, no stats and no shell, and the
+// node's disk can fill with nobody watching. Deploying the agent as a GLOBAL service
+// lets Swarm carry it to every worker, including ones that join later.
+const agentsDeployed = computed(() => cluster.value?.agents_deployed === true)
+const agentTasks = computed(() => cluster.value?.agent_tasks ?? 0)
+const agentInsecureTLS = computed(() => cluster.value?.agent_insecure_tls === true)
+const agentCustomCA = computed(() => cluster.value?.agent_custom_ca === true)
+const showDeployAgents = ref(false)
+const showRemoveAgents = ref(false)
+// How the agents treat the control plane's certificate, in descending order of safety:
+//   verify — it is publicly trusted; nothing to do.
+//   ca     — trust THIS authority. Verification still happens, anchored on it, so a
+//            forged certificate is still rejected. Right for a private control plane.
+//   skip   — trust ANY certificate. No verification. Last resort.
+const agentTls = ref<'verify' | 'ca' | 'skip'>('verify')
+// Two ways to supply the CA, and the FILE is usually the right one. A host that trusts
+// a private CA already has it in its system store — which is exactly why the nodes work
+// and the agent containers do not: the container has its own bundle and has never heard
+// of it. Mounting the file the host already has beats copying its contents around, and
+// it stays correct when the CA is rotated on the hosts.
+const caMode = ref<'file' | 'paste'>('file')
+const caCertPath = ref('/etc/pki/ca-trust/source/anchors/ca.crt')
+const caCert = ref('')
+const cpCert = ref<ControlPlaneCert | null>(null)
+const cpCertLoading = ref(false)
+
+// Fetch what the control plane actually serves, so nobody has to go and find a PEM —
+// which is how you end up with everyone choosing "skip" instead.
+async function fetchControlPlaneCert() {
+  cpCertLoading.value = true
+  try {
+    const cert = (await clusterApi.controlPlaneCert()).data.data
+    cpCert.value = cert
+    caCert.value = cert.pem
+    if (cert.publicly_trusted) {
+      notify.success('This certificate is already publicly trusted — you can just verify')
+    }
+  } catch (e) {
+    notify.apiError(e, 'Could not read the control plane certificate')
+  } finally {
+    cpCertLoading.value = false
+  }
+}
+
+async function deployAgents() {
+  showDeployAgents.value = false
+  clusterBusy.value = true
+  try {
+    await clusterApi.deployAgents({
+      insecureSkipVerify: agentTls.value === 'skip',
+      caCertPath: agentTls.value === 'ca' && caMode.value === 'file' ? caCertPath.value.trim() : '',
+      caCert: agentTls.value === 'ca' && caMode.value === 'paste' ? caCert.value.trim() : '',
+    })
+    notify.success('Agent deployed to every cluster node')
+    await loadCluster()
+    load()
+  } catch (e) {
+    notify.apiError(e, 'Failed to deploy the cluster agents')
+  } finally {
+    clusterBusy.value = false
+  }
+}
+function openDeployAgents() {
+  // Default to whatever is already in force, so a redeploy does not silently re-enable
+  // verification against a certificate that still cannot be verified — which would kill
+  // every agent at once.
+  agentTls.value = agentInsecureTLS.value ? 'skip' : agentCustomCA.value ? 'ca' : 'verify'
+  // Keep the path already in force, so a redeploy does not silently drop it.
+  if (cluster.value?.agent_ca_cert_path) {
+    caMode.value = 'file'
+    caCertPath.value = cluster.value.agent_ca_cert_path
+  }
+  caCert.value = ''
+  cpCert.value = null
+  showDeployAgents.value = true
+}
+async function removeAgents() {
+  showRemoveAgents.value = false
+  clusterBusy.value = true
+  try {
+    await clusterApi.removeAgents()
+    notify.success('Cluster agents removed')
+    await loadCluster()
+    load()
+  } catch (e) {
+    notify.apiError(e, 'Failed to remove the cluster agents')
+  } finally {
+    clusterBusy.value = false
+  }
+}
+
 function verdictClass(r: NetCheckResult): string {
   if (r.payload) return 'badge-success badge-dot'
   if (r.tcp) return 'badge-warning' // MTU black hole — the sneakiest failure
@@ -427,6 +520,45 @@ function swarmClass(n: Server): string {
                bridges, so they have no cross-node connectivity at all. Say exactly
                that, rather than leaving the admin to discover it as an app that
                can't resolve its database. -->
+          <!-- Managed nodes. A swarm worker with no agent runs tasks fine — Swarm ships
+               them to it and never involves Miabi — but Miabi holds no Docker client for
+               it, so an app scheduled there has no metrics, no stats and no shell, and
+               its disk can fill with nobody watching. Swarm can carry the agent to every
+               worker itself (a global service), including ones that join later. -->
+          <div v-if="clusterEnabled" class="agents">
+            <template v-if="agentsDeployed">
+              <span class="badge badge-success badge-dot">nodes managed</span>
+              <!-- A workaround taken once to get a self-signed cert working must not
+                   quietly become the permanent posture. Say it, every time. -->
+              <span v-if="agentInsecureTLS" class="badge badge-warning" title="The agents accept ANY certificate for the control plane. Switch to 'Trust a certificate authority' — it still verifies — and redeploy them.">
+                TLS verification off
+              </span>
+              <span v-else-if="agentCustomCA" class="badge badge-info" title="The agents verify the control plane against your own certificate authority.">
+                custom CA
+              </span>
+              <span class="cell-sub">
+                The agent runs on every cluster node ({{ agentTasks }} task(s)) — including nodes that
+                join later — so metrics, stats, shell and housekeeping work everywhere.
+              </span>
+              <button type="button" class="btn btn-ghost btn-sm" :disabled="clusterBusy" @click="openDeployAgents">
+                Redeploy
+              </button>
+              <button type="button" class="btn btn-ghost btn-sm" :disabled="clusterBusy" @click="showRemoveAgents = true">
+                Remove agents
+              </button>
+            </template>
+            <template v-else>
+              <span class="badge badge-warning">nodes unmanaged</span>
+              <span class="cell-sub">
+                Cluster nodes run tasks, but Miabi has no Docker connection to them: apps scheduled
+                there show <strong>no metrics, stats or shell</strong>, and their disks are unwatched.
+              </span>
+              <button type="button" class="btn btn-sm btn-primary" :disabled="clusterBusy" @click="openDeployAgents">
+                <span class="mdi mdi-download-network-outline"></span> Manage cluster nodes
+              </button>
+            </template>
+          </div>
+
           <!-- Network check. Cluster networking fails silently: the swarm forms, DNS
                resolves, and packets vanish — so an app looks broken when the network
                is. This probes the real overlay between every pair of nodes and names
@@ -510,7 +642,18 @@ function swarmClass(n: Server): string {
                 <div class="cell-id">
                   <span class="avatar avatar-sm"><span class="mdi mdi-server" style="font-size: 14px"></span></span>
                   <span class="cell-text">
-                    <span class="cell-title">{{ n.name }}<span v-if="n.cordoned" class="badge badge-warning" style="margin-left: 8px">cordoned</span></span>
+                    <span class="cell-title">
+                      {{ n.name }}
+                      <span v-if="n.cordoned" class="badge badge-warning" style="margin-left: 8px">cordoned</span>
+                      <!-- The cluster brought this node in, an admin did not: the global
+                           agent service landed on a swarm member and it registered itself. -->
+                      <span
+                        v-if="n.auto_joined"
+                        class="badge badge-info"
+                        style="margin-left: 8px"
+                        title="Joined by the cluster — the agent registered itself from the swarm, rather than an admin adding it"
+                      >cluster</span>
+                    </span>
                     <span class="cell-sub">{{ n.address || (n.is_local ? 'local socket' : '—') }}</span>
                   </span>
                 </div>
@@ -744,6 +887,169 @@ function swarmClass(n: Server): string {
       </div>
     </Teleport>
 
+    <!-- Deploying the agents grants Miabi the Docker socket — root-equivalent — on every
+         machine in the swarm, now and in future. It also has to actually connect: a
+         control plane behind a self-signed certificate rejects every agent with
+         "certificate signed by unknown authority", which is a dead end unless the choice
+         is offered here. -->
+    <Teleport to="body">
+      <div v-if="showDeployAgents" class="modal-overlay" @click.self="showDeployAgents = false">
+        <div class="modal">
+          <div class="modal-header">
+            <h3>Manage cluster nodes</h3>
+            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDeployAgents = false"><span class="mdi mdi-close"></span></button>
+          </div>
+          <form @submit.prevent="deployAgents">
+            <div class="modal-body">
+              <p class="cell-sub" style="margin-top: 0">
+                Swarm installs the Miabi agent on every node in this cluster, and on any node that
+                joins later. Metrics, stats, shell and housekeeping then work on all of them.
+              </p>
+              <p class="cell-sub">
+                The agent mounts each node's Docker socket, which is <strong>root-equivalent</strong>
+                on that host. Only do this for machines you would trust Miabi to administer.
+              </p>
+
+              <div class="form-group" style="margin-bottom: 0">
+                <label class="form-label">Control-plane TLS</label>
+                <select v-model="agentTls" class="form-select">
+                  <option value="verify">Verify the certificate (publicly trusted)</option>
+                  <option value="ca">Trust a certificate authority — self-signed or private CA</option>
+                  <option value="skip">Skip verification — last resort</option>
+                </select>
+
+                <!-- Verify: the goal state, and the failure it produces if the cert is
+                     private, so the operator knows which option they actually need. -->
+                <p v-if="agentTls === 'verify'" class="form-hint">
+                  If your control plane uses a self-signed or private-CA certificate, the agents will
+                  fail with <code>certificate signed by unknown authority</code> and never connect —
+                  choose “Trust a certificate authority” instead.
+                </p>
+
+                <!-- Trust a CA: verification still happens, anchored on their own authority.
+                     Fetching the certificate is what keeps this from being a research task. -->
+                <template v-else-if="agentTls === 'ca'">
+                  <p class="form-hint">
+                    The agents still <strong>verify</strong> — just against this authority instead of
+                    the public ones. A forged certificate is still rejected.
+                  </p>
+
+                  <!-- The file is the right default, and the reason is the whole bug: a host
+                       that trusts a private CA has it in its system store, but the agent
+                       container has its own bundle and has never heard of it. Mount what the
+                       host already has, rather than copying its contents through an env var. -->
+                  <div class="ca-mode">
+                    <label><input v-model="caMode" type="radio" value="file" /> A CA file on the nodes</label>
+                    <label><input v-model="caMode" type="radio" value="paste" /> Paste the certificate</label>
+                  </div>
+
+                  <template v-if="caMode === 'file'">
+                    <input v-model="caCertPath" class="form-input mono" placeholder="/etc/pki/ca-trust/source/anchors/my-ca.crt" />
+                    <p class="form-hint">
+                      Bind-mounted read-only into each agent. Your nodes already trust this CA — that
+                      is why <code>curl</code> works on the host and fails inside a container, which
+                      has its own certificate bundle. The file must exist at this path on
+                      <strong>every</strong> node, including ones that join later.
+                    </p>
+                  </template>
+
+                  <template v-else>
+                  <div class="ca-actions">
+                    <button type="button" class="btn btn-secondary btn-sm" :disabled="cpCertLoading" @click="fetchControlPlaneCert">
+                      <span class="mdi mdi-certificate-outline"></span>
+                      {{ cpCertLoading ? 'Reading…' : "Use the control plane's certificate" }}
+                    </button>
+                  </div>
+
+                  <!-- Fetched over an unverified connection, so the operator confirms it by
+                       fingerprint. Showing it is what makes the confirmation meaningful. -->
+                  <div v-if="cpCert" class="ca-cert">
+                    <div v-if="cpCert.publicly_trusted" class="form-hint">
+                      <span class="mdi mdi-check-circle-outline"></span>
+                      This certificate is <strong>already publicly trusted</strong> — you can simply
+                      choose “Verify the certificate”; no CA needs distributing.
+                    </div>
+                    <!-- The trap: trusting a CA does NOT skip the hostname check. A cert
+                         that names nothing (Goma's default has no SANs at all) fails
+                         however well it is trusted. Say it here, or the operator picks
+                         this option and hits a second, different, confusing error. -->
+                    <div v-else-if="!cpCert.matches_host" class="form-hint form-hint-warn">
+                      <span class="mdi mdi-alert-octagon-outline"></span>
+                      <strong>This certificate does not name <code>{{ cpCert.dial_host }}</code>.</strong>
+                      <template v-if="!cpCert.hosts?.length"> It names no hosts at all.</template>
+                      <template v-else> It names only {{ cpCert.hosts.join(', ') }}.</template>
+                      Trusting it will <strong>not</strong> work: the agents will still fail with
+                      <code>cannot validate certificate for {{ cpCert.dial_host }}</code>, because
+                      trusting a CA does not skip the hostname check.
+                      Issue a certificate that includes <code>{{ cpCert.dial_host }}</code> — or use
+                      “Skip verification” until you have one.
+                    </div>
+                    <dl>
+                      <dt>Subject</dt><dd>{{ cpCert.subject }}</dd>
+                      <dt>Issuer</dt><dd>{{ cpCert.issuer }}<span v-if="cpCert.self_signed"> (self-signed)</span></dd>
+                      <dt>Expires</dt><dd>{{ new Date(cpCert.not_after).toLocaleString() }}</dd>
+                      <dt>SHA-256</dt><dd class="mono">{{ cpCert.fingerprint }}</dd>
+                    </dl>
+                    <!-- A server usually sends its leaf, not its CA. Pinning the leaf
+                         works until the cert is renewed — then every agent drops off at
+                         once, and nothing says why. Better to say so now. -->
+                    <p v-if="cpCert.matches_host && !cpCert.anchor_is_ca" class="form-hint form-hint-warn">
+                      <span class="mdi mdi-alert-outline"></span>
+                      Your control plane sent its own certificate, not the CA that signed it — so this
+                      pins <strong>that certificate</strong>. It will work until the certificate is
+                      <strong>renewed</strong>, and then every agent will stop connecting at once.
+                      For a durable anchor, paste your <strong>CA certificate</strong> below instead.
+                    </p>
+                    <p class="form-hint">
+                      Check the fingerprint against the host before trusting it —
+                      <code>openssl x509 -noout -fingerprint -sha256</code>.
+                    </p>
+                  </div>
+
+                  <textarea
+                    v-model="caCert"
+                    class="form-input ca-pem"
+                    rows="5"
+                    placeholder="-----BEGIN CERTIFICATE-----&#10;…&#10;-----END CERTIFICATE-----"
+                  ></textarea>
+                  </template>
+                </template>
+
+                <!-- Skip: name the actual risk, not a generic scold. -->
+                <p v-else class="form-hint form-hint-warn">
+                  <span class="mdi mdi-alert-outline"></span>
+                  <strong>Not recommended in production.</strong>
+                  The agents will accept <strong>any</strong> certificate for
+                  <code>{{ cluster?.manager_addr || 'the control plane' }}</code>, so anyone able to
+                  intercept their connections could impersonate it — and the control plane drives
+                  Docker on every node. Prefer “Trust a certificate authority”, which still verifies.
+                </p>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" @click="showDeployAgents = false">Cancel</button>
+              <button type="submit" class="btn btn-primary" :disabled="clusterBusy">
+                {{ clusterBusy ? 'Deploying…' : 'Deploy agents' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Teleport>
+
+    <ConfirmDialog
+      :open="showRemoveAgents"
+      title="Remove cluster agents?"
+      message="The agent is removed from every cluster node. They keep running their tasks — Swarm schedules those itself — but Miabi loses its Docker connection to them.
+
+Apps scheduled on those nodes will stop showing metrics, stats and a shell. The node records themselves are kept."
+      confirm-label="Remove agents"
+      variant="danger"
+      :busy="clusterBusy"
+      @confirm="removeAgents"
+      @cancel="showRemoveAgents = false"
+    />
+
     <ConfirmDialog
       :open="showApplyNetworking"
       title="Apply cluster networking?"
@@ -870,6 +1176,57 @@ function swarmClass(n: Server): string {
 .pf-table td {
   padding: 4px 8px 4px 0;
   vertical-align: top;
+}
+.ca-mode {
+  display: flex;
+  gap: 14px;
+  margin: 8px 0;
+  font-size: 12px;
+}
+.ca-mode label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.ca-actions {
+  margin: 8px 0;
+}
+.ca-cert {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.ca-cert dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 10px;
+  margin: 6px 0;
+}
+.ca-cert dt {
+  color: var(--text-muted);
+}
+.ca-cert dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.ca-pem {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  margin-top: 8px;
+}
+.form-hint-warn {
+  color: var(--warning, #b45309);
+}
+.agents {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
 }
 /* Network check */
 .netcheck {

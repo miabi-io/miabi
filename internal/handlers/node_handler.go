@@ -37,6 +37,15 @@ type SwarmEnricher interface {
 	Enrich(servers []models.Server)
 }
 
+// ClusterAgentAuth authorizes an agent that presented the CLUSTER-wide token carried
+// by the global agent service, rather than a per-node one. Identity comes from the
+// swarm node id the agent read off its own engine, which the manager verifies against
+// its own membership list — so the shared token authorizes registration, but only for
+// a machine the swarm already trusts. Optional: nil means only per-node tokens work.
+type ClusterAgentAuth interface {
+	AuthenticateAgent(ctx context.Context, token, swarmNodeID, hostname string) (*models.Server, error)
+}
+
 // NodeHandler exposes admin node management and the agent connect endpoint.
 type NodeHandler struct {
 	nodes       *node.Service
@@ -496,21 +505,48 @@ func (h *NodeHandler) Connect(c *okapi.Context) error {
 	if token == "" {
 		token = c.Query("token")
 	}
+	swarmNodeID := c.Header("X-Agent-Swarm-Node-ID")
+	hostname := c.Header("X-Agent-Hostname")
+
 	srv, err := h.nodes.Authenticate(token)
 	if err != nil {
-		return c.AbortUnauthorized("invalid agent token")
+		// Not a per-node mbn_ token. It may be the cluster-wide token carried by the
+		// global agent service, in which case identity comes from the swarm node id the
+		// agent read off its own engine — and is only trusted because the manager
+		// verifies it against its own membership list. An unknown-but-verified member
+		// registers itself as a node.
+		srv, err = h.registerClusterAgent(c, token, swarmNodeID, hostname)
+		if err != nil {
+			return c.AbortUnauthorized("invalid agent token")
+		}
 	}
-	// Learn the node's public endpoint from this connection — its source IP (as
-	// seen here) and self-reported hostname — so the admin needn't enter them when
-	// adding the node. Non-destructive (only fills blank fields). Read before the
-	// upgrade hijacks the request.
-	h.nodes.LearnEndpoint(srv.ID, c.RealIP(), c.Header("X-Agent-Hostname"))
+	// Learn what only the node can tell us, before the upgrade hijacks the request.
+	//
+	// Its public endpoint (source IP + self-reported hostname), so the admin needn't
+	// enter them — non-destructive, it only fills blank fields.
+	h.nodes.LearnEndpoint(srv.ID, c.RealIP(), hostname)
+	// And its swarm node id, which the control plane cannot work out for itself: it
+	// records one only when Miabi ran the `swarm join`, so a host that joined the
+	// swarm any other way stayed unmapped — and an unmapped node cannot be resolved
+	// from a service's task, which is what leaves a replica's logs and metrics
+	// unreachable.
+	h.nodes.LearnSwarmNodeID(srv.ID, swarmNodeID)
 	ws, err := h.upgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {
 		return nil // upgrade failed; response already handled
 	}
 	h.manager.Handle(srv, token, c.Header("X-Agent-Version"), c.Header("X-Agent-Container-ID"), ws)
 	return nil
+}
+
+// registerClusterAgent authorizes an agent carrying the cluster-wide token. Returns
+// an error (and never a node) when the capability is unwired or the token is unknown.
+func (h *NodeHandler) registerClusterAgent(c *okapi.Context, token, swarmNodeID, hostname string) (*models.Server, error) {
+	auth, ok := h.cluster.(ClusterAgentAuth)
+	if !ok || auth == nil {
+		return nil, node.ErrBadToken
+	}
+	return auth.AuthenticateAgent(c.Request().Context(), token, swarmNodeID, hostname)
 }
 
 func bearer(h string) string {

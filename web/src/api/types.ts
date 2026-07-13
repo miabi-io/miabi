@@ -1441,6 +1441,10 @@ export interface Server {
   // Cluster (Docker Swarm). Populated only when cluster mode is on; otherwise
   // these stay empty and the node is shown as standalone.
   swarm_node_id?: string
+  // True when the CLUSTER brought this node in rather than an admin: the global agent
+  // service landed on a swarm member and the agent registered itself. It distinguishes
+  // a machine an operator chose from one that simply exists because it is in the swarm.
+  auto_joined?: boolean
   swarm_role?: SwarmRole
   swarm_availability?: 'active' | 'pause' | 'drain'
   swarm_state?: 'ready' | 'down' | 'unknown' | 'disconnected'
@@ -1471,6 +1475,22 @@ export interface ClusterStatus {
   // install that was already clustered when it upgraded, since the conversion only
   // runs on the enable transition; the admin applies it explicitly.
   networks_pending?: number
+  // Whether the global agent service is deployed — i.e. whether swarm workers are
+  // MANAGED (metrics, stats, shell, housekeeping) or merely running tasks Miabi
+  // cannot see into. Swarm carries the agent to every worker, including ones that
+  // join later, so this is all-or-nothing rather than per-node.
+  agents_deployed?: boolean
+  agent_tasks?: number
+  // True when the agents do NOT verify the control plane's TLS certificate. Surfaced
+  // so a setting made once, to get a self-signed cert working, cannot quietly become
+  // permanent.
+  agent_insecure_tls?: boolean
+  // True when the agents verify against an operator-supplied CA. This is the HEALTHY
+  // state for a private control plane: verification still happens, anchored on their CA.
+  agent_custom_ca?: boolean
+  // Set when that CA is a file on the nodes rather than inline PEM — a dependency on
+  // the host filesystem, so it must exist on every node including future ones.
+  agent_ca_cert_path?: string
   error?: string
 }
 
@@ -1546,6 +1566,32 @@ export interface SwarmTask {
   message?: string
   error?: string
   updated_at?: string
+}
+
+// The certificate the control plane currently serves, offered so agents can be pinned
+// to it instead of skipping verification. Miabi fetches it so nobody has to hunt for a
+// PEM — the alternative being that they pick "skip" and never look back.
+export interface ControlPlaneCert {
+  pem: string
+  subject: string
+  issuer: string
+  not_after: string
+  fingerprint: string
+  self_signed: boolean
+  // Already verifies against the system pool: no CA needs distributing at all.
+  publicly_trusted: boolean
+  // The names the certificate actually vouches for (its SANs). Empty means none.
+  hosts?: string[]
+  // Whether it names the address the agents dial. This is the trap in "just trust the
+  // CA": adding a certificate to the trust pool does NOT skip the hostname check, so a
+  // certificate with no SANs (Goma's default has none) fails however well it is trusted.
+  matches_host: boolean
+  dial_host: string
+  // Whether what we can offer is a real certificate AUTHORITY, or merely the server's
+  // own leaf certificate. Pinning a leaf works — until the certificate is renewed, at
+  // which point every agent drops off at once. Then the right answer is to paste the
+  // actual CA instead.
+  anchor_is_ca: boolean
 }
 
 export interface ClusterMember {

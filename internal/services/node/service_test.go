@@ -6,6 +6,7 @@ package node
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 	"gorm.io/driver/sqlite"
@@ -46,6 +47,9 @@ type swarmRow struct {
 	ID          uint `gorm:"primaryKey"`
 	Name        string
 	SwarmNodeID string
+	// GORM stamps updated_at on a column-scoped Update (the real model embeds
+	// gorm.Model), so the stand-in table needs it or the write fails.
+	UpdatedAt time.Time
 }
 
 func (swarmRow) TableName() string { return "servers" }

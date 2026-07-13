@@ -173,6 +173,9 @@ type Client interface {
 	// ServiceTaskContainerID resolves a running task container of the named
 	// service on this engine, for logs/stats/exec/top. ErrNotFound if none here.
 	ServiceTaskContainerID(ctx context.Context, serviceName string) (string, error)
+	// ServiceEnv returns a service's environment. It can carry secrets, so it is for
+	// the service layer to inspect — never to return to a client.
+	ServiceEnv(ctx context.Context, idOrName string) ([]string, error)
 	// StreamServiceLogs streams a swarm service's logs from the MANAGER, aggregated
 	// across every task wherever it was scheduled. This is the only way to read the
 	// logs of a task on a swarm node Miabi has no Docker client for (an unmanaged

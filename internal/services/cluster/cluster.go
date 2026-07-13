@@ -93,6 +93,15 @@ type Service struct {
 	// probe containers from (see netcheck.go).
 	probeImages        NetCheckImages
 	probeImageFallback string
+
+	// The global agent service (see agents.go): the token store, the registrar that
+	// turns a self-reporting agent into a Miabi node, the address the agents dial
+	// back on, and the agent image.
+	tokens             TokenStore
+	registrar          NodeRegistrar
+	controlURL         string
+	agentImages        NetCheckImages
+	agentImageFallback string
 }
 
 // SetNetworkMigrator wires the workspace-network driver conversion: `migrate`
@@ -185,7 +194,24 @@ type Status struct {
 	// normal state for an install that was already clustered when it upgraded, since
 	// the conversion only runs on the enable transition. The Nodes page uses this to
 	// prompt for "Apply cluster networking".
-	NetworksPending int    `json:"networks_pending,omitempty"`
+	NetworksPending int `json:"networks_pending,omitempty"`
+	// AgentsDeployed reports whether the global agent service is installed — i.e.
+	// whether swarm workers are MANAGED (metrics, stats, shell, housekeeping) or are
+	// merely running tasks Miabi cannot see into.
+	AgentsDeployed bool `json:"agents_deployed"`
+	AgentTasks     int  `json:"agent_tasks,omitempty"`
+	// AgentInsecureTLS is true when those agents skip verification of the control
+	// plane's certificate. Shown so a one-off workaround for a self-signed cert cannot
+	// quietly become the permanent posture.
+	AgentInsecureTLS bool `json:"agent_insecure_tls,omitempty"`
+	// AgentCustomCA is true when the agents verify against an operator-supplied CA —
+	// the healthy state for a private control plane: verification still happens, it is
+	// just anchored on their own authority.
+	AgentCustomCA bool `json:"agent_custom_ca,omitempty"`
+	// AgentCACertPath is set when that CA is a file on the nodes rather than inline PEM.
+	// It is a dependency on the host filesystem — the file must exist on every node,
+	// including ones that join later — so it is worth showing.
+	AgentCACertPath string `json:"agent_ca_cert_path,omitempty"`
 	Error           string `json:"error,omitempty"`
 }
 

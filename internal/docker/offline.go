@@ -141,6 +141,9 @@ func (o offlineClient) ServiceRestart(context.Context, string) error         { r
 func (o offlineClient) ServiceTaskContainerID(context.Context, string) (string, error) {
 	return "", o.err
 }
+func (o offlineClient) ServiceEnv(context.Context, string) ([]string, error) {
+	return nil, o.err
+}
 func (o offlineClient) StreamServiceLogs(context.Context, string, bool, string, func(LogLine) error) error {
 	return o.err
 }

@@ -157,6 +157,13 @@ type Server struct {
 	// `docker info`). It is the stable key the Nodes page uses to look the node up
 	// in `docker node ls`.
 	SwarmNodeID string `json:"swarm_node_id,omitempty" gorm:"index"`
+	// AutoJoined marks a node the CLUSTER brought in rather than an admin: the
+	// global agent service landed on a swarm member, the agent registered itself,
+	// and Miabi created this record. It distinguishes "I added this machine" from
+	// "the swarm gave me this machine", which is the difference between a node an
+	// operator chose to place workloads on and one that simply exists because it is
+	// in the swarm.
+	AutoJoined bool `json:"auto_joined" gorm:"not null;default:false"`
 	// The rest are transient (not stored): populated from the manager's
 	// `docker node ls` each time nodes are listed, so the Nodes page can show a
 	// node's swarm role and availability.

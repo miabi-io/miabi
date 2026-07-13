@@ -1,7 +1,7 @@
 import api from './client'
 import type {
   ApiResponse, ClusterStatus, ClusterJoinInstructions, ClusterMember,
-  ClusterPreflight, NetCheck, SwarmTask,
+  ClusterPreflight, NetCheck, SwarmTask, ControlPlaneCert,
 } from './types'
 
 // clusterApi drives Miabi's optional cluster mode (Docker Swarm under the hood).
@@ -35,6 +35,29 @@ export const clusterApi = {
   // drained too — which is exactly when you most need to.
   setAvailability: (swarmNodeId: string, availability: 'active' | 'pause' | 'drain') =>
     api.post<ApiResponse<{ message: string }>>(`/admin/cluster/members/${swarmNodeId}/availability`, { availability }),
+  // Install the agent on every swarm worker as a global service (and on workers that
+  // join later). This grants Miabi the Docker socket — root-equivalent — on each of
+  // them, which is why it is an explicit action and not part of enabling cluster mode.
+  // insecureSkipVerify is needed when the control plane is behind a self-signed or
+  // private-CA certificate: without it the agent dies with "certificate signed by
+  // unknown authority" and never connects. It is a real downgrade — see the dialog.
+  deployAgents: (opts: { insecureSkipVerify?: boolean; caCert?: string; caCertPath?: string }) =>
+    api.post<ApiResponse<{ deployed: boolean; running_tasks: number; insecure_tls: boolean }>>(
+      '/admin/cluster/agents',
+      {
+        insecure_skip_verify: !!opts.insecureSkipVerify,
+        ca_cert: opts.caCert ?? '',
+        // A CA file already on the nodes is bind-mounted into each agent. It is why the
+        // hosts worked while the agents did not: the host trusts the CA, the container
+        // has its own bundle and has never heard of it.
+        ca_cert_path: opts.caCertPath ?? '',
+      },
+    ),
+  // The certificate the control plane serves. Fetching it turns "trust a custom CA"
+  // from a research task into one click — which decides whether it is the common path
+  // or whether everyone picks "skip verification" instead.
+  controlPlaneCert: () => api.get<ApiResponse<ControlPlaneCert>>('/admin/cluster/control-plane-cert'),
+  removeAgents: () => api.delete<ApiResponse<{ message: string }>>('/admin/cluster/agents'),
   nodeTasks: (swarmNodeId: string) =>
     api.get<ApiResponse<SwarmTask[]>>(`/admin/cluster/members/${swarmNodeId}/tasks`),
   joinNode: (nodeId: number) =>
