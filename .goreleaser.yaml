@@ -86,7 +86,7 @@ release:
   github:
     owner: miabi-io
     name: miabi
-  draft: true
+  draft: false
   prerelease: auto
   name_template: "Miabi {{ .Tag }}"
   footer: |

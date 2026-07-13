@@ -25,7 +25,6 @@ env:
   # miabi/runner versions independently of the panel (0.0.x vs 1.0.x), so it
   # cannot inherit ${GITHUB_REF_NAME}: miabi/runner:1.0.0-beta.4 does not exist.
   RUNNER_VERSION: ${{ vars.RUNNER_VERSION || 'v0.0.7' }}
-  AGENT_VERSION: ${{ vars.AGENT_VERSION || 'v0.2.0' }}
 
 jobs:
   release:
@@ -134,18 +133,26 @@ jobs:
             ghcr.io/miabi-io/miabi:${{ env.VERSION }}-rootless
 
 
-  installer:
+  # Bump deploy/install.sh on main, via a pull request.
+  bump-installer:
     runs-on: ubuntu-latest
+    # Wait for the images. This PR is what tells main to install them, and main must
+    # never advertise a version nobody can pull
     needs: [release, image]
     permissions:
-      contents: write
+      contents: write      # push the bump branch
+      pull-requests: write # open the PR
       packages: read
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: main # bump main, not the tag — the tag is already cut
+          fetch-depth: 0
+
       - uses: docker/setup-buildx-action@v3
 
-      # Anonymous pulls suffice for public images; logging in keeps the check
-      # working if the GHCR package is ever made private.
+      # Anonymous pulls suffice for public images; logging in keeps the check working
+      # if the GHCR package is ever made private.
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -153,17 +160,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Stamp and attach the installers
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify every pinned image exists
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"   # docker tags drop the leading "v"
 
-          # GOMA_VERSION/RUNNER_VERSION/AGENT_VERSION may come from repository
-          # variables, so validate rather than trust: a typo would ship an
-          # installer pinning an image nobody published.
-          for v in GOMA_VERSION RUNNER_VERSION AGENT_VERSION; do
+          # GOMA_VERSION/RUNNER_VERSION may come from repository variables, so validate
+          # rather than trust: a typo would open a PR pinning an image nobody published.
+          for v in GOMA_VERSION RUNNER_VERSION; do
             case "${!v}" in
               v[0-9]*) ;;
               *) echo "::error::$v must look like v1.2.3, got '${!v}'"; exit 1 ;;
@@ -179,13 +183,18 @@ jobs:
               fi
               echo "  waiting for $1 (attempt ${attempt}/5)"; sleep 10
             done
-            echo "::error::$1 was never published"; exit 1
+            echo "::error::$1 was never published — refusing to bump main to a version that cannot be installed"
+            exit 1
           }
           assert_image "miabi/miabi:${VERSION}"
           assert_image "ghcr.io/miabi-io/miabi:${VERSION}"
           assert_image "jkaninda/goma-gateway:${GOMA_VERSION#v}"
           assert_image "miabi/runner:${RUNNER_VERSION#v}"
-          assert_image "miabi/agent:${AGENT_VERSION#v}"
+
+      - name: Bump the pinned versions
+        id: bump
+        run: |
+          set -euo pipefail
 
           sed -i \
             -e "s|^MIABI_VERSION=.*|MIABI_VERSION=\"\${MIABI_VERSION:-${GITHUB_REF_NAME}}\"|" \
@@ -193,58 +202,82 @@ jobs:
             -e "s|^RUNNER_VERSION=.*|RUNNER_VERSION=\"\${RUNNER_VERSION:-${RUNNER_VERSION}}\"|" \
             deploy/install.sh
 
-          # The node-agent installer pins only the agent image it starts.
-          sed -i \
-            -e "s|^AGENT_VERSION=.*|AGENT_VERSION=\"\${AGENT_VERSION:-${AGENT_VERSION}}\"|" \
-            deploy/install-agent.sh
+          # deploy/install-agent.sh is deliberately untouched — see the AGENT_VERSION
+          # note at the top of this file.
 
-          # Fail loudly rather than shipping an installer that still says :latest.
-          # -F (fixed string): the pattern contains `${...}`, and a `$` mid-regex
-          # is an anchor in BSD grep, so a plain -q silently never matches.
+          # Fail loudly rather than opening a PR that still says :latest.
+          # -F (fixed string): the pattern contains `${...}`, and a `$` mid-regex is an
+          # anchor in BSD grep, so a plain -q silently never matches.
           grep -qF "MIABI_VERSION=\"\${MIABI_VERSION:-${GITHUB_REF_NAME}}\"" deploy/install.sh
           grep -qF "GOMA_VERSION=\"\${GOMA_VERSION:-${GOMA_VERSION}}\"" deploy/install.sh
           grep -qF "RUNNER_VERSION=\"\${RUNNER_VERSION:-${RUNNER_VERSION}}\"" deploy/install.sh
-          grep -qF "AGENT_VERSION=\"\${AGENT_VERSION:-${AGENT_VERSION}}\"" deploy/install-agent.sh
           bash -n deploy/install.sh
-          bash -n deploy/install-agent.sh
 
-          gh release upload "${GITHUB_REF_NAME}" \
-            deploy/install.sh \
-            deploy/install-agent.sh \
-            --clobber
+          if git diff --quiet -- deploy/install.sh; then
+            echo "::notice::main already pins ${GITHUB_REF_NAME} — nothing to bump."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git --no-pager diff --stat -- deploy/install.sh
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
-
-      - name: Publish the release
+      - name: Open the bump pull request
+        if: steps.bump.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          BRANCH="release/bump-${GITHUB_REF_NAME}"
+          VERSION="${GITHUB_REF_NAME#v}" # for the image table below
 
-          # Guard: never publish a release whose installer asset is missing or
-          # truncated. Better a stuck draft than a public 404.
-          for f in install.sh install-agent.sh; do
-            size="$(gh release view "${GITHUB_REF_NAME}" \
-                      --json assets \
-                      --jq ".assets[] | select(.name==\"${f}\") | .size" || true)"
-            [ -n "$size" ] && [ "$size" -gt 1000 ] \
-              || { echo "::error::${f} is missing or too small (${size:-0} bytes) — refusing to publish"; exit 1; }
-            echo "  ok ${f} (${size} bytes)"
-          done
+          git config user.name  "miabi-bot"
+          git config user.email "bot@miabi.io"
 
-          gh release edit "${GITHUB_REF_NAME}" --draft=false --latest
-          echo "::notice::Published ${GITHUB_REF_NAME} — /releases/latest now serves its installers."
+          # -B and --force so re-running the workflow overwrites the branch instead of
+          # failing on one that already exists. --force-with-lease is the usual reflex,
+          # but on the *first* run there is no remote-tracking ref to lease against and
+          # it aborts with "stale info". The branch is workflow-owned (nobody else
+          # pushes to release/bump-*), so a plain force is the safe one here.
+          git checkout -B "$BRANCH"
+          git add deploy/install.sh
+          git commit -m "chore(release): pin the installer to ${GITHUB_REF_NAME}"
+          git push --force origin "$BRANCH"
 
-      - name: Verify the published one-liner
-        if: ${{ !contains(github.ref_name, '-') }}   # skip for pre-releases (not 'latest')
-        run: |
-          set -euo pipefail
-          url="https://github.com/miabi-io/miabi/releases/latest/download/install.sh"
-          for attempt in 1 2 3 4 5; do
-            if curl -fsSL "$url" -o /tmp/install.sh; then break; fi
-            echo "  waiting for the asset CDN (attempt ${attempt}/5)"; sleep 10
-          done
-          [ -s /tmp/install.sh ] || { echo "::error::${url} did not serve install.sh"; exit 1; }
-          bash -n /tmp/install.sh
-          grep -qF "MIABI_VERSION=\"\${MIABI_VERSION:-${GITHUB_REF_NAME}}\"" /tmp/install.sh \
-            || { echo "::error::the published installer does not pin ${GITHUB_REF_NAME}"; exit 1; }
-          echo "::notice::curl -fsSL https://get.miabi.io | sudo bash  →  ${GITHUB_REF_NAME}  ✓"
+          # Idempotent: a re-run updates the branch and reuses the open PR.
+          if gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
+            echo "::notice::the PR for $BRANCH is already open — updated it."
+            exit 0
+          fi
+
+          # The body goes through a file, not --body: every line of an inline string
+          # would have to start at column 0 to avoid leading spaces in the markdown,
+          # and column 0 is outside this YAML block scalar. The heredoc is unquoted so
+          # ${VERSION} et al. expand; \` therefore has to be escaped to survive as a
+          # literal backtick rather than opening a command substitution.
+          sed 's/^ \{10\}//' > /tmp/pr-body.md <<EOF
+          Cut by the release workflow for **${GITHUB_REF_NAME}**, after every image below was confirmed published.
+
+          | Image | Tag |
+          |---|---|
+          | \`miabi/miabi\` | \`${VERSION}\` |
+          | \`jkaninda/goma-gateway\` | \`${GOMA_VERSION#v}\` |
+          | \`miabi/runner\` | \`${RUNNER_VERSION#v}\` |
+
+          \`get.miabi.io\` serves \`deploy/install.sh\` from **main**, so merging this is
+          what makes ${GITHUB_REF_NAME} the version new installs get. Until it is merged,
+          main keeps pinning the previous release — deliberately: the installer must never
+          advertise a version before its images exist.
+
+          \`deploy/install-agent.sh\` is not touched here. The node agent releases from its
+          own repository, so its pin is bumped by hand.
+
+          Merge when you are ready to make ${GITHUB_REF_NAME} the default install.
+          EOF
+
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "chore(release): pin the installer to ${GITHUB_REF_NAME}" \
+            --body-file /tmp/pr-body.md
+
+          echo "::notice::Opened a PR pinning the installer to ${GITHUB_REF_NAME}."

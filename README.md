@@ -311,7 +311,7 @@ Installs Docker if needed, fetches the production compose + config into
 `/opt/miabi`, generates secrets, and brings the stack up:
 
 ```bash
-curl -fsSL https://github.com/miabi-io/miabi/releases/latest/download/install.sh | sudo bash
+curl -fsSL https://get.miabi.io | sudo bash
 ```
 
 Then edit `/opt/miabi/.env` (set your domain) and `/opt/miabi/goma/goma.yml`

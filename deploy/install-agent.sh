@@ -34,16 +34,11 @@ warn() { printf "${C_DIM}%s${C_RESET} ${C_YELLOW}!${C_RESET}   %s\n" "$(_ts)" "$
 die()  { printf "${C_DIM}%s${C_RESET} ${C_RED}✗${C_RESET}   %s\n" "$(_ts)" "$1" >&2; exit 1; }
 
 # --- image pin ----------------------------------------------------------------
-# The release workflow stamps the agent version that release was tested against.
-# An unstamped copy — a git checkout, or main — keeps the placeholder and falls
-# back to :latest. The agent versions independently of the panel (agent 0.x while
-# the panel is 1.x), so it carries its own pin rather than inheriting one.
-#
-# The `#__` test deliberately avoids spelling the full placeholder token, or the
-# release-time sed would substitute the check along with the assignment.
-AGENT_VERSION="${AGENT_VERSION:-__AGENT_VERSION__}"
-[ "${AGENT_VERSION#__}" = "$AGENT_VERSION" ] || AGENT_VERSION=""
-# Docker tags carry no leading "v" (git tag v0.2.0 → image tag 0.2.0).
+# The agent versions independently of the panel (agent 0.x while the panel is
+# 1.x), so it carries its own pin rather than inheriting one.
+AGENT_VERSION="${AGENT_VERSION:-v0.3.0}"
+# Docker tags carry no leading "v" (git tag v0.2.0 → image tag 0.2.0). The :latest
+# fallback only applies if a caller deliberately blanks it (AGENT_VERSION= ).
 AGENT_IMAGE_TAG="${AGENT_VERSION#v}"; AGENT_IMAGE_TAG="${AGENT_IMAGE_TAG:-latest}"
 
 # --- config (env with flag overrides) -----------------------------------------

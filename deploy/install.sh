@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Miabi one-line installer.
-#   curl -fsSL https://github.com/miabi-io/miabi/releases/latest/download/install.sh | sudo bash
+#   curl -fsSL https://get.miabi.io | sudo bash
 #
 # Installs Docker if missing, fetches the production stack (compose.yaml +
 # goma.yml) into /opt/miabi, generates secrets into .env, and brings it up.
@@ -13,9 +13,9 @@
 #
 # Environment overrides:
 #   MIABI_DIR                   install directory              (default /opt/miabi)
-#   MIABI_VERSION               Miabi release to install       (default: stamped)
-#   GOMA_VERSION                Goma Gateway release           (default: stamped)
-#   RUNNER_VERSION              miabi/runner release           (default: stamped)
+#   MIABI_VERSION               Miabi release to install       (default: pinned below)
+#   GOMA_VERSION                Goma Gateway release           (default: pinned below)
+#   RUNNER_VERSION              miabi/runner release           (default: pinned below)
 #   MIABI_RAW                   base URL for remote file fetch (default: the tag)
 #   MIABI_NO_START              set to 1 to configure but not `up -d`
 #   MIABI_SKIP_DOCKER_INSTALL   set to 1 to never touch the host's packages;
@@ -54,32 +54,28 @@ START_STACK="${MIABI_NO_START:-0}"
 SKIP_DOCKER_INSTALL="${MIABI_SKIP_DOCKER_INSTALL:-0}"
 
 # ── versions ─────────────────────────────────────────────────────────────────
-# CI rewrites these two assignments at release time (release.yml), so a released
-# install.sh pins the exact images that release was tested with. An unstamped
-# copy — a git checkout, or main — keeps the placeholders and falls back to the
-# main branch and :latest.
 #
-# The `#__` test deliberately avoids spelling the full placeholder token, or the
-# release-time sed would substitute the check along with the assignment.
-MIABI_VERSION="${MIABI_VERSION:-__MIABI_VERSION__}"
-GOMA_VERSION="${GOMA_VERSION:-__GOMA_VERSION__}"
-RUNNER_VERSION="${RUNNER_VERSION:-__RUNNER_VERSION__}"
-[ "${MIABI_VERSION#__}" = "$MIABI_VERSION" ] || MIABI_VERSION=""
-[ "${GOMA_VERSION#__}" = "$GOMA_VERSION" ] || GOMA_VERSION=""
-[ "${RUNNER_VERSION#__}" = "$RUNNER_VERSION" ] || RUNNER_VERSION=""
+# Bump order matters: change these, commit, then tag THAT commit. The stack files
+# are fetched from the tag below, so a version bumped but not yet tagged points
+# at a tag that does not exist.
+MIABI_VERSION="${MIABI_VERSION:-v1.3.0}"
+GOMA_VERSION="${GOMA_VERSION:-v0.11.0}"
+RUNNER_VERSION="${RUNNER_VERSION:-v0.0.7}"
 
 # Docker tags carry no leading "v" (git tag v1.2.3 → image tag 1.2.3) across all
-# three images. An unpinned build tracks :latest.
+# three images. The :latest fallback only applies if a caller deliberately blanks
+# a version (MIABI_VERSION= ), since the defaults above are always set.
 #
 # miabi/runner versions independently of miabi/miabi (runner 0.0.x while the
-# panel is 1.0.x), so it carries its own stamped version — deriving its tag from
+# panel is 1.0.x), so it carries its own version — deriving its tag from
 # MIABI_VERSION would ask for an image that was never published.
 MIABI_IMAGE_TAG="${MIABI_VERSION#v}";   MIABI_IMAGE_TAG="${MIABI_IMAGE_TAG:-latest}"
 GOMA_IMAGE_TAG="${GOMA_VERSION#v}";     GOMA_IMAGE_TAG="${GOMA_IMAGE_TAG:-latest}"
 RUNNER_IMAGE_TAG="${RUNNER_VERSION#v}"; RUNNER_IMAGE_TAG="${RUNNER_IMAGE_TAG:-latest}"
 
 # Fetch the stack files from the SAME release as the images, so compose.yaml and
-# the image it references can never disagree. Unstamped falls back to main.
+# the image it references can never disagree. A caller who blanks MIABI_VERSION
+# falls back to main.
 if [ -n "$MIABI_VERSION" ]; then
   DEFAULT_RAW="https://raw.githubusercontent.com/miabi-io/miabi/refs/tags/${MIABI_VERSION}/deploy"
 else
@@ -88,12 +84,15 @@ fi
 REPO_RAW="${MIABI_RAW:-$DEFAULT_RAW}"
 
 # How to re-run for an update: a local path when run from a checkout, otherwise
-# the canonical one-liner (a piped `curl | bash` has no re-runnable path). The
-# release asset always resolves to the newest release, so it is the update path.
+# the canonical one-liner (a piped `curl | bash` has no re-runnable path).
+#
+# get.miabi.io — not a release asset. The script is served from the repository, so
+# it exists at every commit; a release asset only exists once the release is
+# published, and pointing users at one that is mid-build hands them a 404.
 if [ -f "${SCRIPT_DIR}/install.sh" ]; then
   UPDATE_HINT="sudo ${SCRIPT_DIR}/install.sh"
 else
-  UPDATE_HINT="curl -fsSL https://github.com/miabi-io/miabi/releases/latest/download/install.sh | sudo bash"
+  UPDATE_HINT="curl -fsSL https://get.miabi.io | sudo bash"
 fi
 
 # ── logging ──────────────────────────────────────────────────────────────────
