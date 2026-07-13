@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/dotenv"
 	"github.com/miabi-io/miabi/internal/hostmount"
@@ -820,12 +821,34 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 	return app, nil
 }
 
-// SetNetworks attaches the given workspace networks to the app, always
-// including the workspace's default network.
+// SetNetworks attaches the given workspace networks to the app, always including the
+// workspace's default network.
+//
+// The default is not optional garnish: it is the network the app shares with its
+// databases, and in cluster mode it is the workspace's Swarm overlay — the thing that
+// lets it reach a database on another node. An app that ends up on none deploys
+// perfectly happily and then cannot resolve anything, with nothing to say why.
+//
+// So a missing default is repaired rather than tolerated. That path is reachable for a
+// workspace that predates default networks, or one whose network was removed out of
+// band — and it matters most for callers that never name a network at all, like GitOps,
+// where the default is the only network the app was ever going to get.
 func (s *Service) SetNetworks(app *models.Application, networkIDs []uint) error {
 	all, err := s.networks.ListByWorkspace(app.WorkspaceID)
 	if err != nil {
 		return err
+	}
+	if !hasDefaultNetwork(all) && s.netEnsurer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		def, derr := s.netEnsurer.EnsureDefault(ctx, app.WorkspaceID)
+		switch {
+		case derr != nil:
+			logger.Warn("could not ensure the workspace's default network; the app will have none",
+				"workspace", app.WorkspaceID, "app", app.Name, "error", derr)
+		case def != nil:
+			all = append(all, *def)
+		}
 	}
 	want := map[uint]bool{}
 	for _, id := range networkIDs {
@@ -838,6 +861,15 @@ func (s *Service) SetNetworks(app *models.Application, networkIDs []uint) error 
 		}
 	}
 	return s.apps.ReplaceNetworks(app, selected)
+}
+
+func hasDefaultNetwork(nets []models.Network) bool {
+	for i := range nets {
+		if nets[i].IsDefault {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) Get(workspaceID, id uint) (*models.Application, error) {
