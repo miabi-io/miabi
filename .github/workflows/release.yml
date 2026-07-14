@@ -140,9 +140,11 @@ jobs:
     # never advertise a version nobody can pull
     needs: [release, image]
     permissions:
-      contents: write      # push the bump branch
-      pull-requests: write # open the PR
+      contents: write # push the bump branch
       packages: read
+      # No pull-requests: write. The org forbids Actions from opening PRs, and the repo
+      # cannot override an org policy — so the job pushes the branch and a maintainer
+      # opens the PR from the link in the job summary.
     steps:
       - uses: actions/checkout@v5
         with:
@@ -221,14 +223,12 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Open the bump pull request
+      - name: Push the bump branch
         if: steps.bump.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           BRANCH="release/bump-${GITHUB_REF_NAME}"
-          VERSION="${GITHUB_REF_NAME#v}" # for the image table below
+          VERSION="${GITHUB_REF_NAME#v}"
 
           git config user.name  "miabi-bot"
           git config user.email "bot@miabi.io"
@@ -243,41 +243,30 @@ jobs:
           git commit -m "chore(release): pin the installer to ${GITHUB_REF_NAME}"
           git push --force origin "$BRANCH"
 
-          # Idempotent: a re-run updates the branch and reuses the open PR.
-          if gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
-            echo "::notice::the PR for $BRANCH is already open — updated it."
-            exit 0
-          fi
+          # The workflow deliberately does NOT open the PR. The miabi-io org forbids
+          # GitHub Actions from creating pull requests, and the repo cannot override an
+          # org policy — so `gh pr create` could only ever fail here, and failing would
+          # paint an otherwise good release run red. A maintainer opens it from the link
+          # below; merging it is what makes this release the default install.
+          {
+            echo "### Installer bump ready for ${GITHUB_REF_NAME}"
+            echo
+            echo "\`deploy/install.sh\` is pinned on \`${BRANCH}\`. Open the PR to make it live:"
+            echo
+            echo "**https://github.com/${GITHUB_REPOSITORY}/compare/main...${BRANCH}?expand=1**"
+            echo
+            echo "| Image | Tag |"
+            echo "|---|---|"
+            echo "| \`miabi/miabi\` | \`${VERSION}\` |"
+            echo "| \`jkaninda/goma-gateway\` | \`${GOMA_VERSION#v}\` |"
+            echo "| \`miabi/runner\` | \`${RUNNER_VERSION#v}\` |"
+            echo
+            echo "Every image above was confirmed published before this branch was pushed."
+            echo "\`get.miabi.io\` serves \`deploy/install.sh\` from **main**, so until the PR is"
+            echo "merged main keeps pinning the previous release — deliberately: the installer"
+            echo "must never advertise a version before its images exist."
+            echo
+            echo "\`deploy/install-agent.sh\` is not touched; the agent releases from its own repo."
+          } >> "$GITHUB_STEP_SUMMARY"
 
-          # The body goes through a file, not --body: every line of an inline string
-          # would have to start at column 0 to avoid leading spaces in the markdown,
-          # and column 0 is outside this YAML block scalar. The heredoc is unquoted so
-          # ${VERSION} et al. expand; \` therefore has to be escaped to survive as a
-          # literal backtick rather than opening a command substitution.
-          sed 's/^ \{10\}//' > /tmp/pr-body.md <<EOF
-          Cut by the release workflow for **${GITHUB_REF_NAME}**, after every image below was confirmed published.
-
-          | Image | Tag |
-          |---|---|
-          | \`miabi/miabi\` | \`${VERSION}\` |
-          | \`jkaninda/goma-gateway\` | \`${GOMA_VERSION#v}\` |
-          | \`miabi/runner\` | \`${RUNNER_VERSION#v}\` |
-
-          \`get.miabi.io\` serves \`deploy/install.sh\` from **main**, so merging this is
-          what makes ${GITHUB_REF_NAME} the version new installs get. Until it is merged,
-          main keeps pinning the previous release — deliberately: the installer must never
-          advertise a version before its images exist.
-
-          \`deploy/install-agent.sh\` is not touched here. The node agent releases from its
-          own repository, so its pin is bumped by hand.
-
-          Merge when you are ready to make ${GITHUB_REF_NAME} the default install.
-          EOF
-
-          gh pr create \
-            --base main \
-            --head "$BRANCH" \
-            --title "chore(release): pin the installer to ${GITHUB_REF_NAME}" \
-            --body-file /tmp/pr-body.md
-
-          echo "::notice::Opened a PR pinning the installer to ${GITHUB_REF_NAME}."
+          echo "::notice::Pushed ${BRANCH}. Open the PR from the job summary."
