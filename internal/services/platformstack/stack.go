@@ -31,6 +31,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -66,13 +67,16 @@ const (
 	VolumePGData           = "mb-platform-pgdata"
 	VolumeRedisData        = "mb-platform-redisdata"
 	VolumeLogs             = "mb-platform-logs"
-	VolumeGatewayConfig    = "mb-platform-gateway-config"
 	VolumeGatewayCerts     = "mb-platform-gateway-certs"
 	VolumeGatewayProviders = "mb-platform-gateway-providers"
+
+	// VolumeGatewayConfig is NO LONGER CREATED: the gateway config is a bind-mounted
+	// file on the host, not a copy in a volume. It survives here only so Teardown can
+	// clean it up on installs that predate the change.
+	VolumeGatewayConfig = "mb-platform-gateway-config"
 )
 
-// helperImage seeds the gateway config volume. Tiny, and already used by edgegateway
-// for the same job.
+// helperImage is a tiny image used for one-shot probes (the port check).
 const helperImage = "busybox:1.36"
 
 // Default images. Overridable in the manifest; pinned here so a bare `miabi install`
@@ -95,13 +99,16 @@ const (
 type Service struct {
 	dc  docker.Client
 	log func(format string, args ...any)
+	// manifestPath is where stack.yaml lives, AS THIS PROCESS SEES IT. The gateway's
+	// config sits beside it, so the Service needs to know the directory.
+	manifestPath string
 }
 
-func New(dc docker.Client, log func(string, ...any)) *Service {
+func New(dc docker.Client, log func(string, ...any), manifestPath string) *Service {
 	if log == nil {
 		log = func(string, ...any) {}
 	}
-	return &Service{dc: dc, log: log}
+	return &Service{dc: dc, log: log, manifestPath: manifestPath}
 }
 
 // Defaults returns a manifest with everything the caller did not supply. miabiImage
@@ -135,6 +142,9 @@ func (m *Manifest) Normalize() error {
 	}
 	if m.ACMEEmail == "" {
 		m.ACMEEmail = "admin@" + m.Domain
+	}
+	if err := m.normalizeControlURL(); err != nil {
+		return err
 	}
 	if m.Network.Name == "" {
 		m.Network.Name = DefaultNetwork
@@ -170,10 +180,85 @@ func (m *Manifest) Normalize() error {
 	if err := m.normalizeRegistry(); err != nil {
 		return err
 	}
+	if err := m.normalizeGateway(); err != nil {
+		return err
+	}
 	if err := m.normalizeEnv(); err != nil {
 		return err
 	}
 	return m.GenerateSecrets()
+}
+
+// Seeded gateway.env defaults, written into the manifest so they are discoverable
+// rather than folklore.
+const (
+	// DefaultGomaLogLevel matches Goma's own default; writing it down makes the knob
+	// visible. Real effect, measured: info emits 28 lines and 0 DEBUG on boot, debug
+	// emits 51 lines and 22 DEBUG.
+	DefaultGomaLogLevel = "info"
+
+	envGomaLogLevel = "GOMA_LOG_LEVEL"
+)
+
+// gomaLogLevels are the values Goma acts on. Validated here because Goma does NOT
+// reject an unknown one — it silently falls back to info, so a typo leaves an operator
+// waiting for debug output that was never coming.
+var gomaLogLevels = []string{"debug", "trace", "info", "warn", "error", "off"}
+
+// seedGatewayEnvDefaults fills in what the operator should see, without overwriting
+// anything they set.
+func (m *Manifest) seedGatewayEnvDefaults() {
+	if m.Gateway.Env == nil {
+		m.Gateway.Env = map[string]string{}
+	}
+	if _, ok := m.Gateway.Env[envGomaLogLevel]; !ok {
+		m.Gateway.Env[envGomaLogLevel] = DefaultGomaLogLevel
+	}
+}
+
+// normalizeGateway defaults the config file name and validates gateway.env.
+//
+// The reserved set is derived from gatewaySpec, exactly as normalizeEnv derives the
+// control plane's from controlPlaneSpec — so adding a variable to the gateway's spec
+// automatically makes it un-spoofable here, with no list to keep in sync.
+func (m *Manifest) normalizeGateway() error {
+	if m.Gateway.Config == "" {
+		m.Gateway.Config = DefaultGatewayConfigFile
+	}
+	m.seedGatewayEnvDefaults()
+
+	probe := *m
+	probe.Gateway.Env = nil
+	managed := map[string]bool{}
+	for _, kv := range gatewaySpec(&probe, ContainerGateway, probe.Images.Gateway).Env {
+		if k, _, ok := strings.Cut(kv, "="); ok {
+			managed[k] = true
+		}
+	}
+
+	clean := make(map[string]string, len(m.Gateway.Env))
+	for k, v := range m.Gateway.Env {
+		key := strings.TrimSpace(k)
+		if !validEnvName(key) {
+			return fmt.Errorf("gateway.env: %q is not a valid variable name", key)
+		}
+		if managed[key] {
+			return fmt.Errorf("gateway.env: %s is set by Miabi itself and cannot be overridden here.\n"+
+				"  It is derived from the manifest (domain, acme_email, secrets) — change it there instead", key)
+		}
+		clean[key] = v
+	}
+
+	if lvl, ok := clean[envGomaLogLevel]; ok && lvl != "" {
+		if !slices.Contains(gomaLogLevels, strings.ToLower(strings.TrimSpace(lvl))) {
+			return fmt.Errorf("gateway.env: %s=%q is not a Goma log level (use %s). "+
+				"Goma would not complain — it would silently fall back to info, and you would "+
+				"wait for output that never came",
+				envGomaLogLevel, lvl, strings.Join(gomaLogLevels, ", "))
+		}
+	}
+	m.Gateway.Env = clean
+	return nil
 }
 
 // reservedEnvPrefixes are settings the manifest models with a dedicated field, so
@@ -188,10 +273,6 @@ var reservedEnvPrefixes = []string{"MIABI_REGISTRY_"}
 // and where to change them. Both stay ordinary env: entries — editable, and not
 // reserved — because neither needs to agree with anything else in the manifest.
 const (
-	// DefaultTimezone is UTC on purpose. Every other component (Postgres, Redis, Goma)
-	// defaults to UTC, so anything else here would put the control plane's logs in a
-	// different timezone from the containers it manages — the worst way to read a
-	// timeline. Changing it moves the WHOLE stack (see applyTimezone).
 	DefaultTimezone = "UTC"
 	// DefaultLogLevel matches what the control plane would pick anyway in production;
 	// writing it down makes it discoverable instead of folklore.
@@ -269,6 +350,15 @@ func (m *Manifest) normalizeEnv() error {
 					"(use `registry: {enabled: true, host: …}`, or --registry on the command line)", key)
 			}
 		}
+		// The gateway's config-encryption key must reach BOTH containers (Miabi encrypts
+		// what Goma decrypts). Setting it here would give it to the control plane only,
+		// and Goma would read a config it cannot decrypt — routing broken, no obvious
+		// cause. It has exactly one home.
+		if key == gomaConfigEncryptionKey {
+			return fmt.Errorf("env: %s belongs under `gateway.env` — set it there and Miabi "+
+				"gives it to BOTH the gateway and the control plane, which is what it needs "+
+				"(Miabi encrypts the config Goma decrypts)", key)
+		}
 		clean[key] = v
 	}
 
@@ -299,6 +389,29 @@ func validEnvName(k string) bool {
 		}
 	}
 	return true
+}
+
+// normalizeControlURL defaults the control URL to the panel's public URL and checks
+// it is one.
+//
+// A bad value here fails in a place far from the mistake: the panel itself works, and
+// only later does an agent refuse to connect, or a node's gateway quietly fetch no
+// routes — because the URL they were handed is not a URL. Catch it at install.
+//
+// The trailing slash is trimmed because the agent trims it too; leaving it in means
+// the manifest says one thing and the running system another.
+func (m *Manifest) normalizeControlURL() error {
+	m.ControlURL = strings.TrimRight(strings.TrimSpace(m.ControlURL), "/")
+	if m.ControlURL == "" {
+		m.ControlURL = m.WebURL
+		return nil
+	}
+	u, err := url.Parse(m.ControlURL)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return fmt.Errorf("control_url %q is not a URL — remote nodes and agents dial it, "+
+			"so it must be absolute (https://miabi.example.com)", m.ControlURL)
+	}
+	return nil
 }
 
 // normalizeRegistry derives and validates the registry's hostname.
@@ -384,6 +497,14 @@ func (s *Service) Converge(ctx context.Context, m *Manifest) error {
 
 	s.log("ensuring volumes")
 	if err := s.ensureVolumes(ctx); err != nil {
+		return err
+	}
+
+	// Before any component: the gateway config must exist on the host and parse. It is
+	// bind-mounted, so it has to be there before the container is created — and the
+	// panel's own route lives in it, so a typo is worth catching now rather than as a
+	// health timeout after the database is already up.
+	if err := s.EnsureGatewayConfig(ctx, m); err != nil {
 		return err
 	}
 
@@ -491,7 +612,6 @@ func (s *Service) ensureVolumes(ctx context.Context) error {
 		VolumePGData:           docker.RolePlatformDB,
 		VolumeRedisData:        docker.RolePlatformCache,
 		VolumeLogs:             docker.RoleControlPlane,
-		VolumeGatewayConfig:    docker.RoleGateway,
 		VolumeGatewayCerts:     docker.RoleGateway,
 		VolumeGatewayProviders: docker.RoleGateway,
 	} {
@@ -548,11 +668,6 @@ func (s *Service) ensureContainer(ctx context.Context, m *Manifest, c component)
 	if err := ensureImage(ctx, s.dc, image, s.log); err != nil {
 		return err
 	}
-	if c.Name == ContainerGateway {
-		if err := s.seedGatewayConfig(ctx, m); err != nil {
-			return err
-		}
-	}
 	if _, err := s.dc.RunContainer(ctx, spec); err != nil {
 		return fmt.Errorf("start: %w", err)
 	}
@@ -583,10 +698,8 @@ func (s *Service) Rollout(ctx context.Context, m *Manifest, name, newImage strin
 	if !ok {
 		return fmt.Errorf("unknown component %q (have: %s)", name, strings.Join(s.ComponentNames(m), ", "))
 	}
-	if name == ContainerGateway {
-		if err := s.seedGatewayConfig(ctx, m); err != nil {
-			return err
-		}
+	if err := s.EnsureGatewayConfig(ctx, m); err != nil {
+		return err
 	}
 	return saferollout.Run(ctx, s.dc, saferollout.Spec{
 		Name:  c.Name,

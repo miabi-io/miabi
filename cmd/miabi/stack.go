@@ -34,8 +34,10 @@ func registerStackCommands(cli *okapicli.CLI) {
 		String("domain", "d", "", "Public hostname for the panel, e.g. miabi.example.com").
 		String("admin-email", "", "", "First admin's email (default admin@<domain>)").
 		String("acme-email", "", "", "Contact for Let's Encrypt (default admin@<domain>)").
+		String("control-url", "", "", "URL remote nodes and agents dial back on (default: the panel's own URL)").
 		String("image", "", "", "Control-plane image (default: the image this installer itself runs from)").
 		String("gateway-image", "", "", "Goma Gateway image").
+		String("goma-config", "", "", "Gateway config file, relative to the manifest's directory (default goma.yml)").
 		Bool("registry", "", false, "Enable the built-in container registry").
 		Bool("no-host-proc", "", false, "Do not bind the host's /proc into the control plane (for hosts that refuse the bind; host metrics fall back to the container's /proc)").
 		String("registry-host", "", "", "Registry hostname (default registry.<domain>); implies --registry").
@@ -91,6 +93,7 @@ func stackCtx() (context.Context, context.CancelFunc) {
 }
 
 func stackService(cmd *okapicli.Command) (*platformstack.Service, docker.Client, error) {
+	path := manifestPath(cmd)
 	dc, err := docker.New()
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot reach Docker (it must be installed, and this user must be able to use it — the `docker` group, or root): %w", err)
@@ -101,7 +104,7 @@ func stackService(cmd *okapicli.Command) (*platformstack.Service, docker.Client,
 		_ = dc.Close()
 		return nil, nil, fmt.Errorf("the Docker daemon is not responding: %w", err)
 	}
-	return platformstack.New(dc, func(f string, a ...any) { fmt.Printf("  "+f+"\n", a...) }), dc, nil
+	return platformstack.New(dc, func(f string, a ...any) { fmt.Printf("  "+f+"\n", a...) }, path), dc, nil
 }
 
 func manifestPath(cmd *okapicli.Command) string {
@@ -143,11 +146,17 @@ func runInstall(cmd *okapicli.Command) error {
 	if v := cmd.GetString("acme-email"); v != "" {
 		m.ACMEEmail = v
 	}
+	if v := cmd.GetString("control-url"); v != "" {
+		m.ControlURL = v
+	}
 	if v := cmd.GetString("image"); v != "" {
 		m.Images.Miabi = v
 	}
 	if v := cmd.GetString("gateway-image"); v != "" {
 		m.Images.Gateway = v
+	}
+	if v := cmd.GetString("goma-config"); v != "" {
+		m.Gateway.Config = v
 	}
 	if v := cmd.GetString("subnet"); v != "" {
 		m.Network.Subnet = v

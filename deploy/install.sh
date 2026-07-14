@@ -29,6 +29,8 @@
 #   MIABI_INSTALL_MODE          compose (default) | stack
 #   MIABI_DIR                   install directory              (default /opt/miabi)
 #   MIABI_ETC                   stack-mode manifest dir        (default /etc/miabi)
+#   MIABI_CONTROL_URL           URL remote nodes/agents dial back on (default: the
+#                               panel's own URL). Stack mode only.
 #   MIABI_REGISTRY_ENABLED      enable the built-in registry   (skips the prompt)
 #   MIABI_REGISTRY_HOST         its hostname                   (default registry.<domain>)
 #   MIABI_NO_HOST_PROC          1 = do not bind the host's /proc into Miabi. Set it
@@ -448,6 +450,13 @@ install_stack() {
     # The CLI validates the hostname (it gets its own certificate, so a stray "y"
     # would have the gateway request one for a name that cannot exist) — no need to
     # re-implement that check here.
+  fi
+
+  # Where remote nodes and agents dial back. Defaults to the panel's own URL, which is
+  # right for a single public hostname — but a node on a private network may reach the
+  # control plane at an address the public URL never resolves to.
+  if [ -n "${MIABI_CONTROL_URL:-}" ]; then
+    extra+=(--control-url "$MIABI_CONTROL_URL")
   fi
 
   # Some hosts refuse a bind of /proc: a rootless daemon, a hardened host, a socket

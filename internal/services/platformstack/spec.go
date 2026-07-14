@@ -4,8 +4,6 @@
 package platformstack
 
 import (
-	"bytes"
-	"context"
 	"crypto/sha256"
 	_ "embed"
 	"encoding/hex"
@@ -114,8 +112,11 @@ func controlPlaneSpec(m *Manifest, name, image string) docker.RunSpec {
 			"MIABI_ADMIN_PASSWORD=" + m.Secrets.AdminPassword,
 			"MIABI_WEB_URL=" + m.WebURL,
 			"MIABI_CORS_ORIGINS=" + m.WebURL,
-			// Remote nodes' gateways fetch their routes from here.
-			"MIABI_CONTROL_URL=" + m.WebURL,
+			// Where remote nodes and agents dial back: the node gateways' route provider
+			// fetches from it, the agent connects to it, the registry points at it for auth.
+			// Defaults to WebURL, but need not equal it — a node on a private network may
+			// reach the control plane at an address the public panel URL never resolves to.
+			"MIABI_CONTROL_URL=" + m.ControlURL,
 			"MIABI_PROXY_NETWORK=" + m.Network.Name,
 			"MIABI_ACME_EMAIL=" + m.ACMEEmail,
 			"MIABI_GOMA_PROVIDER_DIR=" + gomaProviders,
@@ -180,6 +181,12 @@ func controlPlaneSpec(m *Manifest, name, image string) docker.RunSpec {
 		)
 	}
 
+	// Forwarded from gateway.env: Miabi encrypts the gateway config that Goma decrypts,
+	// so the key must be identical on both sides.
+	if v := m.Gateway.Env[gomaConfigEncryptionKey]; v != "" {
+		spec.Env = append(spec.Env, gomaConfigEncryptionKey+"="+v)
+	}
+
 	// The operator's own variables, last. Normalize has already refused any key Miabi
 	// sets above, so this can never shadow one — there are no duplicate keys in the
 	// container's environment, and therefore no ordering rule to reason about.
@@ -192,11 +199,13 @@ func controlPlaneSpec(m *Manifest, name, image string) docker.RunSpec {
 	return spec
 }
 
-// gomaConfigEncryptionKey is the one variable that must hold the SAME value in two
-// containers: Miabi encrypts the gateway config it writes, and Goma decrypts it. Set
-// on only one side, routing silently breaks — Goma reads config it cannot decrypt.
+// gomaConfigEncryptionKey must hold the SAME value in two containers: Miabi encrypts
+// the gateway config it writes, and Goma decrypts it. Set on only one side, routing
+// breaks silently — Goma reads a config it cannot decrypt.
 //
-// It is therefore the single env: key that is also forwarded to the gateway.
+// Its home is gateway.env (it configures Goma), and it is forwarded from there to the
+// control plane. The top-level env: refuses it and points here, so there is exactly
+// one place to set it and no way for the two halves to disagree.
 const gomaConfigEncryptionKey = "GOMA_CONFIG_ENCRYPTION_KEY"
 
 func sortedKeys(m map[string]string) []string {
@@ -218,26 +227,13 @@ func gatewaySpec(m *Manifest, name, image string) docker.RunSpec {
 	spec := docker.RunSpec{
 		Name:  name,
 		Image: image,
-		Env: []string{
-			"MIABI_DOMAIN=" + m.Domain,
-			"MIABI_ACME_EMAIL=" + m.ACMEEmail,
-			"MIABI_REDIS_PASSWORD=" + m.Secrets.RedisPassword,
-		},
+		Env:   gatewayConfigEnv(m),
 		Mounts: map[string]string{
-			VolumeGatewayConfig:    gomaConfigDir,
 			VolumeGatewayCerts:     "/etc/letsencrypt",
 			VolumeGatewayProviders: gomaProviders,
 		},
 		Networks:      []string{m.Network.Name},
 		RestartPolicy: "unless-stopped",
-		// Goma serves /healthz on its HTTP port. Probed from INSIDE the container
-		// (127.0.0.1:80), not through the published port, so the check says "Goma is
-		// serving" rather than "the host's :80 is reachable" — and so it works
-		// identically on the test container of a rollout, which publishes no ports at all.
-		//
-		// Without this the gateway was the one component with no health signal:
-		// `miabi status` showed a dash for it, and a rollout could only tell that the
-		// container had not exited, not that it was actually routing.
 		Healthcheck: &docker.HealthcheckSpec{
 			Test:        []string{"CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null 2>&1 || exit 1"},
 			Interval:    10 * time.Second,
@@ -247,13 +243,17 @@ func gatewaySpec(m *Manifest, name, image string) docker.RunSpec {
 		},
 		Labels: docker.PlatformLabels(docker.RoleGateway, docker.ManagedByMiabi, nil),
 	}
-	// Forward the one shared variable. Miabi encrypts the gateway config it writes and
-	// Goma decrypts it here, so the key has to be identical on both sides — set on the
-	// control plane alone, Goma would read a config it cannot decrypt and routing would
-	// break with no obvious cause. compose.yaml sets it on both services for the same
-	// reason.
-	if v, ok := m.Env[gomaConfigEncryptionKey]; ok && v != "" {
-		spec.Env = append(spec.Env, gomaConfigEncryptionKey+"="+v)
+	// The config file itself, read-only, from the host.
+	if m.gatewayHostConfig != "" {
+		spec.Binds = append(spec.Binds, docker.BindMount{
+			Source: m.gatewayHostConfig, Target: gomaConfigFile, ReadOnly: true,
+		})
+	}
+	// The operator's own variables — anything their config interpolates, plus
+	// GOMA_CONFIG_ENCRYPTION_KEY. Normalize has already refused the keys Miabi sets
+	// above, so these can never shadow one.
+	for _, k := range sortedKeys(m.Gateway.Env) {
+		spec.Env = append(spec.Env, k+"="+m.Gateway.Env[k])
 	}
 	applyTimezone(m, &spec)
 	if name == ContainerGateway {
@@ -273,25 +273,6 @@ func applyTimezone(m *Manifest, spec *docker.RunSpec) {
 	if tz := m.Env[envTimezone]; tz != "" {
 		spec.Env = append(spec.Env, envTimezone+"="+tz)
 	}
-}
-
-// seedGatewayConfig writes goma.yml into the gateway's config volume, via a helper
-// container — the CLI cannot write into a Docker volume directly, and the gateway
-// needs the file to exist before it starts.
-//
-// Rewritten on every converge and every rollout, so the config always matches the
-// manifest. It contains no secrets (Goma expands ${...} from env at runtime), so
-// rewriting it is safe and idempotent.
-func (s *Service) seedGatewayConfig(ctx context.Context, m *Manifest) error {
-	if err := ensureImage(ctx, s.dc, helperImage, s.log); err != nil {
-		return fmt.Errorf("seed the gateway config: %w", err)
-	}
-	body := gomaConfig
-	if err := s.dc.CopyToVolume(ctx, VolumeGatewayConfig, helperImage, "goma.yml",
-		bytes.NewReader(body), int64(len(body))); err != nil {
-		return fmt.Errorf("seed gateway config: %w", err)
-	}
-	return nil
 }
 
 // specHash fingerprints what we ASKED Docker for, so converge can tell "already what

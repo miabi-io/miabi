@@ -50,10 +50,21 @@ type Manifest struct {
 	WebURL    string `yaml:"web_url"`
 	ACMEEmail string `yaml:"acme_email"`
 
+	// ControlURL is the URL remote nodes and agents reach this control plane at: the
+	// node gateways' route provider fetches from it, the agent dials it, and the
+	// registry points at it for auth.
+	//
+	// Defaults to WebURL, which is right for a single public hostname. It is separate
+	// because it does not have to be: a node on a private network may reach the control
+	// plane at an internal address the public panel URL never resolves to, and pinning
+	// the two together would force that traffic out over the internet and back.
+	ControlURL string `yaml:"control_url"`
+
 	Network  NetworkConfig `yaml:"network"`
 	Images   Images        `yaml:"images"`
 	Secrets  Secrets       `yaml:"secrets"`
 	Registry Registry      `yaml:"registry"`
+	Gateway  Gateway       `yaml:"gateway"`
 
 	// Env are extra environment variables for the control plane — anything Miabi reads
 	// that this manifest does not already model: MIABI_SMTP_*, MIABI_LOG_LEVEL,
@@ -83,11 +94,51 @@ type Manifest struct {
 	// so the Nodes page keeps working. Set it false where the bind is refused outright:
 	// a rootless daemon, a hardened host, or a socket proxy that forbids host binds.
 	HostProc *bool `yaml:"host_proc"`
+
+	// gatewayHostConfig is the gateway config's path AS THE DOCKER DAEMON SEES IT,
+	// resolved by EnsureGatewayConfig. Not serialized: it describes this run's
+	// environment (are we in a container? which host dir is bound?), not the desired
+	// state, and writing it into stack.yaml would make the manifest wrong the moment it
+	// were used from somewhere else.
+	gatewayHostConfig string `yaml:"-"`
 }
 
 type NetworkConfig struct {
 	Name   string `yaml:"name"`
 	Subnet string `yaml:"subnet"`
+}
+
+// Gateway configures Goma: its config file and its environment.
+//
+// The config is a FILE ON THE HOST, bind-mounted read-only — exactly as
+// deploy/compose.yaml does it (`./goma/goma.yml:/etc/goma/goma.yml:ro`). It is not
+// copied into a volume: copying makes the volume the source of truth and the host
+// file a stale duplicate that every converge silently overwrites, so an operator
+// following goma.yml's own instructions ("uncomment this to restrict the panel to
+// trusted IPs") would watch their edit disappear on the next `miabi install`.
+type Gateway struct {
+	// Config is the gateway config file, relative to the manifest's own directory
+	// (so it sits next to stack.yaml and is backed up with it). Absolute paths are
+	// taken as-is. Empty means goma.yml.
+	Config string `yaml:"config,omitempty"`
+
+	// ConfigSHA is the digest of the DEFAULT config Miabi last wrote to that file.
+	//
+	// It is what lets an unmodified config keep receiving upstream improvements while
+	// a customized one is never clobbered: if the file still hashes to this, nobody
+	// touched it and a newer release's default may replace it; if it does not, the
+	// operator edited it and Miabi leaves it alone. Without this, either customization
+	// is impossible (we always overwrite) or every install is frozen on the base
+	// config it shipped with (we never overwrite) — and nobody would be told which.
+	ConfigSHA string `yaml:"config_sha,omitempty"`
+
+	// Env is the gateway container's environment: anything the config interpolates
+	// (`${MY_UPSTREAM}`), plus GOMA_CONFIG_ENCRYPTION_KEY.
+	//
+	// Variables Miabi sets itself (the domain, the ACME email, the Redis password) are
+	// refused here, exactly as in the top-level env: — a manifest where `domain` says
+	// one thing and `gateway.env.MIABI_DOMAIN` says another has two sources of truth.
+	Env map[string]string `yaml:"env,omitempty"`
 }
 
 // Registry configures the built-in OCI registry.

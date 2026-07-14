@@ -549,9 +549,11 @@ func TestRegistryCannotBeSetThroughEnv(t *testing.T) {
 // GOMA_CONFIG_ENCRYPTION_KEY must hold the same value in TWO containers: Miabi
 // encrypts the gateway config, Goma decrypts it. Set on one side only, Goma reads a
 // config it cannot decrypt and routing breaks with no obvious cause.
+//
+// Its home is gateway.env, and Miabi forwards it to the control plane from there.
 func TestGomaEncryptionKeyReachesBothMiabiAndTheGateway(t *testing.T) {
 	m := testManifest()
-	m.Env = map[string]string{gomaConfigEncryptionKey: "shared-secret"}
+	m.Gateway.Env = map[string]string{gomaConfigEncryptionKey: "shared-secret"}
 	if err := m.Normalize(); err != nil {
 		t.Fatal(err)
 	}
@@ -867,5 +869,211 @@ func TestNormalizeRequiresADomainAndDerivesTheRest(t *testing.T) {
 	}
 	if m.ACMEEmail != "admin@panel.example.com" {
 		t.Errorf("ACMEEmail = %q", m.ACMEEmail)
+	}
+}
+
+// ControlURL is where remote nodes and agents dial back. It defaults to the panel's
+// public URL — right for a single hostname — but must not be WELDED to it: a node on
+// a private network may reach the control plane at an address the public URL never
+// resolves to, and pinning the two together would force that traffic out over the
+// internet and back.
+func TestControlURLDefaultsToTheWebURL(t *testing.T) {
+	m := Defaults("miabi/miabi:1.4.0")
+	m.Domain = "miabi.example.com"
+	if err := m.Normalize(); err != nil {
+		t.Fatal(err)
+	}
+	if m.ControlURL != m.WebURL {
+		t.Errorf("control_url = %q, want the web URL %q", m.ControlURL, m.WebURL)
+	}
+	if !envHas(controlPlaneSpec(m, ContainerControlPlane, m.Images.Miabi), "MIABI_CONTROL_URL="+m.WebURL) {
+		t.Error("MIABI_CONTROL_URL did not reach the control plane")
+	}
+}
+
+func TestControlURLCanDifferFromTheWebURL(t *testing.T) {
+	m := testManifest()
+	m.ControlURL = "https://miabi.internal:9000/" // trailing slash: the agent trims it, so we must too
+	if err := m.Normalize(); err != nil {
+		t.Fatal(err)
+	}
+	if m.ControlURL != "https://miabi.internal:9000" {
+		t.Errorf("control_url = %q — the trailing slash was not trimmed, so the manifest "+
+			"says one thing and the agent another", m.ControlURL)
+	}
+	spec := controlPlaneSpec(m, ContainerControlPlane, m.Images.Miabi)
+	if !envHas(spec, "MIABI_CONTROL_URL=https://miabi.internal:9000") {
+		t.Error("the custom control URL did not reach the control plane")
+	}
+	// The panel's own URL is untouched — they are separate settings.
+	if !envHas(spec, "MIABI_WEB_URL="+m.WebURL) {
+		t.Error("setting control_url changed the panel's own URL")
+	}
+}
+
+// A bad control URL fails far from the mistake: the panel works, and only later does
+// an agent refuse to connect or a node's gateway quietly fetch no routes.
+func TestBadControlURLIsRejectedAtInstall(t *testing.T) {
+	for _, bad := range []string{"miabi.example.com", "ftp://x.example.com", "not a url", "://nope"} {
+		m := testManifest()
+		m.ControlURL = bad
+		if err := m.Normalize(); err == nil {
+			t.Errorf("accepted control_url=%q — agents would be handed something they cannot dial", bad)
+		}
+	}
+}
+
+// It is a manifest field now, so env: must not be a second way to set it.
+func TestControlURLCannotBeSetThroughEnv(t *testing.T) {
+	m := testManifest()
+	m.Env = map[string]string{"MIABI_CONTROL_URL": "https://elsewhere.example.com"}
+	if err := m.Normalize(); err == nil {
+		t.Error("MIABI_CONTROL_URL was accepted through env: — it would collide with the value " +
+			"Miabi derives from control_url, and the winner is decided by an ordering rule")
+	}
+}
+
+func envHas(spec docker.RunSpec, kv string) bool {
+	for _, e := range spec.Env {
+		if e == kv {
+			return true
+		}
+	}
+	return false
+}
+
+// Setting the shared key in the TOP-LEVEL env: would give it to the control plane
+// only — Miabi would encrypt a config Goma cannot decrypt, and routing would break
+// with no obvious cause. It has exactly one home, and the error says which.
+func TestGomaEncryptionKeyIsRefusedInTheTopLevelEnv(t *testing.T) {
+	m := testManifest()
+	m.Env = map[string]string{gomaConfigEncryptionKey: "shared-secret"}
+	err := m.Normalize()
+	if err == nil {
+		t.Fatal("accepted GOMA_CONFIG_ENCRYPTION_KEY in env: — the gateway would never receive it")
+	}
+	if !strings.Contains(err.Error(), "gateway.env") {
+		t.Errorf("the error does not point at its real home: %v", err)
+	}
+}
+
+// gateway.env is for what the config interpolates. It must not be a second way to set
+// what Miabi already derives from the manifest — same rule as the top-level env:, and
+// the reserved set is derived from gatewaySpec so it cannot drift from it.
+func TestGatewayEnvCannotOverrideWhatMiabiSets(t *testing.T) {
+	for _, key := range []string{"MIABI_DOMAIN", "MIABI_ACME_EMAIL", "MIABI_REDIS_PASSWORD"} {
+		m := testManifest()
+		m.Gateway.Env = map[string]string{key: "hijacked"}
+		if err := m.Normalize(); err == nil {
+			t.Errorf("gateway.env: %s was accepted — it would collide with the value Miabi "+
+				"derives from the manifest", key)
+		}
+	}
+}
+
+func TestGatewayEnvReachesTheGateway(t *testing.T) {
+	m := testManifest()
+	m.Gateway.Env = map[string]string{"MY_UPSTREAM": "https://internal.example.com"}
+	if err := m.Normalize(); err != nil {
+		t.Fatal(err)
+	}
+	spec := gatewaySpec(m, ContainerGateway, m.Images.Gateway)
+	if !envHas(spec, "MY_UPSTREAM=https://internal.example.com") {
+		t.Errorf("a custom gateway variable never reached Goma — its config could not "+
+			"interpolate ${MY_UPSTREAM}: %v", spec.Env)
+	}
+}
+
+// The config is BIND-MOUNTED from the host, not copied into a volume. A volume would
+// make itself the source of truth and the host file a stale duplicate that every
+// converge overwrites — so the operator could never customize it at all.
+func TestGatewayConfigIsBoundFromTheHostNotAVolume(t *testing.T) {
+	m := testManifest()
+	m.gatewayHostConfig = "/etc/miabi/goma.yml"
+	spec := gatewaySpec(m, ContainerGateway, m.Images.Gateway)
+
+	bound := false
+	for _, b := range spec.Binds {
+		if b.Source == "/etc/miabi/goma.yml" && b.Target == gomaConfigFile {
+			if !b.ReadOnly {
+				t.Error("the gateway config is writable — Goma could rewrite the operator's file")
+			}
+			bound = true
+		}
+	}
+	if !bound {
+		t.Errorf("goma.yml is not bind-mounted from the host: %+v", spec.Binds)
+	}
+	if _, ok := spec.Mounts[VolumeGatewayConfig]; ok {
+		t.Error("the config volume is still mounted — it would shadow the bind and " +
+			"resurrect the 'every converge overwrites your edits' behaviour")
+	}
+}
+
+// Changing the config path recreates the gateway; otherwise an operator would point at
+// a new file, be told "up to date", and keep running the old one.
+func TestChangingTheGatewayConfigRecreatesTheGateway(t *testing.T) {
+	a := testManifest()
+	a.gatewayHostConfig = "/etc/miabi/goma.yml"
+	b := *a
+	b.gatewayHostConfig = "/etc/miabi/custom.yml"
+
+	if specHash(gatewaySpec(a, ContainerGateway, a.Images.Gateway)) ==
+		specHash(gatewaySpec(&b, ContainerGateway, b.Images.Gateway)) {
+		t.Error("pointing at a different config did not change the spec hash")
+	}
+}
+
+// GOMA_LOG_LEVEL is seeded into gateway.env so the knob is visible in the manifest
+// rather than folklore.
+func TestGomaLogLevelIsSeeded(t *testing.T) {
+	m := testManifest()
+	if got := m.Gateway.Env[envGomaLogLevel]; got != "info" {
+		t.Errorf("GOMA_LOG_LEVEL = %q, want info", got)
+	}
+	if !envHas(gatewaySpec(m, ContainerGateway, m.Images.Gateway), "GOMA_LOG_LEVEL=info") {
+		t.Error("the seeded level never reached Goma")
+	}
+}
+
+func TestGomaLogLevelSeedNeverOverwritesTheOperator(t *testing.T) {
+	m := testManifest()
+	m.Gateway.Env = map[string]string{envGomaLogLevel: "debug"}
+	if err := m.Normalize(); err != nil {
+		t.Fatal(err)
+	}
+	if m.Gateway.Env[envGomaLogLevel] != "debug" {
+		t.Error("seeding clobbered the operator's value")
+	}
+}
+
+// Goma does NOT reject an unknown level — it silently falls back to info (measured:
+// GOMA_LOG_LEVEL=verbose emits the same 28 boot lines as info). So a typo leaves the
+// operator waiting for debug output that was never coming. Catch it at install.
+func TestBadGomaLogLevelIsRejected(t *testing.T) {
+	m := testManifest()
+	m.Gateway.Env = map[string]string{envGomaLogLevel: "verbose"}
+	err := m.Normalize()
+	if err == nil {
+		t.Fatal("accepted GOMA_LOG_LEVEL=verbose — Goma would silently run at info and the " +
+			"operator would never know why their debug logs are missing")
+	}
+	if !strings.Contains(err.Error(), "verbose") {
+		t.Errorf("the error does not name the bad value: %v", err)
+	}
+}
+
+// TZ is stack-wide. It reaches the gateway from the top-level env:, so gateway.env
+// must NOT seed it — two entries for one value, and the gateway's own spec already
+// sets it, so it would be refused as a managed key on the very first install.
+func TestTimezoneIsNotSeededIntoGatewayEnv(t *testing.T) {
+	m := testManifest()
+	if _, ok := m.Gateway.Env[envTimezone]; ok {
+		t.Error("TZ was seeded into gateway.env — it is already applied stack-wide, and " +
+			"normalizeGateway refuses it as a managed key, so every install would fail")
+	}
+	// …and the gateway still gets it.
+	if !envHas(gatewaySpec(m, ContainerGateway, m.Images.Gateway), "TZ=UTC") {
+		t.Error("the gateway lost TZ")
 	}
 }
