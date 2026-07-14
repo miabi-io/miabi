@@ -37,6 +37,7 @@ func registerStackCommands(cli *okapicli.CLI) {
 		String("control-url", "", "", "URL remote nodes and agents dial back on (default: the panel's own URL)").
 		String("image", "", "", "Control-plane image (default: the image this installer itself runs from)").
 		String("gateway-image", "", "", "Goma Gateway image").
+		String("runner-image", "", "", "CI runner image (shown in the runner enrollment command)").
 		String("goma-config", "", "", "Gateway config file, relative to the manifest's directory (default goma.yml)").
 		Bool("registry", "", false, "Enable the built-in container registry").
 		Bool("no-host-proc", "", false, "Do not bind the host's /proc into the control plane (for hosts that refuse the bind; host metrics fall back to the container's /proc)").
@@ -162,6 +163,11 @@ func runInstall(cmd *okapicli.Command) error {
 	if v := cmd.GetString("goma-config"); v != "" {
 		m.Gateway.Config = v
 	}
+	// install.sh pins every image in one place and CI bumps them there; without this the
+	// runner would silently fall back to the Go default and drift from that pin.
+	if v := cmd.GetString("runner-image"); v != "" {
+		m.Images.Runner = v
+	}
 	if v := cmd.GetString("subnet"); v != "" {
 		m.Network.Subnet = v
 	}
@@ -184,10 +190,6 @@ func runInstall(cmd *okapicli.Command) error {
 	if m.Images.Miabi == "" {
 		return errors.New("cannot determine which image to install: this build carries no version, and it is not running as a container it could inspect — pass --image <repo>:<tag>")
 	}
-	if m.Secrets.AdminEmail == "" || m.Secrets.AdminEmail == "admin@example.com" {
-		m.Secrets.AdminEmail = "admin@" + m.Domain
-	}
-
 	// Normalize before showing the plan, so what is printed is what will run —
 	// including the generated secrets, which must be persisted even if converge later
 	// fails. A stack whose containers exist but whose password was never written down
