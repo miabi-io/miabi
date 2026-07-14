@@ -1101,3 +1101,75 @@ func TestRestartWalksComponentsInDependencyOrder(t *testing.T) {
 		}
 	}
 }
+
+// acme_email and admin_email are different things — the Let's Encrypt contact, and the
+// login of the seeded platform admin — but in practice one person is both. An operator
+// who supplies either has told us who to use for the other, so each falls back to it.
+// Only when NEITHER is given do we invent admin@<domain>, which is a guess.
+func TestAcmeAndAdminEmailFallBackToEachOther(t *testing.T) {
+	cases := []struct {
+		name, acme, admin   string
+		wantAcme, wantAdmin string
+	}{
+		{
+			"only acme given → it becomes the admin login",
+			"ops@example.com", "",
+			"ops@example.com", "ops@example.com",
+		},
+		{
+			"only admin given → it becomes the ACME contact",
+			"", "boss@example.com",
+			"boss@example.com", "boss@example.com",
+		},
+		{
+			"both given → both kept",
+			"ops@example.com", "boss@example.com",
+			"ops@example.com", "boss@example.com",
+		},
+		{
+			"neither given → derived from the domain (the only guess)",
+			"", "",
+			"admin@miabi.example.com", "admin@miabi.example.com",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m := Defaults("miabi/miabi:1.4.0")
+			m.Domain = "miabi.example.com"
+			m.ACMEEmail, m.Secrets.AdminEmail = c.acme, c.admin
+
+			if err := m.Normalize(); err != nil {
+				t.Fatal(err)
+			}
+			if m.ACMEEmail != c.wantAcme {
+				t.Errorf("acme_email = %q, want %q", m.ACMEEmail, c.wantAcme)
+			}
+			if m.Secrets.AdminEmail != c.wantAdmin {
+				t.Errorf("admin_email = %q, want %q", m.Secrets.AdminEmail, c.wantAdmin)
+			}
+
+			// Both must actually reach the containers that need them.
+			spec := controlPlaneSpec(m, ContainerControlPlane, m.Images.Miabi)
+			if !envHas(spec, "MIABI_ADMIN_EMAIL="+c.wantAdmin) {
+				t.Error("the admin login never reached the control plane")
+			}
+			if !envHas(gatewaySpec(m, ContainerGateway, m.Images.Gateway), "MIABI_ACME_EMAIL="+c.wantAcme) {
+				t.Error("the ACME contact never reached the gateway")
+			}
+		})
+	}
+}
+
+// A typo fails far from the mistake: the panel comes up fine, and only later does
+// Let's Encrypt refuse the contact — an ACME error that looks nothing like a typo.
+func TestBadEmailsAreRejected(t *testing.T) {
+	for _, bad := range []string{"not-an-email", "@example.com", "ops@localhost", "a@b@c.com", "ops @example.com"} {
+		m := Defaults("miabi/miabi:1.4.0")
+		m.Domain = "miabi.example.com"
+		m.ACMEEmail = bad
+		if err := m.Normalize(); err == nil {
+			t.Errorf("accepted %q as an email address", bad)
+		}
+	}
+}

@@ -165,8 +165,9 @@ type Images struct {
 	Redis    string `yaml:"redis"`
 	Gateway  string `yaml:"gateway"`
 	// Runner is not run by the stack; it is the image shown in the runner enrollment
-	// command, so it belongs to the install's identity even though nothing here
-	// starts it.
+	// command, so it belongs to the install's identity even though nothing here starts
+	// it. It is therefore the one image whose default floats on :latest — see
+	// DefaultRunnerImage. install.sh still pins it to the tested version.
 	Runner string `yaml:"runner"`
 }
 

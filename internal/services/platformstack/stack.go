@@ -90,9 +90,16 @@ const (
 	DefaultPostgresImage = "postgres:17-alpine"
 	DefaultRedisImage    = "redis:7-alpine"
 	DefaultGatewayImage  = "jkaninda/goma-gateway:0.11.0"
-	DefaultRunnerImage   = "miabi/runner:0.0.7"
-	DefaultNetwork       = "miabi"
-	DefaultSubnet        = "10.63.0.0/16"
+	// DefaultRunnerImage floats on :latest, unlike every other default here — and that
+	// is deliberate. The runner is the one image the stack does not RUN: it only names
+	// what a CI runner should be enrolled with. So it carries none of the
+	// reproducibility weight the others do, and it releases on its own cadence (0.0.x
+	// while the panel is 1.x). A hard pin here would simply go stale — install.sh
+	// passes --runner-image with the version this release was tested against, and this
+	// default is only the fallback for a bare `docker run … install`.
+	DefaultRunnerImage = "miabi/runner:latest"
+	DefaultNetwork     = "miabi"
+	DefaultSubnet      = "10.63.0.0/16"
 )
 
 // Service installs and updates the stack.
@@ -125,7 +132,6 @@ func Defaults(miabiImage string) *Manifest {
 			Gateway:  DefaultGatewayImage,
 			Runner:   DefaultRunnerImage,
 		},
-		Secrets: Secrets{AdminEmail: "admin@example.com"},
 	}
 }
 
@@ -140,8 +146,8 @@ func (m *Manifest) Normalize() error {
 	if m.WebURL == "" {
 		m.WebURL = "https://" + m.Domain
 	}
-	if m.ACMEEmail == "" {
-		m.ACMEEmail = "admin@" + m.Domain
+	if err := m.normalizeEmails(); err != nil {
+		return err
 	}
 	if err := m.normalizeControlURL(); err != nil {
 		return err
@@ -389,6 +395,52 @@ func validEnvName(k string) bool {
 		}
 	}
 	return true
+}
+
+// normalizeEmails resolves the two addresses an install needs, letting each stand in
+// for the other.
+//
+//	acme_email   the contact Let's Encrypt is given for the certificates
+//	admin_email  the login of the platform admin seeded on first boot
+//
+// They are different things, but in practice one person is both, and an operator who
+// supplies one has told us who to use for the other. So each falls back to the other,
+// and only when NEITHER is given do we invent admin@<domain> — which is a guess, and
+// worth avoiding whenever the operator has said something real.
+//
+// Note admin_email is only consumed on FIRST boot, when the admin is seeded. Changing
+// it later renames nothing; it just recreates the control plane with a new env value.
+func (m *Manifest) normalizeEmails() error {
+	acme := strings.TrimSpace(m.ACMEEmail)
+	admin := strings.TrimSpace(m.Secrets.AdminEmail)
+
+	switch {
+	case acme == "" && admin == "":
+		acme = "admin@" + m.Domain
+		admin = acme
+	case acme == "":
+		acme = admin
+	case admin == "":
+		admin = acme
+	}
+
+	for label, addr := range map[string]string{"acme_email": acme, "admin_email": admin} {
+		if !validEmail(addr) {
+			return fmt.Errorf("%s %q is not an email address", label, addr)
+		}
+	}
+	m.ACMEEmail, m.Secrets.AdminEmail = acme, admin
+	return nil
+}
+
+// validEmail is deliberately shallow: exactly one @, something either side, and a dot
+// in the domain. Anything stricter rejects addresses that are perfectly valid, and the
+// real check is that Let's Encrypt accepts it — which happens far from here, so a
+// typo caught now saves an ACME failure that looks nothing like a typo.
+func validEmail(s string) bool {
+	local, domain, ok := strings.Cut(s, "@")
+	return ok && local != "" && strings.Contains(domain, ".") &&
+		!strings.Contains(domain, "@") && !strings.ContainsAny(s, " \t")
 }
 
 // normalizeControlURL defaults the control URL to the panel's public URL and checks
