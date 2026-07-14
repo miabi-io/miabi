@@ -99,8 +99,18 @@ log "pulling agent image $AGENT_IMAGE"
 docker pull "$AGENT_IMAGE" >/dev/null || die "failed to pull $AGENT_IMAGE"
 
 log "starting the agent"
+# Platform labels give the agent an identity Miabi recognizes on this node. Without
+# them it looks like any other container: it would be offered in the node's "Import
+# from Docker" list, and it could be stopped from the containers page — which is the
+# one container whose removal makes the node unreachable to the control plane.
+# managed-by=external: installed by hand here, so Miabi must not assume it may
+# recreate it. See internal/docker/labels.go.
 docker run -d --name "$AGENT_NAME" --restart unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
+  --label io.miabi.part-of=miabi \
+  --label io.miabi.role=agent \
+  --label io.miabi.managed-by=external \
+  --label io.miabi.protected=true \
   -e MIABI_CONTROL_URL="$CONTROL_URL" \
   -e MIABI_NODE_TOKEN="$NODE_TOKEN" \
   -e MIABI_AGENT_INSECURE_SKIP_VERIFY="$INSECURE" \

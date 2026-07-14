@@ -15,6 +15,12 @@ services:
   miabi-postgres:
     image: postgres:17-alpine
     restart: unless-stopped
+    # Platform identity
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: platform-db
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     environment:
       POSTGRES_USER: ${MIABI_DB_USER:-miabi}
       POSTGRES_PASSWORD: ${MIABI_DB_PASSWORD:?set MIABI_DB_PASSWORD}
@@ -31,6 +37,11 @@ services:
   miabi-redis:
     image: redis:7-alpine
     restart: unless-stopped
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: platform-cache
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     command: ["redis-server", "--requirepass", "${MIABI_REDIS_PASSWORD:?set MIABI_REDIS_PASSWORD}"]
     volumes:
       - redisdata:/data
@@ -46,13 +57,16 @@ services:
     image: ${GOMA_IMAGE:-jkaninda/goma-gateway:latest}
     restart: unless-stopped
     # Stable identity so Miabi can find the central gateway to join it to the
-    # shared cluster ingress overlay (mb-ingress). The role label is the primary
+    # shared cluster ingress overlay (miabi-ingress). The role label is the primary
     # discovery key (survives a custom compose project name); the fixed
-    # container_name is the fallback. Must match edgegateway.CentralContainerName /
-    # CentralRoleValue.
+    # container_name is only a fallback for stacks deployed before these labels
+    # existed. Must match edgegateway.CentralContainerName / CentralRoleValue.
     container_name: miabi-gateway
     labels:
+      io.miabi.part-of: miabi
       io.miabi.role: gateway
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     # No command needed: Goma reads /etc/goma/goma.yml by default (override the
     # path with the GOMA_CONFIG_FILE env if you mount it elsewhere). The config
     # interpolates ${MIABI_DOMAIN}, ${MIABI_ACME_EMAIL}, and the Redis
@@ -84,6 +98,15 @@ services:
     # add a separate `command: ["worker"]` service to scale it out.
     image: ${MIABI_IMAGE:-miabi/miabi:latest}
     restart: unless-stopped
+    # Miabi's own identity. It holds the Docker socket and enumerates every
+    # container on the node — including this one — so it needs to be able to tell
+    # itself apart from a user's app. (A runtime /proc self-check already protects
+    # THIS container; the label is what protects the rest of the stack, on any node.)
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: control-plane
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     # Runs as root by default. To run unprivileged, uncomment `user` below — the
     # image ships a miabi account (uid/gid 10001) that owns its data dirs. Either
     # way it needs the host's "docker" group to read /var/run/docker.sock; set

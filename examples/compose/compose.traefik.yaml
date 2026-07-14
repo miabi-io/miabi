@@ -37,6 +37,12 @@
 services:
   miabi-postgres:
     image: postgres:17-alpine
+    # Platform identity: lets Miabi recognize its own stack.
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: platform-db
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${MIABI_DB_USER:-miabi}
@@ -53,6 +59,11 @@ services:
 
   miabi-redis:
     image: redis:7-alpine
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: platform-cache
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     restart: unless-stopped
     command: ["redis-server", "--requirepass", "${MIABI_REDIS_PASSWORD:?set MIABI_REDIS_PASSWORD}"]
     volumes:
@@ -68,6 +79,11 @@ services:
   # Only containers with traefik.enable=true are exposed, reached over `miabi`.
   traefik:
     image: traefik:v3.3
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: gateway
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     restart: unless-stopped
     command:
       - "--providers.docker=true"
@@ -139,6 +155,12 @@ services:
       - "traefik.http.routers.miabi.entrypoints=websecure"
       - "traefik.http.routers.miabi.tls.certresolver=le"
       - "traefik.http.services.miabi.loadbalancer.server.port=9000"
+      # Platform identity — see internal/docker/labels.go. List form here because
+      # this service already carries Traefik's routing labels.
+      - "io.miabi.part-of=miabi"
+      - "io.miabi.role=control-plane"
+      - "io.miabi.managed-by=compose"
+      - "io.miabi.protected=true"
     networks: [miabi]
 
   # OPTIONAL — scale the background worker out of the panel process. It MUST
@@ -172,4 +194,9 @@ volumes:
 
 networks:
   miabi:
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: control-plane
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     name: miabi

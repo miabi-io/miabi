@@ -262,7 +262,12 @@ func (s *Service) DeployAgents(ctx context.Context, opts AgentOptions) error {
 		Constraints: []string{"node.role==worker"},
 		Binds:       binds,
 		Env:         env,
-		Labels:      map[string]string{docker.ManagedLabel: "true"},
+		// Platform identity, so an agent's task container is recognized as part of
+		// Miabi on the worker it lands on — a node whose engine the control plane can
+		// only reach THROUGH that agent. Keeps ManagedLabel for the existing call
+		// sites that scope raw services by it.
+		Labels: docker.PlatformLabels(docker.RoleAgent, docker.ManagedByMiabi,
+			map[string]string{docker.ManagedLabel: "true"}),
 	}
 
 	mgr := s.clients.Local()

@@ -336,7 +336,7 @@ func (s *Service) startContainer(ctx context.Context, dc docker.Client, st *mode
 	mounts := s.volumeMounts(st)
 	if !st.UsesS3() {
 		for vol := range mounts {
-			if _, err := dc.CreateVolume(ctx, vol, map[string]string{docker.LabelRole: "registry"}, 0); err != nil {
+			if _, err := dc.CreateVolume(ctx, vol, docker.PlatformLabels(docker.RoleRegistry, docker.ManagedByMiabi, nil), 0); err != nil {
 				return fmt.Errorf("ensure registry volume %q: %w", vol, err)
 			}
 		}
@@ -358,7 +358,7 @@ func (s *Service) startContainer(ctx context.Context, dc docker.Client, st *mode
 		NetworkAliases: []string{Alias},
 		Mounts:         mounts,
 		RestartPolicy:  "unless-stopped",
-		Labels:         map[string]string{docker.LabelRole: "registry"},
+		Labels:         docker.PlatformLabels(docker.RoleRegistry, docker.ManagedByMiabi, nil),
 	}); err != nil {
 		return fmt.Errorf("run registry container: %w", err)
 	}
@@ -403,7 +403,7 @@ func (s *Service) GarbageCollect(ctx context.Context, dc docker.Client) error {
 		Cmd:        []string{"garbage-collect", "/etc/docker/registry/config.yml"},
 		Env:        env,
 		Mounts:     s.volumeMounts(st),
-		Labels:     map[string]string{docker.LabelRole: "registry-gc"},
+		Labels:     map[string]string{docker.LabelRole: docker.RoleRegistryGC}, // transient: deliberately not protected
 	})
 	if err != nil {
 		return fmt.Errorf("registry gc: run collector: %w", err)

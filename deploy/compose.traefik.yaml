@@ -52,6 +52,15 @@
 services:
   miabi-postgres:
     image: postgres:17-alpine
+    # Platform identity: lets Miabi recognize its own stack — keeps these out of the
+    # "Import from Docker" list and refuses a stop/remove from the containers page.
+    # On the reverse proxy the role is also how Miabi finds it to join the cluster
+    # ingress overlay. See internal/docker/labels.go.
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: platform-db
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${MIABI_DB_USER:-miabi}
@@ -68,6 +77,11 @@ services:
 
   miabi-redis:
     image: redis:7-alpine
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: platform-cache
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     restart: unless-stopped
     command: ["redis-server", "--requirepass", "${MIABI_REDIS_PASSWORD:?set MIABI_REDIS_PASSWORD}"]
     volumes:
@@ -81,6 +95,11 @@ services:
 
   traefik:
     image: traefik:v3.3
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: gateway
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     restart: unless-stopped
     command:
       # Route by Docker labels; only containers with traefik.enable=true are
@@ -172,6 +191,12 @@ services:
       - "traefik.http.routers.miabi.entrypoints=websecure"
       - "traefik.http.routers.miabi.tls.certresolver=le"
       - "traefik.http.services.miabi.loadbalancer.server.port=9000"
+      # Platform identity — see internal/docker/labels.go. List form here because
+      # this service already carries Traefik's routing labels.
+      - "io.miabi.part-of=miabi"
+      - "io.miabi.role=control-plane"
+      - "io.miabi.managed-by=compose"
+      - "io.miabi.protected=true"
     networks: [miabi]
 
 volumes:
@@ -186,5 +211,10 @@ volumes:
 #   docker network create --driver bridge --subnet 10.63.0.0/16 miabi
 networks:
   miabi:
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: control-plane
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     name: miabi
     external: true
