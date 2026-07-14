@@ -51,6 +51,11 @@ const (
 	// automatically undeletable (a transient GC container is infra too), and a role
 	// allowlist in the guard would drift from the roles themselves.
 	LabelProtected = "io.miabi.protected"
+	// LabelSpecHash fingerprints the run spec a platform component was created from,
+	// so `miabi install` can tell "already what the manifest asks for" from "changed"
+	// without re-deriving Docker's own normalization of the spec. See
+	// services/platformstack.
+	LabelSpecHash = "io.miabi.spec-hash"
 )
 
 // PartOfMiabi is the only value LabelPartOf takes today. Named so call sites read

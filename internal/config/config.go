@@ -30,6 +30,11 @@ type Config struct {
 	Port    int
 	DevMode bool
 
+	// LogLevel is MIABI_LOG_LEVEL: debug | info | warn | error | off. Empty follows
+	// the environment — debug in dev, info otherwise — which is what it did before
+	// this was configurable.
+	LogLevel string
+
 	JWTSecret     string
 	EncryptionKey string
 
@@ -410,6 +415,7 @@ func New() *Config {
 		Env:                   goutils.Env("MIABI_ENV", "dev"),
 		Port:                  goutils.EnvInt("MIABI_PORT", 9000),
 		DevMode:               goutils.EnvBool("MIABI_DEV_MODE", false),
+		LogLevel:              goutils.Env("MIABI_LOG_LEVEL", ""),
 		JWTSecret:             goutils.Env("MIABI_JWT_SECRET", defaultJWTSecret),
 		EncryptionKey:         goutils.Env("MIABI_ENCRYPTION_KEY", ""),
 		AdminEmail:            goutils.Env("MIABI_ADMIN_EMAIL", "admin@example.com"),
@@ -600,11 +606,60 @@ func (c *Config) DeploymentURL() string {
 	return c.ApiBaseURL
 }
 
-func (c *Config) initLogger() *logger.Logger {
-	if c.DevMode {
-		return logger.New(logger.WithDebugLevel())
+// LogLevelFor resolves MIABI_LOG_LEVEL to a logger level.
+//
+// Empty keeps the previous behaviour exactly: debug in dev, info in production. An
+// unrecognized value is an ERROR, not a silent fallback — an operator who sets
+// MIABI_LOG_LEVEL=verbose and is quietly given `info` would sit and watch logs that
+// do not contain what they turned it on to see, with nothing to tell them why.
+//
+// "warn" is accepted alongside the library's "warning": slog and most tooling spell
+// it the short way, and being pedantic about it buys nothing.
+//
+// "off" is deliberately NOT accepted, even though logger.LevelOff exists. The library
+// cannot honour it for the calls Miabi actually makes: with a disabled level,
+// logger.New() installs a discard handler on its own instance and returns early,
+// never assigning the package-level logger that every bare logger.Info() resolves
+// through — so "off" silences Okapi's logger and nothing else. Offering a switch that
+// looks like it turns logging off while the logs keep coming is worse than not
+// offering it. Use "error" for near-silence.
+func (c *Config) LogLevelFor() (logger.LogLevel, error) {
+	switch strings.ToLower(strings.TrimSpace(c.LogLevel)) {
+	case "":
+		if c.DevMode {
+			return logger.LevelDebug, nil
+		}
+		return logger.LevelInfo, nil
+	case "debug":
+		return logger.LevelDebug, nil
+	case "info":
+		return logger.LevelInfo, nil
+	case "warn", "warning":
+		return logger.LevelWarning, nil
+	case "error":
+		return logger.LevelError, nil
+	case "off", "none", "silent":
+		return "", fmt.Errorf("MIABI_LOG_LEVEL=%q is not supported: it would silence only part of "+
+			"Miabi's logging and leave the rest running, which is more confusing than useful. "+
+			"Use \"error\" for near-silence", c.LogLevel)
 	}
-	return logger.New(logger.WithJSONFormat(), logger.WithInfoLevel())
+	return "", fmt.Errorf("MIABI_LOG_LEVEL=%q is not a log level (use debug, info, warn or error)", c.LogLevel)
+}
+
+// initLogger builds the logger AND installs it as the package default: logger.New
+// assigns the package-level logger, so every logger.Info/Warn/Error call in Miabi —
+// not just the one handed to Okapi — honours this level.
+func (c *Config) initLogger() (*logger.Logger, error) {
+	level, err := c.LogLevelFor()
+	if err != nil {
+		return nil, err
+	}
+	opts := []logger.Option{logger.WithLevel(level)}
+	// Human-readable text in dev, JSON in production (for log shippers), as before.
+	if !c.DevMode {
+		opts = append(opts, logger.WithJSONFormat())
+	}
+	return logger.New(opts...), nil
 }
 
 // Initialize validates config and applies it to the Okapi app (logger, CORS,
@@ -614,7 +669,10 @@ func (c *Config) Initialize(app *okapi.Okapi) error {
 		return err
 	}
 
-	l := c.initLogger()
+	l, err := c.initLogger()
+	if err != nil {
+		return err
+	}
 	if c.DevMode {
 		app.WithDebug()
 	}
@@ -687,8 +745,14 @@ func (c *Config) Initialize(app *okapi.Okapi) error {
 }
 
 // InitWorker prepares configuration for the worker process.
+//
+// The worker honours MIABI_LOG_LEVEL exactly as the server does: it is a separate
+// process, so it configures its own logger, and a level that applied to only one of
+// the two would be a confusing half-measure (deploy logs come from the worker).
 func (c *Config) InitWorker() error {
-	c.initLogger()
+	if _, err := c.initLogger(); err != nil {
+		return err
+	}
 	return c.validate()
 }
 

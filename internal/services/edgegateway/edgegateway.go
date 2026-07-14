@@ -584,6 +584,21 @@ func (s *Service) runGateway(ctx context.Context, dc docker.Client, srv *models.
 		Mounts:   mounts,
 		Networks: []string{s.network},
 		Labels:   s.labels(srv),
+		// Goma answers /healthz on its HTTP port. Probed on the loopback INSIDE the
+		// container, so it reports "Goma is serving" rather than "the host's :80 is
+		// reachable" — and so the test container of a SafeUpdate, which publishes no
+		// ports, is checked exactly like the live one.
+		//
+		// Until now the node's gateway had no health signal at all: the node page could
+		// only say the container was running, which a Goma that boots and then fails to
+		// serve also satisfies.
+		Healthcheck: &docker.HealthcheckSpec{
+			Test:        []string{"CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null 2>&1 || exit 1"},
+			Interval:    10 * time.Second,
+			Timeout:     5 * time.Second,
+			Retries:     5,
+			StartPeriod: 15 * time.Second,
+		},
 	}
 	if publishPorts {
 		spec.Ports = map[string]string{"80/tcp": "80", "443/tcp": "443"}

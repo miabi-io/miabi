@@ -52,7 +52,11 @@ LABEL org.opencontainers.image.title="Miabi" \
       org.opencontainers.image.source="https://github.com/miabi-io/miabi" \
       org.opencontainers.image.documentation="https://github.com/miabi-io/miabi#readme" \
       org.opencontainers.image.licenses="AGPL-3.0-or-later"
-RUN apk add --no-cache ca-certificates \
+# tzdata: without it Alpine has no zoneinfo database, and TZ is SILENTLY IGNORED —
+# the container stays on UTC while the setting says otherwise. Postgres, Redis and
+# Goma all ship it, so without this the stack's own logs are the only ones in the
+# wrong timezone, which is the most confusing possible outcome. ~3 MB.
+RUN apk add --no-cache ca-certificates tzdata \
     && addgroup -g 10001 miabi \
     && adduser -u 10001 -G miabi -s /sbin/nologin -D -H miabi \
     && mkdir -p /var/lib/miabi/logs /etc/goma/providers \

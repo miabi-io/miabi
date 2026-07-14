@@ -91,6 +91,14 @@ services:
       - gateway-providers:/etc/goma/providers
       - gateway-certs:/etc/letsencrypt
     networks: [miabi]
+    # Goma serves /healthz on its HTTP port. Probed on the loopback inside the
+    # container, so it reports "Goma is serving" rather than "the host's :80 answers".
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   miabi:
     # Single binary serving the API + web UI. The background worker (deploys,
@@ -121,6 +129,9 @@ services:
     environment:
       MIABI_ENV: production
       MIABI_PORT: "9000"
+      # How chatty Miabi's own logs are: debug | info | warn | error. Empty follows
+      # the environment (info in production). See MIABI_LOG_LEVEL in .env.example.
+      MIABI_LOG_LEVEL: ${MIABI_LOG_LEVEL:-}
       MIABI_DB_HOST: miabi-postgres
       MIABI_DB_USER: ${MIABI_DB_USER:-miabi}
       MIABI_DB_PASSWORD: ${MIABI_DB_PASSWORD}
@@ -185,6 +196,16 @@ services:
       # inside the container — or to the container-stats aggregate.
       - /proc:/host/proc:ro
     networks: [miabi]
+    # /healthz is the LIVENESS probe: 200 as soon as the server is serving, asserting
+    # nothing about dependencies. /readyz also pings Postgres, Redis and Docker — wrong
+    # for a healthcheck that drives restarts, since restarting Miabi cannot fix a
+    # database and would only add an outage to an outage.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9000/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
 
 volumes:
   pgdata:

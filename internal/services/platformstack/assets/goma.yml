@@ -1,0 +1,138 @@
+# Goma Gateway configuration for Miabi.
+#
+# - Terminates TLS and auto-issues Let's Encrypt certificates (certManager).
+# - Routes the control-plane domain to Miabi, which serves both the API
+#   (/api, /docs) and the web UI (single binary).
+# - The file provider watches /etc/goma/providers, where Miabi writes a
+#   route file per user application (hot-reloaded).
+#
+# ${MIABI_DOMAIN} and ${MIABI_ACME_EMAIL} are interpolated from the
+# gateway container's environment (set them in .env) — no need to edit this file.
+version: 2
+gateway:
+  tls:
+    # Directory of static, pre-issued certificates to serve (in addition to the
+    # ACME certs below) — e.g. a platform wildcard, or a workspace's uploaded
+    # custom cert. Goma loads every cert+key pair here, matched by shared base
+    # name (`<name>.crt|.cert|.pem` + `<name>.key`), and picks one per request by
+    # SNI. Use it for certs you manage yourself; leave issuance to ACME otherwise.
+    # Ref: https://goma.jkaninda.dev/usermanual/tls.html#directory-based-certificate-loading
+    certsDir: /etc/goma/certs
+  entryPoints:
+    web:
+      address: "[::]:80"
+    webSecure:
+      address: "[::]:443"
+  # HTTP server timeouts, in seconds. Left commented so Goma manages them with
+  # its built-in defaults (read 30, write 60, idle 90). Uncomment to override.
+  #
+  # Note: the default 60s write timeout caps every response, so Miabi's
+  # long-lived SSE streams (container logs, live metrics, deploy/install
+  # progress) get dropped and reconnected about once a minute. Set `write: 0`
+  # (unlimited) if you want those streams to stay open without reconnecting.
+  # timeouts:
+  #   read: 30
+  #   write: 60
+  #   idle: 90
+
+  # Running behind a reverse proxy or CDN (Cloudflare, Nginx, HAProxy, a cloud
+  # load balancer, …)? Enable proxy mode so Goma reads the real client IP from a
+  # forwarded header instead of seeing the proxy's address — that IP is what
+  # feeds request logging, rate limiting, and the miabi-ip-allowlist below.
+  #
+  # SECURITY: only enable this when Goma genuinely sits behind these proxies, and
+  # list the proxy's own addresses in `trustedProxies`. A forwarded header is
+  # trusted only when the connection comes from a trustedProxies source; enabling
+  # it while directly exposed would let any client forge the header and spoof its
+  # IP — bypassing the allowlist.
+  #
+  # For Cloudflare: put Cloudflare's published ranges (https://www.cloudflare.com/ips/)
+  # in `trustedProxies` and keep `CF-Connecting-IP` first in `ipHeaders`. The IPs
+  # below are examples for a same-host/LAN reverse proxy — replace them.
+  # Ref: https://goma.jkaninda.dev/usermanual/running-behind-a-proxy.html
+  # proxy:
+  #   enabled: true                     # turn on proxy mode
+  #   trustedProxies:                   # proxy IPs/CIDRs allowed to set the header (IPv4 + IPv6)
+  #     - "127.0.0.1"
+  #     - "10.0.0.0/8"
+  #     - "192.168.0.0/16"
+  #     - "::1"
+  #     - "fc00::/7"
+  #   ipHeaders:                        # headers checked, in order, for the real client IP
+  #     - "CF-Connecting-IP"
+  #     - "X-Forwarded-For"
+  #     - "X-Real-IP"
+  #     - "True-Client-IP"
+  #     - "Forwarded"
+
+  # Flush the DNS cache after a route reload so a backend whose container was
+  # re-created (new IP on redeploy) is re-resolved instead of served stale.
+  networking:
+    dnsCache:
+      ttl: 300
+      clearOnReload: true
+  # Optional: reuse the stack's Redis for shared caching and distributed rate
+  # limiting. Without it Goma falls back to in-memory (per-instance) state. The
+  # password is interpolated from the gateway container's environment.
+  redis:
+    addr: miabi-redis:6379
+    password: "${MIABI_REDIS_PASSWORD}"
+  providers:
+    file:
+      enabled: true
+      directory: /etc/goma/providers
+      watch: true
+  routes:
+    - name: miabi
+      path: /
+      hosts: ["${MIABI_DOMAIN}"]
+      backends:
+        - endpoint: http://miabi:9000
+      middlewares:
+        # Always on: send every plain-HTTP request to HTTPS.
+        - miabi-https-redirect
+        # Optional: restrict the panel + API to trusted IPs. Set your ranges in
+        # the miabi-ip-allowlist middleware below, then uncomment this line.
+        #- miabi-ip-allowlist
+
+# Middlewares for the Miabi control-plane route above. Routes for user
+# applications are written separately under /etc/goma/providers and are not
+# affected by anything here.
+middlewares:
+  # Force HTTPS: 301-redirect any cleartext request to https so the panel, API,
+  # and session cookies are never exposed over plain HTTP.
+  - name: miabi-https-redirect
+    type: redirectScheme
+    rule:
+      scheme: https
+      permanent: true
+
+  # Optional IP allowlist — lock the Miabi panel and API down to trusted
+  # networks (home / office / VPN). Requests from any other address get a 403;
+  # user apps proxied by Goma are unaffected. Left disabled by default so a
+  # fresh install stays reachable from anywhere. To turn it on:
+  #   1. Replace the example ranges below with your own.
+  #   2. Uncomment `- miabi-ip-allowlist` in the route's middlewares above.
+  # `sourceRanges` accepts single IPs or CIDR blocks, IPv4 and IPv6 alike; add
+  # as many as you need.
+  - name: miabi-ip-allowlist
+    type: accessPolicy
+    rule:
+      action: ALLOW
+      sourceRanges:
+        - 203.0.113.0/24     # office / home LAN (an IPv4 /24 subnet)
+        - 198.51.100.7       # VPN gateway (a single IPv4 host)
+        - 192.0.2.15         # an admin's static IPv4 address
+        - 2001:db8:1234::/48 # office / home LAN (an IPv6 /48 prefix)
+        - 2001:db8::1        # an admin's static IPv6 address
+        
+# Multi-provider certManager: named providers, selected per-route via
+# `tls.provider: <name>` (or `none` to opt out). defaultProvider serves routes
+# that don't name one.
+certManager:
+  defaultProvider: acme
+  providers:
+    acme:
+      type: acme
+      acme:
+        email: "${MIABI_ACME_EMAIL}"

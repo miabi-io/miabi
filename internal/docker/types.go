@@ -166,6 +166,10 @@ type RunSpec struct {
 	User            string
 	NoNewPrivileges bool
 	CapDrop         []string
+	// GroupAdd are supplementary groups (Docker --group-add), by GID or name. The
+	// control plane needs the host's "docker" group to read /var/run/docker.sock when
+	// it does not run as root — the same thing compose.yaml's `group_add` does.
+	GroupAdd []string
 }
 
 // GPURequest describes a set of GPU devices to attach to a container via the

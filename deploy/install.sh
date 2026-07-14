@@ -3,16 +3,32 @@
 # Miabi one-line installer.
 #   curl -fsSL https://get.miabi.io | sudo bash
 #
-# Installs Docker if missing, fetches the production stack (compose.yaml +
-# goma.yml) into /opt/miabi, generates secrets into .env, and brings it up.
-# Re-running is safe: an existing .env is kept (only still-blank secrets are
-# filled) and the stack is just updated.
+# Installs Docker if missing, then brings up the Miabi stack. Two modes:
+#
+#   compose (default)  Fetches compose.yaml + goma.yml into /opt/miabi, generates
+#                      secrets into .env, and runs `docker compose up -d`.
+#                      Re-running is safe: an existing .env is kept (only blank
+#                      secrets are filled) and the stack is updated in place.
+#
+#   stack              MIABI_INSTALL_MODE=stack. Miabi installs itself, straight
+#                      against the Docker API — no compose file, no /opt/miabi.
+#                      The point: Compose owns what Compose created, so a
+#                      compose-managed Miabi can never truthfully update itself
+#                      (the next `docker compose up -d` reverts it). A
+#                      stack-managed one can, including replacing its OWN
+#                      container, with an automatic rollback if the new image does
+#                      not come up. Adds `miabi-stack` to manage it afterwards.
+#
+# Both are supported; every container is labeled io.miabi.managed-by so Miabi
+# always knows which world it is in and never acts on a stack it does not own.
 #
 # Run it from a checkout (deploy/install.sh) and it copies the local files
 # instead of downloading them.
 #
 # Environment overrides:
+#   MIABI_INSTALL_MODE          compose (default) | stack
 #   MIABI_DIR                   install directory              (default /opt/miabi)
+#   MIABI_ETC                   stack-mode manifest dir        (default /etc/miabi)
 #   MIABI_VERSION               Miabi release to install       (default: pinned below)
 #   GOMA_VERSION                Goma Gateway release           (default: pinned below)
 #   RUNNER_VERSION              miabi/runner release           (default: pinned below)
@@ -339,6 +355,144 @@ for p in 80 443; do
   fi
 done
 
+# ── prompt (interactive only) ────────────────────────────────────────────────
+# A pre-set environment variable always wins: over a pipe the tty is shared with
+# whatever is still typing into it, so reads there are racy. Only when the value
+# is unset do we ask, and only with a real tty. Otherwise keep the placeholder
+# and warn at the end.
+prompt() { # <env-var> <question> <default>
+  local preset ans=""
+  eval "preset=\${$1:-}"
+  if [ -n "$preset" ]; then printf '%s' "$preset"; return 0; fi
+
+  if [ "${ASSUME_YES:-0}" != "1" ] && [ -r /dev/tty ]; then
+    printf "    ${C_CYAN}?${C_RESET} %s [%s]: " "$2" "$3" > /dev/tty
+    read -r ans < /dev/tty || ans=""
+  fi
+  printf '%s' "${ans:-$3}"
+}
+
+# Yes/no variant. A pre-set env var wins; non-interactive answers "no".
+prompt_yn() { # <env-var> <question>
+  local preset ans=""
+  eval "preset=\${$1:-}"
+  if [ -n "$preset" ]; then
+    case "$preset" in true|1|yes|y|YES|Y) return 0 ;; *) return 1 ;; esac
+  fi
+  [ "${ASSUME_YES:-0}" != "1" ] && [ -r /dev/tty ] || return 1
+  printf "    ${C_CYAN}?${C_RESET} %s [y/N]: " "$2" > /dev/tty
+  read -r ans < /dev/tty || ans=""
+  case "$ans" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
+}
+
+# ── install mode ─────────────────────────────────────────────────────────────
+#
+# Two supported ways to run Miabi, distinguished forever after by the
+# io.miabi.managed-by label on every container:
+#
+#   compose (default)  Docker Compose owns the stack. Battle-tested. Miabi may
+#                      LOOK at its own components but must never recreate them:
+#                      the next `docker compose up -d` would silently revert it.
+#
+#   stack              Miabi owns the stack. `miabi install` talks to the Docker
+#                      API directly, so Miabi can update its own components —
+#                      including its own container — and roll back a bad image.
+#
+# The stack mode needs no binary on this host. The installer IS the Miabi image,
+# whose entrypoint is the miabi binary:
+#
+#   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+#     -v /etc/miabi:/etc/miabi miabi/miabi:<tag> install --domain ...
+#
+# An ephemeral container is all the isolation the update needs: it is a DIFFERENT
+# container from the control plane, so it can stop and replace it without killing
+# the process doing the work. And the image's own version is the version it
+# installs, so `miabi/miabi:1.5.0 update` moves the stack to 1.5.0 — the tag you
+# invoke is the tag you get. Nothing to download, nothing to keep in sync.
+#
+# Default is compose because it is what every existing install runs and what has
+# been proven in the field; stack mode is new. Opt in with MIABI_INSTALL_MODE=stack.
+INSTALL_MODE="${MIABI_INSTALL_MODE:-compose}"
+
+# Where the stack manifest lives. Overridable so the installer can be exercised
+# without writing to /etc, and so a non-root or multi-stack host can put it
+# elsewhere. The path must resolve to the SAME directory for this script and for
+# the Docker daemon — it is bind-mounted into the installer container.
+STACK_ETC="${MIABI_ETC:-/etc/miabi}"
+
+install_stack() {
+  local domain acme admin image
+  domain="$(prompt MIABI_DOMAIN 'Panel domain (e.g. miabi.example.com)' '')"
+  [ -n "$domain" ] || die "MIABI_DOMAIN is required in stack mode: MIABI_INSTALL_MODE=stack MIABI_DOMAIN=miabi.example.com"
+  acme="$(prompt MIABI_ACME_EMAIL "Let's Encrypt contact email" "admin@${domain}")"
+  admin="$(prompt MIABI_ADMIN_EMAIL "First admin's login" "$acme")"
+  image="miabi/miabi:${MIABI_IMAGE_TAG}"
+
+  log "Installing the Miabi stack with ${image}"
+
+  # -t only with a real tty: the confirm prompt needs one, but `curl | bash` has
+  # none and `docker run -t` without one fails outright. Non-interactive implies
+  # --yes, since there is nobody there to answer.
+  local ttyflag="" assume=""
+  if [ -t 0 ] && [ "${ASSUME_YES:-0}" != "1" ]; then ttyflag="-it"; else assume="--yes"; fi
+
+  # The manifest (mode 0600) is the desired state AND the only copy of the database
+  # password. It lives on the host, not in a volume, so it survives
+  # `uninstall --volumes` and can be backed up like any other config file.
+  mkdir -p "$STACK_ETC"
+  # The manifest directory is bind-mounted, so the container writes it straight onto
+  # the host. It must be ${STACK_ETC}, not a hardcoded /etc/miabi: with MIABI_ETC set,
+  # the hardcoded form silently wrote the manifest somewhere the operator never looks
+  # — and the install still "succeeded", because nothing reads it back.
+  # shellcheck disable=SC2086
+  docker run --rm $ttyflag \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "${STACK_ETC}:/etc/miabi" \
+    "$image" install \
+      --domain "$domain" \
+      --acme-email "$acme" \
+      --admin-email "$admin" \
+      --gateway-image "jkaninda/goma-gateway:${GOMA_IMAGE_TAG}" \
+      $assume || die "miabi install failed"
+
+  # A 3-line wrapper so nobody has to remember the docker run incantation. Named
+  # miabi-stack, NOT miabi: `miabi` is already the Miabi CLI (an authenticated API
+  # client, installed via Homebrew), and shadowing it with a different tool that
+  # happens to share three verbs (status, import, upgrade) is a trap.
+  cat > /usr/local/bin/miabi-stack <<'WRAPPER'
+#!/usr/bin/env bash
+# Manage the Miabi stack on this host: miabi-stack {install|update|status|uninstall}
+#
+# Runs the Miabi image against the local Docker socket. The TAG is the version it
+# installs, so `MIABI_TAG=1.5.0 miabi-stack update` moves the stack to 1.5.0.
+set -euo pipefail
+TAG="${MIABI_TAG:-__MIABI_IMAGE_TAG__}"
+TTY=""; [ -t 0 ] && TTY="-it"
+exec docker run --rm $TTY \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v __STACK_ETC__:/etc/miabi \
+  "miabi/miabi:${TAG}" "$@"
+WRAPPER
+  # The wrapper must mount the SAME directory the install wrote the manifest to.
+  # Hardcoding /etc/miabi here worked only for the default and left every other
+  # install with a `miabi-stack update` that looks for a manifest which is not there.
+  sed -i "s|__MIABI_IMAGE_TAG__|${MIABI_IMAGE_TAG}|; s|__STACK_ETC__|${STACK_ETC}|" /usr/local/bin/miabi-stack
+  chmod 0755 /usr/local/bin/miabi-stack
+
+  printf '\n'
+  ok "Installed. Manage it with:"
+  echo "    miabi-stack status"
+  echo "    MIABI_TAG=<newer> miabi-stack update    # updates Miabi itself, and rolls back if it fails"
+  echo "    miabi-stack uninstall                   # keeps your data; add --volumes to destroy it"
+  printf '\n'
+  echo "    Manifest (KEEP A BACKUP — it holds the database password):  ${STACK_ETC}/stack.yaml"
+  exit 0
+}
+
+if [ "$INSTALL_MODE" = "stack" ] || [ "$INSTALL_MODE" = "cli" ]; then
+  install_stack
+fi
+
 # ── install dir + files ──────────────────────────────────────────────────────
 log "Setting up ${INSTALL_DIR}"
 mkdir -p "${INSTALL_DIR}/goma"
@@ -387,36 +541,6 @@ docker_gid() {
   gid="$(stat -c '%g' /var/run/docker.sock 2>/dev/null || true)"
   [ -n "$gid" ] || gid="$(getent group docker 2>/dev/null | cut -d: -f3)"
   printf '%s' "${gid:-999}"
-}
-
-# ── prompt (interactive only) ────────────────────────────────────────────────
-# A pre-set environment variable always wins: over a pipe the tty is shared with
-# whatever is still typing into it, so reads there are racy. Only when the value
-# is unset do we ask, and only with a real tty. Otherwise keep the placeholder
-# and warn at the end.
-prompt() { # <env-var> <question> <default>
-  local preset ans=""
-  eval "preset=\${$1:-}"
-  if [ -n "$preset" ]; then printf '%s' "$preset"; return 0; fi
-
-  if [ "${ASSUME_YES:-0}" != "1" ] && [ -r /dev/tty ]; then
-    printf "    ${C_CYAN}?${C_RESET} %s [%s]: " "$2" "$3" > /dev/tty
-    read -r ans < /dev/tty || ans=""
-  fi
-  printf '%s' "${ans:-$3}"
-}
-
-# Yes/no variant. A pre-set env var wins; non-interactive answers "no".
-prompt_yn() { # <env-var> <question>
-  local preset ans=""
-  eval "preset=\${$1:-}"
-  if [ -n "$preset" ]; then
-    case "$preset" in true|1|yes|y|YES|Y) return 0 ;; *) return 1 ;; esac
-  fi
-  [ "${ASSUME_YES:-0}" != "1" ] && [ -r /dev/tty ] || return 1
-  printf "    ${C_CYAN}?${C_RESET} %s [y/N]: " "$2" > /dev/tty
-  read -r ans < /dev/tty || ans=""
-  case "$ans" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
 }
 
 # Set a key, appending when .env only carries it as a comment (as .env.example

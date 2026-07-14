@@ -290,6 +290,7 @@ func (e *engineClient) RunContainer(ctx context.Context, spec RunSpec) (string, 
 		},
 		RestartPolicy: restartPolicy(spec.RestartPolicy),
 		CapDrop:       spec.CapDrop,
+		GroupAdd:      spec.GroupAdd,
 	}
 	if spec.NoNewPrivileges {
 		hostCfg.SecurityOpt = append(hostCfg.SecurityOpt, "no-new-privileges")
