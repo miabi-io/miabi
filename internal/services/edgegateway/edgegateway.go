@@ -637,7 +637,7 @@ func (s *Service) ensureNodeRedis(ctx context.Context, dc docker.Client, srv *mo
 		cmd = append(cmd, "--requirepass", password)
 	}
 	labels := s.labels(srv)
-	labels[docker.LabelRole] = "node-gateway-redis"
+	labels[docker.LabelRole] = docker.RoleNodeGatewayRedis
 	_ = dc.RemoveContainer(ctx, RedisContainer, true)
 	if _, err := dc.RunContainer(ctx, docker.RunSpec{
 		Name:     RedisContainer,
@@ -661,14 +661,14 @@ func (s *Service) Teardown(ctx context.Context, dc docker.Client) {
 }
 
 // labels tag the gateway as platform infrastructure owned by the system
-// workspace, so it is attributable in inventory and never treated as a user app.
+// workspace, so it is attributable in inventory, never treated as a user app, and
+// never offered for import or stopped from the containers list.
 func (s *Service) labels(srv *models.Server) map[string]string {
-	l := map[string]string{
-		docker.LabelRole: "node-gateway",
-		docker.LabelNode: srv.Slug,
-	}
+	extra := map[string]string{docker.LabelNode: srv.Slug}
 	if ws, err := s.workspaces.FindSystem(); err == nil {
-		l[docker.LabelWorkspace] = fmt.Sprintf("%d", ws.ID)
+		extra[docker.LabelWorkspace] = fmt.Sprintf("%d", ws.ID)
 	}
-	return l
+	// managed-by=miabi: unlike the central gateway, Miabi provisions this one itself
+	// and may freely recreate it (that is what SafeUpdate does).
+	return docker.PlatformLabels(docker.RoleNodeGateway, docker.ManagedByMiabi, extra)
 }

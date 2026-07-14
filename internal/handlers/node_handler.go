@@ -269,8 +269,16 @@ func (h *NodeHandler) JoinCommand(c *okapi.Context) error {
 		controlURL = "https://<your-control-plane-url>"
 	}
 	const tokenPlaceholder = "<JOIN_TOKEN>"
+	// The labels give the agent a platform identity on a node whose engine Miabi can
+	// only reach through that very agent: they keep it out of the node's import list
+	// and block a stop/remove from the containers page. managed-by=external — this
+	// one is installed by hand, so Miabi must not assume it may recreate it.
 	command := "docker run -d --name miabi-agent --restart unless-stopped \\\n" +
 		"  -v /var/run/docker.sock:/var/run/docker.sock \\\n" +
+		"  --label " + docker.LabelPartOf + "=" + docker.PartOfMiabi + " \\\n" +
+		"  --label " + docker.LabelRole + "=" + docker.RoleAgent + " \\\n" +
+		"  --label " + docker.LabelManagedBy + "=" + docker.ManagedByExternal + " \\\n" +
+		"  --label " + docker.LabelProtected + "=true \\\n" +
 		"  -e MIABI_CONTROL_URL=" + controlURL + " \\\n" +
 		"  -e MIABI_NODE_TOKEN=" + tokenPlaceholder + " \\\n" +
 		"  " + image

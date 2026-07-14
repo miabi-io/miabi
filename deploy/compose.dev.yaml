@@ -7,6 +7,13 @@
 services:
   postgres:
     image: postgres:17-alpine
+    # Same platform identity as production (compose.yaml), so dev exercises the
+    # same import/protection paths instead of only finding out in prod.
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: platform-db
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     environment:
       POSTGRES_USER: miabi
       POSTGRES_PASSWORD: miabi
@@ -23,6 +30,11 @@ services:
 
   redis:
     image: redis:7-alpine
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: platform-cache
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     ports:
       - "6379:6379"
     healthcheck:
@@ -32,6 +44,11 @@ services:
       retries: 10
 
   miabi:
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: control-plane
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     build:
       context: ..
       dockerfile: docker/Dockerfile

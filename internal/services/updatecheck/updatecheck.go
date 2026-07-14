@@ -131,6 +131,24 @@ func Newest(current string, releases []Release) (Release, bool) {
 	return best, bestTag != ""
 }
 
+// IsNewer reports whether latest is a strictly newer release than current.
+//
+// Readers use this to gate the notice rather than trusting the cached row on its
+// own. The row is written by a daily cron, so between an upgrade and the next
+// tick it still describes the *previous* build — without this guard an install
+// that just moved to 1.3.0 would keep advertising the v1.2.1 it is already past.
+// Comparing at read time makes offering a downgrade structurally impossible,
+// whatever is cached.
+//
+// A non-version build ("dev", a sha) compares against nothing: false.
+func IsNewer(current, latest string) bool {
+	cur, lat := normalize(current), normalize(latest)
+	if cur == "" || lat == "" {
+		return false
+	}
+	return semver.Compare(lat, cur) > 0
+}
+
 // Status returns the cached row, creating the singleton on first read.
 func (s *Service) Status() (*models.UpdateStatus, error) {
 	var st models.UpdateStatus
@@ -173,7 +191,18 @@ func (s *Service) Check(ctx context.Context) error {
 	now := time.Now()
 	st.CheckedAt = &now
 
-	releases, notModified, etag, err := s.fetch(ctx, st.ETag)
+	// The cached verdict is a function of two inputs: GitHub's release list AND the
+	// version we compare it against. The ETag only covers the first. If the build
+	// moved since the verdict was computed, replaying the ETag would earn a 304 on
+	// an unchanged list and preserve a verdict that no longer applies — an upgraded
+	// install would keep being offered the release it is already past. Drop the
+	// ETag so this check is forced to re-evaluate the list against the new build.
+	etagToSend := st.ETag
+	if st.CheckedVersion != s.version {
+		etagToSend = ""
+	}
+
+	releases, notModified, etag, err := s.fetch(ctx, etagToSend)
 	if err != nil {
 		st.LastError = err.Error()
 		return s.db.Save(st).Error
@@ -183,10 +212,12 @@ func (s *Service) Check(ctx context.Context) error {
 		st.ETag = etag
 	}
 	if notModified {
-		// Nothing changed upstream; keep the cached verdict.
+		// The list is unchanged AND the build is unchanged (or we would not have sent
+		// the ETag), so the cached verdict still holds.
 		return s.db.Save(st).Error
 	}
 
+	st.CheckedVersion = s.version
 	if r, ok := Newest(s.version, releases); ok {
 		st.LatestVersion = normalize(r.TagName)
 		st.ReleaseURL = r.HTMLURL

@@ -7,6 +7,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/edgegateway"
@@ -108,10 +109,15 @@ func (r *ProxyNetworkReconciler) ReconcileIngressGateway(ctx context.Context) er
 }
 
 // centralGatewayContainer resolves the compose-managed central gateway container
-// on the manager engine, preferring the role label (io.miabi.role=gateway, which
-// survives a non-default compose project name) and falling back to the pinned
-// container name. Returns "" (no error) when the gateway is not running, which
-// the caller treats as a retryable no-op.
+// on the manager engine. The role label (io.miabi.role=gateway) is authoritative:
+// it survives a non-default compose project name, which the container name does
+// not. Returns "" (no error) when the gateway is not running, which the caller
+// treats as a retryable no-op.
+//
+// The name fallback exists only for a stack deployed before deploy/compose.yaml
+// carried platform labels. It is load-bearing during that upgrade window — an
+// unlabeled gateway must still be found, or clustered apps lose public ingress —
+// so it warns rather than failing, and says what to do about it.
 func centralGatewayContainer(ctx context.Context, mgr docker.Client) (string, error) {
 	list, err := mgr.ListContainers(ctx, false)
 	if err != nil {
@@ -128,6 +134,11 @@ func centralGatewayContainer(ctx context.Context, mgr docker.Client) (string, er
 				byName = c.ID
 			}
 		}
+	}
+	if byName != "" {
+		logger.Warn("central gateway found by container name, not by label — this stack predates platform labels; "+
+			"recreate it (docker compose up -d) so it is labeled, otherwise a custom compose project name will break ingress",
+			"container", byName, "expected_label", docker.LabelRole+"="+edgegateway.CentralRoleValue)
 	}
 	return byName, nil
 }

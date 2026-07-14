@@ -538,13 +538,21 @@ fi
 # separate managed pool (MIABI_NETWORK_POOL_CIDR, default 10.64.0.0/12).
 ensure_app_network() {
   local cidr; cidr="$(get_kv MIABI_NETWORK_CIDR)"; cidr="${cidr:-10.63.0.0/16}"
+  # Platform labels mark this as Miabi's own shared network, so it is never offered
+  # in the "Import from Docker" list. (The network is declared `external:` in
+  # compose.yaml — created here, once — so compose cannot label it for us.)
+  local lbl=(
+    --label io.miabi.part-of=miabi
+    --label io.miabi.role=control-plane
+    --label io.miabi.managed-by=compose
+  )
   if docker network inspect miabi >/dev/null 2>&1; then
     ok "Docker network 'miabi' already exists (leaving its CIDR unchanged)"
-  elif docker network create --driver bridge --subnet "$cidr" miabi >/dev/null 2>&1; then
+  elif docker network create --driver bridge --subnet "$cidr" "${lbl[@]}" miabi >/dev/null 2>&1; then
     ok "Created Docker network 'miabi' (${cidr})"
   else
     warn "could not create 'miabi' with subnet ${cidr} (in use? overlaps a route?); creating with Docker defaults"
-    docker network create miabi >/dev/null 2>&1 || die "failed to create the 'miabi' network"
+    docker network create "${lbl[@]}" miabi >/dev/null 2>&1 || die "failed to create the 'miabi' network"
   fi
 }
 ensure_app_network

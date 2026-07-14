@@ -424,8 +424,54 @@ const usage = computed(() => {
 
 // Helpers
 function cname(c: Container) { return ((c.names && c.names[0]) || c.id).replace(/^\//, '') }
+// Platform labels — mirror of internal/docker/labels.go. The prefix is `io.miabi.`
+// (reverse-DNS of miabi.io); this used to test `miabi.`, which matches nothing, so
+// isManaged() was false for every Miabi container: the "managed" badge never
+// rendered and Remove was never disabled.
+const LABEL_PREFIX = 'io.miabi.'
+const LABEL_ROLE = 'io.miabi.role'
+const LABEL_PART_OF = 'io.miabi.part-of'
+const LABEL_PROTECTED = 'io.miabi.protected'
+const LABEL_MANAGED_BY = 'io.miabi.managed-by'
+
 function isManaged(labels?: Record<string, string>) {
-  return Object.keys(labels ?? {}).some((k) => k.startsWith('miabi.'))
+  return Object.keys(labels ?? {}).some((k) => k.startsWith(LABEL_PREFIX))
+}
+
+// Part of Miabi's own stack (control plane, its Postgres/Redis, the gateway, an
+// agent) rather than something Miabi merely created.
+function isPlatform(labels?: Record<string, string>) {
+  return labels?.[LABEL_PART_OF] === 'miabi'
+}
+
+// The server refuses stop/restart/remove on these with a 409. Gate the buttons so
+// the refusal is visible before the click, not after it.
+function isProtected(labels?: Record<string, string>) {
+  return labels?.[LABEL_PROTECTED] === 'true'
+}
+
+const PLATFORM_ROLE_NAMES: Record<string, string> = {
+  'control-plane': 'Miabi control plane',
+  'platform-db': "Miabi's database",
+  'platform-cache': "Miabi's Redis",
+  gateway: 'Miabi gateway',
+  agent: 'Miabi agent',
+  registry: 'built-in registry',
+  'node-gateway': "this node's edge gateway",
+  'node-gateway-redis': "the edge gateway's Redis",
+}
+
+// Why a destructive action is unavailable — shown as the button's tooltip, so an
+// admin reads the reason instead of discovering it as an error toast.
+function lockReason(labels?: Record<string, string>): string {
+  if (isProtected(labels)) {
+    const what = PLATFORM_ROLE_NAMES[labels?.[LABEL_ROLE] ?? ''] ?? 'part of the Miabi platform'
+    return labels?.[LABEL_MANAGED_BY] === 'compose'
+      ? `This is the ${what}. Manage it with Docker Compose in your Miabi install directory.`
+      : `This is the ${what} and is managed from its own page.`
+  }
+  if (isManaged(labels)) return 'Managed by Miabi — remove it from its app or database instead.'
+  return ''
 }
 function fmtPorts(c: Container): string {
   const ps = (c.ports || []).filter((p) => p.public_port).map((p) => p.public_port)
@@ -1265,7 +1311,10 @@ const gwBadge = computed(() => {
                   <td>
                     <div class="name-cell">
                       <span class="trunc" :title="cname(c)">{{ cname(c) }}</span>
-                      <span v-if="isManaged(c.labels)" class="badge badge-info" title="Managed by Miabi">managed</span>
+                      <!-- Miabi's own stack reads differently from a container Miabi
+                           merely created: it cannot be touched from here at all. -->
+                      <span v-if="isPlatform(c.labels)" class="badge badge-warning" :title="lockReason(c.labels)">platform</span>
+                      <span v-else-if="isManaged(c.labels)" class="badge badge-info" title="Managed by Miabi">managed</span>
                     </div>
                   </td>
                   <td class="cell-sub">{{ cstats[c.id] ? cstats[c.id].cpu_percent.toFixed(2) + '%' : '—' }}</td>
@@ -1275,10 +1324,14 @@ const gwBadge = computed(() => {
                   <td class="cell-sub">{{ fmtPorts(c) }}</td>
                   <td class="trunc cell-sub" :title="c.image">{{ c.image }}</td>
                   <td class="cell-sub">{{ c.status }}</td>
+                  <!-- Protected containers (the Miabi stack) are refused server-side
+                       with a 409 on stop/restart/remove alike, so all three are
+                       disabled here and say why. Stopping the platform's Postgres
+                       from this list took the whole panel down. -->
                   <td class="text-right table-actions" @click.stop>
-                    <button class="btn-icon btn-icon-muted" title="Restart" aria-label="Restart" :disabled="cbusy === c.id" @click="containerAction(c, 'restartContainer', 'Restarted')"><span class="mdi mdi-restart"></span></button>
-                    <button v-if="c.state === 'running'" class="btn-icon btn-icon-muted" title="Stop" aria-label="Stop" :disabled="cbusy === c.id" @click="containerAction(c, 'stopContainer', 'Stopped')"><span class="mdi mdi-stop"></span></button>
-                    <button class="btn-icon btn-icon-danger" :title="isManaged(c.labels) ? 'Managed by Miabi' : 'Remove'" :aria-label="isManaged(c.labels) ? 'Managed by Miabi' : 'Remove'" :disabled="cbusy === c.id || isManaged(c.labels)" @click="toRemoveContainer = c"><span class="mdi mdi-delete-outline"></span></button>
+                    <button class="btn-icon btn-icon-muted" :title="isProtected(c.labels) ? lockReason(c.labels) : 'Restart'" :aria-label="isProtected(c.labels) ? lockReason(c.labels) : 'Restart'" :disabled="cbusy === c.id || isProtected(c.labels)" @click="containerAction(c, 'restartContainer', 'Restarted')"><span class="mdi mdi-restart"></span></button>
+                    <button v-if="c.state === 'running'" class="btn-icon btn-icon-muted" :title="isProtected(c.labels) ? lockReason(c.labels) : 'Stop'" :aria-label="isProtected(c.labels) ? lockReason(c.labels) : 'Stop'" :disabled="cbusy === c.id || isProtected(c.labels)" @click="containerAction(c, 'stopContainer', 'Stopped')"><span class="mdi mdi-stop"></span></button>
+                    <button class="btn-icon btn-icon-danger" :title="lockReason(c.labels) || 'Remove'" :aria-label="lockReason(c.labels) || 'Remove'" :disabled="cbusy === c.id || isManaged(c.labels) || isProtected(c.labels)" @click="toRemoveContainer = c"><span class="mdi mdi-delete-outline"></span></button>
                   </td>
                   <td class="cell-sub">{{ statsUpdatedAt ? new Date(statsUpdatedAt).toLocaleTimeString() : '—' }}</td>
                 </tr>

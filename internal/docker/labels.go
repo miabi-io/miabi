@@ -28,11 +28,112 @@ const (
 	LabelManaged     = "io.miabi.managed"      // "true" on managed raw resources/services
 	LabelPipelineRun = "io.miabi.pipeline-run" // pipeline run id (transient)
 	LabelSizeBytes   = "io.miabi.size_bytes"   // volume size hint
+
+	// --- the platform stack itself ---------------------------------------------
+	//
+	// The labels above describe what Miabi CREATES. The three below describe what
+	// Miabi IS: the control plane, its Postgres, its Redis, the central gateway and
+	// the node agents. That stack is deployed by deploy/compose.yaml — from OUTSIDE
+	// Miabi — so without these it carries no platform identity at all, and Miabi
+	// cannot recognize its own components when it enumerates the engine.
+
+	// LabelPartOf marks a resource as part of the Miabi platform stack
+	// (PartOfMiabi). One exact-match key, so the whole stack is a single Docker
+	// label filter rather than a scan against a list of roles.
+	LabelPartOf = "io.miabi.part-of"
+	// LabelManagedBy names who owns the resource's LIFECYCLE — which is not the same
+	// question as who it belongs to. A compose-owned container may be observed and
+	// updated in place, but recreating it out-of-band is silently reverted by the
+	// next `docker compose up -d`.
+	LabelManagedBy = "io.miabi.managed-by"
+	// LabelProtected ("true") refuses ad-hoc destructive operations from the generic
+	// containers list. Declared, never inferred: platform infrastructure is not
+	// automatically undeletable (a transient GC container is infra too), and a role
+	// allowlist in the guard would drift from the roles themselves.
+	LabelProtected = "io.miabi.protected"
+)
+
+// PartOfMiabi is the only value LabelPartOf takes today. Named so call sites read
+// as an identity check rather than a string compare.
+const PartOfMiabi = "miabi"
+
+// Roles carried by LabelRole. The platform-stack roles are new; the infra roles
+// were already in use as string literals at their call sites and are named here so
+// there is one spelling of each.
+const (
+	// Platform stack (deploy/compose.yaml + the agent).
+	RoleControlPlane       = "control-plane"
+	RolePlatformDB         = "platform-db"
+	RolePlatformCache      = "platform-cache"
+	RoleGateway            = "gateway" // the central, compose-managed gateway
+	RoleAgent              = "agent"
+	RoleControlPlaneWorker = "worker" // a split-out `command: ["worker"]` service
+
+	// Infrastructure Miabi provisions itself.
+	RoleNodeGateway      = "node-gateway"
+	RoleNodeGatewayRedis = "node-gateway-redis"
+	RoleRegistry         = "registry"
+	RoleRegistryGC       = "registry-gc" // transient: deliberately NOT protected
+)
+
+// Lifecycle owners for LabelManagedBy.
+const (
+	// ManagedByCompose: created by deploy/compose.yaml. Miabi may read it and update
+	// it in place, but must write any version change back to the compose env too —
+	// otherwise `docker compose up -d` reverts the upgrade.
+	ManagedByCompose = "compose"
+	// ManagedByMiabi: Miabi created it and may freely recreate it.
+	ManagedByMiabi = "miabi"
+	// ManagedByExternal: installed out-of-band (install-agent.sh on a node Miabi
+	// does not otherwise control).
+	ManagedByExternal = "external"
 )
 
 // ManagedLabel marks resources created by Miabi (kept as a named alias for the
 // many call sites that tag raw containers/volumes/services).
 const ManagedLabel = LabelManaged
+
+// PlatformLabels is the label set every Miabi platform component carries. Use it
+// rather than hand-writing the keys, so a component can never end up half-labeled
+// — e.g. discoverable but not protected.
+//
+// extra is merged last and may add component-specific keys (a node slug, an owning
+// workspace); it may not override the four keys set here.
+func PlatformLabels(role, managedBy string, extra map[string]string) map[string]string {
+	l := make(map[string]string, len(extra)+4)
+	for k, v := range extra {
+		l[k] = v
+	}
+	l[LabelPartOf] = PartOfMiabi
+	l[LabelRole] = role
+	l[LabelManagedBy] = managedBy
+	l[LabelProtected] = "true"
+	return l
+}
+
+// IsPlatformStack reports whether a resource is part of Miabi's own stack — the
+// control plane, its database/cache, the central gateway, an agent. Such resources
+// are never offered for import (Miabi would end up "managing" its own database) and
+// are never treated as a user's container.
+func IsPlatformStack(labels map[string]string) bool {
+	v, _ := LabelValue(labels, LabelPartOf)
+	return v == PartOfMiabi
+}
+
+// IsProtected reports whether destructive operations (stop/restart/remove) must be
+// refused on a resource. Distinct from IsPlatformInfra: infra is "do not reclaim as
+// an orphan", protected is "do not let a human break the platform by accident".
+func IsProtected(labels map[string]string) bool {
+	v, _ := LabelValue(labels, LabelProtected)
+	return v == "true"
+}
+
+// ManagedBy returns the resource's lifecycle owner (compose / miabi / external), or
+// "" when unlabeled — e.g. a stack installed before platform labels existed.
+func ManagedBy(labels map[string]string) string {
+	v, _ := LabelValue(labels, LabelManagedBy)
+	return v
+}
 
 // LabelValue reads a platform label by its io.miabi.* key. ok is false when the
 // label is absent.
