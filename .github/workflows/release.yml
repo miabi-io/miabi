@@ -90,6 +90,27 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # Rootless variant: same binary + web UI on the alpine runtime, running as an
+      # unprivileged user (docker/Dockerfile.rootless).
+      - name: Build and push Miabi (rootless)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.rootless
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            COMMIT=${{ env.COMMIT }}
+            GO_TAGS=enterprise
+            LICENSE_PUBLIC_KEY=${{ vars.LICENSE_PUBLIC_KEY }}
+          tags: |
+            miabi/miabi:rootless
+            miabi/miabi:latest-rootless
+            miabi/miabi:${{ env.VERSION }}-rootless
+            ghcr.io/miabi-io/miabi:rootless
+            ghcr.io/miabi-io/miabi:latest-rootless
+            ghcr.io/miabi-io/miabi:${{ env.VERSION }}-rootless
 
       # Default runtime (Alpine, root).
       - name: Build and push Miabi
@@ -105,32 +126,11 @@ jobs:
             GO_TAGS=enterprise
             LICENSE_PUBLIC_KEY=${{ vars.LICENSE_PUBLIC_KEY }}
           tags: |
-            miabi/miabi:latest
             miabi/miabi:${{ env.VERSION }}
-            ghcr.io/miabi-io/miabi:latest
+            miabi/miabi:latest
             ghcr.io/miabi-io/miabi:${{ env.VERSION }}
+            ghcr.io/miabi-io/miabi:latest
 
-      # Rootless variant: same binary + web UI on a Debian runtime that runs as an
-      # unprivileged user (docker/Dockerfile.debian).
-      - name: Build and push Miabi (rootless)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.debian
-          platforms: linux/amd64,linux/arm64
-          push: true
-          build-args: |
-            VERSION=${{ env.VERSION }}
-            COMMIT=${{ env.COMMIT }}
-            GO_TAGS=enterprise
-            LICENSE_PUBLIC_KEY=${{ vars.LICENSE_PUBLIC_KEY }}
-          tags: |
-            miabi/miabi:rootless
-            miabi/miabi:latest-rootless
-            miabi/miabi:${{ env.VERSION }}-rootless
-            ghcr.io/miabi-io/miabi:rootless
-            ghcr.io/miabi-io/miabi:latest-rootless
-            ghcr.io/miabi-io/miabi:${{ env.VERSION }}-rootless
 
 
   # Bump deploy/install.sh on main, via a pull request.

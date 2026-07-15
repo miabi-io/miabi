@@ -52,10 +52,7 @@ LABEL org.opencontainers.image.title="Miabi" \
       org.opencontainers.image.source="https://github.com/miabi-io/miabi" \
       org.opencontainers.image.documentation="https://github.com/miabi-io/miabi#readme" \
       org.opencontainers.image.licenses="AGPL-3.0-or-later"
-# tzdata: without it Alpine has no zoneinfo database, and TZ is SILENTLY IGNORED —
-# the container stays on UTC while the setting says otherwise. Postgres, Redis and
-# Goma all ship it, so without this the stack's own logs are the only ones in the
-# wrong timezone, which is the most confusing possible outcome. ~3 MB.
+
 RUN apk add --no-cache ca-certificates tzdata \
     && addgroup -g 10001 miabi \
     && adduser -u 10001 -G miabi -s /sbin/nologin -D -H miabi \
@@ -64,8 +61,8 @@ RUN apk add --no-cache ca-certificates tzdata \
 COPY --from=build /out/miabi /usr/local/bin/miabi
 ENV MIABI_LOG_DIR=/var/lib/miabi/logs
 EXPOSE 9000
-# Default to root; override with `user: "10001:10001"` in your compose file (plus
-# group_add for the host's docker GID) to run unprivileged. See examples/compose.
-# For a purpose-built rootless image, use Dockerfile.debian instead.
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD wget -q -O - http://127.0.0.1:9000/healthz >/dev/null 2>&1 || exit 1
 ENTRYPOINT ["/usr/local/bin/miabi"]
 CMD ["server"]

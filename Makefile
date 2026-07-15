@@ -15,7 +15,7 @@ EE_LDFLAGS  := $(LDFLAGS) -X $(PKG)/internal/enterprise.embeddedPublicKey=$(LICE
 WEB_DIR := web
 EMBED_WEB_DIR := internal/web/dist
 
-.PHONY: run worker agent build build-ee build-agent build-ui build-all dev-ui test test-ee lint tidy migrate license-tool docker docker-debian docker-agent compose-up compose-down
+.PHONY: run worker agent build build-ee build-agent build-ui build-all dev-ui test test-ee lint tidy migrate license-tool docker docker-rootless docker-agent compose-up compose-down
 
 run: ## Run the API server
 	go run -ldflags "$(LDFLAGS)" ./cmd/miabi server
@@ -69,8 +69,8 @@ tidy: ## Sync go.mod / go.sum
 docker: ## Build the Docker image (Alpine)
 	docker build -f docker/Dockerfile -t miabi:$(VERSION) .
 
-docker-debian: ## Build the Docker image (Debian, rootless)
-	docker build -f docker/Dockerfile.debian -t miabi:$(VERSION)-debian .
+docker-rootless: ## Build the Docker image (rootless)
+	docker build -f docker/Dockerfile.rootless -t miabi:$(VERSION)-rootless .
 
 docker-agent: ## Build the node agent Docker image
 	docker build -f Dockerfile.agent -t $(AGENT_IMAGE):$(VERSION) -t $(AGENT_IMAGE):latest .
