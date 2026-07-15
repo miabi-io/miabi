@@ -140,6 +140,40 @@ func (s *Service) List(workspaceID uint) ([]models.Middleware, error) {
 	return s.repo.ListByWorkspace(workspaceID)
 }
 
+// SeedDefaults creates the workspace's default policy set (mwcatalog.DefaultSeed)
+// in one pass, syncing the proxy once at the end rather than per row. It is a
+// no-op when the workspace already owns any middleware, so it is safe to call
+// again and never clobbers user edits. Best-effort per row: a seed that fails to
+// create (e.g. a name collision from a partial earlier run) is skipped, not fatal.
+func (s *Service) SeedDefaults(ctx context.Context, workspaceID uint) error {
+	n, err := s.repo.CountByWorkspace(workspaceID)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil // already has policies — don't seed over the user's set
+	}
+	var created bool
+	for _, seed := range mwcatalog.DefaultSeed() {
+		if !slug.IsValid(seed.Name) {
+			continue // guards a malformed seed definition
+		}
+		rule, err := mwcatalog.EncryptSecrets(seed.Type, workspaceID, seed.Rule)
+		if err != nil {
+			continue
+		}
+		m := &models.Middleware{WorkspaceID: workspaceID, Name: seed.Name, DisplayName: seed.DisplayName, Type: seed.Type, Rule: rule}
+		if err := s.repo.Create(m); err != nil {
+			continue // e.g. name already taken; skip and keep going
+		}
+		created = true
+	}
+	if created {
+		s.sync(ctx, workspaceID)
+	}
+	return nil
+}
+
 func (s *Service) Delete(ctx context.Context, workspaceID, id uint) error {
 	m, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {

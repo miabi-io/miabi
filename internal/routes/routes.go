@@ -432,6 +432,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// route service owns the single per-workspace Goma file), so the middleware
 	// service drives the route service rather than the proxy directly.
 	middlewareService := mwservice.NewService(middlewareRepo, routeService)
+	// New workspaces are seeded with a default security-policy set (best-effort).
+	workspaceService.SetMiddlewareSeeder(middlewareService)
 	backupRepo := repositories.NewBackupRepository(db)
 	backupSettingsRepo := repositories.NewWorkspaceBackupSettingsRepository(db)
 	volumeBackupRepo := repositories.NewVolumeBackupRepository(db)

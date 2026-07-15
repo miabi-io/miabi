@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestRenderACMEOmitsTLS(t *testing.T) {
@@ -194,6 +196,129 @@ func TestRenderHostlessRouteForcedDisabled(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "enabled: false") {
 		t.Errorf("hostless route must render enabled: false:\n%s", out)
+	}
+}
+
+// TestRenderPhase1Middlewares checks the transform/security types added in the
+// middleware-UI expansion render the exact rule keys Goma's structs expect. The
+// mirror structs below carry the same yaml tags as goma-gateway's
+// internal/types.go (RedirectRule/RedirectRegexRule/AddPrefixRule/UserAgentBlock),
+// so a successful unmarshal into a non-zero struct proves key parity — a renamed
+// key would round-trip to a zero field and fail the assertion.
+func TestRenderPhase1Middlewares(t *testing.T) {
+	type redirectRule struct {
+		URL       string `yaml:"url"`
+		Permanent bool   `yaml:"permanent"`
+	}
+	type redirectRegexRule struct {
+		Pattern     string `yaml:"pattern"`
+		Replacement string `yaml:"replacement"`
+		Permanent   bool   `yaml:"permanent"`
+	}
+	type addPrefixRule struct {
+		Prefix string `yaml:"prefix"`
+	}
+	type userAgentBlockRule struct {
+		UserAgents []string `yaml:"userAgents"`
+	}
+
+	assertRule := func(t *testing.T, mwType string, rule map[string]any, into any, check func()) {
+		t.Helper()
+		out, err := RenderMiddleware(RenderedMiddleware{ID: 1, WorkspaceID: 2, Name: "mw", Type: mwType, Rule: rule})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc struct {
+			Middlewares []struct {
+				Rule yaml.Node `yaml:"rule"`
+			} `yaml:"middlewares"`
+		}
+		if err := yaml.Unmarshal(out, &doc); err != nil {
+			t.Fatalf("unmarshal rendered %s: %v\n%s", mwType, err, out)
+		}
+		if len(doc.Middlewares) != 1 {
+			t.Fatalf("expected 1 middleware, got %d:\n%s", len(doc.Middlewares), out)
+		}
+		if err := doc.Middlewares[0].Rule.Decode(into); err != nil {
+			t.Fatalf("decode %s rule into goma struct: %v\n%s", mwType, err, out)
+		}
+		check()
+	}
+
+	var rd redirectRule
+	assertRule(t, "redirect", map[string]any{"url": "https://example.com", "permanent": true}, &rd, func() {
+		if rd.URL != "https://example.com" || !rd.Permanent {
+			t.Fatalf("redirect rule mismatch: %+v", rd)
+		}
+	})
+	var rr redirectRegexRule
+	assertRule(t, "redirectRegex", map[string]any{"pattern": "^/o/(.*)", "replacement": "/n/$1"}, &rr, func() {
+		if rr.Pattern != "^/o/(.*)" || rr.Replacement != "/n/$1" {
+			t.Fatalf("redirectRegex rule mismatch: %+v", rr)
+		}
+	})
+	var ap addPrefixRule
+	assertRule(t, "addPrefix", map[string]any{"prefix": "/api"}, &ap, func() {
+		if ap.Prefix != "/api" {
+			t.Fatalf("addPrefix rule mismatch: %+v", ap)
+		}
+	})
+	var ua userAgentBlockRule
+	assertRule(t, "userAgentBlock", map[string]any{"userAgents": []any{"curl", "Googlebot"}}, &ua, func() {
+		if len(ua.UserAgents) != 2 || ua.UserAgents[0] != "curl" {
+			t.Fatalf("userAgentBlock rule mismatch: %+v", ua)
+		}
+	})
+}
+
+// TestRenderHeaderAndErrorMiddlewares checks the map/list rule shapes (Phase 2/3)
+// render into the keys Goma's RequestHeader / ResponseHeader / RouteErrorInterceptor
+// structs expect — the nested maps and object lists round-trip through YAML intact.
+func TestRenderHeaderAndErrorMiddlewares(t *testing.T) {
+	decode := func(t *testing.T, mwType string, rule map[string]any, into any) {
+		t.Helper()
+		out, err := RenderMiddleware(RenderedMiddleware{ID: 1, WorkspaceID: 2, Name: "mw", Type: mwType, Rule: rule})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc struct {
+			Middlewares []struct {
+				Rule yaml.Node `yaml:"rule"`
+			} `yaml:"middlewares"`
+		}
+		if err := yaml.Unmarshal(out, &doc); err != nil {
+			t.Fatalf("unmarshal %s: %v\n%s", mwType, err, out)
+		}
+		if err := doc.Middlewares[0].Rule.Decode(into); err != nil {
+			t.Fatalf("decode %s: %v\n%s", mwType, err, out)
+		}
+	}
+
+	var reqH struct {
+		SetHeaders    map[string]string `yaml:"setHeaders"`
+		RemoveHeaders []string          `yaml:"removeHeaders"`
+	}
+	decode(t, "requestHeaders", map[string]any{
+		"setHeaders":    map[string]any{"X-Forwarded-Proto": "https"},
+		"removeHeaders": []any{"Authorization"},
+	}, &reqH)
+	if reqH.SetHeaders["X-Forwarded-Proto"] != "https" || len(reqH.RemoveHeaders) != 1 {
+		t.Fatalf("requestHeaders mismatch: %+v", reqH)
+	}
+
+	var errI struct {
+		Enabled bool `yaml:"enabled"`
+		Errors  []struct {
+			StatusCode int    `yaml:"statusCode"`
+			Body       string `yaml:"body"`
+		} `yaml:"errors"`
+	}
+	decode(t, "errorInterceptor", map[string]any{
+		"enabled": true,
+		"errors":  []any{map[string]any{"statusCode": 404, "body": "gone"}},
+	}, &errI)
+	if !errI.Enabled || len(errI.Errors) != 1 || errI.Errors[0].StatusCode != 404 || errI.Errors[0].Body != "gone" {
+		t.Fatalf("errorInterceptor mismatch: %+v", errI)
 	}
 }
 
