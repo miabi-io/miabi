@@ -1033,15 +1033,30 @@ export interface Middleware {
 
 // --- Middleware catalog (curated security policies) ---
 
+export type MiddlewareFieldType =
+  | 'string'
+  | 'int'
+  | 'bool'
+  | 'string[]'
+  | 'int[]'
+  | 'duration'
+  | 'enum'
+  | 'users'
+  | 'map'
+  | 'object'
+  | 'list'
+
 export interface MiddlewareField {
   key: string
   label: string
-  type: 'string' | 'int' | 'bool' | 'string[]' | 'duration' | 'enum' | 'users' | 'object'
+  type: MiddlewareFieldType
   required?: boolean
   secret?: boolean
   default?: unknown
   options?: string[]
   help?: string
+  // Sub-schema for `list` rows and structured `object` groups.
+  fields?: MiddlewareField[]
 }
 
 export interface MiddlewareDescriptor {

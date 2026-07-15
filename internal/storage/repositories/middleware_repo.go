@@ -42,6 +42,14 @@ func (r *MiddlewareRepository) ListAll() ([]models.Middleware, error) {
 	return mws, err
 }
 
+// CountByWorkspace returns how many middlewares a workspace owns. Used to make
+// default-seeding idempotent (skip when the workspace already has policies).
+func (r *MiddlewareRepository) CountByWorkspace(workspaceID uint) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.Middleware{}).Where("workspace_id = ?", workspaceID).Count(&count).Error
+	return count, err
+}
+
 func (r *MiddlewareRepository) ExistsByName(workspaceID uint, name string) (bool, error) {
 	var count int64
 	err := r.db.Model(&models.Middleware{}).

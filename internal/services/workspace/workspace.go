@@ -52,13 +52,21 @@ type KeyShredder interface {
 	ShredWorkspace(workspaceID uint) error
 }
 
+// MiddlewareSeeder creates a new workspace's default policy set. Implemented by
+// the middleware service; injected, nil-safe, and best-effort (a seed failure
+// never fails workspace creation).
+type MiddlewareSeeder interface {
+	SeedDefaults(ctx context.Context, workspaceID uint) error
+}
+
 type Service struct {
-	repo  *repositories.WorkspaceRepository
-	users *repositories.UserRepository
-	nets  NetworkEnsurer
-	plans *repositories.PlanRepository
-	quota *quota.Service
-	keys  KeyShredder
+	repo   *repositories.WorkspaceRepository
+	users  *repositories.UserRepository
+	nets   NetworkEnsurer
+	seeder MiddlewareSeeder
+	plans  *repositories.PlanRepository
+	quota  *quota.Service
+	keys   KeyShredder
 	// globalLimit returns the platform-wide max_workspaces_per_user (0/negative =
 	// unlimited); overrideEntitled reports whether the Enterprise per-user override
 	// may be applied. Both nil-safe — unset leaves workspace ownership uncapped.
@@ -82,6 +90,9 @@ func (s *Service) SetPlans(plans *repositories.PlanRepository) { s.plans = plans
 
 // SetKeyShredder wires crypto-shred of a workspace's keys on delete (nil-safe).
 func (s *Service) SetKeyShredder(k KeyShredder) { s.keys = k }
+
+// SetMiddlewareSeeder wires the default-policy seeder used at workspace creation.
+func (s *Service) SetMiddlewareSeeder(m MiddlewareSeeder) { s.seeder = m }
 
 // SetQuota wires the quota service so member invitations/acceptances are gated
 // by the workspace's effective max-members limit. Optional: when unset (or with
@@ -235,6 +246,13 @@ func (s *Service) Create(ownerID uint, displayName, handle, description string) 
 	if s.nets != nil {
 		if _, err := s.nets.EnsureDefault(context.Background(), ws.ID); err != nil {
 			logger.Warn("failed to create default network for workspace", "workspace", ws.ID, "error", err)
+		}
+	}
+	// Seed the workspace's default security policies (best-effort). The system
+	// workspace uses EnsureSystem, not this path, so it is never seeded.
+	if s.seeder != nil {
+		if err := s.seeder.SeedDefaults(context.Background(), ws.ID); err != nil {
+			logger.Warn("failed to seed default middlewares for workspace", "workspace", ws.ID, "error", err)
 		}
 	}
 	return ws, nil

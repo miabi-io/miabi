@@ -7,7 +7,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { middlewareApi } from '@/api/middlewares'
 import { routeApi } from '@/api/routes'
 import { toYaml } from '@/utils/yaml'
-import { middlewareTypeInfo } from '@/utils/middlewareCatalog'
+import { useMiddlewareCatalog } from '@/composables/useMiddlewareCatalog'
 import MiddlewareFormModal from '@/components/MiddlewareFormModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { Middleware, Route } from '@/api/types'
@@ -17,6 +17,7 @@ const router = useRouter()
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
 const { currentWorkspaceId } = storeToRefs(ws)
+const { ensure: ensureCatalog, typeInfo } = useMiddlewareCatalog()
 
 const mwId = computed(() => Number(route.params.id))
 const item = ref<Middleware | null>(null)
@@ -32,6 +33,7 @@ async function load() {
   const wid = currentWorkspaceId.value
   if (!wid || !mwId.value) return
   loading.value = true
+  void ensureCatalog(wid)
   try {
     item.value = (await middlewareApi.get(wid, mwId.value)).data.data
     const routes = (await routeApi.list(wid)).data.data ?? []
@@ -72,7 +74,7 @@ async function confirmDelete() {
         </button>
         <div>
           <h1>{{ item.display_name || item.name }}</h1>
-          <span class="cell-sub">{{ middlewareTypeInfo(item.type)?.description || 'Goma Gateway middleware' }}</span>
+          <span class="cell-sub">{{ typeInfo(item.type)?.description || 'Goma Gateway middleware' }}</span>
         </div>
         <span class="badge badge-neutral">{{ item.type }}</span>
       </div>

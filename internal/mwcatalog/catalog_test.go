@@ -40,6 +40,38 @@ func TestValidate(t *testing.T) {
 		{"redirectScheme valid", "redirectScheme", map[string]any{"scheme": "https", "permanent": true}, false},
 		{"bodyLimit valid", "bodyLimit", map[string]any{"limit": "10MB"}, false},
 		{"access valid", "access", map[string]any{"statusCode": float64(403)}, false},
+		// Phase 1 additions.
+		{"redirect valid", "redirect", map[string]any{"url": "https://example.com", "permanent": true}, false},
+		{"redirect missing url", "redirect", map[string]any{"permanent": true}, true},
+		{"redirect url wrong type", "redirect", map[string]any{"url": 42}, true},
+		{"redirectRegex valid", "redirectRegex", map[string]any{"pattern": "^/old/(.*)", "replacement": "/new/$1"}, false},
+		{"redirectRegex missing replacement", "redirectRegex", map[string]any{"pattern": "^/old/(.*)"}, true},
+		{"addPrefix valid", "addPrefix", map[string]any{"prefix": "/api"}, false},
+		{"addPrefix missing prefix", "addPrefix", map[string]any{}, true},
+		{"addPrefix without leading slash", "addPrefix", map[string]any{"prefix": "api"}, true},
+		{"userAgentBlock valid", "userAgentBlock", map[string]any{"userAgents": []any{"curl", "Googlebot"}}, false},
+		{"userAgentBlock missing list", "userAgentBlock", map[string]any{}, true},
+		{"userAgentBlock wrong type", "userAgentBlock", map[string]any{"userAgents": "curl"}, true},
+		{"userAgentBlock unknown key", "userAgentBlock", map[string]any{"userAgents": []any{"curl"}, "bogus": 1}, true},
+		// Phase 2/3: map, list and object field types.
+		{"requestHeaders setHeaders", "requestHeaders", map[string]any{"setHeaders": map[string]any{"X-Forwarded-Proto": "https"}}, false},
+		{"requestHeaders removeHeaders only", "requestHeaders", map[string]any{"removeHeaders": []any{"Authorization"}}, false},
+		{"requestHeaders neither set", "requestHeaders", map[string]any{}, true},
+		{"requestHeaders non-string map value", "requestHeaders", map[string]any{"setHeaders": map[string]any{"X": 1}}, true},
+		{"requestHeaders map wrong type", "requestHeaders", map[string]any{"setHeaders": "x"}, true},
+		{"responseHeaders setHeaders+cache", "responseHeaders", map[string]any{"setHeaders": map[string]any{"X-Frame-Options": "DENY"}, "cacheControl": "no-store"}, false},
+		{"responseHeaders cacheStatuses ints", "responseHeaders", map[string]any{"cacheStatuses": []any{float64(200), float64(301)}}, false},
+		{"responseHeaders cacheStatuses non-int", "responseHeaders", map[string]any{"cacheStatuses": []any{"200"}}, true},
+		{"responseHeaders nested cors", "responseHeaders", map[string]any{"cors": map[string]any{"enabled": true, "origins": []any{"https://x"}}}, false},
+		{"responseHeaders cors unknown subkey", "responseHeaders", map[string]any{"cors": map[string]any{"bogus": true}}, true},
+		{"responseHeaders setCookies list", "responseHeaders", map[string]any{"setCookies": []any{map[string]any{"name": "s", "attributes": map[string]any{"secure": true, "sameSite": "Strict"}}}}, false},
+		{"responseHeaders cookie bad sameSite", "responseHeaders", map[string]any{"setCookies": []any{map[string]any{"name": "s", "attributes": map[string]any{"sameSite": "Nope"}}}}, true},
+		{"responseHeaders cookie missing name", "responseHeaders", map[string]any{"setCookies": []any{map[string]any{"value": "v"}}}, true},
+		{"errorInterceptor valid", "errorInterceptor", map[string]any{"enabled": true, "errors": []any{map[string]any{"statusCode": float64(404), "body": "gone"}}}, false},
+		{"errorInterceptor missing enabled", "errorInterceptor", map[string]any{"errors": []any{map[string]any{"statusCode": float64(404)}}}, true},
+		{"errorInterceptor empty errors", "errorInterceptor", map[string]any{"enabled": true, "errors": []any{}}, true},
+		{"errorInterceptor error missing statusCode", "errorInterceptor", map[string]any{"enabled": true, "errors": []any{map[string]any{"body": "x"}}}, true},
+		{"errorInterceptor error unknown key", "errorInterceptor", map[string]any{"enabled": true, "errors": []any{map[string]any{"statusCode": float64(1), "bogus": 1}}}, true},
 		{"uncatalogued passes through", "customThing", map[string]any{"anything": "goes"}, false},
 	}
 	for _, tc := range cases {
@@ -56,6 +88,29 @@ func TestValidate(t *testing.T) {
 				t.Fatalf("Validate(%s) = %v, want nil", tc.mwType, err)
 			}
 		})
+	}
+}
+
+func TestDefaultSeedIsValid(t *testing.T) {
+	seeds := DefaultSeed()
+	if len(seeds) == 0 {
+		t.Fatal("DefaultSeed returned no entries")
+	}
+	for _, s := range seeds {
+		if _, ok := Get(s.Type); !ok {
+			t.Errorf("seed %q references uncatalogued type %q", s.Name, s.Type)
+		}
+		if err := Validate(s.Type, s.Rule); err != nil {
+			t.Errorf("seed %q (%s) is not a valid rule: %v", s.Name, s.Type, err)
+		}
+	}
+}
+
+func TestPresetTypesAreCatalogued(t *testing.T) {
+	for _, p := range Presets() {
+		if _, ok := Get(p.Type); !ok {
+			t.Errorf("preset %q references uncatalogued type %q", p.Key, p.Type)
+		}
 	}
 }
 

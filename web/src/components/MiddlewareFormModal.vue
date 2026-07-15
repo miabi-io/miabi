@@ -3,7 +3,8 @@ import { computed, ref, watch } from 'vue'
 import { middlewareApi } from '@/api/middlewares'
 import { useNotificationStore } from '@/stores/notification'
 import { parseYaml, toYaml } from '@/utils/yaml'
-import type { Middleware, MiddlewareCatalog, MiddlewareDescriptor, MiddlewareField, MiddlewarePreset } from '@/api/types'
+import MiddlewareField from '@/components/MiddlewareField.vue'
+import type { Middleware, MiddlewareCatalog, MiddlewareDescriptor, MiddlewareField as MwField, MiddlewarePreset } from '@/api/types'
 
 // Shared create/edit modal for Goma middlewares, driven by the server catalog:
 // a curated type picker + schema form for known types, with a raw-YAML "advanced"
@@ -28,8 +29,13 @@ const saving = ref(false)
 const descriptors = computed(() => catalog.value?.types ?? [])
 const presets = computed(() => catalog.value?.presets ?? [])
 const descriptor = computed<MiddlewareDescriptor | undefined>(() => descriptors.value.find((d) => d.type === form.value.type))
-// Fields rendered in the schema form (object fields are edited via advanced mode).
-const fields = computed<MiddlewareField[]>(() => (descriptor.value?.fields ?? []).filter((f) => f.type !== 'object'))
+// Fields rendered in the schema form. Every type has a form editor now, except a
+// free-form object with no sub-schema (rare: jwt forwardHeaders, rateLimit
+// keyStrategy) — those still fall to the advanced YAML box.
+const isBareObject = (f: MwField) => f.type === 'object' && !(f.fields && f.fields.length)
+const fields = computed<MwField[]>(() => (descriptor.value?.fields ?? []).filter((f) => !isBareObject(f)))
+// True when the type has any field the form can't render (forces advanced YAML).
+const hasBareObject = computed(() => (descriptor.value?.fields ?? []).some(isBareObject))
 const isCatalogued = computed(() => !!descriptor.value)
 const showAdvanced = computed(() => advanced.value || !isCatalogued.value)
 
@@ -53,17 +59,11 @@ async function ensureCatalog() {
 function defaultsFor(d?: MiddlewareDescriptor): Record<string, any> {
   const r: Record<string, any> = {}
   for (const f of d?.fields ?? []) {
-    if (f.type === 'users') r[f.key] = []
+    if (f.type === 'users' || f.type === 'list') r[f.key] = []
+    else if (f.type === 'map' || f.type === 'object') r[f.key] = {}
     else if (f.default !== undefined && f.default !== null) r[f.key] = f.default
   }
   return r
-}
-
-function normalizeRule() {
-  // Ensure a users field is always an array so the editor can bind to it.
-  for (const f of descriptor.value?.fields ?? []) {
-    if (f.type === 'users' && !Array.isArray(rule.value[f.key])) rule.value[f.key] = []
-  }
 }
 
 watch(
@@ -84,7 +84,6 @@ watch(
       rule.value = defaultsFor(descriptors.value[0])
       ruleText.value = ''
     }
-    normalizeRule()
   },
 )
 
@@ -92,66 +91,38 @@ watch(
 function onTypeChange() {
   if (props.editing) return
   rule.value = defaultsFor(descriptor.value)
-  normalizeRule()
 }
 
 function applyPreset(p: MiddlewarePreset) {
   form.value.type = p.type
   rule.value = { ...defaultsFor(descriptors.value.find((d) => d.type === p.type)), ...JSON.parse(JSON.stringify(p.rule)) }
   advanced.value = false
-  normalizeRule()
-}
-
-// --- field binding helpers ---
-function csvValue(key: string): string {
-  const v = rule.value[key]
-  return Array.isArray(v) ? v.join(', ') : ''
-}
-function setCsv(key: string, v: string) {
-  rule.value[key] = v.split(',').map((x) => x.trim()).filter(Boolean)
-}
-function onCsvInput(key: string, e: Event) {
-  setCsv(key, (e.target as HTMLInputElement).value)
-}
-// userRows returns the live users array so the editor binds to (and mutates) it.
-function userRows(key: string): Array<{ username: string; password: string }> {
-  return (rule.value[key] as Array<{ username: string; password: string }>) || []
-}
-function addUser(key: string) {
-  ;(rule.value[key] ||= []).push({ username: '', password: '' })
-}
-function removeUser(key: string, i: number) {
-  rule.value[key].splice(i, 1)
 }
 
 function splitCsv(s: string): string[] {
   return s.split(',').map((x) => x.trim()).filter(Boolean)
 }
 
-// buildRule starts from the current model (preserving any fields not rendered,
-// e.g. object fields) and coerces/cleans the rendered ones.
+// isEmpty reports whether a built value should be dropped from a non-required
+// field: blank string, empty list, or an object/map with no keys.
+function isEmpty(v: unknown): boolean {
+  if (v === undefined || v === null) return true
+  if (typeof v === 'string') return v.trim() === ''
+  if (Array.isArray(v)) return v.length === 0
+  if (typeof v === 'object') return Object.keys(v as object).length === 0
+  return false
+}
+
+// buildRule produces the rule to submit. In form mode the fields already hold the
+// correct shapes (MiddlewareField coerces ints, lists, maps and nested groups as
+// it edits), so this only prunes empty non-required top-level fields and drops
+// blank basicAuth users. Advanced mode parses the raw YAML box verbatim.
 function buildRule(): Record<string, unknown> {
   if (showAdvanced.value) return ruleText.value.trim() ? parseYaml(ruleText.value) : {}
-  const out: Record<string, any> = { ...rule.value }
+  const out: Record<string, any> = JSON.parse(JSON.stringify(rule.value))
   for (const f of descriptor.value?.fields ?? []) {
-    const v = out[f.key]
-    if (v === undefined || v === null) {
-      if (!f.required) delete out[f.key]
-      continue
-    }
-    if (f.type === 'int') {
-      const n = Number(v)
-      if (Number.isNaN(n) || v === '') delete out[f.key]
-      else out[f.key] = n
-    } else if (f.type === 'string[]') {
-      const arr = (Array.isArray(v) ? v : []).map(String).map((s) => s.trim()).filter(Boolean)
-      if (!arr.length && !f.required) delete out[f.key]
-      else out[f.key] = arr
-    } else if (f.type === 'users') {
-      out[f.key] = (Array.isArray(v) ? v : []).filter((u) => u && u.username)
-    } else if (typeof v === 'string' && v.trim() === '' && !f.required) {
-      delete out[f.key]
-    }
+    if (f.type === 'users') out[f.key] = (Array.isArray(out[f.key]) ? out[f.key] : []).filter((u: any) => u && u.username)
+    if (!f.required && isEmpty(out[f.key])) delete out[f.key]
   }
   return out
 }
@@ -228,55 +199,13 @@ async function save() {
               <input v-model="form.paths" class="form-input" placeholder="/*" aria-label="Paths" />
             </div>
 
-            <!-- Schema-driven fields -->
+            <!-- Schema-driven fields (recursive: scalars, maps, groups, lists) -->
             <template v-if="!showAdvanced">
-              <div v-for="f in fields" :key="f.key" class="form-group">
-                <label class="form-label">
-                  {{ f.label }}<span v-if="f.required" class="req">*</span>
-                  <span v-if="f.secret" class="mdi mdi-lock-outline secret-ico" title="Stored encrypted"></span>
-                </label>
+              <MiddlewareField v-for="f in fields" :key="f.key" :field="f" :model="rule" :editing="!!editing" />
 
-                <!-- users editor (basicAuth) -->
-                <template v-if="f.type === 'users'">
-                  <div v-for="(u, i) in userRows(f.key)" :key="i" class="user-row">
-                    <input v-model="u.username" class="form-input" placeholder="username" aria-label="Username" />
-                    <input v-model="u.password" class="form-input" type="password" :placeholder="editing ? '•••• (unchanged)' : 'password'" aria-label="Password" />
-                    <button type="button" class="btn-icon btn-icon-danger" title="Remove" aria-label="Remove" @click="removeUser(f.key, i)"><span class="mdi mdi-close"></span></button>
-                  </div>
-                  <button type="button" class="btn btn-sm btn-secondary" @click="addUser(f.key)"><span class="mdi mdi-plus"></span> Add user</button>
-                </template>
-
-                <select v-else-if="f.type === 'enum'" v-model="rule[f.key]" class="form-input" :aria-label="f.label">
-                  <option v-for="o in f.options" :key="o" :value="o">{{ o }}</option>
-                </select>
-
-                <label v-else-if="f.type === 'bool'" class="check-row">
-                  <input v-model="rule[f.key]" type="checkbox" /> <span>Enabled</span>
-                </label>
-
-                <input v-else-if="f.type === 'int'" v-model.number="rule[f.key]" class="form-input" type="number" :aria-label="f.label" />
-
-                <input
-                  v-else-if="f.type === 'string[]'"
-                  class="form-input"
-                  :value="csvValue(f.key)"
-                  placeholder="comma-separated"
-                  :aria-label="f.label"
-                  @input="onCsvInput(f.key, $event)"
-                />
-
-                <input
-                  v-else
-                  v-model="rule[f.key]"
-                  class="form-input"
-                  :type="f.secret ? 'password' : 'text'"
-                  :placeholder="f.secret && editing ? '•••• (unchanged)' : ''"
-                  :aria-label="f.label"
-                />
-
-                <p v-if="f.help" class="form-hint">{{ f.help }}</p>
-              </div>
-
+              <p v-if="hasBareObject" class="form-hint">
+                This type has an advanced field edited as raw YAML.
+              </p>
               <div v-if="isCatalogued" class="advanced-toggle">
                 <button type="button" class="btn btn-sm btn-link" @click="advanced = true">
                   <span class="mdi mdi-code-braces"></span> Edit as raw YAML
