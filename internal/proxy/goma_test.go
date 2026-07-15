@@ -322,6 +322,36 @@ func TestRenderHeaderAndErrorMiddlewares(t *testing.T) {
 	}
 }
 
+// TestRenderNestedAuthObjects checks the structured sub-objects (rateLimit
+// keyStrategy, ldap connPool) render into the keys Goma's structs expect. A
+// mislabelled key here is silent: rate-limiting quietly falls back to per-IP.
+func TestRenderNestedAuthObjects(t *testing.T) {
+	out, err := RenderMiddleware(RenderedMiddleware{
+		ID: 1, WorkspaceID: 2, Name: "rl", Type: "rateLimit",
+		Rule: map[string]interface{}{"unit": "minute", "requestsPerUnit": 100, "keyStrategy": map[string]any{"source": "header", "name": "X-Key"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Middlewares []struct {
+			Rule struct {
+				KeyStrategy struct {
+					Source string `yaml:"source"`
+					Name   string `yaml:"name"`
+				} `yaml:"keyStrategy"`
+			} `yaml:"rule"`
+		} `yaml:"middlewares"`
+	}
+	if err := yaml.Unmarshal(out, &doc); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, out)
+	}
+	ks := doc.Middlewares[0].Rule.KeyStrategy
+	if ks.Source != "header" || ks.Name != "X-Key" {
+		t.Fatalf("keyStrategy mismatch: %+v\n%s", ks, out)
+	}
+}
+
 func TestRenderMiddlewareDefaultsPaths(t *testing.T) {
 	// A middleware with no paths must still render an explicit paths field
 	// (defaulting to /*), otherwise Goma silently applies it to nothing.

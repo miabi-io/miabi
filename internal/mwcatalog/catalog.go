@@ -115,7 +115,7 @@ var registry = []Descriptor{
 			{Key: "audience", Label: "Audience", Type: FieldString, Help: "Required aud claim."},
 			{Key: "claimsExpression", Label: "Claims expression", Type: FieldString, Help: "Expression the token claims must satisfy."},
 			{Key: "forwardAuthorization", Label: "Forward Authorization header", Type: FieldBool},
-			{Key: "forwardHeaders", Label: "Forward claim headers", Type: FieldObject, Help: "Advanced: map of header name → claim path."},
+			{Key: "forwardHeaders", Label: "Forward claim headers", Type: FieldMap, Help: "Header name → claim path, forwarded to the backend."},
 		},
 	},
 	{
@@ -149,7 +149,11 @@ var registry = []Descriptor{
 			{Key: "forwardUsername", Label: "Forward username to backend", Type: FieldBool},
 			{Key: "startTLS", Label: "StartTLS", Type: FieldBool, Help: "Upgrade the connection to TLS."},
 			{Key: "insecureSkipVerify", Label: "Skip TLS verification", Type: FieldBool},
-			{Key: "connPool", Label: "Connection pool", Type: FieldObject, Help: "Advanced: {size, burst, ttl}."},
+			{Key: "connPool", Label: "Connection pool", Type: FieldObject, Help: "Reuse LDAP connections for bind lookups.", Fields: []Field{
+				{Key: "size", Label: "Size", Type: FieldInt, Help: "Max pooled connections."},
+				{Key: "burst", Label: "Burst", Type: FieldInt, Help: "Extra connections allowed in a spike."},
+				{Key: "ttl", Label: "TTL", Type: FieldDuration, Help: "How long a pooled connection lives, e.g. 30s."},
+			}},
 		},
 	},
 	{
@@ -191,7 +195,10 @@ var registry = []Descriptor{
 			{Key: "burst", Label: "Burst", Type: FieldInt, Help: "Extra requests allowed in a short spike."},
 			{Key: "banAfter", Label: "Ban after", Type: FieldInt, Help: "Ban a client after this many rejected requests."},
 			{Key: "banDuration", Label: "Ban duration", Type: FieldDuration, Default: "10m", Help: "How long a banned client stays blocked, e.g. 10m."},
-			{Key: "keyStrategy", Label: "Key strategy", Type: FieldObject, Help: "Advanced: how clients are identified (source/name)."},
+			{Key: "keyStrategy", Label: "Key strategy", Type: FieldObject, Help: "How clients are identified for throttling.", Fields: []Field{
+				{Key: "source", Label: "Source", Type: FieldEnum, Options: []string{"ip", "header", "cookie"}, Help: "What identifies a client."},
+				{Key: "name", Label: "Name", Type: FieldString, Help: "Header or cookie name (when source is header/cookie)."},
+			}},
 		},
 	},
 	{

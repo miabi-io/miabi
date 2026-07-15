@@ -21,23 +21,23 @@ const catalog = ref<MiddlewareCatalog | null>(cached)
 
 const form = ref({ name: '', type: 'basicAuth', paths: '' })
 const rule = ref<Record<string, any>>({})
-const ruleText = ref('') // advanced / uncatalogued raw YAML
-const advanced = ref(false)
+const ruleText = ref('') // raw YAML, only for an uncatalogued type (no form schema)
 const ruleError = ref('')
 const saving = ref(false)
 
 const descriptors = computed(() => catalog.value?.types ?? [])
 const presets = computed(() => catalog.value?.presets ?? [])
 const descriptor = computed<MiddlewareDescriptor | undefined>(() => descriptors.value.find((d) => d.type === form.value.type))
-// Fields rendered in the schema form. Every type has a form editor now, except a
-// free-form object with no sub-schema (rare: jwt forwardHeaders, rateLimit
-// keyStrategy) — those still fall to the advanced YAML box.
+// Fields rendered in the schema form. A free-form object with no sub-schema (rare:
+// jwt forwardHeaders, rateLimit keyStrategy) has no form editor; it is left out of
+// the form and its stored value is preserved unchanged on save.
 const isBareObject = (f: MwField) => f.type === 'object' && !(f.fields && f.fields.length)
 const fields = computed<MwField[]>(() => (descriptor.value?.fields ?? []).filter((f) => !isBareObject(f)))
-// True when the type has any field the form can't render (forces advanced YAML).
-const hasBareObject = computed(() => (descriptor.value?.fields ?? []).some(isBareObject))
 const isCatalogued = computed(() => !!descriptor.value)
-const showAdvanced = computed(() => advanced.value || !isCatalogued.value)
+// Raw YAML is never offered as a choice; it is the automatic fallback only when a
+// type has no catalog descriptor (which the type picker cannot select — reachable
+// only when editing a pre-existing uncatalogued middleware).
+const showAdvanced = computed(() => !isCatalogued.value)
 
 const categories = ['access', 'security', 'traffic', 'transform', 'observability']
 const typesByCategory = computed(() =>
@@ -71,7 +71,6 @@ watch(
   async (open) => {
     if (!open) return
     ruleError.value = ''
-    advanced.value = false
     await ensureCatalog()
     if (props.editing) {
       const m = props.editing
@@ -96,7 +95,6 @@ function onTypeChange() {
 function applyPreset(p: MiddlewarePreset) {
   form.value.type = p.type
   rule.value = { ...defaultsFor(descriptors.value.find((d) => d.type === p.type)), ...JSON.parse(JSON.stringify(p.rule)) }
-  advanced.value = false
 }
 
 function splitCsv(s: string): string[] {
@@ -202,25 +200,13 @@ async function save() {
             <!-- Schema-driven fields (recursive: scalars, maps, groups, lists) -->
             <template v-if="!showAdvanced">
               <MiddlewareField v-for="f in fields" :key="f.key" :field="f" :model="rule" :editing="!!editing" />
-
-              <p v-if="hasBareObject" class="form-hint">
-                This type has an advanced field edited as raw YAML.
-              </p>
-              <div v-if="isCatalogued" class="advanced-toggle">
-                <button type="button" class="btn btn-sm btn-link" @click="advanced = true">
-                  <span class="mdi mdi-code-braces"></span> Edit as raw YAML
-                </button>
-              </div>
             </template>
 
-            <!-- Advanced raw YAML (uncatalogued type or opted in) -->
+            <!-- Raw YAML: automatic fallback only for an uncatalogued type (no
+                 form schema exists). Not user-selectable — the type picker only
+                 offers catalogued types. -->
             <div v-else class="form-group" style="margin-bottom: 0">
-              <div class="rule-head">
-                <label class="form-label" style="margin: 0">Rule <span class="text-muted">(YAML)</span></label>
-                <button v-if="isCatalogued" type="button" class="btn btn-sm btn-link" @click="advanced = false">
-                  <span class="mdi mdi-form-select"></span> Back to form
-                </button>
-              </div>
+              <label class="form-label">Rule <span class="text-muted">(YAML)</span></label>
               <textarea v-model="ruleText" class="form-textarea mono" rows="8" spellcheck="false" placeholder="requestsPerUnit: 100&#10;unit: minute" aria-label="Rule (YAML)"></textarea>
               <p v-if="ruleError" class="form-error">{{ ruleError }}</p>
             </div>
@@ -239,7 +225,6 @@ async function save() {
 .text-muted { color: var(--text-muted); font-weight: 400; }
 .mono { font-family: monospace; }
 .form-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
-.rule-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .req { color: var(--danger-600); margin-left: 2px; }
 .secret-ico { font-size: 13px; color: var(--text-muted); margin-left: 6px; }
 .presets { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
@@ -255,6 +240,4 @@ async function save() {
 .user-row .form-input { flex: 1; }
 .check-row { display: flex; align-items: center; gap: 8px; color: var(--text-primary); }
 .check-row input { width: auto; margin: 0; }
-.advanced-toggle { margin-top: 4px; }
-.btn-link { background: none; border: none; color: var(--primary-600); padding: 0; cursor: pointer; }
 </style>

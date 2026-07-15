@@ -128,6 +128,7 @@ function onCsv(e: Event) {
 
     <!-- enum -->
     <select v-else-if="f.type === 'enum'" v-model="model[f.key]" class="form-input" :aria-label="f.label">
+      <option v-if="!f.required" :value="undefined">(default)</option>
       <option v-for="o in f.options" :key="o" :value="o">{{ o }}</option>
     </select>
 
