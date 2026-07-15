@@ -280,10 +280,26 @@ a:hover { color: var(--primary-600); }
 
 /* ─── form select picker  ───  */
 
+/* disable dfault select apparance */
+.form-select,
+.form-select::picker(select) {
+  appearance: base-select;
+}
 /* form select custom styles */
 .form-select {
-  background-color: var(--bg-input);
-  cursor: pointer;
+  background-color: var(--bg-input);;
+  cursor: pointer; 
+}
+.form-select::picker(select) {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  min-width: anchor-size(width);
+  margin-top: 4px;
+  scrollbar-width: auto; 
+  scrollbar-color: var(--border-primary) var(--bg-secondary);
 }
 .form-select option {
   padding: 8px 12px;
@@ -984,7 +1000,13 @@ input[type="checkbox"]:checked::before {
 ::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
 
-/* Responsive */
+/* ─── form select picker scrollbar ───  */
+.form-select::picker(select)::-webkit-scrollbar { width: 6px; height: 6px;}
+.form-select::picker(select)::-webkit-scrollbar-track { background: var(--bg-secondary); border-radius: var(--radius); }
+.form-select::picker(select)::-webkit-scrollbar-thumb { background-color: var(--border-primary); border-radius: 20px; border: 2px solid var(--bg-secondary); }
+.form-select::picker(select)::-webkit-scrollbar-thumb:hover { background-color: var(--primary-500); }
+
+/* medias queries */
 @media (max-width: 639px) {
     .stats-grid {
       display: grid;
@@ -994,4 +1016,5 @@ input[type="checkbox"]:checked::before {
       padding-left: 1px;
       padding-right: 1px;
 }
+
 }
