@@ -13,9 +13,11 @@ export const oauthApi = {
 
 // authorizeUrl returns the absolute URL that begins the SSO redirect flow for a
 // provider. The browser navigates here directly (full page load), so it must hit
-// the API origin, not the SPA router.
-export function authorizeUrl(slug: string): string {
+// the API origin, not the SPA router. Pass intent='login_token' to force a fresh
+// IdP login and mint a CLI token instead of a console session.
+export function authorizeUrl(slug: string, intent?: string): string {
   const base = (import.meta.env.VITE_API_URL || '/api/v1') as string
   const origin = base.startsWith('http') ? '' : window.location.origin
-  return `${origin}${base}/auth/oauth/${slug}/authorize`
+  const q = intent ? `?intent=${encodeURIComponent(intent)}` : ''
+  return `${origin}${base}/auth/oauth/${slug}/authorize${q}`
 }

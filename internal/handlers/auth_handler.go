@@ -18,6 +18,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/auth"
 	"github.com/miabi-io/miabi/internal/services/directory"
+	"github.com/miabi-io/miabi/internal/services/logintoken"
 	"github.com/miabi-io/miabi/internal/services/mailer"
 	"github.com/miabi-io/miabi/internal/services/settings"
 	"github.com/miabi-io/miabi/internal/services/twofactor"
@@ -46,7 +47,14 @@ type AuthHandler struct {
 	// Returns (user,nil) on success, (nil,nil) to fall through, (nil,err) on a
 	// bind/disabled failure.
 	directoryLogin func(ctx context.Context, identifier, password string) (*models.User, error)
+	// loginTokens mints the short-lived personal API token behind the "Copy login
+	// command" flow. Set by SetLoginTokens; nil disables the endpoint.
+	loginTokens *logintoken.Service
 }
+
+// SetLoginTokens wires the CLI login-token issuer (the "Copy login command"
+// flow). Optional; without it POST /auth/login-token returns 503.
+func (h *AuthHandler) SetLoginTokens(s *logintoken.Service) { h.loginTokens = s }
 
 // SetSSOEnforcement wires the enforced-SSO predicate (Enterprise). Optional.
 func (h *AuthHandler) SetSSOEnforcement(fn func(user *models.User) bool) {
@@ -78,6 +86,46 @@ type LoginRequest struct {
 		// when the account has two-factor authentication enabled.
 		TwoFactorCode string `json:"two_factor_code"`
 	} `json:"body"`
+}
+
+// LoginTokenRequest re-authenticates the user (username + password, and a TOTP
+// code when 2FA is on) to mint a short-lived personal API token for the CLI. It
+// deliberately takes credentials in the body — the token is never issued off an
+// ambient session, so the flow re-authenticates even a signed-in user.
+type LoginTokenRequest struct {
+	Body struct {
+		Username      string `json:"username" required:"true"`
+		Password      string `json:"password" required:"true"`
+		TwoFactorCode string `json:"two_factor_code"`
+		// Scopes optionally narrows the token; admin/"*" are rejected. Empty
+		// defaults to read/write/deploy (console-equivalent).
+		Scopes []string `json:"scopes"`
+		// ExpiresInHours optionally overrides the default lifetime, capped server-side.
+		ExpiresInHours *int `json:"expires_in_hours"`
+	} `json:"body"`
+}
+
+// LoginTokenResponse carries the freshly minted token and the ready-to-paste CLI
+// and curl commands (shown once). TwoFactorRequired mirrors login: a valid
+// password on a 2FA account returns a challenge to re-submit with a code.
+type LoginTokenResponse struct {
+	Token             string     `json:"token,omitempty"`
+	SHA256            string     `json:"sha256,omitempty"`
+	ExpiresAt         *time.Time `json:"expires_at,omitempty"`
+	Scopes            []string   `json:"scopes,omitempty"`
+	ServerURL         string     `json:"server_url,omitempty"`
+	LoginCommand      string     `json:"login_command,omitempty"`
+	CurlExample       string     `json:"curl_example,omitempty"`
+	TwoFactorRequired bool       `json:"two_factor_required,omitempty"`
+}
+
+// TokenPayload converts a minted login token to the API response shape.
+func tokenPayload(t *logintoken.Token) LoginTokenResponse {
+	exp := t.ExpiresAt
+	return LoginTokenResponse{
+		Token: t.Token, SHA256: t.SHA256, ExpiresAt: &exp, Scopes: t.Scopes,
+		ServerURL: t.ServerURL, LoginCommand: t.LoginCommand, CurlExample: t.CurlExample,
+	}
 }
 
 type ForgotPasswordRequest struct {
@@ -224,18 +272,24 @@ func (h *AuthHandler) Status(c *okapi.Context) error {
 	})
 }
 
-// Login authenticates a user and returns an access token.
-func (h *AuthHandler) Login(c *okapi.Context, req *LoginRequest) error {
-	identifier := strings.TrimSpace(req.Body.Username)
-	if identifier == "" {
-		return c.AbortBadRequest("a username or email is required")
-	}
-	user, err := h.auth.Authenticate(identifier, req.Body.Password)
-	// Directory (LDAP/AD) fall-through: when local auth fails, try a directory
-	// bind. A successful bind provisions the user and reconciles group access.
+// errEmailUnverified / errSSORequired are credential-check policy failures,
+// mapped to 403 by abortCredential. They keep the shared check independent of the
+// two callers (Login, LoginToken).
+var (
+	errEmailUnverified = errors.New("email address is not verified")
+	errSSORequired     = errors.New("password login is disabled for this organization; use single sign-on")
+)
+
+// credentialCheck runs the shared login gate: local password auth with the
+// LDAP/AD fall-through, then the disabled / email-verification / enforced-SSO
+// policy. It returns the user and whether auth came via the directory. 2FA and
+// the success path are handled per-caller (a session for Login, a token for
+// LoginToken). The returned error is passed to abortCredential.
+func (h *AuthHandler) credentialCheck(ctx context.Context, identifier, password string) (*models.User, bool, error) {
+	user, err := h.auth.Authenticate(identifier, password)
 	viaDirectory := false
 	if err != nil && h.directoryLogin != nil {
-		du, derr := h.directoryLogin(c.Request().Context(), identifier, req.Body.Password)
+		du, derr := h.directoryLogin(ctx, identifier, password)
 		switch {
 		case derr != nil:
 			err = derr
@@ -244,21 +298,43 @@ func (h *AuthHandler) Login(c *okapi.Context, req *LoginRequest) error {
 		}
 	}
 	if err != nil {
-		switch {
-		case errors.Is(err, auth.ErrAccountDisabled), errors.Is(err, directory.ErrAccountDisabled):
-			return c.AbortForbidden("account is disabled")
-		default:
-			return c.AbortUnauthorized("invalid credentials")
-		}
+		return nil, false, err
 	}
 	if h.settings.Bool(settings.KeyRequireEmailVerification, false) && user.EmailVerifiedAt == nil && !user.IsAdmin() {
-		return c.AbortForbidden("email address is not verified")
+		return nil, false, errEmailUnverified
 	}
 	// Enforced SSO blocks LOCAL password login (platform admins exempt — a
-	// lock-out safety valve). A directory login is itself an accepted SSO method,
-	// so it is not blocked here.
+	// lock-out safety valve). A directory login is itself an accepted SSO method.
 	if !viaDirectory && h.enforceSSO != nil && h.enforceSSO(user) {
-		return c.AbortForbidden("password login is disabled for this organization; use single sign-on")
+		return nil, false, errSSORequired
+	}
+	return user, viaDirectory, nil
+}
+
+// abortCredential maps a credentialCheck error to the same HTTP responses Login
+// has always returned.
+func (h *AuthHandler) abortCredential(c *okapi.Context, err error) error {
+	switch {
+	case errors.Is(err, auth.ErrAccountDisabled), errors.Is(err, directory.ErrAccountDisabled):
+		return c.AbortForbidden("account is disabled")
+	case errors.Is(err, errEmailUnverified):
+		return c.AbortForbidden("email address is not verified")
+	case errors.Is(err, errSSORequired):
+		return c.AbortForbidden(err.Error())
+	default:
+		return c.AbortUnauthorized("invalid credentials")
+	}
+}
+
+// Login authenticates a user and returns an access token.
+func (h *AuthHandler) Login(c *okapi.Context, req *LoginRequest) error {
+	identifier := strings.TrimSpace(req.Body.Username)
+	if identifier == "" {
+		return c.AbortBadRequest("a username or email is required")
+	}
+	user, viaDirectory, err := h.credentialCheck(c.Request().Context(), identifier, req.Body.Password)
+	if err != nil {
+		return h.abortCredential(c, err)
 	}
 	// Second factor: when enabled, the first request (no code) returns a
 	// challenge; the client re-submits the same credentials plus the TOTP code.
@@ -317,6 +393,69 @@ func (h *AuthHandler) CompletePasswordReset(c *okapi.Context, req *CompletePassw
 	_ = h.users.Update(user)
 	h.audit.Record(audit.Entry{ActorID: &user.ID, Action: "user.password_changed", TargetType: "user", IP: c.RealIP(), Metadata: map[string]any{"forced": true}})
 	return h.issue(c, user, 200)
+}
+
+// LoginToken re-authenticates the user and mints a short-lived personal API
+// token for the CLI ("Copy login command"). It never reads the session cookie —
+// the token is issued only against credentials in this request, so a signed-in
+// user re-authenticates (the OpenShift request-token property). No session is
+// created; the console session is untouched.
+func (h *AuthHandler) LoginToken(c *okapi.Context, req *LoginTokenRequest) error {
+	if h.loginTokens == nil {
+		return c.AbortWithError(503, errors.New("login tokens are not available"))
+	}
+	identifier := strings.TrimSpace(req.Body.Username)
+	if identifier == "" {
+		return c.AbortBadRequest("a username or email is required")
+	}
+	user, _, err := h.credentialCheck(c.Request().Context(), identifier, req.Body.Password)
+	if err != nil {
+		return h.abortCredential(c, err)
+	}
+	if user.TwoFactorEnabled {
+		if req.Body.TwoFactorCode == "" {
+			return ok(c, LoginTokenResponse{TwoFactorRequired: true})
+		}
+		if !h.auth.VerifyLoginCode(user, req.Body.TwoFactorCode) {
+			h.audit.Record(audit.Entry{ActorID: &user.ID, Action: "user.login_2fa_failed", TargetType: "user", IP: c.RealIP()})
+			return c.AbortUnauthorized("invalid two-factor code")
+		}
+	}
+	if user.MustChangePassword {
+		return c.AbortForbidden("set a new password before creating an API token")
+	}
+	tok, err := h.loginTokens.Issue(user.ID, req.Body.Scopes, req.Body.ExpiresInHours)
+	if err != nil {
+		if errors.Is(err, logintoken.ErrAdminScope) || errors.Is(err, logintoken.ErrInvalidScope) {
+			return c.AbortBadRequest(err.Error())
+		}
+		return c.AbortInternalServerError("failed to issue login token", err)
+	}
+	h.audit.Record(audit.Entry{ActorID: &user.ID, Action: "user.login_token_issued", TargetType: "user", IP: c.RealIP(), Metadata: map[string]any{"scopes": tok.Scopes}})
+	return ok(c, tokenPayload(tok))
+}
+
+// ClaimLoginTokenRequest carries the single-use hand-off reference minted by the
+// SSO login-token flow (the OAuth callback stashed the token in Redis and
+// redirected here with the reference, never the token itself).
+type ClaimLoginTokenRequest struct {
+	Body struct {
+		Handoff string `json:"handoff" required:"true"`
+	} `json:"body"`
+}
+
+// ClaimLoginToken exchanges a single-use hand-off reference for the login token
+// the SSO flow minted. Public — the reference is the (short-lived, one-time)
+// credential — but rate-limited like the other auth endpoints.
+func (h *AuthHandler) ClaimLoginToken(c *okapi.Context, req *ClaimLoginTokenRequest) error {
+	if h.loginTokens == nil {
+		return c.AbortWithError(503, errors.New("login tokens are not available"))
+	}
+	tok, err := h.loginTokens.Claim(c.Request().Context(), req.Body.Handoff)
+	if err != nil {
+		return c.AbortNotFound("this login token is no longer available — request a new one")
+	}
+	return ok(c, tokenPayload(tok))
 }
 
 // issue generates a token, records the session, and returns the auth response.

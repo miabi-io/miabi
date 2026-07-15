@@ -242,6 +242,20 @@ export interface AuthResponse {
   reset_token?: string
 }
 
+// LoginTokenResponse is the "Copy login command" payload: a short-lived personal
+// API token plus the ready-to-paste CLI and curl commands (shown once).
+// two_factor_required mirrors login when the account has 2FA.
+export interface LoginTokenResponse {
+  token?: string
+  sha256?: string
+  expires_at?: string
+  scopes?: string[]
+  server_url?: string
+  login_command?: string
+  curl_example?: string
+  two_factor_required?: boolean
+}
+
 export interface TwoFactorSetup {
   secret: string
   url: string

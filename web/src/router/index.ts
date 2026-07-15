@@ -7,6 +7,10 @@ const routes = [
   // Not guest-gated: a reset link from email must work even if a session exists.
   { path: '/reset-password', name: 'reset-password', component: () => import('@/views/auth/ResetPassword.vue'), meta: { title: 'Reset password' } },
   { path: '/oauth/callback', name: 'oauth-callback', component: () => import('@/views/auth/OAuthCallback.vue'), meta: { title: 'Signing in' } },
+  // "Copy login command": intentionally neither guest- nor auth-gated. It forces a
+  // fresh re-authentication (even for a signed-in user) before minting a CLI token,
+  // and also handles the SSO hand-off return (?handoff=…).
+  { path: '/request-token', name: 'request-token', component: () => import('@/views/auth/RequestToken.vue'), meta: { title: 'CLI login token' } },
   // Forced password change (admin-set/reset credential). The user holds only a
   // short-lived reset token here, not a session; the guard gates it on a pending
   // reset rather than on auth.

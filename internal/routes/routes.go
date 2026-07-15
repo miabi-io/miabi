@@ -53,6 +53,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/image"
 	"github.com/miabi-io/miabi/internal/services/job"
 	"github.com/miabi-io/miabi/internal/services/keyring"
+	"github.com/miabi-io/miabi/internal/services/logintoken"
 	"github.com/miabi-io/miabi/internal/services/mailer"
 	"github.com/miabi-io/miabi/internal/services/managedcert"
 	"github.com/miabi-io/miabi/internal/services/marketplace"
@@ -291,6 +292,20 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	runnerService.SetScheduling(runnerManager, repositories.NewRunnerLeaseRepository(db))
 	apiKeyService := auth.NewAPIKeyService(apiKeyRepo)
 	apiKeyService.SetQuota(quotaService)
+	// Login-token issuer for the web console's "Copy login command" flow: mints a
+	// short-lived personal API key and renders the CLI/curl commands. The CLI's
+	// --url is the panel ROOT (the client appends /api/v1 itself), so use the web
+	// URL — not MIABI_API_URL, which already includes /api/v1. Empty is fine: the
+	// display page falls back to the browser's own origin.
+	loginTokenServerURL := strings.TrimRight(cfg.AppWebURL, "/")
+	if loginTokenServerURL == "" {
+		loginTokenServerURL = strings.TrimSuffix(strings.TrimRight(cfg.ApiBaseURL, "/"), "/api/v1")
+	}
+	loginTokenService := logintoken.New(
+		apiKeyService, redisClient, loginTokenServerURL,
+		time.Duration(cfg.LoginTokenTTLHours)*time.Hour,
+		time.Duration(cfg.LoginTokenMaxTTLHours)*time.Hour,
+	)
 	// Subnet allocator: hands out pool subnets for every managed Docker network so
 	// creation doesn't exhaust Docker's small built-in address pools. Nil-safe —
 	// on a config error the services fall back to Docker's default pool.
@@ -930,6 +945,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.auth.SetMailer(platformMailer)
 	r.h.workspace.SetMailer(platformMailer)
 	r.h.adminUser.SetMailer(platformMailer)
+	// "Copy login command": the auth handler mints via password re-auth; the OAuth
+	// handler mints via a forced fresh SSO login and hands off through Redis.
+	r.h.auth.SetLoginTokens(loginTokenService)
+	r.h.oauthPublic.SetLoginTokens(loginTokenService)
 	r.h.adminUser.SetEnterprise(ee) // gate the per-user workspace-limit override
 
 	// Shared execution-log store: deployment/pipeline/job log reads replay a

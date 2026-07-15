@@ -520,6 +520,10 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
                   <span class="mdi mdi-information-outline"></span> About
                 </RouterLink>
                 <div class="user-dropdown-divider"></div>
+                <a href="/request-token" target="_blank" rel="noopener" class="user-dropdown-item" @click.stop="userMenuOpen = false">
+                  <span class="mdi mdi-console"></span> Copy login command
+                </a>
+                <div class="user-dropdown-divider"></div>
                 <a class="user-dropdown-item user-dropdown-logout" @click.stop="logout">
                   <span class="mdi mdi-logout"></span> Sign out
                 </a>

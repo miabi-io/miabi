@@ -82,6 +82,11 @@ type Config struct {
 	CORSOrigins string
 	AppWebURL   string
 	ApiBaseURL  string
+	// LoginTokenTTLHours is the default lifetime of a CLI "login command" token
+	// (the OpenShift-style short-lived personal API token). LoginTokenMaxTTLHours
+	// is the hard ceiling a caller may request. Kept short by design.
+	LoginTokenTTLHours    int
+	LoginTokenMaxTTLHours int
 	// AppName is the product name shown in platform notification emails.
 	AppName string
 	// SystemSMTP is the SMTP server Miabi uses to send its own platform
@@ -437,6 +442,8 @@ func New() *Config {
 		CORSOrigins:           goutils.Env("MIABI_CORS_ORIGINS", "*"),
 		AppWebURL:             goutils.Env("MIABI_WEB_URL", ""),
 		ApiBaseURL:            goutils.Env("MIABI_API_URL", ""),
+		LoginTokenTTLHours:    goutils.EnvInt("MIABI_LOGIN_TOKEN_TTL_HOURS", 24),
+		LoginTokenMaxTTLHours: goutils.EnvInt("MIABI_LOGIN_TOKEN_MAX_TTL_HOURS", 168),
 		AppName:               goutils.Env("MIABI_APP_NAME", "Miabi"),
 		SystemSMTP: SystemSMTPConfig{
 			Host:       goutils.Env("MIABI_SMTP_HOST", ""),

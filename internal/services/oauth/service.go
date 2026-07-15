@@ -39,6 +39,7 @@ var (
 )
 
 const statePrefix = "oauth:state:"
+const stateIntentPrefix = "oauth:intent:"
 const stateTTL = 10 * time.Minute
 
 // Google OAuth 2.0 / OIDC endpoints.
@@ -178,6 +179,16 @@ func (s *Service) Get(name string) (*models.OAuthProvider, error) {
 // AuthCodeURL stores a fresh state token (in Redis) and returns the provider's
 // authorization URL for the redirect.
 func (s *Service) AuthCodeURL(ctx context.Context, p *models.OAuthProvider, redirectURI string) (string, error) {
+	return s.AuthCodeURLWithIntent(ctx, p, redirectURI, "")
+}
+
+// AuthCodeURLWithIntent is AuthCodeURL with an application-level intent bound to
+// the state (e.g. "login_token"), read back in the callback via ConsumeIntent.
+// When intent is non-empty it also sets prompt=login so the IdP forces a fresh
+// authentication — the re-auth property the CLI-token flow depends on. This
+// mirrors OpenShift's request-token flow, which likewise forces a fresh login
+// before minting a token, so an ambient SSO session can't silently issue one.
+func (s *Service) AuthCodeURLWithIntent(ctx context.Context, p *models.OAuthProvider, redirectURI, intent string) (string, error) {
 	state, err := randomState()
 	if err != nil {
 		return "", err
@@ -185,17 +196,38 @@ func (s *Service) AuthCodeURL(ctx context.Context, p *models.OAuthProvider, redi
 	if err := s.redis.Set(ctx, statePrefix+state, p.Name, stateTTL).Err(); err != nil {
 		return "", err
 	}
+	if intent != "" {
+		if err := s.redis.Set(ctx, stateIntentPrefix+state, intent, stateTTL).Err(); err != nil {
+			return "", err
+		}
+	}
 	q := url.Values{}
 	q.Set("client_id", p.ClientID)
 	q.Set("redirect_uri", redirectURI)
 	q.Set("response_type", "code")
 	q.Set("scope", scopesOrDefault(p.Scopes))
 	q.Set("state", state)
+	if intent != "" {
+		q.Set("prompt", "login") // force fresh IdP authentication
+	}
 	sep := "?"
 	if strings.Contains(p.AuthURL, "?") {
 		sep = "&"
 	}
 	return p.AuthURL + sep + q.Encode(), nil
+}
+
+// ConsumeIntent reads and deletes the intent bound to a state (empty when none).
+// Safe to call after ConsumeState — the intent is stored under a separate key.
+func (s *Service) ConsumeIntent(ctx context.Context, state string) string {
+	if strings.TrimSpace(state) == "" {
+		return ""
+	}
+	intent, err := s.redis.GetDel(ctx, stateIntentPrefix+state).Result()
+	if err != nil {
+		return ""
+	}
+	return intent
 }
 
 // ConsumeState validates and deletes a state token, returning the bound slug.
