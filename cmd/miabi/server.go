@@ -265,9 +265,8 @@ func runServer(cli *okapicli.CLI) {
 			// runner → the system workspace / super-admins; a workspace runner → its
 			// members). The runner manager is wired after InitRoutes returns it.
 			palerter := &platformAlerter{
-				e:     alertEngine,
-				ws:    repositories.NewWorkspaceRepository(res.db),
-				users: repositories.NewUserRepository(res.db),
+				e:  alertEngine,
+				ws: repositories.NewWorkspaceRepository(res.db),
 			}
 			nodeManager.SetOnStatusChange(palerter.NodeStatus)
 			// The quota scan + backup-outcome alerts are wired below, once the quota

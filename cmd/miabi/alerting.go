@@ -75,41 +75,25 @@ func (s quotaScanner) NearQuota(threshold float64) ([]alerting.QuotaBreach, erro
 }
 
 // platformAlerter bridges the node/runner managers' online/offline hooks to
-// alerts. Platform-scoped conditions (a node, or a shared runner) are attributed
-// to the reserved "system" workspace (created on demand, owned by the first
-// super-admin) and fan out to super-admins; a workspace-owned runner notifies its
-// own members.
+// alerts.
 type platformAlerter struct {
-	e     *alerting.Engine
-	ws    *repositories.WorkspaceRepository
-	users *repositories.UserRepository
+	e  *alerting.Engine
+	ws *repositories.WorkspaceRepository
 
 	mu      sync.Mutex
 	sysWsID uint
 }
 
-// systemWorkspace find-or-creates the reserved system workspace and caches its id.
-// Returns 0 (and skips) until a super-admin exists to own it — by which time any
-// node has been registered by an admin anyway.
+// systemWorkspace returns the built-in Miabi System workspace
 func (n *platformAlerter) systemWorkspace() uint {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.sysWsID != 0 {
 		return n.sysWsID
 	}
-	if w, err := n.ws.FindByName("system"); err == nil && w != nil {
+	if w, err := n.ws.FindSystem(); err == nil && w != nil {
 		n.sysWsID = w.ID
-		return n.sysWsID
 	}
-	ids, err := n.users.ListAdminIDs()
-	if err != nil || len(ids) == 0 {
-		return 0
-	}
-	w := &models.Workspace{Name: "system", DisplayName: "System", OwnerID: ids[0]}
-	if err := n.ws.CreateWithOwner(w); err != nil {
-		return 0
-	}
-	n.sysWsID = w.ID
 	return n.sysWsID
 }
 
