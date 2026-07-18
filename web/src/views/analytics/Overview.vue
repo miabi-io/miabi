@@ -12,7 +12,11 @@ function maxReq(r: AnalyticsReport): number {
   return Math.max(1, ...r.series.map((p) => p.requests))
 }
 function barTitle(p: AnalyticsReport['series'][number]): string {
-  return `${new Date(p.t).toLocaleString()} · ${fmtNum(p.requests)} req · ${p.errors} err`
+  return `${new Date(p.t).toLocaleString()} · ${fmtNum(p.requests)} req · ${p.errors_4xx} 4xx · ${p.errors_5xx} 5xx`
+}
+// Rate of n over the range's total requests (0..1).
+function rate(n: number, total: number): number {
+  return total > 0 ? n / total : 0
 }
 function latency(r: AnalyticsReport): number[] {
   return r.series.map((p) => p.p95_latency_ms)
@@ -27,16 +31,22 @@ const topCountries = (r: AnalyticsReport) => r.web.top_countries.slice(0, 5)
 <template>
   <AnalyticsShell v-slot="{ report }">
     <div class="a-grid">
-      <StatTile label="Requests" :value="fmtNum(report.totals.requests)"
+      <StatTile label="Requests" icon="mdi-swap-horizontal" :value="fmtNum(report.totals.requests)"
         :delta="delta(report.totals.requests, report.compare?.requests)" />
-      <StatTile label="Unique visitors" :value="fmtNum(report.totals.unique_visitors)"
+      <StatTile label="Unique visitors" icon="mdi-account-multiple-outline" :value="fmtNum(report.totals.unique_visitors)"
         :delta="delta(report.totals.unique_visitors, report.compare?.unique_visitors)" />
-      <StatTile label="Data served" :value="fmtBytes(report.totals.bytes_in + report.totals.bytes_out)"
-        :sub="`${fmtBytes(report.totals.bytes_in)} in · ${fmtBytes(report.totals.bytes_out)} out`"
-        :delta="delta(report.totals.bytes_out, report.compare?.bytes_out)" />
-      <StatTile label="Error rate" :value="fmtPct(report.totals.error_rate)"
-        :danger="report.totals.error_rate >= 0.05" invert
-        :delta="delta(report.totals.error_rate, report.compare?.error_rate)" />
+      <StatTile label="Data served" icon="mdi-swap-vertical" :value="fmtBytes(report.totals.bytes_in + report.totals.bytes_out)"
+        :delta="delta(report.totals.bytes_out, report.compare?.bytes_out)">
+        <template #sub>
+          <span class="mdi mdi-arrow-down-thin io-in" title="Inbound (requests received)"></span>{{ fmtBytes(report.totals.bytes_in) }} in
+          <span class="io-dot">·</span>
+          <span class="mdi mdi-arrow-up-thin io-out" title="Outbound (responses sent)"></span>{{ fmtBytes(report.totals.bytes_out) }} out
+        </template>
+      </StatTile>
+      <StatTile label="Server errors (5xx)" icon="mdi-alert-octagon-outline"
+        :value="fmtPct(rate(report.status.s5xx, report.totals.requests))"
+        :danger="rate(report.status.s5xx, report.totals.requests) >= 0.01" invert
+        :sub="`Client errors (4xx): ${fmtPct(rate(report.status.s4xx, report.totals.requests))}`" />
     </div>
 
     <div class="card">
@@ -48,7 +58,8 @@ const topCountries = (r: AnalyticsReport) => r.web.top_countries.slice(0, 5)
         <div v-if="report.series.length" class="barchart">
           <div v-for="(p, i) in report.series" :key="i" class="bar-col" :title="barTitle(p)">
             <div class="bar-stack">
-              <div class="bar bar-err" :style="{ height: (p.errors / maxReq(report)) * 100 + '%' }"></div>
+              <div class="bar bar-5xx" :style="{ height: (p.errors_5xx / maxReq(report)) * 100 + '%' }"></div>
+              <div class="bar bar-4xx" :style="{ height: (p.errors_4xx / maxReq(report)) * 100 + '%' }"></div>
               <div class="bar bar-ok" :style="{ height: ((p.requests - p.errors) / maxReq(report)) * 100 + '%' }"></div>
             </div>
           </div>
@@ -56,7 +67,8 @@ const topCountries = (r: AnalyticsReport) => r.web.top_countries.slice(0, 5)
         <p v-else class="a-muted">Not enough data points to plot.</p>
         <div class="a-legend">
           <span><i class="dot dot-ok"></i> Success</span>
-          <span><i class="dot dot-err"></i> Errors (4xx/5xx)</span>
+          <span><i class="dot dot-4xx"></i> Client errors (4xx)</span>
+          <span><i class="dot dot-5xx"></i> Server errors (5xx)</span>
         </div>
       </div>
     </div>
@@ -106,4 +118,7 @@ const topCountries = (r: AnalyticsReport) => r.web.top_countries.slice(0, 5)
 <style scoped>
 .two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; }
 .perf-inline { display: flex; align-items: center; gap: 16px; margin-top: 14px; font-size: 13px; color: var(--text-secondary); }
+.io-in { color: var(--success-600); font-size: 15px; vertical-align: -2px; }
+.io-out { color: #2563eb; font-size: 15px; vertical-align: -2px; }
+.io-dot { margin: 0 3px; color: var(--text-muted); }
 </style>

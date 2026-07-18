@@ -8,6 +8,7 @@ const props = defineProps<{
   label: string
   value: string
   sub?: string
+  icon?: string // optional mdi class, shown muted before the label
   delta?: number | null
   invert?: boolean
   danger?: boolean
@@ -22,7 +23,7 @@ const dir = computed(() => {
 
 <template>
   <div class="a-tile">
-    <div class="t-label">{{ label }}</div>
+    <div class="t-label"><span v-if="icon" class="mdi t-icon" :class="icon"></span>{{ label }}</div>
     <div class="t-value" :class="{ danger }">
       {{ value }}
       <span
@@ -31,6 +32,10 @@ const dir = computed(() => {
         :class="[dir, { invert }]"
       >{{ fmtDelta(delta) }}</span>
     </div>
-    <div v-if="sub" class="t-sub">{{ sub }}</div>
+    <div v-if="$slots.sub || sub" class="t-sub"><slot name="sub">{{ sub }}</slot></div>
   </div>
 </template>
+
+<style scoped>
+.t-icon { color: var(--text-muted); font-size: 14px; margin-right: 6px; vertical-align: -1px; }
+</style>

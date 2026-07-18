@@ -57,7 +57,9 @@ type SeriesPoint struct {
 	Requests   int64     `json:"requests"`
 	BytesIn    int64     `json:"bytes_in"`
 	BytesOut   int64     `json:"bytes_out"`
-	Errors     int64     `json:"errors"` // 4xx+5xx
+	Errors     int64     `json:"errors"`     // 4xx+5xx (kept for compatibility)
+	Errors4xx  int64     `json:"errors_4xx"` // client errors
+	Errors5xx  int64     `json:"errors_5xx"` // server errors
 	Uniques    int64     `json:"unique_visitors"`
 	AvgLatency float64   `json:"avg_latency_ms"`
 	P95Latency float64   `json:"p95_latency_ms"`
@@ -136,10 +138,10 @@ func granularityFor(span time.Duration) (string, truncFunc) {
 
 // seriesAgg accumulates one output time bucket.
 type seriesAgg struct {
-	requests, bytesIn, bytesOut, errors int64
-	durHist                             []int64
-	durSum                              int64
-	sketches                            [][]byte
+	requests, bytesIn, bytesOut, errors, errors4xx, errors5xx int64
+	durHist                                                   []int64
+	durSum                                                    int64
+	sketches                                                  [][]byte
 }
 
 // BuildReport reduces the raw minute rollups of a range into the combined
@@ -207,6 +209,8 @@ func BuildReport(rows []models.AnalyticsRollup, since, until time.Time) Report {
 		sp.bytesIn += row.BytesIn
 		sp.bytesOut += row.BytesOut
 		sp.errors += row.Status4xx + row.Status5xx
+		sp.errors4xx += row.Status4xx
+		sp.errors5xx += row.Status5xx
 		sp.durSum += row.DurationSum
 		sp.durHist = addHist(sp.durHist, row.DurationHist)
 		if len(row.VisitorsHLL) > 0 {
@@ -285,6 +289,8 @@ func BuildReport(rows []models.AnalyticsRollup, since, until time.Time) Report {
 			BytesIn:    sp.bytesIn,
 			BytesOut:   sp.bytesOut,
 			Errors:     sp.errors,
+			Errors4xx:  sp.errors4xx,
+			Errors5xx:  sp.errors5xx,
 			Uniques:    MergeUniques(sp.sketches),
 			P95Latency: Percentile(sp.durHist, 0.95),
 		}

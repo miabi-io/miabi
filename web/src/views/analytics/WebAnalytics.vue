@@ -24,13 +24,13 @@ function botPct(r: AnalyticsReport): number {
     <h2 class="web-title">Web Analytics for {{ contextLabel }}</h2>
 
     <div class="a-grid">
-      <StatTile label="Unique visitors" :value="fmtNum(report.web.unique_visitors)"
+      <StatTile label="Unique visitors" icon="mdi-account-multiple-outline" :value="fmtNum(report.web.unique_visitors)"
         sub="cookieless · daily-salted"
         :delta="delta(report.web.unique_visitors, report.compare?.unique_visitors)" />
-      <StatTile label="Page views" :value="fmtNum(report.totals.requests)"
+      <StatTile label="Page views" icon="mdi-eye-outline" :value="fmtNum(report.totals.requests)"
         :delta="delta(report.totals.requests, report.compare?.requests)" />
-      <StatTile label="Views / visitor" :value="perVisitor(report)" />
-      <StatTile label="Human traffic" :value="fmtNum(report.web.human_requests)"
+      <StatTile label="Views / visitor" icon="mdi-account-eye-outline" :value="perVisitor(report)" />
+      <StatTile label="Human traffic" icon="mdi-account-check-outline" :value="fmtNum(report.web.human_requests)"
         :sub="`${fmtNum(report.web.bot_requests)} bot requests`" />
     </div>
 

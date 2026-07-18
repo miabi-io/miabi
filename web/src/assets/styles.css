@@ -973,6 +973,8 @@ input[type="checkbox"]:checked::before {
 .bar { width: 100%; border-radius: 2px 2px 0 0; }
 .bar-ok { background: var(--primary-500); }
 .bar-err { background: var(--danger-500); }
+.bar-4xx { background: var(--warning-600); }
+.bar-5xx { background: var(--danger-500); }
 .a-legend { display: flex; gap: 18px; margin-top: 12px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
 .dot-ok { background: var(--primary-500); }

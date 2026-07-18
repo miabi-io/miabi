@@ -28,7 +28,9 @@ export interface AnalyticsSeriesPoint {
   requests: number
   bytes_in: number
   bytes_out: number
-  errors: number
+  errors: number // 4xx+5xx (kept for compatibility)
+  errors_4xx: number
+  errors_5xx: number
   unique_visitors: number
   avg_latency_ms: number
   p95_latency_ms: number

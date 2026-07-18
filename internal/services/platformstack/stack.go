@@ -89,7 +89,7 @@ const helperImage = "busybox:1.36"
 const (
 	DefaultPostgresImage = "postgres:17-alpine"
 	DefaultRedisImage    = "redis:7-alpine"
-	DefaultGatewayImage  = "jkaninda/goma-gateway:0.11.0"
+	DefaultGatewayImage  = "jkaninda/goma-gateway:latest"
 	// DefaultRunnerImage floats on :latest, unlike every other default here — and that
 	// is deliberate. The runner is the one image the stack does not RUN: it only names
 	// what a CI runner should be enrolled with. So it carries none of the

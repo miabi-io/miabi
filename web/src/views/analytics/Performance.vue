@@ -13,10 +13,10 @@ function latency(r: AnalyticsReport): number[] {
 <template>
   <AnalyticsShell v-slot="{ report }">
     <div class="a-grid">
-      <StatTile label="Avg latency" :value="fmtMs(report.totals.avg_latency_ms)" />
-      <StatTile label="p50" :value="fmtMs(report.performance.request_p50_ms)" />
-      <StatTile label="p95" :value="fmtMs(report.performance.request_p95_ms)" />
-      <StatTile label="p99" :value="fmtMs(report.performance.request_p99_ms)" />
+      <StatTile label="Avg latency" icon="mdi-clock-outline" :value="fmtMs(report.totals.avg_latency_ms)" />
+      <StatTile label="p50" icon="mdi-speedometer-slow" :value="fmtMs(report.performance.request_p50_ms)" />
+      <StatTile label="p95" icon="mdi-speedometer-medium" :value="fmtMs(report.performance.request_p95_ms)" />
+      <StatTile label="p99" icon="mdi-speedometer" :value="fmtMs(report.performance.request_p99_ms)" />
     </div>
 
     <div class="two-col">
