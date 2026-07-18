@@ -4,6 +4,7 @@
 package alerting
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -141,14 +142,14 @@ func TestDiskScanFireAndResolve(t *testing.T) {
 	}}
 	eng.SetVolumeLister(vols)
 
-	eng.scanVolumes(nil)
+	eng.scanVolumes(context.Background())
 	active, _ := alerts.ListByWorkspace(1, true, 0)
 	if len(active) != 1 || active[0].DedupKey != "disk_near:volume:3" || active[0].Severity != models.AlertCritical {
 		t.Fatalf("want 1 critical disk alert for volume 3, got %+v", active)
 	}
 
 	vols.v[0].UsedBytes = 20 // pruned
-	eng.scanVolumes(nil)
+	eng.scanVolumes(context.Background())
 	if act, _ := alerts.ListByWorkspace(1, true, 0); len(act) != 0 {
 		t.Fatalf("disk alert should auto-resolve, %d active", len(act))
 	}
@@ -161,14 +162,14 @@ func TestQuotaScanFireAndResolve(t *testing.T) {
 	q := &quotaLister{b: []QuotaBreach{{WorkspaceID: 1, Resource: "apps", Used: 9, Limit: 10}}}
 	eng.SetQuotaLister(q)
 
-	eng.scanQuotas(nil)
+	eng.scanQuotas(context.Background())
 	active, _ := alerts.ListByWorkspace(1, true, 0)
 	if len(active) != 1 || active[0].DedupKey != "quota_near:quota:apps" || active[0].Category != models.CategoryQuota {
 		t.Fatalf("want 1 quota alert, got %+v", active)
 	}
 
 	q.b = nil // no longer near
-	eng.scanQuotas(nil)
+	eng.scanQuotas(context.Background())
 	if act, _ := alerts.ListByWorkspace(1, true, 0); len(act) != 0 {
 		t.Fatalf("quota alert should resolve, %d active", len(act))
 	}
@@ -185,7 +186,7 @@ func TestCertScanFireAndResolve(t *testing.T) {
 	}}
 	eng.SetCertLister(certs)
 
-	eng.scanCerts(nil)
+	eng.scanCerts(context.Background())
 	active, _ := alerts.ListByWorkspace(1, true, 0)
 	if len(active) != 1 || active[0].DedupKey != "cert_expiring:cert:8" || active[0].Severity != models.AlertCritical {
 		t.Fatalf("want 1 critical cert alert, got %+v", active)
@@ -198,14 +199,14 @@ func TestCertScanFireAndResolve(t *testing.T) {
 	}
 
 	// A repeat scan while still expiring must NOT create a second alert (dedup).
-	eng.scanCerts(nil)
+	eng.scanCerts(context.Background())
 	if act, _ := alerts.ListByWorkspace(1, true, 0); len(act) != 1 {
 		t.Fatalf("repeat scan created duplicate alerts: %d", len(act))
 	}
 
 	// Renewed: the cert no longer appears in the scan → auto-resolve.
 	certs.expiring = nil
-	eng.scanCerts(nil)
+	eng.scanCerts(context.Background())
 	if act, _ := alerts.ListByWorkspace(1, true, 0); len(act) != 0 {
 		t.Fatalf("cert alert should auto-resolve after renewal, %d active", len(act))
 	}

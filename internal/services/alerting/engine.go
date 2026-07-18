@@ -16,7 +16,7 @@ import (
 
 // notifyCooldown bounds how often a single condition may (re)notify, so a
 // re-firing alert can't ping the bell repeatedly.
-const notifyCooldown = 10 * time.Minute
+// const notifyCooldown = 10 * time.Minute
 
 // NotificationTopic is the per-user eventbus topic the bell's SSE stream
 // subscribes to.
