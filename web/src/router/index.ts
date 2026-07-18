@@ -23,6 +23,7 @@ const routes = [
       { path: '', name: 'dashboard', component: () => import('@/views/dashboard/Dashboard.vue'), meta: { title: 'Dashboard' } },
       { path: 'apps', name: 'apps', component: () => import('@/views/apps/Apps.vue'), meta: { title: 'Applications' } },
       { path: 'analytics', name: 'analytics', component: () => import('@/views/analytics/Overview.vue'), meta: { title: 'Analytics' } },
+      { path: 'notifications', name: 'notifications-inbox', component: () => import('@/views/notifications/Inbox.vue'), meta: { title: 'Notifications', noWorkspace: true } },
       { path: 'analytics/http', name: 'analytics-http', component: () => import('@/views/analytics/HttpTraffic.vue'), meta: { title: 'HTTP Traffic' } },
       { path: 'analytics/performance', name: 'analytics-performance', component: () => import('@/views/analytics/Performance.vue'), meta: { title: 'Performance' } },
       { path: 'analytics/web', name: 'analytics-web', component: () => import('@/views/analytics/WebAnalytics.vue'), meta: { title: 'Web Analytics' } },

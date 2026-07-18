@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
+import NotificationBell from '@/components/NotificationBell.vue'
 import { useLicenseStore } from '@/stores/license'
 import { infoApi } from '@/api/info'
 import { workspaceApi } from '@/api/workspaces'
@@ -473,6 +474,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
           </button>
         </div>
         <div class="topbar-right">
+          <NotificationBell />
           <div class="user-menu" @click="userMenuOpen = !userMenuOpen">
             <div class="user-avatar">{{ user?.name?.charAt(0)?.toUpperCase() || '?' }}</div>
             <div class="user-menu-info">

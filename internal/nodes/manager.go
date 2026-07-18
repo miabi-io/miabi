@@ -28,6 +28,7 @@ type Manager struct {
 	sessions  map[uint]*yamux.Session
 	onConnect func(ctx context.Context, srv *models.Server, token string, dc docker.Client)
 	onRemove  func(ctx context.Context, srv *models.Server, dc docker.Client)
+	onStatus  func(nodeID uint, name string, online bool)
 	subscribe func(ctx context.Context, nodeID uint, dc docker.Client)
 }
 
@@ -55,6 +56,13 @@ func (m *Manager) SetSubscriber(fn func(ctx context.Context, nodeID uint, dc doc
 // node's live Docker client before the tunnel is closed. See Teardown.
 func (m *Manager) SetOnRemove(fn func(ctx context.Context, srv *models.Server, dc docker.Client)) {
 	m.onRemove = fn
+}
+
+// SetOnStatusChange registers a hook fired when a node comes online (agent
+// connected) or goes offline (tunnel dropped). Used by alerting to raise/resolve
+// a "node offline" alert. Best-effort: run in a goroutine, must not block.
+func (m *Manager) SetOnStatusChange(fn func(nodeID uint, name string, online bool)) {
+	m.onStatus = fn
 }
 
 // Teardown runs the onRemove hook with the node's live Docker client, if the
@@ -101,6 +109,9 @@ func (m *Manager) Handle(srv *models.Server, token, agentVersion, agentContainer
 	m.clients.SetRemoteSelf(nodeID, agentContainerID) // protect the agent's own container from removal
 	m.nodes.MarkConnected(nodeID, agentVersion)
 	logger.Info("node agent connected", "node", nodeID, "name", srv.Name, "agent", agentVersion)
+	if m.onStatus != nil {
+		go m.onStatus(nodeID, srv.Name, true)
+	}
 
 	// Connection-scoped context: cancelled when the tunnel drops, so per-node
 	// workers (event subscriber) stop with their node.
@@ -130,6 +141,9 @@ func (m *Manager) Handle(srv *models.Server, token, agentVersion, agentContainer
 		m.clients.RemoveRemote(nodeID)
 		m.nodes.MarkDisconnected(nodeID)
 		logger.Info("node agent disconnected", "node", nodeID, "name", srv.Name)
+		if m.onStatus != nil {
+			go m.onStatus(nodeID, srv.Name, false)
+		}
 		return
 	}
 	logger.Info("superseded node tunnel closed; keeping the live connection", "node", nodeID, "name", srv.Name)

@@ -23,6 +23,7 @@ import (
 	"github.com/miabi-io/miabi/internal/routes"
 	"github.com/miabi-io/miabi/internal/runners"
 	"github.com/miabi-io/miabi/internal/selfcontainer"
+	"github.com/miabi-io/miabi/internal/services/alerting"
 	"github.com/miabi-io/miabi/internal/services/application"
 	"github.com/miabi-io/miabi/internal/services/backup"
 	"github.com/miabi-io/miabi/internal/services/backupsettings"
@@ -237,6 +238,40 @@ func runServer(cli *okapicli.CLI) {
 			// Outbound notifications: record events fan out to the workspace's
 			// webhooks and notification channels via background tasks.
 			eventsSvc.SetNotifier(notify.NewDispatcher(res.producer))
+			// Alerts & notifications: the engine derives deduplicated, auto-resolving
+			// alerts from the full event stream and fans per-user inbox notifications
+			// out over the bus (bell SSE). Redis holds the crash-loop/cooldown state.
+			// In-app alerts are a Community feature, always on.
+			alertNamer := alerting.AppNameFunc(func(id uint) string {
+				if a, err := appEventRepo.FindByID(id); err == nil && a != nil {
+					if a.DisplayName != "" {
+						return a.DisplayName
+					}
+					return a.Name
+				}
+				return ""
+			})
+			alertEngine := alerting.NewEngine(
+				repositories.NewAlertRepository(res.db),
+				repositories.NewNotificationInboxRepository(res.db),
+				repositories.NewWorkspaceRepository(res.db),
+				alertNamer, bus, alerting.NewRedisCounter(res.redis),
+			)
+			alertEngine.SetCertLister(repositories.NewCertificateRepository(res.db))
+			alertEngine.SetVolumeLister(repositories.NewVolumeRepository(res.db))
+			alertEngine.SetSystemAdmins(repositories.NewUserRepository(res.db))
+			eventsSvc.SetAlertSink(alertEngine)
+			// Platform-scoped node/runner offline/online alerts (a node or a shared
+			// runner → the system workspace / super-admins; a workspace runner → its
+			// members). The runner manager is wired after InitRoutes returns it.
+			palerter := &platformAlerter{
+				e:     alertEngine,
+				ws:    repositories.NewWorkspaceRepository(res.db),
+				users: repositories.NewUserRepository(res.db),
+			}
+			nodeManager.SetOnStatusChange(palerter.NodeStatus)
+			// The quota scan + backup-outcome alerts are wired below, once the quota
+			// service and backup service exist (they depend on it).
 			webhookRepo := repositories.NewWebhookRepository(res.db)
 			webhookDeliveryRepo := repositories.NewWebhookDeliveryRepository(res.db)
 			channelRepo := repositories.NewNotificationChannelRepository(res.db)
@@ -326,6 +361,14 @@ func runServer(cli *okapicli.CLI) {
 			edition := enterprise.New(res.db, cfg.LicensePublicKey, cfg.LicenseFile, cfg.DeploymentURL(), installIDOf(res.db))
 			securityQuota.SetEdition(edition)
 			res.entitlements = edition.Entitlements()
+			// Quota near-limit scan (needs the quota service + per-workspace counts).
+			alertEngine.SetQuotaLister(quotaScanner{
+				ws:   repositories.NewWorkspaceRepository(res.db),
+				q:    securityQuota,
+				apps: repositories.NewApplicationRepository(res.db),
+				vols: repositories.NewVolumeRepository(res.db),
+				dbs:  dbRepo,
+			})
 			securityResolver := newSecurityResolver(cfg, securityQuota)
 			deployHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
 			deployHandler.SetBuilderPolicy(securityQuota)
@@ -413,6 +456,11 @@ func runServer(cli *okapicli.CLI) {
 			// enables/disables cluster mode or swarm membership changes out of band.
 			go clusterService.RefreshLoop(eventCtx, 30*time.Second)
 
+			// Alerting scanner: periodic, self-contained condition checks (TLS cert
+			// expiry / issuance failure today) that aren't event-driven. Fires and
+			// auto-resolves as certs renew.
+			go alertEngine.ScanLoop(eventCtx)
+
 			// Workspace Analytics: roll up Goma's per-request event stream into
 			// minute buckets. Runs on the embedded worker; a standalone worker joins
 			// the same consumer group so events are still rolled up exactly once.
@@ -432,6 +480,7 @@ func runServer(cli *okapicli.CLI) {
 			backupService := backup.NewService(backupRepo, dbRepo, nodeClients)
 			backupService.SetImageResolver(imageResolver)
 			backupService.SetLogStore(logStore)
+			backupService.SetAlerter(backupAlerter{alertEngine}) // backup-outcome alerts
 			res.cron = cronpkg.NewManager(backupService, dbRepo, backupRepo, backupsettings.NewService(repositories.NewWorkspaceBackupSettingsRepository(res.db)))
 			res.cron.Start()
 
@@ -458,7 +507,9 @@ func runServer(cli *okapicli.CLI) {
 			})
 
 			var runnerDispatcher *runners.Dispatcher
-			res.forward, runnerDispatcher = routes.InitRoutes(app, res.db, res.redis, cfg, res.producer, dockerClient, nodeService, nodeManager, nodeGateway, clusterService, bus, proxyMgr, res.cron, logStore)
+			var runnerManager *runners.Manager
+			res.forward, runnerDispatcher, runnerManager = routes.InitRoutes(app, res.db, res.redis, cfg, res.producer, dockerClient, nodeService, nodeManager, nodeGateway, clusterService, bus, proxyMgr, res.cron, logStore)
+			runnerManager.SetOnStatusChange(palerter.RunnerStatus)
 
 			// This process holds the runner tunnels, so its worker is the one that
 			// dispatches builds to runners — for both pipelines and git-source app

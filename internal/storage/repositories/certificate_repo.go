@@ -74,3 +74,11 @@ func (r *CertificateRepository) ListExpiringBefore(cutoff time.Time) ([]models.C
 	err := r.db.Where("not_after < ?", cutoff).Order("not_after ASC").Find(&certs).Error
 	return certs, err
 }
+
+// ListByStatus returns certificates in a given status (e.g. "failed") across all
+// workspaces — used by the alerting scanner.
+func (r *CertificateRepository) ListByStatus(status string) ([]models.Certificate, error) {
+	var certs []models.Certificate
+	err := r.db.Where("status = ?", status).Order("updated_at DESC").Find(&certs).Error
+	return certs, err
+}

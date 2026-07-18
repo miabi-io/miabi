@@ -92,6 +92,8 @@ func Run(db *gorm.DB) error {
 		&models.Runner{},
 		&models.RunnerLease{},
 		&models.AnalyticsRollup{},
+		&models.Alert{},
+		&models.Notification{},
 	); err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
@@ -114,6 +116,16 @@ func Run(db *gorm.DB) error {
 			`ON domains (lower(name)) WHERE verified`,
 	).Error; err != nil {
 		return fmt.Errorf("failed to create verified-domain uniqueness index: %w", err)
+	}
+
+	// Partial unique index: at most one ACTIVE alert per (workspace, dedup_key), so
+	// a repeated signal folds into the existing alert instead of creating a new
+	// row. Resolved/archived alerts stay as history and don't block a re-fire.
+	if err := db.Exec(
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_alert_active_dedup ` +
+			`ON alerts (workspace_id, dedup_key) WHERE state IN ('firing', 'acknowledged')`,
+	).Error; err != nil {
+		return fmt.Errorf("failed to create active-alert uniqueness index: %w", err)
 	}
 
 	logger.Info("database migrations applied")

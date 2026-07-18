@@ -95,6 +95,15 @@ func (r *UserRepository) CountByRole(role models.SystemRole) (int64, error) {
 	return count, err
 }
 
+// ListAdminIDs returns the user ids of the platform super-admins — the recipients
+// of platform-scoped alerts (node offline, engine too old, license).
+func (r *UserRepository) ListAdminIDs() ([]uint, error) {
+	var ids []uint
+	err := r.db.Model(&models.User{}).Where("role = ?", models.SystemRoleAdmin).
+		Pluck("id", &ids).Error
+	return ids, err
+}
+
 // CountActive returns the number of active users.
 func (r *UserRepository) CountActive() (int64, error) {
 	var count int64

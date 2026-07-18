@@ -136,6 +136,8 @@ type routerHandlers struct {
 	volumeBackup   *handlers.VolumeBackupHandler
 	monitoring     *handlers.MonitoringHandler
 	analytics      *handlers.AnalyticsHandler
+	inbox          *handlers.NotificationInboxHandler
+	alerts         *handlers.AlertHandler
 	marketplace    *handlers.MarketplaceHandler
 	registry       *handlers.RegistryHandler
 	gitRepo        *handlers.GitRepositoryHandler
@@ -184,7 +186,7 @@ type routerHandlers struct {
 
 // InitRoutes wires repositories, services, handlers, and routes onto the app. It
 // returns the port-forward service so the caller can release its live sessions on shutdown.
-func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *config.Config, producer *worker.Producer, dockerClient docker.Client, nodeService *node.Service, nodeManager *nodes.Manager, nodeGateway *edgegateway.Service, clusterService *cluster.Service, bus *eventbus.Bus, proxyMgr proxy.Manager, cronManager *cronpkg.Manager, logStore *logstore.Store) (*portforward.Service, *runners.Dispatcher) {
+func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *config.Config, producer *worker.Producer, dockerClient docker.Client, nodeService *node.Service, nodeManager *nodes.Manager, nodeGateway *edgegateway.Service, clusterService *cluster.Service, bus *eventbus.Bus, proxyMgr proxy.Manager, cronManager *cronpkg.Manager, logStore *logstore.Store) (*portforward.Service, *runners.Dispatcher, *runners.Manager) {
 	metrics.SetBuildInfo(config.Version, config.CommitID)
 
 	// Repositories
@@ -897,6 +899,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			volumeBackup:   handlers.NewVolumeBackupHandler(volumeBackupService, volumeRepo, volumeBackupRepo, auditLogger),
 			monitoring:     handlers.NewMonitoringHandler(monitoringService),
 			analytics:      handlers.NewAnalyticsHandler(repositories.NewAnalyticsRepository(db), ee),
+			inbox:          handlers.NewNotificationInboxHandler(repositories.NewNotificationInboxRepository(db), bus),
+			alerts:         handlers.NewAlertHandler(repositories.NewAlertRepository(db)),
 			marketplace:    handlers.NewMarketplaceHandler(marketplaceService, auditLogger),
 			registry:       handlers.NewRegistryHandler(registryService, auditLogger),
 			gitRepo:        handlers.NewGitRepositoryHandler(gitRepoService, auditLogger),
@@ -1098,6 +1102,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.app.Register(r.releaseRoutes()...)
 	r.app.Register(r.webhookRoutes()...)
 	r.app.Register(r.notificationRoutes()...)
+	r.app.Register(r.inboxRoutes()...)
+	r.app.Register(r.alertRoutes()...)
 	r.app.Register(r.nodeRoutes()...)
 	r.app.Register(r.clusterRoutes()...)
 	r.app.Register(r.runnerRoutes()...)
@@ -1134,7 +1140,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		logger.Warn("proxy startup resync failed", "err", err)
 	}
 
-	return forwardService, runnerDispatcher
+	return forwardService, runnerDispatcher, runnerManager
 }
 
 // RegisterFallbacks wires NoRoute/NoMethod handlers so router-level errors use
