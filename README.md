@@ -389,6 +389,10 @@ backups, monitoring, marketplace, teams, and the admin platform.
     <td width="50%" align="center"><strong>Monitoring</strong><br/><img src="https://raw.githubusercontent.com/miabi-io/miabi/main/docs/screenshots/monitoring.png" alt="Container and workspace monitoring" width="420"/></td>
   </tr>
   <tr>
+    <td width="50%" align="center"><strong>Analytics overview</strong><br/><img src="https://raw.githubusercontent.com/miabi-io/miabi/main/docs/screenshots/analytics-overview.png" alt="Analytics overview" width="420"/></td>
+    <td width="50%" align="center"><strong>Analytics http traffic</strong><br/><img src="https://raw.githubusercontent.com/miabi-io/miabi/main/docs/screenshots/analytics-http-traffic.png" alt="Analytics http-traffic" width="420"/></td>
+  </tr>
+  <tr>
     <td width="50%" align="center"><strong>Nodes &amp; cluster</strong><br/><img src="https://raw.githubusercontent.com/miabi-io/miabi/main/docs/screenshots/nodes-cluster.png" alt="Multi-node and cluster management" width="420"/></td>
     <td width="50%" align="center"><strong>Platform admin</strong><br/><img src="https://raw.githubusercontent.com/miabi-io/miabi/main/docs/screenshots/admin-platform.png" alt="Platform admin" width="420"/></td>
   </tr>
