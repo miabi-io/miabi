@@ -5,8 +5,9 @@
 </p>
 
 <p align="center">
-  <strong>The open-source, self-hosted Platform-as-a-Service (PaaS)</strong><br/>
-  Multi-tenancy · GitOps · built-in registry · monitoring · backups · multi-node deployments.
+  <strong>The open-source, self-hosted PaaS for shipping apps, not infrastructure.</strong><br/>
+  Docker Compose isn't enough. Kubernetes is overkill. Miabi is the middle.<br/>
+  Multi-tenancy · GitOps · rolling &amp; canary · built-in registry · analytics · monitoring · multi-node.
 </p>
 
 <p align="center">
@@ -59,8 +60,8 @@
 **Miabi** is a self-hosted, developer-first Platform-as-a-Service for containerized
 apps. Push an app — from a **Git repo**, a **Docker image**, or a **marketplace
 template** — and Miabi handles the rest: build, deploy, domains, **automatic
-SSL**, databases, scaling, backups, and monitoring. All from one web interface,
-in minutes, without touching a single Docker command.
+SSL**, databases, scaling, backups, monitoring, and **analytics**. All from one web
+interface, in minutes, without touching a single Docker command.
 
 It is designed as a fully self-hostable alternative to platforms like Heroku,
 Render, and Railway — giving you complete ownership of your infrastructure,
@@ -82,6 +83,17 @@ of their infrastructure.
 Whether you're deploying a single application on a VPS, running a shared hosting
 platform for hundreds of customers, or building an internal developer platform,
 Miabi provides everything you need in one integrated platform.
+
+### The gap Miabi fills
+
+**Docker Compose isn't enough** for production — no rolling updates, no rollback, no TLS, no
+multi-tenancy. **Kubernetes is overkill** — a service mesh just for canary, Argo CD or Flux just
+for GitOps, and a platform team to keep it all running. Miabi sits in the middle: production-ready
+deployments on plain Docker, with the strategies you actually need built in.
+
+| Docker Compose            | **Miabi**                    | Kubernetes                |
+| ------------------------- | :--------------------------: | ------------------------- |
+| Too little for production | **Just right**               | Too much to operate       |
 
 ### Developer-first experience
 
@@ -111,7 +123,7 @@ Miabi delivers a cloud platform experience while staying Docker-first.
 
 - Single-node and multi-node deployments
 - Optional Docker Swarm clustering
-- Rolling and canary deployments
+- **Rolling (zero-downtime) and canary deployments — no service mesh required**
 - Built-in load balancing
 - Docker import for existing applications
 - No Kubernetes cluster to operate
@@ -195,7 +207,7 @@ data, your rules.
 
 - **Pipelines** — pipeline-as-code CI/CD
 - **Build runners** — dedicated build/pipeline machines that keep build load off app-hosting nodes; a co-located built-in runner ships for single-node/homelab, and an optional "builds require a runner" guarantee keeps builds off production nodes entirely
-- **GitOps** — declarative, pull-based reconciliation from `miabi.io/v1` manifests, plus an imperative one-shot **apply**
+- **GitOps** — declarative, pull-based reconciliation from `miabi.io/v1` manifests, plus an imperative one-shot **apply** (with dry-run, diff & prune) — **no separate controller** to run (no Argo CD or Flux)
 - **Git push deploy**, stored Git + container-registry credentials, signed **webhooks**, and **notifications**
 - **Automation** — everything is REST + OpenAPI, plus a **CLI** and an official [Terraform / OpenTofu provider](https://github.com/miabi-io/terraform-provider-miabi)
 
@@ -221,6 +233,17 @@ MySQL, Redis, and MongoDB.
 - **Log storage** — deployment, pipeline, job, and backup logs are externalized from Postgres to a shared filesystem store with a bounded DB tail, retention, size caps, and full-log download (live tailing unchanged)
 - Append-only **audit log** of every mutating action, with optional **SIEM streaming** to an external pipeline (syslog / webhook, Enterprise)
 - **Admin platform** — nodes/cluster, users, plans, settings, OAuth providers, SSO (SAML / LDAP / Active Directory), license, and SIEM
+
+### Analytics
+
+Every app gets **HTTP traffic, performance, and privacy-first web analytics** in the console —
+**with zero instrumentation**. Because every request already flows through Goma Gateway, there is
+no JS snippet, no SDK, and no code change to your app.
+
+- **Traffic** — requests/sec, status mix (2xx–5xx), bandwidth in/out, and your busiest routes
+- **Performance** — p50 / p95 / p99 latency, **gateway-vs-upstream** split ("is my app slow or the gateway?"), error rate, and Apdex
+- **Web analytics** — unique visitors, top pages, referrers, countries, and device/browser families
+- **Privacy-first** — cookieless, no consent banner, IPs never stored; unique visitors via **HyperLogLog** sketches, not per-person rows — first-party and GDPR-lean
 
 ---
 
@@ -431,6 +454,7 @@ backups, monitoring, marketplace, teams, and the admin platform.
 | Docker Import                    |     ✅      |    ❌     |    ❌    |    ❌    |
 | Secrets Management               |     ✅      |  Partial  | Partial  | Limited  |
 | Monitoring                       | ✅ Built-in |   Basic   |  Basic   |  Basic   |
+| Built-in Analytics (privacy-first) |   ✅      |    ❌     |    ❌    |    ❌    |
 | Scheduled Backups                |     ✅      |  Partial  | Partial  |    ❌    |
 | Audit Logs                       |     ✅      |    ❌     |    ❌    |    ❌    |
 | API Tokens                       |     ✅      |    ✅     |    ✅    |    ❌    |
