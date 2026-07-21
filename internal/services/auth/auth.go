@@ -143,6 +143,7 @@ func (s *Service) ResetPassword(rawToken, newPassword string) error {
 		return err
 	}
 	user.PasswordHash = string(hash)
+	user.MustChangePassword = false // the user set their own password
 	if err := s.users.Update(user); err != nil {
 		return err
 	}
@@ -166,7 +167,40 @@ func (s *Service) ChangePassword(userID uint, currentPassword, newPassword strin
 		return err
 	}
 	user.PasswordHash = string(hash)
+	user.MustChangePassword = false // the user set their own password
 	return s.users.Update(user)
+}
+
+// CreateResetSession issues a short-lived, single-use reset-session token (Redis)
+// for the forced-password-change flow: a user with an admin-set/reset password
+// gets this instead of a full session at login, and exchanges it for a real
+// session once they set their own password.
+func (s *Service) CreateResetSession(ctx context.Context, userID uint) (string, error) {
+	return s.store.CreateResetSession(ctx, userID)
+}
+
+// CompletePasswordReset consumes a reset-session token, sets the user's new
+// password, clears the must-change flag, and returns the user so the caller can
+// issue a full session. Errors when the token is invalid, expired, or already used.
+func (s *Service) CompletePasswordReset(ctx context.Context, token, newPassword string) (*models.User, error) {
+	userID, err := s.store.ConsumeResetSession(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+	user, err := s.users.FindByID(userID)
+	if err != nil {
+		return nil, session.ErrResetSession
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, err
+	}
+	user.PasswordHash = string(hash)
+	user.MustChangePassword = false
+	if err := s.users.Update(user); err != nil {
+		return nil, err
+	}
+	return user, nil
 }
 
 // generateToken returns a random URL-safe token and its sha256 hex hash.

@@ -151,6 +151,13 @@ type Client interface {
 	SwarmJoinTokens(ctx context.Context) (SwarmJoinTokens, error)
 	SwarmNodes(ctx context.Context) ([]SwarmNode, error)
 	SwarmNodeRemove(ctx context.Context, nodeID string, force bool) error
+	// SwarmNodeAvailability sets a node's scheduling availability (active | pause |
+	// drain). Drain is what makes a node safe to reboot — it reschedules the node's
+	// tasks away instead of letting Swarm keep placing onto a host that is going down.
+	SwarmNodeAvailability(ctx context.Context, nodeID, availability string) error
+	// SwarmTasks lists the swarm's tasks (all, or one node's). Only the manager can:
+	// the containers live on the nodes, which Miabi may hold no Docker client for.
+	SwarmTasks(ctx context.Context, nodeID string) ([]SwarmTask, error)
 
 	// Swarm services (cluster apps). Require a reachable manager; cluster deploys
 	// call these instead of RunContainer. CreateOverlayNetwork ensures the
@@ -166,6 +173,14 @@ type Client interface {
 	// ServiceTaskContainerID resolves a running task container of the named
 	// service on this engine, for logs/stats/exec/top. ErrNotFound if none here.
 	ServiceTaskContainerID(ctx context.Context, serviceName string) (string, error)
+	// ServiceEnv returns a service's environment. It can carry secrets, so it is for
+	// the service layer to inspect — never to return to a client.
+	ServiceEnv(ctx context.Context, idOrName string) ([]string, error)
+	// StreamServiceLogs streams a swarm service's logs from the MANAGER, aggregated
+	// across every task wherever it was scheduled. This is the only way to read the
+	// logs of a task on a swarm node Miabi has no Docker client for (an unmanaged
+	// member with no agent) — the manager pulls them over the swarm control plane.
+	StreamServiceLogs(ctx context.Context, serviceName string, follow bool, tail string, sink func(LogLine) error) error
 	CreateOverlayNetwork(ctx context.Context, name string) (id string, err error)
 
 	// Close releases the underlying connection.

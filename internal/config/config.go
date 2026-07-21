@@ -30,11 +30,17 @@ type Config struct {
 	Port    int
 	DevMode bool
 
+	// LogLevel is MIABI_LOG_LEVEL: debug | info | warn | error | off. Empty follows
+	// the environment — debug in dev, info otherwise — which is what it did before
+	// this was configurable.
+	LogLevel string
+
 	JWTSecret     string
 	EncryptionKey string
 
-	AdminEmail    string
-	AdminPassword string
+	AdminEmail           string
+	AdminPassword        string
+	PasswordResetEnabled bool
 
 	OpenAPIDocs    bool
 	MetricsEnabled bool
@@ -48,6 +54,18 @@ type Config struct {
 	// node containers list — those are managed through their owning resource.
 	// Setting it false is an escape hatch for break-glass operations.
 	SecurityEnforcement bool
+
+	// GPU management. GPUEnabled is the master off-switch: when false the control
+	// plane never probes nodes for GPUs and the UI hides all GPU controls (an
+	// air-gapped / no-GPU fleet pays nothing). NvidiaRuntime is the container
+	// runtime name that signals the NVIDIA Container Toolkit is present.
+	// GPUProbeImage is the one-shot image the inventory probe runs `nvidia-smi -q
+	// -x` in (point it at a mirror for air-gapped/registry-pinned fleets).
+	// GPUInventoryMinutes is the device rescan interval.
+	GPUEnabled          bool
+	NvidiaRuntime       string
+	GPUProbeImage       string
+	GPUInventoryMinutes int
 
 	// LicensePublicKey is the base64 Ed25519 public key used to verify a
 	// commercial license offline. In Enterprise builds a key is normally baked
@@ -64,6 +82,11 @@ type Config struct {
 	CORSOrigins string
 	AppWebURL   string
 	ApiBaseURL  string
+	// LoginTokenTTLHours is the default lifetime of a CLI "login command" token
+	// (the OpenShift-style short-lived personal API token). LoginTokenMaxTTLHours
+	// is the hard ceiling a caller may request. Kept short by design.
+	LoginTokenTTLHours    int
+	LoginTokenMaxTTLHours int
 	// AppName is the product name shown in platform notification emails.
 	AppName string
 	// SystemSMTP is the SMTP server Miabi uses to send its own platform
@@ -124,6 +147,17 @@ type Config struct {
 	StorageUsageEnabled bool
 	// StorageUsageMinutes is that sweep's cadence. Default 30.
 	StorageUsageMinutes int
+
+	// AnalyticsEnabled runs the Workspace Analytics consumer: it reads Goma's
+	// per-request event stream and rolls it up into minute buckets. Default on.
+	AnalyticsEnabled bool
+	// AnalyticsStream is the Redis stream Goma writes request events to (its
+	// GOMA_ANALYTICS_STREAM). Must match the gateway's setting.
+	AnalyticsStream string
+	// AnalyticsFlushSeconds is how often the consumer persists closed buckets.
+	AnalyticsFlushSeconds int
+	// AnalyticsRetentionDays bounds how long rollups are kept before pruning.
+	AnalyticsRetentionDays int
 
 	// ACMEDirectoryURL is the ACME CA directory Miabi issues managed (DNS-01)
 	// certificates from. Empty = Let's Encrypt production. Point it at the LE
@@ -321,6 +355,7 @@ type RedisConfig struct {
 	Client   *redis.Client
 	Addr     string
 	Password string
+	DB       int // Redis database index (MIABI_REDIS_DB); must match Goma's GOMA_REDIS_DB for analytics
 }
 
 // RegistryConfig is the boot-authoritative config for the built-in registry. A
@@ -393,19 +428,26 @@ func New() *Config {
 		Redis: RedisConfig{
 			Addr:     goutils.Env("MIABI_REDIS_ADDR", "localhost:6379"),
 			Password: goutils.Env("MIABI_REDIS_PASSWORD", ""),
+			DB:       goutils.EnvInt("MIABI_REDIS_DB", 0),
 		},
 		Env:                   goutils.Env("MIABI_ENV", "dev"),
 		Port:                  goutils.EnvInt("MIABI_PORT", 9000),
 		DevMode:               goutils.EnvBool("MIABI_DEV_MODE", false),
+		LogLevel:              goutils.Env("MIABI_LOG_LEVEL", ""),
 		JWTSecret:             goutils.Env("MIABI_JWT_SECRET", defaultJWTSecret),
 		EncryptionKey:         goutils.Env("MIABI_ENCRYPTION_KEY", ""),
 		AdminEmail:            goutils.Env("MIABI_ADMIN_EMAIL", "admin@example.com"),
 		AdminPassword:         goutils.Env("MIABI_ADMIN_PASSWORD", defaultAdminPassword),
+		PasswordResetEnabled:  goutils.EnvBool("MIABI_PASSWORD_RESET_ENABLED", true),
 		OpenAPIDocs:           goutils.EnvBool("MIABI_OPENAPI_DOCS", true),
 		UpdateCheck:           goutils.EnvBool("MIABI_UPDATE_CHECK", true),
 		MetricsEnabled:        goutils.EnvBool("MIABI_METRICS_ENABLED", false),
 		PlanEnforcement:       goutils.EnvBool("MIABI_PLAN_ENFORCEMENT", true),
 		SecurityEnforcement:   goutils.EnvBool("MIABI_SECURITY_ENFORCEMENT", true),
+		GPUEnabled:            goutils.EnvBool("MIABI_GPU_ENABLED", false),
+		NvidiaRuntime:         goutils.Env("MIABI_NVIDIA_RUNTIME", "nvidia"),
+		GPUProbeImage:         goutils.Env("MIABI_GPU_PROBE_IMAGE", "nvidia/cuda:12.4.1-base-ubuntu22.04"),
+		GPUInventoryMinutes:   goutils.EnvInt("MIABI_GPU_INVENTORY_MINUTES", 30),
 		LicensePublicKey:      goutils.Env("MIABI_LICENSE_PUBLIC_KEY", ""),
 		LicenseFile:           goutils.Env("MIABI_LICENSE_FILE", ""),
 		MetricsScrapeSeconds:  goutils.EnvInt("MIABI_METRICS_SCRAPE_SECONDS", 60),
@@ -413,6 +455,8 @@ func New() *Config {
 		CORSOrigins:           goutils.Env("MIABI_CORS_ORIGINS", "*"),
 		AppWebURL:             goutils.Env("MIABI_WEB_URL", ""),
 		ApiBaseURL:            goutils.Env("MIABI_API_URL", ""),
+		LoginTokenTTLHours:    goutils.EnvInt("MIABI_LOGIN_TOKEN_TTL_HOURS", 24),
+		LoginTokenMaxTTLHours: goutils.EnvInt("MIABI_LOGIN_TOKEN_MAX_TTL_HOURS", 168),
 		AppName:               goutils.Env("MIABI_APP_NAME", "Miabi"),
 		SystemSMTP: SystemSMTPConfig{
 			Host:       goutils.Env("MIABI_SMTP_HOST", ""),
@@ -435,6 +479,10 @@ func New() *Config {
 		DNSReconcileMinutes:        goutils.EnvInt("MIABI_DNS_RECONCILE_MINUTES", 30),
 		StorageUsageEnabled:        goutils.EnvBool("MIABI_STORAGE_USAGE_ENABLED", true),
 		StorageUsageMinutes:        goutils.EnvInt("MIABI_STORAGE_USAGE_MINUTES", 60),
+		AnalyticsEnabled:           goutils.EnvBool("MIABI_ANALYTICS_ENABLED", true),
+		AnalyticsStream:            goutils.Env("MIABI_ANALYTICS_STREAM", "goma:analytics"),
+		AnalyticsFlushSeconds:      goutils.EnvInt("MIABI_ANALYTICS_FLUSH_SECONDS", 15),
+		AnalyticsRetentionDays:     goutils.EnvInt("MIABI_ANALYTICS_RETENTION_DAYS", 90),
 		ACMEDirectoryURL:           goutils.Env("MIABI_ACME_DIRECTORY_URL", ""),
 		CertRenewDays:              goutils.EnvInt("MIABI_CERT_RENEW_DAYS", 30),
 		KeyAutoRotate:              goutils.EnvBool("MIABI_KEY_AUTO_ROTATE", false),
@@ -582,11 +630,60 @@ func (c *Config) DeploymentURL() string {
 	return c.ApiBaseURL
 }
 
-func (c *Config) initLogger() *logger.Logger {
-	if c.DevMode {
-		return logger.New(logger.WithDebugLevel())
+// LogLevelFor resolves MIABI_LOG_LEVEL to a logger level.
+//
+// Empty keeps the previous behaviour exactly: debug in dev, info in production. An
+// unrecognized value is an ERROR, not a silent fallback — an operator who sets
+// MIABI_LOG_LEVEL=verbose and is quietly given `info` would sit and watch logs that
+// do not contain what they turned it on to see, with nothing to tell them why.
+//
+// "warn" is accepted alongside the library's "warning": slog and most tooling spell
+// it the short way, and being pedantic about it buys nothing.
+//
+// "off" is deliberately NOT accepted, even though logger.LevelOff exists. The library
+// cannot honour it for the calls Miabi actually makes: with a disabled level,
+// logger.New() installs a discard handler on its own instance and returns early,
+// never assigning the package-level logger that every bare logger.Info() resolves
+// through — so "off" silences Okapi's logger and nothing else. Offering a switch that
+// looks like it turns logging off while the logs keep coming is worse than not
+// offering it. Use "error" for near-silence.
+func (c *Config) LogLevelFor() (logger.LogLevel, error) {
+	switch strings.ToLower(strings.TrimSpace(c.LogLevel)) {
+	case "":
+		if c.DevMode {
+			return logger.LevelDebug, nil
+		}
+		return logger.LevelInfo, nil
+	case "debug":
+		return logger.LevelDebug, nil
+	case "info":
+		return logger.LevelInfo, nil
+	case "warn", "warning":
+		return logger.LevelWarning, nil
+	case "error":
+		return logger.LevelError, nil
+	case "off", "none", "silent":
+		return "", fmt.Errorf("MIABI_LOG_LEVEL=%q is not supported: it would silence only part of "+
+			"Miabi's logging and leave the rest running, which is more confusing than useful. "+
+			"Use \"error\" for near-silence", c.LogLevel)
 	}
-	return logger.New(logger.WithJSONFormat(), logger.WithInfoLevel())
+	return "", fmt.Errorf("MIABI_LOG_LEVEL=%q is not a log level (use debug, info, warn or error)", c.LogLevel)
+}
+
+// initLogger builds the logger AND installs it as the package default: logger.New
+// assigns the package-level logger, so every logger.Info/Warn/Error call in Miabi —
+// not just the one handed to Okapi — honours this level.
+func (c *Config) initLogger() (*logger.Logger, error) {
+	level, err := c.LogLevelFor()
+	if err != nil {
+		return nil, err
+	}
+	opts := []logger.Option{logger.WithLevel(level)}
+	// Human-readable text in dev, JSON in production (for log shippers), as before.
+	if !c.DevMode {
+		opts = append(opts, logger.WithJSONFormat())
+	}
+	return logger.New(opts...), nil
 }
 
 // Initialize validates config and applies it to the Okapi app (logger, CORS,
@@ -596,7 +693,10 @@ func (c *Config) Initialize(app *okapi.Okapi) error {
 		return err
 	}
 
-	l := c.initLogger()
+	l, err := c.initLogger()
+	if err != nil {
+		return err
+	}
 	if c.DevMode {
 		app.WithDebug()
 	}
@@ -669,8 +769,14 @@ func (c *Config) Initialize(app *okapi.Okapi) error {
 }
 
 // InitWorker prepares configuration for the worker process.
+//
+// The worker honours MIABI_LOG_LEVEL exactly as the server does: it is a separate
+// process, so it configures its own logger, and a level that applied to only one of
+// the two would be a confusing half-measure (deploy logs come from the worker).
 func (c *Config) InitWorker() error {
-	c.initLogger()
+	if _, err := c.initLogger(); err != nil {
+		return err
+	}
 	return c.validate()
 }
 
@@ -691,7 +797,7 @@ func (c *Config) InitStorage() {
 	}
 	c.Database.DB = db
 
-	rdb, err := storage.NewRedis(c.Redis.Addr, c.Redis.Password)
+	rdb, err := storage.NewRedis(c.Redis.Addr, c.Redis.Password, c.Redis.DB)
 	if err != nil {
 		logger.Fatal("failed to connect to redis", "error", err)
 	}

@@ -53,7 +53,8 @@ const (
 	// FlagUserWorkspaceMembershipLimit gates the per-user override of how many
 	// workspaces a user may join as a member.
 	FlagUserWorkspaceMembershipLimit = "user_workspace_membership_limit"
-	FlagSSOLDAP                      = "sso_ldap" // LDAP / Active Directory authentication
+	FlagSSOLDAP                      = "sso_ldap"         // LDAP / Active Directory authentication
+	FlagAnalyticsExport              = "analytics_export" // workspace analytics export (CSV) + extended retention
 )
 
 // FlagInfo describes one entitlement flag for tooling and documentation.
@@ -86,6 +87,7 @@ var AllFlags = []FlagInfo{
 	{FlagUserWorkspaceLimit, "per-user workspace-count override"},
 	{FlagUserWorkspaceMembershipLimit, "per-user workspace-membership override"},
 	{FlagSSOLDAP, "LDAP / Active Directory authentication"},
+	{FlagAnalyticsExport, "workspace analytics export (CSV) + extended retention"},
 }
 
 // Commercial tier names. A tier is a preset bundle of flags + limits that the
@@ -183,6 +185,16 @@ const LimitNodeLimit = "node_limit"
 // LimitPlanLimit is the entitlement limit key bounding the platform plan catalog.
 const LimitPlanLimit = "plan_limit"
 
+// LimitAnalyticsRetentionDays is the entitlement limit key bounding how many days
+// of workspace-analytics rollups are retained.
+const LimitAnalyticsRetentionDays = "analytics_retention_days"
+
+// CommunityAnalyticsRetentionDays caps analytics retention in the Community
+// edition. The dashboards work in full; only the history window is bounded.
+// Extended retention is an Enterprise entitlement (analytics_retention_days limit,
+// or the analytics_export flag). A license may set an explicit limit that wins.
+const CommunityAnalyticsRetentionDays = 7
+
 // CommunityPlanLimit caps the Community plan catalog at the three seeded plans
 // (Free / Pro / Unlimited): admins may edit or delete them, but adding a fourth
 // requires an Enterprise license. A license may set an explicit plan_limit that
@@ -196,11 +208,11 @@ const CommunityPlanLimit = 3
 const CommunityNodeLimit = -1
 
 // CommunityRunnerLimit is the number of platform-shared (admin-managed) runners
-// allowed without the platform_runners entitlement. Community — and any license
-// lacking (or past grace on) the flag — may register a single shared runner, so a
-// solo operator gets one without a license; platform_runners lifts the cap to
-// unlimited. Owned (per-workspace) runners are always unlimited and unaffected.
-const CommunityRunnerLimit = 1
+// allowed without the platform_runners entitlement (-1 = unlimited). The shared
+// runner pool is available to the Community edition without a cap; the
+// platform_runners entitlement is reserved for future advanced scheduling.
+// Owned (per-workspace) runners are always unlimited and unaffected.
+const CommunityRunnerLimit = -1
 
 // Entitlements is the resolved, point-in-time view of the installed license.
 // State is one of "valid" | "grace" | "degraded" | "none" (community).
@@ -251,6 +263,41 @@ func (e Entitlements) PlanLimit() int {
 		return CommunityPlanLimit
 	}
 	return -1
+}
+
+// AnalyticsRetentionDays returns the resolved analytics-retention cap in days
+// (-1 = unlimited). An explicit analytics_retention_days limit in the license
+// always wins; otherwise the analytics_export flag lifts the cap (unlimited),
+// Community is bounded by CommunityAnalyticsRetentionDays, and a paid edition
+// with neither is unlimited.
+func (e Entitlements) AnalyticsRetentionDays() int {
+	if e.Limits != nil {
+		if v, ok := e.Limits[LimitAnalyticsRetentionDays]; ok {
+			return v
+		}
+	}
+	if e.Flags[FlagAnalyticsExport] {
+		return -1
+	}
+	if e.Edition == "" || e.Edition == EditionCommunity {
+		return CommunityAnalyticsRetentionDays
+	}
+	return -1
+}
+
+// ClampAnalyticsRetention resolves the effective retention (days) the consumer
+// should keep, given the operator's configured value and the entitlement cap
+// (from Entitlements.AnalyticsRetentionDays). A negative cap is unlimited, so the
+// configured value is honored as-is; otherwise the configured value is bounded by
+// the cap, and a "keep forever" config (<= 0) is clamped down to the cap.
+func ClampAnalyticsRetention(configured, capDays int) int {
+	if capDays < 0 {
+		return configured
+	}
+	if configured <= 0 || configured > capDays {
+		return capDays
+	}
+	return configured
 }
 
 // EE gates licensed features. All methods are safe to call on the CE stub.

@@ -1,10 +1,18 @@
 # syntax=docker/dockerfile:1
 #
-# Debian-based, rootless variant of the Miabi image. Same two-part build as the
-# Alpine Dockerfile (web UI static export embedded into a static Go binary that
-# serves both the API and the UI), but on a debian:bookworm-slim runtime and
-# running as an unprivileged user instead of root.
+# Rootless variant of the Miabi image. Same two-part build as the default
+# Dockerfile (web UI static export embedded into a static Go binary that serves
+# both the API and the UI), on the same alpine runtime, but running as an
+# unprivileged user with a healthcheck.
+#
+# Alpine is fine here: the binary is CGO_ENABLED=0 (fully static, no libc
+# linkage), and with CGO disabled Go uses its own pure-Go DNS resolver rather
+# than musl's — so the usual musl caveats don't apply. This keeps one base image
+# across both variants.
 
+# Build the UI on a glibc image, not alpine: Vite 8's rolldown bundler needs a
+# native binding, and `npm ci` on musl trips the npm optional-deps bug
+# (npm/cli#4828). Throwaway builder stage; only /web/dist is embedded below.
 FROM node:24-bookworm-slim AS web
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
@@ -24,17 +32,17 @@ COPY . .
 COPY --from=web /web/dist ./internal/web/dist
 ARG VERSION=dev
 ARG COMMIT=unknown
-# CGO disabled → a static binary that runs on the slim Debian runtime as-is.
+# CGO disabled → a static binary that runs on any runtime base as-is.
 RUN CGO_ENABLED=0 go build \
     -ldflags "-s -w -X github.com/miabi-io/miabi/internal/config.Version=${VERSION} -X github.com/miabi-io/miabi/internal/config.CommitID=${COMMIT}" \
     -o /out/miabi ./cmd/miabi
 
-FROM debian:bookworm-slim
+FROM alpine:3.20
 # Re-declare build args in this stage so they are in scope for the labels below.
 ARG VERSION=dev
 ARG COMMIT=unknown
 LABEL org.opencontainers.image.title="Miabi (rootless)" \
-      org.opencontainers.image.description="The open-source, self-hosted Platform-as-a-Service (PaaS) for Docker — API + web UI in a single binary, running as an unprivileged user on Debian." \
+      org.opencontainers.image.description="The open-source, self-hosted Platform-as-a-Service (PaaS) for Docker — API + web UI in a single binary, running as an unprivileged user." \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}" \
       org.opencontainers.image.authors="Jonas Kaninda" \
@@ -43,21 +51,15 @@ LABEL org.opencontainers.image.title="Miabi (rootless)" \
       org.opencontainers.image.source="https://github.com/miabi-io/miabi" \
       org.opencontainers.image.documentation="https://github.com/miabi-io/miabi#readme" \
       org.opencontainers.image.licenses="AGPL-3.0-or-later"
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates wget \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --gid 10001 miabi \
-    && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/miabi --shell /usr/sbin/nologin miabi \
-    && mkdir -p /var/lib/miabi/logs \
-    && mkdir -p /etc/goma/providers \
-    && chown -R miabi:miabi /var/lib/miabi \
-    && chown -R miabi:miabi /etc/goma/providers
+
+RUN apk add --no-cache ca-certificates tzdata \
+    && addgroup -g 10001 miabi \
+    && adduser -u 10001 -G miabi -h /home/miabi -s /sbin/nologin -D miabi \
+    && mkdir -p /var/lib/miabi/logs /etc/goma/providers \
+    && chown -R miabi:miabi /var/lib/miabi /etc/goma/providers
 COPY --from=build /out/miabi /usr/local/bin/miabi
 ENV MIABI_LOG_DIR=/var/lib/miabi/logs
-# Run unprivileged. The server listens on a high port (9000), so binding it
-# needs no root; Docker-daemon access is granted at runtime by mounting the
-# socket and matching its group (e.g. `--group-add <docker gid>`), not by
-# running the process as root.
+
 USER miabi
 EXPOSE 9000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

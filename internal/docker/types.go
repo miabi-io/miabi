@@ -22,6 +22,11 @@ type Info struct {
 	Images        int    `json:"images"`
 	CPUs          int    `json:"cpus"`
 	MemTotal      int64  `json:"mem_total"`
+	// Runtimes are the container runtimes the daemon advertises (docker info).
+	// The "nvidia" key is present exactly when the NVIDIA Container Toolkit is
+	// installed, so it is how the control plane decides a node is GPU-capable
+	// before ever probing it.
+	Runtimes []string `json:"runtimes,omitempty"`
 }
 
 // Port maps a container port to a host port.
@@ -56,6 +61,11 @@ type ContainerNetwork struct {
 	Name      string `json:"name"`
 	IPAddress string `json:"ip_address"`
 	Gateway   string `json:"gateway,omitempty"`
+	// Aliases are the container's DNS aliases on this network. They are the only
+	// stable way to address it, so moving a container between networks (see the
+	// bridge -> overlay migration in services/network) must carry them across
+	// verbatim rather than recomputing them.
+	Aliases []string `json:"aliases,omitempty"`
 }
 
 // ContainerConfig is the full inspected configuration of a container, used by
@@ -140,6 +150,10 @@ type RunSpec struct {
 	// Resource limits (0 = unlimited).
 	MemoryBytes int64
 	NanoCPUs    int64
+	// GPUs requests whole-device GPU access via the NVIDIA runtime. Empty = none.
+	// Each entry either pins specific devices by UUID (DeviceIDs) or asks for N
+	// of any kind (Count); -1 Count means "all GPUs" (used by the inventory probe).
+	GPUs []GPURequest
 	// RestartPolicy is the Docker restart policy ("no", "always",
 	// "unless-stopped", "on-failure"). Empty defaults to "unless-stopped".
 	RestartPolicy string
@@ -152,6 +166,20 @@ type RunSpec struct {
 	User            string
 	NoNewPrivileges bool
 	CapDrop         []string
+	// GroupAdd are supplementary groups (Docker --group-add), by GID or name. The
+	// control plane needs the host's "docker" group to read /var/run/docker.sock when
+	// it does not run as root — the same thing compose.yaml's `group_add` does.
+	GroupAdd []string
+}
+
+// GPURequest describes a set of GPU devices to attach to a container via the
+// NVIDIA runtime (Docker DeviceRequests). Either DeviceIDs (resolved GPU UUIDs)
+// pins exact cards, or Count asks for N-any-of-kind (-1 = all). Capabilities is
+// the driver capability set, [["gpu"]] for NVIDIA.
+type GPURequest struct {
+	DeviceIDs    []string   // resolved GPU UUIDs; nil selects by Count instead
+	Count        int        // used only when DeviceIDs is nil (-1 = all devices)
+	Capabilities [][]string // e.g. [["gpu"]]
 }
 
 // HealthcheckSpec configures a container healthcheck (Docker HEALTHCHECK).

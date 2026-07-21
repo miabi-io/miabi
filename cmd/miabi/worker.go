@@ -4,6 +4,9 @@
 package main
 
 import (
+	"context"
+	"time"
+
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/config"
 	"github.com/miabi-io/miabi/internal/docker"
@@ -14,11 +17,13 @@ import (
 	"github.com/miabi-io/miabi/internal/services/application"
 	"github.com/miabi-io/miabi/internal/services/backup"
 	"github.com/miabi-io/miabi/internal/services/backupsettings"
+	"github.com/miabi-io/miabi/internal/services/cluster"
 	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/services/database"
 	"github.com/miabi-io/miabi/internal/services/dbupgrade"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 	"github.com/miabi-io/miabi/internal/services/events"
+	"github.com/miabi-io/miabi/internal/services/gpu"
 	"github.com/miabi-io/miabi/internal/services/image"
 	"github.com/miabi-io/miabi/internal/services/keyring"
 	"github.com/miabi-io/miabi/internal/services/node"
@@ -67,7 +72,7 @@ func runWorker() error {
 	if cfg.GomaProviderDir != "" {
 		proxyMgr = proxy.NewGoma(cfg.GomaProviderDir)
 	}
-	producer := worker.NewProducer(cfg.Redis.Addr, cfg.Redis.Password, cfg.WorkerMaxRetries)
+	producer := worker.NewProducer(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB, cfg.WorkerMaxRetries)
 	defer func() { _ = producer.Close() }()
 
 	// Shared execution-log store. With the filesystem backend this must be the
@@ -186,17 +191,40 @@ func runWorker() error {
 		cfg.PlanEnforcement,
 	)
 	// The restricted profile is an Enterprise entitlement; without it the resolver
-	// clamps every workspace back to the default (image's user).
-	securityQuota.SetEdition(enterprise.New(db, cfg.LicensePublicKey, cfg.LicenseFile, cfg.DeploymentURL(), installIDOf(db)))
+	// clamps every workspace back to the default (image's user). The same edition
+	// governs analytics retention below.
+	edition := enterprise.New(db, cfg.LicensePublicKey, cfg.LicenseFile, cfg.DeploymentURL(), installIDOf(db))
+	securityQuota.SetEdition(edition)
 	securityResolver := newSecurityResolver(cfg, securityQuota)
 	deployHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
 	deployHandler.SetBuilderPolicy(securityQuota)
+	// GPU scheduling: capability + quota preflight and deploy-time device
+	// resolution for GPU apps.
+	gpuScheduler := gpu.NewService(
+		repositories.NewGPUDeviceRepository(db),
+		repositories.NewServerRepository(db),
+		appRepo,
+		nodeClients,
+		gpu.Config{Enabled: cfg.GPUEnabled, NvidiaRuntime: cfg.NvidiaRuntime, ProbeImage: cfg.GPUProbeImage},
+	)
+	gpuScheduler.SetQuota(securityQuota)
+	deployHandler.SetGPU(gpuScheduler)
 	jobHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
 	// Managed-subnet allocator: overlay networks + remote-node network recreate
 	// draw from the Miabi pool instead of Docker's default address pool.
 	subnetAllocator := newSubnetAllocator(cfg, db)
 	deployHandler.SetAllocator(subnetAllocator)
 	jobHandler.SetAllocator(subnetAllocator)
+	// Cluster mode: a routed app also joins the shared ingress overlay, so the
+	// central gateway reaches it on any node without a published host port. The
+	// standalone worker detects swarm state itself (the control plane's cluster
+	// service lives in the server process) and re-detects on interval, so enabling
+	// cluster mode does not require a worker restart.
+	clusterService := cluster.NewService(nodeClients, node.NewService(repositories.NewServerRepository(db), dockerClient))
+	clusterService.Refresh(context.Background())
+	go clusterService.RefreshLoop(context.Background(), 30*time.Second)
+	deployHandler.SetCluster(clusterService)
+	jobHandler.SetCluster(clusterService)
 	// Git builds run on runners; here the resolver supplies the admin-controlled
 	// builder image (passed to the runner) and the image catalog records provenance.
 	deployHandler.SetBuildProvenance(
@@ -244,7 +272,21 @@ func runWorker() error {
 	// A standalone worker has no agent tunnels, so it must not consume the
 	// remote-node queue — those tasks are reserved for the control-plane server's
 	// embedded worker. It still handles all local-node and non-node tasks.
-	srv := worker.NewServer(cfg.Redis.Addr, cfg.Redis.Password, cfg.WorkerConcurrency, false)
+	srv := worker.NewServer(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB, cfg.WorkerConcurrency, false)
+
+	// Workspace Analytics: a standalone worker joins the same consumer group as the
+	// control plane's embedded worker, so gateway events are rolled up exactly once
+	// no matter how many workers run.
+	if cfg.AnalyticsEnabled {
+		analyticsConsumer := worker.NewAnalyticsConsumer(
+			cfg.Redis.Client,
+			repositories.NewRouteRepository(db),
+			repositories.NewAnalyticsRepository(db),
+			cfg.AnalyticsStream, analyticsConsumerName("worker"),
+			time.Duration(cfg.AnalyticsFlushSeconds)*time.Second, analyticsRetention(cfg, edition),
+		)
+		go analyticsConsumer.Run(context.Background())
+	}
 
 	logger.Info("Miabi worker started", "version", config.Version, "concurrency", cfg.WorkerConcurrency)
 	return srv.Run(worker.NewMux(deployHandler, provisionHandler, upgradeHandler, fanoutHandler, webhookHandler, channelHandler, jobHandler, volumeBackupHandler, pipelineHandler, platformBackupHandler))

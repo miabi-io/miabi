@@ -424,13 +424,13 @@ tbody tr:last-child td { border-bottom: none; }
 tr { transition: background var(--transition); }
 tbody tr:hover td { background: var(--bg-hover); }
 
-th:first-child, td:first-child {
+/* th:first-child, td:first-child {
   position: sticky;
   left: 0;
   z-index: 10;
   background: var(--bg-surface, var(--bg-primary));
   box-shadow: 2px 0 5px -2px rgba(0, 0, 0, 0.1);
-}
+} */
 .table-desc {  
     max-width: 80px;
     white-space: nowrap;
@@ -1029,6 +1029,79 @@ input[type="checkbox"]:checked::before {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+
+/* ============================================================
+   Analytics pages — shared visual primitives (Traffic/HTTP/
+   Performance/Web Analytics). Kept global so the pages and the
+   AnalyticsHeader/WorldMap components share one look.
+   ============================================================ */
+.a-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 16px; }
+.a-tile { background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 12px; padding: 16px 18px; }
+.a-tile .t-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.a-tile .t-value { font-size: 26px; font-weight: 700; color: var(--text-primary); margin-top: 6px; letter-spacing: -0.02em; }
+.a-tile .t-value.danger { color: var(--danger-600); }
+.a-tile .t-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+.a-delta { font-size: 12px; font-weight: 600; margin-left: 6px; }
+.a-delta.up { color: var(--success-600); }
+.a-delta.down { color: var(--danger-600); }
+.a-delta.flat { color: var(--text-muted); }
+.a-delta.up.invert { color: var(--danger-600); }   /* e.g. errors up = bad */
+.a-delta.down.invert { color: var(--success-600); }
+
+.a-card-header { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 18px; border-bottom: 1px solid var(--border-primary); }
+.a-card-header h3 { margin: 0; font-size: 15px; color: var(--text-primary); }
+.a-muted { color: var(--text-muted); font-size: 12px; }
+
+/* stacked request/error time-series bars */
+.barchart { display: flex; align-items: flex-end; gap: 2px; height: 180px; padding-top: 8px; }
+.bar-col { flex: 1 1 0; height: 100%; display: flex; align-items: flex-end; min-width: 2px; }
+.bar-stack { width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; }
+.bar { width: 100%; border-radius: 2px 2px 0 0; }
+.bar-ok { background: var(--primary-500); }
+.bar-err { background: var(--danger-500); }
+.bar-4xx { background: var(--warning-600); }
+.bar-5xx { background: var(--danger-500); }
+.a-legend { display: flex; gap: 18px; margin-top: 12px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+.dot-ok { background: var(--primary-500); }
+.dot-err, .dot-5xx { background: var(--danger-500); }
+.dot-2xx { background: var(--success-600); }
+.dot-3xx { background: #2563eb; }
+.dot-4xx { background: var(--warning-600); }
+
+/* status-class stacked bar */
+.status-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--border-primary); }
+.status-bar .seg { height: 100%; }
+.seg-2xx { background: var(--success-600); }
+.seg-3xx { background: #2563eb; }
+.seg-4xx { background: var(--warning-600); }
+.seg-5xx { background: var(--danger-500); }
+.status-legend { display: flex; gap: 18px; margin-top: 12px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
+.status-legend b { color: var(--text-primary); }
+
+/* ranked breakdown bar rows */
+.brow { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 13px; color: var(--text-secondary); }
+.brow-label { flex: 0 0 38%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brow-track { flex: 1; height: 8px; background: var(--border-primary); border-radius: 4px; overflow: hidden; }
+.brow-fill { display: block; height: 100%; background: var(--primary-500); border-radius: 4px; }
+.brow-count { flex: 0 0 auto; color: var(--text-muted); min-width: 42px; text-align: right; }
+.break-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+
+/* small two-col perf table */
+.mini-table { width: 100%; border-collapse: collapse; }
+.mini-table th, .mini-table td { text-align: right; padding: 8px 12px; font-size: 13px; color: var(--text-secondary); }
+.mini-table th { color: var(--text-muted); font-weight: 600; }
+.mini-table th:first-child, .mini-table td:first-child { text-align: left; }
+.a-danger { color: var(--danger-600); }
+
+/* world choropleth */
+.worldmap-wrap { position: relative; width: 100%; }
+.worldmap { width: 100%; height: auto; display: block; }
+.worldmap .country { fill: var(--bg-tertiary); stroke: var(--bg-primary); stroke-width: 0.3; transition: fill 0.15s; }
+.worldmap .country.has-data { cursor: pointer; }
+.worldmap-tip { position: absolute; pointer-events: none; background: var(--bg-sidebar); color: #fff; padding: 5px 9px; border-radius: 6px; font-size: 12px; white-space: nowrap; transform: translate(-50%, -130%); z-index: 3; }
+.worldmap-legend { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+.worldmap-legend .scale { display: inline-block; width: 120px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--bg-tertiary), var(--primary-500)); }
 
 /* ─── form select picker scrollbar ───  */
 .form-select::picker(select)::-webkit-scrollbar { width: 6px; height: 6px;}

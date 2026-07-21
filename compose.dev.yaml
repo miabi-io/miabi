@@ -1,12 +1,19 @@
 # Miabi — local development stack.
 #
-# Builds the image from source (../Dockerfile), exposes Postgres/Redis on the
+# Builds the image from source (docker/Dockerfile), exposes Postgres/Redis on the
 # host, and serves Miabi on :9000 with throwaway credentials. No gateway/TLS.
-# For production use compose.yaml instead.
-#   make compose-up   # docker compose -f deploy/compose.dev.yaml up -d
+# For production use examples/compose/ instead, or deploy/install.sh.
+#   make compose-up   # docker compose -f compose.dev.yaml up -d
 services:
   postgres:
     image: postgres:17-alpine
+    # Same platform identity as production (compose.yaml), so dev exercises the
+    # same import/protection paths instead of only finding out in prod.
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: platform-db
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     environment:
       POSTGRES_USER: miabi
       POSTGRES_PASSWORD: miabi
@@ -23,6 +30,11 @@ services:
 
   redis:
     image: redis:7-alpine
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: platform-cache
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     ports:
       - "6379:6379"
     healthcheck:
@@ -32,8 +44,13 @@ services:
       retries: 10
 
   miabi:
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: control-plane
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     build:
-      context: ..
+      context: .
       dockerfile: docker/Dockerfile
     depends_on:
       postgres:

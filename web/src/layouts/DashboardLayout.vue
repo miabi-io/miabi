@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
+import NotificationBell from '@/components/NotificationBell.vue'
 import { useLicenseStore } from '@/stores/license'
 import { infoApi } from '@/api/info'
 import { workspaceApi } from '@/api/workspaces'
@@ -65,6 +66,16 @@ const navSections: NavSection[] = [
     id: 'overview',
     title: 'Overview',
     items: [{ name: 'Dashboard', path: '/', icon: 'mdi-view-dashboard-outline' }],
+  },
+  {
+    id: 'analytics',
+    title: 'Analytics',
+    items: [
+      { name: 'Overview', path: '/analytics', icon: 'mdi-chart-areaspline', requiresWorkspace: true },
+      { name: 'HTTP Traffic', path: '/analytics/http', icon: 'mdi-earth', requiresWorkspace: true },
+      { name: 'Performance', path: '/analytics/performance', icon: 'mdi-speedometer', requiresWorkspace: true },
+      { name: 'Web Analytics', path: '/analytics/web', icon: 'mdi-account-group-outline', requiresWorkspace: true },
+    ],
   },
   {
     id: 'deploy',
@@ -309,18 +320,6 @@ const licenseBanner = computed(() => {
   return null
 })
 
-// Community Edition upgrade prompt for admins. Require `loaded` so we don't show
-// it before the edition is known (the license store only loads for admins).
-const CE_BANNER_KEY = 'mb_ce_banner_dismissed'
-const ceBannerDismissed = ref(localStorage.getItem(CE_BANNER_KEY) === 'true')
-const showCEBanner = computed(
-  () => auth.isAdmin && license.loaded && license.isCommunity && !ceBannerDismissed.value,
-)
-function dismissCEBanner() {
-  ceBannerDismissed.value = true
-  localStorage.setItem(CE_BANNER_KEY, 'true')
-}
-
 // New-release notice (platform admins). Dismissal is stored server-side against
 // the version, not in localStorage: it must survive a browser change and it must
 // come back when the *next* version lands.
@@ -455,6 +454,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
           </button>
         </div>
         <div class="topbar-right">
+          <NotificationBell />
           <div class="user-menu" ref="userMenuRef">
  
           <div class="user-menu-trigger" @click="userMenuOpen = !userMenuOpen">
@@ -503,6 +503,10 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
                   <span class="mdi mdi-information-outline"></span> About
                 </RouterLink>
                 <div class="user-dropdown-divider"></div>
+                <a href="/request-token" target="_blank" rel="noopener" class="user-dropdown-item" @click.stop="userMenuOpen = false">
+                  <span class="mdi mdi-console"></span> Copy login command
+                </a>
+                <div class="user-dropdown-divider"></div>
                 <a class="user-dropdown-item user-dropdown-logout" @click.stop="logout">
                   <span class="mdi mdi-logout"></span> Sign out
                 </a>
@@ -534,19 +538,6 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
           </a>
           <button class="update-banner-dismiss" title="Dismiss until the next release"
             aria-label="Dismiss until the next release" @click="dismissUpdate">
-            <span class="mdi mdi-close"></span>
-          </button>
-        </div>
-
-        <!-- Community Edition: gentle, dismissible upgrade prompt (admins). -->
-        <div v-if="showCEBanner" class="ce-banner">
-          <span class="mdi mdi-rocket-launch-outline ce-banner-icon"></span>
-          <span class="ce-banner-text">
-            You're running <strong>Miabi Community Edition</strong> — free and open source.
-            Unlock SSO &amp; SAML, custom roles, audit export, and SIEM streaming with Enterprise.
-          </span>
-          <router-link to="/admin/license" class="ce-banner-cta">Explore Enterprise →</router-link>
-          <button class="ce-banner-dismiss" title="Dismiss" aria-label="Dismiss" @click="dismissCEBanner">
             <span class="mdi mdi-close"></span>
           </button>
         </div>

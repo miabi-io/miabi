@@ -183,3 +183,62 @@ func ids(rs []models.Route) []uint {
 	}
 	return out
 }
+
+// fakeCluster stubs swarm detection for the upstream-selection tests.
+type fakeCluster struct{ on bool }
+
+func (f fakeCluster) CapCluster() bool { return f.on }
+
+// A port-forward node is reached by a published host port — until cluster mode is
+// on, at which point the app is on the shared ingress overlay and the gateway
+// dials its DNS alias instead, on any node, with nothing published.
+func TestUseAliasUpstream(t *testing.T) {
+	local := &models.Server{IsLocal: true}
+	edge := &models.Server{Connectivity: models.ConnectivityEdgeGateway}
+	portFwd := &models.Server{Connectivity: models.ConnectivityPortForward}
+
+	tests := []struct {
+		name      string
+		srv       *models.Server
+		clusterOn bool
+		want      bool
+	}{
+		{name: "local node always uses its alias", srv: local, want: true},
+		{name: "edge-gateway node shares a network with its own gateway", srv: edge, want: true},
+		{name: "port-forward node without cluster publishes a host port", srv: portFwd, want: false},
+		{name: "port-forward node with cluster reaches the alias over the ingress overlay", srv: portFwd, clusterOn: true, want: true},
+		{name: "unknown node falls back to the alias", srv: nil, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Service{}
+			if tt.clusterOn {
+				s.SetCluster(fakeCluster{on: true})
+			}
+			if got := s.useAliasUpstream(tt.srv); got != tt.want {
+				t.Errorf("useAliasUpstream = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// Regression: on a port-forward node the host-port upstream can only name one
+// container, so a canary there received 0% of traffic while the UI reported its
+// weight. In cluster mode the alias upstream must carry the split.
+func TestCanaryWeightSurvivesOnAPortForwardNodeInClusterMode(t *testing.T) {
+	rel := uint(9)
+	app := &models.Application{Alias: "mb-app-tok-7", CanaryReleaseID: &rel, CanaryWeight: 20}
+
+	s := &Service{}
+	s.SetCluster(fakeCluster{on: true})
+	if !s.useAliasUpstream(&models.Server{Connectivity: models.ConnectivityPortForward}) {
+		t.Fatal("cluster mode must route a port-forward node over its alias")
+	}
+	b := aliasBackends(app, 80, "http")
+	if len(b) != 2 {
+		t.Fatalf("want a weighted stable+canary split, got %d backend(s): %+v", len(b), b)
+	}
+	if b[0].Weight != 80 || b[1].Weight != 20 {
+		t.Errorf("canary weights lost: got stable=%d canary=%d, want 80/20", b[0].Weight, b[1].Weight)
+	}
+}

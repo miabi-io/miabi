@@ -60,10 +60,10 @@ func (o offlineClient) BuildImage(context.Context, string, string, string, func(
 func (o offlineClient) InspectImage(context.Context, string) (ImageInspect, error) {
 	return ImageInspect{}, o.err
 }
-func (o offlineClient) ImageExists(context.Context, string) (bool, error) { return false, o.err }
-func (o offlineClient) RemoveImage(context.Context, string, bool) error   { return o.err }
-func (o offlineClient) ListImages(context.Context) ([]Image, error)       { return nil, o.err }
-func (o offlineClient) DiskUsage(context.Context) (DiskUsage, error)      { return DiskUsage{}, o.err }
+func (o offlineClient) ImageExists(context.Context, string) (bool, error)  { return false, o.err }
+func (o offlineClient) RemoveImage(context.Context, string, bool) error    { return o.err }
+func (o offlineClient) ListImages(context.Context) ([]Image, error)        { return nil, o.err }
+func (o offlineClient) DiskUsage(context.Context) (DiskUsage, error)       { return DiskUsage{}, o.err }
 func (o offlineClient) VolumeUsage(context.Context) ([]VolumeUsage, error) { return nil, o.err }
 func (o offlineClient) PruneImages(context.Context, PruneImagesOptions) (PruneReport, error) {
 	return PruneReport{}, o.err
@@ -121,8 +121,12 @@ func (o offlineClient) SwarmLeave(context.Context, bool) error            { retu
 func (o offlineClient) SwarmJoinTokens(context.Context) (SwarmJoinTokens, error) {
 	return SwarmJoinTokens{}, o.err
 }
-func (o offlineClient) SwarmNodes(context.Context) ([]SwarmNode, error)     { return nil, o.err }
-func (o offlineClient) SwarmNodeRemove(context.Context, string, bool) error { return o.err }
+func (o offlineClient) SwarmNodes(context.Context) ([]SwarmNode, error)             { return nil, o.err }
+func (o offlineClient) SwarmNodeRemove(context.Context, string, bool) error         { return o.err }
+func (o offlineClient) SwarmNodeAvailability(context.Context, string, string) error { return o.err }
+func (o offlineClient) SwarmTasks(context.Context, string) ([]SwarmTask, error) {
+	return nil, o.err
+}
 func (o offlineClient) ServiceCreate(context.Context, ServiceSpec) (string, error) {
 	return "", o.err
 }
@@ -136,6 +140,12 @@ func (o offlineClient) ServiceList(context.Context) ([]ServiceStatus, error) { r
 func (o offlineClient) ServiceRestart(context.Context, string) error         { return o.err }
 func (o offlineClient) ServiceTaskContainerID(context.Context, string) (string, error) {
 	return "", o.err
+}
+func (o offlineClient) ServiceEnv(context.Context, string) ([]string, error) {
+	return nil, o.err
+}
+func (o offlineClient) StreamServiceLogs(context.Context, string, bool, string, func(LogLine) error) error {
+	return o.err
 }
 func (o offlineClient) CreateOverlayNetwork(context.Context, string) (string, error) {
 	return "", o.err

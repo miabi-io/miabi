@@ -135,6 +135,13 @@ func gomaName(workspaceID uint, name string) string {
 	return fmt.Sprintf("mb-ws%d-%s", workspaceID, slugify(name))
 }
 
+// GomaName exposes the Goma identifier a workspace route is served under, so
+// consumers of the gateway's telemetry (the analytics stream carries this name)
+// can map an event back to the route it belongs to.
+func GomaName(workspaceID uint, name string) string {
+	return gomaName(workspaceID, name)
+}
+
 // slugify lowercases name and collapses any run of non-alphanumeric characters
 // to a single hyphen (trimmed), producing a Goma/DNS-safe token.
 func slugify(s string) string {

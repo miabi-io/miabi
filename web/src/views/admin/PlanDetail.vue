@@ -24,7 +24,7 @@ const saving = ref(false)
 type LimitKey = keyof Pick<PlanInput,
   | 'max_apps' | 'max_database_instances' | 'max_databases_per_instance' | 'max_cron_jobs'
   | 'max_volumes' | 'max_networks' | 'max_api_keys' | 'max_members' | 'max_runners' | 'max_cpu_cores' | 'max_memory_mb'
-  | 'max_database_instance_size_mb' | 'max_storage_mb'>
+  | 'max_database_instance_size_mb' | 'max_storage_mb' | 'max_gpus'>
 
 interface LimitField { key: LimitKey; label: string; desc: string; unit?: string }
 const countFields: LimitField[] = [
@@ -43,6 +43,7 @@ const computeFields: LimitField[] = [
   { key: 'max_memory_mb', label: 'Memory', desc: 'Aggregate memory across all apps.', unit: 'MB' },
   { key: 'max_database_instance_size_mb', label: 'DB instance size', desc: 'Declared data-volume size of one instance.', unit: 'MB' },
   { key: 'max_storage_mb', label: 'Total storage', desc: 'Aggregate volumes + DB instance data volumes.', unit: 'MB' },
+  { key: 'max_gpus', label: 'GPUs', desc: 'Aggregate GPU units the workspace’s running apps may hold. Requires the GPU capability below.', unit: 'GPUs' },
 ]
 
 function describe(v: number, unit?: string): string {
@@ -197,6 +198,7 @@ function fmtDate(s?: string): string {
           <label class="checkbox-label"><input v-model="form.allow_dns_providers" type="checkbox" /> Allow connecting DNS providers</label>
           <label class="checkbox-label"><input v-model="form.allow_custom_labels" type="checkbox" /> Allow custom container labels (Traefik &c.)</label>
           <label class="checkbox-label"><input v-model="form.allow_platform_runners" type="checkbox" /> Allow using the platform-shared runner pool</label>
+          <label class="checkbox-label"><input v-model="form.allow_gpu" type="checkbox" /> Allow GPU access (device passthrough) — set the GPUs limit above too</label>
           <div class="form-group" style="margin-top: 12px; max-width: 360px">
             <label class="form-label">
               Container security profile

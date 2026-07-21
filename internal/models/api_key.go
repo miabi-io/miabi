@@ -54,14 +54,14 @@ func (k *APIKey) IsRegistryOnly() bool {
 // APIKey is a long-lived bearer credential for programmatic access, scoped to a
 // user and (optionally) a workspace.
 type APIKey struct {
-	ID          uint       `json:"id" gorm:"primaryKey"`
-	UserID      uint       `json:"user_id" gorm:"index;not null"`
-	WorkspaceID *uint      `json:"workspace_id,omitempty" gorm:"index"`
-	Name        string     `json:"name" gorm:"not null"`
-	KeyHash     string     `json:"-" gorm:"uniqueIndex;not null"`
-	KeyPrefix   string     `json:"key_prefix" gorm:"index;not null"`
-	Scopes      []string   `json:"scopes" gorm:"serializer:json"`
-	AllowedIPs  []string   `json:"allowed_ips" gorm:"serializer:json"`
+	ID          uint     `json:"id" gorm:"primaryKey"`
+	UserID      uint     `json:"user_id" gorm:"index;not null"`
+	WorkspaceID *uint    `json:"workspace_id,omitempty" gorm:"index"`
+	Name        string   `json:"name" gorm:"not null"`
+	KeyHash     string   `json:"-" gorm:"uniqueIndex;not null"`
+	KeyPrefix   string   `json:"key_prefix" gorm:"index;not null"`
+	Scopes      []string `json:"scopes" gorm:"serializer:json"`
+	AllowedIPs  []string `json:"allowed_ips" gorm:"serializer:json"`
 	// ApplicationID narrows an ephemeral job key to a single application: it may
 	// act on (deploy) only that app, nothing else in the workspace. nil = the
 	// key is not app-bound (ordinary user keys).

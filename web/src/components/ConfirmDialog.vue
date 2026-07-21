@@ -79,5 +79,8 @@ watch(
 </template>
 
 <style scoped>
-.confirm-message { color: var(--text-secondary); font-size: 14px; line-height: 1.5; margin: 0; }
+/* pre-line so a message can carry a second paragraph (e.g. the consequence of an
+   action, which is often the part that actually needs saying). Single-line messages
+   are unaffected. */
+.confirm-message { color: var(--text-secondary); font-size: 14px; line-height: 1.5; margin: 0; white-space: pre-line; }
 </style>

@@ -12,6 +12,7 @@ import { networkApi } from '@/api/networks'
 import { stackApi } from '@/api/stacks'
 import type { Application, Registry, GitRepository, Network, Stack, AppPort, BuildMethod, RuntimeKind } from '@/api/types'
 import NodePicker from '@/components/NodePicker.vue'
+import PlacementPicker from '@/components/PlacementPicker.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -59,10 +60,17 @@ interface AppForm {
   ports: AppPort[]
   runtime_kind: RuntimeKind
   replicas: number
+  // Swarm placement constraints, e.g. ["node.id==abc"]. Only meaningful for the
+  // service runtime, where the scheduler — not server_id — decides placement.
+  placement_constraints: string[]
 }
 function emptyForm(): AppForm {
-  return { name: '', server_id: 0, source_type: 'image', image: '', tag: '', git_repo: '', git_ref: '', build_method: 'auto', builder: '', registry_id: null, git_repository_id: null, stack_id: null, network_ids: [], ports: [{ container_port: 8080, protocol: 'tcp', scheme: 'http', name: '' }], runtime_kind: 'container', replicas: 1 }
+  return { name: '', server_id: 0, source_type: 'image', image: '', tag: '', git_repo: '', git_ref: '', build_method: 'auto', builder: '', registry_id: null, git_repository_id: null, stack_id: null, network_ids: [], ports: [{ container_port: 8080, protocol: 'tcp', scheme: 'http', name: '' }], runtime_kind: 'container', replicas: 1, placement_constraints: [] }
 }
+// A service is placed by the Swarm scheduler, which ignores server_id; a container
+// is placed by server_id. The two are never both meaningful, so the form shows one
+// control or the other.
+const isService = computed(() => clusterEnabled.value && form.value.runtime_kind === 'service')
 function addPort() {
   form.value.ports.push({ container_port: 0, protocol: 'tcp', scheme: 'http', name: '' })
 }
@@ -125,7 +133,10 @@ async function create() {
       // is "service" when cluster mode is on) — this also self-heals if the UI
       // couldn't read cluster state but the server is in fact a swarm manager.
       runtime_kind: clusterEnabled.value ? form.value.runtime_kind : undefined,
-      replicas: clusterEnabled.value && form.value.runtime_kind === 'service' ? Math.max(1, form.value.replicas) : undefined,
+      replicas: isService.value ? Math.max(1, form.value.replicas) : undefined,
+      // Only a service has placement constraints — a container is placed by
+      // server_id above, and the Swarm scheduler is not involved.
+      placement_constraints: isService.value && form.value.placement_constraints.length ? form.value.placement_constraints : undefined,
     })
     notify.success('Application created')
     showCreate.value = false
@@ -232,7 +243,6 @@ function formatCreated(ts?: string) {
                 <label class="form-label">Name</label>
                 <input v-model="form.name" class="form-input" placeholder="e.g. web-api" required autofocus />
               </div>
-              <NodePicker v-model="form.server_id" />
               <!-- Cluster runtime: only offered when cluster mode is enabled. -->
               <div v-if="clusterEnabled" class="form-row">
                 <div class="form-group" style="flex: 2; margin-bottom: 0">
@@ -242,12 +252,20 @@ function formatCreated(ts?: string) {
                     <option value="service">Service (replicated, cluster)</option>
                   </select>
                 </div>
-                <div v-if="form.runtime_kind === 'service'" class="form-group" style="flex: 1; margin-bottom: 0">
+                <div v-if="isService" class="form-group" style="flex: 1; margin-bottom: 0">
                   <label class="form-label">Replicas</label>
                   <input v-model.number="form.replicas" type="number" min="1" class="form-input" placeholder="1" />
                 </div>
               </div>
-              <p v-if="clusterEnabled && form.runtime_kind === 'service'" class="form-hint">
+              <!--
+                A container is placed by server_id; a service is placed by the Swarm
+                scheduler, which ignores server_id. Showing the node picker for a
+                service would silently discard the choice, so each runtime gets the
+                control that actually decides where it runs.
+              -->
+              <NodePicker v-if="!isService" v-model="form.server_id" />
+              <PlacementPicker v-else v-model="form.placement_constraints" :replicas="form.replicas" />
+              <p v-if="isService" class="form-hint">
                 Runs as a Swarm service on the workspace overlay network with {{ Math.max(1, form.replicas) }} replica(s).
               </p>
               <div class="form-group">

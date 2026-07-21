@@ -200,6 +200,33 @@ export interface PlaceableNode {
   is_local: boolean
   online: boolean
   cordoned: boolean
+  // The node's id within the swarm; empty when it is not a member. A service app
+  // is placed by the Swarm scheduler (which ignores server_id), so pinning one to
+  // a node means emitting a `node.id==<swarm_node_id>` placement constraint.
+  swarm_node_id?: string
+}
+
+// A physical GPU discovered on a node. Admin policy (enabled, shared) is applied
+// per device; UUID/model/memory are read-only hardware facts.
+export interface GPUDevice {
+  id: number
+  server_id: number
+  uuid: string
+  index: number
+  vendor: string
+  model: string
+  memory_mb: number
+  enabled: boolean
+  shared: boolean
+  last_seen_at?: string | null
+}
+
+// GET /admin/nodes/{id}/gpus response: platform + node GPU capability plus the
+// discovered devices.
+export interface NodeGPUList {
+  enabled: boolean          // platform GPU support on (MIABI_GPU_ENABLED)
+  toolkit_present: boolean  // node has the NVIDIA Container Toolkit
+  devices: GPUDevice[]
 }
 
 export const nodesApi = {
@@ -212,6 +239,12 @@ export const nodesApi = {
     api.put<ApiResponse<Server>>(`/admin/nodes/${id}`, payload),
   workloads: (id: number) =>
     api.get<ApiResponse<NodeWorkloads>>(`/admin/nodes/${id}/workloads`),
+
+  // GPUs: inventory + admin device policy.
+  gpus: (id: number) => api.get<ApiResponse<NodeGPUList>>(`/admin/nodes/${id}/gpus`),
+  updateGpu: (id: number, gpuID: number, payload: { enabled?: boolean; shared?: boolean }) =>
+    api.patch<ApiResponse<GPUDevice>>(`/admin/nodes/${id}/gpus/${gpuID}`, payload),
+  rescanGpus: (id: number) => api.post<ApiResponse<NodeGPUList>>(`/admin/nodes/${id}/gpus/rescan`),
   regenerateToken: (id: number) =>
     api.post<ApiResponse<{ token: string }>>(`/admin/nodes/${id}/token`),
   joinCommand: (id: number) =>

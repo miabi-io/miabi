@@ -44,6 +44,13 @@ var presets = []Preset{
 		Rule:        map[string]any{"action": "ALLOW", "sourceRanges": []any{}},
 	},
 	{
+		Key:         "geo-allowlist",
+		DisplayName: "Country allowlist",
+		Description: "Allow only the countries you specify; block the rest. Needs a GeoIP database on the gateway.",
+		Type:        "geoBlock",
+		Rule:        map[string]any{"action": "ALLOW", "countries": []any{}, "allowUnknown": true},
+	},
+	{
 		Key:         "body-limit",
 		DisplayName: "Limit request body (10MB)",
 		Description: "Reject requests with a body larger than 10MB.",
@@ -57,11 +64,64 @@ var presets = []Preset{
 		Type:        "access",
 		Rule:        map[string]any{"statusCode": 403},
 	},
+	{
+		Key:         "block-bad-bots",
+		DisplayName: "Block common bots",
+		Description: "Reject requests from common crawlers and scripted clients.",
+		Type:        "userAgentBlock",
+		Rule:        map[string]any{"userAgents": []any{"AhrefsBot", "SemrushBot", "MJ12bot", "python-requests", "curl"}},
+	},
+	{
+		Key:         "redirect-to-url",
+		DisplayName: "Redirect to a URL",
+		Description: "Send all matched requests to a fixed destination URL. Set the URL after applying.",
+		Type:        "redirect",
+		Rule:        map[string]any{"url": "", "permanent": true},
+	},
 }
 
 // Presets returns the named one-click policy presets.
 func Presets() []Preset {
 	out := make([]Preset, len(presets))
 	copy(out, presets)
+	return out
+}
+
+// SeedMiddleware is a default policy definition created for every new workspace.
+// Name is the workspace-unique slug handle (and Goma name); DisplayName is the UI
+// label. Seeded policies are inert until a route references them.
+type SeedMiddleware struct {
+	Name        string
+	DisplayName string
+	Type        string
+	Rule        map[string]any
+}
+
+// defaultSeed is the curated set of policies a new workspace starts with. Both
+// are safe (no effect until attached to a route) and broadly useful; keeping the
+// set as data makes it trivial to tune.
+var defaultSeed = []SeedMiddleware{
+	{
+		Name:        "security-headers",
+		DisplayName: "Security headers",
+		Type:        "responseHeaders",
+		Rule: map[string]any{"setHeaders": map[string]any{
+			"X-Frame-Options":        "DENY",
+			"X-Content-Type-Options": "nosniff",
+			"Referrer-Policy":        "strict-origin-when-cross-origin",
+		}},
+	},
+	{
+		Name:        "force-https",
+		DisplayName: "Force HTTPS",
+		Type:        "redirectScheme",
+		Rule:        map[string]any{"scheme": "https", "permanent": true},
+	},
+}
+
+// DefaultSeed returns the default middlewares a new workspace is seeded with.
+func DefaultSeed() []SeedMiddleware {
+	out := make([]SeedMiddleware, len(defaultSeed))
+	copy(out, defaultSeed)
 	return out
 }

@@ -11,11 +11,12 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// NewRedis creates and verifies a Redis client.
-func NewRedis(addr, password string) (*redis.Client, error) {
+// NewRedis creates and verifies a Redis client on the given database index.
+func NewRedis(addr, password string, db int) (*redis.Client, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr:     addr,
 		Password: password,
+		DB:       db,
 	})
 	if err := client.Ping(context.Background()).Err(); err != nil {
 		return nil, fmt.Errorf("failed to connect to redis: %w", err)

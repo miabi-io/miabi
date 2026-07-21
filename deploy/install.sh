@@ -1,37 +1,59 @@
 #!/usr/bin/env bash
 #
 # Miabi one-line installer.
-#   curl -fsSL https://github.com/miabi-io/miabi/releases/latest/download/install.sh | sudo bash
+#   curl -fsSL https://get.miabi.io | sudo bash
 #
-# Installs Docker if missing, fetches the production stack (compose.yaml +
-# goma.yml) into /opt/miabi, generates secrets into .env, and brings it up.
-# Re-running is safe: an existing .env is kept (only still-blank secrets are
-# filled) and the stack is just updated.
+# Installs Docker if missing, then hands off to Miabi, which builds its own stack —
+# network, volumes, PostgreSQL, Redis, the Goma gateway and the control plane —
+# straight against the Docker API.
 #
-# Run it from a checkout (deploy/install.sh) and it copies the local files
-# instead of downloading them.
+# There is NO BINARY TO INSTALL. The installer IS the Miabi image, whose entrypoint is
+# the miabi binary, so all this script really does is:
+#
+#   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+#     -v /etc/miabi:/etc/miabi miabi/miabi:<tag> install --domain ...
+#
+# Why not Docker Compose (which this script used to set up)? Compose owns what Compose
+# created: a container Miabi recreated out-of-band would be silently reverted by the
+# next `docker compose up -d`. So a Compose-managed Miabi could never truthfully update
+# itself. Miabi owns these containers (io.miabi.managed-by=miabi), which is what makes
+# `miabi update` — including replacing its own container, with rollback — possible.
+#
+# Compose is still supported for anyone who wants to drive it themselves:
+# examples/compose/compose.yaml is unchanged. This script simply no longer does it for you, and
+# it refuses to install alongside an existing Compose stack (they do not share volumes).
+#
+# It leaves behind a `miabi-stack` wrapper:
+#
+#   miabi-stack status | restart | update | uninstall
 #
 # Environment overrides:
-#   MIABI_DIR                   install directory              (default /opt/miabi)
-#   MIABI_VERSION               Miabi release to install       (default: stamped)
-#   GOMA_VERSION                Goma Gateway release           (default: stamped)
-#   RUNNER_VERSION              miabi/runner release           (default: stamped)
-#   MIABI_RAW                   base URL for remote file fetch (default: the tag)
-#   MIABI_NO_START              set to 1 to configure but not `up -d`
-#   MIABI_SKIP_DOCKER_INSTALL   set to 1 to never touch the host's packages;
-#                               Docker + Compose v2 must already be present
-#   MIABI_DOMAIN                panel domain; skips the prompt
-#   MIABI_ACME_EMAIL            Let's Encrypt email; skips the prompt
+#   MIABI_DOMAIN                panel domain; required (prompts on a tty)
+#   MIABI_ACME_EMAIL            Let's Encrypt contact
 #   MIABI_ADMIN_EMAIL           first admin's login (default: MIABI_ACME_EMAIL)
-#   MIABI_ADMIN_PASSWORD        first admin's password (default: generated)
-#   ASSUME_YES                  set to 1 to skip interactive prompts (placeholders)
+#   MIABI_CONTROL_URL           URL remote nodes/agents dial back on (default: the
+#                               panel's own URL)
+#   MIABI_REGISTRY_ENABLED      enable the built-in registry   (skips the prompt)
+#   MIABI_REGISTRY_HOST         its hostname                   (default registry.<domain>)
+#   MIABI_NO_HOST_PROC          1 = do not bind the host's /proc into Miabi. Set it
+#                               where the bind is refused (a rootless daemon, a
+#                               hardened host, a socket proxy that forbids host binds);
+#                               host metrics then fall back to the container's /proc,
+#                               which already reflects host CPU/memory.
+#   MIABI_ETC                   manifest directory             (default /etc/miabi)
+#   MIABI_VERSION               Miabi release to install       (default: pinned below)
+#   GOMA_VERSION                Goma Gateway release           (default: pinned below)
+#   RUNNER_VERSION              miabi/runner release           (default: pinned below)
+#   MIABI_SKIP_DOCKER_INSTALL   1 = never touch the host's packages; Docker must exist
+#   MIABI_FORCE_STACK           1 = install even though a Compose stack is present
+#   ASSUME_YES                  1 = never prompt
 #
-# Answering the prompts over a pipe is unreliable, so prefer passing the values:
-#   curl -fsSL .../install.sh | sudo MIABI_DOMAIN=panel.example.com \
+# Answering prompts over a pipe is unreliable, so prefer passing the values:
+#   curl -fsSL https://get.miabi.io | sudo MIABI_DOMAIN=miabi.example.com \
 #     MIABI_ACME_EMAIL=you@example.com bash
 #
-# Install or downgrade to a specific release:
-#   curl -fsSL .../install.sh | sudo MIABI_VERSION=v1.1.0 bash
+# Install or pin a specific release:
+#   curl -fsSL https://get.miabi.io | sudo MIABI_VERSION=v1.4.0 bash
 
 # This script is bash (pipefail, ERR traps, BASH_SOURCE, local). Invoked as
 # `sh install.sh` the shebang is ignored: under dash that is `set: Illegal option
@@ -48,52 +70,40 @@ fi
 
 set -euo pipefail
 
-INSTALL_DIR="${MIABI_DIR:-/opt/miabi}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-START_STACK="${MIABI_NO_START:-0}"
 SKIP_DOCKER_INSTALL="${MIABI_SKIP_DOCKER_INSTALL:-0}"
 
 # ── versions ─────────────────────────────────────────────────────────────────
-# CI rewrites these two assignments at release time (release.yml), so a released
-# install.sh pins the exact images that release was tested with. An unstamped
-# copy — a git checkout, or main — keeps the placeholders and falls back to the
-# main branch and :latest.
 #
-# The `#__` test deliberately avoids spelling the full placeholder token, or the
-# release-time sed would substitute the check along with the assignment.
-MIABI_VERSION="${MIABI_VERSION:-__MIABI_VERSION__}"
-GOMA_VERSION="${GOMA_VERSION:-__GOMA_VERSION__}"
-RUNNER_VERSION="${RUNNER_VERSION:-__RUNNER_VERSION__}"
-[ "${MIABI_VERSION#__}" = "$MIABI_VERSION" ] || MIABI_VERSION=""
-[ "${GOMA_VERSION#__}" = "$GOMA_VERSION" ] || GOMA_VERSION=""
-[ "${RUNNER_VERSION#__}" = "$RUNNER_VERSION" ] || RUNNER_VERSION=""
+# The single place every image is pinned. CI bumps these on release (see
+# .github/workflows/release.yml) and they are passed straight to `miabi install`, so
+# the manifest it writes records exactly what this release was tested against.
+MIABI_VERSION="${MIABI_VERSION:-v1.6.1}"
+GOMA_VERSION="${GOMA_VERSION:-v0.12.0}"
+RUNNER_VERSION="${RUNNER_VERSION:-v0.0.7}"
 
 # Docker tags carry no leading "v" (git tag v1.2.3 → image tag 1.2.3) across all
-# three images. An unpinned build tracks :latest.
+# three images. The :latest fallback only applies if a caller deliberately blanks
+# a version (MIABI_VERSION= ), since the defaults above are always set.
 #
 # miabi/runner versions independently of miabi/miabi (runner 0.0.x while the
-# panel is 1.0.x), so it carries its own stamped version — deriving its tag from
+# panel is 1.0.x), so it carries its own version — deriving its tag from
 # MIABI_VERSION would ask for an image that was never published.
 MIABI_IMAGE_TAG="${MIABI_VERSION#v}";   MIABI_IMAGE_TAG="${MIABI_IMAGE_TAG:-latest}"
 GOMA_IMAGE_TAG="${GOMA_VERSION#v}";     GOMA_IMAGE_TAG="${GOMA_IMAGE_TAG:-latest}"
 RUNNER_IMAGE_TAG="${RUNNER_VERSION#v}"; RUNNER_IMAGE_TAG="${RUNNER_IMAGE_TAG:-latest}"
 
-# Fetch the stack files from the SAME release as the images, so compose.yaml and
-# the image it references can never disagree. Unstamped falls back to main.
-if [ -n "$MIABI_VERSION" ]; then
-  DEFAULT_RAW="https://raw.githubusercontent.com/miabi-io/miabi/refs/tags/${MIABI_VERSION}/deploy"
-else
-  DEFAULT_RAW="https://raw.githubusercontent.com/miabi-io/miabi/main/deploy"
-fi
-REPO_RAW="${MIABI_RAW:-$DEFAULT_RAW}"
 
 # How to re-run for an update: a local path when run from a checkout, otherwise
-# the canonical one-liner (a piped `curl | bash` has no re-runnable path). The
-# release asset always resolves to the newest release, so it is the update path.
+# the canonical one-liner (a piped `curl | bash` has no re-runnable path).
+#
+# get.miabi.io — not a release asset. The script is served from the repository, so
+# it exists at every commit; a release asset only exists once the release is
+# published, and pointing users at one that is mid-build hands them a 404.
 if [ -f "${SCRIPT_DIR}/install.sh" ]; then
   UPDATE_HINT="sudo ${SCRIPT_DIR}/install.sh"
 else
-  UPDATE_HINT="curl -fsSL https://github.com/miabi-io/miabi/releases/latest/download/install.sh | sudo bash"
+  UPDATE_HINT="curl -fsSL https://get.miabi.io | sudo bash"
 fi
 
 # ── logging ──────────────────────────────────────────────────────────────────
@@ -113,9 +123,8 @@ die()  { printf "${C_DIM}%s${C_RESET} ${C_RED}✗${C_RESET}   %s\n" "$(_ts)" "$1
 on_error() {
   local code=$?
   printf "\n${C_RED}Installation failed${C_RESET} (exit %s) at line %s.\n" "$code" "${1:-?}" >&2
-  # Only suggest compose logs once there is a stack to read them from.
-  if command -v docker >/dev/null 2>&1 && [ -f "${INSTALL_DIR}/compose.yaml" ]; then
-    printf "  • Inspect logs:   cd %s && docker compose logs\n" "$INSTALL_DIR" >&2
+  if command -v docker >/dev/null 2>&1; then
+    printf "  • Inspect logs:   docker logs miabi\n" >&2
   fi
   printf "  • Re-run safely:  %s\n" "$UPDATE_HINT" >&2
   exit "$code"
@@ -340,49 +349,6 @@ for p in 80 443; do
   fi
 done
 
-# ── install dir + files ──────────────────────────────────────────────────────
-log "Setting up ${INSTALL_DIR}"
-mkdir -p "${INSTALL_DIR}/goma"
-
-# Fetch a file from the local checkout when available, otherwise from the repo.
-fetch() { # <relative-path> <dest>
-  if [ -f "${SCRIPT_DIR}/$1" ]; then
-    cp "${SCRIPT_DIR}/$1" "$2"
-  else
-    curl -fsSL "${REPO_RAW}/$1" -o "$2" || die "failed to download $1 from ${REPO_RAW}"
-  fi
-}
-
-cd "${INSTALL_DIR}"
-fetch "compose.yaml"  "compose.yaml"
-fetch "goma/goma.yml" "goma/goma.yml"
-fetch ".env.example"  ".env.example"
-ok "Stack files in place"
-
-# Generate a 32-byte hex secret; prefer openssl, fall back to /dev/urandom.
-rand() {
-  if command -v openssl >/dev/null 2>&1; then
-    openssl rand -hex 32
-  else
-    LC_ALL=C tr -dc 'a-f0-9' </dev/urandom | head -c 64
-  fi
-}
-
-# .env helpers.
-get_kv() { grep -E "^$1=" .env 2>/dev/null | head -n1 | cut -d= -f2-; }
-set_kv() { sed -i "s|^$1=.*|$1=$2|" .env; }
-# Fill a key only when its current value is empty (idempotent self-heal).
-fill_if_blank() { [ -z "$(get_kv "$1")" ] && set_kv "$1" "$2" || true; }
-
-# Resolve the host's docker group GID so the non-root container can read the
-# Docker socket.
-docker_gid() {
-  local gid
-  gid="$(stat -c '%g' /var/run/docker.sock 2>/dev/null || true)"
-  [ -n "$gid" ] || gid="$(getent group docker 2>/dev/null | cut -d: -f3)"
-  printf '%s' "${gid:-999}"
-}
-
 # ── prompt (interactive only) ────────────────────────────────────────────────
 # A pre-set environment variable always wins: over a pipe the tty is shared with
 # whatever is still typing into it, so reads there are racy. Only when the value
@@ -413,189 +379,161 @@ prompt_yn() { # <env-var> <question>
   case "$ans" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
 }
 
-# Set a key, appending when .env only carries it as a comment (as .env.example
-# does for every optional setting) — a sed rewrite would silently match nothing.
-set_or_append() { # <key> <value>
-  if grep -qE "^$1=" .env; then set_kv "$1" "$2"; else printf '%s=%s\n' "$1" "$2" >> .env; fi
+# ── an existing Compose install ──────────────────────────────────────────────
+#
+# This installer builds the Miabi-managed stack (`miabi install`, straight against
+# the Docker API). It no longer sets up Docker Compose.
+#
+# That matters for a host that ALREADY runs Miabi under Compose, because the two do
+# not share volumes:
+#
+#   compose:  miabi_pgdata          (project-prefixed by Compose)
+#   stack:    mb-platform-pgdata
+#
+# So installing the stack here would not adopt the existing database — it would
+# create an empty one beside it, and the operator would think their data had
+# vanished. Refuse, and say what to do instead.
+STACK_ETC="${MIABI_ETC:-/etc/miabi}"
+
+compose_miabi_present() {
+  command -v docker >/dev/null 2>&1 || return 1
+  # The label is authoritative and survives a custom project name; the volume is the
+  # fallback for a stack that predates the labels.
+  [ -n "$(docker ps -aq --filter label=io.miabi.managed-by=compose 2>/dev/null)" ] && return 0
+  docker volume inspect miabi_pgdata >/dev/null 2>&1 && return 0
+  return 1
 }
 
-fresh=0
-registry_host=""
-if [ ! -f .env ]; then
-  fresh=1
-  log "Generating .env with fresh secrets"
-  cp .env.example .env
-  chmod 600 .env
+if compose_miabi_present && [ "${MIABI_FORCE_STACK:-0}" != "1" ]; then
+  warn "this host already runs Miabi under Docker Compose."
+  cat >&2 <<'EOM'
 
-  domain="$(prompt MIABI_DOMAIN 'Panel domain' 'miabi.example.com')"
-  email="$(prompt MIABI_ACME_EMAIL "Let's Encrypt email" 'admin@example.com')"
-  set_kv MIABI_DOMAIN  "$domain"
-  set_kv MIABI_WEB_URL "https://$domain"
-  set_kv MIABI_ACME_EMAIL "$email"
+  This installer now builds the Miabi-managed stack, which uses DIFFERENT volumes —
+  your database would not come with it, and you would get an empty one instead.
 
-  # The admin is seeded on first boot and Miabi refuses to start outside dev on
-  # an empty or default password, so it must always be set. Default the login to
-  # the ACME email rather than leaving the example address in place.
-  set_kv MIABI_ADMIN_EMAIL "${MIABI_ADMIN_EMAIL:-$email}"
+  To keep your Compose install (nothing changes):
 
-  # Built-in OCI registry. Only written when enabled: any non-empty registry var
-  # is a one-way override that pins the setting out of the UI's reach. Declining
-  # leaves the keys absent, so the registry stays UI-managed.
+      cd /opt/miabi && docker compose pull && docker compose up -d
+
+  To move to the Miabi-managed stack, migrate the data deliberately:
+
+      1. Back up:  https://miabi.io/docs/storage/backups
+      2. cd /opt/miabi && docker compose down
+      3. Re-run this installer with MIABI_FORCE_STACK=1
+      4. Restore the backup into the new stack
+
+EOM
+  die "refusing to install alongside a Compose stack (set MIABI_FORCE_STACK=1 to proceed anyway)."
+fi
+
+install_stack() {
+  local domain acme admin image
+  domain="$(prompt MIABI_DOMAIN 'Panel domain (e.g. miabi.example.com)' '')"
+  [ -n "$domain" ] || die "MIABI_DOMAIN is required: pass it as MIABI_DOMAIN=miabi.example.com (answering a prompt over a pipe is unreliable)."
+  # Neither email is defaulted here. `miabi install` owns the whole rule: the two
+  # addresses fall back to each other, and admin@<domain> is the last resort. Defaulting
+  # either one in shell would defeat that fallback — an operator who set only
+  # MIABI_ADMIN_EMAIL would silently get admin@<domain> as their Let's Encrypt contact,
+  # because we'd have handed the stack a value it has no way to tell from a real choice.
+  acme="$(prompt MIABI_ACME_EMAIL "Let's Encrypt contact email (blank = admin email)" '')"
+  admin="$(prompt MIABI_ADMIN_EMAIL "First admin's email (blank = admin@${domain})" '')"
+  image="miabi/miabi:${MIABI_IMAGE_TAG}"
+
+  # Optional flags, built as an array so an unset one contributes nothing (an empty
+  # string would arrive as a stray "" argument).
+  local extra=()
+  [ -n "$acme" ] && extra+=(--acme-email "$acme")
+  [ -n "$admin" ] && extra+=(--admin-email "$admin")
+
+  # Built-in registry. Declining leaves the keys out of the manifest entirely — any
+  # non-empty MIABI_REGISTRY_* is a one-way override that pins the setting out of the
+  # admin UI's reach, so "absent" is the only way to say "the UI decides".
   if prompt_yn MIABI_REGISTRY_ENABLED 'Enable the built-in container registry?'; then
+    local registry_host
     registry_host="$(prompt MIABI_REGISTRY_HOST 'Registry host' "registry.${domain}")"
-    set_or_append MIABI_REGISTRY_ENABLED true
-    set_or_append MIABI_REGISTRY_HOST "$registry_host"
-    ok "Registry enabled (host: ${registry_host})"
+    extra+=(--registry --registry-host "$registry_host")
+    # The CLI validates the hostname (it gets its own certificate, so a stray "y"
+    # would have the gateway request one for a name that cannot exist) — no need to
+    # re-implement that check here.
   fi
 
-  set_kv DOCKER_GID "$(docker_gid)"
-  ok "Created .env (domain: $(get_kv MIABI_DOMAIN))"
-else
-  log "Existing .env found — keeping it (filling only blank secrets)"
-fi
-
-# Always ensure the required secrets and docker GID are populated, even on an
-# upgrade from an older .env that pre-dates a setting.
-for k in MIABI_DB_PASSWORD MIABI_REDIS_PASSWORD MIABI_JWT_SECRET MIABI_ENCRYPTION_KEY; do
-  if [ -z "$(get_kv "$k")" ]; then
-    fill_if_blank "$k" "$(rand)"
-    [ "$fresh" -eq 1 ] || warn "filled previously-empty ${k} with a new secret"
+  # Where remote nodes and agents dial back. Defaults to the panel's own URL, which is
+  # right for a single public hostname — but a node on a private network may reach the
+  # control plane at an address the public URL never resolves to.
+  if [ -n "${MIABI_CONTROL_URL:-}" ]; then
+    extra+=(--control-url "$MIABI_CONTROL_URL")
   fi
-done
 
-# An .env written before the admin keys existed has neither line to rewrite;
-# append rather than sed, or compose fails interpolation on MIABI_ADMIN_PASSWORD.
-grep -qE '^MIABI_ADMIN_EMAIL=' .env || printf 'MIABI_ADMIN_EMAIL=%s\n' "${MIABI_ADMIN_EMAIL:-$(get_kv MIABI_ACME_EMAIL)}" >> .env
-grep -qE '^MIABI_ADMIN_PASSWORD=' .env || printf 'MIABI_ADMIN_PASSWORD=\n' >> .env
-
-admin_generated=0
-if [ -z "$(get_kv MIABI_ADMIN_PASSWORD)" ]; then
-  if [ -n "${MIABI_ADMIN_PASSWORD:-}" ]; then
-    set_kv MIABI_ADMIN_PASSWORD "$MIABI_ADMIN_PASSWORD"
-  else
-    # 32 hex chars: comfortably past the default-password check, still pasteable.
-    set_kv MIABI_ADMIN_PASSWORD "$(rand | cut -c1-32)"
-    admin_generated=1
-  fi
-  [ "$fresh" -eq 1 ] || warn "filled previously-empty MIABI_ADMIN_PASSWORD"
-fi
-
-if [ -z "$(get_kv DOCKER_GID)" ]; then set_kv DOCKER_GID "$(docker_gid)"; fi
-ok "Secrets ready"
-
-# ── image pins ───────────────────────────────────────────────────────────────
-# Re-running the installer is how you upgrade, so the pins must move with it.
-# A value pointing at some other repository is a deliberate override (a private
-# mirror, a locally built image) and is never rewritten.
-pin_image() { # <key> <repo> <tag>
-  local cur; cur="$(get_kv "$1")"
-  case "$cur" in
-    ""|"$2":*) set_or_append "$1" "$2:$3" ;;
-    *) warn "$1 points at a custom image ($cur) — leaving it untouched" ;;
+  # Some hosts refuse a bind of /proc: a rootless daemon, a hardened host, a socket
+  # proxy that forbids host binds. Miabi then reads its own /proc, which inside a
+  # container already reflects host CPU/memory, so the Nodes page keeps working.
+  case "${MIABI_NO_HOST_PROC:-0}" in
+    1|true|yes) extra+=(--no-host-proc) ;;
   esac
-}
-pin_image MIABI_IMAGE  miabi/miabi            "$MIABI_IMAGE_TAG"
-pin_image GOMA_IMAGE   jkaninda/goma-gateway  "$GOMA_IMAGE_TAG"
-pin_image RUNNER_IMAGE miabi/runner           "$RUNNER_IMAGE_TAG"
 
-if [ "$MIABI_IMAGE_TAG" = latest ]; then
-  warn "unstamped installer — pinning images to :latest (a release build pins exact versions)."
-else
-  ok "Pinned miabi/miabi:${MIABI_IMAGE_TAG}, jkaninda/goma-gateway:${GOMA_IMAGE_TAG}, miabi/runner:${RUNNER_IMAGE_TAG}"
-fi
+  log "Installing the Miabi stack with ${image}"
 
-# ── shared app network ───────────────────────────────────────────────────────
-# Goma and every routed app/database container share the `miabi` bridge. Create
-# it up front as an EXTERNAL network with a roomy, controllable CIDR (compose
-# references it as external), so it survives `compose down` and never falls back
-# to Docker's small default address pool — which caps a plain network's IP space
-# and how many networks a host can have. Per-workspace/db/stack networks use a
-# separate managed pool (MIABI_NETWORK_POOL_CIDR, default 10.64.0.0/12).
-ensure_app_network() {
-  local cidr; cidr="$(get_kv MIABI_NETWORK_CIDR)"; cidr="${cidr:-10.63.0.0/16}"
-  if docker network inspect miabi >/dev/null 2>&1; then
-    ok "Docker network 'miabi' already exists (leaving its CIDR unchanged)"
-  elif docker network create --driver bridge --subnet "$cidr" miabi >/dev/null 2>&1; then
-    ok "Created Docker network 'miabi' (${cidr})"
-  else
-    warn "could not create 'miabi' with subnet ${cidr} (in use? overlaps a route?); creating with Docker defaults"
-    docker network create miabi >/dev/null 2>&1 || die "failed to create the 'miabi' network"
-  fi
-}
-ensure_app_network
+  # -t only with a real tty: the confirm prompt needs one, but `curl | bash` has
+  # none and `docker run -t` without one fails outright. Non-interactive implies
+  # --yes, since there is nobody there to answer.
+  local ttyflag="" assume=""
+  if [ -t 0 ] && [ "${ASSUME_YES:-0}" != "1" ]; then ttyflag="-it"; else assume="--yes"; fi
 
-# ── start ────────────────────────────────────────────────────────────────────
-if [ "${START_STACK}" = "1" ]; then
-  log "MIABI_NO_START set — skipping startup."
-  ok "Configured ${INSTALL_DIR}. Start with: cd ${INSTALL_DIR} && docker compose up -d"
+  # The manifest (mode 0600) is the desired state AND the only copy of the database
+  # password. It lives on the host, not in a volume, so it survives
+  # `uninstall --volumes` and can be backed up like any other config file.
+  mkdir -p "$STACK_ETC"
+  # The manifest directory is bind-mounted, so the container writes it straight onto
+  # the host. It must be ${STACK_ETC}, not a hardcoded /etc/miabi: with MIABI_ETC set,
+  # the hardcoded form silently wrote the manifest somewhere the operator never looks
+  # — and the install still "succeeded", because nothing reads it back.
+  # shellcheck disable=SC2086
+  docker run --rm $ttyflag \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "${STACK_ETC}:/etc/miabi" \
+    "$image" install \
+      --domain "$domain" \
+      --gateway-image "jkaninda/goma-gateway:${GOMA_IMAGE_TAG}" \
+      --runner-image "miabi/runner:${RUNNER_IMAGE_TAG}" \
+      ${extra[@]+"${extra[@]}"} \
+      $assume || die "miabi install failed"
+      # ${extra[@]+"..."}, not a bare "${extra[@]}": under `set -u`, expanding an EMPTY
+      # array is an "unbound variable" error on bash < 4.4 (still shipped on EL7-era
+      # hosts). This form expands to nothing when the array is empty and quotes each
+      # element when it is not.
+
+  # A 3-line wrapper so nobody has to remember the docker run incantation. Named
+  # miabi-stack, NOT miabi: `miabi` is already the Miabi CLI (an authenticated API
+  # client, installed via Homebrew), and shadowing it with a different tool that
+  # happens to share three verbs (status, import, upgrade) is a trap.
+  cat > /usr/local/bin/miabi-stack <<'WRAPPER'
+#!/usr/bin/env bash
+# Manage the Miabi stack on this host: miabi-stack {install|update|status|uninstall}
+#
+# Runs the Miabi image against the local Docker socket. The TAG is the version it
+# installs, so `MIABI_TAG=1.5.0 miabi-stack update` moves the stack to 1.5.0.
+set -euo pipefail
+TAG="${MIABI_TAG:-__MIABI_IMAGE_TAG__}"
+TTY=""; [ -t 0 ] && TTY="-it"
+exec docker run --rm $TTY \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v __STACK_ETC__:/etc/miabi \
+  "miabi/miabi:${TAG}" "$@"
+WRAPPER
+  # The wrapper must mount the SAME directory the install wrote the manifest to.
+  # Hardcoding /etc/miabi here worked only for the default and left every other
+  # install with a `miabi-stack update` that looks for a manifest which is not there.
+  sed -i "s|__MIABI_IMAGE_TAG__|${MIABI_IMAGE_TAG}|; s|__STACK_ETC__|${STACK_ETC}|" /usr/local/bin/miabi-stack
+  chmod 0755 /usr/local/bin/miabi-stack
+
+  printf '\n'
+  ok "Installed. Manage it with:"
+  echo "    miabi-stack status"
+  echo "    MIABI_TAG=<newer> miabi-stack update    # updates Miabi itself, and rolls back if it fails"
+  echo "    miabi-stack uninstall                   # keeps your data; add --volumes to destroy it"
+  printf '\n'
+  echo "    Manifest (KEEP A BACKUP — it holds the database password):  ${STACK_ETC}/stack.yaml"
   exit 0
-fi
+}
 
-log "Pulling images (this can take a minute)…"
-docker compose pull >/dev/null 2>&1 && ok "Images pulled" \
-  || warn "image pull reported a problem; continuing (compose will pull on up)"
-
-log "Starting Miabi…"
-docker compose up -d
-
-# Wait for the main container to come up so we can report a real status.
-log "Waiting for the panel to come up…"
-healthy=0
-for _ in $(seq 1 60); do
-  cid="$(docker compose ps -q miabi 2>/dev/null || true)"
-  if [ -n "$cid" ]; then
-    state="$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || echo '')"
-    health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$cid" 2>/dev/null || echo 'none')"
-    case "$state" in
-      running) if [ "$health" = healthy ] || [ "$health" = none ]; then healthy=1; break; fi ;;
-      exited|dead) break ;;
-    esac
-  fi
-  sleep 2
-done
-
-echo
-if [ "$healthy" -eq 1 ]; then
-  ok "Miabi is up and running."
-else
-  warn "Miabi did not report healthy yet — it may still be starting."
-  warn "Check status with: cd ${INSTALL_DIR} && docker compose ps && docker compose logs miabi"
-fi
-
-docker compose ps 2>/dev/null || true
-echo
-
-# ── domain reminder ──────────────────────────────────────────────────────────
-cur_domain="$(get_kv MIABI_DOMAIN)"
-cur_email="$(get_kv MIABI_ACME_EMAIL)"
-if [ "$cur_domain" = "miabi.example.com" ] || [ "$cur_email" = "admin@example.com" ]; then
-  warn "MIABI_DOMAIN / MIABI_ACME_EMAIL are still placeholders."
-  printf "      Edit %s/.env, set real values, then: docker compose up -d\n" "${INSTALL_DIR}"
-fi
-
-# ── summary ──────────────────────────────────────────────────────────────────
-printf "${C_GREEN}%s${C_RESET}\n" "──────────────────────────────────────────────────────────"
-if [ "$fresh" -eq 1 ]; then
-  printf "  ${C_GREEN}Miabi installed${C_RESET}\n\n"
-  printf "  Open ${C_CYAN}https://%s${C_RESET} once DNS points here and sign in as\n" "$cur_domain"
-  printf "  the platform admin seeded on first boot:\n\n"
-  printf "      email:    %s\n" "$(get_kv MIABI_ADMIN_EMAIL)"
-  if [ "$admin_generated" -eq 1 ]; then
-    printf "      password: ${C_CYAN}%s${C_RESET}\n\n" "$(get_kv MIABI_ADMIN_PASSWORD)"
-    printf "  ${C_YELLOW}This password is shown once.${C_RESET} It is stored in %s/.env —\n" "${INSTALL_DIR}"
-    printf "  change it from the UI after your first sign-in.\n\n"
-  else
-    printf "      password: (the MIABI_ADMIN_PASSWORD you supplied)\n\n"
-  fi
-else
-  printf "  ${C_GREEN}Miabi updated and running${C_RESET}\n\n"
-fi
-if [ -n "$registry_host" ]; then
-  printf "  Registry: ${C_CYAN}%s${C_RESET} — point an A record at this host so\n" "$registry_host"
-  printf "            Goma can issue its certificate, then docker login there.\n\n"
-fi
-printf "  Config:   %s/.env\n" "${INSTALL_DIR}"
-printf "  Logs:     cd %s && docker compose logs -f miabi\n" "${INSTALL_DIR}"
-printf "  Restart:  cd %s && docker compose restart\n" "${INSTALL_DIR}"
-printf "  Update:   %s\n" "$UPDATE_HINT"
-printf "${C_GREEN}%s${C_RESET}\n" "──────────────────────────────────────────────────────────"
+install_stack

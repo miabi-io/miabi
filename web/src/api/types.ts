@@ -34,6 +34,7 @@ export interface Plan {
   max_database_instance_size_mb: number
   max_storage_mb: number
   max_runners: number
+  max_gpus: number
   allow_custom_tls: boolean
   allow_privileged_host_mounts: boolean
   allow_shell_exec: boolean
@@ -41,6 +42,7 @@ export interface Plan {
   allow_dns_providers: boolean
   allow_custom_labels: boolean
   allow_platform_runners: boolean
+  allow_gpu: boolean
   security_profile: SecurityProfile
   // Let apps installed from an official marketplace template keep the image's own
   // default user even under the "restricted" security profile.
@@ -71,6 +73,7 @@ export interface WorkspaceQuotaOverride {
   max_database_instance_size_mb: number | null
   max_storage_mb: number | null
   max_runners: number | null
+  max_gpus: number | null
   allow_custom_tls: boolean | null
   allow_privileged_host_mounts: boolean | null
   allow_shell_exec: boolean | null
@@ -78,6 +81,7 @@ export interface WorkspaceQuotaOverride {
   allow_dns_providers: boolean | null
   allow_custom_labels: boolean | null
   allow_platform_runners: boolean | null
+  allow_gpu: boolean | null
   security_profile: SecurityProfile | null
   allow_official_image_user: boolean | null
 }
@@ -91,8 +95,8 @@ export interface ResourceUsage {
 export type WorkspaceLimits = Pick<Plan,
   | 'max_apps' | 'max_database_instances' | 'max_cron_jobs' | 'max_volumes' | 'max_networks'
   | 'max_api_keys' | 'max_members' | 'max_databases_per_instance' | 'max_cpu_cores' | 'max_memory_mb'
-  | 'max_database_instance_size_mb' | 'max_storage_mb' | 'max_runners' | 'allow_custom_tls' | 'allow_privileged_host_mounts'
-  | 'allow_shell_exec' | 'allow_shared_storage' | 'allow_dns_providers' | 'allow_custom_labels' | 'allow_platform_runners' | 'security_profile'
+  | 'max_database_instance_size_mb' | 'max_storage_mb' | 'max_runners' | 'max_gpus' | 'allow_custom_tls' | 'allow_privileged_host_mounts'
+  | 'allow_shell_exec' | 'allow_shared_storage' | 'allow_dns_providers' | 'allow_custom_labels' | 'allow_platform_runners' | 'allow_gpu' | 'security_profile'
   | 'allow_official_image_user'>
 
 export interface WorkspaceUsage {
@@ -230,6 +234,25 @@ export interface Session {
 export interface AuthResponse {
   token?: string
   user?: User
+  two_factor_required?: boolean
+  // Set when the credentials were valid but the account has an admin-set/reset
+  // password it must replace: no session is issued, and reset_token is a
+  // short-lived token exchanged (with a new password) for a real session.
+  must_change_password?: boolean
+  reset_token?: string
+}
+
+// LoginTokenResponse is the "Copy login command" payload: a short-lived personal
+// API token plus the ready-to-paste CLI and curl commands (shown once).
+// two_factor_required mirrors login when the account has 2FA.
+export interface LoginTokenResponse {
+  token?: string
+  sha256?: string
+  expires_at?: string
+  scopes?: string[]
+  server_url?: string
+  login_command?: string
+  curl_example?: string
   two_factor_required?: boolean
 }
 
@@ -785,6 +808,10 @@ export interface Application {
   canary_weight?: number
   memory_bytes?: number
   nano_cpus?: number
+  // GPU request (gated by the plan's allow_gpu). gpu_count = whole devices,
+  // gpu_kind narrows to a vendor/model.
+  gpu_count?: number
+  gpu_kind?: string
   restart_policy?: RestartPolicy
   image_pull_policy?: ImagePullPolicy
   // Cluster runtime (cluster mode). "service" runs the app as a replicated Swarm
@@ -1020,15 +1047,30 @@ export interface Middleware {
 
 // --- Middleware catalog (curated security policies) ---
 
+export type MiddlewareFieldType =
+  | 'string'
+  | 'int'
+  | 'bool'
+  | 'string[]'
+  | 'int[]'
+  | 'duration'
+  | 'enum'
+  | 'users'
+  | 'map'
+  | 'object'
+  | 'list'
+
 export interface MiddlewareField {
   key: string
   label: string
-  type: 'string' | 'int' | 'bool' | 'string[]' | 'duration' | 'enum' | 'users' | 'object'
+  type: MiddlewareFieldType
   required?: boolean
   secret?: boolean
   default?: unknown
   options?: string[]
   help?: string
+  // Sub-schema for `list` rows and structured `object` groups.
+  fields?: MiddlewareField[]
 }
 
 export interface MiddlewareDescriptor {
@@ -1436,6 +1478,10 @@ export interface Server {
   // Cluster (Docker Swarm). Populated only when cluster mode is on; otherwise
   // these stay empty and the node is shown as standalone.
   swarm_node_id?: string
+  // True when the CLUSTER brought this node in rather than an admin: the global agent
+  // service landed on a swarm member and the agent registered itself. It distinguishes
+  // a machine an operator chose from one that simply exists because it is in the swarm.
+  auto_joined?: boolean
   swarm_role?: SwarmRole
   swarm_availability?: 'active' | 'pause' | 'drain'
   swarm_state?: 'ready' | 'down' | 'unknown' | 'disconnected'
@@ -1451,6 +1497,9 @@ export type SwarmRole = 'leader' | 'manager' | 'worker' | 'standalone'
 // ClusterStatus is the manager's swarm capability + state.
 export interface ClusterStatus {
   enabled: boolean
+  // The operator's label for this cluster. Swarm identifies it by an unreadable id and
+  // a manager address that moves, so without this the UI can only say "the cluster".
+  name?: string
   local_node_state: string
   manager_addr?: string
   node_id?: string
@@ -1460,6 +1509,28 @@ export interface ClusterStatus {
   // Set only when cluster mode is on; used to tell an admin running their own
   // proxy how to attach it (docker network connect <ingress_network> <proxy>).
   ingress_network?: string
+  // How many workspace networks are still node-local bridges. Non-zero while
+  // cluster mode is on means cross-node east-west does NOT work for those
+  // workspaces — their apps and databases sit on per-node islands. Normal for an
+  // install that was already clustered when it upgraded, since the conversion only
+  // runs on the enable transition; the admin applies it explicitly.
+  networks_pending?: number
+  // Whether the global agent service is deployed — i.e. whether swarm workers are
+  // MANAGED (metrics, stats, shell, housekeeping) or merely running tasks Miabi
+  // cannot see into. Swarm carries the agent to every worker, including ones that
+  // join later, so this is all-or-nothing rather than per-node.
+  agents_deployed?: boolean
+  agent_tasks?: number
+  // True when the agents do NOT verify the control plane's TLS certificate. Surfaced
+  // so a setting made once, to get a self-signed cert working, cannot quietly become
+  // permanent.
+  agent_insecure_tls?: boolean
+  // True when the agents verify against an operator-supplied CA. This is the HEALTHY
+  // state for a private control plane: verification still happens, anchored on their CA.
+  agent_custom_ca?: boolean
+  // Set when that CA is a file on the nodes rather than inline PEM — a dependency on
+  // the host filesystem, so it must exist on every node including future ones.
+  agent_ca_cert_path?: string
   error?: string
 }
 
@@ -1473,6 +1544,96 @@ export interface ClusterJoinInstructions {
 
 // ClusterMember is one swarm node (docker node ls), annotated with the Miabi
 // node it maps to (or unmanaged when it has no Miabi record).
+// Preflight: what this host can and cannot do BEFORE cluster mode is turned on.
+// The blocker case is a Docker engine running inside a VM (Docker Desktop, OrbStack):
+// the swarm forms and DNS resolves, then every cross-node connection times out,
+// because VXLAN and IPSec cannot be forwarded into the VM.
+export interface ClusterFinding {
+  severity: 'blocker' | 'warning' | 'info'
+  title: string
+  detail: string
+}
+export interface ClusterFirewallRule {
+  port: string
+  purpose: string
+}
+export interface ClusterPreflight {
+  engine_os: string
+  // False when this engine cannot carry the overlay data plane to other hosts at
+  // all. Single-node cluster mode still works.
+  multi_node_capable: boolean
+  findings: ClusterFinding[]
+  firewall: ClusterFirewallRule[]
+}
+
+// NetCheck probes the real overlay between every pair of nodes, separating the three
+// failures that look identical from inside an app: a name that will not resolve, a
+// connection that never completes, and a payload that dies silently at the MTU.
+export interface NetCheckProbe {
+  server_id: number
+  node_name: string
+  reachable: boolean
+  error?: string
+}
+export interface NetCheckResult {
+  from: string
+  to: string
+  dns: boolean
+  tcp: boolean
+  payload: boolean // a 1400-byte body round-tripped
+  ip?: string
+  error?: string
+  verdict: string
+}
+export interface NetCheck {
+  network: string
+  probes: NetCheckProbe[]
+  results: NetCheckResult[]
+  ok: boolean
+  summary: string
+}
+
+// A service task the scheduler placed on a node. Only the manager can enumerate
+// these — the container lives on the node, which Miabi may have no client for.
+export interface SwarmTask {
+  id: string
+  service_name: string
+  node_id: string
+  image?: string
+  slot?: number
+  state: string
+  desired_state: string
+  message?: string
+  error?: string
+  updated_at?: string
+}
+
+// The certificate the control plane currently serves, offered so agents can be pinned
+// to it instead of skipping verification. Miabi fetches it so nobody has to hunt for a
+// PEM — the alternative being that they pick "skip" and never look back.
+export interface ControlPlaneCert {
+  pem: string
+  subject: string
+  issuer: string
+  not_after: string
+  fingerprint: string
+  self_signed: boolean
+  // Already verifies against the system pool: no CA needs distributing at all.
+  publicly_trusted: boolean
+  // The names the certificate actually vouches for (its SANs). Empty means none.
+  hosts?: string[]
+  // Whether it names the address the agents dial. This is the trap in "just trust the
+  // CA": adding a certificate to the trust pool does NOT skip the hostname check, so a
+  // certificate with no SANs (Goma's default has none) fails however well it is trusted.
+  matches_host: boolean
+  dial_host: string
+  // Whether what we can offer is a real certificate AUTHORITY, or merely the server's
+  // own leaf certificate. Pinning a leaf works — until the certificate is renewed, at
+  // which point every agent drops off at once. Then the right answer is to paste the
+  // actual CA instead.
+  anchor_is_ca: boolean
+}
+
 export interface ClusterMember {
   id: string
   hostname: string
@@ -1483,6 +1644,15 @@ export interface ClusterMember {
   reachability?: string
   addr?: string
   engine_version?: string
+  // Capacity as the swarm scheduler sees it — what it packs tasks against. Reported
+  // by the node over the swarm control plane, so it is known even for an unmanaged
+  // member (no Miabi agent), where host metrics are unavailable.
+  nano_cpus?: number // 1e9 == one core
+  memory_bytes?: number // total, not used
+  os?: string
+  arch?: string
+  // How many service tasks the scheduler currently runs on this node.
+  tasks: number
   managed: boolean
   server_id?: number
   server_name?: string

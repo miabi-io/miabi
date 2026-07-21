@@ -32,9 +32,8 @@ const SECTIONS: SectionDef[] = [
   {
     id: 'access',
     title: 'Access',
-    keys: ['password_reset_enabled', 'allowed_signup_domains'],
+    keys: ['allowed_signup_domains'],
     labels: {
-      password_reset_enabled: 'Enable password reset',
       allowed_signup_domains: 'Allowed signup domains (CSV)',
     },
   },

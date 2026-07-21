@@ -21,6 +21,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/dockerimport"
 	"github.com/miabi-io/miabi/internal/services/edgegateway"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
+	"github.com/miabi-io/miabi/internal/services/gpu"
 	"github.com/miabi-io/miabi/internal/services/housekeeping"
 	"github.com/miabi-io/miabi/internal/services/node"
 )
@@ -37,6 +38,15 @@ type SwarmEnricher interface {
 	Enrich(servers []models.Server)
 }
 
+// ClusterAgentAuth authorizes an agent that presented the CLUSTER-wide token carried
+// by the global agent service, rather than a per-node one. Identity comes from the
+// swarm node id the agent read off its own engine, which the manager verifies against
+// its own membership list — so the shared token authorizes registration, but only for
+// a machine the swarm already trusts. Optional: nil means only per-node tokens work.
+type ClusterAgentAuth interface {
+	AuthenticateAgent(ctx context.Context, token, swarmNodeID, hostname string) (*models.Server, error)
+}
+
 // NodeHandler exposes admin node management and the agent connect endpoint.
 type NodeHandler struct {
 	nodes       *node.Service
@@ -50,6 +60,7 @@ type NodeHandler struct {
 	audit       *audit.Logger
 	bus         *eventbus.Bus
 	members     WorkspaceMembership
+	gpu         *gpu.Service // GPU inventory + admin device policy (nil = disabled)
 	// secEnforce blocks disruptive raw-Docker actions (stop/remove) on managed
 	// containers from the admin node view (MIABI_SECURITY_ENFORCEMENT, default on).
 	secEnforce bool
@@ -73,6 +84,10 @@ func (h *NodeHandler) SetMembership(m WorkspaceMembership) { h.members = m }
 // SetSecurityEnforcement toggles blocking of stop/remove on managed containers
 // from the admin node view (MIABI_SECURITY_ENFORCEMENT; default on).
 func (h *NodeHandler) SetSecurityEnforcement(on bool) { h.secEnforce = on }
+
+// SetGPU wires the GPU inventory/policy service (nil-safe; nil = GPU support
+// disabled, so the GPU endpoints report it off).
+func (h *NodeHandler) SetGPU(g *gpu.Service) { h.gpu = g }
 
 func NewNodeHandler(n *node.Service, mgr *nodes.Manager, gw *edgegateway.Service, importer *dockerimport.Service, housekeeper *housekeeping.Service, clusterEnricher SwarmEnricher, images ImageRef, controlURL string, auditLog *audit.Logger, bus *eventbus.Bus, hostProc string) *NodeHandler {
 	return &NodeHandler{
@@ -153,6 +168,12 @@ type PlaceableNode struct {
 	IsLocal      bool   `json:"is_local"`
 	Online       bool   `json:"online"`
 	Cordoned     bool   `json:"cordoned"`
+	// SwarmNodeID is the node's id within the swarm, empty when it is not a member.
+	// A container app is placed by server_id, but a *service* app is placed by the
+	// Swarm scheduler, which ignores server_id entirely — pinning one to a node
+	// means emitting a `node.id==<SwarmNodeID>` placement constraint, so the picker
+	// needs this to offer the choice at all.
+	SwarmNodeID string `json:"swarm_node_id,omitempty"`
 }
 
 // ListPlaceable returns the nodes a resource can be placed on, for the create
@@ -173,6 +194,7 @@ func (h *NodeHandler) ListPlaceable(c *okapi.Context) error {
 			IsLocal:      s.IsLocal,
 			Online:       s.IsLocal || h.manager.Connected(s.ID),
 			Cordoned:     s.Cordoned,
+			SwarmNodeID:  s.SwarmNodeID,
 		})
 	}
 	return ok(c, out)
@@ -247,8 +269,16 @@ func (h *NodeHandler) JoinCommand(c *okapi.Context) error {
 		controlURL = "https://<your-control-plane-url>"
 	}
 	const tokenPlaceholder = "<JOIN_TOKEN>"
+	// The labels give the agent a platform identity on a node whose engine Miabi can
+	// only reach through that very agent: they keep it out of the node's import list
+	// and block a stop/remove from the containers page. managed-by=external — this
+	// one is installed by hand, so Miabi must not assume it may recreate it.
 	command := "docker run -d --name miabi-agent --restart unless-stopped \\\n" +
 		"  -v /var/run/docker.sock:/var/run/docker.sock \\\n" +
+		"  --label " + docker.LabelPartOf + "=" + docker.PartOfMiabi + " \\\n" +
+		"  --label " + docker.LabelRole + "=" + docker.RoleAgent + " \\\n" +
+		"  --label " + docker.LabelManagedBy + "=" + docker.ManagedByExternal + " \\\n" +
+		"  --label " + docker.LabelProtected + "=true \\\n" +
 		"  -e MIABI_CONTROL_URL=" + controlURL + " \\\n" +
 		"  -e MIABI_NODE_TOKEN=" + tokenPlaceholder + " \\\n" +
 		"  " + image
@@ -489,15 +519,32 @@ func (h *NodeHandler) Connect(c *okapi.Context) error {
 	if token == "" {
 		token = c.Query("token")
 	}
+	swarmNodeID := c.Header("X-Agent-Swarm-Node-ID")
+	hostname := c.Header("X-Agent-Hostname")
+
 	srv, err := h.nodes.Authenticate(token)
 	if err != nil {
-		return c.AbortUnauthorized("invalid agent token")
+		// Not a per-node mbn_ token. It may be the cluster-wide token carried by the
+		// global agent service, in which case identity comes from the swarm node id the
+		// agent read off its own engine — and is only trusted because the manager
+		// verifies it against its own membership list. An unknown-but-verified member
+		// registers itself as a node.
+		srv, err = h.registerClusterAgent(c, token, swarmNodeID, hostname)
+		if err != nil {
+			return c.AbortUnauthorized("invalid agent token")
+		}
 	}
-	// Learn the node's public endpoint from this connection — its source IP (as
-	// seen here) and self-reported hostname — so the admin needn't enter them when
-	// adding the node. Non-destructive (only fills blank fields). Read before the
-	// upgrade hijacks the request.
-	h.nodes.LearnEndpoint(srv.ID, c.RealIP(), c.Header("X-Agent-Hostname"))
+	// Learn what only the node can tell us, before the upgrade hijacks the request.
+	//
+	// Its public endpoint (source IP + self-reported hostname), so the admin needn't
+	// enter them — non-destructive, it only fills blank fields.
+	h.nodes.LearnEndpoint(srv.ID, c.RealIP(), hostname)
+	// And its swarm node id, which the control plane cannot work out for itself: it
+	// records one only when Miabi ran the `swarm join`, so a host that joined the
+	// swarm any other way stayed unmapped — and an unmapped node cannot be resolved
+	// from a service's task, which is what leaves a replica's logs and metrics
+	// unreachable.
+	h.nodes.LearnSwarmNodeID(srv.ID, swarmNodeID)
 	ws, err := h.upgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {
 		return nil // upgrade failed; response already handled
@@ -506,8 +553,114 @@ func (h *NodeHandler) Connect(c *okapi.Context) error {
 	return nil
 }
 
+// registerClusterAgent authorizes an agent carrying the cluster-wide token. Returns
+// an error (and never a node) when the capability is unwired or the token is unknown.
+func (h *NodeHandler) registerClusterAgent(c *okapi.Context, token, swarmNodeID, hostname string) (*models.Server, error) {
+	auth, ok := h.cluster.(ClusterAgentAuth)
+	if !ok || auth == nil {
+		return nil, node.ErrBadToken
+	}
+	return auth.AuthenticateAgent(c.Request().Context(), token, swarmNodeID, hostname)
+}
+
 func bearer(h string) string {
 	return strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
+}
+
+// --- GPUs ---
+
+// GPUListResponse is a node's GPU inventory plus whether the node advertises the
+// NVIDIA runtime (so the UI can explain a node showing no cards).
+type GPUListResponse struct {
+	Enabled        bool               `json:"enabled"`         // platform GPU support on (MIABI_GPU_ENABLED)
+	ToolkitPresent bool               `json:"toolkit_present"` // node has the NVIDIA Container Toolkit
+	Devices        []models.GPUDevice `json:"devices"`
+}
+
+// UpdateGPURequest toggles a device's admin policy. Both fields are optional
+// (nil = leave unchanged).
+type UpdateGPURequest struct {
+	Body struct {
+		Enabled *bool `json:"enabled"`
+		Shared  *bool `json:"shared"`
+	} `json:"body"`
+}
+
+// ListGPUs returns the GPUs discovered on a node and the platform/node GPU
+// capability flags. Devices arrive disabled until an admin opts each one in.
+func (h *NodeHandler) ListGPUs(c *okapi.Context) error {
+	id, err := h.id(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid node id")
+	}
+	if h.gpu == nil || !h.gpu.Enabled() {
+		return ok(c, GPUListResponse{Enabled: false, Devices: []models.GPUDevice{}})
+	}
+	devices, err := h.gpu.Devices(id)
+	if err != nil {
+		return c.AbortInternalServerError("failed to list node GPUs", err)
+	}
+	if devices == nil {
+		devices = []models.GPUDevice{}
+	}
+	return ok(c, GPUListResponse{
+		Enabled:        true,
+		ToolkitPresent: h.gpu.NodeCapable(c.Request().Context(), id),
+		Devices:        devices,
+	})
+}
+
+// UpdateGPU applies admin policy (enable/disable, shared/dedicated) to one of a
+// node's GPUs.
+func (h *NodeHandler) UpdateGPU(c *okapi.Context, req *UpdateGPURequest) error {
+	id, err := h.id(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid node id")
+	}
+	gpuID, err := uintParam(c, "gpuID")
+	if err != nil {
+		return c.AbortBadRequest("invalid gpu id")
+	}
+	if h.gpu == nil || !h.gpu.Enabled() {
+		return c.AbortBadRequest("GPU support is disabled on this platform")
+	}
+	dev, err := h.gpu.SetDevice(id, gpuID, req.Body.Enabled, req.Body.Shared)
+	if err != nil {
+		if errors.Is(err, gpu.ErrDeviceNotOnNode) {
+			return c.AbortNotFound("gpu not found on this node")
+		}
+		return c.AbortInternalServerError("failed to update GPU", err)
+	}
+	h.record(c, "node.gpu.update", id)
+	return ok(c, dev)
+}
+
+// RescanGPUs re-runs the inventory probe on a node on demand (the admin "Rescan
+// GPUs" button) and returns the refreshed device list.
+func (h *NodeHandler) RescanGPUs(c *okapi.Context) error {
+	id, err := h.id(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid node id")
+	}
+	if h.gpu == nil || !h.gpu.Enabled() {
+		return c.AbortBadRequest("GPU support is disabled on this platform")
+	}
+	if _, err := h.gpu.InventoryNode(c.Request().Context(), id); err != nil {
+		return c.AbortInternalServerError("GPU rescan failed", err)
+	}
+	devices, err := h.gpu.Devices(id)
+	if err != nil {
+		return c.AbortInternalServerError("failed to list node GPUs", err)
+	}
+	if devices == nil {
+		devices = []models.GPUDevice{}
+	}
+	h.record(c, "node.gpu.rescan", id)
+	return ok(c, GPUListResponse{
+		Enabled:        true,
+		ToolkitPresent: h.gpu.NodeCapable(c.Request().Context(), id),
+		Devices:        devices,
+	})
 }
 
 func (h *NodeHandler) id(c *okapi.Context) (uint, error) {

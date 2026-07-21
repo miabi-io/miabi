@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { middlewareApi } from '@/api/middlewares'
-import { middlewareTypeInfo } from '@/utils/middlewareCatalog'
+import { useMiddlewareCatalog } from '@/composables/useMiddlewareCatalog'
 import MiddlewareFormModal from '@/components/MiddlewareFormModal.vue'
 import type { Middleware } from '@/api/types'
 
@@ -13,6 +13,7 @@ const ws = useWorkspaceStore()
 const notify = useNotificationStore()
 const router = useRouter()
 const { currentWorkspaceId } = storeToRefs(ws)
+const { ensure: ensureCatalog, typeInfo } = useMiddlewareCatalog()
 
 const items = ref<Middleware[]>([])
 const loading = ref(false)
@@ -22,6 +23,7 @@ async function load(id: number | null) {
   if (!id) { items.value = []; return }
   loading.value = true
   try {
+    void ensureCatalog(id)
     items.value = (await middlewareApi.list(id)).data.data ?? []
   } catch (e) {
     notify.apiError(e)
@@ -73,7 +75,7 @@ function open(m: Middleware) { router.push(`/middlewares/${m.id}`) }
             <tr v-for="m in items" :key="m.id" class="row-link" @click="open(m)">
               <td>
                 <span class="cell-title">{{ m.display_name || m.name }}</span>
-                <div v-if="middlewareTypeInfo(m.type)" class="cell-sub">{{ middlewareTypeInfo(m.type)?.description }}</div>
+                <div v-if="typeInfo(m.type)" class="cell-sub">{{ typeInfo(m.type)?.description }}</div>
               </td>
               <td><span class="badge badge-neutral">{{ m.type }}</span></td>
               <td class="cell-sub">{{ (m.paths || []).join(', ') || '/*' }}</td>

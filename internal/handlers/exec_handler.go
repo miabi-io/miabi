@@ -29,7 +29,7 @@ func (h *ApplicationHandler) Processes(c *okapi.Context) error {
 	}
 	list, err := h.svc.Processes(c.Request().Context(), app, psArgs)
 	if err != nil {
-		if errors.Is(err, application.ErrNoActiveContainer) {
+		if errors.Is(err, application.ErrTaskOnUnmanagedNode) || errors.Is(err, application.ErrNoActiveContainer) {
 			return c.AbortWithError(http.StatusConflict, errors.New("the application has no running container"))
 		}
 		return c.AbortInternalServerError("failed to list processes", err)
@@ -87,7 +87,7 @@ func (h *ApplicationHandler) ExecShell(c *okapi.Context) error {
 	})
 	if err != nil {
 		msg := "failed to start shell: " + err.Error()
-		if errors.Is(err, application.ErrNoActiveContainer) {
+		if errors.Is(err, application.ErrTaskOnUnmanagedNode) || errors.Is(err, application.ErrNoActiveContainer) {
 			msg = "application has no running container"
 		}
 		_ = ws.WriteMessage(websocket.TextMessage, []byte("\x1b[31m"+msg+"\x1b[0m\r\n"))

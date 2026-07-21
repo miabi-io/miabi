@@ -34,9 +34,10 @@ type User struct {
 	Role         SystemRole `json:"role" gorm:"default:user;not null"`
 	// TwoFactorSecret holds the TOTP secret, encrypted at rest (crypto package).
 	// Never serialized. TwoFactorEnabled is only set once a code is confirmed.
-	TwoFactorSecret  string `json:"-" gorm:"type:text"`
-	TwoFactorEnabled bool   `json:"two_factor_enabled" gorm:"default:false;not null"`
-	Active           bool   `json:"active" gorm:"default:true;not null"`
+	TwoFactorSecret    string `json:"-" gorm:"type:text"`
+	TwoFactorEnabled   bool   `json:"two_factor_enabled" gorm:"default:false;not null"`
+	Active             bool   `json:"active" gorm:"default:true;not null"`
+	MustChangePassword bool   `json:"must_change_password" gorm:"not null;default:false"`
 	// AuthSource records how the account authenticates: "local" (password), or an
 	// external directory/IdP ("ldap", "saml", "oauth"). Directory-managed accounts
 	// carry an unusable local password and have their access reconciled on login.

@@ -160,9 +160,12 @@ func TestCheckReplaysETagAndKeepsCacheOn304(t *testing.T) {
 	s := NewService(db, "1.0.0-beta.4", true)
 	s.setBaseURL(srv.URL)
 
-	// Seed a prior result; a 304 must preserve it.
+	// Seed a prior result; a 304 must preserve it. CheckedVersion matches the running
+	// build, i.e. the verdict was computed for THIS binary — only then is replaying
+	// the ETag sound. (When it does not match, see
+	// TestUpgradedBuildIsNotOfferedTheReleaseItAlreadyPassed.)
 	st, _ := s.Status()
-	st.LatestVersion, st.ETag = "v1.0.0-beta.5", `W/"abc"`
+	st.LatestVersion, st.ETag, st.CheckedVersion = "v1.0.0-beta.5", `W/"abc"`, "1.0.0-beta.4"
 	if err := db.Save(st).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -182,6 +185,91 @@ func TestCheckReplaysETagAndKeepsCacheOn304(t *testing.T) {
 	// assertion above passes and the regression slips through.
 	if after.LastError != "" {
 		t.Fatalf("304 recorded as an error: %q", after.LastError)
+	}
+}
+
+// The reported bug: "Miabi v1.2.1 is available — you're running 1.3.0."
+//
+// The cached verdict depends on the release list AND the build it was compared
+// against, but the ETag only fingerprints the list. Install 1.2.0, cache
+// "v1.2.1 available", then upgrade to 1.3.0: the list has not changed, so
+// replaying the ETag earns a 304 and the old verdict survives — permanently,
+// since every later check 304s too. The notice then offers a DOWNGRADE, and no
+// amount of waiting heals it.
+//
+// A build change must therefore invalidate the ETag.
+func TestUpgradedBuildIsNotOfferedTheReleaseItAlreadyPassed(t *testing.T) {
+	var sawIfNoneMatch string
+	var served int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		served++
+		sawIfNoneMatch = r.Header.Get("If-None-Match")
+		// GitHub would answer 304 to the stored ETag. Only reachable if we send it.
+		if sawIfNoneMatch != "" {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("ETag", `W/"abc"`)
+		// The list is UNCHANGED — v1.2.1 is still the newest release. Nothing about
+		// GitHub is different; the only thing that moved is the running build.
+		_ = json.NewEncoder(w).Encode([]Release{rel("v1.2.1", false)})
+	}))
+	defer srv.Close()
+
+	db := testDB(t)
+
+	// The row as the 1.2.0 build left it: correct at the time it was written.
+	s := NewService(db, "1.2.0", true)
+	s.setBaseURL(srv.URL)
+	if err := s.Check(context.Background()); err != nil {
+		t.Fatalf("check as 1.2.0: %v", err)
+	}
+	if st, _ := s.Status(); st.LatestVersion != "v1.2.1" {
+		t.Fatalf("precondition: LatestVersion = %q, want v1.2.1", st.LatestVersion)
+	}
+
+	// Now the operator upgrades the binary to 1.3.0. Same DB, same GitHub.
+	s = NewService(db, "1.3.0", true)
+	s.setBaseURL(srv.URL)
+	if err := s.Check(context.Background()); err != nil {
+		t.Fatalf("check as 1.3.0: %v", err)
+	}
+
+	if sawIfNoneMatch != "" {
+		t.Errorf("replayed the ETag after the build changed (%q): the 304 would preserve a verdict computed for 1.2.0", sawIfNoneMatch)
+	}
+	if served != 2 {
+		t.Errorf("GitHub hit %d times, want 2", served)
+	}
+	st, _ := s.Status()
+	if st.LatestVersion != "" {
+		t.Errorf("LatestVersion = %q; 1.3.0 is newer than every release, so there is no update to offer", st.LatestVersion)
+	}
+	if st.CheckedVersion != "1.3.0" {
+		t.Errorf("CheckedVersion = %q, want 1.3.0 — the verdict must record the build it was computed for", st.CheckedVersion)
+	}
+}
+
+// Even with a correct cache, the row is only rewritten by a daily cron: between an
+// upgrade and the next tick it still describes the previous build. Readers must
+// compare, so the notice can never propose a downgrade whatever is cached.
+func TestIsNewerRejectsOlderAndEqual(t *testing.T) {
+	cases := []struct {
+		current, latest string
+		want            bool
+	}{
+		{"1.3.0", "v1.2.1", false}, // the reported bug, at the read path
+		{"1.3.0", "v1.3.0", false}, // up to date
+		{"1.3.0", "v1.3.1", true},
+		{"1.3.0", "v1.10.0", true},               // semver, not lexical: 10 > 3
+		{"1.0.0-beta.9", "v1.0.0-beta.10", true}, // ditto, in the prerelease field
+		{"dev", "v1.3.0", false},                 // a non-version build compares against nothing
+		{"1.3.0", "", false},
+	}
+	for _, c := range cases {
+		if got := IsNewer(c.current, c.latest); got != c.want {
+			t.Errorf("IsNewer(%q, %q) = %v, want %v", c.current, c.latest, got, c.want)
+		}
 	}
 }
 

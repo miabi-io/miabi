@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -22,6 +23,7 @@ import (
 	"github.com/miabi-io/miabi/internal/routes"
 	"github.com/miabi-io/miabi/internal/runners"
 	"github.com/miabi-io/miabi/internal/selfcontainer"
+	"github.com/miabi-io/miabi/internal/services/alerting"
 	"github.com/miabi-io/miabi/internal/services/application"
 	"github.com/miabi-io/miabi/internal/services/backup"
 	"github.com/miabi-io/miabi/internal/services/backupsettings"
@@ -32,6 +34,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/edgegateway"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 	"github.com/miabi-io/miabi/internal/services/events"
+	"github.com/miabi-io/miabi/internal/services/gpu"
 	"github.com/miabi-io/miabi/internal/services/image"
 	"github.com/miabi-io/miabi/internal/services/keyring"
 	"github.com/miabi-io/miabi/internal/services/monitoring"
@@ -116,7 +119,7 @@ func runServer(cli *okapicli.CLI) {
 			}
 
 			// Background job producer (asynq over Redis).
-			res.producer = worker.NewProducer(cfg.Redis.Addr, cfg.Redis.Password, cfg.WorkerMaxRetries)
+			res.producer = worker.NewProducer(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB, cfg.WorkerMaxRetries)
 
 			// Docker engine adapter + local node bootstrap (network, status).
 			dockerClient, err := docker.New()
@@ -235,6 +238,39 @@ func runServer(cli *okapicli.CLI) {
 			// Outbound notifications: record events fan out to the workspace's
 			// webhooks and notification channels via background tasks.
 			eventsSvc.SetNotifier(notify.NewDispatcher(res.producer))
+			// Alerts & notifications: the engine derives deduplicated, auto-resolving
+			// alerts from the full event stream and fans per-user inbox notifications
+			// out over the bus (bell SSE). Redis holds the crash-loop/cooldown state.
+			// In-app alerts are a Community feature, always on.
+			alertNamer := alerting.AppNameFunc(func(id uint) string {
+				if a, err := appEventRepo.FindByID(id); err == nil && a != nil {
+					if a.DisplayName != "" {
+						return a.DisplayName
+					}
+					return a.Name
+				}
+				return ""
+			})
+			alertEngine := alerting.NewEngine(
+				repositories.NewAlertRepository(res.db),
+				repositories.NewNotificationInboxRepository(res.db),
+				repositories.NewWorkspaceRepository(res.db),
+				alertNamer, bus, alerting.NewRedisCounter(res.redis),
+			)
+			alertEngine.SetCertLister(repositories.NewCertificateRepository(res.db))
+			alertEngine.SetVolumeLister(repositories.NewVolumeRepository(res.db))
+			alertEngine.SetSystemAdmins(repositories.NewUserRepository(res.db))
+			eventsSvc.SetAlertSink(alertEngine)
+			// Platform-scoped node/runner offline/online alerts (a node or a shared
+			// runner → the system workspace / super-admins; a workspace runner → its
+			// members). The runner manager is wired after InitRoutes returns it.
+			palerter := &platformAlerter{
+				e:  alertEngine,
+				ws: repositories.NewWorkspaceRepository(res.db),
+			}
+			nodeManager.SetOnStatusChange(palerter.NodeStatus)
+			// The quota scan + backup-outcome alerts are wired below, once the quota
+			// service and backup service exist (they depend on it).
 			webhookRepo := repositories.NewWebhookRepository(res.db)
 			webhookDeliveryRepo := repositories.NewWebhookDeliveryRepository(res.db)
 			channelRepo := repositories.NewNotificationChannelRepository(res.db)
@@ -324,15 +360,38 @@ func runServer(cli *okapicli.CLI) {
 			edition := enterprise.New(res.db, cfg.LicensePublicKey, cfg.LicenseFile, cfg.DeploymentURL(), installIDOf(res.db))
 			securityQuota.SetEdition(edition)
 			res.entitlements = edition.Entitlements()
+			// Quota near-limit scan (needs the quota service + per-workspace counts).
+			alertEngine.SetQuotaLister(quotaScanner{
+				ws:   repositories.NewWorkspaceRepository(res.db),
+				q:    securityQuota,
+				apps: repositories.NewApplicationRepository(res.db),
+				vols: repositories.NewVolumeRepository(res.db),
+				dbs:  dbRepo,
+			})
 			securityResolver := newSecurityResolver(cfg, securityQuota)
 			deployHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
 			deployHandler.SetBuilderPolicy(securityQuota)
+			// GPU scheduling for the embedded worker: capability + quota preflight and
+			// deploy-time device resolution for GPU apps.
+			gpuScheduler := gpu.NewService(
+				repositories.NewGPUDeviceRepository(res.db),
+				repositories.NewServerRepository(res.db),
+				repositories.NewApplicationRepository(res.db),
+				nodeClients,
+				gpu.Config{Enabled: cfg.GPUEnabled, NvidiaRuntime: cfg.NvidiaRuntime, ProbeImage: cfg.GPUProbeImage},
+			)
+			gpuScheduler.SetQuota(securityQuota)
+			deployHandler.SetGPU(gpuScheduler)
 			jobHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
 			// Managed-subnet allocator: overlay networks + remote-node network
 			// recreate draw from the Miabi pool, not Docker's default address pool.
 			subnetAllocator := newSubnetAllocator(cfg, res.db)
 			deployHandler.SetAllocator(subnetAllocator)
 			jobHandler.SetAllocator(subnetAllocator)
+			// Cluster mode: a routed app also joins the shared ingress overlay, so the
+			// central gateway reaches it on any node without a published host port.
+			deployHandler.SetCluster(clusterService)
+			jobHandler.SetCluster(clusterService)
 			// Git builds run on runners; here the image resolver supplies the
 			// admin-controlled builder image (passed to the runner) and the image
 			// catalog records build provenance.
@@ -396,11 +455,31 @@ func runServer(cli *okapicli.CLI) {
 			// enables/disables cluster mode or swarm membership changes out of band.
 			go clusterService.RefreshLoop(eventCtx, 30*time.Second)
 
+			// Alerting scanner: periodic, self-contained condition checks (TLS cert
+			// expiry / issuance failure today) that aren't event-driven. Fires and
+			// auto-resolves as certs renew.
+			go alertEngine.ScanLoop(eventCtx)
+
+			// Workspace Analytics: roll up Goma's per-request event stream into
+			// minute buckets. Runs on the embedded worker; a standalone worker joins
+			// the same consumer group so events are still rolled up exactly once.
+			if cfg.AnalyticsEnabled {
+				analyticsConsumer := worker.NewAnalyticsConsumer(
+					res.redis,
+					repositories.NewRouteRepository(res.db),
+					repositories.NewAnalyticsRepository(res.db),
+					cfg.AnalyticsStream, analyticsConsumerName("server"),
+					time.Duration(cfg.AnalyticsFlushSeconds)*time.Second, analyticsRetention(cfg, edition),
+				)
+				go analyticsConsumer.Run(eventCtx)
+			}
+
 			// Backup scheduler (cron) — runs scheduled database backups.
 			backupRepo := repositories.NewBackupRepository(res.db)
 			backupService := backup.NewService(backupRepo, dbRepo, nodeClients)
 			backupService.SetImageResolver(imageResolver)
 			backupService.SetLogStore(logStore)
+			backupService.SetAlerter(backupAlerter{alertEngine}) // backup-outcome alerts
 			res.cron = cronpkg.NewManager(backupService, dbRepo, backupRepo, backupsettings.NewService(repositories.NewWorkspaceBackupSettingsRepository(res.db)))
 			res.cron.Start()
 
@@ -427,7 +506,9 @@ func runServer(cli *okapicli.CLI) {
 			})
 
 			var runnerDispatcher *runners.Dispatcher
-			res.forward, runnerDispatcher = routes.InitRoutes(app, res.db, res.redis, cfg, res.producer, dockerClient, nodeService, nodeManager, nodeGateway, clusterService, bus, proxyMgr, res.cron, logStore)
+			var runnerManager *runners.Manager
+			res.forward, runnerDispatcher, runnerManager = routes.InitRoutes(app, res.db, res.redis, cfg, res.producer, dockerClient, nodeService, nodeManager, nodeGateway, clusterService, bus, proxyMgr, res.cron, logStore)
+			runnerManager.SetOnStatusChange(palerter.RunnerStatus)
 
 			// This process holds the runner tunnels, so its worker is the one that
 			// dispatches builds to runners — for both pipelines and git-source app
@@ -456,7 +537,7 @@ func runServer(cli *okapicli.CLI) {
 			// The embedded worker runs in the same process as the agent + runner
 			// tunnels, so it is the only worker that consumes the remote-node queue
 			// and the only one that dispatches to runners.
-			res.worker = worker.NewServer(cfg.Redis.Addr, cfg.Redis.Password, cfg.WorkerConcurrency, true)
+			res.worker = worker.NewServer(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB, cfg.WorkerConcurrency, true)
 			if err := res.worker.Start(worker.NewMux(deployHandler, provisionHandler, upgradeHandler, fanoutHandler, webhookHandler, channelHandler, jobHandler, volumeBackupHandler, pipelineHandler, platformBackupHandler)); err != nil {
 				logger.Fatal("failed to start embedded worker", "error", err)
 			}
@@ -509,6 +590,27 @@ func runServer(cli *okapicli.CLI) {
 func installIDOf(db *gorm.DB) string {
 	id, _ := dbstorage.EnsureInstallID(db)
 	return id
+}
+
+// analyticsConsumerName builds this process's unique name within the analytics
+// consumer group (role + hostname), so pending-message ownership is per-process
+// when several workers share the group.
+func analyticsConsumerName(role string) string {
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		host = "node"
+	}
+	return role + "-" + host
+}
+
+// analyticsRetention returns a resolver for the effective analytics retention in
+// days: the operator's MIABI_ANALYTICS_RETENTION_DAYS bounded by the license cap
+// (Community clamps to enterprise.CommunityAnalyticsRetentionDays). Evaluated per
+// prune so a license install/expiry takes effect without a restart.
+func analyticsRetention(cfg *config.Config, edition enterprise.EE) func() int {
+	return func() int {
+		return enterprise.ClampAnalyticsRetention(cfg.AnalyticsRetentionDays, edition.Entitlements().AnalyticsRetentionDays())
+	}
 }
 
 func shutdownServer(res *serverResources) {

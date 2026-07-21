@@ -12,10 +12,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/dotenv"
 	"github.com/miabi-io/miabi/internal/hostmount"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/nodes"
 	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/services/events"
 	"github.com/miabi-io/miabi/internal/services/node"
@@ -47,6 +49,8 @@ var (
 
 	ErrUnknownHostPreset      = errors.New("unknown host mount preset")
 	ErrHostMountNotPrivileged = errors.New("host mounts require a privileged workspace")
+
+	ErrInvalidGPUCount = errors.New("gpu_count must be between 0 and 64")
 
 	ErrClusterDisabled       = errors.New("cluster mode is not enabled; cannot run this application as a service")
 	ErrNotService            = errors.New("this operation is only valid for service-runtime (cluster) applications")
@@ -88,6 +92,10 @@ type CreateInput struct {
 	Port            int
 	MemoryBytes     int64
 	NanoCPUs        int64
+	// GPUCount / GPUKind request whole GPU devices. Gated by the AllowGPU plan
+	// capability at create time; 0 = none.
+	GPUCount        int
+	GPUKind         string
 	RestartPolicy   models.RestartPolicy
 	ImagePullPolicy models.ImagePullPolicy
 	// Cluster runtime (cluster mode). RuntimeKind defaults to container; service
@@ -193,6 +201,9 @@ func (s *Service) SetWorkspaceInfo(w WorkspaceInfo) { s.workspaces = w }
 type NodeDocker interface {
 	For(serverID uint) (docker.Client, error)
 	LocalID() uint
+	// ForServiceTask finds the engine holding a swarm service's task container.
+	// A service has no fixed node, and only the node running the task can see it.
+	ForServiceTask(ctx context.Context, serviceName string) (docker.Client, string, error)
 }
 
 // NodeGuard validates that a node can accept a new placement (exists, not
@@ -599,11 +610,23 @@ func (s *Service) serviceLiveStatus(ctx context.Context, app *models.Application
 	default:
 		ls.Status = "starting"
 	}
-	// A resource snapshot from one running task container (on the manager), so the
-	// overview shows live CPU/memory for cluster apps too.
+	// Uptime comes from the swarm control plane (the task's running-since timestamp),
+	// not from inspecting a container — the task may sit on a node Miabi has no
+	// Docker client for, where there is nothing to inspect. Without this a healthy
+	// service showed no "running since" at all.
+	ls.StartedAt = st.StartedAt
+	if ls.Running && ls.StartedAt != "" {
+		if t, perr := time.Parse(time.RFC3339Nano, ls.StartedAt); perr == nil {
+			ls.UptimeSeconds = int64(time.Since(t).Seconds())
+		}
+	}
+	// A resource snapshot from a running task's container. Stats have no
+	// manager-side equivalent (there is no `docker service stats`), so this only
+	// works when the task landed on a node Miabi has a client for; on an unmanaged
+	// swarm member it is silently absent, and the rest of the status still holds.
 	if ls.Running {
-		if cid, cerr := mgr.ServiceTaskContainerID(ctx, node.AppAlias(app)); cerr == nil {
-			if sample, serr := mgr.StatsOnce(ctx, cid); serr == nil {
+		if dc, cid, cerr := s.clients.ForServiceTask(ctx, node.AppAlias(app)); cerr == nil {
+			if sample, serr := dc.StatsOnce(ctx, cid); serr == nil {
 				ls.Stats = &sample
 			}
 		}
@@ -711,6 +734,15 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 	if err := s.validateResources(in.MemoryBytes, in.NanoCPUs); err != nil {
 		return nil, err
 	}
+	if err := validateGPUCount(in.GPUCount); err != nil {
+		return nil, err
+	}
+	// GPU access is a hard-gated plan capability (device passthrough is
+	// privileged): a workspace whose plan lacks AllowGPU cannot even save an app
+	// that requests one. Re-checked at deploy as defense-in-depth.
+	if err := s.gpuAllowed(workspaceID, in.GPUCount); err != nil {
+		return nil, err
+	}
 	// Placement: default to the local node; validate the chosen node accepts new
 	// placements (exists, not cordoned) and is reachable.
 	serverID := in.ServerID
@@ -745,7 +777,9 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 		Builder:     in.Builder, Buildpacks: in.Buildpacks, BuildEnv: in.BuildEnv,
 		RegistryID: in.RegistryID, GitRepositoryID: in.GitRepositoryID, StackID: in.StackID,
 		Command: in.Command, Port: in.Port,
-		MemoryBytes: in.MemoryBytes, NanoCPUs: in.NanoCPUs, RestartPolicy: normalizeRestartPolicy(in.RestartPolicy),
+		MemoryBytes: in.MemoryBytes, NanoCPUs: in.NanoCPUs,
+		GPUCount: in.GPUCount, GPUKind: strings.TrimSpace(in.GPUKind),
+		RestartPolicy: normalizeRestartPolicy(in.RestartPolicy),
 		ImagePullPolicy:      normalizeImagePullPolicy(in.ImagePullPolicy),
 		RuntimeKind:          in.RuntimeKind,
 		Replicas:             in.Replicas,
@@ -804,12 +838,34 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 	return app, nil
 }
 
-// SetNetworks attaches the given workspace networks to the app, always
-// including the workspace's default network.
+// SetNetworks attaches the given workspace networks to the app, always including the
+// workspace's default network.
+//
+// The default is not optional garnish: it is the network the app shares with its
+// databases, and in cluster mode it is the workspace's Swarm overlay — the thing that
+// lets it reach a database on another node. An app that ends up on none deploys
+// perfectly happily and then cannot resolve anything, with nothing to say why.
+//
+// So a missing default is repaired rather than tolerated. That path is reachable for a
+// workspace that predates default networks, or one whose network was removed out of
+// band — and it matters most for callers that never name a network at all, like GitOps,
+// where the default is the only network the app was ever going to get.
 func (s *Service) SetNetworks(app *models.Application, networkIDs []uint) error {
 	all, err := s.networks.ListByWorkspace(app.WorkspaceID)
 	if err != nil {
 		return err
+	}
+	if !hasDefaultNetwork(all) && s.netEnsurer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		def, derr := s.netEnsurer.EnsureDefault(ctx, app.WorkspaceID)
+		switch {
+		case derr != nil:
+			logger.Warn("could not ensure the workspace's default network; the app will have none",
+				"workspace", app.WorkspaceID, "app", app.Name, "error", derr)
+		case def != nil:
+			all = append(all, *def)
+		}
 	}
 	want := map[uint]bool{}
 	for _, id := range networkIDs {
@@ -822,6 +878,15 @@ func (s *Service) SetNetworks(app *models.Application, networkIDs []uint) error 
 		}
 	}
 	return s.apps.ReplaceNetworks(app, selected)
+}
+
+func hasDefaultNetwork(nets []models.Network) bool {
+	for i := range nets {
+		if nets[i].IsDefault {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) Get(workspaceID, id uint) (*models.Application, error) {
@@ -890,6 +955,15 @@ func (s *Service) Update(app *models.Application) error {
 	}
 	// Aggregate workspace compute, excluding this app's current contribution.
 	if err := s.quota.CheckComputeAdd(app.WorkspaceID, app.NanoCPUs, app.MemoryBytes, app.ID); err != nil {
+		return err
+	}
+	if err := validateGPUCount(app.GPUCount); err != nil {
+		return err
+	}
+	// Re-gate GPU on update so a workspace can't grant itself GPU access by editing
+	// an app after a plan downgrade. GPU quota is enforced at deploy (running apps).
+	app.GPUKind = strings.TrimSpace(app.GPUKind)
+	if err := s.gpuAllowed(app.WorkspaceID, app.GPUCount); err != nil {
 		return err
 	}
 	normalizeDeployConfig(app)
@@ -1105,6 +1179,15 @@ func clamp(v, lo, hi int) int {
 // container to attach a shell to.
 var ErrNoActiveContainer = errors.New("application has no active container")
 
+// ErrTaskOnUnmanagedNode is the user-facing form of nodes.ErrTaskUnreachable: the
+// app IS running, but on a swarm node with no Miabi agent, so there is no engine to
+// open a shell or read processes through. Docker offers no manager-side equivalent
+// of exec, so this is a hard limit, not a bug. Logs are unaffected — the manager
+// aggregates those.
+var ErrTaskOnUnmanagedNode = errors.New(
+	"this app's task runs on a swarm node with no Miabi agent, so a shell cannot be opened. " +
+		"Add the node to Miabi (install the agent) to use exec")
+
 // EnsureExecAllowed returns a CapabilityDenied error when the workspace's plan
 // does not permit opening an interactive shell into a container. Nil-safe on a
 // disabled quota service (returns nil).
@@ -1146,21 +1229,22 @@ func (s *Service) activeContainerID(appID uint) (string, error) {
 
 // runtimeContainerID resolves a container to inspect/exec/stream for the app and
 // the Docker client that owns it. For a container app it's the active release's
-// container on the app's node; for a cluster (service) app it's a running task
-// container of its Swarm service, resolved on the manager. Returns
-// ErrNoActiveContainer when nothing is running (e.g. a service task scheduled
-// onto another node, which this single-manager resolver does not yet reach).
+// container on the app's node; for a cluster (service) app it's a running task of
+// its Swarm service, on whichever node the scheduler placed it.
+//
+// Returns ErrTaskOnUnmanagedNode when a service is running but its node has no
+// Miabi agent, and ErrNoActiveContainer when nothing is running at all.
 func (s *Service) runtimeContainerID(ctx context.Context, app *models.Application) (string, docker.Client, error) {
 	if app.RuntimeKind == models.RuntimeService {
-		mgr, err := s.clients.For(0)
-		if err != nil {
-			return "", nil, err
-		}
-		cid, err := mgr.ServiceTaskContainerID(ctx, node.AppAlias(app))
-		if err != nil {
+		dc, cid, err := s.clients.ForServiceTask(ctx, node.AppAlias(app))
+		switch {
+		case err == nil:
+			return cid, dc, nil
+		case errors.Is(err, nodes.ErrTaskUnreachable):
+			return "", nil, ErrTaskOnUnmanagedNode
+		default:
 			return "", nil, ErrNoActiveContainer
 		}
-		return cid, mgr, nil
 	}
 	cid, err := s.activeContainerID(app.ID)
 	if err != nil {
@@ -1767,6 +1851,24 @@ func (s *Service) customBuilderAllowed(workspaceID uint, builder string) error {
 		return nil
 	}
 	return s.quota.Require(workspaceID, quota.CapCustomBuilder)
+}
+
+// validateGPUCount bounds the requested GPU units. 0 = none; the upper bound is
+// a sanity cap (no single node exposes near this many whole cards).
+func validateGPUCount(gpuCount int) error {
+	if gpuCount < 0 || gpuCount > 64 {
+		return ErrInvalidGPUCount
+	}
+	return nil
+}
+
+// gpuAllowed gates a GPU request behind the workspace's AllowGPU plan capability.
+// A request of 0 (no GPU) always passes; nil quota (single-tenant) skips the gate.
+func (s *Service) gpuAllowed(workspaceID uint, gpuCount int) error {
+	if gpuCount <= 0 || s.quota == nil {
+		return nil
+	}
+	return s.quota.Require(workspaceID, quota.CapGPU)
 }
 
 // customLabelsAllowed resolves the two-layer admin gate: the global kill-switch

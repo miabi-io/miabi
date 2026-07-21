@@ -67,6 +67,30 @@ func (r *ServerRepository) FindByID(id uint) (*models.Server, error) {
 	return &s, nil
 }
 
+// FindBySwarmNodeID resolves the Miabi node backing a swarm node id. It is how a
+// self-registering agent is matched to an existing record instead of creating a
+// duplicate: the agent reports the swarm node id its own engine holds, which is a
+// stable identity the control plane can verify against its own `docker node ls`.
+func (r *ServerRepository) FindBySwarmNodeID(swarmNodeID string) (*models.Server, error) {
+	var s models.Server
+	if err := r.db.Where("swarm_node_id = ?", swarmNodeID).First(&s).Error; err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// UpdateSwarmNodeID writes just that column.
+//
+// Deliberately not a full Save: a node's row is written from several places on a
+// single agent connect (connected state, learned endpoint, swarm id) and by the
+// cluster refresh loop. A read-modify-write of the whole row from each of them can
+// silently clobber a field another just set. A column-scoped update cannot.
+func (r *ServerRepository) UpdateSwarmNodeID(id uint, swarmNodeID string) error {
+	return r.db.Model(&models.Server{}).
+		Where("id = ?", id).
+		Update("swarm_node_id", swarmNodeID).Error
+}
+
 func (r *ServerRepository) FindLocal() (*models.Server, error) {
 	var s models.Server
 	if err := r.db.Where("is_local = ?", true).First(&s).Error; err != nil {

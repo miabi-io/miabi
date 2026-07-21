@@ -42,9 +42,10 @@ type Notifier interface {
 }
 
 type Service struct {
-	repo     *repositories.AppEventRepository
-	bus      *eventbus.Bus
-	notifier Notifier
+	repo      *repositories.AppEventRepository
+	bus       *eventbus.Bus
+	notifier  Notifier
+	alertSink Notifier
 }
 
 func NewService(repo *repositories.AppEventRepository, bus *eventbus.Bus) *Service {
@@ -54,6 +55,12 @@ func NewService(repo *repositories.AppEventRepository, bus *eventbus.Bus) *Servi
 // SetNotifier wires the outbound-notification dispatcher. Optional: when unset,
 // events are still recorded and streamed, just not delivered externally.
 func (s *Service) SetNotifier(n Notifier) { s.notifier = n }
+
+// SetAlertSink wires the alert engine. Unlike the outbound notifier (gated to the
+// curated notifiable set for webhooks/channels), the sink receives EVERY recorded
+// event — the engine needs the full signal stream (e.g. health transitions) to
+// fire and auto-resolve alerts. Best-effort; never blocks or fails a caller.
+func (s *Service) SetAlertSink(n Notifier) { s.alertSink = n }
 
 // Record persists an event and publishes it live. Best-effort: a failure never
 // propagates to the caller (recording must not break deploys or mutations).
@@ -80,6 +87,11 @@ func (s *Service) Record(e *models.AppEvent) {
 	// only for the curated notifiable set; must never block or fail the caller.
 	if s.notifier != nil && models.IsNotifiable(e.Type) {
 		s.notifier.OnEvent(e)
+	}
+	// Feed the alert engine every event (it filters internally) so it can fire on
+	// and auto-resolve from the full signal stream, including health transitions.
+	if s.alertSink != nil {
+		s.alertSink.OnEvent(e)
 	}
 	// Opportunistic retention trim (cheap; ignores errors).
 	_ = s.repo.TrimByApp(e.ApplicationID, retainPerApp)

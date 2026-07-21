@@ -60,7 +60,7 @@ async function assignPlan() {
 type NumKey =
   | 'max_apps' | 'max_database_instances' | 'max_databases_per_instance' | 'max_cron_jobs'
   | 'max_volumes' | 'max_networks' | 'max_api_keys' | 'max_members' | 'max_runners' | 'max_cpu_cores' | 'max_memory_mb'
-  | 'max_database_instance_size_mb' | 'max_storage_mb'
+  | 'max_database_instance_size_mb' | 'max_storage_mb' | 'max_gpus'
 const overrideFields: { key: NumKey; label: string }[] = [
   { key: 'max_apps', label: 'Apps' },
   { key: 'max_database_instances', label: 'DB instances' },
@@ -75,6 +75,7 @@ const overrideFields: { key: NumKey; label: string }[] = [
   { key: 'max_memory_mb', label: 'Memory (MB)' },
   { key: 'max_database_instance_size_mb', label: 'DB size (MB)' },
   { key: 'max_storage_mb', label: 'Storage (MB)' },
+  { key: 'max_gpus', label: 'GPUs' },
 ]
 const override = ref<WorkspaceQuotaOverride | null>(null)
 async function loadOverride() {
@@ -87,7 +88,7 @@ function setNum(key: NumKey, raw: string) {
   if (!override.value) return
   override.value[key] = raw.trim() === '' ? null : Number(raw)
 }
-function setCap(key: 'allow_custom_tls' | 'allow_privileged_host_mounts' | 'allow_shell_exec' | 'allow_shared_storage' | 'allow_dns_providers' | 'allow_custom_labels' | 'allow_platform_runners', raw: string) {
+function setCap(key: 'allow_custom_tls' | 'allow_privileged_host_mounts' | 'allow_shell_exec' | 'allow_shared_storage' | 'allow_dns_providers' | 'allow_custom_labels' | 'allow_platform_runners' | 'allow_gpu', raw: string) {
   if (!override.value) return
   override.value[key] = raw === '' ? null : raw === 'true'
 }
@@ -415,6 +416,12 @@ function eventSeverity(e: AdminEvent): string {
             <div class="form-group" style="margin-bottom: 0">
               <label class="form-label form-label-sm">Platform runners</label>
               <select class="form-select" :value="override.allow_platform_runners === null ? '' : String(override.allow_platform_runners)" @change="setCap('allow_platform_runners', ($event.target as HTMLSelectElement).value)">
+                <option value="">Inherit</option><option value="true">Allow</option><option value="false">Deny</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label form-label-sm">GPU access</label>
+              <select class="form-select" :value="override.allow_gpu === null ? '' : String(override.allow_gpu)" @change="setCap('allow_gpu', ($event.target as HTMLSelectElement).value)">
                 <option value="">Inherit</option><option value="true">Allow</option><option value="false">Deny</option>
               </select>
             </div>

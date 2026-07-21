@@ -72,6 +72,15 @@ type NodeDocker interface {
 	LocalID() uint
 }
 
+// BackupAlerter receives database-backup outcomes so the alert engine can raise a
+// "backup failed" alert and auto-resolve it on the next success. Kept as a local
+// interface so the backup service stays decoupled from the alerting package (the
+// wiring bridges it to the engine).
+type BackupAlerter interface {
+	BackupFailed(workspaceID, databaseID uint, dbName, errMsg string)
+	BackupSucceeded(workspaceID, databaseID uint)
+}
+
 type Service struct {
 	repo    *repositories.BackupRepository
 	dbs     *repositories.DatabaseRepository
@@ -79,6 +88,7 @@ type Service struct {
 	images  ImageResolver
 	ddl     DDLRunner
 	logs    *logstore.Store
+	alerter BackupAlerter
 }
 
 func NewService(repo *repositories.BackupRepository, dbs *repositories.DatabaseRepository, clients NodeDocker) *Service {
@@ -92,6 +102,9 @@ func (s *Service) SetImageResolver(r ImageResolver) { s.images = r }
 // full output is externalized to the store on terminal state and the DB row
 // keeps only a bounded tail + a reference. nil keeps DB-tail-only.
 func (s *Service) SetLogStore(store *logstore.Store) { s.logs = store }
+
+// SetAlerter wires backup-outcome alerting (optional; nil = no alerts).
+func (s *Service) SetAlerter(a BackupAlerter) { s.alerter = a }
 
 // externalizeLog moves a terminal backup's full output into the shared log
 // store and trims the row to a bounded tail + a reference. No-op when the store
@@ -261,6 +274,9 @@ func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *mo
 	b.FinishedAt = &fin
 	_ = s.repo.Update(b)
 	s.externalizeLog(b)
+	if s.alerter != nil {
+		s.alerter.BackupSucceeded(b.WorkspaceID, b.DatabaseID)
+	}
 	logger.Info("backup completed", "database", db.ID, "destination", dest.Type, "file", b.Filename)
 	return b, nil
 }
@@ -543,6 +559,13 @@ func (s *Service) fail(b *models.Backup, cause error) *models.Backup {
 	b.FinishedAt = &fin
 	_ = s.repo.Update(b)
 	s.externalizeLog(b)
+	if s.alerter != nil {
+		name := ""
+		if db, err := s.dbs.FindByID(b.DatabaseID); err == nil && db != nil {
+			name = db.Name
+		}
+		s.alerter.BackupFailed(b.WorkspaceID, b.DatabaseID, name, cause.Error())
+	}
 	logger.Error("backup failed", "database", b.DatabaseID, "error", cause)
 	return b
 }

@@ -98,6 +98,10 @@ type CreateAppRequest struct {
 		Port            int               `json:"port"`
 		MemoryBytes     int64             `json:"memory_bytes" min:"0"`
 		NanoCPUs        int64             `json:"nano_cpus" min:"0"`
+		// GPUCount requests whole GPU devices (0 = none); GPUKind narrows to a
+		// vendor/model. Gated by the AllowGPU plan capability.
+		GPUCount        int               `json:"gpu_count" min:"0"`
+		GPUKind         string            `json:"gpu_kind"`
 		RestartPolicy   string            `json:"restart_policy" enum:"no,always,unless-stopped,on-failure"`
 		ImagePullPolicy string            `json:"image_pull_policy" enum:"always,if-not-present,never"`
 		// Cluster runtime (cluster mode). runtime_kind defaults to container;
@@ -144,6 +148,10 @@ type UpdateAppRequest struct {
 		Port            int            `json:"port"`
 		MemoryBytes     int64          `json:"memory_bytes" min:"0"`
 		NanoCPUs        int64          `json:"nano_cpus" min:"0"`
+		// GPUCount requests whole GPU devices (0 = none); GPUKind narrows to a
+		// vendor/model. Gated by the AllowGPU plan capability.
+		GPUCount        int            `json:"gpu_count" min:"0"`
+		GPUKind         string         `json:"gpu_kind"`
 		RestartPolicy   string         `json:"restart_policy" enum:"no,always,unless-stopped,on-failure"`
 		ImagePullPolicy string         `json:"image_pull_policy" enum:"always,if-not-present,never"`
 		// Cluster runtime. Empty runtime_kind leaves the stored kind unchanged;
@@ -256,6 +264,7 @@ func (h *ApplicationHandler) Create(c *okapi.Context, req *CreateAppRequest) err
 		NetworkIDs: req.Body.NetworkIDs, Ports: toPortSpecs(req.Body.Ports),
 		Command: req.Body.Command, Port: req.Body.Port,
 		MemoryBytes: req.Body.MemoryBytes, NanoCPUs: req.Body.NanoCPUs,
+		GPUCount: req.Body.GPUCount, GPUKind: req.Body.GPUKind,
 		RestartPolicy:        models.RestartPolicy(req.Body.RestartPolicy),
 		ImagePullPolicy:      models.ImagePullPolicy(req.Body.ImagePullPolicy),
 		RuntimeKind:          models.RuntimeKind(req.Body.RuntimeKind),
@@ -355,6 +364,8 @@ func (h *ApplicationHandler) Update(c *okapi.Context, req *UpdateAppRequest) err
 	app.Port = req.Body.Port
 	app.MemoryBytes = req.Body.MemoryBytes
 	app.NanoCPUs = req.Body.NanoCPUs
+	app.GPUCount = req.Body.GPUCount
+	app.GPUKind = req.Body.GPUKind
 	if req.Body.RestartPolicy != "" {
 		app.RestartPolicy = models.RestartPolicy(req.Body.RestartPolicy)
 	}
@@ -1089,7 +1100,8 @@ func (h *ApplicationHandler) mapErr(c *okapi.Context, err error) error {
 	case errors.Is(err, application.ErrNameInvalid):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, application.ErrImageRequired), errors.Is(err, application.ErrGitRepoRequired),
-		errors.Is(err, application.ErrBuildConfigOnImage), errors.Is(err, application.ErrInvalidBuildMethod):
+		errors.Is(err, application.ErrBuildConfigOnImage), errors.Is(err, application.ErrInvalidBuildMethod),
+		errors.Is(err, application.ErrInvalidGPUCount):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, application.ErrResourceCap), errors.Is(err, application.ErrClusterDisabled),
 		errors.Is(err, application.ErrLocalVolumeReplicated), errors.Is(err, application.ErrTooManyReplicas),

@@ -34,6 +34,9 @@ func (h *AdminRunnerHandler) requireCreateCapacity(c *okapi.Context) error {
 	if h.ee.Mutable(enterprise.FlagPlatformRunners) {
 		return nil // unlimited shared pool
 	}
+	if enterprise.CommunityRunnerLimit < 0 {
+		return nil
+	}
 	runners, err := h.svc.ListShared()
 	if err != nil {
 		return c.AbortInternalServerError("failed to count runners", err)

@@ -123,6 +123,15 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Summary:     "Disable a user's two-factor auth",
 			Response:    &dto.Response[dto.MessageData]{},
 		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/users/{id}/reset-password",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminUser.ResetPassword,
+			Summary:     "Reset a user's password (platform generates a new one)",
+			Response:    &dto.Response[handlers.AdminResetPasswordResponse]{},
+		},
 
 		// Workspaces (platform admin).
 		{

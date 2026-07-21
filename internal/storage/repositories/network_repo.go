@@ -15,7 +15,17 @@ type NetworkRepository struct {
 func NewNetworkRepository(db *gorm.DB) *NetworkRepository { return &NetworkRepository{db: db} }
 
 func (r *NetworkRepository) Create(n *models.Network) error { return r.db.Create(n).Error }
+func (r *NetworkRepository) Update(n *models.Network) error { return r.db.Save(n).Error }
 func (r *NetworkRepository) Delete(id uint) error           { return r.db.Delete(&models.Network{}, id).Error }
+
+// ListByDriver returns every workspace network provisioned with the given Docker
+// driver, across all workspaces. Used by the bridge -> overlay migration that
+// runs when cluster mode is enabled.
+func (r *NetworkRepository) ListByDriver(driver string) ([]models.Network, error) {
+	var nets []models.Network
+	err := r.db.Where("driver = ?", driver).Order("workspace_id ASC, id ASC").Find(&nets).Error
+	return nets, err
+}
 
 func (r *NetworkRepository) FindInWorkspace(workspaceID, id uint) (*models.Network, error) {
 	var n models.Network

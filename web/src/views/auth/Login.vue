@@ -94,10 +94,15 @@ async function submit() {
   loading.value = true
   try {
     const code = step.value === 'twofactor' ? twoFactorCode.value.trim() : undefined
-    const done = await auth.login(identifier.value.trim(), password.value, code)
-    if (!done) {
+    const result = await auth.login(identifier.value.trim(), password.value, code)
+    if (result === 'twofactor') {
       // Account has 2FA — collect the code and resubmit.
       step.value = 'twofactor'
+      return
+    }
+    if (result === 'reset') {
+      // Admin-set/reset password — must set a new one before entering the console.
+      router.push({ name: 'change-password' })
       return
     }
     router.push('/')

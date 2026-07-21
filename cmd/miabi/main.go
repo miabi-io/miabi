@@ -27,6 +27,10 @@ func main() {
 		return nil
 	})
 
+	// install / update / status / uninstall. These run on the host, outside the
+	// control-plane container — which is what lets Miabi replace its own container.
+	registerStackCommands(cli)
+
 	cli.DefaultCommand("server")
 
 	if err := cli.Execute(); err != nil {

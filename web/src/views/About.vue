@@ -29,7 +29,7 @@ const editionLabel = computed(() => {
 })
 
 const resources = [
-  { label: 'Documentation', icon: 'mdi-book-open-page-variant-outline', href: 'https://github.com/miabi-io/miabi#readme' },
+  { label: 'Documentation', icon: 'mdi-book-open-page-variant-outline', href: 'https://docs.miabi.io' },
   { label: 'Source code', icon: 'mdi-github', href: 'https://github.com/miabi-io/miabi' },
   { label: 'Report an issue', icon: 'mdi-bug-outline', href: 'https://github.com/miabi-io/miabi/issues' },
 ]

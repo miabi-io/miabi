@@ -12,9 +12,14 @@ self-hosters want, so you can see the knobs in one place:
 - **Scale-out worker** — a commented `miabi-worker` service showing how to move
   the background worker out of the panel process (and the shared-log-volume rule).
 
-> For a **minimal** production install, use [`deploy/compose.yaml`](../../deploy/)
-> (plus `deploy/install.sh` for a guided setup). This example is the "show me the
-> features" variant — everything lives in one folder you can copy anywhere.
+> This is the **only** Compose stack Miabi ships — there is no second, minimal copy
+> in `deploy/` to drift out of sync with it. Everything lives in one folder you can
+> copy anywhere. Turn the optional pieces off by leaving their `.env` keys unset.
+>
+> For a **managed** install, don't use Compose at all: `deploy/install.sh` (or
+> `docker run … install`) has Miabi create and own the stack itself, which is what
+> makes `miabi update` able to replace the control plane. See the
+> [installation docs](https://miabi.io/docs/getting-started/installation).
 
 ## Layout
 

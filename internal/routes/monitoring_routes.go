@@ -76,6 +76,30 @@ func (r *Router) monitoringRoutes() []okapi.RouteDefinition {
 			Handler:     r.h.monitoring.AppMetricsHistory,
 			Summary:     "App resource metrics history",
 		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/{workspace}/analytics",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.analytics.Report,
+			Summary:     "Workspace analytics (HTTP traffic, performance, web) — ?range=&app=",
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/{workspace}/analytics/apps",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.analytics.Apps,
+			Summary:     "Applications with analytics data in the window (for the app filter)",
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/{workspace}/analytics/export",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.analytics.Export,
+			Summary:     "Export analytics time series as CSV (Enterprise) — ?range=&app=",
+		},
 	}
 }
 

@@ -48,10 +48,12 @@ import (
 	"github.com/miabi-io/miabi/internal/services/events"
 	"github.com/miabi-io/miabi/internal/services/gitops"
 	"github.com/miabi-io/miabi/internal/services/gitrepo"
+	"github.com/miabi-io/miabi/internal/services/gpu"
 	"github.com/miabi-io/miabi/internal/services/housekeeping"
 	"github.com/miabi-io/miabi/internal/services/image"
 	"github.com/miabi-io/miabi/internal/services/job"
 	"github.com/miabi-io/miabi/internal/services/keyring"
+	"github.com/miabi-io/miabi/internal/services/logintoken"
 	"github.com/miabi-io/miabi/internal/services/mailer"
 	"github.com/miabi-io/miabi/internal/services/managedcert"
 	"github.com/miabi-io/miabi/internal/services/marketplace"
@@ -133,6 +135,9 @@ type routerHandlers struct {
 	backupSettings *handlers.WorkspaceBackupSettingsHandler
 	volumeBackup   *handlers.VolumeBackupHandler
 	monitoring     *handlers.MonitoringHandler
+	analytics      *handlers.AnalyticsHandler
+	inbox          *handlers.NotificationInboxHandler
+	alerts         *handlers.AlertHandler
 	marketplace    *handlers.MarketplaceHandler
 	registry       *handlers.RegistryHandler
 	gitRepo        *handlers.GitRepositoryHandler
@@ -181,7 +186,7 @@ type routerHandlers struct {
 
 // InitRoutes wires repositories, services, handlers, and routes onto the app. It
 // returns the port-forward service so the caller can release its live sessions on shutdown.
-func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *config.Config, producer *worker.Producer, dockerClient docker.Client, nodeService *node.Service, nodeManager *nodes.Manager, nodeGateway *edgegateway.Service, clusterService *cluster.Service, bus *eventbus.Bus, proxyMgr proxy.Manager, cronManager *cronpkg.Manager, logStore *logstore.Store) (*portforward.Service, *runners.Dispatcher) {
+func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *config.Config, producer *worker.Producer, dockerClient docker.Client, nodeService *node.Service, nodeManager *nodes.Manager, nodeGateway *edgegateway.Service, clusterService *cluster.Service, bus *eventbus.Bus, proxyMgr proxy.Manager, cronManager *cronpkg.Manager, logStore *logstore.Store) (*portforward.Service, *runners.Dispatcher, *runners.Manager) {
 	metrics.SetBuildInfo(config.Version, config.CommitID)
 
 	// Repositories
@@ -290,6 +295,20 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	runnerService.SetScheduling(runnerManager, repositories.NewRunnerLeaseRepository(db))
 	apiKeyService := auth.NewAPIKeyService(apiKeyRepo)
 	apiKeyService.SetQuota(quotaService)
+	// Login-token issuer for the web console's "Copy login command" flow: mints a
+	// short-lived personal API key and renders the CLI/curl commands. The CLI's
+	// --url is the panel ROOT (the client appends /api/v1 itself), so use the web
+	// URL — not MIABI_API_URL, which already includes /api/v1. Empty is fine: the
+	// display page falls back to the browser's own origin.
+	loginTokenServerURL := strings.TrimRight(cfg.AppWebURL, "/")
+	if loginTokenServerURL == "" {
+		loginTokenServerURL = strings.TrimSuffix(strings.TrimRight(cfg.ApiBaseURL, "/"), "/api/v1")
+	}
+	loginTokenService := logintoken.New(
+		apiKeyService, redisClient, loginTokenServerURL,
+		time.Duration(cfg.LoginTokenTTLHours)*time.Hour,
+		time.Duration(cfg.LoginTokenMaxTTLHours)*time.Hour,
+	)
 	// Subnet allocator: hands out pool subnets for every managed Docker network so
 	// creation doesn't exhaust Docker's small built-in address pools. Nil-safe —
 	// on a config error the services fall back to Docker's default pool.
@@ -307,6 +326,17 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	networkService := network.NewService(networkRepo, dockerClient)
 	networkService.SetQuota(quotaService)
 	networkService.SetAllocator(subnetAllocator)
+	// Cluster mode: a workspace network is a swarm overlay (spans nodes) instead of
+	// a node-local bridge, and existing bridges are converted when the admin enables
+	// cluster networking. Off (the single-node default), everything stays a bridge.
+	networkService.SetCluster(clusterService)
+	networkService.SetClients(nodeManager.Clients())
+	networkService.SetMigrationDeps(serverRepo, repositories.NewDatabaseRepository(db))
+	clusterService.SetNetworkMigrator(
+		func(ctx context.Context) error { _, err := networkService.Migrate(ctx); return err },
+		func(ctx context.Context) error { _, err := networkService.Rollback(ctx); return err },
+		func() int { n, _ := networkService.PendingMigration(); return n },
+	)
 	workspaceService := workspace.NewService(workspaceRepo, userRepo, networkService)
 	workspaceService.SetPlans(planRepo)
 	workspaceService.SetQuota(quotaService)
@@ -352,6 +382,15 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	auditLogger := audit.NewLogger(auditRepo, bus)
 	eventsService := events.NewService(appEventRepo, bus)
 	nodeClients := nodeManager.Clients()
+	// GPU inventory + scheduling: discovers each node's GPUs via a probe over the
+	// Docker API (no agent change), gates requests behind the AllowGPU capability +
+	// MaxGPUs quota, and resolves an app's request to concrete devices at deploy.
+	gpuService := gpu.NewService(repositories.NewGPUDeviceRepository(db), serverRepo, appRepo, nodeClients, gpu.Config{
+		Enabled:       cfg.GPUEnabled,
+		NvidiaRuntime: cfg.NvidiaRuntime,
+		ProbeImage:    cfg.GPUProbeImage,
+	})
+	gpuService.SetQuota(quotaService)
 	appService := application.NewService(appRepo, deploymentRepo, releaseRepo, volumeRepo, routeRepo, networkRepo, stackRepo, appPortRepo, appEventRepo, nodeClients, producer, eventsService)
 	// Lets the app service (re)publish host ports when a port-forward app gains a
 	// route, and clean a deleted app's bindings.
@@ -376,6 +415,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// `docker compose up -d` can't leave clustered apps publicly dark), plus once now
 	// so a fresh boot doesn't wait a whole refresh interval.
 	clusterService.SetIngressReconciler(proxyReconciler.ReconcileIngressGateway)
+	// In cluster mode the gateway reaches a remote app over the ingress overlay by
+	// its DNS alias, so no host port is published for it — and canary weights, which
+	// the port-forward upstream cannot carry, start working on remote nodes.
+	routeService.SetCluster(clusterService)
 	go func() { _ = proxyReconciler.ReconcileIngressGateway(context.Background()) }()
 	// Auto port-forwarding: when a port-forward app gains a route, redeploy it so
 	// the node actually publishes the allocated host port the gateway targets.
@@ -407,6 +450,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// route service owns the single per-workspace Goma file), so the middleware
 	// service drives the route service rather than the proxy directly.
 	middlewareService := mwservice.NewService(middlewareRepo, routeService)
+	// New workspaces are seeded with a default security-policy set (best-effort).
+	workspaceService.SetMiddlewareSeeder(middlewareService)
 	backupRepo := repositories.NewBackupRepository(db)
 	backupSettingsRepo := repositories.NewWorkspaceBackupSettingsRepository(db)
 	volumeBackupRepo := repositories.NewVolumeBackupRepository(db)
@@ -547,6 +592,19 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		platformimage.KeyRelay: cfg.ForwardRelayImage,
 	})
 	databaseService.SetImageResolver(imageResolver)
+	// The network check runs socat probe containers on each node; it reuses the
+	// port-forward relay image rather than introducing another one to pull.
+	clusterService.SetNetCheckImage(imageResolver, cfg.ForwardRelayImage)
+	// The global agent service: Swarm carries the agent to every worker, each agent
+	// registers itself from the swarm node id its own engine reports, and the manager
+	// verifies that id against its own membership before trusting the shared token.
+	clusterService.SetAgentDeps(
+		cluster.NewSettingsTokenStore(repositories.NewSettingRepository(db)),
+		nodeService,
+		cfg.ControlURL,
+		imageResolver,
+		"miabi/agent:latest", // fallback only; the image catalog is the source of truth
+	)
 	backupService.SetImageResolver(imageResolver)
 	backupService.SetLogStore(logStore) // externalize backup run logs to the shared store
 	// Volume backup: archives a volume to the workspace S3 target (volume-bkup).
@@ -678,6 +736,29 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			_ = storageService.MeasureUsage(ctx)
 		}()
 	}
+
+	// GPU inventory sweep: probe each node for its physical GPUs and upsert the
+	// device rows the admin enables. Only when GPU support is switched on, so a
+	// no-GPU fleet pays nothing.
+	if cfg.GPUEnabled && cronManager != nil {
+		gpuEvery := cfg.GPUInventoryMinutes
+		if gpuEvery <= 0 {
+			gpuEvery = 30
+		}
+		if err := cronManager.RegisterTask("gpu_inventory", 0, "GPU device inventory", fmt.Sprintf("@every %dm", gpuEvery), func() error {
+			return gpuService.Inventory(context.Background())
+		}); err != nil {
+			logger.Warn("failed to register gpu inventory task", "error", err)
+		}
+		// Seed shortly after boot (off the startup path) so discovered cards show
+		// up without waiting a full interval.
+		go func() {
+			time.Sleep(45 * time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+			_ = gpuService.Inventory(ctx)
+		}()
+	}
 	// Gate user-created route hostnames on a registered domain (generated
 	// external-access routes bypass route.Service.Create, so they're exempt).
 	routeService.SetDomains(domainRepo)
@@ -796,7 +877,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		resourcePolicies: resourcePolicyRepo,
 		h: routerHandlers{
 			health:         handlers.NewHealthHandler(db, redisClient, dockerClient),
-			auth:           handlers.NewAuthHandler(authService, userRepo, sessionRepo, auditLogger, settingsProvider, cfg.DevMode),
+			auth:           handlers.NewAuthHandler(authService, userRepo, sessionRepo, auditLogger, settingsProvider, cfg.DevMode, cfg.PasswordResetEnabled),
 			apiKey:         handlers.NewAPIKeyHandler(apiKeyService, apiKeyRepo, workspaceRepo, auditLogger),
 			usage:          handlers.NewUsageHandler(quotaService, appRepo, dbRepo, volumeRepo, networkRepo, jobRepo, apiKeyRepo, workspaceRepo, repositories.NewRunnerRepository(db)),
 			workspace:      handlers.NewWorkspaceHandler(workspaceService, accountService, auditRepo, userRepo, auditLogger, ee),
@@ -808,7 +889,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			dnsProvider:    handlers.NewDNSProviderHandler(dnsProviderService, auditLogger),
 			middleware:     handlers.NewMiddlewareHandler(middlewareService, auditLogger),
 			portBinding:    handlers.NewPortBindingHandler(portBindingService, auditLogger),
-			database:       handlers.NewDatabaseHandler(databaseService, appService, forwardService, secretService, userRepo, auditLogger),
+			database:       handlers.NewDatabaseHandler(databaseService, appService, forwardService, secretService, userRepo, auditLogger, clusterService),
 			job:            handlers.NewJobHandler(jobService, auditLogger),
 			secret:         handlers.NewSecretHandler(secretService, auditLogger),
 			certificate:    handlers.NewCertificateHandler(certificateService, auditLogger),
@@ -817,6 +898,9 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			backupSettings: handlers.NewWorkspaceBackupSettingsHandler(backupSettingsService, auditLogger),
 			volumeBackup:   handlers.NewVolumeBackupHandler(volumeBackupService, volumeRepo, volumeBackupRepo, auditLogger),
 			monitoring:     handlers.NewMonitoringHandler(monitoringService),
+			analytics:      handlers.NewAnalyticsHandler(repositories.NewAnalyticsRepository(db), ee),
+			inbox:          handlers.NewNotificationInboxHandler(repositories.NewNotificationInboxRepository(db), bus),
+			alerts:         handlers.NewAlertHandler(repositories.NewAlertRepository(db)),
 			marketplace:    handlers.NewMarketplaceHandler(marketplaceService, auditLogger),
 			registry:       handlers.NewRegistryHandler(registryService, auditLogger),
 			gitRepo:        handlers.NewGitRepositoryHandler(gitRepoService, auditLogger),
@@ -867,6 +951,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.auth.SetMailer(platformMailer)
 	r.h.workspace.SetMailer(platformMailer)
 	r.h.adminUser.SetMailer(platformMailer)
+	// "Copy login command": the auth handler mints via password re-auth; the OAuth
+	// handler mints via a forced fresh SSO login and hands off through Redis.
+	r.h.auth.SetLoginTokens(loginTokenService)
+	r.h.oauthPublic.SetLoginTokens(loginTokenService)
 	r.h.adminUser.SetEnterprise(ee) // gate the per-user workspace-limit override
 
 	// Shared execution-log store: deployment/pipeline/job log reads replay a
@@ -956,6 +1044,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Block stop/remove of managed containers from the admin node view unless the
 	// operator has explicitly disabled security enforcement (break-glass).
 	r.h.node.SetSecurityEnforcement(r.cfg.SecurityEnforcement)
+	// GPU inventory + admin device policy on the node detail page.
+	r.h.node.SetGPU(gpuService)
 
 	// Platform admins are always exempt — a misconfigured IdP must never lock the
 	// whole instance out.
@@ -1012,6 +1102,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.app.Register(r.releaseRoutes()...)
 	r.app.Register(r.webhookRoutes()...)
 	r.app.Register(r.notificationRoutes()...)
+	r.app.Register(r.inboxRoutes()...)
+	r.app.Register(r.alertRoutes()...)
 	r.app.Register(r.nodeRoutes()...)
 	r.app.Register(r.clusterRoutes()...)
 	r.app.Register(r.runnerRoutes()...)
@@ -1048,7 +1140,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		logger.Warn("proxy startup resync failed", "err", err)
 	}
 
-	return forwardService, runnerDispatcher
+	return forwardService, runnerDispatcher, runnerManager
 }
 
 // RegisterFallbacks wires NoRoute/NoMethod handlers so router-level errors use

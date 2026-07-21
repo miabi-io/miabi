@@ -6,8 +6,8 @@
 # a shared volume. It also shows how to scale the background worker out of the
 # panel process.
 #
-# This complements ../../deploy/compose.yaml (the minimal production stack).
-# Prefer that one for a bare install; use this to see the knobs.
+# This is the only Compose stack Miabi ships. For a Miabi-managed install (which is
+# what lets `miabi update` replace the control plane), use ../../deploy/install.sh.
 #
 # Quick start:
 #   cp .env.example .env         # then edit: domains + secrets (openssl rand -hex 32)
@@ -20,6 +20,12 @@
 services:
   miabi-postgres:
     image: postgres:17-alpine
+    # Platform identity: lets Miabi recognize its own stack
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: platform-db
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${MIABI_DB_USER:-miabi}
@@ -36,6 +42,11 @@ services:
 
   miabi-redis:
     image: redis:7-alpine
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: platform-cache
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     restart: unless-stopped
     command: ["redis-server", "--requirepass", "${MIABI_REDIS_PASSWORD:?set MIABI_REDIS_PASSWORD}"]
     volumes:
@@ -53,6 +64,11 @@ services:
   # from this service's environment.
   gateway:
     image: jkaninda/goma-gateway:latest
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: gateway
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     restart: unless-stopped
     depends_on:
       miabi-redis: { condition: service_healthy }
@@ -74,6 +90,11 @@ services:
   # it out). This is also the process that holds runner tunnels and builds.
   miabi:
     image: ${MIABI_IMAGE:-miabi/miabi:latest}
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: control-plane
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     restart: unless-stopped
     # Runs as root by default. To run unprivileged, uncomment `user` below — the
     # image ships a miabi account (uid/gid 10001) and its data dirs are owned by
@@ -100,6 +121,14 @@ services:
       # Public panel URL — also the CORS allowlist (production rejects "*").
       MIABI_WEB_URL: ${MIABI_WEB_URL:?set MIABI_WEB_URL, e.g. https://miabi.example.com}
       MIABI_CONTROL_URL: ${MIABI_WEB_URL}
+      # These reach the container through env_file as well, but .env.example ships them
+      # BLANK. Restating them with `:?` turns a forgotten secret into an immediate
+      # `docker compose up` abort that names the variable, rather than a container that
+      # starts, fails config validation and crash-loops — the same failure, found the
+      # slow way.
+      MIABI_JWT_SECRET: "${MIABI_JWT_SECRET:?generate one with openssl rand -hex 32}"
+      MIABI_ENCRYPTION_KEY: "${MIABI_ENCRYPTION_KEY:?generate one with openssl rand -hex 32}"
+      MIABI_ADMIN_PASSWORD: "${MIABI_ADMIN_PASSWORD:?set the first admin password}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - gateway-providers:/etc/goma/providers
@@ -143,4 +172,9 @@ volumes:
 
 networks:
   miabi:
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: control-plane
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
     name: miabi

@@ -39,7 +39,10 @@ require (
 	github.com/Azure/go-ntlmssp v0.1.0 // indirect
 	github.com/ProtonMail/go-mime v0.0.0-20230322103455-7d82a3887f2f // indirect
 	github.com/ProtonMail/gopenpgp/v2 v2.8.2 // indirect
+	github.com/axiomhq/hyperloglog v0.2.6 // indirect
+	github.com/dgryski/go-metro v0.0.0-20250106013310-edb8663e5e33 // indirect
 	github.com/go-asn1-ber/asn1-ber v1.5.8-0.20250403174932-29230038a667 // indirect
+	github.com/kamstrup/intmap v0.5.2 // indirect
 )
 
 require (

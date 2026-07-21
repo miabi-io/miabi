@@ -2,10 +2,10 @@
 import { onMounted, onBeforeUnmount, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
-import { nodesApi, type CreateNodePayload, type NodeWorkloads } from '@/api/nodes'
+import { nodesApi, type CreateNodePayload, type NodeWorkloads, type NodeGPUList, type GPUDevice } from '@/api/nodes'
 import { clusterApi } from '@/api/cluster'
 import { ACCESS_MODES, CONNECTIVITY_TYPES, nodeOptionDescription } from '@/constants/node'
-import type { Server, NodeStats, NodeHostMetrics, GatewayStatus, GatewayCandidate, GatewayUpdateProgress, StatsSample, Container, ContainerStat, DockerVolume, DockerNetwork, NodePortUsage, ClusterMember } from '@/api/types'
+import type { Server, NodeStats, NodeHostMetrics, GatewayStatus, GatewayCandidate, GatewayUpdateProgress, StatsSample, Container, ContainerStat, DockerVolume, DockerNetwork, NodePortUsage, ClusterMember, SwarmTask } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import FieldInfo from '@/components/FieldInfo.vue'
 import { copyText } from '@/utils/clipboard'
@@ -84,14 +84,82 @@ function fmtDateTime(s?: string | null): string {
 }
 
 // --- Cluster membership helpers ---
+// Role and leadership are separate facts: the Raft leader is also a manager, and
+// collapsing them into one label hid that. The leader badge is rendered alongside.
 function memberRole(m: ClusterMember): string {
-  return m.leader ? 'leader' : m.role || 'worker'
+  return m.role || 'worker'
 }
 function memberRoleClass(m: ClusterMember): string {
-  return m.leader ? 'badge-info' : 'badge-muted'
+  return m.role === 'manager' ? 'badge-info' : 'badge-muted'
 }
 function memberStateClass(m: ClusterMember): string {
   return m.state === 'ready' ? 'badge-success badge-dot' : 'badge-warning'
+}
+// Swarm reports capacity in nano-CPUs (1e9 == one core).
+function fmtCores(nanoCPUs?: number): string {
+  if (!nanoCPUs) return '—'
+  const cores = nanoCPUs / 1e9
+  return `${Number.isInteger(cores) ? cores : cores.toFixed(1)} vCPU`
+}
+// Swarm members with no Miabi agent: they run tasks fine, but apps placed on them
+// have no metrics, stats or shell — there is no Docker connection to read through.
+const unmanagedMembers = computed(() => clusterMembers.value.filter((m) => !m.managed).length)
+
+// Availability is what makes a node safe to reboot. Without drain, Swarm keeps
+// scheduling tasks onto a host that is about to disappear.
+const availBusy = ref('')
+// Drain evicts the node's tasks, so it is confirmed rather than applied on a stray
+// click of a dropdown. active/pause are harmless and apply immediately.
+const pendingDrain = ref<ClusterMember | null>(null)
+function onAvailabilityChange(m: ClusterMember, e: Event) {
+  const v = (e.target as HTMLSelectElement).value
+  if (v === 'drain') {
+    pendingDrain.value = m
+    void loadClusterMembers() // put the select back until the drain is confirmed
+    return
+  }
+  if (v === 'active' || v === 'pause') void setAvailability(m, v)
+}
+async function confirmDrain() {
+  const m = pendingDrain.value
+  pendingDrain.value = null
+  if (m) await setAvailability(m, 'drain')
+}
+async function setAvailability(m: ClusterMember, availability: 'active' | 'pause' | 'drain') {
+  availBusy.value = m.id
+  try {
+    await clusterApi.setAvailability(m.id, availability)
+    notify.success(`${m.hostname || 'Node'} set to ${availability}`)
+    await loadClusterMembers()
+  } catch (e) {
+    notify.apiError(e, 'Failed to change availability')
+  } finally {
+    availBusy.value = ''
+  }
+}
+
+// The tasks the scheduler placed on THIS node. Only the manager can enumerate them —
+// the containers live on the node, which Miabi may hold no Docker client for — so
+// this is the only view of an unmanaged member's real workload.
+const nodeTasks = ref<SwarmTask[]>([])
+const tasksLoading = ref(false)
+// This Miabi node's swarm id, resolved from the membership list.
+const swarmNodeID = computed(() => clusterMembers.value.find((m) => m.managed && m.server_id === node.value?.id)?.id ?? '')
+async function loadNodeTasks() {
+  if (!swarmNodeID.value) { nodeTasks.value = []; return }
+  tasksLoading.value = true
+  try {
+    nodeTasks.value = (await clusterApi.nodeTasks(swarmNodeID.value)).data.data ?? []
+  } catch {
+    nodeTasks.value = []
+  } finally {
+    tasksLoading.value = false
+  }
+}
+function taskStateClass(t: SwarmTask): string {
+  if (t.state === 'running') return 'badge-success badge-dot'
+  if (t.state === 'failed' || t.state === 'rejected') return 'badge-danger'
+  return 'badge-muted'
 }
 
 async function load() {
@@ -104,12 +172,17 @@ async function load() {
       notify.error('Node not found')
       return
     }
-    // The manager is the swarm authority; show the full cluster membership here.
-    if (node.value.is_local) await loadClusterMembers()
+    // Membership is a manager-side fact, but every node's page needs it: the full
+    // table is shown on the manager, and any node needs its own swarm id to list the
+    // tasks the scheduler placed there (the containers live on the node, which Miabi
+    // may hold no Docker client for — the manager is the only one who can see them).
+    await loadClusterMembers()
+    await loadNodeTasks()
     if (connected.value) {
       try {
         stats.value = (await nodesApi.stats(id)).data.data
         await loadResources()
+        await loadGpus()
         startStatsPolling()
       } catch {
         offline.value = true
@@ -129,6 +202,43 @@ async function load() {
   }
 }
 onMounted(load)
+
+// --- GPUs ---
+const gpuInfo = ref<NodeGPUList | null>(null)
+const gpuBusy = ref<number | null>(null) // device id with an action in flight
+const gpuRescanning = ref(false)
+
+async function loadGpus() {
+  try {
+    gpuInfo.value = (await nodesApi.gpus(id)).data.data
+  } catch {
+    gpuInfo.value = null
+  }
+}
+async function setGpu(dev: GPUDevice, patch: { enabled?: boolean; shared?: boolean }) {
+  gpuBusy.value = dev.id
+  try {
+    const updated = (await nodesApi.updateGpu(id, dev.id, patch)).data.data
+    if (gpuInfo.value) {
+      gpuInfo.value.devices = gpuInfo.value.devices.map((d) => (d.id === updated.id ? updated : d))
+    }
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    gpuBusy.value = null
+  }
+}
+async function rescanGpus() {
+  gpuRescanning.value = true
+  try {
+    gpuInfo.value = (await nodesApi.rescanGpus(id)).data.data
+    notify.success('GPU rescan complete')
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    gpuRescanning.value = false
+  }
+}
 
 // --- Docker resources (containers / volumes / networks) ---
 const containers = ref<Container[]>([])
@@ -314,8 +424,54 @@ const usage = computed(() => {
 
 // Helpers
 function cname(c: Container) { return ((c.names && c.names[0]) || c.id).replace(/^\//, '') }
+// Platform labels — mirror of internal/docker/labels.go. The prefix is `io.miabi.`
+// (reverse-DNS of miabi.io); this used to test `miabi.`, which matches nothing, so
+// isManaged() was false for every Miabi container: the "managed" badge never
+// rendered and Remove was never disabled.
+const LABEL_PREFIX = 'io.miabi.'
+const LABEL_ROLE = 'io.miabi.role'
+const LABEL_PART_OF = 'io.miabi.part-of'
+const LABEL_PROTECTED = 'io.miabi.protected'
+const LABEL_MANAGED_BY = 'io.miabi.managed-by'
+
 function isManaged(labels?: Record<string, string>) {
-  return Object.keys(labels ?? {}).some((k) => k.startsWith('miabi.'))
+  return Object.keys(labels ?? {}).some((k) => k.startsWith(LABEL_PREFIX))
+}
+
+// Part of Miabi's own stack (control plane, its Postgres/Redis, the gateway, an
+// agent) rather than something Miabi merely created.
+function isPlatform(labels?: Record<string, string>) {
+  return labels?.[LABEL_PART_OF] === 'miabi'
+}
+
+// The server refuses stop/restart/remove on these with a 409. Gate the buttons so
+// the refusal is visible before the click, not after it.
+function isProtected(labels?: Record<string, string>) {
+  return labels?.[LABEL_PROTECTED] === 'true'
+}
+
+const PLATFORM_ROLE_NAMES: Record<string, string> = {
+  'control-plane': 'Miabi control plane',
+  'platform-db': "Miabi's database",
+  'platform-cache': "Miabi's Redis",
+  gateway: 'Miabi gateway',
+  agent: 'Miabi agent',
+  registry: 'built-in registry',
+  'node-gateway': "this node's edge gateway",
+  'node-gateway-redis': "the edge gateway's Redis",
+}
+
+// Why a destructive action is unavailable — shown as the button's tooltip, so an
+// admin reads the reason instead of discovering it as an error toast.
+function lockReason(labels?: Record<string, string>): string {
+  if (isProtected(labels)) {
+    const what = PLATFORM_ROLE_NAMES[labels?.[LABEL_ROLE] ?? ''] ?? 'part of the Miabi platform'
+    return labels?.[LABEL_MANAGED_BY] === 'compose'
+      ? `This is the ${what}. Manage it with Docker Compose in your Miabi install directory.`
+      : `This is the ${what} and is managed from its own page.`
+  }
+  if (isManaged(labels)) return 'Managed by Miabi — remove it from its app or database instead.'
+  return ''
 }
 function fmtPorts(c: Container): string {
   const ps = (c.ports || []).filter((p) => p.public_port).map((p) => p.public_port)
@@ -796,6 +952,55 @@ const gwBadge = computed(() => {
         </div>
       </template>
 
+      <!-- GPUs: discovered devices + admin enable/share policy. Only rendered when
+           platform GPU support is on. Devices arrive disabled until opted in. -->
+      <template v-if="gpuInfo && gpuInfo.enabled">
+        <h2 class="section-title">GPUs</h2>
+        <div class="card mb-4">
+          <div class="card-header">
+            <h2>Devices <span class="text-muted" style="font-weight: 400">{{ gpuInfo.devices.length }}</span></h2>
+            <button class="btn btn-sm btn-secondary" :disabled="gpuRescanning" @click="rescanGpus">
+              <span class="mdi" :class="gpuRescanning ? 'mdi-loading mdi-spin' : 'mdi-refresh'"></span>
+              {{ gpuRescanning ? 'Rescanning…' : 'Rescan GPUs' }}
+            </button>
+          </div>
+          <div v-if="!gpuInfo.toolkit_present" class="card-body">
+            <p class="text-muted">
+              GPUs may be present, but the NVIDIA Container Toolkit is not installed on this node.
+              Install it and rescan to inventory the devices.
+            </p>
+          </div>
+          <div v-else-if="!gpuInfo.devices.length" class="card-body">
+            <p class="text-muted">No GPUs discovered on this node yet.</p>
+          </div>
+          <div v-else class="table-wrapper">
+            <table>
+              <thead><tr><th>Model</th><th>UUID</th><th>Memory</th><th>Index</th><th>Enabled</th><th>Mode</th></tr></thead>
+              <tbody>
+                <tr v-for="dev in gpuInfo.devices" :key="dev.id">
+                  <td>{{ dev.model || dev.vendor }}</td>
+                  <td><code>{{ dev.uuid }}</code></td>
+                  <td>{{ dev.memory_mb ? dev.memory_mb + ' MiB' : '—' }}</td>
+                  <td>{{ dev.index }}</td>
+                  <td>
+                    <label class="switch">
+                      <input type="checkbox" :checked="dev.enabled" :disabled="gpuBusy === dev.id" @change="setGpu(dev, { enabled: !dev.enabled })" />
+                      <span>{{ dev.enabled ? 'Enabled' : 'Disabled' }}</span>
+                    </label>
+                  </td>
+                  <td>
+                    <select class="form-select form-select-sm" :value="String(dev.shared)" :disabled="gpuBusy === dev.id || !dev.enabled" @change="setGpu(dev, { shared: ($event.target as HTMLSelectElement).value === 'true' })">
+                      <option value="true">Shared</option>
+                      <option value="false">Dedicated</option>
+                    </select>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
+
       <!-- Details -->
       <h2 class="section-title">Details</h2>
       <div class="card mb-4">
@@ -847,18 +1052,104 @@ const gwBadge = computed(() => {
         </div>
         <div class="table-wrapper">
           <table>
-            <thead><tr><th>Hostname</th><th>Role</th><th>Availability</th><th>State</th><th>Engine</th><th>Miabi node</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Hostname</th><th>Role</th><th>Capacity</th><th>Tasks</th>
+                <th>Availability</th><th>State</th><th>Engine</th><th>Miabi node</th>
+              </tr>
+            </thead>
             <tbody>
               <tr v-for="m in clusterMembers" :key="m.id">
-                <td><span class="cell-title">{{ m.hostname || '—' }}</span></td>
-                <td><span class="badge" :class="memberRoleClass(m)">{{ memberRole(m) }}</span></td>
-                <td class="cell-sub">{{ m.availability || '—' }}</td>
+                <td>
+                  <span class="cell-title">{{ m.hostname || '—' }}</span>
+                  <div v-if="m.addr || m.os" class="cell-sub">
+                    <code v-if="m.addr">{{ m.addr }}</code>
+                    <span v-if="m.addr && m.os"> · </span>
+                    <span v-if="m.os">{{ m.os }}/{{ m.arch }}</span>
+                  </div>
+                </td>
+                <td>
+                  <span class="badge" :class="memberRoleClass(m)">{{ memberRole(m) }}</span>
+                  <span v-if="m.leader" class="badge badge-info" style="margin-left: 4px" title="Raft leader">leader</span>
+                </td>
+                <!-- Capacity the scheduler packs against. It comes from the node's own
+                     report over the swarm control plane, so it is known even for an
+                     unmanaged member, where host metrics are unavailable. -->
+                <td class="cell-sub">
+                  <template v-if="m.nano_cpus || m.memory_bytes">
+                    <span v-if="m.nano_cpus"><span class="mdi mdi-cpu-64-bit"></span> {{ fmtCores(m.nano_cpus) }}</span>
+                    <span v-if="m.nano_cpus && m.memory_bytes"> · </span>
+                    <span v-if="m.memory_bytes"><span class="mdi mdi-memory"></span> {{ fmtSize(m.memory_bytes) }}</span>
+                  </template>
+                  <template v-else>—</template>
+                </td>
+                <td class="cell-sub" :title="`${m.tasks} running service task(s) scheduled here`">{{ m.tasks }}</td>
+                <!-- Availability is what makes a node safe to reboot: without drain,
+                     Swarm keeps scheduling onto a host that is about to disappear. -->
+                <td>
+                  <select
+                    class="avail-select"
+                    :value="m.availability || 'active'"
+                    :disabled="availBusy === m.id"
+                    :title="'active — schedulable · pause — no new tasks · drain — reschedule its tasks away (do this before a reboot; they do not come back on their own)'"
+                    @change="onAvailabilityChange(m, $event)"
+                  >
+                    <option value="active">active</option>
+                    <option value="pause">pause</option>
+                    <option value="drain">drain</option>
+                  </select>
+                </td>
                 <td><span class="badge" :class="memberStateClass(m)">{{ m.state || 'unknown' }}</span></td>
                 <td class="cell-sub">{{ m.engine_version || '—' }}</td>
                 <td>
                   <a v-if="m.managed" style="cursor: pointer" @click.prevent="router.push(`/admin/nodes/${m.server_id}`)" href="#">{{ m.server_name }}<span v-if="m.is_manager" class="cell-sub"> (this node)</span></a>
-                  <span v-else class="badge badge-warning" title="A swarm member with no Miabi node record (joined directly)">unmanaged</span>
+                  <span
+                    v-else
+                    class="badge badge-warning"
+                    title="A swarm member with no Miabi agent. It runs tasks fine — Swarm schedules them itself — but Miabi has no Docker connection to it, so apps placed here have no metrics, no stats and no shell. Logs and uptime still work (the manager reports them). Add it as a Miabi node to get the rest."
+                  >unmanaged</span>
                 </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <!-- The consequence of an unmanaged member is not obvious and bites at the
+             worst moment (an app that runs but shows no metrics), so state it once. -->
+        <div v-if="unmanagedMembers > 0" class="card-body text-muted text-sm" style="padding-top: 0">
+          <span class="mdi mdi-information-outline"></span>
+          {{ unmanagedMembers }} swarm member(s) have no Miabi agent. They run tasks normally, and
+          logs and uptime still work — but an app scheduled there shows no metrics, stats or shell,
+          because Miabi has no Docker connection to the node.
+        </div>
+      </div>
+
+      <!-- What the scheduler actually placed here. This comes from the MANAGER, not
+           from this node's Docker — so it works even when the node is offline or has
+           no Miabi agent, which is exactly when the containers list below is empty
+           and you would otherwise conclude the node is doing nothing. -->
+      <div v-if="swarmNodeID" class="card mb-4">
+        <div class="card-header">
+          <h2>Cluster tasks <span class="text-muted" style="font-weight: 400">{{ nodeTasks.length }}</span></h2>
+          <span class="text-muted text-sm">Service replicas the Swarm scheduler placed on this node.</span>
+        </div>
+        <div v-if="tasksLoading" class="card-body text-muted text-sm">Loading…</div>
+        <div v-else-if="nodeTasks.length === 0" class="card-body text-muted text-sm">
+          No service tasks are scheduled here.
+        </div>
+        <div v-else class="table-wrapper">
+          <table>
+            <thead><tr><th>Service</th><th>Image</th><th>State</th><th>Desired</th><th>Updated</th></tr></thead>
+            <tbody>
+              <tr v-for="t in nodeTasks" :key="t.id">
+                <td class="cell-title">
+                  {{ t.service_name || '—' }}<span v-if="t.slot" class="cell-sub"> · replica {{ t.slot }}</span>
+                  <div v-if="t.error" class="cell-sub text-bad">{{ t.error }}</div>
+                  <div v-else-if="t.message" class="cell-sub">{{ t.message }}</div>
+                </td>
+                <td class="cell-sub mono">{{ t.image || '—' }}</td>
+                <td><span class="badge" :class="taskStateClass(t)">{{ t.state }}</span></td>
+                <td class="cell-sub">{{ t.desired_state }}</td>
+                <td class="cell-sub">{{ t.updated_at ? new Date(t.updated_at).toLocaleString() : '—' }}</td>
               </tr>
             </tbody>
           </table>
@@ -1020,7 +1311,10 @@ const gwBadge = computed(() => {
                   <td>
                     <div class="name-cell">
                       <span class="trunc" :title="cname(c)">{{ cname(c) }}</span>
-                      <span v-if="isManaged(c.labels)" class="badge badge-info" title="Managed by Miabi">managed</span>
+                      <!-- Miabi's own stack reads differently from a container Miabi
+                           merely created: it cannot be touched from here at all. -->
+                      <span v-if="isPlatform(c.labels)" class="badge badge-warning" :title="lockReason(c.labels)">platform</span>
+                      <span v-else-if="isManaged(c.labels)" class="badge badge-info" title="Managed by Miabi">managed</span>
                     </div>
                   </td>
                   <td class="cell-sub">{{ cstats[c.id] ? cstats[c.id].cpu_percent.toFixed(2) + '%' : '—' }}</td>
@@ -1030,10 +1324,14 @@ const gwBadge = computed(() => {
                   <td class="cell-sub">{{ fmtPorts(c) }}</td>
                   <td class="trunc cell-sub" :title="c.image">{{ c.image }}</td>
                   <td class="cell-sub">{{ c.status }}</td>
+                  <!-- Protected containers (the Miabi stack) are refused server-side
+                       with a 409 on stop/restart/remove alike, so all three are
+                       disabled here and say why. Stopping the platform's Postgres
+                       from this list took the whole panel down. -->
                   <td class="text-right table-actions" @click.stop>
-                    <button class="btn-icon btn-icon-muted" title="Restart" aria-label="Restart" :disabled="cbusy === c.id" @click="containerAction(c, 'restartContainer', 'Restarted')"><span class="mdi mdi-restart"></span></button>
-                    <button v-if="c.state === 'running'" class="btn-icon btn-icon-muted" title="Stop" aria-label="Stop" :disabled="cbusy === c.id" @click="containerAction(c, 'stopContainer', 'Stopped')"><span class="mdi mdi-stop"></span></button>
-                    <button class="btn-icon btn-icon-danger" :title="isManaged(c.labels) ? 'Managed by Miabi' : 'Remove'" :aria-label="isManaged(c.labels) ? 'Managed by Miabi' : 'Remove'" :disabled="cbusy === c.id || isManaged(c.labels)" @click="toRemoveContainer = c"><span class="mdi mdi-delete-outline"></span></button>
+                    <button class="btn-icon btn-icon-muted" :title="isProtected(c.labels) ? lockReason(c.labels) : 'Restart'" :aria-label="isProtected(c.labels) ? lockReason(c.labels) : 'Restart'" :disabled="cbusy === c.id || isProtected(c.labels)" @click="containerAction(c, 'restartContainer', 'Restarted')"><span class="mdi mdi-restart"></span></button>
+                    <button v-if="c.state === 'running'" class="btn-icon btn-icon-muted" :title="isProtected(c.labels) ? lockReason(c.labels) : 'Stop'" :aria-label="isProtected(c.labels) ? lockReason(c.labels) : 'Stop'" :disabled="cbusy === c.id || isProtected(c.labels)" @click="containerAction(c, 'stopContainer', 'Stopped')"><span class="mdi mdi-stop"></span></button>
+                    <button class="btn-icon btn-icon-danger" :title="lockReason(c.labels) || 'Remove'" :aria-label="lockReason(c.labels) || 'Remove'" :disabled="cbusy === c.id || isManaged(c.labels) || isProtected(c.labels)" @click="toRemoveContainer = c"><span class="mdi mdi-delete-outline"></span></button>
                   </td>
                   <td class="cell-sub">{{ statsUpdatedAt ? new Date(statsUpdatedAt).toLocaleTimeString() : '—' }}</td>
                 </tr>
@@ -1348,6 +1646,24 @@ const gwBadge = computed(() => {
       </div>
     </Teleport>
 
+    <!-- Drain evicts the node's tasks now, and — the part Swarm never tells you —
+         does not put them back when the node returns to active. Setting a node active
+         only makes it eligible again; existing tasks stay where they were rescheduled
+         until something forces a move. Drain a node for a reboot, bring it back, and
+         your cluster is quietly lopsided with no indication why. -->
+    <ConfirmDialog
+      :open="!!pendingDrain"
+      :title="`Drain ${pendingDrain?.hostname || 'node'}?`"
+      message="Swarm reschedules this node's service tasks onto other nodes now, and places no new ones here. This is what makes the node safe to reboot.
+
+Note: setting it back to Active does NOT move the tasks back. Swarm never rebalances on its own — they stay where they were rescheduled until a redeploy, a scale, or a drain of their new node moves them again."
+      confirm-label="Drain node"
+      variant="danger"
+      :busy="availBusy === pendingDrain?.id"
+      @confirm="confirmDrain"
+      @cancel="pendingDrain = null"
+    />
+
     <ConfirmDialog
       :open="showTeardown"
       title="Tear down gateway"
@@ -1506,4 +1822,19 @@ code { font-family: 'JetBrains Mono', monospace; font-size: 12px; background: va
 .upgrade-step.is-todo { opacity: 0.6; }
 .gw-update-fail { display: flex; gap: 10px; align-items: flex-start; color: var(--danger-700, #b91c1c); }
 .gw-update-fail .mdi { font-size: 20px; line-height: 1.2; }
+
+.avail-select {
+  font-size: 12px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+}
+.text-bad {
+  color: var(--danger, #b91c1c);
+}
+.mono {
+  font-family: var(--font-mono, monospace);
+}
 </style>

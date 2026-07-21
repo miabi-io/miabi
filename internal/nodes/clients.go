@@ -6,6 +6,7 @@
 package nodes
 
 import (
+	"context"
 	"errors"
 	"sync"
 
@@ -109,6 +110,62 @@ func (c *Clients) For(serverID uint) (docker.Client, error) {
 		return nil, ErrNodeOffline
 	}
 	return cl, nil
+}
+
+// ErrTaskUnreachable is returned when a swarm service HAS a running task, but no
+// engine we hold a client for can see its container — Swarm placed it on a node
+// with no Miabi agent (an "unmanaged" swarm member).
+//
+// Such a node runs the workload perfectly well: Swarm ships the task to it over the
+// swarm control plane and never involves Miabi. But anything that must read the
+// container itself (stats, exec, top) has no engine to read it through. Logs are the
+// exception — the manager aggregates them (docker.StreamServiceLogs).
+//
+// It is deliberately distinct from docker.ErrNotFound ("nothing is running"):
+// reporting "no active container" for a service Swarm reports as 1/1 is simply
+// false, and sends the user looking for the wrong problem.
+var ErrTaskUnreachable = errors.New("the service's task runs on a swarm node with no Miabi agent")
+
+// ForServiceTask resolves the engine and container id of a task of the named swarm
+// service, wherever the scheduler placed it.
+//
+// A service app has no fixed node: Swarm places its task on whichever node it
+// likes, and ONLY that node's engine can see the resulting container. The manager
+// can enumerate a service's tasks but cannot read their containers.
+//
+// Correlating the task's swarm node id back to a Miabi node is not reliable —
+// Server.SwarmNodeID is only persisted when Miabi itself joined the node to the
+// swarm, and is empty for a node that joined any other way. So ask the engines
+// directly: the local one first (free, and the common case), then each connected
+// node. Exactly one node runs a given task, so the first hit is it.
+//
+// Returns ErrTaskUnreachable when the service is running but on a node we cannot
+// see, and docker.ErrNotFound when nothing is running at all.
+func (c *Clients) ForServiceTask(ctx context.Context, serviceName string) (docker.Client, string, error) {
+	c.mu.RLock()
+	engines := make([]docker.Client, 0, len(c.remote)+1)
+	if c.local != nil {
+		engines = append(engines, c.local) // local first: free, and the common case
+	}
+	for _, cl := range c.remote {
+		engines = append(engines, cl)
+	}
+	c.mu.RUnlock()
+
+	for _, dc := range engines {
+		if cid, err := dc.ServiceTaskContainerID(ctx, serviceName); err == nil && cid != "" {
+			return dc, cid, nil
+		}
+	}
+	// No engine has it. Ask the manager whether the service is running anyway: if it
+	// is, the task sits on a node we hold no client for, and saying "nothing is
+	// running" would be a lie.
+	if c.local != nil {
+		if st, err := c.local.ServiceInspect(ctx, serviceName); err == nil && st.RunningTasks > 0 {
+			return nil, "", ErrTaskUnreachable
+		}
+	}
+	return nil, "", docker.ErrNotFound
 }
 
 // Connected reports whether a node currently has a usable Docker client.

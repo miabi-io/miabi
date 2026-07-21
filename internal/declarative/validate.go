@@ -193,6 +193,9 @@ func (r *Resource) validateApplication() error {
 		if _, err := a.Resources.NanoCPUs(); err != nil {
 			return fmt.Errorf("application %q: %w", r.Metadata.Name, err)
 		}
+		if a.Resources.GPU < 0 || a.Resources.GPU > 64 {
+			return fmt.Errorf("application %q: invalid gpu %d (must be 0-64)", r.Metadata.Name, a.Resources.GPU)
+		}
 	}
 	return nil
 }

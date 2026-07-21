@@ -87,6 +87,14 @@ export function sseUrl(path: string): string {
   return new URL(`${origin}${base}${path}`).toString()
 }
 
+// Absolute API URL for a same-origin file download (the session cookie is sent
+// automatically, so an anchor/href works with no token in the URL).
+export function apiUrl(path: string): string {
+  const base = (import.meta.env.VITE_API_URL || '/api/v1') as string
+  const origin = base.startsWith('http') ? '' : window.location.origin
+  return new URL(`${origin}${base}${path}`).toString()
+}
+
 // WebSocket URL. The browser sends the session cookie on the same-origin
 // handshake, so the JWT no longer needs to be carried as a query param.
 export function wsUrl(path: string): string {

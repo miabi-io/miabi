@@ -34,13 +34,7 @@ var ErrInvalidConfig = errors.New("gateway config is not valid YAML")
 
 const (
 	// ContainerName is the gateway container's name on the node.
-	ContainerName = "mb-node-gateway"
-	// CentralContainerName is the compose-managed central gateway's container name
-	// on the manager (pinned by deploy/compose.yaml). It is distinct from
-	// ContainerName ("mb-node-gateway"), which names gateways Miabi deploys on
-	// remote edge nodes — the central manager gateway is the compose `gateway`
-	// service, not a Miabi-deployed edge gateway. Discovery prefers the role label
-	// (CentralRoleValue) and falls back to this name.
+	ContainerName        = "mb-node-gateway"
 	CentralContainerName = "miabi-gateway"
 	// CentralRoleValue is the docker.LabelRole value the compose gateway carries so
 	// Miabi can find it by identity regardless of the compose project name.
@@ -584,6 +578,21 @@ func (s *Service) runGateway(ctx context.Context, dc docker.Client, srv *models.
 		Mounts:   mounts,
 		Networks: []string{s.network},
 		Labels:   s.labels(srv),
+		// Goma answers /healthz on its HTTP port. Probed on the loopback INSIDE the
+		// container, so it reports "Goma is serving" rather than "the host's :80 is
+		// reachable" — and so the test container of a SafeUpdate, which publishes no
+		// ports, is checked exactly like the live one.
+		//
+		// Until now the node's gateway had no health signal at all: the node page could
+		// only say the container was running, which a Goma that boots and then fails to
+		// serve also satisfies.
+		Healthcheck: &docker.HealthcheckSpec{
+			Test:        []string{"CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null 2>&1 || exit 1"},
+			Interval:    10 * time.Second,
+			Timeout:     5 * time.Second,
+			Retries:     5,
+			StartPeriod: 15 * time.Second,
+		},
 	}
 	if publishPorts {
 		spec.Ports = map[string]string{"80/tcp": "80", "443/tcp": "443"}
@@ -637,7 +646,7 @@ func (s *Service) ensureNodeRedis(ctx context.Context, dc docker.Client, srv *mo
 		cmd = append(cmd, "--requirepass", password)
 	}
 	labels := s.labels(srv)
-	labels[docker.LabelRole] = "node-gateway-redis"
+	labels[docker.LabelRole] = docker.RoleNodeGatewayRedis
 	_ = dc.RemoveContainer(ctx, RedisContainer, true)
 	if _, err := dc.RunContainer(ctx, docker.RunSpec{
 		Name:     RedisContainer,
@@ -661,14 +670,14 @@ func (s *Service) Teardown(ctx context.Context, dc docker.Client) {
 }
 
 // labels tag the gateway as platform infrastructure owned by the system
-// workspace, so it is attributable in inventory and never treated as a user app.
+// workspace, so it is attributable in inventory, never treated as a user app, and
+// never offered for import or stopped from the containers list.
 func (s *Service) labels(srv *models.Server) map[string]string {
-	l := map[string]string{
-		docker.LabelRole: "node-gateway",
-		docker.LabelNode: srv.Slug,
-	}
+	extra := map[string]string{docker.LabelNode: srv.Slug}
 	if ws, err := s.workspaces.FindSystem(); err == nil {
-		l[docker.LabelWorkspace] = fmt.Sprintf("%d", ws.ID)
+		extra[docker.LabelWorkspace] = fmt.Sprintf("%d", ws.ID)
 	}
-	return l
+	// managed-by=miabi: unlike the central gateway, Miabi provisions this one itself
+	// and may freely recreate it (that is what SafeUpdate does).
+	return docker.PlatformLabels(docker.RoleNodeGateway, docker.ManagedByMiabi, extra)
 }

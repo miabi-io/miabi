@@ -31,6 +31,11 @@ import (
 type Clients interface {
 	For(serverID uint) (docker.Client, error)
 	LocalID() uint
+	// SelfContainerID is Miabi's own container on the node (the control plane
+	// locally, the agent remotely), or "" when it cannot be determined. Discovery
+	// uses it to find the Compose project the platform stack runs under — see
+	// platformComposeProject.
+	SelfContainerID(serverID uint) string
 }
 
 // Service implements discovery + import of pre-existing Docker resources.
@@ -145,9 +150,17 @@ func (s *Service) Discover(ctx context.Context, serverID uint) (*Importable, err
 	volUsedBy := map[string][]string{}
 	netUsedBy := map[string][]string{}
 
+	// The Compose project Miabi itself runs under, so an UNLABELED stack (installed
+	// before platform labels) is still shielded. Compose stamps the project on the
+	// containers, volumes and networks alike, so this one lookup covers all three.
+	project := s.platformComposeProject(ctx, serverID, dc)
+
 	for i := range containers {
 		c := containers[i]
-		if isManaged(c.Labels) {
+		// Skip anything Miabi manages — and anything Miabi IS. Until platform labels
+		// existed this checked only isManaged(), so the unlabeled compose stack
+		// (miabi-postgres, miabi-redis, the control plane) was offered for import.
+		if notImportable(c.Labels, containerName(c)) || inPlatformProject(c.Labels, project) {
 			continue
 		}
 		cfg, ierr := dc.InspectContainerConfig(ctx, c.ID)
@@ -166,7 +179,7 @@ func (s *Service) Discover(ctx context.Context, serverID uint) (*Importable, err
 
 	for i := range dockerVolumes {
 		v := dockerVolumes[i]
-		if isManaged(v.Labels) || isMiabiName(v.Name) {
+		if notImportable(v.Labels, v.Name) || inPlatformProject(v.Labels, project) {
 			continue
 		}
 		out.Volumes = append(out.Volumes, ImportableVolume{
@@ -177,7 +190,7 @@ func (s *Service) Discover(ctx context.Context, serverID uint) (*Importable, err
 
 	for i := range dockerNetworks {
 		n := dockerNetworks[i]
-		if systemNetworks[n.Name] || isManaged(n.Labels) || isMiabiName(n.Name) {
+		if systemNetworks[n.Name] || notImportable(n.Labels, n.Name) || inPlatformProject(n.Labels, project) {
 			continue
 		}
 		out.Networks = append(out.Networks, ImportableNetwork{
@@ -391,6 +404,15 @@ func (s *Service) importContainer(ctx context.Context, actorID, wsID, serverID u
 	cfg, err := dc.InspectContainerConfig(ctx, it.Ref)
 	if err != nil {
 		r.Status, r.Message = statusFailed, "inspect: "+err.Error()
+		return r
+	}
+	// Discovery already filters these out, but Import takes container refs straight
+	// from the request — so re-check here rather than trust the caller's list. A
+	// stale page, or a hand-made request, must not be able to import the platform's
+	// own database as an application.
+	if notImportable(cfg.Labels, strings.TrimPrefix(cfg.Name, "/")) ||
+		inPlatformProject(cfg.Labels, s.platformComposeProject(ctx, serverID, dc)) {
+		r.Status, r.Message = statusFailed, "this container is part of the Miabi platform and cannot be imported"
 		return r
 	}
 	if s.containerImported(cfg.ID) {
@@ -631,11 +653,87 @@ func isManaged(labels map[string]string) bool {
 	return docker.IsManaged(labels)
 }
 
-// isMiabiName reports whether a volume/network name follows a Miabi
-// naming convention (mb-*), so the platform's own unlabeled resources are not
-// offered for import.
+// notImportable reports whether a Docker resource must never be offered for
+// import: it is already managed by Miabi, or it IS Miabi.
+//
+// The second half is the one that bites. Miabi's own stack (control plane,
+// Postgres, Redis, gateway) is deployed by compose — from outside Miabi — so
+// before platform labels existed it carried no io.miabi.* key at all, isManaged()
+// was false for it, and discovery happily offered `miabi-postgres` as an importable
+// application. Importing it creates an Application record pointing at the
+// platform's own database, which the deploy worker then believes it owns and may
+// recreate.
+//
+// name is checked too, not just labels: a stack deployed before this change has no
+// labels to read, and it must not become importable merely because it is old.
+func notImportable(labels map[string]string, name string) bool {
+	return isManaged(labels) || docker.IsPlatformStack(labels) || isMiabiName(name)
+}
+
+// composeProjectLabel is the key Compose stamps on every container, volume and
+// network it creates.
+const composeProjectLabel = "com.docker.compose.project"
+
+// platformComposeProject returns the Compose project Miabi's own stack runs under
+// on this node, or "" when it cannot be determined.
+//
+// This is the shield for a stack deployed BEFORE platform labels existed, and it
+// cannot be done by name. Compose only pins container_name on the gateway; the rest
+// get generated names of the form <project>-<service>-<n> — the platform's Postgres
+// is really "miabi-miabi-postgres-1", not "miabi-postgres" — and the project is the
+// install directory, so it is not knowable up front.
+//
+// But Miabi always knows its OWN container, and every sibling in the stack carries
+// the same com.docker.compose.project. So: ask the control plane which project it is
+// in, and everything in that project is the Miabi stack.
+//
+// Remotely, self is the agent (started by `docker run`, no Compose project), so this
+// yields "" and the label/name shields carry the load — which is correct, since the
+// platform stack does not run on a worker node.
+func (s *Service) platformComposeProject(ctx context.Context, serverID uint, dc docker.Client) string {
+	self := s.clients.SelfContainerID(serverID)
+	if self == "" {
+		return ""
+	}
+	cfg, err := dc.InspectContainerConfig(ctx, self)
+	if err != nil {
+		return ""
+	}
+	return cfg.Labels[composeProjectLabel]
+}
+
+// inPlatformProject reports whether a resource belongs to the Compose project the
+// Miabi stack itself runs under. project == "" disables the check.
+func inPlatformProject(labels map[string]string, project string) bool {
+	if project == "" {
+		return false
+	}
+	return labels[composeProjectLabel] == project
+}
+
+// containerName returns a container's primary name without Docker's leading "/",
+// or "" when it has none.
+func containerName(c docker.Container) string {
+	if len(c.Names) == 0 {
+		return ""
+	}
+	return strings.TrimPrefix(c.Names[0], "/")
+}
+
+// isMiabiName reports whether a container/volume/network name follows a Miabi
+// naming convention, so the platform's own resources are not offered for import
+// even when unlabeled (a stack installed before platform labels).
+//
+// Compose prefixes volume and network names with the project name, so the platform
+// volumes surface as e.g. "miabi_pgdata" — hence the miabi_ prefix as well as the
+// bare names compose pins via container_name.
 func isMiabiName(name string) bool {
-	return strings.HasPrefix(name, "mb-") || name == "miabi"
+	name = strings.TrimPrefix(name, "/") // container names arrive as "/miabi-postgres"
+	switch name {
+	case "miabi", "miabi-postgres", "miabi-redis", "miabi-gateway", "miabi-agent":
+		return true
+	}
+	return strings.HasPrefix(name, "mb-") || strings.HasPrefix(name, "miabi_")
 }
 
 // isSecretKey flags env keys that look sensitive, for the discovery preview.

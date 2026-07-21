@@ -40,12 +40,20 @@ type Manager struct {
 
 	mu       sync.Mutex
 	sessions map[uint]*yamux.Session
+	onStatus func(r *models.Runner, online bool)
 }
 
 // NewManager creates a runner connection manager backed by the runner service
 // (for status persistence).
 func NewManager(state connectionState) *Manager {
 	return &Manager{state: state, sessions: map[uint]*yamux.Session{}}
+}
+
+// SetOnStatusChange registers a hook fired when a runner comes online (tunnel
+// connected) or goes offline (tunnel dropped). Used by alerting to raise/resolve
+// a "runner offline" alert. Best-effort: run in a goroutine, must not block.
+func (m *Manager) SetOnStatusChange(fn func(r *models.Runner, online bool)) {
+	m.onStatus = fn
 }
 
 // Handle owns an authenticated runner WebSocket: it builds the tunnel, marks the
@@ -66,6 +74,9 @@ func (m *Manager) Handle(r *models.Runner, os, arch, version, remoteIP string, w
 	m.replace(id, sess)
 	m.state.MarkConnected(id, os, arch, version, remoteIP)
 	logger.Info("runner connected", "runner", id, "name", r.Name, "version", version, "ip", remoteIP)
+	if m.onStatus != nil {
+		go m.onStatus(r, true)
+	}
 
 	stop := make(chan struct{})
 	go m.heartbeat(id, os, arch, version, remoteIP, stop)
@@ -76,6 +87,9 @@ func (m *Manager) Handle(r *models.Runner, os, arch, version, remoteIP string, w
 	m.state.MarkDisconnected(id)
 	m.forget(id, sess)
 	logger.Info("runner disconnected", "runner", id, "name", r.Name)
+	if m.onStatus != nil {
+		go m.onStatus(r, false)
+	}
 }
 
 // Connected reports whether a runner currently has a live tunnel.

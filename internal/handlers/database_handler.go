@@ -30,10 +30,23 @@ type DatabaseHandler struct {
 	secrets *secret.Service
 	users   *repositories.UserRepository
 	audit   *audit.Logger
+	cluster ClusterCap
 }
 
-func NewDatabaseHandler(svc *database.Service, apps *application.Service, forward *portforward.Service, secrets *secret.Service, users *repositories.UserRepository, auditLog *audit.Logger) *DatabaseHandler {
-	return &DatabaseHandler{svc: svc, apps: apps, forward: forward, secrets: secrets, users: users, audit: auditLog}
+// NewDatabaseHandler builds the handler. cluster may be nil (never cluster mode),
+// in which case the co-location guards below always apply.
+func NewDatabaseHandler(svc *database.Service, apps *application.Service, forward *portforward.Service, secrets *secret.Service, users *repositories.UserRepository, auditLog *audit.Logger, cluster ClusterCap) *DatabaseHandler {
+	return &DatabaseHandler{svc: svc, apps: apps, forward: forward, secrets: secrets, users: users, audit: auditLog, cluster: cluster}
+}
+
+// crossNodeOK reports whether an app may attach to a database on another node.
+// Only in cluster mode: the workspace network is then a swarm overlay, so the
+// instance's DNS alias resolves and connects from any node. Without it, every
+// workspace network is a node-local bridge and a cross-node attach would produce
+// an app that deploys fine and then fails at runtime with "could not translate
+// host name" — so it is rejected up front instead.
+func (h *DatabaseHandler) crossNodeOK() bool {
+	return h.cluster != nil && h.cluster.CapCluster()
 }
 
 // --- Instances ---
@@ -382,11 +395,11 @@ func (h *DatabaseHandler) CreateDatabase(c *okapi.Context, req *CreateLogicalDat
 		return c.AbortNotFound("database not found")
 	}
 	wsID := inst.WorkspaceID
-	// Co-location: a database may only attach to an app on the same node (no
-	// cross-node service DNS yet).
-	if req.Body.ApplicationID != nil {
+	// Co-location: outside cluster mode a database may only attach to an app on the
+	// same node, because the workspace network is a node-local bridge.
+	if req.Body.ApplicationID != nil && !h.crossNodeOK() {
 		if app, aerr := h.apps.Get(wsID, *req.Body.ApplicationID); aerr == nil && app.ServerID != inst.ServerID {
-			return c.AbortBadRequest("the application is on a different node than this database")
+			return c.AbortBadRequest("the application is on a different node than this database. Enable cluster networking to run apps and databases across nodes")
 		}
 	}
 	db, err := h.svc.CreateDatabase(c.Request().Context(), wsID, inst.ID, req.Body.Name, req.Body.ApplicationID)
@@ -503,8 +516,8 @@ func (h *DatabaseHandler) AttachToApp(c *okapi.Context, req *AttachDatabaseReque
 	if err != nil {
 		return c.AbortNotFound("database instance not found")
 	}
-	if app.ServerID != inst.ServerID {
-		return c.AbortBadRequest("the application is on a different node than this database")
+	if app.ServerID != inst.ServerID && !h.crossNodeOK() {
+		return c.AbortBadRequest("the application is on a different node than this database. Enable cluster networking to run apps and databases across nodes")
 	}
 	if db.ApplicationID != nil && *db.ApplicationID != uint(appID) {
 		return c.AbortWithError(409, errors.New("this database is already attached to another application"))

@@ -109,11 +109,12 @@ type Producer struct {
 	localID    uint
 }
 
-// NewProducer creates a task producer backed by Redis.
-func NewProducer(redisAddr, redisPassword string, maxRetries int) *Producer {
+// NewProducer creates a task producer backed by Redis on the given DB index.
+func NewProducer(redisAddr, redisPassword string, redisDB, maxRetries int) *Producer {
 	client := asynq.NewClient(asynq.RedisClientOpt{
 		Addr:     redisAddr,
 		Password: redisPassword,
+		DB:       redisDB,
 	})
 	return &Producer{client: client, maxRetries: maxRetries}
 }

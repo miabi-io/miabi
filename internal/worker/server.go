@@ -9,7 +9,7 @@ import "github.com/hibiken/asynq"
 // consumeNodeQueue must be true only for the control-plane server's embedded
 // worker (which holds the agent tunnels); a standalone worker passes false so it
 // never picks up a remote-node task it cannot reach.
-func NewServer(redisAddr, redisPassword string, concurrency int, consumeNodeQueue bool) *asynq.Server {
+func NewServer(redisAddr, redisPassword string, redisDB, concurrency int, consumeNodeQueue bool) *asynq.Server {
 	queues := map[string]int{
 		QueueDeploy:  6,
 		QueueDefault: 3,
@@ -19,7 +19,7 @@ func NewServer(redisAddr, redisPassword string, concurrency int, consumeNodeQueu
 		queues[QueueNode] = 6
 	}
 	return asynq.NewServer(
-		asynq.RedisClientOpt{Addr: redisAddr, Password: redisPassword},
+		asynq.RedisClientOpt{Addr: redisAddr, Password: redisPassword, DB: redisDB},
 		asynq.Config{
 			Concurrency: concurrency,
 			Queues:      queues,

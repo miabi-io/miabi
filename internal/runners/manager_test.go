@@ -17,7 +17,7 @@ func newFakeState() *fakeState {
 }
 
 func (f *fakeState) MarkConnected(id uint, _, _, version, _ string) { f.connected[id] = version }
-func (f *fakeState) MarkDisconnected(id uint)                    { f.disconnects[id]++ }
+func (f *fakeState) MarkDisconnected(id uint)                       { f.disconnects[id]++ }
 
 // A freshly-built manager reports every runner offline and hands back no session.
 func TestManagerOfflineByDefault(t *testing.T) {

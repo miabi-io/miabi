@@ -28,8 +28,6 @@ const cacheTTL = 15 * time.Second
 // Well-known setting keys. Only a subset is enforced today; the rest are stored
 // and surfaced in the admin UI.
 const (
-	KeyRegistrationEnabled      = "registration_enabled"
-	KeyPasswordResetEnabled     = "password_reset_enabled"
 	KeyMaintenanceMode          = "maintenance_mode"
 	KeyRequireEmailVerification = "require_email_verification"
 	KeyAllowedSignupDomains     = "allowed_signup_domains"
@@ -60,8 +58,6 @@ const (
 // defaults seeds first-boot values. Keys absent here can still be created by the
 // admin via the API.
 var defaults = []models.Setting{
-	{Key: KeyRegistrationEnabled, Value: "true", Type: models.SettingTypeBool},
-	{Key: KeyPasswordResetEnabled, Value: "true", Type: models.SettingTypeBool},
 	{Key: KeyMaintenanceMode, Value: "false", Type: models.SettingTypeBool},
 	{Key: KeyRequireEmailVerification, Value: "false", Type: models.SettingTypeBool},
 	{Key: KeyAllowedSignupDomains, Value: "", Type: models.SettingTypeString},

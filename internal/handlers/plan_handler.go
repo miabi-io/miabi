@@ -47,6 +47,7 @@ type PlanBody struct {
 	MaxDatabaseInstanceSizeMB int    `json:"max_database_instance_size_mb"`
 	MaxStorageMB              int    `json:"max_storage_mb"`
 	MaxRunners                int    `json:"max_runners"`
+	MaxGPUs                   int    `json:"max_gpus"`
 	AllowCustomTLS            bool   `json:"allow_custom_tls"`
 	AllowPrivilegedHostMounts bool   `json:"allow_privileged_host_mounts"`
 	AllowShellExec            bool   `json:"allow_shell_exec"`
@@ -55,6 +56,7 @@ type PlanBody struct {
 	AllowCustomLabels         bool   `json:"allow_custom_labels"`
 	AllowPlatformRunners      bool   `json:"allow_platform_runners"`
 	AllowCustomBuilder        bool   `json:"allow_custom_builder"`
+	AllowGPU                  bool   `json:"allow_gpu"`
 	SecurityProfile           string `json:"security_profile"`          // "default" | "restricted"
 	AllowOfficialImageUser    bool   `json:"allow_official_image_user"` // exempt official-template apps from the restricted UID
 }
@@ -107,6 +109,7 @@ func (b PlanBody) apply(p *models.Plan) {
 	p.MaxDatabaseInstanceSizeMB = b.MaxDatabaseInstanceSizeMB
 	p.MaxStorageMB = b.MaxStorageMB
 	p.MaxRunners = b.MaxRunners
+	p.MaxGPUs = b.MaxGPUs
 	p.AllowCustomTLS = b.AllowCustomTLS
 	p.AllowPrivilegedHostMounts = b.AllowPrivilegedHostMounts
 	p.AllowShellExec = b.AllowShellExec
@@ -115,6 +118,7 @@ func (b PlanBody) apply(p *models.Plan) {
 	p.AllowCustomLabels = b.AllowCustomLabels
 	p.AllowPlatformRunners = b.AllowPlatformRunners
 	p.AllowCustomBuilder = b.AllowCustomBuilder
+	p.AllowGPU = b.AllowGPU
 	p.SecurityProfile = models.NormalizeSecurityProfile(b.SecurityProfile)
 	p.AllowOfficialImageUser = b.AllowOfficialImageUser
 }

@@ -5,6 +5,7 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/errdefs"
+	"github.com/docker/docker/pkg/stdcopy"
 )
 
 // ServiceSpec describes a replicated Swarm service to create or update. It is
@@ -22,11 +24,15 @@ import (
 // replicas, placement constraints, and rolling-update tuning. Swarm schedules
 // the tasks and load-balances a virtual IP across them.
 type ServiceSpec struct {
-	Name           string
-	Image          string
-	Env            []string          // KEY=VALUE
-	Cmd            []string          // command args (ContainerSpec.Args); nil keeps the image default
-	Replicas       uint64            // 0 is treated as 1
+	Name     string
+	Image    string
+	Env      []string // KEY=VALUE
+	Cmd      []string // command args (ContainerSpec.Args); nil keeps the image default
+	Replicas uint64   // 0 is treated as 1 (ignored when Global)
+	// Global runs exactly one task on EVERY node the constraints allow, including
+	// nodes that join later. It is how a per-node daemon is deployed to a swarm
+	// without touching each host: the scheduler ships it, and keeps shipping it.
+	Global         bool
 	Networks       []string          // swarm-scoped (overlay) network names to attach
 	NetworkAliases []string          // DNS aliases applied on each attached network
 	Mounts         map[string]string // volume name -> container path
@@ -40,10 +46,10 @@ type ServiceSpec struct {
 	// present at the SAME path on every node (a host-path volume under /mnt/*).
 	// Unlike Mounts (Docker named volumes) they need no driver config — the path is
 	// assumed present on each node the scheduler places a task on.
-	Binds  []ServiceBind
-	Labels map[string]string
-	MemoryBytes  int64
-	NanoCPUs     int64
+	Binds       []ServiceBind
+	Labels      map[string]string
+	MemoryBytes int64
+	NanoCPUs    int64
 	// Constraints are Swarm placement constraints, e.g. "node.role==worker" or
 	// "node.id==abc" (pin to a node).
 	Constraints []string
@@ -99,6 +105,11 @@ type ServiceStatus struct {
 	// on that node. Populated by ServiceInspect so callers can show where the
 	// scheduler actually placed the replicas (nil until inspected).
 	Placement map[string]int `json:"placement,omitempty"`
+	// StartedAt (RFC3339) is when the service's longest-running task entered the
+	// running state — the service's uptime. It comes from the swarm control plane,
+	// so it is known even for a task on a node Miabi has no Docker client for, where
+	// inspecting the container is impossible.
+	StartedAt string `json:"started_at,omitempty"`
 }
 
 // buildSwarmServiceSpec maps a Miabi ServiceSpec to the Docker SDK spec.
@@ -163,10 +174,16 @@ func buildSwarmServiceSpec(spec ServiceSpec) swarm.ServiceSpec {
 		task.Networks = append(task.Networks, swarm.NetworkAttachmentConfig{Target: spec.IngressNetwork, Aliases: aliases})
 	}
 
+	// Global mode has no replica count: one task per eligible node, forever.
+	mode := swarm.ServiceMode{Replicated: &swarm.ReplicatedService{Replicas: &replicas}}
+	if spec.Global {
+		mode = swarm.ServiceMode{Global: &swarm.GlobalService{}}
+	}
+
 	s := swarm.ServiceSpec{
 		Annotations:  swarm.Annotations{Name: spec.Name, Labels: labels},
 		TaskTemplate: task,
-		Mode:         swarm.ServiceMode{Replicated: &swarm.ReplicatedService{Replicas: &replicas}},
+		Mode:         mode,
 		EndpointSpec: &swarm.EndpointSpec{Mode: swarm.ResolutionModeVIP},
 	}
 	if spec.UpdateParallelism > 0 || spec.UpdateDelay > 0 {
@@ -267,6 +284,7 @@ func (e *engineClient) ServiceInspect(ctx context.Context, idOrName string) (Ser
 		filters.Arg("desired-state", "running"),
 	)})
 	if terr == nil {
+		var oldest time.Time
 		for _, t := range tasks {
 			if t.Status.State != swarm.TaskStateRunning {
 				continue
@@ -280,6 +298,15 @@ func (e *engineClient) ServiceInspect(ctx context.Context, idOrName string) (Ser
 				}
 				st.Placement[t.NodeID]++
 			}
+			// Uptime, from the swarm control plane rather than the container: the task
+			// may be on a node we have no Docker client for, where there is nothing to
+			// inspect. Status.Timestamp is when it entered the running state.
+			if ts := t.Status.Timestamp; !ts.IsZero() && (oldest.IsZero() || ts.Before(oldest)) {
+				oldest = ts
+			}
+		}
+		if !oldest.IsZero() {
+			st.StartedAt = oldest.UTC().Format(time.RFC3339Nano)
 		}
 	}
 	return st, nil
@@ -317,8 +344,9 @@ func (e *engineClient) ServiceRestart(ctx context.Context, idOrName string) erro
 // ServiceTaskContainerID returns the container id of a running task of the named
 // service on THIS engine (node) — the actual workload, so logs/stats/exec/top
 // can attach to it. Returns ErrNotFound when no task of the service runs here
-// (e.g. it was scheduled onto another node). A non-running task is used as a
-// fallback so a starting/exited container is still inspectable.
+// (e.g. it was scheduled onto another node) — in that case resolve the node with
+// ServiceTaskNodeID and call this on that node's engine. A non-running task is
+// used as a fallback so a starting/exited container is still inspectable.
 func (e *engineClient) ServiceTaskContainerID(ctx context.Context, serviceName string) (string, error) {
 	list, err := e.cli.ContainerList(ctx, container.ListOptions{
 		All:     true,
@@ -340,6 +368,49 @@ func (e *engineClient) ServiceTaskContainerID(ctx context.Context, serviceName s
 		return fallback, nil
 	}
 	return "", ErrNotFound
+}
+
+// ServiceEnv returns a service's environment. It is how a caller answers a question
+// about how a service was configured without re-deriving it from stored state.
+//
+// The result can carry secrets (a service's env usually does), so it is for the
+// service layer to inspect — never to return to a client. Callers must extract the
+// fact they need and discard the rest.
+func (e *engineClient) ServiceEnv(ctx context.Context, idOrName string) ([]string, error) {
+	svc, _, err := e.cli.ServiceInspectWithRaw(ctx, idOrName, types.ServiceInspectOptions{})
+	if err != nil {
+		return nil, wrapNotFound(err)
+	}
+	if cs := svc.Spec.TaskTemplate.ContainerSpec; cs != nil {
+		return cs.Env, nil
+	}
+	return nil, nil
+}
+
+// StreamServiceLogs streams a swarm service's logs, aggregated across every task
+// wherever the scheduler placed them. Must be called on a swarm MANAGER.
+//
+// This is the ONLY way to read the logs of a task running on a node Miabi has no
+// Docker client for — an "unmanaged" swarm member with no Miabi agent. The manager
+// pulls the logs over the swarm control plane, so no per-node connection is needed.
+// It also aggregates all replicas, which reading one container never could.
+func (e *engineClient) StreamServiceLogs(ctx context.Context, serviceName string, follow bool, tail string, sink func(LogLine) error) error {
+	tail = sanitizeTail(tail)
+	rc, err := e.cli.ServiceLogs(ctx, serviceName, container.LogsOptions{
+		ShowStdout: true, ShowStderr: true, Follow: follow, Tail: tail,
+	})
+	if err != nil {
+		return wrapNotFound(err)
+	}
+	defer func() { _ = rc.Close() }()
+
+	stdout := &lineWriter{stream: "stdout", sink: sink}
+	stderr := &lineWriter{stream: "stderr", sink: sink}
+	_, err = stdcopy.StdCopy(stdout, stderr, rc)
+	if errors.Is(err, errSinkStop) || errors.Is(ctx.Err(), context.Canceled) {
+		return nil
+	}
+	return err
 }
 
 // CreateOverlayNetwork ensures an attachable, encrypted overlay network exists

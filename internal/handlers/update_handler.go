@@ -48,7 +48,11 @@ func (h *UpdateHandler) Get(c *okapi.Context) error {
 		return c.AbortInternalServerError("failed to read update status", err)
 	}
 	info.CheckedAt, info.LastError = st.CheckedAt, st.LastError
-	if st.LatestVersion != "" {
+	// Gate on a fresh comparison, not on the cached row alone. The row is written by
+	// a daily cron and describes the build that was running when it last ran, so an
+	// install that upgraded an hour ago still carries the previous build's verdict —
+	// which is how the notice could offer a version older than the one running.
+	if st.LatestVersion != "" && updatecheck.IsNewer(config.Version, st.LatestVersion) {
 		info.LatestVersion = st.LatestVersion
 		info.ReleaseURL = st.ReleaseURL
 		info.PublishedAt = st.PublishedAt

@@ -69,6 +69,10 @@ type Plan struct {
 	// MaxRunners caps how many build/pipeline runners a workspace may register
 	// (its own build machines). -1 = unlimited, 0 = none.
 	MaxRunners int `json:"max_runners" gorm:"not null;default:0"`
+	// MaxGPUs caps the aggregate number of whole GPU units a workspace's *running*
+	// apps may hold at once (summed across apps, like MaxCPUCores). 0 = none,
+	// -1 = unlimited. A stopped app frees its units.
+	MaxGPUs int `json:"max_gpus" gorm:"not null;default:0"`
 
 	// Capabilities (feature gates). Default false for the same omission reason.
 	AllowCustomTLS            bool `json:"allow_custom_tls" gorm:"not null;default:false"`
@@ -108,6 +112,11 @@ type Plan struct {
 	// qualify (a tenant cannot self-declare an app official), and it never relaxes
 	// a platform-wide MIABI_FORCE_NON_ROOT_USER mandate. Off by default.
 	AllowOfficialImageUser bool `json:"allow_official_image_user" gorm:"not null;default:false"`
+	// AllowGPU gates whether this workspace's apps may request GPU devices at all.
+	// Off by default, like AllowSharedStorage: a workspace cannot request any GPU
+	// until its plan opts in. Attaching a GPU is device passthrough (privileged),
+	// so it is gated hard here and is incompatible with the restricted profile.
+	AllowGPU bool `json:"allow_gpu" gorm:"not null;default:false"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -130,6 +139,7 @@ type WorkspaceQuota struct {
 	MaxDatabaseInstanceSizeMB *int    `json:"max_database_instance_size_mb,omitempty"`
 	MaxStorageMB              *int    `json:"max_storage_mb,omitempty"`
 	MaxRunners                *int    `json:"max_runners,omitempty"`
+	MaxGPUs                   *int    `json:"max_gpus,omitempty"`
 	AllowCustomTLS            *bool   `json:"allow_custom_tls,omitempty"`
 	AllowPrivilegedHostMounts *bool   `json:"allow_privileged_host_mounts,omitempty"`
 	AllowShellExec            *bool   `json:"allow_shell_exec,omitempty"`
@@ -138,6 +148,7 @@ type WorkspaceQuota struct {
 	AllowCustomLabels         *bool   `json:"allow_custom_labels,omitempty"`
 	AllowPlatformRunners      *bool   `json:"allow_platform_runners,omitempty"`
 	AllowCustomBuilder        *bool   `json:"allow_custom_builder,omitempty"`
+	AllowGPU                  *bool   `json:"allow_gpu,omitempty"`
 	SecurityProfile           *string `json:"security_profile,omitempty"`          // nil = inherit plan
 	AllowOfficialImageUser    *bool   `json:"allow_official_image_user,omitempty"` // nil = inherit plan
 

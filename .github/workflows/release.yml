@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["v1.*"]
 
 permissions:
   contents: read
@@ -90,33 +90,13 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Default runtime (Alpine, root).
-      - name: Build and push Miabi
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          build-args: |
-            VERSION=${{ env.VERSION }}
-            COMMIT=${{ env.COMMIT }}
-            GO_TAGS=enterprise
-            LICENSE_PUBLIC_KEY=${{ vars.LICENSE_PUBLIC_KEY }}
-          tags: |
-            miabi/miabi:latest
-            miabi/miabi:${{ env.VERSION }}
-            ghcr.io/miabi-io/miabi:latest
-            ghcr.io/miabi-io/miabi:${{ env.VERSION }}
-
-      # Rootless variant: same binary + web UI on a Debian runtime that runs as an
-      # unprivileged user (docker/Dockerfile.debian).
+      # Rootless variant: same binary + web UI on the alpine runtime, running as an
+      # unprivileged user (docker/Dockerfile.rootless).
       - name: Build and push Miabi (rootless)
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/Dockerfile.debian
+          file: docker/Dockerfile.rootless
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
@@ -132,19 +112,49 @@ jobs:
             ghcr.io/miabi-io/miabi:latest-rootless
             ghcr.io/miabi-io/miabi:${{ env.VERSION }}-rootless
 
+      # Default runtime (Alpine, root).
+      - name: Build and push Miabi
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            COMMIT=${{ env.COMMIT }}
+            GO_TAGS=enterprise
+            LICENSE_PUBLIC_KEY=${{ vars.LICENSE_PUBLIC_KEY }}
+          tags: |
+            miabi/miabi:${{ env.VERSION }}
+            miabi/miabi:latest
+            ghcr.io/miabi-io/miabi:${{ env.VERSION }}
+            ghcr.io/miabi-io/miabi:latest
 
-  installer:
+
+
+  # Bump deploy/install.sh on main, via a pull request.
+  bump-installer:
     runs-on: ubuntu-latest
+    # Wait for the images. This PR is what tells main to install them, and main must
+    # never advertise a version nobody can pull
     needs: [release, image]
     permissions:
-      contents: write
+      contents: write # push the bump branch
       packages: read
+      # No pull-requests: write. The org forbids Actions from opening PRs, and the repo
+      # cannot override an org policy — so the job pushes the branch and a maintainer
+      # opens the PR from the link in the job summary.
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: main # bump main, not the tag — the tag is already cut
+          fetch-depth: 0
+
       - uses: docker/setup-buildx-action@v3
 
-      # Anonymous pulls suffice for public images; logging in keeps the check
-      # working if the GHCR package is ever made private.
+      # Anonymous pulls suffice for public images; logging in keeps the check working
+      # if the GHCR package is ever made private.
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -152,16 +162,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Stamp and attach install.sh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify every pinned image exists
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"   # docker tags drop the leading "v"
 
-          # GOMA_VERSION/RUNNER_VERSION may come from repository variables, so
-          # validate rather than trust: a typo would ship an installer pinning an
-          # image nobody published.
+          # GOMA_VERSION/RUNNER_VERSION may come from repository variables, so validate
+          # rather than trust: a typo would open a PR pinning an image nobody published.
           for v in GOMA_VERSION RUNNER_VERSION; do
             case "${!v}" in
               v[0-9]*) ;;
@@ -178,12 +185,18 @@ jobs:
               fi
               echo "  waiting for $1 (attempt ${attempt}/5)"; sleep 10
             done
-            echo "::error::$1 was never published"; exit 1
+            echo "::error::$1 was never published — refusing to bump main to a version that cannot be installed"
+            exit 1
           }
           assert_image "miabi/miabi:${VERSION}"
           assert_image "ghcr.io/miabi-io/miabi:${VERSION}"
           assert_image "jkaninda/goma-gateway:${GOMA_VERSION#v}"
           assert_image "miabi/runner:${RUNNER_VERSION#v}"
+
+      - name: Bump the pinned versions
+        id: bump
+        run: |
+          set -euo pipefail
 
           sed -i \
             -e "s|^MIABI_VERSION=.*|MIABI_VERSION=\"\${MIABI_VERSION:-${GITHUB_REF_NAME}}\"|" \
@@ -191,12 +204,69 @@ jobs:
             -e "s|^RUNNER_VERSION=.*|RUNNER_VERSION=\"\${RUNNER_VERSION:-${RUNNER_VERSION}}\"|" \
             deploy/install.sh
 
-          # Fail loudly rather than shipping an installer that still says :latest.
-          # -F (fixed string): the pattern contains `${...}`, and a `$` mid-regex
-          # is an anchor in BSD grep, so a plain -q silently never matches.
+          # deploy/install-agent.sh is deliberately untouched — see the AGENT_VERSION
+          # note at the top of this file.
+
+          # Fail loudly rather than opening a PR that still says :latest.
+          # -F (fixed string): the pattern contains `${...}`, and a `$` mid-regex is an
+          # anchor in BSD grep, so a plain -q silently never matches.
           grep -qF "MIABI_VERSION=\"\${MIABI_VERSION:-${GITHUB_REF_NAME}}\"" deploy/install.sh
           grep -qF "GOMA_VERSION=\"\${GOMA_VERSION:-${GOMA_VERSION}}\"" deploy/install.sh
           grep -qF "RUNNER_VERSION=\"\${RUNNER_VERSION:-${RUNNER_VERSION}}\"" deploy/install.sh
           bash -n deploy/install.sh
 
-          gh release upload "${GITHUB_REF_NAME}" deploy/install.sh --clobber
+          if git diff --quiet -- deploy/install.sh; then
+            echo "::notice::main already pins ${GITHUB_REF_NAME} — nothing to bump."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git --no-pager diff --stat -- deploy/install.sh
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push the bump branch
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          BRANCH="release/bump-${GITHUB_REF_NAME}"
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          git config user.name  "miabi-bot"
+          git config user.email "bot@miabi.io"
+
+          # -B and --force so re-running the workflow overwrites the branch instead of
+          # failing on one that already exists. --force-with-lease is the usual reflex,
+          # but on the *first* run there is no remote-tracking ref to lease against and
+          # it aborts with "stale info". The branch is workflow-owned (nobody else
+          # pushes to release/bump-*), so a plain force is the safe one here.
+          git checkout -B "$BRANCH"
+          git add deploy/install.sh
+          git commit -m "chore(release): pin the installer to ${GITHUB_REF_NAME}"
+          git push --force origin "$BRANCH"
+
+          # The workflow deliberately does NOT open the PR. The miabi-io org forbids
+          # GitHub Actions from creating pull requests, and the repo cannot override an
+          # org policy — so `gh pr create` could only ever fail here, and failing would
+          # paint an otherwise good release run red. A maintainer opens it from the link
+          # below; merging it is what makes this release the default install.
+          {
+            echo "### Installer bump ready for ${GITHUB_REF_NAME}"
+            echo
+            echo "\`deploy/install.sh\` is pinned on \`${BRANCH}\`. Open the PR to make it live:"
+            echo
+            echo "**https://github.com/${GITHUB_REPOSITORY}/compare/main...${BRANCH}?expand=1**"
+            echo
+            echo "| Image | Tag |"
+            echo "|---|---|"
+            echo "| \`miabi/miabi\` | \`${VERSION}\` |"
+            echo "| \`jkaninda/goma-gateway\` | \`${GOMA_VERSION#v}\` |"
+            echo "| \`miabi/runner\` | \`${RUNNER_VERSION#v}\` |"
+            echo
+            echo "Every image above was confirmed published before this branch was pushed."
+            echo "\`get.miabi.io\` serves \`deploy/install.sh\` from **main**, so until the PR is"
+            echo "merged main keeps pinning the previous release — deliberately: the installer"
+            echo "must never advertise a version before its images exist."
+            echo
+            echo "\`deploy/install-agent.sh\` is not touched; the agent releases from its own repo."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::notice::Pushed ${BRANCH}. Open the PR from the job summary."

@@ -162,7 +162,7 @@ func TestEnsureManagedReusesExisting(t *testing.T) {
 func TestImportExistingReservesOverlap(t *testing.T) {
 	s := newService(t, "10.42.0.0/16", 24)
 	dc := &fakeDocker{existing: []docker.Network{
-		{Name: "prev", Subnet: "10.42.5.0/24"}, // in pool → reserved
+		{Name: "prev", Subnet: "10.42.5.0/24"},  // in pool → reserved
 		{Name: "lan", Subnet: "192.168.1.0/24"}, // outside pool → ignored
 		{Name: "nosubnet"},                      // no subnet → ignored
 	}}

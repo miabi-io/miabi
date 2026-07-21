@@ -4,7 +4,7 @@
 
 If you discover a security vulnerability, please **do not open a public issue**.
 
-Instead, report it privately by emailing: **[jonas@miabi.io](mailto:jonas@miabi.io)**
+Instead, report it privately by emailing: **[maintainers@miabi.io](mailto:maintainers@miabi.io)**
 
 Please include as much detail as possible to help assess and reproduce the issue:
 

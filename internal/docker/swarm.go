@@ -5,8 +5,11 @@ package docker
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/swarm"
 )
 
@@ -48,6 +51,33 @@ type SwarmNode struct {
 	Reachability  string `json:"reachability,omitempty"` // reachable | unreachable (managers)
 	Addr          string `json:"addr,omitempty"`
 	EngineVersion string `json:"engine_version,omitempty"`
+	// Capacity as the swarm scheduler sees it — what it packs tasks against. It comes
+	// from the node's own report over the swarm control plane, so it is known even for
+	// a node Miabi has no Docker client for (an unmanaged member with no agent), where
+	// host metrics are otherwise unavailable.
+	NanoCPUs    int64  `json:"nano_cpus,omitempty"`    // 1e9 == one core
+	MemoryBytes int64  `json:"memory_bytes,omitempty"` // total, not used
+	OS          string `json:"os,omitempty"`           // linux | windows
+	Arch        string `json:"arch,omitempty"`         // x86_64 | aarch64 | …
+	// Tasks is how many service tasks the scheduler currently runs here — the node's
+	// load. Populated by SwarmNodes; 0 for an idle node.
+	Tasks int `json:"tasks"`
+}
+
+// SwarmTask is one task (a container the scheduler placed) of a service, as seen
+// from a manager. It is how a node's real workload is enumerated: the container
+// itself lives on the node, which Miabi may hold no Docker client for.
+type SwarmTask struct {
+	ID           string `json:"id"`
+	ServiceName  string `json:"service_name"`
+	NodeID       string `json:"node_id"`
+	Image        string `json:"image,omitempty"`
+	Slot         int    `json:"slot,omitempty"`
+	State        string `json:"state"`         // running | preparing | failed | …
+	DesiredState string `json:"desired_state"` // running | shutdown
+	Message      string `json:"message,omitempty"`
+	Err          string `json:"error,omitempty"`
+	UpdatedAt    string `json:"updated_at,omitempty"` // RFC3339
 }
 
 // SwarmJoinTokens are the secrets a node uses to join a swarm in either role.
@@ -158,6 +188,10 @@ func (e *engineClient) SwarmNodes(ctx context.Context) ([]SwarmNode, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Task load per node, in one call rather than one per node. Best-effort: a
+	// failure here leaves Tasks at 0 rather than failing the whole listing.
+	load := e.swarmTaskCounts(ctx)
+
 	out := make([]SwarmNode, 0, len(list))
 	for _, n := range list {
 		sn := SwarmNode{
@@ -168,7 +202,14 @@ func (e *engineClient) SwarmNodes(ctx context.Context) ([]SwarmNode, error) {
 			State:         string(n.Status.State),
 			Addr:          n.Status.Addr,
 			EngineVersion: n.Description.Engine.EngineVersion,
+			Tasks:         load[n.ID],
 		}
+		if r := n.Description.Resources; r.NanoCPUs > 0 || r.MemoryBytes > 0 {
+			sn.NanoCPUs = r.NanoCPUs
+			sn.MemoryBytes = r.MemoryBytes
+		}
+		sn.OS = n.Description.Platform.OS
+		sn.Arch = n.Description.Platform.Architecture
 		if n.ManagerStatus != nil {
 			sn.Leader = n.ManagerStatus.Leader
 			sn.Reachability = string(n.ManagerStatus.Reachability)
@@ -181,9 +222,102 @@ func (e *engineClient) SwarmNodes(ctx context.Context) ([]SwarmNode, error) {
 	return out, nil
 }
 
+// swarmTaskCounts maps a swarm node id to the number of tasks running on it.
+// Best-effort: an error yields an empty map, so callers simply report no load.
+func (e *engineClient) swarmTaskCounts(ctx context.Context) map[string]int {
+	tasks, err := e.cli.TaskList(ctx, types.TaskListOptions{
+		Filters: filters.NewArgs(filters.Arg("desired-state", "running")),
+	})
+	if err != nil {
+		return map[string]int{}
+	}
+	counts := make(map[string]int, len(tasks))
+	for _, t := range tasks {
+		if t.NodeID != "" && t.Status.State == swarm.TaskStateRunning {
+			counts[t.NodeID]++
+		}
+	}
+	return counts
+}
+
 // SwarmNodeRemove removes a node from the swarm's node list on the manager
 // (after the node has left). force is needed for nodes that have not gracefully
 // left. Used to keep the Nodes page free of stale "down" entries.
 func (e *engineClient) SwarmNodeRemove(ctx context.Context, nodeID string, force bool) error {
 	return e.cli.NodeRemove(ctx, nodeID, types.NodeRemoveOptions{Force: force})
+}
+
+// SwarmNodeAvailability sets a node's scheduling availability. Requires a manager.
+//
+//	active — the scheduler may place new tasks here
+//	pause  — existing tasks keep running; no new ones are placed
+//	drain  — existing tasks are rescheduled off this node, and none are placed
+//
+// Drain is what makes a node safe to reboot: without it Swarm keeps scheduling onto
+// a host that is about to disappear.
+//
+// The update is version-checked (Docker's optimistic concurrency), so it is
+// re-inspected immediately before writing rather than trusting a cached version.
+func (e *engineClient) SwarmNodeAvailability(ctx context.Context, nodeID, availability string) error {
+	var av swarm.NodeAvailability
+	switch availability {
+	case string(swarm.NodeAvailabilityActive):
+		av = swarm.NodeAvailabilityActive
+	case string(swarm.NodeAvailabilityPause):
+		av = swarm.NodeAvailabilityPause
+	case string(swarm.NodeAvailabilityDrain):
+		av = swarm.NodeAvailabilityDrain
+	default:
+		return fmt.Errorf("unsupported availability %q (want active, pause or drain)", availability)
+	}
+	n, _, err := e.cli.NodeInspectWithRaw(ctx, nodeID)
+	if err != nil {
+		return wrapNotFound(err)
+	}
+	spec := n.Spec
+	spec.Availability = av
+	return e.cli.NodeUpdate(ctx, nodeID, n.Version, spec)
+}
+
+// SwarmTasks lists the swarm's tasks, optionally filtered to one node. Requires a
+// manager. Only the manager can enumerate these: the containers live on the nodes,
+// which Miabi may hold no Docker client for.
+func (e *engineClient) SwarmTasks(ctx context.Context, nodeID string) ([]SwarmTask, error) {
+	args := filters.NewArgs()
+	if nodeID != "" {
+		args.Add("node", nodeID)
+	}
+	list, err := e.cli.TaskList(ctx, types.TaskListOptions{Filters: args})
+	if err != nil {
+		return nil, err
+	}
+	// Task -> service name, resolved once rather than per task.
+	svcs, serr := e.cli.ServiceList(ctx, types.ServiceListOptions{})
+	names := map[string]string{}
+	if serr == nil {
+		for _, s := range svcs {
+			names[s.ID] = s.Spec.Name
+		}
+	}
+	out := make([]SwarmTask, 0, len(list))
+	for _, t := range list {
+		st := SwarmTask{
+			ID:           t.ID,
+			ServiceName:  names[t.ServiceID],
+			NodeID:       t.NodeID,
+			Slot:         t.Slot,
+			State:        string(t.Status.State),
+			DesiredState: string(t.DesiredState),
+			Message:      t.Status.Message,
+			Err:          t.Status.Err,
+		}
+		if cs := t.Spec.ContainerSpec; cs != nil {
+			st.Image = cs.Image
+		}
+		if !t.Status.Timestamp.IsZero() {
+			st.UpdatedAt = t.Status.Timestamp.UTC().Format(time.RFC3339)
+		}
+		out = append(out, st)
+	}
+	return out, nil
 }

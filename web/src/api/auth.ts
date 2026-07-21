@@ -1,5 +1,5 @@
 import api from './client'
-import type { ApiResponse, AuthResponse, AuthStatus, RecoveryCodes, Session, TwoFactorSetup, User } from './types'
+import type { ApiResponse, AuthResponse, AuthStatus, LoginTokenResponse, RecoveryCodes, Session, TwoFactorSetup, User } from './types'
 
 export const authApi = {
   // Advertises which auth features are enabled (e.g. self-service password
@@ -27,6 +27,21 @@ export const authApi = {
   logout() {
     return api.post<ApiResponse<{ message: string }>>('/auth/logout')
   },
+  // Re-authenticate (credentials in the body, never the session) to mint a
+  // short-lived CLI API token. two_factor_code is required on 2FA accounts.
+  loginToken(identifier: string, password: string, twoFactorCode?: string, expiresInHours?: number) {
+    return api.post<ApiResponse<LoginTokenResponse>>('/auth/login-token', {
+      username: identifier,
+      password,
+      two_factor_code: twoFactorCode,
+      expires_in_hours: expiresInHours,
+    })
+  },
+  // Exchange a single-use hand-off reference (from the SSO login-token flow) for
+  // the minted token.
+  claimLoginToken(handoff: string) {
+    return api.post<ApiResponse<LoginTokenResponse>>('/auth/login-token/claim', { handoff })
+  },
   me() {
     return api.get<ApiResponse<User>>('/me')
   },
@@ -48,6 +63,14 @@ export const authApi = {
   changePassword(currentPassword: string, newPassword: string) {
     return api.post<ApiResponse<{ message: string }>>('/auth/change-password', {
       current_password: currentPassword,
+      new_password: newPassword,
+    })
+  },
+  // Finish a forced password change: exchange the short-lived reset token from
+  // login (plus a new password) for a real session.
+  completePasswordReset(resetToken: string, newPassword: string) {
+    return api.post<ApiResponse<AuthResponse>>('/auth/complete-password-reset', {
+      reset_token: resetToken,
       new_password: newPassword,
     })
   },

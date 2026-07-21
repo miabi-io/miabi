@@ -24,17 +24,17 @@ func TestValidateCustomHostPath(t *testing.T) {
 	}
 
 	bad := []string{
-		"",             // empty
-		"/mnt",         // the root itself, not a subpath
-		"/mnt/",        // cleans to /mnt
-		"/mnt/..",      // escapes to /
-		"/mnt/../etc",  // traversal out of /mnt
-		"/mntx/app",    // sibling prefix, not under /mnt/
-		"/etc/passwd",  // other tree
-		"/var/run/x",   // other tree
-		"mnt/app",      // relative
-		"/",            // root
-		"/mnt/a\x00b",  // NUL byte
+		"",            // empty
+		"/mnt",        // the root itself, not a subpath
+		"/mnt/",       // cleans to /mnt
+		"/mnt/..",     // escapes to /
+		"/mnt/../etc", // traversal out of /mnt
+		"/mntx/app",   // sibling prefix, not under /mnt/
+		"/etc/passwd", // other tree
+		"/var/run/x",  // other tree
+		"mnt/app",     // relative
+		"/",           // root
+		"/mnt/a\x00b", // NUL byte
 	}
 	for _, in := range bad {
 		if got, err := ValidateCustomHostPath(in); err == nil {

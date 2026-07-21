@@ -50,6 +50,42 @@ func TestRunnerQuotaWiring(t *testing.T) {
 	}
 }
 
+// TestGPUQuotaWiring covers the GPU capability + MaxGPUs limit resolving through
+// the plan, its override, and the unlimited platform plan — the same triplet as
+// every other metered resource.
+func TestGPUQuotaWiring(t *testing.T) {
+	l := limitsFromPlan(&models.Plan{MaxGPUs: 2, AllowGPU: true})
+	if got := resourceLimit(l, ResourceGPUs); got != 2 {
+		t.Errorf("gpus limit = %d, want 2", got)
+	}
+	if !l.AllowGPU {
+		t.Error("plan should grant GPU capability")
+	}
+	// Overrides win over the plan for both the limit and the capability.
+	zero := 0
+	no := false
+	got := applyOverride(l, &models.WorkspaceQuota{MaxGPUs: &zero, AllowGPU: &no})
+	if got.MaxGPUs != 0 {
+		t.Errorf("override MaxGPUs = %d, want 0 (none)", got.MaxGPUs)
+	}
+	if got.AllowGPU {
+		t.Error("override should revoke GPU capability")
+	}
+	// The unlimited (platform) plan grants GPUs without limit.
+	if u := unlimited(); u.MaxGPUs != -1 || !u.AllowGPU {
+		t.Errorf("unlimited gpus = %d / allow=%v, want -1 / true", u.MaxGPUs, u.AllowGPU)
+	}
+	// A disabled service treats the GPU capability as granted (no gating) and
+	// the GPU request check as a no-op.
+	off := NewService(nil, nil, nil, nil, nil, false)
+	if err := off.Require(1, CapGPU); err != nil {
+		t.Errorf("disabled Require(CapGPU) = %v, want nil", err)
+	}
+	if err := off.CheckGPURequest(1, 100, 0); err != nil {
+		t.Errorf("disabled CheckGPURequest = %v, want nil", err)
+	}
+}
+
 func TestCustomBuilderCapabilityWiring(t *testing.T) {
 	// Off by default in a plan; granted when the plan sets it.
 	if l := limitsFromPlan(&models.Plan{}); l.AllowCustomBuilder {

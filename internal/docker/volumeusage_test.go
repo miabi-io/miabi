@@ -12,9 +12,9 @@ import (
 func TestVolumeUsageFrom(t *testing.T) {
 	vols := []*volume.Volume{
 		{Name: "a", UsageData: &volume.UsageData{Size: 100, RefCount: 2}},
-		{Name: "nosize", UsageData: nil},           // never sized
+		{Name: "nosize", UsageData: nil},                              // never sized
 		{Name: "notcomputed", UsageData: &volume.UsageData{Size: -1}}, // df didn't compute it
-		nil,                                        // defensive
+		nil, // defensive
 		{Name: "b", UsageData: &volume.UsageData{Size: 0, RefCount: 0}}, // sized 0, reclaimable
 	}
 	got := volumeUsageFrom(vols)

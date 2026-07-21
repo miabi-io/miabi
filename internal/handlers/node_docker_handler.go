@@ -130,6 +130,13 @@ func (h *NodeHandler) guardContainerOp(c *okapi.Context, dc docker.Client, nodeI
 	switch {
 	case h.manager.Clients().IsSelfContainer(nodeID, cont.ID):
 		_ = c.AbortWithError(http.StatusConflict, errors.New("this is the Miabi control-plane/agent container and cannot be modified from the containers list"))
+	case docker.IsProtected(cont.Labels):
+		// The Miabi stack itself: its Postgres, its Redis, the central gateway. The
+		// self-check above only ever covers ONE container (the one this process runs
+		// in) — it cannot protect the database the process depends on, and it protects
+		// nothing at all on a node the control plane does not run on. Stopping
+		// miabi-postgres from the containers list took the whole platform down.
+		_ = c.AbortWithError(http.StatusConflict, errors.New(protectedMessage(cont.Labels)))
 	case h.isNodeGateway(nodeID, cont):
 		_ = c.AbortWithError(http.StatusConflict, errors.New("this is the node's edge gateway; manage it from the node's gateway page"))
 	case blockManaged && isManaged(cont.Labels):
@@ -138,6 +145,28 @@ func (h *NodeHandler) guardContainerOp(c *okapi.Context, dc docker.Client, nodeI
 		return false
 	}
 	return true
+}
+
+// protectedMessage names the component being protected, so the 409 tells the admin
+// what they just tried to break rather than only that they may not.
+func protectedMessage(labels map[string]string) string {
+	role, _ := docker.LabelValue(labels, docker.LabelRole)
+	what := map[string]string{
+		docker.RoleControlPlane:  "the Miabi control plane",
+		docker.RolePlatformDB:    "Miabi's own database",
+		docker.RolePlatformCache: "Miabi's own Redis",
+		docker.RoleGateway:       "the Miabi gateway",
+		docker.RoleAgent:         "this node's Miabi agent",
+		docker.RoleRegistry:      "the built-in registry",
+	}[role]
+	if what == "" {
+		what = "part of the Miabi platform"
+	}
+	msg := "this container is " + what + " and cannot be stopped or removed from the containers list"
+	if docker.ManagedBy(labels) == docker.ManagedByCompose {
+		msg += "; it is managed by Docker Compose (docker compose up -d in your Miabi install directory)"
+	}
+	return msg
 }
 
 // --- containers ---

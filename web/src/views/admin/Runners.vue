@@ -4,16 +4,14 @@ import { useLicenseStore } from '@/stores/license'
 import RunnersPanel from '@/components/RunnersPanel.vue'
 import { adminRunnerApi, type RunnerAdapter } from '@/api/runners'
 
-// Platform-shared runners: Community may run one shared runner; the
-// platform_runners entitlement lifts the cap to an unlimited pool. Managing the
-// pool (edit/cordon/token/delete) is always available to admins — the backend
-// only caps how many may be *registered* (and enforces it too).
+// Platform-shared runners: the shared pool is available without a cap. Managing
+// the pool (edit/cordon/token/delete) is always available to admins.
 const license = useLicenseStore()
 onMounted(() => license.load())
 
-// Mirror of enterprise.CommunityRunnerLimit.
-const COMMUNITY_SHARED_RUNNER_LIMIT = 1
-const unlimited = computed(() => license.mutable('platform_runners'))
+// Mirror of enterprise.CommunityRunnerLimit (-1 = unlimited).
+const COMMUNITY_SHARED_RUNNER_LIMIT = -1
+const unlimited = computed(() => COMMUNITY_SHARED_RUNNER_LIMIT < 0 || license.mutable('platform_runners'))
 const createLimit = computed(() => (unlimited.value ? -1 : COMMUNITY_SHARED_RUNNER_LIMIT))
 const limitNote = computed(() =>
   unlimited.value

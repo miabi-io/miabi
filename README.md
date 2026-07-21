@@ -5,8 +5,9 @@
 </p>
 
 <p align="center">
-  <strong>The open-source, self-hosted Platform-as-a-Service (PaaS)</strong><br/>
-  Multi-tenancy · GitOps · built-in registry · monitoring · backups · multi-node deployments.
+  <strong>The open-source, self-hosted PaaS for shipping apps, not infrastructure.</strong><br/>
+  Docker Compose isn't enough. Kubernetes is overkill. Miabi is the middle.<br/>
+  Multi-tenancy · GitOps · rolling &amp; canary · built-in registry · analytics · monitoring · multi-node.
 </p>
 
 <p align="center">
@@ -16,7 +17,7 @@
   <a href="#feature-comparison">Comparison</a> ·
   <a href="#architecture">Architecture</a> ·
   <a href="https://github.com/miabi-io/miabi-cli">CLI</a> ·
-  <a href="#documentation">Docs</a>
+  <a href="https://docs.miabi.io">Docs</a>
 </p>
 
 <p align="center">
@@ -59,8 +60,8 @@
 **Miabi** is a self-hosted, developer-first Platform-as-a-Service for containerized
 apps. Push an app — from a **Git repo**, a **Docker image**, or a **marketplace
 template** — and Miabi handles the rest: build, deploy, domains, **automatic
-SSL**, databases, scaling, backups, and monitoring. All from one web interface,
-in minutes, without touching a single Docker command.
+SSL**, databases, scaling, backups, monitoring, and **analytics**. All from one web
+interface, in minutes, without touching a single Docker command.
 
 It is designed as a fully self-hostable alternative to platforms like Heroku,
 Render, and Railway — giving you complete ownership of your infrastructure,
@@ -82,6 +83,17 @@ of their infrastructure.
 Whether you're deploying a single application on a VPS, running a shared hosting
 platform for hundreds of customers, or building an internal developer platform,
 Miabi provides everything you need in one integrated platform.
+
+### The gap Miabi fills
+
+**Docker Compose isn't enough** for production — no rolling updates, no rollback, no TLS, no
+multi-tenancy. **Kubernetes is overkill** — a service mesh just for canary, Argo CD or Flux just
+for GitOps, and a platform team to keep it all running. Miabi sits in the middle: production-ready
+deployments on plain Docker, with the strategies you actually need built in.
+
+| Docker Compose            | **Miabi**                    | Kubernetes                |
+| ------------------------- | :--------------------------: | ------------------------- |
+| Too little for production | **Just right**               | Too much to operate       |
 
 ### Developer-first experience
 
@@ -111,7 +123,7 @@ Miabi delivers a cloud platform experience while staying Docker-first.
 
 - Single-node and multi-node deployments
 - Optional Docker Swarm clustering
-- Rolling and canary deployments
+- **Rolling (zero-downtime) and canary deployments — no service mesh required**
 - Built-in load balancing
 - Docker import for existing applications
 - No Kubernetes cluster to operate
@@ -195,7 +207,7 @@ data, your rules.
 
 - **Pipelines** — pipeline-as-code CI/CD
 - **Build runners** — dedicated build/pipeline machines that keep build load off app-hosting nodes; a co-located built-in runner ships for single-node/homelab, and an optional "builds require a runner" guarantee keeps builds off production nodes entirely
-- **GitOps** — declarative, pull-based reconciliation from `miabi.io/v1` manifests, plus an imperative one-shot **apply**
+- **GitOps** — declarative, pull-based reconciliation from `miabi.io/v1` manifests, plus an imperative one-shot **apply** (with dry-run, diff & prune) — **no separate controller** to run (no Argo CD or Flux)
 - **Git push deploy**, stored Git + container-registry credentials, signed **webhooks**, and **notifications**
 - **Automation** — everything is REST + OpenAPI, plus a **CLI** and an official [Terraform / OpenTofu provider](https://github.com/miabi-io/terraform-provider-miabi)
 
@@ -222,46 +234,16 @@ MySQL, Redis, and MongoDB.
 - Append-only **audit log** of every mutating action, with optional **SIEM streaming** to an external pipeline (syslog / webhook, Enterprise)
 - **Admin platform** — nodes/cluster, users, plans, settings, OAuth providers, SSO (SAML / LDAP / Active Directory), license, and SIEM
 
----
+### Analytics
 
-## Feature Comparison
+Every app gets **HTTP traffic, performance, and privacy-first web analytics** in the console —
+**with zero instrumentation**. Because every request already flows through Goma Gateway, there is
+no JS snippet, no SDK, and no code change to your app.
 
-| Feature                          |    Miabi    |  Coolify  | Dokploy  | CapRover |
-| -------------------------------- | :---------: | :-------: | :------: | :------: |
-| Self-hosted                      |     ✅      |    ✅     |    ✅    |    ✅    |
-| Open Source                      | ✅  |    ✅     |    ✅    |    ✅    |
-| Web UI                           |     ✅      |    ✅     |    ✅    |    ✅    |
-| Shared hosting                   |     ✅      |    ❌     |    ❌    |    ❌    |
-| CLI                              |     ✅      |    ❌     |    ❌    |    ❌    |
-| REST API                         |     ✅      |    ✅     | Partial  | Limited  |
-| OpenAPI Documentation            |     ✅      |    ❌     |    ❌    |    ❌    |
-| Multi-tenancy                    |     ✅      |    ❌     |    ❌    |    ❌    |
-| Workspace Isolation              |     ✅      |    ❌     |    ❌    |    ❌    |
-| Organizations & Teams            |     ✅      |  Limited  |    ❌    |    ❌    |
-| RBAC                             |     ✅      |  Limited  |    ❌    |    ❌    |
-| Deploy from Git                  |     ✅      |    ✅     |    ✅    |    ✅    |
-| Deploy Docker Images             |     ✅      |    ✅     |    ✅    |    ✅    |
-| Marketplace / Templates          |     ✅      |    ✅     |    ✅    | Limited  |
-| Buildpacks (No Dockerfile)       |     ✅      |    ✅     |    ❌    |    ❌    |
-| Built-in Container Registry      |     ✅      |    ❌     |    ❌    |    ❌    |
-| Managed Databases                |     ✅      |    ✅     |    ✅    | Limited  |
-| Automatic HTTPS (Let's Encrypt)  |     ✅      |    ✅     |    ✅    |    ✅    |
-| Canary Deployments               |     ✅      |    ❌     |    ❌    |    ❌    |
-| Zero-downtime Deployments        |     ✅      |  Limited  | Limited  | Limited  |
-| Rollbacks                        |     ✅      |    ✅     | Limited  | Limited  |
-| CI/CD Pipelines                  |     ✅      |    ❌     |    ❌    |    ❌    |
-| GitOps                           |     ✅      |    ❌     |    ❌    |    ❌    |
-| Multi-node Deployments           |     ✅      |  Partial  | Partial  | Partial  |
-| Docker Swarm Support             |     ✅      |    ✅     |    ✅    |    ❌    |
-| Docker Import                    |     ✅      |    ❌     |    ❌    |    ❌    |
-| Secrets Management               |     ✅      |  Partial  | Partial  | Limited  |
-| Monitoring                       | ✅ Built-in |   Basic   |  Basic   |  Basic   |
-| Scheduled Backups                |     ✅      |  Partial  | Partial  |    ❌    |
-| Audit Logs                       |     ✅      |    ❌     |    ❌    |    ❌    |
-| API Tokens                       |     ✅      |    ✅     |    ✅    |    ❌    |
-| OAuth / OIDC                     |     ✅      |  Partial  |    ❌    |    ❌    |
-| SAML / LDAP (Enterprise)         |     ✅      |    ❌     |    ❌    |    ❌    |
-| Terraform Provider               |     ✅      |    ❌     |    ❌    |    ❌    |
+- **Traffic** — requests/sec, status mix (2xx–5xx), bandwidth in/out, and your busiest routes
+- **Performance** — p50 / p95 / p99 latency, **gateway-vs-upstream** split ("is my app slow or the gateway?"), error rate, and Apdex
+- **Web analytics** — unique visitors, top pages, referrers, countries, and device/browser families
+- **Privacy-first** — cookieless, no consent banner, IPs never stored; unique visitors via **HyperLogLog** sketches, not per-person rows — first-party and GDPR-lean
 
 ---
 
@@ -305,42 +287,43 @@ proxy that needs only an outbound connection and the local Docker socket.
 
 ## Quick Start
 
-### One-line install (production)
-
-Installs Docker if needed, fetches the production compose + config into
-`/opt/miabi`, generates secrets, and brings the stack up:
-
 ```bash
-curl -fsSL https://raw.githubusercontent.com/miabi-io/miabi/main/deploy/install.sh | sudo bash
+curl -fsSL https://get.miabi.io | sudo MIABI_DOMAIN=miabi.example.com \
+  MIABI_ADMIN_EMAIL=you@example.com bash
 ```
 
-Then edit `/opt/miabi/.env` (set your domain) and `/opt/miabi/goma/goma.yml`
-(domain + ACME email), and re-run the installer. Open your domain and register —
-**the first account becomes the platform admin**.
+Installs Docker if missing, brings up the stack, and prints the admin password.
+Then:
+
+```bash
+miabi-stack status
+miabi-stack restart
+miabi-stack update
+miabi-stack uninstall
+```
+
+### Without the script
+
+The Miabi image *is* the installer — there is no binary to install:
+
+```bash
+docker run --rm -it \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /etc/miabi:/etc/miabi \
+  miabi/miabi:1.4.0 install --domain miabi.example.com --admin-email you@example.com
+```
+
+`install`, `update`, `restart`, `status` and `uninstall` are the same command with a
+different verb.
+
+**[Installation docs](https://miabi.io/docs/getting-started/installation)** — options,
+the `/etc/miabi/stack.yaml` manifest, the built-in registry, custom gateway config, and
+running Miabi under Docker Compose instead.
 
 ### Docker Compose
 
-```bash
-git clone https://github.com/miabi-io/miabi.git && cd miabi/deploy
-cp .env.example .env   # fill in secrets + domain (openssl rand -hex 32)
-# Shared app network — created once with a roomy CIDR so it isn't capped by
-# Docker's small default pool. (The one-line install.sh does this for you.)
-docker network create --driver bridge --subnet 10.63.0.0/16 miabi
-docker compose up -d   # uses compose.yaml
-```
-
-Want the optional pieces (built-in registry, one-click wildcard app URLs,
-externalized log volume, scale-out worker) wired up in one place? See the
-full-featured [`examples/compose/`](./examples/compose/) stack.
-
-Open the dashboard at your configured domain (`https://$MIABI_DOMAIN`) once DNS
-resolves and Goma has issued a certificate. A platform admin is seeded from your
-env — default credentials:
-
-```
-Email:    admin@example.com
-Password: admin@1234   # change it after first login
-```
+Prefer to drive Compose yourself? [`examples/compose/`](./examples/compose/) brings up the same
+stack — see the [installation docs](https://miabi.io/docs/getting-started/installation#manual-install-with-docker-compose).
 
 ### Local development
 
@@ -367,19 +350,22 @@ make test       # unit + integration tests
 Try Miabi without installing anything — at **<https://demo.miabi.io>**.
 
 The demo is seeded with **two independent customers across three workspaces**, so
-you can see Miabi's core idea first-hand: **shared hosting on Docker with true
-workspace isolation** — every app, database, domain, volume, and secret belongs to
-a workspace, and one tenant can never see or reach another's resources.
+you can see Miabi's core ideas first-hand: **shared hosting on Docker with true
+workspace isolation and role-based access** — every app, database, domain, volume,
+and secret belongs to a workspace, one tenant can never see or reach another's
+resources, and a member only sees the workspaces and permissions their role grants.
 
-Sign in as either customer (**password: `MiabiDemo2026`**):
+Sign in as any of these (**password: `MiabiDemo2026`**):
 
-| Sign in as | Workspaces | Represents |
-|------------|------------|------------|
-| `admin@acme.demo.miabi.io` | **Acme Inc Prod** · **Acme Inc Dev** | one org running prod + dev in separate, isolated workspaces |
-| `admin@startup.demo.miabi.io` | **Startup Prod** | a different tenant — its resources are invisible to Acme |
+| Sign in as | Workspaces | Role | Represents |
+|------------|------------|------|------------|
+| `admin@acme.demo.miabi.io` | **Acme Inc Prod** · **Acme Inc Dev** | Owner | one org running prod + dev in separate, isolated workspaces |
+| `dev@acme.demo.miabi.io` | **Acme Inc Dev** | Developer | a teammate scoped to a single workspace — can't see Acme Inc Prod, and has only Developer permissions |
+| `admin@startup.demo.miabi.io` | **Startup Prod** | Owner | a different tenant — its resources are invisible to Acme |
 
 Switch workspaces from the workspace picker to watch the entire console re-scope;
-sign in as the other customer to confirm the isolation boundary.
+sign in as the other customer to confirm the isolation boundary, or as
+`dev@acme.demo.miabi.io` to see a single-workspace, Developer-scoped view.
 
 > [!IMPORTANT]
 > These are **workspace accounts, not the platform admin.** They can't see the
@@ -426,13 +412,57 @@ backups, monitoring, marketplace, teams, and the admin platform.
     <td width="50%" align="center"><strong>Monitoring</strong><br/><img src="https://raw.githubusercontent.com/miabi-io/miabi/main/docs/screenshots/monitoring.png" alt="Container and workspace monitoring" width="420"/></td>
   </tr>
   <tr>
+    <td width="50%" align="center"><strong>Analytics overview</strong><br/><img src="https://raw.githubusercontent.com/miabi-io/miabi/main/docs/screenshots/analytics-overview.png" alt="Analytics overview" width="420"/></td>
+    <td width="50%" align="center"><strong>Analytics http traffic</strong><br/><img src="https://raw.githubusercontent.com/miabi-io/miabi/main/docs/screenshots/analytics-http-traffic.png" alt="Analytics http-traffic" width="420"/></td>
+  </tr>
+  <tr>
     <td width="50%" align="center"><strong>Nodes &amp; cluster</strong><br/><img src="https://raw.githubusercontent.com/miabi-io/miabi/main/docs/screenshots/nodes-cluster.png" alt="Multi-node and cluster management" width="420"/></td>
     <td width="50%" align="center"><strong>Platform admin</strong><br/><img src="https://raw.githubusercontent.com/miabi-io/miabi/main/docs/screenshots/admin-platform.png" alt="Platform admin" width="420"/></td>
   </tr>
 </table>
 
 ---
+## Feature Comparison
 
+| Feature                          |    Miabi    |  Coolify  | Dokploy  | CapRover |
+| -------------------------------- | :---------: | :-------: | :------: | :------: |
+| Self-hosted                      |     ✅      |    ✅     |    ✅    |    ✅    |
+| Open Source                      | ✅  |    ✅     |    ✅    |    ✅    |
+| Web UI                           |     ✅      |    ✅     |    ✅    |    ✅    |
+| Shared hosting                   |     ✅      |    ❌     |    ❌    |    ❌    |
+| CLI                              |     ✅      |    ❌     |    ❌    |    ❌    |
+| REST API                         |     ✅      |    ✅     | Partial  | Limited  |
+| OpenAPI Documentation            |     ✅      |    ❌     |    ❌    |    ❌    |
+| Multi-tenancy                    |     ✅      |    ❌     |    ❌    |    ❌    |
+| Workspace Isolation              |     ✅      |    ❌     |    ❌    |    ❌    |
+| Organizations & Teams            |     ✅      |  Limited  |    ❌    |    ❌    |
+| RBAC                             |     ✅      |  Limited  |    ❌    |    ❌    |
+| Deploy from Git                  |     ✅      |    ✅     |    ✅    |    ✅    |
+| Deploy Docker Images             |     ✅      |    ✅     |    ✅    |    ✅    |
+| Marketplace / Templates          |     ✅      |    ✅     |    ✅    | Limited  |
+| Buildpacks (No Dockerfile)       |     ✅      |    ✅     |    ❌    |    ❌    |
+| Built-in Container Registry      |     ✅      |    ❌     |    ❌    |    ❌    |
+| Managed Databases                |     ✅      |    ✅     |    ✅    | Limited  |
+| Automatic HTTPS (Let's Encrypt)  |     ✅      |    ✅     |    ✅    |    ✅    |
+| Canary Deployments               |     ✅      |    ❌     |    ❌    |    ❌    |
+| Zero-downtime Deployments        |     ✅      |  Limited  | Limited  | Limited  |
+| Rollbacks                        |     ✅      |    ✅     | Limited  | Limited  |
+| CI/CD Pipelines                  |     ✅      |    ❌     |    ❌    |    ❌    |
+| GitOps                           |     ✅      |    ❌     |    ❌    |    ❌    |
+| Multi-node Deployments           |     ✅      |  Partial  | Partial  | Partial  |
+| Docker Swarm Support             |     ✅      |    ✅     |    ✅    |    ❌    |
+| Docker Import                    |     ✅      |    ❌     |    ❌    |    ❌    |
+| Secrets Management               |     ✅      |  Partial  | Partial  | Limited  |
+| Monitoring                       | ✅ Built-in |   Basic   |  Basic   |  Basic   |
+| Built-in Analytics (privacy-first) |   ✅      |    ❌     |    ❌    |    ❌    |
+| Scheduled Backups                |     ✅      |  Partial  | Partial  |    ❌    |
+| Audit Logs                       |     ✅      |    ❌     |    ❌    |    ❌    |
+| API Tokens                       |     ✅      |    ✅     |    ✅    |    ❌    |
+| OAuth / OIDC                     |     ✅      |  Partial  |    ❌    |    ❌    |
+| SAML / LDAP (Enterprise)         |     ✅      |    ❌     |    ❌    |    ❌    |
+| Terraform Provider               |     ✅      |    ❌     |    ❌    |    ❌    |
+
+---
 ## Ecosystem
 
 Miabi is part of a family of self-hosting tools by the same author:
@@ -459,6 +489,11 @@ Miabi is part of a family of self-hosting tools by the same author:
 
 Contributions are welcome. Please open an issue before submitting a pull request.
 
+---
+
+## Contact
+
+- Email: maintainers@miabi.io
 ---
 
 ## License

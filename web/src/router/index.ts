@@ -7,6 +7,14 @@ const routes = [
   // Not guest-gated: a reset link from email must work even if a session exists.
   { path: '/reset-password', name: 'reset-password', component: () => import('@/views/auth/ResetPassword.vue'), meta: { title: 'Reset password' } },
   { path: '/oauth/callback', name: 'oauth-callback', component: () => import('@/views/auth/OAuthCallback.vue'), meta: { title: 'Signing in' } },
+  // "Copy login command": intentionally neither guest- nor auth-gated. It forces a
+  // fresh re-authentication (even for a signed-in user) before minting a CLI token,
+  // and also handles the SSO hand-off return (?handoff=…).
+  { path: '/request-token', name: 'request-token', component: () => import('@/views/auth/RequestToken.vue'), meta: { title: 'CLI login token' } },
+  // Forced password change (admin-set/reset credential). The user holds only a
+  // short-lived reset token here, not a session; the guard gates it on a pending
+  // reset rather than on auth.
+  { path: '/change-password', name: 'change-password', component: () => import('@/views/auth/ChangePasswordRequired.vue'), meta: { title: 'Set a new password' } },
   {
     path: '/',
     component: () => import('@/layouts/DashboardLayout.vue'),
@@ -14,6 +22,11 @@ const routes = [
     children: [
       { path: '', name: 'dashboard', component: () => import('@/views/dashboard/Dashboard.vue'), meta: { title: 'Dashboard' } },
       { path: 'apps', name: 'apps', component: () => import('@/views/apps/Apps.vue'), meta: { title: 'Applications' } },
+      { path: 'analytics', name: 'analytics', component: () => import('@/views/analytics/Overview.vue'), meta: { title: 'Analytics' } },
+      { path: 'notifications', name: 'notifications-inbox', component: () => import('@/views/notifications/Inbox.vue'), meta: { title: 'Notifications', noWorkspace: true } },
+      { path: 'analytics/http', name: 'analytics-http', component: () => import('@/views/analytics/HttpTraffic.vue'), meta: { title: 'HTTP Traffic' } },
+      { path: 'analytics/performance', name: 'analytics-performance', component: () => import('@/views/analytics/Performance.vue'), meta: { title: 'Performance' } },
+      { path: 'analytics/web', name: 'analytics-web', component: () => import('@/views/analytics/WebAnalytics.vue'), meta: { title: 'Web Analytics' } },
       { path: 'apps/:id', name: 'app-detail', component: () => import('@/views/apps/AppDetail.vue'), meta: { title: 'Application' } },
       { path: 'stacks', name: 'stacks', component: () => import('@/views/stacks/Stacks.vue'), meta: { title: 'Stacks' } },
       { path: 'stacks/:id', name: 'stack-detail', component: () => import('@/views/stacks/StackDetail.vue'), meta: { title: 'Stack' } },
@@ -95,6 +108,13 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   const auth = useAuthStore()
+  // A pending forced password change holds only a short-lived reset token (no
+  // session): the change-password screen is the only route reachable until it's
+  // done, and it's unreachable otherwise.
+  if (auth.pendingReset) {
+    return to.name === 'change-password' ? true : { name: 'change-password' }
+  }
+  if (to.name === 'change-password') return { name: auth.isAuthenticated ? 'dashboard' : 'login' }
   if (to.meta.auth && !auth.isAuthenticated) return { name: 'login' }
   if (to.meta.guest && auth.isAuthenticated) return { name: 'dashboard' }
   if (to.meta.admin && !auth.isAdmin) return { name: 'dashboard' }
