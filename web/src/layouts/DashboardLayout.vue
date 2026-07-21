@@ -18,6 +18,8 @@ const theme = useThemeStore()
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
 const license = useLicenseStore()
+const userMenuRef = ref<HTMLElement | null>(null)
+const wsSwitcherRef = ref<HTMLElement | null>(null)
 
 const sidebarCollapsed = ref(localStorage.getItem('mb_sidebar_collapsed') === 'true')
 const mobileOpen = ref(false)
@@ -276,9 +278,15 @@ function logout() {
 }
 
 function closeMenus(e: MouseEvent) {
-  const target = e.target as Element
-  if (userMenuOpen.value && !target.closest?.('.user-menu')) userMenuOpen.value = false
-  if (wsSwitcherOpen.value && !target.closest?.('.ws-switcher')) wsSwitcherOpen.value = false
+  const target = e.target as Node
+
+  if (userMenuOpen.value && userMenuRef.value && !userMenuRef.value.contains(target)) {
+    userMenuOpen.value = false
+  }
+
+  if (wsSwitcherOpen.value && wsSwitcherRef.value && !wsSwitcherRef.value.contains(target)) {
+    wsSwitcherOpen.value = false
+  }
 }
 
 // License banner: admins see a warning when the license is in grace, expired,
@@ -380,7 +388,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
       </div>
 
       <!-- Workspace switcher -->
-      <div class="ws-switcher">
+      <div ref="wsSwitcherRef" class="ws-switcher">
         <div class="ws-switcher-toggle" @click="wsSwitcherOpen = !wsSwitcherOpen">
           <div class="ws-switcher-current">
             <div class="ws-avatar">{{ (ws.currentWorkspace?.display_name ||
@@ -447,7 +455,9 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
           </button>
         </div>
         <div class="topbar-right">
-          <div class="user-menu" @click="userMenuOpen = !userMenuOpen">
+          <div class="user-menu" ref="userMenuRef">
+ 
+          <div class="user-menu-trigger" @click="userMenuOpen = !userMenuOpen">
             <div class="user-avatar">{{ user?.name?.charAt(0)?.toUpperCase() || '?' }}</div>
             <div class="user-menu-info">
               <div class="user-name">{{ user?.name || 'User' }}</div>
@@ -498,6 +508,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
                 </a>
               </div>
             </Transition>
+            </div>
           </div>
         </div>
       </header>
@@ -1119,6 +1130,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
   padding: 0 24px;
   background: var(--bg-primary);
   border-bottom: 1px solid var(--border-primary);
+  transition: background var(--transition-slow), border-color var(--transition-slow);
 }
 
 .topbar-left {
@@ -1137,6 +1149,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
   font-size: 22px;
   padding: 6px;
   border-radius: var(--radius-sm);
+  transition: color var(--transition), background var(--transition);
 }
 
 .mobile-menu-btn:hover {
@@ -1152,7 +1165,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
 }
 
 /* ─── User menu ─── */
-.user-menu {
+/* .user-menu {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1167,8 +1180,26 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
 
 .user-menu:hover {
   background: var(--bg-hover);
+} */
+.user-menu-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: 1px solid transparent;
+  padding: 5px 10px 5px 5px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 14px;
+  transition: background var(--transition), border-color var(--transition);
 }
 
+.user-menu-trigger:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-primary);
+}
 .user-avatar {
   width: 32px;
   height: 32px;
@@ -1596,7 +1627,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 639px) {
   .main-content {
     padding: 20px 16px;
   }

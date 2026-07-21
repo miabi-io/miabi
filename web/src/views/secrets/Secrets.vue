@@ -123,9 +123,12 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
     <div class="page-header">
       <div>
         <h1>Secrets</h1>
-        <div class="text-muted text-sm">Reference these from any app's env, e.g. <code>{{ refExample }}</code>. Values are resolved at deploy time and never shown unless revealed.</div>
+        <div class="text-muted text-sm subtitle">Reference these from any app's env, e.g. <code>{{ refExample }}</code>. Values are resolved at deploy time and never shown unless revealed.</div>
       </div>
+      <div class="page-header-actions">
+ 
       <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate"><span class="mdi mdi-plus"></span> New secret</button>
+    </div>
     </div>
 
     <div class="card">
@@ -138,6 +141,7 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
             type="search"
             placeholder="Search secrets by name or description…"
             aria-label="Search secrets"
+            style="max-width: 320px"
             @input="onSearchInput"
           />
         </div>
@@ -152,7 +156,8 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
         <p v-else>Store a secret once and reference it from many apps. Rotating it updates every consumer on next deploy.</p>
         <button v-if="ws.canEdit && !search.trim()" class="btn btn-primary mt-4" @click="openCreate">New secret</button>
       </div>
-      <div v-else class="table-wrapper">
+      <template v-else>
+      <div  class="table-wrapper">
         <table>
           <thead><tr><th>Name</th><th>Reference</th><th>Description</th><th>Version</th><th></th></tr></thead>
           <tbody>
@@ -165,17 +170,25 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
                 {{ reference(s) }}
                 <button class="btn-icon btn-icon-muted" title="Copy reference" aria-label="Copy reference" @click="copy(reference(s))"><span class="mdi mdi-content-copy"></span></button>
               </td>
-              <td class="cell-sub">{{ s.description || '—' }}</td>
-              <td class="cell-sub">v{{ s.version }}</td>
-              <td class="text-right table-actions">
-                <button v-if="ws.isWorkspaceAdmin" class="btn-icon btn-icon-muted" title="Reveal value" aria-label="Reveal value" @click="reveal(s)"><span class="mdi mdi-eye-outline"></span></button>
-                <button v-if="ws.canEdit && !s.managed" class="btn-icon btn-icon-muted" title="Edit" aria-label="Edit" @click="openEdit(s)"><span class="mdi mdi-pencil-outline"></span></button>
-                <button v-if="ws.canEdit && !s.managed" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="toDelete = s"><span class="mdi mdi-delete-outline"></span></button>
+              <td class="cell-sub">
+                <div class="table-desc">
+                  {{ s.description || '—' }}
+                </div> 
               </td>
+              <td class="cell-sub">v{{ s.version }}</td>
+              <td class="text-right">
+                <div class="table-actions">
+
+                  <button v-if="ws.isWorkspaceAdmin" class="btn-icon btn-icon-muted" title="Reveal value" aria-label="Reveal value" @click="reveal(s)"><span class="mdi mdi-eye-outline"></span></button>
+                  <button v-if="ws.canEdit && !s.managed" class="btn-icon btn-icon-muted" title="Edit" aria-label="Edit" @click="openEdit(s)"><span class="mdi mdi-pencil-outline"></span></button>
+                  <button v-if="ws.canEdit && !s.managed" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="toDelete = s"><span class="mdi mdi-delete-outline"></span></button>
+                </div>
+                </td>
             </tr>
           </tbody>
         </table>
       </div>
+      </template>
     </div>
 
     <Pagination :pageable="pageable" @page="goToPage" />

@@ -307,9 +307,11 @@ function relTime(ts: string): string {
           </span>
         </p>
       </div>
+      <div class="page-header-actions">
       <button v-if="ws.canEdit" class="btn btn-primary" @click="router.push('/apps')">
         <span class="mdi mdi-plus"></span> New application
       </button>
+    </div>
     </div>
 
     <!-- Getting-started checklist (first-login onboarding) -->
@@ -561,9 +563,10 @@ function relTime(ts: string): string {
   display: inline-flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px 10px;
+  min-width: 0;
 }
-.subtitle strong { color: var(--text-secondary); }
+.subtitle strong { color: var(--text-secondary); word-break: break-word; }
 
 /* Health pill */
 .health-pill {
