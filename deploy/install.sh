@@ -173,9 +173,9 @@ is_el_rebuild() {
 
 DOCKER_LOG="/var/log/miabi-docker-install.log"
 
-# `podman-docker` installs a /usr/bin/docker shim that execs podman and ships no
-# Compose v2 plugin. It satisfies `command -v docker`, so check what the binary
-# actually *is* rather than that it merely exists.
+# `podman-docker` installs a /usr/bin/docker shim that execs podman. It satisfies
+# `command -v docker` but is not the Docker Engine API Miabi builds its stack
+# against, so check what the binary actually *is* rather than that it exists.
 docker_is_podman_shim() {
   command -v docker >/dev/null 2>&1 && docker --version 2>&1 | grep -qi podman
 }
@@ -188,14 +188,14 @@ have_real_docker() {
 docker_install_instructions() {
   local id major
   id="$(os_release ID)"; major="$(el_major)"
-  printf "\n    Install Docker Engine + Compose v2 on %s, then re-run:\n\n" "$(distro_id)" >&2
+  printf "\n    Install Docker Engine on %s, then re-run:\n\n" "$(distro_id)" >&2
   case "$id" in
     almalinux|rocky|ol|centos|rhel)
       cat >&2 <<-EOF
 	      curl -fsSL https://download.docker.com/linux/centos/docker-ce.repo \\
 	        -o /etc/yum.repos.d/docker-ce.repo
 	      dnf -y --releasever=${major} install docker-ce docker-ce-cli containerd.io \\
-	        docker-buildx-plugin docker-compose-plugin
+	        docker-buildx-plugin
 	      systemctl enable --now docker
 	EOF
       ;;
@@ -207,19 +207,19 @@ docker_install_instructions() {
       ;;
     amzn)
       cat >&2 <<-EOF
-	      dnf -y install docker docker-compose-plugin
+	      dnf -y install docker
 	      systemctl enable --now docker
 	EOF
       ;;
     alpine)
       cat >&2 <<-EOF
-	      apk add docker docker-cli-compose
+	      apk add docker docker-cli
 	      rc-update add docker default && service docker start
 	EOF
       ;;
     opensuse*|sles)
       cat >&2 <<-EOF
-	      zypper install -y docker docker-compose
+	      zypper install -y docker
 	      systemctl enable --now docker
 	EOF
       ;;
@@ -256,10 +256,14 @@ install_docker_el() {
     -o /etc/yum.repos.d/docker-ce.repo \
     || die "could not download Docker's EL repository definition."
 
+  # No compose plugin: Miabi drives the Docker API directly and never shells out
+  # to `docker compose`. Anyone who wants to run examples/compose/compose.yaml
+  # themselves can add docker-compose-plugin after the fact.
+  #
   # Pin $releasever: on AlmaLinux 10.2 it can expand to the full "10.2".
   if ! "$pm" -y --releasever="$major" install \
         docker-ce docker-ce-cli containerd.io \
-        docker-buildx-plugin docker-compose-plugin >>"$DOCKER_LOG" 2>&1; then
+        docker-buildx-plugin >>"$DOCKER_LOG" 2>&1; then
     printf "\n" >&2
     warn "dnf install of Docker CE failed. Last 20 lines of ${DOCKER_LOG}:"
     tail -n 20 "$DOCKER_LOG" >&2 || true
@@ -303,10 +307,10 @@ if have_real_docker; then
   ok "Docker present ($(docker --version 2>/dev/null | awk '{print $3}' | tr -d ','))"
 else
   # Name the podman shim explicitly — otherwise this surfaces later as a
-  # baffling "Compose v2 is required" error.
+  # baffling failure deep inside the install, against an API that is not Docker's.
   if docker_is_podman_shim; then
     warn "the 'docker' on this host is the podman-docker shim, not Docker Engine."
-    warn "Miabi needs Docker Engine and the Compose v2 plugin; remove podman-docker or install Docker alongside it."
+    warn "Miabi needs Docker Engine; remove podman-docker or install Docker alongside it."
   fi
 
   if [ "$SKIP_DOCKER_INSTALL" = "1" ]; then
@@ -330,12 +334,7 @@ if ! docker info >/dev/null 2>&1; then
   docker info >/dev/null 2>&1 || die "the Docker daemon is not running; start it and re-run."
 fi
 
-if ! docker compose version >/dev/null 2>&1; then
-  warn "the Compose v2 plugin is missing (a legacy standalone 'docker-compose' does not count)."
-  docker_install_instructions
-  die "Docker Compose v2 is required."
-fi
-ok "Docker daemon is running, Compose v2 available"
+ok "Docker daemon is running"
 
 # Warn (don't block) when the web ports are already taken — Goma binds 80/443.
 port_busy() { # <port>
