@@ -76,18 +76,43 @@ async function save() {
 
 // --- Reveal ---
 const revealed = ref<{ name: string; value: string } | null>(null)
+const revealingId = ref<number | null>(null)
 async function reveal(s: Secret) {
   const id = currentWorkspaceId.value
   if (!id) return
+
+  if (revealed.value?.name === s.name) {
+    revealed.value = null
+    return
+  }
+
+  revealingId.value = s.id
   try {
     const v = (await secretApi.reveal(id, s.id)).data.data
     revealed.value = { name: s.name, value: v?.value ?? '' }
-  } catch (e) { notify.apiError(e, 'Only admins can reveal a secret') }
+  } catch (e) {
+    notify.apiError(e, 'Only admins can reveal a secret')
+  } finally {
+    revealingId.value = null
+  }
 }
-
 // --- Delete ---
 const toDelete = ref<Secret | null>(null)
 const deleting = ref(false)
+const showDetails = ref(false)
+const selectedSecret = ref<Secret | null>(null)
+
+function openDetails(s: Secret) {
+  selectedSecret.value = s
+  if (revealed.value?.name !== s.name) {
+    revealed.value = null
+  }
+  showDetails.value = true
+}
+function closeDetails() {
+  showDetails.value = false
+  revealed.value = null
+}
 async function confirmDelete() {
   const id = currentWorkspaceId.value
   if (!id || !toDelete.value) return
@@ -123,29 +148,24 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
     <div class="page-header">
       <div>
         <h1>Secrets</h1>
-        <div class="text-muted text-sm subtitle">Reference these from any app's env, e.g. <code>{{ refExample }}</code>. Values are resolved at deploy time and never shown unless revealed.</div>
+        <div class="text-muted text-sm subtitle">Reference these from any app's env, e.g. <code>{{ refExample }}</code>
+          Values are resolved at deploy time and never shown unless revealed.</div>
       </div>
       <div class="page-header-actions">
- 
-      <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate"><span class="mdi mdi-plus"></span> New secret</button>
-    </div>
+        <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate"><span class="mdi mdi-plus"></span> New
+          secret</button>
+      </div>
     </div>
 
     <div class="card">
       <div class="card-body toolbar">
         <div class="search">
           <span class="mdi mdi-magnify"></span>
-          <input
-            v-model="search"
-            class="form-input"
-            type="search"
-            placeholder="Search secrets by name or description…"
-            aria-label="Search secrets"
-            style="max-width: 320px"
-            @input="onSearchInput"
-          />
+          <input v-model="search" class="form-input" type="search" placeholder="Search secrets by name or description…"
+            aria-label="Search secrets" style="max-width: 320px" @input="onSearchInput" />
         </div>
-        <span class="text-muted">{{ pageable.total_elements }} secret{{ pageable.total_elements === 1 ? '' : 's' }}</span>
+        <span class="text-muted">{{ pageable.total_elements }} secret{{ pageable.total_elements === 1 ? '' : 's'
+          }}</span>
       </div>
 
       <div v-if="loading && secrets.length === 0" class="card-body"><span class="spinner"></span></div>
@@ -153,41 +173,64 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
         <span class="mdi mdi-key-variant" style="font-size: 44px; color: var(--text-muted)"></span>
         <h3>No secrets {{ search.trim() ? 'found' : '' }}</h3>
         <p v-if="search.trim()">No secrets match your search.</p>
-        <p v-else>Store a secret once and reference it from many apps. Rotating it updates every consumer on next deploy.</p>
+        <p v-else>Store a secret once and reference it from many apps. Rotating it updates every consumer on next
+          deploy.</p>
         <button v-if="ws.canEdit && !search.trim()" class="btn btn-primary mt-4" @click="openCreate">New secret</button>
       </div>
       <template v-else>
-      <div  class="table-wrapper">
-        <table>
-          <thead><tr><th>Name</th><th>Reference</th><th>Description</th><th>Version</th><th></th></tr></thead>
-          <tbody>
-            <tr v-for="s in secrets" :key="s.id">
-              <td class="cell-title" style="font-family: monospace">
-                {{ s.name }}
-                <span v-if="s.managed" class="badge badge-muted" title="Auto-created and managed by a database; rotate or remove via that database" style="margin-left: 6px"><span class="mdi mdi-database-outline"></span> managed</span>
-              </td>
-              <td class="cell-sub" style="font-family: monospace">
-                {{ reference(s) }}
-                <button class="btn-icon btn-icon-muted" title="Copy reference" aria-label="Copy reference" @click="copy(reference(s))"><span class="mdi mdi-content-copy"></span></button>
-              </td>
-              <td class="cell-sub">
-                <div class="table-desc">
-                  {{ s.description || '—' }}
-                </div> 
-              </td>
-              <td class="cell-sub">v{{ s.version }}</td>
-              <td class="text-right">
-                <div class="table-actions">
-
-                  <button v-if="ws.isWorkspaceAdmin" class="btn-icon btn-icon-muted" title="Reveal value" aria-label="Reveal value" @click="reveal(s)"><span class="mdi mdi-eye-outline"></span></button>
-                  <button v-if="ws.canEdit && !s.managed" class="btn-icon btn-icon-muted" title="Edit" aria-label="Edit" @click="openEdit(s)"><span class="mdi mdi-pencil-outline"></span></button>
-                  <button v-if="ws.canEdit && !s.managed" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="toDelete = s"><span class="mdi mdi-delete-outline"></span></button>
-                </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Reference</th>
+                <th>Description</th>
+                <th>Version</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="s in secrets" :key="s.id" @click="openDetails(s)" class="cursor-pointer">
+                <td class="cell-title" style="font-family: monospace">
+                  {{ s.name }}
+                  <span v-if="s.managed" class="badge badge-muted"
+                    title="Auto-created and managed by a database; rotate or remove via that database"
+                    style="margin-left: 6px"><span class="mdi mdi-database-outline"></span> managed</span>
                 </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+                <td class="cell-sub" style="font-family: monospace">
+                  {{ reference(s) }}
+                  <button class="btn-icon btn-icon-muted" title="Copy reference" aria-label="Copy reference"
+                    @click.stop="copy(reference(s))"><span class="mdi mdi-content-copy"></span></button>
+                </td>
+                <td class="cell-sub">
+                  <div class="table-desc">
+                    {{ s.description || '—' }}
+                  </div>
+                </td>
+                <td class="cell-sub">v{{ s.version }}</td>
+                <td class="text-right">
+                  <div class="table-actions">
+                    <button type="button" class="btn-icon btn-icon-muted"
+                      :title="revealed?.name === s.name ? 'View secret' : 'Reveal & view secret'"
+                      :disabled="revealingId === s.id" @click.stop="reveal(s); openDetails(s)">
+                      <span v-if="revealingId === s.id" class="mdi mdi-loading mdi-spin"></span>
+                      <span v-else class="mdi"
+                        :class="revealed?.name === s.name ? 'mdi-lock-open-outline' : 'mdi-lock-outline'"></span>
+                    </button>
+                    <button v-if="ws.isWorkspaceAdmin" class="btn-icon btn-icon-muted" title="Reveal value"
+                      aria-label="Reveal value" @click.stop="openDetails(s)"><span
+                        class="mdi mdi-eye-outline"></span></button>
+                    <button v-if="ws.canEdit && !s.managed" class="btn-icon btn-icon-muted" title="Edit"
+                      aria-label="Edit" @click.stop="openEdit(s)"><span class="mdi mdi-pencil-outline"></span></button>
+                    <button v-if="ws.canEdit && !s.managed" class="btn-icon btn-icon-danger" title="Delete"
+                      aria-label="Delete" @click.stop="toDelete = s"><span
+                        class="mdi mdi-delete-outline"></span></button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </template>
     </div>
 
@@ -199,34 +242,42 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
         <div class="modal">
           <div class="modal-header">
             <h3>{{ editingId ? 'Edit secret' : 'New secret' }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showForm = false"><span class="mdi mdi-close"></span></button>
+            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showForm = false"><span
+                class="mdi mdi-close"></span></button>
           </div>
           <form @submit.prevent="save">
             <div class="modal-body">
               <div class="form-group">
                 <label class="form-label">Name</label>
-                <input v-model="form.name" class="form-input" placeholder="db_password" :disabled="!!editingId" aria-label="Name" required autofocus style="font-family: monospace" />
-                <p class="form-hint">Letters, digits, <code>_</code> or <code>-</code>. Referenced as <code>{{ refForName }}</code>.</p>
+                <input v-model="form.name" class="form-input" placeholder="db_password" :disabled="!!editingId"
+                  aria-label="Name" required autofocus style="font-family: monospace" />
+                <p class="form-hint">Letters, digits, <code>_</code> or <code>-</code>. Referenced as <code>{{ refForName
+                }}</code>.</p>
               </div>
               <div class="form-group">
-                <label class="form-label">Value <span v-if="editingId" class="text-muted">(leave blank to keep current)</span></label>
-                <textarea v-model="form.value" class="form-input" rows="3" :required="!editingId" placeholder="the secret value" aria-label="Value" style="font-family: monospace"></textarea>
+                <label class="form-label">Value <span v-if="editingId" class="text-muted">(leave blank to keep
+                    current)</span></label>
+                <textarea v-model="form.value" class="form-input" rows="3" :required="!editingId"
+                  placeholder="the secret value" aria-label="Value" style="font-family: monospace"></textarea>
               </div>
               <div class="form-group" style="margin-bottom: 0">
                 <label class="form-label">Description <span class="text-muted">(optional)</span></label>
-                <input v-model="form.description" class="form-input" placeholder="e.g. Postgres app password" aria-label="Description" />
+                <input v-model="form.description" class="form-input" placeholder="e.g. Postgres app password"
+                  aria-label="Description" />
               </div>
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-secondary" @click="showForm = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editingId ? 'Save' : 'Create') }}</button>
+              <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editingId ?
+                'Save' :
+                'Create') }}</button>
             </div>
           </form>
         </div>
       </div>
 
       <!-- Reveal -->
-      <div v-if="revealed" class="modal-overlay" @click.self="revealed = null">
+      <!--       <div v-if="revealed" class="modal-overlay" @click.self="revealed = null">
         <div class="modal" style="max-width: 560px; width: 100%">
           <div class="modal-header">
             <h3>{{ revealed.name }}</h3>
@@ -242,31 +293,178 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
             </div>
           </div>
         </div>
+      </div> -->
+      <div v-if="showDetails && selectedSecret" class="modal-overlay" @click.self="closeDetails">
+        <div class="modal">
+          <div class="modal-header">
+            <h3>Secret details</h3>
+            <button type="button" class="btn-icon btn-icon-muted" aria-label="Close" @click="closeDetails">
+              <span class="mdi mdi-close"></span>
+            </button>
+          </div>
+
+          <div class="modal-body">
+            <div class="detail-group">
+              <label class="form-label">Name</label>
+              <div class="code-box">
+                <code>{{ selectedSecret.name }}</code>
+                <button type="button" class="btn-icon btn-icon-muted" title="Copy key" @click="copy(selectedSecret.name)">
+                  <span class="mdi mdi-content-copy"></span>
+                </button>
+              </div>
+            </div>
+
+            <div class="detail-group">
+              <label class="form-label">Reference</label>
+              <div class="code-box">
+                <code>{{ reference(selectedSecret) }}</code>
+                <button type="button" class="btn-icon btn-icon-muted" title="Copy reference"
+                  @click="copy(reference(selectedSecret))">
+                  <span class="mdi mdi-content-copy"></span>
+                </button>
+              </div>
+            </div>
+
+            <div class="detail-group">
+              <label class="form-label">Value</label>
+              <div class="code-box">
+                <code class="secret-text">
+              {{ revealed?.name === selectedSecret.name ? revealed.value : '••••••••••••••••' }}
+            </code>
+                <div class="code-actions">
+                  <button type="button" class="btn-icon btn-icon-muted" :disabled="revealingId === selectedSecret.id"
+                    @click="reveal(selectedSecret)">
+                    <span v-if="revealingId === selectedSecret.id" class="mdi mdi-loading mdi-spin"></span>
+                    <span v-else class="mdi"
+                      :class="revealed?.name === selectedSecret.name ? 'mdi-eye-off' : 'mdi-eye'"></span>
+                  </button>
+
+                  <button v-if="revealed?.name === selectedSecret.name" type="button" class="btn-icon btn-icon-muted"
+                    title="Copy value" @click="copy(revealed.value)">
+                    <span class="mdi mdi-content-copy"></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="detail-group" style="margin-bottom: 0">
+              <label class="form-label">Description</label>
+              <p class="detail-text">{{ selectedSecret.description || 'No description provided.' }}</p>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="closeDetails">Close</button>
+            <button type="button" class="btn btn-primary" @click="closeDetails(); openEdit(selectedSecret)">
+              <span class="mdi mdi-pencil"></span> Edit
+            </button>
+          </div>
+        </div>
       </div>
     </Teleport>
 
-    <ConfirmDialog
-      :open="!!toDelete"
-      title="Delete secret"
+    <ConfirmDialog :open="!!toDelete" title="Delete secret"
       :message="`Delete secret &quot;${toDelete?.name}&quot;? Apps that reference it will fail to deploy until the reference is removed.`"
-      confirm-label="Delete"
-      variant="danger"
-      :busy="deleting"
-      @confirm="confirmDelete"
-      @cancel="toDelete = null"
-    />
+      confirm-label="Delete" variant="danger" :busy="deleting" @confirm="confirmDelete" @cancel="toDelete = null" />
   </div>
 </template>
 
 <style scoped>
-.text-muted { color: var(--text-muted); }
-.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.search { position: relative; flex: 1; max-width: 360px; }
-.search .mdi { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
-.search .form-input { padding-left: 32px; }
-code { background: var(--bg-tertiary); padding: 1px 6px; border-radius: 4px; font-size: 12px; font-family: monospace; }
-.form-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
-.dns-field-label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
-.dns-field-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
-.dns-field-value { font-family: monospace; font-size: 13px; }
+.text-muted {
+  color: var(--text-muted);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.search {
+  position: relative;
+  flex: 1;
+  max-width: 360px;
+}
+
+.search .mdi {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.search .form-input {
+  padding-left: 32px;
+}
+
+code {
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: monospace;
+}
+
+.form-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.dns-field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.dns-field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.dns-field-value {
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.detail-group {
+  margin-bottom: 16px;
+}
+
+.detail-text {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.code-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.code-box code {
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.code-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+}
 </style>
