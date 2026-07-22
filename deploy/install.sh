@@ -79,7 +79,7 @@ SKIP_DOCKER_INSTALL="${MIABI_SKIP_DOCKER_INSTALL:-0}"
 # .github/workflows/release.yml) and they are passed straight to `miabi install`, so
 # the manifest it writes records exactly what this release was tested against.
 MIABI_VERSION="${MIABI_VERSION:-v1.6.2}"
-GOMA_VERSION="${GOMA_VERSION:-v0.12.0}"
+GOMA_VERSION="${GOMA_VERSION:-v0.12.1}"
 RUNNER_VERSION="${RUNNER_VERSION:-v0.0.7}"
 
 # Docker tags carry no leading "v" (git tag v1.2.3 → image tag 1.2.3) across all
