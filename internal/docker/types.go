@@ -143,6 +143,13 @@ type RunSpec struct {
 	PortBindIPs map[string]string
 	// Mounts maps volume name -> container path.
 	Mounts map[string]string
+	// NoCopyVolumes disables Docker's copy-up (image→volume seeding) for the named
+	// volumes in Mounts. Set under the restricted security profile, where the
+	// volumes have already been seeded and chowned to the non-root UID by a prep
+	// step: copy-up would otherwise re-apply the image mount-dir's ownership on
+	// every start (even for an empty dir), undoing that chown and leaving the
+	// non-root process unable to write. Host binds are unaffected.
+	NoCopyVolumes bool
 	// Binds are host path -> container path bind mounts. Used only for
 	// allow-listed privileged host mounts (e.g. the Docker socket); the source
 	// is a server-resolved host path, never client input.
