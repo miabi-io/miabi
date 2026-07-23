@@ -91,6 +91,22 @@ func (r *Router) gitOpsRoutes() []okapi.RouteDefinition {
 			Summary:     "Reconcile a git source now",
 		},
 		{
+			Method:      http.MethodPost,
+			Path:        base + "/{gitSourceID}/resources/{kind}/{name}/sync",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     r.h.gitops.SyncResource,
+			Summary:     "Reconcile a single managed resource",
+		},
+		{
+			Method:      http.MethodDelete,
+			Path:        base + "/{gitSourceID}/resources/{kind}/{name}",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     r.h.gitops.DeleteResource,
+			Summary:     "Delete a single managed live resource",
+		},
+		{
 			Method:      http.MethodGet,
 			Path:        base + "/{gitSourceID}/diff",
 			Group:       g,
