@@ -43,6 +43,9 @@ var (
 	// ErrUnsupportedKind is returned when a plan needs a mutation the v1 executor
 	// does not perform. The plan still lists the change.
 	ErrUnsupportedKind = errors.New("kind not yet supported by apply")
+	// ErrResourceNotFound is returned by ApplyResource when the named resource is
+	// not present in the desired manifest bundle (HTTP 404).
+	ErrResourceNotFound = errors.New("resource not found in manifests")
 )
 
 // Service computes and executes declarative plans for a workspace.
@@ -180,6 +183,55 @@ func (s *Service) Apply(ctx context.Context, workspaceID uint, manifests []byte,
 	if raw, perr := declarative.Parse(manifests); perr == nil {
 		s.linkDatabasesToApps(workspaceID, raw)
 	}
+	return res, nil
+}
+
+func (s *Service) ApplyResource(ctx context.Context, workspaceID uint, manifests []byte, opts Options, kind, name string) (*Result, error) {
+	plan, desired, err := s.Plan(ctx, workspaceID, manifests, opts)
+	if err != nil {
+		return nil, err
+	}
+	key := string(declarative.Kind(kind)) + "/" + name
+	ctx = withOwnerSource(ctx, opts.OwnerSource)
+	res := &Result{WorkspaceID: workspaceID}
+	for _, ch := range plan.Changes {
+		if string(ch.Kind)+"/"+ch.Name != key {
+			continue // a prune-delete or another resource — never touched by a single sync
+		}
+		res.Plan = &declarative.Plan{Changes: []declarative.Change{ch}}
+		if ch.Action == declarative.ActionNoop {
+			return res, nil
+		}
+		dr, _ := desired.Get(key)
+		if err := s.execute(ctx, workspaceID, ch, dr); err != nil {
+			res.Failures = append(res.Failures, Failure{Kind: string(ch.Kind), Name: ch.Name, Action: string(ch.Action), Error: err.Error()})
+			return res, nil
+		}
+		res.Applied++
+		// Keep database↔app links in sync when the applied resource is an app/db.
+		if raw, perr := declarative.Parse(manifests); perr == nil {
+			s.linkDatabasesToApps(workspaceID, raw)
+		}
+		return res, nil
+	}
+	return nil, fmt.Errorf("%w: %s", ErrResourceNotFound, key)
+}
+
+func (s *Service) DeleteResource(ctx context.Context, workspaceID uint, kind, name string) (*Result, error) {
+	actual, err := s.snapshot(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := actual.Get(string(declarative.Kind(kind)) + "/" + name); !ok {
+		return &Result{WorkspaceID: workspaceID}, nil // already gone
+	}
+	ch := declarative.Change{Kind: declarative.Kind(kind), Name: name, Action: declarative.ActionDelete}
+	res := &Result{WorkspaceID: workspaceID, Plan: &declarative.Plan{Changes: []declarative.Change{ch}}}
+	if err := s.execute(ctx, workspaceID, ch, declarative.Resource{}); err != nil {
+		res.Failures = append(res.Failures, Failure{Kind: kind, Name: name, Action: string(ch.Action), Error: err.Error()})
+		return res, err
+	}
+	res.Applied++
 	return res, nil
 }
 
