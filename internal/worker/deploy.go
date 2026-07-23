@@ -522,12 +522,16 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 		h.log(dep, fmt.Sprintf("attaching %d GPU(s)", app.GPUCount))
 	}
 	spec := docker.RunSpec{
-		Name:             name,
-		Image:            image,
-		Hostname:         upstreamAlias, // stable alias hostname (mb-app-<token>-<id>)
-		Env:              rc.Env,
-		Cmd:              cmd,
-		Mounts:           rc.Mounts,
+		Name:     name,
+		Image:    image,
+		Hostname: upstreamAlias, // stable alias hostname (mb-app-<token>-<id>)
+		Env:      rc.Env,
+		Cmd:      cmd,
+		Mounts:   rc.Mounts,
+		// Under the restricted profile, prepareRestrictedVolumes has already seeded
+		// and chowned these volumes to the non-root UID; disable copy-up so Docker
+		// doesn't re-apply the image mount-dir's ownership on start and undo it.
+		NoCopyVolumes:    sec.Restricted(),
 		Binds:            rc.Binds,
 		Networks:         rc.Networks,
 		Ports:            ports,

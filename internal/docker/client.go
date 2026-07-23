@@ -20,6 +20,7 @@ import (
 	dockerevents "github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/api/types/volume"
@@ -235,6 +236,28 @@ func hostBinds(mounts []BindMount) []string {
 	return out
 }
 
+// containerVolumeMounts renders a RunSpec's named volumes and host binds for the
+// HostConfig. Named volumes are normally bind strings, but when NoCopyVolumes is
+// set they use the Mount API with NoCopy so Docker's copy-up can't re-apply the
+// image mount-dir's ownership (which would undo the restricted-profile chown).
+// Host binds are always plain bind strings.
+func containerVolumeMounts(spec RunSpec) ([]string, []mount.Mount) {
+	binds := make([]string, 0, len(spec.Mounts)+len(spec.Binds))
+	var volMounts []mount.Mount
+	for vol, path := range spec.Mounts {
+		if spec.NoCopyVolumes {
+			volMounts = append(volMounts, mount.Mount{
+				Type: mount.TypeVolume, Source: vol, Target: path,
+				VolumeOptions: &mount.VolumeOptions{NoCopy: true},
+			})
+			continue
+		}
+		binds = append(binds, vol+":"+path)
+	}
+	binds = append(binds, hostBinds(spec.Binds)...)
+	return binds, volMounts
+}
+
 func (e *engineClient) RunContainer(ctx context.Context, spec RunSpec) (string, error) {
 	exposed := nat.PortSet{}
 	bindings := nat.PortMap{}
@@ -248,11 +271,7 @@ func (e *engineClient) RunContainer(ctx context.Context, spec RunSpec) (string, 
 		bindings[p] = []nat.PortBinding{{HostIP: hostIP, HostPort: hp}}
 	}
 
-	binds := make([]string, 0, len(spec.Mounts)+len(spec.Binds))
-	for vol, path := range spec.Mounts {
-		binds = append(binds, vol+":"+path)
-	}
-	binds = append(binds, hostBinds(spec.Binds)...)
+	binds, volMounts := containerVolumeMounts(spec)
 
 	labels := spec.Labels
 	if labels == nil {
@@ -283,6 +302,7 @@ func (e *engineClient) RunContainer(ctx context.Context, spec RunSpec) (string, 
 	hostCfg := &container.HostConfig{
 		PortBindings: bindings,
 		Binds:        binds,
+		Mounts:       volMounts,
 		Resources: container.Resources{
 			Memory:         spec.MemoryBytes,
 			NanoCPUs:       spec.NanoCPUs,
