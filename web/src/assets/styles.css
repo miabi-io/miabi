@@ -1105,11 +1105,10 @@ input[type="checkbox"]:checked::before {
 .worldmap-legend .scale { display: inline-block; width: 120px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--bg-tertiary), var(--primary-500)); }
 
 /* ─── form select picker scrollbar ───  */
-.form-select::picker(select)::-webkit-scrollbar { width: 6px; height: 6px;}
-.form-select::picker(select)::-webkit-scrollbar-track { background: var(--bg-secondary); border-radius: var(--radius); }
-.form-select::picker(select)::-webkit-scrollbar-thumb { background-color: var(--border-primary); border-radius: 20px; border: 2px solid var(--bg-secondary); }
-.form-select::picker(select)::-webkit-scrollbar-thumb:hover { background-color: var(--primary-500); }
-
+.form-select::picker(select) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-primary) var(--bg-secondary);
+}
 /* medias queries */
 @media (max-width: 639px) {
     .stats-grid {
