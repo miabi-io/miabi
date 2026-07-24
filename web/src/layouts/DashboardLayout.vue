@@ -288,20 +288,6 @@ function logout() {
   router.push('/login')
 }
 
-// Copy the ready-to-run CLI sign-in command. `miabi login` opens the browser and
-// captures the token itself (loopback flow), so there's nothing to mint here —
-// just hand over the command with this panel's URL as --server.
-async function copyLoginCommand() {
-  userMenuOpen.value = false
-  const cmd = `miabi login --server ${window.location.origin}`
-  try {
-    await navigator.clipboard.writeText(cmd)
-    notify.success(cmd, { title: 'Login command copied' })
-  } catch {
-    // Clipboard blocked (e.g. non-secure context): surface the command to copy by hand.
-    notify.info(cmd, { title: 'Copy this login command' })
-  }
-}
 
 function closeMenus(e: MouseEvent) {
   const target = e.target as Node
@@ -518,9 +504,9 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
                   <span class="mdi mdi-information-outline"></span> About
                 </RouterLink>
                 <div class="user-dropdown-divider"></div>
-                <a class="user-dropdown-item" @click.stop="copyLoginCommand">
-                  <span class="mdi mdi-console"></span> Copy login command
-                </a>
+                <RouterLink to="/account/cli" class="user-dropdown-item" @click.stop="userMenuOpen = false">
+                  <span class="mdi mdi-console"></span> CLI access
+                </RouterLink>
                 <div class="user-dropdown-divider"></div>
                 <a class="user-dropdown-item user-dropdown-logout" @click.stop="logout">
                   <span class="mdi mdi-logout"></span> Sign out
