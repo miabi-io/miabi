@@ -314,7 +314,7 @@ function toggleFolder(path: string) {
   }
 }
 
-function isFileVisible(file: VolumeFile, allFiles: VolumeFile[]): boolean {
+function isFileVisible(file: VolumeFile): boolean {
   const parts = file.path.split('/').filter(Boolean)
 
   if (parts.length <= 1) return true
@@ -474,7 +474,7 @@ function isFileVisible(file: VolumeFile, allFiles: VolumeFile[]): boolean {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="f in files" :key="f.path" v-show="isFileVisible(f, files)" class="row-clickable"
+            <tr v-for="f in files" :key="f.path" v-show="isFileVisible(f)" class="row-clickable"
               :class="{ 'is-dir': f.is_dir }" @click="f.is_dir ? toggleFolder(f.path) : null">
               <td>
                 <div class="file-cell" :style="{ paddingLeft: `${getDepth(f.path) * 20}px` }">
