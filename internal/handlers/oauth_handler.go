@@ -45,6 +45,17 @@ func (h *OAuthHandler) SetLoginTokens(s *logintoken.Service) { h.loginTokens = s
 // session on callback.
 const intentLoginToken = "login_token"
 
+// intentCliLogin is the SSO intent behind `miabi login`'s loopback flow: like
+// intentLoginToken it mints a CLI token on callback, but instead of the display
+// page it redirects the browser to the CLI's local callback with a single-use
+// code. The loopback target and CLI state ride in the intent value (stored in
+// Redis, never the address bar), joined by intentSep.
+const intentCliLogin = "cli_login"
+
+// intentSep joins the intent kind with its loopback redirect and CLI state in
+// the Redis-stored intent value. A unit separator never appears in a URL/state.
+const intentSep = "\x1f"
+
 // PublicProvider is the safe subset of a provider exposed on the login screen.
 type PublicProvider struct {
 	Name        string `json:"name"`         // unique handle
@@ -110,8 +121,19 @@ func (h *OAuthHandler) Authorize(c *okapi.Context) error {
 		return c.AbortNotFound("provider not found")
 	}
 	intent := ""
-	if c.Query("intent") == intentLoginToken && h.loginTokens != nil {
-		intent = intentLoginToken
+	switch c.Query("intent") {
+	case intentLoginToken:
+		if h.loginTokens != nil {
+			intent = intentLoginToken
+		}
+	case intentCliLogin:
+		// `miabi login` loopback: carry the CLI's local callback + state through the
+		// IdP round-trip so the callback can deliver the token straight to it. Reject
+		// non-loopback targets here, before we ever start the flow.
+		cliRedirect := strings.TrimSpace(c.Query("cli_redirect"))
+		if h.loginTokens != nil && isLoopbackRedirect(cliRedirect) {
+			intent = intentCliLogin + intentSep + cliRedirect + intentSep + strings.TrimSpace(c.Query("cli_state"))
+		}
 	}
 	redirectURI := h.callbackURI(c, p.Name)
 	authURL, err := h.oauth.AuthCodeURLWithIntent(c.Request().Context(), p, redirectURI, intent)
@@ -148,10 +170,16 @@ func (h *OAuthHandler) Callback(c *okapi.Context) error {
 		return h.fail(c, oauthErrorCode(err))
 	}
 
-	// CLI login-token intent: the fresh SSO login just proved identity, so mint a
-	// short-lived token and hand it off to the display page — no console session.
-	if h.oauth.ConsumeIntent(c.Request().Context(), state) == intentLoginToken && h.loginTokens != nil {
-		return h.issueLoginToken(c, user, slug)
+	// CLI login intents: the fresh SSO login just proved identity, so mint a
+	// short-lived token instead of a console session. login_token hands off to the
+	// display page; cli_login redirects straight to the CLI's loopback callback.
+	if intent := h.oauth.ConsumeIntent(c.Request().Context(), state); h.loginTokens != nil && intent != "" {
+		if intent == intentLoginToken {
+			return h.issueLoginToken(c, user, slug)
+		}
+		if kind, redirect, cliState, ok := parseIntent(intent); ok && kind == intentCliLogin {
+			return h.issueCliLoginToken(c, user, slug, redirect, cliState)
+		}
 	}
 
 	token, jti, err := h.auth.IssueToken(user)
@@ -201,6 +229,43 @@ func (h *OAuthHandler) issueLoginToken(c *okapi.Context, user *models.User, slug
 	base := strings.TrimRight(h.cfg.AppWebURL, "/")
 	c.Redirect(http.StatusFound, base+"/request-token?handoff="+url.QueryEscape(ref))
 	return nil
+}
+
+// issueCliLoginToken is the SSO half of `miabi login`'s loopback flow: after a
+// fresh IdP login it mints a CLI token, stashes it behind a single-use code, and
+// redirects the browser straight to the CLI's local callback with that code —
+// the token never rides in the redirect URL. redirect was validated as loopback
+// when the flow started.
+func (h *OAuthHandler) issueCliLoginToken(c *okapi.Context, user *models.User, slug, redirect, cliState string) error {
+	tok, err := h.loginTokens.Issue(user.ID, nil, nil)
+	if err != nil {
+		return h.fail(c, "token_error")
+	}
+	ref, err := h.loginTokens.Stash(c.Request().Context(), tok)
+	if err != nil {
+		return h.fail(c, "token_error")
+	}
+	h.oauth.TouchLastLogin(user)
+	h.audit.Record(audit.Entry{
+		ActorID: &user.ID, Action: "user.login_token_issued", TargetType: "user",
+		IP: c.RealIP(), Metadata: map[string]any{"provider": slug, "via": "oauth_cli"},
+	})
+	c.Redirect(http.StatusFound, buildCliRedirect(redirect, ref, cliState))
+	return nil
+}
+
+// parseIntent splits a stored intent value into its kind and (for CLI-login) the
+// loopback redirect and CLI state. ok is false when the value is malformed.
+func parseIntent(intent string) (kind, redirect, cliState string, ok bool) {
+	parts := strings.Split(intent, intentSep)
+	switch len(parts) {
+	case 1:
+		return parts[0], "", "", true
+	case 3:
+		return parts[0], parts[1], parts[2], true
+	default:
+		return "", "", "", false
+	}
 }
 
 // --- helpers ---

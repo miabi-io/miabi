@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -97,6 +98,13 @@ type LoginTokenRequest struct {
 		Username      string `json:"username" required:"true"`
 		Password      string `json:"password" required:"true"`
 		TwoFactorCode string `json:"two_factor_code"`
+		// RedirectURI, when set, switches the response from returning the raw token
+		// to the loopback CLI-login flow: the token is stashed under a single-use
+		// code and the caller is handed a redirect_to that points at the CLI's local
+		// callback (http://127.0.0.1:PORT/…). Must be a loopback address. State is
+		// echoed back on that redirect as the CLI's CSRF check.
+		RedirectURI string `json:"redirect_uri"`
+		State       string `json:"state"`
 		// Scopes optionally narrows the token; admin/"*" are rejected. Empty
 		// defaults to read/write/deploy (console-equivalent).
 		Scopes []string `json:"scopes"`
@@ -117,6 +125,10 @@ type LoginTokenResponse struct {
 	LoginCommand      string     `json:"login_command,omitempty"`
 	CurlExample       string     `json:"curl_example,omitempty"`
 	TwoFactorRequired bool       `json:"two_factor_required,omitempty"`
+	// RedirectTo is set only for the loopback CLI-login flow (a redirect_uri was
+	// supplied): the caller navigates here to hand the single-use code back to the
+	// CLI's local server. The raw token is omitted in that case.
+	RedirectTo string `json:"redirect_to,omitempty"`
 }
 
 // TokenPayload converts a minted login token to the API response shape.
@@ -424,6 +436,13 @@ func (h *AuthHandler) LoginToken(c *okapi.Context, req *LoginTokenRequest) error
 	if user.MustChangePassword {
 		return c.AbortForbidden("set a new password before creating an API token")
 	}
+	// Loopback CLI-login flow: the browser reached this page from `miabi login`
+	// with a local callback. Reject anything that is not a loopback address before
+	// minting — we must never hand a token off to an arbitrary redirect target.
+	redirectURI := strings.TrimSpace(req.Body.RedirectURI)
+	if redirectURI != "" && !isLoopbackRedirect(redirectURI) {
+		return c.AbortBadRequest("redirect_uri must be a loopback (127.0.0.1/localhost) address")
+	}
 	tok, err := h.loginTokens.Issue(user.ID, req.Body.Scopes, req.Body.ExpiresInHours)
 	if err != nil {
 		if errors.Is(err, logintoken.ErrAdminScope) || errors.Is(err, logintoken.ErrInvalidScope) {
@@ -431,8 +450,57 @@ func (h *AuthHandler) LoginToken(c *okapi.Context, req *LoginTokenRequest) error
 		}
 		return c.AbortInternalServerError("failed to issue login token", err)
 	}
-	h.audit.Record(audit.Entry{ActorID: &user.ID, Action: "user.login_token_issued", TargetType: "user", IP: c.RealIP(), Metadata: map[string]any{"scopes": tok.Scopes}})
-	return ok(c, tokenPayload(tok))
+	h.audit.Record(audit.Entry{ActorID: &user.ID, Action: "user.login_token_issued", TargetType: "user", IP: c.RealIP(), Metadata: map[string]any{"scopes": tok.Scopes, "via": redirectVia(redirectURI)}})
+	// No loopback target: return the raw token for the "Copy login command" page.
+	if redirectURI == "" {
+		return ok(c, tokenPayload(tok))
+	}
+	// Loopback target: stash the token behind a single-use code and hand back the
+	// callback URL so the secret rides a one-time reference, not the address bar.
+	ref, err := h.loginTokens.Stash(c.Request().Context(), tok)
+	if err != nil {
+		return c.AbortInternalServerError("failed to prepare CLI login", err)
+	}
+	return ok(c, LoginTokenResponse{RedirectTo: buildCliRedirect(redirectURI, ref, req.Body.State)})
+}
+
+// isLoopbackRedirect reports whether raw is an http URL pointing at the local
+// machine — the only redirect target the CLI-login flows may hand a token to.
+func isLoopbackRedirect(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "http" {
+		return false
+	}
+	switch u.Hostname() {
+	case "127.0.0.1", "::1", "localhost":
+		return true
+	default:
+		return false
+	}
+}
+
+// buildCliRedirect appends the single-use code and echoed state to the CLI's
+// loopback callback URL, preserving any query already present on it.
+func buildCliRedirect(redirectURI, code, state string) string {
+	u, err := url.Parse(redirectURI)
+	if err != nil {
+		return redirectURI
+	}
+	q := u.Query()
+	q.Set("code", code)
+	if state != "" {
+		q.Set("state", state)
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// redirectVia labels the audit trail with how the token was delivered.
+func redirectVia(redirectURI string) string {
+	if redirectURI == "" {
+		return "display"
+	}
+	return "cli_loopback"
 }
 
 // ClaimLoginTokenRequest carries the single-use hand-off reference minted by the

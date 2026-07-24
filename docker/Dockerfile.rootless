@@ -32,9 +32,12 @@ COPY . .
 COPY --from=web /web/dist ./internal/web/dist
 ARG VERSION=dev
 ARG COMMIT=unknown
+
+ARG GO_TAGS="enterprise"
+ARG LICENSE_PUBLIC_KEY=""
 # CGO disabled → a static binary that runs on any runtime base as-is.
-RUN CGO_ENABLED=0 go build \
-    -ldflags "-s -w -X github.com/miabi-io/miabi/internal/config.Version=${VERSION} -X github.com/miabi-io/miabi/internal/config.CommitID=${COMMIT}" \
+RUN CGO_ENABLED=0 go build -tags "${GO_TAGS}" \
+    -ldflags "-s -w -X github.com/miabi-io/miabi/internal/config.Version=${VERSION} -X github.com/miabi-io/miabi/internal/config.CommitID=${COMMIT} -X github.com/miabi-io/miabi/internal/enterprise.embeddedPublicKey=${LICENSE_PUBLIC_KEY}" \
     -o /out/miabi ./cmd/miabi
 
 FROM alpine:3.20

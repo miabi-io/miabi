@@ -29,12 +29,21 @@ export const authApi = {
   },
   // Re-authenticate (credentials in the body, never the session) to mint a
   // short-lived CLI API token. two_factor_code is required on 2FA accounts.
-  loginToken(identifier: string, password: string, twoFactorCode?: string, expiresInHours?: number) {
+  // Pass loopback (redirect_uri + state) to drive `miabi login`'s local-callback
+  // flow: the response carries a redirect_to instead of the raw token.
+  loginToken(
+    identifier: string,
+    password: string,
+    twoFactorCode?: string,
+    opts?: { expiresInHours?: number; redirectUri?: string; state?: string },
+  ) {
     return api.post<ApiResponse<LoginTokenResponse>>('/auth/login-token', {
       username: identifier,
       password,
       two_factor_code: twoFactorCode,
-      expires_in_hours: expiresInHours,
+      expires_in_hours: opts?.expiresInHours,
+      redirect_uri: opts?.redirectUri,
+      state: opts?.state,
     })
   },
   // Exchange a single-use hand-off reference (from the SSO login-token flow) for

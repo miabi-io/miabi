@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/libdns/cloudflare"
@@ -69,26 +70,100 @@ func Build(providerType string, creds Credentials) (Provider, error) {
 		if creds.APIToken == "" {
 			return nil, fmt.Errorf("cloudflare: api_token is required")
 		}
-		return &adapter{z: &cloudflare.Provider{APIToken: creds.APIToken}}, nil
+		return newAdapter(&cloudflare.Provider{APIToken: creds.APIToken}), nil
 	case models.DNSProviderDigitalOcean:
 		if creds.APIToken == "" {
 			return nil, fmt.Errorf("digitalocean: api_token is required")
 		}
-		return &adapter{z: &digitalocean.Provider{APIToken: creds.APIToken}}, nil
+		return newAdapter(&digitalocean.Provider{APIToken: creds.APIToken}), nil
 	case models.DNSProviderRoute53:
 		if creds.AccessKeyID == "" || creds.SecretAccessKey == "" {
 			return nil, fmt.Errorf("route53: access_key_id and secret_access_key are required")
 		}
-		return &adapter{z: &route53.Provider{
+		return newAdapter(&route53.Provider{
 			AccessKeyId: creds.AccessKeyID, SecretAccessKey: creds.SecretAccessKey, Region: creds.Region,
-		}}, nil
+		}), nil
 	default:
 		return nil, fmt.Errorf("unknown DNS provider type %q", providerType)
 	}
 }
 
-// adapter maps the Miabi Provider interface onto a libdns zoneClient.
-type adapter struct{ z zoneClient }
+type adapter struct {
+	z      zoneClient
+	lister libdns.ZoneLister
+	mu     sync.Mutex
+	zones  map[string]string
+}
+
+// newAdapter wraps a libdns client, detecting whether it can enumerate zones.
+func newAdapter(z zoneClient) *adapter {
+	a := &adapter{z: z, zones: map[string]string{}}
+	if zl, ok := z.(libdns.ZoneLister); ok {
+		a.lister = zl
+	}
+	return a
+}
+
+// resolveZone maps a domain to the provider zone that actually hosts it, caching
+// the result. A subdomain resolves to its parent zone; an apex resolves to itself.
+func (a *adapter) resolveZone(ctx context.Context, domain string) (string, error) {
+	key := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(domain), "."))
+	if key == "" {
+		return "", fmt.Errorf("empty domain")
+	}
+	a.mu.Lock()
+	cached, ok := a.zones[key]
+	a.mu.Unlock()
+	if ok {
+		return cached, nil
+	}
+	zone, err := a.discoverZone(ctx, key)
+	if err != nil {
+		return "", err
+	}
+	a.mu.Lock()
+	a.zones[key] = zone
+	a.mu.Unlock()
+	return zone, nil
+}
+
+// discoverZone finds the hosting zone for domain (lowercase, no trailing dot).
+// With a ZoneLister it picks the longest account zone that is a suffix of domain;
+// otherwise it probes parent suffixes, most specific first, via GetRecords.
+func (a *adapter) discoverZone(ctx context.Context, domain string) (string, error) {
+	if a.lister != nil {
+		zones, err := a.lister.ListZones(ctx)
+		if err != nil {
+			return "", fmt.Errorf("list zones: %w", err)
+		}
+		best := ""
+		for _, z := range zones {
+			zn := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(z.Name), "."))
+			if zn == "" {
+				continue
+			}
+			if domain == zn || strings.HasSuffix(domain, "."+zn) {
+				if len(zn) > len(best) {
+					best = zn
+				}
+			}
+		}
+		if best == "" {
+			return "", fmt.Errorf("no DNS zone in this account manages %s — add the domain to the provider first", domain)
+		}
+		return canonicalZone(best), nil
+	}
+	// Fallback for providers without zone enumeration: try the domain and each
+	// parent
+	labels := strings.Split(domain, ".")
+	for i := 0; i+1 < len(labels); i++ {
+		cand := strings.Join(labels[i:], ".")
+		if _, err := a.z.GetRecords(ctx, canonicalZone(cand)); err == nil {
+			return canonicalZone(cand), nil
+		}
+	}
+	return "", fmt.Errorf("could not find a DNS zone that manages %s", domain)
+}
 
 // canonicalZone gives the zone a trailing dot, libdns's canonical FQDN form.
 func canonicalZone(zone string) string {
@@ -103,32 +178,49 @@ func canonicalZone(zone string) string {
 }
 
 func (a *adapter) GetRecords(ctx context.Context, zone string) ([]Record, error) {
-	recs, err := a.z.GetRecords(ctx, canonicalZone(zone))
+	cz, err := a.resolveZone(ctx, zone)
+	if err != nil {
+		return nil, err
+	}
+	recs, err := a.z.GetRecords(ctx, cz)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]Record, 0, len(recs))
 	for _, r := range recs {
 		rr := r.RR()
-		out = append(out, Record{Type: rr.Type, Name: rr.Name, Value: rr.Data, TTL: rr.TTL})
+		// Return the FQDN: the resolved zone may be a parent of the requested
+		// domain, so libdns's zone-relative name is relativized to the wrong root
+		// for callers that compare against the domain. AbsoluteName re-anchors it.
+		out = append(out, Record{Type: rr.Type, Name: libdns.AbsoluteName(rr.Name, cz), Value: rr.Data, TTL: rr.TTL})
 	}
 	return out, nil
 }
 
 func (a *adapter) SetRecord(ctx context.Context, zone string, rec Record) error {
-	cz := canonicalZone(zone)
-	_, err := a.z.SetRecords(ctx, cz, []libdns.Record{a.toRR(cz, rec)})
+	cz, err := a.resolveZone(ctx, zone)
+	if err != nil {
+		return err
+	}
+	_, err = a.z.SetRecords(ctx, cz, []libdns.Record{a.toRR(cz, rec)})
 	return err
 }
 
 func (a *adapter) DeleteRecord(ctx context.Context, zone string, rec Record) error {
-	cz := canonicalZone(zone)
-	_, err := a.z.DeleteRecords(ctx, cz, []libdns.Record{a.toRR(cz, rec)})
+	cz, err := a.resolveZone(ctx, zone)
+	if err != nil {
+		return err
+	}
+	_, err = a.z.DeleteRecords(ctx, cz, []libdns.Record{a.toRR(cz, rec)})
 	return err
 }
 
 func (a *adapter) Test(ctx context.Context, zone string) error {
-	_, err := a.z.GetRecords(ctx, canonicalZone(zone))
+	cz, err := a.resolveZone(ctx, zone)
+	if err != nil {
+		return err
+	}
+	_, err = a.z.GetRecords(ctx, cz)
 	return err
 }
 

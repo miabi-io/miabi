@@ -254,6 +254,10 @@ export interface LoginTokenResponse {
   login_command?: string
   curl_example?: string
   two_factor_required?: boolean
+  // redirect_to is set only for the loopback CLI-login flow (`miabi login`): the
+  // browser navigates here to hand a single-use code back to the CLI's local
+  // callback. The raw token is omitted in that case.
+  redirect_to?: string
 }
 
 export interface TwoFactorSetup {

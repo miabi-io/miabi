@@ -11,6 +11,10 @@ const routes = [
   // fresh re-authentication (even for a signed-in user) before minting a CLI token,
   // and also handles the SSO hand-off return (?handoff=…).
   { path: '/request-token', name: 'request-token', component: () => import('@/views/auth/RequestToken.vue'), meta: { title: 'CLI login token' } },
+  // `miabi login` loopback flow: like request-token, forces a fresh re-auth (even
+  // when signed in), then hands a single-use code back to the CLI's local callback
+  // (?redirect_uri=…&state=…). Neither guest- nor auth-gated.
+  { path: '/cli/authorize', name: 'cli-authorize', component: () => import('@/views/auth/CliAuthorize.vue'), meta: { title: 'Authorize CLI login' } },
   // Forced password change (admin-set/reset credential). The user holds only a
   // short-lived reset token here, not a session; the guard gates it on a pending
   // reset rather than on auth.

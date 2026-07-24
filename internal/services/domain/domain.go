@@ -9,7 +9,6 @@ package domain
 import (
 	"context"
 	"errors"
-	"net"
 	"regexp"
 	"strings"
 	"time"
@@ -90,9 +89,11 @@ type Service struct {
 	resyncer  ProxyResyncer
 }
 
-// NewService wires the domain service.
+// NewService wires the domain service. The default TXT lookup queries the
+// domain's authoritative nameservers directly (falling back to the system
+// resolver)
 func NewService(repo *repositories.DomainRepository) *Service {
-	return &Service{repo: repo, lookup: net.DefaultResolver.LookupTXT}
+	return &Service{repo: repo, lookup: authoritativeLookupTXT}
 }
 
 // SetDNSAutomator wires DNS automation for provider-connected domains (nil-safe;
@@ -245,7 +246,8 @@ func (s *Service) Verify(ctx context.Context, workspaceID, id uint) (*models.Dom
 	if automated {
 		attempts = verifyRetries // give the auto-created record time to propagate
 	}
-	for i := 0; i < attempts; i++ {
+	verified := false
+	for i := 0; i < attempts && !verified; i++ {
 		if i > 0 {
 			select {
 			case <-ctx.Done():
@@ -259,30 +261,30 @@ func (s *Service) Verify(ctx context.Context, workspaceID, id uint) (*models.Dom
 		}
 		for _, r := range records {
 			if strings.TrimSpace(r) == want {
-				// Ownership is proven; refuse if another workspace already owns this
-				// verified hostname (only check on the unverified→verified transition).
-				if !wasVerified {
-					if cerr := s.ensureClaimable(d); cerr != nil {
-						return d, cerr
-					}
-				}
-				now := time.Now()
-				d.Verified = true
-				d.VerifiedAt = &now
-				d.VerificationCheckedAt = &now
-				d.VerificationError = ""
-				d.VerificationMisses = 0
-				if err := s.repo.Update(d); err != nil {
-					return nil, err
-				}
-				// Newly proven ownership: re-render the workspace so routes under
-				// this domain go live.
-				if !wasVerified {
-					s.resync(ctx, workspaceID)
-				}
-				return d, nil
+				verified = true
+				break
 			}
 		}
+	}
+	if verified {
+		if !wasVerified {
+			if cerr := s.ensureClaimable(d); cerr != nil {
+				return d, cerr
+			}
+		}
+		now := time.Now()
+		d.Verified = true
+		d.VerifiedAt = &now
+		d.VerificationCheckedAt = &now
+		d.VerificationError = ""
+		d.VerificationMisses = 0
+		if err := s.repo.Update(d); err != nil {
+			return nil, err
+		}
+		if !wasVerified {
+			s.resync(ctx, workspaceID)
+		}
+		return d, nil
 	}
 	// Record the failed check so the UI can show when ownership last failed.
 	now := time.Now()
@@ -294,12 +296,6 @@ func (s *Service) Verify(ctx context.Context, workspaceID, id uint) (*models.Dom
 	return d, ErrVerificationFailed
 }
 
-// ensureClaimable rejects verifying a domain whose hostname is already verified
-// by another workspace, or that overlaps a verified wildcard elsewhere (a
-// wildcard covers its subdomains). This enforces one verified owner per hostname
-// platform-wide so two tenants can't both serve the same name. The partial
-// unique index on (lower(name)) WHERE verified is the DB backstop for the
-// exact-name case (and catches a verify/force-verify race).
 func (s *Service) ensureClaimable(d *models.Domain) error {
 	others, err := s.repo.ListVerifiedElsewhere(d.WorkspaceID)
 	if err != nil {

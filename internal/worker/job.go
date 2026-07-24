@@ -114,16 +114,19 @@ func (h *JobHandler) run(ctx context.Context, j *models.Job) {
 		}
 	}
 	spec := docker.RunSpec{
-		Name:        name,
-		Image:       j.Image,
-		Entrypoint:  j.Entrypoint,
-		Cmd:         j.Command,
-		Env:         rc.Env,
-		Networks:    rc.Networks,
-		Mounts:      rc.Mounts,
-		Binds:       rc.Binds,
-		MemoryBytes: rc.MemoryBytes,
-		NanoCPUs:    rc.NanoCPUs,
+		Name:       name,
+		Image:      j.Image,
+		Entrypoint: j.Entrypoint,
+		Cmd:        j.Command,
+		Env:        rc.Env,
+		Networks:   rc.Networks,
+		Mounts:     rc.Mounts,
+		// Volumes were seeded+chowned by prepareRestrictedVolumes under the
+		// restricted profile; skip copy-up so it isn't re-owned from the image.
+		NoCopyVolumes: sec.Restricted(),
+		Binds:         rc.Binds,
+		MemoryBytes:   rc.MemoryBytes,
+		NanoCPUs:      rc.NanoCPUs,
 		Labels: map[string]string{
 			docker.LabelApp:       fmt.Sprintf("%d", app.ID),
 			docker.LabelJob:       fmt.Sprintf("%d", j.ID),

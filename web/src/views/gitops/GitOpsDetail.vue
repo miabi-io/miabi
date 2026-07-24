@@ -13,10 +13,14 @@ import '@vue-flow/controls/dist/style.css'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { gitopsApi } from '@/api/gitops'
+import { eventsApi } from '@/api/events'
+import { databaseApi } from '@/api/resources'
 import ResourceNode from './ResourceNode.vue'
 import ProjectNode from './ProjectNode.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import LogViewer from '@/components/LogViewer.vue'
 import { kindOf, nodeStatusMeta, gitSourceStatusMeta, edgeLabel, resourceRoute } from './topologyMeta'
-import type { GitSource, Topology, TopologyNode, PlanChange, NodeStatus } from '@/api/types'
+import type { GitSource, Topology, TopologyNode, PlanChange, NodeStatus, AppEvent, ApplyPlan } from '@/api/types'
 
 // Synthetic id for the project root node (the GitSource itself is not a
 // declarative resource, so it never collides with a "<Kind>/<name>" key).
@@ -36,6 +40,32 @@ const planByKey = ref<Record<string, PlanChange>>({})
 const loading = ref(false)
 const syncing = ref(false)
 const selectedKey = ref<string | null>(null)
+// Per-resource action state (sync/delete of the selected node).
+const resourceBusy = ref(false)
+const confirmDelete = ref(false)
+
+// Resource drawer tabs. Overview is always present; Events/Logs appear for the
+// kinds that have them (and only once the resource is live).
+type DrawerTab = 'overview' | 'events' | 'logs'
+const activeTab = ref<DrawerTab>('overview')
+const drawerEvents = ref<AppEvent[]>([])
+const eventsLoading = ref(false)
+const eventsHasMore = ref(false)
+const loadingMoreEvents = ref(false)
+const drawerLogs = ref<string[]>([])
+const logsConnected = ref(false)
+let eventsES: EventSource | null = null
+let logsES: EventSource | null = null
+const EVENTS_PAGE = 30
+const LOG_CAP = 2000
+
+// Header status filter: clicking a chip toggles that status; when the set is
+// non-empty, non-matching nodes are dimmed on the graph.
+const statusFilter = ref<Set<NodeStatus>>(new Set())
+// Preview-&-sync modal: shows the full plan (from the diff endpoint) before applying.
+const previewOpen = ref(false)
+const previewLoading = ref(false)
+const previewPlan = ref<ApplyPlan | null>(null)
 
 const { setNodes, setEdges, fitView, updateNodeData } = useVueFlow()
 
@@ -107,6 +137,7 @@ async function load() {
   }
   try {
     await refreshGraph()
+    restoreSelection() // re-open the resource named in ?resource=, if any
   } catch (e) {
     // Topology itself failed (rare — the backend degrades to live state). Keep the
     // header + error visible rather than blanking the page.
@@ -218,9 +249,30 @@ function buildGraph() {
 
   setNodes(flowNodes)
   setEdges(flowEdges)
-  selectedKey.value = null
+  // Preserve the selection across refreshes (e.g. after a per-resource sync) when
+  // the node still exists; drop it only if the resource is gone.
+  const keys = new Set(tnodes.map((n) => n.key))
+  if (selectedKey.value && !keys.has(selectedKey.value)) selectedKey.value = null
+  applyDimming()
   nextTick(() => fitView({ padding: 0.2, maxZoom: 1.1 }))
 }
+
+// applyDimming pushes the current status filter onto each node so ResourceNode can
+// fade the ones that don't match. Cheap (data-only update, no relayout).
+function applyDimming() {
+  const active = statusFilter.value.size > 0
+  for (const n of topo.value?.nodes ?? []) {
+    updateNodeData(n.key, { dimmed: active && !statusFilter.value.has(n.status) })
+  }
+}
+
+function toggleStatusFilter(s: NodeStatus) {
+  const next = new Set(statusFilter.value)
+  if (next.has(s)) next.delete(s)
+  else next.add(s)
+  statusFilter.value = next
+}
+watch(statusFilter, applyDimming)
 
 watch([currentWorkspaceId, sourceId], load, { immediate: true })
 
@@ -256,6 +308,225 @@ function openResource(node: TopologyNode | null) {
   if (!node) return
   const target = resourceRoute(node.kind, node.live_id)
   if (target) router.push(target)
+}
+
+// syncResource reconciles just the selected resource from Git (leaves the rest of
+// the project untouched), then refreshes the graph.
+async function syncResource() {
+  const node = selectedNode.value
+  if (!node || !currentWorkspaceId.value || !source.value) return
+  resourceBusy.value = true
+  try {
+    const res = await gitopsApi.syncResource(currentWorkspaceId.value, source.value.id, node.kind, node.name)
+    const fail = res.data.data?.failures?.[0]
+    if (fail) notify.error(fail.error || `Failed to sync ${node.name}`)
+    else notify.success(`Synced ${node.name}`)
+    await refreshGraph()
+  } catch (e) {
+    notify.apiError(e, `Could not sync ${node.name}`)
+  } finally {
+    resourceBusy.value = false
+  }
+}
+
+// deleteResource deletes the selected resource's live object. Under auto-sync it
+// is recreated on the next reconcile — the confirm dialog says so.
+async function deleteResource() {
+  const node = selectedNode.value
+  if (!node || !currentWorkspaceId.value || !source.value) return
+  resourceBusy.value = true
+  try {
+    const res = await gitopsApi.deleteResource(currentWorkspaceId.value, source.value.id, node.kind, node.name)
+    const fail = res.data.data?.failures?.[0]
+    if (fail) notify.error(fail.error || `Failed to delete ${node.name}`)
+    else notify.success(`Deleted ${node.name}`)
+    confirmDelete.value = false
+    await refreshGraph()
+  } catch (e) {
+    notify.apiError(e, `Could not delete ${node.name}`)
+  } finally {
+    resourceBusy.value = false
+  }
+}
+
+const deleteMessage = computed(() => {
+  const n = selectedNode.value
+  if (!n) return ''
+  const base = `Delete the live ${kindOf(n.kind).label} “${n.name}”. This removes the running resource now.`
+  return source.value?.sync_policy === 'auto'
+    ? `${base} This project auto-syncs, so it will be recreated from Git on the next reconcile.`
+    : `${base} It stays gone until the next sync re-applies it from Git.`
+})
+
+// --- Resource drawer tabs (Overview / Events / Logs) ---
+
+// Which tabs the selected resource supports. Events/Logs need a live resource
+// (live_id) and only apply to the kinds that emit them.
+const drawerTabs = computed<{ key: DrawerTab; label: string }[]>(() => {
+  const tabs: { key: DrawerTab; label: string }[] = [{ key: 'overview', label: 'Overview' }]
+  const n = selectedNode.value
+  if (!n || !n.live_id) return tabs
+  if (n.kind === 'Application') tabs.push({ key: 'events', label: 'Events' })
+  if (n.kind === 'Application' || n.kind === 'Database') tabs.push({ key: 'logs', label: 'Logs' })
+  return tabs
+})
+// Widen the drawer for the data-heavy tabs.
+const wideDrawer = computed(() => activeTab.value !== 'overview')
+
+function closeStreams() {
+  eventsES?.close()
+  eventsES = null
+  logsES?.close()
+  logsES = null
+  logsConnected.value = false
+}
+
+async function loadEvents(node: TopologyNode) {
+  if (!currentWorkspaceId.value || !node.live_id) return
+  eventsLoading.value = true
+  try {
+    const res = await eventsApi.list(currentWorkspaceId.value, node.live_id, undefined, EVENTS_PAGE)
+    drawerEvents.value = res.data.data ?? []
+    eventsHasMore.value = drawerEvents.value.length >= EVENTS_PAGE
+  } catch (e) {
+    notify.apiError(e, 'Could not load events')
+  } finally {
+    eventsLoading.value = false
+  }
+}
+
+async function loadMoreEvents() {
+  const node = selectedNode.value
+  if (!currentWorkspaceId.value || !node?.live_id || drawerEvents.value.length === 0) return
+  loadingMoreEvents.value = true
+  try {
+    const oldest = drawerEvents.value[drawerEvents.value.length - 1].id
+    const res = await eventsApi.list(currentWorkspaceId.value, node.live_id, oldest, EVENTS_PAGE)
+    const more = res.data.data ?? []
+    drawerEvents.value.push(...more)
+    eventsHasMore.value = more.length >= EVENTS_PAGE
+  } finally {
+    loadingMoreEvents.value = false
+  }
+}
+
+function streamEvents(node: TopologyNode) {
+  if (!currentWorkspaceId.value || !node.live_id) return
+  eventsES = new EventSource(eventsApi.streamUrl(currentWorkspaceId.value, node.live_id))
+  eventsES.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data) as { type: string; data: AppEvent }
+      const e = msg.data
+      if (e?.id && !drawerEvents.value.some((x) => x.id === e.id)) drawerEvents.value.unshift(e)
+    } catch {
+      /* keep-alive */
+    }
+  }
+  eventsES.onerror = () => eventsES?.close()
+}
+
+function streamLogs(node: TopologyNode) {
+  if (!currentWorkspaceId.value || !node.live_id) return
+  drawerLogs.value = []
+  const url =
+    node.kind === 'Database'
+      ? databaseApi.logsUrl(currentWorkspaceId.value, node.live_id)
+      : eventsApi.logsUrl(currentWorkspaceId.value, node.live_id)
+  logsES = new EventSource(url)
+  logsES.onopen = () => (logsConnected.value = true)
+  logsES.onmessage = (ev) => {
+    try {
+      const l = JSON.parse(ev.data) as { text?: string }
+      if (l.text != null) {
+        drawerLogs.value.push(l.text)
+        if (drawerLogs.value.length > LOG_CAP) drawerLogs.value.splice(0, drawerLogs.value.length - LOG_CAP)
+      }
+    } catch {
+      /* keep-alive */
+    }
+  }
+  logsES.onerror = () => {
+    logsConnected.value = false
+    logsES?.close()
+  }
+}
+
+// Drive the active tab's data: (re)selecting a resource or switching tabs tears
+// down any open stream and sets up the one the active tab needs. Selecting a new
+// resource resets to Overview.
+watch(selectedKey, () => {
+  activeTab.value = 'overview'
+  // Keep the selection in the URL so it survives reload and is shareable.
+  router.replace({ query: { ...route.query, resource: selectedKey.value || undefined } })
+})
+
+// restoreSelection re-selects the resource named in ?resource= after a (re)load,
+// when nothing is selected and that resource exists.
+function restoreSelection() {
+  if (selectedKey.value) return
+  const q = route.query.resource
+  if (typeof q === 'string' && (topo.value?.nodes ?? []).some((n) => n.key === q)) {
+    selectedKey.value = q
+  }
+}
+
+// openPreview fetches the desired-vs-live plan and shows it before a full sync.
+async function openPreview() {
+  if (!currentWorkspaceId.value || !source.value) return
+  previewOpen.value = true
+  previewLoading.value = true
+  previewPlan.value = null
+  try {
+    const res = await gitopsApi.diff(currentWorkspaceId.value, source.value.id)
+    previewPlan.value = res.data.data ?? null
+  } catch (e) {
+    notify.apiError(e, 'Could not load the plan')
+  } finally {
+    previewLoading.value = false
+  }
+}
+// Non-noop changes the preview lists (create/update/delete).
+const previewChanges = computed<PlanChange[]>(() =>
+  (previewPlan.value?.changes ?? []).filter((c) => c.action !== 'noop'),
+)
+async function previewAndSync() {
+  previewOpen.value = false
+  await sync()
+}
+// planActionMeta styles a plan change by its action.
+function planActionMeta(action: string): { label: string; badge: string } {
+  switch (action) {
+    case 'create':
+      return { label: 'Create', badge: 'badge-success' }
+    case 'update':
+      return { label: 'Update', badge: 'badge-info' }
+    case 'delete':
+      return { label: 'Delete', badge: 'badge-danger' }
+    default:
+      return { label: action, badge: 'badge-neutral' }
+  }
+}
+watch([selectedKey, activeTab], () => {
+  closeStreams()
+  const node = selectedNode.value
+  if (!node) return
+  if (activeTab.value === 'events') {
+    void loadEvents(node)
+    streamEvents(node)
+  } else if (activeTab.value === 'logs') {
+    streamLogs(node)
+  }
+})
+onBeforeUnmount(closeStreams)
+
+// eventIcon maps an event type to an mdi glyph (mirrors the app timeline).
+function eventIcon(type: string): string {
+  if (type.includes('deploy')) return 'mdi-rocket-launch-outline'
+  if (type.includes('fail') || type.includes('error')) return 'mdi-alert-circle-outline'
+  if (type.includes('stop')) return 'mdi-stop-circle-outline'
+  if (type.includes('start') || type.includes('restart')) return 'mdi-play-circle-outline'
+  if (type.includes('scale')) return 'mdi-arrow-expand-vertical'
+  return 'mdi-information-outline'
 }
 
 async function sync() {
@@ -345,6 +616,9 @@ const policyFlags = computed(() => {
         >
           <span class="live-dot"></span>{{ liveOn ? 'Live' : 'Paused' }}
         </button>
+        <button v-if="ws.canEdit" class="btn btn-secondary" title="Preview the plan before syncing" :disabled="syncing" @click="openPreview">
+          <span class="mdi mdi-file-search-outline"></span> Preview
+        </button>
         <button v-if="ws.canEdit" class="btn btn-secondary" :disabled="syncing" @click="sync">
           <span class="mdi" :class="syncing ? 'mdi-loading mdi-spin' : 'mdi-sync'"></span> Sync
         </button>
@@ -397,13 +671,24 @@ const policyFlags = computed(() => {
       <span><strong>Showing last-synced state.</strong> The latest revision could not be loaded: <span class="mono">{{ topo.error }}</span></span>
     </div>
 
-    <!-- Status legend -->
+    <!-- Status legend — click a chip to filter the graph by that status -->
     <div v-if="nodeCount" class="legend">
       <span class="legend-total">{{ nodeCount }} resource{{ nodeCount === 1 ? '' : 's' }}</span>
-      <span v-for="c in visibleCounts" :key="c.status" class="legend-item">
+      <button
+        v-for="c in visibleCounts"
+        :key="c.status"
+        type="button"
+        class="legend-item legend-chip"
+        :class="{ active: statusFilter.has(c.status), faded: statusFilter.size > 0 && !statusFilter.has(c.status) }"
+        :title="`Show only ${nodeStatusMeta[c.status].label.toLowerCase()}`"
+        @click="toggleStatusFilter(c.status)"
+      >
         <span class="dot" :style="{ background: nodeStatusMeta[c.status].color }"></span>
         {{ c.n }} {{ nodeStatusMeta[c.status].label.toLowerCase() }}
-      </span>
+      </button>
+      <button v-if="statusFilter.size" type="button" class="legend-clear" @click="statusFilter = new Set()">
+        <span class="mdi mdi-close"></span> clear filter
+      </button>
     </div>
 
     <!-- Graph + side panel -->
@@ -438,7 +723,7 @@ const policyFlags = computed(() => {
 
       <!-- Side panel -->
       <transition name="slide">
-        <aside v-if="selectedNode" class="side">
+        <aside v-if="selectedNode" class="side" :class="{ 'side-wide': wideDrawer }">
           <div class="side-head">
             <span class="side-icon" :style="{ color: nodeStatusMeta[selectedNode.status].color }">
               <span class="mdi" :class="kindOf(selectedNode.kind).icon"></span>
@@ -450,7 +735,22 @@ const policyFlags = computed(() => {
             <button class="btn-icon btn-icon-muted" aria-label="Close" @click="selectedKey = null"><span class="mdi mdi-close"></span></button>
           </div>
 
-          <div class="side-body">
+          <div v-if="drawerTabs.length > 1" class="side-tabs" role="tablist">
+            <button
+              v-for="t in drawerTabs"
+              :key="t.key"
+              class="side-tab"
+              :class="{ active: activeTab === t.key }"
+              role="tab"
+              :aria-selected="activeTab === t.key"
+              @click="activeTab = t.key"
+            >
+              {{ t.label }}
+            </button>
+          </div>
+
+          <!-- Overview tab -->
+          <div v-if="activeTab === 'overview'" class="side-body">
             <div class="side-row">
               <span class="side-label">Sync status</span>
               <span class="badge" :class="nodeStatusMeta[selectedNode.status].badge">
@@ -502,13 +802,103 @@ const policyFlags = computed(() => {
             </div>
           </div>
 
+          <!-- Events tab -->
+          <div v-else-if="activeTab === 'events'" class="side-body side-scroll">
+            <div v-if="eventsLoading && drawerEvents.length === 0" class="drawer-empty"><span class="spinner"></span></div>
+            <div v-else-if="drawerEvents.length === 0" class="drawer-empty">
+              <span class="mdi mdi-timeline-text-outline"></span>
+              <p>No events yet.</p>
+            </div>
+            <template v-else>
+              <ul class="timeline">
+                <li v-for="e in drawerEvents" :key="e.id" class="event">
+                  <span class="event-icon" :class="`sev-${e.severity}`"><span class="mdi" :class="eventIcon(e.type)"></span></span>
+                  <div class="event-body">
+                    <div class="event-row">
+                      <span class="event-msg">{{ e.message || e.type }}</span>
+                      <span class="event-time">{{ relTime(e.created_at) }}</span>
+                    </div>
+                    <span class="event-type">{{ e.type }}</span>
+                  </div>
+                </li>
+              </ul>
+              <div v-if="eventsHasMore" class="text-center" style="padding: 8px 0 2px">
+                <button class="btn btn-secondary btn-sm" :disabled="loadingMoreEvents" @click="loadMoreEvents">
+                  {{ loadingMoreEvents ? 'Loading…' : 'Load more' }}
+                </button>
+              </div>
+            </template>
+          </div>
+
+          <!-- Logs tab -->
+          <div v-else class="side-body side-logs">
+            <LogViewer
+              :lines="drawerLogs"
+              :streaming="logsConnected"
+              :status-label="logsConnected ? 'Live' : 'Disconnected'"
+              :status-class="logsConnected ? 'badge-success' : 'badge-neutral'"
+              :download-name="`${selectedNode.name}-logs`"
+              placeholder="Waiting for log output…"
+            />
+          </div>
+
           <div class="side-foot">
+            <div v-if="ws.canEdit" class="side-actions">
+              <button class="btn btn-secondary" :disabled="resourceBusy" @click="syncResource">
+                <span class="mdi" :class="resourceBusy ? 'mdi-loading mdi-spin' : 'mdi-sync'"></span> Sync
+              </button>
+              <button class="btn btn-danger" :disabled="resourceBusy" @click="confirmDelete = true">
+                <span class="mdi mdi-delete-outline"></span> Delete
+              </button>
+            </div>
             <button class="btn btn-primary btn-block" :disabled="!resourceRoute(selectedNode.kind, selectedNode.live_id)" @click="openResource(selectedNode)">
               <span class="mdi mdi-open-in-new"></span> Open detail
             </button>
           </div>
         </aside>
       </transition>
+    </div>
+
+    <ConfirmDialog
+      :open="confirmDelete"
+      title="Delete this resource?"
+      :message="deleteMessage"
+      confirm-label="Delete"
+      variant="danger"
+      :busy="resourceBusy"
+      @confirm="deleteResource"
+      @cancel="confirmDelete = false"
+    />
+
+    <!-- Preview & sync -->
+    <div v-if="previewOpen" class="modal-overlay" @click.self="previewOpen = false">
+      <div class="preview-modal">
+        <div class="preview-head">
+          <h3>Sync preview</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="previewOpen = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="preview-body">
+          <div v-if="previewLoading" class="drawer-empty"><span class="spinner"></span></div>
+          <div v-else-if="previewChanges.length === 0" class="drawer-empty">
+            <span class="mdi mdi-check-circle-outline"></span>
+            <p>In sync — nothing to apply.</p>
+          </div>
+          <ul v-else class="preview-list">
+            <li v-for="(c, i) in previewChanges" :key="i" class="preview-change">
+              <span class="badge" :class="planActionMeta(c.action).badge">{{ planActionMeta(c.action).label }}</span>
+              <span class="preview-kind">{{ c.kind }}</span>
+              <span class="preview-name mono">{{ c.name }}</span>
+            </li>
+          </ul>
+        </div>
+        <div class="preview-foot">
+          <button class="btn btn-secondary" @click="previewOpen = false">Cancel</button>
+          <button class="btn btn-primary" :disabled="syncing || previewLoading" @click="previewAndSync">
+            <span class="mdi" :class="syncing ? 'mdi-loading mdi-spin' : 'mdi-sync'"></span>
+            Sync<span v-if="previewChanges.length"> ({{ previewChanges.length }})</span>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -571,10 +961,44 @@ const policyFlags = computed(() => {
 .banner-warning { background: color-mix(in srgb, var(--warning-600) 12%, transparent); color: var(--warning-700, var(--warning-600)); }
 .banner-warning .mono { word-break: break-all; }
 
-.legend { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; font-size: 12px; color: var(--text-muted); }
+.legend { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
 .legend-total { font-weight: 600; color: var(--text-primary); }
 .legend-item { display: inline-flex; align-items: center; gap: 6px; }
 .legend-item .dot { width: 9px; height: 9px; border-radius: 50%; }
+/* Clickable filter chips. */
+.legend-chip {
+  appearance: none; border: 1px solid transparent; background: none; cursor: pointer;
+  color: inherit; font-size: 12px; padding: 3px 8px; border-radius: 999px; transition: background 0.12s, border-color 0.12s, opacity 0.12s;
+}
+.legend-chip:hover { background: var(--bg-secondary); }
+.legend-chip.active { border-color: var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-weight: 600; }
+.legend-chip.faded { opacity: 0.5; }
+.legend-clear {
+  appearance: none; border: none; background: none; cursor: pointer; color: var(--text-muted);
+  font-size: 12px; display: inline-flex; align-items: center; gap: 3px;
+}
+.legend-clear:hover { color: var(--text-primary); }
+
+/* Preview & sync modal. */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.45); padding: 24px;
+}
+.preview-modal {
+  width: 100%; max-width: 560px; max-height: 80vh; display: flex; flex-direction: column;
+  background: var(--bg-primary); border: 1px solid var(--border-primary); border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+.preview-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border-primary); }
+.preview-head h3 { margin: 0; font-size: 15px; }
+.preview-body { padding: 8px 16px; overflow-y: auto; flex: 1; }
+.preview-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.preview-change { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-primary); }
+.preview-change:last-child { border-bottom: none; }
+.preview-change .badge { flex-shrink: 0; }
+.preview-kind { font-size: 12px; color: var(--text-muted); }
+.preview-name { font-size: 13px; color: var(--text-primary); word-break: break-all; }
+.preview-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border-primary); }
 
 .graph-wrap { position: relative; height: calc(100vh - 230px); min-height: 460px; padding: 0; overflow: hidden; }
 .graph-placeholder { display: grid; place-items: center; height: 100%; }
@@ -584,14 +1008,61 @@ const policyFlags = computed(() => {
 .side {
   position: absolute;
   top: 0; right: 0; bottom: 0;
-  width: 320px;
+  width: 340px;
   background: var(--bg-primary);
   border-left: 1px solid var(--border-primary);
   display: flex;
   flex-direction: column;
   box-shadow: -4px 0 16px rgba(0, 0, 0, 0.06);
   z-index: 5;
+  transition: width 0.15s ease;
 }
+/* Data-heavy tabs (Events/Logs) get more room. */
+.side-wide { width: clamp(420px, 46vw, 640px); }
+
+.side-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+.side-tab {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 9px 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.side-tab:hover { color: var(--text-primary); }
+.side-tab.active { color: var(--primary-600, #2563eb); border-bottom-color: var(--primary-600, #2563eb); font-weight: 600; }
+
+.side-scroll { overflow-y: auto; }
+.side-logs { padding: 12px; overflow: hidden; }
+.drawer-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; padding: 32px 12px; color: var(--text-muted); text-align: center; flex: 1;
+}
+.drawer-empty .mdi { font-size: 36px; }
+
+/* Event timeline (compact form of the app-detail timeline). */
+.timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.event { display: flex; gap: 10px; }
+.event-icon {
+  flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-secondary); color: var(--text-muted); font-size: 15px;
+}
+.event-icon.sev-warning { color: var(--warning-600, #b45309); background: var(--warning-50, #fffbeb); }
+.event-icon.sev-error { color: var(--danger-600, #dc2626); background: var(--danger-50, #fef2f2); }
+.event-body { min-width: 0; flex: 1; }
+.event-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.event-msg { font-size: 13px; color: var(--text-primary); word-break: break-word; }
+.event-time { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.event-type { font-size: 11px; color: var(--text-muted); font-family: monospace; }
 .side-head { display: flex; align-items: center; gap: 10px; padding: 14px; border-bottom: 1px solid var(--border-primary); }
 .side-icon { font-size: 22px; }
 .side-title { display: flex; flex-direction: column; min-width: 0; flex: 1; }
@@ -601,7 +1072,9 @@ const policyFlags = computed(() => {
 .side-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .side-section { display: flex; flex-direction: column; gap: 8px; }
 .side-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
-.side-foot { padding: 12px 14px; border-top: 1px solid var(--border-primary); }
+.side-foot { padding: 12px 14px; border-top: 1px solid var(--border-primary); display: flex; flex-direction: column; gap: 8px; }
+.side-actions { display: flex; gap: 8px; }
+.side-actions .btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .btn-block { width: 100%; justify-content: center; }
 .side-url {
   display: inline-flex;

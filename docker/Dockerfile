@@ -28,11 +28,8 @@ COPY . .
 COPY --from=web /web/dist ./internal/web/dist
 ARG VERSION=dev
 ARG COMMIT=unknown
-# Edition knobs: GO_TAGS="enterprise" + a baked LICENSE_PUBLIC_KEY produce an
-# Enterprise binary; both empty (the default) build Community. The
-# embeddedPublicKey symbol only exists in the enterprise-tagged build, so the -X
-# is a harmless no-op for a Community build.
-ARG GO_TAGS=""
+
+ARG GO_TAGS="enterprise"
 ARG LICENSE_PUBLIC_KEY=""
 RUN CGO_ENABLED=0 go build -tags "${GO_TAGS}" \
     -ldflags "-s -w -X github.com/miabi-io/miabi/internal/config.Version=${VERSION} -X github.com/miabi-io/miabi/internal/config.CommitID=${COMMIT} -X github.com/miabi-io/miabi/internal/enterprise.embeddedPublicKey=${LICENSE_PUBLIC_KEY}" \

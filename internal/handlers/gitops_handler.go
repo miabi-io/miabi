@@ -157,6 +157,48 @@ func (h *GitOpsHandler) Sync(c *okapi.Context) error {
 	return ok(c, src)
 }
 
+// SyncResource reconciles a single resource of the source ("sync this resource"),
+// leaving the rest of the project untouched. The path names the resource by kind
+// and name (e.g. .../resources/Application/guestbook/sync).
+func (h *GitOpsHandler) SyncResource(c *okapi.Context) error {
+	id, err := h.id(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid git source id")
+	}
+	kind, name := c.Param("kind"), c.Param("name")
+	if kind == "" || name == "" {
+		return c.AbortBadRequest("resource kind and name are required")
+	}
+	wsID := middlewares.WorkspaceID(c)
+	res, err := h.svc.SyncResource(c.Request().Context(), wsID, id, kind, name)
+	if err != nil {
+		return h.mapErr(c, err)
+	}
+	h.record(c, wsID, "gitops.sync_resource", id)
+	return ok(c, res)
+}
+
+// DeleteResource deletes a single live resource of the source ("delete this
+// resource"). Under auto-sync it is recreated on the next reconcile — the UI warns
+// the user before calling this.
+func (h *GitOpsHandler) DeleteResource(c *okapi.Context) error {
+	id, err := h.id(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid git source id")
+	}
+	kind, name := c.Param("kind"), c.Param("name")
+	if kind == "" || name == "" {
+		return c.AbortBadRequest("resource kind and name are required")
+	}
+	wsID := middlewares.WorkspaceID(c)
+	res, err := h.svc.DeleteResource(c.Request().Context(), wsID, id, kind, name)
+	if err != nil {
+		return h.mapErr(c, err)
+	}
+	h.record(c, wsID, "gitops.delete_resource", id)
+	return ok(c, res)
+}
+
 // Diff returns the desired-vs-live plan for the source.
 func (h *GitOpsHandler) Diff(c *okapi.Context) error {
 	id, err := h.id(c)
@@ -243,6 +285,8 @@ func (h *GitOpsHandler) mapErr(c *okapi.Context, err error) error {
 		return c.AbortWithError(409, err)
 	case errors.Is(err, gitops.ErrNameRequired), errors.Is(err, gitops.ErrURLRequired), errors.Is(err, gitops.ErrRepoNotFound):
 		return c.AbortBadRequest(err.Error())
+	case errors.Is(err, apply.ErrResourceNotFound):
+		return c.AbortNotFound(err.Error())
 	default:
 		return c.AbortInternalServerError("git source operation failed", err)
 	}

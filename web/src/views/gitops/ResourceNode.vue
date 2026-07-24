@@ -12,6 +12,8 @@ interface NodeData {
   status: NodeStatus
   health?: string
   liveId?: number
+  // dimmed is set when a status filter is active and this node doesn't match.
+  dimmed?: boolean
 }
 
 const props = defineProps<{ data: NodeData; selected?: boolean }>()
@@ -22,7 +24,7 @@ const health = computed(() => healthOf(props.data.health))
 </script>
 
 <template>
-  <div class="rnode" :class="{ selected }" :style="{ '--accent': status.color }">
+  <div class="rnode" :class="{ selected, dimmed: data.dimmed }" :style="{ '--accent': status.color }">
     <!-- Left = incoming (this resource is a dependency of another); right =
          outgoing (this resource depends on another). Both present so a node can
          be either end of an edge. -->
@@ -66,6 +68,8 @@ const health = computed(() => healthOf(props.data.health))
   transition: box-shadow 0.12s, border-color 0.12s;
 }
 .rnode:hover { box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12); }
+.rnode.dimmed { opacity: 0.28; }
+.rnode.dimmed.selected { opacity: 1; }
 .rnode.selected {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);

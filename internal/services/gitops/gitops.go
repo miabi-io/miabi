@@ -45,6 +45,8 @@ var (
 // interface so the package stays testable.
 type Applier interface {
 	Apply(ctx context.Context, workspaceID uint, manifests []byte, opts apply.Options) (*apply.Result, error)
+	ApplyResource(ctx context.Context, workspaceID uint, manifests []byte, opts apply.Options, kind, name string) (*apply.Result, error)
+	DeleteResource(ctx context.Context, workspaceID uint, kind, name string) (*apply.Result, error)
 	Teardown(ctx context.Context, workspaceID uint, sourceID string) (*apply.Result, error)
 	Plan(ctx context.Context, workspaceID uint, manifests []byte, opts apply.Options) (*declarative.Plan, *declarative.ResourceSet, error)
 	Topology(ctx context.Context, workspaceID uint, manifests []byte, opts apply.Options) (*apply.Topology, error)
@@ -249,6 +251,31 @@ func (s *Service) Sync(ctx context.Context, workspaceID, id uint) (*models.GitSo
 		return nil, err
 	}
 	return src, s.Reconcile(ctx, src)
+}
+
+// SyncResource reconciles a single resource (kind/name) of a source — the GitOps
+// "sync this resource" action — without touching the rest of the project. It does
+// not update the source's overall sync status (a partial sync isn't a project sync).
+func (s *Service) SyncResource(ctx context.Context, workspaceID, id uint, kind, name string) (*apply.Result, error) {
+	src, err := s.get(workspaceID, id)
+	if err != nil {
+		return nil, err
+	}
+	manifests, _, err := s.fetch(ctx, src)
+	if err != nil {
+		return nil, fmt.Errorf("fetch: %w", err)
+	}
+	return s.applier.ApplyResource(ctx, workspaceID, manifests, apply.Options{Prune: src.Prune, OwnerSource: sourceLabel(src)}, kind, name)
+}
+
+// DeleteResource deletes a single live resource (kind/name) managed by a source.
+// Under auto-sync it will be recreated on the next reconcile — the handler warns
+// the user. Scoped to the source so a caller can't delete outside its project.
+func (s *Service) DeleteResource(ctx context.Context, workspaceID, id uint, kind, name string) (*apply.Result, error) {
+	if _, err := s.get(workspaceID, id); err != nil {
+		return nil, err
+	}
+	return s.applier.DeleteResource(ctx, workspaceID, kind, name)
 }
 
 // SyncByID reconciles a source by id without workspace scoping (worker/cron).

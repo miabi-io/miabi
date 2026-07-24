@@ -43,6 +43,9 @@ var (
 	// ErrUnsupportedKind is returned when a plan needs a mutation the v1 executor
 	// does not perform. The plan still lists the change.
 	ErrUnsupportedKind = errors.New("kind not yet supported by apply")
+	// ErrResourceNotFound is returned by ApplyResource when the named resource is
+	// not present in the desired manifest bundle (HTTP 404).
+	ErrResourceNotFound = errors.New("resource not found in manifests")
 )
 
 // Service computes and executes declarative plans for a workspace.
@@ -180,6 +183,55 @@ func (s *Service) Apply(ctx context.Context, workspaceID uint, manifests []byte,
 	if raw, perr := declarative.Parse(manifests); perr == nil {
 		s.linkDatabasesToApps(workspaceID, raw)
 	}
+	return res, nil
+}
+
+func (s *Service) ApplyResource(ctx context.Context, workspaceID uint, manifests []byte, opts Options, kind, name string) (*Result, error) {
+	plan, desired, err := s.Plan(ctx, workspaceID, manifests, opts)
+	if err != nil {
+		return nil, err
+	}
+	key := string(declarative.Kind(kind)) + "/" + name
+	ctx = withOwnerSource(ctx, opts.OwnerSource)
+	res := &Result{WorkspaceID: workspaceID}
+	for _, ch := range plan.Changes {
+		if string(ch.Kind)+"/"+ch.Name != key {
+			continue // a prune-delete or another resource — never touched by a single sync
+		}
+		res.Plan = &declarative.Plan{Changes: []declarative.Change{ch}}
+		if ch.Action == declarative.ActionNoop {
+			return res, nil
+		}
+		dr, _ := desired.Get(key)
+		if err := s.execute(ctx, workspaceID, ch, dr); err != nil {
+			res.Failures = append(res.Failures, Failure{Kind: string(ch.Kind), Name: ch.Name, Action: string(ch.Action), Error: err.Error()})
+			return res, nil
+		}
+		res.Applied++
+		// Keep database↔app links in sync when the applied resource is an app/db.
+		if raw, perr := declarative.Parse(manifests); perr == nil {
+			s.linkDatabasesToApps(workspaceID, raw)
+		}
+		return res, nil
+	}
+	return nil, fmt.Errorf("%w: %s", ErrResourceNotFound, key)
+}
+
+func (s *Service) DeleteResource(ctx context.Context, workspaceID uint, kind, name string) (*Result, error) {
+	actual, err := s.snapshot(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := actual.Get(string(declarative.Kind(kind)) + "/" + name); !ok {
+		return &Result{WorkspaceID: workspaceID}, nil // already gone
+	}
+	ch := declarative.Change{Kind: declarative.Kind(kind), Name: name, Action: declarative.ActionDelete}
+	res := &Result{WorkspaceID: workspaceID, Plan: &declarative.Plan{Changes: []declarative.Change{ch}}}
+	if err := s.execute(ctx, workspaceID, ch, declarative.Resource{}); err != nil {
+		res.Failures = append(res.Failures, Failure{Kind: kind, Name: name, Action: string(ch.Action), Error: err.Error()})
+		return res, err
+	}
+	res.Applied++
 	return res, nil
 }
 
@@ -500,6 +552,21 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 	set := declarative.NewResourceSet()
 	appSlugByID := map[uint]string{}
 
+	// Volumes first: apps reference them by name in their mounts, so build the
+	// id -> name map before emitting apps.
+	vols, err := s.storage.List(workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("snapshot volumes: %w", err)
+	}
+	volNameByID := make(map[uint]string, len(vols))
+	for i := range vols {
+		volNameByID[vols[i].ID] = vols[i].Name
+		set.Add(declarative.Resource{
+			APIVersion: declarative.APIVersion, Kind: declarative.KindVolume,
+			Metadata: metaA(vols[i].UID, vols[i].Name, vols[i].Metadata, vols[i].Annotations), Volume: &declarative.VolumeSpec{},
+		})
+	}
+
 	apps, err := s.apps.List(workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("snapshot apps: %w", err)
@@ -511,18 +578,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 			continue
 		}
 		ext, pub := s.exposedPorts(workspaceID, full.ID)
-		set.Add(appResource(full, ext, pub))
-	}
-
-	vols, err := s.storage.List(workspaceID)
-	if err != nil {
-		return nil, fmt.Errorf("snapshot volumes: %w", err)
-	}
-	for i := range vols {
-		set.Add(declarative.Resource{
-			APIVersion: declarative.APIVersion, Kind: declarative.KindVolume,
-			Metadata: metaA(vols[i].UID, vols[i].Name, vols[i].Metadata, vols[i].Annotations), Volume: &declarative.VolumeSpec{},
-		})
+		set.Add(appResource(full, ext, pub, volNameByID))
 	}
 
 	instances, err := s.dbs.List(workspaceID)
@@ -664,7 +720,7 @@ func metaA(uid, name string, m, annotations models.Metadata) declarative.Meta {
 // appResource maps a live application to its declarative form for diffing. ext
 // and pub are the container ports currently exposed externally (generated route)
 // and published (host-port binding), so per-port exposure converges idempotently.
-func appResource(app *models.Application, ext, pub map[int]bool) declarative.Resource {
+func appResource(app *models.Application, ext, pub map[int]bool, volNameByID map[uint]string) declarative.Resource {
 	spec := &declarative.ApplicationSpec{
 		Image:           app.Image,
 		Tag:             app.Tag,
@@ -672,6 +728,18 @@ func appResource(app *models.Application, ext, pub map[int]bool) declarative.Res
 		Command:         app.Command,
 		ContainerLabels: app.ContainerLabels,
 		ExternalLabel:   app.ExternalLabel,
+	}
+	// Managed volume mounts, by the volume's manifest name. Privileged host-preset
+	// binds (VolumeID 0) aren't manifest-expressible, so they're omitted.
+	for _, m := range app.Mounts {
+		if m.VolumeID == 0 {
+			continue
+		}
+		name := volNameByID[m.VolumeID]
+		if name == "" {
+			continue // volume outside this snapshot (shouldn't happen); skip
+		}
+		spec.Mounts = append(spec.Mounts, declarative.MountSpec{Volume: name, Path: m.Path, ReadOnly: m.ReadOnly})
 	}
 	for _, p := range app.Ports {
 		spec.Ports = append(spec.Ports, declarative.PortSpec{
@@ -994,6 +1062,11 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		if err := s.reconcileExposure(ctx, workspaceID, app, spec); err != nil {
 			return err
 		}
+		// Attach declared volumes before the first deploy so the container mounts
+		// them from the start.
+		if err := s.reconcileMounts(workspaceID, app, spec); err != nil {
+			return err
+		}
 		_, err = s.apps.Deploy(app, nil, "", "")
 		return err
 	case declarative.ActionUpdate:
@@ -1028,6 +1101,9 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 			return err
 		}
 		if err := s.reconcileExposure(ctx, workspaceID, app, spec); err != nil {
+			return err
+		}
+		if err := s.reconcileMounts(workspaceID, app, spec); err != nil {
 			return err
 		}
 		_, err = s.apps.Deploy(app, nil, "", "")
@@ -1216,6 +1292,38 @@ func (s *Service) reconcileEnv(appID uint, spec *declarative.ApplicationSpec) er
 	for _, ev := range current {
 		if _, keep := spec.Env[ev.Key]; !keep {
 			_ = s.apps.DeleteEnvVar(appID, ev.Key)
+		}
+	}
+	return nil
+}
+
+// reconcileMounts converges the app's volume mounts to the manifest: attaches (or
+// re-paths) each declared Volume and detaches managed volume mounts no longer
+// present. Privileged host-preset binds (VolumeID 0) aren't manifest-expressible
+// and are left untouched. Volumes apply before their app (EdgeMount), so they
+// resolve here even on a first apply. Takes effect on the next deploy.
+func (s *Service) reconcileMounts(workspaceID uint, app *models.Application, spec *declarative.ApplicationSpec) error {
+	keep := make(map[uint]bool, len(spec.Mounts))
+	for _, mt := range spec.Mounts {
+		vol, err := s.findVolume(workspaceID, mt.Volume)
+		if err != nil {
+			return fmt.Errorf("%w: application %q: %v", ErrInvalidManifest, app.Name, err)
+		}
+		if err := s.apps.AttachVolume(app, vol.ID, mt.Path); err != nil {
+			return fmt.Errorf("attach volume %q to %q: %w", mt.Volume, app.Name, err)
+		}
+		keep[vol.ID] = true
+	}
+	// Detach managed volume mounts no longer declared (skip host-preset binds).
+	var stale []uint
+	for _, m := range app.Mounts {
+		if m.VolumeID != 0 && !keep[m.VolumeID] {
+			stale = append(stale, m.VolumeID)
+		}
+	}
+	for _, id := range stale {
+		if err := s.apps.DetachVolume(app, id); err != nil {
+			return fmt.Errorf("detach volume from %q: %w", app.Name, err)
 		}
 	}
 	return nil

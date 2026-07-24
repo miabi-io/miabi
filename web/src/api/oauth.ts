@@ -21,3 +21,13 @@ export function authorizeUrl(slug: string, intent?: string): string {
   const q = intent ? `?intent=${encodeURIComponent(intent)}` : ''
   return `${origin}${base}/auth/oauth/${slug}/authorize${q}`
 }
+
+// cliAuthorizeUrl begins the SSO redirect for `miabi login`'s loopback flow: a
+// fresh IdP login that, on callback, hands a single-use code straight to the
+// CLI's local callback (redirectUri) with state echoed back for its CSRF check.
+export function cliAuthorizeUrl(slug: string, redirectUri: string, state: string): string {
+  const base = (import.meta.env.VITE_API_URL || '/api/v1') as string
+  const origin = base.startsWith('http') ? '' : window.location.origin
+  const q = new URLSearchParams({ intent: 'cli_login', cli_redirect: redirectUri, cli_state: state })
+  return `${origin}${base}/auth/oauth/${slug}/authorize?${q.toString()}`
+}
