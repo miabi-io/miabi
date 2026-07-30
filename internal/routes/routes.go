@@ -792,6 +792,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	appService.SetPipelines(pipelineService)
 	// Built-image catalog: provenance written by pipeline builds; list + GC here.
 	imageService := image.NewService(repositories.NewImageRepository(db), releaseRepo)
+	// Deleting a registry tag must not pull an image out from under a running
+	// release: the registry service asks the image catalog which digests are held
+	// by a live deployment or a pinned release — the same set GC exempts.
+	registryServerService.SetCatalog(imageService)
 	// Runner job dispatch: sends a build to a runner over its tunnel, mints the
 	// per-job credentials, and streams report frames back onto the run. Returned
 	// so the caller can wire it into the pipeline worker (which holds the tunnels).

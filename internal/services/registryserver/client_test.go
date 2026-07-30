@@ -80,11 +80,12 @@ func TestListRepositoriesFiltersNamespace(t *testing.T) {
 	if len(repos) != 2 || repos[0].Name != "api" || repos[1].Name != "web" {
 		t.Fatalf("repos = %+v, want [api web]", repos)
 	}
-	if len(repos[1].Tags) != 2 { // sorted: ["1.0","latest"]
+	if len(repos[1].Tags) != 2 {
 		t.Errorf("web tags = %v", repos[1].Tags)
 	}
-	if repos[1].Tags[0] != "1.0" {
-		t.Errorf("tags not sorted: %v", repos[1].Tags)
+	// Display order, not lexicographic: "latest" leads (see SortTags).
+	if repos[1].Tags[0] != "latest" {
+		t.Errorf("tags not in display order: %v, want latest first", repos[1].Tags)
 	}
 }
 

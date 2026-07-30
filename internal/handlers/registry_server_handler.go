@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/jkaninda/logger"
 	"github.com/jkaninda/okapi"
@@ -99,6 +100,10 @@ type RegistryInfo struct {
 	Namespace    string `json:"namespace"`     // the workspace name
 	ImagePrefix  string `json:"image_prefix"`  // <host>/<namespace>
 	LoginExample string `json:"login_example"` // docker login snippet
+	// DeleteEnabled reports the platform's registry delete switch. Without it a
+	// client would offer a delete action that always fails — the role check alone
+	// isn't enough to know whether deletion is possible.
+	DeleteEnabled bool `json:"delete_enabled"`
 }
 
 // Info returns the registry connection details for the scoped workspace, so the
@@ -115,9 +120,10 @@ func (h *RegistryServerHandler) Info(c *okapi.Context) error {
 	}
 	host := h.svc.HostFor(st)
 	info := RegistryInfo{
-		Enabled:   st.Enabled && host != "",
-		Host:      host,
-		Namespace: ws.Name,
+		Enabled:       st.Enabled && host != "",
+		Host:          host,
+		Namespace:     ws.Name,
+		DeleteEnabled: st.DeleteEnabled,
 	}
 	if host != "" {
 		info.ImagePrefix = fmt.Sprintf("%s/%s", host, ws.Name)
@@ -126,15 +132,71 @@ func (h *RegistryServerHandler) Info(c *okapi.Context) error {
 	return ok(c, info)
 }
 
-// Repositories lists the workspace's registry repositories and their tags
-// (its ws_<id> namespace, filtered from the catalog). Membership enforced by
-// WorkspaceScope.
+// Repositories lists a page of the workspace's registry repositories, each with
+// its tag count and a preview of its newest tags. Query: page, size, q (filters
+// on repository name), tag_limit. Membership enforced by WorkspaceScope.
+//
+// Only the page's repositories have their tags read from the registry, so the
+// cost of this call is bounded by the page size rather than by how many images
+// the workspace has.
 func (h *RegistryServerHandler) Repositories(c *okapi.Context) error {
-	repos, err := h.svc.ListRepositories(c.Request().Context(), middlewares.WorkspaceID(c))
+	page, size, offset := normalizePageParams(queryInt(c, "page", 0), queryInt(c, "size", 20))
+	repos, total, err := h.svc.ListRepositoriesPage(
+		c.Request().Context(), middlewares.WorkspaceID(c),
+		c.Query("q"), offset, size, queryInt(c, "tag_limit", registryserver.DefaultTagPreview),
+	)
 	if err != nil {
 		return c.AbortInternalServerError("failed to list repositories", err)
 	}
-	return ok(c, repos)
+	return paginated(c, repos, int64(total), page, size)
+}
+
+// repoParam reads the repository name from the ?name= query parameter.
+//
+// It is a query parameter rather than a path segment because an image name may
+// itself contain slashes (someone pushing "team/api"), which a path segment
+// cannot carry unambiguously.
+func repoParam(c *okapi.Context) (string, bool) {
+	name := strings.TrimSpace(c.Query("name"))
+	return name, name != ""
+}
+
+// RepositoryOverview returns a single repository's summary: tag count, a preview
+// of the newest tags, and the newest tag with its digest, size, and provenance.
+func (h *RegistryServerHandler) RepositoryOverview(c *okapi.Context) error {
+	name, okName := repoParam(c)
+	if !okName {
+		return c.AbortBadRequest("a repository name is required")
+	}
+	ov, err := h.svc.Overview(c.Request().Context(), middlewares.WorkspaceID(c), name)
+	if err != nil {
+		if errors.Is(err, registryserver.ErrNotFound) {
+			return c.AbortNotFound("repository not found")
+		}
+		return c.AbortInternalServerError("failed to load the repository", err)
+	}
+	return ok(c, ov)
+}
+
+// RepositoryTags lists a page of a repository's tags in display order, enriched
+// with digest, size, in-use state, and build provenance. Query: name, page,
+// size, q (filters on tag name).
+func (h *RegistryServerHandler) RepositoryTags(c *okapi.Context) error {
+	name, okName := repoParam(c)
+	if !okName {
+		return c.AbortBadRequest("a repository name is required")
+	}
+	page, size, offset := normalizePageParams(queryInt(c, "page", 0), queryInt(c, "size", 20))
+	tags, total, err := h.svc.ListTagsPage(
+		c.Request().Context(), middlewares.WorkspaceID(c), name, c.Query("q"), offset, size,
+	)
+	if err != nil {
+		if errors.Is(err, registryserver.ErrNotFound) {
+			return c.AbortNotFound("repository not found")
+		}
+		return c.AbortInternalServerError("failed to list tags", err)
+	}
+	return paginated(c, tags, int64(total), page, size)
 }
 
 // DeleteTag deletes a tag from a workspace repository (developer+; resolves the
@@ -149,7 +211,7 @@ func (h *RegistryServerHandler) DeleteTag(c *okapi.Context) error {
 	switch {
 	case err == nil:
 		return message(c, "tag deleted")
-	case errors.Is(err, registryserver.ErrDeleteDisabled):
+	case errors.Is(err, registryserver.ErrDeleteDisabled), errors.Is(err, registryserver.ErrTagInUse):
 		return c.AbortWithError(http.StatusConflict, err)
 	case errors.Is(err, registryserver.ErrNotFound):
 		return c.AbortNotFound("tag not found")

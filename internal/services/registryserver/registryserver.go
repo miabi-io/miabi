@@ -69,6 +69,10 @@ type Service struct {
 	network    string
 	controlURL string
 	cfg        config.RegistryConfig
+	// catalog is what the platform knows about the images it built: the digests a
+	// live deployment or pinned release holds (so a tag delete can't pull an image
+	// out from under a running release), and the build behind a digest. nil-safe.
+	catalog Catalog
 }
 
 // platformTokenLabel keys the derived registry platform credential. Changing it

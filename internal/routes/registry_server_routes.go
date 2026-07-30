@@ -67,7 +67,24 @@ func (r *Router) registryServerRoutes() []okapi.RouteDefinition {
 			Group:       ws,
 			Middlewares: scoped,
 			Handler:     r.h.registryServer.Repositories,
-			Summary:     "List workspace registry repositories & tags",
+			Summary:     "List workspace registry repositories (paged)",
+		},
+		{
+			// ?name= rather than a path segment: an image name may contain slashes.
+			Method:      http.MethodGet,
+			Path:        "/{workspace}/registry/repository",
+			Group:       ws,
+			Middlewares: scoped,
+			Handler:     r.h.registryServer.RepositoryOverview,
+			Summary:     "Get a registry repository's overview",
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/{workspace}/registry/repository/tags",
+			Group:       ws,
+			Middlewares: scoped,
+			Handler:     r.h.registryServer.RepositoryTags,
+			Summary:     "List a registry repository's tags (paged)",
 		},
 		// Workspace: delete a tag (developer+).
 		{

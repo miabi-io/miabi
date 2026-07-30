@@ -64,6 +64,8 @@ const routes = [
       { path: 'git-repositories', name: 'git-repositories', component: () => import('@/views/sources/GitRepositories.vue'), meta: { title: 'Git Repositories' } },
       { path: 'api-keys', name: 'api-keys', component: () => import('@/views/apikeys/ApiKeys.vue'), meta: { title: 'API Keys' } },
       { path: 'registry', name: 'registry', component: () => import('@/views/registry/Registry.vue'), meta: { title: 'Container Registry' } },
+      // The :repo param is a catch-all: an image name may contain slashes.
+      { path: 'registry/images/:repo(.*)', name: 'registry-image', component: () => import('@/views/registry/ImageDetail.vue'), meta: { title: 'Image' } },
       { path: 'account/profile', name: 'account-profile', component: () => import('@/views/account/Profile.vue'), meta: { title: 'Profile', noWorkspace: true } },
       { path: 'account/security', name: 'account-security', component: () => import('@/views/account/Security.vue'), meta: { title: 'Security', noWorkspace: true } },
       { path: 'account/cli', name: 'account-cli', component: () => import('@/views/account/CliAccess.vue'), meta: { title: 'CLI access', noWorkspace: true } },

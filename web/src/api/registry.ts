@@ -1,5 +1,5 @@
 import api from './client'
-import type { ApiResponse } from './types'
+import type { ApiResponse, PageableResponse } from './types'
 
 // RegistrySettings is the platform's built-in Docker registry config (admin).
 export interface RegistrySettings {
@@ -42,11 +42,37 @@ export interface RegistryInfo {
   namespace: string
   image_prefix: string
   login_example: string
+  /** The platform's registry delete switch. False ⇒ tag deletion always fails. */
+  delete_enabled: boolean
 }
 
+/** A repository in the browse list: full tag count, preview of the newest tags. */
 export interface RegistryRepository {
   name: string
+  tag_count: number
+  /** Preview only — the newest few. Ordered 'latest' first, then newest version. */
   tags: string[]
+}
+
+/** One tag, enriched with what the platform knows about it. */
+export interface RegistryTag {
+  name: string
+  digest?: string
+  size_bytes?: number
+  /** Held by a live deployment or pinned release — deletion is refused. */
+  in_use: boolean
+  /** Provenance; absent for images pushed by hand rather than built by a pipeline. */
+  built_at?: string
+  commit?: string
+  application_id?: number
+  pipeline_run_id?: number
+}
+
+export interface RegistryRepositoryOverview {
+  name: string
+  tag_count: number
+  tags: string[]
+  latest_tag?: RegistryTag
 }
 
 export const registryApi = {
@@ -59,8 +85,24 @@ export const registryApi = {
   // Workspace
   info: (workspaceId: number) =>
     api.get<ApiResponse<RegistryInfo>>(`/workspaces/${workspaceId}/registry`),
-  repositories: (workspaceId: number) =>
-    api.get<ApiResponse<RegistryRepository[]>>(`/workspaces/${workspaceId}/registry/repositories`),
+  /** One page of repositories, each with its tag count and a short tag preview. */
+  repositories: (workspaceId: number, page = 0, size = 20, q = '', tagLimit = 4) =>
+    api.get<PageableResponse<RegistryRepository>>(`/workspaces/${workspaceId}/registry/repositories`, {
+      params: { page, size, q: q || undefined, tag_limit: tagLimit },
+    }),
+  /**
+   * A single repository's overview. The name travels as a query parameter, not a
+   * path segment, because an image name may itself contain slashes.
+   */
+  repository: (workspaceId: number, repo: string) =>
+    api.get<ApiResponse<RegistryRepositoryOverview>>(`/workspaces/${workspaceId}/registry/repository`, {
+      params: { name: repo },
+    }),
+  /** One page of a repository's tags, newest first. */
+  tags: (workspaceId: number, repo: string, page = 0, size = 20, q = '') =>
+    api.get<PageableResponse<RegistryTag>>(`/workspaces/${workspaceId}/registry/repository/tags`, {
+      params: { name: repo, page, size, q: q || undefined },
+    }),
   deleteTag: (workspaceId: number, repo: string, tag: string) =>
     api.delete<ApiResponse<{ message: string }>>(
       `/workspaces/${workspaceId}/registry/repositories/${encodeURIComponent(repo)}/tags/${encodeURIComponent(tag)}`,

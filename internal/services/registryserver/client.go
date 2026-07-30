@@ -150,25 +150,49 @@ type manifest struct {
 // config and layers — so a namespace's usage can be summed with cross-tag
 // dedup. For a multi-arch index it recurses into the child manifests.
 func (c *Client) BlobSizes(ctx context.Context, repo, ref string) (map[string]int64, error) {
+	_, sizes, err := c.manifestBlobs(ctx, repo, ref)
+	return sizes, err
+}
+
+// ManifestInfo resolves a reference to its content digest and the total size of
+// the blobs it references, from a single manifest fetch. Listing a page of tags
+// needs both, and the registry returns them from the same request — resolving
+// them separately would double the round trips per tag.
+func (c *Client) ManifestInfo(ctx context.Context, repo, ref string) (digest string, sizeBytes int64, err error) {
+	digest, sizes, err := c.manifestBlobs(ctx, repo, ref)
+	if err != nil {
+		return "", 0, err
+	}
+	for _, sz := range sizes {
+		sizeBytes += sz
+	}
+	return digest, sizeBytes, nil
+}
+
+// manifestBlobs fetches a manifest and returns its content digest plus the
+// deduplicated sizes of every blob it references (recursing into an index's
+// child manifests, so a multi-arch image counts each shared layer once).
+func (c *Client) manifestBlobs(ctx context.Context, repo, ref string) (string, map[string]int64, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/v2/"+repo+"/manifests/"+ref, nil)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	req.Header.Set("Accept", manifestAccept)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, ErrNotFound
+		return "", nil, ErrNotFound
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("registry: manifest %s/%s: %s", repo, ref, resp.Status)
+		return "", nil, fmt.Errorf("registry: manifest %s/%s: %s", repo, ref, resp.Status)
 	}
+	digest := resp.Header.Get("Docker-Content-Digest")
 	var m manifest
 	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
-		return nil, fmt.Errorf("registry: decode manifest %s/%s: %w", repo, ref, err)
+		return "", nil, fmt.Errorf("registry: decode manifest %s/%s: %w", repo, ref, err)
 	}
 	sizes := make(map[string]int64)
 	if m.Config.Digest != "" {
@@ -187,7 +211,7 @@ func (c *Client) BlobSizes(ctx context.Context, repo, ref string) (map[string]in
 			sizes[d] = s
 		}
 	}
-	return sizes, nil
+	return digest, sizes, nil
 }
 
 // DeleteManifest deletes a manifest by digest (the registry has no delete-by-tag;

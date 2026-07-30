@@ -38,6 +38,17 @@ func (r *ImageRepository) FindByDigest(workspaceID uint, digest string) (*models
 	return &i, nil
 }
 
+// ListByDigests looks up several images at once, for enriching a page of
+// registry tags with build provenance without a query per tag.
+func (r *ImageRepository) ListByDigests(workspaceID uint, digests []string) ([]models.Image, error) {
+	if len(digests) == 0 {
+		return nil, nil
+	}
+	var out []models.Image
+	err := r.db.Where("workspace_id = ? AND digest IN ?", workspaceID, digests).Find(&out).Error
+	return out, err
+}
+
 func (r *ImageRepository) ListByWorkspace(workspaceID uint) ([]models.Image, error) {
 	var out []models.Image
 	err := r.db.Where("workspace_id = ?", workspaceID).Order("created_at DESC").Find(&out).Error

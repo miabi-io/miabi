@@ -228,6 +228,34 @@ func (p protectedRefs) holds(img *models.Image) bool {
 	return false
 }
 
+// ProtectedDigests returns the content digests held by a live deployment or a
+// pinned release — the images that must not be deleted. It is the same set GC
+// exempts, exposed so other delete paths (the registry's tag delete) can refuse
+// to remove an image something is still running.
+func (s *Service) ProtectedDigests() (map[string]bool, error) {
+	p, err := s.protectedSet()
+	if err != nil {
+		return nil, err
+	}
+	return p.digests, nil
+}
+
+// ByDigests indexes the catalog rows for the given digests by digest, so a page
+// of registry tags can be enriched with build provenance (app, commit, build
+// time) in one query. Digests with no catalog row — images pushed by hand rather
+// than built by a pipeline — are simply absent.
+func (s *Service) ByDigests(workspaceID uint, digests []string) (map[string]models.Image, error) {
+	rows, err := s.images.ListByDigests(workspaceID, digests)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]models.Image, len(rows))
+	for _, r := range rows {
+		out[r.Digest] = r
+	}
+	return out, nil
+}
+
 // protectedSet derives the GC exemption set from the active release of every app
 // and any pinned release: their catalog ImageID, image Digest, and image Ref.
 func (s *Service) protectedSet() (protectedRefs, error) {

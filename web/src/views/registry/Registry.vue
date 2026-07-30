@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { registryApi, type RegistryInfo, type RegistryRepository } from '@/api/registry'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
+import { usePagination } from '@/composables/usePagination'
+import Pagination from '@/components/Pagination.vue'
 import { copyText } from '@/utils/clipboard'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -23,16 +24,27 @@ function setTab(t: Tab) {
 }
 
 const wsId = computed(() => ws.currentWorkspaceId)
-const canDelete = computed(() => ws.currentRole !== null && ws.currentRole !== 'viewer')
 
 const info = ref<RegistryInfo | null>(null)
 const repos = ref<RegistryRepository[]>([])
 const loading = ref(true)
 const reposLoading = ref(false)
-const deleting = ref<string | null>(null)
-const confirmTarget = ref<{ repo: string; tag: string } | null>(null)
 
-const totalTags = computed(() => repos.value.reduce((n, r) => n + r.tags.length, 0))
+// Search filters repository *names*, server-side. Searching within a
+// repository's tags belongs on its own page, where the tags are paginated —
+// filtering them here would mean reading every tag of every repository.
+const search = ref('')
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+
+function onSearch() {
+  // Each keystroke would otherwise walk the registry catalog.
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => goToPage(0), 250)
+}
+
+function openRepo(name: string) {
+  router.push({ name: 'registry-image', params: { repo: name } })
+}
 
 async function loadInfo() {
   if (!wsId.value) return
@@ -43,55 +55,44 @@ async function loadInfo() {
   }
 }
 
-async function loadRepos() {
-  if (!wsId.value || !info.value?.enabled) {
+const { pageable, goToPage } = usePagination(async (page) => {
+  if (!wsId.value) {
+    repos.value = []
+    return
+  }
+  // The pager fires on mount, possibly before the info call lands; the enabled
+  // flag gates whether there is anything to list at all.
+  if (!info.value) await loadInfo()
+  loading.value = false
+  if (!info.value?.enabled) {
     repos.value = []
     return
   }
   reposLoading.value = true
   try {
-    repos.value = (await registryApi.repositories(wsId.value)).data.data ?? []
+    const res = await registryApi.repositories(wsId.value, page, pageable.value.size, search.value.trim())
+    repos.value = res.data.data ?? []
+    pageable.value = res.data.pageable
   } catch (e) {
     notify.apiError(e)
   } finally {
     reposLoading.value = false
   }
-}
-
-async function loadAll() {
-  loading.value = true
-  await loadInfo()
-  await loadRepos()
-  loading.value = false
-}
+})
 
 async function copy(text: string) {
   if (await copyText(text)) notify.success('Copied to clipboard')
   else notify.error('Copy failed — select and copy it manually')
 }
 
-function imageRef(repo: string, tag: string) {
-  return `${info.value?.image_prefix}/${repo}:${tag}`
-}
-
-async function confirmDelete() {
-  if (!confirmTarget.value || !wsId.value) return
-  const { repo, tag } = confirmTarget.value
-  deleting.value = `${repo}:${tag}`
-  try {
-    await registryApi.deleteTag(wsId.value, repo, tag)
-    notify.success(`Deleted ${repo}:${tag}`)
-    confirmTarget.value = null
-    await loadRepos()
-  } catch (e) {
-    notify.apiError(e)
-  } finally {
-    deleting.value = null
-  }
-}
-
-onMounted(loadAll)
-watch(wsId, loadAll)
+watch(wsId, async () => {
+  loading.value = true
+  search.value = '' // a filter from the previous workspace means nothing here
+  info.value = null
+  await loadInfo()
+  loading.value = false
+  await goToPage(0)
+})
 </script>
 
 <template>
@@ -128,23 +129,39 @@ watch(wsId, loadAll)
             <div>
               <h2>Repositories</h2>
               <p class="text-muted text-sm" style="margin: 2px 0 0">
-                {{ repos.length }} {{ repos.length === 1 ? 'repository' : 'repositories' }} ·
-                {{ totalTags }} {{ totalTags === 1 ? 'tag' : 'tags' }}
+                {{ pageable.total_elements }}
+                {{ pageable.total_elements === 1 ? 'repository' : 'repositories' }}{{ search ? ' matching' : '' }}
               </p>
             </div>
-            <button class="btn btn-secondary btn-sm" :disabled="reposLoading" @click="loadRepos">
-              <span class="mdi mdi-refresh" :class="{ 'mdi-spin': reposLoading }"></span> Refresh
-            </button>
+            <div class="repos-actions">
+              <div class="search">
+                <span class="mdi mdi-magnify"></span>
+                <input v-model="search" class="form-input" type="search" placeholder="Filter images" aria-label="Filter images" @input="onSearch" />
+              </div>
+              <button class="btn btn-secondary btn-sm" :disabled="reposLoading" @click="goToPage(pageable.current_page)">
+                <span class="mdi mdi-refresh" :class="{ 'mdi-spin': reposLoading }"></span> Refresh
+              </button>
+            </div>
           </div>
 
           <div v-if="reposLoading && repos.length === 0" class="card-body"><span class="spinner"></span></div>
+
+          <div v-else-if="repos.length === 0 && search" class="card-body empty">
+            <span class="mdi mdi-magnify empty-icon"></span>
+            <div>
+              <p class="empty-title">No image matches &ldquo;{{ search }}&rdquo;</p>
+              <p class="text-muted text-sm">
+                <button class="link-btn" @click="search = ''; goToPage(0)">Clear the filter</button>
+              </p>
+            </div>
+          </div>
 
           <div v-else-if="repos.length === 0" class="card-body empty">
             <span class="mdi mdi-package-variant empty-icon"></span>
             <div>
               <p class="empty-title">No images yet</p>
               <p class="text-muted text-sm">
-                Push your first image — see the
+                Push your first image &mdash; see the
                 <a href="#" @click.prevent="setTab('connect')">Connect</a> tab for the commands.
               </p>
             </div>
@@ -154,31 +171,21 @@ watch(wsId, loadAll)
             <div v-for="r in repos" :key="r.name" class="repo">
               <div class="repo-head">
                 <span class="mdi mdi-cube-outline repo-icon"></span>
-                <code class="repo-name mono">{{ info.image_prefix }}/{{ r.name }}</code>
-                <span class="badge badge-neutral">{{ r.tags.length }} {{ r.tags.length === 1 ? 'tag' : 'tags' }}</span>
+                <button class="repo-name mono link" @click="openRepo(r.name)">{{ info.image_prefix }}/{{ r.name }}</button>
+                <span class="badge badge-neutral">{{ r.tag_count }} {{ r.tag_count === 1 ? 'tag' : 'tags' }}</span>
               </div>
               <div v-if="r.tags.length" class="tag-grid">
-                <div v-for="t in r.tags" :key="t" class="tag" :class="{ busy: deleting === `${r.name}:${t}` }">
-                  <code class="tag-name">{{ t }}</code>
-                  <button class="tag-action" title="Copy docker pull command" aria-label="Copy docker pull command" @click="copy(`docker pull ${imageRef(r.name, t)}`)">
-                    <span class="mdi mdi-content-copy"></span>
-                  </button>
-                  <button
-                    v-if="canDelete"
-                    class="tag-action tag-action-danger"
-                    :disabled="deleting === `${r.name}:${t}`"
-                    title="Delete tag"
-                    aria-label="Delete tag"
-                    @click="confirmTarget = { repo: r.name, tag: t }"
-                  >
-                    <span class="mdi mdi-trash-can-outline"></span>
-                  </button>
-                </div>
+                <code v-for="t in r.tags" :key="t" class="tag">{{ t }}</code>
+                <button v-if="r.tag_count > r.tags.length" class="link-btn more-note" @click="openRepo(r.name)">
+                  +{{ r.tag_count - r.tags.length }} more
+                </button>
               </div>
               <p v-else class="text-muted text-sm" style="margin: 8px 0 0">No tags.</p>
             </div>
           </div>
         </div>
+
+        <Pagination :pageable="pageable" @page="goToPage" />
       </template>
 
       <!-- Connect -->
@@ -242,16 +249,6 @@ watch(wsId, loadAll)
       </template>
     </template>
 
-    <ConfirmDialog
-      :open="!!confirmTarget"
-      title="Delete tag"
-      :message="confirmTarget ? `Delete ${confirmTarget.repo}:${confirmTarget.tag}? This removes the manifest from the registry and cannot be undone.` : ''"
-      confirm-label="Delete"
-      variant="danger"
-      :busy="deleting !== null"
-      @confirm="confirmDelete"
-      @cancel="confirmTarget = null"
-    />
   </div>
 </template>
 
@@ -269,26 +266,35 @@ watch(wsId, loadAll)
 .empty-title { font-weight: 600; color: var(--text-primary); margin: 0 0 2px; }
 
 /* Repositories */
-.repos-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.repos-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.repos-actions { display: flex; align-items: center; gap: 8px; }
+.search { position: relative; }
+.search .mdi { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+.search .form-input { padding-left: 32px; width: 260px; max-width: 100%; }
 .repo-list { display: flex; flex-direction: column; }
+/* The repository name is the link into the image; the row itself stays a plain
+   row so the list reads as content rather than a stack of buttons. */
+.repo-name.link {
+  border: 0; background: none; padding: 0; font-family: inherit; font-size: 14px;
+  color: var(--text-primary); cursor: pointer;
+}
+.repo-name.link:hover { color: var(--primary-500); text-decoration: underline; }
+.more-note { align-self: center; }
+.link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--primary-500); cursor: pointer; }
+.link-btn:hover { text-decoration: underline; }
 .repo { padding: 14px 16px; border-top: 1px solid var(--border-primary); }
 .repo:first-child { border-top: 0; }
 .repo-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .repo-icon { color: var(--primary-500); font-size: 18px; }
 .repo-name { font-size: 14px; color: var(--text-primary); }
-.tag-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.tag-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+/* Chips are labels here, not controls — the per-tag actions live on the image
+   page, so the padding is symmetric again. */
 .tag {
-  display: inline-flex; align-items: center; gap: 2px; padding: 3px 4px 3px 10px;
+  display: inline-flex; align-items: center; padding: 3px 10px; font-size: 12px;
+  color: var(--text-primary);
   background: var(--bg-tertiary); border: 1px solid var(--border-primary); border-radius: var(--radius);
 }
-.tag.busy { opacity: 0.5; }
-.tag-name { font-size: 12px; color: var(--text-primary); margin-right: 2px; }
-.tag-action {
-  display: inline-flex; align-items: center; border: 0; background: transparent; cursor: pointer;
-  color: var(--text-muted); padding: 2px 4px; border-radius: 4px;
-}
-.tag-action:hover { background: var(--bg-secondary); color: var(--text-primary); }
-.tag-action-danger:hover { color: var(--danger-600); }
 
 /* Connect */
 .details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
