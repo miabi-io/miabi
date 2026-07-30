@@ -5,6 +5,10 @@ package registryserver
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -138,6 +142,66 @@ func TestListTagsPageSurvivesUnreadableManifest(t *testing.T) {
 	}
 	if len(tags) != 1 || tags[0].Name != "v2" {
 		t.Fatalf("tags = %+v", tags)
+	}
+}
+
+func emptyRepoSvc(t *testing.T) *Service {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v2/_catalog", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"repositories":["ws_7/emptied"]}`))
+	})
+	mux.HandleFunc("/v2/ws_7/emptied/tags/list", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"name":"ws_7/emptied","tags":null}`))
+	})
+	s := httptest.NewServer(mux)
+	t.Cleanup(s.Close)
+	return &Service{reg: NewClient(s.URL)}
+}
+
+func TestEmptyRepositorySerializesTagsAsArray(t *testing.T) {
+	repos, total, err := emptyRepoSvc(t).ListRepositoriesPage(context.Background(), 7, "", 0, 20, 0)
+	if err != nil {
+		t.Fatalf("ListRepositoriesPage: %v", err)
+	}
+	if total != 1 || len(repos) != 1 {
+		t.Fatalf("repos = %+v, total = %d", repos, total)
+	}
+	if repos[0].TagCount != 0 {
+		t.Errorf("TagCount = %d, want 0", repos[0].TagCount)
+	}
+	if repos[0].Tags == nil {
+		t.Error("Tags is nil; it must be an empty slice so it serializes as []")
+	}
+	b, err := json.Marshal(repos[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"tags":[]`) {
+		t.Errorf("serialized as %s, want \"tags\":[]", b)
+	}
+}
+
+func TestEmptyRepositoryOverview(t *testing.T) {
+	ov, err := emptyRepoSvc(t).Overview(context.Background(), 7, "emptied")
+	if err != nil {
+		t.Fatalf("Overview: %v", err)
+	}
+	if ov.TagCount != 0 || ov.LatestTag != nil {
+		t.Fatalf("overview = %+v, want no tags and no latest", ov)
+	}
+	if ov.Tags == nil {
+		t.Error("Tags is nil; it must be an empty slice so it serializes as []")
+	}
+}
+
+func TestEmptyRepositoryTagsPage(t *testing.T) {
+	tags, total, err := emptyRepoSvc(t).ListTagsPage(context.Background(), 7, "emptied", "", 0, 20)
+	if err != nil {
+		t.Fatalf("ListTagsPage: %v", err)
+	}
+	if total != 0 || len(tags) != 0 {
+		t.Fatalf("tags = %+v, total = %d", tags, total)
 	}
 }
 

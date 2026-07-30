@@ -128,10 +128,17 @@ func (s *Service) ListRepositoriesPage(ctx context.Context, workspaceID uint, q 
 		out[i] = RepositorySummary{
 			Name:     name,
 			TagCount: len(tags),
-			Tags:     tags[:min(tagPreview, len(tags))],
+			Tags:     nonNil(tags[:min(tagPreview, len(tags))]),
 		}
 	}
 	return out, total, nil
+}
+
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }
 
 // Overview returns a repository's summary: its tag count, a preview of the
@@ -146,7 +153,7 @@ func (s *Service) Overview(ctx context.Context, workspaceID uint, image string) 
 	ov := &RepositoryOverview{
 		Name:     image,
 		TagCount: len(tags),
-		Tags:     tags[:min(DefaultTagPreview, len(tags))],
+		Tags:     nonNil(tags[:min(DefaultTagPreview, len(tags))]),
 	}
 	if len(tags) > 0 {
 		enriched, err := s.enrichTags(ctx, workspaceID, repo, tags[:1])

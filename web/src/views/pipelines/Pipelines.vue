@@ -9,6 +9,7 @@ import { appApi } from '@/api/apps'
 import { usePagination } from '@/composables/usePagination'
 import Pagination from '@/components/Pagination.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import PipelineWebhookModal from './PipelineWebhookModal.vue'
 import { relativeTime } from '@/utils/time'
 import { statusMeta } from './status'
 import type { PipelineDefinition, Application } from '@/api/types'
@@ -91,6 +92,11 @@ function openEdit(p: PipelineDefinition) {
   form.value = { name: p.name, application_id: p.application_id ?? null, spec: p.spec, enabled: p.enabled }
   showModal.value = true
 }
+
+// The push webhook is setup information, not configuration — it gets its own
+// dialog rather than a corner of the edit form, which a repo-owned pipeline
+// can't open anyway.
+const webhookFor = ref<PipelineDefinition | null>(null)
 
 /** A repo-owned pipeline mirrors a file in git; its spec is read-only here. */
 function isRepoOwned(p: PipelineDefinition | null) { return p?.source === 'repo' }
@@ -229,6 +235,9 @@ function openLastRun(p: PipelineDefinition) {
                 <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" title="Run now" aria-label="Run now" :disabled="triggering === p.id || !p.enabled" @click="trigger(p)">
                   <span class="mdi" :class="triggering === p.id ? 'mdi-loading mdi-spin' : 'mdi-play'"></span>
                 </button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" title="Push webhook" aria-label="Push webhook" @click="webhookFor = p">
+                  <span class="mdi mdi-webhook"></span>
+                </button>
                 <button
                   v-if="ws.canEdit"
                   class="btn-icon btn-icon-muted"
@@ -317,6 +326,8 @@ function openLastRun(p: PipelineDefinition) {
         </div>
       </div>
     </Teleport>
+
+    <PipelineWebhookModal :open="!!webhookFor" :pipeline="webhookFor" @close="webhookFor = null" />
 
     <ConfirmDialog
       :open="!!toDelete"

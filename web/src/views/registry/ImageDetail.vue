@@ -62,6 +62,11 @@ function pullCommand(tag: string) {
 const latestPull = computed(() =>
   overview.value?.latest_tag ? pullCommand(overview.value.latest_tag.name) : '',
 )
+/**
+ * The tag preview, tolerating a null list. A repository whose last tag was
+ * deleted still exists in the registry catalog until garbage collection.
+ */
+const recentTags = computed(() => overview.value?.tags ?? [])
 
 const search = ref('')
 let searchTimer: ReturnType<typeof setTimeout> | undefined
@@ -272,9 +277,9 @@ async function confirmDelete() {
         <div class="card">
           <div class="card-header"><h2>Recent tags</h2></div>
           <div class="card-body">
-            <div v-if="overview.tags.length" class="tag-grid">
-              <code v-for="t in overview.tags" :key="t" class="tag">{{ t }}</code>
-              <button v-if="overview.tag_count > overview.tags.length" class="link-btn" @click="setTab('tags')">
+            <div v-if="recentTags.length" class="tag-grid">
+              <code v-for="t in recentTags" :key="t" class="tag">{{ t }}</code>
+              <button v-if="overview.tag_count > recentTags.length" class="link-btn" @click="setTab('tags')">
                 See all {{ overview.tag_count }} tags →
               </button>
             </div>

@@ -452,7 +452,7 @@ func New() *Config {
 		LicenseFile:           goutils.Env("MIABI_LICENSE_FILE", ""),
 		MetricsScrapeSeconds:  goutils.EnvInt("MIABI_METRICS_SCRAPE_SECONDS", 60),
 		MetricsRetentionHours: goutils.EnvInt("MIABI_METRICS_RETENTION_HOURS", 24),
-		CORSOrigins:           goutils.Env("MIABI_CORS_ORIGINS", goutils.Env("MIABI_WEB_URL", "")),
+		CORSOrigins:           goutils.Env("MIABI_CORS_ORIGINS", goutils.Env("MIABI_WEB_URL", "*")),
 		AppWebURL:             goutils.Env("MIABI_WEB_URL", ""),
 		ApiBaseURL:            goutils.Env("MIABI_API_URL", ""),
 		LoginTokenTTLHours:    goutils.EnvInt("MIABI_LOGIN_TOKEN_TTL_HOURS", 24),

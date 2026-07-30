@@ -9,6 +9,7 @@ import { usePagination } from '@/composables/usePagination'
 import Pagination from '@/components/Pagination.vue'
 import { relativeTime, formatDuration } from '@/utils/time'
 import { statusMeta } from './status'
+import PipelineWebhookModal from './PipelineWebhookModal.vue'
 import type { PipelineDefinition, PipelineRun } from '@/api/types'
 
 const ws = useWorkspaceStore()
@@ -22,6 +23,7 @@ const pipeline = ref<PipelineDefinition | null>(null)
 const runs = ref<PipelineRun[]>([])
 const loading = ref(false)
 const triggering = ref(false)
+const showWebhook = ref(false)
 const now = ref(Date.now())
 
 const { pageable, goToPage } = usePagination(async (page) => {
@@ -94,10 +96,17 @@ onBeforeUnmount(() => clearInterval(ticker))
           </span>
         </p>
       </div>
-      <button v-if="ws.canEdit && pipeline?.enabled" class="btn btn-primary" :disabled="triggering" @click="trigger">
-        <span class="mdi" :class="triggering ? 'mdi-loading mdi-spin' : 'mdi-play'"></span> Run now
-      </button>
+      <div class="header-actions">
+        <button v-if="ws.canEdit" class="btn btn-secondary" @click="showWebhook = true">
+          <span class="mdi mdi-webhook"></span> Push webhook
+        </button>
+        <button v-if="ws.canEdit && pipeline?.enabled" class="btn btn-primary" :disabled="triggering" @click="trigger">
+          <span class="mdi" :class="triggering ? 'mdi-loading mdi-spin' : 'mdi-play'"></span> Run now
+        </button>
+      </div>
     </div>
+
+    <PipelineWebhookModal :open="showWebhook" :pipeline="pipeline" @close="showWebhook = false" />
 
     <div class="card">
       <div v-if="loading && runs.length === 0" class="card-body"><span class="spinner"></span></div>
@@ -142,6 +151,7 @@ onBeforeUnmount(() => clearInterval(ticker))
 
 <style scoped>
 .title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .title-row .badge .mdi { font-size: 13px; }
 .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
 .back-link { font-size: 13px; color: var(--text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }

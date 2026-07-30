@@ -46,6 +46,15 @@ function openRepo(name: string) {
   router.push({ name: 'registry-image', params: { repo: name } })
 }
 
+/**
+ * A repository's tag preview, tolerating a null list. A repository whose last
+ * tag was deleted still appears in the registry catalog until garbage
+ * collection, and its tag list comes back empty.
+ */
+function preview(r: RegistryRepository): string[] {
+  return r.tags ?? []
+}
+
 async function loadInfo() {
   if (!wsId.value) return
   try {
@@ -174,13 +183,15 @@ watch(wsId, async () => {
                 <button class="repo-name mono link" @click="openRepo(r.name)">{{ info.image_prefix }}/{{ r.name }}</button>
                 <span class="badge badge-neutral">{{ r.tag_count }} {{ r.tag_count === 1 ? 'tag' : 'tags' }}</span>
               </div>
-              <div v-if="r.tags.length" class="tag-grid">
-                <code v-for="t in r.tags" :key="t" class="tag">{{ t }}</code>
-                <button v-if="r.tag_count > r.tags.length" class="link-btn more-note" @click="openRepo(r.name)">
-                  +{{ r.tag_count - r.tags.length }} more
+              <div v-if="preview(r).length" class="tag-grid">
+                <code v-for="t in preview(r)" :key="t" class="tag">{{ t }}</code>
+                <button v-if="r.tag_count > preview(r).length" class="link-btn more-note" @click="openRepo(r.name)">
+                  +{{ r.tag_count - preview(r).length }} more
                 </button>
               </div>
-              <p v-else class="text-muted text-sm" style="margin: 8px 0 0">No tags.</p>
+              <p v-else class="text-muted text-sm no-tags">
+                No tags — this image was emptied and will be cleaned up by the next garbage collection.
+              </p>
             </div>
           </div>
         </div>
@@ -280,6 +291,7 @@ watch(wsId, async () => {
 }
 .repo-name.link:hover { color: var(--primary-500); text-decoration: underline; }
 .more-note { align-self: center; }
+.no-tags { margin: 8px 0 0; }
 .link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--primary-500); cursor: pointer; }
 .link-btn:hover { text-decoration: underline; }
 .repo { padding: 14px 16px; border-top: 1px solid var(--border-primary); }
