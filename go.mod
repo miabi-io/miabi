@@ -6,7 +6,7 @@ require (
 	github.com/axiomhq/hyperloglog v0.2.6
 	github.com/crewjam/saml v0.5.1
 	github.com/docker/docker v27.5.1+incompatible
-	github.com/docker/go-connections v0.5.0
+	github.com/docker/go-connections v0.8.1
 	github.com/go-acme/lego/v4 v4.35.2
 	github.com/go-git/go-git/v5 v5.19.1
 	github.com/go-ldap/ldap/v3 v3.4.14
