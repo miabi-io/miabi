@@ -77,6 +77,31 @@ gateway:
   redis:
     addr: miabi-redis:6379
     password: "${MIABI_REDIS_PASSWORD}"
+  # Workspace Analytics: publish one event per request to a Redis stream, which
+  # Miabi's analytics consumer rolls up into the Traffic / Performance / Web
+  # dashboards. Events carry NO client IP — only a daily-salted visitor hash and,
+  # when a GeoIP database is present, a country resolved here at the edge.
+  #
+  # GOMA_ANALYTICS_* on the gateway container overrides anything set here.
+  analytics:
+    enabled: true
+    stream: goma:analytics
+    # Fraction of requests recorded, 0..1. Lower it on very high-traffic edges;
+    # the dashboards scale the sampled counts back up.
+    sample: 1
+    # Approximate cap on the stream, so a stopped consumer can't grow Redis
+    # without bound.
+    maxLen: 1000000
+  #
+  # Country resolution (the analytics country panels + the geoBlock middleware)
+  # deliberately has NO `geoip.database` here. Goma already looks for
+  # /etc/goma/country.mmdb and then /etc/goma/GeoLite2-Country.mmdb, and this one
+  # file is shared by both install paths, which mount the database under
+  # different names. Naming one would silently disable geo on the other install —
+  # an explicit path is used exactly as given, with no fallback. Provide the file
+  # under either name (Goma ships none: every GeoIP dataset carries license terms
+  # only you can accept) and it is picked up; provide neither and country data is
+  # simply absent, with nothing else affected.
   providers:
     file:
       enabled: true

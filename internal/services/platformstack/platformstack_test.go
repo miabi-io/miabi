@@ -1048,6 +1048,37 @@ func TestGomaLogLevelSeedNeverOverwritesTheOperator(t *testing.T) {
 	}
 }
 
+// Miabi's analytics consumer runs by default, so the gateway has to emit the
+// stream it consumes — otherwise every analytics dashboard is empty with nothing
+// on either side saying why.
+func TestGomaAnalyticsIsEnabledByDefault(t *testing.T) {
+	m := testManifest()
+	if got := m.Gateway.Env[envGomaAnalytics]; got != "true" {
+		t.Errorf("GOMA_ANALYTICS_ENABLED = %q, want true", got)
+	}
+	if !envHas(gatewaySpec(m, ContainerGateway, m.Images.Gateway), "GOMA_ANALYTICS_ENABLED=true") {
+		t.Error("the seeded value never reached Goma")
+	}
+}
+
+// It is seeded into gateway.env, NOT set in gatewaySpec: normalizeGateway derives
+// its reserved set from the spec, so a spec variable is refused outright when an
+// operator sets it. Analytics must stay switchable off — and the refusal would
+// send them to a manifest field that does not exist.
+func TestGomaAnalyticsCanBeTurnedOff(t *testing.T) {
+	m := testManifest()
+	m.Gateway.Env = map[string]string{envGomaAnalytics: "false"}
+	if err := m.Normalize(); err != nil {
+		t.Fatalf("operator could not disable analytics: %v", err)
+	}
+	if got := m.Gateway.Env[envGomaAnalytics]; got != "false" {
+		t.Errorf("GOMA_ANALYTICS_ENABLED = %q, want the operator's false", got)
+	}
+	if !envHas(gatewaySpec(m, ContainerGateway, m.Images.Gateway), "GOMA_ANALYTICS_ENABLED=false") {
+		t.Error("the operator's value never reached Goma")
+	}
+}
+
 // Goma does NOT reject an unknown level — it silently falls back to info (measured:
 // GOMA_LOG_LEVEL=verbose emits the same 28 boot lines as info). So a typo leaves the
 // operator waiting for debug output that was never coming. Catch it at install.
