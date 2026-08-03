@@ -16,23 +16,31 @@ const (
 // platform, so this mirrors PlatformBackupSettings (global, not per-workspace).
 // The S3 secret is encrypted at rest with the platform-scoped crypto.Encrypt and
 // never returned by the API.
+//
+// Only DeleteEnabled and PerWorkspaceQuotaMB are writable. Every other field is
+// environment-derived on load (registryserver.applyEnvConfig): a stored value
+// survives only as a legacy carry-over from when the admin UI could write it.
 type RegistrySettings struct {
 	ID uint `json:"id" gorm:"primaryKey"`
 
 	// Enabled runs the registry container and seeds its gateway route/middleware.
-	// Default false → a no-op so single-node installs are unchanged.
+	// Read-only: MIABI_REGISTRY_ENABLED. Default false → a no-op so single-node
+	// installs are unchanged.
 	Enabled bool `json:"enabled"`
 	// Host is the public registry hostname (e.g. registry.<external-base-domain>),
-	// the docker login target. Derived from the external base domain when blank.
+	// the docker login target. Read-only: MIABI_REGISTRY_HOST, else derived from
+	// the external base domain.
 	Host string `json:"host,omitempty"`
 
 	// StorageType is "filesystem" (a managed volume) or "s3" (S3/MinIO).
+	// Read-only: MIABI_REGISTRY_STORAGE. The S3 driver additionally requires the
+	// registry_s3 entitlement, enforced at container start.
 	StorageType string `json:"storage_type" gorm:"not null;default:filesystem"`
 
-	// Filesystem driver: the managed data volume.
+	// Filesystem driver: the managed data volume. A fixed platform name.
 	VolumeName string `json:"volume_name,omitempty"`
 
-	// S3 / MinIO driver.
+	// S3 / MinIO driver. Read-only: MIABI_REGISTRY_S3_*.
 	S3Endpoint       string `json:"s3_endpoint,omitempty"`
 	S3Bucket         string `json:"s3_bucket,omitempty"`
 	S3Region         string `json:"s3_region,omitempty"`

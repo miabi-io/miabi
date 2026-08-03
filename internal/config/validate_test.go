@@ -76,3 +76,35 @@ func TestHasWildcardOrigin(t *testing.T) {
 		}
 	}
 }
+
+// The storage driver is environment-only, so a typo has no UI to correct it:
+// "S3 " or "minio" would silently fall back to a local volume while the operator
+// believes images are going to object storage. Refuse the boot instead.
+func TestValidateRegistryStorageDriver(t *testing.T) {
+	cases := []struct {
+		driver string
+		ok     bool
+	}{
+		{"", true},
+		{"filesystem", true},
+		{"s3", true},
+		{"S3", true},
+		{" s3 ", true},
+		{"minio", false},
+		{"gcs", false},
+		{"local", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.driver, func(t *testing.T) {
+			c := prodConfig()
+			c.Registry.StorageType = tc.driver
+			err := c.validate()
+			if tc.ok && err != nil {
+				t.Fatalf("MIABI_REGISTRY_STORAGE=%q rejected: %v", tc.driver, err)
+			}
+			if !tc.ok && err == nil {
+				t.Fatalf("MIABI_REGISTRY_STORAGE=%q accepted, want a boot refusal", tc.driver)
+			}
+		})
+	}
+}

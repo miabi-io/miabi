@@ -52,30 +52,25 @@ func (h *AdminRegistryHandler) RunGC(c *okapi.Context) error {
 	return message(c, "garbage collection complete")
 }
 
-// UpdateRegistrySettingsRequest is the body for updating the registry settings.
-// S3SecretKey is empty to keep the stored secret unchanged.
+// UpdateRegistrySettingsRequest is the body for updating the registry settings:
+// the two operational knobs an admin may turn at runtime.
 //
-// Enablement and the hostname are not in this body. They are fixed at boot from
-// MIABI_REGISTRY_ENABLED / MIABI_REGISTRY_HOST and take a restart to change:
-// they determine whether the registry exists and what name every image reference
-// on the platform is anchored to, so they must not be movable by an API call
-// while deployments hold references to the old value.
+// Enablement, the hostname, and the storage configuration are not in this body.
+// They are fixed at boot from MIABI_REGISTRY_ENABLED / MIABI_REGISTRY_HOST /
+// MIABI_REGISTRY_STORAGE + MIABI_REGISTRY_S3_* and take a restart to change:
+// they determine whether the registry exists, what name every image reference on
+// the platform is anchored to, and where its blobs live. None of that may be
+// movable by an API call while deployments hold references to the old value and
+// blobs sit in the old backend.
 type UpdateRegistrySettingsRequest struct {
 	Body struct {
-		StorageType         string `json:"storage_type" enum:"filesystem,s3"`
-		S3Endpoint          string `json:"s3_endpoint"`
-		S3Bucket            string `json:"s3_bucket"`
-		S3Region            string `json:"s3_region"`
-		S3AccessKey         string `json:"s3_access_key"`
-		S3SecretKey         string `json:"s3_secret_key"`
-		S3ForcePathStyle    bool   `json:"s3_force_path_style"`
-		DeleteEnabled       bool   `json:"delete_enabled"`
-		PerWorkspaceQuotaMB int    `json:"per_workspace_quota_mb"`
+		DeleteEnabled       bool `json:"delete_enabled"`
+		PerWorkspaceQuotaMB int  `json:"per_workspace_quota_mb"`
 	} `json:"body"`
 }
 
 // RegistrySettingsView is the settings response enriched with the effective host
-// and whether S3 storage is licensed (so the UI can lock the option).
+// and the read-only storage explanation the UI renders.
 type RegistrySettingsView struct {
 	*models.RegistrySettings
 	EffectiveHost string `json:"effective_host"`
@@ -89,6 +84,12 @@ type RegistrySettingsView struct {
 	// HostSource is where the effective host came from: "env", "stored" (a legacy
 	// value saved while the field was editable), "base_domain", or "unset".
 	HostSource string `json:"host_source"`
+
+	StorageLocked bool `json:"storage_locked"`
+
+	StorageSource string `json:"storage_source"`
+
+	StorageError string `json:"storage_error,omitempty"`
 }
 
 func (h *AdminRegistryHandler) view(st *models.RegistrySettings) RegistrySettingsView {
@@ -98,6 +99,9 @@ func (h *AdminRegistryHandler) view(st *models.RegistrySettings) RegistrySetting
 		S3Entitled:       h.ee.Has(enterprise.FlagRegistryS3),
 		HostLocked:       true,
 		HostSource:       h.svc.HostSource(st),
+		StorageLocked:    true,
+		StorageSource:    h.svc.StorageSource(st),
+		StorageError:     h.svc.StorageUnavailableReason(st),
 	}
 }
 
@@ -110,30 +114,17 @@ func (h *AdminRegistryHandler) GetSettings(c *okapi.Context) error {
 	return ok(c, h.view(st))
 }
 
-// UpdateSettings upserts the registry settings and applies them to the container.
+// UpdateSettings upserts the two mutable registry settings and applies them to
+// the container. The storage configuration is not accepted here at all — it is
+// environment-only (see UpdateRegistrySettingsRequest), which is also what makes
+// the S3 entitlement enforceable: it is checked where the driver is used, at
+// container start, not where it used to be selected.
 func (h *AdminRegistryHandler) UpdateSettings(c *okapi.Context, req *UpdateRegistrySettingsRequest) error {
 	b := req.Body
-	// S3/MinIO storage is an Enterprise feature; local (filesystem) storage is free.
-	if b.StorageType == models.RegistryStorageS3 {
-		if err := h.ee.RequireMutable(enterprise.FlagRegistryS3); err != nil {
-			return entitlementAbort(c, err)
-		}
-	}
-	if b.StorageType == models.RegistryStorageS3 && b.S3Bucket == "" {
-		return c.AbortBadRequest("an S3 bucket is required for the S3 storage driver")
-	}
-	var secret *string
-	if b.S3SecretKey != "" {
-		secret = &b.S3SecretKey
+	if b.PerWorkspaceQuotaMB < 0 {
+		return c.AbortBadRequest("the per-workspace quota cannot be negative (0 = unlimited)")
 	}
 	st, err := h.svc.Save(registryserver.SaveInput{
-		StorageType:         b.StorageType,
-		S3Endpoint:          b.S3Endpoint,
-		S3Bucket:            b.S3Bucket,
-		S3Region:            b.S3Region,
-		S3AccessKey:         b.S3AccessKey,
-		S3SecretKey:         secret,
-		S3ForcePathStyle:    b.S3ForcePathStyle,
 		DeleteEnabled:       b.DeleteEnabled,
 		PerWorkspaceQuotaMB: b.PerWorkspaceQuotaMB,
 	})

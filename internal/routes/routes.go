@@ -670,6 +670,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		imageResolver, settingsProvider, apiKeyService, workspaceRepo,
 		proxyMgr, cfg.ProxyNetwork, cfg.ControlURL, cfg.Registry,
 	)
+	// S3 storage is an Enterprise entitlement, and the environment is now its only
+	// source — so the license is checked where the driver is used (boot, GC), not
+	// at an API that can no longer select it.
+	registryServerService.SetEntitlements(ee)
 	gitRepoRepo := repositories.NewGitRepoRepository(db)
 	gitRepoService := gitrepo.NewService(gitRepoRepo)
 	domainRepo := repositories.NewDomainRepository(db)

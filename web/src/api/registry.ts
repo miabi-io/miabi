@@ -28,17 +28,27 @@ export interface RegistrySettings {
   host_locked: boolean
   /** Where the effective host came from. */
   host_source: 'env' | 'stored' | 'base_domain' | 'unset'
+  /**
+   * The storage driver and its S3 settings are read-only: they come from
+   * MIABI_REGISTRY_STORAGE / MIABI_REGISTRY_S3_* and take a restart to change.
+   * Always true, for the same reason as `host_locked`.
+   */
+  storage_locked: boolean
+  /** Where the effective storage driver came from. */
+  storage_source: 'env' | 'stored' | 'default'
+  /**
+   * Why the configured storage cannot be used (unlicensed S3 driver, missing
+   * bucket) — absent when it is usable. When present the registry does not start.
+   */
+  storage_error?: string
 }
 
-/** Note the absence of `enabled` and `host` — see RegistrySettings.host_locked. */
+/**
+ * Only the two runtime-mutable settings. Enablement, the host, and the whole
+ * storage configuration are environment-only — see `host_locked` /
+ * `storage_locked` on RegistrySettings.
+ */
 export interface RegistrySettingsPayload {
-  storage_type: 'filesystem' | 's3'
-  s3_endpoint: string
-  s3_bucket: string
-  s3_region: string
-  s3_access_key: string
-  s3_secret_key?: string
-  s3_force_path_style: boolean
   delete_enabled: boolean
   per_workspace_quota_mb: number
 }
