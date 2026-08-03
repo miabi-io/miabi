@@ -28,12 +28,18 @@ examples/compose/
 ├── compose.yaml           # default: postgres · redis · Goma gateway · miabi (+ optional worker)
 ├── compose.traefik.yaml   # variant: same stack with Traefik as the edge proxy instead of Goma
 ├── goma.yml               # Goma config (TLS/ACME, panel route, per-app providers)
-└── .env.example           # domains, secrets, and feature toggles
+└── .env.example           # the complete configuration — domains, secrets, toggles
 ```
 
-Both files read a single `.env`. Every service gets it via `env_file`, so you
-**rename `.env.example` → `.env`, fill in the values, and deploy** — no per-file
-edits. (Goma expands `${MIABI_DOMAIN}` & friends from that same env at load time.)
+Both stacks read a single `.env`, and **that file is the only place anything is
+configured**. Neither compose file declares an environment of its own; each hands
+`.env` straight to the container. So you **copy `.env.example` → `.env`, fill in
+the values, and deploy** — there is nothing to edit in the YAML. (Goma expands
+`${MIABI_DOMAIN}` & friends from the same env at load time.)
+
+`.env.example` is the full reference — every setting Miabi accepts, with the
+values this stack needs already filled in. The keys marked **REQUIRED** are the
+ones you must supply.
 
 ## Run it
 
@@ -60,9 +66,13 @@ docker compose -f compose.traefik.yaml up -d
 
 Traefik terminates TLS and routes by Docker labels. Note the trade-offs: app
 routes are exposed via `traefik.*` labels you add per app (App → Settings →
-Container labels), rolling/canary deploys and the **built-in registry require
-Goma** (keep `MIABI_REGISTRY_ENABLED=false` on this variant). Details are in the
-header of [`compose.traefik.yaml`](./compose.traefik.yaml).
+Container labels), and rolling/canary deploys, the **built-in registry**
+(`MIABI_REGISTRY_ENABLED=false`) and **Workspace Analytics**
+(`MIABI_ANALYTICS_ENABLED=false`) all **require Goma**. Analytics in particular
+is not degraded but absent: the dashboards roll up an event stream only Goma
+publishes, and requests never reach the control plane, so there is nothing else
+to count. Details are in the header of
+[`compose.traefik.yaml`](./compose.traefik.yaml).
 
 **DNS:** point both records at this host so Goma can issue certs and serve
 one-click URLs:
@@ -83,4 +93,5 @@ Then open `https://miabi.example.com` and log in with `MIABI_ADMIN_EMAIL` /
 - **Scale the worker:** uncomment the `miabi-worker` service in `compose.yaml`.
   It must mount the same `miabi-logs` volume so the panel can read the logs it
   externalizes.
-- See the full env reference in the repo-root [`.env.example`](../../.env.example).
+- Every setting lives in [`.env.example`](./.env.example); the repo-root
+  [`.env.example`](../../.env.example) is the same reference for non-Compose installs.

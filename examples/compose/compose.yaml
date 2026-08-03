@@ -76,6 +76,16 @@ services:
       MIABI_DOMAIN: ${MIABI_DOMAIN:?set MIABI_DOMAIN}
       MIABI_ACME_EMAIL: ${MIABI_ACME_EMAIL:-admin@example.com}
       MIABI_REDIS_PASSWORD: ${MIABI_REDIS_PASSWORD}
+      # Workspace Analytics: Goma publishes a per-request event stream to Redis
+      # and Miabi rolls it up. Also configurable in goma.yml (`analytics:`);
+      # these win, and keep the toggle next to the rest of the stack's wiring.
+      GOMA_ANALYTICS_ENABLED: "true"
+      GOMA_ANALYTICS_STREAM: ${MIABI_ANALYTICS_STREAM:-goma:analytics}
+      # Country data for the analytics map + the geoBlock middleware. Goma ships
+      # NO database — every GeoIP dataset carries license terms only you can
+      # accept — so this path is empty until you mount one (see below). Until
+      # then the country panels stay empty and everything else works.
+      GOMA_GEOIP_DB: /etc/goma/country.mmdb
     ports:
       - "80:80"
       - "443:443"
@@ -83,6 +93,10 @@ services:
       - ./goma.yml:/etc/goma/goma.yml:ro
       - gateway-providers:/etc/goma/providers
       - gateway-certs:/etc/letsencrypt
+      # GeoIP (optional): download a country-level .mmdb — MaxMind GeoLite2,
+      # DB-IP Lite or IP2Location LITE all work — put it next to this file, and
+      # uncomment. Without it the "Top countries" panels stay empty.
+      # - ./country.mmdb:/etc/goma/country.mmdb:ro
     networks: [miabi]
 
   # Control plane: single binary serving the API + web UI. The background worker
@@ -107,28 +121,10 @@ services:
     depends_on:
       miabi-postgres: { condition: service_healthy }
       miabi-redis: { condition: service_healthy }
-    # Pass the whole .env into the container so the feature toggles (registry,
-    # base domain, SMTP, license, …) flow through without listing each here.
+    # Every Miabi setting comes from .env — there is no second place to look, and
+    # nothing to edit in this file. See .env.example for what must be filled in.
     env_file:
       - .env
-    environment:
-      MIABI_ENV: production
-      MIABI_PORT: "9000"
-      MIABI_DB_HOST: miabi-postgres
-      MIABI_REDIS_ADDR: miabi-redis:6379
-      MIABI_PROXY_NETWORK: miabi
-      MIABI_GOMA_PROVIDER_DIR: /etc/goma/providers
-      # Public panel URL — also the CORS allowlist (production rejects "*").
-      MIABI_WEB_URL: ${MIABI_WEB_URL:?set MIABI_WEB_URL, e.g. https://miabi.example.com}
-      MIABI_CONTROL_URL: ${MIABI_WEB_URL}
-      # These reach the container through env_file as well, but .env.example ships them
-      # BLANK. Restating them with `:?` turns a forgotten secret into an immediate
-      # `docker compose up` abort that names the variable, rather than a container that
-      # starts, fails config validation and crash-loops — the same failure, found the
-      # slow way.
-      MIABI_JWT_SECRET: "${MIABI_JWT_SECRET:?generate one with openssl rand -hex 32}"
-      MIABI_ENCRYPTION_KEY: "${MIABI_ENCRYPTION_KEY:?generate one with openssl rand -hex 32}"
-      MIABI_ADMIN_PASSWORD: "${MIABI_ADMIN_PASSWORD:?set the first admin password}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - gateway-providers:/etc/goma/providers
@@ -153,11 +149,6 @@ services:
   #     miabi-postgres: { condition: service_healthy }
   #     miabi-redis: { condition: service_healthy }
   #   env_file: [.env]
-  #   environment:
-  #     MIABI_ENV: production
-  #     MIABI_DB_HOST: miabi-postgres
-  #     MIABI_REDIS_ADDR: miabi-redis:6379
-  #     MIABI_PROXY_NETWORK: miabi
   #   volumes:
   #     - /var/run/docker.sock:/var/run/docker.sock
   #     - miabi-logs:/var/lib/miabi/logs
