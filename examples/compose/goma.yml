@@ -77,6 +77,29 @@ gateway:
   redis:
     addr: miabi-redis:6379
     password: "${MIABI_REDIS_PASSWORD}"
+  # Workspace Analytics: publish one event per request to a Redis stream, which
+  # Miabi's analytics consumer rolls up into the Traffic / Performance / Web
+  # dashboards. Events carry NO client IP — only a daily-salted visitor hash and,
+  # when a GeoIP database is mounted, a country resolved here at the edge.
+  #
+  # The compose file also sets GOMA_ANALYTICS_ENABLED / GOMA_ANALYTICS_STREAM,
+  # and the environment wins over this block — so change it there, or drop those
+  # variables and drive it from here.
+  analytics:
+    enabled: true
+    stream: goma:analytics
+    # Fraction of requests recorded, 0..1. Lower it on very high-traffic edges;
+    # the dashboards scale the sampled counts back up.
+    sample: 1
+    # Approximate cap on the stream, so a stopped consumer can't grow Redis
+    # without bound.
+    maxLen: 1000000
+  # Country resolution for the analytics map and the geoBlock middleware. Goma
+  # ships no database — every GeoIP dataset carries license terms only you can
+  # accept — so mount one at this path (see the gateway service in compose.yaml)
+  # or leave it: country data is simply absent, nothing else changes.
+  geoip:
+    database: /etc/goma/country.mmdb
   providers:
     file:
       enabled: true

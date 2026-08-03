@@ -32,6 +32,14 @@
 # 3. The built-in container registry REQUIRES Goma (its auth runs via Goma's
 #    forwardAuth). Keep MIABI_REGISTRY_ENABLED=false here and use an external
 #    registry (Docker Hub, GHCR, …) for git-source builds instead.
+#
+# 4. Workspace Analytics REQUIRES Goma. The dashboards are rollups of a
+#    per-request event stream that Goma publishes to Redis; Traefik emits no
+#    such stream, and Miabi has no other source for it — requests never pass
+#    through the control plane. So Traffic, Performance, Web Analytics AND the
+#    live-visitor count all stay empty here, not merely degraded. Keep
+#    MIABI_ANALYTICS_ENABLED=false so no consumer runs waiting on a stream that
+#    nothing writes; use Traefik's own metrics/access logs instead.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -125,22 +133,12 @@ services:
     depends_on:
       miabi-postgres: { condition: service_healthy }
       miabi-redis: { condition: service_healthy }
-    # Pass the whole .env into the container so the feature toggles flow through
-    # without listing each here.
+    # Every Miabi setting comes from .env — there is no second place to look, and
+    # nothing to edit in this file. See .env.example for what must be filled in.
+    # MIABI_PROXY_NETWORK there is the network Traefik and the managed app
+    # containers share; Traefik can only route to apps that join it.
     env_file:
       - .env
-    environment:
-      MIABI_ENV: production
-      MIABI_PORT: "9000"
-      MIABI_DB_HOST: miabi-postgres
-      MIABI_REDIS_ADDR: miabi-redis:6379
-      # Shared network Traefik + managed app containers join (also Miabi's
-      # EnsureNetwork default). Traefik can only route to apps on this network.
-      MIABI_PROXY_NETWORK: miabi
-      # NOTE: no MIABI_GOMA_PROVIDER_DIR — this stack has no Goma. Traefik owns
-      # routing + TLS via the labels you add per app (see the header).
-      MIABI_WEB_URL: ${MIABI_WEB_URL:?set MIABI_WEB_URL, e.g. https://miabi.example.com}
-      MIABI_CONTROL_URL: ${MIABI_WEB_URL}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # Externalized log store — keep on a volume so logs survive restarts, and
@@ -176,11 +174,6 @@ services:
   #     miabi-redis: { condition: service_healthy }
   #   env_file:
   #     - .env
-  #   environment:
-  #     MIABI_ENV: production
-  #     MIABI_DB_HOST: miabi-postgres
-  #     MIABI_REDIS_ADDR: miabi-redis:6379
-  #     MIABI_PROXY_NETWORK: miabi
   #   volumes:
   #     - /var/run/docker.sock:/var/run/docker.sock
   #     - miabi-logs:/var/lib/miabi/logs
