@@ -204,6 +204,20 @@ const (
 	DefaultGomaLogLevel = "info"
 
 	envGomaLogLevel = "GOMA_LOG_LEVEL"
+
+	// DefaultGomaAnalytics turns on the per-request event stream Goma publishes to
+	// Redis, which Miabi's consumer rolls up into Workspace Analytics. On, because
+	// the consumer runs by default: without this the gateway emits nothing and
+	// every analytics dashboard sits empty with no indication why.
+	//
+	// Seeded into gateway.env rather than set in gatewaySpec deliberately. A
+	// variable in the spec becomes reserved (normalizeGateway derives the reserved
+	// set from it) and refuses any operator value — which would leave analytics
+	// permanently on, and point the operator at a manifest field that does not
+	// exist. Here it is a visible default they can set to "false".
+	DefaultGomaAnalytics = "true"
+
+	envGomaAnalytics = "GOMA_ANALYTICS_ENABLED"
 )
 
 // gomaLogLevels are the values Goma acts on. Validated here because Goma does NOT
@@ -219,6 +233,9 @@ func (m *Manifest) seedGatewayEnvDefaults() {
 	}
 	if _, ok := m.Gateway.Env[envGomaLogLevel]; !ok {
 		m.Gateway.Env[envGomaLogLevel] = DefaultGomaLogLevel
+	}
+	if _, ok := m.Gateway.Env[envGomaAnalytics]; !ok {
+		m.Gateway.Env[envGomaAnalytics] = DefaultGomaAnalytics
 	}
 }
 

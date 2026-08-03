@@ -81,10 +81,12 @@ services:
       # these win, and keep the toggle next to the rest of the stack's wiring.
       GOMA_ANALYTICS_ENABLED: "true"
       GOMA_ANALYTICS_STREAM: ${MIABI_ANALYTICS_STREAM:-goma:analytics}
-      # Country data for the analytics map + the geoBlock middleware. Goma ships
-      # NO database — every GeoIP dataset carries license terms only you can
-      # accept — so this path is empty until you mount one (see below). Until
-      # then the country panels stay empty and everything else works.
+      # Country data for the analytics panels + the geoBlock middleware. Goma
+      # ships NO database — every GeoIP dataset carries license terms only you
+      # can accept — so nothing resolves until you mount one (see below), and
+      # until then the country panels stay empty while everything else works.
+      # This path must match the mount below: an explicit GOMA_GEOIP_DB is used
+      # exactly as given, with no fallback to the well-known names.
       GOMA_GEOIP_DB: /etc/goma/country.mmdb
     ports:
       - "80:80"
