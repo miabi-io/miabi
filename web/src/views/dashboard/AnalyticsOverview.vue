@@ -8,6 +8,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { analyticsApi, type AnalyticsSummary } from '@/api/analytics'
 import RequestsChart from '@/views/analytics/RequestsChart.vue'
+import Breakdown from '@/views/analytics/Breakdown.vue'
 import { fmtNum, fmtMs, fmtPct, delta, fmtDelta } from '@/views/analytics/format'
 
 const props = defineProps<{ workspaceId: number | null }>()
@@ -78,6 +79,13 @@ onBeforeUnmount(stopPolling)
 
 const totals = computed(() => report.value?.totals ?? null)
 const hasTraffic = computed(() => (totals.value?.requests ?? 0) > 0)
+
+// Countries come from the gateway's GeoIP database, which many installs don't
+// have — and an empty list looks the same as "no traffic from anywhere". The
+// panel is dropped entirely rather than explaining itself; the chart then takes
+// the full width, and /analytics/web is where the GeoIP hint belongs.
+const topCountries = computed(() => report.value?.top_countries ?? [])
+const hasCountries = computed(() => topCountries.value.length > 0)
 
 // 5xx as a share of all requests — the number worth leading with, since a
 // workspace can serve plenty of traffic and still be broken.
@@ -160,22 +168,34 @@ function deltaDir(d: number | null): string {
       </div>
     </div>
 
-    <div v-else-if="hasTraffic && report" class="tc-body">
-      <div class="tc-tiles">
-        <div v-for="t in tiles" :key="t.label" class="tc-tile">
-          <span class="tc-label">{{ t.label }}</span>
-          <span class="tc-value" :class="{ danger: t.danger }">
-            {{ t.value }}
-            <span
-              v-if="t.delta !== null && deltaDir(t.delta) !== 'flat'"
-              class="tc-delta"
-              :class="[deltaDir(t.delta), { invert: t.invert }]"
-              title="Change vs the previous 24 hours"
-            >{{ fmtDelta(t.delta) }}</span>
-          </span>
+    <!-- Split only when there are countries to show: without the aside the grid
+         is a single column, so the chart keeps the full width it has today. -->
+    <div v-else-if="hasTraffic && report" class="tc-body tc-split" :class="{ 'has-aside': hasCountries }">
+      <div class="tc-main">
+        <div class="tc-tiles">
+          <div v-for="t in tiles" :key="t.label" class="tc-tile">
+            <span class="tc-label">{{ t.label }}</span>
+            <span class="tc-value" :class="{ danger: t.danger }">
+              {{ t.value }}
+              <span
+                v-if="t.delta !== null && deltaDir(t.delta) !== 'flat'"
+                class="tc-delta"
+                :class="[deltaDir(t.delta), { invert: t.invert }]"
+                title="Change vs the previous 24 hours"
+              >{{ fmtDelta(t.delta) }}</span>
+            </span>
+          </div>
         </div>
+        <RequestsChart :series="report.series" :granularity="report.granularity" :height="120" />
       </div>
-      <RequestsChart :series="report.series" :granularity="report.granularity" :height="120" />
+
+      <aside v-if="hasCountries" class="tc-aside">
+        <Breakdown title="Top countries" :items="topCountries" kind="country" flat>
+          <template #action>
+            <a class="tc-more" href="#" @click.prevent="router.push('/analytics/http')">Map →</a>
+          </template>
+        </Breakdown>
+      </aside>
     </div>
 
     <!-- Traffic only exists once an app is routed and reached, so the empty
@@ -213,6 +233,36 @@ function deltaDir(d: number | null): string {
 }
 
 .tc-body { padding: 16px 20px 18px; }
+
+/* One column by default — .has-aside is what opens the rail, so the empty case
+   needs no rule of its own. minmax(0, …) on the main column keeps the chart from
+   forcing the grid wider than the card. */
+.tc-split { display: grid; gap: 20px; }
+.tc-split.has-aside { grid-template-columns: minmax(0, 1fr) minmax(230px, 0.36fr); }
+.tc-main { min-width: 0; }
+.tc-aside { min-width: 0; padding-left: 20px; border-left: 1px solid var(--border-primary); }
+.tc-more { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.tc-more:hover { color: var(--primary-600); }
+
+/* The shared .brow row gives the label 38% of the width, which is fine in a
+   half-page card and far too little in a 230px rail — "United States" would
+   ellipsize to a few characters. Rebalance for the rail: the label takes what's
+   left, the bar keeps a fixed sliver so the ranking still reads visually. */
+.tc-aside :deep(.brow-label) { flex: 1 1 auto; min-width: 0; }
+.tc-aside :deep(.brow-track) { flex: 0 0 34px; }
+.tc-aside :deep(.brow-count) { min-width: 34px; }
+/* Slightly tighter than the shared row so the full list ends level with the
+   chart's baseline rather than stretching the card past it. */
+.tc-aside :deep(.brow) { padding: 4px 0; }
+/* Match the stat tiles' label, so the rail reads as part of this card. */
+.tc-aside :deep(h3) { font-size: 12px; font-weight: 500; color: var(--text-muted); }
+/* Below this the rail is narrower than the flags and counts want; stack instead,
+   and swap the divider to the top edge so it still reads as a separate block. */
+@media (max-width: 860px) {
+  .tc-split.has-aside { grid-template-columns: 1fr; gap: 16px; }
+  .tc-aside { padding: 16px 0 0; border-left: 0; border-top: 1px solid var(--border-primary); }
+}
+
 .tc-tiles {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 14px; margin-bottom: 18px;

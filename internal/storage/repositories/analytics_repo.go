@@ -80,11 +80,21 @@ var summaryColumns = []string{
 	"duration_hist", "duration_sum", "visitors_hll",
 }
 
+var summaryGeoColumns = append(append([]string{}, summaryColumns...), "top_countries")
+
 // RangeSummary is Range with only the columns the summary needs. Same rows, same
 // order — a fraction of the bytes and none of the top-K decoding.
-func (r *AnalyticsRepository) RangeSummary(workspaceID uint, appID *uint, since, until time.Time) ([]models.AnalyticsRollup, error) {
+//
+// withGeo additionally reads top_countries, for the one window whose countries
+// are rendered. The period-over-period comparison window passes false: only its
+// totals are read, so decoding its countries would be pure waste.
+func (r *AnalyticsRepository) RangeSummary(workspaceID uint, appID *uint, since, until time.Time, withGeo bool) ([]models.AnalyticsRollup, error) {
+	cols := summaryColumns
+	if withGeo {
+		cols = summaryGeoColumns
+	}
 	q := r.db.Model(&models.AnalyticsRollup{}).
-		Select(summaryColumns).
+		Select(cols).
 		Where("workspace_id = ? AND bucket >= ? AND bucket < ?", workspaceID, since, until)
 	if appID != nil {
 		q = q.Where("application_id = ?", *appID)

@@ -5,8 +5,9 @@ import AnalyticsShell from './AnalyticsShell.vue'
 import StatTile from './StatTile.vue'
 import RequestsChart from './RequestsChart.vue'
 import StatusPie from './StatusPie.vue'
+import Breakdown from './Breakdown.vue'
 import type { AnalyticsReport } from '@/api/analytics'
-import { fmtNum, fmtBytes, fmtMs, fmtPct, delta, countryFlag, countryName } from './format'
+import { fmtNum, fmtBytes, fmtMs, fmtPct, delta } from './format'
 
 const router = useRouter()
 
@@ -18,7 +19,6 @@ function rate(n: number, total: number): number {
 function latency(r: AnalyticsReport): number[] {
   return r.series.filter((p) => p.requests > 0).map((p) => p.p95_latency_ms)
 }
-const topCountries = (r: AnalyticsReport) => r.web.top_countries.slice(0, 5)
 </script>
 
 <template>
@@ -66,20 +66,17 @@ const topCountries = (r: AnalyticsReport) => r.web.top_countries.slice(0, 5)
         </div>
       </div>
 
-      <div class="card">
-        <div class="a-card-header">
-          <h3>Top countries</h3>
+      <Breakdown
+        title="Top countries"
+        :items="report.web.top_countries"
+        kind="country"
+        :limit="7"
+        empty-hint="Country data needs the GeoIP database on the gateway."
+      >
+        <template #action>
           <a class="a-muted" href="#" @click.prevent="router.push('/analytics/http')">View map →</a>
-        </div>
-        <div class="card-body">
-          <div v-for="c in topCountries(report)" :key="c.label" class="brow">
-            <span class="brow-label">{{ countryFlag(c.label) }}&nbsp; {{ countryName(c.label) }}</span>
-            <span class="brow-track"><span class="brow-fill" :style="{ width: (c.count / (topCountries(report)[0]?.count || 1)) * 100 + '%' }"></span></span>
-            <span class="brow-count">{{ fmtNum(c.count) }}</span>
-          </div>
-          <p v-if="!report.web.top_countries.length" class="a-muted">Country data needs the GeoIP database on the gateway.</p>
-        </div>
-      </div>
+        </template>
+      </Breakdown>
     </div>
   </AnalyticsShell>
 </template>

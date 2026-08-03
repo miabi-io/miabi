@@ -165,16 +165,17 @@ func (h *AnalyticsHandler) Summary(c *okapi.Context) error {
 		return c.AbortBadRequest("invalid app id")
 	}
 
-	rows, err := h.repo.RangeSummary(wsID, appFilter, since, until)
+	rows, err := h.repo.RangeSummary(wsID, appFilter, since, until, true)
 	if err != nil {
 		return c.AbortInternalServerError("failed to read analytics", err)
 	}
 	summary := analytics.BuildSummary(rows, since, until)
 
 	// Period-over-period totals power the deltas. Skipped on the widest window to
-	// bound the scan, and best-effort — a failure just omits the comparison.
+	// bound the scan, and best-effort — a failure just omits the comparison. Read
+	// without the country top-K: only the totals of this window are used.
 	if window <= 30*24*time.Hour {
-		if prev, err := h.repo.RangeSummary(wsID, appFilter, since.Add(-window), since); err == nil {
+		if prev, err := h.repo.RangeSummary(wsID, appFilter, since.Add(-window), since, false); err == nil {
 			prevTotals := analytics.BuildSummary(prev, since.Add(-window), since).Totals
 			summary.Compare = &prevTotals
 		}
