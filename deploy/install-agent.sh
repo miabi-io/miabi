@@ -48,19 +48,29 @@ AGENT_IMAGE="${MIABI_AGENT_IMAGE:-miabi/agent:${AGENT_IMAGE_TAG}}"
 AGENT_NAME="${MIABI_AGENT_NAME:-miabi-agent}"
 INSECURE="${MIABI_AGENT_INSECURE_SKIP_VERIFY:-false}"
 
+# A flag whose value is missing must say so. Without this, `shift 2` with nothing
+# left to shift returns non-zero, `set -e` kills the script, and the operator gets
+# exit 1 and a completely empty terminal.
+need_value() { # <flag> <value>
+  [ -n "${2:-}" ] || die "$1 needs a value (e.g. $1 <value>)."
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
-    --control-url) CONTROL_URL="${2:-}"; shift 2 ;;
+    --control-url) need_value "$1" "${2:-}"; CONTROL_URL="$2"; shift 2 ;;
     --control-url=*) CONTROL_URL="${1#*=}"; shift ;;
-    --token) NODE_TOKEN="${2:-}"; shift 2 ;;
+    --token) need_value "$1" "${2:-}"; NODE_TOKEN="$2"; shift 2 ;;
     --token=*) NODE_TOKEN="${1#*=}"; shift ;;
-    --image) AGENT_IMAGE="${2:-}"; shift 2 ;;
+    --image) need_value "$1" "${2:-}"; AGENT_IMAGE="$2"; shift 2 ;;
     --image=*) AGENT_IMAGE="${1#*=}"; shift ;;
-    --name) AGENT_NAME="${2:-}"; shift 2 ;;
+    --name) need_value "$1" "${2:-}"; AGENT_NAME="$2"; shift 2 ;;
     --name=*) AGENT_NAME="${1#*=}"; shift ;;
     --insecure) INSECURE="true"; shift ;;
     -h|--help)
-      sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+      # $0 is "bash" when piped from curl, so there is no file to read the header
+      # out of; only print it when we are running from one.
+      if [ -r "$0" ]; then sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+      else echo "See https://miabi.io/docs — run this script from a file for the full help."; fi
       exit 0 ;;
     *) die "unknown argument: $1 (see --help)" ;;
   esac
@@ -89,6 +99,34 @@ if ! docker info >/dev/null 2>&1; then
 fi
 ok "Docker is installed and running"
 
+# --- resolve the Docker endpoint the agent must reach -------------------------
+# The agent reads DOCKER_HOST itself (agent/main.go), so honour it here rather
+# than hardcoding the default socket. Binding /var/run/docker.sock on a host whose
+# daemon lives elsewhere — rootless Docker at $XDG_RUNTIME_DIR, a custom path —
+# makes Docker CREATE A DIRECTORY at that path and the agent then fails to dial
+# it, which this script would have reported as a bad token or a network problem.
+DOCKER_ENDPOINT="${DOCKER_HOST:-unix:///var/run/docker.sock}"
+DOCKER_MOUNT=()
+case "$DOCKER_ENDPOINT" in
+  unix://*)
+    sock="${DOCKER_ENDPOINT#unix://}"
+    [ -S "$sock" ] || die "no Docker socket at ${sock} (from DOCKER_HOST=${DOCKER_ENDPOINT}). Point DOCKER_HOST at the real socket, or start Docker."
+    # Bind it at the same path inside the container so DOCKER_HOST is valid there too.
+    DOCKER_MOUNT=(-v "${sock}:${sock}")
+    ;;
+  tcp://*|http://*|https://*)
+    # No socket to bind: the agent dials the daemon directly, but it does so from
+    # inside a container, where localhost is not the host.
+    case "$DOCKER_ENDPOINT" in
+      *//localhost:*|*//127.0.0.1:*|*//\[::1\]:*)
+        die "DOCKER_HOST=${DOCKER_ENDPOINT} points at localhost, which inside the agent container means the container itself. Use the host's address, or a unix:// socket."
+        ;;
+    esac
+    warn "using DOCKER_HOST=${DOCKER_ENDPOINT} — the agent container must be able to reach it"
+    ;;
+  *) die "unsupported DOCKER_HOST=${DOCKER_ENDPOINT} (expected unix:// or tcp://)." ;;
+esac
+
 # --- (re)create the agent container -------------------------------------------
 if docker ps -a --format '{{.Names}}' | grep -qx "$AGENT_NAME"; then
   warn "an existing '$AGENT_NAME' container was found — replacing it"
@@ -105,15 +143,26 @@ log "starting the agent"
 # one container whose removal makes the node unreachable to the control plane.
 # managed-by=external: installed by hand here, so Miabi must not assume it may
 # recreate it. See internal/docker/labels.go.
+# The join token goes in via a 0600 env-file, not `-e`: a command line is world
+# readable in `ps` for as long as `docker run` is executing, and this token is
+# enough to enrol a node against the control plane.
+ENV_FILE="$(mktemp)"
+chmod 600 "$ENV_FILE"
+trap 'rm -f "$ENV_FILE"' EXIT
+cat > "$ENV_FILE" <<EOF
+MIABI_CONTROL_URL=${CONTROL_URL}
+MIABI_NODE_TOKEN=${NODE_TOKEN}
+MIABI_AGENT_INSECURE_SKIP_VERIFY=${INSECURE}
+DOCKER_HOST=${DOCKER_ENDPOINT}
+EOF
+
 docker run -d --name "$AGENT_NAME" --restart unless-stopped \
-  -v /var/run/docker.sock:/var/run/docker.sock \
+  "${DOCKER_MOUNT[@]}" \
   --label io.miabi.part-of=miabi \
   --label io.miabi.role=agent \
   --label io.miabi.managed-by=external \
   --label io.miabi.protected=true \
-  -e MIABI_CONTROL_URL="$CONTROL_URL" \
-  -e MIABI_NODE_TOKEN="$NODE_TOKEN" \
-  -e MIABI_AGENT_INSECURE_SKIP_VERIFY="$INSECURE" \
+  --env-file "$ENV_FILE" \
   "$AGENT_IMAGE" >/dev/null
 
 # --- verify it stayed up (a bad token/URL exits almost immediately) -----------

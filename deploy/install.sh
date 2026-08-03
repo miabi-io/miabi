@@ -28,7 +28,8 @@
 #   miabi-stack status | restart | update | uninstall
 #
 # Environment overrides:
-#   MIABI_DOMAIN                panel domain; required (prompts on a tty)
+#   MIABI_DOMAIN                panel domain; required over a pipe (asked only when
+#                               the script is run as a file from a terminal)
 #   MIABI_ACME_EMAIL            Let's Encrypt contact
 #   MIABI_ADMIN_EMAIL           first admin's login (default: MIABI_ACME_EMAIL)
 #   MIABI_CONTROL_URL           URL remote nodes/agents dial back on (default: the
@@ -48,9 +49,14 @@
 #   MIABI_FORCE_STACK           1 = install even though a Compose stack is present
 #   ASSUME_YES                  1 = never prompt
 #
-# Answering prompts over a pipe is unreliable, so prefer passing the values:
+# A piped install NEVER prompts — stdin is the script, so there is nothing to read
+# an answer from. Every value must come from the environment, and MIABI_DOMAIN is
+# the only one without a sensible fallback:
 #   curl -fsSL https://get.miabi.io | sudo MIABI_DOMAIN=miabi.example.com \
 #     MIABI_ACME_EMAIL=you@example.com bash
+#
+# To be asked instead, download first and run it as a file:
+#   curl -fsSLO https://get.miabi.io && sudo bash ./get.miabi.io
 #
 # Install or pin a specific release:
 #   curl -fsSL https://get.miabi.io | sudo MIABI_VERSION=v1.4.0 bash
@@ -349,16 +355,34 @@ for p in 80 443; do
 done
 
 # ── prompt (interactive only) ────────────────────────────────────────────────
-# A pre-set environment variable always wins: over a pipe the tty is shared with
-# whatever is still typing into it, so reads there are racy. Only when the value
-# is unset do we ask, and only with a real tty. Otherwise keep the placeholder
-# and warn at the end.
+#
+# interactive() is the single definition of "there is a human here to answer",
+# used by every prompt AND by the `docker run -t` decision below. It tests
+# STDIN, not /dev/tty.
+#
+# That distinction is the whole point. Under the documented install line —
+#
+#     curl -fsSL https://get.miabi.io | sudo bash
+#
+# — stdin is the pipe carrying the script itself, but /dev/tty is still the
+# operator's terminal and therefore still readable. A `[ -r /dev/tty ]` guard
+# passes, the prompt prints, and `read < /dev/tty` blocks forever on input the
+# operator was never asked for and cannot see a reason to give: the install
+# hangs on the first unset value. Testing stdin instead means a piped run never
+# prompts at all, which is what the header has always told operators to expect.
+interactive() {
+  [ "${ASSUME_YES:-0}" != "1" ] && [ -t 0 ] && [ -r /dev/tty ]
+}
+
+# A pre-set environment variable always wins. Only when the value is unset do we
+# ask, and only when someone is there. Otherwise keep the default and let the
+# caller decide whether a missing value is fatal.
 prompt() { # <env-var> <question> <default>
   local preset ans=""
   eval "preset=\${$1:-}"
   if [ -n "$preset" ]; then printf '%s' "$preset"; return 0; fi
 
-  if [ "${ASSUME_YES:-0}" != "1" ] && [ -r /dev/tty ]; then
+  if interactive; then
     printf "    ${C_CYAN}?${C_RESET} %s [%s]: " "$2" "$3" > /dev/tty
     read -r ans < /dev/tty || ans=""
   fi
@@ -372,7 +396,7 @@ prompt_yn() { # <env-var> <question>
   if [ -n "$preset" ]; then
     case "$preset" in true|1|yes|y|YES|Y) return 0 ;; *) return 1 ;; esac
   fi
-  [ "${ASSUME_YES:-0}" != "1" ] && [ -r /dev/tty ] || return 1
+  interactive || return 1
   printf "    ${C_CYAN}?${C_RESET} %s [y/N]: " "$2" > /dev/tty
   read -r ans < /dev/tty || ans=""
   case "$ans" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
@@ -476,9 +500,10 @@ install_stack() {
 
   # -t only with a real tty: the confirm prompt needs one, but `curl | bash` has
   # none and `docker run -t` without one fails outright. Non-interactive implies
-  # --yes, since there is nobody there to answer.
+  # --yes, since there is nobody there to answer. Same interactive() the prompts
+  # use, so the two can never disagree about whether a human is present.
   local ttyflag="" assume=""
-  if [ -t 0 ] && [ "${ASSUME_YES:-0}" != "1" ]; then ttyflag="-it"; else assume="--yes"; fi
+  if interactive; then ttyflag="-it"; else assume="--yes"; fi
 
   # The manifest (mode 0600) is the desired state AND the only copy of the database
   # password. It lives on the host, not in a volume, so it survives
