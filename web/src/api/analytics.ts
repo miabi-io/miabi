@@ -94,14 +94,21 @@ export interface AnalyticsReport {
 }
 
 // AnalyticsSummary is the dashboard's slice of a report: headline totals, the
-// status split and the request series, without the categorical breakdowns,
-// per-route stats or upstream percentiles the analytics pages need.
+// status split, the request series and the top countries, without the remaining
+// categorical breakdowns, per-route stats or upstream percentiles the analytics
+// pages need.
 export interface AnalyticsSummary {
   range: { since: string; until: string }
   granularity: 'minute' | 'hour' | 'day'
   totals: AnalyticsTotals
   series: AnalyticsSeriesPoint[]
   status: AnalyticsStatus
+  /**
+   * The eight busiest origins. Empty when the gateway has no GeoIP database —
+   * indistinguishable from "no traffic", so the dashboard hides the panel rather
+   * than explaining; /analytics/web is where that hint lives.
+   */
+  top_countries: Category[]
   compare?: AnalyticsTotals
 }
 

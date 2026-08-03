@@ -128,7 +128,7 @@ func TestRangeSummarySelectsCountersOnly(t *testing.T) {
 	if err != nil || len(full) != 1 {
 		t.Fatalf("Range: rows=%d err=%v", len(full), err)
 	}
-	lean, err := repo.RangeSummary(5, nil, from, to)
+	lean, err := repo.RangeSummary(5, nil, from, to, false)
 	if err != nil || len(lean) != 1 {
 		t.Fatalf("RangeSummary: rows=%d err=%v", len(lean), err)
 	}
@@ -156,11 +156,28 @@ func TestRangeSummarySelectsCountersOnly(t *testing.T) {
 	}
 
 	// The point of the narrower query: the top-K blobs are never read or decoded.
-	if len(f.TopPaths) == 0 {
-		t.Fatal("fixture has no top paths, so the assertion below proves nothing")
+	if len(f.TopPaths) == 0 || len(f.TopCountries) == 0 {
+		t.Fatal("fixture has no top paths or countries, so the assertions below prove nothing")
 	}
 	if len(l.TopPaths) != 0 || len(l.TopCountries) != 0 || len(l.TopMethods) != 0 || len(l.UpstreamHist) != 0 {
 		t.Fatalf("summary decoded blobs it doesn't need: paths=%d countries=%d methods=%d upstream=%d",
 			len(l.TopPaths), len(l.TopCountries), len(l.TopMethods), len(l.UpstreamHist))
+	}
+
+	// withGeo adds exactly one blob — the dashboard's country panel — and no more.
+	geo, err := repo.RangeSummary(5, nil, from, to, true)
+	if err != nil || len(geo) != 1 {
+		t.Fatalf("RangeSummary(withGeo): rows=%d err=%v", len(geo), err)
+	}
+	g := geo[0]
+	if g.Requests != f.Requests {
+		t.Fatalf("withGeo counters differ: %d, want %d", g.Requests, f.Requests)
+	}
+	if g.TopCountries["US"] != f.TopCountries["US"] {
+		t.Fatalf("country top-K not selected: %v, want %v", g.TopCountries, f.TopCountries)
+	}
+	if len(g.TopPaths) != 0 || len(g.TopMethods) != 0 || len(g.UpstreamHist) != 0 {
+		t.Fatalf("withGeo decoded blobs beyond countries: paths=%d methods=%d upstream=%d",
+			len(g.TopPaths), len(g.TopMethods), len(g.UpstreamHist))
 	}
 }

@@ -298,4 +298,19 @@ func TestBuildSummaryMatchesReport(t *testing.T) {
 			t.Fatalf("series[%d] differs:\n summary %+v\n report  %+v", i, sum.Series[i], rep.Series[i])
 		}
 	}
+
+	// The dashboard's country panel and the analytics page's country breakdown are
+	// the same ranking, the dashboard's simply truncated — a workspace must not see
+	// a different leader on two pages.
+	if len(sum.TopCountries) > SummaryTopCountries {
+		t.Fatalf("summary returned %d countries, want at most %d", len(sum.TopCountries), SummaryTopCountries)
+	}
+	if len(sum.TopCountries) == 0 {
+		t.Fatal("fixture ingests a country, so the summary should rank one")
+	}
+	for i, c := range sum.TopCountries {
+		if c != rep.Web.TopCountries[i] {
+			t.Fatalf("countries[%d] differs: summary %+v, report %+v", i, c, rep.Web.TopCountries[i])
+		}
+	}
 }

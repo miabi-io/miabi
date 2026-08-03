@@ -192,16 +192,22 @@ func emitSeries(series map[int64]*seriesAgg, trunc truncFunc, step time.Duration
 	return out
 }
 
-// Summary is the dashboard's slice of a report: the headline totals, the
-// status split and the request series. It deliberately omits the categorical
-// breakdowns, per-route stats and upstream percentiles the analytics pages need,
-// so the dashboard's traffic card doesn't pay for them.
+const SummaryTopCountries = 8
+
+// Summary is the dashboard's slice of a report: the headline totals, the status
+// split, the request series and the top countries. It deliberately omits the
+// remaining categorical breakdowns, per-route stats and upstream percentiles the
+// analytics pages need, so the dashboard's traffic card doesn't pay for them.
 type Summary struct {
 	Range       Window        `json:"range"`
 	Granularity string        `json:"granularity"`
 	Totals      Totals        `json:"totals"`
 	Series      []SeriesPoint `json:"series"`
 	Status      StatusBreak   `json:"status"`
+	// TopCountries is the SummaryTopCountries busiest origins, for the dashboard's
+	// country panel. Empty when the gateway has no GeoIP database — which is
+	// indistinguishable here from "no traffic", so the panel simply doesn't render.
+	TopCountries []Category `json:"top_countries"`
 	// Compare holds the totals of the immediately preceding, equal-length window,
 	// for period-over-period deltas. Nil when not requested.
 	Compare *Totals `json:"compare,omitempty"`
@@ -209,7 +215,7 @@ type Summary struct {
 
 // BuildSummary reduces rollups to the dashboard's view of a range. Feed it rows
 // from AnalyticsRepository.RangeSummary — it reads only the counters, the latency
-// histogram and the visitor sketch.
+// histogram, the visitor sketch and the country top-K.
 func BuildSummary(rows []models.AnalyticsRollup, since, until time.Time) Summary {
 	gran, trunc, step := granularityFor(until.Sub(since))
 	sum := Summary{
@@ -219,6 +225,7 @@ func BuildSummary(rows []models.AnalyticsRollup, since, until time.Time) Summary
 
 	totalDur := make([]int64, histLen())
 	series := map[int64]*seriesAgg{}
+	countries := map[string]int64{}
 	var allSketches [][]byte
 
 	for i := range rows {
@@ -232,6 +239,7 @@ func BuildSummary(rows []models.AnalyticsRollup, since, until time.Time) Summary
 		sum.Status.S5xx += row.Status5xx
 		sum.Totals.AvgLatency += float64(row.DurationSum) // sum now, divide later
 		totalDur = addHist(totalDur, row.DurationHist)
+		mergeTopK(countries, row.TopCountries)
 		if len(row.VisitorsHLL) > 0 {
 			allSketches = append(allSketches, row.VisitorsHLL)
 		}
@@ -248,6 +256,7 @@ func BuildSummary(rows []models.AnalyticsRollup, since, until time.Time) Summary
 	sum.Totals.P95Latency = Percentile(totalDur, 0.95)
 	sum.Totals.P99Latency = Percentile(totalDur, 0.99)
 	sum.Totals.UniqueVisit = MergeUniques(allSketches)
+	sum.TopCountries = topN(countries, SummaryTopCountries)
 	sum.Series = emitSeries(series, trunc, step, since, until)
 	return sum
 }
