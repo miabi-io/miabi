@@ -18,6 +18,7 @@ import (
 	"github.com/jkaninda/okapi"
 	"github.com/joho/godotenv"
 	errorhandlers "github.com/miabi-io/miabi/internal/error_handlers"
+	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/storage"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -367,12 +368,19 @@ type RedisConfig struct {
 	DB       int // Redis database index (MIABI_REDIS_DB); must match Goma's GOMA_REDIS_DB for analytics
 }
 
-// RegistryConfig is the boot-authoritative config for the built-in registry. A
-// set field overrides the corresponding admin setting on boot.
+// RegistryConfig is the boot-authoritative config for the built-in registry.
+//
+// Enablement, the hostname, and the storage configuration have no other source:
+// the admin API accepts none of them, so what is here is what the registry runs
+// with until the process restarts. The remaining fields override the
+// corresponding admin setting on boot.
 type RegistryConfig struct {
-	Enabled     bool
-	Host        string
-	StorageType string // "filesystem" | "s3"
+	Enabled bool
+	Host    string
+	// StorageType is "filesystem" | "s3". S3 requires the registry_s3
+	// entitlement, checked at container start (registryserver), because the
+	// environment — not an API call — is what selects it.
+	StorageType string
 	Image       string // override the registry image (also via the image catalog)
 	// AuthURL is the address the gateway's forwardAuth calls to reach Miabi's
 	// /internal/registry/auth (e.g. http://miabi:9000). Falls back to ControlURL.
@@ -409,14 +417,6 @@ type LogStoreConfig struct {
 // Enabled reports whether logs should be externalized to the store.
 func (l LogStoreConfig) Enabled() bool {
 	return l.Backend != "" && l.Backend != "off"
-}
-
-// IsSet reports whether any registry env var was provided, i.e. env is the
-// authoritative source for the registry config on this boot.
-func (r RegistryConfig) IsSet() bool {
-	return r.Enabled || r.Host != "" || r.StorageType != "" || r.Image != "" ||
-		r.S3Endpoint != "" || r.S3Bucket != "" || r.S3Region != "" ||
-		r.S3AccessKey != "" || r.S3SecretKey != ""
 }
 
 // registryHostPattern matches a DNS hostname with an optional port. It is
@@ -464,13 +464,22 @@ func NormalizeRegistryHost(raw string) (string, error) {
 	return h, nil
 }
 
-// validateRegistry refuses to boot on an unusable MIABI_REGISTRY_HOST. It runs in
-// dev too: an install that comes up with a host nothing matches looks healthy —
-// the registry serves, pushes succeed — right up to the point where the
+// validateRegistry refuses to boot on an unusable registry environment. It runs
+// in dev too: an install that comes up with a host nothing matches looks healthy
+// — the registry serves, pushes succeed — right up to the point where the
 // workspace-ownership check on a pull silently has nothing to compare against.
+// A misspelled storage driver is the same shape of problem, one level down: it
+// would fall back to a local volume while the operator believes they are writing
+// to S3, and only the missing images would say otherwise.
 func (c *Config) validateRegistry() error {
 	if _, err := NormalizeRegistryHost(c.Registry.Host); err != nil {
 		return fmt.Errorf("MIABI_REGISTRY_HOST: %w", err)
+	}
+	switch strings.ToLower(strings.TrimSpace(c.Registry.StorageType)) {
+	case "", models.RegistryStorageFilesystem, models.RegistryStorageS3:
+	default:
+		return fmt.Errorf("MIABI_REGISTRY_STORAGE %q: expected %q or %q",
+			c.Registry.StorageType, models.RegistryStorageFilesystem, models.RegistryStorageS3)
 	}
 	return nil
 }

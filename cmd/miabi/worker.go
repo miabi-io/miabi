@@ -239,11 +239,14 @@ func runWorker() error {
 	// internal-registry image belongs to the app pulling it. Without it every such
 	// reference is refused (the check fails closed), so a standalone worker would
 	// deploy nothing built by a runner.
-	deployHandler.SetDistributor(registryserver.NewService(
+	registryDistributor := registryserver.NewService(
 		repositories.NewRegistrySettingsRepository(db), imageResolver,
 		settings.NewProvider(repositories.NewSettingRepository(db), nil),
 		nil, repositories.NewWorkspaceRepository(db), nil, cfg.ProxyNetwork, cfg.ControlURL, cfg.Registry,
-	))
+	)
+
+	registryDistributor.SetEntitlements(edition)
+	deployHandler.SetDistributor(registryDistributor)
 
 	volumeBackupSvc := volumebackup.NewService(repositories.NewVolumeBackupRepository(db), repositories.NewVolumeRepository(db), nodeClients)
 	volumeBackupSvc.SetImageResolver(imageResolver) // honor admin override for the volume-bkup image

@@ -35,6 +35,11 @@ func (s *Service) DistributionUnavailableReason() string {
 	if !st.Enabled {
 		return "the internal registry is disabled (set MIABI_REGISTRY_ENABLED=true)"
 	}
+	// Storage the install may not use means the registry was never started, so a
+	// push would fail with a connection error rather than the actual cause.
+	if reason := s.StorageUnavailableReason(st); reason != "" {
+		return reason
+	}
 	// The platform token is derived from the master key, so it is always present
 	// (no operator action needed); only enablement and a resolvable host remain.
 	if s.HostFor(st) == "" {

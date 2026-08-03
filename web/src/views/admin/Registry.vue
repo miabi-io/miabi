@@ -10,17 +10,28 @@ const loading = ref(true)
 const saving = ref(false)
 const runningGc = ref(false)
 const effectiveHost = ref('')
-const secretSet = ref(false)
 const s3Entitled = ref(false)
 
 const volumeName = ref('mb-registry-data')
 
-// Enablement and the hostname are fixed at boot from MIABI_REGISTRY_ENABLED /
-// MIABI_REGISTRY_HOST. They are shown, never edited: the host is what every
-// stored image reference is anchored to and what decides which workspace owns an
-// image, so moving it under a running platform would strand those references.
+
 const enabled = ref(false)
 const hostSource = ref<'env' | 'stored' | 'base_domain' | 'unset'>('unset')
+
+// Storage read-out (never edited here).
+const storage = ref({
+  storage_type: 'filesystem' as 'filesystem' | 's3',
+  s3_endpoint: '',
+  s3_bucket: '',
+  s3_region: '',
+  s3_access_key: '',
+  s3_force_path_style: false,
+  s3_secret_set: false,
+  storage_source: 'default' as 'env' | 'stored' | 'default',
+  storage_error: '',
+})
+
+const usesS3 = computed(() => storage.value.storage_type === 's3')
 
 const hostOrigin = computed(() => {
   switch (hostSource.value) {
@@ -35,14 +46,18 @@ const hostOrigin = computed(() => {
   }
 })
 
+const storageOrigin = computed(() => {
+  switch (storage.value.storage_source) {
+    case 'env':
+      return 'Set by MIABI_REGISTRY_STORAGE.'
+    case 'stored':
+      return 'A value saved before storage became environment-only. Set MIABI_REGISTRY_STORAGE to change it.'
+    default:
+      return 'The default — set MIABI_REGISTRY_STORAGE to change it.'
+  }
+})
+
 const form = ref<RegistrySettingsPayload>({
-  storage_type: 'filesystem',
-  s3_endpoint: '',
-  s3_bucket: '',
-  s3_region: '',
-  s3_access_key: '',
-  s3_secret_key: '',
-  s3_force_path_style: false,
   delete_enabled: false,
   per_workspace_quota_mb: 0,
 })
@@ -52,19 +67,22 @@ async function load() {
   try {
     const s = (await registryApi.getSettings()).data.data
     effectiveHost.value = s.effective_host
-    secretSet.value = s.s3_secret_set
     s3Entitled.value = s.s3_entitled
     volumeName.value = s.volume_name || 'mb-registry-data'
     enabled.value = s.enabled
     hostSource.value = s.host_source
-    form.value = {
+    storage.value = {
       storage_type: s.storage_type,
       s3_endpoint: s.s3_endpoint ?? '',
       s3_bucket: s.s3_bucket ?? '',
       s3_region: s.s3_region ?? '',
       s3_access_key: s.s3_access_key ?? '',
-      s3_secret_key: '', // never returned; blank keeps the stored secret
       s3_force_path_style: s.s3_force_path_style,
+      s3_secret_set: s.s3_secret_set,
+      storage_source: s.storage_source ?? 'default',
+      storage_error: s.storage_error ?? '',
+    }
+    form.value = {
       delete_enabled: s.delete_enabled,
       per_workspace_quota_mb: s.per_workspace_quota_mb,
     }
@@ -76,21 +94,11 @@ async function load() {
 }
 
 async function save() {
-  if (form.value.storage_type === 's3' && !s3Entitled.value) {
-    notify.error('S3/MinIO storage requires an Enterprise license. Use local storage or upgrade.')
-    return
-  }
-  if (form.value.storage_type === 's3' && !form.value.s3_bucket.trim()) {
-    notify.error('An S3 bucket is required for the S3 storage driver')
-    return
-  }
   saving.value = true
   try {
     const s = (await registryApi.updateSettings(form.value)).data.data
     effectiveHost.value = s.effective_host
     hostSource.value = s.host_source
-    secretSet.value = s.s3_secret_set
-    form.value.s3_secret_key = ''
     notify.success('Registry settings saved')
   } catch (e) {
     notify.apiError(e)
@@ -135,6 +143,15 @@ onMounted(load)
         </div>
       </div>
       <div class="card-body">
+        <h3 class="section-title">
+          Platform configuration
+          <span class="lock-pill"><i class="mdi mdi-lock-outline"></i> environment-only</span>
+        </h3>
+        <p class="section-note">
+          Set with <code>MIABI_REGISTRY_*</code> and applied at boot. Shown here so you can see what the registry
+          is actually running with; a change takes an environment edit and a restart.
+        </p>
+
         <label class="toggle-row is-locked">
           <input :checked="enabled" type="checkbox" disabled />
           <span>Enable the registry (runs the container and seeds its gateway route)</span>
@@ -154,19 +171,28 @@ onMounted(load)
           </small>
         </div>
 
+        <div v-if="storage.storage_error" class="alert-banner" role="alert">
+          <i class="mdi mdi-alert-circle-outline"></i>
+          <p><strong>The registry is not running.</strong> {{ storage.storage_error }}</p>
+        </div>
+
         <div class="form-group">
           <label class="form-label">Storage driver</label>
-          <select v-model="form.storage_type" class="form-select" style="max-width: 280px">
-            <option value="filesystem">Local volume (filesystem)</option>
-            <option value="s3" :disabled="!s3Entitled">S3 / MinIO{{ s3Entitled ? '' : ' — Enterprise' }}</option>
-          </select>
+          <input
+            :value="usesS3 ? 'S3 / MinIO' : 'Local volume (filesystem)'"
+            class="form-input"
+            style="max-width: 280px"
+            disabled
+          />
           <small class="form-hint">
-            Switching drivers recreates the registry; <strong>data does not migrate</strong> between drivers.
+            {{ storageOrigin }} Fixed by the platform: every pushed blob lives in this backend, and drivers
+            <strong>do not migrate</strong> — switching one under a running registry would orphan every image
+            already stored. Change it in the environment and restart Miabi.
             <template v-if="!s3Entitled"> S3/MinIO storage requires an Enterprise license; local storage is free.</template>
           </small>
         </div>
 
-        <div v-if="form.storage_type === 'filesystem'" class="form-group">
+        <div v-if="!usesS3" class="form-group">
           <label class="form-label">Data volume</label>
           <input :value="volumeName" class="form-input mono" style="max-width: 320px" disabled />
           <small class="form-hint">The managed volume images are stored in. Fixed by the platform.</small>
@@ -176,40 +202,41 @@ onMounted(load)
           <div class="form-grid">
             <div class="form-group">
               <label class="form-label">Bucket</label>
-              <input v-model="form.s3_bucket" class="form-input" placeholder="my-registry" />
+              <input :value="storage.s3_bucket || '—'" class="form-input mono" disabled />
             </div>
             <div class="form-group">
               <label class="form-label">Region</label>
-              <input v-model="form.s3_region" class="form-input" placeholder="us-east-1" />
+              <input :value="storage.s3_region || '—'" class="form-input mono" disabled />
             </div>
           </div>
           <div class="form-group">
-            <label class="form-label">Endpoint <span class="text-muted">(optional, S3-compatible / MinIO)</span></label>
-            <input v-model="form.s3_endpoint" class="form-input" placeholder="https://s3.amazonaws.com" />
+            <label class="form-label">Endpoint <span class="text-muted">(S3-compatible / MinIO)</span></label>
+            <input :value="storage.s3_endpoint || '— (AWS S3)'" class="form-input mono" disabled />
           </div>
           <div class="form-grid">
             <div class="form-group">
               <label class="form-label">Access key</label>
-              <input v-model="form.s3_access_key" class="form-input" autocomplete="off" />
+              <input :value="storage.s3_access_key || '—'" class="form-input mono" disabled />
             </div>
             <div class="form-group">
               <label class="form-label">Secret key</label>
-              <input
-                v-model="form.s3_secret_key"
-                class="form-input"
-                type="password"
-                autocomplete="new-password"
-                :placeholder="secretSet ? '••••• (set — leave blank to keep)' : ''"
-              />
+              <input :value="storage.s3_secret_set ? '••••• (set)' : '— (not set)'" class="form-input mono" disabled />
             </div>
           </div>
-          <label class="toggle-row">
-            <input v-model="form.s3_force_path_style" type="checkbox" />
+          <label class="toggle-row is-locked">
+            <input :checked="storage.s3_force_path_style" type="checkbox" disabled />
             <span>Force path-style URLs (MinIO and some S3-compatible stores)</span>
           </label>
+          <small class="form-hint">
+            Read-only: set by <code>MIABI_REGISTRY_S3_BUCKET</code>, <code>_REGION</code>, <code>_ENDPOINT</code>,
+            <code>_ACCESS_KEY</code>, <code>_SECRET_KEY</code>, <code>_FORCE_PATH_STYLE</code>. Restart Miabi to apply
+            a change.
+          </small>
         </fieldset>
 
-        <div class="form-group" style="margin-top: 8px">
+        <h3 class="section-title" style="margin-top: 28px">Settings</h3>
+
+        <div class="form-group">
           <label class="form-label">Per-workspace quota (MB)</label>
           <input v-model.number="form.per_workspace_quota_mb" type="number" min="0" class="form-input" style="max-width: 200px" />
           <small class="form-hint">0 = unlimited.</small>
@@ -224,8 +251,9 @@ onMounted(load)
           <button class="btn btn-primary" :disabled="saving" @click="save">
             {{ saving ? 'Saving…' : 'Save settings' }}
           </button>
+          <!-- Nothing to collect while the registry is down for a storage reason. -->
           <button
-            v-if="enabled && form.delete_enabled"
+            v-if="enabled && form.delete_enabled && !storage.storage_error"
             class="btn btn-secondary"
             :disabled="runningGc"
             @click="showGcConfirm = true"
@@ -258,7 +286,28 @@ onMounted(load)
 .form-hint { display: block; font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 /* A locked toggle is not clickable, so it must not present as one. */
 .toggle-row.is-locked { cursor: default; color: var(--text-muted); }
+.alert-banner {
+  display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap;
+  padding: 12px 16px; margin-bottom: 20px;
+  border: 1px solid var(--danger-500); border-radius: var(--radius-lg);
+  background: var(--danger-50); font-size: 13px; color: var(--text-secondary);
+}
+.alert-banner .mdi { font-size: 20px; flex-shrink: 0; color: var(--danger-600); }
+.alert-banner strong { color: var(--danger-600); }
+.alert-banner p { margin: 0; flex: 1; min-width: 200px; }
 .text-muted { color: var(--text-muted); }
 .text-sm { font-size: 13px; }
 .mono { font-family: monospace; }
+.section-title {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 4px; font-size: 14px; font-weight: 600; color: var(--text-primary);
+}
+.section-note { margin: 0 0 16px; font-size: 12px; color: var(--text-muted); }
+.lock-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--border-primary); background: var(--bg-tertiary);
+  font-size: 11px; font-weight: 500; color: var(--text-muted);
+}
+.lock-pill .mdi { font-size: 13px; }
 </style>

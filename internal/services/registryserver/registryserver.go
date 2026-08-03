@@ -18,6 +18,7 @@ import (
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/config"
 	"github.com/miabi-io/miabi/internal/docker"
+	"github.com/miabi-io/miabi/internal/enterprise"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/proxy"
 	"github.com/miabi-io/miabi/internal/services/crypto"
@@ -47,6 +48,11 @@ type keyVerifier interface {
 	Verify(plaintext string) (*models.APIKey, error)
 }
 
+// entitlementChecker reports whether a licensed capability is usable (satisfied
+// by enterprise.EE). A nil checker entitles nothing: the S3 driver is a paid
+// feature, so an unwired checker must fail closed rather than grant it.
+type entitlementChecker interface{ Has(flag string) bool }
+
 // workspaceFinder resolves workspaces and memberships for authorization
 // (satisfied by the workspace repo).
 type workspaceFinder interface {
@@ -69,6 +75,11 @@ type Service struct {
 	network    string
 	controlURL string
 	cfg        config.RegistryConfig
+	// ee gates the licensed S3 storage driver. Checked at every point the driver
+	// would actually be used (container start, GC), not only where it is
+	// configured — the configuration now arrives from the environment, which no
+	// API-level check can see.
+	ee entitlementChecker
 	// catalog is what the platform knows about the images it built: the digests a
 	// live deployment or pinned release holds (so a tag delete can't pull an image
 	// out from under a running release), and the build behind a digest. nil-safe.
@@ -115,6 +126,13 @@ func NewService(
 	}
 }
 
+func (s *Service) SetEntitlements(ee entitlementChecker) { s.ee = ee }
+
+// S3Entitled reports whether this install may use the S3 storage driver.
+func (s *Service) S3Entitled() bool {
+	return s.ee != nil && s.ee.Has(enterprise.FlagRegistryS3)
+}
+
 // Get returns the current settings (an empty, disabled default when unset),
 // never exposing the S3 secret — only the S3SecretSet presence flag.
 func (s *Service) Get() (*models.RegistrySettings, error) {
@@ -138,29 +156,27 @@ func (s *Service) Get() (*models.RegistrySettings, error) {
 	return st, nil
 }
 
-// SaveInput carries an update. S3SecretKey is nil/empty to keep the stored secret.
+// SaveInput carries an update: the two operational settings an admin may change
+// at runtime.
 //
-// Enabled and Host are deliberately absent: both are boot-time, environment-only
-// settings (see applyEnvConfig). Accepting them here would give the admin API a
-// way to move the registry's identity at runtime.
+// Enablement, the hostname, and the whole storage configuration are deliberately
+// absent — all of them are boot-time, environment-only (see applyEnvConfig).
+// Accepting any of them here would give the admin API a way to move the
+// registry's identity or its storage backend at runtime, and would let the S3
+// driver be selected without the entitlement the environment path is checked
+// against.
 type SaveInput struct {
-	StorageType         string
-	S3Endpoint          string
-	S3Bucket            string
-	S3Region            string
-	S3AccessKey         string
-	S3SecretKey         *string
-	S3ForcePathStyle    bool
 	DeleteEnabled       bool
 	PerWorkspaceQuotaMB int
 }
 
-// Save persists the settings, encrypting a newly supplied S3 secret and
-// preserving the existing one otherwise. The secret is never returned.
+// Save persists the two mutable settings. Storage — driver, bucket, credentials
+// — is never written here: it is read from the environment on every load, so a
+// stored value could only ever go stale against it.
 func (s *Service) Save(in SaveInput) (*models.RegistrySettings, error) {
 	st, err := s.repo.Get()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		st = &models.RegistrySettings{}
+		st = &models.RegistrySettings{StorageType: models.RegistryStorageFilesystem}
 	} else if err != nil {
 		return nil, err
 	}
@@ -169,35 +185,27 @@ func (s *Service) Save(in SaveInput) (*models.RegistrySettings, error) {
 	if host := s.envHost(); host != "" {
 		st.Host = host
 	}
-	st.StorageType = normalizeStorage(in.StorageType)
 	// The data volume is a fixed platform name, not admin-configurable.
 	st.VolumeName = models.DefaultRegistryVolume
-	st.S3Endpoint = strings.TrimSpace(in.S3Endpoint)
-	st.S3Bucket = strings.TrimSpace(in.S3Bucket)
-	st.S3Region = strings.TrimSpace(in.S3Region)
-	st.S3AccessKey = strings.TrimSpace(in.S3AccessKey)
-	st.S3ForcePathStyle = in.S3ForcePathStyle
 	st.DeleteEnabled = in.DeleteEnabled
 	st.PerWorkspaceQuotaMB = in.PerWorkspaceQuotaMB
-
-	// Only replace the secret when a non-empty new value is supplied.
-	if in.S3SecretKey != nil && *in.S3SecretKey != "" {
-		enc, err := crypto.Encrypt(*in.S3SecretKey)
-		if err != nil {
-			return nil, err
-		}
-		st.S3SecretKeyEnc = enc
-	}
 
 	if err := s.repo.Upsert(st); err != nil {
 		return nil, err
 	}
+	// Return the same env-layered view a read would give, so the caller renders
+	// the effective storage rather than the bare row.
+	s.applyEnvConfig(st)
 	st.S3SecretSet = st.S3SecretKeyEnc != ""
 	return st, nil
 }
 
+// normalizeStorage maps a driver name to a known one, defaulting to the
+// filesystem driver. It is silent by design — it runs on every settings read.
+// An unrecognized MIABI_REGISTRY_STORAGE is caught once, loudly, at boot
+// (config.validateRegistry) rather than warned about on every call.
 func normalizeStorage(t string) string {
-	if strings.TrimSpace(t) == models.RegistryStorageS3 {
+	if strings.ToLower(strings.TrimSpace(t)) == models.RegistryStorageS3 {
 		return models.RegistryStorageS3
 	}
 	return models.RegistryStorageFilesystem
@@ -220,31 +228,32 @@ func (s *Service) envHost() string {
 
 // applyEnvConfig layers the boot environment over the stored settings.
 //
-// Enablement and the hostname are UNCONDITIONALLY environment-derived — the
-// stored values are not consulted at all. They define whether the registry
-// exists and what name every image reference is anchored to, which is not a
-// thing that may change under a running platform: the gateway route, its TLS
-// certificate, the references recorded on past deployments, and the namespace
-// check at pull time all key off the host. Changing either takes an env change
-// and a restart, so that every process in the install agrees on the answer.
+// Enablement, the hostname, and the storage configuration are all
+// environment-derived: nothing in the admin API writes them (see SaveInput).
+// They define whether the registry exists, what name every image reference is
+// anchored to, and where the bytes live — none of which may change under a
+// running platform. The gateway route, its TLS certificate, the references
+// recorded on past deployments, and the namespace check at pull time all key off
+// the host; every pushed blob keys off the storage backend. Changing any of them
+// takes an env change and a restart, so every process in the install agrees on
+// the answer.
 //
-// The remaining fields keep the one-way-override convention: a set env value
-// pins the setting, an unset one leaves the admin UI in charge.
+// A stored value survives only where the environment is silent, and only as a
+// legacy carry-over from when these fields were UI-editable — an upgraded
+// install must keep answering on the host and reading from the bucket its
+// existing images already live behind. Nothing can write a new one.
 func (s *Service) applyEnvConfig(st *models.RegistrySettings) {
 	c := s.cfg
 	st.Enabled = c.Enabled
-	// An unset MIABI_REGISTRY_HOST leaves the stored value in place rather than
-	// blanking it: an install upgraded from when the field was UI-editable must
-	// keep answering on the name its existing images already reference. HostFor
-	// still validates it, and nothing can write a new one.
 	if host := s.envHost(); host != "" {
 		st.Host = host
 	}
-	if !c.IsSet() {
-		return
-	}
 	if c.StorageType != "" {
 		st.StorageType = normalizeStorage(c.StorageType)
+	} else {
+		// Normalize the stored value too: it may predate the driver names, and an
+		// unrecognized one must not read as "not filesystem" anywhere downstream.
+		st.StorageType = normalizeStorage(st.StorageType)
 	}
 	if c.S3Endpoint != "" {
 		st.S3Endpoint = c.S3Endpoint
@@ -261,11 +270,48 @@ func (s *Service) applyEnvConfig(st *models.RegistrySettings) {
 	if c.S3SecretKey != "" {
 		if enc, err := crypto.Encrypt(c.S3SecretKey); err == nil {
 			st.S3SecretKeyEnc = enc
+		} else {
+			logger.Error("registry: failed to encrypt MIABI_REGISTRY_S3_SECRET_KEY", "error", err)
 		}
 	}
 	if c.S3ForcePath {
 		st.S3ForcePathStyle = true
 	}
+}
+
+// StorageSource names where the effective storage driver came from, for the
+// admin UI's read-only explanation of why the fields cannot be edited:
+// "env" (MIABI_REGISTRY_STORAGE), "stored" (a value saved while the driver was
+// UI-editable), or "default" (the filesystem driver, nothing configured).
+func (s *Service) StorageSource(st *models.RegistrySettings) string {
+	if strings.TrimSpace(s.cfg.StorageType) != "" {
+		return "env"
+	}
+	if st != nil && st.UsesS3() {
+		return "stored"
+	}
+	return "default"
+}
+
+// StorageUnavailableReason returns "" when the configured storage driver can be
+// used, else a sentence naming exactly what is wrong.
+//
+// This is where the S3 entitlement is actually enforced. The admin API cannot
+// select the driver any more, so a check there would guard a door nobody uses:
+// the configuration arrives from the environment, and the environment is only
+// read here, on the paths that start a container against that storage.
+func (s *Service) StorageUnavailableReason(st *models.RegistrySettings) string {
+	if st == nil || !st.UsesS3() {
+		return ""
+	}
+	if !s.S3Entitled() {
+		return "S3/MinIO storage for the built-in registry requires an Enterprise license (the registry_s3 entitlement); " +
+			"install a license, or set MIABI_REGISTRY_STORAGE=filesystem to use a local volume"
+	}
+	if strings.TrimSpace(st.S3Bucket) == "" {
+		return "S3 storage is selected but no bucket is configured (set MIABI_REGISTRY_S3_BUCKET)"
+	}
+	return ""
 }
 
 // HostFor returns the effective registry hostname: MIABI_REGISTRY_HOST, else
@@ -340,6 +386,11 @@ func (s *Service) renderEnv(st *models.RegistrySettings, readonly bool) ([]strin
 		env = append(env, "REGISTRY_STORAGE_MAINTENANCE_READONLY_ENABLED=true")
 	}
 	if st.UsesS3() {
+		// Defense in depth: no caller may render an S3 config this install is not
+		// licensed for, whichever path got here.
+		if reason := s.StorageUnavailableReason(st); reason != "" {
+			return nil, errors.New(reason)
+		}
 		secret := ""
 		if st.S3SecretKeyEnc != "" {
 			dec, err := crypto.Decrypt(st.S3SecretKeyEnc)
@@ -382,6 +433,18 @@ func (s *Service) Ensure(ctx context.Context, dc docker.Client) error {
 	if !st.Enabled {
 		s.warnIfDisabledByLock()
 		return s.Teardown(ctx, dc)
+	}
+	// Refuse to bring up storage this install may not use. Tear down first: an
+	// install whose license lapsed (or that was pointed at S3 by hand) may have a
+	// registry already serving from that bucket, and leaving it running would make
+	// the check advisory. Data in the bucket is untouched — only the container
+	// serving it stops.
+	if reason := s.StorageUnavailableReason(st); reason != "" {
+		logger.Error("internal registry not started: " + reason)
+		if err := s.Teardown(ctx, dc); err != nil {
+			logger.Warn("registry: teardown after storage check failed", "error", err)
+		}
+		return errors.New(reason)
 	}
 	if s.HostFor(st) == "" {
 		// The container can run, but nothing can reach it: the gateway route below
@@ -481,6 +544,9 @@ func (s *Service) GarbageCollect(ctx context.Context, dc docker.Client) error {
 	}
 	if !st.Enabled || !st.DeleteEnabled {
 		return nil
+	}
+	if reason := s.StorageUnavailableReason(st); reason != "" {
+		return errors.New("registry gc: " + reason)
 	}
 
 	// 1. Read-only so no writes race the collector.
