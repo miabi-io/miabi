@@ -330,6 +330,7 @@ func (s *Service) Trigger(workspaceID, pipelineID uint, in TriggerInput) (*model
 		step := &models.PipelineStepRun{
 			PipelineRunID: run.ID, Ordinal: i, Name: st.Name,
 			Status: models.PipelineRunPending, Image: st.Image, Uses: st.Uses, Run: st.Run,
+			Dockerfile: st.Dockerfile, BuildContext: st.Context, BuildArgs: st.BuildArgs,
 			ContinueOnError: st.ContinueOnError,
 		}
 		if err := s.repo.CreateStep(step); err != nil {

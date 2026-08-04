@@ -80,6 +80,7 @@ func BuildJobSpec(in JobInputs) (proto.JobSpec, []string) {
 			Ordinal: s.Ordinal, Name: s.Name, Uses: s.Uses, Image: s.Image,
 			Run:             shellCommand(s.Run),
 			ContinueOnError: s.ContinueOnError,
+			Build:           buildConfig(s),
 		})
 	}
 
@@ -102,6 +103,37 @@ func BuildJobSpec(in JobInputs) (proto.JobSpec, []string) {
 		Deadline:    in.Deadline,
 	}
 	return spec, in.Creds.Secrets()
+}
+
+// buildConfig carries a build step's Dockerfile/context choice to the runner.
+//
+// Returns nil when the step chose neither, which is what selects the runner's
+// auto-detection (root Dockerfile → dockerfile build, else buildpacks). Sending
+// an empty BuildConfig instead would be indistinguishable on the wire, but nil is
+// the documented "not configured" and keeps the JSON free of an empty object.
+//
+// This is the step that was missing: `dockerfile:` was parsed and validated at
+// the spec layer and then never reached the wire, so every pipeline build used
+// the root Dockerfile no matter what the file said.
+// BuildContext and BuildArgs are deliberately not sent yet: proto.BuildConfig
+// gains those fields in the next runner release, and the spec layer rejects both
+// keys until then rather than accepting values it would drop here — which is
+// precisely how `dockerfile:` came to look supported while doing nothing.
+//
+// To enable them: bump github.com/miabi-io/runner past the release carrying
+// BuildConfig.Context and .BuildArgs, add
+//
+//	Context:   strings.TrimSpace(s.BuildContext),
+//	BuildArgs: s.BuildArgs,
+//
+// below, and delete the two guards in pipeline/spec.go marked "runner support
+// pending".
+func buildConfig(s *models.PipelineStepRun) *proto.BuildConfig {
+	df := strings.TrimSpace(s.Dockerfile)
+	if df == "" {
+		return nil
+	}
+	return &proto.BuildConfig{Dockerfile: df}
 }
 
 // shellCommand wraps a step's `run:` script so the runner executes it in a
