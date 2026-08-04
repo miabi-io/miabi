@@ -684,9 +684,7 @@ func (s *Service) ensureVolumes(ctx context.Context) error {
 		VolumeGatewayCerts:     docker.RoleGateway,
 		VolumeGatewayProviders: docker.RoleGateway,
 	} {
-		// Volumes carry role + part-of for inventory, but NOT protected: the label is
-		// read by the container guard, and there is no such thing as "stopping" a
-		// volume. See plans/platform-labels.md §3.
+
 		labels := map[string]string{
 			docker.LabelPartOf:    docker.PartOfMiabi,
 			docker.LabelRole:      role,

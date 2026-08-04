@@ -194,8 +194,13 @@ async function save() {
             </div>
 
             <div class="form-group">
-              <label class="form-label">Paths <span class="text-muted">(comma-separated, default /*)</span></label>
-              <input v-model="form.paths" class="form-input" placeholder="/*" aria-label="Paths" />
+              <label class="form-label">Paths <span class="text-muted">(comma-separated regular expressions, default /.*)</span></label>
+              <input v-model="form.paths" class="form-input" placeholder="/.*" aria-label="Paths" />
+              <!-- Regexes, not globs: "/admin/*" reads as "zero or more slashes"
+                   after /admin and would not scope the rule the way it looks. -->
+              <small class="form-hint">
+                Matched as regular expressions, so a prefix is written <code>/admin/.*</code> — not <code>/admin/*</code>.
+              </small>
             </div>
 
             <!-- Schema-driven fields (recursive: scalars, maps, groups, lists) -->

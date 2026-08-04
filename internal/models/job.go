@@ -57,10 +57,7 @@ type Job struct {
 	Status      JobStatus `json:"status" gorm:"not null;default:pending"`
 	ExitCode    *int      `json:"exit_code,omitempty"`
 	ContainerID string    `json:"container_id,omitempty"`
-	// Logs is a bounded tail of the run's output for instant display; the full
-	// log lives in the log store at LogRef once the run is terminal (see
-	// plans/log-storage.md). LogRef is empty when the store is disabled or the
-	// row predates externalization — readers then fall back to this tail.
+
 	Logs         string `json:"logs,omitempty" gorm:"type:text"`
 	LogRef       string `json:"log_ref,omitempty"`
 	LogBytes     int64  `json:"log_bytes,omitempty"`

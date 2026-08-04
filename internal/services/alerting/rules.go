@@ -1,11 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package alerting turns the platform's signal stream (app events today; metrics,
-// jobs, cert/DNS, nodes later) into a small set of deduplicated, lifecycle-managed
-// alerts, and fans them out to per-user notifications. The rule catalog here is
-// pure and unit-tested; the engine (engine.go) adds Redis-backed counters/cooldowns
-// and persistence. See plans/alerts-and-notifications.md.
 package alerting
 
 import (

@@ -170,7 +170,7 @@ func TestRenderAdvancedInjectsNameAndBackends(t *testing.T) {
 
 func TestRenderMiddleware(t *testing.T) {
 	out, err := RenderMiddleware(RenderedMiddleware{
-		ID: 3, WorkspaceID: 1, Name: "auth", Type: "basicAuth", Paths: []string{"/*"},
+		ID: 3, WorkspaceID: 1, Name: "auth", Type: "basicAuth", Paths: []string{"/.*"},
 		Rule: map[string]interface{}{"realm": "restricted"},
 	})
 	if err != nil {
@@ -363,8 +363,9 @@ func TestRenderMiddlewareDefaultsPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(out)
-	if !strings.Contains(s, "paths:") || !strings.Contains(s, "/*") {
-		t.Errorf("middleware without paths must default to /*:\n%s", s)
+	// Goma matches these as regular expressions ("/.*", "/docs/.*"), not globs.
+	if !strings.Contains(s, "paths:") || !strings.Contains(s, "/.*") {
+		t.Errorf("middleware without paths must default to the /.* regex:\n%s", s)
 	}
 }
 

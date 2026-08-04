@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/miabi-io/miabi/internal/config"
@@ -261,5 +262,56 @@ func TestFirstSegmentAndIDNamespace(t *testing.T) {
 		if _, ok := parseIDNamespace(ns); ok {
 			t.Errorf("parseIDNamespace(%q) should be false", ns)
 		}
+	}
+}
+
+// A token for one workspace must not reach another's namespace by smuggling the
+// target through path traversal. The gateway normalizes the path it proxies
+// upstream, so authorizing the raw form would approve "a" and serve "b" — a
+// confirmed cross-tenant write, not a theoretical one.
+func TestParseRepoNormalizesTraversal(t *testing.T) {
+	cases := []struct {
+		uri  string
+		want string
+	}{
+		{"/v2/tenant-a/../tenant-b/app/blobs/uploads/", "tenant-b/app"},
+		{"/v2/tenant-a/%2e%2e/tenant-b/app/blobs/uploads/", "tenant-b/app"},
+		{"/v2/tenant-a/app/../../tenant-b/app/manifests/latest", "tenant-b/app"},
+		{"/v2//tenant-b/app/blobs/uploads/", "tenant-b/app"},
+		// Ordinary requests are untouched.
+		{"/v2/tenant-a/app/blobs/uploads/", "tenant-a/app"},
+		{"/v2/ws_2/app/manifests/latest", "ws_2/app"},
+		{"/v2/tenant-a/nested/app/blobs/uploads/", "tenant-a/nested/app"},
+	}
+	for _, tc := range cases {
+		got, _, _ := parseRepo(tc.uri)
+		if got != tc.want {
+			t.Errorf("parseRepo(%q) = %q, want %q", tc.uri, got, tc.want)
+		}
+	}
+}
+
+// A path that climbs out of /v2 belongs to no namespace and must never resolve
+// to the first segment it happens to contain.
+func TestParseRepoRefusesEscapingPath(t *testing.T) {
+	for _, uri := range []string{"/v2/../../etc/passwd", "/v2/%2e%2e/%2e%2e/etc"} {
+		repo, isBase, isCatalog := parseRepo(uri)
+		if isBase || isCatalog {
+			t.Errorf("parseRepo(%q) classified as base/catalog", uri)
+		}
+		if repo == "" || !strings.Contains(repo, "\x00") {
+			t.Errorf("parseRepo(%q) = %q, want an unresolvable namespace", uri, repo)
+		}
+	}
+}
+
+// The mount source rides in the query string, where the same trick applies.
+func TestMountSourceTraversalIsRefused(t *testing.T) {
+	svc := &Service{ws: wsFixture()}
+	// tenant-a is workspace 1 in the fixture; a source that cleans to another
+	// tenant must not pass by naming tenant-a first.
+	if reason := svc.authorizeMountSource(
+		"/v2/tenant-a/app/blobs/uploads/?mount=sha256:x&from=tenant-a/../tenant-b/app", 1); reason == "" {
+		t.Error("a traversing blob mount source was accepted")
 	}
 }
