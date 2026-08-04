@@ -3,7 +3,10 @@
 
 package pipeline
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 const validPipeline = `
 apiVersion: miabi.io/v1
@@ -146,5 +149,62 @@ steps:
 `
 	if _, err := ParseSpec([]byte(y)); err == nil {
 		t.Fatal("expected error for duplicate step names")
+	}
+}
+
+// A build path is joined against the runner's workdir, so it must not be able to
+// climb out of the checked-out source.
+func TestParseSpecRejectsEscapingBuildPaths(t *testing.T) {
+	for _, bad := range []string{"/etc/passwd", "../../etc/passwd", "a/../../.."} {
+		for _, field := range []string{"dockerfile", "context"} {
+			y := "apiVersion: miabi.io/v1\nkind: Pipeline\nmetadata: { name: web }\nsteps:\n  - name: build\n    uses: build\n    " + field + ": " + bad + "\n"
+			if _, err := ParseSpec([]byte(y)); err == nil {
+				t.Errorf("%s: %q was accepted — it resolves outside the repository", field, bad)
+			}
+		}
+	}
+}
+
+// Until the runner protocol carries it, `context:` must fail loudly rather than
+// be accepted and dropped — silently building from the wrong directory produces a
+// wrong image and blames nothing. Delete this test with the guard it covers.
+func TestParseSpecRejectsContextUntilRunnerSupport(t *testing.T) {
+	y := "apiVersion: miabi.io/v1\nkind: Pipeline\nmetadata: { name: web }\nsteps:\n  - name: build\n    uses: build\n    context: services/api\n"
+	_, err := ParseSpec([]byte(y))
+	if err == nil {
+		t.Fatal("context was accepted, but nothing forwards it to the runner yet")
+	}
+	if !strings.Contains(err.Error(), "newer runner") {
+		t.Errorf("error should say what to do, got: %v", err)
+	}
+}
+
+// Build-arg names have to be usable from the Dockerfile. Docker accepts a name
+// with "=" or a space and then produces an ARG nothing can reference, so the
+// pipeline rejects it at parse time instead.
+func TestParseSpecValidatesBuildArgNames(t *testing.T) {
+	spec := func(k string) []byte {
+		return []byte("apiVersion: miabi.io/v1\nkind: Pipeline\nmetadata: { name: web }\nsteps:\n" +
+			"  - name: build\n    uses: build\n    build-args:\n      \"" + k + "\": v\n")
+	}
+	for _, bad := range []string{"1VERSION", "APP ENV", "APP-ENV", "APP=ENV", ""} {
+		if _, err := ParseSpec(spec(bad)); err == nil {
+			t.Errorf("build-arg name %q was accepted", bad)
+		} else if strings.Contains(err.Error(), "newer runner") {
+			t.Errorf("build-arg name %q reached the runner gate; it should fail validation first", bad)
+		}
+	}
+	// A well-formed name gets past validation and stops at the runner gate.
+	if _, err := ParseSpec(spec("APP_ENV2")); err == nil || !strings.Contains(err.Error(), "newer runner") {
+		t.Errorf("valid build-arg name should reach the runner gate, got: %v", err)
+	}
+}
+
+// build-args belongs to a build step, like dockerfile and context.
+func TestParseSpecRejectsBuildArgsOnNonBuildStep(t *testing.T) {
+	y := []byte("apiVersion: miabi.io/v1\nkind: Pipeline\nmetadata: { name: web }\nsteps:\n" +
+		"  - name: test\n    image: node:20\n    run: npm test\n    build-args:\n      A: b\n")
+	if _, err := ParseSpec(y); err == nil {
+		t.Fatal("expected error: build-args is only valid on a build step")
 	}
 }

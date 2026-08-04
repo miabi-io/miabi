@@ -135,3 +135,35 @@ func TestRedact(t *testing.T) {
 		t.Errorf("expected mask marker in %q", got)
 	}
 }
+
+// The bug this guards: `dockerfile:` was parsed and validated at the spec layer,
+// stored, and then never copied into the wire spec — so every pipeline build used
+// the root Dockerfile regardless of what the pipeline file said, with nothing
+// reporting that the setting had been ignored.
+func TestBuildJobSpecCarriesDockerfile(t *testing.T) {
+	in := JobInputs{
+		Run: &models.PipelineRun{ID: 1, WorkspaceID: 1},
+		Steps: []models.PipelineStepRun{
+			{Ordinal: 0, Name: "build", Uses: "build", Dockerfile: "docker/Dockerfile"},
+			{Ordinal: 1, Name: "plain", Uses: "build"},
+			{Ordinal: 2, Name: "script", Image: "node:20", Run: "npm test"},
+		},
+		Creds: &JobCredentials{},
+	}
+	spec, _ := BuildJobSpec(in)
+
+	if spec.Steps[0].Build == nil {
+		t.Fatal("build step carries no BuildConfig — the dockerfile never reaches the runner")
+	}
+	if got := spec.Steps[0].Build.Dockerfile; got != "docker/Dockerfile" {
+		t.Errorf("Dockerfile = %q, want docker/Dockerfile", got)
+	}
+	// No dockerfile means no BuildConfig at all, which is what selects the
+	// runner's auto-detection; an empty struct would read as "configured".
+	if spec.Steps[1].Build != nil {
+		t.Errorf("unconfigured build step should send no BuildConfig, got %+v", spec.Steps[1].Build)
+	}
+	if spec.Steps[2].Build != nil {
+		t.Errorf("script step should send no BuildConfig, got %+v", spec.Steps[2].Build)
+	}
+}

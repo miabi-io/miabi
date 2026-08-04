@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 
@@ -158,6 +159,12 @@ func (s *Service) authorizeMountSource(uri string, workspaceID uint) string {
 	if from == "" {
 		return ""
 	}
+	// Normalized for the same reason the path is: "tenant-a/../tenant-b" must not
+	// read as tenant-a here while naming tenant-b to the registry.
+	from = path.Clean(from)
+	if from == ".." || strings.HasPrefix(from, "../") || strings.HasPrefix(from, "/") {
+		return "invalid blob mount source"
+	}
 	src, err := s.resolveNamespace(firstSegment(from))
 	if err != nil {
 		return "unknown blob mount source namespace"
@@ -299,6 +306,28 @@ func parseRepo(uri string) (repo string, isBase, isCatalog bool) {
 	// Tolerate a full URL or a bare path.
 	if i := strings.Index(p, "/v2"); i >= 0 {
 		p = p[i:]
+	}
+	// Percent-decode and resolve the path BEFORE any segment is read.
+	//
+	// This is a tenant boundary, and it is only sound if the path authorized here
+	// is the path the registry will actually serve. The gateway normalizes what it
+	// proxies upstream, so a request for
+	//
+	//	/v2/tenant-a/app/../../tenant-b/app/blobs/uploads/
+	//
+	// reaches the registry as tenant-b while a raw first-segment read approves it
+	// as tenant-a — a token for one workspace writing into another's namespace.
+	// %2e%2e is the same attack wearing a hat, so decode first, then clean.
+	if dec, err := url.PathUnescape(p); err == nil {
+		p = dec
+	}
+	p = path.Clean(p)
+	// Clean anchors at "/", so a path that climbed lands outside /v2 rather than
+	// keeping a "../" prefix. Require the result to still be a registry path: if
+	// it is not, the request addresses no repository and must resolve to no
+	// workspace, never to whatever segment it happens to start with.
+	if p != "/v2" && !strings.HasPrefix(p, "/v2/") {
+		return "\x00", false, false // resolves to no workspace → denied
 	}
 	p = strings.TrimPrefix(p, "/v2")
 	p = strings.Trim(p, "/")

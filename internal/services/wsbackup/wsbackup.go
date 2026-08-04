@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package wsbackup exports a workspace to a portable bundle on S3 and restores
-// one back — the same three verbs the plan calls backup, restore and migration
-// (see plans/backup-and-migration-ee.md).
-//
+// one back.
 // It owns no storage machinery of its own. A database dump is services/backup's
 // job, a volume archive is the volume-bkup helper's, and the bucket is the
 // workspace's existing S3 target: what this package adds is the bundle — one

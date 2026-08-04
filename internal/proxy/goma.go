@@ -364,13 +364,11 @@ func RenderBundle(routes []RenderedRoute, mws []RenderedMiddleware) ([]byte, err
 	return append([]byte(fileHeader), body...), nil
 }
 
-// mwPaths returns the middleware's request-path scope, defaulting to "/*" (all
-// paths) when none is set. Goma applies a middleware only to the paths it lists,
-// so an empty list would silently disable it — every rendered middleware carries
-// an explicit paths field.
+// mwPaths returns the middleware's request-path scope, defaulting to "/.*" (all
+// paths) when none is set.
 func mwPaths(paths []string) []string {
 	if len(paths) == 0 {
-		return []string{"/*"}
+		return []string{"/.*"}
 	}
 	return paths
 }
@@ -453,11 +451,13 @@ func (g *Goma) SyncRegistry(_ context.Context, cfg RegistryProxy) error {
 	}
 	file := gomaFile{
 		Routes: []gomaRoute{{
-			Name:        "mb-registry",
-			Path:        "/",
-			Hosts:       []string{cfg.Host},
-			Backends:    []gomaBackend{{Endpoint: cfg.Upstream}},
-			Middlewares: []string{"mb-registry-https", "mb-registry-auth", "mb-registry-ns-rewrite"},
+			Name:     "mb-registry",
+			Path:     "/",
+			Hosts:    []string{cfg.Host},
+			Backends: []gomaBackend{{Endpoint: cfg.Upstream}},
+			// mb-registry-nomount runs BEFORE the auth check on purpose — see its
+			// definition below.
+			Middlewares: []string{"mb-registry-https", "mb-registry-nomount", "mb-registry-auth", "mb-registry-ns-rewrite"},
 			TLS:         tls,
 		}},
 		Middlewares: []gomaMiddleware{
@@ -465,6 +465,20 @@ func (g *Goma) SyncRegistry(_ context.Context, cfg RegistryProxy) error {
 				Name: "mb-registry-https",
 				Type: "redirectScheme",
 				Rule: map[string]any{"scheme": "https", "port": 443, "permanent": true},
+			},
+			{
+				// Drop the cross-repository blob mount hint.
+				//
+				// A docker push offers `?mount=<digest>&from=<repo>` to link a layer
+				// the daemon has seen in another repository instead of uploading it.
+				Name:  "mb-registry-nomount",
+				Type:  "stripQuery",
+				Paths: []string{"/.*"},
+				Rule: map[string]any{
+					"params":      []string{"mount", "from"},
+					"methods":     []string{"POST"},
+					"pathPattern": "^/v2/.+/blobs/uploads/?$",
+				},
 			},
 			{
 				// forwardAuth → Miabi: authorizes the request and returns the

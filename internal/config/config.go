@@ -225,9 +225,6 @@ type Config struct {
 	// authoritative on boot (overriding the admin Settings UI), mirroring the
 	// ExternalBaseDomain convention; otherwise manage it from Settings.
 	Registry RegistryConfig
-
-	// LogStore is the shared store for execution logs (deployments, pipeline
-	// steps, jobs). Filesystem-backed by default; see plans/log-storage.md.
 	LogStore LogStoreConfig
 
 	// HostPortMin/HostPortMax bound the host ports an admin may approve for port
@@ -272,15 +269,6 @@ type Config struct {
 	NetworkPoolCIDR     string
 	NetworkSubnetPrefix int
 
-	// Runners: dedicated build/pipeline machines that keep build load off the app
-	// hosting nodes (see plans/runners.md). Every build runs on a registered
-	// runner — there is no in-process/on-node fallback. Register a runner from
-	// Settings → Runners (or an admin-managed shared runner).
-	//
-	// RunnerWaitTimeout bounds how long a build waits for an available runner
-	// before it fails ("no runner became available"). While waiting the run stays
-	// pending and is re-checked periodically. Prevents runs piling up forever when
-	// no runner is ever registered.
 	RunnerWaitTimeout time.Duration
 	// JobAPITokenEnabled injects the scoped MIABI_JOB_TOKEN callback credential
 	// into runner jobs (report status/logs, deploy this app by digest). A

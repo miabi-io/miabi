@@ -30,10 +30,7 @@ type Backup struct {
 	S3Path      string       `json:"s3_path,omitempty"`
 	Filename    string       `json:"filename,omitempty"`
 	SizeBytes   int64        `json:"size_bytes"`
-	// Logs is a bounded tail of the backup output for instant display; the full
-	// log lives in the log store at LogRef once the run is terminal (see
-	// plans/log-storage.md). LogRef is empty when the store is disabled or the
-	// row predates externalization — readers fall back to this tail.
+	// Logs is a bounded tail of the backup output for instant display
 	Logs         string     `json:"logs,omitempty" gorm:"type:text"`
 	LogRef       string     `json:"log_ref,omitempty"`
 	LogBytes     int64      `json:"log_bytes,omitempty"`

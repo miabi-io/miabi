@@ -13,13 +13,6 @@ import (
 )
 
 // Component is a running piece of the platform stack, as found on the engine.
-//
-// This is a READ MODEL, not a record. There is deliberately no database table for
-// the stack: the engine already knows what is running (the labels say so), and the
-// manifest already says what should be. A third copy in Postgres could only drift
-// from both — and worse, making the platform's own Postgres an ordinary Database row
-// would hand it to the reconcilers, backup and delete paths that manage user
-// databases. See plans/platform-labels.md §4.4.
 type Component struct {
 	Name      string
 	Role      string

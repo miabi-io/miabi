@@ -507,10 +507,7 @@ type Deployment struct {
 	// runner or pulled directly.
 	RunnerID    *uint  `json:"runner_id,omitempty"`
 	ContainerID string `json:"container_id,omitempty"`
-	// Logs is a bounded tail of the build/deploy output for instant display; the
-	// full log lives in the log store at LogRef once the deployment is terminal
-	// (see plans/log-storage.md). LogRef is empty when the store is disabled or
-	// the row predates externalization — readers fall back to this tail.
+	// Logs is a bounded tail of the build/deploy output for instant display.
 	Logs         string     `json:"logs,omitempty" gorm:"type:text"`
 	LogRef       string     `json:"log_ref,omitempty"`
 	LogBytes     int64      `json:"log_bytes,omitempty"`

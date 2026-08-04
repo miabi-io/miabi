@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package logbackfill migrates pre-existing large log rows out of Postgres into
-// the shared log store (see plans/log-storage.md, sub-phase P6). It is the bulk
-// counterpart to the lazy fallback: rows written before externalization keep
-// their full log in the DB column until this runs, then hold only a bounded tail
-// plus a store reference — exactly like a freshly finished run.
-//
+// the shared log store
 // It runs at boot rather than as a once-only migration.Step because it needs the
 // log store (which a Step's (ctx, db)-only signature can't provide) and must be
 // deferred until the store is actually enabled: when MIABI_LOG_BACKEND=off it is

@@ -89,7 +89,7 @@ async function confirmDelete() {
       <div class="card-body detail-list">
         <div class="detail-row"><span class="detail-key">Name</span><span class="mono">{{ item.name }}</span></div>
         <div class="detail-row"><span class="detail-key">Type</span><span><span class="badge badge-neutral">{{ item.type }}</span></span></div>
-        <div class="detail-row"><span class="detail-key">Paths</span><span class="mono">{{ (item.paths || []).join(', ') || '/*' }}</span></div>
+        <div class="detail-row"><span class="detail-key">Paths</span><span class="mono">{{ (item.paths || []).join(', ') || '/.*' }}</span></div>
       </div>
     </div>
 

@@ -78,7 +78,7 @@ function open(m: Middleware) { router.push(`/middlewares/${m.id}`) }
                 <div v-if="typeInfo(m.type)" class="cell-sub">{{ typeInfo(m.type)?.description }}</div>
               </td>
               <td><span class="badge badge-neutral">{{ m.type }}</span></td>
-              <td class="cell-sub">{{ (m.paths || []).join(', ') || '/*' }}</td>
+              <td class="cell-sub">{{ (m.paths || []).join(', ') || '/.*' }}</td>
               <td class="cell-sub mono">{{ ruleSummary(m) }}</td>
             </tr>
           </tbody>

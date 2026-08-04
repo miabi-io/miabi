@@ -153,19 +153,31 @@ type PipelineStepRun struct {
 	// `run:` step — so shell features (pipes, &&, env expansion) work. Empty for
 	// `uses:` built-in steps.
 	Run string `json:"run,omitempty" gorm:"type:text"`
+	// Dockerfile and BuildContext configure a `uses: build` step, both relative to
+	// the checked-out source root: which Dockerfile to build, and which directory
+	// to build it from. Empty means "Dockerfile" and the root respectively.
+	//
+	// They are recorded per RUN, not just on the definition, because a run is the
+	// audit record of what was built — reading the pipeline file back later would
+	// describe the definition as it is now, not as it was when this image was
+	// produced.
+	Dockerfile   string `json:"dockerfile,omitempty"`
+	BuildContext string `json:"build_context,omitempty"`
+	// BuildArgs are the step's Dockerfile ARG values. Recorded per run for the same
+	// reason as the two above: it is part of what produced this image.
+	//
+	// These are not secrets — a build arg is readable from the image history — so
+	// they are stored in the clear, unlike the run's credentials.
+	BuildArgs map[string]string `json:"build_args,omitempty" gorm:"serializer:json"`
 	// ContinueOnError lets the run keep going (and still succeed) when this step
 	// fails; the step is still recorded failed.
-	ContinueOnError bool `json:"continue_on_error,omitempty"`
-	ExitCode        int  `json:"exit_code"`
-	// Logs is a bounded tail of the step's output for instant display; the full
-	// log lives in the log store at LogRef once the step is terminal (see
-	// plans/log-storage.md). LogRef is empty when the store is disabled or the
-	// row predates externalization — readers fall back to this tail.
-	Logs         string `json:"logs,omitempty" gorm:"type:text"`
-	LogRef       string `json:"log_ref,omitempty"`
-	LogBytes     int64  `json:"log_bytes,omitempty"`
-	LogLines     int    `json:"log_lines,omitempty"`
-	LogTruncated bool   `json:"log_truncated,omitempty"`
+	ContinueOnError bool   `json:"continue_on_error,omitempty"`
+	ExitCode        int    `json:"exit_code"`
+	Logs            string `json:"logs,omitempty" gorm:"type:text"`
+	LogRef          string `json:"log_ref,omitempty"`
+	LogBytes        int64  `json:"log_bytes,omitempty"`
+	LogLines        int    `json:"log_lines,omitempty"`
+	LogTruncated    bool   `json:"log_truncated,omitempty"`
 
 	StartedAt  *time.Time `json:"started_at,omitempty"`
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
