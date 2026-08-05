@@ -55,6 +55,8 @@ type PlatformMetrics struct {
 	TotalDatabases    int64 `json:"total_databases"`
 	TotalStacks       int64 `json:"total_stacks"`
 	TotalVolumes      int64 `json:"total_volumes"`
+	TotalNodes        int64 `json:"total_nodes"`
+	TotalRoutes       int64 `json:"total_routes"`
 	ActiveSessions    int64 `json:"active_sessions"`
 
 	RunningContainers int `json:"running_containers"`
@@ -143,6 +145,8 @@ func (h *AdminMetricsHandler) collect(ctx context.Context) PlatformMetrics {
 		TotalDatabases:    h.count(&models.DatabaseInstance{}, ""),
 		TotalStacks:       h.count(&models.Stack{}, ""),
 		TotalVolumes:      h.count(&models.Volume{}, ""),
+		TotalNodes:        h.count(&models.Server{}, ""),
+		TotalRoutes:       h.count(&models.Route{}, ""),
 		ActiveSessions:    h.countArgs(&models.Session{}, "revoked = false AND expires_at > ?", time.Now()),
 		UptimeSeconds:     time.Since(h.startTime).Seconds(),
 		Goroutines:        runtime.NumGoroutine(),

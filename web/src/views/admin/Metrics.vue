@@ -5,6 +5,7 @@ import { adminApi } from '@/api/admin'
 import type { AdminEvent, PlatformMetrics } from '@/api/types'
 import { sseUrl } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
+import Sparkline from '@/components/Sparkline.vue'
 
 const notify = useNotificationStore()
 const router = useRouter()
@@ -12,6 +13,22 @@ const router = useRouter()
 const metrics = ref<PlatformMetrics | null>(null)
 const events = ref<AdminEvent[]>([])
 let es: EventSource | null = null
+
+// Ring buffer of streamed samples, so each figure carries its direction.
+const TREND_POINTS = 12
+const trend = ref<{ containers: number[]; memory: number[]; goroutines: number[] }>({
+  containers: [], memory: [], goroutines: [],
+})
+
+function pushTrend(m: PlatformMetrics) {
+  const push = (arr: number[], v: number) => {
+    arr.push(v)
+    if (arr.length > TREND_POINTS) arr.shift()
+  }
+  push(trend.value.containers, m.running_containers)
+  push(trend.value.memory, m.memory_alloc_bytes)
+  push(trend.value.goroutines, m.goroutines)
+}
 
 function fmtBytes(n: number): string {
   if (!n || n < 0) return '0 B'
@@ -70,11 +87,27 @@ function eventSeverity(action: string): string {
   return ''
 }
 
-const containerPct = computed(() => {
-  const m = metrics.value
-  if (!m || !m.total_containers) return 0
-  return Math.round((m.running_containers / m.total_containers) * 100)
-})
+// --- Capacity: a ratio against a limit is a meter, not a card with a % in it.
+type Level = 'ok' | 'warn' | 'crit'
+
+interface Meter {
+  key: string
+  label: string
+  icon: string
+  value: string
+  detail: string
+  pct: number
+  level: Level
+  hint?: string
+  invert?: boolean   // the bar shows what is UP, so a full bar is good
+  to?: string
+}
+
+function levelFor(pct: number, warn: number, crit: number): Level {
+  if (pct >= crit) return 'crit'
+  if (pct >= warn) return 'warn'
+  return 'ok'
+}
 
 const poolPct = computed(() => {
   const p = metrics.value?.network_pool
@@ -82,17 +115,168 @@ const poolPct = computed(() => {
   return Math.round((p.used / p.total) * 100)
 })
 
-const quickLinks = [
-  { label: 'Users', icon: 'mdi-account-group-outline', to: '/admin/users' },
-  { label: 'Workspaces', icon: 'mdi-briefcase-outline', to: '/admin/workspaces' },
-  { label: 'Nodes', icon: 'mdi-server-network', to: '/admin/nodes' },
-  { label: 'Events', icon: 'mdi-timeline-text-outline', to: '/admin/events' },
-  { label: 'Settings', icon: 'mdi-cog-outline', to: '/admin/settings' },
-]
+const storagePct = computed(() => {
+  const m = metrics.value
+  if (!m || !m.storage_declared_bytes) return 0
+  return Math.round((m.storage_used_bytes / m.storage_declared_bytes) * 100)
+})
+
+const meters = computed<Meter[]>(() => {
+  const m = metrics.value
+  if (!m) return []
+  const out: Meter[] = []
+
+  // Stopping a container is usually deliberate, so this only escalates once a
+  // large share is down, and never past "degraded".
+  const stopped = Math.max(0, m.total_containers - m.running_containers)
+  const stoppedPct = m.total_containers ? Math.round((stopped / m.total_containers) * 100) : 0
+  out.push({
+    key: 'containers', label: 'Containers running', icon: 'mdi-docker',
+    value: `${m.running_containers}/${m.total_containers}`,
+    detail: stopped ? `${stopped} stopped` : 'all running',
+    pct: m.total_containers ? Math.round((m.running_containers / m.total_containers) * 100) : 0,
+    level: stoppedPct >= 40 ? 'warn' : 'ok',
+    invert: true,
+    hint: stoppedPct >= 40 ? 'A large share is down — check for crash loops.' : undefined,
+  })
+
+  if (m.storage_declared_bytes > 0) {
+    out.push({
+      key: 'storage',
+      label: 'Volume storage',
+      icon: 'mdi-harddisk',
+      value: `${storagePct.value}%`,
+      detail: `${fmtBytes(m.storage_used_bytes)} of ${fmtBytes(m.storage_declared_bytes)} declared`,
+      pct: storagePct.value,
+      level: levelFor(storagePct.value, 75, 90),
+      hint: storagePct.value >= 75 ? 'Raise volume quotas or reclaim space.' : undefined,
+    })
+  }
+
+  if (m.network_pool && m.network_pool.total) {
+    out.push({
+      key: 'pool',
+      label: 'Subnet pool',
+      icon: 'mdi-ip-network-outline',
+      value: `${poolPct.value}%`,
+      detail: `${m.network_pool.used} of ${m.network_pool.total} subnets · ${m.network_pool.available} free`,
+      pct: poolPct.value,
+      level: levelFor(poolPct.value, 75, 90),
+      hint: poolPct.value >= 75 ? 'Enlarge MIABI_NETWORK_POOL_CIDR before it runs out.' : undefined,
+    })
+  }
+  return out
+})
+
+// --- Health: derived, never asserted.
+interface Health {
+  level: Level
+  label: string
+  icon: string
+  reasons: string[]
+}
+
+const health = computed<Health>(() => {
+  const m = metrics.value
+  const reasons: string[] = []
+  // Numeric rank: comparing the string narrows it to its initial literal.
+  const rank: Record<Level, number> = { ok: 0, warn: 1, crit: 2 }
+  let worst = 0
+  const raise = (l: Level) => {
+    worst = Math.max(worst, rank[l])
+  }
+
+  if (m) {
+    if (m.connected_workers === 0) {
+      raise('crit')
+      reasons.push('No workers connected — deploys and jobs will queue')
+    }
+    for (const meter of meters.value) {
+      if (meter.level === 'ok') continue
+      raise(meter.level)
+      reasons.push(meter.key === 'containers'
+        ? `${meter.detail} of ${m.total_containers} containers`
+        : `${meter.label} at ${meter.pct}%`)
+    }
+    const runners = m.shared_runners + m.workspace_runners
+    const online = m.shared_runners_online + m.workspace_runners_online
+    if (runners > 0 && online === 0) {
+      raise('warn')
+      reasons.push('No build runners online — builds cannot start')
+    }
+  }
+
+  // Distinct icon per state, so severity does not rest on hue alone.
+  if (worst === 2) return { level: 'crit', label: 'Needs attention', icon: 'mdi-alert-octagon', reasons }
+  if (worst === 1) return { level: 'warn', label: 'Degraded', icon: 'mdi-alert', reasons }
+  return { level: 'ok', label: 'Operational', icon: 'mdi-check-circle', reasons }
+})
+
+// --- Inventory: flat counts, so one compact row rather than six cards.
+const inventory = computed(() => {
+  const m = metrics.value
+  if (!m) return []
+  return [
+    { label: 'Applications', value: m.total_applications, icon: 'mdi-cube-outline' },
+    { label: 'Databases', value: m.total_databases, icon: 'mdi-database-outline' },
+    { label: 'Stacks', value: m.total_stacks, icon: 'mdi-layers-outline' },
+    { label: 'Volumes', value: m.total_volumes, icon: 'mdi-harddisk' },
+    { label: 'Routes', value: m.total_routes, icon: 'mdi-sitemap-outline', to: '/admin/routes' },
+    { label: 'Active users', value: m.active_users, icon: 'mdi-account-check-outline', to: '/admin/users' },
+    { label: 'Sessions', value: m.active_sessions, icon: 'mdi-key-outline' },
+  ]
+})
+
+// Fleet has the same shape as a meter, so it shares the list rather than a section.
+const fleetMeters = computed<Meter[]>(() => {
+  const m = metrics.value
+  if (!m) return []
+  const out: Meter[] = [{
+    key: 'workers', label: 'Workers', icon: 'mdi-cog-sync-outline',
+    value: `${m.connected_workers}`,
+    detail: m.connected_workers > 0 ? 'processing jobs' : 'nothing processing jobs',
+    pct: m.connected_workers > 0 ? 100 : 0,
+    level: m.connected_workers === 0 ? 'crit' : 'ok',
+    invert: true,
+  }]
+  const runners: Array<[string, string, string, number, number, string | undefined]> = [
+    ['shared', 'Shared runners', 'mdi-cog-transfer-outline', m.shared_runners_online, m.shared_runners, '/admin/runners'],
+    ['ws', 'Workspace runners', 'mdi-cog-outline', m.workspace_runners_online, m.workspace_runners, undefined],
+  ]
+  for (const [key, label, icon, online, total, to] of runners) {
+    if (!total) continue
+    out.push({
+      key, label, icon, to,
+      value: `${online}/${total}`,
+      detail: online ? 'online' : 'none online — builds cannot start',
+      pct: total ? Math.round((online / total) * 100) : 0,
+      level: online === 0 ? 'warn' : 'ok',
+      invert: true,
+    })
+  }
+  return out
+})
+
+const systemRows = computed(() => [...meters.value, ...fleetMeters.value])
+
+const quickActions = computed(() => {
+  const m = metrics.value
+  return [
+    { label: 'Nodes', icon: 'mdi-server-network', to: '/admin/nodes', count: m?.total_nodes },
+    { label: 'Routes', icon: 'mdi-sitemap-outline', to: '/admin/routes', count: m?.total_routes },
+    { label: 'Users', icon: 'mdi-account-group-outline', to: '/admin/users', count: m?.total_users },
+    { label: 'Workspaces', icon: 'mdi-briefcase-outline', to: '/admin/workspaces', count: m?.total_workspaces },
+    { label: 'Runners', icon: 'mdi-cog-transfer-outline', to: '/admin/runners', count: m ? m.shared_runners + m.workspace_runners : undefined },
+    { label: 'Events', icon: 'mdi-timeline-text-outline', to: '/admin/events' },
+    { label: 'Settings', icon: 'mdi-cog-outline', to: '/admin/settings' },
+  ]
+})
 
 async function loadInitial() {
   try {
-    metrics.value = (await adminApi.metrics()).data.data
+    const first = (await adminApi.metrics()).data.data
+    metrics.value = first
+    pushTrend(first)
   } catch (err) {
     notify.apiError(err, 'Failed to load metrics')
   }
@@ -110,7 +294,9 @@ function openStream() {
   es = new EventSource(sseUrl('/admin/metrics/stream'))
   es.onmessage = (e) => {
     try {
-      metrics.value = JSON.parse(e.data) as PlatformMetrics
+      const next = JSON.parse(e.data) as PlatformMetrics
+      metrics.value = next
+      pushTrend(next)
     } catch {
       // ignore malformed payloads
     }
@@ -142,6 +328,13 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <div class="quick-actions">
+      <button v-for="a in quickActions" :key="a.to" class="qa" @click="router.push(a.to)">
+        <span class="mdi" :class="a.icon"></span>{{ a.label }}
+        <span v-if="a.count !== undefined" class="qa-count">{{ a.count }}</span>
+      </button>
+    </div>
+
     <div v-if="!metrics" class="card">
       <div class="card-body" style="display: flex; justify-content: center; padding: 48px 0">
         <span class="spinner"></span>
@@ -149,203 +342,92 @@ onBeforeUnmount(() => {
     </div>
 
     <template v-else>
-      <!-- Status hero -->
-      <div class="hero card">
+      <!-- Health, derived from live signals. -->
+      <div class="hero card" :class="`hero-${health.level}`">
         <div class="hero-status">
-          <span class="hero-badge"><span class="mdi mdi-check-circle"></span></span>
-          <div>
-            <div class="hero-title">All systems operational</div>
-            <div class="hero-sub">
-              {{ metrics.running_containers }} of {{ metrics.total_containers }} containers running
+          <span class="hero-badge"><span class="mdi" :class="health.icon"></span></span>
+          <div class="hero-text">
+            <div class="hero-title">{{ health.label }}</div>
+            <div v-if="health.reasons.length" class="hero-sub">{{ health.reasons.join(' · ') }}</div>
+            <div v-else class="hero-sub">All checks passing across the platform</div>
+          </div>
+        </div>
+        <div class="hero-figure">
+          <span class="hero-number">{{ metrics.running_containers }}</span>
+          <span class="hero-number-label">containers running</span>
+          <Sparkline
+            v-if="trend.containers.length > 1"
+            :values="trend.containers" :width="120" :height="26"
+            stroke="var(--text-muted)"
+          />
+        </div>
+        <div class="hero-meta">
+          <div class="hero-stat"><span class="hero-stat-label">Uptime</span><span class="hero-stat-value">{{ fmtUptime(metrics.uptime_seconds) }}</span></div>
+          <div class="hero-stat"><span class="hero-stat-label">Version</span><span class="hero-stat-value">{{ metrics.version || 'dev' }}</span></div>
+        </div>
+      </div>
+
+      <h2 class="section-title">System</h2>
+      <div class="card">
+        <div class="sys">
+          <div
+            v-for="r in systemRows" :key="r.key"
+            class="sys-row" :class="[{ 'is-link': r.to }, r.level !== 'ok' ? `lvl-${r.level}` : '']"
+            @click="r.to && router.push(r.to)"
+          >
+            <span class="sys-icon"><span class="mdi" :class="r.icon"></span></span>
+            <div class="sys-main">
+              <div class="sys-top">
+                <span class="sys-label">{{ r.label }}</span>
+                <span class="sys-value" :class="r.level !== 'ok' ? `lvl-${r.level}` : ''">{{ r.value }}</span>
+              </div>
+              <div class="sys-track">
+                <div
+                  class="sys-fill" :class="r.level !== 'ok' ? `lvl-${r.level}` : (r.invert ? 'is-good' : '')"
+                  :style="{ width: Math.min(100, r.pct) + '%' }"
+                ></div>
+              </div>
+              <div class="sys-detail">
+                {{ r.detail }}<template v-if="r.hint"> · <span :class="`lvl-${r.level}`">{{ r.hint }}</span></template>
+              </div>
             </div>
           </div>
         </div>
-        <div class="hero-meta">
-          <div class="hero-stat">
-            <span class="hero-stat-label">Uptime</span>
-            <span class="hero-stat-value">{{ fmtUptime(metrics.uptime_seconds) }}</span>
-          </div>
-          <div class="hero-stat">
-            <span class="hero-stat-label">Version</span>
-            <span class="hero-stat-value">{{ metrics.version || 'dev' }}</span>
-          </div>
-          <div class="hero-stat">
-            <span class="hero-stat-label">Memory</span>
-            <span class="hero-stat-value">{{ fmtBytes(metrics.memory_alloc_bytes) }}</span>
-          </div>
-        </div>
       </div>
 
-      <!-- Quick links -->
-      <div class="quick-links">
-        <button v-for="l in quickLinks" :key="l.to" class="quick-link card" @click="router.push(l.to)">
-          <span class="mdi" :class="l.icon"></span>
-          <span>{{ l.label }}</span>
-        </button>
-      </div>
-
-      <!-- Platform -->
-      <h2 class="section-title">Platform</h2>
-      <div class="stats-grid">
-        <div class="stat-card stat-card-clickable" @click="router.push('/admin/users')">
-          <div class="stat-header">
-            <span class="stat-label">Users</span>
-            <span class="stat-icon stat-icon-primary"><span class="mdi mdi-account-group"></span></span>
-          </div>
-          <div class="stat-value">{{ metrics.total_users }}</div>
-          <div class="stat-sub">{{ metrics.active_users }} active · {{ metrics.admin_users }} admin</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-header">
-            <span class="stat-label">Active sessions</span>
-            <span class="stat-icon stat-icon-info"><span class="mdi mdi-key-outline"></span></span>
-          </div>
-          <div class="stat-value">{{ metrics.active_sessions }}</div>
-        </div>
-        <div class="stat-card stat-card-clickable" @click="router.push('/admin/workspaces')">
-          <div class="stat-header">
-            <span class="stat-label">Workspaces</span>
-            <span class="stat-icon stat-icon-primary"><span class="mdi mdi-briefcase"></span></span>
-          </div>
-          <div class="stat-value">{{ metrics.total_workspaces }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-header">
-            <span class="stat-label">Connected workers</span>
-            <span class="stat-icon" :class="metrics.connected_workers > 0 ? 'stat-icon-success' : 'stat-icon-danger'">
-              <span class="mdi mdi-server-network"></span>
-            </span>
-          </div>
-          <div class="stat-value">{{ metrics.connected_workers }}</div>
-          <div class="stat-sub">{{ metrics.connected_workers > 0 ? 'Processing jobs' : 'No workers running' }}</div>
-        </div>
-        <div class="stat-card stat-card-clickable" @click="router.push('/admin/runners')">
-          <div class="stat-header">
-            <span class="stat-label">Shared runners</span>
-            <span class="stat-icon" :class="metrics.shared_runners_online > 0 ? 'stat-icon-success' : 'stat-icon-secondary'">
-              <span class="mdi mdi-cog-transfer-outline"></span>
-            </span>
-          </div>
-          <div class="stat-value">{{ metrics.shared_runners }}</div>
-          <div class="stat-sub">{{ metrics.shared_runners_online }} online</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-header">
-            <span class="stat-label">Workspace runners</span>
-            <span class="stat-icon" :class="metrics.workspace_runners_online > 0 ? 'stat-icon-success' : 'stat-icon-secondary'">
-              <span class="mdi mdi-cog-outline"></span>
-            </span>
-          </div>
-          <div class="stat-value">{{ metrics.workspace_runners }}</div>
-          <div class="stat-sub">{{ metrics.workspace_runners_online }} online</div>
-        </div>
-      </div>
-
-      <!-- Tenancy -->
-      <h2 class="section-title">Resources</h2>
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-header">
-            <span class="stat-label">Applications</span>
-            <span class="stat-icon stat-icon-primary"><span class="mdi mdi-cube-outline"></span></span>
-          </div>
-          <div class="stat-value">{{ metrics.total_applications }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-header">
-            <span class="stat-label">Databases</span>
-            <span class="stat-icon stat-icon-info"><span class="mdi mdi-database"></span></span>
-          </div>
-          <div class="stat-value">{{ metrics.total_databases }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-header">
-            <span class="stat-label">Stacks</span>
-            <span class="stat-icon stat-icon-primary"><span class="mdi mdi-layers"></span></span>
-          </div>
-          <div class="stat-value">{{ metrics.total_stacks }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-header">
-            <span class="stat-label">Volumes</span>
-            <span class="stat-icon stat-icon-secondary"><span class="mdi mdi-harddisk"></span></span>
-          </div>
-          <div class="stat-value">{{ metrics.total_volumes }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-header">
-            <span class="stat-label">Storage used</span>
-            <span class="stat-icon stat-icon-secondary"><span class="mdi mdi-database-arrow-up-outline"></span></span>
-          </div>
-          <div class="stat-value">{{ fmtBytes(metrics.storage_used_bytes) }}</div>
-          <div class="stat-sub">{{ fmtBytes(metrics.storage_declared_bytes) }} declared</div>
-        </div>
-      </div>
-
-      <!-- Runtime + activity -->
-      <h2 class="section-title">Runtime</h2>
+      <h2 class="section-title">Control plane</h2>
       <div class="runtime-row">
         <div class="card runtime-card">
           <div class="card-body">
-            <div class="metric-card-head">
-              <span class="mdi mdi-docker"></span>
-              <span class="metric-label">Container utilization</span>
-            </div>
-            <div class="metric-value">{{ metrics.running_containers }}<span class="metric-total">/{{ metrics.total_containers }}</span></div>
-            <div class="progress">
-              <div class="progress-bar" :style="{ width: containerPct + '%' }"></div>
-            </div>
-            <div class="stat-sub">{{ containerPct }}% running</div>
+            <span class="meter-label"><span class="mdi mdi-memory"></span> Memory in use</span>
+            <div class="runtime-value">{{ fmtBytes(metrics.memory_alloc_bytes) }}</div>
+            <Sparkline v-if="trend.memory.length > 1" :values="trend.memory" :width="180" :height="32" stroke="var(--primary-500)" />
+            <div class="meter-detail">Go heap allocation, this process</div>
           </div>
         </div>
-
         <div class="card runtime-card">
-          <div class="card-body runtime-mini">
-            <div class="mini-stat">
-              <span class="mdi mdi-sync stat-icon stat-icon-info"></span>
-              <div>
-                <div class="metric-label">Goroutines</div>
-                <div class="mini-value">{{ metrics.goroutines }}</div>
-              </div>
-            </div>
-            <div class="mini-stat">
-              <span class="mdi mdi-memory stat-icon stat-icon-primary"></span>
-              <div>
-                <div class="metric-label">Memory</div>
-                <div class="mini-value">{{ fmtBytes(metrics.memory_alloc_bytes) }}</div>
-              </div>
-            </div>
-            <div class="mini-stat">
-              <span class="mdi mdi-clock-outline stat-icon stat-icon-secondary"></span>
-              <div>
-                <div class="metric-label">Uptime</div>
-                <div class="mini-value">{{ fmtUptime(metrics.uptime_seconds) }}</div>
-              </div>
-            </div>
+          <div class="card-body">
+            <span class="meter-label"><span class="mdi mdi-sync"></span> Goroutines</span>
+            <div class="runtime-value">{{ metrics.goroutines }}</div>
+            <Sparkline v-if="trend.goroutines.length > 1" :values="trend.goroutines" :width="180" :height="32" stroke="var(--primary-500)" />
+            <div class="meter-detail">A steady climb suggests a leak</div>
           </div>
         </div>
       </div>
 
-      <!-- Network subnet pool -->
-      <template v-if="metrics.network_pool">
-        <h2 class="section-title">Network pool</h2>
-        <div class="card runtime-card">
-          <div class="card-body">
-            <div class="metric-card-head">
-              <span class="mdi mdi-ip-network-outline"></span>
-              <span class="metric-label">Subnet pool utilization</span>
-            </div>
-            <div class="metric-value">{{ metrics.network_pool.used }}<span class="metric-total">/{{ metrics.network_pool.total }}</span></div>
-            <div class="progress">
-              <div class="progress-bar" :class="{ 'progress-warn': poolPct >= 85 }" :style="{ width: poolPct + '%' }"></div>
-            </div>
-            <div class="stat-sub">
-              {{ poolPct }}% used · {{ metrics.network_pool.available }} subnets free
-              <span v-if="poolPct >= 85" class="pool-warn"> · nearing capacity — enlarge MIABI_NETWORK_POOL_CIDR</span>
-            </div>
-          </div>
+      <h2 class="section-title">Inventory</h2>
+      <div class="card">
+        <div class="inventory">
+          <button
+            v-for="i in inventory" :key="i.label"
+            class="inv-item" :class="{ 'is-link': i.to }"
+            :disabled="!i.to" @click="i.to && router.push(i.to)"
+          >
+            <span class="inv-value">{{ i.value }}</span>
+            <span class="inv-label"><span class="mdi" :class="i.icon"></span> {{ i.label }}</span>
+          </button>
         </div>
-      </template>
+      </div>
 
       <!-- Connected workers -->
       <template v-if="metrics.workers && metrics.workers.length">
@@ -423,73 +505,97 @@ onBeforeUnmount(() => {
 
 .live-indicator { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .live-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--success-500, #22c55e);
+  width: 8px; height: 8px; border-radius: 50%; background: var(--success-600);
   animation: live-pulse 1.6s ease-out infinite;
 }
-@keyframes live-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5); }
-  70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
-}
+@keyframes live-pulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.35 } }
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none } }
 
-/* Hero */
+/* --- Health hero --- */
 .hero {
-  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
-  gap: 20px; padding: 20px 24px; margin-bottom: 20px;
+  display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
+  padding: 14px 20px; margin-bottom: 18px;
+  border-left: 3px solid var(--success-600);
 }
-.hero-status { display: flex; align-items: center; gap: 14px; }
-.hero-badge {
-  width: 44px; height: 44px; border-radius: 50%;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: var(--success-50); color: var(--success-600); font-size: 24px;
-}
-.hero-title { font-size: 17px; font-weight: 700; color: var(--text-primary); }
+.hero-ok { border-left-color: var(--success-600); }
+.hero-warn { border-left-color: var(--warning-600); }
+.hero-crit { border-left-color: var(--danger-600); }
+.hero-status { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 260px; }
+.hero-badge { font-size: 26px; line-height: 1; color: var(--success-600); }
+.hero-warn .hero-badge { color: var(--warning-600); }
+.hero-crit .hero-badge { color: var(--danger-600); }
+.hero-title { font-size: 17px; font-weight: 600; color: var(--text-primary); }
 .hero-sub { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
-.hero-meta { display: flex; gap: 28px; flex-wrap: wrap; }
-.hero-stat { display: flex; flex-direction: column; }
-.hero-stat-label { font-size: 12px; color: var(--text-muted); }
-.hero-stat-value { font-size: 18px; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
 
-/* Quick links */
-.quick-links {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 12px; margin-bottom: 24px;
+.hero-figure { display: flex; flex-direction: column; gap: 2px; min-width: 150px; }
+.hero-number { font-size: 36px; font-weight: 600; line-height: 1; color: var(--text-primary); letter-spacing: -0.02em; }
+.hero-number-label { font-size: 12px; color: var(--text-muted); }
+.hero-meta { display: flex; gap: 28px; }
+.hero-stat { display: flex; flex-direction: column; gap: 2px; }
+.hero-stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.hero-stat-value { font-size: 14px; font-weight: 500; color: var(--text-primary); }
+
+.section-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin: 20px 0 8px; }
+
+/* --- Quick actions --- */
+.quick-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.qa {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px; border-radius: var(--radius-lg);
+  border: 1px solid var(--border-primary); background: var(--bg-primary);
+  font-size: 13px; color: var(--text-secondary); cursor: pointer;
 }
-.quick-link {
-  display: flex; align-items: center; gap: 10px; padding: 14px 16px;
-  cursor: pointer; font-size: 14px; font-weight: 500; color: var(--text-secondary);
-  background: var(--bg-primary); border: 1px solid var(--border-primary);
-  transition: border-color 0.15s, transform 0.15s;
+.qa:hover { border-color: var(--primary-400); color: var(--text-primary); background: var(--bg-hover); }
+.qa .mdi { font-size: 15px; }
+.qa-count {
+  padding: 1px 6px; border-radius: 999px; background: var(--bg-tertiary);
+  font-size: 12px; font-weight: 600; color: var(--text-primary);
 }
-.quick-link:hover { border-color: var(--primary-400); transform: translateY(-1px); color: var(--text-primary); }
-.quick-link .mdi { font-size: 20px; color: var(--primary-500); }
 
-.section-title {
-  font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
-  color: var(--text-muted); margin: 0 0 12px; padding-top: 4px;
+/* --- System (capacity + fleet, one dense list) --- */
+.sys { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.sys-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 16px; border-right: 1px solid var(--border-secondary);
+  border-top: 1px solid var(--border-secondary);
 }
-.stats-grid { margin-bottom: 24px; }
-.stat-card-clickable { cursor: pointer; }
+.sys-row:nth-child(-n+2) { border-top: 0; }
+.sys-row.is-link { cursor: pointer; }
+.sys-row.is-link:hover { background: var(--bg-hover); }
+.sys-icon { font-size: 16px; color: var(--text-muted); line-height: 1.4; }
+.sys-row.lvl-warn .sys-icon { color: var(--warning-600); }
+.sys-row.lvl-crit .sys-icon { color: var(--danger-600); }
+.sys-main { flex: 1; min-width: 0; }
+.sys-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.sys-label { font-size: 13px; color: var(--text-secondary); }
+.sys-value { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.sys-track { height: 4px; border-radius: 2px; margin: 6px 0 5px; overflow: hidden; background: var(--primary-100); }
+.sys-fill { height: 100%; border-radius: 2px; background: var(--primary-500); transition: width 0.4s ease; }
+.sys-fill.is-good { background: var(--success-600); }
+.sys-fill.lvl-warn { background: var(--warning-600); }
+.sys-fill.lvl-crit { background: var(--danger-600); }
+.sys-detail { font-size: 12px; color: var(--text-muted); }
+.lvl-warn { color: var(--warning-600); }
+.lvl-crit { color: var(--danger-600); }
 
-/* Runtime */
-.runtime-row { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; }
-@media (max-width: 720px) { .runtime-row { grid-template-columns: 1fr; } }
-.metric-card-head { display: flex; align-items: center; gap: 6px; color: var(--text-muted); }
-.metric-card-head .mdi { font-size: 18px; color: var(--primary-500); }
-.metric-label { color: var(--text-muted); font-size: 13px; }
-.metric-value { font-size: 28px; font-weight: 700; color: var(--text-primary); margin-top: 8px; font-variant-numeric: tabular-nums; }
-.metric-total { font-size: 18px; font-weight: 600; color: var(--text-muted); }
-.progress { height: 8px; border-radius: 9999px; background: var(--bg-tertiary); overflow: hidden; margin: 12px 0 6px; }
-.progress-bar { height: 100%; border-radius: 9999px; background: var(--success-500); transition: width 0.4s ease; }
-.progress-bar.progress-warn { background: var(--warning-500, #f59e0b); }
-.pool-warn { color: var(--warning-600, #d97706); font-weight: 600; }
-.runtime-mini { display: flex; justify-content: space-around; gap: 16px; flex-wrap: wrap; }
-.mini-stat { display: flex; align-items: center; gap: 10px; }
-.mini-stat .stat-icon { width: 36px; height: 36px; border-radius: var(--radius); display: inline-flex; align-items: center; justify-content: center; font-size: 18px; }
-.mini-value { font-size: 20px; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+/* --- Control plane --- */
+.runtime-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.runtime-value { font-size: 22px; font-weight: 600; color: var(--text-primary); margin: 4px 0 6px; }
 
-/* Timeline (matches dashboard) */
+/* --- Inventory --- */
+.inventory { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+.inv-item {
+  display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
+  padding: 12px 16px; background: none; border: 0;
+  border-right: 1px solid var(--border-secondary); text-align: left; color: inherit;
+}
+.inv-item:last-child { border-right: 0; }
+.inv-item.is-link { cursor: pointer; }
+.inv-item.is-link:hover { background: var(--bg-hover); }
+.inv-value { font-size: 20px; font-weight: 600; color: var(--text-primary); }
+.inv-label { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-muted); }
+
+/* --- Activity --- */
 .timeline { list-style: none; margin: 0; padding: 8px 0; }
 .event { display: flex; gap: 12px; padding: 10px 20px; }
 .event + .event { border-top: 1px solid var(--border-secondary); }
