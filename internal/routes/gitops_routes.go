@@ -205,6 +205,14 @@ func (r *Router) pipelineRoutes() []okapi.RouteDefinition {
 		},
 		{
 			Method:      http.MethodGet,
+			Path:        base + "/runs/stream",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.pipeline.StreamWorkspaceRuns,
+			Summary:     "Stream pipeline run transitions (SSE)",
+		},
+		{
+			Method:      http.MethodGet,
 			Path:        base + "/{pipelineID}/runs",
 			Group:       g,
 			Middlewares: scoped(models.WorkspaceRoleViewer),

@@ -29,6 +29,21 @@ import (
 // PipelineTopic carries a pipeline run's live step logs and status.
 func PipelineTopic(runID uint) string { return fmt.Sprintf("pipeline:%d", runID) }
 
+// PipelineWorkspaceTopic carries every run transition in a workspace.
+func PipelineWorkspaceTopic(workspaceID uint) string {
+	return fmt.Sprintf("pipeline:ws:%d", workspaceID)
+}
+
+// RunEvent lets a list patch the row in place without refetching.
+type RunEvent struct {
+	RunID      uint   `json:"run_id"`
+	PipelineID uint   `json:"pipeline_id"`
+	Number     int    `json:"number"`
+	Status     string `json:"status"`
+	StartedAt  string `json:"started_at,omitempty"`
+	FinishedAt string `json:"finished_at,omitempty"`
+}
+
 // PipelineHandler is the internal runner: it clones the source once into a
 // per-run workspace, then executes the run's steps in order over that shared
 // filesystem — container steps in one-shot containers, plus the built-in
@@ -342,7 +357,25 @@ func (h *PipelineHandler) log(runID uint, line string) {
 }
 
 func (h *PipelineHandler) publishStatus(runID uint, status models.PipelineRunStatus) {
-	if h.bus != nil {
-		h.bus.Publish(PipelineTopic(runID), eventbus.Event{Type: "status", Data: string(status)})
+	if h.bus == nil {
+		return
 	}
+	h.bus.Publish(PipelineTopic(runID), eventbus.Event{Type: "status", Data: string(status)})
+	h.publishRun(runID, status)
+}
+
+// Best-effort: a lookup failure costs a live update, never the run.
+func (h *PipelineHandler) publishRun(runID uint, status models.PipelineRunStatus) {
+	run, err := h.pipelines.FindRunByID(runID)
+	if err != nil || run == nil {
+		return
+	}
+	ev := RunEvent{RunID: run.ID, PipelineID: run.PipelineID, Number: run.Number, Status: string(status)}
+	if run.StartedAt != nil {
+		ev.StartedAt = run.StartedAt.UTC().Format(time.RFC3339)
+	}
+	if run.FinishedAt != nil {
+		ev.FinishedAt = run.FinishedAt.UTC().Format(time.RFC3339)
+	}
+	h.bus.Publish(PipelineWorkspaceTopic(run.WorkspaceID), eventbus.Event{Type: "run", Data: ev})
 }

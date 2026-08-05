@@ -10,9 +10,11 @@ import Pagination from '@/components/Pagination.vue'
 import { relativeTime, formatDuration } from '@/utils/time'
 import { statusMeta } from './status'
 import PipelineWebhookModal from './PipelineWebhookModal.vue'
-import type { PipelineDefinition, PipelineRun } from '@/api/types'
+import type { PipelineDefinition, PipelineRun, PipelineRunEvent } from '@/api/types'
 
 const ws = useWorkspaceStore()
+const isTerminal = (s: string) => ['succeeded', 'failed', 'canceled'].includes(s)
+
 const notify = useNotificationStore()
 const route = useRoute()
 const router = useRouter()
@@ -60,7 +62,9 @@ async function trigger() {
   triggering.value = true
   try {
     const run = (await pipelineApi.trigger(wid, pipeline.value.id)).data.data
-    router.push({ name: 'pipeline-run', params: { id: pipeline.value.id, runId: run.id } })
+    // Prepend and stay on the list; the stream drives it from pending onwards.
+    if (!runs.value.some((r) => r.id === run.id)) runs.value.unshift(run)
+    notify.success(`Run #${run.number} queued`, { detail: 'Open it to follow the logs.' })
   } catch (e) {
     notify.apiError(e, 'Could not trigger run')
   } finally {
@@ -74,7 +78,36 @@ function openRun(r: PipelineRun) {
 
 // Tick so in-progress run durations count up live.
 const ticker = setInterval(() => { now.value = Date.now() }, 1000)
-onBeforeUnmount(() => clearInterval(ticker))
+
+// Live run transitions: patch the row in place, refetch only when a run appears
+// that this page has never seen.
+let es: EventSource | null = null
+function openStream() {
+  es?.close()
+  const wid = currentWorkspaceId.value
+  if (!wid) return
+  es = new EventSource(pipelineApi.runsStreamUrl(wid))
+  es.onmessage = (e) => {
+    let ev: { type?: string; data?: PipelineRunEvent }
+    try { ev = JSON.parse(e.data) } catch { return }
+    if (ev.type !== 'run' || !ev.data) return
+    const d = ev.data
+    if (pipelineId.value && d.pipeline_id !== pipelineId.value) return
+    const row = runs.value.find((r) => r.id === d.run_id)
+    if (!row) { goToPage(pageable.value.current_page); return }
+    row.status = d.status
+    row.started_at = d.started_at ?? row.started_at
+    row.finished_at = d.finished_at ?? row.finished_at
+  }
+}
+openStream()
+watch(currentWorkspaceId, openStream)
+
+onBeforeUnmount(() => {
+  clearInterval(ticker)
+  es?.close()
+  es = null
+})
 </script>
 
 <template>
@@ -135,7 +168,7 @@ onBeforeUnmount(() => clearInterval(ticker))
                 <span v-else class="cell-sub">—</span>
               </td>
               <td class="cell-sub">{{ r.trigger }}</td>
-              <td class="cell-sub">{{ formatDuration(r.started_at, r.finished_at, now) }}</td>
+              <td class="cell-sub">{{ formatDuration(r.started_at, r.finished_at, now, r.created_at, isTerminal(r.status)) }}</td>
               <td class="cell-sub" :title="r.started_at ? new Date(r.started_at).toLocaleString() : ''">
                 {{ relativeTime(r.started_at, now) }}
               </td>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -12,7 +12,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import PipelineWebhookModal from './PipelineWebhookModal.vue'
 import { relativeTime } from '@/utils/time'
 import { statusMeta } from './status'
-import type { PipelineDefinition, Application } from '@/api/types'
+import type { PipelineDefinition, Application, PipelineRunEvent } from '@/api/types'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -51,6 +51,33 @@ async function loadApps(id: number | null) {
   }
 }
 watch(currentWorkspaceId, (id) => { loadApps(id); goToPage(0) }, { immediate: true })
+
+// Live run transitions keep each row's last-run badge current.
+let es: EventSource | null = null
+function openStream() {
+  es?.close()
+  const wid = currentWorkspaceId.value
+  if (!wid) return
+  es = new EventSource(pipelineApi.runsStreamUrl(wid))
+  es.onmessage = (e) => {
+    let ev: { type?: string; data?: PipelineRunEvent }
+    try { ev = JSON.parse(e.data) } catch { return }
+    if (ev.type !== 'run' || !ev.data) return
+    const d = ev.data
+    const row = items.value.find((p) => p.id === d.pipeline_id)
+    if (!row) return
+    if (!row.last_run || row.last_run.id === d.run_id || d.number >= row.last_run.number) {
+      row.last_run = {
+        ...(row.last_run ?? { created_at: new Date().toISOString() }),
+        id: d.run_id, number: d.number, status: d.status,
+        started_at: d.started_at, finished_at: d.finished_at,
+      } as PipelineDefinition['last_run']
+    }
+  }
+}
+openStream()
+watch(currentWorkspaceId, openStream)
+onBeforeUnmount(() => { es?.close(); es = null })
 
 const showModal = ref(false)
 const saving = ref(false)
@@ -134,8 +161,9 @@ async function trigger(p: PipelineDefinition) {
   triggering.value = p.id
   try {
     const run = (await pipelineApi.trigger(currentWorkspaceId.value, p.id)).data.data
-    notify.success(`${p.name}: run #${run.number} started`)
-    router.push({ name: 'pipeline-run', params: { id: p.id, runId: run.id } })
+    // Show it immediately and stay put; the stream takes over from here.
+    p.last_run = { ...run } as PipelineDefinition['last_run']
+    notify.success(`${p.name}: run #${run.number} queued`, { detail: 'Open the run to follow its logs.' })
   } catch (e) {
     notify.apiError(e, 'Could not trigger run')
   } finally {

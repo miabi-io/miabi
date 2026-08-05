@@ -30,6 +30,8 @@ export const pipelineApi = {
     api.get<PageableResponse<PipelineRun>>(`${base(ws)}/${id}/runs?page=${page}&size=${size}`),
   run: (ws: number, runId: number) => api.get<ApiResponse<PipelineRun>>(`${runsBase(ws)}/${runId}`),
   logsUrl: (ws: number, runId: number) => sseUrl(`${runsBase(ws)}/${runId}/logs`),
+  // Every run transition in the workspace, so lists never poll.
+  runsStreamUrl: (ws: number) => sseUrl(`${base(ws)}/runs/stream`),
   // Full stored per-step logs of a (usually finished) run — load-once, no SSE.
   runLogsHistory: (ws: number, runId: number) =>
     api.get<ApiResponse<PipelineRunLogHistory>>(`${runsBase(ws)}/${runId}/logs/history`),
