@@ -18,6 +18,7 @@ import ResourceIcon from '@/components/ResourceIcon.vue'
 import ShellTerminal from '@/components/ShellTerminal.vue'
 import ContainerProcesses from '@/components/ContainerProcesses.vue'
 import LogViewer from '@/components/LogViewer.vue'
+import { useLogSize, isLogSize, LOG_SIZES, logHeight } from '@/composables/useLogSize'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import MetadataCard from '@/components/MetadataCard.vue'
 import EnvVarModal from '@/components/EnvVarModal.vue'
@@ -152,19 +153,13 @@ const logsTrimmed = ref(false)
 // Seeded from the URL (?q=…&re=1&size=…) so refresh and shared links persist.
 const logSearch = ref(typeof route.query.q === 'string' ? route.query.q : '')
 const logRegexMode = ref(route.query.re === '1')
-// Logs panel size: a few presets the user can switch between (persisted to ?size).
-type LogSize = 'small' | 'medium' | 'large'
-const LOG_SIZES: { value: LogSize; label: string; title: string; height: string }[] = [
-  { value: 'small', label: 'S', title: 'Small', height: '350px' },
-  { value: 'medium', label: 'M', title: 'Medium', height: '600px' },
-  { value: 'large', label: 'L', title: 'Large (fill screen)', height: 'calc(100vh - 240px)' },
-]
-function isLogSize(v: unknown): v is LogSize { return v === 'small' || v === 'medium' || v === 'large' }
-const logSize = ref<LogSize>(isLogSize(route.query.size) ? route.query.size : 'small')
-const logViewStyle = computed(() => {
-  const h = LOG_SIZES.find((s) => s.value === logSize.value)?.height ?? '350px'
-  return { height: h, minHeight: logSize.value === 'large' ? '420px' : undefined }
-})
+// Logs panel size: shared with every other log panel and remembered between
+// sessions; ?size= still wins for a shared link.
+const { size: logSize } = useLogSize(route.query.size)
+const logViewStyle = computed(() => ({
+  height: logHeight(logSize.value),
+  minHeight: logSize.value === 'large' ? '420px' : undefined,
+}))
 // A single compiled matcher shared by the filter and the highlighter. Global +
 // case-insensitive; plain queries are escaped so regex metachars are literal.
 const logMatcher = computed<RegExp | null>(() => {
@@ -955,8 +950,9 @@ watch(() => [route.query.q, route.query.re, route.query.size], ([q, re, size]) =
   if (qs !== logSearch.value) logSearch.value = qs
   const rb = re === '1'
   if (rb !== logRegexMode.value) logRegexMode.value = rb
-  const sz = isLogSize(size) ? size : 'small'
-  if (sz !== logSize.value) logSize.value = sz
+  // Only follow ?size= when it is present; an absent one keeps the remembered
+  // preference rather than resetting the panel on every query change.
+  if (isLogSize(size) && size !== logSize.value) logSize.value = size
 })
 
 // Page-level live data: a single events stream + a status poll for the whole
@@ -3251,7 +3247,7 @@ async function detachDatabase(d: AppDatabase) {
    list (pick) beside a wide Logs panel (view). */
 .detail-grid { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; gap: 16px; align-items: start; }
 @media (max-width: 900px) { .detail-grid { grid-template-columns: 1fr; } }
-.log-view { height: 320px; overflow: auto; white-space: pre-wrap; }
+.log-view { height: 600px; overflow: auto; white-space: pre-wrap; }
 /* Runtime Logs panel: height is driven inline by the S/M/L size control. */
 .log-header-left { display: flex; align-items: center; gap: 12px; }
 .log-size-control { display: inline-flex; border: 1px solid var(--border-input); border-radius: var(--radius); overflow: hidden; }

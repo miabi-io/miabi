@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import { useLogSize, logHeight, LOG_SIZES, type LogSize } from '@/composables/useLogSize'
 
 // Reusable log panel: search/regex highlight, copy/download, follow, size
 // presets, status badge. The parent owns the line buffer (and any cap); this
 // component only renders + filters it.
-type LogSize = 'small' | 'medium' | 'large'
+
 
 const props = withDefaults(
   defineProps<{
@@ -30,21 +31,16 @@ const props = withDefaults(
     statusClass: 'badge-neutral',
     streaming: false,
     trimmedNote: '',
-    defaultSize: 'small',
+    defaultSize: 'medium',
     searchLabel: 'Search logs',
   },
 )
 
-const LOG_SIZES: { value: LogSize; label: string; title: string; height: string }[] = [
-  { value: 'small', label: 'S', title: 'Small', height: '350px' },
-  { value: 'medium', label: 'M', title: 'Medium', height: '600px' },
-  { value: 'large', label: 'L', title: 'Large (fill screen)', height: 'calc(100vh - 240px)' },
-]
-const logSize = ref<LogSize>(props.defaultSize)
-const logViewStyle = computed(() => {
-  const h = LOG_SIZES.find((s) => s.value === logSize.value)?.height ?? '350px'
-  return { height: h, minHeight: logSize.value === 'large' ? '420px' : undefined }
-})
+const { size: logSize } = useLogSize(props.defaultSize)
+const logViewStyle = computed(() => ({
+  height: logHeight(logSize.value),
+  minHeight: logSize.value === 'large' ? '420px' : undefined,
+}))
 
 // Search: plain substring (default) or regex, with hit highlighting.
 const logSearch = ref('')
@@ -209,7 +205,7 @@ function downloadLogs() {
 </template>
 
 <style scoped>
-.log-view { height: 320px; overflow: auto; white-space: pre-wrap; }
+.log-view { height: 600px; overflow: auto; white-space: pre-wrap; }
 .log-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
 .log-search { position: relative; display: flex; align-items: center; }
 .log-search-input { width: 240px; padding-right: 52px; }
