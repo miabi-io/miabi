@@ -35,10 +35,12 @@ func (r *ServerRepository) Delete(id uint) error {
 	return r.db.Delete(&models.Server{}, id).Error
 }
 
-// FindBySlug resolves a node by its slug.
-func (r *ServerRepository) FindBySlug(slug string) (*models.Server, error) {
+// FindByName resolves a node by its unique handle — the value
+// /api/v1/provider/{name} is built from. Renamed from FindBySlug along with the
+// column it reads.
+func (r *ServerRepository) FindByName(name string) (*models.Server, error) {
 	var s models.Server
-	if err := r.db.Where("slug = ?", slug).First(&s).Error; err != nil {
+	if err := r.db.Where("name = ?", name).First(&s).Error; err != nil {
 		return nil, err
 	}
 	return &s, nil
@@ -111,7 +113,7 @@ func (r *ServerRepository) EnsureLocal(name, endpoint string) (*models.Server, e
 	// Control-plane node defaults to manager + edge-gateway so it can run its own
 	// Goma gateway for public ingress + TLS. Admin can switch back to port-forward.
 	s = &models.Server{
-		Name: name, Slug: name, DockerEndpoint: endpoint, IsLocal: true,
+		Name: name, DisplayName: name, DockerEndpoint: endpoint, IsLocal: true,
 		Role: models.RoleManager, Connectivity: models.ConnectivityEdgeGateway,
 		Status: models.ServerStatusUnknown,
 	}

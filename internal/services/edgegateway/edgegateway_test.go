@@ -13,7 +13,7 @@ import (
 
 func TestRenderConfig(t *testing.T) {
 	s := NewService(nil, "https://miabi.example.com/", "jkaninda/goma-gateway:latest", "miabi", "ops@example.com")
-	got := s.RenderConfig(&models.Server{Slug: "edge-1"})
+	got := s.RenderConfig(&models.Server{Name: "edge-1"})
 
 	for _, want := range []string{
 		"version: 2",
@@ -51,7 +51,7 @@ func TestRenderConfig(t *testing.T) {
 
 func TestRenderConfigManagerUsesFileProvider(t *testing.T) {
 	s := NewService(nil, "https://miabi.example.com/", "img", "miabi", "ops@example.com")
-	got := s.RenderConfig(&models.Server{Slug: "manager", IsLocal: true})
+	got := s.RenderConfig(&models.Server{Name: "manager", IsLocal: true})
 
 	for _, want := range []string{
 		"version: 2",
@@ -72,7 +72,7 @@ func TestRenderConfigManagerUsesFileProvider(t *testing.T) {
 func TestRenderConfigRedis(t *testing.T) {
 	// Remote edge node: a per-node Redis container, password from env.
 	remote := NewService(nil, "https://miabi.example.com", "img", "miabi", "ops@example.com")
-	got := remote.RenderConfig(&models.Server{Slug: "edge-1"})
+	got := remote.RenderConfig(&models.Server{Name: "edge-1"})
 	for _, want := range []string{"redis:", "addr: " + RedisContainer + ":6379", "password: ${GATEWAY_REDIS_PASSWORD}"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("remote edge config missing %q\n---\n%s", want, got)
@@ -82,7 +82,7 @@ func TestRenderConfigRedis(t *testing.T) {
 	// Manager: reuses the platform Redis when configured.
 	mgr := NewService(nil, "", "img", "miabi", "ops@example.com")
 	mgr.SetRedis("miabi-redis:6379", "secret")
-	got = mgr.RenderConfig(&models.Server{Slug: "manager", IsLocal: true})
+	got = mgr.RenderConfig(&models.Server{Name: "manager", IsLocal: true})
 	if !strings.Contains(got, "addr: miabi-redis:6379") {
 		t.Errorf("manager config should reuse the platform Redis addr\n---\n%s", got)
 	}
@@ -93,13 +93,13 @@ func TestRenderConfigRedis(t *testing.T) {
 
 	// Manager with no platform Redis configured: no redis block.
 	none := NewService(nil, "", "img", "miabi", "ops@example.com")
-	if got := none.RenderConfig(&models.Server{Slug: "manager", IsLocal: true}); strings.Contains(got, "redis:") {
+	if got := none.RenderConfig(&models.Server{Name: "manager", IsLocal: true}); strings.Contains(got, "redis:") {
 		t.Errorf("manager with no Redis should omit the redis block:\n%s", got)
 	}
 }
 
 func TestGatewayEnvConfigEncryptionKey(t *testing.T) {
-	srv := &models.Server{Slug: "edge-1"}
+	srv := &models.Server{Name: "edge-1"}
 
 	// No key configured: the env var is absent.
 	s := NewService(nil, "https://miabi.example.com", "img", "miabi", "ops@example.com")

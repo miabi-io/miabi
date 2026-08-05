@@ -138,7 +138,7 @@ func (s *Service) annotateServer(v *models.Volume) {
 		return
 	}
 	if srv, err := s.serverInfo.Get(v.ServerID); err == nil && srv != nil {
-		v.ServerName = srv.Name
+		v.ServerName = srv.Label()
 	}
 }
 

@@ -158,8 +158,8 @@ func (s *Service) Bootstrap(ctx context.Context, endpoint string) {
 		server.Role = models.RoleManager
 		dirty = true
 	}
-	if server.Name == "local" {
-		server.Name = "manager"
+	if server.DisplayName == "local" {
+		server.DisplayName = "manager"
 		dirty = true
 	}
 	// Auto-stamp the manager's hostname from the Docker host (info.Name is the
@@ -213,7 +213,12 @@ func (s *Service) Get(id uint) (*models.Server, error) {
 // NodeInput is the create/update payload for a remote node. The TLS key is
 // plaintext on input and encrypted at rest.
 type NodeInput struct {
-	Name           string
+	// DisplayName is the free-text label, and the only name a caller supplies. The
+	// URL-safe handle is derived from it at creation and never settable: it is what
+	// /api/v1/provider/{name} is built from, a deployed edge gateway polls that URL
+	// for its routes, and nothing is gained by letting an operator pick or change a
+	// value they never type again.
+	DisplayName    string
 	Address        string
 	PublicIP       string
 	PublicHostname string
@@ -233,7 +238,7 @@ type NodeInput struct {
 // CreateNode registers a remote node. For agent mode it returns a one-time join
 // token (only its hash is stored); other modes return an empty token.
 func (s *Service) CreateNode(in NodeInput) (*models.Server, string, error) {
-	if strings.TrimSpace(in.Name) == "" {
+	if strings.TrimSpace(in.DisplayName) == "" {
 		return nil, "", ErrNameRequired
 	}
 	if err := s.checkNodeLimit(); err != nil {
@@ -246,8 +251,10 @@ func (s *Service) CreateNode(in NodeInput) (*models.Server, string, error) {
 	if in.Connectivity != models.ConnectivityEdgeGateway {
 		in.Connectivity = models.ConnectivityPortForward
 	}
-	nodeSlug, err := slug.Unique(in.Name, "node", func(c string) (bool, error) {
-		_, e := s.repo.FindBySlug(c)
+	// The handle is derived from the label. slug.Unique suffixes a collision
+	// rather than failing, so a second "Frankfurt Edge" becomes frankfurt-edge-2.
+	nodeSlug, err := slug.Unique(in.DisplayName, "node", func(c string) (bool, error) {
+		_, e := s.repo.FindByName(c)
 		if e == nil {
 			return true, nil
 		}
@@ -260,8 +267,8 @@ func (s *Service) CreateNode(in NodeInput) (*models.Server, string, error) {
 		return nil, "", err
 	}
 	srv := &models.Server{
-		Name:           in.Name,
-		Slug:           nodeSlug,
+		Name:           nodeSlug,
+		DisplayName:    strings.TrimSpace(in.DisplayName),
 		Role:           models.RoleNode,
 		Connectivity:   in.Connectivity,
 		AccessMode:     mode,
@@ -293,18 +300,13 @@ func (s *Service) UpdateNode(id uint, in NodeInput) (*models.Server, error) {
 	if err != nil {
 		return nil, ErrNodeNotFound
 	}
-	// A change to how the control plane reaches this node — or how its workloads
-	// are exposed — can briefly interrupt the apps and databases running on it.
-	// Require an explicit acknowledgement so a plain metadata edit (which resends
-	// the current reachability values unchanged) is never blocked, but a real
-	// connectivity change from any client is.
 	if reachabilityChanged(srv, in) && !in.Acknowledge {
 		return nil, ErrConnectivityAckRequired
 	}
 	if srv.IsLocal {
-		// The manager node's Docker access is fixed (always its local socket), but
-		// its public DNS address and connectivity are editable: as the manager it
-		// can run its own edge gateway or fall back to port-forward.
+		if strings.TrimSpace(in.DisplayName) != "" {
+			srv.DisplayName = strings.TrimSpace(in.DisplayName)
+		}
 		srv.PublicIP = strings.TrimSpace(in.PublicIP)
 		srv.PublicHostname = strings.TrimSpace(in.PublicHostname)
 		if in.Connectivity == models.ConnectivityEdgeGateway || in.Connectivity == models.ConnectivityPortForward {
@@ -315,8 +317,8 @@ func (s *Service) UpdateNode(id uint, in NodeInput) (*models.Server, error) {
 		}
 		return srv, nil
 	}
-	if strings.TrimSpace(in.Name) != "" {
-		srv.Name = in.Name
+	if strings.TrimSpace(in.DisplayName) != "" {
+		srv.DisplayName = in.DisplayName
 	}
 	if models.ValidAccessMode(in.AccessMode) {
 		srv.AccessMode = in.AccessMode
@@ -368,8 +370,8 @@ func (s *Service) RegisterClusterNode(swarmNodeID, hostname string) (*models.Ser
 		name = "node-" + shortID(swarmNodeID)
 	}
 	srv := &models.Server{
-		Name:           uniqueName(s.repo, name),
-		Slug:           slug.Make(name, shortID(swarmNodeID)),
+		Name:           slug.Make(name, shortID(swarmNodeID)),
+		DisplayName:    uniqueName(s.repo, name),
 		IsLocal:        false,
 		Role:           models.RoleNode,
 		AccessMode:     models.AccessAgent,
@@ -395,7 +397,7 @@ func uniqueName(repo *repositories.ServerRepository, name string) string {
 	}
 	taken := map[string]bool{}
 	for i := range servers {
-		taken[strings.ToLower(servers[i].Name)] = true
+		taken[strings.ToLower(servers[i].DisplayName)] = true
 	}
 	if !taken[strings.ToLower(name)] {
 		return name
@@ -744,7 +746,7 @@ func (s *Service) ReleaseGateway(id uint) (*models.Server, error) {
 // accepting either the agent join token or the node's gateway token. The slug in
 // the URL must match the resolved node.
 func (s *Service) AuthenticateProvider(slug, token string) (*models.Server, error) {
-	srv, err := s.repo.FindBySlug(slug)
+	srv, err := s.repo.FindByName(slug)
 	if err != nil {
 		return nil, ErrBadToken
 	}
@@ -814,7 +816,7 @@ func (s *Service) NameBySwarmNodeID(swarmNodeID string) string {
 	}
 	for i := range servers {
 		if servers[i].SwarmNodeID == swarmNodeID {
-			return servers[i].Name
+			return servers[i].Label()
 		}
 	}
 	return ""

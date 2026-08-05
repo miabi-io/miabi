@@ -60,20 +60,20 @@ func TestReloadNoOpForLocalManager(t *testing.T) {
 
 func TestReloadRequiresAddress(t *testing.T) {
 	s := NewService(nil, "https://miabi.example.com", "img", "miabi", "ops@example.com")
-	if err := s.Reload(context.Background(), &models.Server{Slug: "edge-1"}, "tok"); err == nil {
+	if err := s.Reload(context.Background(), &models.Server{Name: "edge-1"}, "tok"); err == nil {
 		t.Fatal("expected error when server has no address")
 	}
 }
 
 func TestRenderConfigEnablesReloadForEdge(t *testing.T) {
 	s := NewService(nil, "https://miabi.example.com", "img", "miabi", "ops@example.com")
-	got := s.RenderConfig(&models.Server{Slug: "edge-1"})
+	got := s.RenderConfig(&models.Server{Name: "edge-1"})
 	if !strings.Contains(got, "reload:") {
 		t.Fatalf("edge config missing reload block:\n%s", got)
 	}
 
 	// The local manager relies on file-provider watch; no reload block.
-	mgr := s.RenderConfig(&models.Server{Slug: "manager", IsLocal: true})
+	mgr := s.RenderConfig(&models.Server{Name: "manager", IsLocal: true})
 	if strings.Contains(mgr, "reload:") {
 		t.Fatalf("manager config should not have a reload block:\n%s", mgr)
 	}

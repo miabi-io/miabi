@@ -471,7 +471,7 @@ func (s *Service) serverName(cache map[uint]string, serverID uint) string {
 	name := ""
 	if s.serverInfo != nil {
 		if srv, err := s.serverInfo.Get(serverID); err == nil && srv != nil {
-			name = srv.Name
+			name = srv.Label()
 		}
 	}
 	cache[serverID] = name

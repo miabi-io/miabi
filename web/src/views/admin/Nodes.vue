@@ -299,7 +299,7 @@ async function joinNode(n: Server) {
   clusterBusy.value = true
   try {
     await clusterApi.joinNode(n.id)
-    notify.success(`${n.name} joined the cluster`)
+    notify.success(`${n.display_name || n.name} joined the cluster`)
     await loadCluster()
     load()
   } catch (e) {
@@ -317,7 +317,7 @@ async function leaveNode() {
   clusterBusy.value = true
   try {
     await clusterApi.leaveNode(n.id)
-    notify.success(`${n.name} removed from the cluster`)
+    notify.success(`${n.display_name || n.name} removed from the cluster`)
     await loadCluster()
     load()
   } catch (e) {
@@ -392,7 +392,7 @@ onMounted(() => { load(); loadAgentImage(); loadCluster(); license.load() })
 const showCreate = ref(false)
 const creating = ref(false)
 const blankForm = (): CreateNodePayload => ({
-  name: '', address: '', connectivity: 'port-forward', access_mode: 'agent',
+  display_name: '', address: '', connectivity: 'port-forward', access_mode: 'agent',
   docker_endpoint: '', tls_ca_cert: '', tls_cert: '', tls_key: '',
 })
 const form = ref<CreateNodePayload>(blankForm())
@@ -412,7 +412,7 @@ const accessModeDesc = computed(() => nodeOptionDescription(ACCESS_MODES, form.v
 const connectivityDesc = computed(() => nodeOptionDescription(CONNECTIVITY_TYPES, form.value.connectivity))
 
 async function submit() {
-  if (!form.value.name.trim()) return
+  if (!form.value.display_name.trim()) return
   const mode = form.value.access_mode || 'agent'
   if (mode === 'api' && !form.value.docker_endpoint?.trim()) {
     notify.error('A Docker endpoint is required for this access mode')
@@ -420,7 +420,7 @@ async function submit() {
   }
   creating.value = true
   const payload: CreateNodePayload = {
-    name: form.value.name.trim(),
+    display_name: form.value.display_name.trim(),
     address: form.value.address?.trim() || undefined,
     connectivity: form.value.connectivity,
     access_mode: mode,
@@ -726,7 +726,7 @@ function swarmClass(n: Server): string {
                   <span class="avatar avatar-sm"><span class="mdi mdi-server" style="font-size: 14px"></span></span>
                   <span class="cell-text">
                     <span class="cell-title">
-                      {{ n.name }}
+                      {{ n.display_name || n.name }}
                       <span v-if="n.cordoned" class="badge badge-warning" style="margin-left: 8px">cordoned</span>
                       <!-- The cluster brought this node in, an admin did not: the global
                            agent service landed on a swarm member and it registered itself. -->
@@ -787,8 +787,8 @@ function swarmClass(n: Server): string {
                   </div>
                 </div>
                 <div class="form-group">
-                  <label class="form-label">Name</label>
-                  <input v-model="form.name" class="form-input" placeholder="e.g. edge-eu-1" required autofocus />
+                  <label class="form-label">Display name</label>
+                  <input v-model="form.display_name" class="form-input" placeholder="e.g. Frankfurt Edge" required autofocus />
                 </div>
                 <div class="form-group">
                   <span class="form-label label-row">
@@ -881,7 +881,7 @@ function swarmClass(n: Server): string {
                 :class="{ 'join-row--disabled': !n.agent_connected }"
               >
                 <input type="checkbox" :disabled="!n.agent_connected" v-model="joinSelected[n.id]" />
-                <span class="join-row-name">{{ n.name }}</span>
+                <span class="join-row-name">{{ n.display_name || n.name }}</span>
                 <span class="badge" :class="n.agent_connected ? 'badge-success badge-dot' : 'badge-danger'">{{ n.agent_connected ? 'online · standalone' : 'offline' }}</span>
               </label>
             </template>
@@ -1167,7 +1167,7 @@ Apps scheduled on those nodes will stop showing metrics, stats and a shell. The 
     <ConfirmDialog
       :open="!!pendingLeave"
       title="Remove node from cluster?"
-      :message="`Remove ${pendingLeave?.name} from the cluster?`"
+      :message="`Remove ${pendingLeave?.display_name || pendingLeave?.name} from the cluster?`"
       confirm-label="Remove"
       variant="danger"
       :busy="clusterBusy"
