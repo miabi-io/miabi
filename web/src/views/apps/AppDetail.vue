@@ -2080,22 +2080,22 @@ async function detachDatabase(d: AppDatabase) {
     <!-- Deployments -->
     <div v-else-if="tab === 'deployments'" class="detail-grid">
       <div v-if="canaryActive" class="card canary-card">
-        <div class="card-header">
-          <h2>Canary rollout</h2>
-          <span class="badge badge-warning badge-dot">in progress</span>
-        </div>
-        <div class="card-body">
-          <div class="split-bar lg">
-            <div class="split-stable" :style="{ width: (100 - canaryWeight) + '%' }"><span v-if="100 - canaryWeight >= 15">stable {{ 100 - canaryWeight }}%</span></div>
-            <div class="split-canary" :style="{ width: canaryWeight + '%' }"><span v-if="canaryWeight >= 15">canary {{ canaryWeight }}%</span></div>
+        <div class="canary-row">
+          <span class="canary-title"><span class="mdi mdi-call-split"></span> Canary rollout</span>
+          <div class="canary-meter">
+            <div class="split-bar">
+              <div class="split-stable" :style="{ width: (100 - canaryWeight) + '%' }"></div>
+              <div class="split-canary" :style="{ width: canaryWeight + '%' }"></div>
+            </div>
+            <div class="canary-legend">
+              <span><i class="dot dot-stable"></i> stable {{ 100 - canaryWeight }}%</span>
+              <span><i class="dot dot-canary"></i> canary {{ canaryWeight }}%</span>
+              <span class="text-muted">· shifting automatically, promotes at 100%</span>
+            </div>
           </div>
-          <p class="text-muted text-sm mt-4">
-            The platform is shifting traffic to the new release automatically and will promote it at 100%
-            (or roll back if it becomes unhealthy). You can override below.
-          </p>
           <div v-if="ws.canEdit" class="canary-actions">
-            <button class="btn btn-primary btn-sm" :disabled="canaryBusy" @click="promoteCanary"><span class="mdi mdi-rocket-launch-outline"></span> Promote now</button>
-            <button class="btn btn-danger btn-sm" :disabled="canaryBusy" @click="abortCanary"><span class="mdi mdi-close-circle-outline"></span> Abort</button>
+            <button class="btn btn-primary btn-sm" :disabled="canaryBusy" @click="promoteCanary">Promote</button>
+            <button class="btn btn-secondary btn-sm" :disabled="canaryBusy" @click="abortCanary">Abort</button>
           </div>
         </div>
       </div>
@@ -2107,13 +2107,20 @@ async function detachDatabase(d: AppDatabase) {
         </div>
         <div v-else class="table-wrapper">
           <table>
-            <thead><tr><th>Deployment</th><th class="text-right">Status</th></tr></thead>
+            <thead><tr><th>Deployment</th><th>Image</th><th>When</th><th class="text-right">Status</th></tr></thead>
             <tbody>
               <tr v-for="d in deployments" :key="d.id" class="row-clickable" :class="{ 'row-selected': streamingId === d.id }" @click="streamLogs(d.id)">
-                <td><span class="cell-title">#{{ d.number }}</span><div class="cell-sub">{{ d.trigger }}</div></td>
+                <td>
+                  <span class="cell-title">#{{ d.number }}</span>
+                  <div class="cell-sub">{{ d.trigger }}</div>
+                  <div v-if="d.error" class="dep-err" :title="d.error"><span class="mdi mdi-alert-circle-outline"></span> {{ d.error }}</div>
+                </td>
+                <td class="cell-sub mono trunc" :title="d.image">{{ d.image || '—' }}</td>
+                <td class="cell-sub" :title="new Date(d.created_at).toLocaleString()">{{ relTime(d.created_at) }}</td>
                 <td class="text-right">
                   <span v-if="d.current" class="badge badge-success badge-dot">live</span>
                   <span v-else class="badge" :class="depBadge(d.status)">{{ d.status }}</span>
+                  <span v-if="streamingId === d.id" class="cell-sub streaming-tag">viewing logs</span>
                 </td>
               </tr>
             </tbody>
@@ -3373,6 +3380,16 @@ async function detachDatabase(d: AppDatabase) {
 
 /* Canary rollout + deployment strategy */
 .canary-card { border-color: var(--warning-500, #f59e0b); grid-column: 1 / -1; }
+.canary-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 12px 16px; }
+.canary-title { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; }
+.canary-meter { flex: 1; min-width: 220px; }
+.canary-legend { display: flex; align-items: center; gap: 10px; margin-top: 5px; font-size: 12px; color: var(--text-secondary); flex-wrap: wrap; }
+.canary-legend .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+.dot-stable { background: var(--success-500, #22c55e); }
+.dot-canary { background: var(--warning-500, #f59e0b); }
+.dep-err { margin-top: 3px; font-size: 12px; color: var(--danger-600); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.streaming-tag { display: block; margin-top: 2px; }
+.trunc { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Compact canary rollout strip shown under the app header (any tab). */
 .canary-strip { display: flex; align-items: center; gap: 10px; width: 100%; margin: 4px 0 12px; padding: 7px 12px; border: 1px solid var(--warning-500, #f59e0b); border-radius: 8px; background: transparent; color: var(--text-primary); font-size: 13px; text-align: left; cursor: pointer; }
@@ -3381,10 +3398,9 @@ async function detachDatabase(d: AppDatabase) {
 .canary-strip-text { font-weight: 600; white-space: nowrap; }
 .canary-strip-bar { flex: 1; height: 10px; }
 .split-bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--bg-tertiary); }
-.split-bar.lg { height: 30px; border-radius: 8px; }
 .split-stable { background: var(--success-500, #22c55e); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 600; transition: width 250ms ease; }
 .split-canary { background: var(--warning-500, #f59e0b); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 600; transition: width 250ms ease; }
-.canary-actions { display: flex; gap: 8px; margin-top: 16px; }
+.canary-actions { display: flex; gap: 8px; }
 .strategy-options { display: flex; flex-direction: column; gap: 8px; }
 .strategy-option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border-input); border-radius: var(--radius); cursor: pointer; transition: all var(--transition); }
 .strategy-option:hover { border-color: var(--text-muted); }
