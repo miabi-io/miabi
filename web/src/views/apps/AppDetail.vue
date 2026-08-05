@@ -377,6 +377,19 @@ const volumesOnNode = computed(() =>
   volumes.value.filter((v) => (v.server_id ?? 0) === (app.value?.server_id ?? 0)),
 )
 const hiddenVolumeCount = computed(() => volumes.value.length - volumesOnNode.value.length)
+// Narrows the attach dropdown. The selected volume always stays in the list so
+// filtering can never silently invalidate the binding.
+const volumeSearch = ref('')
+const volumeOptions = computed(() => {
+  const q = volumeSearch.value.trim().toLowerCase()
+  if (!q) return volumesOnNode.value
+  return volumesOnNode.value.filter(
+    (v) => v.id === mount.value.volume_id ||
+      v.name.toLowerCase().includes(q) ||
+      (v.display_name || '').toLowerCase().includes(q) ||
+      (v.driver || '').toLowerCase().includes(q),
+  )
+})
 const appDatabases = ref<AppDatabase[]>([])
 const dbConnModal = ref<{ title: string; info: ConnectionInfo } | null>(null)
 const mount = ref({ volume_id: 0, path: '' })
@@ -2327,9 +2340,19 @@ async function detachDatabase(d: AppDatabase) {
       </div>
       <div v-if="ws.canEdit" class="card-body" style="border-bottom: 1px solid var(--border-primary)">
         <form class="flex items-center gap-2" @submit.prevent="attachVolume">
+          <input
+            v-if="volumesOnNode.length > 5"
+            v-model="volumeSearch"
+            class="form-input"
+            type="search"
+            aria-label="Filter volumes"
+            placeholder="Filter volumes…"
+            style="max-width: 180px"
+          />
           <select v-model.number="mount.volume_id" class="form-select" aria-label="Volume to attach" style="max-width: 220px">
             <option :value="0" disabled>Select volume…</option>
-            <option v-for="v in volumesOnNode" :key="v.id" :value="v.id">{{ v.name }}</option>
+            <option v-for="v in volumeOptions" :key="v.id" :value="v.id">{{ v.display_name || v.name }}</option>
+            <option v-if="volumeSearch && volumeOptions.length === 0" :value="0" disabled>No volume matches “{{ volumeSearch }}”</option>
           </select>
           <input v-model="mount.path" class="form-input" aria-label="Mount path" placeholder="/data" style="max-width: 200px" />
           <button class="btn btn-primary">Attach</button>
