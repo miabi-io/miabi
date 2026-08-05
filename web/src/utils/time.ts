@@ -24,15 +24,22 @@ export function relativeTime(iso?: string | null, now: number = Date.now()): str
 // formatDuration renders the span between two timestamps as "45s" / "1m 5s" /
 // "1h 3m". When `finished` is missing it measures against `now` — pass a ticking
 // value to show a live, counting-up duration for in-progress work.
+// `created` covers a run that failed while queued and so never started.
+// `ended` stops a terminal run counting up when it has no finish timestamp.
 export function formatDuration(
   started?: string | null,
   finished?: string | null,
   now: number = Date.now(),
+  created?: string | null,
+  ended = false,
 ): string {
-  if (!started) return '—'
-  const start = new Date(started).getTime()
+  const from = started || created
+  if (!from) return '—'
+  const start = new Date(from).getTime()
   if (Number.isNaN(start)) return '—'
+  if (!finished && ended) return '—'
   const end = finished ? new Date(finished).getTime() : now
+  if (end < start) return '—'
   const secs = Math.max(0, Math.round((end - start) / 1000))
   if (secs < 60) return `${secs}s`
   const m = Math.floor(secs / 60)

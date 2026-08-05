@@ -2222,3 +2222,12 @@ export interface AdminDomainDetail extends Domain {
   routes: AdminDomainRoute[]
   recent_events: AdminEvent[]
 }
+
+export interface PipelineRunEvent {
+  run_id: number
+  pipeline_id: number
+  number: number
+  status: PipelineRunStatus
+  started_at?: string
+  finished_at?: string
+}

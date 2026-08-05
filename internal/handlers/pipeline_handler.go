@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"time"
 
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/logstore"
@@ -215,6 +216,34 @@ func (h *PipelineHandler) Webhook(c *okapi.Context) error {
 }
 
 // ListRuns returns a page of a pipeline's runs.
+// StreamWorkspaceRuns pushes run transitions so the lists need no polling.
+func (h *PipelineHandler) StreamWorkspaceRuns(c *okapi.Context) error {
+	wsID := middlewares.WorkspaceID(c)
+	ch, unsubscribe := h.bus.Subscribe(worker.PipelineWorkspaceTopic(wsID))
+	defer unsubscribe()
+
+	ctx := c.Request().Context()
+	ping := time.NewTicker(25 * time.Second)
+	defer ping.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case ev, ok := <-ch:
+			if !ok {
+				return nil
+			}
+			if err := c.SSESendJSON(ev); err != nil {
+				return nil
+			}
+		case <-ping.C:
+			if err := c.SSESendJSON(eventbus.Event{Type: "ping"}); err != nil {
+				return nil
+			}
+		}
+	}
+}
+
 func (h *PipelineHandler) ListRuns(c *okapi.Context) error {
 	id, err := resolveID(c.Param("pipelineID"), h.svc.IDByUID)
 	if err != nil {

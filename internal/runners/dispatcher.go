@@ -227,8 +227,6 @@ func (d *Dispatcher) processFrames(ctx context.Context, r io.Reader, run *models
 			if st := byOrdinal[f.Step]; st != nil {
 				st.Status = mapStatus(f.Status)
 				_ = d.runs.UpdateStep(st)
-				// Push the transition so the UI updates the step live (not just on
-				// refresh). Encoded as "<ordinal>:<status>".
 				d.publish(run.ID, "step", fmt.Sprintf("%d:%s", f.Step, st.Status))
 			}
 		case proto.FrameResult:
@@ -237,13 +235,13 @@ func (d *Dispatcher) processFrames(ctx context.Context, r io.Reader, run *models
 		case proto.FrameError:
 			run.Status = models.PipelineRunFailed
 			run.Error = f.Error
-			_ = d.runs.UpdateRun(run)
+			d.finish(run)
 			d.persistStepLogs(run, byOrdinal, stepLogs)
 			d.publish(run.ID, "status", string(models.PipelineRunFailed))
 			return models.PipelineRunFailed, nil
 		case proto.FrameDone:
 			run.Status = mapStatus(f.Status)
-			_ = d.runs.UpdateRun(run)
+			d.finish(run)
 			d.persistStepLogs(run, byOrdinal, stepLogs)
 			d.publish(run.ID, "status", string(run.Status))
 			if run.Status == models.PipelineRunSucceeded {
@@ -349,9 +347,34 @@ func hasDeployStep(steps []models.PipelineStepRun) bool {
 }
 
 func (d *Dispatcher) publish(runID uint, kind, data string) {
-	if d.bus != nil {
-		d.bus.Publish(runTopic(runID), eventbus.Event{Type: kind, Data: data})
+	if d.bus == nil {
+		return
 	}
+	d.bus.Publish(runTopic(runID), eventbus.Event{Type: kind, Data: data})
+}
+
+// publishRun fans a transition out to the workspace topic the list pages watch.
+func (d *Dispatcher) publishRun(r *models.PipelineRun) {
+	if d.bus == nil || r == nil {
+		return
+	}
+	ev := map[string]any{"run_id": r.ID, "pipeline_id": r.PipelineID, "number": r.Number, "status": string(r.Status)}
+	if r.StartedAt != nil {
+		ev["started_at"] = r.StartedAt.UTC().Format(time.RFC3339)
+	}
+	if r.FinishedAt != nil {
+		ev["finished_at"] = r.FinishedAt.UTC().Format(time.RFC3339)
+	}
+	d.bus.Publish(fmt.Sprintf("pipeline:ws:%d", r.WorkspaceID), eventbus.Event{Type: "run", Data: ev})
+}
+
+// finish stamps the terminal timestamp before saving. Without it the run has no
+// end, and every duration in the UI counts up from its start forever.
+func (d *Dispatcher) finish(r *models.PipelineRun) {
+	now := time.Now()
+	r.FinishedAt = &now
+	_ = d.runs.UpdateRun(r)
+	d.publishRun(r)
 }
 
 // mapStatus maps a runner's status string onto the control plane's run status,
