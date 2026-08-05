@@ -384,6 +384,8 @@ export interface PlatformMetrics {
   total_databases: number
   total_stacks: number
   total_volumes: number
+  total_nodes: number
+  total_routes: number
   active_sessions: number
   running_containers: number
   total_containers: number
