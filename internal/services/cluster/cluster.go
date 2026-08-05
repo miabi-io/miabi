@@ -353,7 +353,10 @@ func roleOf(n docker.SwarmNode) string {
 // matchByHostname is the fallback correlation when a node's swarm id is not yet
 // stored: match the swarm node by hostname against the server's hostname/name.
 func matchByHostname(swarmNodes map[string]docker.SwarmNode, srv *models.Server) (docker.SwarmNode, bool) {
-	candidates := []string{srv.PublicHostname, srv.Name}
+	// The label is what an admin typed and is often the machine's hostname; the
+	// handle is slugified from it, so it can differ. Try both rather than losing
+	// the correlation for nodes registered before the rename.
+	candidates := []string{srv.PublicHostname, srv.DisplayName, srv.Name}
 	for _, n := range swarmNodes {
 		for _, c := range candidates {
 			if c != "" && strings.EqualFold(n.Hostname, c) {
@@ -547,7 +550,9 @@ func (s *Service) Members(ctx context.Context) ([]Member, error) {
 				if servers[i].SwarmNodeID != "" {
 					continue
 				}
-				if strings.EqualFold(servers[i].PublicHostname, n.Hostname) || strings.EqualFold(servers[i].Name, n.Hostname) {
+				if strings.EqualFold(servers[i].PublicHostname, n.Hostname) ||
+					strings.EqualFold(servers[i].DisplayName, n.Hostname) ||
+					strings.EqualFold(servers[i].Name, n.Hostname) {
 					srv = &servers[i]
 					break
 				}
@@ -556,7 +561,7 @@ func (s *Service) Members(ctx context.Context) ([]Member, error) {
 		if srv != nil {
 			m.Managed = true
 			m.ServerID = srv.ID
-			m.ServerName = srv.Name
+			m.ServerName = srv.Label()
 			m.IsManager = srv.IsLocal
 		}
 		out = append(out, m)
@@ -572,11 +577,6 @@ var ErrInvalidAvailability = errors.New("availability must be active, pause or d
 //	active — the scheduler may place new tasks here
 //	pause  — existing tasks keep running; no new ones are placed
 //	drain  — existing tasks are rescheduled off this node
-//
-// Drain is what makes a node safe to reboot: without it Swarm keeps scheduling onto
-// a host that is about to go away. It is keyed by SWARM node id, not Miabi node id,
-// so an unmanaged member (a swarm node with no Miabi agent) can be drained too —
-// which is exactly when you most need to.
 func (s *Service) SetAvailability(ctx context.Context, swarmNodeID, availability string) error {
 	if !s.CapCluster() {
 		return ErrNotEnabled

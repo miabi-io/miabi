@@ -6,7 +6,7 @@
 // central proxy reaches by host port), an edge-gateway node terminates TLS
 // locally and serves its own routes: this deploys a Goma Gateway on the node,
 // configured to pull its routes/middlewares from the control plane's HTTP
-// provider (/api/v1/provider/{slug}) using the node's own agent token for auth.
+// provider (/api/v1/provider/{name}) using the node's own agent token for auth.
 //
 // The gateway is platform infrastructure owned by the built-in system
 // workspace; it is deployed directly via the node's Docker engine (over the
@@ -360,7 +360,7 @@ func (s *Service) RenderConfig(srv *models.Server) string {
 	} else {
 		prov.HTTP = &httpProvider{
 			Enabled:       true,
-			Endpoint:      fmt.Sprintf("%s/api/v1/provider/%s", s.controlURL, srv.Slug),
+			Endpoint:      fmt.Sprintf("%s/api/v1/provider/%s", s.controlURL, srv.Name),
 			Interval:      "30s",
 			Timeout:       "10s",
 			RetryAttempts: 3,
@@ -437,7 +437,7 @@ func (s *Service) Ensure(ctx context.Context, dc docker.Client, srv *models.Serv
 	if err := s.runGateway(ctx, dc, srv, token, redisPassword, ContainerName, gw, true); err != nil {
 		return err
 	}
-	logger.Info("node gateway deployed", "node", srv.ID, "slug", srv.Slug, "image", gw)
+	logger.Info("node gateway deployed", "node", srv.ID, "node_name", srv.Name, "image", gw)
 	return nil
 }
 
@@ -502,7 +502,7 @@ func (s *Service) SafeUpdate(ctx context.Context, dc docker.Client, srv *models.
 		return fail(fmt.Errorf("gateway did not come up after promotion"))
 	}
 	onPhase("done", nil)
-	logger.Info("node gateway updated", "node", srv.ID, "slug", srv.Slug, "image", gw)
+	logger.Info("node gateway updated", "node", srv.ID, "node_name", srv.Name, "image", gw)
 	return nil
 }
 
@@ -673,7 +673,7 @@ func (s *Service) Teardown(ctx context.Context, dc docker.Client) {
 // workspace, so it is attributable in inventory, never treated as a user app, and
 // never offered for import or stopped from the containers list.
 func (s *Service) labels(srv *models.Server) map[string]string {
-	extra := map[string]string{docker.LabelNode: srv.Slug}
+	extra := map[string]string{docker.LabelNode: srv.Name}
 	if ws, err := s.workspaces.FindSystem(); err == nil {
 		extra[docker.LabelWorkspace] = fmt.Sprintf("%d", ws.ID)
 	}

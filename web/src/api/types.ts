@@ -1475,8 +1475,11 @@ export type ServerRole = 'manager' | 'node'
 
 export interface Server {
   id: number
+  /** Unique URL-safe handle — the same vocabulary Application uses. Stable for
+   *  the node's life: /api/v1/provider/{name} is built from it. */
   name: string
-  slug?: string
+  /** Free-text label shown in the UI; not unique. */
+  display_name?: string
   role?: ServerRole
   connectivity?: ServerConnectivity
   access_mode?: 'socket' | 'agent' | 'api'

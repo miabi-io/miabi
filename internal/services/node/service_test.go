@@ -133,3 +133,145 @@ func TestNodeLimitErrorEnvelope(t *testing.T) {
 		t.Error("Message()/Error() must be populated for the API envelope")
 	}
 }
+
+// nameRow is the servers stand-in for the naming contract. The real model does
+// not AutoMigrate under sqlite (its index DDL is Postgres-flavoured), which is
+// why the tests in this file use stand-ins; this one carries every column the
+// create/update path writes.
+type nameRow struct {
+	ID                      uint `gorm:"primaryKey"`
+	UID                     string
+	Name                    string
+	DisplayName             string
+	Connectivity            string
+	AccessMode              string
+	DockerEndpoint          string
+	Address                 string
+	PublicIP                string
+	PublicHostname          string
+	IsLocal                 bool
+	Role                    string
+	Status                  string
+	TokenHash               string
+	TLSCACert               string
+	TLSCert                 string
+	TLSKeyEnc               string
+	Cordoned                bool
+	GatewayTokenEnc         string
+	GatewayConfigYAML       string
+	GatewayImage            string
+	GatewayContainer        string
+	GatewayImported         bool
+	GatewayRedisPasswordEnc string
+	GatewayDeployedAt       *time.Time
+	AgentVersion            string
+	SwarmNodeID             string
+	AutoJoined              bool
+	SwarmRole               string
+	SwarmAvailability       string
+	SwarmState              string
+	InSwarm                 bool
+	Labels                  string
+	GatewayUpdate           string
+	LastSeenAt              *time.Time
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
+}
+
+func (nameRow) TableName() string { return "servers" }
+
+func nameRepo(t *testing.T) *repositories.ServerRepository {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&nameRow{}); err != nil {
+		t.Fatal(err)
+	}
+	return repositories.NewServerRepository(db)
+}
+
+// The handle is derived from the label unless one is supplied, and a second node
+// with the same label gets a distinct handle rather than colliding on the unique
+// index.
+func TestCreateNodeDerivesHandleFromDisplayName(t *testing.T) {
+	s := NewService(nameRepo(t), nil)
+
+	a, _, err := s.CreateNode(NodeInput{DisplayName: "Frankfurt Edge"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if a.Name != "frankfurt-edge" {
+		t.Errorf("handle = %q, want frankfurt-edge", a.Name)
+	}
+	if a.DisplayName != "Frankfurt Edge" {
+		t.Errorf("label = %q, want the text as typed", a.DisplayName)
+	}
+
+	b, _, err := s.CreateNode(NodeInput{DisplayName: "Frankfurt Edge"})
+	if err != nil {
+		t.Fatalf("create second: %v", err)
+	}
+	if b.Name == a.Name {
+		t.Errorf("two nodes share the handle %q; it is the unique key", b.Name)
+	}
+}
+
+// The label is editable; the handle is not settable at all, so a rename can never
+// move the URL an edge gateway polls.
+func TestUpdateNodeRenamesLabelOnly(t *testing.T) {
+	s := NewService(nameRepo(t), nil)
+	srv, _, err := s.CreateNode(NodeInput{DisplayName: "Frankfurt Edge"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	updated, err := s.UpdateNode(srv.ID, NodeInput{DisplayName: "Frankfurt Edge 2"})
+	if err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	if updated.DisplayName != "Frankfurt Edge 2" {
+		t.Errorf("label not updated: %q", updated.DisplayName)
+	}
+	if updated.Name != srv.Name {
+		t.Errorf("handle moved from %q to %q", srv.Name, updated.Name)
+	}
+
+	// Repeated renames never touch the handle.
+	again, err := s.UpdateNode(srv.ID, NodeInput{DisplayName: "Somewhere Else"})
+	if err != nil {
+		t.Fatalf("second rename: %v", err)
+	}
+	if again.Name != srv.Name {
+		t.Errorf("handle moved on a later rename: %q", again.Name)
+	}
+}
+
+// The manager's label is editable like any other node's — it is not the handle,
+// so nothing resolves through it. Its Docker access stays fixed.
+func TestUpdateManagerRenamesLabel(t *testing.T) {
+	repo := nameRepo(t)
+	local, err := repo.EnsureLocal("manager", "unix:///var/run/docker.sock")
+	if err != nil {
+		t.Fatalf("ensure local: %v", err)
+	}
+	s := NewService(repo, nil)
+
+	updated, err := s.UpdateNode(local.ID, NodeInput{
+		DisplayName:  "Control Plane",
+		Connectivity: local.Connectivity,
+	})
+	if err != nil {
+		t.Fatalf("rename manager: %v", err)
+	}
+	if updated.DisplayName != "Control Plane" {
+		t.Errorf("manager label = %q, want Control Plane", updated.DisplayName)
+	}
+	if updated.Name != local.Name {
+		t.Errorf("manager handle moved from %q to %q", local.Name, updated.Name)
+	}
+	if !updated.IsLocal {
+		t.Error("the manager should still be the local node")
+	}
+}

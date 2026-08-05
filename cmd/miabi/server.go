@@ -184,7 +184,7 @@ func runServer(cli *okapicli.CLI) {
 				// token) so the same credential keeps working for on-demand redeploys.
 				gwToken, err := nodeService.GatewayToken(srv.ID)
 				if err != nil {
-					logger.Error("failed to mint node gateway token", "node", srv.ID, "slug", srv.Slug, "error", err)
+					logger.Error("failed to mint node gateway token", "node", srv.ID, "node_name", srv.Name, "error", err)
 					return
 				}
 				// Remote edge nodes run a per-node Redis (the manager reuses the
@@ -196,7 +196,7 @@ func runServer(cli *okapicli.CLI) {
 					}
 				}
 				if err := nodeGateway.Ensure(ctx, dc, srv, gwToken, redisPw); err != nil {
-					logger.Error("failed to deploy node gateway", "node", srv.ID, "slug", srv.Slug, "error", err)
+					logger.Error("failed to deploy node gateway", "node", srv.ID, "node_name", srv.Name, "error", err)
 					return
 				}
 				nodeService.MarkGatewayDeployed(srv.ID)

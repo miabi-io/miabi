@@ -122,8 +122,10 @@ func (h *NodeHandler) SetAllowedOrigins(origins []string) {
 
 type CreateNodeRequest struct {
 	Body struct {
-		Name    string `json:"name" required:"true"`
-		Address string `json:"address"`
+		// DisplayName is the node's free-text label and the only name a caller
+		// supplies. The URL-safe handle is derived from it at creation.
+		DisplayName string `json:"display_name" required:"true"`
+		Address     string `json:"address"`
 		// PublicIP / PublicHostname are the node's externally reachable DNS target.
 		PublicIP       string `json:"public_ip"`
 		PublicHostname string `json:"public_hostname"`
@@ -144,7 +146,7 @@ type CreateNodeRequest struct {
 
 func (r *CreateNodeRequest) input() node.NodeInput {
 	return node.NodeInput{
-		Name:           r.Body.Name,
+		DisplayName:    r.Body.DisplayName,
 		Address:        r.Body.Address,
 		PublicIP:       r.Body.PublicIP,
 		PublicHostname: r.Body.PublicHostname,
@@ -189,7 +191,7 @@ func (h *NodeHandler) ListPlaceable(c *okapi.Context) error {
 		s := &servers[i]
 		out = append(out, PlaceableNode{
 			ID:           s.ID,
-			Name:         s.Name,
+			Name:         s.DisplayName,
 			Connectivity: string(s.Connectivity),
 			IsLocal:      s.IsLocal,
 			Online:       s.IsLocal || h.manager.Connected(s.ID),

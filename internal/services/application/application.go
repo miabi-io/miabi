@@ -307,7 +307,7 @@ func (s *Service) annotateServer(app *models.Application) {
 		return
 	}
 	if srv, err := s.serverInfo.Get(app.ServerID); err == nil && srv != nil {
-		app.ServerName = srv.Name
+		app.ServerName = srv.Label()
 	}
 }
 

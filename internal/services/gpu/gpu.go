@@ -206,7 +206,7 @@ func (s *Service) Inventory(ctx context.Context) error {
 	}
 	for i := range servers {
 		if _, err := s.InventoryNode(ctx, servers[i].ID); err != nil {
-			logger.Warn("gpu inventory failed for node", "node", servers[i].Name, "error", err)
+			logger.Warn("gpu inventory failed for node", "node", servers[i].Label(), "error", err)
 		}
 	}
 	s.publishMetrics()

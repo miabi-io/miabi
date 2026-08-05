@@ -165,7 +165,11 @@ export interface JoinCommand {
 export type ServerAccessMode = 'socket' | 'agent' | 'api'
 
 export interface CreateNodePayload {
-  name: string
+  /**
+   * The node's free-text label and the only name a caller supplies. The URL-safe
+   * handle is derived from it at creation and is not settable.
+   */
+  display_name: string
   address?: string
   public_ip?: string
   public_hostname?: string
