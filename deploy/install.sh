@@ -84,7 +84,7 @@ SKIP_DOCKER_INSTALL="${MIABI_SKIP_DOCKER_INSTALL:-0}"
 # The single place every image is pinned. CI bumps these on release (see
 # .github/workflows/release.yml) and they are passed straight to `miabi install`, so
 # the manifest it writes records exactly what this release was tested against.
-MIABI_VERSION="${MIABI_VERSION:-v1.7.1}"
+MIABI_VERSION="${MIABI_VERSION:-v1.7.2}"
 GOMA_VERSION="${GOMA_VERSION:-v0.13.1}"
 RUNNER_VERSION="${RUNNER_VERSION:-v0.0.7}"
 
