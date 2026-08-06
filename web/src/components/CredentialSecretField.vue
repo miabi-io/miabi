@@ -1,9 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { storeToRefs } from 'pinia'
-import { useWorkspaceStore } from '@/stores/workspace'
-import { secretApi } from '@/api/secrets'
-import type { Secret } from '@/api/types'
+import { computed, ref, watch } from 'vue'
+import SecretPicker from '@/components/SecretPicker.vue'
 
 /**
  * The secret half of a stored credential (a registry password, a Git token or
@@ -31,36 +28,12 @@ const props = withDefaults(
 )
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 
-const ws = useWorkspaceStore()
-const { currentWorkspaceId } = storeToRefs(ws)
-
 type Mode = 'value' | 'secret'
 // A credential that already references a secret opens on that tab, so editing it
 // doesn't silently look like a blank literal.
 const mode = ref<Mode>(props.currentRef ? 'secret' : 'value')
 const literal = ref('')
 const selected = ref(props.currentRef)
-
-const secrets = ref<Secret[]>([])
-const loading = ref(false)
-const loadFailed = ref(false)
-
-async function loadSecrets(wsId: number | null) {
-  if (!wsId) { secrets.value = []; return }
-  loading.value = true
-  loadFailed.value = false
-  try {
-    // One page is plenty for a picker; the vault is a small, named set.
-    secrets.value = (await secretApi.list(wsId, '', 0, 200)).data.data ?? []
-  } catch {
-    loadFailed.value = true
-    secrets.value = []
-  } finally {
-    loading.value = false
-  }
-}
-onMounted(() => loadSecrets(currentWorkspaceId.value))
-watch(currentWorkspaceId, loadSecrets)
 
 // The field owns mode/literal/selected and only ever pushes outward. It is not
 // re-synced from modelValue: the parent echoes what we emit, and reacting to
@@ -116,17 +89,12 @@ const required = computed(() => !props.editing)
     </template>
 
     <template v-else>
-      <select v-model="selected" class="form-select" :required="required" :aria-label="`${label} — secret`">
-        <option value="">Select a secret…</option>
-        <option v-for="s in secrets" :key="s.id" :value="s.name">
-          {{ s.name }}{{ s.managed ? ' (managed)' : '' }}
-        </option>
-      </select>
-      <p v-if="loading" class="form-hint">Loading secrets…</p>
-      <p v-else-if="loadFailed" class="form-hint">Could not load secrets — enter the value instead.</p>
-      <p v-else-if="secrets.length === 0" class="form-hint">
-        No secrets in this workspace yet. Add one under Secrets, or enter the value here.
-      </p>
+      <!-- Defaults to unmanaged: a managed secret is owned by another resource
+           (a provisioned database's password) and rotates with it, so it is
+           rarely the right thing to authenticate a registry or repo with. The
+           filter is right there when it is. -->
+      <SecretPicker v-model="selected" :label="label" default-ownership="unmanaged" />
+      <p v-if="required && !selected" class="form-hint">Choose a secret to continue.</p>
       <p v-else class="form-hint">
         Read from the vault on every use — rotating the secret rotates this credential.
       </p>

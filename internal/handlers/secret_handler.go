@@ -42,10 +42,12 @@ type UpdateSecretRequest struct {
 	} `json:"body"`
 }
 
-// List returns a paginated, searchable list of a workspace's secrets (no values).
+// List returns a paginated, searchable list of a workspace's secrets (no
+// values). ?managed=true|false narrows to platform-owned or hand-created
+// secrets; omitting it returns both.
 func (h *SecretHandler) List(c *okapi.Context) error {
 	page, size, offset := normalizePageParams(queryInt(c, "page", 0), queryInt(c, "size", 20))
-	secrets, total, err := h.svc.ListPaged(middlewares.WorkspaceID(c), c.Query("search"), size, offset)
+	secrets, total, err := h.svc.ListPaged(middlewares.WorkspaceID(c), c.Query("search"), queryBool(c, "managed"), size, offset)
 	if err != nil {
 		return c.AbortInternalServerError("failed to list secrets", err)
 	}

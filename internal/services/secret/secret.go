@@ -89,9 +89,10 @@ func (s *Service) List(workspaceID uint) ([]models.Secret, error) {
 }
 
 // ListPaged returns a searchable, paginated page of a workspace's secrets and
-// the total count of matching rows.
-func (s *Service) ListPaged(workspaceID uint, search string, limit, offset int) ([]models.Secret, int64, error) {
-	return s.repo.ListByWorkspacePaged(workspaceID, search, limit, offset)
+// the total count of matching rows. managed narrows to platform-owned secrets
+// (true) or hand-created ones (false); nil returns both.
+func (s *Service) ListPaged(workspaceID uint, search string, managed *bool, limit, offset int) ([]models.Secret, int64, error) {
+	return s.repo.ListByWorkspacePaged(workspaceID, search, managed, limit, offset)
 }
 
 func (s *Service) Get(workspaceID, id uint) (*models.Secret, error) {

@@ -200,6 +200,23 @@ func queryInt(c *okapi.Context, key string, def int) int {
 	return def
 }
 
+// queryBool reads an optional tri-state boolean query parameter: "true"/"false"
+// select a value, anything else (including absent) means "no filter" and yields
+// nil. Use it for filters where "either" is a meaningful third choice, so a
+// caller can't accidentally narrow the result by omitting the parameter.
+func queryBool(c *okapi.Context, key string) *bool {
+	switch strings.ToLower(strings.TrimSpace(c.Query(key))) {
+	case "true":
+		v := true
+		return &v
+	case "false":
+		v := false
+		return &v
+	default:
+		return nil
+	}
+}
+
 // timeRange parses the ?from / ?to query params into a created_at window.
 // Each accepts RFC3339 or a YYYY-MM-DD date; absent/invalid values yield a zero
 // time (unbounded). A date-only `to` is advanced to the next midnight so the
