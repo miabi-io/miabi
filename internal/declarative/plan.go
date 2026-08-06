@@ -303,6 +303,23 @@ func diffRegistry(actual, desired Resource) []FieldDiff {
 	return out
 }
 
+// reservedLabelPrefixes are the container-label namespaces the platform owns.
+// A manifest may name one, but the application service strips it on write
+// (docker.SanitizeUserLabels), so it can never appear in live state. Excluding
+// it from the diff on both sides is what stops such a label reading as drift on
+// every plan. Duplicated here rather than imported so the declarative package
+// stays free of runtime dependencies; the two lists must agree.
+var reservedLabelPrefixes = []string{"io.miabi.", "com.docker."}
+
+func reservedLabelKey(key string) bool {
+	for _, p := range reservedLabelPrefixes {
+		if strings.HasPrefix(key, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // specFields flattens a resource's comparable spec into field->value. Fields
 // named in an application's secretEnv are masked so secret values never appear
 // in a plan, while still letting presence be compared.
@@ -322,6 +339,16 @@ func specFields(r Resource) map[string]string {
 		// The credential the image is pulled with is part of the app's identity:
 		// re-pointing it at another registry must converge like any other change.
 		f["registry"] = a.Registry
+		// Container labels drive label-reading tooling (Traefik routing rules,
+		// Watchtower policies), so editing one has to redeploy the container.
+		// Compared per key, like env: a plan then names the label that changed
+		// instead of showing one opaque blob.
+		for k, v := range a.ContainerLabels {
+			if reservedLabelKey(k) {
+				continue // stripped on write, so it can never be live: skip both sides
+			}
+			f["containerLabels."+k] = v
+		}
 		if a.Resources != nil {
 			// Compare resource caps by their canonical numeric value so "512Mi"
 			// and the live byte count (or "0.5" vs nano-CPUs) don't read as drift.
