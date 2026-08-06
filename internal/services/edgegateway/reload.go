@@ -28,21 +28,44 @@ var reloadHTTPClient = &http.Client{Timeout: 10 * time.Second}
 
 // Reload tells the edge gateway fronting srv to pull and apply its configuration
 // immediately (POST /reload), instead of waiting for the HTTP-provider poll
-// interval. It is a no-op for the local manager, which uses a watched file
-// provider that already reloads on write. token is the node's gateway token (the
-// same value injected as GOMA_RELOAD_TOKEN on the gateway).
+// interval. token is the node's gateway token (the same value injected as
+// GOMA_RELOAD_TOKEN on the gateway).
+//
+// A no-op for a gateway watching the providers volume, which already reloads on
+// write. That is the manager's default — but a manager gateway switched to the
+// HTTP provider polls like any edge node and does need the nudge, so the
+// decision follows the gateway's actual config rather than the node.
 func (s *Service) Reload(ctx context.Context, srv *models.Server, token string) error {
-	if usesFileProvider(srv) {
+	if s.effectiveFileProvider(srv) {
 		return nil
 	}
-	if srv == nil || srv.Address == "" {
-		return fmt.Errorf("edgegateway: server has no address to reach its gateway")
+	host, err := s.reloadHost(srv)
+	if err != nil {
+		return err
 	}
-	baseURL := "http://" + net.JoinHostPort(srv.Address, strconv.Itoa(gatewayWebPort))
+	baseURL := "http://" + net.JoinHostPort(host, strconv.Itoa(gatewayWebPort))
 	if err := postReload(ctx, reloadHTTPClient, baseURL, token); err != nil {
 		return fmt.Errorf("edgegateway: reload %q: %w", srv.Name, err)
 	}
 	return nil
+}
+
+// reloadHost is the address Miabi reaches a node's gateway at.
+//
+// A remote edge node is reached over the network at its own address. The manager
+// is not: its server record carries no address (it is "here"), and the control
+// plane runs in a container, so its own loopback is not the host's. Both
+// containers share MIABI_PROXY_NETWORK, though — the same network the gateway is
+// attached to and reaches app containers by alias on — so the gateway is
+// addressable there by container name.
+func (s *Service) reloadHost(srv *models.Server) (string, error) {
+	if isManager(srv) {
+		return ContainerName, nil
+	}
+	if srv == nil || srv.Address == "" {
+		return "", fmt.Errorf("edgegateway: server has no address to reach its gateway")
+	}
+	return srv.Address, nil
 }
 
 // postReload issues the authenticated POST <baseURL>/reload request.

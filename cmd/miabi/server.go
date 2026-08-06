@@ -172,6 +172,18 @@ func runServer(cli *okapicli.CLI) {
 			// The manager's own gateway reuses the platform Redis for shared cache +
 			// distributed rate limiting (remote edge nodes get a per-node Redis).
 			nodeGateway.SetRedis(cfg.Redis.Addr, cfg.Redis.Password)
+			// Publish request events for Workspace Analytics — only meaningful while
+			// this process runs the consumer that reads them.
+			if cfg.AnalyticsEnabled {
+				nodeGateway.SetAnalytics(cfg.AnalyticsStream)
+			}
+			// The manager's gateway can only watch route files if it can be handed the
+			// volume Miabi writes them to. A stack install mounts one there and this
+			// finds it; a manual install, whose mounts Miabi did not create, yields
+			// nothing and the gateway polls the HTTP provider instead.
+			nodeGateway.SetProvidersVolume(
+				edgegateway.DetectProvidersVolume(context.Background(), dockerClient, cfg.GomaProviderDir),
+			)
 			// When set, gateways encrypt sensitive config (middleware rules + TLS) at rest.
 			nodeGateway.SetConfigEncryptionKey(cfg.GomaConfigEncryptionKey)
 			nodeManager.SetOnConnect(func(ctx context.Context, srv *models.Server, token string, dc docker.Client) {

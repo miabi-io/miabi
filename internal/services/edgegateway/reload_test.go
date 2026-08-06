@@ -51,6 +51,7 @@ func TestPostReloadErrorsOnNon2xx(t *testing.T) {
 
 func TestReloadNoOpForLocalManager(t *testing.T) {
 	s := NewService(nil, "https://miabi.example.com", "img", "miabi", "ops@example.com")
+	s.SetProvidersVolume("mb-platform-gateway-providers") // stack install
 	// Local manager uses the watched file provider; reload must be a no-op even
 	// with no address configured.
 	if err := s.Reload(context.Background(), &models.Server{IsLocal: true}, "tok"); err != nil {
@@ -72,7 +73,8 @@ func TestRenderConfigEnablesReloadForEdge(t *testing.T) {
 		t.Fatalf("edge config missing reload block:\n%s", got)
 	}
 
-	// The local manager relies on file-provider watch; no reload block.
+	// A stack-install manager relies on file-provider watch; no reload block.
+	s.SetProvidersVolume("mb-platform-gateway-providers")
 	mgr := s.RenderConfig(&models.Server{Name: "manager", IsLocal: true})
 	if strings.Contains(mgr, "reload:") {
 		t.Fatalf("manager config should not have a reload block:\n%s", mgr)

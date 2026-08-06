@@ -50,7 +50,10 @@ func TestRenderConfig(t *testing.T) {
 }
 
 func TestRenderConfigManagerUsesFileProvider(t *testing.T) {
+	// A stack install: Miabi created the volume behind its route directory, so it
+	// can hand the manager's gateway the same one to watch.
 	s := NewService(nil, "https://miabi.example.com/", "img", "miabi", "ops@example.com")
+	s.SetProvidersVolume("mb-platform-gateway-providers")
 	got := s.RenderConfig(&models.Server{Name: "manager", IsLocal: true})
 
 	for _, want := range []string{

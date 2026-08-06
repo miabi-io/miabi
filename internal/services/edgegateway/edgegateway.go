@@ -24,6 +24,7 @@ import (
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/selfcontainer"
 	"github.com/miabi-io/miabi/internal/services/platformimage"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 	"gopkg.in/yaml.v3"
@@ -56,9 +57,7 @@ const (
 	configPath        = "/etc/goma"
 	// DefaultConfigFile is Goma Gateway's default config path inside the container.
 	DefaultConfigFile = configPath + "/goma.yml"
-	// ProvidersVolume is the file-provider directory volume shared with Miabi
-	// (the control plane writes route files there). Mounted into the manager's
-	// gateway so it reads routes directly instead of polling the HTTP provider.
+	// ProvidersVolume is a legacy per-node providers volume.
 	ProvidersVolume = "mb-node-gateway-providers"
 	providersPath   = configPath + "/providers"
 	// gatewayRedisPasswordEnv is the env var the gateway's Redis password is
@@ -113,6 +112,14 @@ type Service struct {
 	redisAddr     string // the platform Redis address (reused by the manager's gateway)
 	redisPassword string // the platform Redis password
 	configEncKey  string // GOMA_CONFIG_ENCRYPTION_KEY injected into every gateway ("" = off)
+	// analyticsStream is the Redis stream request events are published to; empty
+	// disables analytics in the rendered config (see analyticsEnabledFor).
+	analyticsStream string
+	// providersVolume is the Docker volume backing Miabi's own route-file
+	// directory. Empty means Miabi cannot hand a gateway that directory, so the
+	// manager's gateway polls the HTTP provider like a remote node does. See
+	// SetProvidersVolume.
+	providersVolume string
 }
 
 func NewService(workspaces *repositories.WorkspaceRepository, controlURL, image, network, acmeEmail string) *Service {
@@ -142,6 +149,37 @@ func (s *Service) SetRedis(addr, password string) {
 	s.redisPassword = password
 }
 
+// Default analytics sampling and stream cap, matching the platform stack's
+// goma.yml so a gateway installed from the admin dashboard behaves the same as
+// one from the shipped stack.
+const (
+	defaultAnalyticsSample = 1.0
+	defaultAnalyticsMaxLen = 1_000_000
+)
+
+// SetAnalytics wires the Redis stream the gateway publishes request events to.
+// Pass "" when the platform's analytics consumer is not running
+// (MIABI_ANALYTICS_ENABLED=false): a gateway writing to a stream nobody reads
+// would fill Redis to maxLen and be discarded.
+func (s *Service) SetAnalytics(stream string) { s.analyticsStream = strings.TrimSpace(stream) }
+
+// analyticsEnabledFor reports whether the rendered config should turn analytics
+// on for this node's gateway.
+//
+// It requires the gateway to publish to the *platform* Redis, which is the one
+// Miabi's analytics consumer reads. A remote edge node runs its own per-node
+// Redis for cache and rate limiting; events written there are consumed by
+// nobody, so enabling analytics on one would silently fill that node's Redis and
+// never reach a dashboard. Until events are relayed from edge nodes, analytics
+// belongs to the manager's gateway only.
+//
+// Note this asks where the gateway runs, not which route provider it uses: a
+// manager gateway on the HTTP provider still writes to the platform Redis, so it
+// still gets analytics.
+func (s *Service) analyticsEnabledFor(srv *models.Server) bool {
+	return s.analyticsStream != "" && isManager(srv) && s.redisAddrFor(srv) != ""
+}
+
 // redisImg resolves the per-node gateway Redis image.
 func (s *Service) redisImg() string {
 	if s.images != nil {
@@ -158,11 +196,14 @@ func (s *Service) redisImg() string {
 func (s *Service) RedisEnabled(srv *models.Server) bool { return s.redisAddrFor(srv) != "" }
 
 // redisAddrFor returns the Redis address a node's gateway should use: the shared
-// platform Redis for the manager (file provider), or the per-node Redis for a
-// remote edge node. Empty when Redis is unavailable (manager with no platform
-// Redis configured).
+// platform Redis for the manager, or the per-node Redis for a remote edge node,
+// which is self-contained. Empty when Redis is unavailable (manager with no
+// platform Redis configured).
+//
+// Keyed on where the gateway runs, not on its route provider — a manager gateway
+// switched to the HTTP provider still shares the control plane's Redis.
 func (s *Service) redisAddrFor(srv *models.Server) string {
-	if usesFileProvider(srv) {
+	if isManager(srv) {
 		return s.redisAddr
 	}
 	return RedisContainer + ":6379"
@@ -242,9 +283,30 @@ type gateway struct {
 	TLS         *tlsBlock             `yaml:"tls,omitempty"`
 	Redis       *redisBlock           `yaml:"redis,omitempty"`
 	Networking  *networking           `yaml:"networking,omitempty"`
+	Analytics   *analyticsBlock       `yaml:"analytics,omitempty"`
 	EntryPoints map[string]entryPoint `yaml:"entryPoints,omitempty"`
 	Reload      *reloadBlock          `yaml:"reload,omitempty"`
 	Providers   providers             `yaml:"providers"`
+}
+
+// analyticsBlock makes the gateway publish one event per request to a Redis
+// stream, which Miabi's analytics consumer rolls up into the Traffic /
+// Performance / Web dashboards. Events carry no client IP — only a daily-salted
+// visitor hash and, where a GeoIP database is present, a country resolved at the
+// edge.
+//
+// It mirrors the platform stack's goma.yml so both install paths behave the
+// same. GOMA_ANALYTICS_* on the gateway container overrides whatever is here.
+type analyticsBlock struct {
+	Enabled bool   `yaml:"enabled"`
+	Stream  string `yaml:"stream"`
+	// Sample is the fraction of requests recorded (0..1). The dashboards scale
+	// sampled counts back up, so lowering it on a very high-traffic edge trades
+	// precision for load rather than losing whole panels.
+	Sample float64 `yaml:"sample"`
+	// MaxLen approximately caps the stream, so a stopped consumer cannot grow
+	// Redis without bound.
+	MaxLen int `yaml:"maxLen"`
 }
 
 // logBlock sets the edge gateway's log verbosity (Goma's gateway.log.level),
@@ -337,12 +399,102 @@ const defaultCertProvider = "acme"
 // config (Goma's gateway.log.level).
 const defaultLogLevel = "info"
 
-// usesFileProvider reports whether srv's gateway reads routes from the shared
-// providers volume (the manager) rather than polling the HTTP provider (remote
-// edge nodes). The manager runs alongside Miabi on the same host, so it can
-// share the volume Miabi writes route files to.
-func usesFileProvider(srv *models.Server) bool {
+// isManager reports whether srv is the node the control plane itself runs on.
+//
+// This is what decides *infrastructure*: the manager's gateway shares the
+// platform's Redis and the providers volume, while every remote edge node is
+// self-contained — its own Goma and its own Redis, reachable only over the
+// tunnel. Deliberately distinct from usesFileProvider: which Redis a gateway
+// uses is a property of where it runs, not of how it learns its routes.
+func isManager(srv *models.Server) bool {
 	return srv != nil && srv.IsLocal
+}
+
+// usesFileProvider reports which route source the *rendered default* config uses
+// for srv.
+//
+// The file provider needs one thing the HTTP provider does not: the gateway must
+// be given the very directory Miabi writes route files to. That is only possible
+// on the manager, and only when Miabi knows which Docker volume backs that
+// directory — true for a stack install, which owns its volumes, and not true for
+// a manual install, where the operator wired the mounts and Miabi cannot mount
+// what it cannot name. Everything else polls the HTTP provider, which needs
+// nothing shared.
+//
+// It is only the default. A gateway's config may be edited afterwards — see
+// effectiveFileProvider, which is what the runtime plumbing keys off.
+func (s *Service) usesFileProvider(srv *models.Server) bool {
+	return isManager(srv) && s.providersVolume != ""
+}
+
+// SetProvidersVolume names the Docker volume backing Miabi's own route-file
+// directory, so the manager's gateway can be given the same one. Leave it empty
+// (a manual install whose mounts Miabi did not create) and the manager's gateway
+// polls the HTTP provider instead — a route source that needs nothing shared.
+func (s *Service) SetProvidersVolume(name string) { s.providersVolume = strings.TrimSpace(name) }
+
+// DetectProvidersVolume returns the name of the Docker volume mounted at
+// providerDir inside Miabi's own container, or "" when there is none.
+//
+// This is what tells a stack install from a manual one without asking: a stack
+// install mounts a named volume there (Miabi created it), while a manual install
+// may use a bind mount, a differently-named volume, or nothing at all. Only a
+// named volume can be mounted into a second container, so only that answer lets
+// the manager's gateway watch the directory.
+func DetectProvidersVolume(ctx context.Context, dc docker.Client, providerDir string) string {
+	if dc == nil || strings.TrimSpace(providerDir) == "" {
+		return ""
+	}
+	self := selfcontainer.Detect()
+	if self == "" {
+		return "" // not running in a container: nothing to share
+	}
+	cfg, err := dc.InspectContainerConfig(ctx, self)
+	if err != nil {
+		logger.Warn("edgegateway: could not inspect own container for the providers volume", "error", err)
+		return ""
+	}
+	want := strings.TrimRight(providerDir, "/")
+	for _, m := range cfg.Mounts {
+		if strings.TrimRight(m.Destination, "/") != want {
+			continue
+		}
+		if m.Type != "volume" || m.Name == "" {
+			// A bind mount is a host path, not something Miabi can hand another
+			// container by name — the gateway polls instead.
+			logger.Info("edgegateway: route directory is not a named volume; the manager's gateway will poll the HTTP provider",
+				"destination", m.Destination, "type", m.Type)
+			return ""
+		}
+		return m.Name
+	}
+	return ""
+}
+
+// effectiveFileProvider reports whether srv's gateway *actually* reads routes
+// from the providers volume, honouring a customised config rather than assuming
+// the default. A manager gateway switched to the HTTP provider needs the same
+// plumbing a remote node gets — a reload token, and an on-demand reload when
+// routes change — or it would only pick up changes on its next poll.
+//
+// An unparseable config falls back to the default for the node; the config is
+// validated on save, so this only covers one hand-edited outside the API.
+func (s *Service) effectiveFileProvider(srv *models.Server) bool {
+	if srv == nil || strings.TrimSpace(srv.GatewayConfigYAML) == "" {
+		return s.usesFileProvider(srv)
+	}
+	var cfg gomaConfig
+	if err := yaml.Unmarshal([]byte(srv.GatewayConfigYAML), &cfg); err != nil {
+		return s.usesFileProvider(srv)
+	}
+	p := cfg.Gateway.Providers
+	if p.File != nil && p.File.Enabled {
+		return true
+	}
+	if p.HTTP != nil && p.HTTP.Enabled {
+		return false
+	}
+	return s.usesFileProvider(srv)
 }
 
 // RenderConfig builds the default goma.yml a node gateway runs with: ACME for
@@ -355,7 +507,7 @@ func usesFileProvider(srv *models.Server) bool {
 // This is the editable starting point shown in the UI.
 func (s *Service) RenderConfig(srv *models.Server) string {
 	var prov providers
-	if usesFileProvider(srv) {
+	if s.usesFileProvider(srv) {
 		prov.File = &fileProvider{Enabled: true, Directory: providersPath, Watch: true}
 	} else {
 		prov.HTTP = &httpProvider{
@@ -390,7 +542,7 @@ func (s *Service) RenderConfig(srv *models.Server) string {
 	// Remote edge nodes poll the HTTP provider; expose the on-demand reload
 	// endpoint so Miabi can make them pull immediately. The manager (local) uses a
 	// watched file provider that already reloads on write, so it doesn't need it.
-	if !usesFileProvider(srv) {
+	if !s.usesFileProvider(srv) {
 		cfg.Gateway.Reload = &reloadBlock{Enabled: true}
 	}
 	// Wire Redis for shared cache + distributed rate limiting when available: the
@@ -398,6 +550,12 @@ func (s *Service) RenderConfig(srv *models.Server) string {
 	// The password is injected as ${GATEWAY_REDIS_PASSWORD} at deploy time.
 	if addr := s.redisAddrFor(srv); addr != "" {
 		cfg.Gateway.Redis = &redisBlock{Addr: addr, Password: "${" + gatewayRedisPasswordEnv + "}"}
+	}
+	if s.analyticsEnabledFor(srv) {
+		cfg.Gateway.Analytics = &analyticsBlock{
+			Enabled: true, Stream: s.analyticsStream,
+			Sample: defaultAnalyticsSample, MaxLen: defaultAnalyticsMaxLen,
+		}
 	}
 	body, err := yaml.Marshal(cfg)
 	if err != nil {
@@ -515,7 +673,7 @@ func (s *Service) prepare(ctx context.Context, dc docker.Client, srv *models.Ser
 	// manager's default uses the file provider and does not.
 	cfg := strings.TrimSpace(srv.GatewayConfigYAML)
 	if cfg == "" {
-		if !usesFileProvider(srv) && s.controlURL == "" {
+		if !s.usesFileProvider(srv) && s.controlURL == "" {
 			return fmt.Errorf("control URL is not configured (set MIABI_CONTROL_URL)")
 		}
 		cfg = s.RenderConfig(srv)
@@ -528,7 +686,7 @@ func (s *Service) prepare(ctx context.Context, dc docker.Client, srv *models.Ser
 	}
 
 	// A remote edge node runs its own Redis (the manager reuses the platform one).
-	if !usesFileProvider(srv) {
+	if !isManager(srv) {
 		if err := s.ensureNodeRedis(ctx, dc, srv, redisPassword); err != nil {
 			return fmt.Errorf("ensure gateway redis: %w", err)
 		}
@@ -565,10 +723,12 @@ func (s *Service) runGateway(ctx context.Context, dc docker.Client, srv *models.
 		ConfigVolume: configPath,
 		CertsVolume:  "/etc/letsencrypt",
 	}
-	// The manager's gateway shares Miabi's providers volume (file provider),
-	// so route files Miabi writes are read directly.
-	if usesFileProvider(srv) {
-		mounts[ProvidersVolume] = providersPath
+	// Give the manager's gateway the very volume Miabi writes route files to —
+	// not a volume of the gateway's own, which would leave the file provider
+	// watching a directory nothing ever writes to. Only mounted when that volume
+	// is known; otherwise the config polls the HTTP provider and needs nothing.
+	if s.usesFileProvider(srv) {
+		mounts[s.providersVolume] = providersPath
 	}
 	spec := docker.RunSpec{
 		Name:     name,
@@ -608,14 +768,15 @@ func (s *Service) runGateway(ctx context.Context, dc docker.Client, srv *models.
 // ${GATEWAY_REDIS_PASSWORD}). Neither secret lives in the editable config.
 func (s *Service) gatewayEnv(srv *models.Server, token, redisPassword string) []string {
 	env := []string{apiKeyEnv + "=" + token}
-	// Protect the on-demand reload endpoint with the node's gateway token (remote
-	// edge nodes only; the manager reloads via its watched file provider).
-	if !usesFileProvider(srv) {
+	// Protect the on-demand reload endpoint with the node's gateway token. Needed
+	// by any gateway that polls the HTTP provider — every remote edge node, and a
+	// manager gateway configured to poll instead of watching the volume.
+	if !s.effectiveFileProvider(srv) {
 		env = append(env, reloadTokenEnv+"="+token)
 	}
 	if s.redisAddrFor(srv) != "" {
 		pw := redisPassword
-		if usesFileProvider(srv) {
+		if isManager(srv) {
 			pw = s.redisPassword
 		}
 		env = append(env, gatewayRedisPasswordEnv+"="+pw)
