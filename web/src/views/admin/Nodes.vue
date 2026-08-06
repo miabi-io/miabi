@@ -435,6 +435,7 @@ async function submit() {
     license.load(true) // refresh node usage so the cap chip stays accurate
     if (mode === 'agent') {
       createdToken.value = res.data.data.token
+      await loadAgentCommand(res.data.data.node.id, res.data.data.token)
       notify.success('Node added — copy the join token now')
     } else {
       showCreate.value = false
@@ -460,15 +461,38 @@ async function submit() {
 const ACCESS_LABELS: Record<string, string> = { socket: 'Local socket', agent: 'Agent', api: 'Docker API' }
 function accessLabel(m?: string): string { return ACCESS_LABELS[m || 'agent'] || m || '—' }
 
-const controlUrl = computed(() => window.location.origin)
-const agentCommand = computed(
-  () =>
+// The join command is built by the server, so it carries the configured
+// MIABI_CONTROL_URL — the address the node must dial back on, which is not
+// necessarily the address this browser reached the panel at. Building it here
+// from window.location.origin enrolled agents against whatever host the admin
+// happened to open (an internal IP, a port-forward, a proxy that is not the
+// control plane), and the node then silently failed to connect.
+const agentCommand = ref('')
+
+// localAgentCommand is the fallback used only when the server's command cannot
+// be fetched. The token is shown exactly once, so an empty dialog would lose it
+// — a command with a best-guess URL is recoverable, a missing one is not.
+function localAgentCommand(token: string): string {
+  return (
     `docker run -d --name miabi-agent --restart unless-stopped \\\n` +
-    `  -e MIABI_CONTROL_URL=${controlUrl.value} \\\n` +
-    `  -e MIABI_NODE_TOKEN=${createdToken.value ?? '<token>'} \\\n` +
+    `  -e MIABI_CONTROL_URL=${window.location.origin} \\\n` +
+    `  -e MIABI_NODE_TOKEN=${token} \\\n` +
     `  -v /var/run/docker.sock:/var/run/docker.sock \\\n` +
-    `  ${agentImage.value}`,
-)
+    `  ${agentImage.value}`
+  )
+}
+
+// The server returns the command with a <JOIN_TOKEN> placeholder (the token is
+// never in a GET response); the real one is spliced in here so it stays
+// copy-paste ready.
+async function loadAgentCommand(nodeId: number, token: string) {
+  try {
+    const jc = (await nodesApi.joinCommand(nodeId)).data.data
+    agentCommand.value = jc.command.replace('<JOIN_TOKEN>', token)
+  } catch {
+    agentCommand.value = localAgentCommand(token)
+  }
+}
 
 async function copy(text: string) {
   if (await copyText(text)) notify.success('Copied')
