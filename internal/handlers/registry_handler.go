@@ -132,7 +132,8 @@ func (h *RegistryHandler) mapErr(c *okapi.Context, err error) error {
 	switch {
 	case errors.Is(err, registry.ErrNameTaken):
 		return c.AbortWithError(409, err)
-	case errors.Is(err, registry.ErrNameRequired), errors.Is(err, registry.ErrSecretRequired):
+	case errors.Is(err, registry.ErrNameRequired), errors.Is(err, registry.ErrSecretRequired),
+		errors.Is(err, registry.ErrUnknownSecret):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, registry.ErrNotFound):
 		return c.AbortNotFound("registry not found")

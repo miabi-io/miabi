@@ -664,6 +664,9 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}
 	}
 	registryService := registry.NewService(repositories.NewRegistryRepository(db))
+	// A credential may hold a `${{ secrets.NAME }}` reference instead of its own
+	// copy of the password, resolved from the vault at every use.
+	registryService.SetSecrets(secretService)
 	// Built-in Docker registry (distinct from the external-creds registryService).
 	registryServerService := registryserver.NewService(
 		repositories.NewRegistrySettingsRepository(db),
@@ -676,6 +679,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	registryServerService.SetEntitlements(ee)
 	gitRepoRepo := repositories.NewGitRepoRepository(db)
 	gitRepoService := gitrepo.NewService(gitRepoRepo)
+	gitRepoService.SetSecrets(secretService) // same vault-reference support as registries
 	domainRepo := repositories.NewDomainRepository(db)
 	domainService := domain.NewService(domainRepo)
 	dnsProviderService := dnsprovider.NewService(repositories.NewDNSProviderRepository(db), repositories.NewDNSRecordRepository(db), domainRepo)
@@ -778,7 +782,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Gate custom-certificate imports on the workspace's registered domains.
 	certificateService.SetDomains(domainRepo)
 	// Declarative apply engine (shared by the one-shot apply API and GitOps).
-	applyService := apply.NewService(appService, storageService, databaseService, stackService, secretService, routeService, domainService)
+	applyService := apply.NewService(appService, storageService, databaseService, stackService, secretService, routeService, domainService, registryService)
 	// Declarative Application port exposure: externalAccess (reverse-proxy URLs,
 	// over the platform base domain) and publish/hostPort (host-port bindings).
 	applyService.SetPortExposure(func() route.ExternalConfig {
@@ -789,6 +793,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	}, portBindingService)
 	// GitOps: reconcile a repo of miabi.io/v1 manifests via the apply engine.
 	gitopsService := gitops.NewService(repositories.NewGitSourceRepository(db), gitRepoRepo, applyService)
+	gitopsService.SetSecrets(secretService) // resolve a vault-backed Git credential when fetching
 	// CI/CD pipelines: definitions + runs on the internal runner (worker).
 	pipelineService := pipeline.NewService(repositories.NewPipelineRepository(db), producer)
 	// Repository-owned pipelines: adopting a repo's .miabi/pipeline.yaml and

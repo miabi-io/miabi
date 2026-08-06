@@ -55,6 +55,23 @@ func TestExamplesParse(t *testing.T) {
 		t.Fatalf("parse apply/app-ports.yaml: %v", perr)
 	}
 
+	// Private-registry bundle: the app's spec.registry must name the declared
+	// credential, so the example can't drift out of sync with the schema.
+	if pr, derr := os.ReadFile(filepath.Join(examplesDir, "apply", "private-registry.yaml")); derr != nil {
+		t.Fatalf("read private-registry.yaml: %v", derr)
+	} else if prSet, perr := d.Parse(pr); perr != nil {
+		t.Fatalf("parse apply/private-registry.yaml: %v", perr)
+	} else {
+		regs := prSet.ByKind(d.KindRegistry)
+		if len(regs) == 0 {
+			t.Fatal("private-registry.yaml should declare a Registry")
+		}
+		apps := prSet.ByKind(d.KindApplication)
+		if len(apps) == 0 || apps[0].Application.Registry != regs[0].Metadata.Name {
+			t.Errorf("private-registry.yaml app should reference registry %q", regs[0].Metadata.Name)
+		}
+	}
+
 	// GitOps env folders via ParseFS.
 	for _, env := range []string{"dev", "prod"} {
 		dir := filepath.Join(examplesDir, "gitops", "envs", env)

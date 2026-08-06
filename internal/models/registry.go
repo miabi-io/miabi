@@ -11,6 +11,7 @@ import (
 // images at deploy time. The Secret (password / access token) is encrypted at
 // rest and never serialized.
 type Registry struct {
+	UIDModel
 	ID          uint `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint `json:"workspace_id" gorm:"index:idx_registry_workspace_name,unique;not null"`
 	// Name is the unique slug handle scoped to the workspace.
@@ -21,12 +22,30 @@ type Registry struct {
 	// "registry.gitlab.com". Empty defaults to Docker Hub.
 	Server   string `json:"server"`
 	Username string `json:"username"`
-	// Secret holds the password or access token, encrypted at rest.
+	// Secret holds the password or access token, encrypted at rest. Empty when the
+	// credential points at the vault instead (see SecretRef).
 	Secret string `json:"-" gorm:"not null"`
+	// SecretRef names a workspace Secret holding the password, instead of storing
+	// a copy here (the `${{ secrets.NAME }}` form a client sends in the secret
+	// field). The value is read from the vault at every use, so rotating that
+	// secret rotates this credential with no edit here. Mutually exclusive with
+	// Secret. Not sensitive — it is a name, so it is returned by the API.
+	SecretRef string `json:"secret_ref,omitempty"`
+
+	// Metadata holds free-form labels (provenance, grouping, declarative/GitOps).
+	// Keys under the reserved "miabi.io/" prefix are platform-managed — the
+	// managed-by label is what keeps a GitOps prune from deleting a credential
+	// created by hand.
+	Metadata Metadata `json:"metadata,omitempty" gorm:"serializer:json"`
+	// Annotations holds free-form, non-identifying descriptive metadata (the
+	// manifest's metadata.annotations); no reserved keys. Persisted as JSON.
+	Annotations Metadata `json:"annotations,omitempty" gorm:"serializer:json"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
-	// HasSecret is a transient flag for responses (never persisted).
+	// HasSecret is a transient flag for responses (never persisted): true when the
+	// credential can authenticate, whether from its own stored secret or a vault
+	// reference.
 	HasSecret bool `json:"has_secret" gorm:"-"`
 }

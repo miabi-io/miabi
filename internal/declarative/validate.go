@@ -64,7 +64,28 @@ func (r *Resource) normalize() {
 		if r.Domain.TLS == "" {
 			r.Domain.TLS = "acme"
 		}
+	case r.Registry != nil:
+		r.Registry.Server = normalizeRegistryServer(r.Registry.Server)
 	}
+}
+
+// DefaultRegistryServer is the implicit registry host when a manifest names none
+// (Docker Hub). It mirrors registry.DefaultServer — normalization is duplicated
+// here rather than imported so the declarative package stays free of service
+// dependencies, and both sides must agree or a converged registry would diff.
+const DefaultRegistryServer = "registry-1.docker.io"
+
+// normalizeRegistryServer trims a registry host to its bare authority, matching
+// what the registry service stores, so an unqualified manifest converges instead
+// of drifting on every plan.
+func normalizeRegistryServer(server string) string {
+	server = strings.TrimSpace(server)
+	if server == "" {
+		return DefaultRegistryServer
+	}
+	server = strings.TrimPrefix(server, "https://")
+	server = strings.TrimPrefix(server, "http://")
+	return strings.TrimSuffix(server, "/")
 }
 
 // validate enforces a single resource's semantic rules. Manifests are untrusted
@@ -90,6 +111,8 @@ func (r *Resource) validate() error {
 		return r.validateRoute()
 	case KindDomain:
 		return r.validateDomain()
+	case KindRegistry:
+		return r.validateRegistry()
 	case KindVolume, KindStack, KindSecret, KindProject:
 		return nil
 	default:
@@ -142,6 +165,29 @@ func (r *Resource) validateDomain() error {
 	return nil
 }
 
+// registryServerRe matches a registry authority: a dotted host with an optional
+// port ("ghcr.io", "registry.example.com:5000", "localhost:5000").
+var registryServerRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?$`)
+
+func (r *Resource) validateRegistry() error {
+	reg := r.Registry
+	if reg == nil {
+		return fmt.Errorf("registry %q: spec is required", r.Metadata.Name)
+	}
+	// normalize() has already stripped any scheme and defaulted the host, so what
+	// is left must be a bare authority.
+	if !registryServerRe.MatchString(reg.Server) {
+		return fmt.Errorf("registry %q: server %q must be a host, optionally with a port (no scheme, no path)", r.Metadata.Name, reg.Server)
+	}
+	// A password is optional in the manifest: a credential may be declared in git
+	// and have its token set out-of-band (once, in the UI). Creating it then fails
+	// loudly at apply time rather than silently storing an empty secret.
+	if strings.TrimSpace(reg.Username) == "" && strings.TrimSpace(reg.Password) != "" {
+		return fmt.Errorf("registry %q: username is required when a password is set", r.Metadata.Name)
+	}
+	return nil
+}
+
 func (r *Resource) validateApplication() error {
 	a := r.Application
 	if a == nil {
@@ -172,6 +218,9 @@ func (r *Resource) validateApplication() error {
 	}
 	if a.ExternalLabel != "" && !nameRe.MatchString(a.ExternalLabel) {
 		return fmt.Errorf("application %q: externalLabel %q must be a DNS label", r.Metadata.Name, a.ExternalLabel)
+	}
+	if a.Registry != "" && !nameRe.MatchString(a.Registry) {
+		return fmt.Errorf("application %q: registry %q must be a resource name matching %s", r.Metadata.Name, a.Registry, nameRe)
 	}
 	for _, mt := range a.Mounts {
 		if mt.Volume == "" {

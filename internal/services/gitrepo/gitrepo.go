@@ -23,6 +23,7 @@ import (
 	"github.com/go-git/go-git/v5/storage/memory"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/crypto"
+	"github.com/miabi-io/miabi/internal/services/secret"
 	"github.com/miabi-io/miabi/internal/slug"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
@@ -33,13 +34,52 @@ var (
 	ErrSecretRequired = errors.New("git credential secret is required")
 	ErrNameTaken      = errors.New("a git repository with this name already exists")
 	ErrNotFound       = errors.New("git repository not found")
+	ErrUnknownSecret  = errors.New("the referenced secret does not exist in this workspace")
 )
 
+// Secrets resolves a stored credential's secret: its own encrypted value, or the
+// current value of the workspace Secret it references. Implemented by the secret
+// service.
+//
+// It is threaded explicitly into AuthFor/CredentialURL rather than held only on
+// the Service, because the deploy worker, the pipeline runner and GitOps each
+// reach those from their own repositories.
+type Secrets interface {
+	CredentialSecret(workspaceID uint, enc, ref string) (string, error)
+}
+
+// Vault is the fuller access the Service itself needs: resolution plus the
+// existence check that validates a reference when a credential is saved.
+type Vault interface {
+	Secrets
+	ExistsByName(workspaceID uint, name string) bool
+}
+
 type Service struct {
-	repo *repositories.GitRepoRepository
+	repo    *repositories.GitRepoRepository
+	secrets Vault
 }
 
 func NewService(repo *repositories.GitRepoRepository) *Service { return &Service{repo: repo} }
+
+// SetSecrets wires the vault, enabling credentials that reference a Secret
+// rather than storing their own copy of the token or key.
+func (s *Service) SetSecrets(v Vault) { s.secrets = v }
+
+// storeSecret decides where an incoming secret lands: a `${{ secrets.NAME }}`
+// value becomes a reference to the vault, anything else is encrypted here. The
+// two are mutually exclusive, so switching a credential from one form to the
+// other always clears the other.
+func (s *Service) storeSecret(workspaceID uint, value string) (enc, ref string, err error) {
+	if name := secret.RefName(value); name != "" {
+		if s.secrets != nil && !s.secrets.ExistsByName(workspaceID, name) {
+			return "", "", fmt.Errorf("%w: %q", ErrUnknownSecret, name)
+		}
+		return "", name, nil
+	}
+	enc, err = crypto.EncryptWS(workspaceID, value)
+	return enc, "", err
+}
 
 // Input describes a git credential to create or update. Name is the desired
 // unique slug handle; DisplayName is the free-text label (falls back to Name).
@@ -49,7 +89,11 @@ type Input struct {
 	URL         string
 	AuthType    models.GitAuthType
 	Username    string
-	Secret      string // plaintext token or SSH private key; encrypted before storage
+	// Secret is either the token / SSH private key itself (encrypted before
+	// storage) or a `${{ secrets.NAME }}` reference to a workspace Secret, which
+	// is stored as a reference and resolved at every clone. Blank on update =
+	// keep what is stored.
+	Secret string
 }
 
 func (s *Service) Create(workspaceID uint, in Input) (*models.GitRepository, error) {
@@ -73,9 +117,9 @@ func (s *Service) Create(workspaceID uint, in Input) (*models.GitRepository, err
 	}
 	authType := normalizeAuthType(in.AuthType)
 	// Public repos (and a blank secret) are cloned anonymously — no stored secret.
-	enc := ""
+	enc, ref := "", ""
 	if authType != models.GitAuthPublic && strings.TrimSpace(in.Secret) != "" {
-		enc, err = crypto.EncryptWS(workspaceID, in.Secret)
+		enc, ref, err = s.storeSecret(workspaceID, in.Secret)
 		if err != nil {
 			return nil, err
 		}
@@ -88,6 +132,7 @@ func (s *Service) Create(workspaceID uint, in Input) (*models.GitRepository, err
 		AuthType:    authType,
 		Username:    in.Username,
 		Secret:      enc,
+		SecretRef:   ref,
 	}
 	if err := s.repo.Create(g); err != nil {
 		return nil, err
@@ -122,13 +167,15 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.GitRepository,
 	g.Username = in.Username
 	switch {
 	case g.AuthType == models.GitAuthPublic:
-		g.Secret = "" // public repo carries no credential
+		g.Secret, g.SecretRef = "", "" // public repo carries no credential
 	case strings.TrimSpace(in.Secret) != "":
-		enc, err := crypto.EncryptWS(workspaceID, in.Secret)
+		// Switching between a stored token and a vault reference always clears the
+		// other form.
+		enc, ref, err := s.storeSecret(workspaceID, in.Secret)
 		if err != nil {
 			return nil, err
 		}
-		g.Secret = enc
+		g.Secret, g.SecretRef = enc, ref
 	}
 	if err := s.repo.Update(g); err != nil {
 		return nil, err
@@ -155,6 +202,28 @@ func (s *Service) List(workspaceID uint) ([]models.GitRepository, error) {
 	return repos, nil
 }
 
+// BundleSecret returns what a portable workspace bundle should carry for a
+// credential: its vault reference when it has one — the referenced Secret
+// travels in the same bundle, so the indirection (and later rotations on the
+// target) is preserved — else the decrypted token or key.
+//
+// It re-reads the row from the repository because List/Get strip the secret for
+// safe responses; taking it from a listed record would silently export a blank
+// credential.
+func (s *Service) BundleSecret(workspaceID, id uint) (string, error) {
+	g, err := s.repo.FindInWorkspace(workspaceID, id)
+	if err != nil {
+		return "", ErrNotFound
+	}
+	if g.SecretRef != "" {
+		return secret.Ref(g.SecretRef), nil
+	}
+	if g.Secret == "" {
+		return "", nil
+	}
+	return crypto.Decrypt(g.Secret)
+}
+
 func (s *Service) Delete(workspaceID, id uint) error {
 	g, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -169,7 +238,7 @@ func (s *Service) TestConnection(ctx context.Context, workspaceID, id uint) erro
 	if err != nil {
 		return ErrNotFound
 	}
-	auth, err := AuthFor(g)
+	auth, err := AuthFor(g, s.secrets)
 	if err != nil {
 		return err
 	}
@@ -205,7 +274,7 @@ func (s *Service) CloneURLAuth(workspaceID uint, rawURL string, credentialID *ui
 	if strings.TrimSpace(rawURL) == "" {
 		return "", nil, ErrURLRequired
 	}
-	auth, err := AuthFor(g)
+	auth, err := AuthFor(g, s.secrets)
 	if err != nil {
 		return "", nil, err
 	}
@@ -253,20 +322,13 @@ func Checkout(ctx context.Context, dir, url, ref string, auth transport.AuthMeth
 	return hash.String(), nil
 }
 
-// AuthFor builds a go-git auth method from a stored credential, decrypting the
-// secret. Returns nil auth (anonymous) when g is nil. Shared by the deploy
-// worker and the test-connection check.
-func AuthFor(g *models.GitRepository) (transport.AuthMethod, error) {
-	if g == nil {
-		return nil, nil
-	}
-	// Public repos, or any repo with no stored secret, clone anonymously.
-	if normalizeAuthType(g.AuthType) == models.GitAuthPublic || strings.TrimSpace(g.Secret) == "" {
-		return nil, nil
-	}
-	secret, err := crypto.Decrypt(g.Secret)
-	if err != nil {
-		return nil, fmt.Errorf("decrypt git secret: %w", err)
+// AuthFor builds a go-git auth method from a stored credential, resolving its
+// secret through vault. Returns nil auth (anonymous) when g is nil. Shared by
+// the deploy worker, GitOps, and the test-connection check.
+func AuthFor(g *models.GitRepository, vault Secrets) (transport.AuthMethod, error) {
+	secretValue, err := credentialSecret(g, vault)
+	if err != nil || secretValue == "" {
+		return nil, err // no secret => anonymous clone
 	}
 	switch normalizeAuthType(g.AuthType) {
 	case models.GitAuthSSH:
@@ -274,7 +336,7 @@ func AuthFor(g *models.GitRepository) (transport.AuthMethod, error) {
 		if user == "" {
 			user = "git"
 		}
-		keys, err := gitssh.NewPublicKeys(user, []byte(secret), "")
+		keys, err := gitssh.NewPublicKeys(user, []byte(secretValue), "")
 		if err != nil {
 			return nil, fmt.Errorf("parse ssh key: %w", err)
 		}
@@ -284,8 +346,36 @@ func AuthFor(g *models.GitRepository) (transport.AuthMethod, error) {
 		if user == "" {
 			user = "x-access-token" // provider-agnostic default for PAT auth
 		}
-		return &githttp.BasicAuth{Username: user, Password: secret}, nil
+		return &githttp.BasicAuth{Username: user, Password: secretValue}, nil
 	}
+}
+
+// credentialSecret resolves the token or key a credential authenticates with,
+// from its own encrypted value or from the workspace Secret it references.
+// Returns "" for an anonymous clone: a nil credential, a public repo, or one
+// with nothing stored.
+//
+// A credential that references the vault with no vault wired is an error rather
+// than a silent anonymous clone — that would turn a private repo into a
+// confusing "repository not found" much further downstream.
+func credentialSecret(g *models.GitRepository, vault Secrets) (string, error) {
+	if g == nil || normalizeAuthType(g.AuthType) == models.GitAuthPublic {
+		return "", nil
+	}
+	if g.SecretRef != "" {
+		if vault == nil {
+			return "", fmt.Errorf("git credential %q references secret %q but the vault is unavailable", g.Name, g.SecretRef)
+		}
+		return vault.CredentialSecret(g.WorkspaceID, "", g.SecretRef)
+	}
+	if strings.TrimSpace(g.Secret) == "" {
+		return "", nil
+	}
+	value, err := crypto.Decrypt(g.Secret)
+	if err != nil {
+		return "", fmt.Errorf("decrypt git secret: %w", err)
+	}
+	return value, nil
 }
 
 // ErrSSHUnsupportedOnRunner is returned when a repo authenticates by SSH key but
@@ -302,17 +392,20 @@ var ErrSSHUnsupportedOnRunner = errors.New("SSH-key git credentials can't be use
 // The credential lands only in the runner's ephemeral per-job workspace git
 // config (removed when the job ends) and is never logged (the runner treats the
 // source URL as opaque/secret).
-func CredentialURL(rawURL string, g *models.GitRepository) (string, error) {
+func CredentialURL(rawURL string, g *models.GitRepository, vault Secrets) (string, error) {
 	rawURL = normalizeGitURL(rawURL)
-	if g == nil || normalizeAuthType(g.AuthType) == models.GitAuthPublic || strings.TrimSpace(g.Secret) == "" {
+	if g == nil || normalizeAuthType(g.AuthType) == models.GitAuthPublic {
 		return rawURL, nil
 	}
 	if normalizeAuthType(g.AuthType) == models.GitAuthSSH {
 		return "", ErrSSHUnsupportedOnRunner
 	}
-	secret, err := crypto.Decrypt(g.Secret)
+	secretValue, err := credentialSecret(g, vault)
 	if err != nil {
-		return "", fmt.Errorf("decrypt git secret: %w", err)
+		return "", err
+	}
+	if secretValue == "" {
+		return rawURL, nil // nothing stored: an anonymous clone
 	}
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -325,12 +418,14 @@ func CredentialURL(rawURL string, g *models.GitRepository) (string, error) {
 	if user == "" {
 		user = "x-access-token" // provider-agnostic default for PAT auth
 	}
-	u.User = url.UserPassword(user, secret) // url-encodes tokens with special chars
+	u.User = url.UserPassword(user, secretValue) // url-encodes tokens with special chars
 	return u.String(), nil
 }
 
+// strip clears the ciphertext and flags secret presence for safe responses. A
+// vault reference is a name, not a secret, so it is left in place for the UI.
 func strip(g *models.GitRepository) *models.GitRepository {
-	g.HasSecret = g.Secret != ""
+	g.HasSecret = g.Secret != "" || g.SecretRef != ""
 	g.Secret = ""
 	return g
 }

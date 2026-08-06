@@ -35,6 +35,10 @@ const (
 	// TLS policy and (optional) wildcard coverage. DNS-ownership verification is a
 	// runtime action, not a declarable field.
 	KindDomain Kind = "Domain"
+	// KindRegistry is a container-registry credential used to pull private images.
+	// It is deliberately not called a "secret": Miabi's Secret kind is the vault,
+	// and an Application references this one by name through spec.registry.
+	KindRegistry Kind = "Registry"
 	// KindProject bundles a set of resources living in one repo/namespace.
 	KindProject Kind = "Project"
 )
@@ -49,6 +53,7 @@ var knownKinds = map[Kind]bool{
 	KindRoute:       true,
 	KindSecret:      true,
 	KindDomain:      true,
+	KindRegistry:    true,
 	KindProject:     true,
 }
 
@@ -83,6 +88,7 @@ type Resource struct {
 	Route       *RouteSpec       `yaml:"-" json:"route,omitempty"`
 	Secret      *SecretSpec      `yaml:"-" json:"secret,omitempty"`
 	Domain      *DomainSpec      `yaml:"-" json:"domain,omitempty"`
+	Registry    *RegistrySpec    `yaml:"-" json:"registry,omitempty"`
 	Project     *ProjectSpec     `yaml:"-" json:"project,omitempty"`
 }
 
@@ -109,6 +115,12 @@ type ApplicationSpec struct {
 	ContainerLabels map[string]string `yaml:"containerLabels,omitempty" json:"containerLabels,omitempty"`
 	// Stack optionally names the owning Stack resource.
 	Stack string `yaml:"stack,omitempty" json:"stack,omitempty"`
+	// Registry names the Registry credential used to pull this image (a private
+	// registry). Empty = an anonymous, public pull. The credential does not have
+	// to be declared in the same bundle: a name that is not in the manifest is
+	// resolved against the workspace's existing credentials, so a token created
+	// once in the UI can be referenced by every manifest.
+	Registry string `yaml:"registry,omitempty" json:"registry,omitempty"`
 	// ExternalLabel pins the subdomain used for external access
 	// (`<label>.<base-domain>`). Optional — when unset Miabi generates a
 	// stable label; pinning it keeps the public URL deterministic across applies.
@@ -187,6 +199,27 @@ type RouteSpec struct {
 type DomainSpec struct {
 	TLS      string `yaml:"tls,omitempty" json:"tls,omitempty"` // acme|custom (default acme)
 	Wildcard bool   `yaml:"wildcard,omitempty" json:"wildcard,omitempty"`
+}
+
+// RegistrySpec is a container-registry credential. Server is the registry host
+// (empty = Docker Hub); Username and Password authenticate to it. An Application
+// selects one by name through its spec.registry.
+//
+// Password is write-only — it is never read back and never appears in a plan.
+// Prefer referencing the vault ("{{ .secrets.ghcr_token }}") over an inline
+// literal, so a manifest committed to git carries no token. A rotation still
+// converges: the plan compares an unreadable fingerprint of the stored password
+// (see PasswordFP) and reports the change as "password: (current) → (rotated)".
+type RegistrySpec struct {
+	Server   string `yaml:"server,omitempty" json:"server,omitempty"`
+	Username string `yaml:"username,omitempty" json:"username,omitempty"`
+	Password string `yaml:"password,omitempty" json:"password,omitempty"`
+	// PasswordFP is the fingerprint of the *rendered* password, filled in by the
+	// apply engine on both sides of the diff (from the manifest for the desired
+	// side, from the stored credential for the live side). It is deliberately not
+	// serialized: it is derived state, so a Marshal→Parse round trip (how GitOps
+	// canonicalizes a bundle) simply recomputes it.
+	PasswordFP string `yaml:"-" json:"-"`
 }
 
 // SecretSpec is a write-only secret value. Value is never read back; the diff

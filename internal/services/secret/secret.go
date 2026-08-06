@@ -41,6 +41,28 @@ var nameRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,62}$`)
 // refRe matches a `${{ secrets.NAME }}` reference (whitespace-tolerant).
 var refRe = regexp.MustCompile(`\$\{\{\s*secrets\.([A-Za-z][A-Za-z0-9_-]{0,62})\s*\}\}`)
 
+// pureRefRe matches a value that is *only* a reference, with nothing around it.
+// Env values interpolate references inside larger strings; a stored credential
+// (a registry password, a Git token or SSH key) is opaque and can contain any
+// bytes at all, so there it is all-or-nothing: either the field is a reference
+// or it is the literal secret. Anything else would make a token that happens to
+// contain "${{ secrets.x }}" silently unusable.
+var pureRefRe = regexp.MustCompile(`^\s*\$\{\{\s*secrets\.([A-Za-z][A-Za-z0-9_-]{0,62})\s*\}\}\s*$`)
+
+// RefName returns the secret a value references when the value is exactly one
+// `${{ secrets.NAME }}` reference, or "" when it is a literal.
+func RefName(value string) string {
+	m := pureRefRe.FindStringSubmatch(value)
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
+// Ref renders the reference form of a secret name — the value a client stores in
+// a credential field to point at the vault instead of pasting the secret.
+func Ref(name string) string { return "${{ secrets." + name + " }}" }
+
 type Service struct {
 	repo      *repositories.SecretRepository
 	consumers Consumers
@@ -312,6 +334,39 @@ func (s *Service) ResolveAll(workspaceID uint, env []string) ([]string, error) {
 		return nil, missing
 	}
 	return out, nil
+}
+
+// CredentialSecret resolves a stored credential's secret — the one resolution
+// point shared by registry and Git credentials.
+//
+// When ref names a vault secret the *current* value is read from it, so rotating
+// that secret rotates every credential pointing at it with no edit to the
+// credential itself. Otherwise enc is the credential's own encrypted literal.
+// Both empty means the credential has no secret (an anonymous pull/clone), which
+// is not an error.
+//
+// A dangling reference is a hard error: a pull or clone must fail loudly rather
+// than silently authenticate with a blank password.
+func (s *Service) CredentialSecret(workspaceID uint, enc, ref string) (string, error) {
+	if ref != "" {
+		sec, err := s.repo.FindByName(workspaceID, ref)
+		if err != nil {
+			return "", fmt.Errorf("%w: credential references secret %q, which is not defined in this workspace", ErrNotFound, ref)
+		}
+		return crypto.Decrypt(sec.ValueEnc)
+	}
+	if enc == "" {
+		return "", nil
+	}
+	return crypto.Decrypt(enc)
+}
+
+// ExistsByName reports whether a secret of that name exists in the workspace. It
+// backs the validation of a credential's secret reference at create/update time,
+// so a typo surfaces in the form rather than at the next deploy.
+func (s *Service) ExistsByName(workspaceID uint, name string) bool {
+	_, err := s.repo.FindByName(workspaceID, name)
+	return err == nil
 }
 
 // IDByUID resolves a secret's portable uid to its numeric id.

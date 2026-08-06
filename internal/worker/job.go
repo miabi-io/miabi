@@ -14,7 +14,6 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/logstore"
 	"github.com/miabi-io/miabi/internal/models"
-	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
@@ -170,11 +169,11 @@ func (h *JobHandler) registryAuth(workspaceID uint, registryID *uint) (*docker.R
 	if err != nil {
 		return nil, fmt.Errorf("registry %d: %w", *registryID, err)
 	}
-	secret, err := crypto.Decrypt(reg.Secret)
+	password, err := h.credentialSecret(workspaceID, reg.Secret, reg.SecretRef)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt registry secret: %w", err)
+		return nil, fmt.Errorf("registry %q: %w", reg.Name, err)
 	}
-	return &docker.RegistryAuth{Server: reg.Server, Username: reg.Username, Password: secret}, nil
+	return &docker.RegistryAuth{Server: reg.Server, Username: reg.Username, Password: password}, nil
 }
 
 // finish writes a job's terminal state.

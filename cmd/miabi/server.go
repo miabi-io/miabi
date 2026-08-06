@@ -447,6 +447,9 @@ func runServer(cli *okapicli.CLI) {
 				nodeClients, bus, res.producer,
 			)
 			pipelineHandler.SetLogStore(logStore)
+			// Resolve a Git credential that references a workspace Secret instead of
+			// storing its own copy of the token.
+			pipelineHandler.SetSecrets(secretService)
 			// Translate Docker daemon container events into application events
 			// (start/crash/oom/health). One subscriber for the local node, plus one
 			// per remote node — started/stopped by the connection manager as agents

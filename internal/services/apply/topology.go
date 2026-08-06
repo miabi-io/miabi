@@ -261,5 +261,9 @@ func (s *Service) resolveLive(workspaceID uint, kind declarative.Kind, name stri
 		if sec, err := s.findSecret(workspaceID, name); err == nil {
 			node.LiveID = sec.ID
 		}
+	case declarative.KindRegistry:
+		if reg, err := s.registries.FindByName(workspaceID, name); err == nil {
+			node.LiveID, node.Slug = reg.ID, reg.Name
+		}
 	}
 }

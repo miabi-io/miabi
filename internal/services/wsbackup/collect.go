@@ -73,9 +73,12 @@ func (s *Service) collectCredentials(workspaceID uint, st *wsbundle.State, repor
 	}
 	for i := range regs {
 		r := &regs[i]
-		sec, err := crypto.Decrypt(r.Secret)
+		// Read the secret through the service: listed records are stripped, and a
+		// vault-backed credential exports as its reference (the Secret it names
+		// travels in the same bundle).
+		sec, err := s.Registry.BundleSecret(workspaceID, r.ID)
 		if err != nil {
-			report.Add("registry", r.Name, "failed", "credential could not be decrypted: "+err.Error())
+			report.Add("registry", r.Name, "failed", "credential could not be read: "+err.Error())
 			continue
 		}
 		st.Registries = append(st.Registries, wsbundle.Registry{
@@ -90,9 +93,9 @@ func (s *Service) collectCredentials(workspaceID uint, st *wsbundle.State, repor
 	}
 	for i := range repos {
 		r := &repos[i]
-		sec, err := crypto.Decrypt(r.Secret)
+		sec, err := s.GitRepo.BundleSecret(workspaceID, r.ID)
 		if err != nil {
-			report.Add("git-credential", r.Name, "failed", "credential could not be decrypted: "+err.Error())
+			report.Add("git-credential", r.Name, "failed", "credential could not be read: "+err.Error())
 			continue
 		}
 		st.GitRepos = append(st.GitRepos, wsbundle.GitRepository{

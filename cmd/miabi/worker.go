@@ -277,6 +277,9 @@ func runWorker() error {
 		producer,
 	)
 	pipelineHandler.SetLogStore(logStore)
+	// Resolve a Git credential that references a workspace Secret instead of
+	// storing its own copy of the token.
+	pipelineHandler.SetSecrets(secretService)
 
 	// A standalone worker has no agent tunnels, so it must not consume the
 	// remote-node queue — those tasks are reserved for the control-plane server's

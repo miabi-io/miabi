@@ -22,6 +22,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/database"
 	"github.com/miabi-io/miabi/internal/services/domain"
 	"github.com/miabi-io/miabi/internal/services/portbinding"
+	"github.com/miabi-io/miabi/internal/services/registry"
 	"github.com/miabi-io/miabi/internal/services/route"
 	"github.com/miabi-io/miabi/internal/services/secret"
 	"github.com/miabi-io/miabi/internal/services/stack"
@@ -50,13 +51,14 @@ var (
 
 // Service computes and executes declarative plans for a workspace.
 type Service struct {
-	apps    *application.Service
-	storage *storage.Service
-	dbs     *database.Service
-	stacks  *stack.Service
-	secrets *secret.Service
-	routes  *route.Service
-	domains *domain.Service
+	apps       *application.Service
+	storage    *storage.Service
+	dbs        *database.Service
+	stacks     *stack.Service
+	secrets    *secret.Service
+	routes     *route.Service
+	domains    *domain.Service
+	registries *registry.Service
 
 	// Port-exposure reconcilers (optional; wired via SetPortExposure). extConfig
 	// resolves the platform external-access base domain at apply time; bindings
@@ -66,8 +68,11 @@ type Service struct {
 }
 
 // NewService wires the apply engine over the existing resource services.
-func NewService(apps *application.Service, storage *storage.Service, dbs *database.Service, stacks *stack.Service, secrets *secret.Service, routes *route.Service, domains *domain.Service) *Service {
-	return &Service{apps: apps, storage: storage, dbs: dbs, stacks: stacks, secrets: secrets, routes: routes, domains: domains}
+func NewService(apps *application.Service, storage *storage.Service, dbs *database.Service, stacks *stack.Service, secrets *secret.Service, routes *route.Service, domains *domain.Service, registries *registry.Service) *Service {
+	return &Service{
+		apps: apps, storage: storage, dbs: dbs, stacks: stacks,
+		secrets: secrets, routes: routes, domains: domains, registries: registries,
+	}
 }
 
 // SetPortExposure wires the reconcilers for an Application's per-port exposure:
@@ -411,12 +416,49 @@ func (s *Service) render(workspaceID uint, desired *declarative.ResourceSet) {
 	r := declarative.NewRenderer(ctx)
 	for i := range desired.All() {
 		res := desired.All()[i]
-		if res.Application == nil || len(res.Application.Env) == 0 {
-			continue
+		switch {
+		case res.Application != nil && len(res.Application.Env) > 0:
+			res.Application.Env = r.RenderEnvLenient(res.Metadata.Name, res.Application.Env)
+			desired.Add(res) // write back the rendered copy
+		case res.Registry != nil:
+			s.renderRegistryPassword(r, res.Metadata.Name, res.Registry, false)
+			desired.Add(res)
 		}
-		res.Application.Env = r.RenderEnvLenient(res.Metadata.Name, res.Application.Env)
-		desired.Add(res) // write back the rendered copy
 	}
+}
+
+// renderRegistryPassword resolves a registry password's templates and stamps the
+// fingerprint the plan compares against the stored credential. strict fails on an
+// unresolvable reference (execute time); lenient leaves the template in place
+// (plan time), and then deliberately leaves the fingerprint empty — an
+// unresolved template is not a password, and comparing its digest would report a
+// rotation that isn't one.
+func (s *Service) renderRegistryPassword(r *declarative.Renderer, name string, spec *declarative.RegistrySpec, strict bool) error {
+	if spec.Password == "" {
+		return nil
+	}
+	// `${{ secrets.X }}` is the *runtime* reference form: it is stored as a live
+	// pointer at the vault and resolved at every pull, so it must reach the
+	// registry service untouched. Rendering it would fail anyway — Go's template
+	// engine would read the inner {{ … }} as an undefined function call.
+	if ref := secret.RefName(spec.Password); ref != "" {
+		// Fingerprint the canonical spelling, so "${{secrets.x}}" and
+		// "${{ secrets.x }}" are the same credential rather than perpetual drift.
+		spec.PasswordFP = registry.Fingerprint(name, secret.Ref(ref))
+		return nil
+	}
+	rendered, err := r.RenderString("registry."+name+".password", spec.Password)
+	if err != nil {
+		if strict {
+			return err
+		}
+		return nil // leave the template; no fingerprint
+	}
+	spec.Password = rendered
+	if !strings.Contains(rendered, "{{") {
+		spec.PasswordFP = registry.Fingerprint(name, rendered)
+	}
+	return nil
 }
 
 // renderAppEnv resolves an application's env templates at execution time, against
@@ -567,6 +609,32 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 		})
 	}
 
+	// Registry credentials before apps, for the same reason as volumes: an app
+	// references one by name, so the id -> name map has to exist first. Their
+	// password fingerprints let the plan see a rotation without ever handling the
+	// token (see registry.Fingerprints).
+	regs, err := s.registries.List(workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("snapshot registries: %w", err)
+	}
+	fps, err := s.registries.Fingerprints(workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("snapshot registry fingerprints: %w", err)
+	}
+	regNameByID := make(map[uint]string, len(regs))
+	for i := range regs {
+		regNameByID[regs[i].ID] = regs[i].Name
+		set.Add(declarative.Resource{
+			APIVersion: declarative.APIVersion, Kind: declarative.KindRegistry,
+			Metadata: metaA(regs[i].UID, regs[i].Name, regs[i].Metadata, regs[i].Annotations),
+			Registry: &declarative.RegistrySpec{
+				Server:     regs[i].Server,
+				Username:   regs[i].Username,
+				PasswordFP: fps[regs[i].Name],
+			},
+		})
+	}
+
 	apps, err := s.apps.List(workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("snapshot apps: %w", err)
@@ -578,7 +646,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 			continue
 		}
 		ext, pub := s.exposedPorts(workspaceID, full.ID)
-		set.Add(appResource(full, ext, pub, volNameByID))
+		set.Add(appResource(full, ext, pub, volNameByID, regNameByID))
 	}
 
 	instances, err := s.dbs.List(workspaceID)
@@ -720,7 +788,7 @@ func metaA(uid, name string, m, annotations models.Metadata) declarative.Meta {
 // appResource maps a live application to its declarative form for diffing. ext
 // and pub are the container ports currently exposed externally (generated route)
 // and published (host-port binding), so per-port exposure converges idempotently.
-func appResource(app *models.Application, ext, pub map[int]bool, volNameByID map[uint]string) declarative.Resource {
+func appResource(app *models.Application, ext, pub map[int]bool, volNameByID, regNameByID map[uint]string) declarative.Resource {
 	spec := &declarative.ApplicationSpec{
 		Image:           app.Image,
 		Tag:             app.Tag,
@@ -728,6 +796,12 @@ func appResource(app *models.Application, ext, pub map[int]bool, volNameByID map
 		Command:         app.Command,
 		ContainerLabels: app.ContainerLabels,
 		ExternalLabel:   app.ExternalLabel,
+	}
+	// The pull credential, by its manifest name. A credential deleted out from
+	// under the app leaves RegistryID dangling only until the FK nulls it, so an
+	// unresolved id reads as "anonymous" rather than inventing a name.
+	if app.RegistryID != nil {
+		spec.Registry = regNameByID[*app.RegistryID]
 	}
 	// Managed volume mounts, by the volume's manifest name. Privileged host-preset
 	// binds (VolumeID 0) aren't manifest-expressible, so they're omitted.
@@ -813,6 +887,8 @@ func (s *Service) execute(ctx context.Context, workspaceID uint, ch declarative.
 		return s.applyRoute(ctx, workspaceID, ch, desired)
 	case declarative.KindDomain:
 		return s.applyDomain(workspaceID, ch, desired)
+	case declarative.KindRegistry:
+		return s.applyRegistry(ctx, workspaceID, ch, desired)
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedKind, ch.Kind)
 	}
@@ -915,6 +991,63 @@ func (s *Service) applySecret(workspaceID uint, ch declarative.Change, desired d
 		return s.secrets.Delete(workspaceID, sec.ID)
 	}
 	// Secret values are write-only and never diffed, so update is a no-op here.
+	return nil
+}
+
+// applyRegistry converges a container-registry credential. The password is
+// re-rendered strictly here — a bundle that pulls its token from the vault
+// ({{ .secrets.x }}) must resolve against the secrets that exist now, including
+// one declared earlier in the same bundle (Secret ranks below Registry, so it is
+// created first).
+func (s *Service) applyRegistry(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource) error {
+	switch ch.Action {
+	case declarative.ActionCreate, declarative.ActionUpdate:
+		spec := desired.Registry
+		if spec == nil {
+			return fmt.Errorf("%w: registry %q: spec is required", ErrInvalidManifest, ch.Name)
+		}
+		r := declarative.NewRenderer(declarative.RenderContext{Secrets: s.secretViews(workspaceID)})
+		if err := s.renderRegistryPassword(r, ch.Name, spec, true); err != nil {
+			return fmt.Errorf("%w: registry %q: %v", ErrInvalidManifest, ch.Name, err)
+		}
+		in := registry.Input{
+			Name:     ch.Name,
+			Server:   spec.Server,
+			Username: spec.Username,
+			Secret:   spec.Password,
+			// Labels are sanitized so a manifest can never spoof provenance; the
+			// managed-by label is what scopes a later prune to this engine's own
+			// credentials.
+			Metadata: tagSource(ctx, models.SetBuiltin(models.SanitizeUserMetadata(desired.Metadata.Labels),
+				models.MetaManagedBy, ManagedByGitOps,
+			)),
+			Annotations: desired.Metadata.Annotations,
+		}
+		if ch.Action == declarative.ActionCreate {
+			if spec.Password == "" {
+				return fmt.Errorf("%w: registry %q: password is required to create the credential (set spec.password, or create it once in the UI and drop the field)", ErrInvalidManifest, ch.Name)
+			}
+			_, err := s.registries.Create(workspaceID, in)
+			return err
+		}
+		reg, err := s.registries.FindByName(workspaceID, ch.Name)
+		if err != nil {
+			return fmt.Errorf("registry %q: %w", ch.Name, err)
+		}
+		// An empty password leaves the stored one untouched (registry.Update only
+		// rotates on a non-empty value), which is what lets a token be managed
+		// out-of-band while the rest of the credential stays declarative.
+		_, err = s.registries.Update(workspaceID, reg.ID, in)
+		return err
+	case declarative.ActionDelete:
+		reg, err := s.registries.FindByName(workspaceID, ch.Name)
+		if err != nil {
+			return fmt.Errorf("registry %q: %w", ch.Name, err)
+		}
+		// Applications referencing it keep running: the FK nulls their RegistryID
+		// (ON DELETE SET NULL), so they fall back to an anonymous pull.
+		return s.registries.Delete(workspaceID, reg.ID)
+	}
 	return nil
 }
 
@@ -1048,9 +1181,17 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 	if err := s.renderAppEnv(workspaceID, spec); err != nil {
 		return fmt.Errorf("%w: application %q: %v", ErrInvalidManifest, ch.Name, err)
 	}
+	// Resolve the pull credential before anything is created, so a typo'd name
+	// fails the change instead of deploying an app that cannot pull its image.
+	regID, err := s.resolveRegistry(workspaceID, ch.Name, spec)
+	if err != nil {
+		return err
+	}
 	switch ch.Action {
 	case declarative.ActionCreate:
-		app, err := s.apps.Create(workspaceID, s.createInput(ctx, desired.Metadata, spec))
+		in := s.createInput(ctx, desired.Metadata, spec)
+		in.RegistryID = regID
+		app, err := s.apps.Create(workspaceID, in)
 		if err != nil {
 			return err
 		}
@@ -1077,6 +1218,10 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		app.Image = spec.Image
 		app.Tag = spec.Tag
 		app.Command = spec.Command
+		// Dropping spec.registry clears the credential (regID is nil), so the app
+		// converges back to an anonymous pull instead of silently keeping the old
+		// one.
+		app.RegistryID = regID
 		if spec.Resources != nil {
 			mb, _ := spec.Resources.MemoryBytes()
 			nc, _ := spec.Resources.NanoCPUs()
@@ -1123,6 +1268,29 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		return s.apps.Delete(ctx, app)
 	}
 	return nil
+}
+
+// resolveRegistry maps an application's spec.registry to the id of the workspace
+// credential it names. Nil (anonymous pull) when the field is empty.
+//
+// The credential does not have to be declared in the same bundle — a token
+// created once in the UI is referenced by name from every manifest — so this
+// resolves against the live workspace rather than the desired set. A name that
+// matches nothing is a manifest error, not a silent fallback to an anonymous
+// pull: a private image would otherwise fail much later, at deploy, with an
+// opaque "manifest unknown" from the registry.
+func (s *Service) resolveRegistry(workspaceID uint, appName string, spec *declarative.ApplicationSpec) (*uint, error) {
+	// A delete carries no desired spec (a pruned resource is absent from the
+	// manifest by definition), so nil is normal here, not a caller error.
+	if spec == nil || spec.Registry == "" {
+		return nil, nil
+	}
+	reg, err := s.registries.FindByName(workspaceID, spec.Registry)
+	if err != nil {
+		return nil, fmt.Errorf("%w: application %q: unknown registry %q (declare it as a Registry resource, or create the credential in the workspace first)",
+			ErrInvalidManifest, appName, spec.Registry)
+	}
+	return &reg.ID, nil
 }
 
 // reconcileExposure converges an app's per-port exposure to the manifest: pins

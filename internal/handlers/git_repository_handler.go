@@ -139,7 +139,8 @@ func (h *GitRepositoryHandler) mapErr(c *okapi.Context, err error) error {
 	switch {
 	case errors.Is(err, gitrepo.ErrNameTaken):
 		return c.AbortWithError(409, err)
-	case errors.Is(err, gitrepo.ErrNameRequired), errors.Is(err, gitrepo.ErrURLRequired), errors.Is(err, gitrepo.ErrSecretRequired):
+	case errors.Is(err, gitrepo.ErrNameRequired), errors.Is(err, gitrepo.ErrURLRequired),
+		errors.Is(err, gitrepo.ErrSecretRequired), errors.Is(err, gitrepo.ErrUnknownSecret):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, gitrepo.ErrNotFound):
 		return c.AbortNotFound("git repository not found")
