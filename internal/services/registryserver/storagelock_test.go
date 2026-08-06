@@ -20,10 +20,9 @@ func (f fakeEE) Has(flag string) bool { return f[flag] }
 func licensed() fakeEE   { return fakeEE{enterprise.FlagRegistryS3: true} }
 func unlicensed() fakeEE { return fakeEE{} }
 
-// The storage driver follows the environment. A stored value survives only where
-// the environment is silent — the legacy carry-over for installs upgraded from
-// when the admin UI could write it.
-func TestStorageIsEnvOnly(t *testing.T) {
+// MIABI_REGISTRY_STORAGE pins the driver when it is set; where the environment
+// is silent the stored value — what the console writes — decides.
+func TestStorageFollowsEnvOnlyWhenSet(t *testing.T) {
 	cases := []struct {
 		name       string
 		env        string
@@ -122,10 +121,12 @@ func TestStorageUnavailableReason(t *testing.T) {
 			true, "Enterprise license",
 		},
 		{
+			// The bucket can be set from the console or the environment, so the
+			// reason names the missing thing rather than one way to supply it.
 			"licensed s3 without a bucket is refused",
 			licensed(),
 			&models.RegistrySettings{StorageType: models.RegistryStorageS3},
-			true, "MIABI_REGISTRY_S3_BUCKET",
+			true, "no bucket is configured",
 		},
 		{
 			"licensed s3 with a bucket is allowed",
@@ -184,7 +185,7 @@ func TestRenderEnvFilesystemNeedsNoLicense(t *testing.T) {
 func TestDistributionReportsUnlicensedStorage(t *testing.T) {
 	svc := &Service{
 		ee:       unlicensed(),
-		cfg:      config.RegistryConfig{Enabled: true, Host: "registry.example.com", StorageType: "s3", S3Bucket: "b"},
+		cfg:      config.RegistryConfig{Enabled: true, EnabledSet: true, Host: "registry.example.com", StorageType: "s3", S3Bucket: "b"},
 		settings: baseDomain(""),
 	}
 	reason := svc.DistributionUnavailableReason()

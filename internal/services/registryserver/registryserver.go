@@ -156,23 +156,79 @@ func (s *Service) Get() (*models.RegistrySettings, error) {
 	return st, nil
 }
 
-// SaveInput carries an update: the two operational settings an admin may change
-// at runtime.
-//
-// Enablement, the hostname, and the whole storage configuration are deliberately
-// absent — all of them are boot-time, environment-only (see applyEnvConfig).
-// Accepting any of them here would give the admin API a way to move the
-// registry's identity or its storage backend at runtime, and would let the S3
-// driver be selected without the entitlement the environment path is checked
-// against.
+// SaveInput carries a settings update. Every field is optional in the sense that
+// an environment-pinned one is ignored — see Locks. Pointers mark "the client
+// sent this"; nil leaves the stored value alone.
 type SaveInput struct {
 	DeleteEnabled       bool
 	PerWorkspaceQuotaMB int
+
+	// Platform configuration. Written only where the environment is silent.
+	Enabled     *bool
+	Host        *string
+	StorageType *string
+
+	S3Endpoint       *string
+	S3Bucket         *string
+	S3Region         *string
+	S3AccessKey      *string
+	S3ForcePathStyle *bool
+	// S3SecretKey rotates the stored secret. Empty (or nil) keeps the current one,
+	// so a form that never reads the value back can be saved without wiping it.
+	S3SecretKey *string
 }
 
-// Save persists the two mutable settings. Storage — driver, bucket, credentials
-// — is never written here: it is read from the environment on every load, so a
-// stored value could only ever go stale against it.
+// Locks reports which fields the environment has pinned. A locked field is
+// read-only: Save ignores it, and the admin UI renders it as fixed with the
+// variable that owns it, rather than offering an input whose value the server
+// would discard.
+type Locks struct {
+	Enabled bool `json:"enabled"`
+	Host    bool `json:"host"`
+	Storage bool `json:"storage"`
+	// S3 is per-field: an install may pin the bucket in the environment and leave
+	// the credentials to the UI, or the reverse.
+	S3Endpoint  bool `json:"s3_endpoint"`
+	S3Bucket    bool `json:"s3_bucket"`
+	S3Region    bool `json:"s3_region"`
+	S3AccessKey bool `json:"s3_access_key"`
+	S3SecretKey bool `json:"s3_secret_key"`
+	S3ForcePath bool `json:"s3_force_path_style"`
+}
+
+// Any reports whether the environment pins anything at all.
+func (l Locks) Any() bool {
+	return l.Enabled || l.Host || l.Storage || l.S3Endpoint || l.S3Bucket ||
+		l.S3Region || l.S3AccessKey || l.S3SecretKey || l.S3ForcePath
+}
+
+// Locks returns the environment-pinned fields for this install.
+func (s *Service) Locks() Locks {
+	c := s.cfg
+	return Locks{
+		Enabled:     c.EnabledSet,
+		Host:        strings.TrimSpace(c.Host) != "",
+		Storage:     strings.TrimSpace(c.StorageType) != "",
+		S3Endpoint:  c.S3Endpoint != "",
+		S3Bucket:    c.S3Bucket != "",
+		S3Region:    c.S3Region != "",
+		S3AccessKey: c.S3AccessKey != "",
+		S3SecretKey: c.S3SecretKey != "",
+		S3ForcePath: c.S3ForcePath,
+	}
+}
+
+// Save persists the settings an admin may change, skipping every field the
+// environment pins.
+//
+// The environment stays authoritative where it speaks — an install configured
+// by docker-compose or a Helm chart keeps behaving exactly as before, and its
+// values can't drift out from under the file that declares them. Where it is
+// silent, the database is the source of truth and this is what writes it.
+//
+// Validation of a *change* (does this install may use S3, is the host a usable
+// hostname, does switching storage strand existing blobs) belongs to the caller:
+// it is where the operator can be asked to confirm.
 func (s *Service) Save(in SaveInput) (*models.RegistrySettings, error) {
 	st, err := s.repo.Get()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -180,11 +236,43 @@ func (s *Service) Save(in SaveInput) (*models.RegistrySettings, error) {
 	} else if err != nil {
 		return nil, err
 	}
+	locks := s.Locks()
 
-	st.Enabled = s.cfg.Enabled
-	if host := s.envHost(); host != "" {
+	if in.Enabled != nil && !locks.Enabled {
+		st.Enabled = *in.Enabled
+	}
+	if in.Host != nil && !locks.Host {
+		host, hErr := NormalizeHost(*in.Host)
+		if hErr != nil {
+			return nil, fmt.Errorf("host: %w", hErr)
+		}
 		st.Host = host
 	}
+	if in.StorageType != nil && !locks.Storage {
+		st.StorageType = normalizeStorage(*in.StorageType)
+	}
+	setStr := func(dst *string, src *string, locked bool) {
+		if src != nil && !locked {
+			*dst = strings.TrimSpace(*src)
+		}
+	}
+	setStr(&st.S3Endpoint, in.S3Endpoint, locks.S3Endpoint)
+	setStr(&st.S3Bucket, in.S3Bucket, locks.S3Bucket)
+	setStr(&st.S3Region, in.S3Region, locks.S3Region)
+	setStr(&st.S3AccessKey, in.S3AccessKey, locks.S3AccessKey)
+	if in.S3ForcePathStyle != nil && !locks.S3ForcePath {
+		st.S3ForcePathStyle = *in.S3ForcePathStyle
+	}
+	// A blank secret means "keep what is stored": the API never returns the value,
+	// so a form round-trip carries nothing to re-send.
+	if in.S3SecretKey != nil && !locks.S3SecretKey && strings.TrimSpace(*in.S3SecretKey) != "" {
+		enc, eErr := crypto.Encrypt(strings.TrimSpace(*in.S3SecretKey))
+		if eErr != nil {
+			return nil, fmt.Errorf("encrypt S3 secret key: %w", eErr)
+		}
+		st.S3SecretKeyEnc = enc
+	}
+
 	// The data volume is a fixed platform name, not admin-configurable.
 	st.VolumeName = models.DefaultRegistryVolume
 	st.DeleteEnabled = in.DeleteEnabled
@@ -194,7 +282,7 @@ func (s *Service) Save(in SaveInput) (*models.RegistrySettings, error) {
 		return nil, err
 	}
 	// Return the same env-layered view a read would give, so the caller renders
-	// the effective storage rather than the bare row.
+	// the effective configuration rather than the bare row.
 	s.applyEnvConfig(st)
 	st.S3SecretSet = st.S3SecretKeyEnc != ""
 	return st, nil
@@ -228,23 +316,21 @@ func (s *Service) envHost() string {
 
 // applyEnvConfig layers the boot environment over the stored settings.
 //
-// Enablement, the hostname, and the storage configuration are all
-// environment-derived: nothing in the admin API writes them (see SaveInput).
-// They define whether the registry exists, what name every image reference is
-// anchored to, and where the bytes live — none of which may change under a
-// running platform. The gateway route, its TLS certificate, the references
-// recorded on past deployments, and the namespace check at pull time all key off
-// the host; every pushed blob keys off the storage backend. Changing any of them
-// takes an env change and a restart, so every process in the install agrees on
-// the answer.
+// The environment wins wherever it speaks, and only there. That is what lets an
+// install declared by docker-compose or a Helm chart stay authoritative — its
+// values can't be edited out from under the file that declares them — while an
+// install that sets none of these is configured entirely from the admin UI.
 //
-// A stored value survives only where the environment is silent, and only as a
-// legacy carry-over from when these fields were UI-editable — an upgraded
-// install must keep answering on the host and reading from the bucket its
-// existing images already live behind. Nothing can write a new one.
+// Which fields are pinned is reported by Locks, so the UI can render an
+// env-managed field as fixed and name the variable that owns it, and Save can
+// ignore it rather than writing a value that the next read would overwrite.
 func (s *Service) applyEnvConfig(st *models.RegistrySettings) {
 	c := s.cfg
-	st.Enabled = c.Enabled
+	// Only an explicitly-set variable pins enablement: absent means the stored
+	// value (i.e. the admin UI's switch) decides.
+	if c.EnabledSet {
+		st.Enabled = c.Enabled
+	}
 	if host := s.envHost(); host != "" {
 		st.Host = host
 	}
@@ -279,10 +365,10 @@ func (s *Service) applyEnvConfig(st *models.RegistrySettings) {
 	}
 }
 
-// StorageSource names where the effective storage driver came from, for the
-// admin UI's read-only explanation of why the fields cannot be edited:
-// "env" (MIABI_REGISTRY_STORAGE), "stored" (a value saved while the driver was
-// UI-editable), or "default" (the filesystem driver, nothing configured).
+// StorageSource names where the effective storage driver came from, so the admin
+// UI can say why a field is fixed or which value it is editing: "env"
+// (MIABI_REGISTRY_STORAGE pins it), "stored" (configured in the console), or
+// "default" (the filesystem driver, nothing configured).
 func (s *Service) StorageSource(st *models.RegistrySettings) string {
 	if strings.TrimSpace(s.cfg.StorageType) != "" {
 		return "env"
@@ -295,21 +381,16 @@ func (s *Service) StorageSource(st *models.RegistrySettings) string {
 
 // StorageUnavailableReason returns "" when the configured storage driver can be
 // used, else a sentence naming exactly what is wrong.
-//
-// This is where the S3 entitlement is actually enforced. The admin API cannot
-// select the driver any more, so a check there would guard a door nobody uses:
-// the configuration arrives from the environment, and the environment is only
-// read here, on the paths that start a container against that storage.
 func (s *Service) StorageUnavailableReason(st *models.RegistrySettings) string {
 	if st == nil || !st.UsesS3() {
 		return ""
 	}
 	if !s.S3Entitled() {
 		return "S3/MinIO storage for the built-in registry requires an Enterprise license (the registry_s3 entitlement); " +
-			"install a license, or set MIABI_REGISTRY_STORAGE=filesystem to use a local volume"
+			"install a license, or switch the storage driver back to a local volume"
 	}
 	if strings.TrimSpace(st.S3Bucket) == "" {
-		return "S3 storage is selected but no bucket is configured (set MIABI_REGISTRY_S3_BUCKET)"
+		return "S3 storage is selected but no bucket is configured"
 	}
 	return ""
 }
@@ -346,8 +427,9 @@ func (s *Service) HostFor(st *models.RegistrySettings) string {
 	return host
 }
 
-// HostSource names where the effective host came from, for the admin UI's
-// read-only explanation of why the field cannot be edited.
+// HostSource names where the effective host came from: "env" (pinned by
+// MIABI_REGISTRY_HOST), "stored" (set in the console), "base_domain" (derived
+// from the platform's external base domain), or "unset".
 func (s *Service) HostSource(st *models.RegistrySettings) string {
 	if s.envHost() != "" {
 		return "env"
@@ -466,22 +548,24 @@ func (s *Service) Ensure(ctx context.Context, dc docker.Client) error {
 	return nil
 }
 
-// warnIfDisabledByLock reports an install that had the registry switched on from
-// the admin UI before enablement became environment-only. Tearing it down on the
-// first boot after the upgrade is correct — the environment is now the only
-// answer — but silently is not: git-source deploys stop working, and nothing on
-// the settings page would explain why. Say exactly what to set.
+// warnIfDisabledByLock reports a registry switched on in the console but held
+// off by the environment. Honouring the environment is correct — an operator who
+// pinned MIABI_REGISTRY_ENABLED=false means it — but doing so silently is not:
+// the console shows a registry that never comes up, and git-source deploys fail
+// with no clue why. Say exactly which variable decided.
+//
+// Only fires when the variable is explicitly set to false; an absent variable
+// leaves the switch to the console and is not an override at all.
 func (s *Service) warnIfDisabledByLock() {
-	if s.cfg.Enabled || s.repo == nil {
+	if !s.cfg.EnabledSet || s.cfg.Enabled || s.repo == nil {
 		return
 	}
 	stored, err := s.repo.Get()
 	if err != nil || stored == nil || !stored.Enabled {
 		return
 	}
-	logger.Error("internal registry was enabled in the database but MIABI_REGISTRY_ENABLED is not set — " +
-		"enablement and the registry hostname are now environment-only and take a restart to change. " +
-		"The registry has been torn down; set MIABI_REGISTRY_ENABLED=true (and MIABI_REGISTRY_HOST, if you had a custom host) and restart Miabi to bring it back.")
+	logger.Error("internal registry is enabled in the console but MIABI_REGISTRY_ENABLED=false pins it off — " +
+		"the environment wins where it is set. Remove the variable to let the console own the switch, or set it to true.")
 }
 
 // volumeMounts is the registry's data-volume mount (filesystem driver only). The

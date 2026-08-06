@@ -1096,6 +1096,12 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.adminRegistry.SetGC(func(ctx context.Context) error {
 		return registryServerService.GarbageCollect(ctx, dockerClient)
 	})
+	// Live container state + resource usage for the admin overview, and the
+	// repository count that decides whether a storage change strands images.
+	r.h.adminRegistry.SetRuntime(func(ctx context.Context) (*registryserver.Runtime, error) {
+		return registryServerService.RuntimeStatus(ctx, dockerClient)
+	})
+	r.h.adminRegistry.SetRepoCount(registryServerService.RepositoryCount)
 	go func() {
 		if err := registryServerService.Ensure(context.Background(), dockerClient); err != nil {
 			logger.Warn("internal registry ensure on boot failed", "error", err)

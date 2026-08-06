@@ -5,6 +5,9 @@ package handlers
 
 import (
 	"context"
+	"errors"
+	"strconv"
+	"strings"
 
 	"github.com/jkaninda/logger"
 	"github.com/jkaninda/okapi"
@@ -27,6 +30,22 @@ type AdminRegistryHandler struct {
 	ensure func(context.Context) error
 	// gc runs a garbage collection on demand.
 	gc func(context.Context) error
+	// runtime reads the registry container's live state and resource usage.
+	runtime func(context.Context) (*registryserver.Runtime, error)
+	// repoCount reports how many repositories the registry holds, so a storage
+	// change can tell "nothing to strand" from "this abandons real images".
+	repoCount func(context.Context) (int, error)
+}
+
+// SetRuntime wires the live container status/usage reader.
+func (h *AdminRegistryHandler) SetRuntime(fn func(context.Context) (*registryserver.Runtime, error)) {
+	h.runtime = fn
+}
+
+// SetRepoCount wires the "how many repositories are stored" probe used to decide
+// whether a storage change needs confirmation.
+func (h *AdminRegistryHandler) SetRepoCount(fn func(context.Context) (int, error)) {
+	h.repoCount = fn
 }
 
 func NewAdminRegistryHandler(svc *registryserver.Service, ee enterprise.EE, auditLog *audit.Logger) *AdminRegistryHandler {
@@ -52,43 +71,57 @@ func (h *AdminRegistryHandler) RunGC(c *okapi.Context) error {
 	return message(c, "garbage collection complete")
 }
 
-// UpdateRegistrySettingsRequest is the body for updating the registry settings:
-// the two operational knobs an admin may turn at runtime.
+// UpdateRegistrySettingsRequest is the body for updating the registry settings.
 //
-// Enablement, the hostname, and the storage configuration are not in this body.
-// They are fixed at boot from MIABI_REGISTRY_ENABLED / MIABI_REGISTRY_HOST /
-// MIABI_REGISTRY_STORAGE + MIABI_REGISTRY_S3_* and take a restart to change:
-// they determine whether the registry exists, what name every image reference on
-// the platform is anchored to, and where its blobs live. None of that may be
-// movable by an API call while deployments hold references to the old value and
-// blobs sit in the old backend.
+// The platform fields (enablement, hostname, storage) are pointers: nil means
+// "not sent, leave it alone", which is what lets a partial save from one tab not
+// clobber another's. Any field the environment pins is ignored — see
+// registryserver.Locks.
 type UpdateRegistrySettingsRequest struct {
-	Body struct {
-		DeleteEnabled       bool `json:"delete_enabled"`
-		PerWorkspaceQuotaMB int  `json:"per_workspace_quota_mb"`
-	} `json:"body"`
+	Body RegistrySettingsBody `json:"body"`
 }
 
-// RegistrySettingsView is the settings response enriched with the effective host
-// and the read-only storage explanation the UI renders.
+// RegistrySettingsBody is the settings payload, named so the confirmation check
+// can take it without restating every field.
+type RegistrySettingsBody struct {
+	DeleteEnabled       bool `json:"delete_enabled"`
+	PerWorkspaceQuotaMB int  `json:"per_workspace_quota_mb"`
+
+	Enabled     *bool   `json:"enabled"`
+	Host        *string `json:"host"`
+	StorageType *string `json:"storage_type"`
+
+	S3Endpoint       *string `json:"s3_endpoint"`
+	S3Bucket         *string `json:"s3_bucket"`
+	S3Region         *string `json:"s3_region"`
+	S3AccessKey      *string `json:"s3_access_key"`
+	S3SecretKey      *string `json:"s3_secret_key"` // blank keeps the stored one
+	S3ForcePathStyle *bool   `json:"s3_force_path_style"`
+
+	// Confirm acknowledges a change the platform cannot undo for you — moving the
+	// hostname every stored image reference is anchored to, or switching a storage
+	// backend that does not migrate its blobs. Without it such a change is refused
+	// with an explanation, so it can never be made by accident.
+	Confirm bool `json:"confirm"`
+}
+
+// RegistrySettingsView is the settings response enriched with the effective
+// host, which fields the environment pins, and why the registry might not be
+// serving.
 type RegistrySettingsView struct {
 	*models.RegistrySettings
 	EffectiveHost string `json:"effective_host"`
 	S3Entitled    bool   `json:"s3_entitled"`
-	// HostLocked reports that enablement and the hostname are read-only here:
-	// they come from MIABI_REGISTRY_ENABLED / MIABI_REGISTRY_HOST and take a
-	// restart to change. Always true — it exists so the UI can render the two
-	// fields as fixed and explain why, rather than offering inputs whose values
-	// the server discards.
-	HostLocked bool `json:"host_locked"`
-	// HostSource is where the effective host came from: "env", "stored" (a legacy
-	// value saved while the field was editable), "base_domain", or "unset".
-	HostSource string `json:"host_source"`
-
-	StorageLocked bool `json:"storage_locked"`
-
+	// Locks reports the environment-pinned fields. The UI renders each as fixed
+	// and names the variable that owns it; everything else is editable.
+	Locks registryserver.Locks `json:"locks"`
+	// HostSource / StorageSource explain where the effective value came from,
+	// which is what the UI shows under a field ("set by MIABI_REGISTRY_HOST",
+	// "derived from the base domain", …).
+	HostSource    string `json:"host_source"`
 	StorageSource string `json:"storage_source"`
-
+	// StorageError is why the registry cannot serve from its configured storage
+	// (a missing entitlement or bucket). Empty when storage is usable.
 	StorageError string `json:"storage_error,omitempty"`
 }
 
@@ -97,12 +130,23 @@ func (h *AdminRegistryHandler) view(st *models.RegistrySettings) RegistrySetting
 		RegistrySettings: st,
 		EffectiveHost:    h.svc.HostFor(st),
 		S3Entitled:       h.ee.Has(enterprise.FlagRegistryS3),
-		HostLocked:       true,
+		Locks:            h.svc.Locks(),
 		HostSource:       h.svc.HostSource(st),
-		StorageLocked:    true,
 		StorageSource:    h.svc.StorageSource(st),
 		StorageError:     h.svc.StorageUnavailableReason(st),
 	}
+}
+
+// Runtime returns the registry container's live state and resource usage.
+func (h *AdminRegistryHandler) Runtime(c *okapi.Context) error {
+	if h.runtime == nil {
+		return c.AbortInternalServerError("registry runtime status is unavailable", nil)
+	}
+	rt, err := h.runtime(c.Request().Context())
+	if err != nil {
+		return c.AbortInternalServerError("failed to read registry status", err)
+	}
+	return ok(c, rt)
 }
 
 // GetSettings returns the registry settings (secret omitted).
@@ -114,21 +158,67 @@ func (h *AdminRegistryHandler) GetSettings(c *okapi.Context) error {
 	return ok(c, h.view(st))
 }
 
-// UpdateSettings upserts the two mutable registry settings and applies them to
-// the container. The storage configuration is not accepted here at all — it is
-// environment-only (see UpdateRegistrySettingsRequest), which is also what makes
-// the S3 entitlement enforceable: it is checked where the driver is used, at
-// container start, not where it used to be selected.
+// UpdateSettings saves the registry configuration and applies it to the running
+// container.
+//
+// Two changes are irreversible in ways the platform cannot fix afterwards, so
+// each is refused unless the caller confirms it:
+//
+//   - Moving the hostname. Every image reference Miabi has recorded — on past
+//     deployments, in pipeline runs — is anchored to the old name, and matching
+//     against it is how one workspace's images are told apart from another's.
+//   - Switching the storage driver or bucket. Blobs do not migrate: the images
+//     already pushed stay in the old backend and become invisible.
+//
+// Both are legitimate operations (a domain move, a migration to S3); they just
+// must not happen by mis-click while a form is being saved for another reason.
 func (h *AdminRegistryHandler) UpdateSettings(c *okapi.Context, req *UpdateRegistrySettingsRequest) error {
 	b := req.Body
 	if b.PerWorkspaceQuotaMB < 0 {
 		return c.AbortBadRequest("the per-workspace quota cannot be negative (0 = unlimited)")
 	}
+	current, err := h.svc.Get()
+	if err != nil {
+		return c.AbortInternalServerError("failed to load registry settings", err)
+	}
+	locks := h.svc.Locks()
+
+	// Selecting S3 is gated here, where the driver is chosen. The service checks
+	// it again at container start, which covers the environment path and a licence
+	// that lapses later.
+	wantsS3 := current.UsesS3()
+	if b.StorageType != nil && !locks.Storage {
+		wantsS3 = *b.StorageType == models.RegistryStorageS3
+	}
+	if wantsS3 && !h.ee.Has(enterprise.FlagRegistryS3) {
+		return c.AbortWithError(402, errors.New(
+			"S3/MinIO storage for the built-in registry requires an Enterprise license (the registry_s3 entitlement)"))
+	}
+
+	if msg := h.destructiveChange(c.Request().Context(), current, locks, b); msg != "" && !b.Confirm {
+		// 409: the request is well-formed but conflicts with what is already stored.
+		// The message is the confirmation prompt the UI shows verbatim.
+		return c.AbortWithError(409, errors.New(msg))
+	}
+
 	st, err := h.svc.Save(registryserver.SaveInput{
 		DeleteEnabled:       b.DeleteEnabled,
 		PerWorkspaceQuotaMB: b.PerWorkspaceQuotaMB,
+		Enabled:             b.Enabled,
+		Host:                b.Host,
+		StorageType:         b.StorageType,
+		S3Endpoint:          b.S3Endpoint,
+		S3Bucket:            b.S3Bucket,
+		S3Region:            b.S3Region,
+		S3AccessKey:         b.S3AccessKey,
+		S3SecretKey:         b.S3SecretKey,
+		S3ForcePathStyle:    b.S3ForcePathStyle,
 	})
 	if err != nil {
+		// A rejected hostname is the admin's typo, not a server fault.
+		if strings.HasPrefix(err.Error(), "host:") {
+			return c.AbortBadRequest(err.Error())
+		}
 		return c.AbortInternalServerError("failed to save registry settings", err)
 	}
 	// Apply to the running container (recreate on change / tear down when disabled),
@@ -140,6 +230,68 @@ func (h *AdminRegistryHandler) UpdateSettings(c *okapi.Context, req *UpdateRegis
 	}
 	h.record(c, "registry.settings_update")
 	return ok(c, h.view(st))
+}
+
+// destructiveChange returns the confirmation prompt for a change that strands
+// data or breaks stored references, or "" when the update is safe.
+//
+// A change is only destructive against something that exists: moving the host of
+// a registry that has never served, or switching the storage of one holding no
+// repositories, costs nothing and is not gated.
+func (h *AdminRegistryHandler) destructiveChange(
+	ctx context.Context, current *models.RegistrySettings, locks registryserver.Locks, b RegistrySettingsBody,
+) string {
+	repos := h.storedRepoCount(ctx)
+
+	if b.Host != nil && !locks.Host {
+		want, err := registryserver.NormalizeHost(*b.Host)
+		if err == nil && want != "" && current.Host != "" && want != current.Host {
+			return "Changing the registry hostname from " + current.Host + " to " + want +
+				" leaves every image reference Miabi has already recorded pointing at the old name." +
+				" Existing deployments keep referencing " + current.Host + " and will fail to pull until they are redeployed."
+		}
+	}
+
+	// Nothing stored yet — no blobs to strand, so a storage change is free.
+	if repos <= 0 {
+		return ""
+	}
+	if b.StorageType != nil && !locks.Storage {
+		want := *b.StorageType
+		if (want == models.RegistryStorageS3) != current.UsesS3() {
+			return "Switching the storage driver abandons the " + plural(repos, "repository", "repositories") +
+				" already pushed: blobs are not migrated between backends, and the images stay in the old one."
+		}
+	}
+	if current.UsesS3() && b.S3Bucket != nil && !locks.S3Bucket {
+		if want := strings.TrimSpace(*b.S3Bucket); want != "" && current.S3Bucket != "" && want != current.S3Bucket {
+			return "Pointing the registry at bucket " + want + " abandons the " +
+				plural(repos, "repository", "repositories") + " stored in " + current.S3Bucket + "."
+		}
+	}
+	return ""
+}
+
+// storedRepoCount is the repository count, or 0 when it cannot be determined —
+// an unreachable registry is treated as empty so a probe failure can't wedge the
+// settings form behind a confirmation nobody can satisfy.
+func (h *AdminRegistryHandler) storedRepoCount(ctx context.Context) int {
+	if h.repoCount == nil {
+		return 0
+	}
+	n, err := h.repoCount(ctx)
+	if err != nil {
+		logger.Warn("registry: repository count unavailable for the storage-change check", "error", err)
+		return 0
+	}
+	return n
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return strconv.Itoa(n) + " " + many
 }
 
 func (h *AdminRegistryHandler) record(c *okapi.Context, action string) {
