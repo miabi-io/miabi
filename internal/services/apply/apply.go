@@ -421,19 +421,21 @@ func (s *Service) render(workspaceID uint, desired *declarative.ResourceSet) {
 			res.Application.Env = r.RenderEnvLenient(res.Metadata.Name, res.Application.Env)
 			desired.Add(res) // write back the rendered copy
 		case res.Registry != nil:
-			s.renderRegistryPassword(r, res.Metadata.Name, res.Registry, false)
+			s.renderRegistryPasswordLenient(r, res.Metadata.Name, res.Registry)
 			desired.Add(res)
 		}
 	}
 }
 
 // renderRegistryPassword resolves a registry password's templates and stamps the
-// fingerprint the plan compares against the stored credential. strict fails on an
-// unresolvable reference (execute time); lenient leaves the template in place
-// (plan time), and then deliberately leaves the fingerprint empty — an
-// unresolved template is not a password, and comparing its digest would report a
-// rotation that isn't one.
-func (s *Service) renderRegistryPassword(r *declarative.Renderer, name string, spec *declarative.RegistrySpec, strict bool) error {
+// fingerprint the plan compares against the stored credential. Strict: a
+// reference that cannot resolve (a typo, or a secret that genuinely does not
+// exist) is a real error, so an apply fails rather than storing a broken
+// credential. See renderRegistryPasswordLenient for the plan-time counterpart.
+//
+// Nothing is written to spec before the render succeeds, so a failure leaves the
+// manifest exactly as it was.
+func (s *Service) renderRegistryPassword(r *declarative.Renderer, name string, spec *declarative.RegistrySpec) error {
 	if spec.Password == "" {
 		return nil
 	}
@@ -449,16 +451,17 @@ func (s *Service) renderRegistryPassword(r *declarative.Renderer, name string, s
 	}
 	rendered, err := r.RenderString("registry."+name+".password", spec.Password)
 	if err != nil {
-		if strict {
-			return err
-		}
-		return nil // leave the template; no fingerprint
+		return err
 	}
 	spec.Password = rendered
 	if !strings.Contains(rendered, "{{") {
 		spec.PasswordFP = registry.Fingerprint(name, rendered)
 	}
 	return nil
+}
+
+func (s *Service) renderRegistryPasswordLenient(r *declarative.Renderer, name string, spec *declarative.RegistrySpec) {
+	_ = s.renderRegistryPassword(r, name, spec)
 }
 
 // renderAppEnv resolves an application's env templates at execution time, against
@@ -1007,7 +1010,7 @@ func (s *Service) applyRegistry(ctx context.Context, workspaceID uint, ch declar
 			return fmt.Errorf("%w: registry %q: spec is required", ErrInvalidManifest, ch.Name)
 		}
 		r := declarative.NewRenderer(declarative.RenderContext{Secrets: s.secretViews(workspaceID)})
-		if err := s.renderRegistryPassword(r, ch.Name, spec, true); err != nil {
+		if err := s.renderRegistryPassword(r, ch.Name, spec); err != nil {
 			return fmt.Errorf("%w: registry %q: %v", ErrInvalidManifest, ch.Name, err)
 		}
 		in := registry.Input{
