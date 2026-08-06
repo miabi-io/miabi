@@ -1384,7 +1384,7 @@ func (h *DeployHandler) gitSourceURL(app *models.Application) (string, error) {
 	if rawURL == "" {
 		return "", fmt.Errorf("git source requires a repository URL")
 	}
-	return gitrepo.CredentialURL(rawURL, gr)
+	return gitrepo.CredentialURL(rawURL, gr, h.secrets)
 }
 
 // deferForRunner queues a deploy that has no available runner: it parks the
@@ -1486,11 +1486,11 @@ func (h *DeployHandler) resolveRegistryAuth(app *models.Application, dep *models
 	if err != nil {
 		return nil, fmt.Errorf("registry %d: %w", *regID, err)
 	}
-	secret, err := crypto.Decrypt(reg.Secret)
+	password, err := h.credentialSecret(app.WorkspaceID, reg.Secret, reg.SecretRef)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt registry secret: %w", err)
+		return nil, fmt.Errorf("registry %q: %w", reg.Name, err)
 	}
-	return &docker.RegistryAuth{Server: reg.Server, Username: reg.Username, Password: secret}, nil
+	return &docker.RegistryAuth{Server: reg.Server, Username: reg.Username, Password: password}, nil
 }
 
 // healthGate waits for the new container to be ready. With no healthcheck it

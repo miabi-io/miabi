@@ -3,7 +3,7 @@ import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
-import { secretApi, type SecretInput } from '@/api/secrets'
+import { secretApi, type SecretInput, type SecretOwnership } from '@/api/secrets'
 import type { Secret } from '@/api/types'
 import { usePagination } from '@/composables/usePagination'
 import { copyText } from '@/utils/clipboard'
@@ -17,13 +17,22 @@ const { currentWorkspaceId } = storeToRefs(ws)
 const secrets = ref<Secret[]>([])
 const loading = ref(false)
 const search = ref('')
+// Ownership is filtered by the API, not in this page: the list is paged, so
+// hiding rows here would leave the count and the page size disagreeing with
+// what's on screen.
+const ownership = ref<SecretOwnership>('all')
+const ownershipFilters: Array<{ value: SecretOwnership; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'unmanaged', label: 'Not managed' },
+  { value: 'managed', label: 'Managed' },
+]
 
 const { pageable, goToPage } = usePagination(async (page) => {
   const id = currentWorkspaceId.value
   if (!id) { secrets.value = []; return }
   loading.value = true
   try {
-    const res = await secretApi.list(id, search.value.trim(), page, pageable.value.size)
+    const res = await secretApi.list(id, search.value.trim(), page, pageable.value.size, ownership.value)
     secrets.value = res.data.data
     pageable.value = res.data.pageable
   } catch (e) { notify.apiError(e) }
@@ -34,6 +43,20 @@ const { pageable, goToPage } = usePagination(async (page) => {
 function reload() { goToPage(pageable.value.current_page) }
 // Switching workspaces resets to the first page.
 watch(currentWorkspaceId, () => goToPage(0))
+// Narrowing can leave the current page past the end of the result, so every
+// filter change re-queries from the first page.
+function setOwnership(v: SecretOwnership) {
+  ownership.value = v
+  goToPage(0)
+}
+
+// Whether the view is showing a subset — drives the empty state, which must not
+// read as "the vault is empty" when it is really "nothing matches".
+const narrowed = computed(() => !!search.value.trim() || ownership.value !== 'all')
+function clearFilters() {
+  search.value = ''
+  setOwnership('all')
+}
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 function onSearchInput() {
@@ -162,6 +185,11 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
           <input v-model="search" class="form-input" type="search" placeholder="Search secrets by name or description…"
             aria-label="Search secrets" style="max-width: 320px" @input="onSearchInput" />
         </div>
+        <div class="filters" role="group" aria-label="Filter by ownership">
+          <button v-for="f in ownershipFilters" :key="f.value" type="button" class="chip"
+            :class="{ active: ownership === f.value }" :aria-pressed="ownership === f.value"
+            @click="setOwnership(f.value)">{{ f.label }}</button>
+        </div>
         <span class="text-muted">{{ pageable.total_elements }} secret{{ pageable.total_elements === 1 ? '' : 's'
           }}</span>
       </div>
@@ -169,11 +197,14 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
       <div v-if="loading && secrets.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="secrets.length === 0" class="empty-state">
         <span class="mdi mdi-key-variant" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No secrets {{ search.trim() ? 'found' : '' }}</h3>
-        <p v-if="search.trim()">No secrets match your search.</p>
+        <h3>No secrets {{ narrowed ? 'found' : '' }}</h3>
+        <!-- An empty result under a filter is not an empty vault: offering
+             "New secret" here would answer a question the user didn't ask. -->
+        <p v-if="narrowed">No secrets match the current search and filter.</p>
         <p v-else>Store a secret once and reference it from many apps. Rotating it updates every consumer on next
           deploy.</p>
-        <button v-if="ws.canEdit && !search.trim()" class="btn btn-primary mt-4" @click="openCreate">New secret</button>
+        <button v-if="narrowed" class="btn btn-secondary mt-4" @click="clearFilters">Clear filters</button>
+        <button v-else-if="ws.canEdit" class="btn btn-primary mt-4" @click="openCreate">New secret</button>
       </div>
       <template v-else>
         <div class="table-wrapper">
@@ -390,6 +421,27 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
 
 .search .form-input {
   padding-left: 32px;
+}
+
+.filters {
+  display: flex;
+  gap: 6px;
+}
+
+.chip {
+  padding: 4px 12px;
+  font-size: 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.chip.active {
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 code {

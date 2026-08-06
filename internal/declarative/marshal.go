@@ -56,6 +56,10 @@ func (r Resource) spec() any {
 		return r.Route
 	case r.Secret != nil:
 		return r.Secret
+	case r.Domain != nil:
+		return r.Domain
+	case r.Registry != nil:
+		return r.Registry
 	default:
 		return nil
 	}

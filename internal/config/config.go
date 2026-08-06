@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -363,11 +364,15 @@ type RedisConfig struct {
 // with until the process restarts. The remaining fields override the
 // corresponding admin setting on boot.
 type RegistryConfig struct {
-	Enabled bool
-	Host    string
+	// Enabled runs the registry. EnabledSet distinguishes "MIABI_REGISTRY_ENABLED
+	// says false" from "nobody said anything": when the variable is absent the
+	// admin UI owns the switch, and only an explicitly-set variable pins it.
+	Enabled    bool
+	EnabledSet bool
+	Host       string
 	// StorageType is "filesystem" | "s3". S3 requires the registry_s3
-	// entitlement, checked at container start (registryserver), because the
-	// environment — not an API call — is what selects it.
+	// entitlement, checked both where the driver is selected (the admin API) and
+	// where it is used (container start).
 	StorageType string
 	Image       string // override the registry image (also via the image catalog)
 	// AuthURL is the address the gateway's forwardAuth calls to reach Miabi's
@@ -559,6 +564,7 @@ func New() *Config {
 		GomaConfigEncryptionKey:    goutils.Env("GOMA_CONFIG_ENCRYPTION_KEY", ""),
 		Registry: RegistryConfig{
 			Enabled:       goutils.EnvBool("MIABI_REGISTRY_ENABLED", false),
+			EnabledSet:    envPresent("MIABI_REGISTRY_ENABLED"),
 			Host:          goutils.Env("MIABI_REGISTRY_HOST", ""),
 			StorageType:   goutils.Env("MIABI_REGISTRY_STORAGE", ""),
 			Image:         goutils.Env("MIABI_REGISTRY_IMAGE", ""),
@@ -717,6 +723,14 @@ func (c *Config) DeploymentURL() string {
 // through — so "off" silences Okapi's logger and nothing else. Offering a switch that
 // looks like it turns logging off while the logs keep coming is worse than not
 // offering it. Use "error" for near-silence.
+// envPresent reports whether an environment variable was set at all, blank or
+// not. It is how a configuration field tells "the operator pinned this" from
+// "nobody said anything, so the admin UI owns it" — a zero value alone cannot.
+func envPresent(key string) bool {
+	_, ok := os.LookupEnv(key)
+	return ok
+}
+
 func (c *Config) LogLevelFor() (logger.LogLevel, error) {
 	switch strings.ToLower(strings.TrimSpace(c.LogLevel)) {
 	case "":

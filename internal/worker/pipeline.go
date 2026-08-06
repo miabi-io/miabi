@@ -59,6 +59,7 @@ type PipelineHandler struct {
 	bus         *eventbus.Bus
 	producer    *Producer
 	logs        *logstore.Store
+	secrets     SecretResolver
 
 	// Runner dispatch (wired in the process that holds the runner tunnels). Every
 	// pipeline build runs on a registered runner; there is no on-node fallback.
@@ -111,6 +112,11 @@ func (h *PipelineHandler) SetRunnerDispatch(d RunnerDispatcher, workspaces *repo
 // full log is externalized to the store on terminal state and the DB row keeps
 // only a bounded tail + a reference. nil keeps DB-tail-only.
 func (h *PipelineHandler) SetLogStore(s *logstore.Store) { h.logs = s }
+
+// SetSecrets wires the vault, so a Git credential that references a workspace
+// Secret (rather than storing its own copy of the token) can be resolved when
+// the runner clones. nil = literal credentials only.
+func (h *PipelineHandler) SetSecrets(s SecretResolver) { h.secrets = s }
 
 // NewPipelineHandler builds the internal runner handler.
 func NewPipelineHandler(
@@ -286,7 +292,7 @@ func (h *PipelineHandler) sourceURL(app *models.Application) (string, error) {
 	if rawURL == "" {
 		return "", nil // command-only pipeline (no git-backed app)
 	}
-	return gitrepo.CredentialURL(rawURL, gr)
+	return gitrepo.CredentialURL(rawURL, gr, h.secrets)
 }
 
 // PipelineDeployer performs the deploy-by-digest a runner build triggers: it

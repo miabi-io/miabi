@@ -1,0 +1,52 @@
+# Pulling a private image.
+#
+# A Registry is a container-registry credential. An Application selects one by
+# name through `spec.registry`; without it every pull is anonymous, so a private
+# image fails at deploy with a bare "manifest unknown" from the registry.
+#
+# Apply with:  miabi apply -f private-registry.yaml
+---
+# Keep the token in the vault, not in git. This Secret is what you rotate; the
+# Registry below only references it.
+apiVersion: miabi.io/v1
+kind: Secret
+metadata:
+  name: ghcr-token
+spec:
+  value: ghp_replace_me
+---
+apiVersion: miabi.io/v1
+kind: Registry
+metadata:
+  name: ghcr
+  annotations:
+    description: Read-only package token for the org's private images
+spec:
+  server: ghcr.io
+  username: my-org
+  # Two forms, and the difference is when the secret is read:
+  #
+  #   {{ .secrets.NAME }}    rendered at apply time — a copy is stored on the
+  #                          credential, so rotating the Secret needs a re-apply
+  #                          (the plan then reports "password: (current) → (rotated)")
+  #   ${{ secrets.NAME }}    stored as a live reference — read from the vault at
+  #                          every pull, so rotating the Secret is enough
+  #
+  # Neither is ever read back or shown in a plan. Prefer the reference form
+  # unless you want the credential pinned to the value at apply time.
+  password: "${{ secrets.ghcr-token }}"
+---
+apiVersion: miabi.io/v1
+kind: Application
+metadata:
+  name: api
+spec:
+  image: ghcr.io/my-org/api
+  tag: v1.4.0
+  # The credential need not be declared in this bundle: a name that isn't here is
+  # resolved against the workspace's existing credentials, so a token created
+  # once in the UI can be referenced from every manifest.
+  registry: ghcr
+  ports:
+    - container: 3000
+      externalAccess: true

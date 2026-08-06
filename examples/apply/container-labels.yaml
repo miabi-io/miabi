@@ -1,0 +1,78 @@
+# Exposing an application through a label-driven reverse proxy (Traefik, Caddy
+# with the docker-proxy plugin, nginx-proxy, …) instead of Miabi's own gateway.
+#
+# `containerLabels` are stamped verbatim onto the app's container — or its Swarm
+# service — at deploy time, which is exactly what a proxy that discovers routes
+# from the Docker API reads. Editing one here redeploys the container, so a
+# routing rule is versioned in git like everything else.
+#
+# Two things this needs beyond the labels themselves:
+#
+#   1. A shared network. The proxy can only reach a container it shares a
+#      network with. Grouping both into one Stack is the declarative way to get
+#      that: stack members join the stack's network and resolve each other by
+#      name. Note an app with no Route never joins Miabi's shared gateway
+#      network, which is what you want here.
+#   2. Access to the Docker socket for the proxy itself. That is a privileged
+#      host mount, granted per app outside the manifest (Settings → Mounts on a
+#      privileged workspace) — a manifest can never bind a host path.
+#
+# Reserved namespaces (`io.miabi.*`, `com.docker.*`) are dropped on apply, so a
+# manifest can't spoof the platform's own labels; they are ignored by the diff
+# too, rather than reading as drift on every plan.
+#
+#   miabi apply -f container-labels.yaml
+---
+apiVersion: miabi.io/v1
+kind: Stack
+metadata:
+  name: edge
+spec:
+  description: Label-routed edge — the proxy and the apps it fronts
+---
+# The proxy. It discovers the app below from the Docker API and routes to it
+# over the stack network. Grant it the Docker socket after the first apply.
+apiVersion: miabi.io/v1
+kind: Application
+metadata:
+  name: traefik
+spec:
+  image: traefik
+  tag: "v3.3"
+  stack: edge
+  command:
+    - --providers.docker=true
+    # Only containers that opt in with traefik.enable are routed.
+    - --providers.docker.exposedbydefault=false
+    - --entrypoints.web.address=:80 # inside the container; published below
+  ports:
+    # The one port that faces the outside world. Host ports are bounded by
+    # MIABI_HOST_PORT_MIN/MAX (1024–… by default), and 80/443 belong to the
+    # platform's own gateway — so the proxy takes a high port and whatever sits
+    # in front of the node (a load balancer, or an nftables redirect) maps 80
+    # onto it. Drop hostPort to have one auto-allocated from the pool instead.
+    - container: 80
+      protocol: tcp
+      publish: true
+      hostPort: 8080
+---
+# The app being fronted. It publishes nothing itself: traffic reaches it only
+# through the proxy, over the stack network.
+apiVersion: miabi.io/v1
+kind: Application
+metadata:
+  name: web
+spec:
+  image: nginx
+  tag: "1.27-alpine"
+  stack: edge
+  ports:
+    - container: 80
+      scheme: http
+  containerLabels:
+    traefik.enable: "true"
+    traefik.http.routers.web.rule: "Host(`app.example.com`)"
+    traefik.http.routers.web.entrypoints: web
+    # The container port to forward to — the proxy addresses the app by its
+    # service name on the stack network.
+    traefik.http.services.web.loadbalancer.server.port: "80"

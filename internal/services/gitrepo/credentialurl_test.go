@@ -19,13 +19,13 @@ func TestCredentialURL(t *testing.T) {
 	}
 
 	// Public / nil credential: URL unchanged (normalized to .git).
-	if got, err := CredentialURL("https://github.com/acme/web", nil); err != nil || got != "https://github.com/acme/web.git" {
+	if got, err := CredentialURL("https://github.com/acme/web", nil, nil); err != nil || got != "https://github.com/acme/web.git" {
 		t.Errorf("public: got %q err %v", got, err)
 	}
 
 	// Token: credential embedded as https://user:token@host/….
 	g := &models.GitRepository{AuthType: models.GitAuthToken, Username: "x-access-token", Secret: tok}
-	got, err := CredentialURL("https://github.com/acme/web.git", g)
+	got, err := CredentialURL("https://github.com/acme/web.git", g, nil)
 	if err != nil {
 		t.Fatalf("token: %v", err)
 	}
@@ -35,13 +35,13 @@ func TestCredentialURL(t *testing.T) {
 
 	// Empty username defaults to the provider-agnostic x-access-token.
 	g2 := &models.GitRepository{AuthType: models.GitAuthToken, Secret: tok}
-	if got2, _ := CredentialURL("https://github.com/acme/web.git", g2); !strings.Contains(got2, "x-access-token:ghp_secrettoken@") {
+	if got2, _ := CredentialURL("https://github.com/acme/web.git", g2, nil); !strings.Contains(got2, "x-access-token:ghp_secrettoken@") {
 		t.Errorf("default username not applied: %q", got2)
 	}
 
 	// SSH key: can't be embedded in a URL — clear error.
 	gs := &models.GitRepository{AuthType: models.GitAuthSSH, Secret: tok}
-	if _, err := CredentialURL("git@github.com:acme/web.git", gs); err != ErrSSHUnsupportedOnRunner {
+	if _, err := CredentialURL("git@github.com:acme/web.git", gs, nil); err != ErrSSHUnsupportedOnRunner {
 		t.Errorf("ssh: want ErrSSHUnsupportedOnRunner, got %v", err)
 	}
 }

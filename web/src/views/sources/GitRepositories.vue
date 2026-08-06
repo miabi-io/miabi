@@ -6,6 +6,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { gitRepositoryApi, type GitRepositoryInput } from '@/api/gitRepositories'
 import type { GitRepository, GitAuthType } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import CredentialSecretField from '@/components/CredentialSecretField.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -131,7 +132,12 @@ const authTypes: { value: GitAuthType; label: string }[] = [
                   <span class="avatar avatar-sm"><span class="mdi mdi-git" style="font-size: 14px"></span></span>
                   <span class="cell-text">
                     <span class="cell-title">{{ r.display_name || r.name }}</span>
-                    <span class="cell-sub">{{ r.has_secret ? 'secret set' : 'no secret' }}</span>
+                    <span class="cell-sub">
+                      <template v-if="r.secret_ref">
+                        <span class="mdi mdi-key-variant"></span> {{ r.secret_ref }}
+                      </template>
+                      <template v-else>{{ r.has_secret ? 'secret set' : 'no secret' }}</template>
+                    </span>
                   </span>
                 </div>
               </td>
@@ -178,14 +184,14 @@ const authTypes: { value: GitAuthType; label: string }[] = [
                   <label class="form-label">Username <span class="text-muted">(optional)</span></label>
                   <input v-model="form.username" class="form-input" :placeholder="form.auth_type === 'ssh' ? 'git' : 'x-access-token'" autocomplete="off" aria-label="Username" />
                 </div>
-                <div class="form-group" style="margin-bottom: 0">
-                  <label class="form-label">
-                    {{ form.auth_type === 'ssh' ? 'SSH private key' : 'Access token' }}
-                    <span v-if="editing" class="text-muted">(leave blank to keep current)</span>
-                  </label>
-                  <textarea v-if="form.auth_type === 'ssh'" v-model="form.secret" class="form-textarea" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" :required="!editing" aria-label="SSH private key"></textarea>
-                  <input v-else v-model="form.secret" type="password" class="form-input" placeholder="ghp_…" autocomplete="new-password" :required="!editing" aria-label="Access token" />
-                </div>
+                <CredentialSecretField
+                  v-model="form.secret"
+                  :label="form.auth_type === 'ssh' ? 'SSH private key' : 'Access token'"
+                  :editing="!!editing"
+                  :current-ref="editing?.secret_ref || ''"
+                  :multiline="form.auth_type === 'ssh'"
+                  :placeholder="form.auth_type === 'ssh' ? '-----BEGIN OPENSSH PRIVATE KEY-----' : 'ghp_…'"
+                />
               </template>
               <p v-else class="text-muted" style="font-size: 12px; margin: 0">No credentials needed — the repository is cloned anonymously.</p>
             </div>

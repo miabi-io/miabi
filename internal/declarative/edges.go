@@ -21,6 +21,7 @@ const (
 	EdgeDatabase EdgeType = "database" // Application -> Database (env {{ .databases.X }})
 	EdgeSecret   EdgeType = "secret"   // Application -> Secret   (env {{ .secrets.X }})
 	EdgeAppRef   EdgeType = "app-ref"  // Application -> Application (env {{ .applications.X }})
+	EdgeRegistry EdgeType = "registry" // Application -> Registry (spec.registry)
 )
 
 // Edge is a directed dependency from one resource to another, keyed by Resource
@@ -78,6 +79,10 @@ func Edges(set *ResourceSet) []Edge {
 			for _, mt := range a.Mounts {
 				add(KindApplication, name, KindVolume, mt.Volume, EdgeMount)
 			}
+			// Only drawn when the credential is declared in the same bundle — add()
+			// skips targets outside the set, so referencing a workspace credential
+			// created elsewhere leaves no dangling edge.
+			add(KindApplication, name, KindRegistry, a.Registry, EdgeRegistry)
 			for _, v := range a.Env {
 				for _, m := range tmplRef.FindAllStringSubmatch(v, -1) {
 					switch m[1] {

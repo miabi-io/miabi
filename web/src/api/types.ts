@@ -565,6 +565,9 @@ export interface Registry {
   server: string
   username: string
   has_secret: boolean
+  /** Name of the workspace Secret holding the password, when the credential
+   *  references the vault instead of storing its own copy. */
+  secret_ref?: string
   created_at?: string
 }
 
@@ -579,6 +582,9 @@ export interface GitRepository {
   auth_type: GitAuthType
   username: string
   has_secret: boolean
+  /** Name of the workspace Secret holding the token or key, when the credential
+   *  references the vault instead of storing its own copy. */
+  secret_ref?: string
   created_at?: string
 }
 

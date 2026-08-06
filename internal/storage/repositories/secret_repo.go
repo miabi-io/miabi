@@ -43,9 +43,14 @@ func (r *SecretRepository) ListByWorkspace(workspaceID uint) ([]models.Secret, e
 }
 
 // ListByWorkspacePaged returns a page of secrets in a workspace, optionally
-// filtered by a case-insensitive match on name or description, plus the total
-// count of matching rows.
-func (r *SecretRepository) ListByWorkspacePaged(workspaceID uint, search string, limit, offset int) ([]models.Secret, int64, error) {
+// filtered by a case-insensitive match on name or description and by ownership
+// (managed = auto-created by a platform resource), plus the total count of
+// matching rows.
+//
+// Ownership is filtered here rather than in the caller precisely because the
+// result is paged: filtering a page client-side would hide rows the count still
+// claims, and a page could come back empty while later pages hold matches.
+func (r *SecretRepository) ListByWorkspacePaged(workspaceID uint, search string, managed *bool, limit, offset int) ([]models.Secret, int64, error) {
 	var (
 		secrets []models.Secret
 		total   int64
@@ -54,6 +59,9 @@ func (r *SecretRepository) ListByWorkspacePaged(workspaceID uint, search string,
 	if s := strings.TrimSpace(search); s != "" {
 		like := "%" + strings.ToLower(s) + "%"
 		q = q.Where("LOWER(name) LIKE ? OR LOWER(description) LIKE ?", like, like)
+	}
+	if managed != nil {
+		q = q.Where("managed = ?", *managed)
 	}
 	q.Count(&total)
 	if err := q.Order("name ASC").Limit(limit).Offset(offset).Find(&secrets).Error; err != nil {

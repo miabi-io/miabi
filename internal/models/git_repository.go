@@ -35,12 +35,21 @@ type GitRepository struct {
 	// ("x-access-token") at clone time.
 	Username string `json:"username"`
 	// Secret holds the access token (token auth) or SSH private key (ssh auth),
-	// encrypted at rest.
+	// encrypted at rest. Empty when the credential points at the vault instead
+	// (see SecretRef).
 	Secret string `json:"-" gorm:"not null"`
+	// SecretRef names a workspace Secret holding the token or key, instead of
+	// storing a copy here (the `${{ secrets.NAME }}` form a client sends in the
+	// secret field). The value is read from the vault at every clone, so rotating
+	// that secret rotates this credential with no edit here. Mutually exclusive
+	// with Secret. Not sensitive — it is a name, so it is returned by the API.
+	SecretRef string `json:"secret_ref,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
-	// HasSecret is a transient flag for responses (never persisted).
+	// HasSecret is a transient flag for responses (never persisted): true when the
+	// credential can authenticate, whether from its own stored secret or a vault
+	// reference.
 	HasSecret bool `json:"has_secret" gorm:"-"`
 }

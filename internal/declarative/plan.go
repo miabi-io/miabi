@@ -107,7 +107,11 @@ func applyRank(k Kind) int {
 		// Independent, foundational resources. Domains come before the routes that
 		// bind hostnames under them.
 		return 0
-	case KindDatabase, KindStack:
+	case KindDatabase, KindStack, KindRegistry:
+		// A registry credential ranks above Secret rather than beside it: its
+		// password is typically "{{ .secrets.x }}", and same-rank changes are
+		// ordered by kind name — which would put Registry before Secret and fail
+		// the strict render on a first apply.
 		return 1
 	case KindApplication:
 		return 2
@@ -247,6 +251,9 @@ func diffFields(actual, desired Resource) []FieldDiff {
 	if desired.Kind == KindSecret {
 		return nil // opaque: an existing secret is treated as in-sync
 	}
+	if desired.Kind == KindRegistry {
+		return diffRegistry(actual, desired)
+	}
 	av := specFields(actual)
 	dv := specFields(desired)
 	keys := map[string]bool{}
@@ -266,6 +273,53 @@ func diffFields(actual, desired Resource) []FieldDiff {
 	return out
 }
 
+// diffRegistry compares a registry credential. Server and username are ordinary
+// visible fields. The password is not: it is compared through the fingerprints
+// the apply engine stamped on both sides (never the value itself) and reported
+// with fixed labels, so a rotation converges without a plan ever carrying
+// anything derived from the token.
+//
+// The password is only compared when the manifest actually declares one — a
+// credential whose token is managed out-of-band (declared in git, pasted in the
+// UI) must not read as drift on every plan.
+func diffRegistry(actual, desired Resource) []FieldDiff {
+	a, d := actual.Registry, desired.Registry
+	if d == nil {
+		return nil
+	}
+	var out []FieldDiff
+	if a == nil {
+		a = &RegistrySpec{}
+	}
+	if a.Server != d.Server {
+		out = append(out, FieldDiff{Field: "server", From: a.Server, To: d.Server})
+	}
+	if a.Username != d.Username {
+		out = append(out, FieldDiff{Field: "username", From: a.Username, To: d.Username})
+	}
+	if d.Password != "" && d.PasswordFP != "" && a.PasswordFP != "" && a.PasswordFP != d.PasswordFP {
+		out = append(out, FieldDiff{Field: "password", From: "(current)", To: "(rotated)"})
+	}
+	return out
+}
+
+// reservedLabelPrefixes are the container-label namespaces the platform owns.
+// A manifest may name one, but the application service strips it on write
+// (docker.SanitizeUserLabels), so it can never appear in live state. Excluding
+// it from the diff on both sides is what stops such a label reading as drift on
+// every plan. Duplicated here rather than imported so the declarative package
+// stays free of runtime dependencies; the two lists must agree.
+var reservedLabelPrefixes = []string{"io.miabi.", "com.docker."}
+
+func reservedLabelKey(key string) bool {
+	for _, p := range reservedLabelPrefixes {
+		if strings.HasPrefix(key, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // specFields flattens a resource's comparable spec into field->value. Fields
 // named in an application's secretEnv are masked so secret values never appear
 // in a plan, while still letting presence be compared.
@@ -282,6 +336,19 @@ func specFields(r Resource) map[string]string {
 		f["tag"] = a.Tag
 		f["digest"] = a.Digest
 		f["command"] = strings.Join(a.Command, " ")
+		// The credential the image is pulled with is part of the app's identity:
+		// re-pointing it at another registry must converge like any other change.
+		f["registry"] = a.Registry
+		// Container labels drive label-reading tooling (Traefik routing rules,
+		// Watchtower policies), so editing one has to redeploy the container.
+		// Compared per key, like env: a plan then names the label that changed
+		// instead of showing one opaque blob.
+		for k, v := range a.ContainerLabels {
+			if reservedLabelKey(k) {
+				continue // stripped on write, so it can never be live: skip both sides
+			}
+			f["containerLabels."+k] = v
+		}
 		if a.Resources != nil {
 			// Compare resource caps by their canonical numeric value so "512Mi"
 			// and the live byte count (or "0.5" vs nano-CPUs) don't read as drift.

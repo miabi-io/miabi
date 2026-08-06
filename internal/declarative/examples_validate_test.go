@@ -55,6 +55,45 @@ func TestExamplesParse(t *testing.T) {
 		t.Fatalf("parse apply/app-ports.yaml: %v", perr)
 	}
 
+	// Label-routed bundle: the fronted app must actually carry the labels a
+	// label-reading proxy discovers it by, and both apps must be in the stack
+	// that gives them a shared network.
+	if cl, derr := os.ReadFile(filepath.Join(examplesDir, "apply", "container-labels.yaml")); derr != nil {
+		t.Fatalf("read container-labels.yaml: %v", derr)
+	} else if clSet, perr := d.Parse([]byte(cl)); perr != nil {
+		t.Fatalf("parse apply/container-labels.yaml: %v", perr)
+	} else {
+		labelled := 0
+		for _, a := range clSet.ByKind(d.KindApplication) {
+			if a.Application.Stack == "" {
+				t.Errorf("application %q should join the stack it is routed on", a.Metadata.Name)
+			}
+			if len(a.Application.ContainerLabels) > 0 {
+				labelled++
+			}
+		}
+		if labelled == 0 {
+			t.Error("container-labels.yaml should set containerLabels on the fronted app")
+		}
+	}
+
+	// Private-registry bundle: the app's spec.registry must name the declared
+	// credential, so the example can't drift out of sync with the schema.
+	if pr, derr := os.ReadFile(filepath.Join(examplesDir, "apply", "private-registry.yaml")); derr != nil {
+		t.Fatalf("read private-registry.yaml: %v", derr)
+	} else if prSet, perr := d.Parse(pr); perr != nil {
+		t.Fatalf("parse apply/private-registry.yaml: %v", perr)
+	} else {
+		regs := prSet.ByKind(d.KindRegistry)
+		if len(regs) == 0 {
+			t.Fatal("private-registry.yaml should declare a Registry")
+		}
+		apps := prSet.ByKind(d.KindApplication)
+		if len(apps) == 0 || apps[0].Application.Registry != regs[0].Metadata.Name {
+			t.Errorf("private-registry.yaml app should reference registry %q", regs[0].Metadata.Name)
+		}
+	}
+
 	// GitOps env folders via ParseFS.
 	for _, env := range []string{"dev", "prod"} {
 		dir := filepath.Join(examplesDir, "gitops", "envs", env)

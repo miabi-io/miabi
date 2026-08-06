@@ -20,20 +20,13 @@ export interface RegistrySettings {
   /** Whether S3/MinIO storage is licensed (Enterprise); local storage is free. */
   s3_entitled: boolean
   /**
-   * `enabled` and `host` are read-only: they come from MIABI_REGISTRY_ENABLED /
-   * MIABI_REGISTRY_HOST and take a restart to change. Always true — the flag
-   * exists so the UI explains the fixed fields rather than offering inputs the
-   * server discards.
+   * Fields the environment pins. A locked field is read-only: the server ignores
+   * it on save, so the UI renders it fixed and names the variable that owns it.
+   * Everything unlocked is editable here.
    */
-  host_locked: boolean
+  locks: RegistryLocks
   /** Where the effective host came from. */
   host_source: 'env' | 'stored' | 'base_domain' | 'unset'
-  /**
-   * The storage driver and its S3 settings are read-only: they come from
-   * MIABI_REGISTRY_STORAGE / MIABI_REGISTRY_S3_* and take a restart to change.
-   * Always true, for the same reason as `host_locked`.
-   */
-  storage_locked: boolean
   /** Where the effective storage driver came from. */
   storage_source: 'env' | 'stored' | 'default'
   /**
@@ -43,14 +36,62 @@ export interface RegistrySettings {
   storage_error?: string
 }
 
+export interface RegistryLocks {
+  enabled: boolean
+  host: boolean
+  storage: boolean
+  s3_endpoint: boolean
+  s3_bucket: boolean
+  s3_region: boolean
+  s3_access_key: boolean
+  s3_secret_key: boolean
+  s3_force_path_style: boolean
+}
+
 /**
- * Only the two runtime-mutable settings. Enablement, the host, and the whole
- * storage configuration are environment-only — see `host_locked` /
- * `storage_locked` on RegistrySettings.
+ * A settings update. The platform fields are optional: omitting one leaves it
+ * alone, so a save from one tab never clobbers another's. An env-pinned field is
+ * ignored by the server whatever is sent.
  */
 export interface RegistrySettingsPayload {
   delete_enabled: boolean
   per_workspace_quota_mb: number
+  enabled?: boolean
+  host?: string
+  storage_type?: 'filesystem' | 's3'
+  s3_endpoint?: string
+  s3_bucket?: string
+  s3_region?: string
+  s3_access_key?: string
+  /** Blank keeps the stored secret — the API never returns it to re-send. */
+  s3_secret_key?: string
+  s3_force_path_style?: boolean
+  /**
+   * Acknowledges a change that strands data or breaks stored image references.
+   * Without it the server answers 409 with the prompt to show.
+   */
+  confirm?: boolean
+}
+
+/** Live state and resource usage of the registry container. */
+export interface RegistryRuntime {
+  running: boolean
+  state?: string
+  status?: string
+  health?: string
+  restart_count?: number
+  started_at?: string
+  image?: string
+  stats?: {
+    cpu_percent: number
+    memory_usage_bytes: number
+    memory_limit_bytes: number
+    memory_percent: number
+    network_rx_bytes: number
+    network_tx_bytes: number
+  }
+  /** Set when a sample could not be taken — show "unavailable", not a fake 0%. */
+  stats_error?: string
 }
 
 // RegistryInfo is the per-workspace docker-login guidance.
@@ -98,6 +139,7 @@ export const registryApi = {
   getSettings: () => api.get<ApiResponse<RegistrySettings>>('/admin/registry/settings'),
   updateSettings: (payload: RegistrySettingsPayload) =>
     api.put<ApiResponse<RegistrySettings>>('/admin/registry/settings', payload),
+  runtime: () => api.get<ApiResponse<RegistryRuntime>>('/admin/registry/runtime'),
   runGc: () => api.post<ApiResponse<{ message: string }>>('/admin/registry/gc'),
 
   // Workspace

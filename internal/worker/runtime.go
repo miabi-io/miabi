@@ -19,11 +19,35 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// SecretResolver substitutes `${{ secrets.NAME }}` references in env values with
-// the workspace's stored secret values. Implemented by the secret service;
-// optional (nil = references are left untouched).
+// SecretResolver is the worker's window onto the vault: it substitutes
+// `${{ secrets.NAME }}` references in env values, and resolves the secret behind
+// a stored credential (a registry password or Git token) — which may itself be a
+// reference to a workspace Secret. Implemented by the secret service; optional
+// (nil = references are left untouched).
 type SecretResolver interface {
 	ResolveAll(workspaceID uint, env []string) ([]string, error)
+	CredentialSecret(workspaceID uint, enc, ref string) (string, error)
+}
+
+// credentialSecret resolves the secret behind a stored credential — its own
+// encrypted value, or the workspace Secret it references. Shared by the deploy
+// and job handlers (both embed runtimeBuilder) so a registry password reaches
+// the pull the same way wherever it is needed.
+//
+// A credential that references the vault with no resolver wired is an error, not
+// a silent anonymous pull: that would surface much later as an opaque
+// "manifest unknown" from the registry.
+func (b *runtimeBuilder) credentialSecret(workspaceID uint, enc, ref string) (string, error) {
+	if b.secrets == nil {
+		if ref != "" {
+			return "", fmt.Errorf("credential references secret %q but the vault is unavailable", ref)
+		}
+		if enc == "" {
+			return "", nil
+		}
+		return crypto.Decrypt(enc)
+	}
+	return b.secrets.CredentialSecret(workspaceID, enc, ref)
 }
 
 // Security is the resolved container hardening for a workspace's application and

@@ -6,6 +6,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { registryApi, type RegistryInput } from '@/api/registries'
 import type { Registry } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import CredentialSecretField from '@/components/CredentialSecretField.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -125,7 +126,12 @@ async function confirmDelete() {
                   <span class="avatar avatar-sm"><span class="mdi mdi-database-outline" style="font-size: 14px"></span></span>
                   <span class="cell-text">
                     <span class="cell-title">{{ r.display_name || r.name }}</span>
-                    <span class="cell-sub">{{ r.has_secret ? 'secret set' : 'no secret' }}</span>
+                    <span class="cell-sub">
+                      <template v-if="r.secret_ref">
+                        <span class="mdi mdi-key-variant"></span> {{ r.secret_ref }}
+                      </template>
+                      <template v-else>{{ r.has_secret ? 'secret set' : 'no secret' }}</template>
+                    </span>
                   </span>
                 </div>
               </td>
@@ -165,10 +171,12 @@ async function confirmDelete() {
                 <label class="form-label">Username</label>
                 <input v-model="form.username" class="form-input" placeholder="username" autocomplete="off" aria-label="Username" />
               </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Password / token <span v-if="editing" class="text-muted">(leave blank to keep current)</span></label>
-                <input v-model="form.secret" type="password" class="form-input" placeholder="••••••••" autocomplete="new-password" :required="!editing" aria-label="Password / token" />
-              </div>
+              <CredentialSecretField
+                v-model="form.secret"
+                label="Password / token"
+                :editing="!!editing"
+                :current-ref="editing?.secret_ref || ''"
+              />
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>

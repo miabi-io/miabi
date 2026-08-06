@@ -59,12 +59,18 @@ type Service struct {
 	repo     *repositories.GitSourceRepository
 	gitRepos *repositories.GitRepoRepository
 	applier  Applier
+	secrets  gitrepo.Secrets
 }
 
 // NewService wires the GitOps service.
 func NewService(repo *repositories.GitSourceRepository, gitRepos *repositories.GitRepoRepository, applier Applier) *Service {
 	return &Service{repo: repo, gitRepos: gitRepos, applier: applier}
 }
+
+// SetSecrets wires the vault, so a Git credential that references a workspace
+// Secret (rather than storing its own copy of the token) can be resolved when a
+// source is fetched. nil = literal credentials only.
+func (s *Service) SetSecrets(v gitrepo.Secrets) { s.secrets = v }
 
 // Input is the create/update payload for a GitSource. Name is the desired unique
 // slug handle; DisplayName is the free-text label (falls back to Name when blank).
@@ -440,7 +446,7 @@ func (s *Service) auth(src *models.GitSource) (transport.AuthMethod, string, err
 	if err != nil {
 		return nil, "", fmt.Errorf("git credential %d: %w", *src.GitRepositoryID, err)
 	}
-	auth, err := gitrepo.AuthFor(gr)
+	auth, err := gitrepo.AuthFor(gr, s.secrets)
 	if err != nil {
 		return nil, "", err
 	}

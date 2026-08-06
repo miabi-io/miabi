@@ -41,6 +41,14 @@ func (r *Router) registryServerRoutes() []okapi.RouteDefinition {
 			Request:     &handlers.UpdateRegistrySettingsRequest{},
 		},
 		{
+			Method:      http.MethodGet,
+			Path:        "/registry/runtime",
+			Group:       admin,
+			Middlewares: adminMw,
+			Handler:     r.h.adminRegistry.Runtime,
+			Summary:     "Get the registry container's live state and resource usage",
+		},
+		{
 			Method:      http.MethodPost,
 			Path:        "/registry/gc",
 			Group:       admin,
