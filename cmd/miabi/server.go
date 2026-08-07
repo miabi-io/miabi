@@ -239,9 +239,6 @@ func runServer(cli *okapicli.CLI) {
 			// the SSE/download handlers (read history); nil when disabled.
 			logStore := cfg.BuildLogStore()
 
-			// One-off bulk backfill: move pre-existing large log rows into the store
-			// (P6). No-op/unrecorded when the store is disabled, so enabling it later
-			// still backfills; idempotent and resumable across boots.
 			if err := logbackfill.Run(context.Background(), res.db, logStore, cfg.LogStore.TailBytes, config.Version); err != nil {
 				logger.Error("log store: backfill failed (will retry next boot)", "error", err)
 			}
@@ -499,8 +496,7 @@ func runServer(cli *okapicli.CLI) {
 					time.Duration(cfg.AnalyticsFlushSeconds)*time.Second, analyticsRetention(cfg, edition),
 					analytics.NewLiveTracker(res.redis, liveWindow(cfg)),
 				)
-				// shutdownServer waits on this before closing Redis and the
-				// database, which the final flush needs.
+
 				res.stopAnalytics = analyticsConsumer.Start(eventCtx)
 			}
 
@@ -513,9 +509,6 @@ func runServer(cli *okapicli.CLI) {
 			res.cron = cronpkg.NewManager(backupService, dbRepo, backupRepo, backupsettings.NewService(repositories.NewWorkspaceBackupSettingsRepository(res.db)))
 			res.cron.Start()
 
-			// Log-store retention: a daily sweep deletes log objects past
-			// MIABI_LOG_RETENTION_DAYS (belt-and-suspenders for orphaned objects too).
-			// No-op when the store is disabled or retention is 0 (keep forever).
 			if logStore.Enabled() {
 				_ = res.cron.RegisterTask("logstore", 0, "Log retention sweep", "@daily", func() error {
 					n, err := logStore.Sweep(time.Now())

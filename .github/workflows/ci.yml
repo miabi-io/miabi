@@ -21,8 +21,8 @@ jobs:
     name: Lint (CE + EE)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -31,12 +31,12 @@ jobs:
       # the Community build and the Enterprise build (-tags enterprise), so
       # enterprise-only files are covered too.
       - name: Lint Community Edition
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
 
       - name: Lint Enterprise Edition
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
           args: --build-tags enterprise
@@ -45,8 +45,8 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -69,8 +69,8 @@ jobs:
     name: Web UI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -88,8 +88,8 @@ jobs:
     name: GoReleaser config
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: goreleaser/goreleaser-action@v6
+      - uses: actions/checkout@v7
+      - uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
           args: check
