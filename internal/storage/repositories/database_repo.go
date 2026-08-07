@@ -82,6 +82,15 @@ func (r *DatabaseRepository) RemoveNetwork(inst *models.DatabaseInstance, net *m
 	return r.db.Model(inst).Association("Networks").Delete(net)
 }
 
+// ListAllInstances returns every managed database instance across workspaces.
+// Used by platform-wide passes — disaster recovery has to bring back every
+// tenant's databases, not one workspace's.
+func (r *DatabaseRepository) ListAllInstances() ([]models.DatabaseInstance, error) {
+	var out []models.DatabaseInstance
+	err := r.db.Preload("Networks").Order("workspace_id ASC, id ASC").Find(&out).Error
+	return out, err
+}
+
 func (r *DatabaseRepository) ListByWorkspace(workspaceID uint) ([]models.DatabaseInstance, error) {
 	var dbs []models.DatabaseInstance
 	err := r.db.Where("workspace_id = ?", workspaceID).Order("created_at DESC").Find(&dbs).Error

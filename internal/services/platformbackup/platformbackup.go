@@ -7,8 +7,14 @@
 // (the jkaninda/*-bkup one-shot images, backup.S3Env, the docker one-shot runner,
 // BackupStatus) but draws its database connection from control-plane config —
 // there is no managed Database row for Miabi's own DB — and runs on the manager
-// node where the control plane and system volumes live. Artifact encryption is
-// intentionally not handled here.
+// node where the control plane and system volumes live.
+//
+// Artifacts are GPG-encrypted with the admin-set backup passphrase when
+// EncryptBackups is on. That passphrase is NOT the master encryption key: it
+// protects the artifact, while the master key decrypts the artifact's *contents*
+// after restore. A recovery point additionally carries a sealed identity envelope
+// (internal/dr) holding the master key itself, which is what lets a dump be
+// restored onto a fresh host rather than only back onto the one it came from.
 package platformbackup
 
 import (
@@ -21,6 +27,7 @@ import (
 	"time"
 
 	"github.com/jkaninda/logger"
+	"github.com/miabi-io/miabi/internal/config"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/logstore"
 	"github.com/miabi-io/miabi/internal/models"
@@ -32,30 +39,132 @@ import (
 var (
 	// ErrS3NotConfigured is returned when an operation needs an S3 target that is
 	// not set up (volume backups have no local destination, like volume-bkup).
-	ErrS3NotConfigured = errors.New("platform S3 backup settings are not configured")
+	ErrS3NotConfigured = errors.New("platform backup requires an S3/MinIO target; configure one in Admin → Platform Backup or via MIABI_PLATFORM_BACKUP_S3_*")
 	// ErrNoArtifact is returned when restoring/downloading a backup with no file.
 	ErrNoArtifact = errors.New("platform backup has no artifact")
-	// ErrDownloadRemote is returned when downloading a non-local backup.
-	ErrDownloadRemote = errors.New("download is only available for local backups; fetch S3 backups from your bucket")
+	// ErrDownloadRemote is returned by the download endpoint: artifacts live in
+	// the operator's bucket, and Miabi does not proxy them back out.
+	ErrDownloadRemote = errors.New("platform backup artifacts are stored in your S3 bucket; fetch them from there")
 	// ErrUnknownSubject is returned for an unrecognized backup subject.
 	ErrUnknownSubject = errors.New("unknown platform backup subject")
 
+	// ErrVolumeExcluded is returned for a volume that must never appear in a
+	// platform backup (backup volumes, tenant volumes, the registry's storage).
+	ErrVolumeExcluded = errors.New("this volume cannot be included in a platform backup")
+	// ErrNoPassphrase is returned when encryption is on but no passphrase is set.
+	ErrNoPassphrase = errors.New("backup encryption is enabled but no backup passphrase is set")
+	// ErrSetNeedsS3 is returned when a recovery point is requested without an S3
+	// target. A recovery point that lives only on the host it protects is not a
+	// recovery point.
+	ErrSetNeedsS3 = errors.New("a platform recovery point requires an S3 target: a backup stored only on the host you are recovering from is no disaster recovery at all")
+
 	// pg-bkup emits "<db>_YYYYMMDD_...sql.gz"; volume-bkup emits "<name>_...tar.gz".
-	dbArtifactRe  = regexp.MustCompile(`[\w.\-]+\.sql\.gz`)
-	volArtifactRe = regexp.MustCompile(`[\w.\-]+\.tar\.gz`)
+	// With GPG_PASSPHRASE set both append ".gpg", so the artifact regexes must
+	// accept the encrypted form or the run completes with an empty Filename and
+	// nothing to restore from.
+	dbArtifactRe  = regexp.MustCompile(`[\w.\-]+\.sql\.gz(?:\.gpg)?`)
+	volArtifactRe = regexp.MustCompile(`[\w.\-]+\.tar\.gz(?:\.gpg)?`)
 )
 
 const (
-	dbMount     = "/backup"
 	volumeMount = "/data"
 
-	// platformBackupVolume is the fixed local volume holding platform DB backup
-	// artifacts when the destination is "local".
-	platformBackupVolume = "mb-platform-backups"
+	// legacyLocalVolume held platform artifacts back when a local destination was
+	// allowed. It is no longer written to — S3 is the only destination — but the
+	// name is kept so the volume is still excluded from platform backups and old
+	// rows pointing at it can be recognized.
+	legacyLocalVolume = "mb-platform-backups"
+
+	// destS3 is the only destination. A backup written to a volume on the host it
+	// protects cannot be read once that host is gone, which is the one situation
+	// platform backup exists for.
+	destS3 = "s3"
 
 	defaultPgImage  = "jkaninda/pg-bkup:latest"
 	defaultVolImage = "jkaninda/volume-bkup:latest"
 )
+
+// artifactName extracts the artifact the helper actually uploaded from its
+// output.
+//
+// It takes the LAST match, not the first. With encryption on, the tools narrate
+// the plain dump before the encrypted one they upload:
+//
+//	Backup file created: miabi_20260731.sql.gz
+//	Encrypting backup file miabi_20260731.sql.gz.gpg
+//	Uploading ... miabi_20260731.sql.gz.gpg
+//
+// The first match is the intermediate name. Recording it produced a row that
+// looked complete and pointed at an object that was never written — a recovery
+// point that only revealed itself as unrestorable when someone verified it, or
+// worse, when they came to restore from it.
+//
+// It returns whether the artifact is encrypted by reading the name rather than
+// the intent. Older helper versions ignore GPG_PASSPHRASE — volume-bkup had no
+// encryption support at all until recently — and recording "encrypted" for a
+// plain archive, or refusing the run outright, would both be wrong. What is in
+// the bucket is the fact; the caller warns when it falls short of what was asked.
+func artifactName(out string, re *regexp.Regexp) (name string, encrypted bool, err error) {
+	return backup.ArtifactName(out, re)
+}
+
+// notEncrypted warns that an artifact went to the bucket in the clear despite
+// encryption being on — almost always a helper image too old to support it.
+func notEncrypted(subject, name string) {
+	logger.Warn("artifact stored UNENCRYPTED despite encryption being enabled: the backup helper does not support it — upgrade the image",
+		"subject", subject, "artifact", name)
+}
+
+// oneShotError builds the error for a failed helper container.
+//
+// The tool reports its problem on stdout and exits non-zero, in which case
+// RunOneShot returns a nil error — so wrapping that nil with %w produced
+// "backup exited with code 1: %!w(<nil>)", a message that named the one thing
+// nobody needed to know. The container's own output is the diagnosis; carry it.
+func oneShotError(action string, exit int, out string, err error) error {
+	detail := strings.TrimSpace(out)
+	if detail == "" {
+		detail = "(no output)"
+	}
+	// Keep the tail: these tools print their progress first and their failure
+	// last, and the row this lands in is not a log file.
+	if len(detail) > 2000 {
+		detail = "…" + detail[len(detail)-2000:]
+	}
+	if err != nil {
+		return fmt.Errorf("%s could not run: %w (output: %s)", action, err, detail)
+	}
+	return fmt.Errorf("%s exited with code %d: %s", action, exit, detail)
+}
+
+// assertDBReachable refuses a connection that cannot possibly work from inside a
+// helper container.
+//
+// The backup runs in its own container on the platform network, so a loopback
+// address points at that container, not at the host running Miabi. Left to
+// discover it, the tool fails with a connection refused that reads like the
+// database is down. Say what is actually wrong instead.
+func (s *Service) assertDBReachable() error {
+	switch strings.ToLower(strings.TrimSpace(s.db.Host)) {
+	case "", "localhost", "127.0.0.1", "::1", "[::1]":
+		return fmt.Errorf(
+			"the control-plane database host is %q. The backup runs in its own container, where that address means "+
+				"the container itself — not the machine Miabi runs on — so it can never connect. Set MIABI_DB_HOST to "+
+				"an address the container can reach: the Postgres container's name when Miabi is installed as a stack "+
+				"(%q, on the %s network), or host.docker.internal when Postgres runs on the host and Docker provides "+
+				"that name",
+			s.db.Host, "miabi-postgres", s.networkName())
+	}
+	return nil
+}
+
+// networkName reports the platform network for diagnostics.
+func (s *Service) networkName() string {
+	if s.network == "" {
+		return "platform"
+	}
+	return s.network
+}
 
 // DBConn carries the resolved control-plane Postgres connection parameters the
 // platform DB backup runner feeds to pg-bkup.
@@ -88,6 +197,7 @@ type Enqueuer interface {
 // Service backs up and restores the platform's own database and volumes.
 type Service struct {
 	repo     *repositories.PlatformBackupRepository
+	sets     *repositories.PlatformBackupSetRepository
 	settings *repositories.PlatformBackupSettingsRepository
 	clients  NodeDocker
 	db       DBConn
@@ -95,13 +205,28 @@ type Service struct {
 	images   ImageResolver
 	enqueuer Enqueuer
 	logs     *logstore.Store
+	// identity supplies the platform identity sealed into each recovery point.
+	identity IdentitySource
+	// fingerprint derives this process's master-key fingerprint (crypto.DeriveToken).
+	fingerprint func(label string) string
+	// keyFingerprint derives the fingerprint an *arbitrary* key would produce, so a
+	// key recovered from an identity envelope can be checked against a set.
+	keyFingerprint func(key, label string) string
+	// env is the environment-supplied configuration, which wins over the stored
+	// settings row (see settings.go).
+	env config.PlatformBackupConfig
+	// tenants enumerates and dumps workspace data (see tenant.go). Optional.
+	tenants TenantSource
+	// apps stops and starts the applications using a volume around a restore.
+	// Optional; without it a volume restore runs with the apps still attached.
+	apps AppStopper
 }
 
 // NewService builds the platform backup service. db is the control-plane DB
 // connection; network is the proxy network the DB-backup container joins so it
 // can reach a Compose/managed Postgres by service name.
-func NewService(repo *repositories.PlatformBackupRepository, settings *repositories.PlatformBackupSettingsRepository, clients NodeDocker, db DBConn, network string) *Service {
-	return &Service{repo: repo, settings: settings, clients: clients, db: db, network: network}
+func NewService(repo *repositories.PlatformBackupRepository, sets *repositories.PlatformBackupSetRepository, settings *repositories.PlatformBackupSettingsRepository, clients NodeDocker, db DBConn, network string) *Service {
+	return &Service{repo: repo, sets: sets, settings: settings, clients: clients, db: db, network: network}
 }
 
 // SetImageResolver wires the deployment-config resolver for the backup tool images.
@@ -156,6 +281,18 @@ func (s *Service) volImage() string {
 	return defaultVolImage
 }
 
+// backupNetworks attaches the helper container to the platform network so it can
+// reach the control-plane database by name.
+func (s *Service) backupNetworks(ctx context.Context, dc docker.Client) ([]string, error) {
+	if s.network == "" {
+		return nil, nil
+	}
+	if _, err := dc.EnsureNetwork(ctx, s.network); err != nil {
+		return nil, fmt.Errorf("attach the backup container to network %q (it reaches the database by name there): %w", s.network, err)
+	}
+	return []string{s.network}, nil
+}
+
 // docker resolves the manager-node Docker client (the control plane + system
 // volumes live on the local node).
 func (s *Service) docker() (docker.Client, error) { return s.clients.For(0) }
@@ -184,35 +321,32 @@ func (s *Service) Create(ctx context.Context, subject models.PlatformBackupSubje
 	if err != nil {
 		return nil, err
 	}
-	dest := "local"
-	if cfg != nil {
-		dest = "s3"
+	if cfg == nil {
+		return nil, ErrS3NotConfigured
 	}
 	switch subject {
 	case models.PlatformBackupDatabase:
-		// local or s3 — both supported by pg-bkup
 	case models.PlatformBackupVolume:
 		if volumeName == "" {
 			return nil, errors.New("volume name is required for a volume backup")
 		}
-		if cfg == nil {
-			return nil, ErrS3NotConfigured // volume-bkup is S3-only
+		if err := s.assertBackupable(ctx, volumeName); err != nil {
+			return nil, err
 		}
+	case models.PlatformBackupIdentity:
+		return nil, errors.New("the identity envelope is produced as part of a recovery point, not on its own")
 	default:
 		return nil, ErrUnknownSubject
 	}
 
 	b := &models.PlatformBackup{
 		Subject: subject, VolumeName: volumeName,
-		Status: models.BackupPending, Trigger: trigger, Destination: dest,
+		Status: models.BackupPending, Trigger: trigger, Destination: destS3,
+		S3Bucket: cfg.Bucket,
+		S3Path:   st.DatabaseBackupPath,
 	}
-	if cfg != nil {
-		b.S3Bucket = cfg.Bucket
-		if subject == models.PlatformBackupDatabase {
-			b.S3Path = st.DatabaseBackupPath
-		} else {
-			b.S3Path = st.VolumeBackupPath
-		}
+	if subject == models.PlatformBackupVolume {
+		b.S3Path = st.VolumeBackupPath
 	}
 	if err := s.repo.Create(b); err != nil {
 		return nil, err
@@ -247,10 +381,40 @@ func (s *Service) RunBackup(ctx context.Context, backupID uint) error {
 		return s.runDBBackup(ctx, b, st)
 	case models.PlatformBackupVolume:
 		return s.runVolumeBackup(ctx, b, st)
+	case models.PlatformBackupIdentity:
+		return s.runIdentityBackup(ctx, b, st)
+	case models.PlatformBackupTenantDatabase:
+		return s.runTenantDatabaseBackup(ctx, b, st)
+	case models.PlatformBackupTenantVolume:
+		return s.runTenantVolumeBackup(ctx, b, st)
 	default:
 		s.fail(b, ErrUnknownSubject)
 		return nil
 	}
+}
+
+// assertBackupable refuses a volume that must never be captured in a platform
+// backup (§ DiscoverVolumes), resolving its labels from Docker so a workspace
+// volume named without an "mb-" prefix is still caught.
+func (s *Service) assertBackupable(ctx context.Context, name string) error {
+	var labels map[string]string
+	if dc, err := s.docker(); err == nil {
+		if vols, err := dc.ListVolumes(ctx); err == nil {
+			for _, v := range vols {
+				if v.Name == name {
+					labels = v.Labels
+					break
+				}
+			}
+		}
+	}
+	if !excludedVolume(name, labels) {
+		return nil
+	}
+	if name == models.DefaultRegistryVolume {
+		return fmt.Errorf("%w: %s holds live registry blob storage — archiving it under concurrent pushes produces an archive that restores but cannot be pulled from. Run the registry on S3 storage so images survive losing this host", ErrVolumeExcluded, name)
+	}
+	return fmt.Errorf("%w: %s", ErrVolumeExcluded, name)
 }
 
 func (s *Service) runDBBackup(ctx context.Context, b *models.PlatformBackup, st *models.PlatformBackupSettings) error {
@@ -270,28 +434,35 @@ func (s *Service) runDBBackup(ctx context.Context, b *models.PlatformBackup, st 
 	b.StartedAt = &now
 	_ = s.repo.Update(b)
 
-	env := s.dbEnv()
-	cmd := []string{"backup", "-d", s.db.Name}
-	var mounts map[string]string
-	var nets []string
-
-	if cfg != nil {
-		env = append(env, backup.S3Env(cfg)...)
-		cmd = []string{"backup", "--storage", "s3", "-d", s.db.Name}
-		if st.DatabaseBackupPath != "" {
-			cmd = append(cmd, "--path", st.DatabaseBackupPath)
-		}
-	} else {
-		if _, err := dc.CreateVolume(ctx, platformBackupVolume, map[string]string{docker.LabelManaged: "true"}, 0); err != nil {
-			s.fail(b, fmt.Errorf("create backup volume: %w", err))
-			return nil
-		}
-		mounts = map[string]string{platformBackupVolume: dbMount}
+	gpg, wantEncryption, err := s.gpgEnv(st)
+	if err != nil {
+		s.fail(b, err)
+		return nil
 	}
-	if s.network != "" {
-		if _, err := dc.EnsureNetwork(ctx, s.network); err == nil {
-			nets = []string{s.network}
-		}
+
+	if cfg == nil {
+		s.fail(b, ErrS3NotConfigured)
+		return nil
+	}
+
+	if err := s.assertDBReachable(); err != nil {
+		s.fail(b, err)
+		return nil
+	}
+
+	env := append(append(s.dbEnv(), gpg...), backup.S3Env(cfg)...)
+	cmd := []string{"backup", "--storage", "s3", "-d", s.db.Name}
+	if st.DatabaseBackupPath != "" {
+		cmd = append(cmd, "--path", st.DatabaseBackupPath)
+	}
+	// The helper reaches the database by name on the platform network. Failing to
+	// attach is not something to shrug off and continue past: the container would
+	// then be on no network at all and could not resolve the host, which surfaces
+	// far from here as an unexplained exit 1.
+	nets, err := s.backupNetworks(ctx, dc)
+	if err != nil {
+		s.fail(b, err)
+		return nil
 	}
 
 	image := s.pgImage()
@@ -299,21 +470,29 @@ func (s *Service) runDBBackup(ctx context.Context, b *models.PlatformBackup, st 
 		s.fail(b, fmt.Errorf("pull backup image: %w", err))
 		return nil
 	}
-	exit, out, err := dc.RunOneShot(ctx, docker.RunSpec{
+	out, err := s.runHelper(ctx, dc, "control-plane database backup", docker.RunSpec{
 		Name:     fmt.Sprintf("mb-platform-dbbkup-%d", b.ID),
 		Image:    image,
 		Env:      env,
 		Cmd:      cmd,
 		Networks: nets,
-		Mounts:   mounts,
 		Labels:   map[string]string{docker.LabelManaged: "true"},
 	})
 	b.Logs = out
-	if err != nil || exit != 0 {
-		s.fail(b, fmt.Errorf("backup exited with code %d: %w", exit, err))
+	if err != nil {
+		s.fail(b, err)
 		return nil
 	}
-	b.Filename = dbArtifactRe.FindString(out)
+	name, encrypted, err := artifactName(out, dbArtifactRe)
+	if err != nil {
+		s.fail(b, err)
+		return nil
+	}
+	if wantEncryption && !encrypted {
+		notEncrypted(string(b.Subject), name)
+	}
+	b.Filename = name
+	b.Encrypted = encrypted
 	fin := time.Now()
 	b.Status = models.BackupCompleted
 	b.FinishedAt = &fin
@@ -321,7 +500,8 @@ func (s *Service) runDBBackup(ctx context.Context, b *models.PlatformBackup, st 
 		return err
 	}
 	s.externalizeLog(b)
-	logger.Info("platform database backup completed", "backup", b.ID, "destination", b.Destination, "file", b.Filename)
+	s.finalizeSet(b.SetID)
+	logger.Info("platform database backup completed", "backup", b.ID, "destination", b.Destination, "encrypted", encrypted, "file", b.Filename)
 	return nil
 }
 
@@ -341,6 +521,12 @@ func (s *Service) runVolumeBackup(ctx context.Context, b *models.PlatformBackup,
 		return nil
 	}
 
+	gpg, wantEncryption, err := s.gpgEnv(st)
+	if err != nil {
+		s.fail(b, err)
+		return nil
+	}
+
 	now := time.Now()
 	b.Status = models.BackupRunning
 	b.StartedAt = &now
@@ -351,20 +537,41 @@ func (s *Service) runVolumeBackup(ctx context.Context, b *models.PlatformBackup,
 		s.fail(b, fmt.Errorf("pull image: %w", err))
 		return nil
 	}
-	exit, out, err := dc.RunOneShot(ctx, docker.RunSpec{
-		Name:   fmt.Sprintf("mb-platform-volbkup-%d", b.ID),
-		Image:  image,
-		Env:    backup.S3Env(cfg),
-		Cmd:    []string{"backup", "--storage", "s3", "--remote-path", st.VolumeBackupPath, "--name", volumeArchiveName(b.VolumeName)},
-		Mounts: map[string]string{b.VolumeName: volumeMount},
-		Labels: map[string]string{docker.LabelManaged: "true"},
-	})
-	b.Logs = out
-	if err != nil || exit != 0 {
-		s.fail(b, fmt.Errorf("volume backup exited with code %d: %w", exit, err))
+	// The archive is uploaded BY THIS CONTAINER, so it needs to reach the object
+	// store from inside Docker. A self-hosted MinIO usually resolves only on the
+	// platform network — without joining it the upload dies on "no such host",
+	// after the archive has been created and encrypted, which reads like a storage
+	// fault rather than a networking one. The database backup already joined it;
+	// the volume backup never did.
+	nets, err := s.backupNetworks(ctx, dc)
+	if err != nil {
+		s.fail(b, err)
 		return nil
 	}
-	b.Filename = volArtifactRe.FindString(out)
+	out, err := s.runHelper(ctx, dc, "volume backup of "+b.VolumeName, docker.RunSpec{
+		Name:     fmt.Sprintf("mb-platform-volbkup-%d", b.ID),
+		Image:    image,
+		Env:      append(backup.S3Env(cfg), gpg...),
+		Cmd:      []string{"backup", "--storage", "s3", "--remote-path", st.VolumeBackupPath, "--name", volumeArchiveName(b.VolumeName)},
+		Mounts:   map[string]string{b.VolumeName: volumeMount},
+		Networks: nets,
+		Labels:   map[string]string{docker.LabelManaged: "true"},
+	})
+	b.Logs = out
+	if err != nil {
+		s.fail(b, err)
+		return nil
+	}
+	name, encrypted, err := artifactName(out, volArtifactRe)
+	if err != nil {
+		s.fail(b, err)
+		return nil
+	}
+	if wantEncryption && !encrypted {
+		notEncrypted(string(b.Subject)+" "+b.VolumeName, name)
+	}
+	b.Filename = name
+	b.Encrypted = encrypted
 	fin := time.Now()
 	b.Status = models.BackupCompleted
 	b.FinishedAt = &fin
@@ -372,7 +579,8 @@ func (s *Service) runVolumeBackup(ctx context.Context, b *models.PlatformBackup,
 		return err
 	}
 	s.externalizeLog(b)
-	logger.Info("platform volume backup completed", "backup", b.ID, "volume", b.VolumeName, "file", b.Filename)
+	s.finalizeSet(b.SetID)
+	logger.Info("platform volume backup completed", "backup", b.ID, "volume", b.VolumeName, "encrypted", encrypted, "file", b.Filename)
 	return nil
 }
 
@@ -403,27 +611,24 @@ func (s *Service) restoreDB(ctx context.Context, b *models.PlatformBackup, st *m
 	if err != nil {
 		return err
 	}
-	env := s.dbEnv()
-	cmd := []string{"restore", "-d", s.db.Name, "-f", b.Filename}
-	var mounts map[string]string
-	var nets []string
-
-	if b.Destination == "s3" {
-		cfg, err := s.s3Config(st)
-		if err != nil {
-			return err
-		}
-		if cfg == nil {
-			return ErrS3NotConfigured
-		}
-		env = append(env, backup.S3Env(cfg)...)
-		cmd = []string{"restore", "--storage", "s3", "-d", s.db.Name, "-f", b.Filename}
-		if b.S3Path != "" {
-			cmd = append(cmd, "--path", b.S3Path)
-		}
-	} else {
-		mounts = map[string]string{platformBackupVolume: dbMount}
+	gpg, err := s.restoreGPGEnv(b, st)
+	if err != nil {
+		return err
 	}
+
+	cfg, err := s.s3Config(st)
+	if err != nil {
+		return err
+	}
+	if cfg == nil {
+		return ErrS3NotConfigured
+	}
+	env := append(append(s.dbEnv(), gpg...), backup.S3Env(cfg)...)
+	cmd := []string{"restore", "--storage", "s3", "-d", s.db.Name, "-f", b.Filename}
+	if b.S3Path != "" {
+		cmd = append(cmd, "--path", b.S3Path)
+	}
+	var nets []string
 	if s.network != "" {
 		if _, err := dc.EnsureNetwork(ctx, s.network); err == nil {
 			nets = []string{s.network}
@@ -440,7 +645,6 @@ func (s *Service) restoreDB(ctx context.Context, b *models.PlatformBackup, st *m
 		Env:      env,
 		Cmd:      cmd,
 		Networks: nets,
-		Mounts:   mounts,
 		Labels:   map[string]string{docker.LabelManaged: "true"},
 	})
 	if err != nil || exit != 0 {
@@ -461,6 +665,10 @@ func (s *Service) restoreVolume(ctx context.Context, b *models.PlatformBackup, s
 	if cfg == nil {
 		return ErrS3NotConfigured
 	}
+	gpg, err := s.restoreGPGEnv(b, st)
+	if err != nil {
+		return err
+	}
 	dc, err := s.docker()
 	if err != nil {
 		return err
@@ -469,13 +677,18 @@ func (s *Service) restoreVolume(ctx context.Context, b *models.PlatformBackup, s
 	if err := dc.PullImage(ctx, image, nil); err != nil {
 		return fmt.Errorf("pull image: %w", err)
 	}
+	nets, err := s.backupNetworks(ctx, dc)
+	if err != nil {
+		return err
+	}
 	exit, out, err := dc.RunOneShot(ctx, docker.RunSpec{
-		Name:   fmt.Sprintf("mb-platform-volrestore-%d", b.ID),
-		Image:  image,
-		Env:    backup.S3Env(cfg),
-		Cmd:    []string{"restore", "--storage", "s3", "--remote-path", b.S3Path, "--file", b.Filename},
-		Mounts: map[string]string{b.VolumeName: volumeMount},
-		Labels: map[string]string{docker.LabelManaged: "true"},
+		Name:     fmt.Sprintf("mb-platform-volrestore-%d", b.ID),
+		Image:    image,
+		Env:      append(backup.S3Env(cfg), gpg...),
+		Cmd:      []string{"restore", "--storage", "s3", "--remote-path", b.S3Path, "--file", b.Filename},
+		Mounts:   map[string]string{b.VolumeName: volumeMount},
+		Networks: nets,
+		Labels:   map[string]string{docker.LabelManaged: "true"},
 	})
 	if err != nil || exit != 0 {
 		return fmt.Errorf("volume restore exited with code %d: %s", exit, out)
@@ -484,44 +697,32 @@ func (s *Service) restoreVolume(ctx context.Context, b *models.PlatformBackup, s
 	return nil
 }
 
-// Delete removes a backup record and, for local DB backups, its artifact file
-// from the platform backup volume (best-effort). S3 artifacts are left in place.
+// Delete removes a backup record and its artifact from the bucket.
+//
+// Deleting the object matters more than it used to: with S3 as the only
+// destination, a record removed without its artifact leaves a file nobody knows
+// about, paying storage forever. A failure to delete the object is logged but
+// does not block removing the record — an orphaned object is a smaller problem
+// than a row that cannot be cleared.
 func (s *Service) Delete(ctx context.Context, b *models.PlatformBackup) error {
-	if b.Destination == "local" && b.Subject == models.PlatformBackupDatabase && b.Filename != "" {
-		if dc, err := s.docker(); err == nil {
-			image := s.pgImage()
-			if _, out, err := dc.RunOneShot(ctx, docker.RunSpec{
-				Name:       fmt.Sprintf("mb-platform-bkup-rm-%d", b.ID),
-				Image:      image,
-				Entrypoint: []string{"/bin/sh", "-c"},
-				Cmd:        []string{"rm -f " + dbMount + "/" + b.Filename},
-				Mounts:     map[string]string{platformBackupVolume: dbMount},
-			}); err != nil {
-				logger.Error("remove platform backup artifact", "backup", b.ID, "error", err, "out", out)
+	if b.Filename != "" {
+		st, err := s.getSettings()
+		if err == nil {
+			if store, err := s.blobStore(st); err == nil {
+				if err := store.Delete(ctx, objectKey(b)); err != nil {
+					logger.Error("remove platform backup artifact", "backup", b.ID, "object", objectKey(b), "error", err)
+				}
 			}
 		}
 	}
 	return s.repo.Delete(b.ID)
 }
 
-// Download streams a local DB backup artifact. The returned reader must be
-// closed by the caller. S3 backups are not downloadable through Miabi.
-func (s *Service) Download(ctx context.Context, b *models.PlatformBackup) (io.ReadCloser, int64, string, error) {
-	if b.Destination != "local" || b.Subject != models.PlatformBackupDatabase {
-		return nil, 0, "", ErrDownloadRemote
-	}
-	if b.Filename == "" {
-		return nil, 0, "", ErrNoArtifact
-	}
-	dc, err := s.docker()
-	if err != nil {
-		return nil, 0, "", err
-	}
-	rc, size, err := dc.CopyFileFromVolume(ctx, platformBackupVolume, s.pgImage(), b.Filename)
-	if err != nil {
-		return nil, 0, "", err
-	}
-	return rc, size, b.Filename, nil
+// Download is not supported: artifacts live in the operator's own bucket, and
+// streaming gigabytes of encrypted dump back out through the control plane would
+// add nothing they cannot do with their S3 client.
+func (s *Service) Download(_ context.Context, _ *models.PlatformBackup) (io.ReadCloser, int64, string, error) {
+	return nil, 0, "", ErrDownloadRemote
 }
 
 // Prune enforces the retention policy on platform backups: keep at most
@@ -540,9 +741,17 @@ func (s *Service) Prune(ctx context.Context, maxBackups, retentionDays int) (int
 		cutoff = time.Now().AddDate(0, 0, -retentionDays)
 	}
 	removed := 0
+	kept := 0
 	for i := range backups {
 		b := &backups[i]
-		overCount := maxBackups > 0 && i >= maxBackups
+		// Artifacts owned by a recovery point are retained as a unit by
+		// PruneSets. Deleting one here would silently hollow out a set that still
+		// reports itself as restorable.
+		if b.SetID != nil {
+			continue
+		}
+		overCount := maxBackups > 0 && kept >= maxBackups
+		kept++
 		tooOld := retentionDays > 0 && b.CreatedAt.Before(cutoff)
 		if overCount || tooOld {
 			if err := s.Delete(ctx, b); err != nil {
@@ -558,21 +767,29 @@ func (s *Service) Prune(ctx context.Context, maxBackups, retentionDays int) (int
 	return removed, nil
 }
 
-// RunScheduled is the cron entry point: it backs up the database plus every
-// selected platform volume, then prunes per retention. Errors on individual
-// volumes are logged but do not abort the run.
+// RunScheduled is the cron entry point. With an S3 target it takes a whole
+// recovery point (identity envelope + database + selected volumes) and prunes by
+// recovery point; with only a local destination it falls back to the legacy
+// per-artifact backup, which is still useful for same-host rollback even though
+// it is not disaster recovery.
 func (s *Service) RunScheduled(ctx context.Context) error {
 	st, err := s.getSettings()
 	if err != nil {
 		return err
 	}
+	if s.S3Configured() {
+		if _, err := s.CreateSet(ctx, "scheduled"); err != nil {
+			logger.Error("scheduled platform recovery point failed", "error", err)
+		}
+		if st.MaxBackups > 0 || st.RetentionDays > 0 {
+			_, _ = s.PruneSets(ctx, st.MaxBackups, st.RetentionDays)
+		}
+		return nil
+	}
+
+	logger.Warn("platform backup has no S3 target: taking a local database backup only, which cannot restore this host after it is lost")
 	if _, err := s.Create(ctx, models.PlatformBackupDatabase, "", "scheduled"); err != nil {
 		logger.Error("scheduled platform database backup failed", "error", err)
-	}
-	for _, v := range st.Volumes {
-		if _, err := s.Create(ctx, models.PlatformBackupVolume, v, "scheduled"); err != nil {
-			logger.Error("scheduled platform volume backup failed", "volume", v, "error", err)
-		}
 	}
 	if st.MaxBackups > 0 || st.RetentionDays > 0 {
 		_, _ = s.Prune(ctx, st.MaxBackups, st.RetentionDays)
@@ -588,8 +805,20 @@ type PlatformVolume struct {
 }
 
 // DiscoverVolumes lists candidate platform/system volumes on the manager node:
-// every Miabi-managed volume except the per-workspace and platform backup
-// volumes (which must never back themselves up).
+// Miabi-managed infrastructure volumes only.
+//
+// Three classes are excluded, and each exclusion is load-bearing:
+//
+//   - Backup volumes, which must never back themselves up.
+//   - Per-workspace volumes, which are tenant data with their own per-workspace
+//     backup path. They carry the workspace label, and the previous filter did not
+//     check it — so they were offered here, which is not what a *platform* backup
+//     means.
+//   - The registry data volume. Archiving it means taring live blob storage under
+//     concurrent pushes, which yields an archive whose manifests reference
+//     half-written blobs: it restores cleanly and then fails on pull. The
+//     supported answer for image durability is to run the registry on S3 storage,
+//     where the blobs already live off-host and survive losing this machine.
 func (s *Service) DiscoverVolumes(ctx context.Context) ([]PlatformVolume, error) {
 	dc, err := s.docker()
 	if err != nil {
@@ -601,8 +830,8 @@ func (s *Service) DiscoverVolumes(ctx context.Context) ([]PlatformVolume, error)
 	}
 	out := make([]PlatformVolume, 0, len(vols))
 	for _, v := range vols {
-		if v.Name == platformBackupVolume || strings.HasPrefix(v.Name, "mb-backups-") {
-			continue // exclude backup volumes
+		if excludedVolume(v.Name, v.Labels) {
+			continue
 		}
 		// Limit to Miabi-managed/named volumes; ignore unrelated host volumes.
 		if !docker.IsManaged(v.Labels) && !strings.HasPrefix(v.Name, "mb-") {
@@ -612,6 +841,23 @@ func (s *Service) DiscoverVolumes(ctx context.Context) ([]PlatformVolume, error)
 		out = append(out, PlatformVolume{Name: v.Name, Role: role})
 	}
 	return out, nil
+}
+
+// excludedVolume reports whether a volume must never appear in a platform
+// backup. Kept separate from DiscoverVolumes so the same rule can be enforced
+// when a caller names a volume directly — a filter the picker honours but the
+// API does not is not a filter.
+func excludedVolume(name string, labels map[string]string) bool {
+	if name == legacyLocalVolume || strings.HasPrefix(name, "mb-backups-") {
+		return true
+	}
+	if name == models.DefaultRegistryVolume {
+		return true
+	}
+	if _, ok := docker.LabelValue(labels, docker.LabelWorkspace); ok {
+		return true
+	}
+	return false
 }
 
 func (s *Service) dbEnv() []string {
@@ -631,6 +877,11 @@ func (s *Service) fail(b *models.PlatformBackup, cause error) *models.PlatformBa
 	b.FinishedAt = &fin
 	_ = s.repo.Update(b)
 	s.externalizeLog(b)
+	// Close the owning recovery point too. Without this a failed item left its set
+	// "running" forever: never completed, never failed, and never pruned — a
+	// recovery point stuck mid-flight in the history with no way to tell whether
+	// it was still working.
+	s.finalizeSet(b.SetID)
 	logger.Error("platform backup failed", "backup", b.ID, "subject", b.Subject, "error", cause)
 	return b
 }

@@ -226,6 +226,12 @@ type Config struct {
 	// authoritative on boot (overriding the admin Settings UI), mirroring the
 	// ExternalBaseDomain convention; otherwise manage it from Settings.
 	Registry RegistryConfig
+
+	// PlatformBackup configures disaster-recovery backups from the environment,
+	// so a freshly installed or freshly restored host is already pointed at its
+	// bucket before anyone opens the UI.
+	PlatformBackup PlatformBackupConfig
+
 	LogStore LogStoreConfig
 
 	// HostPortMin/HostPortMax bound the host ports an admin may approve for port
@@ -355,6 +361,66 @@ type RedisConfig struct {
 	Addr     string
 	Password string
 	DB       int // Redis database index (MIABI_REDIS_DB); must match Goma's GOMA_REDIS_DB for analytics
+}
+
+// PlatformBackupConfig configures platform disaster-recovery backups from the
+// environment.
+//
+// It exists because of the order recovery happens in. A freshly installed or
+// freshly restored control plane has an empty settings table, so anything stored
+// only in the database has to be typed into a UI before the platform can protect
+// itself — and after a restore, the operator is doing that under pressure, from
+// memory. Setting the target in the stack manifest means a rebuilt host is
+// already pointed at its bucket on first boot.
+//
+// Any field set here WINS over the stored settings row and is reported to the
+// API as env-locked, so the UI shows it read-only instead of accepting an edit
+// the process configuration would silently override.
+type PlatformBackupConfig struct {
+	S3Endpoint       string
+	S3Bucket         string
+	S3Region         string
+	S3AccessKey      string
+	S3SecretKey      string
+	S3UseSSL         bool
+	S3ForcePathStyle bool
+
+	// RootPath scopes this instance's tree within the bucket; the info file is
+	// written at its root. DatabasePath/VolumePath default to <root>/databases and
+	// <root>/volumes.
+	RootPath     string
+	DatabasePath string
+	VolumePath   string
+
+	// Passphrase is the backup passphrase. Supplying it here rather than through
+	// the UI is what lets an unattended install take encrypted backups from its
+	// first boot; it is still never returned by the API.
+	Passphrase string
+	Encrypt    bool
+	// EncryptSet records whether MIABI_PLATFORM_BACKUP_ENCRYPT was present, so an
+	// explicit "false" can override a stored "true" while an absent variable
+	// leaves the stored value alone. IncludeIdentitySet and IncludeTenantDataSet
+	// do the same for their toggles.
+	EncryptSet bool
+
+	// IncludeIdentity seals the platform's identity into each recovery point.
+	// Defaults to on once a passphrase is supplied — that combination is what
+	// makes a recovery point restorable onto a fresh host, and it should not
+	// require a second opt-in nobody knows to look for.
+	IncludeIdentity    bool
+	IncludeIdentitySet bool
+	// IncludeTenantData adds every workspace's databases and volumes.
+	IncludeTenantData    bool
+	IncludeTenantDataSet bool
+
+	ScheduleCron  string
+	MaxBackups    int
+	RetentionDays int
+}
+
+// Configured reports whether the environment supplies a usable S3 target.
+func (c PlatformBackupConfig) Configured() bool {
+	return c.S3Bucket != "" && c.S3AccessKey != "" && c.S3SecretKey != ""
 }
 
 // RegistryConfig is the boot-authoritative config for the built-in registry.
@@ -562,6 +628,32 @@ func New() *Config {
 		NodeGatewayImage:           goutils.Env("MIABI_NODE_GATEWAY_IMAGE", "jkaninda/goma-gateway:latest"),
 		RunnerImage:                goutils.Env("MIABI_RUNNER_IMAGE", "miabi/runner:latest"),
 		GomaConfigEncryptionKey:    goutils.Env("GOMA_CONFIG_ENCRYPTION_KEY", ""),
+		PlatformBackup: PlatformBackupConfig{
+			S3Endpoint:       goutils.Env("MIABI_PLATFORM_BACKUP_S3_ENDPOINT", ""),
+			S3Bucket:         goutils.Env("MIABI_PLATFORM_BACKUP_S3_BUCKET", ""),
+			S3Region:         goutils.Env("MIABI_PLATFORM_BACKUP_S3_REGION", ""),
+			S3AccessKey:      goutils.Env("MIABI_PLATFORM_BACKUP_S3_ACCESS_KEY", ""),
+			S3SecretKey:      goutils.Env("MIABI_PLATFORM_BACKUP_S3_SECRET_KEY", ""),
+			S3UseSSL:         goutils.EnvBool("MIABI_PLATFORM_BACKUP_S3_USE_SSL", true),
+			S3ForcePathStyle: goutils.EnvBool("MIABI_PLATFORM_BACKUP_S3_FORCE_PATH_STYLE", false),
+
+			RootPath:     goutils.Env("MIABI_PLATFORM_BACKUP_PATH", ""),
+			DatabasePath: goutils.Env("MIABI_PLATFORM_BACKUP_DATABASE_PATH", ""),
+			VolumePath:   goutils.Env("MIABI_PLATFORM_BACKUP_VOLUME_PATH", ""),
+
+			Passphrase: goutils.Env("MIABI_PLATFORM_BACKUP_PASSPHRASE", ""),
+			Encrypt:    goutils.EnvBool("MIABI_PLATFORM_BACKUP_ENCRYPT", true),
+			EncryptSet: os.Getenv("MIABI_PLATFORM_BACKUP_ENCRYPT") != "",
+
+			IncludeIdentity:      goutils.EnvBool("MIABI_PLATFORM_BACKUP_INCLUDE_IDENTITY", true),
+			IncludeIdentitySet:   os.Getenv("MIABI_PLATFORM_BACKUP_INCLUDE_IDENTITY") != "",
+			IncludeTenantData:    goutils.EnvBool("MIABI_PLATFORM_BACKUP_INCLUDE_TENANT_DATA", false),
+			IncludeTenantDataSet: os.Getenv("MIABI_PLATFORM_BACKUP_INCLUDE_TENANT_DATA") != "",
+
+			ScheduleCron:  goutils.Env("MIABI_PLATFORM_BACKUP_SCHEDULE", ""),
+			MaxBackups:    goutils.EnvInt("MIABI_PLATFORM_BACKUP_MAX", 0),
+			RetentionDays: goutils.EnvInt("MIABI_PLATFORM_BACKUP_RETENTION_DAYS", 0),
+		},
 		Registry: RegistryConfig{
 			Enabled:       goutils.EnvBool("MIABI_REGISTRY_ENABLED", false),
 			EnabledSet:    envPresent("MIABI_REGISTRY_ENABLED"),

@@ -6,13 +6,18 @@
 //
 // Everything else that talks to S3 does so through the jkaninda/*-bkup one-shot
 // images, which is the right tool for a data artifact: the helper streams a dump
-// or an archive straight to the bucket, and Miabi never handles the bytes.
+// or an archive straight to the bucket, and Miabi never handles the bytes. That
+// only works while there is a running platform to schedule containers with
+// credentials from the database.
 //
-// A portable workspace bundle needs both. Its dumps and volume archives are still
-// the helpers' work, but the bundle's own control objects — the info file that
-// indexes it and the sealed state file that holds its configuration — are written
-// and read by the control plane itself, and listing what a bucket holds is a
-// query no helper answers. Hence this package.
+// Two paths need more than that. A portable workspace bundle's dumps and volume
+// archives are still the helpers' work, but its control objects — the info file
+// that indexes it and the sealed state file that holds its configuration — are
+// written and read by the control plane itself, and listing what a bucket holds
+// is a query no helper answers. Disaster recovery has no platform at all:
+// `miabi restore` must read the sealed identity envelope off a bucket on a bare
+// host, before a control plane, a database or any credentials exist. Hence this
+// package.
 package blob
 
 import (
@@ -69,8 +74,9 @@ func New(cfg Config) (*Store, error) {
 	if region == "" {
 		// S3 requires *a* region even when the endpoint is a MinIO that ignores it.
 		// Must match the default the *-bkup helpers are given (see
-		// wsbackup.defaultS3Region): a client and a helper signing for different
-		// regions is a harder failure to read than either alone.
+		// wsbackup.defaultS3Region and platformbackup.defaultS3Region): a client and
+		// a helper signing for different regions is a harder failure to read than
+		// either alone.
 		region = "us-east-1"
 	}
 	opts := []func(*s3.Options){

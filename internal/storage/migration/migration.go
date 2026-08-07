@@ -11,8 +11,38 @@ import (
 	"gorm.io/gorm"
 )
 
+// detachOrphanPlatformBackups nulls platform_backups.set_id where it is 0.
+//
+// PlatformBackup.SetID became a nullable pointer when recovery points gained a
+// real foreign key (fk_platform_backup_sets_items). Rows written before that
+// carry set_id = 0, which is not "no set": it references a row that cannot
+// exist. Left in place, AutoMigrate cannot add the constraint, and once it is
+// added every ad-hoc platform backup fails to insert with SQLSTATE 23503.
+//
+// Guarded on the table and column existing, so a fresh install skips it.
+func detachOrphanPlatformBackups(db *gorm.DB) error {
+	m := db.Migrator()
+	if !m.HasTable("platform_backups") || !m.HasColumn("platform_backups", "set_id") {
+		return nil
+	}
+	res := db.Exec(`UPDATE platform_backups SET set_id = NULL WHERE set_id = 0`)
+	if res.Error != nil {
+		return fmt.Errorf("detach ad-hoc platform backups from set 0: %w", res.Error)
+	}
+	if res.RowsAffected > 0 {
+		logger.Info("migration: detached ad-hoc platform backups from set 0", "rows", res.RowsAffected)
+	}
+	return nil
+}
+
 // Run executes all schema migrations via GORM AutoMigrate.
 func Run(db *gorm.DB) error {
+	// Fixups that must happen BEFORE AutoMigrate, because AutoMigrate is what
+	// adds the constraint they make satisfiable.
+	if err := detachOrphanPlatformBackups(db); err != nil {
+		return err
+	}
+
 	if err := db.AutoMigrate(
 		&models.UpgradeStep{},
 		&models.UpdateStatus{},
@@ -50,6 +80,7 @@ func Run(db *gorm.DB) error {
 		&models.WorkspaceBackupSettings{},
 		&models.WorkspaceBundle{},
 		&models.VolumeBackup{},
+		&models.PlatformBackupSet{},
 		&models.PlatformBackup{},
 		&models.PlatformBackupSettings{},
 		&models.RegistrySettings{},

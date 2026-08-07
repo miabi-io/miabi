@@ -585,6 +585,39 @@ func (s *Service) Converge(ctx context.Context, m *Manifest) error {
 	return nil
 }
 
+// ConvergeData brings up only the stateful components the control plane depends
+// on — Postgres and Redis — and stops there.
+//
+// It exists for disaster recovery. A restore has to load a database dump into an
+// EMPTY database: if the control plane booted first it would run AutoMigrate and
+// seed an admin, and the dump's own CREATE TABLE statements would then collide
+// with the tables it just made. So `miabi restore` converges the data services,
+// restores into them, and only then converges the rest — at which point the
+// control plane comes up on a database that is already the recovered one, and
+// its migrations run forward from there exactly as after an upgrade.
+func (s *Service) ConvergeData(ctx context.Context, m *Manifest) error {
+	if err := m.Normalize(); err != nil {
+		return err
+	}
+	s.log("ensuring network %s (%s)", m.Network.Name, m.Network.Subnet)
+	if err := s.ensureNetwork(ctx, m); err != nil {
+		return err
+	}
+	s.log("ensuring volumes")
+	if err := s.ensureVolumes(ctx); err != nil {
+		return err
+	}
+	for _, c := range s.components(m) {
+		if c.Name != ContainerPostgres && c.Name != ContainerRedis {
+			continue
+		}
+		if err := s.ensureContainer(ctx, m, c); err != nil {
+			return fmt.Errorf("%s: %w", c.Name, err)
+		}
+	}
+	return nil
+}
+
 // component is one container in the stack.
 type component struct {
 	Name string

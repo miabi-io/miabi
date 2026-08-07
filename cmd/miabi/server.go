@@ -239,6 +239,9 @@ func runServer(cli *okapicli.CLI) {
 			// the SSE/download handlers (read history); nil when disabled.
 			logStore := cfg.BuildLogStore()
 
+			// One-off bulk backfill: move pre-existing large log rows into the store
+			// (P6). No-op/unrecorded when the store is disabled, so enabling it later
+			// still backfills; idempotent and resumable across boots.
 			if err := logbackfill.Run(context.Background(), res.db, logStore, cfg.LogStore.TailBytes, config.Version); err != nil {
 				logger.Error("log store: backfill failed (will retry next boot)", "error", err)
 			}
@@ -438,6 +441,7 @@ func runServer(cli *okapicli.CLI) {
 			pbHost, pbPort, pbName, pbUser, pbPass, pbSSL := cfg.Database.PostgresConn()
 			platformBackupSvc := platformbackup.NewService(
 				repositories.NewPlatformBackupRepository(res.db),
+				repositories.NewPlatformBackupSetRepository(res.db),
 				repositories.NewPlatformBackupSettingsRepository(res.db),
 				nodeClients,
 				platformbackup.DBConn{Host: pbHost, Port: pbPort, Name: pbName, User: pbUser, Password: pbPass, SSLMode: pbSSL},
@@ -445,6 +449,21 @@ func runServer(cli *okapicli.CLI) {
 			)
 			platformBackupSvc.SetImageResolver(imageResolver)
 			platformBackupSvc.SetLogStore(logStore)
+			// The embedded worker runs backup ITEMS, so it resolves the destination and
+			// passphrase itself. Without the environment overlay it would read only the
+			// stored settings row — and on a deployment configured entirely through
+			// MIABI_PLATFORM_BACKUP_* that row is empty, so every scheduled run would
+			// fail with "no S3 target".
+			platformBackupSvc.SetEnv(cfg.PlatformBackup)
+			// Tenant artifacts are enqueued by the API layer and RUN here, so this
+			// process needs the tenant source too — without it every tenant database
+			// and volume in a recovery point fails with "no tenant source is wired".
+			// upgradeBackupService is the per-database backup machinery already built
+			// for logical upgrades, configured exactly as tenant capture needs it: its
+			// DDL runner is what lets a tenant restore recreate a database before
+			// loading a dump into it. Reuse it rather than stand up a second copy, as
+			// the standalone worker does.
+			platformBackupSvc.EnableTenantCapture(res.db, upgradeBackupService)
 			platformBackupHandler := worker.NewPlatformBackupHandler(platformBackupSvc)
 
 			pipelineHandler := worker.NewPipelineHandler(

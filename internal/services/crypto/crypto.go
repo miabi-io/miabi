@@ -139,6 +139,24 @@ func DeriveToken(label string) string {
 	return "mrt_" + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
+// DeriveTokenFrom is DeriveToken for a master-key secret other than this
+// process's. Disaster recovery needs it: after opening a backup's identity
+// envelope, the restore path must check that the key inside is the one the
+// recovery point was taken under — a comparison it cannot make with the running
+// process's key, because on a fresh host that key is a stranger.
+//
+// An empty secret yields "" rather than the dev fallback, so a missing key is
+// never mistaken for a matching fingerprint.
+func DeriveTokenFrom(secret, label string) string {
+	if secret == "" {
+		return ""
+	}
+	h := sha256.Sum256([]byte(secret))
+	mac := hmac.New(sha256.New, h[:])
+	mac.Write([]byte(label))
+	return "mrt_" + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
 // EncryptWS encrypts plaintext with the workspace's data-encryption key,
 // producing the self-describing "e2:w:<ws>:<ver>:<b64>" form. Falls back to the
 // master key (Encrypt) when no keyring is wired or no master key is configured —

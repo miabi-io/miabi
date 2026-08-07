@@ -93,3 +93,65 @@ func TestArtifactRegexMatchesMongoArchive(t *testing.T) {
 		}
 	}
 }
+
+// The tenant-database failure reported from production: with a passphrase set,
+// every artifact was encrypted and uploaded as ".gpg", but the recorded name was
+// the plain one — so verify reported three tenant databases "missing from the
+// bucket" that were sitting there under a different key.
+//
+// The tools narrate the plain dump while working and the encrypted one they
+// upload, so FindString — the first match — recorded a file that was never
+// written. This is the same fault that was fixed in platform backup; tenant
+// dumps go through THIS service, which still had it.
+func TestArtifactNameTakesTheUploadedFile(t *testing.T) {
+	cases := []struct {
+		name          string
+		out           string
+		wantName      string
+		wantEncrypted bool
+	}{
+		{
+			name: "postgres, encrypted",
+			out: "INFO Backing up full database: goma\n" +
+				"INFO Starting backup encryption file=goma_20260731_153558.sql.gz\n" +
+				"INFO Encryption completed output=/tmp/backup/goma_20260731_153558.sql.gz.gpg\n" +
+				"INFO Uploading backup archive to remote storage S3 ... goma_20260731_153558.sql.gz.gpg\n",
+			wantName:      "goma_20260731_153558.sql.gz.gpg",
+			wantEncrypted: true,
+		},
+		{
+			name: "mongo archive, encrypted",
+			out: "INFO Archive created file=blog_20260731_153558.archive.gz\n" +
+				"INFO Encrypting archive using passphrase\n" +
+				"INFO Uploading archive file=blog_20260731_153558.archive.gz.gpg\n",
+			wantName:      "blog_20260731_153558.archive.gz.gpg",
+			wantEncrypted: true,
+		},
+		{
+			name:          "unencrypted",
+			out:           "Backup file created: appdb_20260731.sql.gz\nUploading appdb_20260731.sql.gz\n",
+			wantName:      "appdb_20260731.sql.gz",
+			wantEncrypted: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, encrypted, err := ArtifactName(tc.out, artifactRe)
+			if err != nil {
+				t.Fatalf("ArtifactName: %v", err)
+			}
+			if got != tc.wantName {
+				t.Errorf("name = %q, want %q — this is the name a restore will look for", got, tc.wantName)
+			}
+			if encrypted != tc.wantEncrypted {
+				t.Errorf("encrypted = %v, want %v", encrypted, tc.wantEncrypted)
+			}
+		})
+	}
+}
+
+func TestArtifactNameWithNoMatch(t *testing.T) {
+	if _, _, err := ArtifactName("nothing here names a file", artifactRe); err == nil {
+		t.Fatal("output naming no artifact was accepted")
+	}
+}

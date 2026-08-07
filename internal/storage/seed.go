@@ -45,6 +45,18 @@ func EnsureInstallID(db *gorm.DB) (string, error) {
 	return rec.Value, nil
 }
 
+// SchemaVersion returns the version of the most recently applied upgrade step,
+// or "" when none has run. A platform recovery point records it so restore can
+// refuse to load a dump into an older binary than the one that produced it —
+// a downgrade restore corrupts silently, where a refusal costs nothing.
+func SchemaVersion(db *gorm.DB) string {
+	var step models.UpgradeStep
+	if err := db.Order("applied_at DESC, id DESC").First(&step).Error; err != nil {
+		return ""
+	}
+	return step.Version
+}
+
 // SeedAdmin ensures a platform admin exists: returns the existing admin if one
 // is already present, otherwise creates one from the configured credentials.
 // Idempotent — safe to run on every boot. (Mirrors the Posta admin seeder.)

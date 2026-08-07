@@ -89,6 +89,15 @@ func (r *ApplicationRepository) CountNetworks(appID uint) (int64, error) {
 
 // ListRunning returns all applications currently in the running state (across
 // workspaces), used by the metrics scraper.
+// All returns every application across every workspace. Used by
+// platform-wide passes — disaster recovery reconciles the whole install, not
+// one tenant at a time.
+func (r *ApplicationRepository) All() ([]models.Application, error) {
+	var apps []models.Application
+	err := r.db.Order("workspace_id ASC, id ASC").Find(&apps).Error
+	return apps, err
+}
+
 func (r *ApplicationRepository) ListRunning() ([]models.Application, error) {
 	var apps []models.Application
 	err := r.db.Where("status = ?", models.AppStatusRunning).Find(&apps).Error

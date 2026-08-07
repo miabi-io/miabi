@@ -71,6 +71,81 @@ func (r *PlatformBackupRepository) ListPaged(limit, offset int) ([]models.Platfo
 	return backups, total, err
 }
 
+// ListBySet returns a set's items in creation order.
+func (r *PlatformBackupRepository) ListBySet(setID uint) ([]models.PlatformBackup, error) {
+	var backups []models.PlatformBackup
+	err := r.db.Where("set_id = ?", setID).Order("id ASC").Find(&backups).Error
+	return backups, err
+}
+
+// PlatformBackupSetRepository persists platform recovery points.
+type PlatformBackupSetRepository struct {
+	db *gorm.DB
+}
+
+func NewPlatformBackupSetRepository(db *gorm.DB) *PlatformBackupSetRepository {
+	return &PlatformBackupSetRepository{db: db}
+}
+
+func (r *PlatformBackupSetRepository) Create(s *models.PlatformBackupSet) error {
+	return r.db.Create(s).Error
+}
+
+func (r *PlatformBackupSetRepository) Update(s *models.PlatformBackupSet) error {
+	return r.db.Save(s).Error
+}
+
+func (r *PlatformBackupSetRepository) Delete(id uint) error {
+	return r.db.Delete(&models.PlatformBackupSet{}, id).Error
+}
+
+// FindByID returns a set with its items loaded.
+func (r *PlatformBackupSetRepository) FindByID(id uint) (*models.PlatformBackupSet, error) {
+	var s models.PlatformBackupSet
+	if err := r.db.Preload("Items").First(&s, id).Error; err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// FindByRef resolves a set by the ref an operator quotes to `miabi restore`.
+func (r *PlatformBackupSetRepository) FindByRef(ref string) (*models.PlatformBackupSet, error) {
+	var s models.PlatformBackupSet
+	if err := r.db.Preload("Items").Where("ref = ?", ref).First(&s).Error; err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// List returns recovery points newest first, with their items.
+func (r *PlatformBackupSetRepository) List() ([]models.PlatformBackupSet, error) {
+	var sets []models.PlatformBackupSet
+	err := r.db.Preload("Items").Order("created_at DESC").Find(&sets).Error
+	return sets, err
+}
+
+// ListPaged returns a page of recovery points (newest first) and the total count.
+func (r *PlatformBackupSetRepository) ListPaged(limit, offset int) ([]models.PlatformBackupSet, int64, error) {
+	var (
+		sets  []models.PlatformBackupSet
+		total int64
+	)
+	if err := r.db.Model(&models.PlatformBackupSet{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := r.db.Preload("Items").Order("created_at DESC").Limit(limit).Offset(offset).Find(&sets).Error
+	return sets, total, err
+}
+
+// ListCompletedOldestFirst returns usable recovery points oldest first — the
+// order retention prunes in.
+func (r *PlatformBackupSetRepository) ListCompletedOldestFirst() ([]models.PlatformBackupSet, error) {
+	var sets []models.PlatformBackupSet
+	err := r.db.Preload("Items").Where("status = ?", models.BackupCompleted).
+		Order("created_at ASC").Find(&sets).Error
+	return sets, err
+}
+
 // PlatformBackupSettingsRepository persists the single-row platform backup
 // target + policy.
 type PlatformBackupSettingsRepository struct {

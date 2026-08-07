@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/miabi-io/miabi/internal/config"
 	cronpkg "github.com/miabi-io/miabi/internal/cron"
 	"github.com/miabi-io/miabi/internal/docker"
+	"github.com/miabi-io/miabi/internal/dr"
 	"github.com/miabi-io/miabi/internal/dto"
 	"github.com/miabi-io/miabi/internal/enterprise"
 	"github.com/miabi-io/miabi/internal/handlers"
@@ -72,6 +74,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/portbinding"
 	"github.com/miabi-io/miabi/internal/services/portforward"
 	"github.com/miabi-io/miabi/internal/services/quota"
+	"github.com/miabi-io/miabi/internal/services/recovery"
 	"github.com/miabi-io/miabi/internal/services/registry"
 	"github.com/miabi-io/miabi/internal/services/registryserver"
 	releasesvc "github.com/miabi-io/miabi/internal/services/release"
@@ -173,6 +176,7 @@ type routerHandlers struct {
 	deploymentCfg       *handlers.DeploymentConfigHandler
 	adminJob            *handlers.AdminJobHandler
 	adminPlatformBackup *handlers.AdminPlatformBackupHandler
+	adminRecovery       *handlers.AdminRecoveryHandler
 	adminRegistry       *handlers.AdminRegistryHandler
 	registryServer      *handlers.RegistryServerHandler
 	oauthAdmin          *handlers.OAuthAdminHandler
@@ -625,6 +629,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	pbHost, pbPort, pbName, pbUser, pbPass, pbSSL := cfg.Database.PostgresConn()
 	platformBackupService := platformbackup.NewService(
 		repositories.NewPlatformBackupRepository(db),
+		repositories.NewPlatformBackupSetRepository(db),
 		repositories.NewPlatformBackupSettingsRepository(db),
 		nodeClients,
 		platformbackup.DBConn{Host: pbHost, Port: pbPort, Name: pbName, User: pbUser, Password: pbPass, SSLMode: pbSSL},
@@ -633,6 +638,16 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	platformBackupService.SetImageResolver(imageResolver)
 	platformBackupService.SetEnqueuer(producer)
 	platformBackupService.SetLogStore(logStore)
+	platformBackupService.SetFingerprinter(crypto.DeriveToken)
+	platformBackupService.SetKeyFingerprinter(crypto.DeriveTokenFrom)
+	platformBackupService.SetEnv(cfg.PlatformBackup)
+	// Tenant capture: point the existing per-database backup machinery at the
+	// platform's own bucket rather than growing a second copy of it here.
+	platformBackupService.EnableTenantCapture(db, backupService)
+	// Restoring a volume under a running container hands it files that change
+	// while it is reading them, so the apps mounting it are stopped first and
+	// started again afterwards.
+	platformBackupService.SetAppStopper(platformbackup.NewMountAppStopper(appRepo, appService))
 	forwardService.SetImageResolver(imageResolver)
 	storageService.SetImageResolver(imageResolver)
 	monitoringService := monitoring.NewService(appRepo, releaseRepo, dbRepo, stackRepo, appEventRepo, repositories.NewMetricRepository(db), nodeClients)
@@ -810,6 +825,31 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// release: the registry service asks the image catalog which digests are held
 	// by a live deployment or a pinned release — the same set GC exempts.
 	registryServerService.SetCatalog(imageService)
+	// The identity a recovery point seals: the master encryption key and JWT
+	// secret this platform runs on, plus enough of its identity to rebuild the
+	// stack around a restored database. Without it, a dump restored onto a fresh
+	// host yields a platform whose every secret is ciphertext under a key that
+	// died with the old machine. Wired here because it also reports the registry's
+	// storage driver, and the registry service is built above.
+	platformBackupService.SetIdentitySource(func() (*dr.Identity, error) {
+		id := &dr.Identity{
+			InstallID:     installID,
+			MiabiVersion:  config.Version,
+			DBSchema:      dbstorage.SchemaVersion(db),
+			EncryptionKey: cfg.EncryptionKey,
+			JWTSecret:     cfg.JWTSecret,
+			Domain:        urlHost(cfg.AppWebURL),
+			WebURL:        cfg.AppWebURL,
+			ControlURL:    cfg.ControlURL,
+			NetworkName:   cfg.ProxyNetwork,
+			CreatedAt:     time.Now().UTC(),
+		}
+		if st, err := registryServerService.Get(); err == nil && st != nil {
+			id.RegistryHost = registryServerService.HostFor(st)
+			id.RegistryStorage = st.StorageType
+		}
+		return id, nil
+	})
 	// Refuse an app whose image points into another workspace's namespace in the
 	// built-in registry, at the moment it is saved. The deploy worker enforces the
 	// same boundary; this makes it a validation error on the form rather than a
@@ -1067,6 +1107,76 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		r.h.adminWorkspace.SetKeyRotator(keyRotator)
 	}
 
+	// Post-restore recovery. `miabi restore` writes a quiesce marker into the
+	// database it restores, so the control plane knows on its very first boot that
+	// it is a recovery and not a normal start — and holds off on schedules and
+	// redeploys until an operator has read the reconcile report and moved DNS.
+	recoveryService := recovery.New(
+		repositories.NewSettingRepository(db),
+		serverRepo,
+		appRepo,
+		repositories.NewNetworkRepository(db),
+	)
+	recoveryService.SetNetworkEnsurer(func(ctx context.Context, name string) error {
+		_, err := dockerClient.EnsureNetwork(ctx, name)
+		return err
+	})
+	recoveryService.SetRedeployer(func(app *models.Application) error {
+		_, err := appService.Redeploy(app)
+		return err
+	})
+	recoveryService.SetRouteSyncer(routeService.SyncWorkspaceProxy)
+	recoveryService.SetRegistryInfo(func() (string, bool) {
+		st, err := registryServerService.Get()
+		if err != nil || st == nil {
+			return "", false
+		}
+		return st.StorageType, st.Enabled
+	})
+	// Workload recovery: start every managed database container, then load the
+	// newest recovery point's tenant dumps and volume archives into them.
+	recoveryService.SetDatabaseRecovery(
+		dbRepo.ListAllInstances,
+		func(ctx context.Context, instanceID uint) error {
+			inst, err := dbRepo.FindByID(instanceID)
+			if err != nil {
+				return err
+			}
+			// A recovered row names a container on the host that is gone, so
+			// starting it can only fail with "no such container". Recreate from the
+			// stored spec — image, volume, networks and the encrypted admin
+			// password are all in the row — and only start when the container is
+			// genuinely there, which is the case on a re-run.
+			if inst.ContainerID != "" {
+				if _, err := dockerClient.InspectContainer(ctx, inst.ContainerID); err == nil {
+					return databaseService.Start(ctx, inst)
+				}
+			}
+			return databaseService.RunProvision(ctx, instanceID)
+		},
+		func(ctx context.Context) (*recovery.TenantRestoreSummary, error) {
+			set, err := platformBackupService.LatestRestorableSet()
+			if err != nil || set == nil {
+				return nil, err
+			}
+			rep, err := platformBackupService.RestoreTenantData(ctx, set)
+			if err != nil || rep == nil {
+				return nil, err
+			}
+			return &recovery.TenantRestoreSummary{
+				Ref:               rep.Ref,
+				DatabasesRestored: rep.DatabasesRestored,
+				VolumesRestored:   rep.VolumesRestored,
+				Skipped:           rep.Skipped,
+				Failures:          rep.Failures,
+			}, nil
+		},
+	)
+	r.h.adminRecovery = handlers.NewAdminRecoveryHandler(recoveryService, auditLogger)
+	if recoveryService.Pending() {
+		logger.Warn("this platform was restored from a recovery point and is QUIESCED: schedules are suspended until recovery is completed from Admin → Platform Backup")
+	}
+
 	// Platform backup schedule (Enterprise): (re-)register the single platform
 	// backup cron from stored settings. Only registered when the schedule is
 	// enabled and the FlagPlatformBackup entitlement is present, so Community
@@ -1074,6 +1184,13 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	reschedulePlatformBackup := func(st *models.PlatformBackupSettings) {
 		cronManager.UnregisterTask("platform-backup", 1)
 		if st == nil || !st.ScheduleEnabled || st.ScheduleCron == "" || !r.ee.Has(enterprise.FlagPlatformBackup) {
+			return
+		}
+		// A platform that is still recovering does not take backups. Backing up a
+		// half-reconciled restore would overwrite good recovery points with a
+		// snapshot of a platform that is not yet itself.
+		if recoveryService.Pending() {
+			logger.Warn("platform backup schedule suspended: this platform is recovering from a restore")
 			return
 		}
 		if err := cronManager.RegisterTask("platform-backup", 1, "Platform backup", st.ScheduleCron, func() error {
@@ -1280,4 +1397,22 @@ func (r *Router) infoRoute() okapi.RouteDefinition {
 		Summary:  "Application info",
 		Response: &dto.Response[handlers.AppInfo]{},
 	}
+}
+
+// urlHost extracts the hostname from a configured base URL, so a recovery point
+// records the panel's domain rather than its full URL. Returns the input when it
+// is already a bare host.
+func urlHost(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return ""
+	}
+	if !strings.Contains(s, "://") {
+		return strings.TrimSuffix(s, "/")
+	}
+	u, err := url.Parse(s)
+	if err != nil || u.Hostname() == "" {
+		return ""
+	}
+	return u.Hostname()
 }

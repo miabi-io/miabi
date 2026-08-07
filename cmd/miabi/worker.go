@@ -257,6 +257,7 @@ func runWorker() error {
 	pbHost, pbPort, pbName, pbUser, pbPass, pbSSL := cfg.Database.PostgresConn()
 	platformBackupSvc := platformbackup.NewService(
 		repositories.NewPlatformBackupRepository(db),
+		repositories.NewPlatformBackupSetRepository(db),
 		repositories.NewPlatformBackupSettingsRepository(db),
 		nodeClients,
 		platformbackup.DBConn{Host: pbHost, Port: pbPort, Name: pbName, User: pbUser, Password: pbPass, SSLMode: pbSSL},
@@ -264,6 +265,15 @@ func runWorker() error {
 	)
 	platformBackupSvc.SetImageResolver(imageResolver)
 	platformBackupSvc.SetLogStore(logStore)
+	// The worker runs backup ITEMS, so it resolves the destination and passphrase
+	// itself. Without the environment overlay it would read only the stored row —
+	// and on a deployment configured entirely through MIABI_PLATFORM_BACKUP_*
+	// that row is empty, so every scheduled run would fail with "no S3 target".
+	platformBackupSvc.SetEnv(cfg.PlatformBackup)
+	// Tenant artifacts are enqueued by the API server and RUN here, so this
+	// process needs the tenant source too — without it every tenant database and
+	// volume in a recovery point fails with "no tenant source is wired".
+	platformBackupSvc.EnableTenantCapture(db, upgradeBackupService)
 	platformBackupHandler := worker.NewPlatformBackupHandler(platformBackupSvc)
 
 	pipelineHandler := worker.NewPipelineHandler(

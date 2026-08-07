@@ -31,6 +31,10 @@ func main() {
 	// control-plane container — which is what lets Miabi replace its own container.
 	registerStackCommands(cli)
 
+	// Disaster recovery: rebuild this platform on a fresh host from a recovery
+	// point. Also a host command — the machine it runs on has no Miabi yet.
+	registerRestoreCommands(cli)
+
 	cli.DefaultCommand("server")
 
 	if err := cli.Execute(); err != nil {

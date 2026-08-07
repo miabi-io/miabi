@@ -556,6 +556,114 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Summary:     "Discover candidate platform volumes",
 		},
 
+		// Recovery points: the artifact sets `miabi restore` consumes to rebuild
+		// this platform on a fresh host.
+		{
+			Method:      http.MethodGet,
+			Path:        "/platform-backup/sets",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminPlatformBackup.ListSets,
+			Summary:     "List platform recovery points",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/platform-backup/sets",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminPlatformBackup.CreateSet),
+			Summary:     "Take a full platform recovery point now",
+			Request:     &handlers.CreatePlatformBackupSetRequest{},
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/platform-backup/sets/{id}",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminPlatformBackup.GetSet,
+			Summary:     "Get a platform recovery point",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/platform-backup/sets/{id}/verify",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminPlatformBackup.VerifySet),
+			Summary:     "Verify a recovery point without restoring (artifacts present, identity envelope opens)",
+			Request:     &handlers.VerifyPlatformBackupSetRequest{},
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/platform-backup/discover",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminPlatformBackup.Discover,
+			Summary:     "List the recovery points in the backup target, including ones this platform has no record of",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/platform-backup/discover/import",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminPlatformBackup.Import),
+			Summary:     "Adopt a discovered recovery point into this platform",
+			Request:     &handlers.ImportRecoveryPointRequest{},
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/platform-backup/sets/{id}/restore-selected",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminPlatformBackup.RestoreSelected),
+			Summary:     "Restore selected artifacts of a recovery point into this platform (destructive)",
+			Request:     &handlers.RestoreSelectedRequest{},
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/platform-backup/sets/{id}/retry",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminPlatformBackup.RetrySet,
+			Summary:     "Re-run the failed artifacts of a recovery point",
+		},
+		{
+			Method:      http.MethodDelete,
+			Path:        "/platform-backup/sets/{id}",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminPlatformBackup.DeleteSet,
+			Summary:     "Delete a platform recovery point and its artifacts",
+		},
+
+		// Post-restore recovery. Not entitlement-gated: a platform recovered onto
+		// fresh hardware must be able to finish recovering even before it has
+		// reached a license server.
+		{
+			Method:      http.MethodGet,
+			Path:        "/recovery",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminRecovery.Status,
+			Summary:     "Whether this platform is recovering from a restore, and the last report",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/recovery/reconcile",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminRecovery.Reconcile,
+			Summary:     "Converge restored state onto this host and report what could not be recovered",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/recovery/complete",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminRecovery.Complete),
+			Summary:     "Finish recovery: resume schedules and certificate issuance",
+			Request:     &handlers.CompleteRecoveryRequest{},
+		},
+
 		// Commercial license (Enterprise). In Community builds Install
 		// returns 402 and Get reports edition "community".
 		{

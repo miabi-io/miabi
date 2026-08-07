@@ -154,7 +154,8 @@ type Destination struct {
 	// when it is set, and decrypt transparently on restore with the same value.
 	// Used by portable workspace bundles, which protect every artifact they carry
 	// — dumps included — with the one passphrase that also seals the bundle's
-	// state file.
+	// state file, and by platform disaster-recovery, which protects every
+	// artifact in a recovery point the same way.
 	GPGPassphrase string
 }
 

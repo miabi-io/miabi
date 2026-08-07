@@ -3,7 +3,10 @@
 
 package models
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // PlatformBackupSubject identifies what a platform backup run captured: Miabi's
 // own control-plane database, or one of the platform/system Docker volumes.
@@ -12,6 +15,17 @@ type PlatformBackupSubject string
 const (
 	PlatformBackupDatabase PlatformBackupSubject = "database"
 	PlatformBackupVolume   PlatformBackupSubject = "volume"
+	// PlatformBackupIdentity is the sealed identity envelope: the platform's
+	// encryption key, JWT secret and install identity, encrypted under the backup
+	// passphrase. It is what makes a dump restorable onto a *different* host — see
+	// internal/dr.
+	PlatformBackupIdentity PlatformBackupSubject = "identity"
+	// PlatformBackupTenantDatabase and PlatformBackupTenantVolume are workload
+	// data: a workspace's managed database, or one of its volumes. They turn a
+	// recovery point from "the control plane comes back" into "the platform comes
+	// back", and are captured only when IncludeTenantData is on.
+	PlatformBackupTenantDatabase PlatformBackupSubject = "tenant-database"
+	PlatformBackupTenantVolume   PlatformBackupSubject = "tenant-volume"
 )
 
 // PlatformBackup is a single disaster-recovery backup run of the platform itself
@@ -19,12 +33,32 @@ const (
 // per-workspace Backup/VolumeBackup tables (tenant data) and reuses BackupStatus
 // and the existing one-shot/logging lifecycle.
 type PlatformBackup struct {
-	ID          uint                  `json:"id" gorm:"primaryKey"`
-	Subject     PlatformBackupSubject `json:"subject" gorm:"not null"` // database | volume
-	VolumeName  string                `json:"volume_name,omitempty"`   // target volume (subject=volume)
-	Status      BackupStatus          `json:"status" gorm:"not null;default:pending"`
-	Trigger     string                `json:"trigger"`     // manual | scheduled
-	Destination string                `json:"destination"` // local | s3
+	ID uint `json:"id" gorm:"primaryKey"`
+	// SetID is the owning recovery point (PlatformBackupSet).
+	//
+	// A POINTER, not a plain uint: the association below makes GORM create a real
+	// foreign key, and an ad-hoc single-subject backup belongs to no set. Stored
+	// as 0 that is not "no set" — it is a reference to a row that cannot exist, so
+	// every ad-hoc backup fails the constraint. NULL is what "no set" means.
+	SetID      *uint                 `json:"set_id,omitempty" gorm:"index"`
+	Subject    PlatformBackupSubject `json:"subject" gorm:"not null"`
+	VolumeName string                `json:"volume_name,omitempty"` // target volume (volume subjects)
+
+	// Tenant provenance, set on tenant-database and tenant-volume items. The slug
+	// is stored alongside the id because a restore reads these from a recovery
+	// point manifest, where a numeric id from a dead install means nothing.
+	WorkspaceID   uint   `json:"workspace_id,omitempty" gorm:"index"`
+	WorkspaceSlug string `json:"workspace_slug,omitempty"`
+	DatabaseName  string `json:"database_name,omitempty"`
+	Engine        string `json:"engine,omitempty"`
+
+	Status      BackupStatus `json:"status" gorm:"not null;default:pending"`
+	Trigger     string       `json:"trigger"`     // manual | scheduled
+	Destination string       `json:"destination"` // local | s3
+	// Encrypted records whether this artifact was actually written GPG-encrypted,
+	// as opposed to what the settings say now — a run that predates the toggle
+	// must still restore correctly.
+	Encrypted bool `json:"encrypted"`
 
 	S3Bucket  string `json:"s3_bucket,omitempty"`
 	S3Path    string `json:"s3_path,omitempty"`  // remote folder prefix used
@@ -50,8 +84,10 @@ type PlatformBackup struct {
 type PlatformBackupSettings struct {
 	ID uint `json:"id" gorm:"primaryKey"`
 
-	// Destination. S3 is strongly recommended for DR (a local artifact on the box
-	// you are recovering from is no DR at all).
+	// Destination. S3/MinIO is the ONLY destination: a backup written to a volume
+	// on the host it protects cannot be read once that host is gone, which is the
+	// single situation platform backup exists for. S3Enabled is kept so an
+	// operator can switch the feature off, not to select an alternative.
 	S3Enabled        bool   `json:"s3_enabled"`
 	S3Endpoint       string `json:"s3_endpoint,omitempty"`
 	S3Bucket         string `json:"s3_bucket,omitempty"`
@@ -61,9 +97,40 @@ type PlatformBackupSettings struct {
 	S3UseSSL         bool   `json:"s3_use_ssl"`
 	S3ForcePathStyle bool   `json:"s3_force_path_style"`
 
-	// Path prefixes within the bucket.
+	// Path prefixes within the bucket. RootPath scopes the whole platform backup
+	// tree, so one bucket can hold several instances without them colliding; the
+	// recovery-point info file is written at its root. Database and volume
+	// artifacts default to <root>/databases and <root>/volumes when the operator
+	// leaves them unset — see PlatformBackupSettings.Normalize.
+	RootPath           string `json:"root_path,omitempty"`
 	DatabaseBackupPath string `json:"database_backup_path,omitempty"`
 	VolumeBackupPath   string `json:"volume_backup_path,omitempty"`
+
+	// Artifact encryption. EncryptBackups turns on GPG encryption of the dump and
+	// volume archives, using BackupPassphrase — which is NOT the master
+	// encryption key (MIABI_ENCRYPTION_KEY) and must never be set to it. The
+	// passphrase protects the artifact; the master key decrypts its *contents*
+	// after restore. Conflating them makes disaster recovery impossible, because a
+	// restore onto a fresh host cannot fetch a key that lived only on the dead one.
+	EncryptBackups bool `json:"encrypt_backups"`
+	// BackupPassphraseEnc is the passphrase at rest, encrypted with the
+	// platform-scoped crypto.Encrypt — i.e. under the master key, in the database
+	// this feature backs up. That is fine for *taking* backups and useless for
+	// *restoring* them: a real disaster is exactly when this row is gone. The
+	// passphrase is therefore shown once on save and must be recorded
+	// out-of-band; `miabi restore` takes it from --passphrase-file.
+	BackupPassphraseEnc string `json:"-" gorm:"column:backup_passphrase_enc"`
+	// IncludeIdentity seals the platform's identity (encryption key, JWT secret,
+	// install ID, hostnames) into each recovery point so it can be restored onto a
+	// fresh host. Off only for operators who custody /etc/miabi/stack.yaml
+	// themselves.
+	IncludeIdentity bool `json:"include_identity"`
+
+	// IncludeTenantData adds every workspace's managed databases and volumes to a
+	// recovery point, so a restore brings back tenant workloads and not just the
+	// control plane describing them. Off by default: it is the difference between
+	// a backup measured in megabytes and one measured in the size of the install.
+	IncludeTenantData bool `json:"include_tenant_data"`
 
 	// Schedule + retention.
 	ScheduleEnabled bool     `json:"schedule_enabled"`
@@ -78,4 +145,49 @@ type PlatformBackupSettings struct {
 	// S3SecretSet reports whether a secret key is stored, without exposing it.
 	// Not persisted; populated on read so the UI can render "••••• (set)".
 	S3SecretSet bool `json:"s3_secret_set" gorm:"-"`
+	// PassphraseSet likewise reports presence of the backup passphrase only.
+	PassphraseSet bool `json:"passphrase_set" gorm:"-"`
+	// EnvLocked names the fields supplied by environment variables on this
+	// deployment. Those are read-only: the process configuration wins, and the UI
+	// disables them rather than accepting an edit that would be silently ignored.
+	EnvLocked []string `json:"env_locked,omitempty" gorm:"-"`
+}
+
+// Platform backup object-path defaults. An operator who does not care where the
+// artifacts land should still get a tidy, predictable bucket layout rather than
+// everything piled at the root.
+const (
+	DefaultDatabaseBackupPath = "databases"
+	DefaultVolumeBackupPath   = "volumes"
+)
+
+// Normalize fills the derived defaults: the database and volume prefixes when
+// unset, and the info-file format. It is applied on both read and write, so a
+// settings row saved before these fields existed behaves like a new one instead
+// of scattering artifacts across the bucket root.
+func (s *PlatformBackupSettings) Normalize() {
+	root := strings.Trim(strings.TrimSpace(s.RootPath), "/")
+	s.RootPath = root
+
+	s.DatabaseBackupPath = joinPath(root, defaultIfBlank(s.DatabaseBackupPath, DefaultDatabaseBackupPath))
+	s.VolumeBackupPath = joinPath(root, defaultIfBlank(s.VolumeBackupPath, DefaultVolumeBackupPath))
+}
+
+// joinPath prefixes a path with the root, unless the operator already gave an
+// absolute-looking path under it (so re-normalizing is idempotent — Normalize
+// runs on every read, and a prefix that grew "root/root/databases" over time
+// would quietly orphan every earlier artifact).
+func joinPath(root, path string) string {
+	p := strings.Trim(strings.TrimSpace(path), "/")
+	if root == "" || p == root || strings.HasPrefix(p, root+"/") {
+		return p
+	}
+	return root + "/" + p
+}
+
+func defaultIfBlank(v, def string) string {
+	if strings.TrimSpace(v) == "" {
+		return def
+	}
+	return v
 }
