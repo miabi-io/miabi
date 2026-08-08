@@ -27,8 +27,7 @@ func main() {
 		return nil
 	})
 
-	// install / update / status / uninstall. These run on the host, outside the
-	// control-plane container — which is what lets Miabi replace its own container.
+	// install / update / restart / status / uninstall.
 	registerStackCommands(cli)
 
 	// Disaster recovery: rebuild this platform on a fresh host from a recovery

@@ -71,9 +71,6 @@ const (
 	defaultVolImage = "jkaninda/volume-bkup:latest"
 )
 
-// artifactName extracts the artifact the helper actually uploaded, taking the LAST match: with encryption on
-// the tools narrate the plain dump before the encrypted one they upload, so the first match names a file that
-// was never written. Encryption is read from the name, not the intent, since older helpers ignore the flag.
 func artifactName(out string, re *regexp.Regexp) (name string, encrypted bool, err error) {
 	return backup.ArtifactName(out, re)
 }

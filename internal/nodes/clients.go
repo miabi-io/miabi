@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	"github.com/miabi-io/miabi/internal/docker"
-	"github.com/miabi-io/miabi/internal/selfcontainer"
+	"github.com/miabi-io/miabi/pkg/stack/selfcontainer"
 )
 
 // ErrNodeOffline is returned when a Docker client is requested for a node whose

@@ -8,13 +8,14 @@ package docker
 
 import (
 	"context"
-	"errors"
+	stackdocker "github.com/miabi-io/miabi/pkg/stack/docker"
 	"io"
 	"net"
 )
 
 // ErrNotFound is returned when a container/image/volume does not exist.
-var ErrNotFound = errors.New("docker: resource not found")
+// ErrNotFound is owned by the stack seam so both sides compare against one value.
+var ErrNotFound = stackdocker.ErrNotFound
 
 // Client is the abstraction the rest of the app depends on.
 type Client interface {

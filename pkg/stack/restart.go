@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package platformstack
+package stack
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/miabi-io/miabi/internal/docker"
-	"github.com/miabi-io/miabi/internal/services/saferollout"
+	"github.com/miabi-io/miabi/pkg/stack/docker"
+	"github.com/miabi-io/miabi/pkg/stack/saferollout"
 )
 
 // restartTimeout is how long a component gets to shut down cleanly before Docker
@@ -20,7 +20,7 @@ const restartTimeout = 30
 
 // Restart restarts the stack, or one component. It restarts CONTAINERS rather than recreating them, so
 // it re-reads what is on disk (Goma watches its providers directory but NOT its base config); anything
-// changing a spec needs `miabi install`. Order matters: stores first, gateway last.
+// changing a spec needs `miabi setup`. Order matters: stores first, gateway last.
 func (s *Service) Restart(ctx context.Context, m *Manifest, only string) error {
 	if err := m.Normalize(); err != nil {
 		return err
@@ -58,7 +58,7 @@ func (s *Service) restartOne(ctx context.Context, m *Manifest, c component) erro
 	cur, err := s.dc.InspectContainer(ctx, c.Name)
 	if err != nil {
 		if errors.Is(err, docker.ErrNotFound) {
-			return fmt.Errorf("it is not running — `miabi install` creates it")
+			return fmt.Errorf("it is not running — `miabi setup` creates it")
 		}
 		return err
 	}
@@ -76,7 +76,7 @@ func (s *Service) restartOne(ctx context.Context, m *Manifest, c component) erro
 	spec := c.Build(m, c.Name, *c.Image(m))
 	if want, got := specHash(spec), cur.Labels[docker.LabelSpecHash]; got != "" && got != want {
 		s.log("  %-14s note: the manifest has changed since this container was created — "+
-			"`miabi install` applies that; a restart cannot", c.Name)
+			"`miabi setup` applies that; a restart cannot", c.Name)
 	}
 
 	s.log("  %-14s restarting", c.Name)

@@ -4,22 +4,19 @@
 // Package platformstack installs and updates Miabi's own stack directly against the Docker API, with
 // every component tagged io.miabi.managed-by=miabi. Compose owns what Compose created, so Miabi could
 // never truly self-update while Compose held the lifecycle. It runs from the CLI, outside the container.
-package platformstack
+package stack
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
 	"slices"
-	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
-	"github.com/miabi-io/miabi/internal/docker"
-	"github.com/miabi-io/miabi/internal/services/saferollout"
+	"github.com/miabi-io/miabi/pkg/stack/docker"
+	"github.com/miabi-io/miabi/pkg/stack/saferollout"
 )
 
 // CurrentVersion is the manifest schema version this build writes.
@@ -29,6 +26,11 @@ const CurrentVersion = 1
 // CLI here. It does NOT mean there is no Miabi: a Compose install has no manifest
 // either, and callers say so.
 var ErrNotInstalled = errors.New("no Miabi stack manifest found")
+
+// ErrLegacyConfig means the manifest is at the pre-rename LegacyConfigPath. It is deliberately NOT
+// an ErrNotInstalled: this host *is* installed, and telling its operator otherwise sends them
+// looking for a Compose stack that was never there.
+var ErrLegacyConfig = errors.New("the stack manifest is at its pre-1.8 path")
 
 // Container names. They match examples/compose/compose.yaml deliberately: an operator's muscle
 // memory (`docker logs miabi`) keeps working across both install paths, and Phase 1's
@@ -57,7 +59,7 @@ const (
 
 const helperImage = "busybox:1.36"
 
-// Default images. Overridable in the manifest; pinned here so a bare `miabi install` is reproducible
+// Default images. Overridable in the manifest; pinned here so a bare `miabi setup` is reproducible
 // rather than tracking whatever :latest happens to be. NOTE the tags carry no leading "v": git tags do
 // (v0.11.0), Docker tags do not — the git form produced an image reference that does not exist.
 const (
@@ -76,7 +78,7 @@ const (
 type Service struct {
 	dc  docker.Client
 	log func(format string, args ...any)
-	// manifestPath is where stack.yaml lives, AS THIS PROCESS SEES IT. The gateway's
+	// manifestPath is where miabi.yaml lives, AS THIS PROCESS SEES IT. The gateway's
 	// config sits beside it, so the Service needs to know the directory.
 	manifestPath string
 }
@@ -247,7 +249,7 @@ func (m *Manifest) normalizeGateway() error {
 
 // reservedEnvPrefixes are settings the manifest models with a dedicated field, so setting them through env:
 // would create a second source of truth that can silently disagree with the first. A bare
-// MIABI_REGISTRY_ENABLED in env: would turn the registry on while `miabi status` still said it was off.
+// MIABI_REGISTRY_ENABLED in env: would turn the registry on while `miabi stack status` still said it was off.
 var reservedEnvPrefixes = []string{"MIABI_REGISTRY_"}
 
 // Seeded env defaults, written into the manifest rather than applied invisibly, so `env:` shows an
@@ -452,21 +454,6 @@ func validHostname(h string) bool {
 	return true
 }
 
-// dockerGID is the group that owns the Docker socket, so the control plane can talk
-// to it without running as root. Best-effort: an empty result just means the
-// container runs as its image default (root), which still works.
-func dockerGID() string {
-	fi, err := os.Stat("/var/run/docker.sock")
-	if err != nil {
-		return ""
-	}
-	st, ok := fi.Sys().(*syscall.Stat_t)
-	if !ok {
-		return ""
-	}
-	return strconv.FormatUint(uint64(st.Gid), 10)
-}
-
 // Converge brings the stack to the manifest's desired state in dependency order, and is safe to re-run:
 // a component whose spec already matches is left alone. Postgres and Redis must be *healthy* before the
 // control plane boots; the gateway goes last, so an incomplete stack fails closed.
@@ -582,7 +569,7 @@ func (s *Service) components(m *Manifest) []component {
 }
 
 // Component returns the named component, or false. Exported so the CLI can validate
-// `miabi update <component>` before touching anything.
+// `miabi upgrade <component>` before touching anything.
 func (s *Service) Component(m *Manifest, name string) (component, bool) {
 	for _, c := range s.components(m) {
 		if c.Name == name {

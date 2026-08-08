@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package platformstack
+package stack
 
 import (
 	"bytes"
@@ -11,21 +11,21 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/miabi-io/miabi/internal/docker"
+	"github.com/miabi-io/miabi/pkg/stack/docker"
 )
 
 // The CLI seeds this file into the gateway's config volume; the Compose path bind-mounts
 // examples/compose/goma.yml. They must be the same file, or the two install paths route differently —
 // and the one nobody is running is the one that rots.
 func TestEmbeddedGomaConfigMatchesTheComposeOne(t *testing.T) {
-	onDisk, err := os.ReadFile(filepath.Join("..", "..", "..", "examples", "compose", "goma.yml"))
+	onDisk, err := os.ReadFile(filepath.Join("..", "..", "examples", "compose", "goma.yml"))
 	if err != nil {
 		t.Fatalf("read examples/compose/goma.yml: %v", err)
 	}
 	if !bytes.Equal(bytes.TrimSpace(onDisk), bytes.TrimSpace(GomaConfig())) {
 		t.Error("assets/goma.yml has drifted from examples/compose/goma.yml — " +
 			"the CLI install and the Compose install would serve different routing rules. " +
-			"Copy examples/compose/goma.yml over internal/services/platformstack/assets/goma.yml.")
+			"Copy examples/compose/goma.yml over stack/assets/goma.yml.")
 	}
 }
 

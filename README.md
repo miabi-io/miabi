@@ -296,28 +296,39 @@ Installs Docker if missing, brings up the stack, and prints the admin password.
 Then:
 
 ```bash
-miabi-stack status
-miabi-stack restart
-miabi-stack update
-miabi-stack uninstall
+miabi stack status
+miabi stack restart
+miabi upgrade
+miabi stack uninstall
 ```
 
 ### Without the script
 
-The Miabi image *is* the installer — there is no binary to install:
+Two ways, both supported.
+
+Install the CLI ([releases](https://github.com/miabi-io/miabi-cli/releases)) and run:
+
+```bash
+sudo miabi setup --domain miabi.example.com --admin-email you@example.com
+```
+
+Or use no binary at all — the image is an installer too, which is the path to take when
+you don't have root:
 
 ```bash
 docker run --rm -it \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /etc/miabi:/etc/miabi \
-  miabi/miabi:1.4.0 install --domain miabi.example.com --admin-email you@example.com
+  miabi/miabi:1.7.3 install --domain miabi.example.com --admin-email you@example.com
 ```
 
-`install`, `update`, `restart`, `status` and `uninstall` are the same command with a
-different verb.
+`install`/`update`/`restart`/`status`/`uninstall` on the image are the same commands as
+`miabi setup`/`upgrade`/`stack …` — [one implementation](./pkg/stack/stackcmd/), two
+front-ends. Either way the converge is idempotent: re-run it and only what changed is
+recreated.
 
 **[Installation docs](https://miabi.io/docs/getting-started/installation)** — options,
-the `/etc/miabi/stack.yaml` manifest, the built-in registry, custom gateway config, and
+the `/etc/miabi/miabi.yaml` manifest, the built-in registry, custom gateway config, and
 running Miabi under Docker Compose instead.
 
 ### Docker Compose

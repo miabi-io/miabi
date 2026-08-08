@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package platformstack
+package stack
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/miabi-io/miabi/internal/docker"
+	"github.com/miabi-io/miabi/pkg/stack/docker"
 )
 
 // gatewayPorts are the host ports the gateway must publish: HTTP for the ACME
@@ -102,7 +102,7 @@ func (s *Service) CheckOrphanedData(ctx context.Context) error {
 
   Either:
 
-    • Restore the manifest (stack.yaml) you backed up, put it back, and re-run.
+    • Restore the manifest (miabi.yaml) you backed up, put it back, and re-run.
       That is the only way to keep the data.
 
     • Or delete the database and start over — THIS DESTROYS IT:
