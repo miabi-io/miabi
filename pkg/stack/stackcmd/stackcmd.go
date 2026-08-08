@@ -117,6 +117,9 @@ func Setup(ctx context.Context, svc *stack.Service, path string, o SetupOptions,
 	}
 
 	printPlan(ui, m, path)
+	for _, ref := range []string{m.Images.Miabi, m.Images.Postgres, m.Images.Redis, m.Images.Gateway} {
+		warnFloatingTag(ui, ref)
+	}
 	if !o.Yes && !ui.Confirm("Proceed?") {
 		return nil, errors.New("cancelled")
 	}
@@ -217,17 +220,89 @@ func printResult(ui UI, m *stack.Manifest, path string, newInstall bool) {
 type UpgradeOptions struct {
 	// Component is empty for the whole stack, else one component by name.
 	Component string
-	// Image overrides the target. Empty means DefaultImage for the control plane, and the
-	// manifest's own pin for any other component.
-	Image string
-	Yes   bool
+	Image     string
+	Version   string
+	Yes       bool
 	// DefaultImage is as in SetupOptions.
 	DefaultImage func() string
+}
+
+// normalizeVersion accepts a Docker tag or a Git tag: releases are cut as v1.8.0 and published as
+// 1.8.0, and an operator reasonably types either. The "v" is stripped only when a digit follows, so
+// a real tag like "vnext" survives.
+func normalizeVersion(v string) (string, error) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return "", nil
+	}
+	if strings.ContainsAny(v, "/@:") {
+		return "", fmt.Errorf("--version takes a version like 1.8.0 or v1.8.0, not an image reference (%q) — use --image for that", v)
+	}
+	if len(v) > 1 && (v[0] == 'v' || v[0] == 'V') && v[1] >= '0' && v[1] <= '9' {
+		v = v[1:]
+	}
+	return v, nil
+}
+
+// floatingTags never identify a fixed build. Pulling one twice a month apart gives two different
+// images under the same name, which is exactly what the manifest exists to prevent.
+var floatingTags = map[string]bool{
+	"latest": true, "edge": true, "stable": true, "nightly": true,
+	"main": true, "master": true, "dev": true, "devel": true, "canary": true,
+}
+
+// tagOf returns the tag on a reference, "" for a digest pin, and "latest" when none is given —
+// which is what Docker resolves a bare repository to.
+func tagOf(ref string) string {
+	if at := strings.LastIndex(ref, "@"); at >= 0 {
+		return "" // digest-pinned: the most fixed form there is
+	}
+	slash := strings.LastIndex(ref, "/")
+	if colon := strings.LastIndex(ref, ":"); colon > slash {
+		return ref[colon+1:]
+	}
+	return "latest"
+}
+
+// warnFloatingTag flags a reference that cannot pin a build. This is not style advice — it breaks
+// two guarantees the rollout depends on:
+//
+//   - saferollout skips the rollback when the previous reference equals the new one, so a failed
+//     upgrade of :latest -> :latest has nothing to return to and leaves the component down;
+//   - drift detection compares reference strings, so an old :latest and a new :latest look
+//     identical and `upgrade` reports "already at" without doing anything.
+func warnFloatingTag(ui UI, ref string) {
+	tag := tagOf(ref)
+	if !floatingTags[tag] {
+		return
+	}
+	ui.Warn("%s is a floating tag: a failed rollout cannot roll back (there is no distinct previous\n"+
+		"    image to return to), and drift against it cannot be detected. Pin a version instead — --version 1.8.0.", ref)
+}
+
+// retag swaps the tag on an image reference, keeping registry and repository — which is what makes
+// --version correct on a private registry, and on components that are not miabi/miabi.
+func retag(ref, version string) string {
+	repo := ref
+	// A digest pin has no tag to replace; the version supersedes it.
+	if at := strings.LastIndex(repo, "@"); at >= 0 {
+		repo = repo[:at]
+	}
+	// The tag separator is the last ":" AFTER the last "/", so the port in a reference like
+	// registry.example.com:5000/miabi is not mistaken for one.
+	slash := strings.LastIndex(repo, "/")
+	if colon := strings.LastIndex(repo, ":"); colon > slash {
+		repo = repo[:colon]
+	}
+	return repo + ":" + version
 }
 
 // Upgrade rolls a component to a newer image, rolling back automatically if the new one never
 // becomes healthy. With no component named it moves the control plane and re-converges the rest.
 func Upgrade(ctx context.Context, svc *stack.Service, path string, o UpgradeOptions, ui UI) error {
+	if strings.TrimSpace(o.Image) != "" && strings.TrimSpace(o.Version) != "" {
+		return errors.New("--image and --version are mutually exclusive: --version retags the current reference, --image replaces it outright")
+	}
 	m, err := stack.Load(path)
 	if err != nil {
 		return WithInstallHint(err)
@@ -250,19 +325,27 @@ func Upgrade(ctx context.Context, svc *stack.Service, path string, o UpgradeOpti
 	}
 
 	// Only the control plane follows the default image. Naming another component rolls it out to
-	// whatever the manifest pins, unless --image says otherwise: bumping Postgres is a database
-	// restart the operator has to ask for — and it needs no default image at all.
+	// whatever the manifest pins, unless --image/--version says otherwise: bumping Postgres is a
+	// database restart the operator has to ask for — and it needs no default image at all.
 	target := strings.TrimSpace(o.Image)
-	if target == "" {
-		if !wholeStack {
-			target = *pin
-		} else if o.DefaultImage != nil {
-			target = o.DefaultImage()
+	switch {
+	case target != "":
+		// an explicit reference wins
+	case o.Version != "":
+		ver, verr := normalizeVersion(o.Version)
+		if verr != nil {
+			return verr
 		}
+		target = retag(*pin, ver)
+	case !wholeStack:
+		target = *pin
+	case o.DefaultImage != nil:
+		target = o.DefaultImage()
 	}
 	if target == "" {
-		return errors.New("cannot determine which image to roll out — pass --image <repo>:<tag>")
+		return errors.New("cannot determine which image to roll out — pass --version <x.y.z> or --image <repo>:<tag>")
 	}
+	warnFloatingTag(ui, target)
 	prev := *pin
 
 	if prev == target && !isDrifted(ctx, svc, name, target) {

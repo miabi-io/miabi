@@ -49,7 +49,17 @@ func registerStackCommands(cli *okapicli.CLI) {
 		String("file", "f", "", "Manifest path (default "+stack.DefaultConfigPath+")").
 		Bool("yes", "y", false, "Do not prompt")
 
-	cli.Command("update", "Update the installed stack (all components, or one by name)", runUpdate).
+	cli.Command("upgrade", "Move the installed stack to a newer version (all components, or one by name)", runUpgrade).
+		String("version", "", "", "Roll out this version, keeping the current registry and repository (1.8.0 or v1.8.0)").
+		String("image", "", "", "Roll out this exact image instead of the one this installer runs from").
+		String("file", "f", "", "Manifest path").
+		Bool("yes", "y", false, "Do not prompt")
+
+	// `update` is what every pre-1.8 runbook and doc says, so it keeps working. okapicli has no
+	// hidden-command support, and a visible "Deprecated:" line is the better trade anyway — it is
+	// how an operator reading `--help` finds out about the rename.
+	cli.Command("update", "Deprecated: use `upgrade`", runUpdate).
+		String("version", "", "", "Roll out this version, keeping the current registry and repository (1.8.0 or v1.8.0)").
 		String("image", "", "", "Roll out this exact image instead of the one this installer runs from").
 		String("file", "f", "", "Manifest path").
 		Bool("yes", "y", false, "Do not prompt")
@@ -124,7 +134,13 @@ func runInstall(cmd *okapicli.Command) error {
 	return nil
 }
 
+// runUpdate is the deprecated spelling of runUpgrade.
 func runUpdate(cmd *okapicli.Command) error {
+	fmt.Fprintln(os.Stderr, "! `update` is deprecated — use `upgrade`. It will be removed in a future release.")
+	return runUpgrade(cmd)
+}
+
+func runUpgrade(cmd *okapicli.Command) error {
 	svc, dc, err := stackService(cmd)
 	if err != nil {
 		return err
@@ -141,6 +157,7 @@ func runUpdate(cmd *okapicli.Command) error {
 	return stackcmd.Upgrade(ctx, svc, manifestPath(cmd), stackcmd.UpgradeOptions{
 		Component:    component,
 		Image:        cmd.GetString("image"),
+		Version:      cmd.GetString("version"),
 		Yes:          cmd.GetBool("yes"),
 		DefaultImage: imageDefault(dc),
 	}, imageUI{})
