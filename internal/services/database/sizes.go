@@ -37,8 +37,6 @@ func (s *Service) MaybeRefreshSizes(inst *models.DatabaseInstance) {
 	id := inst.ID
 	go func() {
 		defer s.sizeSyncing.Delete(id)
-		// Reload fresh so we don't race the caller's instance, and use a detached
-		// context (the request's is cancelled once it responds).
 		fresh, err := s.repo.FindByID(id)
 		if err != nil {
 			return
@@ -47,6 +45,45 @@ func (s *Service) MaybeRefreshSizes(inst *models.DatabaseInstance) {
 			logger.Warn("background size refresh failed", "instance", id, "error", err)
 		}
 	}()
+}
+
+// syncAllTimeout bounds one instance's probe during the nightly sweep. Each engine is queried
+// through a container exec, so a wedged instance would otherwise hold the whole sweep behind it.
+const syncAllTimeout = 2 * time.Minute
+
+// SyncAllSizes refreshes every running instance's sizes. Without it the numbers are only ever
+// refreshed lazily, when someone opens a detail page and the value is a day old — so a database
+// nobody looks at is never measured, and the usage totals that aggregate it drift indefinitely.
+func (s *Service) SyncAllSizes(ctx context.Context) (int, error) {
+	list, err := s.repo.ListAllInstances()
+	if err != nil {
+		return 0, fmt.Errorf("list database instances: %w", err)
+	}
+	measured, skipped := 0, 0
+	for i := range list {
+		if ctx.Err() != nil {
+			logger.Warn("database size sweep cancelled", "measured", measured, "remaining", len(list)-i)
+			return measured, ctx.Err()
+		}
+		inst := &list[i]
+		// Only a running instance can answer. A stopped one keeps its last known size rather than
+		// being zeroed, which would read as "this database lost its data".
+		if inst.Status != models.DBStatusRunning {
+			skipped++
+			continue
+		}
+		one, cancel := context.WithTimeout(ctx, syncAllTimeout)
+		err := s.SyncSizes(one, inst)
+		cancel()
+		if err != nil {
+			logger.Warn("database size sweep: instance failed",
+				"instance", inst.ID, "name", inst.Name, "engine", inst.Engine, "error", err)
+			continue
+		}
+		measured++
+	}
+	logger.Info("database size sweep complete", "measured", measured, "skipped", skipped, "total", len(list))
+	return measured, nil
 }
 
 // SyncSizes refreshes the on-disk size of an instance and its logical databases
@@ -68,9 +105,6 @@ func (s *Service) SyncSizes(ctx context.Context, inst *models.DatabaseInstance) 
 	}
 
 	if inst.Engine == models.DBEngineLibSQL {
-		// libSQL has no SQL/CLI size probe; measure the SQLite data directory on the
-		// instance's volume with a tiny helper container. The single implicit database
-		// mirrors the instance total.
 		size, err := s.libsqlDiskSize(ctx, inst)
 		if err != nil {
 			return err

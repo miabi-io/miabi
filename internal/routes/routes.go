@@ -551,9 +551,21 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}); err != nil {
 			logger.Warn("failed to schedule certificate expiry monitor", "error", err)
 		}
-		// Audit log retention: prune entries older than the configured window
-		// (audit_log_retention_days; 0 = keep forever). Open-source — uses the
-		// existing setting; the paid capability is export, not retention.
+
+		if dbSizeCron := strings.TrimSpace(cfg.DatabaseSizeCron); dbSizeCron != "" {
+			if err := cronManager.RegisterTask("database_sizes", 0, "Measure database sizes", dbSizeCron, func() error {
+
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
+				defer cancel()
+				_, err := databaseService.SyncAllSizes(ctx)
+				return err
+			}); err != nil {
+
+				logger.Warn("failed to schedule the database size sweep — sizes will only refresh lazily",
+					"cron", dbSizeCron, "error", err)
+			}
+		}
+
 		if err := cronManager.RegisterTask("audit_prune", 0, "Audit log retention prune", "0 3 * * *", func() error {
 			days := settingsProvider.Int(settings.KeyAuditLogRetentionDays, 0)
 			if days <= 0 {
@@ -582,8 +594,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	jobService.LoadCronJobs()
 	backupService := backup.NewService(backupRepo, dbRepo, nodeClients)
 	backupService.SetDDLRunner(databaseService) // force restore drops & recreates the DB
-	// Version upgrade: quiesce/restart apps via the app service, and dump/restore
-	// via the backup service (a copy upgrade reuses the safety backup as its source).
+
 	databaseService.SetAppController(dbupgrade.AppController(appService))
 	databaseService.SetLogicalBackup(dbupgrade.Backup(backupService))
 	// Per-workspace shared S3 backup target (used by database & volume backups).
