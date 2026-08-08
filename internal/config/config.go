@@ -137,6 +137,8 @@ type Config struct {
 	// StorageUsageMinutes is that sweep's cadence. Default 30.
 	StorageUsageMinutes int
 
+	DatabaseSizeCron string
+
 	// AnalyticsEnabled runs the Workspace Analytics consumer: it reads Goma's
 	// per-request event stream and rolls it up into minute buckets. Default on.
 	AnalyticsEnabled bool
@@ -542,6 +544,7 @@ func New() *Config {
 		DNSReconcileMinutes:        goutils.EnvInt("MIABI_DNS_RECONCILE_MINUTES", 30),
 		StorageUsageEnabled:        goutils.EnvBool("MIABI_STORAGE_USAGE_ENABLED", true),
 		StorageUsageMinutes:        goutils.EnvInt("MIABI_STORAGE_USAGE_MINUTES", 60),
+		DatabaseSizeCron:           goutils.Env("MIABI_DATABASE_SIZE_CRON", "20 2 * * *"),
 		AnalyticsEnabled:           goutils.EnvBool("MIABI_ANALYTICS_ENABLED", true),
 		AnalyticsStream:            goutils.Env("MIABI_ANALYTICS_STREAM", "goma:analytics"),
 		AnalyticsFlushSeconds:      goutils.EnvInt("MIABI_ANALYTICS_FLUSH_SECONDS", 15),
