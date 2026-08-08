@@ -52,8 +52,6 @@ func (r *BackupRepository) ListByDatabase(databaseID uint) ([]models.Backup, err
 	return backups, err
 }
 
-// --- Schedules ---
-
 func (r *BackupRepository) CreateSchedule(s *models.BackupSchedule) error {
 	return r.db.Create(s).Error
 }

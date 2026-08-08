@@ -50,17 +50,14 @@ var (
 	ErrNoNetworkProvider     = errors.New("network management is not available")
 )
 
-// engineSpec describes how to run a given engine and talk to it.
 type engineSpec struct {
 	image          func(version string) string
 	defaultVersion string
 	port           int
 	dataDir        string
 	adminUser      string
-	// adminEnv builds the server container environment from the admin password.
-	adminEnv func(adminUser, adminPass string) []string
-	// cmd optionally overrides the container command (e.g. redis auth).
-	cmd func(pass string) []string
+	adminEnv       func(adminUser, adminPass string) []string
+	cmd            func(pass string) []string
 }
 
 var specs = map[models.DBEngine]engineSpec{
@@ -110,16 +107,9 @@ var specs = map[models.DBEngine]engineSpec{
 	},
 }
 
-// dataMount is the in-container path the instance's data volume mounts at.
-// PostgreSQL 18+ official images store the cluster in a major-version
-// subdirectory and reject a volume mounted at the pre-18 ".../data" path as a
-// stray mount ("there appears to be PostgreSQL data in /var/lib/postgresql/data
-// (unused mount/volume)"), so the container exits and crash-loops — and the
-// instance never joins its network, which then surfaces downstream as a DDL job
-// failing to resolve the instance host. Mounting one level up at
-// /var/lib/postgresql lets the data subdirectory live on the volume. Earlier
-// Postgres and every other engine keep their historical path so existing
-// volumes stay valid.
+// dataMount is the in-container path the instance's data volume mounts at. PostgreSQL 18+ images store the
+// cluster in a major-version subdirectory and reject a volume mounted at the pre-18 ".../data" path as a stray
+// mount, so mounting one level up lets the data subdirectory live on the volume. Other engines keep their path.
 func dataMount(engine models.DBEngine, version, defaultDir string) string {
 	if engine == models.DBEnginePostgres && postgresMajor(version) >= 18 {
 		return "/var/lib/postgresql"
@@ -187,15 +177,13 @@ type Service struct {
 	// bus fans out live instance status (provisioning, upgrade phases, start/stop)
 	// to SSE subscribers. Shared with the embedded worker so worker-driven phase
 	// changes reach an open detail-page stream. Nil-safe (no-op when unwired).
-	bus *eventbus.Bus
-	// sizeSyncing debounces background size refreshes (instance id -> in-flight).
+	bus         *eventbus.Bus
 	sizeSyncing sync.Map
 }
 
-// OwnerExister reports whether an owning resource of the given kind/id still
-// exists in the workspace, letting Delete refuse to orphan a database that still
-// backs an app/stack. Wired by the composition root to avoid depending on the
-// app/stack repositories directly.
+// OwnerExister reports whether an owning resource of the given kind/id still exists in the workspace,
+// letting Delete refuse to orphan a database that still backs an app or stack. Wired by the
+// composition root to avoid depending on the app/stack repositories directly.
 type OwnerExister func(kind string, id, workspaceID uint) bool
 
 // SetOwnerExister wires the owner-existence check used by Delete (nil-safe).
@@ -264,11 +252,9 @@ func instanceNetworkNames(inst *models.DatabaseInstance) []string {
 	return inst.NetworkNames(node.AppNetwork)
 }
 
-// ensureInstanceNetworks makes every network the instance is on exist on the
-// node and returns their names, so a helper job (DDL, size probe) attaches to
-// the same full set the instance's container runs on — exactly as bringUp does.
-// Returning the primary alone would risk attaching to a network the instance is
-// not on, which surfaces as "could not translate host name <alias>".
+// ensureInstanceNetworks makes every network the instance is on exist on the node and returns their names, so
+// a helper job attaches to the same full set the instance's container runs on — exactly as bringUp does.
+// Returning the primary alone risks a network the instance is not on: "could not translate host name".
 func (s *Service) ensureInstanceNetworks(ctx context.Context, dc docker.Client, inst *models.DatabaseInstance) ([]string, error) {
 	names := instanceNetworkNames(inst)
 	for _, n := range names {
@@ -279,7 +265,6 @@ func (s *Service) ensureInstanceNetworks(ctx context.Context, dc docker.Client, 
 	return names, nil
 }
 
-// engineImageKey maps an engine to its catalog key.
 func engineImageKey(engine models.DBEngine) string {
 	switch engine {
 	case models.DBEnginePostgres:
@@ -298,10 +283,9 @@ func engineImageKey(engine models.DBEngine) string {
 	return ""
 }
 
-// resolveEngineImage builds the full server image (repo:tag) for an engine,
-// taking the repo (and mirror) from the deployment-config catalog and the tag
-// from the requested version (falling back to the configured default tag).
-// Returns the image ref and the effective tag.
+// resolveEngineImage builds the full server image (repo:tag) for an engine, taking the repo (and mirror)
+// from the deployment-config catalog and the tag from the requested version (falling back to the
+// configured default tag). Returns the image ref and the effective tag.
 func (s *Service) resolveEngineImage(spec engineSpec, engine models.DBEngine, version string) (image, tag string) {
 	ref := spec.image(spec.defaultVersion) // built-in default, e.g. "postgres:17-alpine"
 	if s.images != nil {
@@ -388,10 +372,9 @@ func (s *Service) provisionInstanceSecrets(workspaceID uint, inst *models.Databa
 	}
 }
 
-// createLibsqlDatabase creates the single implicit logical database for a libSQL
-// instance, storing the client JWT (encrypted) as its "password". It is created in
-// the provisioning state and marked running once sqld is up. No DDL runs — libSQL
-// serves the database the moment the container starts.
+// createLibsqlDatabase creates the single implicit logical database for a libSQL instance, storing the
+// client JWT (encrypted) as its "password". It is created in the provisioning state and marked running
+// once sqld is up. No DDL runs — libSQL serves the database the moment the container starts.
 func (s *Service) createLibsqlDatabase(workspaceID uint, inst *models.DatabaseInstance, clientToken string) error {
 	encTok, err := crypto.EncryptWS(workspaceID, clientToken)
 	if err != nil {
@@ -408,11 +391,9 @@ func (s *Service) createLibsqlDatabase(workspaceID uint, inst *models.DatabaseIn
 	return nil
 }
 
-// markLibsqlDatabaseRunning flips the implicit libSQL database to running once the
-// server actually serves HTTP. libSQL has no readiness CLI and no DDL to apply
-// (unlike the SQL engines' applyPendingDatabases); a container reports "running"
-// before sqld accepts connections, so we poll its /health endpoint first and leave
-// the record provisioning (logged) if it never becomes ready.
+// markLibsqlDatabaseRunning flips the implicit libSQL database to running once the server actually serves
+// HTTP. libSQL has no readiness CLI and no DDL to apply, and a container reports "running" before sqld accepts
+// connections — so poll /health first and leave the record provisioning (logged) if it never becomes ready.
 func (s *Service) markLibsqlDatabaseRunning(ctx context.Context, inst *models.DatabaseInstance) {
 	if err := s.waitLibsqlReady(ctx, inst); err != nil {
 		logger.Error("libsql not ready; database left provisioning", "instance", inst.ID, "error", err)
@@ -434,11 +415,9 @@ func (s *Service) markLibsqlDatabaseRunning(ctx context.Context, inst *models.Da
 	}
 }
 
-// waitLibsqlReady blocks until the libSQL server answers HTTP, by polling its
-// /health endpoint from a tiny helper container on the instance's networks (the
-// control-plane process is not necessarily on the workspace network, so it cannot
-// reach the alias directly — mirroring how DDL/size probes run). Bounded; returns
-// the last probe output on timeout.
+// waitLibsqlReady blocks until the libSQL server answers HTTP, polling /health from a tiny helper container
+// on the instance's networks — the control-plane process is not necessarily on the workspace network, so it
+// cannot reach the alias directly. Bounded; returns the last probe output on timeout.
 func (s *Service) waitLibsqlReady(ctx context.Context, inst *models.DatabaseInstance) error {
 	dc, err := s.dockerFor(inst)
 	if err != nil {
@@ -493,7 +472,6 @@ func (s *Service) annotateServer(inst *models.DatabaseInstance) {
 	}
 }
 
-// dockerFor resolves the Docker client for an instance's node.
 func (s *Service) dockerFor(inst *models.DatabaseInstance) (docker.Client, error) {
 	return s.clients.For(inst.ServerID)
 }
@@ -507,8 +485,6 @@ type ConnectionInfo struct {
 	Database string `json:"database"`
 	URI      string `json:"uri"`
 }
-
-// --- Instances ---
 
 // Provision creates the instance record (admin credentials and connection
 // details known up front) and enqueues the container bring-up to the worker.
@@ -605,10 +581,9 @@ func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, nam
 		}
 	}
 
-	// Create the data volume up front on the target node, so creating a database
-	// always creates its volume immediately — independent of the async container
-	// bring-up (which, for heavier engines, may lag or fail to pull). bringUp
-	// re-ensures it idempotently.
+	// Create the data volume up front on the target node, so creating a database always creates its volume
+	// immediately — independent of the async container bring-up (which, for heavier engines, may lag or fail
+	// to pull). bringUp re-ensures it idempotently.
 	if dc, derr := s.clients.For(serverID); derr == nil {
 		if _, err := dc.CreateVolume(ctx, inst.VolumeName, map[string]string{docker.LabelDatabase: fmt.Sprint(inst.ID), docker.LabelWorkspace: fmt.Sprint(inst.WorkspaceID)}, inst.VolumeSizeBytes); err != nil {
 			logger.Warn("failed to pre-create database volume", "id", inst.ID, "volume", inst.VolumeName, "error", err)
@@ -621,10 +596,9 @@ func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, nam
 		// instance and created here (credentials are known up front).
 		s.provisionInstanceSecrets(workspaceID, inst)
 	case models.DBEngineLibSQL:
-		// libSQL hosts exactly one database (no user-managed logical databases). Create
-		// the single implicit logical record now — carrying the client token — so the
-		// existing per-database backup and app-injection pipeline applies unchanged. It
-		// is marked running once sqld is up (RunProvision -> markLibsqlDatabaseRunning).
+		// libSQL hosts exactly one database, with no user-managed logical databases. Create the single implicit
+		// logical record now — carrying the client token — so the existing per-database backup and app-injection
+		// pipeline applies unchanged. It is marked running once sqld is up (markLibsqlDatabaseRunning).
 		if err := s.createLibsqlDatabase(workspaceID, inst, libsqlToken); err != nil {
 			logger.Error("create implicit libsql database", "instance", inst.ID, "error", err)
 		}
@@ -636,10 +610,9 @@ func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, nam
 	return inst, nil
 }
 
-// SetOwner records the owning resource (app/stack/user) on an existing
-// instance's metadata. Used to back-link a template's database to the app/stack
-// it backs once those have been created. Built-in keys are authoritative, so
-// this overrides any prior owner.
+// SetOwner records the owning resource (app/stack/user) on an existing instance's metadata. Used to
+// back-link a template's database to the app or stack it backs once those exist. Built-in keys are
+// authoritative, so this overrides any prior owner.
 func (s *Service) SetOwner(workspaceID, id uint, kind string, ownerID uint, name string) error {
 	inst, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -681,10 +654,9 @@ func (s *Service) RunProvision(ctx context.Context, instanceID uint) error {
 	return nil
 }
 
-// applyPendingDatabases runs the deferred CREATE DATABASE/USER DDL for logical
-// databases that were reserved (via PrepareDatabase) before the instance was
-// running. Best-effort: a failure is logged and the database left provisioning
-// rather than failing the bring-up, which is not safely retryable.
+// applyPendingDatabases runs the deferred CREATE DATABASE/USER DDL for logical databases that were
+// reserved (via PrepareDatabase) before the instance was running. Best-effort: a failure is logged and the
+// database left provisioning rather than failing the bring-up, which is not safely retryable.
 func (s *Service) applyPendingDatabases(ctx context.Context, inst *models.DatabaseInstance) {
 	if !inst.SupportsLogicalDatabases() {
 		return
@@ -704,12 +676,9 @@ func (s *Service) applyPendingDatabases(ctx context.Context, inst *models.Databa
 	if !hasPending {
 		return
 	}
-	// A container reports "running" before the engine accepts connections; wait
-	// until a trivial admin query succeeds. Otherwise the CREATE USER/DATABASE DDL
-	// below races the engine's own startup, fails, and the logical database is left
-	// stuck provisioning — its role never created, so apps can't authenticate and
-	// backups can't run (while a manually-created database, whose DDL runs against
-	// an already-ready instance, works).
+	// A container reports "running" before the engine accepts connections, so wait until a trivial admin query
+	// succeeds. Otherwise the CREATE USER/DATABASE DDL races the engine's own startup, fails, and leaves the
+	// logical database stuck provisioning — its role never created, so apps can't authenticate.
 	if err := s.waitReady(ctx, inst); err != nil {
 		logger.Error("engine not ready; logical databases left pending", "instance", inst.ID, "error", err)
 		return
@@ -866,11 +835,9 @@ func (s *Service) Get(workspaceID, id uint) (*models.DatabaseInstance, error) {
 	return inst, nil
 }
 
-// LiveStatus is a lightweight, pollable view of an instance's state: the stored
-// lifecycle status (provisioning/running/stopped/failed/upgrading) plus, when a
-// container exists, its live Docker state and a stats snapshot. The detail page
-// polls this so a user sees provisioning finish — or a crash — without a manual
-// refresh. Mirrors the application LiveStatus endpoint.
+// LiveStatus is a lightweight, pollable view of an instance's state: the stored lifecycle status plus,
+// when a container exists, its live Docker state and a stats snapshot. The detail page polls this so a
+// user sees provisioning finish — or a crash — without a manual refresh.
 type LiveStatus struct {
 	Status         string                  `json:"status"` // headline: stored lifecycle, or live-derived when running
 	StoredStatus   models.DBStatus         `json:"stored_status"`
@@ -926,10 +893,9 @@ func (s *Service) LiveStatus(ctx context.Context, inst *models.DatabaseInstance)
 	return ls
 }
 
-// deriveDBStatus maps a container's Docker state + health into a headline status
-// for the UI. Platform lifecycle states (provisioning/upgrading/failed) are
-// authoritative and never overridden by the container; otherwise the live
-// container state wins, distinguishing a user-stopped instance from a crash.
+// deriveDBStatus maps a container's Docker state + health into a headline status for the UI. Platform
+// lifecycle states (provisioning/upgrading/failed) are authoritative and never overridden by the
+// container; otherwise the live container state wins, distinguishing a user-stopped instance from a crash.
 func deriveDBStatus(stored models.DBStatus, state, health string, restarting bool) string {
 	switch stored {
 	case models.DBStatusProvisioning, models.DBStatusUpgrading, models.DBStatusFailed:
@@ -1030,10 +996,9 @@ func annotateStorage(inst *models.DatabaseInstance) {
 	}
 }
 
-// StreamLogs follows the instance container's logs, invoking sink for each line.
-// tail bounds the initial backlog ("" = a sensible default / all). When follow
-// is true it then follows live output until the context is cancelled; when false
-// it returns after the tail.
+// StreamLogs follows the instance container's logs, invoking sink for each line. tail bounds the
+// initial backlog ("" = a sensible default). When follow is true it then follows live output until the
+// context is cancelled; when false it returns after the tail.
 func (s *Service) StreamLogs(ctx context.Context, workspaceID, instanceID uint, follow bool, tail string, sink func(docker.LogLine) error) error {
 	inst, err := s.repo.FindInWorkspace(workspaceID, instanceID)
 	if err != nil {
@@ -1124,10 +1089,9 @@ func (s *Service) Restart(ctx context.Context, inst *models.DatabaseInstance) er
 	return nil
 }
 
-// Delete stops and removes the instance container, its data volume, and its
-// logical database records (their data lives in the dropped container). Refuses
-// while the instance is running, or when any of its databases is still attached
-// to an application.
+// Delete stops and removes the instance container, its data volume, and its logical database records
+// (their data lives in the dropped container). Refuses while the instance is running, or when any of
+// its databases is still attached to an application.
 func (s *Service) Delete(ctx context.Context, inst *models.DatabaseInstance) error {
 	if inst.Status == models.DBStatusUpgrading {
 		return ErrUpgradeInProgress
@@ -1171,8 +1135,6 @@ func (s *Service) Delete(ctx context.Context, inst *models.DatabaseInstance) err
 	s.cascadeDeleteSecrets(inst.WorkspaceID, SecretOwnerInstance, inst.ID)
 	return nil
 }
-
-// --- Logical databases ---
 
 // ListDatabases returns an instance's logical databases.
 func (s *Service) ListDatabases(workspaceID, instanceID uint) ([]models.Database, error) {
@@ -1323,10 +1285,9 @@ func (s *Service) CreateDatabase(ctx context.Context, workspaceID, instanceID ui
 	return d, nil
 }
 
-// UniqueDatabaseName derives a sanitized logical-database name from base that is
-// free on the instance, appending _2, _3, … only on collision. This lets callers
-// (e.g. marketplace installs) use a meaningful, readable name — the install's
-// name — without ever hitting ErrNameTaken.
+// UniqueDatabaseName derives a sanitized logical-database name from base that is free on the instance,
+// appending _2, _3, ... only on collision. This lets callers use a meaningful, readable name — the
+// install's name — without ever hitting ErrNameTaken.
 func (s *Service) UniqueDatabaseName(instanceID uint, base string) (string, error) {
 	name := sanitizeIdent(base)
 	if name == "" {
@@ -1346,12 +1307,9 @@ func (s *Service) UniqueDatabaseName(instanceID uint, base string) (string, erro
 	return name + "_" + token(4), nil // pathological fallback
 }
 
-// PrepareDatabase reserves a logical database (record + scoped credentials) on
-// an instance WITHOUT running DDL, so a caller can wire an application's
-// connection env before the instance has finished provisioning. The actual
-// CREATE DATABASE/USER runs later, when the instance comes up
-// (applyPendingDatabases in RunProvision). For an already-running instance use
-// CreateDatabase, which creates it immediately.
+// PrepareDatabase reserves a logical database (record + scoped credentials) WITHOUT running DDL, so a
+// caller can wire an app's connection env before the instance has finished provisioning. The actual
+// CREATE runs later, when the instance comes up. For a running instance use CreateDatabase.
 func (s *Service) PrepareDatabase(workspaceID, instanceID uint, name string, appID *uint) (*models.Database, error) {
 	inst, err := s.repo.FindInWorkspace(workspaceID, instanceID)
 	if err != nil {

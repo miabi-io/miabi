@@ -11,20 +11,9 @@ import (
 	"time"
 )
 
-// These exercise the object client and the connection probe against a REAL
-// S3-compatible store, so the round trip that "Test connection" performs is
-// proven end to end rather than only in its error formatting. They skip when
-// MIABI_S3_IT_ENDPOINT (or, for AWS, MIABI_S3_IT_BUCKET alone) is unset, so the
-// default `go test` stays hermetic and offline.
-//
-// Example, against a MinIO:
-//
-//	MIABI_S3_IT_ENDPOINT=http://10.0.0.5:9000 \
-//	MIABI_S3_IT_BUCKET=miabi-backup-dev \
-//	MIABI_S3_IT_REGION=eu2 \
-//	MIABI_S3_IT_ACCESS_KEY=… MIABI_S3_IT_SECRET_KEY=… \
-//	MIABI_S3_IT_PATH_STYLE=true MIABI_S3_IT_SSL=false \
-//	go test ./internal/storage/blob/ -run Integration -v
+// These exercise the object client and probe against a REAL S3-compatible store, so the "Test
+// connection" round trip is proven end to end. They skip unless MIABI_S3_IT_ENDPOINT (or, for
+// AWS, MIABI_S3_IT_BUCKET) is set, so the default `go test` stays hermetic and offline.
 func itConfig(t *testing.T) Config {
 	t.Helper()
 	bucket := os.Getenv("MIABI_S3_IT_BUCKET")

@@ -62,10 +62,9 @@ func NewService(users *repositories.UserRepository, resets *repositories.Passwor
 	return &Service{users: users, resets: resets, recovery: recovery, store: store, jwtKey: []byte(jwtSecret), aud: "miabi"}
 }
 
-// Authenticate verifies credentials and returns the user. The identifier is
-// either an email address or a username handle — an '@' selects the email
-// lookup, otherwise the username; a miss on the primary lookup falls back to the
-// other so a username that happens to look unusual still resolves.
+// Authenticate verifies credentials and returns the user. The identifier is either an email address or a
+// username handle — an '@' selects the email lookup, otherwise the username — and a miss on the primary
+// lookup falls back to the other, so an unusual-looking username still resolves.
 func (s *Service) Authenticate(identifier, password string) (*models.User, error) {
 	user, err := s.lookupByIdentifier(identifier)
 	if err != nil {
@@ -80,7 +79,6 @@ func (s *Service) Authenticate(identifier, password string) (*models.User, error
 	return user, nil
 }
 
-// lookupByIdentifier resolves a login identifier to a user by email or username.
 func (s *Service) lookupByIdentifier(identifier string) (*models.User, error) {
 	id := strings.TrimSpace(identifier)
 	if strings.Contains(id, "@") {
@@ -150,10 +148,9 @@ func (s *Service) ResetPassword(rawToken, newPassword string) error {
 	return s.resets.MarkUsed(rec.ID)
 }
 
-// ChangePassword verifies an authenticated user's current password and sets a
-// new one. Distinct from the token-based ResetPassword: this is the self-service
-// path from the security page, gated by the current password rather than an
-// emailed token.
+// ChangePassword verifies an authenticated user's current password and sets a new one. Distinct from the
+// token-based ResetPassword: this is the self-service path from the security page, gated by the current
+// password rather than an emailed token.
 func (s *Service) ChangePassword(userID uint, currentPassword, newPassword string) error {
 	user, err := s.users.FindByID(userID)
 	if err != nil {
@@ -171,10 +168,9 @@ func (s *Service) ChangePassword(userID uint, currentPassword, newPassword strin
 	return s.users.Update(user)
 }
 
-// CreateResetSession issues a short-lived, single-use reset-session token (Redis)
-// for the forced-password-change flow: a user with an admin-set/reset password
-// gets this instead of a full session at login, and exchanges it for a real
-// session once they set their own password.
+// CreateResetSession issues a short-lived, single-use reset-session token in Redis for the
+// forced-password-change flow: a user with an admin-set password gets this instead of a full session at
+// login, and exchanges it for a real session once they set their own.
 func (s *Service) CreateResetSession(ctx context.Context, userID uint) (string, error) {
 	return s.store.CreateResetSession(ctx, userID)
 }
@@ -203,7 +199,6 @@ func (s *Service) CompletePasswordReset(ctx context.Context, token, newPassword 
 	return user, nil
 }
 
-// generateToken returns a random URL-safe token and its sha256 hex hash.
 func generateToken() (raw, hash string) {
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)
@@ -216,12 +211,9 @@ func hashToken(raw string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// --- Two-factor authentication (TOTP) ---
-
-// BeginTwoFactorSetup generates a fresh TOTP secret for the user, stores it
-// encrypted (not yet enabled), and returns the secret plus an otpauth:// URL the
-// client renders as a QR code. Calling it again before confirming rotates the
-// pending secret.
+// BeginTwoFactorSetup generates a fresh TOTP secret for the user, stores it encrypted but not yet
+// enabled, and returns the secret plus an otpauth:// URL the client renders as a QR code. Calling it
+// again before confirming rotates the pending secret.
 func (s *Service) BeginTwoFactorSetup(user *models.User) (secret, url string, err error) {
 	if user.TwoFactorEnabled {
 		return "", "", ErrTwoFactorAlreadyEnabled
@@ -308,7 +300,6 @@ func (s *Service) VerifyLoginCode(user *models.User, code string) bool {
 	return s.consumeRecoveryCode(user, code)
 }
 
-// validateTOTP decrypts the stored secret and verifies the supplied code.
 func (s *Service) validateTOTP(user *models.User, code string) bool {
 	if user.TwoFactorSecret == "" {
 		return false
@@ -353,7 +344,6 @@ func (s *Service) regenerateRecoveryCodes(userID uint) ([]string, error) {
 	return plain, nil
 }
 
-// generateRecoveryCode returns a formatted backup code like "a1b2c-3d4e5".
 func generateRecoveryCode() string {
 	b := make([]byte, 5)
 	_, _ = rand.Read(b)

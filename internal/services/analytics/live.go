@@ -13,20 +13,9 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// LiveTracker answers "how many distinct visitors are active right now", from
-// the same Goma event stream the rollups are built from. It is separate from the
-// gateway's own visitor tracker, which is a single gateway-wide Prometheus gauge:
-// this one is per workspace and per app. Both key on the event's daily-salted
-// visitor id, so no client address is stored.
-//
-// One sorted set per scope — member = visitor id, score = last-seen unix seconds
-// — so a count is a range query and expiry a range delete, both O(log N). State
-// lives in Redis rather than in the worker, so several workers (or control-plane
-// replicas) agree on one number and it survives a restart.
-//
-// Correctness comes from the score range on read, not from sweeping: a visitor
-// outside the window is never counted even if their entry is still there. Sweep
-// only bounds memory.
+// LiveTracker answers "how many distinct visitors are active right now" from the same Goma event
+// stream the rollups use, but per workspace and per app rather than one gateway-wide gauge. One sorted
+// set per scope keys on the daily-salted visitor id, so counting and expiry are both O(log N).
 type LiveTracker struct {
 	rdb    *redis.Client
 	window time.Duration
@@ -74,10 +63,9 @@ func scopeKey(ws, app uint) string {
 	return fmt.Sprintf("%sws%d:app%d", liveKeyPrefix, ws, app)
 }
 
-// Touch records a batch of sightings as active now. Callers batch by their
-// natural boundary (one stream read) so this is a handful of round trips per
-// batch rather than one per event. Best-effort: a Redis failure costs a live
-// count, never an ingest.
+// Touch records a batch of sightings as active now. Callers batch by their natural boundary — one
+// stream read — so this is a handful of round trips per batch rather than one per event. Best-effort:
+// a Redis failure costs a live count, never an ingest.
 func (t *LiveTracker) Touch(ctx context.Context, visits []LiveVisit) {
 	if t == nil || t.rdb == nil || len(visits) == 0 {
 		return

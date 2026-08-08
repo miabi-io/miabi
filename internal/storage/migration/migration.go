@@ -11,8 +11,32 @@ import (
 	"gorm.io/gorm"
 )
 
+// detachOrphanPlatformBackups nulls platform_backups.set_id where it is 0. Rows written before
+// SetID became a nullable pointer reference a row that cannot exist, so AutoMigrate cannot add
+// the FK and every ad-hoc backup would then fail with SQLSTATE 23503. Skipped on fresh installs.
+func detachOrphanPlatformBackups(db *gorm.DB) error {
+	m := db.Migrator()
+	if !m.HasTable("platform_backups") || !m.HasColumn("platform_backups", "set_id") {
+		return nil
+	}
+	res := db.Exec(`UPDATE platform_backups SET set_id = NULL WHERE set_id = 0`)
+	if res.Error != nil {
+		return fmt.Errorf("detach ad-hoc platform backups from set 0: %w", res.Error)
+	}
+	if res.RowsAffected > 0 {
+		logger.Info("migration: detached ad-hoc platform backups from set 0", "rows", res.RowsAffected)
+	}
+	return nil
+}
+
 // Run executes all schema migrations via GORM AutoMigrate.
 func Run(db *gorm.DB) error {
+	// Fixups that must happen BEFORE AutoMigrate, because AutoMigrate is what
+	// adds the constraint they make satisfiable.
+	if err := detachOrphanPlatformBackups(db); err != nil {
+		return err
+	}
+
 	if err := db.AutoMigrate(
 		&models.UpgradeStep{},
 		&models.UpdateStatus{},
@@ -50,6 +74,7 @@ func Run(db *gorm.DB) error {
 		&models.WorkspaceBackupSettings{},
 		&models.WorkspaceBundle{},
 		&models.VolumeBackup{},
+		&models.PlatformBackupSet{},
 		&models.PlatformBackup{},
 		&models.PlatformBackupSettings{},
 		&models.RegistrySettings{},
@@ -82,7 +107,6 @@ func Run(db *gorm.DB) error {
 		&models.DNSRecord{},
 		&models.ACMEAccount{},
 		&models.WorkspaceKey{},
-		// GitOps & CI/CD
 		&models.GitSource{},
 		&models.Environment{},
 		&models.ReleaseApproval{},

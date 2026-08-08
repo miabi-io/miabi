@@ -9,16 +9,9 @@ import (
 	"strings"
 )
 
-// allowWSOrigin builds a websocket CheckOrigin function that blocks cross-site
-// WebSocket hijacking (CSWSH) while still admitting non-browser clients. It
-// permits:
-//   - requests with no Origin header — non-browser clients (node agents, runners,
-//     CLIs; Go WebSocket dialers do not set Origin), and
-//   - browser requests whose Origin is same-origin with the request Host, or is
-//     present in the configured allowlist (the CORS origins + web UI URL).
-//
-// A cross-site browser Origin is rejected. A "*" entry in allowed disables the
-// check entirely (dev, where CORS is also "*").
+// allowWSOrigin builds a websocket CheckOrigin that blocks cross-site WebSocket hijacking while
+// still admitting non-browser clients: requests with no Origin (agents, runners, CLIs) and
+// browser requests same-origin with Host or in the allowlist. A "*" entry disables the check.
 func allowWSOrigin(allowed []string) func(*http.Request) bool {
 	allowSet := make(map[string]struct{}, len(allowed))
 	wildcard := false
@@ -52,7 +45,6 @@ func allowWSOrigin(allowed []string) func(*http.Request) bool {
 	}
 }
 
-// normOrigin lower-cases an origin and strips a trailing slash for comparison.
 func normOrigin(o string) string {
 	return strings.ToLower(strings.TrimRight(strings.TrimSpace(o), "/"))
 }

@@ -47,14 +47,9 @@ type RestoreInput struct {
 	DeployApps bool
 }
 
-// Restore records a pending restore and schedules it.
-//
-// workspaceID is the workspace whose bucket and passphrase are used — the one
-// the operator is standing in. The target is that same workspace unless
-// NewWorkspaceName asks for a fresh one, which is created here (synchronously,
-// so a name clash is an error the caller sees rather than a job that fails
-// minutes later) and inherits the bucket settings, so the clone can take bundles
-// of its own from day one.
+// Restore records a pending restore and schedules it. workspaceID is the workspace whose bucket and
+// passphrase are used. The target is that same workspace unless NewWorkspaceName asks for a fresh one,
+// created synchronously so a name clash is an error the caller sees rather than a job that fails later.
 func (s *Service) Restore(ctx context.Context, workspaceID uint, userID *uint, in RestoreInput) (*models.WorkspaceBundle, error) {
 	cfg, prefix, _, err := s.Settings.BundleTarget(workspaceID)
 	if err != nil {
@@ -128,13 +123,9 @@ func (s *Service) inheritSettings(from, to uint) error {
 	return err
 }
 
-// runRestore rebuilds a workspace from a bundle.
-//
-// Resources are created in dependency order — credentials, networks, secrets,
-// volumes, stacks, databases, domains, certificates, apps, routing, delivery —
-// and every one of them is keyed by name: a resource that already exists is left
-// exactly as it is and reported as skipped. That is what makes a restore safe to
-// run into a live workspace, and safe to run twice.
+// runRestore rebuilds a workspace from a bundle. Resources are created in dependency order — credentials,
+// networks, secrets, volumes, stacks, databases, domains, certificates, apps, routing, delivery — and every one
+// is keyed by name, so an existing resource is left as it is and reported skipped. Safe to run live, and twice.
 func (s *Service) runRestore(ctx context.Context, b *models.WorkspaceBundle) error {
 	cfg, prefix, passphrase, err := s.Settings.BundleTarget(b.WorkspaceID)
 	if err != nil {
@@ -209,7 +200,6 @@ func (s *Service) runRestore(ctx context.Context, b *models.WorkspaceBundle) err
 	return nil
 }
 
-// restoreRun carries the state of one restore.
 type restoreRun struct {
 	svc        *Service
 	bundle     *models.WorkspaceBundle
@@ -221,11 +211,9 @@ type restoreRun struct {
 	report     *models.BundleReport
 	restored   int
 
-	// appIDs and instanceIDs are the remap table: a natural key from the bundle to
-	// the id this platform minted for it. Every cross-reference resolves through
-	// them, which is the whole reason nothing in a bundle carries an id. They hold
-	// pre-existing resources too, so a reference resolves whether its target was
-	// created by this run or was already here.
+	// appIDs and instanceIDs are the remap table: a natural key from the bundle to the id this platform minted for
+	// it. Every cross-reference resolves through them, which is the whole reason nothing in a bundle carries an
+	// id. They hold pre-existing resources too, so a reference resolves whether or not this run created it.
 	appIDs      map[string]uint
 	instanceIDs map[string]uint
 	volumeIDs   map[string]uint
@@ -252,26 +240,14 @@ func (r *restoreRun) apply(ctx context.Context) {
 	}
 }
 
-// restoreStep is one named stage of a restore.
 type restoreStep struct {
 	name string
 	run  func(context.Context)
 }
 
-// steps is the restore's dependency order, named so it can be asserted rather
-// than assumed.
-//
-// The order is not cosmetic — each entry exists because something after it needs
-// what it creates, and getting it wrong does not fail loudly, it produces a
-// workspace that is quietly missing a piece:
-//
-//   - domains before certificates, because importing a certificate validates its
-//     names against the workspace's registered domains;
-//   - certificates before routing, because a custom-TLS route names one;
-//   - apps before database links, routing and delivery, because all three
-//     resolve an application by name;
-//   - delivery last, because a GitOps source begins reconciling what exists, and
-//     one created early would see a half-built workspace as one to prune.
+// steps is the restore's dependency order, named so it can be asserted rather than assumed. Each entry
+// exists because something after it needs what it creates: domains before certificates, certificates
+// before routing, apps before links/routing/delivery, and delivery last so GitOps sees a built workspace.
 func (r *restoreRun) steps() []restoreStep {
 	return []restoreStep{
 		{"credentials", func(context.Context) { r.applyCredentials() }},
@@ -361,16 +337,9 @@ func (r *restoreRun) applyCredentials() {
 	}
 }
 
-// applyDomains registers the workspace's owned hostnames.
-//
-// It runs BEFORE certificates, and that order is load-bearing: importing a
-// certificate validates its subject names against the workspace's registered
-// domains, so a certificate restored first is refused with "add a domain to this
-// workspace before importing a certificate" — the bundle carrying both, and
-// still losing one of them.
-//
-// Domains come back unverified. Verification is a fact about DNS, and DNS at
-// restore time still points wherever it pointed.
+// applyDomains registers the workspace's owned hostnames. It runs BEFORE certificates, and that order is
+// load-bearing: importing a certificate validates its subject names against registered domains, so one restored
+// first is refused. Domains come back unverified — DNS at restore time still points wherever it pointed.
 func (r *restoreRun) applyDomains() {
 	providerIDs := map[string]uint{}
 	if provs, err := r.svc.DNSProvider.List(r.target); err == nil {
@@ -407,10 +376,9 @@ func (r *restoreRun) applyDomains() {
 	}
 }
 
-// applyCertificates re-imports the uploaded certificates. A Miabi-issued one is
-// not recreated: issuing it here would ask a CA to validate a host that still
-// resolves to the source, which fails — and would keep failing until DNS moves.
-// It is reported instead, so the operator issues it as part of the cutover.
+// applyCertificates re-imports the uploaded certificates. A Miabi-issued one is not recreated: issuing it
+// here would ask a CA to validate a host that still resolves to the source, which fails — and would keep
+// failing until DNS moves. It is reported instead, so the operator issues it as part of the cutover.
 func (r *restoreRun) applyCertificates() {
 	existing := map[string]bool{}
 	if certs, err := r.svc.Certificate.List(r.target); err == nil {
@@ -545,21 +513,9 @@ func (r *restoreRun) applyStacks(ctx context.Context) {
 	}
 }
 
-// applyDatabases provisions the managed servers and reserves their logical
-// databases.
-//
-// Provision enqueues the container's bring-up on the worker — it does not start
-// it here — so the logical databases are RESERVED rather than created: each is
-// written as pending, with its user and its vault secrets, and bring-up runs the
-// CREATE DATABASE/USER DDL once the engine actually answers.
-//
-// The alternative, creating them directly, is what the first version did, and it
-// could not work: CREATE DATABASE requires a running instance, and at this point
-// the container is still being pulled. The instance appeared and every logical
-// database under it failed with "instance is not ready" — which is exactly the
-// state that made a restored app unable to connect to a database that looked
-// present. Waiting for readiness happens later, in the data phase, where it costs
-// nothing to wait.
+// applyDatabases provisions the managed servers and reserves their logical databases. Provision enqueues the
+// container's bring-up rather than starting it, so each logical database is written pending, with its user and
+// vault secrets, and bring-up runs the CREATE DDL once the engine answers — CREATE needs a running instance.
 func (r *restoreRun) applyDatabases(ctx context.Context) {
 	existing := map[string]*models.DatabaseInstance{}
 	if instances, err := r.svc.Database.List(r.target); err == nil {
@@ -597,19 +553,14 @@ func (r *restoreRun) applyDatabases(ctx context.Context) {
 	}
 }
 
-// databaseWaitTimeout bounds how long the data phase waits for a freshly
-// provisioned server to accept connections. Long enough to pull and start a
-// database image on a cold host; short enough that a genuinely stuck bring-up is
-// reported rather than hanging the run.
+// databaseWaitTimeout bounds how long the data phase waits for a freshly provisioned server to accept
+// connections. Long enough to pull and start a database image on a cold host; short enough that a
+// genuinely stuck bring-up is reported rather than hanging the run.
 const databaseWaitTimeout = 5 * time.Minute
 
-// waitForDatabase blocks until a reserved logical database has had its DDL
-// applied by bring-up, or the wait runs out.
-//
-// It polls the row rather than the container: "running" on the logical database
-// is the platform's own statement that the CREATE DATABASE/USER pair succeeded
-// and the engine answered — which is precisely what a dump restore needs, and
-// strictly more than "the container started".
+// waitForDatabase blocks until a reserved logical database has had its DDL applied by bring-up, or the wait runs
+// out. It polls the row rather than the container: "running" on the logical database is the platform's own
+// statement that the CREATE pair succeeded and the engine answered — strictly more than "the container started".
 func (r *restoreRun) waitForDatabase(ctx context.Context, instanceID uint, name string) error {
 	deadline := time.Now().Add(databaseWaitTimeout)
 	for {
@@ -645,14 +596,9 @@ func (r *restoreRun) waitForDatabase(ctx context.Context, instanceID uint, name 
 	}
 }
 
-// applyDatabaseLinks re-attaches each logical database to the app that owns it
-// and re-injects the connection.
-//
-// The injection is the point: the app's environment came from a platform whose
-// database alias, port and generated user are not this one's. Re-injecting
-// rewrites exactly those keys — under the same prefix the source used — so an app
-// that read its database through Miabi keeps working, while any connection string
-// an operator typed by hand is left untouched and reported.
+// applyDatabaseLinks re-attaches each logical database to the app that owns it and re-injects the connection.
+// The injection is the point: the app's environment came from a platform whose alias, port and generated user
+// are not this one's. Re-injecting rewrites exactly those keys; a hand-typed connection string is left alone.
 func (r *restoreRun) applyDatabaseLinks() {
 	for _, d := range r.state.Databases {
 		instID := r.instanceIDs[d.Name]
@@ -722,10 +668,9 @@ func (r *restoreRun) injectConnection(inst *models.DatabaseInstance, db *models.
 	}
 }
 
-// applyRouting restores the middlewares and the routes that attach them.
-//
-// The domains those routes serve under were registered earlier (applyDomains),
-// because the certificates between the two steps depend on them.
+// applyRouting restores the middlewares and the routes that attach them. The domains those routes serve
+// under were registered earlier (applyDomains), because the certificates between the two steps depend on
+// them.
 func (r *restoreRun) applyRouting(ctx context.Context) {
 	// Middlewares first: a route names the ones it attaches, and one restored
 	// without them would serve without the authentication or the rate limit it
@@ -800,12 +745,9 @@ func (r *restoreRun) applyRouting(ctx context.Context) {
 	}
 }
 
-// applyDelivery restores what builds and reconciles the workspace: GitOps
-// sources, promotion environments, pipeline definitions and schedules.
-//
-// It runs last, after the resources those things act on exist. A GitOps source
-// created before its apps would reconcile against an empty workspace and — with
-// prune on — call that a workspace to tear down.
+// applyDelivery restores what builds and reconciles the workspace: GitOps sources, promotion environments,
+// pipeline definitions and schedules. It runs last, after the resources those act on exist — a GitOps source
+// created before its apps would reconcile against an empty workspace and, with prune on, tear it down.
 func (r *restoreRun) applyDelivery() {
 	repoIDs := map[string]uint{}
 	if repos, err := r.svc.GitRepo.List(r.target); err == nil {
@@ -960,7 +902,6 @@ func (r *restoreRun) applyMembers() {
 	}
 }
 
-// restoreDatabases loads each dump back into the database it came from.
 func (r *restoreRun) restoreDatabases(ctx context.Context) {
 	for _, art := range r.info.BySubject(wsbundle.SubjectDatabase) {
 		name := art.Instance + "/" + art.Database
@@ -990,10 +931,9 @@ func (r *restoreRun) restoreDatabases(ctx context.Context) {
 			r.add("database-data", name, "skipped", "no database of that name on the restored server")
 			continue
 		}
-		// The server was provisioned a moment ago and comes up on the worker; its
-		// image may still be pulling. Loading a dump into a database whose role
-		// does not exist yet fails in a way that reads like a bad dump, so wait for
-		// the platform to say the database is ready first.
+		// The server was provisioned a moment ago and comes up on the worker; its image may still be pulling.
+		// Loading a dump into a database whose role does not exist yet fails in a way that reads like a bad dump,
+		// so wait for the platform to say the database is ready first.
 		if err := r.waitForDatabase(ctx, instID, target.Name); err != nil {
 			r.add("database-data", name, "failed", err.Error())
 			continue
@@ -1013,7 +953,6 @@ func (r *restoreRun) restoreDatabases(ctx context.Context) {
 	}
 }
 
-// restoreVolumes extracts each archive back into its volume.
 func (r *restoreRun) restoreVolumes(ctx context.Context) {
 	live := map[string]*models.Volume{}
 	if vols, err := r.svc.Volume.List(r.target); err == nil {
@@ -1035,10 +974,8 @@ func (r *restoreRun) restoreVolumes(ctx context.Context) {
 	}
 }
 
-// deploy rolls out the applications this run created.
-//
-// Only those: an app that was already here was left untouched, and redeploying
-// it would restart a workload the operator never asked this run to touch.
+// deploy rolls out the applications this run created. Only those: an app that was already here was left
+// untouched, and redeploying it would restart a workload the operator never asked this run to touch.
 func (r *restoreRun) deploy() {
 	for _, name := range r.createdApps {
 		app, err := r.svc.App.Get(r.target, r.appIDs[name])

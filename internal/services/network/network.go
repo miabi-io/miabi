@@ -73,7 +73,6 @@ func (s *Service) SetCluster(c ClusterCap) { s.cluster = c }
 // SetClients wires the per-node Docker client registry used by the migration.
 func (s *Service) SetClients(r Resolver) { s.clients = r }
 
-// clusterOn reports whether new workspace networks should be swarm overlays.
 func (s *Service) clusterOn() bool { return s.cluster != nil && s.cluster.CapCluster() }
 
 // DriverBridge and DriverOverlay are the two drivers a workspace network can be
@@ -145,12 +144,9 @@ func (s *Service) create(ctx context.Context, workspaceID uint, in Input, isDefa
 	}
 	dockerCreated := false
 	if err := s.provisionDockerNetwork(ctx, dockerName, driver, in.Internal); err != nil {
-		// The platform-managed default network must always have a record, even when
-		// the Docker daemon is unavailable at this instant (e.g. during early
-		// bootstrap or in a dev environment). It is (re)ensured on each node at
-		// deploy time — see the worker's syncNetworks — so persist the record and
-		// let deployment reconcile the Docker side. A user-created network, by
-		// contrast, is expected to exist now, so surface the failure.
+		// The platform-managed default network must always have a record, even when the Docker daemon is unavailable
+		// right now (early bootstrap, dev). It is re-ensured on each node at deploy time, so persist the record and
+		// let deployment reconcile Docker. A user-created network is expected to exist now, so surface the failure.
 		if !isDefault {
 			return nil, fmt.Errorf("create docker network: %w", err)
 		}
@@ -175,10 +171,9 @@ func (s *Service) create(ctx context.Context, workspaceID uint, in Input, isDefa
 	return net, nil
 }
 
-// driverFor picks the Docker driver for a new workspace network. An explicit
-// driver from the caller always wins. Otherwise: in cluster mode the network must
-// span nodes, so it is a swarm overlay; without cluster mode it stays a
-// node-local bridge — exactly today's single-node behavior.
+// driverFor picks the Docker driver for a new workspace network. An explicit driver from the caller always
+// wins. Otherwise: in cluster mode the network must span nodes, so it is a swarm overlay; without cluster
+// mode it stays a node-local bridge — exactly today's single-node behavior.
 func (s *Service) driverFor(explicit string) (string, error) {
 	driver := strings.TrimSpace(explicit)
 	if driver == "" {
@@ -195,12 +190,9 @@ func (s *Service) driverFor(explicit string) (string, error) {
 	}
 }
 
-// provisionDockerNetwork creates the Docker network, preferring a Miabi-allocated
-// subnet (via the allocator) over Docker's default address pool.
-//
-// An overlay is created on the *manager* engine (s.docker) and is swarm-scoped:
-// Docker materializes it on a worker only once a container there attaches, so it
-// is never created per node. See the worker's syncNetworks.
+// provisionDockerNetwork creates the Docker network, preferring a Miabi-allocated subnet over Docker's default
+// address pool. An overlay is created on the *manager* engine and is swarm-scoped: Docker materializes it on a
+// worker only once a container there attaches, so it is never created per node. See the worker's syncNetworks.
 func (s *Service) provisionDockerNetwork(ctx context.Context, dockerName, driver string, internal bool) error {
 	spec := networkSpec(dockerName, driver, internal)
 	if s.alloc != nil {
@@ -211,10 +203,9 @@ func (s *Service) provisionDockerNetwork(ctx context.Context, dockerName, driver
 	return err
 }
 
-// networkSpec builds the Docker spec for a workspace network. An overlay must be
-// Attachable (plain, non-service containers join it — apps and databases alike)
-// and Encrypted (it is the only thing protecting east-west traffic between nodes;
-// no WireGuard underlay is in play).
+// networkSpec builds the Docker spec for a workspace network. An overlay must be Attachable (plain,
+// non-service containers join it — apps and databases alike) and Encrypted (it is the only thing
+// protecting east-west traffic between nodes; no WireGuard underlay is in play).
 func networkSpec(dockerName, driver string, internal bool) docker.NetworkSpec {
 	spec := docker.NetworkSpec{Name: dockerName, Driver: driver, Internal: internal}
 	if driver == DriverOverlay {

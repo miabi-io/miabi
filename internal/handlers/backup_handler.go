@@ -102,8 +102,6 @@ type CreateScheduleRequest struct {
 	} `json:"body"`
 }
 
-// --- Backups ---
-
 func (h *BackupHandler) List(c *okapi.Context) error {
 	db, err := h.loadDB(c)
 	if err != nil {
@@ -177,7 +175,6 @@ func (h *BackupHandler) Restore(c *okapi.Context, req *RestoreRequest) error {
 	return message(c, "database restored")
 }
 
-// allowedDump reports whether a filename has a supported dump extension.
 func allowedDump(name string) bool {
 	name = strings.ToLower(name)
 	return strings.HasSuffix(name, ".sql.gz") || strings.HasSuffix(name, ".sql") || strings.HasSuffix(name, ".dump")
@@ -265,8 +262,6 @@ func (h *BackupHandler) Download(c *okapi.Context) error {
 	return nil
 }
 
-// --- Schedules ---
-
 func (h *BackupHandler) ListSchedules(c *okapi.Context) error {
 	db, err := h.loadDB(c)
 	if err != nil {
@@ -323,9 +318,6 @@ func (h *BackupHandler) DeleteSchedule(c *okapi.Context) error {
 	return message(c, "schedule deleted")
 }
 
-// --- helpers ---
-
-// loadDB loads the logical database the backup belongs to.
 func (h *BackupHandler) loadDB(c *okapi.Context) (*models.Database, error) {
 	id, err := strconv.Atoi(c.Param("dbID"))
 	if err != nil || id <= 0 {

@@ -8,8 +8,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// --- Container ports ---
-
 type AppPortRepository struct {
 	db *gorm.DB
 }
@@ -38,8 +36,6 @@ func (r *AppPortRepository) ReplaceForApp(appID uint, ports []models.AppPort) er
 		return tx.Create(&ports).Error
 	})
 }
-
-// --- Port bindings ---
 
 type PortBindingRepository struct {
 	db *gorm.DB

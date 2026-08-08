@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package analytics turns Goma Gateway's per-request event stream into
-// minute-bucketed rollups (models.AnalyticsRollup) and answers the Traffic,
-// Performance and Web Analytics queries over them. It holds no per-request rows
-// and no PII: latency is a histogram, uniques are a HyperLogLog sketch, and the
-// visitor id is a daily-salted hash produced at the edge (never an IP).
+// Package analytics turns Goma Gateway's per-request event stream into minute-bucketed rollups and
+// answers the Traffic, Performance and Web Analytics queries over them. It holds no per-request rows
+// and no PII: latency is a histogram, uniques an HLL sketch, and the visitor id a daily-salted hash.
 package analytics
 
 import (
@@ -52,7 +50,6 @@ func histLen() int { return len(LatencyBoundsMs) + 1 }
 // a high-cardinality dimension (paths, referrers).
 const topKCap = 200
 
-// bucketIndex returns the histogram index for a latency in ms.
 func bucketIndex(ms int64) int {
 	for i, b := range LatencyBoundsMs {
 		if ms <= b {
@@ -87,10 +84,9 @@ func Percentile(hist []int64, p float64) float64 {
 	return float64(LatencyBoundsMs[len(LatencyBoundsMs)-1])
 }
 
-// maxPathLen bounds a stored request path. The gateway has no per-request path
-// patterns, so the paths breakdown is keyed on the raw request path — which is
-// client-controlled and ends up in the rollup's JSON map, so it can't be left
-// unbounded.
+// maxPathLen bounds a stored request path. The gateway has no per-request path patterns, so the paths
+// breakdown is keyed on the raw request path — which is client-controlled and ends up in the rollup's JSON
+// map, so it can't be left unbounded.
 const maxPathLen = 128
 
 // clipPath truncates an over-long path on a rune boundary, so the stored key
@@ -136,12 +132,8 @@ func mergeTopK(dst, src map[string]int64) {
 	}
 }
 
-// classifyUA derives a coarse browser family, OS and device from a User-Agent
-// string with cheap substring matching — enough for the analytics breakdowns,
-// no dependency, no fingerprinting beyond family. bot is true for common crawlers.
-// IsBotUA reports whether a user agent looks automated, using the same rule as
-// the rollups' bot/human split — exported so callers outside the aggregator
-// (live visitors) classify traffic identically.
+// IsBotUA reports whether a user agent looks automated, using the same rule as the rollups' bot/human
+// split. Exported so callers outside the aggregator — live visitors — classify traffic identically.
 func IsBotUA(ua string) bool {
 	_, _, _, bot := classifyUA(ua)
 	return bot
@@ -401,7 +393,6 @@ func ensureMap(m map[string]int64) map[string]int64 {
 	return m
 }
 
-// mergeHLL merges two serialized sketches, returning the serialized result.
 func mergeHLL(a, b []byte) []byte {
 	sa := sketchFrom(a)
 	if b != nil {

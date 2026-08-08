@@ -12,10 +12,9 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// TestConnectionBroke pins down when a runner's uptime clock restarts — the input
-// the offline alert debounces its resolve on. Getting this wrong in either
-// direction is a bug you only notice in production: reset too eagerly and an alert
-// never clears, too rarely and a flapping runner clears it instantly.
+// TestConnectionBroke pins down when a runner's uptime clock restarts — the input the offline alert debounces
+// its resolve on. Getting this wrong in either direction is a bug you only notice in production: reset too
+// eagerly and an alert never clears, too rarely and a flapping runner clears it instantly.
 func TestConnectionBroke(t *testing.T) {
 	now := time.Now()
 	at := func(d time.Duration) *time.Time { t := now.Add(-d); return &t }

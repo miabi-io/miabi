@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package stack groups related applications in a workspace. A stack carries a
-// user-facing name and a platform-managed Docker Compose project name; member
-// containers are labeled with that project name so Docker tooling groups them.
-// Stacks are purely organizational — deleting one detaches its apps (which keep
-// running), it never destroys workloads.
+// Package stack groups related applications in a workspace. A stack carries a user-facing name and a
+// platform-managed Docker Compose project name, and member containers are labeled with it so Docker tooling
+// groups them. Stacks are purely organizational — deleting one detaches its apps, which keep running.
 package stack
 
 import (
@@ -324,12 +322,9 @@ type AppActionResult struct {
 	Error   string `json:"error,omitempty"`
 }
 
-// Lifecycle applies a start/stop/restart action to every application in the
-// stack. It is best-effort: an app with no active release is skipped and one
-// that errors is recorded as failed, but neither aborts the others — so the
-// caller gets a full per-app summary. When rolling is set (restart only), each
-// app is restarted and waited until it reports running before the next, so the
-// stack is never fully down at once.
+// Lifecycle applies a start, stop or restart action to every application in the stack. Best-effort: an app
+// with no active release is skipped and one that errors is recorded as failed, but neither aborts the others.
+// When rolling is set, each app is waited until running before the next, so the stack is never fully down.
 func (s *Service) Lifecycle(ctx context.Context, workspaceID, stackID uint, action Action, rolling bool) ([]AppActionResult, error) {
 	st, err := s.repo.FindInWorkspaceWithApps(workspaceID, stackID)
 	if err != nil {
@@ -448,8 +443,6 @@ func (s *Service) Events(workspaceID, stackID uint, limit int) ([]models.AppEven
 	}
 	return s.events.ListByApps(ids, limit)
 }
-
-// --- Shared environment variables ---
 
 // ListEnvVars returns the stack's shared env vars (secret values masked).
 func (s *Service) ListEnvVars(workspaceID, stackID uint) ([]models.StackEnvVar, error) {

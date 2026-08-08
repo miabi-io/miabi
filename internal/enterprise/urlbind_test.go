@@ -29,7 +29,6 @@ func TestNormalizeHost(t *testing.T) {
 	}
 }
 
-// activeClaims returns a currently-valid license granting one flag.
 func activeClaims(installID, url string) *license.Claims {
 	now := time.Now()
 	return &license.Claims{

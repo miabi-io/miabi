@@ -23,20 +23,14 @@ import (
 	"gorm.io/gorm"
 )
 
-// embeddedPublicKey is the license-signing public key baked into the binary at
-// build time via `-ldflags "-X .../enterprise.embeddedPublicKey=<base64>"`. When
-// empty, the runtime-configured key (MIABI_LICENSE_PUBLIC_KEY) is used instead —
-// convenient for dev/test. Production builds bake the key in so it cannot be
-// swapped to forge a license.
+// embeddedPublicKey is the license-signing public key baked in at build time via -ldflags. When
+// empty, the runtime-configured MIABI_LICENSE_PUBLIC_KEY is used instead — convenient for dev.
+// Production builds bake the key in so it cannot be swapped to forge a license.
 var embeddedPublicKey string
 
-// New constructs the real EE implementation: it loads any installed license from
-// the database, falling back to MIABI_LICENSE_FILE for air-gapped/IaC installs.
-// instanceURL is this deployment's public URL and installID its stable Install
-// ID; a license bound to a different instance (by Install ID or URL) grants no
-// features (see StateBindingMismatch). An empty instanceURL disables the URL
-// check (can't be determined); the Install ID is always known, so an install_id
-// binding is always enforced.
+// New constructs the real EE implementation: it loads any installed license from the database,
+// falling back to MIABI_LICENSE_FILE for air-gapped installs. A license bound to a different
+// instance grants no features. An empty instanceURL disables the URL check; install_id always applies.
 func New(db *gorm.DB, publicKeyB64 string, licenseFile string, instanceURL string, installID string) EE {
 	pub := strings.TrimSpace(publicKeyB64)
 	if pub == "" {
@@ -74,13 +68,9 @@ type impl struct {
 	ldap         LDAPAuthenticator // nil until InitSSO
 }
 
-// bindingResult reports whether the license's bindings all match this deployment
-// and, if not, which binding failed. Bindings are conjunctive: every present one
-// must match. requestHost is an extra accepted host at install time (""=none).
-//   - install_id: exact match against this instance's Install ID (always
-//     enforced — the Install ID is always known; the strong, primary binding).
-//   - url: host match against the configured instance URL or the request host
-//     (fail-open only when no host is knowable).
+// bindingResult reports whether the license's bindings all match this deployment and, if not,
+// which failed. Bindings are conjunctive. install_id is an exact match and always enforced (the
+// strong, primary binding); url matches the configured instance URL or the request host.
 func (e *impl) bindingResult(c *license.Claims, requestHost string) (ok bool, reason string) {
 	if c == nil {
 		return true, ""
@@ -98,11 +88,9 @@ func (e *impl) bindingResult(c *license.Claims, requestHost string) (ok bool, re
 	return true, ""
 }
 
-// urlAllowed reports whether a license bound to licenseURL is allowed given the
-// deployment's known host identities (the configured instance URL and, at
-// install time, the request host). An empty licenseURL is unlimited; empty
-// candidates are ignored; if no candidate host is known the check fails open so
-// a legitimate install is never bricked.
+// urlAllowed reports whether a license bound to licenseURL is allowed given the deployment's known
+// host identities. An empty licenseURL is unlimited and empty candidates are ignored; if no
+// candidate host is known the check fails open, so a legitimate install is never bricked.
 func urlAllowed(licenseURL string, candidates ...string) bool {
 	want := normalizeHost(licenseURL)
 	if want == "" {
@@ -372,10 +360,9 @@ func (e *impl) Install(_ context.Context, token string, requestHost string) (Ent
 	if err != nil {
 		return Entitlements{}, err
 	}
-	// Reject a license bound to a different deployment at install time — the URL
-	// binding is matched against both the configured instance URL and the live
-	// request host, so you cannot install a license for another deployment even
-	// when the instance URL is unset. The admin gets an immediate, clear error.
+	// Reject a license bound to a different deployment at install time. The URL binding is matched
+	// against both the configured instance URL and the live request host, so you cannot install a
+	// license for another deployment even when the instance URL is unset.
 	if ok, _ := e.bindingResult(&c, requestHost); !ok {
 		return Entitlements{}, ErrLicenseBindingMismatch
 	}

@@ -506,12 +506,9 @@ func TestBuildPlanPruneManagedByOnlyDeletesOwned(t *testing.T) {
 	}
 }
 
-// TestBuildPlanPruneGitOpsSourceScopesToOwnProject models two GitOps projects
-// backed by one repo at different subpaths: "okapi" (desired: okapi app) and
-// "posta" (desired: posta app), both managed-by=gitops in the same workspace
-// snapshot. Reconciling okapi must not prune posta's app and vice-versa — without
-// source scoping each project saw the other's app as an orphan and tore it down,
-// so the two apps endlessly replaced each other.
+// TestBuildPlanPruneGitOpsSourceScopesToOwnProject models two GitOps projects backed by one repo
+// at different subpaths in the same workspace snapshot. Without source scoping each project saw
+// the other's app as an orphan and tore it down, so the two apps endlessly replaced each other.
 func TestBuildPlanPruneGitOpsSourceScopesToOwnProject(t *testing.T) {
 	app := func(name, source string) d.Resource {
 		labels := map[string]string{d.LabelManagedBy: "gitops"}

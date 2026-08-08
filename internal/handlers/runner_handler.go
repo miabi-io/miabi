@@ -21,10 +21,9 @@ type RunnerConnRegistry interface {
 	Connected(id uint) bool
 }
 
-// RunnerHandler exposes workspace-scoped build/pipeline runner management: a
-// workspace registers, lists, edits, cordons and removes its own runners. The
-// one-time registration token is returned only at create/regenerate (hashed at
-// rest, never read back).
+// RunnerHandler exposes workspace-scoped runner management: a workspace registers, lists, edits,
+// cordons and removes its own runners. The one-time registration token is returned only at
+// create or regenerate (hashed at rest, never read back).
 type RunnerHandler struct {
 	svc   *runner.Service
 	conn  RunnerConnRegistry

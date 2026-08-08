@@ -55,10 +55,9 @@ func (r *GPUDeviceRepository) ListEnabledByServer(serverID uint) ([]models.GPUDe
 	return devices, err
 }
 
-// Upsert inserts a newly discovered device or refreshes an existing one (matched
-// by UUID) with its latest hardware facts, stamping LastSeenAt. Admin policy
-// flags (Enabled, Shared) are preserved on an existing row; a brand-new device
-// arrives Enabled=false, Shared=true (fail closed — the admin opts each card in).
+// Upsert inserts a newly discovered device or refreshes an existing one (matched by UUID) with
+// its latest hardware facts, stamping LastSeenAt. Admin policy flags are preserved on an
+// existing row; a brand-new device arrives Enabled=false, Shared=true (fail closed).
 func (r *GPUDeviceRepository) Upsert(serverID uint, dev models.GPUDevice) error {
 	now := time.Now()
 	existing, err := r.FindByUUID(dev.UUID)

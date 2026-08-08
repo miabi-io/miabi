@@ -44,10 +44,9 @@ type Plan struct {
 	IsDefault   bool   `json:"is_default" gorm:"not null;default:false"` // applied to workspaces with no plan
 	IsActive    bool   `json:"is_active" gorm:"not null;default:true"`
 
-	// Numeric limits (per workspace unless noted). -1 = unlimited, 0 = none.
-	// The DB default is 0 (= the Go zero value) so GORM's zero-value omission on
-	// insert is a no-op; an intentional 0 ("none") persists correctly, and -1
-	// ("unlimited") is non-zero so it is always written.
+	// Numeric limits (per workspace unless noted). -1 = unlimited, 0 = none. The DB default is 0
+	// (the Go zero value) so GORM's zero-value omission on insert is a no-op: an intentional 0
+	// persists correctly and -1 is non-zero, so it is always written.
 	MaxApps              int `json:"max_apps" gorm:"not null;default:0"`
 	MaxDatabaseInstances int `json:"max_database_instances" gorm:"not null;default:0"`
 	MaxCronJobs          int `json:"max_cron_jobs" gorm:"not null;default:0"`
@@ -96,26 +95,21 @@ type Plan struct {
 	// the platform-shared runner pool (in addition to any runners it owns). Off by
 	// default; owned runners are always usable.
 	AllowPlatformRunners bool `json:"allow_platform_runners" gorm:"not null;default:false"`
-	// AllowCustomBuilder gates a per-app custom buildpack builder image. A custom
-	// builder runs on the runner with docker-daemon access, so it is a privileged
-	// input on shared/multi-tenant runners; off by default (the platform default
-	// builder is used instead).
+	// AllowCustomBuilder gates a per-app custom buildpack builder image. A custom builder runs on
+	// the runner with docker-daemon access, so it is a privileged input on shared runners; off by
+	// default, using the platform default builder.
 	AllowCustomBuilder bool `json:"allow_custom_builder" gorm:"not null;default:false"`
-	// SecurityProfile hardens how this workspace's application and job containers
-	// run. "" / "default" = the image's default user (unchanged); "restricted"
-	// forces a non-root platform UID. Default "default" is the zero-equivalent, so
-	// the GORM zero-value omission still round-trips an intentional value.
+	// SecurityProfile hardens how this workspace's app and job containers run: ""/"default" keeps
+	// the image's user, "restricted" forces a non-root platform UID. The "default" DB default is
+	// zero-equivalent, so GORM's zero-value omission still round-trips an intentional value.
 	SecurityProfile string `json:"security_profile" gorm:"not null;default:'default'"`
-	// AllowOfficialImageUser lets applications installed from an official
-	// marketplace template keep the image's own default user even when this
-	// workspace's SecurityProfile is "restricted". Only official-source installs
-	// qualify (a tenant cannot self-declare an app official), and it never relaxes
-	// a platform-wide MIABI_FORCE_NON_ROOT_USER mandate. Off by default.
+	// AllowOfficialImageUser lets apps installed from an official marketplace template keep the
+	// image's own user even under a "restricted" SecurityProfile. Only official-source installs
+	// qualify, and it never relaxes a platform-wide MIABI_FORCE_NON_ROOT_USER mandate.
 	AllowOfficialImageUser bool `json:"allow_official_image_user" gorm:"not null;default:false"`
-	// AllowGPU gates whether this workspace's apps may request GPU devices at all.
-	// Off by default, like AllowSharedStorage: a workspace cannot request any GPU
-	// until its plan opts in. Attaching a GPU is device passthrough (privileged),
-	// so it is gated hard here and is incompatible with the restricted profile.
+	// AllowGPU gates whether this workspace's apps may request GPU devices at all. Off by
+	// default: attaching a GPU is device passthrough (privileged), so it is gated hard here and
+	// is incompatible with the restricted profile.
 	AllowGPU bool `json:"allow_gpu" gorm:"not null;default:false"`
 
 	CreatedAt time.Time `json:"created_at"`

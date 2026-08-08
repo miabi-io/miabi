@@ -12,8 +12,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// notificationRoutes registers workspace-scoped notification-channel routes
-// (Telegram). Viewer reads; Admin manages.
+// notificationRoutes registers workspace notification channels: Viewer reads, Admin manages.
 func (r *Router) notificationRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Notifications", Description: "Workspace notification channels (Telegram)."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {

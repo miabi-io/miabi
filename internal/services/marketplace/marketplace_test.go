@@ -12,7 +12,6 @@ import (
 	"github.com/miabi-io/miabi/internal/services/marketplace/manifest"
 )
 
-// fakeStore is an in-memory TemplateStore for unit tests.
 type fakeStore struct {
 	srcID uint
 	rows  []models.Template
@@ -241,10 +240,9 @@ func TestResolveInputsGeneratesAndValidates(t *testing.T) {
 	}
 }
 
-// lengthFixture / requiredFixture are inline manifests: the embedded floor is
-// data/infra primitives, so the input shapes these tests exercise (explicit
-// length, default length, required + pattern) are modeled here rather than
-// borrowed from a shipped template.
+// lengthFixture / requiredFixture are inline manifests: the embedded floor is data/infra primitives, so
+// the input shapes these tests exercise (explicit length, default length, required + pattern) are modeled
+// here rather than borrowed from a shipped template.
 const lengthFixture = `
 apiVersion: miabi.io/v1
 kind: Template

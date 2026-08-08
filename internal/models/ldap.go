@@ -12,10 +12,9 @@ const (
 	LDAPTLSLDAPS    = "ldaps"    // implicit TLS (usually port 636)
 )
 
-// LDAPConfig is an LDAP / Active Directory connection for an organization. The
-// table is migrated in every build but is only read/written by the enterprise
-// LDAP authenticator + the admin handler (gated on the sso_ldap entitlement); it
-// stays empty in Community. Mirrors SAMLConfig's per-org, name/display_name shape.
+// LDAPConfig is an LDAP / Active Directory connection for an organization. Migrated in every
+// build but only read by the enterprise LDAP authenticator and admin handler (gated on
+// sso_ldap); empty in Community. Mirrors SAMLConfig's per-org shape.
 type LDAPConfig struct {
 	ID             uint  `json:"id" gorm:"primaryKey"`
 	OrganizationID *uint `json:"organization_id" gorm:"index"`
@@ -64,10 +63,9 @@ type LDAPConfig struct {
 	BindPasswordSet bool `json:"bind_password_set" gorm:"-"`
 }
 
-// LDAPGroupMapping maps a directory group to Miabi access. It is reconciled on
-// every login: SystemAdmin grants the platform-admin role, and a WorkspaceID +
-// WorkspaceRole grants membership in that workspace. A mapping with neither is a
-// no-op (kept for documentation).
+// LDAPGroupMapping maps a directory group to Miabi access, reconciled on every login:
+// SystemAdmin grants the platform-admin role, a WorkspaceID + WorkspaceRole grants
+// membership. A mapping with neither is a no-op, kept for documentation.
 type LDAPGroupMapping struct {
 	ID           uint `json:"id" gorm:"primaryKey"`
 	LDAPConfigID uint `json:"ldap_config_id" gorm:"index;not null"`

@@ -15,9 +15,8 @@ import (
 	"github.com/miabi-io/miabi/internal/services/workspace"
 )
 
-// workspaceRoutes registers workspace CRUD, members, invitations, and audit log.
-// Role rules: Viewer can read; Developer can read; Admin manages members &
-// invitations & metadata; Owner can delete.
+// workspaceRoutes registers workspace CRUD, members, invitations and the audit log. Viewer and
+// Developer read; Admin manages members, invitations and metadata; Owner deletes.
 func (r *Router) workspaceRoutes() []okapi.RouteDefinition {
 	ws := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Workspaces", Description: "Workspaces, members, invitations, and audit log."})
 
@@ -29,7 +28,6 @@ func (r *Router) workspaceRoutes() []okapi.RouteDefinition {
 	}
 
 	return []okapi.RouteDefinition{
-		// Collection (no workspace scope).
 		{
 			Method:      http.MethodPost,
 			Path:        "",
@@ -140,7 +138,6 @@ func (r *Router) workspaceRoutes() []okapi.RouteDefinition {
 			Summary:     "Stream workspace deletion progress (SSE)",
 		},
 
-		// Members.
 		{
 			Method:      http.MethodGet,
 			Path:        "/{workspace}/members",
@@ -168,7 +165,6 @@ func (r *Router) workspaceRoutes() []okapi.RouteDefinition {
 			Response:    &dto.Response[dto.MessageData]{},
 		},
 
-		// Invitations.
 		{
 			Method:      http.MethodPost,
 			Path:        "/{workspace}/invitations",
@@ -217,7 +213,6 @@ func (r *Router) workspaceRoutes() []okapi.RouteDefinition {
 			Summary:     "Stream workspace application events (SSE)",
 		},
 
-		// Audit log.
 		{
 			Method:      http.MethodGet,
 			Path:        "/{workspace}/audit-logs",

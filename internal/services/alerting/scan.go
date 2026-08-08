@@ -80,8 +80,6 @@ func (e *Engine) fastScan(ctx context.Context) {
 	}
 }
 
-// --- Disk / volume usage ----------------------------------------------------
-
 const (
 	diskWarnRatio     = 0.85
 	diskCriticalRatio = 0.95
@@ -160,18 +158,9 @@ func (e *Engine) SetRunnerLister(r RunnerLister) { e.runners = r }
 // whose subject belongs to the platform rather than to one workspace.
 func (e *Engine) SetSystemWorkspace(fn func() uint) { e.sysWorkspace = fn }
 
-// scanRunners fires "runner offline" for runners out of contact for at least
-// runnerOfflineAfter, and clears it only once one is back and has stayed back for
-// runnerStableFor.
-//
-// Reachability is judged on LastSeenAt rather than Status. The heartbeat refreshes
-// last-seen every 30s, so a stale value means nothing is talking to us — which
-// remains true when a control plane killed mid-connection never ran
-// MarkDisconnected and left the row reading "online" indefinitely.
-//
-// Runners that are neither out of contact long enough nor stably back are *held*:
-// they keep whatever alert they already have without opening a new one. That is
-// what turns a flapping runner into one alert instead of a stream.
+// scanRunners fires "runner offline" for runners out of contact for at least runnerOfflineAfter, and clears it
+// only once one is back and has stayed back for runnerStableFor. Reachability is judged on LastSeenAt, not
+// Status, which a control plane killed mid-connection leaves reading "online". Flapping runners are held.
 func (e *Engine) scanRunners(ctx context.Context) {
 	all, err := e.runners.ListAll()
 	if err != nil {
@@ -313,11 +302,9 @@ func (e *Engine) resolveStale(ctx context.Context, category models.AlertCategory
 	}
 }
 
-// scanCerts reconciles TLS alerts against the current certificate state: it fires
-// "expiring" (warning < 14d, critical < 3d) and "issuance failed" alerts, and
-// resolves any active TLS alert whose condition no longer holds (the cert was
-// renewed or re-issued). Reconciliation via set-difference means a renewed cert
-// auto-resolves without the producer tracking prior state.
+// scanCerts reconciles TLS alerts against the current certificate state: it fires "expiring" (warning under
+// 14d, critical under 3d) and "issuance failed", and resolves any active TLS alert whose condition no longer
+// holds. Reconciling by set-difference means a renewed cert auto-resolves without the producer tracking state.
 func (e *Engine) scanCerts(ctx context.Context) {
 	now := e.now().UTC()
 

@@ -42,16 +42,16 @@ func (r *VolumeRepository) ListByWorkspace(workspaceID uint) ([]models.Volume, e
 	return vols, err
 }
 
-// ServerIDsWithVolumes returns the distinct nodes owning a volume, so the usage
-// sweep queries each once.
-// ListAll returns every volume across all workspaces — used by the alerting
-// disk-usage scanner (which compares UsedBytes against SizeBytes).
+// ListAll returns every volume across all workspaces, for the alerting disk-usage scanner
+// (which compares UsedBytes against SizeBytes).
 func (r *VolumeRepository) ListAll() ([]models.Volume, error) {
 	var volumes []models.Volume
 	err := r.db.Find(&volumes).Error
 	return volumes, err
 }
 
+// ServerIDsWithVolumes returns the distinct nodes owning a volume, so the usage sweep
+// queries each one once.
 func (r *VolumeRepository) ServerIDsWithVolumes() ([]uint, error) {
 	var ids []uint
 	err := r.db.Model(&models.Volume{}).Distinct().Pluck("server_id", &ids).Error

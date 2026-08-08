@@ -50,11 +50,9 @@ func TestLogLevelParsing(t *testing.T) {
 	}
 }
 
-// "off" is rejected on purpose. logger.LevelOff makes logger.New() install a discard
-// handler on its own instance and return BEFORE assigning the package-level logger —
-// so it silences the logger handed to Okapi and nothing else, while every bare
-// logger.Info() in Miabi keeps printing. A switch that looks like it turns logging off
-// while the logs keep coming is worse than no switch at all.
+// "off" is rejected on purpose: logger.LevelOff makes logger.New() install a discard handler
+// on its own instance and return BEFORE assigning the package-level logger, so it silences
+// Okapi's logger while every bare logger.Info() in Miabi keeps printing.
 func TestOffIsRejectedBecauseTheLibraryCannotHonourIt(t *testing.T) {
 	for _, off := range []string{"off", "none", "silent"} {
 		_, err := (&Config{LogLevel: off}).LogLevelFor()
@@ -83,10 +81,9 @@ func TestUnknownLogLevelIsRejected(t *testing.T) {
 	}
 }
 
-// The level must reach the PACKAGE-LEVEL logger, not only the one handed to Okapi:
-// almost every log line in Miabi is a bare logger.Info(...) call, which resolves
-// through logger.Default(). A level that applied only to Okapi's logger would look
-// wired up and do nothing.
+// The level must reach the PACKAGE-LEVEL logger, not only the one handed to Okapi: almost
+// every log line in Miabi is a bare logger.Info(...) resolving through logger.Default(). A
+// level that applied only to Okapi's logger would look wired up and do nothing.
 func TestInitLoggerInstallsThePackageDefault(t *testing.T) {
 	c := &Config{LogLevel: "error"}
 	l, err := c.initLogger()

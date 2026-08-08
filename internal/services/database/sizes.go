@@ -21,11 +21,9 @@ import (
 // triggers only past this age.
 const sizeSyncTTL = 24 * time.Hour
 
-// MaybeRefreshSizes lazily refreshes an instance's sizes in the background when
-// they are stale (older than sizeSyncTTL) and the instance is running. It never
-// blocks the caller and debounces concurrent triggers per instance, so a
-// detail-page load returns immediately with the current (possibly slightly
-// stale) values and the next load shows fresh ones.
+// MaybeRefreshSizes lazily refreshes an instance's sizes in the background when they are stale and the
+// instance is running. It never blocks the caller and debounces concurrent triggers per instance, so a
+// detail-page load returns immediately with possibly-stale values and the next one shows fresh ones.
 func (s *Service) MaybeRefreshSizes(inst *models.DatabaseInstance) {
 	if inst == nil || inst.Status != models.DBStatusRunning {
 		return
@@ -165,7 +163,6 @@ func (s *Service) helperImage() string {
 	return "busybox:1.36"
 }
 
-// execQuery runs a single engine query as admin and returns its raw stdout.
 func (s *Service) execQuery(ctx context.Context, inst *models.DatabaseInstance, query string) (string, error) {
 	spec := specs[inst.Engine]
 	adminPass, err := crypto.Decrypt(inst.AdminPasswordEnc)
@@ -219,7 +216,6 @@ func parseSizeRows(out string) map[string]int64 {
 	return sizes
 }
 
-// parseRedisUsedMemory extracts used_memory from `INFO memory` output.
 func parseRedisUsedMemory(out string) int64 {
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)

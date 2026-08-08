@@ -28,10 +28,9 @@ const (
 	JobSourceScheduled = "scheduled"
 )
 
-// Job is a single one-off command run in an application's runtime context (same
-// image, env, networks, volumes, node, and resource limits as the app). The
-// command is captured for history/audit; secrets are resolved into the container
-// env at run time and never persisted on the row.
+// Job is a one-off command run in an application's runtime context (same image, env,
+// networks, volumes, node and limits). The command is captured for history/audit; secrets are
+// resolved into the container env at run time and never persisted on the row.
 type Job struct {
 	ID            uint `json:"id" gorm:"primaryKey"`
 	WorkspaceID   uint `json:"workspace_id" gorm:"index;not null"`
@@ -48,10 +47,9 @@ type Job struct {
 	Command    []string `json:"command" gorm:"serializer:json"`
 	Entrypoint []string `json:"entrypoint,omitempty" gorm:"serializer:json"`
 	Image      string   `json:"image"` // resolved image actually run
-	// RegistryID authenticates the image pull for a custom image (nil = the app's
-	// registry, or anonymous). Pull marks that the image must be pulled before the
-	// run (set for a custom image; the app's active-release image is already
-	// present on its node, and git-built images are local-only).
+	// RegistryID authenticates the image pull for a custom image (nil = the app's registry, or
+	// anonymous). Pull marks that the image must be fetched first — set for a custom image; the
+	// app's release image is already on its node and git-built images are local-only.
 	RegistryID  *uint     `json:"registry_id,omitempty"`
 	Pull        bool      `json:"pull"`
 	Status      JobStatus `json:"status" gorm:"not null;default:pending"`

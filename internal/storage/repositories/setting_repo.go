@@ -50,3 +50,9 @@ func (r *SettingRepository) BulkUpsert(settings []models.Setting) error {
 func (r *SettingRepository) CreateIfMissing(s models.Setting) error {
 	return r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&s).Error
 }
+
+// Delete removes a setting by key. Absent keys are not an error, so callers
+// clearing a marker (for example the post-restore quiesce flag) are idempotent.
+func (r *SettingRepository) Delete(key string) error {
+	return r.db.Where("key = ?", key).Delete(&models.Setting{}).Error
+}

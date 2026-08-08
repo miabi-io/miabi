@@ -32,8 +32,6 @@ func NewSSOAdminHandler(orgs *repositories.OrganizationRepository, samlCfg *repo
 	return &SSOAdminHandler{orgs: orgs, saml: samlCfg, scimTokens: scimTokens, ee: ee, audit: auditLog}
 }
 
-// --- Organization (enforced SSO) ---
-
 // GetOrganization returns the default organization.
 func (h *SSOAdminHandler) GetOrganization(c *okapi.Context) error {
 	org, err := h.orgs.FindDefault()
@@ -76,8 +74,6 @@ func (h *SSOAdminHandler) UpdateOrganization(c *okapi.Context, req *UpdateOrgani
 	h.audit.Record(audit.Entry{ActorID: &actor, Action: "admin.organization.update", TargetType: "organization", IP: c.RealIP(), Metadata: map[string]any{"enforce_sso": org.EnforceSSO}})
 	return ok(c, org)
 }
-
-// --- SAML connections (all gated sso_saml) ---
 
 type SAMLConfigRequest struct {
 	Body struct {
@@ -180,8 +176,6 @@ func (h *SSOAdminHandler) DeleteSAML(c *okapi.Context) error {
 	h.audit.Record(audit.Entry{ActorID: &actor, Action: "admin.saml.delete", TargetType: "saml_config", IP: c.RealIP()})
 	return message(c, "SAML config deleted")
 }
-
-// --- SCIM tokens (gated scim) ---
 
 func (h *SSOAdminHandler) ListSCIMTokens(c *okapi.Context) error {
 	if err := h.ee.Require(enterprise.FlagSCIM); err != nil {

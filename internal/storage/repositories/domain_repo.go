@@ -87,10 +87,9 @@ func (r *DomainRepository) ListVerifiedManual() ([]models.Domain, error) {
 	return out, err
 }
 
-// ListVerifiedElsewhere returns verified, non-banned domains owned by workspaces
-// other than the given one — used to enforce that a hostname is verified by at
-// most one workspace platform-wide (a banned domain is never served, so it
-// doesn't block another workspace from claiming the name).
+// ListVerifiedElsewhere returns verified, non-banned domains owned by workspaces other than the
+// given one, enforcing that a hostname is verified by at most one workspace platform-wide. A
+// banned domain is never served, so it doesn't block another workspace from claiming the name.
 func (r *DomainRepository) ListVerifiedElsewhere(excludeWorkspaceID uint) ([]models.Domain, error) {
 	var out []models.Domain
 	err := r.db.Where("verified = ? AND banned = ? AND workspace_id <> ?", true, false, excludeWorkspaceID).

@@ -42,14 +42,9 @@ func (r *SecretRepository) ListByWorkspace(workspaceID uint) ([]models.Secret, e
 	return secrets, err
 }
 
-// ListByWorkspacePaged returns a page of secrets in a workspace, optionally
-// filtered by a case-insensitive match on name or description and by ownership
-// (managed = auto-created by a platform resource), plus the total count of
-// matching rows.
-//
-// Ownership is filtered here rather than in the caller precisely because the
-// result is paged: filtering a page client-side would hide rows the count still
-// claims, and a page could come back empty while later pages hold matches.
+// ListByWorkspacePaged returns a page of secrets in a workspace, optionally filtered by name or
+// description and by ownership, plus the total count. Ownership is filtered here rather than in
+// the caller because the result is paged: a client-side filter would hide rows the count claims.
 func (r *SecretRepository) ListByWorkspacePaged(workspaceID uint, search string, managed *bool, limit, offset int) ([]models.Secret, int64, error) {
 	var (
 		secrets []models.Secret

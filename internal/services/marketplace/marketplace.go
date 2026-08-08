@@ -130,8 +130,6 @@ func (s *Service) DeleteCustom(workspaceID uint, slug string) error {
 	return nil
 }
 
-// storeCustom validates a manifest and upserts it as a custom template version
-// in the workspace, returning the resulting catalog entry.
 func (s *Service) storeCustom(workspaceID uint, rawYAML string) (CatalogEntry, error) {
 	if s.templates == nil {
 		return CatalogEntry{}, ErrInvalidTemplate
@@ -155,10 +153,9 @@ func (s *Service) storeCustom(workspaceID uint, rawYAML string) (CatalogEntry, e
 	return entryFromManifest(m, SourceCustom, nil), nil
 }
 
-// ListForWorkspace returns the merged catalog visible to the workspace: the
-// embedded official floor unioned with the synced official+community registry,
-// plus the workspace's imported custom templates. The Source field on each entry
-// (official | community | custom) drives the UI's three tabs.
+// ListForWorkspace returns the merged catalog visible to the workspace: the embedded official floor
+// unioned with the synced official+community registry, plus the workspace's imported custom templates.
+// The Source field on each entry (official | community | custom) drives the UI's three tabs.
 func (s *Service) ListForWorkspace(workspaceID uint) ([]CatalogEntry, error) {
 	out := s.officialAndCommunity()
 	if s.templates == nil {
@@ -245,10 +242,9 @@ type InstallInput struct {
 	// an existing instance ID, overriding the manifest's placement. 0 = use the
 	// manifest default.
 	Placements map[string]uint `json:"placements,omitempty"`
-	// PlacementModes optionally overrides a database dependency's placement mode
-	// (auto | dedicated | shared) when no instance is pinned. Empty = use the
-	// placement declared by the template. Lets the user, for example, fall back to
-	// Automatic for a template that defaults to a dedicated instance.
+	// PlacementModes optionally overrides a database dependency's placement mode (auto | dedicated |
+	// shared) when no instance is pinned. Empty uses the placement declared by the template, letting a user
+	// fall back to Automatic for a template that defaults to a dedicated instance.
 	PlacementModes map[string]string `json:"placement_modes,omitempty"`
 }
 
@@ -264,10 +260,9 @@ type InstallResult struct {
 	InstallID   uint                       `json:"install_id,omitempty"`
 }
 
-// Install instantiates a template version in a workspace: validates inputs,
-// provisions volumes, resolves each database dependency by placement, renders
-// application env against those connections, creates the apps (grouped into a Stack
-// when there is more than one) and deploys them.
+// Install instantiates a template version in a workspace: it validates inputs, provisions volumes,
+// resolves each database dependency by placement, renders application env against those connections,
+// creates the apps (grouped into a Stack when there is more than one) and deploys them.
 func (s *Service) Install(ctx context.Context, workspaceID uint, in InstallInput) (*InstallResult, error) {
 	return s.install(ctx, workspaceID, in, nil)
 }
@@ -310,18 +305,14 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 		report.phase(PhaseVolumes, PhaseDone)
 	}
 
-	// Pick the single node every resource in this install lands on. Apps reach
-	// their databases over a shared Docker network, which cannot span nodes, so a
-	// freshly provisioned database and the apps must be colocated. When a database
-	// dependency binds to an existing instance (pinned/shared/auto-match), that
-	// instance's node wins — new databases and the apps follow it; otherwise the
-	// local node is used. (0 = local node default.)
+	// Pick the single node every resource in this install lands on: apps reach their databases over a shared Docker
+	// network, which cannot span nodes, so a freshly provisioned database and the apps must be colocated. A
+	// dependency binding to an existing instance makes that instance's node win; otherwise the local node.
 	targetNode := s.installNode(workspaceID, m, in)
 
-	// 2. Databases (placement-aware), building the render views. The database is
-	//    named after the install (the user-chosen name, defaulting to the
-	//    template name); a multi-database template disambiguates with the
-	//    dependency name.
+	// 2. Databases (placement-aware), building the render views. The database is named after the install —
+	//    the user-chosen name, defaulting to the template name — and a multi-database template
+	//    disambiguates with the dependency name.
 	if len(m.Databases) > 0 {
 		report.phase(PhaseDatabases, PhaseActive)
 	}
@@ -359,10 +350,9 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 		}
 	}
 	if len(m.Databases) > 0 {
-		// On the async (progress-streamed) path, hold the provisioning phase open
-		// until the freshly provisioned instances are online, so dependent apps
-		// deploy against a ready database. The synchronous path keeps its existing
-		// non-blocking behavior (report is nil).
+		// On the async (progress-streamed) path, hold the provisioning phase open until the freshly provisioned
+		// instances are online, so dependent apps deploy against a ready database. The synchronous path keeps its
+		// existing non-blocking behavior (report is nil).
 		if report != nil && len(result.Databases) > 0 {
 			s.waitForDatabases(ctx, workspaceID, result.Databases, report)
 		}
@@ -375,10 +365,9 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 		return result, nil
 	}
 
-	// 3. Stack: created when grouping more than one application, or whenever the
-	//    template declares a stack block (which also carries its description,
-	//    annotations and shared env). Shared env is rendered and attached in step 5
-	//    once the render context exists.
+	// 3. Stack: created when grouping more than one application, or whenever the template declares a stack
+	//    block, which also carries its description, annotations and shared env. Shared env is rendered and
+	//    attached in step 5, once the render context exists.
 	var stackID *uint
 	if m.WantsStack() && s.stacks != nil {
 		in := stack.Input{
@@ -416,10 +405,9 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 	result.Apps = created
 	report.phase(PhaseApps, PhaseDone)
 
-	// Owner back-link: attribute the install's volumes and databases to what they
-	// back — a volume goes to the single app that mounts it, otherwise (shared or
-	// unmounted) to the bundle: the stack when grouped, else the single app.
-	// Databases follow the bundle. Best-effort; the install already succeeded.
+	// Owner back-link: attribute the install's volumes and databases to what they back — a volume goes to the
+	// single app that mounts it, otherwise (shared or unmounted) to the bundle: the stack when grouped, else
+	// the single app. Databases follow the bundle. Best-effort; the install already succeeded.
 	bundleKind, bundleID, bundleName := "", uint(0), ""
 	switch {
 	case result.Stack != nil:
@@ -458,10 +446,9 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 		}
 	}
 
-	// Link each created logical database to the application that consumes it, so it
-	// appears under the app's Databases and its scoped connection is revealable
-	// there — the same link a user would make manually post-install. Best-effort;
-	// the install already succeeded.
+	// Link each created logical database to the application that consumes it, so it appears under the app's
+	// Databases and its scoped connection is revealable there — the same link a user would make manually
+	// post-install. Best-effort; the install already succeeded.
 	for depName, db := range dbModels {
 		if app := consumerApp(m, created, depName); app != nil {
 			_, _ = s.dbs.AttachToApp(workspaceID, db.ID, app.ID, "")
@@ -569,10 +556,9 @@ func (s *Service) ListInstalls(workspaceID uint) ([]InstallView, error) {
 	return out, nil
 }
 
-// createApp materializes a single application spec (no env yet). serverID pins
-// the app to the install's chosen node (0 = local default) so it is colocated
-// with the databases it depends on — they share a Docker network, which cannot
-// span nodes.
+// createApp materializes a single application spec (no env yet). serverID pins the app to the install's
+// chosen node (0 = local default) so it is colocated with the databases it depends on — they share a
+// Docker network, which cannot span nodes.
 func (s *Service) createApp(workspaceID uint, m *manifest.Manifest, spec manifest.AppSpec, baseName string, stackID *uint, serverID uint) (*models.Application, error) {
 	// Single-application installs take the chosen name directly; multi-application
 	// installs prefix each app's service name so they stay distinguishable.
@@ -609,27 +595,17 @@ func (s *Service) createApp(workspaceID uint, m *manifest.Manifest, spec manifes
 	return s.apps.Create(workspaceID, in)
 }
 
-// resolveDatabase satisfies a database dependency per its placement, delegating
-// to the shared database placement resolver so marketplace installs and GitOps
-// apply behave identically. It returns the hosting instance, the app-scoped
-// logical database (nil for Redis/libSQL or the admin-connection fallback), a
-// connection for the app, and whether a new instance was provisioned.
-//
-// declName is empty for marketplace installs: an install materializes the app's
-// connection env immediately (not via a declarative reconcile), so its logical
-// databases are not tagged with a declarative name and their snapshot
-// representation is unchanged.
+// resolveDatabase satisfies a database dependency per its placement, delegating to the shared placement
+// resolver so marketplace installs and GitOps apply behave identically. declName is empty here: an install
+// materializes the app's env immediately rather than via a reconcile, so its databases carry no declarative name.
 func (s *Service) resolveDatabase(ctx context.Context, workspaceID uint, base string, d manifest.Database, pinInstance, serverID uint, meta models.Metadata) (*models.DatabaseInstance, *models.Database, database.ConnectionInfo, bool, error) {
 	return s.dbs.ResolveDependency(ctx, workspaceID, serverID, pinInstance, base, "",
 		models.DBEngine(d.Engine), d.Version, database.Placement(d.Placement), meta)
 }
 
-// consumerApp returns the created application that consumes the database
-// dependency depName — the app referencing it in env as {{ .databases.<depName>.* }},
-// preferring one marked primary. A logical database is owned by at most one app,
-// so when several reference it the primary (else the first) wins. Falls back to
-// the sole application when nothing references it explicitly; returns nil when the
-// consumer is ambiguous (no reference and more than one app).
+// consumerApp returns the created application consuming the database dependency depName — the app referencing
+// it in env, preferring one marked primary. A logical database is owned by at most one app, so the primary
+// (else the first) wins. Falls back to the sole app; nil when the consumer is ambiguous.
 func consumerApp(m *manifest.Manifest, created []*models.Application, depName string) *models.Application {
 	token := ".databases." + depName + "."
 	var match *models.Application
@@ -660,15 +636,9 @@ func consumerApp(m *manifest.Manifest, created []*models.Application, depName st
 	return match
 }
 
-// installNode decides the single node every resource in an install must land
-// on, so each app can share a Docker network with the databases it uses (a
-// network — and thus name-based DNS between containers — cannot span nodes).
-//
-// When a database dependency binds to an existing instance (a pinned instance,
-// a shared placement, or auto with a running match), that instance's node is
-// authoritative: newly provisioned databases and all apps are placed there. The
-// first such binding wins. With nothing to reuse, it returns 0 (the local node
-// default) and everything provisions locally as before.
+// installNode decides the single node every resource in an install must land on, so each app can share a Docker
+// network with the databases it uses — a network cannot span nodes. A dependency binding to an existing
+// instance makes that instance's node authoritative; the first such binding wins. Otherwise 0, the local node.
 func (s *Service) installNode(workspaceID uint, m *manifest.Manifest, in InstallInput) uint {
 	for _, d := range m.Databases {
 		// A pinned instance dictates the node outright.

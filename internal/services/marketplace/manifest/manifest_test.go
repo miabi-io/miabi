@@ -110,8 +110,6 @@ applications:
 	}
 }
 
-// stackYAML is a single-application template that opts into a stack to share
-// config across (future) members — exercising parse + the WantsStack rule.
 const stackYAML = `
 apiVersion: miabi.io/v1
 kind: Template

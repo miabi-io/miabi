@@ -12,7 +12,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// applyRoutes registers the declarative apply API (dry-run plan + converge).
 func (r *Router) applyRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Apply", Description: "Declarative apply: preview or converge a workspace to a bundle of miabi.io/v1 manifests."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {
@@ -31,7 +30,6 @@ func (r *Router) applyRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// gitOpsRoutes registers GitSource CRUD, sync, diff, and the inbound webhook.
 func (r *Router) gitOpsRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "GitOps", Description: "Declarative continuous deployment from Git repositories of miabi.io/v1 manifests."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {
@@ -142,7 +140,6 @@ func (r *Router) gitOpsRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// pipelineRoutes registers pipeline CRUD, run triggering, history, and logs.
 func (r *Router) pipelineRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Pipelines", Description: "CI/CD pipelines: build, test, and deploy on the internal runner."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {
@@ -271,7 +268,6 @@ func (r *Router) pipelineRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// imageRoutes registers the built-image catalog: provenance listing + deletion.
 func (r *Router) imageRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Images", Description: "Built-image catalog: artifacts produced by pipeline runs, with provenance."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {

@@ -11,14 +11,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// The real models carry Postgres-specific defaults sqlite can't migrate, so the
-// cascade is exercised against minimal stand-in tables that share the real table
-// names and the columns the cascade filters on. Every table the cascade touches
-// must exist, or its DELETE would error.
-//
-// wsTables maps table name -> the column the cascade scopes it by. "workspace_id"
-// tables belong to the workspace directly; the others are children scoped through
-// a parent (the value is that FK column).
+// The real models carry Postgres-specific defaults sqlite can't migrate, so the cascade is
+// exercised against minimal stand-in tables sharing the real table names and filter columns.
+// Every table the cascade touches must exist, or its DELETE would error.
 var wsScoped = []string{
 	"applications", "database_instances", "volumes", "domains", "stacks",
 	"pipeline_runs", "pipeline_definitions", "images", "port_bindings", "jobs",
@@ -71,8 +66,8 @@ func newWorkspaceCascadeDB(t *testing.T) *WorkspaceRepository {
 	return NewWorkspaceRepository(db)
 }
 
-// seedWorkspace creates one row in every table for the given workspace, using
-// workspace*1000 as the shared id base so ids never collide across workspaces.
+// seedWorkspace creates one row in every table for the given workspace, using workspace*1000 as
+// the shared id base so ids never collide across workspaces.
 func seedWorkspace(t *testing.T, db *gorm.DB, ws uint) {
 	t.Helper()
 	base := int(ws) * 1000

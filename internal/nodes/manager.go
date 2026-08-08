@@ -36,10 +36,9 @@ func NewManager(clients *Clients, nodes *node.Service) *Manager {
 	return &Manager{clients: clients, nodes: nodes, sessions: map[uint]*yamux.Session{}}
 }
 
-// SetOnConnect registers a hook run (in a goroutine) once a node's agent has
-// connected and its remote Docker client is live — e.g. to deploy an edge-gateway
-// node's gateway. The hook receives the node's plaintext join token, which is
-// only available at connect time.
+// SetOnConnect registers a hook run in a goroutine once a node's agent has connected and its
+// remote Docker client is live — e.g. to deploy an edge-gateway node's gateway. The hook receives
+// the node's plaintext join token, which is only available at connect time.
 func (m *Manager) SetOnConnect(fn func(ctx context.Context, srv *models.Server, token string, dc docker.Client)) {
 	m.onConnect = fn
 }
@@ -65,10 +64,9 @@ func (m *Manager) SetOnStatusChange(fn func(nodeID uint, name string, online boo
 	m.onStatus = fn
 }
 
-// Teardown runs the onRemove hook with the node's live Docker client, if the
-// node is currently connected. Call it before Disconnect/DeleteNode so node-side
-// infrastructure can be cleaned up over the still-open tunnel. Best-effort: a
-// no-op when the node is offline or no hook is set.
+// Teardown runs the onRemove hook with the node's live Docker client if the node is connected.
+// Call it before Disconnect/DeleteNode so node-side infrastructure can be cleaned up over the
+// still-open tunnel. Best-effort: a no-op when the node is offline or no hook is set.
 func (m *Manager) Teardown(ctx context.Context, srv *models.Server) {
 	if m.onRemove == nil || srv == nil || !m.clients.Connected(srv.ID) {
 		return
@@ -83,11 +81,9 @@ func (m *Manager) Teardown(ctx context.Context, srv *models.Server) {
 // Clients returns the per-node Docker client registry (for service wiring).
 func (m *Manager) Clients() *Clients { return m.clients }
 
-// Handle owns an authenticated agent WebSocket: it builds the tunnel, registers
-// the node's remote Docker client, marks it online, and blocks until the tunnel
-// closes (so the HTTP handler keeps the connection open). The caller has already
-// validated the join token; the plaintext token is passed through so the connect
-// hook can configure node-side infrastructure (e.g. the gateway).
+// Handle owns an authenticated agent WebSocket: it builds the tunnel, registers the node's remote
+// Docker client, marks it online, and blocks until the tunnel closes. The plaintext join token is
+// passed through so the connect hook can configure node-side infrastructure.
 func (m *Manager) Handle(srv *models.Server, token, agentVersion, agentContainerID string, ws *websocket.Conn) {
 	nodeID := srv.ID
 	sess, err := wstunnel.Client(ws) // control plane opens streams (one per Docker request)
@@ -124,7 +120,6 @@ func (m *Manager) Handle(srv *models.Server, token, agentVersion, agentContainer
 		go m.subscribe(connCtx, nodeID, dcli)
 	}
 
-	// Refresh last-seen periodically while connected.
 	stop := make(chan struct{})
 	go m.heartbeat(nodeID, agentVersion, stop)
 
@@ -132,11 +127,9 @@ func (m *Manager) Handle(srv *models.Server, token, agentVersion, agentContainer
 	cancelConn()
 	close(stop)
 
-	// Only tear down the shared client registry and node status if THIS connection
-	// is still the current one. On a fast reconnect, replace() has already
-	// installed the new session/client and marked the node connected; without this
-	// guard the superseded goroutine would rip out the live client and flip a
-	// connected node to offline. forget() deletes-and-reports under the same lock.
+	// Only tear down the shared client registry and node status if THIS connection is still the
+	// current one. On a fast reconnect replace() has already installed the new session, and without
+	// this guard the superseded goroutine would rip out the live client and flip the node offline.
 	if m.forget(nodeID, sess) {
 		m.clients.RemoveRemote(nodeID)
 		m.nodes.MarkDisconnected(nodeID)
@@ -152,10 +145,8 @@ func (m *Manager) Handle(srv *models.Server, token, agentVersion, agentContainer
 // Connected reports whether a node currently has a live agent tunnel.
 func (m *Manager) Connected(nodeID uint) bool { return m.clients.Connected(nodeID) }
 
-// nodeHealthProbeTimeout bounds a single Docker ping over a node's tunnel. A
-// healthy daemon answers in milliseconds; only a dead / half-open tunnel takes
-// this long, so it's generous enough to avoid tearing down a momentarily-slow
-// node.
+// nodeHealthProbeTimeout bounds a single Docker ping over a node's tunnel. A healthy daemon answers
+// in milliseconds, so this is generous enough to avoid tearing down a momentarily-slow node.
 const nodeHealthProbeTimeout = 8 * time.Second
 
 // probe pings a node's Docker daemon over its tunnel within the health timeout.
@@ -170,14 +161,9 @@ func (m *Manager) probe(ctx context.Context, nodeID uint) error {
 	return dc.Ping(pctx)
 }
 
-// ReconcileHealth actively verifies every connected node by pinging its Docker
-// daemon over the tunnel. A node that fails to answer has a dead or half-open
-// tunnel that yamux keepalive hasn't caught yet, so its session is closed —
-// which triggers the normal disconnect cleanup (registry removal +
-// MarkDisconnected), correcting a stale "online" status. Run periodically by the
-// node-health cron task as a global backstop to the per-connection heartbeat;
-// safe to call concurrently with real Docker traffic (ping opens its own
-// short-lived stream).
+// ReconcileHealth actively verifies every connected node by pinging its Docker daemon over the
+// tunnel. A node that fails to answer has a dead or half-open tunnel yamux keepalive hasn't caught,
+// so its session is closed, triggering the normal disconnect cleanup and correcting a stale status.
 func (m *Manager) ReconcileHealth(ctx context.Context) {
 	for _, nodeID := range m.clients.RemoteIDs() {
 		if err := m.probe(ctx, nodeID); err != nil {
@@ -197,10 +183,9 @@ func (m *Manager) Disconnect(nodeID uint) {
 	}
 }
 
-// heartbeat probes the node's tunnel every 30s while connected: on success it
-// refreshes LastSeenAt (so that timestamp reflects a real liveness check, not a
-// blind timer); on failure it tears the tunnel down, so a node that dropped
-// ungracefully self-heals to "offline" within ~30s rather than lingering online.
+// heartbeat probes the node's tunnel every 30s while connected: on success it refreshes LastSeenAt
+// so that timestamp reflects a real liveness check; on failure it tears the tunnel down, so a node
+// that dropped ungracefully self-heals to offline within ~30s rather than lingering online.
 func (m *Manager) heartbeat(nodeID uint, agentVersion string, stop <-chan struct{}) {
 	t := time.NewTicker(30 * time.Second)
 	defer t.Stop()
@@ -231,9 +216,8 @@ func (m *Manager) replace(nodeID uint, sess *yamux.Session) {
 	}
 }
 
-// forget removes the node's session iff sess is still the current one, and
-// reports whether it did — i.e. whether this connection was the live tunnel. A
-// superseded connection (already replaced by a reconnect) returns false so its
+// forget removes the node's session iff sess is still the current one, and reports whether it did
+// — i.e. whether this connection was the live tunnel. A superseded connection returns false so its
 // goroutine skips the shared disconnect cleanup.
 func (m *Manager) forget(nodeID uint, sess *yamux.Session) bool {
 	m.mu.Lock()

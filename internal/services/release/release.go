@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package release turns the per-application Release (a deployed, rollback-able
-// version) into a promotable artifact: a workspace-wide catalog with provenance,
-// approval gates per environment, and promotion (re-pointing an application at a
-// release) that the gate guards.
+// Package release turns the per-application Release — a deployed, rollback-able version — into a promotable
+// artifact: a workspace-wide catalog with provenance, approval gates per environment, and promotion
+// (re-pointing an application at a release) that the gate guards.
 package release
 
 import (
@@ -64,7 +63,6 @@ func (s *Service) ListPaged(workspaceID uint, limit, offset int) ([]View, int64,
 	return views, total, nil
 }
 
-// enrich attaches each release's owning-application identity for the catalog.
 func (s *Service) enrich(workspaceID uint, releases []models.Release) ([]View, error) {
 	apps, err := s.apps.ListByWorkspace(workspaceID)
 	if err != nil {

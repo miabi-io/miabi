@@ -37,9 +37,8 @@ func (e *engineClient) ListImages(ctx context.Context) ([]Image, error) {
 	return out, nil
 }
 
-// isDanglingImage reports whether an image has no usable tag — either no
-// RepoTags at all, or only the placeholder "<none>:<none>". Such images are
-// always safe to prune.
+// isDanglingImage reports whether an image has no usable tag — no RepoTags at all, or only the
+// placeholder "<none>:<none>". Such images are always safe to prune.
 func isDanglingImage(repoTags []string) bool {
 	for _, t := range repoTags {
 		if t != "" && t != "<none>:<none>" {
@@ -49,10 +48,9 @@ func isDanglingImage(repoTags []string) bool {
 	return true
 }
 
-// DiskUsage returns a `docker system df`-style breakdown for the node. Per
-// category it reports total bytes, reclaimable bytes (an upper bound that
-// ignores cross-image layer sharing, as the Docker CLI also does), and how many
-// items are in use. Images' total is the unique on-disk layer size.
+// DiskUsage returns a `docker system df`-style breakdown for the node. Per category it reports
+// total bytes, reclaimable bytes (an upper bound that ignores cross-image layer sharing, as the
+// Docker CLI also does), and how many items are in use.
 func (e *engineClient) DiskUsage(ctx context.Context) (DiskUsage, error) {
 	du, err := e.cli.DiskUsage(ctx, types.DiskUsageOptions{})
 	if err != nil {
@@ -116,8 +114,8 @@ func (e *engineClient) VolumeUsage(ctx context.Context) ([]VolumeUsage, error) {
 	return volumeUsageFrom(du.Volumes), nil
 }
 
-// volumeUsageFrom projects the SDK volumes into our shape, skipping ones the
-// daemon did not size (nil UsageData, or Size -1).
+// volumeUsageFrom projects the SDK volumes into our shape, skipping ones the daemon did not size
+// (nil UsageData, or Size -1).
 func volumeUsageFrom(vols []*volume.Volume) []VolumeUsage {
 	out := make([]VolumeUsage, 0, len(vols))
 	for _, v := range vols {
@@ -133,10 +131,9 @@ func volumeUsageFrom(vols []*volume.Volume) []VolumeUsage {
 	return out
 }
 
-// PruneImages reclaims images. With Dangling set it removes only untagged
-// images (always safe); otherwise it removes all images no container references
-// — callers must apply their referenced-image guard before using that mode. An
-// optional Until age filter restricts the prune to images older than the window.
+// PruneImages reclaims images. With Dangling set it removes only untagged images (always safe);
+// otherwise it removes every image no container references — callers must apply their
+// referenced-image guard first. An optional Until age filter restricts it to older images.
 func (e *engineClient) PruneImages(ctx context.Context, opts PruneImagesOptions) (PruneReport, error) {
 	f := filters.NewArgs()
 	if opts.Dangling {

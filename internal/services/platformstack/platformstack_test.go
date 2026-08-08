@@ -14,10 +14,9 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 )
 
-// The CLI seeds this file into the gateway's config volume; the Compose path
-// bind-mounts examples/compose/goma.yml. They must be the same file, or the two
-// install paths route differently — and the one nobody is running is the one that
-// rots.
+// The CLI seeds this file into the gateway's config volume; the Compose path bind-mounts
+// examples/compose/goma.yml. They must be the same file, or the two install paths route differently —
+// and the one nobody is running is the one that rots.
 func TestEmbeddedGomaConfigMatchesTheComposeOne(t *testing.T) {
 	onDisk, err := os.ReadFile(filepath.Join("..", "..", "..", "examples", "compose", "goma.yml"))
 	if err != nil {
@@ -58,10 +57,9 @@ func testManifest() *Manifest {
 	return m
 }
 
-// Converge decides "already correct" vs "changed" by hashing the run spec. If the
-// hash were unstable, every `miabi install` would recreate the whole stack — which
-// for Postgres means restarting the database for no reason. Go map iteration is
-// random, so this is a live hazard, not a theoretical one.
+// Converge decides "already correct" vs "changed" by hashing the run spec. An unstable hash would make
+// every `miabi install` recreate the whole stack — for Postgres, restarting the database for no reason.
+// Go map iteration is random, so this is a live hazard, not a theoretical one.
 func TestSpecHashIsStableAcrossRuns(t *testing.T) {
 	m := testManifest()
 	first := specHash(controlPlaneSpec(m, ContainerControlPlane, m.Images.Miabi))
@@ -149,11 +147,9 @@ func TestEveryComponentIsLabeledAsPlatform(t *testing.T) {
 	}
 }
 
-// Being part of Miabi is not the same as being part of the STACK. The built-in
-// registry, the node agents and every remote node's edge gateway all carry
-// part-of=miabi — they are platform infrastructure Miabi provisions on demand, which
-// the CLI neither installs nor updates. Listing them in `miabi status` implies it
-// does. (Caught by running `miabi status` on a real host, which reported mb-registry.)
+// Being part of Miabi is not the same as being part of the STACK. The built-in registry, node agents
+// and every remote edge gateway carry part-of=miabi — platform infrastructure the CLI neither installs
+// nor updates. Listing them in `miabi status` implies it does.
 func TestDiscoverKeepsPlatformInfraOutOfTheStack(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -192,12 +188,9 @@ func TestDiscoverKeepsPlatformInfraOutOfTheStack(t *testing.T) {
 	}
 }
 
-// The gateway comes up LAST, so a port clash discovered at bind time leaves Postgres,
-// Redis and the control plane already running — a half-built stack, and an error about
-// a port at the worst possible moment. The check runs before anything is created.
-//
-// The subtle half is the reinstall: our OWN gateway is holding :80 and :443, and
-// treating that as a conflict would make every converge on a healthy stack fail.
+// The gateway comes up LAST, so a port clash discovered at bind time leaves Postgres, Redis and the
+// control plane already running. The check runs before anything is created. The subtle half is the
+// reinstall: our OWN gateway holds :80 and :443, and treating that as a conflict would fail every converge.
 func TestPortConflictIgnoresOurOwnGateway(t *testing.T) {
 	held := func(name string, ports ...uint16) docker.Container {
 		c := docker.Container{Names: []string{"/" + name}, State: "running"}
@@ -294,11 +287,9 @@ func TestIsPortTakenRecognizesDockersWordings(t *testing.T) {
 	}
 }
 
-// Converge must not call a component "up" merely because `docker run` returned. A
-// control plane crash-looping on a bad database password still starts — and without a
-// health gate the install printed "✓ Miabi is up" while the panel was down. Observed,
-// not hypothetical: an existing pgdata volume plus a fresh manifest produces exactly
-// that, and pg_isready is happy throughout because it never checks credentials.
+// Converge must not call a component "up" merely because `docker run` returned. A control plane
+// crash-looping on a bad database password still starts, and without a health gate the install printed
+// "Miabi is up" while the panel was down — pg_isready is happy throughout, since it never checks creds.
 func TestEveryComponentIsHealthGated(t *testing.T) {
 	m := testManifest()
 	s := &Service{}
@@ -317,14 +308,9 @@ func TestEveryComponentIsHealthGated(t *testing.T) {
 	}
 }
 
-// The probes must hit the paths the services actually serve. /healthz is right for
-// BOTH (verified against a live Goma: /healthz and /readyz answer 200, /health is a
-// 404) — and both are probed on the loopback INSIDE the container, so a rollout's test
-// container, which publishes no ports, is checked exactly like the live one.
-//
-// /readyz would be the wrong choice for Miabi: it pings Postgres, Redis and Docker, so
-// a database blip would mark the panel unhealthy and Docker would restart it — which
-// cannot fix a database, and only adds an outage to an outage.
+// The probes must hit the paths the services actually serve. /healthz is right for BOTH, and both are
+// probed on the loopback INSIDE the container, so a rollout's test container is checked like the live
+// one. /readyz would be wrong for Miabi: it pings Postgres, so a blip would have Docker restart it.
 func TestHealthProbesHitHealthzOnLoopback(t *testing.T) {
 	m := testManifest()
 
@@ -348,11 +334,9 @@ func TestHealthProbesHitHealthzOnLoopback(t *testing.T) {
 	}
 }
 
-// A non-empty MIABI_REGISTRY_* value is a ONE-WAY OVERRIDE: it pins the setting and
-// the admin UI can no longer change it. So "registry off" must mean the keys are
-// ABSENT, not present-and-false — the latter would lock the UI out of ever enabling
-// it, which is the opposite of what an operator who never mentioned the registry
-// wants.
+// A non-empty MIABI_REGISTRY_* value is a ONE-WAY OVERRIDE: it pins the setting and the admin UI can no
+// longer change it. So "registry off" must mean the keys are ABSENT, not present-and-false — the latter
+// would lock the UI out of ever enabling it.
 func TestRegistryEnvIsAbsentUnlessEnabled(t *testing.T) {
 	hasRegistryEnv := func(spec docker.RunSpec) bool {
 		for _, e := range spec.Env {
@@ -413,10 +397,9 @@ func TestEnablingTheRegistryRecreatesTheControlPlane(t *testing.T) {
 	}
 }
 
-// The registry host gets a public DNS record and its OWN certificate, so a nonsense
-// value makes the gateway ask Let's Encrypt for a name that cannot exist — burning
-// rate limit and failing far from the mistake. (install.sh guards this because a
-// stray "y" from the preceding y/N prompt was how it actually happened.)
+// The registry host gets a public DNS record and its OWN certificate, so a nonsense value makes the
+// gateway ask Let's Encrypt for a name that cannot exist — burning rate limit and failing far from the
+// mistake. install.sh guards this because a stray "y" from the preceding prompt was how it happened.
 func TestRegistryHostIsValidated(t *testing.T) {
 	cases := []struct {
 		host    string
@@ -489,18 +472,13 @@ func TestExtraEnvIsInjectedIntoTheControlPlane(t *testing.T) {
 	}
 }
 
-// The heart of it: a variable Miabi sets itself must be REFUSED, not merged. A
-// duplicate key in a container's environment resolves by an ordering rule nobody
-// should have to reason about — and if the operator's value won, the control plane
-// would get a database password that does not open its database.
-//
-// The reserved set is DERIVED from the control plane's spec, so this test asserts
-// against what the spec actually emits, not a list that could drift from it.
+// The heart of it: a variable Miabi sets itself must be REFUSED, not merged. A duplicate key in a
+// container's environment resolves by an ordering rule nobody should reason about — and if the
+// operator's value won, the control plane would get a password that does not open its database.
 func TestManagedEnvCannotBeOverridden(t *testing.T) {
-	// Derive the managed set the way normalizeEnv does: from a spec built with NO user
-	// env. Reading it off a spec that already carries the operator's entries would
-	// count TZ and MIABI_LOG_LEVEL as "managed" — they are not; they are ordinary env:
-	// keys that Miabi merely seeds a default for, and they must stay editable.
+	// Derive the managed set the way normalizeEnv does: from a spec built with NO user env. Reading it off a
+	// spec that already carries the operator's entries would count TZ and MIABI_LOG_LEVEL as "managed" — they
+	// are not; they are ordinary env: keys that Miabi merely seeds a default for, and they must stay editable.
 	base := testManifest()
 	base.Env = nil
 	spec := controlPlaneSpec(base, ContainerControlPlane, base.Images.Miabi)
@@ -547,11 +525,9 @@ func TestRegistryCannotBeSetThroughEnv(t *testing.T) {
 	}
 }
 
-// GOMA_CONFIG_ENCRYPTION_KEY must hold the same value in TWO containers: Miabi
-// encrypts the gateway config, Goma decrypts it. Set on one side only, Goma reads a
-// config it cannot decrypt and routing breaks with no obvious cause.
-//
-// Its home is gateway.env, and Miabi forwards it to the control plane from there.
+// GOMA_CONFIG_ENCRYPTION_KEY must hold the same value in TWO containers: Miabi encrypts the gateway
+// config, Goma decrypts it. Set on one side only, Goma reads a config it cannot decrypt and routing
+// breaks with no obvious cause. Its home is gateway.env, and Miabi forwards it to the control plane.
 func TestGomaEncryptionKeyReachesBothMiabiAndTheGateway(t *testing.T) {
 	m := testManifest()
 	m.Gateway.Env = map[string]string{gomaConfigEncryptionKey: "shared-secret"}
@@ -726,10 +702,9 @@ func TestHostProcBindCanBeDisabled(t *testing.T) {
 	})
 }
 
-// Absent must mean ON. A plain bool's zero value is false, so every manifest written
-// before this field existed would have silently lost the bind on the next converge —
-// which is why the field is a pointer. Normalize resolves nil and writes it back, so
-// the file always states what it does.
+// Absent must mean ON. A plain bool's zero value is false, so every manifest written before this field
+// existed would have silently lost the bind on the next converge — which is why the field is a pointer.
+// Normalize resolves nil and writes it back, so the file always states what it does.
 func TestAbsentHostProcMeansOnAndIsWrittenBack(t *testing.T) {
 	m := Defaults("miabi/miabi:1.4.0")
 	m.Domain = "miabi.example.com"
@@ -873,11 +848,9 @@ func TestNormalizeRequiresADomainAndDerivesTheRest(t *testing.T) {
 	}
 }
 
-// ControlURL is where remote nodes and agents dial back. It defaults to the panel's
-// public URL — right for a single hostname — but must not be WELDED to it: a node on
-// a private network may reach the control plane at an address the public URL never
-// resolves to, and pinning the two together would force that traffic out over the
-// internet and back.
+// ControlURL is where remote nodes and agents dial back. It defaults to the panel's public URL but must
+// not be WELDED to it: a node on a private network may reach the control plane at an address the public
+// URL never resolves to, and pinning the two together would force that traffic over the internet.
 func TestControlURLDefaultsToTheWebURL(t *testing.T) {
 	m := Defaults("miabi/miabi:1.4.0")
 	m.Domain = "miabi.example.com"
@@ -1061,10 +1034,9 @@ func TestGomaAnalyticsIsEnabledByDefault(t *testing.T) {
 	}
 }
 
-// It is seeded into gateway.env, NOT set in gatewaySpec: normalizeGateway derives
-// its reserved set from the spec, so a spec variable is refused outright when an
-// operator sets it. Analytics must stay switchable off — and the refusal would
-// send them to a manifest field that does not exist.
+// It is seeded into gateway.env, NOT set in gatewaySpec: normalizeGateway derives its reserved set from
+// the spec, so a spec variable is refused outright when an operator sets it. Analytics must stay
+// switchable off — and the refusal would send them to a manifest field that does not exist.
 func TestGomaAnalyticsCanBeTurnedOff(t *testing.T) {
 	m := testManifest()
 	m.Gateway.Env = map[string]string{envGomaAnalytics: "false"}
@@ -1110,10 +1082,9 @@ func TestTimezoneIsNotSeededIntoGatewayEnv(t *testing.T) {
 	}
 }
 
-// Restart restarts CONTAINERS; it does not recreate them. So it can re-read what is on
-// disk (the gateway's bind-mounted goma.yml) but cannot apply a spec change — and the
-// components it walks must be the same ones, in the same dependency order, or a
-// whole-stack restart would bring the control plane back before its database.
+// Restart restarts CONTAINERS; it does not recreate them. So it can re-read what is on disk but cannot
+// apply a spec change — and the components it walks must be the same ones, in the same dependency
+// order, or a whole-stack restart would bring the control plane back before its database.
 func TestRestartWalksComponentsInDependencyOrder(t *testing.T) {
 	m := testManifest()
 	s := &Service{}
@@ -1134,10 +1105,9 @@ func TestRestartWalksComponentsInDependencyOrder(t *testing.T) {
 	}
 }
 
-// acme_email and admin_email are different things — the Let's Encrypt contact, and the
-// login of the seeded platform admin — but in practice one person is both. An operator
-// who supplies either has told us who to use for the other, so each falls back to it.
-// Only when NEITHER is given do we invent admin@<domain>, which is a guess.
+// acme_email and admin_email are different things — the Let's Encrypt contact and the seeded admin's
+// login — but in practice one person is both. An operator who supplies either has told us who to use
+// for the other. Only when NEITHER is given do we invent admin@<domain>, which is a guess.
 func TestAcmeAndAdminEmailFallBackToEachOther(t *testing.T) {
 	cases := []struct {
 		name, acme, admin   string

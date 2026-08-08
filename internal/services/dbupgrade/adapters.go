@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package dbupgrade adapts the application and backup services to the small
-// interfaces the database version-upgrade orchestration depends on, so both the
-// API server and the worker can wire them without the database package importing
-// application/backup (which would cycle).
+// Package dbupgrade adapts the application and backup services to the small interfaces the database
+// version-upgrade orchestration depends on, so both the API server and the worker can wire them without
+// the database package importing application or backup, which would cycle.
 package dbupgrade
 
 import (

@@ -27,14 +27,9 @@ func (r *WorkspaceBackupSettingsRepository) FindByWorkspace(workspaceID uint) (*
 	return &s, nil
 }
 
-// backupSettingsColumns are the columns an upsert reassigns — EVERY writable
-// column of the model.
-//
-// A field missing from this list is written by the first insert and silently
-// ignored by every update after it: the save succeeds, the API echoes back the
-// value it was handed, and only a later read reveals that nothing was stored.
-// Adding a settings field to the model means adding it here; a test asserts the
-// two stay in step.
+// backupSettingsColumns are the columns an upsert reassigns — EVERY writable column of the model.
+// A field missing from this list is written by the first insert and silently ignored by every
+// update after it. Adding a settings field means adding it here; a test asserts they stay in step.
 var backupSettingsColumns = []string{
 	"s3_enabled", "s3_endpoint", "s3_bucket", "s3_region", "s3_access_key",
 	"s3_secret_key_enc", "s3_use_ssl", "s3_force_path_style",

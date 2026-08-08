@@ -13,19 +13,9 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// RateLimit returns a fixed-window rate-limit middleware keyed by client IP and
-// request path, backed by Redis. It is intended for unauthenticated, abuse-prone
-// endpoints (login, registration, password reset).
-//
-// When Redis is unavailable, behavior depends on localFallback:
-//   - localFallback=false — fail OPEN (allow). Right for availability-critical,
-//     non-brute-forceable endpoints (e.g. token-authenticated agent tunnels),
-//     where locking clients out during a Redis blip is worse than losing throttling.
-//   - localFallback=true — fall back to a per-instance IN-MEMORY limiter instead
-//     of failing open, so a Redis outage can't silently re-enable brute-force on
-//     auth endpoints, yet legitimate users can still sign in. The local limiter is
-//     per-process (coarser than the shared Redis window in a multi-instance
-//     deploy) but strictly better than no limit — and exact on a single node.
+// RateLimit returns a fixed-window rate limiter keyed by client IP and request path, backed by
+// Redis, for unauthenticated abuse-prone endpoints. When Redis is down it either fails open, or —
+// with localFallback — falls back to a per-process in-memory limiter so brute force stays throttled.
 func RateLimit(rdb *redis.Client, limit int, window time.Duration, localFallback bool) okapi.Middleware {
 	var (
 		fallback *memLimiter

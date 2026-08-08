@@ -64,10 +64,9 @@ func TestRegistryKindParsesAndLinks(t *testing.T) {
 	}
 }
 
-// A registry's password is normally "{{ .secrets.x }}", and the apply engine
-// renders it strictly at execute time — so a Secret declared in the same bundle
-// must be created first. Same-rank changes order by kind name, which would put
-// Registry before Secret; the ranks must keep them apart.
+// A registry's password is normally "{{ .secrets.x }}", and the apply engine renders it strictly
+// at execute time, so a Secret declared in the same bundle must be created first. Same-rank
+// changes order by kind name, which would put Registry before Secret; the ranks keep them apart.
 func TestSecretIsCreatedBeforeRegistry(t *testing.T) {
 	src := `apiVersion: miabi.io/v1
 kind: Registry
@@ -223,11 +222,9 @@ func TestApplicationRegistryChangeIsDrift(t *testing.T) {
 	t.Errorf("re-pointing an app at another credential must show as drift: %+v", plan.Changes)
 }
 
-// A manifest may carry either secret form, and they mean different things:
-// "{{ .secrets.x }}" is rendered at apply time into a stored copy, while
-// "${{ secrets.X }}" is stored as a live reference the platform resolves at every
-// pull. The runtime form must survive parsing untouched — Go's template engine
-// would choke on the inner braces if anything tried to render it.
+// A manifest may carry either secret form: "{{ .secrets.x }}" is rendered at apply time into a
+// stored copy, while "${{ secrets.X }}" is stored as a live reference resolved at every pull. The
+// runtime form must survive parsing untouched — Go's template engine would choke on it.
 func TestRegistryRuntimeSecretReferenceIsNotATemplate(t *testing.T) {
 	src := `apiVersion: miabi.io/v1
 kind: Registry

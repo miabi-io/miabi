@@ -78,8 +78,6 @@ func TestIsPlatformInfra(t *testing.T) {
 	}
 }
 
-// --- the platform stack ------------------------------------------------------
-
 // A component must never end up half-labeled: discoverable but not protected, or
 // protected but not discoverable. PlatformLabels is the single constructor, so
 // this pins all four keys at once.

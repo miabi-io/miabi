@@ -5,11 +5,9 @@ package worker
 
 import "github.com/hibiken/asynq"
 
-// NewServer builds an asynq server with Miabi's queue priorities.
-// embedded must be true only for the control-plane server's embedded worker: it
-// is the one that holds the agent tunnels (QueueNode) and the one with the
-// platform's full service graph (QueueControl). A standalone worker passes false
-// and so never picks up a task it could not carry out.
+// NewServer builds an asynq server with Miabi's queue priorities. embedded must be true only for the
+// control-plane server's embedded worker: it is the one holding the agent tunnels (QueueNode) and the
+// platform's full service graph (QueueControl). A standalone worker passes false.
 func NewServer(redisAddr, redisPassword string, redisDB, concurrency int, embedded bool) *asynq.Server {
 	queues := map[string]int{
 		QueueDeploy:  6,

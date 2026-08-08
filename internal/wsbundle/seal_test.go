@@ -54,10 +54,9 @@ func TestSealedStateCarriesNoPlaintext(t *testing.T) {
 	}
 }
 
-// A bundle is only a migration if the whole graph crosses. This holds every
-// class — and, more importantly, every cross-reference between them — through a
-// round trip, so a field added to the model and forgotten in the state document
-// shows up here rather than as a resource that quietly did not travel.
+// A bundle is only a migration if the whole graph crosses. This holds every class — and every
+// cross-reference between them — through a round trip, so a field added to the model and forgotten
+// in the state document shows up here rather than as a resource that quietly did not travel.
 func TestStateCarriesEveryResourceClass(t *testing.T) {
 	in := &State{
 		Schema:       StateSchema,

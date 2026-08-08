@@ -38,11 +38,9 @@ type SwarmEnricher interface {
 	Enrich(servers []models.Server)
 }
 
-// ClusterAgentAuth authorizes an agent that presented the CLUSTER-wide token carried
-// by the global agent service, rather than a per-node one. Identity comes from the
-// swarm node id the agent read off its own engine, which the manager verifies against
-// its own membership list — so the shared token authorizes registration, but only for
-// a machine the swarm already trusts. Optional: nil means only per-node tokens work.
+// ClusterAgentAuth authorizes an agent presenting the CLUSTER-wide token carried by the global
+// agent service. Identity comes from the swarm node id the agent read off its own engine, which
+// the manager verifies against its membership list. Optional: nil means only per-node tokens.
 type ClusterAgentAuth interface {
 	AuthenticateAgent(ctx context.Context, token, swarmNodeID, hostname string) (*models.Server, error)
 }
@@ -68,11 +66,9 @@ type NodeHandler struct {
 	upgrader   websocket.Upgrader
 }
 
-// WorkspaceMembership lists the workspaces a user belongs to. It gates node
-// container-log streaming so a platform admin cannot read the logs of a
-// container owned by a workspace they are not a member of (listing and operating
-// containers is unaffected). Implemented by the workspace repository; injected
-// after construction (nil disables the guard).
+// WorkspaceMembership lists the workspaces a user belongs to. It gates node container-log
+// streaming so a platform admin cannot read the logs of a container owned by a workspace they
+// are not in; listing and operating are unaffected. Injected after construction (nil disables).
 type WorkspaceMembership interface {
 	ListForUser(userID uint) ([]models.WorkspaceWithRole, error)
 }
@@ -170,11 +166,9 @@ type PlaceableNode struct {
 	IsLocal      bool   `json:"is_local"`
 	Online       bool   `json:"online"`
 	Cordoned     bool   `json:"cordoned"`
-	// SwarmNodeID is the node's id within the swarm, empty when it is not a member.
-	// A container app is placed by server_id, but a *service* app is placed by the
-	// Swarm scheduler, which ignores server_id entirely — pinning one to a node
-	// means emitting a `node.id==<SwarmNodeID>` placement constraint, so the picker
-	// needs this to offer the choice at all.
+	// SwarmNodeID is the node's id within the swarm, empty when it is not a member. A container app
+	// is placed by server_id, but a *service* app is placed by the Swarm scheduler, so pinning one
+	// means emitting a `node.id==<SwarmNodeID>` constraint — the picker needs this to offer it.
 	SwarmNodeID string `json:"swarm_node_id,omitempty"`
 }
 
@@ -247,10 +241,9 @@ func (h *NodeHandler) Create(c *okapi.Context, req *CreateNodeRequest) error {
 	return created(c, map[string]any{"node": srv, "token": token})
 }
 
-// JoinCommand returns the docker command an operator runs on the node host to
-// start the agent and connect it to this control plane. The join token is
-// hashed (unrecoverable), so the command carries a placeholder — the operator
-// uses the token shown at node creation, or regenerates one.
+// JoinCommand returns the docker command an operator runs on the node host to start the agent
+// and connect it to this control plane. The join token is hashed and unrecoverable, so the
+// command carries a placeholder — use the token shown at node creation, or regenerate one.
 func (h *NodeHandler) JoinCommand(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -271,10 +264,9 @@ func (h *NodeHandler) JoinCommand(c *okapi.Context) error {
 		controlURL = "https://<your-control-plane-url>"
 	}
 	const tokenPlaceholder = "<JOIN_TOKEN>"
-	// The labels give the agent a platform identity on a node whose engine Miabi can
-	// only reach through that very agent: they keep it out of the node's import list
-	// and block a stop/remove from the containers page. managed-by=external — this
-	// one is installed by hand, so Miabi must not assume it may recreate it.
+	// The labels give the agent a platform identity on a node whose engine Miabi can only reach
+	// through that very agent: they keep it out of the import list and block stop/remove from the
+	// containers page. managed-by=external, since it is installed by hand and must not be recreated.
 	command := "docker run -d --name miabi-agent --restart unless-stopped \\\n" +
 		"  -v /var/run/docker.sock:/var/run/docker.sock \\\n" +
 		"  --label " + docker.LabelPartOf + "=" + docker.PartOfMiabi + " \\\n" +
@@ -526,26 +518,21 @@ func (h *NodeHandler) Connect(c *okapi.Context) error {
 
 	srv, err := h.nodes.Authenticate(token)
 	if err != nil {
-		// Not a per-node mbn_ token. It may be the cluster-wide token carried by the
-		// global agent service, in which case identity comes from the swarm node id the
-		// agent read off its own engine — and is only trusted because the manager
-		// verifies it against its own membership list. An unknown-but-verified member
-		// registers itself as a node.
+		// Not a per-node mbn_ token. It may be the cluster-wide token carried by the global agent
+		// service, where identity comes from the swarm node id the agent read off its own engine and is
+		// trusted only because the manager verifies it against its membership list.
 		srv, err = h.registerClusterAgent(c, token, swarmNodeID, hostname)
 		if err != nil {
 			return c.AbortUnauthorized("invalid agent token")
 		}
 	}
-	// Learn what only the node can tell us, before the upgrade hijacks the request.
-	//
-	// Its public endpoint (source IP + self-reported hostname), so the admin needn't
-	// enter them — non-destructive, it only fills blank fields.
+	// Learn what only the node can tell us, before the upgrade hijacks the request. Its public endpoint
+	// (source IP + self-reported hostname), so the admin needn't enter them — non-destructive, it only fills
+	// blank fields.
 	h.nodes.LearnEndpoint(srv.ID, c.RealIP(), hostname)
-	// And its swarm node id, which the control plane cannot work out for itself: it
-	// records one only when Miabi ran the `swarm join`, so a host that joined the
-	// swarm any other way stayed unmapped — and an unmapped node cannot be resolved
-	// from a service's task, which is what leaves a replica's logs and metrics
-	// unreachable.
+	// And its swarm node id, which the control plane cannot work out for itself: it records one only
+	// when Miabi ran the `swarm join`, so a host that joined any other way stayed unmapped — and an
+	// unmapped node cannot be resolved from a service's task, leaving its logs and metrics unreachable.
 	h.nodes.LearnSwarmNodeID(srv.ID, swarmNodeID)
 	ws, err := h.upgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {
@@ -568,8 +555,6 @@ func (h *NodeHandler) registerClusterAgent(c *okapi.Context, token, swarmNodeID,
 func bearer(h string) string {
 	return strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
 }
-
-// --- GPUs ---
 
 // GPUListResponse is a node's GPU inventory plus whether the node advertises the
 // NVIDIA runtime (so the UI can explain a node showing no cards).

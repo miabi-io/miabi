@@ -16,10 +16,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/node"
 )
 
-// ClusterHandler exposes platform-admin cluster (Docker Swarm) management:
-// status, enable/adopt/disable, and per-node join/leave. Cluster mode is opt-in
-// and auto-detected — these endpoints work on plain Docker too, simply reporting
-// "not enabled" and refusing mutations until swarm mode is on.
+// ClusterHandler exposes platform-admin cluster (Docker Swarm) management: status,
+// enable/adopt/disable, and per-node join/leave. Cluster mode is opt-in and auto-detected —
+// these endpoints work on plain Docker too, reporting "not enabled" and refusing mutations.
 type ClusterHandler struct {
 	cluster *cluster.Service
 	nodes   *node.Service
@@ -88,16 +87,9 @@ func (h *ClusterHandler) Disable(c *okapi.Context) error {
 	return message(c, "cluster mode disabled")
 }
 
-// ApplyNetworking converts the workspace networks still on node-local bridges into
-// swarm overlays, so apps and databases reach each other across nodes.
-//
-// Enable already does this on the transition into cluster mode. This is the
-// explicit action for an install that was ALREADY clustered when it upgraded (it
-// never saw that transition, so its workspaces are still on per-node islands), and
-// for re-running the conversion after a node that was offline comes back.
-//
-// It briefly drops in-flight connections inside each workspace; containers are not
-// restarted.
+// ApplyNetworking converts the workspace networks still on node-local bridges into swarm
+// overlays, so apps and databases reach each other across nodes. Enable already does this; this
+// is for an install already clustered when it upgraded, or to re-run after a node returns.
 func (h *ClusterHandler) ApplyNetworking(c *okapi.Context) error {
 	if err := h.cluster.ApplyNetworking(c.Request().Context()); err != nil {
 		if errors.Is(err, cluster.ErrNotEnabled) {
@@ -142,12 +134,9 @@ func (h *ClusterHandler) Preflight(c *okapi.Context) error {
 	return ok(c, p)
 }
 
-// NetCheck probes the cluster's overlay data plane between every pair of nodes,
-// separating the three failures that are indistinguishable from inside an app: a
-// name that will not resolve, a connection that never completes, and a payload that
-// silently dies at the MTU.
-//
-// It starts and removes probe containers, so it is a mutation, not a read.
+// NetCheck probes the overlay data plane between every pair of nodes, separating the three
+// failures indistinguishable from inside an app: a name that will not resolve, a connection that
+// never completes, and a payload that dies at the MTU. It starts probe containers, so it mutates.
 func (h *ClusterHandler) NetCheck(c *okapi.Context) error {
 	res, err := h.cluster.NetCheck(c.Request().Context())
 	if err != nil {
@@ -203,35 +192,24 @@ func (h *ClusterHandler) NodeTasks(c *okapi.Context) error {
 // DeployAgentsRequest configures the global agent service.
 type DeployAgentsRequest struct {
 	Body struct {
-		// InsecureSkipVerify makes the agents skip verification of the control plane's
-		// TLS certificate. Needed when the control plane is behind a self-signed or
-		// private-CA certificate, where an agent otherwise dies with "certificate signed
-		// by unknown authority" and never connects. It is a real downgrade — anyone able
-		// to intercept the agents could impersonate a control plane that drives Docker on
-		// every node — so it is a deliberate choice, not a default.
+		// InsecureSkipVerify makes the agents skip verification of the control plane's TLS certificate,
+		// needed behind a self-signed or private-CA cert. It is a real downgrade — an interceptor could
+		// impersonate a control plane that drives Docker on every node — so it is never a default.
 		InsecureSkipVerify bool `json:"insecure_skip_verify"`
-		// CACert trusts a specific authority instead of skipping verification: the agents
-		// still VERIFY, anchored on this CA, so a forged certificate is still rejected.
-		// This is what makes a self-hosted control plane behind a private CA safe, and it
-		// is the option an operator should reach for first.
+		// CACert trusts a specific authority instead of skipping verification: the agents still VERIFY,
+		// anchored on this CA, so a forged certificate is still rejected. This is what makes a control
+		// plane behind a private CA safe, and is the option to reach for first.
 		CACert string `json:"ca_cert"`
-		// CACertPath is a CA file that already exists on every node — usually the host's
-		// own trust anchor (e.g. /etc/pki/ca-trust/source/anchors/my-ca.crt). It is
-		// bind-mounted into each agent, which is more direct than copying the PEM through
-		// an environment variable and stays correct when the CA is rotated on the hosts.
+		// CACertPath is a CA file that already exists on every node, usually the host's own trust anchor.
+		// It is bind-mounted into each agent, which is more direct than copying the PEM through an
+		// environment variable and stays correct when the CA is rotated on the hosts.
 		CACertPath string `json:"ca_cert_path"`
 	} `json:"body"`
 }
 
-// DeployAgents installs the Miabi agent on every swarm worker, as a global service —
-// so Swarm carries it to each node, including nodes that join later, with no SSH and
-// no per-host step. Every worker becomes managed: metrics, stats, shell and
-// housekeeping all start working where they previously could not.
-//
-// It is an explicit action, not something enabling cluster mode does silently: it
-// grants Miabi the Docker socket (root-equivalent) on every machine in this swarm,
-// now and in future. That is right for a homelab and surprising for a shared cluster,
-// and the operator should be the one to say which they have.
+// DeployAgents installs the Miabi agent on every swarm worker as a global service, so Swarm
+// carries it to each node including ones that join later. It is explicit, not something enabling
+// cluster mode does silently: it grants Miabi the Docker socket on every machine in this swarm.
 func (h *ClusterHandler) DeployAgents(c *okapi.Context, req *DeployAgentsRequest) error {
 	err := h.cluster.DeployAgents(c.Request().Context(), cluster.AgentOptions{
 		InsecureTLS: req.Body.InsecureSkipVerify,
@@ -263,12 +241,9 @@ func (h *ClusterHandler) RemoveAgents(c *okapi.Context) error {
 	return message(c, "cluster agents removed")
 }
 
-// ControlPlaneCert returns the certificate the control plane currently serves, so the
-// agents can be pinned to it instead of skipping verification.
-//
-// Asking an operator to find and paste a PEM is how you get them to pick "skip
-// verification" instead. Miabi knows what it serves; it can just hand it over, with a
-// fingerprint they can check.
+// ControlPlaneCert returns the certificate the control plane currently serves, so the agents can
+// be pinned to it instead of skipping verification. Asking an operator to find and paste a PEM is
+// how you get them to pick "skip verification" instead.
 func (h *ClusterHandler) ControlPlaneCert(c *okapi.Context) error {
 	cert, err := h.cluster.FetchControlPlaneCert(c.Request().Context())
 	switch {

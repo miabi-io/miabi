@@ -1,15 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package mailer sends Miabi's own platform notification emails — password
-// resets, workspace invitations, and account welcomes — over a system SMTP
-// server. It is distinct from the workspace "notification" feature, which fans
-// application lifecycle events out to Slack/webhook channels.
-//
-// Sends are best-effort and asynchronous: when SMTP is not configured every
-// method is a silent no-op, so callers can invoke them unconditionally. A nil
-// *Service is also a safe no-op, so a handler that was never wired with a mailer
-// still works.
+// Package mailer sends Miabi's own platform notification emails — password resets, workspace invitations,
+// account welcomes — over a system SMTP server. Sends are best-effort and asynchronous: with SMTP
+// unconfigured every method is a silent no-op, and a nil *Service is safe too, so callers never guard.
 package mailer
 
 import (
@@ -165,7 +159,6 @@ func nameOr(name, fallback string) string {
 	return name
 }
 
-// article returns the indefinite article ("a"/"an") for a role word.
 func article(word string) string {
 	w := strings.ToLower(strings.TrimSpace(word))
 	if w == "" {

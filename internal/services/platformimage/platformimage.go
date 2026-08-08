@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package platformimage is the deployment-config image catalog: the single
-// source of truth for every container image the platform itself runs (database
-// engines, backup tools, the gateway, internal helpers, the agent). Built-in
-// defaults live in code; admins override them at runtime via the settings store
-// (keys prefixed "image."), and an optional global registry mirror repoints all
-// of them at a private registry.
+// Package platformimage is the deployment-config image catalog: the single source of truth for every
+// container image the platform itself runs. Built-in defaults live in code; admins override them at runtime
+// via the settings store, and an optional global registry mirror repoints all of them at a private registry.
 package platformimage
 
 import (

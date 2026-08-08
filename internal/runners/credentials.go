@@ -15,10 +15,9 @@ import (
 // short-lived token is what actually authorizes the push/pull.
 const registryUsername = "miabi-job"
 
-// JobCredentials are the per-job, short-lived secrets injected into a runner job:
-// a registry login scoped to just this app's repo, and an optional callback
-// token scoped to deploy just this app/run. Both are ephemeral APIKey rows, so a
-// leaked value is useless once the run ends (revoked) or the deadline passes.
+// JobCredentials are the per-job, short-lived secrets injected into a runner job: a registry login
+// scoped to this app's repo, and an optional callback token scoped to deploy just this app/run.
+// Both are ephemeral APIKey rows, so a leaked value is useless once the run ends or expires.
 type JobCredentials struct {
 	RegistryUser  string
 	RegistryToken string // MIABI_REGISTRY_TOKEN — registry read+write, this app's repo
@@ -52,10 +51,9 @@ func NewCredentialMinter(keys *auth.APIKeyService, jobTokenEnabled bool) *Creden
 	return &CredentialMinter{keys: keys, jobTokenEnabled: jobTokenEnabled}
 }
 
-// Mint issues the per-job registry credential (registry_write, bound to the app)
-// and, unless withheld by config, the MIABI_JOB_TOKEN callback (deploy, bound to
-// the app/run). Both expire at the job deadline and are attributed to the run's
-// subject user for audit. Call Revoke when the run goes terminal.
+// Mint issues the per-job registry credential (registry_write, bound to the app) and, unless
+// withheld by config, the MIABI_JOB_TOKEN callback. Both expire at the job deadline and are
+// attributed to the run's subject user for audit. Call Revoke when the run goes terminal.
 func (m *CredentialMinter) Mint(subjectUserID, workspaceID uint, appID *uint, runID uint, deadline time.Time) (*JobCredentials, error) {
 	creds := &JobCredentials{RegistryUser: registryUsername}
 

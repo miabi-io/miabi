@@ -8,10 +8,9 @@ import (
 	"strings"
 )
 
-// Platform Docker label keys. Every container / volume / service Miabi creates
-// carries a back-reference label to its owning record under the io.miabi.*
-// namespace (reverse-DNS of miabi.io). These are the single source of truth —
-// do not hand-write the string literals elsewhere.
+// Platform Docker label keys. Every container / volume / service Miabi creates carries a
+// back-reference label to its owning record under io.miabi.* (reverse-DNS of miabi.io). These
+// are the single source of truth — do not hand-write the string literals elsewhere.
 const (
 	// LabelPrefix namespaces every platform-applied Docker label.
 	LabelPrefix = "io.miabi."
@@ -29,32 +28,25 @@ const (
 	LabelPipelineRun = "io.miabi.pipeline-run" // pipeline run id (transient)
 	LabelSizeBytes   = "io.miabi.size_bytes"   // volume size hint
 
-	// --- the platform stack itself ---------------------------------------------
-	//
-	// The labels above describe what Miabi CREATES. The three below describe what
-	// Miabi IS: the control plane, its Postgres, its Redis, the central gateway and
-	// the node agents. That stack is deployed by examples/compose/compose.yaml — from OUTSIDE
-	// Miabi — so without these it carries no platform identity at all, and Miabi
-	// cannot recognize its own components when it enumerates the engine.
+	// The labels above describe what Miabi CREATES; the three below describe what Miabi IS. That
+	// stack is deployed from OUTSIDE Miabi by examples/compose/compose.yaml, so without these it
+	// carries no platform identity and Miabi cannot recognize its own components on the engine.
 
 	// LabelPartOf marks a resource as part of the Miabi platform stack
 	// (PartOfMiabi). One exact-match key, so the whole stack is a single Docker
 	// label filter rather than a scan against a list of roles.
 	LabelPartOf = "io.miabi.part-of"
-	// LabelManagedBy names who owns the resource's LIFECYCLE — which is not the same
-	// question as who it belongs to. A compose-owned container may be observed and
-	// updated in place, but recreating it out-of-band is silently reverted by the
-	// next `docker compose up -d`.
+	// LabelManagedBy names who owns the resource's LIFECYCLE, which is not who it belongs to. A
+	// compose-owned container may be observed and updated in place, but recreating it out-of-band is
+	// silently reverted by the next `docker compose up -d`.
 	LabelManagedBy = "io.miabi.managed-by"
-	// LabelProtected ("true") refuses ad-hoc destructive operations from the generic
-	// containers list. Declared, never inferred: platform infrastructure is not
-	// automatically undeletable (a transient GC container is infra too), and a role
-	// allowlist in the guard would drift from the roles themselves.
+	// LabelProtected ("true") refuses ad-hoc destructive operations from the generic containers list.
+	// Declared, never inferred: platform infrastructure is not automatically undeletable (a transient
+	// GC container is infra too), and a role allowlist in the guard would drift from the roles.
 	LabelProtected = "io.miabi.protected"
-	// LabelSpecHash fingerprints the run spec a platform component was created from,
-	// so `miabi install` can tell "already what the manifest asks for" from "changed"
-	// without re-deriving Docker's own normalization of the spec. See
-	// services/platformstack.
+	// LabelSpecHash fingerprints the run spec a platform component was created from, so `miabi
+	// install` can tell "already what the manifest asks for" from "changed" without re-deriving
+	// Docker's own normalization. See services/platformstack.
 	LabelSpecHash = "io.miabi.spec-hash"
 )
 
@@ -98,12 +90,9 @@ const (
 // many call sites that tag raw containers/volumes/services).
 const ManagedLabel = LabelManaged
 
-// PlatformLabels is the label set every Miabi platform component carries. Use it
-// rather than hand-writing the keys, so a component can never end up half-labeled
-// — e.g. discoverable but not protected.
-//
-// extra is merged last and may add component-specific keys (a node slug, an owning
-// workspace); it may not override the four keys set here.
+// PlatformLabels is the label set every Miabi platform component carries. Use it rather than
+// hand-writing the keys, so a component can never end up half-labeled — discoverable but not
+// protected. extra is merged last and may not override the four keys set here.
 func PlatformLabels(role, managedBy string, extra map[string]string) map[string]string {
 	l := make(map[string]string, len(extra)+4)
 	for k, v := range extra {
@@ -116,10 +105,9 @@ func PlatformLabels(role, managedBy string, extra map[string]string) map[string]
 	return l
 }
 
-// IsPlatformStack reports whether a resource is part of Miabi's own stack — the
-// control plane, its database/cache, the central gateway, an agent. Such resources
-// are never offered for import (Miabi would end up "managing" its own database) and
-// are never treated as a user's container.
+// IsPlatformStack reports whether a resource is part of Miabi's own stack — control plane,
+// database/cache, central gateway, agent. Such resources are never offered for import and are
+// never treated as a user's container.
 func IsPlatformStack(labels map[string]string) bool {
 	v, _ := LabelValue(labels, LabelPartOf)
 	return v == PartOfMiabi
@@ -169,10 +157,9 @@ func IsPlatformInfra(labels map[string]string) bool {
 	return ok
 }
 
-// reservedUserLabelPrefixes are label namespaces a user may never write on their
-// own containers: the platform's own keys (ownership / workspace scoping /
-// housekeeping all read them, so a spoofed io.miabi.workspace could break
-// isolation) and the Docker Compose grouping keys stackLabels manages.
+// reservedUserLabelPrefixes are label namespaces a user may never write on their own containers:
+// the platform's own keys (a spoofed io.miabi.workspace could break isolation) and the Docker
+// Compose grouping keys stackLabels manages.
 var reservedUserLabelPrefixes = []string{LabelPrefix, "com.docker."}
 
 // IsReservedLabelKey reports whether key is platform-reserved — i.e. a user is

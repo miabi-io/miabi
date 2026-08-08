@@ -41,16 +41,9 @@ func ValidRunnerScope(s RunnerScope) bool {
 	return false
 }
 
-// Runner is a machine dedicated to build and pipeline execution. Unlike a
-// Server (which runs apps/databases), a runner never hosts workloads: it leases
-// build jobs, executes each step in an isolated container, builds and pushes the
-// image to a registry, and reports status — the app node only ever pulls the
-// resulting digest. A runner dials in over the same outbound tunnel shape as a
-// node agent, but with a distinct, tightly-scoped registration token.
-//
-// A runner is either workspace-owned (WorkspaceID set, Scope=workspace) or
-// platform-shared (WorkspaceID nil, Scope=shared), following the nullable
-// WorkspaceID modeling used by TemplateSource.
+// Runner is a machine dedicated to build and pipeline execution: it leases jobs, runs each
+// step in an isolated container, pushes the image, and reports status — app nodes only pull
+// the digest. Either workspace-owned (Scope=workspace) or platform-shared (Scope=shared).
 type Runner struct {
 	UIDModel
 	ID uint `json:"id" gorm:"primaryKey"`
@@ -96,10 +89,9 @@ type Runner struct {
 	Connected bool `json:"connected" gorm:"-"`
 
 	LastSeenAt *time.Time `json:"last_seen_at,omitempty"`
-	// ConnectedSince is when the current unbroken connection began — reset on every
-	// reconnect, cleared on disconnect. LastSeenAt cannot answer "how long has this
-	// runner been up?" because the heartbeat refreshes it every 30s; the offline
-	// alert needs that to avoid clearing on a runner that is flapping.
+	// ConnectedSince is when the current unbroken connection began — reset on reconnect, cleared
+	// on disconnect. LastSeenAt cannot answer "how long has this runner been up?" because the
+	// heartbeat refreshes it every 30s, which the offline alert needs to survive flapping.
 	ConnectedSince *time.Time `json:"connected_since,omitempty"`
 	CreatedByID    *uint      `json:"created_by_id,omitempty"`
 
@@ -133,11 +125,9 @@ const (
 	LeaseKindBuild LeaseKind = "build"
 )
 
-// RunnerLease is a runner's at-most-once claim on a job — a pipeline run or a
-// deploy build (per Kind) — and, optionally, a specific step. It is created when
-// a runner leases a job and released when the job goes terminal; an active lease
-// past its ExpiresAt is a dead runner, so the sweeper marks it expired and the
-// job requeues. Concurrency is a runner's active-lease count vs its Concurrency.
+// RunnerLease is a runner's at-most-once claim on a job (per Kind) and optionally a step,
+// created on lease and released when the job goes terminal. An active lease past ExpiresAt is
+// a dead runner: the sweeper expires it and the job requeues.
 type RunnerLease struct {
 	ID       uint `json:"id" gorm:"primaryKey"`
 	RunnerID uint `json:"runner_id" gorm:"index;not null"`

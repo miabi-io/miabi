@@ -1,14 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package enterprise is the commercial-edition seam. It exposes one interface,
-// EE, that gates licensed features. The Community build links a deny-all stub
-// (ce_stub.go); the Enterprise build (-tags enterprise) links the real,
-// license-verifying implementation (enterprise.go). The HTTP layer is identical
-// in both builds — a CE binary simply returns 402 license_required from the
-// stub, and contains none of the verification code. Entitlement checks live in
-// services/handlers via Require, so every caller (web, CLI, CI, IaC) is gated
-// identically.
+// Package enterprise is the commercial-edition seam: one interface, EE, gating licensed features.
+// Community links a deny-all stub; the Enterprise build links the license-verifying one. The HTTP
+// layer is identical, so a CE binary simply returns 402 and contains no verification code.
 package enterprise
 
 import (
@@ -90,10 +85,9 @@ var AllFlags = []FlagInfo{
 	{FlagAnalyticsExport, "workspace analytics export (CSV) + extended retention"},
 }
 
-// Commercial tier names. A tier is a preset bundle of flags + limits that the
-// issuer expands into a license; the runtime only ever reads the resolved
-// flags/limits, so the tier is a label (for the admin UI, support, and pricing)
-// and the single source of truth for what each plan includes.
+// Commercial tier names. A tier is a preset bundle of flags and limits the issuer expands into a
+// license; the runtime only reads the resolved flags/limits, so the tier is a label for the admin
+// UI, support and pricing — and the single source of truth for what each plan includes.
 const (
 	TierProfessional = "professional" // freelancers & solo builders
 	TierBusiness     = "business"     // small businesses & teams
@@ -108,11 +102,9 @@ type Tier struct {
 	Limits map[string]int
 }
 
-// Tiers is the canonical, ordered set of license presets, shared by the issuer
-// (`miabi-license issue --tier <name>`), the admin UI, docs, and support tooling.
-// Editing a tier here changes what its licenses grant everywhere. Professional is
-// a lean SSO/audit bundle; Business adds directory SSO (SAML/LDAP/SCIM), RBAC,
-// and platform backup; Enterprise is every flag, unlimited.
+// Tiers is the canonical, ordered set of license presets, shared by the issuer, admin UI, docs and
+// support tooling. Editing a tier here changes what its licenses grant everywhere. Professional is
+// a lean SSO/audit bundle; Business adds directory SSO, RBAC and platform backup.
 var Tiers = []Tier{
 	{
 		Name:  TierProfessional,
@@ -189,29 +181,24 @@ const LimitPlanLimit = "plan_limit"
 // of workspace-analytics rollups are retained.
 const LimitAnalyticsRetentionDays = "analytics_retention_days"
 
-// CommunityAnalyticsRetentionDays caps analytics retention in the Community
-// edition. The dashboards work in full; only the history window is bounded.
-// Extended retention is an Enterprise entitlement (analytics_retention_days limit,
-// or the analytics_export flag). A license may set an explicit limit that wins.
+// CommunityAnalyticsRetentionDays caps analytics retention in Community. The dashboards work in
+// full; only the history window is bounded. Extended retention is an Enterprise entitlement, and
+// a license may set an explicit limit that wins.
 const CommunityAnalyticsRetentionDays = 7
 
-// CommunityPlanLimit caps the Community plan catalog at the three seeded plans
-// (Free / Pro / Unlimited): admins may edit or delete them, but adding a fourth
-// requires an Enterprise license. A license may set an explicit plan_limit that
-// always wins via PlanLimit.
+// CommunityPlanLimit caps the Community plan catalog at the three seeded plans: admins may edit or
+// delete them, but adding a fourth requires an Enterprise license. A license may set an explicit
+// plan_limit that always wins via PlanLimit.
 const CommunityPlanLimit = 3
 
-// CommunityNodeLimit is the number of registered nodes (manager + remotes,
-// standalone or Swarm) allowed in the Community edition. -1 means unlimited: CE
-// is not node-capped. A license may still set an explicit node_limit entitlement,
-// which always wins via NodeLimit.
+// CommunityNodeLimit is the number of registered nodes allowed in Community. -1 means unlimited:
+// CE is not node-capped. A license may still set an explicit node_limit entitlement, which always
+// wins via NodeLimit.
 const CommunityNodeLimit = -1
 
-// CommunityRunnerLimit is the number of platform-shared (admin-managed) runners
-// allowed without the platform_runners entitlement (-1 = unlimited). The shared
-// runner pool is available to the Community edition without a cap; the
-// platform_runners entitlement is reserved for future advanced scheduling.
-// Owned (per-workspace) runners are always unlimited and unaffected.
+// CommunityRunnerLimit is the number of platform-shared runners allowed without the
+// platform_runners entitlement (-1 = unlimited). The shared pool is uncapped in Community; the
+// entitlement is reserved for future scheduling. Per-workspace runners are always unlimited.
 const CommunityRunnerLimit = -1
 
 // Entitlements is the resolved, point-in-time view of the installed license.
@@ -219,10 +206,9 @@ const CommunityRunnerLimit = -1
 type Entitlements struct {
 	Edition string `json:"edition"`
 	Tier    string `json:"tier,omitempty"` // commercial plan label (professional|business|enterprise)
-	// InstallID / URL are the instance/host the license is bound to (empty = not
-	// bound by that dimension; both empty = unlimited). When a binding doesn't
-	// match this deployment, State is StateBindingMismatch, BindingError names the
-	// failed binding ("install_id" | "url"), and no flags/limits are granted.
+	// InstallID / URL are the instance and host the license is bound to (empty = not bound by that
+	// dimension; both empty = unlimited). When a binding doesn't match, State is StateBindingMismatch,
+	// BindingError names the failed binding, and no flags or limits are granted.
 	InstallID    string          `json:"install_id,omitempty"`
 	URL          string          `json:"url,omitempty"`
 	BindingError string          `json:"binding_error,omitempty"`
@@ -265,11 +251,9 @@ func (e Entitlements) PlanLimit() int {
 	return -1
 }
 
-// AnalyticsRetentionDays returns the resolved analytics-retention cap in days
-// (-1 = unlimited). An explicit analytics_retention_days limit in the license
-// always wins; otherwise the analytics_export flag lifts the cap (unlimited),
-// Community is bounded by CommunityAnalyticsRetentionDays, and a paid edition
-// with neither is unlimited.
+// AnalyticsRetentionDays returns the resolved retention cap in days (-1 = unlimited). An explicit
+// analytics_retention_days limit always wins; otherwise analytics_export lifts the cap, Community
+// is bounded by CommunityAnalyticsRetentionDays, and a paid edition with neither is unlimited.
 func (e Entitlements) AnalyticsRetentionDays() int {
 	if e.Limits != nil {
 		if v, ok := e.Limits[LimitAnalyticsRetentionDays]; ok {
@@ -285,11 +269,9 @@ func (e Entitlements) AnalyticsRetentionDays() int {
 	return -1
 }
 
-// ClampAnalyticsRetention resolves the effective retention (days) the consumer
-// should keep, given the operator's configured value and the entitlement cap
-// (from Entitlements.AnalyticsRetentionDays). A negative cap is unlimited, so the
-// configured value is honored as-is; otherwise the configured value is bounded by
-// the cap, and a "keep forever" config (<= 0) is clamped down to the cap.
+// ClampAnalyticsRetention resolves the effective retention days from the operator's configured
+// value and the entitlement cap. A negative cap is unlimited, so the config is honored as-is;
+// otherwise it is bounded by the cap, and a "keep forever" config (<= 0) clamps down to it.
 func ClampAnalyticsRetention(configured, capDays int) int {
 	if capDays < 0 {
 		return configured
@@ -317,12 +299,9 @@ type EE interface {
 	// RequireMutable is Require plus a read-only guard: it returns ErrLicenseExpired
 	// when the flag is entitled but the license has degraded past grace.
 	RequireMutable(flag string) error
-	// Install verifies and persists a signed license token. requestHost is the
-	// host the admin is installing from (the live deployment identity); a
-	// URL-bound license must match it or the configured instance URL, so a license
-	// for another deployment cannot be installed even when the instance URL is
-	// unset. Pass "" when there is no request (file/IaC install). The CE stub
-	// returns ErrCommunityEdition.
+	// Install verifies and persists a signed license token. requestHost is the host the admin is
+	// installing from; a URL-bound license must match it or the configured instance URL, so a license
+	// for another deployment cannot be installed even when the instance URL is unset.
 	Install(ctx context.Context, token string, requestHost string) (Entitlements, error)
 	// Remove deletes the installed license, reverting to community.
 	Remove(ctx context.Context) error
@@ -335,17 +314,15 @@ type EE interface {
 	SAML() SAMLProvider
 	// SCIM returns the SCIM 2.0 provisioning handler set, or nil in Community.
 	SCIM() SCIMProvider
-	// LDAP returns the LDAP/Active-Directory authenticator, or nil in Community /
-	// when sso_ldap is not entitled. The core login handler calls it after a
-	// failed local-password check to attempt a directory bind (a fall-through, so
-	// local accounts and the bootstrap admin keep working even with LDAP down).
+	// LDAP returns the LDAP/Active-Directory authenticator, or nil in Community or when sso_ldap is
+	// not entitled. The core login handler calls it after a failed local-password check — a
+	// fall-through, so local accounts and the bootstrap admin keep working even with LDAP down.
 	LDAP() LDAPAuthenticator
 }
 
-// LDAPIdentity is a directory user resolved by a successful bind: the mapped
-// email/name, the directory uid (→ User.Username), and the group DNs the user
-// belongs to (the core maps those onto roles/workspaces). It is plain data so the
-// enterprise package never touches core auth/user/session code.
+// LDAPIdentity is a directory user resolved by a successful bind: mapped email and name, the
+// directory uid, and the group DNs the user belongs to. It is plain data, so the enterprise
+// package never touches core auth, user or session code.
 type LDAPIdentity struct {
 	Email    string
 	Name     string
@@ -358,16 +335,13 @@ type LDAPIdentity struct {
 // implemented only in the enterprise build; the CE stub's LDAP() returns nil so
 // the go-ldap client is never linked into Community.
 type LDAPAuthenticator interface {
-	// Authenticate escapes and binds username/password against every enabled
-	// LDAP config (first match wins). It returns the resolved identity on success,
-	// ErrLDAPNoMatch when no config matched the username (the caller falls through
-	// to the original invalid-credentials result), or an error on a failed bind /
-	// disabled account. It never binds on an empty password.
+	// Authenticate escapes and binds username/password against every enabled LDAP config, first match
+	// winning. It returns the resolved identity, ErrLDAPNoMatch when no config matched (the caller
+	// falls through), or an error on a failed bind. It never binds on an empty password.
 	Authenticate(ctx context.Context, username, password string) (LDAPIdentity, error)
-	// TestConnection dials + binds the service account for one config (by id) and
-	// reports the result. A failed connection/bind/search is OK=false (not a Go
-	// error); a Go error means the config wasn't found. The core handler wraps the
-	// result in the standard response envelope.
+	// TestConnection dials and binds the service account for one config and reports the result. A
+	// failed connection, bind or search is OK=false rather than a Go error; a Go error means the
+	// config wasn't found.
 	TestConnection(ctx context.Context, configID uint) (LDAPTestResult, error)
 }
 
@@ -379,10 +353,9 @@ type LDAPTestResult struct {
 	Error   string `json:"error,omitempty"`
 }
 
-// ErrLDAPNoMatch signals that no enabled LDAP config matched the identifier, so
-// the core login handler should fall through to its normal (local) result rather
-// than treat it as a directory auth failure. It is a plain error (not a gate
-// error) so it is never surfaced to the client.
+// ErrLDAPNoMatch signals that no enabled LDAP config matched the identifier, so the core login
+// handler falls through to its normal local result rather than treating it as a directory auth
+// failure. It is a plain error, not a gate error, so it is never surfaced to the client.
 var ErrLDAPNoMatch = errors.New("no matching LDAP configuration")
 
 // SSOIdentity is an authenticated assertion the core turns into a session.
@@ -448,10 +421,9 @@ var (
 	ErrLicenseBindingMismatch = &gateError{code: "LICENSE_BINDING_MISMATCH", msg: "this license is bound to a different deployment (Install ID or URL)", status: 402}
 )
 
-// StateBindingMismatch is the Entitlements.State when the license is valid and
-// signed but bound to a different instance than this one (by Install ID or URL),
-// so no features are granted. It is surfaced (with the bound values +
-// BindingError) so an admin can see exactly why enterprise features are off.
+// StateBindingMismatch is the Entitlements.State when the license is valid and signed but bound to
+// a different instance than this one, so no features are granted. It is surfaced with the bound
+// values and BindingError so an admin can see exactly why enterprise features are off.
 const StateBindingMismatch = "binding_mismatch"
 
 // Binding-error reasons (Entitlements.BindingError).

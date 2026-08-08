@@ -45,11 +45,9 @@ func (h *OAuthHandler) SetLoginTokens(s *logintoken.Service) { h.loginTokens = s
 // session on callback.
 const intentLoginToken = "login_token"
 
-// intentCliLogin is the SSO intent behind `miabi login`'s loopback flow: like
-// intentLoginToken it mints a CLI token on callback, but instead of the display
-// page it redirects the browser to the CLI's local callback with a single-use
-// code. The loopback target and CLI state ride in the intent value (stored in
-// Redis, never the address bar), joined by intentSep.
+// intentCliLogin is the SSO intent behind `miabi login`'s loopback flow: like intentLoginToken it
+// mints a CLI token on callback, but redirects the browser to the CLI's local callback with a
+// single-use code. The loopback target and CLI state ride in the intent value, joined by intentSep.
 const intentCliLogin = "cli_login"
 
 // intentSep joins the intent kind with its loopback redirect and CLI state in
@@ -111,10 +109,9 @@ func (h *OAuthHandler) DiscoverSSO(c *okapi.Context, req *DiscoverSSORequest) er
 	return ok(c, DiscoverSSOResponse{Name: p.Name, DisplayName: p.DisplayName, Type: string(p.Type)})
 }
 
-// Authorize redirects the browser to the provider's consent screen. With
-// ?intent=login_token it forces a fresh IdP login (prompt=login) and the callback
-// mints a CLI token instead of a console session — the SSO half of "Copy login
-// command".
+// Authorize redirects the browser to the provider's consent screen. With ?intent=login_token it
+// forces a fresh IdP login (prompt=login) and the callback mints a CLI token instead of a console
+// session — the SSO half of "Copy login command".
 func (h *OAuthHandler) Authorize(c *okapi.Context) error {
 	p, err := h.oauth.Get(c.Param("slug"))
 	if err != nil {
@@ -207,11 +204,9 @@ func (h *OAuthHandler) Callback(c *okapi.Context) error {
 	return nil
 }
 
-// issueLoginToken mints a CLI login token for a user who just re-authenticated
-// via SSO, stashes it under a single-use hand-off reference, and redirects the
-// browser to the display page with that reference (never the token itself). This
-// is the SSO half of the OpenShift-style "Copy login command": a fresh IdP login
-// then a one-time token hand-off, so the secret never rides in the redirect URL.
+// issueLoginToken mints a CLI login token for a user who just re-authenticated via SSO, stashes
+// it under a single-use hand-off reference, and redirects to the display page with that reference
+// — never the token itself, so the secret never rides in the redirect URL.
 func (h *OAuthHandler) issueLoginToken(c *okapi.Context, user *models.User, slug string) error {
 	tok, err := h.loginTokens.Issue(user.ID, nil, nil)
 	if err != nil {
@@ -231,11 +226,9 @@ func (h *OAuthHandler) issueLoginToken(c *okapi.Context, user *models.User, slug
 	return nil
 }
 
-// issueCliLoginToken is the SSO half of `miabi login`'s loopback flow: after a
-// fresh IdP login it mints a CLI token, stashes it behind a single-use code, and
-// redirects the browser straight to the CLI's local callback with that code —
-// the token never rides in the redirect URL. redirect was validated as loopback
-// when the flow started.
+// issueCliLoginToken is the SSO half of `miabi login`'s loopback flow: after a fresh IdP login it
+// mints a CLI token, stashes it behind a single-use code, and redirects the browser to the CLI's
+// local callback with that code. redirect was validated as loopback when the flow started.
 func (h *OAuthHandler) issueCliLoginToken(c *okapi.Context, user *models.User, slug, redirect, cliState string) error {
 	tok, err := h.loginTokens.Issue(user.ID, nil, nil)
 	if err != nil {
@@ -268,9 +261,6 @@ func parseIntent(intent string) (kind, redirect, cliState string, ok bool) {
 	}
 }
 
-// --- helpers ---
-
-// callbackURI returns the absolute redirect URI registered with the provider.
 func (h *OAuthHandler) callbackURI(c *okapi.Context, slug string) string {
 	base := strings.TrimRight(h.cfg.ApiBaseURL, "/")
 	if base == "" {

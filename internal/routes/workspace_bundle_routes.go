@@ -12,12 +12,9 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// workspaceBundleRoutes registers portable workspace backup & restore.
-//
-// Admin-only throughout, including the read paths: a bundle listing names every
-// app, database and volume a workspace owns, and restoring one creates
-// resources, moves data and can add members. That is workspace administration,
-// not a developer action.
+// workspaceBundleRoutes registers portable workspace backup and restore. Admin-only throughout,
+// including reads: a listing names every app, database and volume a workspace owns, and a
+// restore creates resources, moves data and can add members — workspace administration.
 func (r *Router) workspaceBundleRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{
 		Name:        "Portable Backup",

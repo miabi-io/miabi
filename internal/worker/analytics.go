@@ -32,10 +32,9 @@ const (
 	analyticsStopTimeout = 10 * time.Second
 )
 
-// AnalyticsConsumer reads Goma Gateway's per-request event stream, rolls events
-// into minute buckets (models.AnalyticsRollup) and persists closed buckets on an
-// interval. It resolves each event's workspace from the route name and its app
-// from a cached route→app map. Holds no per-request rows and no PII.
+// AnalyticsConsumer reads Goma Gateway's per-request event stream, rolls events into minute
+// buckets and persists closed buckets on an interval. It resolves each event's workspace from
+// the route name and its app from a cached route->app map. Holds no per-request rows and no PII.
 type AnalyticsConsumer struct {
 	rdb    *redis.Client
 	routes *repositories.RouteRepository
@@ -59,11 +58,9 @@ type AnalyticsConsumer struct {
 	routeLoaded time.Time
 }
 
-// NewAnalyticsConsumer wires the consumer. consumer is this worker's unique name
-// within the group (so pending-message ownership is per-worker). retentionDays is
-// evaluated on each prune; nil disables pruning (keep forever). live is the
-// tracker the API reads from — passed in rather than built here so the window is
-// configured once, at the call site that owns it.
+// NewAnalyticsConsumer wires the consumer. consumer is this worker's unique name within the group,
+// so pending-message ownership is per-worker. retentionDays is evaluated on each prune; nil
+// disables pruning. live is passed in rather than built here, so the window is configured once.
 func NewAnalyticsConsumer(rdb *redis.Client, routes *repositories.RouteRepository, store *repositories.AnalyticsRepository, stream, consumer string, flushEvery time.Duration, retentionDays func() int, live *analytics.LiveTracker) *AnalyticsConsumer {
 	if flushEvery <= 0 {
 		flushEvery = 15 * time.Second
@@ -80,13 +77,9 @@ func NewAnalyticsConsumer(rdb *redis.Client, routes *repositories.RouteRepositor
 	}
 }
 
-// Run consumes until ctx is cancelled. It reads batches in one goroutine and
-// flushes closed buckets on a ticker in another, sharing the aggregator (which is
-// concurrency-safe).
-//
-// It returns only once the final flush has completed, so a caller can wait for
-// it before closing the database — buckets live in memory until their minute
-// closes, and returning early would drop them.
+// Run consumes until ctx is cancelled, reading batches in one goroutine and flushing closed
+// buckets on a ticker in another. It returns only once the final flush completed, so a caller can
+// wait before closing the database — buckets live in memory until their minute closes.
 func (c *AnalyticsConsumer) Run(ctx context.Context) {
 	if err := c.ensureGroup(ctx); err != nil {
 		logger.Warn("analytics: consumer group setup failed; analytics disabled", "error", err)
@@ -146,11 +139,9 @@ func (c *AnalyticsConsumer) Run(ctx context.Context) {
 	}
 }
 
-// Start runs the consumer in the background and returns a function that stops it
-// and waits for the final flush. Call the returned function during shutdown,
-// before closing the database — the open minute buckets are only written by that
-// last flush. It gives up after analyticsStopTimeout so a stuck flush can't
-// block the process from exiting. Safe to call more than once.
+// Start runs the consumer in the background and returns a function that stops it and waits for the
+// final flush. Call it during shutdown, before closing the database. It gives up after
+// analyticsStopTimeout so a stuck flush can't block exit. Safe to call more than once.
 func (c *AnalyticsConsumer) Start(ctx context.Context) func() {
 	runCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
@@ -184,9 +175,8 @@ func (c *AnalyticsConsumer) ensureGroup(ctx context.Context) error {
 	return nil
 }
 
-// ingestMessage parses one stream message and folds it into the aggregator.
-// ingestMessage rolls one event into its bucket and reports the visitor sighting
-// the caller should record, if the event counts towards live visitors.
+// ingestMessage rolls one event into its bucket and reports the visitor sighting the caller should
+// record, if the event counts towards live visitors.
 func (c *AnalyticsConsumer) ingestMessage(msg redis.XMessage) (analytics.LiveVisit, bool) {
 	raw, ok := msg.Values["e"].(string)
 	if !ok || raw == "" {

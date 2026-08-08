@@ -37,16 +37,9 @@ type Job struct {
 	RequiredLabels []string
 }
 
-// SelectRunner picks the least-loaded eligible runner for job, or ErrNoRunner
-// when none can take it right now. Eligibility is:
-//
-//	connected AND enabled AND not cordoned
-//	  AND labels ⊇ required
-//	  AND in scope (owned by the workspace, or shared + plan allows)
-//	  AND active leases < declared concurrency
-//
-// Among eligible runners the one with the fewest active leases wins (ties break
-// toward the lower id for determinism).
+// SelectRunner picks the least-loaded eligible runner for job, or ErrNoRunner when none can take it right
+// now. Eligible means connected, enabled, not cordoned, labels superset of required, in scope (owned by the
+// workspace or shared with plan permission), and active leases below declared concurrency.
 func (s *Service) SelectRunner(job Job) (*models.Runner, error) {
 	// Shared runners are only in scope when the workspace's plan grants the
 	// platform-runners capability; ListSchedulable narrows the candidate set to

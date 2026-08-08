@@ -164,10 +164,9 @@ func TestABadImageNeverTouchesTheLiveContainer(t *testing.T) {
 	}
 }
 
-// The case edgegateway.SafeUpdate could not survive: the test passed (or was skipped)
-// but the promoted container will not come up. Without a rollback the component is
-// simply gone — which for the control plane means the panel is down and nothing can
-// bring it back but a human with a shell.
+// The case edgegateway.SafeUpdate could not survive: the test passed or was skipped, but the promoted
+// container will not come up. Without a rollback the component is simply gone — which for the control plane
+// means the panel is down and nothing can bring it back but a human with a shell.
 func TestAFailedPromotionRollsBackToThePreviousImage(t *testing.T) {
 	f := newFake()
 	f.running["miabi"] = "miabi:v1"
@@ -189,11 +188,9 @@ func TestAFailedPromotionRollsBackToThePreviousImage(t *testing.T) {
 	}
 }
 
-// The test container exists to catch a bad image BEFORE it takes the live one's
-// ports. "Still running" is a weak claim: a gateway with a broken config boots, stays
-// up, and serves nothing. Where the container reports health, the test phase must
-// demand it — otherwise the failure surfaces only after promotion, when the live
-// gateway is already gone.
+// The test container exists to catch a bad image BEFORE it takes the live one's ports. "Still running" is a
+// weak claim: a gateway with a broken config boots, stays up, and serves nothing. Where the container reports
+// health, the test phase must demand it — otherwise the failure surfaces after the live one is gone.
 func TestAnUnhealthyTestContainerNeverGetsPromoted(t *testing.T) {
 	f := newFake()
 	f.running["gw"] = "goma:v1"
@@ -264,10 +261,9 @@ func TestNoPreviousImageIsNotARollbackFailure(t *testing.T) {
 	}
 }
 
-// A hard pull breaks the two cases most likely at install time: an air-gapped host,
-// and an operator running a locally built or `docker load`ed image. Docker's own
-// `docker run` uses what is on the host; so must we. (Caught by running install.sh
-// against a locally built miabi/miabi, which failed with "not found".)
+// A hard pull breaks the two cases most likely at install time: an air-gapped host, and an operator running a
+// locally built or `docker load`ed image. Docker's own `docker run` uses what is on the host; so must we.
+// Caught by running install.sh against a locally built miabi/miabi, which failed with "not found".
 func TestEnsureImageFallsBackToTheLocalCopy(t *testing.T) {
 	t.Run("registry unreachable but image is local", func(t *testing.T) {
 		f := newFake()

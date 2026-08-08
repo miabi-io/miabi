@@ -11,14 +11,12 @@ import (
 	"github.com/miabi-io/miabi/internal/handlers"
 )
 
-// adminRoutes registers platform-admin management endpoints under /admin. Every
-// route requires an authenticated platform super-admin.
+// adminRoutes registers platform-admin endpoints under /admin; every route requires a super-admin.
 func (r *Router) adminRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/admin").WithTagInfo(okapi.GroupTag{Name: "Admin", Description: "Platform administration: users, settings, events, metrics, jobs."})
 	admin := []okapi.Middleware{r.authenticate, r.systemAdmin}
 
 	return []okapi.RouteDefinition{
-		// Users.
 		{
 			Method:      http.MethodGet,
 			Path:        "/users",
@@ -133,7 +131,6 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Response:    &dto.Response[handlers.AdminResetPasswordResponse]{},
 		},
 
-		// Workspaces (platform admin).
 		{
 			Method:      http.MethodGet,
 			Path:        "/workspaces",
@@ -176,8 +173,6 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Summary:     "Encryption posture (per-workspace keys, auto-rotation, gateway config encryption)",
 		},
 
-		// Domains (platform admin): list/search every workspace's domains, inspect a
-		// domain with its dependent routes, and validate ownership (manual or forced).
 		{
 			Method:      http.MethodGet,
 			Path:        "/domains",
@@ -228,9 +223,6 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Summary:     "Lift a domain ban",
 		},
 
-		// Routes (platform admin): list every workspace's routes with gateway sync
-		// status, and resync all routes by re-rendering each workspace's config from
-		// the database.
 		{
 			Method:      http.MethodGet,
 			Path:        "/routes",
@@ -249,7 +241,6 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Response:    &dto.Response[handlers.ResyncSummary]{},
 		},
 
-		// Metrics.
 		{
 			Method:      http.MethodGet,
 			Path:        "/metrics",
@@ -278,7 +269,6 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Summary:     "Export the platform audit log (JSON/CSV)",
 		},
 
-		// Events (audit feed).
 		{
 			Method:      http.MethodGet,
 			Path:        "/events",
@@ -326,7 +316,6 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Response:    &dto.Response[dto.MessageData]{},
 		},
 
-		// Settings.
 		{
 			Method:      http.MethodGet,
 			Path:        "/settings",
@@ -345,7 +334,6 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Request:     &handlers.UpdateSettingsRequest{},
 		},
 
-		// Plans (per-workspace resource limits & capabilities).
 		{
 			Method:      http.MethodGet,
 			Path:        "/plans",
@@ -431,7 +419,6 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Summary:     "Clear a workspace's quota overrides",
 		},
 
-		// Deployment config (platform image catalog).
 		{
 			Method:      http.MethodGet,
 			Path:        "/deployment-config",
@@ -450,7 +437,6 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Request:     &handlers.UpdateDeploymentConfigRequest{},
 		},
 
-		// Jobs.
 		{
 			Method:      http.MethodGet,
 			Path:        "/jobs",
@@ -469,8 +455,7 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Response:    &dto.Response[handlers.JobStats]{},
 		},
 
-		// Platform backup (Enterprise; gated platform_backup → 402 in CE). Disaster
-		// recovery for Miabi's own control-plane database and platform volumes.
+		// Platform backup (Enterprise; gated platform_backup → 402 in CE).
 		{
 			Method:      http.MethodGet,
 			Path:        "/platform-backup/settings",
@@ -556,6 +541,113 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Summary:     "Discover candidate platform volumes",
 		},
 
+		// Recovery points: the artifact sets `miabi restore` consumes to rebuild on a fresh host.
+		{
+			Method:      http.MethodGet,
+			Path:        "/platform-backup/sets",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminPlatformBackup.ListSets,
+			Summary:     "List platform recovery points",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/platform-backup/sets",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminPlatformBackup.CreateSet),
+			Summary:     "Take a full platform recovery point now",
+			Request:     &handlers.CreatePlatformBackupSetRequest{},
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/platform-backup/sets/{id}",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminPlatformBackup.GetSet,
+			Summary:     "Get a platform recovery point",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/platform-backup/sets/{id}/verify",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminPlatformBackup.VerifySet),
+			Summary:     "Verify a recovery point without restoring (artifacts present, identity envelope opens)",
+			Request:     &handlers.VerifyPlatformBackupSetRequest{},
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/platform-backup/discover",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminPlatformBackup.Discover,
+			Summary:     "List the recovery points in the backup target, including ones this platform has no record of",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/platform-backup/discover/import",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminPlatformBackup.Import),
+			Summary:     "Adopt a discovered recovery point into this platform",
+			Request:     &handlers.ImportRecoveryPointRequest{},
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/platform-backup/sets/{id}/restore-selected",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminPlatformBackup.RestoreSelected),
+			Summary:     "Restore selected artifacts of a recovery point into this platform (destructive)",
+			Request:     &handlers.RestoreSelectedRequest{},
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/platform-backup/sets/{id}/retry",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminPlatformBackup.RetrySet,
+			Summary:     "Re-run the failed artifacts of a recovery point",
+		},
+		{
+			Method:      http.MethodDelete,
+			Path:        "/platform-backup/sets/{id}",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminPlatformBackup.DeleteSet,
+			Summary:     "Delete a platform recovery point and its artifacts",
+		},
+
+		// Post-restore recovery. Not entitlement-gated: a platform recovered onto
+		// fresh hardware must be able to finish recovering even before it has
+		// reached a license server.
+		{
+			Method:      http.MethodGet,
+			Path:        "/recovery",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminRecovery.Status,
+			Summary:     "Whether this platform is recovering from a restore, and the last report",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/recovery/reconcile",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminRecovery.Reconcile,
+			Summary:     "Converge restored state onto this host and report what could not be recovered",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/recovery/complete",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminRecovery.Complete),
+			Summary:     "Finish recovery: resume schedules and certificate issuance",
+			Request:     &handlers.CompleteRecoveryRequest{},
+		},
+
 		// Commercial license (Enterprise). In Community builds Install
 		// returns 402 and Get reports edition "community".
 		{
@@ -594,7 +686,6 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Summary:     "License warnings for the admin banner",
 		},
 
-		// OAuth providers.
 		{
 			Method:      http.MethodGet,
 			Path:        "/oauth/providers",
@@ -677,7 +768,6 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// oauthPublicRoutes registers the unauthenticated SSO login flow.
 func (r *Router) oauthPublicRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/auth/oauth").WithTagInfo(okapi.GroupTag{Name: "OAuth", Description: "Public single sign-on (SSO) login flow."})
 

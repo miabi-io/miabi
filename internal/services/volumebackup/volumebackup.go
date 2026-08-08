@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package volumebackup archives a managed volume's contents (compressed) to the
-// workspace's S3 target using the ecosystem volume-bkup tool as a one-shot
-// container, and restores it. Runs synchronously, mirroring the database backup
-// service. S3 is required (there is no local volume-backup destination).
+// Package volumebackup archives a managed volume's contents to the workspace's S3 target using the ecosystem
+// volume-bkup tool as a one-shot container, and restores it. Runs synchronously, mirroring the database
+// backup service. S3 is required — there is no local volume-backup destination.
 package volumebackup
 
 import (
@@ -83,10 +82,9 @@ func (s *Service) SetImageResolver(r ImageResolver) { s.images = r }
 // row keeps only a bounded tail + a reference. nil keeps DB-tail-only.
 func (s *Service) SetLogStore(store *logstore.Store) { s.logs = store }
 
-// externalizeLog moves a terminal volume-backup's full output into the shared
-// log store and trims the row to a bounded tail + a reference. No-op when the
-// store is disabled or already externalized; on any error the full log stays in
-// the DB tail.
+// externalizeLog moves a terminal volume-backup's full output into the shared log store and trims the row
+// to a bounded tail + a reference. No-op when the store is disabled or already externalized; on any error
+// the full log stays in the DB tail.
 func (s *Service) externalizeLog(b *models.VolumeBackup) {
 	if !s.logs.Enabled() || b.LogRef != "" {
 		return

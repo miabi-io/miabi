@@ -18,21 +18,17 @@ import (
 // agent is not currently connected.
 var ErrNodeOffline = errors.New("node is offline (no connected agent)")
 
-// Clients resolves a Docker client for a given server/node id. The local node
-// uses the direct engine client; remote nodes use a tunneled client registered
-// by the connection manager when their agent connects.
-//
-// A server id of 0 (unset) resolves to the local node, so code paths that don't
-// yet carry placement keep working on single-node installs.
+// Clients resolves a Docker client for a given server/node id: the local node uses the direct
+// engine client, remote nodes a tunneled client registered when their agent connects. A server id
+// of 0 resolves to the local node, so paths that don't carry placement still work single-node.
 type Clients struct {
 	mu      sync.RWMutex
 	localID uint
 	local   docker.Client
 	remote  map[uint]docker.Client
 
-	// Container IDs of Miabi's own runtime, used to stop these from being
-	// killed via the admin containers list. localSelf is the control-plane
-	// (manager) container; remoteSelf holds each connected node's agent
+	// Container IDs of Miabi's own runtime, used to stop these from being killed via the admin containers
+	// list. localSelf is the control-plane (manager) container; remoteSelf holds each connected node's agent
 	// container, as reported by the agent at connect time.
 	localSelf  string
 	remoteSelf map[uint]string
@@ -112,35 +108,14 @@ func (c *Clients) For(serverID uint) (docker.Client, error) {
 	return cl, nil
 }
 
-// ErrTaskUnreachable is returned when a swarm service HAS a running task, but no
-// engine we hold a client for can see its container — Swarm placed it on a node
-// with no Miabi agent (an "unmanaged" swarm member).
-//
-// Such a node runs the workload perfectly well: Swarm ships the task to it over the
-// swarm control plane and never involves Miabi. But anything that must read the
-// container itself (stats, exec, top) has no engine to read it through. Logs are the
-// exception — the manager aggregates them (docker.StreamServiceLogs).
-//
-// It is deliberately distinct from docker.ErrNotFound ("nothing is running"):
-// reporting "no active container" for a service Swarm reports as 1/1 is simply
-// false, and sends the user looking for the wrong problem.
+// ErrTaskUnreachable is returned when a swarm service HAS a running task but no engine we hold a
+// client for can see its container — Swarm placed it on a node with no Miabi agent. It is
+// distinct from docker.ErrNotFound: reporting "nothing running" for a 1/1 service is simply false.
 var ErrTaskUnreachable = errors.New("the service's task runs on a swarm node with no Miabi agent")
 
-// ForServiceTask resolves the engine and container id of a task of the named swarm
-// service, wherever the scheduler placed it.
-//
-// A service app has no fixed node: Swarm places its task on whichever node it
-// likes, and ONLY that node's engine can see the resulting container. The manager
-// can enumerate a service's tasks but cannot read their containers.
-//
-// Correlating the task's swarm node id back to a Miabi node is not reliable —
-// Server.SwarmNodeID is only persisted when Miabi itself joined the node to the
-// swarm, and is empty for a node that joined any other way. So ask the engines
-// directly: the local one first (free, and the common case), then each connected
-// node. Exactly one node runs a given task, so the first hit is it.
-//
-// Returns ErrTaskUnreachable when the service is running but on a node we cannot
-// see, and docker.ErrNotFound when nothing is running at all.
+// ForServiceTask resolves the engine and container id of a task of the named swarm service,
+// wherever the scheduler placed it. Correlating the task's swarm node id is unreliable, so it asks
+// the engines directly — local first, then each connected node. Exactly one node runs the task.
 func (c *Clients) ForServiceTask(ctx context.Context, serviceName string) (docker.Client, string, error) {
 	c.mu.RLock()
 	engines := make([]docker.Client, 0, len(c.remote)+1)

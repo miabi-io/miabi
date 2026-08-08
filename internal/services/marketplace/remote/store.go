@@ -18,13 +18,9 @@ import (
 // cron, and a 304 keeps serving the decoded view regardless.
 const defaultTTL = 24 * time.Hour
 
-// Store keeps the synced marketplace catalog: it fetches the export bundle
-// conditionally, caches it in Redis, and serves a decoded, digest-verified
-// in-memory view to the marketplace catalog. Safe for concurrent use.
-//
-// A nil client (empty MIABI_MARKETPLACE_URL) is the air-gapped kill switch:
-// Enabled() is false, Sync is a no-op, and the catalog falls back to the
-// embedded official floor only.
+// Store keeps the synced marketplace catalog: it fetches the export bundle conditionally, caches it in
+// Redis, and serves a decoded, digest-verified in-memory view. A nil client (empty MIABI_MARKETPLACE_URL)
+// is the air-gapped kill switch: Sync is a no-op and the catalog falls back to the embedded floor.
 type Store struct {
 	client *Client
 	cache  Cache
@@ -92,7 +88,6 @@ func (s *Store) Sync(ctx context.Context) error {
 	return nil
 }
 
-// set decodes a bundle and atomically swaps the in-memory view.
 func (s *Store) set(data []byte, etag string) error {
 	tpls, err := decode(data)
 	if err != nil {

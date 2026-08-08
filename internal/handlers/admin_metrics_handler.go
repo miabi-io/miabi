@@ -184,9 +184,9 @@ func (h *AdminMetricsHandler) collect(ctx context.Context) PlatformMetrics {
 	return pm
 }
 
-// collectWorkers lists the connected asynq worker servers via the inspector.
-// The control-plane server runs an embedded worker; standalone workers connect
-// to the same Redis. Returns an empty slice when the inspector is unavailable.
+// collectWorkers lists the connected asynq worker servers via the inspector. The control-plane
+// server runs an embedded worker and standalone workers share the same Redis. Returns an empty
+// slice when the inspector is unavailable.
 func (h *AdminMetricsHandler) collectWorkers() []WorkerInfo {
 	if h.inspector == nil {
 		return nil
@@ -241,7 +241,6 @@ func (h *AdminMetricsHandler) countArgs(model any, where string, args ...any) in
 	return n
 }
 
-// sumBytes returns COALESCE(SUM(col),0) over a model's rows.
 func (h *AdminMetricsHandler) sumBytes(model any, col string) int64 {
 	var n int64
 	h.db.Model(model).Select("COALESCE(SUM(" + col + "),0)").Scan(&n)

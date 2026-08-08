@@ -32,8 +32,6 @@ func eventJSON(e *models.AuditLog) ([]byte, error) {
 	})
 }
 
-// --- webhook sink: POST an NDJSON batch ---
-
 type webhookSink struct {
 	url    string
 	auth   string
@@ -76,8 +74,6 @@ func (s *webhookSink) Ship(events []models.AuditLog) error {
 	}
 	return nil
 }
-
-// --- syslog sink: one RFC 5424 message per event over TCP/UDP ---
 
 type syslogSink struct {
 	network string // "tcp" | "udp"

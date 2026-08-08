@@ -10,7 +10,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// outDoc is the on-the-wire form of a resource: identity plus its typed spec.
 type outDoc struct {
 	APIVersion string `yaml:"apiVersion"`
 	Kind       Kind   `yaml:"kind"`
@@ -41,7 +40,6 @@ func Marshal(set *ResourceSet) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// spec returns the typed spec pointer for the resource's kind (nil if unset).
 func (r Resource) spec() any {
 	switch {
 	case r.Application != nil:

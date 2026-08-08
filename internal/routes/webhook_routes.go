@@ -12,8 +12,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// webhookRoutes registers workspace-scoped webhook routes. Viewer reads;
-// Admin manages (create/update/delete/test).
+// webhookRoutes registers workspace webhooks. Viewer reads; Admin creates, updates, deletes and tests.
 func (r *Router) webhookRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Webhooks", Description: "Outbound HTTP webhooks for application events."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {

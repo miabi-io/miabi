@@ -87,10 +87,9 @@ func (r *ApplicationRepository) SumResourcesByWorkspace(workspaceID, excludeAppI
 	return row.CPU, row.Mem, nil
 }
 
-// SumRunningGPUsByWorkspace returns the aggregate GPU units (GPUCount × replicas)
-// held by a workspace's *running* apps — the live allocation the GPU quota is
-// checked against. A stopped app holds nothing. excludeAppID = 0 excludes
-// nothing; pass the app being (re)deployed so its own units aren't double-counted.
+// SumRunningGPUsByWorkspace returns the aggregate GPU units (GPUCount x replicas) held by a
+// workspace's *running* apps — the live allocation the GPU quota is checked against. Pass the
+// app being redeployed as excludeAppID so its own units aren't double-counted; 0 excludes none.
 func (r *ApplicationRepository) SumRunningGPUsByWorkspace(workspaceID, excludeAppID uint) (int64, error) {
 	var total int64
 	q := r.db.Model(&models.Application{}).

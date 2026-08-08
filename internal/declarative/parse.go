@@ -16,16 +16,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ErrNoResources reports that a manifest source parsed with zero resources (the
-// path exists but holds no miabi.io/v1 documents). Callers distinguish it
-// from a missing path (fs.ErrNotExist) to decide whether an empty result is an
-// intentional teardown or an error.
+// ErrNoResources reports that a manifest source parsed with zero resources: the path exists but
+// holds no miabi.io/v1 documents. Callers distinguish it from a missing path (fs.ErrNotExist) to
+// decide whether an empty result is an intentional teardown or an error.
 var ErrNoResources = errors.New("no declarative resources found")
 
-// rawDoc is the kind-agnostic head of a declarative document: identity plus
-// undecoded metadata and spec nodes that Parse routes into typed structs. Both
-// are kept as raw nodes so they can be strictly decoded (rejecting unknown
-// fields) — yaml.Node.Decode cannot enforce KnownFields, but decodeSpec can.
+// rawDoc is the kind-agnostic head of a declarative document: identity plus undecoded metadata
+// and spec nodes that Parse routes into typed structs. Both stay raw so they can be strictly
+// decoded — yaml.Node.Decode cannot enforce KnownFields, but decodeSpec can.
 type rawDoc struct {
 	APIVersion string    `yaml:"apiVersion"`
 	Kind       Kind      `yaml:"kind"`
@@ -38,10 +36,9 @@ type rawProjectSpec struct {
 	Resources   []yaml.Node `yaml:"resources,omitempty"`
 }
 
-// Parse decodes a single- or multi-document YAML stream into a normalized,
-// validated set of resources. Unknown spec fields are rejected so typos surface
-// rather than being silently dropped. A Project's inline resources are flattened
-// into the set.
+// Parse decodes a single- or multi-document YAML stream into a normalized, validated set of
+// resources. Unknown spec fields are rejected so typos surface rather than being silently
+// dropped. A Project's inline resources are flattened into the set.
 func Parse(data []byte) (*ResourceSet, error) {
 	resources, err := parseStream(data, "")
 	if err != nil {

@@ -14,11 +14,9 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// nsDistributor is a Distributor whose registry lives at host and whose
-// namespaces are the ws_<id> form. It mirrors registryserver's rule (whose own
-// behaviour — name resolution, digest refs, nested repositories — is covered in
-// that package); what matters here is that the deploy path consults it at all
-// and refuses the deploy when it says no.
+// nsDistributor is a Distributor whose registry lives at host and whose namespaces are the ws_<id>
+// form. It mirrors registryserver's rule; what matters here is that the deploy path consults it at
+// all and refuses the deploy when it says no.
 type nsDistributor struct{ host string }
 
 func (d nsDistributor) DistributionEnabled() bool             { return true }
@@ -48,9 +46,9 @@ func TestAuthorizedImageRefRefusesForeignNamespace(t *testing.T) {
 	h := &DeployHandler{distributor: nsDistributor{host: host}}
 	app := &models.Application{WorkspaceID: 7}
 
-	// The exploit: an app in workspace 7 naming workspace 8's image. The pull that
-	// would follow authenticates with the platform credential, which every
-	// namespace accepts — so it has to be refused here or not at all.
+	// The exploit: an app in workspace 7 naming workspace 8's image. The pull that would follow
+	// authenticates with the platform credential, which every namespace accepts — so it has to be
+	// refused here or not at all.
 	for _, ref := range []string{
 		host + "/ws_8/api:latest",
 		host + "/ws_8/api@sha256:d0dd0f1b3c9a5e6a0d8e9f2a1b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e",

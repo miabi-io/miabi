@@ -8,16 +8,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// UIDModel is an embeddable mixin giving a resource a stable, globally-unique,
-// opaque identifier (UUIDv7) alongside its uint primary key. The PK stays the
-// internal handle (foreign keys, Docker labels, performance); the uid is the
-// portable, external one — the Terraform resource ID, the GitOps/backup
-// cross-install reference, and the non-enumerable handle in public URLs.
-//
-// Embed it anonymously so `obj.UID` is the string directly and JSON exposes
-// "uid". New rows get a UUIDv7 from BeforeCreate (time-ordered); the
-// gen_random_uuid() default backfills pre-existing rows when AutoMigrate adds
-// the column and is a safety net if the hook ever doesn't run.
+// UIDModel is an embeddable mixin giving a resource a stable UUIDv7 alongside its uint primary
+// key: the PK stays the internal handle, the uid is the portable external one (Terraform id,
+// GitOps/backup reference, non-enumerable public handle). Embed it anonymously.
 type UIDModel struct {
 	UID string `json:"uid" gorm:"type:uuid;uniqueIndex;not null;default:gen_random_uuid()"`
 }

@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package customrole manages admin-defined roles (permission sets) and enforces
-// the cardinal RBAC rule: no privilege escalation. A role may never grant a
-// permission its author does not already hold, and may never be assigned to give
-// a member more than the assigning admin has.
+// Package customrole manages admin-defined roles (permission sets) and enforces the cardinal RBAC rule:
+// no privilege escalation. A role may never grant a permission its author does not already hold, and
+// may never be assigned to give a member more than the assigning admin has.
 package customrole
 
 import (

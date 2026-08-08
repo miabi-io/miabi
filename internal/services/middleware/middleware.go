@@ -27,10 +27,9 @@ var (
 	ErrInvalidRule = mwcatalog.ErrInvalidRule
 )
 
-// WorkspaceSyncer re-renders a workspace's complete proxy config (its routes and
-// middlewares) into the gateway. The route service implements it; middlewares are
-// written as part of that workspace re-render rather than on their own, so a
-// route always sees the up-to-date definition of any middleware it references.
+// WorkspaceSyncer re-renders a workspace's complete proxy config — its routes and middlewares — into the
+// gateway. The route service implements it; middlewares are written as part of that re-render rather than
+// on their own, so a route always sees the up-to-date definition of any middleware it references.
 type WorkspaceSyncer interface {
 	SyncWorkspaceProxy(ctx context.Context, workspaceID uint) error
 }
@@ -140,11 +139,9 @@ func (s *Service) List(workspaceID uint) ([]models.Middleware, error) {
 	return s.repo.ListByWorkspace(workspaceID)
 }
 
-// SeedDefaults creates the workspace's default policy set (mwcatalog.DefaultSeed)
-// in one pass, syncing the proxy once at the end rather than per row. It is a
-// no-op when the workspace already owns any middleware, so it is safe to call
-// again and never clobbers user edits. Best-effort per row: a seed that fails to
-// create (e.g. a name collision from a partial earlier run) is skipped, not fatal.
+// SeedDefaults creates the workspace's default policy set in one pass, syncing the proxy once at the end
+// rather than per row. A no-op when the workspace already owns any middleware, so it is safe to call again
+// and never clobbers user edits. Best-effort per row: a seed that fails to create is skipped, not fatal.
 func (s *Service) SeedDefaults(ctx context.Context, workspaceID uint) error {
 	n, err := s.repo.CountByWorkspace(workspaceID)
 	if err != nil {

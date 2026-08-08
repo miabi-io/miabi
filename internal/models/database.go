@@ -46,11 +46,9 @@ type UpgradeProgress struct {
 	Error       string `json:"error,omitempty"`
 }
 
-// DatabaseInstance is a workspace-owned database server running as a container
-// (PostgreSQL/MySQL/MariaDB/Redis). A single instance hosts one or more logical
-// Databases (SQL engines), so small deployments can share one server across
-// apps instead of one container per database. Admin credentials are used to
-// create/drop the logical databases and are encrypted at rest.
+// DatabaseInstance is a workspace-owned database server running as a container. One instance
+// hosts one or more logical Databases (SQL engines), so small deployments share a server
+// instead of one container per database. Admin credentials are encrypted at rest.
 type DatabaseInstance struct {
 	UIDModel
 	ID          uint `json:"id" gorm:"primaryKey"`
@@ -83,19 +81,17 @@ type DatabaseInstance struct {
 	MountPath string `json:"mount_path,omitempty" gorm:"-"`
 	Host      string `json:"host"` // in-network DNS alias
 	Port      int    `json:"port"`
-	// NetworkName is the Docker network the instance's container joins — the
-	// workspace's default network, shared with the workspace's applications so
-	// they reach the database by its alias. The gateway network is reserved for
-	// exposed (routed) applications. Empty on legacy rows (fall back to gateway).
+	// NetworkName is the Docker network the instance joins — the workspace's default network,
+	// shared with its applications so they reach the database by alias. The gateway network is
+	// reserved for routed apps. Empty on legacy rows, which fall back to gateway.
 	NetworkName string `json:"network_name,omitempty"`
 	// Admin (superuser/root) credentials for the server. For Redis this is the
 	// requirepass password (AdminUser empty).
 	AdminUser        string `json:"admin_user"`
 	AdminPasswordEnc string `json:"-" gorm:"column:admin_password_enc"` // encrypted
-	// JWTPrivateKeyEnc is the encrypted Ed25519 private key used to mint client
-	// auth tokens for a libSQL instance. sqld is started with the matching public
-	// key (SQLD_AUTH_JWT_KEY), derived from this private key at bring-up. Empty for
-	// every other engine.
+	// JWTPrivateKeyEnc is the encrypted Ed25519 key used to mint client auth tokens for a libSQL
+	// instance; sqld starts with the matching public key (SQLD_AUTH_JWT_KEY), derived from it at
+	// bring-up. Empty for every other engine.
 	JWTPrivateKeyEnc string `json:"-" gorm:"column:jwt_private_key_enc"` // encrypted
 
 	// SizeBytes is the instance's on-disk size (sum of logical DBs for SQL, used
@@ -112,10 +108,9 @@ type DatabaseInstance struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 
-	// Upgrade carries live progress for a version upgrade. Persisted (as JSON) so
-	// it is visible across the API server and the worker that runs the job, and
-	// survives a restart. Nil when no upgrade is in flight; on failure it lingers
-	// with Phase="failed" until the next upgrade attempt clears it.
+	// Upgrade carries live progress for a version upgrade, persisted as JSON so it is visible
+	// across the API server and the worker running the job and survives a restart. Nil when idle;
+	// on failure it lingers with Phase="failed" until the next attempt clears it.
 	Upgrade *UpgradeProgress `json:"upgrade,omitempty" gorm:"serializer:json"`
 
 	Databases []Database `json:"databases,omitempty" gorm:"foreignKey:InstanceID"`
@@ -133,13 +128,9 @@ func EngineSupportsLogicalDatabases(e DBEngine) bool {
 		e == DBEngineMariaDB || e == DBEngineMongoDB
 }
 
-// EngineUsesLogicalDatabaseRecord reports whether an engine hangs its backups and
-// app connection injection off a logical Database row. This is the set of engines
-// from EngineSupportsLogicalDatabases plus libSQL: libSQL hosts a single database
-// (users cannot create more) but Miabi auto-creates one implicit Database row at
-// provision time so the existing per-database backup and injection pipeline is
-// reused unchanged. Redis, which has neither logical databases nor backups, is the
-// only engine excluded.
+// EngineUsesLogicalDatabaseRecord reports whether an engine hangs backups and app connection
+// injection off a logical Database row: EngineSupportsLogicalDatabases plus libSQL, which
+// gets one implicit row so the per-database pipeline is reused. Only Redis is excluded.
 func EngineUsesLogicalDatabaseRecord(e DBEngine) bool {
 	return EngineSupportsLogicalDatabases(e) || e == DBEngineLibSQL
 }
@@ -150,14 +141,9 @@ func (i *DatabaseInstance) SupportsLogicalDatabases() bool {
 	return EngineSupportsLogicalDatabases(i.Engine)
 }
 
-// NetworkNames returns every Docker network the instance's container joins: the
-// pinned primary network first (the alias-bearing default), then each other
-// attached network. Helper jobs (DDL, size probes, backup, restore) must join
-// this full set — not just the primary — so they always share a network with
-// the instance and can resolve it by name; attaching to only one risks landing
-// on a network the instance is not on. fallback (the gateway network) is used
-// when no primary is pinned (legacy rows provisioned before per-workspace
-// networking). The result is de-duplicated and never empty.
+// NetworkNames returns every Docker network the instance joins: the pinned primary first,
+// then the rest. Helper jobs (DDL, size probes, backup, restore) must join the full set or
+// risk landing on a network the instance is not on. De-duplicated and never empty.
 func (i *DatabaseInstance) NetworkNames(fallback string) []string {
 	primary := i.NetworkName
 	if primary == "" {

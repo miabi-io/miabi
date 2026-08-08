@@ -31,10 +31,9 @@ type ApplicationHandler struct {
 	upgrader websocket.Upgrader
 }
 
-// SetLogStore wires the shared execution-log store so deployment log reads
-// replay a finished deployment's full history from the store (falling back to
-// the DB tail when the store is disabled, the ref is empty, or the object is
-// gone). nil keeps DB-tail-only reads.
+// SetLogStore wires the shared execution-log store so deployment log reads replay a finished
+// deployment's full history, falling back to the DB tail when the store is disabled, the ref is
+// empty, or the object is gone. nil keeps DB-tail-only reads.
 func (h *ApplicationHandler) SetLogStore(s *logstore.Store) { h.logs = s }
 
 func NewApplicationHandler(svc *application.Service, bus *eventbus.Bus, auditLog *audit.Logger) *ApplicationHandler {
@@ -59,8 +58,6 @@ func NewApplicationHandler(svc *application.Service, bus *eventbus.Bus, auditLog
 func (h *ApplicationHandler) SetAllowedOrigins(origins []string) {
 	h.upgrader.CheckOrigin = allowWSOrigin(origins)
 }
-
-// --- DTOs ---
 
 // PortSpecBody is a container port declaration in app create/update requests.
 type PortSpecBody struct {
@@ -89,11 +86,9 @@ type CreateAppRequest struct {
 		Builder     string            `json:"builder"`
 		Buildpacks  []string          `json:"buildpacks"`
 		BuildEnv    map[string]string `json:"build_env"`
-		// UsePipeline adopts the pipeline-as-code the repository carries at
-		// .miabi/pipeline.yaml (git source only), so deploys run through it instead
-		// of building directly. Check with POST /git/inspect first to see whether
-		// the repository has one; a repository that turns out to carry none still
-		// creates the app, which then builds directly.
+		// UsePipeline adopts the pipeline-as-code the repository carries at .miabi/pipeline.yaml (git
+		// source only), so deploys run through it instead of building directly. A repository that turns
+		// out to carry none still creates the app, which then builds directly.
 		UsePipeline     bool           `json:"use_pipeline"`
 		RegistryID      *uint          `json:"registry_id"`
 		GitRepositoryID *uint          `json:"git_repository_id"`
@@ -175,10 +170,9 @@ type UpdateAppRequest struct {
 		// Metadata: user labels merged over the app's current metadata; reserved
 		// "miabi.io/" (built-in) keys are protected and cannot be changed here.
 		Metadata map[string]string `json:"metadata"`
-		// ContainerLabels: user-defined Docker labels stamped on the app's
-		// container(s) (Traefik &c.). Gated by the AllowCustomLabels plan capability
-		// + global kill-switch; reserved keys (io.miabi.*, com.docker.*) are
-		// rejected. nil = leave unchanged; a redeploy applies changes.
+		// ContainerLabels are user-defined Docker labels stamped on the app's container(s). Gated by the
+		// AllowCustomLabels plan capability plus a global kill-switch; reserved keys (io.miabi.*,
+		// com.docker.*) are rejected. nil leaves them unchanged; a redeploy applies changes.
 		ContainerLabels map[string]string `json:"container_labels"`
 		// Deployment strategy and canary tuning.
 		DeployStrategy            string `json:"deploy_strategy" enum:"recreate,rolling,canary"`
@@ -197,7 +191,6 @@ type UpdateAppRequest struct {
 	} `json:"body"`
 }
 
-// toPortSpecs maps request port bodies to service PortSpecs.
 func toPortSpecs(in []PortSpecBody) []application.PortSpec {
 	out := make([]application.PortSpec, 0, len(in))
 	for _, p := range in {
@@ -255,8 +248,6 @@ type AttachVolumeRequest struct {
 		Path     string `json:"path" required:"true"`
 	} `json:"body"`
 }
-
-// --- App CRUD ---
 
 func (h *ApplicationHandler) Create(c *okapi.Context, req *CreateAppRequest) error {
 	wsID := middlewares.WorkspaceID(c)
@@ -470,8 +461,6 @@ func (h *ApplicationHandler) Delete(c *okapi.Context) error {
 	return message(c, "application deleted")
 }
 
-// --- Env vars ---
-
 func (h *ApplicationHandler) ListEnvVars(c *okapi.Context) error {
 	app, err := h.load(c)
 	if err != nil {
@@ -543,8 +532,6 @@ func (h *ApplicationHandler) DeleteEnvVar(c *okapi.Context) error {
 	return message(c, changeMsg("environment variable deleted", h.markRedeploy(c, app)))
 }
 
-// --- Container labels (Traefik &c.) ---
-
 // SetLabelsRequest replaces an app's user-defined Docker labels wholesale (the
 // Detail page edits locally and PUTs the full set).
 type SetLabelsRequest struct {
@@ -567,10 +554,9 @@ func (h *ApplicationHandler) ListLabels(c *okapi.Context) error {
 	return ok(c, labels)
 }
 
-// SetLabels replaces the app's user-defined container labels. Gated by the
-// AllowCustomLabels plan capability + global kill-switch; reserved keys are
-// rejected (422). Changes apply on the next deploy (redeploy-required), exactly
-// like editing ports/volumes/env vars.
+// SetLabels replaces the app's user-defined container labels. Gated by the AllowCustomLabels
+// plan capability plus a global kill-switch; reserved keys are rejected (422). Changes apply on
+// the next deploy, exactly like editing ports, volumes or env vars.
 func (h *ApplicationHandler) SetLabels(c *okapi.Context, req *SetLabelsRequest) error {
 	app, err := h.load(c)
 	if err != nil {
@@ -600,8 +586,6 @@ func (h *ApplicationHandler) mapLabelErr(c *okapi.Context, err error) error {
 		return c.AbortInternalServerError("failed to update labels", err)
 	}
 }
-
-// --- Volume mounts ---
 
 func (h *ApplicationHandler) AttachVolume(c *okapi.Context, req *AttachVolumeRequest) error {
 	app, err := h.load(c)
@@ -705,15 +689,12 @@ func (h *ApplicationHandler) markRedeploy(c *okapi.Context, app *models.Applicat
 	return true
 }
 
-// changeMsg appends a "redeploy required" note when a config change needs one.
 func changeMsg(base string, redeployRequired bool) string {
 	if redeployRequired {
 		return base + " — redeploy required"
 	}
 	return base
 }
-
-// --- Deploy / rollback ---
 
 func (h *ApplicationHandler) Deploy(c *okapi.Context, req *DeployRequest) error {
 	app, err := h.load(c)
@@ -725,10 +706,9 @@ func (h *ApplicationHandler) Deploy(c *okapi.Context, req *DeployRequest) error 
 		return h.mapErr(c, err)
 	}
 	h.record(c, app.WorkspaceID, "app.deploy", app.ID)
-	// An app whose repository owns a pipeline deploys by running it: return the
-	// run so the client follows its logs instead of a deployment's. Only an app
-	// with an adopted pipeline can reach this branch — a direct deploy still
-	// returns the bare Deployment, so existing clients see no change.
+	// An app whose repository owns a pipeline deploys by running it: return the run so the client follows its
+	// logs instead of a deployment's. Only an app with an adopted pipeline can reach this branch — a direct
+	// deploy still returns the bare Deployment, so existing clients see no change.
 	if res.Run != nil {
 		return created(c, PipelineRunAccepted{Kind: "pipeline_run", Run: res.Run})
 	}
@@ -820,8 +800,6 @@ func (h *ApplicationHandler) Rollback(c *okapi.Context, req *RollbackRequest) er
 	h.record(c, app.WorkspaceID, "app.rollback", app.ID)
 	return created(c, dep)
 }
-
-// --- Canary deployment ---
 
 type StartCanaryRequest struct {
 	Body struct {
@@ -967,7 +945,6 @@ func (h *ApplicationHandler) DeleteRelease(c *okapi.Context) error {
 	return message(c, "release deleted")
 }
 
-// loadRelease resolves the app and release from the route, enforcing ownership.
 func (h *ApplicationHandler) loadRelease(c *okapi.Context) (*models.Application, *models.Release, error) {
 	app, err := h.load(c)
 	if err != nil {
@@ -1095,8 +1072,6 @@ func (h *ApplicationHandler) DeploymentLogsHistory(c *okapi.Context) error {
 		Truncated: dep.LogTruncated,
 	})
 }
-
-// --- helpers ---
 
 func (h *ApplicationHandler) load(c *okapi.Context) (*models.Application, error) {
 	id, err := resolveID(c.Param("appID"), h.svc.IDByUID)

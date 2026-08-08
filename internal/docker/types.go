@@ -22,10 +22,9 @@ type Info struct {
 	Images        int    `json:"images"`
 	CPUs          int    `json:"cpus"`
 	MemTotal      int64  `json:"mem_total"`
-	// Runtimes are the container runtimes the daemon advertises (docker info).
-	// The "nvidia" key is present exactly when the NVIDIA Container Toolkit is
-	// installed, so it is how the control plane decides a node is GPU-capable
-	// before ever probing it.
+	// Runtimes are the container runtimes the daemon advertises (docker info). The "nvidia" key is
+	// present exactly when the NVIDIA Container Toolkit is installed, so it is how the control plane
+	// decides a node is GPU-capable before ever probing it.
 	Runtimes []string `json:"runtimes,omitempty"`
 }
 
@@ -61,17 +60,15 @@ type ContainerNetwork struct {
 	Name      string `json:"name"`
 	IPAddress string `json:"ip_address"`
 	Gateway   string `json:"gateway,omitempty"`
-	// Aliases are the container's DNS aliases on this network. They are the only
-	// stable way to address it, so moving a container between networks (see the
-	// bridge -> overlay migration in services/network) must carry them across
-	// verbatim rather than recomputing them.
+	// Aliases are the container's DNS aliases on this network — the only stable way to address it, so
+	// moving a container between networks (see the bridge -> overlay migration in services/network)
+	// must carry them across verbatim rather than recomputing them.
 	Aliases []string `json:"aliases,omitempty"`
 }
 
-// ContainerConfig is the full inspected configuration of a container, used by
-// the import flow to adopt a pre-existing container as a Miabi app. It
-// carries the runtime fields a summary Container omits (env, mounts, command,
-// limits, restart policy).
+// ContainerConfig is the full inspected configuration of a container, used by the import flow to
+// adopt a pre-existing container as a Miabi app. It carries the runtime fields a summary
+// Container omits (env, mounts, command, limits, restart policy).
 type ContainerConfig struct {
 	ID            string            `json:"id"`
 	Name          string            `json:"name"`
@@ -143,12 +140,9 @@ type RunSpec struct {
 	PortBindIPs map[string]string
 	// Mounts maps volume name -> container path.
 	Mounts map[string]string
-	// NoCopyVolumes disables Docker's copy-up (image→volume seeding) for the named
-	// volumes in Mounts. Set under the restricted security profile, where the
-	// volumes have already been seeded and chowned to the non-root UID by a prep
-	// step: copy-up would otherwise re-apply the image mount-dir's ownership on
-	// every start (even for an empty dir), undoing that chown and leaving the
-	// non-root process unable to write. Host binds are unaffected.
+	// NoCopyVolumes disables Docker's copy-up (image->volume seeding) for the named volumes in Mounts.
+	// Set under the restricted profile, where volumes are already seeded and chowned: copy-up would
+	// re-apply the image mount-dir's ownership on every start, leaving the process unable to write.
 	NoCopyVolumes bool
 	// Binds are host path -> container path bind mounts. Used only for
 	// allow-listed privileged host mounts (e.g. the Docker socket); the source
@@ -166,9 +160,8 @@ type RunSpec struct {
 	RestartPolicy string
 	// Healthcheck is the container health probe; nil disables it.
 	Healthcheck *HealthcheckSpec
-	// Container security (restricted security profile). User overrides the user
-	// the container runs as ("uid", "uid:gid", or a name); empty = the image's
-	// default user. NoNewPrivileges sets the no-new-privileges securityOpt;
+	// Container security (restricted profile). User overrides the user the container runs as ("uid",
+	// "uid:gid", or a name); empty means the image's default. NoNewPrivileges sets that securityOpt;
 	// CapDrop drops the listed Linux capabilities (e.g. "NET_RAW").
 	User            string
 	NoNewPrivileges bool
@@ -179,10 +172,9 @@ type RunSpec struct {
 	GroupAdd []string
 }
 
-// GPURequest describes a set of GPU devices to attach to a container via the
-// NVIDIA runtime (Docker DeviceRequests). Either DeviceIDs (resolved GPU UUIDs)
-// pins exact cards, or Count asks for N-any-of-kind (-1 = all). Capabilities is
-// the driver capability set, [["gpu"]] for NVIDIA.
+// GPURequest describes a set of GPU devices to attach via the NVIDIA runtime (Docker
+// DeviceRequests). Either DeviceIDs (resolved GPU UUIDs) pins exact cards, or Count asks for
+// N-any-of-kind (-1 = all). Capabilities is the driver capability set, [["gpu"]] for NVIDIA.
 type GPURequest struct {
 	DeviceIDs    []string   // resolved GPU UUIDs; nil selects by Count instead
 	Count        int        // used only when DeviceIDs is nil (-1 = all devices)
@@ -214,10 +206,9 @@ type RegistryAuth struct {
 	Password string
 }
 
-// VolumeSpec describes a managed volume to create, including an optional driver
-// and driver options for shared storage (NFS/CIFS). An empty Driver uses
-// Docker's default (local) driver. DriverOpts are the backend mount options
-// (e.g. NFS: type=nfs, o=addr=…,rw, device=:/export).
+// VolumeSpec describes a managed volume to create, including an optional driver and driver options
+// for shared storage (NFS/CIFS). An empty Driver uses Docker's default (local). DriverOpts are the
+// backend mount options (e.g. NFS: type=nfs, o=addr=...,rw, device=:/export).
 type VolumeSpec struct {
 	Name       string
 	Labels     map[string]string
@@ -300,11 +291,9 @@ type Image struct {
 	Labels      map[string]string `json:"labels,omitempty"`
 }
 
-// ImageInspect is a built or pulled image's identity and size, returned by
-// InspectImage. Digest is the registry repo-digest (sha256:…) when the image
-// carries one; for a locally-built, never-pushed image it falls back to the
-// content-addressable image ID, which is a stable local handle for deploy-by-
-// digest on a single node.
+// ImageInspect is a built or pulled image's identity and size. Digest is the registry repo-digest
+// when the image carries one; for a locally-built, never-pushed image it falls back to the
+// content-addressable image ID, a stable local handle for deploy-by-digest on a single node.
 type ImageInspect struct {
 	ID     string `json:"id"`     // content-addressable image ID (sha256:…)
 	Digest string `json:"digest"` // repo digest when present, else the image ID
@@ -338,10 +327,9 @@ type DiskUsageCategory struct {
 	Reclaimable int64 `json:"reclaimable_bytes"`
 }
 
-// PruneImagesOptions selects what an image prune targets. Dangling restricts the
-// prune to untagged (`<none>`) images, which are always safe to remove; the
-// all-unused mode requires the caller's referenced-image guard and is not used
-// by the safe default flow.
+// PruneImagesOptions selects what an image prune targets. Dangling restricts it to untagged
+// (`<none>`) images, which are always safe to remove; the all-unused mode requires the caller's
+// referenced-image guard and is not used by the safe default flow.
 type PruneImagesOptions struct {
 	Dangling bool   // true: only dangling images; false: all unused images
 	Until    string // optional max-age filter (Go duration, e.g. "168h"); "" = no age limit

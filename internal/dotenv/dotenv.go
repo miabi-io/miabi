@@ -13,11 +13,9 @@ type KeyValue struct {
 	Value string
 }
 
-// Parse reads .env-style content and returns the variables in file order.
-// It skips blank lines and # comments, tolerates an optional `export ` prefix,
-// and strips matching single or double quotes around values. Duplicate keys are
-// returned in order for the caller to resolve. Lines without an `=` or with an
-// empty key are ignored.
+// Parse reads .env-style content and returns the variables in file order. It skips blank lines
+// and # comments, tolerates an optional `export ` prefix, and strips matching quotes. Duplicate
+// keys are returned in order for the caller to resolve; lines without an `=` are ignored.
 func Parse(content string) []KeyValue {
 	var out []KeyValue
 	for _, raw := range strings.Split(content, "\n") {
@@ -39,7 +37,6 @@ func Parse(content string) []KeyValue {
 	return out
 }
 
-// unquote strips a single matching pair of surrounding quotes.
 func unquote(v string) string {
 	if len(v) >= 2 {
 		if (v[0] == '"' && v[len(v)-1] == '"') || (v[0] == '\'' && v[len(v)-1] == '\'') {

@@ -5,16 +5,9 @@ package models
 
 import "time"
 
-// AnalyticsRollup is one minute-bucketed aggregate of a route's HTTP traffic,
-// built by the analytics consumer from Goma's per-request event stream. Rows are
-// keyed by (workspace, app, route, minute); queries merge the rows spanning a
-// range. It powers the Traffic, Performance and Web Analytics dashboards without
-// any per-request storage or app instrumentation.
-//
-// Latency percentiles come from the histograms (DurationHist/UpstreamHist over
-// analytics.LatencyBoundsMs); unique visitors from the mergeable HyperLogLog
-// sketch (VisitorsHLL); the Top* maps are bounded top-K counts. None of it holds
-// PII (the visitor id is a daily-salted hash produced at the edge; no IP).
+// AnalyticsRollup is one minute-bucketed aggregate of a route's HTTP traffic, keyed by
+// (workspace, app, route, minute). Percentiles come from the histograms, uniques from a
+// mergeable HLL sketch, Top* are bounded top-K counts. It holds no PII.
 type AnalyticsRollup struct {
 	ID            uint      `gorm:"primaryKey" json:"-"`
 	WorkspaceID   uint      `gorm:"uniqueIndex:idx_arollup,priority:1;not null" json:"workspace_id"`

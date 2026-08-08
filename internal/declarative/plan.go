@@ -60,12 +60,9 @@ type PlanOptions struct {
 	// LabelManagedBy label equals it — so a GitOps prune never deletes a
 	// hand-created or otherwise-owned resource. Empty prunes any orphan.
 	PruneManagedBy string
-	// PruneGitOpsSource, when non-empty, restricts prune to actual resources whose
-	// LabelGitOpsSource label equals it — so one GitOps project's reconcile only
-	// prunes its own resources and never another project's (which live in the same
-	// workspace snapshot). Empty leaves prune unscoped by source. Resources without
-	// a source label (e.g. hand-created or pre-labeling) are never matched, so a
-	// scoped prune never deletes them.
+	// PruneGitOpsSource, when non-empty, restricts prune to actual resources whose LabelGitOpsSource
+	// equals it, so one project's reconcile never prunes another's. Empty leaves prune unscoped.
+	// Resources with no source label are never matched, so a scoped prune never deletes them.
 	PruneGitOpsSource string
 	// IncludeNoop keeps in-sync resources in the plan (useful for status views).
 	IncludeNoop bool
@@ -108,10 +105,9 @@ func applyRank(k Kind) int {
 		// bind hostnames under them.
 		return 0
 	case KindDatabase, KindStack, KindRegistry:
-		// A registry credential ranks above Secret rather than beside it: its
-		// password is typically "{{ .secrets.x }}", and same-rank changes are
-		// ordered by kind name — which would put Registry before Secret and fail
-		// the strict render on a first apply.
+		// A registry credential ranks above Secret rather than beside it: its password is typically
+		// "{{ .secrets.x }}", and same-rank changes order by kind name — which would put Registry before
+		// Secret and fail the strict render on a first apply.
 		return 1
 	case KindApplication:
 		return 2
@@ -142,10 +138,9 @@ func matchActual(actual *ResourceSet, byUID map[string]Resource, d Resource) (Re
 func BuildPlan(desired, actual *ResourceSet, opts PlanOptions) *Plan {
 	plan := &Plan{}
 
-	// Index actual resources by uid so a desired resource carrying metadata.uid
-	// matches its live counterpart even if the name changed (rename-safe), instead
-	// of a destructive delete+create. Hand-authored manifests have no uid and fall
-	// back to name matching, so their behavior is unchanged.
+	// Index actual resources by uid so a desired resource carrying metadata.uid matches its live
+	// counterpart even after a rename, instead of a destructive delete+create. Hand-authored
+	// manifests have no uid and fall back to name matching, so their behavior is unchanged.
 	actualByUID := map[string]Resource{}
 	for _, a := range actual.All() {
 		if a.Metadata.UID != "" {
@@ -273,15 +268,9 @@ func diffFields(actual, desired Resource) []FieldDiff {
 	return out
 }
 
-// diffRegistry compares a registry credential. Server and username are ordinary
-// visible fields. The password is not: it is compared through the fingerprints
-// the apply engine stamped on both sides (never the value itself) and reported
-// with fixed labels, so a rotation converges without a plan ever carrying
-// anything derived from the token.
-//
-// The password is only compared when the manifest actually declares one — a
-// credential whose token is managed out-of-band (declared in git, pasted in the
-// UI) must not read as drift on every plan.
+// diffRegistry compares a registry credential. Server and username are ordinary visible fields;
+// the password is compared through fingerprints stamped on both sides, never the value. It is
+// only compared when the manifest declares one, so an out-of-band token isn't drift every plan.
 func diffRegistry(actual, desired Resource) []FieldDiff {
 	a, d := actual.Registry, desired.Registry
 	if d == nil {
@@ -303,12 +292,9 @@ func diffRegistry(actual, desired Resource) []FieldDiff {
 	return out
 }
 
-// reservedLabelPrefixes are the container-label namespaces the platform owns.
-// A manifest may name one, but the application service strips it on write
-// (docker.SanitizeUserLabels), so it can never appear in live state. Excluding
-// it from the diff on both sides is what stops such a label reading as drift on
-// every plan. Duplicated here rather than imported so the declarative package
-// stays free of runtime dependencies; the two lists must agree.
+// reservedLabelPrefixes are the container-label namespaces the platform owns. A manifest may name
+// one, but the application service strips it on write, so it can never appear in live state.
+// Excluding it on both sides is what stops such a label reading as drift on every plan.
 var reservedLabelPrefixes = []string{"io.miabi.", "com.docker."}
 
 func reservedLabelKey(key string) bool {
@@ -327,10 +313,9 @@ func specFields(r Resource) map[string]string {
 	f := map[string]string{}
 	switch {
 	case r.Application != nil:
-		// Apply v1 converges the fields it can map back from live state without
-		// ambiguity: the image identity, command, resource caps, and non-secret
-		// env. Structural create-time attributes (ports, mounts, stack) are not
-		// diffed, so a converged app never shows phantom drift.
+		// Apply v1 converges the fields it can map back from live state without ambiguity: image identity,
+		// command, resource caps and non-secret env. Structural create-time attributes (ports, mounts,
+		// stack) are not diffed, so a converged app never shows phantom drift.
 		a := r.Application
 		f["image"] = a.Image
 		f["tag"] = a.Tag
@@ -339,10 +324,8 @@ func specFields(r Resource) map[string]string {
 		// The credential the image is pulled with is part of the app's identity:
 		// re-pointing it at another registry must converge like any other change.
 		f["registry"] = a.Registry
-		// Container labels drive label-reading tooling (Traefik routing rules,
-		// Watchtower policies), so editing one has to redeploy the container.
-		// Compared per key, like env: a plan then names the label that changed
-		// instead of showing one opaque blob.
+		// Container labels drive label-reading tooling, so editing one has to redeploy the container.
+		// Compared per key, like env, so a plan names the label that changed instead of one opaque blob.
 		for k, v := range a.ContainerLabels {
 			if reservedLabelKey(k) {
 				continue // stripped on write, so it can never be live: skip both sides

@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package proxy abstracts the reverse proxy / gateway (Goma Gateway). Routes and
-// middlewares are written as individual YAML files in Goma's watched file-
-// provider directory; an in-memory implementation backs dev and tests. TLS
-// termination, ACME issuance, and renewal are owned by Goma — Miabi only
-// declares routes/middlewares and (for custom certs) supplies the PEM.
+// Package proxy abstracts the reverse proxy / gateway (Goma Gateway). Routes and middlewares are
+// written as YAML files in Goma's watched provider directory; an in-memory implementation backs
+// dev and tests. TLS termination, ACME issuance and renewal are owned by Goma.
 package proxy
 
 import "context"
@@ -43,10 +41,9 @@ type RenderedRoute struct {
 	// TLSNone marks a route that opts out of TLS entirely; it renders an explicit
 	// tls.provider: "none" so the gateway never tries to obtain a cert for it.
 	TLSNone bool
-	// Disabled renders the route with Goma's `enabled: false` so the gateway keeps
-	// it defined but stops serving it. Zero value (false) = enabled, matching
-	// Goma's default. Preferred over dropping the route, which doesn't reliably
-	// take effect across the file/HTTP providers.
+	// Disabled renders the route with Goma's `enabled: false` so the gateway keeps it defined but
+	// stops serving it. Zero value is enabled, matching Goma's default. Preferred over dropping the
+	// route, which doesn't reliably take effect across the file and HTTP providers.
 	Disabled bool
 	// AdvancedYAML, when set, is a raw Goma route config that supersedes the
 	// structured fields; Miabi still forces name/backends/tls into it.
@@ -63,10 +60,9 @@ type RenderedMiddleware struct {
 	Rule        map[string]interface{}
 }
 
-// RegistryProxy is the desired gateway config for the built-in Docker registry:
-// a single route (host → upstream) fronted by the HTTPS-redirect, forwardAuth,
-// and namespace-rewrite middlewares. Rendered to a dedicated file, separate from
-// the per-workspace configs.
+// RegistryProxy is the desired gateway config for the built-in Docker registry: one route fronted
+// by the HTTPS-redirect, forwardAuth and namespace-rewrite middlewares. Rendered to a dedicated
+// file, separate from the per-workspace configs.
 type RegistryProxy struct {
 	Enabled     bool   // false removes the registry config
 	Host        string // public host, e.g. registry.<domain>
@@ -75,10 +71,9 @@ type RegistryProxy struct {
 	TLSProvider string // certManager provider ("" = gateway default)
 }
 
-// Manager applies desired proxy state. A workspace's routes and middlewares are
-// written together as one unit (Goma resolves a route's middleware references
-// within the same file), so the whole workspace is the unit of sync rather than
-// individual resources. Implementations must be idempotent.
+// Manager applies desired proxy state. A workspace's routes and middlewares are written together
+// as one unit (Goma resolves a route's middleware references within the same file), so the
+// workspace is the unit of sync rather than individual resources. Implementations are idempotent.
 type Manager interface {
 	// SyncWorkspace replaces a workspace's entire proxy config — all its routes and
 	// middlewares — atomically. Passing no routes and no middlewares removes the

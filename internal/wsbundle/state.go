@@ -13,16 +13,9 @@ import (
 // does not know rather than guessing at fields.
 const StateSchema = 1
 
-// State is a workspace's whole configuration, by natural key.
-//
-// Nothing here carries a primary key. Across two installs a `uint` id is
-// meaningless — app 42 on one is a different row (or nothing) on the other — so
-// every reference is a name: an app names its stack, a mount names its volume, a
-// route names its app. Restore rebuilds the graph from those names and mints its
-// own ids.
-//
-// It holds plaintext secrets, which is why it only ever exists inside the sealed
-// state file (see Seal) and in memory.
+// State is a workspace's whole configuration, by natural key. Nothing here carries a primary key:
+// across two installs a uint id is meaningless, so every reference is a name and restore rebuilds
+// the graph from those names. It holds plaintext secrets, so it only exists sealed or in memory.
 type State struct {
 	Schema int `json:"schema"`
 
@@ -59,10 +52,9 @@ type Source struct {
 	ExportedAt   time.Time `json:"exported_at"`
 }
 
-// Workspace is the workspace record itself. Plan, quota and privilege are
-// deliberately absent: they are the target platform's decisions about a tenant,
-// not the tenant's own state, and a bundle that carried them would let an import
-// grant itself capacity or privilege.
+// Workspace is the workspace record itself. Plan, quota and privilege are deliberately absent:
+// they are the target platform's decisions about a tenant, not the tenant's own state, and a
+// bundle that carried them would let an import grant itself capacity or privilege.
 type Workspace struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name,omitempty"`
@@ -89,10 +81,9 @@ type GitRepository struct {
 	Secret      string `json:"secret,omitempty"`
 }
 
-// DNSProvider is a connection to a DNS host. Credentials travel because the
-// thing they authorize — publishing an ownership TXT record, answering a DNS-01
-// challenge — is exactly what the target must do before a migrated domain serves
-// anything.
+// DNSProvider is a connection to a DNS host. Credentials travel because what they authorize —
+// publishing an ownership TXT record, answering a DNS-01 challenge — is exactly what the target
+// must do before a migrated domain serves anything.
 type DNSProvider struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name,omitempty"`
@@ -102,12 +93,9 @@ type DNSProvider struct {
 	Credentials string `json:"credentials,omitempty"`
 }
 
-// Certificate is a TLS certificate the workspace owns.
-//
-// Only uploaded certificates carry their material. A Miabi-issued (ACME) one
-// carries its declaration and nothing else: its private key was minted for a
-// host that, at restore time, still resolves to the source — reissuing is a
-// cutover step, not an import step (see the restore report).
+// Certificate is a TLS certificate the workspace owns. Only uploaded certificates carry their
+// material; a Miabi-issued one carries its declaration and nothing else, since its key was minted
+// for a host that still resolves to the source. Reissuing is a cutover step, not an import step.
 type Certificate struct {
 	Name        string   `json:"name"`
 	DisplayName string   `json:"display_name,omitempty"`
@@ -176,13 +164,9 @@ type Pipeline struct {
 	SourceRef  string `json:"source_ref,omitempty"`
 }
 
-// GitSource is a GitOps connection: the repository of manifests, not a fork of
-// it. The manifests are in Git — the source of truth — so what travels is how to
-// reach it and how to reconcile it.
-//
-// The webhook secret does not travel. It authenticates a webhook configured at
-// the provider against one platform; carrying it would let the same push drive
-// two installs, which is precisely what a migration is trying to stop doing.
+// GitSource is a GitOps connection: the repository of manifests, not a fork of it. The manifests
+// are in Git, so what travels is how to reach it and how to reconcile it. The webhook secret does
+// not travel — carrying it would let the same push drive two installs.
 type GitSource struct {
 	Name          string `json:"name"`
 	DisplayName   string `json:"display_name,omitempty"`
@@ -242,15 +226,9 @@ type Stack struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
-// DatabaseInstance is a managed database server and the logical databases on it.
-//
-// Database credentials deliberately do NOT travel. Data crosses as a logical
-// dump, which restores into a server the target initialized itself, with its own
-// admin password and its own per-database user — so carrying the source's
-// credentials would at best be dead weight and at worst the password-vs-data-dir
-// trap, where a restored server refuses to start against data initialized under a
-// different password. The apps that consume a database are re-injected with the
-// target's connection on restore, which is why EnvPrefix and App do travel.
+// DatabaseInstance is a managed database server and the logical databases on it. Credentials
+// deliberately do NOT travel: data crosses as a logical dump restored into a server the target
+// initialized itself. EnvPrefix and App do travel, so consuming apps are re-injected on restore.
 type DatabaseInstance struct {
 	Name        string            `json:"name"`
 	DisplayName string            `json:"display_name,omitempty"`
@@ -335,10 +313,9 @@ type Port struct {
 	Name      string `json:"name,omitempty"`
 }
 
-// Mount attaches a managed volume, by the volume's Miabi name. Privileged
-// host-path binds are not carried: their source is an allow-listed preset on the
-// node that granted it, and it may not exist — or may mean something else — on
-// the target.
+// Mount attaches a managed volume by the volume's Miabi name. Privileged host-path binds are not
+// carried: their source is an allow-listed preset on the node that granted it, and it may not
+// exist — or may mean something else — on the target.
 type Mount struct {
 	Volume   string `json:"volume"`
 	Path     string `json:"path"`

@@ -67,17 +67,9 @@ func TestIsManaged(t *testing.T) {
 	}
 }
 
-// The bug this fixes: discovery skipped a container only when isManaged(labels)
-// was true. Miabi's own stack is deployed by compose — from outside Miabi — so it
-// carried no io.miabi.* label at all, isManaged() was false, and the import page
-// offered `miabi-postgres` as an importable application. Importing it creates an
-// Application record pointing at the platform's own database, which the deploy
-// worker then believes it owns and may recreate.
-//
-// Two independent shields, because either alone has a hole:
-//   - labels: correct, but absent on a stack installed before this change;
-//   - name:   covers that upgrade window, but a user is free to name a container
-//     anything, so it cannot be the only check.
+// The bug this fixes: discovery skipped a container only when isManaged(labels) was true. Miabi's own
+// stack is deployed by compose from outside Miabi, so it carried no io.miabi.* label and the import page
+// offered `miabi-postgres` as an importable application — which the deploy worker may then recreate.
 func TestPlatformStackIsNeverImportable(t *testing.T) {
 	platform := docker.PlatformLabels(docker.RolePlatformDB, docker.ManagedByCompose, nil)
 
@@ -124,16 +116,9 @@ func TestPlatformStackIsNeverImportable(t *testing.T) {
 	}
 }
 
-// The name shield alone is not enough for an UNLABELED stack, and this is the case
-// that nearly slipped through: compose only pins container_name on the gateway. The
-// rest get <project>-<service>-<n>, so the platform's Postgres is really
-// "miabi-miabi-postgres-1" — which matches no fixed name we could write down, since
-// the project is whatever the install directory is called.
-//
-// So discovery also asks: which compose project is Miabi ITSELF in? Everything in
-// that project is the platform. Verified against real compose output:
-//
-//	name=miabi-miabi-postgres-1  service=miabi-postgres  project=miabi
+// The name shield alone is not enough for an UNLABELED stack: compose pins container_name only on the
+// gateway, so the platform's Postgres is really "miabi-miabi-postgres-1" — a name that depends on the
+// install directory. So discovery also asks which compose project Miabi ITSELF is in.
 func TestUnlabeledStackIsShieldedByItsComposeProject(t *testing.T) {
 	const project = "miabi" // the control plane's own com.docker.compose.project
 

@@ -12,10 +12,9 @@ const (
 	ResourceTypeDomain   = "domain"
 )
 
-// ResourcePolicy grants a user a set of permissions on a single resource
-// (Enterprise; gated on resource_policies for writes). It augments the
-// workspace-level role: a member may be a viewer everywhere yet hold app:deploy
-// on one specific app. The table is empty in Community.
+// ResourcePolicy grants a user permissions on a single resource (Enterprise, gated on
+// resource_policies for writes). It augments the workspace role: a member may be a viewer
+// everywhere yet hold app:deploy on one specific app. The table is empty in Community.
 type ResourcePolicy struct {
 	ID           uint      `json:"id" gorm:"primaryKey"`
 	WorkspaceID  uint      `json:"workspace_id" gorm:"index:idx_resource_policy;not null"`

@@ -81,12 +81,9 @@ func (h *EventsHandler) WorkspaceList(c *okapi.Context) error {
 	return paginated(c, out, total, page, size)
 }
 
-// WorkspaceStream pushes live events for every application in the workspace over
-// SSE — the dashboard's live activity + health feed.
-//
-// SSEStreamWithOptions flushes the headers immediately (so EventSource fires
-// onopen right away instead of hanging until the first event) and emits a
-// periodic ":ping" comment to hold an idle connection open through proxies.
+// WorkspaceStream pushes live events for every application in the workspace over SSE — the
+// dashboard's activity and health feed. SSEStreamWithOptions flushes headers immediately so
+// EventSource fires onopen, and emits a periodic ":ping" to hold idle connections open.
 func (h *EventsHandler) WorkspaceStream(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	ch, unsubscribe := h.bus.Subscribe(events.WorkspaceTopic(wsID))

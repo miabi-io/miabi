@@ -12,7 +12,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// backupRoutes registers workspace-scoped backup & schedule routes under a database.
 func (r *Router) backupRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Backups", Description: "Database backups and schedules (pg-bkup/mysql-bkup/mongodb-bkup/libsql-bkup)."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {

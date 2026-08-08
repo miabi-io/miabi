@@ -7,10 +7,9 @@ import (
 	"time"
 )
 
-// Stack groups related applications in a workspace so they can be managed
-// together. The user-facing Name is unique per workspace; DockerName is the
-// platform-managed Docker Compose project name applied to member containers as
-// the `com.docker.compose.project` label, so Docker tooling groups them too.
+// Stack groups related applications in a workspace so they can be managed together. Name is
+// unique per workspace; DockerName is the platform-managed Compose project name applied as
+// the com.docker.compose.project label, so Docker tooling groups them too.
 type Stack struct {
 	UIDModel
 	ID          uint `json:"id" gorm:"primaryKey"`

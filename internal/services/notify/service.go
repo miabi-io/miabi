@@ -34,7 +34,6 @@ var supportedTypes = map[models.NotificationChannelType]bool{
 // secretConfigKeys are masked in API responses.
 var secretConfigKeys = []string{models.ConfigBotToken, models.ConfigWebhookURL}
 
-// maskedToken replaces a stored bot token in API responses.
 const maskedToken = "********"
 
 // Service manages notification-channel configuration and on-demand testing.

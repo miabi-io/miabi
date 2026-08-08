@@ -12,10 +12,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/route"
 )
 
-// ProviderHandler serves a remote node's Goma Gateway config over Goma's HTTP
-// provider. Modeled on Goma Admin: a node's Gateway polls these endpoints with
-// its join token. The bundle contains every middleware (routes reference them by
-// name) but only the routes for apps placed on that node.
+// ProviderHandler serves a remote node's Goma Gateway config over Goma's HTTP provider: a node's
+// Gateway polls these endpoints with its join token. The bundle contains every middleware (routes
+// reference them by name) but only the routes for apps placed on that node.
 type ProviderHandler struct {
 	nodes  *node.Service
 	routes *route.Service

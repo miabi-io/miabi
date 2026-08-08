@@ -50,10 +50,9 @@ func TestManagerSharesPlatformRedisOnEitherProvider(t *testing.T) {
 	}
 }
 
-// The manager can only watch route files if Miabi can hand it the volume it
-// writes them to. A stack install owns that volume; a manual install's mounts
-// were made by the operator, so Miabi cannot name one — and a gateway watching a
-// directory nothing writes to would serve no routes at all. It polls instead.
+// The manager can only watch route files if Miabi can hand it the volume it writes them to. A stack
+// install owns that volume; a manual install's mounts were made by the operator, so Miabi cannot name
+// one — and a gateway watching a directory nothing writes to would serve no routes. It polls instead.
 func TestManagerFallsBackToHTTPWithoutAKnownVolume(t *testing.T) {
 	manager := &models.Server{Name: "manager", IsLocal: true}
 

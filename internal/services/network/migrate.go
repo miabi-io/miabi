@@ -43,13 +43,11 @@ func (s *Service) SetMigrationDeps(servers Servers, dbs DBInstances) {
 // requires swarm, and so does detaching containers from one.
 var ErrClusterRequired = errors.New("cluster mode must be enabled to convert workspace networks")
 
-// overlaySuffix marks a workspace network as an overlay. The invariant — every
-// overlay ends with it, no bridge does — is what makes converting a network in
-// either direction a pure function of its current name, so an interrupted run can
-// simply be repeated. Enforced on create (network.go) and on convert (below).
+// overlaySuffix marks a workspace network as an overlay. The invariant — every overlay ends with it, no bridge
+// does — is what makes converting a network in either direction a pure function of its current name, so an
+// interrupted run can simply be repeated. Enforced on create and on convert.
 const overlaySuffix = "-ov"
 
-// overlayNameFor and bridgeNameFor are inverses.
 func overlayNameFor(bridgeName string) string {
 	return strings.TrimSuffix(bridgeName, overlaySuffix) + overlaySuffix
 }
@@ -76,47 +74,31 @@ type MigrationReport struct {
 	OfflineNodes []string `json:"offline_nodes,omitempty"`
 }
 
-// Migrate converts every bridge-backed workspace network into a swarm overlay, so
-// containers can reach each other across nodes. It runs when the admin enables
-// cluster networking — never on upgrade, never implicitly, and never on a
-// single-node install (the overlay driver requires swarm).
+// Migrate converts every bridge-backed workspace network into a swarm overlay, so containers can reach each
+// other across nodes. It runs when the admin enables cluster networking — never on upgrade, never
+// implicitly, and never on a single-node install, since the overlay driver requires swarm.
 func (s *Service) Migrate(ctx context.Context) (MigrationReport, error) {
 	return s.convertAll(ctx, DriverBridge, DriverOverlay)
 }
 
-// PendingMigration counts the workspace networks still on a node-local bridge.
-//
-// Non-zero in cluster mode means cross-node east-west does not work yet: those
-// workspaces' apps and databases are on per-node islands. That is the normal state
-// for an install that was ALREADY in cluster mode when it upgraded to this version
-// — Migrate only runs on the enable transition, so nothing has converted it. The
-// admin applies it explicitly (cluster.ApplyNetworking); the UI surfaces this count
-// to tell them they need to.
+// PendingMigration counts the workspace networks still on a node-local bridge. Non-zero in cluster mode
+// means cross-node east-west does not work yet. That is the normal state for an install already clustered
+// when it upgraded, since Migrate runs only on the enable transition; the UI surfaces this count.
 func (s *Service) PendingMigration() (int, error) {
 	nets, err := s.repo.ListByDriver(DriverBridge)
 	return len(nets), err
 }
 
-// Rollback converts every overlay-backed workspace network back into a node-local
-// bridge. It must run *before* the manager leaves the swarm — once swarm is gone
-// the overlays go with it, and every workspace would be left pointing at a network
-// that no longer exists. See cluster.Disable.
+// Rollback converts every overlay-backed workspace network back into a node-local bridge. It must run
+// *before* the manager leaves the swarm — once swarm is gone the overlays go with it, and every workspace
+// would be left pointing at a network that no longer exists. See cluster.Disable.
 func (s *Service) Rollback(ctx context.Context) (MigrationReport, error) {
 	return s.convertAll(ctx, DriverOverlay, DriverBridge)
 }
 
-// convertAll re-drivers every workspace network currently on `from` to `to`.
-//
-// Containers are NOT restarted. For each network we create the replacement,
-// connect every attached container to it (carrying its DNS aliases across
-// verbatim), then disconnect and remove the old one. In-flight TCP connections on
-// the old network drop; nothing is recreated, and no connection string changes —
-// those address a container by its alias, not by its network.
-//
-// The whole thing is idempotent and resumable: the replacement's name is a pure
-// function of the old one, network creation is create-or-reuse, and a network
-// whose record has already flipped driver is no longer a candidate. A single
-// failing workspace is reported and skipped; it never strands the rest.
+// convertAll re-drivers every workspace network from `from` to `to` without restarting containers: create the
+// replacement, connect every attached container carrying its aliases verbatim, then disconnect and remove the
+// old. Idempotent and resumable; a single failing workspace is reported and skipped, never stranding the rest.
 func (s *Service) convertAll(ctx context.Context, from, to string) (MigrationReport, error) {
 	var rep MigrationReport
 	// Both directions need a live swarm: one to create an overlay, the other to
@@ -178,20 +160,17 @@ func (s *Service) convertAll(ctx context.Context, from, to string) (MigrationRep
 	return rep, nil
 }
 
-// convertOne re-drivers a single workspace network.
 func (s *Service) convertOne(ctx context.Context, n *models.Network, newName, toDriver string, forEachEngine func(func(string, docker.Client))) error {
-	// 1. Create the replacement on the manager. An overlay is swarm-scoped — Docker
-	//    materializes it on a worker only when a container there attaches — so it is
-	//    never created per node. Create-or-reuse, so a resumed run picks up where it
-	//    left off. (A bridge is created per node as containers move; see step 2.)
+	// 1. Create the replacement on the manager. An overlay is swarm-scoped — Docker materializes it on a
+	//    worker only when a container there attaches — so it is never created per node. Create-or-reuse, so
+	//    a resumed run picks up where it left off. (A bridge is created per node as containers move.)
 	if err := s.provisionDockerNetwork(ctx, newName, toDriver, n.Internal); err != nil {
 		return fmt.Errorf("create %s network %s: %w", toDriver, newName, err)
 	}
 
-	// 2. A bridge is node-local, so it must exist on each node before a container
-	//    there can join it — recreated from the same pool subnet, exactly as
-	//    syncNetworks does at deploy time. (An overlay needs none of this: swarm
-	//    materializes it on the node at attach time.)
+	// 2. A bridge is node-local, so it must exist on each node before a container there can join it —
+	//    recreated from the same pool subnet, exactly as syncNetworks does at deploy time. (An overlay needs
+	//    none of this: swarm materializes it on the node at attach time.)
 	var moveErr error
 	if toDriver == DriverBridge && s.alloc != nil {
 		forEachEngine(func(nodeName string, dc docker.Client) {

@@ -14,18 +14,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Goma drives Goma Gateway via its file provider: each route and middleware is
-// written as a YAML file in Goma's watched provider directory, which Goma
-// hot-reloads and merges. ACME is handled by Goma's global certManager; custom
-// certs are inlined into the route's tls block.
+// Goma drives Goma Gateway via its file provider: each route and middleware is written as a YAML
+// file in Goma's watched directory, which Goma hot-reloads and merges. ACME is handled by Goma's
+// global certManager; custom certs are inlined into the route's tls block.
 type Goma struct {
 	dir string
 }
 
 // NewGoma returns a Goma file-provider Manager writing into dir.
 func NewGoma(dir string) *Goma { return &Goma{dir: dir} }
-
-// --- Goma file-provider schema ---
 
 type gomaFile struct {
 	Routes      []gomaRoute      `yaml:"routes,omitempty"`
@@ -64,14 +61,9 @@ type gomaBackend struct {
 	Weight   int    `yaml:"weight,omitempty"`
 }
 
-// gomaTLS is a route's TLS block. Either a named certManager provider serves the
-// cert (multi-provider certManager), or an inline custom certificate is supplied:
-//
-//	tls:
-//	  provider: wildcard        # named certManager provider (ACME/DNS-01, …)
-//	  certificate:              # OR an inline custom cert
-//	    cert: <pem>
-//	    key:  <pem>
+// gomaTLS is a route's TLS block: either a named certManager provider serves the cert (the
+// multi-provider certManager form, `tls.provider`), or an inline custom certificate is supplied
+// under `tls.certificate` as base64 cert and key.
 type gomaTLS struct {
 	Provider    string    `yaml:"provider,omitempty"`
 	Certificate *gomaCert `yaml:"certificate,omitempty"`
@@ -116,21 +108,18 @@ func newGomaMiddleware(mw RenderedMiddleware) (gomaMiddleware, error) {
 	}, nil
 }
 
-// workspacePath is the single file holding all of a workspace's routes and
-// middlewares. Keeping a route and the middlewares it references in one file lets
-// Goma resolve the references atomically on reload (separate files reload
-// independently, so a route could load before its middleware definition).
+// workspacePath is the single file holding all of a workspace's routes and middlewares. Keeping a
+// route and the middlewares it references in one file lets Goma resolve the references atomically
+// on reload — separate files reload independently, so a route could load before its middleware.
 func (g *Goma) workspacePath(id uint) string {
 	return filepath.Join(g.dir, fmt.Sprintf("mb-ws%d.yml", id))
 }
 
 const fileHeader = "# Managed by Miabi. Do not edit by hand.\n"
 
-// gomaName builds the globally-unique Goma identifier for a workspace-scoped
-// route or middleware: mb-ws<workspaceID>-<slug(name)>. Goma rejects duplicate
-// names across the merged provider config, so every workspace's resources are
-// namespaced. Route→middleware references are namespaced the same way (a route
-// and its middlewares always share a workspace), so the references still match.
+// gomaName builds the globally-unique Goma identifier for a workspace-scoped route or middleware:
+// mb-ws<workspaceID>-<slug(name)>. Goma rejects duplicate names across the merged config, and
+// route->middleware references are namespaced the same way, so the references still match.
 func gomaName(workspaceID uint, name string) string {
 	return fmt.Sprintf("mb-ws%d-%s", workspaceID, slugify(name))
 }
@@ -161,7 +150,6 @@ func slugify(s string) string {
 	return strings.TrimRight(b.String(), "-")
 }
 
-// mwRefs namespaces a route's referenced middleware names to their Goma names.
 func mwRefs(route RenderedRoute) []string {
 	if len(route.Middlewares) == 0 {
 		return nil
@@ -191,7 +179,6 @@ func prefixAdvancedMwRefs(workspaceID uint, v any) any {
 	return out
 }
 
-// backendsOf maps the injected upstreams to Goma backends.
 func backendsOf(route RenderedRoute) []gomaBackend {
 	backends := make([]gomaBackend, 0, len(route.Backends))
 	for _, b := range route.Backends {
@@ -200,11 +187,9 @@ func backendsOf(route RenderedRoute) []gomaBackend {
 	return backends
 }
 
-// tlsOf returns the route's TLS block: an inline custom certificate when one is
-// supplied, otherwise a named certManager provider selection (or nil when
-// neither, leaving the gateway's default provider to serve the cert). Only the
-// first cert is used (Goma carries one per route); cert/key are base64-encoded so
-// multi-line PEM never has to be a YAML literal block.
+// tlsOf returns the route's TLS block: an inline custom certificate when supplied, otherwise a
+// named certManager provider (or nil, leaving the gateway's default). Only the first cert is used,
+// and cert/key are base64-encoded so multi-line PEM never has to be a YAML literal block.
 func tlsOf(route RenderedRoute) (*gomaTLS, error) {
 	// An explicit opt-out: tell the gateway not to manage a cert for this route.
 	if route.TLSNone {
@@ -236,10 +221,9 @@ func tlsOf(route RenderedRoute) (*gomaTLS, error) {
 	return nil, nil
 }
 
-// gomaRouteValue returns the YAML-marshalable route entry. For a simple route it
-// is the structured gomaRoute; for an advanced route it is the admin's raw YAML
-// config with name/backends/tls forced by Miabi (so the route always carries
-// its own identity and points at the app, never a hand-typed upstream).
+// gomaRouteValue returns the YAML-marshalable route entry: the structured gomaRoute for a simple
+// route, or the admin's raw YAML with name/backends/tls forced by Miabi, so the route always
+// carries its own identity and points at the app rather than a hand-typed upstream.
 func gomaRouteValue(route RenderedRoute) (any, error) {
 	backends := backendsOf(route)
 	tls, err := tlsOf(route)
@@ -267,10 +251,9 @@ func gomaRouteValue(route RenderedRoute) (any, error) {
 		if mws, ok := m["middlewares"]; ok {
 			m["middlewares"] = prefixAdvancedMwRefs(route.WorkspaceID, mws)
 		}
-		// Miabi fully owns TLS (managed, domain-validated certs). Never honor a
-		// tls block hand-typed in the advanced config — a route could otherwise
-		// smuggle a certificate for a host it doesn't control. Drop it, then apply
-		// only Miabi's resolved TLS.
+		// Miabi fully owns TLS (managed, domain-validated certs). Never honor a tls block hand-typed in
+		// the advanced config — a route could otherwise smuggle a certificate for a host it doesn't
+		// control. Drop it, then apply only Miabi's resolved TLS.
 		delete(m, "tls")
 		if tls != nil {
 			m["tls"] = tls
@@ -292,10 +275,9 @@ func gomaRouteValue(route RenderedRoute) (any, error) {
 	if path == "" {
 		path = "/"
 	}
-	// Defence in depth: a structured route with no host matches every request on
-	// its path (a catch-all that swallows all traffic). The serve-state gate
-	// already marks it disabled, but force enabled:false here too so the renderer
-	// can never emit a live hostless route, whatever the caller passed.
+	// Defence in depth: a structured route with no host matches every request on its path, a catch-all
+	// that swallows all traffic. The serve-state gate already marks it disabled, but force
+	// enabled:false here too so the renderer can never emit a live hostless route.
 	enabled := enabledField(route)
 	if len(route.Hosts) == 0 {
 		off := false
@@ -467,10 +449,8 @@ func (g *Goma) SyncRegistry(_ context.Context, cfg RegistryProxy) error {
 				Rule: map[string]any{"scheme": "https", "port": 443, "permanent": true},
 			},
 			{
-				// Drop the cross-repository blob mount hint.
-				//
-				// A docker push offers `?mount=<digest>&from=<repo>` to link a layer
-				// the daemon has seen in another repository instead of uploading it.
+				// Drop the cross-repository blob mount hint. A docker push offers `?mount=<digest>&from=<repo>` to link a
+				// layer the daemon has seen in another repository instead of uploading it.
 				Name:  "mb-registry-nomount",
 				Type:  "stripQuery",
 				Paths: []string{"/.*"},

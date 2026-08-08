@@ -10,14 +10,9 @@ import (
 	"github.com/jkaninda/logger"
 )
 
-// A cluster has no name of its own. Docker Swarm identifies it by a cluster id nobody
-// can read and a manager address that changes. So the UI has to say "the cluster",
-// which is fine with one — and useless the moment an operator runs prod-eu-west-1 and
-// prod-us-east-1 and has to remember which panel is which.
-//
-// This is a label and nothing more. It is deliberately NOT a step toward multi-cluster:
-// one control plane drives one swarm, and modelling a second one we do not have is how
-// a name turns into a month.
+// A cluster has no name of its own: Swarm identifies it by an unreadable id and a manager address that changes,
+// so the UI can only say "the cluster" — useless once someone runs prod-eu-west-1 and prod-us-east-1. This is a
+// label and nothing more, deliberately NOT a step toward multi-cluster: one control plane drives one swarm.
 const clusterNameKey = "cluster_name"
 
 // maxClusterNameLen keeps the name to something a badge can hold.

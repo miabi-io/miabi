@@ -10,14 +10,9 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 )
 
-// guardContainerOp refuses destructive operations on protected containers. Before
-// platform labels it protected only the self-container (found at runtime via
-// /proc) and the node's edge gateway — so `miabi-postgres` and `miabi-redis` were
-// stoppable and removable straight from the containers list, taking the whole
-// platform down. The runtime self-check cannot cover them: it only ever identifies
-// the ONE container this process runs in.
-//
-// The 409 must also name the component, so an admin learns what they nearly broke.
+// guardContainerOp refuses destructive operations on protected containers. Before platform labels
+// it protected only the self-container and the edge gateway, so miabi-postgres and miabi-redis
+// were stoppable from the list. The 409 must name the component an admin nearly broke.
 func TestProtectedMessageNamesTheComponent(t *testing.T) {
 	cases := []struct {
 		name    string

@@ -1,13 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package runner manages build/pipeline runner records: their registration,
-// scope (workspace-owned vs platform-shared), labels/concurrency, and
-// reachability. Runners are dedicated build machines — they never host apps —
-// and dial in over an outbound tunnel with a tightly-scoped registration token
-// (mirrors the node agent join token, distinct scope). Job leasing, the
-// scheduler, and the runner binary land in later phases; this service owns the
-// CRUD + token lifecycle they build on.
+// Package runner manages build/pipeline runner records: registration, scope (workspace-owned vs
+// platform-shared), labels, concurrency and reachability. Runners are dedicated build machines that never
+// host apps, dialing in over an outbound tunnel with a tightly-scoped registration token.
 package runner
 
 import (
@@ -144,10 +140,9 @@ func (s *Service) CreateWorkspace(workspaceID, createdByID uint, in Input) (*mod
 // BuiltinRunnerName is the reserved handle of the co-located built-in runner.
 const BuiltinRunnerName = "builtin"
 
-// EnsureBuiltin finds or creates the platform-shared built-in runner and issues
-// it a fresh registration token (the co-located container gets a new token each
-// start, so a stale container's token is invalidated). Returns the runner and
-// its one-time token.
+// EnsureBuiltin finds or creates the platform-shared built-in runner and issues it a fresh registration token.
+// The co-located container gets a new token each start, so a stale container's token is invalidated. Returns
+// the runner and its one-time token.
 func (s *Service) EnsureBuiltin() (*models.Runner, string, error) {
 	shared, err := s.repo.ListShared()
 	if err != nil {
@@ -303,15 +298,9 @@ func (s *Service) regenToken(m *models.Runner) (string, error) {
 	return token, nil
 }
 
-// connectionBroke reports whether a runner's stored state shows the previous
-// connection genuinely ended, rather than this being another heartbeat on a
-// connection that never dropped. It decides when ConnectedSince — the "how long
-// has this been up" the offline alert debounces on — restarts.
-//
-// A stale last-seen counts as a break even when the row still says "online",
-// because a control plane killed mid-connection never runs MarkDisconnected:
-// Status alone would then claim an unbroken connection that ended hours ago, and
-// a runner returning from a real outage would clear its alert instantly.
+// connectionBroke reports whether a runner's stored state shows the previous connection genuinely ended,
+// deciding when ConnectedSince restarts. A stale last-seen counts as a break even when the row says online:
+// a control plane killed mid-connection never runs MarkDisconnected, so Status alone would claim otherwise.
 func connectionBroke(m *models.Runner, now time.Time) bool {
 	return m.ConnectedSince == nil ||
 		m.Status == models.RunnerStatusOffline ||
@@ -319,10 +308,9 @@ func connectionBroke(m *models.Runner, now time.Time) bool {
 		now.Sub(*m.LastSeenAt) > contactLostAfter
 }
 
-// MarkConnected records that a runner's tunnel is live: online status, a fresh
-// last-seen, and its self-reported platform facts. Best-effort (a missing runner
-// is ignored) so the connection manager can call it on connect and on each
-// heartbeat without handling errors.
+// MarkConnected records that a runner's tunnel is live: online status, a fresh last-seen, and its
+// self-reported platform facts. Best-effort — a missing runner is ignored — so the connection manager can
+// call it on connect and on each heartbeat without handling errors.
 func (s *Service) MarkConnected(id uint, os, arch, version, remoteIP string) {
 	m, err := s.repo.FindByID(id)
 	if err != nil {
@@ -384,7 +372,6 @@ func (s *Service) Authenticate(token string) (*models.Runner, error) {
 	return m, nil
 }
 
-// displayName defaults a blank label to the (untrimmed) name.
 func displayName(display, name string) string {
 	if d := strings.TrimSpace(display); d != "" {
 		return d
@@ -415,7 +402,6 @@ func normalizeLabels(in []string) []string {
 	return out
 }
 
-// normalizeConcurrency clamps declared concurrency to at least 1.
 func normalizeConcurrency(n int) int {
 	if n < 1 {
 		return 1

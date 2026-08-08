@@ -38,8 +38,6 @@ type ReviewPortBindingRequest struct {
 	} `json:"body"`
 }
 
-// --- Workspace-scoped ---
-
 func (h *PortBindingHandler) Request(c *okapi.Context, req *RequestPortBindingRequest) error {
 	wsID := middlewares.WorkspaceID(c)
 	b, err := h.svc.Request(wsID, middlewares.UserID(c), portbinding.RequestInput{
@@ -101,8 +99,6 @@ func (h *PortBindingHandler) Cancel(c *okapi.Context) error {
 	h.record(c, &wsID, "port_binding.cancel", id)
 	return message(c, "port binding cancelled")
 }
-
-// --- System admin review ---
 
 func (h *PortBindingHandler) AdminList(c *okapi.Context) error {
 	status := models.PortBindingStatus(c.Query("status"))

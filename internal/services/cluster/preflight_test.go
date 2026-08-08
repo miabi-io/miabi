@@ -10,11 +10,9 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 )
 
-// A Docker engine running inside a VM cannot carry the overlay data plane to another
-// host: VXLAN (4789/udp) is never delivered to the host interface, and ESP (IP
-// protocol 50) cannot be forwarded at all — it is not a port. The swarm still forms
-// and DNS still resolves, so the failure surfaces much later as an app that resolves
-// its database and then times out. Detecting it up front is the whole point.
+// A Docker engine inside a VM cannot carry the overlay data plane to another host: VXLAN is never
+// delivered to the host interface, and ESP cannot be forwarded at all — it is not a port. The swarm
+// still forms and DNS resolves, so the failure surfaces later as an app that times out.
 func TestVMBackedEngineIsDetected(t *testing.T) {
 	tests := []struct {
 		os   string
@@ -44,10 +42,9 @@ func TestVMBackedEngineIsDetected(t *testing.T) {
 	}
 }
 
-// ESP is the requirement everyone misses: it is an IP protocol, not a port, so a
-// firewall or security group that cheerfully opens 4789/udp still drops every packet.
-// The symptom is identical to a blocked VXLAN — DNS resolves, traffic dies — so if we
-// omit it from the list, the operator has no way to reach the right answer.
+// ESP is the requirement everyone misses: it is an IP protocol, not a port, so a firewall that
+// cheerfully opens 4789/udp still drops every packet. The symptom is identical to a blocked VXLAN, so
+// omitting it from the list leaves the operator no way to reach the right answer.
 func TestFirewallRulesNameESPAndVXLAN(t *testing.T) {
 	var joined string
 	for _, r := range firewallRules() {

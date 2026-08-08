@@ -136,10 +136,9 @@ func TestRedact(t *testing.T) {
 	}
 }
 
-// The bug this guards: `dockerfile:` was parsed and validated at the spec layer,
-// stored, and then never copied into the wire spec — so every pipeline build used
-// the root Dockerfile regardless of what the pipeline file said, with nothing
-// reporting that the setting had been ignored.
+// The bug this guards: `dockerfile:` was parsed and validated at the spec layer, stored, and then
+// never copied into the wire spec — so every pipeline build used the root Dockerfile regardless of
+// what the pipeline file said, with nothing reporting that the setting had been ignored.
 func TestBuildJobSpecCarriesDockerfile(t *testing.T) {
 	in := JobInputs{
 		Run: &models.PipelineRun{ID: 1, WorkspaceID: 1},

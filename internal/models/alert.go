@@ -46,12 +46,9 @@ const (
 	CategorySecurity AlertCategory = "security"
 )
 
-// Alert is a workspace-level, stateful, deduplicated condition derived from
-// signals (app events, metrics, jobs). It is shared across the workspace's
-// members; per-user delivery is a Notification. The dedup key is the identity of
-// the condition (e.g. "crashloop:app:42"): a repeat signal updates the existing
-// active alert (bumping Count/LastSeen) instead of creating a new row, and a
-// recovery signal resolves it — this is what turns 40 crash events into one line.
+// Alert is a workspace-level, deduplicated condition derived from signals; per-user delivery
+// is a Notification. The dedup key identifies the condition ("crashloop:app:42"), so a repeat
+// signal bumps Count/LastSeen instead of adding a row — 40 crash events become one line.
 type Alert struct {
 	ID          uint          `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint          `json:"workspace_id" gorm:"index;not null"`

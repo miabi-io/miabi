@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package registryserver runs and authorizes the platform's built-in,
-// multi-tenant Docker registry (CNCF distribution / registry:3). The registry
-// container runs auth-less on the gateway network; authentication is enforced at
-// the edge by a Goma forwardAuth middleware that calls Authorize (see auth.go).
-// Distinct from internal/services/registry, which manages external (third-party)
-// registry credentials.
+// Package registryserver runs and authorizes the platform's built-in, multi-tenant Docker registry. The
+// registry container runs auth-less on the gateway network; authentication is enforced at the edge by a
+// Goma forwardAuth middleware calling Authorize. Distinct from services/registry (external credentials).
 package registryserver
 
 import (
@@ -37,13 +34,10 @@ const (
 	dataPath      = "/var/lib/registry"
 )
 
-// imageResolver resolves the registry image from the platform-image catalog.
 type imageResolver interface{ Ref(key string) string }
 
-// settingsReader reads platform string settings (the external base domain).
 type settingsReader interface{ String(key, def string) string }
 
-// keyVerifier verifies an API token (satisfied by *auth.APIKeyService).
 type keyVerifier interface {
 	Verify(plaintext string) (*models.APIKey, error)
 }
@@ -53,8 +47,6 @@ type keyVerifier interface {
 // feature, so an unwired checker must fail closed rather than grant it.
 type entitlementChecker interface{ Has(flag string) bool }
 
-// workspaceFinder resolves workspaces and memberships for authorization
-// (satisfied by the workspace repo).
 type workspaceFinder interface {
 	FindByID(id uint) (*models.Workspace, error)
 	FindByName(name string) (*models.Workspace, error)
@@ -75,10 +67,9 @@ type Service struct {
 	network    string
 	controlURL string
 	cfg        config.RegistryConfig
-	// ee gates the licensed S3 storage driver. Checked at every point the driver
-	// would actually be used (container start, GC), not only where it is
-	// configured — the configuration now arrives from the environment, which no
-	// API-level check can see.
+	// ee gates the licensed S3 storage driver. Checked at every point the driver would actually be used
+	// (container start, GC), not only where it is configured — the configuration now arrives from the
+	// environment, which no API-level check can see.
 	ee entitlementChecker
 	// catalog is what the platform knows about the images it built: the digests a
 	// live deployment or pinned release holds (so a tag delete can't pull an image
@@ -91,13 +82,9 @@ type Service struct {
 // value), so it is a stable constant.
 const platformTokenLabel = "registry:platform-token"
 
-// platformToken is the shared secret the platform's own build/deploy worker uses
-// to push and pull built images (the registry recognizes it as the platform
-// principal). It is resolved lazily so it never depends on service-construction
-// order relative to crypto.Init: an explicit MIABI_REGISTRY_PLATFORM_TOKEN wins
-// (for operators who want to share it with external tooling), otherwise it is
-// derived deterministically from the master encryption key — so the platform
-// manages it internally with no operator action and every process agrees.
+// platformToken is the shared secret the platform's build/deploy worker uses to push and pull built images.
+// It resolves lazily so it never depends on construction order relative to crypto.Init: an explicit
+// MIABI_REGISTRY_PLATFORM_TOKEN wins, otherwise it derives deterministically from the master encryption key.
 func (s *Service) platformToken() string {
 	if t := strings.TrimSpace(s.cfg.PlatformToken); t != "" {
 		return t
@@ -178,10 +165,9 @@ type SaveInput struct {
 	S3SecretKey *string
 }
 
-// Locks reports which fields the environment has pinned. A locked field is
-// read-only: Save ignores it, and the admin UI renders it as fixed with the
-// variable that owns it, rather than offering an input whose value the server
-// would discard.
+// Locks reports which fields the environment has pinned. A locked field is read-only: Save ignores it, and
+// the admin UI renders it as fixed with the variable that owns it, rather than offering an input whose
+// value the server would discard.
 type Locks struct {
 	Enabled bool `json:"enabled"`
 	Host    bool `json:"host"`
@@ -218,17 +204,9 @@ func (s *Service) Locks() Locks {
 	}
 }
 
-// Save persists the settings an admin may change, skipping every field the
-// environment pins.
-//
-// The environment stays authoritative where it speaks — an install configured
-// by docker-compose or a Helm chart keeps behaving exactly as before, and its
-// values can't drift out from under the file that declares them. Where it is
-// silent, the database is the source of truth and this is what writes it.
-//
-// Validation of a *change* (does this install may use S3, is the host a usable
-// hostname, does switching storage strand existing blobs) belongs to the caller:
-// it is where the operator can be asked to confirm.
+// Save persists the settings an admin may change, skipping every field the environment pins, so an install
+// configured by compose or Helm keeps behaving as declared. Validating a *change* — S3 entitlement, host
+// usability, whether switching storage strands blobs — belongs to the caller, where confirmation happens.
 func (s *Service) Save(in SaveInput) (*models.RegistrySettings, error) {
 	st, err := s.repo.Get()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -288,10 +266,9 @@ func (s *Service) Save(in SaveInput) (*models.RegistrySettings, error) {
 	return st, nil
 }
 
-// normalizeStorage maps a driver name to a known one, defaulting to the
-// filesystem driver. It is silent by design — it runs on every settings read.
-// An unrecognized MIABI_REGISTRY_STORAGE is caught once, loudly, at boot
-// (config.validateRegistry) rather than warned about on every call.
+// normalizeStorage maps a driver name to a known one, defaulting to the filesystem driver. It is silent by
+// design — it runs on every settings read. An unrecognized MIABI_REGISTRY_STORAGE is caught once, loudly,
+// at boot (config.validateRegistry) rather than warned about on every call.
 func normalizeStorage(t string) string {
 	if strings.ToLower(strings.TrimSpace(t)) == models.RegistryStorageS3 {
 		return models.RegistryStorageS3
@@ -299,12 +276,9 @@ func normalizeStorage(t string) string {
 	return models.RegistryStorageFilesystem
 }
 
-// envHost is the validated MIABI_REGISTRY_HOST, or "" when unset or malformed.
-// A malformed host is dropped rather than used: it is the string every image
-// reference is matched against, and a value that matches nothing would leave the
-// tenant check silently inert while the registry still served traffic. Boot
-// refuses such a value outright (config.validate), so reaching here means the
-// process was started before the check existed.
+// envHost is the validated MIABI_REGISTRY_HOST, or "" when unset or malformed. A malformed host is dropped
+// rather than used: it is the string every image reference is matched against, and a value matching nothing
+// would leave the tenant check silently inert while the registry still served traffic. Boot refuses it too.
 func (s *Service) envHost() string {
 	host, err := NormalizeHost(s.cfg.Host)
 	if err != nil {
@@ -314,16 +288,9 @@ func (s *Service) envHost() string {
 	return host
 }
 
-// applyEnvConfig layers the boot environment over the stored settings.
-//
-// The environment wins wherever it speaks, and only there. That is what lets an
-// install declared by docker-compose or a Helm chart stay authoritative — its
-// values can't be edited out from under the file that declares them — while an
-// install that sets none of these is configured entirely from the admin UI.
-//
-// Which fields are pinned is reported by Locks, so the UI can render an
-// env-managed field as fixed and name the variable that owns it, and Save can
-// ignore it rather than writing a value that the next read would overwrite.
+// applyEnvConfig layers the boot environment over the stored settings. The environment wins wherever it speaks,
+// and only there, so a compose- or Helm-declared install stays authoritative while one that sets none of these
+// is configured from the UI. Locks reports which fields are pinned, so Save ignores them and the UI shows why.
 func (s *Service) applyEnvConfig(st *models.RegistrySettings) {
 	c := s.cfg
 	// Only an explicitly-set variable pins enablement: absent means the stored
@@ -365,10 +332,9 @@ func (s *Service) applyEnvConfig(st *models.RegistrySettings) {
 	}
 }
 
-// StorageSource names where the effective storage driver came from, so the admin
-// UI can say why a field is fixed or which value it is editing: "env"
-// (MIABI_REGISTRY_STORAGE pins it), "stored" (configured in the console), or
-// "default" (the filesystem driver, nothing configured).
+// StorageSource names where the effective storage driver came from, so the admin UI can say why a field is
+// fixed or which value it is editing: "env" (MIABI_REGISTRY_STORAGE pins it), "stored" (configured in the
+// console), or "default" (the filesystem driver, nothing configured).
 func (s *Service) StorageSource(st *models.RegistrySettings) string {
 	if strings.TrimSpace(s.cfg.StorageType) != "" {
 		return "env"
@@ -395,13 +361,9 @@ func (s *Service) StorageUnavailableReason(st *models.RegistrySettings) string {
 	return ""
 }
 
-// HostFor returns the effective registry hostname: MIABI_REGISTRY_HOST, else
-// registry.<external-base-domain>, else empty (registry can't be served).
-//
-// Both candidates are validated. An unusable host resolves to "" — distribution
-// then reports itself unavailable with a specific reason and no gateway route is
-// written — rather than to a string that would silently fail to match any image
-// reference.
+// HostFor returns the effective registry hostname: MIABI_REGISTRY_HOST, else registry.<external-base-domain>,
+// else empty. Both candidates are validated — an unusable host resolves to "", so distribution reports
+// itself unavailable with a reason rather than silently failing to match any image reference.
 func (s *Service) HostFor(st *models.RegistrySettings) string {
 	if host := s.envHost(); host != "" {
 		return host
@@ -516,11 +478,9 @@ func (s *Service) Ensure(ctx context.Context, dc docker.Client) error {
 		s.warnIfDisabledByLock()
 		return s.Teardown(ctx, dc)
 	}
-	// Refuse to bring up storage this install may not use. Tear down first: an
-	// install whose license lapsed (or that was pointed at S3 by hand) may have a
-	// registry already serving from that bucket, and leaving it running would make
-	// the check advisory. Data in the bucket is untouched — only the container
-	// serving it stops.
+	// Refuse to bring up storage this install may not use, tearing down first: an install whose license lapsed may
+	// already have a registry serving from that bucket, and leaving it running would make the check advisory.
+	// Data in the bucket is untouched — only the container serving it stops.
 	if reason := s.StorageUnavailableReason(st); reason != "" {
 		logger.Error("internal registry not started: " + reason)
 		if err := s.Teardown(ctx, dc); err != nil {
@@ -548,14 +508,9 @@ func (s *Service) Ensure(ctx context.Context, dc docker.Client) error {
 	return nil
 }
 
-// warnIfDisabledByLock reports a registry switched on in the console but held
-// off by the environment. Honouring the environment is correct — an operator who
-// pinned MIABI_REGISTRY_ENABLED=false means it — but doing so silently is not:
-// the console shows a registry that never comes up, and git-source deploys fail
-// with no clue why. Say exactly which variable decided.
-//
-// Only fires when the variable is explicitly set to false; an absent variable
-// leaves the switch to the console and is not an override at all.
+// warnIfDisabledByLock reports a registry switched on in the console but held off by the environment. Honouring
+// the environment is correct, but doing so silently is not: the console shows a registry that never comes up and
+// git-source deploys fail with no clue. Only fires when the variable is explicitly false, not when absent.
 func (s *Service) warnIfDisabledByLock() {
 	if !s.cfg.EnabledSet || s.cfg.Enabled || s.repo == nil {
 		return
@@ -616,11 +571,9 @@ func (s *Service) startContainer(ctx context.Context, dc docker.Client, st *mode
 	return nil
 }
 
-// GarbageCollect reclaims storage from deleted/overwritten manifests. To run
-// safely it flips the registry into read-only mode (pulls keep working, pushes
-// pause), runs `registry garbage-collect` as a one-shot against the same
-// storage, then restores read-write. A no-op unless the registry is enabled with
-// deletes on. dc is the control-plane Docker client.
+// GarbageCollect reclaims storage from deleted or overwritten manifests. To run safely it flips the
+// registry read-only (pulls keep working, pushes pause), runs `registry garbage-collect` as a one-shot
+// against the same storage, then restores read-write. A no-op unless the registry is enabled with deletes on.
 func (s *Service) GarbageCollect(ctx context.Context, dc docker.Client) error {
 	st, err := s.Get()
 	if err != nil {
@@ -693,7 +646,6 @@ func (s *Service) authURL() string {
 	return base + "/internal/registry/auth"
 }
 
-// proxyConfig builds the gateway config for the current settings.
 func (s *Service) proxyConfig(st *models.RegistrySettings, enabled bool) proxy.RegistryProxy {
 	return proxy.RegistryProxy{
 		Enabled:     enabled,

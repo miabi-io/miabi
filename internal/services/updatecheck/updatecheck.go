@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package updatecheck asks GitHub, once a day, whether a newer Miabi release
-// exists and caches the answer for the dashboard to read.
-//
-// It notifies; it never upgrades. This process holds the Docker socket and
-// orchestrates every workspace, so restarting itself into a new image is a
-// decision for a human with a shell, not a cron tick.
+// Package updatecheck asks GitHub, once a day, whether a newer Miabi release exists and caches the answer for
+// the dashboard. It notifies; it never upgrades. This process holds the Docker socket and orchestrates every
+// workspace, so restarting itself into a new image is a decision for a human with a shell.
 package updatecheck
 
 import (
@@ -24,10 +21,9 @@ import (
 )
 
 const (
-	// githubAPI is the base URL; releasesPath lists releases newest-first.
-	// Deliberately NOT /releases/latest: that endpoint excludes prereleases, and a
-	// project whose releases are all prereleases gets a 404 from it — the check
-	// would silently never fire.
+	// githubAPI is the base URL; releasesPath lists releases newest-first. Deliberately NOT /releases/latest:
+	// that endpoint excludes prereleases, and a project whose releases are all prereleases gets a 404 from it
+	// — the check would silently never fire.
 	githubAPI    = "https://api.github.com"
 	releasesPath = "/repos/miabi-io/miabi/releases"
 
@@ -58,11 +54,9 @@ func NewService(db *gorm.DB, version string, enabled bool) *Service {
 	return s
 }
 
-// setBaseURL rebuilds the HTTP client against another origin. Only tests call it
-// (pointing at an httptest server); production always talks to api.github.com.
-//
-// The User-Agent identifies the client honestly and is the ONLY thing this
-// request says about the install: no id, no host, no license.
+// setBaseURL rebuilds the HTTP client against another origin. Only tests call it (pointing at an httptest
+// server); production always talks to api.github.com. The User-Agent identifies the client honestly and is
+// the ONLY thing this request says about the install: no id, no host, no license.
 func (s *Service) setBaseURL(base string) {
 	s.client = client.New(base,
 		client.WithTimeout(httpTimeout),
@@ -75,10 +69,9 @@ func (s *Service) setBaseURL(base string) {
 // version does not compare meaningfully against any release.
 func (s *Service) Enabled() bool { return s.enabled && normalize(s.version) != "" }
 
-// normalize turns a baked version into a semver string x/mod accepts. The
-// binary is stamped without the leading "v" (ldflags pass the Docker tag, e.g.
-// "1.0.0-beta.4"), while GitHub tags carry it. Returns "" when the value is not
-// a version at all — "dev", "unknown", or a commit sha.
+// normalize turns a baked version into a semver string x/mod accepts. The binary is stamped without the
+// leading "v" (ldflags pass the Docker tag, e.g. "1.0.0-beta.4"), while GitHub tags carry it. Returns ""
+// when the value is not a version at all — "dev", "unknown", or a commit sha.
 func normalize(v string) string {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -98,12 +91,9 @@ func normalize(v string) string {
 // user on stable must never be nudged onto a beta.
 func wantPrerelease(current string) bool { return semver.Prerelease(current) != "" }
 
-// Newest picks the newest release the running build should be offered, or ""
-// when none is newer. Exported for tests.
-//
-// Ordering is semver, never lexical: "v1.0.0-beta.10" sorts *after*
-// "v1.0.0-beta.9" here, and "v1.0.0" after both — a string compare gets both
-// backwards, which would tell a beta.10 user to "upgrade" to beta.9.
+// Newest picks the newest release the running build should be offered, or "" when none is newer. Ordering is
+// semver, never lexical: "v1.0.0-beta.10" sorts after "v1.0.0-beta.9", and "v1.0.0" after both — a string
+// compare gets both backwards, which would tell a beta.10 user to "upgrade" to beta.9.
 func Newest(current string, releases []Release) (Release, bool) {
 	cur := normalize(current)
 	if cur == "" {
@@ -131,16 +121,9 @@ func Newest(current string, releases []Release) (Release, bool) {
 	return best, bestTag != ""
 }
 
-// IsNewer reports whether latest is a strictly newer release than current.
-//
-// Readers use this to gate the notice rather than trusting the cached row on its
-// own. The row is written by a daily cron, so between an upgrade and the next
-// tick it still describes the *previous* build — without this guard an install
-// that just moved to 1.3.0 would keep advertising the v1.2.1 it is already past.
-// Comparing at read time makes offering a downgrade structurally impossible,
-// whatever is cached.
-//
-// A non-version build ("dev", a sha) compares against nothing: false.
+// IsNewer reports whether latest is a strictly newer release than current. Readers gate the notice on this
+// rather than trusting the cached row: the row is written by a daily cron, so between an upgrade and the next
+// tick it still describes the previous build. Comparing at read time makes offering a downgrade impossible.
 func IsNewer(current, latest string) bool {
 	cur, lat := normalize(current), normalize(latest)
 	if cur == "" || lat == "" {
@@ -191,12 +174,9 @@ func (s *Service) Check(ctx context.Context) error {
 	now := time.Now()
 	st.CheckedAt = &now
 
-	// The cached verdict is a function of two inputs: GitHub's release list AND the
-	// version we compare it against. The ETag only covers the first. If the build
-	// moved since the verdict was computed, replaying the ETag would earn a 304 on
-	// an unchanged list and preserve a verdict that no longer applies — an upgraded
-	// install would keep being offered the release it is already past. Drop the
-	// ETag so this check is forced to re-evaluate the list against the new build.
+	// The cached verdict is a function of two inputs: GitHub's release list AND the version compared against it.
+	// The ETag covers only the first, so replaying it after an upgrade would earn a 304 and preserve a verdict
+	// that no longer applies. Drop the ETag, forcing this check to re-evaluate the list against the new build.
 	etagToSend := st.ETag
 	if st.CheckedVersion != s.version {
 		etagToSend = ""
@@ -224,7 +204,6 @@ func (s *Service) Check(ctx context.Context) error {
 		published := r.PublishedAt
 		st.PublishedAt = &published
 	} else {
-		// Up to date. Clear any stale pointer from a previous release.
 		st.LatestVersion, st.ReleaseURL, st.PublishedAt = "", "", nil
 	}
 	return s.db.Save(st).Error

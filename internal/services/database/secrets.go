@@ -15,10 +15,9 @@ const (
 	SecretOwnerInstance = "db_instance" // an instance (redis / admin)
 )
 
-// SecretWriter manages the Vault secrets owned by a managed database.
-// Implemented by the secret service; injected after construction (optional —
-// nil disables auto-provisioning and the cascade, falling back to plaintext env
-// injection).
+// SecretWriter manages the Vault secrets owned by a managed database. Implemented by the secret
+// service; injected after construction. Optional — nil disables auto-provisioning and the cascade,
+// falling back to plaintext env injection.
 type SecretWriter interface {
 	UpsertOwned(workspaceID uint, ownerKind string, ownerID uint, name, value, description string) (*models.Secret, error)
 	DeleteOwned(workspaceID uint, ownerKind string, ownerID uint) ([]models.Application, error)
@@ -57,7 +56,6 @@ func secretName(instSlug, dbName, suffix string) string {
 	return name
 }
 
-// sanitizeSecretPart lowercases and reduces to the secret-name charset.
 func sanitizeSecretPart(s string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(s) {

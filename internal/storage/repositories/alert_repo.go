@@ -33,11 +33,9 @@ func (r *AlertRepository) ActiveByDedup(workspaceID uint, dedupKey string) (*mod
 	return &a, nil
 }
 
-// Fire creates a new alert or folds a repeat signal into the existing active one
-// (bumping Count/LastSeen and refreshing the detail). It returns the alert and
-// whether it was newly created (a caller notifies on creation, not on every
-// fold). Done in a transaction under a row lock so concurrent signals for the
-// same condition can't create duplicates.
+// Fire creates a new alert or folds a repeat signal into the existing active one (bumping
+// Count/LastSeen), returning whether it was newly created so callers notify only on creation.
+// Runs in a transaction under a row lock so concurrent signals cannot create duplicates.
 func (r *AlertRepository) Fire(in *models.Alert) (*models.Alert, bool, error) {
 	var out *models.Alert
 	created := false

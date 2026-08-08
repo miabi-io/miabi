@@ -44,8 +44,6 @@ func (r *EnvironmentRepository) ExistsByName(workspaceID uint, name string) (boo
 	return count > 0, err
 }
 
-// --- approvals ---
-
 func (r *EnvironmentRepository) CreateApproval(a *models.ReleaseApproval) error {
 	return r.db.Create(a).Error
 }

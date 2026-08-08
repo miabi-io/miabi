@@ -90,11 +90,9 @@ func (c *Client) ManifestDigest(ctx context.Context, repo, ref string) (string, 
 	return digest, nil
 }
 
-// TagManifest points tag at an existing digest in repo without re-uploading any
-// blobs: it fetches the digest's manifest and re-PUTs the identical bytes under
-// the tag (registry v2 manifest PUT). Used to add a human-readable release tag
-// (v<n>) to an already-pushed build image. repo is the internal storage path
-// (ws_<id>/<app-name>).
+// TagManifest points tag at an existing digest in repo without re-uploading any blobs: it fetches the
+// digest's manifest and re-PUTs the identical bytes under the tag. Used to add a human-readable release
+// tag to an already-pushed build image. repo is the internal storage path (ws_<id>/<app-name>).
 func (c *Client) TagManifest(ctx context.Context, repo, digest, tag string) error {
 	get, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/v2/"+repo+"/manifests/"+digest, nil)
 	if err != nil {
@@ -129,7 +127,6 @@ func (c *Client) TagManifest(ctx context.Context, repo, digest, tag string) erro
 	return nil
 }
 
-// manifest is the subset of a docker/OCI manifest (or index) we read for sizing.
 type manifest struct {
 	Config struct {
 		Digest string `json:"digest"`
@@ -154,10 +151,9 @@ func (c *Client) BlobSizes(ctx context.Context, repo, ref string) (map[string]in
 	return sizes, err
 }
 
-// ManifestInfo resolves a reference to its content digest and the total size of
-// the blobs it references, from a single manifest fetch. Listing a page of tags
-// needs both, and the registry returns them from the same request — resolving
-// them separately would double the round trips per tag.
+// ManifestInfo resolves a reference to its content digest and the total size of the blobs it references,
+// from a single manifest fetch. Listing a page of tags needs both, and the registry returns them from the
+// same request — resolving them separately would double the round trips per tag.
 func (c *Client) ManifestInfo(ctx context.Context, repo, ref string) (digest string, sizeBytes int64, err error) {
 	digest, sizes, err := c.manifestBlobs(ctx, repo, ref)
 	if err != nil {

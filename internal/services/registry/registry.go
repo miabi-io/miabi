@@ -32,10 +32,9 @@ var (
 // DefaultServer is the implicit registry when none is given (Docker Hub).
 const DefaultServer = "registry-1.docker.io"
 
-// Vault is the vault access a registry credential needs: resolving a stored
-// credential (its own encrypted value, or the secret it references) and checking
-// that a reference points at something. Implemented by the secret service;
-// optional (nil = literal secrets only).
+// Vault is the vault access a registry credential needs: resolving a stored credential — its own encrypted
+// value, or the secret it references — and checking that a reference points at something. Implemented by the
+// secret service; optional, with nil meaning literal secrets only.
 type Vault interface {
 	CredentialSecret(workspaceID uint, enc, ref string) (string, error)
 	ExistsByName(workspaceID uint, name string) bool
@@ -68,11 +67,9 @@ func (s *Service) Secret(reg *models.Registry) (string, error) {
 	return crypto.Decrypt(reg.Secret)
 }
 
-// storeSecret decides where an incoming secret lands: a `${{ secrets.NAME }}`
-// value becomes a reference to the vault, anything else is encrypted here. The
-// two are mutually exclusive, so switching a credential from one form to the
-// other always clears the other. A blank value means "leave as-is" and is the
-// caller's business — this is only called with a non-blank one.
+// storeSecret decides where an incoming secret lands: a `${{ secrets.NAME }}` value becomes a vault reference,
+// anything else is encrypted here. The two are mutually exclusive, so switching a credential from one form to
+// the other always clears the other. A blank value means "leave as-is" and is the caller's business.
 func (s *Service) storeSecret(workspaceID uint, value string) (enc, ref string, err error) {
 	if name := secret.RefName(value); name != "" {
 		if s.secrets != nil && !s.secrets.ExistsByName(workspaceID, name) {
@@ -93,10 +90,9 @@ type Input struct {
 	// `${{ secrets.NAME }}` reference to a workspace Secret, which is stored as a
 	// reference and resolved at every use. Blank on update = keep what is stored.
 	Secret string
-	// Metadata / Annotations carry provenance labels and free-form notes. Set by
-	// the declarative apply engine (managed-by, gitops-source) so a prune can tell
-	// its own credentials from hand-created ones; nil leaves them untouched on
-	// update.
+	// Metadata and Annotations carry provenance labels and free-form notes. Set by the declarative apply engine
+	// (managed-by, gitops-source) so a prune can tell its own credentials from hand-created ones; nil leaves them
+	// untouched on update.
 	Metadata    models.Metadata
 	Annotations models.Metadata
 }
@@ -166,14 +162,9 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.Registry, erro
 	return strip(reg), nil
 }
 
-// BundleSecret returns what a portable workspace bundle should carry for a
-// credential: its vault reference when it has one — the referenced Secret
-// travels in the same bundle, so the indirection (and later rotations on the
-// target) is preserved — else the decrypted password.
-//
-// It re-reads the row from the repository because List/Get strip the secret for
-// safe responses; taking it from a listed record would silently export a blank
-// credential.
+// BundleSecret returns what a portable workspace bundle should carry for a credential: its vault reference
+// when it has one, so the indirection and later rotations survive, else the decrypted password. It re-reads
+// the row because List/Get strip the secret, and a listed record would export a blank credential.
 func (s *Service) BundleSecret(workspaceID, id uint) (string, error) {
 	reg, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -203,12 +194,9 @@ func (s *Service) FindByName(workspaceID uint, name string) (*models.Registry, e
 	return nil, ErrNotFound
 }
 
-// Fingerprints returns a non-reversible fingerprint of every credential's stored
-// password, keyed by registry name. It lets the declarative plan engine detect a
-// rotated password — and converge it — without the plaintext ever leaving this
-// package or appearing in a plan. A credential whose secret cannot be decrypted
-// is omitted, so it reads as "unknown" rather than "empty" (which would look like
-// a rotation on every plan).
+// Fingerprints returns a non-reversible fingerprint of every credential's stored password, keyed by registry
+// name. It lets the declarative plan engine detect and converge a rotated password without the plaintext
+// leaving this package. An undecryptable credential is omitted, so it reads as unknown, not as a rotation.
 func (s *Service) Fingerprints(workspaceID uint) (map[string]string, error) {
 	regs, err := s.repo.ListByWorkspace(workspaceID)
 	if err != nil {
@@ -216,10 +204,9 @@ func (s *Service) Fingerprints(workspaceID uint) (map[string]string, error) {
 	}
 	out := make(map[string]string, len(regs))
 	for i := range regs {
-		// A vault-backed credential is fingerprinted by its *reference*, not by the
-		// value behind it: the credential says "whatever secret X holds", so
-		// rotating X is not a change to this credential (the next pull just reads
-		// the new value). Pointing it at a different secret is.
+		// A vault-backed credential is fingerprinted by its *reference*, not by the value behind it: the
+		// credential says "whatever secret X holds", so rotating X is not a change to this credential (the next
+		// pull just reads the new value). Pointing it at a different secret is.
 		if regs[i].SecretRef != "" {
 			out[regs[i].Name] = Fingerprint(regs[i].Name, secret.Ref(regs[i].SecretRef))
 			continue
@@ -233,10 +220,9 @@ func (s *Service) Fingerprints(workspaceID uint) (map[string]string, error) {
 	return out, nil
 }
 
-// Fingerprint derives the stable fingerprint of a registry password. It is salted
-// with the credential's name so the same password under two names does not
-// produce the same digest (no cross-registry correlation, no shared rainbow
-// table), and truncated because it is only ever compared for equality.
+// Fingerprint derives the stable fingerprint of a registry password. It is salted with the credential's name,
+// so the same password under two names does not produce the same digest — no cross-registry correlation, no
+// shared rainbow table — and truncated, because it is only ever compared for equality.
 func Fingerprint(name, password string) string {
 	if password == "" {
 		return ""
@@ -369,7 +355,6 @@ func checkRegistryAuth(ctx context.Context, server, username, password string) e
 	return nil
 }
 
-// parseBearerChallenge extracts key="value" pairs from a WWW-Authenticate header.
 func parseBearerChallenge(challenge string) map[string]string {
 	out := map[string]string{}
 	rest := strings.TrimSpace(challenge[len("Bearer "):])

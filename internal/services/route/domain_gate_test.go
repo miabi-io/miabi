@@ -31,7 +31,6 @@ func TestHostUnderDomain(t *testing.T) {
 	}
 }
 
-// fakeDomains implements DomainLister for validateHosts.
 type fakeDomains struct{ list []models.Domain }
 
 func (f fakeDomains) ListByWorkspace(uint) ([]models.Domain, error) { return f.list, nil }

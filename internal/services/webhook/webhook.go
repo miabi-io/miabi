@@ -265,10 +265,9 @@ func Sign(secret string, body []byte) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-// Deliver POSTs a signed JSON body to url and returns the HTTP status code.
-// A transport error returns (0, err); a non-2xx/3xx status is reported via the
-// returned code (the caller decides whether to retry). User-supplied headers are
-// applied first; Content-Type, User-Agent, and the signature cannot be overridden.
+// Deliver POSTs a signed JSON body to url and returns the HTTP status code. A transport error returns (0,
+// err); a non-2xx/3xx status is reported via the returned code, and the caller decides whether to retry.
+// User-supplied headers are applied first; Content-Type, User-Agent and the signature cannot be overridden.
 func Deliver(ctx context.Context, client *http.Client, url, secret string, headers map[string]string, body []byte) (int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
@@ -299,7 +298,6 @@ func GenerateSecret() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// strip clears the ciphertext and flags secret presence for safe responses.
 func strip(w *models.Webhook) *models.Webhook {
 	w.HasSecret = w.Secret != ""
 	w.Secret = ""

@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package directory turns a successful LDAP/Active-Directory bind into a Miabi
-// user: it just-in-time provisions the account and reconciles the user's
-// directory groups onto platform-admin and per-workspace access. The actual
-// bind lives behind the enterprise seam (ee.LDAP()); this package owns the
-// core-side provisioning + access mapping so the enterprise build never touches
-// user/workspace code. It is a no-op in Community (ee.LDAP() is nil).
+// Package directory turns a successful LDAP/Active-Directory bind into a Miabi user: it just-in-time
+// provisions the account and reconciles directory groups onto platform-admin and per-workspace access.
+// The bind lives behind the enterprise seam, so the enterprise build never touches user/workspace code.
 package directory
 
 import (
@@ -46,13 +43,9 @@ func NewService(ee enterprise.EE, users *repositories.UserRepository, workspaces
 	return &Service{ee: ee, users: users, workspaces: workspaces, ldap: ldap}
 }
 
-// Login attempts directory auth as a fall-through after local password auth
-// fails. It returns:
-//   - (user, nil)  the credentials bound and the account is provisioned/updated;
-//   - (nil, nil)   no directory is configured or none matched — the caller keeps
-//     its original (local) result, so bootstrap/local accounts are unaffected;
-//   - (nil, err)   the user was found but the bind failed, or the account is
-//     disabled — the caller maps it to 401/403.
+// Login attempts directory auth as a fall-through after local password auth fails. (user, nil) means the
+// credentials bound and the account is provisioned; (nil, nil) means no directory matched, so the caller
+// keeps its local result; (nil, err) means the bind failed or the account is disabled.
 func (s *Service) Login(ctx context.Context, identifier, password string) (*models.User, error) {
 	a := s.ee.LDAP()
 	if a == nil {
@@ -143,11 +136,9 @@ func activeOrErr(u *models.User) (*models.User, error) {
 	return u, nil
 }
 
-// reconcile maps the identity's directory groups onto platform-admin and
-// per-workspace access via the config's LDAPGroupMapping rows. Only accounts
-// managed by the directory (AuthSource == ldap) are touched; a workspace is
-// "directory-managed" only if a mapping references it, so manual grants in other
-// workspaces are never disturbed.
+// reconcile maps the identity's directory groups onto platform-admin and per-workspace access via the config's
+// LDAPGroupMapping rows. Only accounts managed by the directory are touched, and a workspace counts as
+// directory-managed only if a mapping references it — so manual grants elsewhere are never disturbed.
 func (s *Service) reconcile(user *models.User, ident enterprise.LDAPIdentity) error {
 	if user.AuthSource != AuthSourceLDAP {
 		return nil
@@ -188,7 +179,6 @@ func (s *Service) reconcile(user *models.User, ident enterprise.LDAPIdentity) er
 		s.reconcileAdmin(user, wantAdmin)
 	}
 
-	// Workspace memberships for directory-governed workspaces.
 	for wsID := range managed {
 		role, want := desired[wsID]
 		member, merr := s.workspaces.FindMember(wsID, user.ID)
@@ -229,8 +219,6 @@ func (s *Service) reconcileAdmin(user *models.User, wantAdmin bool) {
 		}
 	}
 }
-
-// --- helpers ---
 
 func normalizeGroups(groups []string) map[string]bool {
 	m := make(map[string]bool, len(groups))

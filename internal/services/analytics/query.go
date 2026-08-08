@@ -24,10 +24,9 @@ type Report struct {
 	// Compare holds the totals of the immediately preceding, equal-length window,
 	// so the UI can render period-over-period deltas. Nil when not requested.
 	Compare *Totals `json:"compare,omitempty"`
-	// RetentionDays is the effective retention cap in days (-1 = unlimited), and
-	// Exportable reports whether analytics export is entitled. Both are set by the
-	// handler from the license so the UI can bound the range picker and show the
-	// Enterprise upgrade hints. They are edition metadata, not computed from rows.
+	// RetentionDays is the effective retention cap in days (-1 = unlimited), and Exportable reports whether
+	// analytics export is entitled. Both are set by the handler from the license so the UI can bound the
+	// range picker and show upgrade hints. They are edition metadata, not computed from rows.
 	RetentionDays int  `json:"retention_days"`
 	Exportable    bool `json:"exportable"`
 }
@@ -117,7 +116,6 @@ type Category struct {
 	Count int64  `json:"count"`
 }
 
-// truncFunc truncates a bucket timestamp to the report granularity.
 type truncFunc func(time.Time) time.Time
 
 // maxSeriesPoints bounds the emitted series regardless of the window, so a wide
@@ -138,7 +136,6 @@ func granularityFor(span time.Duration) (string, truncFunc, time.Duration) {
 	}
 }
 
-// seriesAgg accumulates one output time bucket.
 type seriesAgg struct {
 	requests, bytesIn, bytesOut, errors, errors4xx, errors5xx int64
 	durHist                                                   []int64
@@ -146,7 +143,6 @@ type seriesAgg struct {
 	sketches                                                  [][]byte
 }
 
-// addSeriesRow folds one rollup into its output bucket.
 func addSeriesRow(series map[int64]*seriesAgg, key int64, row *models.AnalyticsRollup) {
 	sp := series[key]
 	if sp == nil {
@@ -166,10 +162,9 @@ func addSeriesRow(series map[int64]*seriesAgg, key int64, row *models.AnalyticsR
 	}
 }
 
-// emitSeries returns one point per bucket across the whole window, ordered by
-// time — buckets with no traffic are emitted as zeros rather than skipped, so the
-// series stays evenly spaced in time. Charts plot it against a real time axis,
-// where a quiet hour has to read as a gap, not disappear between its neighbours.
+// emitSeries returns one point per bucket across the whole window, ordered by time. Buckets with no traffic
+// are emitted as zeros rather than skipped, so the series stays evenly spaced: charts plot it against a real
+// time axis, where a quiet hour has to read as a gap rather than disappear between its neighbours.
 func emitSeries(series map[int64]*seriesAgg, trunc truncFunc, step time.Duration, since, until time.Time) []SeriesPoint {
 	out := make([]SeriesPoint, 0, len(series)+1)
 	for t := trunc(since); !t.After(trunc(until)) && len(out) < maxSeriesPoints; t = t.Add(step) {
@@ -194,10 +189,9 @@ func emitSeries(series map[int64]*seriesAgg, trunc truncFunc, step time.Duration
 
 const SummaryTopCountries = 8
 
-// Summary is the dashboard's slice of a report: the headline totals, the status
-// split, the request series and the top countries. It deliberately omits the
-// remaining categorical breakdowns, per-route stats and upstream percentiles the
-// analytics pages need, so the dashboard's traffic card doesn't pay for them.
+// Summary is the dashboard's slice of a report: headline totals, the status split, the request series
+// and the top countries. It deliberately omits the remaining breakdowns, per-route stats and upstream
+// percentiles the analytics pages need, so the dashboard's traffic card doesn't pay for them.
 type Summary struct {
 	Range       Window        `json:"range"`
 	Granularity string        `json:"granularity"`
@@ -261,10 +255,9 @@ func BuildSummary(rows []models.AnalyticsRollup, since, until time.Time) Summary
 	return sum
 }
 
-// BuildReport reduces the raw minute rollups of a range into the combined
-// dashboard report. granularity is auto-selected from the span. It performs one
-// pass for the totals/status/web breakdowns and a grouped pass for the series,
-// merging latency histograms for percentiles and HLL sketches for uniques.
+// BuildReport reduces the raw minute rollups of a range into the combined dashboard report, with
+// granularity auto-selected from the span. One pass for the totals and breakdowns, a grouped pass for
+// the series, merging latency histograms for percentiles and HLL sketches for uniques.
 func BuildReport(rows []models.AnalyticsRollup, since, until time.Time) Report {
 	gran, trunc, step := granularityFor(until.Sub(since))
 	rep := Report{
@@ -402,7 +395,6 @@ func slowRoutes(routes map[string]*RouteStat, hist map[string][]int64, errs map[
 	return out
 }
 
-// topN returns the N highest-count entries of a breakdown map, descending.
 func topN(m map[string]int64, n int) []Category {
 	out := make([]Category, 0, len(m))
 	for k, v := range m {

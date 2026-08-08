@@ -5,11 +5,9 @@ package models
 
 import "time"
 
-// Organization is a realm that owns identity configuration — SSO providers,
-// SAML, enforced login, and SCIM provisioning. Miabi seeds a single default
-// organization spanning all workspaces. The table and the nullable foreign keys
-// exist from day one so multi-org needs no destructive migration (the same
-// discipline as Server / workspace_id).
+// Organization is a realm owning identity configuration — SSO, SAML, enforced login, SCIM.
+// Miabi seeds a single default organization spanning all workspaces. The table and nullable
+// foreign keys exist from day one so multi-org needs no destructive migration.
 type Organization struct {
 	ID uint `json:"id" gorm:"primaryKey"`
 	// Name is the globally unique handle (e.g. "default").

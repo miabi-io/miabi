@@ -91,10 +91,9 @@ type GPUScheduler interface {
 // is ignored at deploy (the request-time capability gate still applies).
 func (h *DeployHandler) SetGPU(g GPUScheduler) { h.gpu = g }
 
-// ErrGPUWithCluster and ErrGPUWithRestrictedProfile are the deploy-time refusals
-// for GPU requests that conflict with an incompatible runtime or security
-// posture. Both fail the deploy clearly rather than silently dropping the GPU or
-// the conflicting setting.
+// ErrGPUWithCluster and ErrGPUWithRestrictedProfile are the deploy-time refusals for GPU requests
+// that conflict with an incompatible runtime or security posture. Both fail the deploy clearly
+// rather than silently dropping the GPU or the conflicting setting.
 var (
 	ErrGPUWithCluster           = errors.New("GPU apps must run as a single container, not a clustered (replicated) service; set the runtime to container")
 	ErrGPUWithRestrictedProfile = errors.New("GPU device passthrough is incompatible with the restricted security profile; use the default profile for GPU apps")
@@ -145,10 +144,9 @@ type Distributor interface {
 	// IsBuildRef reports whether ref is one of this registry's distributed refs.
 	// It answers "whose registry", never "whose image" — see ResolveImageRef.
 	IsBuildRef(ref string) bool
-	// ResolveImageRef authorizes an image reference for a workspace and returns
-	// the reference to actually pull. A reference outside the internal registry
-	// passes through untouched; one inside it must live in the workspace's own
-	// namespace, and comes back rewritten to the immutable ws_<id> form.
+	// ResolveImageRef authorizes an image reference for a workspace and returns the reference to
+	// actually pull. A reference outside the internal registry passes through untouched; one inside it
+	// must live in the workspace's own namespace, and comes back rewritten to the immutable ws_<id> form.
 	ResolveImageRef(workspaceID uint, ref string) (string, error)
 	// PushAuth is the credential to push/pull distributed images.
 	PushAuth() *docker.RegistryAuth
@@ -157,10 +155,9 @@ type Distributor interface {
 // SetDistributor wires the internal-registry image distributor (optional).
 func (h *DeployHandler) SetDistributor(d Distributor) { h.distributor = d }
 
-// buildConfig holds the deploy's build-related dependencies now that builds run
-// on runners: the platform-image resolver (for the admin-controlled buildpack
-// builder policy, passed to the runner) and the image catalog (build
-// provenance). Both optional.
+// buildConfig holds the deploy's build-related dependencies now that builds run on runners: the
+// platform-image resolver (for the admin-controlled builder policy passed to the runner) and the
+// image catalog (build provenance). Both optional.
 type buildConfig struct {
 	resolver ImageRefResolver
 	images   *imagesvc.Service
@@ -220,7 +217,6 @@ func (h *DeployHandler) eng(app *models.Application) docker.Client {
 	return dc
 }
 
-// emit records an application event (best-effort; recorder may be nil in tests).
 func (h *DeployHandler) emit(app *models.Application, dep *models.Deployment, t models.AppEventType, sev models.AppEventSeverity, message string) {
 	if h.events == nil {
 		return
@@ -253,10 +249,9 @@ func (h *DeployHandler) ProcessTask(ctx context.Context, task *asynq.Task) error
 		return h.fail(dep, fmt.Errorf("application %d not found: %w", dep.ApplicationID, err))
 	}
 
-	// Serialize deploys per app: two concurrent deploys of the same app would
-	// race on version assignment and the active-container swap. If another deploy
-	// holds the lock, defer this one (re-enqueue shortly) rather than running it
-	// in parallel.
+	// Serialize deploys per app: two concurrent deploys of the same app would race on version
+	// assignment and the active-container swap. If another deploy holds the lock, defer this one
+	// rather than running it in parallel.
 	if h.deployLock != nil {
 		ok, release, lerr := h.deployLock.Acquire(ctx, app.ID)
 		switch {
@@ -290,12 +285,9 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 		h.log(dep, fmt.Sprintf("deployment started — %s strategy", dep.Strategy))
 	}
 
-	// Before anything looks at the image: if it addresses the built-in registry,
-	// prove this workspace owns the namespace it names. Everything below that
-	// touches an internal ref pulls it with the platform credential, which is
-	// authorized for EVERY namespace — so an unchecked ref lets a workspace name
-	// another tenant's image and have the node fetch it, bypassing the per-request
-	// authorization the registry gateway does for `docker pull`.
+	// Before anything looks at the image: if it addresses the built-in registry, prove this workspace
+	// owns the namespace it names. Internal pulls use the platform credential, authorized for EVERY
+	// namespace — so an unchecked ref lets a workspace fetch another tenant's image.
 	if ref, err := h.authorizedImageRef(app, dep.Image); err != nil {
 		_ = h.fail(dep, err)
 		return
@@ -306,22 +298,20 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 	}
 
 	var image string
-	// buildMethod is the resolved git build method (set by the git case below);
-	// it stays empty for image/prebuilt apps. Buildpack images run via the CNB
-	// launcher, which changes how the runtime spec is assembled (no custom
-	// command, an injected $PORT).
+	// buildMethod is the resolved git build method, empty for image/prebuilt apps. Buildpack images
+	// run via the CNB launcher, which changes how the runtime spec is assembled (no custom command,
+	// an injected $PORT).
 	var buildMethod models.AppBuildMethod
 	switch {
 	case dep.ImageID != nil && dep.Image != "" && h.imagePresent(ctx, app, dep.Image):
-		// Prebuilt by a pipeline run on this node: run the exact artifact
-		// directly — no rebuild, no pull. This is what makes a pipeline-produced
-		// deploy reproduce the precise commit+digest the run captured.
+		// Prebuilt by a pipeline run on this node: run the exact artifact directly — no rebuild, no pull.
+		// This is what makes a pipeline-produced deploy reproduce the precise commit+digest the run captured.
 		image = dep.Image
 		h.log(dep, "using prebuilt image "+image+" (no rebuild, no pull)")
 	case dep.Image != "" && h.distributor != nil && h.distributor.IsBuildRef(dep.Image):
-		// A registry-distributed build (e.g. a rollback to a recorded ref): run it
-		// directly, pulling from the internal registry when this node lacks it —
-		// this is what lets a Git-built app deploy/roll back on another node.
+		// A registry-distributed build (e.g. a rollback to a recorded ref): run it directly, pulling from
+		// the internal registry when this node lacks it — this is what lets a Git-built app deploy or roll
+		// back on another node.
 		image = dep.Image
 		if h.imagePresent(ctx, app, image) {
 			h.log(dep, "using distributed image "+image)
@@ -334,10 +324,9 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 			h.log(dep, "image pulled from internal registry")
 		}
 	case app.SourceType == models.AppSourceGit:
-		// The image is built on a registered runner (which pushes it to the internal
-		// registry); this node only pulls it — never builds. buildMethod stays the
-		// app's configured method; "auto" is resolved by the runner and handled
-		// safely in the runtime spec below (honor Command, inject $PORT).
+		// The image is built on a registered runner, which pushes it to the internal registry; this node
+		// only pulls it. buildMethod stays the app's configured method; "auto" is resolved by the runner
+		// and handled safely in the runtime spec below.
 		buildMethod = app.BuildMethod
 		ref, err := h.buildOnRunner(ctx, app, dep)
 		if err != nil {
@@ -396,9 +385,8 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 		if auth != nil {
 			h.log(dep, "authenticating to registry "+auth.Server)
 		}
-		// Decide whether to pull, honoring the app's image pull policy. A
-		// digest-pinned ref is immutable, so an already-present one is never
-		// re-pulled regardless of policy.
+		// Decide whether to pull, honoring the app's image pull policy. A digest-pinned ref is immutable,
+		// so an already-present one is never re-pulled regardless of policy.
 		present := h.imagePresent(ctx, app, image)
 		pinned := strings.Contains(image, "@")
 		switch {
@@ -420,10 +408,9 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 		}
 	}
 
-	// GPU pre-flight: capability + quota + runtime-incompatibility gates. Device
-	// binding happens in the container path once the node's runtime is known.
-	// Refuse GPU + cluster here (a GPU app must be single-container); the restricted
-	// profile conflict is checked in the container path where the profile resolves.
+	// GPU pre-flight: capability, quota and runtime-incompatibility gates. Device binding happens in
+	// the container path once the node's runtime is known. GPU + cluster is refused here; the
+	// restricted-profile conflict is checked where the profile resolves.
 	if app.GPUCount > 0 {
 		if app.RuntimeKind == models.RuntimeService {
 			_ = h.fail(dep, ErrGPUWithCluster)
@@ -450,16 +437,14 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 	h.publishStatus(dep, models.DeploymentDeploying)
 
 	canary := dep.Strategy == models.DeployCanary
-	// The stable release answers the app's stable alias (mb-app-<token>-<id>); a
-	// canary container answers its own alias so the proxy can split weighted
-	// traffic between the two.
+	// The stable release answers the app's stable alias (mb-app-<token>-<id>); a canary container
+	// answers its own alias, so the proxy can split weighted traffic between the two.
 	upstreamAlias := node.AppAlias(app)
 	if canary {
 		upstreamAlias = node.CanaryAlias(app)
 	}
-	// Container name = the alias plus the deployment id, so each deployment's
-	// container is uniquely named (e.g. mb-app-5sb97dj7-27-43). Routing uses the
-	// alias, not this name.
+	// Container name = the alias plus the deployment id, so each deployment's container is uniquely
+	// named. Routing uses the alias, not this name.
 	name := fmt.Sprintf("%s-%d", node.AppAlias(app), dep.ID)
 	// Assemble the shared runtime substrate (env, networks ensured on the node,
 	// mounts, limits) — the same builder a one-off Job uses, so they can't drift.
@@ -468,31 +453,28 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 		_ = h.fail(dep, fmt.Errorf("sync networks: %w", err))
 		return
 	}
-	// Buildpack images run the CNB launcher (process type "web") as their
-	// entrypoint and read $PORT — so we never override the command, and inject
-	// PORT (the app's primary port, defaulting to 8080) when it isn't already set.
+	// Buildpack images run the CNB launcher (process type "web") as their entrypoint and read $PORT,
+	// so we never override the command and inject PORT — the app's primary port, defaulting to 8080 —
+	// when it isn't already set.
 	cmd := app.Command
 	switch buildMethod {
 	case models.BuildBuildpack:
 		cmd = nil
 		rc.Env = ensurePortEnv(rc.Env, app.Port)
 	case models.BuildAuto:
-		// The runner resolved auto (Dockerfile → dockerfile, else buildpack); be
-		// safe for either — honor an explicit Command and inject $PORT (required by
-		// a buildpack image, harmless to a Dockerfile one).
+		// The runner resolved auto (Dockerfile -> dockerfile, else buildpack); be safe for either — honor
+		// an explicit Command and inject $PORT, required by a buildpack image and harmless to a Dockerfile one.
 		rc.Env = ensurePortEnv(rc.Env, app.Port)
 	}
-	// Deploy-specific: expose the app on its stack network by its service name
-	// (slug), so sibling apps resolve it by name. A Job never registers this
-	// alias (it must not impersonate the service). The alias is ignored for any
-	// network the container did not actually join.
+	// Deploy-specific: expose the app on its stack network by its service name, so sibling apps resolve
+	// it by name. A Job never registers this alias (it must not impersonate the service). The alias is
+	// ignored for any network the container did not actually join.
 	aliasesByNet := map[string][]string{}
 	if app.Stack != nil && app.Stack.DockerNetwork != "" {
 		aliasesByNet[app.Stack.DockerNetwork] = []string{app.Name}
 	}
-	// Publish admin-approved host port bindings. A canary shares the host with
-	// the stable container, so it must not re-publish the same host ports (that
-	// would conflict); the canary is reachable over the proxy weight only.
+	// Publish admin-approved host port bindings. A canary shares the host with the stable container,
+	// so it must not re-publish the same host ports; the canary is reachable over the proxy weight only.
 	ports := map[string]string{}
 	bindIPs := map[string]string{}
 	if h.portBindings != nil && !canary {
@@ -539,10 +521,9 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 		}
 	}
 
-	// GPU device binding: resolve the app's GPU request to concrete devices on
-	// its node. Device passthrough is privileged, so it cannot coexist with the
-	// restricted profile's hardening contract — refuse rather than silently drop
-	// either. The node's runtimes gate whether it is GPU-capable at all.
+	// GPU device binding: resolve the app's GPU request to concrete devices on its node. Device
+	// passthrough is privileged, so it cannot coexist with the restricted profile's hardening contract
+	// — refuse rather than silently drop either. The node's runtimes gate GPU capability at all.
 	var gpuReqs []docker.GPURequest
 	if app.GPUCount > 0 && h.gpu != nil {
 		if sec.Restricted() {
@@ -569,9 +550,9 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 		Env:      rc.Env,
 		Cmd:      cmd,
 		Mounts:   rc.Mounts,
-		// Under the restricted profile, prepareRestrictedVolumes has already seeded
-		// and chowned these volumes to the non-root UID; disable copy-up so Docker
-		// doesn't re-apply the image mount-dir's ownership on start and undo it.
+		// Under the restricted profile, prepareRestrictedVolumes has already seeded and chowned these
+		// volumes to the non-root UID; disable copy-up so Docker doesn't re-apply the image mount-dir's
+		// ownership on start and undo it.
 		NoCopyVolumes:    sec.Restricted(),
 		Binds:            rc.Binds,
 		Networks:         rc.Networks,
@@ -589,9 +570,8 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 	sec.applyTo(&spec)
 	containerID, err := h.eng(app).RunContainer(ctx, spec)
 	if err != nil {
-		// On a start failure (e.g. a host port already in use) the container is
-		// created but not running — remove it so a conflict doesn't leave an
-		// orphaned stopped container the user has to clean up by hand.
+		// On a start failure (e.g. a host port already in use) the container is created but not running —
+		// remove it so a conflict doesn't leave an orphaned stopped container to clean up by hand.
 		if containerID != "" {
 			_ = h.eng(app).RemoveContainer(context.Background(), containerID, true)
 		}
@@ -631,16 +611,9 @@ func (h *DeployHandler) manager() docker.Client {
 	return dc
 }
 
-// serviceNetworks resolves the swarm-scoped networks a service attaches to: the
-// app's workspace networks, which in cluster mode are overlays shared with the
-// workspace's databases and container apps. Each is ensured on the manager
-// (create-or-reuse); an overlay is swarm-scoped, so Docker materializes it on a
-// worker as soon as a task lands there.
-//
-// A node-local bridge cannot be attached to a swarm service, and a service that
-// silently comes up on the wrong network looks healthy while failing to resolve
-// its own database — so a workspace still on bridges is a hard, explanatory
-// failure rather than a broken deploy.
+// serviceNetworks resolves the swarm-scoped networks a service attaches to: the app's workspace
+// networks, which in cluster mode are overlays shared with its databases and container apps. A
+// node-local bridge cannot attach to a service, so a workspace still on bridges is a hard failure.
 func (h *DeployHandler) serviceNetworks(ctx context.Context, mgr docker.Client, app *models.Application) ([]string, error) {
 	if len(app.Networks) == 0 {
 		return nil, fmt.Errorf("app %q has no workspace network to attach to", app.Name)
@@ -671,12 +644,9 @@ func (h *DeployHandler) serviceNetworks(ctx context.Context, mgr docker.Client, 
 	return out, nil
 }
 
-// deployService deploys (or updates in place) a cluster app as a replicated
-// Swarm service. Swarm performs the rolling task replacement, so there is no
-// previous container to retire. The service joins two overlays: its per-workspace
-// overlay for encrypted east-west traffic (tenant isolation), and the shared
-// ingress overlay so the central gateway can reach its VIP for public ingress.
-// Route sync (Goma → service VIP) happens in releaseService.
+// deployService deploys (or updates in place) a cluster app as a replicated Swarm service; Swarm
+// performs the rolling task replacement. The service joins two overlays: its per-workspace one for
+// encrypted east-west traffic, and the shared ingress overlay so the gateway can reach its VIP.
 func (h *DeployHandler) deployService(ctx context.Context, app *models.Application, dep *models.Deployment, image string, buildMethod models.AppBuildMethod) {
 	mgr := h.manager()
 	sw, err := mgr.Swarm(ctx)
@@ -690,18 +660,18 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 	_ = h.deployments.Update(dep)
 	h.publishStatus(dep, models.DeploymentDeploying)
 
-	// The app's workspace networks — the SAME ones the workspace's databases and
-	// container apps are on, so a service resolves a database by its alias on any
-	// node. A service-only network would leave it unable to see its own database.
+	// The app's workspace networks — the SAME ones its databases and container apps are on, so a
+	// service resolves a database by alias on any node. A service-only network would leave it unable
+	// to see its own database.
 	svcNets, nerr := h.serviceNetworks(ctx, mgr, app)
 	if nerr != nil {
 		_ = h.fail(dep, nerr)
 		return
 	}
 
-	// Shared ingress overlay (attachable, encrypted) the central gateway joins to
-	// reach this service's VIP for public ingress. A single network for the whole
-	// install, so a plain create-or-reuse is enough (no per-workspace subnet).
+	// Shared ingress overlay (attachable, encrypted) the central gateway joins to reach this service's
+	// VIP for public ingress. A single network for the whole install, so a plain create-or-reuse is
+	// enough — no per-workspace subnet.
 	if _, err := mgr.CreateOverlayNetwork(ctx, node.IngressOverlay); err != nil {
 		_ = h.fail(dep, fmt.Errorf("ensure ingress overlay network: %w", err))
 		return
@@ -723,10 +693,9 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 		// Runner-resolved auto: honor Command, inject $PORT (safe for either method).
 		env = ensurePortEnv(env, app.Port)
 	}
-	// Managed volume mounts only — privileged host-preset binds are not supported
-	// for services (tasks may land on any node). For a shared (nfs/cifs) volume,
-	// carry its driver config on the mount so every node the task lands on
-	// materializes the real backing share instead of an empty local volume.
+	// Managed volume mounts only — privileged host-preset binds are not supported for services, since
+	// tasks may land on any node. For a shared (nfs/cifs) volume, carry its driver config on the mount
+	// so every node materializes the real backing share instead of an empty local volume.
 	mounts := map[string]string{}
 	mountDrivers := map[string]docker.ServiceMountDriver{}
 	var binds []docker.ServiceBind
@@ -752,11 +721,9 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 	if app.Replicas > 0 {
 		replicas = uint64(app.Replicas)
 	}
-	// Registry credentials the swarm distributes to worker nodes so their tasks can
-	// pull the image (without this, a private-registry image — including every
-	// built-in-registry build — pulls fine on the manager but fails on every
-	// worker). Built-in-registry builds authenticate with the platform token; an
-	// image app from an external private registry uses its stored credential.
+	// Registry credentials the swarm distributes to worker nodes so their tasks can pull the image;
+	// without this a private-registry image pulls fine on the manager and fails on every worker.
+	// Built-in-registry builds use the platform token; an external private registry its credential.
 	var regAuth *docker.RegistryAuth
 	if h.distributor != nil && h.distributor.IsBuildRef(image) {
 		regAuth = h.distributor.PushAuth()
@@ -765,8 +732,8 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 	} else {
 		regAuth = a
 	}
-	// Stable service name = the app's alias, so redeploys update the same service
-	// in place; the alias also resolves to the service VIP via Swarm embedded DNS.
+	// Stable service name = the app's alias, so redeploys update the same service in place; the alias
+	// also resolves to the service VIP via Swarm embedded DNS.
 	alias := node.AppAlias(app)
 	sec := h.containerSecurity(app)
 	spec := docker.ServiceSpec{
@@ -777,9 +744,9 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 		Replicas:       replicas,
 		Networks:       svcNets,
 		NetworkAliases: []string{alias, app.Name},
-		// Also join the shared ingress overlay, but register only the globally-unique
-		// upstream alias there (never app.Name, which is workspace-scoped) — that is
-		// the name the central gateway resolves to front the VIP.
+		// Also join the shared ingress overlay, but register only the globally-unique upstream alias there
+		// — never app.Name, which is workspace-scoped. That is the name the central gateway resolves to
+		// front the VIP.
 		IngressNetwork: node.IngressOverlay,
 		IngressAlias:   alias,
 		Mounts:         mounts,
@@ -833,9 +800,9 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 	}
 	h.log(dep, "service is running")
 
-	// Record the release keyed by the service's Docker ID. If inspect fails, fall
-	// back to the stable alias rather than persisting an empty ID (which would
-	// strand the service — later scale/restart/remove couldn't resolve it).
+	// Record the release keyed by the service's Docker ID. If inspect fails, fall back to the stable
+	// alias rather than persisting an empty ID, which would strand the service — later
+	// scale/restart/remove could not resolve it.
 	serviceID := alias
 	if st, err := mgr.ServiceInspect(ctx, alias); err == nil && st.ID != "" {
 		serviceID = st.ID
@@ -845,11 +812,9 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 	h.releaseService(app, dep, image, serviceID)
 }
 
-// sharedMountDriver returns the Docker volume driver config for a managed volume
-// when it is shared (nfs/cifs) storage, so a swarm service mount recreates the
-// same backing share on every node a task lands on. Returns nil for a node-local
-// volume, a missing/unreadable volume, or when the volume repo isn't wired — the
-// mount then falls back to a plain named volume (correct for node-local storage).
+// sharedMountDriver returns the Docker volume driver config for a managed volume when it is shared
+// (nfs/cifs) storage, so a swarm service mount recreates the same backing share on every node.
+// Returns nil for node-local or unreadable volumes, falling back to a plain named volume.
 func (h *DeployHandler) sharedMountDriver(workspaceID, volumeID uint) *docker.ServiceMountDriver {
 	if h.volumes == nil || volumeID == 0 {
 		return nil
@@ -888,9 +853,9 @@ func (h *DeployHandler) serviceConverge(ctx context.Context, mgr docker.Client, 
 	return fmt.Errorf("service did not reach %d running task(s) in time", desired)
 }
 
-// releaseService records the now-active release for a cluster (service) app. The
-// service is updated in place, so there is no previous container to retire and
-// the service id is stored on the release for lifecycle ops.
+// releaseService records the now-active release for a cluster (service) app. The service is updated
+// in place, so there is no previous container to retire and the service id is stored on the release
+// for lifecycle ops.
 func (h *DeployHandler) releaseService(app *models.Application, dep *models.Deployment, image, serviceID string) {
 	version, _ := h.releases.NextVersion(app.ID)
 	rel := &models.Release{
@@ -915,10 +880,9 @@ func (h *DeployHandler) releaseService(app *models.Application, dep *models.Depl
 		_ = h.apps.SetCurrentRelease(app.ID, rel.ID, models.AppStatusRunning)
 	}
 
-	// Re-assert the proxy route to the service VIP on every deploy, not only on
-	// route CRUD: SyncRoute re-renders the route and drives the ingress reconcile
-	// (central gateway → shared ingress overlay), so a redeploy restores routing
-	// instead of leaving it to whatever state the last route change left behind.
+	// Re-assert the proxy route to the service VIP on every deploy, not only on route CRUD: SyncRoute
+	// re-renders the route and drives the ingress reconcile, so a redeploy restores routing instead of
+	// leaving it to whatever state the last route change left behind.
 	if h.routes != nil {
 		if err := h.routes.SyncRoute(context.Background(), app.ID); err != nil {
 			h.log(dep, "WARN: failed to sync proxy route: "+err.Error())
@@ -977,9 +941,8 @@ func (h *DeployHandler) releaseCanary(app *models.Application, dep *models.Deplo
 	// Both stable and canary are now serving — the app is running, not "deploying".
 	_ = h.apps.SetStatus(app.ID, models.AppStatusRunning)
 
-	// The canary deployment stays non-terminal (status: canary) while the rollout
-	// progresses, so its log stream keeps streaming advance/promote/abort lines
-	// live until the rollout finishes (finalizeCanary).
+	// The canary deployment stays non-terminal while the rollout progresses, so its log stream keeps
+	// streaming advance/promote/abort lines live until the rollout finishes (finalizeCanary).
 	dep.Status = models.DeploymentCanary
 	_ = h.deployments.Update(dep)
 
@@ -1029,7 +992,6 @@ func canaryInterval(app *models.Application) int {
 	return 60
 }
 
-// nextCanaryWeight returns the weight after one step, capped at 100.
 func nextCanaryWeight(current, step int) int {
 	n := current + step
 	if n > 100 {
@@ -1038,9 +1000,9 @@ func nextCanaryWeight(current, step int) int {
 	return n
 }
 
-// finalizeCanary marks an in-progress canary deployment terminal (promoted,
-// superseded, or aborted), logging a closing line and ending its live log
-// stream. No-op when the deployment is gone or already terminal.
+// finalizeCanary marks an in-progress canary deployment terminal (promoted, superseded or aborted),
+// logging a closing line and ending its live log stream. No-op when the deployment is gone or
+// already terminal.
 func (h *DeployHandler) finalizeCanary(deploymentID uint, status models.DeploymentStatus, line string) {
 	if deploymentID == 0 {
 		return
@@ -1159,7 +1121,6 @@ func (h *DeployHandler) autoPromoteCanary(app *models.Application, rel *models.R
 	logger.Info("canary auto-promote", "app", app.ID, "release", rel.Version)
 }
 
-// autoAbortCanary stops the canary container and returns all traffic to stable.
 func (h *DeployHandler) autoAbortCanary(app *models.Application, rel *models.Release) {
 	if rel.ContainerID != "" {
 		_ = h.eng(app).StopContainer(context.Background(), rel.ContainerID, 10)
@@ -1176,9 +1137,8 @@ func (h *DeployHandler) autoAbortCanary(app *models.Application, rel *models.Rel
 	logger.Warn("canary auto-abort", "app", app.ID, "release", rel.Version)
 }
 
-// recordCanary writes a canary-progression message to BOTH the originating
-// deployment's log (deploymentID) and the app event stream, so canary advances,
-// auto-promotion, and auto-abort all show up in Deployment Logs.
+// recordCanary writes a canary-progression message to BOTH the originating deployment's log and the
+// app event stream, so canary advances, auto-promotion and auto-abort all show up in Deployment Logs.
 func (h *DeployHandler) recordCanary(app *models.Application, deploymentID uint, sev models.AppEventSeverity, message string) {
 	if deploymentID != 0 {
 		h.logTo(deploymentID, message)
@@ -1197,12 +1157,9 @@ func (h *DeployHandler) recordCanary(app *models.Application, deploymentID uint,
 	})
 }
 
-// containerLabels composes the full Docker label set for an app's container or
-// service: the user's sanitized custom labels first (Traefik &c.), then the
-// platform's own system labels — app + deployment id, and the workspace / stack /
-// compose keys via stackLabels — stamped on top so a system label always wins a
-// key collision. SanitizeUserLabels has already dropped any reserved keys, so
-// this is belt-and-suspenders.
+// containerLabels composes the full Docker label set for an app's container or service: the user's
+// sanitized custom labels first, then the platform's own system labels stamped on top, so a system
+// label always wins a key collision.
 func containerLabels(app *models.Application, deploymentID uint) map[string]string {
 	labels := docker.SanitizeUserLabels(app.ContainerLabels)
 	if labels == nil {
@@ -1213,11 +1170,9 @@ func containerLabels(app *models.Application, deploymentID uint) map[string]stri
 	return stackLabels(app, labels)
 }
 
-// stackLabels stamps the owning workspace on every app container/service (so the
-// node-container view can be scoped per workspace) and, when the app belongs to a
-// stack, adds Docker Compose project labels so native Docker tooling
-// (`docker compose ls`, Docker Desktop) groups the container under the stack
-// alongside Miabi's own grouping key.
+// stackLabels stamps the owning workspace on every app container (so the node-container view can be
+// scoped per workspace) and, when the app belongs to a stack, adds Docker Compose project labels so
+// native tooling groups the container under the stack.
 func stackLabels(app *models.Application, base map[string]string) map[string]string {
 	base[docker.LabelWorkspace] = fmt.Sprintf("%d", app.WorkspaceID)
 	if app.Stack == nil {
@@ -1233,21 +1188,9 @@ func stackLabels(app *models.Application, base map[string]string) map[string]str
 // may not pull from the built-in registry. It wraps the specific reason.
 var ErrForeignImage = errors.New("image is not available to this workspace")
 
-// authorizedImageRef checks a reference against the app's workspace and returns
-// the reference to actually use.
-//
-// Only references into the built-in registry are constrained; anything else
-// (Docker Hub, GHCR, a private registry the workspace holds a credential for)
-// passes straight through. The constraint exists because a built-in-registry
-// pull authenticates with the platform token, which every workspace namespace
-// accepts by design — it is how a runner build pushes on any tenant's behalf.
-// That makes the reference itself the only thing standing between a workspace
-// and every other tenant's images, so it is checked here rather than trusted
-// from whatever wrote it (an app's image field, a rollback's recorded ref, a
-// pipeline deploy-by-digest).
-//
-// With no distributor wired there is no internal registry to cross into, so the
-// reference is returned as-is.
+// authorizedImageRef checks a reference against the app's workspace and returns the reference to use.
+// Only built-in-registry references are constrained: those pull with the platform token, which every
+// namespace accepts, so the reference itself is all that separates a workspace from other tenants.
 func (h *DeployHandler) authorizedImageRef(app *models.Application, ref string) (string, error) {
 	if h.distributor == nil || ref == "" {
 		return ref, nil
@@ -1266,11 +1209,9 @@ func (h *DeployHandler) imagePresent(ctx context.Context, app *models.Applicatio
 	return err == nil && ok
 }
 
-// ErrRegistryRequired is returned when a git-source app deploys but no image
-// distributor is wired at all: the runner builds the image and pushes it to the
-// internal registry for the target node to pull, so the registry is a hard
-// dependency for git builds. When a distributor IS wired but misconfigured, the
-// deploy surfaces the specific reason from DistributionUnavailableReason instead.
+// ErrRegistryRequired is returned when a git-source app deploys but no image distributor is wired:
+// the runner builds the image and pushes it to the internal registry for the node to pull, so the
+// registry is a hard dependency. A wired-but-misconfigured distributor reports its own reason.
 var ErrRegistryRequired = errors.New("git-source deploys require the internal registry (set MIABI_REGISTRY_ENABLED): the runner builds the image and pushes it there for the node to pull")
 
 // errBuildDispatchUnavailable is an internal sentinel: this worker has no runner
@@ -1282,11 +1223,9 @@ var errBuildDispatchUnavailable = errors.New("runner build dispatch is not confi
 // free runner while it queues.
 const deployRunnerWaitInterval = 15 * time.Second
 
-// buildOnRunner dispatches a git-source app's image build to a registered runner
-// (which clones the source, builds per the app's config, and pushes to the
-// internal registry) and returns the pushed digest ref for the node to pull. The
-// build never runs on this node. Returns runnersvc.ErrNoRunner /
-// runners.ErrRunnerOffline unchanged so the caller can queue the deploy.
+// buildOnRunner dispatches a git-source app's image build to a registered runner, which clones the
+// source, builds per the app's config and pushes to the internal registry, and returns the pushed
+// digest ref. Returns ErrNoRunner / ErrRunnerOffline unchanged so the caller can queue the deploy.
 func (h *DeployHandler) buildOnRunner(ctx context.Context, app *models.Application, dep *models.Deployment) (string, error) {
 	if h.distributor == nil {
 		return "", ErrRegistryRequired
@@ -1302,13 +1241,9 @@ func (h *DeployHandler) buildOnRunner(ctx context.Context, app *models.Applicati
 	if repository == "" {
 		return "", fmt.Errorf("could not resolve a registry repository for the build")
 	}
-	// The runner logs into Registry and pushes to Repository, so the two hosts MUST
-	// match. Repository carries the registry's *resolved* host (BuildRef →
-	// HostFor: explicit host, else registry.<base-domain>); h.registryHost is only
-	// the raw MIABI_REGISTRY_HOST env, which is empty when the host is derived or
-	// set via the UI. Using it as the login host would make the runner log into a
-	// different (or empty) host than it pushes to → "denied". Derive the login host
-	// from Repository so they are the same by construction.
+	// The runner logs into Registry and pushes to Repository, so the two hosts MUST match. Repository
+	// carries the registry's *resolved* host, while h.registryHost is only the raw env, empty when the
+	// host is derived — using it would log into a different host than it pushes to.
 	registryHost := repository
 	if i := strings.IndexByte(repository, '/'); i >= 0 {
 		registryHost = repository[:i]
@@ -1339,17 +1274,13 @@ func (h *DeployHandler) buildOnRunner(ctx context.Context, app *models.Applicati
 	return imageRef, nil
 }
 
-// buildConfigFromApp maps an app's build settings onto the runner build config.
-// The runner resolves "auto" (Dockerfile → dockerfile, else buildpack). The
-// builder image follows the platform's admin-controlled policy: the app's
-// override if set, else the resolved platform default (so an admin's builder
-// choice applies) — the runner only falls back to its own default when both are
-// empty.
+// buildConfigFromApp maps an app's build settings onto the runner build config. The runner resolves
+// "auto". The builder image follows the admin-controlled policy: the app's override if set, else
+// the resolved platform default; the runner falls back to its own only when both are empty.
 func (h *DeployHandler) buildConfigFromApp(app *models.Application) *proto.BuildConfig {
 	builder := app.Builder
-	// Defense-in-depth: drop a custom builder the workspace is no longer entitled
-	// to (e.g. set under a plan that has since been downgraded), falling back to
-	// the platform default below.
+	// Defense-in-depth: drop a custom builder the workspace is no longer entitled to (set under a plan
+	// since downgraded), falling back to the platform default below.
 	if builder != "" && h.builderPolicy != nil && !h.builderPolicy.CustomBuilderAllowed(app.WorkspaceID) {
 		builder = ""
 	}
@@ -1364,10 +1295,9 @@ func (h *DeployHandler) buildConfigFromApp(app *models.Application) *proto.Build
 	}
 }
 
-// gitSourceURL resolves an app's git clone URL for the runner, embedding the
-// linked HTTPS credential so a private repo clones on the runner (which has no
-// local git auth). The URL is the app's explicit URL, else the credential's URL;
-// SSH-key credentials aren't supported for runner builds (ErrSSHUnsupportedOnRunner).
+// gitSourceURL resolves an app's git clone URL for the runner, embedding the linked HTTPS credential
+// so a private repo clones on the runner (which has no local git auth). The URL is the app's, else
+// the credential's; SSH-key credentials aren't supported for runner builds.
 func (h *DeployHandler) gitSourceURL(app *models.Application) (string, error) {
 	rawURL := app.GitRepo
 	var gr *models.GitRepository
@@ -1387,14 +1317,12 @@ func (h *DeployHandler) gitSourceURL(app *models.Application) (string, error) {
 	return gitrepo.CredentialURL(rawURL, gr, h.secrets)
 }
 
-// deferForRunner queues a deploy that has no available runner: it parks the
-// deployment pending and re-enqueues it shortly, failing once it has waited
-// longer than runnerWaitTimeout — so a git build never runs on a node, and a run
-// with no runner ever registered doesn't wait forever.
+// deferForRunner queues a deploy that has no available runner: it parks the deployment pending and
+// re-enqueues it shortly, failing once it has waited longer than runnerWaitTimeout — so a git build
+// never runs on a node, and a run with no runner registered doesn't wait forever.
 func (h *DeployHandler) deferForRunner(dep *models.Deployment, serverID uint, reason string) {
-	// A newer deployment for this app supersedes an older one still waiting for a
-	// runner: stop looping it (up to the wait timeout) so redeploys don't pile up
-	// pending — only the latest should be trying to acquire the runner.
+	// A newer deployment for this app supersedes an older one still waiting for a runner: stop looping
+	// it so redeploys don't pile up pending — only the latest should be trying to acquire the runner.
 	if latest, err := h.deployments.LatestNumberByApp(dep.ApplicationID); err == nil && latest > dep.Number {
 		_ = h.fail(dep, fmt.Errorf("superseded by a newer deployment (#%d) while waiting for a runner", latest))
 		return
@@ -1417,13 +1345,9 @@ func (h *DeployHandler) deferForRunner(dep *models.Deployment, serverID uint, re
 	}
 }
 
-// recordBuiltImage writes provenance for a freshly built git image (best-effort:
-// a recording failure must not fail an otherwise-successful deploy). No-op when
-// the image catalog is unwired or the build reported no digest.
-// tagReleaseImage best-effort adds a v<version> registry tag to a runner-built
-// image so the registry mirrors the release number the UI shows, alongside the
-// immutable build tag. No-op for external images (only internal build refs carry
-// a digest we pushed) or when distribution is off.
+// tagReleaseImage best-effort adds a v<version> registry tag to a runner-built image, so the
+// registry mirrors the release number the UI shows alongside the immutable build tag. A no-op
+// for external images (only internal build refs carry a digest we pushed) or when distribution is off.
 func (h *DeployHandler) tagReleaseImage(app *models.Application, dep *models.Deployment, version int) {
 	if h.distributor == nil || dep.Image == "" || !h.distributor.IsBuildRef(dep.Image) {
 		return
@@ -1437,6 +1361,9 @@ func (h *DeployHandler) tagReleaseImage(app *models.Application, dep *models.Dep
 	}
 }
 
+// recordBuiltImage writes provenance for a freshly built git image. Best-effort: a recording
+// failure must not fail an otherwise-successful deploy. A no-op when the image catalog is
+// unwired or the build reported no digest.
 func (h *DeployHandler) recordBuiltImage(app *models.Application, dep *models.Deployment, tag string, res BuildResult) {
 	if h.build.images == nil || res.Digest == "" {
 		return
@@ -1456,9 +1383,8 @@ func (h *DeployHandler) recordBuiltImage(app *models.Application, dep *models.De
 	}
 }
 
-// ensurePortEnv sets PORT in env when not already present, so a buildpack app's
-// process knows where to listen. Defaults to the app's primary port, falling
-// back to 8080 when unset.
+// ensurePortEnv sets PORT in env when not already present, so a buildpack app's process knows where
+// to listen. Defaults to the app's primary port, falling back to 8080 when unset.
 func ensurePortEnv(env []string, port int) []string {
 	for _, e := range env {
 		if strings.HasPrefix(e, "PORT=") {
@@ -1471,9 +1397,8 @@ func ensurePortEnv(env []string, port int) []string {
 	return append(env, fmt.Sprintf("PORT=%d", port))
 }
 
-// resolveRegistryAuth returns the registry credential for this deploy, if any.
-// A per-deploy RegistryID takes precedence over the app's default; both nil
-// means an anonymous (public) pull.
+// resolveRegistryAuth returns the registry credential for this deploy, if any. A per-deploy
+// RegistryID takes precedence over the app's default; both nil means an anonymous public pull.
 func (h *DeployHandler) resolveRegistryAuth(app *models.Application, dep *models.Deployment) (*docker.RegistryAuth, error) {
 	regID := dep.RegistryID
 	if regID == nil {
@@ -1493,10 +1418,9 @@ func (h *DeployHandler) resolveRegistryAuth(app *models.Application, dep *models
 	return &docker.RegistryAuth{Server: reg.Server, Username: reg.Username, Password: password}, nil
 }
 
-// healthGate waits for the new container to be ready. With no healthcheck it
-// waits for the container to reach "running"; with a healthcheck configured it
-// additionally waits for Docker to report it "healthy", failing fast on an
-// "unhealthy" verdict or an early exit.
+// healthGate waits for the new container to be ready. With no healthcheck it waits for "running";
+// with one configured it additionally waits for Docker to report "healthy", failing fast on an
+// unhealthy verdict or an early exit.
 func (h *DeployHandler) healthGate(ctx context.Context, app *models.Application, containerID string) error {
 	requireHealthy := app.HealthcheckType == models.HealthcheckHTTP || app.HealthcheckType == models.HealthcheckCommand
 	deadline := time.Now().Add(healthGateTimeout(app, requireHealthy))
@@ -1528,9 +1452,8 @@ func (h *DeployHandler) healthGate(ctx context.Context, app *models.Application,
 	return fmt.Errorf("container did not start in time")
 }
 
-// healthGateTimeout bounds the readiness wait: a short window without a
-// healthcheck, or one derived from the probe's own timing (so slow-starting apps
-// aren't cut off), capped to keep deploys from hanging.
+// healthGateTimeout bounds the readiness wait: a short window without a healthcheck, or one derived
+// from the probe's own timing so slow-starting apps aren't cut off, capped to keep deploys from hanging.
 func healthGateTimeout(app *models.Application, requireHealthy bool) time.Duration {
 	if !requireHealthy {
 		return 15 * time.Second
@@ -1544,8 +1467,7 @@ func healthGateTimeout(app *models.Application, requireHealthy bool) time.Durati
 	return d
 }
 
-// buildHealthcheck turns an app's healthcheck config into a docker spec, or nil
-// when disabled.
+// buildHealthcheck turns an app's healthcheck config into a docker spec, or nil when disabled.
 func buildHealthcheck(app *models.Application) *docker.HealthcheckSpec {
 	var test []string
 	switch app.HealthcheckType {
@@ -1588,7 +1510,6 @@ func hcInterval(app *models.Application) int {
 func hcTimeout(app *models.Application) int { return clampInt(app.HealthcheckTimeoutSeconds, 1, 3600) }
 func hcRetries(app *models.Application) int { return clampInt(app.HealthcheckRetries, 1, 20) }
 
-// clampInt bounds v to [lo, hi], returning a default-ish lo when v is zero.
 func clampInt(v, lo, hi int) int {
 	if v < lo {
 		return lo
@@ -1602,8 +1523,8 @@ func clampInt(v, lo, hi int) int {
 // swapAndRelease promotes the new container, retires the previous one, and
 // records an active release.
 func (h *DeployHandler) swapAndRelease(app *models.Application, dep *models.Deployment, image, containerID string) {
-	// A normal deploy supersedes any in-progress canary: retire its container and
-	// clear the split so the route points solely at the new stable release.
+	// A normal deploy supersedes any in-progress canary: retire its container and clear the split so the
+	// route points solely at the new stable release.
 	h.retireCanary(app, dep)
 
 	// Retire the previous active release's container (best-effort).
@@ -1617,9 +1538,8 @@ func (h *DeployHandler) swapAndRelease(app *models.Application, dep *models.Depl
 	rel := &models.Release{
 		ApplicationID: app.ID, DeploymentID: dep.ID, Version: version,
 		Image: image, ContainerID: containerID, Active: true,
-		// Provenance: a pipeline-built deploy carries its commit + catalog image so
-		// the release is a reproducible artifact and GC never collects a digest the
-		// active release references.
+		// Provenance: a pipeline-built deploy carries its commit and catalog image, so the release is a
+		// reproducible artifact and GC never collects a digest the active release references.
 		Commit: dep.Commit, ImageID: dep.ImageID,
 	}
 	if err := h.releases.Create(rel); err != nil {
@@ -1632,9 +1552,8 @@ func (h *DeployHandler) swapAndRelease(app *models.Application, dep *models.Depl
 	dep.Status = models.DeploymentSucceeded
 	dep.FinishedAt = &finished
 	_ = h.deployments.Update(dep)
-	// Persist the deployed image/tag for image apps so the app's stored Image/Tag
-	// reflect the active version and future redeploys use it (git apps build their
-	// own image and keep their Git source unchanged).
+	// Persist the deployed image/tag for image apps so the app's stored Image/Tag reflect the active
+	// version and future redeploys use it. Git apps build their own image and keep their source unchanged.
 	if app.SourceType != models.AppSourceGit && image != "" {
 		img, tag := models.SplitImageRef(image)
 		_ = h.apps.SetCurrentReleaseImage(app.ID, rel.ID, models.AppStatusRunning, img, tag)
@@ -1710,11 +1629,9 @@ func (h *DeployHandler) fail(dep *models.Deployment, cause error) error {
 	return nil // do not retry: state is recorded; a new deploy is the retry path
 }
 
-// externalizeLog moves a terminal deployment's full log from the DB column into
-// the shared log store, then trims the row to a bounded tail + a reference.
-// Called as the last step of every terminal transition (success, failure,
-// canary finalize). No-op when the store is disabled or already externalized;
-// the full log stays in the DB tail as a fallback on any store error.
+// externalizeLog moves a terminal deployment's full log from the DB column into the shared log store,
+// then trims the row to a bounded tail plus a reference. Called on every terminal transition; a no-op
+// when the store is disabled, and the DB tail stays as a fallback on any store error.
 func (h *DeployHandler) externalizeLog(deploymentID uint) {
 	if !h.logs.Enabled() {
 		return
@@ -1742,7 +1659,6 @@ func (h *DeployHandler) log(dep *models.Deployment, line string) {
 	h.logTo(dep.ID, line)
 }
 
-// shortID trims a Docker container id to its 12-char short form for logs.
 func shortID(id string) string {
 	if len(id) > 12 {
 		return id[:12]
@@ -1750,9 +1666,8 @@ func shortID(id string) string {
 	return id
 }
 
-// logTo appends a line to a deployment's log by id and streams it live. Used by
-// the canary progression tasks, which act on a release and only know the
-// originating deployment id (not the handler's dep pointer).
+// logTo appends a line to a deployment's log by id and streams it live. Used by the canary
+// progression tasks, which act on a release and only know the originating deployment id.
 func (h *DeployHandler) logTo(deploymentID uint, line string) {
 	_ = h.deployments.AppendLog(deploymentID, line)
 	h.bus.Publish(DeployTopic(deploymentID), eventbus.Event{Type: "log", Data: line})

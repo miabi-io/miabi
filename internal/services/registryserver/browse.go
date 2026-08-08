@@ -38,10 +38,9 @@ type RepositorySummary struct {
 	Tags     []string `json:"tags"`
 }
 
-// TagInfo is one tag on a repository's tags page, enriched with what the
-// platform knows about it. Digest and SizeBytes come from the registry; the
-// provenance fields come from the image catalog and are absent for images
-// pushed by hand rather than built by a pipeline.
+// TagInfo is one tag on a repository's tags page, enriched with what the platform knows about it. Digest
+// and SizeBytes come from the registry; the provenance fields come from the image catalog and are absent
+// for images pushed by hand rather than built by a pipeline.
 type TagInfo struct {
 	Name      string `json:"name"`
 	Digest    string `json:"digest,omitempty"`
@@ -55,12 +54,9 @@ type TagInfo struct {
 	PipelineRunID *uint      `json:"pipeline_run_id,omitempty"`
 }
 
-// RepositoryOverview is the summary shown on a repository's page.
-//
-// It deliberately does not total the repository's size: that would mean reading
-// one manifest per tag, and a repository accumulating build tags has hundreds.
-// The newest tag's size is both cheap and the number people actually mean when
-// they ask how big an image is.
+// RepositoryOverview is the summary shown on a repository's page. It deliberately does not total the
+// repository's size: that would mean one manifest read per tag, and a repository accumulating build tags
+// has hundreds. The newest tag's size is both cheap and the number people actually mean.
 type RepositoryOverview struct {
 	Name      string   `json:"name"`
 	TagCount  int      `json:"tag_count"`
@@ -68,8 +64,6 @@ type RepositoryOverview struct {
 	LatestTag *TagInfo `json:"latest_tag,omitempty"`
 }
 
-// repoNames returns the workspace's repository names with the ws_<id> storage
-// namespace stripped, sorted.
 func (s *Service) repoNames(ctx context.Context, workspaceID uint) ([]string, error) {
 	prefix := Namespace(workspaceID) + "/"
 	all, err := s.reg.Catalog(ctx)
@@ -86,13 +80,9 @@ func (s *Service) repoNames(ctx context.Context, workspaceID uint) ([]string, er
 	return out, nil
 }
 
-// ListRepositoriesPage returns one page of the workspace's repositories, each
-// with its tag count and a preview of its newest tags, plus the total number of
-// repositories matching q.
-//
-// Only the page's repositories have their tags fetched. Listing every repository
-// with every tag — as this replaced — cost one registry round trip per
-// repository and returned a payload that grew without bound.
+// ListRepositoriesPage returns one page of the workspace's repositories, each with its tag count and a
+// preview of its newest tags, plus the total matching q. Only the page's repositories have their tags
+// fetched — listing every repository with every tag cost one round trip per repository.
 func (s *Service) ListRepositoriesPage(ctx context.Context, workspaceID uint, q string, offset, limit, tagPreview int) ([]RepositorySummary, int, error) {
 	names, err := s.repoNames(ctx, workspaceID)
 	if err != nil {
@@ -198,13 +188,9 @@ func (s *Service) ListTagsPage(ctx context.Context, workspaceID uint, image, q s
 	return enriched, total, nil
 }
 
-// enrichTags resolves each tag's digest and size from the registry, then joins
-// the digests against the image catalog for provenance and against the protected
-// set for in-use state.
-//
-// The registry reads are one request per tag, which is why only a page's worth
-// is ever enriched. A tag whose manifest can't be read is still returned, just
-// bare — a listing must not fail because one manifest is broken.
+// enrichTags resolves each tag's digest and size from the registry, then joins the digests against the image
+// catalog for provenance and the protected set for in-use state. The registry reads are one request per tag,
+// which is why only a page is enriched. A tag whose manifest can't be read is still returned, just bare.
 func (s *Service) enrichTags(ctx context.Context, workspaceID uint, repo string, tags []string) ([]TagInfo, error) {
 	out := make([]TagInfo, len(tags))
 	var wg sync.WaitGroup
@@ -261,11 +247,9 @@ func (s *Service) enrichTags(ctx context.Context, workspaceID uint, repo string,
 	return out, nil
 }
 
-// Catalog supplies what the platform knows about the images it built: which
-// digests must not be deleted, and the build behind a digest. Implemented by
-// image.Service; an interface so this package doesn't depend on the image
-// catalog. nil-safe — without it, tags still list, just unannotated, and tag
-// deletion loses its in-use guard.
+// Catalog supplies what the platform knows about the images it built: which digests must not be deleted,
+// and the build behind a digest. Implemented by image.Service. nil-safe — without it tags still list,
+// just unannotated, and tag deletion loses its in-use guard.
 type Catalog interface {
 	ProtectedDigests() (map[string]bool, error)
 	ByDigests(workspaceID uint, digests []string) (map[string]models.Image, error)

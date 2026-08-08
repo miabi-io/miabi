@@ -12,10 +12,9 @@ import (
 	"github.com/jkaninda/logger"
 )
 
-// WorkspaceBundleRunner executes one bundle run. Satisfied by
-// services/wsbackup.Service, and named here as an interface rather than imported:
-// that service drives the application service, which enqueues deploys through
-// this package, and a direct import would close the loop.
+// WorkspaceBundleRunner executes one bundle run. Satisfied by services/wsbackup.Service and named here
+// as an interface rather than imported: that service drives the application service, which enqueues
+// deploys through this package, and a direct import would close the loop.
 type WorkspaceBundleRunner interface {
 	Run(ctx context.Context, bundleID uint) error
 }

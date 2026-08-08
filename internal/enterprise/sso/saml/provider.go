@@ -3,11 +3,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: LicenseRef-Miabi-Enterprise
 
-// Package saml implements a SAML 2.0 service provider on top of crewjam/saml.
-// It is compiled only into the Enterprise build (-tags enterprise); the
-// Community binary links none of it. The provider holds no core dependencies —
-// it maps an authenticated assertion to a session via a Login callback supplied
-// by the routes layer.
+// Package saml implements a SAML 2.0 service provider on top of crewjam/saml, compiled only into
+// the Enterprise build. It holds no core dependencies — it maps an authenticated assertion to a
+// session via a Login callback supplied by the routes layer.
 package saml
 
 import (
@@ -99,7 +97,6 @@ func (p *Provider) serviceProvider(ctx context.Context, cfg *models.SAMLConfig) 
 	}, nil
 }
 
-// idpMetadata returns the IdP EntityDescriptor from inline XML or a fetch URL.
 func (p *Provider) idpMetadata(ctx context.Context, cfg *models.SAMLConfig) (*saml.EntityDescriptor, error) {
 	if xml := strings.TrimSpace(cfg.IDPMetadataXML); xml != "" {
 		return samlsp.ParseMetadata([]byte(xml))

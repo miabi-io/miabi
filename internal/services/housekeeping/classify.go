@@ -40,21 +40,16 @@ func isManaged(labels map[string]string) bool {
 	return docker.IsManaged(labels)
 }
 
-// isPlatformInfra reports whether a managed resource is platform infrastructure
-// that housekeeping must never classify as an orphan or remove: the node's edge
-// gateway / its Redis (io.miabi.role). These are managed through their own
-// pages, not reclaimed here.
+// isPlatformInfra reports whether a managed resource is platform infrastructure that housekeeping must
+// never classify as an orphan or remove: the node's edge gateway / its Redis (io.miabi.role). These are
+// managed through their own pages, not reclaimed here.
 func isPlatformInfra(labels map[string]string) bool {
 	return docker.IsPlatformInfra(labels)
 }
 
-// ownerOf returns the owning DB record (kind + numeric id) encoded in a managed
-// resource's labels, so drift can check whether that record still exists. ok is
-// false when the resource is not orphan-eligible: platform infrastructure, a
-// transient job container, or a resource with no recognized owner label.
-//
-// Precedence matters: an app's container carries both io.miabi.app and
-// io.miabi.stack — the app is the owning record, so app wins over stack.
+// ownerOf returns the owning DB record (kind and numeric id) encoded in a managed resource's labels, so drift
+// can check whether that record still exists. ok is false when the resource is not orphan-eligible. Precedence
+// matters: an app's container carries both app and stack labels, and the app is the owning record.
 func ownerOf(labels map[string]string) (kind string, id uint, ok bool) {
 	if isPlatformInfra(labels) {
 		return "", 0, false

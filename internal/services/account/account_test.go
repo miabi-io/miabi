@@ -16,12 +16,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// The production models carry Postgres-specific column defaults (uid uuid DEFAULT
-// gen_random_uuid()) that sqlite can't migrate. The service and repositories only
-// ever read (SELECT *), delete and update these tables — they never migrate or
-// insert the full models — so the test creates a minimal, sqlite-friendly schema
-// via local row types pointed at the same table names, and lets the real repos
-// query it. Find scans only the present columns; missing model fields stay zero.
+// The production models carry Postgres-specific column defaults sqlite can't migrate. The service and
+// repositories only ever SELECT, delete and update these tables, so the test creates a minimal sqlite-friendly
+// schema under the same table names and lets the real repos query it; missing model fields stay zero.
 
 type wsRow struct {
 	ID        uint `gorm:"primaryKey"`
@@ -101,11 +98,9 @@ type userRow struct {
 
 func (userRow) TableName() string { return "users" }
 
-// --- fakes -------------------------------------------------------------------
-// In production these ops drive Docker; here they record calls and mutate the DB
-// so the cascade's effect is observable. fakeDBOps keeps the real service's
-// "refuse while a logical DB is attached" guard, proving DeleteOwned detaches
-// logical databases before deleting the instance.
+// In production these ops drive Docker; here they record calls and mutate the DB so the cascade's effect is
+// observable. fakeDBOps keeps the real service's "refuse while a logical DB is attached" guard, proving
+// DeleteOwned detaches logical databases before deleting the instance.
 
 type fakeAppOps struct {
 	db               *gorm.DB
@@ -181,10 +176,9 @@ func newTestDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(&userRow{}, &wsRow{}, &memberRow{}, &inviteRow{}, &appRow{}, &instRow{}, &ldbRow{}, &stackRow{}, &volRow{}); err != nil {
 		t.Fatal(err)
 	}
-	// WorkspaceRepository.Delete cascades every workspace-owned table; create the
-	// ones this minimal schema doesn't already have (empty) so the cascade's scoped
-	// deletes run instead of erroring on a missing table. Keep in sync with that
-	// cascade's table list. table -> the column it is scoped by.
+	// WorkspaceRepository.Delete cascades every workspace-owned table; create the ones this minimal schema
+	// doesn't already have (empty) so the cascade's scoped deletes run instead of erroring on a missing table.
+	// Keep in sync with that cascade's table list. table -> the column it is scoped by.
 	cascadeTables := map[string]string{
 		"application_networks": "application_id", "database_instance_networks": "database_instance_id",
 		"app_env_vars": "application_id", "app_ports": "application_id", "deployments": "application_id",

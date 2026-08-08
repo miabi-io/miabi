@@ -17,10 +17,9 @@ var (
 	// ErrDeleteDisabled is returned when the registry's delete API is off
 	// (REGISTRY_STORAGE_DELETE_ENABLED=false / the DeleteEnabled setting).
 	ErrDeleteDisabled = errors.New("registry: delete is not enabled")
-	// ErrTagInUse is returned when the tag resolves to an image a live
-	// deployment or a pinned release still holds. Deleting it would leave that
-	// release unpullable — the failure would surface later, on a node, as a
-	// mystery.
+	// ErrTagInUse is returned when the tag resolves to an image a live deployment or a pinned release still
+	// holds. Deleting it would leave that release unpullable, and the failure would surface later, on a node,
+	// as a mystery.
 	ErrTagInUse = errors.New("registry: this image is used by a live deployment or a pinned release")
 )
 
@@ -60,15 +59,9 @@ func (s *Service) ListRepositories(ctx context.Context, workspaceID uint) ([]Rep
 	return out, nil
 }
 
-// SortTags orders a repository's tags for display: "latest" first, then newest
-// version first.
-//
-// Plain lexicographic order is actively wrong here — it puts v10 before v9 and
-// buries "latest" in the middle — and a repository accumulating hundreds of
-// build tags is exactly where the ordering matters most. Runs of digits are
-// compared numerically and the result is reversed, so higher versions rise to
-// the top; tags with no digits (main, stable) end up in reverse alphabetical
-// order, which is arbitrary but stable.
+// SortTags orders a repository's tags for display: "latest" first, then newest version first. Plain
+// lexicographic order puts v10 before v9 and buries "latest" in the middle. Runs of digits are compared
+// numerically and reversed; tags with no digits end up reverse-alphabetical, which is arbitrary but stable.
 func SortTags(tags []string) {
 	sort.Slice(tags, func(i, j int) bool {
 		a, b := tags[i], tags[j]
@@ -121,13 +114,9 @@ func splitRun(s string, digits bool) (run, rest string) {
 
 func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
-// DeleteTag deletes a tag from a workspace repository by resolving it to its
-// manifest digest and deleting the manifest (the registry has no delete-by-tag).
-// image is the user-facing name (without the ws_<id> namespace).
-//
-// A tag whose image a live deployment or pinned release still holds is refused
-// with ErrTagInUse: the registry would happily delete it, and the breakage would
-// only surface later as a failed pull on some node.
+// DeleteTag deletes a tag from a workspace repository by resolving it to its manifest digest and deleting
+// the manifest (the registry has no delete-by-tag). image is the user-facing name. A tag a live deployment
+// or pinned release still holds is refused with ErrTagInUse, since the breakage would surface on a node.
 func (s *Service) DeleteTag(ctx context.Context, workspaceID uint, image, tag string) error {
 	repo := Namespace(workspaceID) + "/" + strings.Trim(image, "/")
 	digest, err := s.reg.ManifestDigest(ctx, repo, tag)

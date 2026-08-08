@@ -12,7 +12,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// fakeEE grants exactly the flags it is built with.
 type fakeEE map[string]bool
 
 func (f fakeEE) Has(flag string) bool { return f[flag] }

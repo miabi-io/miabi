@@ -17,15 +17,9 @@ const (
 	NetAllocKindReserved = "reserved"
 )
 
-// NetworkAllocation is the ledger entry pinning one Docker network to a subnet
-// carved from the platform network pool (MIABI_NETWORK_POOL_CIDR). It is the
-// single source of truth the allocator consults to hand out non-overlapping
-// subnets, so Miabi never depends on Docker's small built-in address pools.
-//
-// DockerName is unique — the ledger is keyed by the Docker network name, which
-// covers ownerless networks (gateway/overlay) uniformly and lets syncNetworks
-// reuse the same subnet when it recreates a network on another node. Reserved
-// rows (Kind "reserved") use a sentinel DockerName ("reserved:<subnet>").
+// NetworkAllocation pins one Docker network to a subnet carved from the platform pool
+// (MIABI_NETWORK_POOL_CIDR) — the ledger the allocator consults for non-overlapping subnets.
+// Keyed by DockerName; reserved rows use the sentinel "reserved:<subnet>".
 type NetworkAllocation struct {
 	ID uint `json:"id" gorm:"primaryKey"`
 	// DockerName is the globally-unique Docker network name this subnet is pinned to.

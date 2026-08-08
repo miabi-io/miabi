@@ -94,11 +94,9 @@ type ImportResult struct {
 	Skipped       []ImportSkip   `json:"skipped"`
 }
 
-// ImportCompose creates a stack and one application per Compose service
-// (image-source only). Named volumes are provisioned and mounted; published
-// host ports become pending port-binding requests (an admin approves them).
-// Apps join the stack network and resolve each other by service name. Bind
-// mounts and build-only services are skipped and reported.
+// ImportCompose creates a stack and one application per Compose service (image-source only). Named volumes
+// are provisioned and mounted; published host ports become pending port-binding requests an admin approves.
+// Apps join the stack network and resolve each other by service name. Bind mounts and builds are skipped.
 func (s *Service) ImportCompose(ctx context.Context, workspaceID, userID uint, name, composeYAML string) (*ImportResult, error) {
 	var cf composeFile
 	if err := yaml.Unmarshal([]byte(composeYAML), &cf); err != nil {
@@ -120,7 +118,6 @@ func (s *Service) ImportCompose(ctx context.Context, workspaceID, userID uint, n
 	// Named volumes are shared across services, so provision each once and reuse.
 	volumes := map[string]*models.Volume{}
 
-	// Deterministic order so results are stable.
 	names := make([]string, 0, len(cf.Services))
 	for svc := range cf.Services {
 		names = append(names, svc)

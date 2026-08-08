@@ -3,11 +3,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: LicenseRef-Miabi-Enterprise
 
-// Package scim implements a minimal SCIM 2.0 Users provisioning endpoint for
-// identity providers (Okta, Azure AD). It is compiled only into the Enterprise
-// build; the Community binary links none of it. Create/replace provisions a
-// Miabi user; setting active=false (or DELETE) deprovisions by disabling the
-// account — the headline enterprise capability.
+// Package scim implements a minimal SCIM 2.0 Users provisioning endpoint for identity providers.
+// It is compiled only into the Enterprise build. Create/replace provisions a Miabi user; setting
+// active=false (or DELETE) deprovisions by disabling the account.
 package scim
 
 import (
@@ -109,8 +107,6 @@ func (p *Provider) Groups(c *okapi.Context) error {
 	return c.JSON(http.StatusOK, listResponse(nil))
 }
 
-// --- SCIM wire types ---
-
 type scimName struct {
 	Formatted string `json:"formatted,omitempty"`
 }
@@ -143,7 +139,6 @@ func toSCIM(u *models.User) scimUser {
 	}
 }
 
-// emailOf resolves the user's email from userName or the primary email entry.
 func emailOf(in scimUser) string {
 	if e := strings.TrimSpace(in.UserName); e != "" {
 		return strings.ToLower(e)
@@ -165,8 +160,6 @@ func nameOf(in scimUser, email string) string {
 	}
 	return email
 }
-
-// --- handlers ---
 
 func (p *Provider) listUsers(c *okapi.Context) error {
 	// IdPs query by userName before creating. Support the common
@@ -313,8 +306,6 @@ func (p *Provider) find(id string) (*models.User, error) {
 	}
 	return &u, nil
 }
-
-// --- helpers ---
 
 func listResponse(res []scimUser) map[string]any {
 	if res == nil {

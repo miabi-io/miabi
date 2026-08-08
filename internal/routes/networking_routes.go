@@ -12,7 +12,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// networkRoutes registers workspace-scoped Docker network routes.
 func (r *Router) networkRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Networks", Description: "Managed Docker networks."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {
@@ -48,7 +47,6 @@ func (r *Router) networkRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// routeRoutes registers workspace-scoped Goma route definitions.
 func (r *Router) routeRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Routes", Description: "Goma Gateway routes."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {
@@ -127,7 +125,6 @@ func (r *Router) routeRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// domainRoutes registers workspace-owned domain CRUD and DNS verification.
 func (r *Router) domainRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Domains", Description: "Owned domains: DNS-verified hostnames with a default TLS policy."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {
@@ -197,8 +194,7 @@ func (r *Router) domainRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// dnsProviderRoutes registers workspace DNS provider connections (Cloudflare /
-// Route 53 / DigitalOcean) used to automate DNS. Credentials are write-only.
+// dnsProviderRoutes registers workspace DNS provider connections; credentials are write-only.
 func (r *Router) dnsProviderRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "DNS Providers", Description: "Connected DNS hosts for automated ownership verification and app records."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {
@@ -251,8 +247,7 @@ func (r *Router) dnsProviderRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// portBindingRoutes registers workspace-scoped host port binding requests and
-// the platform-admin review endpoints.
+// portBindingRoutes registers host port binding requests plus the platform-admin review endpoints.
 func (r *Router) portBindingRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Port Bindings", Description: "Host port bindings (admin-validated)."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {
@@ -298,7 +293,6 @@ func (r *Router) portBindingRoutes() []okapi.RouteDefinition {
 			Summary:     "Cancel a port binding",
 		},
 
-		// Platform-admin review queue.
 		{
 			Method:      http.MethodGet,
 			Path:        "/port-bindings",
@@ -328,7 +322,6 @@ func (r *Router) portBindingRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// middlewareRoutes registers workspace-scoped Goma middleware definitions.
 func (r *Router) middlewareRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Middlewares", Description: "Goma Gateway middlewares."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {

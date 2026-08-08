@@ -9,11 +9,9 @@ import (
 	"testing"
 )
 
-// The crux of bind-mounting from inside the installer container: our /etc/miabi is a
-// bind of SOME host directory. Handing the daemon our own view of the path would point
-// it at a host path that may not exist — and Docker's answer to a missing bind source
-// is to silently create a DIRECTORY. Goma would then find a folder where goma.yml
-// should be and fail for a reason that looks nothing like the cause.
+// The crux of bind-mounting from inside the installer container: our /etc/miabi is a bind of SOME host
+// directory. Handing the daemon our own view would point it at a host path that may not exist — and
+// Docker's answer to a missing bind source is to silently create a DIRECTORY where goma.yml should be.
 func TestHostPathTranslation(t *testing.T) {
 	// Mirrors what InspectContainerConfig returns for the installer container.
 	mounts := []struct{ dest, src string }{

@@ -12,7 +12,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// environmentRoutes registers promotion-environment CRUD.
 func (r *Router) environmentRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Environments", Description: "Promotion stages (dev → staging → prod) with approval policy."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {
@@ -66,7 +65,6 @@ func (r *Router) environmentRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// releaseRoutes registers the workspace release catalog, approvals, and promotion.
 func (r *Router) releaseRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Releases", Description: "Promotable release artifacts with approval gates."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {

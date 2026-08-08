@@ -55,10 +55,9 @@ func (r *RouteRepository) ListAll() ([]models.Route, error) {
 	return routes, err
 }
 
-// ListPagedAll returns a page of routes across every workspace, for the platform
-// admin Routes view. search matches the name or any host (hosts is JSON text, so
-// a substring match is enough); status filters by config-sync status; a non-nil
-// workspaceID scopes to one workspace.
+// ListPagedAll returns a page of routes across every workspace, for the platform admin Routes
+// view. search matches the name or any host (hosts is JSON text, so a substring match suffices);
+// status filters by config-sync status; a non-nil workspaceID scopes to one workspace.
 func (r *RouteRepository) ListPagedAll(search, status string, workspaceID *uint, limit, offset int) ([]models.Route, int64, error) {
 	q := r.db.Model(&models.Route{})
 	if s := strings.TrimSpace(search); s != "" {

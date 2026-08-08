@@ -10,11 +10,9 @@ import "github.com/miabi-io/miabi/internal/services/crypto"
 // stored value", so editing a policy without retyping its password preserves it.
 const RedactedSentinel = "***"
 
-// EncryptSecrets returns a copy of rule with every secret field encrypted at rest
-// (per-workspace key). Values already encrypted are left untouched (idempotent,
-// so kept-secrets on update aren't double-encrypted), and when encryption is
-// disabled the plaintext is stored as-is — matching the platform's behaviour for
-// every other secret. An uncatalogued type has no secret fields, so it is a copy.
+// EncryptSecrets returns a copy of rule with every secret field encrypted at rest under the
+// per-workspace key. Already-encrypted values are left untouched (idempotent, so kept secrets
+// aren't double-encrypted); with encryption disabled the plaintext is stored as-is.
 func EncryptSecrets(mwType string, workspaceID uint, rule map[string]any) (map[string]any, error) {
 	return transformSecrets(mwType, rule, func(v string) (string, error) {
 		if v == "" || crypto.LooksEncrypted(v) || !crypto.Enabled() {
@@ -45,10 +43,9 @@ func Redact(mwType string, rule map[string]any) map[string]any {
 	return out
 }
 
-// MergeKeptSecrets returns a copy of incoming where every secret still equal to
-// the redaction sentinel is restored from existing — so a client that received a
-// redacted rule and edited other fields doesn't wipe the stored secret. basicAuth
-// users are matched by username.
+// MergeKeptSecrets returns a copy of incoming where every secret still equal to the redaction
+// sentinel is restored from existing, so a client that received a redacted rule and edited other
+// fields doesn't wipe the stored secret. basicAuth users are matched by username.
 func MergeKeptSecrets(mwType string, incoming, existing map[string]any) map[string]any {
 	d, ok := Get(mwType)
 	if !ok || existing == nil {

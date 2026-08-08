@@ -13,12 +13,9 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// WorkspaceScope resolves the workspace from the {workspace} path parameter,
-// verifies the authenticated user is a member, and stores the workspace id and
-// the user's role in the context. Must run after Authenticate.
-//
-// The parameter is resolved by shape so numeric and handle-based URLs both work:
-// all-digits → numeric id; a uuid → uid; otherwise the workspace handle (name).
+// WorkspaceScope resolves the workspace from the {workspace} path parameter, verifies the
+// authenticated user is a member, and stores the workspace id and role in the context. The
+// parameter resolves by shape: all-digits is an id, a uuid is a uid, otherwise the handle.
 func WorkspaceScope(repo *repositories.WorkspaceRepository, customRoles *repositories.CustomRoleRepository) okapi.Middleware {
 	return func(c *okapi.Context) error {
 		userID := UserID(c)
@@ -96,11 +93,9 @@ func RequirePermission(p models.Permission) okapi.Middleware {
 	}
 }
 
-// RequireResourcePermission enforces a permission that may be held either at the
-// workspace level (the normal role) OR granted on the specific resource via a
-// per-resource policy. Must run after WorkspaceScope. paramName is the path
-// parameter carrying the resource id (e.g. "appID"). When the policies table is
-// empty this is exactly RequirePermission.
+// RequireResourcePermission enforces a permission held either at the workspace level or granted on
+// the specific resource by a per-resource policy. Must run after WorkspaceScope; paramName is the
+// path parameter carrying the resource id. With no policies stored this is RequirePermission.
 func RequireResourcePermission(p models.Permission, resourceType, paramName string, policies *repositories.ResourcePolicyRepository) okapi.Middleware {
 	return func(c *okapi.Context) error {
 		if Permissions(c)[p] {

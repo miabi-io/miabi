@@ -99,19 +99,17 @@ func (s *Service) SetMiddlewareSeeder(m MiddlewareSeeder) { s.seeder = m }
 // enforcement disabled), membership is uncapped.
 func (s *Service) SetQuota(q *quota.Service) { s.quota = q }
 
-// SetLimits wires per-user workspace-count enforcement. globalLimit returns the
-// platform-wide max_workspaces_per_user (0/negative = unlimited); overrideEntitled
-// reports whether the Enterprise per-user override (User.WorkspaceLimit) is
-// licensed. Nil-safe: leaving this unset means workspace ownership is uncapped.
+// SetLimits wires per-user workspace-count enforcement. globalLimit returns the platform-wide
+// max_workspaces_per_user (0 or negative means unlimited); overrideEntitled reports whether the Enterprise
+// per-user override is licensed. Nil-safe: leaving this unset means workspace ownership is uncapped.
 func (s *Service) SetLimits(globalLimit func() int, overrideEntitled func() bool) {
 	s.globalLimit = globalLimit
 	s.overrideEntitled = overrideEntitled
 }
 
-// effectiveWorkspaceLimit resolves how many workspaces userID may own: the
-// Enterprise per-user override when set and entitled, else the platform global.
-// Returns (limit, unlimited). Override convention: -1 = unlimited, 0 = none,
-// N = N. Global: <= 0 = unlimited (legacy), N = N.
+// effectiveWorkspaceLimit resolves how many workspaces userID may own: the Enterprise per-user override
+// when set and entitled, else the platform global. Returns (limit, unlimited). Override convention: -1 =
+// unlimited, 0 = none, N = N. Global: <= 0 = unlimited (legacy), N = N.
 func (s *Service) effectiveWorkspaceLimit(userID uint) (limit int, unlimited bool) {
 	if s.overrideEntitled != nil && s.overrideEntitled() {
 		if u, err := s.users.FindByID(userID); err == nil && u.WorkspaceLimit != nil {
@@ -131,10 +129,9 @@ func (s *Service) effectiveWorkspaceLimit(userID uint) (limit int, unlimited boo
 	return g, false
 }
 
-// canOwnAnother returns ErrWorkspaceLimitReached when userID is already at their
-// effective workspace-ownership limit. No-op when limits are unwired or the
-// effective limit is unlimited. Fails open on a count error (mirrors
-// checkMemberCapacity), so a transient DB hiccup never blocks legitimate work.
+// canOwnAnother returns ErrWorkspaceLimitReached when userID is already at their effective
+// workspace-ownership limit. No-op when limits are unwired or the effective limit is unlimited. Fails open
+// on a count error (mirrors checkMemberCapacity), so a transient DB hiccup never blocks legitimate work.
 func (s *Service) canOwnAnother(userID uint) error {
 	if s.globalLimit == nil && s.overrideEntitled == nil {
 		return nil // limits not wired
@@ -153,10 +150,9 @@ func (s *Service) canOwnAnother(userID uint) error {
 	return nil
 }
 
-// SetMembershipLimits wires per-user membership-count enforcement — the join
-// counterpart of SetLimits. globalLimit returns max_workspace_memberships_per_user
-// (0/negative = unlimited); overrideEntitled reports whether the Enterprise
-// per-user override (User.WorkspaceMembershipLimit) is licensed. Nil-safe.
+// SetMembershipLimits wires per-user membership-count enforcement — the join counterpart of SetLimits.
+// globalLimit returns max_workspace_memberships_per_user (0 or negative means unlimited); overrideEntitled
+// reports whether the Enterprise per-user override is licensed. Nil-safe.
 func (s *Service) SetMembershipLimits(globalLimit func() int, overrideEntitled func() bool) {
 	s.memberGlobalLimit = globalLimit
 	s.memberOverrideEntitled = overrideEntitled
@@ -184,10 +180,9 @@ func (s *Service) effectiveMembershipLimit(userID uint) (limit int, unlimited bo
 	return g, false
 }
 
-// CanJoinAnother returns ErrMembershipLimitReached when userID is already at
-// their effective membership limit (joining one more workspace as a non-owner
-// member). Public so auto-join paths (SSO/SCIM) can gate before adding a member.
-// No-op when limits are unwired or unlimited; fails open on a count error.
+// CanJoinAnother returns ErrMembershipLimitReached when userID is already at their effective membership
+// limit. Public so auto-join paths such as SSO and SCIM can gate before adding a member. A no-op when limits
+// are unwired or unlimited, and it fails open on a count error.
 func (s *Service) CanJoinAnother(userID uint) error {
 	if s.memberGlobalLimit == nil && s.memberOverrideEntitled == nil {
 		return nil // limits not wired
@@ -219,10 +214,9 @@ func (s *Service) checkMemberCapacity(workspaceID uint) error {
 	return s.quota.CheckCreate(workspaceID, quota.ResourceMembers, int(n))
 }
 
-// Create makes a new workspace owned by ownerID. displayName is the free-text
-// label; handle is the desired unique name (the URL/docker handle) — when blank
-// it is derived from displayName. The handle is always made unique and
-// non-reserved by suffixing, so creation never fails on a collision.
+// Create makes a new workspace owned by ownerID. displayName is the free-text label; handle is the desired
+// unique name — the URL and docker handle — derived from displayName when blank. The handle is always made
+// unique and non-reserved by suffixing, so creation never fails on a collision.
 func (s *Service) Create(ownerID uint, displayName, handle, description string) (*models.Workspace, error) {
 	if err := s.canOwnAnother(ownerID); err != nil {
 		return nil, err
@@ -265,13 +259,9 @@ func (s *Service) ListForUser(userID uint) ([]models.WorkspaceWithRole, error) {
 
 func (s *Service) Update(ws *models.Workspace) error { return s.repo.Update(ws) }
 
-// SetName validates and applies a new handle (the workspace name) to ws in
-// memory (the caller persists via Update). The value is normalized to the
-// canonical handle form; it must be valid, non-reserved, and unique. The
-// built-in system workspace's name is immutable. A no-op when unchanged.
-//
-// Unlike Create, this does not auto-suffix: a rename to a taken or reserved
-// handle is an error, so the caller gets exactly the handle they asked for.
+// SetName validates and applies a new handle to ws in memory; the caller persists via Update. The value is
+// normalized to canonical form and must be valid, non-reserved and unique, and the system workspace's name is
+// immutable. Unlike Create it does not auto-suffix, so a rename onto a taken handle is an error.
 func (s *Service) SetName(ws *models.Workspace, newName string) error {
 	name := slug.Make(newName, "")
 	if name == "" {
@@ -323,10 +313,9 @@ func (s *Service) Delete(id uint) error {
 // reserved handle (see the slug package), claimable only by EnsureSystem.
 const SystemName = "system"
 
-// EnsureSystem creates the built-in platform system workspace if it does not yet
-// exist, owned by ownerID (the platform admin). It is privileged (host-port
-// bindings auto-approve) and flagged System so it cannot be deleted. Idempotent:
-// returns the existing workspace when already present.
+// EnsureSystem creates the built-in platform system workspace if it does not yet exist, owned by ownerID. It
+// is privileged, so host-port bindings auto-approve, and flagged System so it cannot be deleted. Idempotent:
+// it returns the existing workspace when already present.
 func (s *Service) EnsureSystem(ownerID uint) (*models.Workspace, error) {
 	if ws, err := s.repo.FindSystem(); err == nil {
 		return ws, nil
@@ -350,10 +339,9 @@ func (s *Service) EnsureSystem(ownerID uint) (*models.Workspace, error) {
 	if err := s.repo.CreateWithOwner(ws); err != nil {
 		return nil, err
 	}
-	// Pin the platform workspace to the Unlimited plan so platform-managed
-	// infrastructure (e.g. per-node gateways) is never constrained by tenant
-	// quotas when plan enforcement is enabled. Existing installs are backfilled by
-	// the "assign_unlimited_plan_to_system_workspace" upgrade step.
+	// Pin the platform workspace to the Unlimited plan so platform-managed infrastructure (e.g. per-node
+	// gateways) is never constrained by tenant quotas when plan enforcement is enabled. Existing installs are
+	// backfilled by the "assign_unlimited_plan_to_system_workspace" upgrade step.
 	s.pinUnlimitedPlan(ws)
 	if s.nets != nil {
 		if _, err := s.nets.EnsureDefault(context.Background(), ws.ID); err != nil {
@@ -465,7 +453,6 @@ func (s *Service) Invite(workspaceID uint, actor models.WorkspaceRole, inviterID
 	}
 	email = strings.ToLower(strings.TrimSpace(email))
 
-	// If the email belongs to an existing member, reject.
 	if u, err := s.users.FindByEmail(email); err == nil {
 		if _, err := s.repo.FindMember(workspaceID, u.ID); err == nil {
 			return "", nil, ErrAlreadyMember
@@ -565,7 +552,6 @@ func (s *Service) AcceptByID(invitationID, userID uint) (*models.Workspace, erro
 	return s.acceptInvitation(inv, userID)
 }
 
-// acceptInvitation validates a pending invitation and adds the user as a member.
 func (s *Service) acceptInvitation(inv *models.WorkspaceInvitation, userID uint) (*models.Workspace, error) {
 	if inv.Status != models.InvitationStatusPending || time.Now().After(inv.ExpiresAt) {
 		return nil, ErrInvalidInvite
@@ -573,7 +559,6 @@ func (s *Service) acceptInvitation(inv *models.WorkspaceInvitation, userID uint)
 	if _, err := s.repo.FindMember(inv.WorkspaceID, userID); err == nil {
 		return nil, ErrAlreadyMember
 	}
-	// Re-check capacity at the moment the seat is actually consumed.
 	if err := s.checkMemberCapacity(inv.WorkspaceID); err != nil {
 		return nil, err
 	}

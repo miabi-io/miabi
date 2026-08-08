@@ -11,9 +11,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// New returns the Community-Edition stub: it denies every licensed feature and
-// links none of the license-verification code. This file (and thus the entire
-// enterprise.New deny path) is the only implementation compiled without the
+// New returns the Community-Edition stub: it denies every licensed feature and links none of the
+// license-verification code. This file is the only implementation compiled without the
 // `enterprise` build tag.
 func New(_ *gorm.DB, _ string, _ string, _ string, _ string) EE { return ceStub{} }
 

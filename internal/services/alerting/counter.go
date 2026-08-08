@@ -11,10 +11,9 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// Counter holds the alert engine's hot state — windowed signal counts (crash-loop
-// detection) and per-key notify cooldowns (rate-limiting). Backed by Redis so it
-// is correct across control-plane replicas and survives a worker restart; an
-// in-memory implementation backs the tests.
+// Counter holds the alert engine's hot state — windowed signal counts for crash-loop detection and
+// per-key notify cooldowns. Backed by Redis so it is correct across control-plane replicas and
+// survives a worker restart; an in-memory implementation backs the tests.
 type Counter interface {
 	// Incr adds 1 to the window counter for key and returns the new value. The
 	// window TTL is set on first increment (fixed window).
@@ -25,8 +24,6 @@ type Counter interface {
 	// cooldown so a re-firing alert can't notify more than once per window.
 	AllowNotify(ctx context.Context, key string, cooldown time.Duration) (bool, error)
 }
-
-// Redis
 
 type redisCounter struct{ rdb *redis.Client }
 

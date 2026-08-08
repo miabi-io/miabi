@@ -17,10 +17,9 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// JobHandler runs one-off Jobs: a command executed once in an application's
-// runtime context (same image/env/networks/volumes/node/limits as the app),
-// capturing the exit code and logs. It reuses the deploy pipeline's runtime
-// substrate so a Job's environment can't drift from the real deploy.
+// JobHandler runs one-off Jobs: a command executed once in an application's runtime context (same
+// image, env, networks, volumes, node and limits), capturing the exit code and logs. It reuses the
+// deploy pipeline's runtime substrate so a Job's environment can't drift from the real deploy.
 type JobHandler struct {
 	*runtimeBuilder
 	jobs       *repositories.JobRepository
@@ -176,7 +175,6 @@ func (h *JobHandler) registryAuth(workspaceID uint, registryID *uint) (*docker.R
 	return &docker.RegistryAuth{Server: reg.Server, Username: reg.Username, Password: password}, nil
 }
 
-// finish writes a job's terminal state.
 func (h *JobHandler) finish(j *models.Job, status models.JobStatus, exit *int, errMsg string) {
 	j.Status = status
 	if exit != nil {
@@ -193,10 +191,9 @@ func (h *JobHandler) finish(j *models.Job, status models.JobStatus, exit *int, e
 	h.externalizeLog(j)
 }
 
-// externalizeLog moves a terminal job's full output into the shared log store
-// and trims the row to a bounded tail + a reference. No-op when the store is
-// disabled or already externalized; on any error the full log stays in the DB
-// tail. It re-reads the row so it captures the output AppendLog accumulated.
+// externalizeLog moves a terminal job's full output into the shared log store and trims the row to a
+// bounded tail plus a reference. A no-op when the store is disabled; on any error the full log stays
+// in the DB tail. It re-reads the row so it captures the output AppendLog accumulated.
 func (h *JobHandler) externalizeLog(j *models.Job) {
 	if !h.logs.Enabled() {
 		return

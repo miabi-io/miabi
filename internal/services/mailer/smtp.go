@@ -39,7 +39,6 @@ func sendMail(cfg config.SystemSMTPConfig, to []string, subject, htmlBody string
 	}
 }
 
-// sendImplicitTLS connects over TLS from the first byte (SMTPS, usually :465).
 func sendImplicitTLS(addr, host string, auth smtp.Auth, from string, to []string, msg []byte) error {
 	conn, err := tls.Dial("tcp", addr, &tls.Config{ServerName: host})
 	if err != nil {
@@ -53,7 +52,6 @@ func sendImplicitTLS(addr, host string, auth smtp.Auth, from string, to []string
 	return deliver(c, auth, from, to, msg)
 }
 
-// sendStartTLS connects in the clear then upgrades to TLS (usually :587).
 func sendStartTLS(addr, host string, auth smtp.Auth, from string, to []string, msg []byte) error {
 	c, err := smtp.Dial(addr)
 	if err != nil {
@@ -68,7 +66,6 @@ func sendStartTLS(addr, host string, auth smtp.Auth, from string, to []string, m
 	return deliver(c, auth, from, to, msg)
 }
 
-// deliver runs the SMTP transaction (AUTH, MAIL FROM, RCPT TO, DATA) on a client.
 func deliver(c *smtp.Client, auth smtp.Auth, from string, to []string, msg []byte) error {
 	if auth != nil {
 		if ok, _ := c.Extension("AUTH"); ok {
@@ -98,7 +95,6 @@ func deliver(c *smtp.Client, auth smtp.Auth, from string, to []string, msg []byt
 	return c.Quit()
 }
 
-// buildMessage assembles an RFC 5322 HTML message.
 func buildMessage(from string, to []string, subject, htmlBody string) []byte {
 	var b strings.Builder
 	b.WriteString("From: " + from + "\r\n")

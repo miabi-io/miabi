@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package license implements Miabi's offline, signed commercial license token:
-// an Ed25519-signed claims blob verified against a public key embedded in the
-// binary. Verification needs no network, so it works air-gapped. This package is
-// pure (no DB, no build tag); the Community build simply never imports it, so a
-// CE binary links none of it. The private key lives only in the issuer tool.
+// Package license implements Miabi's offline, signed commercial license token: an Ed25519-signed
+// claims blob verified against a public key embedded in the binary, so verification works
+// air-gapped. It is pure (no DB, no build tag); a CE binary simply never imports it.
 package license
 
 import (

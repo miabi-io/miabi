@@ -12,7 +12,6 @@ import (
 	"github.com/libdns/libdns"
 )
 
-// fakeLister is a libdns client that can enumerate zones (like Cloudflare).
 type fakeLister struct {
 	zones   []string // account zones (FQDN, trailing dot)
 	setZone string   // zone captured from the last SetRecords/DeleteRecords

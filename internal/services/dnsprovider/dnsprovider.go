@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package dnsprovider manages workspace DNS provider connections: connect, test,
-// list, delete. Credentials are encrypted at rest and never returned. Connecting
-// is gated by the AllowDNSProviders plan capability. The package also resolves a
-// stored connection into a usable dns.Provider for the automation paths
-// (verification TXT, app A/AAAA, managed certificates).
+// Package dnsprovider manages workspace DNS provider connections: connect, test, list, delete.
+// Credentials are encrypted at rest and never returned, and connecting is gated by the AllowDNSProviders
+// plan capability. It also resolves a stored connection into a usable dns.Provider for automation.
 package dnsprovider
 
 import (
@@ -176,7 +174,6 @@ func (s *Service) get(workspaceID, id uint) (*models.DNSProvider, error) {
 	return p, nil
 }
 
-// provider decrypts a row's credentials and builds the dns.Provider.
 func (s *Service) provider(p *models.DNSProvider) (dns.Provider, error) {
 	creds, err := decryptCreds(p.CredentialsEnc)
 	if err != nil {

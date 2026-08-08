@@ -109,10 +109,9 @@ func (h *MonitoringHandler) WorkspaceUsageStream(c *okapi.Context) error {
 	})
 }
 
-// WorkspaceUsageHistory returns the workspace's aggregated resource usage over
-// time (from stored scraper samples), for the dashboard sparkline. Optional query
-// `since` (e.g. 1h, 6h; default 1h) sets the window; `bucket` (e.g. 60s) the
-// resolution.
+// WorkspaceUsageHistory returns the workspace's aggregated resource usage over time, from stored
+// scraper samples, for the dashboard sparkline. Optional `since` (default 1h) sets the window and
+// `bucket` the resolution.
 func (h *MonitoringHandler) WorkspaceUsageHistory(c *okapi.Context) error {
 	window := time.Hour
 	if q := c.Query("since"); q != "" {

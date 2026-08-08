@@ -5,10 +5,9 @@ package models
 
 import "time"
 
-// Webhook is a workspace-registered HTTP endpoint that receives a signed JSON
-// payload when a subscribed application event fires. The signing Secret is
-// encrypted at rest and never serialized (a transient HasSecret flag is exposed
-// instead); it is returned in cleartext exactly once, at creation time.
+// Webhook is a workspace-registered HTTP endpoint receiving a signed JSON payload when a
+// subscribed application event fires. The signing Secret is encrypted at rest and never
+// serialized (a transient HasSecret flag instead); it is returned in cleartext once.
 type Webhook struct {
 	ID          uint     `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint     `json:"workspace_id" gorm:"index;not null"`

@@ -32,25 +32,9 @@ const (
 // running instance to host the dependency's logical database.
 var ErrNoSharedInstance = errors.New("no compatible running database instance to share")
 
-// ResolveDependency satisfies a database dependency per its placement. It returns
-// the hosting instance, the app-scoped logical database (nil for Redis/libSQL or
-// the admin-connection fallback), a connection for the app to use, and whether a
-// new instance was provisioned.
-//
-// declName, when non-empty, is stamped on the logical database (with the
-// managed-by / gitops-source provenance from meta) so a declarative reconcile can
-// map the manifest Database name back to this exact logical database — rather than
-// guessing by instance name or "first database on the instance". Marketplace
-// installs pass an empty declName (their app env is materialized at install time,
-// not reconciled).
-//
-// pinInstance, when non-zero, forces a logical database onto that specific
-// instance (the install wizard's explicit choice), ignoring placement.
-//
-// Newly provisioned instances come up asynchronously, so their logical database
-// is reserved (PrepareDatabase, deferred DDL); reused running instances get the
-// database created immediately (CreateDatabase). Redis and libSQL host no
-// user-managed logical databases, so the app receives the instance connection.
+// ResolveDependency satisfies a database dependency per its placement, returning the hosting instance,
+// the app-scoped logical database, a connection, and whether a new instance was provisioned. declName
+// stamps the logical database so a declarative reconcile maps a manifest name back to it exactly.
 func (s *Service) ResolveDependency(ctx context.Context, workspaceID, serverID, pinInstance uint, base, declName string, engine models.DBEngine, version string, placement Placement, meta models.Metadata) (*models.DatabaseInstance, *models.Database, ConnectionInfo, bool, error) {
 	logical := models.EngineSupportsLogicalDatabases(engine)
 
@@ -82,11 +66,9 @@ func (s *Service) ResolveDependency(ctx context.Context, workspaceID, serverID, 
 	}
 }
 
-// provisionDedicated provisions a fresh instance for a dependency. For a SQL
-// engine it also reserves a logical database (own scoped user) whose CREATE DDL
-// runs when the instance comes up, returning that database's connection. Redis
-// and libSQL host no user-managed logical databases, so the app receives the
-// instance connection.
+// provisionDedicated provisions a fresh instance for a dependency. For a SQL engine it also reserves a logical
+// database with its own scoped user, whose CREATE DDL runs when the instance comes up, and returns that
+// connection. Redis and libSQL host no logical databases, so the app receives the instance connection.
 func (s *Service) provisionDedicated(ctx context.Context, workspaceID uint, base, declName string, engine models.DBEngine, version string, serverID uint, meta models.Metadata) (*models.DatabaseInstance, *models.Database, ConnectionInfo, bool, error) {
 	inst, err := s.Provision(ctx, workspaceID, serverID, strings.TrimSpace(base), engine, version, 0, meta, nil)
 	if err != nil {
@@ -163,7 +145,6 @@ func (s *Service) FindReusableInstance(workspaceID uint, engine models.DBEngine)
 	return s.findReusable(workspaceID, engine)
 }
 
-// findReusable returns a running instance of engine in the workspace, or nil.
 func (s *Service) findReusable(workspaceID uint, engine models.DBEngine) *models.DatabaseInstance {
 	list, err := s.List(workspaceID)
 	if err != nil {

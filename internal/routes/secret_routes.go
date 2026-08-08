@@ -12,8 +12,8 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// secretRoutes registers the workspace Vault. Viewer lists (names only),
-// Developer mutates, Admin reveals plaintext.
+// secretRoutes registers the workspace Vault. Viewer lists names only; Developer mutates;
+// Admin reveals plaintext.
 func (r *Router) secretRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Secrets", Description: "Workspace secrets (Vault), referenced from env as ${{ secrets.NAME }}."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {

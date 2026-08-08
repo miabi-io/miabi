@@ -64,10 +64,9 @@ func ValidatePassphrase(pass string) error {
 	return nil
 }
 
-// Seal encrypts a state document under a key derived from passphrase with
-// Argon2id, returning the framed file. A fresh random salt and nonce are
-// generated per call, so sealing the same state twice never produces the same
-// bytes.
+// Seal encrypts a state document under a key derived from passphrase with Argon2id, returning the
+// framed file. A fresh random salt and nonce are generated per call, so sealing the same state
+// twice never produces the same bytes.
 func Seal(st *State, passphrase string) ([]byte, error) {
 	if st == nil {
 		return nil, errors.New("nil state")

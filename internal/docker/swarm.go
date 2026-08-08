@@ -13,8 +13,8 @@ import (
 	"github.com/docker/docker/api/types/swarm"
 )
 
-// defaultSwarmListenAddr is the management-plane bind used when a caller does
-// not specify one (the standard Docker Swarm port on all interfaces).
+// defaultSwarmListenAddr is the management-plane bind used when a caller does not specify one
+// (the standard Docker Swarm port on all interfaces).
 const defaultSwarmListenAddr = "0.0.0.0:2377"
 
 // SwarmInfo summarizes an engine's participation in a Docker Swarm, as reported
@@ -51,10 +51,9 @@ type SwarmNode struct {
 	Reachability  string `json:"reachability,omitempty"` // reachable | unreachable (managers)
 	Addr          string `json:"addr,omitempty"`
 	EngineVersion string `json:"engine_version,omitempty"`
-	// Capacity as the swarm scheduler sees it — what it packs tasks against. It comes
-	// from the node's own report over the swarm control plane, so it is known even for
-	// a node Miabi has no Docker client for (an unmanaged member with no agent), where
-	// host metrics are otherwise unavailable.
+	// Capacity as the swarm scheduler sees it — what it packs tasks against. It comes from the node's
+	// own report over the swarm control plane, so it is known even for a node Miabi has no Docker
+	// client for, where host metrics are otherwise unavailable.
 	NanoCPUs    int64  `json:"nano_cpus,omitempty"`    // 1e9 == one core
 	MemoryBytes int64  `json:"memory_bytes,omitempty"` // total, not used
 	OS          string `json:"os,omitempty"`           // linux | windows
@@ -222,8 +221,8 @@ func (e *engineClient) SwarmNodes(ctx context.Context) ([]SwarmNode, error) {
 	return out, nil
 }
 
-// swarmTaskCounts maps a swarm node id to the number of tasks running on it.
-// Best-effort: an error yields an empty map, so callers simply report no load.
+// swarmTaskCounts maps a swarm node id to the number of tasks running on it. Best-effort: an
+// error yields an empty map, so callers simply report no load.
 func (e *engineClient) swarmTaskCounts(ctx context.Context) map[string]int {
 	tasks, err := e.cli.TaskList(ctx, types.TaskListOptions{
 		Filters: filters.NewArgs(filters.Arg("desired-state", "running")),
@@ -247,17 +246,9 @@ func (e *engineClient) SwarmNodeRemove(ctx context.Context, nodeID string, force
 	return e.cli.NodeRemove(ctx, nodeID, types.NodeRemoveOptions{Force: force})
 }
 
-// SwarmNodeAvailability sets a node's scheduling availability. Requires a manager.
-//
-//	active — the scheduler may place new tasks here
-//	pause  — existing tasks keep running; no new ones are placed
-//	drain  — existing tasks are rescheduled off this node, and none are placed
-//
-// Drain is what makes a node safe to reboot: without it Swarm keeps scheduling onto
-// a host that is about to disappear.
-//
-// The update is version-checked (Docker's optimistic concurrency), so it is
-// re-inspected immediately before writing rather than trusting a cached version.
+// SwarmNodeAvailability sets a node's scheduling availability (active / pause / drain); requires
+// a manager. Drain is what makes a node safe to reboot — without it Swarm keeps scheduling onto a
+// host about to disappear. Version-checked, so the node is re-inspected immediately before writing.
 func (e *engineClient) SwarmNodeAvailability(ctx context.Context, nodeID, availability string) error {
 	var av swarm.NodeAvailability
 	switch availability {

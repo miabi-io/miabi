@@ -9,7 +9,6 @@ import (
 	d "github.com/miabi-io/miabi/internal/declarative"
 )
 
-// live builds the snapshot form of an app carrying the given container labels.
 func liveApp(labels map[string]string) *d.ResourceSet {
 	set := d.NewResourceSet()
 	set.Add(d.Resource{

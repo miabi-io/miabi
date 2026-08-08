@@ -278,7 +278,6 @@ func (r *Router) samlPublicRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// samlProvider returns the enterprise SAML handler, or nil when unavailable.
 func (r *Router) samlProvider() enterprise.SAMLProvider {
 	if r.ee == nil {
 		return nil

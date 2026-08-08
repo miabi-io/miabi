@@ -14,19 +14,16 @@ import (
 // advisory (the platform token is what authorizes), like any registry username.
 const platformUser = "_miabi"
 
-// DistributionEnabled reports whether built images can be pushed to and pulled
-// from the registry: it must be enabled, have a resolvable host, and have a
-// platform token configured. When false the build/deploy flow uses node-local
-// images, so single-node installs are unaffected.
+// DistributionEnabled reports whether built images can be pushed to and pulled from the registry: it must
+// be enabled, have a resolvable host, and have a platform token configured. When false the build/deploy
+// flow uses node-local images, so single-node installs are unaffected.
 func (s *Service) DistributionEnabled() bool {
 	return s.DistributionUnavailableReason() == ""
 }
 
-// DistributionUnavailableReason returns "" when image distribution is ready, or
-// a user-facing sentence naming the specific missing piece (registry disabled,
-// no platform token, or no resolvable host). Keeping the diagnosis here means a
-// git-source deploy can tell the operator exactly what to configure rather than
-// re-suggesting a flag they already set.
+// DistributionUnavailableReason returns "" when image distribution is ready, or a user-facing sentence
+// naming the specific missing piece. Keeping the diagnosis here means a git-source deploy can tell the
+// operator exactly what to configure rather than re-suggesting a flag they already set.
 func (s *Service) DistributionUnavailableReason() string {
 	st, err := s.Get()
 	if err != nil {
@@ -48,12 +45,9 @@ func (s *Service) DistributionUnavailableReason() string {
 	return ""
 }
 
-// TagReleaseVersion adds a v<version> tag to an already-pushed build image
-// (identified by its digest) so the registry mirrors the release number shown in
-// the UI, alongside the immutable build tag. Best-effort and a no-op when
-// distribution is off. It talks to the registry directly, so it uses the internal
-// ws_<id>/<app-name> storage path (the runner pushed via the gateway, which
-// rewrote the workspace name to its id).
+// TagReleaseVersion adds a v<version> tag to an already-pushed build image so the registry mirrors the
+// release number shown in the UI, alongside the immutable build tag. Best-effort and a no-op when
+// distribution is off. It talks to the registry directly, so it uses the ws_<id>/<app-name> storage path.
 func (s *Service) TagReleaseVersion(ctx context.Context, workspaceID uint, appName, digest string, version int) error {
 	if !s.DistributionEnabled() {
 		return nil
@@ -63,10 +57,8 @@ func (s *Service) TagReleaseVersion(ctx context.Context, workspaceID uint, appNa
 }
 
 // RegistryHost returns the resolved registry host — the explicit setting, else
-// registry.<external-base-domain>, else "" when distribution can't be served. It
-// is the host a runner must both log into and push to; deriving it here (rather
-// than trusting the raw MIABI_REGISTRY_HOST env, which is empty when the host is
-// UI-set or domain-derived) keeps the runner's login host and push host identical.
+// registry.<external-base-domain>, else "". It is the host a runner must both log into and push to;
+// deriving it here rather than trusting the raw env keeps the login host and push host identical.
 func (s *Service) RegistryHost() string {
 	st, err := s.Get()
 	if err != nil {
@@ -76,15 +68,8 @@ func (s *Service) RegistryHost() string {
 }
 
 // BuildRef is the registry reference a built image is distributed under:
-// <host>/ws_<id>/<app-name>:<deploymentID>.
-//
-// The namespace is the immutable ws_<id> form rather than the workspace name a
-// user types, even though the gateway accepts both (it rewrites a name to the id
-// before storage, and Authorize resolves either). The reference is recorded on
-// the deployment and pulled again much later — on another node, or on a rollback
-// months afterwards — and a workspace rename in between would leave a name-form
-// reference pointing at a namespace that no longer resolves, or, worse, at
-// whichever workspace has since claimed that name.
+// <host>/ws_<id>/<app-name>:<deploymentID>. The namespace is the immutable ws_<id> form because the
+// reference is recorded on the deployment and pulled again later, when a rename could have broken it.
 func (s *Service) BuildRef(workspaceID uint, appName string, deploymentID uint) string {
 	st, err := s.Get()
 	if err != nil {

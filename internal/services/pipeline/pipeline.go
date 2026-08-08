@@ -121,16 +121,9 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.PipelineDefini
 	if err != nil {
 		return nil, err
 	}
-	// A repo-owned pipeline is a mirror of a file in git, and everything about it
-	// but its enabled flag is derived: the spec from the file (an edit here is
-	// reverted by the next run's re-sync), the name and binding from the app it
-	// was adopted for (unbinding it would orphan the definition — re-sync needs
-	// the app to resolve the clone source, so it would silently freeze on a stale
-	// spec). Refuse the edit and say where it belongs.
-	//
-	// Enabled stays writable on purpose: it is the kill switch you need when the
-	// repository's pipeline is broken and you want deploys to build directly
-	// again without deleting anything.
+	// A repo-owned pipeline is a mirror of a file in git: the spec, name and binding are all derived, so an edit
+	// here is reverted by the next re-sync and unbinding would orphan the definition. Refuse the edit and say
+	// where it belongs. Enabled stays writable on purpose — it is the kill switch when the repo's pipeline breaks.
 	if p.IsRepoOwned() && repoOwnedEditRequested(p, in) {
 		return nil, ErrRepoOwned
 	}
@@ -168,10 +161,9 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.PipelineDefini
 	return p, nil
 }
 
-// repoOwnedEditRequested reports whether an update asks to change something a
-// repository-owned pipeline derives rather than owns. A request that only
-// repeats the stored values (a UI form round-tripping unchanged fields) is not
-// an edit, so it is allowed through — only an actual change is refused.
+// repoOwnedEditRequested reports whether an update asks to change something a repository-owned pipeline
+// derives rather than owns. A request that only repeats the stored values (a UI form round-tripping
+// unchanged fields) is not an edit, so it is allowed through — only an actual change is refused.
 func repoOwnedEditRequested(p *models.PipelineDefinition, in Input) bool {
 	if in.Spec != "" && in.Spec != p.Spec {
 		return true
@@ -291,20 +283,16 @@ func (s *Service) Trigger(workspaceID, pipelineID uint, in TriggerInput) (*model
 	if !p.Enabled {
 		return nil, ErrDisabled
 	}
-	// A repo-owned pipeline re-reads its document before every run, so the steps
-	// this run executes are the ones the ref actually carries right now. This has
-	// to happen here rather than in the worker: the run's step rows are projected
-	// from the spec a few lines down, and a spec refreshed after that projection
-	// would leave the run executing a stale step list.
+	// A repo-owned pipeline re-reads its document before every run, so the steps this run executes are the ones
+	// the ref actually carries. This has to happen here rather than in the worker: the run's step rows are
+	// projected from the spec a few lines down, and refreshing after that would leave a stale step list.
 	if p.IsRepoOwned() {
 		if _, err := s.SyncFromRepo(context.Background(), p, in.Branch); err != nil {
 			return nil, err
 		}
-		// Pin the run to the commit the spec was just read at. Two reasons: the
-		// steps and the tree the runner builds then come from one revision, and the
-		// runner checks out by commit — with none it clones the repository's default
-		// branch, which for an app tracking any other branch would silently build
-		// the wrong code.
+		// Pin the run to the commit the spec was just read at, for two reasons: the steps and the tree the runner
+		// builds then come from one revision, and the runner checks out by commit — with none it clones the
+		// repository's default branch, which for an app tracking any other branch would silently build the wrong code.
 		if in.Commit == "" {
 			in.Commit = p.SourceCommit
 		}

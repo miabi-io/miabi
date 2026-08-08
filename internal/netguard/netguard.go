@@ -1,14 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package netguard provides SSRF-resistant HTTP clients for outbound requests
-// to user-supplied URLs (webhooks). It validates the *resolved* IP at dial time
-// — not just the hostname — so DNS rebinding cannot smuggle a request to an
-// internal address after an up-front check passes.
-//
-// Loopback, link-local (incl. cloud metadata 169.254.169.254), and unspecified
-// addresses are always blocked. RFC1918 / ULA private ranges are blocked by
-// default but can be allowed for homelab/LAN webhook targets via Configure.
+// Package netguard provides SSRF-resistant HTTP clients for outbound requests to user-supplied
+// URLs. It validates the *resolved* IP at dial time, so DNS rebinding cannot smuggle a request to
+// an internal address. Loopback and link-local are always blocked; private ranges by default.
 package netguard
 
 import (
@@ -38,7 +33,6 @@ func (e *ErrBlocked) Error() string {
 	return fmt.Sprintf("destination %s (%s) is not an allowed webhook target", e.Host, e.IP)
 }
 
-// ipBlocked reports whether an IP must be rejected.
 func ipBlocked(ip net.IP) bool {
 	if ip == nil {
 		return true

@@ -30,10 +30,9 @@ func ValidDNSProviderType(t string) bool {
 	}
 }
 
-// DNSProvider is a workspace's connection to a DNS host. Credentials are an
-// opaque, encrypted JSON blob whose shape depends on Type (a Cloudflare API
-// token; Route 53 access key/secret/region; a DigitalOcean token). The blob is
-// encrypted at rest (crypto.Encrypt) and never returned by the API after create.
+// DNSProvider is a workspace's connection to a DNS host. Credentials are an opaque JSON blob
+// whose shape depends on Type (Cloudflare token; Route 53 key/secret/region; DigitalOcean
+// token), encrypted at rest and never returned by the API after create.
 type DNSProvider struct {
 	ID          uint `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint `json:"workspace_id" gorm:"index:idx_dnsprov_workspace_name,unique;not null"`

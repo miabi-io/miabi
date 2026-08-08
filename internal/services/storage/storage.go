@@ -43,10 +43,9 @@ var ErrHostPathRequired = errors.New("host-path volume requires a 'path' driver 
 // create a host-path volume.
 var ErrHostMountNotPrivileged = errors.New("host-path volumes require a privileged workspace")
 
-// OwnerExister reports whether an owning resource of the given kind/id still
-// exists in the workspace. Wired by the composition root so the service can
-// refuse to orphan a resource whose owner is still around, without depending on
-// the app/database/stack repositories directly.
+// OwnerExister reports whether an owning resource of the given kind and id still exists in the workspace.
+// Wired by the composition root so the service can refuse to orphan a resource whose owner is still around,
+// without depending on the app, database or stack repositories directly.
 type OwnerExister func(kind string, id, workspaceID uint) bool
 
 // NodeDocker resolves the Docker client for a node id (0 = local). Implemented
@@ -103,10 +102,9 @@ func NewService(repo *repositories.VolumeRepository, apps *repositories.Applicat
 	return &Service{repo: repo, apps: apps, clients: clients}
 }
 
-// requireHostMount gates host-path volume creation: the workspace must both hold
-// the platform-admin-granted privileged flag AND the plan's privileged-host-mount
-// capability (the same gate as app-level host binds), because a host bind is the
-// highest-blast-radius storage action.
+// requireHostMount gates host-path volume creation: the workspace must both hold the
+// platform-admin-granted privileged flag AND the plan's privileged-host-mount capability (the same gate as
+// app-level host binds), because a host bind is the highest-blast-radius storage action.
 func (s *Service) requireHostMount(workspaceID uint) error {
 	if s.quota != nil {
 		if err := s.quota.Require(workspaceID, quota.CapPrivilegedHostMounts); err != nil {
@@ -132,7 +130,6 @@ func (s *Service) SetNodeGuard(g NodeGuard) { s.nodeGuard = g }
 // SetServerInfo wires the resolver used to annotate volumes with their node's name.
 func (s *Service) SetServerInfo(si ServerInfo) { s.serverInfo = si }
 
-// annotateServer fills the transient ServerName from the node record.
 func (s *Service) annotateServer(v *models.Volume) {
 	if v == nil || s.serverInfo == nil {
 		return
@@ -187,7 +184,6 @@ func (s *Service) Detail(ctx context.Context, workspaceID, id uint) (*VolumeDeta
 	return d, nil
 }
 
-// usedByApps returns the applications in the workspace that mount the volume.
 func (s *Service) usedByApps(workspaceID, volumeID uint) ([]VolumeUsage, error) {
 	apps, err := s.apps.ListByWorkspace(workspaceID)
 	if err != nil {
@@ -212,12 +208,9 @@ func (s *Service) Create(ctx context.Context, workspaceID, serverID uint, name s
 	return s.CreateWith(ctx, workspaceID, serverID, name, sizeBytes, "", nil, meta, annotations)
 }
 
-// CreateWith creates a managed volume with an explicit driver and driver
-// options. driver "" / "local" is a node-local volume (rwo); "nfs"/"cifs" is
-// shared storage (rwx) a replicated service can mount across nodes. driverOpts
-// are the backend mount options (e.g. NFS: device=":/export", o="addr=…,rw");
-// they are encrypted at rest (may carry a CIFS password). The NFS/CIFS case uses
-// Docker's built-in local driver with a type option, so no plugin is required.
+// CreateWith creates a managed volume with an explicit driver and driver options. "" or "local" is a
+// node-local volume (rwo); "nfs"/"cifs" is shared storage (rwx) a replicated service can mount across nodes.
+// driverOpts are the backend mount options, encrypted at rest since they may carry a CIFS password.
 func (s *Service) CreateWith(ctx context.Context, workspaceID, serverID uint, name string, sizeBytes int64, driver string, driverOpts map[string]string, meta, annotations models.Metadata) (*models.Volume, error) {
 	driver = strings.ToLower(strings.TrimSpace(driver))
 	if driver == "" {
@@ -248,10 +241,9 @@ func (s *Service) CreateWith(ctx context.Context, workspaceID, serverID uint, na
 		driverOpts = opts
 		dockerSpec.DriverOpts = opts // Driver stays "" (local backing) by design
 	case models.VolumeDriverHost:
-		// A bind to an operator-managed host path (under /mnt/*), meant for storage
-		// mounted at the same path on every node — so it is treated as rwx (a
-		// replicated service can share it). Privileged workspaces only: this is the
-		// highest-blast-radius storage action.
+		// A bind to an operator-managed host path (under /mnt/*), meant for storage mounted at the same path on
+		// every node — so it is treated as rwx (a replicated service can share it). Privileged workspaces only:
+		// this is the highest-blast-radius storage action.
 		if err := s.requireHostMount(workspaceID); err != nil {
 			return nil, err
 		}
@@ -356,10 +348,9 @@ func (s *Service) Get(workspaceID, id uint) (*models.Volume, error) {
 	return v, nil
 }
 
-// SetOwner records the owning resource (app/database/stack/user) on an existing
-// volume's metadata. Used to back-link template volumes to the app/stack they
-// back once those have been created. Built-in keys are authoritative, so this
-// overrides any prior owner.
+// SetOwner records the owning resource (app, database, stack or user) on an existing volume's metadata. Used
+// to back-link template volumes to the app or stack they back once those have been created. Built-in keys are
+// authoritative, so this overrides any prior owner.
 func (s *Service) SetOwner(workspaceID, id uint, kind string, ownerID uint, name string) error {
 	v, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -369,10 +360,9 @@ func (s *Service) SetOwner(workspaceID, id uint, kind string, ownerID uint, name
 	return s.repo.Update(v)
 }
 
-// guardOwned refuses deletion when the resource records an owner (app/database/
-// stack) that still exists, so users delete the owner instead of orphaning it.
-// A user owner, a missing/zero owner, or an owner that no longer exists do not
-// block. No-op when no owner-existence checker is wired.
+// guardOwned refuses deletion when the resource records an owner (app/database/ stack) that still exists,
+// so users delete the owner instead of orphaning it. A user owner, a missing/zero owner, or an owner that
+// no longer exists do not block. No-op when no owner-existence checker is wired.
 func (s *Service) guardOwned(meta models.Metadata, workspaceID uint) error {
 	ref, ok := models.Owner(meta)
 	if !ok || ref.Kind == models.OwnerUser || ref.ID == 0 || s.ownerOf == nil {

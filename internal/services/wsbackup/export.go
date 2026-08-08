@@ -42,13 +42,9 @@ func (s *Service) Export(ctx context.Context, workspaceID uint, userID *uint, tr
 	})
 }
 
-// runExport writes the workspace to the bucket as a bundle.
-//
-// Order matters and is the reverse of what it looks like: the data artifacts are
-// captured first and the index is written last, so a bundle's info file exists
-// only once the things it lists do. An interrupted export therefore leaves
-// orphaned objects — which cost storage — rather than an index that promises a
-// restore it cannot perform.
+// runExport writes the workspace to the bucket as a bundle. Order matters and is the reverse of what it looks
+// like: the data artifacts are captured first and the index written last, so a bundle's info file exists only
+// once the things it lists do. An interrupted export leaves orphaned objects, not an index promising a restore.
 func (s *Service) runExport(ctx context.Context, b *models.WorkspaceBundle) error {
 	cfg, prefix, passphrase, err := s.Settings.BundleTarget(b.WorkspaceID)
 	if err != nil {
@@ -61,11 +57,9 @@ func (s *Service) runExport(ctx context.Context, b *models.WorkspaceBundle) erro
 		return nil
 	}
 
-	// Preflight the bucket before doing any work. An export dumps every database
-	// and archives every volume before it writes its own two objects, so a target
-	// that refuses the control plane would fail at the very end — after the
-	// expensive part, and after leaving those artifacts behind. One small object
-	// answers that question in a second.
+	// Preflight the bucket before doing any work. An export dumps every database and archives every volume before
+	// it writes its own two objects, so a target that refuses the control plane would fail at the very end — after
+	// the expensive part, and after leaving those artifacts behind. One small object answers that in a second.
 	if p, err := blob.RunProbe(ctx, blobConfig(cfg), prefix); err != nil {
 		s.fail(b, fmt.Errorf("the backup target is not usable: %w", err))
 		return nil
@@ -156,13 +150,9 @@ func (s *Service) runExport(ctx context.Context, b *models.WorkspaceBundle) erro
 	return nil
 }
 
-// exportDatabases dumps every logical database in the workspace into the
-// bundle's branch, reusing services/backup so each engine is dumped by the tool
-// that understands it.
-//
-// A dump that fails does not fail the bundle: it is recorded on the artifact and
-// in the report. One unreachable database must not cost an operator the
-// configuration, the secrets and every other database they were backing up.
+// exportDatabases dumps every logical database in the workspace into the bundle's branch, reusing services/backup
+// so each engine is dumped by the tool that understands it. A dump that fails does not fail the bundle — it is
+// recorded on the artifact and in the report. One unreachable database must not cost every other one.
 func (s *Service) exportDatabases(ctx context.Context, b *models.WorkspaceBundle, cfg *backup.S3Config, prefix, passphrase string, report *models.BundleReport) []wsbundle.Artifact {
 	path := wsbundle.DatabasePath(prefix, b.Ref)
 	instances, err := s.Database.List(b.WorkspaceID)
@@ -247,7 +237,6 @@ func (s *Service) exportVolumes(ctx context.Context, b *models.WorkspaceBundle, 
 	return out
 }
 
-// withPath copies an S3 config with a specific object prefix.
 func withPath(cfg *backup.S3Config, path string) *backup.S3Config {
 	out := *cfg
 	out.Path = path

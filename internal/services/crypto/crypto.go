@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package crypto provides AES-GCM encryption for secrets stored at rest.
-// Init must be called once at startup with the configured key. When no key is
-// configured, values are base64-encoded (dev convenience) — never use that in
-// production.
+// Package crypto provides AES-GCM encryption for secrets stored at rest. Init must be called once at
+// startup with the configured key. When no key is configured, values are base64-encoded for dev
+// convenience — never use that in production.
 package crypto
 
 import (
@@ -31,10 +30,9 @@ const (
 	wsPrefix = "e2:w:"
 )
 
-// Keyring resolves per-workspace data-encryption keys (DEKs), unwrapping them
-// from the master KEK. Injected at startup via SetKeyring; nil means
-// per-workspace encryption is unavailable and EncryptWS falls back to the master
-// key (safe during rollout / dev).
+// Keyring resolves per-workspace data-encryption keys, unwrapping them from the master KEK. Injected at
+// startup via SetKeyring; nil means per-workspace encryption is unavailable and EncryptWS falls back to
+// the master key, which is safe during rollout and in dev.
 type Keyring interface {
 	// ActiveDEK returns the workspace's current key version + DEK, creating one on
 	// first use.
@@ -90,12 +88,9 @@ func IsEncrypted(s string) bool {
 	return strings.HasPrefix(s, encryptedPrefix)
 }
 
-// LooksEncrypted reports whether a stored value carries one of the envelope
-// prefixes this package produces (master "enc:" or per-workspace "e2:w:"). Bare
-// legacy plaintext returns false, so a caller can Decrypt only the values it
-// actually encrypted and pass legacy plaintext through untouched (Decrypt would
-// otherwise base64-decode a bare value and corrupt plaintext that happens to be
-// valid base64).
+// LooksEncrypted reports whether a stored value carries one of the envelope prefixes this package
+// produces. Bare legacy plaintext returns false, so a caller can Decrypt only what it encrypted —
+// Decrypt would otherwise base64-decode a bare value and corrupt plaintext that happens to be valid.
 func LooksEncrypted(s string) bool {
 	return strings.HasPrefix(s, encryptedPrefix) || strings.HasPrefix(s, wsPrefix)
 }
@@ -120,13 +115,9 @@ func Encrypt(plaintext string) (string, error) {
 // — never security-relevant, since dev has no real secrets to protect.
 var devMasterKey = []byte("miabi-dev-insecure-master-key")
 
-// DeriveToken returns a stable, high-entropy token derived from the master key
-// via HMAC-SHA256(masterKey, label), prefixed and URL-safe base64. It lets the
-// platform mint internal shared secrets (e.g. the registry platform credential)
-// deterministically from the already-configured encryption key: no separate
-// config or storage, and every process that shares the key derives the identical
-// value. A given label always yields the same token for the same key, and
-// different labels yield independent tokens.
+// DeriveToken returns a stable, high-entropy token derived from the master key via HMAC-SHA256(key,
+// label), URL-safe base64. It lets the platform mint internal shared secrets deterministically: no
+// separate config or storage, and every process sharing the key derives the identical value.
 func DeriveToken(label string) string {
 	keyMu.RLock()
 	k := key
@@ -139,10 +130,22 @@ func DeriveToken(label string) string {
 	return "mrt_" + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
-// EncryptWS encrypts plaintext with the workspace's data-encryption key,
-// producing the self-describing "e2:w:<ws>:<ver>:<b64>" form. Falls back to the
-// master key (Encrypt) when no keyring is wired or no master key is configured —
-// so callers can adopt it safely before the keyring exists, and dev still works.
+// DeriveTokenFrom is DeriveToken for a master-key secret other than this process's. Disaster recovery
+// needs it: after opening a backup's identity envelope the restore path must check the key inside is the
+// one it was taken under. An empty secret yields "", never the dev fallback.
+func DeriveTokenFrom(secret, label string) string {
+	if secret == "" {
+		return ""
+	}
+	h := sha256.Sum256([]byte(secret))
+	mac := hmac.New(sha256.New, h[:])
+	mac.Write([]byte(label))
+	return "mrt_" + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+// EncryptWS encrypts plaintext with the workspace's data-encryption key, producing the self-describing
+// "e2:w:<ws>:<ver>:<b64>" form. Falls back to the master key when no keyring is wired or no master key is
+// configured, so callers can adopt it before the keyring exists and dev still works.
 func EncryptWS(workspaceID uint, plaintext string) (string, error) {
 	keyMu.RLock()
 	kr := keyring
@@ -162,11 +165,9 @@ func EncryptWS(workspaceID uint, plaintext string) (string, error) {
 	return fmt.Sprintf("%s%d:%d:", wsPrefix, workspaceID, ver) + base64.StdEncoding.EncodeToString(ct), nil
 }
 
-// Reencrypt rewrites a stored value under the workspace's current active DEK if
-// it isn't already (legacy master-key, dev, or an older DEK version → active
-// version). Returns (newValue, changed, err). A no-op (changed=false) when there
-// is no keyring, the value is empty, or it is already at the active version — so
-// callers can run it idempotently across a workspace's rows during rotation.
+// Reencrypt rewrites a stored value under the workspace's current active DEK if it isn't already, and
+// reports whether it changed. A no-op when there is no keyring, the value is empty, or it is already at
+// the active version — so callers can run it idempotently across a workspace's rows during rotation.
 func Reencrypt(workspaceID uint, stored string) (string, bool, error) {
 	keyMu.RLock()
 	kr := keyring
@@ -224,7 +225,6 @@ func Decrypt(stored string) (string, error) {
 	return string(decoded), nil
 }
 
-// decryptWS decrypts an "e2:w:<ws>:<ver>:<b64>" value via the keyring.
 func decryptWS(stored string) (string, error) {
 	keyMu.RLock()
 	kr := keyring

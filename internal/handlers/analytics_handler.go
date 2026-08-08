@@ -17,9 +17,8 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// AnalyticsHandler serves the Workspace Analytics dashboards (Traffic,
-// Performance, Web Analytics) from the minute rollups the consumer builds. The
-// dashboards are open-source; the edition (ee) only bounds the retention window
+// AnalyticsHandler serves the Workspace Analytics dashboards from the minute rollups the
+// consumer builds. The dashboards are open-source; the edition only bounds the retention window
 // and gates CSV export.
 type AnalyticsHandler struct {
 	repo *repositories.AnalyticsRepository
@@ -56,11 +55,9 @@ func (h *AnalyticsHandler) maxWindow() time.Duration {
 	return maxAnalyticsRange
 }
 
-// Report returns the combined analytics report for the workspace over a range.
-// Query params:
-//
-//	range = window ending now (e.g. 15m, 1h, 24h, 7d, 30d); default 24h
-//	app   = optional application id to filter to a single app
+// Report returns the combined analytics report for the workspace over a range. Query params:
+// range = window ending now (15m, 1h, 24h, 7d, 30d; default 24h), and app = an optional
+// application id to filter to a single app.
 func (h *AnalyticsHandler) Report(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 
@@ -143,13 +140,9 @@ func (h *AnalyticsHandler) Export(c *okapi.Context) error {
 	return nil
 }
 
-// Summary returns the dashboard's slice of the report: headline totals, the
-// status split and the request series, without the categorical breakdowns,
-// per-route stats or upstream percentiles /analytics needs. It reads a narrower
-// set of columns too, so the dashboard's traffic card costs a fraction of a full
-// report.
-//
-// Query params match Report: range (default 24h) and an optional app filter.
+// Summary returns the dashboard's slice of the report — headline totals, the status split and
+// the request series — without the breakdowns, per-route stats or upstream percentiles. It reads
+// fewer columns too, so the traffic card costs a fraction of a full report. Params match Report.
 func (h *AnalyticsHandler) Summary(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 
@@ -183,10 +176,9 @@ func (h *AnalyticsHandler) Summary(c *okapi.Context) error {
 	return ok(c, summary)
 }
 
-// Live returns the number of distinct visitors seen in the last few minutes,
-// for the workspace or (with ?app=) one application. It is polled by the
-// dashboard, so it stays a single cheap Redis read and never touches the
-// database. Community and Enterprise alike.
+// Live returns the number of distinct visitors seen in the last few minutes, for the workspace
+// or (with ?app=) one application. Polled by the dashboard, so it stays a single cheap Redis
+// read and never touches the database.
 func (h *AnalyticsHandler) Live(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 
@@ -215,7 +207,6 @@ func (h *AnalyticsHandler) Live(c *okapi.Context) error {
 	})
 }
 
-// appFilterParam reads an optional ?app= application id (nil when absent).
 func appFilterParam(c *okapi.Context) (*uint, error) {
 	q := c.Query("app")
 	if q == "" {

@@ -19,24 +19,17 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// SecretResolver is the worker's window onto the vault: it substitutes
-// `${{ secrets.NAME }}` references in env values, and resolves the secret behind
-// a stored credential (a registry password or Git token) — which may itself be a
-// reference to a workspace Secret. Implemented by the secret service; optional
-// (nil = references are left untouched).
+// SecretResolver is the worker's window onto the vault: it substitutes `${{ secrets.NAME }}`
+// references in env values and resolves the secret behind a stored credential, which may itself be a
+// reference. Implemented by the secret service; optional (nil leaves references untouched).
 type SecretResolver interface {
 	ResolveAll(workspaceID uint, env []string) ([]string, error)
 	CredentialSecret(workspaceID uint, enc, ref string) (string, error)
 }
 
-// credentialSecret resolves the secret behind a stored credential — its own
-// encrypted value, or the workspace Secret it references. Shared by the deploy
-// and job handlers (both embed runtimeBuilder) so a registry password reaches
-// the pull the same way wherever it is needed.
-//
-// A credential that references the vault with no resolver wired is an error, not
-// a silent anonymous pull: that would surface much later as an opaque
-// "manifest unknown" from the registry.
+// credentialSecret resolves the secret behind a stored credential — its own encrypted value, or the
+// workspace Secret it references. A credential that references the vault with no resolver wired is
+// an error, not a silent anonymous pull, which would surface later as an opaque "manifest unknown".
 func (b *runtimeBuilder) credentialSecret(workspaceID uint, enc, ref string) (string, error) {
 	if b.secrets == nil {
 		if ref != "" {
@@ -62,18 +55,15 @@ type Security struct {
 // Restricted reports whether any hardening applies.
 func (s Security) Restricted() bool { return s.User != "" }
 
-// applyTo stamps the resolved hardening onto a RunSpec.
 func (s Security) applyTo(spec *docker.RunSpec) {
 	spec.User = s.User
 	spec.NoNewPrivileges = s.NoNewPrivileges
 	spec.CapDrop = s.CapDrop
 }
 
-// SecurityResolver resolves the security profile for a workspace's app/job
-// containers. Implemented by an adapter over the quota service + platform config;
-// optional (nil = no restriction, today's behavior). officialTemplate marks an
-// app created from an official marketplace template, which a plan may exempt from
-// the restricted UID so it can keep the image's own default user.
+// SecurityResolver resolves the security profile for a workspace's app/job containers. Optional
+// (nil = no restriction). officialTemplate marks an app created from an official marketplace
+// template, which a plan may exempt from the restricted UID so it keeps the image's own user.
 type SecurityResolver interface {
 	ContainerSecurity(workspaceID uint, officialTemplate bool) Security
 }
@@ -89,10 +79,9 @@ func (f SecurityFunc) ContainerSecurity(id uint, officialTemplate bool) Security
 	return f(id, officialTemplate)
 }
 
-// runtimeBuilder assembles the runtime substrate (env, networks, mounts, limits)
-// a container runs with in an application's context. Shared by the deploy
-// pipeline and one-off Jobs so a Job's environment can never drift from the real
-// deploy.
+// runtimeBuilder assembles the runtime substrate (env, networks, mounts, limits) a container runs
+// with in an application's context. Shared by the deploy pipeline and one-off Jobs, so a Job's
+// environment can never drift from the real deploy.
 type runtimeBuilder struct {
 	stackEnv *repositories.StackEnvVarRepository
 	routes   *repositories.RouteRepository
@@ -134,7 +123,6 @@ func (b *runtimeBuilder) SetSecurity(r SecurityResolver, initImage string) {
 	b.securityInitImage = initImage
 }
 
-// containerSecurity resolves the hardening for an app's workspace (nil-safe).
 func (b *runtimeBuilder) containerSecurity(app *models.Application) Security {
 	if b.security == nil {
 		return Security{}
@@ -142,23 +130,9 @@ func (b *runtimeBuilder) containerSecurity(app *models.Application) Security {
 	return b.security.ContainerSecurity(app.WorkspaceID, app.OfficialTemplate)
 }
 
-// prepareRestrictedVolumes makes an app's managed volume mounts writable by the
-// restricted-profile non-root UID (UID:0). No-op unless the profile is restricted
-// and the app has managed mounts. Runs before the real container starts;
-// idempotent across deploys.
-//
-// The subtlety: Docker seeds an empty named volume with the image's content — and
-// the image's file ownership — the first time any container mounts it. A plain
-// busybox `chown` run before the app starts is therefore defeated for images that
-// bake data into the mount path (WordPress, Ghost, nginx, …): the app's own first
-// mount re-copies that data as root and the non-root process then can't write it.
-//
-// So the chown is run with the *app image* itself. That one-shot's mount performs
-// the seed copy, and the chown then fixes ownership of the seeded data, leaving a
-// populated, correctly-owned volume the real container mounts without re-copying.
-// Images that lack a chown/shell (distroless, scratch) fall back to the busybox
-// init image — by then the app-image mount has already seeded the volume, so the
-// busybox chown only has to correct ownership of the already-seeded data.
+// prepareRestrictedVolumes makes an app's managed volumes writable by the restricted-profile non-root
+// UID. Docker seeds an empty volume with the image's content AND ownership on first mount, so the
+// chown runs with the app image itself; images without a shell fall back to the busybox init image.
 func (b *runtimeBuilder) prepareRestrictedVolumes(ctx context.Context, eng docker.Client, sec Security, image string, mounts map[string]string) error {
 	if !sec.Restricted() || len(mounts) == 0 {
 		return nil
@@ -169,15 +143,14 @@ func (b *runtimeBuilder) prepareRestrictedVolumes(ctx context.Context, eng docke
 	}
 	chown := append([]string{"chown", "-R", sec.User}, paths...)
 
-	// Preferred: chown with the app image, so the volume is seeded from the correct
-	// image before ownership is fixed. The image is already present (the deploy/job
-	// pulled it before this step).
+	// Preferred: chown with the app image, so the volume is seeded from the correct image before
+	// ownership is fixed. The image is already present — the deploy or job pulled it before this step.
 	if image != "" {
 		if exit, out, err := eng.RunOneShot(ctx, docker.RunSpec{Image: image, Entrypoint: chown, Mounts: mounts}); err == nil && exit == 0 {
 			return nil
 		} else {
-			// The app-image mount has still seeded the volume; it just couldn't chown
-			// (no chown binary). Fall through to the busybox init image to fix ownership.
+			// The app-image mount has still seeded the volume; it just couldn't chown (no chown binary). Fall
+			// through to the busybox init image to fix ownership.
 			logger.Debug("restricted volumes: app-image chown unavailable, using init image",
 				"image", image, "exit", exit, "error", err, "output", strings.TrimSpace(out))
 		}
@@ -198,10 +171,9 @@ func (b *runtimeBuilder) prepareRestrictedVolumes(ctx context.Context, eng docke
 	return nil
 }
 
-// RuntimeContext is the substrate common to any container run in an app's
-// environment: resolved env, the networks to join (already ensured to exist on
-// the node), volume mounts, and resource limits. Callers layer run-specific
-// concerns (image, command, ports, aliases, healthcheck, labels) on top.
+// RuntimeContext is the substrate common to any container run in an app's environment: resolved env,
+// the networks to join (already ensured on the node), volume mounts and resource limits. Callers
+// layer run-specific concerns — image, command, ports, aliases, healthcheck, labels — on top.
 type RuntimeContext struct {
 	Env         []string
 	Networks    []string
@@ -211,28 +183,22 @@ type RuntimeContext struct {
 	NanoCPUs    int64
 }
 
-// buildRuntimeContext ensures the app's networks exist on the node (gateway +
-// workspace + stack) and returns the env/networks/mounts/limits common to any
-// container run for the app. eng must be the Docker client for the app's node.
+// buildRuntimeContext ensures the app's networks exist on the node (gateway + workspace + stack) and
+// returns the env, networks, mounts and limits common to any container run for the app. eng must be
+// the Docker client for the app's node.
 func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Client, app *models.Application) (RuntimeContext, error) {
 	if err := b.syncNetworks(ctx, eng, app); err != nil {
 		return RuntimeContext{}, err
 	}
-	// Join the shared reverse-proxy network only while the app is exposed by a
-	// route — apps with no route stay off it (less surface, cleaner isolation).
-	// Adding/removing a route later reconciles a running container live.
+	// Join the shared reverse-proxy network only while the app is exposed by a route — apps with no route
+	// stay off it, for less surface and cleaner isolation. Adding or removing a route later reconciles a
+	// running container live.
 	var networks []string
 	if b.appHasRoutes(app.ID) {
 		networks = append(networks, node.AppNetwork)
-		// In cluster mode the central gateway reaches a routed app over the shared
-		// ingress overlay instead of a published host port on its node, so the app
-		// joins that overlay too. Only the globally-unique upstream alias is
-		// registered (RunSpec.NetworkAliases) — never app.Name, which is
-		// workspace-scoped — exactly as deployService does for service apps.
-		//
-		// The overlay itself is created and re-asserted by services/cluster (on
-		// enable and on every refresh); a worker node could not create it anyway,
-		// since an overlay is swarm-scoped.
+		// In cluster mode the central gateway reaches a routed app over the shared ingress overlay instead of
+		// a published host port, so the app joins that overlay too. Only the globally-unique upstream alias is
+		// registered — never app.Name, which is workspace-scoped. The overlay itself is owned by services/cluster.
 		if b.clusterOn() {
 			networks = append(networks, node.IngressOverlay)
 		}
@@ -240,9 +206,8 @@ func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Cli
 	for _, n := range app.Networks {
 		networks = append(networks, n.DockerName)
 	}
-	// Join the stack network too (so siblings resolve by service name). Unlike
-	// the deploy pipeline, callers do not register the app's own alias here — a
-	// one-off Job must not impersonate the service on the network.
+	// Join the stack network too, so siblings resolve by service name. Unlike the deploy pipeline, callers
+	// do not register the app's own alias here — a one-off Job must not impersonate the service.
 	if app.Stack != nil && app.Stack.DockerNetwork != "" {
 		if _, err := eng.EnsureNetwork(ctx, app.Stack.DockerNetwork); err == nil {
 			networks = append(networks, app.Stack.DockerNetwork)
@@ -287,9 +252,8 @@ func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Cli
 	}, nil
 }
 
-// appHasRoutes reports whether the app is exposed by at least one route, and so
-// should join the shared reverse-proxy network. Defaults to false when the route
-// repository is unwired.
+// appHasRoutes reports whether the app is exposed by at least one route, and so should join the shared
+// reverse-proxy network. Defaults to false when the route repository is unwired.
 func (b *runtimeBuilder) appHasRoutes(appID uint) bool {
 	if b.routes == nil {
 		return false
@@ -298,11 +262,9 @@ func (b *runtimeBuilder) appHasRoutes(appID uint) bool {
 	return err == nil && n > 0
 }
 
-// syncNetworks makes sure the networks an app joins exist on the node it runs
-// on. Workspace networks are created on the control-plane engine at creation
-// time, so a remote node won't have them yet; recreate any missing ones (same
-// name/driver/internal) there before the container starts. Idempotent on the
-// local node, where they already exist.
+// syncNetworks makes sure the networks an app joins exist on the node it runs on. Workspace networks
+// are created on the control-plane engine, so a remote node won't have them yet; recreate any missing
+// ones there before the container starts. Idempotent on the local node.
 func (b *runtimeBuilder) syncNetworks(ctx context.Context, eng docker.Client, app *models.Application) error {
 	// The shared gateway network is a plain bridge; EnsureNetwork creates it if
 	// missing.
@@ -324,10 +286,9 @@ func (b *runtimeBuilder) syncNetworks(ctx context.Context, eng docker.Client, ap
 		if have[n.DockerName] {
 			continue
 		}
-		// An overlay is swarm-scoped: it is created once on the manager, and Docker
-		// materializes it on this node the moment a container attaches. A worker
-		// cannot create one (and must not try), so there is nothing to do here — the
-		// network simply won't be listed until the first attachment.
+		// An overlay is swarm-scoped: created once on the manager, and Docker materializes it on this node the
+		// moment a container attaches. A worker cannot create one and must not try, so there is nothing to do
+		// — the network simply won't be listed until the first attachment.
 		if n.Driver == network.DriverOverlay {
 			continue
 		}
@@ -346,11 +307,9 @@ func (b *runtimeBuilder) syncNetworks(ctx context.Context, eng docker.Client, ap
 	return nil
 }
 
-// buildEnv assembles KEY=VALUE pairs, decrypting secret values and resolving
-// `${{ secrets.NAME }}` Vault references. Stack-level shared vars come first,
-// then the app's own vars (so an app-level key overrides the stack default). An
-// unknown secret reference fails the build (the deploy/job errors out rather
-// than injecting a blank value).
+// buildEnv assembles KEY=VALUE pairs, decrypting secret values and resolving `${{ secrets.NAME }}`
+// vault references. Stack-level shared vars come first, then the app's own, so an app-level key
+// overrides the stack default. An unknown secret reference fails the build rather than injecting blank.
 func (b *runtimeBuilder) buildEnv(app *models.Application) ([]string, error) {
 	merged := map[string]string{}
 	var order []string

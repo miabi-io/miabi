@@ -20,10 +20,9 @@ var maintenanceAllow = []string{
 	"/auth/", "/healthz", "/readyz", "/info", "/metrics", "/admin/", "/system/",
 }
 
-// Maintenance is a group-level middleware that returns 503 for non-admins while
-// maintenance mode is enabled. It reads the caller's role straight from the JWT
-// so it can run ahead of the per-route auth middleware. Admins, unauthenticated
-// requests, and allow-listed paths pass through.
+// Maintenance is a group-level middleware that returns 503 for non-admins while maintenance mode
+// is enabled. It reads the caller's role straight from the JWT so it can run ahead of the
+// per-route auth middleware. Admins, unauthenticated requests and allow-listed paths pass through.
 func Maintenance(cfg *config.Config, provider *settings.Provider) okapi.Middleware {
 	secret := []byte(cfg.JWTSecret)
 	return func(c *okapi.Context) error {

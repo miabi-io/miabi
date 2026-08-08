@@ -18,10 +18,9 @@ func NewDeploymentRepository(db *gorm.DB) *DeploymentRepository {
 
 func (r *DeploymentRepository) Create(d *models.Deployment) error { return r.db.Create(d).Error }
 
-// Update saves a deployment WITHOUT its log columns: those are managed
-// out-of-band by AppendLog (raw append during the run) and SetLogMeta (externalize
-// on terminal), so the in-memory d.Logs is a stale "" here — a plain Save would
-// wipe the accumulated build/deploy log the log store later reads.
+// Update saves a deployment WITHOUT its log columns: those are managed out-of-band by AppendLog
+// and SetLogMeta, so the in-memory d.Logs is a stale "" here and a plain Save would wipe the
+// accumulated build/deploy log the log store later reads.
 func (r *DeploymentRepository) Update(d *models.Deployment) error {
 	return r.db.Omit("logs", "log_ref", "log_bytes", "log_lines", "log_truncated").Save(d).Error
 }

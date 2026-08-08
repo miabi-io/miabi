@@ -97,11 +97,9 @@ type ResyncWorkspaceError struct {
 	Error       string `json:"error"`
 }
 
-// Resync re-renders every workspace's gateway config file from the current
-// database state. Each workspace file is replaced atomically (no directory wipe),
-// so the gateway never sees an empty config and there is no downtime window. The
-// per-route sync status is committed as part of each workspace reconcile, so the
-// returned summary reflects the post-resync state.
+// Resync re-renders every workspace's gateway config file from current database state. Each
+// file is replaced atomically (no directory wipe), so the gateway never sees an empty config.
+// Per-route sync status is committed per workspace, so the summary reflects the post-resync state.
 func (h *AdminRouteHandler) Resync(c *okapi.Context) error {
 	workspaces, err := h.workspaces.ListAll()
 	if err != nil {
@@ -140,8 +138,6 @@ func (h *AdminRouteHandler) Resync(c *okapi.Context) error {
 	return ok(c, summary)
 }
 
-// --- helpers ---
-
 func (h *AdminRouteHandler) workspaceNames(routes []models.Route) map[uint]string {
 	ids := distinct(routes, func(r *models.Route) uint { return r.WorkspaceID })
 	m := make(map[uint]string, len(ids))
@@ -170,7 +166,6 @@ func (h *AdminRouteHandler) appNames(routes []models.Route) map[uint]string {
 	return m
 }
 
-// distinct collects the unique non-zero key from each route, preserving order.
 func distinct(routes []models.Route, key func(*models.Route) uint) []uint {
 	seen := map[uint]bool{}
 	var ids []uint

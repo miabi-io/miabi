@@ -23,7 +23,6 @@ func TestNextLink(t *testing.T) {
 	}
 }
 
-// fakeRegistry serves a minimal Distribution API for the client/list tests.
 func fakeRegistry(t *testing.T) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()

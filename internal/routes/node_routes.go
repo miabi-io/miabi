@@ -10,7 +10,6 @@ import (
 	"github.com/miabi-io/miabi/internal/handlers"
 )
 
-// nodeRoutes registers platform-admin cluster-node management.
 func (r *Router) nodeRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/admin/nodes").WithTagInfo(okapi.GroupTag{Name: "Nodes", Description: "Cluster nodes (control plane + agents)."})
 	admin := []okapi.Middleware{r.authenticate, r.systemAdmin}
@@ -323,7 +322,6 @@ func (r *Router) nodeRoutes() []okapi.RouteDefinition {
 			Request:     &handlers.HousekeepingSelectionRequest{},
 		},
 
-		// Edge gateway (Goma) management for edge-gateway nodes.
 		{
 			Method:      http.MethodGet,
 			Path:        "/{nodeID}/gateway",

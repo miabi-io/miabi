@@ -35,11 +35,9 @@ func swarmIDOf(t *testing.T, repo *repositories.ServerRepository, id uint) strin
 	return srv.SwarmNodeID
 }
 
-// The control plane only ever recorded a swarm node id when Miabi itself ran the
-// `swarm join`. A host joined with `docker swarm join`, or one already in a swarm
-// when Miabi met it, stayed unmapped forever — and an unmapped node cannot be
-// resolved from a service's task, which is exactly what leaves a replica's logs and
-// metrics unreachable. The node knows its own id; this is it telling us.
+// The control plane only ever recorded a swarm node id when Miabi itself ran the `swarm join`. A host joined
+// with `docker swarm join`, or already in a swarm when Miabi met it, stayed unmapped — and an unmapped node
+// cannot be resolved from a service's task, leaving a replica's logs and metrics unreachable.
 func TestLearnSwarmNodeIDFillsAnUnmappedNode(t *testing.T) {
 	repo := newSwarmRepo(t, swarmRow{ID: 1, Name: "dns"})
 	s := NewService(repo, nil)

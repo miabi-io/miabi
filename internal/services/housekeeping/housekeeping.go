@@ -1,18 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package housekeeping reconciles a node's real Docker state against what
-// Miabi intends. It serves three faces of one problem — drift:
-//
-//   - Report:  a `docker system df`-style breakdown of disk + what is reclaimable.
-//   - Reclaim: safe, categorized prune (dangling images, build cache) with a
-//     dry-run preview; managed resources are never touched.
-//   - Reconcile: classify drift (orphan / missing / untracked) by joining live
-//     Docker against the DB by the miabi.* label scheme, and remove orphans
-//     (resources deleted in Miabi but still running on the node).
-//
-// Every destructive action is dry-run-first, safety-filtered, and audited by the
-// caller. Nothing labeled miabi.* is ever a blanket prune target.
+// Package housekeeping reconciles a node's real Docker state against what Miabi intends, serving three
+// faces of drift: a disk report, a safe categorized prune with a dry-run preview, and a reconcile that
+// classifies orphan/missing/untracked by joining live Docker against the DB by the miabi.* labels.
 package housekeeping
 
 import (
@@ -76,8 +67,6 @@ func NewService(
 	}
 	return &Service{clients: clients, apps: apps, exists: exists}
 }
-
-// --- report DTOs ---
 
 // Report is the full housekeeping analysis for a node: disk usage, the safe
 // reclaim breakdown, and the drift table. Pure read — no mutations.

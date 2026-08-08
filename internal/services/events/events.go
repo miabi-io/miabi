@@ -33,10 +33,9 @@ type Recorder interface {
 	Record(e *models.AppEvent)
 }
 
-// Notifier reacts to a persisted notifiable event by triggering outbound
-// delivery (webhooks, notification channels). Defined here so the recorder
-// depends only on the capability; the concrete dispatcher lives in the notify
-// package and is injected post-construction via SetNotifier.
+// Notifier reacts to a persisted notifiable event by triggering outbound delivery (webhooks, notification
+// channels). Defined here so the recorder depends only on the capability; the concrete dispatcher lives
+// in the notify package and is injected post-construction via SetNotifier.
 type Notifier interface {
 	OnEvent(e *models.AppEvent)
 }
@@ -56,10 +55,9 @@ func NewService(repo *repositories.AppEventRepository, bus *eventbus.Bus) *Servi
 // events are still recorded and streamed, just not delivered externally.
 func (s *Service) SetNotifier(n Notifier) { s.notifier = n }
 
-// SetAlertSink wires the alert engine. Unlike the outbound notifier (gated to the
-// curated notifiable set for webhooks/channels), the sink receives EVERY recorded
-// event — the engine needs the full signal stream (e.g. health transitions) to
-// fire and auto-resolve alerts. Best-effort; never blocks or fails a caller.
+// SetAlertSink wires the alert engine. Unlike the outbound notifier, which is gated to the curated
+// notifiable set, the sink receives EVERY recorded event — the engine needs the full signal stream, such
+// as health transitions, to fire and auto-resolve alerts. Best-effort; never blocks or fails a caller.
 func (s *Service) SetAlertSink(n Notifier) { s.alertSink = n }
 
 // Record persists an event and publishes it live. Best-effort: a failure never

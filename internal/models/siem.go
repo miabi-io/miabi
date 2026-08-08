@@ -18,10 +18,9 @@ const (
 	SIEMFormatCEF  = "cef"  // syslog CEF
 )
 
-// SIEMConfig is one external audit-streaming target (Enterprise; gated on the
-// siem_stream entitlement). The streamer ships audit events at-least-once and
-// records its progress in LastShippedID — a durable cursor that survives restarts
-// and sink outages. The table is empty in Community.
+// SIEMConfig is one external audit-streaming target (Enterprise, gated on siem_stream). The
+// streamer ships audit events at-least-once and records progress in LastShippedID, a durable
+// cursor surviving restarts and sink outages. The table is empty in Community.
 type SIEMConfig struct {
 	ID       uint   `json:"id" gorm:"primaryKey"`
 	Name     string `json:"name" gorm:"not null"`

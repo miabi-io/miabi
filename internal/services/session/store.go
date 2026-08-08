@@ -50,10 +50,9 @@ func (s *Store) IsRevoked(ctx context.Context, jti string) bool {
 	return n > 0
 }
 
-// CreateResetSession stores a short-lived, single-use token authorizing exactly
-// one action — setting a new password for userID — and returns it. Used by the
-// forced-password-change flow so a user with an admin-set/reset password never
-// receives a full session until they've chosen their own password.
+// CreateResetSession stores a short-lived, single-use token authorizing exactly one action — setting a new
+// password for userID — and returns it. Used by the forced-password-change flow, so a user with an admin-set
+// password never receives a full session until they have chosen their own.
 func (s *Store) CreateResetSession(ctx context.Context, userID uint) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {

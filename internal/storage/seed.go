@@ -19,12 +19,9 @@ import (
 // InstallIDKey is the settings key holding this deployment's stable Install ID.
 const InstallIDKey = "install_id"
 
-// EnsureInstallID returns this instance's stable Install ID, generating and
-// persisting one on first call. The ID is immutable for the life of the
-// deployment: it uniquely identifies the instance to the license/customer portal
-// (a customer copies it when purchasing a license), so it must survive restarts
-// and never change. Idempotent and race-safe across concurrent boots
-// (server + worker) via FirstOrCreate.
+// EnsureInstallID returns this instance's stable Install ID, generating and persisting one on
+// first call. It is immutable for the life of the deployment — a customer quotes it when buying
+// a license — so it must survive restarts. Race-safe across concurrent boots via FirstOrCreate.
 func EnsureInstallID(db *gorm.DB) (string, error) {
 	var existing models.Setting
 	err := db.Where("key = ?", InstallIDKey).First(&existing).Error
@@ -43,6 +40,17 @@ func EnsureInstallID(db *gorm.DB) (string, error) {
 	}
 	logger.Info("install id ready", "install_id", rec.Value)
 	return rec.Value, nil
+}
+
+// SchemaVersion returns the version of the most recently applied upgrade step, or "" when none
+// has run. A recovery point records it so restore can refuse to load a dump into an older binary
+// than produced it — a downgrade restore corrupts silently, where a refusal costs nothing.
+func SchemaVersion(db *gorm.DB) string {
+	var step models.UpgradeStep
+	if err := db.Order("applied_at DESC, id DESC").First(&step).Error; err != nil {
+		return ""
+	}
+	return step.Version
 }
 
 // SeedAdmin ensures a platform admin exists: returns the existing admin if one

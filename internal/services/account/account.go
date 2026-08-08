@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package account orchestrates account-wide actions across a user's owned
-// workspaces: stopping every app/database when an account is disabled, and
-// cascade-deleting all of a user's data when the account is removed. Resources
-// are workspace-scoped and each workspace has exactly one owner, so "a user's
-// resources" are precisely the resources in the workspaces they own.
+// Package account orchestrates account-wide actions across a user's owned workspaces: stopping every
+// app and database when an account is disabled, and cascade-deleting a user's data on removal. Each
+// workspace has exactly one owner, so "a user's resources" are the resources in the workspaces they own.
 package account
 
 import (
@@ -122,12 +120,9 @@ func (s *Service) PurgeDue(ctx context.Context) int {
 	return purged
 }
 
-// PurgeAccount permanently deletes a single account immediately, skipping any
-// remaining grace period: it tears down all of the account's owned-workspace
-// data (best-effort), then removes the user row. Returns what was torn down. An
-// error is returned only if the final user-row delete fails; the data teardown
-// is best-effort and idempotent. Callers must enforce their own preconditions
-// (e.g. the account is disabled and pending deletion, and is not the last admin).
+// PurgeAccount permanently deletes a single account immediately, skipping any remaining grace period:
+// it tears down all owned-workspace data (best-effort) then removes the user row. An error is returned
+// only if the final user-row delete fails. Callers must enforce their own preconditions.
 func (s *Service) PurgeAccount(ctx context.Context, userID uint) (DeleteResult, error) {
 	if s.users == nil {
 		return DeleteResult{}, errors.New("account service not configured")
@@ -191,12 +186,9 @@ type DeleteResult struct {
 	Volumes    int `json:"volumes"`
 }
 
-// DeleteOwned permanently removes every resource in the user's owned workspaces —
-// applications, database instances (and their containers/volumes), stacks and
-// volumes — then deletes the workspaces themselves. Best-effort and idempotent:
-// failures are logged and the sweep continues so the teardown makes maximum
-// progress. Apps are removed before databases so a database's owner/attachment
-// guards no longer block it.
+// DeleteOwned permanently removes every resource in the user's owned workspaces, then the workspaces
+// themselves. Best-effort and idempotent: failures are logged and the sweep continues. Apps go before
+// databases so a database's owner and attachment guards no longer block it.
 func (s *Service) DeleteOwned(ctx context.Context, userID uint) DeleteResult {
 	var res DeleteResult
 	workspaces, err := s.workspaces.ListOwnedBy(userID)
@@ -212,7 +204,6 @@ func (s *Service) DeleteOwned(ctx context.Context, userID uint) DeleteResult {
 		res.Stacks += sub.Stacks
 		res.Volumes += sub.Volumes
 
-		// Finally the workspace itself (members + invitations).
 		if err := s.workspaces.Delete(wsID); err != nil {
 			logger.Warn("account delete: delete workspace", "workspace", wsID, "error", err)
 			continue
@@ -222,11 +213,9 @@ func (s *Service) DeleteOwned(ctx context.Context, userID uint) DeleteResult {
 	return res
 }
 
-// teardownResources removes every application, database instance, stack and
-// volume in a single workspace, in the order that satisfies their cross-guards
-// (apps before databases so a database's attachment guard no longer blocks it).
-// Best-effort and idempotent: failures are logged and the sweep continues. When
-// rep is non-nil each phase is reported for live progress; a nil rep is a no-op.
+// teardownResources removes every application, database instance, stack and volume in one workspace, in the
+// order that satisfies their cross-guards (apps before databases). Best-effort and idempotent: failures are
+// logged and the sweep continues. A non-nil rep reports each phase for live progress; nil is a no-op.
 func (s *Service) teardownResources(ctx context.Context, wsID uint, rep *delReporter) DeleteResult {
 	var res DeleteResult
 
@@ -285,7 +274,6 @@ func (s *Service) teardownResources(ctx context.Context, wsID uint, rep *delRepo
 		rep.phase(PhaseStacks, PhaseDone)
 	}
 
-	// Volumes last (apps/databases that mounted them are gone).
 	vols, _ := s.storageOps.List(wsID)
 	if len(vols) > 0 {
 		rep.phase(PhaseVolumes, PhaseActive)
@@ -302,10 +290,9 @@ func (s *Service) teardownResources(ctx context.Context, wsID uint, rep *delRepo
 	return res
 }
 
-// DeleteWorkspaceNow tears down a single workspace's resources and removes the
-// workspace itself, synchronously. It is the non-streaming counterpart of the
-// deletion-job path used by the UI; the REST DELETE endpoint calls it so CLI /
-// API callers get the same full teardown. The system workspace is protected.
+// DeleteWorkspaceNow tears down a single workspace's resources and removes the workspace itself,
+// synchronously. It is the non-streaming counterpart of the deletion-job path used by the UI, so CLI
+// and API callers get the same full teardown. The system workspace is protected.
 func (s *Service) DeleteWorkspaceNow(ctx context.Context, wsID uint) error {
 	ws, err := s.workspaces.FindByID(wsID)
 	if err != nil {

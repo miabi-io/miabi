@@ -61,7 +61,6 @@ type DeletionJob struct {
 	doneAt      time.Time
 }
 
-// snapshot returns a copy safe to publish/return outside the jobs lock.
 func (j *DeletionJob) snapshot() DeletionJob {
 	cp := *j
 	cp.Phases = append([]DeletionPhase(nil), j.Phases...)
@@ -131,7 +130,6 @@ func (r *delReporter) phase(key string, st PhaseStatus) {
 	r.s.publishDelJob(snap)
 }
 
-// note sets the transient status line (e.g. "Deleting volume data…").
 func (r *delReporter) note(msg string) {
 	if r == nil {
 		return
@@ -150,10 +148,9 @@ func (s *Service) publishDelJob(snap DeletionJob) {
 	s.bus.Publish(deletionTopic(snap.ID), eventbus.Event{Type: "job", Data: snap})
 }
 
-// StartWorkspaceDeletion validates the target synchronously (so a system
-// workspace or missing id fails fast), then tears it down in the background and
-// returns the initial job snapshot. Progress is streamed from
-// StreamWorkspaceDeletion; the UI completes when the job reports a terminal state.
+// StartWorkspaceDeletion validates the target synchronously, so a system workspace or missing id fails
+// fast, then tears it down in the background and returns the initial job snapshot. Progress is streamed
+// from StreamWorkspaceDeletion; the UI completes when the job reports a terminal state.
 func (s *Service) StartWorkspaceDeletion(wsID uint) (DeletionJob, error) {
 	ws, err := s.workspaces.FindByID(wsID)
 	if err != nil {
@@ -202,7 +199,6 @@ func (s *Service) runWorkspaceDeletion(job *DeletionJob) {
 	s.finishDelJob(job, JobSucceeded, "")
 }
 
-// finishDelJob records the terminal outcome and publishes the final snapshot.
 func (s *Service) finishDelJob(job *DeletionJob, st JobStatus, errMsg string) {
 	s.delJobsMu.Lock()
 	job.Status = st
@@ -248,10 +244,9 @@ func (s *Service) DeletionJobSnapshot(jobID string) (DeletionJob, bool) {
 	return job.snapshot(), true
 }
 
-// StreamWorkspaceDeletion sends the job's current snapshot, then live updates,
-// until the job reaches a terminal state or the client disconnects. The bool
-// reports whether the job exists (false → 404). Every event carries a full
-// snapshot, so a missed update or reconnect self-heals.
+// StreamWorkspaceDeletion sends the job's current snapshot, then live updates, until the job is terminal
+// or the client disconnects. The bool reports whether the job exists. Every event carries a full
+// snapshot, so a missed update or a reconnect self-heals.
 func (s *Service) StreamWorkspaceDeletion(ctx context.Context, jobID string, send func(eventbus.Event) error) (bool, error) {
 	s.delJobsMu.Lock()
 	job := s.delJobs[jobID]

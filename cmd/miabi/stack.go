@@ -22,13 +22,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/platformstack"
 )
 
-// registerStackCommands wires `miabi install|update|status|uninstall`.
-//
-// These run on the HOST, not inside the control-plane container — which is the
-// entire point. The control plane cannot replace itself (`docker stop miabi` kills
-// the process doing the stopping), so the actor that updates it has to live outside
-// it. Compose used to be that actor; now Miabi is, and it needs no database to do it:
-// the stack's desired state is a file, because Postgres is itself part of the stack.
+// registerStackCommands wires `miabi install|update|status|uninstall`. These run on the
+// HOST, not inside the control-plane container: the control plane cannot replace itself, so
+// the actor that updates it lives outside it and keeps the desired state in a file.
 func registerStackCommands(cli *okapicli.CLI) {
 	cli.Command("install", "Install the Miabi stack on this host (Docker required)", runInstall).
 		String("domain", "d", "", "Public hostname for the panel, e.g. miabi.example.com").
@@ -64,18 +60,9 @@ func registerStackCommands(cli *okapicli.CLI) {
 		Bool("yes", "y", false, "Do not prompt")
 }
 
-// defaultImage is the control-plane image to install.
-//
-// The installer normally IS the Miabi image (`docker run miabi/miabi:1.4.0 install`),
-// so the honest answer is: whatever image this very process was started from. Asking
-// Docker for our own container's image ref gets that exactly — including the registry
-// and the literal tag. Deriving it from the version stamp instead would hardcode
-// Docker Hub, so an image pulled from a private registry
-// (registry.example.com/miabi:v1.4.0-dev.1) would install `miabi/miabi:1.4.0-dev.1`
-// — a different image, on a different registry, that probably does not exist.
-//
-// The version stamp is the fallback, for the binary-on-a-host case where there is no
-// container to inspect.
+// defaultImage is the control-plane image to install: whatever image this process was
+// started from, read back from Docker so a private registry ref survives verbatim. Deriving
+// it from the version stamp would hardcode Docker Hub. The stamp is the fallback.
 func defaultImage(ctx context.Context, dc docker.Client) string {
 	if id := selfcontainer.Detect(); id != "" {
 		if cfg, err := dc.InspectContainerConfig(ctx, id); err == nil && cfg.Image != "" {
@@ -190,10 +177,9 @@ func runInstall(cmd *okapicli.Command) error {
 	if m.Images.Miabi == "" {
 		return errors.New("cannot determine which image to install: this build carries no version, and it is not running as a container it could inspect — pass --image <repo>:<tag>")
 	}
-	// Normalize before showing the plan, so what is printed is what will run —
-	// including the generated secrets, which must be persisted even if converge later
-	// fails. A stack whose containers exist but whose password was never written down
-	// is unrecoverable.
+	// Normalize before showing the plan, so what is printed is what will run — including the
+	// generated secrets, which must be persisted even if converge later fails. A stack whose
+	// containers exist but whose password was never written down is unrecoverable.
 	if err := m.Normalize(); err != nil {
 		return err
 	}
@@ -201,21 +187,18 @@ func runInstall(cmd *okapicli.Command) error {
 	pctx, pcancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer pcancel()
 
-	// A FRESH install (no manifest) onto an EXISTING Postgres volume can never work:
-	// Postgres keeps the password its data dir was created with, so the password this
-	// install just generated will not open it. Nothing downstream catches it —
-	// pg_isready does not check credentials — and the operator is left with a database
-	// that is intact and unreadable. Refuse, and say how to recover.
+	// A fresh install onto an EXISTING Postgres volume can never work: Postgres keeps the
+	// password its data dir was created with. Nothing downstream catches it (pg_isready does
+	// not check credentials), so refuse and say how to recover.
 	if newInstall {
 		if err := svc.CheckOrphanedData(pctx); err != nil {
 			return err
 		}
 	}
 
-	// Check the ports BEFORE creating anything. The gateway is the last component to
-	// come up, so without this the install gets all the way through Postgres, Redis
-	// and the control plane, and only then dies because something else already owns
-	// :443 — leaving a half-built stack and an error at the worst possible moment.
+	// Check the ports BEFORE creating anything. The gateway comes up last, so without this the
+	// install gets through Postgres, Redis and the control plane and only then dies because
+	// something else owns :443 — leaving a half-built stack.
 	conflicts, perr := svc.CheckPorts(pctx)
 	if perr != nil {
 		return perr
@@ -244,10 +227,9 @@ func runInstall(cmd *okapicli.Command) error {
 		return errors.New("cancelled")
 	}
 
-	// Persist the manifest BEFORE creating anything. The secrets are generated here
-	// and exist nowhere else; if converge dies halfway, the operator still has the
-	// database password and can re-run. The reverse order can strand a live Postgres
-	// whose password nobody knows.
+	// Persist the manifest BEFORE creating anything. The secrets are generated here and exist
+	// nowhere else; if converge dies halfway the operator still has the database password. The
+	// reverse order can strand a live Postgres whose password nobody knows.
 	if err := platformstack.Save(path, m); err != nil {
 		return err
 	}
@@ -283,9 +265,8 @@ func runInstall(cmd *okapicli.Command) error {
 		fmt.Printf("\n  Registry: docker login %s   (use a Miabi account or an API token)\n", m.Registry.Host)
 	}
 
-	// The operator most likely reached this by typing a `docker run` by hand. Nothing
-	// has told them what the follow-up commands are, and they will not guess that the
-	// image they just ran is also the tool that manages what it built.
+	// The operator most likely got here by typing a `docker run` by hand, and will not guess
+	// that the image they just ran is also the tool that manages what it built.
 	printManageHint(m.Images.Miabi, path)
 	return nil
 }
@@ -330,17 +311,9 @@ func runUpdate(cmd *okapicli.Command) error {
 		return errors.New("cannot determine which image to roll out: this build carries no version, and it is not running as a container it could inspect — pass --image <repo>:<tag>")
 	}
 
-	// Two shapes:
-	//
-	//   miabi update              → move the control plane to this CLI's version, then
-	//                               re-converge the rest (picking up manifest edits).
-	//   miabi update <component>  → roll out just that one, to whatever the manifest
-	//                               pins (or --image).
-	//
-	// The other components are pinned in the manifest rather than tracked
-	// automatically, deliberately: bumping Postgres is a database restart, and that
-	// should be something the operator asked for by name, not a side effect of
-	// updating the panel.
+	// `miabi update` moves the control plane to this CLI's version then re-converges the rest;
+	// `miabi update <component>` rolls out just that one. Other components stay pinned in the
+	// manifest deliberately: bumping Postgres is a database restart the operator must ask for.
 	ctx, cancel := stackCtx()
 	defer cancel()
 
@@ -383,10 +356,9 @@ func runUpdate(cmd *okapicli.Command) error {
 		fmt.Printf("  %s\n", phase)
 	})
 	if err != nil {
-		// Put the pin back. The manifest must describe what is RUNNING: a rollback
-		// restored the old image, so recording the new one would leave the file lying
-		// about the stack — and the next `miabi install` would then "reconcile" reality
-		// to match the lie, re-applying the update that just failed.
+		// Put the pin back. The manifest must describe what is RUNNING: a rollback restored the old
+		// image, so recording the new one would leave the file lying — and the next `miabi install`
+		// would reconcile reality to match the lie, re-applying the update that just failed.
 		*pin = prev
 		_ = platformstack.Save(path, m)
 		return err
@@ -432,10 +404,9 @@ func isDrifted(ctx context.Context, svc *platformstack.Service, name, want strin
 	return true // not running at all: rolling it out is exactly right
 }
 
-// runRestart restarts containers WITHOUT recreating them — which is what makes it
-// useful: it re-reads what is on disk. Editing the gateway's goma.yml is the obvious
-// case (Goma watches its providers directory, not its base config), and a spec change
-// is the obvious non-case, so it says so rather than leaving the operator puzzled.
+// runRestart restarts containers WITHOUT recreating them, so they re-read what is on disk.
+// Editing the gateway's goma.yml is the obvious case (Goma watches its providers directory,
+// not its base config); a spec change is the obvious non-case, so it says so.
 func runRestart(cmd *okapicli.Command) error {
 	svc, dc, err := stackService(cmd)
 	if err != nil {

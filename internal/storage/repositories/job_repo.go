@@ -15,8 +15,6 @@ type JobRepository struct {
 
 func NewJobRepository(db *gorm.DB) *JobRepository { return &JobRepository{db: db} }
 
-// --- Jobs (one-off runs) ---
-
 func (r *JobRepository) Create(j *models.Job) error { return r.db.Create(j).Error }
 
 // Update saves a job WITHOUT its log columns: those are managed out-of-band by
@@ -123,8 +121,6 @@ func (r *JobRepository) PruneCronJobHistory(cronJobID uint, keep int) error {
 	}
 	return r.db.Delete(&models.Job{}, ids).Error
 }
-
-// --- CronJobs (schedules) ---
 
 func (r *JobRepository) CreateCronJob(c *models.CronJob) error { return r.db.Create(c).Error }
 func (r *JobRepository) UpdateCronJob(c *models.CronJob) error { return r.db.Save(c).Error }

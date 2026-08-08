@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package cron is a generic recurring-task scheduler over robfig/cron. Tasks are
-// keyed by a string ("backup:12", "cronjob:34") so different sources share one
-// loop and one status view without id collisions. Schedules load at startup and
-// can be (de)registered at runtime.
+// Package cron is a generic recurring-task scheduler over robfig/cron. Tasks are keyed by a
+// string ("backup:12", "cronjob:34") so different sources share one loop and one status view
+// without id collisions. Schedules load at startup and can be (de)registered at runtime.
 package cron
 
 import (
@@ -33,7 +32,6 @@ type JobStatus struct {
 	NextRunAt *time.Time `json:"next_run_at"`
 }
 
-// jobState tracks runtime status for a single scheduled task.
 type jobState struct {
 	kind      string
 	id        uint
@@ -96,8 +94,6 @@ func (m *Manager) Snapshot() []JobStatus {
 	}
 	return out
 }
-
-// --- Generic scheduler core ---
 
 // RegisterTask adds (or replaces) a task in the running cron, keyed by kind:id.
 // fn runs on each tick; its error is surfaced in the snapshot's LastError.
@@ -189,8 +185,6 @@ func (m *Manager) Stop() {
 		m.c.Stop()
 	}
 }
-
-// --- Backups (a consumer of the generic core) ---
 
 // Register adds (or replaces) a backup schedule in the running cron.
 func (m *Manager) Register(s models.BackupSchedule) {

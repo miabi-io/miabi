@@ -31,7 +31,6 @@ import (
 	"github.com/docker/go-connections/nat"
 )
 
-// engineClient adapts the Docker SDK to the Client interface.
 type engineClient struct {
 	cli *client.Client
 }
@@ -78,10 +77,9 @@ func (e *engineClient) Info(ctx context.Context) (Info, error) {
 	}, nil
 }
 
-// toDeviceRequests maps Miabi GPU requests to Docker's DeviceRequest form. Each
-// request targets the "nvidia" device driver; DeviceIDs pins exact cards while a
-// nil DeviceIDs falls back to Count-of-any (-1 = all). An empty capability set
-// defaults to [["gpu"]].
+// toDeviceRequests maps Miabi GPU requests to Docker's DeviceRequest form, targeting the "nvidia"
+// driver. DeviceIDs pins exact cards; a nil DeviceIDs falls back to Count-of-any (-1 = all). An
+// empty capability set defaults to [["gpu"]].
 func toDeviceRequests(gpus []GPURequest) []container.DeviceRequest {
 	if len(gpus) == 0 {
 		return nil
@@ -174,7 +172,6 @@ func (e *engineClient) InspectContainerConfig(ctx context.Context, id string) (C
 		cfg.Env = c.Config.Env
 		cfg.Labels = c.Config.Labels
 	}
-	// Published host ports, from the host config's port bindings.
 	if c.HostConfig != nil {
 		cfg.MemoryBytes = c.HostConfig.Memory
 		cfg.NanoCPUs = c.HostConfig.NanoCPUs
@@ -204,8 +201,8 @@ func (e *engineClient) InspectContainerConfig(ctx context.Context, id string) (C
 	return cfg, nil
 }
 
-// restartPolicyString renders an engine restart policy back to the string form
-// Miabi stores (e.g. "on-failure:3"). Empty/"no" both map to "no".
+// restartPolicyString renders an engine restart policy back to the string form Miabi stores
+// (e.g. "on-failure:3"). Empty and "no" both map to "no".
 func restartPolicyString(p container.RestartPolicy) string {
 	switch p.Name {
 	case container.RestartPolicyAlways:
@@ -222,8 +219,7 @@ func restartPolicyString(p container.RestartPolicy) string {
 	}
 }
 
-// hostBinds renders privileged host bind mounts as Docker "source:target[:ro]"
-// strings.
+// hostBinds renders privileged host bind mounts as Docker "source:target[:ro]" strings.
 func hostBinds(mounts []BindMount) []string {
 	out := make([]string, 0, len(mounts))
 	for _, m := range mounts {
@@ -236,11 +232,9 @@ func hostBinds(mounts []BindMount) []string {
 	return out
 }
 
-// containerVolumeMounts renders a RunSpec's named volumes and host binds for the
-// HostConfig. Named volumes are normally bind strings, but when NoCopyVolumes is
-// set they use the Mount API with NoCopy so Docker's copy-up can't re-apply the
-// image mount-dir's ownership (which would undo the restricted-profile chown).
-// Host binds are always plain bind strings.
+// containerVolumeMounts renders a RunSpec's named volumes and host binds for the HostConfig.
+// Named volumes are bind strings unless NoCopyVolumes is set, in which case they use the Mount
+// API with NoCopy so copy-up can't undo the restricted-profile chown. Host binds stay plain.
 func containerVolumeMounts(spec RunSpec) ([]string, []mount.Mount) {
 	binds := make([]string, 0, len(spec.Mounts)+len(spec.Binds))
 	var volMounts []mount.Mount
@@ -339,9 +333,9 @@ func (e *engineClient) RunContainer(ctx context.Context, spec RunSpec) (string, 
 	return created.ID, nil
 }
 
-// restartPolicy maps a RunSpec restart-policy string onto the Docker engine
-// policy. Empty (or unrecognized) falls back to "unless-stopped", the platform's
-// historical default. "on-failure" may carry a ":N" max-retry suffix.
+// restartPolicy maps a RunSpec restart-policy string onto the Docker engine policy. Empty or
+// unrecognized falls back to "unless-stopped", the platform's historical default. "on-failure"
+// may carry a ":N" max-retry suffix.
 func restartPolicy(p string) container.RestartPolicy {
 	switch {
 	case p == string(container.RestartPolicyDisabled): // "no"
@@ -379,9 +373,9 @@ func (e *engineClient) RemoveContainer(ctx context.Context, id string, force boo
 	return wrapNotFound(e.cli.ContainerRemove(ctx, id, container.RemoveOptions{Force: force}))
 }
 
-// createOneShot creates (but does not start) a one-shot helper container from a
-// RunSpec. Resource limits and the restart policy of a RunSpec are intentionally
-// honored so callers can cap a build/probe container; one-shots never restart.
+// createOneShot creates (but does not start) a one-shot helper container from a RunSpec. Resource
+// limits and the restart policy are honored so callers can cap a build/probe container; one-shots
+// never restart.
 func (e *engineClient) createOneShot(ctx context.Context, spec RunSpec) (string, error) {
 	labels := spec.Labels
 	if labels == nil {
@@ -453,11 +447,9 @@ func (e *engineClient) RunOneShot(ctx context.Context, spec RunSpec) (int, strin
 	return exitCode, e.collectLogs(id), nil
 }
 
-// RunOneShotStream runs a one-shot helper container to completion, streaming its
-// combined stdout/stderr to sink line-by-line as it runs (so build logs reach
-// the UI live), then removes it and returns the exit code. Used by the buildpack
-// build provider, which needs live `pack build` output the way BuildImage gives
-// live `docker build` output.
+// RunOneShotStream runs a one-shot helper container to completion, streaming its combined output
+// to sink line-by-line as it runs, then removes it and returns the exit code. Used by the
+// buildpack build provider, which needs live `pack build` output.
 func (e *engineClient) RunOneShotStream(ctx context.Context, spec RunSpec, sink func(LogLine) error) (int, error) {
 	id, err := e.createOneShot(ctx, spec)
 	if err != nil {
@@ -588,8 +580,8 @@ func (e *engineClient) CopyFileFromVolume(ctx context.Context, volume, image, fi
 	return &volumeFileReader{tr: tr, closer: tarStream, cleanup: cleanup}, hdr.Size, nil
 }
 
-// volumeFileReader streams one file out of a CopyFromContainer tar archive and,
-// on Close, releases the tar stream and removes the helper container.
+// volumeFileReader streams one file out of a CopyFromContainer tar archive and, on Close,
+// releases the tar stream and removes the helper container.
 type volumeFileReader struct {
 	tr      *tar.Reader
 	closer  io.Closer
@@ -662,7 +654,6 @@ func (e *engineClient) PullImage(ctx context.Context, ref string, auth *Registry
 		return err
 	}
 	defer func() { _ = rc.Close() }()
-	// Drain the pull progress stream so the pull completes.
 	_, err = io.Copy(io.Discard, rc)
 	return err
 }
@@ -794,14 +785,13 @@ func (e *engineClient) RemoveImage(ctx context.Context, ref string, force bool) 
 	return err
 }
 
-// maxLogTail bounds how many historical log lines a single stream may replay on
-// connect, so a request for "all" (or a huge number) against a chatty container
-// can't flood the client or pin memory. It mirrors the web log buffer cap.
+// maxLogTail bounds how many historical log lines a single stream may replay on connect, so a
+// request for "all" against a chatty container can't flood the client or pin memory.
 const maxLogTail = 5000
 
-// sanitizeTail validates the caller-supplied tail count before it reaches the
-// Docker API. Empty defaults to a small window; "all" and out-of-range numbers
-// are clamped to maxLogTail; non-numeric garbage falls back to the default.
+// sanitizeTail validates the caller-supplied tail count before it reaches the Docker API. Empty
+// defaults to a small window; "all" and out-of-range numbers are clamped to maxLogTail;
+// non-numeric garbage falls back to the default.
 func sanitizeTail(tail string) string {
 	switch tail {
 	case "":
@@ -884,8 +874,7 @@ func (e *engineClient) CreateNetwork(ctx context.Context, name, driver string, i
 	return e.CreateNetworkSpec(ctx, NetworkSpec{Name: name, Driver: driver, Internal: internal})
 }
 
-// createNetworkOptions builds the Docker create options from a NetworkSpec,
-// including IPAM when a subnet is set.
+// createNetworkOptions builds the Docker create options from a NetworkSpec, including IPAM.
 func createNetworkOptions(spec NetworkSpec) network.CreateOptions {
 	driver := spec.Driver
 	if driver == "" {
@@ -980,11 +969,9 @@ func (e *engineClient) CreateVolumeWith(ctx context.Context, spec VolumeSpec) (V
 		labels = map[string]string{}
 	}
 	labels[ManagedLabel] = "true"
-	// Record the declared capacity as a label. A *hard* size cap needs a sized
-	// backing volume, which depends on the node's storage backend (XFS project
-	// quotas, ZFS/btrfs dataset quotas) and is layered on separately. The label
-	// makes the declared size visible to `docker volume inspect` and to quota
-	// tracking; higher layers persist it on the resource for soft enforcement.
+	// Record the declared capacity as a label. A *hard* size cap needs a sized backing volume, which
+	// depends on the node's storage backend and is layered on separately; the label makes the size
+	// visible to `docker volume inspect` and to quota tracking for soft enforcement.
 	if spec.SizeBytes > 0 {
 		labels[LabelSizeBytes] = strconv.FormatInt(spec.SizeBytes, 10)
 	}
@@ -1028,8 +1015,6 @@ func (e *engineClient) InspectVolume(ctx context.Context, name string) (Volume, 
 func (e *engineClient) RemoveVolume(ctx context.Context, name string, force bool) error {
 	return wrapNotFound(e.cli.VolumeRemove(ctx, name, force))
 }
-
-// --- helpers ---
 
 func wrapNotFound(err error) error {
 	if err != nil && errdefs.IsNotFound(err) {

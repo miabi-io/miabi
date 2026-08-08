@@ -3,12 +3,9 @@
 
 package worker
 
-// ImageRefResolver resolves a platform-image catalog key (e.g. the default
-// buildpack builder) to its effective ref (admin override -> config default ->
-// built-in). Satisfied by platformimage.Resolver; kept as an interface so the
-// worker doesn't import the settings stack. The control plane resolves the
-// admin-controlled builder image with it and passes it to the runner in the
-// build config — builds themselves run on the runner, never here.
+// ImageRefResolver resolves a platform-image catalog key to its effective ref (admin override ->
+// config default -> built-in). Kept as an interface so the worker doesn't import the settings
+// stack. Builds themselves run on the runner; the control plane only passes it the builder image.
 type ImageRefResolver interface {
 	Ref(key string) string
 }

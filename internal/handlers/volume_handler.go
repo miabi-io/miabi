@@ -36,12 +36,9 @@ type VolumeCreateRequest struct {
 		Name     string `json:"name" required:"true"`
 		ServerID uint   `json:"server_id"` // node to place on (0 = local)
 		SizeMB   int    `json:"size_mb"`   // declared capacity in MB (0 = unspecified)
-		// Driver: "local" (default, node-local); "nfs"/"cifs" for shared storage a
-		// replicated cluster app can mount across nodes; or "host" to bind an
-		// operator-managed host path (privileged workspaces only). DriverOpts are the
-		// backend mount options (NFS: device=":/export", o="addr=…,rw"; CIFS:
-		// device="//host/share", o="username=…,password=…,vers=3.0"; host:
-		// path="/mnt/…"). They are encrypted at rest and never returned.
+		// Driver: "local" (default, node-local); "nfs"/"cifs" for shared storage a replicated cluster app
+		// can mount across nodes; or "host" to bind an operator-managed host path (privileged workspaces
+		// only). DriverOpts are the backend mount options, encrypted at rest and never returned.
 		Driver     string            `json:"driver" enum:"local,nfs,cifs,host"`
 		DriverOpts map[string]string `json:"driver_opts"`
 	} `json:"body"`
@@ -116,7 +113,6 @@ func (h *VolumeHandler) Delete(c *okapi.Context) error {
 	return message(c, "volume deleted")
 }
 
-// maxVolumeUploadBytes caps a single file upload into a volume.
 const maxVolumeUploadBytes = 512 << 20 // 512 MiB
 
 // ListFiles returns the files stored in a volume.

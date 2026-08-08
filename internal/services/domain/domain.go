@@ -35,10 +35,9 @@ var (
 	// ErrDomainBanned means the domain has been banned by a platform admin and
 	// cannot be verified or served.
 	ErrDomainBanned = errors.New("this domain has been banned by a platform administrator")
-	// ErrDomainClaimed means the hostname is already verified by another workspace
-	// (or overlaps a verified wildcard elsewhere). At most one workspace may own a
-	// verified domain platform-wide, so its routes can't collide with another
-	// tenant's. Registration stays open; only verification is exclusive.
+	// ErrDomainClaimed means the hostname is already verified by another workspace, or overlaps a verified
+	// wildcard elsewhere. At most one workspace may own a verified domain platform-wide, so its routes can't
+	// collide with another tenant's. Registration stays open; only verification is exclusive.
 	ErrDomainClaimed = errors.New("this domain is already verified by another workspace")
 )
 
@@ -73,10 +72,9 @@ const (
 	verifyMissThreshold = 3
 )
 
-// ProxyResyncer re-renders a workspace's gateway config. The domain service calls
-// it when ownership changes (verified ⇄ unverified) so the workspace's routes go
-// live or offline without further action. Implemented by the route service;
-// injected after construction (nil-safe).
+// ProxyResyncer re-renders a workspace's gateway config. The domain service calls it when ownership
+// changes, so the workspace's routes go live or offline without further action. Implemented by the route
+// service; injected after construction and nil-safe.
 type ProxyResyncer interface {
 	SyncWorkspaceProxy(ctx context.Context, workspaceID uint) error
 }
@@ -161,11 +159,9 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.Domain, error)
 		return nil, err
 	}
 	in.normalize()
-	// The domain name is immutable once created: the ownership proof, issued
-	// certificates, and any routes bound under it are all keyed to this name.
-	// Renaming would silently invalidate them, so we refuse it — the user deletes
-	// and re-creates the domain instead. An unchanged (or empty) name is fine, so
-	// updating only TLS mode / wildcard still works.
+	// The domain name is immutable once created: the ownership proof, issued certificates and any routes bound
+	// under it are all keyed to it, so renaming would silently invalidate them. The user deletes and re-creates
+	// instead. An unchanged or empty name is fine, so updating only TLS mode or wildcard still works.
 	if in.Name != "" && in.Name != d.Name {
 		return nil, ErrNameImmutable
 	}
@@ -222,10 +218,9 @@ func (s *Service) SetDNSProvider(workspaceID, id uint, providerID *uint) (*model
 	return d, nil
 }
 
-// Verify checks the domain's ownership TXT record and, on success, marks it
-// verified. For a provider-connected domain it first creates the TXT itself
-// (idempotent) and retries the lookup briefly to absorb propagation, so no manual
-// DNS step is needed. The lookup reads live DNS, so re-verification is idempotent.
+// Verify checks the domain's ownership TXT record and, on success, marks it verified. For a
+// provider-connected domain it first creates the TXT itself and retries the lookup briefly to absorb
+// propagation, so no manual DNS step is needed. The lookup reads live DNS, so re-verification is idempotent.
 func (s *Service) Verify(ctx context.Context, workspaceID, id uint) (*models.Domain, error) {
 	d, err := s.Get(workspaceID, id)
 	if err != nil {
@@ -326,10 +321,9 @@ func domainsOverlap(a, b *models.Domain) bool {
 	return false
 }
 
-// ForceVerify marks a domain verified without a DNS check — a platform-admin
-// override for private-DNS or otherwise unreachable zones. It clears any prior
-// failure state and re-syncs the workspace so the domain's routes go live. Use
-// sparingly: it bypasses the ownership proof Verify enforces.
+// ForceVerify marks a domain verified without a DNS check — a platform-admin override for private-DNS or
+// otherwise unreachable zones. It clears prior failure state and re-syncs the workspace so the domain's
+// routes go live. Use sparingly: it bypasses the ownership proof Verify enforces.
 func (s *Service) ForceVerify(ctx context.Context, workspaceID, id uint) (*models.Domain, error) {
 	d, err := s.Get(workspaceID, id)
 	if err != nil {
@@ -360,10 +354,9 @@ func (s *Service) ForceVerify(ctx context.Context, workspaceID, id uint) (*model
 	return d, nil
 }
 
-// Ban blocks a domain platform-wide (a platform-admin action, e.g. for abuse).
-// A banned domain is never served — its routes are forced offline on the next
-// re-sync, triggered here — and it can no longer be verified. Verification state
-// is left intact so an unban restores the prior status.
+// Ban blocks a domain platform-wide, a platform-admin action for abuse. A banned domain is never served —
+// its routes are forced offline on the next re-sync, triggered here — and it can no longer be verified.
+// Verification state is left intact, so an unban restores the prior status.
 func (s *Service) Ban(ctx context.Context, workspaceID, id uint, reason string) (*models.Domain, error) {
 	d, err := s.Get(workspaceID, id)
 	if err != nil {
@@ -403,12 +396,9 @@ func (s *Service) Unban(ctx context.Context, workspaceID, id uint) (*models.Doma
 	return d, nil
 }
 
-// Reverify re-checks ownership for every verified, manually-managed domain and
-// un-verifies any whose TXT record has been missing for verifyMissThreshold
-// consecutive runs (transient DNS failures are absorbed by the threshold). On an
-// un-verify it re-syncs the workspace so the domain's routes drop offline.
-// Provider-automated domains are skipped — the DNS reconcile cron reasserts their
-// records. Intended to be driven by a periodic job.
+// Reverify re-checks ownership for every verified, manually-managed domain and un-verifies any whose TXT
+// record has been missing for verifyMissThreshold consecutive runs, so transient DNS failures are
+// absorbed. Provider-automated domains are skipped — the DNS reconcile cron reasserts their records.
 func (s *Service) Reverify(ctx context.Context) error {
 	domains, err := s.repo.ListVerifiedManual()
 	if err != nil {

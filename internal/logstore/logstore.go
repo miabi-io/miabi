@@ -1,23 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package logstore is the shared store for execution logs (deployments,
-// pipeline steps, jobs, …). It externalizes the full log of a finished run out
-// of Postgres text columns into a content-addressed object on a shared volume
-// (or, later, object storage), keeping only a bounded tail + a reference in the
-// database.
-//
-// A producer keeps streaming lines live over the eventbus and appending a
-// bounded tail to its DB row exactly as before; when the run reaches a terminal
-// state it calls Externalize(ref, fullLog) once, which gzip-writes the log to
-// the store and returns the counters to record on the row. Readers replay the
-// store object for a finished run (falling back to the DB tail when the store is
-// unconfigured, the ref is empty, or the object is gone) and the eventbus for
-// the live remainder — the existing SSE contract, sourced from the store.
-//
-// The store is nil-safe: a nil *Store (backend "off" / unconfigured) reports
-// Enabled() == false and every method is a no-op, so the DB-tail-only behavior
-// is preserved and the store is never a hard boot dependency.
+// Package logstore is the shared store for execution logs. It externalizes a finished run's full
+// log out of Postgres into a gzipped object on a shared volume, keeping only a bounded tail and a
+// reference in the database. A nil *Store is a no-op, so it is never a hard boot dependency.
 package logstore
 
 import (
@@ -257,8 +243,6 @@ func (s *Store) applyCap(content string) (string, bool) {
 	return b.String(), true
 }
 
-// --- helpers ---
-
 // boundTail returns the last n bytes of s, trimmed forward to a line boundary
 // so the tail never starts mid-line.
 func boundTail(s string, n int) string {
@@ -277,7 +261,6 @@ func trimToLineStart(s string) string {
 	return s
 }
 
-// trimToLineEnd drops a trailing partial line so a tail slice ends cleanly.
 func trimToLineEnd(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		return s[i:]

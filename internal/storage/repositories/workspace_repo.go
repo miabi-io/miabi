@@ -36,17 +36,9 @@ func (r *WorkspaceRepository) Update(ws *models.Workspace) error {
 	return r.db.Save(ws).Error
 }
 
-// Delete hard-deletes a workspace and every resource that belongs to it, in one
-// transaction. Everything is scoped by workspace_id (directly, or via a parent
-// that is), so no row is left orphaned against the removed workspace — which
-// would otherwise leak encrypted secrets/certs and accumulate as dangling data.
-//
-// Order matters: rows holding a foreign key are deleted before the rows they
-// reference. Child sub-trees (app / database / volume / domain / pipeline / stack
-// children) go first, then routes (which reference certificates), then the
-// top-level workspace-scoped tables, then members/invitations, then the
-// workspace itself. Docker resources (containers, volumes) are torn down by the
-// per-resource services on their own delete paths, not here.
+// Delete hard-deletes a workspace and every resource belonging to it in one transaction, scoped
+// by workspace_id directly or via a parent, so nothing is left orphaned leaking encrypted
+// secrets. Order matters: rows holding a foreign key go before the rows they reference.
 func (r *WorkspaceRepository) Delete(id uint) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		// Fresh subquery builders for children scoped by a parent in the workspace.
@@ -84,7 +76,6 @@ func (r *WorkspaceRepository) Delete(id uint) error {
 			args  []any
 		}
 		steps := []del{
-			// App sub-tree (rows with a foreign key to applications).
 			{&models.AppEnvVar{}, "application_id IN (?)", []any{appIDs()}},
 			{&models.AppPort{}, "application_id IN (?)", []any{appIDs()}},
 			{&models.Deployment{}, "application_id IN (?)", []any{appIDs()}},
@@ -93,14 +84,11 @@ func (r *WorkspaceRepository) Delete(id uint) error {
 			{&models.MetricSample{}, "application_id IN (?)", []any{appIDs()}},
 			{&models.PortBinding{}, "workspace_id = ?", []any{id}},
 			{&models.Job{}, "workspace_id = ?", []any{id}},
-			// Database sub-tree.
 			{&models.Backup{}, "database_id IN (?)", []any{dbIDs()}},
 			{&models.BackupSchedule{}, "workspace_id = ?", []any{id}},
 			{&models.Database{}, "instance_id IN (?)", []any{instIDs()}},
-			// Volume + domain sub-trees.
 			{&models.VolumeBackup{}, "volume_id IN (?)", []any{volIDs()}},
 			{&models.DNSRecord{}, "domain_id IN (?)", []any{domIDs()}},
-			// Pipeline + stack + other parent-scoped children.
 			{&models.PipelineStepRun{}, "pipeline_run_id IN (?)", []any{runIDs()}},
 			{&models.PipelineRun{}, "workspace_id = ?", []any{id}},
 			{&models.Image{}, "workspace_id = ?", []any{id}},
@@ -135,7 +123,6 @@ func (r *WorkspaceRepository) Delete(id uint) error {
 			{&models.TemplateSource{}, "workspace_id = ?", []any{id}},
 			{&models.WorkspaceKey{}, "workspace_id = ?", []any{id}},
 			{&models.WorkspaceBackupSettings{}, "workspace_id = ?", []any{id}},
-			// Membership + the workspace row itself.
 			{&models.WorkspaceMember{}, "workspace_id = ?", []any{id}},
 			{&models.WorkspaceInvitation{}, "workspace_id = ?", []any{id}},
 		}
@@ -293,8 +280,6 @@ func (r *WorkspaceRepository) ListForUser(userID uint) ([]models.WorkspaceWithRo
 	return rows, err
 }
 
-// --- Members ---
-
 func (r *WorkspaceRepository) AddMember(m *models.WorkspaceMember) error {
 	return r.db.Create(m).Error
 }
@@ -341,8 +326,6 @@ func (r *WorkspaceRepository) CountOwners(workspaceID uint) (int64, error) {
 		Count(&count).Error
 	return count, err
 }
-
-// --- Invitations ---
 
 func (r *WorkspaceRepository) CreateInvitation(inv *models.WorkspaceInvitation) error {
 	return r.db.Create(inv).Error

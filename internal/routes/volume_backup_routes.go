@@ -11,7 +11,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// volumeBackupRoutes registers workspace-scoped backup & restore for a volume.
 func (r *Router) volumeBackupRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Volume Backups", Description: "Back up and restore volume data to S3 (volume-bkup)."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {

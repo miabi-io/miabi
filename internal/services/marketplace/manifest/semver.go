@@ -8,12 +8,9 @@ import (
 	"strings"
 )
 
-// CompareVersions orders two template versions by semantic version: it returns
-// -1 if a < b, 1 if a > b, and 0 when equal. Comparison is on the numeric
-// major.minor.patch triple; a leading "v" is ignored and any pre-release/build
-// suffix (after "-" or "+") is dropped before comparison, with the raw strings
-// breaking ties so distinct values stay ordered. It is dependency-free on
-// purpose — template versions are simple semver and the catalog is small.
+// CompareVersions orders two template versions by semantic version, returning -1, 0 or 1. Comparison is
+// on the numeric major.minor.patch triple: a leading "v" is ignored and any pre-release or build suffix
+// is dropped, with the raw strings breaking ties so distinct values stay ordered.
 func CompareVersions(a, b string) int {
 	pa, pb := parseVersion(a), parseVersion(b)
 	for i := 0; i < 3; i++ {

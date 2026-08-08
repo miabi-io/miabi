@@ -28,11 +28,9 @@ func NewRegistryServerHandler(svc *registryserver.Service, workspaces *repositor
 	return &RegistryServerHandler{svc: svc, workspaces: workspaces}
 }
 
-// Authenticate is the Goma forwardAuth target: it authorizes a forwarded
-// registry request from the docker Basic credentials, the original method, and
-// the requested repository. 2xx = allow; 401 challenges the docker client with
-// WWW-Authenticate; 403 denies (cross-tenant / scope). It is unauthenticated by
-// design — only the gateway can reach it — and carries no Miabi session.
+// Authenticate is the Goma forwardAuth target: it authorizes a forwarded registry request from
+// the docker Basic credentials, the original method and the requested repository. 2xx allows,
+// 401 challenges, 403 denies. Unauthenticated by design — only the gateway can reach it.
 func (h *RegistryServerHandler) Authenticate(c *okapi.Context) error {
 	res := h.svc.Authorize(registryserver.AuthInput{
 		Authorization: c.Header("Authorization"),
@@ -73,11 +71,9 @@ func (h *RegistryServerHandler) Authenticate(c *okapi.Context) error {
 		c.SetHeader("WWW-Authenticate", registryserver.Realm)
 	}
 	if res.Allowed() {
-		// The gateway copies these from the forwardAuth response and rewrites the
-		// repository namespace segment to X-Miabi-Registry-Namespace (ws_<id>)
-		// before forwarding to the registry — so storage keys off the immutable id
-		// while users keep addressing by the workspace name (rename-safe). The
-		// others are echoed to the registry backend for its logs.
+		// The gateway copies these from the forwardAuth response and rewrites the repository namespace
+		// segment to X-Miabi-Registry-Namespace (ws_<id>) before forwarding, so storage keys off the
+		// immutable id while users keep addressing by workspace name (rename-safe).
 		c.SetHeader("X-Miabi-Registry-Namespace", res.Namespace)
 		c.SetHeader("X-Miabi-Workspace", res.Workspace)
 		c.SetHeader("X-Miabi-Workspace-Id", strconv.FormatUint(uint64(res.WorkspaceID), 10))
@@ -132,13 +128,9 @@ func (h *RegistryServerHandler) Info(c *okapi.Context) error {
 	return ok(c, info)
 }
 
-// Repositories lists a page of the workspace's registry repositories, each with
-// its tag count and a preview of its newest tags. Query: page, size, q (filters
-// on repository name), tag_limit. Membership enforced by WorkspaceScope.
-//
-// Only the page's repositories have their tags read from the registry, so the
-// cost of this call is bounded by the page size rather than by how many images
-// the workspace has.
+// Repositories lists a page of the workspace's registry repositories, each with its tag count and
+// a preview of its newest tags. Query: page, size, q, tag_limit. Only the page's repositories have
+// their tags read from the registry, so cost is bounded by page size, not by image count.
 func (h *RegistryServerHandler) Repositories(c *okapi.Context) error {
 	page, size, offset := normalizePageParams(queryInt(c, "page", 0), queryInt(c, "size", 20))
 	repos, total, err := h.svc.ListRepositoriesPage(
@@ -151,11 +143,9 @@ func (h *RegistryServerHandler) Repositories(c *okapi.Context) error {
 	return paginated(c, repos, int64(total), page, size)
 }
 
-// repoParam reads the repository name from the ?name= query parameter.
-//
-// It is a query parameter rather than a path segment because an image name may
-// itself contain slashes (someone pushing "team/api"), which a path segment
-// cannot carry unambiguously.
+// repoParam reads the repository name from the ?name= query parameter. It is a query parameter
+// rather than a path segment because an image name may itself contain slashes ("team/api"),
+// which a path segment cannot carry unambiguously.
 func repoParam(c *okapi.Context) (string, bool) {
 	name := strings.TrimSpace(c.Query("name"))
 	return name, name != ""
@@ -220,7 +210,6 @@ func (h *RegistryServerHandler) DeleteTag(c *okapi.Context) error {
 	}
 }
 
-// firstNonEmpty returns the first non-empty string.
 func firstNonEmpty(vs ...string) string {
 	for _, v := range vs {
 		if v != "" {

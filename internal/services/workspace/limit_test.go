@@ -17,10 +17,9 @@ import (
 // more than once per test, so a per-test name would leak state between calls).
 var seedN int
 
-// The production models carry Postgres-specific defaults (uid uuid DEFAULT
-// gen_random_uuid()) that sqlite can't migrate, so the test builds a minimal,
-// sqlite-friendly schema for the tables the limit logic reads and lets the real
-// repositories query it (see account_test.go for the same approach).
+// The production models carry Postgres-specific defaults (uid uuid DEFAULT gen_random_uuid()) that sqlite
+// can't migrate, so the test builds a minimal, sqlite-friendly schema for the tables the limit logic reads
+// and lets the real repositories query it (see account_test.go for the same approach).
 
 type wsRow struct {
 	ID     uint `gorm:"primaryKey"`

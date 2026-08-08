@@ -16,16 +16,12 @@ type DatabaseRepository struct {
 
 func NewDatabaseRepository(db *gorm.DB) *DatabaseRepository { return &DatabaseRepository{db: db} }
 
-// --- Instances ---
-
 func (r *DatabaseRepository) Create(d *models.DatabaseInstance) error { return r.db.Create(d).Error }
 func (r *DatabaseRepository) Update(d *models.DatabaseInstance) error { return r.db.Save(d).Error }
 
-// RetargetNetwork repoints every instance pinned to the old Docker network at the
-// new one. An instance stores its network by name (models.DatabaseInstance
-// .NetworkName), so replacing the workspace network — as the bridge -> overlay
-// migration does — must carry the instances across or their helper jobs would
-// attach to a network that no longer exists.
+// RetargetNetwork repoints every instance pinned to the old Docker network at the new one. An
+// instance stores its network by name, so replacing the workspace network — as the bridge ->
+// overlay migration does — must carry instances across or their helper jobs lose the network.
 func (r *DatabaseRepository) RetargetNetwork(oldName, newName string) error {
 	return r.db.Model(&models.DatabaseInstance{}).
 		Where("network_name = ?", oldName).
@@ -82,6 +78,15 @@ func (r *DatabaseRepository) RemoveNetwork(inst *models.DatabaseInstance, net *m
 	return r.db.Model(inst).Association("Networks").Delete(net)
 }
 
+// ListAllInstances returns every managed database instance across workspaces.
+// Used by platform-wide passes — disaster recovery has to bring back every
+// tenant's databases, not one workspace's.
+func (r *DatabaseRepository) ListAllInstances() ([]models.DatabaseInstance, error) {
+	var out []models.DatabaseInstance
+	err := r.db.Preload("Networks").Order("workspace_id ASC, id ASC").Find(&out).Error
+	return out, err
+}
+
 func (r *DatabaseRepository) ListByWorkspace(workspaceID uint) ([]models.DatabaseInstance, error) {
 	var dbs []models.DatabaseInstance
 	err := r.db.Where("workspace_id = ?", workspaceID).Order("created_at DESC").Find(&dbs).Error
@@ -103,8 +108,6 @@ func (r *DatabaseRepository) ExistsByID(id uint) (bool, error) {
 	err := r.db.Model(&models.DatabaseInstance{}).Where("id = ?", id).Count(&count).Error
 	return count > 0, err
 }
-
-// --- Logical databases ---
 
 func (r *DatabaseRepository) CreateDatabase(d *models.Database) error { return r.db.Create(d).Error }
 func (r *DatabaseRepository) UpdateDatabase(d *models.Database) error { return r.db.Save(d).Error }

@@ -26,10 +26,9 @@ const (
 	GitSourceError       GitSourceStatus = "error"
 )
 
-// GitSource binds a Git repository path of miabi.io/v1 manifests to a
-// workspace as a continuously-reconciled desired-state source. It is the GitOps
-// half of the declarative model: Git → (sync) → Postgres desired → (existing
-// reconciler) → Docker.
+// GitSource binds a Git path of miabi.io/v1 manifests to a workspace as a
+// continuously-reconciled desired-state source — the GitOps half of the declarative model:
+// Git -> (sync) -> Postgres desired -> (reconciler) -> Docker.
 type GitSource struct {
 	UIDModel
 	ID          uint `json:"id" gorm:"primaryKey"`
@@ -52,11 +51,9 @@ type GitSource struct {
 	Prune bool `json:"prune" gorm:"not null;default:false"`
 	// SelfHeal re-applies when the live state drifts from Git.
 	SelfHeal bool `json:"self_heal" gorm:"not null;default:false"`
-	// AllowEmpty permits an empty manifest set to prune ALL managed resources
-	// (intentional teardown). Off by default: an empty/zero-resource result is
-	// otherwise treated as an error, never a "delete everything" instruction, so
-	// a wrong path or a wiped repo can't tear down a deployment. A missing path is
-	// always an error regardless. Only meaningful together with Prune.
+	// AllowEmpty permits an empty manifest set to prune ALL managed resources (intentional
+	// teardown). Off by default, so a wrong path or a wiped repo cannot tear down a deployment.
+	// A missing path is always an error. Only meaningful together with Prune.
 	AllowEmpty bool `json:"allow_empty" gorm:"not null;default:false"`
 
 	// WebhookSecret authenticates inbound provider push webhooks. Never serialized.

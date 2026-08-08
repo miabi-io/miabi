@@ -9,9 +9,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/dockerimport"
 )
 
-// Import existing Docker resources (hand-run containers, compose stacks,
-// volumes, networks) into Miabi. Scanning is system-admin (it reads the raw
-// node Docker surface); imported resources are assigned to the chosen workspace.
+// Import existing Docker resources (hand-run containers, compose stacks, volumes, networks) into
+// Miabi. Scanning is system-admin because it reads the raw node Docker surface; imported
+// resources are assigned to the chosen workspace.
 
 // ImportableResources lists the node's unmanaged (importable) Docker resources,
 // enriched with inspect data, compose grouping, relationships, and

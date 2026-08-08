@@ -3,11 +3,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: LicenseRef-Miabi-Enterprise
 
-// Package ldap implements LDAP / Active Directory authentication on top of
-// go-ldap/ldap/v3. It is compiled only into the Enterprise build (-tags
-// enterprise); the Community binary links none of it. The provider holds no core
-// auth/user/session code — Authenticate returns a plain identity that the core
-// turns into a session, and the core owns provisioning + group→access mapping.
+// Package ldap implements LDAP / Active Directory authentication on top of go-ldap/ldap/v3,
+// compiled only into the Enterprise build. It holds no core auth code — Authenticate returns a
+// plain identity the core turns into a session, and the core owns provisioning and group mapping.
 package ldap
 
 import (
@@ -195,10 +193,9 @@ func (p *Provider) searchUser(conn *ldapv3.Conn, cfg *models.LDAPConfig, usernam
 	return res.Entries[0], true, nil
 }
 
-// resolveGroups reads the user's group DNs, preferring the memberOf attribute on
-// the entry and falling back to a group search by member. AD nested groups are
-// expanded with the LDAP_MATCHING_RULE_IN_CHAIN OID when configured. Best-effort:
-// a failure yields no groups rather than blocking login.
+// resolveGroups reads the user's group DNs, preferring the memberOf attribute and falling back to
+// a group search by member. AD nested groups expand via LDAP_MATCHING_RULE_IN_CHAIN when
+// configured. Best-effort: a failure yields no groups rather than blocking login.
 func (p *Provider) resolveGroups(conn *ldapv3.Conn, cfg *models.LDAPConfig, entry *ldapv3.Entry) []string {
 	memberAttr := attrOr(cfg.MemberAttr, "memberOf")
 	if groups := entry.GetAttributeValues(memberAttr); len(groups) > 0 && !cfg.NestedGroups {
@@ -227,7 +224,6 @@ func (p *Provider) resolveGroups(conn *ldapv3.Conn, cfg *models.LDAPConfig, entr
 	return out
 }
 
-// groupFilter builds the group membership filter, escaping the user DN.
 func groupFilter(cfg *models.LDAPConfig, userDN string) string {
 	if tmpl := strings.TrimSpace(cfg.GroupFilter); tmpl != "" {
 		return strings.ReplaceAll(tmpl, "%s", ldapv3.EscapeFilter(userDN))
@@ -333,8 +329,6 @@ func (p *Provider) TestConnection(ctx context.Context, configID uint) (Result, e
 	}
 	return Result{OK: true, Message: msg}, nil
 }
-
-// --- helpers ---
 
 func timeoutSeconds(cfg *models.LDAPConfig) int {
 	if cfg.TimeoutSeconds > 0 {

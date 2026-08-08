@@ -13,10 +13,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// serverRow is a minimal stand-in for models.Server so the "servers" table can
-// be created under sqlite. The real model defaults its uid column to the
-// Postgres-only gen_random_uuid(), which sqlite cannot parse; the cap only reads
-// the row count, so id + name is enough here (mirrors the account_test pattern).
+// serverRow is a minimal stand-in for models.Server so the "servers" table can be created under sqlite.
+// The real model defaults its uid column to the Postgres-only gen_random_uuid(), which sqlite cannot
+// parse; the cap only reads the row count, so id + name is enough here (mirrors the account_test pattern).
 type serverRow struct {
 	ID   uint `gorm:"primaryKey"`
 	Name string
@@ -134,10 +133,9 @@ func TestNodeLimitErrorEnvelope(t *testing.T) {
 	}
 }
 
-// nameRow is the servers stand-in for the naming contract. The real model does
-// not AutoMigrate under sqlite (its index DDL is Postgres-flavoured), which is
-// why the tests in this file use stand-ins; this one carries every column the
-// create/update path writes.
+// nameRow is the servers stand-in for the naming contract. The real model does not AutoMigrate under
+// sqlite (its index DDL is Postgres-flavoured), which is why the tests in this file use stand-ins; this
+// one carries every column the create/update path writes.
 type nameRow struct {
 	ID                      uint `gorm:"primaryKey"`
 	UID                     string

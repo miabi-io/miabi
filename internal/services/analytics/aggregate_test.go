@@ -191,10 +191,9 @@ func TestBuildReportFillsEmptyBuckets(t *testing.T) {
 	}
 }
 
-// Top paths is keyed on the request path, so distinct paths stay distinct. The
-// gateway used to send its route mount prefix as PathTemplate — "/" for most
-// routes — and since a template wins over the raw path, every request in a route
-// collapsed into a single "/" row.
+// Top paths is keyed on the request path, so distinct paths stay distinct. The gateway used to send its
+// route mount prefix as PathTemplate — "/" for most routes — and since a template wins over the raw
+// path, every request in a route collapsed into a single "/" row.
 func TestIngestKeysPathsOnRequestPath(t *testing.T) {
 	a := NewAggregator()
 	base := time.Date(2026, 7, 18, 10, 30, 0, 0, time.UTC).UnixMilli()

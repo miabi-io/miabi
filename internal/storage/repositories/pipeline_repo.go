@@ -15,8 +15,6 @@ type PipelineRepository struct {
 
 func NewPipelineRepository(db *gorm.DB) *PipelineRepository { return &PipelineRepository{db: db} }
 
-// --- definitions ---
-
 func (r *PipelineRepository) Create(p *models.PipelineDefinition) error { return r.db.Create(p).Error }
 func (r *PipelineRepository) Update(p *models.PipelineDefinition) error { return r.db.Save(p).Error }
 func (r *PipelineRepository) Delete(workspaceID, id uint) error {
@@ -67,8 +65,6 @@ func (r *PipelineRepository) ExistsByName(workspaceID uint, name string) (bool, 
 		Where("workspace_id = ? AND name = ?", workspaceID, name).Count(&count).Error
 	return count > 0, err
 }
-
-// --- runs ---
 
 func (r *PipelineRepository) CreateRun(run *models.PipelineRun) error { return r.db.Create(run).Error }
 func (r *PipelineRepository) UpdateRun(run *models.PipelineRun) error { return r.db.Save(run).Error }
@@ -153,10 +149,9 @@ func (r *PipelineRepository) ListRunsPaged(workspaceID, pipelineID uint, limit, 
 	return out, total, nil
 }
 
-// LatestRunByPipeline returns the most recent run (highest run number) for each
-// of the given pipeline IDs, keyed by pipeline ID. Pipelines with no runs are
-// simply absent from the map. Uses a correlated subquery so it stays portable
-// across Postgres and SQLite (no window functions / DISTINCT ON).
+// LatestRunByPipeline returns the most recent run for each of the given pipeline IDs, keyed by
+// pipeline ID; pipelines with no runs are absent. Uses a correlated subquery so it stays
+// portable across Postgres and SQLite (no window functions / DISTINCT ON).
 func (r *PipelineRepository) LatestRunByPipeline(pipelineIDs []uint) (map[uint]models.PipelineRun, error) {
 	out := make(map[uint]models.PipelineRun, len(pipelineIDs))
 	if len(pipelineIDs) == 0 {
@@ -185,8 +180,6 @@ func (r *PipelineRepository) ListRuns(workspaceID, pipelineID uint, limit int) (
 		Order("number DESC").Limit(limit).Find(&out).Error
 	return out, err
 }
-
-// --- step runs ---
 
 func (r *PipelineRepository) CreateStep(s *models.PipelineStepRun) error { return r.db.Create(s).Error }
 func (r *PipelineRepository) UpdateStep(s *models.PipelineStepRun) error { return r.db.Save(s).Error }

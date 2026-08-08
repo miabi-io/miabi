@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package settings provides cached, typed access to platform-wide key/value
-// settings stored in the database. Consumers (auth flow, middleware) read
-// runtime configuration through Provider; the admin API writes via the repo and
-// calls Invalidate.
+// Package settings provides cached, typed access to platform-wide key/value settings stored in the database.
+// Consumers such as the auth flow and middleware read runtime configuration through Provider; the admin API
+// writes via the repo and calls Invalidate.
 package settings
 
 import (
@@ -17,12 +16,9 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// cacheTTL bounds how long a provider serves its in-memory cache before lazily
-// reloading on the next read. A write Invalidate()s the writer's own cache
-// immediately, but other instances (worker process, extra HTTP replicas) only
-// learn of a change by re-reading — without a TTL they'd keep resolving their
-// boot-time value. 15s keeps overrides near-live at negligible load (the settings
-// table is tiny and reads are infrequent).
+// cacheTTL bounds how long a provider serves its in-memory cache before lazily reloading. A write invalidates
+// the writer's own cache immediately, but other instances only learn of a change by re-reading — without a
+// TTL they would keep resolving their boot-time value. 15s keeps overrides near-live at negligible load.
 const cacheTTL = 15 * time.Second
 
 // Well-known setting keys. Only a subset is enforced today; the rest are stored
@@ -41,24 +37,20 @@ const (
 	KeyMaxCPUCores = "max_cpu_cores"
 	KeyMaxMemoryMB = "max_memory_mb"
 
-	// KeyExternalBaseDomain is the wildcard base domain for one-click external
-	// access (e.g. "apps.example.com", DNS *.apps.example.com). Empty = off.
-	// KeyExternalBaseProvider names the Goma certManager provider used for the
-	// generated routes ("" = the gateway's default provider).
+	// KeyExternalBaseDomain is the wildcard base domain for one-click external access (e.g. "apps.example.com",
+	// DNS *.apps.example.com); empty means off. KeyExternalBaseProvider names the Goma certManager provider used
+	// for the generated routes, with "" meaning the gateway's default provider.
 	KeyExternalBaseDomain   = "external_base_domain"
 	KeyExternalBaseProvider = "external_base_provider"
 
-	// KeyCustomLabelsEnabled is the fleet-wide kill-switch for user-defined Docker
-	// labels on app containers (Traefik &c.). When false, custom labels are
-	// disabled everywhere regardless of any plan capability; when true, the
-	// per-plan AllowCustomLabels capability decides. Default true.
+	// KeyCustomLabelsEnabled is the fleet-wide kill-switch for user-defined Docker labels on app containers. When
+	// false, custom labels are disabled everywhere regardless of any plan capability; when true, the per-plan
+	// AllowCustomLabels capability decides. Default true.
 	KeyCustomLabelsEnabled = "custom_labels_enabled"
 
-	// KeyRepoPipelinesEnabled is the fleet-wide kill-switch for adopting a
-	// pipeline out of a repository's .miabi/pipeline.yaml. Adopting one lets the
-	// repository choose the step images and shell commands a runner executes, so
-	// an operator can disable the capability entirely; git apps then always build
-	// and deploy directly. Default true.
+	// KeyRepoPipelinesEnabled is the fleet-wide kill-switch for adopting a pipeline out of a repository's
+	// .miabi/pipeline.yaml. Adopting one lets the repository choose the step images and shell commands a runner
+	// executes, so an operator can disable it entirely; git apps then always build directly. Default true.
 	KeyRepoPipelinesEnabled = "repo_pipelines_enabled"
 )
 
@@ -93,12 +85,9 @@ type Provider struct {
 	cache    map[string]models.Setting
 }
 
-// NewProvider builds a provider and loads the cache. Defaults are seeded once
-// (missing keys only); existing admin values are never overwritten. envOverrides
-// maps setting keys to env-provided values (e.g. external_base_domain from
-// MIABI_EXTERNAL_BASE_DOMAIN): a non-empty value is authoritative and re-applied
-// on every boot, so the platform can be configured declaratively; an empty value
-// leaves the key admin-managed. Pass nil for no overrides.
+// NewProvider builds a provider and loads the cache. Defaults are seeded once, for missing keys only, so
+// existing admin values are never overwritten. envOverrides maps setting keys to env-provided values: a
+// non-empty value is authoritative and re-applied on every boot; an empty one leaves the key admin-managed.
 func NewProvider(repo *repositories.SettingRepository, envOverrides map[string]string) *Provider {
 	p := &Provider{repo: repo, cache: map[string]models.Setting{}, ttl: cacheTTL}
 	p.seed(envOverrides)

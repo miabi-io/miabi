@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Command gen vendors the official templates from the marketplace registry's
-// published export.json into miabi/templates/ — the embedded offline floor. It
-// writes each version's template.yaml byte-for-byte, regenerates index.yaml with
-// the bundle's digests, and rewrites the //go:embed list in embed.go. Run via
-// `go generate ./templates`.
+// Command gen vendors the official templates from the marketplace registry's published export.json
+// into miabi/templates/, the embedded offline floor. It writes each version's template.yaml
+// byte-for-byte, regenerates index.yaml, and rewrites the //go:embed list in embed.go.
 package main
 
 import (
@@ -22,7 +20,6 @@ import (
 	"time"
 )
 
-// bundle is the subset of the marketplace export.json this tool consumes.
 type bundle struct {
 	Templates []struct {
 		Name     string `json:"name"`
@@ -118,7 +115,6 @@ func run(source, out string) error {
 	return nil
 }
 
-// load reads the bundle from a local file or an http(s) URL.
 func load(source string) ([]byte, error) {
 	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
 		client := &http.Client{Timeout: 30 * time.Second}
@@ -170,7 +166,6 @@ func isTemplateDir(dir string) bool {
 	return false
 }
 
-// writeIndex renders index.yaml in the exact format the loader expects.
 func writeIndex(out string, officials []tmpl) error {
 	var b strings.Builder
 	b.WriteString("# Miabi official template catalog (registry index).\n")

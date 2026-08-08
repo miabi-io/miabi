@@ -12,7 +12,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// databaseRoutes registers workspace-scoped managed-database routes.
 func (r *Router) databaseRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Databases", Description: "Managed databases (PostgreSQL, MySQL, MariaDB, Redis, MongoDB, libSQL)."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {
@@ -31,7 +30,6 @@ func (r *Router) databaseRoutes() []okapi.RouteDefinition {
 			Summary:     "List engine default images/versions",
 		},
 
-		// Instances (the database server).
 		{
 			Method:      http.MethodGet,
 			Path:        base,
@@ -91,7 +89,6 @@ func (r *Router) databaseRoutes() []okapi.RouteDefinition {
 			Summary:     "Reveal the instance admin connection (admin)",
 		},
 
-		// On-demand external port-forward (admin).
 		{
 			Method:      http.MethodGet,
 			Path:        base + "/{databaseID}/forward",
@@ -237,7 +234,6 @@ func (r *Router) databaseRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// volumeRoutes registers workspace-scoped managed-volume routes.
 func (r *Router) volumeRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Volumes", Description: "Persistent storage volumes."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {
