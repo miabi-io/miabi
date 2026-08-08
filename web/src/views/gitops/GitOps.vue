@@ -15,10 +15,13 @@ const router = useRouter()
 const route = useRoute()
 const { currentWorkspaceId } = storeToRefs(ws)
 
-// Display disposition (list/grid), persisted across sessions.
+// Display disposition (list/grid), persisted across sessions. Grid is the default: a project's
+// sync state, last commit and error are what you come here to see, and the cards show them without
+// a row-to-column scan. The test is for 'list' rather than 'grid' so that anyone who previously
+// chose list keeps it — only an unset preference moves.
 type ViewMode = 'list' | 'grid'
 const VIEW_KEY = 'mb_gitops_view'
-const view = ref<ViewMode>(localStorage.getItem(VIEW_KEY) === 'grid' ? 'grid' : 'list')
+const view = ref<ViewMode>(localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'grid')
 watch(view, (v) => localStorage.setItem(VIEW_KEY, v))
 
 const items = ref<GitSource[]>([])
