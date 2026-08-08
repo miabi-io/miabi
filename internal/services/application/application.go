@@ -36,8 +36,14 @@ var (
 	// ErrImageNotPermitted rejects an image that lives in the built-in registry
 	// under a namespace this workspace does not own. Pulling it would use the
 	// platform credential, which every namespace accepts.
-	ErrImageNotPermitted  = errors.New("image is not available to this workspace")
-	ErrGitRepoRequired    = errors.New("git_repo is required for git-source applications")
+	ErrImageNotPermitted = errors.New("image is not available to this workspace")
+	ErrGitRepoRequired   = errors.New("git_repo is required for git-source applications")
+	// ErrPipelinesUnavailable means the pipeline service is not wired (tests, or a build without it).
+	ErrPipelinesUnavailable = errors.New("pipelines are not available on this platform")
+	// ErrRepoPipelinesDisabled is the operator kill-switch for adopting pipelines out of repositories.
+	ErrRepoPipelinesDisabled = errors.New("repository pipelines are disabled on this platform")
+	// ErrNotGitApp means the operation only applies to an application that builds from git.
+	ErrNotGitApp          = errors.New("application does not build from a git repository")
 	ErrBuildConfigOnImage = errors.New("build configuration is only valid for git-source applications")
 	ErrInvalidBuildMethod = errors.New("invalid build method")
 	ErrNotDeployable      = errors.New("application has no active release")
@@ -173,6 +179,9 @@ type Pipelines interface {
 	TriggerForApp(app *models.Application, trigger string, userID *uint) (*models.PipelineRun, error)
 	// DeleteForApp drops the app's repo-owned pipelines and unbinds the rest.
 	DeleteForApp(workspaceID, appID uint) error
+	// SyncFromRepo re-reads a repo-owned pipeline's spec from its repository, reporting whether
+	// the stored spec changed. An empty ref uses the pipeline's tracked one.
+	SyncFromRepo(ctx context.Context, p *models.PipelineDefinition, ref string) (bool, error)
 }
 
 // SetPipelines wires repository pipeline adoption (nil-safe). Without it, a git

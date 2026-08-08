@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
-import { appApi, isPipelineRun, type ExternalAccess, type PipelineRunAccepted } from '@/api/apps'
+import { appApi, isPipelineRun, type ExternalAccess, type PipelineRunAccepted, type SetSourceInput } from '@/api/apps'
 import { pipelineApi } from '@/api/pipelines'
 import { volumeApi, monitoringApi, databaseApi, usageApi } from '@/api/resources'
 import { registryApi } from '@/api/registries'
@@ -429,6 +429,109 @@ function emptySettingsForm(): SettingsForm {
   }
 }
 const settingsForm = ref<SettingsForm>(emptySettingsForm())
+
+// --- Source editing -------------------------------------------------------
+const SOURCE_TYPES: { value: 'image' | 'git'; label: string; hint: string; icon: string }[] = [
+  { value: 'image', label: 'Docker image', hint: 'Pull a prebuilt image from a registry', icon: 'mdi-docker' },
+  { value: 'git', label: 'Git repository', hint: 'Build the image from source on a runner', icon: 'mdi-git' },
+]
+
+// The source is edited separately from the rest of settings, because switching image <-> git is a
+// whole-source replacement rather than a field edit: the server clears the fields belonging to the
+// source being left, may drop a repo-owned pipeline, and marks the app for redeploy. Folding that
+// into "Save settings" would make a destructive change look like an incidental one.
+const editingSource = ref(false)
+const savingSource = ref(false)
+// sourceDraft.type is what the user is choosing; app.source_type is what is stored.
+const sourceDraft = ref<{ type: 'image' | 'git' }>({ type: 'image' })
+const sourceSwitching = computed(() => !!app.value && sourceDraft.value.type !== app.value.source_type)
+
+function beginEditSource() {
+  if (!app.value) return
+  sourceDraft.value.type = app.value.source_type
+  syncSettingsForm() // discard any half-typed edits from a previous attempt
+  editingSource.value = true
+}
+function cancelEditSource() {
+  editingSource.value = false
+  syncSettingsForm()
+}
+
+// sourceValid mirrors the server's rules so Save is disabled rather than failing a round-trip.
+const sourceValid = computed(() => {
+  if (sourceDraft.value.type === 'image') return !!settingsForm.value.image.trim()
+  return !!settingsForm.value.git_repo.trim() || settingsForm.value.git_repository_id != null
+})
+
+async function saveSource() {
+  if (!wid.value || !app.value || !sourceValid.value) return
+  savingSource.value = true
+  try {
+    const input: SetSourceInput =
+      sourceDraft.value.type === 'image'
+        ? {
+            source_type: 'image',
+            image: settingsForm.value.image.trim(),
+            tag: settingsForm.value.tag.trim(),
+            registry_id: settingsForm.value.registry_id,
+          }
+        : {
+            source_type: 'git',
+            git_repo: settingsForm.value.git_repo.trim(),
+            git_ref: settingsForm.value.git_ref.trim(),
+            git_repository_id: settingsForm.value.git_repository_id,
+            build_method: settingsForm.value.build_method,
+            builder: settingsForm.value.build_method !== 'dockerfile' ? settingsForm.value.builder.trim() : '',
+          }
+    const res = (await appApi.setSource(wid.value, appId.value, input)).data.data
+    app.value = res.application
+    syncSettingsForm()
+    editingSource.value = false
+
+    // Say what else moved. None of it is visible in the app record, and a silent pipeline removal
+    // would be discovered only at the next deploy.
+    const notes: string[] = []
+    if (res.change.pipeline_removed) notes.push('its repository pipeline was removed')
+    if (res.change.redeploy_required) notes.push('a redeploy is required to apply it')
+    const what = res.change.switched
+      ? `Source switched to ${res.change.to === 'git' ? 'Git repository' : 'Docker image'}`
+      : 'Source updated'
+    notify.success(notes.length ? `${what} — ${notes.join(', ')}.` : what)
+
+    await loadRepoPipeline()
+    loadApp()
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    savingSource.value = false
+  }
+}
+
+// --- Pipeline re-sync -----------------------------------------------------
+const resyncingPipeline = ref(false)
+
+// resyncPipeline re-reads pipelines.yaml from the repository: it adopts one when the app has none
+// (the file was added after the app was created, or it only just became a git app) and re-syncs the
+// stored spec when it already has one.
+async function resyncPipeline() {
+  if (!wid.value || !app.value) return
+  resyncingPipeline.value = true
+  try {
+    const res = (await appApi.resyncPipeline(wid.value, appId.value)).data.data
+    if (res.adopted) {
+      notify.success(`Adopted the pipeline from ${res.pipeline?.source_path} — deploys now run through it.`)
+    } else if (res.changed) {
+      notify.success(`Pipeline updated from ${res.pipeline?.source_path}.`)
+    } else {
+      notify.info(`Already up to date with ${res.pipeline?.source_path}.`)
+    }
+    await loadRepoPipeline()
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    resyncingPipeline.value = false
+  }
+}
 const limits = ref<ResourceLimits>({ max_cpu_cores: 0, max_memory_mb: 0 })
 
 // splitCommand turns the command input into argv (whitespace-separated), matching
@@ -801,16 +904,19 @@ async function saveSettings() {
   if (!wid.value || !app.value) return
   savingSettings.value = true
   try {
+    // Source fields come from the STORED app, never the form: the Source card above owns them, and
+    // a half-typed edit sitting in the form must not be applied through this general PATCH — that
+    // would bypass the switch semantics (clearing the other source, dropping a repo pipeline).
     app.value = (await appApi.update(wid.value, appId.value, {
-      image: settingsForm.value.image.trim() || undefined,
-      tag: settingsForm.value.tag.trim(),
+      image: app.value.image || undefined,
+      tag: app.value.tag || '',
       command: splitCommand(settingsForm.value.command),
-      git_repo: app.value.source_type === 'git' ? settingsForm.value.git_repo.trim() : undefined,
-      git_ref: app.value.source_type === 'git' ? settingsForm.value.git_ref.trim() : undefined,
-      build_method: app.value.source_type === 'git' ? settingsForm.value.build_method : undefined,
-      builder: app.value.source_type === 'git' && settingsForm.value.build_method !== 'dockerfile' ? settingsForm.value.builder.trim() : undefined,
-      registry_id: settingsForm.value.registry_id,
-      git_repository_id: settingsForm.value.git_repository_id,
+      git_repo: app.value.source_type === 'git' ? app.value.git_repo : undefined,
+      git_ref: app.value.source_type === 'git' ? app.value.git_ref : undefined,
+      build_method: app.value.source_type === 'git' ? app.value.build_method : undefined,
+      builder: app.value.source_type === 'git' && app.value.build_method !== 'dockerfile' ? app.value.builder : undefined,
+      registry_id: app.value.registry_id ?? null,
+      git_repository_id: app.value.git_repository_id ?? null,
       stack_id: settingsForm.value.stack_id,
       network_ids: settingsForm.value.network_ids,
       ports: settingsForm.value.ports.filter((p) => p.container_port > 0),
@@ -2494,45 +2600,109 @@ async function detachDatabase(d: AppDatabase) {
 
     <!-- Settings -->
     <div v-else-if="tab === 'settings'">
+      <!-- Source: edited separately from the rest of settings, because switching image <-> git
+           clears the other source's fields, may drop a repo pipeline, and needs a redeploy. -->
       <div class="card mb-4">
-        <div class="card-header"><h2>Configuration</h2></div>
-        <div class="card-body" style="max-width: 460px">
-          <template v-if="app.source_type === 'image'">
+        <div class="card-header source-header">
+          <div>
+            <h2>Source</h2>
+            <p class="card-subtitle">Where this application's image comes from.</p>
+          </div>
+          <button
+            v-if="ws.canEdit && !editingSource && !imageManaged"
+            type="button"
+            class="btn btn-ghost btn-sm"
+            @click="beginEditSource"
+          >
+            <span class="mdi mdi-pencil-outline"></span> Edit source
+          </button>
+        </div>
+
+        <!-- Summary -->
+        <div v-if="!editingSource" class="card-body">
+          <div class="source-summary">
+            <span class="source-badge" :class="app.source_type">
+              <span class="mdi" :class="app.source_type === 'git' ? 'mdi-git' : 'mdi-docker'"></span>
+              {{ app.source_type === 'git' ? 'Git repository' : 'Docker image' }}
+            </span>
+            <code v-if="app.source_type === 'image'" class="source-ref">{{ app.image }}:{{ app.tag || 'latest' }}</code>
+            <code v-else class="source-ref">{{ app.git_repo || '—' }}<span v-if="app.git_ref" class="text-muted"> @ {{ app.git_ref }}</span></code>
+          </div>
+          <p v-if="imageManaged && template" class="form-hint source-managed">
+            <span class="mdi mdi-lock-outline"></span>
+            Managed by the “{{ template.name }}” template — change it through a
+            <button type="button" class="tpl-notice-link" @click="goToUpgrade">marketplace upgrade</button>.
+          </p>
+          <p v-else-if="managedBy === 'gitops'" class="form-hint source-managed">
+            <span class="mdi mdi-lock-outline"></span>
+            Managed by GitOps — change it in the Git manifest. Edits here are overwritten on the next
+            <router-link :to="{ name: 'gitops' }">sync</router-link>.
+          </p>
+        </div>
+
+        <!-- Editor -->
+        <div v-else class="card-body" style="max-width: 560px">
+          <div class="form-group">
+            <label class="form-label">Source type</label>
+            <div class="source-choice">
+              <label
+                v-for="opt in SOURCE_TYPES"
+                :key="opt.value"
+                class="source-option"
+                :class="{ active: sourceDraft.type === opt.value }"
+              >
+                <input type="radio" :value="opt.value" v-model="sourceDraft.type" />
+                <span class="mdi" :class="opt.icon"></span>
+                <span class="source-option-text">
+                  <strong>{{ opt.label }}</strong>
+                  <small>{{ opt.hint }}</small>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <!-- What a switch costs. Shown only when actually switching, so it reads as consequence
+               rather than boilerplate. -->
+          <div v-if="sourceSwitching" class="tpl-notice source-warning">
+            <span class="mdi mdi-alert-outline"></span>
+            <div class="tpl-notice-text">
+              <strong>Switching to {{ sourceDraft.type === 'git' ? 'a Git repository' : 'a Docker image' }}.</strong>
+              The {{ sourceDraft.type === 'git' ? 'image and registry credential' : 'repository, branch and build settings' }}
+              will be cleared, and the app needs a redeploy to run from the new source.
+              <template v-if="app.source_type === 'git' && deploysViaPipeline">
+                Its repository pipeline (<code>{{ repoPipeline?.source_path }}</code>) will also be removed.
+              </template>
+              Domains, environment variables, volumes and history are kept.
+            </div>
+          </div>
+
+          <template v-if="sourceDraft.type === 'image'">
             <div class="form-row">
               <div class="form-group" style="flex: 2">
                 <label class="form-label">Image</label>
-                <input v-model="settingsForm.image" class="form-input" placeholder="nginx" :disabled="!ws.canEdit || imageManaged" />
+                <input v-model="settingsForm.image" class="form-input" placeholder="nginx" />
               </div>
               <div class="form-group" style="flex: 1">
                 <label class="form-label">Tag <span class="text-muted">(optional)</span></label>
-                <input v-model="settingsForm.tag" class="form-input" placeholder="latest" :disabled="!ws.canEdit || imageManaged" />
+                <input v-model="settingsForm.tag" class="form-input" placeholder="latest" />
               </div>
             </div>
-            <p v-if="template" class="form-hint" style="margin-top: -8px; margin-bottom: 16px">
-              <span class="mdi mdi-lock-outline"></span>
-              The image is managed by the “{{ template.name }}” template — change it through a
-              <button type="button" class="tpl-notice-link" @click="goToUpgrade">marketplace upgrade</button>.
-            </p>
-            <p v-else-if="managedBy === 'gitops'" class="form-hint" style="margin-top: -8px; margin-bottom: 16px">
-              <span class="mdi mdi-lock-outline"></span>
-              The image is managed by GitOps — change it in the Git manifest. Edits here are overwritten on the next
-              <router-link :to="{ name: 'gitops' }">sync</router-link>.
-            </p>
-            <p v-else class="form-hint" style="margin-top: -8px; margin-bottom: 16px">
+            <p class="form-hint" style="margin-top: -8px">
               Deploys <code>{{ settingsForm.image || 'image' }}:{{ settingsForm.tag || 'latest' }}</code>
             </p>
             <div class="form-group">
               <label class="form-label">Registry credential <span class="text-muted">(for private images)</span></label>
-              <select v-model="settingsForm.registry_id" class="form-select" :disabled="!ws.canEdit">
+              <select v-model="settingsForm.registry_id" class="form-select">
                 <option :value="null">Public / none</option>
                 <option v-for="r in registries" :key="r.id" :value="r.id">{{ r.name }} ({{ r.server }})</option>
               </select>
             </div>
           </template>
+
           <template v-else>
             <div class="form-group">
               <label class="form-label">Repository</label>
-              <select v-model="settingsForm.git_repository_id" class="form-select" :disabled="!ws.canEdit" @change="onSettingsRepoSelect">
+              <select v-model="settingsForm.git_repository_id" class="form-select" @change="onSettingsRepoSelect">
                 <option :value="null">Public URL (no saved repository)</option>
                 <option v-for="r in gitRepos" :key="r.id" :value="r.id">{{ r.name }} — {{ r.url }}</option>
               </select>
@@ -2547,45 +2717,88 @@ async function detachDatabase(d: AppDatabase) {
                   Repository URL
                   <span v-if="settingsForm.git_repository_id" class="text-muted">(optional — overrides the saved repository)</span>
                 </label>
-                <input v-model="settingsForm.git_repo" class="form-input" placeholder="https://github.com/user/repo" :disabled="!ws.canEdit" />
+                <input v-model="settingsForm.git_repo" class="form-input" placeholder="https://github.com/user/repo" />
               </div>
               <div class="form-group" style="flex: 1">
                 <label class="form-label">Branch / ref <span class="text-muted">(optional)</span></label>
-                <input v-model="settingsForm.git_ref" class="form-input" placeholder="main" :disabled="!ws.canEdit" />
+                <input v-model="settingsForm.git_ref" class="form-input" placeholder="main" />
               </div>
             </div>
-            <div v-if="deploysViaPipeline" class="tpl-notice">
+            <div v-if="deploysViaPipeline && !sourceSwitching" class="tpl-notice">
               <span class="mdi mdi-pipe"></span>
               <div class="tpl-notice-text">
                 <strong>This app builds through its repository's pipeline.</strong>
                 The steps in <code>{{ repoPipeline?.source_path }}</code> decide how the image is built, so the build
-                method and builder below no longer apply. Edit the file in git, or
-                <router-link :to="{ name: 'pipelines' }">remove the pipeline</router-link> to build directly again.
+                method and builder below no longer apply.
               </div>
             </div>
             <div class="form-group">
               <label class="form-label">Build method</label>
-              <select v-model="settingsForm.build_method" class="form-select" :disabled="!ws.canEdit || deploysViaPipeline">
+              <select v-model="settingsForm.build_method" class="form-select" :disabled="deploysViaPipeline && !sourceSwitching">
                 <option value="auto">Auto (recommended)</option>
                 <option value="buildpack">Buildpacks (no Dockerfile)</option>
                 <option value="dockerfile">Dockerfile</option>
               </select>
-              <p class="form-hint">Auto builds the repo's Dockerfile when present, otherwise uses Cloud Native Buildpacks. Applied on the next deploy.</p>
+              <p class="form-hint">Auto builds the repo's Dockerfile when present, otherwise uses Cloud Native Buildpacks.</p>
             </div>
             <div v-if="settingsForm.build_method !== 'dockerfile'" class="form-group">
               <label class="form-label">Builder image <span class="text-muted">(optional, advanced)</span></label>
-              <input v-model="settingsForm.builder" class="form-input" placeholder="paketobuildpacks/builder-jammy-base" :disabled="!ws.canEdit || deploysViaPipeline" />
+              <input v-model="settingsForm.builder" class="form-input" placeholder="paketobuildpacks/builder-jammy-base" :disabled="deploysViaPipeline && !sourceSwitching" />
               <p class="form-hint">Override the Cloud Native Buildpacks builder. Leave empty to use the platform default.</p>
             </div>
-            <div v-if="deploysViaPipeline" class="form-group">
-              <label class="form-label">Deploy on push</label>
-              <p class="form-hint">
-                Miabi runs the pipeline when you deploy. To also run it on every push, add its webhook to your Git
-                provider — the URL and secret are on the
-                <router-link :to="{ name: 'pipelines' }">Pipelines</router-link> page.
+          </template>
+
+          <div class="form-actions">
+            <button class="btn btn-primary" :disabled="savingSource || !sourceValid" @click="saveSource">
+              {{ savingSource ? 'Saving…' : sourceSwitching ? 'Switch source' : 'Save source' }}
+            </button>
+            <button class="btn btn-ghost" :disabled="savingSource" @click="cancelEditSource">Cancel</button>
+            <span v-if="!sourceValid" class="form-error">
+              {{ sourceDraft.type === 'image' ? 'An image is required.' : 'A repository URL or a saved repository is required.' }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Pipeline re-sync: only meaningful for a git app, and the one place an operator can pull
+             a pipelines.yaml that was added (or edited) after the app was created. -->
+        <div v-if="app.source_type === 'git' && !editingSource" class="card-body source-pipeline">
+          <div class="source-pipeline-row">
+            <div>
+              <strong class="source-pipeline-title">
+                <span class="mdi mdi-pipe"></span>
+                {{ deploysViaPipeline ? 'Repository pipeline' : 'No repository pipeline' }}
+              </strong>
+              <p class="form-hint" style="margin: 4px 0 0">
+                <template v-if="deploysViaPipeline">
+                  Deploys run <code>{{ repoPipeline?.source_path }}</code> from the repository.
+                  Re-sync after editing it to pick the changes up now instead of at the next deploy.
+                </template>
+                <template v-else>
+                  This app builds directly. If you have added a <code>pipelines.yaml</code> to the repository,
+                  re-sync to adopt it.
+                </template>
               </p>
             </div>
-          </template>
+            <button
+              v-if="ws.canEdit"
+              type="button"
+              class="btn btn-secondary btn-sm"
+              :disabled="resyncingPipeline"
+              @click="resyncPipeline"
+            >
+              <span class="mdi" :class="resyncingPipeline ? 'mdi-loading mdi-spin' : 'mdi-sync'"></span>
+              {{ resyncingPipeline ? 'Syncing…' : 'Re-sync' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-header">
+          <h2>Configuration</h2>
+          <p class="card-subtitle">Runtime settings applied on the next deploy.</p>
+        </div>
+        <div class="card-body" style="max-width: 460px">
           <div class="form-group">
             <label class="form-label">Command <span class="text-muted">(optional)</span></label>
             <input v-model="settingsForm.command" class="form-input mono" placeholder="image default" :disabled="!ws.canEdit" />
@@ -3430,6 +3643,44 @@ async function detachDatabase(d: AppDatabase) {
 .strategy-option span { display: flex; flex-direction: column; }
 .strategy-name { font-weight: 600; font-size: 14px; }
 .strategy-hint { font-size: 12px; color: var(--text-muted); }
+
+/* Source card */
+.source-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.source-summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.source-badge {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; border: 1px solid var(--border-primary); color: var(--text-primary);
+}
+.source-badge .mdi { font-size: 15px; }
+.source-badge.image { background: var(--primary-50); border-color: var(--primary-500); color: var(--primary-700, var(--text-primary)); }
+.source-badge.git { background: var(--warning-50, var(--bg-secondary)); border-color: var(--warning-500); }
+.source-ref { font-size: 13px; word-break: break-all; }
+.source-managed { display: flex; align-items: flex-start; gap: 6px; margin: 12px 0 0; }
+
+.source-choice { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+.source-option {
+  display: flex; align-items: center; gap: 10px; padding: 12px; cursor: pointer;
+  border: 1px solid var(--border-input); border-radius: var(--radius); transition: all var(--transition);
+}
+.source-option:hover { border-color: var(--text-muted); }
+.source-option.active { border-color: var(--primary-500); background: var(--primary-50); }
+.source-option .mdi { font-size: 20px; color: var(--text-muted); }
+.source-option.active .mdi { color: var(--primary-500); }
+.source-option-text { display: flex; flex-direction: column; }
+.source-option-text strong { font-size: 14px; }
+.source-option-text small { font-size: 12px; color: var(--text-muted); }
+.source-warning { margin-bottom: 16px; }
+
+.form-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.form-error { font-size: 12px; color: var(--danger-600, var(--danger-500)); }
+
+.source-pipeline { border-top: 1px solid var(--border-primary); }
+.source-pipeline-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.source-pipeline-title { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.source-pipeline-title .mdi { color: var(--text-muted); }
+@media (max-width: 640px) {
+  .source-header, .source-pipeline-row { flex-direction: column; align-items: stretch; }
+}
 
 /* Network tab */
 .net-row { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; border-top: 1px solid var(--border-primary); }
