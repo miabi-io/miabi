@@ -14,16 +14,9 @@ const (
 	GPUVendorAMD    GPUVendor = "amd" // reserved (ROCm), not yet supported
 )
 
-// GPUDevice is one physical GPU discovered on a node's Docker host. A node
-// advertises the GPUs it has (via the inventory probe); the platform admin
-// controls whether each is offered to workloads. Rows are owned by a Server and
-// keyed for re-inventory by the stable GPU UUID reported by nvidia-smi — never
-// the host-local index, which can change across reboots.
-//
-// Devices get their own table (not a JSON blob on Server) because each is
-// individually addressable: the admin enables/disables and marks shared or
-// dedicated per card, and a device is the unit an app is scheduled onto. Same
-// reasoning that gave network subnets their own rows.
+// GPUDevice is one physical GPU discovered on a node's Docker host, owned by a Server and
+// keyed by the stable nvidia-smi UUID — never the host-local index, which changes across
+// reboots. Each is individually enabled/shared and is the unit an app is scheduled onto.
 type GPUDevice struct {
 	ID       uint `json:"id" gorm:"primaryKey"`
 	ServerID uint `json:"server_id" gorm:"index;not null"` // the node it lives on
@@ -44,10 +37,9 @@ type GPUDevice struct {
 	// exclusivity enforcement for dedicated cards lands in a later phase.
 	Shared bool `json:"shared" gorm:"not null;default:true"`
 
-	// LastSeenAt is stamped on every inventory scan that observes the device. A
-	// device that drops out of a scan is kept (not deleted) so history and an
-	// app's GPUKind reference survive a transient probe failure or a reboot
-	// mid-scan; staleness is derived from an old LastSeenAt.
+	// LastSeenAt is stamped on every inventory scan that observes the device. A device missing
+	// from a scan is kept, not deleted, so history and an app's GPUKind reference survive a
+	// transient probe failure; staleness is derived from an old LastSeenAt.
 	LastSeenAt *time.Time `json:"last_seen_at"`
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`

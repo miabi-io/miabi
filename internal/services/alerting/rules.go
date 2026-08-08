@@ -10,11 +10,9 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// intentKind is what a rule wants done with an alert condition.
 type intentKind int
 
 const (
-	// fire opens/refreshes an alert immediately.
 	fire intentKind = iota
 	// countFire opens/refreshes an alert only once a windowed signal count crosses
 	// Threshold (the crash-loop dedup — N dies in a window is one alert, not N).
@@ -46,7 +44,6 @@ type intent struct {
 	window    time.Duration
 }
 
-// appSubject builds the subject fields for an application-scoped alert.
 func appSubject(appID uint) (typ, ref, link string) {
 	return "app", fmt.Sprintf("app:%d", appID), fmt.Sprintf("/apps/%d", appID)
 }
@@ -116,7 +113,6 @@ func evaluate(e *models.AppEvent, appName string) []intent {
 	return nil
 }
 
-// resolves builds resolve intents for the given dedup keys.
 func resolves(keys ...string) []intent {
 	out := make([]intent, 0, len(keys))
 	for _, k := range keys {

@@ -58,10 +58,9 @@ type Publisher interface {
 	Publish(topic string, e eventbus.Event)
 }
 
-// Engine turns app-event signals into alerts and per-user notifications. It
-// implements the events service's alert-sink hook (OnEvent). Fan-out is
-// workspace + role scoped; hot state (crash-loop windows, notify cooldowns) is in
-// the Counter (Redis in production).
+// Engine turns app-event signals into alerts and per-user notifications, implementing the events
+// service's alert-sink hook. Fan-out is workspace + role scoped; hot state (crash-loop windows,
+// notify cooldowns) lives in the Counter, Redis in production.
 type Engine struct {
 	alerts  AlertStore
 	inbox   InboxStore
@@ -92,10 +91,9 @@ func NewEngine(alerts AlertStore, inbox InboxStore, members MemberLister, namer 
 	return &Engine{alerts: alerts, inbox: inbox, members: members, namer: namer, bus: bus, counter: counter, now: time.Now}
 }
 
-// OnEvent is the alert-sink hook: it receives every recorded app event (unlike
-// the outbound notifier, which is filtered to the notifiable set), evaluates the
-// rules, and executes the resulting intents. Best-effort — a failure is logged
-// and never propagates to the recording caller.
+// OnEvent is the alert-sink hook: it receives every recorded app event — unlike the outbound notifier,
+// which is filtered — evaluates the rules, and executes the resulting intents. Best-effort: a failure
+// is logged and never propagates to the recording caller.
 func (e *Engine) OnEvent(ev *models.AppEvent) {
 	if ev == nil || ev.WorkspaceID == 0 {
 		return
@@ -128,10 +126,9 @@ func (e *Engine) OnEvent(ev *models.AppEvent) {
 	}
 }
 
-// doFire opens or folds an alert and, only when it is newly opened, fans a
-// notification out to the workspace's eligible members. A folded repeat (e.g. the
-// 6th crash in a loop) just bumps the alert's count — it never re-notifies, which
-// is the storm control that keeps 40 events at one bell item.
+// doFire opens or folds an alert and, only when it is newly opened, fans a notification out to the
+// workspace's eligible members. A folded repeat (e.g. the 6th crash in a loop) just bumps the alert's
+// count — it never re-notifies, which is the storm control that keeps 40 events at one bell item.
 func (e *Engine) doFire(ctx context.Context, workspaceID uint, in intent) {
 	now := e.now().UTC()
 	a := &models.Alert{
@@ -175,11 +172,9 @@ func (e *Engine) doResolve(ctx context.Context, workspaceID uint, dedupKey strin
 	}
 }
 
-// fanOut writes one notification per recipient and pushes each over SSE.
-// Recipients are the eligible workspace members (role ≥ the alert's MinRole), or —
-// for a platform alert on the system workspace — the platform super-admins. The
-// workspace + role boundary lives here: a user only receives an alert for a
-// workspace they're in (or, for platform alerts, only if they're a super-admin).
+// fanOut writes one notification per recipient and pushes each over SSE. Recipients are the eligible workspace
+// members (role at or above the alert's MinRole), or the platform super-admins for a platform alert. The
+// workspace and role boundary lives here: a user only ever receives an alert for a workspace they are in.
 func (e *Engine) fanOut(workspaceID uint, alert *models.Alert, resurface, platform bool) {
 	recipients, err := e.recipients(workspaceID, alert.MinRole, platform)
 	if err != nil {

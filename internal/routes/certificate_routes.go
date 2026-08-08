@@ -12,7 +12,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// certificateRoutes registers workspace-scoped TLS certificate management.
 func (r *Router) certificateRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Certificates", Description: "Imported TLS certificates (bring-your-own; ACME is handled by Goma)."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {

@@ -14,10 +14,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/crypto"
 )
 
-// AppController stops/starts the applications that use a database while it is
-// being upgraded, so writers are quiesced during a major (copy) upgrade. Wired
-// over the application service by the composition root (an interface here keeps
-// the database service free of an app-service dependency).
+// AppController stops and starts the applications that use a database while it is being upgraded, so
+// writers are quiesced during a major (copy) upgrade. Wired over the application service by the
+// composition root; an interface here keeps the database service free of an app-service dependency.
 type AppController interface {
 	StopByID(ctx context.Context, workspaceID, appID uint) error
 	StartByID(ctx context.Context, workspaceID, appID uint) error
@@ -46,8 +45,6 @@ func (s *Service) SetAppController(a AppController) { s.apps = a }
 // path and to take a safety backup (nil-safe).
 func (s *Service) SetLogicalBackup(b LogicalBackup) { s.backups = b }
 
-// --- progress tracking (persisted) ---------------------------------------
-
 // setPhase advances and persists the upgrade phase, so both the worker (writer)
 // and the API server (reader) see live progress. No-op when no upgrade is in
 // flight.
@@ -61,8 +58,6 @@ func (s *Service) setPhase(inst *models.DatabaseInstance, phase string) {
 	}
 	s.publishStatus(inst)
 }
-
-// --- options & planning --------------------------------------------------
 
 // UpgradeOptions describes what an instance can be upgraded to.
 type UpgradeOptions struct {
@@ -135,15 +130,9 @@ func (s *Service) PlanUpgrade(workspaceID, instanceID uint, target string) (*Upg
 	}, nil
 }
 
-// --- upgrade entrypoint --------------------------------------------------
-
-// Upgrade validates a version upgrade, marks the instance "upgrading", and
-// enqueues the work onto the asynq worker (durable across restarts). Callers poll
-// Get for the persisted progress.
-//
-// stopApps quiesces the apps using the database before the upgrade and restarts
-// them after — strongly recommended for a major (copy) upgrade to avoid losing
-// writes made during the dump.
+// Upgrade validates a version upgrade, marks the instance "upgrading", and enqueues the work onto the
+// asynq worker so it survives restarts. Callers poll Get for the persisted progress. stopApps quiesces
+// the apps using the database, strongly recommended for a major upgrade to avoid losing writes.
 func (s *Service) Upgrade(ctx context.Context, workspaceID, instanceID uint, target string, stopApps bool) (*models.DatabaseInstance, error) {
 	inst, err := s.repo.FindInWorkspace(workspaceID, instanceID)
 	if err != nil {
@@ -180,10 +169,9 @@ func (s *Service) Upgrade(ctx context.Context, workspaceID, instanceID uint, tar
 	return s.Get(workspaceID, instanceID)
 }
 
-// RunUpgradeJob executes a queued upgrade end-to-end (worker-invoked). It is
-// panic-safe and always returns nil — failures are recorded on persisted
-// progress rather than retried, since a half-applied upgrade must not be
-// blindly re-run.
+// RunUpgradeJob executes a queued upgrade end to end (worker-invoked). It is panic-safe and always
+// returns nil: failures are recorded on persisted progress rather than retried, since a half-applied
+// upgrade must not be blindly re-run.
 func (s *Service) RunUpgradeJob(ctx context.Context, instanceID uint, target, path string, stopApps bool) error {
 	inst, err := s.repo.FindByID(instanceID)
 	if err != nil {
@@ -275,10 +263,9 @@ func (s *Service) restartApps(ctx context.Context, workspaceID uint, appIDs []ui
 	}
 }
 
-// finishFailed records an upgrade failure on the instance's persisted progress.
-// The instance's Status is left as the per-path rollback set it: "running" when
-// service was restored on the original version, or "failed" when rollback could
-// not bring the engine back.
+// finishFailed records an upgrade failure on the instance's persisted progress. The instance's Status is
+// left as the per-path rollback set it: "running" when service was restored on the original version, or
+// "failed" when rollback could not bring the engine back.
 func (s *Service) finishFailed(inst *models.DatabaseInstance, cause error) {
 	logger.Error("database upgrade failed", "id", inst.ID, "error", cause)
 	if inst.Upgrade == nil {
@@ -359,10 +346,9 @@ func (s *Service) upgradeInPlace(ctx context.Context, inst *models.DatabaseInsta
 	return nil
 }
 
-// upgradeDumpRestore performs a major upgrade by restoring the safety dumps into
-// a fresh volume running the new engine, then swapping the instance's volume
-// pointer — preserving its host alias, credentials and id so apps need no change.
-// On failure it discards the new volume and restores the original.
+// upgradeDumpRestore performs a major upgrade by restoring the safety dumps into a fresh volume running
+// the new engine, then swapping the instance's volume pointer — preserving its host alias, credentials and
+// id so apps need no change. On failure it discards the new volume and restores the original.
 func (s *Service) upgradeDumpRestore(ctx context.Context, inst *models.DatabaseInstance, spec engineSpec, target string, logicalDBs []models.Database, dumps map[uint]DumpRef) error {
 	dc, err := s.dockerFor(inst)
 	if err != nil {
@@ -445,7 +431,6 @@ func (s *Service) rollbackVolume(ctx context.Context, dc docker.Client, inst *mo
 	return cause
 }
 
-// sanitizeVolTag makes a version safe for a Docker volume-name suffix.
 func sanitizeVolTag(v string) string {
 	v = strings.ToLower(strings.TrimSpace(v))
 	return strings.Map(func(r rune) rune {

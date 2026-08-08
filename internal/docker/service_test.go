@@ -9,11 +9,9 @@ import (
 	"github.com/docker/docker/api/types/mount"
 )
 
-// TestBuildSwarmServiceSpecIngressAliases verifies the shared ingress overlay
-// gets ONLY the unique upstream alias, while the per-workspace east-west overlay
-// keeps the tenant-scoped aliases (e.g. the app name). Registering the workspace-
-// scoped app name on the shared ingress network would let app names collide
-// across workspaces, so it must stay off that network.
+// TestBuildSwarmServiceSpecIngressAliases verifies the shared ingress overlay gets ONLY the unique
+// upstream alias while the per-workspace overlay keeps tenant-scoped aliases. The workspace-scoped
+// app name on the shared network would let app names collide across workspaces.
 func TestBuildSwarmServiceSpecIngressAliases(t *testing.T) {
 	spec := buildSwarmServiceSpec(ServiceSpec{
 		Name:           "mb-app-abc-1",

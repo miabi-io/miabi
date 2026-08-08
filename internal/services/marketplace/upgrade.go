@@ -86,7 +86,6 @@ func (s *Service) resolveUpgrade(workspaceID, installID uint, target string) (re
 			}
 		}
 	} else if len(rec.AppIDs) == len(m.Applications) {
-		// Fall back to the new manifest's order (best effort).
 		for i, app := range m.Applications {
 			byName[app.Name] = rec.AppIDs[i]
 		}
@@ -155,10 +154,9 @@ func (s *Service) PlanUpgrade(workspaceID, installID uint, target string) (*Upgr
 	return plan, nil
 }
 
-// ApplyUpgrade converges an install to the target version: bumps each matched
-// app's image, adds new (additive) env, creates new volumes and attaches their
-// mounts, redeploys, and records the new version. Changed/removed env, new
-// databases, and structural app changes are surfaced as warnings, not applied.
+// ApplyUpgrade converges an install to the target version: it bumps each matched app's image, adds new
+// env, creates new volumes and attaches their mounts, redeploys, and records the new version. Changed or
+// removed env, new databases and structural app changes are surfaced as warnings, not applied.
 func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint, target string, newInputs map[string]string) (*UpgradeApplyResult, error) {
 	rec, newM, oldM, byName, err := s.resolveUpgrade(workspaceID, installID, target)
 	if err != nil {
@@ -235,7 +233,6 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 
 		app.Metadata = models.SetBuiltin(app.Metadata, models.MetaTemplateVersion, newM.Metadata.Version)
 
-		// Image / tag.
 		imageChanged := imageRef(os) != imageRef(ns)
 		if imageChanged {
 			app.Image, app.Tag = ns.Image, ns.Tag
@@ -273,7 +270,6 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 			}
 		}
 
-		// New mounts onto newly-created volumes.
 		for _, mt := range ns.Mounts {
 			if isMountNew(os, mt.Volume) {
 				if vid, ok := volIDs[mt.Volume]; ok {
@@ -330,12 +326,9 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 	return res, nil
 }
 
-// applyStackEnv reconciles the install's shared stack env toward the target
-// version. It is additive and conservative, exactly like the per-app env path:
-// new shared keys are rendered and set on the stack; changed or removed keys are
-// surfaced as warnings (the current value is kept). Because shared env only
-// reaches containers at deploy time, members that weren't already redeployed for
-// their own changes are redeployed once a new shared key lands.
+// applyStackEnv reconciles the install's shared stack env toward the target version, additively and
+// conservatively like the per-app path: new keys are rendered and set, changed or removed ones are warnings.
+// Shared env only reaches containers at deploy time, so members not already redeployed are redeployed.
 func (s *Service) applyStackEnv(workspaceID uint, rec *models.TemplateInstall, oldM, newM *manifest.Manifest, byName map[string]uint, renderer *manifest.Renderer, deployed map[uint]bool, res *UpgradeApplyResult) {
 	oldEnv, newEnv := stackEnvOf(oldM), stackEnvOf(newM)
 	if len(oldEnv) == 0 && len(newEnv) == 0 {
@@ -397,8 +390,6 @@ func (s *Service) applyStackEnv(workspaceID uint, rec *models.TemplateInstall, o
 	}
 }
 
-// --- diff helpers --------------------------------------------------------
-
 func specsByName(m *manifest.Manifest) map[string]manifest.AppSpec {
 	out := map[string]manifest.AppSpec{}
 	if m == nil {
@@ -453,8 +444,6 @@ func stackSecretEnv(m *manifest.Manifest) []string {
 	return m.Stack.SecretEnv
 }
 
-// diffStackEnv reports how the shared stack env changes between two versions,
-// mirroring diffEnv for applications.
 func diffStackEnv(oldM, newM *manifest.Manifest) []EnvChange {
 	oldE, newE := stackEnvOf(oldM), stackEnvOf(newM)
 	secret := secretSet(stackSecretEnv(newM))
@@ -530,7 +519,6 @@ func added(old, cur map[string]bool) []string {
 	return out
 }
 
-// newInputs returns inputs present in the new manifest with no stored answer.
 func newInputs(oldM, newM *manifest.Manifest, answered map[string]string) []manifest.Input {
 	if newM == nil {
 		return nil

@@ -135,13 +135,9 @@ type PrefixCheck struct {
 // OK reports whether the prefix is usable.
 func (c PrefixCheck) OK() bool { return c.Error == "" }
 
-// TestTarget proves a target works by using it: under every prefix the workspace
-// writes to, it puts a small object, reads it back and removes it.
-//
-// It takes the settings as the operator has them on screen — unsaved — so the
-// answer is about what they are about to save. An omitted secret falls back to
-// the stored one, exactly as Save does, so testing without re-typing it is the
-// normal case rather than a silent test of nothing.
+// TestTarget proves a target works by using it: under every prefix the workspace writes to, it puts a
+// small object, reads it back and removes it. It takes the settings as the operator has them on screen,
+// so an omitted secret falls back to the stored one exactly as Save does.
 func (s *Service) TestTarget(ctx context.Context, workspaceID uint, in SaveInput) ([]PrefixCheck, error) {
 	cfg := &backup.S3Config{
 		Endpoint: in.S3Endpoint, Bucket: in.S3Bucket, Region: in.S3Region,
@@ -183,11 +179,9 @@ func (s *Service) TestTarget(ctx context.Context, workspaceID uint, in SaveInput
 	return checks, nil
 }
 
-// distinctPrefixes is every path the workspace writes backups to, de-duplicated.
-//
-// All three are tested rather than just one: bucket policies are commonly
-// scoped by prefix, so a target that works for database dumps can still refuse
-// the bundle tree — and finding that out during a migration is finding out late.
+// distinctPrefixes is every path the workspace writes backups to, de-duplicated. All three are tested
+// rather than just one: bucket policies are commonly scoped by prefix, so a target that works for database
+// dumps can still refuse the bundle tree — and finding that out during a migration is finding out late.
 func distinctPrefixes(in SaveInput) []string {
 	want := []string{
 		strings.Trim(strings.TrimSpace(in.DatabaseBackupPath), "/"),
@@ -215,10 +209,9 @@ func defaultRegion(region string) string {
 	return region
 }
 
-// BundleTarget returns the workspace's S3 config, the bundle prefix and the
-// bundle passphrase, or ErrBundleNotConfigured when the pieces a bundle needs
-// are missing. It is the one place that decides a workspace is ready to produce
-// or read a portable bundle.
+// BundleTarget returns the workspace's S3 config, the bundle prefix and the bundle passphrase, or
+// ErrBundleNotConfigured when the pieces a bundle needs are missing. It is the one place that decides a
+// workspace is ready to produce or read a portable bundle.
 func (s *Service) BundleTarget(workspaceID uint) (*backup.S3Config, string, string, error) {
 	cfg, err := s.S3ConfigFor(workspaceID)
 	if err != nil {

@@ -87,10 +87,9 @@ func TestParseVersion(t *testing.T) {
 	}
 }
 
-// The check the whole feature turns on: an identity envelope that opens but
-// carries the wrong master key must be caught before anything is restored. Left
-// undetected, it produces a platform that boots, lists everything, and cannot
-// decrypt a single secret.
+// The check the whole feature turns on: an identity envelope that opens but carries the wrong master key must
+// be caught before anything is restored. Left undetected, it produces a platform that boots, lists
+// everything, and cannot decrypt a single secret.
 func TestKEKFingerprintDistinguishesKeys(t *testing.T) {
 	const label = models.KEKFingerprintLabel
 	right := crypto.DeriveTokenFrom("the-key-the-backup-was-taken-under", label)

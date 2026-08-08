@@ -11,11 +11,9 @@ const (
 	DNSRecordPurposeAppAddress   = "app-address"  // app A/AAAA/CNAME
 )
 
-// DNSRecord is the ledger of DNS records Miabi created through a connected
-// provider, so reconcile and cleanup only ever touch records Miabi owns — never
-// a user's other records (the same prune-only-managed safety the GitOps engine
-// uses). A record at a managed name that is NOT in this ledger is treated as a
-// conflict, never overwritten.
+// DNSRecord is the ledger of records Miabi created through a connected provider, so reconcile
+// and cleanup only ever touch records Miabi owns. A record at a managed name that is not in
+// this ledger is treated as a conflict and never overwritten.
 type DNSRecord struct {
 	ID       uint `json:"id" gorm:"primaryKey"`
 	DomainID uint `json:"domain_id" gorm:"index:idx_dnsrec_domain_key,unique;not null"`

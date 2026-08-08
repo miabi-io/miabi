@@ -15,11 +15,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// volumeRow is a sqlite-friendly stand-in for models.Volume: the production
-// model embeds UIDModel with a Postgres gen_random_uuid() default that sqlite
-// can't migrate, so we build just the columns the usage sweep reads and writes
-// and let the real VolumeRepository query them (same approach as workspace's
-// limit_test).
+// volumeRow is a sqlite-friendly stand-in for models.Volume: the production model embeds UIDModel with a
+// Postgres gen_random_uuid() default sqlite can't migrate, so this builds just the columns the usage sweep
+// reads and writes and lets the real VolumeRepository query them.
 type volumeRow struct {
 	ID             uint `gorm:"primaryKey"`
 	WorkspaceID    uint

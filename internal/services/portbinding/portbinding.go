@@ -100,12 +100,9 @@ func (s *Service) Request(workspaceID, userID uint, in RequestInput) (*models.Po
 	return b, nil
 }
 
-// RequestImport files a host-port binding during stack/compose import. Like
-// Request, but a host-port conflict does not fail: the binding is filed pending
-// (with a note) and the conflicting owner is returned, so the stack still imports
-// cleanly and the user can remap or have an admin review it — instead of a
-// container crashing at start because the port was already taken (often by a
-// container deployed outside Miabi).
+// RequestImport files a host-port binding during stack or compose import. Like Request, but a host-port
+// conflict does not fail: the binding is filed pending with a note and the conflicting owner is returned, so
+// the stack still imports cleanly instead of a container crashing at start because the port was taken.
 func (s *Service) RequestImport(workspaceID, userID uint, in RequestInput) (binding *models.PortBinding, conflict string, err error) {
 	b, err := s.newPendingBinding(workspaceID, userID, in)
 	if err != nil {
@@ -163,10 +160,9 @@ func (s *Service) SuggestHostPort(workspaceID, appID uint, proto string, preferr
 	return s.FindFreeHostPort(app.ServerID, proto, preferred)
 }
 
-// FindFreeHostPort returns the first host port in the allowed range that is free
-// for proto on the node (per the binding table AND live published ports),
-// preferring `preferred` and scanning upward then wrapping. Returns 0 when the
-// range is exhausted.
+// FindFreeHostPort returns the first host port in the allowed range that is free for proto on the node — per
+// the binding table AND live published ports — preferring `preferred` and scanning upward then wrapping.
+// Returns 0 when the range is exhausted.
 func (s *Service) FindFreeHostPort(serverID uint, proto string, preferred int) (int, error) {
 	proto = normProto(proto)
 	live := s.livePublishedPorts(serverID)
@@ -198,10 +194,9 @@ func (s *Service) FindFreeHostPort(serverID uint, proto string, preferred int) (
 	return 0, nil
 }
 
-// hostPortConflict reports whether host:proto is already claimed on the node —
-// by another approved Miabi binding (the table) or by any container actually
-// publishing it right now (live Docker). The live check is what catches ports
-// held by containers deployed outside Miabi. Returns a human owner label.
+// hostPortConflict reports whether host:proto is already claimed on the node — by another approved Miabi
+// binding (the table) or by any container actually publishing it right now (live Docker). The live check
+// is what catches ports held by containers deployed outside Miabi. Returns a human owner label.
 func (s *Service) hostPortConflict(serverID uint, hostPort int, proto string, excludeID uint) (bool, string, error) {
 	inUse, err := s.repo.HostPortInUse(serverID, hostPort, proto, excludeID)
 	if err != nil {
@@ -279,10 +274,9 @@ func autoApprove(b *models.PortBinding, reviewer uint, hostPortInUse bool) error
 	return nil
 }
 
-// markAppRedeploy flags a deployed app as needing a redeploy after a binding is
-// approved: an approved host port is only published on the app's next deploy, so
-// the UI should show "redeploy required" until then. No-op for an undeployed app
-// (e.g. during import, where there's nothing published yet). Best-effort.
+// markAppRedeploy flags a deployed app as needing a redeploy after a binding is approved: an approved host
+// port is only published on the app's next deploy, so the UI should show "redeploy required" until then.
+// No-op for an undeployed app (e.g. during import, where there's nothing published yet). Best-effort.
 func (s *Service) markAppRedeploy(appID uint) {
 	app, err := s.apps.FindByID(appID)
 	if err != nil || app.CurrentReleaseID == nil {
@@ -331,8 +325,6 @@ func (s *Service) Cancel(workspaceID, id uint) error {
 	}
 	return s.repo.Delete(b.ID)
 }
-
-// --- Admin review ---
 
 func (s *Service) ListByStatus(status models.PortBindingStatus) ([]models.PortBinding, error) {
 	return s.repo.ListByStatus(status)

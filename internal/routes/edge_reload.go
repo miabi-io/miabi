@@ -11,10 +11,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/node"
 )
 
-// edgeReloader implements route.EdgeReloader: for each affected node it resolves
-// the gateway address and token and tells the edge gateway to pull its config
-// immediately. Best-effort — failures are logged and a node still converges on
-// its next provider poll.
+// edgeReloader implements route.EdgeReloader: for each affected node it resolves the gateway
+// address and token and tells the edge gateway to pull its config immediately. Best-effort —
+// a node still converges on its next provider poll.
 type edgeReloader struct {
 	nodes *node.Service
 	gw    *edgegateway.Service

@@ -78,11 +78,9 @@ func (r *UninstallResult) err(kind, name string, e error) {
 	r.Failed++
 }
 
-// Uninstall tears down everything a template install created — the logical
-// databases its apps use, the apps (and their stack), the database instances and
-// volumes it provisioned — then removes the install record. Teardown is
-// best-effort: it continues past individual failures and reports them in the
-// result, so a partial install can always be cleaned up.
+// Uninstall tears down everything a template install created — the logical databases its apps use, the
+// apps and their stack, the instances and volumes it provisioned — then removes the install record.
+// Best-effort: it continues past individual failures and reports them, so a partial install is cleanable.
 func (s *Service) Uninstall(ctx context.Context, workspaceID, installID uint) (*UninstallResult, error) {
 	rec, err := s.installs.FindInWorkspace(workspaceID, installID)
 	if err != nil {
@@ -90,10 +88,9 @@ func (s *Service) Uninstall(ctx context.Context, workspaceID, installID uint) (*
 	}
 	res := &UninstallResult{}
 
-	// 1. Logical databases the apps use — deleted first, while their instances are
-	// still up so the DROP runs, and so a dedicated instance is not later blocked
-	// by ErrInstanceInUse (the app→db link). This also reaps logical databases on
-	// shared instances, which are not in DatabaseIDs and would otherwise orphan.
+	// 1. Logical databases the apps use — deleted first, while their instances are still up so the DROP runs,
+	// and so a dedicated instance is not later blocked by ErrInstanceInUse (the app→db link). This also reaps
+	// logical databases on shared instances, which are not in DatabaseIDs and would otherwise orphan.
 	for _, id := range rec.AppIDs {
 		dbs, lerr := s.dbs.ListByApp(workspaceID, id)
 		if lerr != nil {

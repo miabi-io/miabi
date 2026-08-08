@@ -11,12 +11,10 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 )
 
-// stubClient is a no-op docker.Client used to populate the registry in tests.
 type stubClient struct{ docker.Client }
 
 func (s *stubClient) Close() error { return nil }
 
-// pingClient is a docker.Client whose Ping returns a fixed result, for probing.
 type pingClient struct {
 	docker.Client
 	err error
@@ -124,11 +122,9 @@ func (t *taskClient) ServiceInspect(context.Context, string) (docker.ServiceStat
 	return docker.ServiceStatus{RunningTasks: t.runningTasks}, nil
 }
 
-// Regression: a single-replica service placed on a worker. The manager can list the
-// task but cannot see its container, so resolving through the manager returned
-// "no active container" and the app showed no logs, no metrics, and no uptime —
-// while `docker service ls` happily reported 1/1. Only the node running the task
-// can see it, so the registry must find that node.
+// Regression: a single-replica service placed on a worker. The manager can list the task but not
+// see its container, so resolving through the manager returned "no active container" and the app
+// showed no logs, metrics or uptime while `docker service ls` reported 1/1.
 func TestForServiceTaskFindsATaskOnARemoteNode(t *testing.T) {
 	manager := &taskClient{}                          // not running the task
 	node1 := &taskClient{containerID: "1ab857b7d825"} // running it
@@ -173,10 +169,9 @@ func TestForServiceTaskNotFound(t *testing.T) {
 	}
 }
 
-// The service IS running, but on a swarm node with no Miabi agent — so no engine we
-// hold can see its container. That must NOT be reported as "nothing is running":
-// the app is healthy, and the honest answer is "we cannot reach it", which is what
-// tells the user to install the agent rather than hunt a phantom crash.
+// The service IS running, but on a swarm node with no Miabi agent, so no engine we hold can see
+// its container. That must NOT be reported as "nothing is running": the honest answer is "we
+// cannot reach it", which tells the user to install the agent rather than hunt a phantom crash.
 func TestForServiceTaskRunningOnAnUnmanagedNode(t *testing.T) {
 	// The manager sees no container of its own, but its swarm view says 1 task is up.
 	c := NewClients(1, &taskClient{runningTasks: 1})

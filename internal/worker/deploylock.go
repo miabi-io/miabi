@@ -12,10 +12,9 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// DeployLock serializes deploys per application so two concurrent deploys of the
-// same app can't race on release-version assignment or the active-container swap
-// (which would duplicate versions and strand containers). Optional on the
-// handler — a nil lock disables serialization (single-worker dev, tests).
+// DeployLock serializes deploys per application so two concurrent deploys of the same app can't race
+// on release-version assignment or the active-container swap. Optional on the handler — a nil lock
+// disables serialization (single-worker dev, tests).
 type DeployLock interface {
 	// Acquire tries to take the per-app deploy lock without blocking. ok=true means
 	// the caller holds it and must call release when done; ok=false means another
@@ -23,11 +22,9 @@ type DeployLock interface {
 	Acquire(ctx context.Context, appID uint) (ok bool, release func(), err error)
 }
 
-// redisDeployLock is a Redis SET-NX lock with a background refresh: the TTL is
-// short (so a crashed worker's lock frees within one TTL rather than wedging the
-// app), but it is renewed while held so an arbitrarily long build never loses it.
-// Release is a compare-and-delete, so a lock that already expired and was retaken
-// by another worker is never deleted out from under it.
+// redisDeployLock is a Redis SET-NX lock with a background refresh: the TTL is short so a crashed
+// worker's lock frees quickly, but it is renewed while held so a long build never loses it. Release
+// is a compare-and-delete, so an expired lock retaken by another worker is never deleted.
 type redisDeployLock struct {
 	rdb *redis.Client
 	ttl time.Duration

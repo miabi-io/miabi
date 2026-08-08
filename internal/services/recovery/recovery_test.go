@@ -26,10 +26,9 @@ type fakeServers struct{}
 func (fakeServers) List() ([]models.Server, error) { return nil, nil }
 func (fakeServers) Update(*models.Server) error    { return nil }
 
-// A nil Go slice marshals to JSON null, and the admin page reads
-// report.failures.length — so a CLEAN reconcile, the case that should be
-// unremarkable, rendered a blank page. "Nothing went wrong" encodes as [], not
-// null, and saying so is the API's job rather than every consumer's.
+// A nil Go slice marshals to JSON null, and the admin page reads report.failures.length — so a CLEAN
+// reconcile, the case that should be unremarkable, rendered a blank page. "Nothing went wrong" encodes as [],
+// not null, and saying so is the API's job rather than every consumer's.
 func TestReconcileReportNeverEncodesNullLists(t *testing.T) {
 	s := New(fakeSettings{}, fakeServers{}, nil, nil)
 

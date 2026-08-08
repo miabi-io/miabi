@@ -9,10 +9,9 @@ import (
 	"net"
 )
 
-// Offline returns a Client whose every operation fails with err. It lets a
-// node-aware caller resolve a client unconditionally: critical operations
-// surface the error, while best-effort cleanups (whose results are ignored)
-// simply no-op when a node's agent is disconnected.
+// Offline returns a Client whose every operation fails with err, so a node-aware caller can
+// resolve a client unconditionally: critical operations surface the error while best-effort
+// cleanups simply no-op when a node's agent is disconnected.
 func Offline(err error) Client { return offlineClient{err: err} }
 
 type offlineClient struct{ err error }

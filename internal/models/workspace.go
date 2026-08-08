@@ -64,10 +64,9 @@ type Workspace struct {
 	// requests are auto-approved (range and conflict checks still apply). Only a
 	// platform admin can set it.
 	Privileged bool `json:"privileged" gorm:"not null;default:false"`
-	// System marks the built-in platform workspace ("Miabi System"). It holds
-	// platform-managed apps (e.g. the per-node Goma gateways), is created on
-	// first boot, is always privileged, and cannot be deleted. Only platform
-	// admins manage it.
+	// System marks the built-in platform workspace ("Miabi System"). It holds platform-managed
+	// apps such as the per-node Goma gateways, is created on first boot, is always privileged,
+	// and cannot be deleted. Only platform admins manage it.
 	System bool `json:"system" gorm:"not null;default:false"`
 	// PlanID is the assigned plan (nil → the default plan → unlimited). Drives
 	// per-workspace resource quotas when plan enforcement is enabled.

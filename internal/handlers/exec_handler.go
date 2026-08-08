@@ -46,11 +46,9 @@ type execClientMessage struct {
 	Rows uint   `json:"rows,omitempty"` // terminal rows (for type "resize")
 }
 
-// ExecShell upgrades the request to a WebSocket and bridges it to an
-// interactive shell (docker exec) inside the app's active container. The plan
-// capability is enforced before the upgrade so a denied request returns a real
-// 403 instead of a dropped socket. Authentication and Admin+ RBAC are applied
-// by the route middleware.
+// ExecShell upgrades the request to a WebSocket and bridges it to an interactive shell inside
+// the app's active container. The plan capability is enforced before the upgrade, so a denied
+// request returns a real 403 instead of a dropped socket. Auth and Admin+ RBAC come from routes.
 func (h *ApplicationHandler) ExecShell(c *okapi.Context) error {
 	app, err := h.load(c)
 	if err != nil {

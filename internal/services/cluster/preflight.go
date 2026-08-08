@@ -25,11 +25,9 @@ type Finding struct {
 	Detail   string `json:"detail"`
 }
 
-// FirewallRule is one port (or IP protocol) that must be open between every pair
-// of swarm nodes. These are not advisory: with any of them blocked, the swarm forms
-// and DNS resolves while the data plane silently drops every packet, so apps
-// resolve each other and then time out — the single most confusing failure in
-// cluster mode.
+// FirewallRule is one port (or IP protocol) that must be open between every pair of swarm nodes. These
+// are not advisory: with any blocked, the swarm forms and DNS resolves while the data plane silently
+// drops every packet — apps resolve each other and then time out, the most confusing cluster failure.
 type FirewallRule struct {
 	Port    string `json:"port"`    // "2377/tcp", "esp (ip protocol 50)", …
 	Purpose string `json:"purpose"` // what breaks without it
@@ -49,12 +47,9 @@ type Preflight struct {
 	Firewall         []FirewallRule `json:"firewall"`
 }
 
-// firewallRules are the ports a swarm needs open between every pair of nodes.
-//
-// ESP is the one people miss, and it is Miabi's own doing: the workspace overlay is
-// created encrypted, so its data plane is IPSec. ESP is IP protocol 50 — not a TCP
-// or UDP port — so a firewall or cloud security group that happily opens 4789/udp
-// will still drop every packet.
+// firewallRules are the ports a swarm needs open between every pair of nodes. ESP is the one people miss, and it
+// is Miabi's own doing: the workspace overlay is created encrypted, so its data plane is IPSec. ESP is IP
+// protocol 50, not a port, so a security group that happily opens 4789/udp still drops every packet.
 func firewallRules() []FirewallRule {
 	return []FirewallRule{
 		{Port: "2377/tcp", Purpose: "Cluster management (managers only). Without it, nodes cannot join."},
@@ -104,12 +99,9 @@ func (s *Service) Preflight(ctx context.Context) (Preflight, error) {
 	return p, nil
 }
 
-// vmBackedEngine names the Docker distribution when the daemon runs inside a Linux
-// VM (macOS/Windows), and "" when it is a native Linux engine.
-//
-// Detection is on the daemon's reported OperatingSystem string, which is what these
-// products set: "Docker Desktop", "OrbStack", "Rancher Desktop". A native Linux
-// engine reports its distro ("Ubuntu 22.04.4 LTS", "Alpine Linux v3.20", …).
+// vmBackedEngine names the Docker distribution when the daemon runs inside a Linux VM (macOS or Windows), and
+// "" for a native Linux engine. Detection is on the daemon's reported OperatingSystem string, which these
+// products set to "Docker Desktop", "OrbStack" or "Rancher Desktop"; a native engine reports its distro.
 func vmBackedEngine(info docker.Info) string {
 	os := strings.ToLower(info.OS)
 	switch {

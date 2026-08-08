@@ -148,8 +148,6 @@ func NewAdminUserHandler(db *gorm.DB, users *repositories.UserRepository, sessio
 	return &AdminUserHandler{db: db, users: users, sessions: sessions, workspaces: workspaces, auditRepo: auditRepo, store: store, audit: auditLog, account: acct, graceDays: graceDays}
 }
 
-// --- DTOs ---
-
 type AdminCreateUserRequest struct {
 	Body struct {
 		Name string `json:"name" required:"true"`
@@ -173,8 +171,6 @@ type AdminUpdateUserRequest struct {
 		Username string `json:"username"`
 	} `json:"body"`
 }
-
-// --- Handlers ---
 
 // List returns a paginated, searchable list of users.
 func (h *AdminUserHandler) List(c *okapi.Context) error {
@@ -281,7 +277,6 @@ func (h *AdminUserHandler) Get(c *okapi.Context) error {
 	return ok(c, detail)
 }
 
-// countIn counts rows in the given workspaces, optionally filtered by app status.
 func (h *AdminUserHandler) countIn(model any, workspaceIDs []uint, status string) int64 {
 	var n int64
 	q := h.db.Model(model).Where("workspace_id IN ?", workspaceIDs)
@@ -410,11 +405,9 @@ type AdminScheduleDeletionRequest struct {
 	} `json:"body"`
 }
 
-// ScheduleDeletion marks a disabled account for permanent deletion after the
-// grace period. Owned workspaces whose ownership the admin chose to transfer are
-// reassigned first (and so survive); everything still owned by the user is purged
-// with the account by the daily job. A user must be disabled first; admins cannot
-// schedule themselves or the last remaining admin.
+// ScheduleDeletion marks a disabled account for permanent deletion after the grace period.
+// Workspaces whose ownership the admin chose to transfer are reassigned first and survive;
+// everything still owned is purged by the daily job. Admins cannot schedule themselves.
 func (h *AdminUserHandler) ScheduleDeletion(c *okapi.Context, req *AdminScheduleDeletionRequest) error {
 	target, err := h.targetUser(c)
 	if err != nil {
@@ -469,12 +462,9 @@ func (h *AdminUserHandler) ScheduleDeletion(c *okapi.Context, req *AdminSchedule
 	return ok(c, target)
 }
 
-// ForceDeletion permanently deletes an account immediately, skipping whatever
-// remains of the grace period. It is only available for an account that is
-// already pending deletion (ScheduledDeletionAt set) — i.e. one that was
-// disabled and scheduled, with any ownership transfers already applied. The same
-// guards as scheduling apply: an admin cannot force-delete their own account or
-// the last remaining admin.
+// ForceDeletion permanently deletes an account immediately, skipping the rest of the grace
+// period. Only for an account already pending deletion, so any ownership transfers are already
+// applied. Same guards as scheduling: not your own account, not the last remaining admin.
 func (h *AdminUserHandler) ForceDeletion(c *okapi.Context) error {
 	target, err := h.targetUser(c)
 	if err != nil {
@@ -580,10 +570,9 @@ type AdminResetPasswordResponse struct {
 	Password string `json:"password"`
 }
 
-// ResetPassword generates a new strong password for a user, replaces their
-// current one, and returns it ONCE. All the user's sessions are revoked so the
-// old credential stops working immediately. This is the admin account-recovery
-// path and is irreversible: the previous password is discarded, not recoverable.
+// ResetPassword generates a new strong password, replaces the current one, and returns it ONCE.
+// All the user's sessions are revoked so the old credential stops working immediately.
+// Irreversible: the previous password is discarded, not recoverable.
 func (h *AdminUserHandler) ResetPassword(c *okapi.Context) error {
 	target, err := h.targetUser(c)
 	if err != nil {
@@ -609,8 +598,8 @@ func (h *AdminUserHandler) ResetPassword(c *okapi.Context) error {
 	return ok(c, AdminResetPasswordResponse{Password: pw})
 }
 
-// generatePassword returns a strong random password from an unambiguous alphabet
-// (no 0/O/1/l/I), backed by crypto/rand — used for admin-initiated resets.
+// generatePassword returns a strong random password from an unambiguous alphabet (no 0/O/1/l/I),
+// backed by crypto/rand — used for admin-initiated resets.
 func generatePassword() (string, error) {
 	const alphabet = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	const n = 20
@@ -623,8 +612,6 @@ func generatePassword() (string, error) {
 	}
 	return string(buf), nil
 }
-
-// --- helpers ---
 
 func (h *AdminUserHandler) targetUser(c *okapi.Context) (*models.User, error) {
 	id, err := strconv.Atoi(c.Param("id"))

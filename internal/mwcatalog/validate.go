@@ -13,11 +13,9 @@ import (
 // descriptor. Handlers map it to 422 MIDDLEWARE_INVALID_RULE.
 var ErrInvalidRule = errors.New("invalid middleware rule")
 
-// Validate checks a rule against a catalogued type. It returns nil for an
-// uncatalogued type (the advanced escape hatch — passed through to Goma as-is).
-// A catalogued type is checked for required keys, value types, and unknown keys,
-// so a malformed rule is rejected before it can render into the workspace file
-// and take Goma — and every route in the workspace — offline.
+// Validate checks a rule against a catalogued type, returning nil for an uncatalogued one (the
+// advanced passthrough). A catalogued type is checked for required keys, value types and unknown
+// keys, so a malformed rule can't render into the workspace file and take every route offline.
 func Validate(mwType string, rule map[string]any) error {
 	d, ok := Get(mwType)
 	if !ok {
@@ -36,10 +34,9 @@ func Validate(mwType string, rule map[string]any) error {
 	return nil
 }
 
-// validateFields checks a rule map against a field set: rejects unknown keys,
-// enforces required fields, and type-checks each present value. It is used for
-// both the top-level rule and nested object/list sub-schemas, so a malformed
-// nested value is caught with the same rigour as a top-level one.
+// validateFields checks a rule map against a field set: it rejects unknown keys, enforces required
+// fields, and type-checks each present value. Used for both the top-level rule and nested
+// sub-schemas, so a malformed nested value is caught with the same rigour as a top-level one.
 func validateFields(fields []Field, rule map[string]any) error {
 	allowed := make(map[string]Field, len(fields))
 	for _, f := range fields {
@@ -172,7 +169,6 @@ func requireAnyOf(keys ...string) func(map[string]any) error {
 	}
 }
 
-// isIntSlice reports whether v is a list whose every element is a whole number.
 func isIntSlice(v any) bool {
 	list, ok := v.([]any)
 	if !ok {

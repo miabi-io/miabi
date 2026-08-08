@@ -101,7 +101,6 @@ func (r *WebhookDeliveryRepository) ListForWebhook(workspaceID, webhookID uint, 
 	return ds, err
 }
 
-// containsString reports whether s is present in list.
 func containsString(list []string, s string) bool {
 	for _, v := range list {
 		if v == s {

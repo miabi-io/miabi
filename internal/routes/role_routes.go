@@ -12,9 +12,8 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// roleRoutes registers workspace custom-role management. Reading roles needs only
-// membership; writing (and assigning) needs member:write and the custom_roles
-// entitlement (enforced in the handler → 402 in Community).
+// roleRoutes registers workspace custom-role management. Reading needs only membership; writing
+// and assigning need member:write plus the custom_roles entitlement (402 in Community).
 func (r *Router) roleRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Roles", Description: "Custom roles (permission sets) and member assignment."})
 	read := []okapi.Middleware{r.authenticate, r.scope}

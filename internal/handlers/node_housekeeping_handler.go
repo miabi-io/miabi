@@ -13,10 +13,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/housekeeping"
 )
 
-// Node Housekeeping: reclaim disk (prune dangling images + build cache),
-// reconcile drift (orphans / missing / untracked), and report what is on the
-// node. Admin-only (same middleware as the rest of /admin/nodes). Every
-// destructive apply is dry-run-first (Plan) and audited.
+// Node housekeeping: reclaim disk (prune dangling images and build cache), reconcile drift, and
+// report what is on the node. Admin-only, and every destructive apply is dry-run-first (Plan)
+// and audited.
 
 // HousekeepingSelectionRequest is the body for the plan/apply endpoints: which
 // safe reclaim categories to run and which orphan resources to remove.

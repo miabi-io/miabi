@@ -1,17 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package platformrestore rebuilds a Miabi platform onto a fresh host from a
-// recovery point taken by services/platformbackup.
-//
-// It runs OUTSIDE the control plane — from `miabi restore`, on a bare machine
-// with nothing but Docker. That constraint shapes everything here: there is no
-// database to read settings from, no configuration beyond what the operator
-// typed, and no admin session to authorize against. The S3 credentials needed to
-// fetch the backup are themselves inside the backup, so the operator supplies
-// them on the command line, and the sealed identity envelope (internal/dr)
-// supplies the rest — above all the master encryption key, without which a
-// restored database is a catalogue of secrets nobody can read.
+// Package platformrestore rebuilds a Miabi platform onto a fresh host from a recovery point. It runs OUTSIDE
+// the control plane, from `miabi restore` on a bare machine with nothing but Docker: no database to read
+// settings from, and the S3 credentials needed to fetch the backup are themselves inside the backup.
 package platformrestore
 
 import (
@@ -66,13 +58,9 @@ type Options struct {
 
 	// Domain rehosts the restored platform. Required with Clone.
 	Domain string
-	// Clone mints a NEW install id instead of reusing the recovered one.
-	//
-	// Restoring keeps the install id, which is what keeps the Enterprise license
-	// valid — correct when the original host is gone. It is wrong when the
-	// original is still running: two live platforms sharing one install id break
-	// licensing, and a clone that inherits production's hostnames would race it
-	// for DNS and ACME orders. Cloning is therefore explicit, and costs a license.
+	// Clone mints a NEW install id instead of reusing the recovered one. Restoring keeps the install id, which
+	// keeps the Enterprise license valid — correct when the original host is gone, wrong when it is still
+	// running: two live platforms sharing one id break licensing and race for DNS and ACME orders.
 	Clone bool
 
 	// Image overrides the control-plane image written into the new manifest.
@@ -136,11 +124,9 @@ func (s *Service) SetImages(pg, vol string) {
 	}
 }
 
-// Preflight resolves and validates a recovery point without touching the host.
-//
-// Everything that can be checked is checked here, because the alternative is
-// discovering a wrong passphrase after the stack is half-built. Nothing below
-// this function creates anything until Preflight has returned cleanly.
+// Preflight resolves and validates a recovery point without touching the host. Everything that can be
+// checked is checked here, because the alternative is discovering a wrong passphrase after the stack is
+// half-built. Nothing below this function creates anything until Preflight has returned cleanly.
 func (s *Service) Preflight(ctx context.Context, opts Options) (*Plan, error) {
 	store, err := blob.New(opts.S3)
 	if err != nil {
@@ -280,16 +266,9 @@ func readManifest(ctx context.Context, store *blob.Store, root, ref string) (*dr
 	return dr.DecodeManifest(body)
 }
 
-// assertArtifactsPresent checks the bucket really holds what the manifest claims.
-// A manifest is a record of what happened when the backup ran; retention,
-// lifecycle rules and human error all act on the bucket afterwards.
-//
-// Only artifacts THIS restore consumes are fatal: the control-plane dump and the
-// platform volumes, which it writes in the next few minutes. Tenant data is
-// restored much later, by reconcile, from the recovered database — so a missing
-// tenant artifact costs that one workspace's data, not the platform. Refusing to
-// rebuild a control plane over it would trade a recoverable outage for a total
-// one. The missing ones are returned so the plan can name them.
+// assertArtifactsPresent checks the bucket really holds what the manifest claims, since retention and human
+// error act on it afterwards. Only artifacts THIS restore consumes are fatal — the control-plane dump and
+// platform volumes. A missing tenant artifact costs one workspace's data, not the platform, so it is reported.
 func (s *Service) assertArtifactsPresent(ctx context.Context, store *blob.Store, man *dr.Manifest) (missingTenant []string, err error) {
 	var missingCritical []string
 	for _, a := range man.Artifacts {
@@ -334,12 +313,9 @@ func tenantLabel(a dr.Artifact) string {
 // restore looks exactly where the backup wrote.
 func artifactKey(man *dr.Manifest, a dr.Artifact) string { return man.ArtifactKey(a) }
 
-// assertVersionForward refuses to restore a dump produced by a NEWER Miabi than
-// this binary. Migrations only run forward: a schema from the future against
-// older code fails in ways that look like data corruption, long after the
-// restore reported success. Unparseable or dev versions are allowed through with
-// a warning — refusing an operator's recovery over a version string would be
-// worse than the risk.
+// assertVersionForward refuses to restore a dump produced by a NEWER Miabi than this binary: migrations only
+// run forward, and a schema from the future against older code fails in ways that look like data corruption.
+// Unparseable or dev versions pass with a warning — blocking a recovery over a version string is worse.
 func assertVersionForward(backupVersion string) error {
 	have, ok1 := parseVersion(config.Version)
 	want, ok2 := parseVersion(backupVersion)
@@ -399,10 +375,9 @@ func (s *Service) manualSteps(identity *dr.Identity, opts Options, domain string
 	return steps
 }
 
-// Restore executes a plan. Order is deliberate and is the heart of this package:
-// data services → dump into an empty database → verify the key → volumes → the
-// rest of the stack. Bringing the control plane up earlier would have it migrate
-// and seed a database that is about to be overwritten.
+// Restore executes a plan. Order is deliberate and is the heart of this package: data services, dump into an
+// empty database, verify the key, volumes, then the rest of the stack. Bringing the control plane up earlier
+// would have it migrate and seed a database that is about to be overwritten.
 func (s *Service) Restore(ctx context.Context, plan *Plan, opts Options) error {
 	m, err := s.buildManifest(plan, opts)
 	if err != nil {
@@ -410,10 +385,9 @@ func (s *Service) Restore(ctx context.Context, plan *Plan, opts Options) error {
 	}
 	path := manifestPathOf(opts)
 
-	// Persist before creating anything: the manifest now holds the recovered
-	// encryption key and freshly generated database passwords, and they exist
-	// nowhere else. A converge that dies halfway must leave the operator able to
-	// re-run rather than stranded with an unreadable Postgres.
+	// Persist before creating anything: the manifest now holds the recovered encryption key and freshly
+	// generated database passwords, and they exist nowhere else. A converge that dies halfway must leave the
+	// operator able to re-run rather than stranded with an unreadable Postgres.
 	if err := platformstack.Save(path, m); err != nil {
 		return err
 	}
@@ -436,11 +410,9 @@ func (s *Service) Restore(ctx context.Context, plan *Plan, opts Options) error {
 		}
 	}
 
-	// Quiesce the platform before it can act on the restored state: DNS may still
-	// point at the host this was recovered from, and a control plane that begins
-	// reconciling and re-issuing certificates against it makes the outage worse.
-	// Written directly into the restored database, because it must be true before
-	// the control plane's first boot — there is no API to call yet.
+	// Quiesce the platform before it can act on the restored state: DNS may still point at the host this was
+	// recovered from, and a control plane that begins reconciling and re-issuing certificates against it makes
+	// the outage worse. Written directly into the restored database — there is no API to call yet.
 	if err := s.markRestorePending(ctx, m, plan); err != nil {
 		return err
 	}
@@ -455,10 +427,9 @@ func (s *Service) Restore(ctx context.Context, plan *Plan, opts Options) error {
 	return nil
 }
 
-// markRestorePending writes the quiesce marker and the recovery provenance into
-// the restored database, using a one-shot psql against the same Postgres the
-// dump just landed in. It runs before the control plane boots, so the platform
-// comes up already knowing it is a recovery and not a normal start.
+// markRestorePending writes the quiesce marker and the recovery provenance into the restored database,
+// using a one-shot psql against the same Postgres the dump just landed in. It runs before the control
+// plane boots, so the platform comes up already knowing it is a recovery and not a normal start.
 func (s *Service) markRestorePending(ctx context.Context, m *platformstack.Manifest, plan *Plan) error {
 	note := fmt.Sprintf("restored from %s on %s", plan.Ref, time.Now().UTC().Format(time.RFC3339))
 	sql := fmt.Sprintf(
@@ -467,11 +438,9 @@ func (s *Service) markRestorePending(ctx context.Context, m *platformstack.Manif
 			`ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();`,
 		models.RestorePendingKey, sqlEscape(note))
 
-	// A clone must not inherit the original's install id. The id is what the
-	// license is issued against, so two live platforms sharing one is a licensing
-	// conflict — and the clone would also report the original's identity to the
-	// customer portal. Restoring after a real loss keeps the id, which is exactly
-	// what keeps the license valid on the new hardware.
+	// A clone must not inherit the original's install id. The id is what the license is issued against, so two
+	// live platforms sharing one is a licensing conflict, and the clone would report the original's identity to
+	// the portal. Restoring after a real loss keeps the id, which is what keeps the license valid.
 	if plan.Clone {
 		newID := "mbi_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 		plan.NewInstallID = newID
@@ -500,18 +469,14 @@ func (s *Service) markRestorePending(ctx context.Context, m *platformstack.Manif
 	return nil
 }
 
-// sqlEscape doubles single quotes for the literal above. The value is built from
-// a ref this code generated and a timestamp, so this guards against a surprise
-// rather than against an attacker — but a restore is a bad place to learn that
-// an assumption was wrong.
+// sqlEscape doubles single quotes for the literal above. The value is built from a ref this code generated
+// and a timestamp, so this guards against a surprise rather than against an attacker — but a restore is a
+// bad place to learn that an assumption was wrong.
 func sqlEscape(s string) string { return strings.ReplaceAll(s, "'", "''") }
 
-// buildManifest turns a recovered identity into a stack manifest for THIS host.
-//
-// The encryption key and JWT secret are carried over — that is the point. The
-// database and Redis passwords are NOT: they belong to the data directories this
-// restore just created, and reusing the originals would recreate the
-// password-vs-data-directory trap the installer refuses elsewhere.
+// buildManifest turns a recovered identity into a stack manifest for THIS host. The encryption key and JWT
+// secret are carried over — that is the point. The database and Redis passwords are NOT: they belong to the
+// data directories this restore just created, and reusing the originals would recreate the password trap.
 func (s *Service) buildManifest(plan *Plan, opts Options) (*platformstack.Manifest, error) {
 	image := strings.TrimSpace(opts.Image)
 	m := platformstack.Defaults(image)
@@ -586,12 +551,9 @@ func (s *Service) restoreDatabase(ctx context.Context, m *platformstack.Manifest
 	return nil
 }
 
-// restoreVolume recreates a platform volume and unpacks its archive into it.
-//
-// Encryption is decided per ARTIFACT, not per recovery point: volume archives are
-// written unencrypted even when the dumps are encrypted, because the volume tool
-// cannot encrypt. Keying off the set-level flag would hand a passphrase to a
-// tool that has no use for it.
+// restoreVolume recreates a platform volume and unpacks its archive into it. Encryption is decided per ARTIFACT,
+// not per recovery point: volume archives are written unencrypted even when the dumps are encrypted, because
+// the volume tool cannot encrypt. Keying off the set-level flag would hand a passphrase to a tool with no use.
 func (s *Service) restoreVolume(ctx context.Context, opts Options, volumePrefix string, a dr.Artifact) error {
 	name, file := a.Volume, a.File
 	if _, err := s.dc.CreateVolume(ctx, name, map[string]string{docker.LabelManaged: "true"}, 0); err != nil {

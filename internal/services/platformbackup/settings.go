@@ -36,20 +36,15 @@ func (s *Service) GetSettings() (*models.PlatformBackupSettings, error) {
 	return st, nil
 }
 
-// getSettings loads the single settings row, applies the environment overlay and
-// normalizes the derived paths.
-//
-// Every read goes through here, which is what makes the environment authoritative
-// rather than merely a seed: an operator cannot end up with a stored value that
-// disagrees with the process configuration and wonder which one is running.
+// getSettings loads the single settings row, applies the environment overlay and normalizes the derived paths.
+// Every read goes through here, which is what makes the environment authoritative rather than a seed: an
+// operator cannot end up with a stored value that disagrees with the process configuration.
 func (s *Service) getSettings() (*models.PlatformBackupSettings, error) {
 	st, err := s.settings.Get()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		// A never-configured platform starts with S3 selected. It is the only
-		// destination there is, so presenting it as an unchecked option would be
-		// offering a choice that does not exist — and would hide the very fields
-		// the operator came here to fill in. An admin who saves it off has made a
-		// real decision, and that row is no longer new.
+		// A never-configured platform starts with S3 selected. It is the only destination there is, so presenting it
+		// as an unchecked option would offer a choice that does not exist, and would hide the very fields the
+		// operator came to fill in. An admin who saves it off has made a real decision, and that row is no longer new.
 		st = &models.PlatformBackupSettings{S3Enabled: true}
 	} else if err != nil {
 		return nil, err
@@ -59,7 +54,6 @@ func (s *Service) getSettings() (*models.PlatformBackupSettings, error) {
 	return st, nil
 }
 
-// applyEnv overlays the environment configuration onto a stored settings row.
 func (s *Service) applyEnv(st *models.PlatformBackupSettings) {
 	e := s.env
 	if e.Configured() {
@@ -183,13 +177,9 @@ type SaveInput struct {
 	Volumes         []string
 }
 
-// SaveSettings upserts the platform backup settings, encrypting the S3 secret
-// (platform scope) when a new one is supplied and preserving it otherwise.
-//
-// It writes against the RAW stored row, not the environment-overlaid one that
-// reads return. Otherwise the first save would bake this process's environment
-// into the database, and the settings would stop tracking the environment the
-// moment someone edited an unrelated field.
+// SaveSettings upserts the platform backup settings, encrypting the S3 secret when a new one is supplied
+// and preserving it otherwise. It writes against the RAW stored row, not the environment-overlaid one, so
+// the first save cannot bake this process's environment into the database.
 func (s *Service) SaveSettings(in SaveInput) (*models.PlatformBackupSettings, error) {
 	st, err := s.rawSettings()
 	if err != nil {
@@ -238,10 +228,9 @@ func (s *Service) SaveSettings(in SaveInput) (*models.PlatformBackupSettings, er
 		return nil, err
 	}
 
-	// Validate what will actually run — the stored row plus the environment —
-	// rather than what was typed. A configuration that cannot produce a restorable
-	// artifact is refused here, not discovered at the next backup or, worse, at
-	// the restore.
+	// Validate what will actually run — the stored row plus the environment — rather than what was typed. A
+	// configuration that cannot produce a restorable artifact is refused here, not discovered at the next
+	// backup or, worse, at the restore.
 	effective, err := s.getSettings()
 	if err != nil {
 		return nil, err
@@ -252,15 +241,9 @@ func (s *Service) SaveSettings(in SaveInput) (*models.PlatformBackupSettings, er
 	if effective.ScheduleEnabled && effective.ScheduleCron == "" {
 		return nil, errors.New("a cron expression is required when the schedule is enabled")
 	}
-	// A passphrase is OPTIONAL. Backing up an unencrypted platform is a legitimate
-	// choice — a private bucket the operator already trusts, a lab, a first run
-	// before key custody is arranged — and refusing it means no backup at all,
-	// which is strictly worse than an unencrypted one.
-	//
-	// What is refused is asking for something impossible: encryption or an
-	// identity envelope with nothing to encrypt them with. Those are explicit
-	// requests, and silently ignoring them would leave an operator believing in
-	// protection they do not have.
+	// A passphrase is OPTIONAL: backing up an unencrypted platform is a legitimate choice, and refusing it means no
+	// backup at all, which is strictly worse. What is refused is asking for something impossible — encryption or an
+	// identity envelope with nothing to encrypt them with, which silently ignored would promise protection.
 	if effective.BackupPassphraseEnc == "" {
 		switch {
 		case effective.EncryptBackups:
@@ -302,10 +285,9 @@ func (s *Service) passphrase(st *models.PlatformBackupSettings) (string, error) 
 	}
 }
 
-// gpgEnv returns the encryption environment for a *-bkup one-shot: the tools
-// encrypt to "<artifact>.gpg" when GPG_PASSPHRASE is present, and transparently
-// decrypt a ".gpg" artifact on restore with the same variable. Returns nil (and
-// encrypted=false) when encryption is off, so an unencrypted run is unchanged.
+// gpgEnv returns the encryption environment for a *-bkup one-shot: the tools encrypt to "<artifact>.gpg"
+// when GPG_PASSPHRASE is present, and transparently decrypt a ".gpg" artifact on restore with the same
+// variable. Returns nil (and encrypted=false) when encryption is off, so an unencrypted run is unchanged.
 func (s *Service) gpgEnv(st *models.PlatformBackupSettings) ([]string, bool, error) {
 	if !st.EncryptBackups {
 		return nil, false, nil
@@ -366,17 +348,11 @@ func (s *Service) s3Config(st *models.PlatformBackupSettings) (*backup.S3Config,
 	}, nil
 }
 
-// defaultS3Region is sent when the operator configures none.
-//
-// MinIO and most S3-compatible stores ignore the region entirely, so leaving it
-// blank looks harmless — but the AWS SDK inside the *-bkup helpers refuses to
-// start without one ("missing environment variables: [AWS_REGION]"), and the
-// failure lands on the artifact rather than on the setting. The Go client
-// already defaulted it; sending a different value to the helpers than the client
-// uses would be worse than sending none, so both use this.
+// defaultS3Region is sent when the operator configures none. MinIO ignores the region, so leaving it blank
+// looks harmless — but the AWS SDK inside the *-bkup helpers refuses to start without one, and the failure
+// lands on the artifact rather than the setting. Both the Go client and the helpers use this same value.
 const defaultS3Region = "us-east-1"
 
-// s3Region returns the configured region, or the default when unset.
 func s3Region(configured string) string {
 	if r := strings.TrimSpace(configured); r != "" {
 		return r
@@ -384,13 +360,9 @@ func s3Region(configured string) string {
 	return defaultS3Region
 }
 
-// effectiveUseSSL resolves the transport when the endpoint states one.
-//
-// "http://minio:9000" with USE_SSL=true is a contradiction, and it is an easy
-// one to write — the scheme is typed once and the flag left at its default. The
-// scheme is the more specific statement, so it wins. Leaving the two to disagree
-// means the Go client and the *-bkup helpers can pick different transports, and
-// the failure surfaces as an upload that reports success and lands nowhere.
+// effectiveUseSSL resolves the transport when the endpoint states one. "http://minio:9000" with USE_SSL=true is
+// a contradiction that is easy to write, and the scheme is the more specific statement, so it wins. Leaving the
+// two to disagree lets the Go client and the helpers pick different transports.
 func effectiveUseSSL(endpoint string, configured bool) bool {
 	switch {
 	case strings.HasPrefix(endpoint, "http://"):

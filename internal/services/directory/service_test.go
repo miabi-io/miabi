@@ -264,10 +264,9 @@ func TestRoleRank(t *testing.T) {
 	}
 }
 
-// A directory handle is stored through slug.Make (BeforeCreate), but the
-// "have we seen this user?" lookup was a plain lowercase, so a handle that
-// slugifies to something else missed the existing account and then collided with
-// it on insert — the unique index rejected the row and the sign-in failed.
+// A directory handle is stored through slug.Make in BeforeCreate, but the "have we seen this user?"
+// lookup was a plain lowercase — so a handle that slugifies to something else missed the existing
+// account and then collided with it on insert, and the sign-in failed on the unique index.
 func TestProvisionHandleNormalisation(t *testing.T) {
 	db := newTestDB(t)
 	users := repositories.NewUserRepository(db)

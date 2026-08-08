@@ -144,7 +144,6 @@ func (h *AdminWorkspaceHandler) userByID(id uint) (*models.User, error) {
 	return &u, nil
 }
 
-// countWhere counts rows of a workspace-scoped model for one workspace.
 func (h *AdminWorkspaceHandler) countWhere(model any, workspaceID uint) int64 {
 	var n int64
 	h.db.Model(model).Where("workspace_id = ?", workspaceID).Count(&n)
@@ -205,7 +204,6 @@ func (h *AdminWorkspaceHandler) SetPrivileged(c *okapi.Context, req *SetWorkspac
 	return ok(c, ws)
 }
 
-// ownerMap loads the owner users for a set of workspaces in one query.
 func (h *AdminWorkspaceHandler) ownerMap(workspaces []models.Workspace) map[uint]models.User {
 	ids := make([]uint, 0, len(workspaces))
 	for _, w := range workspaces {
@@ -222,8 +220,7 @@ func (h *AdminWorkspaceHandler) ownerMap(workspaces []models.Workspace) map[uint
 	return m
 }
 
-// groupCountByWorkspace returns a map of workspace_id -> row count for a model
-// that has a workspace_id column.
+// groupCountByWorkspace maps workspace_id -> row count for a model with a workspace_id column.
 func groupCountByWorkspace(db *gorm.DB, model any) map[uint]int64 {
 	var rows []struct {
 		WorkspaceID uint

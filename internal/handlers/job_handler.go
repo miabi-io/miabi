@@ -108,8 +108,6 @@ func (h *JobHandler) Delete(c *okapi.Context) error {
 	return message(c, "job deleted")
 }
 
-// --- CronJobs ---
-
 type CronJobRequest struct {
 	Body struct {
 		ApplicationID     uint     `json:"application_id"`
@@ -210,7 +208,6 @@ func (h *JobHandler) cronJobID(c *okapi.Context) uint {
 	return uint(id)
 }
 
-// queryUint parses an optional unsigned query parameter (0 when absent/invalid).
 func queryUint(c *okapi.Context, key string) uint {
 	id, _ := strconv.Atoi(c.Query(key))
 	if id < 0 {

@@ -30,8 +30,7 @@ var ValidScopes = map[string]bool{
 	ScopeRegistryWrite: true,
 }
 
-// generalScopes are the scopes that grant access to the general API (everything
-// outside the container registry). A key with none of these is registry-only.
+// generalScopes grant access to the general API; a key with none of these is registry-only.
 var generalScopes = map[string]bool{
 	ScopeRead: true, ScopeWrite: true, ScopeDeploy: true, ScopeAdmin: true, ScopeAll: true,
 }
@@ -66,10 +65,9 @@ type APIKey struct {
 	// act on (deploy) only that app, nothing else in the workspace. nil = the
 	// key is not app-bound (ordinary user keys).
 	ApplicationID *uint `json:"application_id,omitempty" gorm:"index"`
-	// Ephemeral marks a machine-minted, short-lived job/registry credential (issued
-	// per runner lease, revoked when the run goes terminal). Ephemeral keys are
-	// hidden from the API-keys UI, excluded from the MaxAPIKeys quota, and findable
-	// by the orphan sweeper.
+	// Ephemeral marks a machine-minted, short-lived job/registry credential (issued per runner
+	// lease, revoked when the run goes terminal). Ephemeral keys are hidden from the UI, excluded
+	// from the MaxAPIKeys quota, and findable by the orphan sweeper.
 	Ephemeral  bool       `json:"ephemeral" gorm:"not null;default:false;index"`
 	LastUsedAt *time.Time `json:"last_used_at"`
 	ExpiresAt  *time.Time `json:"expires_at"`

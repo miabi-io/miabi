@@ -72,22 +72,16 @@ func cmpVersion(a, b string) int {
 	return 0
 }
 
-// upgradePath decides how to move engine `e` from version `from` to `to`:
-//   - same major (or Redis, which reads its persistence forward across majors)
-//     can swap the image on the same volume (in-place);
-//   - a major bump for a SQL engine needs a dump & restore into a fresh volume
-//     because the on-disk data directory format is version-specific.
-//
-// It returns the path, whether the change crosses a major version, and an error
-// for non-upgrades (same version, downgrade, or unparseable target).
+// upgradePath decides how to move engine e from version `from` to `to`: the same major (or Redis, which
+// reads its persistence forward) swaps the image on the same volume, while a SQL major bump needs a dump
+// and restore into a fresh volume. Returns the path, whether it crosses a major, and an error for non-upgrades.
 func upgradePath(e models.DBEngine, from, to string) (path string, major bool, err error) {
 	if strings.TrimSpace(to) == "" {
 		return "", false, ErrInvalidVersion
 	}
-	// libSQL stores data as SQLite (a stable, forward-compatible file format), so any
-	// version change is an in-place image swap on the same volume — like Redis. Its
-	// image uses non-numeric tags (e.g. "latest"), so skip the numeric-major gating
-	// the other engines rely on. Re-pinning the same tag is a no-op.
+	// libSQL stores data as SQLite (a stable, forward-compatible file format), so any version change is an
+	// in-place image swap on the same volume — like Redis. Its image uses non-numeric tags (e.g. "latest"), so
+	// skip the numeric-major gating the other engines rely on. Re-pinning the same tag is a no-op.
 	if e == models.DBEngineLibSQL {
 		if strings.TrimSpace(from) == strings.TrimSpace(to) {
 			return "", false, ErrAlreadyOnVersion

@@ -32,10 +32,9 @@ var (
 	ErrNoBackupFile      = errors.New("backup has no artifact to restore")
 	ErrDownloadRemote    = errors.New("download is only available for local backups; fetch s3 backups from your bucket")
 
-	// Backup tools name artifacts <db>_YYYYMMDD_...<ext>.gz: pg-bkup/mysql-bkup
-	// emit ".sql.gz", mongodb-bkup (mongodump --archive --gzip) emits ".archive.gz".
-	// With GPG_PASSPHRASE set the tools append ".gpg"; without matching it the run
-	// would complete with an empty Filename and nothing to restore from.
+	// Backup tools name artifacts <db>_YYYYMMDD_...<ext>.gz: pg-bkup/mysql-bkup emit ".sql.gz", mongodb-bkup
+	// (mongodump --archive --gzip) emits ".archive.gz". With GPG_PASSPHRASE set the tools append ".gpg";
+	// without matching it the run would complete with an empty Filename and nothing to restore from.
 	artifactRe = regexp.MustCompile(`[\w.\-]+\.(?:sql|archive)\.gz(?:\.gpg)?`)
 )
 
@@ -74,10 +73,9 @@ type NodeDocker interface {
 	LocalID() uint
 }
 
-// BackupAlerter receives database-backup outcomes so the alert engine can raise a
-// "backup failed" alert and auto-resolve it on the next success. Kept as a local
-// interface so the backup service stays decoupled from the alerting package (the
-// wiring bridges it to the engine).
+// BackupAlerter receives database-backup outcomes so the alert engine can raise a "backup failed" alert
+// and auto-resolve it on the next success. Kept as a local interface so the backup service stays
+// decoupled from the alerting package; the wiring bridges it to the engine.
 type BackupAlerter interface {
 	BackupFailed(workspaceID, databaseID uint, dbName, errMsg string)
 	BackupSucceeded(workspaceID, databaseID uint)
@@ -108,10 +106,9 @@ func (s *Service) SetLogStore(store *logstore.Store) { s.logs = store }
 // SetAlerter wires backup-outcome alerting (optional; nil = no alerts).
 func (s *Service) SetAlerter(a BackupAlerter) { s.alerter = a }
 
-// externalizeLog moves a terminal backup's full output into the shared log
-// store and trims the row to a bounded tail + a reference. No-op when the store
-// is disabled or already externalized; on any error the full log stays in the
-// DB tail.
+// externalizeLog moves a terminal backup's full output into the shared log store and trims the row to a
+// bounded tail + a reference. No-op when the store is disabled or already externalized; on any error the
+// full log stays in the DB tail.
 func (s *Service) externalizeLog(b *models.Backup) {
 	if !s.logs.Enabled() || b.LogRef != "" {
 		return
@@ -150,12 +147,9 @@ type S3Config struct {
 type Destination struct {
 	Type string // "local" | "s3"
 	S3   *S3Config
-	// GPGPassphrase encrypts the artifact: the *-bkup tools write "<name>.gpg"
-	// when it is set, and decrypt transparently on restore with the same value.
-	// Used by portable workspace bundles, which protect every artifact they carry
-	// — dumps included — with the one passphrase that also seals the bundle's
-	// state file, and by platform disaster-recovery, which protects every
-	// artifact in a recovery point the same way.
+	// GPGPassphrase encrypts the artifact: the *-bkup tools write "<name>.gpg" when it is set and decrypt
+	// transparently on restore with the same value. Used by portable workspace bundles and by platform
+	// disaster recovery, which protect every artifact they carry with one passphrase.
 	GPGPassphrase string
 }
 
@@ -170,13 +164,11 @@ func boolEnv(b bool) string {
 	return "false"
 }
 
-// S3Env builds the S3 environment for the ecosystem backup tools (pg-bkup,
-// mysql-bkup, volume-bkup), which all read the same variable names. Exported so
-// the volume backup service can target the same bucket without duplicating the
-// var-name contract.
+// S3Env builds the S3 environment for the ecosystem backup tools (pg-bkup, mysql-bkup, volume-bkup),
+// which all read the same variable names. Exported so the volume backup service can target the same
+// bucket without duplicating the var-name contract.
 func S3Env(c *S3Config) []string { return s3Env(c) }
 
-// s3Env builds the pg-bkup / mysql-bkup S3 environment.
 func s3Env(c *S3Config) []string {
 	return []string{
 		"AWS_S3_ENDPOINT=" + c.Endpoint,
@@ -189,12 +181,9 @@ func s3Env(c *S3Config) []string {
 	}
 }
 
-// ensureDBNetworks makes every network the instance is on exist on the node and
-// returns their names, so a backup/restore helper joins the same full set the
-// instance's container runs on and can reach it by name. Attaching to only the
-// primary risks landing on a network the instance is not on, surfacing as
-// "could not translate host name <alias>". Mirrors the database service's
-// bring-up. Falls back to the gateway for legacy instances.
+// ensureDBNetworks makes every network the instance is on exist on the node and returns their names, so a
+// backup or restore helper joins the same full set and can reach it by name. Attaching to only the primary
+// risks a network the instance is not on. Falls back to the gateway network for legacy instances.
 func ensureDBNetworks(ctx context.Context, dc docker.Client, inst *models.DatabaseInstance) ([]string, error) {
 	names := inst.NetworkNames(node.AppNetwork)
 	for _, n := range names {
@@ -578,24 +567,9 @@ func (s *Service) connEnv(inst *models.DatabaseInstance, db *models.Database) ([
 	}, nil
 }
 
-// ArtifactName extracts the artifact the helper actually uploaded from its
-// output, and reports whether it is encrypted.
-//
-// It takes the LAST match, not the first. With encryption on, the tools narrate
-// the plain dump before the encrypted one they upload:
-//
-//	Backup file created: appdb_20240601.sql.gz
-//	Encrypting backup file appdb_20240601.sql.gz.gpg
-//	Uploading ... appdb_20240601.sql.gz.gpg
-//
-// Taking the first match recorded a name for a file that was never written: the
-// row looked complete, and the object it pointed at did not exist. That is only
-// discovered by verifying the backup — or by needing it.
-//
-// Encryption is read off the name rather than off the request, because a helper
-// image too old to support it ignores the passphrase and writes plaintext. What
-// is in the bucket is the fact; the caller warns when it falls short of what was
-// asked for.
+// ArtifactName extracts the artifact the helper actually uploaded from its output and reports whether it
+// is encrypted. It takes the LAST match, not the first: with encryption on the tools narrate the plain
+// dump before the encrypted one they upload, so the first match names a file that was never written.
 func ArtifactName(out string, re *regexp.Regexp) (name string, encrypted bool, err error) {
 	matches := re.FindAllString(out, -1)
 	if len(matches) == 0 {

@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package keyring manages per-workspace data-encryption keys (DEKs). Each DEK is
-// stored wrapped by the master KEK (crypto.Encrypt) and unwrapped into an
-// in-memory cache on demand. It implements crypto.Keyring so the crypto package
-// can resolve workspace keys without importing it. The master KEK never leaves
-// the crypto package; the keyring only wraps/unwraps DEKs through it.
+// Package keyring manages per-workspace data-encryption keys. Each DEK is stored wrapped by the master KEK
+// and unwrapped into an in-memory cache on demand. It implements crypto.Keyring so the crypto package can
+// resolve workspace keys without importing it; the master KEK never leaves the crypto package.
 package keyring
 
 import (
@@ -25,11 +23,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// Reencryptor re-encrypts a workspace's stored secrets under its current active
-// DEK (Decrypt old -> EncryptWS new -> save). Implemented by each service that
-// owns workspace-scoped ciphertext and registered with the keyring; the rotation
-// sweep calls every registered one. Idempotent (a value already at the active
-// version is left untouched). Returns the number of values rewritten.
+// Reencryptor re-encrypts a workspace's stored secrets under its current active DEK. Implemented by each
+// service that owns workspace-scoped ciphertext and registered with the keyring; the rotation sweep calls
+// every registered one. Idempotent, and returns the number of values rewritten.
 type Reencryptor interface {
 	Reencrypt(ctx context.Context, workspaceID uint) (int, error)
 }
@@ -139,10 +135,9 @@ func (s *Service) generate(workspaceID uint, version int, active bool) (*models.
 	}, nil
 }
 
-// Rotate creates a new active DEK version for the workspace and re-encrypts all
-// registered owners' data to it. On a partial sweep old versions are RETAINED
-// (deactivated) so not-yet-swept ciphertext stays decryptable — rotation is
-// always safe; a full sweep retires them.
+// Rotate creates a new active DEK version for the workspace and re-encrypts all registered owners' data to
+// it. On a partial sweep old versions are RETAINED but deactivated, so not-yet-swept ciphertext stays
+// decryptable — rotation is always safe. A full sweep retires them.
 func (s *Service) Rotate(ctx context.Context, workspaceID uint) (RotateResult, error) {
 	next, err := s.repo.MaxVersion(workspaceID)
 	if err != nil {
@@ -193,10 +188,9 @@ func (s *Service) Migrate(ctx context.Context, workspaceID uint) (int, error) {
 	return s.sweep(ctx, workspaceID)
 }
 
-// sweep runs every registered reencryptor for the workspace. A reencryptor error
-// is logged and aggregated but does not abort the others; the first error is
-// returned so the caller knows coverage was partial (old versions stay, so data
-// remains safe).
+// sweep runs every registered reencryptor for the workspace. A reencryptor error is logged and aggregated
+// but does not abort the others; the first error is returned so the caller knows coverage was partial (old
+// versions stay, so data remains safe).
 func (s *Service) sweep(ctx context.Context, workspaceID uint) (int, error) {
 	total := 0
 	var firstErr error

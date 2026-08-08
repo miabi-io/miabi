@@ -22,11 +22,9 @@ func NewAnalyticsRepository(db *gorm.DB) *AnalyticsRepository {
 	return &AnalyticsRepository{db: db}
 }
 
-// Upsert folds each flushed rollup into its stored row for the same
-// (workspace, app, route, minute) key: a new key inserts, an existing key merges
-// (counters add, histograms add element-wise, top-K maps combine, HLL sketches
-// merge). Done under a row lock in one transaction so concurrent consumers — or a
-// re-flush after a crash — never lose or double-count a bucket.
+// Upsert folds each flushed rollup into its stored row for the same (workspace, app, route,
+// minute) key: counters add, histograms add element-wise, top-K maps combine, HLL sketches
+// merge. Under a row lock so concurrent consumers never lose or double-count a bucket.
 func (r *AnalyticsRepository) Upsert(rollups []*models.AnalyticsRollup) error {
 	if len(rollups) == 0 {
 		return nil
@@ -69,11 +67,9 @@ func (r *AnalyticsRepository) Range(workspaceID uint, appID *uint, since, until 
 	return rows, err
 }
 
-// summaryColumns are the columns BuildSummary reads. The seven top-K maps and
-// the upstream histogram are JSON blobs that gorm deserializes on read whether
-// or not the caller looks at them — and they dwarf the counters in a row. Naming
-// the columns keeps the dashboard's query to the counters, the latency histogram
-// and the visitor sketch.
+// summaryColumns are the columns BuildSummary reads. The seven top-K maps and the upstream
+// histogram are JSON blobs gorm deserializes whether or not the caller looks at them, and they
+// dwarf the counters — naming the columns keeps the dashboard's query small.
 var summaryColumns = []string{
 	"id", "bucket", "requests", "bytes_in", "bytes_out",
 	"status2xx", "status3xx", "status4xx", "status5xx",
@@ -82,12 +78,9 @@ var summaryColumns = []string{
 
 var summaryGeoColumns = append(append([]string{}, summaryColumns...), "top_countries")
 
-// RangeSummary is Range with only the columns the summary needs. Same rows, same
-// order — a fraction of the bytes and none of the top-K decoding.
-//
-// withGeo additionally reads top_countries, for the one window whose countries
-// are rendered. The period-over-period comparison window passes false: only its
-// totals are read, so decoding its countries would be pure waste.
+// RangeSummary is Range with only the columns the summary needs: same rows, same order, a
+// fraction of the bytes and none of the top-K decoding. withGeo additionally reads
+// top_countries, for the one window whose countries are rendered.
 func (r *AnalyticsRepository) RangeSummary(workspaceID uint, appID *uint, since, until time.Time, withGeo bool) ([]models.AnalyticsRollup, error) {
 	cols := summaryColumns
 	if withGeo {

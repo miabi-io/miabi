@@ -53,10 +53,9 @@ type RecordInput struct {
 	Runner        string // "internal" | "<runner-name>"
 }
 
-// Record stores (or updates) the catalog entry for a freshly built image. The
-// (workspace, digest) pair is unique, so re-recording the same digest updates
-// provenance rather than duplicating — building the same content twice yields
-// one row.
+// Record stores or updates the catalog entry for a freshly built image. The (workspace, digest) pair is
+// unique, so re-recording the same digest updates provenance rather than duplicating — building the same
+// content twice yields one row.
 func (s *Service) Record(in RecordInput) (*models.Image, error) {
 	if in.WorkspaceID == 0 {
 		return nil, ErrNoWorkspc
@@ -228,10 +227,9 @@ func (p protectedRefs) holds(img *models.Image) bool {
 	return false
 }
 
-// ProtectedDigests returns the content digests held by a live deployment or a
-// pinned release — the images that must not be deleted. It is the same set GC
-// exempts, exposed so other delete paths (the registry's tag delete) can refuse
-// to remove an image something is still running.
+// ProtectedDigests returns the content digests held by a live deployment or a pinned release — the images
+// that must not be deleted. It is the same set GC exempts, exposed so other delete paths such as the
+// registry's tag delete can refuse to remove an image something is still running.
 func (s *Service) ProtectedDigests() (map[string]bool, error) {
 	p, err := s.protectedSet()
 	if err != nil {
@@ -240,10 +238,9 @@ func (s *Service) ProtectedDigests() (map[string]bool, error) {
 	return p.digests, nil
 }
 
-// ByDigests indexes the catalog rows for the given digests by digest, so a page
-// of registry tags can be enriched with build provenance (app, commit, build
-// time) in one query. Digests with no catalog row — images pushed by hand rather
-// than built by a pipeline — are simply absent.
+// ByDigests indexes the catalog rows for the given digests, so a page of registry tags can be enriched
+// with build provenance in one query. Digests with no catalog row — images pushed by hand rather than
+// built by a pipeline — are simply absent.
 func (s *Service) ByDigests(workspaceID uint, digests []string) (map[string]models.Image, error) {
 	rows, err := s.images.ListByDigests(workspaceID, digests)
 	if err != nil {

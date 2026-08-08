@@ -59,7 +59,6 @@ func bundleJSON(t *testing.T, etag string, badDigest bool) []byte {
 	return data
 }
 
-// exportServer serves /v1/export with ETag/If-None-Match support and counts hits.
 func exportServer(t *testing.T, etag string, badDigest bool) (*httptest.Server, *int) {
 	t.Helper()
 	var hits int
@@ -145,7 +144,6 @@ func TestStoreDisabled(t *testing.T) {
 	}
 }
 
-// memCache is an in-memory Cache for the round-trip test.
 type memCache struct {
 	mu   sync.Mutex
 	data []byte

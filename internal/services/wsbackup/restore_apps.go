@@ -12,13 +12,9 @@ import (
 	"github.com/miabi-io/miabi/internal/wsbundle"
 )
 
-// applyApps recreates the workloads.
-//
-// Creation goes through the application service and not the repository, so an
-// app lands with the alias, the placement checks, the quota accounting and the
-// naming this platform gives its own apps. What Create does not accept — the
-// healthcheck, the restart policy, the canary settings, the labels — is written
-// straight after, in one Update, which is the same shape the UI's edit path takes.
+// applyApps recreates the workloads. Creation goes through the application service rather than the repository,
+// so an app lands with the alias, placement checks, quota accounting and naming this platform gives its own.
+// What Create does not accept — healthcheck, restart policy, canary, labels — is written straight after.
 func (r *restoreRun) applyApps(ctx context.Context) {
 	existing := map[string]*models.Application{}
 	if apps, err := r.svc.App.List(r.target); err == nil {
@@ -145,10 +141,9 @@ func (r *restoreRun) finishApp(_ context.Context, app *models.Application, a wsb
 	if a.DeployStrategy != "" {
 		app.DeployStrategy = models.DeployStrategy(a.DeployStrategy)
 	}
-	// Mounts reference the volumes created earlier in this run, by the name the
-	// bundle used. A mount whose volume did not come back is dropped rather than
-	// pointed at nothing — the app then starts without that data instead of
-	// failing to start at all, and the report says which.
+	// Mounts reference the volumes created earlier in this run, by the name the bundle used. A mount whose
+	// volume did not come back is dropped rather than pointed at nothing — the app then starts without that
+	// data instead of failing to start at all, and the report says which.
 	for _, m := range a.Mounts {
 		volID := r.volumeIDs[m.Volume]
 		if volID == 0 {

@@ -59,10 +59,9 @@ func (s *Service) NamespaceUsageBytes(ctx context.Context, workspaceID uint) (in
 	return total, nil
 }
 
-// quotaExceeded reports whether the workspace is over its registry quota. It is
-// soft and non-blocking: it reads a TTL cache and, on a miss/stale entry,
-// triggers an async refresh and returns false (fail-open) so a push is never
-// blocked on a registry walk. nil-safe for tests that don't wire the cache.
+// quotaExceeded reports whether the workspace is over its registry quota. It is soft and non-blocking: it
+// reads a TTL cache and, on a miss/stale entry, triggers an async refresh and returns false (fail-open) so
+// a push is never blocked on a registry walk. nil-safe for tests that don't wire the cache.
 func (s *Service) quotaExceeded(workspaceID uint) bool {
 	if s.usage == nil || s.reg == nil || s.repo == nil {
 		return false
@@ -107,7 +106,6 @@ func (s *Service) quotaMB() int {
 	return st.PerWorkspaceQuotaMB
 }
 
-// refreshUsage recomputes and caches a workspace's usage in the background.
 func (s *Service) refreshUsage(workspaceID uint) {
 	defer func() {
 		s.usage.mu.Lock()

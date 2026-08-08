@@ -7,11 +7,9 @@ import (
 	"testing"
 )
 
-// The failure this pins: with encryption on, pg-bkup names the plain dump while
-// working and the encrypted one it uploads. Taking the FIRST match recorded
-// "…sql.gz" while the bucket held "…sql.gz.gpg", producing a recovery point that
-// looked complete and referenced objects that were never written — visible only
-// on verification, or on the day someone needed to restore it.
+// The failure this pins: with encryption on, pg-bkup names the plain dump while working and the encrypted
+// one it uploads. Taking the FIRST match recorded "...sql.gz" while the bucket held "...sql.gz.gpg" — a
+// recovery point that looked complete and referenced objects that were never written.
 func TestArtifactNameTakesTheUploadedFile(t *testing.T) {
 	out := `Starting backup task...
 Dumping database miabi to /backup/miabi_20260731_122549.sql.gz
@@ -46,10 +44,9 @@ func TestArtifactNameUnencrypted(t *testing.T) {
 	}
 }
 
-// A helper too old to support encryption ignores GPG_PASSPHRASE and writes a
-// plain archive. Recording it as encrypted would point a restore at a ".gpg"
-// object that does not exist; refusing the run outright would discard a backup
-// that is perfectly restorable. Record the truth — the caller warns.
+// A helper too old to support encryption ignores GPG_PASSPHRASE and writes a plain archive. Recording it
+// as encrypted would point a restore at a ".gpg" object that does not exist; refusing the run would
+// discard a perfectly restorable backup. Record the truth — the caller warns.
 func TestArtifactNameRecordsWhatTheHelperProduced(t *testing.T) {
 	out := "Creating archive mb-data_20260731.tar.gz\nUploading archive mb-data_20260731.tar.gz"
 	got, encrypted, err := artifactName(out, volArtifactRe)
@@ -78,10 +75,9 @@ func TestArtifactNameVolumes(t *testing.T) {
 	}
 }
 
-// An endpoint that states its scheme is a more specific statement than the flag.
-// "http://minio:9000" with USE_SSL=true is a contradiction that is easy to write
-// and hard to see, and letting the two disagree lets the Go client and the
-// helper containers pick different transports.
+// An endpoint that states its scheme is a more specific statement than the flag. "http://minio:9000" with
+// USE_SSL=true is a contradiction that is easy to write and hard to see, and letting the two disagree lets
+// the Go client and the helper containers pick different transports.
 func TestEffectiveUseSSLFollowsTheEndpointScheme(t *testing.T) {
 	cases := []struct {
 		endpoint   string
@@ -130,10 +126,9 @@ func TestWorthRetrying(t *testing.T) {
 	}
 }
 
-// MinIO ignores the region, so leaving it blank looks harmless — but the AWS SDK
-// inside the *-bkup helpers refuses to start without one, and the failure lands
-// on the artifact rather than on the setting that caused it. Found by running a
-// real backup against a real MinIO.
+// MinIO ignores the region, so leaving it blank looks harmless — but the AWS SDK inside the *-bkup helpers
+// refuses to start without one, and the failure lands on the artifact rather than on the setting that
+// caused it. Found by running a real backup against a real MinIO.
 func TestS3RegionDefaults(t *testing.T) {
 	if got := s3Region(""); got != defaultS3Region {
 		t.Errorf("s3Region(\"\") = %q, want %q", got, defaultS3Region)

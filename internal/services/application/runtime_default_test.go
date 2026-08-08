@@ -10,10 +10,9 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// TestDefaultToServiceRuntime pins the cluster-mode create default: an
-// unspecified runtime becomes a service only when cluster mode is on AND the
-// create is interactive (user-driven). Any explicit choice opts out, and
-// declarative sources (non-interactive) are excluded so they stay deterministic.
+// TestDefaultToServiceRuntime pins the cluster-mode create default: an unspecified runtime becomes a
+// service only when cluster mode is on AND the create is interactive. Any explicit choice opts out,
+// and declarative sources are excluded so they stay deterministic.
 func TestDefaultToServiceRuntime(t *testing.T) {
 	cases := []struct {
 		name        string

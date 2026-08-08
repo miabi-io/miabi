@@ -199,12 +199,9 @@ func TestRenderHostlessRouteForcedDisabled(t *testing.T) {
 	}
 }
 
-// TestRenderPhase1Middlewares checks the transform/security types added in the
-// middleware-UI expansion render the exact rule keys Goma's structs expect. The
-// mirror structs below carry the same yaml tags as goma-gateway's
-// internal/types.go (RedirectRule/RedirectRegexRule/AddPrefixRule/UserAgentBlock),
-// so a successful unmarshal into a non-zero struct proves key parity — a renamed
-// key would round-trip to a zero field and fail the assertion.
+// TestRenderPhase1Middlewares checks the transform/security types render the exact rule keys
+// Goma's structs expect. The mirror structs below carry the same yaml tags as goma-gateway's
+// internal/types.go, so a successful unmarshal into a non-zero struct proves key parity.
 func TestRenderPhase1Middlewares(t *testing.T) {
 	type redirectRule struct {
 		URL       string `yaml:"url"`

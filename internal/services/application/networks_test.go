@@ -40,10 +40,9 @@ func selectNetworks(all []models.Network, want []uint) []models.Network {
 	return out
 }
 
-// The default network is not optional garnish: it is what the app shares with its
-// databases, and in cluster mode it is the workspace's Swarm overlay — the thing that
-// lets it reach a database on another node. A caller that names no networks at all
-// (GitOps does exactly this) must still get it.
+// The default network is not optional garnish: it is what the app shares with its databases, and in
+// cluster mode it is the workspace's Swarm overlay — the thing that lets it reach a database on
+// another node. A caller that names no networks at all (GitOps does exactly this) must still get it.
 func TestDefaultNetworkIsAlwaysSelected(t *testing.T) {
 	all := []models.Network{
 		{ID: 1, Name: "default", IsDefault: true, Driver: "overlay"},
@@ -79,11 +78,9 @@ func TestHasDefaultNetwork(t *testing.T) {
 	}
 }
 
-// A workspace with no default network is a real state — one that predates default
-// networks, or whose network was removed out of band. Without repair, the app is
-// created with NO networks at all: it deploys, and then cannot resolve its own
-// database, with nothing anywhere to say why. The ensurer exists for exactly this and
-// was, until now, never called.
+// A workspace with no default network is a real state — one that predates default networks, or whose
+// network was removed out of band. Without repair the app is created with NO networks: it deploys, and
+// then cannot resolve its own database. The ensurer exists for this and was never called.
 func TestMissingDefaultIsRepaired(t *testing.T) {
 	ens := &fakeEnsurer{net: &models.Network{ID: 9, Name: "default", IsDefault: true, Driver: "overlay"}}
 	s := &Service{netEnsurer: ens}

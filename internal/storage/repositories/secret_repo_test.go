@@ -10,9 +10,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// secretRow is a sqlite-friendly stand-in for models.Secret: the full model
-// carries Postgres-specific column defaults sqlite can't migrate, and the paged
-// listing only reads these columns.
+// secretRow is a sqlite-friendly stand-in for models.Secret: the full model carries
+// Postgres-specific defaults sqlite can't migrate, and the paged listing only reads these columns.
 type secretRow struct {
 	ID          uint `gorm:"primaryKey"`
 	WorkspaceID uint

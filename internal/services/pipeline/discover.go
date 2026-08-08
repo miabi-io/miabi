@@ -57,15 +57,9 @@ type Found struct {
 // HasPipeline reports whether a usable pipeline document was found.
 func (f *Found) HasPipeline() bool { return f != nil && f.Spec != nil }
 
-// DiscoverFS reads a pipeline-as-code document out of an already-checked-out
-// tree, returning the path it came from, its bytes, and the parsed spec. A tree
-// with no such document returns all-zero values and a nil error. A document that
-// exists but doesn't parse returns its path and bytes alongside the error, so
-// callers can report which file is broken.
-//
-// It takes an fs.FS rather than cloning so callers that already hold a worktree
-// (a pipeline run re-reading its spec, a build workspace) don't pay for a second
-// clone.
+// DiscoverFS reads a pipeline-as-code document out of an already-checked-out tree, returning its path, bytes
+// and parsed spec. A tree with no such document returns zero values and a nil error; one that exists but
+// doesn't parse returns its path and bytes alongside the error, so callers can name the broken file.
 func DiscoverFS(fsys fs.FS) (string, []byte, *Spec, error) {
 	for _, p := range SourcePaths {
 		raw, err := fs.ReadFile(fsys, p)
@@ -84,13 +78,9 @@ func DiscoverFS(fsys fs.FS) (string, []byte, *Spec, error) {
 	return "", nil, nil, nil
 }
 
-// Discover clones url at ref into a throwaway worktree and reads its
-// pipeline-as-code document. The error return covers only infrastructure
-// failures (clone, IO) — a repo with no pipeline, or one whose pipeline is
-// malformed, comes back as a Found describing that.
-//
-// auth is a go-git auth method (see gitrepo.CloneURLAuth), so the credential
-// never enters the URL and can't leak through a returned error.
+// Discover clones url at ref into a throwaway worktree and reads its pipeline-as-code document. The error
+// return covers only infrastructure failures: a repo with no pipeline, or one whose pipeline is malformed,
+// comes back as a Found describing that. auth keeps the credential out of the URL and returned errors.
 func Discover(ctx context.Context, url, ref string, auth transport.AuthMethod) (*Found, error) {
 	dir, commit, cleanup, err := cloneWorktree(ctx, url, ref, auth)
 	if err != nil {
@@ -112,14 +102,9 @@ func Discover(ctx context.Context, url, ref string, auth transport.AuthMethod) (
 	return f, nil
 }
 
-// cloneWorktree clones url at ref into a fresh temp dir, returning the dir, the
-// resolved commit, and a cleanup func the caller must always run.
-//
-// It tries a depth-1 single-branch clone first — the fast path, and the only one
-// that keeps a probe cheap on a large repo. That clone can only name a branch,
-// so when ref is a tag or a commit SHA it falls back to a full clone plus
-// revision resolve (gitrepo.Checkout), the same resolution the deploy worker
-// uses.
+// cloneWorktree clones url at ref into a fresh temp dir, returning the dir, the resolved commit and a cleanup
+// func the caller must always run. It tries a depth-1 single-branch clone first — the only fast path on a large
+// repo — and since that can only name a branch, a tag or SHA falls back to a full clone plus revision resolve.
 func cloneWorktree(ctx context.Context, url, ref string, auth transport.AuthMethod) (string, string, func(), error) {
 	dir, err := os.MkdirTemp("", probeDirPrefix)
 	if err != nil {

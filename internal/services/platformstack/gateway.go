@@ -32,20 +32,9 @@ func (s *Service) configPath(m *Manifest) string {
 	return filepath.Join(filepath.Dir(s.manifestPath), name)
 }
 
-// EnsureGatewayConfig makes sure the gateway config exists, is valid, and is honest
-// about whether the operator owns it.
-//
-// The policy, and why it is not simply "always write the default":
-//
-//   - absent            → write the shipped default, record its digest.
-//   - matches digest    → nobody touched it. A newer release's default REPLACES it,
-//     so installs that never customized still receive upstream fixes.
-//   - differs           → the operator edited it. Never touch it again.
-//
-// Without the digest you must choose between "customization is impossible" (always
-// overwrite — which is what copying into a volume did) and "every install is frozen
-// on the config it shipped with" (never overwrite). Neither tells the operator which
-// one they are living in.
+// EnsureGatewayConfig makes sure the gateway config exists, is valid, and is honest about who owns it:
+// absent writes the shipped default and records its digest; a file still matching that digest may be
+// replaced by a newer default; a file that differs was edited by the operator and is never touched.
 func (s *Service) EnsureGatewayConfig(ctx context.Context, m *Manifest) error {
 	path := s.configPath(m)
 	want := gomaConfig
@@ -104,19 +93,9 @@ const (
 	LegacyGeoIPFile = "GeoLite2-Country.mmdb"
 )
 
-// ensureGeoIP binds a GeoIP database into the gateway when the operator has put one
-// beside goma.yml, so Goma can resolve client countries for workspace analytics.
-//
-// Miabi does not fetch one, deliberately. Every database worth having carries a
-// license Miabi cannot accept on the operator's behalf: MaxMind's GeoLite2 EULA
-// forbids redistribution outright, and the permissive alternatives (DB-IP Lite,
-// IP2Location LITE) oblige whoever displays the data to credit the source — a
-// promise only the operator can make for their own deployment. Shipping a default
-// would quietly make that promise for them. So the provider, and the obligation
-// that rides along with it, stay theirs. docs/operations/analytics lists the
-// options and where each one lands.
-//
-// MIABI_GEOIP=off skips the lookup, for turning geo off without moving the file.
+// ensureGeoIP binds a GeoIP database into the gateway when the operator has put one beside goma.yml, so Goma
+// can resolve client countries. Miabi does not fetch one deliberately: every database worth having carries a
+// license only the operator can accept. MIABI_GEOIP=off skips the lookup without moving the file.
 func (s *Service) ensureGeoIP(ctx context.Context, m *Manifest) {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("MIABI_GEOIP")), "off") {
 		s.log("GeoIP: disabled (MIABI_GEOIP=off) — analytics runs without country")
@@ -140,12 +119,9 @@ func (s *Service) ensureGeoIP(ctx context.Context, m *Manifest) {
 		s.hostPathFor(ctx, filepath.Join(dir, DefaultGeoIPFile)))
 }
 
-// validateGatewayConfig runs `goma config check` before the gateway is ever started.
-//
-// Worth the extra container: the panel's OWN route lives in this file, so a typo does
-// not merely break a feature — it locks the operator out of the UI they would use to
-// fix it. And without this the failure arrives as "miabi-gateway did not become
-// healthy within 1m30s", which says nothing about the missing colon on line 34.
+// validateGatewayConfig runs `goma config check` before the gateway is ever started. Worth the extra container:
+// the panel's OWN route lives in this file, so a typo does not merely break a feature — it locks the operator
+// out of the UI they would fix it in, and the failure would otherwise read as a health-check timeout.
 func (s *Service) validateGatewayConfig(ctx context.Context, m *Manifest, host string) error {
 	if err := ensureImage(ctx, s.dc, m.Images.Gateway, s.log); err != nil {
 		return err
@@ -176,16 +152,9 @@ func (s *Service) validateGatewayConfig(ctx context.Context, m *Manifest, host s
 	return nil
 }
 
-// requireHostPath resolves the config's host path, and refuses to continue if it
-// cannot — which happens exactly when the operator forgot to bind-mount the manifest
-// directory.
-//
-// Without that mount the file we just wrote lives only inside this throwaway
-// container. Handing the daemon our own view of the path makes it bind a host path
-// that does not exist, and Docker's answer to a missing bind source is to silently
-// create a DIRECTORY. Goma then finds a folder where goma.yml should be and refuses
-// it — so the install does fail, but it fails complaining about the CONFIG, which is
-// not the problem at all. Name the real one.
+// requireHostPath resolves the config's host path and refuses to continue if it cannot, which happens exactly
+// when the operator forgot to bind-mount the manifest directory. Without it the file lives only inside this
+// throwaway container, and Docker's silently-created directory makes the install fail complaining about the config.
 func (s *Service) requireHostPath(ctx context.Context, path string) (string, error) {
 	host, mapped := s.hostPath(ctx, path)
 	if mapped || selfcontainer.Detect() == "" {
@@ -207,17 +176,9 @@ func (s *Service) hostPathFor(ctx context.Context, path string) string {
 	return host
 }
 
-// hostPath maps a path THIS PROCESS sees to the path the Docker daemon will
-// resolve for a bind mount. mapped reports whether a bind actually covered it.
-//
-// This is the crux of bind-mounting from inside the installer container. Our
-// /etc/miabi is a bind of some host directory — /etc/miabi by default, but anything
-// under MIABI_ETC. Handing the daemon our own view of the path would point it at a
-// path on the HOST that may not exist — and Docker's response to a missing bind
-// source is to silently create a DIRECTORY. Goma would then find a folder where
-// goma.yml should be and fail for a reason that looks nothing like the cause.
-//
-// So: ask Docker what our own container's mounts are, and translate.
+// hostPath maps a path THIS PROCESS sees to the path the Docker daemon will resolve for a bind mount, and
+// reports whether a bind actually covered it. Handing the daemon our own view would point it at a host path
+// that may not exist — and Docker silently creates a DIRECTORY there, which Goma then finds instead of goma.yml.
 func (s *Service) hostPath(ctx context.Context, path string) (host string, mapped bool) {
 	id := selfcontainer.Detect()
 	if id == "" {

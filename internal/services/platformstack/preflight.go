@@ -35,23 +35,9 @@ func (c PortConflict) String() string {
 	return fmt.Sprintf("port %d is in use by a process on this host", c.Port)
 }
 
-// CheckPorts reports what would stop the gateway from binding 80 and 443.
-//
-// It runs BEFORE anything is created. Without it the install gets all the way to the
-// last component — Postgres up, Redis up, the control plane running — and only then
-// dies because something else already owns :443. The operator is left with a
-// half-built stack and an error about a port, which is the worst possible moment to
-// learn it.
-//
-// Two passes, because neither alone is enough:
-//
-//   - Docker's own containers, which is the common case (an existing gateway, a
-//     Traefik, a stray nginx container) and lets the message name the culprit.
-//   - An actual bind, for anything Docker cannot see. A system nginx holding :80 is
-//     invisible to `docker ps`, and from inside the installer container we cannot
-//     read the host's listening sockets either — our network namespace is not the
-//     host's. But asking Docker to publish the port answers the question exactly:
-//     it either succeeds or it does not.
+// CheckPorts reports what would stop the gateway from binding 80 and 443, BEFORE anything is created.
+// Two passes: Docker's own containers, which lets the message name the culprit; and an actual bind, for
+// anything Docker cannot see — a system nginx is invisible to `docker ps` and to our netns.
 func (s *Service) CheckPorts(ctx context.Context) ([]PortConflict, error) {
 	containers, err := s.dc.ListContainers(ctx, false)
 	if err != nil {
@@ -98,18 +84,9 @@ func (s *Service) CheckPorts(ctx context.Context) ([]PortConflict, error) {
 // holds its password is gone.
 var ErrOrphanedData = errors.New("an existing Miabi database was found, but its manifest is missing")
 
-// CheckOrphanedData refuses a FRESH install onto an existing Postgres volume.
-//
-// Postgres only honours POSTGRES_PASSWORD when it initializes an EMPTY data
-// directory. Point it at a data dir that already exists and it keeps the password it
-// was first created with — so a new manifest, with its freshly generated password,
-// can never authenticate. The database is intact and entirely unreadable.
-//
-// Nothing catches this on its own: `pg_isready` does not check credentials, so the
-// health gate goes green, and only the control plane discovers the truth, by
-// crash-looping on "password authentication failed".
-//
-// This is precisely why the manifest is worth backing up, and the error says so.
+// CheckOrphanedData refuses a FRESH install onto an existing Postgres volume. Postgres only honours
+// POSTGRES_PASSWORD when it initializes an EMPTY data directory, so a freshly generated password can
+// never authenticate. pg_isready does not check credentials, so nothing else catches it.
 func (s *Service) CheckOrphanedData(ctx context.Context) error {
 	if _, err := s.dc.InspectVolume(ctx, VolumePGData); err != nil {
 		if isNotFound(err) {

@@ -8,13 +8,9 @@ import (
 	"strings"
 )
 
-// Metadata is a free-form set of key/value labels attached to a resource
-// (Application, Stack, Database, Volume, Route, Secret). It backs provenance,
-// grouping, and the declarative/GitOps features.
-//
-// Keys under MetadataReservedPrefix are platform-managed ("built-in") and are
-// protected from user modification; all other keys are user-defined and freely
-// editable. Persisted as JSON (gorm serializer).
+// Metadata is a free-form set of key/value labels on a resource, backing provenance, grouping
+// and the declarative/GitOps features. Keys under MetadataReservedPrefix are platform-managed
+// and protected from user modification. Persisted as JSON.
 type Metadata = map[string]string
 
 // MetadataReservedPrefix marks built-in, platform-managed metadata keys.
@@ -28,23 +24,18 @@ const (
 	MetaTemplateInstall = "miabi.io/template-install" // template install id
 	MetaStack           = "miabi.io/stack"            // owning stack docker name
 	MetaGitOpsSource    = "miabi.io/gitops-source"    // id of the GitOps project that created the resource
-	// MetaRuntimeAutoService marks an app whose service runtime was auto-defaulted
-	// by cluster mode (not chosen by the caller). It is a one-shot marker: the first
-	// deploy re-evaluates the choice — downgrading to a container if the app turns
-	// out to hold node-local state — then clears it, so a later explicit runtime
-	// choice is always respected. Value: "true".
+	// MetaRuntimeAutoService marks an app whose service runtime was auto-defaulted by cluster
+	// mode rather than chosen. One-shot: the first deploy re-evaluates (downgrading to a
+	// container if the app holds node-local state) then clears it. Value: "true".
 	MetaRuntimeAutoService = "miabi.io/runtime-auto-service"
-	// MetaDeclarativeName records the declarative/manifest resource name a logical
-	// database was provisioned for. A manifest Database may live as a dedicated
-	// instance or as a logical database sharing another instance, so this tag is
-	// how a reconcile maps the manifest name back to the exact logical database it
-	// owns (instead of guessing by instance name / first-database).
+	// MetaDeclarativeName records the manifest resource name a logical database was provisioned
+	// for. A manifest Database may be a dedicated instance or share one, so this maps the name
+	// back to the exact logical database it owns instead of guessing.
 	MetaDeclarativeName = "miabi.io/declarative-name"
 
-	// Owner reference: what entity this resource belongs to / whose lifecycle it
-	// follows. Distinct from managed-by (the *mechanism* of creation); owner is
-	// the *parent*, stored as kind+id+name so the UI can link to it without a
-	// join. See OwnerKind* values and SetOwner/Owner.
+	// Owner reference: the entity this resource belongs to, whose lifecycle it follows. Distinct
+	// from managed-by (the mechanism of creation); owner is the parent, stored as kind+id+name so
+	// the UI can link to it without a join. See OwnerKind* and SetOwner/Owner.
 	MetaOwnerKind = "miabi.io/owner-kind" // one of OwnerKind* values
 	MetaOwnerID   = "miabi.io/owner-id"   // numeric id of the owner (omitted when 0)
 	MetaOwnerName = "miabi.io/owner-name" // owner display name (for rendering + linking)
@@ -135,20 +126,16 @@ func SanitizeUserMetadata(in Metadata) Metadata {
 	return out
 }
 
-// MergeUserMetadata applies a user-supplied overlay onto the current metadata
-// while protecting built-in keys: reserved keys from current are preserved and
-// cannot be overridden or removed by the overlay; non-reserved keys are replaced
-// wholesale by the overlay (so users can add/remove their own labels). Use on
-// update with the user's desired user-metadata as overlay.
+// MergeUserMetadata applies a user overlay onto current metadata while protecting built-in
+// keys: reserved keys from current are preserved, non-reserved keys are replaced wholesale so
+// users can add or remove their own labels.
 func MergeUserMetadata(current, overlay Metadata) Metadata {
 	out := make(Metadata, len(current)+len(overlay))
-	// Keep only the protected (built-in) keys from the current value.
 	for k, v := range current {
 		if IsReservedMetadataKey(k) {
 			out[k] = v
 		}
 	}
-	// Apply the user's keys, ignoring any reserved keys they try to set.
 	for k, v := range overlay {
 		if IsReservedMetadataKey(k) {
 			continue

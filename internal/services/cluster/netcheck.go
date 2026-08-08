@@ -16,22 +16,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/node"
 )
 
-// Cluster networking fails in a way that is almost impossible to read from the
-// outside: the swarm forms, DNS resolves, and then packets vanish. An app comes up,
-// resolves its database to a plausible overlay IP, and hangs — which looks like a
-// broken app, not a broken network.
-//
-// NetCheck makes that visible. It probes the real data plane, on the real overlay,
-// from every node to every other node, and separates the three failures that look
-// identical from the app's side:
-//
-//	DNS      — does the name resolve on the source node? (gossip, 7946)
-//	TCP      — does a connection complete? (VXLAN 4789/udp, and ESP if encrypted)
-//	Payload  — does a 1400-byte body survive? (MTU black hole)
-//
-// The payload check is the one nobody thinks to run, and it is the only thing that
-// catches an MTU black hole — where handshakes succeed and every large response
-// hangs forever.
+// Cluster networking fails almost unreadably from outside: the swarm forms, DNS resolves, then packets vanish
+// and it looks like a broken app. NetCheck probes the real data plane between every pair of nodes and separates
+// the three identical-looking failures: DNS resolution, TCP completion, and a 1400-byte payload (MTU black hole).
 const (
 	probePort     = 9099
 	probePayload  = 1400 // bytes; large enough to exceed a broken overlay MTU

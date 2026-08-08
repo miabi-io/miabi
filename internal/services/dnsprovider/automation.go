@@ -29,10 +29,9 @@ func (s *Service) ProviderExists(workspaceID, providerID uint) bool {
 	return err == nil
 }
 
-// EnsureVerificationRecord creates (idempotently) the ownership TXT for a
-// provider-connected domain and ledgers it, so Verify can succeed without a
-// manual DNS step. A no-op for a manual domain (no provider). Refuses to clobber
-// a conflicting record it did not create.
+// EnsureVerificationRecord idempotently creates the ownership TXT for a provider-connected domain and
+// ledgers it, so Verify can succeed without a manual DNS step. A no-op for a manual domain with no
+// provider, and it refuses to clobber a conflicting record it did not create.
 func (s *Service) EnsureVerificationRecord(ctx context.Context, d *models.Domain) error {
 	if d.DNSProviderID == nil {
 		return nil // manual domain — nothing to automate
@@ -56,10 +55,9 @@ func (s *Service) EnsureVerificationRecord(ctx context.Context, d *models.Domain
 	})
 }
 
-// CleanupDomain removes the records Miabi created for a domain — at the provider
-// (best-effort) and from the ledger. Called when a domain is deleted so a managed
-// record never outlives its domain. Only ledgered (Miabi-owned) records are
-// touched.
+// CleanupDomain removes the records Miabi created for a domain — at the provider (best-effort) and from
+// the ledger. Called when a domain is deleted, so a managed record never outlives its domain. Only
+// ledgered, Miabi-owned records are touched.
 func (s *Service) CleanupDomain(ctx context.Context, d *models.Domain) error {
 	recs, err := s.records.ListByDomain(d.ID)
 	if err != nil {
@@ -80,10 +78,9 @@ func (s *Service) CleanupDomain(ctx context.Context, d *models.Domain) error {
 	return s.records.DeleteByDomain(d.ID)
 }
 
-// Reconcile re-asserts every ledgered record at its provider (so a record a user
-// deleted out-of-band is restored) and refreshes each provider's Status. Driven
-// by a cron. Best-effort: a per-record failure is logged and flips the owning
-// provider to error, but never aborts the sweep.
+// Reconcile re-asserts every ledgered record at its provider, so a record a user deleted out of band is
+// restored, and refreshes each provider's Status. Driven by a cron. Best-effort: a per-record failure is
+// logged and flips the owning provider to error, but never aborts the sweep.
 func (s *Service) Reconcile(ctx context.Context) error {
 	recs, err := s.records.All()
 	if err != nil {
@@ -123,12 +120,9 @@ func (s *Service) Reconcile(ctx context.Context) error {
 	return nil
 }
 
-// ReconcileAppAddresses makes the app-address (A/AAAA/CNAME) records for an app's
-// routed hosts match `hosts`, pointing at the gateway's public address (ip for
-// A/AAAA, else hostname for CNAME). Only hosts that fall under a verified,
-// provider-connected domain are managed; everything else is ignored. Records for
-// this app no longer in `hosts` are removed. Passing no hosts (e.g. on app
-// delete) removes all of the app's address records. Best-effort per record.
+// ReconcileAppAddresses makes an app's A/AAAA/CNAME records match its routed hosts, pointing at the
+// gateway's public address. Only hosts under a verified, provider-connected domain are managed; records
+// for this app no longer in hosts are removed. Passing none removes them all. Best-effort per record.
 func (s *Service) ReconcileAppAddresses(ctx context.Context, workspaceID, appID uint, hosts []string, ip, hostname string) error {
 	// Build the desired set keyed by the ledger key (domainID|name|type).
 	type want struct {
@@ -170,7 +164,6 @@ func (s *Service) ReconcileAppAddresses(ctx context.Context, workspaceID, appID 
 		return p
 	}
 
-	// Upsert desired records.
 	for _, w := range desired {
 		prov := providerFor(w.domain)
 		if prov == nil {
@@ -193,7 +186,6 @@ func (s *Service) ReconcileAppAddresses(ctx context.Context, workspaceID, appID 
 		})
 	}
 
-	// Prune this app's address records that are no longer desired.
 	existing, err := s.records.ListByApp(appID)
 	if err != nil {
 		return err
@@ -268,10 +260,9 @@ func ledgerKey(domainID uint, name, typ string) string {
 	return fmt.Sprintf("%d|%s|%s", domainID, strings.ToLower(name), strings.ToUpper(typ))
 }
 
-// guardConflict refuses to overwrite a record at the managed name that Miabi did
-// not create. A ledgered record (ours) or a matching value is fine; a different
-// value with no ledger entry is a conflict. A provider read error does not block
-// (best-effort — SetRecord still runs).
+// guardConflict refuses to overwrite a record at the managed name that Miabi did not create. A ledgered
+// record (ours) or a matching value is fine; a different value with no ledger entry is a conflict. A
+// provider read error does not block (best-effort — SetRecord still runs).
 func (s *Service) guardConflict(ctx context.Context, prov dns.Provider, domainID uint, zone string, want dns.Record) error {
 	if _, err := s.records.Find(domainID, want.Name, want.Type); err == nil {
 		return nil // we already own this record

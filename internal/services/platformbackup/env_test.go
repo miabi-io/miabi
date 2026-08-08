@@ -12,11 +12,9 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// A passphrase supplied through the environment is the operator saying "encrypt
-// with this". Requiring a second variable to act on it would leave artifacts in
-// the clear on a deployment that plainly asked otherwise — and would leave the
-// identity envelope unsealed, which is what makes a recovery point restorable
-// onto a fresh host at all.
+// A passphrase supplied through the environment is the operator saying "encrypt with this". Requiring a
+// second variable to act on it would leave artifacts in the clear on a deployment that plainly asked
+// otherwise — and leave the identity envelope unsealed, which is what makes a fresh-host restore possible.
 func TestPassphraseImpliesEncryptionAndIdentity(t *testing.T) {
 	s := &Service{env: config.PlatformBackupConfig{Passphrase: "correct-horse-9!"}}
 	st := &models.PlatformBackupSettings{}
@@ -121,10 +119,9 @@ func TestNoPassphraseLeavesEncryptionOff(t *testing.T) {
 	}
 }
 
-// Tenant artifacts are ENQUEUED by the API server and RUN by the worker, so a
-// composition root that wires the tenant source in one process and not the other
-// produces artifacts that queue perfectly and then fail with a message about a
-// setting that does not exist. The error must name the real cause.
+// Tenant artifacts are ENQUEUED by the API server and RUN by the worker, so a composition root that wires
+// the tenant source in one process and not the other produces artifacts that queue perfectly and then fail
+// with a message about a setting that does not exist. The error must name the real cause.
 func TestTenantSourceMissingIsReportedAsAWiringFault(t *testing.T) {
 	s := &Service{} // no tenant source, as an unwired worker would be
 

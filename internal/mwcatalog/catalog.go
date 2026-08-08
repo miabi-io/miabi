@@ -1,14 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package mwcatalog is the single source of truth for the curated Goma
-// middleware types Miabi exposes as security policies. Each supported Goma type
-// has one declarative Descriptor that drives validation, secret handling and the
-// UI form. Adding a type later is one descriptor; an uncatalogued type is the
-// "advanced" escape hatch — it is passed through to Goma without schema checks.
-//
-// Field schemas mirror the Goma rule structs in
-// github.com/jkaninda/goma-gateway internal/types.go.
+// Package mwcatalog is the single source of truth for the curated Goma middleware types Miabi
+// exposes as security policies. Each supported type has one Descriptor driving validation, secret
+// handling and the UI form; an uncatalogued type passes through to Goma without schema checks.
 package mwcatalog
 
 import (
@@ -38,11 +33,9 @@ const (
 	FieldEnum     = "enum"     // one of Options
 	FieldUsers    = "users"    // basicAuth users: [{username, password}]
 	FieldMap      = "map"      // map<string,string> key/value editor (e.g. setHeaders)
-	// FieldPairs is a []string whose entries are Goma's "source: target" mapping
-	// syntax, with a bare "source" meaning "keep the same name" (forwardAuth's
-	// authResponseHeaders and authResponseHeadersAsParams). Stored as strings
-	// because that is Goma's wire format; edited as two inputs per row, because
-	// nobody should have to know the colon convention to use the UI.
+	// FieldPairs is a []string whose entries use Goma's "source: target" mapping syntax, a bare
+	// "source" meaning "keep the same name". Stored as strings because that is Goma's wire format;
+	// edited as two inputs per row, because nobody should need to know the colon convention.
 	FieldPairs = "pairs"
 	// FieldObject is a nested object. With Fields it renders a structured sub-form
 	// (e.g. cors); without Fields it is a free-form map passed through unchecked.
@@ -68,10 +61,9 @@ type Field struct {
 	// --- form presentation ---
 	// Placeholder is the example shown in an empty scalar or tag input.
 	Placeholder string `json:"placeholder,omitempty"`
-	// KeyLabel/ValueLabel name the two columns of a FieldMap or FieldPairs editor.
-	// They differ per middleware — a setHeaders row is "Header → value", a JWT
-	// forwardHeaders row is "Header → claim path" — and getting them wrong is how
-	// a form teaches the wrong mental model.
+	// KeyLabel/ValueLabel name the two columns of a FieldMap or FieldPairs editor. They differ per
+	// middleware — a setHeaders row is "Header -> value", a JWT forwardHeaders row is "Header -> claim
+	// path" — and getting them wrong is how a form teaches the wrong mental model.
 	KeyLabel         string `json:"key_label,omitempty"`
 	ValueLabel       string `json:"value_label,omitempty"`
 	KeyPlaceholder   string `json:"key_placeholder,omitempty"`
@@ -90,15 +82,12 @@ type Descriptor struct {
 	Description string   `json:"description"`
 	Category    Category `json:"category"`
 	Fields      []Field  `json:"fields"`
-	// Validate is an optional cross-field rule run after the per-field checks pass,
-	// for constraints the field loop can't express (e.g. "prefix must start with /",
-	// or "at least one of X/Y is set"). nil for types whose fields fully define them.
-	// It receives the rule with all field types already verified. Not serialized —
-	// the client can't run it, and the server enforces it on write anyway.
+	// Validate is an optional cross-field rule run after the per-field checks pass, for constraints the
+	// field loop can't express. nil for types whose fields fully define them. Not serialized — the
+	// client can't run it, and the server enforces it on write anyway.
 	Validate func(rule map[string]any) error `json:"-"`
 }
 
-// secretFields returns the descriptor's fields marked Secret.
 func (d Descriptor) secretFields() []Field {
 	var out []Field
 	for _, f := range d.Fields {

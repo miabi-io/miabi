@@ -11,12 +11,9 @@ import (
 	"time"
 )
 
-// fsBackend stores log objects as files under a rooted directory. For a
-// single-node or homelab install this is a durable, greppable, shippable set of
-// log files on a shared volume (MIABI_LOG_DIR) with zero extra infrastructure.
-// The same directory must be mounted by every process (control plane + any
-// standalone worker) that reads or writes it; multi-node installs use an object
-// backend instead.
+// fsBackend stores log objects as files under a rooted directory: for a single-node or homelab
+// install a durable, greppable set of log files on a shared volume with zero extra infrastructure.
+// Every process that reads or writes it must mount the same directory.
 type fsBackend struct {
 	root string
 }

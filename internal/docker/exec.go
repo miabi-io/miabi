@@ -19,10 +19,9 @@ type ExecOptions struct {
 	Env []string // extra environment, "KEY=VALUE"
 }
 
-// ExecStream is a bidirectional stream attached to a running exec instance.
-// With a TTY the byte stream is raw (no stdcopy multiplexing), so Read/Write
-// move terminal bytes directly. Resize adjusts the pseudo-terminal; Close ends
-// the session and releases the underlying connection.
+// ExecStream is a bidirectional stream attached to a running exec instance. With a TTY the byte
+// stream is raw (no stdcopy multiplexing), so Read/Write move terminal bytes directly. Resize
+// adjusts the pseudo-terminal; Close ends the session.
 type ExecStream interface {
 	Read(p []byte) (int, error)
 	Write(p []byte) (int, error)
@@ -66,8 +65,8 @@ func (e *engineClient) Top(ctx context.Context, containerID, psArgs string) (Pro
 	return ProcessList{Titles: body.Titles, Processes: body.Processes}, nil
 }
 
-// execStream wraps a hijacked exec attach connection. With a TTY the stream is
-// raw: stdout/stderr arrive interleaved on hj.Reader and stdin goes to hj.Conn.
+// execStream wraps a hijacked exec attach connection. With a TTY the stream is raw:
+// stdout/stderr arrive interleaved on hj.Reader and stdin goes to hj.Conn.
 type execStream struct {
 	cli *client.Client
 	id  string

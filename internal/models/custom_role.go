@@ -5,11 +5,9 @@ package models
 
 import "time"
 
-// CustomRole is an admin-defined permission set assigned to workspace members
-// (Enterprise; gated on the custom_roles entitlement for writes). BaseRole gives a
-// rank so the legacy rank-based RequireRole still resolves sanely for a member on
-// a custom role; the Permissions list drives the fine-grained RequirePermission
-// checks. The table is empty in Community.
+// CustomRole is an admin-defined permission set assigned to workspace members (Enterprise,
+// gated on custom_roles for writes). BaseRole gives a rank so the legacy RequireRole still
+// resolves; Permissions drives RequirePermission. The table is empty in Community.
 type CustomRole struct {
 	ID          uint          `json:"id" gorm:"primaryKey"`
 	WorkspaceID *uint         `json:"workspace_id" gorm:"index"`

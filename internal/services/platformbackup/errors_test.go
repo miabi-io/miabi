@@ -9,10 +9,9 @@ import (
 	"testing"
 )
 
-// RunOneShot returns a NIL error when the helper itself exits non-zero, so the
-// original `%w` on that nil produced "exited with code 1: %!w(<nil>)" — a
-// message that reported the one thing nobody needed and discarded the tool's
-// output, which is the whole diagnosis.
+// RunOneShot returns a NIL error when the helper itself exits non-zero, so the original `%w` on that nil
+// produced "exited with code 1: %!w(<nil>)" — a message that reported the one thing nobody needed and
+// discarded the tool's output, which is the whole diagnosis.
 func TestOneShotErrorCarriesTheOutput(t *testing.T) {
 	err := oneShotError("control-plane database backup", 1,
 		"pg_dump: error: connection to server at \"miabi-postgres\" failed", nil)

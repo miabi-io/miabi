@@ -39,17 +39,12 @@ func NewDatabaseHandler(svc *database.Service, apps *application.Service, forwar
 	return &DatabaseHandler{svc: svc, apps: apps, forward: forward, secrets: secrets, users: users, audit: auditLog, cluster: cluster}
 }
 
-// crossNodeOK reports whether an app may attach to a database on another node.
-// Only in cluster mode: the workspace network is then a swarm overlay, so the
-// instance's DNS alias resolves and connects from any node. Without it, every
-// workspace network is a node-local bridge and a cross-node attach would produce
-// an app that deploys fine and then fails at runtime with "could not translate
-// host name" — so it is rejected up front instead.
+// crossNodeOK reports whether an app may attach to a database on another node. Only in cluster
+// mode, where the workspace network is a swarm overlay so the instance's DNS alias resolves
+// anywhere. Otherwise a cross-node attach deploys fine and fails at runtime, so it is refused.
 func (h *DatabaseHandler) crossNodeOK() bool {
 	return h.cluster != nil && h.cluster.CapCluster()
 }
-
-// --- Instances ---
 
 type CreateDatabaseRequest struct {
 	Body struct {
@@ -156,8 +151,6 @@ func (h *DatabaseHandler) Credentials(c *okapi.Context) error {
 	h.record(c, inst.WorkspaceID, "database.reveal_credentials", inst.ID)
 	return ok(c, info)
 }
-
-// --- Port-forward (on-demand external access) ---
 
 // OpenForward starts an ephemeral, source-IP-gated TCP forward to the instance
 // so an external DB client can connect without publishing a host port. Returns
@@ -318,7 +311,6 @@ func (h *DatabaseHandler) Upgrade(c *okapi.Context, req *UpgradeDatabaseRequest)
 	return ok(c, updated)
 }
 
-// mapUpgradeErr maps upgrade validation failures to 400/409 rather than 500.
 func (h *DatabaseHandler) mapUpgradeErr(c *okapi.Context, err error) error {
 	switch {
 	case errors.Is(err, database.ErrNotFound):
@@ -363,8 +355,6 @@ func (h *DatabaseHandler) Delete(c *okapi.Context) error {
 	h.record(c, inst.WorkspaceID, "database.delete", inst.ID)
 	return message(c, "database deleted")
 }
-
-// --- Logical databases ---
 
 type CreateLogicalDatabaseRequest struct {
 	Body struct {
@@ -453,8 +443,6 @@ func (h *DatabaseHandler) DeleteDatabase(c *okapi.Context) error {
 	h.record(c, inst.WorkspaceID, "database.db_delete", db.ID)
 	return message(c, "database deleted")
 }
-
-// --- App-scoped (databases attached to an application) ---
 
 // ListByApp lists the logical databases attached to an application.
 func (h *DatabaseHandler) ListByApp(c *okapi.Context) error {
@@ -558,11 +546,9 @@ func (h *DatabaseHandler) DetachFromApp(c *okapi.Context) error {
 	return message(c, "database detached")
 }
 
-// injectIntoApp writes the connection as env vars on the app and flags it for
-// redeploy. The password and URL are injected as references to the database's
-// auto-provisioned Vault secrets (`${{ secrets.NAME }}`), so the app env never
-// holds the plaintext and rotating the database propagates to every consumer.
-// Falls back to plaintext when the Vault is unavailable.
+// injectIntoApp writes the connection as env vars on the app and flags it for redeploy. The
+// password and URL are injected as `${{ secrets.NAME }}` references to the database's
+// auto-provisioned Vault secrets, so the app env never holds plaintext. Falls back to plaintext.
 func (h *DatabaseHandler) injectIntoApp(workspaceID, appID uint, inst *models.DatabaseInstance, db *models.Database, conn database.ConnectionInfo, prefix string) bool {
 	app, err := h.apps.Get(workspaceID, appID)
 	if err != nil {
@@ -706,7 +692,6 @@ func (h *DatabaseHandler) dbID(c *okapi.Context) uint {
 	return uint(id)
 }
 
-// mapInstanceErr maps instance lifecycle (start/stop/restart) errors.
 func (h *DatabaseHandler) mapInstanceErr(c *okapi.Context, err error) error {
 	if errors.Is(err, database.ErrNoContainer) {
 		return c.AbortWithError(409, err)

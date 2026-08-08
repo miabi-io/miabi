@@ -44,11 +44,9 @@ type RunEvent struct {
 	FinishedAt string `json:"finished_at,omitempty"`
 }
 
-// PipelineHandler is the internal runner: it clones the source once into a
-// per-run workspace, then executes the run's steps in order over that shared
-// filesystem — container steps in one-shot containers, plus the built-in
-// `build` (workspace -> image + digest) and `deploy` (deploy-by-digest) steps.
-// Remote runners lease the same steps over the machine API.
+// PipelineHandler is the internal runner: it clones the source once into a per-run workspace, then
+// executes the run's steps in order over that shared filesystem — container steps in one-shot
+// containers, plus the built-in `build` and `deploy` steps. Remote runners lease the same steps.
 type PipelineHandler struct {
 	pipelines   *repositories.PipelineRepository
 	apps        *repositories.ApplicationRepository
@@ -157,11 +155,9 @@ func (h *PipelineHandler) ProcessTask(ctx context.Context, task *asynq.Task) err
 		return h.failRun(run, fmt.Errorf("invalid pipeline spec: %w", perr))
 	}
 
-	// Every build runs on a registered runner — there is no on-node fallback. This
-	// worker may simply not be the process that holds the runner tunnels (a
-	// standalone `miabi worker`), which is a routing problem, not a failure: hand
-	// the run to the control-plane worker instead of killing it. Checked before the
-	// run is marked running, so a handed-off run stays pending.
+	// Every build runs on a registered runner — there is no on-node fallback. This worker may simply not
+	// be the process holding the runner tunnels (a standalone `miabi worker`), which is a routing problem:
+	// hand the run to the control-plane worker. Checked before the run is marked running.
 	if h.dispatcher == nil {
 		return h.handOffToBuilder(run)
 	}
@@ -211,10 +207,9 @@ func (h *PipelineHandler) runOnRunner(ctx context.Context, run *models.PipelineR
 // runnerWaitInterval is how long a run waits before re-checking for a free runner.
 const runnerWaitInterval = 15 * time.Second
 
-// waitForRunner parks a run back in pending and re-enqueues it shortly, so it
-// never builds on a node while it waits for a runner. If no runner has become
-// available within runnerWaitTimeout (measured from when the run was created),
-// the run fails rather than waiting forever — pointing the user at Runners.
+// waitForRunner parks a run back in pending and re-enqueues it shortly, so it never builds on a node
+// while it waits. If no runner has become available within runnerWaitTimeout, measured from when the
+// run was created, the run fails rather than waiting forever — pointing the user at Runners.
 func (h *PipelineHandler) waitForRunner(run *models.PipelineRun) error {
 	if h.runnerWaitTimeout > 0 && time.Since(run.CreatedAt) > h.runnerWaitTimeout {
 		return h.failRun(run, fmt.Errorf(
@@ -228,18 +223,14 @@ func (h *PipelineHandler) waitForRunner(run *models.PipelineRun) error {
 	return h.producer.EnqueuePipelineRunIn(run.ID, runnerWaitInterval)
 }
 
-// jobInputs maps a run + its bound app onto the runner job context.
 func (h *PipelineHandler) jobInputs(run *models.PipelineRun, def *models.PipelineDefinition) (runners.JobInputs, error) {
 	// The runner logs into Registry and pushes to Repository, so both must carry
 	// the same resolved host (login-host ≠ push-host → "denied").
 	reg := h.registryHost()
 	var in runners.JobInputs
-	// The push namespace is the immutable ws_<id> form, not the workspace name a
-	// user types. Both authorize identically (the gateway rewrites a name to the
-	// id before storage), but the pushed reference is recorded on the deployment
-	// and re-pulled long afterwards — a rename in between would leave a name-form
-	// reference pointing at nothing, or at whoever has since taken that name.
-	// The workspace name is still resolved: it is the docker-login username.
+	// The push namespace is the immutable ws_<id> form, not the workspace name a user types. Both
+	// authorize identically, but the pushed reference is recorded on the deployment and re-pulled later
+	// — a rename in between would leave it pointing at nothing. The name is still the docker-login user.
 	ns := registryserver.Namespace(run.WorkspaceID)
 	if h.workspaces != nil {
 		if ws, err := h.workspaces.FindByID(run.WorkspaceID); err == nil && ws.Name != "" {
@@ -262,9 +253,8 @@ func (h *PipelineHandler) jobInputs(run *models.PipelineRun, def *models.Pipelin
 			}
 			in.SourceURL = su
 			if reg != "" {
-				// Push under <host>/ws_<id>/<app-name> so the deploy path recognizes
-				// it as a build ref, and the ownership check on the pull resolves the
-				// namespace back to this workspace.
+				// Push under <host>/ws_<id>/<app-name> so the deploy path recognizes it as a build ref, and the
+				// ownership check on the pull resolves the namespace back to this workspace.
 				in.Repository = fmt.Sprintf("%s/%s/%s", strings.TrimRight(reg, "/"), ns, app.Name)
 			}
 		}
@@ -272,10 +262,9 @@ func (h *PipelineHandler) jobInputs(run *models.PipelineRun, def *models.Pipelin
 	return in, nil
 }
 
-// sourceURL resolves the app's git clone URL for the runner, embedding the
-// linked HTTPS credential so a private repo clones on the runner. An empty
-// result (no app URL) is a command-only pipeline. SSH-key credentials aren't
-// supported for runner builds (ErrSSHUnsupportedOnRunner).
+// sourceURL resolves the app's git clone URL for the runner, embedding the linked HTTPS credential so
+// a private repo clones on the runner. An empty result (no app URL) is a command-only pipeline;
+// SSH-key credentials aren't supported for runner builds.
 func (h *PipelineHandler) sourceURL(app *models.Application) (string, error) {
 	rawURL := app.GitRepo
 	var gr *models.GitRepository
@@ -295,9 +284,8 @@ func (h *PipelineHandler) sourceURL(app *models.Application) (string, error) {
 	return gitrepo.CredentialURL(rawURL, gr, h.secrets)
 }
 
-// PipelineDeployer performs the deploy-by-digest a runner build triggers: it
-// creates a deployment of the pushed image (by its registry ref) for the app and
-// enqueues it to the app's node, which pulls and runs it. Implements
+// PipelineDeployer performs the deploy-by-digest a runner build triggers: it creates a deployment of
+// the pushed image and enqueues it to the app's node, which pulls and runs it. Implements
 // runners.Deployer.
 type PipelineDeployer struct {
 	apps        *repositories.ApplicationRepository

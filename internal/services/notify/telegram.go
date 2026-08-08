@@ -48,7 +48,6 @@ func (s *TelegramSender) Validate(ctx context.Context, ch *models.NotificationCh
 	return s.sendMessage(ctx, token, chatID, "✅ Miabi test notification — this channel is configured correctly.")
 }
 
-// creds extracts and decrypts the bot token and chat id from the channel config.
 func (s *TelegramSender) creds(ch *models.NotificationChannel) (token, chatID string, err error) {
 	enc := strings.TrimSpace(ch.Config[models.ConfigBotToken])
 	chatID = strings.TrimSpace(ch.Config[models.ConfigChatID])

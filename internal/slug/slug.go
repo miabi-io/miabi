@@ -19,10 +19,9 @@ var (
 // tokenAlphabet is lowercase alphanumeric — safe inside a DNS label.
 const tokenAlphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 
-// Token returns a random lowercase-alphanumeric string of length n, suitable as
-// a DNS-safe segment of a container/host name (e.g. the random part of
-// "mb-app-<token>-<id>"). Falls back to a fixed filler only if the system RNG
-// fails, which keeps callers total-length-stable.
+// Token returns a random lowercase-alphanumeric string of length n, suitable as a DNS-safe segment
+// of a container or host name. It falls back to a fixed filler only if the system RNG fails, which
+// keeps callers total-length-stable.
 func Token(n int) string {
 	if n <= 0 {
 		return ""
@@ -46,11 +45,9 @@ func Make(name, fallback string) string {
 	return s
 }
 
-// IsValid reports whether name is already a canonical slug — lowercase
-// alphanumeric with single interior hyphens and no leading/trailing hyphen, i.e.
-// Make is a no-op on it. Used to constrain user-chosen identifiers that become
-// part of the gateway config (route and middleware names), so they stay unique
-// and Goma/DNS-safe.
+// IsValid reports whether name is already a canonical slug — lowercase alphanumeric with single
+// interior hyphens — i.e. Make is a no-op on it. Used to constrain user-chosen identifiers that
+// become part of the gateway config, so they stay unique and Goma/DNS-safe.
 func IsValid(name string) bool {
 	return name != "" && Make(name, "") == name
 }
@@ -72,13 +69,9 @@ func Unique(name, fallback string, exists func(string) (bool, error)) (string, e
 	}
 }
 
-// reserved is the shared namespace that workspace names and usernames must
-// avoid. These are global handles that would otherwise collide with literal API
-// path segments (e.g. /workspaces, /me, /admin), the registry routes
-// (registry.<domain>/<name>/…), or the built-in system workspace. Keeping one
-// list means the workspace and user validators enforce the same rules. The
-// grammar (Make) already strips characters like "_", so e.g. "_catalog" can
-// never be produced as a handle, but "catalog" is reserved here defensively.
+// reserved is the shared namespace workspace names and usernames must avoid: global handles that
+// would collide with literal API path segments, the registry routes, or the built-in system
+// workspace. One list means the workspace and user validators enforce the same rules.
 var reserved = map[string]bool{
 	"system": true, "current": true, "me": true, "admin": true,
 	"api": true, "v1": true, "internal": true, "registry": true,

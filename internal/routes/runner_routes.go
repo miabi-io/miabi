@@ -12,9 +12,8 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// runnerRoutes registers workspace-scoped build/pipeline runner management. A
-// workspace registers and manages its own runners; reads are open to viewers,
-// mutations require workspace admin (registering build infrastructure).
+// runnerRoutes registers workspace-scoped build/pipeline runner management. Reads are open to
+// viewers; mutations require workspace admin, since this registers build infrastructure.
 func (r *Router) runnerRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Runners", Description: "Dedicated build & pipeline execution machines."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {
@@ -93,11 +92,9 @@ func (r *Router) runnerRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// runnerGatewayRoutes registers the runner tunnel endpoint. A runner dials in
-// over an outbound WebSocket authenticated by its registration token (not the
-// user JWT), so it is registered directly on the app to bypass the v1 group's
-// auth/maintenance middleware; it is rate-limited per IP (reusing the lenient
-// agent limiter — a token-authenticated, long-lived WebSocket).
+// runnerGatewayRoutes registers the runner tunnel endpoint. A runner dials in over an outbound
+// WebSocket authenticated by its registration token, not the user JWT, so it is registered
+// directly on the app to bypass the v1 auth/maintenance middleware and uses the agent limiter.
 func (r *Router) runnerGatewayRoutes() []okapi.RouteDefinition {
 	return []okapi.RouteDefinition{
 		{
@@ -111,8 +108,8 @@ func (r *Router) runnerGatewayRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// adminRunnerRoutes registers platform-admin management of the shared runner
-// pool (WorkspaceID = nil): runners any capable workspace may use.
+// adminRunnerRoutes registers platform-admin management of the shared runner pool
+// (WorkspaceID = nil): runners any capable workspace may use.
 func (r *Router) adminRunnerRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/admin/runners").WithTagInfo(okapi.GroupTag{Name: "Runners", Description: "Platform-shared build & pipeline runners."})
 	admin := []okapi.Middleware{r.authenticate, r.systemAdmin}

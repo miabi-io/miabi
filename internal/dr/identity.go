@@ -1,13 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package dr holds the disaster-recovery primitives shared by the running
-// platform and the host-side `miabi restore` command: the sealed identity
-// envelope and the naming of a recovery point's artifacts.
-//
-// It deliberately depends on nothing else in Miabi. The restore path runs on a
-// bare host with no database, no configuration and no control plane, so anything
-// it needs must be reachable without them.
+// Package dr holds the disaster-recovery primitives shared by the running platform and the
+// host-side `miabi restore`: the sealed identity envelope and the naming of a recovery point's
+// artifacts. It depends on nothing else in Miabi — the restore path runs on a bare host.
 package dr
 
 import (
@@ -55,16 +51,9 @@ var (
 	ErrWeakPassphrase = fmt.Errorf("backup passphrase must be at least %d characters and mix letters with digits or symbols", minPassLen)
 )
 
-// Identity is everything needed to rebuild the *stack that owns* a control-plane
-// dump. Without it, restoring a dump onto a fresh host produces a platform that
-// lists every workspace and cannot decrypt a single secret — because a fresh
-// install generates a new encryption key, and every secret in the dump is
-// ciphertext under the old one.
-//
-// Note what is NOT here: the database and Redis passwords. Those belong to the
-// *new* host's Postgres and Redis, which a fresh install creates; carrying them
-// forward would reintroduce the password-vs-data-directory trap that the
-// installer's orphaned-data check exists to prevent.
+// Identity is everything needed to rebuild the stack that owns a control-plane dump. Without it a
+// fresh host lists every workspace and decrypts no secret, since a fresh install generates a new
+// key. The database and Redis passwords are NOT here — those belong to the new host.
 type Identity struct {
 	Schema int `json:"schema"`
 

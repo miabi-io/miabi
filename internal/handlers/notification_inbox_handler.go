@@ -108,7 +108,6 @@ func (h *NotificationInboxHandler) Stream(c *okapi.Context) error {
 	return c.SSEStreamWithOptions(ctx, msgs, &okapi.StreamOptions{PingInterval: 15 * time.Second})
 }
 
-// uintQuery parses a non-negative integer query param, 0 when absent/invalid.
 func uintQuery(c *okapi.Context, name string) uint {
 	if q := c.Query(name); q != "" {
 		if n, err := strconv.ParseUint(q, 10, 64); err == nil {

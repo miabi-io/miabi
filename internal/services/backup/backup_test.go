@@ -94,15 +94,9 @@ func TestArtifactRegexMatchesMongoArchive(t *testing.T) {
 	}
 }
 
-// The tenant-database failure reported from production: with a passphrase set,
-// every artifact was encrypted and uploaded as ".gpg", but the recorded name was
-// the plain one — so verify reported three tenant databases "missing from the
-// bucket" that were sitting there under a different key.
-//
-// The tools narrate the plain dump while working and the encrypted one they
-// upload, so FindString — the first match — recorded a file that was never
-// written. This is the same fault that was fixed in platform backup; tenant
-// dumps go through THIS service, which still had it.
+// The tenant-database failure reported from production: with a passphrase set every artifact uploaded as
+// ".gpg", but the recorded name was the plain one — so verify reported databases "missing from the
+// bucket" that were sitting there under a different key. The first match names an intermediate file.
 func TestArtifactNameTakesTheUploadedFile(t *testing.T) {
 	cases := []struct {
 		name          string

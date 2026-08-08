@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package hoststats reads real host CPU and memory usage from a procfs
-// directory. The host's /proc/stat and /proc/meminfo already reflect the host
-// (not the container cgroup) even from inside a container, so reading the
-// process's own /proc works out of the box; binding the host's procfs to
-// /host/proc is an optional, explicit alternative (e.g. under hardened runtimes
-// that mask /proc). It is meaningful only for the node the process runs on.
+// Package hoststats reads real host CPU and memory usage from a procfs directory. /proc/stat and
+// /proc/meminfo already reflect the host even from inside a container, so the process's own /proc
+// works out of the box; binding the host's procfs to /host/proc is an explicit alternative.
 package hoststats
 
 import (
@@ -73,7 +70,6 @@ func Read(ctx context.Context, procPath string) (Stats, error) {
 	}, nil
 }
 
-// cpuTimes is the aggregate jiffy counters from the "cpu" line of /proc/stat.
 type cpuTimes struct {
 	total uint64
 	idle  uint64 // idle + iowait
@@ -116,7 +112,6 @@ func readCPU(procPath string) (cpuTimes, error) {
 	return cpuTimes{}, fmt.Errorf("hoststats: no cpu line in %s/stat", procPath)
 }
 
-// cpuPercent returns the busy CPU percentage between two samples, clamped 0..100.
 func cpuPercent(a, b cpuTimes) float64 {
 	totalDelta := float64(b.total) - float64(a.total)
 	idleDelta := float64(b.idle) - float64(a.idle)
@@ -165,7 +160,6 @@ func readMem(procPath string) (total, avail uint64, err error) {
 	return total, avail, nil
 }
 
-// parseMemLine parses a "Key:   1234 kB" line into (key, kilobytes).
 func parseMemLine(line string) (key string, kb uint64, ok bool) {
 	colon := strings.IndexByte(line, ':')
 	if colon < 0 {

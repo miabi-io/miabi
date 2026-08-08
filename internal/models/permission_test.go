@@ -5,10 +5,9 @@ package models
 
 import "testing"
 
-// TestRolePermissionsMonotonic is the core safety guarantee: each higher-ranked
-// built-in role is a strict superset of every lower-ranked one. This is what lets
-// RequirePermission coexist with the rank-based RequireRole without silently
-// changing access — the preset hierarchy mirrors the rank hierarchy.
+// TestRolePermissionsMonotonic is the core safety guarantee: each higher-ranked built-in role
+// is a strict superset of every lower one. That is what lets RequirePermission coexist with
+// rank-based RequireRole without silently changing access.
 func TestRolePermissionsMonotonic(t *testing.T) {
 	order := []WorkspaceRole{WorkspaceRoleViewer, WorkspaceRoleDeveloper, WorkspaceRoleAdmin, WorkspaceRoleOwner}
 	for i := 1; i < len(order); i++ {

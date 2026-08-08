@@ -15,7 +15,6 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// reservedSettingPrefix hides internal settings from the generic settings API.
 const reservedSettingPrefix = "app."
 
 // reservedSettingPrefixes are key prefixes managed by dedicated screens (not the
@@ -31,10 +30,9 @@ func isReservedSetting(key string) bool {
 	return false
 }
 
-// readOnlySettingKeys are system-managed: they appear in the settings list (so
-// an admin can see them) but the Update endpoint silently skips them, so they
-// can never be changed from the dashboard or the API. install_id is the stable
-// deployment identity — rewriting it would break license binding.
+// readOnlySettingKeys are system-managed: they appear in the settings list so an admin can see
+// them, but Update silently skips them, so they can never be changed from the dashboard or API.
+// install_id is the stable deployment identity — rewriting it would break license binding.
 var readOnlySettingKeys = map[string]bool{
 	storage.InstallIDKey: true,
 }

@@ -21,10 +21,9 @@ func NewNotificationInboxRepository(db *gorm.DB) *NotificationInboxRepository {
 	return &NotificationInboxRepository{db: db}
 }
 
-// Upsert creates the notification, or updates the existing one for the same
-// (user, alert) in place — so an alert's count bump or auto-resolve refreshes the
-// bell item instead of adding a row. resurface marks it unread again (a state
-// change like firing→resolved is worth re-showing; a plain count bump is not).
+// Upsert creates the notification or updates the existing one for the same (user, alert) in
+// place, so a count bump or auto-resolve refreshes the bell item instead of adding a row.
+// resurface marks it unread again — worth it for a state change, not for a plain count bump.
 func (r *NotificationInboxRepository) Upsert(n *models.Notification, resurface bool) error {
 	if n.AlertID == nil {
 		return r.db.Create(n).Error // standalone info: always a new row
@@ -107,11 +106,9 @@ func (r *NotificationInboxRepository) MarkAllRead(userID, workspaceID uint) erro
 	return q.Update("read_at", time.Now().UTC()).Error
 }
 
-// ApplyAlertUpdate updates every notification tied to an alert in place (e.g. an
-// auto-resolve rewriting the title to "recovered") and returns the affected user
-// ids so the engine can push the change over SSE. resurface marks them unread
-// again — a firing→resolved transition is worth re-showing. One UPDATE, one
-// SELECT; no per-user loop.
+// ApplyAlertUpdate updates every notification tied to an alert in place (e.g. an auto-resolve
+// rewriting the title) and returns the affected user ids so the engine can push over SSE.
+// resurface marks them unread again. One UPDATE, one SELECT; no per-user loop.
 func (r *NotificationInboxRepository) ApplyAlertUpdate(alertID uint, tmpl models.Notification, resurface bool) ([]uint, error) {
 	updates := map[string]any{
 		"title":        tmpl.Title,

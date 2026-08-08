@@ -22,16 +22,13 @@ import (
 // ErrNoActiveContainer is returned when an app has no running release.
 var ErrNoActiveContainer = errors.New("application has no active container")
 
-// ErrTaskOnUnmanagedNode is the user-facing form of nodes.ErrTaskUnreachable: the
-// app IS running, but on a swarm node with no Miabi agent, so there is no engine to
-// read its container's resource usage through. Docker offers no manager-side
-// equivalent of stats, so this is a hard limit, not a bug. Logs are unaffected —
-// the manager aggregates those (see StreamAppLogs).
+// ErrTaskOnUnmanagedNode is the user-facing form of nodes.ErrTaskUnreachable: the app IS running, but on a
+// swarm node with no Miabi agent, so there is no engine to read its resource usage through. Docker offers
+// no manager-side equivalent of stats, so this is a hard limit. Logs are unaffected.
 var ErrTaskOnUnmanagedNode = errors.New(
 	"this app's task runs on a swarm node with no Miabi agent, so its resource usage cannot be read. " +
 		"Add the node to Miabi (install the agent) to see metrics, stats and a shell")
 
-// errStopStream stops a stats stream after enough samples.
 var errStopStream = errors.New("stop")
 
 // NodeDocker resolves the Docker client for a node id (0 = local). Lets metrics
@@ -85,14 +82,9 @@ func (s *Service) eng(serverID uint) docker.Client {
 	return dc
 }
 
-// appEngine resolves both the node Docker client and a container id for an app,
-// so metrics/log/stat calls reach the right node. For a cluster (service) app it
-// resolves a running task container of its Swarm service on the manager; for a
-// container app it's the active release's container on the app's node.
-//
-// The app is loaded workspace-scoped so a caller can never read another
-// workspace's container by guessing its app id — the {appID} path segment is
-// otherwise unverified against the {workspace} the caller is a member of.
+// appEngine resolves both the node Docker client and a container id for an app, so metrics, log and stat calls
+// reach the right node — a running task of its Swarm service for a cluster app, the active release otherwise.
+// The app is loaded workspace-scoped, so a caller cannot read another workspace's container by guessing an id.
 func (s *Service) appEngine(ctx context.Context, workspaceID, appID uint) (docker.Client, string, error) {
 	app, err := s.apps.FindInWorkspace(workspaceID, appID)
 	if err != nil {
@@ -108,10 +100,9 @@ func (s *Service) appEngine(ctx context.Context, workspaceID, appID uint) (docke
 	return s.eng(app.ServerID), cid, nil
 }
 
-// serviceEngine resolves the Docker client and container id holding a cluster
-// (service) app's task, translating the registry's outcome into this package's
-// errors. Only metrics/stats need it — logs go through the manager instead, which
-// works even when the task is unreachable (see StreamAppLogs).
+// serviceEngine resolves the Docker client and container id holding a cluster (service) app's task,
+// translating the registry's outcome into this package's errors. Only metrics/stats need it — logs go
+// through the manager instead, which works even when the task is unreachable (see StreamAppLogs).
 func (s *Service) serviceEngine(ctx context.Context, app *models.Application) (docker.Client, string, error) {
 	dc, cid, err := s.clients.ForServiceTask(ctx, node.AppAlias(app))
 	switch {
@@ -142,16 +133,9 @@ func (s *Service) StreamAppMetrics(ctx context.Context, workspaceID, appID uint,
 	return dc.StreamStats(ctx, cid, sink)
 }
 
-// StreamAppLogs streams the active container's runtime logs (stdout/stderr),
-// starting with the last `tail` lines. When follow is true it then follows live
-// output until the context is cancelled; when false it returns after the tail.
-//
-// A cluster (service) app is read from the MANAGER via `docker service logs`, not
-// from a container. That is deliberate and is the only thing that works in general:
-// Swarm may have placed the task on a node Miabi has no Docker client for (an
-// unmanaged swarm member with no agent), and the manager can still pull its logs
-// over the swarm control plane. It also aggregates every replica, which reading a
-// single container never could.
+// StreamAppLogs streams the active container's runtime logs, starting with the last `tail` lines and then
+// following live output when follow is set. A cluster (service) app is read from the MANAGER via
+// `docker service logs`, which is the only thing that works when the task sits on an unmanaged node.
 func (s *Service) StreamAppLogs(ctx context.Context, workspaceID, appID uint, follow bool, tail string, sink func(docker.LogLine) error) error {
 	app, err := s.apps.FindInWorkspace(workspaceID, appID)
 	if err != nil {
@@ -178,12 +162,9 @@ func (s *Service) StreamAppLogs(ctx context.Context, workspaceID, appID uint, fo
 	return dc.StreamLogs(ctx, cid, follow, tail, sink)
 }
 
-// --- Workspace live usage (aggregated container stats) ---
-
-// WorkspaceSample is a live, aggregated resource snapshot across a workspace's
-// running application and database containers. It reflects what the containers
-// actually consume right now — unlike the /usage endpoint, which reports declared
-// reservations and quota counts.
+// WorkspaceSample is a live, aggregated resource snapshot across a workspace's running application and
+// database containers. It reflects what the containers actually consume right now — unlike the /usage
+// endpoint, which reports declared reservations and quota counts.
 type WorkspaceSample struct {
 	At               time.Time `json:"at"`
 	Containers       int       `json:"containers"`         // running containers sampled
@@ -195,10 +176,9 @@ type WorkspaceSample struct {
 	NetTxBytes       uint64    `json:"net_tx_bytes"`
 }
 
-// sampleTarget is one running container to sample, together with the engine that
-// can actually see it. It holds the resolved client rather than a node id because a
-// cluster (service) app has no fixed node — Swarm places its task wherever it
-// likes, and only that node's engine can read the container.
+// sampleTarget is one running container to sample, together with the engine that can actually see it. It
+// holds the resolved client rather than a node id because a cluster (service) app has no fixed node —
+// Swarm places its task wherever it likes, and only that node's engine can read the container.
 type sampleTarget struct {
 	dc          docker.Client
 	containerID string
@@ -208,10 +188,9 @@ type sampleTarget struct {
 // the platform to hammer every node's Docker daemon.
 const minWorkspaceUsageInterval = time.Second
 
-// workspaceTargets resolves every running app and database container in the
-// workspace — the set the live aggregate samples. Best-effort per resource: an
-// app with no active container (or an unreachable service task) is skipped rather
-// than failing the whole reading.
+// workspaceTargets resolves every running app and database container in the workspace — the set the live
+// aggregate samples. Best-effort per resource: an app with no active container (or an unreachable service
+// task) is skipped rather than failing the whole reading.
 func (s *Service) workspaceTargets(ctx context.Context, workspaceID uint) []sampleTarget {
 	var targets []sampleTarget
 	if apps, err := s.apps.ListByWorkspace(workspaceID); err == nil {
@@ -245,10 +224,9 @@ func (s *Service) workspaceTargets(ctx context.Context, workspaceID uint) []samp
 	return targets
 }
 
-// WorkspaceLiveUsage samples every running container in the workspace once
-// (concurrently) and returns the aggregate. Containers that error mid-sample —
-// stopped just now, or on an unreachable node — are skipped, so one bad container
-// never fails the whole reading.
+// WorkspaceLiveUsage samples every running container in the workspace once, concurrently, and returns the
+// aggregate. Containers that error mid-sample — stopped just now, or on an unreachable node — are skipped,
+// so one bad container never fails the whole reading.
 func (s *Service) WorkspaceLiveUsage(ctx context.Context, workspaceID uint) (WorkspaceSample, error) {
 	targets := s.workspaceTargets(ctx, workspaceID)
 	agg := WorkspaceSample{At: time.Now()}
@@ -326,12 +304,9 @@ type WorkspaceHistoryPoint struct {
 // fine buckets over a long window.
 const minHistoryBucket = 15 * time.Second
 
-// WorkspaceUsageHistory builds a workspace-level resource time series from the
-// scraper's stored per-app samples: each sample is bucketed to `bucket` and summed
-// across the workspace's apps, so the series reflects total workspace consumption
-// over time. Powers the dashboard sparkline. Within a bucket an app is counted
-// once (its latest sample), so a bucket wider than the scrape interval never
-// double-counts.
+// WorkspaceUsageHistory builds a workspace-level resource time series from the scraper's stored per-app
+// samples, bucketed and summed across the workspace's apps. Within a bucket an app is counted once, its
+// latest sample, so a bucket wider than the scrape interval never double-counts.
 func (s *Service) WorkspaceUsageHistory(workspaceID uint, since time.Time, bucket time.Duration) ([]WorkspaceHistoryPoint, error) {
 	if bucket < minHistoryBucket {
 		bucket = minHistoryBucket
@@ -348,7 +323,6 @@ func (s *Service) WorkspaceUsageHistory(workspaceID uint, since time.Time, bucke
 	if err != nil {
 		return nil, err
 	}
-	// Dedup to the latest sample per (bucket, app) before summing.
 	type slot struct {
 		bucket int64
 		app    uint
@@ -361,7 +335,6 @@ func (s *Service) WorkspaceUsageHistory(workspaceID uint, since time.Time, bucke
 			latest[k] = sm
 		}
 	}
-	// Sum each bucket across apps.
 	sums := map[int64]*WorkspaceHistoryPoint{}
 	for k, sm := range latest {
 		p := sums[k.bucket]
@@ -478,12 +451,9 @@ func (s *Service) serverName(cache map[uint]string, serverID uint) string {
 	return name
 }
 
-// --- Metrics history (scraper) ---
-
-// History returns stored metric samples for an app since `since`. The app is
-// verified to belong to workspaceID first so a caller cannot read another
-// workspace's stored metrics by guessing its app id; an app that isn't in the
-// workspace yields an empty history rather than confirming it exists elsewhere.
+// History returns stored metric samples for an app since `since`. The app is verified to belong to
+// workspaceID first, so a caller cannot read another workspace's metrics by guessing an app id; an app
+// outside the workspace yields an empty history rather than confirming it exists elsewhere.
 func (s *Service) History(workspaceID, appID uint, since time.Time, limit int) ([]models.MetricSample, error) {
 	if _, err := s.apps.FindInWorkspace(workspaceID, appID); err != nil {
 		return []models.MetricSample{}, nil

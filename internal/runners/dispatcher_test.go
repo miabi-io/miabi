@@ -58,7 +58,6 @@ func (f *fakeDeployer) DeployByDigest(_ *models.PipelineRun, appID uint, imageRe
 	return nil
 }
 
-// frameStream encodes a scripted sequence of report frames as a runner would.
 func frameStream(write func(fw *proto.FrameWriter)) *bytes.Buffer {
 	var buf bytes.Buffer
 	write(proto.NewFrameWriter(&buf))

@@ -68,8 +68,6 @@ func (r *LDAPRepository) ExistsByName(name string) (bool, error) {
 	return n > 0, err
 }
 
-// --- Group mappings ---
-
 func (r *LDAPRepository) CreateMapping(m *models.LDAPGroupMapping) error { return r.db.Create(m).Error }
 func (r *LDAPRepository) DeleteMapping(configID, mappingID uint) error {
 	return r.db.Where("id = ? AND ldap_config_id = ?", mappingID, configID).

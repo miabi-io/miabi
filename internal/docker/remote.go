@@ -17,12 +17,9 @@ import (
 // gets its own stream so streaming endpoints (logs/stats/events/build) work.
 type DialFunc func(ctx context.Context) (net.Conn, error)
 
-// NewRemote builds a Docker client that talks to a remote engine over an
-// arbitrary transport (the agent tunnel), reusing the same engineClient so every
-// existing service works against a remote node unchanged.
-//
-// The dummy host scheme ("http://") makes the SDK speak plain HTTP over our
-// transport; the dialer ignores the address and returns a tunnel stream.
+// NewRemote builds a Docker client that talks to a remote engine over an arbitrary transport (the
+// agent tunnel), reusing engineClient so every service works against a remote node unchanged. The
+// dummy "http://" host makes the SDK speak plain HTTP; the dialer returns a tunnel stream.
 func NewRemote(dial DialFunc) (Client, error) {
 	httpc := &http.Client{
 		Transport: &http.Transport{
@@ -37,10 +34,9 @@ func NewRemote(dial DialFunc) (Client, error) {
 			DisableCompression:    true,
 		},
 	}
-	// Order matters: WithHost runs sockets.ConfigureTransport on the *current*
-	// client's transport (which would clobber our DialContext). Apply it first
-	// against the throwaway default client, then install our http client last so
-	// our tunnel dialer survives.
+	// Order matters: WithHost runs sockets.ConfigureTransport on the *current* client's transport (which would
+	// clobber our DialContext). Apply it first against the throwaway default client, then install our http
+	// client last so our tunnel dialer survives.
 	cli, err := client.NewClientWithOpts(
 		client.WithHost("http://docker.invalid"),
 		client.WithHTTPClient(httpc),

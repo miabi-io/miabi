@@ -100,7 +100,6 @@ type pushPayload struct {
 	} `json:"head_commit"`
 }
 
-// parsePush extracts the branch, commit, and message from a provider push body.
 func parsePush(body []byte) (branch, commit, message string) {
 	var p pushPayload
 	if err := json.Unmarshal(body, &p); err != nil {

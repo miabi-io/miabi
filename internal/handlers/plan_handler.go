@@ -80,11 +80,9 @@ type AssignWorkspacePlanRequest struct {
 	} `json:"body"`
 }
 
-// guardSecurityProfile enforces that the Enterprise-only restricted security
-// profile may only be selected with the security_profile entitlement; the
-// default profile is always free. Uses RequireMutable so a degraded license
-// keeps an existing value read-only but can't add a new restriction. Returns
-// nil when the profile is not restricted.
+// guardSecurityProfile enforces that the Enterprise-only restricted security profile may be
+// selected only with the security_profile entitlement; the default profile is always free. Uses
+// RequireMutable so a degraded license keeps an existing value read-only. nil when not restricted.
 func (h *PlanHandler) guardSecurityProfile(securityProfile string) error {
 	if models.NormalizeSecurityProfile(securityProfile) == models.SecurityProfileRestricted {
 		return h.ee.RequireMutable(enterprise.FlagSecurityProfile)
@@ -259,10 +257,9 @@ func (h *PlanHandler) GetWorkspaceQuota(c *okapi.Context) error {
 	return ok(c, o)
 }
 
-// SetWorkspaceQuota upserts a workspace's overrides. Per-workspace overrides are a
-// Enterprise capability (gated quota_override → 402 in Community); plans themselves
-// stay free. Reading and clearing overrides are ungated so a license lapse never
-// strands a workspace with an override it cannot remove.
+// SetWorkspaceQuota upserts a workspace's overrides. Per-workspace overrides are an Enterprise
+// capability (gated quota_override → 402 in Community); plans themselves stay free. Reading and
+// clearing are ungated, so a license lapse never strands a workspace with an override it can't remove.
 func (h *PlanHandler) SetWorkspaceQuota(c *okapi.Context, req *SetWorkspaceQuotaRequest) error {
 	if err := h.ee.RequireMutable(enterprise.FlagQuotaOverride); err != nil {
 		return entitlementAbort(c, err)

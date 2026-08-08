@@ -48,11 +48,9 @@ type Topology struct {
 	Nodes  []TopologyNode     `json:"nodes"`
 	Edges  []declarative.Edge `json:"edges"`
 	Counts map[NodeStatus]int `json:"counts"`
-	// Error, when set, means the desired manifests could not be loaded or parsed
-	// (e.g. a broken commit). Nodes/Edges then reflect the last-known live
-	// (deployed) state instead of the desired graph, so the view degrades to
-	// "what is still running, plus why the latest sync failed" rather than going
-	// blank. Empty on a healthy response.
+	// Error, when set, means the desired manifests could not be loaded or parsed. Nodes and Edges then
+	// reflect the last-known live state instead of the desired graph, so the view degrades to "what is
+	// still running, plus why the latest sync failed" rather than going blank.
 	Error string `json:"error,omitempty"`
 	// Live is true when Nodes/Edges came from the live fallback rather than the
 	// desired manifests, so the UI can label statuses as last-known rather than
@@ -60,7 +58,6 @@ type Topology struct {
 	Live bool `json:"live,omitempty"`
 }
 
-// statusFromAction maps a plan action to a node sync status.
 func statusFromAction(a declarative.Action) NodeStatus {
 	switch a {
 	case declarative.ActionUpdate:
@@ -74,16 +71,13 @@ func statusFromAction(a declarative.Action) NodeStatus {
 	}
 }
 
-// Topology parses the manifests, diffs them against live state, and returns the
-// resource graph for the project-detail view: every declared resource as a node
-// (with its sync status and a link to the live resource), plus the dependency
-// edges between them. Orphaned GitOps-owned resources (present live but dropped
-// from the manifests) are included so the graph shows prune candidates too.
+// Topology parses the manifests, diffs them against live state, and returns the resource graph for the
+// project-detail view: every declared resource as a node with its sync status, plus the dependency
+// edges. Orphaned GitOps-owned resources are included, so the graph shows prune candidates too.
 func (s *Service) Topology(ctx context.Context, workspaceID uint, manifests []byte, opts Options) (*Topology, error) {
-	// Parse once for edges (env templates must still be intact), then render the
-	// same set for an accurate plan — render() rewrites env in place. If the
-	// desired manifests are broken, fall back to the live state (the last good
-	// sync is still deployed) rather than failing the whole view.
+	// Parse once for edges (env templates must still be intact), then render the same set for an accurate plan
+	// — render() rewrites env in place. If the desired manifests are broken, fall back to the live state (the
+	// last good sync is still deployed) rather than failing the whole view.
 	desired, err := declarative.Parse(manifests)
 	if err != nil {
 		return s.LiveTopology(ctx, workspaceID, fmt.Sprintf("%s: %v", ErrInvalidManifest, err))
@@ -125,11 +119,9 @@ func (s *Service) Topology(ctx context.Context, workspaceID uint, manifests []by
 	return topo, nil
 }
 
-// LiveStatus returns the current runtime status of the workspace's stateful
-// resources (applications and databases), keyed by topology node key
-// ("<Kind>/<slug>"). It is cheap — no git clone and no container inspection — so
-// the detail page can poll it to keep node health live between full (cloning)
-// topology loads.
+// LiveStatus returns the current runtime status of the workspace's stateful resources, keyed by
+// topology node key ("<Kind>/<slug>"). It is cheap — no git clone, no container inspection — so the
+// detail page can poll it to keep node health live between full topology loads.
 func (s *Service) LiveStatus(workspaceID uint) map[string]string {
 	out := map[string]string{}
 	if apps, err := s.apps.List(workspaceID); err == nil {
@@ -145,13 +137,9 @@ func (s *Service) LiveStatus(workspaceID uint) map[string]string {
 	return out
 }
 
-// LiveTopology builds the graph from live (deployed) state only, used as a
-// graceful fallback when the desired manifests cannot be loaded or parsed (a
-// broken commit, an unreachable repo). It shows the GitOps-owned resources that
-// are still running — the last successful sync — and surfaces syncError so the
-// view explains why it is degraded instead of going blank. Edges are derived
-// from live specs (structural links like route→app survive; env-template links
-// do not, since live env is already resolved).
+// LiveTopology builds the graph from live state only, as a graceful fallback when the desired manifests
+// cannot be loaded. It shows the GitOps-owned resources still running and surfaces syncError, so the
+// view explains why it is degraded. Edges come from live specs, so env-template links do not survive.
 func (s *Service) LiveTopology(ctx context.Context, workspaceID uint, syncError string) (*Topology, error) {
 	actual, err := s.snapshot(ctx, workspaceID)
 	if err != nil {
@@ -199,10 +187,9 @@ func routeURL(rt *models.Route) string {
 	return u
 }
 
-// appExternalURL returns the public address of an externally-accessible app: the
-// host of its generated external-access route (preferring the one on the app's
-// primary port). Empty when the app exposes no external-access port — its
-// exposure via a user-declared Route shows on that Route node instead.
+// appExternalURL returns the public address of an externally-accessible app: the host of its generated
+// external-access route (preferring the one on the app's primary port). Empty when the app exposes no
+// external-access port — its exposure via a user-declared Route shows on that Route node instead.
 func (s *Service) appExternalURL(workspaceID uint, app *models.Application) string {
 	routes, err := s.routes.ListByApp(workspaceID, app.ID)
 	if err != nil {

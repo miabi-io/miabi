@@ -17,8 +17,8 @@ type AuditLogRepository struct {
 
 func NewAuditLogRepository(db *gorm.DB) *AuditLogRepository { return &AuditLogRepository{db: db} }
 
-// applyTimeRange narrows a query to a created_at window. Zero bounds are
-// skipped; the upper bound is exclusive (the caller advances date-only `to`).
+// applyTimeRange narrows a query to a created_at window. Zero bounds are skipped; the upper
+// bound is exclusive (the caller advances a date-only `to`).
 func applyTimeRange(q *gorm.DB, from, to time.Time) *gorm.DB {
 	if !from.IsZero() {
 		q = q.Where("created_at >= ?", from)
@@ -48,9 +48,8 @@ func (r *AuditLogRepository) ListByWorkspace(workspaceID uint, order string, fro
 	return entries, total, nil
 }
 
-// orderDir sanitizes a caller-supplied sort direction, defaulting to DESC
-// (newest first). Only the two literal keywords are ever returned, so the
-// result is safe to concatenate into an ORDER BY clause.
+// orderDir sanitizes a caller-supplied sort direction, defaulting to DESC. Only the two literal
+// keywords are ever returned, so the result is safe to concatenate into an ORDER BY clause.
 func orderDir(order string) string {
 	if strings.EqualFold(strings.TrimSpace(order), "asc") {
 		return "ASC"

@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package manifest defines the declarative Miabi template format
-// (apiVersion miabi.io/v1, kind Template): a versioned bundle describing a
-// whole stack of applications plus the databases and volumes they depend on. It
-// owns parsing, validation, and the install-time interpolation of values.
+// Package manifest defines the declarative Miabi template format (apiVersion miabi.io/v1, kind
+// Template): a versioned bundle describing a whole stack of applications plus the databases and volumes
+// they depend on. It owns parsing, validation, and install-time interpolation of values.
 package manifest
 
 // APIVersion / Kind are the only accepted document identifiers.
@@ -62,14 +61,9 @@ type Manifest struct {
 	Applications []AppSpec  `yaml:"applications,omitempty" json:"applications,omitempty"`
 }
 
-// StackSpec optionally configures the Stack a template is grouped into on
-// install. A template with two or more applications is always grouped into a
-// stack; declaring this block additionally forces a stack for a single-app
-// template and lets the template describe it and share configuration across its
-// members. Env declared here is injected into every member application's
-// containers at deploy time (an app-level var with the same key wins), so the
-// connection details every member needs are written once instead of per app —
-// e.g. authentik's server + worker sharing the same database and Redis.
+// StackSpec optionally configures the Stack a template is grouped into on install. Two or more
+// applications always group; declaring this block also forces a stack for a single-app template. Env
+// declared here is injected into every member's containers (an app-level var with the same key wins).
 type StackSpec struct {
 	Description string            `yaml:"description,omitempty" json:"description,omitempty"`
 	Env         map[string]string `yaml:"env,omitempty" json:"env,omitempty"`

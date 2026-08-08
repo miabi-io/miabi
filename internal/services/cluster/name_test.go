@@ -9,7 +9,6 @@ import (
 	"testing"
 )
 
-// memTokens is an in-memory TokenStore (the same store backs the cluster name).
 type memTokens struct{ m map[string]string }
 
 func newMemTokens() *memTokens { return &memTokens{m: map[string]string{}} }

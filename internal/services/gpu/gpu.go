@@ -1,13 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package gpu inventories the physical GPUs on Miabi-managed nodes and resolves a
-// running app's GPU request to concrete devices at deploy time. Inventory rides
-// the Docker API the control plane already speaks to every node through (a
-// one-shot nvidia-smi probe container), so the node agent needs no changes and
-// all three node access modes (local, agent-tunnelled, direct-socket) behave
-// identically. Physical placement (which cards are offered, shared vs dedicated)
-// is the platform admin's job; tenants only ever say "my app needs N GPUs".
+// Package gpu inventories the physical GPUs on Miabi-managed nodes and resolves a running app's GPU
+// request to concrete devices at deploy time. Inventory rides the Docker API the control plane already
+// speaks, so the node agent needs no changes and all three node access modes behave identically.
 package gpu
 
 import (
@@ -115,11 +111,9 @@ func (s *Service) Preflight(app *models.Application) error {
 	return nil
 }
 
-// ResolveDevices binds an app's GPU request to concrete enabled devices on its
-// node, returning the Docker device requests to attach. runtimes is the node's
-// advertised container runtimes (docker info); a node without the NVIDIA runtime
-// is refused up front rather than failing cryptically at container start. Returns
-// nil when the app requests no GPU.
+// ResolveDevices binds an app's GPU request to concrete enabled devices on its node, returning the Docker
+// device requests to attach. runtimes is the node's advertised container runtimes; a node without the
+// NVIDIA runtime is refused up front rather than failing cryptically at container start.
 func (s *Service) ResolveDevices(ctx context.Context, app *models.Application, runtimes []string) ([]docker.GPURequest, error) {
 	if app == nil || app.GPUCount <= 0 {
 		return nil, nil
@@ -146,8 +140,6 @@ func (s *Service) ResolveDevices(ctx context.Context, app *models.Application, r
 	}
 	return []docker.GPURequest{{DeviceIDs: ids, Capabilities: [][]string{{"gpu"}}}}, nil
 }
-
-// --- Admin operations ---
 
 // Devices lists every discovered device on a node (enabled or not).
 func (s *Service) Devices(serverID uint) ([]models.GPUDevice, error) {
@@ -191,8 +183,6 @@ func (s *Service) SetDevice(serverID, gpuID uint, enabled, shared *bool) (*model
 	return d, nil
 }
 
-// --- Inventory ---
-
 // Inventory sweeps every node, refreshing its GPU rows. Per-node failures are
 // logged and skipped (a probe failure must never fail the whole sweep). Safe to
 // call on a schedule; a no-op when GPU support is disabled.
@@ -213,10 +203,9 @@ func (s *Service) Inventory(ctx context.Context) error {
 	return nil
 }
 
-// InventoryNode refreshes one node's GPU rows and returns how many devices were
-// observed. A node without the NVIDIA runtime, or whose probe fails, yields zero
-// devices (never an error) — most nodes have no GPU. Discovered devices are
-// upserted by UUID (admin flags preserved); new ones arrive disabled.
+// InventoryNode refreshes one node's GPU rows and returns how many devices were observed. A node without
+// the NVIDIA runtime, or whose probe fails, yields zero devices and never an error — most nodes have no
+// GPU. Discovered devices are upserted by UUID with admin flags preserved; new ones arrive disabled.
 func (s *Service) InventoryNode(ctx context.Context, serverID uint) (int, error) {
 	if !s.Enabled() {
 		return 0, ErrGPUDisabled
@@ -362,7 +351,6 @@ func parseNvidiaSMI(raw string) ([]models.GPUDevice, error) {
 	return out, nil
 }
 
-// parseMiB parses an nvidia-smi memory string like "40960 MiB" into whole MiB.
 func parseMiB(s string) int {
 	s = strings.TrimSpace(s)
 	s = strings.TrimSuffix(s, "MiB")

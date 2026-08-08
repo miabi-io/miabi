@@ -5,13 +5,9 @@ package models
 
 import "time"
 
-// Notification is a per-user inbox item — the delivery of an Alert (or a
-// standalone info message) to one member. Alerts are workspace-level and shared;
-// notifications are per-user so read/unread stays clean. It renders the alert at
-// delivery time (Title/Body/link), so the inbox is self-contained even after the
-// alert archives. When an alert updates (crash-loop count bump, auto-resolve),
-// the existing notification is updated in place (unique per user+alert) rather
-// than a new row spamming the bell.
+// Notification is a per-user inbox item — the delivery of an Alert to one member. Alerts are
+// workspace-level and shared; notifications are per-user so read/unread stays clean. It
+// renders the alert at delivery time and updates in place rather than spamming the bell.
 type Notification struct {
 	ID          uint          `json:"id" gorm:"primaryKey"`
 	UserID      uint          `json:"user_id" gorm:"index:idx_notif_user_alert,priority:1;not null"`

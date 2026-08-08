@@ -49,10 +49,9 @@ const (
 	ConfigWebhookURL = "webhook_url" // slack/discord; encrypted at rest
 )
 
-// NotificationChannel is a workspace-configured outbound channel that pushes a
-// human-readable message when a subscribed event fires. Transport-specific
-// settings live in Config; secret values (e.g. bot_token) are encrypted at rest
-// and masked in API responses.
+// NotificationChannel is a workspace-configured outbound channel that pushes a human-readable
+// message when a subscribed event fires. Transport settings live in Config; secret values are
+// encrypted at rest and masked in API responses.
 type NotificationChannel struct {
 	ID          uint                    `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint                    `json:"workspace_id" gorm:"index;not null"`

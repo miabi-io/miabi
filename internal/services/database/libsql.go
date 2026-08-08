@@ -14,12 +14,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/crypto"
 )
 
-// libSQL (sqld) authenticates HTTP clients with an EdDSA-signed JWT rather than a
-// username/password. Each instance gets its own Ed25519 keypair: sqld is started
-// with the public key (SQLD_AUTH_JWT_KEY) and verifies tokens minted with the
-// private key. The private key is stored encrypted on the instance so a token can
-// be re-minted; the client token itself lives (encrypted) on the implicit logical
-// Database row, exactly where the SQL engines keep their passwords.
+// libSQL (sqld) authenticates HTTP clients with an EdDSA-signed JWT rather than a password. Each instance gets
+// its own Ed25519 keypair: sqld starts with the public key and verifies tokens minted with the private one,
+// which is stored encrypted so a token can be re-minted. The client token lives on the implicit Database row.
 
 const (
 	libsqlHTTPPort = 8080
@@ -58,7 +55,6 @@ func libsqlMintToken(priv ed25519.PrivateKey) (string, error) {
 	return tok.SignedString(priv)
 }
 
-// libsqlPrivateKey decrypts and decodes an instance's stored Ed25519 private key.
 func libsqlPrivateKey(privEnc string) (ed25519.PrivateKey, error) {
 	dec, err := crypto.Decrypt(privEnc)
 	if err != nil {
@@ -74,10 +70,9 @@ func libsqlPrivateKey(privEnc string) (ed25519.PrivateKey, error) {
 	return ed25519.PrivateKey(raw), nil
 }
 
-// libsqlServerEnv builds the sqld container environment for a libSQL instance: a
-// single-node primary serving HTTP clients on 8080, verifying JWTs with the
-// instance's public key. sqld accepts the key as URL-safe base64 (no padding) of
-// the raw Ed25519 public key.
+// libsqlServerEnv builds the sqld container environment for a libSQL instance: a single-node primary
+// serving HTTP clients on 8080, verifying JWTs with the instance's public key. sqld accepts the key as
+// URL-safe base64 (no padding) of the raw Ed25519 public key.
 func libsqlServerEnv(inst *models.DatabaseInstance) ([]string, error) {
 	priv, err := libsqlPrivateKey(inst.JWTPrivateKeyEnc)
 	if err != nil {

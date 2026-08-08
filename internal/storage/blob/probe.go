@@ -18,15 +18,9 @@ import (
 	"github.com/aws/smithy-go"
 )
 
-// Probe verifies a target end to end by using it: it writes a small object,
-// reads it back, compares the bytes, and removes it.
-//
-// This is deliberately not a HeadBucket. A bucket that exists says nothing about
-// whether these credentials may write to it, whether the endpoint in front of it
-// stores what it accepts, or whether the prefix is writable under the policy that
-// is actually attached — and "the settings look valid" is exactly the answer an
-// operator does not need at the moment they are trying to find out why their
-// backups are empty.
+// Probe verifies a target end to end by using it: writes a small object, reads it back,
+// compares the bytes, removes it. Deliberately not a HeadBucket — a bucket that exists says
+// nothing about whether these credentials may write to it under the attached policy.
 type Probe struct {
 	// Key is the object the probe used, for the message shown to the operator.
 	Key string
@@ -41,13 +35,9 @@ type Probe struct {
 // it is safe.
 const probeNotice = "Miabi connection test. Safe to delete."
 
-// RunProbe performs the round trip under prefix. A failure is returned with the
-// operation that failed named, so the operator learns *which* permission is
-// missing rather than that "something" went wrong.
-//
-// Delete is attempted but never fatal: a target that can be written and read is
-// usable for backups, and a missing delete permission costs retention, not data.
-// The caller sees it in Removed and can say so.
+// RunProbe performs the round trip under prefix, naming the operation that failed so the
+// operator learns which permission is missing. Delete is attempted but never fatal: a missing
+// delete permission costs retention, not data, and the caller sees it in Removed.
 func RunProbe(ctx context.Context, cfg Config, prefix string) (Probe, error) {
 	var p Probe
 	store, err := New(cfg)
@@ -90,11 +80,9 @@ func RunProbe(ctx context.Context, cfg Config, prefix string) (Probe, error) {
 	return p, nil
 }
 
-// explain turns an S3 failure into something an operator can act on.
-//
-// The SDK's own errors name the symptom (a 403, a DNS lookup) and not the
-// setting that produced it. These are the four mistakes that actually get made
-// when pointing Miabi at a bucket, so each one says which field to look at.
+// explain turns an S3 failure into something an operator can act on. The SDK's errors name the
+// symptom (a 403, a DNS lookup) and not the setting that produced it, so each of the four
+// mistakes that actually get made says which field to look at.
 func explain(err error, cfg Config) error {
 	if err == nil {
 		return nil

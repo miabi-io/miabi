@@ -1,15 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package declarative is the shared declarative resource model for Miabi.
-// It generalizes the marketplace manifest engine into a family of
-// miabi.io/v1 resource kinds (Application, Stack, Database, Volume, Domain,
-// Secret, Project) and exposes a single parse/validate/render path plus a
-// plan/diff engine.
-//
-// Four consumers speak the same kinds: the `apply` API, GitOps reconciliation,
-// the Terraform/OpenTofu provider, and marketplace templates. One schema, one
-// validator, one plan engine — author once, consume four ways.
+// Package declarative is the shared declarative resource model for Miabi: a family of miabi.io/v1
+// kinds with one parse/validate/render path and one plan/diff engine. Four consumers speak the
+// same kinds — the apply API, GitOps, the Terraform provider, and marketplace templates.
 package declarative
 
 // APIVersion is the only accepted apiVersion. It is shared with the marketplace
@@ -25,10 +19,9 @@ const (
 	KindStack       Kind = "Stack"
 	KindDatabase    Kind = "Database"
 	KindVolume      Kind = "Volume"
-	// KindRoute is an HTTP routing rule (host/path → app:port + TLS). It is
-	// distinct from KindDomain: a Route exposes an app on a hostname, while a
-	// Domain is the owned hostname/zone that tracks DNS ownership + the default
-	// TLS policy routes under it inherit.
+	// KindRoute is an HTTP routing rule (host/path -> app:port + TLS), distinct from KindDomain: a
+	// Route exposes an app on a hostname, while a Domain is the owned hostname/zone tracking DNS
+	// ownership and the default TLS policy routes under it inherit.
 	KindRoute  Kind = "Route"
 	KindSecret Kind = "Secret"
 	// KindDomain is an owned hostname (or zone) a workspace controls: its default
@@ -57,13 +50,9 @@ var knownKinds = map[Kind]bool{
 	KindProject:     true,
 }
 
-// Meta is the identity block shared by every kind. Name is the reserved
-// identity; Labels and Annotations are the two free-form key/value maps for
-// user metadata. Labels are short and identifying (intended for selection and
-// grouping); Annotations hold descriptive, non-selectable data the engine
-// stores but never queries. Custom user metadata belongs in one of these maps —
-// never as ad-hoc top-level keys, which would collide with future reserved
-// fields.
+// Meta is the identity block shared by every kind. Labels are short and identifying (for selection
+// and grouping); Annotations hold descriptive data the engine stores but never queries. Custom
+// metadata belongs in one of these maps, never as ad-hoc top-level keys.
 type Meta struct {
 	Name string `yaml:"name" json:"name"`
 	// UID is the resource's portable identifier (its Miabi uid). Written on
@@ -108,32 +97,25 @@ type ApplicationSpec struct {
 	SecretEnv []string          `yaml:"secretEnv,omitempty" json:"secretEnv,omitempty"`
 	Mounts    []MountSpec       `yaml:"mounts,omitempty" json:"mounts,omitempty"`
 	Resources *ResourceSpec     `yaml:"resources,omitempty" json:"resources,omitempty"`
-	// ContainerLabels are user-defined Docker labels stamped on the app's
-	// container(s) — for label-driven tools like Traefik. Reserved keys
-	// (io.miabi.*, com.docker.*) are stripped on apply (a manifest is
-	// machine-authored, so import is fail-soft rather than erroring).
+	// ContainerLabels are user-defined Docker labels stamped on the app's container(s), for
+	// label-driven tools like Traefik. Reserved keys (io.miabi.*, com.docker.*) are stripped on apply
+	// — a manifest is machine-authored, so import is fail-soft rather than erroring.
 	ContainerLabels map[string]string `yaml:"containerLabels,omitempty" json:"containerLabels,omitempty"`
 	// Stack optionally names the owning Stack resource.
 	Stack string `yaml:"stack,omitempty" json:"stack,omitempty"`
-	// Registry names the Registry credential used to pull this image (a private
-	// registry). Empty = an anonymous, public pull. The credential does not have
-	// to be declared in the same bundle: a name that is not in the manifest is
-	// resolved against the workspace's existing credentials, so a token created
-	// once in the UI can be referenced by every manifest.
+	// Registry names the Registry credential used to pull this image; empty means an anonymous public
+	// pull. It need not be declared in the same bundle: a name not in the manifest resolves against
+	// the workspace's existing credentials, so a token created once in the UI can be reused.
 	Registry string `yaml:"registry,omitempty" json:"registry,omitempty"`
-	// ExternalLabel pins the subdomain used for external access
-	// (`<label>.<base-domain>`). Optional — when unset Miabi generates a
-	// stable label; pinning it keeps the public URL deterministic across applies.
-	// The label is platform-wide unique: if it is already claimed by another app,
-	// it is ignored and a generated label is used instead (the apply still
-	// succeeds), so a copy-pasted manifest never fails on a label clash.
+	// ExternalLabel pins the subdomain used for external access (`<label>.<base-domain>`). When unset
+	// Miabi generates a stable label. The label is platform-wide unique: if already claimed it is
+	// ignored and a generated one is used, so a copy-pasted manifest never fails on a clash.
 	ExternalLabel string `yaml:"externalLabel,omitempty" json:"externalLabel,omitempty"`
 }
 
-// PortSpec is a container port and how it is reached. The two exposure knobs are
-// orthogonal: externalAccess gives it a public HTTPS URL through the reverse
-// proxy, while publish/hostPort binds it to a raw port on the node (like
-// `docker -p`).
+// PortSpec is a container port and how it is reached. The two exposure knobs are orthogonal:
+// externalAccess gives it a public HTTPS URL through the reverse proxy, while publish/hostPort
+// binds it to a raw port on the node, like `docker -p`.
 type PortSpec struct {
 	Container int    `yaml:"container" json:"container"`
 	Protocol  string `yaml:"protocol,omitempty" json:"protocol,omitempty"` // tcp|udp (default tcp)
@@ -192,33 +174,24 @@ type RouteSpec struct {
 	TLS   string   `yaml:"tls,omitempty" json:"tls,omitempty"` // acme|custom|off (default acme)
 }
 
-// DomainSpec declares an owned hostname/zone. The hostname is the resource's
-// metadata.name (a real FQDN, e.g. shop.example.com). tls is the default
-// certificate policy routes under it inherit; wildcard covers *.name too.
-// Ownership verification (publishing the TXT token) is a runtime action.
+// DomainSpec declares an owned hostname/zone; the hostname is the resource's metadata.name (a real
+// FQDN). tls is the default certificate policy routes under it inherit, and wildcard covers
+// *.name too. Ownership verification is a runtime action.
 type DomainSpec struct {
 	TLS      string `yaml:"tls,omitempty" json:"tls,omitempty"` // acme|custom (default acme)
 	Wildcard bool   `yaml:"wildcard,omitempty" json:"wildcard,omitempty"`
 }
 
-// RegistrySpec is a container-registry credential. Server is the registry host
-// (empty = Docker Hub); Username and Password authenticate to it. An Application
-// selects one by name through its spec.registry.
-//
-// Password is write-only — it is never read back and never appears in a plan.
-// Prefer referencing the vault ("{{ .secrets.ghcr_token }}") over an inline
-// literal, so a manifest committed to git carries no token. A rotation still
-// converges: the plan compares an unreadable fingerprint of the stored password
-// (see PasswordFP) and reports the change as "password: (current) → (rotated)".
+// RegistrySpec is a container-registry credential; an Application selects one via spec.registry.
+// Password is write-only and never appears in a plan — prefer a vault reference over an inline
+// literal. A rotation still converges via an unreadable fingerprint (see PasswordFP).
 type RegistrySpec struct {
 	Server   string `yaml:"server,omitempty" json:"server,omitempty"`
 	Username string `yaml:"username,omitempty" json:"username,omitempty"`
 	Password string `yaml:"password,omitempty" json:"password,omitempty"`
-	// PasswordFP is the fingerprint of the *rendered* password, filled in by the
-	// apply engine on both sides of the diff (from the manifest for the desired
-	// side, from the stored credential for the live side). It is deliberately not
-	// serialized: it is derived state, so a Marshal→Parse round trip (how GitOps
-	// canonicalizes a bundle) simply recomputes it.
+	// PasswordFP is the fingerprint of the *rendered* password, filled in by the apply engine on both
+	// sides of the diff. Deliberately not serialized: it is derived state, so a Marshal->Parse round
+	// trip (how GitOps canonicalizes a bundle) simply recomputes it.
 	PasswordFP string `yaml:"-" json:"-"`
 }
 

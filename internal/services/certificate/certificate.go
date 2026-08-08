@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package certificate manages workspace-scoped imported TLS certificates
-// (bring-your-own; ACME is handled by Goma). A certificate is parsed and
-// validated on import (key must match the leaf), its SANs recorded for host
-// auto-matching, and its private key encrypted at rest. Routes reference a
-// certificate by id; the PEM/key are resolved server-side at render time.
+// Package certificate manages workspace-scoped imported TLS certificates; ACME is handled by Goma. A
+// certificate is parsed and validated on import (the key must match the leaf), its SANs recorded for
+// host auto-matching, and its private key encrypted at rest. Routes reference one by id.
 package certificate
 
 import (
@@ -86,10 +84,9 @@ func (s *Service) Get(workspaceID, id uint) (*models.Certificate, error) {
 	return c, nil
 }
 
-// Import parses and validates a certificate + key, encrypts the key, and stores
-// it with its parsed metadata. name is the desired unique slug handle (normalized
-// to canonical slug form); displayName is the free-text label (falls back to the
-// raw name when blank).
+// Import parses and validates a certificate and key, encrypts the key, and stores it with its parsed
+// metadata. name is the desired unique slug handle, normalized to canonical form; displayName is the
+// free-text label, falling back to the raw name when blank.
 func (s *Service) Import(workspaceID uint, name, displayName, certPEM, keyPEM string) (*models.Certificate, error) {
 	if err := s.quota.Require(workspaceID, quota.CapCustomTLS); err != nil {
 		return nil, err
@@ -275,7 +272,6 @@ func (s *Service) MatchHost(workspaceID uint, host string) ([]models.Certificate
 	return out, nil
 }
 
-// expiryHorizon is how far ahead the expiry monitor looks.
 const expiryHorizon = 30 * 24 * time.Hour
 
 // CheckExpiry scans all certificates expiring within the horizon and logs a
@@ -308,8 +304,6 @@ func (s *Service) Resolve(workspaceID, id uint) (certPEM, keyPEM string, err err
 	}
 	return cert.CertPEM, key, nil
 }
-
-// --- PEM parsing ---
 
 type certMeta struct {
 	commonName string
@@ -357,11 +351,9 @@ func parse(certPEM, keyPEM string) (*certMeta, error) {
 	}, nil
 }
 
-// validateAgainstDomains enforces that a certificate can only be imported when
-// the workspace has at least one registered domain, and every name the cert
-// asserts (its Common Name and SANs) falls under one of those domains. This ties
-// an imported cert to hosts the workspace actually controls. A nil domain lister
-// (unwired / tests) skips the checks.
+// validateAgainstDomains enforces that a certificate is importable only when the workspace has at least one
+// registered domain, and every name the cert asserts (Common Name and SANs) falls under one of them. This
+// ties an imported cert to hosts the workspace actually controls. A nil domain lister skips the checks.
 func (s *Service) validateAgainstDomains(workspaceID uint, meta *certMeta) error {
 	if s.domains == nil {
 		return nil

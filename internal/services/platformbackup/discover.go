@@ -17,12 +17,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// DiscoveredSet is a recovery point found in the bucket.
-//
-// The bucket is the authority, not this platform's database. After a
-// control-plane restore the sets a platform knows about are whatever its dump
-// happened to contain — everything taken since is still in object storage and
-// invisible to it. Discovery is what makes those reachable again.
+// DiscoveredSet is a recovery point found in the bucket. The bucket is the authority, not this platform's
+// database: after a control-plane restore the sets a platform knows about are whatever its dump contained,
+// while everything taken since is still in object storage. Discovery makes those reachable again.
 type DiscoveredSet struct {
 	Ref            string    `json:"ref"`
 	InstallID      string    `json:"install_id,omitempty"`
@@ -39,10 +36,9 @@ type DiscoveredSet struct {
 	// SetID is the local row, when Known.
 	SetID uint `json:"set_id,omitempty"`
 
-	// Foreign marks a recovery point taken by a DIFFERENT install. Its tenant
-	// data restores here perfectly well — a database dump is data. Its
-	// control-plane dump would fill this platform with secrets encrypted under a
-	// key it does not have, which is what KEKMatches reports.
+	// Foreign marks a recovery point taken by a DIFFERENT install. Its tenant data restores here perfectly
+	// well — a database dump is data. Its control-plane dump would fill this platform with secrets encrypted
+	// under a key it does not have, which is what KEKMatches reports.
 	Foreign bool `json:"foreign"`
 	// KEKMatches reports whether the recovery point was taken under this
 	// platform's master key. False means anything control-plane from it is
@@ -62,10 +58,9 @@ type DiscoveredArtifact struct {
 	SizeBytes int64  `json:"size_bytes,omitempty"`
 	Encrypted bool   `json:"encrypted"`
 
-	// Restorable reports whether THIS platform can restore this artifact from the
-	// dashboard, and Reason says why not. The control-plane dump is never
-	// restorable this way: it overwrites the database the running platform is
-	// using, which is a maintenance-mode operation and not a checkbox.
+	// Restorable reports whether THIS platform can restore this artifact from the dashboard, and Reason says
+	// why not. The control-plane dump is never restorable this way: it overwrites the database the running
+	// platform is using, which is a maintenance-mode operation and not a checkbox.
 	Restorable bool   `json:"restorable"`
 	Reason     string `json:"reason,omitempty"`
 
@@ -75,11 +70,9 @@ type DiscoveredArtifact struct {
 	Present bool `json:"present"`
 }
 
-// DiscoverSets lists the recovery points in the configured bucket.
-//
-// It reads the cleartext info files — no passphrase needed to see what exists,
-// which is the point of keeping them readable. Artifact presence is checked so
-// the list distinguishes "recorded" from "actually there".
+// DiscoverSets lists the recovery points in the configured bucket. It reads the cleartext info files — no
+// passphrase needed to see what exists, which is the point of keeping them readable. Artifact presence is
+// checked so the list distinguishes "recorded" from "actually there".
 func (s *Service) DiscoverSets(ctx context.Context) ([]DiscoveredSet, error) {
 	st, err := s.getSettings()
 	if err != nil {
@@ -132,7 +125,6 @@ func (s *Service) DiscoverSets(ctx context.Context) ([]DiscoveredSet, error) {
 	return out, nil
 }
 
-// describeArtifacts turns a manifest's artifacts into what the dashboard offers.
 func (s *Service) describeArtifacts(ctx context.Context, store *blob.Store, man *dr.Manifest) []DiscoveredArtifact {
 	out := make([]DiscoveredArtifact, 0, len(man.Artifacts))
 	for _, a := range man.Artifacts {
@@ -151,14 +143,9 @@ func (s *Service) describeArtifacts(ctx context.Context, store *blob.Store, man 
 	return out
 }
 
-// restorableFromDashboard decides what the dashboard may offer for an artifact.
-//
-// The control-plane dump is excluded deliberately, not for lack of plumbing:
-// restoring it in place overwrites the database the running platform is using —
-// including the rows describing the restore itself — and leaves the process
-// running against data that no longer matches it. That is a maintenance-mode
-// operation with its own confirmation, or a `miabi restore` onto a fresh host.
-// It must never sit in a list of checkboxes beside a volume.
+// restorableFromDashboard decides what the dashboard may offer for an artifact. The control-plane dump is
+// excluded deliberately: restoring it in place overwrites the database the running platform is using,
+// including the rows describing the restore. That is a maintenance-mode operation, not a checkbox.
 func restorableFromDashboard(subject string, present bool) (bool, string) {
 	switch subject {
 	case dr.SubjectIdentity:
@@ -175,7 +162,6 @@ func restorableFromDashboard(subject string, present bool) (bool, string) {
 	}
 }
 
-// localSetsByRef maps the refs this platform already knows to their row ids.
 func (s *Service) localSetsByRef() map[string]uint {
 	out := map[string]uint{}
 	sets, err := s.sets.List()
@@ -188,7 +174,6 @@ func (s *Service) localSetsByRef() map[string]uint {
 	return out
 }
 
-// installID reports this platform's install id, via the identity source.
 func (s *Service) installID() string {
 	if s.identity == nil {
 		return ""
@@ -200,8 +185,6 @@ func (s *Service) installID() string {
 	return id.InstallID
 }
 
-// kekMatches reports whether a recovery point was taken under this platform's
-// master key.
 func (s *Service) kekMatches(fingerprint string) bool {
 	if fingerprint == "" || s.fingerprint == nil {
 		return false
@@ -209,12 +192,9 @@ func (s *Service) kekMatches(fingerprint string) bool {
 	return s.fingerprint(models.KEKFingerprintLabel) == fingerprint
 }
 
-// ImportSet records a discovered recovery point in this platform's database, so
-// it can be verified, retried and restored like any other.
-//
-// Needed because a restored control plane only knows the recovery points its
-// dump contained — every one taken since is in the bucket and invisible to it.
-// Import is idempotent on the ref.
+// ImportSet records a discovered recovery point in this platform's database, so it can be verified,
+// retried and restored like any other. Needed because a restored control plane only knows the points its
+// dump contained — every one taken since is in the bucket and invisible to it. Idempotent on the ref.
 func (s *Service) ImportSet(ctx context.Context, ref string) (*models.PlatformBackupSet, error) {
 	if existing, err := s.sets.FindByRef(ref); err == nil && existing != nil {
 		return existing, nil

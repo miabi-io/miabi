@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package portforward gives on-demand external access to a managed database
-// without publishing a host port. Opening a session binds an ephemeral TCP
-// listener on the control plane; each accepted connection is bridged, over the
-// node's Docker API tunnel, to an in-network socat relay that reaches the
-// database's DNS alias. Sessions are in-memory and expire after a TTL.
+// Package portforward gives on-demand external access to a managed database without publishing a host port.
+// Opening a session binds an ephemeral TCP listener on the control plane; each accepted connection is
+// bridged over the node's Docker API tunnel to an in-network socat relay. Sessions expire after a TTL.
 package portforward
 
 import (
@@ -168,7 +166,6 @@ func (s *Service) Open(ctx context.Context, t Target, allowIP string) (*Session,
 	return sess, nil
 }
 
-// accept serves the session's listener until it is closed.
 func (s *Service) accept(ctx context.Context, sess *Session, dc docker.Client) {
 	for {
 		conn, err := sess.ln.Accept()
@@ -184,7 +181,6 @@ func (s *Service) accept(ctx context.Context, sess *Session, dc docker.Client) {
 	}
 }
 
-// bridge wires one client connection to a fresh in-network relay.
 func (s *Service) bridge(ctx context.Context, sess *Session, dc docker.Client, client net.Conn) {
 	defer func() { _ = client.Close() }()
 	// Reach the database on its own network (the workspace default); fall back to

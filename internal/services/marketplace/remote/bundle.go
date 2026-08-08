@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package remote syncs the Miabi marketplace registry (official + community
-// templates) from the standalone marketplace service into a local cache, so the
-// in-Miabi catalog can serve them alongside the embedded official floor without
-// a per-request round-trip. It pulls the whole catalog from the service's bulk
-// GET /v1/export endpoint (ETag-conditional), caches the bundle in Redis, and
-// exposes a decoded, digest-verified view to the marketplace catalog.
+// Package remote syncs the Miabi marketplace registry from the standalone marketplace service into a
+// local cache, so the in-Miabi catalog can serve it alongside the embedded floor without a per-request
+// round trip. It pulls the whole catalog ETag-conditionally and caches the bundle in Redis.
 package remote
 
 import (
@@ -61,10 +58,9 @@ type DecodedVersion struct {
 	Manifest *manifest.Manifest
 }
 
-// decode parses a bundle JSON into validated templates. A version whose digest
-// does not match its manifest, whose manifest fails to parse, or whose name
-// disagrees with its template is dropped (tamper-evident, fail-closed); a
-// template left with no valid versions is omitted entirely.
+// decode parses a bundle JSON into validated templates. A version whose digest does not match its
+// manifest, whose manifest fails to parse, or whose name disagrees with its template is dropped
+// (tamper-evident, fail-closed); a template left with no valid versions is omitted entirely.
 func decode(data []byte) ([]DecodedTemplate, error) {
 	var b Bundle
 	if err := json.Unmarshal(data, &b); err != nil {

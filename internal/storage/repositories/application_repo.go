@@ -26,11 +26,9 @@ func (r *ApplicationRepository) Update(app *models.Application) error {
 	return r.db.Save(app).Error
 }
 
-// Delete hard-deletes an application and its child rows in a transaction: the
-// rows holding a foreign key to it (env vars, ports, network join rows) — whose
-// FK constraints would otherwise reject the delete — plus its history rows
-// (deployments, releases, events, metric samples), which have no FK and would
-// otherwise orphan against the removed application_id.
+// Delete hard-deletes an application and its child rows in one transaction: the rows holding a
+// foreign key to it (env vars, ports, network joins), plus its history rows (deployments,
+// releases, events, metric samples), which have no FK and would otherwise orphan.
 func (r *ApplicationRepository) Delete(id uint) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		app := &models.Application{ID: id}
@@ -87,17 +85,16 @@ func (r *ApplicationRepository) CountNetworks(appID uint) (int64, error) {
 	return count, err
 }
 
-// ListRunning returns all applications currently in the running state (across
-// workspaces), used by the metrics scraper.
-// All returns every application across every workspace. Used by
-// platform-wide passes — disaster recovery reconciles the whole install, not
-// one tenant at a time.
+// All returns every application across every workspace, for platform-wide passes —
+// disaster recovery reconciles the whole install, not one tenant at a time.
 func (r *ApplicationRepository) All() ([]models.Application, error) {
 	var apps []models.Application
 	err := r.db.Order("workspace_id ASC, id ASC").Find(&apps).Error
 	return apps, err
 }
 
+// ListRunning returns all applications currently in the running state, across workspaces,
+// for the metrics scraper.
 func (r *ApplicationRepository) ListRunning() ([]models.Application, error) {
 	var apps []models.Application
 	err := r.db.Where("status = ?", models.AppStatusRunning).Find(&apps).Error
@@ -133,10 +130,9 @@ func (r *ApplicationRepository) ExistsByName(workspaceID uint, name string) (boo
 	return count > 0, err
 }
 
-// ExternalLabelTaken reports whether a (non-deleted) application other than
-// exceptAppID already owns this external-access label. The label maps to a
-// platform-wide host (`<label>.<base-domain>`), so it must be unique across all
-// workspaces, not just one.
+// ExternalLabelTaken reports whether a non-deleted application other than exceptAppID already
+// owns this external-access label. The label maps to a platform-wide host,
+// `<label>.<base-domain>`, so it must be unique across all workspaces.
 func (r *ApplicationRepository) ExternalLabelTaken(label string, exceptAppID uint) (bool, error) {
 	// An empty label is the "unassigned" sentinel, not a claimable host, so it is
 	// never taken (and must not collide with other unlabeled apps).
@@ -166,11 +162,9 @@ func (r *ApplicationRepository) SetRedeployRequired(id uint, v bool) error {
 	return r.db.Model(&models.Application{}).Where("id = ?", id).Update("redeploy_required", v).Error
 }
 
-// SetContainerLabels replaces an app's user-defined Docker labels. The column
-// uses GORM's serializer:json, but a targeted Update(column, value) bypasses the
-// field serializer (pgx can't encode a Go map into the text column), so we
-// marshal the JSON ourselves — matching exactly what the serializer writes, so
-// reads round-trip. Passing nil/empty clears them (stored NULL).
+// SetContainerLabels replaces an app's user-defined Docker labels. A targeted Update bypasses
+// the field serializer (pgx can't encode a Go map into the text column), so the JSON is
+// marshalled here to match what the serializer writes. nil/empty clears them (stored NULL).
 func (r *ApplicationRepository) SetContainerLabels(id uint, labels map[string]string) error {
 	var val any
 	if len(labels) > 0 {
@@ -206,8 +200,6 @@ func (r *ApplicationRepository) SetCanary(id uint, releaseID *uint, weight int) 
 	return r.db.Model(&models.Application{}).Where("id = ?", id).
 		Updates(map[string]any{"canary_release_id": releaseID, "canary_weight": weight}).Error
 }
-
-// --- Env vars ---
 
 func (r *ApplicationRepository) UpsertEnvVar(v *models.AppEnvVar) error {
 	var existing models.AppEnvVar

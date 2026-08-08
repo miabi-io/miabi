@@ -37,10 +37,9 @@ type JobInputs struct {
 	Deadline time.Time
 }
 
-// BuildJobSpec assembles the wire JobSpec sent to a runner: the predefined,
-// non-secret MIABI_* build context plus the per-job secret credentials (as env,
-// masked from the log stream by the dispatcher), and the run's steps. Returns
-// the spec and the secret values to redact from live logs.
+// BuildJobSpec assembles the wire JobSpec sent to a runner: the predefined, non-secret MIABI_*
+// build context plus the per-job secret credentials (as env, masked from the log stream), and the
+// run's steps. Returns the spec and the secret values to redact from live logs.
 func BuildJobSpec(in JobInputs) (proto.JobSpec, []string) {
 	workdir := in.Workdir
 	if workdir == "" {
@@ -105,29 +104,9 @@ func BuildJobSpec(in JobInputs) (proto.JobSpec, []string) {
 	return spec, in.Creds.Secrets()
 }
 
-// buildConfig carries a build step's Dockerfile/context choice to the runner.
-//
-// Returns nil when the step chose neither, which is what selects the runner's
-// auto-detection (root Dockerfile → dockerfile build, else buildpacks). Sending
-// an empty BuildConfig instead would be indistinguishable on the wire, but nil is
-// the documented "not configured" and keeps the JSON free of an empty object.
-//
-// This is the step that was missing: `dockerfile:` was parsed and validated at
-// the spec layer and then never reached the wire, so every pipeline build used
-// the root Dockerfile no matter what the file said.
-// BuildContext and BuildArgs are deliberately not sent yet: proto.BuildConfig
-// gains those fields in the next runner release, and the spec layer rejects both
-// keys until then rather than accepting values it would drop here — which is
-// precisely how `dockerfile:` came to look supported while doing nothing.
-//
-// To enable them: bump github.com/miabi-io/runner past the release carrying
-// BuildConfig.Context and .BuildArgs, add
-//
-//	Context:   strings.TrimSpace(s.BuildContext),
-//	BuildArgs: s.BuildArgs,
-//
-// below, and delete the two guards in pipeline/spec.go marked "runner support
-// pending".
+// buildConfig carries a build step's Dockerfile choice to the runner. nil selects the runner's
+// auto-detection (root Dockerfile, else buildpacks). BuildContext and BuildArgs are deliberately
+// not sent yet — the spec layer rejects both keys until proto.BuildConfig gains those fields.
 func buildConfig(s *models.PipelineStepRun) *proto.BuildConfig {
 	df := strings.TrimSpace(s.Dockerfile)
 	if df == "" {
@@ -136,11 +115,9 @@ func buildConfig(s *models.PipelineStepRun) *proto.BuildConfig {
 	return &proto.BuildConfig{Dockerfile: df}
 }
 
-// shellCommand wraps a step's `run:` script so the runner executes it in a
-// non-login shell inside the step image — the same model as a GitHub Actions
-// `run:` step, so pipes, `&&`, and env expansion (e.g. $MIABI_IMAGE) work. An
-// empty script yields nil, leaving the image's own entrypoint/CMD in charge
-// (used by `uses:` built-in steps, which carry no command).
+// shellCommand wraps a step's `run:` script so the runner executes it in a non-login shell inside
+// the step image — like a GitHub Actions `run:` step, so pipes, && and env expansion work. An
+// empty script yields nil, leaving the image's own entrypoint in charge (for `uses:` steps).
 func shellCommand(run string) []string {
 	if strings.TrimSpace(run) == "" {
 		return nil

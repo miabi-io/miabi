@@ -53,7 +53,6 @@ type ImportStackRequest struct {
 	} `json:"body"`
 }
 
-// stackListItem is a stack plus its app count and aggregate status for the list.
 type stackListItem struct {
 	models.Stack
 	AppCount int64              `json:"app_count"`

@@ -13,11 +13,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// sqlite-friendly stand-ins for the real models: the full models embed UIDModel,
-// whose column carries a Postgres `gen_random_uuid()` default that sqlite cannot
-// parse at DDL time. These mirror only the columns the resolver reads/writes,
-// under the same table names, so the repository (which uses the real models with
-// SELECT *) reads them back fine.
+// sqlite-friendly stand-ins for the real models: the full models embed UIDModel, whose column carries a
+// Postgres gen_random_uuid() default sqlite cannot parse at DDL time. These mirror only the columns the
+// resolver touches, under the same table names, so the repository reads them back fine with SELECT *.
 type dbInstRow struct {
 	ID          uint `gorm:"primaryKey"`
 	UID         string
@@ -67,12 +65,9 @@ func newDeclNameSvc(t *testing.T) (*Service, *gorm.DB) {
 	return &Service{repo: repositories.NewDatabaseRepository(db)}, db
 }
 
-// TestFindDatabaseByDeclName is the heart of the GitOps resolver fix: a manifest
-// database name resolves to the *specific* logical database stamped with that
-// name — not "the first/most-recent database on the instance". Here one shared
-// Postgres instance hosts authentik_db (untagged, created first) and posta_db
-// (tagged "posta-db", created later); resolving "posta-db" must return posta_db,
-// never authentik_db.
+// TestFindDatabaseByDeclName is the heart of the GitOps resolver fix: a manifest database name resolves
+// to the *specific* logical database stamped with that name, not "the first database on the instance".
+// One shared Postgres hosts two; resolving "posta-db" must never return the other.
 func TestFindDatabaseByDeclName(t *testing.T) {
 	s, db := newDeclNameSvc(t)
 	const ws = uint(1)

@@ -1,13 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package netalloc hands out non-overlapping subnets, carved from a single
-// platform pool (MIABI_NETWORK_POOL_CIDR), for every Docker network Miabi
-// creates. It works around Docker's tiny built-in default-address-pools: instead
-// of letting the daemon subnet the pool (which exhausts with "all predefined
-// address pools have been fully subnetted"), Miabi allocates an explicit /N per
-// network and passes it as IPAM. A DB ledger (models.NetworkAllocation) is the
-// source of truth, so allocations survive restarts and are unique platform-wide.
+// Package netalloc hands out non-overlapping subnets, carved from a single platform pool, for every Docker
+// network Miabi creates. It works around Docker's tiny built-in default-address-pools by allocating an
+// explicit /N per network. A DB ledger is the source of truth, so allocations survive restarts.
 package netalloc
 
 import (
@@ -48,10 +44,9 @@ type Service struct {
 	mu     sync.Mutex
 }
 
-// NewService builds the allocator for an IPv4 pool CIDR (e.g. "10.64.0.0/12") and
-// a per-network subnet prefix (e.g. 24). Returns an error on an invalid or IPv6
-// pool, or a prefix that doesn't fit inside it (config.validate catches these
-// first at boot, so this is defence in depth).
+// NewService builds the allocator for an IPv4 pool CIDR and a per-network subnet prefix. Returns an error
+// on an invalid or IPv6 pool, or a prefix that doesn't fit inside it — config.validate catches these first
+// at boot, so this is defence in depth.
 func NewService(repo *repositories.NetworkAllocationRepository, poolCIDR string, subnetPrefix int) (*Service, error) {
 	ip, ipnet, err := net.ParseCIDR(strings.TrimSpace(poolCIDR))
 	if err != nil {
@@ -108,10 +103,9 @@ func (s *Service) PublishStats() {
 	metrics.SetSubnetPoolUsage(used, total)
 }
 
-// Allocate reserves a subnet for dockerName, idempotently: an existing allocation
-// for the same name is returned unchanged. Otherwise the lowest-index free subnet
-// is reserved and persisted. Callers that create the Docker network should prefer
-// EnsureManaged, which also handles host-level overlaps.
+// Allocate reserves a subnet for dockerName idempotently: an existing allocation for the same name is
+// returned unchanged, otherwise the lowest-index free subnet is reserved and persisted. Callers that
+// create the Docker network should prefer EnsureManaged, which also handles host-level overlaps.
 func (s *Service) Allocate(dockerName string, nodeID uint, kind string) (*models.NetworkAllocation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -143,7 +137,6 @@ func (s *Service) allocateLocked(dockerName string, nodeID uint, kind string) (*
 	return nil, ErrPoolExhausted
 }
 
-// usedSet is the set of subnets already allocated or reserved.
 func (s *Service) usedSet() (map[string]bool, error) {
 	subnets, err := s.repo.AllSubnets()
 	if err != nil {

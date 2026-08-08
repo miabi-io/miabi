@@ -9,13 +9,9 @@ import (
 	"time"
 )
 
-// A recovery point must outlive the request that asked for it.
-//
-// Tenant capture used to run inline in the HTTP handler's context: dumping every
-// customer database and taring every volume takes minutes, so the moment that
-// request ended — a client timeout, a proxy timeout, the handler returning — the
-// context was cancelled and every artifact still in flight died with "context
-// canceled". CreateSet and RetrySet now detach, which is what this pins.
+// A recovery point must outlive the request that asked for it. Tenant capture used to run inline in the
+// HTTP handler's context, so the moment that request ended every artifact still in flight died with
+// "context canceled". CreateSet and RetrySet now detach, which is what this pins.
 func TestWithoutCancelSurvivesTheRequest(t *testing.T) {
 	req, cancel := context.WithCancel(context.Background())
 	work := context.WithoutCancel(req)

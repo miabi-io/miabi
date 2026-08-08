@@ -15,31 +15,25 @@ type PlatformBackupSubject string
 const (
 	PlatformBackupDatabase PlatformBackupSubject = "database"
 	PlatformBackupVolume   PlatformBackupSubject = "volume"
-	// PlatformBackupIdentity is the sealed identity envelope: the platform's
-	// encryption key, JWT secret and install identity, encrypted under the backup
-	// passphrase. It is what makes a dump restorable onto a *different* host — see
-	// internal/dr.
+	// PlatformBackupIdentity is the sealed identity envelope: the platform's encryption key, JWT
+	// secret and install identity, encrypted under the backup passphrase. It is what makes a dump
+	// restorable onto a *different* host — see internal/dr.
 	PlatformBackupIdentity PlatformBackupSubject = "identity"
-	// PlatformBackupTenantDatabase and PlatformBackupTenantVolume are workload
-	// data: a workspace's managed database, or one of its volumes. They turn a
-	// recovery point from "the control plane comes back" into "the platform comes
-	// back", and are captured only when IncludeTenantData is on.
+	// PlatformBackupTenantDatabase and PlatformBackupTenantVolume are workload data: a
+	// workspace's managed database or volume. They turn a recovery point from "the control plane
+	// comes back" into "the platform comes back", and need IncludeTenantData.
 	PlatformBackupTenantDatabase PlatformBackupSubject = "tenant-database"
 	PlatformBackupTenantVolume   PlatformBackupSubject = "tenant-volume"
 )
 
-// PlatformBackup is a single disaster-recovery backup run of the platform itself
-// — the control-plane database or a platform volume. It is distinct from the
-// per-workspace Backup/VolumeBackup tables (tenant data) and reuses BackupStatus
-// and the existing one-shot/logging lifecycle.
+// PlatformBackup is a single disaster-recovery run of the platform itself — the control-plane
+// database or a platform volume. Distinct from the per-workspace Backup/VolumeBackup tables,
+// and reuses BackupStatus and the one-shot/logging lifecycle.
 type PlatformBackup struct {
 	ID uint `json:"id" gorm:"primaryKey"`
-	// SetID is the owning recovery point (PlatformBackupSet).
-	//
-	// A POINTER, not a plain uint: the association below makes GORM create a real
-	// foreign key, and an ad-hoc single-subject backup belongs to no set. Stored
-	// as 0 that is not "no set" — it is a reference to a row that cannot exist, so
-	// every ad-hoc backup fails the constraint. NULL is what "no set" means.
+	// SetID is the owning recovery point. A POINTER, not a plain uint: the association makes GORM
+	// create a real foreign key, and an ad-hoc single-subject backup belongs to no set. Stored as
+	// 0 it would reference a row that cannot exist, so NULL is what "no set" means.
 	SetID      *uint                 `json:"set_id,omitempty" gorm:"index"`
 	Subject    PlatformBackupSubject `json:"subject" gorm:"not null"`
 	VolumeName string                `json:"volume_name,omitempty"` // target volume (volume subjects)
@@ -77,17 +71,15 @@ type PlatformBackup struct {
 	CreatedAt  time.Time  `json:"created_at"`
 }
 
-// PlatformBackupSettings is the single-row platform backup target + policy: the
-// S3 destination (mirroring WorkspaceBackupSettings), the schedule, retention,
-// and the set of platform volumes to include. The S3 secret is encrypted at rest
-// with the platform-scoped crypto.Encrypt and never returned.
+// PlatformBackupSettings is the single-row platform backup target and policy: S3 destination,
+// schedule, retention, and which platform volumes to include. The S3 secret is encrypted at
+// rest with the platform-scoped crypto.Encrypt and never returned.
 type PlatformBackupSettings struct {
 	ID uint `json:"id" gorm:"primaryKey"`
 
-	// Destination. S3/MinIO is the ONLY destination: a backup written to a volume
-	// on the host it protects cannot be read once that host is gone, which is the
-	// single situation platform backup exists for. S3Enabled is kept so an
-	// operator can switch the feature off, not to select an alternative.
+	// Destination. S3/MinIO is the ONLY destination: a backup written to a volume on the host it
+	// protects cannot be read once that host is gone, which is the one situation this exists for.
+	// S3Enabled switches the feature off, it does not select an alternative.
 	S3Enabled        bool   `json:"s3_enabled"`
 	S3Endpoint       string `json:"s3_endpoint,omitempty"`
 	S3Bucket         string `json:"s3_bucket,omitempty"`
@@ -97,39 +89,29 @@ type PlatformBackupSettings struct {
 	S3UseSSL         bool   `json:"s3_use_ssl"`
 	S3ForcePathStyle bool   `json:"s3_force_path_style"`
 
-	// Path prefixes within the bucket. RootPath scopes the whole platform backup
-	// tree, so one bucket can hold several instances without them colliding; the
-	// recovery-point info file is written at its root. Database and volume
-	// artifacts default to <root>/databases and <root>/volumes when the operator
-	// leaves them unset — see PlatformBackupSettings.Normalize.
+	// Path prefixes within the bucket. RootPath scopes the whole tree so one bucket can hold
+	// several instances without colliding, and the recovery-point info file sits at its root.
+	// Database and volume artifacts default to <root>/databases and <root>/volumes.
 	RootPath           string `json:"root_path,omitempty"`
 	DatabaseBackupPath string `json:"database_backup_path,omitempty"`
 	VolumeBackupPath   string `json:"volume_backup_path,omitempty"`
 
-	// Artifact encryption. EncryptBackups turns on GPG encryption of the dump and
-	// volume archives, using BackupPassphrase — which is NOT the master
-	// encryption key (MIABI_ENCRYPTION_KEY) and must never be set to it. The
-	// passphrase protects the artifact; the master key decrypts its *contents*
-	// after restore. Conflating them makes disaster recovery impossible, because a
-	// restore onto a fresh host cannot fetch a key that lived only on the dead one.
+	// Artifact encryption. EncryptBackups GPG-encrypts the dump and volume archives using
+	// BackupPassphrase, which is NOT the master key (MIABI_ENCRYPTION_KEY) and must never be set
+	// to it: a restore onto a fresh host cannot fetch a key that lived only on the dead one.
 	EncryptBackups bool `json:"encrypt_backups"`
-	// BackupPassphraseEnc is the passphrase at rest, encrypted with the
-	// platform-scoped crypto.Encrypt — i.e. under the master key, in the database
-	// this feature backs up. That is fine for *taking* backups and useless for
-	// *restoring* them: a real disaster is exactly when this row is gone. The
-	// passphrase is therefore shown once on save and must be recorded
-	// out-of-band; `miabi restore` takes it from --passphrase-file.
+	// BackupPassphraseEnc is the passphrase at rest, encrypted under the master key — in the
+	// database this feature backs up. Fine for taking backups and useless for restoring them, so
+	// it is shown once on save and must be recorded out-of-band.
 	BackupPassphraseEnc string `json:"-" gorm:"column:backup_passphrase_enc"`
-	// IncludeIdentity seals the platform's identity (encryption key, JWT secret,
-	// install ID, hostnames) into each recovery point so it can be restored onto a
-	// fresh host. Off only for operators who custody /etc/miabi/stack.yaml
-	// themselves.
+	// IncludeIdentity seals the platform's identity (encryption key, JWT secret, install ID,
+	// hostnames) into each recovery point so it can be restored onto a fresh host. Off only for
+	// operators who custody /etc/miabi/stack.yaml themselves.
 	IncludeIdentity bool `json:"include_identity"`
 
-	// IncludeTenantData adds every workspace's managed databases and volumes to a
-	// recovery point, so a restore brings back tenant workloads and not just the
-	// control plane describing them. Off by default: it is the difference between
-	// a backup measured in megabytes and one measured in the size of the install.
+	// IncludeTenantData adds every workspace's managed databases and volumes, so a restore brings
+	// back tenant workloads and not just the control plane describing them. Off by default: it is
+	// the difference between megabytes and the size of the install.
 	IncludeTenantData bool `json:"include_tenant_data"`
 
 	// Schedule + retention.
@@ -161,10 +143,9 @@ const (
 	DefaultVolumeBackupPath   = "volumes"
 )
 
-// Normalize fills the derived defaults: the database and volume prefixes when
-// unset, and the info-file format. It is applied on both read and write, so a
-// settings row saved before these fields existed behaves like a new one instead
-// of scattering artifacts across the bucket root.
+// Normalize fills the derived defaults (database/volume prefixes, info-file format). Applied
+// on both read and write, so a settings row saved before these fields existed behaves like a
+// new one instead of scattering artifacts across the bucket root.
 func (s *PlatformBackupSettings) Normalize() {
 	root := strings.Trim(strings.TrimSpace(s.RootPath), "/")
 	s.RootPath = root
@@ -173,10 +154,9 @@ func (s *PlatformBackupSettings) Normalize() {
 	s.VolumeBackupPath = joinPath(root, defaultIfBlank(s.VolumeBackupPath, DefaultVolumeBackupPath))
 }
 
-// joinPath prefixes a path with the root, unless the operator already gave an
-// absolute-looking path under it (so re-normalizing is idempotent — Normalize
-// runs on every read, and a prefix that grew "root/root/databases" over time
-// would quietly orphan every earlier artifact).
+// joinPath prefixes a path with the root unless it already looks absolute under it, so
+// re-normalizing is idempotent: Normalize runs on every read, and a prefix that grew
+// "root/root/databases" over time would quietly orphan every earlier artifact.
 func joinPath(root, path string) string {
 	p := strings.Trim(strings.TrimSpace(path), "/")
 	if root == "" || p == root || strings.HasPrefix(p, root+"/") {

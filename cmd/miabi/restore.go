@@ -16,14 +16,9 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/blob"
 )
 
-// registerRestoreCommands adds the disaster-recovery commands.
-//
-// They live beside `install` rather than behind the admin API for one reason:
-// the host they run on has no Miabi. There is no database to authenticate
-// against, no settings row holding the bucket credentials, and no admin account
-// — the credentials needed to reach the backup are themselves inside the backup.
-// So recovery is a host operation, driven by an operator who holds the
-// passphrase, exactly like the install it replaces.
+// registerRestoreCommands adds the disaster-recovery commands. They live beside `install`
+// rather than behind the admin API because the host they run on has no Miabi: the
+// credentials needed to reach the backup are themselves inside the backup.
 func registerRestoreCommands(cli *okapicli.CLI) {
 	cli.Command("restore", "Rebuild a Miabi platform on this host from a recovery point", runRestore).
 		String("from", "", "", "Backup target, e.g. s3://bucket/prefix").
@@ -156,7 +151,7 @@ func runRecoveryPoints(cmd *okapicli.Command) error {
 	for _, r := range refs {
 		sealed := ""
 		if !r.IdentitySealed {
-			// Worth calling out: without an envelope this cannot rebuild a fresh host.
+			// Without an identity envelope this cannot rebuild a fresh host.
 			sealed = "  (no identity envelope)"
 		}
 		fmt.Printf("%-46s %-12s %-9d %s%s\n", r.Ref, orDash(r.MiabiVersion), r.Artifacts,
@@ -197,7 +192,6 @@ func printPlan(plan *platformrestore.Plan, opts platformrestore.Options) {
 	}
 }
 
-// restoreService builds the restore service over the host's Docker.
 func restoreService(cmd *okapicli.Command) (*platformrestore.Service, docker.Client, error) {
 	stack, dc, err := stackService(cmd)
 	if err != nil {
@@ -207,8 +201,7 @@ func restoreService(cmd *okapicli.Command) (*platformrestore.Service, docker.Cli
 	return svc, dc, nil
 }
 
-// s3From parses --from plus the credential flags into a blob config and the
-// object prefix within the bucket.
+// s3From parses --from and the credential flags into a blob config and object prefix.
 func s3From(cmd *okapicli.Command) (blob.Config, string, error) {
 	raw := strings.TrimSpace(cmd.GetString("from"))
 	if raw == "" {
@@ -239,15 +232,9 @@ func s3From(cmd *okapicli.Command) (blob.Config, string, error) {
 	}, prefix, nil
 }
 
-// passphraseFrom reads the backup passphrase from a file or the environment.
-//
-// Never from a flag: a passphrase on the command line lands in the shell history
-// and in every `ps` on the box, and this one opens the platform's master key.
-//
-// An empty result is not an error here. Whether a passphrase is needed depends on
-// the recovery point, and preflight has read it — so it can say "this recovery
-// point is sealed and you gave no passphrase" instead of this function guessing
-// and reporting a requirement that may not apply.
+// passphraseFrom reads the backup passphrase from a file or the environment, never a flag:
+// it opens the master key and would land in shell history and ps. An empty result is not
+// an error — preflight decides whether the recovery point needs one.
 func passphraseFrom(cmd *okapicli.Command) (string, error) {
 	if p := strings.TrimSpace(cmd.GetString("passphrase-file")); p != "" {
 		b, err := os.ReadFile(p)

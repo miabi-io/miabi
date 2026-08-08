@@ -1,13 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package wsbackup exports a workspace to a portable bundle on S3 and restores
-// one back.
-// It owns no storage machinery of its own. A database dump is services/backup's
-// job, a volume archive is the volume-bkup helper's, and the bucket is the
-// workspace's existing S3 target: what this package adds is the bundle — one
-// self-describing tree of objects that a *different* install can read, indexed by
-// an XML info file and anchored by a sealed state file (internal/wsbundle).
+// Package wsbackup exports a workspace to a portable bundle on S3 and restores one back. It owns no
+// storage machinery: dumps are services/backup's job, archives the volume-bkup helper's, and the bucket
+// the workspace's existing target. What it adds is the bundle — one tree a different install can read.
 package wsbackup
 
 import (
@@ -80,10 +76,9 @@ type Enqueuer interface {
 	EnqueueWorkspaceBundle(bundleID uint) error
 }
 
-// Deps are the services a bundle run drives. They are the platform's own create
-// paths, deliberately: a restore that wrote rows directly would skip quota,
-// naming, Docker provisioning and every guard those paths own, and produce a
-// workspace that looks right in the database and does not run.
+// Deps are the services a bundle run drives. They are the platform's own create paths, deliberately: a
+// restore that wrote rows directly would skip quota, naming, Docker provisioning and every guard those
+// paths own, and produce a workspace that looks right in the database and does not run.
 type Deps struct {
 	Repo       *repositories.WorkspaceBundleRepository
 	Apps       *repositories.ApplicationRepository
@@ -139,7 +134,6 @@ func (s *Service) Configured(workspaceID uint) error {
 	return nil
 }
 
-// store opens an S3 client for the workspace's bundle target.
 func (s *Service) store(cfg *backup.S3Config) (*blob.Store, error) {
 	return blob.New(blobConfig(cfg))
 }
@@ -182,11 +176,9 @@ func (s *Service) Delete(workspaceID, id uint) error {
 	return s.Repo.Delete(b.ID)
 }
 
-// Bundles lists the bundles present in the workspace's bucket, newest first,
-// read from their info files. This is the authoritative list: the run records are
-// this platform's memory of what it did, while the bucket is what actually
-// survives — and a restore is offered from the bucket precisely because the
-// platform that wrote it may be gone.
+// Bundles lists the bundles present in the workspace's bucket, newest first, read from their info files.
+// This is the authoritative list: the run records are this platform's memory of what it did, while the
+// bucket is what actually survives — and a restore is offered from the bucket precisely for that reason.
 func (s *Service) Bundles(ctx context.Context, workspaceID uint) ([]wsbundle.Info, error) {
 	cfg, prefix, _, err := s.Settings.BundleTarget(workspaceID)
 	if err != nil {
@@ -327,7 +319,6 @@ func (s *Service) phase(b *models.WorkspaceBundle, phase string) {
 	_ = s.Repo.Update(b)
 }
 
-// finish marks a run completed.
 func (s *Service) finish(b *models.WorkspaceBundle) {
 	fin := time.Now()
 	b.Phase = models.BundlePhaseDone

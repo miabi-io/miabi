@@ -13,7 +13,6 @@ import (
 	"github.com/miekg/dns"
 )
 
-// dnsQueryTimeout bounds a single authoritative query.
 const dnsQueryTimeout = 5 * time.Second
 
 func authoritativeLookupTXT(ctx context.Context, host string) ([]string, error) {

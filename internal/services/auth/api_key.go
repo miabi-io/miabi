@@ -94,12 +94,9 @@ func (s *APIKeyService) Create(userID uint, workspaceID *uint, name string, allo
 	return plaintext, key, nil
 }
 
-// CreateEphemeral mints a short-lived, machine-minted API key for a runner job:
-// workspace-scoped, bound to one application (ApplicationID), expiring at the job
-// deadline, and marked Ephemeral so it is hidden from the API-keys UI and
-// excluded from the MaxAPIKeys quota. It flows through the same auth/verify path
-// as any key (so ExpiresAt/Revoked are honored on every request). No quota check
-// — job credentials never count against the workspace's plan.
+// CreateEphemeral mints a short-lived, machine-minted API key for a runner job: workspace-scoped, bound
+// to one application, expiring at the job deadline, and marked Ephemeral so it is hidden from the UI and
+// excluded from the MaxAPIKeys quota. No quota check — job credentials never count against a plan.
 func (s *APIKeyService) CreateEphemeral(userID, workspaceID uint, appID *uint, name string, scopes []string, expiresAt time.Time) (plaintext string, key *models.APIKey, err error) {
 	normScopes, err := NormalizeScopes(scopes)
 	if err != nil {

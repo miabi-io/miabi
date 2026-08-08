@@ -19,12 +19,9 @@ type AppLifecycle interface {
 	Start(ctx context.Context, app *models.Application) (*models.Deployment, error)
 }
 
-// MountAppStopper finds the applications mounting a volume and stops them around
-// a restore.
-//
-// Mounts are a JSON column rather than a join table, so this scans applications
-// instead of querying by volume. That is fine at the scale involved — an install
-// has tens of apps, not millions — and a restore is not a hot path.
+// MountAppStopper finds the applications mounting a volume and stops them around a restore. Mounts are a
+// JSON column rather than a join table, so this scans applications instead of querying by volume — fine
+// at the scale involved, and a restore is not a hot path.
 type MountAppStopper struct {
 	apps      *repositories.ApplicationRepository
 	lifecycle AppLifecycle
@@ -35,12 +32,9 @@ func NewMountAppStopper(apps *repositories.ApplicationRepository, lifecycle AppL
 	return &MountAppStopper{apps: apps, lifecycle: lifecycle}
 }
 
-// StopUsers stops every running application mounting the volume and returns
-// their ids.
-//
-// Only RUNNING apps are returned, so starting them again restores the state that
-// was there before — an app the operator had deliberately stopped must not come
-// back up because a volume it happens to mount was restored.
+// StopUsers stops every running application mounting the volume and returns their ids. Only RUNNING apps
+// are returned, so starting them again restores the state that was there before — an app the operator
+// had deliberately stopped must not come back up because a volume it mounts was restored.
 func (s *MountAppStopper) StopUsers(ctx context.Context, volumeName string) ([]uint, error) {
 	if volumeName == "" {
 		return nil, nil
@@ -87,7 +81,6 @@ func (s *MountAppStopper) startAll(ctx context.Context, appIDs []uint) {
 	}
 }
 
-// mountsVolume reports whether an application mounts the named Docker volume.
 func mountsVolume(app *models.Application, volumeName string) bool {
 	for _, m := range app.Mounts {
 		if m.DockerName == volumeName {

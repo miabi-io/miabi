@@ -1,16 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package edgegateway provisions the Goma Gateway container that fronts an
-// edge-gateway node's public ingress. Unlike port-forward nodes (whose apps the
-// central proxy reaches by host port), an edge-gateway node terminates TLS
-// locally and serves its own routes: this deploys a Goma Gateway on the node,
-// configured to pull its routes/middlewares from the control plane's HTTP
-// provider (/api/v1/provider/{name}) using the node's own agent token for auth.
-//
-// The gateway is platform infrastructure owned by the built-in system
-// workspace; it is deployed directly via the node's Docker engine (over the
-// agent tunnel) rather than through the app deploy pipeline.
+// Package edgegateway provisions the Goma Gateway container fronting an edge-gateway node's public
+// ingress. Unlike port-forward nodes, such a node terminates TLS locally and serves its own routes,
+// pulled from the control plane's HTTP provider using the node's own agent token.
 package edgegateway
 
 import (
@@ -69,10 +62,9 @@ const (
 	updateObserveSeconds = 25
 )
 
-// ConfigFilePath resolves the goma.yml path a gateway container reads, mirroring
-// Goma's own precedence: an explicit --config/-c flag (on the entrypoint or
-// command) wins, then the GOMA_CONFIG_FILE env var, else the default
-// (/etc/goma/goma.yml). Used to copy an imported gateway's config.
+// ConfigFilePath resolves the goma.yml path a gateway container reads, mirroring Goma's own precedence:
+// an explicit --config/-c flag on the entrypoint or command wins, then GOMA_CONFIG_FILE, else the
+// default /etc/goma/goma.yml. Used to copy an imported gateway's config.
 func ConfigFilePath(entrypoint, cmd, env []string) string {
 	args := append(append([]string{}, entrypoint...), cmd...)
 	for i := 0; i < len(args); i++ {
@@ -115,10 +107,9 @@ type Service struct {
 	// analyticsStream is the Redis stream request events are published to; empty
 	// disables analytics in the rendered config (see analyticsEnabledFor).
 	analyticsStream string
-	// providersVolume is the Docker volume backing Miabi's own route-file
-	// directory. Empty means Miabi cannot hand a gateway that directory, so the
-	// manager's gateway polls the HTTP provider like a remote node does. See
-	// SetProvidersVolume.
+	// providersVolume is the Docker volume backing Miabi's own route-file directory. Empty means Miabi cannot
+	// hand a gateway that directory, so the manager's gateway polls the HTTP provider like a remote node does.
+	// See SetProvidersVolume.
 	providersVolume string
 }
 
@@ -157,30 +148,18 @@ const (
 	defaultAnalyticsMaxLen = 1_000_000
 )
 
-// SetAnalytics wires the Redis stream the gateway publishes request events to.
-// Pass "" when the platform's analytics consumer is not running
-// (MIABI_ANALYTICS_ENABLED=false): a gateway writing to a stream nobody reads
-// would fill Redis to maxLen and be discarded.
+// SetAnalytics wires the Redis stream the gateway publishes request events to. Pass "" when the
+// platform's analytics consumer is not running: a gateway writing to a stream nobody reads would fill
+// Redis to maxLen and be discarded.
 func (s *Service) SetAnalytics(stream string) { s.analyticsStream = strings.TrimSpace(stream) }
 
-// analyticsEnabledFor reports whether the rendered config should turn analytics
-// on for this node's gateway.
-//
-// It requires the gateway to publish to the *platform* Redis, which is the one
-// Miabi's analytics consumer reads. A remote edge node runs its own per-node
-// Redis for cache and rate limiting; events written there are consumed by
-// nobody, so enabling analytics on one would silently fill that node's Redis and
-// never reach a dashboard. Until events are relayed from edge nodes, analytics
-// belongs to the manager's gateway only.
-//
-// Note this asks where the gateway runs, not which route provider it uses: a
-// manager gateway on the HTTP provider still writes to the platform Redis, so it
-// still gets analytics.
+// analyticsEnabledFor reports whether the rendered config should turn analytics on for this node's gateway. It
+// requires publishing to the *platform* Redis, the one Miabi's consumer reads: a remote edge node runs its own
+// Redis, so events there reach no dashboard. It asks where the gateway runs, not which route provider it uses.
 func (s *Service) analyticsEnabledFor(srv *models.Server) bool {
 	return s.analyticsStream != "" && isManager(srv) && s.redisAddrFor(srv) != ""
 }
 
-// redisImg resolves the per-node gateway Redis image.
 func (s *Service) redisImg() string {
 	if s.images != nil {
 		if r := s.images.Ref(platformimage.KeyRedis); r != "" {
@@ -195,13 +174,9 @@ func (s *Service) redisImg() string {
 // is configured).
 func (s *Service) RedisEnabled(srv *models.Server) bool { return s.redisAddrFor(srv) != "" }
 
-// redisAddrFor returns the Redis address a node's gateway should use: the shared
-// platform Redis for the manager, or the per-node Redis for a remote edge node,
-// which is self-contained. Empty when Redis is unavailable (manager with no
-// platform Redis configured).
-//
-// Keyed on where the gateway runs, not on its route provider — a manager gateway
-// switched to the HTTP provider still shares the control plane's Redis.
+// redisAddrFor returns the Redis address a node's gateway should use: the shared platform Redis for the manager,
+// or the per-node Redis for a self-contained remote edge node. Empty when Redis is unavailable. Keyed on where
+// the gateway runs, not its route provider — a manager on the HTTP provider still shares the platform Redis.
 func (s *Service) redisAddrFor(srv *models.Server) string {
 	if isManager(srv) {
 		return s.redisAddr
@@ -260,10 +235,9 @@ type gomaConfig struct {
 	Gateway     gateway      `yaml:"gateway"`
 }
 
-// certManager follows Goma's multi-provider schema: named cert providers keyed
-// by name, with defaultProvider naming the one used when a route's tls.provider
-// is empty. A route opts a specific provider in via tls.provider: <name>, or out
-// of TLS entirely via tls.provider: none.
+// certManager follows Goma's multi-provider schema: named cert providers keyed by name, with
+// defaultProvider naming the one used when a route's tls.provider is empty. A route opts a specific
+// provider in via tls.provider: <name>, or out of TLS entirely via tls.provider: none.
 type certManager struct {
 	DefaultProvider string                  `yaml:"defaultProvider,omitempty"`
 	Providers       map[string]certProvider `yaml:"providers,omitempty"`
@@ -289,14 +263,9 @@ type gateway struct {
 	Providers   providers             `yaml:"providers"`
 }
 
-// analyticsBlock makes the gateway publish one event per request to a Redis
-// stream, which Miabi's analytics consumer rolls up into the Traffic /
-// Performance / Web dashboards. Events carry no client IP — only a daily-salted
-// visitor hash and, where a GeoIP database is present, a country resolved at the
-// edge.
-//
-// It mirrors the platform stack's goma.yml so both install paths behave the
-// same. GOMA_ANALYTICS_* on the gateway container overrides whatever is here.
+// analyticsBlock makes the gateway publish one event per request to a Redis stream, which Miabi's consumer
+// rolls up into the dashboards. Events carry no client IP — only a daily-salted visitor hash and, with a GeoIP
+// database, a country resolved at the edge. GOMA_ANALYTICS_* on the container overrides whatever is here.
 type analyticsBlock struct {
 	Enabled bool   `yaml:"enabled"`
 	Stream  string `yaml:"stream"`
@@ -315,10 +284,9 @@ type logBlock struct {
 	Level string `yaml:"level"`
 }
 
-// reloadBlock enables Goma's on-demand reload endpoint so Miabi can tell the edge
-// gateway to pull its config immediately instead of waiting for the HTTP-provider
-// poll interval. The token is supplied via the GOMA_RELOAD_TOKEN env var (set to
-// the node's gateway token at deploy), so the stored config holds no secret.
+// reloadBlock enables Goma's on-demand reload endpoint, so Miabi can tell the edge gateway to pull its config
+// immediately instead of waiting for the poll interval. The token is supplied via the GOMA_RELOAD_TOKEN env
+// var, set to the node's gateway token at deploy, so the stored config holds no secret.
 type reloadBlock struct {
 	Enabled bool `yaml:"enabled"`
 }
@@ -399,48 +367,28 @@ const defaultCertProvider = "acme"
 // config (Goma's gateway.log.level).
 const defaultLogLevel = "info"
 
-// isManager reports whether srv is the node the control plane itself runs on.
-//
-// This is what decides *infrastructure*: the manager's gateway shares the
-// platform's Redis and the providers volume, while every remote edge node is
-// self-contained — its own Goma and its own Redis, reachable only over the
-// tunnel. Deliberately distinct from usesFileProvider: which Redis a gateway
-// uses is a property of where it runs, not of how it learns its routes.
+// isManager reports whether srv is the node the control plane itself runs on. This decides *infrastructure*:
+// the manager's gateway shares the platform Redis and the providers volume, while every remote edge node is
+// self-contained. Deliberately distinct from usesFileProvider, which is about how it learns its routes.
 func isManager(srv *models.Server) bool {
 	return srv != nil && srv.IsLocal
 }
 
-// usesFileProvider reports which route source the *rendered default* config uses
-// for srv.
-//
-// The file provider needs one thing the HTTP provider does not: the gateway must
-// be given the very directory Miabi writes route files to. That is only possible
-// on the manager, and only when Miabi knows which Docker volume backs that
-// directory — true for a stack install, which owns its volumes, and not true for
-// a manual install, where the operator wired the mounts and Miabi cannot mount
-// what it cannot name. Everything else polls the HTTP provider, which needs
-// nothing shared.
-//
-// It is only the default. A gateway's config may be edited afterwards — see
-// effectiveFileProvider, which is what the runtime plumbing keys off.
+// usesFileProvider reports which route source the *rendered default* config uses. The file provider needs the
+// gateway handed the very directory Miabi writes route files to — possible only on the manager, and only when
+// Miabi knows the backing volume. Everything else polls HTTP. It is only the default; see effectiveFileProvider.
 func (s *Service) usesFileProvider(srv *models.Server) bool {
 	return isManager(srv) && s.providersVolume != ""
 }
 
-// SetProvidersVolume names the Docker volume backing Miabi's own route-file
-// directory, so the manager's gateway can be given the same one. Leave it empty
-// (a manual install whose mounts Miabi did not create) and the manager's gateway
-// polls the HTTP provider instead — a route source that needs nothing shared.
+// SetProvidersVolume names the Docker volume backing Miabi's own route-file directory, so the manager's
+// gateway can be given the same one. Leave it empty — a manual install whose mounts Miabi did not
+// create — and the manager's gateway polls the HTTP provider instead.
 func (s *Service) SetProvidersVolume(name string) { s.providersVolume = strings.TrimSpace(name) }
 
-// DetectProvidersVolume returns the name of the Docker volume mounted at
-// providerDir inside Miabi's own container, or "" when there is none.
-//
-// This is what tells a stack install from a manual one without asking: a stack
-// install mounts a named volume there (Miabi created it), while a manual install
-// may use a bind mount, a differently-named volume, or nothing at all. Only a
-// named volume can be mounted into a second container, so only that answer lets
-// the manager's gateway watch the directory.
+// DetectProvidersVolume returns the name of the Docker volume mounted at providerDir inside Miabi's own
+// container, or "" when there is none. That is what tells a stack install from a manual one: only a
+// named volume can be mounted into a second container, so only that lets the gateway watch the directory.
 func DetectProvidersVolume(ctx context.Context, dc docker.Client, providerDir string) string {
 	if dc == nil || strings.TrimSpace(providerDir) == "" {
 		return ""
@@ -471,14 +419,9 @@ func DetectProvidersVolume(ctx context.Context, dc docker.Client, providerDir st
 	return ""
 }
 
-// effectiveFileProvider reports whether srv's gateway *actually* reads routes
-// from the providers volume, honouring a customised config rather than assuming
-// the default. A manager gateway switched to the HTTP provider needs the same
-// plumbing a remote node gets — a reload token, and an on-demand reload when
-// routes change — or it would only pick up changes on its next poll.
-//
-// An unparseable config falls back to the default for the node; the config is
-// validated on save, so this only covers one hand-edited outside the API.
+// effectiveFileProvider reports whether srv's gateway *actually* reads routes from the providers volume,
+// honouring a customised config rather than assuming the default. A manager gateway switched to the HTTP
+// provider needs the same reload plumbing a remote node gets. An unparseable config falls back to the default.
 func (s *Service) effectiveFileProvider(srv *models.Server) bool {
 	if srv == nil || strings.TrimSpace(srv.GatewayConfigYAML) == "" {
 		return s.usesFileProvider(srv)
@@ -497,14 +440,9 @@ func (s *Service) effectiveFileProvider(srv *models.Server) bool {
 	return s.usesFileProvider(srv)
 }
 
-// RenderConfig builds the default goma.yml a node gateway runs with: ACME for
-// TLS and entry points on 80/443. The route source differs by node:
-//   - manager (local): a file provider watching the shared providers volume,
-//     where Miabi writes route files directly — no HTTP polling.
-//   - remote edge node: an HTTP provider pointed at this control plane's per-node
-//     endpoint, authenticated with ${INSTANCE_API_KEY} (injected at deploy time).
-//
-// This is the editable starting point shown in the UI.
+// RenderConfig builds the default goma.yml a node gateway runs with: ACME for TLS and entry points on
+// 80/443. The manager watches the shared providers volume directly; a remote edge node uses an HTTP
+// provider pointed at this control plane, authenticated with ${INSTANCE_API_KEY}.
 func (s *Service) RenderConfig(srv *models.Server) string {
 	var prov providers
 	if s.usesFileProvider(srv) {
@@ -578,11 +516,9 @@ func Validate(config string) error {
 	return nil
 }
 
-// Ensure (re)deploys the node gateway on dc for srv, using token to authenticate
-// to the control plane's HTTP provider. redisPassword is the per-node Redis
-// password (remote edge nodes); empty on the manager, which reuses the platform
-// Redis. Idempotent: it reseeds the config and recreates the container, so it is
-// safe to call on every agent (re)connect.
+// Ensure (re)deploys the node gateway on dc for srv, using token to authenticate to the control plane's
+// HTTP provider. redisPassword is the per-node Redis password for remote edge nodes; empty on the
+// manager, which reuses the platform Redis. Idempotent, so it is safe on every agent reconnect.
 func (s *Service) Ensure(ctx context.Context, dc docker.Client, srv *models.Server, token, redisPassword string) error {
 	if err := s.prepare(ctx, dc, srv, redisPassword); err != nil {
 		return err
@@ -599,14 +535,9 @@ func (s *Service) Ensure(ctx context.Context, dc docker.Client, srv *models.Serv
 	return nil
 }
 
-// SafeUpdate rolls the gateway to its currently-resolved image without a hard
-// cutover. Since the gateway is the node's single ingress, replacing it outright
-// risks downtime if the new image or config is bad. Instead it starts the new
-// image as a test container (same config + volumes, no published ports), observes
-// it for a grace period, and only then promotes it over the live gateway. The
-// live gateway is left untouched if the test never becomes healthy. onPhase is
-// invoked as each phase begins (and once on failure) so the caller can persist +
-// publish progress.
+// SafeUpdate rolls the gateway to its resolved image without a hard cutover: since the gateway is the
+// node's single ingress, it starts the new image as a test container, observes it for a grace period,
+// and only then promotes it. The live gateway is untouched if the test never becomes healthy.
 func (s *Service) SafeUpdate(ctx context.Context, dc docker.Client, srv *models.Server, token, redisPassword string, onPhase func(phase string, cause error)) error {
 	gw := s.Image(srv)
 	fail := func(err error) error {
@@ -723,10 +654,9 @@ func (s *Service) runGateway(ctx context.Context, dc docker.Client, srv *models.
 		ConfigVolume: configPath,
 		CertsVolume:  "/etc/letsencrypt",
 	}
-	// Give the manager's gateway the very volume Miabi writes route files to —
-	// not a volume of the gateway's own, which would leave the file provider
-	// watching a directory nothing ever writes to. Only mounted when that volume
-	// is known; otherwise the config polls the HTTP provider and needs nothing.
+	// Give the manager's gateway the very volume Miabi writes route files to — not a volume of the gateway's
+	// own, which would leave the file provider watching a directory nothing ever writes to. Only mounted when
+	// that volume is known; otherwise the config polls the HTTP provider and needs nothing.
 	if s.usesFileProvider(srv) {
 		mounts[s.providersVolume] = providersPath
 	}
@@ -738,14 +668,9 @@ func (s *Service) runGateway(ctx context.Context, dc docker.Client, srv *models.
 		Mounts:   mounts,
 		Networks: []string{s.network},
 		Labels:   s.labels(srv),
-		// Goma answers /healthz on its HTTP port. Probed on the loopback INSIDE the
-		// container, so it reports "Goma is serving" rather than "the host's :80 is
-		// reachable" — and so the test container of a SafeUpdate, which publishes no
-		// ports, is checked exactly like the live one.
-		//
-		// Until now the node's gateway had no health signal at all: the node page could
-		// only say the container was running, which a Goma that boots and then fails to
-		// serve also satisfies.
+		// Goma answers /healthz on its HTTP port. Probed on the loopback INSIDE the container, so it reports "Goma is
+		// serving" rather than "the host's :80 is reachable" — and so a SafeUpdate's test container, which publishes no
+		// ports, is checked exactly like the live one. Until now the node's gateway had no health signal at all.
 		Healthcheck: &docker.HealthcheckSpec{
 			Test:        []string{"CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null 2>&1 || exit 1"},
 			Interval:    10 * time.Second,

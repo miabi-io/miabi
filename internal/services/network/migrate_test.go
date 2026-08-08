@@ -67,11 +67,9 @@ func (f *fakeDocker) RemoveNetwork(_ context.Context, name string) error {
 	return nil
 }
 
-// TestMoveContainersCarriesAliasesAndConnectsFirst pins the two properties the
-// migration must never lose: a container keeps its DNS aliases (they are the only
-// stable way to address it — its IP is ephemeral and its name carries a
-// deployment id), and it is attached to the overlay *before* being detached from
-// the bridge, so it is never left without a network.
+// This pins the two properties the migration must never lose: a container keeps its DNS aliases, which are
+// the only stable way to address it since its IP is ephemeral and its name carries a deployment id; and it
+// is attached to the overlay *before* being detached from the bridge, so it is never without a network.
 func TestMoveContainersCarriesAliasesAndConnectsFirst(t *testing.T) {
 	const bridge, overlay = "mb-ws1-abc", "mb-ws1-abc-ov"
 	app := docker.Container{ID: "app1", Networks: []docker.ContainerNetwork{
@@ -161,10 +159,9 @@ func TestMoveContainersDoesNotDisconnectWhenConnectFails(t *testing.T) {
 	}
 }
 
-// The replacement's name must be a pure function of the current one: an
-// interrupted run is simply repeated, and a random name would leak a fresh network
-// on every attempt. It must also round-trip, or Disable could not put a workspace
-// back on the bridge it came from.
+// The replacement's name must be a pure function of the current one: an interrupted run is simply repeated,
+// and a random name would leak a fresh network on every attempt. It must also round-trip, or Disable could
+// not put a workspace back on the bridge it came from.
 func TestPeerNameIsDeterministicAndRoundTrips(t *testing.T) {
 	const bridge = "mb-ws1-abc"
 	overlay := peerName(bridge, DriverOverlay)

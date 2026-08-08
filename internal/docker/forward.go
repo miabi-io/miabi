@@ -75,8 +75,8 @@ func (e *engineClient) DialNetwork(ctx context.Context, netName, image, host str
 	return c, nil
 }
 
-// relayConn is a net.Conn over a Docker attach stream: writes go to the relay's
-// stdin (raw), reads come from its demultiplexed stdout.
+// relayConn is a net.Conn over a Docker attach stream: writes go to the relay's stdin (raw),
+// reads come from its demultiplexed stdout.
 type relayConn struct {
 	hj     types.HijackedResponse
 	rd     *io.PipeReader

@@ -1,19 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package recovery finishes what `miabi restore` starts.
-//
-// A restored control-plane database is a faithful record of a machine that no
-// longer exists. Its rows name containers that were never created here, Docker
-// networks that do not exist, swarm node ids from another cluster, and images in
-// a registry this host cannot reach. Nothing in Miabi notices on its own: the
-// platform boots, lists every workspace and app, and looks healthy while serving
-// nothing.
-//
-// So a restore leaves the platform QUIESCED — schedules do not fire, nothing
-// redeploys — until this package has walked the restored state, converged what
-// it can onto the new host, and reported plainly what it could not. The operator
-// completes recovery once they have read that report and moved DNS.
+// Package recovery finishes what `miabi restore` starts. A restored control-plane database is a faithful
+// record of a machine that no longer exists: its rows name containers never created here, networks that do
+// not exist, and images this host cannot reach — and the platform boots looking healthy while serving nothing.
 package recovery
 
 import (
@@ -77,12 +67,9 @@ type TenantRestoreSummary struct {
 // Optional: without one, a reconcile brings back the control plane and says so.
 type TenantRestorer func(ctx context.Context) (*TenantRestoreSummary, error)
 
-// DatabaseEnsurer brings a managed database instance's container back.
-//
-// "Ensure", not "start": on recovered hardware the row's container id names a
-// container on the machine that is gone, so starting it can only fail. The
-// implementation recreates from the stored spec when the recorded container is
-// not there.
+// DatabaseEnsurer brings a managed database instance's container back. "Ensure", not "start": on recovered
+// hardware the row's container id names a container on a machine that is gone, so starting it can only fail.
+// The implementation recreates from the stored spec when the recorded container is not there.
 type DatabaseEnsurer func(ctx context.Context, instanceID uint) error
 
 // SettingsStore reads and writes platform settings.
@@ -141,10 +128,9 @@ func (s *Service) SetRedeployer(fn AppRedeployer)      { s.redeploy = fn }
 func (s *Service) SetRouteSyncer(fn RouteSyncer)       { s.syncRoutes = fn }
 func (s *Service) SetRegistryInfo(fn RegistryInfo)     { s.registry = fn }
 
-// SetDatabaseRecovery wires the two halves of workload recovery: bringing each
-// managed database instance's container back, and then loading the recovery
-// point's dumps into them. They are set together because either alone is
-// useless — an empty database that starts, or a dump with nowhere to go.
+// SetDatabaseRecovery wires the two halves of workload recovery: bringing each managed database instance's
+// container back, and then loading the recovery point's dumps into them. They are set together because
+// either alone is useless — an empty database that starts, or a dump with nowhere to go.
 func (s *Service) SetDatabaseRecovery(list DatabaseLister, ensure DatabaseEnsurer, restore TenantRestorer) {
 	s.instances, s.ensureDatabase, s.restoreTenants = list, ensure, restore
 }
@@ -173,17 +159,13 @@ func (s *Service) Status() Status {
 	return st
 }
 
-// Reconcile converges the restored control-plane state onto this host.
-//
-// It is deliberately tolerant: one app that will not deploy must not stop the
-// other forty from coming back. Everything that fails is collected and reported
-// rather than returned, because the operator needs the whole picture at once,
-// not the first error.
+// Reconcile converges the restored control-plane state onto this host. It is deliberately tolerant: one app
+// that will not deploy must not stop the other forty from coming back. Everything that fails is collected
+// and reported rather than returned, because the operator needs the whole picture at once.
 func (s *Service) Reconcile(ctx context.Context) (*Report, error) {
-	// Initialised, not left nil: a nil slice marshals to JSON null, and a client
-	// reading report.failures.length on null crashes the page it was meant to
-	// render. An empty list is the honest encoding of "nothing went wrong", and it
-	// is the API's job to say so rather than every consumer's to defend.
+	// Initialised, not left nil: a nil slice marshals to JSON null, and a client reading report.failures.length
+	// on null crashes the page it was meant to render. An empty list is the honest encoding of "nothing went
+	// wrong", and saying so is the API's job rather than every consumer's to defend against.
 	rep := &Report{
 		StartedAt:     time.Now().UTC(),
 		Unrecoverable: []string{},
@@ -191,10 +173,9 @@ func (s *Service) Reconcile(ctx context.Context) (*Report, error) {
 		Failures:      []string{},
 	}
 
-	// Order matters and is the whole design of this function: infrastructure
-	// before the things that sit on it, and data before the workloads that read
-	// it. An app redeployed against a database that is not yet up and not yet
-	// populated comes back healthy and empty, which is worse than not coming back.
+	// Order matters and is the whole design of this function: infrastructure before the things that sit on it,
+	// and data before the workloads that read it. An app redeployed against a database that is not yet up and
+	// not yet populated comes back healthy and empty, which is worse than not coming back.
 	s.resetNodes(rep)
 	s.ensureNetworks(ctx, rep)
 	s.startDatabases(ctx, rep)
@@ -212,12 +193,9 @@ func (s *Service) Reconcile(ctx context.Context) (*Report, error) {
 	return rep, nil
 }
 
-// resetNodes invalidates host-bound identity on the restored node records.
-//
-// A Server row carries the swarm node id of a machine in the cluster that is
-// gone. Left in place, the platform schedules work onto nodes that do not exist
-// and reports them as healthy. Clearing the binding makes the truth visible: one
-// local manager, and remote nodes awaiting re-enrolment.
+// resetNodes invalidates host-bound identity on the restored node records. A Server row carries the swarm node
+// id of a machine that is gone; left in place, the platform schedules work onto nodes that do not exist and
+// reports them healthy. Clearing it makes the truth visible: one local manager, remotes awaiting re-enrolment.
 func (s *Service) resetNodes(rep *Report) {
 	servers, err := s.servers.List()
 	if err != nil {
@@ -269,11 +247,9 @@ func (s *Service) ensureNetworks(ctx context.Context, rep *Report) {
 	}
 }
 
-// redeployApps brings every application back from its stored spec.
-//
-// Apps whose image lived only in a filesystem-backed registry cannot come back
-// at all — those blobs died with the host — so they are named as unrecoverable
-// instead of being retried into a confusing failure.
+// redeployApps brings every application back from its stored spec. Apps whose image lived only in a
+// filesystem-backed registry cannot come back at all — those blobs died with the host — so they are named
+// as unrecoverable instead of being retried into a confusing failure.
 func (s *Service) redeployApps(rep *Report) {
 	if s.redeploy == nil || s.apps == nil {
 		return
@@ -398,10 +374,9 @@ func (s *Service) noteManualSteps(rep *Report) {
 	)
 }
 
-// Complete clears the quiesce marker: schedules resume and the platform behaves
-// normally from here. Requiring an explicit action is the point — it is the
-// operator confirming they have read the report and moved DNS, not the platform
-// assuming it.
+// Complete clears the quiesce marker: schedules resume and the platform behaves normally from here. Requiring
+// an explicit action is the point — it is the operator confirming they have read the report and moved DNS,
+// not the platform assuming it.
 func (s *Service) Complete() error {
 	if err := s.settings.Delete(models.RestorePendingKey); err != nil {
 		return err

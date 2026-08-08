@@ -125,13 +125,9 @@ func TestManifestObjectWithoutPrefix(t *testing.T) {
 	}
 }
 
-// A manifest built without an explicit schema fails its own validation with
-// "schema 0 is not supported (expected 1)" — which reads like a version
-// incompatibility rather than a field nobody set. EncodeManifest stamps it, but
-// anything that validates BEFORE encoding (publishing does) sees the zero.
-//
-// This pins the contract that made that possible: Validate does not repair what
-// it checks, so constructors must set Schema themselves.
+// A manifest built without an explicit schema fails its own validation with "schema 0 is not
+// supported", which reads like a version incompatibility rather than a field nobody set. This
+// pins the contract that made that possible: Validate does not repair what it checks.
 func TestValidateRejectsUnsetSchema(t *testing.T) {
 	m := manifest()
 	m.Schema = 0
@@ -182,11 +178,9 @@ func TestManifestCarriesNoSecrets(t *testing.T) {
 	}
 }
 
-// A restore searched for tenant artifacts under the top-level database prefix —
-// "databases/mb-vol-2-gitlab-logs_….tar.gz.gpg" — and declared a complete
-// recovery point incomplete. Two faults: "tenant-volume" was not recognised as a
-// volume at all, so a volume archive was sought under the DATABASE prefix, and
-// nothing added the "tenants/<workspace>" branch the backup actually writes to.
+// A restore searched for tenant artifacts under the top-level database prefix and declared a
+// complete recovery point incomplete. Two faults: "tenant-volume" was not recognised as a volume,
+// and nothing added the "tenants/<workspace>" branch the backup actually writes to.
 func TestArtifactKeyLocatesTenantArtifacts(t *testing.T) {
 	m := &Manifest{Prefix: "databases", VolumePrefix: "volumes"}
 

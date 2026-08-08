@@ -10,11 +10,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/runner"
 )
 
-// RunnerGatewayHandler is the runner tunnel endpoint: a runner dials in over an
-// outbound WebSocket (NAT-friendly, no inbound ports) authenticated by its
-// registration token — a distinct scope from the node join token. It bypasses
-// the user-JWT middleware and is rate-limited per IP, mirroring the node agent
-// connect endpoint.
+// RunnerGatewayHandler is the runner tunnel endpoint: a runner dials in over an outbound
+// WebSocket (NAT-friendly, no inbound ports) authenticated by its registration token, a distinct
+// scope from the node join token. It bypasses the user-JWT middleware and is rate-limited per IP.
 type RunnerGatewayHandler struct {
 	svc      *runner.Service
 	manager  *runners.Manager

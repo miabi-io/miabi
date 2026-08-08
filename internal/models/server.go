@@ -152,11 +152,9 @@ type Server struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// GatewayUpdateProgress is the live state of a safe edge-gateway update: the new
-// image is first started as a throwaway test container with the same config and
-// volumes, observed for a grace period, then promoted to replace the live
-// gateway. The admin watches these phases on the node detail page. Mirrors
-// UpgradeProgress (database version upgrades).
+// GatewayUpdateProgress is the live state of a safe edge-gateway update: the new image runs
+// as a throwaway test container with the same config and volumes, is observed for a grace
+// period, then promoted to replace the live gateway. Mirrors UpgradeProgress.
 type GatewayUpdateProgress struct {
 	FromImage string `json:"from_image"`
 	ToImage   string `json:"to_image"`

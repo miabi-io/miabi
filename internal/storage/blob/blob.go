@@ -1,23 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package blob is a minimal S3/MinIO object client for the few places Miabi must
-// touch an object store directly, from Go, without a helper container.
-//
-// Everything else that talks to S3 does so through the jkaninda/*-bkup one-shot
-// images, which is the right tool for a data artifact: the helper streams a dump
-// or an archive straight to the bucket, and Miabi never handles the bytes. That
-// only works while there is a running platform to schedule containers with
-// credentials from the database.
-//
-// Two paths need more than that. A portable workspace bundle's dumps and volume
-// archives are still the helpers' work, but its control objects — the info file
-// that indexes it and the sealed state file that holds its configuration — are
-// written and read by the control plane itself, and listing what a bucket holds
-// is a query no helper answers. Disaster recovery has no platform at all:
-// `miabi restore` must read the sealed identity envelope off a bucket on a bare
-// host, before a control plane, a database or any credentials exist. Hence this
-// package.
+// Package blob is a minimal S3/MinIO object client for the few places Miabi must touch an
+// object store directly from Go: a bundle's control objects and bucket listings, and
+// `miabi restore`, which reads a sealed envelope on a bare host before any platform exists.
 package blob
 
 import (
@@ -72,11 +58,9 @@ func New(cfg Config) (*Store, error) {
 	}
 	region := strings.TrimSpace(cfg.Region)
 	if region == "" {
-		// S3 requires *a* region even when the endpoint is a MinIO that ignores it.
-		// Must match the default the *-bkup helpers are given (see
-		// wsbackup.defaultS3Region and platformbackup.defaultS3Region): a client and
-		// a helper signing for different regions is a harder failure to read than
-		// either alone.
+		// S3 requires *a* region even when the endpoint is a MinIO that ignores it. Must match the
+		// default the *-bkup helpers get (wsbackup/platformbackup defaultS3Region): a client and a
+		// helper signing for different regions is a harder failure to read than either alone.
 		region = "us-east-1"
 	}
 	opts := []func(*s3.Options){
@@ -96,10 +80,9 @@ func New(cfg Config) (*Store, error) {
 	return &Store{client: s3.New(s3.Options{}, opts...), bucket: cfg.Bucket}, nil
 }
 
-// normalizeEndpoint turns the bare "host:port" form the backup settings accept
-// into the absolute URL the SDK requires, choosing the scheme from UseSSL. An
-// endpoint that already carries a scheme is left alone, so an operator who typed
-// a full URL gets what they typed.
+// normalizeEndpoint turns the bare "host:port" form the backup settings accept into the
+// absolute URL the SDK requires, choosing the scheme from UseSSL. An endpoint that already
+// carries a scheme is left alone, so an operator who typed a full URL gets what they typed.
 func normalizeEndpoint(endpoint string, useSSL bool) string {
 	ep := strings.TrimSpace(endpoint)
 	if ep == "" {

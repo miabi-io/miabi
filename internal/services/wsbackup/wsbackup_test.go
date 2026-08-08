@@ -61,10 +61,9 @@ func TestReportFailuresAreVisible(t *testing.T) {
 	}
 }
 
-// A variable that points at the vault must cross as the pointer. Resolving it
-// would write a second copy of a secret that already travels in the same bundle,
-// and would cut the link that makes rotating it on the target reach every
-// consumer.
+// A variable that points at the vault must cross as the pointer. Resolving it would write a second copy
+// of a secret that already travels in the same bundle, and would cut the link that makes rotating it on
+// the target reach every consumer.
 func TestEnvReferencesTravelAsReferences(t *testing.T) {
 	cases := []struct {
 		name       string

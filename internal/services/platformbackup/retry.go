@@ -15,22 +15,17 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// Retry policy for the helper containers.
-//
-// Most failures here are transient — an object store that briefly refuses
-// connections, a DNS hiccup on the platform network, a node under load. Losing a
-// nightly recovery point to one of those is a poor trade when the work is
-// idempotent: every run writes a new timestamped artifact, so a retry cannot
-// corrupt or duplicate anything meaningful.
+// Retry policy for the helper containers. Most failures here are transient — an object store briefly refusing
+// connections, a DNS hiccup, a node under load — and losing a nightly recovery point to one is a poor trade
+// when the work is idempotent: every run writes a new timestamped artifact, so a retry cannot corrupt anything.
 const (
 	maxAttempts  = 3
 	retryBackoff = 5 * time.Second
 )
 
-// runHelper executes a one-shot helper container, retrying transient failures.
-//
-// Returns the output of the LAST attempt, so the recorded log describes the
-// state that was finally recorded rather than a failure that was recovered from.
+// runHelper executes a one-shot helper container, retrying transient failures. Returns the output of the
+// LAST attempt, so the recorded log describes the state that was finally recorded rather than a failure
+// that was recovered from.
 func (s *Service) runHelper(ctx context.Context, dc docker.Client, action string, spec docker.RunSpec) (out string, err error) {
 	baseName := spec.Name
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
@@ -79,11 +74,9 @@ var permanentFailures = []string{
 	"no such file or directory",
 }
 
-// worthRetrying reports whether a failure looks transient.
-//
-// It defaults to YES. The classification is a heuristic over log text, and the
-// asymmetry is deliberate: retrying a permanent failure costs a few seconds,
-// while refusing to retry a transient one costs the recovery point.
+// worthRetrying reports whether a failure looks transient. It defaults to YES. The classification is a
+// heuristic over log text, and the asymmetry is deliberate: retrying a permanent failure costs a few
+// seconds, while refusing to retry a transient one costs the recovery point.
 func worthRetrying(out string, err error) bool {
 	if err != nil {
 		return true // a Docker-level failure (image pull, daemon blip) is usually transient
@@ -97,17 +90,9 @@ func worthRetrying(out string, err error) bool {
 	return true
 }
 
-// RetrySet re-runs the failed artifacts of a recovery point.
-//
-// It retries in place rather than taking a fresh recovery point, because the
-// artifacts that DID succeed are often the expensive ones — a tenant database of
-// any size, a large volume — and re-capturing them to recover from one failed
-// item wastes the bandwidth and the storage. Successful items keep their
-// artifacts; only the failures run again.
-//
-// Note this produces a recovery point whose artifacts are not all from the same
-// instant. That is the honest trade for repairing one rather than discarding it,
-// and the manifest's per-artifact timestamps record it.
+// RetrySet re-runs the failed artifacts of a recovery point in place rather than taking a fresh one: the
+// artifacts that DID succeed are often the expensive ones, and re-capturing them to recover from one
+// failed item wastes bandwidth and storage. Successful items keep their recorded artifacts.
 func (s *Service) RetrySet(ctx context.Context, set *models.PlatformBackupSet) (*models.PlatformBackupSet, error) {
 	// As in CreateSet: the retried artifacts must not be cancelled by the request
 	// that triggered them.

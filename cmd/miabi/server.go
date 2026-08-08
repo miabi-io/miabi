@@ -61,8 +61,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// serverResources holds the long-lived dependencies created at startup so they
-// can be released cleanly on shutdown.
+// serverResources holds startup-created dependencies so shutdown can release them cleanly.
 type serverResources struct {
 	db           *gorm.DB
 	redis        *redis.Client
@@ -75,8 +74,7 @@ type serverResources struct {
 	cancelEvents context.CancelFunc
 	// stopAnalytics stops the analytics consumer and waits for its final flush.
 	stopAnalytics func()
-	// entitlements is the resolved license/edition snapshot, captured at startup
-	// so OnStarted can log which edition the instance is running.
+	// entitlements is the license/edition snapshot captured at startup for the OnStarted log.
 	entitlements enterprise.Entitlements
 }
 
@@ -99,33 +97,25 @@ func runServer(cli *okapicli.CLI) {
 			res.db = cfg.Database.DB
 			res.redis = cfg.Redis.Client
 
-			// Secret encryption for credentials stored at rest.
 			crypto.Init(cfg.EncryptionKey)
 
-			// SSRF policy for outbound webhooks.
 			netguard.Configure(cfg.WebhookAllowPrivateTargets)
 
-			// Schema migrations (AutoMigrate + constraints).
 			if err := migration.Run(res.db); err != nil {
 				logger.Fatal("failed to run migrations", "error", err)
 			}
 
-			// Per-workspace encryption keys: the keyring wraps/unwraps each
-			// workspace's DEK with the master key. Wired after migrations so the
-			// workspace_keys table exists.
+			// Wired after migrations so the workspace_keys table exists.
 			crypto.SetKeyring(keyring.NewService(repositories.NewWorkspaceKeyRepository(res.db)))
 
-			// Ordered, versioned data-upgrade steps.
 			if err := upgrade.Run(context.Background(), res.db, config.Version, upgrade.Options{
 				AllowDowngrade: cfg.AllowDowngrade,
 			}); err != nil {
 				logger.Fatal("failed to run upgrade steps", "error", err)
 			}
 
-			// Background job producer (asynq over Redis).
 			res.producer = worker.NewProducer(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB, cfg.WorkerMaxRetries)
 
-			// Docker engine adapter + local node bootstrap (network, status).
 			dockerClient, err := docker.New()
 			if err != nil {
 				logger.Fatal("failed to create docker client", "error", err)
@@ -136,9 +126,8 @@ func runServer(cli *okapicli.CLI) {
 			nodeService := node.NewService(serverRepo, dockerClient)
 			nodeService.Bootstrap(context.Background(), cfg.DockerHost)
 
-			// Per-node Docker client registry + agent connection manager. The
-			// local node uses the direct engine client; remote nodes register a
-			// tunneled client when their agent connects.
+			// The local node uses the direct engine client; remote nodes register a tunneled client
+			// when their agent connects.
 			var localID uint
 			if local, err := serverRepo.FindLocal(); err == nil {
 				localID = local.ID
@@ -153,10 +142,8 @@ func runServer(cli *okapicli.CLI) {
 			}
 			nodeManager := nodes.NewManager(nodeClients, nodeService)
 
-			// Cluster (Docker Swarm) capability detection. Auto-detects whether the
-			// manager engine is a swarm manager and, if so, lights up cluster
-			// features; a no-op on plain Docker. Refresh once at boot so CapCluster
-			// is correct before the first request.
+			// Auto-detects whether the manager engine is a swarm manager; a no-op on plain Docker.
+			// Refreshed once at boot so CapCluster is correct before the first request.
 			clusterService := cluster.NewService(nodeClients, nodeService)
 			clusterService.Refresh(context.Background())
 
@@ -177,10 +164,9 @@ func runServer(cli *okapicli.CLI) {
 			if cfg.AnalyticsEnabled {
 				nodeGateway.SetAnalytics(cfg.AnalyticsStream)
 			}
-			// The manager's gateway can only watch route files if it can be handed the
-			// volume Miabi writes them to. A stack install mounts one there and this
-			// finds it; a manual install, whose mounts Miabi did not create, yields
-			// nothing and the gateway polls the HTTP provider instead.
+			// The manager's gateway can only watch route files if handed the volume Miabi writes them
+			// to. A stack install mounts one there; a manual install yields nothing and the gateway
+			// polls the HTTP provider instead.
 			nodeGateway.SetProvidersVolume(
 				edgegateway.DetectProvidersVolume(context.Background(), dockerClient, cfg.GomaProviderDir),
 			)
@@ -220,7 +206,6 @@ func runServer(cli *okapicli.CLI) {
 				nodeGateway.Teardown(ctx, dc)
 			})
 
-			// Reverse proxy: Goma file provider when configured, else in-memory (dev).
 			var proxyMgr proxy.Manager
 			if cfg.GomaProviderDir != "" {
 				proxyMgr = proxy.NewGoma(cfg.GomaProviderDir)
@@ -230,18 +215,14 @@ func runServer(cli *okapicli.CLI) {
 				logger.Warn("no MIABI_GOMA_PROVIDER_DIR set; using in-memory proxy (dev only)")
 			}
 
-			// In-process event bus shared by the embedded worker (publishes deploy
-			// events) and the SSE handlers (subscribe to them).
+			// In-process bus shared by the embedded worker (publishes) and the SSE handlers (subscribe).
 			bus := eventbus.New()
 
-			// Shared execution-log store (deployments, pipeline steps, jobs). One
-			// instance is used by the embedded worker (writes on terminal state) and
-			// the SSE/download handlers (read history); nil when disabled.
+			// Shared by the embedded worker (writes) and the SSE/download handlers (read); nil when off.
 			logStore := cfg.BuildLogStore()
 
-			// One-off bulk backfill: move pre-existing large log rows into the store
-			// (P6). No-op/unrecorded when the store is disabled, so enabling it later
-			// still backfills; idempotent and resumable across boots.
+			// Unrecorded when the store is disabled, so enabling it later still backfills.
+			// Idempotent and resumable across boots.
 			if err := logbackfill.Run(context.Background(), res.db, logStore, cfg.LogStore.TailBytes, config.Version); err != nil {
 				logger.Error("log store: backfill failed (will retry next boot)", "error", err)
 			}
@@ -251,13 +232,10 @@ func runServer(cli *okapicli.CLI) {
 			appEventRepo := repositories.NewApplicationRepository(res.db)
 			eventRepo := repositories.NewAppEventRepository(res.db)
 			eventsSvc := events.NewService(eventRepo, bus)
-			// Outbound notifications: record events fan out to the workspace's
-			// webhooks and notification channels via background tasks.
+			// Record events fan out to workspace webhooks and channels via background tasks.
 			eventsSvc.SetNotifier(notify.NewDispatcher(res.producer))
-			// Alerts & notifications: the engine derives deduplicated, auto-resolving
-			// alerts from the full event stream and fans per-user inbox notifications
-			// out over the bus (bell SSE). Redis holds the crash-loop/cooldown state.
-			// In-app alerts are a Community feature, always on.
+			// The engine derives deduplicated, auto-resolving alerts from the event stream and fans
+			// per-user notifications over the bus. Redis holds the crash-loop/cooldown state.
 			alertNamer := alerting.AppNameFunc(func(id uint) string {
 				if a, err := appEventRepo.FindByID(id); err == nil && a != nil {
 					if a.DisplayName != "" {
@@ -277,22 +255,19 @@ func runServer(cli *okapicli.CLI) {
 			alertEngine.SetVolumeLister(repositories.NewVolumeRepository(res.db))
 			alertEngine.SetSystemAdmins(repositories.NewUserRepository(res.db))
 			eventsSvc.SetAlertSink(alertEngine)
-			// Platform-scoped node/runner offline/online alerts (a node or a shared
-			// runner → the system workspace / super-admins; a workspace runner → its
-			// members). The runner manager is wired after InitRoutes returns it.
+			// Platform-scoped node/runner alerts go to the system workspace, workspace runners to their
+			// members. The runner manager is wired after InitRoutes returns it.
 			palerter := &platformAlerter{
 				e:  alertEngine,
 				ws: repositories.NewWorkspaceRepository(res.db),
 			}
 			nodeManager.SetOnStatusChange(palerter.NodeStatus)
-			// Runners are scanned rather than hooked: their tunnels re-form too often
-			// for the raw event to be worth notifying on, so the engine debounces it
-			// (offline ≥2m fires, back ≥2m clears). It needs the system workspace to
-			// scope shared runners to the super-admins.
+			// Runners are scanned, not hooked: their tunnels re-form too often to notify on raw events,
+			// so the engine debounces (offline >=2m fires, back >=2m clears). It needs the system
+			// workspace to scope shared runners to the super-admins.
 			alertEngine.SetSystemWorkspace(palerter.systemWorkspace)
 			alertEngine.SetRunnerLister(repositories.NewRunnerRepository(res.db))
-			// The quota scan + backup-outcome alerts are wired below, once the quota
-			// service and backup service exist (they depend on it).
+			// Quota-scan and backup-outcome alerts are wired below, once their services exist.
 			webhookRepo := repositories.NewWebhookRepository(res.db)
 			webhookDeliveryRepo := repositories.NewWebhookDeliveryRepository(res.db)
 			channelRepo := repositories.NewNotificationChannelRepository(res.db)
@@ -301,10 +276,9 @@ func runServer(cli *okapicli.CLI) {
 			webhookHandler := worker.NewWebhookDeliverHandler(webhookRepo, webhookDeliveryRepo, eventRepo, appEventRepo)
 			channelHandler := worker.NewChannelSendHandler(channelRepo, eventRepo, appEventRepo, notifyRegistry)
 			secretService := secret.NewService(repositories.NewSecretRepository(res.db))
-			// The embedded deploy worker re-syncs Goma on deploy; its route service
-			// must apply the same domain-verification gate (and privileged-workspace
-			// waiver) as the HTTP service, or a deploy would re-render unverified or
-			// banned routes as live.
+			// The embedded deploy worker re-syncs Goma, so its route service must apply the same
+			// domain-verification gate (and privileged-workspace waiver) as the HTTP service, or a
+			// deploy would re-render unverified or banned routes as live.
 			deployRouteSvc := route.NewService(repositories.NewRouteRepository(res.db), repositories.NewMiddlewareRepository(res.db), repositories.NewApplicationRepository(res.db), repositories.NewReleaseRepository(res.db), serverRepo, repositories.NewPortBindingRepository(res.db), proxyMgr, cfg.HostPortMin, cfg.HostPortMax)
 			deployRouteSvc.SetDomains(repositories.NewDomainRepository(res.db))
 			deployRouteSvc.SetWorkspacePolicy(repositories.NewWorkspaceRepository(res.db))
@@ -331,9 +305,8 @@ func runServer(cli *okapicli.CLI) {
 			dbService.SetImageResolver(imageResolver) // honor admin image overrides on worker-side provisioning
 			provisionHandler := worker.NewProvisionDBHandler(dbService)
 
-			// Database version upgrades may run on the embedded worker, so wire the
-			// app service (quiesce/restart apps using the database) and backup service
-			// (safety backup + data copy for a major upgrade) it needs.
+			// A database version upgrade may run here, so wire the app service (quiesce/restart
+			// dependent apps) and the backup service (safety backup + data copy) it needs.
 			upgradeAppService := application.NewService(
 				repositories.NewApplicationRepository(res.db),
 				repositories.NewDeploymentRepository(res.db),
@@ -382,7 +355,6 @@ func runServer(cli *okapicli.CLI) {
 			edition := enterprise.New(res.db, cfg.LicensePublicKey, cfg.LicenseFile, cfg.DeploymentURL(), installIDOf(res.db))
 			securityQuota.SetEdition(edition)
 			res.entitlements = edition.Entitlements()
-			// Quota near-limit scan (needs the quota service + per-workspace counts).
 			alertEngine.SetQuotaLister(quotaScanner{
 				ws:   repositories.NewWorkspaceRepository(res.db),
 				q:    securityQuota,
@@ -393,8 +365,6 @@ func runServer(cli *okapicli.CLI) {
 			securityResolver := newSecurityResolver(cfg, securityQuota)
 			deployHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
 			deployHandler.SetBuilderPolicy(securityQuota)
-			// GPU scheduling for the embedded worker: capability + quota preflight and
-			// deploy-time device resolution for GPU apps.
 			gpuScheduler := gpu.NewService(
 				repositories.NewGPUDeviceRepository(res.db),
 				repositories.NewServerRepository(res.db),
@@ -414,16 +384,14 @@ func runServer(cli *okapicli.CLI) {
 			// central gateway reaches it on any node without a published host port.
 			deployHandler.SetCluster(clusterService)
 			jobHandler.SetCluster(clusterService)
-			// Git builds run on runners; here the image resolver supplies the
-			// admin-controlled builder image (passed to the runner) and the image
-			// catalog records build provenance.
+			// Git builds run on runners: the resolver supplies the admin-controlled builder image and
+			// the image catalog records build provenance.
 			deployHandler.SetBuildProvenance(
 				imageResolver,
 				image.NewService(repositories.NewImageRepository(res.db), repositories.NewReleaseRepository(res.db)),
 			)
-			// Distribute Git-built images via the internal registry (no-op unless
-			// enabled + a platform token is configured) for multi-node pulls. The
-			// same service resolves the live registry host for runner pushes.
+			// Distribute Git-built images via the internal registry (no-op unless enabled with a
+			// platform token) for multi-node pulls; it also resolves the host for runner pushes.
 			registryDistributor := registryserver.NewService(
 				repositories.NewRegistrySettingsRepository(res.db), imageResolver,
 				settings.NewProvider(repositories.NewSettingRepository(res.db), nil),
@@ -449,20 +417,13 @@ func runServer(cli *okapicli.CLI) {
 			)
 			platformBackupSvc.SetImageResolver(imageResolver)
 			platformBackupSvc.SetLogStore(logStore)
-			// The embedded worker runs backup ITEMS, so it resolves the destination and
-			// passphrase itself. Without the environment overlay it would read only the
-			// stored settings row — and on a deployment configured entirely through
-			// MIABI_PLATFORM_BACKUP_* that row is empty, so every scheduled run would
-			// fail with "no S3 target".
+			// The embedded worker runs backup ITEMS, so it resolves destination and passphrase itself.
+			// Without the environment overlay it reads only the stored settings row — empty on a
+			// MIABI_PLATFORM_BACKUP_*-only deployment, failing every run with "no S3 target".
 			platformBackupSvc.SetEnv(cfg.PlatformBackup)
-			// Tenant artifacts are enqueued by the API layer and RUN here, so this
-			// process needs the tenant source too — without it every tenant database
-			// and volume in a recovery point fails with "no tenant source is wired".
-			// upgradeBackupService is the per-database backup machinery already built
-			// for logical upgrades, configured exactly as tenant capture needs it: its
-			// DDL runner is what lets a tenant restore recreate a database before
-			// loading a dump into it. Reuse it rather than stand up a second copy, as
-			// the standalone worker does.
+			// Tenant artifacts are enqueued by the API but RUN here, so this process needs the tenant
+			// source too. upgradeBackupService is reused because its DDL runner is what lets a tenant
+			// restore recreate a database before loading a dump into it.
 			platformBackupSvc.EnableTenantCapture(res.db, upgradeBackupService)
 			platformBackupHandler := worker.NewPlatformBackupHandler(platformBackupSvc)
 
@@ -478,10 +439,8 @@ func runServer(cli *okapicli.CLI) {
 			// Resolve a Git credential that references a workspace Secret instead of
 			// storing its own copy of the token.
 			pipelineHandler.SetSecrets(secretService)
-			// Translate Docker daemon container events into application events
-			// (start/crash/oom/health). One subscriber for the local node, plus one
-			// per remote node — started/stopped by the connection manager as agents
-			// connect and drop.
+			// Translate Docker daemon events into application events (start/crash/oom/health): one
+			// subscriber for the local node, plus one per remote node as agents connect and drop.
 			eventCtx, cancelEvents := context.WithCancel(context.Background())
 			res.cancelEvents = cancelEvents
 			go events.NewSubscriber(dockerClient, appEventRepo, repositories.NewReleaseRepository(res.db), eventsSvc).Run(eventCtx)
@@ -498,14 +457,12 @@ func runServer(cli *okapicli.CLI) {
 			// enables/disables cluster mode or swarm membership changes out of band.
 			go clusterService.RefreshLoop(eventCtx, 30*time.Second)
 
-			// Alerting scanner: periodic, self-contained condition checks (TLS cert
-			// expiry / issuance failure today) that aren't event-driven. Fires and
-			// auto-resolves as certs renew.
+			// Periodic, self-contained checks (TLS cert expiry/issuance) that aren't event-driven.
+			// Fires and auto-resolves as certs renew.
 			go alertEngine.ScanLoop(eventCtx)
 
-			// Workspace Analytics: roll up Goma's per-request event stream into
-			// minute buckets. Runs on the embedded worker; a standalone worker joins
-			// the same consumer group so events are still rolled up exactly once.
+			// Roll up Goma's per-request events into minute buckets. A standalone worker joins the
+			// same consumer group, so events are rolled up exactly once.
 			if cfg.AnalyticsEnabled {
 				analyticsConsumer := worker.NewAnalyticsConsumer(
 					res.redis,
@@ -519,12 +476,11 @@ func runServer(cli *okapicli.CLI) {
 				res.stopAnalytics = analyticsConsumer.Start(eventCtx)
 			}
 
-			// Backup scheduler (cron) — runs scheduled database backups.
 			backupRepo := repositories.NewBackupRepository(res.db)
 			backupService := backup.NewService(backupRepo, dbRepo, nodeClients)
 			backupService.SetImageResolver(imageResolver)
 			backupService.SetLogStore(logStore)
-			backupService.SetAlerter(backupAlerter{alertEngine}) // backup-outcome alerts
+			backupService.SetAlerter(backupAlerter{alertEngine})
 			res.cron = cronpkg.NewManager(backupService, dbRepo, backupRepo, backupsettings.NewService(repositories.NewWorkspaceBackupSettingsRepository(res.db)))
 			res.cron.Start()
 
@@ -538,10 +494,8 @@ func runServer(cli *okapicli.CLI) {
 				})
 			}
 
-			// Node health sweep: actively probe each connected node's tunnel and
-			// tear down any that no longer responds, so a node that dropped
-			// ungracefully stops showing "online" even if the transport keepalive
-			// hasn't detected it yet.
+			// Actively probe each connected node's tunnel and tear down any that stopped responding,
+			// so a node that dropped ungracefully stops showing online.
 			_ = res.cron.RegisterTask("node-health", 0, "Node health sweep", "@every 1m", func() error {
 				nodeManager.ReconcileHealth(context.Background())
 				return nil
@@ -552,19 +506,15 @@ func runServer(cli *okapicli.CLI) {
 			var wsBundleSvc *wsbackup.Service
 			res.forward, runnerDispatcher, _, wsBundleSvc = routes.InitRoutes(app, res.db, res.redis, cfg, res.producer, dockerClient, nodeService, nodeManager, nodeGateway, clusterService, bus, proxyMgr, res.cron, logStore)
 
-			// This process holds the runner tunnels, so its worker is the one that
-			// dispatches builds to runners — for both pipelines and git-source app
-			// deploys. Every build runs on a registered runner; a run with none
-			// available waits up to RunnerWaitTimeout. Wired before the worker starts.
+			// This process holds the runner tunnels, so its worker dispatches builds to runners for
+			// both pipelines and git-source deploys. A run with none available waits up to
+			// RunnerWaitTimeout. Wired before the worker starts.
 			pipelineHandler.SetRunnerDispatch(runnerDispatcher, repositories.NewWorkspaceRepository(res.db), cfg.Registry.Host, registryDistributor, cfg.RunnerWaitTimeout)
 			deployHandler.SetBuildDispatch(runnerDispatcher, cfg.Registry.Host, cfg.RunnerWaitTimeout)
 
-			// Runner lease sweep: release leases whose deadline passed but whose
-			// release defer never ran (runner died or a control-plane process
-			// restarted mid-job). Without this a leaked lease counts against the
-			// runner's concurrency forever, so a genuinely free runner is never
-			// scheduled and deploys/pipelines wait indefinitely. The affected runs
-			// re-attempt via their own queue-with-timeout loops.
+			// Release leases whose deadline passed but whose release defer never ran (runner died or
+			// the process restarted mid-job). A leaked lease counts against the runner's concurrency
+			// forever, so a genuinely free runner is never scheduled.
 			_ = res.cron.RegisterTask("runner-lease-sweep", 0, "Runner lease sweep", "@every 1m", func() error {
 				expired, err := runnerDispatcher.SweepExpiredLeases(time.Now())
 				if err != nil {
@@ -576,15 +526,13 @@ func runServer(cli *okapicli.CLI) {
 				return nil
 			})
 
-			// The embedded worker runs in the same process as the agent + runner
-			// tunnels, so it is the only worker that consumes the remote-node queue
-			// and the only one that dispatches to runners.
+			// The embedded worker shares a process with the agent + runner tunnels, so it is the only
+			// worker that consumes the remote-node queue and dispatches to runners.
 			res.worker = worker.NewServer(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB, cfg.WorkerConcurrency, true)
 			if err := res.worker.Start(worker.NewMux(deployHandler, provisionHandler, upgradeHandler, fanoutHandler, webhookHandler, channelHandler, jobHandler, volumeBackupHandler, pipelineHandler, platformBackupHandler, worker.NewWorkspaceBundleHandler(wsBundleSvc))); err != nil {
 				logger.Fatal("failed to start embedded worker", "error", err)
 			}
 
-			// Background metrics scraper (short-term history).
 			if cfg.MetricsEnabled {
 				scrapeCtx, cancel := context.WithCancel(context.Background())
 				res.stopScraper = cancel
@@ -610,9 +558,8 @@ func runServer(cli *okapicli.CLI) {
 				"edition", res.entitlements.Edition,
 				"license", res.entitlements.State,
 				"port", cfg.Port)
-			// Surface an Enterprise license that isn't fully active at boot, so a
-			// grace/degraded/binding-mismatch state doesn't hide until a paid
-			// feature silently stops working.
+			// Surface an Enterprise license that isn't fully active at boot, so a grace/degraded/
+			// binding-mismatch state doesn't hide until a paid feature silently stops working.
 			if res.entitlements.Edition == enterprise.EditionEnterprise && res.entitlements.State != string(license.StateValid) {
 				logger.Warn("Enterprise license is not fully active — check the license page",
 					"state", res.entitlements.State, "binding_error", res.entitlements.BindingError)
@@ -626,17 +573,14 @@ func runServer(cli *okapicli.CLI) {
 	}
 }
 
-// installIDOf returns the deployment's stable Install ID (generating it on first
-// call), so the security-quota EE gates edition-only profiles by the same
-// license binding the API uses.
+// installIDOf returns the deployment's stable Install ID, generating it on first call.
 func installIDOf(db *gorm.DB) string {
 	id, _ := dbstorage.EnsureInstallID(db)
 	return id
 }
 
-// analyticsConsumerName builds this process's unique name within the analytics
-// consumer group (role + hostname), so pending-message ownership is per-process
-// when several workers share the group.
+// analyticsConsumerName builds this process's unique name in the analytics consumer group,
+// so pending-message ownership is per-process when several workers share it.
 func analyticsConsumerName(role string) string {
 	host, err := os.Hostname()
 	if err != nil || host == "" {
@@ -645,18 +589,15 @@ func analyticsConsumerName(role string) string {
 	return role + "-" + host
 }
 
-// analyticsRetention returns a resolver for the effective analytics retention in
-// days: the operator's MIABI_ANALYTICS_RETENTION_DAYS bounded by the license cap
-// (Community clamps to enterprise.CommunityAnalyticsRetentionDays). Evaluated per
-// prune so a license install/expiry takes effect without a restart.
+// analyticsRetention resolves the effective retention days: the operator setting bounded by
+// the license cap. Evaluated per prune, so a license change applies without a restart.
 func analyticsRetention(cfg *config.Config, edition enterprise.EE) func() int {
 	return func() int {
 		return enterprise.ClampAnalyticsRetention(cfg.AnalyticsRetentionDays, edition.Entitlements().AnalyticsRetentionDays())
 	}
 }
 
-// liveWindow resolves how long a visitor counts as live. Shared by the consumer
-// (which writes) and the API (which reads), so both agree on the window.
+// liveWindow resolves how long a visitor counts as live, so the consumer and API agree.
 func liveWindow(cfg *config.Config) time.Duration {
 	return time.Duration(cfg.AnalyticsLiveWindowSeconds) * time.Second
 }
@@ -668,8 +609,7 @@ func shutdownServer(res *serverResources) {
 	if res.cancelEvents != nil {
 		res.cancelEvents()
 	}
-	// Before Redis and the database go away below: the open minute buckets are
-	// only written by the consumer's final flush.
+	// Flush first: the open minute buckets exist only in the consumer until it stops.
 	if res.stopAnalytics != nil {
 		res.stopAnalytics()
 	}

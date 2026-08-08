@@ -16,9 +16,8 @@ import (
 	"github.com/miabi-io/runner/proto"
 )
 
-// BuildInputs describes a standalone image build — a git-source app deploy, not a
-// pipeline run — to run on a runner. The runner clones SourceURL at Commit,
-// builds per Build (Dockerfile or buildpacks), and pushes to Repository; the
+// BuildInputs describes a standalone image build — a git-source app deploy, not a pipeline run.
+// The runner clones SourceURL at Commit, builds per Build, and pushes to Repository; the
 // Dispatcher fills the per-job credentials and deadline.
 type BuildInputs struct {
 	DeploymentID     uint // lease/credential id (globally unique; leased under LeaseKindBuild)
@@ -37,12 +36,9 @@ type BuildInputs struct {
 	RequiredLabels   []string // runner selection constraints (arch/…); usually empty
 }
 
-// RunBuild dispatches a one-step image build to an eligible runner and drives it
-// to completion, streaming build log lines to onLog. It returns the pushed image
-// digest (sha256:…). ErrNoRunner / ErrRunnerOffline are returned unchanged so the
-// caller can requeue. Unlike the pipeline path it persists nothing — the deploy
-// worker owns the deployment record; the build is leased under LeaseKindBuild so
-// it never collides with a pipeline run's lease.
+// RunBuild dispatches a one-step image build to an eligible runner and drives it to completion,
+// streaming log lines to onLog and returning the pushed digest. Unlike the pipeline path it
+// persists nothing; the build is leased under LeaseKindBuild so it never collides with a run.
 func (d *Dispatcher) RunBuild(ctx context.Context, in BuildInputs, subjectUserID uint, onLog func(string)) (string, error) {
 	rn, err := d.runners.SelectRunner(runner.Job{WorkspaceID: in.WorkspaceID, RequiredLabels: in.RequiredLabels})
 	if err != nil {
@@ -95,11 +91,9 @@ func (d *Dispatcher) RunBuild(ctx context.Context, in BuildInputs, subjectUserID
 	return d.processBuildFrames(ctx, stream, mask, onLog)
 }
 
-// buildOnlyJobSpec assembles a JobSpec with a single build step carrying the
-// app's build config. There is no pipeline run; RunID carries the per-app
-// deployment number, which the runner uses as the image tag (and for its
-// workspace/log correlation). The globally-unique deployment id keys the lease
-// and credentials in RunBuild, not this field.
+// buildOnlyJobSpec assembles a JobSpec with a single build step carrying the app's build config.
+// There is no pipeline run: RunID carries the per-app deployment number, which the runner uses as
+// the image tag. The globally-unique deployment id keys the lease and credentials in RunBuild.
 func buildOnlyJobSpec(in BuildInputs, creds *JobCredentials, deadline time.Time) (proto.JobSpec, []string) {
 	env := []string{
 		kv("MIABI_WORKSPACE_NAME", in.WorkspaceName),
@@ -141,9 +135,9 @@ func buildOnlyJobSpec(in BuildInputs, creds *JobCredentials, deadline time.Time)
 	return spec, secrets
 }
 
-// processBuildFrames reads the runner's report stream for a build job: it streams
-// redacted log lines to onLog and returns the pushed digest from the terminal
-// frame. It persists nothing (the deploy worker owns the deployment).
+// processBuildFrames reads the runner's report stream for a build job: it streams redacted log
+// lines to onLog and returns the pushed digest from the terminal frame. It persists nothing — the
+// deploy worker owns the deployment.
 func (d *Dispatcher) processBuildFrames(ctx context.Context, r io.Reader, mask []string, onLog func(string)) (string, error) {
 	dec := json.NewDecoder(r)
 	var digest string

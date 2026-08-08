@@ -11,9 +11,9 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// chownFake records the images RunOneShot is invoked with and lets a test force
-// the app-image chown to fail so the busybox fallback path is exercised. It
-// embeds docker.Client so only the methods used here need implementing.
+// chownFake records the images RunOneShot is invoked with and lets a test force the app-image chown
+// to fail so the busybox fallback path is exercised. It embeds docker.Client so only the methods used
+// here need implementing.
 type chownFake struct {
 	docker.Client
 	oneShotImages []string

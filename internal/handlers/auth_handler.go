@@ -38,15 +38,13 @@ type AuthHandler struct {
 	// critical auth control, so it is fixed at boot from MIABI_PASSWORD_RESET_ENABLED
 	// rather than a runtime setting — changing it requires a restart.
 	passwordResetEnabled bool
-	// enforceSSO reports whether a user must sign in via SSO (password login
-	// blocked). Set by SetSSOEnforcement; nil means never enforced. Platform
-	// admins are exempt by the closure so a misconfigured IdP can't lock everyone
-	// out.
+	// enforceSSO reports whether a user must sign in via SSO (password login blocked). Set by
+	// SetSSOEnforcement; nil means never enforced. Platform admins are exempt by the closure so a
+	// misconfigured IdP can't lock everyone out.
 	enforceSSO func(user *models.User) bool
-	// directoryLogin attempts LDAP/AD auth as a fall-through when local password
-	// auth fails (Enterprise). Set by SetDirectoryLogin; nil means no directory.
-	// Returns (user,nil) on success, (nil,nil) to fall through, (nil,err) on a
-	// bind/disabled failure.
+	// directoryLogin attempts LDAP/AD auth as a fall-through when local password auth fails (Enterprise). Set
+	// by SetDirectoryLogin; nil means no directory. Returns (user,nil) on success, (nil,nil) to fall through,
+	// (nil,err) on a bind/disabled failure.
 	directoryLogin func(ctx context.Context, identifier, password string) (*models.User, error)
 	// loginTokens mints the short-lived personal API token behind the "Copy login
 	// command" flow. Set by SetLoginTokens; nil disables the endpoint.
@@ -76,8 +74,6 @@ func NewAuthHandler(a *auth.Service, users *repositories.UserRepository, session
 	return &AuthHandler{auth: a, users: users, sessions: sessions, audit: auditLog, settings: settingsProvider, devMode: devMode, passwordResetEnabled: passwordResetEnabled}
 }
 
-// --- DTOs ---
-
 type LoginRequest struct {
 	Body struct {
 		// Username is the login handle — a username or an email address.
@@ -89,20 +85,17 @@ type LoginRequest struct {
 	} `json:"body"`
 }
 
-// LoginTokenRequest re-authenticates the user (username + password, and a TOTP
-// code when 2FA is on) to mint a short-lived personal API token for the CLI. It
-// deliberately takes credentials in the body — the token is never issued off an
-// ambient session, so the flow re-authenticates even a signed-in user.
+// LoginTokenRequest re-authenticates the user (username, password, and a TOTP code when 2FA is
+// on) to mint a short-lived personal API token for the CLI. It deliberately takes credentials in
+// the body: the token is never issued off an ambient session, so even a signed-in user re-auths.
 type LoginTokenRequest struct {
 	Body struct {
 		Username      string `json:"username" required:"true"`
 		Password      string `json:"password" required:"true"`
 		TwoFactorCode string `json:"two_factor_code"`
-		// RedirectURI, when set, switches the response from returning the raw token
-		// to the loopback CLI-login flow: the token is stashed under a single-use
-		// code and the caller is handed a redirect_to that points at the CLI's local
-		// callback (http://127.0.0.1:PORT/…). Must be a loopback address. State is
-		// echoed back on that redirect as the CLI's CSRF check.
+		// RedirectURI, when set, switches the response from the raw token to the loopback CLI-login
+		// flow: the token is stashed under a single-use code and the caller gets a redirect_to pointing
+		// at the CLI's local callback. Must be loopback. State is echoed back as the CLI's CSRF check.
 		RedirectURI string `json:"redirect_uri"`
 		State       string `json:"state"`
 		// Scopes optionally narrows the token; admin/"*" are rejected. Empty
@@ -131,7 +124,6 @@ type LoginTokenResponse struct {
 	RedirectTo string `json:"redirect_to,omitempty"`
 }
 
-// TokenPayload converts a minted login token to the API response shape.
 func tokenPayload(t *logintoken.Token) LoginTokenResponse {
 	exp := t.ExpiresAt
 	return LoginTokenResponse{
@@ -221,10 +213,9 @@ type AuthResponse struct {
 	// TwoFactorRequired is true when the credentials were valid but the account
 	// needs a TOTP code; the client should re-submit login with two_factor_code.
 	TwoFactorRequired bool `json:"two_factor_required,omitempty"`
-	// MustChangePassword is true when the credentials were valid but the account
-	// has an admin-set/reset password it must replace. No session is issued;
-	// ResetToken is a short-lived, single-use token the client exchanges — via
-	// /auth/complete-password-reset with a new password — for a real session.
+	// MustChangePassword is true when the credentials were valid but the account has an admin-set
+	// password it must replace. No session is issued; ResetToken is a short-lived, single-use token
+	// the client exchanges via /auth/complete-password-reset for a real session.
 	MustChangePassword bool   `json:"must_change_password,omitempty"`
 	ResetToken         string `json:"reset_token,omitempty"`
 }
@@ -273,8 +264,6 @@ func profileOf(u *models.User) UserProfile {
 	return UserProfile{ID: u.ID, Name: u.Name, Username: u.Username, Email: u.Email, Role: u.Role, TwoFactorEnabled: u.TwoFactorEnabled, OnboardingDismissed: u.OnboardingDismissedAt != nil}
 }
 
-// --- Handlers ---
-
 // Status reports which auth features are enabled (public). Registration is
 // closed — the platform admin is seeded at install; accounts are created by an
 // admin from the Users page.
@@ -292,11 +281,9 @@ var (
 	errSSORequired     = errors.New("password login is disabled for this organization; use single sign-on")
 )
 
-// credentialCheck runs the shared login gate: local password auth with the
-// LDAP/AD fall-through, then the disabled / email-verification / enforced-SSO
-// policy. It returns the user and whether auth came via the directory. 2FA and
-// the success path are handled per-caller (a session for Login, a token for
-// LoginToken). The returned error is passed to abortCredential.
+// credentialCheck runs the shared login gate: local password auth with the LDAP/AD fall-through,
+// then the disabled / email-verification / enforced-SSO policy. Returns the user and whether auth
+// came via the directory; 2FA and the success path are per-caller. Errors go to abortCredential.
 func (h *AuthHandler) credentialCheck(ctx context.Context, identifier, password string) (*models.User, bool, error) {
 	user, err := h.auth.Authenticate(identifier, password)
 	viaDirectory := false
@@ -359,10 +346,9 @@ func (h *AuthHandler) Login(c *okapi.Context, req *LoginRequest) error {
 			return c.AbortUnauthorized("invalid two-factor code")
 		}
 	}
-	// Forced password change: the credentials (and 2FA) are valid, but the account
-	// has an admin-set/reset password. Issue a short-lived reset session instead of
-	// a real one — the user exchanges it for a session once they set their own
-	// password, so they never have to re-enter the admin-set one.
+	// Forced password change: the credentials (and 2FA) are valid, but the account has an admin-set/reset
+	// password. Issue a short-lived reset session instead of a real one — the user exchanges it for a session
+	// once they set their own password, so they never have to re-enter the admin-set one.
 	if user.MustChangePassword {
 		token, err := h.auth.CreateResetSession(c.Request().Context(), user.ID)
 		if err != nil {
@@ -391,10 +377,9 @@ type CompletePasswordResetRequest struct {
 	} `json:"body"`
 }
 
-// CompletePasswordReset finishes the forced-change flow: it consumes the
-// short-lived reset token issued at login, sets the new password (clearing the
-// must-change flag), and issues a full session — so the user never re-enters the
-// admin-set password.
+// CompletePasswordReset finishes the forced-change flow: it consumes the short-lived reset token
+// issued at login, sets the new password (clearing the must-change flag) and issues a full
+// session, so the user never re-enters the admin-set password.
 func (h *AuthHandler) CompletePasswordReset(c *okapi.Context, req *CompletePasswordResetRequest) error {
 	user, err := h.auth.CompletePasswordReset(c.Request().Context(), req.Body.ResetToken, req.Body.NewPassword)
 	if err != nil {
@@ -407,11 +392,9 @@ func (h *AuthHandler) CompletePasswordReset(c *okapi.Context, req *CompletePassw
 	return h.issue(c, user, 200)
 }
 
-// LoginToken re-authenticates the user and mints a short-lived personal API
-// token for the CLI ("Copy login command"). It never reads the session cookie —
-// the token is issued only against credentials in this request, so a signed-in
-// user re-authenticates (the OpenShift request-token property). No session is
-// created; the console session is untouched.
+// LoginToken re-authenticates the user and mints a short-lived personal API token for the CLI.
+// It never reads the session cookie — the token is issued only against credentials in this
+// request, so even a signed-in user re-authenticates. No session is created.
 func (h *AuthHandler) LoginToken(c *okapi.Context, req *LoginTokenRequest) error {
 	if h.loginTokens == nil {
 		return c.AbortWithError(503, errors.New("login tokens are not available"))
@@ -495,7 +478,6 @@ func buildCliRedirect(redirectURI, code, state string) string {
 	return u.String()
 }
 
-// redirectVia labels the audit trail with how the token was delivered.
 func redirectVia(redirectURI string) string {
 	if redirectURI == "" {
 		return "display"
@@ -526,7 +508,6 @@ func (h *AuthHandler) ClaimLoginToken(c *okapi.Context, req *ClaimLoginTokenRequ
 	return ok(c, tokenPayload(tok))
 }
 
-// issue generates a token, records the session, and returns the auth response.
 func (h *AuthHandler) issue(c *okapi.Context, user *models.User, status int) error {
 	token, jti, err := h.auth.IssueToken(user)
 	if err != nil {
@@ -583,10 +564,9 @@ func (h *AuthHandler) Me(c *okapi.Context) error {
 	return ok(c, profile)
 }
 
-// ForgotPassword issues a reset token and emails the reset link. Always returns
-// 200 to avoid leaking whether the email exists. Self-service password reset is
-// gated by MIABI_PASSWORD_RESET_ENABLED (a boot-time control): when disabled, no
-// token is created and no email is sent.
+// ForgotPassword issues a reset token and emails the reset link, always returning 200 so it
+// cannot leak whether the email exists. Gated by MIABI_PASSWORD_RESET_ENABLED, a boot-time
+// control: when disabled, no token is created and no email is sent.
 func (h *AuthHandler) ForgotPassword(c *okapi.Context, req *ForgotPasswordRequest) error {
 	if !h.passwordResetEnabled {
 		return message(c, "if the email exists, a reset link has been sent")

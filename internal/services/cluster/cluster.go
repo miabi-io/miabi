@@ -1,14 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package cluster auto-detects whether the manager's Docker engine is in swarm
-// mode and, when it is, drives Docker Swarm as the internal implementation of
-// Miabi's optional cluster mode. Single-node on plain Docker stays first-class:
-// when the engine is not a reachable swarm manager, CapCluster is false and
-// every cluster operation is a guarded no-op.
-//
-// Swarm is a deliberate seam behind docker.Client so a future
-// containerd/Kubernetes backend can replace it without touching callers.
+// Package cluster auto-detects whether the manager's Docker engine is in swarm mode and, when it is,
+// drives Docker Swarm as the implementation of Miabi's optional cluster mode. Single-node on plain
+// Docker stays first-class: CapCluster is false and every cluster operation is a guarded no-op.
 package cluster
 
 import (
@@ -40,8 +35,6 @@ var (
 	ErrManagerAddrUnknown = errors.New("manager swarm address is unknown; refresh cluster state")
 )
 
-// swarmStateActive is the LocalNodeState value for an engine that has joined a
-// swarm.
 const swarmStateActive = "active"
 
 // NodeDocker resolves Docker clients per node (0/local = the manager engine).
@@ -68,17 +61,14 @@ type Service struct {
 	swarm       map[string]docker.SwarmNode // swarm node id -> node (last refresh)
 	refreshedAt time.Time
 
-	// ingressReconciler re-asserts the central gateway's attachment to the shared
-	// cluster ingress overlay, run on each refresh so a gateway recreate (compose
-	// up -d) can't leave clustered apps publicly dark for longer than a refresh
-	// interval. Optional (nil = no-op); wired after construction.
+	// ingressReconciler re-asserts the central gateway's attachment to the shared cluster ingress overlay, run
+	// on each refresh so a gateway recreate (compose up -d) can't leave clustered apps publicly dark for
+	// longer than a refresh interval. Optional (nil = no-op); wired after construction.
 	ingressReconciler func(context.Context) error
 
-	// networkMigrator converts every workspace's node-local bridge into a swarm
-	// overlay, so containers reach each other across nodes. Run once, when the
-	// admin turns cluster mode on — never on upgrade and never implicitly, because
-	// it briefly drops in-flight connections inside each workspace. Optional
-	// (nil = no-op); wired after construction. See services/network.Migrate.
+	// networkMigrator converts every workspace's node-local bridge into a swarm overlay, so containers reach each
+	// other across nodes. Run once, when the admin turns cluster mode on — never on upgrade and never implicitly,
+	// because it briefly drops in-flight connections. Optional (nil = no-op); see services/network.Migrate.
 	networkMigrator func(context.Context) error
 	// networkRollback is its inverse, run on Disable *before* leaving the swarm:
 	// the overlays die with the swarm, so every workspace must be back on a bridge
@@ -104,21 +94,16 @@ type Service struct {
 	agentImageFallback string
 }
 
-// SetNetworkMigrator wires the workspace-network driver conversion: `migrate`
-// (bridge -> overlay) runs on Enable, `rollback` (overlay -> bridge) on Disable,
-// and `pending` reports how many workspaces are still on node-local bridges.
-// Nil-safe; nil leaves networks on whatever driver they already have.
+// SetNetworkMigrator wires the workspace-network driver conversion: `migrate` (bridge -> overlay) runs
+// on Enable, `rollback` on Disable, and `pending` reports how many workspaces are still on node-local
+// bridges. Nil-safe; nil leaves networks on whatever driver they already have.
 func (s *Service) SetNetworkMigrator(migrate, rollback func(context.Context) error, pending func() int) {
 	s.networkMigrator, s.networkRollback, s.networkPending = migrate, rollback, pending
 }
 
-// ApplyNetworking converts workspace networks to overlays on demand.
-//
-// Enable already does this, but only on the *transition* into cluster mode. An
-// install that was already clustered when it upgraded never sees that transition,
-// so its workspaces stay on node-local bridges and cross-node east-west silently
-// does not work. This is the explicit action that fixes them — and the one the
-// admin re-runs if a node was offline during the first attempt.
+// ApplyNetworking converts workspace networks to overlays on demand. Enable does this only on the
+// *transition* into cluster mode, so an install already clustered when it upgraded stays on node-local
+// bridges and cross-node east-west silently fails. This is the explicit action that fixes them.
 func (s *Service) ApplyNetworking(ctx context.Context) error {
 	if !s.CapCluster() {
 		return ErrNotEnabled
@@ -129,10 +114,9 @@ func (s *Service) ApplyNetworking(ctx context.Context) error {
 	return s.networkMigrator(ctx)
 }
 
-// migrateNetworks converts workspace bridges to overlays now that swarm is up.
-// Best-effort at the call site: a failure is logged and reported per workspace by
-// the migration itself, and leaves those workspaces on their bridge (i.e. exactly
-// as they are today) rather than failing the whole enable.
+// migrateNetworks converts workspace bridges to overlays now that swarm is up. Best-effort at the call
+// site: a failure is logged and reported per workspace by the migration itself, and leaves those
+// workspaces on their bridge (i.e. exactly as they are today) rather than failing the whole enable.
 func (s *Service) migrateNetworks(ctx context.Context) {
 	if s.networkMigrator == nil {
 		return
@@ -173,10 +157,9 @@ func (s *Service) capLocked() bool {
 type Status struct {
 	// Enabled mirrors CapCluster: the manager is a reachable swarm manager.
 	Enabled bool `json:"enabled"`
-	// Name is the operator's label for this cluster. Swarm identifies a cluster by an
-	// unreadable id and a manager address that moves, so without this the UI can only
-	// say "the cluster" — fine with one, useless once someone runs prod-eu-west-1 and
-	// prod-us-east-1. A label, not a step toward multi-cluster.
+	// Name is the operator's label for this cluster. Swarm identifies a cluster by an unreadable id and a
+	// manager address that moves, so without this the UI can only say "the cluster" — fine with one,
+	// useless once someone runs prod-eu-west-1 and prod-us-east-1. A label, not a step toward multi-cluster.
 	Name string `json:"name,omitempty"`
 	// LocalNodeState is the manager engine's swarm state (inactive on plain
 	// Docker).
@@ -187,18 +170,13 @@ type Status struct {
 	NodeID      string `json:"node_id,omitempty"`
 	Managers    int    `json:"managers"`
 	Nodes       int    `json:"nodes"`
-	// IngressNetwork is the shared, attachable overlay the reverse proxy joins to
-	// reach clustered apps' service VIPs (north-south ingress). Non-empty only when
-	// cluster mode is on. Miabi attaches its own managed gateway automatically; an
-	// admin running their own reverse proxy can attach it by hand:
-	//   docker network connect <ingress_network> <their-proxy-container>
+	// IngressNetwork is the shared, attachable overlay the reverse proxy joins to reach clustered apps'
+	// service VIPs. Non-empty only in cluster mode. Miabi attaches its own managed gateway automatically;
+	// an admin running their own proxy attaches it with `docker network connect`.
 	IngressNetwork string `json:"ingress_network,omitempty"`
-	// NetworksPending is how many workspace networks are still node-local bridges.
-	// Non-zero while cluster mode is on means cross-node east-west does NOT work for
-	// those workspaces — their apps and databases sit on per-node islands. It is the
-	// normal state for an install that was already clustered when it upgraded, since
-	// the conversion only runs on the enable transition. The Nodes page uses this to
-	// prompt for "Apply cluster networking".
+	// NetworksPending is how many workspace networks are still node-local bridges. Non-zero in cluster mode
+	// means cross-node east-west does NOT work for those workspaces. It is the normal state for an install
+	// already clustered when it upgraded, and prompts the Nodes page for "Apply cluster networking".
 	NetworksPending int `json:"networks_pending,omitempty"`
 	// AgentsDeployed reports whether the global agent service is installed — i.e.
 	// whether swarm workers are MANAGED (metrics, stats, shell, housekeeping) or are
@@ -367,10 +345,9 @@ func matchByHostname(swarmNodes map[string]docker.SwarmNode, srv *models.Server)
 	return docker.SwarmNode{}, false
 }
 
-// Enable puts the manager engine into swarm mode as the first manager, or
-// adopts a pre-existing swarm if Docker is already in one. advertiseAddr is the
-// address peers reach this manager on (its private/WG address); ignored when
-// adopting an existing swarm.
+// Enable puts the manager engine into swarm mode as the first manager, or adopts a pre-existing swarm
+// if Docker is already in one. advertiseAddr is the address peers reach this manager on; it is ignored
+// when adopting an existing swarm.
 func (s *Service) Enable(ctx context.Context, advertiseAddr, name string) (Status, error) {
 	// Name it before the swarm exists: an unnamed cluster tends to stay unnamed.
 	if strings.TrimSpace(name) != "" {
@@ -410,12 +387,9 @@ func (s *Service) Enable(ctx context.Context, advertiseAddr, name string) (Statu
 	return s.Status(), nil
 }
 
-// ensureIngressOverlay pre-creates the shared, attachable cluster ingress overlay
-// as soon as cluster mode comes up, so the central gateway — or a reverse proxy
-// the admin manages themselves and attaches by hand (docker network connect
-// miabi-ingress <proxy>) — has a network to join before the first clustered app
-// is deployed. Best-effort: a failure is logged, and the deploy/refresh paths
-// retry the create anyway.
+// ensureIngressOverlay pre-creates the shared, attachable cluster ingress overlay as soon as cluster mode comes
+// up, so the central gateway — or a proxy the admin attaches by hand — has a network to join before the first
+// clustered app is deployed. Best-effort: the deploy and refresh paths retry the create anyway.
 func (s *Service) ensureIngressOverlay(ctx context.Context) {
 	if _, err := s.clients.Local().CreateOverlayNetwork(ctx, node.IngressOverlay); err != nil {
 		logger.Warn("failed to ensure cluster ingress overlay", "network", node.IngressOverlay, "error", err)
@@ -429,10 +403,9 @@ func (s *Service) Disable(ctx context.Context) error {
 	if !s.CapCluster() {
 		return ErrNotEnabled
 	}
-	// Put every workspace back on a node-local bridge FIRST. Overlays only exist
-	// inside the swarm, so leaving it with workspaces still on one would strand
-	// every app and database on a network that no longer exists. This is the one
-	// step in Disable that must not be best-effort.
+	// Put every workspace back on a node-local bridge FIRST. Overlays only exist inside the swarm, so leaving
+	// it with workspaces still on one would strand every app and database on a network that no longer exists.
+	// This is the one step in Disable that must not be best-effort.
 	if s.networkRollback != nil {
 		if err := s.networkRollback(ctx); err != nil {
 			return fmt.Errorf("could not move workspace networks back to bridges; cluster mode left enabled: %w", err)
@@ -459,10 +432,9 @@ func (s *Service) Disable(ctx context.Context) error {
 	return nil
 }
 
-// JoinNode joins a worker node to the swarm via its Docker API (over the agent
-// tunnel), using the worker join token and the manager's advertised address.
-// Idempotent: a node already in the swarm just has its swarm id reconciled. The
-// node must be online (its Docker client reachable).
+// JoinNode joins a worker node to the swarm via its Docker API over the agent tunnel, using the worker
+// join token and the manager's advertised address. Idempotent: a node already in the swarm just has its
+// swarm id reconciled. The node must be online.
 func (s *Service) JoinNode(ctx context.Context, serverID uint) error {
 	if !s.CapCluster() {
 		return ErrNotEnabled
@@ -572,11 +544,8 @@ func (s *Service) Members(ctx context.Context) ([]Member, error) {
 // ErrInvalidAvailability is returned for an availability outside active/pause/drain.
 var ErrInvalidAvailability = errors.New("availability must be active, pause or drain")
 
-// SetAvailability changes a swarm node's scheduling availability.
-//
-//	active — the scheduler may place new tasks here
-//	pause  — existing tasks keep running; no new ones are placed
-//	drain  — existing tasks are rescheduled off this node
+// SetAvailability changes a swarm node's scheduling availability: active places new tasks, pause keeps
+// existing tasks running without placing more, and drain reschedules existing tasks off the node.
 func (s *Service) SetAvailability(ctx context.Context, swarmNodeID, availability string) error {
 	if !s.CapCluster() {
 		return ErrNotEnabled
@@ -594,10 +563,9 @@ func (s *Service) SetAvailability(ctx context.Context, swarmNodeID, availability
 	return nil
 }
 
-// Tasks lists the service tasks the scheduler placed on a swarm node (all nodes when
-// swarmNodeID is empty). Only the manager can answer this: the task's container lives
-// on the node, which Miabi may hold no Docker client for — so this is the only way to
-// see an unmanaged node's real workload.
+// Tasks lists the service tasks the scheduler placed on a swarm node, or all nodes when swarmNodeID is
+// empty. Only the manager can answer this: the task's container lives on the node, which Miabi may hold
+// no Docker client for, so this is the only way to see an unmanaged node's real workload.
 func (s *Service) Tasks(ctx context.Context, swarmNodeID string) ([]docker.SwarmTask, error) {
 	if !s.CapCluster() {
 		return []docker.SwarmTask{}, nil
@@ -605,10 +573,9 @@ func (s *Service) Tasks(ctx context.Context, swarmNodeID string) ([]docker.Swarm
 	return s.clients.Local().SwarmTasks(ctx, swarmNodeID)
 }
 
-// JoinInstructions are what an operator needs to join a host to the swarm by
-// hand — used for nodes that are not reachable over the agent tunnel (offline
-// managed nodes, or hosts Miabi does not manage at all). The command is run on
-// the host itself.
+// JoinInstructions are what an operator needs to join a host to the swarm by hand — for nodes not
+// reachable over the agent tunnel, whether offline managed nodes or hosts Miabi does not manage. The
+// command is run on the host itself.
 type JoinInstructions struct {
 	// WorkerToken is the swarm worker join token (a secret; admin-only).
 	WorkerToken string `json:"worker_token"`
@@ -639,11 +606,9 @@ func (s *Service) JoinInstructions(ctx context.Context) (JoinInstructions, error
 	}, nil
 }
 
-// ReaffirmNode re-joins a node that Miabi already considers a swarm member (its
-// swarm id is stored) if it has somehow dropped out — e.g. after the node host
-// was rebuilt. It never joins a node that was never a member, so standalone /
-// edge-only nodes are left alone. Best-effort; intended for the agent-connect
-// hook. A no-op when cluster mode is off or the node is not a known member.
+// ReaffirmNode re-joins a node Miabi already considers a swarm member if it has dropped out, e.g. after
+// the host was rebuilt. It never joins a node that was never a member, so edge-only nodes are left
+// alone. Best-effort, for the agent-connect hook; a no-op off cluster mode.
 func (s *Service) ReaffirmNode(ctx context.Context, serverID uint) {
 	if !s.CapCluster() {
 		return

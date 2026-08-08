@@ -11,7 +11,6 @@ import (
 	"github.com/miabi-io/miabi/internal/handlers"
 )
 
-// authRoutes registers public auth endpoints plus the authenticated profile/logout.
 func (r *Router) authRoutes() []okapi.RouteDefinition {
 	auth := r.v1.Group("/auth").WithTagInfo(okapi.GroupTag{Name: "Auth", Description: "Registration, login, sessions, and password reset."})
 	protected := []okapi.Middleware{r.authenticate}
@@ -209,7 +208,6 @@ func (r *Router) authRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// apiKeyRoutes registers API key management (JWT/session authenticated).
 func (r *Router) apiKeyRoutes() []okapi.RouteDefinition {
 	keys := r.v1.Group("/api-keys").WithTagInfo(okapi.GroupTag{Name: "API Keys", Description: "Long-lived programmatic access tokens."})
 	protected := []okapi.Middleware{r.authenticate}

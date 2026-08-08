@@ -17,10 +17,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// IdentitySource supplies the platform identity sealed into each recovery point:
-// the master encryption key, the JWT secret and the install's identity. Wired at
-// the composition root, because those values come from process configuration and
-// platform settings rather than from this service's own tables.
+// IdentitySource supplies the platform identity sealed into each recovery point: the master encryption
+// key, the JWT secret and the install's identity. Wired at the composition root, because those values
+// come from process configuration and platform settings rather than from this service's own tables.
 type IdentitySource func() (*dr.Identity, error)
 
 // SetIdentitySource wires the identity provider. Without one, recovery points are
@@ -48,19 +47,13 @@ func (s *Service) GetSetByRef(ref string) (*models.PlatformBackupSet, error) {
 	return s.sets.FindByRef(ref)
 }
 
-// CreateSet opens a recovery point and enqueues its items: the sealed identity
-// envelope, the control-plane database dump, and one archive per selected
-// platform volume.
-//
-// A recovery point requires an S3 target. This is the one place the local
-// destination is refused outright: a recovery point stored on the host it
-// protects cannot be read after that host is gone, which is the only situation it
-// exists for.
+// CreateSet opens a recovery point and enqueues its items: the sealed identity envelope, the
+// control-plane database dump, and one archive per selected platform volume. A recovery point requires an
+// S3 target — one stored on the host it protects cannot be read once that host is gone.
 func (s *Service) CreateSet(ctx context.Context, trigger string) (*models.PlatformBackupSet, error) {
-	// Detach from the caller's cancellation. A recovery point must outlive the
-	// request that asked for it: the HTTP handler returns as soon as the set is
-	// recorded, and anything still using its context — the identity envelope, or
-	// every artifact when no worker is wired — would be cancelled mid-run.
+	// Detach from the caller's cancellation. A recovery point must outlive the request that asked for it: the
+	// HTTP handler returns as soon as the set is recorded, and anything still using its context — the identity
+	// envelope, or every artifact when no worker is wired — would be cancelled mid-run.
 	ctx = context.WithoutCancel(ctx)
 
 	st, err := s.getSettings()
@@ -74,11 +67,9 @@ func (s *Service) CreateSet(ctx context.Context, trigger string) (*models.Platfo
 	if cfg == nil {
 		return nil, ErrSetNeedsS3
 	}
-	// Encryption without a passphrase degrades; it does not block. Settings that
-	// ask for it are refused when SAVED, which is where an operator can act on the
-	// message — but a stored "encrypt" left over from a passphrase that has since
-	// been removed must not silently mean no backups at all. An unencrypted
-	// recovery point is worth having; a missing one is not.
+	// Encryption without a passphrase degrades; it does not block. Settings that ask for it are refused when SAVED,
+	// where an operator can act on the message — but a stored "encrypt" left over from a removed passphrase must
+	// not silently mean no backups at all. An unencrypted recovery point is worth having; a missing one is not.
 	encrypt := st.EncryptBackups
 	if encrypt && st.BackupPassphraseEnc == "" {
 		logger.Warn("no backup passphrase is set: this recovery point will be written UNENCRYPTED. Set MIABI_PLATFORM_BACKUP_PASSPHRASE, or turn encryption off to stop seeing this")
@@ -95,11 +86,9 @@ func (s *Service) CreateSet(ctx context.Context, trigger string) (*models.Platfo
 		installID = identity.InstallID
 	}
 
-	// The fingerprint is derived from the key that actually travels in the
-	// envelope, not from this process's key. They are the same value in a healthy
-	// install — but deriving them from two different sources means a restore can
-	// refuse a perfectly good recovery point if they ever diverge, and the
-	// fingerprint exists precisely to say "the envelope matches this set".
+	// The fingerprint is derived from the key that actually travels in the envelope, not from this process's key.
+	// They are the same value in a healthy install, but deriving them from two sources means a restore could
+	// refuse a good recovery point if they diverged — and the fingerprint exists to say the envelope matches.
 	fingerprint := s.kekFingerprint()
 	if identity != nil {
 		if fp := s.fingerprintOf(identity.EncryptionKey); fp != "" {
@@ -150,10 +139,9 @@ func (s *Service) CreateSet(ctx context.Context, trigger string) (*models.Platfo
 
 	queued := 0
 	if st.IncludeTenantData {
-		// Tenant data runs INLINE, before the control-plane dump is enqueued, so a
-		// half-captured tenant set fails the recovery point rather than completing
-		// it. It is also the slow part: dumping every customer database is not
-		// something to interleave with the small, fast artifacts.
+		// Tenant data runs INLINE, before the control-plane dump is enqueued, so a half-captured tenant set fails
+		// the recovery point rather than completing it. It is also the slow part: dumping every customer database
+		// is not something to interleave with the small, fast artifacts.
 		queued += s.captureTenantData(ctx, set, st, cfg, trigger)
 	}
 	if err := s.enqueueItem(ctx, set, st, cfg.Bucket, models.PlatformBackupDatabase, "", trigger); err != nil {
@@ -176,11 +164,9 @@ func (s *Service) CreateSet(ctx context.Context, trigger string) (*models.Platfo
 		return nil, err
 	}
 	if !set.IdentitySealed {
-		// Worth saying on every run, not just at verify time: this recovery point
-		// can be restored onto a host that still has the original
-		// MIABI_ENCRYPTION_KEY, and onto no other. That is a different product
-		// from the one the feature advertises, and the difference is invisible
-		// until someone tries to rebuild on fresh hardware.
+		// Worth saying on every run, not just at verify time: with no identity envelope this recovery point can be
+		// restored onto a host that still has the original MIABI_ENCRYPTION_KEY, and onto no other — a difference
+		// that stays invisible until someone tries to rebuild on fresh hardware.
 		logger.Warn("recovery point has no identity envelope: it can be restored onto this platform's own host, but not onto a fresh one. Set a backup passphrase to seal the encryption key with it",
 			"ref", set.Ref)
 	}
@@ -191,7 +177,6 @@ func (s *Service) CreateSet(ctx context.Context, trigger string) (*models.Platfo
 	return s.sets.FindByID(set.ID)
 }
 
-// enqueueItem records and schedules one artifact of a recovery point.
 func (s *Service) enqueueItem(ctx context.Context, set *models.PlatformBackupSet, st *models.PlatformBackupSettings, bucket string, subject models.PlatformBackupSubject, volume, trigger string) error {
 	path := st.DatabaseBackupPath
 	if subject == models.PlatformBackupVolume {
@@ -215,10 +200,9 @@ func (s *Service) enqueueItem(ctx context.Context, set *models.PlatformBackupSet
 	return nil
 }
 
-// runIdentityBackup seals the platform identity and writes it beside the set's
-// other artifacts. It runs in-process rather than through a helper container:
-// the payload is the master encryption key, and handing it to a container's
-// environment would put it somewhere `docker inspect` can read.
+// runIdentityBackup seals the platform identity and writes it beside the set's other artifacts. It runs
+// in-process rather than through a helper container: the payload is the master encryption key, and handing
+// it to a container's environment would put it somewhere `docker inspect` can read.
 func (s *Service) runIdentityBackup(ctx context.Context, b *models.PlatformBackup, st *models.PlatformBackupSettings) error {
 	now := time.Now()
 	b.Status = models.BackupRunning
@@ -278,7 +262,6 @@ func (s *Service) runIdentityBackup(ctx context.Context, b *models.PlatformBacku
 	return nil
 }
 
-// blobStore builds an object client for the platform S3 target.
 func (s *Service) blobStore(st *models.PlatformBackupSettings) (*blob.Store, error) {
 	cfg, err := s.s3Config(st)
 	if err != nil {
@@ -298,10 +281,9 @@ func (s *Service) blobStore(st *models.PlatformBackupSettings) (*blob.Store, err
 	})
 }
 
-// kekFingerprint proves which master key this platform runs, without revealing
-// it. Restore compares it against the key it recovered from the identity
-// envelope, and refuses on a mismatch rather than producing a platform full of
-// undecryptable secrets.
+// kekFingerprint proves which master key this platform runs, without revealing it. Restore compares it
+// against the key it recovered from the identity envelope, and refuses on a mismatch rather than producing
+// a platform full of undecryptable secrets.
 func (s *Service) kekFingerprint() string {
 	if s.fingerprint != nil {
 		return s.fingerprint(models.KEKFingerprintLabel)
@@ -309,11 +291,9 @@ func (s *Service) kekFingerprint() string {
 	return ""
 }
 
-// finalizeSet closes a recovery point once every item is terminal. A set is
-// completed only when all of its items completed: a partial recovery point is
-// not a recovery point, and reporting one as usable is the failure this whole
-// feature exists to prevent. A nil id is an ad-hoc backup that belongs to no
-// set — nothing to finalize.
+// finalizeSet closes a recovery point once every item is terminal. A set completes only when all of its items
+// completed: a partial recovery point is not a recovery point, and reporting one as usable is the failure
+// this feature exists to prevent. A nil id is an ad-hoc backup belonging to no set — nothing to finalize.
 func (s *Service) finalizeSet(setID *uint) {
 	if setID == nil || *setID == 0 {
 		return
@@ -328,11 +308,9 @@ func (s *Service) finalizeSet(setID *uint) {
 	if set.Status == models.BackupCompleted || set.Status == models.BackupFailed {
 		return
 	}
-	// Pending means CreateSet is still adding artifacts. Finalizing now would
-	// judge the set on whichever items happen to exist yet — and the first one to
-	// finish would close it, reporting "no control-plane database dump" for a set
-	// whose dump had not been queued. CreateSet flips this to running once every
-	// artifact is recorded, and calls back.
+	// Pending means CreateSet is still adding artifacts. Finalizing now would judge the set on whichever items
+	// happen to exist yet, and the first to finish would close it — reporting "no control-plane database dump"
+	// for a set whose dump had not been queued. CreateSet flips this to running once everything is recorded.
 	if set.Status == models.BackupPending {
 		return
 	}
@@ -344,9 +322,8 @@ func (s *Service) finalizeSet(setID *uint) {
 		case models.BackupPending, models.BackupRunning:
 			return // still working
 		case models.BackupFailed:
-			// Carry the item's own error, not just its name. The set error is what
-			// an operator sees first — and often all they see, since the failing
-			// item's row is one click further away. "failed items: database" tells
+			// Carry the item's own error, not just its name. The set error is what an operator sees first — and often
+			// all they see, since the failing item's row is one click further away. "failed items: database" tells
 			// them nothing they could act on.
 			failed = append(failed, itemFailure(&it))
 		}
@@ -453,13 +430,9 @@ func (s *Service) failSet(set *models.PlatformBackupSet, cause error) error {
 	return cause
 }
 
-// PruneSets enforces retention over whole recovery points: keep at most
-// maxSets most-recent completed sets and drop any older than retentionDays.
-//
-// Retention operates on sets rather than artifacts because the artifacts are not
-// independently useful. Pruning a database dump while keeping its volume archives
-// leaves behind something that looks like a recovery point in the UI and cannot
-// recover anything.
+// PruneSets enforces retention over whole recovery points: keep at most maxSets recent completed sets and
+// drop any older than retentionDays. Retention operates on sets because the artifacts are not
+// independently useful — pruning a dump while keeping its volumes leaves something that recovers nothing.
 func (s *Service) PruneSets(ctx context.Context, maxSets, retentionDays int) (int, error) {
 	if maxSets <= 0 && retentionDays <= 0 {
 		return 0, nil

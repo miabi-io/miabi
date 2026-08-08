@@ -16,10 +16,9 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
-// newTestRepo builds a real git repository on disk carrying a Dockerfile and a
-// pipeline document on branch main, plus a v1 tag on the same commit. Discover
-// clones it over go-git's local transport, so this exercises the actual clone
-// path — not just the fs read.
+// newTestRepo builds a real git repository on disk carrying a Dockerfile and a pipeline document on branch
+// main, plus a v1 tag on the same commit. Discover clones it over go-git's local transport, so this
+// exercises the actual clone path — not just the fs read.
 func newTestRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()

@@ -45,10 +45,9 @@ func isDirect(srv *models.Server) bool {
 		srv.AccessMode == models.AccessAPI
 }
 
-// ConnectDirect builds and registers a direct node's Docker client, replacing
-// any existing one. No-op for agent or local nodes. Best-effort: a build error
-// is returned so callers can surface it, but the node stays registered as
-// offline until the next attempt.
+// ConnectDirect builds and registers a direct node's Docker client, replacing any existing one.
+// A no-op for agent or local nodes. Best-effort: a build error is returned so callers can surface
+// it, but the node stays registered as offline until the next attempt.
 func (m *Manager) ConnectDirect(srv *models.Server) error {
 	if srv == nil || srv.IsLocal || !isDirect(srv) {
 		return nil
@@ -64,12 +63,9 @@ func (m *Manager) ConnectDirect(srv *models.Server) error {
 // DisconnectDirect drops a direct node's client (on delete or mode change).
 func (m *Manager) DisconnectDirect(id uint) { m.clients.RemoveRemote(id) }
 
-// RefreshClient rebuilds a node's Docker client after its connectivity settings
-// change. A live agent tunnel owns its own client registration, so this leaves a
-// connected agent untouched — rebuilding here would evict (and close) the live
-// client and flip the node offline even though the agent is still connected.
-// For direct-access (socket/api) nodes it drops and rebuilds the client to pick
-// up endpoint/credential changes.
+// RefreshClient rebuilds a node's Docker client after its connectivity settings change. A live
+// agent tunnel owns its own registration and is left untouched — rebuilding would evict the live
+// client and flip a connected node offline. Direct nodes are rebuilt to pick up new credentials.
 func (m *Manager) RefreshClient(srv *models.Server) {
 	if srv == nil || srv.IsLocal {
 		return

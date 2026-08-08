@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package gitops is the declarative, pull-based half of Miabi's GitOps &
-// CI/CD model. A GitSource binds a Git repo of miabi.io/v1 manifests to a
-// workspace; the reconciler clones at a ref, renders + diffs against live
-// state, and converges by reusing the apply engine (Git → desired → existing
-// reconciler → Docker). It adds no container plumbing of its own.
+// Package gitops is the declarative, pull-based half of Miabi's GitOps and CI/CD model. A GitSource binds
+// a Git repo of miabi.io/v1 manifests to a workspace; the reconciler clones at a ref, renders and diffs
+// against live state, and converges by reusing the apply engine. It adds no container plumbing.
 package gitops
 
 import (
@@ -171,12 +169,9 @@ func (s *Service) List(workspaceID uint) ([]models.GitSource, error) {
 	return s.repo.ListByWorkspace(workspaceID)
 }
 
-// Delete removes a GitOps project. When cascade is set, the resources the project
-// created (those carrying its gitops-source label) are torn down first, in
-// dependency-safe order, before the source row is removed. Without cascade the
-// resources are left running (orphaned from GitOps management).
-// Returns the teardown result (nil when cascade is off) so callers can show which
-// resources were removed and any that failed.
+// Delete removes a GitOps project. With cascade, the resources the project created — those carrying its
+// gitops-source label — are torn down first in dependency-safe order. Without it they keep running,
+// orphaned from GitOps management. Returns the teardown result so callers can show what was removed.
 func (s *Service) Delete(ctx context.Context, workspaceID, id uint, cascade bool) (*apply.Result, error) {
 	src, err := s.get(workspaceID, id)
 	if err != nil {
@@ -344,17 +339,15 @@ func (s *Service) markError(src *models.GitSource, err error) error {
 	return err
 }
 
-// commitInfo is the synced commit's identity, recorded on the source for display.
 type commitInfo struct {
 	Hash    string
 	Author  string
 	Subject string
 }
 
-// fetch clones the repo at the source's ref into a temp dir and parses the
-// manifests under its path, returning the rendered manifest bundle and the
-// resolved commit (hash, author, subject). The bundle is the concatenation of
-// all manifest files; the apply engine re-parses it as one set.
+// fetch clones the repo at the source's ref into a temp dir and parses the manifests under its path,
+// returning the rendered manifest bundle and the resolved commit (hash, author, subject). The bundle is
+// the concatenation of all manifest files; the apply engine re-parses it as one set.
 func (s *Service) fetch(ctx context.Context, src *models.GitSource) ([]byte, commitInfo, error) {
 	auth, url, err := s.auth(src)
 	if err != nil {
@@ -402,10 +395,9 @@ func (s *Service) fetch(ctx context.Context, src *models.GitSource) ([]byte, com
 			// state — so it must never trigger a prune.
 			return nil, commitInfo{}, fmt.Errorf("manifest path %q not found at ref %q", srcPath(src.Path), refLabel(src.Ref))
 		case errors.Is(err, declarative.ErrNoResources):
-			// The path exists but holds no manifests. By default refuse, so a wiped
-			// or wrong directory can't tear everything down. With AllowEmpty, treat
-			// it as an intentional teardown: an empty bundle prunes all managed
-			// resources (only meaningful when Prune is also on).
+			// The path exists but holds no manifests. By default refuse, so a wiped or wrong directory can't tear
+			// everything down. With AllowEmpty, treat it as an intentional teardown: an empty bundle prunes all
+			// managed resources (only meaningful when Prune is also on).
 			if src.AllowEmpty {
 				return []byte{}, ci, nil
 			}
@@ -436,7 +428,6 @@ func refLabel(r string) string {
 	return r
 }
 
-// auth resolves the transport auth method and effective URL for a source.
 func (s *Service) auth(src *models.GitSource) (transport.AuthMethod, string, error) {
 	url := src.RepoURL
 	if src.GitRepositoryID == nil {

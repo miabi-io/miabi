@@ -64,13 +64,11 @@ func wsFixture() fakeWS {
 	}
 }
 
-// wsToken builds a service whose token is scoped to workspace acme (id 7).
 func wsToken(scopes []string) *Service {
 	id := uint(7)
 	return &Service{keys: fakeKeys{key: &models.APIKey{WorkspaceID: &id, UserID: 1, Scopes: scopes}}, ws: wsFixture()}
 }
 
-// userToken builds a service whose token is account-wide, owned by userID.
 func userToken(userID uint, scopes []string) *Service {
 	return &Service{keys: fakeKeys{key: &models.APIKey{UserID: userID, Scopes: scopes}}, ws: wsFixture()}
 }
@@ -176,10 +174,9 @@ func TestAuthorizePlatformToken(t *testing.T) {
 	}
 }
 
-// A cross-repository blob mount names its source in the query string, which the
-// gateway's namespace rewrite (a path regex) never touches. Without an explicit
-// check a member of one workspace could push into their own namespace while
-// lifting layers out of another tenant's, needing only a digest.
+// A cross-repository blob mount names its source in the query string, which the gateway's namespace
+// rewrite (a path regex) never touches. Without an explicit check a member of one workspace could push
+// into their own namespace while lifting layers out of another tenant's, needing only a digest.
 func TestAuthorizeBlobMount(t *testing.T) {
 	rw := []string{models.ScopeRead, models.ScopeWrite}
 	const uploads = "/v2/acme/web/blobs/uploads/"
@@ -265,10 +262,9 @@ func TestFirstSegmentAndIDNamespace(t *testing.T) {
 	}
 }
 
-// A token for one workspace must not reach another's namespace by smuggling the
-// target through path traversal. The gateway normalizes the path it proxies
-// upstream, so authorizing the raw form would approve "a" and serve "b" — a
-// confirmed cross-tenant write, not a theoretical one.
+// A token for one workspace must not reach another's namespace by smuggling the target through path
+// traversal. The gateway normalizes the path it proxies upstream, so authorizing the raw form would
+// approve "a" and serve "b" — a confirmed cross-tenant write, not a theoretical one.
 func TestParseRepoNormalizesTraversal(t *testing.T) {
 	cases := []struct {
 		uri  string

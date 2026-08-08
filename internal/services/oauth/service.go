@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package oauth implements the OAuth 2.0 / OpenID Connect authorization-code
-// login flow against admin-configured providers. It resolves provider endpoints
-// (Google well-known or generic OIDC discovery), builds authorize URLs, exchanges
-// codes, and provisions/links users.
+// Package oauth implements the OAuth 2.0 / OpenID Connect authorization-code login flow against
+// admin-configured providers. It resolves provider endpoints (Google well-known or generic OIDC discovery),
+// builds authorize URLs, exchanges codes, and provisions or links users.
 package oauth
 
 import (
@@ -103,10 +102,9 @@ func (s *Service) SetMembershipGate(gate func(userID uint) error) {
 	s.membershipGate = gate
 }
 
-// ResolveEndpoints fills in AuthURL/TokenURL/UserInfoURL/Issuer for a provider
-// based on its type. Called by the admin handler before persisting. For OIDC it
-// performs discovery against the issuer's well-known configuration when explicit
-// endpoints are not supplied.
+// ResolveEndpoints fills in AuthURL, TokenURL, UserInfoURL and Issuer for a provider based on its type,
+// called by the admin handler before persisting. For OIDC it performs discovery against the issuer's
+// well-known configuration when explicit endpoints are not supplied.
 func (s *Service) ResolveEndpoints(ctx context.Context, p *models.OAuthProvider) error {
 	switch p.Type {
 	case models.OAuthProviderGoogle:
@@ -186,12 +184,9 @@ func (s *Service) AuthCodeURL(ctx context.Context, p *models.OAuthProvider, redi
 	return s.AuthCodeURLWithIntent(ctx, p, redirectURI, "")
 }
 
-// AuthCodeURLWithIntent is AuthCodeURL with an application-level intent bound to
-// the state (e.g. "login_token"), read back in the callback via ConsumeIntent.
-// When intent is non-empty it also sets prompt=login so the IdP forces a fresh
-// authentication — the re-auth property the CLI-token flow depends on. This
-// mirrors OpenShift's request-token flow, which likewise forces a fresh login
-// before minting a token, so an ambient SSO session can't silently issue one.
+// AuthCodeURLWithIntent is AuthCodeURL with an application-level intent bound to the state, read back in the
+// callback via ConsumeIntent. A non-empty intent also sets prompt=login so the IdP forces a fresh
+// authentication — the re-auth property the CLI-token flow depends on, mirroring OpenShift's request-token.
 func (s *Service) AuthCodeURLWithIntent(ctx context.Context, p *models.OAuthProvider, redirectURI, intent string) (string, error) {
 	state, err := randomState()
 	if err != nil {
@@ -333,10 +328,9 @@ func (s *Service) autoJoinWorkspace(p *models.OAuthProvider, userID uint) {
 	}
 }
 
-// ProvisionSSOUser finds a user by email or creates one from a trusted identity
-// provider (e.g. SAML). Mirrors the OAuth auto-register policy: the first user is
-// the platform admin, the asserted email is treated as verified, and the account
-// uses an unusable password. Returns ErrAccountDisabled for a disabled user.
+// ProvisionSSOUser finds a user by email or creates one from a trusted identity provider. Mirrors the OAuth
+// auto-register policy: the first user is the platform admin, the asserted email is treated as verified, and
+// the account uses an unusable password. Returns ErrAccountDisabled for a disabled user.
 func (s *Service) ProvisionSSOUser(ctx context.Context, email, name, username string) (*models.User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if email == "" {
@@ -436,7 +430,6 @@ func (s *Service) exchange(ctx context.Context, p *models.OAuthProvider, code, r
 	return &info, nil
 }
 
-// firstClaim returns the first non-empty string value among the named claims.
 func firstClaim(claims map[string]any, names ...string) string {
 	for _, n := range names {
 		if v := stringClaim(claims, n); v != "" {

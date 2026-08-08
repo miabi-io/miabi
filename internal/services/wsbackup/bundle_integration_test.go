@@ -13,14 +13,9 @@ import (
 	"github.com/miabi-io/miabi/internal/wsbundle"
 )
 
-// This drives the half of a bundle that does not need a platform: the objects an
-// export writes, and the discovery path a restore reads them back through — on a
-// REAL bucket. Everything between (dumps, archives, the create paths) needs
-// Docker and a control plane; the layout does not, and the layout is what a
-// restore on another install depends on.
-//
-// Skips unless MIABI_S3_IT_BUCKET is set, so the default `go test` stays
-// hermetic. See internal/storage/blob for the full variable list.
+// This drives the half of a bundle that does not need a platform: the objects an export writes, and the
+// discovery path a restore reads them back through, on a REAL bucket. The layout is what a restore on another
+// install depends on. Skips unless MIABI_S3_IT_BUCKET is set, so the default `go test` stays hermetic.
 func itStore(t *testing.T) (*blob.Store, blob.Config) {
 	t.Helper()
 	bucket := os.Getenv("MIABI_S3_IT_BUCKET")

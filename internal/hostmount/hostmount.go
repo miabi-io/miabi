@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package hostmount defines the fixed, allow-listed set of host bind mounts a
-// privileged workspace may attach to a container. The host source path is
-// owned by the server and resolved from a preset key — it is never supplied by
-// the client — so the blast radius can never widen beyond these presets.
+// Package hostmount defines the fixed, allow-listed set of host bind mounts a privileged workspace
+// may attach to a container. The host source path is owned by the server and resolved from a preset
+// key — never supplied by the client — so the blast radius can never widen beyond these presets.
 package hostmount
 
 import (
@@ -14,21 +13,18 @@ import (
 	"strings"
 )
 
-// CustomHostRoot is the only host tree a privileged workspace may bind a custom
-// path under. It is deliberately narrow: /mnt is the conventional mount point for
-// operator-managed external storage (a NAS mounted at the same path on every
-// node), so a bind under it can't reach system paths (/etc, /var/run, the Docker
-// or Miabi data dirs) and stays useful for the shared-storage use case.
+// CustomHostRoot is the only host tree a privileged workspace may bind a custom path under.
+// Deliberately narrow: /mnt is the conventional mount point for operator-managed external storage,
+// so a bind under it can't reach system paths and stays useful for shared storage.
 const CustomHostRoot = "/mnt"
 
 // ErrInvalidHostPath is returned when a custom host path is not a clean absolute
 // path strictly under CustomHostRoot.
 var ErrInvalidHostPath = errors.New("host path must be an absolute path under " + CustomHostRoot + "/ (e.g. " + CustomHostRoot + "/nas/app)")
 
-// ValidateCustomHostPath cleans p and verifies it is an absolute path strictly
-// inside CustomHostRoot (a real subpath, not the root itself), with no traversal.
-// Returns the cleaned path to store/bind. The source-under-/mnt rule is the trust
-// boundary: it can never widen beyond operator-mounted external storage.
+// ValidateCustomHostPath cleans p and verifies it is an absolute path strictly inside
+// CustomHostRoot (a real subpath, not the root itself), with no traversal, returning the cleaned
+// path. The source-under-/mnt rule is the trust boundary and can never widen.
 func ValidateCustomHostPath(p string) (string, error) {
 	p = strings.TrimSpace(p)
 	if p == "" || strings.ContainsRune(p, 0) || !strings.HasPrefix(p, "/") {

@@ -17,7 +17,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// subtleEqual is a constant-time string comparison (for the platform token).
 func subtleEqual(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
@@ -37,10 +36,9 @@ type AuthInput struct {
 	URI           string // X-Forwarded-Uri (the /v2/... path)
 }
 
-// AuthResult is the authorization decision the auth endpoint translates to HTTP.
-// On allow it also carries the rewrite target: the gateway sets the request's
-// repository namespace segment to Namespace (ws_<id>) before forwarding to the
-// registry, so storage keys off the immutable id while users address by name.
+// AuthResult is the authorization decision the auth endpoint translates to HTTP. On allow it also carries
+// the rewrite target: the gateway sets the request's repository namespace segment to Namespace (ws_<id>)
+// before forwarding, so storage keys off the immutable id while users address by name.
 type AuthResult struct {
 	Status      int    // 200 allow, 401 unauthenticated, 403 forbidden
 	Challenge   bool   // emit WWW-Authenticate: Basic on a 401
@@ -54,18 +52,9 @@ type AuthResult struct {
 // Allowed reports whether the request is authorized.
 func (r AuthResult) Allowed() bool { return r.Status == http.StatusOK }
 
-// Authorize decides whether a forwarded registry request is allowed. The docker
-// password is an API token; the username is advisory (ignored, like GHCR). The
-// requested repository's first path segment names the target workspace (its
-// name, or the rewritten ws_<id> form), and the token's principal is authorized
-// against that workspace:
-//
-//   - a workspace-scoped token may only act on its own workspace;
-//   - an account-wide (user) token may act on any workspace the user is a member
-//     of, gated by the member's role (push needs developer+, pull any member).
-//
-// Either way the action is also gated by the token's scopes (read for pull;
-// write/deploy for push).
+// Authorize decides whether a forwarded registry request is allowed. The docker password is an API token
+// and the username is advisory. The repository's first path segment names the target workspace: a
+// workspace-scoped token may act only on its own; a user token on any it is a member of, gated by role.
 func (s *Service) Authorize(in AuthInput) AuthResult {
 	_, token, ok := parseBasic(in.Authorization)
 	if !ok {
@@ -111,10 +100,9 @@ func (s *Service) Authorize(in AuthInput) AuthResult {
 		return AuthResult{Status: http.StatusForbidden, Reason: "catalog access is not permitted"}
 	}
 
-	// Resolve the target workspace from the repository's first path segment. This
-	// uniformly handles both the human name the user types ("acme/...") and the
-	// rewritten id form the registry hands back in a blob-upload Location
-	// ("ws_<id>/..."), so the upload handshake works without response rewriting.
+	// Resolve the target workspace from the repository's first path segment. This uniformly handles both the
+	// human name the user types ("acme/...") and the rewritten id form the registry hands back in a
+	// blob-upload Location ("ws_<id>/..."), so the upload handshake works without response rewriting.
 	ws, err := s.resolveNamespace(firstSegment(repo))
 	if err != nil {
 		return AuthResult{Status: http.StatusForbidden, Reason: "unknown workspace namespace"}
@@ -140,20 +128,9 @@ func (s *Service) Authorize(in AuthInput) AuthResult {
 	}
 }
 
-// authorizeMountSource authorizes the source repository of a cross-repository
-// blob mount against the target workspace, returning "" when it is allowed.
-//
-// A push may start an upload as POST /v2/<name>/blobs/uploads/?mount=<digest>&from=<repo>,
-// which copies an existing blob out of <repo> instead of re-uploading it. That
-// source repository travels in the QUERY STRING, which neither parseRepo nor the
-// gateway's namespace rewrite (a path regex) touches — so without this check a
-// member of one workspace could push to their own namespace while lifting layers
-// out of another tenant's, using nothing but a digest.
-//
-// Mounting within the workspace is the legitimate case (it is what makes a
-// retag cheap), so the rule is simply that source and target namespaces match.
-// It applies to the platform principal too: a build only ever mounts inside the
-// namespace it is pushing to.
+// authorizeMountSource authorizes the source repository of a cross-repository blob mount against the target
+// workspace. That source travels in the QUERY STRING, which neither parseRepo nor the gateway's path-regex
+// rewrite touches — so without this a member could lift layers out of another tenant's namespace via a digest.
 func (s *Service) authorizeMountSource(uri string, workspaceID uint) string {
 	from := mountSource(uri)
 	if from == "" {
@@ -203,7 +180,6 @@ func (s *Service) authorizePrincipal(key *models.APIKey, workspaceID uint, push 
 		}
 		return "pull requires a read scope"
 	}
-	// A workspace-scoped token is pinned to its workspace.
 	if key.WorkspaceID != nil {
 		if *key.WorkspaceID != workspaceID {
 			return "token is scoped to a different workspace"
@@ -240,10 +216,9 @@ func roleAllows(role models.WorkspaceRole, push bool) bool {
 	return role.AtLeast(models.WorkspaceRoleViewer)
 }
 
-// resolveNamespace resolves the repository namespace segment to a workspace —
-// either the rewritten id form "ws_<id>" or the workspace name.
-// Without a workspace finder wired, no namespace can be proven to belong to
-// anyone — every caller of this treats that as a denial rather than a pass.
+// resolveNamespace resolves the repository namespace segment to a workspace — either the rewritten id form
+// "ws_<id>" or the workspace name. Without a workspace finder wired, no namespace can be proven to belong
+// to anyone — every caller of this treats that as a denial rather than a pass.
 func (s *Service) resolveNamespace(ns string) (*models.Workspace, error) {
 	if s.ws == nil {
 		return nil, errors.New("registry: no workspace finder is configured")
@@ -269,7 +244,6 @@ func parseIDNamespace(ns string) (uint, bool) {
 	return uint(id), true
 }
 
-// firstSegment returns the first path component of a repository name.
 func firstSegment(repo string) string {
 	if i := strings.IndexByte(repo, '/'); i >= 0 {
 		return repo[:i]
@@ -277,7 +251,6 @@ func firstSegment(repo string) string {
 	return repo
 }
 
-// parseBasic decodes an "Authorization: Basic" header into username and password.
 func parseBasic(header string) (user, pass string, ok bool) {
 	const prefix = "Basic "
 	if len(header) < len(prefix) || !strings.EqualFold(header[:len(prefix)], prefix) {
@@ -294,38 +267,27 @@ func parseBasic(header string) (user, pass string, ok bool) {
 	return user, pass, true
 }
 
-// parseRepo extracts the repository name from a /v2/... URI. It returns isBase
-// for the "/v2/" root (login handshake) and isCatalog for "/v2/_catalog".
-// Registry API actions live under /manifests/, /blobs/, or /tags/, so the
-// repository is the path prefix before the last such marker.
+// parseRepo extracts the repository name from a /v2/... URI. It returns isBase for the "/v2/" root (login
+// handshake) and isCatalog for "/v2/_catalog". Registry API actions live under /manifests/, /blobs/, or
+// /tags/, so the repository is the path prefix before the last such marker.
 func parseRepo(uri string) (repo string, isBase, isCatalog bool) {
 	p := uri
 	if i := strings.IndexByte(p, '?'); i >= 0 {
 		p = p[:i]
 	}
-	// Tolerate a full URL or a bare path.
 	if i := strings.Index(p, "/v2"); i >= 0 {
 		p = p[i:]
 	}
-	// Percent-decode and resolve the path BEFORE any segment is read.
-	//
-	// This is a tenant boundary, and it is only sound if the path authorized here
-	// is the path the registry will actually serve. The gateway normalizes what it
-	// proxies upstream, so a request for
-	//
-	//	/v2/tenant-a/app/../../tenant-b/app/blobs/uploads/
-	//
-	// reaches the registry as tenant-b while a raw first-segment read approves it
-	// as tenant-a — a token for one workspace writing into another's namespace.
-	// %2e%2e is the same attack wearing a hat, so decode first, then clean.
+	// Percent-decode and resolve the path BEFORE any segment is read. This is a tenant boundary, and it is only sound
+	// if the path authorized here is the path the registry serves. The gateway normalizes what it proxies, so a
+	// traversal reaches the registry as tenant-b while a raw first-segment read approves it as tenant-a.
 	if dec, err := url.PathUnescape(p); err == nil {
 		p = dec
 	}
 	p = path.Clean(p)
-	// Clean anchors at "/", so a path that climbed lands outside /v2 rather than
-	// keeping a "../" prefix. Require the result to still be a registry path: if
-	// it is not, the request addresses no repository and must resolve to no
-	// workspace, never to whatever segment it happens to start with.
+	// Clean anchors at "/", so a path that climbed lands outside /v2 rather than keeping a "../" prefix.
+	// Require the result to still be a registry path: if it is not, the request addresses no repository and
+	// must resolve to no workspace, never to whatever segment it happens to start with.
 	if p != "/v2" && !strings.HasPrefix(p, "/v2/") {
 		return "\x00", false, false // resolves to no workspace → denied
 	}

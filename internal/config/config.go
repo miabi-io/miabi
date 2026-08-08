@@ -52,20 +52,14 @@ type Config struct {
 	// PlanEnforcement gates per-workspace resource quotas. On by default; set it
 	// false and all plan limits and capabilities become unlimited/allowed.
 	PlanEnforcement bool
-	// SecurityEnforcement guards platform-managed resources from disruptive raw
-	// Docker actions in the admin dashboard. When true (default), a platform admin
-	// cannot stop or remove a Miabi-managed container (apps, databases, …) from the
-	// node containers list — those are managed through their owning resource.
-	// Setting it false is an escape hatch for break-glass operations.
+	// SecurityEnforcement guards platform-managed resources from disruptive raw Docker actions.
+	// When true (default), a platform admin cannot stop or remove a Miabi-managed container from
+	// the node containers list. Setting it false is a break-glass escape hatch.
 	SecurityEnforcement bool
 
-	// GPU management. GPUEnabled is the master off-switch: when false the control
-	// plane never probes nodes for GPUs and the UI hides all GPU controls (an
-	// air-gapped / no-GPU fleet pays nothing). NvidiaRuntime is the container
-	// runtime name that signals the NVIDIA Container Toolkit is present.
-	// GPUProbeImage is the one-shot image the inventory probe runs `nvidia-smi -q
-	// -x` in (point it at a mirror for air-gapped/registry-pinned fleets).
-	// GPUInventoryMinutes is the device rescan interval.
+	// GPU management. GPUEnabled is the master off-switch (no probing, no UI). NvidiaRuntime is
+	// the runtime name signalling the NVIDIA Container Toolkit. GPUProbeImage runs `nvidia-smi`;
+	// point it at a mirror when air-gapped. GPUInventoryMinutes is the device rescan interval.
 	GPUEnabled          bool
 	NvidiaRuntime       string
 	GPUProbeImage       string
@@ -97,10 +91,9 @@ type Config struct {
 	// notification emails (password resets, workspace invitations, welcomes).
 	// When unset (no host/from), those emails are silently skipped.
 	SystemSMTP SystemSMTPConfig
-	// WebDir overrides where the web UI is served from. The UI is normally
-	// embedded in the binary (internal/web); setting MIABI_WEB_DIR serves it from
-	// this directory on disk instead — for frontend development (live rebuilds) or
-	// to swap in a custom build without recompiling. Empty ⇒ use the embedded UI.
+	// WebDir overrides where the web UI is served from. The UI is normally embedded in the binary
+	// (internal/web); MIABI_WEB_DIR serves it from disk instead, for frontend development or a
+	// custom build without recompiling. Empty means use the embedded UI.
 	WebDir string
 
 	// AllowDowngrade lets the server boot even when the binary's version is
@@ -120,17 +113,9 @@ type Config struct {
 	// DOCKER_HOST from the environment via FromEnv).
 	DockerHost string
 
-	// MarketplaceURL is where Miabi syncs official + community templates from.
-	// The default is the marketplace repo's latest GitHub Release asset; that path
-	// always serves the newest published (immutable) release, so the catalog stays
-	// fresh without flapping like a floating branch ref would, and updates decouple
-	// from Miabi releases.
-	//
-	// Alternatives: any static bundle URL (a CDN-served export.json, used
-	// directly) or a marketplace server base URL, e.g. https://marketplace.miabi.io
-	// (the /v1/export path is appended). Set MIABI_MARKETPLACE_URL to an explicit
-	// empty value to disable syncing — the catalog falls back to the embedded
-	// official floor only (offline / air-gapped kill switch).
+	// MarketplaceURL is where Miabi syncs official and community templates from. The default is
+	// the marketplace repo's latest GitHub Release asset, which always serves the newest immutable
+	// release. Set it explicitly empty to disable syncing (offline / air-gapped kill switch).
 	MarketplaceURL string
 
 	// GomaProviderDir is Goma Gateway's watched file-provider directory. When
@@ -162,12 +147,9 @@ type Config struct {
 	AnalyticsFlushSeconds int
 	// AnalyticsRetentionDays bounds how long rollups are kept before pruning.
 	AnalyticsRetentionDays int
-	// AnalyticsLiveWindowSeconds is how long a visitor keeps counting as "live"
-	// after their last request. It spans the gap between one visitor's requests,
-	// not the length of their visit — someone reading a page sends nothing for
-	// minutes and is still there, which is why 5m is the norm. Keep it in step
-	// with the gateway's monitoring.visitorTTL, or the dashboard's live count and
-	// Goma's Prometheus gauge will disagree.
+	// AnalyticsLiveWindowSeconds is how long a visitor keeps counting as "live" after their last
+	// request — the gap between requests, not the length of the visit, which is why 5m is the norm.
+	// Keep it in step with the gateway's monitoring.visitorTTL or the two counts will disagree.
 	AnalyticsLiveWindowSeconds int
 
 	// ACMEDirectoryURL is the ACME CA directory Miabi issues managed (DNS-01)
@@ -184,11 +166,9 @@ type Config struct {
 	KeyAutoRotate   bool
 	KeyRotateMonths int
 
-	// HostProcPath is the procfs directory used to read real host CPU/memory for
-	// the local node. Defaults to /host/proc (the convention when the host's
-	// procfs is bound read-only); if that isn't present the local /proc is used,
-	// which already reflects host stats. Host metrics are simply unavailable when
-	// neither is readable.
+	// HostProcPath is the procfs directory used to read real host CPU/memory for the local node.
+	// Defaults to /host/proc (the usual read-only bind); if absent the local /proc is used, which
+	// already reflects host stats. Host metrics are unavailable when neither is readable.
 	HostProcPath string
 
 	// ProxyNetwork is the shared Docker network that Goma Gateway and all
@@ -200,15 +180,13 @@ type Config struct {
 	// (e.g. https://miabi.example.com). Used to point a node's own Goma Gateway
 	// at the HTTP-provider endpoint. Falls back to ApiBaseURL when unset.
 	ControlURL string
-	// ExternalBaseDomain is the wildcard base domain for one-click external access
-	// (e.g. "apps.example.com", DNS *.apps.example.com). When set it is the
-	// authoritative value for the `external_base_domain` platform setting, applied
-	// on every boot; leave empty to manage it from the admin Settings UI instead.
+	// ExternalBaseDomain is the wildcard base domain for one-click external access (e.g.
+	// "apps.example.com", DNS *.apps.example.com). When set it is authoritative for the
+	// `external_base_domain` setting on every boot; leave empty to manage it from the admin UI.
 	ExternalBaseDomain string
-	// ExternalBaseProvider names the Goma certManager provider used for the
-	// generated external-access routes' certificates ("" = the gateway default).
-	// Authoritative for the `external_base_provider` setting when set, like
-	// ExternalBaseDomain.
+	// ExternalBaseProvider names the Goma certManager provider used for the generated
+	// external-access routes' certificates ("" = the gateway default). Authoritative for the
+	// `external_base_provider` setting when set, like ExternalBaseDomain.
 	ExternalBaseProvider string
 	// NodeGatewayImage is the Goma Gateway image deployed on edge-gateway nodes.
 	NodeGatewayImage string
@@ -239,13 +217,9 @@ type Config struct {
 	HostPortMin int
 	HostPortMax int
 
-	// Database port-forward (on-demand external access to managed databases).
-	// ForwardBindAddr is the interface the ephemeral forward listeners bind to
-	// (default 127.0.0.1 — admins set it to a reachable interface to allow remote
-	// DB clients). ForwardAdvertiseHost is the host shown to users in the
-	// connection string (falls back to the bind address). ForwardRelayImage is
-	// the socat image run as the in-network relay. ForwardTTLMinutes is how long
-	// a session stays open before it is reaped.
+	// Database port-forward. ForwardBindAddr is the interface ephemeral listeners bind to (default
+	// 127.0.0.1); ForwardAdvertiseHost is the host shown to users; ForwardRelayImage is the socat
+	// relay image; ForwardTTLMinutes is how long a session stays open before it is reaped.
 	ForwardBindAddr      string
 	ForwardAdvertiseHost string
 	ForwardRelayImage    string
@@ -254,33 +228,23 @@ type Config struct {
 	// RestoreMaxMB caps the size of an uploaded database dump for restore.
 	RestoreMaxMB int
 
-	// Container security profile (OpenShift-style "run as non-root"). When a
-	// workspace's plan selects the "restricted" profile — or ForceNonRootUser is
-	// set globally — application and job containers are started as RestrictedUID:0
-	// with no-new-privileges and NET_RAW dropped. RestrictedUID is the platform
-	// non-root UID (GID is always 0, the arbitrary-UID convention). SecurityInitImage
-	// is the tiny image run to chown a restricted app's managed volumes to that UID.
+	// Container security profile (OpenShift-style run-as-non-root). When a plan selects
+	// "restricted" — or ForceNonRootUser is set globally — app and job containers run as
+	// RestrictedUID:0 with no-new-privileges and NET_RAW dropped. SecurityInitImage chowns volumes.
 	RestrictedUID     int
 	ForceNonRootUser  bool
 	SecurityInitImage string
 
-	// Managed network subnet allocation. Miabi carves a unique subnet out of
-	// NetworkPoolCIDR for every Docker network it creates (workspace/user/stack/
-	// gateway/overlay) and passes it as explicit IPAM, instead of relying on
-	// Docker's small built-in default-address-pools (which exhaust with the error
-	// "all predefined address pools have been fully subnetted"). It follows a
-	// cluster-CIDR → per-network /24 scheme. NetworkSubnetPrefix is the size of each
-	// carved subnet; the default /12 pool split into /24s yields 4096 networks.
-	// The default base (10.64.0.0/12) is chosen to avoid common Kubernetes CNI, Docker,
-	// and LAN/VPN/Tailscale ranges.
+	// Managed network subnet allocation. Miabi carves a unique subnet from NetworkPoolCIDR for
+	// every network it creates and passes explicit IPAM, instead of Docker's small default pools.
+	// NetworkSubnetPrefix sizes each subnet; the default /12 split into /24s yields 4096 networks.
 	NetworkPoolCIDR     string
 	NetworkSubnetPrefix int
 
 	RunnerWaitTimeout time.Duration
-	// JobAPITokenEnabled injects the scoped MIABI_JOB_TOKEN callback credential
-	// into runner jobs (report status/logs, deploy this app by digest). A
-	// hardened install can withhold it while still injecting registry
-	// credentials. Default true.
+	// JobAPITokenEnabled injects the scoped MIABI_JOB_TOKEN callback credential into runner jobs
+	// (report status/logs, deploy this app by digest). A hardened install can withhold it while
+	// still injecting registry credentials. Default true.
 	JobAPITokenEnabled bool
 	// BuildTimeoutMinutes is the hard per-build deadline the runner dispatcher
 	// enforces on a build job (0 = none).
@@ -317,9 +281,8 @@ func (s SystemSMTPConfig) IsConfigured() bool {
 	return s.Host != "" && s.From != ""
 }
 
-// PostgresConn resolves the control-plane database connection parameters,
-// parsing MIABI_DB_URL when set and otherwise using the discrete MIABI_DB_*
-// fields. Used by the platform backup runner to point pg-bkup at Miabi's own
+// PostgresConn resolves the control-plane database connection parameters, parsing MIABI_DB_URL
+// when set and otherwise the discrete MIABI_DB_* fields. Used to point pg-bkup at Miabi's own
 // database. sslmode defaults to "disable" when not otherwise specified.
 func (d DatabaseConfig) PostgresConn() (host string, port int, name, user, password, sslmode string) {
 	host, port, name, user, password, sslmode = d.host, d.port, d.name, d.user, d.password, d.sslMode
@@ -363,19 +326,9 @@ type RedisConfig struct {
 	DB       int // Redis database index (MIABI_REDIS_DB); must match Goma's GOMA_REDIS_DB for analytics
 }
 
-// PlatformBackupConfig configures platform disaster-recovery backups from the
-// environment.
-//
-// It exists because of the order recovery happens in. A freshly installed or
-// freshly restored control plane has an empty settings table, so anything stored
-// only in the database has to be typed into a UI before the platform can protect
-// itself — and after a restore, the operator is doing that under pressure, from
-// memory. Setting the target in the stack manifest means a rebuilt host is
-// already pointed at its bucket on first boot.
-//
-// Any field set here WINS over the stored settings row and is reported to the
-// API as env-locked, so the UI shows it read-only instead of accepting an edit
-// the process configuration would silently override.
+// PlatformBackupConfig configures platform DR backups from the environment, so a freshly
+// installed or restored control plane is already pointed at its bucket on first boot. Any
+// field set here WINS over the stored settings row and is reported to the API as env-locked.
 type PlatformBackupConfig struct {
 	S3Endpoint       string
 	S3Bucket         string
@@ -397,16 +350,14 @@ type PlatformBackupConfig struct {
 	// first boot; it is still never returned by the API.
 	Passphrase string
 	Encrypt    bool
-	// EncryptSet records whether MIABI_PLATFORM_BACKUP_ENCRYPT was present, so an
-	// explicit "false" can override a stored "true" while an absent variable
-	// leaves the stored value alone. IncludeIdentitySet and IncludeTenantDataSet
-	// do the same for their toggles.
+	// EncryptSet records whether MIABI_PLATFORM_BACKUP_ENCRYPT was present, so an explicit
+	// "false" can override a stored "true" while an absent variable leaves the stored value alone.
+	// IncludeIdentitySet and IncludeTenantDataSet do the same for their toggles.
 	EncryptSet bool
 
-	// IncludeIdentity seals the platform's identity into each recovery point.
-	// Defaults to on once a passphrase is supplied — that combination is what
-	// makes a recovery point restorable onto a fresh host, and it should not
-	// require a second opt-in nobody knows to look for.
+	// IncludeIdentity seals the platform's identity into each recovery point. Defaults to on once
+	// a passphrase is supplied — that combination is what makes a recovery point restorable onto
+	// a fresh host, and should not need a second opt-in nobody knows to look for.
 	IncludeIdentity    bool
 	IncludeIdentitySet bool
 	// IncludeTenantData adds every workspace's databases and volumes.
@@ -423,12 +374,9 @@ func (c PlatformBackupConfig) Configured() bool {
 	return c.S3Bucket != "" && c.S3AccessKey != "" && c.S3SecretKey != ""
 }
 
-// RegistryConfig is the boot-authoritative config for the built-in registry.
-//
-// Enablement, the hostname, and the storage configuration have no other source:
-// the admin API accepts none of them, so what is here is what the registry runs
-// with until the process restarts. The remaining fields override the
-// corresponding admin setting on boot.
+// RegistryConfig is the boot-authoritative config for the built-in registry. Enablement, the
+// hostname and storage have no other source — the admin API accepts none of them — so this is
+// what the registry runs with until restart. The rest override the admin setting on boot.
 type RegistryConfig struct {
 	// Enabled runs the registry. EnabledSet distinguishes "MIABI_REGISTRY_ENABLED
 	// says false" from "nobody said anything": when the variable is absent the
@@ -444,13 +392,9 @@ type RegistryConfig struct {
 	// AuthURL is the address the gateway's forwardAuth calls to reach Miabi's
 	// /internal/registry/auth (e.g. http://miabi:9000). Falls back to ControlURL.
 	AuthURL string
-	// PlatformToken is an OPTIONAL override for the shared secret the build/deploy
-	// worker uses to push and pull built images to/from the registry (the
-	// "platform-minted credential"). Leave it empty: the platform derives the token
-	// internally from the master encryption key, so distribution works with no
-	// operator action. Set it only to pin a specific value (e.g. to share with
-	// external tooling). Authorize accepts it as a platform principal for any
-	// namespace.
+	// PlatformToken is an OPTIONAL override for the shared secret the build/deploy worker uses to
+	// push and pull built images. Leave it empty: the platform derives it from the master
+	// encryption key. Set it only to pin a value, e.g. to share with external tooling.
 	PlatformToken string
 	S3Endpoint    string
 	S3Bucket      string
@@ -460,10 +404,9 @@ type RegistryConfig struct {
 	S3ForcePath   bool
 }
 
-// LogStoreConfig configures the shared execution-log store. The filesystem
-// backend (default) writes gzip log objects under Dir, which must be a shared
-// mount across the control plane and every worker that reads/writes it. Backend
-// "off" keeps today's DB-tail-only behavior (no store).
+// LogStoreConfig configures the shared execution-log store. The filesystem backend (default)
+// writes gzip log objects under Dir, which must be a shared mount across the control plane
+// and every worker that reads or writes it. Backend "off" keeps DB-tail-only behavior.
 type LogStoreConfig struct {
 	Backend       string // "filesystem" | "off"
 	Dir           string // shared directory for the filesystem backend
@@ -478,10 +421,9 @@ func (l LogStoreConfig) Enabled() bool {
 	return l.Backend != "" && l.Backend != "off"
 }
 
-// registryHostPattern matches a DNS hostname with an optional port. It is
-// deliberately lowercase-only: Docker lowercases the host of every image
-// reference, so a host that only matched after case folding would fail the
-// literal prefix comparison the ownership check makes on each reference.
+// registryHostPattern matches a DNS hostname with an optional port. Deliberately
+// lowercase-only: Docker lowercases the host of every image reference, so a host matching only
+// after case folding would fail the literal prefix comparison the ownership check makes.
 var registryHostPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?$`)
 
 // ErrRegistryHostInvalid is returned when a registry hostname is not usable.
@@ -489,16 +431,9 @@ var registryHostPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[
 // the external base domain, which is not MIABI_REGISTRY_HOST's fault.
 var ErrRegistryHostInvalid = errors.New("invalid registry host")
 
-// NormalizeRegistryHost validates a registry hostname and returns its canonical
-// form. An empty input is not an error — it means "unset", and the caller falls
-// back to registry.<external-base-domain>.
-//
-// The host is validated rather than trusted because it is a security boundary:
-// deciding whether an image reference belongs to the built-in registry (and so
-// which workspace's namespace it must live in) is a prefix match against this
-// string. A host carrying a scheme, a path, or a wildcard matches no reference
-// at all, which would leave the ownership check inert while the registry kept
-// serving traffic.
+// NormalizeRegistryHost validates a registry hostname and returns its canonical form; empty
+// means "unset" and the caller falls back to registry.<external-base-domain>. It is a security
+// boundary: a host carrying a scheme, path or wildcard matches nothing and is inert.
 func NormalizeRegistryHost(raw string) (string, error) {
 	h := strings.ToLower(strings.TrimSpace(raw))
 	if h == "" {
@@ -513,23 +448,18 @@ func NormalizeRegistryHost(raw string) (string, error) {
 	if !registryHostPattern.MatchString(h) {
 		return "", fmt.Errorf("%w %q: expected a DNS hostname with an optional port (registry.example.com[:5000])", ErrRegistryHostInvalid, raw)
 	}
-	// A single-label host with no port ("registry") is indistinguishable from a
-	// Docker Hub namespace: `docker pull registry/acme/web` goes to Docker Hub,
-	// not here. Requiring a dot, a port, or localhost keeps every reference the
-	// platform builds unambiguously ours.
+	// A single-label host with no port ("registry") is indistinguishable from a Docker Hub
+	// namespace. Requiring a dot, a port, or localhost keeps every reference the platform builds
+	// unambiguously ours.
 	if !strings.ContainsAny(h, ".:") && !strings.HasPrefix(h, "localhost") {
 		return "", fmt.Errorf("%w %q: use a dotted hostname or add a port — Docker reads a single-label host as a Docker Hub namespace", ErrRegistryHostInvalid, raw)
 	}
 	return h, nil
 }
 
-// validateRegistry refuses to boot on an unusable registry environment. It runs
-// in dev too: an install that comes up with a host nothing matches looks healthy
-// — the registry serves, pushes succeed — right up to the point where the
-// workspace-ownership check on a pull silently has nothing to compare against.
-// A misspelled storage driver is the same shape of problem, one level down: it
-// would fall back to a local volume while the operator believes they are writing
-// to S3, and only the missing images would say otherwise.
+// validateRegistry refuses to boot on an unusable registry environment, in dev too: an install
+// with a host nothing matches looks healthy right up to the ownership check on a pull having
+// nothing to compare against. A misspelled storage driver fails the same way, one level down.
 func (c *Config) validateRegistry() error {
 	if _, err := NormalizeRegistryHost(c.Registry.Host); err != nil {
 		return fmt.Errorf("MIABI_REGISTRY_HOST: %w", err)
@@ -710,10 +640,9 @@ func (c *Config) validate() error {
 	if err := c.validateNetworkPool(); err != nil {
 		return err
 	}
-	// The registry host likewise always runs: it is the string every internal
-	// image reference is matched against to decide which workspace owns an image,
-	// and the registry's identity cannot be changed later without a restart. A
-	// value that matches nothing must not boot.
+	// The registry host likewise always runs: it is the string every internal image reference is
+	// matched against to decide which workspace owns an image, and the registry's identity cannot
+	// change without a restart. A value that matches nothing must not boot.
 	if err := c.validateRegistry(); err != nil {
 		return err
 	}
@@ -777,8 +706,6 @@ func (c *Config) AllowedBrowserOrigins() []string {
 	return out
 }
 
-// hasWildcardOrigin reports whether the comma-separated origin list contains a
-// "*" wildcard entry.
 func hasWildcardOrigin(origins string) bool {
 	for _, o := range strings.Split(origins, ",") {
 		if strings.TrimSpace(o) == "*" {
@@ -798,31 +725,17 @@ func (c *Config) DeploymentURL() string {
 	return c.ApiBaseURL
 }
 
-// LogLevelFor resolves MIABI_LOG_LEVEL to a logger level.
-//
-// Empty keeps the previous behaviour exactly: debug in dev, info in production. An
-// unrecognized value is an ERROR, not a silent fallback — an operator who sets
-// MIABI_LOG_LEVEL=verbose and is quietly given `info` would sit and watch logs that
-// do not contain what they turned it on to see, with nothing to tell them why.
-//
-// "warn" is accepted alongside the library's "warning": slog and most tooling spell
-// it the short way, and being pedantic about it buys nothing.
-//
-// "off" is deliberately NOT accepted, even though logger.LevelOff exists. The library
-// cannot honour it for the calls Miabi actually makes: with a disabled level,
-// logger.New() installs a discard handler on its own instance and returns early,
-// never assigning the package-level logger that every bare logger.Info() resolves
-// through — so "off" silences Okapi's logger and nothing else. Offering a switch that
-// looks like it turns logging off while the logs keep coming is worse than not
-// offering it. Use "error" for near-silence.
-// envPresent reports whether an environment variable was set at all, blank or
-// not. It is how a configuration field tells "the operator pinned this" from
-// "nobody said anything, so the admin UI owns it" — a zero value alone cannot.
+// envPresent reports whether an environment variable was set at all, blank or not. It is
+// how a configuration field tells "the operator pinned this" from "nobody said anything,
+// so the admin UI owns it" — a zero value alone cannot.
 func envPresent(key string) bool {
 	_, ok := os.LookupEnv(key)
 	return ok
 }
 
+// LogLevelFor resolves MIABI_LOG_LEVEL to a logger level. Empty means debug in dev, info
+// in production; an unrecognized value is an ERROR rather than a silent fallback. "warn" is
+// accepted alongside "warning"; "off" is refused because the library cannot honour it.
 func (c *Config) LogLevelFor() (logger.LogLevel, error) {
 	switch strings.ToLower(strings.TrimSpace(c.LogLevel)) {
 	case "":
@@ -890,10 +803,9 @@ func (c *Config) Initialize(app *okapi.Okapi) error {
 	for i := range corsOrigins {
 		corsOrigins[i] = strings.TrimSpace(corsOrigins[i])
 	}
-	// A wildcard origin is incompatible with credentialed CORS: browsers forbid
-	// "*" + credentials, and reflecting the request origin would let any site make
-	// authenticated calls. validate() already rejects "*" in non-dev; in dev we
-	// keep the wildcard working but drop credentials to avoid the unsafe combo.
+	// A wildcard origin is incompatible with credentialed CORS: browsers forbid "*" with
+	// credentials, and reflecting the request origin would let any site make authenticated calls.
+	// validate() rejects "*" in non-dev; in dev we keep it working but drop credentials.
 	app.WithCORS(okapi.Cors{
 		AllowedOrigins:   corsOrigins,
 		AllowedHeaders:   []string{"Content-Type", "Authorization", "X-Request-ID", "X-Agent-Version"},
@@ -944,11 +856,9 @@ func (c *Config) Initialize(app *okapi.Okapi) error {
 	return nil
 }
 
-// InitWorker prepares configuration for the worker process.
-//
-// The worker honours MIABI_LOG_LEVEL exactly as the server does: it is a separate
-// process, so it configures its own logger, and a level that applied to only one of
-// the two would be a confusing half-measure (deploy logs come from the worker).
+// InitWorker prepares configuration for the worker process. It honours MIABI_LOG_LEVEL exactly
+// as the server does: it is a separate process, so it configures its own logger, and a level
+// applying to only one of the two would be a confusing half-measure.
 func (c *Config) InitWorker() error {
 	if _, err := c.initLogger(); err != nil {
 		return err

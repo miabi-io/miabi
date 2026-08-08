@@ -11,9 +11,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// newSubnetAllocator builds the network subnet allocator wired into the worker's
-// deploy/job handlers (for overlay and remote-node network recreate). Returns nil
-// on a config error so the handlers fall back to Docker's default address pool.
+// newSubnetAllocator builds the subnet allocator for the worker's deploy/job handlers.
+// Returns nil on a config error, so they fall back to Docker's default address pool.
 func newSubnetAllocator(cfg *config.Config, db *gorm.DB) *netalloc.Service {
 	a, err := netalloc.NewService(repositories.NewNetworkAllocationRepository(db), cfg.NetworkPoolCIDR, cfg.NetworkSubnetPrefix)
 	if err != nil {

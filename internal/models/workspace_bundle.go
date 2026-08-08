@@ -26,13 +26,9 @@ const (
 	BundlePhaseDone      = "done"
 )
 
-// WorkspaceBundle is one export or restore run of a portable workspace bundle.
-//
-// It is deliberately separate from Backup and VolumeBackup: those record one
-// artifact each, taken against a live resource that still exists. A bundle run
-// records a whole workspace crossing a boundary — the artifacts it produced are
-// listed in the bundle's own info file in the bucket, which outlives this row and
-// is what a restore on another install reads.
+// WorkspaceBundle is one export or restore run of a portable workspace bundle. Separate from
+// Backup/VolumeBackup, which record one artifact each against a live resource: a bundle run
+// records a whole workspace crossing a boundary, listed in its own info file in the bucket.
 type WorkspaceBundle struct {
 	ID          uint                `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint                `json:"workspace_id" gorm:"index;not null"`
@@ -45,13 +41,9 @@ type WorkspaceBundle struct {
 	// Trigger is manual for now; scheduled bundles reuse the same row.
 	Trigger string `json:"trigger,omitempty"`
 
-	// TargetWorkspaceID is where a restore puts what it reads. It is usually the
-	// run's own workspace, and differs when a bundle is restored into a fresh one
-	// — a clone, or a migration landing beside the original. Zero on an export.
-	//
-	// The run itself stays owned by the workspace whose bucket it read, because
-	// that is the workspace whose settings made it possible and where an operator
-	// looks for its history.
+	// TargetWorkspaceID is where a restore puts what it reads — usually the run's own workspace,
+	// differing when a bundle lands in a fresh one (a clone or migration). Zero on an export. The
+	// run stays owned by the workspace whose bucket it read.
 	TargetWorkspaceID uint `json:"target_workspace_id,omitempty" gorm:"index"`
 	// RestoreData pulls the dumps and archives as well as the configuration. Off
 	// restores the shape of a workspace without its contents — useful to stage a
@@ -71,10 +63,9 @@ type WorkspaceBundle struct {
 	Artifacts int   `json:"artifacts"`
 	SizeBytes int64 `json:"size_bytes"`
 
-	// Report is the human-readable outcome: what was created, skipped or could
-	// not be carried. A restore's report is the deliverable — it is where the
-	// manual follow-ups (DNS, re-issued certificates, unverified domains) are
-	// named — so it is persisted rather than logged and lost.
+	// Report is the human-readable outcome: what was created, skipped or could not be carried. A
+	// restore's report is the deliverable — it names the manual follow-ups (DNS, certificates,
+	// unverified domains) — so it is persisted rather than logged and lost.
 	Report BundleReport `json:"report,omitempty" gorm:"serializer:json"`
 
 	Logs       string     `json:"logs,omitempty" gorm:"type:text"`

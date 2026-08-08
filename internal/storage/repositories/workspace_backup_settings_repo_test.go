@@ -26,10 +26,9 @@ func newBackupSettingsDB(t *testing.T) *WorkspaceBackupSettingsRepository {
 	return NewWorkspaceBackupSettingsRepository(db)
 }
 
-// The second save is the one that matters. A column missing from the upsert's
-// assignment list is written by the insert and dropped by every update after it,
-// so the settings look saved until they are read back — which is how a bundle
-// passphrase set on an already-configured workspace vanished.
+// The second save is the one that matters. A column missing from the upsert's assignment list is
+// written by the insert and dropped by every update after it, so the settings look saved until
+// they are read back — which is how a bundle passphrase on a configured workspace vanished.
 func TestUpsertPersistsEveryFieldOnUpdate(t *testing.T) {
 	repo := newBackupSettingsDB(t)
 

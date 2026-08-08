@@ -19,24 +19,9 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// A swarm member with no Miabi agent runs tasks perfectly well — Swarm ships the
-// workload to it and never involves Miabi — but Miabi holds no Docker client for it.
-// So an app scheduled there has no metrics, no stats, no shell, and the node's disk
-// can fill with nobody watching. That is the "unmanaged" node, and until now the only
-// cure was to SSH to each host and run the installer.
-//
-// Swarm can do it for us. A GLOBAL service runs one task on every node the
-// constraints allow, and keeps doing so for nodes that join later. Deploy the agent
-// that way and every worker becomes managed, with no SSH, no per-host step, and no
-// drift as the cluster grows.
-//
-// The catch is identity: a global service carries ONE task spec, so every agent gets
-// the same token — and a Miabi token has always identified exactly one node. The fix
-// is to stop making the token carry identity. The agent reports the swarm node id its
-// own engine holds; the manager VERIFIES that id against its own `docker node ls`;
-// and only then does the token authorize a registration. A stolen token is useless to
-// anyone not already in the swarm — and anyone already in the swarm has far more
-// access than this grants.
+// A swarm member with no Miabi agent runs tasks perfectly well but Miabi holds no Docker client for it,
+// so an app scheduled there has no metrics, stats or shell. Swarm can fix this itself: a GLOBAL service
+// runs one task on every node the constraints allow, including nodes that join later.
 const (
 	// AgentServiceName is the global service that carries the agent to every worker.
 	AgentServiceName = "miabi-agent"
@@ -106,10 +91,9 @@ type AgentStatus struct {
 	Deployed bool   `json:"deployed"`
 	Running  int    `json:"running_tasks"`
 	Image    string `json:"image,omitempty"`
-	// InsecureTLS is true when the agents do NOT verify the control plane's
-	// certificate. It is surfaced so a setting made once, to get a self-signed cert
-	// working, cannot quietly become permanent — an operator should be able to see
-	// that verification is off without reading a service spec.
+	// InsecureTLS is true when the agents do NOT verify the control plane's certificate. It is surfaced so
+	// a setting made once, to get a self-signed cert working, cannot quietly become permanent — an operator
+	// should see that verification is off without reading a service spec.
 	InsecureTLS bool `json:"insecure_tls"`
 	// CustomCA is true when the agents verify against an operator-supplied CA. This is
 	// the healthy state for a private control plane: verification still happens.
@@ -140,11 +124,9 @@ func (s *Service) AgentStatus(ctx context.Context) AgentStatus {
 				out.InsecureTLS = true
 			case strings.HasPrefix(kv, caCertEnv+"=") && len(kv) > len(caCertEnv)+1:
 				out.CustomCA = true
-				// A path (rather than inline PEM) is worth surfacing: it means the agents
-				// depend on that file existing on every node, including future ones.
-				// A path is worth surfacing separately: the agents then depend on that file
-				// existing on every node, including ones that join later. Inline material
-				// arrives base64-encoded, so an absolute path is the discriminator.
+				// A path (rather than inline PEM) is worth surfacing separately: the agents then depend on that file existing
+				// on every node, including ones that join later. Inline material arrives base64-encoded, so an absolute path
+				// is the discriminator.
 				if v := strings.TrimPrefix(kv, caCertEnv+"="); strings.HasPrefix(v, "/") {
 					out.CACertPath = v
 				}
@@ -154,52 +136,22 @@ func (s *Service) AgentStatus(ctx context.Context) AgentStatus {
 	return out
 }
 
-// DeployAgents installs the Miabi agent on every swarm worker, as a global service.
-//
-// This is deliberately an explicit admin action rather than something Enable does
-// silently: it grants Miabi the Docker socket — root-equivalent — on every machine
-// that is now, or ever becomes, a member of this swarm. That is the right default for
-// a homelab and a surprising one for a shared cluster, and the operator should be the
-// one to say which they have.
-//
-// AgentOptions is the agent fleet's TLS posture.
-//
-// Three states, in descending order of safety:
-//
-//	neither      — the control plane has a publicly-trusted certificate. Nothing to do.
-//	CACert       — trust THIS authority. Verification still happens, anchored on the
-//	               operator's own CA. A forged certificate is still rejected.
-//	InsecureTLS  — trust ANY certificate. No verification. Last resort.
-//
-// The middle one is what makes a self-hosted control plane behind a private CA safe,
-// and it is why skipping verification should be rare rather than routine.
+// DeployAgents installs the Miabi agent on every swarm worker as a global service. Deliberately an
+// explicit admin action rather than something Enable does silently: it grants Miabi the Docker socket —
+// root-equivalent — on every machine that is now, or ever becomes, a member of this swarm.
 type AgentOptions struct {
 	InsecureTLS bool
 	// CACert is the PEM itself, shipped to the agents in their environment.
 	CACert string
-	// CACertPath is a CA file that already exists ON EVERY NODE — typically the host's
-	// own trust anchor (/etc/pki/ca-trust/source/anchors/… on RHEL-likes,
-	// /usr/local/share/ca-certificates/… on Debian-likes).
-	//
-	// This is usually the better option, and it is why the agents were failing while
-	// the hosts were fine: a host that trusts a private CA has it in its system store,
-	// but the agent container has its own — a stock Alpine bundle that has never heard
-	// of it. Bind-mounting the file the host already has is more direct than copying
-	// its contents through an environment variable, and it stays correct when the CA is
-	// rotated on the hosts.
-	//
-	// The file must exist at this path on every node, including nodes that join later.
+	// CACertPath is a CA file that already exists ON EVERY NODE, typically the host's own trust anchor. It
+	// is why agents fail while hosts are fine: the agent container has its own stock bundle. Bind-mounting
+	// the file the host already has stays correct when the CA is rotated.
 	CACertPath string
 }
 
-// InsecureTLS skips verification of the control plane's certificate. It exists for
-// one real case — a control plane behind a self-signed or private-CA certificate,
-// where an agent would otherwise fail with "certificate signed by unknown authority"
-// and never connect. It is a genuine downgrade: an attacker able to intercept the
-// agents' connections could impersonate the control plane, and the control plane can
-// drive Docker on every node. Use a trusted certificate in production.
-//
-// Re-running it rotates the token and updates the service in place.
+// InsecureTLS skips verification of the control plane's certificate, for a control plane behind a
+// self-signed or private CA where an agent would otherwise never connect. It is a genuine downgrade: an
+// interceptor could impersonate a control plane that drives Docker on every node.
 func (s *Service) DeployAgents(ctx context.Context, opts AgentOptions) error {
 	if !s.CapCluster() {
 		return ErrNotEnabled
@@ -215,10 +167,9 @@ func (s *Service) DeployAgents(ctx context.Context, opts AgentOptions) error {
 		return ErrAgentImageRequired
 	}
 
-	// Mint a fresh token and store only its hash. The plaintext goes into the service
-	// spec, which Docker already holds — keeping a second copy would be a second thing
-	// to leak. Rotating on every deploy means a token that ever escaped stops working
-	// the next time an admin redeploys.
+	// Mint a fresh token and store only its hash. The plaintext goes into the service spec, which Docker
+	// already holds — keeping a second copy would be a second thing to leak. Rotating on every deploy means a
+	// token that ever escaped stops working the next time an admin redeploys.
 	token := clusterTokenPrefix + randHex(32)
 	if err := s.tokens.Set(clusterAgentTokenKey, hashClusterToken(token)); err != nil {
 		return fmt.Errorf("store the cluster agent token: %w", err)
@@ -244,10 +195,9 @@ func (s *Service) DeployAgents(ctx context.Context, opts AgentOptions) error {
 		env = append(env, caCertEnv+"="+path)
 		logger.Info("deploying cluster agents with a host CA file", "path", path, "control_url", s.controlURL)
 	case strings.TrimSpace(opts.CACert) != "":
-		// Base64, not raw PEM. A certificate is multi-line and an environment variable is
-		// a poor place for newlines — they survive some transports and not others, and a
-		// PEM whose line breaks were eaten is not a PEM at all. One flat token cannot be
-		// mangled. The agent decodes it.
+		// Base64, not raw PEM. A certificate is multi-line and an environment variable is a poor place for
+		// newlines — they survive some transports and not others, and a PEM whose line breaks were eaten is not a
+		// PEM at all. One flat token cannot be mangled. The agent decodes it.
 		env = append(env, caCertEnv+"="+base64.StdEncoding.EncodeToString([]byte(strings.TrimSpace(opts.CACert))))
 		logger.Info("deploying cluster agents with a custom certificate authority",
 			"control_url", s.controlURL)
@@ -262,10 +212,9 @@ func (s *Service) DeployAgents(ctx context.Context, opts AgentOptions) error {
 		Constraints: []string{"node.role==worker"},
 		Binds:       binds,
 		Env:         env,
-		// Platform identity, so an agent's task container is recognized as part of
-		// Miabi on the worker it lands on — a node whose engine the control plane can
-		// only reach THROUGH that agent. Keeps ManagedLabel for the existing call
-		// sites that scope raw services by it.
+		// Platform identity, so an agent's task container is recognized as part of Miabi on the worker it lands on
+		// — a node whose engine the control plane can only reach THROUGH that agent. Keeps ManagedLabel for the
+		// existing call sites that scope raw services by it.
 		Labels: docker.PlatformLabels(docker.RoleAgent, docker.ManagedByMiabi,
 			map[string]string{docker.ManagedLabel: "true"}),
 	}
@@ -304,14 +253,9 @@ func (s *Service) RemoveAgents(ctx context.Context) error {
 	return nil
 }
 
-// AuthenticateAgent authorizes an agent that presented the CLUSTER token (as opposed
-// to a per-node mbn_ token) and returns the Miabi node it is.
-//
-// The token alone proves nothing about which node this is — every agent in the global
-// service carries the same one. Identity comes from the swarm node id the agent read
-// off its own engine, and it is only trusted because the manager can check it against
-// its own membership list. An id that is not in this swarm is refused, which is what
-// keeps a shared secret from being a general-purpose key.
+// AuthenticateAgent authorizes an agent that presented the CLUSTER token and returns the Miabi node it
+// is. The token alone proves nothing — every agent carries the same one — so identity comes from the
+// swarm node id the agent read off its engine, trusted only because the manager can verify membership.
 func (s *Service) AuthenticateAgent(ctx context.Context, token, swarmNodeID, hostname string) (*models.Server, error) {
 	if s.tokens == nil || s.registrar == nil {
 		return nil, ErrBadClusterToken

@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package acme issues TLS certificates via ACME DNS-01, backed by go-acme/lego.
-// The DNS-01 challenge is solved through caller-supplied Present/CleanUp funcs, so
-// any DNS backend (Miabi's libdns-backed provider) can solve it — there is no
-// second credential ecosystem. Miabi runs this for wildcard/managed certs and
-// stores the result in the workspace Certificates; Goma still handles default
-// HTTP-01 globally.
+// Package acme issues TLS certificates via ACME DNS-01, backed by go-acme/lego. The challenge is
+// solved through caller-supplied Present/CleanUp funcs, so any DNS backend can solve it. Miabi
+// runs this for wildcard/managed certs; Goma still handles default HTTP-01 globally.
 package acme
 
 import (
@@ -137,7 +134,6 @@ func newClient(caDirURL string, acc *Account) (*lego.Client, error) {
 	return lego.NewClient(cfg)
 }
 
-// dnsProvider adapts SolverFuncs to lego's challenge.Provider.
 type dnsProvider struct {
 	ctx    context.Context
 	solver SolverFuncs

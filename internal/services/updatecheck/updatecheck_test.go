@@ -160,9 +160,8 @@ func TestCheckReplaysETagAndKeepsCacheOn304(t *testing.T) {
 	s := NewService(db, "1.0.0-beta.4", true)
 	s.setBaseURL(srv.URL)
 
-	// Seed a prior result; a 304 must preserve it. CheckedVersion matches the running
-	// build, i.e. the verdict was computed for THIS binary — only then is replaying
-	// the ETag sound. (When it does not match, see
+	// Seed a prior result; a 304 must preserve it. CheckedVersion matches the running build, i.e. the verdict
+	// was computed for THIS binary — only then is replaying the ETag sound. (When it does not match, see
 	// TestUpgradedBuildIsNotOfferedTheReleaseItAlreadyPassed.)
 	st, _ := s.Status()
 	st.LatestVersion, st.ETag, st.CheckedVersion = "v1.0.0-beta.5", `W/"abc"`, "1.0.0-beta.4"
@@ -188,16 +187,9 @@ func TestCheckReplaysETagAndKeepsCacheOn304(t *testing.T) {
 	}
 }
 
-// The reported bug: "Miabi v1.2.1 is available — you're running 1.3.0."
-//
-// The cached verdict depends on the release list AND the build it was compared
-// against, but the ETag only fingerprints the list. Install 1.2.0, cache
-// "v1.2.1 available", then upgrade to 1.3.0: the list has not changed, so
-// replaying the ETag earns a 304 and the old verdict survives — permanently,
-// since every later check 304s too. The notice then offers a DOWNGRADE, and no
-// amount of waiting heals it.
-//
-// A build change must therefore invalidate the ETag.
+// The reported bug: "Miabi v1.2.1 is available — you're running 1.3.0." The cached verdict depends on the
+// release list AND the build it was compared against, but the ETag fingerprints only the list — so after an
+// upgrade every check 304s and the old verdict survives permanently, offering a downgrade.
 func TestUpgradedBuildIsNotOfferedTheReleaseItAlreadyPassed(t *testing.T) {
 	var sawIfNoneMatch string
 	var served int

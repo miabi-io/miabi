@@ -21,10 +21,9 @@ const (
 	CertStatusFailed  = "failed"  // last issuance/renewal failed (see LastError)
 )
 
-// Certificate is a workspace-scoped TLS certificate. A route with TLSMode=custom
-// references it by CertificateID; the PEM/key are sourced server-side at render
-// time. The leaf + chain (CertPEM) is public, but the private key (KeyEnc) is
-// encrypted at rest and never returned. Metadata is parsed from the leaf.
+// Certificate is a workspace-scoped TLS certificate; a route with TLSMode=custom references
+// it by CertificateID and the PEM/key are sourced server-side at render time. CertPEM is
+// public; KeyEnc is encrypted at rest and never returned. Metadata is parsed from the leaf.
 type Certificate struct {
 	ID          uint `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint `json:"workspace_id" gorm:"index:idx_cert_workspace_name,unique;not null"`

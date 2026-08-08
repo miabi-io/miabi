@@ -15,13 +15,9 @@ import (
 	"github.com/miabi-io/miabi/internal/wsbundle"
 )
 
-// collect reads the live workspace into a bundle state document.
-//
-// Everything is keyed by name and nothing by id, because the install that reads
-// this may share no id space with the one that wrote it. Where a reference cannot
-// be expressed as a name — a privileged host-mount preset, an uploaded
-// certificate, a node — it is left out and named in the report rather than
-// carried as a number that means something else on the other side.
+// collect reads the live workspace into a bundle state document. Everything is keyed by name and nothing by id,
+// because the install that reads this may share no id space with the one that wrote it. A reference that cannot
+// be a name — a host-mount preset, an uploaded certificate, a node — is left out and named in the report.
 func (s *Service) collect(workspaceID uint, report *models.BundleReport) (*wsbundle.State, error) {
 	ws, err := s.Workspace.Get(workspaceID)
 	if err != nil {
@@ -163,10 +159,9 @@ func (s *Service) collectCertificates(workspaceID uint, st *wsbundle.State, repo
 	}
 }
 
-// collectDelivery carries the pieces that build and reconcile a workspace:
-// pipeline definitions, GitOps sources, promotion environments and schedules.
-// None of their history travels — a run, a sync and a job execution are records
-// of something that happened on the platform it happened on.
+// collectDelivery carries the pieces that build and reconcile a workspace: pipeline definitions, GitOps
+// sources, promotion environments and schedules. None of their history travels — a run, a sync and a job
+// execution are records of something that happened on the platform it happened on.
 func (s *Service) collectDelivery(workspaceID uint, st *wsbundle.State, report *models.BundleReport) {
 	appName := map[uint]string{}
 	if apps, err := s.App.List(workspaceID); err == nil {
@@ -286,12 +281,9 @@ func (s *Service) collectNetworks(workspaceID uint, st *wsbundle.State, report *
 	}
 }
 
-// collectSecrets carries the vault, values included — the one part of a bundle
-// that makes the sealed state file non-negotiable.
-//
-// Managed secrets are skipped: they are minted and owned by a managed database,
-// so the target creates its own with the credentials it generated. Carrying them
-// would overwrite live credentials with a dead platform's.
+// collectSecrets carries the vault, values included — the one part of a bundle that makes the sealed state file
+// non-negotiable. Managed secrets are skipped: they are minted and owned by a managed database, so the target
+// creates its own with the credentials it generated. Carrying them would overwrite live credentials.
 func (s *Service) collectSecrets(workspaceID uint, st *wsbundle.State, report *models.BundleReport) error {
 	secrets, err := s.Secret.List(workspaceID)
 	if err != nil {
@@ -544,17 +536,9 @@ func (s *Service) appEnv(app *models.Application) ([]wsbundle.EnvVar, error) {
 // resolves at deploy time (see services/secret).
 var secretRef = regexp.MustCompile(`^\s*\$\{\{\s*secrets\.[A-Za-z][A-Za-z0-9_-]{0,62}\s*\}\}\s*$`)
 
-// envEntry converts one stored environment variable into its bundle form.
-//
-// A variable that points at the vault is carried as the POINTER, never as what
-// it resolves to. The secret it names travels in this same bundle, so resolving
-// would write a second copy of it — and would cut the link that makes rotating
-// the secret on the target reach every consumer. A reference is also not itself
-// sensitive (it names a secret; it does not contain one), so it is carried in the
-// clear and restored unencrypted, exactly as the platform writes its own.
-//
-// A value that is genuinely a literal secret is decrypted here, because the
-// target has nowhere else to read it from. It never leaves the sealed state file.
+// envEntry converts one stored environment variable into its bundle form. A variable pointing at the vault is
+// carried as the POINTER: the secret it names travels in the same bundle, so resolving would duplicate it and
+// cut the rotation link. A genuine literal is decrypted here, since the target has nowhere else to read it.
 func envEntry(key, stored string, isSecret bool) (wsbundle.EnvVar, error) {
 	value := stored
 	if isSecret {

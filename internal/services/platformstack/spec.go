@@ -40,10 +40,8 @@ const (
 	gomaGeoIPFile = gomaConfigDir + "/GeoLite2-Country.mmdb"
 )
 
-// postgresSpec — the platform database.
-//
-// No published ports: nothing outside the `miabi` network has any business reaching
-// it, and publishing 5432 on a VPS is how self-hosted databases end up in breach
+// postgresSpec — the platform database. No published ports: nothing outside the `miabi` network has any
+// business reaching it, and publishing 5432 on a VPS is how self-hosted databases end up in breach
 // reports. The Compose file does the same.
 func postgresSpec(m *Manifest, name, image string) docker.RunSpec {
 	spec := docker.RunSpec{
@@ -93,10 +91,9 @@ func redisSpec(m *Manifest, name, image string) docker.RunSpec {
 	return spec
 }
 
-// controlPlaneSpec — Miabi itself: API + web UI + the embedded worker.
-//
-// It mounts the Docker socket (that is the whole job) and shares the gateway's
-// providers volume, into which it writes route files that Goma hot-reloads.
+// controlPlaneSpec — Miabi itself: API + web UI + the embedded worker. It mounts the Docker socket (that
+// is the whole job) and shares the gateway's providers volume, into which it writes route files that Goma
+// hot-reloads.
 func controlPlaneSpec(m *Manifest, name, image string) docker.RunSpec {
 	spec := docker.RunSpec{
 		Name:  name,
@@ -116,10 +113,9 @@ func controlPlaneSpec(m *Manifest, name, image string) docker.RunSpec {
 			"MIABI_ADMIN_PASSWORD=" + m.Secrets.AdminPassword,
 			"MIABI_WEB_URL=" + m.WebURL,
 			"MIABI_CORS_ORIGINS=" + m.WebURL,
-			// Where remote nodes and agents dial back: the node gateways' route provider
-			// fetches from it, the agent connects to it, the registry points at it for auth.
-			// Defaults to WebURL, but need not equal it — a node on a private network may
-			// reach the control plane at an address the public panel URL never resolves to.
+			// Where remote nodes and agents dial back: the node gateways' route provider fetches from it, the agent
+			// connects to it, the registry points at it for auth. Defaults to WebURL, but need not equal it — a node
+			// on a private network may reach the control plane at an address the public panel URL never resolves to.
 			"MIABI_CONTROL_URL=" + m.ControlURL,
 			"MIABI_PROXY_NETWORK=" + m.Network.Name,
 			"MIABI_ACME_EMAIL=" + m.ACMEEmail,
@@ -138,16 +134,9 @@ func controlPlaneSpec(m *Manifest, name, image string) docker.RunSpec {
 		},
 		Networks:      []string{m.Network.Name},
 		RestartPolicy: "unless-stopped",
-		// /healthz is the liveness probe: it answers 200 as soon as the server is
-		// serving, and asserts nothing about dependencies. That is exactly right for a
-		// Docker healthcheck, which drives restarts — /readyz also pings Postgres,
-		// Redis and Docker, so a database blip would mark the panel unhealthy and
-		// restart it, which cannot fix a database and only adds an outage to an outage.
-		//
-		// The crash-loop case this gate exists for is still caught: a control plane that
-		// cannot reach its database EXITS, so it never serves /healthz either.
-		//
-		// (Probing "/" worked too, but served the whole SPA to answer a health check.)
+		// /healthz is the liveness probe: it answers 200 as soon as the server is serving and asserts nothing about
+		// dependencies — right for a Docker healthcheck, which drives restarts. /readyz pings Postgres, so a blip
+		// would restart the panel and add an outage to an outage. A control plane that cannot reach its DB exits anyway.
 		Healthcheck: &docker.HealthcheckSpec{
 			Test:        []string{"CMD-SHELL", "wget -qO- http://127.0.0.1:9000/healthz >/dev/null 2>&1 || exit 1"},
 			Interval:    10 * time.Second,
@@ -157,11 +146,9 @@ func controlPlaneSpec(m *Manifest, name, image string) docker.RunSpec {
 		},
 		Labels: docker.PlatformLabels(docker.RoleControlPlane, docker.ManagedByMiabi, nil),
 	}
-	// Read-only host procfs, so the admin Nodes page reports real host CPU/memory.
-	// Optional: some hosts refuse the bind outright (a rootless daemon, a hardened
-	// host, a socket proxy that forbids host binds). Without it Miabi reads its own
-	// /proc, which inside a container already reflects host CPU/memory — the page keeps
-	// working, so this is a graceful degradation and not a feature switch.
+	// Read-only host procfs, so the admin Nodes page reports real host CPU and memory. Optional: some hosts refuse
+	// the bind outright (rootless daemon, hardened host, socket proxy). Without it Miabi reads its own /proc,
+	// which already reflects host CPU/memory — so this is a graceful degradation, not a feature switch.
 	if m.HostProc == nil || *m.HostProc {
 		spec.Binds = append(spec.Binds, docker.BindMount{
 			Source: "/proc", Target: "/host/proc", ReadOnly: true,
@@ -170,15 +157,9 @@ func controlPlaneSpec(m *Manifest, name, image string) docker.RunSpec {
 	if m.DockerGID != "" {
 		spec.GroupAdd = []string{m.DockerGID}
 	}
-	// The built-in OCI registry. Enablement and the hostname are environment-only
-	// by design — the admin UI renders them read-only — so the manifest is where an
-	// operator changes them, and the control plane has to restart to pick the change
-	// up. Written only when enabled, since an absent MIABI_REGISTRY_ENABLED already
-	// reads as false; the other MIABI_REGISTRY_* keys keep the one-way-override rule
-	// (set here pins the setting, absent leaves the UI in charge).
-	//
-	// MIABI_REGISTRY_AUTH_URL needs no value here: its default is http://miabi:9000,
-	// which is exactly the control plane's container name on the shared network.
+	// The built-in OCI registry. Enablement and the hostname are environment-only by design, so the manifest is
+	// where an operator changes them and the control plane restarts to pick it up. Written only when enabled, since
+	// an absent MIABI_REGISTRY_ENABLED already reads as false and setting a key pins it against the UI.
 	if m.Registry.Enabled {
 		spec.Env = append(spec.Env,
 			"MIABI_REGISTRY_ENABLED=true",
@@ -192,25 +173,18 @@ func controlPlaneSpec(m *Manifest, name, image string) docker.RunSpec {
 		spec.Env = append(spec.Env, gomaConfigEncryptionKey+"="+v)
 	}
 
-	// The operator's own variables, last. Normalize has already refused any key Miabi
-	// sets above, so this can never shadow one — there are no duplicate keys in the
-	// container's environment, and therefore no ordering rule to reason about.
-	//
-	// Sorted, because Go map iteration is random and specHash would otherwise differ
-	// on every run, recreating the whole stack on every converge.
+	// The operator's own variables, last. Normalize has already refused any key Miabi sets above, so this can never
+	// shadow one — there are no duplicate keys, and therefore no ordering rule to reason about. Sorted, because Go
+	// map iteration is random and specHash would otherwise differ on every run, recreating the whole stack.
 	for _, k := range sortedKeys(m.Env) {
 		spec.Env = append(spec.Env, k+"="+m.Env[k])
 	}
 	return spec
 }
 
-// gomaConfigEncryptionKey must hold the SAME value in two containers: Miabi encrypts
-// the gateway config it writes, and Goma decrypts it. Set on only one side, routing
-// breaks silently — Goma reads a config it cannot decrypt.
-//
-// Its home is gateway.env (it configures Goma), and it is forwarded from there to the
-// control plane. The top-level env: refuses it and points here, so there is exactly
-// one place to set it and no way for the two halves to disagree.
+// gomaConfigEncryptionKey must hold the SAME value in two containers: Miabi encrypts the gateway config, Goma
+// decrypts it. Set on only one side, routing breaks silently. Its home is gateway.env and it is forwarded to
+// the control plane; the top-level env: refuses it, so the two halves can never disagree.
 const gomaConfigEncryptionKey = "GOMA_CONFIG_ENCRYPTION_KEY"
 
 func sortedKeys(m map[string]string) []string {
@@ -222,12 +196,9 @@ func sortedKeys(m map[string]string) []string {
 	return out
 }
 
-// gatewaySpec — Goma: TLS termination, ACME, and routing to every app.
-//
-// Ports are published ONLY for the live container. A rollout starts the new image
-// under <name>-test first, and two containers cannot both bind :443 — so the test
-// container runs portless, proving the image boots before it is trusted with the
-// ports. That is the whole reason Build takes the name.
+// gatewaySpec — Goma: TLS termination, ACME, and routing to every app. Ports are published ONLY for the live
+// container: a rollout starts the new image under <name>-test first, and two containers cannot both bind :443,
+// so the test container runs portless. That is the whole reason Build takes the name.
 func gatewaySpec(m *Manifest, name, image string) docker.RunSpec {
 	spec := docker.RunSpec{
 		Name:  name,
@@ -275,31 +246,18 @@ func gatewaySpec(m *Manifest, name, image string) docker.RunSpec {
 	return spec
 }
 
-// applyTimezone copies TZ from env: onto a component that is not the control plane.
-//
-// TZ is the one env: entry that belongs to the WHOLE stack. Postgres, Redis and Goma
-// all read it (they ship tzdata), and applying it to the control plane alone would
-// timestamp Miabi's logs in one zone and the logs of every container it manages in
-// another — which is precisely the situation you least want when reading a timeline
-// across them.
+// applyTimezone copies TZ from env: onto a component that is not the control plane. TZ is the one env: entry
+// belonging to the WHOLE stack — Postgres, Redis and Goma all read it — and applying it to the control plane
+// alone would timestamp Miabi's logs in one zone and every container it manages in another.
 func applyTimezone(m *Manifest, spec *docker.RunSpec) {
 	if tz := m.Env[envTimezone]; tz != "" {
 		spec.Env = append(spec.Env, envTimezone+"="+tz)
 	}
 }
 
-// specHash fingerprints what we ASKED Docker for, so converge can tell "already what
-// the manifest says" from "changed".
-//
-// It hashes the request, never the running container. Docker normalizes a spec on
-// the way in — reordering env, rewriting port and mount syntax, filling defaults — so
-// comparing a fresh spec against an inspected container means re-deriving all of
-// that, and every mismatch would surface as a spurious recreate. For Postgres a
-// spurious recreate is a database restart. Hashing the request makes the comparison
-// exact by construction: same manifest, same spec, same hash, no action.
-//
-// The hash deliberately covers the secrets (they are in Env), so rotating one
-// recreates the containers that carry it.
+// specHash fingerprints what we ASKED Docker for, so converge can tell "already what the manifest says" from
+// "changed". Docker normalizes a spec on the way in, so comparing against an inspected container would surface
+// spurious recreates — and for Postgres that is a database restart. The hash covers secrets, so rotation recreates.
 func specHash(spec docker.RunSpec) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "image=%s\n", spec.Image)

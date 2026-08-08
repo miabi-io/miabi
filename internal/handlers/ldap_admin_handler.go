@@ -16,10 +16,9 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// LDAPAdminHandler manages LDAP / Active Directory connections and their group
-// mappings. Every method is gated on the sso_ldap entitlement (Enterprise); a
-// Community/unlicensed install gets 402. The bind logic itself lives behind the
-// enterprise seam (ee.LDAP()); this handler is DB-only CRUD plus a test proxy.
+// LDAPAdminHandler manages LDAP / Active Directory connections and their group mappings. Every
+// method is gated on the sso_ldap entitlement; Community gets 402. The bind logic lives behind
+// the enterprise seam (ee.LDAP()); this handler is DB-only CRUD plus a test proxy.
 type LDAPAdminHandler struct {
 	ldap  *repositories.LDAPRepository
 	ee    enterprise.EE
@@ -221,8 +220,6 @@ func (h *LDAPAdminHandler) TestConnection(c *okapi.Context) error {
 	return ok(c, res)
 }
 
-// --- Group mappings ---
-
 type LDAPMappingRequest struct {
 	Body struct {
 		GroupDN       string               `json:"group_dn" required:"true"`
@@ -286,8 +283,6 @@ func (h *LDAPAdminHandler) record(c *okapi.Context, action, target string) {
 	actor := middlewares.UserID(c)
 	h.audit.Record(audit.Entry{ActorID: &actor, Action: action, TargetType: "ldap_config", TargetID: target, IP: c.RealIP()})
 }
-
-// --- validation helpers ---
 
 func validTLSMode(m string) bool {
 	switch m {

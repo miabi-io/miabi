@@ -12,7 +12,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// monitoringRoutes registers workspace overview and per-app metrics (incl. SSE).
 func (r *Router) monitoringRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Monitoring", Description: "Workspace overview and application metrics."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {
@@ -119,7 +118,6 @@ func (r *Router) monitoringRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// marketplaceRoutes registers the catalog (read) and workspace install.
 func (r *Router) marketplaceRoutes() []okapi.RouteDefinition {
 	cat := r.v1.Group("/marketplace").WithTagInfo(okapi.GroupTag{Name: "Marketplace", Description: "One-click application & database templates."})
 	ws := r.v1.Group("/workspaces")

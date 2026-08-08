@@ -240,7 +240,6 @@ func (h *AdminDomainHandler) dependentRoutes(d *models.Domain) []AdminDomainRout
 	return out
 }
 
-// workspaceNames loads the names of the workspaces owning a set of domains.
 func (h *AdminDomainHandler) workspaceNames(domains []models.Domain) map[uint]string {
 	ids := make([]uint, 0, len(domains))
 	seen := map[uint]bool{}
@@ -268,7 +267,6 @@ func (h *AdminDomainHandler) record(c *okapi.Context, wsID uint, action string, 
 		TargetType: "domain", TargetID: strconv.Itoa(int(id)), IP: c.RealIP()})
 }
 
-// routeHostsUnder reports whether any host equals or is a subdomain of name.
 func routeHostsUnder(hosts []string, name string) bool {
 	for _, h := range hosts {
 		h = strings.ToLower(strings.TrimSpace(h))

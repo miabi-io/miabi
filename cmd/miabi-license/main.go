@@ -49,8 +49,6 @@ func listTiers() {
 	}
 }
 
-// listFlags prints the entitlement flags a license can grant (the canonical set
-// the runtime enforces), so an issuer can pick valid values for issue --flags.
 func listFlags() {
 	fmt.Println("entitlement flags (use with `issue --flags a,b,c` or grant all with `--all-flags`):")
 	for _, f := range enterprise.AllFlags {
@@ -101,8 +99,7 @@ func issue(args []string) {
 		fail(fmt.Errorf("--customer is required"))
 	}
 
-	// Resolve a tier preset as the base flags+limits, then layer explicit
-	// --flags / --node-limit / --plan-limit / --all-flags on top.
+	// A tier preset supplies the base flags and limits; explicit flags layer on top.
 	limits := map[string]int{enterprise.LimitNodeLimit: *nodeLimit, enterprise.LimitPlanLimit: *planLimit}
 	var entFlags []string
 	tierName := ""
@@ -215,8 +212,7 @@ func verify(args []string) {
 		c.LicenseID, c.Customer, c.Edition, c.Tier, binding, installID, url, c.Flags, c.Limits, c.NotAfter.Format(time.RFC3339), s.State)
 }
 
-// dedupeFlags removes duplicate flags while preserving first-seen order (a tier
-// preset and an explicit --flags may overlap).
+// dedupeFlags preserves first-seen order; a tier preset and explicit --flags may overlap.
 func dedupeFlags(in []string) []string {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(in))

@@ -12,9 +12,8 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// inboxRoutes registers the per-user notification inbox (the dashboard bell +
-// Notifications page). User-scoped: authenticated only, no workspace scope — the
-// handler filters to the caller's own items across their workspaces.
+// inboxRoutes registers the per-user notification inbox. User-scoped: authenticated only, with
+// no workspace scope — the handler filters to the caller's own items across their workspaces.
 func (r *Router) inboxRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/notifications").WithTagInfo(okapi.GroupTag{Name: "Inbox", Description: "Per-user notification inbox (bell)."})
 	auth := []okapi.Middleware{r.authenticate}
@@ -33,8 +32,7 @@ func (r *Router) inboxRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// alertRoutes registers workspace-scoped alert views + lifecycle transitions (the
-// shared conditions behind the per-user notifications).
+// alertRoutes registers workspace-scoped alert views and lifecycle transitions.
 func (r *Router) alertRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Alerts", Description: "Workspace alerts (deduplicated conditions)."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {

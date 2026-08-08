@@ -22,7 +22,6 @@ const (
 	maxBundleBytes = 32 << 20 // 32 MiB
 )
 
-// errBundleTooLarge is returned when the export response exceeds maxBundleBytes.
 var errBundleTooLarge = errors.New("marketplace export: response exceeds size limit")
 
 // Client fetches the marketplace export bundle over the Okapi HTTP client. The
@@ -50,10 +49,9 @@ func NewClient(base string) *Client {
 	}
 }
 
-// resolveExportURL picks the bundle URL: a direct .json (e.g. the jsDelivr
-// export.json) is used as-is; anything else is treated as a server base and gets
-// the /v1/export path appended. This lets MIABI_MARKETPLACE_URL point at either
-// static git/CDN or a self-hosted marketplace service.
+// resolveExportURL picks the bundle URL: a direct .json (e.g. the jsDelivr export.json) is used as-is;
+// anything else is treated as a server base and gets the /v1/export path appended. This lets
+// MIABI_MARKETPLACE_URL point at either static git/CDN or a self-hosted marketplace service.
 func resolveExportURL(base string) string {
 	base = strings.TrimRight(strings.TrimSpace(base), "/")
 	if strings.HasSuffix(strings.ToLower(base), ".json") {

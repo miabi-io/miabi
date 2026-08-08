@@ -24,22 +24,9 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 )
 
-// This drives a whole recovery point — settings, identity envelope, control-plane
-// dump, platform volume, tenant database, tenant volume, finalization and the
-// published manifest — against a real object store.
-//
-// It exists because every fault in this feature so far was found in production
-// rather than in a test: a manifest that failed its own schema check, artifacts
-// cancelled with the HTTP request, a tenant source wired in one process and not
-// the one that ran the work. Each was invisible to unit tests because each lived
-// in the seams between the pieces, which is exactly what this exercises.
-//
-// Needs an S3/MinIO endpoint; skipped without one:
-//
-//	docker run -d -p 19000:9000 -e MINIO_ROOT_USER=testkey \
-//	  -e MINIO_ROOT_PASSWORD=testsecret123 minio/minio server /data
-//	MIABI_TEST_S3_ENDPOINT=http://127.0.0.1:19000 \
-//	  MIABI_TEST_S3_BUCKET=dr-test go test ./internal/services/platformbackup/
+// This drives a whole recovery point — settings, identity envelope, control-plane dump, platform volume,
+// tenant database and volume, finalization and the published manifest — against a real object store,
+// because every fault here so far lived in the seams between the pieces. Needs S3/MinIO; skipped without.
 func s3ForTest(t *testing.T) config.PlatformBackupConfig {
 	t.Helper()
 	endpoint := os.Getenv("MIABI_TEST_S3_ENDPOINT")
@@ -144,7 +131,6 @@ type fakeClients struct{ dc *fakeDocker }
 func (f fakeClients) For(uint) (docker.Client, error) { return f.dc, nil }
 func (f fakeClients) LocalID() uint                   { return 0 }
 
-// fakeTenants reports one tenant database and one tenant volume.
 type fakeTenants struct{ backedUp []string }
 
 func (f *fakeTenants) ListTenantDatabases() ([]TenantDatabase, error) {
@@ -314,10 +300,9 @@ func TestRecoveryPointEndToEnd(t *testing.T) {
 		t.Errorf("KEK fingerprint mismatch: envelope %q vs set %q", got, set.KEKFingerprint)
 	}
 
-	// Verify, scoped to what this test really uploads. The dump and the archives
-	// are produced by a fake helper that writes nothing, so their absence from the
-	// bucket is expected here; the identity envelope and the manifest are written
-	// by Miabi itself and are the parts worth asserting.
+	// Verify, scoped to what this test really uploads. The dump and the archives are produced by a fake helper
+	// that writes nothing, so their absence from the bucket is expected here; the identity envelope and the
+	// manifest are written by Miabi itself and are the parts worth asserting.
 	rep, err := svc.VerifySet(ctx, set, env.Passphrase)
 	if err != nil {
 		t.Fatalf("VerifySet: %v", err)
@@ -407,10 +392,9 @@ func TestEncryptionDegradesWhenThePassphraseIsGone(t *testing.T) {
 	}
 }
 
-// Discovery reads the BUCKET, not this platform's database — which is what makes
-// it usable after a rebuild, when the database knows only the recovery points its
-// own dump contained. This takes a recovery point, forgets it locally, and
-// checks it is still findable and adoptable.
+// Discovery reads the BUCKET, not this platform's database — which is what makes it usable after a
+// rebuild, when the database knows only the recovery points its own dump contained. This takes a recovery
+// point, forgets it locally, and checks it is still findable and adoptable.
 func TestDiscoverAndImportFromTheBucket(t *testing.T) {
 	env := s3ForTest(t)
 	env.Passphrase = "correct-horse-9!"

@@ -41,10 +41,9 @@ const (
 	SeverityError   AppEventSeverity = "error"
 )
 
-// AppEvent is a timeline entry for an application: lifecycle transitions
-// (deploys, releases), runtime container events (start/stop/crash/health), and
-// configuration changes. Distinct from AuditLog (user mutations, admin-scoped)
-// and from deployment build logs.
+// AppEvent is a timeline entry for an application: lifecycle transitions, runtime container
+// events (start/stop/crash/health), and configuration changes. Distinct from AuditLog (user
+// mutations, admin-scoped) and from deployment build logs.
 type AppEvent struct {
 	ID            uint              `json:"id" gorm:"primaryKey"`
 	WorkspaceID   uint              `json:"workspace_id" gorm:"index;not null"`

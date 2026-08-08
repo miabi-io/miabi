@@ -18,20 +18,9 @@ import (
 // kills it. Generous for Postgres, which flushes on the way out.
 const restartTimeout = 30
 
-// Restart restarts the stack, or one component of it.
-//
-// It restarts CONTAINERS; it does not recreate them. That distinction is the whole
-// point: a restart re-reads what is on disk (the gateway's bind-mounted goma.yml,
-// most obviously — Goma watches its providers directory but NOT its base config, so
-// an edit there does nothing until Goma is restarted). Anything that changes a
-// container's SPEC — an image, an env var, a mount — needs `miabi install`, which
-// recreates. Restart deliberately cannot apply those, and says so when it notices
-// they are pending.
-//
-// Order matters for a whole-stack restart: Postgres and Redis first, and healthy
-// before the control plane follows, or Miabi comes back to a database that is not
-// there yet and exits. The gateway goes last, so the panel is already serving by the
-// time traffic can reach it.
+// Restart restarts the stack, or one component. It restarts CONTAINERS rather than recreating them, so
+// it re-reads what is on disk (Goma watches its providers directory but NOT its base config); anything
+// changing a spec needs `miabi install`. Order matters: stores first, gateway last.
 func (s *Service) Restart(ctx context.Context, m *Manifest, only string) error {
 	if err := m.Normalize(); err != nil {
 		return err
@@ -46,10 +35,9 @@ func (s *Service) Restart(ctx context.Context, m *Manifest, only string) error {
 		targets = []component{c}
 	}
 
-	// Restarting the gateway makes it re-read goma.yml — so a broken edit would take
-	// the gateway down, and with it the panel you would use to fix it. Check the file
-	// BEFORE stopping anything. (Validate only: a restart must not rewrite the config
-	// out from under the operator.)
+	// Restarting the gateway makes it re-read goma.yml — so a broken edit would take the gateway down, and
+	// with it the panel you would use to fix it. Check the file BEFORE stopping anything. (Validate only: a
+	// restart must not rewrite the config out from under the operator.)
 	for _, c := range targets {
 		if c.Name == ContainerGateway {
 			if err := s.ValidateGatewayConfig(ctx, m); err != nil {
@@ -75,10 +63,9 @@ func (s *Service) restartOne(ctx context.Context, m *Manifest, c component) erro
 		return err
 	}
 
-	// Never restart something we do not own. On a Compose stack the containers look the
-	// same and answer to the same names, but Compose owns their lifecycle — and a
-	// restart that Compose did not ask for is exactly the kind of out-of-band change
-	// this whole design exists to avoid.
+	// Never restart something we do not own. On a Compose stack the containers look the same and answer to the
+	// same names, but Compose owns their lifecycle — and a restart that Compose did not ask for is exactly the
+	// kind of out-of-band change this whole design exists to avoid.
 	if owner := docker.ManagedBy(cur.Labels); owner != "" && owner != docker.ManagedByMiabi {
 		return fmt.Errorf("it is managed by %s, not by Miabi — restart it with that "+
 			"(for Compose: docker compose restart %s)", owner, c.Name)
@@ -106,11 +93,9 @@ func (s *Service) restartOne(ctx context.Context, m *Manifest, c component) erro
 	return nil
 }
 
-// ValidateGatewayConfig checks the gateway config without writing it.
-//
-// EnsureGatewayConfig would also (re)write the file; a restart must not — the whole
-// reason to restart is that the operator changed something on disk, and rewriting it
-// underneath them would be the opposite of what they asked for.
+// ValidateGatewayConfig checks the gateway config without writing it. EnsureGatewayConfig would also
+// (re)write the file; a restart must not — the whole reason to restart is that the operator changed
+// something on disk, and rewriting it underneath them would be the opposite of what they asked for.
 func (s *Service) ValidateGatewayConfig(ctx context.Context, m *Manifest) error {
 	host, err := s.requireHostPath(ctx, s.configPath(m))
 	if err != nil {

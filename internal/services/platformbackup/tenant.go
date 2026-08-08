@@ -17,10 +17,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/backup"
 )
 
-// errNoTenantSource means the process asked to RUN this artifact has no tenant
-// source, while the process that ENQUEUED it did. That is a wiring fault in this
-// build, not something an operator configured wrong — say so, rather than leaving
-// them looking for a setting that does not exist.
+// errNoTenantSource means the process asked to RUN this artifact has no tenant source, while the process
+// that ENQUEUED it did. That is a wiring fault in this build, not something an operator configured wrong —
+// say so, rather than leaving them looking for a setting that does not exist.
 var errNoTenantSource = errors.New(
 	"this process cannot capture tenant data: no tenant source is wired. " +
 		"Tenant artifacts are queued by the API server and run by the worker, so every process " +
@@ -42,13 +41,9 @@ type TenantVolume struct {
 	ServerID    uint
 }
 
-// TenantSource enumerates tenant data and runs a database dump against a chosen
-// destination.
-//
-// It is an interface rather than a direct dependency because dumping a tenant
-// database is already solved by services/backup, which knows every engine and
-// how to reach a managed instance's network. Platform backup should point that
-// machinery at its own bucket, not grow a second copy of it that will drift.
+// TenantSource enumerates tenant data and runs a database dump against a chosen destination. It is an
+// interface rather than a direct dependency because dumping a tenant database is already solved by
+// services/backup, which knows every engine and how to reach a managed instance's network.
 type TenantSource interface {
 	ListTenantDatabases() ([]TenantDatabase, error)
 	ListTenantVolumes() ([]TenantVolume, error)
@@ -68,7 +63,6 @@ func (s *Service) TenantCaptureAvailable() bool { return s.tenants != nil }
 // layout lives in internal/dr so the restore finds exactly what the backup wrote.
 func tenantPath(base, workspace string) string { return dr.TenantPath(base, workspace) }
 
-// slugish reduces a workspace name to something safe in an object key.
 func slugish(s string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(strings.TrimSpace(s)) {
@@ -82,16 +76,9 @@ func slugish(s string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-// captureTenantData records a pending item per tenant database and volume and
-// hands them to the background worker.
-//
-// They are ENQUEUED, not run here. Dumping every customer database and taring
-// every volume takes minutes; doing it inline meant doing it inside the HTTP
-// request that asked for the backup, so the moment that request ended — a client
-// timeout, a proxy timeout, the handler returning — its context was cancelled and
-// every artifact still in flight died with "context canceled". The control-plane
-// dump and the platform volumes were already queued; tenant data was the one
-// thing that was not, which is why it was the one thing that failed.
+// captureTenantData records a pending item per tenant database and volume and hands them to the background
+// worker. They are ENQUEUED, not run here: dumping every customer database takes minutes, and doing it inside
+// the HTTP request meant every artifact still in flight died with "context canceled" when that request ended.
 func (s *Service) captureTenantData(ctx context.Context, set *models.PlatformBackupSet, st *models.PlatformBackupSettings, cfg *backup.S3Config, trigger string) int {
 	if s.tenants == nil {
 		logger.Warn("tenant data requested but no tenant source is wired; recovery point will contain the control plane only", "ref", set.Ref)
@@ -136,7 +123,6 @@ func (s *Service) captureTenantData(ctx context.Context, set *models.PlatformBac
 	return queued
 }
 
-// enqueueTenantItem records a tenant artifact and schedules it.
 func (s *Service) enqueueTenantItem(ctx context.Context, item *models.PlatformBackup) error {
 	if err := s.repo.Create(item); err != nil {
 		return err
@@ -214,10 +200,9 @@ func (s *Service) runTenantDatabaseBackup(ctx context.Context, item *models.Plat
 	_ = s.repo.Update(item)
 
 	dest := backup.Destination{Type: destS3, S3: withPath(cfg, path)}
-	// The tenant dump is encrypted with the same passphrase as everything else in
-	// the recovery point: one passphrase to custody, one to lose. gpgEnv degrades
-	// to unencrypted when there is none, and says so — this must not be the one
-	// artifact that fails where the others carried on.
+	// The tenant dump is encrypted with the same passphrase as everything else in the recovery point: one
+	// passphrase to custody, one to lose. gpgEnv degrades to unencrypted when there is none, and says so —
+	// this must not be the one artifact that fails where the others carried on.
 	gpg, _, err := s.gpgEnv(st)
 	if err != nil {
 		s.fail(item, err)
@@ -340,7 +325,6 @@ func (s *Service) runTenantVolumeBackup(ctx context.Context, item *models.Platfo
 	return nil
 }
 
-// withPath copies an S3 config with a specific object prefix.
 func withPath(cfg *backup.S3Config, path string) *backup.S3Config {
 	out := *cfg
 	out.Path = path

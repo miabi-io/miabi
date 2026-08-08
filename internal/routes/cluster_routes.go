@@ -10,9 +10,9 @@ import (
 	"github.com/miabi-io/miabi/internal/handlers"
 )
 
-// clusterRoutes registers platform-admin cluster (Docker Swarm) management. The
-// status endpoint is always available (reports "not enabled" on plain Docker);
-// mutations enable/adopt/disable cluster mode and join/leave nodes.
+// clusterRoutes registers platform-admin cluster (Docker Swarm) management. Status is always
+// available (reporting "not enabled" on plain Docker); mutations enable, adopt or disable
+// cluster mode and join or leave nodes.
 func (r *Router) clusterRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/admin/cluster").WithTagInfo(okapi.GroupTag{Name: "Cluster", Description: "Cluster networking (Docker Swarm), opt-in and auto-detected."})
 	admin := []okapi.Middleware{r.authenticate, r.systemAdmin}

@@ -12,8 +12,6 @@ import (
 
 func serverNameHandleStep(ctx context.Context, db *gorm.DB) error {
 	if !db.Migrator().HasColumn(&serverRow{}, "slug") {
-		// A fresh install: AutoMigrate created the table from the current model,
-		// so there is no slug column and nothing to move.
 		return nil
 	}
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -29,9 +27,8 @@ func serverNameHandleStep(ctx context.Context, db *gorm.DB) error {
 	})
 }
 
-// serverRow names the servers table for the migrator without importing
-// models.Server — the model no longer has a Slug field, so HasColumn must be
-// asked about the table, not the struct.
+// serverRow names the servers table for the migrator without importing models.Server: the model
+// no longer has a Slug field, so HasColumn must be asked about the table, not the struct.
 type serverRow struct{}
 
 func (serverRow) TableName() string { return "servers" }

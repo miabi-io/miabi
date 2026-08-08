@@ -123,14 +123,9 @@ func (s *Subscriber) reconcileStatus(ev docker.EngineEvent, app *models.Applicat
 	}
 }
 
-// dieIsStop reports whether a container "die" with the given exit code, for an
-// app in the given stored status, is a clean stop rather than a crash. Graceful
-// (0) and SIGTERM (143) exits are always stops (and cover the deploy pipeline
-// retiring old containers). Any exit of an app the user has already stopped is a
-// stop too: apps built from a Git source run their process under /bin/sh, which
-// doesn't forward SIGTERM, so an intentional stop ends in a SIGKILL (exit 137) —
-// exit code alone can't tell it apart from a crash, so the recorded stop intent
-// does. Pure, so it can be unit-tested.
+// dieIsStop reports whether a container "die" with the given exit code, for an app in the given stored status,
+// is a clean stop rather than a crash. Exit 0 and 143 are always stops; any exit of an app the user already
+// stopped is too, since a shell-form CMD swallows SIGTERM and ends in 137. Pure, so it is unit-testable.
 func dieIsStop(exitCode string, status models.AppStatus) bool {
 	return exitCode == "0" || exitCode == "143" || status == models.AppStatusStopped
 }

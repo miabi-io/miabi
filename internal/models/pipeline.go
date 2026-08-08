@@ -148,26 +148,18 @@ type PipelineStepRun struct {
 	Status        PipelineRunStatus `json:"status" gorm:"not null;default:pending"`
 	Image         string            `json:"image,omitempty"`
 	Uses          string            `json:"uses,omitempty"` // built-in step kind (e.g. "deploy")
-	// Run is the shell command for a container (Image) step. The runner executes
-	// it in a non-login shell inside the step image — like a GitHub Actions
-	// `run:` step — so shell features (pipes, &&, env expansion) work. Empty for
-	// `uses:` built-in steps.
+	// Run is the shell command for a container (Image) step, executed in a non-login shell inside
+	// the step image — like a GitHub Actions `run:` step — so pipes, && and env expansion work.
+	// Empty for `uses:` built-in steps.
 	Run string `json:"run,omitempty" gorm:"type:text"`
-	// Dockerfile and BuildContext configure a `uses: build` step, both relative to
-	// the checked-out source root: which Dockerfile to build, and which directory
-	// to build it from. Empty means "Dockerfile" and the root respectively.
-	//
-	// They are recorded per RUN, not just on the definition, because a run is the
-	// audit record of what was built — reading the pipeline file back later would
-	// describe the definition as it is now, not as it was when this image was
-	// produced.
+	// Dockerfile and BuildContext configure a `uses: build` step, relative to the checked-out
+	// source root; empty means "Dockerfile" and the root. Recorded per RUN because a run is the
+	// audit record of what was built, not of the definition as it reads today.
 	Dockerfile   string `json:"dockerfile,omitempty"`
 	BuildContext string `json:"build_context,omitempty"`
-	// BuildArgs are the step's Dockerfile ARG values. Recorded per run for the same
-	// reason as the two above: it is part of what produced this image.
-	//
-	// These are not secrets — a build arg is readable from the image history — so
-	// they are stored in the clear, unlike the run's credentials.
+	// BuildArgs are the step's Dockerfile ARG values, recorded per run as part of what produced
+	// the image. Not secrets — a build arg is readable from the image history — so they are
+	// stored in the clear, unlike the run's credentials.
 	BuildArgs map[string]string `json:"build_args,omitempty" gorm:"serializer:json"`
 	// ContinueOnError lets the run keep going (and still succeed) when this step
 	// fails; the step is still recorded failed.

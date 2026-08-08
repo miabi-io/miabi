@@ -16,16 +16,12 @@ type DatabaseRepository struct {
 
 func NewDatabaseRepository(db *gorm.DB) *DatabaseRepository { return &DatabaseRepository{db: db} }
 
-// --- Instances ---
-
 func (r *DatabaseRepository) Create(d *models.DatabaseInstance) error { return r.db.Create(d).Error }
 func (r *DatabaseRepository) Update(d *models.DatabaseInstance) error { return r.db.Save(d).Error }
 
-// RetargetNetwork repoints every instance pinned to the old Docker network at the
-// new one. An instance stores its network by name (models.DatabaseInstance
-// .NetworkName), so replacing the workspace network — as the bridge -> overlay
-// migration does — must carry the instances across or their helper jobs would
-// attach to a network that no longer exists.
+// RetargetNetwork repoints every instance pinned to the old Docker network at the new one. An
+// instance stores its network by name, so replacing the workspace network — as the bridge ->
+// overlay migration does — must carry instances across or their helper jobs lose the network.
 func (r *DatabaseRepository) RetargetNetwork(oldName, newName string) error {
 	return r.db.Model(&models.DatabaseInstance{}).
 		Where("network_name = ?", oldName).
@@ -112,8 +108,6 @@ func (r *DatabaseRepository) ExistsByID(id uint) (bool, error) {
 	err := r.db.Model(&models.DatabaseInstance{}).Where("id = ?", id).Count(&count).Error
 	return count > 0, err
 }
-
-// --- Logical databases ---
 
 func (r *DatabaseRepository) CreateDatabase(d *models.Database) error { return r.db.Create(d).Error }
 func (r *DatabaseRepository) UpdateDatabase(d *models.Database) error { return r.db.Save(d).Error }

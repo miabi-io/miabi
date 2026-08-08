@@ -11,15 +11,9 @@ const (
 	RegistryStorageS3         = "s3"
 )
 
-// RegistrySettings is the single-row, platform-scoped configuration for the
-// built-in Docker registry (CNCF distribution / `registry:3`). One registry per
-// platform, so this mirrors PlatformBackupSettings (global, not per-workspace).
-// The S3 secret is encrypted at rest with the platform-scoped crypto.Encrypt and
-// never returned by the API.
-//
-// Only DeleteEnabled and PerWorkspaceQuotaMB are writable. Every other field is
-// environment-derived on load (registryserver.applyEnvConfig): a stored value
-// survives only as a legacy carry-over from when the admin UI could write it.
+// RegistrySettings is the single-row, platform-scoped config for the built-in Docker registry
+// (one per platform, mirroring PlatformBackupSettings). The S3 secret is encrypted at rest.
+// Only DeleteEnabled and PerWorkspaceQuotaMB are writable; the rest is environment-derived.
 type RegistrySettings struct {
 	ID uint `json:"id" gorm:"primaryKey"`
 

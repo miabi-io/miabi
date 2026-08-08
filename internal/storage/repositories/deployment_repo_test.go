@@ -24,10 +24,9 @@ func newDeploymentDB(t *testing.T) *DeploymentRepository {
 	return NewDeploymentRepository(db)
 }
 
-// TestUpdatePreservesAppendedLog guards the log-loss bug: AppendLog writes the
-// build/deploy log straight to the DB column while the in-memory deployment keeps
-// Logs="". A plain Save on Update would overwrite (wipe) that column, so Update
-// must omit the log columns.
+// TestUpdatePreservesAppendedLog guards the log-loss bug: AppendLog writes the log straight to
+// the DB column while the in-memory deployment keeps Logs="". A plain Save on Update would wipe
+// that column, so Update must omit the log columns.
 func TestUpdatePreservesAppendedLog(t *testing.T) {
 	repo := newDeploymentDB(t)
 	dep := &models.Deployment{ApplicationID: 1}

@@ -48,9 +48,8 @@ func createDDL(engine models.DBEngine, name, user, pass string) []string {
 			fmt.Sprintf(`CREATE DATABASE "%s" OWNER "%s"`, name, user),
 		}
 	case models.DBEngineMongoDB:
-		// MongoDB has no DDL: a scoped user is created on the target database
-		// (so authSource = the database), and a marker collection makes the
-		// otherwise-empty database durable (Mongo drops databases with no
+		// MongoDB has no DDL: a scoped user is created on the target database (so authSource = the database), and
+		// a marker collection makes the otherwise-empty database durable (Mongo drops databases with no
 		// collections). Statements are mongosh JS, joined and run via one --eval.
 		return []string{
 			fmt.Sprintf(`db.getSiblingDB(%q).createUser({user:%q,pwd:%q,roles:[{role:"dbOwner",db:%q}]})`, name, user, pass, name),
@@ -66,7 +65,6 @@ func createDDL(engine models.DBEngine, name, user, pass string) []string {
 	}
 }
 
-// dropDDL returns the statements that remove a logical database and its user.
 func dropDDL(engine models.DBEngine, name, user string) []string {
 	switch engine {
 	case models.DBEnginePostgres:

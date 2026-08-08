@@ -10,13 +10,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/platformstack"
 )
 
-// The installer validates MIABI_LOG_LEVEL so a typo fails instantly instead of
-// crash-looping the control plane. That is only true while the installer's idea of a
-// valid level matches the control plane's — two lists in two packages, and nothing
-// but this test stops them drifting.
-//
-// It lives in a _test package so platformstack itself does not take a dependency on
-// config (which drags in Okapi, GORM and the rest) just to share four strings.
+// The installer validates MIABI_LOG_LEVEL so a typo fails instantly instead of crash-looping the
+// control plane. That holds only while the installer's idea of a valid level matches the control
+// plane's — two lists in two packages, and nothing but this test stops them drifting.
 func TestInstallerAndControlPlaneAgreeOnLogLevels(t *testing.T) {
 	// Everything the installer accepts, the control plane must accept.
 	for _, lvl := range []string{"debug", "info", "warn", "warning", "error"} {

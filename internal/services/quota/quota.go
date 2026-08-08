@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package quota enforces per-workspace plan limits and capabilities. Resource
-// services call CheckCreate before persisting, and Require before a gated
-// action, so the same caps apply to every caller (web, CLI, CI, IaC). The
-// effective limits resolve as: workspace override -> assigned plan -> default
-// plan -> unlimited.
+// Package quota enforces per-workspace plan limits and capabilities. Resource services call CheckCreate
+// before persisting and Require before a gated action, so the same caps apply to every caller. Effective
+// limits resolve as workspace override, then assigned plan, then default plan, then unlimited.
 package quota
 
 import (
@@ -48,11 +46,9 @@ const (
 	CapDNSProviders         Capability = "dns_providers"
 	CapCustomLabels         Capability = "custom_labels"
 	CapPlatformRunners      Capability = "platform_runners"
-	// CapCustomBuilder gates a per-app custom buildpack builder image. A custom
-	// builder runs on the runner with docker-daemon access
-	// (pack --trust-builder --docker-host inherit), so on shared/multi-tenant
-	// runners it is an arbitrary-code vector; when not granted the platform default
-	// builder is used instead.
+	// CapCustomBuilder gates a per-app custom buildpack builder image. A custom builder runs on the runner with
+	// docker-daemon access, so on shared or multi-tenant runners it is an arbitrary-code vector; when not
+	// granted, the platform default builder is used instead.
 	CapCustomBuilder Capability = "custom_builder"
 	// CapGPU gates whether a workspace may request GPU devices for its apps.
 	// Device passthrough is privileged, so this is a hard gate (and incompatible
@@ -237,10 +233,9 @@ func resourceLimit(l Limits, r Resource) int {
 	}
 }
 
-// EditionGate reports whether a paid entitlement flag is usable at runtime.
-// Satisfied by enterprise.EE; injected so the resolver can clamp the Enterprise-only
-// restricted security profile back to the default in Community or once a license
-// lapses.
+// EditionGate reports whether a paid entitlement flag is usable at runtime. Satisfied by enterprise.EE;
+// injected so the resolver can clamp the Enterprise-only restricted security profile back to the default in
+// Community, or once a license lapses.
 type EditionGate interface {
 	Has(flag string) bool
 }
@@ -335,10 +330,9 @@ func (s *Service) CheckCreate(workspaceID uint, r Resource, currentCount int) er
 	return nil
 }
 
-// RestrictedProfile reports whether a workspace's effective security profile is
-// "restricted" (force non-root). It is always false when enforcement is disabled
-// (single-tenant mode): the per-plan gate does not apply there, leaving the
-// decision to the server-level default. Nil-safe (returns false).
+// RestrictedProfile reports whether a workspace's effective security profile is "restricted" (force
+// non-root). Always false when enforcement is disabled (single-tenant mode): the per-plan gate does not apply
+// there, leaving the decision to the server-level default. Nil-safe, returning false.
 func (s *Service) RestrictedProfile(workspaceID uint) bool {
 	if !s.Enabled() {
 		return false
@@ -346,11 +340,9 @@ func (s *Service) RestrictedProfile(workspaceID uint) bool {
 	return s.EffectiveLimits(workspaceID).SecurityProfile == models.SecurityProfileRestricted
 }
 
-// AllowOfficialImageUser reports whether the workspace's effective plan lets apps
-// installed from an official marketplace template keep the image's own default
-// user even under the restricted security profile. Only meaningful alongside a
-// restricted profile (see RestrictedProfile); nil-safe. Permissive (true) when
-// enforcement is disabled, mirroring the single-tenant "no gating" stance.
+// AllowOfficialImageUser reports whether the workspace's effective plan lets apps installed from an official
+// marketplace template keep the image's own user under the restricted security profile. Only meaningful
+// alongside a restricted profile; nil-safe, and permissive when enforcement is disabled.
 func (s *Service) AllowOfficialImageUser(workspaceID uint) bool {
 	if !s.Enabled() {
 		return true
@@ -392,10 +384,9 @@ func (s *Service) Require(workspaceID uint, c Capability) error {
 	return &codedError{code: "CAPABILITY_DENIED", msg: fmt.Sprintf("capability not allowed by plan: %s", c), base: ErrCapabilityDenied}
 }
 
-// CustomBuilderAllowed reports whether a workspace may use a custom buildpack
-// builder image (the plan capability, or true when plan enforcement is off). Used
-// by the deploy worker as defense-in-depth: a builder set while granted must stop
-// being honored if the capability is later revoked (e.g. a plan downgrade).
+// CustomBuilderAllowed reports whether a workspace may use a custom buildpack builder image — the plan
+// capability, or true when plan enforcement is off. Used by the deploy worker as defense in depth: a builder
+// set while granted must stop being honored if the capability is later revoked.
 func (s *Service) CustomBuilderAllowed(workspaceID uint) bool {
 	return s.Require(workspaceID, CapCustomBuilder) == nil
 }
@@ -430,11 +421,9 @@ func (s *Service) CheckComputeAdd(workspaceID uint, addNanoCPUs, addMemBytes int
 	return nil
 }
 
-// CheckGPURequest verifies that granting `requested` GPU units to an app keeps
-// the workspace's aggregate GPU allocation within the MaxGPUs cap. The current
-// allocation is the sum of GPUCount × replicas over the workspace's *running*
-// apps; excludeAppID drops the app being (re)deployed from that sum so a redeploy
-// does not double-count its own held units. A stopped app holds nothing.
+// CheckGPURequest verifies that granting `requested` GPU units keeps the workspace's aggregate allocation
+// within the MaxGPUs cap. The current allocation sums GPUCount x replicas over *running* apps; excludeAppID
+// drops the app being redeployed so it does not double-count its own held units.
 func (s *Service) CheckGPURequest(workspaceID uint, requested int, excludeAppID uint) error {
 	if !s.Enabled() || requested <= 0 {
 		return nil

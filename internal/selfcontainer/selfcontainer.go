@@ -16,15 +16,9 @@ import (
 // containerID is a 64-hex Docker/containerd container identifier.
 var containerID = regexp.MustCompile(`[0-9a-f]{64}`)
 
-// Detect returns the ID of the container the process runs in, or "" when it is
-// not running in a container (e.g. local development). Resolution order, most to
-// least reliable:
-//
-//  1. MIABI_CONTAINER_ID — an explicit operator/compose override.
-//  2. /proc/self/mountinfo — Docker bind-mounts /etc/hostname, /etc/hosts and
-//     /etc/resolv.conf from /var/lib/docker/containers/<id>/, giving the full ID.
-//  3. /proc/self/cgroup — the cgroup path carries the ID on cgroup v1.
-//  4. the hostname — Docker's default is the 12-char short ID.
+// Detect returns the ID of the container the process runs in, or "" when it is not containerized.
+// Resolution order, most to least reliable: MIABI_CONTAINER_ID, /proc/self/mountinfo (Docker
+// bind-mounts /etc/hostname from /var/lib/docker/containers/<id>/), /proc/self/cgroup, hostname.
 func Detect() string {
 	if v := strings.TrimSpace(os.Getenv("MIABI_CONTAINER_ID")); v != "" {
 		return v
@@ -76,10 +70,9 @@ func isHex(s string) bool {
 	return true
 }
 
-// Match reports whether two container references identify the same container,
-// tolerating the mix of short (12-char) and full (64-char) IDs Docker returns.
-// It requires at least a 12-char overlap to avoid accidental matches, so an
-// empty reference never matches.
+// Match reports whether two container references identify the same container, tolerating the mix
+// of short (12-char) and full (64-char) IDs Docker returns. It requires at least a 12-char overlap,
+// so an empty reference never matches.
 func Match(a, b string) bool {
 	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
 	if len(a) > len(b) {

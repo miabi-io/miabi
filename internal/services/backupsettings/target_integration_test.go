@@ -10,13 +10,9 @@ import (
 	"time"
 )
 
-// TestTarget is what the "Test connection" button runs. This drives it against a
-// REAL store, with the settings supplied rather than stored — the same shape the
-// UI sends when an operator tests before saving, which is also the path that
-// never touches the repository.
-//
-// Skips unless MIABI_S3_IT_BUCKET is set. See internal/storage/blob for the full
-// variable list.
+// TestTarget is what the "Test connection" button runs. This drives it against a REAL store, with the settings
+// supplied rather than stored — the same shape the UI sends when an operator tests before saving, which is also
+// the path that never touches the repository. Skips unless MIABI_S3_IT_BUCKET is set.
 func itInput(t *testing.T) SaveInput {
 	t.Helper()
 	bucket := os.Getenv("MIABI_S3_IT_BUCKET")

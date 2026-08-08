@@ -19,10 +19,9 @@ import (
 	"github.com/docker/docker/pkg/stdcopy"
 )
 
-// ServiceSpec describes a replicated Swarm service to create or update. It is
-// the cluster-mode analogue of RunSpec: same image/env/mounts/limits, plus
-// replicas, placement constraints, and rolling-update tuning. Swarm schedules
-// the tasks and load-balances a virtual IP across them.
+// ServiceSpec describes a replicated Swarm service to create or update — the cluster-mode
+// analogue of RunSpec: same image/env/mounts/limits, plus replicas, placement constraints and
+// rolling-update tuning. Swarm schedules the tasks and load-balances a virtual IP across them.
 type ServiceSpec struct {
 	Name     string
 	Image    string
@@ -36,15 +35,12 @@ type ServiceSpec struct {
 	Networks       []string          // swarm-scoped (overlay) network names to attach
 	NetworkAliases []string          // DNS aliases applied on each attached network
 	Mounts         map[string]string // volume name -> container path
-	// MountDrivers carries the volume driver config for a mount, keyed by volume
-	// (source) name. It is REQUIRED for shared (nfs/cifs) volumes on a replicated
-	// service: without it, a task landing on a node that lacks the volume makes an
-	// empty *local* volume of the same name instead of mounting the real share, so
-	// the "shared" storage silently diverges per node. Omit for node-local volumes.
+	// MountDrivers carries the volume driver config for a mount, keyed by source name. REQUIRED for
+	// shared (nfs/cifs) volumes on a replicated service: without it a task on a node lacking the
+	// volume makes an empty *local* one instead, so the "shared" storage silently diverges per node.
 	MountDrivers map[string]ServiceMountDriver
-	// Binds are host-path bind mounts (mount.TypeBind) for operator-managed storage
-	// present at the SAME path on every node (a host-path volume under /mnt/*).
-	// Unlike Mounts (Docker named volumes) they need no driver config — the path is
+	// Binds are host-path bind mounts for operator-managed storage present at the SAME path on every
+	// node (a host-path volume under /mnt/*). Unlike Mounts they need no driver config — the path is
 	// assumed present on each node the scheduler places a task on.
 	Binds       []ServiceBind
 	Labels      map[string]string
@@ -58,19 +54,13 @@ type ServiceSpec struct {
 	// Rolling update tuning (0 = Swarm defaults).
 	UpdateParallelism uint64
 	UpdateDelay       time.Duration
-	// RegistryAuth authenticates the swarm to a private registry when creating or
-	// updating the service. It is encoded into the request so the manager can
-	// resolve the image AND distributed to worker nodes, so their tasks can pull it
-	// too (the daemon equivalent of `docker service create --with-registry-auth`).
-	// Required for the built-in registry and any private registry — without it a
-	// worker task fails to pull. nil for public images.
+	// RegistryAuth authenticates the swarm to a private registry and is distributed to worker nodes
+	// so their tasks can pull too (the daemon equivalent of --with-registry-auth). Required for the
+	// built-in registry and any private one — without it a worker task fails to pull. nil if public.
 	RegistryAuth *RegistryAuth
-	// IngressNetwork is an additional attachable overlay the service joins with
-	// only IngressAlias registered on it — the shared ingress network the central
-	// gateway uses to reach the service VIP. It is kept separate from Networks so
-	// the tenant-scoped east-west aliases (NetworkAliases, e.g. the app name) are
-	// NOT registered on this shared network, where they would collide across
-	// workspaces. Empty disables it.
+	// IngressNetwork is an additional attachable overlay the service joins with only IngressAlias
+	// registered on it. Kept separate from Networks so tenant-scoped east-west aliases are NOT
+	// registered on this shared network, where they would collide across workspaces. Empty disables it.
 	IngressNetwork string
 	IngressAlias   string
 }
@@ -82,11 +72,9 @@ type ServiceBind struct {
 	ReadOnly bool
 }
 
-// ServiceMountDriver is the Docker volume driver config for a service mount, so
-// every node a task lands on materializes the SAME backing volume (e.g. an
-// NFS/CIFS share) rather than an empty local one. Name is the Docker volume
-// driver ("local" for Miabi's nfs/cifs, which use the built-in local driver with
-// mount options); Options are the mount options (type, device, o, …).
+// ServiceMountDriver is the Docker volume driver config for a service mount, so every node a task
+// lands on materializes the SAME backing volume rather than an empty local one. Name is the
+// driver ("local" for Miabi's nfs/cifs); Options are the mount options (type, device, o, ...).
 type ServiceMountDriver struct {
 	Name    string
 	Options map[string]string
@@ -105,10 +93,9 @@ type ServiceStatus struct {
 	// on that node. Populated by ServiceInspect so callers can show where the
 	// scheduler actually placed the replicas (nil until inspected).
 	Placement map[string]int `json:"placement,omitempty"`
-	// StartedAt (RFC3339) is when the service's longest-running task entered the
-	// running state — the service's uptime. It comes from the swarm control plane,
-	// so it is known even for a task on a node Miabi has no Docker client for, where
-	// inspecting the container is impossible.
+	// StartedAt (RFC3339) is when the service's longest-running task entered the running state. It
+	// comes from the swarm control plane, so it is known even for a task on a node Miabi has no
+	// Docker client for, where inspecting the container is impossible.
 	StartedAt string `json:"started_at,omitempty"`
 }
 
@@ -192,9 +179,9 @@ func buildSwarmServiceSpec(spec ServiceSpec) swarm.ServiceSpec {
 	return s
 }
 
-// encodeRegistryAuth base64-encodes a registry credential for the Docker API's
-// X-Registry-Auth header. Returns "" (no error) when auth is nil/empty, so
-// callers can pass the result through unconditionally.
+// encodeRegistryAuth base64-encodes a registry credential for the Docker API's X-Registry-Auth
+// header. Returns "" (no error) when auth is nil or empty, so callers can pass it through
+// unconditionally.
 func encodeRegistryAuth(auth *RegistryAuth) (string, error) {
 	if auth == nil || (auth.Username == "" && auth.Password == "") {
 		return "", nil
@@ -341,12 +328,9 @@ func (e *engineClient) ServiceRestart(ctx context.Context, idOrName string) erro
 	return err
 }
 
-// ServiceTaskContainerID returns the container id of a running task of the named
-// service on THIS engine (node) — the actual workload, so logs/stats/exec/top
-// can attach to it. Returns ErrNotFound when no task of the service runs here
-// (e.g. it was scheduled onto another node) — in that case resolve the node with
-// ServiceTaskNodeID and call this on that node's engine. A non-running task is
-// used as a fallback so a starting/exited container is still inspectable.
+// ServiceTaskContainerID returns the container id of a running task of the named service on THIS
+// engine, so logs/stats/exec/top can attach to it. Returns ErrNotFound when no task runs here —
+// resolve the node with ServiceTaskNodeID. A non-running task is used as a fallback.
 func (e *engineClient) ServiceTaskContainerID(ctx context.Context, serviceName string) (string, error) {
 	list, err := e.cli.ContainerList(ctx, container.ListOptions{
 		All:     true,
@@ -370,12 +354,9 @@ func (e *engineClient) ServiceTaskContainerID(ctx context.Context, serviceName s
 	return "", ErrNotFound
 }
 
-// ServiceEnv returns a service's environment. It is how a caller answers a question
-// about how a service was configured without re-deriving it from stored state.
-//
-// The result can carry secrets (a service's env usually does), so it is for the
-// service layer to inspect — never to return to a client. Callers must extract the
-// fact they need and discard the rest.
+// ServiceEnv returns a service's environment, answering how a service was configured without
+// re-deriving it from stored state. The result usually carries secrets, so it is for the service
+// layer to inspect and never to return to a client.
 func (e *engineClient) ServiceEnv(ctx context.Context, idOrName string) ([]string, error) {
 	svc, _, err := e.cli.ServiceInspectWithRaw(ctx, idOrName, types.ServiceInspectOptions{})
 	if err != nil {
@@ -387,13 +368,9 @@ func (e *engineClient) ServiceEnv(ctx context.Context, idOrName string) ([]strin
 	return nil, nil
 }
 
-// StreamServiceLogs streams a swarm service's logs, aggregated across every task
-// wherever the scheduler placed them. Must be called on a swarm MANAGER.
-//
-// This is the ONLY way to read the logs of a task running on a node Miabi has no
-// Docker client for — an "unmanaged" swarm member with no Miabi agent. The manager
-// pulls the logs over the swarm control plane, so no per-node connection is needed.
-// It also aggregates all replicas, which reading one container never could.
+// StreamServiceLogs streams a swarm service's logs, aggregated across every task. Must be called
+// on a swarm MANAGER. It is the ONLY way to read the logs of a task on a node Miabi has no Docker
+// client for, and it aggregates all replicas, which reading one container never could.
 func (e *engineClient) StreamServiceLogs(ctx context.Context, serviceName string, follow bool, tail string, sink func(LogLine) error) error {
 	tail = sanitizeTail(tail)
 	rc, err := e.cli.ServiceLogs(ctx, serviceName, container.LogsOptions{

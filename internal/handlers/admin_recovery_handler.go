@@ -10,13 +10,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/recovery"
 )
 
-// AdminRecoveryHandler drives the post-restore reconcile from the admin UI.
-//
-// Deliberately NOT gated on the Enterprise entitlement, unlike the rest of
-// platform backup. A platform recovered onto fresh hardware may not have reached
-// its license server yet, and refusing to finish a recovery because of licensing
-// would turn a solvable outage into a stuck one. Taking backups is the paid
-// feature; getting back on your feet is not.
+// AdminRecoveryHandler drives the post-restore reconcile from the admin UI. Deliberately NOT
+// gated on the Enterprise entitlement: a platform recovered onto fresh hardware may not have
+// reached its license server, and refusing to finish would turn an outage into a stuck one.
 type AdminRecoveryHandler struct {
 	svc   *recovery.Service
 	audit *audit.Logger
@@ -29,10 +25,9 @@ func NewAdminRecoveryHandler(svc *recovery.Service, auditLog *audit.Logger) *Adm
 // CompleteRecoveryRequest carries the operator's explicit confirmation.
 type CompleteRecoveryRequest struct {
 	Body struct {
-		// Confirm asserts the operator has read the reconcile report and moved
-		// DNS. Completing recovery resumes schedules and certificate issuance, so
-		// doing it while DNS still points at the old host produces failures that
-		// look like the restore did not work.
+		// Confirm asserts the operator has read the reconcile report and moved DNS. Completing recovery
+		// resumes schedules and certificate issuance, so doing it while DNS still points at the old host
+		// produces failures that look like the restore did not work.
 		Confirm bool `json:"confirm"`
 	} `json:"body"`
 }

@@ -19,18 +19,9 @@ const ManifestExt = ".xml"
 // ManifestSchema is the manifest's version.
 const ManifestSchema = 1
 
-// Manifest is a recovery point's self-description, written to the bucket in
-// cleartext beside the sealed identity envelope.
-//
-// It exists so that restore preflight is possible with nothing but the bucket
-// and the passphrase. The same facts live in the platform's database — and the
-// database is precisely what a disaster took away. Anything the restore path
-// must know *before* it has a database to read has to be here.
-//
-// Nothing in it is secret. The KEK fingerprint is an HMAC of a fixed label under
-// the master key: it identifies which key the artifacts belong to without
-// revealing it, which is the whole reason the restore can refuse a mismatched
-// envelope before it writes a platform full of undecryptable secrets.
+// Manifest is a recovery point's self-description, written to the bucket in cleartext beside the
+// sealed identity envelope, so restore preflight works with nothing but the bucket and the
+// passphrase. Nothing in it is secret: the KEK fingerprint identifies a key without revealing it.
 type Manifest struct {
 	XMLName xml.Name `json:"-" xml:"recoveryPoint"`
 
@@ -78,13 +69,9 @@ type Artifact struct {
 	// File is the artifact's name as the *-bkup tools record it, relative to
 	// Path. The identity envelope records its full object key instead.
 	File string `json:"file" xml:"file"`
-	// Path is the object prefix this artifact was written under.
-	//
-	// Recorded per artifact because it cannot be derived from the subject alone:
-	// tenant artifacts live under a per-workspace branch, and a restore that
-	// assumed the top-level database or volume prefix looked for them in the
-	// wrong place and declared a complete recovery point incomplete. Empty on
-	// manifests written before this field existed — see ArtifactPath.
+	// Path is the object prefix this artifact was written under. Recorded per artifact because it
+	// cannot be derived from the subject alone — tenant artifacts live under a per-workspace branch.
+	// Empty on manifests written before this field existed; see ArtifactPath.
 	Path      string `json:"path,omitempty" xml:"path,omitempty"`
 	SizeBytes int64  `json:"size_bytes,omitempty" xml:"sizeBytes,omitempty"`
 	Encrypted bool   `json:"encrypted,omitempty" xml:"encrypted,omitempty"`
@@ -147,22 +134,14 @@ func (m *Manifest) Validate() error {
 	return nil
 }
 
-// ManifestNotice is stamped into every info file, so whoever finds one in a
-// bucket knows what it is.
-//
-// The file is deliberately readable: it is the index a restore consults before
-// it has a database, a passphrase check, or anything else — and it is what lets
-// an operator see what a bucket holds with nothing but an S3 client. It carries
-// no key, credential or passphrase; the fingerprint is an HMAC, and the names
-// are already visible in the object keys beside it.
+// ManifestNotice is stamped into every info file so whoever finds one in a bucket knows what it
+// is. The file is deliberately readable: it is the index a restore consults before it has a
+// database. It carries no key, credential or passphrase.
 const ManifestNotice = "Miabi recovery point index."
 
-// EncodeManifest renders a manifest for upload.
-//
-// It stamps the schema defensively, but callers should set it at construction:
-// anything that validates before encoding sees a zero and rejects its own
-// manifest. Validate is deliberately not the thing that assigns it — a
-// validator that repairs what it checks cannot report a genuine mismatch.
+// EncodeManifest renders a manifest for upload. It stamps the schema defensively, but callers
+// should set it at construction: anything that validates before encoding sees a zero. Validate
+// deliberately does not assign it — a validator that repairs what it checks cannot report a mismatch.
 func EncodeManifest(m *Manifest) ([]byte, error) {
 	m.Schema = ManifestSchema
 	m.Notice = ManifestNotice
@@ -189,11 +168,9 @@ func DecodeManifest(b []byte) (*Manifest, error) {
 // volume prefix: "<prefix>/tenants/<workspace>".
 const TenantSegment = "tenants"
 
-// TenantPath is the object prefix for one workspace's artifacts of a kind.
-//
-// It lives here, next to the manifest, because the backup writes it and the
-// restore has to find it again. Two implementations of the same layout is how a
-// restore ends up searching a path nothing was ever written to.
+// TenantPath is the object prefix for one workspace's artifacts of a kind. It lives next to the
+// manifest because the backup writes it and the restore has to find it again: two implementations
+// of the same layout is how a restore ends up searching a path nothing was written to.
 func TenantPath(base, workspace string) string {
 	ws := slugSegment(workspace)
 	if ws == "" {
@@ -205,7 +182,6 @@ func TenantPath(base, workspace string) string {
 	return TenantSegment + "/" + ws
 }
 
-// slugSegment reduces a workspace name to something safe in an object key.
 func slugSegment(s string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(strings.TrimSpace(s)) {
@@ -219,12 +195,9 @@ func slugSegment(s string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-// ArtifactPath is the prefix an artifact lives under.
-//
-// It prefers the value recorded on the artifact. Manifests written before that
-// field existed carry none, so the layout is reconstructed from the subject —
-// which is exactly the derivation that was wrong before, now in one place and
-// aware of tenant artifacts.
+// ArtifactPath is the prefix an artifact lives under. It prefers the value recorded on the
+// artifact; manifests written before that field existed carry none, so the layout is
+// reconstructed from the subject — in one place, and aware of tenant artifacts.
 func (m *Manifest) ArtifactPath(a Artifact) string {
 	if p := strings.Trim(a.Path, "/"); p != "" {
 		return p
@@ -249,10 +222,9 @@ func (m *Manifest) ArtifactKey(a Artifact) string {
 	return a.File
 }
 
-// ManifestObject is the info file's object name within the backup ROOT prefix —
-// not under the database or volume paths. It is the one file an operator (or a
-// restore with nothing but a bucket) is expected to find by looking, so it sits
-// at the top of the tree rather than inside one of its branches.
+// ManifestObject is the info file's object name within the backup ROOT prefix, not under the
+// database or volume paths. It is the one file an operator is expected to find by looking, so it
+// sits at the top of the tree rather than inside one of its branches.
 func ManifestObject(rootPrefix, ref string) string {
 	name := "recovery-" + ref + ManifestExt
 	if p := strings.Trim(strings.TrimSpace(rootPrefix), "/"); p != "" {

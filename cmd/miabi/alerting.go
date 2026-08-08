@@ -13,8 +13,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// backupAlerter bridges the backup service's outcome hook to the alert engine, so
-// backup.Service stays decoupled from the alerting package.
+// backupAlerter bridges backup outcomes to alerting, keeping backup.Service decoupled.
 type backupAlerter struct{ e *alerting.Engine }
 
 func (a backupAlerter) BackupFailed(ws, dbID uint, name, errMsg string) {
@@ -36,8 +35,7 @@ func (a backupAlerter) BackupSucceeded(ws, dbID uint) {
 	})
 }
 
-// quotaScanner implements alerting.QuotaLister over the plan quota service and the
-// per-workspace resource counts — the source for the "approaching quota" scan.
+// quotaScanner implements alerting.QuotaLister over plan quotas and per-workspace counts.
 type quotaScanner struct {
 	ws   *repositories.WorkspaceRepository
 	q    *quota.Service
@@ -74,8 +72,7 @@ func (s quotaScanner) NearQuota(threshold float64) ([]alerting.QuotaBreach, erro
 	return out, nil
 }
 
-// platformAlerter bridges the node/runner managers' online/offline hooks to
-// alerts.
+// platformAlerter bridges node/runner online/offline hooks to alerts.
 type platformAlerter struct {
 	e  *alerting.Engine
 	ws *repositories.WorkspaceRepository
@@ -84,7 +81,6 @@ type platformAlerter struct {
 	sysWsID uint
 }
 
-// systemWorkspace returns the built-in Miabi System workspace
 func (n *platformAlerter) systemWorkspace() uint {
 	n.mu.Lock()
 	defer n.mu.Unlock()

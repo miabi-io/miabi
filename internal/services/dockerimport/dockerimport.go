@@ -1,13 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package dockerimport adopts pre-existing Docker resources (hand-run
-// containers, compose stacks, volumes, networks) into Miabi without tearing
-// down what is running. Discovery lists the node's *unmanaged* resources; import
-// creates the matching domain records. The default mode is adopt-in-place: an
-// app record plus a synthetic active Release pointing at the live container, so
-// status/logs/stats/stop/restart work immediately and the container keeps
-// running. A native deploy later recreates it under Miabi conventions.
+// Package dockerimport adopts pre-existing Docker resources into Miabi without tearing down what is
+// running. Discovery lists a node's *unmanaged* resources; import creates the matching records. The
+// default is adopt-in-place: an app record plus a synthetic release pointing at the live container.
 package dockerimport
 
 import (
@@ -31,10 +27,9 @@ import (
 type Clients interface {
 	For(serverID uint) (docker.Client, error)
 	LocalID() uint
-	// SelfContainerID is Miabi's own container on the node (the control plane
-	// locally, the agent remotely), or "" when it cannot be determined. Discovery
-	// uses it to find the Compose project the platform stack runs under — see
-	// platformComposeProject.
+	// SelfContainerID is Miabi's own container on the node — the control plane locally, the agent remotely —
+	// or "" when it cannot be determined. Discovery uses it to find the Compose project the platform stack
+	// runs under; see platformComposeProject.
 	SelfContainerID(serverID uint) string
 }
 
@@ -74,8 +69,6 @@ func NewService(
 
 // systemNetworks are Docker's built-in networks, never importable.
 var systemNetworks = map[string]bool{"bridge": true, "host": true, "none": true}
-
-// --- discovery DTOs ---
 
 // Importable is a node's set of adoptable (unmanaged) resources.
 type Importable struct {
@@ -229,8 +222,6 @@ func (s *Service) toImportableContainer(cfg docker.ContainerConfig) ImportableCo
 	ic.SuggestedName = firstNonEmpty(ic.ComposeService, sanitizeName(ic.Name))
 	return ic
 }
-
-// --- import DTOs ---
 
 // ImportMode selects how a container is adopted.
 type ImportMode string
@@ -406,10 +397,9 @@ func (s *Service) importContainer(ctx context.Context, actorID, wsID, serverID u
 		r.Status, r.Message = statusFailed, "inspect: "+err.Error()
 		return r
 	}
-	// Discovery already filters these out, but Import takes container refs straight
-	// from the request — so re-check here rather than trust the caller's list. A
-	// stale page, or a hand-made request, must not be able to import the platform's
-	// own database as an application.
+	// Discovery already filters these out, but Import takes container refs straight from the request — so
+	// re-check here rather than trust the caller's list. A stale page, or a hand-made request, must not be
+	// able to import the platform's own database as an application.
 	if notImportable(cfg.Labels, strings.TrimPrefix(cfg.Name, "/")) ||
 		inPlatformProject(cfg.Labels, s.platformComposeProject(ctx, serverID, dc)) {
 		r.Status, r.Message = statusFailed, "this container is part of the Miabi platform and cannot be imported"
@@ -422,7 +412,6 @@ func (s *Service) importContainer(ctx context.Context, actorID, wsID, serverID u
 
 	name := firstNonEmpty(strings.TrimSpace(it.AppName), cfg.Labels["com.docker.compose.service"], sanitizeName(cfg.Name))
 
-	// Container port declarations (deduped) + the primary port.
 	var specs []application.PortSpec
 	seenPort := map[string]bool{}
 	for _, p := range cfg.Ports {
@@ -465,10 +454,9 @@ func (s *Service) importContainer(ctx context.Context, actorID, wsID, serverID u
 		Ports:         specs,
 		NetworkIDs:    networkIDs,
 		StackID:       stackID,
-		// Carry over the source container's custom labels (Traefik, Watchtower,
-		// autoheal, …). Create sanitizes them — the platform (io.miabi.*/miabi.*)
-		// and Compose (com.docker.*) keys are stripped, so only genuine user
-		// labels survive onto the imported app.
+		// Carry over the source container's custom labels (Traefik, Watchtower, autoheal, …). Create sanitizes
+		// them — the platform (io.miabi.*/miabi.*) and Compose (com.docker.*) keys are stripped, so only genuine
+		// user labels survive onto the imported app.
 		ContainerLabels: cfg.Labels,
 	})
 	if err != nil {
@@ -628,8 +616,6 @@ func (s *Service) ensureNetwork(wsID uint, dockerName, driver string) (*models.N
 	return n, nil
 }
 
-// --- idempotency helpers ---
-
 func (s *Service) containerImported(containerID string) bool {
 	_, err := s.releases.FindByContainerID(containerID)
 	return err == nil
@@ -645,27 +631,15 @@ func (s *Service) networkImported(dockerName string) bool {
 	return err == nil
 }
 
-// --- pure helpers ---
-
 // isManaged reports whether a resource carries any platform label (io.miabi.* or
 // legacy miabi.*).
 func isManaged(labels map[string]string) bool {
 	return docker.IsManaged(labels)
 }
 
-// notImportable reports whether a Docker resource must never be offered for
-// import: it is already managed by Miabi, or it IS Miabi.
-//
-// The second half is the one that bites. Miabi's own stack (control plane,
-// Postgres, Redis, gateway) is deployed by compose — from outside Miabi — so
-// before platform labels existed it carried no io.miabi.* key at all, isManaged()
-// was false for it, and discovery happily offered `miabi-postgres` as an importable
-// application. Importing it creates an Application record pointing at the
-// platform's own database, which the deploy worker then believes it owns and may
-// recreate.
-//
-// name is checked too, not just labels: a stack deployed before this change has no
-// labels to read, and it must not become importable merely because it is old.
+// notImportable reports whether a Docker resource must never be offered for import: it is already managed by
+// Miabi, or it IS Miabi. The second half bites — the stack is deployed by compose from outside, so before
+// platform labels it carried no io.miabi.* key. Name is checked too: an old stack has no labels to read.
 func notImportable(labels map[string]string, name string) bool {
 	return isManaged(labels) || docker.IsPlatformStack(labels) || isMiabiName(name)
 }
@@ -674,22 +648,9 @@ func notImportable(labels map[string]string, name string) bool {
 // network it creates.
 const composeProjectLabel = "com.docker.compose.project"
 
-// platformComposeProject returns the Compose project Miabi's own stack runs under
-// on this node, or "" when it cannot be determined.
-//
-// This is the shield for a stack deployed BEFORE platform labels existed, and it
-// cannot be done by name. Compose only pins container_name on the gateway; the rest
-// get generated names of the form <project>-<service>-<n> — the platform's Postgres
-// is really "miabi-miabi-postgres-1", not "miabi-postgres" — and the project is the
-// install directory, so it is not knowable up front.
-//
-// But Miabi always knows its OWN container, and every sibling in the stack carries
-// the same com.docker.compose.project. So: ask the control plane which project it is
-// in, and everything in that project is the Miabi stack.
-//
-// Remotely, self is the agent (started by `docker run`, no Compose project), so this
-// yields "" and the label/name shields carry the load — which is correct, since the
-// platform stack does not run on a worker node.
+// platformComposeProject returns the Compose project Miabi's own stack runs under on this node, or "" when it
+// cannot be determined. It cannot be done by name — compose generates <project>-<service>-<n> and the project
+// is the install directory — but Miabi knows its OWN container, and siblings share com.docker.compose.project.
 func (s *Service) platformComposeProject(ctx context.Context, serverID uint, dc docker.Client) string {
 	self := s.clients.SelfContainerID(serverID)
 	if self == "" {
@@ -720,13 +681,9 @@ func containerName(c docker.Container) string {
 	return strings.TrimPrefix(c.Names[0], "/")
 }
 
-// isMiabiName reports whether a container/volume/network name follows a Miabi
-// naming convention, so the platform's own resources are not offered for import
-// even when unlabeled (a stack installed before platform labels).
-//
-// Compose prefixes volume and network names with the project name, so the platform
-// volumes surface as e.g. "miabi_pgdata" — hence the miabi_ prefix as well as the
-// bare names compose pins via container_name.
+// isMiabiName reports whether a container, volume or network name follows a Miabi naming convention, so the
+// platform's own resources are not offered for import even when unlabeled. Compose prefixes volume and network
+// names with the project, so platform volumes surface as e.g. "miabi_pgdata" — hence the miabi_ prefix too.
 func isMiabiName(name string) bool {
 	name = strings.TrimPrefix(name, "/") // container names arrive as "/miabi-postgres"
 	switch name {
@@ -761,7 +718,6 @@ func splitImageTag(ref string) (string, string) {
 	return ref, ""
 }
 
-// sanitizeName turns a raw container name into a friendly app name.
 func sanitizeName(name string) string {
 	return strings.TrimSpace(strings.TrimPrefix(name, "/"))
 }

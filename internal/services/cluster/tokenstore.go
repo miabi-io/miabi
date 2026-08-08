@@ -9,12 +9,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// SettingsTokenStore keeps the cluster agent token's HASH in the settings table.
-//
-// Only the hash. The plaintext token lives in the swarm service spec, which Docker
-// already holds and distributes to the nodes — a second copy at rest would be a
-// second thing to leak, and would buy nothing: we never need to read the token back,
-// only to verify one an agent presents.
+// SettingsTokenStore keeps the cluster agent token's HASH in the settings table. Only the hash: the
+// plaintext lives in the swarm service spec, which Docker already distributes to the nodes. A second
+// copy at rest would be another thing to leak and buy nothing — we only ever verify a presented token.
 type SettingsTokenStore struct {
 	repo *repositories.SettingRepository
 }

@@ -11,8 +11,7 @@ import (
 )
 
 var (
-	slugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-	// validEngines are the database engines a template may request.
+	slugRe       = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 	validEngines = map[string]bool{"postgres": true, "mysql": true, "mariadb": true, "redis": true, "mongodb": true, "libsql": true}
 )
 
@@ -111,7 +110,6 @@ func (m *Manifest) Validate() error {
 		volNames[v.Name] = true
 	}
 
-	// Applications.
 	if len(m.Applications) > 0 {
 		if err := m.validateApplications(volNames); err != nil {
 			return err

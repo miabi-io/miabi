@@ -11,18 +11,9 @@ import (
 	"github.com/miabi-io/miabi/internal/worker"
 )
 
-// newSecurityResolver builds the container security resolver wired into the
-// deploy and job handlers. An application or job container is hardened — run as
-// RestrictedUID:0 with no-new-privileges and NET_RAW dropped (the "restricted"
-// security profile, OpenShift-style) — when either the global ForceNonRootUser
-// default is set, or the workspace's effective plan selects the restricted
-// profile. Returns nil (no restriction) when no platform UID is configured.
-//
-// An app installed from an official marketplace template is exempted — it keeps
-// the image's own default user — when its plan grants AllowOfficialImageUser and
-// the restriction comes from the plan profile (not the platform-wide
-// ForceNonRootUser mandate, which is absolute). This lets curated official images
-// that require their baked-in user run under an otherwise restricted workspace.
+// newSecurityResolver hardens app/job containers (RestrictedUID:0, no-new-privileges,
+// NET_RAW dropped) when ForceNonRootUser is set or the plan selects the restricted profile.
+// Official templates keep the image user via AllowOfficialImageUser; nil without a UID.
 func newSecurityResolver(cfg *config.Config, q *quota.Service) worker.SecurityResolver {
 	if cfg.RestrictedUID <= 0 {
 		return nil

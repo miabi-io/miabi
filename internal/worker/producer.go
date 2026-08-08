@@ -17,17 +17,13 @@ const (
 	QueueDeploy  = "deploy"
 	QueueDefault = "default"
 	QueueLow     = "low"
-	// QueueNode carries tasks that must run on a remote node (deploy/job/provision
-	// against a non-local server). Agent tunnels live only in the control-plane
-	// server process, so only its embedded worker consumes this queue; a
-	// standalone `miabi worker` does not, and therefore never receives a
-	// remote-node task it couldn't reach.
+	// QueueNode carries tasks that must run on a remote node. Agent tunnels live only in the
+	// control-plane server process, so only its embedded worker consumes this queue; a standalone
+	// `miabi worker` never receives a remote-node task it couldn't reach.
 	QueueNode = "node"
-	// QueueControl carries tasks that drive the control plane's own service graph
-	// rather than a container: a portable workspace bundle creates apps, routes,
-	// databases and members through the very services the API server wires. A
-	// standalone `miabi worker` builds only the subset of that graph its container
-	// work needs, so it does not consume this queue — the embedded worker does.
+	// QueueControl carries tasks that drive the control plane's own service graph rather than a
+	// container: a portable workspace bundle creates apps, routes, databases and members through the
+	// very services the API server wires. A standalone worker builds only a subset, so it doesn't consume it.
 	QueueControl = "control"
 )
 
@@ -104,10 +100,9 @@ type RunPipelinePayload struct {
 	PipelineRunID uint `json:"pipeline_run_id"`
 }
 
-// WorkspaceBundlePayload identifies the portable workspace bundle run to
-// execute. Only the row id travels: everything the run needs — the bucket, the
-// passphrase, what it targets — is read from the database when it starts, so no
-// secret is ever written to the queue.
+// WorkspaceBundlePayload identifies the portable workspace bundle run to execute. Only the row id
+// travels: everything the run needs is read from the database when it starts, so no secret is ever
+// written to the queue.
 type WorkspaceBundlePayload struct {
 	WorkspaceBundleID uint `json:"workspace_bundle_id"`
 }
@@ -160,10 +155,9 @@ func (p *Producer) EnqueueDeploy(deploymentID, serverID uint) error {
 	return err
 }
 
-// EnqueueDeployToBuilder routes a deployment to QueueNode, which only the
-// control-plane server's embedded worker consumes — the process that holds the
-// runner tunnels. A git-source deploy must build on a runner, so a standalone
-// worker (which can't reach the tunnels) hands it off here instead of failing.
+// EnqueueDeployToBuilder routes a deployment to QueueNode, which only the control-plane server's
+// embedded worker consumes — the process holding the runner tunnels. A git-source deploy must build
+// on a runner, so a standalone worker hands it off here instead of failing.
 func (p *Producer) EnqueueDeployToBuilder(deploymentID uint) error {
 	payload, err := json.Marshal(DeployPayload{DeploymentID: deploymentID})
 	if err != nil {
@@ -282,10 +276,9 @@ func (p *Producer) EnqueueVolumeBackup(backupID, serverID uint) error {
 	return err
 }
 
-// EnqueuePipelineRun schedules a pipeline run on the internal runner. Like jobs
-// it is not auto-retried — a failed run is recorded; the user re-runs it. The
-// run is deploy-priority so CI feedback is prompt. serverID routes remote-node
-// runs.
+// EnqueuePipelineRun schedules a pipeline run on the internal runner. Like jobs it is not
+// auto-retried — a failed run is recorded and the user re-runs it. The run is deploy-priority so CI
+// feedback is prompt; serverID routes remote-node runs.
 func (p *Producer) EnqueuePipelineRun(runID, serverID uint) error {
 	payload, err := json.Marshal(RunPipelinePayload{PipelineRunID: runID})
 	if err != nil {
@@ -318,10 +311,9 @@ func (p *Producer) EnqueuePipelineRunToBuilder(runID uint, delay time.Duration) 
 	return err
 }
 
-// EnqueuePlatformBackup schedules a platform (control-plane) backup to run in
-// the background. Like volume backups it is not auto-retried — a failed run is
-// recorded on the backup row and the admin re-runs it explicitly. It always runs
-// on the manager node, so it uses the default (local) queue.
+// EnqueuePlatformBackup schedules a platform backup to run in the background. Like volume backups it
+// is not auto-retried — a failed run is recorded on the row and the admin re-runs it. It always runs
+// on the manager node, so it uses the default queue.
 func (p *Producer) EnqueuePlatformBackup(backupID uint) error {
 	payload, err := json.Marshal(PlatformBackupPayload{PlatformBackupID: backupID})
 	if err != nil {
@@ -332,11 +324,9 @@ func (p *Producer) EnqueuePlatformBackup(backupID uint) error {
 	return err
 }
 
-// EnqueueWorkspaceBundle schedules a portable workspace bundle export or
-// restore. Never auto-retried: a restore replayed blindly after a partial run is
-// exactly the situation an operator wants to look at first. It drives the local
-// Docker socket and the control plane's own services, so it runs on the default
-// queue rather than a node queue.
+// EnqueueWorkspaceBundle schedules a portable workspace bundle export or restore. Never auto-retried:
+// a restore replayed blindly after a partial run is exactly what an operator wants to look at first.
+// It drives the local Docker socket and the control plane's services, so it uses the default queue.
 func (p *Producer) EnqueueWorkspaceBundle(bundleID uint) error {
 	payload, err := json.Marshal(WorkspaceBundlePayload{WorkspaceBundleID: bundleID})
 	if err != nil {

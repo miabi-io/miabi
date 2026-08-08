@@ -25,17 +25,14 @@ type Registry struct {
 	// Secret holds the password or access token, encrypted at rest. Empty when the
 	// credential points at the vault instead (see SecretRef).
 	Secret string `json:"-" gorm:"not null"`
-	// SecretRef names a workspace Secret holding the password, instead of storing
-	// a copy here (the `${{ secrets.NAME }}` form a client sends in the secret
-	// field). The value is read from the vault at every use, so rotating that
-	// secret rotates this credential with no edit here. Mutually exclusive with
-	// Secret. Not sensitive — it is a name, so it is returned by the API.
+	// SecretRef names a workspace Secret holding the password instead of storing a copy here. The
+	// value is read from the vault at every use, so rotating that secret rotates this credential.
+	// Mutually exclusive with Secret; a name, so the API returns it.
 	SecretRef string `json:"secret_ref,omitempty"`
 
-	// Metadata holds free-form labels (provenance, grouping, declarative/GitOps).
-	// Keys under the reserved "miabi.io/" prefix are platform-managed — the
-	// managed-by label is what keeps a GitOps prune from deleting a credential
-	// created by hand.
+	// Metadata holds free-form labels (provenance, grouping, GitOps). Keys under the reserved
+	// "miabi.io/" prefix are platform-managed — the managed-by label is what keeps a GitOps prune
+	// from deleting a credential created by hand.
 	Metadata Metadata `json:"metadata,omitempty" gorm:"serializer:json"`
 	// Annotations holds free-form, non-identifying descriptive metadata (the
 	// manifest's metadata.annotations); no reserved keys. Persisted as JSON.

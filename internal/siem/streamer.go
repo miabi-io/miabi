@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package siem streams the audit log to external SIEM sinks (syslog, webhook)
-// at-least-once. It is gated on the siem_stream entitlement and runs entirely off
-// the request path. Durability comes from a per-target cursor (the highest audit
-// id confirmed shipped), persisted in the SIEMConfig row: events are read from
-// the audit table with id > cursor, shipped, and the cursor advances only on a
-// successful ship — so a sink outage or a restart never drops events.
+// Package siem streams the audit log to external SIEM sinks at-least-once, gated on the siem_stream
+// entitlement and entirely off the request path. Durability comes from a per-target cursor: the
+// cursor advances only on a successful ship, so an outage or restart never drops events.
 package siem
 
 import (
@@ -108,7 +105,6 @@ func (s *Streamer) Test(cfg *models.SIEMConfig, event models.AuditLog) error {
 	return sink.Ship([]models.AuditLog{event})
 }
 
-// sinkFor builds the sink for a target, decrypting any webhook auth header.
 func (s *Streamer) sinkFor(cfg *models.SIEMConfig) (Sink, error) {
 	switch cfg.Sink {
 	case models.SIEMSinkSyslog:

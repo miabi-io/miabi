@@ -27,10 +27,8 @@ type AdminRegistryHandler struct {
 	audit *audit.Logger
 	// ensure re-creates/tears down the registry container after a settings change.
 	// Injected by the routes layer (it owns the control-plane Docker client).
-	ensure func(context.Context) error
-	// gc runs a garbage collection on demand.
-	gc func(context.Context) error
-	// runtime reads the registry container's live state and resource usage.
+	ensure  func(context.Context) error
+	gc      func(context.Context) error
 	runtime func(context.Context) (*registryserver.Runtime, error)
 	// repoCount reports how many repositories the registry holds, so a storage
 	// change can tell "nothing to strand" from "this abandons real images".
@@ -71,12 +69,9 @@ func (h *AdminRegistryHandler) RunGC(c *okapi.Context) error {
 	return message(c, "garbage collection complete")
 }
 
-// UpdateRegistrySettingsRequest is the body for updating the registry settings.
-//
-// The platform fields (enablement, hostname, storage) are pointers: nil means
-// "not sent, leave it alone", which is what lets a partial save from one tab not
-// clobber another's. Any field the environment pins is ignored — see
-// registryserver.Locks.
+// UpdateRegistrySettingsRequest is the body for updating the registry settings. The platform
+// fields (enablement, hostname, storage) are pointers: nil means "not sent, leave alone", so a
+// partial save from one tab cannot clobber another's. Env-pinned fields are ignored.
 type UpdateRegistrySettingsRequest struct {
 	Body RegistrySettingsBody `json:"body"`
 }
@@ -98,10 +93,9 @@ type RegistrySettingsBody struct {
 	S3SecretKey      *string `json:"s3_secret_key"` // blank keeps the stored one
 	S3ForcePathStyle *bool   `json:"s3_force_path_style"`
 
-	// Confirm acknowledges a change the platform cannot undo for you — moving the
-	// hostname every stored image reference is anchored to, or switching a storage
-	// backend that does not migrate its blobs. Without it such a change is refused
-	// with an explanation, so it can never be made by accident.
+	// Confirm acknowledges a change the platform cannot undo — moving the hostname every stored
+	// image reference is anchored to, or switching a storage backend that does not migrate its
+	// blobs. Without it such a change is refused, so it can never be made by accident.
 	Confirm bool `json:"confirm"`
 }
 
@@ -158,20 +152,9 @@ func (h *AdminRegistryHandler) GetSettings(c *okapi.Context) error {
 	return ok(c, h.view(st))
 }
 
-// UpdateSettings saves the registry configuration and applies it to the running
-// container.
-//
-// Two changes are irreversible in ways the platform cannot fix afterwards, so
-// each is refused unless the caller confirms it:
-//
-//   - Moving the hostname. Every image reference Miabi has recorded — on past
-//     deployments, in pipeline runs — is anchored to the old name, and matching
-//     against it is how one workspace's images are told apart from another's.
-//   - Switching the storage driver or bucket. Blobs do not migrate: the images
-//     already pushed stay in the old backend and become invisible.
-//
-// Both are legitimate operations (a domain move, a migration to S3); they just
-// must not happen by mis-click while a form is being saved for another reason.
+// UpdateSettings saves the registry configuration and applies it to the running container. Two
+// changes are refused unless confirmed: moving the hostname (every recorded image reference is
+// anchored to it) and switching storage (blobs do not migrate, so pushed images go invisible).
 func (h *AdminRegistryHandler) UpdateSettings(c *okapi.Context, req *UpdateRegistrySettingsRequest) error {
 	b := req.Body
 	if b.PerWorkspaceQuotaMB < 0 {
@@ -232,12 +215,9 @@ func (h *AdminRegistryHandler) UpdateSettings(c *okapi.Context, req *UpdateRegis
 	return ok(c, h.view(st))
 }
 
-// destructiveChange returns the confirmation prompt for a change that strands
-// data or breaks stored references, or "" when the update is safe.
-//
-// A change is only destructive against something that exists: moving the host of
-// a registry that has never served, or switching the storage of one holding no
-// repositories, costs nothing and is not gated.
+// destructiveChange returns the confirmation prompt for a change that strands data or breaks
+// stored references, or "" when the update is safe. A change is only destructive against
+// something that exists: moving the host of a registry that never served costs nothing.
 func (h *AdminRegistryHandler) destructiveChange(
 	ctx context.Context, current *models.RegistrySettings, locks registryserver.Locks, b RegistrySettingsBody,
 ) string {

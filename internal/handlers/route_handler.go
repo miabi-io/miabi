@@ -25,7 +25,6 @@ func NewRouteHandler(svc *route.Service, settingsProvider *settings.Provider, au
 	return &RouteHandler{svc: svc, settings: settingsProvider, audit: auditLog}
 }
 
-// externalConfig reads the platform external-access config from settings.
 func (h *RouteHandler) externalConfig() route.ExternalConfig {
 	return route.ExternalConfig{
 		BaseDomain: h.settings.String(settings.KeyExternalBaseDomain, ""),
@@ -166,10 +165,9 @@ type AttachRouteMiddlewareRequest struct {
 	} `json:"body"`
 }
 
-// AttachMiddleware adds a workspace middleware to a route's chain. Unlike Update
-// it does NOT block generated routes — layering middleware (auth, rate-limit, …)
-// onto a platform-generated external-access route is an explicitly supported
-// flow, so users can secure auto-generated routes without editing them.
+// AttachMiddleware adds a workspace middleware to a route's chain. Unlike Update it does NOT
+// block generated routes: layering middleware onto a platform-generated external-access route is
+// an explicitly supported flow, so users can secure auto-generated routes without editing them.
 func (h *RouteHandler) AttachMiddleware(c *okapi.Context, req *AttachRouteMiddlewareRequest) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -216,11 +214,9 @@ func (h *RouteHandler) Delete(c *okapi.Context) error {
 	return message(c, "route deleted")
 }
 
-// guardGenerated blocks user edits/deletes of a platform-generated
-// external-access route. These routes are created and reconciled by the platform
-// from the application's External Access card; the Routes UI must not edit,
-// toggle, or delete them. Writes a 409 and returns true when blocked; a failed
-// lookup is ignored so the underlying op surfaces its own not-found.
+// guardGenerated blocks user edits and deletes of a platform-generated external-access route.
+// These are reconciled by the platform from the application's External Access card. Writes a 409
+// and returns true when blocked; a failed lookup is ignored so the op surfaces its own not-found.
 func (h *RouteHandler) guardGenerated(c *okapi.Context, wsID, id uint) bool {
 	rt, err := h.svc.Get(wsID, id)
 	if err != nil {
@@ -248,8 +244,6 @@ func (h *RouteHandler) appID(c *okapi.Context) (uint, error) {
 	}
 	return uint(id), nil
 }
-
-// --- External access (one-click public URLs) ---
 
 // ExternalAccess returns an app's external-access state (feature enabled,
 // subdomain label, currently exposed ports + URLs).

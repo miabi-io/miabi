@@ -44,7 +44,6 @@ func (m *Manifest) normalize() {
 			}
 		}
 	}
-	// A single application is implicitly primary.
 	if len(m.Applications) == 1 {
 		m.Applications[0].Primary = true
 	}

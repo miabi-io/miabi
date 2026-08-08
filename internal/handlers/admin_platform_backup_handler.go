@@ -77,11 +77,9 @@ type UpdatePlatformBackupSettingsRequest struct {
 		DatabaseBackupPath string `json:"database_backup_path"`
 		VolumeBackupPath   string `json:"volume_backup_path"`
 
-		// EncryptBackups GPG-encrypts the artifacts with BackupPassphrase. That
-		// passphrase is NOT MIABI_ENCRYPTION_KEY and must never be set to it: it
-		// protects the artifact, while the master key decrypts the artifact's
-		// contents after a restore. BackupPassphrase is empty to keep the stored
-		// one unchanged, and is never returned.
+		// EncryptBackups GPG-encrypts the artifacts with BackupPassphrase. That passphrase is NOT
+		// MIABI_ENCRYPTION_KEY and must never be set to it: it protects the artifact, while the master
+		// key decrypts its contents after a restore. Empty keeps the stored one; never returned.
 		EncryptBackups   bool   `json:"encrypt_backups"`
 		BackupPassphrase string `json:"backup_passphrase"`
 		IncludeIdentity  bool   `json:"include_identity"`
@@ -129,10 +127,9 @@ type ImportRecoveryPointRequest struct {
 	} `json:"body"`
 }
 
-// VerifyPlatformBackupSetRequest carries the passphrase to test a recovery
-// point's identity envelope with. Empty falls back to the stored passphrase,
-// which proves the artifacts exist but not that the operator can still open them
-// after losing this database — so the UI asks for it explicitly.
+// VerifyPlatformBackupSetRequest carries the passphrase to test a recovery point's identity
+// envelope with. Empty falls back to the stored one, which proves the artifacts exist but not
+// that the operator can still open them after losing this database — so the UI asks explicitly.
 type VerifyPlatformBackupSetRequest struct {
 	Body struct {
 		Passphrase string `json:"passphrase"`
@@ -176,12 +173,9 @@ func (h *AdminPlatformBackupHandler) UpdateSettings(c *okapi.Context, req *Updat
 	if b.IncludeTenantData && !h.svc.TenantCaptureAvailable() {
 		return c.AbortBadRequest("tenant data capture is unavailable on this deployment")
 	}
-	// The bucket and the schedule are NOT validated against this body. On a
-	// deployment configured through MIABI_PLATFORM_BACKUP_*, those fields are
-	// env-locked and read-only, so the form does not send them — and checking the
-	// body made every save fail with "an S3 bucket is required" for a bucket that
-	// was configured all along. SaveSettings validates the EFFECTIVE settings,
-	// stored plus environment, which is what will actually run.
+	// The bucket and schedule are NOT validated against this body: on a deployment configured
+	// through MIABI_PLATFORM_BACKUP_* they are env-locked and the form does not send them, so
+	// checking here failed every save. SaveSettings validates the EFFECTIVE settings instead.
 	var secret *string
 	if b.S3SecretKey != "" {
 		secret = &b.S3SecretKey
@@ -350,13 +344,9 @@ func (h *AdminPlatformBackupHandler) CreateSet(c *okapi.Context, _ *CreatePlatfo
 	return created(c, set)
 }
 
-// VerifySet checks a recovery point without restoring anything: that its
-// artifacts are present in object storage and that its identity envelope opens
-// with the supplied passphrase.
-//
-// This is the drill that turns a backup into a *recovery point*. A set that has
-// never been opened is a hypothesis, and disaster recovery is a poor moment to
-// test one.
+// VerifySet checks a recovery point without restoring anything: that its artifacts are present
+// in object storage and that its identity envelope opens with the supplied passphrase. This is
+// the drill that turns a backup into a recovery point — a set never opened is a hypothesis.
 func (h *AdminPlatformBackupHandler) VerifySet(c *okapi.Context, req *VerifyPlatformBackupSetRequest) error {
 	if err := h.ee.Require(enterprise.FlagPlatformBackup); err != nil {
 		return entitlementAbort(c, err)
@@ -373,12 +363,9 @@ func (h *AdminPlatformBackupHandler) VerifySet(c *okapi.Context, req *VerifyPlat
 	return ok(c, report)
 }
 
-// Discover lists the recovery points in the bucket, including any this platform
-// has no record of.
-//
-// The bucket is the authority, not this database: after a control-plane restore
-// a platform knows only the recovery points its dump contained, while everything
-// taken since is still in object storage.
+// Discover lists the recovery points in the bucket, including any this platform has no record
+// of. The bucket is the authority, not this database: after a control-plane restore a platform
+// knows only the points its dump contained, while everything since is still in object storage.
 func (h *AdminPlatformBackupHandler) Discover(c *okapi.Context) error {
 	if err := h.ee.Require(enterprise.FlagPlatformBackup); err != nil {
 		return entitlementAbort(c, err)
@@ -490,10 +477,9 @@ func (h *AdminPlatformBackupHandler) loadSet(c *okapi.Context) (*models.Platform
 	return h.svc.GetSet(uint(id))
 }
 
-// Restore restores a completed platform backup. Destructive: the control-plane DB
-// is overwritten in place (recommend restoring onto a fresh instance for true DR),
-// or the target volume is overwritten. The original MIABI_ENCRYPTION_KEY is still
-// required afterward to decrypt the restored ciphertext.
+// Restore restores a completed platform backup. Destructive: the control-plane DB is overwritten
+// in place (prefer a fresh instance for true DR), or the target volume is. The original
+// MIABI_ENCRYPTION_KEY is still required afterwards to decrypt the restored ciphertext.
 func (h *AdminPlatformBackupHandler) Restore(c *okapi.Context, req *RestorePlatformBackupRequest) error {
 	if err := h.ee.RequireMutable(enterprise.FlagPlatformBackup); err != nil {
 		return entitlementAbort(c, err)

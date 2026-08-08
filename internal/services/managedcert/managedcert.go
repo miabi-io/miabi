@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package managedcert issues and renews TLS certificates via ACME DNS-01 using a
-// workspace's connected DNS provider, storing the result in the workspace
-// Certificates (Source=acme). It orchestrates: the platform ACME account, the
-// DNS-01 solver (backed by the libdns provider), and the certificate row
-// lifecycle. Goma still serves the cert through the existing custom-cert path.
+// Package managedcert issues and renews TLS certificates via ACME DNS-01 using a workspace's connected DNS
+// provider, storing the result in the workspace Certificates. It orchestrates the platform ACME account,
+// the DNS-01 solver and the certificate row lifecycle; Goma still serves the cert as a custom cert.
 package managedcert
 
 import (
@@ -70,10 +68,9 @@ func NewService(
 
 func (s *Service) SetQuota(q *quota.Service) { s.quota = q }
 
-// Request begins issuing a managed certificate for a verified, provider-connected
-// domain (and optionally its wildcard). It creates the certificate row in the
-// "issuing" state and runs issuance in the background, returning the row
-// immediately; callers poll the row's status.
+// Request begins issuing a managed certificate for a verified, provider-connected domain, and optionally
+// its wildcard. It creates the certificate row in the "issuing" state and runs issuance in the background,
+// returning the row immediately; callers poll the row's status.
 func (s *Service) Request(workspaceID, domainID uint, name string, includeWildcard, autoRenew bool) (*models.Certificate, error) {
 	if s.quota.Enabled() {
 		if err := s.quota.Require(workspaceID, quota.CapDNSProviders); err != nil {
@@ -249,7 +246,6 @@ func (s *Service) account() (*acme.Account, error) {
 	return &acme.Account{Email: s.email, Key: key, Registration: reg}, nil
 }
 
-// providerID dereferences a cert's DNS provider id (0 when unset).
 func providerID(c models.Certificate) uint {
 	if c.DNSProviderID == nil {
 		return 0

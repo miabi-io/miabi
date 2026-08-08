@@ -11,15 +11,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// detachOrphanPlatformBackups nulls platform_backups.set_id where it is 0.
-//
-// PlatformBackup.SetID became a nullable pointer when recovery points gained a
-// real foreign key (fk_platform_backup_sets_items). Rows written before that
-// carry set_id = 0, which is not "no set": it references a row that cannot
-// exist. Left in place, AutoMigrate cannot add the constraint, and once it is
-// added every ad-hoc platform backup fails to insert with SQLSTATE 23503.
-//
-// Guarded on the table and column existing, so a fresh install skips it.
+// detachOrphanPlatformBackups nulls platform_backups.set_id where it is 0. Rows written before
+// SetID became a nullable pointer reference a row that cannot exist, so AutoMigrate cannot add
+// the FK and every ad-hoc backup would then fail with SQLSTATE 23503. Skipped on fresh installs.
 func detachOrphanPlatformBackups(db *gorm.DB) error {
 	m := db.Migrator()
 	if !m.HasTable("platform_backups") || !m.HasColumn("platform_backups", "set_id") {
@@ -113,7 +107,6 @@ func Run(db *gorm.DB) error {
 		&models.DNSRecord{},
 		&models.ACMEAccount{},
 		&models.WorkspaceKey{},
-		// GitOps & CI/CD
 		&models.GitSource{},
 		&models.Environment{},
 		&models.ReleaseApproval{},

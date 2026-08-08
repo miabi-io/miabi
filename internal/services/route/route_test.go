@@ -184,7 +184,6 @@ func ids(rs []models.Route) []uint {
 	return out
 }
 
-// fakeCluster stubs swarm detection for the upstream-selection tests.
 type fakeCluster struct{ on bool }
 
 func (f fakeCluster) CapCluster() bool { return f.on }

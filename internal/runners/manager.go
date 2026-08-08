@@ -1,13 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package runners maintains the live tunnels of connected build/pipeline
-// runners. It mirrors the node-agent connection manager (internal/nodes) but is
-// deliberately thinner: a runner uses its OWN local Docker/BuildKit daemon, so
-// the control plane never dials into it — the tunnel exists only to lease jobs
-// to the runner and stream logs/status back (job leasing lands in P3). Here it
-// carries registration + heartbeat + online/offline, and holds the multiplexed
-// session so the later lease dispatcher can open streams to the runner.
+// Package runners maintains the live tunnels of connected build/pipeline runners. It mirrors the
+// node-agent connection manager but is thinner: a runner uses its OWN Docker/BuildKit daemon, so
+// the tunnel exists only to lease jobs to it and stream logs and status back.
 package runners
 
 import (
@@ -48,10 +44,9 @@ func NewManager(state connectionState) *Manager {
 	return &Manager{state: state, sessions: map[uint]*yamux.Session{}}
 }
 
-// Handle owns an authenticated runner WebSocket: it builds the tunnel, marks the
-// runner online, and blocks until the tunnel closes (so the HTTP handler keeps
-// the connection open). The caller has already validated the registration token.
-// os/arch/version are the runner's self-reported platform facts.
+// Handle owns an authenticated runner WebSocket: it builds the tunnel, marks the runner online,
+// and blocks until the tunnel closes so the HTTP handler keeps the connection open. The caller has
+// already validated the registration token.
 func (m *Manager) Handle(r *models.Runner, os, arch, version, remoteIP string, ws *websocket.Conn) {
 	id := r.ID
 	// Control plane OPENS streams to the runner (to dispatch job leases), so the

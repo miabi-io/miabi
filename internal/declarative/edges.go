@@ -37,12 +37,9 @@ type Edge struct {
 // exposes (see render.go data()).
 var tmplRef = regexp.MustCompile(`\{\{[-\s]*\.(databases|secrets|applications)\.([A-Za-z0-9_-]+)`)
 
-// Edges derives the cross-resource dependency edges within a set. It must run on
-// the parsed (un-rendered) set: application env still carries the
-// "{{ .databases.X }}" / "{{ .secrets.X }}" templates that reveal soft
-// references. Only edges whose target is also present in the set are emitted, so
-// a topology never draws a link to a node it is not showing. The result is
-// de-duplicated and stably ordered.
+// Edges derives the cross-resource dependency edges within a set. It must run on the parsed
+// (un-rendered) set, where env still carries the "{{ .databases.X }}" templates that reveal soft
+// references. Only edges whose target is in the set are emitted; the result is deduplicated.
 func Edges(set *ResourceSet) []Edge {
 	var out []Edge
 	seen := map[Edge]bool{}

@@ -5,11 +5,9 @@ package models
 
 import "strings"
 
-// Permission is a fine-grained capability of the form "resource:action". Each
-// built-in WorkspaceRole maps to a permission set that reproduces the rank-based
-// RequireRole behavior exactly (monotonicity is enforced by permission_test.go).
-// RequirePermission gates routes on a specific capability; custom roles are just
-// alternative permission sets.
+// Permission is a fine-grained capability of the form "resource:action". Each built-in
+// WorkspaceRole maps to a permission set reproducing rank-based RequireRole exactly (enforced
+// by permission_test.go); custom roles are just alternative permission sets.
 type Permission string
 
 const (
@@ -71,16 +69,14 @@ var allReadPermissions = []Permission{
 	PermRouteRead, PermNetworkRead, PermBackupRead, PermSecretRead, PermMemberRead,
 }
 
-// developerExtra is what a developer adds over a viewer: build and run apps and
-// their attached data, but not destructive or workspace-governance actions.
+// developerExtra adds building and running apps over a viewer, but nothing destructive.
 var developerExtra = []Permission{
 	PermAppWrite, PermAppDeploy,
 	PermDatabaseWrite, PermVolumeWrite, PermRouteWrite, PermNetworkWrite,
 	PermBackupRun, PermBackupRestore, PermSecretWrite,
 }
 
-// adminExtra is what an admin adds over a developer: deletes, secret reveal /
-// privileged mounts, domains, and member management.
+// adminExtra adds deletes, secret reveal, privileged mounts, domains and member management.
 var adminExtra = []Permission{
 	PermAppDelete, PermAppAdmin, PermDatabaseDelete, PermDomainWrite, PermMemberWrite,
 }

@@ -42,13 +42,9 @@ func (r *VerifyReport) add(severity, format string, args ...any) {
 	r.Findings = append(r.Findings, VerifyFinding{Severity: severity, Message: fmt.Sprintf(format, args...)})
 }
 
-// VerifySet checks a recovery point without restoring anything: every artifact is
-// present in object storage, and the identity envelope opens with the passphrase
-// and carries the master key this platform actually runs on.
-//
-// A recovery point that has never been opened is a hypothesis. The cheapest time
-// to discover a wrong passphrase or a missing object is now; the most expensive
-// is during the outage it was taken for.
+// VerifySet checks a recovery point without restoring anything: every artifact is present in object
+// storage, and the identity envelope opens with the passphrase and carries the master key this platform
+// runs on. A recovery point that has never been opened is a hypothesis.
 func (s *Service) VerifySet(ctx context.Context, set *models.PlatformBackupSet, passphrase string) (*VerifyReport, error) {
 	st, err := s.getSettings()
 	if err != nil {
@@ -177,10 +173,9 @@ func (s *Service) verifyIdentity(ctx context.Context, store *blob.Store, st *mod
 	}
 }
 
-// fingerprintOf computes the fingerprint a given master key would produce, so a
-// recovered envelope can be checked against the set that recorded it. It mirrors
-// crypto.DeriveToken but takes the key explicitly, because the key under test is
-// not this process's key.
+// fingerprintOf computes the fingerprint a given master key would produce, so a recovered envelope can be
+// checked against the set that recorded it. It mirrors crypto.DeriveToken but takes the key explicitly,
+// because the key under test is not this process's key.
 func (s *Service) fingerprintOf(key string) string {
 	if s.keyFingerprint == nil {
 		return ""

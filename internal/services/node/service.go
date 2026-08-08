@@ -37,10 +37,9 @@ var (
 	ErrConnectivityAckRequired = &connectivityAckError{}
 )
 
-// NodeLimitError is returned when registering a node would exceed the edition's
-// node cap. It exposes a stable Code() and a curated Message() so the API
-// envelope surfaces NODE_LIMIT_REACHED with an upgrade-oriented message rather
-// than the generic status word.
+// NodeLimitError is returned when registering a node would exceed the edition's node cap. It exposes a
+// stable Code() and a curated Message() so the API envelope surfaces NODE_LIMIT_REACHED with an
+// upgrade-oriented message rather than the generic status word.
 type NodeLimitError struct{ Limit int }
 
 func (e *NodeLimitError) Error() string {
@@ -51,7 +50,6 @@ func (e *NodeLimitError) Message() string {
 	return fmt.Sprintf("This edition is limited to %d nodes. Upgrade to Enterprise to add more.", e.Limit)
 }
 
-// tokenPrefix marks Miabi agent join tokens.
 const tokenPrefix = "mbn_"
 
 // AppNetwork is the shared Docker network Goma Gateway and managed app
@@ -67,10 +65,9 @@ func SetAppNetwork(name string) {
 	}
 }
 
-// AppAlias is the stable network DNS alias for an application's active
-// container, used as the reverse-proxy upstream so it survives redeploys. It is
-// the app's stored Alias ("mb-app-<token>-<id>"); legacy apps with no stored
-// alias fall back to "mb-app-<id>".
+// AppAlias is the stable network DNS alias for an application's active container, used as the reverse-proxy
+// upstream so it survives redeploys. It is the app's stored Alias ("mb-app-<token>-<id>"); legacy apps with
+// no stored alias fall back to "mb-app-<id>".
 func AppAlias(app *models.Application) string {
 	if app.Alias != "" {
 		return app.Alias
@@ -78,10 +75,9 @@ func AppAlias(app *models.Application) string {
 	return fmt.Sprintf("mb-app-%d", app.ID)
 }
 
-// CanaryAlias is the network DNS alias for an application's canary container,
-// run alongside the stable release during a canary deployment. Only the stable
-// release answers AppAlias, so the proxy can split weighted traffic between the
-// two distinct aliases.
+// CanaryAlias is the network DNS alias for an application's canary container, run alongside the stable
+// release during a canary deployment. Only the stable release answers AppAlias, so the proxy can split
+// weighted traffic between the two distinct aliases.
 func CanaryAlias(app *models.Application) string {
 	return AppAlias(app) + "-canary"
 }
@@ -91,12 +87,9 @@ func NewAppAlias(token string, appID uint) string {
 	return fmt.Sprintf("mb-app-%s-%d", token, appID)
 }
 
-// IngressOverlay is the single shared, attachable Swarm overlay the central Goma
-// gateway joins to reach every clustered app's service VIP for public (north-
-// south) ingress. Cluster (service) apps attach to it in addition to their
-// per-workspace east-west overlay. Because it carries only gateway↔VIP traffic
-// (each service registers just its globally-unique upstream alias here, not its
-// tenant-scoped name), east-west isolation between workspaces is unaffected.
+// IngressOverlay is the single shared, attachable Swarm overlay the central Goma gateway joins to reach
+// every clustered app's service VIP. Cluster apps attach to it in addition to their per-workspace overlay.
+// It carries only gateway-to-VIP traffic, so east-west isolation between workspaces is unaffected.
 const IngressOverlay = "miabi-ingress"
 
 type Service struct {
@@ -109,16 +102,14 @@ func NewService(repo *repositories.ServerRepository, dockerClient docker.Client)
 	return &Service{repo: repo, docker: dockerClient}
 }
 
-// SetNodeLimit wires the resolved edition node cap (manager + remotes). The
-// closure is re-evaluated on every node registration so a license install or
-// lapse takes effect without a restart. A nil closure or a negative return
-// means unlimited.
+// SetNodeLimit wires the resolved edition node cap (manager + remotes). The closure is re-evaluated on every
+// node registration, so a license install or lapse takes effect without a restart. A nil closure or a
+// negative return means unlimited.
 func (s *Service) SetNodeLimit(fn func() int) { s.nodeLimit = fn }
 
-// checkNodeLimit refuses a new node registration once the edition cap is
-// reached. Already-registered nodes keep operating; only adding the next node is
-// blocked. Counts every server row (manager + remotes), matching the node-usage
-// metric shown in the license view.
+// checkNodeLimit refuses a new node registration once the edition cap is reached. Already-registered nodes
+// keep operating; only adding the next node is blocked. Counts every server row (manager + remotes),
+// matching the node-usage metric shown in the license view.
 func (s *Service) checkNodeLimit() error {
 	if s.nodeLimit == nil {
 		return nil
@@ -162,10 +153,9 @@ func (s *Service) Bootstrap(ctx context.Context, endpoint string) {
 		server.DisplayName = "manager"
 		dirty = true
 	}
-	// Auto-stamp the manager's hostname from the Docker host (info.Name is the
-	// real machine hostname, not the Miabi container's), so it needn't be
-	// entered by hand. Non-destructive — only fills it when the admin left it
-	// blank. Skipped silently if Docker is unreachable.
+	// Auto-stamp the manager's hostname from the Docker host (info.Name is the real machine hostname, not the
+	// Miabi container's), so it needn't be entered by hand. Non-destructive — only fills it when the admin
+	// left it blank. Skipped silently if Docker is unreachable.
 	if server.PublicHostname == "" {
 		if info, ierr := s.docker.Info(ctx); ierr == nil {
 			if hn := strings.TrimSpace(info.Name); hn != "" {
@@ -213,11 +203,9 @@ func (s *Service) Get(id uint) (*models.Server, error) {
 // NodeInput is the create/update payload for a remote node. The TLS key is
 // plaintext on input and encrypted at rest.
 type NodeInput struct {
-	// DisplayName is the free-text label, and the only name a caller supplies. The
-	// URL-safe handle is derived from it at creation and never settable: it is what
-	// /api/v1/provider/{name} is built from, a deployed edge gateway polls that URL
-	// for its routes, and nothing is gained by letting an operator pick or change a
-	// value they never type again.
+	// DisplayName is the free-text label, and the only name a caller supplies. The URL-safe handle is derived
+	// from it at creation and never settable: it is what /api/v1/provider/{name} is built from, a deployed edge
+	// gateway polls that URL, and nothing is gained by letting an operator change a value they never type again.
 	DisplayName    string
 	Address        string
 	PublicIP       string
@@ -350,17 +338,9 @@ func (s *Service) FindBySwarmNodeID(swarmNodeID string) (*models.Server, error) 
 	return s.repo.FindBySwarmNodeID(swarmNodeID)
 }
 
-// RegisterClusterNode creates the record for a swarm worker that registered itself
-// through the global agent service.
-//
-// The caller (cluster.AuthenticateAgent) has already verified the swarm node id is a
-// member of THIS swarm, so this is not an open registration endpoint — the machine is
-// one the swarm already trusts.
-//
-// The node is marked AutoJoined: the cluster brought it in, an admin did not. It has
-// no join token of its own (it authenticates with the cluster token), and it defaults
-// to port-forward connectivity like any other node — which in cluster mode is moot,
-// since ingress reaches it over the overlay.
+// RegisterClusterNode creates the record for a swarm worker that registered itself through the global agent
+// service. The caller has already verified the swarm node id is a member of THIS swarm, so this is not an
+// open registration endpoint. The node is marked AutoJoined: the cluster brought it in, an admin did not.
 func (s *Service) RegisterClusterNode(swarmNodeID, hostname string) (*models.Server, error) {
 	if err := s.checkNodeLimit(); err != nil {
 		return nil, err
@@ -418,22 +398,9 @@ func shortID(id string) string {
 	return id
 }
 
-// LearnSwarmNodeID records the swarm node id the agent read from its own Docker
-// engine at connect (X-Agent-Swarm-Node-ID).
-//
-// This is how a Miabi node gets mapped to its swarm node in every case, not just
-// the one where Miabi did the joining. The control plane can only fill SwarmNodeID
-// itself when it ran the `swarm join` (see cluster.JoinNode); a host joined with
-// `docker swarm join`, or one that was already a member when Miabi met it, stayed
-// unmapped forever. That is not cosmetic — an unmapped node cannot be resolved from
-// a service's task, which is precisely what makes a replica's logs and metrics
-// unreachable. The node is the authority on which node it is, so let it say.
-//
-// Unlike LearnEndpoint this OVERWRITES: a node can leave one swarm and join
-// another, and its own report is always more current than ours. An empty value is
-// ignored rather than treated as "left the swarm" — an older agent sends nothing at
-// all, and we must not wipe a good id because of it. The leave paths clear it
-// explicitly (cluster.LeaveNode).
+// LearnSwarmNodeID records the swarm node id the agent read from its own Docker engine at connect. This is
+// how a node gets mapped to its swarm node in every case, not just when Miabi did the joining — a host
+// joined by hand stayed unmapped forever, and an unmapped node cannot be resolved from a service's task.
 func (s *Service) LearnSwarmNodeID(id uint, swarmNodeID string) {
 	swarmNodeID = strings.TrimSpace(swarmNodeID)
 	if swarmNodeID == "" {
@@ -451,12 +418,9 @@ func (s *Service) LearnSwarmNodeID(id uint, swarmNodeID string) {
 	logger.Info("learned a node's swarm id from its agent", "node", id, "swarm_node_id", swarmNodeID)
 }
 
-// LearnEndpoint fills a node's public IP and/or hostname discovered from its
-// agent connection, so an admin doesn't have to know them when adding the node:
-// ip is the agent's source address as seen by the control plane, hostname is
-// self-reported (X-Agent-Hostname). Non-destructive — it only fills fields the
-// admin left blank, so an explicit value is never overwritten. Only a routable
-// public IP is adopted (a private/NAT/loopback source would be misleading).
+// LearnEndpoint fills a node's public IP and hostname discovered from its agent connection, so an admin
+// need not know them when adding the node. Non-destructive: it only fills fields the admin left blank, and
+// only a routable public IP is adopted, since a private or NAT source address would be misleading.
 func (s *Service) LearnEndpoint(id uint, ip, hostname string) {
 	srv, err := s.repo.FindByID(id)
 	if err != nil {
@@ -500,12 +464,8 @@ func publicIP(raw string) string {
 	return ip.String()
 }
 
-// deriveAddress resolves the reverse-proxy address for a node. For api the host
-// is taken from the Docker endpoint (tcp://host:2376), so no separate address is
-// asked for; other modes use the provided address.
-// connectivityAckError signals that a reachability change needs the caller to
-// acknowledge the impact. It carries a stable code so the API envelope and the
-// web client can recognise it.
+// deriveAddress resolves the reverse-proxy address for a node: for api mode the host comes from the Docker
+// endpoint, so no separate address is asked for; other modes use the provided address.
 type connectivityAckError struct{}
 
 func (*connectivityAckError) Error() string {
@@ -519,11 +479,9 @@ func validConnectivity(c models.ServerConnectivity) bool {
 	return c == models.ConnectivityEdgeGateway || c == models.ConnectivityPortForward
 }
 
-// reachabilityChanged reports whether in would actually alter how the control
-// plane reaches the node or how its workloads are exposed (vs. a metadata-only
-// edit that resends the current values). Mirrors what UpdateNode applies: for
-// the local node only connectivity is mutable; for a remote node, access mode,
-// endpoint, derived address and any newly supplied TLS material also count.
+// reachabilityChanged reports whether in would actually alter how the control plane reaches the node or how
+// its workloads are exposed, as opposed to a metadata-only edit that resends current values. Mirrors what
+// UpdateNode applies: connectivity for the local node; access mode, endpoint, address and new TLS for remotes.
 func reachabilityChanged(srv *models.Server, in NodeInput) bool {
 	if validConnectivity(in.Connectivity) && in.Connectivity != srv.Connectivity {
 		return true
@@ -699,11 +657,9 @@ func (s *Service) MarkGatewayDeployed(id uint) {
 	_ = s.repo.Update(srv)
 }
 
-// AdoptGateway tracks a pre-existing gateway container as this node's gateway
-// (import). It records the container name + image, optionally copies the
-// gateway's existing config into the node's stored config, switches the node to
-// edge-gateway connectivity, and stamps the deploy time — without recreating
-// anything, so the running gateway is untouched.
+// AdoptGateway tracks a pre-existing gateway container as this node's gateway. It records the container name
+// and image, optionally copies the gateway's existing config into the node's stored config, switches the
+// node to edge-gateway connectivity, and stamps the deploy time — without recreating anything.
 func (s *Service) AdoptGateway(id uint, container, image, configYAML string) (*models.Server, error) {
 	srv, err := s.repo.FindByID(id)
 	if err != nil {

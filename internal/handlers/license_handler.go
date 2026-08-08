@@ -17,10 +17,9 @@ import (
 // raised so admins renew before the grace/degrade transition.
 const nearingExpiryWindow = 30 * 24 * time.Hour
 
-// LicenseHandler exposes the commercial license: install, view, remove, and a
-// health summary that drives the web banner. It works in both editions — in
-// Community the injected enterprise.EE is the deny-all stub, so install returns
-// 402 and the view reports edition "community".
+// LicenseHandler exposes the commercial license: install, view, remove, and the health summary
+// driving the web banner. It works in both editions — in Community the injected enterprise.EE
+// is the deny-all stub, so install returns 402 and the view reports edition "community".
 type LicenseHandler struct {
 	ee        enterprise.EE
 	nodeCount func() int64
@@ -84,7 +83,6 @@ func (h *LicenseHandler) view() LicenseView {
 	}
 }
 
-// warnings derives the banner conditions from the resolved entitlements.
 func warnings(ent enterprise.Entitlements, nodesUsed int64) []string {
 	out := []string{}
 	switch ent.State {
@@ -140,9 +138,8 @@ func (h *LicenseHandler) Install(c *okapi.Context, req *InstallLicenseRequest) e
 	return h.Get(c)
 }
 
-// requestHost returns the host the request was made to — the live deployment
-// identity used to validate a URL-bound license at install. It honors
-// X-Forwarded-Host (Goma/reverse proxies rewrite it) and takes the first value
+// requestHost returns the host the request was made to — the live deployment identity used to
+// validate a URL-bound license at install. It honors X-Forwarded-Host and takes the first value
 // of a comma-separated list; normalization to a bare hostname happens downstream.
 func requestHost(c *okapi.Context) string {
 	r := c.Request()

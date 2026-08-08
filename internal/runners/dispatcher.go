@@ -49,20 +49,16 @@ type Publisher interface {
 	Publish(topic string, e eventbus.Event)
 }
 
-// Deployer performs a deploy-by-digest: it creates a deployment of the image a
-// runner built (referenced by its registry digest) for the run's app and
-// enqueues it to the target node, which pulls and runs it — the node never
-// builds. Implemented by the worker's pipeline deployer; nil-safe (unset = a
-// build-only pipeline that never deploys).
+// Deployer performs a deploy-by-digest: it creates a deployment of the image a runner built and
+// enqueues it to the target node, which pulls and runs it — the node never builds. Implemented by
+// the worker's pipeline deployer; nil-safe (unset = a build-only pipeline that never deploys).
 type Deployer interface {
 	DeployByDigest(run *models.PipelineRun, appID uint, imageRef string) error
 }
 
-// Dispatcher runs a pipeline run on a runner: it selects an eligible runner,
-// leases it, opens a stream over the runner's tunnel, sends the JobSpec, and
-// applies the runner's report frames back onto the run (status, live logs, image
-// provenance). This is the control-plane counterpart to the runner's job loop;
-// the two speak the shared github.com/miabi-io/runner/proto contract.
+// Dispatcher runs a pipeline run on a runner: it selects and leases one, opens a stream over its
+// tunnel, sends the JobSpec, and applies the report frames back onto the run. This is the
+// control-plane counterpart to the runner's job loop, over the shared runner/proto contract.
 type Dispatcher struct {
 	runners  *runner.Service
 	sessions *Manager
@@ -91,13 +87,9 @@ func (d *Dispatcher) RunnerWaitReason(workspaceID uint) string {
 	return d.runners.AvailabilityReason(runner.Job{WorkspaceID: workspaceID})
 }
 
-// SweepExpiredLeases releases every active lease whose deadline has passed and
-// returns them. A runner that died (or a control-plane process that restarted)
-// mid-job never runs the lease's release defer, so without this the lease would
-// count against the runner's concurrency forever and eventually starve it of
-// schedulable capacity — deploys/pipelines then wait for a runner that is in
-// fact free. Meant to be called periodically (see the cron wiring). The affected
-// runs are re-attempted by their own queue-with-timeout loops.
+// SweepExpiredLeases releases every active lease whose deadline has passed and returns them. A
+// runner that died mid-job never runs the lease's release defer, so without this the lease counts
+// against its concurrency forever and starves it. The affected runs re-attempt on their own.
 func (d *Dispatcher) SweepExpiredLeases(now time.Time) ([]models.RunnerLease, error) {
 	return d.runners.SweepExpiredLeases(now)
 }
@@ -115,12 +107,9 @@ type dispatchMeta struct {
 	builtDigest string   // digest the build step pushed (set as frames arrive)
 }
 
-// Dispatch selects and leases a runner for the run described by in, mints its
-// per-job credentials, sends the job, and processes the report stream to
-// completion (revoking the credentials and releasing the lease on the way out).
-// ErrNoRunner (no eligible runner) and ErrRunnerOffline are returned unchanged
-// so the caller can requeue rather than fail the run. subjectUserID attributes
-// the minted job credentials for audit.
+// Dispatch selects and leases a runner for the run, mints its per-job credentials, sends the job,
+// and processes the report stream to completion, revoking credentials and releasing the lease on
+// the way out. ErrNoRunner and ErrRunnerOffline are returned unchanged so the caller can requeue.
 func (d *Dispatcher) Dispatch(ctx context.Context, in JobInputs, requiredLabels []string, subjectUserID uint) error {
 	run := in.Run
 	rn, err := d.runners.SelectRunner(runner.Job{WorkspaceID: run.WorkspaceID, RequiredLabels: requiredLabels})
@@ -158,10 +147,9 @@ func (d *Dispatcher) Dispatch(ctx context.Context, in JobInputs, requiredLabels 
 	}
 	defer func() { _ = stream.Close() }()
 
-	// processFrames blocks on stream reads (json.Decode); a read has no deadline of
-	// its own, so a cancelled ctx (per-job timeout) wouldn't take effect until the
-	// runner sent bytes. Trip the stream's read deadline on cancellation to unblock
-	// the pending read so the job actually times out.
+	// processFrames blocks on stream reads (json.Decode); a read has no deadline of its own, so a cancelled
+	// ctx (per-job timeout) wouldn't take effect until the runner sent bytes. Trip the stream's read deadline
+	// on cancellation to unblock the pending read so the job actually times out.
 	stopWatch := make(chan struct{})
 	defer close(stopWatch)
 	go func() {
@@ -191,11 +179,9 @@ func (d *Dispatcher) deadline() time.Time {
 	return time.Now().Add(d.timeout)
 }
 
-// processFrames applies the runner's report stream onto the run: live logs and
-// status go to the eventbus, step transitions and the built image digest are
-// persisted, and the terminal frame sets the run's final status. It returns the
-// terminal status, or an error if the stream ended before a terminal frame (a
-// dead runner — the caller requeues).
+// processFrames applies the runner's report stream onto the run: live logs and status go to the
+// eventbus, step transitions and the built digest are persisted, and the terminal frame sets the
+// final status. Returns an error if the stream ended before a terminal frame (a dead runner).
 func (d *Dispatcher) processFrames(ctx context.Context, r io.Reader, run *models.PipelineRun, steps []models.PipelineStepRun, meta dispatchMeta) (models.PipelineRunStatus, error) {
 	byOrdinal := make(map[int]*models.PipelineStepRun, len(steps))
 	for i := range steps {
@@ -252,7 +238,6 @@ func (d *Dispatcher) processFrames(ctx context.Context, r io.Reader, run *models
 	}
 }
 
-// buf returns the accumulating log buffer for a step ordinal, creating it lazily.
 func buf(m map[int]*strings.Builder, ordinal int) *strings.Builder {
 	b := m[ordinal]
 	if b == nil {
@@ -262,10 +247,9 @@ func buf(m map[int]*strings.Builder, ordinal int) *strings.Builder {
 	return b
 }
 
-// persistStepLogs writes each step's accumulated log to its DB row so it survives
-// the run: the full log goes to the log store (LogRef) with a bounded tail in the
-// Logs column, or — when the store is disabled — just the bounded tail. Externalize
-// is nil-safe, so this works whether or not a store is wired. Best-effort.
+// persistStepLogs writes each step's accumulated log to its DB row so it survives the run: the
+// full log to the log store with a bounded tail in the Logs column, or just the tail when the
+// store is disabled. Externalize is nil-safe, so this works either way. Best-effort.
 func (d *Dispatcher) persistStepLogs(run *models.PipelineRun, byOrdinal map[int]*models.PipelineStepRun, stepLogs map[int]*strings.Builder) {
 	for ordinal, b := range stepLogs {
 		st := byOrdinal[ordinal]
@@ -322,9 +306,9 @@ func redact(line string, secrets []string) string {
 	return line
 }
 
-// maybeDeploy enqueues a deploy-by-digest for a succeeded run that built an image
-// and has a deploy step, so the target node pulls and runs the exact digest the
-// runner produced (the node never builds). A build-only pipeline is a no-op.
+// maybeDeploy enqueues a deploy-by-digest for a succeeded run that built an image and has a deploy
+// step, so the target node pulls and runs the exact digest the runner produced. A build-only
+// pipeline is a no-op.
 func (d *Dispatcher) maybeDeploy(run *models.PipelineRun, steps []models.PipelineStepRun, meta dispatchMeta) {
 	if d.deployer == nil || meta.appID == nil || meta.builtDigest == "" || meta.repository == "" || !hasDeployStep(steps) {
 		return
@@ -353,7 +337,6 @@ func (d *Dispatcher) publish(runID uint, kind, data string) {
 	d.bus.Publish(runTopic(runID), eventbus.Event{Type: kind, Data: data})
 }
 
-// publishRun fans a transition out to the workspace topic the list pages watch.
 func (d *Dispatcher) publishRun(r *models.PipelineRun) {
 	if d.bus == nil || r == nil {
 		return

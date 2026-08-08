@@ -90,20 +90,17 @@ var funcMap = template.FuncMap{
 	"upper": strings.ToUpper,
 }
 
-// refPattern matches a dotted reference into one of the resolvable collections,
-// e.g. ".databases.shop-db.uri" or ".secrets.app-key", capturing the collection
-// and its trailing key segments. actionPattern bounds the rewrite to inside
-// "{{ … }}" so literal text is never touched.
+// refPattern matches a dotted reference into one of the resolvable collections, e.g.
+// ".databases.shop-db.uri" or ".secrets.app-key", capturing the collection and its trailing key segments.
+// actionPattern bounds the rewrite to inside "{{ … }}" so literal text is never touched.
 var (
 	refPattern    = regexp.MustCompile(`\.(databases|secrets|applications|inputs)((?:\.[A-Za-z0-9_-]+)+)`)
 	actionPattern = regexp.MustCompile(`(?s)\{\{.*?\}\}`)
 )
 
-// expandRefs rewrites dotted collection accessors into calls to the strict `ref`
-// function. This is what lets a reference name contain a hyphen (e.g.
-// "shop-db"): Go's template language cannot access a map key with a hyphen via
-// ".databases.shop-db", but `(ref "databases" "shop-db" "uri")` resolves it.
-// Non-hyphenated references are rewritten identically, so behaviour is uniform.
+// expandRefs rewrites dotted collection accessors into calls to the strict `ref` function. That
+// is what lets a reference name contain a hyphen: Go templates cannot access ".databases.shop-db"
+// but `(ref "databases" "shop-db" "uri")` resolves it. Non-hyphenated refs rewrite identically.
 func expandRefs(s string) string {
 	return actionPattern.ReplaceAllStringFunc(s, func(action string) string {
 		return refPattern.ReplaceAllStringFunc(action, func(m string) string {
@@ -123,10 +120,9 @@ func expandRefs(s string) string {
 	})
 }
 
-// ref resolves a reference against the context, erroring on any unknown name or
-// field so a typo (or a not-yet-provisioned dependency) fails loudly rather than
-// rendering an empty value. It backs the rewritten "{{ .databases.x.y }}"
-// syntax — see expandRefs.
+// ref resolves a reference against the context, erroring on any unknown name or field so a typo
+// (or a not-yet-provisioned dependency) fails loudly rather than rendering an empty value. It
+// backs the rewritten "{{ .databases.x.y }}" syntax — see expandRefs.
 func (r *Renderer) ref(coll string, keys ...string) (string, error) {
 	if len(keys) == 0 {
 		return "", fmt.Errorf("reference .%s needs a name", coll)
@@ -220,11 +216,9 @@ func (r *Renderer) RenderEnv(scope string, env map[string]string) (map[string]st
 	return out, nil
 }
 
-// RenderEnvLenient interpolates every value best-effort: a value whose
-// references cannot be resolved yet — e.g. a database declared in the same
-// bundle but not provisioned — is left as its original template instead of
-// failing. Used for plan/diff, where a not-yet-created dependency must not abort
-// the whole plan; the apply path re-renders strictly once dependencies exist.
+// RenderEnvLenient interpolates every value best-effort: a value whose references cannot resolve
+// yet is left as its original template instead of failing. Used for plan/diff, where a
+// not-yet-created dependency must not abort the plan; apply re-renders strictly.
 func (r *Renderer) RenderEnvLenient(scope string, env map[string]string) map[string]string {
 	out := make(map[string]string, len(env))
 	for k, v := range env {

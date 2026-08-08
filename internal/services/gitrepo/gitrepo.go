@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package gitrepo manages stored Git credentials used to clone private
-// repositories at build time. Secrets (tokens or SSH keys) are encrypted at
-// rest. The package also builds the go-git auth method shared by the test-
-// connection check and the deploy worker.
+// Package gitrepo manages stored Git credentials used to clone private repositories at build time.
+// Secrets (tokens or SSH keys) are encrypted at rest. It also builds the go-git auth method shared by the
+// test-connection check and the deploy worker.
 package gitrepo
 
 import (
@@ -37,13 +36,9 @@ var (
 	ErrUnknownSecret  = errors.New("the referenced secret does not exist in this workspace")
 )
 
-// Secrets resolves a stored credential's secret: its own encrypted value, or the
-// current value of the workspace Secret it references. Implemented by the secret
-// service.
-//
-// It is threaded explicitly into AuthFor/CredentialURL rather than held only on
-// the Service, because the deploy worker, the pipeline runner and GitOps each
-// reach those from their own repositories.
+// Secrets resolves a stored credential's secret: its own encrypted value, or the current value of the
+// workspace Secret it references. It is threaded explicitly into AuthFor/CredentialURL rather than held
+// on the Service, because the deploy worker, pipeline runner and GitOps each reach those separately.
 type Secrets interface {
 	CredentialSecret(workspaceID uint, enc, ref string) (string, error)
 }
@@ -66,10 +61,9 @@ func NewService(repo *repositories.GitRepoRepository) *Service { return &Service
 // rather than storing their own copy of the token or key.
 func (s *Service) SetSecrets(v Vault) { s.secrets = v }
 
-// storeSecret decides where an incoming secret lands: a `${{ secrets.NAME }}`
-// value becomes a reference to the vault, anything else is encrypted here. The
-// two are mutually exclusive, so switching a credential from one form to the
-// other always clears the other.
+// storeSecret decides where an incoming secret lands: a `${{ secrets.NAME }}` value becomes a reference to
+// the vault, anything else is encrypted here. The two are mutually exclusive, so switching a credential
+// from one form to the other always clears the other.
 func (s *Service) storeSecret(workspaceID uint, value string) (enc, ref string, err error) {
 	if name := secret.RefName(value); name != "" {
 		if s.secrets != nil && !s.secrets.ExistsByName(workspaceID, name) {
@@ -89,10 +83,9 @@ type Input struct {
 	URL         string
 	AuthType    models.GitAuthType
 	Username    string
-	// Secret is either the token / SSH private key itself (encrypted before
-	// storage) or a `${{ secrets.NAME }}` reference to a workspace Secret, which
-	// is stored as a reference and resolved at every clone. Blank on update =
-	// keep what is stored.
+	// Secret is either the token or SSH private key itself, encrypted before storage, or a
+	// `${{ secrets.NAME }}` reference to a workspace Secret, stored as a reference and resolved at every
+	// clone. Blank on update means keep what is stored.
 	Secret string
 }
 
@@ -202,14 +195,9 @@ func (s *Service) List(workspaceID uint) ([]models.GitRepository, error) {
 	return repos, nil
 }
 
-// BundleSecret returns what a portable workspace bundle should carry for a
-// credential: its vault reference when it has one — the referenced Secret
-// travels in the same bundle, so the indirection (and later rotations on the
-// target) is preserved — else the decrypted token or key.
-//
-// It re-reads the row from the repository because List/Get strip the secret for
-// safe responses; taking it from a listed record would silently export a blank
-// credential.
+// BundleSecret returns what a portable workspace bundle should carry for a credential: its vault reference
+// when it has one, so the indirection and later rotations survive, else the decrypted token or key. It
+// re-reads the row because List/Get strip the secret, and a listed record would export a blank.
 func (s *Service) BundleSecret(workspaceID, id uint) (string, error) {
 	g, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -249,16 +237,9 @@ func (s *Service) TestConnection(ctx context.Context, workspaceID, id uint) erro
 	return nil
 }
 
-// CloneURLAuth resolves an explicit repository URL plus an optional stored
-// credential into the (normalized) clone URL and a go-git auth method, for
-// clones that run in-process on the control plane. Either argument may carry the
-// URL: an empty rawURL falls back to the credential's own URL, matching how the
-// deploy worker resolves an app's git source.
-//
-// Unlike CredentialURL (which embeds the secret in the URL because a remote
-// runner has no other way to receive it), the secret here stays in the auth
-// method and never lands in the URL — so the URL is safe to log or echo back in
-// an error. SSH-key credentials work on this path.
+// CloneURLAuth resolves an explicit repository URL plus an optional stored credential into the normalized
+// clone URL and a go-git auth method, for clones running in-process. Either argument may carry the URL.
+// Unlike CredentialURL the secret stays in the auth method rather than being embedded in the URL.
 func (s *Service) CloneURLAuth(workspaceID uint, rawURL string, credentialID *uint) (string, transport.AuthMethod, error) {
 	var g *models.GitRepository
 	if credentialID != nil && *credentialID > 0 {
@@ -281,11 +262,9 @@ func (s *Service) CloneURLAuth(workspaceID uint, rawURL string, credentialID *ui
 	return normalizeGitURL(rawURL), auth, nil
 }
 
-// Checkout clones url into dir and checks out ref, returning the resolved commit
-// hash. When ref is empty the cloned HEAD is used. log receives progress lines
-// (nil is allowed). It is the shared clone+checkout path used by both the deploy
-// worker's git build and the pipeline runner's workspace, so the two can't drift
-// in how they resolve a revision to a concrete commit.
+// Checkout clones url into dir and checks out ref, returning the resolved commit hash; an empty ref uses
+// the cloned HEAD. It is the shared clone-and-checkout path used by both the deploy worker's git build
+// and the pipeline runner's workspace, so the two cannot drift in how they resolve a revision.
 func Checkout(ctx context.Context, dir, url, ref string, auth transport.AuthMethod, log func(string)) (string, error) {
 	if strings.TrimSpace(url) == "" {
 		return "", ErrURLRequired
@@ -350,14 +329,9 @@ func AuthFor(g *models.GitRepository, vault Secrets) (transport.AuthMethod, erro
 	}
 }
 
-// credentialSecret resolves the token or key a credential authenticates with,
-// from its own encrypted value or from the workspace Secret it references.
-// Returns "" for an anonymous clone: a nil credential, a public repo, or one
-// with nothing stored.
-//
-// A credential that references the vault with no vault wired is an error rather
-// than a silent anonymous clone — that would turn a private repo into a
-// confusing "repository not found" much further downstream.
+// credentialSecret resolves the token or key a credential authenticates with, from its own encrypted value or
+// from the workspace Secret it references. Returns "" for an anonymous clone. A credential that references the
+// vault with no vault wired is an error — a silent anonymous clone becomes a confusing "repository not found".
 func credentialSecret(g *models.GitRepository, vault Secrets) (string, error) {
 	if g == nil || normalizeAuthType(g.AuthType) == models.GitAuthPublic {
 		return "", nil
@@ -383,15 +357,9 @@ func credentialSecret(g *models.GitRepository, vault Secrets) (string, error) {
 // via the URL). The user should add an HTTPS token credential instead.
 var ErrSSHUnsupportedOnRunner = errors.New("SSH-key git credentials can't be used for runner builds yet; add an HTTPS token credential for this repository")
 
-// CredentialURL returns rawURL with the repository's HTTPS credential embedded
-// (https://user:token@host/…), so a remote builder — a runner cloning over the
-// network with no local git auth — can clone a private repo. A public repo (or
-// one with no stored secret) returns the URL unchanged. An SSH-key credential
-// can't be carried in a URL, so it returns ErrSSHUnsupportedOnRunner.
-//
-// The credential lands only in the runner's ephemeral per-job workspace git
-// config (removed when the job ends) and is never logged (the runner treats the
-// source URL as opaque/secret).
+// CredentialURL returns rawURL with the repository's HTTPS credential embedded, so a remote builder with
+// no local git auth can clone a private repo. A public repo returns the URL unchanged, and an SSH-key
+// credential returns ErrSSHUnsupportedOnRunner. The credential lands only in the ephemeral job workspace.
 func CredentialURL(rawURL string, g *models.GitRepository, vault Secrets) (string, error) {
 	rawURL = normalizeGitURL(rawURL)
 	if g == nil || normalizeAuthType(g.AuthType) == models.GitAuthPublic {

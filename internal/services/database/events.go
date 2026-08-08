@@ -11,8 +11,6 @@ import (
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 )
 
-// statusTopic is the per-instance event-bus topic carrying live lifecycle
-// snapshots and provisioning progress for the SSE stream.
 func statusTopic(instanceID uint) string { return fmt.Sprintf("db-status:%d", instanceID) }
 
 // wsStatusTopic is the per-workspace topic carrying lifecycle status changes for
@@ -64,10 +62,9 @@ func (s *Service) publishProgress(inst *models.DatabaseInstance, message string)
 	})
 }
 
-// StreamStatus sends the instance's current status, then live updates, until the
-// context is cancelled (client disconnect). It backs the detail page's SSE.
-// When no bus is wired it sends the initial snapshot and holds the connection
-// open (the client still has its REST fallback).
+// StreamStatus sends the instance's current status, then live updates, until the context is cancelled.
+// It backs the detail page's SSE. With no bus wired it sends the initial snapshot and holds the
+// connection open, so the client still has its REST fallback.
 func (s *Service) StreamStatus(ctx context.Context, inst *models.DatabaseInstance, send func(eventbus.Event) error) error {
 	if err := send(eventbus.Event{Type: "status", Data: StatusEvent{Status: inst.Status, Upgrade: inst.Upgrade}}); err != nil {
 		return err
@@ -93,12 +90,9 @@ func (s *Service) StreamStatus(ctx context.Context, inst *models.DatabaseInstanc
 	}
 }
 
-// StreamWorkspaceStatus streams lifecycle status changes for every instance in a
-// workspace until the context is cancelled (client disconnect). It backs the
-// Databases list's live updates, delivering {id,status} deltas. The list seeds
-// its initial state via the REST list, so no snapshot is sent here. When no bus
-// is wired the connection is held open and the client falls back to its periodic
-// reconcile.
+// StreamWorkspaceStatus streams lifecycle status changes for every instance in a workspace until the
+// context is cancelled, delivering {id,status} deltas to the Databases list. The list seeds its initial
+// state via REST, so no snapshot is sent. With no bus wired the client falls back to periodic reconcile.
 func (s *Service) StreamWorkspaceStatus(ctx context.Context, workspaceID uint, send func(eventbus.Event) error) error {
 	if s.bus == nil {
 		<-ctx.Done()

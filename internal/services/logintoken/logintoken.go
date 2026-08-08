@@ -1,14 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package logintoken issues the short-lived personal API token behind the web
-// console's "Copy login command" flow (OpenShift-style). It is a thin policy
-// layer over the API-key service: a login token is just a personal API key with
-// a short expiry, a recognizable name, and a scope set that never includes admin.
-//
-// It also renders the ready-to-paste CLI and curl commands, and provides a
-// single-use Redis hand-off so the SSO (OAuth) path can deliver a freshly minted
-// token to the display page without ever putting the secret in a redirect URL.
+// Package logintoken issues the short-lived personal API token behind the console's "Copy login command"
+// flow. It is a thin policy layer over the API-key service: a login token is a personal API key with a
+// short expiry and a scope set that never includes admin, plus a single-use Redis hand-off for SSO.
 package logintoken
 
 import (

@@ -12,7 +12,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// registryRoutes registers workspace-scoped container-registry credential routes.
 func (r *Router) registryRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Registries", Description: "Container registry credentials for pulling private images."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {
@@ -74,7 +73,6 @@ func (r *Router) registryRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// gitRepositoryRoutes registers workspace-scoped Git credential routes.
 func (r *Router) gitRepositoryRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Git Repositories", Description: "Git credentials for cloning private repositories."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {

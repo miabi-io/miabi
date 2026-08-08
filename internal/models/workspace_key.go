@@ -5,11 +5,9 @@ package models
 
 import "time"
 
-// WorkspaceKey is a workspace's data-encryption key (DEK), stored wrapped by the
-// master KEK (MIABI_ENCRYPTION_KEY). The DEK encrypts the workspace's secrets at
-// rest; the KEK only ever wraps the DEK. Keys are versioned: rotation creates a
-// new active version and re-encrypts the workspace's data to it, then retires the
-// old one. Exactly one version per workspace is Active (the one new writes use).
+// WorkspaceKey is a workspace's data-encryption key (DEK), stored wrapped by the master KEK.
+// The DEK encrypts the workspace's secrets at rest; the KEK only wraps the DEK. Rotation adds
+// a new active version and re-encrypts to it. Exactly one version per workspace is Active.
 type WorkspaceKey struct {
 	ID          uint `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint `json:"workspace_id" gorm:"index:idx_wskey_ws_ver,unique;not null"`

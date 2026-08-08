@@ -134,7 +134,6 @@ func (r *reporter) phase(key string, st PhaseStatus) {
 	r.s.publishJob(snap)
 }
 
-// note sets the transient status line (e.g. "Deploying web…").
 func (r *reporter) note(msg string) {
 	if r == nil {
 		return
@@ -153,10 +152,9 @@ func (s *Service) publishJob(snap InstallJob) {
 	s.bus.Publish(installTopic(snap.ID), eventbus.Event{Type: "job", Data: snap})
 }
 
-// StartInstall validates the request synchronously (so bad input fails fast),
-// then runs the install in the background and returns the initial job snapshot.
-// Progress is streamed from StreamInstall; the UI completes when the job reports
-// success or failure.
+// StartInstall validates the request synchronously so bad input fails fast, then runs the install
+// in the background and returns the initial job snapshot. Progress is streamed from StreamInstall;
+// the UI completes when the job reports success or failure.
 func (s *Service) StartInstall(workspaceID uint, in InstallInput) (InstallJob, error) {
 	m, _, ok := s.resolveManifest(workspaceID, in.Name, in.Version)
 	if !ok {
@@ -186,8 +184,6 @@ func (s *Service) StartInstall(workspaceID uint, in InstallInput) (InstallJob, e
 	return snap, nil
 }
 
-// runInstall executes the install and then waits for its apps to finish
-// deploying, driving the job to a terminal state.
 func (s *Service) runInstall(job *InstallJob, workspaceID uint, in InstallInput) {
 	ctx, cancel := context.WithTimeout(context.Background(), installDeployTimeout)
 	defer cancel()
@@ -207,11 +203,9 @@ func (s *Service) runInstall(job *InstallJob, workspaceID uint, in InstallInput)
 	s.finishJob(job, JobSucceeded, result, "")
 }
 
-// waitForDatabases polls newly provisioned instances until each settles (or the
-// context times out), keeping the provisioning phase active with a live status
-// line. Instances come up asynchronously (worker-driven), so without this apps
-// would deploy against a database that isn't ready. Failed instances still
-// resolve so the install proceeds.
+// waitForDatabases polls newly provisioned instances until each settles, keeping the provisioning
+// phase active with a live status line. Instances come up asynchronously, so without this apps would
+// deploy against a database that isn't ready. Failed instances still resolve, so the install proceeds.
 func (s *Service) waitForDatabases(ctx context.Context, workspaceID uint, insts []*models.DatabaseInstance, rep *reporter) {
 	names := make(map[uint]string, len(insts))
 	ids := make([]uint, 0, len(insts))
@@ -231,7 +225,6 @@ func (s *Service) waitForDatabases(ctx context.Context, workspaceID uint, insts 
 			}
 			switch inst.Status {
 			case models.DBStatusRunning, models.DBStatusFailed, models.DBStatusStopped:
-				// Settled.
 			default:
 				pending++
 				pendingName = names[id]
@@ -253,10 +246,9 @@ func (s *Service) waitForDatabases(ctx context.Context, workspaceID uint, insts 
 	}
 }
 
-// waitForDeploy polls the created apps until each leaves the deploying state (or
-// the context times out), surfacing a live status line as it goes. It never
-// fails the install: a failed deploy still resolves the job so the UI navigates
-// to the app, where the failure is visible.
+// waitForDeploy polls the created apps until each leaves the deploying state, surfacing a live status
+// line as it goes. It never fails the install: a failed deploy still resolves the job so the UI
+// navigates to the app, where the failure is visible.
 func (s *Service) waitForDeploy(ctx context.Context, workspaceID uint, apps []*models.Application, rep *reporter) {
 	names := make(map[uint]string, len(apps))
 	ids := make([]uint, 0, len(apps))
@@ -276,7 +268,6 @@ func (s *Service) waitForDeploy(ctx context.Context, workspaceID uint, apps []*m
 			}
 			switch app.Status {
 			case models.AppStatusRunning, models.AppStatusFailed, models.AppStatusStopped:
-				// Settled.
 			default:
 				pending++
 				pendingName = names[id]
@@ -298,7 +289,6 @@ func (s *Service) waitForDeploy(ctx context.Context, workspaceID uint, apps []*m
 	}
 }
 
-// finishJob records the terminal outcome and publishes the final snapshot.
 func (s *Service) finishJob(job *InstallJob, st JobStatus, result *InstallResult, errMsg string) {
 	s.jobsMu.Lock()
 	job.Status = st
@@ -345,11 +335,9 @@ func (s *Service) InstallJobSnapshot(jobID string) (InstallJob, bool) {
 	return job.snapshot(), true
 }
 
-// StreamInstall sends the job's current snapshot, then live updates, until the
-// job reaches a terminal state or the client disconnects. The bool reports
-// whether the job exists (false → 404). Mirrors the database status-stream
-// pattern: every event carries a full snapshot, so a missed update or reconnect
-// self-heals.
+// StreamInstall sends the job's current snapshot, then live updates, until the job is terminal or the
+// client disconnects. The bool reports whether the job exists. Every event carries a full snapshot, so
+// a missed update or a reconnect self-heals.
 func (s *Service) StreamInstall(ctx context.Context, jobID string, send func(eventbus.Event) error) (bool, error) {
 	s.jobsMu.Lock()
 	job := s.jobs[jobID]

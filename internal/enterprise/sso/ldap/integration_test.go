@@ -16,19 +16,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// TestAuthenticate_Integration binds against a real directory when one is
-// configured via env, so a CI job running an OpenLDAP/Samba-AD container (or any
-// reachable directory) exercises the full dial→search→bind→group path. It skips
-// when MIABI_LDAP_IT_HOST is unset, so the default `go test` stays hermetic.
-//
-// Example (OpenLDAP osixia container seeded with a user):
-//
-//	MIABI_LDAP_IT_HOST=localhost MIABI_LDAP_IT_PORT=389 \
-//	MIABI_LDAP_IT_TLS=none \
-//	MIABI_LDAP_IT_BINDDN='cn=admin,dc=example,dc=org' MIABI_LDAP_IT_BINDPW=admin \
-//	MIABI_LDAP_IT_BASEDN='dc=example,dc=org' MIABI_LDAP_IT_FILTER='(uid=%s)' \
-//	MIABI_LDAP_IT_USER=alice MIABI_LDAP_IT_PASS=secret \
-//	go test -tags enterprise ./internal/enterprise/sso/ldap/ -run Integration -v
+// TestAuthenticate_Integration binds against a real directory when one is configured via env, so a
+// CI job running an OpenLDAP or Samba-AD container exercises the full dial->search->bind->group
+// path. It skips when MIABI_LDAP_IT_HOST is unset, so the default `go test` stays hermetic.
 func TestAuthenticate_Integration(t *testing.T) {
 	host := os.Getenv("MIABI_LDAP_IT_HOST")
 	if host == "" {

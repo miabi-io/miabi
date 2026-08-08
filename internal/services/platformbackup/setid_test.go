@@ -9,10 +9,9 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// PlatformBackupSet.Items declares a real foreign key, so SetID must be NULL for
-// an artifact that belongs to no recovery point. Stored as 0 it is not "no set" —
-// it references a row that cannot exist, and Postgres refuses the insert with
-// SQLSTATE 23503. This test pins the distinction that bug turned on.
+// PlatformBackupSet.Items declares a real foreign key, so SetID must be NULL for an artifact belonging to
+// no recovery point. Stored as 0 it is not "no set" — it references a row that cannot exist, and Postgres
+// refuses the insert with SQLSTATE 23503. This pins the distinction that bug turned on.
 func TestSetIDIsNilForAdHocBackups(t *testing.T) {
 	adhoc := models.PlatformBackup{Subject: models.PlatformBackupDatabase}
 	if adhoc.SetID != nil {

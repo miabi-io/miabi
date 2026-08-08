@@ -24,17 +24,9 @@ type TenantRestoreReport struct {
 	Failures          []string `json:"failures"`
 }
 
-// RestoreTenantData restores a recovery point's workload data — every tenant
-// database dump and volume archive it carries.
-//
-// It runs LATE, after the control plane is back and reconcile has recreated the
-// database containers and volumes. That ordering is not a preference: a dump has
-// nowhere to go until its database instance exists, and the credentials to reach
-// that instance come from the control-plane rows the earlier phase restored.
-//
-// Individual failures are collected rather than returned. An operator recovering
-// forty workspaces needs to know which three did not come back, not to be
-// stopped at the first one.
+// RestoreTenantData restores a recovery point's workload data. It runs LATE, after reconcile has recreated
+// the database containers and volumes: a dump has nowhere to go until its instance exists. Individual
+// failures are collected rather than returned, so an operator learns which workspaces did not come back.
 func (s *Service) RestoreTenantData(ctx context.Context, set *models.PlatformBackupSet) (*TenantRestoreReport, error) {
 	rep := &TenantRestoreReport{Ref: set.Ref, Skipped: []string{}, Failures: []string{}}
 	if s.tenants == nil {
@@ -118,13 +110,9 @@ func (s *Service) restoreTenantDatabase(ctx context.Context, st *models.Platform
 	return s.tenants.RestoreTenantDatabase(ctx, td, dest, filename)
 }
 
-// resolveArtifactObject returns the object name that is actually in the bucket.
-//
-// Recovery points taken before the artifact-naming fix recorded the plain name
-// while the tool uploaded the encrypted one, so the row points at a key that was
-// never written. The object is there under "<name>.gpg"; finding it costs one
-// HEAD request and turns an unusable recovery point into a usable one. New
-// recovery points record the right name and take the first branch.
+// resolveArtifactObject returns the object name that is actually in the bucket. Recovery points taken before the
+// artifact-naming fix recorded the plain name while the tool uploaded the encrypted one, so the row points at a
+// key never written. One HEAD request finds it under "<name>.gpg" and makes the recovery point usable.
 func (s *Service) resolveArtifactObject(ctx context.Context, st *models.PlatformBackupSettings, item *models.PlatformBackup) (string, error) {
 	store, err := s.blobStore(st)
 	if err != nil {

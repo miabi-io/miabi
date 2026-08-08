@@ -12,12 +12,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/auth"
 )
 
-// setSessionCookie stores the JWT in an HttpOnly, SameSite=Strict cookie so a
-// browser never exposes it to JavaScript (XSS can't read or exfiltrate it). CLI
-// and API clients keep using the token from the response body via the
-// Authorization header. Secure is set whenever the request is HTTPS (directly or
-// behind a TLS-terminating reverse proxy), so the cookie still works over plain
-// HTTP in local dev.
+// setSessionCookie stores the JWT in an HttpOnly, SameSite=Strict cookie so a browser never
+// exposes it to JavaScript. CLI and API clients keep using the token from the response body.
+// Secure is set whenever the request is HTTPS, so the cookie still works over plain HTTP in dev.
 func setSessionCookie(c *okapi.Context, token string) {
 	http.SetCookie(c.ResponseWriter(), &http.Cookie{
 		Name:     middlewares.SessionCookieName,
@@ -30,7 +27,6 @@ func setSessionCookie(c *okapi.Context, token string) {
 	})
 }
 
-// clearSessionCookie expires the session cookie (used on logout).
 func clearSessionCookie(c *okapi.Context) {
 	http.SetCookie(c.ResponseWriter(), &http.Cookie{
 		Name:     middlewares.SessionCookieName,

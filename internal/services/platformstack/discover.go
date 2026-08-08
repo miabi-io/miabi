@@ -23,13 +23,9 @@ type Component struct {
 	Status    string
 }
 
-// stackRoles are the four components that ARE the stack.
-//
-// Membership (io.miabi.part-of=miabi) is not the test. Plenty of things are part of
-// Miabi without being part of the stack: the built-in registry, the node agents, the
-// edge gateway on every remote node. They are platform infrastructure Miabi
-// provisions on demand — the CLI neither installs nor updates them, and listing them
-// in `miabi status` would imply otherwise. Role is the question: what IS this.
+// stackRoles are the four components that ARE the stack. Membership (io.miabi.part-of=miabi) is not the test:
+// the built-in registry, node agents and remote edge gateways are part of Miabi without being part of the
+// stack — infrastructure the CLI neither installs nor updates. Role is the question: what IS this.
 var stackRoles = map[string]bool{
 	docker.RoleControlPlane:  true,
 	docker.RolePlatformDB:    true,
@@ -37,14 +33,9 @@ var stackRoles = map[string]bool{
 	docker.RoleGateway:       true,
 }
 
-// stackNames is the fallback for a stack that predates platform labels — without it,
-// `miabi status` would report nothing on exactly the installs most likely to need
-// looking at.
-//
-// It only helps a CLI-shaped install: Compose names its containers
-// <project>-<service>-<n>, so `miabi-postgres` is really `miabi-miabi-postgres-1`
-// there and no fixed name can match it. That is fine — a labeled Compose stack is
-// found by role, and an UNLABELED one predates Phase 1 and is told to recreate itself.
+// stackNames is the fallback for a stack that predates platform labels — without it `miabi status` would report
+// nothing on exactly the installs most likely to need looking at. It only helps a CLI-shaped install, since
+// Compose generates <project>-<service>-<n>; a labeled Compose stack is found by role instead.
 var stackNames = map[string]int{
 	ContainerControlPlane: 0,
 	ContainerPostgres:     1,
@@ -78,11 +69,9 @@ func (s *Service) Discover(ctx context.Context) ([]Component, error) {
 			continue
 		}
 
-		// Health comes from an inspect, not from the list: Docker's list API does not
-		// return a health field at all — it folds health into the status STRING ("Up 2
-		// minutes (healthy)"), so reading it from the list yields "" for every container
-		// and `miabi status` would show a dash next to a perfectly healthy database. The
-		// stack is at most four containers, so inspecting each is free.
+		// Health comes from an inspect, not from the list: Docker's list API has no health field — it folds health
+		// into the status string — so reading it from the list yields "" for every container and `miabi status` would
+		// show a dash next to a healthy database. The stack is at most four containers, so inspecting each is free.
 		health := c.Health
 		if full, ierr := s.dc.InspectContainer(ctx, c.ID); ierr == nil {
 			health = full.Health
@@ -120,12 +109,9 @@ func containerName(c docker.Container) string {
 	return strings.TrimPrefix(c.Names[0], "/")
 }
 
-// Teardown removes the stack's containers. Volumes are kept unless withVolumes: the
-// database lives in one, and `uninstall` is far too easy to type for it to be the
-// thing that silently destroys it.
-//
-// Reverse dependency order — gateway first (stop serving), control plane, then the
-// stores it depends on — so nothing is left talking to a database that just vanished.
+// Teardown removes the stack's containers. Volumes are kept unless withVolumes: the database lives in
+// one, and `uninstall` is far too easy to type for it to be the thing that silently destroys it.
+// Reverse dependency order — gateway, control plane, then the stores it depends on.
 func (s *Service) Teardown(ctx context.Context, withVolumes bool) error {
 	for _, name := range []string{
 		ContainerGateway, ContainerControlPlane, ContainerRedis, ContainerPostgres,

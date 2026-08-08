@@ -10,16 +10,9 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// Signal is a normalized, factual fact from a non-app-event source (backups,
-// quotas, nodes, …). Producers emit it via Emitter.Emit and the engine turns it
-// into alerts with the same dedup/fan-out machinery as app events. This is the
-// generic ingress the plan's §2 describes — adding a source is "emit a Signal",
-// never a change to the engine.
-//
-// A Signal is either a condition (Resolve=false → the fact holds now) or its
-// clearance (Resolve=true → the condition ended). Severity/Title/Body are the
-// producer's human framing; the engine supplies identity (dedup key) and routing
-// (category, min role) from Kind.
+// Signal is a normalized fact from a non-app-event source (backups, quotas, nodes). Producers emit it
+// and the engine turns it into alerts with the same dedup and fan-out machinery as app events. It is
+// either a condition (Resolve=false) or its clearance (Resolve=true); the engine supplies identity.
 type Signal struct {
 	WorkspaceID uint
 	Kind        string // stable condition id, e.g. "backup_failed", "quota_near"
@@ -57,10 +50,9 @@ type signalRule struct {
 	resolves []string
 }
 
-// signalRules is the catalog of Signal-sourced conditions. Fire Kinds carry a
-// category + min role; clearance Kinds list what they resolve. Workspace-scoped
-// categories reuse the member fan-out directly; platform-scoped ones (node) are
-// listed for completeness and wired once a system-admin fan-out exists.
+// signalRules is the catalog of Signal-sourced conditions. Fire Kinds carry a category + min role;
+// clearance Kinds list what they resolve. Workspace-scoped categories reuse the member fan-out directly;
+// platform-scoped ones (node) are listed for completeness and wired once a system-admin fan-out exists.
 var signalRules = map[string]signalRule{
 	// Backups (workspace-scoped: a workspace's database/volume backups).
 	"backup_failed":  {category: models.CategoryDatabase, minRole: models.WorkspaceRoleDeveloper},

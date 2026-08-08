@@ -73,14 +73,9 @@ type AppStopper interface {
 // SetAppStopper wires the quiesce-around-a-volume-restore behaviour.
 func (s *Service) SetAppStopper(a AppStopper) { s.apps = a }
 
-// RestoreSelected restores chosen artifacts of a recovery point into this
-// platform.
-//
-// This is restore-into-a-LIVE-platform, which is a different operation from
-// `miabi restore`: the control plane is already running, its encryption key is
-// present, and the operator wants specific data back — last night's copy of one
-// customer's database, a volume someone emptied. Each artifact is independent,
-// so one failure does not stop the rest; the report says what happened to each.
+// RestoreSelected restores chosen artifacts of a recovery point into this platform. This is restore into
+// a LIVE platform, a different operation from `miabi restore`: the control plane is already running, its
+// encryption key is present, and the operator wants specific data back.
 func (s *Service) RestoreSelected(ctx context.Context, set *models.PlatformBackupSet, sel RestoreSelection) (*SelectiveRestoreReport, error) {
 	// Detached: a volume restore outlives the request that asked for it, and a
 	// cancelled context mid-unpack leaves a half-written volume.
@@ -169,14 +164,9 @@ func (s *Service) restoreOne(ctx context.Context, st *models.PlatformBackupSetti
 	}
 }
 
-// restoreVolumeQuiesced stops the applications using a volume, restores it, and
-// starts them again.
-//
-// Unpacking an archive into a volume a container is reading is not a restore, it
-// is a corruption with extra steps: the app sees files vanish and reappear
-// mid-request. The apps are started again even when the restore fails — leaving
-// a workspace down because a restore did not work would turn a data problem into
-// an outage.
+// restoreVolumeQuiesced stops the applications using a volume, restores it, and starts them again. Unpacking an
+// archive into a volume a container is reading is a corruption with extra steps. The apps are started again even
+// when the restore fails — leaving a workspace down would turn a data problem into an outage.
 func (s *Service) restoreVolumeQuiesced(ctx context.Context, st *models.PlatformBackupSettings, cfg *backup.S3Config, item *models.PlatformBackup, stopApps bool) error {
 	var stopped []uint
 	if stopApps && s.apps != nil && item.VolumeName != "" {
@@ -197,11 +187,9 @@ func (s *Service) restoreVolumeQuiesced(ctx context.Context, st *models.Platform
 	return s.restoreTenantVolume(ctx, st, cfg, item)
 }
 
-// withPassphrase returns a COPY of the settings carrying an explicit passphrase,
-// encrypted the same way a stored one is so every reader resolves it identically.
-//
-// A copy, not a mutation, and never written back: restoring one recovery point
-// from another install must not silently become this platform's passphrase.
+// withPassphrase returns a COPY of the settings carrying an explicit passphrase, encrypted the same way a
+// stored one is so every reader resolves it identically. A copy, not a mutation, and never written back:
+// restoring one recovery point from another install must not silently become this platform's passphrase.
 func withPassphrase(st *models.PlatformBackupSettings, passphrase string) (*models.PlatformBackupSettings, error) {
 	enc, err := crypto.Encrypt(strings.TrimSpace(passphrase))
 	if err != nil {

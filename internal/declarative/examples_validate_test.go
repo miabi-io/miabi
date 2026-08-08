@@ -12,7 +12,6 @@ import (
 	"github.com/miabi-io/miabi/internal/services/pipeline"
 )
 
-// examplesDir is the module's examples folder, relative to this package.
 const examplesDir = "../../examples"
 
 func TestExamplesParse(t *testing.T) {

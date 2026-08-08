@@ -76,10 +76,9 @@ func (s *Service) Plan(ctx context.Context, nodeID uint, sel Selection) (*Plan, 
 	return p, nil
 }
 
-// Apply executes the selection. Reclaim runs the safe prunes; reconcile removes
-// only resources that re-confirm as orphans in a fresh analysis (managed/infra/
-// self never survive that filter). Each removal is reported for auditing. A
-// single failure is recorded and does not abort the batch.
+// Apply executes the selection. Reclaim runs the safe prunes; reconcile removes only resources that
+// re-confirm as orphans in a fresh analysis, so managed, infra and self resources never survive that
+// filter. Each removal is reported for auditing, and a single failure does not abort the batch.
 func (s *Service) Apply(ctx context.Context, nodeID uint, sel Selection) (*Result, error) {
 	dc, err := s.clients.For(nodeID)
 	if err != nil {

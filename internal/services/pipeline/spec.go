@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package pipeline implements Miabi's CI/CD: pipeline-as-code
-// (kind: Pipeline) versioned with the app, PipelineRun lifecycle, and the
-// internal runner that executes steps in isolated containers. It is the
-// imperative, push-based half of the GitOps & CI/CD model — a pipeline turns a
-// commit into an image and a Release.
+// Package pipeline implements Miabi's CI/CD: pipeline-as-code versioned with the app, PipelineRun lifecycle,
+// and the internal runner that executes steps in isolated containers. It is the imperative, push-based half
+// of the GitOps and CI/CD model — a pipeline turns a commit into an image and a Release.
 package pipeline
 
 import (
@@ -66,16 +64,13 @@ type Step struct {
 	// Dockerfile names the Dockerfile for a `uses: build` step, relative to the
 	// checked-out source root. Empty defaults to "Dockerfile".
 	Dockerfile string `yaml:"dockerfile,omitempty"`
-	// Context is the build context directory for a `uses: build` step, relative to
-	// the checked-out source root. Empty means the root itself. Independent of
-	// Dockerfile, matching `docker build -f <dockerfile> <context>`: a monorepo
-	// commonly keeps `docker/Dockerfile` while building from the root.
+	// Context is the build context directory for a `uses: build` step, relative to the checked-out source root;
+	// empty means the root itself. Independent of Dockerfile, matching `docker build -f <dockerfile> <context>`:
+	// a monorepo commonly keeps `docker/Dockerfile` while building from the root.
 	Context string `yaml:"context,omitempty"`
-	// BuildArgs are Dockerfile ARG values for a `uses: build` step
-	// (docker build --build-arg KEY=VALUE).
-	//
-	// NOT for secrets: a build arg is baked into the image's history, so anyone
-	// who can pull the image can read it back. Use the step's env for credentials.
+	// BuildArgs are Dockerfile ARG values for a `uses: build` step. NOT for secrets: a build arg is baked into
+	// the image's history, so anyone who can pull the image can read it back. Use the step's env for
+	// credentials.
 	BuildArgs map[string]string `yaml:"build-args,omitempty"`
 	// App overrides the deploy target for a `uses: deploy` step.
 	App string            `yaml:"app,omitempty"`
@@ -149,10 +144,9 @@ func ParseSpec(data []byte) (*Spec, error) {
 				return nil, fmt.Errorf("step %q: build-arg name %q is not a valid Dockerfile ARG (letters, digits and underscore; not starting with a digit)", st.Name, k)
 			}
 		}
-		// runner support pending: the wire format gains BuildConfig.Context and
-		// BuildArgs in the next runner release. Refuse both until then instead of
-		// accepting a value and dropping it — a build that quietly ignores its
-		// context or its args produces a wrong image and blames nothing.
+		// runner support pending: the wire format gains BuildConfig.Context and BuildArgs in the next runner
+		// release. Refuse both until then instead of accepting a value and dropping it — a build that quietly
+		// ignores its context or its args produces a wrong image and blames nothing.
 		if st.Context != "" {
 			return nil, fmt.Errorf("step %q: 'context' needs a newer runner; upgrade your runners, or move the build so the repository root is the context", st.Name)
 		}
@@ -169,11 +163,9 @@ func ParseSpec(data []byte) (*Spec, error) {
 	return &s, nil
 }
 
-// validArgName reports whether k is usable as a Dockerfile ARG name. Docker
-// itself accepts a good deal more and then does nothing useful with it — a name
-// carrying "=" or a space silently produces an arg the Dockerfile can never
-// reference — so the pipeline is stricter than the tool and says so at parse
-// time, while the operator is still looking at the file.
+// validArgName reports whether k is usable as a Dockerfile ARG name. Docker accepts a good deal more and then
+// does nothing useful with it — a name carrying "=" or a space silently produces an arg the Dockerfile can
+// never reference — so the pipeline is stricter than the tool, and says so while the operator is still there.
 func validArgName(k string) bool {
 	if k == "" {
 		return false
@@ -192,11 +184,9 @@ func validArgName(k string) bool {
 	return true
 }
 
-// validBuildPath keeps a build path inside the checked-out source. Both values
-// are joined against the runner's workdir, so an absolute path or a `..` segment
-// would reach the runner's own filesystem — a pipeline is attacker-supplied from
-// the platform's point of view (anyone who can push to a branch can edit it), and
-// the runner is shared across a workspace's builds.
+// validBuildPath keeps a build path inside the checked-out source. Both values are joined against the runner's
+// workdir, so an absolute path or a `..` segment would reach the runner's own filesystem — and a pipeline is
+// attacker-supplied (anyone who can push to a branch can edit it) on a runner shared across a workspace.
 func validBuildPath(field, p string) error {
 	if p == "" {
 		return nil

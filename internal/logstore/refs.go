@@ -5,15 +5,9 @@ package logstore
 
 import "fmt"
 
-// Object keys form one flat, predictable namespace so an operator can browse,
-// ship, or rotate logs by prefix. `ws_<id>` mirrors the internal registry's
-// immutable workspace namespace (it survives renames). A new producer is "pick
-// a kind + call one of these", never a new column or streaming loop.
-//
-// Keys are relative to the store root (MIABI_LOG_DIR, e.g. /var/lib/miabi/logs),
-// so they carry NO leading "logs/" — the filesystem backend would otherwise
-// nest them at <MIABI_LOG_DIR>/logs/…. Keys already persisted with the old
-// "logs/" prefix still resolve to their original path, so this is non-breaking.
+// Object keys form one flat, predictable namespace so an operator can browse, ship or rotate logs
+// by prefix; `ws_<id>` mirrors the registry's rename-proof workspace namespace. Keys are relative
+// to the store root and carry NO leading "logs/"; old keys with that prefix still resolve.
 
 // DeploymentRef is the key for an application deployment's build/deploy log.
 func DeploymentRef(workspaceID, appID, deploymentID uint) string {

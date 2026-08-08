@@ -5,10 +5,9 @@ package models
 
 import "time"
 
-// Secret is a workspace-scoped named secret (the Vault). Env var values
-// reference it by name (`${{ secrets.NAME }}`); the reference is resolved into a
-// container's environment at deploy/job time and never returned by the API. The
-// value is encrypted at rest.
+// Secret is a workspace-scoped named secret (the Vault). Env values reference it by name
+// (`${{ secrets.NAME }}`); the reference is resolved into a container's environment at
+// deploy/job time and never returned by the API. The value is encrypted at rest.
 type Secret struct {
 	UIDModel
 	ID          uint `json:"id" gorm:"primaryKey"`

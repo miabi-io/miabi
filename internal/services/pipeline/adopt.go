@@ -18,29 +18,23 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// adoptTimeout bounds the probe clone made while adopting or re-syncing. It is
-// generous relative to the interactive inspect endpoint because these calls sit
-// on a background path (app creation, a run about to start), but it still has to
-// end — a hung clone must not wedge a deploy.
+// adoptTimeout bounds the probe clone made while adopting or re-syncing. It is generous relative to the
+// interactive inspect endpoint because these calls sit on a background path (app creation, a run about to
+// start), but it still has to end — a hung clone must not wedge a deploy.
 const adoptTimeout = 60 * time.Second
 
-// SetGitRepos wires git credential resolution, which repository adoption and
-// per-run re-sync both need to clone. Left unset (tests, deployments with
-// adoption disabled), AdoptForApp reports ErrAdoptionUnavailable and re-sync is
-// skipped in favor of the stored spec.
+// SetGitRepos wires git credential resolution, which repository adoption and per-run re-sync both need to
+// clone. Left unset — in tests, or deployments with adoption disabled — AdoptForApp reports
+// ErrAdoptionUnavailable and re-sync is skipped in favour of the stored spec.
 func (s *Service) SetGitRepos(g *gitrepo.Service) { s.gitRepos = g }
 
 // SetApps wires app lookup, which re-sync needs to resolve a repo-owned
 // pipeline's clone source from the app it is bound to.
 func (s *Service) SetApps(a *repositories.ApplicationRepository) { s.apps = a }
 
-// AdoptForApp probes an app's repository for a pipeline-as-code document and,
-// when it finds one, creates a repo-owned pipeline bound to that app.
-//
-// The definition is named after the app rather than the document's
-// metadata.name: pipeline names are unique per workspace, and two apps built
-// from forks of the same repo would otherwise collide on adoption. The
-// document's own name becomes the display label.
+// AdoptForApp probes an app's repository for a pipeline-as-code document and, when it finds one, creates a
+// repo-owned pipeline bound to that app. The definition is named after the app rather than the document's
+// metadata.name, because two apps built from forks of the same repo would otherwise collide.
 func (s *Service) AdoptForApp(ctx context.Context, app *models.Application, userID *uint) (*models.PipelineDefinition, error) {
 	if s.gitRepos == nil {
 		return nil, ErrAdoptionUnavailable
@@ -72,12 +66,9 @@ func (s *Service) AdoptForApp(ctx context.Context, app *models.Application, user
 	})
 }
 
-// RepoPipelineForApp returns the enabled, repo-owned pipeline bound to an app,
-// or nil when the app has none. It is what makes a deploy of a pipeline-carrying
-// app route through CI instead of building directly.
-//
-// An app may be bound to several pipelines; only a repo-owned one claims the
-// deploy path, and the oldest wins so the answer is stable.
+// RepoPipelineForApp returns the enabled, repo-owned pipeline bound to an app, or nil when it has none. It
+// is what makes a deploy of a pipeline-carrying app route through CI instead of building directly. An app
+// may be bound to several pipelines; only a repo-owned one claims the deploy path, and the oldest wins.
 func (s *Service) RepoPipelineForApp(appID uint) (*models.PipelineDefinition, error) {
 	defs, err := s.repo.ListEnabledByApp(appID)
 	if err != nil {
@@ -118,11 +109,9 @@ func (s *Service) TriggerForApp(app *models.Application, trigger string, userID 
 	})
 }
 
-// DeleteForApp removes every repo-owned pipeline bound to an app. Called when
-// the app is deleted: a repo-owned pipeline exists only to serve its app, and
-// left behind it would be an un-runnable definition with a dangling binding.
-// Manual pipelines bound to the app are unbound instead — a user authored those,
-// so they outlive the app.
+// DeleteForApp removes every repo-owned pipeline bound to an app. Called when the app is deleted: a
+// repo-owned pipeline exists only to serve its app, and left behind it would be an un-runnable definition
+// with a dangling binding. Manual pipelines are unbound instead — a user authored those.
 func (s *Service) DeleteForApp(workspaceID, appID uint) error {
 	defs, err := s.repo.ListByApp(appID)
 	if err != nil {
@@ -145,15 +134,9 @@ func (s *Service) DeleteForApp(workspaceID, appID uint) error {
 	return errors.Join(errs...)
 }
 
-// SyncFromRepo re-reads a repo-owned pipeline's spec from its repository at ref
-// and stores it, so a run always executes the document the commit actually
-// carries. It reports whether the spec changed.
-//
-// A repository that can't be reached is not fatal: the pipeline keeps its last
-// known-good spec and the run proceeds on that, which is far better than
-// failing a deploy because git was briefly unavailable. The stale read is
-// logged. A spec that is reachable but no longer parses IS fatal — running a
-// document the user has since broken would deploy something they didn't write.
+// SyncFromRepo re-reads a repo-owned pipeline's spec from its repository at ref and stores it, so a run
+// always executes the document the commit carries, reporting whether it changed. An unreachable repository
+// is not fatal — the last known-good spec is used — but a spec that no longer parses IS.
 func (s *Service) SyncFromRepo(ctx context.Context, p *models.PipelineDefinition, ref string) (bool, error) {
 	if !p.IsRepoOwned() || s.gitRepos == nil || p.ApplicationID == nil || s.apps == nil {
 		return false, nil
@@ -226,7 +209,6 @@ func (s *Service) uniqueName(workspaceID uint, base string) string {
 	return name + "-" + slug.Token(6)
 }
 
-// refLabel renders a ref for a message, naming the default branch when empty.
 func refLabel(ref string) string {
 	if strings.TrimSpace(ref) == "" {
 		return "the default branch"

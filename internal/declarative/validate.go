@@ -15,10 +15,8 @@ var (
 	// hostnameRe matches a DNS hostname (dotted labels); used for Domain names,
 	// whose metadata.name is a real FQDN rather than a slug.
 	hostnameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$`)
-	// labelKeyRe / labelValRe constrain label and annotation keys/values, mirroring
-	// the Kubernetes rules: a key is an optional DNS-subdomain prefix ("acme.io/")
-	// followed by a name segment of alphanumerics plus -_. (max 63 chars); a value
-	// is alphanumerics plus -_. (max 63 chars) or empty. Annotation values are
+	// labelKeyRe / labelValRe constrain label and annotation keys and values, mirroring the Kubernetes
+	// rules: an optional DNS-subdomain prefix plus a name segment, max 63 chars. Annotation values are
 	// exempt — they hold arbitrary descriptive text.
 	labelKeyRe     = regexp.MustCompile(`^([a-z0-9]([-a-z0-9.]*[a-z0-9])?/)?[a-zA-Z0-9]([-a-zA-Z0-9_.]*[a-zA-Z0-9])?$`)
 	labelValRe     = regexp.MustCompile(`^[a-zA-Z0-9]([-a-zA-Z0-9_.]*[a-zA-Z0-9])?$`)
@@ -69,9 +67,8 @@ func (r *Resource) normalize() {
 	}
 }
 
-// DefaultRegistryServer is the implicit registry host when a manifest names none
-// (Docker Hub). It mirrors registry.DefaultServer — normalization is duplicated
-// here rather than imported so the declarative package stays free of service
+// DefaultRegistryServer is the implicit registry host when a manifest names none. It mirrors
+// registry.DefaultServer — duplicated rather than imported so this package stays free of service
 // dependencies, and both sides must agree or a converged registry would diff.
 const DefaultRegistryServer = "registry-1.docker.io"
 
@@ -266,7 +263,6 @@ func (r *Resource) validateDatabase() error {
 	return nil
 }
 
-// hasNonEmpty reports whether s contains at least one non-blank entry.
 func hasNonEmpty(s []string) bool {
 	for _, v := range s {
 		if strings.TrimSpace(v) != "" {

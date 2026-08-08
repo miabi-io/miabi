@@ -14,10 +14,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/crypto"
 )
 
-// The rule the whole dashboard restore rests on: the control-plane dump is not a
-// checkbox. Restoring it in place overwrites the database the running platform is
-// using — including the rows describing the restore itself — and leaves the
-// process running against data that no longer matches it.
+// The rule the whole dashboard restore rests on: the control-plane dump is not a checkbox. Restoring it
+// in place overwrites the database the running platform is using — including the rows describing the
+// restore itself — and leaves the process running against data that no longer matches it.
 func TestControlPlaneIsNeverRestorableFromTheDashboard(t *testing.T) {
 	ok, reason := restorableFromDashboard(dr.SubjectDatabase, true)
 	if ok {

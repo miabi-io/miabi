@@ -43,7 +43,6 @@ type CatalogEntry struct {
 	Inputs       []manifest.Input `json:"inputs,omitempty"` // install-wizard questions
 }
 
-// indexFile mirrors templates/index.yaml.
 type indexFile struct {
 	APIVersion string `yaml:"apiVersion"`
 	Kind       string `yaml:"kind"`

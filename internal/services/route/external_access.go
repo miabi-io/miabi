@@ -73,11 +73,9 @@ func (s *Service) GetExternalAccess(workspaceID, appID uint, cfg ExternalConfig)
 	return out, nil
 }
 
-// SetExternalAccess reconciles the app's exposed ports: it generates a managed
-// Route per selected port (host `<label>[-<port>].<base>`, HTTPS via the
-// configured certManager provider) and removes generated routes for ports no
-// longer selected. The primary port (the app's Port when selected) gets the bare
-// `<label>.<base>` host; others get a `-<port>` suffix. Idempotent.
+// SetExternalAccess reconciles the app's exposed ports: it generates a managed Route per selected port
+// (host `<label>[-<port>].<base>`, HTTPS via the configured certManager provider) and removes generated
+// routes for ports no longer selected. The primary port gets the bare `<label>.<base>` host. Idempotent.
 func (s *Service) SetExternalAccess(ctx context.Context, workspaceID, appID uint, ports []int, cfg ExternalConfig) (*ExternalAccess, error) {
 	app, err := s.apps.FindInWorkspace(workspaceID, appID)
 	if err != nil {
@@ -176,7 +174,6 @@ func (s *Service) defaultExternalLabel(app *models.Application) string {
 	return base + "-" + token
 }
 
-// aliasToken extracts the stable token from an app alias "mb-app-<token>-<id>".
 func aliasToken(alias string) string {
 	parts := strings.Split(alias, "-")
 	if len(parts) >= 4 && parts[0] == "mb" && parts[1] == "app" {

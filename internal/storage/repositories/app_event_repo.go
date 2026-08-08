@@ -53,10 +53,9 @@ func (r *AppEventRepository) ListByWorkspace(workspaceID uint, limit int) ([]mod
 	return events, err
 }
 
-// ListByWorkspacePaged returns the workspace's application events with offset
-// pagination and the total count, for the workspace Events page. order is "asc"
-// (oldest first) or "desc" (newest first, default); severity, when non-empty,
-// filters to a single severity.
+// ListByWorkspacePaged returns the workspace's application events with offset pagination and
+// the total count. order is "asc" or "desc" (default); severity, when non-empty, filters to a
+// single severity.
 func (r *AppEventRepository) ListByWorkspacePaged(workspaceID uint, order, severity string, limit, offset int) ([]models.AppEvent, int64, error) {
 	var (
 		events []models.AppEvent

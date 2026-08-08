@@ -48,10 +48,9 @@ type CreatePipelineRequest struct {
 	} `json:"body"`
 }
 
-// UpdatePipelineRequest is a partial update: every field is optional and an
-// omitted field is left unchanged. Enabled is a pointer (nil = unchanged), and
-// application_id is tri-state — omitted keeps the binding, null unbinds, a number
-// rebinds — so a spec-only PATCH can't silently disable or unbind the pipeline.
+// UpdatePipelineRequest is a partial update: an omitted field is left unchanged. Enabled is a
+// pointer (nil = unchanged) and application_id is tri-state — omitted keeps the binding, null
+// unbinds, a number rebinds — so a spec-only PATCH cannot silently disable or unbind it.
 type UpdatePipelineRequest struct {
 	Body struct {
 		Name          string          `json:"name"`
@@ -215,7 +214,6 @@ func (h *PipelineHandler) Webhook(c *okapi.Context) error {
 	return created(c, run)
 }
 
-// ListRuns returns a page of a pipeline's runs.
 // StreamWorkspaceRuns pushes run transitions so the lists need no polling.
 func (h *PipelineHandler) StreamWorkspaceRuns(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
@@ -244,6 +242,7 @@ func (h *PipelineHandler) StreamWorkspaceRuns(c *okapi.Context) error {
 	}
 }
 
+// ListRuns returns a page of a pipeline's runs.
 func (h *PipelineHandler) ListRuns(c *okapi.Context) error {
 	id, err := resolveID(c.Param("pipelineID"), h.svc.IDByUID)
 	if err != nil {

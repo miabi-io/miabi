@@ -16,10 +16,9 @@ const (
 	DomainTLSCustom DomainTLSMode = "custom"
 )
 
-// Domain is a hostname (or zone) a workspace owns. It tracks DNS-verified
-// ownership and the default TLS policy; routes bind hostnames that resolve
-// under a verified domain. This is the first-class owned-hostname resource —
-// distinct from the declarative Route kind, which is an HTTP routing rule.
+// Domain is a hostname (or zone) a workspace owns, tracking DNS-verified ownership and the
+// default TLS policy; routes bind hostnames resolving under a verified domain. Distinct from
+// the declarative Route kind, which is an HTTP routing rule.
 type Domain struct {
 	ID          uint   `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint   `json:"workspace_id" gorm:"index:idx_domain_workspace_name,unique;not null"`
@@ -36,10 +35,9 @@ type Domain struct {
 	VerifiedAt        *time.Time `json:"verified_at,omitempty"`
 	VerificationToken string     `json:"verification_token" gorm:"not null"`
 
-	// VerificationCheckedAt records the last time ownership was checked (whether or
-	// not it succeeded), and VerificationError carries the last failure reason.
-	// Together they give the UI an observable verification history and let the
-	// drift cron count consecutive misses before un-verifying a domain.
+	// VerificationCheckedAt records the last ownership check (successful or not) and
+	// VerificationError the last failure reason. Together they give the UI a verification history
+	// and let the drift cron count consecutive misses before un-verifying a domain.
 	VerificationCheckedAt *time.Time `json:"verification_checked_at,omitempty"`
 	VerificationError     string     `json:"verification_error,omitempty"`
 	// VerificationMisses counts consecutive failed re-verifications of an

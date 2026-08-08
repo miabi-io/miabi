@@ -10,10 +10,9 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// ClusterCap reports whether cluster (Docker Swarm) mode is enabled — surfaced as
-// a workspace capability so any member (not just a platform admin) can tell
-// whether the "service" runtime is offerable when creating an app. Implemented by
-// the cluster service; injected after construction (nil = cluster mode off).
+// ClusterCap reports whether cluster (Docker Swarm) mode is enabled — surfaced as a workspace
+// capability so any member, not just a platform admin, can tell whether the "service" runtime is
+// offerable when creating an app. Injected after construction (nil = cluster mode off).
 type ClusterCap interface {
 	CapCluster() bool
 }

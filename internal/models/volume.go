@@ -31,10 +31,9 @@ const (
 	VolumeDriverLocal = "local"
 	VolumeDriverNFS   = "nfs"
 	VolumeDriverCIFS  = "cifs"
-	// VolumeDriverHost is a bind to an operator-managed host path (under /mnt/*),
-	// not a Docker volume. It is meant for storage the operator has mounted at the
-	// SAME path on every node (e.g. a NAS), so a replicated service can share it;
-	// AccessMode is rwx. Privileged workspaces only. HostPath carries the path.
+	// VolumeDriverHost is a bind to an operator-managed host path (under /mnt/*), not a Docker
+	// volume. It is for storage mounted at the SAME path on every node, so a replicated service
+	// can share it; AccessMode is rwx. Privileged workspaces only; HostPath carries the path.
 	VolumeDriverHost = "host"
 )
 

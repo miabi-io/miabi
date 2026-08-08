@@ -30,10 +30,9 @@ const (
 	CtxPermissions  = "workspace_permissions"
 	CtxAPIKeyID     = "api_key_id"
 	CtxAPIKeyScopes = "api_key_scopes"
-	// CtxAPIKeyWorkspaceID holds the workspace an API key is bound to, when the
-	// presented key is workspace-scoped (nil/absent for account-wide keys). It
-	// lets /me report which workspace a token manages so machine clients
-	// (CLI/Terraform) need only supply the token.
+	// CtxAPIKeyWorkspaceID holds the workspace an API key is bound to, when the presented key is
+	// workspace-scoped (nil for account-wide keys). It lets /me report which workspace a token
+	// manages, so machine clients need only supply the token.
 	CtxAPIKeyWorkspaceID = "api_key_workspace_id"
 	ctxJTI               = "jti"
 )
@@ -48,9 +47,8 @@ func baseJWT(cfg *config.Config, store *session.Store) okapi.JWTAuth {
 		SigningSecret: []byte(cfg.JWTSecret),
 		Audience:      "miabi",
 		ContextKey:    "jwt_user",
-		// Header (CLI/API) first, then the browser session cookie. The JWT is NOT
-		// accepted via ?token= — browsers send the cookie on SSE/WebSocket
-		// handshakes and CLIs set the Authorization header — so a session token
+		// Header (CLI/API) first, then the browser session cookie. The JWT is NOT accepted via ?token= — browsers
+		// send the cookie on SSE/WebSocket handshakes and CLIs set the Authorization header — so a session token
 		// never lands in a URL (and thus proxy/access logs or browser history).
 		TokenLookup: "header:Authorization,cookie:" + SessionCookieName,
 		ForwardClaims: map[string]string{
@@ -88,10 +86,9 @@ func JWTAuth(cfg *config.Config, store *session.Store) okapi.JWTAuth {
 	return baseJWT(cfg, store)
 }
 
-// Authenticate accepts a user JWT or an API key. API keys (mb_…) are read from
-// the `Authorization: Bearer` header or the `?token=` query param; any other
-// credential is treated as a JWT and resolved by Okapi from the header or the
-// session cookie per JWTAuth.TokenLookup (a JWT is never accepted via `?token=`).
+// Authenticate accepts a user JWT or an API key. API keys (mb_...) are read from the Authorization
+// header or the ?token= query param; any other credential is treated as a JWT and resolved from
+// the header or session cookie per JWTAuth.TokenLookup — a JWT is never accepted via ?token=.
 func Authenticate(jwtAuth okapi.JWTAuth, apiKeys *auth.APIKeyService, users *repositories.UserRepository) okapi.Middleware {
 	return func(c *okapi.Context) error {
 		raw := bearerToken(c)

@@ -10,7 +10,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// baseDomain is a settings reader returning a fixed external base domain.
 type baseDomain string
 
 func (b baseDomain) String(_, def string) string {
@@ -20,10 +19,9 @@ func (b baseDomain) String(_, def string) string {
 	return string(b)
 }
 
-// MIABI_REGISTRY_ENABLED pins enablement when it is set, and only then. An
-// absent variable leaves the switch to the stored row — i.e. to the admin UI —
-// so an install that configures nothing in the environment is driven entirely
-// from the console.
+// MIABI_REGISTRY_ENABLED pins enablement when it is set, and only then. An absent variable leaves the
+// switch to the stored row — i.e. to the admin UI — so an install that configures nothing in the
+// environment is driven entirely from the console.
 func TestEnablementFollowsEnvOnlyWhenSet(t *testing.T) {
 	cases := []struct {
 		name   string

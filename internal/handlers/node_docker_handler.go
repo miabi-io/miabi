@@ -22,13 +22,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/node"
 )
 
-// Node-scoped Docker operations. Every action resolves the target node's Docker
-// client via the registry (local or remote agent), so the control-plane node is
-// managed at /admin/nodes/{localID}/... exactly like any agent node. Removal of
-// platform-managed resources (labelled miabi.*) is blocked — they must be
-// managed through their owning app/volume, not deleted from under Miabi.
-
-// --- request DTOs ---
+// Node-scoped Docker operations. Every action resolves the target node's Docker client via the
+// registry, so the control-plane node is managed exactly like any agent node. Removal of
+// platform-managed resources is blocked — they go through their owning app or volume.
 
 type RunContainerRequest struct {
 	Body struct {
@@ -88,10 +84,9 @@ func isManaged(labels map[string]string) bool {
 	return docker.IsManaged(labels)
 }
 
-// isNodeGateway reports whether cont is the given node's edge (Goma) gateway —
-// either the managed one (io.miabi.role=node-gateway) or an imported one tracked
-// by its container name. The imported gateway carries no platform label, so it
-// would otherwise slip past isManaged and be deletable from the containers list.
+// isNodeGateway reports whether cont is the given node's edge (Goma) gateway — the managed one
+// (io.miabi.role=node-gateway) or an imported one tracked by container name. The imported
+// gateway carries no platform label, so it would otherwise slip past isManaged and be deletable.
 func (h *NodeHandler) isNodeGateway(nodeID uint, cont docker.Container) bool {
 	if role, _ := docker.LabelValue(cont.Labels, docker.LabelRole); role == "node-gateway" {
 		return true
@@ -109,19 +104,9 @@ func (h *NodeHandler) isNodeGateway(nodeID uint, cont docker.Container) bool {
 	return false
 }
 
-// guardContainerOp blocks destructive container operations (stop/restart/remove)
-// on platform-critical containers that have no owning resource to manage them
-// through: the Miabi control plane or this node's agent, and the node's edge
-// gateway. When blockManaged is set (removal), any Miabi-managed container
-// (apps, databases, …) is blocked too, since those are removed via their resource.
-//
-// When the op must be blocked it writes a 409 response and returns true; the
-// caller MUST then return without performing the operation. A failed inspect is
-// ignored (returns false) so the underlying op can surface its own not-found.
-//
-// It returns a bool rather than an error on purpose: okapi's c.Abort* helpers
-// write the response but return a nil error, so the return value cannot drive
-// control flow — checking it would let the destructive op run after the 409.
+// guardContainerOp blocks destructive container operations on platform-critical containers with
+// no owning resource: the control plane, this node's agent, and its edge gateway. With
+// blockManaged it writes a 409 and returns true — the caller MUST then return without acting.
 func (h *NodeHandler) guardContainerOp(c *okapi.Context, dc docker.Client, nodeID uint, cid string, blockManaged bool) bool {
 	cont, err := dc.InspectContainer(c.Request().Context(), cid)
 	if err != nil {
@@ -131,11 +116,9 @@ func (h *NodeHandler) guardContainerOp(c *okapi.Context, dc docker.Client, nodeI
 	case h.manager.Clients().IsSelfContainer(nodeID, cont.ID):
 		_ = c.AbortWithError(http.StatusConflict, errors.New("this is the Miabi control-plane/agent container and cannot be modified from the containers list"))
 	case docker.IsProtected(cont.Labels):
-		// The Miabi stack itself: its Postgres, its Redis, the central gateway. The
-		// self-check above only ever covers ONE container (the one this process runs
-		// in) — it cannot protect the database the process depends on, and it protects
-		// nothing at all on a node the control plane does not run on. Stopping
-		// miabi-postgres from the containers list took the whole platform down.
+		// The Miabi stack itself: its Postgres, its Redis, the central gateway. The self-check above
+		// covers only ONE container (the one this process runs in) and protects nothing on a node the
+		// control plane does not run on. Stopping miabi-postgres from the list took the platform down.
 		_ = c.AbortWithError(http.StatusConflict, errors.New(protectedMessage(cont.Labels)))
 	case h.isNodeGateway(nodeID, cont):
 		_ = c.AbortWithError(http.StatusConflict, errors.New("this is the node's edge gateway; manage it from the node's gateway page"))
@@ -169,8 +152,6 @@ func protectedMessage(labels map[string]string) string {
 	return msg
 }
 
-// --- containers ---
-
 func (h *NodeHandler) ContainersList(c *okapi.Context) error {
 	dc, err := h.dc(c)
 	if err != nil {
@@ -183,9 +164,8 @@ func (h *NodeHandler) ContainersList(c *okapi.Context) error {
 	return ok(c, list)
 }
 
-// foreignWorkspaceContainer reports whether a container belongs to a workspace
-// the viewer is NOT a member of. Unowned/raw containers and platform
-// infrastructure (the node's gateway/redis) are not foreign. Used to keep a
+// foreignWorkspaceContainer reports whether a container belongs to a workspace the viewer is NOT
+// a member of. Unowned containers and platform infrastructure are not foreign. Used to keep a
 // platform admin from reading another workspace's container logs.
 func foreignWorkspaceContainer(labels map[string]string, member map[uint]bool) bool {
 	if docker.IsPlatformInfra(labels) {
@@ -198,10 +178,9 @@ func foreignWorkspaceContainer(labels map[string]string, member map[uint]bool) b
 	return !member[wsID]
 }
 
-// blockForeignLogs writes a 403 and returns true when the viewer may not read
-// the given container's logs: it is owned by a workspace they are not a member
-// of. With no membership source wired, or for unowned/infra containers, it is a
-// no-op. A failed inspect is ignored so the log stream surfaces its own 404.
+// blockForeignLogs writes a 403 and returns true when the viewer may not read a container's logs
+// because it is owned by a workspace they are not in. A no-op with no membership source wired or
+// for unowned/infra containers. A failed inspect is ignored so the stream surfaces its own 404.
 func (h *NodeHandler) blockForeignLogs(c *okapi.Context, dc docker.Client, cid string) bool {
 	if h.members == nil {
 		return false
@@ -217,7 +196,6 @@ func (h *NodeHandler) blockForeignLogs(c *okapi.Context, dc docker.Client, cid s
 	return true
 }
 
-// memberWorkspaces returns the set of workspace ids the request's user belongs to.
 func (h *NodeHandler) memberWorkspaces(c *okapi.Context) map[uint]bool {
 	member := map[uint]bool{}
 	rows, err := h.members.ListForUser(middlewares.UserID(c))
@@ -392,11 +370,9 @@ func (h *NodeHandler) RemoveContainer(c *okapi.Context) error {
 	}
 	cid := c.Param("cid")
 	id, _ := h.id(c)
-	// Guard: the control plane/agent and the node's edge gateway are always
-	// protected. With security enforcement on (default), platform-managed
-	// containers (apps, databases, …) are too — they're removed via their owning
-	// resource, not deleted from under Miabi here. Disabling enforcement is a
-	// break-glass escape hatch.
+	// Guard: the control plane, agent and edge gateway are always protected. With security
+	// enforcement on (default), platform-managed containers are too — they are removed via their
+	// owning resource. Disabling enforcement is a break-glass escape hatch.
 	if h.guardContainerOp(c, dc, id, cid, h.secEnforce) {
 		return nil // 409 already written by the guard
 	}
@@ -407,11 +383,9 @@ func (h *NodeHandler) RemoveContainer(c *okapi.Context) error {
 	return message(c, "container removed")
 }
 
-// ContainerLogs streams container logs as Server-Sent Events. A platform admin
-// may list and operate the node's containers, but must not read the logs of a
-// container owned by a workspace they don't belong to — those can leak another
-// tenant's secrets/PII. Unowned/raw containers and the node's own infrastructure
-// are unaffected.
+// ContainerLogs streams container logs as Server-Sent Events. A platform admin may list and
+// operate a node's containers but must not read the logs of one owned by a workspace they don't
+// belong to — those can leak another tenant's secrets. Unowned and infra containers are exempt.
 func (h *NodeHandler) ContainerLogs(c *okapi.Context) error {
 	dc, err := h.dc(c)
 	if err != nil {
@@ -445,8 +419,6 @@ func (h *NodeHandler) ContainerStats(c *okapi.Context) error {
 	return serr
 }
 
-// --- images ---
-
 func (h *NodeHandler) PullImage(c *okapi.Context, req *PullImageRequest) error {
 	dc, err := h.dc(c)
 	if err != nil {
@@ -458,8 +430,6 @@ func (h *NodeHandler) PullImage(c *okapi.Context, req *PullImageRequest) error {
 	h.recordDocker(c, "image.pull", "image", req.Body.Ref)
 	return message(c, "image pulled")
 }
-
-// --- networks ---
 
 func (h *NodeHandler) NetworksList(c *okapi.Context) error {
 	dc, err := h.dc(c)
@@ -507,8 +477,6 @@ func (h *NodeHandler) RemoveNetwork(c *okapi.Context) error {
 	return message(c, "network removed")
 }
 
-// --- volumes ---
-
 func (h *NodeHandler) VolumesList(c *okapi.Context) error {
 	dc, err := h.dc(c)
 	if err != nil {
@@ -551,8 +519,6 @@ func (h *NodeHandler) RemoveVolume(c *okapi.Context) error {
 	return message(c, "volume removed")
 }
 
-// --- edge gateway ---
-
 // GatewayStatus reports the live state of the node's gateway container.
 type GatewayStatus struct {
 	Connectivity   string `json:"connectivity"`
@@ -580,10 +546,8 @@ type GatewayUpdateEvent struct {
 	Update *models.GatewayUpdateProgress `json:"update,omitempty"`
 }
 
-// gwTopic is the per-node event-bus topic carrying live gateway update progress.
 func gwTopic(nodeID uint) string { return fmt.Sprintf("node-gateway:%d", nodeID) }
 
-// gatewayUpdateActive reports whether a non-terminal gateway update is in flight.
 func gatewayUpdateActive(p *models.GatewayUpdateProgress) bool {
 	return p != nil && p.Phase != "" && p.Phase != "done" && p.Phase != "failed"
 }
@@ -665,11 +629,9 @@ func (h *NodeHandler) GatewayDeploy(c *okapi.Context) error {
 	return message(c, "gateway deployed")
 }
 
-// GatewayUpdate starts a safe, observed update of the node's gateway to its
-// resolved image: a test container is started with the same config + volumes,
-// observed for a grace window, then promoted over the live gateway. It runs in
-// the background; progress streams over GatewayEvents (SSE) and is persisted on
-// the node so it survives a reconnect.
+// GatewayUpdate starts a safe, observed update of the node's gateway to its resolved image: a
+// test container runs with the same config and volumes, is observed for a grace window, then
+// promoted. It runs in the background; progress streams over GatewayEvents and is persisted.
 func (h *NodeHandler) GatewayUpdate(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -769,7 +731,6 @@ func (h *NodeHandler) GatewayEvents(c *okapi.Context) error {
 	}
 }
 
-// publishGatewayUpdate fans out a node gateway's update progress to SSE subscribers.
 func (h *NodeHandler) publishGatewayUpdate(id uint, p *models.GatewayUpdateProgress) {
 	if h.bus == nil {
 		return
@@ -887,10 +848,9 @@ func (h *NodeHandler) GatewayImport(c *okapi.Context, req *ImportGatewayRequest)
 	if cfg.Name != "" {
 		name = strings.TrimPrefix(cfg.Name, "/")
 	}
-	// Best-effort: copy the running gateway's goma.yml so the imported gateway
-	// keeps its existing config. Resolve the path the way Goma does (--config/-c,
-	// then GOMA_CONFIG_FILE, then the default). A read failure doesn't block the
-	// import — the node just falls back to the rendered default config.
+	// Best-effort: copy the running gateway's goma.yml so the imported gateway keeps its existing config.
+	// Resolve the path the way Goma does (--config/-c, then GOMA_CONFIG_FILE, then the default). A read
+	// failure doesn't block the import — the node just falls back to the rendered default config.
 	configPath := edgegateway.ConfigFilePath(cfg.Entrypoint, cfg.Command, cfg.Env)
 	var configYAML string
 	if data, rerr := dc.ReadContainerFile(ctx, target, configPath); rerr == nil {
@@ -994,8 +954,6 @@ func (h *NodeHandler) GatewayLogs(c *okapi.Context) error {
 	}
 	return serr
 }
-
-// --- helpers ---
 
 func (h *NodeHandler) recordDocker(c *okapi.Context, action, targetType, targetID string) {
 	actor := middlewares.UserID(c)

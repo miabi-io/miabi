@@ -24,10 +24,9 @@ type User struct {
 	ID uint `json:"id" gorm:"primaryKey"`
 	// Name is the free-text display name.
 	Name string `json:"name" gorm:"not null;default:''"`
-	// Username is the unique, directory-friendly handle (lowercase [a-z0-9-]),
-	// the join key a future LDAP/OIDC uid maps onto and a potential per-user
-	// registry namespace. Distinct from Email (the login/contact). Auto-derived
-	// from the email local-part on create when left blank (see BeforeCreate).
+	// Username is the unique, directory-friendly handle (lowercase [a-z0-9-]) a future LDAP/OIDC
+	// uid maps onto, distinct from Email. Auto-derived from the email local-part on create when
+	// left blank (see BeforeCreate).
 	Username     string     `json:"username" gorm:"uniqueIndex;not null"`
 	Email        string     `json:"email" gorm:"uniqueIndex;not null"`
 	PasswordHash string     `json:"-" gorm:"not null"`
@@ -42,22 +41,17 @@ type User struct {
 	// external directory/IdP ("ldap", "saml", "oauth"). Directory-managed accounts
 	// carry an unusable local password and have their access reconciled on login.
 	AuthSource string `json:"auth_source" gorm:"not null;default:'local'"`
-	// WorkspaceLimit is an Enterprise per-user override of how many workspaces
-	// this user may own, superseding the platform-global max_workspaces_per_user.
-	// nil = inherit the platform limit; -1 = unlimited; 0 = none; N = at most N.
-	// Only a platform admin sets it, and only with the user_workspace_limit
-	// entitlement (existing overrides stay enforced read-only if the license lapses).
+	// WorkspaceLimit is an Enterprise per-user override of how many workspaces this user may own,
+	// superseding max_workspaces_per_user. nil = inherit, -1 = unlimited, 0 = none, N = at most N.
+	// Platform admins only, with the user_workspace_limit entitlement.
 	WorkspaceLimit *int `json:"workspace_limit,omitempty"`
-	// WorkspaceMembershipLimit is the Enterprise per-user override of how many
-	// workspaces this user may JOIN as a non-owner member (invites + SSO/SCIM
-	// auto-join), superseding the platform-global max_workspace_memberships_per_user.
-	// Same convention: nil = inherit; -1 = unlimited; 0 = none; N = at most N.
-	// Gated by the user_workspace_membership_limit entitlement.
+	// WorkspaceMembershipLimit is the Enterprise per-user override of how many workspaces this
+	// user may JOIN as a non-owner, superseding max_workspace_memberships_per_user. Same
+	// convention as WorkspaceLimit; gated by user_workspace_membership_limit.
 	WorkspaceMembershipLimit *int `json:"workspace_membership_limit,omitempty"`
-	// ScheduledDeletionAt, when set, is the time this account is permanently
-	// purged (with all its data). The admin schedules it; a daily job purges due
-	// accounts; an admin can cancel before then. The account stays disabled
-	// (Active=false) throughout the grace window.
+	// ScheduledDeletionAt, when set, is when this account is permanently purged with all its data.
+	// An admin schedules it, a daily job purges due accounts, and an admin can cancel before then.
+	// The account stays disabled (Active=false) throughout the grace window.
 	ScheduledDeletionAt *time.Time `json:"scheduled_deletion_at" gorm:"index"`
 	EmailVerifiedAt     *time.Time `json:"email_verified_at"`
 	LastLoginAt         *time.Time `json:"last_login_at"`
@@ -71,12 +65,9 @@ type User struct {
 // IsAdmin reports whether the user is a platform super-admin.
 func (u *User) IsAdmin() bool { return u.Role == SystemRoleAdmin }
 
-// BeforeCreate derives a unique username when one was not supplied, so every
-// creation path (seed, admin-create, OAuth/SAML auto-provision, SCIM) gets a
-// valid handle without repeating the logic. The base is the email local-part,
-// slugified; collisions and reserved words are resolved by numeric suffixing.
-// An explicitly supplied username is normalized but otherwise trusted (callers
-// validate user-chosen handles up front).
+// BeforeCreate derives a unique username when none was supplied, so every creation path (seed,
+// admin-create, OAuth/SAML, SCIM) gets a valid handle. The base is the slugified email
+// local-part; collisions and reserved words are resolved by numeric suffixing.
 func (u *User) BeforeCreate(tx *gorm.DB) error {
 	if h := slug.Make(u.Username, ""); h != "" {
 		u.Username = h

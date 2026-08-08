@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package dns abstracts a managed DNS host behind one small Provider interface,
-// backed by libdns modules (Cloudflare, Route 53, DigitalOcean). It mirrors the
-// blob.Store pattern: adding a host later is a new case in Build, not a new
-// client. Miabi uses it to manage only the records it owns (ownership TXT, app
-// A/AAAA) — never a user's other records.
+// Package dns abstracts a managed DNS host behind one small Provider interface, backed by libdns
+// modules. It mirrors the blob.Store pattern: adding a host later is a new case in Build, not a
+// new client. Miabi manages only the records it owns — never a user's other records.
 package dns
 
 import (
@@ -95,7 +93,6 @@ type adapter struct {
 	zones  map[string]string
 }
 
-// newAdapter wraps a libdns client, detecting whether it can enumerate zones.
 func newAdapter(z zoneClient) *adapter {
 	a := &adapter{z: z, zones: map[string]string{}}
 	if zl, ok := z.(libdns.ZoneLister); ok {
@@ -165,7 +162,6 @@ func (a *adapter) discoverZone(ctx context.Context, domain string) (string, erro
 	return "", fmt.Errorf("could not find a DNS zone that manages %s", domain)
 }
 
-// canonicalZone gives the zone a trailing dot, libdns's canonical FQDN form.
 func canonicalZone(zone string) string {
 	zone = strings.TrimSpace(zone)
 	if zone == "" {

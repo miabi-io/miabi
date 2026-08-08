@@ -11,7 +11,6 @@ import (
 	"github.com/miabi-io/miabi/internal/services/marketplace/remote"
 )
 
-// fakeRemote is an in-memory RemoteCatalog for merge tests.
 type fakeRemote struct{ tpls []remote.DecodedTemplate }
 
 func (f *fakeRemote) Templates() []remote.DecodedTemplate { return f.tpls }

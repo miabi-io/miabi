@@ -13,12 +13,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/runner"
 )
 
-// AdminRunnerHandler exposes platform-admin management of the shared runner pool
-// (WorkspaceID = nil, Scope = shared): runners any workspace with the
-// platform-runners capability may use. Workspace members can *use* a shared
-// runner but only admins edit it — the read-all / edit-admin pattern used for
-// global TemplateSource/OAuthProvider. Reuses RunnerHandler.mapErr for envelope
-// mapping.
+// AdminRunnerHandler exposes platform-admin management of the shared runner pool (WorkspaceID =
+// nil, Scope = shared): runners any workspace with the platform-runners capability may use.
+// Members may use a shared runner but only admins edit it. Reuses RunnerHandler.mapErr.
 type AdminRunnerHandler struct {
 	svc   *runner.Service
 	base  *RunnerHandler

@@ -38,13 +38,9 @@ func (s *Service) volImage() string {
 	return defaultVolImage
 }
 
-// archiveVolume writes one volume's contents into the bundle's branch and returns
-// the artifact name the helper actually uploaded, and whether it is encrypted.
-//
-// Encryption is read back off the name rather than assumed from the request: a
-// helper image too old to support it ignores the passphrase and writes plaintext,
-// and a bundle that claimed otherwise would fail to restore for a reason nobody
-// could see.
+// archiveVolume writes one volume's contents into the bundle's branch and returns the artifact name the helper
+// actually uploaded, and whether it is encrypted. Encryption is read back off the name rather than assumed: a
+// helper too old to support it writes plaintext, and a bundle claiming otherwise would fail to restore.
 func (s *Service) archiveVolume(ctx context.Context, v *models.Volume, cfg *backup.S3Config, path, passphrase string) (string, bool, error) {
 	dc, err := s.Clients.For(v.ServerID)
 	if err != nil {
@@ -117,12 +113,9 @@ func (s *Service) restoreVolumeArchive(ctx context.Context, v *models.Volume, cf
 	return nil
 }
 
-// oneShotName builds a unique container name for a helper run.
-//
-// The random suffix is what keeps a retry from colliding with the container its
-// predecessor left behind. A timestamp is not enough: two runs started in the
-// same clock tick — a retry loop, or two volumes archived back to back — would
-// produce the same name, and Docker refuses the second.
+// oneShotName builds a unique container name for a helper run. The random suffix is what keeps a retry from
+// colliding with the container its predecessor left behind. A timestamp is not enough: two runs started in the
+// same clock tick would produce the same name, and Docker refuses the second.
 func oneShotName(prefix string, id uint) string {
 	b := make([]byte, 4)
 	if _, err := rand.Read(b); err != nil {
@@ -133,7 +126,6 @@ func oneShotName(prefix string, id uint) string {
 	return fmt.Sprintf("%s-%d-%s", prefix, id, hex.EncodeToString(b))
 }
 
-// tail bounds helper output kept in an error message.
 func tail(out string) string {
 	const max = 2000
 	if len(out) <= max {

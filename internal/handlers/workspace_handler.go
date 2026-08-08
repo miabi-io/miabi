@@ -38,8 +38,6 @@ func NewWorkspaceHandler(svc *workspace.Service, acct *account.Service, auditRep
 // Optional; without it (or without SMTP configured) the email is skipped.
 func (h *WorkspaceHandler) SetMailer(m *mailer.Service) { h.mailer = m }
 
-// --- DTOs ---
-
 type CreateWorkspaceRequest struct {
 	Body struct {
 		// DisplayName is the free-text label; when omitted it defaults to the handle.
@@ -93,8 +91,6 @@ type InvitationCreated struct {
 	Role  string `json:"role"`
 	Token string `json:"token"` // returned for delivery; not persisted in plaintext
 }
-
-// --- Workspace CRUD ---
 
 // Create makes a new workspace owned by the caller.
 func (h *WorkspaceHandler) Create(c *okapi.Context, req *CreateWorkspaceRequest) error {
@@ -160,10 +156,9 @@ func (h *WorkspaceHandler) Update(c *okapi.Context, req *UpdateWorkspaceRequest)
 	return ok(c, ws)
 }
 
-// UpdateName changes the workspace name — its unique URL/CLI/docker handle. The
-// name is normalized and must stay unique and non-reserved; the system
-// workspace's name is immutable. Audited admin+ action (changes URLs and the
-// `docker login` handle).
+// UpdateName changes the workspace name — its unique URL/CLI/docker handle. The name is
+// normalized and must stay unique and non-reserved; the system workspace's name is immutable.
+// Audited admin+ action, since it changes URLs and the `docker login` handle.
 func (h *WorkspaceHandler) UpdateName(c *okapi.Context, req *UpdateWorkspaceNameRequest) error {
 	ws, err := h.svc.Get(middlewares.WorkspaceID(c))
 	if err != nil {
@@ -238,8 +233,6 @@ func (h *WorkspaceHandler) DeletionJobEvents(c *okapi.Context) error {
 	return err
 }
 
-// --- Members ---
-
 // ListMembers returns the workspace members.
 func (h *WorkspaceHandler) ListMembers(c *okapi.Context) error {
 	members, err := h.svc.ListMembers(middlewares.WorkspaceID(c))
@@ -275,8 +268,6 @@ func (h *WorkspaceHandler) RemoveMember(c *okapi.Context) error {
 	h.record(c, wsID, "workspace.member_remove", "user", strconv.Itoa(memberUserID))
 	return message(c, "member removed")
 }
-
-// --- Invitations ---
 
 // Invite creates a pending invitation (admin+).
 func (h *WorkspaceHandler) Invite(c *okapi.Context, req *InviteRequest) error {
@@ -346,8 +337,6 @@ func (h *WorkspaceHandler) AcceptMyInvitation(c *okapi.Context) error {
 	return ok(c, ws)
 }
 
-// --- Audit ---
-
 // AuditLog returns audit entries for the workspace, paginated (page/size).
 func (h *WorkspaceHandler) AuditLog(c *okapi.Context) error {
 	if err := h.ee.Require(enterprise.FlagAuditLog); err != nil {
@@ -398,8 +387,6 @@ func (h *WorkspaceHandler) GetAuditLog(c *okapi.Context) error {
 	}
 	return ok(c, detail)
 }
-
-// --- helpers ---
 
 func (h *WorkspaceHandler) record(c *okapi.Context, wsID uint, action, targetType, targetID string) {
 	actor := middlewares.UserID(c)

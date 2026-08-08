@@ -17,24 +17,18 @@ import (
 	"time"
 )
 
-// Asking an operator to paste a PEM is asking them to go and find one, and the most
-// likely outcome is they give up and pick "skip verification" instead — which is the
-// option we least want them to take.
-//
-// The control plane knows what certificate it serves. It can fetch it, hand it back,
-// and let the operator confirm it. That turns "trust a custom CA" from a research task
-// into one click, which is the difference between it being the common path and the
-// rare one.
+// Asking an operator to paste a PEM is asking them to go and find one, and the likely outcome is they give up
+// and pick "skip verification" instead — the option we least want. The control plane knows what certificate it
+// serves, so it can fetch it and let the operator confirm: one click rather than a research task.
 
 // ControlPlaneCert is the certificate the control plane currently serves, offered so
 // the agents can be pinned to it.
 type ControlPlaneCert struct {
 	// PEM is what goes into MIABI_CA_CERT.
 	PEM string `json:"pem"`
-	// The fields below are for the operator to eyeball before trusting it. A cert
-	// fetched over an unverified connection could, in principle, be an attacker's —
-	// showing the subject and fingerprint is what makes the confirmation meaningful
-	// rather than ceremonial.
+	// The fields below are for the operator to eyeball before trusting it. A cert fetched over an unverified
+	// connection could, in principle, be an attacker's — showing the subject and fingerprint is what makes
+	// the confirmation meaningful rather than ceremonial.
 	Subject     string `json:"subject"`
 	Issuer      string `json:"issuer"`
 	NotAfter    string `json:"not_after"`
@@ -49,30 +43,16 @@ type ControlPlaneCert struct {
 
 	// Hosts are the names the certificate actually vouches for (its SANs).
 	Hosts []string `json:"hosts,omitempty"`
-	// MatchesHost is whether the certificate names the address the agents will dial.
-	//
-	// This is the trap in "just trust the CA": adding a certificate to the trust pool
-	// does NOT skip the hostname check. A certificate with no SANs — Goma's default
-	// self-signed cert has none — fails with "cannot validate certificate for <host>
-	// because it doesn't contain any IP SANs" no matter how well it is trusted. So a
-	// CA that does not name the control plane is useless to the agents, and telling
-	// the operator that up front is the difference between one confusing failure and
-	// two.
+	// MatchesHost is whether the certificate names the address the agents will dial. This is the trap in
+	// "just trust the CA": adding a certificate to the trust pool does NOT skip the hostname check, so a
+	// cert with no SANs fails however well it is trusted. A CA that doesn't name the control plane is useless.
 	MatchesHost bool `json:"matches_host"`
 	// DialHost is the address the agents dial, so the UI can name it in the failure.
 	DialHost string `json:"dial_host"`
 
-	// AnchorIsCA is whether what we can offer is a real certificate AUTHORITY (a
-	// self-signed CA), or merely the server's own leaf certificate.
-	//
-	// A server sends its leaf and usually its intermediates, but often not the root —
-	// and a server behind a private CA frequently sends the leaf alone. Pinning that
-	// leaf works, right up until the certificate is renewed: the new leaf is a
-	// different certificate, nothing trusts it, and every agent drops off at once.
-	//
-	// So when this is false, the honest advice is "paste your actual CA instead" —
-	// otherwise we hand the operator a trust anchor with an expiry date they did not
-	// agree to.
+	// AnchorIsCA is whether what we can offer is a real certificate AUTHORITY, or merely the server's own
+	// leaf. Pinning a leaf works right up until renewal, when the new leaf is a different certificate and
+	// every agent drops off at once. When this is false, the honest advice is to paste the actual CA.
 	AnchorIsCA bool `json:"anchor_is_ca"`
 }
 
@@ -80,12 +60,9 @@ type ControlPlaneCert struct {
 // certificate to trust (and the agents need none).
 var ErrNoTLS = errors.New("the control plane is not served over HTTPS; agents need no CA")
 
-// FetchControlPlaneCert dials the control plane and returns the certificate it serves.
-//
-// The dial deliberately skips verification: the whole point is to reach a control
-// plane whose certificate does NOT verify yet. That is safe here because we are not
-// trusting the connection — we are collecting a certificate for a human to confirm,
-// and showing them its fingerprint so they can.
+// FetchControlPlaneCert dials the control plane and returns the certificate it serves. The dial
+// deliberately skips verification: the whole point is to reach a control plane whose certificate does
+// NOT verify yet. Safe here because we collect a certificate for a human to confirm by fingerprint.
 func (s *Service) FetchControlPlaneCert(ctx context.Context) (ControlPlaneCert, error) {
 	raw := strings.TrimSpace(s.controlURL)
 	if raw == "" {
