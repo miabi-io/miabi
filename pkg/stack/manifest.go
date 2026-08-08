@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package platformstack
+package stack
 
 import (
 	"crypto/rand"
@@ -14,14 +14,23 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// DefaultManifestPath is where the installed stack's desired state lives. It has to be a file on the
+// DefaultConfigPath is where the installed stack's desired state lives. It has to be a file on the
 // host, not the database: Postgres is itself a component, so the CLI cannot read the database to learn
 // how to start the database. Miabi *writes* it, so it can never disagree with what Miabi actually did.
-const DefaultManifestPath = "/etc/miabi/stack.yaml"
+const DefaultConfigPath = "/etc/miabi/miabi.yaml"
 
-// ManifestPathEnv overrides DefaultManifestPath (tests, rootless installs, a second
-// stack on one host).
-const ManifestPathEnv = "MIABI_STACK_FILE"
+// LegacyConfigPath is the pre-rename location. It is no longer read implicitly — but it is still
+// *detected*, so an install that predates the rename gets told to run `miabi stack migrate-config`
+// instead of "not installed". It is never deleted on the operator's behalf: it holds the database
+// password, and backup scripts may point at it.
+const LegacyConfigPath = "/etc/miabi/stack.yaml"
+
+// ConfigPathEnv overrides the resolved path (tests, rootless installs, a second stack on one host).
+// ManifestPathEnv is the older spelling and is still honoured.
+const (
+	ConfigPathEnv   = "MIABI_CONFIG_FILE"
+	ManifestPathEnv = "MIABI_STACK_FILE"
+)
 
 // manifestMode is 0600: the file holds the database password, JWT secret and encryption key in plain text,
 // exactly as .env does today, so anyone who can read it owns the install. This is not weaker than Compose's —
@@ -64,7 +73,7 @@ type Manifest struct {
 
 	// gatewayHostConfig is the gateway config's path AS THE DOCKER DAEMON SEES IT, resolved by
 	// EnsureGatewayConfig. Not serialized: it describes this run's environment — are we in a container, which
-	// host dir is bound — not the desired state, so writing it into stack.yaml would make the manifest wrong.
+	// host dir is bound — not the desired state, so writing it into miabi.yaml would make the manifest wrong.
 	gatewayHostConfig string `yaml:"-"`
 	// gatewayHostGeoIP is the GeoIP database's host path as the daemon sees it, resolved by EnsureGatewayConfig
 	// when a database is present. Empty when GeoIP is off or unavailable — the gateway mounts no database and
@@ -82,7 +91,7 @@ type NetworkConfig struct {
 // the host file a stale duplicate every converge silently overwrites.
 type Gateway struct {
 	// Config is the gateway config file, relative to the manifest's own directory
-	// (so it sits next to stack.yaml and is backed up with it). Absolute paths are
+	// (so it sits next to miabi.yaml and is backed up with it). Absolute paths are
 	// taken as-is. Empty means goma.yml.
 	Config string `yaml:"config,omitempty"`
 
@@ -108,7 +117,7 @@ type Registry struct {
 }
 
 // Images pins every image the stack runs. Each is a full ref (repo:tag), not a bare
-// tag: the point of pinning is that `miabi install` on two hosts a month apart
+// tag: the point of pinning is that `miabi setup` on two hosts a month apart
 // produces the same stack.
 type Images struct {
 	Miabi    string `yaml:"miabi"`
@@ -130,12 +139,17 @@ type Secrets struct {
 	AdminPassword string `yaml:"admin_password"`
 }
 
-// ManifestPath resolves the manifest location.
+// ManifestPath resolves the manifest location: MIABI_CONFIG_FILE, else the older MIABI_STACK_FILE,
+// else /etc/miabi/miabi.yaml. The legacy /etc/miabi/stack.yaml is no longer read implicitly — Load
+// detects it and says how to migrate, which beats silently operating on a path the operator was
+// told is gone.
 func ManifestPath() string {
-	if p := strings.TrimSpace(os.Getenv(ManifestPathEnv)); p != "" {
-		return p
+	for _, env := range []string{ConfigPathEnv, ManifestPathEnv} {
+		if p := strings.TrimSpace(os.Getenv(env)); p != "" {
+			return p
+		}
 	}
-	return DefaultManifestPath
+	return DefaultConfigPath
 }
 
 // Load reads the manifest. A missing file returns ErrNotInstalled, which callers
@@ -144,6 +158,16 @@ func ManifestPath() string {
 func Load(path string) (*Manifest, error) {
 	b, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
+		// A pre-rename install is not "not installed" — it is one command away from working, and
+		// saying so is the difference between a 10-second fix and a support thread.
+		if path == DefaultConfigPath {
+			if _, lerr := os.Stat(LegacyConfigPath); lerr == nil {
+				return nil, fmt.Errorf("%w: found it at %s, but Miabi now reads %s\n\n"+
+					"  Rename it:  sudo miabi stack migrate-config\n"+
+					"  Or point at it directly:  --file %s",
+					ErrLegacyConfig, LegacyConfigPath, DefaultConfigPath, LegacyConfigPath)
+			}
+		}
 		return nil, fmt.Errorf("%w (looked in %s)", ErrNotInstalled, path)
 	}
 	if err != nil {
@@ -194,17 +218,17 @@ func Save(path string, m *Manifest) error {
 
 const manifestHeader = `# Miabi — installed stack manifest.
 #
-# WRITTEN BY MIABI. Hand-edits are respected — re-run 'miabi install' and the stack
+# WRITTEN BY MIABI. Hand-edits are respected — re-run 'miabi setup' and the stack
 # converges to whatever this says — but comments you add here are NOT preserved: the
-# file is rewritten from scratch on the next install/update.
+# file is rewritten from scratch on the next setup/upgrade.
 #
 # This file holds the database password, JWT secret and encryption key in plain
 # text, at mode 0600. It is the only copy. Back it up somewhere safe: without it you
 # cannot decrypt the secrets Miabi has stored, and the database is unrecoverable.
 #
-#   miabi status          show the running stack against this file
-#   miabi install         converge the stack to this file (safe to re-run)
-#   miabi update          roll the stack forward to a newer image
+#   miabi stack status    show the running stack against this file
+#   miabi setup           converge the stack to this file (safe to re-run)
+#   miabi upgrade         roll the stack forward to a newer image
 #
 # Extra settings go under 'env:' — anything Miabi reads that this file does not
 # already model (SMTP, OAuth, HTTP_PROXY, …). Two are seeded for you:

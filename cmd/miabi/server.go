@@ -22,7 +22,6 @@ import (
 	"github.com/miabi-io/miabi/internal/proxy"
 	"github.com/miabi-io/miabi/internal/routes"
 	"github.com/miabi-io/miabi/internal/runners"
-	"github.com/miabi-io/miabi/internal/selfcontainer"
 	"github.com/miabi-io/miabi/internal/services/alerting"
 	"github.com/miabi-io/miabi/internal/services/analytics"
 	"github.com/miabi-io/miabi/internal/services/application"
@@ -57,6 +56,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/migration/upgrade"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 	"github.com/miabi-io/miabi/internal/worker"
+	"github.com/miabi-io/miabi/pkg/stack/selfcontainer"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )

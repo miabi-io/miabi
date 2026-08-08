@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/miabi-io/miabi/internal/docker"
+	"github.com/miabi-io/miabi/pkg/stack/docker"
 )
 
 // fakeEngine is the smallest Docker that can express the failures that matter: an

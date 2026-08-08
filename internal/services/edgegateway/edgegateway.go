@@ -17,9 +17,9 @@ import (
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/models"
-	"github.com/miabi-io/miabi/internal/selfcontainer"
 	"github.com/miabi-io/miabi/internal/services/platformimage"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
+	"github.com/miabi-io/miabi/pkg/stack/selfcontainer"
 	"gopkg.in/yaml.v3"
 )
 

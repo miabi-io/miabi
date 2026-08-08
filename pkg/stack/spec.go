@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package platformstack
+package stack
 
 import (
 	"crypto/sha256"
@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/miabi-io/miabi/internal/docker"
+	"github.com/miabi-io/miabi/pkg/stack/docker"
 )
 
 // gomaConfig is the central gateway's configuration. Goma expands ${...} from its

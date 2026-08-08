@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package platformstack
+package stack
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/miabi-io/miabi/internal/docker"
+	"github.com/miabi-io/miabi/pkg/stack/docker"
 )
 
 // Component is a running piece of the platform stack, as found on the engine.
@@ -33,7 +33,7 @@ var stackRoles = map[string]bool{
 	docker.RoleGateway:       true,
 }
 
-// stackNames is the fallback for a stack that predates platform labels — without it `miabi status` would report
+// stackNames is the fallback for a stack that predates platform labels — without it `miabi stack status` would report
 // nothing on exactly the installs most likely to need looking at. It only helps a CLI-shaped install, since
 // Compose generates <project>-<service>-<n>; a labeled Compose stack is found by role instead.
 var stackNames = map[string]int{
@@ -44,7 +44,7 @@ var stackNames = map[string]int{
 }
 
 // Discover lists the platform stack as it actually is — by role, so it answers for a
-// Compose install just as well as a CLI one. That is the point: `miabi status` should
+// Compose install just as well as a CLI one. That is the point: `miabi stack status` should
 // describe whatever is running, not only what the CLI put there.
 func (s *Service) Discover(ctx context.Context) ([]Component, error) {
 	all, err := s.dc.ListContainers(ctx, true)
@@ -70,7 +70,7 @@ func (s *Service) Discover(ctx context.Context) ([]Component, error) {
 		}
 
 		// Health comes from an inspect, not from the list: Docker's list API has no health field — it folds health
-		// into the status string — so reading it from the list yields "" for every container and `miabi status` would
+		// into the status string — so reading it from the list yields "" for every container and `miabi stack status` would
 		// show a dash next to a healthy database. The stack is at most four containers, so inspecting each is free.
 		health := c.Health
 		if full, ierr := s.dc.InspectContainer(ctx, c.ID); ierr == nil {
@@ -125,7 +125,7 @@ func (s *Service) Teardown(ctx context.Context, withVolumes bool) error {
 	}
 
 	if !withVolumes {
-		s.log("volumes kept (re-run `miabi install` to restore the stack)")
+		s.log("volumes kept (re-run `miabi setup` to restore the stack)")
 		return nil
 	}
 	for _, v := range []string{

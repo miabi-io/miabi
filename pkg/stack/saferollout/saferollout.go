@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/jkaninda/logger"
-	"github.com/miabi-io/miabi/internal/docker"
+	"github.com/miabi-io/miabi/pkg/stack/docker"
 )
 
 // Phases reported through OnPhase, in order. "failed" is terminal and carries the

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package platformstack
+package stack
 
 import (
 	"context"
@@ -12,11 +12,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/miabi-io/miabi/internal/docker"
-	"github.com/miabi-io/miabi/internal/selfcontainer"
+	"github.com/miabi-io/miabi/pkg/stack/docker"
+	"github.com/miabi-io/miabi/pkg/stack/selfcontainer"
 )
 
-// DefaultGatewayConfigFile is the gateway config's name beside stack.yaml.
+// DefaultGatewayConfigFile is the gateway config's name beside miabi.yaml.
 const DefaultGatewayConfigFile = "goma.yml"
 
 // configPath is where the gateway config lives AS THIS PROCESS SEES IT — inside the

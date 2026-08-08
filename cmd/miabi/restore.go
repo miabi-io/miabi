@@ -74,8 +74,12 @@ func runRestore(cmd *okapicli.Command) error {
 		ManifestPath: manifestPath(cmd),
 		DryRun:       cmd.GetBool("dry-run"),
 	}
+	// Resolve the image BEFORE preflight: an unresolvable one must stop the run here, not after
+	// the database and volumes are already back.
 	if opts.Image == "" {
-		opts.Image = defaultImage(context.Background(), dc)
+		if opts.Image, err = defaultImage(context.Background(), dc); err != nil {
+			return err
+		}
 	}
 
 	ctx, cancel := stackCtx()

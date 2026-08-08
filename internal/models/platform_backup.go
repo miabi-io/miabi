@@ -106,7 +106,7 @@ type PlatformBackupSettings struct {
 	BackupPassphraseEnc string `json:"-" gorm:"column:backup_passphrase_enc"`
 	// IncludeIdentity seals the platform's identity (encryption key, JWT secret, install ID,
 	// hostnames) into each recovery point so it can be restored onto a fresh host. Off only for
-	// operators who custody /etc/miabi/stack.yaml themselves.
+	// operators who custody /etc/miabi/miabi.yaml themselves.
 	IncludeIdentity bool `json:"include_identity"`
 
 	// IncludeTenantData adds every workspace's managed databases and volumes, so a restore brings

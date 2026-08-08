@@ -42,9 +42,6 @@ func (s *Service) GetSettings() (*models.PlatformBackupSettings, error) {
 func (s *Service) getSettings() (*models.PlatformBackupSettings, error) {
 	st, err := s.settings.Get()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		// A never-configured platform starts with S3 selected. It is the only destination there is, so presenting it
-		// as an unchecked option would offer a choice that does not exist, and would hide the very fields the
-		// operator came to fill in. An admin who saves it off has made a real decision, and that row is no longer new.
 		st = &models.PlatformBackupSettings{S3Enabled: true}
 	} else if err != nil {
 		return nil, err

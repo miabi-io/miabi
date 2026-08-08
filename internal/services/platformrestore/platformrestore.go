@@ -23,9 +23,9 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/backup"
 	"github.com/miabi-io/miabi/internal/services/crypto"
-	"github.com/miabi-io/miabi/internal/services/platformstack"
 	dbstorage "github.com/miabi-io/miabi/internal/storage"
 	"github.com/miabi-io/miabi/internal/storage/blob"
+	"github.com/miabi-io/miabi/pkg/stack"
 )
 
 const (
@@ -99,7 +99,7 @@ type Plan struct {
 // Service performs the restore.
 type Service struct {
 	dc    docker.Client
-	stack *platformstack.Service
+	stack *stack.Service
 	log   func(string, ...any)
 	// pgImage/volImage let a test or an air-gapped install pin the helper images.
 	pgImage  string
@@ -107,7 +107,7 @@ type Service struct {
 }
 
 // New builds a restore service over a host Docker client and the stack manager.
-func New(dc docker.Client, stack *platformstack.Service, log func(string, ...any)) *Service {
+func New(dc docker.Client, stack *stack.Service, log func(string, ...any)) *Service {
 	if log == nil {
 		log = func(string, ...any) {}
 	}
@@ -200,7 +200,7 @@ func (s *Service) Preflight(ctx context.Context, opts Options) (*Plan, error) {
 	// 6. The host must be clean. A fresh install onto an existing Postgres volume
 	// can never work — the data directory keeps the password it was created with —
 	// and the stack service already knows how to say so.
-	if _, err := platformstack.Load(manifestPathOf(opts)); err == nil {
+	if _, err := stack.Load(manifestPathOf(opts)); err == nil {
 		return nil, fmt.Errorf("%w (%s): restore onto a clean host, or remove the existing install first", ErrHostNotClean, manifestPathOf(opts))
 	}
 	if err := s.stack.CheckOrphanedData(ctx); err != nil {
@@ -211,7 +211,7 @@ func (s *Service) Preflight(ctx context.Context, opts Options) (*Plan, error) {
 		return nil, err
 	}
 	if len(conflicts) > 0 {
-		return nil, platformstack.PortConflictError(conflicts)
+		return nil, stack.PortConflictError(conflicts)
 	}
 
 	// 4. Clone safety. Reusing an install id across two live platforms breaks
@@ -388,7 +388,7 @@ func (s *Service) Restore(ctx context.Context, plan *Plan, opts Options) error {
 	// Persist before creating anything: the manifest now holds the recovered encryption key and freshly
 	// generated database passwords, and they exist nowhere else. A converge that dies halfway must leave the
 	// operator able to re-run rather than stranded with an unreadable Postgres.
-	if err := platformstack.Save(path, m); err != nil {
+	if err := stack.Save(path, m); err != nil {
 		return err
 	}
 	s.log("wrote %s", path)
@@ -421,7 +421,7 @@ func (s *Service) Restore(ctx context.Context, plan *Plan, opts Options) error {
 	if err := s.stack.Converge(ctx, m); err != nil {
 		return fmt.Errorf("converge stack: %w", err)
 	}
-	if err := platformstack.Save(path, m); err != nil {
+	if err := stack.Save(path, m); err != nil {
 		return err
 	}
 	return nil
@@ -430,7 +430,7 @@ func (s *Service) Restore(ctx context.Context, plan *Plan, opts Options) error {
 // markRestorePending writes the quiesce marker and the recovery provenance into the restored database,
 // using a one-shot psql against the same Postgres the dump just landed in. It runs before the control
 // plane boots, so the platform comes up already knowing it is a recovery and not a normal start.
-func (s *Service) markRestorePending(ctx context.Context, m *platformstack.Manifest, plan *Plan) error {
+func (s *Service) markRestorePending(ctx context.Context, m *stack.Manifest, plan *Plan) error {
 	note := fmt.Sprintf("restored from %s on %s", plan.Ref, time.Now().UTC().Format(time.RFC3339))
 	sql := fmt.Sprintf(
 		`INSERT INTO settings (key, value, type, created_at, updated_at) `+
@@ -457,7 +457,7 @@ func (s *Service) markRestorePending(ctx context.Context, m *platformstack.Manif
 		},
 		Entrypoint: []string{"psql"},
 		Cmd: []string{
-			"-h", platformstack.ContainerPostgres, "-U", platformDBUser, "-d", platformDBName,
+			"-h", stack.ContainerPostgres, "-U", platformDBUser, "-d", platformDBName,
 			"-v", "ON_ERROR_STOP=1", "-c", sql,
 		},
 		Networks: []string{m.Network.Name},
@@ -477,9 +477,9 @@ func sqlEscape(s string) string { return strings.ReplaceAll(s, "'", "''") }
 // buildManifest turns a recovered identity into a stack manifest for THIS host. The encryption key and JWT
 // secret are carried over — that is the point. The database and Redis passwords are NOT: they belong to the
 // data directories this restore just created, and reusing the originals would recreate the password trap.
-func (s *Service) buildManifest(plan *Plan, opts Options) (*platformstack.Manifest, error) {
+func (s *Service) buildManifest(plan *Plan, opts Options) (*stack.Manifest, error) {
 	image := strings.TrimSpace(opts.Image)
-	m := platformstack.Defaults(image)
+	m := stack.Defaults(image)
 	id := plan.identity
 
 	m.Domain = plan.Domain
@@ -514,9 +514,9 @@ func (s *Service) buildManifest(plan *Plan, opts Options) (*platformstack.Manife
 }
 
 // restoreDatabase loads the dump into the freshly created, empty database.
-func (s *Service) restoreDatabase(ctx context.Context, m *platformstack.Manifest, plan *Plan, opts Options) error {
+func (s *Service) restoreDatabase(ctx context.Context, m *stack.Manifest, plan *Plan, opts Options) error {
 	env := []string{
-		"DB_HOST=" + platformstack.ContainerPostgres,
+		"DB_HOST=" + stack.ContainerPostgres,
 		"DB_PORT=5432",
 		"DB_NAME=" + platformDBName,
 		"DB_USERNAME=" + platformDBUser,
@@ -596,7 +596,7 @@ func manifestPathOf(opts Options) string {
 	if p := strings.TrimSpace(opts.ManifestPath); p != "" {
 		return p
 	}
-	return platformstack.ManifestPath()
+	return stack.ManifestPath()
 }
 
 func sanitize(s string) string {
