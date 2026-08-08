@@ -292,32 +292,44 @@ curl -fsSL https://get.miabi.io | sudo MIABI_DOMAIN=miabi.example.com \
   MIABI_ADMIN_EMAIL=you@example.com bash
 ```
 
-Installs Docker if missing, brings up the stack, and prints the admin password.
-Then:
+Installs Docker if missing, installs the `miabi` CLI, brings up the stack, and prints
+the admin password. Then:
 
 ```bash
-miabi-stack status
-miabi-stack restart
-miabi-stack update
-miabi-stack uninstall
+sudo miabi stack status
+sudo miabi stack restart
+sudo miabi upgrade
+sudo miabi stack uninstall
 ```
 
 ### Without the script
 
-The Miabi image *is* the installer — there is no binary to install:
+Two ways, both supported.
+
+Install the [CLI](https://github.com/miabi-io/miabi-cli/releases) and run:
+
+```bash
+sudo miabi setup --domain miabi.example.com --admin-email you@example.com
+```
+
+Or use no binary at all — the Miabi image is an installer too, which is the path to
+take when you **don't have root**:
 
 ```bash
 docker run --rm -it \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /etc/miabi:/etc/miabi \
-  miabi/miabi:1.4.0 install --domain miabi.example.com --admin-email you@example.com
+  miabi/miabi:1.8.0 install --domain miabi.example.com --admin-email you@example.com
 ```
 
-`install`, `update`, `restart`, `status` and `uninstall` are the same command with a
-different verb.
+`install`, `upgrade`, `restart`, `status` and `uninstall` on the image are the same
+commands as `miabi setup` / `miabi upgrade` / `miabi stack …` — [one
+implementation](./pkg/stack/stackcmd/), two front-ends, so neither can drift from the
+other. Either way the converge is idempotent: re-run it and only what changed is
+recreated.
 
-**[Installation docs](https://miabi.io/docs/getting-started/installation)** — options,
-the `/etc/miabi/stack.yaml` manifest, the built-in registry, custom gateway config, and
+**[Installation docs](https://docs.miabi.io/docs/getting-started/installation)** — options,
+the `/etc/miabi/miabi.yaml` manifest, the built-in registry, custom gateway config, and
 running Miabi under Docker Compose instead.
 
 ### Docker Compose
