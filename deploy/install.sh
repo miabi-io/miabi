@@ -3,29 +3,25 @@
 # Miabi one-line installer.
 #   curl -fsSL https://get.miabi.io | sudo bash
 #
-# Installs Docker if missing, then hands off to Miabi, which builds its own stack —
-# network, volumes, PostgreSQL, Redis, the Goma gateway and the control plane —
-# straight against the Docker API.
+# Installs Docker if missing, installs the `miabi` CLI, then hands off to it. The CLI builds the
+# stack — network, volumes, PostgreSQL, Redis, the Goma gateway and the control plane — straight
+# against the Docker API. So all this script really does is:
 #
-# There is NO BINARY TO INSTALL. The installer IS the Miabi image, whose entrypoint is
-# the miabi binary, so all this script really does is:
-#
-#   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-#     -v /etc/miabi:/etc/miabi miabi/miabi:<tag> install --domain ...
+#   miabi setup --domain ... --image miabi/miabi:<tag>
 #
 # Why not Docker Compose (which this script used to set up)? Compose owns what Compose
 # created: a container Miabi recreated out-of-band would be silently reverted by the
 # next `docker compose up -d`. So a Compose-managed Miabi could never truthfully update
 # itself. Miabi owns these containers (io.miabi.managed-by=miabi), which is what makes
-# `miabi update` — including replacing its own container, with rollback — possible.
+# `miabi upgrade` — including replacing the control plane's own container, with rollback — possible.
 #
 # Compose is still supported for anyone who wants to drive it themselves:
 # examples/compose/compose.yaml is unchanged. This script simply no longer does it for you, and
 # it refuses to install alongside an existing Compose stack (they do not share volumes).
 #
-# It leaves behind a `miabi-stack` wrapper:
+# It leaves behind /usr/local/bin/miabi — one tool for the panel API and for this host:
 #
-#   miabi-stack status | restart | update | uninstall
+#   miabi setup | upgrade | stack {status,restart,uninstall}
 #
 # Environment overrides:
 #   MIABI_DOMAIN                panel domain; required over a pipe (asked only when
@@ -43,6 +39,8 @@
 #                               which already reflects host CPU/memory.
 #   MIABI_ETC                   manifest directory             (default /etc/miabi)
 #   MIABI_VERSION               Miabi release to install       (default: pinned below)
+#   MIABI_CLI_VERSION           miabi CLI release to install   (default: pinned below)
+#   MIABI_CLI_BASE_URL          mirror to fetch the CLI from    (default: the GitHub release)
 #   GOMA_VERSION                Goma Gateway release           (default: pinned below)
 #   RUNNER_VERSION              miabi/runner release           (default: pinned below)
 #   MIABI_SKIP_DOCKER_INSTALL   1 = never touch the host's packages; Docker must exist
@@ -82,11 +80,16 @@ SKIP_DOCKER_INSTALL="${MIABI_SKIP_DOCKER_INSTALL:-0}"
 # ── versions ─────────────────────────────────────────────────────────────────
 #
 # The single place every image is pinned. CI bumps these on release (see
-# .github/workflows/release.yml) and they are passed straight to `miabi install`, so
+# .github/workflows/release.yml) and they are passed straight to `miabi setup`, so
 # the manifest it writes records exactly what this release was tested against.
-MIABI_VERSION="${MIABI_VERSION:-v1.7.3}"
+MIABI_VERSION="${MIABI_VERSION:-v1.8.0}"
 GOMA_VERSION="${GOMA_VERSION:-v0.13.1}"
 RUNNER_VERSION="${RUNNER_VERSION:-v0.0.7}"
+
+# The miabi CLI is what installs and then manages the stack, and it releases from its own repo
+# (miabi-io/miabi-cli) on its own cadence — a standalone CLI can be older or newer than the stack it
+# manages, so it carries its own pin rather than following MIABI_VERSION.
+MIABI_CLI_VERSION="${MIABI_CLI_VERSION:-v0.8.0}"
 
 # Docker tags carry no leading "v" (git tag v1.2.3 → image tag 1.2.3) across all
 # three images. The :latest fallback only applies if a caller deliberately blanks
@@ -357,7 +360,7 @@ done
 # ── prompt (interactive only) ────────────────────────────────────────────────
 #
 # interactive() is the single definition of "there is a human here to answer",
-# used by every prompt AND by the `docker run -t` decision below. It tests
+# used by every prompt AND by the --yes decision below. It tests
 # STDIN, not /dev/tty.
 #
 # That distinction is the whole point. Under the documented install line —
@@ -404,7 +407,7 @@ prompt_yn() { # <env-var> <question>
 
 # ── an existing Compose install ──────────────────────────────────────────────
 #
-# This installer builds the Miabi-managed stack (`miabi install`, straight against
+# This installer builds the Miabi-managed stack (`miabi setup`, straight against
 # the Docker API). It no longer sets up Docker Compose.
 #
 # That matters for a host that ALREADY runs Miabi under Compose, because the two do
@@ -449,11 +452,56 @@ EOM
   die "refusing to install alongside a Compose stack (set MIABI_FORCE_STACK=1 to proceed anyway)."
 fi
 
+# install_cli downloads the `miabi` CLI for this host from the GitHub release, verifies it against
+# the release's checksums.txt, and installs it to /usr/local/bin. The CLI is what installs and then
+# manages the stack, so this replaces the old `docker run miabi/miabi install` entirely.
+install_cli() {
+  local arch archive url base tmp
+  case "$(uname -m)" in
+    x86_64|amd64)   arch="amd64" ;;
+    aarch64|arm64)  arch="arm64" ;;
+    *) die "no miabi CLI build for CPU architecture '$(uname -m)'." ;;
+  esac
+
+  # MIABI_CLI_BASE_URL points the download at a mirror — an internal artifact store for an
+  # air-gapped install, or a staging build. It must serve the same archive and checksums.txt names.
+  base="${MIABI_CLI_BASE_URL:-https://github.com/miabi-io/miabi-cli/releases/download/${MIABI_CLI_VERSION}}"
+  archive="miabi_${MIABI_CLI_VERSION#v}_linux_${arch}.tar.gz"
+  url="${base}/${archive}"
+
+  tmp="$(mktemp -d)"
+  # The temp dir holds only the archive and the extracted binary; clean it up on every exit path,
+  # including the ERR trap, so a failed download leaves nothing behind.
+  trap 'rm -rf "$tmp"' RETURN
+
+  log "Downloading the miabi CLI ${MIABI_CLI_VERSION} (linux/${arch})"
+  curl -fsSL -o "${tmp}/${archive}" "$url" \
+    || die "could not download ${url} — check MIABI_CLI_VERSION, or install the CLI manually from https://github.com/miabi-io/miabi-cli/releases"
+
+  # Verify against the release's own checksums.txt. A tampered or truncated download must not be
+  # installed as a root-run binary that then talks to the Docker socket.
+  if curl -fsSL -o "${tmp}/checksums.txt" "${base}/checksums.txt"; then
+    if command -v sha256sum >/dev/null 2>&1; then
+      ( cd "$tmp" && grep " ${archive}\$" checksums.txt | sha256sum -c - >/dev/null 2>&1 ) \
+        || die "checksum mismatch for ${archive} — refusing to install."
+      ok "Checksum verified"
+    else
+      warn "sha256sum not found; skipping checksum verification."
+    fi
+  else
+    warn "could not fetch checksums.txt; skipping checksum verification."
+  fi
+
+  tar -xzf "${tmp}/${archive}" -C "$tmp" miabi || die "could not extract miabi from ${archive}."
+  install -m 0755 "${tmp}/miabi" /usr/local/bin/miabi
+  ok "Installed $(/usr/local/bin/miabi --version 2>/dev/null || echo miabi) to /usr/local/bin/miabi"
+}
+
 install_stack() {
   local domain acme admin image
   domain="$(prompt MIABI_DOMAIN 'Panel domain (e.g. miabi.example.com)' '')"
   [ -n "$domain" ] || die "MIABI_DOMAIN is required: pass it as MIABI_DOMAIN=miabi.example.com (answering a prompt over a pipe is unreliable)."
-  # Neither email is defaulted here. `miabi install` owns the whole rule: the two
+  # Neither email is defaulted here. `miabi setup` owns the whole rule: the two
   # addresses fall back to each other, and admin@<domain> is the last resort. Defaulting
   # either one in shell would defeat that fallback — an operator who set only
   # MIABI_ADMIN_EMAIL would silently get admin@<domain> as their Let's Encrypt contact,
@@ -496,69 +544,43 @@ install_stack() {
     1|true|yes) extra+=(--no-host-proc) ;;
   esac
 
+  install_cli
+
   log "Installing the Miabi stack with ${image}"
 
-  # -t only with a real tty: the confirm prompt needs one, but `curl | bash` has
-  # none and `docker run -t` without one fails outright. Non-interactive implies
-  # --yes, since there is nobody there to answer. Same interactive() the prompts
-  # use, so the two can never disagree about whether a human is present.
-  local ttyflag="" assume=""
-  if interactive; then ttyflag="-it"; else assume="--yes"; fi
+  # Non-interactive implies --yes, since there is nobody there to answer. Same interactive() the
+  # prompts use, so the two can never disagree about whether a human is present.
+  local assume=""
+  interactive || assume="--yes"
 
   # The manifest (mode 0600) is the desired state AND the only copy of the database
   # password. It lives on the host, not in a volume, so it survives
   # `uninstall --volumes` and can be backed up like any other config file.
   mkdir -p "$STACK_ETC"
-  # The manifest directory is bind-mounted, so the container writes it straight onto
-  # the host. It must be ${STACK_ETC}, not a hardcoded /etc/miabi: with MIABI_ETC set,
-  # the hardcoded form silently wrote the manifest somewhere the operator never looks
-  # — and the install still "succeeded", because nothing reads it back.
-  # shellcheck disable=SC2086
-  docker run --rm $ttyflag \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    -v "${STACK_ETC}:/etc/miabi" \
-    "$image" install \
-      --domain "$domain" \
-      --gateway-image "jkaninda/goma-gateway:${GOMA_IMAGE_TAG}" \
-      --runner-image "miabi/runner:${RUNNER_IMAGE_TAG}" \
-      ${extra[@]+"${extra[@]}"} \
-      $assume || die "miabi install failed"
-      # ${extra[@]+"..."}, not a bare "${extra[@]}": under `set -u`, expanding an EMPTY
-      # array is an "unbound variable" error on bash < 4.4 (still shipped on EL7-era
-      # hosts). This form expands to nothing when the array is empty and quotes each
-      # element when it is not.
 
-  # A 3-line wrapper so nobody has to remember the docker run incantation. Named
-  # miabi-stack, NOT miabi: `miabi` is already the Miabi CLI (an authenticated API
-  # client, installed via Homebrew), and shadowing it with a different tool that
-  # happens to share three verbs (status, import, upgrade) is a trap.
-  cat > /usr/local/bin/miabi-stack <<'WRAPPER'
-#!/usr/bin/env bash
-# Manage the Miabi stack on this host: miabi-stack {install|update|status|uninstall}
-#
-# Runs the Miabi image against the local Docker socket. The TAG is the version it
-# installs, so `MIABI_TAG=1.5.0 miabi-stack update` moves the stack to 1.5.0.
-set -euo pipefail
-TAG="${MIABI_TAG:-__MIABI_IMAGE_TAG__}"
-TTY=""; [ -t 0 ] && TTY="-it"
-exec docker run --rm $TTY \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v __STACK_ETC__:/etc/miabi \
-  "miabi/miabi:${TAG}" "$@"
-WRAPPER
-  # The wrapper must mount the SAME directory the install wrote the manifest to.
-  # Hardcoding /etc/miabi here worked only for the default and left every other
-  # install with a `miabi-stack update` that looks for a manifest which is not there.
-  sed -i "s|__MIABI_IMAGE_TAG__|${MIABI_IMAGE_TAG}|; s|__STACK_ETC__|${STACK_ETC}|" /usr/local/bin/miabi-stack
-  chmod 0755 /usr/local/bin/miabi-stack
+  # --image is passed explicitly rather than left to the CLI's own build stamp: this script pins
+  # every image in one place, and the CLI version and the stack version are now independent.
+  # MIABI_CONFIG_FILE honours MIABI_ETC, which the old bind mount used to do implicitly.
+  # shellcheck disable=SC2086
+  MIABI_CONFIG_FILE="${STACK_ETC}/miabi.yaml" /usr/local/bin/miabi setup \
+    --domain "$domain" \
+    --image "$image" \
+    --gateway-image "jkaninda/goma-gateway:${GOMA_IMAGE_TAG}" \
+    --runner-image "miabi/runner:${RUNNER_IMAGE_TAG}" \
+    ${extra[@]+"${extra[@]}"} \
+    $assume || die "miabi setup failed"
+    # ${extra[@]+"..."}, not a bare "${extra[@]}": under `set -u`, expanding an EMPTY
+    # array is an "unbound variable" error on bash < 4.4 (still shipped on EL7-era
+    # hosts). This form expands to nothing when the array is empty and quotes each
+    # element when it is not.
 
   printf '\n'
   ok "Installed. Manage it with:"
-  echo "    miabi-stack status"
-  echo "    MIABI_TAG=<newer> miabi-stack update    # updates Miabi itself, and rolls back if it fails"
-  echo "    miabi-stack uninstall                   # keeps your data; add --volumes to destroy it"
+  echo "    miabi stack status"
+  echo "    miabi upgrade                           # moves Miabi forward, and rolls back if it fails"
+  echo "    miabi stack uninstall                   # keeps your data; add --volumes to destroy it"
   printf '\n'
-  echo "    Manifest (KEEP A BACKUP — it holds the database password):  ${STACK_ETC}/stack.yaml"
+  echo "    Manifest (KEEP A BACKUP — it holds the database password):  ${STACK_ETC}/miabi.yaml"
   exit 0
 }
 
