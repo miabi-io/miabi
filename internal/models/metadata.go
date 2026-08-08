@@ -47,7 +47,26 @@ const (
 	ManagedByMarketplace = "marketplace"  // installed from a marketplace template
 	ManagedByStack       = "stack"        // created as part of a stack
 	ManagedByStackImport = "stack-import" // created by importing a compose file
+	ManagedByGitOps      = "gitops"       // created/reconciled by the declarative apply engine
 )
+
+// SourceOwnedElsewhere reports whether an application's source (its image or repository) is owned
+// by an external source of truth, and by which. Editing it interactively would be overwritten — by
+// the next GitOps sync — or would break the upgrade path a marketplace template depends on, so the
+// interactive API refuses and points at the right place instead.
+//
+// This is a HANDLER-level rule, not a service one: the GitOps engine and the marketplace installer
+// both write through the same service, and guarding there would block them from managing the very
+// resources they own.
+func SourceOwnedElsewhere(m Metadata) (owner string, owned bool) {
+	switch m[MetaManagedBy] {
+	case ManagedByMarketplace:
+		return ManagedByMarketplace, true
+	case ManagedByGitOps:
+		return ManagedByGitOps, true
+	}
+	return "", false
+}
 
 // OwnerKind values classify what a resource belongs to (the MetaOwnerKind value).
 const (

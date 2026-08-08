@@ -1,5 +1,5 @@
 import api from './client'
-import type { ApiResponse, Application, AppOverview, AppPort, Deployment, DeploymentLogHistory, Release, AppEnvVar, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, ProcessList, RuntimeKind, ServiceUpdateConfig, PipelineRun } from './types'
+import type { ApiResponse, Application, AppOverview, AppPort, Deployment, DeploymentLogHistory, Release, AppEnvVar, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, ProcessList, RuntimeKind, ServiceUpdateConfig, PipelineRun, PipelineDefinition } from './types'
 
 /**
  * What a deploy returns when the app's repository owns a pipeline: the run that
@@ -114,6 +114,51 @@ export interface ExternalAccess {
   ports: ExternalPort[] // currently exposed
 }
 
+/**
+ * SetSourceInput replaces where an app's image comes from. It is a whole-source replacement rather
+ * than a patch: switching image <-> git changes which fields mean anything, so the server clears
+ * the ones belonging to the source being left.
+ */
+export interface SetSourceInput {
+  source_type: 'image' | 'git'
+  // Image source (required when source_type is "image").
+  image?: string
+  tag?: string
+  registry_id?: number | null
+  // Git source (one of git_repo / git_repository_id required when source_type is "git").
+  git_repo?: string
+  git_ref?: string
+  git_repository_id?: number | null
+  build_method?: BuildMethod
+  builder?: string
+  buildpacks?: string[]
+  build_env?: Record<string, string>
+}
+
+/** What else moved when the source changed — none of it is visible in the app record afterwards. */
+export interface SourceChange {
+  from: 'image' | 'git'
+  to: 'image' | 'git'
+  /** false when only the details changed (a new tag, a different branch). */
+  switched: boolean
+  /** a repo-owned pipeline was dropped because the app left git */
+  pipeline_removed: boolean
+  /** the running container no longer matches the source */
+  redeploy_required: boolean
+}
+
+export interface SetSourceResult {
+  application: Application
+  change: SourceChange
+}
+
+/** changed is false when the repository's document already matched — a successful no-op. */
+export interface ResyncPipelineResult {
+  pipeline: PipelineDefinition | null
+  changed: boolean
+  adopted: boolean
+}
+
 export const appApi = {
   list(ws: number) {
     return api.get<ApiResponse<Application[]>>(`/workspaces/${ws}/apps`)
@@ -141,6 +186,22 @@ export const appApi = {
   },
   update(ws: number, id: number, input: UpdateAppInput) {
     return api.patch<ApiResponse<Application>>(`/workspaces/${ws}/apps/${id}`, input)
+  },
+  /**
+   * Replace the app's source, including switching between a prebuilt image and a Git build.
+   * Before this endpoint the only way to change it was to delete the app and recreate it, which
+   * threw away its domains, environment, volumes and history.
+   */
+  setSource(ws: number, id: number, input: SetSourceInput) {
+    return api.put<ApiResponse<SetSourceResult>>(`/workspaces/${ws}/apps/${id}/source`, input)
+  },
+  /**
+   * Reload the repository's pipelines.yaml: adopts one when the app has none (the file was added
+   * after the app was created, or it only just became a git app), and re-syncs the stored spec
+   * when it already has one.
+   */
+  resyncPipeline(ws: number, id: number) {
+    return api.post<ApiResponse<ResyncPipelineResult>>(`/workspaces/${ws}/apps/${id}/pipeline/resync`)
   },
   remove(ws: number, id: number) {
     return api.delete<ApiResponse<{ message: string }>>(`/workspaces/${ws}/apps/${id}`)

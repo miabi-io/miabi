@@ -341,6 +341,12 @@ func (h *ApplicationHandler) Update(c *okapi.Context, req *UpdateAppRequest) err
 	if req.Body.DisplayName != "" {
 		app.DisplayName = req.Body.DisplayName
 	}
+	// The source is owned elsewhere for marketplace/GitOps apps. Reject only an actual CHANGE, so a
+	// client that PATCHes the object back with its current image still works — many do, and failing
+	// those would break callers that are not touching the source at all.
+	if err := h.requireSourceUnchanged(c, app, req); err != nil {
+		return err
+	}
 	if req.Body.Image != "" {
 		app.Image = req.Body.Image
 	}
@@ -1084,6 +1090,26 @@ func (h *ApplicationHandler) load(c *okapi.Context) (*models.Application, error)
 func (h *ApplicationHandler) record(c *okapi.Context, wsID uint, action string, appID uint) {
 	actor := middlewares.UserID(c)
 	h.audit.Record(audit.Entry{ActorID: &actor, WorkspaceID: &wsID, Action: action, TargetType: "application", TargetID: strconv.Itoa(int(appID)), IP: c.RealIP()})
+}
+
+// requireSourceUnchanged enforces, on the general update path, the same rule SetSource enforces:
+// an application whose source is owned by a marketplace template or by GitOps cannot have it edited
+// interactively. It compares against the stored values so a no-op passes through untouched.
+func (h *ApplicationHandler) requireSourceUnchanged(c *okapi.Context, app *models.Application, req *UpdateAppRequest) error {
+	if _, owned := models.SourceOwnedElsewhere(app.Metadata); !owned {
+		return nil
+	}
+	changed := (req.Body.Image != "" && req.Body.Image != app.Image) ||
+		(req.Body.Tag != "" && req.Body.Tag != app.Tag)
+	if app.SourceType == models.AppSourceGit {
+		changed = changed ||
+			(req.Body.GitRepo != "" && strings.TrimSpace(req.Body.GitRepo) != app.GitRepo) ||
+			(req.Body.GitRef != "" && strings.TrimSpace(req.Body.GitRef) != app.GitRef)
+	}
+	if !changed {
+		return nil
+	}
+	return h.requireSourceEditable(c, app)
 }
 
 func (h *ApplicationHandler) mapErr(c *okapi.Context, err error) error {

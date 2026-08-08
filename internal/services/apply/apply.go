@@ -34,7 +34,7 @@ const MetaDigest = "miabi.io/digest"
 
 // ManagedByGitOps marks resources created/managed by the declarative apply
 // engine (GitOps or one-shot apply). Prune only ever deletes these.
-const ManagedByGitOps = "gitops"
+const ManagedByGitOps = models.ManagedByGitOps
 
 var (
 	// ErrInvalidManifest signals a parse/validation failure (HTTP 400).
