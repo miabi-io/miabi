@@ -100,7 +100,7 @@ func (p *Plan) Counts() (create, update, del, noop int) {
 // from plans entirely.
 func applyRank(k Kind) int {
 	switch k {
-	case KindSecret, KindVolume, KindDomain:
+	case KindSecret, KindVolume, KindDomain, KindConfig:
 		// Independent, foundational resources. Domains come before the routes that
 		// bind hostnames under them.
 		return 0
@@ -249,6 +249,9 @@ func diffFields(actual, desired Resource) []FieldDiff {
 	if desired.Kind == KindRegistry {
 		return diffRegistry(actual, desired)
 	}
+	if desired.Kind == KindConfig {
+		return diffConfig(actual, desired)
+	}
 	av := specFields(actual)
 	dv := specFields(desired)
 	keys := map[string]bool{}
@@ -292,6 +295,51 @@ func diffRegistry(actual, desired Resource) []FieldDiff {
 	return out
 }
 
+// diffConfig compares a config. A sensitive config is compared by fingerprint only,
+// so no file content ever reaches a plan; a plain one also diffs per key so a plan
+// names the file that changed.
+func diffConfig(actual, desired Resource) []FieldDiff {
+	a, d := actual.Config, desired.Config
+	if d == nil {
+		return nil
+	}
+	if a == nil {
+		a = &ConfigSpec{}
+	}
+	var out []FieldDiff
+	if a.DigestFP != d.DigestFP {
+		out = append(out, FieldDiff{Field: "data", From: a.DigestFP, To: d.DigestFP})
+	}
+	if a.Mode != d.Mode {
+		out = append(out, FieldDiff{Field: "mode", From: a.Mode, To: d.Mode})
+	}
+	if !d.Sensitive {
+		keys := map[string]bool{}
+		for k := range a.Data {
+			keys[k] = true
+		}
+		for k := range d.Data {
+			keys[k] = true
+		}
+		for k := range keys {
+			if a.Data[k] != d.Data[k] {
+				out = append(out, FieldDiff{Field: "data." + k, From: present(a.Data, k), To: present(d.Data, k)})
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Field < out[j].Field })
+	return out
+}
+
+// present reports a key's state without echoing its content, which keeps a plan
+// readable and safe to log for both sensitive and plain configs.
+func present(m map[string]string, k string) string {
+	if _, ok := m[k]; !ok {
+		return "(absent)"
+	}
+	return "(present)"
+}
+
 // reservedLabelPrefixes are the container-label namespaces the platform owns. A manifest may name
 // one, but the application service strips it on write, so it can never appear in live state.
 // Excluding it on both sides is what stops such a label reading as drift on every plan.
@@ -324,6 +372,12 @@ func specFields(r Resource) map[string]string {
 		// The credential the image is pulled with is part of the app's identity:
 		// re-pointing it at another registry must converge like any other change.
 		f["registry"] = a.Registry
+		// Mounted config content is not visible in any diffed field, so its
+		// fingerprint is what makes an edit converge as an application update.
+		// Only compared when both sides carry one, like RegistrySpec.PasswordFP.
+		if a.ConfigFP != "" {
+			f["configFP"] = a.ConfigFP
+		}
 		// Container labels drive label-reading tooling, so editing one has to redeploy the container.
 		// Compared per key, like env, so a plan names the label that changed instead of one opaque blob.
 		for k, v := range a.ContainerLabels {
