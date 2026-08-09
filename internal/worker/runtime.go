@@ -12,6 +12,7 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/hostmount"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/services/config"
 	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/services/netalloc"
 	"github.com/miabi-io/miabi/internal/services/network"
@@ -98,6 +99,16 @@ type runtimeBuilder struct {
 	// routed app also joins the shared ingress overlay, so the central gateway can
 	// reach it on any node without a published host port (nil = never cluster).
 	cluster ClusterCap
+	// configs projects config mounts into the files a container is started with;
+	// nil in processes that never deploy.
+	configs ConfigProjector
+}
+
+// ConfigProjector resolves a workspace config and expands a mount into files.
+// Implemented by services/config.
+type ConfigProjector interface {
+	Get(workspaceID, id uint) (*models.Config, error)
+	Project(cfg *models.Config, mount models.AppMount) ([]config.ProjectedFile, error)
 }
 
 // ClusterCap reports whether the manager engine is a reachable swarm manager.
@@ -109,6 +120,9 @@ type ClusterCap interface {
 // SetCluster wires swarm detection (nil-safe). Shared by the deploy and job
 // handlers (both embed *runtimeBuilder).
 func (b *runtimeBuilder) SetCluster(c ClusterCap) { b.cluster = c }
+
+// SetConfigs supplies the projector that turns config mounts into files.
+func (b *runtimeBuilder) SetConfigs(c ConfigProjector) { b.configs = c }
 
 func (b *runtimeBuilder) clusterOn() bool { return b.cluster != nil && b.cluster.CapCluster() }
 
@@ -179,6 +193,7 @@ type RuntimeContext struct {
 	Networks    []string
 	Mounts      map[string]string
 	Binds       []docker.BindMount
+	Files       []docker.FileEntry
 	MemoryBytes int64
 	NanoCPUs    int64
 }
@@ -236,7 +251,14 @@ func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Cli
 			binds = append(binds, docker.BindMount{Source: m.HostPath, Target: m.Path, ReadOnly: m.ReadOnly})
 			continue
 		}
+		if m.ConfigID != 0 {
+			continue // projected as files below, never as a directory bind
+		}
 		mounts[m.DockerName] = m.Path
+	}
+	files, ferr := b.projectConfigs(app)
+	if ferr != nil {
+		return RuntimeContext{}, ferr
 	}
 	env, err := b.buildEnv(app)
 	if err != nil {
@@ -247,9 +269,37 @@ func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Cli
 		Networks:    networks,
 		Mounts:      mounts,
 		Binds:       binds,
+		Files:       files,
 		MemoryBytes: app.MemoryBytes,
 		NanoCPUs:    app.NanoCPUs,
 	}, nil
+}
+
+// projectConfigs expands the app's config mounts into the files to materialize.
+// A mount whose config has been deleted is skipped rather than failing the
+// deploy: the delete guard already prevents it, so this is belt and braces.
+func (b *runtimeBuilder) projectConfigs(app *models.Application) ([]docker.FileEntry, error) {
+	if b.configs == nil {
+		return nil, nil
+	}
+	var out []docker.FileEntry
+	for _, m := range app.Mounts {
+		if m.ConfigID == 0 {
+			continue
+		}
+		cfg, err := b.configs.Get(app.WorkspaceID, m.ConfigID)
+		if err != nil {
+			continue
+		}
+		files, perr := b.configs.Project(cfg, m)
+		if perr != nil {
+			return nil, fmt.Errorf("project config %s: %w", cfg.Name, perr)
+		}
+		for _, f := range files {
+			out = append(out, docker.FileEntry{Path: f.Path, Content: f.Content, Mode: f.Mode})
+		}
+	}
+	return out, nil
 }
 
 // appHasRoutes reports whether the app is exposed by at least one route, and so should join the shared

@@ -37,6 +37,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/backupsettings"
 	"github.com/miabi-io/miabi/internal/services/certificate"
 	"github.com/miabi-io/miabi/internal/services/cluster"
+	configsvc "github.com/miabi-io/miabi/internal/services/config"
 	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/services/customrole"
 	"github.com/miabi-io/miabi/internal/services/database"
@@ -133,6 +134,7 @@ type routerHandlers struct {
 	database        *handlers.DatabaseHandler
 	job             *handlers.JobHandler
 	secret          *handlers.SecretHandler
+	config          *handlers.ConfigHandler
 	certificate     *handlers.CertificateHandler
 	volume          *handlers.VolumeHandler
 	backup          *handlers.BackupHandler
@@ -536,6 +538,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	}, nodeClients)
 	secretService := secret.NewService(repositories.NewSecretRepository(db))
 	secretService.SetConsumers(appService)
+	configService := configsvc.NewService(repositories.NewConfigRepository(db))
+	configService.SetConsumers(appService)
 	databaseService.SetSecrets(secretService)
 	// Certificate store <-> route service: routes resolve custom certs from the
 	// store at render time; the store consults routes for its delete guard/usage.
@@ -942,6 +946,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	var keyRotator *keyring.Service
 	if kr, ok := crypto.CurrentKeyring().(*keyring.Service); ok {
 		kr.Register(secretService)
+		kr.Register(configService)
 		kr.Register(certificateService)
 		kr.Register(dnsProviderService)
 		kr.Register(registryService)
@@ -999,6 +1004,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			database:        handlers.NewDatabaseHandler(databaseService, appService, forwardService, secretService, userRepo, auditLogger, clusterService),
 			job:             handlers.NewJobHandler(jobService, auditLogger),
 			secret:          handlers.NewSecretHandler(secretService, auditLogger),
+			config:          handlers.NewConfigHandler(configService, auditLogger),
 			certificate:     handlers.NewCertificateHandler(certificateService, auditLogger),
 			volume:          handlers.NewVolumeHandler(storageService, userRepo, auditLogger),
 			backup:          handlers.NewBackupHandler(backupService, dbRepo, backupRepo, backupSettingsService, cronManager, auditLogger, cfg.RestoreMaxMB),
@@ -1264,6 +1270,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.app.Register(r.applicationRoutes()...)
 	r.app.Register(r.jobRoutes()...)
 	r.app.Register(r.secretRoutes()...)
+	r.app.Register(r.configRoutes()...)
 	r.app.Register(r.certificateRoutes()...)
 	r.app.Register(r.networkRoutes()...)
 	r.app.Register(r.stackRoutes()...)

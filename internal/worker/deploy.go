@@ -550,6 +550,7 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 		Env:      rc.Env,
 		Cmd:      cmd,
 		Mounts:   rc.Mounts,
+		Files:    rc.Files,
 		// Under the restricted profile, prepareRestrictedVolumes has already seeded and chowned these
 		// volumes to the non-root UID; disable copy-up so Docker doesn't re-apply the image mount-dir's
 		// ownership on start and undo it.

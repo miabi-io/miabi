@@ -22,6 +22,7 @@ type (
 	PortMapping      = stackdocker.PortMapping
 	RunSpec          = stackdocker.RunSpec
 	BindMount        = stackdocker.BindMount
+	FileEntry        = stackdocker.FileEntry
 	GPURequest       = stackdocker.GPURequest
 	HealthcheckSpec  = stackdocker.HealthcheckSpec
 	NetworkSpec      = stackdocker.NetworkSpec

@@ -28,6 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/backup"
 	"github.com/miabi-io/miabi/internal/services/backupsettings"
 	"github.com/miabi-io/miabi/internal/services/cluster"
+	configsvc "github.com/miabi-io/miabi/internal/services/config"
 	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/services/database"
 	"github.com/miabi-io/miabi/internal/services/dbupgrade"
@@ -299,6 +300,7 @@ func runServer(cli *okapicli.CLI) {
 				secretService,
 			)
 			deployHandler.SetLogStore(logStore)
+			deployHandler.SetConfigs(configsvc.NewService(repositories.NewConfigRepository(res.db)))
 			dbRepo := repositories.NewDatabaseRepository(res.db)
 			dbService := database.NewService(dbRepo, nodeClients, res.producer)
 			dbService.SetEventBus(bus)                // same bus as the HTTP service → worker phase changes reach open SSE streams

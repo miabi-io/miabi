@@ -69,6 +69,7 @@ func Run(db *gorm.DB) error {
 		&models.DatabaseInstance{},
 		&models.Database{},
 		&models.Volume{},
+		&models.Config{},
 		&models.Backup{},
 		&models.BackupSchedule{},
 		&models.WorkspaceBackupSettings{},

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -327,10 +328,66 @@ func (e *engineClient) RunContainer(ctx context.Context, spec RunSpec) (string, 
 	if err != nil {
 		return "", err
 	}
+	// Files land between create and start so the app never sees a half-written
+	// config: the container has a filesystem but no process yet.
+	if err := e.copyFiles(ctx, created.ID, spec.Files); err != nil {
+		return created.ID, err
+	}
 	if err := e.cli.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
 		return created.ID, err
 	}
 	return created.ID, nil
+}
+
+// copyFiles writes the entries into the created container as one tar stream
+// extracted at /. CopyToContainer does not create parent directories, so the
+// archive carries a directory entry for each one; a nested key would otherwise
+// fail with "could not find the file".
+func (e *engineClient) copyFiles(ctx context.Context, id string, files []FileEntry) error {
+	if len(files) == 0 {
+		return nil
+	}
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	seen := map[string]bool{}
+	for _, f := range files {
+		rel := strings.TrimPrefix(f.Path, "/")
+		if rel == "" || strings.HasSuffix(rel, "/") {
+			return fmt.Errorf("config file path %q is not a file", f.Path)
+		}
+		if dir := path.Dir(rel); dir != "." {
+			var built string
+			for _, seg := range strings.Split(dir, "/") {
+				built = path.Join(built, seg)
+				if seen[built] {
+					continue
+				}
+				seen[built] = true
+				if err := tw.WriteHeader(&tar.Header{Name: built + "/", Mode: 0o755, Typeflag: tar.TypeDir}); err != nil {
+					return fmt.Errorf("tar dir %s: %w", built, err)
+				}
+			}
+		}
+		mode := int64(0o644)
+		if f.Mode != "" {
+			if v, perr := strconv.ParseInt(f.Mode, 8, 32); perr == nil {
+				mode = v & 0o777
+			}
+		}
+		if err := tw.WriteHeader(&tar.Header{Name: rel, Mode: mode, Size: int64(len(f.Content))}); err != nil {
+			return fmt.Errorf("tar header for %s: %w", f.Path, err)
+		}
+		if _, err := tw.Write([]byte(f.Content)); err != nil {
+			return fmt.Errorf("tar body for %s: %w", f.Path, err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		return err
+	}
+	if err := e.cli.CopyToContainer(ctx, id, "/", &buf, container.CopyToContainerOptions{}); err != nil {
+		return fmt.Errorf("copy config files: %w", err)
+	}
+	return nil
 }
 
 // restartPolicy maps a RunSpec restart-policy string onto the Docker engine policy. Empty or

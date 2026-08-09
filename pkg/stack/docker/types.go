@@ -143,6 +143,20 @@ type RunSpec struct {
 	// control plane needs the host's "docker" group to read /var/run/docker.sock when
 	// it does not run as root — the same thing compose.yaml's `group_add` does.
 	GroupAdd []string
+	// Files are written into the container between create and start, which is how
+	// configuration files are projected without a host bind: no path on the node,
+	// nothing to distribute to a remote engine, and the write is scoped to this
+	// container. Re-applied on every deploy, so an in-place rewrite by the app does
+	// not survive one.
+	Files []FileEntry
+}
+
+// FileEntry is one file materialized inside a container. Mode is a 3- or 4-digit
+// octal string; empty means 0644.
+type FileEntry struct {
+	Path    string
+	Content string
+	Mode    string
 }
 
 // BindMount is a host path bound into a container.
