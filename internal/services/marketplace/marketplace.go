@@ -14,6 +14,7 @@ import (
 
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/application"
+	configsvc "github.com/miabi-io/miabi/internal/services/config"
 	"github.com/miabi-io/miabi/internal/services/database"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 	"github.com/miabi-io/miabi/internal/services/marketplace/manifest"
@@ -52,6 +53,10 @@ type Service struct {
 	installs  *repositories.TemplateInstallRepository
 	templates TemplateStore
 
+	// configs creates the template's configuration files; nil leaves a template
+	// declaring configs to fail validation rather than install half of itself.
+	configs *configsvc.Service
+
 	// remote is the synced official+community registry (the marketplace service
 	// export bundle), merged into the catalog. nil = embedded-only (no sync).
 	remote RemoteCatalog
@@ -65,6 +70,9 @@ type Service struct {
 
 // NewService wires the install collaborators. volumes, stacks, installs and
 // templates may be nil in tests that only exercise the embedded catalog.
+// SetConfigs wires the config service used to materialize a template's files.
+func (s *Service) SetConfigs(c *configsvc.Service) { s.configs = c }
+
 func NewService(apps *application.Service, dbs *database.Service, volumes *storage.Service, stacks *stack.Service, installs *repositories.TemplateInstallRepository, templates TemplateStore) *Service {
 	return &Service{apps: apps, dbs: dbs, volumes: volumes, stacks: stacks, installs: installs, templates: templates, jobs: map[string]*InstallJob{}}
 }
@@ -259,6 +267,7 @@ type InstallResult struct {
 	Apps        []*models.Application      `json:"apps,omitempty"`
 	Databases   []*models.DatabaseInstance `json:"databases,omitempty"`
 	Volumes     []*models.Volume           `json:"volumes,omitempty"`
+	Configs     []*models.Config           `json:"configs,omitempty"`
 	InstallID   uint                       `json:"install_id,omitempty"`
 }
 
@@ -476,6 +485,34 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 		}
 	}
 
+	// Configs are created here, after the app records exist, because a config file
+	// may reference both {{ .databases.* }} and {{ .applications.*.alias }}. They
+	// still land before any deploy, so the first container start sees its files.
+	cfgIDs := map[string]uint{}
+	if len(m.Configs) > 0 && s.configs != nil {
+		report.phase(PhaseConfigs, PhaseActive)
+		for _, c := range m.Configs {
+			files, err := r.RenderFiles(c.Name, c.Files, c.Delimiters)
+			if err != nil {
+				return nil, fmt.Errorf("render config %q: %w", c.Name, err)
+			}
+			cfg, err := s.configs.UpsertOwned(workspaceID, models.OwnerTemplateInstall, 0, configsvc.Input{
+				Name:        sanitizeName(m.Metadata.Name + "-" + c.Name),
+				DisplayName: c.Name,
+				Data:        files,
+				Mode:        c.Mode,
+				Sensitive:   c.Sensitive,
+				Delimiters:  c.Delimiters,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("create config %q: %w", c.Name, err)
+			}
+			cfgIDs[c.Name] = cfg.ID
+			result.Configs = append(result.Configs, cfg)
+		}
+		report.phase(PhaseConfigs, PhaseDone)
+	}
+
 	for i, spec := range m.Applications {
 		app := created[i]
 		env, err := r.RenderEnv(spec.Name, spec.Env)
@@ -489,6 +526,16 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 			}
 		}
 		for _, mt := range spec.Mounts {
+			if mt.Config != "" {
+				id := cfgIDs[mt.Config]
+				if id == 0 {
+					return nil, fmt.Errorf("mount config %s on %q: config was not created", mt.Config, spec.Name)
+				}
+				if err := s.apps.AttachConfig(app, id, mt.Key, mt.Path, mt.Mode); err != nil {
+					return nil, fmt.Errorf("mount config %s on %q: %w", mt.Config, spec.Name, err)
+				}
+				continue
+			}
 			if err := s.apps.AttachVolume(app, volIDs[mt.Volume], mt.Path); err != nil {
 				return nil, fmt.Errorf("mount %s on %q: %w", mt.Volume, spec.Name, err)
 			}

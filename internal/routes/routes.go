@@ -662,6 +662,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	monitoringService := monitoring.NewService(appRepo, releaseRepo, dbRepo, stackRepo, appEventRepo, repositories.NewMetricRepository(db), nodeClients)
 	monitoringService.SetServerInfo(nodeService)
 	marketplaceService := marketplace.NewService(appService, databaseService, storageService, stackService, repositories.NewTemplateInstallRepository(db), repositories.NewTemplateRepository(db))
+	marketplaceService.SetConfigs(configService)
 	marketplaceService.SetEventBus(bus) // live install-progress SSE
 	// Marketplace registry sync: pull the official+community export bundle from
 	// the configured marketplace service into Redis and merge it into the

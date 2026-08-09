@@ -1613,6 +1613,24 @@ func (s *Service) emitForApp(appID uint, t models.AppEventType, message string) 
 
 // AttachVolume mounts a workspace volume into the app at path. Takes effect on
 // the next deploy.
+// AttachConfig mounts a workspace config into the app. Projection is per file, so
+// this never becomes a directory bind and the mount is always read-only.
+func (s *Service) AttachConfig(app *models.Application, configID uint, key, path, mode string) error {
+	if path == "" {
+		return ErrMountPathRequired
+	}
+	for i, m := range app.Mounts {
+		if m.ConfigID == configID && m.ConfigKey == key {
+			app.Mounts[i].Path, app.Mounts[i].Mode = path, mode
+			return s.apps.Update(app)
+		}
+	}
+	app.Mounts = append(app.Mounts, models.AppMount{
+		ConfigID: configID, ConfigKey: key, Path: path, Mode: mode, ReadOnly: true,
+	})
+	return s.apps.Update(app)
+}
+
 func (s *Service) AttachVolume(app *models.Application, volumeID uint, path string) error {
 	vol, err := s.volumes.FindInWorkspace(app.WorkspaceID, volumeID)
 	if err != nil {

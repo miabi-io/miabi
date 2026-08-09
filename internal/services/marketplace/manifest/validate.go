@@ -110,8 +110,24 @@ func (m *Manifest) Validate() error {
 		volNames[v.Name] = true
 	}
 
+	// Configs: unique names, and the same key/size/mode rules the declarative
+	// layer applies, so a template cannot pass catalog lint and fail at install.
+	cfgNames := map[string]bool{}
+	for _, c := range m.Configs {
+		if !slugRe.MatchString(c.Name) {
+			return fmt.Errorf("config name %q must match %s", c.Name, slugRe)
+		}
+		if cfgNames[c.Name] {
+			return fmt.Errorf("duplicate config name %q", c.Name)
+		}
+		cfgNames[c.Name] = true
+		if err := validateConfigFiles(c); err != nil {
+			return err
+		}
+	}
+
 	if len(m.Applications) > 0 {
-		if err := m.validateApplications(volNames); err != nil {
+		if err := m.validateApplications(volNames, cfgNames); err != nil {
 			return err
 		}
 	}
@@ -131,7 +147,7 @@ func (m *Manifest) Validate() error {
 	return nil
 }
 
-func (m *Manifest) validateApplications(volNames map[string]bool) error {
+func (m *Manifest) validateApplications(volNames, cfgNames map[string]bool) error {
 	appNames := map[string]bool{}
 	primaries := 0
 	for _, a := range m.Applications {
@@ -157,8 +173,30 @@ func (m *Manifest) validateApplications(volNames map[string]bool) error {
 			}
 		}
 		for _, mt := range a.Mounts {
-			if !volNames[mt.Volume] {
+			switch {
+			case mt.Volume == "" && mt.Config == "":
+				return fmt.Errorf("application %q: mount must set exactly one of volume or config", a.Name)
+			case mt.Volume != "" && mt.Config != "":
+				return fmt.Errorf("application %q: mount sets both volume %q and config %q", a.Name, mt.Volume, mt.Config)
+			}
+			if mt.Volume != "" && !volNames[mt.Volume] {
 				return fmt.Errorf("application %q: mount references unknown volume %q", a.Name, mt.Volume)
+			}
+			if mt.Config != "" && !cfgNames[mt.Config] {
+				return fmt.Errorf("application %q: mount references unknown config %q", a.Name, mt.Config)
+			}
+			if mt.Config == "" && (mt.Key != "" || mt.Mode != "") {
+				return fmt.Errorf("application %q: mount key/mode are only valid with a config", a.Name)
+			}
+			if mt.Key != "" {
+				if err := validateConfigKey(mt.Key); err != nil {
+					return fmt.Errorf("application %q: mount key: %w", a.Name, err)
+				}
+			}
+			if mt.Mode != "" {
+				if err := validateFileMode(mt.Mode); err != nil {
+					return fmt.Errorf("application %q: mount mode: %w", a.Name, err)
+				}
 			}
 			if !strings.HasPrefix(mt.Path, "/") {
 				return fmt.Errorf("application %q: mount path %q must be absolute", a.Name, mt.Path)
@@ -220,4 +258,70 @@ func (r *Resources) NanoCPUs() (int64, error) {
 		return 0, fmt.Errorf("invalid cpu %q", r.CPU)
 	}
 	return int64(n * 1e9), nil
+}
+
+// Config limits mirror internal/declarative. The per-file cap is what matters
+// against Docker's 500 KB config-object limit, since projection is per file.
+const (
+	MaxConfigFileBytes  = 256 * 1024
+	MaxConfigTotalBytes = 512 * 1024
+)
+
+var configKeyRe = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]*)?(/[A-Za-z0-9._-]+)*$`)
+
+func validateConfigFiles(c Config) error {
+	if len(c.Files) == 0 {
+		return fmt.Errorf("config %q: files must declare at least one entry", c.Name)
+	}
+	total := 0
+	for k, v := range c.Files {
+		if err := validateConfigKey(k); err != nil {
+			return fmt.Errorf("config %q: %w", c.Name, err)
+		}
+		if len(v) > MaxConfigFileBytes {
+			return fmt.Errorf("config %q: file %q is %d bytes, over the %d-byte limit", c.Name, k, len(v), MaxConfigFileBytes)
+		}
+		total += len(v)
+	}
+	if total > MaxConfigTotalBytes {
+		return fmt.Errorf("config %q: total content is %d bytes, over the %d-byte limit", c.Name, total, MaxConfigTotalBytes)
+	}
+	if err := validateFileMode(c.Mode); err != nil {
+		return fmt.Errorf("config %q: %w", c.Name, err)
+	}
+	if len(c.Delimiters) > 0 {
+		if len(c.Delimiters) != 2 || c.Delimiters[0] == "" || c.Delimiters[1] == "" || c.Delimiters[0] == c.Delimiters[1] {
+			return fmt.Errorf("config %q: delimiters must be exactly two distinct non-empty entries", c.Name)
+		}
+	}
+	return nil
+}
+
+func validateConfigKey(key string) error {
+	if !configKeyRe.MatchString(key) {
+		return fmt.Errorf("file key %q must be a relative path matching %s", key, configKeyRe)
+	}
+	for _, seg := range strings.Split(key, "/") {
+		if seg == "." || seg == ".." {
+			return fmt.Errorf("file key %q must not contain path traversal", key)
+		}
+	}
+	return nil
+}
+
+func validateFileMode(mode string) error {
+	if mode == "" {
+		return nil
+	}
+	if len(mode) < 3 || len(mode) > 4 {
+		return fmt.Errorf("mode %q must be 3 or 4 octal digits", mode)
+	}
+	v, err := strconv.ParseUint(mode, 8, 32)
+	if err != nil {
+		return fmt.Errorf("mode %q is not octal", mode)
+	}
+	if v&0o7000 != 0 {
+		return fmt.Errorf("mode %q must not set the setuid, setgid or sticky bit", mode)
+	}
+	return nil
 }

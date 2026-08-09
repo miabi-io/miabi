@@ -60,6 +60,7 @@ const routes = [
       { path: 'certificates', name: 'certificates', component: () => import('@/views/networking/Certificates.vue'), meta: { title: 'Certificates' } },
       { path: 'certificates/:id', name: 'certificate-detail', component: () => import('@/views/networking/CertificateDetail.vue'), meta: { title: 'Certificate' } },
       { path: 'secrets', name: 'secrets', component: () => import('@/views/secrets/Secrets.vue'), meta: { title: 'Secrets' } },
+      { path: 'configs', name: 'configs', component: () => import('@/views/configs/Configs.vue'), meta: { title: 'Configs' } },
       { path: 'registries', name: 'registries', component: () => import('@/views/sources/Registries.vue'), meta: { title: 'Registries' } },
       { path: 'git-repositories', name: 'git-repositories', component: () => import('@/views/sources/GitRepositories.vue'), meta: { title: 'Git Repositories' } },
       { path: 'api-keys', name: 'api-keys', component: () => import('@/views/apikeys/ApiKeys.vue'), meta: { title: 'API Keys' } },

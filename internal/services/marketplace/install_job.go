@@ -21,6 +21,7 @@ const (
 	PhaseVolumes   = "volumes"
 	PhaseDatabases = "databases"
 	PhaseApps      = "apps"
+	PhaseConfigs   = "configs"
 	PhaseConfig    = "config"
 	PhaseDeploy    = "deploy"
 )
@@ -103,6 +104,9 @@ func buildPhases(m *manifest.Manifest) []InstallPhase {
 	}
 	if len(m.Applications) > 0 {
 		add(PhaseApps, "Creating applications")
+		if len(m.Configs) > 0 {
+			add(PhaseConfigs, "Creating configuration files")
+		}
 		add(PhaseConfig, "Configuring environment & secrets")
 		add(PhaseDeploy, "Deploying applications")
 	}

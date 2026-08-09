@@ -110,6 +110,7 @@ const navSections: NavSection[] = [
     title: 'Sources',
     items: [
       { name: 'Secrets', path: '/secrets', icon: 'mdi-key-variant', requiresWorkspace: true },
+      { name: 'Configs', path: '/configs', icon: 'mdi-file-cog-outline', requiresWorkspace: true },
       { name: 'Registries', path: '/registries', icon: 'mdi-database-lock-outline', requiresWorkspace: true },
       { name: 'Git Repositories', path: '/git-repositories', icon: 'mdi-git', requiresWorkspace: true },
     ],
