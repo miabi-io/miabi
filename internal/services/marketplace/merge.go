@@ -5,6 +5,7 @@ package marketplace
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/miabi-io/miabi/internal/services/marketplace/manifest"
 	"github.com/miabi-io/miabi/internal/services/marketplace/remote"
@@ -124,13 +125,21 @@ func (s *Service) officialAndCommunity() []CatalogEntry {
 		out = append(out, entryFromManifest(a.latest, SourceOfficial, sortedVersions(a.versions)))
 	}
 	out = append(out, community...)
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Source != out[j].Source {
-			return out[i].Source < out[j].Source
-		}
-		return out[i].Name < out[j].Name
-	})
+	sortByDisplayName(out)
 	return out
+}
+
+func sortByDisplayName(entries []CatalogEntry) {
+	sort.SliceStable(entries, func(i, j int) bool {
+		a, b := strings.ToLower(entries[i].DisplayName), strings.ToLower(entries[j].DisplayName)
+		if a != b {
+			return a < b
+		}
+		if entries[i].Source != entries[j].Source {
+			return entries[i].Source < entries[j].Source
+		}
+		return entries[i].Name < entries[j].Name
+	})
 }
 
 // resolveOfficialOrCommunity finds the best non-custom manifest for a slug across the synced registry and

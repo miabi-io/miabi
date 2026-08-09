@@ -62,6 +62,7 @@ func (r *Renderer) data() map[string]any {
 		dbs[name] = map[string]string{
 			"host": c.Host, "port": c.Port, "user": c.User,
 			"password": c.Password, "name": c.Name, "uri": c.URI,
+			"url": c.URI, // alias of "uri"
 		}
 	}
 	apps := map[string]map[string]string{}
@@ -153,6 +154,7 @@ func (r *Renderer) ref(coll string, keys ...string) (string, error) {
 		fields := map[string]string{
 			"host": c.Host, "port": c.Port, "user": c.User,
 			"password": c.Password, "name": c.Name, "uri": c.URI,
+			"url": c.URI, // alias of "uri"
 		}
 		if field == "" {
 			field = "uri" // the most common reference; ".databases.x" alone means its URI

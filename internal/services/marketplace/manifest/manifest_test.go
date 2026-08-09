@@ -242,6 +242,22 @@ func TestRenderResolvesContext(t *testing.T) {
 	}
 }
 
+// Templates spell the connection string either way; both must resolve to the URI.
+func TestRenderDatabaseURLAliasesURI(t *testing.T) {
+	r := NewRenderer(Context{
+		Databases: map[string]ConnView{"db": {URI: "postgres://u:p@mb-db-1:5432/app"}},
+	})
+	for _, ref := range []string{"{{ .databases.db.uri }}", "{{ .databases.db.url }}"} {
+		got, err := r.RenderString("x", ref)
+		if err != nil {
+			t.Fatalf("%s: %v", ref, err)
+		}
+		if got != "postgres://u:p@mb-db-1:5432/app" {
+			t.Errorf("%s = %q", ref, got)
+		}
+	}
+}
+
 func TestRenderMissingKeyIsError(t *testing.T) {
 	r := NewRenderer(Context{})
 	if _, err := r.RenderString("x", "{{ .inputs.nope }}"); err == nil {

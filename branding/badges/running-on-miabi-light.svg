@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="156" height="32" viewBox="0 0 156 32" role="img" aria-label="Running on Miabi">
+  <title>Running on Miabi</title>
+  <defs>
+    <linearGradient id="mb-grad" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c084fc"/>
+      <stop offset=".33" stop-color="#a855f7"/>
+      <stop offset=".68" stop-color="#9333ea"/>
+      <stop offset="1" stop-color="#7e22ce"/>
+    </linearGradient>
+  </defs>
+  <rect x=".5" y=".5" width="155" height="31" rx="15.5" fill="#ffffff" stroke="#e5e7eb"/>
+  <g transform="translate(8 4) scale(0.0234375)" fill="url(#mb-grad)">
+    <path d="M 486 168 C 416 166 306 168 326 168 C 226 168 168 226 168 326 L 168 354 C 168 454 226 486 326 486 L 354 486 C 416 486 458 458 472 472 C 458 458 486 416 486 354 L 486 168 Z" transform="rotate(0 512 512)"/>
+    <path d="M 486 168 C 416 166 306 168 326 168 C 226 168 168 226 168 326 L 168 354 C 168 454 226 486 326 486 L 354 486 C 416 486 458 458 472 472 C 458 458 486 416 486 354 L 486 168 Z" transform="rotate(90 512 512)"/>
+    <path d="M 486 168 C 416 166 306 168 326 168 C 226 168 168 226 168 326 L 168 354 C 168 454 226 486 326 486 L 354 486 C 416 486 458 458 472 472 C 458 458 486 416 486 354 L 486 168 Z" transform="rotate(180 512 512)"/>
+    <path d="M 486 168 C 416 166 306 168 326 168 C 226 168 168 226 168 326 L 168 354 C 168 454 226 486 326 486 L 354 486 C 416 486 458 458 472 472 C 458 458 486 416 486 354 L 486 168 Z" transform="rotate(270 512 512)"/>
+  </g>
+  <text x="34" y="20.8" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12.5">
+    <tspan fill="#64748b" font-weight="500">Running on </tspan><tspan fill="#101A37" font-weight="700">Miabi</tspan>
+  </text>
+</svg>
