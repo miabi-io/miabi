@@ -62,6 +62,7 @@ func (r *Renderer) data() map[string]any {
 		dbs[name] = map[string]string{
 			"host": c.Host, "port": c.Port, "user": c.User,
 			"password": c.Password, "name": c.Name, "uri": c.URI,
+			"url": c.URI,
 		}
 	}
 	apps := map[string]map[string]string{}

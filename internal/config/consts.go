@@ -1,6 +1,6 @@
 package config
 
 const (
-	marketplaceURL = "https://github.com/miabi-io/marketplace/releases/latest/download/export.json"
+	marketplaceURL = "https://marketplace.miabi.io"
 	miabiLogDir    = "/var/lib/miabi/logs"
 )

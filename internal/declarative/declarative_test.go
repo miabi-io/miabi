@@ -644,6 +644,7 @@ func TestRenderHyphenatedRefs(t *testing.T) {
 	})
 	cases := map[string]string{
 		"{{ .databases.shop-db.uri }}":               "postgres://u:p@dp/shop",
+		"{{ .databases.shop-db.url }}":               "postgres://u:p@dp/shop", // alias of uri
 		"{{ .databases.shop-db.host }}":              "mb-db",
 		"{{ .databases.shop-db }}":                   "postgres://u:p@dp/shop", // bare name → URI
 		"{{ .secrets.app-key }}":                     "s3cret",

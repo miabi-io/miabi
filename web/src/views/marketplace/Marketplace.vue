@@ -11,25 +11,23 @@ const router = useRouter()
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
 
-// Browse is split into three source tabs (Official · Community · Custom), each
-// with its own search box + pagination, plus the Installed tab. Community is
-// hidden when nothing has synced (registry disabled or empty).
-type BrowseSource = 'official' | 'community' | 'custom'
+
+type BrowseSource = 'all' | 'official' | 'community' | 'custom'
 type Tab = BrowseSource | 'installed'
-const BROWSE_SOURCES: BrowseSource[] = ['official', 'community', 'custom']
+const BROWSE_SOURCES: BrowseSource[] = ['all', 'official', 'community', 'custom']
 const PER_PAGE = 24
 
-const tab = ref<Tab>('official')
+const tab = ref<Tab>('all')
 const templates = ref<CatalogEntry[]>([])
 const installs = ref<TemplateInstallView[]>([])
 const loading = ref(false)
 
 // Per-tab search text and page, so switching tabs preserves each one's state.
-const searchBy = ref<Record<BrowseSource, string>>({ official: '', community: '', custom: '' })
-const pageBy = ref<Record<BrowseSource, number>>({ official: 1, community: 1, custom: 1 })
+const searchBy = ref<Record<BrowseSource, string>>({ all: '', official: '', community: '', custom: '' })
+const pageBy = ref<Record<BrowseSource, number>>({ all: 1, official: 1, community: 1, custom: 1 })
 
 const sourceCounts = computed(() => {
-  const c = { official: 0, custom: 0, community: 0 }
+  const c = { all: templates.value.length, official: 0, custom: 0, community: 0 }
   for (const t of templates.value) {
     if (t.source === 'official') c.official++
     else if (t.source === 'custom') c.custom++
@@ -38,10 +36,12 @@ const sourceCounts = computed(() => {
   return c
 })
 
-// The tabs to render: Official and Custom always show (Custom is the import
-// target); Community appears only once templates have synced.
+
 const browseTabs = computed<{ key: BrowseSource; label: string }[]>(() => {
-  const out: { key: BrowseSource; label: string }[] = [{ key: 'official', label: 'Official' }]
+  const out: { key: BrowseSource; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'official', label: 'Official' },
+  ]
   if (sourceCounts.value.community) out.push({ key: 'community', label: 'Community' })
   out.push({ key: 'custom', label: 'Custom' })
   return out
@@ -73,11 +73,13 @@ const activeSearch = computed<string>({
 })
 
 // activeList is the current tab's templates after source + search filtering.
+// The All tab skips the source filter and shows every synced and imported
+// template together.
 const activeList = computed(() => {
   if (!isBrowse.value) return []
   const src = tab.value as BrowseSource
   const q = searchBy.value[src].trim().toLowerCase()
-  return templates.value.filter((t) => t.source === src && matchesSearch(t, q))
+  return templates.value.filter((t) => (src === 'all' || t.source === src) && matchesSearch(t, q))
 })
 
 const totalPages = computed(() => Math.max(1, Math.ceil(activeList.value.length / PER_PAGE)))
@@ -95,9 +97,7 @@ function setPage(p: number) {
   pageBy.value[tab.value as BrowseSource] = Math.min(Math.max(1, p), totalPages.value)
 }
 
-// pageWindow is the list of page buttons to render: always the first and last
-// page plus a window around the current one, with '…' markers where pages are
-// skipped. Small ranges (≤7) render every page without gaps.
+
 const ELLIPSIS = '…'
 const pageWindow = computed<(number | typeof ELLIPSIS)[]>(() => {
   const total = totalPages.value
@@ -139,7 +139,7 @@ onMounted(async () => {
   loading.value = true
   try {
     await Promise.all([loadTemplates(), loadInstalls()])
-    // Deep link: ?tab=<official|community|custom|installed> opens that tab.
+    // Deep link: ?tab=<all|official|community|custom|installed> opens that tab.
     const q = route.query.tab
     if (q === 'installed' || (typeof q === 'string' && BROWSE_SOURCES.includes(q as BrowseSource))) {
       tab.value = q as Tab
@@ -153,10 +153,10 @@ onMounted(async () => {
 
 // Keep the active tab in the URL so a reload / back-forward / shared link lands
 // on the same tab. Uses replace (no history spam); omits the param for the
-// default Official tab to keep URLs clean.
+// default All tab to keep URLs clean.
 watch(tab, (t) => {
   const query = { ...route.query }
-  if (t === 'official') delete query.tab
+  if (t === 'all') delete query.tab
   else query.tab = t
   if (query.tab !== route.query.tab) router.replace({ query })
 })
@@ -311,7 +311,7 @@ async function confirmUninstall() {
 
     <div v-if="loading" class="loading-page"><span class="spinner"></span></div>
 
-    <!-- BROWSE (Official / Community / Custom) -->
+    <!-- BROWSE (All / Official / Community / Custom) -->
     <template v-else-if="isBrowse">
       <div v-if="activeList.length === 0" class="card">
         <div class="empty-state">

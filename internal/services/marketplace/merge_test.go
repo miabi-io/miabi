@@ -161,3 +161,37 @@ func TestMergeNoRemoteIsEmbeddedOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestMergeOrdersByDisplayName(t *testing.T) {
+	s := &Service{}
+	s.SetRemote(&fakeRemote{tpls: []remote.DecodedTemplate{
+		decoded(SourceCommunity, "zebra", parseManifest(t, "zebra", "Zebra", "1.0.0")),
+		decoded(SourceCommunity, "alpha", parseManifest(t, "alpha", "Alpha", "1.0.0")),
+		decoded(SourceOfficial, "beta", parseManifest(t, "beta", "beta", "1.0.0")),
+	}})
+
+	list := s.officialAndCommunity()
+	var got []string
+	for _, e := range list {
+		switch e.Name {
+		case "alpha", "beta", "zebra":
+			got = append(got, e.DisplayName)
+		}
+	}
+	want := []string{"Alpha", "beta", "Zebra"} // case-insensitive, source-blind
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("order = %v, want %v", got, want)
+		}
+	}
+
+	// And the first entry overall must not be a community template purely
+	// because of its source label.
+	if len(list) > 0 && list[0].DisplayName != "Alpha" {
+		t.Fatalf("first entry = %q (%s), want the alphabetically first template",
+			list[0].DisplayName, list[0].Source)
+	}
+}

@@ -114,8 +114,10 @@ type Config struct {
 	DockerHost string
 
 	// MarketplaceURL is where Miabi syncs official and community templates from. The default is
-	// the marketplace repo's latest GitHub Release asset, which always serves the newest immutable
-	// release. Set it explicitly empty to disable syncing (offline / air-gapped kill switch).
+	// the hosted registry, marketplace.miabi.io, which tracks the catalog repo's main branch. A
+	// value ending in .json is fetched directly (a static export.json from git or a CDN); anything
+	// else is treated as a server base URL and gets /v1/export appended. Set it explicitly empty to
+	// disable syncing (offline / air-gapped kill switch).
 	MarketplaceURL string
 
 	// GomaProviderDir is Goma Gateway's watched file-provider directory. When

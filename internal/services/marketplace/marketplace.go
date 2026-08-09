@@ -165,7 +165,9 @@ func (s *Service) ListForWorkspace(workspaceID uint) ([]CatalogEntry, error) {
 	if err != nil {
 		return out, err
 	}
-	return append(out, customEntries(rows)...), nil
+	out = append(out, customEntries(rows)...)
+	sortByDisplayName(out)
+	return out, nil
 }
 
 // GetEntryForWorkspace returns one catalog entry visible to the workspace. When

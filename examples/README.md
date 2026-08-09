@@ -45,7 +45,7 @@ Env values interpolate against the workspace's resolvable databases:
 
 ```yaml
 env:
-  DATABASE_URL: "{{ .databases.<name>.uri }}"   # also .host .port .user .password .name
+  DATABASE_URL: "{{ .databases.<name>.uri }}"   # or .url; also .host .port .user .password .name
 ```
 
 ## Setup
