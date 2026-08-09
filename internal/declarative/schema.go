@@ -34,6 +34,10 @@ const (
 	KindRegistry Kind = "Registry"
 	// KindProject bundles a set of resources living in one repo/namespace.
 	KindProject Kind = "Project"
+	// KindConfig is a set of named configuration files projected into containers as
+	// read-only files. Secret carries one opaque value consumed as env; Config
+	// carries named text payloads consumed as files. Both are encrypted at rest.
+	KindConfig Kind = "Config"
 )
 
 // knownKinds is the set of recognized kinds, used by the parser to route a
@@ -48,6 +52,7 @@ var knownKinds = map[Kind]bool{
 	KindDomain:      true,
 	KindRegistry:    true,
 	KindProject:     true,
+	KindConfig:      true,
 }
 
 // Meta is the identity block shared by every kind. Labels are short and identifying (for selection
@@ -79,6 +84,7 @@ type Resource struct {
 	Domain      *DomainSpec      `yaml:"-" json:"domain,omitempty"`
 	Registry    *RegistrySpec    `yaml:"-" json:"registry,omitempty"`
 	Project     *ProjectSpec     `yaml:"-" json:"project,omitempty"`
+	Config      *ConfigSpec      `yaml:"-" json:"config,omitempty"`
 }
 
 // Key is the stable identity of a resource within a workspace: "<kind>/<name>".
@@ -111,6 +117,14 @@ type ApplicationSpec struct {
 	// Miabi generates a stable label. The label is platform-wide unique: if already claimed it is
 	// ignored and a generated one is used, so a copy-pasted manifest never fails on a clash.
 	ExternalLabel string `yaml:"externalLabel,omitempty" json:"externalLabel,omitempty"`
+	// ReloadPolicy decides what a mounted config's content change does: "restart"
+	// (default) redeploys the app, "none" leaves it running for apps that watch
+	// their own config file.
+	ReloadPolicy string `yaml:"reloadPolicy,omitempty" json:"reloadPolicy,omitempty"`
+	// ConfigFP fingerprints every mounted config's digest, filled by the apply engine
+	// on both sides of the diff so a content change converges as an app update.
+	// Not serialized: derived state, like RegistrySpec.PasswordFP.
+	ConfigFP string `yaml:"-" json:"-"`
 }
 
 // PortSpec is a container port and how it is reached. The two exposure knobs are orthogonal:
@@ -131,8 +145,13 @@ type PortSpec struct {
 
 // MountSpec attaches a managed Volume into the container filesystem.
 type MountSpec struct {
-	Volume   string `yaml:"volume" json:"volume"`
+	Volume string `yaml:"volume,omitempty" json:"volume,omitempty"`
+	Config string `yaml:"config,omitempty" json:"config,omitempty"`
+	// Key selects one file from the config, making Path that file's exact location.
+	// Empty projects every key under Path as a directory prefix.
+	Key      string `yaml:"key,omitempty" json:"key,omitempty"`
 	Path     string `yaml:"path" json:"path"`
+	Mode     string `yaml:"mode,omitempty" json:"mode,omitempty"`
 	ReadOnly bool   `yaml:"readOnly,omitempty" json:"readOnly,omitempty"`
 }
 
@@ -201,6 +220,25 @@ type SecretSpec struct {
 	Value    string `yaml:"value,omitempty" json:"value,omitempty"`
 	Generate bool   `yaml:"generate,omitempty" json:"generate,omitempty"`
 	Length   int    `yaml:"length,omitempty" json:"length,omitempty"`
+}
+
+// ConfigSpec is a set of named files projected into containers at mount time.
+// Values are interpolated exactly like application env, so a config can carry a
+// rendered database password without a bootstrap script.
+type ConfigSpec struct {
+	// Data maps a file key (a relative filename, "/" permitted for subdirectories)
+	// to its content.
+	Data map[string]string `yaml:"data" json:"data"`
+	// Mode is the default octal file mode applied to every key ("0644" when empty).
+	Mode string `yaml:"mode,omitempty" json:"mode,omitempty"`
+	// Sensitive redacts content in API responses and diffs it by digest only.
+	Sensitive bool `yaml:"sensitive,omitempty" json:"sensitive,omitempty"`
+	// Delimiters overrides the interpolation delimiters for every value, so a file
+	// whose own syntax uses {{ }} is not mangled. Exactly two distinct entries.
+	Delimiters []string `yaml:"delimiters,omitempty" json:"delimiters,omitempty"`
+	// DigestFP fingerprints the rendered data, filled by the apply engine on both
+	// sides of the diff. Not serialized: derived state, like RegistrySpec.PasswordFP.
+	DigestFP string `yaml:"-" json:"-"`
 }
 
 // ProjectSpec bundles a set of resources authored in one place. Child resources

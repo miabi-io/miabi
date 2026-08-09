@@ -204,6 +204,12 @@ func parseNode(node *yaml.Node) ([]Resource, error) {
 			return nil, specErr(head.Kind, meta.Name, err)
 		}
 		r.Secret = &s
+	case KindConfig:
+		var s ConfigSpec
+		if err := decodeSpec(&head.Spec, &s); err != nil {
+			return nil, specErr(head.Kind, meta.Name, err)
+		}
+		r.Config = &s
 	case KindDomain:
 		var s DomainSpec
 		if err := decodeSpec(&head.Spec, &s); err != nil {

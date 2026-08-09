@@ -10,8 +10,20 @@ import (
 	"strings"
 )
 
+// Config limits and defaults. The per-file cap is what matters against Docker's
+// 500 KB config-object limit, since projection is always per file.
+const (
+	MaxConfigFileBytes  = 256 * 1024
+	MaxConfigTotalBytes = 512 * 1024
+	DefaultFileMode     = "0644"
+	ReloadRestart       = "restart"
+	ReloadNone          = "none"
+)
+
 var (
 	nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+	// configKeyRe matches a relative file key, optionally nested in subdirectories.
+	configKeyRe = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]*)?(/[A-Za-z0-9._-]+)*$`)
 	// hostnameRe matches a DNS hostname (dotted labels); used for Domain names,
 	// whose metadata.name is a real FQDN rather than a slug.
 	hostnameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$`)
@@ -46,6 +58,19 @@ func (r *Resource) normalize() {
 			if r.Application.Ports[i].HostPort > 0 {
 				r.Application.Ports[i].Publish = true
 			}
+		}
+		for i := range r.Application.Mounts {
+			// A config mount is always read-only; see validateApplication.
+			if r.Application.Mounts[i].Config != "" {
+				r.Application.Mounts[i].ReadOnly = true
+			}
+		}
+		if r.Application.ReloadPolicy == "" {
+			r.Application.ReloadPolicy = ReloadRestart
+		}
+	case r.Config != nil:
+		if r.Config.Mode == "" {
+			r.Config.Mode = DefaultFileMode
 		}
 	case r.Database != nil:
 		if r.Database.Placement == "" {
@@ -110,6 +135,8 @@ func (r *Resource) validate() error {
 		return r.validateDomain()
 	case KindRegistry:
 		return r.validateRegistry()
+	case KindConfig:
+		return r.validateConfig()
 	case KindVolume, KindStack, KindSecret, KindProject:
 		return nil
 	default:
@@ -219,13 +246,16 @@ func (r *Resource) validateApplication() error {
 	if a.Registry != "" && !nameRe.MatchString(a.Registry) {
 		return fmt.Errorf("application %q: registry %q must be a resource name matching %s", r.Metadata.Name, a.Registry, nameRe)
 	}
+	if a.ReloadPolicy != "" && a.ReloadPolicy != ReloadRestart && a.ReloadPolicy != ReloadNone {
+		return fmt.Errorf("application %q: reloadPolicy %q must be %q or %q", r.Metadata.Name, a.ReloadPolicy, ReloadRestart, ReloadNone)
+	}
 	for _, mt := range a.Mounts {
-		if mt.Volume == "" {
-			return fmt.Errorf("application %q: mount is missing a volume", r.Metadata.Name)
+		if err := r.validateMount(mt); err != nil {
+			return err
 		}
-		if !strings.HasPrefix(mt.Path, "/") {
-			return fmt.Errorf("application %q: mount path %q must be absolute", r.Metadata.Name, mt.Path)
-		}
+	}
+	if err := r.validateMountOverlap(); err != nil {
+		return err
 	}
 	for _, k := range a.SecretEnv {
 		if _, ok := a.Env[k]; !ok {
@@ -289,6 +319,143 @@ func (r *Resource) validateRoute() error {
 	return nil
 }
 
+// validateMount enforces the one-source rule and the config-only field rules.
+// Setting key/mode without a config is an error rather than ignored, matching the
+// strict decoding used everywhere else.
+func (r Resource) validateMount(mt MountSpec) error {
+	name := r.Metadata.Name
+	switch {
+	case mt.Volume == "" && mt.Config == "":
+		return fmt.Errorf("application %q: mount must set exactly one of volume or config", name)
+	case mt.Volume != "" && mt.Config != "":
+		return fmt.Errorf("application %q: mount sets both volume %q and config %q; exactly one is allowed", name, mt.Volume, mt.Config)
+	}
+	if !strings.HasPrefix(mt.Path, "/") {
+		return fmt.Errorf("application %q: mount path %q must be absolute", name, mt.Path)
+	}
+	if mt.Config == "" {
+		if mt.Key != "" {
+			return fmt.Errorf("application %q: mount key %q is only valid with a config", name, mt.Key)
+		}
+		if mt.Mode != "" {
+			return fmt.Errorf("application %q: mount mode %q is only valid with a config", name, mt.Mode)
+		}
+		return nil
+	}
+	if !nameRe.MatchString(mt.Config) {
+		return fmt.Errorf("application %q: mount config %q must be a resource name matching %s", name, mt.Config, nameRe)
+	}
+	if mt.Key != "" {
+		if err := validateConfigKey(mt.Key); err != nil {
+			return fmt.Errorf("application %q: mount key: %w", name, err)
+		}
+		if strings.HasSuffix(mt.Path, "/") {
+			return fmt.Errorf("application %q: mount path %q must be a file path when key is set", name, mt.Path)
+		}
+	}
+	if mt.Mode != "" {
+		if err := validateFileMode(mt.Mode); err != nil {
+			return fmt.Errorf("application %q: mount mode: %w", name, err)
+		}
+	}
+	return nil
+}
+
+// validateMountOverlap rejects a mount nested inside a volume, which the volume
+// would shadow. Config mounts are projected per file, so one config path inside
+// another is the normal directory-prefix form and is left alone.
+func (r Resource) validateMountOverlap() error {
+	ms := r.Application.Mounts
+	for i := range ms {
+		if ms[i].Volume == "" {
+			continue
+		}
+		outer := strings.TrimSuffix(ms[i].Path, "/")
+		for j := range ms {
+			if i == j || outer == "" {
+				continue
+			}
+			inner := strings.TrimSuffix(ms[j].Path, "/")
+			if inner != "" && inner != outer && strings.HasPrefix(inner, outer+"/") {
+				return fmt.Errorf("application %q: mount path %q is nested inside volume mount %q, which would shadow it", r.Metadata.Name, ms[j].Path, ms[i].Path)
+			}
+		}
+	}
+	return nil
+}
+
+// validateConfig enforces the file-key, size, mode and delimiter rules.
+func (r Resource) validateConfig() error {
+	c := r.Config
+	if len(c.Data) == 0 {
+		return fmt.Errorf("config %q: data must declare at least one file", r.Metadata.Name)
+	}
+	total := 0
+	for k, v := range c.Data {
+		if err := validateConfigKey(k); err != nil {
+			return fmt.Errorf("config %q: %w", r.Metadata.Name, err)
+		}
+		if len(v) > MaxConfigFileBytes {
+			return fmt.Errorf("config %q: file %q is %d bytes, over the %d-byte limit (Docker caps a config object at 500 KB, so a larger file would validate here and fail at deploy in cluster mode)", r.Metadata.Name, k, len(v), MaxConfigFileBytes)
+		}
+		total += len(v)
+	}
+	if total > MaxConfigTotalBytes {
+		return fmt.Errorf("config %q: total content is %d bytes, over the %d-byte limit", r.Metadata.Name, total, MaxConfigTotalBytes)
+	}
+	if err := validateFileMode(c.Mode); err != nil {
+		return fmt.Errorf("config %q: %w", r.Metadata.Name, err)
+	}
+	if len(c.Delimiters) > 0 {
+		if len(c.Delimiters) != 2 {
+			return fmt.Errorf("config %q: delimiters must be exactly two entries", r.Metadata.Name)
+		}
+		if c.Delimiters[0] == "" || c.Delimiters[1] == "" {
+			return fmt.Errorf("config %q: delimiters must both be non-empty", r.Metadata.Name)
+		}
+		if c.Delimiters[0] == c.Delimiters[1] {
+			return fmt.Errorf("config %q: delimiters must differ from each other", r.Metadata.Name)
+		}
+	}
+	return nil
+}
+
+// validateConfigKey constrains a file key to a relative path: no absolute paths,
+// no traversal, no empty segments.
+func validateConfigKey(key string) error {
+	if key == "" {
+		return fmt.Errorf("file key must not be empty")
+	}
+	if !configKeyRe.MatchString(key) {
+		return fmt.Errorf("file key %q must be a relative path matching %s", key, configKeyRe)
+	}
+	for _, seg := range strings.Split(key, "/") {
+		if seg == "." || seg == ".." {
+			return fmt.Errorf("file key %q must not contain path traversal", key)
+		}
+	}
+	return nil
+}
+
+// validateFileMode accepts a 3- or 4-digit octal mode and rejects setuid, setgid
+// and the sticky bit.
+func validateFileMode(mode string) error {
+	if mode == "" {
+		return nil
+	}
+	if len(mode) < 3 || len(mode) > 4 {
+		return fmt.Errorf("mode %q must be 3 or 4 octal digits", mode)
+	}
+	v, err := strconv.ParseUint(mode, 8, 32)
+	if err != nil {
+		return fmt.Errorf("mode %q is not octal", mode)
+	}
+	if v&0o7000 != 0 {
+		return fmt.Errorf("mode %q must not set the setuid, setgid or sticky bit", mode)
+	}
+	return nil
+}
+
 // validateReferences checks cross-resource integrity once the whole set is
 // known: mounts point at declared volumes, domains target declared apps, and an
 // app's stack exists.
@@ -297,6 +464,12 @@ func (s *ResourceSet) validateReferences() error {
 		switch {
 		case r.Application != nil:
 			for _, mt := range r.Application.Mounts {
+				if mt.Config != "" {
+					if !s.Has(KindConfig, mt.Config) {
+						return fmt.Errorf("application %q: mount references unknown config %q", r.Metadata.Name, mt.Config)
+					}
+					continue
+				}
 				if !s.Has(KindVolume, mt.Volume) {
 					return fmt.Errorf("application %q: mount references unknown volume %q", r.Metadata.Name, mt.Volume)
 				}

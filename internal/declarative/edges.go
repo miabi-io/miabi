@@ -22,6 +22,7 @@ const (
 	EdgeSecret   EdgeType = "secret"   // Application -> Secret   (env {{ .secrets.X }})
 	EdgeAppRef   EdgeType = "app-ref"  // Application -> Application (env {{ .applications.X }})
 	EdgeRegistry EdgeType = "registry" // Application -> Registry (spec.registry)
+	EdgeConfig   EdgeType = "config"   // Application -> Config   (mounts[].config)
 )
 
 // Edge is a directed dependency from one resource to another, keyed by Resource
@@ -74,6 +75,10 @@ func Edges(set *ResourceSet) []Edge {
 				add(KindApplication, name, KindStack, a.Stack, EdgeStack)
 			}
 			for _, mt := range a.Mounts {
+				if mt.Config != "" {
+					add(KindApplication, name, KindConfig, mt.Config, EdgeConfig)
+					continue
+				}
 				add(KindApplication, name, KindVolume, mt.Volume, EdgeMount)
 			}
 			// Only drawn when the credential is declared in the same bundle — add()
