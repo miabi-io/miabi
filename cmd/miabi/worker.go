@@ -19,6 +19,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/backup"
 	"github.com/miabi-io/miabi/internal/services/backupsettings"
 	"github.com/miabi-io/miabi/internal/services/cluster"
+	configsvc "github.com/miabi-io/miabi/internal/services/config"
 	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/services/database"
 	"github.com/miabi-io/miabi/internal/services/dbupgrade"
@@ -188,6 +189,8 @@ func runWorker() error {
 	securityQuota.SetEdition(edition)
 	securityResolver := newSecurityResolver(cfg, securityQuota)
 	deployHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
+	configService := configsvc.NewService(repositories.NewConfigRepository(db))
+	deployHandler.SetConfigs(configService)
 	deployHandler.SetBuilderPolicy(securityQuota)
 	gpuScheduler := gpu.NewService(
 		repositories.NewGPUDeviceRepository(db),

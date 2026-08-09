@@ -1030,6 +1030,25 @@ func (s *Service) AppsReferencingSecret(workspaceID uint, name string) ([]models
 	return out, nil
 }
 
+// AppsMountingConfig lists the apps whose mounts reference a config, which drives
+// both the delete guard and the redeploy fan-out on a content change.
+func (s *Service) AppsMountingConfig(workspaceID, configID uint) ([]models.Application, error) {
+	apps, err := s.apps.ListByWorkspace(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]models.Application, 0)
+	for i := range apps {
+		for _, mt := range apps[i].Mounts {
+			if mt.ConfigID == configID {
+				out = append(out, apps[i])
+				break
+			}
+		}
+	}
+	return out, nil
+}
+
 func (s *Service) Update(app *models.Application) error {
 	if app.SourceType == models.AppSourceImage {
 		app.Image, app.Tag = normalizeImageTag(app.Image, app.Tag)

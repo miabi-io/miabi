@@ -40,6 +40,9 @@ const (
 	PermSecretRead  Permission = "secret:read"
 	PermSecretWrite Permission = "secret:write"
 
+	PermConfigRead  Permission = "config:read"
+	PermConfigWrite Permission = "config:write"
+
 	PermMemberRead  Permission = "member:read"
 	PermMemberWrite Permission = "member:write"
 
@@ -66,14 +69,14 @@ func (p Permission) Action() string {
 // allReadPermissions is the viewer baseline: read on every resource.
 var allReadPermissions = []Permission{
 	PermAppRead, PermDatabaseRead, PermVolumeRead, PermDomainRead,
-	PermRouteRead, PermNetworkRead, PermBackupRead, PermSecretRead, PermMemberRead,
+	PermRouteRead, PermNetworkRead, PermBackupRead, PermSecretRead, PermConfigRead, PermMemberRead,
 }
 
 // developerExtra adds building and running apps over a viewer, but nothing destructive.
 var developerExtra = []Permission{
 	PermAppWrite, PermAppDeploy,
 	PermDatabaseWrite, PermVolumeWrite, PermRouteWrite, PermNetworkWrite,
-	PermBackupRun, PermBackupRestore, PermSecretWrite,
+	PermBackupRun, PermBackupRestore, PermSecretWrite, PermConfigWrite,
 }
 
 // adminExtra adds deletes, secret reveal, privileged mounts, domains and member management.
@@ -136,6 +139,7 @@ func AllPermissions() []Permission {
 		PermNetworkRead, PermNetworkWrite,
 		PermBackupRead, PermBackupRun, PermBackupRestore,
 		PermSecretRead, PermSecretWrite,
+		PermConfigRead, PermConfigWrite,
 		PermMemberRead, PermMemberWrite,
 		PermWorkspaceWrite, PermWorkspaceDelete,
 	}

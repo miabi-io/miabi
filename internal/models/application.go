@@ -274,6 +274,10 @@ type Application struct {
 	// deploy time, for label-driven tools. Keys under Miabi's reserved prefixes (io.miabi.*,
 	// miabi.*, com.docker.*) are stripped so they cannot spoof platform labels. Needs a redeploy.
 	ContainerLabels map[string]string `json:"container_labels,omitempty" gorm:"serializer:json"`
+	// ReloadPolicy decides what a mounted config's content change does: restart
+	// (default) redeploys the app, none leaves it running for apps that watch
+	// their own config file.
+	ReloadPolicy string `json:"reload_policy,omitempty"`
 
 	// Runtime config.
 	Command     []string   `json:"command,omitempty" gorm:"serializer:json"`
@@ -410,6 +414,12 @@ func SplitImageRef(ref string) (image, tag string) {
 // AppMount attaches storage at a container path: either a managed workspace volume
 // (VolumeID/DockerName) or, for privileged workspaces only, an allow-listed host bind
 // (HostPreset). Mutually exclusive; the host path is resolved server-side, never from input.
+// Reload policies for a mounted config's content change.
+const (
+	ReloadRestart = "restart"
+	ReloadNone    = "none"
+)
+
 type AppMount struct {
 	VolumeID   uint   `json:"volume_id"`
 	DockerName string `json:"docker_name"`
@@ -419,7 +429,13 @@ type AppMount struct {
 	// volume at attach time so the runtime binds it without a volume lookup). When
 	// set, the mount is a bind of HostPath, not a Docker named volume.
 	HostPath string `json:"host_path,omitempty"`
-	ReadOnly bool   `json:"read_only,omitempty"`
+	// ConfigID references a workspace Config, mutually exclusive with VolumeID and
+	// HostPreset; ConfigKey names the single file projected at Path, and Mode
+	// overrides the config's default file mode.
+	ConfigID  uint   `json:"config_id,omitempty"`
+	ConfigKey string `json:"config_key,omitempty"`
+	Mode      string `json:"mode,omitempty"`
+	ReadOnly  bool   `json:"read_only,omitempty"`
 }
 
 // AppEnvVar is an environment variable for an application. Secret values are
