@@ -20,7 +20,7 @@ func TestAppResourceEmitsMounts(t *testing.T) {
 	}
 	volNameByID := map[uint]string{7: "guestbook-data"}
 
-	res := appResource(app, map[int]bool{}, map[int]bool{}, volNameByID, nil)
+	res := appResource(app, map[int]bool{}, map[int]bool{}, volNameByID, nil, nil)
 	got := res.Application.Mounts
 	if len(got) != 1 {
 		t.Fatalf("want 1 mount (host-preset omitted), got %d: %+v", len(got), got)

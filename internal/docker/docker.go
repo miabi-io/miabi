@@ -158,6 +158,11 @@ type Client interface {
 	ServiceRemove(ctx context.Context, idOrName string) error
 	ServiceScale(ctx context.Context, idOrName string, replicas uint64) error
 	ServiceInspect(ctx context.Context, idOrName string) (ServiceStatus, error)
+
+	// Swarm config objects backing kind: Config on a replicated service.
+	EnsureConfig(ctx context.Context, obj ConfigObject) (string, error)
+	ListManagedConfigs(ctx context.Context) ([]ConfigInfo, error)
+	RemoveConfig(ctx context.Context, id string) error
 	ServiceList(ctx context.Context) ([]ServiceStatus, error)
 	// ServiceRestart forces a rolling restart of a service's tasks in place.
 	ServiceRestart(ctx context.Context, idOrName string) error

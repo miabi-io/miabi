@@ -540,6 +540,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	secretService.SetConsumers(appService)
 	configService := configsvc.NewService(repositories.NewConfigRepository(db))
 	configService.SetConsumers(appService)
+	housekeepingService.SetConfigs(configService)
 	databaseService.SetSecrets(secretService)
 	// Certificate store <-> route service: routes resolve custom certs from the
 	// store at render time; the store consults routes for its delete guard/usage.
@@ -653,19 +654,15 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Tenant capture: point the existing per-database backup machinery at the
 	// platform's own bucket rather than growing a second copy of it here.
 	platformBackupService.EnableTenantCapture(db, backupService)
-	// Restoring a volume under a running container hands it files that change
-	// while it is reading them, so the apps mounting it are stopped first and
-	// started again afterwards.
+
 	platformBackupService.SetAppStopper(platformbackup.NewMountAppStopper(appRepo, appService))
 	forwardService.SetImageResolver(imageResolver)
 	storageService.SetImageResolver(imageResolver)
 	monitoringService := monitoring.NewService(appRepo, releaseRepo, dbRepo, stackRepo, appEventRepo, repositories.NewMetricRepository(db), nodeClients)
 	monitoringService.SetServerInfo(nodeService)
 	marketplaceService := marketplace.NewService(appService, databaseService, storageService, stackService, repositories.NewTemplateInstallRepository(db), repositories.NewTemplateRepository(db))
+	marketplaceService.SetConfigs(configService)
 	marketplaceService.SetEventBus(bus) // live install-progress SSE
-	// Marketplace registry sync: pull the official+community export bundle from
-	// the configured marketplace service into Redis and merge it into the
-	// catalog. Empty MIABI_MARKETPLACE_URL ⇒ disabled (embedded-only floor).
 	marketplaceRemote := marketremote.New(cfg.MarketplaceURL, marketremote.NewRedisCache(redisClient))
 	marketplaceService.SetRemote(marketplaceRemote)
 	if marketplaceRemote.Enabled() {
@@ -807,6 +804,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	certificateService.SetDomains(domainRepo)
 	// Declarative apply engine (shared by the one-shot apply API and GitOps).
 	applyService := apply.NewService(appService, storageService, databaseService, stackService, secretService, routeService, domainService, registryService)
+	applyService.SetConfigs(configService)
 	// Declarative Application port exposure: externalAccess (reverse-proxy URLs,
 	// over the platform base domain) and publish/hostPort (host-port bindings).
 	applyService.SetPortExposure(func() route.ExternalConfig {

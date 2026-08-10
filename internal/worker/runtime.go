@@ -6,6 +6,7 @@ package worker
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/jkaninda/logger"
@@ -396,4 +397,58 @@ func decryptIfSecret(value string, isSecret bool) string {
 		}
 	}
 	return value
+}
+
+// publishConfigs materializes an app's config mounts as docker config objects and
+// returns the attachments for its service spec. Object names embed the file
+// digest, so a content change creates a new object and the service update swaps
+// it — a rolling restart for free, since docker configs are immutable.
+func (b *runtimeBuilder) publishConfigs(ctx context.Context, eng docker.Client, app *models.Application, workspaceScope string) ([]docker.ServiceConfig, error) {
+	if b.configs == nil {
+		return nil, nil
+	}
+	var out []docker.ServiceConfig
+	for _, m := range app.Mounts {
+		if m.ConfigID == 0 {
+			continue
+		}
+		cfg, err := b.configs.Get(app.WorkspaceID, m.ConfigID)
+		if err != nil {
+			continue
+		}
+		files, perr := b.configs.Project(cfg, m)
+		if perr != nil {
+			return nil, fmt.Errorf("project config %s: %w", cfg.Name, perr)
+		}
+		for _, f := range files {
+			obj := docker.ConfigObject{
+				Workspace: workspaceScope,
+				Config:    cfg.Name,
+				Key:       f.Path,
+				Digest:    f.FileDigest()[:12],
+				Content:   f.Content,
+			}
+			id, cerr := eng.EnsureConfig(ctx, obj)
+			if cerr != nil {
+				return nil, cerr
+			}
+			out = append(out, docker.ServiceConfig{
+				ID: id, Name: obj.ObjectName(), Path: f.Path, Mode: parseFileMode(f.Mode),
+			})
+		}
+	}
+	return out, nil
+}
+
+// parseFileMode turns an octal mode string into the bits docker wants; an
+// unparseable value falls back to 0644 rather than failing a deploy.
+func parseFileMode(mode string) uint32 {
+	if mode == "" {
+		return 0o644
+	}
+	v, err := strconv.ParseUint(mode, 8, 32)
+	if err != nil {
+		return 0o644
+	}
+	return uint32(v) & 0o777
 }

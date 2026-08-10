@@ -74,6 +74,9 @@ const (
 	OwnerApp      = "app"      // it backs an application
 	OwnerDatabase = "database" // it backs a database instance
 	OwnerStack    = "stack"    // it belongs to a stack
+	// OwnerTemplateInstall marks a resource a marketplace install created and
+	// owns, so a template upgrade updates it and an uninstall removes it.
+	OwnerTemplateInstall = "template-install"
 )
 
 // OwnerRef is the parsed owner reference attached to a resource's metadata.

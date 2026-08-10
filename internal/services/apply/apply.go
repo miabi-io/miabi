@@ -8,8 +8,11 @@ package apply
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -17,8 +20,10 @@ import (
 	"github.com/miabi-io/miabi/internal/declarative"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/application"
+	configsvc "github.com/miabi-io/miabi/internal/services/config"
 	"github.com/miabi-io/miabi/internal/services/database"
 	"github.com/miabi-io/miabi/internal/services/domain"
+	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/portbinding"
 	"github.com/miabi-io/miabi/internal/services/registry"
 	"github.com/miabi-io/miabi/internal/services/route"
@@ -63,7 +68,14 @@ type Service struct {
 	// manages host-port bindings.
 	extConfig func() route.ExternalConfig
 	bindings  *portbinding.Service
+
+	// configs converges kind: Config; nil leaves a manifest declaring one
+	// erroring rather than silently skipping the resource an app mounts.
+	configs *configsvc.Service
 }
+
+// SetConfigs wires the config service (kind: Config).
+func (s *Service) SetConfigs(c *configsvc.Service) { s.configs = c }
 
 // NewService wires the apply engine over the existing resource services.
 func NewService(apps *application.Service, storage *storage.Service, dbs *database.Service, stacks *stack.Service, secrets *secret.Service, routes *route.Service, domains *domain.Service, registries *registry.Service) *Service {
@@ -400,8 +412,65 @@ func (s *Service) render(workspaceID uint, desired *declarative.ResourceSet) {
 		case res.Registry != nil:
 			s.renderRegistryPasswordLenient(r, res.Metadata.Name, res.Registry)
 			desired.Add(res)
+		case res.Config != nil:
+			// Lenient: a reference that cannot resolve yet (a database created
+			// later in the same bundle) must not break planning; applyConfig
+			// re-renders strictly before writing.
+			if data, err := s.renderConfigData(workspaceID, res.Metadata.Name, res.Config); err == nil {
+				res.Config.DigestFP = configsvc.Digest(data)
+			}
+			desired.Add(res)
 		}
 	}
+	s.stampConfigFP(workspaceID, desired)
+}
+
+// stampConfigFP gives every application the fingerprint of the configs it mounts,
+// on both sides of the diff. Mounted content is invisible to every other diffed
+// field, so this is what makes a config edit converge as an application update.
+// An app with reloadPolicy: none is left empty, which is how that policy
+// suppresses the redeploy.
+func (s *Service) stampConfigFP(workspaceID uint, set *declarative.ResourceSet) {
+	digests := map[string]string{}
+	if s.configs != nil {
+		if live, err := s.configs.List(workspaceID); err == nil {
+			for i := range live {
+				digests[live[i].Name] = live[i].Digest
+			}
+		}
+	}
+	// A config declared in the same bundle is not live yet, so its rendered
+	// fingerprint stands in — otherwise the first apply would show drift.
+	for _, res := range set.All() {
+		if res.Config != nil && res.Config.DigestFP != "" {
+			digests[res.Metadata.Name] = res.Config.DigestFP
+		}
+	}
+	for _, res := range set.All() {
+		if res.Application == nil || res.Application.ReloadPolicy == declarative.ReloadNone {
+			continue
+		}
+		res.Application.ConfigFP = configFingerprint(res.Application.Mounts, digests)
+		set.Add(res)
+	}
+}
+
+// configFingerprint hashes each mount path against its config's digest, sorted by
+// path so the value is stable across mount reordering.
+func configFingerprint(mounts []declarative.MountSpec, digests map[string]string) string {
+	var parts []string
+	for _, mt := range mounts {
+		if mt.Config == "" {
+			continue
+		}
+		parts = append(parts, mt.Path+"\x00"+digests[mt.Config])
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	sort.Strings(parts)
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	return hex.EncodeToString(sum[:])[:16]
 }
 
 // renderRegistryPassword resolves a registry password's templates and stamps the fingerprint the plan compares
@@ -535,6 +604,20 @@ func connView(conn database.ConnectionInfo) declarative.ConnView {
 // secretViews resolves the plaintext value of every workspace secret, keyed by name, so {{ .secrets.<name> }}
 // resolves during render in both the lenient plan pass and the strict execute-time re-render. Without it any
 // env referencing a secret fails the strict render, so the app update errors out and never redeploys.
+// appAliasViews exposes each app's stable network alias, so a config file can
+// point at a sibling by name rather than a hardcoded host.
+func (s *Service) appAliasViews(workspaceID uint) map[string]string {
+	out := map[string]string{}
+	apps, err := s.apps.List(workspaceID)
+	if err != nil {
+		return out
+	}
+	for i := range apps {
+		out[apps[i].Name] = node.AppAlias(&apps[i])
+	}
+	return out
+}
+
 func (s *Service) secretViews(workspaceID uint) map[string]string {
 	out := map[string]string{}
 	secrets, err := s.secrets.List(workspaceID)
@@ -562,6 +645,14 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 	vols, err := s.storage.List(workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("snapshot volumes: %w", err)
+	}
+	cfgNameByID := map[uint]string{}
+	if s.configs != nil {
+		if live, cerr := s.configs.List(workspaceID); cerr == nil {
+			for i := range live {
+				cfgNameByID[live[i].ID] = live[i].Name
+			}
+		}
 	}
 	volNameByID := make(map[uint]string, len(vols))
 	for i := range vols {
@@ -608,7 +699,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 			continue
 		}
 		ext, pub := s.exposedPorts(workspaceID, full.ID)
-		set.Add(appResource(full, ext, pub, volNameByID, regNameByID))
+		set.Add(appResource(full, ext, pub, volNameByID, regNameByID, cfgNameByID))
 	}
 
 	instances, err := s.dbs.List(workspaceID)
@@ -675,6 +766,31 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 		})
 	}
 
+	if s.configs != nil {
+		configs, cerr := s.configs.List(workspaceID)
+		if cerr != nil {
+			return nil, fmt.Errorf("snapshot configs: %w", cerr)
+		}
+		for i := range configs {
+			c := configs[i]
+			spec := &declarative.ConfigSpec{
+				Mode: c.Mode, Sensitive: c.Sensitive, Delimiters: c.Delimiters,
+				DigestFP: c.Digest,
+			}
+			// A sensitive config's content never enters a plan, so only its
+			// fingerprint is carried; a plain one also surfaces per-key presence.
+			if !c.Sensitive {
+				if data, derr := s.configs.Data(&c); derr == nil {
+					spec.Data = data
+				}
+			}
+			set.Add(declarative.Resource{
+				APIVersion: declarative.APIVersion, Kind: declarative.KindConfig,
+				Metadata: meta(c.UID, c.Name, c.Metadata), Config: spec,
+			})
+		}
+	}
+
 	routes, err := s.routes.List(workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("snapshot routes: %w", err)
@@ -715,6 +831,8 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 			Domain:   &declarative.DomainSpec{TLS: string(d.TLSMode), Wildcard: d.Wildcard},
 		})
 	}
+	// Both sides of the diff must carry the fingerprint or it reads as drift.
+	s.stampConfigFP(workspaceID, set)
 	return set, nil
 }
 
@@ -748,7 +866,7 @@ func metaA(uid, name string, m, annotations models.Metadata) declarative.Meta {
 // appResource maps a live application to its declarative form for diffing. ext
 // and pub are the container ports currently exposed externally (generated route)
 // and published (host-port binding), so per-port exposure converges idempotently.
-func appResource(app *models.Application, ext, pub map[int]bool, volNameByID, regNameByID map[uint]string) declarative.Resource {
+func appResource(app *models.Application, ext, pub map[int]bool, volNameByID, regNameByID, cfgNameByID map[uint]string) declarative.Resource {
 	spec := &declarative.ApplicationSpec{
 		Image:           app.Image,
 		Tag:             app.Tag,
@@ -763,9 +881,22 @@ func appResource(app *models.Application, ext, pub map[int]bool, volNameByID, re
 	if app.RegistryID != nil {
 		spec.Registry = regNameByID[*app.RegistryID]
 	}
+	if app.ReloadPolicy != "" && app.ReloadPolicy != models.ReloadRestart {
+		spec.ReloadPolicy = app.ReloadPolicy
+	}
 	// Managed volume mounts, by the volume's manifest name. Privileged host-preset
 	// binds (VolumeID 0) aren't manifest-expressible, so they're omitted.
 	for _, m := range app.Mounts {
+		if m.ConfigID != 0 {
+			name := cfgNameByID[m.ConfigID]
+			if name == "" {
+				continue
+			}
+			spec.Mounts = append(spec.Mounts, declarative.MountSpec{
+				Config: name, Key: m.ConfigKey, Path: m.Path, Mode: m.Mode, ReadOnly: true,
+			})
+			continue
+		}
 		if m.VolumeID == 0 {
 			continue
 		}
@@ -848,6 +979,8 @@ func (s *Service) execute(ctx context.Context, workspaceID uint, ch declarative.
 		return s.applyDomain(workspaceID, ch, desired)
 	case declarative.KindRegistry:
 		return s.applyRegistry(ctx, workspaceID, ch, desired)
+	case declarative.KindConfig:
+		return s.applyConfig(workspaceID, ch, desired)
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedKind, ch.Kind)
 	}
@@ -951,6 +1084,59 @@ func (s *Service) applySecret(workspaceID uint, ch declarative.Change, desired d
 	}
 	// Secret values are write-only and never diffed, so update is a no-op here.
 	return nil
+}
+
+// applyConfig converges a configuration file set. File content is rendered here
+// rather than in render(), because a config's own delimiters may differ per
+// resource and the strict render must fail the apply rather than store a file
+// with an unresolved reference.
+func (s *Service) applyConfig(workspaceID uint, ch declarative.Change, desired declarative.Resource) error {
+	if s.configs == nil {
+		return fmt.Errorf("%w: %s", ErrUnsupportedKind, declarative.KindConfig)
+	}
+	switch ch.Action {
+	case declarative.ActionCreate, declarative.ActionUpdate:
+		spec := desired.Config
+		if spec == nil {
+			return fmt.Errorf("%w: config %q: spec is required", ErrInvalidManifest, ch.Name)
+		}
+		data, err := s.renderConfigData(workspaceID, ch.Name, spec)
+		if err != nil {
+			return fmt.Errorf("%w: config %q: %v", ErrInvalidManifest, ch.Name, err)
+		}
+		in := configsvc.Input{
+			Name: ch.Name, Data: data, Mode: spec.Mode,
+			Sensitive: spec.Sensitive, Delimiters: spec.Delimiters,
+		}
+		if ch.Action == declarative.ActionCreate {
+			_, cerr := s.configs.Create(workspaceID, in, nil)
+			return cerr
+		}
+		cfg, gerr := s.configs.GetByName(workspaceID, ch.Name)
+		if gerr != nil {
+			return gerr
+		}
+		_, uerr := s.configs.Update(workspaceID, cfg.ID, in, nil)
+		return uerr
+	case declarative.ActionDelete:
+		cfg, err := s.configs.GetByName(workspaceID, ch.Name)
+		if err != nil {
+			return err
+		}
+		return s.configs.Delete(workspaceID, cfg.ID)
+	}
+	return nil
+}
+
+// renderConfigData interpolates a config's files, honouring its own delimiters so
+// a file whose syntax uses {{ }} is not mangled.
+func (s *Service) renderConfigData(workspaceID uint, name string, spec *declarative.ConfigSpec) (map[string]string, error) {
+	r := declarative.NewRenderer(declarative.RenderContext{
+		Databases: s.databaseViews(workspaceID),
+		Secrets:   s.secretViews(workspaceID),
+		Apps:      s.appAliasViews(workspaceID),
+	})
+	return r.RenderFiles("config."+name, spec.Data, spec.Delimiters)
 }
 
 // applyRegistry converges a container-registry credential. The password is re-rendered strictly here: a bundle

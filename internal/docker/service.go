@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/docker/docker/api/types"
@@ -42,7 +43,10 @@ type ServiceSpec struct {
 	// Binds are host-path bind mounts for operator-managed storage present at the SAME path on every
 	// node (a host-path volume under /mnt/*). Unlike Mounts they need no driver config — the path is
 	// assumed present on each node the scheduler places a task on.
-	Binds       []ServiceBind
+	Binds []ServiceBind
+	// Configs are docker config objects attached as files. Swarm distributes them
+	// over raft, so a task lands with its files on whichever node it schedules to.
+	Configs     []ServiceConfig
 	Labels      map[string]string
 	MemoryBytes int64
 	NanoCPUs    int64
@@ -100,6 +104,14 @@ type ServiceStatus struct {
 }
 
 // buildSwarmServiceSpec maps a Miabi ServiceSpec to the Docker SDK spec.
+// ServiceConfig attaches one docker config object at a path inside the task.
+type ServiceConfig struct {
+	ID   string
+	Name string
+	Path string
+	Mode uint32
+}
+
 func buildSwarmServiceSpec(spec ServiceSpec) swarm.ServiceSpec {
 	replicas := spec.Replicas
 	if replicas == 0 {
@@ -127,6 +139,22 @@ func buildSwarmServiceSpec(spec ServiceSpec) swarm.ServiceSpec {
 	}
 	for _, b := range spec.Binds {
 		cspec.Mounts = append(cspec.Mounts, mount.Mount{Type: mount.TypeBind, Source: b.Source, Target: b.Target, ReadOnly: b.ReadOnly})
+	}
+	for _, c := range spec.Configs {
+		mode := os.FileMode(c.Mode)
+		if mode == 0 {
+			mode = 0o644
+		}
+		cspec.Configs = append(cspec.Configs, &swarm.ConfigReference{
+			ConfigID:   c.ID,
+			ConfigName: c.Name,
+			File: &swarm.ConfigReferenceFileTarget{
+				Name: c.Path,
+				UID:  "0",
+				GID:  "0",
+				Mode: mode,
+			},
+		})
 	}
 	if hc := spec.Healthcheck; hc != nil && len(hc.Test) > 0 {
 		cspec.Healthcheck = &container.HealthConfig{

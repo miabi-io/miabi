@@ -19,6 +19,7 @@ const (
 	OwnerDatabase = "database"
 	OwnerVolume   = "volume"
 	OwnerStack    = "stack"
+	OwnerConfig   = "config"
 )
 
 // Local aliases for the platform label keys (canonical definitions live in the

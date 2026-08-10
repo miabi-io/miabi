@@ -275,3 +275,37 @@ func TestConfigMarshalRoundTrip(t *testing.T) {
 		t.Errorf("round trip is not byte-stable:\n%s\n---\n%s", out, again)
 	}
 }
+
+// A config rendering under its own delimiters must still resolve hyphenated
+// names: expandRefs builds its action pattern from the delimiters, so a
+// hardcoded {{ }} pattern would leave << .databases.shop-db.uri >> unexpanded
+// and the render would fail.
+func TestRenderFilesWithCustomDelimitersResolvesHyphenatedNames(t *testing.T) {
+	r := d.NewRenderer(d.RenderContext{
+		Databases: map[string]d.ConnView{"shop-db": {URI: "postgres://u:p@dp/shop", Host: "mb-db"}},
+		Apps:      map[string]string{"api": "mb-app-api"},
+	})
+	out, err := r.RenderFiles("config.c", map[string]string{
+		"app.conf": "db = << .databases.shop-db.uri >>\nupstream = << .applications.api.alias >>\nlabel = \"{{ $labels.instance }}\"\n",
+	}, []string{"<<", ">>"})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	got := out["app.conf"]
+	if !strings.Contains(got, "db = postgres://u:p@dp/shop") {
+		t.Errorf("hyphenated database ref did not resolve: %q", got)
+	}
+	if !strings.Contains(got, "upstream = mb-app-api") {
+		t.Errorf("app alias did not resolve: %q", got)
+	}
+	if !strings.Contains(got, "{{ $labels.instance }}") {
+		t.Errorf("the file's own mustache was mangled: %q", got)
+	}
+}
+
+func TestRenderFilesStrictOnMissingReference(t *testing.T) {
+	r := d.NewRenderer(d.RenderContext{})
+	if _, err := r.RenderFiles("config.c", map[string]string{"a.conf": "{{ .databases.nope.uri }}"}, nil); err == nil {
+		t.Fatal("an unresolvable reference must fail rather than store a broken file")
+	}
+}

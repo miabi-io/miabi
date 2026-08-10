@@ -107,6 +107,34 @@ func (r *Renderer) RenderString(name, s string) (string, error) {
 	return b.String(), nil
 }
 
+// RenderFiles interpolates a config's files. Delimiters, when set, replaces the
+// interpolation markers for this config only, so a file whose own syntax uses
+// {{ }} — Prometheus alerting, Grafana provisioning — is not mangled.
+func (r *Renderer) RenderFiles(config string, files map[string]string, delimiters []string) (map[string]string, error) {
+	left, right := "{{", "}}"
+	if len(delimiters) == 2 && delimiters[0] != "" && delimiters[1] != "" {
+		left, right = delimiters[0], delimiters[1]
+	}
+	out := make(map[string]string, len(files))
+	for k, v := range files {
+		name := config + ".files." + k
+		if !strings.Contains(v, left) {
+			out[k] = v
+			continue
+		}
+		t, err := template.New(name).Delims(left, right).Funcs(funcMap).Option("missingkey=error").Parse(v)
+		if err != nil {
+			return nil, fmt.Errorf("template %s: %w", name, err)
+		}
+		var b strings.Builder
+		if err := t.Execute(&b, r.data()); err != nil {
+			return nil, fmt.Errorf("render %s: %w", name, err)
+		}
+		out[k] = b.String()
+	}
+	return out, nil
+}
+
 // RenderEnv interpolates every value of an application's env map.
 func (r *Renderer) RenderEnv(app string, env map[string]string) (map[string]string, error) {
 	out := make(map[string]string, len(env))

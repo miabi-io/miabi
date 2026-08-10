@@ -150,3 +150,9 @@ func (o offlineClient) CreateOverlayNetwork(context.Context, string) (string, er
 	return "", o.err
 }
 func (o offlineClient) Close() error { return nil }
+
+func (o offlineClient) EnsureConfig(context.Context, ConfigObject) (string, error) {
+	return "", o.err
+}
+func (o offlineClient) ListManagedConfigs(context.Context) ([]ConfigInfo, error) { return nil, o.err }
+func (o offlineClient) RemoveConfig(context.Context, string) error               { return o.err }
