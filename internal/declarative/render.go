@@ -103,7 +103,25 @@ var (
 // is what lets a reference name contain a hyphen: Go templates cannot access ".databases.shop-db"
 // but `(ref "databases" "shop-db" "uri")` resolves it. Non-hyphenated refs rewrite identically.
 func expandRefs(s string) string {
-	return actionPattern.ReplaceAllStringFunc(s, func(action string) string {
+	return expandRefsIn(s, actionPattern)
+}
+
+// expandRefsDelims is expandRefs for a config rendering under its own delimiters:
+// the action pattern must be built from those markers, or a hyphenated name
+// inside << >> would never be rewritten and would fail to resolve.
+func expandRefsDelims(s, left, right string) string {
+	if left == "{{" && right == "}}" {
+		return expandRefs(s)
+	}
+	pat, err := regexp.Compile(`(?s)` + regexp.QuoteMeta(left) + `.*?` + regexp.QuoteMeta(right))
+	if err != nil {
+		return s
+	}
+	return expandRefsIn(s, pat)
+}
+
+func expandRefsIn(s string, action *regexp.Regexp) string {
+	return action.ReplaceAllStringFunc(s, func(action string) string {
 		return refPattern.ReplaceAllStringFunc(action, func(m string) string {
 			sub := refPattern.FindStringSubmatch(m)
 			var b strings.Builder
@@ -203,6 +221,35 @@ func (r *Renderer) RenderString(name, s string) (string, error) {
 		return "", fmt.Errorf("render %s: %w", name, err)
 	}
 	return b.String(), nil
+}
+
+// RenderFiles interpolates a config's files. Delimiters, when set, replaces the
+// interpolation markers for this config only, so a file whose own syntax uses
+// {{ }} is not mangled. Strict: an unresolvable reference fails the render
+// rather than storing a broken file.
+func (r *Renderer) RenderFiles(scope string, files map[string]string, delimiters []string) (map[string]string, error) {
+	left, right := "{{", "}}"
+	if len(delimiters) == 2 && delimiters[0] != "" && delimiters[1] != "" {
+		left, right = delimiters[0], delimiters[1]
+	}
+	out := make(map[string]string, len(files))
+	for k, v := range files {
+		if !strings.Contains(v, left) {
+			out[k] = v
+			continue
+		}
+		name := scope + "." + k
+		t, err := template.New(name).Delims(left, right).Funcs(r.funcs()).Option("missingkey=error").Parse(expandRefsDelims(v, left, right))
+		if err != nil {
+			return nil, fmt.Errorf("template %s: %w", name, err)
+		}
+		var b strings.Builder
+		if err := t.Execute(&b, r.data()); err != nil {
+			return nil, fmt.Errorf("render %s: %w", name, err)
+		}
+		out[k] = b.String()
+	}
+	return out, nil
 }
 
 // RenderEnv interpolates every value of an env map.

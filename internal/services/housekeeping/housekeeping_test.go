@@ -19,6 +19,7 @@ import (
 type fakeDocker struct {
 	docker.Client
 	containers []docker.Container
+	configs    []docker.ConfigInfo
 	volumes    []docker.Volume
 	images     []docker.Image
 	disk       docker.DiskUsage
@@ -34,8 +35,11 @@ func (f *fakeDocker) ListContainers(context.Context, bool) ([]docker.Container, 
 	return f.containers, nil
 }
 func (f *fakeDocker) ListVolumes(context.Context) ([]docker.Volume, error) { return f.volumes, nil }
-func (f *fakeDocker) ListImages(context.Context) ([]docker.Image, error)   { return f.images, nil }
-func (f *fakeDocker) DiskUsage(context.Context) (docker.DiskUsage, error)  { return f.disk, nil }
+func (f *fakeDocker) ListManagedConfigs(context.Context) ([]docker.ConfigInfo, error) {
+	return f.configs, nil
+}
+func (f *fakeDocker) ListImages(context.Context) ([]docker.Image, error)  { return f.images, nil }
+func (f *fakeDocker) DiskUsage(context.Context) (docker.DiskUsage, error) { return f.disk, nil }
 func (f *fakeDocker) RemoveContainer(_ context.Context, id string, _ bool) error {
 	f.removedContainers = append(f.removedContainers, id)
 	return nil

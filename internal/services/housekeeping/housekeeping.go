@@ -37,7 +37,18 @@ type Service struct {
 	clients Clients
 	apps    appLister
 	exists  recordExister
+	// configs resolves a workspace config by name, so an orphaned swarm config
+	// object can be told apart from a live one. nil never classifies an orphan.
+	configs configLookup
 }
+
+// configLookup resolves a config by name within a workspace.
+type configLookup interface {
+	GetByName(workspaceID uint, name string) (*models.Config, error)
+}
+
+// SetConfigs wires the config lookup used to classify swarm config objects.
+func (s *Service) SetConfigs(c configLookup) { s.configs = c }
 
 // NewService wires the housekeeping service against the node client registry and
 // the repos it joins live Docker state against. The repos are composed into a
@@ -230,6 +241,29 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 		}
 	}
 
+	// Swarm config objects whose owning Config row is gone. Docker refuses to
+	// remove one a service still references, so an in-use object can never be
+	// swept out from under a running task even if the classification is stale.
+	if cfgs, cerr := dc.ListManagedConfigs(ctx); cerr == nil {
+		for _, c := range cfgs {
+			if c.Config == "" || c.Workspace == "" {
+				continue
+			}
+			wsID, ok := parseID(c.Workspace)
+			if !ok {
+				continue
+			}
+			live, lerr := s.configExists(wsID, c.Config)
+			if lerr != nil || live {
+				continue
+			}
+			out.Orphans = append(out.Orphans, DriftItem{
+				Class: ClassOrphan, Kind: "config", Ref: c.ID, Name: c.Name,
+				OwnerKind: OwnerConfig, OwnerID: 0, Action: ActionRemove,
+			})
+		}
+	}
+
 	// Missing: apps placed on this node, expected running, with no live container.
 	apps, aerr := s.apps.ListByServer(nodeID)
 	if aerr != nil {
@@ -249,6 +283,19 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 		})
 	}
 	return out, nil
+}
+
+// configExists reports whether a workspace still has a config by that name; a
+// config object whose row is gone is what makes the object an orphan.
+func (s *Service) configExists(workspaceID uint, name string) (bool, error) {
+	if s.configs == nil {
+		return true, nil // no resolver wired: never classify as an orphan
+	}
+	_, err := s.configs.GetByName(workspaceID, name)
+	if err != nil {
+		return false, nil
+	}
+	return true, nil
 }
 
 func containerName(c docker.Container) string {

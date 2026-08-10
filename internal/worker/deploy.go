@@ -694,6 +694,15 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 		// Runner-resolved auto: honor Command, inject $PORT (safe for either method).
 		env = ensurePortEnv(env, app.Port)
 	}
+	// Config files ride as docker config objects: swarm distributes them over raft,
+	// so a task lands with its files whichever node it schedules to. Per file, never
+	// a directory, so the image's own contents at that path survive.
+	svcConfigs, cfgErr := h.publishConfigs(ctx, h.eng(app), app, fmt.Sprint(app.WorkspaceID))
+	if cfgErr != nil {
+		_ = h.fail(dep, fmt.Errorf("publish config files: %w", cfgErr))
+		return
+	}
+
 	// Managed volume mounts only — privileged host-preset binds are not supported for services, since
 	// tasks may land on any node. For a shared (nfs/cifs) volume, carry its driver config on the mount
 	// so every node materializes the real backing share instead of an empty local volume.
@@ -703,6 +712,9 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 	for _, m := range app.Mounts {
 		if m.HostPreset != "" {
 			continue // preset host binds aren't supported on services
+		}
+		if m.ConfigID != 0 {
+			continue // attached as config objects above
 		}
 		// A host-path volume (under /mnt/*) binds an operator-managed path present on
 		// every node — a bind mount, not a Docker named volume.
@@ -753,6 +765,7 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 		Mounts:         mounts,
 		MountDrivers:   mountDrivers,
 		Binds:          binds,
+		Configs:        svcConfigs,
 		MemoryBytes:    app.MemoryBytes,
 		NanoCPUs:       app.NanoCPUs,
 		Constraints:    app.PlacementConstraints,
