@@ -14,7 +14,8 @@ examples/
 ├── apply/
 │   ├── project.yaml              # a Project bundle (db + volume + secret + app + route)
 │   ├── domain.yaml               # owned Domains (FQDN + TLS policy) + Routes exposing an app
-│   └── app-ports.yaml            # per-port exposure: externalAccess (URL) + publish/hostPort
+│   ├── app-ports.yaml            # per-port exposure: externalAccess (URL) + publish/hostPort
+│   └── config.yaml               # Configs mounted as files (directory + pinned key, delimiters)
 ├── gitops/
 │   ├── README.md
 │   ├── envs/
@@ -30,8 +31,16 @@ examples/
 ## Resource kinds (`miabi.io/v1`)
 
 `Application` · `Stack` · `Database` · `Volume` · `Route` · `Domain` · `Secret` ·
-`Project` (a bundle of the others). One schema, four consumers: the apply API,
-GitOps, the Terraform/OpenTofu provider, and marketplace templates.
+`Config` · `Project` (a bundle of the others). One schema, four consumers: the
+apply API, GitOps, the Terraform/OpenTofu provider, and marketplace templates.
+
+> **Secrets vs Configs** — a **`Secret`** is one opaque value consumed as an
+> environment variable; a **`Config`** is a set of named files projected into the
+> container as read-only files (`nginx.conf`, `prometheus.yml`, a provisioning
+> directory). Both are workspace-scoped and encrypted at rest. A config's file
+> contents interpolate like env, and a mount either projects the whole set under
+> a directory or pins one `key` to an exact path. See
+> [apply/config.yaml](apply/config.yaml).
 
 > **Domains vs Routes** — a **`Domain`** is an owned hostname/zone (its
 > `metadata.name` is the FQDN) carrying the default TLS policy and optional
@@ -102,7 +111,7 @@ curl -s "$BASE/api/v1/workspaces/$WS/pipelines/$ID/webhook-info" \
 ```
 
 > Notes: `digest` values here are illustrative. Apply v1 converges
-> Application/Volume/Database/Stack/Secret/Route; `custom` TLS needs a stored
+> Application/Volume/Database/Stack/Secret/Config/Route; `custom` TLS needs a stored
 > certificate. A `Route`'s host must fall under a **domain registered in the
 > workspace** (Networking → Domains) — register `example.com` before applying
 > these, or the route create is rejected.
