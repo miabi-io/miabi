@@ -85,7 +85,32 @@ function resetInspection() {
   inspected.value = null
   inspectError.value = ''
 }
-watch(() => [form.value.git_repo, form.value.git_ref, form.value.git_repository_id], resetInspection)
+
+/** A short human summary of when the discovered pipeline runs. */
+const pipelineTriggerLabel = computed(() => {
+  const r = inspected.value
+  if (!r?.has_pipeline) return ''
+  const parts: string[] = []
+  if (r.triggers_push) {
+    parts.push(r.push_branches?.length ? `on push to ${r.push_branches.join(', ')}` : 'on any push')
+  }
+  if (r.schedule) parts.push(`on schedule (${r.schedule})`)
+  if (!parts.length) parts.push('when you deploy')
+  return parts.join(' · ')
+})
+// A service is placed by the Swarm scheduler, which ignores server_id; a container
+// is placed by server_id. The two are never both meaningful, so the form shows one
+// control or the other.
+const isService = computed(() => clusterEnabled.value && form.value.runtime_kind === 'service')
+function addPort() {
+  form.value.ports.push({ container_port: 0, protocol: 'tcp', scheme: 'http', name: '' })
+}
+function removePort(i: number) {
+  form.value.ports.splice(i, 1)
+}
+const form = ref<AppForm>(emptyForm())
+
+  watch(() => [form.value.git_repo, form.value.git_ref, form.value.git_repository_id], resetInspection)
 
 const canInspect = computed(
   () => form.value.source_type === 'git' && (!!form.value.git_repo.trim() || !!form.value.git_repository_id),
@@ -113,31 +138,6 @@ async function inspectRepo() {
     inspecting.value = false
   }
 }
-
-/** A short human summary of when the discovered pipeline runs. */
-const pipelineTriggerLabel = computed(() => {
-  const r = inspected.value
-  if (!r?.has_pipeline) return ''
-  const parts: string[] = []
-  if (r.triggers_push) {
-    parts.push(r.push_branches?.length ? `on push to ${r.push_branches.join(', ')}` : 'on any push')
-  }
-  if (r.schedule) parts.push(`on schedule (${r.schedule})`)
-  if (!parts.length) parts.push('when you deploy')
-  return parts.join(' · ')
-})
-// A service is placed by the Swarm scheduler, which ignores server_id; a container
-// is placed by server_id. The two are never both meaningful, so the form shows one
-// control or the other.
-const isService = computed(() => clusterEnabled.value && form.value.runtime_kind === 'service')
-function addPort() {
-  form.value.ports.push({ container_port: 0, protocol: 'tcp', scheme: 'http', name: '' })
-}
-function removePort(i: number) {
-  form.value.ports.splice(i, 1)
-}
-const form = ref<AppForm>(emptyForm())
-
 async function load(id: number | null) {
   apps.value = []
   if (!id) return
