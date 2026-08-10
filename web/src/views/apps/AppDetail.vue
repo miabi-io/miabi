@@ -1423,9 +1423,12 @@ const hostPresets = ref<HostMountPreset[]>([])
 const hostMount = ref({ preset: '', path: '', read_only: false })
 // Only workspace admins in a privileged workspace may manage host binds.
 const canHostMount = computed(() => !!ws.currentWorkspace?.privileged && ws.isWorkspaceAdmin)
-// Split mounts: named volumes vs. privileged host binds.
-const volumeMounts = computed(() => (app.value?.mounts ?? []).filter((m) => !m.host_preset))
+// Split mounts by source. A config mount carries neither a volume nor a preset,
+// so it has to be excluded explicitly — otherwise it renders as a blank volume
+// row keyed on volume_id 0, and its detach button calls detachVolume(0).
+const volumeMounts = computed(() => (app.value?.mounts ?? []).filter((m) => !m.host_preset && !m.config_id))
 const hostMounts = computed(() => (app.value?.mounts ?? []).filter((m) => m.host_preset))
+const configMounts = computed(() => (app.value?.mounts ?? []).filter((m) => !!m.config_id))
 const selectedPreset = computed(() => hostPresets.value.find((p) => p.key === hostMount.value.preset) || null)
 
 function presetLabel(key?: string) {
@@ -2467,6 +2470,11 @@ async function detachDatabase(d: AppDatabase) {
           {{ hiddenVolumeCount }} volume(s) on other nodes are hidden — an app can only mount volumes on its own node.
         </p>
       </div>
+      <p v-if="configMounts.length > 0" class="form-hint" style="padding: 0 16px 12px">
+        This app also mounts {{ configMounts.length }} configuration file set(s):
+        {{ configMounts.map((m) => m.path).join(', ') }}. Manage them under
+        <router-link to="/configs">Configs</router-link>.
+      </p>
       <div v-if="volumeMounts.length === 0" class="empty-state">
         <span class="mdi mdi-harddisk" style="font-size: 36px; color: var(--text-muted)"></span>
         <p>No volumes attached.</p>
