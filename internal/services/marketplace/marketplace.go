@@ -662,14 +662,7 @@ func consumerApp(m *manifest.Manifest, created []*models.Application, depName st
 		if i >= len(created) {
 			break
 		}
-		referenced := false
-		for _, v := range spec.Env {
-			if strings.Contains(v, token) {
-				referenced = true
-				break
-			}
-		}
-		if !referenced {
+		if !referencesDep(spec.Env, token) {
 			continue
 		}
 		if spec.Primary {
@@ -679,10 +672,33 @@ func consumerApp(m *manifest.Manifest, created []*models.Application, depName st
 			match = created[i]
 		}
 	}
+	// Connection details declared once on the stack are shared by every member, so
+	// no single app's env names the dependency. The primary owns the link then —
+	// otherwise moving them onto the stack would silently unlink the database.
+	if match == nil && m.Stack != nil && referencesDep(m.Stack.Env, token) {
+		for i, spec := range m.Applications {
+			if i < len(created) && spec.Primary {
+				return created[i]
+			}
+		}
+		if len(created) > 0 {
+			return created[0]
+		}
+	}
 	if match == nil && len(created) == 1 {
 		return created[0]
 	}
 	return match
+}
+
+// referencesDep reports whether any value interpolates the dependency token.
+func referencesDep(env map[string]string, token string) bool {
+	for _, v := range env {
+		if strings.Contains(v, token) {
+			return true
+		}
+	}
+	return false
 }
 
 // installNode decides the single node every resource in an install must land on, so each app can share a Docker

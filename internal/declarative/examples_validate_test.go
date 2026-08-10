@@ -93,6 +93,34 @@ func TestExamplesParse(t *testing.T) {
 		}
 	}
 
+	// Config bundle: every mount must resolve to a config in the bundle, and the
+	// example must keep demonstrating both projection forms (whole set under a
+	// directory, and a single pinned key) — that is what it exists to show.
+	if cb, derr := os.ReadFile(filepath.Join(examplesDir, "apply", "config.yaml")); derr != nil {
+		t.Fatalf("read config.yaml: %v", derr)
+	} else if cbSet, perr := d.Parse(cb); perr != nil {
+		t.Fatalf("parse apply/config.yaml: %v", perr)
+	} else {
+		if len(cbSet.ByKind(d.KindConfig)) == 0 {
+			t.Fatal("config.yaml should declare at least one Config")
+		}
+		var dirMount, keyMount bool
+		for _, a := range cbSet.ByKind(d.KindApplication) {
+			for _, mt := range a.Application.Mounts {
+				switch {
+				case mt.Config == "":
+				case mt.Key == "":
+					dirMount = true
+				default:
+					keyMount = true
+				}
+			}
+		}
+		if !dirMount || !keyMount {
+			t.Errorf("config.yaml should mount a config both as a directory and by key (dir=%v key=%v)", dirMount, keyMount)
+		}
+	}
+
 	// GitOps env folders via ParseFS.
 	for _, env := range []string{"dev", "prod"} {
 		dir := filepath.Join(examplesDir, "gitops", "envs", env)

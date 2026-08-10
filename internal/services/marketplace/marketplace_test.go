@@ -337,4 +337,28 @@ func TestConsumerApp(t *testing.T) {
 	if got := consumerApp(soleNoRef, []*models.Application{app(7)}, "db"); got == nil || got.ID != 7 {
 		t.Fatalf("sole-fallback: want app 7, got %v", got)
 	}
+
+	// Connection details shared on the stack: no app names the dep, so the primary
+	// owns the link (a server + worker pair sharing one database).
+	shared := &manifest.Manifest{
+		Stack:        &manifest.StackSpec{Env: map[string]string{"DB_HOST": "{{ .databases.db.host }}"}},
+		Applications: []manifest.AppSpec{{Name: "worker"}, {Name: "server", Primary: true}},
+	}
+	if got := consumerApp(shared, []*models.Application{app(3), app(4)}, "db"); got == nil || got.ID != 4 {
+		t.Fatalf("stack-shared: want app 4 (primary), got %v", got)
+	}
+
+	// Shared env with no primary declared falls back to the first app.
+	sharedNoPrimary := &manifest.Manifest{
+		Stack:        &manifest.StackSpec{Env: map[string]string{"DB_HOST": "{{ .databases.db.host }}"}},
+		Applications: []manifest.AppSpec{{Name: "a"}, {Name: "b"}},
+	}
+	if got := consumerApp(sharedNoPrimary, []*models.Application{app(5), app(6)}, "db"); got == nil || got.ID != 5 {
+		t.Fatalf("stack-shared-no-primary: want app 5, got %v", got)
+	}
+
+	// A stack that names another dependency must not create a spurious link.
+	if got := consumerApp(shared, []*models.Application{app(3), app(4)}, "cache"); got != nil {
+		t.Fatalf("stack-shared-other-dep: want nil, got %v", got)
+	}
 }

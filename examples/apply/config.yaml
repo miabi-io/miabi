@@ -1,0 +1,143 @@
+# Configuration files (kind: Config) — a monitoring bundle whose apps are
+# configured by files rather than environment variables: Prometheus scrapes a
+# target from a mounted prometheus.yml, Grafana reads a provisioned datasource
+# whose password is rendered from the managed database.
+#
+#   POST /api/v1/workspaces/{ws}/apply
+#   { "manifests": "<this file>", "dry_run": true }   # preview the plan
+#   { "manifests": "<this file>" }                     # converge the workspace
+#
+# What this example shows:
+#   • a Config holding several files, mounted as a directory (every file under
+#     one path) and as a single pinned key (one file at an exact path + mode)
+#   • custom `delimiters`, so a file whose own syntax is {{ }} survives rendering
+#   • `sensitive: true` for content carrying credentials — kept out of the plan
+#   • `reloadPolicy: none` on an app that reloads its own config file
+#
+# Editing a file here and re-applying redeploys every app mounting that config
+# (except the ones with reloadPolicy: none). Content limits: 256 KB per file,
+# 512 KB per config.
+apiVersion: miabi.io/v1
+kind: Config
+metadata:
+  name: prom-conf
+spec:
+  # Prometheus alert annotations use {{ $labels.x }} — render on << >> so only
+  # Miabi's own references are substituted and the file's braces survive.
+  delimiters: ["<<", ">>"]
+  data:
+    prometheus.yml: |
+      global:
+        scrape_interval: 15s
+        evaluation_interval: 15s
+      rule_files:
+        - /etc/prometheus/rules/alerts.yml
+      scrape_configs:
+        - job_name: prometheus
+          static_configs:
+            - targets: ["localhost:9090"]
+    rules/alerts.yml: |
+      groups:
+        - name: availability
+          rules:
+            - alert: TargetDown
+              expr: up == 0
+              for: 5m
+              annotations:
+                summary: "{{ $labels.instance }} is down"
+
+---
+# The datasource Grafana provisions at boot. The password comes from the managed
+# database below, rendered at apply time — so the file is never checked into Git
+# with a credential in it. `sensitive` keeps the content out of apply plans;
+# reading it back needs a workspace admin and is audited.
+apiVersion: miabi.io/v1
+kind: Config
+metadata:
+  name: grafana-datasources
+spec:
+  sensitive: true
+  mode: "0640"
+  data:
+    metrics.yml: |
+      apiVersion: 1
+      datasources:
+        - name: Metrics
+          type: postgres
+          url: "{{ .databases.metrics-db.host }}:{{ .databases.metrics-db.port }}"
+          user: "{{ .databases.metrics-db.user }}"
+          database: "{{ .databases.metrics-db.name }}"
+          secureJsonData:
+            password: "{{ .databases.metrics-db.password }}"
+
+---
+apiVersion: miabi.io/v1
+kind: Database
+metadata:
+  name: metrics-db
+spec:
+  engine: postgres
+  version: "17-alpine"
+  placement: auto
+
+---
+apiVersion: miabi.io/v1
+kind: Volume
+metadata:
+  name: grafana-data
+spec: {}
+
+---
+apiVersion: miabi.io/v1
+kind: Stack
+metadata:
+  name: monitoring
+spec:
+  description: Prometheus and Grafana, configured from mounted files.
+
+---
+apiVersion: miabi.io/v1
+kind: Application
+metadata:
+  name: prometheus
+spec:
+  image: prom/prometheus
+  tag: "v3.1.0"
+  stack: monitoring
+  ports:
+    - container: 9090
+      scheme: http
+  mounts:
+    # No `key`: every file in the set is projected under this directory, so the
+    # config lands as /etc/prometheus/prometheus.yml and
+    # /etc/prometheus/rules/alerts.yml. Config mounts are always read-only.
+    - config: prom-conf
+      path: /etc/prometheus
+  # Prometheus watches its own rule files, so a content change should not bounce
+  # the container. Default is `restart`, which redeploys on every config change.
+  reloadPolicy: none
+
+---
+apiVersion: miabi.io/v1
+kind: Application
+metadata:
+  name: grafana
+spec:
+  image: grafana/grafana
+  tag: "11.5.0"
+  stack: monitoring
+  ports:
+    - container: 3000
+      scheme: http
+      externalAccess: true
+  env:
+    GF_SECURITY_ADMIN_USER: admin
+  mounts:
+    - volume: grafana-data
+      path: /var/lib/grafana
+    # With `key`, the mount names one file and `path` is that file's exact
+    # location. `mode` overrides the config's default for this file only.
+    - config: grafana-datasources
+      key: metrics.yml
+      path: /etc/grafana/provisioning/datasources/metrics.yml
+      mode: "0444"
