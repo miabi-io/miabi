@@ -759,6 +759,11 @@ export interface AppMount {
   docker_name: string
   path: string
   host_preset?: string
+  // A config mount projects files rather than binding a directory: config_key
+  // names a single file, and empty projects every file under path.
+  config_id?: number
+  config_key?: string
+  mode?: string
   read_only?: boolean
 }
 
