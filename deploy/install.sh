@@ -89,7 +89,7 @@ RUNNER_VERSION="${RUNNER_VERSION:-v0.0.7}"
 # The miabi CLI is what installs and then manages the stack, and it releases from its own repo
 # (miabi-io/miabi-cli) on its own cadence — a standalone CLI can be older or newer than the stack it
 # manages, so it carries its own pin rather than following MIABI_VERSION.
-MIABI_CLI_VERSION="${MIABI_CLI_VERSION:-v0.8.0}"
+MIABI_CLI_VERSION="${MIABI_CLI_VERSION:-v0.9.0}"
 
 # Docker tags carry no leading "v" (git tag v1.2.3 → image tag 1.2.3) across all
 # three images. The :latest fallback only applies if a caller deliberately blanks
