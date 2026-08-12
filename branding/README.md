@@ -23,6 +23,31 @@ docs, and similar. Please read [`LICENSE`](LICENSE) before using them.
 SVG is preferred (scales cleanly). PNGs are provided for tools that don't accept
 SVG (mark ≈ 512 px, navy icon ≈ 1024 px).
 
+## Badges
+
+Ready-made pills in [`badges/`](badges), also served from
+`https://miabi.io/badges/<file>` — preview them at
+[miabi.io/badges/preview.html](https://miabi.io/badges/preview.html).
+
+| Badge | Use it for |
+|-------|------------|
+| **Running on Miabi** | The footer of a site or app you host on Miabi. |
+| **Deploy on Miabi** | The top of a README, pointing readers at how to run your project. |
+
+Both come in the same four variants. Pick `-dark` on light backgrounds, `-light`
+on dark ones, and `-white` (transparent, single-colour) on a coloured or brand
+background. `-purple` is a filled gradient that carries itself on any
+background — the one to reach for when the badge is a call to action.
+
+```markdown
+[![Running on Miabi](https://miabi.io/badges/running-on-miabi-dark.svg)](https://miabi.io?ref=badge)
+
+[![Deploy on Miabi](https://miabi.io/badges/deploy-on-miabi-purple.svg)](https://docs.miabi.io/docs/getting-started/quickstart?ref=badge)
+```
+
+They are vectors: set any `height` (24–40 px reads well) and the width follows.
+Please keep the link back to Miabi, and don't recolour or redraw them.
+
 ## Which one?
 
 - **Referring to Miabi in text/docs** → a wordmark (`miabi-wordmark*.svg`).
