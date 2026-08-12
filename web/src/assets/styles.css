@@ -792,12 +792,23 @@ input[type="checkbox"]:checked::before {
   font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
   font-size: 13px;
   overflow-x: auto;
+  /* One click grabs the whole block: these are short snippets to copy — a token,
+     a join command — where selecting part of it is never what you meant. */
   user-select: all;
   border: 1px solid var(--border-primary);
   max-width: 100%;
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;
+}
+
+/* A log panel borrows .code-block for its type, but it is scrollable output
+   rather than a snippet: with select-all inherited, a click selects the entire
+   buffer and dragging out one line is impossible. Copying it whole is what the
+   toolbar's copy button is for. */
+.code-block.log-view {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* ─── DNS Records ─── */
