@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { useLogSize, logHeight, LOG_SIZES, type LogSize } from '@/composables/useLogSize'
+import { useLogSize, logHeight, type LogSize } from '@/composables/useLogSize'
+import LogSizeControl from '@/components/LogSizeControl.vue'
 
 // Reusable log panel: search/regex highlight, copy/download, follow, size
 // presets, status badge. The parent owns the line buffer (and any cap); this
@@ -179,18 +180,7 @@ function downloadLogs() {
         <span class="mdi mdi-chevron-double-down"></span>
         {{ logFollow ? 'Following' : 'Follow' }}
       </button>
-      <div class="log-size-control" role="group" aria-label="Log panel size">
-        <button
-          v-for="s in LOG_SIZES"
-          :key="s.value"
-          type="button"
-          class="log-size-btn"
-          :class="{ active: logSize === s.value }"
-          :aria-pressed="logSize === s.value"
-          :title="s.title"
-          @click="logSize = s.value"
-        >{{ s.label }}</button>
-      </div>
+      <LogSizeControl v-model="logSize" />
       <span v-if="statusLabel" class="badge" :class="[statusClass, { 'badge-dot': streaming }]">{{ statusLabel }}</span>
     </div>
     <p v-if="trimmedNote" class="text-muted text-sm log-trim-note">{{ trimmedNote }}</p>
@@ -243,15 +233,6 @@ function downloadLogs() {
 }
 .log-icon-btn:hover:not(:disabled) { color: var(--text-primary); }
 .log-icon-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.log-size-control { display: inline-flex; border: 1px solid var(--border-input); border-radius: var(--radius); overflow: hidden; }
-.log-size-btn {
-  padding: 0 10px; height: 30px; font-size: 12px; font-weight: 600;
-  background: var(--bg-input); color: var(--text-secondary);
-  border: none; border-left: 1px solid var(--border-input); cursor: pointer;
-}
-.log-size-btn:first-child { border-left: none; }
-.log-size-btn:hover { color: var(--text-primary); }
-.log-size-btn.active { background: var(--primary-600); color: #fff; }
 .log-trim-note { margin: 0 0 8px; }
 .log-line { min-height: 1.4em; }
 .log-hit { background: var(--warning-400, #facc15); color: #1a1a2e; border-radius: 2px; }
