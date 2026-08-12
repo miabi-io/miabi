@@ -114,8 +114,8 @@ github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/frankban/quicktest v1.14.6 h1:7Xjx+VpznH+oBnejlPUj8oUpdxnVs4f8XU8WnHkI4W8=
 github.com/frankban/quicktest v1.14.6/go.mod h1:4ptaffx2x8+WTWXmUCuVU6aPUX1/Mz7zb5vbUoiM6w0=
-github.com/getkin/kin-openapi v0.143.0 h1:mIrOpir9J5x2m1vdree2rhuJ/GYGwbTVBp1kuSCJ62Y=
-github.com/getkin/kin-openapi v0.143.0/go.mod h1:3BH9M9XDe/y9M5DSvEocVYAYq1w0qrhJHjC/vZi0AaY=
+github.com/getkin/kin-openapi v0.145.0 h1:htBX+Q7SevVaCUqymFegUKzH2WCbewl9tsmyn2FMGWY=
+github.com/getkin/kin-openapi v0.145.0/go.mod h1:3BH9M9XDe/y9M5DSvEocVYAYq1w0qrhJHjC/vZi0AaY=
 github.com/gliderlabs/ssh v0.3.8 h1:a4YXD1V7xMF9g5nTkdfnja3Sxy1PVDCj1Zg4Wb8vY6c=
 github.com/gliderlabs/ssh v0.3.8/go.mod h1:xYoytBv1sV0aL3CavoDuJIQNURXkkfPA/wxQ1pL1fAU=
 github.com/go-acme/lego/v4 v4.35.2 h1:uVQg+KC/yj9R2g7Q9W5wDqhvQvxV5SMu5eqFVoN5xZU=
@@ -208,10 +208,10 @@ github.com/jkaninda/go-utils v0.1.4 h1:ZdNlI+yLWc4/S0qKcCNQIPj+6lHSdJcGaxtRADAif
 github.com/jkaninda/go-utils v0.1.4/go.mod h1:Aa54jEAcDykc3CnOdreqZG80UfSZOvrYecyusu+oPb4=
 github.com/jkaninda/logger v0.0.5 h1:fTHKgDsHtuN8rkSBvwe6QStfi8yIdm8O3r0g99dRDTY=
 github.com/jkaninda/logger v0.0.5/go.mod h1:ZUXJ2BdxDPG6e8t6mbKhc2ZFaFi2Iuy/4ukquFrPkFE=
-github.com/jkaninda/njia v0.0.1 h1:mrbDONgVpHC2ngh6Qj8Bdxcz+cuUxedxHIE3v4ncaJQ=
-github.com/jkaninda/njia v0.0.1/go.mod h1:YZe9FDA9bqnvKJ/PC3nT8LDOOa6a29KQtLF6XVSRODg=
-github.com/jkaninda/okapi v0.10.0 h1:gksT9ZXtlzBm4trrorc6I5EWNT2270847dhpHIaxPZI=
-github.com/jkaninda/okapi v0.10.0/go.mod h1:haUD7wKaYg/Aum81z9z7YXpy+5VJf2cSrd0jNUsVNmY=
+github.com/jkaninda/njia v0.0.3 h1:7DBKbp/Y/r5DYTEZd7z7oWuNDfnxAzifs2EZ2ux5WNg=
+github.com/jkaninda/njia v0.0.3/go.mod h1:YZe9FDA9bqnvKJ/PC3nT8LDOOa6a29KQtLF6XVSRODg=
+github.com/jkaninda/okapi v0.11.0 h1:73Ke2BJF5TTYG0DLKkFnSKrAP87bzErRQ6tOxF+DHF4=
+github.com/jkaninda/okapi v0.11.0/go.mod h1:/Bt3U6MpUaGdb7iPKjyRpqFhv9/AIj/SReNbRjGQ1mw=
 github.com/joho/godotenv v1.5.1 h1:7eLL/+HRGLY0ldzfGMeQkb7vMd0as4CfYvUVzLqw0N0=
 github.com/joho/godotenv v1.5.1/go.mod h1:f4LDr5Voq0i2e/R5DDNOoa2zzDfwtkZa6DnEwAbqwq4=
 github.com/jonboulle/clockwork v0.2.2 h1:UOGuzwb1PwsrDAObMuhUnj0p5ULPj8V/xJ7Kx9qUBdQ=
