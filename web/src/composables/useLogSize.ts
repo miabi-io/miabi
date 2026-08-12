@@ -2,10 +2,12 @@ import { ref, watch } from 'vue'
 
 export type LogSize = 'small' | 'medium' | 'large'
 
-export const LOG_SIZES: { value: LogSize; label: string; title: string; height: string }[] = [
-  { value: 'small', label: 'S', title: 'Small', height: '350px' },
-  { value: 'medium', label: 'M', title: 'Medium', height: '600px' },
-  { value: 'large', label: 'L', title: 'Large (fill screen)', height: 'calc(100vh - 240px)' },
+// title is the control's accessible name and tooltip: LogSizeControl draws each
+// option rather than labelling it, so this is the only text a user ever reads.
+export const LOG_SIZES: { value: LogSize; title: string; height: string }[] = [
+  { value: 'small', title: 'Small', height: '350px' },
+  { value: 'medium', title: 'Medium', height: '600px' },
+  { value: 'large', title: 'Large (fill screen)', height: 'calc(100vh - 240px)' },
 ]
 
 const STORAGE_KEY = 'miabi_log_size'

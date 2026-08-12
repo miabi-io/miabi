@@ -18,7 +18,8 @@ import ResourceIcon from '@/components/ResourceIcon.vue'
 import ShellTerminal from '@/components/ShellTerminal.vue'
 import ContainerProcesses from '@/components/ContainerProcesses.vue'
 import LogViewer from '@/components/LogViewer.vue'
-import { useLogSize, isLogSize, LOG_SIZES, logHeight } from '@/composables/useLogSize'
+import LogSizeControl from '@/components/LogSizeControl.vue'
+import { useLogSize, isLogSize, logHeight } from '@/composables/useLogSize'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import MetadataCard from '@/components/MetadataCard.vue'
 import EnvVarModal from '@/components/EnvVarModal.vue'
@@ -2115,18 +2116,7 @@ async function detachDatabase(d: AppDatabase) {
       <div class="card-header">
         <div class="log-header-left">
           <h2>Runtime logs</h2>
-          <div class="log-size-control" role="group" aria-label="Log panel size">
-            <button
-              v-for="s in LOG_SIZES"
-              :key="s.value"
-              type="button"
-              class="log-size-btn"
-              :class="{ active: logSize === s.value }"
-              :aria-pressed="logSize === s.value"
-              :title="s.title"
-              @click="logSize = s.value"
-            >{{ s.label }}</button>
-          </div>
+          <LogSizeControl v-model="logSize" />
         </div>
         <div class="log-toolbar">
           <div class="log-search" :class="{ 'log-search-error': logRegexError }">
@@ -3492,17 +3482,8 @@ async function detachDatabase(d: AppDatabase) {
 .detail-grid { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; gap: 16px; align-items: start; }
 @media (max-width: 900px) { .detail-grid { grid-template-columns: 1fr; } }
 .log-view { height: 600px; overflow: auto; white-space: pre-wrap; }
-/* Runtime Logs panel: height is driven inline by the S/M/L size control. */
+/* Runtime Logs panel: height is driven inline by LogSizeControl. */
 .log-header-left { display: flex; align-items: center; gap: 12px; }
-.log-size-control { display: inline-flex; border: 1px solid var(--border-input); border-radius: var(--radius); overflow: hidden; }
-.log-size-btn {
-  padding: 0 10px; height: 26px; font-size: 12px; font-weight: 600;
-  background: var(--bg-input); color: var(--text-secondary);
-  border: none; border-left: 1px solid var(--border-input); cursor: pointer;
-}
-.log-size-btn:first-child { border-left: none; }
-.log-size-btn:hover { color: var(--text-primary); }
-.log-size-btn.active { background: var(--primary-600); color: #fff; }
 .log-toolbar { display: flex; align-items: center; gap: 12px; }
 .log-search { position: relative; display: flex; align-items: center; }
 .log-search-input { width: 240px; padding-right: 52px; }
