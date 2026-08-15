@@ -240,6 +240,7 @@ func (h *PipelineHandler) jobInputs(run *models.PipelineRun, def *models.Pipelin
 	in.Run = run
 	in.Pipeline = def.Name
 	in.Steps = run.Steps
+	in.Env = run.Env
 	in.Registry = reg
 	in.Ref = run.Commit
 	in.Branch = run.Branch

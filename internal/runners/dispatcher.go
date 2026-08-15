@@ -67,6 +67,7 @@ type Dispatcher struct {
 	images   ImageRecorder
 	bus      Publisher
 	deployer Deployer
+	secrets  SecretResolver
 	logs     *logstore.Store // externalizes step logs on terminal (nil-safe)
 	timeout  time.Duration   // per-job deadline (0 = none)
 }
@@ -74,6 +75,10 @@ type Dispatcher struct {
 // SetDeployer wires the deploy-by-digest hook, so a pipeline's terminal deploy
 // step rolls the runner-built image out to the target node (nil-safe).
 func (d *Dispatcher) SetDeployer(dep Deployer) { d.deployer = dep }
+
+// SetSecrets wires the workspace vault used to resolve ${{ secrets.NAME }} in a
+// pipeline's env. Without it, a pipeline that references one fails to dispatch.
+func (d *Dispatcher) SetSecrets(r SecretResolver) { d.secrets = r }
 
 // SetLogStore wires the shared log store so a pipeline step's full log is
 // externalized (with a bounded DB tail) when the run reaches a terminal state.
@@ -128,6 +133,14 @@ func (d *Dispatcher) Dispatch(ctx context.Context, in JobInputs, requiredLabels 
 	}
 	spec, mask := BuildJobSpec(in)
 	spec.Env = append(spec.Env, kv("MIABI_RUNNER_NAME", rn.Name))
+
+	// Resolve on the control plane: a runner never touches the vault, and a
+	// missing secret must fail before a build burns its minutes.
+	secretMask, err := resolveJobSecrets(d.secrets, run.WorkspaceID, &spec)
+	if err != nil {
+		return err
+	}
+	mask = append(mask, secretMask...)
 
 	if _, err := d.runners.Lease(rn.ID, models.LeaseKindPipeline, run.ID, nil, in.Deadline); err != nil {
 		return fmt.Errorf("lease runner %d: %w", rn.ID, err)

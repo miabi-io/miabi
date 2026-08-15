@@ -873,6 +873,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// A succeeded runner build with a deploy step rolls out by digest: create a
 	// deployment of the pushed image and enqueue it to the app's node.
 	runnerDispatcher.SetDeployer(worker.NewPipelineDeployer(appRepo, deploymentRepo, producer))
+	// Pipeline env may reference workspace secrets; resolved on this side, never by a runner.
+	runnerDispatcher.SetSecrets(secretService)
 	// Promotion environments + release catalog/approval gates.
 	environmentRepo := repositories.NewEnvironmentRepository(db)
 	environmentService := environment.NewService(environmentRepo)

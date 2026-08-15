@@ -12,10 +12,10 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/hashicorp/yamux"
 	"github.com/jkaninda/logger"
+	"github.com/jkaninda/wstunnel"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/node"
-	"github.com/miabi-io/wstunnel"
 )
 
 // Manager accepts agent tunnels and maintains the live remote Docker clients in

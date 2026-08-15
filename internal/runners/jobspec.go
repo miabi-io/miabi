@@ -4,6 +4,7 @@
 package runners
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +32,9 @@ type JobInputs struct {
 	Branch        string
 	SourceURL     string // git remote the runner clones + checks out at the commit
 	Workdir       string // defaults to /workspace
+	// Env is the pipeline-level environment, applied to every step. Values may
+	// still carry ${{ secrets.NAME }}; the Dispatcher resolves them.
+	Env map[string]string
 
 	// Filled by the Dispatcher.
 	Creds    *JobCredentials
@@ -64,6 +68,10 @@ func BuildJobSpec(in JobInputs) (proto.JobSpec, []string) {
 	env = appendKV(env, "MIABI_REGISTRY", in.Registry)
 	env = appendKV(env, "MIABI_IMAGE_REPOSITORY", in.Repository)
 
+	// Pipeline env after the platform context and before the credentials below,
+	// so it can never shadow either.
+	env = append(env, sortedKV(in.Env)...)
+
 	// Per-job secret credentials, injected as env so `docker push`/buildx auth
 	// works with no login step. Their values are redacted from the log stream.
 	if in.Creds != nil {
@@ -78,6 +86,7 @@ func BuildJobSpec(in JobInputs) (proto.JobSpec, []string) {
 		steps = append(steps, proto.StepSpec{
 			Ordinal: s.Ordinal, Name: s.Name, Uses: s.Uses, Image: s.Image,
 			Run:             shellCommand(s.Run),
+			Env:             sortedKV(s.Env),
 			ContinueOnError: s.ContinueOnError,
 			Build:           buildConfig(s),
 		})
@@ -126,6 +135,24 @@ func shellCommand(run string) []string {
 }
 
 func kv(k, v string) string { return k + "=" + v }
+
+// sortedKV renders an env map deterministically, so a job spec is comparable
+// across dispatches of the same run.
+func sortedKV(m map[string]string) []string {
+	if len(m) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, kv(k, m[k]))
+	}
+	return out
+}
 
 func appendKV(env []string, k, v string) []string {
 	if v == "" {

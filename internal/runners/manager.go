@@ -13,8 +13,8 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/hashicorp/yamux"
 	"github.com/jkaninda/logger"
+	"github.com/jkaninda/wstunnel"
 	"github.com/miabi-io/miabi/internal/models"
-	"github.com/miabi-io/wstunnel"
 )
 
 // heartbeatInterval refreshes a connected runner's last-seen, matching the node

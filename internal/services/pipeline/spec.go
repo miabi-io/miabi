@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -33,7 +34,10 @@ type Spec struct {
 	Kind       string   `yaml:"kind"`
 	Metadata   SpecMeta `yaml:"metadata"`
 	On         Triggers `yaml:"on"`
-	Steps      []Step   `yaml:"steps"`
+	// Env applies to every step; a step's own env wins on a key collision. Values
+	// may reference workspace secrets as ${{ secrets.NAME }}.
+	Env   map[string]string `yaml:"env,omitempty"`
+	Steps []Step            `yaml:"steps"`
 }
 
 // SpecMeta is the pipeline's identity block.
@@ -115,6 +119,9 @@ func ParseSpec(data []byte) (*Spec, error) {
 	if len(s.Steps) == 0 {
 		return nil, fmt.Errorf("pipeline must declare at least one step")
 	}
+	if err := validEnv("pipeline env", s.Env); err != nil {
+		return nil, err
+	}
 	names := map[string]bool{}
 	for i, st := range s.Steps {
 		if strings.TrimSpace(st.Name) == "" {
@@ -124,6 +131,14 @@ func ParseSpec(data []byte) (*Spec, error) {
 			return nil, fmt.Errorf("duplicate step name %q", st.Name)
 		}
 		names[st.Name] = true
+		if err := validEnv(fmt.Sprintf("step %q env", st.Name), st.Env); err != nil {
+			return nil, err
+		}
+		// A built-in step runs no container of its own, so a step-level env would
+		// be accepted and dropped — the pipeline-level env is what reaches it.
+		if len(st.Env) > 0 && st.Uses != "" {
+			return nil, fmt.Errorf("step %q: 'env' applies to container steps; move it to the pipeline-level env for a %q step", st.Name, st.Uses)
+		}
 		if st.Uses == "" && strings.TrimSpace(st.Image) == "" {
 			return nil, fmt.Errorf("step %q: image is required (or use a built-in via 'uses')", st.Name)
 		}
@@ -198,6 +213,25 @@ func validBuildPath(field, p string) error {
 	clean := filepath.Clean(p)
 	if clean == ".." || strings.HasPrefix(clean, "../") {
 		return fmt.Errorf("'%s' must stay inside the repository, got %q", field, p)
+	}
+	return nil
+}
+
+// envKeyRe is the POSIX-ish shell variable name a step can actually read back.
+var envKeyRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// reservedEnvPrefix is the platform's own build context. A pipeline that could
+// redefine it would shadow the job token the deploy step authenticates with.
+const reservedEnvPrefix = "MIABI_"
+
+func validEnv(what string, env map[string]string) error {
+	for k := range env {
+		switch {
+		case !envKeyRe.MatchString(k):
+			return fmt.Errorf("%s: %q is not a valid environment variable name", what, k)
+		case strings.HasPrefix(strings.ToUpper(k), reservedEnvPrefix):
+			return fmt.Errorf("%s: %q is reserved — %s* is the platform's build context", what, k, reservedEnvPrefix)
+		}
 	}
 	return nil
 }

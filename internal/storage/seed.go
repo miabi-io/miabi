@@ -106,19 +106,31 @@ func SeedPlans(db *gorm.DB) error {
 	const u = models.Unlimited
 	plans := []models.Plan{
 		{
-			Name: "Free", Description: "Starter limits for small workloads.", IsDefault: true, IsActive: true,
+			Name: "Free", Description: "Starter limits for small workloads.", IsActive: true,
 			MaxApps: 3, MaxDatabaseInstances: 1, MaxCronJobs: 2, MaxVolumes: 3, MaxNetworks: 1, MaxAPIKeys: 2, MaxMembers: 3,
 			MaxDatabasesPerInstance: 2, MaxCPUCores: 2, MaxMemoryMB: 2048,
 			MaxDatabaseInstanceSizeMB: 2048, MaxStorageMB: 10240,
 			AllowCustomTLS: false, AllowPrivilegedHostMounts: false, AllowShellExec: false, AllowSharedStorage: false, AllowDNSProviders: false, AllowCustomLabels: false,
+			AllowPlatformRunners: true,
 		},
 		{
-			Name: "Pro", Description: "Higher limits and custom TLS for production.", IsActive: true,
-			MaxApps: 25, MaxDatabaseInstances: 10, MaxCronJobs: 50, MaxVolumes: 50, MaxNetworks: 10, MaxAPIKeys: 25, MaxMembers: 25,
-			MaxDatabasesPerInstance: 20, MaxCPUCores: 16, MaxMemoryMB: 32768,
+			Name: "Pro", Description: "Higher limits and custom TLS for production.",
+			IsDefault:                 true,
+			IsActive:                  true,
+			MaxApps:                   25,
+			MaxDatabaseInstances:      10,
+			MaxCronJobs:               50,
+			MaxVolumes:                50,
+			MaxNetworks:               10,
+			MaxAPIKeys:                25,
+			MaxMembers:                25,
+			MaxDatabasesPerInstance:   20,
+			MaxCPUCores:               16,
+			MaxMemoryMB:               32768,
 			MaxDatabaseInstanceSizeMB: 51200, MaxStorageMB: 512000,
 			AllowCustomTLS: true, AllowPrivilegedHostMounts: false, AllowShellExec: true, AllowSharedStorage: true, AllowDNSProviders: true, AllowCustomLabels: true,
 			AllowOfficialImageUser: true,
+			AllowPlatformRunners:   true,
 		},
 		{
 			Name: models.UnlimitedPlanName, Description: "No resource limits; all capabilities.", IsActive: true,
@@ -126,6 +138,7 @@ func SeedPlans(db *gorm.DB) error {
 			MaxDatabasesPerInstance: u, MaxCPUCores: u, MaxMemoryMB: u, MaxDatabaseInstanceSizeMB: u, MaxStorageMB: u,
 			AllowCustomTLS: true, AllowPrivilegedHostMounts: true, AllowShellExec: true, AllowSharedStorage: true, AllowDNSProviders: true, AllowCustomLabels: true,
 			AllowOfficialImageUser: true,
+			AllowPlatformRunners:   true,
 		},
 	}
 	if err := db.Create(&plans).Error; err != nil {
