@@ -18,6 +18,11 @@
 # (like GitHub Actions' $GITHUB_ENV) — later steps see them in their environment:
 #   run: "echo VERSION=$(cat VERSION) >> $MIABI_ENV"
 # MIABI_IMAGE above is published through this same channel by the build step.
+#
+# Your own variables come from `env:`, at pipeline level (every step) or step
+# level. Later wins:  pipeline env  <  $MIABI_ENV exports  <  step env.
+# MIABI_* names are reserved for the context above and are rejected at save time,
+# so a pipeline cannot shadow the credentials the deploy step authenticates with.
 apiVersion: miabi.io/v1
 kind: Pipeline
 metadata:
@@ -27,9 +32,17 @@ on:
     branches: [main]
   manual: true
   schedule: "0 3 * * *"   # nightly at 03:00 (registered in the cron scheduler)
+env:
+  NODE_ENV: production
+  # Resolved from the workspace vault at dispatch — the value never enters this
+  # file, the runner never reads the vault, and it is masked in the live logs.
+  # A missing secret fails the run up front instead of after a four-minute build.
+  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 steps:
   - name: test
     image: node:20
+    env:
+      CI: "true"          # step env: adds to the pipeline's, and wins on a collision
     run: "npm ci && npm test"
   - name: build
     uses: build             # builds /workspace, records an Image row + digest, sets run.image_id
