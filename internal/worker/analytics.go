@@ -26,9 +26,7 @@ const (
 	// late-arriving events still land in their bucket before it is flushed.
 	analyticsBucketGrace = 90 * time.Second
 	// analyticsRouteTTL bounds how stale the route→app reverse map may get.
-	analyticsRouteTTL = time.Minute
-	// analyticsStopTimeout bounds how long shutdown waits for the final flush
-	// before giving up on it — a hung database must not hold the process open.
+	analyticsRouteTTL    = time.Minute
 	analyticsStopTimeout = 10 * time.Second
 )
 
@@ -40,21 +38,15 @@ type AnalyticsConsumer struct {
 	routes *repositories.RouteRepository
 	store  *repositories.AnalyticsRepository
 	agg    *analytics.Aggregator
-	// live counts visitors active in the last few minutes, straight off the
-	// stream — the rollups can't answer it, since a bucket isn't written until
-	// its minute closes and the grace period passes.
+
 	live     *analytics.LiveTracker
 	stream   string
 	consumer string
 
-	flushEvery time.Duration
-	// retentionDays returns the effective number of days of rollups to keep,
-	// resolved at prune time so a license install/expiry takes effect live
-	// (Community clamps to enterprise.CommunityAnalyticsRetentionDays).
+	flushEvery    time.Duration
 	retentionDays func() int
 
-	// route→app cache
-	routeMap    map[string]uint // gomaName → applicationID
+	routeMap    map[string]uint
 	routeLoaded time.Time
 }
 
@@ -178,7 +170,7 @@ func (c *AnalyticsConsumer) ensureGroup(ctx context.Context) error {
 // ingestMessage rolls one event into its bucket and reports the visitor sighting the caller should
 // record, if the event counts towards live visitors.
 func (c *AnalyticsConsumer) ingestMessage(msg redis.XMessage) (analytics.LiveVisit, bool) {
-	raw, ok := msg.Values["e"].(string)
+	raw, ok := msg.Values[analytics.StreamEventField].(string)
 	if !ok || raw == "" {
 		return analytics.LiveVisit{}, false
 	}
@@ -244,8 +236,6 @@ func (c *AnalyticsConsumer) flushLoop(ctx context.Context) {
 			return
 		case <-flush.C:
 			c.flush(ctx)
-			// Live counts are already window-correct on read; this just keeps the
-			// visitor sets from holding everyone who ever visited.
 			c.live.Sweep(ctx)
 		case <-prune.C:
 			c.prune(ctx)

@@ -1258,6 +1258,22 @@ func (s *Service) allocateHostPort(serverID uint) int {
 	return 0
 }
 
+// RouteNamesForNode returns the Goma route names a node serves, as they appear in
+// its gateway's analytics events. Analytics ingest gates on this: the workspace is
+// read out of the route name, so reporting a foreign one would claim another
+// tenant's traffic.
+func (s *Service) RouteNamesForNode(serverID uint) (map[string]bool, error) {
+	rendered, _, err := s.NodeBundle(serverID)
+	if err != nil {
+		return nil, err
+	}
+	names := make(map[string]bool, len(rendered))
+	for i := range rendered {
+		names[proxy.GomaName(rendered[i].WorkspaceID, rendered[i].Name)] = true
+	}
+	return names, nil
+}
+
 // NodeBundle renders the Goma config a remote node's Gateway pulls over the HTTP
 // provider: every middleware (routes reference them by name) plus only the
 // routes for apps placed on that node, with node-local upstreams.

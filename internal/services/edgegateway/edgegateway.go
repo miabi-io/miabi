@@ -153,11 +153,8 @@ const (
 // Redis to maxLen and be discarded.
 func (s *Service) SetAnalytics(stream string) { s.analyticsStream = strings.TrimSpace(stream) }
 
-// analyticsEnabledFor reports whether the rendered config should turn analytics on for this node's gateway. It
-// requires publishing to the *platform* Redis, the one Miabi's consumer reads: a remote edge node runs its own
-// Redis, so events there reach no dashboard. It asks where the gateway runs, not which route provider it uses.
 func (s *Service) analyticsEnabledFor(srv *models.Server) bool {
-	return s.analyticsStream != "" && isManager(srv) && s.redisAddrFor(srv) != ""
+	return s.analyticsStream != "" && s.redisAddrFor(srv) != ""
 }
 
 func (s *Service) redisImg() string {
@@ -347,6 +344,11 @@ type fileProvider struct {
 // references it (Goma expands ${...} at runtime) so the stored/editable config
 // holds no secret.
 const apiKeyEnv = "INSTANCE_API_KEY"
+
+// gatewayIDEnv stamps every analytics event with the node it was served by
+// (Goma's `gw` field). Without it every event reports an empty gateway and edge
+// traffic is indistinguishable from the manager's.
+const gatewayIDEnv = "GOMA_GATEWAY_ID"
 
 // reloadTokenEnv is the env var Goma reads the reload-endpoint token from
 // (GOMA_RELOAD_TOKEN). Set to the node's gateway token at deploy so Miabi, which
@@ -693,6 +695,11 @@ func (s *Service) runGateway(ctx context.Context, dc docker.Client, srv *models.
 // ${GATEWAY_REDIS_PASSWORD}). Neither secret lives in the editable config.
 func (s *Service) gatewayEnv(srv *models.Server, token, redisPassword string) []string {
 	env := []string{apiKeyEnv + "=" + token}
+	// Name the gateway on every event it publishes, so the manager can tell which
+	// node served a request once edge events reach the same stream.
+	if s.analyticsEnabledFor(srv) && srv != nil && srv.Name != "" {
+		env = append(env, gatewayIDEnv+"="+srv.Name)
+	}
 	// Protect the on-demand reload endpoint with the node's gateway token. Needed
 	// by any gateway that polls the HTTP provider — every remote edge node, and a
 	// manager gateway configured to poll instead of watching the volume.

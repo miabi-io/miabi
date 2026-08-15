@@ -36,19 +36,43 @@ func TestManagerGatewayRendersAnalytics(t *testing.T) {
 	}
 }
 
-// A remote edge node runs its own per-node Redis for cache and rate limiting.
-// Events written there are read by nobody, so enabling analytics would fill that
-// node's Redis to maxLen and never reach a dashboard.
-func TestRemoteEdgeNodeOmitsAnalytics(t *testing.T) {
+// A remote edge node publishes to its own Redis, which the agent drains and
+// forwards to the manager — so it publishes too, into that local buffer.
+func TestRemoteEdgeNodeRendersAnalytics(t *testing.T) {
 	s := analyticsService(t, "goma:analytics", "miabi-redis:6379")
 	got := s.RenderConfig(&models.Server{Name: "edge-1"})
 
-	if strings.Contains(got, "analytics:") {
-		t.Errorf("a remote edge node must not publish analytics nobody consumes\n---\n%s", got)
+	for _, want := range []string{"analytics:", "stream: goma:analytics", RedisContainer + ":6379"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("rendered config missing %q\n---\n%s", want, got)
+		}
 	}
-	// It still gets its per-node Redis for the features that do work there.
-	if !strings.Contains(got, RedisContainer+":6379") {
-		t.Errorf("remote node lost its per-node Redis\n---\n%s", got)
+}
+
+// Every event names the gateway that served it, or edge traffic is
+// indistinguishable from the manager's once both land in one stream.
+func TestEdgeGatewayEnvCarriesGatewayID(t *testing.T) {
+	s := analyticsService(t, "goma:analytics", "miabi-redis:6379")
+	env := s.gatewayEnv(&models.Server{Name: "edge-1"}, "tok", "redispw")
+
+	var found bool
+	for _, e := range env {
+		if e == gatewayIDEnv+"=edge-1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("gateway env missing %s=edge-1: %v", gatewayIDEnv, env)
+	}
+}
+
+// With no stream wired there is nothing to name a gateway for.
+func TestNoGatewayIDWithoutAnalytics(t *testing.T) {
+	s := analyticsService(t, "", "miabi-redis:6379")
+	for _, e := range s.gatewayEnv(&models.Server{Name: "edge-1"}, "tok", "redispw") {
+		if strings.HasPrefix(e, gatewayIDEnv+"=") {
+			t.Errorf("gateway id set with analytics off: %v", e)
+		}
 	}
 }
 
@@ -61,7 +85,7 @@ func TestNoAnalyticsWithoutAConsumer(t *testing.T) {
 	}
 }
 
-// No platform Redis means nowhere to publish to at all.
+// No platform Redis means the manager's gateway has nowhere to publish to.
 func TestNoAnalyticsWithoutPlatformRedis(t *testing.T) {
 	s := analyticsService(t, "goma:analytics", "")
 	if got := s.RenderConfig(&models.Server{Name: "manager", IsLocal: true}); strings.Contains(got, "analytics:") {

@@ -54,7 +54,8 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(buildInfo, subnetPoolUsed, subnetPoolTotal, gpuDevicesTotal, gpuDevicesEnabled, gpuAllocated)
+	prometheus.MustRegister(buildInfo, subnetPoolUsed, subnetPoolTotal, gpuDevicesTotal, gpuDevicesEnabled, gpuAllocated,
+		analyticsIngested, analyticsRejected)
 }
 
 // SetBuildInfo records the running build's version and commit.
@@ -75,6 +76,33 @@ func SetGPUStats(total, enabled, allocated int) {
 	gpuDevicesTotal.Set(float64(total))
 	gpuDevicesEnabled.Set(float64(enabled))
 	gpuAllocated.Set(float64(allocated))
+}
+
+// Analytics ingest from edge nodes. A node reporting routes it does not serve is
+// a compromise signal, so rejects are counted per node rather than only logged.
+var (
+	analyticsIngested = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "miabi_analytics_ingested_events_total",
+		Help: "Gateway request events accepted from edge nodes.",
+	}, []string{"node"})
+	analyticsRejected = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "miabi_analytics_rejected_events_total",
+		Help: "Events dropped because the node does not serve the route they claim.",
+	}, []string{"node"})
+)
+
+// IngestAccepted records events accepted from a node.
+func IngestAccepted(node string, n int) {
+	if n > 0 {
+		analyticsIngested.WithLabelValues(node).Add(float64(n))
+	}
+}
+
+// IngestRejected records events dropped for an unowned route.
+func IngestRejected(node string, n int) {
+	if n > 0 {
+		analyticsRejected.WithLabelValues(node).Add(float64(n))
+	}
 }
 
 // Handler returns the Prometheus scrape handler.
