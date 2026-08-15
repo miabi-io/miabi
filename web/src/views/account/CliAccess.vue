@@ -7,7 +7,7 @@ import { useNotificationStore } from '@/stores/notification'
 // browser and captures the token itself, so there is nothing to paste.
 const notify = useNotificationStore()
 
-const GITHUB_REPO = 'https://github.com/miabi-io/miabi-cli'
+const GITHUB_REPO = 'https://github.com/miabi-io/cli'
 const RELEASES = `${GITHUB_REPO}/releases/latest`
 const TAP_REPO = 'https://github.com/miabi-io/homebrew-tap'
 
@@ -29,11 +29,11 @@ const installTabs: { key: InstallTab; label: string }[] = [
 const installCmd = computed(() => {
   switch (tab.value) {
     case 'go':
-      return 'go install github.com/miabi-io/miabi-cli@latest'
+      return 'go install github.com/miabi-io/cli@latest'
     case 'binary':
       return `curl -fsSL ${GITHUB_REPO}/releases/latest/download/miabi_linux_amd64.tar.gz \\\n  | tar -xz miabi && sudo mv miabi /usr/local/bin/`
     case 'docker':
-      return 'docker run --rm -e MIABI_SERVER -e MIABI_TOKEN miabi/miabi-cli:latest whoami'
+      return 'docker run --rm -e MIABI_SERVER -e MIABI_TOKEN miabi/cli:latest whoami'
     default:
       return 'brew install miabi-io/tap/miabi'
   }
@@ -162,7 +162,7 @@ async function copy(text: string, key: string) {
       <div class="card-body links">
         <a :href="GITHUB_REPO" target="_blank" rel="noopener" class="link-item">
           <span class="mdi mdi-github"></span>
-          <span><strong>Source &amp; issues</strong><small>miabi-io/miabi-cli</small></span>
+          <span><strong>Source &amp; issues</strong><small>miabi-io/cli</small></span>
         </a>
         <a :href="RELEASES" target="_blank" rel="noopener" class="link-item">
           <span class="mdi mdi-package-variant-closed"></span>
