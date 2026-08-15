@@ -84,12 +84,12 @@ SKIP_DOCKER_INSTALL="${MIABI_SKIP_DOCKER_INSTALL:-0}"
 # the manifest it writes records exactly what this release was tested against.
 MIABI_VERSION="${MIABI_VERSION:-v1.8.1}"
 GOMA_VERSION="${GOMA_VERSION:-v0.13.1}"
-RUNNER_VERSION="${RUNNER_VERSION:-v0.0.7}"
+RUNNER_VERSION="${RUNNER_VERSION:-v0.0.9}"
 
 # The miabi CLI is what installs and then manages the stack, and it releases from its own repo
 # (miabi-io/cli) on its own cadence — a standalone CLI can be older or newer than the stack it
 # manages, so it carries its own pin rather than following MIABI_VERSION.
-MIABI_CLI_VERSION="${MIABI_CLI_VERSION:-v0.9.0}"
+MIABI_CLI_VERSION="${MIABI_CLI_VERSION:-v0.10.0}"
 
 # Docker tags carry no leading "v" (git tag v1.2.3 → image tag 1.2.3) across all
 # three images. The :latest fallback only applies if a caller deliberately blanks
