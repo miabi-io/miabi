@@ -166,3 +166,71 @@ func TestBuildJobSpecCarriesDockerfile(t *testing.T) {
 		t.Errorf("script step should send no BuildConfig, got %+v", spec.Steps[2].Build)
 	}
 }
+
+func TestBuildJobSpecEnvPrecedence(t *testing.T) {
+	spec, _ := BuildJobSpec(JobInputs{
+		Run:           &models.PipelineRun{ID: 1, Number: 1, WorkspaceID: 2, Commit: "abc"},
+		Pipeline:      "ci",
+		WorkspaceName: "acme",
+		Env:           map[string]string{"NODE_ENV": "production", "SHARED": "pipeline"},
+		Steps: []models.PipelineStepRun{{
+			Ordinal: 0, Name: "test", Image: "node:22", Run: "npm test",
+			Env: map[string]string{"CI": "true", "SHARED": "step"},
+		}},
+		Creds: &JobCredentials{RegistryToken: "tok", JobToken: "jt"},
+	})
+
+	// Pipeline env lands on the job, after the platform context.
+	if idx := indexOfKey(spec.Env, "NODE_ENV"); idx < 0 {
+		t.Fatalf("pipeline env missing from the job spec: %v", spec.Env)
+	}
+	if platform, pipeline := indexOfKey(spec.Env, "MIABI_PIPELINE"), indexOfKey(spec.Env, "NODE_ENV"); platform > pipeline {
+		t.Error("pipeline env must come after the platform context")
+	}
+	// Credentials last, so a pipeline cannot shadow them.
+	if creds, pipeline := indexOfKey(spec.Env, "MIABI_JOB_TOKEN"), indexOfKey(spec.Env, "SHARED"); creds < pipeline {
+		t.Error("injected credentials must come after pipeline env")
+	}
+	// The step keeps its own, which the runner applies after the job's.
+	step := spec.Steps[0]
+	if got := valueForKey(step.Env, "SHARED"); got != "step" {
+		t.Errorf("step SHARED = %q, want the step's own value", got)
+	}
+	if got := valueForKey(step.Env, "CI"); got != "true" {
+		t.Errorf("step CI = %q", got)
+	}
+}
+
+func TestBuildJobSpecEnvIsDeterministic(t *testing.T) {
+	in := JobInputs{
+		Run: &models.PipelineRun{ID: 1}, Pipeline: "ci",
+		Env:   map[string]string{"A": "1", "B": "2", "C": "3", "D": "4"},
+		Steps: []models.PipelineStepRun{{Ordinal: 0, Name: "s", Env: map[string]string{"X": "1", "Y": "2"}}},
+	}
+	first, _ := BuildJobSpec(in)
+	for i := 0; i < 20; i++ {
+		next, _ := BuildJobSpec(in)
+		if strings.Join(next.Env, ",") != strings.Join(first.Env, ",") {
+			t.Fatal("job env order varies between builds of the same run")
+		}
+		if strings.Join(next.Steps[0].Env, ",") != strings.Join(first.Steps[0].Env, ",") {
+			t.Fatal("step env order varies between builds of the same run")
+		}
+	}
+}
+
+func indexOfKey(env []string, key string) int {
+	for i, e := range env {
+		if strings.HasPrefix(e, key+"=") {
+			return i
+		}
+	}
+	return -1
+}
+
+func valueForKey(env []string, key string) string {
+	if i := indexOfKey(env, key); i >= 0 {
+		return strings.TrimPrefix(env[i], key+"=")
+	}
+	return ""
+}

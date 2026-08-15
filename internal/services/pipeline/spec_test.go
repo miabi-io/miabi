@@ -208,3 +208,65 @@ func TestParseSpecRejectsBuildArgsOnNonBuildStep(t *testing.T) {
 		t.Fatal("expected error: build-args is only valid on a build step")
 	}
 }
+
+func TestParseSpecEnv(t *testing.T) {
+	spec, err := ParseSpec([]byte(`
+apiVersion: miabi.io/v1
+kind: Pipeline
+metadata: { name: ci }
+env:
+  NODE_ENV: production
+  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+steps:
+  - name: test
+    image: node:22
+    run: npm test
+    env:
+      CI: "true"
+`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if spec.Env["NODE_ENV"] != "production" || spec.Env["NPM_TOKEN"] != "${{ secrets.NPM_TOKEN }}" {
+		t.Errorf("pipeline env = %v", spec.Env)
+	}
+	if spec.Steps[0].Env["CI"] != "true" {
+		t.Errorf("step env = %v", spec.Steps[0].Env)
+	}
+}
+
+func TestParseSpecRejectsBadEnv(t *testing.T) {
+	tests := []struct{ name, yaml, want string }{
+		{
+			"reserved prefix at pipeline level",
+			"env:\n  MIABI_JOB_TOKEN: mine\nsteps:\n  - name: a\n    image: x\n    run: y\n",
+			"reserved",
+		},
+		{
+			"reserved prefix on a step",
+			"steps:\n  - name: a\n    image: x\n    run: y\n    env:\n      MIABI_APP_NAME: other\n",
+			"reserved",
+		},
+		{
+			"invalid variable name",
+			"env:\n  \"not-a-name\": x\nsteps:\n  - name: a\n    image: x\n    run: y\n",
+			"not a valid environment variable name",
+		},
+		{
+			"env on a built-in step",
+			"steps:\n  - name: b\n    uses: build\n    env:\n      FOO: bar\n",
+			"applies to container steps",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseSpec([]byte("apiVersion: miabi.io/v1\nkind: Pipeline\nmetadata: { name: ci }\n" + tt.yaml))
+			if err == nil {
+				t.Fatal("expected a rejection")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("error %q does not mention %q", err, tt.want)
+			}
+		})
+	}
+}

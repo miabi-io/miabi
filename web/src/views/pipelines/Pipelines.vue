@@ -90,9 +90,14 @@ metadata: { name: web }
 on:
   push: { branches: [main] }
   manual: true
+env:                                # applies to every step
+  NODE_ENV: production
+  NPM_TOKEN: \${{ secrets.NPM_TOKEN }}   # from the workspace vault
 steps:
   - name: test
     image: node:20
+    env:                            # step env wins over the pipeline's
+      CI: "true"
     run: "npm ci && npm test"
   - name: build
     uses: build
@@ -104,6 +109,9 @@ steps:
   - name: deploy
     uses: deploy
 `
+
+// Written as a constant: `${{ … }}` in a template is a Vue interpolation.
+const secretRefExample = '${{ secrets.NAME }}'
 
 function emptyForm(): PipelineInput {
   return { name: '', application_id: null, spec: sampleSpec, enabled: true }
@@ -338,6 +346,11 @@ function openLastRun(p: PipelineDefinition) {
                 <p v-if="editingRepoOwned" class="form-hint">
                   Read-only.
                   <template v-if="editing?.source_commit">Synced from commit {{ shortCommit(editing.source_commit) }}.</template>
+                </p>
+                <p v-else class="form-hint">
+                  <code>env</code> applies to every step; a step&rsquo;s own <code>env</code> wins. Values may reference a
+                  <router-link :to="{ name: 'secrets' }">workspace secret</router-link>
+                  as <code>{{ secretRefExample }}</code> &mdash; resolved when the run starts and masked in the logs.
                 </p>
               </div>
               <label class="check"><input type="checkbox" v-model="form.enabled" /> <span>Enabled</span></label>

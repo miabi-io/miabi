@@ -310,6 +310,7 @@ func (s *Service) Trigger(workspaceID, pipelineID uint, in TriggerInput) (*model
 		Status: models.PipelineRunPending, Trigger: in.Trigger,
 		Branch: in.Branch, Commit: in.Commit, CommitMessage: in.CommitMessage,
 		TriggeredByUserID: in.UserID, TriggeredByKeyID: in.APIKeyID,
+		Env: spec.Env,
 	}
 	if err := s.repo.CreateRun(run); err != nil {
 		return nil, err
@@ -319,6 +320,7 @@ func (s *Service) Trigger(workspaceID, pipelineID uint, in TriggerInput) (*model
 			PipelineRunID: run.ID, Ordinal: i, Name: st.Name,
 			Status: models.PipelineRunPending, Image: st.Image, Uses: st.Uses, Run: st.Run,
 			Dockerfile: st.Dockerfile, BuildContext: st.Context, BuildArgs: st.BuildArgs,
+			Env:             st.Env,
 			ContinueOnError: st.ContinueOnError,
 		}
 		if err := s.repo.CreateStep(step); err != nil {

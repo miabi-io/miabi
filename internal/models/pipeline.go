@@ -131,6 +131,9 @@ type PipelineRun struct {
 	// runner X"); nil when it ran on the internal runner.
 	RunnerID *uint  `json:"runner_id,omitempty"`
 	Error    string `json:"error,omitempty" gorm:"type:text"`
+	// Env is the pipeline-level environment as written in the spec, applied to
+	// every step. Stored unresolved, like the steps' own.
+	Env map[string]string `json:"env,omitempty" gorm:"serializer:json"`
 
 	StartedAt  *time.Time `json:"started_at,omitempty"`
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
@@ -161,6 +164,9 @@ type PipelineStepRun struct {
 	// the image. Not secrets — a build arg is readable from the image history — so they are
 	// stored in the clear, unlike the run's credentials.
 	BuildArgs map[string]string `json:"build_args,omitempty" gorm:"serializer:json"`
+	// Env is the step's environment as written in the spec, references included:
+	// the run records what was asked for, never a resolved secret value.
+	Env map[string]string `json:"env,omitempty" gorm:"serializer:json"`
 	// ContinueOnError lets the run keep going (and still succeed) when this step
 	// fails; the step is still recorded failed.
 	ContinueOnError bool   `json:"continue_on_error,omitempty"`
