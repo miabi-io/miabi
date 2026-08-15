@@ -9,7 +9,7 @@
 # (npm/cli#4828), failing to install @rolldown/binding-linux-x64-musl. glibc
 # uses the well-supported -gnu binding. This is a throwaway builder stage (only
 # /web/dist is embedded below), so the base has no effect on the final image.
-FROM node:26-bookworm-slim AS web
+FROM node:25-bookworm-slim AS web
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
@@ -18,7 +18,7 @@ COPY web/ ./
 ENV VITE_API_URL=/api/v1
 RUN npm run build
 
-FROM golang:1.27rc2 AS build
+FROM golang:1.26.5 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
