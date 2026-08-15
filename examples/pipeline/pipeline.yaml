@@ -13,9 +13,17 @@ on:
   push:
     branches: [main]   # a push to main fires this pipeline (see ../README → git triggers)
   manual: true
+env:                   # applied to every step; a step's own env wins on a collision
+  NODE_ENV: production
+  # ${{ secrets.NAME }} is read from the workspace vault when the job is dispatched
+  # (the runner never sees the vault) and masked in the streamed logs. The secret
+  # must already exist in the workspace, or the run fails before its first step.
+  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 steps:
   - name: test
     image: node:20
+    env:
+      CI: "true"
     run: "npm ci && npm test"   # runs in /workspace; sees the checked-out repo
   - name: build
     uses: build

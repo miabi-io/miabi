@@ -99,6 +99,14 @@ application** — the runner clones that repo at the run's commit into a shared
 (`uses: build`), and deploys that exact image by digest (`uses: deploy`). Steps
 run in isolated containers on the internal runner; logs stream live.
 
+**Environment & secrets** — `env` at pipeline level applies to every step; a
+step's own `env` adds to it and wins on a collision. A value may reference a
+workspace secret as `${{ secrets.NAME }}`: the control plane resolves it when
+the job is dispatched (a runner never reads the vault), masks it in the streamed
+logs, and stores the run with the reference unresolved. A reference to a secret
+that doesn't exist fails the run before its first step. `MIABI_*` names are
+reserved, and `env` is rejected on a `uses:` step — see both example files.
+
 **Triggering from Git** — a `git push` can start a run three ways: a native
 push webhook, a CI job calling the trigger API, or `on.schedule`. Full,
 copy-pasteable setup (GitHub/GitLab webhook config, signature test, Actions /
