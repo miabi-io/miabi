@@ -87,7 +87,7 @@ GOMA_VERSION="${GOMA_VERSION:-v0.13.1}"
 RUNNER_VERSION="${RUNNER_VERSION:-v0.0.7}"
 
 # The miabi CLI is what installs and then manages the stack, and it releases from its own repo
-# (miabi-io/miabi-cli) on its own cadence — a standalone CLI can be older or newer than the stack it
+# (miabi-io/cli) on its own cadence — a standalone CLI can be older or newer than the stack it
 # manages, so it carries its own pin rather than following MIABI_VERSION.
 MIABI_CLI_VERSION="${MIABI_CLI_VERSION:-v0.9.0}"
 
@@ -465,7 +465,7 @@ install_cli() {
 
   # MIABI_CLI_BASE_URL points the download at a mirror — an internal artifact store for an
   # air-gapped install, or a staging build. It must serve the same archive and checksums.txt names.
-  base="${MIABI_CLI_BASE_URL:-https://github.com/miabi-io/miabi-cli/releases/download/${MIABI_CLI_VERSION}}"
+  base="${MIABI_CLI_BASE_URL:-https://github.com/miabi-io/cli/releases/download/${MIABI_CLI_VERSION}}"
   archive="miabi_${MIABI_CLI_VERSION#v}_linux_${arch}.tar.gz"
   url="${base}/${archive}"
 
@@ -476,7 +476,7 @@ install_cli() {
 
   log "Downloading the miabi CLI ${MIABI_CLI_VERSION} (linux/${arch})"
   curl -fsSL -o "${tmp}/${archive}" "$url" \
-    || die "could not download ${url} — check MIABI_CLI_VERSION, or install the CLI manually from https://github.com/miabi-io/miabi-cli/releases"
+    || die "could not download ${url} — check MIABI_CLI_VERSION, or install the CLI manually from https://github.com/miabi-io/cli/releases"
 
   # Verify against the release's own checksums.txt. A tampered or truncated download must not be
   # installed as a root-run binary that then talks to the Docker socket.

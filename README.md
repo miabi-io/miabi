@@ -16,7 +16,7 @@
   <a href="#core-features">Features</a> ·
   <a href="#feature-comparison">Comparison</a> ·
   <a href="#architecture">Architecture</a> ·
-  <a href="https://github.com/miabi-io/miabi-cli">CLI</a> ·
+  <a href="https://github.com/miabi-io/cli">CLI</a> ·
   <a href="https://docs.miabi.io">Docs</a>
 </p>
 
@@ -306,7 +306,7 @@ sudo miabi stack uninstall
 
 Two ways, both supported.
 
-Install the [CLI](https://github.com/miabi-io/miabi-cli/releases) and run:
+Install the [CLI](https://github.com/miabi-io/cli/releases) and run:
 
 ```bash
 sudo miabi setup --domain miabi.example.com --admin-email you@example.com
@@ -481,7 +481,7 @@ Miabi is part of a family of self-hosting tools by the same author:
 
 - [Okapi](https://github.com/jkaninda/okapi) — the Go web framework Miabi is built on
 - [Goma Gateway](https://github.com/jkaninda/goma-gateway) — reverse proxy + TLS/ACME
-- [miabi-cli](https://github.com/miabi-io/miabi-cli) — the official CLI
+- [cli](https://github.com/miabi-io/cli) — the official CLI
 - [terraform-provider-miabi](https://github.com/miabi-io/terraform-provider-miabi) — official Terraform / OpenTofu provider for managing Miabi resources as code
 - [agent](https://github.com/miabi-io/agent) — the outbound node agent for multi-node deployments
 - [runner](https://github.com/miabi-io/runner) — dedicated build/pipeline runner
