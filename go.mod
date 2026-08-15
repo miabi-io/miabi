@@ -20,13 +20,13 @@ require (
 	github.com/jkaninda/go-utils v0.1.4
 	github.com/jkaninda/logger v0.0.5
 	github.com/jkaninda/okapi v0.11.0
+	github.com/jkaninda/wstunnel v0.0.2
 	github.com/joho/godotenv v1.5.1
 	github.com/libdns/cloudflare v0.2.2
 	github.com/libdns/digitalocean v0.0.0-20250606071607-dfa7af5c2e31
 	github.com/libdns/libdns v1.1.1
 	github.com/libdns/route53 v1.6.2
 	github.com/miabi-io/runner v0.0.7
-	github.com/miabi-io/wstunnel v0.0.1
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/redis/go-redis/v9 v9.21.0

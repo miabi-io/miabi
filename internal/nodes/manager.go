@@ -15,7 +15,7 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/node"
-	"github.com/miabi-io/wstunnel"
+	"github.com/jkaninda/wstunnel"
 )
 
 // Manager accepts agent tunnels and maintains the live remote Docker clients in

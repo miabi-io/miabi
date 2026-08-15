@@ -15,7 +15,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/miabi-io/miabi/internal/docker"
-	"github.com/miabi-io/wstunnel"
+	"github.com/jkaninda/wstunnel"
 )
 
 // TestTunnelEndToEnd drives a Docker API call from the control plane through the

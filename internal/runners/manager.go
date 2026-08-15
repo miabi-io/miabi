@@ -14,7 +14,7 @@ import (
 	"github.com/hashicorp/yamux"
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/models"
-	"github.com/miabi-io/wstunnel"
+	"github.com/jkaninda/wstunnel"
 )
 
 // heartbeatInterval refreshes a connected runner's last-seen, matching the node
