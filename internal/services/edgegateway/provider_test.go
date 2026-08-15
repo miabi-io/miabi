@@ -39,14 +39,14 @@ func TestManagerSharesPlatformRedisOnEitherProvider(t *testing.T) {
 		}
 	}
 
-	// A remote edge node is self-contained: its own Redis, and no analytics,
-	// because nothing reads that Redis.
+	// A remote edge node uses its own Redis, and publishes analytics into it: the
+	// agent drains that stream and forwards it to the manager.
 	edge := &models.Server{Name: "edge-1"}
 	if got := s.redisAddrFor(edge); got != RedisContainer+":6379" {
 		t.Errorf("edge redis = %q, want the per-node Redis", got)
 	}
-	if s.analyticsEnabledFor(edge) {
-		t.Error("a remote edge node must not publish analytics nobody consumes")
+	if !s.analyticsEnabledFor(edge) {
+		t.Error("an edge node buffers analytics on its own Redis for the agent to forward")
 	}
 }
 

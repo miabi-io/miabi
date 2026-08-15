@@ -1,0 +1,617 @@
+{
+  "$defs": {
+    "ApplicationSpec": {
+      "additionalProperties": false,
+      "description": "ApplicationSpec is a long-running container workload. CI writes the immutable Digest; GitOps converges runtime to it.",
+      "properties": {
+        "command": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "containerLabels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "ContainerLabels are user-defined Docker labels stamped on the app's container(s), for label-driven tools like Traefik. Reserved keys (io.miabi.*, com.docker.*) are stripped on apply — a manifest is machine-authored, so import is fail-soft rather than erroring.",
+          "type": "object"
+        },
+        "digest": {
+          "description": "sha256:… (immutable pin)",
+          "type": "string"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "externalLabel": {
+          "description": "ExternalLabel pins the subdomain used for external access (`\u003clabel\u003e.\u003cbase-domain\u003e`). When unset Miabi generates a stable label. The label is platform-wide unique: if already claimed it is ignored and a generated one is used, so a copy-pasted manifest never fails on a clash.",
+          "type": "string"
+        },
+        "image": {
+          "type": "string"
+        },
+        "mounts": {
+          "items": {
+            "$ref": "#/$defs/MountSpec"
+          },
+          "type": "array"
+        },
+        "ports": {
+          "items": {
+            "$ref": "#/$defs/PortSpec"
+          },
+          "type": "array"
+        },
+        "registry": {
+          "description": "Registry names the Registry credential used to pull this image; empty means an anonymous public pull. It need not be declared in the same bundle: a name not in the manifest resolves against the workspace's existing credentials, so a token created once in the UI can be reused.",
+          "type": "string"
+        },
+        "reloadPolicy": {
+          "description": "ReloadPolicy decides what a mounted config's content change does: \"restart\" (default) redeploys the app, \"none\" leaves it running for apps that watch their own config file.",
+          "enum": [
+            "restart",
+            "none"
+          ],
+          "type": "string"
+        },
+        "resources": {
+          "$ref": "#/$defs/ResourceSpec"
+        },
+        "secretEnv": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "stack": {
+          "description": "Stack optionally names the owning Stack resource.",
+          "type": "string"
+        },
+        "tag": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "image"
+      ],
+      "type": "object"
+    },
+    "ConfigSpec": {
+      "additionalProperties": false,
+      "description": "ConfigSpec is a set of named files projected into containers at mount time. Values are interpolated exactly like application env, so a config can carry a rendered database password without a bootstrap script.",
+      "properties": {
+        "data": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Data maps a file key (a relative filename, \"/\" permitted for subdirectories) to its content.",
+          "type": "object"
+        },
+        "delimiters": {
+          "description": "Delimiters overrides the interpolation delimiters for every value, so a file whose own syntax uses {{ }} is not mangled. Exactly two distinct entries.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "mode": {
+          "description": "Mode is the default octal file mode applied to every key (\"0644\" when empty).",
+          "type": "string"
+        },
+        "sensitive": {
+          "description": "Sensitive redacts content in API responses and diffs it by digest only.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "data"
+      ],
+      "type": "object"
+    },
+    "DatabaseSpec": {
+      "additionalProperties": false,
+      "description": "DatabaseSpec requests a logical database on a DatabaseInstance.",
+      "properties": {
+        "engine": {
+          "description": "postgres|mysql|mariadb|redis",
+          "type": "string"
+        },
+        "placement": {
+          "enum": [
+            "auto",
+            "dedicated",
+            "shared"
+          ],
+          "type": "string"
+        },
+        "version": {
+          "description": "e.g. \"16-alpine\"",
+          "type": "string"
+        }
+      },
+      "required": [
+        "engine"
+      ],
+      "type": "object"
+    },
+    "DomainSpec": {
+      "additionalProperties": false,
+      "description": "DomainSpec declares an owned hostname/zone; the hostname is the resource's metadata.name (a real FQDN). tls is the default certificate policy routes under it inherit, and wildcard covers *.name too. Ownership verification is a runtime action.",
+      "properties": {
+        "tls": {
+          "description": "acme|custom (default acme)",
+          "enum": [
+            "acme",
+            "custom"
+          ],
+          "type": "string"
+        },
+        "wildcard": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "Meta": {
+      "additionalProperties": false,
+      "description": "Meta is the identity block shared by every kind. Labels are short and identifying (for selection and grouping); Annotations hold descriptive data the engine stores but never queries. Custom metadata belongs in one of these maps, never as ad-hoc top-level keys.",
+      "properties": {
+        "annotations": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "uid": {
+          "description": "UID is the resource's portable identifier (its Miabi uid). Written on export so a restore into another install — or a rename in a manifest — keeps identity. Optional in hand-authored manifests; matched ahead of name when set.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "MountSpec": {
+      "additionalProperties": false,
+      "description": "MountSpec attaches a managed Volume into the container filesystem.",
+      "properties": {
+        "config": {
+          "type": "string"
+        },
+        "key": {
+          "description": "Key selects one file from the config, making Path that file's exact location. Empty projects every key under Path as a directory prefix.",
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "readOnly": {
+          "type": "boolean"
+        },
+        "volume": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "PortSpec": {
+      "additionalProperties": false,
+      "description": "PortSpec is a container port and how it is reached. The two exposure knobs are orthogonal: externalAccess gives it a public HTTPS URL through the reverse proxy, while publish/hostPort binds it to a raw port on the node, like `docker -p`.",
+      "properties": {
+        "container": {
+          "type": "integer"
+        },
+        "externalAccess": {
+          "description": "ExternalAccess publishes this port on `\u003cexternalLabel\u003e.\u003cbase-domain\u003e` over HTTPS via the reverse proxy (the base domain must be configured platform-wide).",
+          "type": "boolean"
+        },
+        "hostPort": {
+          "type": "integer"
+        },
+        "protocol": {
+          "description": "tcp|udp (default tcp)",
+          "enum": [
+            "tcp",
+            "udp"
+          ],
+          "type": "string"
+        },
+        "publish": {
+          "description": "Publish binds this container port to a host port on the node (raw TCP/UDP). HostPort requests a specific host port; 0 auto-allocates from the pool.",
+          "type": "boolean"
+        },
+        "scheme": {
+          "description": "http|https (default http)",
+          "enum": [
+            "http",
+            "https"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "container"
+      ],
+      "type": "object"
+    },
+    "ProjectSpec": {
+      "additionalProperties": false,
+      "description": "ProjectSpec bundles a set of resources authored in one place. Child resources may be inlined; the parser flattens them into the document set.",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "resources": {
+          "description": "Resources authored in this bundle. Each item is a full manifest document; the parser flattens them into the set.",
+          "items": {
+            "$ref": "#"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "RegistrySpec": {
+      "additionalProperties": false,
+      "description": "RegistrySpec is a container-registry credential; an Application selects one via spec.registry. Password is write-only and never appears in a plan — prefer a vault reference over an inline literal. A rotation still converges via an unreadable fingerprint (see PasswordFP).",
+      "properties": {
+        "password": {
+          "type": "string"
+        },
+        "server": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ResourceSpec": {
+      "additionalProperties": false,
+      "description": "ResourceSpec caps memory/CPU and requests GPUs. Empty/zero means unlimited/none.",
+      "properties": {
+        "cpu": {
+          "description": "e.g. \"0.5\"",
+          "type": "string"
+        },
+        "gpu": {
+          "description": "GPU is the number of whole GPU units the app requests (0 = none). GPUKind narrows the request to a vendor/model (\"nvidia\", \"NVIDIA A100-…\").",
+          "type": "integer"
+        },
+        "gpuKind": {
+          "type": "string"
+        },
+        "memory": {
+          "description": "e.g. \"512Mi\"",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "RouteSpec": {
+      "additionalProperties": false,
+      "description": "RouteSpec binds one or more hostnames (and an optional path) to an application's port with a TLS mode — an HTTP routing rule. List every hostname the route should answer on, e.g. both example.com and www.example.com.",
+      "properties": {
+        "app": {
+          "description": "target application name",
+          "type": "string"
+        },
+        "hosts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer"
+        },
+        "tls": {
+          "description": "acme|custom|off (default acme)",
+          "enum": [
+            "acme",
+            "custom",
+            "off"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "app",
+        "hosts"
+      ],
+      "type": "object"
+    },
+    "SecretSpec": {
+      "additionalProperties": false,
+      "description": "SecretSpec is a write-only secret value. Value is never read back; the diff engine treats secrets as opaque (presence/absence only).",
+      "properties": {
+        "generate": {
+          "type": "boolean"
+        },
+        "length": {
+          "type": "integer"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "StackSpec": {
+      "additionalProperties": false,
+      "description": "StackSpec groups applications into one logical unit / network.",
+      "properties": {
+        "description": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "VolumeSpec": {
+      "additionalProperties": false,
+      "description": "VolumeSpec declares persistent storage.",
+      "properties": {
+        "size": {
+          "description": "e.g. \"5Gi\" (0/empty = unbounded)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://docs.miabi.io/schema/miabi.io-v1.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "Application"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/ApplicationSpec"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "Config"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/ConfigSpec"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "Database"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/DatabaseSpec"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "Domain"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/DomainSpec"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "Project"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/ProjectSpec"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "Registry"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/RegistrySpec"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "Route"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/RouteSpec"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "Secret"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/SecretSpec"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "Stack"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/StackSpec"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "Volume"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/VolumeSpec"
+          }
+        }
+      }
+    }
+  ],
+  "description": "A declarative Miabi resource. Manifests are strictly parsed: an unknown key is an error, not a silently ignored typo.",
+  "properties": {
+    "apiVersion": {
+      "const": "miabi.io/v1",
+      "description": "The only accepted API version."
+    },
+    "kind": {
+      "description": "The resource kind. Decides which fields `spec` accepts.",
+      "enum": [
+        "Application",
+        "Config",
+        "Database",
+        "Domain",
+        "Project",
+        "Registry",
+        "Route",
+        "Secret",
+        "Stack",
+        "Volume"
+      ]
+    },
+    "metadata": {
+      "$ref": "#/$defs/Meta"
+    },
+    "spec": {
+      "description": "Kind-specific configuration.",
+      "type": "object"
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata"
+  ],
+  "title": "Miabi manifest (miabi.io/v1)",
+  "type": "object"
+}

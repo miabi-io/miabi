@@ -12,7 +12,9 @@ MIABI_LDFLAGS := $(LDFLAGS) -X $(PKG)/internal/enterprise.embeddedPublicKey=$(LI
 WEB_DIR := web
 EMBED_WEB_DIR := internal/web/dist
 
-.PHONY: run worker agent build build-agent build-ui build-all dev-ui test lint tidy migrate license-tool docker docker-rootless docker-agent compose-up compose-down
+SCHEMA_FILE ?= miabi.io-v1.schema.json
+
+.PHONY: run worker agent build build-agent build-ui build-all dev-ui test lint tidy migrate license-tool schema docker docker-rootless docker-agent compose-up compose-down
 
 run: ## Run the API server
 	go run -tags enterprise -ldflags "$(MIABI_LDFLAGS)" ./cmd/miabi server
@@ -52,6 +54,12 @@ test: ## Run tests (enterprise build tag — matches the shipped binary)
 lint: ## Static analysis
 	go vet ./...
 	@command -v golangci-lint >/dev/null 2>&1 && golangci-lint run || echo "golangci-lint not installed, skipping"
+
+schema: ## Generate the miabi.io/v1 JSON Schema and publish it to the docs site + VS Code extension
+	go run ./cmd/schemagen -o schema/$(SCHEMA_FILE)
+	@for d in ../docs/static/schema ../vscode-miabi/schemas; do \
+		if [ -d "$$(dirname $$d)" ]; then mkdir -p "$$d" && cp schema/$(SCHEMA_FILE) "$$d/" && echo "  -> $$d/$(SCHEMA_FILE)"; fi; \
+	done
 
 tidy: ## Sync go.mod / go.sum
 	go mod tidy

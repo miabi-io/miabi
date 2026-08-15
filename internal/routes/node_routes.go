@@ -7,7 +7,9 @@ import (
 	"net/http"
 
 	"github.com/jkaninda/okapi"
+	"github.com/miabi-io/miabi/internal/dto"
 	"github.com/miabi-io/miabi/internal/handlers"
+	"github.com/miabi-io/miabi/internal/services/analytics"
 )
 
 func (r *Router) nodeRoutes() []okapi.RouteDefinition {
@@ -473,6 +475,23 @@ func (r *Router) providerRoutes() []okapi.RouteDefinition {
 			Handler: r.h.provider.Middlewares,
 			Tags:    []string{"Nodes"},
 			Summary: "Node Goma middlewares",
+		},
+		{
+			Method:   http.MethodGet,
+			Path:     "/api/v1/agent/analytics-config",
+			Handler:  r.h.provider.AnalyticsConfig,
+			Tags:     []string{"Nodes"},
+			Summary:  "Analytics forwarder settings for the calling agent",
+			Response: &dto.Response[handlers.AnalyticsForwarderConfig]{},
+		},
+		{
+			Method:   http.MethodPost,
+			Path:     "/api/v1/provider/{slug}/analytics",
+			Handler:  okapi.H(r.h.provider.IngestAnalytics),
+			Tags:     []string{"Nodes"},
+			Summary:  "Ingest a node gateway's request events",
+			Request:  &handlers.AnalyticsIngestRequest{},
+			Response: &dto.Response[analytics.IngestResult]{},
 		},
 	}
 }

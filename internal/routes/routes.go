@@ -1060,6 +1060,30 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		},
 	}
 
+	// Edge gateways buffer their events on the node's own Redis; the agent forwards
+	// them here, so they land in the same stream the consumer already reads.
+	if cfg.AnalyticsEnabled && redisClient != nil {
+		r.h.provider.SetAnalyticsIngest(
+			analytics.NewIngester(redisClient, routeService, cfg.AnalyticsStream),
+			ingestMetrics{},
+			func(srv *models.Server) handlers.AnalyticsForwarderConfig {
+				// Only an edge gateway buffers locally; every other node's traffic is
+				// already served by the manager's gateway.
+				if srv == nil || srv.IsLocal || srv.Connectivity != models.ConnectivityEdgeGateway {
+					return handlers.AnalyticsForwarderConfig{}
+				}
+				pw, err := nodeService.GatewayRedisPassword(srv.ID)
+				if err != nil {
+					return handlers.AnalyticsForwarderConfig{}
+				}
+				return handlers.AnalyticsForwarderConfig{
+					Enabled: true, Stream: cfg.AnalyticsStream,
+					RedisAddr: edgegateway.RedisContainer + ":6379", RedisPassword: pw,
+				}
+			},
+		)
+	}
+
 	// Platform notification emails (password reset, workspace invitation, welcome).
 	r.h.auth.SetMailer(platformMailer)
 	r.h.workspace.SetMailer(platformMailer)
@@ -1406,3 +1430,9 @@ func urlHost(raw string) string {
 	}
 	return u.Hostname()
 }
+
+// ingestMetrics adapts the metrics package to the handler's interface.
+type ingestMetrics struct{}
+
+func (ingestMetrics) IngestAccepted(node string, n int) { metrics.IngestAccepted(node, n) }
+func (ingestMetrics) IngestRejected(node string, n int) { metrics.IngestRejected(node, n) }
