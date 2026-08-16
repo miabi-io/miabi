@@ -1,0 +1,117 @@
+name: Nightly
+
+on:
+  push:
+    branches: [nightly]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+# Only the newest push matters when the tag is rolling — cancel a build that a
+# later commit has already superseded.
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+jobs:
+  # A nightly is meant to be installable, so it does not publish untested code.
+  # CI does not run on this branch (it watches main and dev), which would
+  # otherwise leave the nightly image the only unverified artifact we ship.
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Test Community Edition
+        run: go test -race ./...
+
+      - name: Test Enterprise Edition
+        run: go test -race -tags enterprise ./...
+
+  image:
+    name: Image
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # No git tag to read a version from, so it is derived: the date says how
+      # old a nightly is at a glance, and the commit says exactly what it is.
+      - name: Set version
+        run: |
+          echo "VERSION=nightly-$(date -u +%Y%m%d)-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          echo "COMMIT=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Miabi (rootless)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile.rootless
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            COMMIT=${{ env.COMMIT }}
+            GO_TAGS=enterprise
+            LICENSE_PUBLIC_KEY=${{ vars.LICENSE_PUBLIC_KEY }}
+          tags: |
+            miabi/miabi:nightly-rootless
+            ghcr.io/miabi-io/miabi:nightly-rootless
+
+      - name: Build and push Miabi
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            COMMIT=${{ env.COMMIT }}
+            GO_TAGS=enterprise
+            LICENSE_PUBLIC_KEY=${{ vars.LICENSE_PUBLIC_KEY }}
+          tags: |
+            miabi/miabi:nightly
+            ghcr.io/miabi-io/miabi:nightly
+
+      - name: Summary
+        run: |
+          {
+            echo "### Nightly published"
+            echo
+            echo "| Image | Tag |"
+            echo "|---|---|"
+            echo "| \`miabi/miabi\` | \`nightly\`, \`nightly-rootless\` |"
+            echo "| \`ghcr.io/miabi-io/miabi\` | \`nightly\`, \`nightly-rootless\` |"
+            echo
+            echo "Built from \`${GITHUB_SHA::7}\`, reported as \`${VERSION}\`."
+            echo
+            echo "The tag is rolling: \`docker pull\` again to move forward, and pin a"
+            echo "released version instead if you need the same bits twice."
+          } >> "$GITHUB_STEP_SUMMARY"
