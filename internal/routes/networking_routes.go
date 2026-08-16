@@ -125,6 +125,15 @@ func (r *Router) routeRoutes() []okapi.RouteDefinition {
 			Request:     &handlers.AttachRouteMiddlewareRequest{},
 		},
 		{
+			Method:      http.MethodPut,
+			Path:        base + "/{routeID}/middlewares",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     okapi.H(r.h.route.SetMiddlewares),
+			Summary:     "Replace a route's middleware chain, in execution order",
+			Request:     &handlers.SetRouteMiddlewaresRequest{},
+		},
+		{
 			Method:      http.MethodDelete,
 			Path:        base + "/{routeID}/middlewares/{name}",
 			Group:       g,

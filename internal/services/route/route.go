@@ -61,6 +61,10 @@ var (
 	// ErrMiddlewareNotFound is returned when attaching a middleware that does not
 	// exist in the workspace (detach is idempotent and never returns this).
 	ErrMiddlewareNotFound = errors.New("middleware not found in this workspace")
+	// ErrMiddlewareDuplicate rejects a chain naming the same middleware twice:
+	// the gateway would run it twice, and the second position is unreachable
+	// intent rather than a configuration anyone means.
+	ErrMiddlewareDuplicate = errors.New("the same middleware is listed twice")
 )
 
 const maintenanceMessageMax = 1024
@@ -688,6 +692,60 @@ func (s *Service) AttachMiddleware(ctx context.Context, workspaceID, id uint, na
 		}
 		_ = s.SyncRoute(ctx, rt.ApplicationID)
 	}
+	strip(rt)
+	s.enrichDNS(rt)
+	return rt, nil
+}
+
+// normalizeChain validates a middleware chain and returns it in the caller's
+// order, which is the order the gateway will run it in.
+func normalizeChain(names []string, exists func(string) (bool, error)) ([]string, error) {
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		n = strings.TrimSpace(n)
+		if n == "" {
+			return nil, ErrMiddlewareRequired
+		}
+		if slices.Contains(out, n) {
+			return nil, ErrMiddlewareDuplicate
+		}
+		ok, err := exists(n)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, ErrMiddlewareNotFound
+		}
+		out = append(out, n)
+	}
+	return out, nil
+}
+
+// SetMiddlewares replaces a route's chain with names, in the order given. Order
+// is behaviour, not presentation: the gateway runs middlewares in array order,
+// so rate-limit before basic-auth throttles anonymous requests, and the reverse
+// makes every request authenticate first.
+func (s *Service) SetMiddlewares(ctx context.Context, workspaceID, id uint, names []string) (*models.Route, error) {
+	rt, err := s.routes.FindInWorkspace(workspaceID, id)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	out, err := normalizeChain(names, func(name string) (bool, error) {
+		return s.middlewares.ExistsByName(workspaceID, name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	if slices.Equal(rt.Middlewares, out) {
+		strip(rt)
+		s.enrichDNS(rt)
+		return rt, nil
+	}
+	rt.Middlewares = out
+	if err := s.routes.Update(rt); err != nil {
+		return nil, err
+	}
+	_ = s.SyncRoute(ctx, rt.ApplicationID)
 	strip(rt)
 	s.enrichDNS(rt)
 	return rt, nil

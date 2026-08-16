@@ -124,3 +124,20 @@ func TestAdvancedMaintenanceIsInjected(t *testing.T) {
 		t.Errorf("maintenance missing from an advanced route:\n%s", out)
 	}
 }
+
+func TestRenderedChainKeepsAuthoredOrder(t *testing.T) {
+	r := base("ordered")
+	r.WorkspaceID = 2
+	r.Middlewares = []string{"rate-limit", "basic-auth", "cors"}
+
+	got, _ := renderMap(t, r)["middlewares"].([]any)
+	want := []string{"mb-ws2-rate-limit", "mb-ws2-basic-auth", "mb-ws2-cors"}
+	if len(got) != len(want) {
+		t.Fatalf("middlewares = %v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("chain order changed at %d: got %v, want %v", i, got, want)
+		}
+	}
+}

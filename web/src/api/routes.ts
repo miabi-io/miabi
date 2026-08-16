@@ -32,6 +32,8 @@ export const routeApi = {
     api.patch<ApiResponse<Route>>(`${base(ws)}/${id}/maintenance`, body),
   // Attach/detach a middleware without editing the route. Works on generated
   // routes too, so users can layer auth/rate-limit/etc. onto managed routes.
+  setMiddlewares: (ws: number, id: number, middlewares: string[]) =>
+    api.put<ApiResponse<Route>>(`${base(ws)}/${id}/middlewares`, { middlewares }),
   attachMiddleware: (ws: number, id: number, name: string) => api.post<ApiResponse<Route>>(`${base(ws)}/${id}/middlewares`, { name }),
   detachMiddleware: (ws: number, id: number, name: string) => api.delete<ApiResponse<Route>>(`${base(ws)}/${id}/middlewares/${encodeURIComponent(name)}`),
   remove: (ws: number, id: number) => api.delete<ApiResponse<{ message: string }>>(`${base(ws)}/${id}`),
