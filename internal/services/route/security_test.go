@@ -78,3 +78,53 @@ func TestRenderedRouteWithoutMaintenance(t *testing.T) {
 		t.Errorf("a route that is not parked carried a maintenance block: %+v", rr.Maintenance)
 	}
 }
+
+func allExist(string) (bool, error) { return true, nil }
+
+func TestNormalizeChainPreservesOrder(t *testing.T) {
+	in := []string{"rate-limit", "basic-auth", "cors"}
+	out, err := normalizeChain(in, allExist)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	for i := range in {
+		if out[i] != in[i] {
+			t.Fatalf("chain reordered: got %v, want %v", out, in)
+		}
+	}
+}
+
+func TestNormalizeChainReversedIsADifferentChain(t *testing.T) {
+	a, _ := normalizeChain([]string{"rate-limit", "basic-auth"}, allExist)
+	b, _ := normalizeChain([]string{"basic-auth", "rate-limit"}, allExist)
+	if a[0] == b[0] {
+		t.Error("reversing the input did not reverse the chain")
+	}
+}
+
+func TestNormalizeChainRejectsDuplicate(t *testing.T) {
+	_, err := normalizeChain([]string{"cors", "cors"}, allExist)
+	if !errors.Is(err, ErrMiddlewareDuplicate) {
+		t.Errorf("err = %v, want ErrMiddlewareDuplicate", err)
+	}
+}
+
+func TestNormalizeChainRejectsUnknown(t *testing.T) {
+	_, err := normalizeChain([]string{"nope"}, func(string) (bool, error) { return false, nil })
+	if !errors.Is(err, ErrMiddlewareNotFound) {
+		t.Errorf("err = %v, want ErrMiddlewareNotFound", err)
+	}
+}
+
+func TestNormalizeChainRejectsBlank(t *testing.T) {
+	if _, err := normalizeChain([]string{"cors", "   "}, allExist); !errors.Is(err, ErrMiddlewareRequired) {
+		t.Errorf("err = %v, want ErrMiddlewareRequired", err)
+	}
+}
+
+func TestNormalizeChainEmptyClearsTheChain(t *testing.T) {
+	out, err := normalizeChain(nil, allExist)
+	if err != nil || len(out) != 0 {
+		t.Errorf("out = %v, err = %v", out, err)
+	}
+}

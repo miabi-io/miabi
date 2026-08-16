@@ -41,6 +41,32 @@ const allMiddlewares = ref<Middleware[]>([])
 const selectedMw = ref('')
 const mwBusy = ref(false)
 const attachedMw = computed(() => item.value?.middlewares || [])
+const chain = ref<string[]>([])
+const chainDirty = computed(() => chain.value.join('\u0000') !== attachedMw.value.join('\u0000'))
+const mwType = (name: string) => allMiddlewares.value.find((m) => m.name === name)?.type || ''
+function syncChain(r: Route | null) {
+  chain.value = [...(r?.middlewares || [])]
+}
+function moveMw(from: number, to: number) {
+  if (to < 0 || to >= chain.value.length) return
+  const next = [...chain.value]
+  const [m] = next.splice(from, 1)
+  next.splice(to, 0, m)
+  chain.value = next
+}
+async function saveChain() {
+  if (!currentWorkspaceId.value || !item.value) return
+  mwBusy.value = true
+  try {
+    item.value = (await routeApi.setMiddlewares(currentWorkspaceId.value, item.value.id, chain.value)).data.data
+    syncChain(item.value)
+    notify.success('Middleware order saved')
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    mwBusy.value = false
+  }
+}
 const availableMw = computed(() => allMiddlewares.value.filter((m) => !attachedMw.value.includes(m.name)))
 
 const port = computed(() => item.value?.target_port || app.value?.port || 80)
@@ -137,9 +163,11 @@ async function load(force = false) {
   if (!wid || !routeId.value) return
   loading.value = true
   const keepEdits = !force && mtDirty.value
+  const keepOrder = !force && chainDirty.value
   try {
     item.value = (await routeApi.get(wid, routeId.value)).data.data
     if (!keepEdits) syncMaintenanceForm(item.value)
+    if (!keepOrder) syncChain(item.value)
     app.value = (await appApi.get(wid, item.value.application_id)).data.data
   } catch (e) {
     notify.apiError(e)
@@ -167,6 +195,7 @@ async function attachMiddleware() {
   mwBusy.value = true
   try {
     item.value = (await routeApi.attachMiddleware(currentWorkspaceId.value, item.value.id, name)).data.data
+    syncChain(item.value)
     selectedMw.value = ''
     notify.success(`Attached "${name}"`)
   } catch (e) {
@@ -181,6 +210,7 @@ async function detachMiddleware(name: string) {
   mwBusy.value = true
   try {
     item.value = (await routeApi.detachMiddleware(currentWorkspaceId.value, item.value.id, name)).data.data
+    syncChain(item.value)
     notify.success(`Detached "${name}"`)
   } catch (e) {
     notify.apiError(e)
@@ -315,23 +345,55 @@ async function removeRoute() {
           <p class="text-muted text-sm" style="margin-top: 0">
             Attach Goma middlewares (auth, rate-limit, headers…) to this route without editing it.<template v-if="item.generated"> Allowed on auto-generated routes, so you can secure external access in place.</template>
           </p>
-          <div class="mw-chips">
-            <span v-for="m in attachedMw" :key="m" class="mw-chip">
-              {{ m }}
-              <button
-                v-if="ws.canEdit"
-                class="mw-chip-x"
-                :disabled="mwBusy"
-                title="Detach middleware"
-                aria-label="Detach middleware"
-                @click="detachMiddleware(m)"
-              ><span class="mdi mdi-close"></span></button>
+          <ol v-if="chain.length" class="mw-chain">
+            <li v-for="(m, i) in chain" :key="m" class="mw-chain-item">
+              <span class="mw-pos">{{ i + 1 }}</span>
+              <span class="mw-name">{{ m }}</span>
+              <span v-if="mwType(m)" class="badge badge-neutral mw-type">{{ mwType(m) }}</span>
+              <span v-if="ws.canEdit" class="mw-move">
+                <button
+                  class="btn-icon btn-icon-muted"
+                  :disabled="mwBusy || i === 0"
+                  title="Move earlier"
+                  aria-label="Move earlier"
+                  @click="moveMw(i, i - 1)"
+                ><span class="mdi mdi-arrow-up"></span></button>
+                <button
+                  class="btn-icon btn-icon-muted"
+                  :disabled="mwBusy || i === chain.length - 1"
+                  title="Move later"
+                  aria-label="Move later"
+                  @click="moveMw(i, i + 1)"
+                ><span class="mdi mdi-arrow-down"></span></button>
+                <button
+                  class="btn-icon btn-icon-danger"
+                  :disabled="mwBusy || chainDirty"
+                  :title="chainDirty ? 'Save or discard the order change first' : 'Detach middleware'"
+                  aria-label="Detach middleware"
+                  @click="detachMiddleware(m)"
+                ><span class="mdi mdi-close"></span></button>
+              </span>
+            </li>
+          </ol>
+          <p v-else class="text-muted text-sm mw-empty">No middlewares attached.</p>
+
+          <p v-if="chain.length > 1" class="text-muted text-sm mw-order-hint">
+            <span class="mdi mdi-information-outline"></span>
+            <span>
+              Requests pass through in this order — <strong>{{ chain[0] }}</strong> runs first, and each
+              one can answer or reject before the next is reached.
             </span>
-            <span v-if="!attachedMw.length" class="text-muted text-sm">No middlewares attached.</span>
+          </p>
+
+          <div v-if="chainDirty" class="mw-chain-actions">
+            <button class="btn btn-secondary btn-sm" :disabled="mwBusy" @click="syncChain(item)">Discard</button>
+            <button class="btn btn-primary btn-sm" :disabled="mwBusy" @click="saveChain">
+              {{ mwBusy ? 'Saving…' : 'Save order' }}
+            </button>
           </div>
 
           <div v-if="ws.canEdit" class="mw-attach">
-            <select v-model="selectedMw" class="input mw-select form-select" :disabled="mwBusy || !availableMw.length">
+            <select v-model="selectedMw" class="input mw-select form-select" :disabled="mwBusy || chainDirty || !availableMw.length">
               <option value="">{{ availableMw.length ? 'Select a middleware…' : 'No more middlewares to attach' }}</option>
               <option v-for="m in availableMw" :key="m.id" :value="m.name">{{ m.name }} · {{ m.type }}</option>
             </select>
@@ -633,6 +695,15 @@ Content-Type: {{ previewContentType }}
 .host-link .mdi { font-size: 13px; opacity: .7; }
 .detail-key { color: var(--text-muted); }
 
+.mw-chain { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.mw-chain-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border-primary); border-radius: 8px; background: var(--bg-secondary); }
+.mw-pos { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--bg-tertiary); color: var(--text-muted); font-size: 12px; font-weight: 600; flex-shrink: 0; }
+.mw-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mw-type { font-size: 10px; }
+.mw-move { margin-left: auto; display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.mw-empty { margin: 0 0 12px; }
+.mw-order-hint { display: flex; align-items: flex-start; gap: 6px; margin: 0 0 12px; }
+.mw-chain-actions { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 14px; }
 .mw-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
 .mw-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; font-size: 13px; border-radius: 14px; background: var(--bg-tertiary); border: 1px solid var(--border-primary); }
 .mw-chip-x { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: none; border-radius: 50%; background: transparent; color: var(--text-muted); cursor: pointer; padding: 0; }

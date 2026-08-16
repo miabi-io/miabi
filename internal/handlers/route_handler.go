@@ -237,6 +237,30 @@ func (h *RouteHandler) AttachMiddleware(c *okapi.Context, req *AttachRouteMiddle
 	return ok(c, rt)
 }
 
+// SetRouteMiddlewaresRequest carries the whole chain, in execution order.
+type SetRouteMiddlewaresRequest struct {
+	Body struct {
+		Middlewares []string `json:"middlewares"`
+	} `json:"body"`
+}
+
+// SetMiddlewares replaces the route's chain in the order given. The gateway runs
+// middlewares in array order, so this is the ordering control, not a bulk
+// attach. Allowed on generated routes, mirroring AttachMiddleware.
+func (h *RouteHandler) SetMiddlewares(c *okapi.Context, req *SetRouteMiddlewaresRequest) error {
+	id, err := h.id(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid route id")
+	}
+	wsID := middlewares.WorkspaceID(c)
+	rt, err := h.svc.SetMiddlewares(c.Request().Context(), wsID, id, req.Body.Middlewares)
+	if err != nil {
+		return h.mapErr(c, err)
+	}
+	h.record(c, wsID, "route.update", rt.ID)
+	return ok(c, rt)
+}
+
 // DetachMiddleware removes a middleware (named in the path) from a route's chain.
 // Idempotent and allowed on generated routes, mirroring AttachMiddleware.
 func (h *RouteHandler) DetachMiddleware(c *okapi.Context) error {
@@ -349,6 +373,8 @@ func (h *RouteHandler) mapErr(c *okapi.Context, err error) error {
 	case errors.Is(err, route.ErrNameRequired), errors.Is(err, route.ErrInvalidName), errors.Is(err, route.ErrCertRequired), errors.Is(err, route.ErrInvalidYAML), errors.Is(err, route.ErrDomainNotRegistered), errors.Is(err, route.ErrDomainBanned), errors.Is(err, route.ErrAdvancedTLSCert):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, route.ErrAppRequired), errors.Is(err, route.ErrNodeAddressRequired), errors.Is(err, route.ErrExternalAccessDisabled), errors.Is(err, route.ErrMiddlewareRequired):
+		return c.AbortBadRequest(err.Error())
+	case errors.Is(err, route.ErrMiddlewareDuplicate), errors.Is(err, route.ErrMaintenanceStatus), errors.Is(err, route.ErrMaintenanceMessage):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, route.ErrMiddlewareNotFound):
 		return c.AbortNotFound(err.Error())
