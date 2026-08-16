@@ -78,6 +78,26 @@ spec:
   port: 8080
   tls: custom
 ---
+# Gateway-level switches. exploitProtection blocks common injection/traversal
+# signatures before the backend sees them. maintenance parks the route: the
+# gateway answers every request itself, so the app can be migrated behind a
+# deliberate 503. Remove the block (or set enabled: false) to resume traffic —
+# a manifest is the desired state, so an apply un-parks a hand-parked route.
+apiVersion: miabi.io/v1
+kind: Route
+metadata: { name: shop-admin }
+spec:
+  hosts: [admin.shop.example.com]
+  app: shop-web
+  port: 8080
+  tls: acme
+  security:
+    exploitProtection: true
+  maintenance:
+    enabled: true
+    statusCode: 503
+    message: Scheduled upgrade — back at 14:00 UTC
+---
 # Internal/plain-HTTP route (no TLS) — e.g. behind an upstream load balancer.
 apiVersion: miabi.io/v1
 kind: Route

@@ -439,6 +439,20 @@ func specFields(r Resource) map[string]string {
 		f["path"] = r.Route.Path
 		f["tls"] = r.Route.TLS
 		f["port"] = fmt.Sprintf("%d", r.Route.Port)
+		sec := r.Route.Security
+		if sec == nil {
+			sec = &RouteSecuritySpec{}
+		}
+		f["security.exploitProtection"] = fmt.Sprintf("%t", sec.ExploitProtection)
+		// Flattened to canonical strings so an omitted block and an explicitly
+		// disabled one compare equal, instead of drifting on every plan.
+		mt := r.Route.Maintenance
+		if mt == nil {
+			mt = &RouteMaintenanceSpec{}
+		}
+		f["maintenance.enabled"] = fmt.Sprintf("%t", mt.Enabled)
+		f["maintenance.statusCode"] = fmt.Sprintf("%d", mt.StatusCode)
+		f["maintenance.message"] = mt.Message
 	case r.Stack != nil:
 		f["description"] = r.Stack.Description
 	case r.Domain != nil:
