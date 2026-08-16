@@ -309,6 +309,37 @@
       },
       "type": "object"
     },
+    "RouteMaintenanceSpec": {
+      "additionalProperties": false,
+      "description": "RouteMaintenanceSpec is the response a parked route answers with. An unset statusCode or message leaves the gateway's defaults (503 and a short notice).",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string"
+        },
+        "statusCode": {
+          "description": "StatusCode must be 4xx or 5xx: a parked route answering 2xx reads as healthy to uptime monitors and search engines.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "enabled"
+      ],
+      "type": "object"
+    },
+    "RouteSecuritySpec": {
+      "additionalProperties": false,
+      "description": "RouteSecuritySpec holds a route's gateway security switches, mirroring Goma's own security block so the manifest reads like the gateway config it produces.",
+      "properties": {
+        "exploitProtection": {
+          "description": "ExploitProtection has the gateway reject requests carrying common injection and traversal signatures before the backend sees them.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "RouteSpec": {
       "additionalProperties": false,
       "description": "RouteSpec binds one or more hostnames (and an optional path) to an application's port with a TLS mode — an HTTP routing rule. List every hostname the route should answer on, e.g. both example.com and www.example.com.",
@@ -323,11 +354,19 @@
           },
           "type": "array"
         },
+        "maintenance": {
+          "$ref": "#/$defs/RouteMaintenanceSpec",
+          "description": "Maintenance parks the route at the gateway. Omitting it means \"serving\", so removing the block from a manifest resumes traffic."
+        },
         "path": {
           "type": "string"
         },
         "port": {
           "type": "integer"
+        },
+        "security": {
+          "$ref": "#/$defs/RouteSecuritySpec",
+          "description": "Security carries the gateway's per-route switches."
         },
         "tls": {
           "description": "acme|custom|off (default acme)",

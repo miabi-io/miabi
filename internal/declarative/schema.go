@@ -191,6 +191,29 @@ type RouteSpec struct {
 	Port  int      `yaml:"port,omitempty" json:"port,omitempty"`
 	Path  string   `yaml:"path,omitempty" json:"path,omitempty"`
 	TLS   string   `yaml:"tls,omitempty" json:"tls,omitempty"` // acme|custom|off (default acme)
+	// Security carries the gateway's per-route switches.
+	Security *RouteSecuritySpec `yaml:"security,omitempty" json:"security,omitempty"`
+	// Maintenance parks the route at the gateway. Omitting it means "serving",
+	// so removing the block from a manifest resumes traffic.
+	Maintenance *RouteMaintenanceSpec `yaml:"maintenance,omitempty" json:"maintenance,omitempty"`
+}
+
+// RouteSecuritySpec holds a route's gateway security switches, mirroring Goma's
+// own security block so the manifest reads like the gateway config it produces.
+type RouteSecuritySpec struct {
+	// ExploitProtection has the gateway reject requests carrying common injection
+	// and traversal signatures before the backend sees them.
+	ExploitProtection bool `yaml:"exploitProtection,omitempty" json:"exploitProtection,omitempty"`
+}
+
+// RouteMaintenanceSpec is the response a parked route answers with. An unset
+// statusCode or message leaves the gateway's defaults (503 and a short notice).
+type RouteMaintenanceSpec struct {
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	// StatusCode must be 4xx or 5xx: a parked route answering 2xx reads as
+	// healthy to uptime monitors and search engines.
+	StatusCode int    `yaml:"statusCode,omitempty" json:"statusCode,omitempty"`
+	Message    string `yaml:"message,omitempty" json:"message,omitempty"`
 }
 
 // DomainSpec declares an owned hostname/zone; the hostname is the resource's metadata.name (a real

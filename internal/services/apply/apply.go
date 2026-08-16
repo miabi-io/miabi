@@ -809,10 +809,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 		set.Add(declarative.Resource{
 			APIVersion: declarative.APIVersion, Kind: declarative.KindRoute,
 			Metadata: meta(r.UID, r.Name, r.Metadata),
-			Route: &declarative.RouteSpec{
-				Hosts: append([]string(nil), r.Hosts...), App: appSlugByID[r.ApplicationID], Port: r.TargetPort,
-				Path: path, TLS: tlsToSpec(r.TLSMode),
-			},
+			Route:    routeSpecOf(r, appSlugByID[r.ApplicationID], path),
 		})
 	}
 
@@ -1234,10 +1231,40 @@ func (s *Service) routeInput(name string, appID uint, spec *declarative.RouteSpe
 	if path == "" {
 		path = "/"
 	}
+	exploit := spec.Security != nil && spec.Security.ExploitProtection
+	mt := models.RouteMaintenance{}
+	if spec.Maintenance != nil {
+		mt = models.RouteMaintenance{
+			Enabled: spec.Maintenance.Enabled, StatusCode: spec.Maintenance.StatusCode, Message: spec.Maintenance.Message,
+		}
+	}
 	return route.Input{
 		Name: name, ApplicationID: appID, Hosts: spec.Hosts,
 		Path: path, TargetPort: spec.Port, TLSMode: tlsFromSpec(spec.TLS),
+		ExploitProtection: &exploit,
+		// Always non-nil: the manifest is the desired state, so dropping the
+		// maintenance block has to resume traffic rather than leave it parked.
+		Maintenance: &mt,
 	}
+}
+
+// routeSpecOf projects a live route onto its manifest shape. Maintenance is
+// emitted only while parked, so an exported bundle stays clean and matches a
+// manifest that simply omits the block.
+func routeSpecOf(r models.Route, app, path string) *declarative.RouteSpec {
+	spec := &declarative.RouteSpec{
+		Hosts: append([]string(nil), r.Hosts...), App: app, Port: r.TargetPort,
+		Path: path, TLS: tlsToSpec(r.TLSMode),
+	}
+	if r.ExploitProtection {
+		spec.Security = &declarative.RouteSecuritySpec{ExploitProtection: true}
+	}
+	if r.Maintenance.Enabled {
+		spec.Maintenance = &declarative.RouteMaintenanceSpec{
+			Enabled: true, StatusCode: r.Maintenance.StatusCode, Message: r.Maintenance.Message,
+		}
+	}
+	return spec
 }
 
 func (s *Service) applyVolume(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource) error {
