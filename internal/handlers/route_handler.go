@@ -34,35 +34,39 @@ func (h *RouteHandler) externalConfig() route.ExternalConfig {
 
 type CreateRouteRequest struct {
 	Body struct {
-		Name           string   `json:"name" required:"true"` // unique slug handle (Goma route name)
-		DisplayName    string   `json:"display_name"`         // free-text label (defaults to name)
-		ApplicationID  uint     `json:"application_id" required:"true"`
-		Path           string   `json:"path"`
-		Hosts          []string `json:"hosts"`
-		Methods        []string `json:"methods"`
-		Middlewares    []string `json:"middlewares"`
-		Rewrite        string   `json:"rewrite"`
-		TargetPort     int      `json:"target_port"`
-		TLSMode        string   `json:"tls_mode" enum:"none,acme,custom"`
-		AdvancedConfig string   `json:"advanced_config"`
-		CertificateID  *uint    `json:"certificate_id"`
-		Enabled        *bool    `json:"enabled"`
+		Name              string                   `json:"name" required:"true"` // unique slug handle (Goma route name)
+		DisplayName       string                   `json:"display_name"`         // free-text label (defaults to name)
+		ApplicationID     uint                     `json:"application_id" required:"true"`
+		Path              string                   `json:"path"`
+		Hosts             []string                 `json:"hosts"`
+		Methods           []string                 `json:"methods"`
+		Middlewares       []string                 `json:"middlewares"`
+		Rewrite           string                   `json:"rewrite"`
+		TargetPort        int                      `json:"target_port"`
+		TLSMode           string                   `json:"tls_mode" enum:"none,acme,custom"`
+		AdvancedConfig    string                   `json:"advanced_config"`
+		CertificateID     *uint                    `json:"certificate_id"`
+		Enabled           *bool                    `json:"enabled"`
+		ExploitProtection *bool                    `json:"exploit_protection"`
+		Maintenance       *models.RouteMaintenance `json:"maintenance"`
 	} `json:"body"`
 }
 
 type UpdateRouteRequest struct {
 	Body struct {
-		Name           string   `json:"name"`
-		Path           string   `json:"path"`
-		Hosts          []string `json:"hosts"`
-		Methods        []string `json:"methods"`
-		Middlewares    []string `json:"middlewares"`
-		Rewrite        string   `json:"rewrite"`
-		TargetPort     int      `json:"target_port"`
-		TLSMode        string   `json:"tls_mode" enum:"none,acme,custom"`
-		AdvancedConfig string   `json:"advanced_config"`
-		CertificateID  *uint    `json:"certificate_id"`
-		Enabled        *bool    `json:"enabled"`
+		Name              string                   `json:"name"`
+		Path              string                   `json:"path"`
+		Hosts             []string                 `json:"hosts"`
+		Methods           []string                 `json:"methods"`
+		Middlewares       []string                 `json:"middlewares"`
+		Rewrite           string                   `json:"rewrite"`
+		TargetPort        int                      `json:"target_port"`
+		TLSMode           string                   `json:"tls_mode" enum:"none,acme,custom"`
+		AdvancedConfig    string                   `json:"advanced_config"`
+		CertificateID     *uint                    `json:"certificate_id"`
+		Enabled           *bool                    `json:"enabled"`
+		ExploitProtection *bool                    `json:"exploit_protection"`
+		Maintenance       *models.RouteMaintenance `json:"maintenance"`
 	} `json:"body"`
 }
 
@@ -73,7 +77,8 @@ func (h *RouteHandler) Create(c *okapi.Context, req *CreateRouteRequest) error {
 		Hosts: req.Body.Hosts, Methods: req.Body.Methods, Middlewares: req.Body.Middlewares,
 		Rewrite: req.Body.Rewrite, TargetPort: req.Body.TargetPort, TLSMode: models.RouteTLSMode(req.Body.TLSMode),
 		AdvancedConfig: req.Body.AdvancedConfig, CertificateID: req.Body.CertificateID,
-		Enabled: req.Body.Enabled,
+		Enabled:           req.Body.Enabled,
+		ExploitProtection: req.Body.ExploitProtection, Maintenance: req.Body.Maintenance,
 	})
 	if err != nil {
 		return h.mapErr(c, err)
@@ -125,6 +130,8 @@ func (h *RouteHandler) Update(c *okapi.Context, req *UpdateRouteRequest) error {
 		Middlewares: req.Body.Middlewares, Rewrite: req.Body.Rewrite, TargetPort: req.Body.TargetPort,
 		TLSMode: models.RouteTLSMode(req.Body.TLSMode), AdvancedConfig: req.Body.AdvancedConfig,
 		CertificateID: req.Body.CertificateID, Enabled: req.Body.Enabled,
+		ExploitProtection: req.Body.ExploitProtection,
+		Maintenance:       req.Body.Maintenance,
 	})
 	if err != nil {
 		return h.mapErr(c, err)
@@ -155,6 +162,54 @@ func (h *RouteHandler) SetEnabled(c *okapi.Context, req *SetRouteEnabledRequest)
 		return h.mapErr(c, err)
 	}
 	h.record(c, wsID, "route.update", rt.ID)
+	return ok(c, rt)
+}
+
+type SetRouteSecurityRequest struct {
+	Body struct {
+		ExploitProtection *bool `json:"exploit_protection"`
+	} `json:"body"`
+}
+
+func (h *RouteHandler) SetSecurity(c *okapi.Context, req *SetRouteSecurityRequest) error {
+	id, err := h.id(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid route id")
+	}
+	wsID := middlewares.WorkspaceID(c)
+	rt, err := h.svc.SetSecurity(c.Request().Context(), wsID, id, req.Body.ExploitProtection)
+	if err != nil {
+		return h.mapErr(c, err)
+	}
+	h.record(c, wsID, "route.update", rt.ID)
+	return ok(c, rt)
+}
+
+type SetRouteMaintenanceRequest struct {
+	Body struct {
+		Enabled    bool   `json:"enabled"`
+		StatusCode int    `json:"status_code"`
+		Message    string `json:"message"`
+	} `json:"body"`
+}
+
+func (h *RouteHandler) SetMaintenance(c *okapi.Context, req *SetRouteMaintenanceRequest) error {
+	id, err := h.id(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid route id")
+	}
+	wsID := middlewares.WorkspaceID(c)
+	rt, err := h.svc.SetMaintenance(c.Request().Context(), wsID, id, models.RouteMaintenance{
+		Enabled: req.Body.Enabled, StatusCode: req.Body.StatusCode, Message: req.Body.Message,
+	})
+	if err != nil {
+		return h.mapErr(c, err)
+	}
+	action := "route.maintenance.off"
+	if rt.Maintenance.Enabled {
+		action = "route.maintenance.on"
+	}
+	h.record(c, wsID, action, rt.ID)
 	return ok(c, rt)
 }
 

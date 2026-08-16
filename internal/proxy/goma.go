@@ -34,26 +34,75 @@ type gomaRoute struct {
 	Path string `yaml:"path"`
 	// Enabled is a pointer so a disabled route emits `enabled: false`; nil omits
 	// the key (Goma defaults to true) to keep enabled routes' files clean.
-	Enabled     *bool         `yaml:"enabled,omitempty"`
-	Hosts       []string      `yaml:"hosts,omitempty"`
-	Methods     []string      `yaml:"methods,omitempty"`
-	Rewrite     string        `yaml:"rewrite,omitempty"`
-	Backends    []gomaBackend `yaml:"backends"`
-	Middlewares []string      `yaml:"middlewares,omitempty"`
-	TLS         *gomaTLS      `yaml:"tls,omitempty"`
-	Security    *gomaSecurity `yaml:"security,omitempty"`
+	Enabled     *bool            `yaml:"enabled,omitempty"`
+	Hosts       []string         `yaml:"hosts,omitempty"`
+	Methods     []string         `yaml:"methods,omitempty"`
+	Rewrite     string           `yaml:"rewrite,omitempty"`
+	Backends    []gomaBackend    `yaml:"backends"`
+	Middlewares []string         `yaml:"middlewares,omitempty"`
+	TLS         *gomaTLS         `yaml:"tls,omitempty"`
+	Security    *gomaSecurity    `yaml:"security,omitempty"`
+	Maintenance *gomaMaintenance `yaml:"maintenance,omitempty"`
 }
 
-// securityOf returns a security block skipping backend TLS verification when any
-// upstream is HTTPS (an internal alias whose cert can't be verified). nil when
-// all backends are plain HTTP, so the field is omitted.
 func securityOf(route RenderedRoute) *gomaSecurity {
+	sec := &gomaSecurity{}
+	set := false
 	for _, b := range route.Backends {
 		if strings.HasPrefix(strings.ToLower(b.Endpoint), "https://") {
-			return &gomaSecurity{TLS: gomaSecurityTLS{InsecureSkipVerify: true}}
+			sec.TLS = &gomaSecurityTLS{InsecureSkipVerify: true}
+			set = true
+			break
 		}
 	}
-	return nil
+	if route.ExploitProtection {
+		sec.EnableExploitProtection = true
+		set = true
+	}
+	if !set {
+		return nil
+	}
+	return sec
+}
+
+func mergeSecurity(existing any, resolved *gomaSecurity) (any, error) {
+	base, ok := existing.(map[string]any)
+	if !ok {
+		return resolved, nil
+	}
+	out, err := yaml.Marshal(resolved)
+	if err != nil {
+		return nil, err
+	}
+	overlay := map[string]any{}
+	if err := yaml.Unmarshal(out, &overlay); err != nil {
+		return nil, err
+	}
+	for k, v := range overlay {
+		if k == "tls" {
+			if bt, ok := base["tls"].(map[string]any); ok {
+				if ot, ok := v.(map[string]any); ok {
+					for tk, tv := range ot {
+						bt[tk] = tv
+					}
+					continue
+				}
+			}
+		}
+		base[k] = v
+	}
+	return base, nil
+}
+
+func maintenanceOf(route RenderedRoute) *gomaMaintenance {
+	if route.Maintenance == nil || !route.Maintenance.Enabled {
+		return nil
+	}
+	return &gomaMaintenance{
+		Enabled:    true,
+		StatusCode: route.Maintenance.StatusCode,
+		Message:    route.Maintenance.Message,
+	}
 }
 
 type gomaBackend struct {
@@ -78,10 +127,17 @@ type gomaCert struct {
 // verification for HTTPS backends reached over an internal Docker alias (whose
 // self-signed cert can't be verified against the alias hostname).
 type gomaSecurity struct {
-	TLS gomaSecurityTLS `yaml:"tls"`
+	EnableExploitProtection bool             `yaml:"enableExploitProtection,omitempty"`
+	TLS                     *gomaSecurityTLS `yaml:"tls,omitempty"`
 }
 type gomaSecurityTLS struct {
 	InsecureSkipVerify bool `yaml:"insecureSkipVerify"`
+}
+
+type gomaMaintenance struct {
+	Enabled    bool   `yaml:"enabled"`
+	StatusCode int    `yaml:"statusCode,omitempty"`
+	Message    string `yaml:"message,omitempty"`
 }
 
 type gomaMiddleware struct {
@@ -259,7 +315,14 @@ func gomaRouteValue(route RenderedRoute) (any, error) {
 			m["tls"] = tls
 		}
 		if security != nil {
-			m["security"] = security
+			merged, err := mergeSecurity(m["security"], security)
+			if err != nil {
+				return nil, fmt.Errorf("advanced route config %q: %w", route.Name, err)
+			}
+			m["security"] = merged
+		}
+		if mt := maintenanceOf(route); mt != nil {
+			m["maintenance"] = mt
 		}
 		// A disabled route is force-marked so the gateway stops serving it,
 		// regardless of any hand-typed value.
@@ -286,6 +349,7 @@ func gomaRouteValue(route RenderedRoute) (any, error) {
 	return gomaRoute{
 		Name: name, Path: path, Enabled: enabled, Hosts: route.Hosts, Methods: route.Methods,
 		Rewrite: route.Rewrite, Backends: backends, Middlewares: mwRefs(route), TLS: tls, Security: security,
+		Maintenance: maintenanceOf(route),
 	}, nil
 }
 

@@ -71,12 +71,75 @@ async function copy(text: string) {
   }
 }
 
-async function load() {
+const maintenanceOn = computed(() => item.value?.maintenance?.enabled === true)
+const mtStatus = ref<number | undefined>(undefined)
+const mtMessage = ref('')
+const mtBusy = ref(false)
+const secBusy = ref(false)
+const previewAs = ref<'text' | 'json' | 'xml'>('text')
+
+const GATEWAY_DEFAULT_STATUS = 503
+const GATEWAY_DEFAULT_MESSAGE = '503 Service temporarily unavailable'
+const STATUS_TEXT: Record<number, string> = {
+  400: 'Bad Request', 401: 'Unauthorized', 403: 'Forbidden', 404: 'Not Found',
+  418: "I'm a teapot", 429: 'Too Many Requests', 500: 'Internal Server Error',
+  502: 'Bad Gateway', 503: 'Service Unavailable', 504: 'Gateway Timeout',
+}
+
+function syncMaintenanceForm(r: Route | null) {
+  mtStatus.value = r?.maintenance?.status_code || undefined
+  mtMessage.value = r?.maintenance?.message || ''
+}
+
+const mtDirty = computed(() => {
+  const saved = item.value?.maintenance
+  return (mtStatus.value || 0) !== (saved?.status_code || 0) || mtMessage.value !== (saved?.message || '')
+})
+const statusInvalid = computed(() => {
+  const v = mtStatus.value
+  return v !== undefined && v !== null && String(v) !== '' && (v < 400 || v > 599)
+})
+const effectiveStatus = computed(() => mtStatus.value || GATEWAY_DEFAULT_STATUS)
+const effectiveMessage = computed(() => mtMessage.value.trim() || GATEWAY_DEFAULT_MESSAGE)
+const messageIsJson = computed(() => {
+  try {
+    JSON.parse(effectiveMessage.value)
+    return true
+  } catch {
+    return false
+  }
+})
+const previewContentType = computed(() =>
+  previewAs.value === 'json' ? 'application/json'
+    : previewAs.value === 'xml' ? 'application/xhtml+xml'
+      : 'text/plain; charset=utf-8',
+)
+function escapeXml(v: string): string {
+  return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+const previewBody = computed(() => {
+  const code = effectiveStatus.value
+  const msg = effectiveMessage.value
+  if (previewAs.value === 'json') {
+    return messageIsJson.value ? msg : JSON.stringify({ success: false, statusCode: code, error: msg }, null, 2)
+  }
+  if (previewAs.value === 'xml') {
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<error>\n  <success>false</success>\n  <statusCode>${code}</statusCode>\n  <error>${escapeXml(msg)}</error>\n</error>`
+  }
+  return msg
+})
+const previewStatusLine = computed(
+  () => `HTTP/1.1 ${effectiveStatus.value} ${STATUS_TEXT[effectiveStatus.value] || ''}`.trimEnd(),
+)
+
+async function load(force = false) {
   const wid = currentWorkspaceId.value
   if (!wid || !routeId.value) return
   loading.value = true
+  const keepEdits = !force && mtDirty.value
   try {
     item.value = (await routeApi.get(wid, routeId.value)).data.data
+    if (!keepEdits) syncMaintenanceForm(item.value)
     app.value = (await appApi.get(wid, item.value.application_id)).data.data
   } catch (e) {
     notify.apiError(e)
@@ -127,10 +190,10 @@ async function detachMiddleware(name: string) {
 }
 
 watch([routeId, currentWorkspaceId], () => {
-  load()
+  load(true)
   loadMiddlewares()
   if (poll) clearInterval(poll)
-  poll = setInterval(load, 5000) // reflect async canary deploy / weight changes
+  poll = setInterval(() => load(), 5000) // reflect async canary deploy / weight changes
 }, { immediate: true })
 onBeforeUnmount(() => { if (poll) clearInterval(poll) })
 
@@ -143,6 +206,39 @@ async function toggleEnabled() {
     await load()
   } catch (e) {
     notify.apiError(e)
+  }
+}
+
+
+async function setSecurity(body: { exploit_protection?: boolean }) {
+  if (!currentWorkspaceId.value || !item.value) return
+  secBusy.value = true
+  try {
+    await routeApi.setSecurity(currentWorkspaceId.value, item.value.id, body)
+    notify.success('Route security updated')
+    await load(true)
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    secBusy.value = false
+  }
+}
+
+async function saveMaintenance(enabled: boolean) {
+  if (!currentWorkspaceId.value || !item.value) return
+  mtBusy.value = true
+  try {
+    await routeApi.setMaintenance(currentWorkspaceId.value, item.value.id, {
+      enabled,
+      status_code: mtStatus.value || 0,
+      message: mtMessage.value || '',
+    })
+    notify.success(enabled ? 'Route is in maintenance mode' : 'Maintenance mode turned off')
+    await load(true)
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    mtBusy.value = false
   }
 }
 
@@ -176,6 +272,7 @@ async function removeRoute() {
           {{ item.enabled ? 'enabled' : 'disabled' }}
         </span>
         <span v-if="item.generated" class="badge badge-info badge-dot" title="Auto-generated for external access; managed from the app's External Access">auto-generated</span>
+        <span v-if="maintenanceOn" class="badge badge-warning badge-dot" title="The gateway answers this route itself; the backend is never reached">maintenance</span>
         <span v-if="canaryActive" class="badge badge-warning badge-dot">canary {{ canaryWeight }}%</span>
       </div>
     </div>
@@ -303,6 +400,161 @@ async function removeRoute() {
 
     <!-- Settings -->
     <div v-else>
+      <div class="card mb-4">
+        <div class="card-header"><h2>Maintenance</h2></div>
+        <div class="card-body detail-list">
+          <div class="mt-state" :class="maintenanceOn ? 'is-parked' : 'is-live'">
+            <span class="mdi" :class="maintenanceOn ? 'mdi-pause-octagon-outline' : 'mdi-check-circle-outline'"></span>
+            <div class="mt-state-copy">
+              <div class="cell-title">{{ maintenanceOn ? 'In maintenance' : 'Serving normally' }}</div>
+              <div class="text-muted text-sm">
+                <template v-if="maintenanceOn">
+                  Every request gets <strong>{{ effectiveStatus }}</strong> from the gateway. The app is
+                  still running and never sees the traffic.
+                </template>
+                <template v-else>
+                  Requests reach the app as usual. Parking answers at the gateway instead, so a deploy or
+                  a migration stays invisible to visitors.
+                </template>
+              </div>
+            </div>
+            <button
+              class="btn btn-sm"
+              :class="maintenanceOn ? 'btn-secondary' : 'btn-warning'"
+              :disabled="!ws.canEdit || mtBusy"
+              @click="saveMaintenance(!maintenanceOn)"
+            >
+              {{ mtBusy ? 'Saving…' : maintenanceOn ? 'Resume traffic' : 'Start maintenance' }}
+            </button>
+          </div>
+
+          <div class="mt-response">
+            <div class="mt-response-head">
+              <div class="cell-title">Response while parked</div>
+              <div class="text-muted text-sm">
+                Leave both blank to use the gateway's default — {{ GATEWAY_DEFAULT_STATUS }} with a short
+                message.
+              </div>
+            </div>
+
+            <div class="mt-fields">
+              <label class="mt-field mt-field-status">
+                <span class="form-label">Status code</span>
+                <input
+                  v-model.number="mtStatus"
+                  type="number"
+                  class="form-input"
+                  :class="{ 'is-invalid': statusInvalid }"
+                  min="400"
+                  max="599"
+                  :placeholder="String(GATEWAY_DEFAULT_STATUS)"
+                  :disabled="!ws.canEdit"
+                />
+                <span v-if="statusInvalid" class="form-error">Use 400–599 — a 2xx reads as healthy.</span>
+                <span v-else class="form-hint">4xx or 5xx</span>
+              </label>
+
+              <label class="mt-field mt-field-message">
+                <span class="form-label">
+                  Message
+                  <span v-if="messageIsJson && mtMessage.trim()" class="badge badge-info mt-json-badge">valid JSON</span>
+                </span>
+                <textarea
+                  v-model="mtMessage"
+                  class="form-input mt-message"
+                  rows="4"
+                  maxlength="1024"
+                  spellcheck="false"
+                  placeholder="Back at 14:00 UTC"
+                  :disabled="!ws.canEdit"
+                ></textarea>
+                <span class="form-hint">{{ mtMessage.length }}/1024 · plain text, or JSON to answer API clients in your own shape</span>
+              </label>
+            </div>
+
+            <div class="mt-preview">
+              <div class="mt-preview-head">
+                <span class="form-label" style="margin: 0">What the caller gets</span>
+                <div class="mt-preview-tabs">
+                  <button
+                    v-for="f in [
+                      { key: 'text', label: 'Browser' },
+                      { key: 'json', label: 'JSON' },
+                      { key: 'xml', label: 'XML' },
+                    ]"
+                    :key="f.key"
+                    type="button"
+                    class="mt-preview-tab"
+                    :class="{ active: previewAs === f.key }"
+                    @click="previewAs = f.key as 'text' | 'json' | 'xml'"
+                  >
+                    {{ f.label }}
+                  </button>
+                </div>
+              </div>
+              <pre class="mt-preview-body"><code>{{ previewStatusLine }}
+Content-Type: {{ previewContentType }}
+
+{{ previewBody }}</code></pre>
+              <p class="text-muted text-sm mt-preview-note">
+                <template v-if="previewAs === 'text'">
+                  Browsers land here: the <code>Accept</code> header they send matches none of the
+                  structured formats.
+                </template>
+                <template v-else-if="previewAs === 'json'">
+                  <template v-if="messageIsJson">Your message parses as JSON, so it is returned as written.</template>
+                  <template v-else>Not valid JSON, so the gateway wraps it in its own envelope.</template>
+                </template>
+                <template v-else>
+                  XML is always wrapped and escaped — a hand-written XML message is not passed through.
+                </template>
+              </p>
+            </div>
+
+            <div class="mt-actions">
+              <button
+                v-if="mtDirty"
+                class="btn btn-secondary btn-sm"
+                :disabled="mtBusy"
+                @click="syncMaintenanceForm(item)"
+              >
+                Discard
+              </button>
+              <button
+                class="btn btn-primary btn-sm"
+                :disabled="!ws.canEdit || mtBusy || !mtDirty || statusInvalid"
+                @click="saveMaintenance(maintenanceOn)"
+              >
+                {{ mtBusy ? 'Saving…' : mtDirty ? 'Save response' : 'Saved' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-header"><h2>Gateway security</h2></div>
+        <div class="card-body detail-list">
+          <div class="detail-row">
+            <span>
+              <div class="cell-title">Exploit protection</div>
+              <div class="text-muted text-sm">
+                Rejects requests carrying common injection and traversal signatures at the gateway, before
+                the backend sees them. Off by default — a strict backend may already reject them, and a
+                noisy filter can block legitimate traffic.
+              </div>
+            </span>
+            <button
+              class="btn btn-secondary btn-sm"
+              :disabled="!ws.canEdit || secBusy"
+              @click="setSecurity({ exploit_protection: item.exploit_protection !== true })"
+            >
+              {{ item.exploit_protection === true ? 'Disable' : 'Enable' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Generated external-access routes are managed by the platform; read-only here. -->
       <div v-if="item.generated" class="card">
         <div class="card-header"><h2>Settings</h2></div>
@@ -407,5 +659,34 @@ async function removeRoute() {
 .dns-row { border-bottom: 1px solid var(--border-primary); }
 .dns-row:last-child { border-bottom: none; }
 .dns-row .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mt-state { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border-primary); }
+.mt-state .mdi { font-size: 22px; line-height: 1; margin-top: 2px; }
+.mt-state-copy { flex: 1; min-width: 0; }
+.mt-state.is-live { background: var(--bg-secondary); }
+.mt-state.is-live .mdi { color: var(--success-500, #22c55e); }
+.mt-state.is-parked { background: color-mix(in srgb, var(--warning-500, #f59e0b) 10%, transparent); border-color: color-mix(in srgb, var(--warning-500, #f59e0b) 35%, transparent); }
+.mt-state.is-parked .mdi { color: var(--warning-500, #f59e0b); }
+
+.mt-response { margin-top: 16px; }
+.mt-response-head { margin-bottom: 12px; }
+.mt-fields { display: flex; gap: 16px; flex-wrap: wrap; }
+.mt-field { display: flex; flex-direction: column; gap: 6px; }
+.mt-field-status { width: 120px; }
+.mt-field-message { flex: 1; min-width: 260px; }
+.mt-field .form-label { display: flex; align-items: center; gap: 8px; margin: 0; }
+.mt-json-badge { font-size: 10px; }
+.mt-message { font-family: var(--font-mono, monospace); font-size: 12px; resize: vertical; }
+.form-input.is-invalid { border-color: var(--danger-500, #ef4444); }
+
+.mt-preview { margin-top: 16px; }
+.mt-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.mt-preview-tabs { display: flex; gap: 2px; padding: 2px; background: var(--bg-tertiary); border-radius: 8px; }
+.mt-preview-tab { border: none; background: transparent; color: var(--text-muted); font-size: 12px; padding: 4px 10px; border-radius: 6px; cursor: pointer; }
+.mt-preview-tab.active { background: var(--bg-primary); color: var(--text-primary); font-weight: 600; }
+.mt-preview-body { margin: 0; padding: 12px 14px; background: var(--bg-tertiary); border: 1px solid var(--border-primary); border-radius: 8px; font-size: 12px; line-height: 1.55; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+.mt-preview-note { margin: 6px 0 0; }
+
+.mt-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
 .dns-empty { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); padding: 10px 12px; border: 1px dashed var(--border-primary); border-radius: 8px; }
 </style>

@@ -990,6 +990,12 @@ export type RouteTLSMode = 'none' | 'acme' | 'custom'
 // or pending (not yet synced).
 export type RouteStatus = 'pending' | 'live' | 'offline' | 'error'
 
+export interface RouteMaintenance {
+  enabled: boolean
+  status_code?: number
+  message?: string
+}
+
 export interface Route {
   id: number
   workspace_id: number
@@ -1006,6 +1012,8 @@ export interface Route {
   certificate_id?: number | null
   advanced_config?: string
   enabled: boolean
+  exploit_protection?: boolean
+  maintenance?: RouteMaintenance
   // Generated marks a platform-managed external-access route. It is created and
   // reconciled from the application's External Access card; the Routes UI shows it
   // read-only (no edit/toggle/delete).

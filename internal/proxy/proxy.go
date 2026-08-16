@@ -47,7 +47,15 @@ type RenderedRoute struct {
 	Disabled bool
 	// AdvancedYAML, when set, is a raw Goma route config that supersedes the
 	// structured fields; Miabi still forces name/backends/tls into it.
-	AdvancedYAML string
+	AdvancedYAML      string
+	ExploitProtection bool
+	Maintenance       *RouteMaintenance
+}
+
+type RouteMaintenance struct {
+	Enabled    bool
+	StatusCode int
+	Message    string
 }
 
 // RenderedMiddleware is the desired Goma middleware definition.

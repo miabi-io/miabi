@@ -31,12 +31,14 @@ var (
 	// ErrHostRequired rejects a structured route with no hostname: a hostless route
 	// on path "/" matches every request, so the gateway would funnel all traffic to
 	// it. (Advanced-config routes declare their hosts in the raw YAML.)
-	ErrHostRequired = errors.New("at least one host is required")
-	ErrNameTaken    = errors.New("a route with this name already exists")
-	ErrAppRequired  = errors.New("application not found in workspace")
-	ErrNotFound     = errors.New("route not found")
-	ErrCertRequired = errors.New("custom TLS requires a stored certificate")
-	ErrInvalidYAML  = errors.New("advanced config is not valid YAML")
+	ErrHostRequired       = errors.New("at least one host is required")
+	ErrMaintenanceStatus  = errors.New("maintenance status code must be between 400 and 599")
+	ErrMaintenanceMessage = errors.New("maintenance message is too long (max 1024 characters)")
+	ErrNameTaken          = errors.New("a route with this name already exists")
+	ErrAppRequired        = errors.New("application not found in workspace")
+	ErrNotFound           = errors.New("route not found")
+	ErrCertRequired       = errors.New("custom TLS requires a stored certificate")
+	ErrInvalidYAML        = errors.New("advanced config is not valid YAML")
 	// ErrDomainNotRegistered is returned when a route host does not fall under
 	// any domain registered in the workspace. Register the domain first.
 	ErrDomainNotRegistered = errors.New("no matching domain is registered in this workspace; add the domain first")
@@ -60,6 +62,8 @@ var (
 	// exist in the workspace (detach is idempotent and never returns this).
 	ErrMiddlewareNotFound = errors.New("middleware not found in this workspace")
 )
+
+const maintenanceMessageMax = 1024
 
 // validateAdvanced ensures a non-empty advanced config parses as YAML and does
 // not try to set an inline TLS certificate (Miabi owns TLS).
@@ -426,19 +430,21 @@ type Input struct {
 	// Name is the unique slug handle; it must already be canonical slug form (it
 	// becomes the Goma route name). DisplayName is the free-text label (falls back
 	// to Name when blank).
-	Name           string
-	DisplayName    string
-	ApplicationID  uint
-	Path           string
-	Hosts          []string
-	Methods        []string
-	Middlewares    []string
-	Rewrite        string
-	TargetPort     int
-	TLSMode        models.RouteTLSMode
-	AdvancedConfig string // raw Goma route YAML; supersedes structured fields
-	CertificateID  *uint  // stored certificate (required for custom TLS)
-	Enabled        *bool
+	Name              string
+	DisplayName       string
+	ApplicationID     uint
+	Path              string
+	Hosts             []string
+	Methods           []string
+	Middlewares       []string
+	Rewrite           string
+	TargetPort        int
+	TLSMode           models.RouteTLSMode
+	AdvancedConfig    string // raw Goma route YAML; supersedes structured fields
+	CertificateID     *uint  // stored certificate (required for custom TLS)
+	Enabled           *bool
+	ExploitProtection *bool
+	Maintenance       *models.RouteMaintenance
 	// Metadata carries provenance labels (managed-by, gitops-source) for routes created by the apply/GitOps
 	// engine, so a route participates in prune and per-project teardown like every other kind. Nil for
 	// UI-created routes and on a UI edit, which leaves any existing labels untouched.
@@ -500,7 +506,14 @@ func (s *Service) Create(ctx context.Context, workspaceID uint, in Input) (*mode
 		CertificateID:  in.CertificateID,
 		Enabled:        in.Enabled == nil || *in.Enabled,
 		Metadata:       in.Metadata,
+
+		ExploitProtection: in.ExploitProtection != nil && *in.ExploitProtection,
 	}
+	mt, err := normalizeMaintenance(in.Maintenance)
+	if err != nil {
+		return nil, err
+	}
+	rt.Maintenance = mt
 	if err := s.applyCert(rt, in); err != nil {
 		return nil, err
 	}
@@ -571,6 +584,16 @@ func (s *Service) Update(ctx context.Context, workspaceID, id uint, in Input) (*
 	if in.Enabled != nil {
 		rt.Enabled = *in.Enabled
 	}
+	if in.ExploitProtection != nil {
+		rt.ExploitProtection = *in.ExploitProtection
+	}
+	if in.Maintenance != nil {
+		mt, err := normalizeMaintenance(in.Maintenance)
+		if err != nil {
+			return nil, err
+		}
+		rt.Maintenance = mt
+	}
 	// Re-stamp provenance labels when apply/GitOps supplies them; a UI edit passes
 	// nil so existing labels are preserved.
 	if in.Metadata != nil {
@@ -594,6 +617,42 @@ func (s *Service) SetEnabled(ctx context.Context, workspaceID, id uint, enabled 
 		return nil, ErrNotFound
 	}
 	rt.Enabled = enabled
+	if err := s.routes.Update(rt); err != nil {
+		return nil, err
+	}
+	_ = s.SyncRoute(ctx, rt.ApplicationID)
+	strip(rt)
+	s.enrichDNS(rt)
+	return rt, nil
+}
+
+func (s *Service) SetSecurity(ctx context.Context, workspaceID, id uint, exploitProtection *bool) (*models.Route, error) {
+	rt, err := s.routes.FindInWorkspace(workspaceID, id)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	if exploitProtection != nil {
+		rt.ExploitProtection = *exploitProtection
+	}
+	if err := s.routes.Update(rt); err != nil {
+		return nil, err
+	}
+	_ = s.SyncRoute(ctx, rt.ApplicationID)
+	strip(rt)
+	s.enrichDNS(rt)
+	return rt, nil
+}
+
+func (s *Service) SetMaintenance(ctx context.Context, workspaceID, id uint, in models.RouteMaintenance) (*models.Route, error) {
+	rt, err := s.routes.FindInWorkspace(workspaceID, id)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	mt, err := normalizeMaintenance(&in)
+	if err != nil {
+		return nil, err
+	}
+	rt.Maintenance = mt
 	if err := s.routes.Update(rt); err != nil {
 		return nil, err
 	}
@@ -904,21 +963,7 @@ func (s *Service) SyncWorkspaceProxy(ctx context.Context, workspaceID uint) erro
 			rt := &routes[j]
 			serve, status, reason := routeServeState(rt, domains, gate, privileged)
 			port := routePort(rt, app)
-			rr := proxy.RenderedRoute{
-				ID:           rt.ID,
-				WorkspaceID:  rt.WorkspaceID,
-				Name:         rt.Name,
-				Path:         rt.Path,
-				Hosts:        rt.Hosts,
-				Methods:      rt.Methods,
-				Rewrite:      rt.Rewrite,
-				Middlewares:  rt.Middlewares,
-				Backends:     s.renderBackends(app, port),
-				TLSProvider:  rt.TLSProvider,
-				TLSNone:      rt.TLSMode == models.RouteTLSNone,
-				Disabled:     !serve,
-				AdvancedYAML: rt.AdvancedConfig,
-			}
+			rr := renderedRoute(rt, s.renderBackends(app, port), !serve)
 			if pair, ok := s.certPair(rt); ok {
 				rr.Certs = []proxy.CertPair{pair}
 			}
@@ -1113,6 +1158,51 @@ func (s *Service) displayBackends(app *models.Application, port int) []string {
 		out = append(out, b.Endpoint)
 	}
 	return out
+}
+
+func normalizeMaintenance(in *models.RouteMaintenance) (models.RouteMaintenance, error) {
+	if in == nil {
+		return models.RouteMaintenance{}, nil
+	}
+	out := models.RouteMaintenance{
+		Enabled:    in.Enabled,
+		StatusCode: in.StatusCode,
+		Message:    strings.TrimSpace(in.Message),
+	}
+	if out.StatusCode != 0 && (out.StatusCode < 400 || out.StatusCode > 599) {
+		return models.RouteMaintenance{}, ErrMaintenanceStatus
+	}
+	if len(out.Message) > maintenanceMessageMax {
+		return models.RouteMaintenance{}, ErrMaintenanceMessage
+	}
+	return out, nil
+}
+
+func renderedRoute(rt *models.Route, backends []proxy.Backend, disabled bool) proxy.RenderedRoute {
+	rr := proxy.RenderedRoute{
+		ID:                rt.ID,
+		WorkspaceID:       rt.WorkspaceID,
+		Name:              rt.Name,
+		Path:              rt.Path,
+		Hosts:             rt.Hosts,
+		Methods:           rt.Methods,
+		Rewrite:           rt.Rewrite,
+		Middlewares:       rt.Middlewares,
+		Backends:          backends,
+		TLSProvider:       rt.TLSProvider,
+		TLSNone:           rt.TLSMode == models.RouteTLSNone,
+		Disabled:          disabled,
+		AdvancedYAML:      rt.AdvancedConfig,
+		ExploitProtection: rt.ExploitProtection,
+	}
+	if rt.Maintenance.Enabled {
+		rr.Maintenance = &proxy.RouteMaintenance{
+			Enabled:    true,
+			StatusCode: rt.Maintenance.StatusCode,
+			Message:    rt.Maintenance.Message,
+		}
+	}
+	return rr
 }
 
 func routePort(rt *models.Route, app *models.Application) int {
@@ -1325,16 +1415,7 @@ func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.Rend
 			// Disabled routes are still emitted (with enabled:false) so the node's
 			// gateway stops serving them rather than relying on the route vanishing
 			// from the bundle.
-			rr := proxy.RenderedRoute{
-				ID: rt.ID, WorkspaceID: rt.WorkspaceID, Name: rt.Name, Path: rt.Path, Hosts: rt.Hosts, Methods: rt.Methods,
-				Rewrite:      rt.Rewrite,
-				Middlewares:  rt.Middlewares,
-				Backends:     aliasBackends(app, routePort(rt, app), portScheme(app, routePort(rt, app))),
-				TLSProvider:  rt.TLSProvider,
-				TLSNone:      rt.TLSMode == models.RouteTLSNone,
-				Disabled:     !serve,
-				AdvancedYAML: rt.AdvancedConfig,
-			}
+			rr := renderedRoute(rt, aliasBackends(app, routePort(rt, app), portScheme(app, routePort(rt, app))), !serve)
 			if pair, ok := s.certPair(rt); ok {
 				rr.Certs = []proxy.CertPair{pair}
 			}
