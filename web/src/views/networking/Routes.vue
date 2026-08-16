@@ -149,6 +149,7 @@ async function confirmRemove() {
                   {{ r.name }}
                   <span v-if="r.generated" class="badge badge-info" style="margin-left: 8px" title="Auto-generated for external access; managed from the app's External Access">auto</span>
                   <span v-if="!r.enabled" class="badge badge-neutral" style="margin-left: 8px">disabled</span>
+                  <span v-if="r.maintenance?.enabled" class="badge badge-warning" style="margin-left: 8px" title="The gateway answers this route itself; the backend is never reached">maintenance</span>
                 </span>
                 <div class="cell-sub">{{ r.path }}</div>
               </td>

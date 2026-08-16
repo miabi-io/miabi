@@ -724,6 +724,12 @@ func (r *restoreRun) applyRouting(ctx context.Context) {
 			Path: rt.Path, Hosts: rt.Hosts, Methods: rt.Methods, Middlewares: rt.Middlewares,
 			Rewrite: rt.Rewrite, TargetPort: rt.TargetPort,
 			TLSMode: models.RouteTLSMode(rt.TLSMode), Enabled: &enabled,
+			ExploitProtection: &rt.ExploitProtection,
+		}
+		if rt.Maintenance != nil {
+			in.Maintenance = &models.RouteMaintenance{
+				Enabled: rt.Maintenance.Enabled, StatusCode: rt.Maintenance.StatusCode, Message: rt.Maintenance.Message,
+			}
 		}
 		detail := ""
 		if rt.Certificate != "" {

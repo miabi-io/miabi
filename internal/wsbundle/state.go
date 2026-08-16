@@ -344,8 +344,16 @@ type Route struct {
 	TLSMode     string   `json:"tls_mode,omitempty"`
 	// Certificate names the uploaded certificate a custom-TLS route serves, by
 	// its Miabi name.
-	Certificate string `json:"certificate,omitempty"`
-	Enabled     bool   `json:"enabled"`
+	Certificate       string            `json:"certificate,omitempty"`
+	Enabled           bool              `json:"enabled"`
+	ExploitProtection bool              `json:"exploit_protection,omitempty"`
+	Maintenance       *RouteMaintenance `json:"maintenance,omitempty"`
+}
+
+type RouteMaintenance struct {
+	Enabled    bool   `json:"enabled"`
+	StatusCode int    `json:"status_code,omitempty"`
+	Message    string `json:"message,omitempty"`
 }
 
 // Domain is an owned hostname. Ownership is not carried: a domain is verified

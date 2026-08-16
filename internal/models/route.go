@@ -35,6 +35,12 @@ const (
 	RouteStatusError RouteStatus = "error"
 )
 
+type RouteMaintenance struct {
+	Enabled    bool   `json:"enabled"`
+	StatusCode int    `json:"status_code,omitempty"`
+	Message    string `json:"message,omitempty"`
+}
+
 // Route is a Goma Gateway route owned by a workspace and bound to an
 // application. The container backend is injected by the platform at render
 // time (the app's network alias), so users never set it.
@@ -69,8 +75,10 @@ type Route struct {
 	// Certificate declares the FK so deleting the referenced certificate nulls
 	// this pointer (ON DELETE SET NULL) instead of leaving it dangling. The route
 	// falls back to its default TLS mode. Association is not serialized.
-	Certificate *Certificate `json:"-" gorm:"foreignKey:CertificateID;constraint:OnDelete:SET NULL"`
-	Enabled     bool         `json:"enabled" gorm:"not null;default:true"`
+	Certificate       *Certificate     `json:"-" gorm:"foreignKey:CertificateID;constraint:OnDelete:SET NULL"`
+	Enabled           bool             `json:"enabled" gorm:"not null;default:true"`
+	ExploitProtection bool             `json:"exploit_protection" gorm:"not null;default:false"`
+	Maintenance       RouteMaintenance `json:"maintenance" gorm:"serializer:json"`
 	// Status is the route's config-sync status, set whenever the workspace proxy
 	// config is reconciled.
 	Status RouteStatus `json:"status" gorm:"not null;default:pending"`

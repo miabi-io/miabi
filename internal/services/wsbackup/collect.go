@@ -608,6 +608,12 @@ func (s *Service) collectRouting(workspaceID uint, st *wsbundle.State, report *m
 			Name: r.Name, DisplayName: r.DisplayName, App: app, Hosts: r.Hosts, Path: r.Path,
 			Methods: r.Methods, Middlewares: r.Middlewares, Rewrite: r.Rewrite,
 			TargetPort: r.TargetPort, TLSMode: string(r.TLSMode), Enabled: r.Enabled,
+			ExploitProtection: r.ExploitProtection,
+		}
+		if r.Maintenance.Enabled {
+			entry.Maintenance = &wsbundle.RouteMaintenance{
+				Enabled: true, StatusCode: r.Maintenance.StatusCode, Message: r.Maintenance.Message,
+			}
 		}
 		if r.CertificateID != nil {
 			entry.Certificate = certName[*r.CertificateID]
