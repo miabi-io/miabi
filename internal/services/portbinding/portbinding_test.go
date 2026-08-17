@@ -62,6 +62,32 @@ func TestPublishedPorts(t *testing.T) {
 	}
 }
 
+func TestHostPortAllowed(t *testing.T) {
+	const minPort, maxPort = 30000, 32767
+	cases := []struct {
+		name       string
+		port       int
+		privileged bool
+		want       bool
+	}{
+		{"inside the window", 30080, false, true},
+		{"below the window", 8080, false, false},
+		{"above the window", 40000, false, false},
+		{"privileged below the window", 25, true, true},
+		{"privileged above the window", 40000, true, true},
+		{"privileged top of the port space", 65535, true, true},
+		{"privileged past the port space", 65536, true, false},
+		{"privileged port zero", 0, true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := hostPortAllowed(tc.port, minPort, maxPort, tc.privileged); got != tc.want {
+				t.Errorf("hostPortAllowed(%d, privileged=%v) = %v, want %v", tc.port, tc.privileged, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestPortKeyNormalizesProto(t *testing.T) {
 	if portKey(53, "udp") != "53/udp" {
 		t.Errorf("got %q", portKey(53, "udp"))

@@ -18,6 +18,10 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
+// maxPortNumber is the absolute top of the TCP/UDP port space. A privileged
+// workspace is bounded only by this, not by the configured window.
+const maxPortNumber = 65535
+
 var (
 	ErrNotFound       = errors.New("port binding not found")
 	ErrAppRequired    = errors.New("application not found in workspace")
@@ -72,13 +76,13 @@ func normProto(p string) string {
 // skip review and auto-approve — but only when the host port is actually free on
 // the node; otherwise the request is rejected with ErrHostPortTaken.
 func (s *Service) Request(workspaceID, userID uint, in RequestInput) (*models.PortBinding, error) {
-	b, err := s.newPendingBinding(workspaceID, userID, in)
+	privileged := s.isPrivileged(workspaceID)
+	b, err := s.newPendingBinding(workspaceID, userID, in, privileged)
 	if err != nil {
 		return nil, err
 	}
-	// Privileged workspaces skip the admin review queue — but the host-port
-	// conflict check still applies (host ports are a per-node resource).
-	if s.isPrivileged(workspaceID) {
+
+	if privileged {
 		inUse, owner, cerr := s.hostPortConflict(b.ServerID, b.HostPort, b.Protocol, 0)
 		if cerr != nil {
 			return nil, cerr
@@ -100,11 +104,10 @@ func (s *Service) Request(workspaceID, userID uint, in RequestInput) (*models.Po
 	return b, nil
 }
 
-// RequestImport files a host-port binding during stack or compose import. Like Request, but a host-port
-// conflict does not fail: the binding is filed pending with a note and the conflicting owner is returned, so
-// the stack still imports cleanly instead of a container crashing at start because the port was taken.
+// RequestImport files a host-port binding during stack or compose import.
 func (s *Service) RequestImport(workspaceID, userID uint, in RequestInput) (binding *models.PortBinding, conflict string, err error) {
-	b, err := s.newPendingBinding(workspaceID, userID, in)
+	privileged := s.isPrivileged(workspaceID)
+	b, err := s.newPendingBinding(workspaceID, userID, in, privileged)
 	if err != nil {
 		return nil, "", err
 	}
@@ -116,7 +119,7 @@ func (s *Service) RequestImport(workspaceID, userID uint, in RequestInput) (bind
 	case inUse:
 		conflict = owner
 		b.ReviewNote = fmt.Sprintf("host port %d/%s already in use on the node by %s — remap or have an admin review", b.HostPort, b.Protocol, owner)
-	case s.isPrivileged(workspaceID):
+	case privileged:
 		_ = autoApprove(b, userID, false)
 	}
 	if err := s.repo.Create(b); err != nil {
@@ -127,7 +130,7 @@ func (s *Service) RequestImport(workspaceID, userID uint, in RequestInput) (bind
 
 // newPendingBinding validates a request and returns a pending binding (not yet
 // persisted). Shared by Request and RequestImport.
-func (s *Service) newPendingBinding(workspaceID, userID uint, in RequestInput) (*models.PortBinding, error) {
+func (s *Service) newPendingBinding(workspaceID, userID uint, in RequestInput, privileged bool) (*models.PortBinding, error) {
 	app, err := s.apps.FindInWorkspace(workspaceID, in.ApplicationID)
 	if err != nil {
 		return nil, ErrAppRequired
@@ -140,14 +143,48 @@ func (s *Service) newPendingBinding(workspaceID, userID uint, in RequestInput) (
 	if !exposes(declared, in.ContainerPort, proto) {
 		return nil, ErrPortNotExposed
 	}
-	if in.HostPort < s.minPort || in.HostPort > s.maxPort {
-		return nil, fmt.Errorf("%w (%d-%d)", ErrHostPortRange, s.minPort, s.maxPort)
+	hostPort, err := s.resolveHostPort(app.ServerID, in.HostPort, proto, privileged)
+	if err != nil {
+		return nil, err
 	}
 	return &models.PortBinding{
 		WorkspaceID: workspaceID, ApplicationID: app.ID, ServerID: app.ServerID,
-		ContainerPort: in.ContainerPort, Protocol: proto, HostPort: in.HostPort,
+		ContainerPort: in.ContainerPort, Protocol: proto, HostPort: hostPort,
 		Status: models.PortBindingPending, RequestedBy: userID,
 	}, nil
+}
+
+func (s *Service) resolveHostPort(serverID uint, want int, proto string, privileged bool) (int, error) {
+	if want == 0 {
+		free, err := s.FindFreeHostPort(serverID, proto, 0)
+		if err != nil {
+			return 0, err
+		}
+		if free == 0 {
+			return 0, fmt.Errorf("%w: no free host port in %d-%d", ErrHostPortTaken, s.minPort, s.maxPort)
+		}
+		return free, nil
+	}
+	if !hostPortAllowed(want, s.minPort, s.maxPort, privileged) {
+		if privileged {
+			return 0, fmt.Errorf("%w (1-%d)", ErrHostPortRange, maxPortNumber)
+		}
+		return 0, fmt.Errorf("%w (%d-%d)", ErrHostPortRange, s.minPort, s.maxPort)
+	}
+	return want, nil
+}
+
+// hostPortAllowed reports whether a host port may be requested. The window bounds what an admin may
+// approve for an ordinary workspace; a privileged one publishes infrastructure that has to sit on
+// fixed ports (25, 53, 443), so only the port space bounds it.
+func hostPortAllowed(port, minPort, maxPort int, privileged bool) bool {
+	if port < 1 || port > maxPortNumber {
+		return false
+	}
+	if privileged {
+		return true
+	}
+	return port >= minPort && port <= maxPort
 }
 
 // SuggestHostPort returns a free host port on an app's node — for the UI to

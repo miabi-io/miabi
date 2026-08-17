@@ -217,7 +217,8 @@ type Config struct {
 	LogStore LogStoreConfig
 
 	// HostPortMin/HostPortMax bound the host ports an admin may approve for port
-	// bindings. Defaults allow the full non-privileged range.
+	// bindings, and the pool auto-allocation draws from. Defaults allow the full
+	// non-privileged range; privileged workspaces may request any port.
 	HostPortMin int
 	HostPortMax int
 
