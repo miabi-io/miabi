@@ -60,10 +60,7 @@ type Workspace struct {
 	// default org). Lets SSO/enforced-login/SCIM scope to an org without a
 	// destructive migration when multi-org lands.
 	OrganizationID *uint `json:"organization_id" gorm:"index"`
-	// Privileged grants trusted capabilities — currently, host port-binding
-	// requests are auto-approved (range and conflict checks still apply). Only a
-	// platform admin can set it.
-	Privileged bool `json:"privileged" gorm:"not null;default:false"`
+	Privileged     bool  `json:"privileged" gorm:"not null;default:false"`
 	// System marks the built-in platform workspace ("Miabi System"). It holds platform-managed
 	// apps such as the per-node Goma gateways, is created on first boot, is always privileged,
 	// and cannot be deleted. Only platform admins manage it.
