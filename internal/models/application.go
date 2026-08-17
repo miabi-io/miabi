@@ -292,6 +292,11 @@ type Application struct {
 	// GPUKind narrows the request to a vendor or model when set ("nvidia",
 	// "NVIDIA A100-…"); empty = any enabled GPU on the app's node.
 	GPUKind string `json:"gpu_kind,omitempty"`
+	// RunAsUser overrides the account the container runs as ("uid", "uid:gid", "name", "name:group"),
+	// like `docker run --user`. Empty keeps the image's own user. Under the restricted security
+	// profile it must be a non-root numeric uid, and it replaces the platform UID rather than
+	// escaping it. Managed volumes are chowned to it on deploy; needs a redeploy.
+	RunAsUser string `json:"run_as_user,omitempty"`
 	// RestartPolicy is the Docker restart policy for the app's container.
 	// Defaults to unless-stopped (the platform's historical behavior).
 	RestartPolicy RestartPolicy `json:"restart_policy" gorm:"not null;default:unless-stopped"`

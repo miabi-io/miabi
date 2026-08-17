@@ -510,12 +510,20 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 		}
 	}
 
-	// Restricted security profile: force a non-root UID and chown the app's
-	// managed volumes to it so the container can still write to them.
-	sec := h.containerSecurity(app)
-	if sec.Restricted() {
-		h.log(dep, "security profile: restricted (running as "+sec.User+")")
-		if err := h.prepareRestrictedVolumes(ctx, h.eng(app), sec, image, rc.Mounts); err != nil {
+	// Resolve the user the container runs as — the app's own, the restricted profile's UID, or the
+	// image's — and chown the app's managed volumes to it so it can still write to them.
+	sec, secErr := h.workloadSecurity(app, app.RunAsUser)
+	if secErr != nil {
+		_ = h.fail(dep, secErr)
+		return
+	}
+	if sec.HasUser() {
+		if sec.Restricted {
+			h.log(dep, "security profile: restricted (running as "+sec.User+")")
+		} else {
+			h.log(dep, "running as "+sec.User)
+		}
+		if err := h.prepareVolumeOwnership(ctx, h.eng(app), sec, image, rc.Mounts); err != nil {
 			_ = h.fail(dep, fmt.Errorf("prepare volumes: %w", err))
 			return
 		}
@@ -526,7 +534,7 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 	// — refuse rather than silently drop either. The node's runtimes gate GPU capability at all.
 	var gpuReqs []docker.GPURequest
 	if app.GPUCount > 0 && h.gpu != nil {
-		if sec.Restricted() {
+		if sec.Restricted {
 			_ = h.fail(dep, ErrGPUWithRestrictedProfile)
 			return
 		}
@@ -551,10 +559,10 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 		Cmd:      cmd,
 		Mounts:   rc.Mounts,
 		Files:    rc.Files,
-		// Under the restricted profile, prepareRestrictedVolumes has already seeded and chowned these
-		// volumes to the non-root UID; disable copy-up so Docker doesn't re-apply the image mount-dir's
-		// ownership on start and undo it.
-		NoCopyVolumes:    sec.Restricted(),
+		// prepareVolumeOwnership has already seeded and chowned these volumes to the pinned user;
+		// disable copy-up so Docker doesn't re-apply the image mount-dir's ownership on start and
+		// undo it.
+		NoCopyVolumes:    sec.HasUser(),
 		Binds:            rc.Binds,
 		Networks:         rc.Networks,
 		Ports:            ports,
@@ -748,7 +756,11 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 	// Stable service name = the app's alias, so redeploys update the same service in place; the alias
 	// also resolves to the service VIP via Swarm embedded DNS.
 	alias := node.AppAlias(app)
-	sec := h.containerSecurity(app)
+	sec, secErr := h.workloadSecurity(app, app.RunAsUser)
+	if secErr != nil {
+		_ = h.fail(dep, secErr)
+		return
+	}
 	spec := docker.ServiceSpec{
 		Name:           alias,
 		Image:          image,

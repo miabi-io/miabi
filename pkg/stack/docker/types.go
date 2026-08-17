@@ -56,7 +56,8 @@ type ContainerConfig struct {
 	State         string            `json:"state"`
 	Command       []string          `json:"command,omitempty"`
 	Entrypoint    []string          `json:"entrypoint,omitempty"`
-	Env           []string          `json:"env,omitempty"` // KEY=VALUE (effective)
+	Env           []string          `json:"env,omitempty"`  // KEY=VALUE (effective)
+	User          string            `json:"user,omitempty"` // c.Config.User: "uid[:gid]" or a name; "" = image default
 	Labels        map[string]string `json:"labels,omitempty"`
 	Ports         []PortMapping     `json:"ports,omitempty"`    // published host ports
 	Mounts        []ContainerMount  `json:"mounts,omitempty"`   // volume + bind mounts

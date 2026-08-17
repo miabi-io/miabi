@@ -38,12 +38,14 @@ func (s *Service) SetScheduler(sch Scheduler) { s.scheduler = sch }
 
 // CronJobInput is the create/update payload for a CronJob.
 type CronJobInput struct {
-	Name              string
-	Schedule          string
-	Command           []string
-	Entrypoint        []string
-	Image             string // optional custom image override (blank = app's release)
-	RegistryID        *uint
+	Name       string
+	Schedule   string
+	Command    []string
+	Entrypoint []string
+	Image      string // optional custom image override (blank = app's release)
+	RegistryID *uint
+	// RunAsUser pins spawned runs to an account (blank = inherit the app's).
+	RunAsUser         string
 	TimeoutSecs       int
 	Enabled           bool
 	ConcurrencyPolicy string
@@ -74,8 +76,15 @@ func (s *Service) CreateCronJob(workspaceID, appID uint, in CronJobInput) (*mode
 	if err := validateCron(in.Schedule); err != nil {
 		return nil, ErrInvalidSchedule
 	}
-	if _, err := s.apps.FindInWorkspace(workspaceID, appID); err != nil {
+	app, err := s.apps.FindInWorkspace(workspaceID, appID)
+	if err != nil {
 		return nil, ErrNotFound
+	}
+	// Blank stays blank on a schedule: spawned runs inherit whatever the app is
+	// configured with when they fire, rather than snapshotting it now.
+	runAsUser, err := s.checkRunAsUser(app, in.RunAsUser)
+	if err != nil {
+		return nil, err
 	}
 	if s.quota.Enabled() {
 		n, _ := s.repo.CountCronByWorkspace(workspaceID)
@@ -92,6 +101,7 @@ func (s *Service) CreateCronJob(workspaceID, appID uint, in CronJobInput) (*mode
 		Entrypoint:        in.Entrypoint,
 		Image:             in.Image,
 		RegistryID:        in.RegistryID,
+		RunAsUser:         runAsUser,
 		TimeoutSecs:       in.TimeoutSecs,
 		Enabled:           in.Enabled,
 		ConcurrencyPolicy: normalizePolicy(in.ConcurrencyPolicy),
@@ -121,6 +131,14 @@ func (s *Service) UpdateCronJob(workspaceID, id uint, in CronJobInput) (*models.
 	cj.Schedule = in.Schedule
 	cj.Command = in.Command
 	cj.Entrypoint = in.Entrypoint
+	app, err := s.apps.FindInWorkspace(workspaceID, cj.ApplicationID)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	// Re-validated on update so a schedule can't outlive a plan that later mandates non-root.
+	if cj.RunAsUser, err = s.checkRunAsUser(app, in.RunAsUser); err != nil {
+		return nil, err
+	}
 	cj.Image = in.Image
 	cj.RegistryID = in.RegistryID
 	cj.TimeoutSecs = in.TimeoutSecs
@@ -244,6 +262,7 @@ func (s *Service) spawnJob(ctx context.Context, cj *models.CronJob, source strin
 		Entrypoint:  cj.Entrypoint,
 		Image:       cj.Image,
 		RegistryID:  cj.RegistryID,
+		RunAsUser:   cj.RunAsUser, // blank inherits the app's, resolved by Run
 		TimeoutSecs: cj.TimeoutSecs,
 		Source:      source,
 		TriggeredBy: triggeredBy,

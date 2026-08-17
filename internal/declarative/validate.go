@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/miabi-io/miabi/internal/models"
 )
 
 // Config limits and defaults. The per-file cap is what matters against Docker's
@@ -239,6 +241,11 @@ func (r *Resource) validateApplication() error {
 		if p.ExternalAccess && p.Scheme != "http" && p.Scheme != "https" {
 			return fmt.Errorf("application %q: port %d externalAccess needs an http/https scheme", r.Metadata.Name, p.Container)
 		}
+	}
+	// Shape only: whether the account is allowed at all depends on the target workspace's
+	// security profile, which the app service checks on apply.
+	if _, err := models.NormalizeRunAsUser(a.RunAsUser); err != nil {
+		return fmt.Errorf("application %q: runAsUser %q: %w", r.Metadata.Name, a.RunAsUser, err)
 	}
 	if a.ExternalLabel != "" && !nameRe.MatchString(a.ExternalLabel) {
 		return fmt.Errorf("application %q: externalLabel %q must be a DNS label", r.Metadata.Name, a.ExternalLabel)

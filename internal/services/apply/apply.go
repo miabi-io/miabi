@@ -871,6 +871,7 @@ func appResource(app *models.Application, ext, pub map[int]bool, volNameByID, re
 		Command:         app.Command,
 		ContainerLabels: app.ContainerLabels,
 		ExternalLabel:   app.ExternalLabel,
+		RunAsUser:       app.RunAsUser,
 	}
 	// The pull credential, by its manifest name. A credential deleted out from
 	// under the app leaves RegistryID dangling only until the FK nulls it, so an
@@ -1400,6 +1401,9 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		// sanitizes reserved keys (fail-soft) so a manifest can never spoof
 		// platform labels.
 		app.ContainerLabels = spec.ContainerLabels
+		// Validated against the workspace's security profile by the app service, which
+		// refuses a run-as user that would escape a non-root mandate.
+		app.RunAsUser = spec.RunAsUser
 		if err := s.apps.Update(app); err != nil {
 			return err
 		}
@@ -1577,6 +1581,7 @@ func (s *Service) createInput(ctx context.Context, m declarative.Meta, spec *dec
 		Metadata:        md,
 		Annotations:     m.Annotations,
 		ContainerLabels: spec.ContainerLabels, // sanitized in the app service Create
+		RunAsUser:       spec.RunAsUser,       // validated in the app service Create
 	}
 	if spec.Resources != nil {
 		in.MemoryBytes, _ = spec.Resources.MemoryBytes()

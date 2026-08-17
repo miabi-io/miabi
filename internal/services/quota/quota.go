@@ -253,6 +253,9 @@ type Service struct {
 	dbs       *repositories.DatabaseRepository
 	enforce   bool
 	ee        EditionGate
+	// forceNonRoot is the server-level non-root mandate (MIABI_FORCE_NON_ROOT_USER). It applies
+	// regardless of plan enforcement, so it is held here rather than resolved per workspace.
+	forceNonRoot bool
 }
 
 func NewService(plans *repositories.PlanRepository, overrides *repositories.WorkspaceQuotaRepository, apps *repositories.ApplicationRepository, volumes *repositories.VolumeRepository, dbs *repositories.DatabaseRepository, enforce bool) *Service {
@@ -338,6 +341,28 @@ func (s *Service) RestrictedProfile(workspaceID uint) bool {
 		return false
 	}
 	return s.EffectiveLimits(workspaceID).SecurityProfile == models.SecurityProfileRestricted
+}
+
+// SetForceNonRoot wires the server-level non-root mandate, so RequireNonRootUser
+// is the one place that answers "must this workload drop root?".
+func (s *Service) SetForceNonRoot(v bool) { s.forceNonRoot = v }
+
+// RequireNonRootUser reports whether a workspace's app/job containers must run as a non-root user:
+// the server-level mandate, or the workspace's restricted profile. An official-template app is exempt
+// when its plan allows it — but never against the server-level mandate. This is the single gate both
+// the deploy path and the write-time validators consult, so a stored run-as user can never outlive
+// the policy that permitted it. Nil-safe, returning false.
+func (s *Service) RequireNonRootUser(workspaceID uint, officialTemplate bool) bool {
+	if s == nil {
+		return false
+	}
+	if s.forceNonRoot {
+		return true
+	}
+	if !s.RestrictedProfile(workspaceID) {
+		return false
+	}
+	return !(officialTemplate && s.AllowOfficialImageUser(workspaceID))
 }
 
 // AllowOfficialImageUser reports whether the workspace's effective plan lets apps installed from an official

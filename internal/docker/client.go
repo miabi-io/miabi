@@ -171,6 +171,7 @@ func (e *engineClient) InspectContainerConfig(ctx context.Context, id string) (C
 		cfg.Command = c.Config.Cmd
 		cfg.Entrypoint = c.Config.Entrypoint
 		cfg.Env = c.Config.Env
+		cfg.User = c.Config.User
 		cfg.Labels = c.Config.Labels
 	}
 	if c.HostConfig != nil {

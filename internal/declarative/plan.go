@@ -372,6 +372,8 @@ func specFields(r Resource) map[string]string {
 		// The credential the image is pulled with is part of the app's identity:
 		// re-pointing it at another registry must converge like any other change.
 		f["registry"] = a.Registry
+		// The account the container runs as changes the container, so a change to it must redeploy.
+		f["runAsUser"] = a.RunAsUser
 		// Mounted config content is not visible in any diffed field, so its
 		// fingerprint is what makes an edit converge as an application update.
 		// Only compared when both sides carry one, like RegistrySpec.PasswordFP.

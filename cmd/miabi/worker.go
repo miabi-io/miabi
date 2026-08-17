@@ -187,6 +187,7 @@ func runWorker() error {
 	// workspace back to the image's user. The same edition governs analytics retention below.
 	edition := enterprise.New(db, cfg.LicensePublicKey, cfg.LicenseFile, cfg.DeploymentURL(), installIDOf(db))
 	securityQuota.SetEdition(edition)
+	securityQuota.SetForceNonRoot(cfg.ForceNonRootUser)
 	securityResolver := newSecurityResolver(cfg, securityQuota)
 	deployHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
 	configService := configsvc.NewService(repositories.NewConfigRepository(db))

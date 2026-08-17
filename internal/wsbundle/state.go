@@ -282,6 +282,7 @@ type Application struct {
 	NanoCPUs        int64  `json:"nano_cpus,omitempty"`
 	GPUCount        int    `json:"gpu_count,omitempty"`
 	GPUKind         string `json:"gpu_kind,omitempty"`
+	RunAsUser       string `json:"run_as_user,omitempty"`
 	RestartPolicy   string `json:"restart_policy,omitempty"`
 	ImagePullPolicy string `json:"image_pull_policy,omitempty"`
 

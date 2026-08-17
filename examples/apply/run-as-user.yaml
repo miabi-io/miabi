@@ -1,0 +1,61 @@
+# Pinning the account an application's container runs as — the manifest equivalent
+# of `docker run --user`.
+#
+# `runAsUser` accepts `uid`, `uid:gid`, `name` and `name:group`. Omit it and the
+# container runs as whatever user the image declares, which for a lot of images is
+# still root.
+#
+# Two reasons to set it:
+#
+#   1. The image bakes in an account its files are owned by. Node images ship
+#      `node` (uid 1000), nginx-unprivileged ships uid 101 — running as anything
+#      else means the process can't write its own working directory.
+#   2. The workspace runs under the restricted security profile, which forces a
+#      non-root platform UID. `runAsUser` lets one app override *which* non-root
+#      uid that is, without dropping the workspace's hardening.
+#
+# Under the restricted profile the value must be a **numeric** non-root uid. A
+# name is refused there — it is resolved from the image's own /etc/passwd, which
+# the workload controls, so `appuser` is free to be uid 0 and the platform has no
+# way to check. gid 0 is fine: it is the arbitrary-uid convention the profile uses.
+#
+# Attached volumes are chowned to the user on deploy, so the container can write
+# to storage seeded from a root-owned image.
+#
+#   miabi apply -f run-as-user.yaml
+---
+apiVersion: miabi.io/v1
+kind: Volume
+metadata:
+  name: api-data
+spec:
+  size: 1Gi
+---
+# A numeric uid:gid. Works under either security profile, and is the only form
+# accepted once a workspace is restricted.
+apiVersion: miabi.io/v1
+kind: Application
+metadata:
+  name: api
+spec:
+  image: ghcr.io/acme/api
+  tag: "2.1.0"
+  runAsUser: "1000:1000"
+  ports:
+    - container: 8080
+      externalAccess: true
+  mounts:
+    - volume: api-data
+      path: /data
+---
+# A name from the image. Convenient under the default profile — the image resolves
+# it — but rejected under the restricted profile, which cannot verify it is non-root.
+apiVersion: miabi.io/v1
+kind: Application
+metadata:
+  name: worker
+spec:
+  image: node
+  tag: "22-alpine"
+  command: ["node", "worker.js"]
+  runAsUser: node

@@ -102,11 +102,15 @@ func (h *JobHandler) run(ctx context.Context, j *models.Job) {
 		defer cancel()
 	}
 
-	// Restricted security profile applies to one-off jobs too: run as the
-	// platform non-root UID and chown the app's managed volumes to it first.
-	sec := h.containerSecurity(app)
-	if sec.Restricted() {
-		if err := h.prepareRestrictedVolumes(runCtx, dc, sec, j.Image, rc.Mounts); err != nil {
+	// The workspace's security profile applies to one-off jobs too, with the job's own run-as user
+	// (or the app's) layered on top; chown the app's managed volumes to whoever that is first.
+	sec, secErr := h.workloadSecurity(app, j.RunAsUser)
+	if secErr != nil {
+		h.finish(j, models.JobFailed, nil, secErr.Error())
+		return
+	}
+	if sec.HasUser() {
+		if err := h.prepareVolumeOwnership(runCtx, dc, sec, j.Image, rc.Mounts); err != nil {
 			h.finish(j, models.JobFailed, nil, fmt.Sprintf("prepare volumes: %v", err))
 			return
 		}
@@ -119,9 +123,9 @@ func (h *JobHandler) run(ctx context.Context, j *models.Job) {
 		Env:        rc.Env,
 		Networks:   rc.Networks,
 		Mounts:     rc.Mounts,
-		// Volumes were seeded+chowned by prepareRestrictedVolumes under the
-		// restricted profile; skip copy-up so it isn't re-owned from the image.
-		NoCopyVolumes: sec.Restricted(),
+		// Volumes were seeded+chowned by prepareVolumeOwnership for the pinned
+		// user; skip copy-up so they aren't re-owned from the image.
+		NoCopyVolumes: sec.HasUser(),
 		Binds:         rc.Binds,
 		MemoryBytes:   rc.MemoryBytes,
 		NanoCPUs:      rc.NanoCPUs,

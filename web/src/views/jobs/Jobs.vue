@@ -3,7 +3,7 @@ import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
-import { jobApi, type CronJobInput } from '@/api/resources'
+import { jobApi, usageApi, type CronJobInput } from '@/api/resources'
 import { appApi } from '@/api/apps'
 import { registryApi } from '@/api/registries'
 import type { Job, CronJob, Application, Registry } from '@/api/types'
@@ -22,6 +22,23 @@ let poll: ReturnType<typeof setInterval> | null = null
 
 const hasActive = computed(() => jobs.value.some((j) => j.status === 'pending' || j.status === 'running'))
 
+// Whether this workspace's containers must drop root. Mirrors the server rule so the
+// run-as field explains itself instead of failing the run with a 400.
+const requireNonRoot = ref(false)
+function runAsUserError(v: string): string {
+  v = v.trim()
+  if (!v) return ''
+  if (!/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,31}(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,31})?$/.test(v)) {
+    return 'Use "uid", "uid:gid", "name" or "name:group".'
+  }
+  if (requireNonRoot.value && !/^[1-9][0-9]*(:[0-9]+)?$/.test(v)) {
+    return 'This workspace requires a non-root numeric uid (e.g. 1000).'
+  }
+  return ''
+}
+const runUserError = computed(() => runAsUserError(runForm.value.run_as_user))
+const cronUserError = computed(() => runAsUserError(cronForm.value.run_as_user))
+
 async function load() {
   const id = currentWorkspaceId.value
   if (!id) { jobs.value = []; cronJobs.value = []; return }
@@ -36,6 +53,8 @@ async function load() {
     cronJobs.value = c.data.data ?? []
     apps.value = a.data.data ?? []
     registries.value = r.data.data ?? []
+    // Separate + best-effort: a usage error must not blank the jobs list.
+    try { requireNonRoot.value = (await usageApi.get(id)).data.data?.capabilities?.require_non_root === true } catch { requireNonRoot.value = false }
     if (logModal.value) {
       const fresh = jobs.value.find((x) => x.id === logModal.value?.id)
       if (fresh) logModal.value = fresh
@@ -57,9 +76,9 @@ function appName(id: number) {
 // --- Run a one-off job ---
 const showRun = ref(false)
 const running = ref(false)
-const runForm = ref<{ app: number | null; name: string; command: string; image: string; registry: number | null; timeout: number }>({ app: null, name: '', command: '', image: '', registry: null, timeout: 0 })
+const runForm = ref<{ app: number | null; name: string; command: string; image: string; registry: number | null; run_as_user: string; timeout: number }>({ app: null, name: '', command: '', image: '', registry: null, run_as_user: '', timeout: 0 })
 function openRun() {
-  runForm.value = { app: apps.value[0]?.id ?? null, name: '', command: '', image: '', registry: null, timeout: 0 }
+  runForm.value = { app: apps.value[0]?.id ?? null, name: '', command: '', image: '', registry: null, run_as_user: '', timeout: 0 }
   showRun.value = true
 }
 async function run() {
@@ -77,6 +96,7 @@ async function run() {
       command,
       image: image || undefined,
       registry_id: image ? runForm.value.registry : undefined,
+      run_as_user: runForm.value.run_as_user.trim() || undefined,
       timeout_secs: runForm.value.timeout > 0 ? runForm.value.timeout : undefined,
     })
     notify.success('Job started')
@@ -106,20 +126,20 @@ async function deleteJob(j: Job) {
 const showCron = ref(false)
 const savingCron = ref(false)
 const editingCronId = ref<number | null>(null)
-const cronForm = ref<{ app: number | null; name: string; schedule: string; image: string; registry: number | null; concurrency_policy: 'allow' | 'forbid' | 'replace'; enabled: boolean; timeout_secs: number; history_limit: number }>(
-  { app: null, name: '', schedule: '0 3 * * *', image: '', registry: null, concurrency_policy: 'allow', enabled: true, timeout_secs: 0, history_limit: 0 },
+const cronForm = ref<{ app: number | null; name: string; schedule: string; image: string; registry: number | null; run_as_user: string; concurrency_policy: 'allow' | 'forbid' | 'replace'; enabled: boolean; timeout_secs: number; history_limit: number }>(
+  { app: null, name: '', schedule: '0 3 * * *', image: '', registry: null, run_as_user: '', concurrency_policy: 'allow', enabled: true, timeout_secs: 0, history_limit: 0 },
 )
 const cronCommandStr = ref('')
 
 function openCreateCron() {
   editingCronId.value = null
-  cronForm.value = { app: apps.value[0]?.id ?? null, name: '', schedule: '0 3 * * *', image: '', registry: null, concurrency_policy: 'allow', enabled: true, timeout_secs: 0, history_limit: 0 }
+  cronForm.value = { app: apps.value[0]?.id ?? null, name: '', schedule: '0 3 * * *', image: '', registry: null, run_as_user: '', concurrency_policy: 'allow', enabled: true, timeout_secs: 0, history_limit: 0 }
   cronCommandStr.value = ''
   showCron.value = true
 }
 function openEditCron(c: CronJob) {
   editingCronId.value = c.id
-  cronForm.value = { app: c.application_id, name: c.name, schedule: c.schedule, image: c.image || '', registry: c.registry_id ?? null, concurrency_policy: c.concurrency_policy, enabled: c.enabled, timeout_secs: c.timeout_secs, history_limit: c.history_limit }
+  cronForm.value = { app: c.application_id, name: c.name, schedule: c.schedule, image: c.image || '', registry: c.registry_id ?? null, run_as_user: c.run_as_user || '', concurrency_policy: c.concurrency_policy, enabled: c.enabled, timeout_secs: c.timeout_secs, history_limit: c.history_limit }
   cronCommandStr.value = (c.command || []).join(' ')
   showCron.value = true
 }
@@ -137,6 +157,7 @@ async function saveCron() {
     name: cronForm.value.name, schedule: cronForm.value.schedule, command,
     image: image || undefined,
     registry_id: image ? cronForm.value.registry : null,
+    run_as_user: cronForm.value.run_as_user.trim(),
     concurrency_policy: cronForm.value.concurrency_policy, enabled: cronForm.value.enabled,
     timeout_secs: cronForm.value.timeout_secs, history_limit: cronForm.value.history_limit,
   }
@@ -305,6 +326,18 @@ const noApps = computed(() => apps.value.length === 0)
                 <label class="form-label">Name <span class="text-muted">(optional)</span></label>
                 <input v-model="runForm.name" class="form-input" placeholder="migrate" aria-label="Name" />
               </div>
+              <div class="form-group">
+                <label class="form-label">Run as user <span class="text-muted">(optional)</span></label>
+                <input
+                  v-model="runForm.run_as_user" class="form-input" style="font-family: monospace"
+                  :placeholder="requireNonRoot ? '1000:1000' : 'leave blank to inherit the app\u2019s user'" aria-label="Run as user"
+                />
+                <p v-if="runUserError" class="form-hint" style="color: var(--danger)">{{ runUserError }}</p>
+                <p v-else class="form-hint">
+                  The account this run uses, like <code>docker run --user</code>. Blank inherits the app's.
+                  <span v-if="requireNonRoot">This workspace requires a non-root numeric uid.</span>
+                </p>
+              </div>
               <div class="form-group" style="margin-bottom: 0">
                 <label class="form-label">Timeout (seconds, 0 = default)</label>
                 <input v-model.number="runForm.timeout" type="number" min="0" class="form-input" style="max-width: 160px" aria-label="Timeout (seconds, 0 = default)" />
@@ -355,6 +388,15 @@ const noApps = computed(() => apps.value.length === 0)
                   <option :value="null">App's registry / public</option>
                   <option v-for="r in registries" :key="r.id" :value="r.id">{{ r.name }}</option>
                 </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Run as user <span class="text-muted">(optional)</span></label>
+                <input
+                  v-model="cronForm.run_as_user" class="form-input" style="font-family: monospace"
+                  :placeholder="requireNonRoot ? '1000:1000' : 'leave blank to inherit the app\u2019s user'" aria-label="Run as user"
+                />
+                <p v-if="cronUserError" class="form-hint" style="color: var(--danger)">{{ cronUserError }}</p>
+                <p v-else class="form-hint">Applied to every run this schedule spawns. Blank inherits the app's when each run fires.</p>
               </div>
               <div class="flex items-center gap-3" style="flex-wrap: wrap">
                 <label class="form-group" style="margin-bottom: 0">

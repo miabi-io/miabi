@@ -451,9 +451,14 @@ func (s *Service) importContainer(ctx context.Context, actorID, wsID, serverID u
 		MemoryBytes:   cfg.MemoryBytes,
 		NanoCPUs:      cfg.NanoCPUs,
 		RestartPolicy: models.RestartPolicy(cfg.RestartPolicy),
-		Ports:         specs,
-		NetworkIDs:    networkIDs,
-		StackID:       stackID,
+		// Carry the account the adopted container was already running as, so the first native
+		// redeploy doesn't silently move it to the image's default user. A workspace under the
+		// restricted profile rejects a root value here — the import says so rather than importing
+		// an app that cannot deploy.
+		RunAsUser:  cfg.User,
+		Ports:      specs,
+		NetworkIDs: networkIDs,
+		StackID:    stackID,
 		// Carry over the source container's custom labels (Traefik, Watchtower, autoheal, …). Create sanitizes
 		// them — the platform (io.miabi.*/miabi.*) and Compose (com.docker.*) keys are stripped, so only genuine
 		// user labels survive onto the imported app.

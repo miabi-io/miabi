@@ -449,7 +449,7 @@ func (s *Service) collectApps(workspaceID uint, st *wsbundle.State, report *mode
 			Builder: full.Builder, Buildpacks: full.Buildpacks, BuildEnv: full.BuildEnv,
 			Command: full.Command, Port: full.Port,
 			MemoryBytes: full.MemoryBytes, NanoCPUs: full.NanoCPUs,
-			GPUCount: full.GPUCount, GPUKind: full.GPUKind,
+			GPUCount: full.GPUCount, GPUKind: full.GPUKind, RunAsUser: full.RunAsUser,
 			RestartPolicy: string(full.RestartPolicy), ImagePullPolicy: string(full.ImagePullPolicy),
 			RuntimeKind: string(full.RuntimeKind), Replicas: full.Replicas,
 			PlacementConstraints:          full.PlacementConstraints,

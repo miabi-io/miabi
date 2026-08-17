@@ -30,6 +30,10 @@ export interface AppResourceInput {
   // GPU request (gated by the plan's allow_gpu capability).
   gpu_count?: number
   gpu_kind?: string
+  // Account the container runs as ("1000", "1000:1000", "node"), like `docker run
+  // --user`. Empty keeps the image's own user; a workspace under the restricted
+  // security profile must give a non-root numeric uid.
+  run_as_user?: string
   restart_policy?: RestartPolicy
   image_pull_policy?: ImagePullPolicy
   healthcheck_type?: HealthcheckType
