@@ -10,6 +10,7 @@ import (
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/logstore"
 	"github.com/miabi-io/miabi/internal/middlewares"
+	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/job"
 )
@@ -46,8 +47,12 @@ type RunJobRequest struct {
 		Entrypoint    []string `json:"entrypoint"`
 		// Image optionally overrides the app's active-release image (custom image
 		// run in the app's runtime). RegistryID authenticates its pull.
-		Image       string `json:"image"`
-		RegistryID  *uint  `json:"registry_id"`
+		Image      string `json:"image"`
+		RegistryID *uint  `json:"registry_id"`
+		// RunAsUser pins this run to an account ("1000", "1000:1000", "node"), like
+		// `docker run --user`. Empty inherits the app's; a workspace under the
+		// restricted security profile must give a non-root numeric uid.
+		RunAsUser   string `json:"run_as_user"`
 		TimeoutSecs int    `json:"timeout_secs"`
 	} `json:"body"`
 }
@@ -62,6 +67,7 @@ func (h *JobHandler) Run(c *okapi.Context, req *RunJobRequest) error {
 		Entrypoint:  req.Body.Entrypoint,
 		Image:       req.Body.Image,
 		RegistryID:  req.Body.RegistryID,
+		RunAsUser:   req.Body.RunAsUser,
 		TimeoutSecs: req.Body.TimeoutSecs,
 		Source:      "manual",
 		TriggeredBy: &actor,
@@ -110,17 +116,20 @@ func (h *JobHandler) Delete(c *okapi.Context) error {
 
 type CronJobRequest struct {
 	Body struct {
-		ApplicationID     uint     `json:"application_id"`
-		Name              string   `json:"name"`
-		Schedule          string   `json:"schedule" required:"true"`
-		Command           []string `json:"command" required:"true"`
-		Entrypoint        []string `json:"entrypoint"`
-		Image             string   `json:"image"`
-		RegistryID        *uint    `json:"registry_id"`
-		TimeoutSecs       int      `json:"timeout_secs"`
-		Enabled           bool     `json:"enabled"`
-		ConcurrencyPolicy string   `json:"concurrency_policy" enum:"allow,forbid,replace"`
-		HistoryLimit      int      `json:"history_limit"`
+		ApplicationID uint     `json:"application_id"`
+		Name          string   `json:"name"`
+		Schedule      string   `json:"schedule" required:"true"`
+		Command       []string `json:"command" required:"true"`
+		Entrypoint    []string `json:"entrypoint"`
+		Image         string   `json:"image"`
+		RegistryID    *uint    `json:"registry_id"`
+		// RunAsUser pins spawned runs to an account; empty inherits the app's when
+		// each run fires. See RunJobRequest.
+		RunAsUser         string `json:"run_as_user"`
+		TimeoutSecs       int    `json:"timeout_secs"`
+		Enabled           bool   `json:"enabled"`
+		ConcurrencyPolicy string `json:"concurrency_policy" enum:"allow,forbid,replace"`
+		HistoryLimit      int    `json:"history_limit"`
 	} `json:"body"`
 }
 
@@ -132,6 +141,7 @@ func (r *CronJobRequest) input() job.CronJobInput {
 		Entrypoint:        r.Body.Entrypoint,
 		Image:             r.Body.Image,
 		RegistryID:        r.Body.RegistryID,
+		RunAsUser:         r.Body.RunAsUser,
 		TimeoutSecs:       r.Body.TimeoutSecs,
 		Enabled:           r.Body.Enabled,
 		ConcurrencyPolicy: r.Body.ConcurrencyPolicy,
@@ -227,6 +237,8 @@ func (h *JobHandler) mapErr(c *okapi.Context, err error) error {
 		return c.AbortBadRequest("a command is required")
 	case errors.Is(err, job.ErrNoImage):
 		return c.AbortBadRequest("application has no image yet; deploy it first")
+	case errors.Is(err, models.ErrRunAsUserInvalid), errors.Is(err, models.ErrRunAsUserRoot):
+		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, job.ErrInvalidSchedule):
 		return c.AbortBadRequest("invalid cron schedule")
 	case errors.Is(err, job.ErrCronNotFound):

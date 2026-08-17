@@ -73,6 +73,7 @@ func (r *restoreRun) applyApps(ctx context.Context) {
 			NanoCPUs:        a.NanoCPUs,
 			GPUCount:        a.GPUCount,
 			GPUKind:         a.GPUKind,
+			RunAsUser:       a.RunAsUser,
 			RestartPolicy:   models.RestartPolicy(a.RestartPolicy),
 			ImagePullPolicy: models.ImagePullPolicy(a.ImagePullPolicy),
 			RuntimeKind:     models.RuntimeKind(a.RuntimeKind),

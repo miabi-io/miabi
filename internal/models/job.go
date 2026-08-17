@@ -50,8 +50,12 @@ type Job struct {
 	// RegistryID authenticates the image pull for a custom image (nil = the app's registry, or
 	// anonymous). Pull marks that the image must be fetched first — set for a custom image; the
 	// app's release image is already on its node and git-built images are local-only.
-	RegistryID  *uint     `json:"registry_id,omitempty"`
-	Pull        bool      `json:"pull"`
+	RegistryID *uint `json:"registry_id,omitempty"`
+	Pull       bool  `json:"pull"`
+	// RunAsUser is the account the run was pinned to, snapshotted from the request or the app so
+	// history shows what actually ran. Empty = the image's own user (or the platform UID when the
+	// restricted profile applies). See models.NormalizeRunAsUser.
+	RunAsUser   string    `json:"run_as_user,omitempty"`
 	Status      JobStatus `json:"status" gorm:"not null;default:pending"`
 	ExitCode    *int      `json:"exit_code,omitempty"`
 	ContainerID string    `json:"container_id,omitempty"`
@@ -100,6 +104,8 @@ type CronJob struct {
 	// (blank = run the app's current image). RegistryID authenticates its pull.
 	Image      string `json:"image,omitempty"`
 	RegistryID *uint  `json:"registry_id,omitempty"`
+	// RunAsUser pins spawned runs to an account (blank = inherit the app's).
+	RunAsUser string `json:"run_as_user,omitempty"`
 
 	Enabled           bool   `json:"enabled" gorm:"not null;default:true"`
 	ConcurrencyPolicy string `json:"concurrency_policy" gorm:"not null;default:allow"`

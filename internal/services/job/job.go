@@ -68,8 +68,13 @@ type RunRequest struct {
 	// Image optionally overrides the app's active-release image (a custom image
 	// run in the app's runtime context). RegistryID authenticates its pull and
 	// defaults to the app's registry when nil.
-	Image       string
-	RegistryID  *uint
+	Image      string
+	RegistryID *uint
+	// RunAsUser pins this run to an account ("uid", "uid:gid", "name",
+	// "name:group"); empty inherits the app's. A one-off often needs different
+	// privileges from the long-running process — a migration writing a volume the
+	// app only reads, say.
+	RunAsUser   string
 	Source      string // manual | api | scheduled
 	TriggeredBy *uint  // user id (nil for scheduled)
 	CronJobID   *uint  // set when spawned by a cronjob
@@ -104,6 +109,12 @@ func (s *Service) Run(_ context.Context, workspaceID, appID uint, req RunRequest
 	} else if image, err = s.resolveImage(app); err != nil {
 		return nil, err
 	}
+	// Snapshot the account this run is pinned to (the request's, else the app's) so history shows
+	// what actually ran, and validate it here rather than letting the worker fail the run.
+	runAsUser, err := s.validRunAsUser(app, req.RunAsUser)
+	if err != nil {
+		return nil, err
+	}
 	timeout := req.TimeoutSecs
 	if timeout <= 0 {
 		timeout = s.defaultTimeoutSecs
@@ -123,6 +134,7 @@ func (s *Service) Run(_ context.Context, workspaceID, appID uint, req RunRequest
 		Image:         image,
 		RegistryID:    registryID,
 		Pull:          pull,
+		RunAsUser:     runAsUser,
 		Status:        models.JobPending,
 		TimeoutSecs:   timeout,
 		Source:        source,
@@ -135,6 +147,30 @@ func (s *Service) Run(_ context.Context, workspaceID, appID uint, req RunRequest
 		return nil, err
 	}
 	return j, nil
+}
+
+// validRunAsUser resolves the account a run is pinned to — the request's choice, else the app's — and
+// checks it against the workspace's security profile. A job runs in the app's runtime context with
+// the app's data, so it cannot be the loophole that gets root where a deploy could not.
+func (s *Service) validRunAsUser(app *models.Application, requested string) (string, error) {
+	v, err := s.checkRunAsUser(app, requested)
+	if err != nil || v != "" {
+		return v, err
+	}
+	return app.RunAsUser, nil
+}
+
+// checkRunAsUser normalizes a requested run-as user and rejects one that would escape a workspace's
+// non-root mandate. Blank passes through blank, so a caller decides what "unset" inherits from.
+func (s *Service) checkRunAsUser(app *models.Application, requested string) (string, error) {
+	v, err := models.NormalizeRunAsUser(requested)
+	if err != nil || v == "" {
+		return "", err
+	}
+	if s.quota.RequireNonRootUser(app.WorkspaceID, app.OfficialTemplate) && !models.RunAsUserIsNonRoot(v) {
+		return "", models.ErrRunAsUserRoot
+	}
+	return v, nil
 }
 
 // resolveImage picks the image a job should run: the app's active release image

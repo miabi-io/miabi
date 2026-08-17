@@ -124,6 +124,9 @@ export interface WorkspaceUsage {
     // Cluster (Swarm) mode is on — offer the replicated "service" runtime on
     // app create. A platform-level flag exposed to every workspace member here.
     cluster_enabled?: boolean
+    // This workspace's containers must drop root, so a run-as user has to be a
+    // non-root numeric uid rather than any account the image happens to define.
+    require_non_root?: boolean
   }
 }
 
@@ -830,6 +833,9 @@ export interface Application {
   // gpu_kind narrows to a vendor/model.
   gpu_count?: number
   gpu_kind?: string
+  // Account the container runs as ("1000", "1000:1000", "node"), like `docker run
+  // --user`. Empty keeps the image's own user.
+  run_as_user?: string
   restart_policy?: RestartPolicy
   image_pull_policy?: ImagePullPolicy
   // Cluster runtime (cluster mode). "service" runs the app as a replicated Swarm
@@ -1235,6 +1241,7 @@ export interface Job {
   image: string
   registry_id?: number
   pull?: boolean
+  run_as_user?: string
   status: JobRunStatus
   exit_code?: number
   logs?: string
@@ -1257,6 +1264,7 @@ export interface CronJob {
   entrypoint?: string[]
   image?: string
   registry_id?: number
+  run_as_user?: string
   timeout_secs: number
   enabled: boolean
   concurrency_policy: 'allow' | 'forbid' | 'replace'

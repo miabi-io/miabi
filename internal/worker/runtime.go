@@ -5,6 +5,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -45,17 +46,22 @@ func (b *runtimeBuilder) credentialSecret(workspaceID uint, enc, ref string) (st
 	return b.secrets.CredentialSecret(workspaceID, enc, ref)
 }
 
-// Security is the resolved container hardening for a workspace's application and
-// job containers under the "restricted" security profile. The zero value (empty
-// User) means no restriction — run as the image's default user.
+// Security is the resolved container hardening for a workspace's application and job containers. The
+// zero value means no restriction — run as the image's default user. User and Restricted are
+// independent: an app may pin its own user under the default profile, and the restricted profile
+// hardens the container whichever non-root user it ends up running as.
 type Security struct {
 	User            string // "uid:gid" the container runs as; "" = image default
 	NoNewPrivileges bool
 	CapDrop         []string
+	// Restricted marks the "restricted" security profile as in force for this workload — the
+	// non-root mandate, not merely the presence of a user.
+	Restricted bool
 }
 
-// Restricted reports whether any hardening applies.
-func (s Security) Restricted() bool { return s.User != "" }
+// HasUser reports whether the container runs as a pinned account rather than the
+// image's own — the trigger for making its managed volumes writable by that user.
+func (s Security) HasUser() bool { return s.User != "" }
 
 func (s Security) applyTo(spec *docker.RunSpec) {
 	spec.User = s.User
@@ -145,11 +151,41 @@ func (b *runtimeBuilder) containerSecurity(app *models.Application) Security {
 	return b.security.ContainerSecurity(app.WorkspaceID, app.OfficialTemplate)
 }
 
-// prepareRestrictedVolumes makes an app's managed volumes writable by the restricted-profile non-root
-// UID. Docker seeds an empty volume with the image's content AND ownership on first mount, so the
-// chown runs with the app image itself; images without a shell fall back to the busybox init image.
-func (b *runtimeBuilder) prepareRestrictedVolumes(ctx context.Context, eng docker.Client, sec Security, image string, mounts map[string]string) error {
-	if !sec.Restricted() || len(mounts) == 0 {
+// ErrRunAsUserForbidden refuses a workload whose pinned run-as user would escape the restricted
+// profile's non-root mandate. The write-time validators reject this up front; this is the deploy-time
+// backstop for a workload configured before the policy tightened.
+var ErrRunAsUserForbidden = errors.New("the restricted security profile requires a non-root numeric uid")
+
+// withRunAsUser pins the container to a caller-chosen account. Under the restricted profile the
+// choice replaces the platform UID but must still be verifiably non-root, so the hardening contract
+// holds; the profile's other guarantees (no-new-privileges, dropped caps) are untouched either way.
+func (s Security) withRunAsUser(runAsUser string) (Security, error) {
+	v, err := models.NormalizeRunAsUser(runAsUser)
+	if err != nil {
+		return s, err
+	}
+	if v == "" {
+		return s, nil
+	}
+	if s.Restricted && !models.RunAsUserIsNonRoot(v) {
+		return s, fmt.Errorf("%w (got %q)", ErrRunAsUserForbidden, v)
+	}
+	s.User = v
+	return s, nil
+}
+
+// workloadSecurity resolves the hardening a container runs with: the workspace's
+// profile, with the app's or job's own run-as user layered on top.
+func (b *runtimeBuilder) workloadSecurity(app *models.Application, runAsUser string) (Security, error) {
+	return b.containerSecurity(app).withRunAsUser(runAsUser)
+}
+
+// prepareVolumeOwnership makes an app's managed volumes writable by the user the container is pinned
+// to — the restricted profile's UID or the app's own. Docker seeds an empty volume with the image's
+// content AND ownership on first mount, so the chown runs with the app image itself; images without a
+// shell fall back to the busybox init image.
+func (b *runtimeBuilder) prepareVolumeOwnership(ctx context.Context, eng docker.Client, sec Security, image string, mounts map[string]string) error {
+	if !sec.HasUser() || len(mounts) == 0 {
 		return nil
 	}
 	paths := make([]string, 0, len(mounts))
@@ -166,7 +202,7 @@ func (b *runtimeBuilder) prepareRestrictedVolumes(ctx context.Context, eng docke
 		} else {
 			// The app-image mount has still seeded the volume; it just couldn't chown (no chown binary). Fall
 			// through to the busybox init image to fix ownership.
-			logger.Debug("restricted volumes: app-image chown unavailable, using init image",
+			logger.Debug("volume ownership: app-image chown unavailable, using init image",
 				"image", image, "exit", exit, "error", err, "output", strings.TrimSpace(out))
 		}
 	}

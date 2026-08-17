@@ -15,6 +15,7 @@ examples/
 │   ├── project.yaml              # a Project bundle (db + volume + secret + app + route)
 │   ├── domain.yaml               # owned Domains (FQDN + TLS policy) + Routes exposing an app
 │   ├── app-ports.yaml            # per-port exposure: externalAccess (URL) + publish/hostPort
+│   ├── run-as-user.yaml          # runAsUser: pin the account a container runs as
 │   └── config.yaml               # Configs mounted as files (directory + pinned key, delimiters)
 ├── gitops/
 │   ├── README.md

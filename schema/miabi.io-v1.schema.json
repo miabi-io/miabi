@@ -61,6 +61,10 @@
         "resources": {
           "$ref": "#/$defs/ResourceSpec"
         },
+        "runAsUser": {
+          "description": "RunAsUser pins the container to an account — \"1000\", \"1000:1000\", \"node\", \"node:node\" — like `docker run --user`. Empty keeps the image's own user. A workspace under the restricted security profile must give a non-root numeric uid; anything else is refused on apply, not silently dropped, since the manifest is the source of truth for what should be running.",
+          "type": "string"
+        },
         "secretEnv": {
           "items": {
             "type": "string"

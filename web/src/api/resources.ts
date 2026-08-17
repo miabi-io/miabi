@@ -16,6 +16,9 @@ export interface CronJobInput {
   entrypoint?: string[]
   image?: string
   registry_id?: number | null
+  // Pins spawned runs to an account ("1000", "1000:1000", "node"); blank inherits
+  // the app's when each run fires.
+  run_as_user?: string
   timeout_secs?: number
   enabled?: boolean
   concurrency_policy?: 'allow' | 'forbid' | 'replace'
@@ -27,7 +30,7 @@ export interface CronJobInput {
 export const jobApi = {
   list: (ws: number, appId?: number) =>
     api.get<ApiResponse<Job[]>>(`${w(ws)}/jobs${appId ? `?app_id=${appId}` : ''}`),
-  run: (ws: number, body: { application_id: number; name?: string; command: string[]; entrypoint?: string[]; image?: string; registry_id?: number | null; timeout_secs?: number }) =>
+  run: (ws: number, body: { application_id: number; name?: string; command: string[]; entrypoint?: string[]; image?: string; registry_id?: number | null; run_as_user?: string; timeout_secs?: number }) =>
     api.post<ApiResponse<Job>>(`${w(ws)}/jobs`, body),
   get: (ws: number, jobId: number) => api.get<ApiResponse<Job>>(`${w(ws)}/jobs/${jobId}`),
   cancel: (ws: number, jobId: number) => api.post<ApiResponse<{ message: string }>>(`${w(ws)}/jobs/${jobId}/cancel`),

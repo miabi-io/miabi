@@ -356,6 +356,7 @@ func runServer(cli *okapicli.CLI) {
 			// clamps every workspace back to the default (image's user).
 			edition := enterprise.New(res.db, cfg.LicensePublicKey, cfg.LicenseFile, cfg.DeploymentURL(), installIDOf(res.db))
 			securityQuota.SetEdition(edition)
+			securityQuota.SetForceNonRoot(cfg.ForceNonRootUser)
 			res.entitlements = edition.Entitlements()
 			alertEngine.SetQuotaLister(quotaScanner{
 				ws:   repositories.NewWorkspaceRepository(res.db),

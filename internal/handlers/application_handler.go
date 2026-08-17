@@ -101,8 +101,12 @@ type CreateAppRequest struct {
 		NanoCPUs        int64          `json:"nano_cpus" min:"0"`
 		// GPUCount requests whole GPU devices (0 = none); GPUKind narrows to a
 		// vendor/model. Gated by the AllowGPU plan capability.
-		GPUCount        int    `json:"gpu_count" min:"0"`
-		GPUKind         string `json:"gpu_kind"`
+		GPUCount int    `json:"gpu_count" min:"0"`
+		GPUKind  string `json:"gpu_kind"`
+		// RunAsUser pins the container to an account ("1000", "1000:1000", "node"),
+		// like `docker run --user`. Empty keeps the image's own user; a workspace
+		// under the restricted security profile must give a non-root numeric uid.
+		RunAsUser       string `json:"run_as_user"`
 		RestartPolicy   string `json:"restart_policy" enum:"no,always,unless-stopped,on-failure"`
 		ImagePullPolicy string `json:"image_pull_policy" enum:"always,if-not-present,never"`
 		// Cluster runtime (cluster mode). runtime_kind defaults to container;
@@ -151,8 +155,12 @@ type UpdateAppRequest struct {
 		NanoCPUs        int64          `json:"nano_cpus" min:"0"`
 		// GPUCount requests whole GPU devices (0 = none); GPUKind narrows to a
 		// vendor/model. Gated by the AllowGPU plan capability.
-		GPUCount        int    `json:"gpu_count" min:"0"`
-		GPUKind         string `json:"gpu_kind"`
+		GPUCount int    `json:"gpu_count" min:"0"`
+		GPUKind  string `json:"gpu_kind"`
+		// RunAsUser pins the container to an account ("1000", "1000:1000", "node").
+		// Empty clears it back to the image's own user; a workspace under the
+		// restricted security profile must give a non-root numeric uid. Needs a redeploy.
+		RunAsUser       string `json:"run_as_user"`
 		RestartPolicy   string `json:"restart_policy" enum:"no,always,unless-stopped,on-failure"`
 		ImagePullPolicy string `json:"image_pull_policy" enum:"always,if-not-present,never"`
 		// Cluster runtime. Empty runtime_kind leaves the stored kind unchanged;
@@ -263,6 +271,7 @@ func (h *ApplicationHandler) Create(c *okapi.Context, req *CreateAppRequest) err
 		Command: req.Body.Command, Port: req.Body.Port,
 		MemoryBytes: req.Body.MemoryBytes, NanoCPUs: req.Body.NanoCPUs,
 		GPUCount: req.Body.GPUCount, GPUKind: req.Body.GPUKind,
+		RunAsUser:            req.Body.RunAsUser,
 		RestartPolicy:        models.RestartPolicy(req.Body.RestartPolicy),
 		ImagePullPolicy:      models.ImagePullPolicy(req.Body.ImagePullPolicy),
 		RuntimeKind:          models.RuntimeKind(req.Body.RuntimeKind),
@@ -370,6 +379,7 @@ func (h *ApplicationHandler) Update(c *okapi.Context, req *UpdateAppRequest) err
 	app.NanoCPUs = req.Body.NanoCPUs
 	app.GPUCount = req.Body.GPUCount
 	app.GPUKind = req.Body.GPUKind
+	app.RunAsUser = req.Body.RunAsUser // validated against the security profile in the service
 	if req.Body.RestartPolicy != "" {
 		app.RestartPolicy = models.RestartPolicy(req.Body.RestartPolicy)
 	}
@@ -1131,7 +1141,8 @@ func (h *ApplicationHandler) mapErr(c *okapi.Context, err error) error {
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, application.ErrResourceCap), errors.Is(err, application.ErrClusterDisabled),
 		errors.Is(err, application.ErrLocalVolumeReplicated), errors.Is(err, application.ErrTooManyReplicas),
-		errors.Is(err, application.ErrPortRange):
+		errors.Is(err, application.ErrPortRange), errors.Is(err, models.ErrRunAsUserInvalid),
+		errors.Is(err, models.ErrRunAsUserRoot):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, application.ErrStackNotFound):
 		return c.AbortNotFound(err.Error())

@@ -104,8 +104,12 @@ type CreateInput struct {
 	NanoCPUs        int64
 	// GPUCount / GPUKind request whole GPU devices. Gated by the AllowGPU plan
 	// capability at create time; 0 = none.
-	GPUCount        int
-	GPUKind         string
+	GPUCount int
+	GPUKind  string
+	// RunAsUser pins the container to an account ("uid", "uid:gid", "name",
+	// "name:group"); empty keeps the image's user. Validated against the
+	// workspace's security profile.
+	RunAsUser       string
 	RestartPolicy   models.RestartPolicy
 	ImagePullPolicy models.ImagePullPolicy
 	// Cluster runtime (cluster mode). RuntimeKind defaults to container; service
@@ -802,6 +806,10 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 	if err := s.gpuAllowed(workspaceID, in.GPUCount); err != nil {
 		return nil, err
 	}
+	runAsUser, err := s.validRunAsUser(workspaceID, in.RunAsUser, false)
+	if err != nil {
+		return nil, err
+	}
 	// Placement: default to the local node; validate the chosen node accepts new
 	// placements (exists, not cordoned) and is reachable.
 	serverID := in.ServerID
@@ -838,6 +846,7 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 		Command: in.Command, Port: in.Port,
 		MemoryBytes: in.MemoryBytes, NanoCPUs: in.NanoCPUs,
 		GPUCount: in.GPUCount, GPUKind: strings.TrimSpace(in.GPUKind),
+		RunAsUser:            runAsUser,
 		RestartPolicy:        normalizeRestartPolicy(in.RestartPolicy),
 		ImagePullPolicy:      normalizeImagePullPolicy(in.ImagePullPolicy),
 		RuntimeKind:          in.RuntimeKind,
@@ -1086,6 +1095,13 @@ func (s *Service) Update(app *models.Application) error {
 	if err := s.gpuAllowed(app.WorkspaceID, app.GPUCount); err != nil {
 		return err
 	}
+	// Re-validated on every update (interactive and GitOps alike) so a stored run-as
+	// user can't survive a plan that later mandates non-root.
+	runAsUser, err := s.validRunAsUser(app.WorkspaceID, app.RunAsUser, app.OfficialTemplate)
+	if err != nil {
+		return err
+	}
+	app.RunAsUser = runAsUser
 	normalizeDeployConfig(app)
 	normalizeHealthcheck(app)
 	if err := s.validateRuntime(app); err != nil {
@@ -1969,6 +1985,25 @@ var (
 	ErrTooManyLabels = &labelError{code: "LABELS_TOO_MANY", msg: fmt.Sprintf("too many container labels (max %d)", maxContainerLabels)}
 	ErrLabelInvalid  = &labelError{code: "LABEL_INVALID", msg: "label key must be non-empty and within length limits"}
 )
+
+// validRunAsUser normalizes an app's run-as user and checks it against the workspace's security
+// profile: when the workspace must drop root, only a verifiably non-root numeric uid is accepted, so
+// a custom user cannot be the way back to root. Re-run on every update, so a plan that tightens later
+// forces the app to be corrected rather than grandfathering it. officialTemplate mirrors the plan
+// exemption marketplace apps may hold. Returns the value to store.
+func (s *Service) validRunAsUser(workspaceID uint, v string, officialTemplate bool) (string, error) {
+	clean, err := models.NormalizeRunAsUser(v)
+	if err != nil {
+		return "", err
+	}
+	if clean == "" {
+		return "", nil
+	}
+	if s.quota.RequireNonRootUser(workspaceID, officialTemplate) && !models.RunAsUserIsNonRoot(clean) {
+		return "", models.ErrRunAsUserRoot
+	}
+	return clean, nil
+}
 
 // customBuilderAllowed gates a per-app custom buildpack builder image behind the workspace's plan
 // capability. A custom builder runs on the runner with docker access, so on shared runners it is an

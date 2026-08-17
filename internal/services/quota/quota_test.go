@@ -178,6 +178,24 @@ func TestSecurityProfileResolution(t *testing.T) {
 	}
 }
 
+func TestRequireNonRootUser(t *testing.T) {
+	// Nil service and an unenforced one leave the decision to the server default.
+	var nilSvc *Service
+	if nilSvc.RequireNonRootUser(1, false) {
+		t.Error("a nil service must not mandate non-root")
+	}
+	if (&Service{}).RequireNonRootUser(1, false) {
+		t.Error("with enforcement off and no mandate, nothing is required")
+	}
+
+	// The server-level mandate is absolute: it applies with enforcement off, and
+	// the official-template exemption does not relax it.
+	forced := &Service{forceNonRoot: true}
+	if !forced.RequireNonRootUser(1, false) || !forced.RequireNonRootUser(1, true) {
+		t.Error("MIABI_FORCE_NON_ROOT_USER must apply to every workload")
+	}
+}
+
 func TestQuotaErrorMatchesSentinel(t *testing.T) {
 	err := error(&QuotaError{Resource: ResourceApps, Used: 3, Limit: 3})
 	if !errors.Is(err, ErrQuotaExceeded) {

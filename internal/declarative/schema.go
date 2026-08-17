@@ -103,6 +103,11 @@ type ApplicationSpec struct {
 	SecretEnv []string          `yaml:"secretEnv,omitempty" json:"secretEnv,omitempty"`
 	Mounts    []MountSpec       `yaml:"mounts,omitempty" json:"mounts,omitempty"`
 	Resources *ResourceSpec     `yaml:"resources,omitempty" json:"resources,omitempty"`
+	// RunAsUser pins the container to an account — "1000", "1000:1000", "node", "node:node" — like
+	// `docker run --user`. Empty keeps the image's own user. A workspace under the restricted security
+	// profile must give a non-root numeric uid; anything else is refused on apply, not silently
+	// dropped, since the manifest is the source of truth for what should be running.
+	RunAsUser string `yaml:"runAsUser,omitempty" json:"runAsUser,omitempty"`
 	// ContainerLabels are user-defined Docker labels stamped on the app's container(s), for
 	// label-driven tools like Traefik. Reserved keys (io.miabi.*, com.docker.*) are stripped on apply
 	// — a manifest is machine-authored, so import is fail-soft rather than erroring.

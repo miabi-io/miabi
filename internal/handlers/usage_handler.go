@@ -72,6 +72,10 @@ type WorkspaceUsage struct {
 		CustomLabels         bool `json:"custom_labels"`
 		CustomBuilder        bool `json:"custom_builder"`
 		OfficialImageUser    bool `json:"official_image_user"`
+		// RequireNonRoot reports that this workspace's containers must drop root —
+		// the restricted profile or the server-level mandate. The UI uses it to
+		// constrain the per-app / per-job run-as user to a non-root numeric uid.
+		RequireNonRoot bool `json:"require_non_root"`
 		// ClusterEnabled reports whether cluster (Swarm) mode is on, so the UI can
 		// offer the replicated "service" runtime when creating an app. Not a plan
 		// capability — a platform-level flag exposed here for any workspace member.
@@ -125,6 +129,7 @@ func (h *UsageHandler) Get(c *okapi.Context) error {
 	u.Capabilities.CustomLabels = l.AllowCustomLabels
 	u.Capabilities.CustomBuilder = l.AllowCustomBuilder
 	u.Capabilities.OfficialImageUser = l.AllowOfficialImageUser
+	u.Capabilities.RequireNonRoot = h.quota.RequireNonRootUser(wsID, false)
 	u.Capabilities.ClusterEnabled = h.cluster != nil && h.cluster.CapCluster()
 	return ok(c, u)
 }

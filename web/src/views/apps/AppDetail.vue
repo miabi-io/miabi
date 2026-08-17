@@ -416,7 +416,7 @@ interface SettingsForm {
   stack_id: number | null; network_ids: number[]; ports: AppPort[]
   deploy_strategy: DeployStrategy; canary_initial_weight: number; canary_step_weight: number; canary_step_interval_seconds: number
   // Resources (0 = unlimited)
-  cpu_cores: number; memory_mb: number; gpu_count: number; gpu_kind: string; restart_policy: RestartPolicy; image_pull_policy: ImagePullPolicy
+  cpu_cores: number; memory_mb: number; gpu_count: number; gpu_kind: string; run_as_user: string; restart_policy: RestartPolicy; image_pull_policy: ImagePullPolicy
   // Healthcheck
   hc_type: HealthcheckType; hc_path: string; hc_port: number | null; hc_command: string
   hc_interval: number; hc_timeout: number; hc_retries: number; hc_start_period: number
@@ -425,7 +425,7 @@ function emptySettingsForm(): SettingsForm {
   return {
     image: '', tag: '', command: '', registry_id: null, git_repository_id: null, git_repo: '', git_ref: '', build_method: 'auto', builder: '', stack_id: null, network_ids: [], ports: [],
     deploy_strategy: 'rolling', canary_initial_weight: 10, canary_step_weight: 20, canary_step_interval_seconds: 60,
-    cpu_cores: 0, memory_mb: 0, gpu_count: 0, gpu_kind: '', restart_policy: 'unless-stopped', image_pull_policy: 'always',
+    cpu_cores: 0, memory_mb: 0, gpu_count: 0, gpu_kind: '', run_as_user: '', restart_policy: 'unless-stopped', image_pull_policy: 'always',
     hc_type: 'none', hc_path: '/', hc_port: null, hc_command: '', hc_interval: 30, hc_timeout: 5, hc_retries: 3, hc_start_period: 0,
   }
 }
@@ -672,6 +672,22 @@ const customLabelsAllowed = ref(false)
 // that always 403s.
 const gpuAllowed = ref(false)
 
+// The workspace's containers must drop root (restricted profile or a server-level
+// mandate), so a run-as user has to be a non-root numeric uid.
+const requireNonRoot = ref(false)
+// Mirrors the server's rule so the field explains itself before a save round-trips.
+const runAsUserError = computed(() => {
+  const v = settingsForm.value.run_as_user.trim()
+  if (!v) return ''
+  if (!/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,31}(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,31})?$/.test(v)) {
+    return 'Use "uid", "uid:gid", "name" or "name:group".'
+  }
+  if (requireNonRoot.value && !/^[1-9][0-9]*(:[0-9]+)?$/.test(v)) {
+    return 'This workspace requires a non-root numeric uid (e.g. 1000 or 1000:1000).'
+  }
+  return ''
+})
+
 // Delete dialog (type-to-confirm)
 const showDelete = ref(false)
 const deleteConfirm = ref('')
@@ -711,6 +727,7 @@ function syncSettingsForm() {
     memory_mb: app.value.memory_bytes ? Math.round(app.value.memory_bytes / MB) : 0,
     gpu_count: app.value.gpu_count || 0,
     gpu_kind: app.value.gpu_kind || '',
+    run_as_user: app.value.run_as_user || '',
     restart_policy: app.value.restart_policy || 'unless-stopped',
     image_pull_policy: app.value.image_pull_policy || 'always',
     hc_type: app.value.healthcheck_type || 'none',
@@ -740,10 +757,12 @@ async function loadApp() {
     shellExecAllowed.value = usage.capabilities.shell_exec
     customLabelsAllowed.value = usage.capabilities.custom_labels
     gpuAllowed.value = !!usage.limits.allow_gpu
+    requireNonRoot.value = !!usage.capabilities.require_non_root
   } catch {
     shellExecAllowed.value = false
     customLabelsAllowed.value = false
     gpuAllowed.value = false
+    requireNonRoot.value = false
   }
 }
 
@@ -931,6 +950,7 @@ async function saveSettings() {
       // otherwise), so a disallowed workspace never trips the 403.
       gpu_count: gpuAllowed.value ? Math.max(0, Math.round(settingsForm.value.gpu_count || 0)) : 0,
       gpu_kind: gpuAllowed.value ? settingsForm.value.gpu_kind.trim() : '',
+      run_as_user: settingsForm.value.run_as_user.trim(),
       restart_policy: settingsForm.value.restart_policy,
       image_pull_policy: settingsForm.value.image_pull_policy,
       healthcheck_type: settingsForm.value.hc_type,
@@ -2931,6 +2951,22 @@ async function detachDatabase(d: AppDatabase) {
             </div>
           </div>
           <div class="form-group">
+            <label class="form-label">Run as user</label>
+            <input
+              v-model="settingsForm.run_as_user" type="text" class="form-input" style="font-family: monospace"
+              :placeholder="requireNonRoot ? '1000:1000' : 'leave blank to use the image\u2019s user'"
+              :disabled="!ws.canEdit" aria-label="Run as user"
+            />
+            <p v-if="runAsUserError" class="form-hint" style="color: var(--danger)">{{ runAsUserError }}</p>
+            <p v-else class="form-hint">
+              The account the container runs as, like <code>docker run --user</code> — <code>1000</code>,
+              <code>1000:1000</code> or a name from the image (<code>node</code>). Blank keeps the image’s own user.
+              Attached volumes are chowned to it on the next deploy.
+              <span v-if="requireNonRoot"><br />This workspace runs under the restricted security profile: give a non-root
+              numeric uid. A name can’t be used, because the image decides what it maps to.</span>
+            </p>
+          </div>
+          <div class="form-group">
             <label class="form-label">Restart policy</label>
             <select v-model="settingsForm.restart_policy" class="form-select" :disabled="!ws.canEdit">
               <option v-for="p in RESTART_POLICIES" :key="p.value" :value="p.value">{{ p.label }}</option>
@@ -2948,7 +2984,7 @@ async function detachDatabase(d: AppDatabase) {
               already. Digest-pinned images are never re-pulled.
             </p>
           </div>
-          <button v-if="ws.canEdit" class="btn btn-primary" :disabled="savingSettings || !resourcesValid" @click="saveSettings">
+          <button v-if="ws.canEdit" class="btn btn-primary" :disabled="savingSettings || !resourcesValid || !!runAsUserError" @click="saveSettings">
             {{ savingSettings ? 'Saving…' : 'Save resources' }}
           </button>
         </div>
