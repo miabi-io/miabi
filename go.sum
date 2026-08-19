@@ -257,8 +257,8 @@ github.com/mattn/go-isatty v0.0.21 h1:xYae+lCNBP7QuW4PUnNG61ffM4hVIfm+zUzDuSzYLG
 github.com/mattn/go-isatty v0.0.21/go.mod h1:ZXfXG4SQHsB/w3ZeOYbR0PrPwLy+n6xiMrJlRFqopa4=
 github.com/mattn/go-sqlite3 v1.14.22 h1:2gZY6PC6kBnID23Tichd1K+Z0oS6nE/XwU+Vz/5o4kU=
 github.com/mattn/go-sqlite3 v1.14.22/go.mod h1:Uh1q+B4BYcTPb+yiD3kU8Ct7aC0hY9fxUwlHK0RXw+Y=
-github.com/miabi-io/runner v0.0.10-rc.1 h1:JClHjGlW8mDYYBkWctHplvwWy7AT0z/FursB2/zrUBQ=
-github.com/miabi-io/runner v0.0.10-rc.1/go.mod h1:bmtH9k1NFBua/IS8Cewxgooq49EFpsGwwSUXuxV5ZhI=
+github.com/miabi-io/runner v0.0.10 h1:GgtqQ+YFXAyMGExIF3a13L5MHZGi+nQyyhSQpXCG9cw=
+github.com/miabi-io/runner v0.0.10/go.mod h1:bmtH9k1NFBua/IS8Cewxgooq49EFpsGwwSUXuxV5ZhI=
 github.com/miekg/dns v1.1.72 h1:vhmr+TF2A3tuoGNkLDFK9zi36F2LS+hKTRW0Uf8kbzI=
 github.com/miekg/dns v1.1.72/go.mod h1:+EuEPhdHOsfk6Wk5TT2CzssZdqkmFhf8r+aVyDEToIs=
 github.com/moby/docker-image-spec v1.3.1 h1:jMKff3w6PgbfSa69GfNg+zN/XLhfXJGnEx3Nl2EsFP0=
