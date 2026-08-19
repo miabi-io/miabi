@@ -159,3 +159,8 @@ require (
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
 )
+
+// TEMPORARY — pending a miabi-runner release carrying proto.BuildConfig.NoCache.
+// Replace with `go get github.com/miabi-io/runner@<tag>` and drop this directive
+// before merging; CI cannot resolve a sibling checkout.
+replace github.com/miabi-io/runner => ../miabi-runner

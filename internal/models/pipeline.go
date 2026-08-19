@@ -134,6 +134,10 @@ type PipelineRun struct {
 	// Env is the pipeline-level environment as written in the spec, applied to
 	// every step. Stored unresolved, like the steps' own.
 	Env map[string]string `json:"env,omitempty" gorm:"serializer:json"`
+	// NoCache records that this run was asked to ignore the build cache, overriding whatever the spec's
+	// `cache:` says. It is a per-run override, not a setting: the next run caches again unless it asks
+	// too. Kept on the run because "why did this one take nine minutes?" is a question about the run.
+	NoCache bool `json:"no_cache,omitempty" gorm:"not null;default:false"`
 
 	StartedAt  *time.Time `json:"started_at,omitempty"`
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
@@ -164,6 +168,10 @@ type PipelineStepRun struct {
 	// the image. Not secrets — a build arg is readable from the image history — so they are
 	// stored in the clear, unlike the run's credentials.
 	BuildArgs map[string]string `json:"build_args,omitempty" gorm:"serializer:json"`
+	// NoCache builds this step's image from scratch. It is the resolved answer for this run — the spec's
+	// `cache: false` OR the run-level override — so the runner reads one field and the row records what
+	// was actually asked of the builder.
+	NoCache bool `json:"no_cache,omitempty" gorm:"not null;default:false"`
 	// Env is the step's environment as written in the spec, references included:
 	// the run records what was asked for, never a resolved secret value.
 	Env map[string]string `json:"env,omitempty" gorm:"serializer:json"`

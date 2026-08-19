@@ -28,5 +28,7 @@ steps:
   - name: build
     uses: build
     dockerfile: Dockerfile      # relative to the workspace root; default: Dockerfile
+    cache: true                 # default. `cache: false` rebuilds every layer — the
+                                # pipeline-side replacement for an ARG CACHEBUST line
   - name: deploy
     uses: deploy                # deploys the image the build step produced, pinned to the run's commit

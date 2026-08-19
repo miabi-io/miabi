@@ -234,3 +234,33 @@ func valueForKey(env []string, key string) string {
 	}
 	return ""
 }
+
+func TestBuildJobSpecCarriesNoCache(t *testing.T) {
+	in := JobInputs{
+		Run: &models.PipelineRun{ID: 1, WorkspaceID: 1},
+		Steps: []models.PipelineStepRun{
+			{Ordinal: 0, Name: "cold", Uses: "build", NoCache: true},
+			{Ordinal: 1, Name: "cold-with-dockerfile", Uses: "build", Dockerfile: "docker/Dockerfile", NoCache: true},
+			{Ordinal: 2, Name: "warm", Uses: "build"},
+		},
+		Creds: &JobCredentials{},
+	}
+	spec, _ := BuildJobSpec(in)
+
+	if spec.Steps[0].Build == nil || !spec.Steps[0].Build.NoCache {
+		t.Fatalf("no-cache never reached the runner: %+v", spec.Steps[0].Build)
+	}
+	if got := spec.Steps[0].Build.Method; got != "dockerfile" {
+		t.Errorf("Method = %q, want dockerfile — a NoCache-only config must keep the nil config's builder", got)
+	}
+	if b := spec.Steps[1].Build; b == nil || !b.NoCache || b.Dockerfile != "docker/Dockerfile" {
+		t.Errorf("dockerfile + no-cache mangled: %+v", b)
+	}
+	if spec.Steps[1].Build.Method != "" {
+		t.Errorf("Method = %q, want empty — an explicit dockerfile keeps auto-detection as before", spec.Steps[1].Build.Method)
+	}
+	// A cached build with nothing else configured still sends nothing at all.
+	if spec.Steps[2].Build != nil {
+		t.Errorf("cached, unconfigured build step should send no BuildConfig, got %+v", spec.Steps[2].Build)
+	}
+}

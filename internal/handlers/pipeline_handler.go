@@ -68,6 +68,9 @@ type TriggerPipelineRequest struct {
 		Branch        string `json:"branch"`
 		Commit        string `json:"commit"`
 		CommitMessage string `json:"commit_message"`
+		// NoCache rebuilds every layer of this run's build steps, ignoring the cache.
+		// Per-run and one-off: it never edits the pipeline file.
+		NoCache bool `json:"no_cache"`
 	} `json:"body"`
 }
 
@@ -151,7 +154,7 @@ func (h *PipelineHandler) Trigger(c *okapi.Context, req *TriggerPipelineRequest)
 	actor := middlewares.UserID(c)
 	run, err := h.svc.Trigger(wsID, id, pipeline.TriggerInput{
 		Trigger: "manual", Branch: req.Body.Branch, Commit: req.Body.Commit,
-		CommitMessage: req.Body.CommitMessage, UserID: &actor,
+		CommitMessage: req.Body.CommitMessage, UserID: &actor, NoCache: req.Body.NoCache,
 	})
 	if err != nil {
 		return h.mapErr(c, err)

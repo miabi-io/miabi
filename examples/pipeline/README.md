@@ -241,6 +241,37 @@ on:
 Manual runs come from the UI's **Run now** button or `POST …/trigger` with no
 commit (HEAD of the app's ref is resolved and recorded on the run).
 
+## Build cache
+
+Build steps reuse cached layers by default — that is what makes a second run
+fast. When a cached layer has gone stale (a moving `apt` or `npm` index, a `FROM`
+tag that moved under you), drop the cache from the pipeline instead of committing
+an `ARG CACHEBUST` line to the Dockerfile:
+
+```yaml
+  - name: build
+    uses: build
+    cache: false     # rebuild every layer, every run
+```
+
+For a one-off, leave the spec alone and ask for a cold run instead — the UI's
+**Run without cache** button, or the API:
+
+```bash
+curl -X POST "$BASE/api/v1/workspaces/$WS/pipelines/$PIPELINE/trigger"   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json"   -d '{"no_cache": true}'
+```
+
+The override applies to every build step in that run and to that run only; the
+next run caches again. A cold build costs whatever a first build costs — minutes,
+usually — so the run is labelled **no cache** in its history, and the build log
+says `no cache` on the line that starts the build. `cache:` is only valid on a
+`uses: build` step; both backends honour it (`docker build --no-cache`,
+`buildctl --no-cache`, and `pack build --clear-cache` for buildpack builds).
+
+> Requires a runner new enough to carry the flag. An older runner ignores what it
+> does not understand, so the build would silently reuse its cache — check for the
+> `no cache` note in the build log after upgrading a mixed fleet.
+
 ---
 
 ## What you get back

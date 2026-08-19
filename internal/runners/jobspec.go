@@ -113,15 +113,16 @@ func BuildJobSpec(in JobInputs) (proto.JobSpec, []string) {
 	return spec, in.Creds.Secrets()
 }
 
-// buildConfig carries a build step's Dockerfile choice to the runner. nil selects the runner's
-// auto-detection (root Dockerfile, else buildpacks). BuildContext and BuildArgs are deliberately
-// not sent yet — the spec layer rejects both keys until proto.BuildConfig gains those fields.
 func buildConfig(s *models.PipelineStepRun) *proto.BuildConfig {
 	df := strings.TrimSpace(s.Dockerfile)
-	if df == "" {
+	if df == "" && !s.NoCache {
 		return nil
 	}
-	return &proto.BuildConfig{Dockerfile: df}
+	cfg := &proto.BuildConfig{Dockerfile: df, NoCache: s.NoCache}
+	if df == "" {
+		cfg.Method = "dockerfile"
+	}
+	return cfg
 }
 
 // shellCommand wraps a step's `run:` script so the runner executes it in a non-login shell inside

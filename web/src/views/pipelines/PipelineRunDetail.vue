@@ -225,6 +225,9 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
           <span v-if="run.started_at" class="meta-item" :title="new Date(run.started_at).toLocaleString()">
             <span class="mdi mdi-clock-outline"></span> {{ relativeTime(run.started_at, now) }}
           </span>
+          <span v-if="run.no_cache" class="meta-item" title="Every layer was rebuilt; the build cache was ignored">
+            <span class="mdi mdi-cached"></span> no cache
+          </span>
         </p>
       </div>
       <span v-if="run" class="badge badge-lg" :class="statusMeta(run.status).badge">
@@ -265,6 +268,7 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
                   {{ s.name }}
                   <span v-if="s.uses" class="badge badge-neutral step-uses">{{ s.uses }}</span>
                   <span v-if="s.continue_on_error" class="badge step-allow" title="A failure here doesn't fail the run">continue-on-error</span>
+                  <span v-if="s.no_cache" class="badge badge-neutral step-uses" title="Built without cache">no cache</span>
                 </span>
                 <span class="step-sub">
                   <span>{{ statusMeta(s.status).label }}</span>

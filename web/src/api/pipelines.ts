@@ -11,6 +11,7 @@ export interface PipelineInput {
 export interface TriggerInput {
   commit?: string
   commit_message?: string
+  no_cache?: boolean
 }
 
 const base = (ws: number) => `/workspaces/${ws}/pipelines`

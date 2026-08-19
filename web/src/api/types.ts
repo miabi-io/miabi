@@ -1964,6 +1964,8 @@ export interface PipelineStepRun {
   exit_code: number
   // continue_on_error: a failure here doesn't fail the run (the step still shows failed).
   continue_on_error?: boolean
+  // no_cache: this build step rebuilt every layer instead of reusing cached ones.
+  no_cache?: boolean
   logs?: string
   started_at?: string | null
   finished_at?: string | null
@@ -1995,6 +1997,8 @@ export interface PipelineRun {
   commit_message?: string
   image_id?: number | null
   error?: string
+  // no_cache: the run was asked to ignore the build cache (a one-off override of the spec).
+  no_cache?: boolean
   started_at?: string | null
   finished_at?: string | null
   created_at: string
