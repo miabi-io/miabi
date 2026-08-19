@@ -2,12 +2,14 @@
 import { ref, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useThemeStore } from '@/stores/theme'
 import { apiErrorMessage } from '@/api/client'
 import { authApi } from '@/api/auth'
 import { oauthApi, authorizeUrl } from '@/api/oauth'
 import type { PublicProvider } from '@/api/types'
 
 const auth = useAuthStore()
+const theme = useThemeStore()
 const router = useRouter()
 const route = useRoute()
 
@@ -354,6 +356,16 @@ function providerIcon(type: string): string {
         </p>
       </div>
     </main>
+
+    <button
+      class="auth-theme-btn"
+      type="button"
+      :title="theme.isDark ? 'Light mode' : 'Dark mode'"
+      :aria-label="theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+      @click="theme.toggle()"
+    >
+      <span class="mdi" :class="theme.isDark ? 'mdi-weather-sunny' : 'mdi-weather-night'"></span>
+    </button>
   </div>
 </template>
 
@@ -363,6 +375,32 @@ function providerIcon(type: string): string {
   display: grid;
   grid-template-columns: 1.05fr 1fr;
   background: var(--bg-primary);
+}
+
+/* Sits over the form panel, and stays put once the hero collapses. */
+.auth-theme-btn {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  padding: 9px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius);
+  background: var(--bg-primary);
+  color: var(--text-tertiary);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.auth-theme-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-input);
+}
+.auth-theme-btn .mdi {
+  font-size: 18px;
+  line-height: 1;
 }
 
 /* ─── Brand / marketing panel ─── */
