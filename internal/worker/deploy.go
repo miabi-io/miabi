@@ -1288,12 +1288,19 @@ func (h *DeployHandler) buildOnRunner(ctx context.Context, app *models.Applicati
 		SourceURL:        sourceURL,
 		Commit:           dep.Commit,
 		Ref:              app.GitRef,
+		Branch:           app.GitRef,
 		Repository:       repository,
 		Registry:         registryHost,
-		Build:            h.buildConfigFromApp(app),
+		Build:            h.buildConfigFromApp(app, dep, repository),
 	}, 0, func(line string) { h.log(dep, line) })
 	if err != nil {
 		return "", err
+	}
+	// The build repopulated the current cache generation, so the next one need not run cold.
+	if h.apps != nil {
+		if err := h.apps.MarkCacheBuilt(app.ID, app.CacheGeneration); err != nil {
+			logger.Warn("mark build cache generation failed", "app", app.ID, "error", err)
+		}
 	}
 	imageRef := repository + "@" + digest
 	h.recordBuiltImage(app, dep, repository, BuildResult{Digest: digest, Runner: "runner"})
@@ -1303,7 +1310,7 @@ func (h *DeployHandler) buildOnRunner(ctx context.Context, app *models.Applicati
 // buildConfigFromApp maps an app's build settings onto the runner build config. The runner resolves
 // "auto". The builder image follows the admin-controlled policy: the app's override if set, else
 // the resolved platform default; the runner falls back to its own only when both are empty.
-func (h *DeployHandler) buildConfigFromApp(app *models.Application) *proto.BuildConfig {
+func (h *DeployHandler) buildConfigFromApp(app *models.Application, dep *models.Deployment, repository string) *proto.BuildConfig {
 	builder := app.Builder
 	// Defense-in-depth: drop a custom builder the workspace is no longer entitled to (set under a plan
 	// since downgraded), falling back to the platform default below.
@@ -1313,11 +1320,17 @@ func (h *DeployHandler) buildConfigFromApp(app *models.Application) *proto.Build
 	if builder == "" && h.build.resolver != nil {
 		builder = h.build.resolver.Ref(platformimage.KeyBuildpackBuilder)
 	}
+
+	cacheFrom, cacheTo := runners.CacheRefs(repository, app.GitRef, app.GitRef, app.CacheGeneration)
+	noCache := (dep != nil && dep.NoCache) || app.CacheBuiltGeneration != app.CacheGeneration
 	return &proto.BuildConfig{
 		Method:     string(app.BuildMethod),
 		Builder:    builder,
 		Buildpacks: app.Buildpacks,
 		BuildEnv:   app.BuildEnv,
+		NoCache:    noCache,
+		CacheFrom:  cacheFrom,
+		CacheTo:    cacheTo,
 	}
 }
 

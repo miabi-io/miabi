@@ -26,7 +26,7 @@ require (
 	github.com/libdns/digitalocean v0.0.0-20250606071607-dfa7af5c2e31
 	github.com/libdns/libdns v1.1.1
 	github.com/libdns/route53 v1.6.2
-	github.com/miabi-io/runner v0.0.7
+	github.com/miabi-io/runner v0.0.10
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/redis/go-redis/v9 v9.21.0

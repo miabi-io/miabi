@@ -218,6 +218,8 @@ type DeployRequest struct {
 		// Strategy overrides the app's default rollout method for this deploy.
 		// Omit to use the app's configured default.
 		Strategy string `json:"strategy" enum:"recreate,rolling,canary"`
+		// NoCache rebuilds the image from scratch for this deploy only (git-source apps).
+		NoCache bool `json:"no_cache"`
 	} `json:"body"`
 }
 
@@ -717,7 +719,7 @@ func (h *ApplicationHandler) Deploy(c *okapi.Context, req *DeployRequest) error 
 	if err != nil {
 		return c.AbortNotFound("application not found")
 	}
-	res, err := h.svc.RequestDeploy(app, req.Body.RegistryID, req.Body.Tag, models.DeployStrategy(req.Body.Strategy), userIDPtr(c))
+	res, err := h.svc.RequestDeploy(app, req.Body.RegistryID, req.Body.Tag, models.DeployStrategy(req.Body.Strategy), userIDPtr(c), req.Body.NoCache)
 	if err != nil {
 		return h.mapErr(c, err)
 	}
@@ -729,6 +731,20 @@ func (h *ApplicationHandler) Deploy(c *okapi.Context, req *DeployRequest) error 
 		return created(c, PipelineRunAccepted{Kind: "pipeline_run", Run: res.Run})
 	}
 	return created(c, res.Deployment)
+}
+
+// InvalidateBuildCache drops the app's build cache by naming a new generation, so the next build
+// (deploy or pipeline run) rebuilds every layer and repopulates it.
+func (h *ApplicationHandler) InvalidateBuildCache(c *okapi.Context) error {
+	app, err := h.load(c)
+	if err != nil {
+		return c.AbortNotFound("application not found")
+	}
+	if err := h.svc.InvalidateBuildCache(app); err != nil {
+		return h.mapErr(c, err)
+	}
+	h.record(c, app.WorkspaceID, "app.build_cache.invalidate", app.ID)
+	return message(c, "build cache invalidated — the next build will rebuild every layer")
 }
 
 // PipelineRunAccepted is the deploy response for an app whose repository owns a

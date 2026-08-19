@@ -103,6 +103,8 @@ export interface DeployOptions {
   registry_id?: number | null
   tag?: string
   strategy?: DeployStrategy
+  /** Rebuild every layer for this deploy only (git-source apps). */
+  no_cache?: boolean
 }
 
 export interface ExternalPort {
@@ -220,7 +222,12 @@ export const appApi = {
       registry_id: opts.registry_id ?? null,
       tag: opts.tag ?? '',
       strategy: opts.strategy ?? '',
+      no_cache: opts.no_cache ?? false,
     })
+  },
+  /** Name a new build cache generation: the next build rebuilds every layer and repopulates it. */
+  invalidateBuildCache(ws: number, id: number) {
+    return api.post<ApiResponse<{ message: string }>>(`/workspaces/${ws}/apps/${id}/build-cache/invalidate`)
   },
   rollback(ws: number, id: number, releaseId: number) {
     return api.post<ApiResponse<Deployment>>(`/workspaces/${ws}/apps/${id}/rollback`, { release_id: releaseId })

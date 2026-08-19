@@ -56,15 +56,19 @@ async function loadPipeline() {
 loadPipeline()
 watch([currentWorkspaceId, pipelineId], () => { loadPipeline(); goToPage(0) })
 
-async function trigger() {
+// noCache is the one-off "rebuild everything" run: it overrides the spec's cache
+// setting for this run alone, so nothing in the repository has to change.
+async function trigger(noCache = false) {
   const wid = currentWorkspaceId.value
   if (!wid || !pipeline.value) return
   triggering.value = true
   try {
-    const run = (await pipelineApi.trigger(wid, pipeline.value.id)).data.data
+    const run = (await pipelineApi.trigger(wid, pipeline.value.id, { no_cache: noCache })).data.data
     // Prepend and stay on the list; the stream drives it from pending onwards.
     if (!runs.value.some((r) => r.id === run.id)) runs.value.unshift(run)
-    notify.success(`Run #${run.number} queued`, { detail: 'Open it to follow the logs.' })
+    notify.success(`Run #${run.number} queued`, {
+      detail: noCache ? 'Building without cache — expect a slower run.' : 'Open it to follow the logs.',
+    })
   } catch (e) {
     notify.apiError(e, 'Could not trigger run')
   } finally {
@@ -133,7 +137,16 @@ onBeforeUnmount(() => {
         <button v-if="ws.canEdit" class="btn btn-secondary" @click="showWebhook = true">
           <span class="mdi mdi-webhook"></span> Push webhook
         </button>
-        <button v-if="ws.canEdit && pipeline?.enabled" class="btn btn-primary" :disabled="triggering" @click="trigger">
+        <button
+          v-if="ws.canEdit && pipeline?.enabled"
+          class="btn btn-secondary"
+          :disabled="triggering"
+          title="Rebuild every layer, ignoring the build cache. Slower — use it when a cached layer has gone stale."
+          @click="trigger(true)"
+        >
+          <span class="mdi mdi-cached"></span> Run without cache
+        </button>
+        <button v-if="ws.canEdit && pipeline?.enabled" class="btn btn-primary" :disabled="triggering" @click="trigger()">
           <span class="mdi" :class="triggering ? 'mdi-loading mdi-spin' : 'mdi-play'"></span> Run now
         </button>
       </div>
@@ -147,14 +160,17 @@ onBeforeUnmount(() => {
         <span class="mdi mdi-history" style="font-size: 44px; color: var(--text-muted)"></span>
         <h3>No runs yet</h3>
         <p>Trigger this pipeline to see its run history here.</p>
-        <button v-if="ws.canEdit && pipeline?.enabled" class="btn btn-primary mt-4" :disabled="triggering" @click="trigger">Run now</button>
+        <button v-if="ws.canEdit && pipeline?.enabled" class="btn btn-primary mt-4" :disabled="triggering" @click="trigger()">Run now</button>
       </div>
       <div v-else class="table-wrapper">
         <table>
           <thead><tr><th>Run</th><th>Status</th><th>Commit</th><th>Trigger</th><th>Duration</th><th>Started</th></tr></thead>
           <tbody>
             <tr v-for="r in runs" :key="r.id" class="row-link" :class="`rail-${statusMeta(r.status).badge}`" @click="openRun(r)">
-              <td class="cell-title">#{{ r.number }}</td>
+              <td class="cell-title">
+                #{{ r.number }}
+                <span v-if="r.no_cache" class="badge badge-neutral no-cache" title="Built without cache">no cache</span>
+              </td>
               <td>
                 <span class="badge" :class="statusMeta(r.status).badge">
                   <span class="mdi" :class="statusMeta(r.status).icon"></span> {{ statusMeta(r.status).label }}
@@ -186,6 +202,7 @@ onBeforeUnmount(() => {
 .title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .title-row .badge .mdi { font-size: 13px; }
+.no-cache { margin-left: 6px; font-size: 11px; font-weight: 500; }
 .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
 .back-link { font-size: 13px; color: var(--text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
 .back-link:hover { color: var(--primary-500); }

@@ -76,6 +76,7 @@ type Step struct {
 	// the image's history, so anyone who can pull the image can read it back. Use the step's env for
 	// credentials.
 	BuildArgs map[string]string `yaml:"build-args,omitempty"`
+	Cache     *bool             `yaml:"cache,omitempty"`
 	// App overrides the deploy target for a `uses: deploy` step.
 	App string            `yaml:"app,omitempty"`
 	Env map[string]string `yaml:"env,omitempty"`
@@ -154,6 +155,9 @@ func ParseSpec(data []byte) (*Spec, error) {
 		if len(st.BuildArgs) > 0 && st.Uses != UsesBuild {
 			return nil, fmt.Errorf("step %q: 'build-args' is only valid on a 'uses: build' step", st.Name)
 		}
+		if st.Cache != nil && st.Uses != UsesBuild {
+			return nil, fmt.Errorf("step %q: 'cache' is only valid on a 'uses: build' step", st.Name)
+		}
 		for k := range st.BuildArgs {
 			if !validArgName(k) {
 				return nil, fmt.Errorf("step %q: build-arg name %q is not a valid Dockerfile ARG (letters, digits and underscore; not starting with a digit)", st.Name, k)
@@ -177,6 +181,8 @@ func ParseSpec(data []byte) (*Spec, error) {
 	}
 	return &s, nil
 }
+
+func (s Step) NoCache() bool { return s.Cache != nil && !*s.Cache }
 
 // validArgName reports whether k is usable as a Dockerfile ARG name. Docker accepts a good deal more and then
 // does nothing useful with it — a name carrying "=" or a space silently produces an arg the Dockerfile can

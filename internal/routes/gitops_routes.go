@@ -225,6 +225,15 @@ func (r *Router) pipelineRoutes() []okapi.RouteDefinition {
 			Summary:     "Get a pipeline run",
 		},
 		{
+			Method:      http.MethodPost,
+			Path:        runs + "/{runID}/rerun",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     okapi.H(r.h.pipeline.Rerun),
+			Summary:     "Re-run a pipeline run",
+			Request:     &handlers.RerunPipelineRequest{},
+		},
+		{
 			Method:      http.MethodGet,
 			Path:        runs + "/{runID}/logs",
 			Group:       g,

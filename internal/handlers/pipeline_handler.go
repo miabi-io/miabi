@@ -68,6 +68,9 @@ type TriggerPipelineRequest struct {
 		Branch        string `json:"branch"`
 		Commit        string `json:"commit"`
 		CommitMessage string `json:"commit_message"`
+		// NoCache rebuilds every layer of this run's build steps, ignoring the cache.
+		// Per-run and one-off: it never edits the pipeline file.
+		NoCache bool `json:"no_cache"`
 	} `json:"body"`
 }
 
@@ -151,7 +154,7 @@ func (h *PipelineHandler) Trigger(c *okapi.Context, req *TriggerPipelineRequest)
 	actor := middlewares.UserID(c)
 	run, err := h.svc.Trigger(wsID, id, pipeline.TriggerInput{
 		Trigger: "manual", Branch: req.Body.Branch, Commit: req.Body.Commit,
-		CommitMessage: req.Body.CommitMessage, UserID: &actor,
+		CommitMessage: req.Body.CommitMessage, UserID: &actor, NoCache: req.Body.NoCache,
 	})
 	if err != nil {
 		return h.mapErr(c, err)
@@ -257,6 +260,30 @@ func (h *PipelineHandler) ListRuns(c *okapi.Context) error {
 }
 
 // GetRun returns a single run with its steps.
+type RerunPipelineRequest struct {
+	Body struct {
+		// NoCache rebuilds every layer on the re-run — the usual reason to re-run a build that
+		// succeeded with a stale cached layer.
+		NoCache bool `json:"no_cache"`
+	} `json:"body"`
+}
+
+// Rerun starts a new run of the same pipeline at the earlier run's ref and commit.
+func (h *PipelineHandler) Rerun(c *okapi.Context, req *RerunPipelineRequest) error {
+	id, err := uintParam(c, "runID")
+	if err != nil {
+		return c.AbortBadRequest("invalid run id")
+	}
+	wsID := middlewares.WorkspaceID(c)
+	actor := middlewares.UserID(c)
+	run, err := h.svc.Rerun(wsID, id, &actor, req.Body.NoCache)
+	if err != nil {
+		return h.mapErr(c, err)
+	}
+	h.record(c, wsID, "pipeline.rerun", run.PipelineID)
+	return created(c, run)
+}
+
 func (h *PipelineHandler) GetRun(c *okapi.Context) error {
 	id, err := uintParam(c, "runID")
 	if err != nil {

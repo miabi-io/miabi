@@ -270,3 +270,60 @@ func TestParseSpecRejectsBadEnv(t *testing.T) {
 		})
 	}
 }
+
+// Cache busting belongs to the pipeline, not the Dockerfile: `cache: false` on a
+// build step is what a `ARG CACHEBUST` line used to be. Omitting the key caches,
+// because a cold build costs minutes and must never be the accidental choice.
+func TestParseSpecBuildCache(t *testing.T) {
+	spec := func(cache string) string {
+		return `
+apiVersion: miabi.io/v1
+kind: Pipeline
+metadata: { name: web }
+on: { manual: true }
+steps:
+  - name: build
+    uses: build` + cache + `
+`
+	}
+	cases := []struct {
+		name    string
+		cache   string
+		want    bool
+		wantErr string
+	}{
+		{"omitted caches", "", false, ""},
+		{"cache: true caches", "\n    cache: true", false, ""},
+		{"cache: false busts", "\n    cache: false", true, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s, err := ParseSpec([]byte(spec(tc.cache)))
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			if got := s.Steps[0].NoCache(); got != tc.want {
+				t.Errorf("NoCache() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// A container step has no build cache to control, so `cache:` there is a typo
+// worth reporting rather than a key to accept and drop.
+func TestParseSpecRejectsCacheOnNonBuildStep(t *testing.T) {
+	_, err := ParseSpec([]byte(`
+apiVersion: miabi.io/v1
+kind: Pipeline
+metadata: { name: web }
+on: { manual: true }
+steps:
+  - name: test
+    image: node:20
+    run: npm test
+    cache: false
+`))
+	if err == nil || !strings.Contains(err.Error(), "'cache' is only valid") {
+		t.Fatalf("want cache-on-container-step rejection, got %v", err)
+	}
+}

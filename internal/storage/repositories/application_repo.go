@@ -162,6 +162,19 @@ func (r *ApplicationRepository) SetRedeployRequired(id uint, v bool) error {
 	return r.db.Model(&models.Application{}).Where("id = ?", id).Update("redeploy_required", v).Error
 }
 
+// BumpCacheGeneration invalidates an app's build cache by naming a new one. Nothing is deleted:
+// the old ref simply stops being read, and the registry's retention reclaims it.
+func (r *ApplicationRepository) BumpCacheGeneration(id uint) error {
+	return r.db.Model(&models.Application{}).Where("id = ?", id).
+		UpdateColumn("cache_generation", gorm.Expr("cache_generation + 1")).Error
+}
+
+func (r *ApplicationRepository) MarkCacheBuilt(id, generation uint) error {
+	return r.db.Model(&models.Application{}).
+		Where("id = ? AND cache_generation = ?", id, generation).
+		UpdateColumn("cache_built_generation", generation).Error
+}
+
 // SetContainerLabels replaces an app's user-defined Docker labels. A targeted Update bypasses
 // the field serializer (pgx can't encode a Go map into the text column), so the JSON is
 // marshalled here to match what the serializer writes. nil/empty clears them (stored NULL).

@@ -240,6 +240,15 @@ type Application struct {
 	Buildpacks  []string          `json:"buildpacks,omitempty" gorm:"serializer:json"`
 	BuildEnv    map[string]string `json:"build_env,omitempty" gorm:"serializer:json"`
 
+	// CacheGeneration names the app's current build cache; bumping it is what "invalidate the build
+	// cache" does. It is part of the registry cache ref, so a bump points builds at a ref that does
+	// not exist yet rather than deleting anything.
+	CacheGeneration uint `json:"cache_generation" gorm:"not null;default:0"`
+	// CacheBuiltGeneration is the generation the last successful build produced. While it trails
+	// CacheGeneration the next build is forced cold — the only way to reach a runner whose cache is
+	// its local daemon and has no ref to rotate.
+	CacheBuiltGeneration uint `json:"cache_built_generation" gorm:"not null;default:0"`
+
 	// Credentials. RegistryID selects a stored registry credential used to pull
 	// private images; GitRepositoryID selects a stored Git credential used to
 	// clone private repos. Both nil = anonymous (public) source.
@@ -501,6 +510,9 @@ type Deployment struct {
 	// RegistryID is the registry credential used for this deploy (snapshot of
 	// the app's selection, allowing per-deploy override). nil = anonymous.
 	RegistryID *uint `json:"registry_id,omitempty"`
+	// NoCache rebuilt this deployment's image from scratch. Recorded per deployment because it
+	// explains a build that took minutes longer than the one before it.
+	NoCache bool `json:"no_cache,omitempty" gorm:"not null;default:false"`
 	// RunnerID records which runner built the image this deployment rolls out
 	// (provenance / "built on runner X"); nil for images built by the internal
 	// runner or pulled directly.
