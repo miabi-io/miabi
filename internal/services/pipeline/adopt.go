@@ -96,7 +96,7 @@ func pickRepoOwned(defs []models.PipelineDefinition) *models.PipelineDefinition 
 // TriggerForApp starts a run of an app's repo-owned pipeline on the app's
 // tracked ref. The commit is left unset: the runner resolves the ref's current
 // head, which is what a user asking to deploy means by "the latest".
-func (s *Service) TriggerForApp(app *models.Application, trigger string, userID *uint) (*models.PipelineRun, error) {
+func (s *Service) TriggerForApp(app *models.Application, trigger string, userID *uint, noCache bool) (*models.PipelineRun, error) {
 	def, err := s.RepoPipelineForApp(app.ID)
 	if err != nil {
 		return nil, err
@@ -105,7 +105,7 @@ func (s *Service) TriggerForApp(app *models.Application, trigger string, userID 
 		return nil, ErrNotFound
 	}
 	return s.Trigger(app.WorkspaceID, def.ID, TriggerInput{
-		Trigger: trigger, Branch: app.GitRef, UserID: userID,
+		Trigger: trigger, Branch: app.GitRef, UserID: userID, NoCache: noCache,
 	})
 }
 

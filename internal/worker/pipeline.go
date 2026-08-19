@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/hibiken/asynq"
+	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/logstore"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
@@ -196,11 +197,21 @@ func (h *PipelineHandler) runOnRunner(ctx context.Context, run *models.PipelineR
 	err = h.dispatcher.Dispatch(ctx, in, nil, subjectUser(run))
 	switch {
 	case err == nil:
+		h.markCacheBuilt(run, in)
 		return nil // Dispatch drove the run to a terminal status
 	case errors.Is(err, runnersvc.ErrNoRunner), errors.Is(err, runners.ErrRunnerOffline):
 		return h.waitForRunner(run) // none available right now — wait (bounded)
 	default:
 		return h.failRun(run, err)
+	}
+}
+
+func (h *PipelineHandler) markCacheBuilt(run *models.PipelineRun, in runners.JobInputs) {
+	if h.apps == nil || in.AppID == nil || run.Status != models.PipelineRunSucceeded || run.ImageID == nil {
+		return
+	}
+	if err := h.apps.MarkCacheBuilt(*in.AppID, in.CacheGeneration); err != nil {
+		logger.Warn("mark build cache generation failed", "app", *in.AppID, "error", err)
 	}
 }
 
@@ -253,6 +264,10 @@ func (h *PipelineHandler) jobInputs(run *models.PipelineRun, def *models.Pipelin
 				return runners.JobInputs{}, err
 			}
 			in.SourceURL = su
+			// The cache is the app's, so a pipeline run and a direct deploy of the same app share it.
+			in.CacheGeneration = app.CacheGeneration
+			in.CacheTrunk = app.GitRef
+			in.CacheCold = app.CacheBuiltGeneration != app.CacheGeneration
 			if reg != "" {
 				// Push under <host>/ws_<id>/<app-name> so the deploy path recognizes it as a build ref, and the
 				// ownership check on the pull resolves the namespace back to this workspace.

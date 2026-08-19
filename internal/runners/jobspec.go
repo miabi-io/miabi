@@ -35,6 +35,12 @@ type JobInputs struct {
 	// Env is the pipeline-level environment, applied to every step. Values may
 	// still carry ${{ secrets.NAME }}; the Dispatcher resolves them.
 	Env map[string]string
+	// CacheGeneration names the app's current build cache; CacheTrunk is the ref whose cache a branch
+	// build may read. CacheCold forces a rebuild after a bump — a runner whose cache is its local
+	// daemon has no ref to rotate, so it has to be told.
+	CacheGeneration uint
+	CacheTrunk      string
+	CacheCold       bool
 
 	// Filled by the Dispatcher.
 	Creds    *JobCredentials
@@ -88,7 +94,7 @@ func BuildJobSpec(in JobInputs) (proto.JobSpec, []string) {
 			Run:             shellCommand(s.Run),
 			Env:             sortedKV(s.Env),
 			ContinueOnError: s.ContinueOnError,
-			Build:           buildConfig(s),
+			Build:           buildConfig(s, in),
 		})
 	}
 
@@ -113,13 +119,20 @@ func BuildJobSpec(in JobInputs) (proto.JobSpec, []string) {
 	return spec, in.Creds.Secrets()
 }
 
-func buildConfig(s *models.PipelineStepRun) *proto.BuildConfig {
-	df := strings.TrimSpace(s.Dockerfile)
-	if df == "" && !s.NoCache {
+func buildConfig(s *models.PipelineStepRun, in JobInputs) *proto.BuildConfig {
+	if s.Uses != "build" {
 		return nil
 	}
-	cfg := &proto.BuildConfig{Dockerfile: df, NoCache: s.NoCache}
+	noCache := s.NoCache || in.CacheCold
+	cacheFrom, cacheTo := CacheRefs(in.Repository, in.Branch, in.CacheTrunk, in.CacheGeneration)
+	df := strings.TrimSpace(s.Dockerfile)
+	if df == "" && !noCache && cacheTo == "" {
+		return nil
+	}
+	cfg := &proto.BuildConfig{Dockerfile: df, NoCache: noCache, CacheFrom: cacheFrom, CacheTo: cacheTo}
 	if df == "" {
+		// nil already meant "Dockerfile at the source root"; a config sent for the cache alone must not
+		// flip that to auto-detection and turn a broken build into a silent buildpack one.
 		cfg.Method = "dockerfile"
 	}
 	return cfg

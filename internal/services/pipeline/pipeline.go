@@ -337,6 +337,19 @@ func (s *Service) Trigger(workspaceID, pipelineID uint, in TriggerInput) (*model
 	return run, nil
 }
 
+// Rerun starts a fresh run of the same pipeline at the ref and commit an earlier run built. The
+// commit is carried over deliberately: "re-run" means run this again, not run whatever landed since.
+func (s *Service) Rerun(workspaceID, runID uint, userID *uint, noCache bool) (*models.PipelineRun, error) {
+	prev, err := s.GetRun(workspaceID, runID)
+	if err != nil {
+		return nil, err
+	}
+	return s.Trigger(workspaceID, prev.PipelineID, TriggerInput{
+		Trigger: "rerun", Branch: prev.Branch, Commit: prev.Commit, CommitMessage: prev.CommitMessage,
+		UserID: userID, NoCache: noCache,
+	})
+}
+
 func (s *Service) GetRun(workspaceID, id uint) (*models.PipelineRun, error) {
 	run, err := s.repo.FindRun(workspaceID, id)
 	if err != nil {

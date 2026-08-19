@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed, nextTick, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { pipelineApi } from '@/api/pipelines'
@@ -14,6 +14,7 @@ import type { Image, PipelineRun, PipelineRunStatus, PipelineStepLogHistory } fr
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
 const route = useRoute()
+const router = useRouter()
 const { currentWorkspaceId } = storeToRefs(ws)
 
 const pipelineId = computed(() => Number(route.params.id))
@@ -202,6 +203,27 @@ async function copyVal(v?: string | null) {
   if (v) await copyText(v)
 }
 
+const rerunning = ref(false)
+
+// Re-run builds the same commit again. noCache is the common case: the run to repeat is usually one
+// that succeeded against a stale cached layer.
+async function rerun(noCache = false) {
+  const wid = currentWorkspaceId.value
+  if (!wid || !run.value) return
+  rerunning.value = true
+  try {
+    const fresh = (await pipelineApi.rerun(wid, run.value.id, noCache)).data.data
+    notify.success(`Run #${fresh.number} queued`, {
+      detail: noCache ? 'Building without cache — expect a slower run.' : 'Re-running the same commit.',
+    })
+    await router.push({ name: 'pipeline-run', params: { id: pipelineId.value, runId: fresh.id } })
+  } catch (e) {
+    notify.apiError(e, 'Could not re-run')
+  } finally {
+    rerunning.value = false
+  }
+}
+
 watch([currentWorkspaceId, runId], () => { es?.close(); init() }, { immediate: true })
 // Tick once a second so live durations (run + running step) count up.
 ticker = setInterval(() => { now.value = Date.now() }, 1000)
@@ -230,9 +252,19 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
           </span>
         </p>
       </div>
-      <span v-if="run" class="badge badge-lg" :class="statusMeta(run.status).badge">
-        <span class="mdi" :class="statusMeta(run.status).icon"></span> {{ statusMeta(run.status).label }}
-      </span>
+      <div class="header-actions">
+        <span v-if="run" class="badge badge-lg" :class="statusMeta(run.status).badge">
+          <span class="mdi" :class="statusMeta(run.status).icon"></span> {{ statusMeta(run.status).label }}
+        </span>
+        <template v-if="run && ws.canEdit">
+          <button class="btn btn-secondary" :disabled="rerunning" title="Re-run this commit, rebuilding every layer" @click="rerun(true)">
+            <span class="mdi mdi-cached"></span> Re-run without cache
+          </button>
+          <button class="btn btn-secondary" :disabled="rerunning" title="Re-run this commit" @click="rerun()">
+            <span class="mdi" :class="rerunning ? 'mdi-loading mdi-spin' : 'mdi-replay'"></span> Re-run
+          </button>
+        </template>
+      </div>
     </div>
 
     <p v-if="run?.commit_message" class="commit-message">{{ run.commit_message }}</p>
@@ -364,6 +396,7 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
 
 <style scoped>
 .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 12px; }
+.header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .meta-item { display: inline-flex; align-items: center; gap: 4px; }
 .meta-item .mdi { font-size: 14px; opacity: 0.8; }
 .back-link { font-size: 13px; color: var(--text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }

@@ -180,7 +180,7 @@ type Pipelines interface {
 	// RepoPipelineForApp returns the app's enabled repo-owned pipeline, or nil.
 	RepoPipelineForApp(appID uint) (*models.PipelineDefinition, error)
 	// TriggerForApp starts a run of that pipeline.
-	TriggerForApp(app *models.Application, trigger string, userID *uint) (*models.PipelineRun, error)
+	TriggerForApp(app *models.Application, trigger string, userID *uint, noCache bool) (*models.PipelineRun, error)
 	// DeleteForApp drops the app's repo-owned pipelines and unbinds the rest.
 	DeleteForApp(workspaceID, appID uint) error
 	// SyncFromRepo re-reads a repo-owned pipeline's spec from its repository, reporting whether
@@ -1796,21 +1796,30 @@ func (s *Service) RevealEnvVar(appID uint, key string) (string, error) {
 // non-nil, uses a different registry credential for this one deploy; tagOverride, when non-empty,
 // deploys a specific image tag for an image-source app.
 func (s *Service) Deploy(app *models.Application, registryOverride *uint, tagOverride string, strategy models.DeployStrategy) (*models.Deployment, error) {
-	// Settle a cluster-mode auto-defaulted runtime now that storage is known: a stateful app is pinned to a
-	// container before its first service is ever created. Persisted here, so the worker (which reloads the
-	// app) sees the final runtime. No-op for explicit runtimes and already-deployed apps.
+	return s.deploy(app, registryOverride, tagOverride, strategy, false)
+}
+
+// deploy is Deploy plus the per-deploy build cache override, which only the user-facing entry
+// point offers: an internal redeploy must not silently pay for a cold build.
+func (s *Service) deploy(app *models.Application, registryOverride *uint, tagOverride string, strategy models.DeployStrategy, noCache bool) (*models.Deployment, error) {
+
 	s.reconcileAutoRuntime(app.ID)
 	regID := app.RegistryID
 	if registryOverride != nil {
 		regID = registryOverride
 	}
-	// For image apps, persist the composed image:tag onto the deployment so the
-	// release records exactly what was deployed; git apps build their own image.
+
 	image := ""
 	if app.SourceType != models.AppSourceGit {
 		image = app.ImageRef(tagOverride)
 	}
-	return s.enqueue(app.ID, app.ServerID, image, "manual", regID, s.resolveStrategy(app, strategy))
+	return s.enqueue(app.ID, app.ServerID, image, "manual", regID, s.resolveStrategy(app, strategy), noCache)
+}
+
+// InvalidateBuildCache names a new build cache generation for the app. The next build of it runs
+// cold and repopulates the cache; nothing is deleted, so a build already in flight is unaffected.
+func (s *Service) InvalidateBuildCache(app *models.Application) error {
+	return s.apps.BumpCacheGeneration(app.ID)
 }
 
 // DeployResult is what a deploy request produced: a Deployment for an app that
@@ -1824,22 +1833,19 @@ type DeployResult struct {
 // RequestDeploy is the user-facing deploy entry point. When the app's repository owns a pipeline the
 // request starts a pipeline run instead of a direct build, so a deploy can never skip the declared
 // test and scan steps. Internal redeploys don't come through here — they must not re-run CI.
-func (s *Service) RequestDeploy(app *models.Application, registryOverride *uint, tagOverride string, strategy models.DeployStrategy, userID *uint) (*DeployResult, error) {
-	// Fail rather than guess: if we can't tell whether a pipeline governs this app, deploying directly would
-	// silently skip the steps its repository declares — exactly the outcome routing through the pipeline
-	// exists to prevent.
+func (s *Service) RequestDeploy(app *models.Application, registryOverride *uint, tagOverride string, strategy models.DeployStrategy, userID *uint, noCache bool) (*DeployResult, error) {
 	def, err := s.RepoPipelineForApp(app.ID)
 	if err != nil {
 		return nil, fmt.Errorf("resolve the app's pipeline: %w", err)
 	}
 	if def != nil {
-		run, err := s.pipelines.TriggerForApp(app, "manual", userID)
+		run, err := s.pipelines.TriggerForApp(app, "manual", userID, noCache)
 		if err != nil {
 			return nil, err
 		}
 		return &DeployResult{Run: run}, nil
 	}
-	dep, err := s.Deploy(app, registryOverride, tagOverride, strategy)
+	dep, err := s.deploy(app, registryOverride, tagOverride, strategy, noCache)
 	if err != nil {
 		return nil, err
 	}
@@ -1871,7 +1877,7 @@ func (s *Service) Redeploy(app *models.Application) (*models.Deployment, error) 
 	if app.SourceType != models.AppSourceGit {
 		image = app.ImageRef("")
 	}
-	return s.enqueue(app.ID, app.ServerID, image, "auto", app.RegistryID, models.DeployRolling)
+	return s.enqueue(app.ID, app.ServerID, image, "auto", app.RegistryID, models.DeployRolling, false)
 }
 
 // EnsurePublished reconciles the host ports an app's running container publishes with its approved
@@ -2094,7 +2100,7 @@ func (s *Service) Rollback(app *models.Application, releaseID uint) (*models.Dep
 	if err != nil || rel.ApplicationID != app.ID {
 		return nil, fmt.Errorf("release not found")
 	}
-	return s.enqueue(app.ID, app.ServerID, rel.Image, "rollback", app.RegistryID, models.DeployRolling)
+	return s.enqueue(app.ID, app.ServerID, rel.Image, "rollback", app.RegistryID, models.DeployRolling, false)
 }
 
 var (
@@ -2150,7 +2156,7 @@ func (s *Service) PromoteCanary(app *models.Application) (*models.Deployment, er
 		image = rel.Image
 	}
 	s.emit(app, models.EventDeployStarted, "Promoting canary to stable")
-	return s.enqueue(app.ID, app.ServerID, image, "manual", app.RegistryID, models.DeployRolling)
+	return s.enqueue(app.ID, app.ServerID, image, "manual", app.RegistryID, models.DeployRolling, false)
 }
 
 // AbortCanary stops the canary container, discards its release, and returns all
@@ -2198,11 +2204,11 @@ func (s *Service) finalizeCanaryDeployment(deploymentID uint, line string) {
 	_ = s.deployments.Update(dep)
 }
 
-func (s *Service) enqueue(appID, serverID uint, image, trigger string, registryID *uint, strategy models.DeployStrategy) (*models.Deployment, error) {
+func (s *Service) enqueue(appID, serverID uint, image, trigger string, registryID *uint, strategy models.DeployStrategy, noCache bool) (*models.Deployment, error) {
 	if !models.ValidDeployStrategy(strategy) {
 		strategy = models.DeployRolling
 	}
-	dep := &models.Deployment{ApplicationID: appID, Image: image, Trigger: trigger, Strategy: strategy, RegistryID: registryID, Status: models.DeploymentPending}
+	dep := &models.Deployment{ApplicationID: appID, Image: image, Trigger: trigger, Strategy: strategy, RegistryID: registryID, Status: models.DeploymentPending, NoCache: noCache}
 	if err := s.deployments.Create(dep); err != nil {
 		return nil, err
 	}

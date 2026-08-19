@@ -572,6 +572,24 @@ const savingSettings = ref(false)
 
 // Deploy dialog
 const showDeploy = ref(false)
+// Per-deploy build cache override; reset each time the dialog opens so it never sticks.
+const deployNoCache = ref(false)
+const invalidatingCache = ref(false)
+
+// Invalidation is a state change, not a build: it names a new cache generation and the next build
+// (deploy or pipeline run) pays for the cold rebuild.
+async function invalidateBuildCache() {
+  if (!wid.value) return
+  invalidatingCache.value = true
+  try {
+    await appApi.invalidateBuildCache(wid.value, appId.value)
+    notify.success('Build cache invalidated', { detail: 'The next build rebuilds every layer.' })
+  } catch (e) {
+    notify.apiError(e, 'Could not invalidate the build cache')
+  } finally {
+    invalidatingCache.value = false
+  }
+}
 const deployTag = ref('')
 const deployStrategy = ref<DeployStrategy>('rolling')
 const deploying = ref(false)
@@ -1225,6 +1243,7 @@ async function confirmTemplateImageChange(): Promise<boolean> {
 
 async function openDeploy() {
   deployTag.value = app.value?.tag || ''
+  deployNoCache.value = false
   showDeploy.value = true
   // Bindings are otherwise only loaded on the Ports tab, and the strategy list
   // depends on them.
@@ -1245,6 +1264,7 @@ async function confirmDeploy() {
   try {
     const opts = {
       strategy: deployStrategy.value,
+      no_cache: deployNoCache.value,
       ...(app.value.source_type === 'image' ? { tag: deployTag.value.trim() } : {}),
     }
     const res = (await appApi.deploy(wid.value, appId.value, opts)).data.data
@@ -2809,6 +2829,32 @@ async function detachDatabase(d: AppDatabase) {
             </button>
           </div>
         </div>
+
+        <!-- The cache is the app's, shared by direct deploys and pipeline runs, so it is invalidated
+             here rather than per pipeline. -->
+        <div v-if="app.source_type === 'git' && !editingSource" class="card-body source-pipeline">
+          <div class="source-pipeline-row">
+            <div>
+              <strong class="source-pipeline-title">
+                <span class="mdi mdi-cached"></span> Build cache
+              </strong>
+              <p class="form-hint" style="margin: 4px 0 0">
+                Builds reuse cached layers. Invalidate when a cached layer has gone stale — the next
+                build rebuilds every layer and repopulates the cache. Nothing is deleted.
+              </p>
+            </div>
+            <button
+              v-if="ws.canEdit"
+              type="button"
+              class="btn btn-secondary btn-sm"
+              :disabled="invalidatingCache"
+              @click="invalidateBuildCache"
+            >
+              <span class="mdi" :class="invalidatingCache ? 'mdi-loading mdi-spin' : 'mdi-cached'"></span>
+              {{ invalidatingCache ? 'Invalidating…' : 'Invalidate' }}
+            </button>
+          </div>
+        </div>
       </div>
 
       <div class="card mb-4">
@@ -3416,6 +3462,12 @@ async function detachDatabase(d: AppDatabase) {
                 <span v-if="hasHostPorts"><br />Rolling isn't available: host port {{ hostPortList }} can only be held by one container at a time.</span>
                 <span v-if="hasHostPorts && deployStrategy === 'canary'"><br />The canary won't publish the host port — only traffic through a route reaches it.</span>
               </p>
+              <div v-if="app.source_type === 'git'" class="form-group" style="margin-top: 16px; margin-bottom: 0">
+                <label class="checkbox-label" style="margin-bottom: 0">
+                  <input v-model="deployNoCache" type="checkbox" /> Rebuild without cache
+                </label>
+                <p class="form-hint">Rebuilds every layer for this deploy only. Slower — use it when a cached layer has gone stale.</p>
+              </div>
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-secondary" @click="showDeploy = false">Cancel</button>

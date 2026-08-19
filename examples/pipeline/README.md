@@ -272,6 +272,44 @@ says `no cache` on the line that starts the build. `cache:` is only valid on a
 > does not understand, so the build would silently reuse its cache — check for the
 > `no cache` note in the build log after upgrading a mixed fleet.
 
+### Where the cache lives
+
+The cache belongs to the **application**, not to the pipeline: a pipeline run and
+a direct deploy of the same app share it. On a buildkit runner it is a registry
+ref alongside the app's images:
+
+```
+<registry>/ws_<id>/<app>:cache-<branch>-g<generation>
+```
+
+Each branch writes only its own ref and additionally *reads* the tracked ref's —
+so a build of `feat/x` starts warm from `main`, but can never push layers into a
+cache a `main` build would trust. A docker-backed runner has no ref to rotate and
+keeps using its daemon's local cache.
+
+### Invalidating it
+
+**Invalidate build cache** (app → Source, or `miabi apps invalidate-cache web`,
+or `POST .../apps/$APP/build-cache/invalidate`) bumps the generation. Every ref
+changes name, so the next build is cold and repopulates the cache; the one after
+is warm again. Nothing is deleted — the old refs simply stop being read, and a
+build already in flight is unaffected. Because a bumped generation also forces
+`--no-cache` until something has rebuilt it, the invalidation reaches
+docker-backed runners too.
+
+Use it when the cache itself is suspect. For a single run, prefer `no_cache`
+above — it costs one cold build instead of changing the app's state.
+
+### Re-running
+
+**Re-run** (run detail, or `miabi pipeline rerun <run-id> [--no-cache]`, or
+`POST .../pipeline-runs/$RUN/rerun`) starts a fresh run at the *same* ref and
+commit — the same code again, not whatever has landed since. The run is recorded
+with `trigger: "rerun"`.
+
+A direct deploy takes the same override: `miabi apps deploy web --no-cache`, or
+**Rebuild without cache** in the deploy dialog.
+
 ---
 
 ## What you get back

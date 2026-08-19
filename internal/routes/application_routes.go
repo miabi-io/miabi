@@ -267,6 +267,14 @@ func (r *Router) applicationRoutes() []okapi.RouteDefinition {
 		},
 		{
 			Method:      http.MethodPost,
+			Path:        base + "/{appID}/build-cache/invalidate",
+			Group:       apps,
+			Middlewares: appOp(models.PermAppDeploy),
+			Handler:     r.h.app.InvalidateBuildCache,
+			Summary:     "Invalidate the application's build cache",
+		},
+		{
+			Method:      http.MethodPost,
 			Path:        base + "/{appID}/start",
 			Group:       apps,
 			Middlewares: appOp(models.PermAppDeploy),

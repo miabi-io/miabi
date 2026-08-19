@@ -27,6 +27,9 @@ export const pipelineApi = {
   remove: (ws: number, id: number) => api.delete<ApiResponse<{ message: string }>>(`${base(ws)}/${id}`),
   trigger: (ws: number, id: number, input: TriggerInput = {}) =>
     api.post<ApiResponse<PipelineRun>>(`${base(ws)}/${id}/trigger`, input),
+  // Re-run an earlier run at the same ref and commit; no_cache rebuilds every layer.
+  rerun: (ws: number, runId: number, noCache = false) =>
+    api.post<ApiResponse<PipelineRun>>(`${runsBase(ws)}/${runId}/rerun`, { no_cache: noCache }),
   runs: (ws: number, id: number, page = 0, size = 20) =>
     api.get<PageableResponse<PipelineRun>>(`${base(ws)}/${id}/runs?page=${page}&size=${size}`),
   run: (ws: number, runId: number) => api.get<ApiResponse<PipelineRun>>(`${runsBase(ws)}/${runId}`),
