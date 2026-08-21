@@ -1102,7 +1102,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
 
     <Teleport to="body">
       <!-- Create logical database -->
-      <div v-if="showCreateDb" class="modal-overlay" @click.self="showCreateDb = false">
+      <div v-if="showCreateDb" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>New database</h3>
@@ -1136,7 +1136,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
       </div>
 
       <!-- Connection reveal -->
-      <div v-if="connModal" class="modal-overlay" @click.self="connModal = null">
+      <div v-if="connModal" class="modal-overlay">
         <div class="modal" style="max-width: 560px; width: 100%">
           <div class="modal-header">
             <h3>Connection · {{ connModal.title }}</h3>
@@ -1161,7 +1161,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
       </div>
 
       <!-- Restore dialog -->
-      <div v-if="restoreModal" class="modal-overlay" @click.self="restoreModal = null">
+      <div v-if="restoreModal" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>{{ restoreModal.backupId != null ? `Restore backup #${restoreModal.backupId}` : 'Restore from file' }}</h3>

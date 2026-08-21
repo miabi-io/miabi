@@ -332,7 +332,7 @@ function failedArtifacts(b: BundleInfo): number {
 
     <!-- Restore dialog -->
     <Teleport to="body">
-      <div v-if="restoreOpen && restoreTarget" class="modal-overlay" @click.self="restoreOpen = false">
+      <div v-if="restoreOpen && restoreTarget" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Restore bundle</h3>
@@ -385,7 +385,7 @@ function failedArtifacts(b: BundleInfo): number {
 
     <!-- Run report -->
     <Teleport to="body">
-      <div v-if="openRun" class="modal-overlay" @click.self="openRun = null">
+      <div v-if="openRun" class="modal-overlay">
         <div class="modal modal-lg">
           <div class="modal-header">
             <h3>{{ openRun.kind === 'export' ? 'Export' : 'Restore' }} report</h3>

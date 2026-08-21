@@ -139,7 +139,7 @@ async function confirmDelete() {
     </div>
 
     <Teleport to="body">
-      <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
+      <div v-if="showModal" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>{{ editing ? 'Edit environment' : 'New environment' }}</h3>

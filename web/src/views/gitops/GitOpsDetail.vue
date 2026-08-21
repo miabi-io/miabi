@@ -871,7 +871,7 @@ const policyFlags = computed(() => {
     />
 
     <!-- Preview & sync -->
-    <div v-if="previewOpen" class="modal-overlay" @click.self="previewOpen = false">
+    <div v-if="previewOpen" class="modal-overlay">
       <div class="preview-modal">
         <div class="preview-head">
           <h3>Sync preview</h3>

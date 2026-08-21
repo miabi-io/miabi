@@ -133,7 +133,7 @@ function open(c: Certificate) { router.push(`/certificates/${c.id}`) }
     </div>
 
     <Teleport to="body">
-      <div v-if="showForm" class="modal-overlay" @click.self="showForm = false">
+      <div v-if="showForm" class="modal-overlay">
         <div class="modal" style="max-width: 640px; width: 100%">
           <div class="modal-header">
             <h3>Import certificate</h3>
@@ -166,7 +166,7 @@ function open(c: Certificate) { router.push(`/certificates/${c.id}`) }
 
     <!-- Issue managed (ACME DNS-01) certificate -->
     <Teleport to="body">
-      <div v-if="showIssue" class="modal-overlay" @click.self="showIssue = false">
+      <div v-if="showIssue" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Issue with DNS provider</h3>

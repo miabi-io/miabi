@@ -174,7 +174,7 @@ function short(s?: string) { return s ? s.replace(/^sha256:/, '').slice(0, 12) :
     </p>
 
     <Teleport to="body">
-      <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
+      <div v-if="showModal" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Promote {{ target?.application_name }} v{{ target?.version }}</h3>

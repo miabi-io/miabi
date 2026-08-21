@@ -1431,7 +1431,7 @@ const gwBadge = computed(() => {
     </template>
 
     <Teleport to="body">
-      <div v-if="showConfig" class="modal-overlay" @click.self="showConfig = false">
+      <div v-if="showConfig" class="modal-overlay">
         <div class="modal" style="max-width: 760px; width: 100%">
           <div class="modal-header">
             <h3>Gateway config — {{ node?.name }}</h3>
@@ -1455,7 +1455,7 @@ const gwBadge = computed(() => {
     </Teleport>
 
     <Teleport to="body">
-      <div v-if="showEdit" class="modal-overlay" @click.self="showEdit = false">
+      <div v-if="showEdit" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Edit node</h3>
@@ -1495,7 +1495,7 @@ const gwBadge = computed(() => {
 
     <!-- Change connectivity — impactful reachability settings, gated by a warning. -->
     <Teleport to="body">
-      <div v-if="showConnectivity" class="modal-overlay" @click.self="showConnectivity = false">
+      <div v-if="showConnectivity" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Change connectivity — {{ node?.name }}</h3>
@@ -1577,7 +1577,7 @@ const gwBadge = computed(() => {
     </Teleport>
 
     <Teleport to="body">
-      <div v-if="showImportGw" class="modal-overlay" @click.self="showImportGw = false">
+      <div v-if="showImportGw" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Import existing gateway</h3>
@@ -1613,7 +1613,7 @@ const gwBadge = computed(() => {
     </Teleport>
 
     <Teleport to="body">
-      <div v-if="regenToken" class="modal-overlay" @click.self="regenToken = null">
+      <div v-if="regenToken" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>New join token</h3>
@@ -1638,7 +1638,7 @@ const gwBadge = computed(() => {
     </Teleport>
 
     <Teleport to="body">
-      <div v-if="joinCmd" class="modal-overlay" @click.self="joinCmd = null">
+      <div v-if="joinCmd" class="modal-overlay">
         <div class="modal" style="max-width: 680px; width: 100%">
           <div class="modal-header">
             <h3>Agent join command</h3>

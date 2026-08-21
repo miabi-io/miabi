@@ -116,7 +116,7 @@ async function confirmRemove() {
     </div>
 
     <Teleport to="body">
-      <div v-if="showCreate" class="modal-overlay" @click.self="showCreate = false">
+      <div v-if="showCreate" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>New network</h3>

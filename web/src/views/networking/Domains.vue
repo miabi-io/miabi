@@ -211,7 +211,7 @@ const tlsModes: { value: DomainTLSMode; label: string }[] = [
 
     <!-- Create / edit -->
     <Teleport to="body">
-      <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
+      <div v-if="showModal" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>{{ editing ? 'Edit domain' : 'Add domain' }}</h3>
@@ -244,7 +244,7 @@ const tlsModes: { value: DomainTLSMode; label: string }[] = [
 
     <!-- DNS verification -->
     <Teleport to="body">
-      <div v-if="showDns && dnsDomain" class="modal-overlay" @click.self="showDns = false">
+      <div v-if="showDns && dnsDomain" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Verify {{ dnsDomain.name }}</h3>

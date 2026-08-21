@@ -6,7 +6,9 @@
 // secret.
 //
 // The parent owns the API call and the `saving` flag; this only collects values.
-import { ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
+import { useDirtyGuard, useModal } from '@/composables/useModal'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const props = defineProps<{
   open: boolean
@@ -28,12 +30,39 @@ const emit = defineEmits<{
 const secretRefHint = '${{ secrets.NAME }}'
 const form = ref({ key: '', value: '', secret: false })
 
+const dialog = ref<HTMLElement | null>(null)
+const confirmDiscard = ref(false)
+
 watch(
   () => props.open,
-  (open) => {
-    if (open) form.value = { ...props.initial }
+  async (open) => {
+    if (!open) return
+    form.value = { ...props.initial }
+    await nextTick()
+    resetDirty()
   },
   { immediate: true },
+)
+
+const { dirty, reset: resetDirty } = useDirtyGuard(() => form.value)
+
+function requestClose() {
+  if (props.saving) return
+  if (dirty.value) {
+    confirmDiscard.value = true
+    return
+  }
+  emit('close')
+}
+
+function discard() {
+  confirmDiscard.value = false
+  emit('close')
+}
+
+useModal(
+  () => props.open,
+  { onRequestClose: requestClose, container: dialog, escapable: () => !confirmDiscard.value },
 )
 
 function submit() {
@@ -45,11 +74,18 @@ function submit() {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="modal-overlay" @click.self="emit('close')">
-      <div class="modal" style="max-width: 480px; width: 100%">
+    <div v-if="open" class="modal-overlay">
+      <div
+        ref="dialog"
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="envvar-form-title"
+        style="max-width: 480px; width: 100%"
+      >
         <div class="modal-header">
-          <h3>{{ editingKey ? 'Update variable' : 'Add variable' }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="emit('close')">
+          <h3 id="envvar-form-title">{{ editingKey ? 'Update variable' : 'Add variable' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" data-modal-skip-focus @click="requestClose">
             <span class="mdi mdi-close"></span>
           </button>
         </div>
@@ -92,7 +128,7 @@ function submit() {
             </p>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="emit('close')">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="requestClose">Cancel</button>
             <button type="submit" class="btn btn-primary" :disabled="saving || !form.key.trim()">
               {{ saving ? 'Saving…' : editingKey ? 'Update' : 'Add variable' }}
             </button>
@@ -100,6 +136,17 @@ function submit() {
         </form>
       </div>
     </div>
+
+    <ConfirmDialog
+      :open="confirmDiscard"
+      title="Discard changes?"
+      message="This variable has unsaved changes. Closing now loses them."
+      confirm-label="Discard"
+      cancel-label="Keep editing"
+      variant="danger"
+      @confirm="discard"
+      @cancel="confirmDiscard = false"
+    />
   </Teleport>
 </template>
 

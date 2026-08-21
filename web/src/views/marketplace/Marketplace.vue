@@ -469,7 +469,7 @@ async function confirmUninstall() {
 
     <!-- UNINSTALL CONFIRMATION -->
     <Teleport to="body">
-      <div v-if="uninstallTarget" class="modal-overlay" @click.self="uninstallTarget = null">
+      <div v-if="uninstallTarget" class="modal-overlay">
         <div class="modal modal-sm">
           <div class="modal-header">
             <h3>Uninstall {{ uninstallTarget.template_display_name }}?</h3>
@@ -504,7 +504,7 @@ async function confirmUninstall() {
 
     <!-- UNINSTALL FOLLOW-UP: what the teardown removed -->
     <Teleport to="body">
-      <div v-if="teardown" class="modal-overlay" @click.self="teardown = null">
+      <div v-if="teardown" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Resources removed — {{ teardown.name }}</h3>
@@ -538,7 +538,7 @@ async function confirmUninstall() {
 
     <!-- IMPORT -->
     <Teleport to="body">
-      <div v-if="importOpen" class="modal-overlay" @click.self="importOpen = false">
+      <div v-if="importOpen" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Import a template</h3>

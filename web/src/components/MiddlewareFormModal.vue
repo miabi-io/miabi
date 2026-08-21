@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { middlewareApi } from '@/api/middlewares'
 import { useNotificationStore } from '@/stores/notification'
 import { parseYaml, toYaml } from '@/utils/yaml'
+import { useDirtyGuard, useModal } from '@/composables/useModal'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import MiddlewareField from '@/components/MiddlewareField.vue'
 import type { Middleware, MiddlewareCatalog, MiddlewareDescriptor, MiddlewareField as MwField, MiddlewarePreset } from '@/api/types'
 
@@ -12,6 +14,9 @@ import type { Middleware, MiddlewareCatalog, MiddlewareDescriptor, MiddlewareFie
 // redaction sentinel so editing a policy never wipes its stored password.
 const props = defineProps<{ open: boolean; workspaceId: number | null; editing: Middleware | null }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'saved', m: Middleware): void }>()
+
+const dialog = ref<HTMLElement | null>(null)
+const confirmDiscard = ref(false)
 
 const notify = useNotificationStore()
 
@@ -84,7 +89,38 @@ watch(
       rule.value = defaultsFor(descriptors.value[0])
       ruleText.value = ''
     }
+    await nextTick()
+    resetDirty()
   },
+)
+
+// Closing a form that has been edited asks first. The backdrop no longer
+// dismisses anything, so this only fires on Escape, Cancel, or the close icon —
+// all deliberate — but a policy can take a while to fill in and a stray Escape
+// should not be the end of it.
+const { dirty, reset: resetDirty } = useDirtyGuard(() => ({
+  form: form.value,
+  rule: rule.value,
+  ruleText: ruleText.value,
+}))
+
+function requestClose() {
+  if (saving.value) return
+  if (dirty.value) {
+    confirmDiscard.value = true
+    return
+  }
+  emit('close')
+}
+
+function discard() {
+  confirmDiscard.value = false
+  emit('close')
+}
+
+useModal(
+  () => props.open,
+  { onRequestClose: requestClose, container: dialog, escapable: () => !confirmDiscard.value },
 )
 
 // Switching type (in create mode) resets the rule to the new type's defaults.
@@ -154,11 +190,11 @@ async function save() {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="modal-overlay" @click.self="emit('close')">
-      <div class="modal modal-lg">
+    <div v-if="open" class="modal-overlay">
+      <div ref="dialog" class="modal modal-lg" role="dialog" aria-modal="true" aria-labelledby="mw-form-title">
         <div class="modal-header">
-          <h3>{{ editing ? 'Edit policy' : 'New security policy' }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="emit('close')"><span class="mdi mdi-close"></span></button>
+          <h3 id="mw-form-title">{{ editing ? 'Edit policy' : 'New security policy' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" data-modal-skip-focus @click="requestClose"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="save">
           <div class="modal-body">
@@ -218,12 +254,23 @@ async function save() {
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="emit('close')">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="requestClose">Cancel</button>
             <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Create') }}</button>
           </div>
         </form>
       </div>
     </div>
+
+    <ConfirmDialog
+      :open="confirmDiscard"
+      title="Discard changes?"
+      message="This policy has unsaved changes. Closing now loses them."
+      confirm-label="Discard"
+      cancel-label="Keep editing"
+      variant="danger"
+      @confirm="discard"
+      @cancel="confirmDiscard = false"
+    />
   </Teleport>
 </template>
 

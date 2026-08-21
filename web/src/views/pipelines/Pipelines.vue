@@ -294,7 +294,7 @@ function openLastRun(p: PipelineDefinition) {
     <Pagination :pageable="pageable" @page="goToPage" />
 
     <Teleport to="body">
-      <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
+      <div v-if="showModal" class="modal-overlay">
         <div class="modal modal-lg">
           <div class="modal-header">
             <h3>{{ editing ? (editingRepoOwned ? 'Pipeline' : 'Edit pipeline') : 'New pipeline' }}</h3>

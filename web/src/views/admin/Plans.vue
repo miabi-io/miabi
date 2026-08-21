@@ -215,7 +215,7 @@ async function setDefault(p: Plan) {
     <Pagination :pageable="pageable" @page="goToPage" />
 
     <Teleport to="body">
-      <div v-if="showForm" class="modal-overlay" @click.self="showForm = false">
+      <div v-if="showForm" class="modal-overlay">
         <div class="modal" style="max-width: 600px; width: 100%">
           <div class="modal-header">
             <h3>{{ editingId ? 'Edit plan' : 'New plan' }}</h3>

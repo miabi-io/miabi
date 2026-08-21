@@ -124,7 +124,7 @@ async function confirmDelete() {
     </div>
 
     <Teleport to="body">
-      <div v-if="showReplace" class="modal-overlay" @click.self="showReplace = false">
+      <div v-if="showReplace" class="modal-overlay">
         <div class="modal" style="max-width: 640px; width: 100%">
           <div class="modal-header">
             <h3>Replace certificate</h3>

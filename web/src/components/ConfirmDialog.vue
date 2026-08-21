@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
+import { useModal } from '@/composables/useModal'
 
 const props = withDefaults(
   defineProps<{
@@ -29,11 +30,22 @@ let seq = 0
 const titleId = `confirm-title-${seq++}`
 const confirmBtn = ref<HTMLButtonElement | null>(null)
 
-// Escape cancels; on open, move focus into the dialog so keyboard users land
-// on the primary action rather than being stranded on the page behind it.
-function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && !props.busy) emit('cancel')
-}
+// Escape cancels, unless the dialog is mid-action; on open, focus lands on the
+// primary action rather than on the page behind it. Only the buttons dismiss
+// this dialog — clicking the backdrop does nothing, so a confirmation cannot be
+// waved away by an errant click.
+const dialog = ref<HTMLElement | null>(null)
+
+useModal(
+  () => props.open,
+  {
+    onRequestClose: () => emit('cancel'),
+    container: dialog,
+    escapable: () => !props.busy,
+    autoFocus: false,
+  },
+)
+
 watch(
   () => props.open,
   (open) => {
@@ -44,8 +56,9 @@ watch(
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="modal-overlay modal-overlay-elevated" @click.self="emit('cancel')" @keydown="onKeydown">
+    <div v-if="open" class="modal-overlay modal-overlay-elevated">
       <div
+        ref="dialog"
         class="modal"
         role="dialog"
         aria-modal="true"

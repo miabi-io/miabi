@@ -3169,7 +3169,7 @@ async function detachDatabase(d: AppDatabase) {
         @save="saveEnv"
       />
 
-      <div v-if="showDelete && app" class="modal-overlay" @click.self="showDelete = false">
+      <div v-if="showDelete && app" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Delete application</h3>
@@ -3194,7 +3194,7 @@ async function detachDatabase(d: AppDatabase) {
 
     <!-- Link a database -->
     <Teleport to="body">
-      <div v-if="linkModal" class="modal-overlay" @click.self="linkModal = false">
+      <div v-if="linkModal" class="modal-overlay">
         <div class="modal" style="max-width: 600px; width: 100%">
           <div class="modal-header">
             <h3>Link a database</h3>
@@ -3264,7 +3264,7 @@ async function detachDatabase(d: AppDatabase) {
 
     <!-- Database connection -->
     <Teleport to="body">
-      <div v-if="dbConnModal" class="modal-overlay" @click.self="dbConnModal = null">
+      <div v-if="dbConnModal" class="modal-overlay">
         <div class="modal" style="max-width: 560px; width: 100%">
           <div class="modal-header">
             <h3>Connection · {{ dbConnModal.title }}</h3>
@@ -3295,7 +3295,7 @@ async function detachDatabase(d: AppDatabase) {
 
     <!-- Import .env -->
     <Teleport to="body">
-      <div v-if="showEnvImport" class="modal-overlay" @click.self="showEnvImport = false">
+      <div v-if="showEnvImport" class="modal-overlay">
         <div class="modal" style="max-width: 560px; width: 100%">
           <div class="modal-header">
             <h3>Import .env</h3>
@@ -3333,7 +3333,7 @@ async function detachDatabase(d: AppDatabase) {
 
     <!-- Add container port -->
     <Teleport to="body">
-      <div v-if="showAddPort" class="modal-overlay" @click.self="showAddPort = false">
+      <div v-if="showAddPort" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Add container port</h3>
@@ -3372,7 +3372,7 @@ async function detachDatabase(d: AppDatabase) {
 
     <!-- Request host binding -->
     <Teleport to="body">
-      <div v-if="showBindReq" class="modal-overlay" @click.self="showBindReq = false">
+      <div v-if="showBindReq" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Request host binding</h3>
@@ -3409,7 +3409,7 @@ async function detachDatabase(d: AppDatabase) {
 
     <!-- Deploy dialog -->
     <Teleport to="body">
-      <div v-if="showDeploy" class="modal-overlay" @click.self="showDeploy = false">
+      <div v-if="showDeploy" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>{{ deployVerb }} {{ app.name }}</h3>
@@ -3482,7 +3482,7 @@ async function detachDatabase(d: AppDatabase) {
 
     <!-- Release detail -->
     <Teleport to="body">
-      <div v-if="releaseDetail" class="modal-overlay" @click.self="releaseDetail = null">
+      <div v-if="releaseDetail" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Release v{{ releaseDetail.version }}</h3>

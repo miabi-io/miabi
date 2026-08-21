@@ -640,7 +640,7 @@ function eventSeverity(e: AdminEvent): string {
       </div>
 
       <!-- Schedule-deletion dialog: per-workspace ownership transfer or delete -->
-      <div v-if="showDeleteDialog" class="modal-overlay" @click.self="showDeleteDialog = false">
+      <div v-if="showDeleteDialog" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h2>Delete {{ user.name }}</h2>
@@ -694,7 +694,7 @@ function eventSeverity(e: AdminEvent): string {
 
     <!-- New password: shown exactly once. The admin must copy it now and hand it
          over out-of-band — it is not stored in clear and can't be shown again. -->
-    <div v-if="generatedPassword" class="modal-overlay" @click.self="generatedPassword = null">
+    <div v-if="generatedPassword" class="modal-overlay">
       <div class="modal">
         <div class="modal-header">
           <h2>New password</h2>

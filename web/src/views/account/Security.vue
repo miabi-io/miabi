@@ -236,7 +236,7 @@ function downloadCodes() {
 
     <Teleport to="body">
       <!-- Setup: QR + verify -->
-      <div v-if="modal === 'setup'" class="modal-overlay" @click.self="closeModal">
+      <div v-if="modal === 'setup'" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Set up two-factor authentication</h3>
@@ -280,7 +280,7 @@ function downloadCodes() {
       </div>
 
       <!-- Recovery codes display -->
-      <div v-else-if="modal === 'codes'" class="modal-overlay" @click.self="closeModal">
+      <div v-else-if="modal === 'codes'" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Save your recovery codes</h3>
@@ -309,7 +309,7 @@ function downloadCodes() {
       </div>
 
       <!-- Disable / Regenerate: ask for a code -->
-      <div v-else-if="modal === 'disable' || modal === 'regenerate'" class="modal-overlay" @click.self="closeModal">
+      <div v-else-if="modal === 'disable' || modal === 'regenerate'" class="modal-overlay">
         <div class="modal" style="max-width: 460px">
           <div class="modal-header">
             <h3>{{ modal === 'disable' ? 'Disable two-factor' : 'Regenerate recovery codes' }}</h3>

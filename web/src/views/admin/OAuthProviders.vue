@@ -313,7 +313,7 @@ onMounted(() => {
 
     <!-- Create / Edit modal -->
     <Teleport to="body">
-      <div v-if="showModal" class="modal-overlay" @click.self="closeModal">
+      <div v-if="showModal" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>{{ editing ? 'Edit provider' : 'Add provider' }}</h3>

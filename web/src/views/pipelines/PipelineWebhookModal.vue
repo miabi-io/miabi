@@ -166,7 +166,7 @@ async function copy(text: string, what: string) {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="modal-overlay" @click.self="emit('close')">
+    <div v-if="open" class="modal-overlay">
       <div class="modal modal-lg">
         <div class="modal-header">
           <h3>Push webhook</h3>

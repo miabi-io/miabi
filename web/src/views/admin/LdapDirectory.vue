@@ -241,7 +241,7 @@ function tlsLabel(m: string) {
 
     <!-- Create / edit modal -->
     <Teleport to="body">
-      <div v-if="showForm" class="modal-overlay" @click.self="showForm = false">
+      <div v-if="showForm" class="modal-overlay">
         <div class="modal" style="max-width: 640px; width: 100%">
           <div class="modal-header">
             <h3>{{ editingId ? 'Edit LDAP connection' : 'Add LDAP connection' }}</h3>
@@ -359,7 +359,7 @@ function tlsLabel(m: string) {
 
     <!-- Group mappings modal -->
     <Teleport to="body">
-      <div v-if="mappingConfig" class="modal-overlay" @click.self="mappingConfig = null">
+      <div v-if="mappingConfig" class="modal-overlay">
         <div class="modal" style="max-width: 620px; width: 100%">
           <div class="modal-header">
             <h3>Group mappings — {{ mappingConfig.display_name || mappingConfig.name }}</h3>
