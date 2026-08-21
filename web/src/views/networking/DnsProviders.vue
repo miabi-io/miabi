@@ -7,6 +7,7 @@ import { dnsProviderApi } from '@/api/dns'
 import { usageApi } from '@/api/resources'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { DNSProvider, DNSProviderType, WorkspaceUsage } from '@/api/types'
+import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -176,60 +177,58 @@ async function disconnect() {
     </div>
 
     <Teleport to="body">
-      <div v-if="showConnect" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Connect DNS provider</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showConnect = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="connect">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="name" class="form-input" placeholder="e.g. cloudflare-prod" required autofocus />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Type</label>
-                <select v-model="ptype" class="form-select">
-                  <option value="cloudflare">Cloudflare</option>
-                  <option value="route53">AWS Route 53</option>
-                  <option value="digitalocean">DigitalOcean</option>
-                </select>
-              </div>
-              <template v-if="ptype === 'route53'">
-                <div class="form-group">
-                  <label class="form-label">Access key ID</label>
-                  <input v-model="accessKeyId" class="form-input" autocomplete="off" required style="font-family: monospace" />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Secret access key</label>
-                  <input v-model="secretAccessKey" type="password" class="form-input" autocomplete="new-password" required />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Region <span class="text-muted">(optional)</span></label>
-                  <input v-model="region" class="form-input" placeholder="us-east-1" style="font-family: monospace" />
-                </div>
-              </template>
-              <template v-else>
-                <div class="form-group">
-                  <label class="form-label">API token</label>
-                  <input v-model="apiToken" type="password" class="form-input" autocomplete="new-password" required />
-                  <p class="form-hint">Use a scoped token (Cloudflare: Zone.DNS edit on your zone).</p>
-                </div>
-              </template>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Test zone <span class="text-muted">(optional)</span></label>
-                <input v-model="testZone" class="form-input" placeholder="example.com" style="font-family: monospace" />
-                <p class="form-hint">A domain on this provider; if set, the credential is verified before saving.</p>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showConnect = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Connecting…' : 'Connect' }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showConnect" @close="showConnect = false">
+        <div class="modal-header">
+          <h3>Connect DNS provider</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showConnect = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="connect">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="name" class="form-input" placeholder="e.g. cloudflare-prod" required autofocus />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Type</label>
+              <select v-model="ptype" class="form-select">
+                <option value="cloudflare">Cloudflare</option>
+                <option value="route53">AWS Route 53</option>
+                <option value="digitalocean">DigitalOcean</option>
+              </select>
+            </div>
+            <template v-if="ptype === 'route53'">
+              <div class="form-group">
+                <label class="form-label">Access key ID</label>
+                <input v-model="accessKeyId" class="form-input" autocomplete="off" required style="font-family: monospace" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Secret access key</label>
+                <input v-model="secretAccessKey" type="password" class="form-input" autocomplete="new-password" required />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Region <span class="text-muted">(optional)</span></label>
+                <input v-model="region" class="form-input" placeholder="us-east-1" style="font-family: monospace" />
+              </div>
+            </template>
+            <template v-else>
+              <div class="form-group">
+                <label class="form-label">API token</label>
+                <input v-model="apiToken" type="password" class="form-input" autocomplete="new-password" required />
+                <p class="form-hint">Use a scoped token (Cloudflare: Zone.DNS edit on your zone).</p>
+              </div>
+            </template>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Test zone <span class="text-muted">(optional)</span></label>
+              <input v-model="testZone" class="form-input" placeholder="example.com" style="font-family: monospace" />
+              <p class="form-hint">A domain on this provider; if set, the credential is verified before saving.</p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showConnect = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Connecting…' : 'Connect' }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

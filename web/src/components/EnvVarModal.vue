@@ -7,7 +7,8 @@
 //
 // The parent owns the API call and the `saving` flag; this only collects values.
 import { nextTick, ref, watch } from 'vue'
-import { useDirtyGuard, useModal } from '@/composables/useModal'
+import { useDirtyGuard } from '@/composables/useModal'
+import AppModal from '@/components/AppModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const props = defineProps<{
@@ -30,7 +31,6 @@ const emit = defineEmits<{
 const secretRefHint = '${{ secrets.NAME }}'
 const form = ref({ key: '', value: '', secret: false })
 
-const dialog = ref<HTMLElement | null>(null)
 const confirmDiscard = ref(false)
 
 watch(
@@ -60,10 +60,6 @@ function discard() {
   emit('close')
 }
 
-useModal(
-  () => props.open,
-  { onRequestClose: requestClose, container: dialog, escapable: () => !confirmDiscard.value },
-)
 
 function submit() {
   const key = form.value.key.trim()
@@ -74,15 +70,7 @@ function submit() {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="modal-overlay">
-      <div
-        ref="dialog"
-        class="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="envvar-form-title"
-        style="max-width: 480px; width: 100%"
-      >
+    <AppModal v-if="open" max-width="480px" :escapable="!confirmDiscard" @close="requestClose">
         <div class="modal-header">
           <h3 id="envvar-form-title">{{ editingKey ? 'Update variable' : 'Add variable' }}</h3>
           <button class="btn-icon btn-icon-muted" aria-label="Close" data-modal-skip-focus @click="requestClose">
@@ -134,8 +122,7 @@ function submit() {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </AppModal>
 
     <ConfirmDialog
       :open="confirmDiscard"

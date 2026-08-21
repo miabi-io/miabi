@@ -26,6 +26,7 @@ import EnvVarModal from '@/components/EnvVarModal.vue'
 import RouteFormModal from '@/components/RouteFormModal.vue'
 import AppAccessPanel from '@/components/AppAccessPanel.vue'
 import type { Application, AppOverview, Deployment, Release, AppEnvVar, Route, Network, Stack, Volume, StatsSample, Registry, GitRepository, AppEvent, AppPort, PortBinding, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, DatabaseInstance, LogicalDatabase, NodePlacement, PipelineDefinition } from '@/api/types'
+import AppModal from '@/components/AppModal.vue'
 
 // Secret-reference example built here so `}}` doesn't break the template's
 // mustache parser.
@@ -3169,124 +3170,118 @@ async function detachDatabase(d: AppDatabase) {
         @save="saveEnv"
       />
 
-      <div v-if="showDelete && app" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Delete application</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDelete = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="removeApp">
-            <div class="modal-body">
-              <p>This permanently removes <strong>{{ app.name }}</strong>, its running container, env vars, ports, and deployment history. This cannot be undone.</p>
-              <div class="form-group" style="margin-bottom: 0; margin-top: 12px">
-                <label class="form-label">Type <code>{{ app.name }}</code> to confirm</label>
-                <input v-model="deleteConfirm" class="form-input" :placeholder="app.name" autofocus autocomplete="off" />
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showDelete = false">Cancel</button>
-              <button type="submit" class="btn btn-danger" :disabled="deleteConfirm !== app.name || deleting">{{ deleting ? 'Deleting…' : 'Delete application' }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showDelete && app" @close="showDelete = false">
+        <div class="modal-header">
+          <h3>Delete application</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDelete = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="removeApp">
+          <div class="modal-body">
+            <p>This permanently removes <strong>{{ app.name }}</strong>, its running container, env vars, ports, and deployment history. This cannot be undone.</p>
+            <div class="form-group" style="margin-bottom: 0; margin-top: 12px">
+              <label class="form-label">Type <code>{{ app.name }}</code> to confirm</label>
+              <input v-model="deleteConfirm" class="form-input" :placeholder="app.name" autofocus autocomplete="off" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showDelete = false">Cancel</button>
+            <button type="submit" class="btn btn-danger" :disabled="deleteConfirm !== app.name || deleting">{{ deleting ? 'Deleting…' : 'Delete application' }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <!-- Link a database -->
     <Teleport to="body">
-      <div v-if="linkModal" class="modal-overlay">
-        <div class="modal" style="max-width: 600px; width: 100%">
-          <div class="modal-header">
-            <h3>Link a database</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="linkModal = false"><span class="mdi mdi-close"></span></button>
+      <AppModal v-if="linkModal" max-width="600px" @close="linkModal = false">
+        <div class="modal-header">
+          <h3>Link a database</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="linkModal = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <!-- Step 1: instance -->
+          <label class="form-label">Database instance</label>
+          <div v-if="instancesOnNode.length === 0" class="form-hint" style="margin-bottom: 10px">
+            No database instances on this app's node.
           </div>
-          <div class="modal-body">
-            <!-- Step 1: instance -->
-            <label class="form-label">Database instance</label>
-            <div v-if="instancesOnNode.length === 0" class="form-hint" style="margin-bottom: 10px">
-              No database instances on this app's node.
-            </div>
-            <div v-else class="instance-grid">
-              <button
-                v-for="i in instancesOnNode"
-                :key="i.id"
-                type="button"
-                class="instance-chip"
-                :class="{ active: selInstance?.id === i.id }"
-                @click="selectLinkInstance(i)"
-              >
-                <span class="cell-title">{{ i.name }}</span>
-                <span class="cell-sub">{{ i.engine }}</span>
-              </button>
-            </div>
-            <p v-if="hiddenInstanceCount > 0" class="form-hint" style="margin-top: 6px">
-              {{ hiddenInstanceCount }} instance(s) on other nodes are hidden — an app can only use databases on its own node.
-            </p>
-
-            <!-- Step 2: database on the instance -->
-            <template v-if="selInstance">
-              <div class="seg" style="margin-top: 16px">
-                <button type="button" class="seg-btn" :class="{ active: linkMode === 'existing' }" @click="linkMode = 'existing'">Existing database</button>
-                <button type="button" class="seg-btn" :class="{ active: linkMode === 'new' }" @click="linkMode = 'new'">＋ New database</button>
-              </div>
-
-              <div v-if="linkMode === 'existing'" style="margin-top: 12px">
-                <div v-if="freeDatabases.length === 0" class="form-hint">
-                  No unattached databases on this instance. Switch to “＋ New database”.
-                </div>
-                <select v-else v-model.number="linkForm.database_id" class="form-select" aria-label="Database to link" style="width: 100%">
-                  <option :value="0" disabled>Select database…</option>
-                  <option v-for="d in freeDatabases" :key="d.id" :value="d.id">{{ d.name }}</option>
-                </select>
-              </div>
-
-              <div v-else style="margin-top: 12px">
-                <label class="form-label">New database name</label>
-                <input v-model="linkForm.new_name" class="form-input" placeholder="myapp" style="width: 100%" />
-              </div>
-
-              <label class="form-label" style="margin-top: 14px">Env var prefix <span class="text-muted">(optional)</span></label>
-              <input v-model="linkForm.env_prefix" class="form-input" placeholder="e.g. ANALYTICS → ANALYTICS_DATABASE_URL" style="width: 100%" />
-              <p v-if="!linkForm.env_prefix.trim() && hasUnprefixed" class="form-hint" style="color: var(--warning, #d97706); margin-top: 6px">
-                <span class="mdi mdi-alert-outline"></span> This app already has an unprefixed database. Add a prefix to avoid overwriting its DATABASE_URL / DB_* vars.
-              </p>
-            </template>
-          </div>
-          <div class="modal-footer">
-            <button class="btn btn-ghost" @click="linkModal = false">Cancel</button>
-            <button class="btn btn-primary" :disabled="!selInstance || linkBusy" @click="confirmLink">
-              {{ linkBusy ? 'Linking…' : 'Attach' }}
+          <div v-else class="instance-grid">
+            <button
+              v-for="i in instancesOnNode"
+              :key="i.id"
+              type="button"
+              class="instance-chip"
+              :class="{ active: selInstance?.id === i.id }"
+              @click="selectLinkInstance(i)"
+            >
+              <span class="cell-title">{{ i.name }}</span>
+              <span class="cell-sub">{{ i.engine }}</span>
             </button>
           </div>
+          <p v-if="hiddenInstanceCount > 0" class="form-hint" style="margin-top: 6px">
+            {{ hiddenInstanceCount }} instance(s) on other nodes are hidden — an app can only use databases on its own node.
+          </p>
+
+          <!-- Step 2: database on the instance -->
+          <template v-if="selInstance">
+            <div class="seg" style="margin-top: 16px">
+              <button type="button" class="seg-btn" :class="{ active: linkMode === 'existing' }" @click="linkMode = 'existing'">Existing database</button>
+              <button type="button" class="seg-btn" :class="{ active: linkMode === 'new' }" @click="linkMode = 'new'">＋ New database</button>
+            </div>
+
+            <div v-if="linkMode === 'existing'" style="margin-top: 12px">
+              <div v-if="freeDatabases.length === 0" class="form-hint">
+                No unattached databases on this instance. Switch to “＋ New database”.
+              </div>
+              <select v-else v-model.number="linkForm.database_id" class="form-select" aria-label="Database to link" style="width: 100%">
+                <option :value="0" disabled>Select database…</option>
+                <option v-for="d in freeDatabases" :key="d.id" :value="d.id">{{ d.name }}</option>
+              </select>
+            </div>
+
+            <div v-else style="margin-top: 12px">
+              <label class="form-label">New database name</label>
+              <input v-model="linkForm.new_name" class="form-input" placeholder="myapp" style="width: 100%" />
+            </div>
+
+            <label class="form-label" style="margin-top: 14px">Env var prefix <span class="text-muted">(optional)</span></label>
+            <input v-model="linkForm.env_prefix" class="form-input" placeholder="e.g. ANALYTICS → ANALYTICS_DATABASE_URL" style="width: 100%" />
+            <p v-if="!linkForm.env_prefix.trim() && hasUnprefixed" class="form-hint" style="color: var(--warning, #d97706); margin-top: 6px">
+              <span class="mdi mdi-alert-outline"></span> This app already has an unprefixed database. Add a prefix to avoid overwriting its DATABASE_URL / DB_* vars.
+            </p>
+          </template>
         </div>
-      </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" @click="linkModal = false">Cancel</button>
+          <button class="btn btn-primary" :disabled="!selInstance || linkBusy" @click="confirmLink">
+            {{ linkBusy ? 'Linking…' : 'Attach' }}
+          </button>
+        </div>
+      </AppModal>
     </Teleport>
 
     <!-- Database connection -->
     <Teleport to="body">
-      <div v-if="dbConnModal" class="modal-overlay">
-        <div class="modal" style="max-width: 560px; width: 100%">
-          <div class="modal-header">
-            <h3>Connection · {{ dbConnModal.title }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="dbConnModal = null"><span class="mdi mdi-close"></span></button>
-          </div>
-          <div class="modal-body">
-            <div v-for="f in [
-              { label: 'Host', value: `${dbConnModal.info.host}:${dbConnModal.info.port}` },
-              { label: 'Database', value: dbConnModal.info.database },
-              { label: 'Username', value: dbConnModal.info.username },
-              { label: 'Password', value: dbConnModal.info.password },
-              { label: 'URI', value: dbConnModal.info.uri },
-            ]" :key="f.label" class="dns-field">
-              <span class="dns-field-label">{{ f.label }}</span>
-              <div class="dns-field-row">
-                <span class="dns-field-value">{{ f.value || '—' }}</span>
-                <button v-if="f.value" class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(f.value)"><span class="mdi mdi-content-copy"></span></button>
-              </div>
+      <AppModal v-if="dbConnModal" max-width="560px" @close="dbConnModal = null">
+        <div class="modal-header">
+          <h3>Connection · {{ dbConnModal.title }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="dbConnModal = null"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <div v-for="f in [
+            { label: 'Host', value: `${dbConnModal.info.host}:${dbConnModal.info.port}` },
+            { label: 'Database', value: dbConnModal.info.database },
+            { label: 'Username', value: dbConnModal.info.username },
+            { label: 'Password', value: dbConnModal.info.password },
+            { label: 'URI', value: dbConnModal.info.uri },
+          ]" :key="f.label" class="dns-field">
+            <span class="dns-field-label">{{ f.label }}</span>
+            <div class="dns-field-row">
+              <span class="dns-field-value">{{ f.value || '—' }}</span>
+              <button v-if="f.value" class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(f.value)"><span class="mdi mdi-content-copy"></span></button>
             </div>
           </div>
         </div>
-      </div>
+      </AppModal>
     </Teleport>
 
     <!-- Add / update env var -->
@@ -3295,28 +3290,26 @@ async function detachDatabase(d: AppDatabase) {
 
     <!-- Import .env -->
     <Teleport to="body">
-      <div v-if="showEnvImport" class="modal-overlay">
-        <div class="modal" style="max-width: 560px; width: 100%">
-          <div class="modal-header">
-            <h3>Import .env</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showEnvImport = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="importEnv">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Paste KEY=VALUE lines</label>
-                <textarea v-model="envImport.content" class="form-input" rows="10" spellcheck="false" style="font-family: monospace; font-size: 12px" placeholder="DATABASE_URL=postgres://...&#10;# comments and blank lines are ignored&#10;LOG_LEVEL=info" required></textarea>
-              </div>
-              <label class="checkbox-label" style="margin-bottom: 0"><input type="checkbox" v-model="envImport.secret" /> Mark all as secrets (encrypted)</label>
-              <p class="form-hint">Existing keys are overwritten. {{ isDeployed ? 'The app redeploys after import.' : '' }}</p>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showEnvImport = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="importingEnv">{{ importingEnv ? 'Importing…' : 'Import' }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showEnvImport" max-width="560px" @close="showEnvImport = false">
+        <div class="modal-header">
+          <h3>Import .env</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showEnvImport = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="importEnv">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Paste KEY=VALUE lines</label>
+              <textarea v-model="envImport.content" class="form-input" rows="10" spellcheck="false" style="font-family: monospace; font-size: 12px" placeholder="DATABASE_URL=postgres://...&#10;# comments and blank lines are ignored&#10;LOG_LEVEL=info" required></textarea>
+            </div>
+            <label class="checkbox-label" style="margin-bottom: 0"><input type="checkbox" v-model="envImport.secret" /> Mark all as secrets (encrypted)</label>
+            <p class="form-hint">Existing keys are overwritten. {{ isDeployed ? 'The app redeploys after import.' : '' }}</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showEnvImport = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="importingEnv">{{ importingEnv ? 'Importing…' : 'Import' }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <!-- Shared confirm dialog (port request/release flows) -->
@@ -3333,184 +3326,176 @@ async function detachDatabase(d: AppDatabase) {
 
     <!-- Add container port -->
     <Teleport to="body">
-      <div v-if="showAddPort" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Add container port</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showAddPort = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="addContainerPort">
-            <div class="modal-body">
-              <div class="flex items-center gap-3">
-                <div class="form-group" style="flex: 1">
-                  <label class="form-label">Container port</label>
-                  <input v-model.number="portForm.container_port" type="number" min="1" max="65535" class="form-input" placeholder="8080" required autofocus />
-                </div>
-                <div class="form-group" style="width: 110px">
-                  <label class="form-label">Protocol</label>
-                  <select v-model="portForm.protocol" class="form-select"><option value="tcp">tcp</option><option value="udp">udp</option></select>
-                </div>
-                <div class="form-group" style="width: 120px">
-                  <label class="form-label">Scheme</label>
-                  <select v-model="portForm.scheme" class="form-select"><option value="http">http</option><option value="https">https</option></select>
-                </div>
-              </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Name <span class="text-muted">(optional)</span></label>
-                <input v-model="portForm.name" class="form-input" placeholder="http" />
-              </div>
-              <p class="form-hint">Declares a port the container listens on. Scheme is how a Gateway route reaches it (use https for TLS-only backends). Applies on the next deploy.</p>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showAddPort = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="savingSettings || portForm.container_port <= 0">{{ savingSettings ? 'Adding…' : 'Add port' }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showAddPort" @close="showAddPort = false">
+        <div class="modal-header">
+          <h3>Add container port</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showAddPort = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="addContainerPort">
+          <div class="modal-body">
+            <div class="flex items-center gap-3">
+              <div class="form-group" style="flex: 1">
+                <label class="form-label">Container port</label>
+                <input v-model.number="portForm.container_port" type="number" min="1" max="65535" class="form-input" placeholder="8080" required autofocus />
+              </div>
+              <div class="form-group" style="width: 110px">
+                <label class="form-label">Protocol</label>
+                <select v-model="portForm.protocol" class="form-select"><option value="tcp">tcp</option><option value="udp">udp</option></select>
+              </div>
+              <div class="form-group" style="width: 120px">
+                <label class="form-label">Scheme</label>
+                <select v-model="portForm.scheme" class="form-select"><option value="http">http</option><option value="https">https</option></select>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Name <span class="text-muted">(optional)</span></label>
+              <input v-model="portForm.name" class="form-input" placeholder="http" />
+            </div>
+            <p class="form-hint">Declares a port the container listens on. Scheme is how a Gateway route reaches it (use https for TLS-only backends). Applies on the next deploy.</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showAddPort = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="savingSettings || portForm.container_port <= 0">{{ savingSettings ? 'Adding…' : 'Add port' }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <!-- Request host binding -->
     <Teleport to="body">
-      <div v-if="showBindReq" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Request host binding</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showBindReq = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="requestBind">
-            <div class="modal-body">
-              <p class="text-muted text-sm" style="margin-bottom: 14px">Publishes a container port on a host port. A platform admin must approve it; it takes effect on the next deploy.</p>
-              <div class="form-row">
-                <div class="form-group" style="flex: 1">
-                  <label class="form-label">Container port</label>
-                  <select v-model.number="bindForm.container_port" class="form-select">
-                    <option v-for="p in (app.ports || [])" :key="p.id" :value="p.container_port">{{ p.container_port }}/{{ p.protocol }}</option>
-                  </select>
-                </div>
-                <div class="form-group" style="flex: 1">
-                  <label class="form-label">Host port</label>
-                  <div class="flex items-center gap-2">
-                    <input v-model.number="bindForm.host_port" type="number" class="form-input" placeholder="30080" required />
-                    <button type="button" class="btn btn-secondary" :disabled="suggestingPort" title="Pick a free host port on this node" @click="suggestPort">{{ suggestingPort ? '…' : 'Suggest' }}</button>
-                  </div>
+      <AppModal v-if="showBindReq" @close="showBindReq = false">
+        <div class="modal-header">
+          <h3>Request host binding</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showBindReq = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <form @submit.prevent="requestBind">
+          <div class="modal-body">
+            <p class="text-muted text-sm" style="margin-bottom: 14px">Publishes a container port on a host port. A platform admin must approve it; it takes effect on the next deploy.</p>
+            <div class="form-row">
+              <div class="form-group" style="flex: 1">
+                <label class="form-label">Container port</label>
+                <select v-model.number="bindForm.container_port" class="form-select">
+                  <option v-for="p in (app.ports || [])" :key="p.id" :value="p.container_port">{{ p.container_port }}/{{ p.protocol }}</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex: 1">
+                <label class="form-label">Host port</label>
+                <div class="flex items-center gap-2">
+                  <input v-model.number="bindForm.host_port" type="number" class="form-input" placeholder="30080" required />
+                  <button type="button" class="btn btn-secondary" :disabled="suggestingPort" title="Pick a free host port on this node" @click="suggestPort">{{ suggestingPort ? '…' : 'Suggest' }}</button>
                 </div>
               </div>
-              <p class="form-hint">Host ports are shared per node — “Suggest” picks one that’s currently free.</p>
             </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showBindReq = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="requestingBind || !bindForm.host_port">{{ requestingBind ? 'Requesting…' : 'Request' }}</button>
-            </div>
-          </form>
-        </div>
-      </div>
+            <p class="form-hint">Host ports are shared per node — “Suggest” picks one that’s currently free.</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showBindReq = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="requestingBind || !bindForm.host_port">{{ requestingBind ? 'Requesting…' : 'Request' }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <!-- Deploy dialog -->
     <Teleport to="body">
-      <div v-if="showDeploy" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>{{ deployVerb }} {{ app.name }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDeploy = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="confirmDeploy">
-            <div class="modal-body">
-              <div v-if="template" class="tpl-notice">
-                <span class="mdi mdi-store-outline"></span>
-                <div class="tpl-notice-text">
-                  <strong>Managed by the “{{ template.name }}” template.</strong>
-                  Changing the image here means it no longer matches the template, and a future template upgrade may overwrite it.
-                  <button type="button" class="tpl-notice-link" @click="goToUpgrade">Upgrade via Marketplace</button>
-                </div>
-              </div>
-              <div v-else-if="managedBy === 'gitops'" class="tpl-notice">
-                <span class="mdi mdi-source-branch"></span>
-                <div class="tpl-notice-text">
-                  <strong>Managed by GitOps.</strong>
-                  This app's desired state comes from a Git manifest. A manual redeploy may be reverted on the next
-                  <router-link :to="{ name: 'gitops' }">sync</router-link> — deploy from Git to make it stick.
-                </div>
-              </div>
-              <template v-if="app.source_type === 'image'">
-                <div class="form-group" style="margin-bottom: 8px">
-                  <label class="form-label">Image tag</label>
-                  <input v-model="deployTag" class="form-input" placeholder="latest" autofocus />
-                </div>
-                <p class="form-hint" style="margin-bottom: 16px">Deploys <code>{{ app.image }}:{{ deployTag.trim() || 'latest' }}</code> as a new release.</p>
-              </template>
-              <div v-else-if="deploysViaPipeline" class="tpl-notice" style="margin-bottom: 16px">
-                <span class="mdi mdi-pipe"></span>
-                <div class="tpl-notice-text">
-                  <strong>Deploys run the “{{ repoPipeline?.display_name || repoPipeline?.name }}” pipeline.</strong>
-                  Miabi runs the steps in <code>{{ repoPipeline?.source_path }}</code> on
-                  <code>{{ app.git_ref || 'the default branch' }}</code>; the deploy step rolls out the image they build.
-                  You'll follow the run's logs, not a deployment's.
-                </div>
-              </div>
-              <p v-else class="text-muted text-sm" style="margin-bottom: 16px">Builds the latest commit from the configured Git source as a new release.</p>
-              <div class="form-group" style="margin-bottom: 8px">
-                <label class="form-label">Deployment strategy</label>
-                <select v-model="deployStrategy" class="form-select">
-                  <option v-for="s in availableStrategies" :key="s.value" :value="s.value">{{ s.label }}</option>
-                </select>
-              </div>
-              <p class="form-hint">
-                {{ strategyHint(deployStrategy) }}
-                <span v-if="!isDeployed && deployStrategy === 'canary'"><br />First deploy can't canary — it will run as rolling.</span>
-                <span v-if="hasHostPorts"><br />Rolling isn't available: host port {{ hostPortList }} can only be held by one container at a time.</span>
-                <span v-if="hasHostPorts && deployStrategy === 'canary'"><br />The canary won't publish the host port — only traffic through a route reaches it.</span>
-              </p>
-              <div v-if="app.source_type === 'git'" class="form-group" style="margin-top: 16px; margin-bottom: 0">
-                <label class="checkbox-label" style="margin-bottom: 0">
-                  <input v-model="deployNoCache" type="checkbox" /> Rebuild without cache
-                </label>
-                <p class="form-hint">Rebuilds every layer for this deploy only. Slower — use it when a cached layer has gone stale.</p>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showDeploy = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="deploying">
-                <span class="mdi mdi-rocket-launch-outline"></span> {{ deploying ? 'Starting…' : deployVerb }}
-              </button>
-            </div>
-          </form>
+      <AppModal v-if="showDeploy" @close="showDeploy = false">
+        <div class="modal-header">
+          <h3>{{ deployVerb }} {{ app.name }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDeploy = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="confirmDeploy">
+          <div class="modal-body">
+            <div v-if="template" class="tpl-notice">
+              <span class="mdi mdi-store-outline"></span>
+              <div class="tpl-notice-text">
+                <strong>Managed by the “{{ template.name }}” template.</strong>
+                Changing the image here means it no longer matches the template, and a future template upgrade may overwrite it.
+                <button type="button" class="tpl-notice-link" @click="goToUpgrade">Upgrade via Marketplace</button>
+              </div>
+            </div>
+            <div v-else-if="managedBy === 'gitops'" class="tpl-notice">
+              <span class="mdi mdi-source-branch"></span>
+              <div class="tpl-notice-text">
+                <strong>Managed by GitOps.</strong>
+                This app's desired state comes from a Git manifest. A manual redeploy may be reverted on the next
+                <router-link :to="{ name: 'gitops' }">sync</router-link> — deploy from Git to make it stick.
+              </div>
+            </div>
+            <template v-if="app.source_type === 'image'">
+              <div class="form-group" style="margin-bottom: 8px">
+                <label class="form-label">Image tag</label>
+                <input v-model="deployTag" class="form-input" placeholder="latest" autofocus />
+              </div>
+              <p class="form-hint" style="margin-bottom: 16px">Deploys <code>{{ app.image }}:{{ deployTag.trim() || 'latest' }}</code> as a new release.</p>
+            </template>
+            <div v-else-if="deploysViaPipeline" class="tpl-notice" style="margin-bottom: 16px">
+              <span class="mdi mdi-pipe"></span>
+              <div class="tpl-notice-text">
+                <strong>Deploys run the “{{ repoPipeline?.display_name || repoPipeline?.name }}” pipeline.</strong>
+                Miabi runs the steps in <code>{{ repoPipeline?.source_path }}</code> on
+                <code>{{ app.git_ref || 'the default branch' }}</code>; the deploy step rolls out the image they build.
+                You'll follow the run's logs, not a deployment's.
+              </div>
+            </div>
+            <p v-else class="text-muted text-sm" style="margin-bottom: 16px">Builds the latest commit from the configured Git source as a new release.</p>
+            <div class="form-group" style="margin-bottom: 8px">
+              <label class="form-label">Deployment strategy</label>
+              <select v-model="deployStrategy" class="form-select">
+                <option v-for="s in availableStrategies" :key="s.value" :value="s.value">{{ s.label }}</option>
+              </select>
+            </div>
+            <p class="form-hint">
+              {{ strategyHint(deployStrategy) }}
+              <span v-if="!isDeployed && deployStrategy === 'canary'"><br />First deploy can't canary — it will run as rolling.</span>
+              <span v-if="hasHostPorts"><br />Rolling isn't available: host port {{ hostPortList }} can only be held by one container at a time.</span>
+              <span v-if="hasHostPorts && deployStrategy === 'canary'"><br />The canary won't publish the host port — only traffic through a route reaches it.</span>
+            </p>
+            <div v-if="app.source_type === 'git'" class="form-group" style="margin-top: 16px; margin-bottom: 0">
+              <label class="checkbox-label" style="margin-bottom: 0">
+                <input v-model="deployNoCache" type="checkbox" /> Rebuild without cache
+              </label>
+              <p class="form-hint">Rebuilds every layer for this deploy only. Slower — use it when a cached layer has gone stale.</p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showDeploy = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="deploying">
+              <span class="mdi mdi-rocket-launch-outline"></span> {{ deploying ? 'Starting…' : deployVerb }}
+            </button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <!-- Release detail -->
     <Teleport to="body">
-      <div v-if="releaseDetail" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Release v{{ releaseDetail.version }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="releaseDetail = null"><span class="mdi mdi-close"></span></button>
+      <AppModal v-if="releaseDetail" @close="releaseDetail = null">
+        <div class="modal-header">
+          <h3>Release v{{ releaseDetail.version }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="releaseDetail = null"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <div class="dns-field">
+            <span class="dns-field-label">Image</span>
+            <span class="dns-field-value">{{ releaseDetail.image }}</span>
           </div>
-          <div class="modal-body">
-            <div class="dns-field">
-              <span class="dns-field-label">Image</span>
-              <span class="dns-field-value">{{ releaseDetail.image }}</span>
-            </div>
-            <div class="dns-field">
-              <span class="dns-field-label">Container</span>
-              <span class="dns-field-value">{{ releaseDetail.container_id || '—' }}</span>
-            </div>
-            <div class="rel-meta">
-              <span v-if="releaseDetail.active" class="badge badge-success badge-dot">active</span>
-              <span v-else class="badge badge-neutral">inactive</span>
-              <span v-if="releaseDetail.pinned" class="badge badge-info"><span class="mdi mdi-pin" style="font-size: 12px"></span> pinned</span>
-              <span class="text-muted text-sm">Created {{ new Date(releaseDetail.created_at).toLocaleString() }}</span>
-            </div>
+          <div class="dns-field">
+            <span class="dns-field-label">Container</span>
+            <span class="dns-field-value">{{ releaseDetail.container_id || '—' }}</span>
           </div>
-          <div class="modal-footer">
-            <button v-if="!releaseDetail.active && ws.canEdit" class="btn btn-secondary" @click="activate(releaseDetail.id); releaseDetail = null">Activate</button>
-            <button v-if="ws.canEdit" class="btn btn-secondary" @click="togglePin(releaseDetail)">{{ releaseDetail.pinned ? 'Unpin' : 'Pin' }}</button>
-            <button v-if="ws.canEdit" class="btn btn-danger" :disabled="releaseDetail.active || releaseDetail.pinned" @click="deleteRelease(releaseDetail)">Delete</button>
+          <div class="rel-meta">
+            <span v-if="releaseDetail.active" class="badge badge-success badge-dot">active</span>
+            <span v-else class="badge badge-neutral">inactive</span>
+            <span v-if="releaseDetail.pinned" class="badge badge-info"><span class="mdi mdi-pin" style="font-size: 12px"></span> pinned</span>
+            <span class="text-muted text-sm">Created {{ new Date(releaseDetail.created_at).toLocaleString() }}</span>
           </div>
         </div>
-      </div>
+        <div class="modal-footer">
+          <button v-if="!releaseDetail.active && ws.canEdit" class="btn btn-secondary" @click="activate(releaseDetail.id); releaseDetail = null">Activate</button>
+          <button v-if="ws.canEdit" class="btn btn-secondary" @click="togglePin(releaseDetail)">{{ releaseDetail.pinned ? 'Unpin' : 'Pin' }}</button>
+          <button v-if="ws.canEdit" class="btn btn-danger" :disabled="releaseDetail.active || releaseDetail.pinned" @click="deleteRelease(releaseDetail)">Delete</button>
+        </div>
+      </AppModal>
     </Teleport>
 
     <Teleport to="body">

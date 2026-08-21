@@ -8,6 +8,7 @@ import { gitopsApi, type GitSourceInput } from '@/api/gitops'
 import { gitRepositoryApi } from '@/api/gitRepositories'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { GitSource, GitSourceStatus, GitRepository, ApplyPlan, PlanAction, ApplyResult } from '@/api/types'
+import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -314,149 +315,143 @@ function shortSha(sha?: string) { return sha ? sha.slice(0, 7) : '—' }
 
     <!-- Create / edit -->
     <Teleport to="body">
-      <div v-if="showModal" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>{{ editing ? 'Edit git source' : 'New git source' }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="save">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="form.name" class="form-input" placeholder="e.g. production" required autofocus aria-label="Name" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Git repository</label>
-                <select v-model="form.git_repository_id" class="form-select" required aria-label="Git repository">
-                  <option :value="null" disabled>Select a repository…</option>
-                  <option v-for="c in credentials" :key="c.id" :value="c.id">{{ c.name }} — {{ c.url }}</option>
-                </select>
-                <p v-if="credentials.length === 0" class="hint">
-                  No git repositories yet — <router-link to="/git-repositories">add one</router-link> (public or private) first.
-                </p>
-                <p v-else class="hint">
-                  The repository URL and credentials come from the selected git repository.
-                  <router-link to="/git-repositories">Manage repositories →</router-link>
-                </p>
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label class="form-label">Ref</label>
-                  <input v-model="form.ref" class="form-input" placeholder="main" aria-label="Ref" />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Path</label>
-                  <input v-model="form.path" class="form-input mono" placeholder="envs/prod" aria-label="Path" />
-                </div>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Sync policy</label>
-                <div class="tabs" style="margin-bottom: 0">
-                  <button type="button" class="tab" :class="{ active: form.sync_policy === 'manual' }" @click="form.sync_policy = 'manual'">Manual</button>
-                  <button type="button" class="tab" :class="{ active: form.sync_policy === 'auto' }" @click="form.sync_policy = 'auto'">Automatic</button>
-                </div>
-                <p class="hint">Automatic sources reconcile on the 3-minute sweep and on push webhook.</p>
-              </div>
-              <label class="check"><input type="checkbox" v-model="form.prune" /> <span>Prune — delete resources removed from Git</span></label>
-              <label class="check"><input type="checkbox" v-model="form.self_heal" /> <span>Self-heal — re-apply when live state drifts</span></label>
-              <label class="check" :class="{ disabled: !form.prune }">
-                <input type="checkbox" v-model="form.allow_empty" :disabled="!form.prune" />
-                <span>Allow empty — let an empty repo prune <strong>all</strong> resources (intentional teardown)</span>
-              </label>
-              <p v-if="form.allow_empty" class="hint warn">
-                <span class="mdi mdi-alert-outline"></span>
-                With this on, a commit that removes every manifest will delete all managed resources. A missing path is still always an error.
+      <AppModal v-if="showModal" @close="showModal = false">
+        <div class="modal-header">
+          <h3>{{ editing ? 'Edit git source' : 'New git source' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <form @submit.prevent="save">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="form.name" class="form-input" placeholder="e.g. production" required autofocus aria-label="Name" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Git repository</label>
+              <select v-model="form.git_repository_id" class="form-select" required aria-label="Git repository">
+                <option :value="null" disabled>Select a repository…</option>
+                <option v-for="c in credentials" :key="c.id" :value="c.id">{{ c.name }} — {{ c.url }}</option>
+              </select>
+              <p v-if="credentials.length === 0" class="hint">
+                No git repositories yet — <router-link to="/git-repositories">add one</router-link> (public or private) first.
+              </p>
+              <p v-else class="hint">
+                The repository URL and credentials come from the selected git repository.
+                <router-link to="/git-repositories">Manage repositories →</router-link>
               </p>
             </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Create') }}</button>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Ref</label>
+                <input v-model="form.ref" class="form-input" placeholder="main" aria-label="Ref" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Path</label>
+                <input v-model="form.path" class="form-input mono" placeholder="envs/prod" aria-label="Path" />
+              </div>
             </div>
-          </form>
-        </div>
-      </div>
+            <div class="form-group">
+              <label class="form-label">Sync policy</label>
+              <div class="tabs" style="margin-bottom: 0">
+                <button type="button" class="tab" :class="{ active: form.sync_policy === 'manual' }" @click="form.sync_policy = 'manual'">Manual</button>
+                <button type="button" class="tab" :class="{ active: form.sync_policy === 'auto' }" @click="form.sync_policy = 'auto'">Automatic</button>
+              </div>
+              <p class="hint">Automatic sources reconcile on the 3-minute sweep and on push webhook.</p>
+            </div>
+            <label class="check"><input type="checkbox" v-model="form.prune" /> <span>Prune — delete resources removed from Git</span></label>
+            <label class="check"><input type="checkbox" v-model="form.self_heal" /> <span>Self-heal — re-apply when live state drifts</span></label>
+            <label class="check" :class="{ disabled: !form.prune }">
+              <input type="checkbox" v-model="form.allow_empty" :disabled="!form.prune" />
+              <span>Allow empty — let an empty repo prune <strong>all</strong> resources (intentional teardown)</span>
+            </label>
+            <p v-if="form.allow_empty" class="hint warn">
+              <span class="mdi mdi-alert-outline"></span>
+              With this on, a commit that removes every manifest will delete all managed resources. A missing path is still always an error.
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Create') }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <!-- Diff viewer -->
     <Teleport to="body">
-      <div v-if="showDiff" class="modal-overlay">
-        <div class="modal modal-lg">
-          <div class="modal-header">
-            <h3>Diff — {{ diffSource?.name }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDiff = false"><span class="mdi mdi-close"></span></button>
+      <AppModal v-if="showDiff" dialog-class="modal-lg" @close="showDiff = false">
+        <div class="modal-header">
+          <h3>Diff — {{ diffSource?.name }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDiff = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <div v-if="diffLoading" class="card-body"><span class="spinner"></span></div>
+          <div v-else-if="planChanges.length === 0" class="empty-state">
+            <span class="mdi mdi-check-circle-outline" style="font-size: 40px; color: var(--success-600)"></span>
+            <h3>In sync</h3>
+            <p>The workspace matches the desired state in Git.</p>
           </div>
-          <div class="modal-body">
-            <div v-if="diffLoading" class="card-body"><span class="spinner"></span></div>
-            <div v-else-if="planChanges.length === 0" class="empty-state">
-              <span class="mdi mdi-check-circle-outline" style="font-size: 40px; color: var(--success-600)"></span>
-              <h3>In sync</h3>
-              <p>The workspace matches the desired state in Git.</p>
-            </div>
-            <div v-else class="diff-list">
-              <div v-for="(c, i) in planChanges" :key="i" class="diff-item">
-                <div class="diff-head">
-                  <span class="badge" :class="actionBadge[c.action]">{{ c.action }}</span>
-                  <span class="mono diff-name">{{ c.kind }}/{{ c.name }}</span>
-                  <span v-if="c.reason" class="cell-sub">{{ c.reason }}</span>
-                </div>
-                <table v-if="c.fields && c.fields.length" class="diff-fields">
-                  <tr v-for="(f, j) in c.fields" :key="j">
-                    <td class="mono diff-field">{{ f.field }}</td>
-                    <td class="mono diff-from">{{ f.from || '∅' }}</td>
-                    <td class="diff-arrow"><span class="mdi mdi-arrow-right"></span></td>
-                    <td class="mono diff-to">{{ f.to || '∅' }}</td>
-                  </tr>
-                </table>
+          <div v-else class="diff-list">
+            <div v-for="(c, i) in planChanges" :key="i" class="diff-item">
+              <div class="diff-head">
+                <span class="badge" :class="actionBadge[c.action]">{{ c.action }}</span>
+                <span class="mono diff-name">{{ c.kind }}/{{ c.name }}</span>
+                <span v-if="c.reason" class="cell-sub">{{ c.reason }}</span>
               </div>
+              <table v-if="c.fields && c.fields.length" class="diff-fields">
+                <tr v-for="(f, j) in c.fields" :key="j">
+                  <td class="mono diff-field">{{ f.field }}</td>
+                  <td class="mono diff-from">{{ f.from || '∅' }}</td>
+                  <td class="diff-arrow"><span class="mdi mdi-arrow-right"></span></td>
+                  <td class="mono diff-to">{{ f.to || '∅' }}</td>
+                </tr>
+              </table>
             </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showDiff = false">Close</button>
-            <button v-if="ws.canEdit && diffSource && planChanges.length" class="btn btn-primary" :disabled="syncing === diffSource.id"
-              @click="diffSource && sync(diffSource).then(() => { showDiff = false })">
-              <span class="mdi mdi-sync"></span> Sync now
-            </button>
           </div>
         </div>
-      </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="showDiff = false">Close</button>
+          <button v-if="ws.canEdit && diffSource && planChanges.length" class="btn btn-primary" :disabled="syncing === diffSource.id"
+            @click="diffSource && sync(diffSource).then(() => { showDiff = false })">
+            <span class="mdi mdi-sync"></span> Sync now
+          </button>
+        </div>
+      </AppModal>
     </Teleport>
 
     <!-- Teardown follow-up: what a cascade delete removed -->
     <Teleport to="body">
-      <div v-if="teardown" class="modal-overlay">
-        <div class="modal modal-lg">
-          <div class="modal-header">
-            <h3>Resources removed — {{ teardown.name }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="teardown = null"><span class="mdi mdi-close"></span></button>
+      <AppModal v-if="teardown" dialog-class="modal-lg" @close="teardown = null">
+        <div class="modal-header">
+          <h3>Resources removed — {{ teardown.name }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="teardown = null"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <p v-if="teardownFailed" class="teardown-summary failed">
+            <span class="mdi mdi-alert-circle-outline"></span>
+            {{ teardown.result.applied }} removed, {{ teardown.result.failures?.length }} failed — the failed resources may need manual cleanup.
+          </p>
+          <p v-else class="teardown-summary ok">
+            <span class="mdi mdi-check-circle-outline"></span>
+            {{ teardownItems.length }} resource{{ teardownItems.length === 1 ? '' : 's' }} removed.
+          </p>
+          <div v-if="teardownItems.length === 0" class="empty-state">
+            <p>This project had no managed resources to remove.</p>
           </div>
-          <div class="modal-body">
-            <p v-if="teardownFailed" class="teardown-summary failed">
-              <span class="mdi mdi-alert-circle-outline"></span>
-              {{ teardown.result.applied }} removed, {{ teardown.result.failures?.length }} failed — the failed resources may need manual cleanup.
-            </p>
-            <p v-else class="teardown-summary ok">
-              <span class="mdi mdi-check-circle-outline"></span>
-              {{ teardownItems.length }} resource{{ teardownItems.length === 1 ? '' : 's' }} removed.
-            </p>
-            <div v-if="teardownItems.length === 0" class="empty-state">
-              <p>This project had no managed resources to remove.</p>
-            </div>
-            <div v-else class="diff-list">
-              <div v-for="(it, i) in teardownItems" :key="i" class="diff-item">
-                <div class="diff-head">
-                  <span class="badge" :class="it.error ? 'badge-danger' : 'badge-neutral'">{{ it.error ? 'failed' : 'removed' }}</span>
-                  <span class="mono diff-name">{{ it.kind }}/{{ it.name }}</span>
-                  <span v-if="it.error" class="cell-sub teardown-err">{{ it.error }}</span>
-                </div>
+          <div v-else class="diff-list">
+            <div v-for="(it, i) in teardownItems" :key="i" class="diff-item">
+              <div class="diff-head">
+                <span class="badge" :class="it.error ? 'badge-danger' : 'badge-neutral'">{{ it.error ? 'failed' : 'removed' }}</span>
+                <span class="mono diff-name">{{ it.kind }}/{{ it.name }}</span>
+                <span v-if="it.error" class="cell-sub teardown-err">{{ it.error }}</span>
               </div>
             </div>
           </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="teardown = null">Close</button>
-          </div>
         </div>
-      </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="teardown = null">Close</button>
+        </div>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

@@ -9,6 +9,7 @@ import type { Volume, WorkspaceUsage, WorkspaceStorage } from '@/api/types'
 import NodePicker from '@/components/NodePicker.vue'
 import { fmtSize } from '@/utils/format'
 import { relativeTime } from '@/utils/time'
+import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -224,84 +225,82 @@ function fmtDate(s?: string) {
     </div>
 
     <Teleport to="body">
-      <div v-if="showCreate" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>New volume</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="create">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="name" class="form-input" placeholder="e.g. app-data" required autofocus />
-              </div>
-              <NodePicker v-model="serverId" />
-              <div class="form-group">
-                <label class="form-label">Type</label>
-                <select v-model="driver" class="form-select">
-                  <option value="local">Local (node-local)</option>
-                  <option value="nfs" :disabled="!sharedAllowed">NFS (shared){{ sharedAllowed ? '' : ' — not in your plan' }}</option>
-                  <option value="cifs" :disabled="!sharedAllowed">CIFS / SMB (shared){{ sharedAllowed ? '' : ' — not in your plan' }}</option>
-                  <option value="host" :disabled="!hostAllowed">Host path (/mnt/*){{ hostAllowed ? '' : ' — privileged only' }}</option>
-                </select>
-                <p class="form-hint">
-                  <template v-if="driver === 'local'">Lives on one node. Use for single-replica apps.</template>
-                  <template v-else-if="driver === 'host'">Bind a path your operator has mounted at the same location on every node (e.g. a NAS at /mnt). No credentials stored in Miabi; a replicated cluster app can share it.</template>
-                  <template v-else>Shared (RWX) storage on your NAS — a replicated cluster app can mount it across nodes.</template>
-                </p>
-                <p v-if="!sharedAllowed" class="form-hint" style="color: var(--warning, #d97706)">
-                  <span class="mdi mdi-lock-outline"></span> Shared storage (NFS / CIFS-SMB) isn't included in this workspace's plan.
-                </p>
-              </div>
-              <template v-if="driver === 'nfs'">
-                <div class="form-row">
-                  <div class="form-group" style="flex: 1; margin-bottom: 0">
-                    <label class="form-label">NFS server</label>
-                    <input v-model="nfsServer" class="form-input" placeholder="10.0.0.5" required style="font-family: monospace" />
-                  </div>
-                  <div class="form-group" style="flex: 1; margin-bottom: 0">
-                    <label class="form-label">Export path</label>
-                    <input v-model="nfsExport" class="form-input" placeholder="/exports/app" required style="font-family: monospace" />
-                  </div>
-                </div>
-              </template>
-              <template v-else-if="driver === 'cifs'">
-                <div class="form-group">
-                  <label class="form-label">Share</label>
-                  <input v-model="cifsShare" class="form-input" placeholder="//10.0.0.5/share" required style="font-family: monospace" />
-                </div>
-                <div class="form-row">
-                  <div class="form-group" style="flex: 1; margin-bottom: 0">
-                    <label class="form-label">Username</label>
-                    <input v-model="cifsUser" class="form-input" autocomplete="off" />
-                  </div>
-                  <div class="form-group" style="flex: 1; margin-bottom: 0">
-                    <label class="form-label">Password</label>
-                    <input v-model="cifsPass" type="password" class="form-input" autocomplete="new-password" />
-                  </div>
-                </div>
-              </template>
-              <template v-else-if="driver === 'host'">
-                <div class="form-group">
-                  <label class="form-label">Host path</label>
-                  <input v-model="hostPath" class="form-input" placeholder="/mnt/nas/app" required style="font-family: monospace" />
-                  <p class="form-hint">Must be an absolute path under <code>/mnt/</code>. The operator is responsible for mounting the storage at this exact path on every node.</p>
-                </div>
-              </template>
-              <div class="form-group" style="margin-bottom: 0; margin-top: 16px">
-                <label class="form-label">Size limit (MB) <span class="text-muted" style="font-weight: 400">(optional)</span></label>
-                <input v-model.number="sizeMb" type="number" min="0" class="form-input" placeholder="Leave empty for no declared limit" />
-                <p class="form-hint">Declared capacity, recorded for quota accounting. Hard enforcement depends on the node's storage backend.</p>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="creating">{{ creating ? 'Creating…' : 'Create volume' }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showCreate" @close="showCreate = false">
+        <div class="modal-header">
+          <h3>New volume</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="create">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="name" class="form-input" placeholder="e.g. app-data" required autofocus />
+            </div>
+            <NodePicker v-model="serverId" />
+            <div class="form-group">
+              <label class="form-label">Type</label>
+              <select v-model="driver" class="form-select">
+                <option value="local">Local (node-local)</option>
+                <option value="nfs" :disabled="!sharedAllowed">NFS (shared){{ sharedAllowed ? '' : ' — not in your plan' }}</option>
+                <option value="cifs" :disabled="!sharedAllowed">CIFS / SMB (shared){{ sharedAllowed ? '' : ' — not in your plan' }}</option>
+                <option value="host" :disabled="!hostAllowed">Host path (/mnt/*){{ hostAllowed ? '' : ' — privileged only' }}</option>
+              </select>
+              <p class="form-hint">
+                <template v-if="driver === 'local'">Lives on one node. Use for single-replica apps.</template>
+                <template v-else-if="driver === 'host'">Bind a path your operator has mounted at the same location on every node (e.g. a NAS at /mnt). No credentials stored in Miabi; a replicated cluster app can share it.</template>
+                <template v-else>Shared (RWX) storage on your NAS — a replicated cluster app can mount it across nodes.</template>
+              </p>
+              <p v-if="!sharedAllowed" class="form-hint" style="color: var(--warning, #d97706)">
+                <span class="mdi mdi-lock-outline"></span> Shared storage (NFS / CIFS-SMB) isn't included in this workspace's plan.
+              </p>
+            </div>
+            <template v-if="driver === 'nfs'">
+              <div class="form-row">
+                <div class="form-group" style="flex: 1; margin-bottom: 0">
+                  <label class="form-label">NFS server</label>
+                  <input v-model="nfsServer" class="form-input" placeholder="10.0.0.5" required style="font-family: monospace" />
+                </div>
+                <div class="form-group" style="flex: 1; margin-bottom: 0">
+                  <label class="form-label">Export path</label>
+                  <input v-model="nfsExport" class="form-input" placeholder="/exports/app" required style="font-family: monospace" />
+                </div>
+              </div>
+            </template>
+            <template v-else-if="driver === 'cifs'">
+              <div class="form-group">
+                <label class="form-label">Share</label>
+                <input v-model="cifsShare" class="form-input" placeholder="//10.0.0.5/share" required style="font-family: monospace" />
+              </div>
+              <div class="form-row">
+                <div class="form-group" style="flex: 1; margin-bottom: 0">
+                  <label class="form-label">Username</label>
+                  <input v-model="cifsUser" class="form-input" autocomplete="off" />
+                </div>
+                <div class="form-group" style="flex: 1; margin-bottom: 0">
+                  <label class="form-label">Password</label>
+                  <input v-model="cifsPass" type="password" class="form-input" autocomplete="new-password" />
+                </div>
+              </div>
+            </template>
+            <template v-else-if="driver === 'host'">
+              <div class="form-group">
+                <label class="form-label">Host path</label>
+                <input v-model="hostPath" class="form-input" placeholder="/mnt/nas/app" required style="font-family: monospace" />
+                <p class="form-hint">Must be an absolute path under <code>/mnt/</code>. The operator is responsible for mounting the storage at this exact path on every node.</p>
+              </div>
+            </template>
+            <div class="form-group" style="margin-bottom: 0; margin-top: 16px">
+              <label class="form-label">Size limit (MB) <span class="text-muted" style="font-weight: 400">(optional)</span></label>
+              <input v-model.number="sizeMb" type="number" min="0" class="form-input" placeholder="Leave empty for no declared limit" />
+              <p class="form-hint">Declared capacity, recorded for quota accounting. Hard enforcement depends on the node's storage backend.</p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="creating">{{ creating ? 'Creating…' : 'Create volume' }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
   </div>
 </template>

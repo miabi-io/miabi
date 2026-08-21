@@ -4,6 +4,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { wsUrl } from '@/api/client'
+import AppModal from '@/components/AppModal.vue'
 
 // ShellTerminal opens a live interactive shell into an application's running
 // container over a WebSocket. The connection is authenticated via ?token= and
@@ -84,23 +85,21 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="modal-overlay">
-    <div class="modal shell-modal">
-      <div class="modal-header">
-        <h3>
-          <span class="mdi mdi-console-line"></span>
-          Shell — {{ appName }}
-          <span class="shell-status" :class="status">{{ status }}</span>
-        </h3>
-        <button class="btn-icon btn-icon-muted" title="Close" aria-label="Close" @click="emit('close')">
-          <span class="mdi mdi-close"></span>
-        </button>
-      </div>
-      <div class="modal-body shell-body">
-        <div ref="host" class="shell-host"></div>
-      </div>
+  <AppModal dialog-class="shell-modal" @close="emit('close')">
+    <div class="modal-header">
+      <h3>
+        <span class="mdi mdi-console-line"></span>
+        Shell — {{ appName }}
+        <span class="shell-status" :class="status">{{ status }}</span>
+      </h3>
+      <button class="btn-icon btn-icon-muted" title="Close" aria-label="Close" @click="emit('close')">
+        <span class="mdi mdi-close"></span>
+      </button>
     </div>
-  </div>
+    <div class="modal-body shell-body">
+      <div ref="host" class="shell-host"></div>
+    </div>
+  </AppModal>
 </template>
 
 <style scoped>

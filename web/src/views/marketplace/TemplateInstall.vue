@@ -8,6 +8,7 @@ import type { CatalogEntry, TemplateManifest, ManifestDatabase, InstallJob, Temp
 import { databaseApi } from '@/api/resources'
 import { apiErrorMessage } from '@/api/client'
 import type { DatabaseInstance } from '@/api/types'
+import AppModal from '@/components/AppModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -553,196 +554,187 @@ onUnmounted(stopJobStream)
 
     <!-- CONFIRMATION / LIVE PROGRESS -->
     <Teleport to="body">
-      <div v-if="confirmOpen && entry" class="modal-overlay">
-        <!-- Review (before install) -->
-        <div v-if="!installJob" class="modal">
-          <div class="modal-header">
-            <h3>Install {{ form.name || entry.display_name }}?</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="confirmOpen = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <div class="modal-body">
-            <p class="text-muted text-sm" style="margin-bottom: 14px">
-              This will create the following in <strong>{{ ws.contextLabel }}</strong>:
-            </p>
-            <dl class="review">
-              <div class="review-row">
-                <dt>Template</dt>
-                <dd>{{ entry.display_name }} <span class="cell-sub">v{{ version || entry.version }}</span></dd>
-              </div>
-              <div v-if="(manifest?.applications ?? []).length" class="review-row">
-                <dt>{{ (manifest?.applications ?? []).length > 1 ? 'Applications' : 'Application' }}</dt>
-                <dd>
-                  <div v-for="a in manifest?.applications ?? []" :key="a.name">
-                    {{ a.image }}{{ a.tag ? ':' + a.tag : '' }}
-                  </div>
-                </dd>
-              </div>
-              <div v-if="(manifest?.databases ?? []).length" class="review-row">
-                <dt>Databases</dt>
-                <dd>
-                  <div v-for="d in manifest?.databases ?? []" :key="d.name">
-                    {{ d.engine }} <span class="cell-sub">— {{ placementLabel(d) }}</span>
-                  </div>
-                </dd>
-              </div>
-              <div v-if="(manifest?.volumes ?? []).length" class="review-row">
-                <dt>Volumes</dt>
-                <dd>{{ volumeNames() }}</dd>
-              </div>
-            </dl>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="confirmOpen = false" :disabled="installing">Back</button>
-            <button type="button" class="btn btn-primary" :disabled="installing" @click="install">
-              {{ installing ? 'Installing…' : 'Confirm & install' }}
-            </button>
-          </div>
+      <!-- Review (before install) -->
+      <AppModal v-if="(confirmOpen && entry) && (!installJob)" @close="confirmOpen = false">
+        <div class="modal-header">
+          <h3>Install {{ form.name || entry.display_name }}?</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="confirmOpen = false"><span class="mdi mdi-close"></span></button>
         </div>
-
-        <!-- Live progress (during install) -->
-        <div v-else class="modal">
-          <div class="modal-header">
-            <h3>{{ installJob.status === 'failed' ? 'Install failed' : `Installing ${form.name || entry.display_name}` }}</h3>
-            <button v-if="installJob.status !== 'running'" class="btn-icon btn-icon-muted" aria-label="Close" @click="closeProgress">
-              <span class="mdi mdi-close"></span>
-            </button>
-          </div>
-          <div class="modal-body">
-            <ul class="install-steps">
-              <li v-for="p in installJob.phases" :key="p.key" class="install-step" :class="`is-${p.status}`">
-                <span class="mdi step-icon" :class="stepIcon(p.status)"></span>
-                <span class="step-label">{{ p.label }}</span>
-              </li>
-            </ul>
-            <p v-if="installJob.status === 'running' && installJob.message" class="install-msg">
-              {{ installJob.message }}
-            </p>
-            <div v-else-if="installJob.status === 'failed'" class="danger-note" style="margin-top: 14px">
-              <span class="mdi mdi-alert-outline"></span>
-              <div>{{ installJob.error || 'The install could not be completed.' }}</div>
+        <div class="modal-body">
+          <p class="text-muted text-sm" style="margin-bottom: 14px">
+            This will create the following in <strong>{{ ws.contextLabel }}</strong>:
+          </p>
+          <dl class="review">
+            <div class="review-row">
+              <dt>Template</dt>
+              <dd>{{ entry.display_name }} <span class="cell-sub">v{{ version || entry.version }}</span></dd>
             </div>
-          </div>
-          <div v-if="installJob.status === 'failed'" class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="closeProgress">Back to form</button>
+            <div v-if="(manifest?.applications ?? []).length" class="review-row">
+              <dt>{{ (manifest?.applications ?? []).length > 1 ? 'Applications' : 'Application' }}</dt>
+              <dd>
+                <div v-for="a in manifest?.applications ?? []" :key="a.name">
+                  {{ a.image }}{{ a.tag ? ':' + a.tag : '' }}
+                </div>
+              </dd>
+            </div>
+            <div v-if="(manifest?.databases ?? []).length" class="review-row">
+              <dt>Databases</dt>
+              <dd>
+                <div v-for="d in manifest?.databases ?? []" :key="d.name">
+                  {{ d.engine }} <span class="cell-sub">— {{ placementLabel(d) }}</span>
+                </div>
+              </dd>
+            </div>
+            <div v-if="(manifest?.volumes ?? []).length" class="review-row">
+              <dt>Volumes</dt>
+              <dd>{{ volumeNames() }}</dd>
+            </div>
+          </dl>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="confirmOpen = false" :disabled="installing">Back</button>
+          <button type="button" class="btn btn-primary" :disabled="installing" @click="install">
+            {{ installing ? 'Installing…' : 'Confirm & install' }}
+          </button>
+        </div>
+      </AppModal>
+      <!-- Live progress (during install) -->
+      <AppModal v-else-if="(confirmOpen && entry) && installJob" @close="confirmOpen = false">
+        <div class="modal-header">
+          <h3>{{ installJob.status === 'failed' ? 'Install failed' : `Installing ${form.name || entry.display_name}` }}</h3>
+          <button v-if="installJob.status !== 'running'" class="btn-icon btn-icon-muted" aria-label="Close" @click="closeProgress">
+            <span class="mdi mdi-close"></span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <ul class="install-steps">
+            <li v-for="p in installJob.phases" :key="p.key" class="install-step" :class="`is-${p.status}`">
+              <span class="mdi step-icon" :class="stepIcon(p.status)"></span>
+              <span class="step-label">{{ p.label }}</span>
+            </li>
+          </ul>
+          <p v-if="installJob.status === 'running' && installJob.message" class="install-msg">
+            {{ installJob.message }}
+          </p>
+          <div v-else-if="installJob.status === 'failed'" class="danger-note" style="margin-top: 14px">
+            <span class="mdi mdi-alert-outline"></span>
+            <div>{{ installJob.error || 'The install could not be completed.' }}</div>
           </div>
         </div>
-      </div>
+        <div v-if="installJob.status === 'failed'" class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="closeProgress">Back to form</button>
+        </div>
+      </AppModal>
     </Teleport>
 
     <!-- EDIT (custom templates) -->
     <Teleport to="body">
-      <div v-if="editOpen" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Edit template</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="editOpen = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="saveEdit">
-            <div class="modal-body">
-              <p class="text-muted text-sm" style="margin-bottom: 12px">
-                Edit the manifest for this custom template. It is re-validated on save. The
-                <code>name</code> cannot be changed.
-              </p>
-              <div v-if="editLoading" class="loading-page"><span class="spinner"></span></div>
-              <textarea v-else v-model="editYaml" class="form-input mono" rows="16" spellcheck="false"></textarea>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="editOpen = false" :disabled="saving">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving || editLoading || !editYaml.trim()">
-                {{ saving ? 'Saving…' : 'Save changes' }}
-              </button>
-            </div>
-          </form>
+      <AppModal v-if="editOpen" @close="editOpen = false">
+        <div class="modal-header">
+          <h3>Edit template</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="editOpen = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="saveEdit">
+          <div class="modal-body">
+            <p class="text-muted text-sm" style="margin-bottom: 12px">
+              Edit the manifest for this custom template. It is re-validated on save. The
+              <code>name</code> cannot be changed.
+            </p>
+            <div v-if="editLoading" class="loading-page"><span class="spinner"></span></div>
+            <textarea v-else v-model="editYaml" class="form-input mono" rows="16" spellcheck="false"></textarea>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="editOpen = false" :disabled="saving">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving || editLoading || !editYaml.trim()">
+              {{ saving ? 'Saving…' : 'Save changes' }}
+            </button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <!-- DELETE CONFIRMATION (custom templates) -->
     <Teleport to="body">
-      <div v-if="deleteOpen && entry" class="modal-overlay">
-        <div class="modal modal-sm">
-          <div class="modal-header">
-            <h3>Delete {{ entry.display_name }}?</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="deleteOpen = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <div class="modal-body">
-            <div class="danger-note">
-              <span class="mdi mdi-alert-outline"></span>
-              <div>
-                This removes the custom template from this workspace. Existing installs are not affected. This cannot
-                be undone.
-              </div>
+      <AppModal v-if="deleteOpen && entry" dialog-class="modal-sm" @close="deleteOpen = false">
+        <div class="modal-header">
+          <h3>Delete {{ entry.display_name }}?</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="deleteOpen = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <div class="danger-note">
+            <span class="mdi mdi-alert-outline"></span>
+            <div>
+              This removes the custom template from this workspace. Existing installs are not affected. This cannot
+              be undone.
             </div>
           </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="deleteOpen = false" :disabled="deleting">Cancel</button>
-            <button type="button" class="btn btn-danger" :disabled="deleting" @click="confirmDelete">
-              {{ deleting ? 'Deleting…' : 'Delete template' }}
-            </button>
-          </div>
         </div>
-      </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="deleteOpen = false" :disabled="deleting">Cancel</button>
+          <button type="button" class="btn btn-danger" :disabled="deleting" @click="confirmDelete">
+            {{ deleting ? 'Deleting…' : 'Delete template' }}
+          </button>
+        </div>
+      </AppModal>
     </Teleport>
 
     <!-- UPGRADE PREVIEW -->
     <Teleport to="body">
-      <div v-if="upgradeTarget" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Upgrade {{ upgradeTarget.template_display_name }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="upgradeTarget = null"><span class="mdi mdi-close"></span></button>
-          </div>
-          <div class="modal-body">
-            <div v-if="upgradePlanErr" class="danger-note"><span class="mdi mdi-alert-outline"></span><div>{{ upgradePlanErr }}</div></div>
-            <div v-else-if="!upgradePlan" class="text-muted text-sm">Computing changes…</div>
-            <template v-else>
-              <p class="text-sm" style="margin-bottom: 12px">
-                <code>v{{ upgradePlan.from_version }}</code> → <code>v{{ upgradePlan.to_version }}</code>
-              </p>
+      <AppModal v-if="upgradeTarget" @close="upgradeTarget = null">
+        <div class="modal-header">
+          <h3>Upgrade {{ upgradeTarget.template_display_name }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="upgradeTarget = null"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <div v-if="upgradePlanErr" class="danger-note"><span class="mdi mdi-alert-outline"></span><div>{{ upgradePlanErr }}</div></div>
+          <div v-else-if="!upgradePlan" class="text-muted text-sm">Computing changes…</div>
+          <template v-else>
+            <p class="text-sm" style="margin-bottom: 12px">
+              <code>v{{ upgradePlan.from_version }}</code> → <code>v{{ upgradePlan.to_version }}</code>
+            </p>
 
-              <div v-for="a in upgradePlan.apps" :key="a.name" class="upg-app">
-                <div class="upg-app-name"><span class="mdi mdi-cube-outline"></span> {{ a.name }}</div>
+            <div v-for="a in upgradePlan.apps" :key="a.name" class="upg-app">
+              <div class="upg-app-name"><span class="mdi mdi-cube-outline"></span> {{ a.name }}</div>
+              <ul class="upg-list">
+                <li v-if="a.image_changed">image <code>{{ a.old_image }}</code> → <code>{{ a.new_image }}</code></li>
+                <li v-for="e in a.env" :key="e.key">
+                  env <code>{{ e.key }}</code>
+                  <span class="badge" :class="{ 'badge-success': e.kind === 'added', 'badge-warning': e.kind === 'changed', 'badge-neutral': e.kind === 'removed' }">{{ e.kind }}</span>
+                  <span v-if="e.secret" class="text-muted">· secret</span>
+                </li>
+                <li v-for="m in a.new_mounts" :key="m">new mount <code>{{ m }}</code></li>
+                <li v-if="!a.image_changed && !a.env?.length && !a.new_mounts?.length" class="text-muted">no changes</li>
+              </ul>
+            </div>
+
+            <p v-if="upgradePlan.new_volumes?.length" class="text-sm">New volumes: <code v-for="v in upgradePlan.new_volumes" :key="v" style="margin-right: 4px">{{ v }}</code></p>
+
+            <div v-if="upgradePlan.new_inputs?.length" class="upg-inputs">
+              <p class="text-sm" style="font-weight: 600">New settings to provide</p>
+              <div v-for="inp in upgradePlan.new_inputs" :key="inp.key" class="form-group" style="margin-bottom: 8px">
+                <label class="form-label">{{ inp.label || inp.key }}<span v-if="inp.required" style="color: var(--danger-600)"> *</span></label>
+                <input v-model="upgradeInputs[inp.key]" class="form-input" :placeholder="inp.help || ''" :aria-label="inp.label || inp.key" />
+              </div>
+            </div>
+
+            <div v-if="upgradePlan.warnings?.length" class="danger-note" style="margin-top: 12px">
+              <span class="mdi mdi-alert-outline"></span>
+              <div>
+                <strong>Applied manually:</strong>
                 <ul class="upg-list">
-                  <li v-if="a.image_changed">image <code>{{ a.old_image }}</code> → <code>{{ a.new_image }}</code></li>
-                  <li v-for="e in a.env" :key="e.key">
-                    env <code>{{ e.key }}</code>
-                    <span class="badge" :class="{ 'badge-success': e.kind === 'added', 'badge-warning': e.kind === 'changed', 'badge-neutral': e.kind === 'removed' }">{{ e.kind }}</span>
-                    <span v-if="e.secret" class="text-muted">· secret</span>
-                  </li>
-                  <li v-for="m in a.new_mounts" :key="m">new mount <code>{{ m }}</code></li>
-                  <li v-if="!a.image_changed && !a.env?.length && !a.new_mounts?.length" class="text-muted">no changes</li>
+                  <li v-for="(wn, idx) in upgradePlan.warnings" :key="idx">{{ wn }}</li>
                 </ul>
               </div>
-
-              <p v-if="upgradePlan.new_volumes?.length" class="text-sm">New volumes: <code v-for="v in upgradePlan.new_volumes" :key="v" style="margin-right: 4px">{{ v }}</code></p>
-
-              <div v-if="upgradePlan.new_inputs?.length" class="upg-inputs">
-                <p class="text-sm" style="font-weight: 600">New settings to provide</p>
-                <div v-for="inp in upgradePlan.new_inputs" :key="inp.key" class="form-group" style="margin-bottom: 8px">
-                  <label class="form-label">{{ inp.label || inp.key }}<span v-if="inp.required" style="color: var(--danger-600)"> *</span></label>
-                  <input v-model="upgradeInputs[inp.key]" class="form-input" :placeholder="inp.help || ''" :aria-label="inp.label || inp.key" />
-                </div>
-              </div>
-
-              <div v-if="upgradePlan.warnings?.length" class="danger-note" style="margin-top: 12px">
-                <span class="mdi mdi-alert-outline"></span>
-                <div>
-                  <strong>Applied manually:</strong>
-                  <ul class="upg-list">
-                    <li v-for="(wn, idx) in upgradePlan.warnings" :key="idx">{{ wn }}</li>
-                  </ul>
-                </div>
-              </div>
-            </template>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" :disabled="upgrading" @click="upgradeTarget = null">Cancel</button>
-            <button type="button" class="btn btn-primary" :disabled="!upgradePlan || upgrading || upgradeMissingInput" @click="confirmUpgrade">
-              {{ upgrading ? 'Upgrading…' : `Upgrade to v${upgradePlan?.to_version ?? ''}` }}
-            </button>
-          </div>
+            </div>
+          </template>
         </div>
-      </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" :disabled="upgrading" @click="upgradeTarget = null">Cancel</button>
+          <button type="button" class="btn btn-primary" :disabled="!upgradePlan || upgrading || upgradeMissingInput" @click="confirmUpgrade">
+            {{ upgrading ? 'Upgrading…' : `Upgrade to v${upgradePlan?.to_version ?? ''}` }}
+          </button>
+        </div>
+      </AppModal>
     </Teleport>
   </div>
 </template>

@@ -20,6 +20,7 @@ import ProjectNode from './ProjectNode.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import LogViewer from '@/components/LogViewer.vue'
 import { kindOf, nodeStatusMeta, gitSourceStatusMeta, edgeLabel, resourceRoute } from './topologyMeta'
+import AppModal from '@/components/AppModal.vue'
 import type { GitSource, Topology, TopologyNode, PlanChange, NodeStatus, AppEvent, ApplyPlan } from '@/api/types'
 
 // Synthetic id for the project root node (the GitSource itself is not a
@@ -871,35 +872,33 @@ const policyFlags = computed(() => {
     />
 
     <!-- Preview & sync -->
-    <div v-if="previewOpen" class="modal-overlay">
-      <div class="preview-modal">
-        <div class="preview-head">
-          <h3>Sync preview</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="previewOpen = false"><span class="mdi mdi-close"></span></button>
-        </div>
-        <div class="preview-body">
-          <div v-if="previewLoading" class="drawer-empty"><span class="spinner"></span></div>
-          <div v-else-if="previewChanges.length === 0" class="drawer-empty">
-            <span class="mdi mdi-check-circle-outline"></span>
-            <p>In sync — nothing to apply.</p>
-          </div>
-          <ul v-else class="preview-list">
-            <li v-for="(c, i) in previewChanges" :key="i" class="preview-change">
-              <span class="badge" :class="planActionMeta(c.action).badge">{{ planActionMeta(c.action).label }}</span>
-              <span class="preview-kind">{{ c.kind }}</span>
-              <span class="preview-name mono">{{ c.name }}</span>
-            </li>
-          </ul>
-        </div>
-        <div class="preview-foot">
-          <button class="btn btn-secondary" @click="previewOpen = false">Cancel</button>
-          <button class="btn btn-primary" :disabled="syncing || previewLoading" @click="previewAndSync">
-            <span class="mdi" :class="syncing ? 'mdi-loading mdi-spin' : 'mdi-sync'"></span>
-            Sync<span v-if="previewChanges.length"> ({{ previewChanges.length }})</span>
-          </button>
-        </div>
+    <AppModal v-if="previewOpen" bare dialog-class="preview-modal" @close="previewOpen = false">
+      <div class="preview-head">
+        <h3>Sync preview</h3>
+        <button class="btn-icon btn-icon-muted" aria-label="Close" @click="previewOpen = false"><span class="mdi mdi-close"></span></button>
       </div>
-    </div>
+      <div class="preview-body">
+        <div v-if="previewLoading" class="drawer-empty"><span class="spinner"></span></div>
+        <div v-else-if="previewChanges.length === 0" class="drawer-empty">
+          <span class="mdi mdi-check-circle-outline"></span>
+          <p>In sync — nothing to apply.</p>
+        </div>
+        <ul v-else class="preview-list">
+          <li v-for="(c, i) in previewChanges" :key="i" class="preview-change">
+            <span class="badge" :class="planActionMeta(c.action).badge">{{ planActionMeta(c.action).label }}</span>
+            <span class="preview-kind">{{ c.kind }}</span>
+            <span class="preview-name mono">{{ c.name }}</span>
+          </li>
+        </ul>
+      </div>
+      <div class="preview-foot">
+        <button class="btn btn-secondary" @click="previewOpen = false">Cancel</button>
+        <button class="btn btn-primary" :disabled="syncing || previewLoading" @click="previewAndSync">
+          <span class="mdi" :class="syncing ? 'mdi-loading mdi-spin' : 'mdi-sync'"></span>
+          Sync<span v-if="previewChanges.length"> ({{ previewChanges.length }})</span>
+        </button>
+      </div>
+    </AppModal>
   </div>
 </template>
 

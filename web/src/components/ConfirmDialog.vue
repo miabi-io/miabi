@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
-import { useModal } from '@/composables/useModal'
+import AppModal from '@/components/AppModal.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -29,42 +29,29 @@ const emit = defineEmits<{ (e: 'confirm'): void; (e: 'cancel'): void }>()
 let seq = 0
 const titleId = `confirm-title-${seq++}`
 const confirmBtn = ref<HTMLButtonElement | null>(null)
+const cancelBtn = ref<HTMLButtonElement | null>(null)
 
 // Escape cancels, unless the dialog is mid-action; on open, focus lands on the
 // primary action rather than on the page behind it. Only the buttons dismiss
 // this dialog — clicking the backdrop does nothing, so a confirmation cannot be
 // waved away by an errant click.
-const dialog = ref<HTMLElement | null>(null)
 
-useModal(
-  () => props.open,
-  {
-    onRequestClose: () => emit('cancel'),
-    container: dialog,
-    escapable: () => !props.busy,
-    autoFocus: false,
-  },
-)
 
+// Focus goes to the safe choice on a destructive prompt: Enter should not be
+// able to delete something the user has only just been asked about. Everywhere
+// else the primary action is the one they came for.
 watch(
   () => props.open,
   (open) => {
-    if (open) nextTick(() => confirmBtn.value?.focus())
+    if (!open) return
+    nextTick(() => (props.variant === 'danger' ? cancelBtn.value : confirmBtn.value)?.focus())
   },
 )
 </script>
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="modal-overlay modal-overlay-elevated">
-      <div
-        ref="dialog"
-        class="modal"
-        role="dialog"
-        aria-modal="true"
-        :aria-labelledby="titleId"
-        style="max-width: 460px; width: 100%"
-      >
+    <AppModal v-if="open" elevated max-width="460px" :escapable="!busy" :auto-focus="false" @close="emit('cancel')">
         <div class="modal-header">
           <h3 :id="titleId">{{ title }}</h3>
           <button class="btn-icon btn-icon-muted" aria-label="Close dialog" @click="emit('cancel')"><span class="mdi mdi-close"></span></button>
@@ -74,7 +61,7 @@ watch(
           <slot></slot>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" :disabled="busy" @click="emit('cancel')">{{ cancelLabel }}</button>
+          <button ref="cancelBtn" type="button" class="btn btn-secondary" :disabled="busy" @click="emit('cancel')">{{ cancelLabel }}</button>
           <button
             ref="confirmBtn"
             type="button"
@@ -86,8 +73,7 @@ watch(
             {{ busy ? 'Working…' : confirmLabel }}
           </button>
         </div>
-      </div>
-    </div>
+    </AppModal>
   </Teleport>
 </template>
 

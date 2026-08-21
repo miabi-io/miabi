@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
 import { nodesApi, type HousekeepingReport, type HousekeepingPlan, type DriftItem } from '@/api/nodes'
 import type { Server } from '@/api/types'
+import AppModal from '@/components/AppModal.vue'
 
 const route = useRoute()
 const notify = useNotificationStore()
@@ -233,29 +234,27 @@ function fmtSize(n?: number): string {
     </template>
 
     <Teleport to="body">
-      <div v-if="showHkPlan && hkPlan" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Confirm housekeeping</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showHkPlan = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <div class="modal-body">
-            <p class="text-muted" style="font-size: 13px; margin-bottom: 10px">This dry-run is exactly what will be reclaimed and removed.</p>
-            <ul class="hk-plan">
-              <li v-if="hkPlan.reclaim.dangling_images">Prune {{ hkPlan.dangling_images.count }} dangling image(s) — {{ fmtSize(hkPlan.dangling_images.bytes) }}</li>
-              <li v-if="hkPlan.reclaim.build_cache">Prune build cache — {{ fmtSize(hkPlan.build_cache.bytes) }}</li>
-              <li v-for="o in hkPlan.orphans" :key="'p-' + o.kind + o.ref">Remove orphan {{ o.kind }} <strong>{{ o.name }}</strong></li>
-              <li v-if="!hkPlan.reclaim.dangling_images && !hkPlan.reclaim.build_cache && hkPlan.orphans.length === 0" class="text-muted">Nothing selected.</li>
-            </ul>
-            <p style="margin-top: 12px; font-weight: 600">Estimated reclaim: {{ fmtSize(hkPlan.estimated_bytes) }}</p>
-            <p class="text-muted" style="font-size: 12px; margin-top: 6px">Orphan removal is irreversible. Platform-managed apps, databases and the gateway are never affected.</p>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showHkPlan = false">Cancel</button>
-            <button type="button" class="btn btn-danger" :disabled="hkBusy" @click="applyHousekeeping">{{ hkBusy ? 'Working…' : 'Reclaim now' }}</button>
-          </div>
+      <AppModal v-if="showHkPlan && hkPlan" @close="showHkPlan = false">
+        <div class="modal-header">
+          <h3>Confirm housekeeping</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showHkPlan = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <div class="modal-body">
+          <p class="text-muted" style="font-size: 13px; margin-bottom: 10px">This dry-run is exactly what will be reclaimed and removed.</p>
+          <ul class="hk-plan">
+            <li v-if="hkPlan.reclaim.dangling_images">Prune {{ hkPlan.dangling_images.count }} dangling image(s) — {{ fmtSize(hkPlan.dangling_images.bytes) }}</li>
+            <li v-if="hkPlan.reclaim.build_cache">Prune build cache — {{ fmtSize(hkPlan.build_cache.bytes) }}</li>
+            <li v-for="o in hkPlan.orphans" :key="'p-' + o.kind + o.ref">Remove orphan {{ o.kind }} <strong>{{ o.name }}</strong></li>
+            <li v-if="!hkPlan.reclaim.dangling_images && !hkPlan.reclaim.build_cache && hkPlan.orphans.length === 0" class="text-muted">Nothing selected.</li>
+          </ul>
+          <p style="margin-top: 12px; font-weight: 600">Estimated reclaim: {{ fmtSize(hkPlan.estimated_bytes) }}</p>
+          <p class="text-muted" style="font-size: 12px; margin-top: 6px">Orphan removal is irreversible. Platform-managed apps, databases and the gateway are never affected.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="showHkPlan = false">Cancel</button>
+          <button type="button" class="btn btn-danger" :disabled="hkBusy" @click="applyHousekeeping">{{ hkBusy ? 'Working…' : 'Reclaim now' }}</button>
+        </div>
+      </AppModal>
     </Teleport>
   </div>
 </template>

@@ -8,6 +8,7 @@ import { useLicenseStore } from '@/stores/license'
 import { usePagination } from '@/composables/usePagination'
 import { useEntitlement } from '@/composables/useEntitlement'
 import Pagination from '@/components/Pagination.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const notify = useNotificationStore()
 const router = useRouter()
@@ -215,69 +216,67 @@ async function setDefault(p: Plan) {
     <Pagination :pageable="pageable" @page="goToPage" />
 
     <Teleport to="body">
-      <div v-if="showForm" class="modal-overlay">
-        <div class="modal" style="max-width: 600px; width: 100%">
-          <div class="modal-header">
-            <h3>{{ editingId ? 'Edit plan' : 'New plan' }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showForm = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="save">
-            <div class="modal-body">
-              <div class="form-row">
-                <div class="form-group">
-                  <label class="form-label">Name</label>
-                  <input v-model="form.name" class="form-input" placeholder="e.g. Pro" required autofocus />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Description</label>
-                  <input v-model="form.description" class="form-input" placeholder="optional" />
-                </div>
-              </div>
-
-              <label class="form-label">Limits <span class="text-muted" style="font-weight: 400">(−1 = unlimited, 0 = none)</span></label>
-              <div class="limit-grid">
-                <div v-for="f in limitFields" :key="f.key" class="form-group" style="margin-bottom: 0">
-                  <label class="form-label form-label-sm">{{ f.label }}</label>
-                  <input v-model.number="form[f.key]" type="number" min="-1" class="form-input" />
-                </div>
-              </div>
-
-              <label class="form-label" style="margin-top: 16px">Capabilities</label>
-              <label class="checkbox-label"><input v-model="form.allow_custom_tls" type="checkbox" /> Allow custom TLS certificates</label>
-              <label class="checkbox-label"><input v-model="form.allow_privileged_host_mounts" type="checkbox" /> Allow privileged host mounts</label>
-              <label class="checkbox-label"><input v-model="form.allow_shell_exec" type="checkbox" /> Allow shell access into containers</label>
-              <label class="checkbox-label"><input v-model="form.allow_shared_storage" type="checkbox" /> Allow shared storage (NFS / CIFS-SMB)</label>
-              <label class="checkbox-label"><input v-model="form.allow_dns_providers" type="checkbox" /> Allow connecting DNS providers</label>
-              <label class="checkbox-label"><input v-model="form.allow_custom_labels" type="checkbox" /> Allow custom container labels (Traefik &c.)</label>
-              <label class="checkbox-label"><input v-model="form.allow_platform_runners" type="checkbox" /> Allow using the platform-shared runner pool</label>
-
-              <label class="form-label" style="margin-top: 16px">
-                Container security profile
-                <span v-if="!securityProfile.has.value" class="badge badge-neutral" style="margin-left: 6px" title="The restricted profile requires an Enterprise license">
-                  <span class="mdi mdi-lock-outline"></span> Enterprise
-                </span>
-              </label>
-              <select v-model="form.security_profile" class="form-select" :disabled="!securityProfile.mutable.value">
-                <option value="default">Default — image's user (may be root)</option>
-                <option value="restricted">Restricted — force non-root UID</option>
-              </select>
-              <label class="checkbox-label" style="margin-top: 10px" :class="{ 'is-disabled': form.security_profile !== 'restricted' }">
-                <input v-model="form.allow_official_image_user" type="checkbox" :disabled="form.security_profile !== 'restricted'" />
-                Exempt official marketplace apps (keep the image's default user)
-              </label>
-
-              <div style="margin-top: 16px; display: flex; gap: 24px">
-                <label class="checkbox-label"><input v-model="form.is_active" type="checkbox" /> Active</label>
-                <label class="checkbox-label"><input v-model="form.is_default" type="checkbox" /> Default plan</label>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showForm = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editingId ? 'Save' : 'Create') }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showForm" max-width="600px" @close="showForm = false">
+        <div class="modal-header">
+          <h3>{{ editingId ? 'Edit plan' : 'New plan' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showForm = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="save">
+          <div class="modal-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Name</label>
+                <input v-model="form.name" class="form-input" placeholder="e.g. Pro" required autofocus />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Description</label>
+                <input v-model="form.description" class="form-input" placeholder="optional" />
+              </div>
+            </div>
+
+            <label class="form-label">Limits <span class="text-muted" style="font-weight: 400">(−1 = unlimited, 0 = none)</span></label>
+            <div class="limit-grid">
+              <div v-for="f in limitFields" :key="f.key" class="form-group" style="margin-bottom: 0">
+                <label class="form-label form-label-sm">{{ f.label }}</label>
+                <input v-model.number="form[f.key]" type="number" min="-1" class="form-input" />
+              </div>
+            </div>
+
+            <label class="form-label" style="margin-top: 16px">Capabilities</label>
+            <label class="checkbox-label"><input v-model="form.allow_custom_tls" type="checkbox" /> Allow custom TLS certificates</label>
+            <label class="checkbox-label"><input v-model="form.allow_privileged_host_mounts" type="checkbox" /> Allow privileged host mounts</label>
+            <label class="checkbox-label"><input v-model="form.allow_shell_exec" type="checkbox" /> Allow shell access into containers</label>
+            <label class="checkbox-label"><input v-model="form.allow_shared_storage" type="checkbox" /> Allow shared storage (NFS / CIFS-SMB)</label>
+            <label class="checkbox-label"><input v-model="form.allow_dns_providers" type="checkbox" /> Allow connecting DNS providers</label>
+            <label class="checkbox-label"><input v-model="form.allow_custom_labels" type="checkbox" /> Allow custom container labels (Traefik &c.)</label>
+            <label class="checkbox-label"><input v-model="form.allow_platform_runners" type="checkbox" /> Allow using the platform-shared runner pool</label>
+
+            <label class="form-label" style="margin-top: 16px">
+              Container security profile
+              <span v-if="!securityProfile.has.value" class="badge badge-neutral" style="margin-left: 6px" title="The restricted profile requires an Enterprise license">
+                <span class="mdi mdi-lock-outline"></span> Enterprise
+              </span>
+            </label>
+            <select v-model="form.security_profile" class="form-select" :disabled="!securityProfile.mutable.value">
+              <option value="default">Default — image's user (may be root)</option>
+              <option value="restricted">Restricted — force non-root UID</option>
+            </select>
+            <label class="checkbox-label" style="margin-top: 10px" :class="{ 'is-disabled': form.security_profile !== 'restricted' }">
+              <input v-model="form.allow_official_image_user" type="checkbox" :disabled="form.security_profile !== 'restricted'" />
+              Exempt official marketplace apps (keep the image's default user)
+            </label>
+
+            <div style="margin-top: 16px; display: flex; gap: 24px">
+              <label class="checkbox-label"><input v-model="form.is_active" type="checkbox" /> Active</label>
+              <label class="checkbox-label"><input v-model="form.is_default" type="checkbox" /> Default plan</label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showForm = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editingId ? 'Save' : 'Create') }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
   </div>
 </template>

@@ -8,6 +8,7 @@ import { infoApi } from '@/api/info'
 import type { ApiKey, ApiKeyCreated, AppInfo } from '@/api/types'
 import { copyText } from '@/utils/clipboard'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const notify = useNotificationStore()
 const ws = useWorkspaceStore()
@@ -276,116 +277,114 @@ function formatDate(s: string | null): string {
     </div>
 
     <Teleport to="body">
-      <div v-if="showCreate" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>New API key</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
-          </div>
+      <AppModal v-if="showCreate" @close="showCreate = false">
+        <div class="modal-header">
+          <h3>New API key</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
+        </div>
 
-          <template v-if="!createdKey">
-            <form @submit.prevent="create">
-              <div class="modal-body">
-                <div class="form-group">
-                  <label class="form-label">Name</label>
-                  <input v-model="name" class="form-input" placeholder="e.g. CI pipeline" aria-label="Name" required autofocus />
-                </div>
-
-                <div class="form-group">
-                  <label class="form-label">Workspace access</label>
-                  <select v-model="workspaceScope" class="form-select" aria-label="Workspace access">
-                    <option v-for="w in workspaces" :key="w.id" :value="w.id">{{ w.name }}</option>
-                    <option :value="ACCOUNT">Account-wide (all my workspaces)</option>
-                  </select>
-                  <small class="form-hint">
-                    A workspace key only touches that workspace and needs no workspace id when used.
-                    Account-wide keys reach all your workspaces — use only for cross-workspace automation.
-                  </small>
-                </div>
-
-                <div class="form-group">
-                  <label class="form-label">Expiration</label>
-                  <select v-model="expiry" class="form-select" aria-label="Expiration">
-                    <option v-for="opt in expiryOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-                  </select>
-                  <small class="form-hint">"Never" means the key will not expire.</small>
-                </div>
-
-                <div class="form-group">
-                  <label class="form-label">Scopes</label>
-                  <div class="scope-list">
-                    <label v-for="opt in scopeOptions" :key="opt.value" class="scope-option">
-                      <input type="checkbox" :checked="scopes.includes(opt.value)" @change="toggleScope(opt.value)" />
-                      <span class="scope-text">
-                        <strong>{{ opt.label }}</strong>
-                        <small>{{ opt.hint }}</small>
-                      </span>
-                    </label>
-                  </div>
-                  <small class="form-hint">Scopes are fixed at creation. To change them, create a new key.</small>
-                  <small v-if="registryOnly" class="form-hint registry-note">
-                    This key carries only registry scopes — use it for <code>docker login</code> /
-                    push / pull. It is rejected by the rest of the API.
-                  </small>
-                </div>
-
-                <div class="form-group" style="margin-bottom: 0">
-                  <label class="form-label">Allowed IPs <span style="font-weight: 400; color: var(--text-muted)">(optional)</span></label>
-                  <textarea
-                    v-model="allowedIPs"
-                    class="form-input"
-                    rows="3"
-                    placeholder="Comma or newline separated, e.g.&#10;192.168.1.1&#10;10.0.0.0/24"
-                    aria-label="Allowed IPs"
-                  ></textarea>
-                  <small class="form-hint">Restrict this key to specific IPs or CIDR ranges. Leave empty to allow all.</small>
-                </div>
-              </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
-                <button type="submit" class="btn btn-primary" :disabled="creating || !name.trim() || scopes.length === 0">
-                  {{ creating ? 'Creating…' : 'Create key' }}
-                </button>
-              </div>
-            </form>
-          </template>
-
-          <template v-else>
+        <template v-if="!createdKey">
+          <form @submit.prevent="create">
             <div class="modal-body">
-              <div class="app-banner app-banner--warning">
-                <span class="mdi mdi-alert-outline app-banner-icon"></span>
-                <div class="app-banner-content">
-                  <p class="app-banner-title">Copy your key now</p>
-                  <p class="app-banner-text">This is the only time the full key is shown.</p>
-                </div>
+              <div class="form-group">
+                <label class="form-label">Name</label>
+                <input v-model="name" class="form-input" placeholder="e.g. CI pipeline" aria-label="Name" required autofocus />
               </div>
-              <div class="code-block" style="margin-top: 14px">{{ createdKey.key }}</div>
-              <p class="form-hint" style="margin-top: 8px">
-                {{ createdKey.expires_at ? `Expires ${formatDate(createdKey.expires_at)}` : 'This key never expires.' }}
-              </p>
 
-              <div v-if="createdKey.workspace_id" class="created-ws">
-                <div class="created-ws-info">
-                  <span class="created-ws-label">Workspace</span>
-                  <span class="created-ws-name">{{ workspaceName(createdKey.workspace_id) }}</span>
-                  <code>ID {{ createdKey.workspace_id }}</code>
-                </div>
-                <button type="button" class="btn btn-secondary btn-sm" @click="copyWorkspaceId(createdKey.workspace_id)">
-                  <span class="mdi mdi-content-copy"></span> Copy ID
-                </button>
+              <div class="form-group">
+                <label class="form-label">Workspace access</label>
+                <select v-model="workspaceScope" class="form-select" aria-label="Workspace access">
+                  <option v-for="w in workspaces" :key="w.id" :value="w.id">{{ w.name }}</option>
+                  <option :value="ACCOUNT">Account-wide (all my workspaces)</option>
+                </select>
+                <small class="form-hint">
+                  A workspace key only touches that workspace and needs no workspace id when used.
+                  Account-wide keys reach all your workspaces — use only for cross-workspace automation.
+                </small>
               </div>
-              <p v-if="createdKey.workspace_id" class="form-hint" style="margin-top: 6px">
-                This key is scoped to the workspace above — supply this workspace ID when targeting
-                resources via the API, CLI, or Terraform.
-              </p>
+
+              <div class="form-group">
+                <label class="form-label">Expiration</label>
+                <select v-model="expiry" class="form-select" aria-label="Expiration">
+                  <option v-for="opt in expiryOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                </select>
+                <small class="form-hint">"Never" means the key will not expire.</small>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Scopes</label>
+                <div class="scope-list">
+                  <label v-for="opt in scopeOptions" :key="opt.value" class="scope-option">
+                    <input type="checkbox" :checked="scopes.includes(opt.value)" @change="toggleScope(opt.value)" />
+                    <span class="scope-text">
+                      <strong>{{ opt.label }}</strong>
+                      <small>{{ opt.hint }}</small>
+                    </span>
+                  </label>
+                </div>
+                <small class="form-hint">Scopes are fixed at creation. To change them, create a new key.</small>
+                <small v-if="registryOnly" class="form-hint registry-note">
+                  This key carries only registry scopes — use it for <code>docker login</code> /
+                  push / pull. It is rejected by the rest of the API.
+                </small>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0">
+                <label class="form-label">Allowed IPs <span style="font-weight: 400; color: var(--text-muted)">(optional)</span></label>
+                <textarea
+                  v-model="allowedIPs"
+                  class="form-input"
+                  rows="3"
+                  placeholder="Comma or newline separated, e.g.&#10;192.168.1.1&#10;10.0.0.0/24"
+                  aria-label="Allowed IPs"
+                ></textarea>
+                <small class="form-hint">Restrict this key to specific IPs or CIDR ranges. Leave empty to allow all.</small>
+              </div>
             </div>
             <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="copyKey">{{ copied ? 'Copied!' : 'Copy key' }}</button>
-              <button type="button" class="btn btn-primary" @click="showCreate = false">Done</button>
+              <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
+              <button type="submit" class="btn btn-primary" :disabled="creating || !name.trim() || scopes.length === 0">
+                {{ creating ? 'Creating…' : 'Create key' }}
+              </button>
             </div>
-          </template>
-        </div>
-      </div>
+          </form>
+        </template>
+
+        <template v-else>
+          <div class="modal-body">
+            <div class="app-banner app-banner--warning">
+              <span class="mdi mdi-alert-outline app-banner-icon"></span>
+              <div class="app-banner-content">
+                <p class="app-banner-title">Copy your key now</p>
+                <p class="app-banner-text">This is the only time the full key is shown.</p>
+              </div>
+            </div>
+            <div class="code-block" style="margin-top: 14px">{{ createdKey.key }}</div>
+            <p class="form-hint" style="margin-top: 8px">
+              {{ createdKey.expires_at ? `Expires ${formatDate(createdKey.expires_at)}` : 'This key never expires.' }}
+            </p>
+
+            <div v-if="createdKey.workspace_id" class="created-ws">
+              <div class="created-ws-info">
+                <span class="created-ws-label">Workspace</span>
+                <span class="created-ws-name">{{ workspaceName(createdKey.workspace_id) }}</span>
+                <code>ID {{ createdKey.workspace_id }}</code>
+              </div>
+              <button type="button" class="btn btn-secondary btn-sm" @click="copyWorkspaceId(createdKey.workspace_id)">
+                <span class="mdi mdi-content-copy"></span> Copy ID
+              </button>
+            </div>
+            <p v-if="createdKey.workspace_id" class="form-hint" style="margin-top: 6px">
+              This key is scoped to the workspace above — supply this workspace ID when targeting
+              resources via the API, CLI, or Terraform.
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="copyKey">{{ copied ? 'Copied!' : 'Copy key' }}</button>
+            <button type="button" class="btn btn-primary" @click="showCreate = false">Done</button>
+          </div>
+        </template>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

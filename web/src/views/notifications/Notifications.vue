@@ -7,6 +7,7 @@ import { channelApi, type ChannelInput } from '@/api/notifications'
 import { NOTIFIABLE_EVENTS } from '@/constants/notifiableEvents'
 import type { NotificationChannel } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -178,72 +179,70 @@ async function confirmDelete() {
     </div>
 
     <Teleport to="body">
-      <div v-if="showModal" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>{{ editing ? 'Edit channel' : 'New notification channel' }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="save">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Type</label>
-                <select v-model="form.type" class="form-select" :disabled="!!editing" aria-label="Type">
-                  <option v-for="t in channelTypes" :key="t.value" :value="t.value">{{ t.label }}</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="form.name" class="form-input" placeholder="e.g. Ops alerts" aria-label="Name" required autofocus />
-              </div>
+      <AppModal v-if="showModal" @close="showModal = false">
+        <div class="modal-header">
+          <h3>{{ editing ? 'Edit channel' : 'New notification channel' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <form @submit.prevent="save">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Type</label>
+              <select v-model="form.type" class="form-select" :disabled="!!editing" aria-label="Type">
+                <option v-for="t in channelTypes" :key="t.value" :value="t.value">{{ t.label }}</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="form.name" class="form-input" placeholder="e.g. Ops alerts" aria-label="Name" required autofocus />
+            </div>
 
-              <!-- Telegram -->
-              <template v-if="form.type === 'telegram'">
-                <div class="form-group">
-                  <label class="form-label">Bot token <span v-if="editing" class="text-muted">(leave blank to keep current)</span></label>
-                  <input v-model="form.bot_token" type="password" class="form-input" placeholder="123456:ABC-DEF…" autocomplete="new-password" aria-label="Bot token" :required="!editing" />
-                  <p class="form-hint">Create a bot with <strong>@BotFather</strong> and paste its token.</p>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Chat ID</label>
-                  <input v-model="form.chat_id" class="form-input" placeholder="e.g. -1001234567890" aria-label="Chat ID" required />
-                  <p class="form-hint">A user, group, or channel id. Add the bot to the chat first.</p>
-                </div>
-              </template>
-
-              <!-- Slack / Discord -->
-              <template v-else>
-                <div class="form-group">
-                  <label class="form-label">Webhook URL <span v-if="editing" class="text-muted">(leave blank to keep current)</span></label>
-                  <input v-model="form.webhook_url" type="password" class="form-input" :placeholder="form.type === 'slack' ? 'https://hooks.slack.com/services/…' : 'https://discord.com/api/webhooks/…'" autocomplete="new-password" aria-label="Webhook URL" :required="!editing" />
-                  <p class="form-hint">Create an incoming webhook in your {{ typeLabel(form.type || '') }} workspace and paste its URL.</p>
-                </div>
-              </template>
+            <!-- Telegram -->
+            <template v-if="form.type === 'telegram'">
               <div class="form-group">
-                <label class="form-label">Events</label>
-                <div class="event-grid">
-                  <label v-for="e in NOTIFIABLE_EVENTS" :key="e.value" class="event-option">
-                    <input type="checkbox" :checked="form.events.includes(e.value)" @change="toggleEvent(e.value)" />
-                    <span>{{ e.label }}</span>
-                  </label>
-                </div>
+                <label class="form-label">Bot token <span v-if="editing" class="text-muted">(leave blank to keep current)</span></label>
+                <input v-model="form.bot_token" type="password" class="form-input" placeholder="123456:ABC-DEF…" autocomplete="new-password" aria-label="Bot token" :required="!editing" />
+                <p class="form-hint">Create a bot with <strong>@BotFather</strong> and paste its token.</p>
               </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="check-row">
-                  <input type="checkbox" v-model="form.enabled" />
-                  <span>Enabled</span>
+              <div class="form-group">
+                <label class="form-label">Chat ID</label>
+                <input v-model="form.chat_id" class="form-input" placeholder="e.g. -1001234567890" aria-label="Chat ID" required />
+                <p class="form-hint">A user, group, or channel id. Add the bot to the chat first.</p>
+              </div>
+            </template>
+
+            <!-- Slack / Discord -->
+            <template v-else>
+              <div class="form-group">
+                <label class="form-label">Webhook URL <span v-if="editing" class="text-muted">(leave blank to keep current)</span></label>
+                <input v-model="form.webhook_url" type="password" class="form-input" :placeholder="form.type === 'slack' ? 'https://hooks.slack.com/services/…' : 'https://discord.com/api/webhooks/…'" autocomplete="new-password" aria-label="Webhook URL" :required="!editing" />
+                <p class="form-hint">Create an incoming webhook in your {{ typeLabel(form.type || '') }} workspace and paste its URL.</p>
+              </div>
+            </template>
+            <div class="form-group">
+              <label class="form-label">Events</label>
+              <div class="event-grid">
+                <label v-for="e in NOTIFIABLE_EVENTS" :key="e.value" class="event-option">
+                  <input type="checkbox" :checked="form.events.includes(e.value)" @change="toggleEvent(e.value)" />
+                  <span>{{ e.label }}</span>
                 </label>
               </div>
             </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving">
-                {{ saving ? 'Saving…' : editing ? 'Save' : 'Add channel' }}
-              </button>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="check-row">
+                <input type="checkbox" v-model="form.enabled" />
+                <span>Enabled</span>
+              </label>
             </div>
-          </form>
-        </div>
-      </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">
+              {{ saving ? 'Saving…' : editing ? 'Save' : 'Add channel' }}
+            </button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

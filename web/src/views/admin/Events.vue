@@ -8,6 +8,7 @@ import { useEntitlement } from '@/composables/useEntitlement'
 import { useNotificationStore } from '@/stores/notification'
 import { usePagination } from '@/composables/usePagination'
 import Pagination from '@/components/Pagination.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const notify = useNotificationStore()
 // The audit log itself is an Enterprise feature; export is a further entitlement.
@@ -214,40 +215,38 @@ onBeforeUnmount(() => {
     </template>
 
     <Teleport to="body">
-      <div v-if="selected" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>
-              <span class="badge" :class="actionBadge(selected.action)">{{ selected.action }}</span>
-            </h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="selected = null">
-              <span class="mdi mdi-close"></span>
-            </button>
-          </div>
-          <div class="modal-body">
-            <dl class="detail-list">
-              <dt class="text-muted">ID</dt>
-              <dd>{{ selected.id }}</dd>
-              <dt class="text-muted">Action</dt>
-              <dd>{{ selected.action }}</dd>
-              <dt class="text-muted">Target</dt>
-              <dd>{{ selected.target_type }}<template v-if="selected.target_id"> {{ selected.target_id }}</template></dd>
-              <dt class="text-muted">Actor</dt>
-              <dd>{{ selected.actor_id ?? '—' }}</dd>
-              <dt class="text-muted">Workspace</dt>
-              <dd>{{ selected.workspace_id ?? 'platform' }}</dd>
-              <dt class="text-muted">IP</dt>
-              <dd>{{ selected.ip_address || '—' }}</dd>
-              <dt class="text-muted">Time</dt>
-              <dd>{{ fmtDate(selected.created_at) }}</dd>
-            </dl>
-            <div v-if="selected.metadata" class="meta-block">
-              <p class="text-muted">Metadata</p>
-              <pre>{{ JSON.stringify(selected.metadata, null, 2) }}</pre>
-            </div>
+      <AppModal v-if="selected" @close="selected = null">
+        <div class="modal-header">
+          <h3>
+            <span class="badge" :class="actionBadge(selected.action)">{{ selected.action }}</span>
+          </h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="selected = null">
+            <span class="mdi mdi-close"></span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <dl class="detail-list">
+            <dt class="text-muted">ID</dt>
+            <dd>{{ selected.id }}</dd>
+            <dt class="text-muted">Action</dt>
+            <dd>{{ selected.action }}</dd>
+            <dt class="text-muted">Target</dt>
+            <dd>{{ selected.target_type }}<template v-if="selected.target_id"> {{ selected.target_id }}</template></dd>
+            <dt class="text-muted">Actor</dt>
+            <dd>{{ selected.actor_id ?? '—' }}</dd>
+            <dt class="text-muted">Workspace</dt>
+            <dd>{{ selected.workspace_id ?? 'platform' }}</dd>
+            <dt class="text-muted">IP</dt>
+            <dd>{{ selected.ip_address || '—' }}</dd>
+            <dt class="text-muted">Time</dt>
+            <dd>{{ fmtDate(selected.created_at) }}</dd>
+          </dl>
+          <div v-if="selected.metadata" class="meta-block">
+            <p class="text-muted">Metadata</p>
+            <pre>{{ JSON.stringify(selected.metadata, null, 2) }}</pre>
           </div>
         </div>
-      </div>
+      </AppModal>
     </Teleport>
   </div>
 </template>

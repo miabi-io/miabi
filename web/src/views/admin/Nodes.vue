@@ -15,6 +15,7 @@ import type {
   Server, ServerConnectivity, ClusterStatus, ClusterJoinInstructions,
   ClusterPreflight, NetCheck, NetCheckResult, ControlPlaneCert,
 } from '@/api/types'
+import AppModal from '@/components/AppModal.vue'
 
 const notify = useNotificationStore()
 const router = useRouter()
@@ -787,221 +788,215 @@ function swarmClass(n: Server): string {
 
     <!-- Add node / token reveal -->
     <Teleport to="body">
-      <div v-if="showCreate" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Add node</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
-          </div>
+      <AppModal v-if="showCreate" @close="showCreate = false">
+        <div class="modal-header">
+          <h3>Add node</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
+        </div>
 
-          <template v-if="!createdToken">
-            <form @submit.prevent="submit">
-              <div class="modal-body">
-                <!-- Edition node cap reached: nodes are a paid scale dimension.
-                     Block the add and point to the upgrade page. -->
-                <div v-if="atNodeLimit" class="app-banner app-banner--warning">
-                  <span class="mdi mdi-lock-outline app-banner-icon"></span>
-                  <div class="app-banner-content">
-                    <p class="app-banner-title">Node limit reached</p>
-                    <p class="app-banner-text">
-                      Community edition is limited to {{ nodeLimit }} nodes (standalone or Swarm).
-                      Upgrade to Enterprise to add more.
-                    </p>
-                    <router-link to="/admin/license" class="btn btn-secondary btn-sm" style="margin-top: 10px">Upgrade</router-link>
-                  </div>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Display name</label>
-                  <input v-model="form.display_name" class="form-input" placeholder="e.g. Frankfurt Edge" required autofocus />
-                </div>
-                <div class="form-group">
-                  <span class="form-label label-row">
-                    Access mode
-                    <FieldInfo :items="ACCESS_MODES" title="Access modes explained" />
-                  </span>
-                  <select v-model="form.access_mode" class="form-select">
-                    <option v-for="o in ACCESS_MODES" :key="o.value" :value="o.value">{{ o.label }}</option>
-                  </select>
-                  <p class="form-hint">{{ accessModeDesc }}</p>
-                </div>
-
-                <!-- api: endpoint + TLS -->
-                <template v-if="form.access_mode === 'api'">
-                  <div class="form-group">
-                    <label class="form-label">Docker endpoint</label>
-                    <input v-model="form.docker_endpoint" class="form-input" :placeholder="endpointPlaceholder" required style="font-family: monospace" />
-                    <p class="cell-sub" style="margin-top: 4px">The node must be reachable from the manager (inbound).</p>
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label">TLS <span class="cell-sub">(optional — leave blank for plaintext on a trusted network)</span></label>
-                    <textarea v-model="form.tls_ca_cert" class="form-input" rows="2" placeholder="CA certificate (PEM)" style="font-family: monospace; font-size: 12px"></textarea>
-                    <textarea v-model="form.tls_cert" class="form-input" rows="2" placeholder="Client certificate (PEM) — for mTLS" style="font-family: monospace; font-size: 12px; margin-top: 6px"></textarea>
-                    <textarea v-model="form.tls_key" class="form-input" rows="2" placeholder="Client key (PEM) — stored encrypted" style="font-family: monospace; font-size: 12px; margin-top: 6px"></textarea>
-                  </div>
-                </template>
-
-                <div v-if="form.access_mode !== 'api'" class="form-group">
-                  <label class="form-label">Address <span class="cell-sub">(host/IP the proxy reaches published ports at)</span></label>
-                  <input v-model="form.address" class="form-input" placeholder="e.g. 10.0.0.7" />
-                </div>
-                <div class="form-group" style="margin-bottom: 0">
-                  <span class="form-label label-row">
-                    Connectivity
-                    <FieldInfo :items="CONNECTIVITY_TYPES" title="Connectivity types explained" placement="top" />
-                  </span>
-                  <select v-model="form.connectivity" class="form-select">
-                    <option v-for="o in CONNECTIVITY_TYPES" :key="o.value" :value="o.value">{{ o.label }}</option>
-                  </select>
-                  <p class="form-hint">{{ connectivityDesc }}</p>
-                </div>
-              </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
-                <button type="submit" class="btn btn-primary" :disabled="creating || atNodeLimit">{{ creating ? 'Saving…' : 'Add node' }}</button>
-              </div>
-            </form>
-          </template>
-
-          <template v-else>
+        <template v-if="!createdToken">
+          <form @submit.prevent="submit">
             <div class="modal-body">
-              <div class="app-banner app-banner--warning">
-                <span class="mdi mdi-alert-outline app-banner-icon"></span>
+              <!-- Edition node cap reached: nodes are a paid scale dimension.
+                   Block the add and point to the upgrade page. -->
+              <div v-if="atNodeLimit" class="app-banner app-banner--warning">
+                <span class="mdi mdi-lock-outline app-banner-icon"></span>
                 <div class="app-banner-content">
-                  <p class="app-banner-title">Copy the join token now</p>
-                  <p class="app-banner-text">This is the only time it is shown. Run the agent on the node:</p>
+                  <p class="app-banner-title">Node limit reached</p>
+                  <p class="app-banner-text">
+                    Community edition is limited to {{ nodeLimit }} nodes (standalone or Swarm).
+                    Upgrade to Enterprise to add more.
+                  </p>
+                  <router-link to="/admin/license" class="btn btn-secondary btn-sm" style="margin-top: 10px">Upgrade</router-link>
                 </div>
               </div>
-              <div class="code-block" style="margin-top: 14px; white-space: pre">{{ agentCommand }}</div>
+              <div class="form-group">
+                <label class="form-label">Display name</label>
+                <input v-model="form.display_name" class="form-input" placeholder="e.g. Frankfurt Edge" required autofocus />
+              </div>
+              <div class="form-group">
+                <span class="form-label label-row">
+                  Access mode
+                  <FieldInfo :items="ACCESS_MODES" title="Access modes explained" />
+                </span>
+                <select v-model="form.access_mode" class="form-select">
+                  <option v-for="o in ACCESS_MODES" :key="o.value" :value="o.value">{{ o.label }}</option>
+                </select>
+                <p class="form-hint">{{ accessModeDesc }}</p>
+              </div>
+
+              <!-- api: endpoint + TLS -->
+              <template v-if="form.access_mode === 'api'">
+                <div class="form-group">
+                  <label class="form-label">Docker endpoint</label>
+                  <input v-model="form.docker_endpoint" class="form-input" :placeholder="endpointPlaceholder" required style="font-family: monospace" />
+                  <p class="cell-sub" style="margin-top: 4px">The node must be reachable from the manager (inbound).</p>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">TLS <span class="cell-sub">(optional — leave blank for plaintext on a trusted network)</span></label>
+                  <textarea v-model="form.tls_ca_cert" class="form-input" rows="2" placeholder="CA certificate (PEM)" style="font-family: monospace; font-size: 12px"></textarea>
+                  <textarea v-model="form.tls_cert" class="form-input" rows="2" placeholder="Client certificate (PEM) — for mTLS" style="font-family: monospace; font-size: 12px; margin-top: 6px"></textarea>
+                  <textarea v-model="form.tls_key" class="form-input" rows="2" placeholder="Client key (PEM) — stored encrypted" style="font-family: monospace; font-size: 12px; margin-top: 6px"></textarea>
+                </div>
+              </template>
+
+              <div v-if="form.access_mode !== 'api'" class="form-group">
+                <label class="form-label">Address <span class="cell-sub">(host/IP the proxy reaches published ports at)</span></label>
+                <input v-model="form.address" class="form-input" placeholder="e.g. 10.0.0.7" />
+              </div>
+              <div class="form-group" style="margin-bottom: 0">
+                <span class="form-label label-row">
+                  Connectivity
+                  <FieldInfo :items="CONNECTIVITY_TYPES" title="Connectivity types explained" placement="top" />
+                </span>
+                <select v-model="form.connectivity" class="form-select">
+                  <option v-for="o in CONNECTIVITY_TYPES" :key="o.value" :value="o.value">{{ o.label }}</option>
+                </select>
+                <p class="form-hint">{{ connectivityDesc }}</p>
+              </div>
             </div>
             <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="copy(createdToken!)">Copy token</button>
-              <button type="button" class="btn btn-secondary" @click="copy(agentCommand)">Copy command</button>
-              <button type="button" class="btn btn-primary" @click="showCreate = false">Done</button>
+              <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
+              <button type="submit" class="btn btn-primary" :disabled="creating || atNodeLimit">{{ creating ? 'Saving…' : 'Add node' }}</button>
             </div>
-          </template>
-        </div>
-      </div>
+          </form>
+        </template>
+
+        <template v-else>
+          <div class="modal-body">
+            <div class="app-banner app-banner--warning">
+              <span class="mdi mdi-alert-outline app-banner-icon"></span>
+              <div class="app-banner-content">
+                <p class="app-banner-title">Copy the join token now</p>
+                <p class="app-banner-text">This is the only time it is shown. Run the agent on the node:</p>
+              </div>
+            </div>
+            <div class="code-block" style="margin-top: 14px; white-space: pre">{{ agentCommand }}</div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="copy(createdToken!)">Copy token</button>
+            <button type="button" class="btn btn-secondary" @click="copy(agentCommand)">Copy command</button>
+            <button type="button" class="btn btn-primary" @click="showCreate = false">Done</button>
+          </div>
+        </template>
+      </AppModal>
     </Teleport>
 
     <!-- Join nodes to the cluster -->
     <Teleport to="body">
-      <div v-if="showJoin" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Join nodes to the cluster</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showJoin = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <div class="modal-body">
-            <!-- Managed nodes (connected to the manager): one-click join. -->
-            <p v-if="joinCandidates.length === 0" class="cell-sub">All managed nodes are already in the cluster.</p>
-            <template v-else>
-              <p class="cell-sub" style="margin-bottom: 12px">
-                Select the nodes to join the swarm overlay network. Offline nodes can't be joined from here until their agent reconnects — use the manual command below.
-              </p>
-              <label
-                v-for="n in joinCandidates"
-                :key="n.id"
-                class="join-row"
-                :class="{ 'join-row--disabled': !n.agent_connected }"
-              >
-                <input type="checkbox" :disabled="!n.agent_connected" v-model="joinSelected[n.id]" />
-                <span class="join-row-name">{{ n.display_name || n.name }}</span>
-                <span class="badge" :class="n.agent_connected ? 'badge-success badge-dot' : 'badge-danger'">{{ n.agent_connected ? 'online · standalone' : 'offline' }}</span>
-              </label>
-            </template>
+      <AppModal v-if="showJoin" @close="showJoin = false">
+        <div class="modal-header">
+          <h3>Join nodes to the cluster</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showJoin = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <!-- Managed nodes (connected to the manager): one-click join. -->
+          <p v-if="joinCandidates.length === 0" class="cell-sub">All managed nodes are already in the cluster.</p>
+          <template v-else>
+            <p class="cell-sub" style="margin-bottom: 12px">
+              Select the nodes to join the swarm overlay network. Offline nodes can't be joined from here until their agent reconnects — use the manual command below.
+            </p>
+            <label
+              v-for="n in joinCandidates"
+              :key="n.id"
+              class="join-row"
+              :class="{ 'join-row--disabled': !n.agent_connected }"
+            >
+              <input type="checkbox" :disabled="!n.agent_connected" v-model="joinSelected[n.id]" />
+              <span class="join-row-name">{{ n.display_name || n.name }}</span>
+              <span class="badge" :class="n.agent_connected ? 'badge-success badge-dot' : 'badge-danger'">{{ n.agent_connected ? 'online · standalone' : 'offline' }}</span>
+            </label>
+          </template>
 
-            <!-- Manual join: for a host not connected to the manager (offline or
-                 unmanaged). The operator runs the command on the host itself. -->
-            <div class="manual-join">
-              <div class="manual-join-title">Join a node manually</div>
-              <p class="cell-sub" style="margin-bottom: 8px">
-                For a host that isn't connected to Miabi, run this on the host. It must reach the manager on ports 2377/tcp, 7946/tcp+udp and 4789/udp.
-              </p>
-              <div v-if="manualJoin" class="code-block" style="white-space: pre-wrap; word-break: break-all">{{ manualJoin.command }}</div>
-              <p v-else class="cell-sub">Join command unavailable.</p>
-              <button v-if="manualJoin" type="button" class="btn btn-secondary btn-sm" style="margin-top: 10px" @click="copy(manualJoin.command)">Copy command</button>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showJoin = false">Cancel</button>
-            <button type="button" class="btn btn-primary" :disabled="joinBusy || selectedJoinIds.length === 0" @click="joinSelectedNodes">
-              {{ joinBusy ? 'Joining…' : selectedJoinIds.length ? `Join ${selectedJoinIds.length}` : 'Join' }}
-            </button>
+          <!-- Manual join: for a host not connected to the manager (offline or
+               unmanaged). The operator runs the command on the host itself. -->
+          <div class="manual-join">
+            <div class="manual-join-title">Join a node manually</div>
+            <p class="cell-sub" style="margin-bottom: 8px">
+              For a host that isn't connected to Miabi, run this on the host. It must reach the manager on ports 2377/tcp, 7946/tcp+udp and 4789/udp.
+            </p>
+            <div v-if="manualJoin" class="code-block" style="white-space: pre-wrap; word-break: break-all">{{ manualJoin.command }}</div>
+            <p v-else class="cell-sub">Join command unavailable.</p>
+            <button v-if="manualJoin" type="button" class="btn btn-secondary btn-sm" style="margin-top: 10px" @click="copy(manualJoin.command)">Copy command</button>
           </div>
         </div>
-      </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="showJoin = false">Cancel</button>
+          <button type="button" class="btn btn-primary" :disabled="joinBusy || selectedJoinIds.length === 0" @click="joinSelectedNodes">
+            {{ joinBusy ? 'Joining…' : selectedJoinIds.length ? `Join ${selectedJoinIds.length}` : 'Join' }}
+          </button>
+        </div>
+      </AppModal>
     </Teleport>
 
     <!-- Enable cluster mode -->
     <Teleport to="body">
-      <div v-if="showEnable" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Enable cluster mode</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showEnable = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="enableCluster">
-            <div class="modal-body">
-              <p class="cell-sub" style="margin-bottom: 12px">
-                The manager initializes a Docker Swarm. Member nodes can then be joined to a private overlay network.
-                If Docker is already in swarm mode, Miabi adopts it instead.
-              </p>
-
-              <!-- Preflight. A VM-backed Docker engine (Docker Desktop, OrbStack) forms
-                   a swarm and resolves DNS perfectly, then drops every cross-node packet,
-                   because VXLAN and IPSec cannot be forwarded into the VM. Saying that here
-                   costs one paragraph; discovering it later costs an afternoon. -->
-              <div v-if="preflightLoading" class="cell-sub" style="margin-bottom: 12px">Checking this host…</div>
-              <template v-else-if="preflight">
-                <div
-                  v-for="f in preflight.findings"
-                  :key="f.title"
-                  class="pf-finding"
-                  :class="f.severity === 'blocker' ? 'pf-blocker' : 'pf-warning'"
-                >
-                  <div class="pf-title">
-                    <span class="mdi" :class="f.severity === 'blocker' ? 'mdi-alert-octagon' : 'mdi-alert-outline'"></span>
-                    {{ f.title }}
-                  </div>
-                  <p class="pf-detail">{{ f.detail }}</p>
-                </div>
-
-                <details class="pf-ports">
-                  <summary>Ports that must be open between every pair of nodes</summary>
-                  <table class="pf-table">
-                    <tbody>
-                      <tr v-for="r in preflight.firewall" :key="r.port">
-                        <td><code>{{ r.port }}</code></td>
-                        <td class="cell-sub">{{ r.purpose }}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </details>
-              </template>
-
-              <div class="form-group">
-                <label class="form-label">Cluster name <span class="text-muted">(optional)</span></label>
-                <input v-model="clusterName" class="form-input" maxlength="40" placeholder="e.g. prod-eu-west-1" />
-                <p class="form-hint">
-                  A label for this cluster. Swarm identifies it by an unreadable id and a manager
-                  address that moves, so without a name the panel can only say “the cluster”. You can
-                  set it later.
-                </p>
-              </div>
-
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Advertise address</label>
-                <input v-model="advertiseAddr" class="form-input" placeholder="e.g. 10.0.0.1" style="font-family: monospace" autofocus />
-                <p class="form-hint">The address swarm peers reach this manager on — use a private/WG address reachable from your nodes.</p>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showEnable = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="clusterBusy || !advertiseAddr.trim()">{{ clusterBusy ? 'Enabling…' : 'Enable cluster' }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showEnable" @close="showEnable = false">
+        <div class="modal-header">
+          <h3>Enable cluster mode</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showEnable = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="enableCluster">
+          <div class="modal-body">
+            <p class="cell-sub" style="margin-bottom: 12px">
+              The manager initializes a Docker Swarm. Member nodes can then be joined to a private overlay network.
+              If Docker is already in swarm mode, Miabi adopts it instead.
+            </p>
+
+            <!-- Preflight. A VM-backed Docker engine (Docker Desktop, OrbStack) forms
+                 a swarm and resolves DNS perfectly, then drops every cross-node packet,
+                 because VXLAN and IPSec cannot be forwarded into the VM. Saying that here
+                 costs one paragraph; discovering it later costs an afternoon. -->
+            <div v-if="preflightLoading" class="cell-sub" style="margin-bottom: 12px">Checking this host…</div>
+            <template v-else-if="preflight">
+              <div
+                v-for="f in preflight.findings"
+                :key="f.title"
+                class="pf-finding"
+                :class="f.severity === 'blocker' ? 'pf-blocker' : 'pf-warning'"
+              >
+                <div class="pf-title">
+                  <span class="mdi" :class="f.severity === 'blocker' ? 'mdi-alert-octagon' : 'mdi-alert-outline'"></span>
+                  {{ f.title }}
+                </div>
+                <p class="pf-detail">{{ f.detail }}</p>
+              </div>
+
+              <details class="pf-ports">
+                <summary>Ports that must be open between every pair of nodes</summary>
+                <table class="pf-table">
+                  <tbody>
+                    <tr v-for="r in preflight.firewall" :key="r.port">
+                      <td><code>{{ r.port }}</code></td>
+                      <td class="cell-sub">{{ r.purpose }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </details>
+            </template>
+
+            <div class="form-group">
+              <label class="form-label">Cluster name <span class="text-muted">(optional)</span></label>
+              <input v-model="clusterName" class="form-input" maxlength="40" placeholder="e.g. prod-eu-west-1" />
+              <p class="form-hint">
+                A label for this cluster. Swarm identifies it by an unreadable id and a manager
+                address that moves, so without a name the panel can only say “the cluster”. You can
+                set it later.
+              </p>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Advertise address</label>
+              <input v-model="advertiseAddr" class="form-input" placeholder="e.g. 10.0.0.1" style="font-family: monospace" autofocus />
+              <p class="form-hint">The address swarm peers reach this manager on — use a private/WG address reachable from your nodes.</p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showEnable = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="clusterBusy || !advertiseAddr.trim()">{{ clusterBusy ? 'Enabling…' : 'Enable cluster' }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <!-- Deploying the agents grants Miabi the Docker socket — root-equivalent — on every
@@ -1010,148 +1005,146 @@ function swarmClass(n: Server): string {
          "certificate signed by unknown authority", which is a dead end unless the choice
          is offered here. -->
     <Teleport to="body">
-      <div v-if="showDeployAgents" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Manage cluster nodes</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDeployAgents = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="deployAgents">
-            <div class="modal-body">
-              <p class="cell-sub" style="margin-top: 0">
-                Swarm installs the Miabi agent on every node in this cluster, and on any node that
-                joins later. Metrics, stats, shell and housekeeping then work on all of them.
-              </p>
-              <p class="cell-sub">
-                The agent mounts each node's Docker socket, which is <strong>root-equivalent</strong>
-                on that host. Only do this for machines you would trust Miabi to administer.
+      <AppModal v-if="showDeployAgents" @close="showDeployAgents = false">
+        <div class="modal-header">
+          <h3>Manage cluster nodes</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDeployAgents = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <form @submit.prevent="deployAgents">
+          <div class="modal-body">
+            <p class="cell-sub" style="margin-top: 0">
+              Swarm installs the Miabi agent on every node in this cluster, and on any node that
+              joins later. Metrics, stats, shell and housekeeping then work on all of them.
+            </p>
+            <p class="cell-sub">
+              The agent mounts each node's Docker socket, which is <strong>root-equivalent</strong>
+              on that host. Only do this for machines you would trust Miabi to administer.
+            </p>
+
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Control-plane TLS</label>
+              <select v-model="agentTls" class="form-select">
+                <option value="verify">Verify the certificate (publicly trusted)</option>
+                <option value="ca">Trust a certificate authority — self-signed or private CA</option>
+                <option value="skip">Skip verification — last resort</option>
+              </select>
+
+              <!-- Verify: the goal state, and the failure it produces if the cert is
+                   private, so the operator knows which option they actually need. -->
+              <p v-if="agentTls === 'verify'" class="form-hint">
+                If your control plane uses a self-signed or private-CA certificate, the agents will
+                fail with <code>certificate signed by unknown authority</code> and never connect —
+                choose “Trust a certificate authority” instead.
               </p>
 
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Control-plane TLS</label>
-                <select v-model="agentTls" class="form-select">
-                  <option value="verify">Verify the certificate (publicly trusted)</option>
-                  <option value="ca">Trust a certificate authority — self-signed or private CA</option>
-                  <option value="skip">Skip verification — last resort</option>
-                </select>
-
-                <!-- Verify: the goal state, and the failure it produces if the cert is
-                     private, so the operator knows which option they actually need. -->
-                <p v-if="agentTls === 'verify'" class="form-hint">
-                  If your control plane uses a self-signed or private-CA certificate, the agents will
-                  fail with <code>certificate signed by unknown authority</code> and never connect —
-                  choose “Trust a certificate authority” instead.
+              <!-- Trust a CA: verification still happens, anchored on their own authority.
+                   Fetching the certificate is what keeps this from being a research task. -->
+              <template v-else-if="agentTls === 'ca'">
+                <p class="form-hint">
+                  The agents still <strong>verify</strong> — just against this authority instead of
+                  the public ones. A forged certificate is still rejected.
                 </p>
 
-                <!-- Trust a CA: verification still happens, anchored on their own authority.
-                     Fetching the certificate is what keeps this from being a research task. -->
-                <template v-else-if="agentTls === 'ca'">
+                <!-- The file is the right default, and the reason is the whole bug: a host
+                     that trusts a private CA has it in its system store, but the agent
+                     container has its own bundle and has never heard of it. Mount what the
+                     host already has, rather than copying its contents through an env var. -->
+                <div class="ca-mode">
+                  <label><input v-model="caMode" type="radio" value="file" /> A CA file on the nodes</label>
+                  <label><input v-model="caMode" type="radio" value="paste" /> Paste the certificate</label>
+                </div>
+
+                <template v-if="caMode === 'file'">
+                  <input v-model="caCertPath" class="form-input mono" placeholder="/etc/pki/ca-trust/source/anchors/my-ca.crt" />
                   <p class="form-hint">
-                    The agents still <strong>verify</strong> — just against this authority instead of
-                    the public ones. A forged certificate is still rejected.
+                    Bind-mounted read-only into each agent. Your nodes already trust this CA — that
+                    is why <code>curl</code> works on the host and fails inside a container, which
+                    has its own certificate bundle. The file must exist at this path on
+                    <strong>every</strong> node, including ones that join later.
                   </p>
-
-                  <!-- The file is the right default, and the reason is the whole bug: a host
-                       that trusts a private CA has it in its system store, but the agent
-                       container has its own bundle and has never heard of it. Mount what the
-                       host already has, rather than copying its contents through an env var. -->
-                  <div class="ca-mode">
-                    <label><input v-model="caMode" type="radio" value="file" /> A CA file on the nodes</label>
-                    <label><input v-model="caMode" type="radio" value="paste" /> Paste the certificate</label>
-                  </div>
-
-                  <template v-if="caMode === 'file'">
-                    <input v-model="caCertPath" class="form-input mono" placeholder="/etc/pki/ca-trust/source/anchors/my-ca.crt" />
-                    <p class="form-hint">
-                      Bind-mounted read-only into each agent. Your nodes already trust this CA — that
-                      is why <code>curl</code> works on the host and fails inside a container, which
-                      has its own certificate bundle. The file must exist at this path on
-                      <strong>every</strong> node, including ones that join later.
-                    </p>
-                  </template>
-
-                  <template v-else>
-                  <div class="ca-actions">
-                    <button type="button" class="btn btn-secondary btn-sm" :disabled="cpCertLoading" @click="fetchControlPlaneCert">
-                      <span class="mdi mdi-certificate-outline"></span>
-                      {{ cpCertLoading ? 'Reading…' : "Use the control plane's certificate" }}
-                    </button>
-                  </div>
-
-                  <!-- Fetched over an unverified connection, so the operator confirms it by
-                       fingerprint. Showing it is what makes the confirmation meaningful. -->
-                  <div v-if="cpCert" class="ca-cert">
-                    <div v-if="cpCert.publicly_trusted" class="form-hint">
-                      <span class="mdi mdi-check-circle-outline"></span>
-                      This certificate is <strong>already publicly trusted</strong> — you can simply
-                      choose “Verify the certificate”; no CA needs distributing.
-                    </div>
-                    <!-- The trap: trusting a CA does NOT skip the hostname check. A cert
-                         that names nothing (Goma's default has no SANs at all) fails
-                         however well it is trusted. Say it here, or the operator picks
-                         this option and hits a second, different, confusing error. -->
-                    <div v-else-if="!cpCert.matches_host" class="form-hint form-hint-warn">
-                      <span class="mdi mdi-alert-octagon-outline"></span>
-                      <strong>This certificate does not name <code>{{ cpCert.dial_host }}</code>.</strong>
-                      <template v-if="!cpCert.hosts?.length"> It names no hosts at all.</template>
-                      <template v-else> It names only {{ cpCert.hosts.join(', ') }}.</template>
-                      Trusting it will <strong>not</strong> work: the agents will still fail with
-                      <code>cannot validate certificate for {{ cpCert.dial_host }}</code>, because
-                      trusting a CA does not skip the hostname check.
-                      Issue a certificate that includes <code>{{ cpCert.dial_host }}</code> — or use
-                      “Skip verification” until you have one.
-                    </div>
-                    <dl>
-                      <dt>Subject</dt><dd>{{ cpCert.subject }}</dd>
-                      <dt>Issuer</dt><dd>{{ cpCert.issuer }}<span v-if="cpCert.self_signed"> (self-signed)</span></dd>
-                      <dt>Expires</dt><dd>{{ new Date(cpCert.not_after).toLocaleString() }}</dd>
-                      <dt>SHA-256</dt><dd class="mono">{{ cpCert.fingerprint }}</dd>
-                    </dl>
-                    <!-- A server usually sends its leaf, not its CA. Pinning the leaf
-                         works until the cert is renewed — then every agent drops off at
-                         once, and nothing says why. Better to say so now. -->
-                    <p v-if="cpCert.matches_host && !cpCert.anchor_is_ca" class="form-hint form-hint-warn">
-                      <span class="mdi mdi-alert-outline"></span>
-                      Your control plane sent its own certificate, not the CA that signed it — so this
-                      pins <strong>that certificate</strong>. It will work until the certificate is
-                      <strong>renewed</strong>, and then every agent will stop connecting at once.
-                      For a durable anchor, paste your <strong>CA certificate</strong> below instead.
-                    </p>
-                    <p class="form-hint">
-                      Check the fingerprint against the host before trusting it —
-                      <code>openssl x509 -noout -fingerprint -sha256</code>.
-                    </p>
-                  </div>
-
-                  <textarea
-                    v-model="caCert"
-                    class="form-input ca-pem"
-                    rows="5"
-                    placeholder="-----BEGIN CERTIFICATE-----&#10;…&#10;-----END CERTIFICATE-----"
-                  ></textarea>
-                  </template>
                 </template>
 
-                <!-- Skip: name the actual risk, not a generic scold. -->
-                <p v-else class="form-hint form-hint-warn">
-                  <span class="mdi mdi-alert-outline"></span>
-                  <strong>Not recommended in production.</strong>
-                  The agents will accept <strong>any</strong> certificate for
-                  <code>{{ cluster?.manager_addr || 'the control plane' }}</code>, so anyone able to
-                  intercept their connections could impersonate it — and the control plane drives
-                  Docker on every node. Prefer “Trust a certificate authority”, which still verifies.
-                </p>
-              </div>
+                <template v-else>
+                <div class="ca-actions">
+                  <button type="button" class="btn btn-secondary btn-sm" :disabled="cpCertLoading" @click="fetchControlPlaneCert">
+                    <span class="mdi mdi-certificate-outline"></span>
+                    {{ cpCertLoading ? 'Reading…' : "Use the control plane's certificate" }}
+                  </button>
+                </div>
+
+                <!-- Fetched over an unverified connection, so the operator confirms it by
+                     fingerprint. Showing it is what makes the confirmation meaningful. -->
+                <div v-if="cpCert" class="ca-cert">
+                  <div v-if="cpCert.publicly_trusted" class="form-hint">
+                    <span class="mdi mdi-check-circle-outline"></span>
+                    This certificate is <strong>already publicly trusted</strong> — you can simply
+                    choose “Verify the certificate”; no CA needs distributing.
+                  </div>
+                  <!-- The trap: trusting a CA does NOT skip the hostname check. A cert
+                       that names nothing (Goma's default has no SANs at all) fails
+                       however well it is trusted. Say it here, or the operator picks
+                       this option and hits a second, different, confusing error. -->
+                  <div v-else-if="!cpCert.matches_host" class="form-hint form-hint-warn">
+                    <span class="mdi mdi-alert-octagon-outline"></span>
+                    <strong>This certificate does not name <code>{{ cpCert.dial_host }}</code>.</strong>
+                    <template v-if="!cpCert.hosts?.length"> It names no hosts at all.</template>
+                    <template v-else> It names only {{ cpCert.hosts.join(', ') }}.</template>
+                    Trusting it will <strong>not</strong> work: the agents will still fail with
+                    <code>cannot validate certificate for {{ cpCert.dial_host }}</code>, because
+                    trusting a CA does not skip the hostname check.
+                    Issue a certificate that includes <code>{{ cpCert.dial_host }}</code> — or use
+                    “Skip verification” until you have one.
+                  </div>
+                  <dl>
+                    <dt>Subject</dt><dd>{{ cpCert.subject }}</dd>
+                    <dt>Issuer</dt><dd>{{ cpCert.issuer }}<span v-if="cpCert.self_signed"> (self-signed)</span></dd>
+                    <dt>Expires</dt><dd>{{ new Date(cpCert.not_after).toLocaleString() }}</dd>
+                    <dt>SHA-256</dt><dd class="mono">{{ cpCert.fingerprint }}</dd>
+                  </dl>
+                  <!-- A server usually sends its leaf, not its CA. Pinning the leaf
+                       works until the cert is renewed — then every agent drops off at
+                       once, and nothing says why. Better to say so now. -->
+                  <p v-if="cpCert.matches_host && !cpCert.anchor_is_ca" class="form-hint form-hint-warn">
+                    <span class="mdi mdi-alert-outline"></span>
+                    Your control plane sent its own certificate, not the CA that signed it — so this
+                    pins <strong>that certificate</strong>. It will work until the certificate is
+                    <strong>renewed</strong>, and then every agent will stop connecting at once.
+                    For a durable anchor, paste your <strong>CA certificate</strong> below instead.
+                  </p>
+                  <p class="form-hint">
+                    Check the fingerprint against the host before trusting it —
+                    <code>openssl x509 -noout -fingerprint -sha256</code>.
+                  </p>
+                </div>
+
+                <textarea
+                  v-model="caCert"
+                  class="form-input ca-pem"
+                  rows="5"
+                  placeholder="-----BEGIN CERTIFICATE-----&#10;…&#10;-----END CERTIFICATE-----"
+                ></textarea>
+                </template>
+              </template>
+
+              <!-- Skip: name the actual risk, not a generic scold. -->
+              <p v-else class="form-hint form-hint-warn">
+                <span class="mdi mdi-alert-outline"></span>
+                <strong>Not recommended in production.</strong>
+                The agents will accept <strong>any</strong> certificate for
+                <code>{{ cluster?.manager_addr || 'the control plane' }}</code>, so anyone able to
+                intercept their connections could impersonate it — and the control plane drives
+                Docker on every node. Prefer “Trust a certificate authority”, which still verifies.
+              </p>
             </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showDeployAgents = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="clusterBusy">
-                {{ clusterBusy ? 'Deploying…' : 'Deploy agents' }}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showDeployAgents = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="clusterBusy">
+              {{ clusterBusy ? 'Deploying…' : 'Deploy agents' }}
+            </button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

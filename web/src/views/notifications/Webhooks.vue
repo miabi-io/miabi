@@ -8,6 +8,7 @@ import { NOTIFIABLE_EVENTS, eventLabel } from '@/constants/notifiableEvents'
 import { copyText } from '@/utils/clipboard'
 import type { Webhook, WebhookDelivery } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -236,112 +237,108 @@ function fmtTime(s: string) {
 
     <!-- Create / edit / secret-reveal modal -->
     <Teleport to="body">
-      <div v-if="showModal" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>{{ revealSecret ? 'Webhook created' : editing ? 'Edit webhook' : 'New webhook' }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
+      <AppModal v-if="showModal" @close="showModal = false">
+        <div class="modal-header">
+          <h3>{{ revealSecret ? 'Webhook created' : editing ? 'Edit webhook' : 'New webhook' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
+        </div>
+
+        <template v-if="revealSecret">
+          <div class="modal-body">
+            <div class="app-banner app-banner--warning">
+              <span class="mdi mdi-alert-outline app-banner-icon"></span>
+              <div class="app-banner-content">
+                <p class="app-banner-title">Copy your signing secret now</p>
+                <p class="app-banner-text">This is the only time it is shown. Use it to verify the
+                  <code>X-Miabi-Signature</code> header (HMAC-SHA256 of the request body).</p>
+              </div>
+            </div>
+            <div class="code-block" style="margin-top: 14px">{{ revealSecret }}</div>
           </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="copySecret">Copy secret</button>
+            <button type="button" class="btn btn-primary" @click="showModal = false">Done</button>
+          </div>
+        </template>
 
-          <template v-if="revealSecret">
-            <div class="modal-body">
-              <div class="app-banner app-banner--warning">
-                <span class="mdi mdi-alert-outline app-banner-icon"></span>
-                <div class="app-banner-content">
-                  <p class="app-banner-title">Copy your signing secret now</p>
-                  <p class="app-banner-text">This is the only time it is shown. Use it to verify the
-                    <code>X-Miabi-Signature</code> header (HMAC-SHA256 of the request body).</p>
-                </div>
-              </div>
-              <div class="code-block" style="margin-top: 14px">{{ revealSecret }}</div>
+        <form v-else @submit.prevent="save">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name <span class="text-muted">(optional)</span></label>
+              <input v-model="form.name" class="form-input" placeholder="e.g. CI pipeline" aria-label="Name" autofocus />
             </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="copySecret">Copy secret</button>
-              <button type="button" class="btn btn-primary" @click="showModal = false">Done</button>
+            <div class="form-group">
+              <label class="form-label">Payload URL</label>
+              <input v-model="form.url" type="url" class="form-input" placeholder="https://example.com/hooks/miabi" aria-label="Payload URL" required />
             </div>
-          </template>
-
-          <form v-else @submit.prevent="save">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name <span class="text-muted">(optional)</span></label>
-                <input v-model="form.name" class="form-input" placeholder="e.g. CI pipeline" aria-label="Name" autofocus />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Payload URL</label>
-                <input v-model="form.url" type="url" class="form-input" placeholder="https://example.com/hooks/miabi" aria-label="Payload URL" required />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Events</label>
-                <div class="event-grid">
-                  <label v-for="e in NOTIFIABLE_EVENTS" :key="e.value" class="event-option">
-                    <input type="checkbox" :checked="form.events.includes(e.value)" @change="toggleEvent(e.value)" />
-                    <span>{{ e.label }}</span>
-                  </label>
-                </div>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Custom headers <span class="text-muted">(optional)</span></label>
-                <textarea v-model="headersText" class="form-input" rows="3" placeholder="Authorization: Bearer xyz&#10;X-Custom: value" aria-label="Custom headers" style="font-family: monospace; resize: vertical"></textarea>
-                <p class="form-hint">One per line as <code>Key: Value</code>. Content-Type and the signature header are always set.</p>
-              </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="check-row">
-                  <input type="checkbox" v-model="form.enabled" />
-                  <span>Enabled</span>
+            <div class="form-group">
+              <label class="form-label">Events</label>
+              <div class="event-grid">
+                <label v-for="e in NOTIFIABLE_EVENTS" :key="e.value" class="event-option">
+                  <input type="checkbox" :checked="form.events.includes(e.value)" @change="toggleEvent(e.value)" />
+                  <span>{{ e.label }}</span>
                 </label>
               </div>
             </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving">
-                {{ saving ? 'Saving…' : editing ? 'Save' : 'Create webhook' }}
-              </button>
+            <div class="form-group">
+              <label class="form-label">Custom headers <span class="text-muted">(optional)</span></label>
+              <textarea v-model="headersText" class="form-input" rows="3" placeholder="Authorization: Bearer xyz&#10;X-Custom: value" aria-label="Custom headers" style="font-family: monospace; resize: vertical"></textarea>
+              <p class="form-hint">One per line as <code>Key: Value</code>. Content-Type and the signature header are always set.</p>
             </div>
-          </form>
-        </div>
-      </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="check-row">
+                <input type="checkbox" v-model="form.enabled" />
+                <span>Enabled</span>
+              </label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">
+              {{ saving ? 'Saving…' : editing ? 'Save' : 'Create webhook' }}
+            </button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <!-- Deliveries modal -->
     <Teleport to="body">
-      <div v-if="showDeliveries" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Recent deliveries</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDeliveries = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <div class="modal-body">
-            <p class="text-muted text-sm" style="margin-top: 0">{{ deliveriesFor?.name || deliveriesFor?.url }}</p>
-            <div v-if="deliveriesLoading"><span class="spinner"></span></div>
-            <div v-else-if="deliveries.length === 0" class="text-muted text-sm">No deliveries recorded yet.</div>
-            <div v-else class="table-wrapper">
-              <table>
-                <thead><tr><th>Event</th><th>Result</th><th>Attempt</th><th>When</th><th></th></tr></thead>
-                <tbody>
-                  <tr v-for="d in deliveries" :key="d.id">
-                    <td class="cell-sub">{{ eventLabel(d.event) }}</td>
-                    <td>
-                      <span class="badge" :class="d.status === 'success' ? 'badge-success' : 'badge-danger'">
-                        {{ d.http_status_code || d.status }}
-                      </span>
-                      <span v-if="d.error_message" class="cell-sub" :title="d.error_message"> {{ d.error_message }}</span>
-                    </td>
-                    <td class="cell-sub">#{{ d.attempt }}</td>
-                    <td class="cell-sub">{{ fmtTime(d.created_at) }}</td>
-                    <td class="text-right">
-                      <button v-if="ws.isWorkspaceAdmin" class="btn-icon btn-icon-muted" title="Redeliver" aria-label="Redeliver" @click="redeliver(d)"><span class="mdi mdi-replay"></span></button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-primary" @click="showDeliveries = false">Close</button>
+      <AppModal v-if="showDeliveries" @close="showDeliveries = false">
+        <div class="modal-header">
+          <h3>Recent deliveries</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDeliveries = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted text-sm" style="margin-top: 0">{{ deliveriesFor?.name || deliveriesFor?.url }}</p>
+          <div v-if="deliveriesLoading"><span class="spinner"></span></div>
+          <div v-else-if="deliveries.length === 0" class="text-muted text-sm">No deliveries recorded yet.</div>
+          <div v-else class="table-wrapper">
+            <table>
+              <thead><tr><th>Event</th><th>Result</th><th>Attempt</th><th>When</th><th></th></tr></thead>
+              <tbody>
+                <tr v-for="d in deliveries" :key="d.id">
+                  <td class="cell-sub">{{ eventLabel(d.event) }}</td>
+                  <td>
+                    <span class="badge" :class="d.status === 'success' ? 'badge-success' : 'badge-danger'">
+                      {{ d.http_status_code || d.status }}
+                    </span>
+                    <span v-if="d.error_message" class="cell-sub" :title="d.error_message"> {{ d.error_message }}</span>
+                  </td>
+                  <td class="cell-sub">#{{ d.attempt }}</td>
+                  <td class="cell-sub">{{ fmtTime(d.created_at) }}</td>
+                  <td class="text-right">
+                    <button v-if="ws.isWorkspaceAdmin" class="btn-icon btn-icon-muted" title="Redeliver" aria-label="Redeliver" @click="redeliver(d)"><span class="mdi mdi-replay"></span></button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
-      </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary" @click="showDeliveries = false">Close</button>
+        </div>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

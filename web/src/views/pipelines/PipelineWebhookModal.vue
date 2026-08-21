@@ -8,6 +8,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { copyText } from '@/utils/clipboard'
 import { parseYaml } from '@/utils/yaml'
 import type { PipelineDefinition } from '@/api/types'
+import AppModal from '@/components/AppModal.vue'
 
 const props = defineProps<{ open: boolean; pipeline: PipelineDefinition | null }>()
 const emit = defineEmits<{ close: [] }>()
@@ -166,123 +167,121 @@ async function copy(text: string, what: string) {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="modal-overlay">
-      <div class="modal modal-lg">
-        <div class="modal-header">
-          <h3>Push webhook</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="emit('close')">
-            <span class="mdi mdi-close"></span>
-          </button>
-        </div>
-
-        <div class="modal-body">
-          <div v-if="loading" class="loading"><span class="spinner"></span></div>
-
-          <template v-else-if="info">
-            <p class="lead">
-              Add this webhook to your Git provider and a push
-              <template v-if="triggers.push">to {{ branchLabel }}</template>
-              starts a run of <strong>{{ pipeline?.display_name || pipeline?.name }}</strong>,
-              pinned to the pushed commit.
-            </p>
-
-            <div v-for="(b, i) in blockers" :key="i" class="warn">
-              <span class="mdi mdi-alert-outline"></span>
-              <span>{{ b }}</span>
-            </div>
-
-            <div class="field">
-              <label class="form-label">Payload URL</label>
-              <div class="copy-row">
-                <code class="mono">{{ webhookUrl }}</code>
-                <button class="btn-icon btn-icon-muted" title="Copy URL" aria-label="Copy URL" @click="copy(webhookUrl, 'URL')">
-                  <span class="mdi mdi-content-copy"></span>
-                </button>
-              </div>
-            </div>
-
-            <div class="field">
-              <label class="form-label">Secret</label>
-              <div class="copy-row">
-                <code class="mono">{{ revealed ? secret : maskedSecret }}</code>
-                <button
-                  class="btn-icon btn-icon-muted"
-                  :title="revealed ? 'Hide secret' : 'Reveal secret'"
-                  :aria-label="revealed ? 'Hide secret' : 'Reveal secret'"
-                  @click="revealed = !revealed"
-                >
-                  <span class="mdi" :class="revealed ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"></span>
-                </button>
-                <button class="btn-icon btn-icon-muted" title="Copy secret" aria-label="Copy secret" @click="copy(secret, 'Secret')">
-                  <span class="mdi mdi-content-copy"></span>
-                </button>
-              </div>
-              <p class="form-hint">
-                This secret authenticates the webhook. Anyone holding it can start a run of this pipeline.
-              </p>
-            </div>
-
-            <div class="tabs provider-tabs">
-              <button class="tab" :class="{ active: provider === 'github' }" @click="provider = 'github'">GitHub</button>
-              <button class="tab" :class="{ active: provider === 'gitlab' }" @click="provider = 'gitlab'">GitLab</button>
-              <button class="tab" :class="{ active: provider === 'other' }" @click="provider = 'other'">Other</button>
-            </div>
-
-            <ol v-if="provider === 'github'" class="steps">
-              <li>Go to the repository's <strong>Settings → Webhooks → Add webhook</strong>.</li>
-              <li>Paste the <strong>Payload URL</strong> above.</li>
-              <li>Set <strong>Content type</strong> to <code class="mono">application/json</code>.</li>
-              <li>Paste the <strong>Secret</strong>.</li>
-              <li>Under events, choose <strong>Just the push event</strong>.</li>
-            </ol>
-
-            <ol v-else-if="provider === 'gitlab'" class="steps">
-              <li>Go to the project's <strong>Settings → Webhooks → Add new webhook</strong>.</li>
-              <li>Paste the <strong>Payload URL</strong> above into <strong>URL</strong>.</li>
-              <li>Paste the <strong>Secret</strong> into <strong>Secret token</strong>.</li>
-              <li>Tick <strong>Push events</strong> and leave the rest unchecked.</li>
-            </ol>
-
-            <div v-else class="other-provider">
-              <p class="text-sm">
-                Any provider that can POST a push payload works. Miabi accepts either authentication scheme:
-              </p>
-              <ul class="scheme-list">
-                <li>
-                  <code class="mono">{{ info.signature_header }}: sha256=&lt;hmac&gt;</code>
-                  — an HMAC-SHA256 of the raw request body, keyed with the secret (GitHub's scheme).
-                </li>
-                <li>
-                  <code class="mono">X-Gitlab-Token: &lt;secret&gt;</code>
-                  — the secret sent verbatim (GitLab's scheme).
-                </li>
-              </ul>
-              <p class="text-sm">
-                The branch and commit are read from <code class="mono">ref</code> plus
-                <code class="mono">head_commit.id</code>, <code class="mono">after</code>, or
-                <code class="mono">checkout_sha</code>.
-              </p>
-            </div>
-
-            <a
-              v-if="providerLink"
-              class="btn btn-secondary btn-sm provider-link"
-              :href="providerLink.href"
-              target="_blank"
-              rel="noopener"
-            >
-              <span class="mdi mdi-open-in-new"></span> {{ providerLink.label }}
-            </a>
-          </template>
-
-          <p v-else class="text-muted text-sm">The webhook details could not be loaded.</p>
-        </div>
-
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="emit('close')">Close</button>
-        </div>
+    <AppModal v-if="open" dialog-class="modal-lg" @close="emit('close')">
+      <div class="modal-header">
+        <h3>Push webhook</h3>
+        <button class="btn-icon btn-icon-muted" aria-label="Close" @click="emit('close')">
+          <span class="mdi mdi-close"></span>
+        </button>
       </div>
-    </div>
+
+      <div class="modal-body">
+        <div v-if="loading" class="loading"><span class="spinner"></span></div>
+
+        <template v-else-if="info">
+          <p class="lead">
+            Add this webhook to your Git provider and a push
+            <template v-if="triggers.push">to {{ branchLabel }}</template>
+            starts a run of <strong>{{ pipeline?.display_name || pipeline?.name }}</strong>,
+            pinned to the pushed commit.
+          </p>
+
+          <div v-for="(b, i) in blockers" :key="i" class="warn">
+            <span class="mdi mdi-alert-outline"></span>
+            <span>{{ b }}</span>
+          </div>
+
+          <div class="field">
+            <label class="form-label">Payload URL</label>
+            <div class="copy-row">
+              <code class="mono">{{ webhookUrl }}</code>
+              <button class="btn-icon btn-icon-muted" title="Copy URL" aria-label="Copy URL" @click="copy(webhookUrl, 'URL')">
+                <span class="mdi mdi-content-copy"></span>
+              </button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="form-label">Secret</label>
+            <div class="copy-row">
+              <code class="mono">{{ revealed ? secret : maskedSecret }}</code>
+              <button
+                class="btn-icon btn-icon-muted"
+                :title="revealed ? 'Hide secret' : 'Reveal secret'"
+                :aria-label="revealed ? 'Hide secret' : 'Reveal secret'"
+                @click="revealed = !revealed"
+              >
+                <span class="mdi" :class="revealed ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"></span>
+              </button>
+              <button class="btn-icon btn-icon-muted" title="Copy secret" aria-label="Copy secret" @click="copy(secret, 'Secret')">
+                <span class="mdi mdi-content-copy"></span>
+              </button>
+            </div>
+            <p class="form-hint">
+              This secret authenticates the webhook. Anyone holding it can start a run of this pipeline.
+            </p>
+          </div>
+
+          <div class="tabs provider-tabs">
+            <button class="tab" :class="{ active: provider === 'github' }" @click="provider = 'github'">GitHub</button>
+            <button class="tab" :class="{ active: provider === 'gitlab' }" @click="provider = 'gitlab'">GitLab</button>
+            <button class="tab" :class="{ active: provider === 'other' }" @click="provider = 'other'">Other</button>
+          </div>
+
+          <ol v-if="provider === 'github'" class="steps">
+            <li>Go to the repository's <strong>Settings → Webhooks → Add webhook</strong>.</li>
+            <li>Paste the <strong>Payload URL</strong> above.</li>
+            <li>Set <strong>Content type</strong> to <code class="mono">application/json</code>.</li>
+            <li>Paste the <strong>Secret</strong>.</li>
+            <li>Under events, choose <strong>Just the push event</strong>.</li>
+          </ol>
+
+          <ol v-else-if="provider === 'gitlab'" class="steps">
+            <li>Go to the project's <strong>Settings → Webhooks → Add new webhook</strong>.</li>
+            <li>Paste the <strong>Payload URL</strong> above into <strong>URL</strong>.</li>
+            <li>Paste the <strong>Secret</strong> into <strong>Secret token</strong>.</li>
+            <li>Tick <strong>Push events</strong> and leave the rest unchecked.</li>
+          </ol>
+
+          <div v-else class="other-provider">
+            <p class="text-sm">
+              Any provider that can POST a push payload works. Miabi accepts either authentication scheme:
+            </p>
+            <ul class="scheme-list">
+              <li>
+                <code class="mono">{{ info.signature_header }}: sha256=&lt;hmac&gt;</code>
+                — an HMAC-SHA256 of the raw request body, keyed with the secret (GitHub's scheme).
+              </li>
+              <li>
+                <code class="mono">X-Gitlab-Token: &lt;secret&gt;</code>
+                — the secret sent verbatim (GitLab's scheme).
+              </li>
+            </ul>
+            <p class="text-sm">
+              The branch and commit are read from <code class="mono">ref</code> plus
+              <code class="mono">head_commit.id</code>, <code class="mono">after</code>, or
+              <code class="mono">checkout_sha</code>.
+            </p>
+          </div>
+
+          <a
+            v-if="providerLink"
+            class="btn btn-secondary btn-sm provider-link"
+            :href="providerLink.href"
+            target="_blank"
+            rel="noopener"
+          >
+            <span class="mdi mdi-open-in-new"></span> {{ providerLink.label }}
+          </a>
+        </template>
+
+        <p v-else class="text-muted text-sm">The webhook details could not be loaded.</p>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" @click="emit('close')">Close</button>
+      </div>
+    </AppModal>
   </Teleport>
 </template>
 

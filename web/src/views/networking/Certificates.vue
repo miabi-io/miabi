@@ -8,6 +8,7 @@ import { certificateApi, type CertificateInput } from '@/api/certificates'
 import { domainApi } from '@/api/domains'
 import type { Certificate, Domain } from '@/api/types'
 import { fmtDate, expiryBadge } from '@/utils/certificate'
+import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -133,65 +134,61 @@ function open(c: Certificate) { router.push(`/certificates/${c.id}`) }
     </div>
 
     <Teleport to="body">
-      <div v-if="showForm" class="modal-overlay">
-        <div class="modal" style="max-width: 640px; width: 100%">
-          <div class="modal-header">
-            <h3>Import certificate</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showForm = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="save">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="form.name" class="form-input" placeholder="example.com wildcard" required autofocus />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Certificate (PEM) — leaf + intermediates</label>
-                <textarea v-model="form.cert_pem" class="form-input" rows="5" required placeholder="-----BEGIN CERTIFICATE-----" style="font-family: monospace; font-size: 12px"></textarea>
-              </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Private key (PEM)</label>
-                <textarea v-model="form.key_pem" class="form-input" rows="4" required placeholder="-----BEGIN PRIVATE KEY-----" style="font-family: monospace; font-size: 12px"></textarea>
-                <p class="form-hint">The key is validated against the certificate, encrypted at rest, and never shown again.</p>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showForm = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : 'Import' }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showForm" max-width="640px" @close="showForm = false">
+        <div class="modal-header">
+          <h3>Import certificate</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showForm = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="save">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="form.name" class="form-input" placeholder="example.com wildcard" required autofocus />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Certificate (PEM) — leaf + intermediates</label>
+              <textarea v-model="form.cert_pem" class="form-input" rows="5" required placeholder="-----BEGIN CERTIFICATE-----" style="font-family: monospace; font-size: 12px"></textarea>
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Private key (PEM)</label>
+              <textarea v-model="form.key_pem" class="form-input" rows="4" required placeholder="-----BEGIN PRIVATE KEY-----" style="font-family: monospace; font-size: 12px"></textarea>
+              <p class="form-hint">The key is validated against the certificate, encrypted at rest, and never shown again.</p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showForm = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : 'Import' }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <!-- Issue managed (ACME DNS-01) certificate -->
     <Teleport to="body">
-      <div v-if="showIssue" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Issue with DNS provider</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showIssue = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="issueCert">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Domain</label>
-                <select v-model.number="issueForm.domain_id" class="form-select" required>
-                  <option v-for="d in issuableDomains" :key="d.id" :value="d.id">{{ d.name }}</option>
-                </select>
-                <p class="form-hint">Only verified domains with a connected DNS provider can be issued.</p>
-              </div>
-              <label class="checkbox-label"><input v-model="issueForm.include_wildcard" type="checkbox" /> Include wildcard (<code>*.</code> + apex)</label>
-              <label class="checkbox-label"><input v-model="issueForm.auto_renew" type="checkbox" /> Auto-renew before expiry</label>
-              <p class="form-hint">Miabi solves an ACME DNS-01 challenge via your provider and stores the certificate here. This can take a minute.</p>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showIssue = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="issuing || !issueForm.domain_id">{{ issuing ? 'Starting…' : 'Issue certificate' }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showIssue" @close="showIssue = false">
+        <div class="modal-header">
+          <h3>Issue with DNS provider</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showIssue = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="issueCert">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Domain</label>
+              <select v-model.number="issueForm.domain_id" class="form-select" required>
+                <option v-for="d in issuableDomains" :key="d.id" :value="d.id">{{ d.name }}</option>
+              </select>
+              <p class="form-hint">Only verified domains with a connected DNS provider can be issued.</p>
+            </div>
+            <label class="checkbox-label"><input v-model="issueForm.include_wildcard" type="checkbox" /> Include wildcard (<code>*.</code> + apex)</label>
+            <label class="checkbox-label"><input v-model="issueForm.auto_renew" type="checkbox" /> Auto-renew before expiry</label>
+            <p class="form-hint">Miabi solves an ACME DNS-01 challenge via your provider and stores the certificate here. This can take a minute.</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showIssue = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="issuing || !issueForm.domain_id">{{ issuing ? 'Starting…' : 'Issue certificate' }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
   </div>
 </template>

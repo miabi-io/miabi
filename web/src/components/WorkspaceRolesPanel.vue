@@ -6,6 +6,7 @@ import type { PermissionInfo, CustomRole, WorkspaceRole } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
 import { useEntitlement } from '@/composables/useEntitlement'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const props = defineProps<{ wsId: number; myRole: WorkspaceRole | string }>()
 const emit = defineEmits<{ (e: 'changed'): void }>()
@@ -160,58 +161,56 @@ async function confirmDelete() {
 
     <!-- Editor -->
     <Teleport to="body">
-      <div v-if="showModal" class="modal-overlay">
-        <div class="modal modal-lg">
-          <div class="modal-header">
-            <h3>{{ editing ? 'Edit role' : 'New role' }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="save">
-            <div class="modal-body">
-              <div class="form-row">
-                <div class="form-group">
-                  <label class="form-label">Name</label>
-                  <input v-model="form.name" class="form-input" placeholder="Deployer" aria-label="Name" required autofocus />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Base role (rank fallback)</label>
-                  <select v-model="form.base_role" class="form-select" aria-label="Base role (rank fallback)">
-                    <option v-for="r in baseRoles" :key="r" :value="r">{{ r }}</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="form-label">Permissions</div>
-              <div class="matrix">
-                <div v-for="(list, resource) in grouped" :key="resource" class="matrix-group">
-                  <div class="matrix-resource">{{ resource }}</div>
-                  <label
-                    v-for="p in list"
-                    :key="p.id"
-                    class="perm"
-                    :class="{ disabled: !myPermissions.has(p.id) }"
-                    :title="!myPermissions.has(p.id) ? 'You cannot grant a permission you do not hold' : ''"
-                  >
-                    <input
-                      type="checkbox"
-                      :checked="form.permissions.has(p.id)"
-                      :disabled="!myPermissions.has(p.id)"
-                      @change="toggle(p.id)"
-                    />
-                    {{ p.action }}
-                  </label>
-                </div>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving || !form.name.trim() || form.permissions.size === 0">
-                {{ saving ? 'Saving…' : editing ? 'Save' : 'Create role' }}
-              </button>
-            </div>
-          </form>
+      <AppModal v-if="showModal" dialog-class="modal-lg" @close="showModal = false">
+        <div class="modal-header">
+          <h3>{{ editing ? 'Edit role' : 'New role' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="save">
+          <div class="modal-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Name</label>
+                <input v-model="form.name" class="form-input" placeholder="Deployer" aria-label="Name" required autofocus />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Base role (rank fallback)</label>
+                <select v-model="form.base_role" class="form-select" aria-label="Base role (rank fallback)">
+                  <option v-for="r in baseRoles" :key="r" :value="r">{{ r }}</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-label">Permissions</div>
+            <div class="matrix">
+              <div v-for="(list, resource) in grouped" :key="resource" class="matrix-group">
+                <div class="matrix-resource">{{ resource }}</div>
+                <label
+                  v-for="p in list"
+                  :key="p.id"
+                  class="perm"
+                  :class="{ disabled: !myPermissions.has(p.id) }"
+                  :title="!myPermissions.has(p.id) ? 'You cannot grant a permission you do not hold' : ''"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="form.permissions.has(p.id)"
+                    :disabled="!myPermissions.has(p.id)"
+                    @change="toggle(p.id)"
+                  />
+                  {{ p.action }}
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving || !form.name.trim() || form.permissions.size === 0">
+              {{ saving ? 'Saving…' : editing ? 'Save' : 'Create role' }}
+            </button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

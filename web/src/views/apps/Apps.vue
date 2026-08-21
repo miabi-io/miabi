@@ -13,6 +13,7 @@ import { stackApi } from '@/api/stacks'
 import type { Application, Registry, GitRepository, Network, Stack, AppPort, BuildMethod, RuntimeKind } from '@/api/types'
 import NodePicker from '@/components/NodePicker.vue'
 import PlacementPicker from '@/components/PlacementPicker.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -294,211 +295,209 @@ function formatCreated(ts?: string) {
     </div>
 
     <Teleport to="body">
-      <div v-if="showCreate" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>New application</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="create">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="form.name" class="form-input" placeholder="e.g. web-api" required autofocus />
-              </div>
-              <!-- Cluster runtime: only offered when cluster mode is enabled. -->
-              <div v-if="clusterEnabled" class="form-row">
-                <div class="form-group" style="flex: 2; margin-bottom: 0">
-                  <label class="form-label">Runtime</label>
-                  <select v-model="form.runtime_kind" class="form-select">
-                    <option value="container">Container (single node)</option>
-                    <option value="service">Service (replicated, cluster)</option>
-                  </select>
-                </div>
-                <div v-if="isService" class="form-group" style="flex: 1; margin-bottom: 0">
-                  <label class="form-label">Replicas</label>
-                  <input v-model.number="form.replicas" type="number" min="1" class="form-input" placeholder="1" />
-                </div>
-              </div>
-              <!--
-                A container is placed by server_id; a service is placed by the Swarm
-                scheduler, which ignores server_id. Showing the node picker for a
-                service would silently discard the choice, so each runtime gets the
-                control that actually decides where it runs.
-              -->
-              <NodePicker v-if="!isService" v-model="form.server_id" />
-              <PlacementPicker v-else v-model="form.placement_constraints" :replicas="form.replicas" />
-              <p v-if="isService" class="form-hint">
-                Runs as a Swarm service on the workspace overlay network with {{ Math.max(1, form.replicas) }} replica(s).
-              </p>
-              <div class="form-group">
-                <label class="form-label">Source</label>
-                <div class="tabs" style="margin-bottom: 0">
-                  <button type="button" class="tab" :class="{ active: form.source_type === 'image' }" @click="form.source_type = 'image'">Docker image</button>
-                  <button type="button" class="tab" :class="{ active: form.source_type === 'git' }" @click="form.source_type = 'git'">Git repository</button>
-                </div>
-              </div>
-              <template v-if="form.source_type === 'image'">
-                <div class="form-row">
-                  <div class="form-group" style="flex: 2; margin-bottom: 0">
-                    <label class="form-label">Image</label>
-                    <input v-model="form.image" class="form-input" placeholder="nginx" required />
-                  </div>
-                  <div class="form-group" style="flex: 1; margin-bottom: 0">
-                    <label class="form-label">Tag <span class="text-muted">(optional)</span></label>
-                    <input v-model="form.tag" class="form-input" placeholder="latest" />
-                  </div>
-                </div>
-                <p class="form-hint">Deploys <code>{{ form.image || 'image' }}:{{ form.tag || 'latest' }}</code></p>
-                <div class="form-group">
-                  <label class="form-label">Registry credential <span class="text-muted">(for private images)</span></label>
-                  <select v-model="form.registry_id" class="form-select">
-                    <option :value="null">Public / none</option>
-                    <option v-for="r in registries" :key="r.id" :value="r.id">{{ r.name }} ({{ r.server }})</option>
-                  </select>
-                  <p v-if="registries.length === 0" class="form-hint">
-                    No registries yet — add one under <RouterLink to="/registries">Registries</RouterLink>.
-                  </p>
-                </div>
-              </template>
-              <template v-else>
-                <div class="form-group">
-                  <label class="form-label">Repository</label>
-                  <select v-model="form.git_repository_id" class="form-select" @change="onGitRepoSelect">
-                    <option :value="null">Public URL (no saved repository)</option>
-                    <option v-for="r in gitRepos" :key="r.id" :value="r.id">{{ r.name }} — {{ r.url }}</option>
-                  </select>
-                  <p class="form-hint">
-                    <template v-if="form.git_repository_id">Uses the saved repository's URL and credentials.</template>
-                    <template v-else>Select a saved repository to reuse its URL and credentials.</template>
-                    <RouterLink to="/git-repositories">Manage repositories →</RouterLink>
-                  </p>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">
-                    Repository URL
-                    <span v-if="form.git_repository_id" class="text-muted">(optional — overrides the saved repository)</span>
-                  </label>
-                  <input v-model="form.git_repo" class="form-input" placeholder="https://github.com/user/repo" :required="!form.git_repository_id" />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Branch / ref <span class="text-muted">(optional)</span></label>
-                  <input v-model="form.git_ref" class="form-input" placeholder="main" />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Build method</label>
-                  <select v-model="form.build_method" class="form-select">
-                    <option value="auto">Auto (recommended)</option>
-                    <option value="buildpack">Buildpacks (no Dockerfile)</option>
-                    <option value="dockerfile">Dockerfile</option>
-                  </select>
-                  <p class="form-hint">
-                    Auto builds the repo's Dockerfile when present, otherwise uses Cloud Native Buildpacks.
-                  </p>
-                </div>
-                <div v-if="form.build_method !== 'dockerfile'" class="form-group">
-                  <label class="form-label">Builder image <span class="text-muted">(optional, advanced)</span></label>
-                  <input v-model="form.builder" class="form-input" placeholder="paketobuildpacks/builder-jammy-base" />
-                  <p class="form-hint">Override the Cloud Native Buildpacks builder. Leave empty to use the platform default.</p>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Repository contents</label>
-                  <button type="button" class="btn btn-secondary btn-sm" :disabled="!canInspect || inspecting" @click="inspectRepo">
-                    <span class="mdi" :class="inspecting ? 'mdi-loading mdi-spin' : 'mdi-magnify'"></span>
-                    {{ inspecting ? 'Reading repository…' : 'Check repository' }}
-                  </button>
-                  <p class="form-hint">
-                    Looks for a Dockerfile and a <code>.miabi/pipeline.yaml</code>. Optional — it also verifies the URL and credentials.
-                  </p>
-
-                  <p v-if="inspectError" class="form-hint text-danger">
-                    <span class="mdi mdi-alert-circle-outline"></span> {{ inspectError }}
-                  </p>
-
-                  <div v-else-if="inspected" class="inspect-result">
-                    <!-- Found a usable pipeline: offer to adopt it. -->
-                    <template v-if="inspected.has_pipeline">
-                      <label class="inspect-toggle">
-                        <input v-model="form.use_pipeline" type="checkbox" />
-                        <span>
-                          <strong>Use the pipeline from {{ inspected.pipeline_path }}</strong>
-                          <span class="text-muted"> — runs {{ pipelineTriggerLabel }}</span>
-                        </span>
-                      </label>
-                      <ol class="inspect-steps">
-                        <li v-for="s in inspected.steps" :key="s.name">
-                          <span class="step-name">{{ s.name }}</span>
-                          <span class="text-muted">{{ s.uses ? `built-in: ${s.uses}` : s.image }}</span>
-                          <span v-if="s.continue_on_error" class="badge badge-neutral">continue on error</span>
-                        </li>
-                      </ol>
-                      <p v-if="form.use_pipeline" class="form-hint">
-                        Deploys run these steps instead of building directly. The file in git stays the source of
-                        truth — edit it there and push.
-                      </p>
-                      <p v-else class="form-hint">
-                        The app will build and deploy directly, skipping the steps above.
-                      </p>
-                    </template>
-
-                    <!-- A pipeline file exists but is broken: say so rather than silently building. -->
-                    <p v-else-if="inspected.pipeline_error" class="form-hint text-danger">
-                      <span class="mdi mdi-alert-circle-outline"></span>
-                      Found <code>{{ inspected.pipeline_path }}</code> but it isn't valid: {{ inspected.pipeline_error }}.
-                      The app will build directly until you fix it.
-                    </p>
-
-                    <p v-else class="form-hint">
-                      <span class="mdi mdi-check"></span>
-                      No pipeline file — this app will build
-                      {{ inspected.has_dockerfile ? 'from its Dockerfile' : 'with Cloud Native Buildpacks' }}
-                      and deploy.
-                    </p>
-                  </div>
-                </div>
-              </template>
-              <div class="form-group">
-                <label class="form-label">Container ports</label>
-                <div v-for="(p, i) in form.ports" :key="i" class="port-row">
-                  <input v-model.number="p.container_port" type="number" class="form-input" aria-label="Container port" placeholder="8080" style="flex: 1" />
-                  <select v-model="p.protocol" class="form-select" aria-label="Port protocol" style="width: 84px">
-                    <option value="tcp">TCP</option>
-                    <option value="udp">UDP</option>
-                  </select>
-                  <select v-model="p.scheme" class="form-select" title="Application protocol (Gateway backend URL)" aria-label="Application protocol (Gateway backend URL)" style="width: 96px">
-                    <option value="http">http</option>
-                    <option value="https">https</option>
-                  </select>
-                  <input v-model="p.name" class="form-input" aria-label="Port name" placeholder="name (opt)" style="flex: 1" />
-                  <button type="button" class="btn-icon btn-icon-danger" aria-label="Remove port" @click="removePort(i)"><span class="mdi mdi-close"></span></button>
-                </div>
-                <button type="button" class="btn btn-ghost btn-sm" @click="addPort"><span class="mdi mdi-plus"></span> Add port</button>
-              </div>
-              <div v-if="networks.length" class="form-group">
-                <label class="form-label">Networks <span class="text-muted">(default is always attached)</span></label>
-                <label v-for="n in networks" :key="n.id" class="checkbox-label">
-                  <input type="checkbox" :value="n.id" v-model="form.network_ids" :disabled="n.is_default" />
-                  {{ n.name }} <span v-if="n.is_default" class="text-muted">(default)</span>
-                </label>
-              </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Stack <span class="text-muted">(optional)</span></label>
-                <select v-model="form.stack_id" class="form-select">
-                  <option :value="null">None</option>
-                  <option v-for="s in stacks" :key="s.id" :value="s.id">{{ s.name }}</option>
+      <AppModal v-if="showCreate" @close="showCreate = false">
+        <div class="modal-header">
+          <h3>New application</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <form @submit.prevent="create">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="form.name" class="form-input" placeholder="e.g. web-api" required autofocus />
+            </div>
+            <!-- Cluster runtime: only offered when cluster mode is enabled. -->
+            <div v-if="clusterEnabled" class="form-row">
+              <div class="form-group" style="flex: 2; margin-bottom: 0">
+                <label class="form-label">Runtime</label>
+                <select v-model="form.runtime_kind" class="form-select">
+                  <option value="container">Container (single node)</option>
+                  <option value="service">Service (replicated, cluster)</option>
                 </select>
-                <p v-if="stacks.length === 0" class="form-hint">
-                  No stacks yet — create one under <RouterLink to="/stacks">Stacks</RouterLink>.
+              </div>
+              <div v-if="isService" class="form-group" style="flex: 1; margin-bottom: 0">
+                <label class="form-label">Replicas</label>
+                <input v-model.number="form.replicas" type="number" min="1" class="form-input" placeholder="1" />
+              </div>
+            </div>
+            <!--
+              A container is placed by server_id; a service is placed by the Swarm
+              scheduler, which ignores server_id. Showing the node picker for a
+              service would silently discard the choice, so each runtime gets the
+              control that actually decides where it runs.
+            -->
+            <NodePicker v-if="!isService" v-model="form.server_id" />
+            <PlacementPicker v-else v-model="form.placement_constraints" :replicas="form.replicas" />
+            <p v-if="isService" class="form-hint">
+              Runs as a Swarm service on the workspace overlay network with {{ Math.max(1, form.replicas) }} replica(s).
+            </p>
+            <div class="form-group">
+              <label class="form-label">Source</label>
+              <div class="tabs" style="margin-bottom: 0">
+                <button type="button" class="tab" :class="{ active: form.source_type === 'image' }" @click="form.source_type = 'image'">Docker image</button>
+                <button type="button" class="tab" :class="{ active: form.source_type === 'git' }" @click="form.source_type = 'git'">Git repository</button>
+              </div>
+            </div>
+            <template v-if="form.source_type === 'image'">
+              <div class="form-row">
+                <div class="form-group" style="flex: 2; margin-bottom: 0">
+                  <label class="form-label">Image</label>
+                  <input v-model="form.image" class="form-input" placeholder="nginx" required />
+                </div>
+                <div class="form-group" style="flex: 1; margin-bottom: 0">
+                  <label class="form-label">Tag <span class="text-muted">(optional)</span></label>
+                  <input v-model="form.tag" class="form-input" placeholder="latest" />
+                </div>
+              </div>
+              <p class="form-hint">Deploys <code>{{ form.image || 'image' }}:{{ form.tag || 'latest' }}</code></p>
+              <div class="form-group">
+                <label class="form-label">Registry credential <span class="text-muted">(for private images)</span></label>
+                <select v-model="form.registry_id" class="form-select">
+                  <option :value="null">Public / none</option>
+                  <option v-for="r in registries" :key="r.id" :value="r.id">{{ r.name }} ({{ r.server }})</option>
+                </select>
+                <p v-if="registries.length === 0" class="form-hint">
+                  No registries yet — add one under <RouterLink to="/registries">Registries</RouterLink>.
                 </p>
               </div>
+            </template>
+            <template v-else>
+              <div class="form-group">
+                <label class="form-label">Repository</label>
+                <select v-model="form.git_repository_id" class="form-select" @change="onGitRepoSelect">
+                  <option :value="null">Public URL (no saved repository)</option>
+                  <option v-for="r in gitRepos" :key="r.id" :value="r.id">{{ r.name }} — {{ r.url }}</option>
+                </select>
+                <p class="form-hint">
+                  <template v-if="form.git_repository_id">Uses the saved repository's URL and credentials.</template>
+                  <template v-else>Select a saved repository to reuse its URL and credentials.</template>
+                  <RouterLink to="/git-repositories">Manage repositories →</RouterLink>
+                </p>
+              </div>
+              <div class="form-group">
+                <label class="form-label">
+                  Repository URL
+                  <span v-if="form.git_repository_id" class="text-muted">(optional — overrides the saved repository)</span>
+                </label>
+                <input v-model="form.git_repo" class="form-input" placeholder="https://github.com/user/repo" :required="!form.git_repository_id" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Branch / ref <span class="text-muted">(optional)</span></label>
+                <input v-model="form.git_ref" class="form-input" placeholder="main" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Build method</label>
+                <select v-model="form.build_method" class="form-select">
+                  <option value="auto">Auto (recommended)</option>
+                  <option value="buildpack">Buildpacks (no Dockerfile)</option>
+                  <option value="dockerfile">Dockerfile</option>
+                </select>
+                <p class="form-hint">
+                  Auto builds the repo's Dockerfile when present, otherwise uses Cloud Native Buildpacks.
+                </p>
+              </div>
+              <div v-if="form.build_method !== 'dockerfile'" class="form-group">
+                <label class="form-label">Builder image <span class="text-muted">(optional, advanced)</span></label>
+                <input v-model="form.builder" class="form-input" placeholder="paketobuildpacks/builder-jammy-base" />
+                <p class="form-hint">Override the Cloud Native Buildpacks builder. Leave empty to use the platform default.</p>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Repository contents</label>
+                <button type="button" class="btn btn-secondary btn-sm" :disabled="!canInspect || inspecting" @click="inspectRepo">
+                  <span class="mdi" :class="inspecting ? 'mdi-loading mdi-spin' : 'mdi-magnify'"></span>
+                  {{ inspecting ? 'Reading repository…' : 'Check repository' }}
+                </button>
+                <p class="form-hint">
+                  Looks for a Dockerfile and a <code>.miabi/pipeline.yaml</code>. Optional — it also verifies the URL and credentials.
+                </p>
+
+                <p v-if="inspectError" class="form-hint text-danger">
+                  <span class="mdi mdi-alert-circle-outline"></span> {{ inspectError }}
+                </p>
+
+                <div v-else-if="inspected" class="inspect-result">
+                  <!-- Found a usable pipeline: offer to adopt it. -->
+                  <template v-if="inspected.has_pipeline">
+                    <label class="inspect-toggle">
+                      <input v-model="form.use_pipeline" type="checkbox" />
+                      <span>
+                        <strong>Use the pipeline from {{ inspected.pipeline_path }}</strong>
+                        <span class="text-muted"> — runs {{ pipelineTriggerLabel }}</span>
+                      </span>
+                    </label>
+                    <ol class="inspect-steps">
+                      <li v-for="s in inspected.steps" :key="s.name">
+                        <span class="step-name">{{ s.name }}</span>
+                        <span class="text-muted">{{ s.uses ? `built-in: ${s.uses}` : s.image }}</span>
+                        <span v-if="s.continue_on_error" class="badge badge-neutral">continue on error</span>
+                      </li>
+                    </ol>
+                    <p v-if="form.use_pipeline" class="form-hint">
+                      Deploys run these steps instead of building directly. The file in git stays the source of
+                      truth — edit it there and push.
+                    </p>
+                    <p v-else class="form-hint">
+                      The app will build and deploy directly, skipping the steps above.
+                    </p>
+                  </template>
+
+                  <!-- A pipeline file exists but is broken: say so rather than silently building. -->
+                  <p v-else-if="inspected.pipeline_error" class="form-hint text-danger">
+                    <span class="mdi mdi-alert-circle-outline"></span>
+                    Found <code>{{ inspected.pipeline_path }}</code> but it isn't valid: {{ inspected.pipeline_error }}.
+                    The app will build directly until you fix it.
+                  </p>
+
+                  <p v-else class="form-hint">
+                    <span class="mdi mdi-check"></span>
+                    No pipeline file — this app will build
+                    {{ inspected.has_dockerfile ? 'from its Dockerfile' : 'with Cloud Native Buildpacks' }}
+                    and deploy.
+                  </p>
+                </div>
+              </div>
+            </template>
+            <div class="form-group">
+              <label class="form-label">Container ports</label>
+              <div v-for="(p, i) in form.ports" :key="i" class="port-row">
+                <input v-model.number="p.container_port" type="number" class="form-input" aria-label="Container port" placeholder="8080" style="flex: 1" />
+                <select v-model="p.protocol" class="form-select" aria-label="Port protocol" style="width: 84px">
+                  <option value="tcp">TCP</option>
+                  <option value="udp">UDP</option>
+                </select>
+                <select v-model="p.scheme" class="form-select" title="Application protocol (Gateway backend URL)" aria-label="Application protocol (Gateway backend URL)" style="width: 96px">
+                  <option value="http">http</option>
+                  <option value="https">https</option>
+                </select>
+                <input v-model="p.name" class="form-input" aria-label="Port name" placeholder="name (opt)" style="flex: 1" />
+                <button type="button" class="btn-icon btn-icon-danger" aria-label="Remove port" @click="removePort(i)"><span class="mdi mdi-close"></span></button>
+              </div>
+              <button type="button" class="btn btn-ghost btn-sm" @click="addPort"><span class="mdi mdi-plus"></span> Add port</button>
             </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="creating">{{ creating ? 'Creating…' : 'Create application' }}</button>
+            <div v-if="networks.length" class="form-group">
+              <label class="form-label">Networks <span class="text-muted">(default is always attached)</span></label>
+              <label v-for="n in networks" :key="n.id" class="checkbox-label">
+                <input type="checkbox" :value="n.id" v-model="form.network_ids" :disabled="n.is_default" />
+                {{ n.name }} <span v-if="n.is_default" class="text-muted">(default)</span>
+              </label>
             </div>
-          </form>
-        </div>
-      </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Stack <span class="text-muted">(optional)</span></label>
+              <select v-model="form.stack_id" class="form-select">
+                <option :value="null">None</option>
+                <option v-for="s in stacks" :key="s.id" :value="s.id">{{ s.name }}</option>
+              </select>
+              <p v-if="stacks.length === 0" class="form-hint">
+                No stacks yet — create one under <RouterLink to="/stacks">Stacks</RouterLink>.
+              </p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="creating">{{ creating ? 'Creating…' : 'Create application' }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
   </div>
 </template>

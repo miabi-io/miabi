@@ -8,6 +8,7 @@ import { environmentApi } from '@/api/environments'
 import { usePagination } from '@/composables/usePagination'
 import Pagination from '@/components/Pagination.vue'
 import type { WorkspaceRelease, Environment, EnvApproval } from '@/api/types'
+import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -174,44 +175,42 @@ function short(s?: string) { return s ? s.replace(/^sha256:/, '').slice(0, 12) :
     </p>
 
     <Teleport to="body">
-      <div v-if="showModal" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Promote {{ target?.application_name }} v{{ target?.version }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <div class="modal-body">
-            <div class="form-group">
-              <label class="form-label">Target environment</label>
-              <select v-model="selectedEnv" class="form-select">
-                <option v-for="e in environments" :key="e.id" :value="e.id">{{ e.name }}</option>
-              </select>
-            </div>
-
-            <div v-if="statusLoading" class="card-body"><span class="spinner"></span></div>
-            <div v-else-if="currentStatus" class="gate" :class="canPromote ? 'gate-ok' : 'gate-block'">
-              <span class="mdi" :class="canPromote ? 'mdi-lock-open-check-outline' : 'mdi-lock-outline'"></span>
-              <span>
-                <strong>{{ currentStatus.approvals }}/{{ currentStatus.required_approvals }}</strong>
-                approvals
-                <template v-if="currentStatus.required_approvals === 0"> — no approval required</template>
-                <template v-else-if="canPromote"> — gate satisfied</template>
-                <template v-else> — needs {{ currentStatus.required_approvals - currentStatus.approvals }} more</template>
-              </span>
-            </div>
-
-            <p class="note">Promotion re-points <strong>{{ target?.application_name }}</strong> at this release and deploys it.</p>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" :disabled="working || !selectedEnv" @click="approve">
-              <span class="mdi mdi-account-check-outline"></span> Approve
-            </button>
-            <button type="button" class="btn btn-primary" :disabled="working || !canPromote" @click="promote">
-              <span class="mdi mdi-rocket-launch-outline"></span> Promote
-            </button>
-          </div>
+      <AppModal v-if="showModal" @close="showModal = false">
+        <div class="modal-header">
+          <h3>Promote {{ target?.application_name }} v{{ target?.version }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Target environment</label>
+            <select v-model="selectedEnv" class="form-select">
+              <option v-for="e in environments" :key="e.id" :value="e.id">{{ e.name }}</option>
+            </select>
+          </div>
+
+          <div v-if="statusLoading" class="card-body"><span class="spinner"></span></div>
+          <div v-else-if="currentStatus" class="gate" :class="canPromote ? 'gate-ok' : 'gate-block'">
+            <span class="mdi" :class="canPromote ? 'mdi-lock-open-check-outline' : 'mdi-lock-outline'"></span>
+            <span>
+              <strong>{{ currentStatus.approvals }}/{{ currentStatus.required_approvals }}</strong>
+              approvals
+              <template v-if="currentStatus.required_approvals === 0"> — no approval required</template>
+              <template v-else-if="canPromote"> — gate satisfied</template>
+              <template v-else> — needs {{ currentStatus.required_approvals - currentStatus.approvals }} more</template>
+            </span>
+          </div>
+
+          <p class="note">Promotion re-points <strong>{{ target?.application_name }}</strong> at this release and deploys it.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" :disabled="working || !selectedEnv" @click="approve">
+            <span class="mdi mdi-account-check-outline"></span> Approve
+          </button>
+          <button type="button" class="btn btn-primary" :disabled="working || !canPromote" @click="promote">
+            <span class="mdi mdi-rocket-launch-outline"></span> Promote
+          </button>
+        </div>
+      </AppModal>
     </Teleport>
   </div>
 </template>
