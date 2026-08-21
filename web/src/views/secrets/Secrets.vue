@@ -280,8 +280,10 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
             <div class="form-group">
               <label class="form-label">Value <span v-if="editingId" class="text-muted">(leave blank to keep
                   current)</span></label>
-              <textarea v-model="form.value" class="form-input" rows="3" :required="!editingId"
-                placeholder="the secret value" aria-label="Value" style="font-family: monospace"></textarea>
+              <textarea v-model="form.value" class="form-input" rows="8" :required="!editingId"
+                placeholder="the secret value&#10;&#10;Multi-line values are stored exactly as entered, so a PEM certificate or private key can be pasted whole."
+                aria-label="Value" style="font-family: monospace; white-space: pre"></textarea>
+              <p class="form-hint">Stored verbatim — line breaks and trailing newlines are preserved.</p>
             </div>
             <div class="form-group" style="margin-bottom: 0">
               <label class="form-label">Description <span class="text-muted">(optional)</span></label>
@@ -309,7 +311,7 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
             <div class="dns-field">
               <span class="dns-field-label">Value</span>
               <div class="dns-field-row">
-                <span class="dns-field-value" style="word-break: break-all">{{ revealed.value }}</span>
+                <span class="dns-field-value secret-text">{{ revealed.value }}</span>
                 <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(revealed.value)"><span class="mdi mdi-content-copy"></span></button>
               </div>
             </div>
@@ -348,10 +350,8 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
 
           <div class="detail-group">
             <label class="form-label">Value</label>
-            <div class="code-box">
-              <code class="secret-text">
-            {{ revealed?.name === selectedSecret.name ? revealed.value : '••••••••••••••••' }}
-          </code>
+            <div class="code-box code-box-block">
+              <code class="secret-text">{{ revealed?.name === selectedSecret.name ? revealed.value : '••••••••••••••••' }}</code>
               <div class="code-actions">
                 <button type="button" class="btn-icon btn-icon-muted" :disabled="revealingId === selectedSecret.id"
                   @click="reveal(selectedSecret)">
@@ -500,6 +500,27 @@ code {
 .code-box code {
   color: var(--text-primary);
   word-break: break-all;
+}
+
+/* A secret is stored byte for byte, so it has to be shown that way: a
+   certificate or private key is multi-line, and collapsing the line breaks —
+   which is what HTML does by default — makes an intact value look mangled. */
+.code-box-block {
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.secret-text {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  max-height: 260px;
+  overflow-y: auto;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .code-actions {
