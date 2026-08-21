@@ -38,7 +38,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 </script>
 
 <template>
-  <AppModal dialog-class="proc-modal" @close="emit('close')">
+  <AppModal max-width="1040px" @close="emit('close')">
     <div class="modal-header">
       <h3>
         <span class="mdi mdi-format-list-bulleted"></span>
@@ -75,7 +75,6 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 </template>
 
 <style scoped>
-.proc-modal { max-width: 1040px; width: 100%; }
 .proc-body { padding: 0; max-height: 64vh; overflow: auto; }
 .proc-state { padding: 40px; text-align: center; color: var(--text-muted); }
 .proc-table { font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: nowrap; }

@@ -167,7 +167,7 @@ async function copy(text: string, what: string) {
 
 <template>
   <Teleport to="body">
-    <AppModal v-if="open" dialog-class="modal-lg" @close="emit('close')">
+    <AppModal v-if="open" max-width="640px" @close="emit('close')">
       <div class="modal-header">
         <h3>Push webhook</h3>
         <button class="btn-icon btn-icon-muted" aria-label="Close" @click="emit('close')">
@@ -286,7 +286,6 @@ async function copy(text: string, what: string) {
 </template>
 
 <style scoped>
-.modal-lg { max-width: 640px; }
 .loading { display: flex; justify-content: center; padding: 24px 0; }
 .lead { font-size: 13px; color: var(--text-secondary, var(--text-muted)); margin: 0 0 16px; line-height: 1.6; }
 .field { margin-bottom: 16px; }

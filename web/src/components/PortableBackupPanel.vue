@@ -384,7 +384,7 @@ function failedArtifacts(b: BundleInfo): number {
 
     <!-- Run report -->
     <Teleport to="body">
-      <AppModal v-if="openRun" dialog-class="modal-lg" @close="openRun = null">
+      <AppModal v-if="openRun" max-width="820px" @close="openRun = null">
         <div class="modal-header">
           <h3>{{ openRun.kind === 'export' ? 'Export' : 'Restore' }} report</h3>
           <button class="btn-icon btn-icon-muted" aria-label="Close" @click="openRun = null">
@@ -492,8 +492,5 @@ function failedArtifacts(b: BundleInfo): number {
   align-items: center;
   gap: 8px;
   margin-top: 12px;
-}
-.modal-lg {
-  max-width: 820px;
 }
 </style>

@@ -161,7 +161,7 @@ async function confirmDelete() {
 
     <!-- Editor -->
     <Teleport to="body">
-      <AppModal v-if="showModal" dialog-class="modal-lg" @close="showModal = false">
+      <AppModal v-if="showModal" max-width="640px" @close="showModal = false">
         <div class="modal-header">
           <h3>{{ editing ? 'Edit role' : 'New role' }}</h3>
           <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
@@ -283,9 +283,5 @@ async function confirmDelete() {
 .perm.disabled {
   opacity: 0.45;
   cursor: not-allowed;
-}
-.modal-lg {
-  max-width: 640px;
-  width: 92vw;
 }
 </style>

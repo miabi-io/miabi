@@ -390,7 +390,6 @@ function openLastRun(p: PipelineDefinition) {
 .text-muted { color: var(--text-muted); font-weight: 400; }
 .mdi-spin { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.modal-lg { max-width: 720px; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .check { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 10px; cursor: pointer; }
 .link { cursor: pointer; }
