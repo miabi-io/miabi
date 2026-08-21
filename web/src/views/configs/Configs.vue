@@ -7,6 +7,7 @@ import { configApi, type Config, type ConfigInput, type ConfigUsage } from '@/ap
 import { usePagination } from '@/composables/usePagination'
 import Pagination from '@/components/Pagination.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -252,98 +253,96 @@ async function confirmDelete() {
     </div>
 
     <!-- Create / edit -->
-    <div v-if="showForm" class="modal-overlay">
-      <div class="modal" style="max-width: 860px">
-        <div class="modal-header">
-          <h3>{{ editingId ? 'Edit config' : 'New config' }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showForm = false"><span class="mdi mdi-close"></span></button>
-        </div>
-        <div class="modal-body">
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Name</label>
-              <input v-model="form.name" class="form-input" :disabled="editingId !== null" placeholder="prometheus-conf" />
-              <p class="form-hint">Lowercase letters, digits and dashes.</p>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Default file mode</label>
-              <input v-model="form.mode" class="form-input" placeholder="0644" />
-            </div>
-          </div>
-
+    <AppModal v-if="showForm" max-width="860px" @close="showForm = false">
+      <div class="modal-header">
+        <h3>{{ editingId ? 'Edit config' : 'New config' }}</h3>
+        <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showForm = false"><span class="mdi mdi-close"></span></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Description</label>
-            <input v-model="form.description" class="form-input" placeholder="Prometheus scrape configuration" />
+            <label class="form-label">Name</label>
+            <input v-model="form.name" class="form-input" :disabled="editingId !== null" placeholder="prometheus-conf" />
+            <p class="form-hint">Lowercase letters, digits and dashes.</p>
           </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Delimiters</label>
-              <input v-model="form.delimiters" class="form-input" placeholder="<<,>>" />
-              <p class="form-hint">
-                Set these when the file's own syntax uses <code>{{ mustache }}</code>, so it is not interpolated.
-              </p>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Sensitive</label>
-              <label class="checkbox">
-                <input v-model="form.sensitive" type="checkbox" :disabled="editingId !== null" />
-                <span>Content carries credentials</span>
-              </label>
-              <p class="form-hint">Redacted in responses and diffed by digest only.</p>
-            </div>
-          </div>
-
-          <div v-if="editingId && affected.length" class="app-banner app-banner--warning">
-            <span class="mdi mdi-restart"></span>
-            <span>Saving redeploys {{ affected.length }} app(s): {{ affected.map((a) => a.name).join(', ') }}</span>
-          </div>
-
-          <div class="files">
-            <div class="files-tabs">
-              <button
-                v-for="(f, i) in files"
-                :key="i"
-                class="file-tab"
-                :class="{ active: i === activeFile }"
-                @click="activeFile = i"
-              >
-                {{ f.key || 'untitled' }}
-              </button>
-              <button class="file-tab add" @click="addFile"><span class="mdi mdi-plus"></span></button>
-            </div>
-
-            <div v-if="files[activeFile]" class="file-editor">
-              <div class="file-editor-head">
-                <input
-                  v-model="files[activeFile].key"
-                  class="form-input"
-                  placeholder="prometheus.yml or rules/alerts.yml"
-                />
-                <span class="badge badge-neutral">{{ fileLanguage(files[activeFile].key) }}</span>
-                <button class="btn btn-sm btn-danger" :disabled="files.length === 1" @click="removeFile(activeFile)">
-                  <span class="mdi mdi-delete-outline"></span>
-                </button>
-              </div>
-              <textarea
-                v-model="files[activeFile].content"
-                class="form-input code-area"
-                spellcheck="false"
-                rows="16"
-                placeholder="File content…"
-              ></textarea>
-            </div>
+          <div class="form-group">
+            <label class="form-label">Default file mode</label>
+            <input v-model="form.mode" class="form-input" placeholder="0644" />
           </div>
         </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" @click="showForm = false">Cancel</button>
-          <button class="btn btn-primary" :disabled="!formValid || saving" @click="save">
-            <span v-if="saving" class="spinner spinner-sm"></span>
-            {{ editingId ? 'Save changes' : 'Create config' }}
-          </button>
+
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <input v-model="form.description" class="form-input" placeholder="Prometheus scrape configuration" />
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Delimiters</label>
+            <input v-model="form.delimiters" class="form-input" placeholder="<<,>>" />
+            <p class="form-hint">
+              Set these when the file's own syntax uses <code>{{ mustache }}</code>, so it is not interpolated.
+            </p>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Sensitive</label>
+            <label class="checkbox">
+              <input v-model="form.sensitive" type="checkbox" :disabled="editingId !== null" />
+              <span>Content carries credentials</span>
+            </label>
+            <p class="form-hint">Redacted in responses and diffed by digest only.</p>
+          </div>
+        </div>
+
+        <div v-if="editingId && affected.length" class="app-banner app-banner--warning">
+          <span class="mdi mdi-restart"></span>
+          <span>Saving redeploys {{ affected.length }} app(s): {{ affected.map((a) => a.name).join(', ') }}</span>
+        </div>
+
+        <div class="files">
+          <div class="files-tabs">
+            <button
+              v-for="(f, i) in files"
+              :key="i"
+              class="file-tab"
+              :class="{ active: i === activeFile }"
+              @click="activeFile = i"
+            >
+              {{ f.key || 'untitled' }}
+            </button>
+            <button class="file-tab add" @click="addFile"><span class="mdi mdi-plus"></span></button>
+          </div>
+
+          <div v-if="files[activeFile]" class="file-editor">
+            <div class="file-editor-head">
+              <input
+                v-model="files[activeFile].key"
+                class="form-input"
+                placeholder="prometheus.yml or rules/alerts.yml"
+              />
+              <span class="badge badge-neutral">{{ fileLanguage(files[activeFile].key) }}</span>
+              <button class="btn btn-sm btn-danger" :disabled="files.length === 1" @click="removeFile(activeFile)">
+                <span class="mdi mdi-delete-outline"></span>
+              </button>
+            </div>
+            <textarea
+              v-model="files[activeFile].content"
+              class="form-input code-area"
+              spellcheck="false"
+              rows="16"
+              placeholder="File content…"
+            ></textarea>
+          </div>
         </div>
       </div>
-    </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" @click="showForm = false">Cancel</button>
+        <button class="btn btn-primary" :disabled="!formValid || saving" @click="save">
+          <span v-if="saving" class="spinner spinner-sm"></span>
+          {{ editingId ? 'Save changes' : 'Create config' }}
+        </button>
+      </div>
+    </AppModal>
 
     <ConfirmDialog
       :open="!!toDelete"

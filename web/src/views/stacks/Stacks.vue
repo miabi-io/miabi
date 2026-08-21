@@ -6,6 +6,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { stackApi } from '@/api/stacks'
 import type { Stack } from '@/api/types'
+import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -192,56 +193,52 @@ async function runImport() {
     </div>
 
     <Teleport to="body">
-      <div v-if="showCreate" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>New stack</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="create">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="form.name" class="form-input" placeholder="e.g. blog" aria-label="Name" required autofocus />
-              </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Description <span class="text-muted">(optional)</span></label>
-                <input v-model="form.description" class="form-input" placeholder="WordPress + MySQL + Redis" aria-label="Description" />
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Creating…' : 'Create stack' }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showCreate" @close="showCreate = false">
+        <div class="modal-header">
+          <h3>New stack</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="create">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="form.name" class="form-input" placeholder="e.g. blog" aria-label="Name" required autofocus />
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Description <span class="text-muted">(optional)</span></label>
+              <input v-model="form.description" class="form-input" placeholder="WordPress + MySQL + Redis" aria-label="Description" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Creating…' : 'Create stack' }}</button>
+          </div>
+        </form>
+      </AppModal>
 
-      <div v-if="showImport" class="modal-overlay">
-        <div class="modal" style="max-width: 640px; width: 100%">
-          <div class="modal-header">
-            <h3>Import from docker-compose</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showImport = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="runImport">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Stack name</label>
-                <input v-model="importForm.name" class="form-input" placeholder="e.g. blog" aria-label="Stack name" required autofocus />
-              </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">docker-compose.yml</label>
-                <textarea v-model="importForm.compose" class="form-input" rows="12" spellcheck="false" style="font-family: monospace; font-size: 12px" placeholder="services:&#10;  web:&#10;    image: nginx:1.25&#10;    ports:&#10;      - 80&#10;    environment:&#10;      FOO: bar" aria-label="docker-compose.yml" required></textarea>
-                <p class="form-hint">One application is created per image-based service (ports, env, command). Named volumes are provisioned and mounted, and apps resolve each other by service name within the stack. Published host ports become pending bindings an admin approves. Build-only services and bind mounts are skipped.</p>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showImport = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="importing">{{ importing ? 'Importing…' : 'Import stack' }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showImport" max-width="640px" @close="showImport = false">
+        <div class="modal-header">
+          <h3>Import from docker-compose</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showImport = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="runImport">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Stack name</label>
+              <input v-model="importForm.name" class="form-input" placeholder="e.g. blog" aria-label="Stack name" required autofocus />
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">docker-compose.yml</label>
+              <textarea v-model="importForm.compose" class="form-input" rows="12" spellcheck="false" style="font-family: monospace; font-size: 12px" placeholder="services:&#10;  web:&#10;    image: nginx:1.25&#10;    ports:&#10;      - 80&#10;    environment:&#10;      FOO: bar" aria-label="docker-compose.yml" required></textarea>
+              <p class="form-hint">One application is created per image-based service (ports, env, command). Named volumes are provisioned and mounted, and apps resolve each other by service name within the stack. Published host ports become pending bindings an admin approves. Build-only services and bind mounts are skipped.</p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showImport = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="importing">{{ importing ? 'Importing…' : 'Import stack' }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
   </div>
 </template>

@@ -7,6 +7,7 @@ import { gitRepositoryApi, type GitRepositoryInput } from '@/api/gitRepositories
 import type { GitRepository, GitAuthType } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import CredentialSecretField from '@/components/CredentialSecretField.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -157,51 +158,49 @@ const authTypes: { value: GitAuthType; label: string }[] = [
     </div>
 
     <Teleport to="body">
-      <div v-if="showModal" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>{{ editing ? 'Edit repository' : 'New repository' }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="save">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="form.name" class="form-input" placeholder="e.g. acme/api" required autofocus aria-label="Name" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Repository URL</label>
-                <input v-model="form.url" class="form-input" :placeholder="form.auth_type === 'ssh' ? 'git@github.com:acme/api.git' : 'https://github.com/acme/api.git'" required aria-label="Repository URL" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Auth type</label>
-                <div class="tabs" style="margin-bottom: 0">
-                  <button v-for="t in authTypes" :key="t.value" type="button" class="tab" :class="{ active: form.auth_type === t.value }" @click="form.auth_type = t.value">{{ t.label }}</button>
-                </div>
-              </div>
-              <template v-if="form.auth_type !== 'public'">
-                <div class="form-group">
-                  <label class="form-label">Username <span class="text-muted">(optional)</span></label>
-                  <input v-model="form.username" class="form-input" :placeholder="form.auth_type === 'ssh' ? 'git' : 'x-access-token'" autocomplete="off" aria-label="Username" />
-                </div>
-                <CredentialSecretField
-                  v-model="form.secret"
-                  :label="form.auth_type === 'ssh' ? 'SSH private key' : 'Access token'"
-                  :editing="!!editing"
-                  :current-ref="editing?.secret_ref || ''"
-                  :multiline="form.auth_type === 'ssh'"
-                  :placeholder="form.auth_type === 'ssh' ? '-----BEGIN OPENSSH PRIVATE KEY-----' : 'ghp_…'"
-                />
-              </template>
-              <p v-else class="text-muted" style="font-size: 12px; margin: 0">No credentials needed — the repository is cloned anonymously.</p>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Add repository') }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showModal" @close="showModal = false">
+        <div class="modal-header">
+          <h3>{{ editing ? 'Edit repository' : 'New repository' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="save">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="form.name" class="form-input" placeholder="e.g. acme/api" required autofocus aria-label="Name" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Repository URL</label>
+              <input v-model="form.url" class="form-input" :placeholder="form.auth_type === 'ssh' ? 'git@github.com:acme/api.git' : 'https://github.com/acme/api.git'" required aria-label="Repository URL" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Auth type</label>
+              <div class="tabs" style="margin-bottom: 0">
+                <button v-for="t in authTypes" :key="t.value" type="button" class="tab" :class="{ active: form.auth_type === t.value }" @click="form.auth_type = t.value">{{ t.label }}</button>
+              </div>
+            </div>
+            <template v-if="form.auth_type !== 'public'">
+              <div class="form-group">
+                <label class="form-label">Username <span class="text-muted">(optional)</span></label>
+                <input v-model="form.username" class="form-input" :placeholder="form.auth_type === 'ssh' ? 'git' : 'x-access-token'" autocomplete="off" aria-label="Username" />
+              </div>
+              <CredentialSecretField
+                v-model="form.secret"
+                :label="form.auth_type === 'ssh' ? 'SSH private key' : 'Access token'"
+                :editing="!!editing"
+                :current-ref="editing?.secret_ref || ''"
+                :multiline="form.auth_type === 'ssh'"
+                :placeholder="form.auth_type === 'ssh' ? '-----BEGIN OPENSSH PRIVATE KEY-----' : 'ghp_…'"
+              />
+            </template>
+            <p v-else class="text-muted" style="font-size: 12px; margin: 0">No credentials needed — the repository is cloned anonymously.</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Add repository') }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

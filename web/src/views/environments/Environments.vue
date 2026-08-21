@@ -6,6 +6,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { environmentApi, type EnvironmentInput } from '@/api/environments'
 import type { Environment } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -139,42 +140,40 @@ async function confirmDelete() {
     </div>
 
     <Teleport to="body">
-      <div v-if="showModal" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>{{ editing ? 'Edit environment' : 'New environment' }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="save">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="form.name" class="form-input" placeholder="e.g. production" aria-label="Name" required autofocus />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Description <span class="text-muted">(optional)</span></label>
-                <input v-model="form.description" class="form-input" placeholder="Customer-facing production stage" aria-label="Description" />
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label class="form-label">Order</label>
-                  <input v-model.number="form.rank" type="number" min="0" class="form-input" aria-label="Order" />
-                  <p class="hint">Lower promotes into higher (dev=0, prod=2).</p>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Required approvals</label>
-                  <input v-model.number="form.required_approvals" type="number" min="0" class="form-input" aria-label="Required approvals" />
-                  <p class="hint">Approvals needed before a release can be promoted here.</p>
-                </div>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Create') }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showModal" @close="showModal = false">
+        <div class="modal-header">
+          <h3>{{ editing ? 'Edit environment' : 'New environment' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="save">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="form.name" class="form-input" placeholder="e.g. production" aria-label="Name" required autofocus />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Description <span class="text-muted">(optional)</span></label>
+              <input v-model="form.description" class="form-input" placeholder="Customer-facing production stage" aria-label="Description" />
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Order</label>
+                <input v-model.number="form.rank" type="number" min="0" class="form-input" aria-label="Order" />
+                <p class="hint">Lower promotes into higher (dev=0, prod=2).</p>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Required approvals</label>
+                <input v-model.number="form.required_approvals" type="number" min="0" class="form-input" aria-label="Required approvals" />
+                <p class="hint">Approvals needed before a release can be promoted here.</p>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Create') }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

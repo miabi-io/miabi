@@ -7,6 +7,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { useAuthStore } from '@/stores/auth'
 import { usePagination } from '@/composables/usePagination'
 import Pagination from '@/components/Pagination.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const notify = useNotificationStore()
 const auth = useAuthStore()
@@ -170,66 +171,64 @@ onBeforeUnmount(() => {
 
     <!-- Create modal -->
     <Teleport to="body">
-      <div v-if="showCreate" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>New user</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="submitCreate">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="createForm.name" class="form-input" placeholder="Jane Doe" required autofocus />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Username <span class="text-muted">(optional)</span></label>
-                <input v-model="createForm.username" class="form-input" placeholder="auto-derived from email" autocomplete="off" spellcheck="false" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Email</label>
-                <input v-model="createForm.email" class="form-input" type="email" placeholder="jane@example.com" required />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Password</label>
-                <input
-                  v-model="createForm.password"
-                  class="form-input"
-                  type="password"
-                  placeholder="At least 8 characters"
-                  minlength="8"
-                  required
-                />
-                <span class="form-hint">Minimum 8 characters.</span>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Role</label>
-                <select v-model="createForm.role" class="form-select">
-                  <option value="user">User</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="checkbox-row">
-                  <input type="checkbox" v-model="createForm.notify" />
-                  <span>Send a welcome email with a sign-in link</span>
-                </label>
-                <p class="form-hint">Requires a configured system SMTP server (MIABI_SMTP_*).</p>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
-              <button
-                type="submit"
-                class="btn btn-primary"
-                :disabled="creating || !createForm.name.trim() || !createForm.email.trim() || createForm.password.length < 8"
-              >
-                {{ creating ? 'Creating…' : 'Create user' }}
-              </button>
-            </div>
-          </form>
+      <AppModal v-if="showCreate" @close="showCreate = false">
+        <div class="modal-header">
+          <h3>New user</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="submitCreate">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="createForm.name" class="form-input" placeholder="Jane Doe" required autofocus />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Username <span class="text-muted">(optional)</span></label>
+              <input v-model="createForm.username" class="form-input" placeholder="auto-derived from email" autocomplete="off" spellcheck="false" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Email</label>
+              <input v-model="createForm.email" class="form-input" type="email" placeholder="jane@example.com" required />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Password</label>
+              <input
+                v-model="createForm.password"
+                class="form-input"
+                type="password"
+                placeholder="At least 8 characters"
+                minlength="8"
+                required
+              />
+              <span class="form-hint">Minimum 8 characters.</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Role</label>
+              <select v-model="createForm.role" class="form-select">
+                <option value="user">User</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="checkbox-row">
+                <input type="checkbox" v-model="createForm.notify" />
+                <span>Send a welcome email with a sign-in link</span>
+              </label>
+              <p class="form-hint">Requires a configured system SMTP server (MIABI_SMTP_*).</p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
+            <button
+              type="submit"
+              class="btn btn-primary"
+              :disabled="creating || !createForm.name.trim() || !createForm.email.trim() || createForm.password.length < 8"
+            >
+              {{ creating ? 'Creating…' : 'Create user' }}
+            </button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
   </div>

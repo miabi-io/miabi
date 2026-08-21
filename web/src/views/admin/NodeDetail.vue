@@ -9,6 +9,7 @@ import type { Server, NodeStats, NodeHostMetrics, GatewayStatus, GatewayCandidat
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import FieldInfo from '@/components/FieldInfo.vue'
 import { copyText } from '@/utils/clipboard'
+import AppModal from '@/components/AppModal.vue'
 
 // Managed gateways are named mb-node-gateway, but an imported gateway keeps its
 // original container name (returned as gateway.container) — use that for stats.
@@ -1431,230 +1432,218 @@ const gwBadge = computed(() => {
     </template>
 
     <Teleport to="body">
-      <div v-if="showConfig" class="modal-overlay">
-        <div class="modal" style="max-width: 760px; width: 100%">
-          <div class="modal-header">
-            <h3>Gateway config — {{ node?.name }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showConfig = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <div class="modal-body">
-            <p class="text-muted" style="margin-bottom: 10px; font-size: 13px">
-              The node's <code>goma.yml</code>. The provider token is injected as <code>${INSTANCE_API_KEY}</code> at deploy — don't hardcode it. Listens on 80/443. <strong>Redeploy</strong> the gateway to apply.
-            </p>
-            <textarea v-model="cfgText" class="form-input editor" spellcheck="false" rows="20"></textarea>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-ghost" @click="cfgText = cfgDefault">Reset to default</button>
-            <div class="flex items-center gap-2" style="margin-left: auto">
-              <button type="button" class="btn btn-secondary" @click="showConfig = false">Cancel</button>
-              <button type="button" class="btn btn-primary" :disabled="cfgSaving" @click="saveConfig">{{ cfgSaving ? 'Saving…' : 'Save' }}</button>
-            </div>
+      <AppModal v-if="showConfig" max-width="760px" @close="showConfig = false">
+        <div class="modal-header">
+          <h3>Gateway config — {{ node?.name }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showConfig = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted" style="margin-bottom: 10px; font-size: 13px">
+            The node's <code>goma.yml</code>. The provider token is injected as <code>${INSTANCE_API_KEY}</code> at deploy — don't hardcode it. Listens on 80/443. <strong>Redeploy</strong> the gateway to apply.
+          </p>
+          <textarea v-model="cfgText" class="form-input editor" spellcheck="false" rows="20"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" @click="cfgText = cfgDefault">Reset to default</button>
+          <div class="flex items-center gap-2" style="margin-left: auto">
+            <button type="button" class="btn btn-secondary" @click="showConfig = false">Cancel</button>
+            <button type="button" class="btn btn-primary" :disabled="cfgSaving" @click="saveConfig">{{ cfgSaving ? 'Saving…' : 'Save' }}</button>
           </div>
         </div>
-      </div>
+      </AppModal>
     </Teleport>
 
     <Teleport to="body">
-      <div v-if="showEdit" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Edit node</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showEdit = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="submitEdit">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Display name</label>
-                <!-- Only the label is editable here. The handle is fixed at
-                     creation (an edge gateway polls a URL built from it) and is
-                     shown in the page header, so it is not repeated in the form. -->
-                <input v-model="editForm.display_name" class="form-input" placeholder="e.g. Frankfurt Edge" required autofocus />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Public IP <span class="text-muted">(A/AAAA record target for domains served by this node)</span></label>
-                <input v-model="editForm.public_ip" class="form-input" placeholder="e.g. 203.0.113.10" style="font-family: monospace" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Public hostname <span class="text-muted">(optional CNAME target, e.g. node.example.com)</span></label>
-                <input v-model="editForm.public_hostname" class="form-input" placeholder="optional" style="font-family: monospace" />
-              </div>
-              <p class="conn-note" style="margin-bottom: 0">
-                <span class="mdi mdi-lan-connect"></span>
-                Connectivity, access mode and Docker endpoint moved to their own action —
-                use <strong>Change connectivity</strong> to edit how Miabi reaches and exposes this node.
-              </p>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showEdit = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="editSaving">{{ editSaving ? 'Saving…' : 'Save changes' }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showEdit" @close="showEdit = false">
+        <div class="modal-header">
+          <h3>Edit node</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showEdit = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="submitEdit">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Display name</label>
+              <!-- Only the label is editable here. The handle is fixed at
+                   creation (an edge gateway polls a URL built from it) and is
+                   shown in the page header, so it is not repeated in the form. -->
+              <input v-model="editForm.display_name" class="form-input" placeholder="e.g. Frankfurt Edge" required autofocus />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Public IP <span class="text-muted">(A/AAAA record target for domains served by this node)</span></label>
+              <input v-model="editForm.public_ip" class="form-input" placeholder="e.g. 203.0.113.10" style="font-family: monospace" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Public hostname <span class="text-muted">(optional CNAME target, e.g. node.example.com)</span></label>
+              <input v-model="editForm.public_hostname" class="form-input" placeholder="optional" style="font-family: monospace" />
+            </div>
+            <p class="conn-note" style="margin-bottom: 0">
+              <span class="mdi mdi-lan-connect"></span>
+              Connectivity, access mode and Docker endpoint moved to their own action —
+              use <strong>Change connectivity</strong> to edit how Miabi reaches and exposes this node.
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showEdit = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="editSaving">{{ editSaving ? 'Saving…' : 'Save changes' }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <!-- Change connectivity — impactful reachability settings, gated by a warning. -->
     <Teleport to="body">
-      <div v-if="showConnectivity" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Change connectivity — {{ node?.name }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showConnectivity = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="submitConnectivity">
-            <div class="modal-body">
-              <div class="conn-warning">
-                <span class="mdi mdi-alert-outline"></span>
-                <div>
-                  <strong>This can interrupt running workloads.</strong>
-                  Changing how Miabi reaches and exposes this node may briefly disconnect the
-                  apps and databases already running on it — containers can become temporarily
-                  unreachable, and external routes and SSL for those services may need to re-sync.
-                  Apply during a maintenance window.
-                  <div v-if="connImpact && (connImpact.apps || connImpact.databases)" class="conn-impact">
-                    <span class="mdi mdi-cube-outline"></span>
-                    This node runs
-                    <strong>{{ connImpact.apps }} app{{ connImpact.apps === 1 ? '' : 's' }}</strong>
-                    and
-                    <strong>{{ connImpact.databases }} database{{ connImpact.databases === 1 ? '' : 's' }}</strong>
-                    that may be affected.
-                  </div>
+      <AppModal v-if="showConnectivity" @close="showConnectivity = false">
+        <div class="modal-header">
+          <h3>Change connectivity — {{ node?.name }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showConnectivity = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <form @submit.prevent="submitConnectivity">
+          <div class="modal-body">
+            <div class="conn-warning">
+              <span class="mdi mdi-alert-outline"></span>
+              <div>
+                <strong>This can interrupt running workloads.</strong>
+                Changing how Miabi reaches and exposes this node may briefly disconnect the
+                apps and databases already running on it — containers can become temporarily
+                unreachable, and external routes and SSL for those services may need to re-sync.
+                Apply during a maintenance window.
+                <div v-if="connImpact && (connImpact.apps || connImpact.databases)" class="conn-impact">
+                  <span class="mdi mdi-cube-outline"></span>
+                  This node runs
+                  <strong>{{ connImpact.apps }} app{{ connImpact.apps === 1 ? '' : 's' }}</strong>
+                  and
+                  <strong>{{ connImpact.databases }} database{{ connImpact.databases === 1 ? '' : 's' }}</strong>
+                  that may be affected.
                 </div>
               </div>
+            </div>
+            <div class="form-group">
+              <span class="form-label label-row">
+                Connectivity
+                <FieldInfo :items="CONNECTIVITY_TYPES" title="Connectivity types explained" />
+              </span>
+              <select v-model="connForm.connectivity" class="form-select">
+                <option v-for="o in CONNECTIVITY_TYPES" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
+              <p class="form-hint">{{ connConnectivityDesc }}</p>
+              <p v-if="node?.is_local" class="text-muted" style="font-size: 12px; margin-top: 4px">
+                As the manager, this node can run its own Goma gateway — install a fresh one or import an existing one.
+              </p>
+            </div>
+            <template v-if="!node?.is_local">
               <div class="form-group">
                 <span class="form-label label-row">
-                  Connectivity
-                  <FieldInfo :items="CONNECTIVITY_TYPES" title="Connectivity types explained" />
+                  Access mode
+                  <FieldInfo :items="ACCESS_MODES" title="Access modes explained" />
                 </span>
-                <select v-model="connForm.connectivity" class="form-select">
-                  <option v-for="o in CONNECTIVITY_TYPES" :key="o.value" :value="o.value">{{ o.label }}</option>
+                <select v-model="connForm.access_mode" class="form-select">
+                  <option v-for="o in ACCESS_MODES" :key="o.value" :value="o.value">{{ o.label }}</option>
                 </select>
-                <p class="form-hint">{{ connConnectivityDesc }}</p>
-                <p v-if="node?.is_local" class="text-muted" style="font-size: 12px; margin-top: 4px">
-                  As the manager, this node can run its own Goma gateway — install a fresh one or import an existing one.
-                </p>
+                <p class="form-hint">{{ connAccessModeDesc }}</p>
               </div>
-              <template v-if="!node?.is_local">
+              <template v-if="connForm.access_mode === 'api'">
                 <div class="form-group">
-                  <span class="form-label label-row">
-                    Access mode
-                    <FieldInfo :items="ACCESS_MODES" title="Access modes explained" />
-                  </span>
-                  <select v-model="connForm.access_mode" class="form-select">
-                    <option v-for="o in ACCESS_MODES" :key="o.value" :value="o.value">{{ o.label }}</option>
-                  </select>
-                  <p class="form-hint">{{ connAccessModeDesc }}</p>
+                  <label class="form-label">Docker endpoint</label>
+                  <input v-model="connForm.docker_endpoint" class="form-input" :placeholder="connEndpointPlaceholder" required style="font-family: monospace" />
                 </div>
-                <template v-if="connForm.access_mode === 'api'">
-                  <div class="form-group">
-                    <label class="form-label">Docker endpoint</label>
-                    <input v-model="connForm.docker_endpoint" class="form-input" :placeholder="connEndpointPlaceholder" required style="font-family: monospace" />
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label">TLS <span class="text-muted">(leave blank to keep existing)</span></label>
-                    <textarea v-model="connForm.tls_ca_cert" class="form-input" rows="2" placeholder="CA certificate (PEM)" style="font-family: monospace; font-size: 12px"></textarea>
-                    <textarea v-model="connForm.tls_cert" class="form-input" rows="2" placeholder="Client certificate (PEM) — for mTLS" style="font-family: monospace; font-size: 12px; margin-top: 6px"></textarea>
-                    <textarea v-model="connForm.tls_key" class="form-input" rows="2" placeholder="Client key (PEM) — stored encrypted" style="font-family: monospace; font-size: 12px; margin-top: 6px"></textarea>
-                  </div>
-                </template>
-                <div v-if="connForm.access_mode !== 'api'" class="form-group">
-                  <label class="form-label">Address <span class="text-muted">(host/IP the proxy reaches published ports at)</span></label>
-                  <input v-model="connForm.address" class="form-input" placeholder="e.g. 10.0.0.7" />
+                <div class="form-group">
+                  <label class="form-label">TLS <span class="text-muted">(leave blank to keep existing)</span></label>
+                  <textarea v-model="connForm.tls_ca_cert" class="form-input" rows="2" placeholder="CA certificate (PEM)" style="font-family: monospace; font-size: 12px"></textarea>
+                  <textarea v-model="connForm.tls_cert" class="form-input" rows="2" placeholder="Client certificate (PEM) — for mTLS" style="font-family: monospace; font-size: 12px; margin-top: 6px"></textarea>
+                  <textarea v-model="connForm.tls_key" class="form-input" rows="2" placeholder="Client key (PEM) — stored encrypted" style="font-family: monospace; font-size: 12px; margin-top: 6px"></textarea>
                 </div>
               </template>
-              <label class="conn-ack">
-                <input type="checkbox" v-model="connAck" />
-                <span>I understand this may temporarily interrupt apps and databases running on this node.</span>
-              </label>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showConnectivity = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="connSaving || !connAck">{{ connSaving ? 'Applying…' : 'Apply change' }}</button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </Teleport>
-
-    <Teleport to="body">
-      <div v-if="showImportGw" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Import existing gateway</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showImportGw = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <div class="modal-body">
-            <p class="text-muted" style="font-size: 13px; margin-bottom: 12px">
-              Adopt a Goma gateway that already runs on this node, instead of installing a new one. The container keeps running — Miabi just tracks it (zero downtime) and copies its current <code>goma.yml</code> as the node's gateway config.
-            </p>
-            <div v-if="gwCandidatesLoading" class="empty-state"><p class="text-muted">Scanning for gateway containers…</p></div>
-            <div v-else-if="gwCandidates.length === 0" class="empty-state">
-              <p class="text-muted">No gateway-like containers found on this node. Install a fresh gateway instead.</p>
-            </div>
-            <div v-else class="form-group">
-              <label class="form-label">Gateway container</label>
-              <label v-for="ct in gwCandidates" :key="ct.id" class="gw-cand">
-                <input type="radio" :value="ct.id" v-model="gwCandidate" />
-                <div>
-                  <div class="gw-cand-name">{{ ct.name }} <span class="badge" :class="ct.state === 'running' ? 'badge-success' : 'badge-muted'">{{ ct.state }}</span></div>
-                  <div class="text-muted" style="font-size: 12px"><code>{{ ct.image }}</code></div>
-                </div>
-              </label>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showImportGw = false">Cancel</button>
-            <button type="button" class="btn btn-primary" :disabled="gwImporting || gwCandidates.length === 0 || !gwCandidate" @click="importGateway">
-              {{ gwImporting ? 'Importing…' : 'Import gateway' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-
-    <Teleport to="body">
-      <div v-if="regenToken" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>New join token</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="regenToken = null"><span class="mdi mdi-close"></span></button>
-          </div>
-          <div class="modal-body">
-            <div class="app-banner app-banner--warning">
-              <span class="mdi mdi-alert-outline app-banner-icon"></span>
-              <div class="app-banner-content">
-                <p class="app-banner-title">Copy now</p>
-                <p class="app-banner-text">The old token is invalid. Update the agent's MIABI_NODE_TOKEN.</p>
+              <div v-if="connForm.access_mode !== 'api'" class="form-group">
+                <label class="form-label">Address <span class="text-muted">(host/IP the proxy reaches published ports at)</span></label>
+                <input v-model="connForm.address" class="form-input" placeholder="e.g. 10.0.0.7" />
               </div>
-            </div>
-            <div class="code-block" style="margin-top: 14px">{{ regenToken }}</div>
+            </template>
+            <label class="conn-ack">
+              <input type="checkbox" v-model="connAck" />
+              <span>I understand this may temporarily interrupt apps and databases running on this node.</span>
+            </label>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="copy(regenToken!)">Copy</button>
-            <button type="button" class="btn btn-primary" @click="regenToken = null">Done</button>
+            <button type="button" class="btn btn-secondary" @click="showConnectivity = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="connSaving || !connAck">{{ connSaving ? 'Applying…' : 'Apply change' }}</button>
           </div>
-        </div>
-      </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <Teleport to="body">
-      <div v-if="joinCmd" class="modal-overlay">
-        <div class="modal" style="max-width: 680px; width: 100%">
-          <div class="modal-header">
-            <h3>Agent join command</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="joinCmd = null"><span class="mdi mdi-close"></span></button>
+      <AppModal v-if="showImportGw" @close="showImportGw = false">
+        <div class="modal-header">
+          <h3>Import existing gateway</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showImportGw = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted" style="font-size: 13px; margin-bottom: 12px">
+            Adopt a Goma gateway that already runs on this node, instead of installing a new one. The container keeps running — Miabi just tracks it (zero downtime) and copies its current <code>goma.yml</code> as the node's gateway config.
+          </p>
+          <div v-if="gwCandidatesLoading" class="empty-state"><p class="text-muted">Scanning for gateway containers…</p></div>
+          <div v-else-if="gwCandidates.length === 0" class="empty-state">
+            <p class="text-muted">No gateway-like containers found on this node. Install a fresh gateway instead.</p>
           </div>
-          <div class="modal-body">
-            <p class="text-muted" style="font-size: 13px; margin-bottom: 10px">Run this on the node host to start the agent and connect it to this manager.</p>
-            <pre class="code-block cmd">{{ joinCmd.command }}</pre>
-            <p class="text-muted" style="font-size: 12px; margin-top: 10px"><span class="mdi mdi-information-outline"></span> {{ joinCmd.token_hint }}</p>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="copy(joinCmd.command)">Copy</button>
-            <button type="button" class="btn btn-primary" @click="joinCmd = null">Done</button>
+          <div v-else class="form-group">
+            <label class="form-label">Gateway container</label>
+            <label v-for="ct in gwCandidates" :key="ct.id" class="gw-cand">
+              <input type="radio" :value="ct.id" v-model="gwCandidate" />
+              <div>
+                <div class="gw-cand-name">{{ ct.name }} <span class="badge" :class="ct.state === 'running' ? 'badge-success' : 'badge-muted'">{{ ct.state }}</span></div>
+                <div class="text-muted" style="font-size: 12px"><code>{{ ct.image }}</code></div>
+              </div>
+            </label>
           </div>
         </div>
-      </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="showImportGw = false">Cancel</button>
+          <button type="button" class="btn btn-primary" :disabled="gwImporting || gwCandidates.length === 0 || !gwCandidate" @click="importGateway">
+            {{ gwImporting ? 'Importing…' : 'Import gateway' }}
+          </button>
+        </div>
+      </AppModal>
+    </Teleport>
+
+    <Teleport to="body">
+      <AppModal v-if="regenToken" @close="regenToken = null">
+        <div class="modal-header">
+          <h3>New join token</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="regenToken = null"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <div class="app-banner app-banner--warning">
+            <span class="mdi mdi-alert-outline app-banner-icon"></span>
+            <div class="app-banner-content">
+              <p class="app-banner-title">Copy now</p>
+              <p class="app-banner-text">The old token is invalid. Update the agent's MIABI_NODE_TOKEN.</p>
+            </div>
+          </div>
+          <div class="code-block" style="margin-top: 14px">{{ regenToken }}</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="copy(regenToken!)">Copy</button>
+          <button type="button" class="btn btn-primary" @click="regenToken = null">Done</button>
+        </div>
+      </AppModal>
+    </Teleport>
+
+    <Teleport to="body">
+      <AppModal v-if="joinCmd" max-width="680px" @close="joinCmd = null">
+        <div class="modal-header">
+          <h3>Agent join command</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="joinCmd = null"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted" style="font-size: 13px; margin-bottom: 10px">Run this on the node host to start the agent and connect it to this manager.</p>
+          <pre class="code-block cmd">{{ joinCmd.command }}</pre>
+          <p class="text-muted" style="font-size: 12px; margin-top: 10px"><span class="mdi mdi-information-outline"></span> {{ joinCmd.token_hint }}</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="copy(joinCmd.command)">Copy</button>
+          <button type="button" class="btn btn-primary" @click="joinCmd = null">Done</button>
+        </div>
+      </AppModal>
     </Teleport>
 
     <!-- Drain evicts the node's tasks now, and — the part Swarm never tells you —

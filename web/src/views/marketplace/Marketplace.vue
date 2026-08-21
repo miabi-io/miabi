@@ -5,6 +5,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { marketplaceApi } from '@/api/marketplace'
 import type { CatalogEntry, TemplateInstallView, UninstallResult } from '@/api/marketplace'
+import AppModal from '@/components/AppModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -469,104 +470,98 @@ async function confirmUninstall() {
 
     <!-- UNINSTALL CONFIRMATION -->
     <Teleport to="body">
-      <div v-if="uninstallTarget" class="modal-overlay">
-        <div class="modal modal-sm">
-          <div class="modal-header">
-            <h3>Uninstall {{ uninstallTarget.template_display_name }}?</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="uninstallTarget = null"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="confirmUninstall">
-            <div class="modal-body">
-              <div class="danger-note">
-                <span class="mdi mdi-alert-outline"></span>
-                <div>
-                  This permanently deletes <strong>{{ deletionSummary(uninstallTarget) }}</strong> created by this
-                  install. This cannot be undone.
-                </div>
-              </div>
-              <div class="form-group" style="margin-bottom: 0; margin-top: 12px">
-                <label class="form-label">Type <code>{{ uninstallTarget.template_display_name }}</code> to confirm</label>
-                <input v-model="uninstallConfirm" class="form-input" :placeholder="uninstallTarget.template_display_name" autofocus autocomplete="off" aria-label="Type template name to confirm" />
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="uninstallTarget = null" :disabled="busyInstall === uninstallTarget.id">
-                Cancel
-              </button>
-              <button type="submit" class="btn btn-danger" :disabled="uninstallConfirm !== uninstallTarget.template_display_name || busyInstall === uninstallTarget.id">
-                {{ busyInstall === uninstallTarget.id ? 'Uninstalling…' : 'Uninstall' }}
-              </button>
-            </div>
-          </form>
+      <AppModal v-if="uninstallTarget" dialog-class="modal-sm" @close="uninstallTarget = null">
+        <div class="modal-header">
+          <h3>Uninstall {{ uninstallTarget.template_display_name }}?</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="uninstallTarget = null"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="confirmUninstall">
+          <div class="modal-body">
+            <div class="danger-note">
+              <span class="mdi mdi-alert-outline"></span>
+              <div>
+                This permanently deletes <strong>{{ deletionSummary(uninstallTarget) }}</strong> created by this
+                install. This cannot be undone.
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 0; margin-top: 12px">
+              <label class="form-label">Type <code>{{ uninstallTarget.template_display_name }}</code> to confirm</label>
+              <input v-model="uninstallConfirm" class="form-input" :placeholder="uninstallTarget.template_display_name" autofocus autocomplete="off" aria-label="Type template name to confirm" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="uninstallTarget = null" :disabled="busyInstall === uninstallTarget.id">
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-danger" :disabled="uninstallConfirm !== uninstallTarget.template_display_name || busyInstall === uninstallTarget.id">
+              {{ busyInstall === uninstallTarget.id ? 'Uninstalling…' : 'Uninstall' }}
+            </button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <!-- UNINSTALL FOLLOW-UP: what the teardown removed -->
     <Teleport to="body">
-      <div v-if="teardown" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Resources removed — {{ teardown.name }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="teardown = null"><span class="mdi mdi-close"></span></button>
-          </div>
-          <div class="modal-body">
-            <p v-if="teardownFailed" class="teardown-summary failed">
-              <span class="mdi mdi-alert-circle-outline"></span>
-              {{ teardownItems.length - (teardown.result.failed) }} removed, {{ teardown.result.failed }} failed — the failed resources may need manual cleanup.
-            </p>
-            <p v-else class="teardown-summary ok">
-              <span class="mdi mdi-check-circle-outline"></span>
-              {{ teardownItems.length }} resource{{ teardownItems.length === 1 ? '' : 's' }} removed.
-            </p>
-            <p v-if="teardownItems.length === 0" class="text-muted text-sm">This install had no resources to remove.</p>
-            <ul v-else class="teardown-list">
-              <li v-for="(it, i) in teardownItems" :key="i">
-                <span class="badge" :class="it.error ? 'badge-danger' : 'badge-neutral'">{{ it.error ? 'failed' : 'removed' }}</span>
-                <span class="teardown-kind">{{ it.kind }}</span>
-                <span class="mono teardown-name">{{ it.name }}</span>
-                <span v-if="it.error" class="teardown-err">{{ it.error }}</span>
-              </li>
-            </ul>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="teardown = null">Close</button>
-          </div>
+      <AppModal v-if="teardown" @close="teardown = null">
+        <div class="modal-header">
+          <h3>Resources removed — {{ teardown.name }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="teardown = null"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <div class="modal-body">
+          <p v-if="teardownFailed" class="teardown-summary failed">
+            <span class="mdi mdi-alert-circle-outline"></span>
+            {{ teardownItems.length - (teardown.result.failed) }} removed, {{ teardown.result.failed }} failed — the failed resources may need manual cleanup.
+          </p>
+          <p v-else class="teardown-summary ok">
+            <span class="mdi mdi-check-circle-outline"></span>
+            {{ teardownItems.length }} resource{{ teardownItems.length === 1 ? '' : 's' }} removed.
+          </p>
+          <p v-if="teardownItems.length === 0" class="text-muted text-sm">This install had no resources to remove.</p>
+          <ul v-else class="teardown-list">
+            <li v-for="(it, i) in teardownItems" :key="i">
+              <span class="badge" :class="it.error ? 'badge-danger' : 'badge-neutral'">{{ it.error ? 'failed' : 'removed' }}</span>
+              <span class="teardown-kind">{{ it.kind }}</span>
+              <span class="mono teardown-name">{{ it.name }}</span>
+              <span v-if="it.error" class="teardown-err">{{ it.error }}</span>
+            </li>
+          </ul>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="teardown = null">Close</button>
+        </div>
+      </AppModal>
     </Teleport>
 
     <!-- IMPORT -->
     <Teleport to="body">
-      <div v-if="importOpen" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Import a template</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="importOpen = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="doImport">
-            <div class="modal-body">
-              <p class="text-muted text-sm" style="margin-bottom: 12px">
-                Paste a Miabi template manifest (<code>apiVersion: miabi.io/v1</code>). It is validated and
-                added to this workspace as a custom template.
-              </p>
-              <textarea
-                v-model="importYaml"
-                class="form-input mono"
-                rows="14"
-                aria-label="Template manifest YAML"
-                placeholder="apiVersion: miabi.io/v1&#10;kind: Template&#10;metadata:&#10;  name: my-app&#10;  displayName: My App&#10;  version: 1.0.0&#10;applications:&#10;  - name: app&#10;    image: nginx"
-              ></textarea>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="importOpen = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="importing || !importYaml.trim()">
-                {{ importing ? 'Importing…' : 'Import' }}
-              </button>
-            </div>
-          </form>
+      <AppModal v-if="importOpen" @close="importOpen = false">
+        <div class="modal-header">
+          <h3>Import a template</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="importOpen = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="doImport">
+          <div class="modal-body">
+            <p class="text-muted text-sm" style="margin-bottom: 12px">
+              Paste a Miabi template manifest (<code>apiVersion: miabi.io/v1</code>). It is validated and
+              added to this workspace as a custom template.
+            </p>
+            <textarea
+              v-model="importYaml"
+              class="form-input mono"
+              rows="14"
+              aria-label="Template manifest YAML"
+              placeholder="apiVersion: miabi.io/v1&#10;kind: Template&#10;metadata:&#10;  name: my-app&#10;  displayName: My App&#10;  version: 1.0.0&#10;applications:&#10;  - name: app&#10;    image: nginx"
+            ></textarea>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="importOpen = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="importing || !importYaml.trim()">
+              {{ importing ? 'Importing…' : 'Import' }}
+            </button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
   </div>
 </template>

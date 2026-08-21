@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { copyText } from '@/utils/clipboard'
+import AppModal from '@/components/AppModal.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -125,32 +126,30 @@ onMounted(() => {
 
     <!-- Create modal -->
     <Teleport to="body">
-      <div v-if="showCreate" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Create workspace</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="submitCreate">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="form.name" class="form-input" placeholder="e.g. Production" aria-label="Name" required autofocus />
-              </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Description <span class="text-muted">(optional)</span></label>
-                <input v-model="form.description" class="form-input" placeholder="What is this workspace for?" aria-label="Description" />
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving || !form.name.trim()">
-                {{ saving ? 'Creating…' : 'Create workspace' }}
-              </button>
-            </div>
-          </form>
+      <AppModal v-if="showCreate" @close="showCreate = false">
+        <div class="modal-header">
+          <h3>Create workspace</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="submitCreate">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="form.name" class="form-input" placeholder="e.g. Production" aria-label="Name" required autofocus />
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Description <span class="text-muted">(optional)</span></label>
+              <input v-model="form.description" class="form-input" placeholder="What is this workspace for?" aria-label="Description" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving || !form.name.trim()">
+              {{ saving ? 'Creating…' : 'Create workspace' }}
+            </button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
   </div>
 </template>

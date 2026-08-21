@@ -6,6 +6,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { networkApi } from '@/api/networks'
 import type { Network } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -116,33 +117,31 @@ async function confirmRemove() {
     </div>
 
     <Teleport to="body">
-      <div v-if="showCreate" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>New network</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="create">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="form.name" class="form-input" placeholder="e.g. backend" required autofocus />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Driver</label>
-                <input v-model="form.driver" class="form-input" placeholder="bridge" />
-              </div>
-              <label class="checkbox-label" style="margin-bottom: 0">
-                <input type="checkbox" v-model="form.internal" /> Internal (no external connectivity)
-              </label>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Creating…' : 'Create network' }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showCreate" @close="showCreate = false">
+        <div class="modal-header">
+          <h3>New network</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="create">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="form.name" class="form-input" placeholder="e.g. backend" required autofocus />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Driver</label>
+              <input v-model="form.driver" class="form-input" placeholder="bridge" />
+            </div>
+            <label class="checkbox-label" style="margin-bottom: 0">
+              <input type="checkbox" v-model="form.internal" /> Internal (no external connectivity)
+            </label>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Creating…' : 'Create network' }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

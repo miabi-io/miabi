@@ -9,6 +9,7 @@ import { usePagination } from '@/composables/usePagination'
 import { copyText } from '@/utils/clipboard'
 import Pagination from '@/components/Pagination.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -261,43 +262,41 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
 
     <Teleport to="body">
       <!-- Create / edit -->
-      <div v-if="showForm" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>{{ editingId ? 'Edit secret' : 'New secret' }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showForm = false"><span
-                class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="save">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="form.name" class="form-input" placeholder="db_password" :disabled="!!editingId"
-                  aria-label="Name" required autofocus style="font-family: monospace" />
-                <p class="form-hint">Letters, digits, <code>_</code> or <code>-</code>. Referenced as <code>{{ refForName
-                }}</code>.</p>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Value <span v-if="editingId" class="text-muted">(leave blank to keep
-                    current)</span></label>
-                <textarea v-model="form.value" class="form-input" rows="3" :required="!editingId"
-                  placeholder="the secret value" aria-label="Value" style="font-family: monospace"></textarea>
-              </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Description <span class="text-muted">(optional)</span></label>
-                <input v-model="form.description" class="form-input" placeholder="e.g. Postgres app password"
-                  aria-label="Description" />
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showForm = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editingId ?
-                'Save' :
-                'Create') }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showForm" @close="showForm = false">
+        <div class="modal-header">
+          <h3>{{ editingId ? 'Edit secret' : 'New secret' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showForm = false"><span
+              class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="save">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="form.name" class="form-input" placeholder="db_password" :disabled="!!editingId"
+                aria-label="Name" required autofocus style="font-family: monospace" />
+              <p class="form-hint">Letters, digits, <code>_</code> or <code>-</code>. Referenced as <code>{{ refForName
+              }}</code>.</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Value <span v-if="editingId" class="text-muted">(leave blank to keep
+                  current)</span></label>
+              <textarea v-model="form.value" class="form-input" rows="3" :required="!editingId"
+                placeholder="the secret value" aria-label="Value" style="font-family: monospace"></textarea>
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Description <span class="text-muted">(optional)</span></label>
+              <input v-model="form.description" class="form-input" placeholder="e.g. Postgres app password"
+                aria-label="Description" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showForm = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editingId ?
+              'Save' :
+              'Create') }}</button>
+          </div>
+        </form>
+      </AppModal>
 
       <!-- Reveal -->
       <!--       <div v-if="revealed" class="modal-overlay">
@@ -317,73 +316,71 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
           </div>
         </div>
       </div> -->
-      <div v-if="showDetails && selectedSecret" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Secret details</h3>
-            <button type="button" class="btn-icon btn-icon-muted" aria-label="Close" @click="closeDetails">
-              <span class="mdi mdi-close"></span>
-            </button>
+      <AppModal v-if="showDetails && selectedSecret" @close="closeDetails">
+        <div class="modal-header">
+          <h3>Secret details</h3>
+          <button type="button" class="btn-icon btn-icon-muted" aria-label="Close" @click="closeDetails">
+            <span class="mdi mdi-close"></span>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <div class="detail-group">
+            <label class="form-label">Name</label>
+            <div class="code-box">
+              <code>{{ selectedSecret.name }}</code>
+              <button type="button" class="btn-icon btn-icon-muted" title="Copy key" @click="copy(selectedSecret.name)">
+                <span class="mdi mdi-content-copy"></span>
+              </button>
+            </div>
           </div>
 
-          <div class="modal-body">
-            <div class="detail-group">
-              <label class="form-label">Name</label>
-              <div class="code-box">
-                <code>{{ selectedSecret.name }}</code>
-                <button type="button" class="btn-icon btn-icon-muted" title="Copy key" @click="copy(selectedSecret.name)">
+          <div class="detail-group">
+            <label class="form-label">Reference</label>
+            <div class="code-box">
+              <code>{{ reference(selectedSecret) }}</code>
+              <button type="button" class="btn-icon btn-icon-muted" title="Copy reference"
+                @click="copy(reference(selectedSecret))">
+                <span class="mdi mdi-content-copy"></span>
+              </button>
+            </div>
+          </div>
+
+          <div class="detail-group">
+            <label class="form-label">Value</label>
+            <div class="code-box">
+              <code class="secret-text">
+            {{ revealed?.name === selectedSecret.name ? revealed.value : '••••••••••••••••' }}
+          </code>
+              <div class="code-actions">
+                <button type="button" class="btn-icon btn-icon-muted" :disabled="revealingId === selectedSecret.id"
+                  @click="reveal(selectedSecret)">
+                  <span v-if="revealingId === selectedSecret.id" class="mdi mdi-loading mdi-spin"></span>
+                  <span v-else class="mdi"
+                    :class="revealed?.name === selectedSecret.name ? 'mdi-eye-off' : 'mdi-eye'"></span>
+                </button>
+
+                <button v-if="revealed?.name === selectedSecret.name" type="button" class="btn-icon btn-icon-muted"
+                  title="Copy value" @click="copy(revealed.value)">
                   <span class="mdi mdi-content-copy"></span>
                 </button>
               </div>
             </div>
-
-            <div class="detail-group">
-              <label class="form-label">Reference</label>
-              <div class="code-box">
-                <code>{{ reference(selectedSecret) }}</code>
-                <button type="button" class="btn-icon btn-icon-muted" title="Copy reference"
-                  @click="copy(reference(selectedSecret))">
-                  <span class="mdi mdi-content-copy"></span>
-                </button>
-              </div>
-            </div>
-
-            <div class="detail-group">
-              <label class="form-label">Value</label>
-              <div class="code-box">
-                <code class="secret-text">
-              {{ revealed?.name === selectedSecret.name ? revealed.value : '••••••••••••••••' }}
-            </code>
-                <div class="code-actions">
-                  <button type="button" class="btn-icon btn-icon-muted" :disabled="revealingId === selectedSecret.id"
-                    @click="reveal(selectedSecret)">
-                    <span v-if="revealingId === selectedSecret.id" class="mdi mdi-loading mdi-spin"></span>
-                    <span v-else class="mdi"
-                      :class="revealed?.name === selectedSecret.name ? 'mdi-eye-off' : 'mdi-eye'"></span>
-                  </button>
-
-                  <button v-if="revealed?.name === selectedSecret.name" type="button" class="btn-icon btn-icon-muted"
-                    title="Copy value" @click="copy(revealed.value)">
-                    <span class="mdi mdi-content-copy"></span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div class="detail-group" style="margin-bottom: 0">
-              <label class="form-label">Description</label>
-              <p class="detail-text">{{ selectedSecret.description || 'No description provided.' }}</p>
-            </div>
           </div>
 
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="closeDetails">Close</button>
-            <button type="button" class="btn btn-primary" @click="closeDetails(); openEdit(selectedSecret)">
-              <span class="mdi mdi-pencil"></span> Edit
-            </button>
+          <div class="detail-group" style="margin-bottom: 0">
+            <label class="form-label">Description</label>
+            <p class="detail-text">{{ selectedSecret.description || 'No description provided.' }}</p>
           </div>
         </div>
-      </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="closeDetails">Close</button>
+          <button type="button" class="btn btn-primary" @click="closeDetails(); openEdit(selectedSecret)">
+            <span class="mdi mdi-pencil"></span> Edit
+          </button>
+        </div>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog :open="!!toDelete" title="Delete secret"

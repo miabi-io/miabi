@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notification'
 import { copyText } from '@/utils/clipboard'
 import type { TwoFactorSetup } from '@/api/types'
+import AppModal from '@/components/AppModal.vue'
 
 const auth = useAuthStore()
 const notify = useNotificationStore()
@@ -236,119 +237,113 @@ function downloadCodes() {
 
     <Teleport to="body">
       <!-- Setup: QR + verify -->
-      <div v-if="modal === 'setup'" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Set up two-factor authentication</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="closeModal"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="confirmSetup">
-            <div class="modal-body">
-              <ol class="sec-steps">
-                <li>Scan this QR code with your authenticator app.</li>
-                <li>Enter the 6-digit code it shows to confirm.</li>
-              </ol>
-              <div class="sec-qr">
-                <img v-if="setup" :src="setup.qr_code" alt="TOTP QR code" width="200" height="200" />
-              </div>
-              <p class="sec-manual">
-                Can't scan? Enter this key manually:
-                <code class="sec-secret">{{ setup?.secret }}</code>
-              </p>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Verification code</label>
-                <input
-                  v-model="code"
-                  class="form-input totp-input"
-                  inputmode="numeric"
-                  placeholder="123456"
-                  autocomplete="one-time-code"
-                  aria-label="Verification code"
-                  required
-                  autofocus
-                />
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="closeModal">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="busy">
-                {{ busy ? 'Verifying…' : 'Verify & enable' }}
-              </button>
-            </div>
-          </form>
+      <AppModal v-if="modal === 'setup'" @close="closeModal">
+        <div class="modal-header">
+          <h3>Set up two-factor authentication</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="closeModal"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
-
-      <!-- Recovery codes display -->
-      <div v-else-if="modal === 'codes'" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Save your recovery codes</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="closeModal"><span class="mdi mdi-close"></span></button>
-          </div>
+        <form @submit.prevent="confirmSetup">
           <div class="modal-body">
-            <div class="app-banner app-banner--warning">
-              <span class="mdi mdi-alert-outline app-banner-icon"></span>
-              <div class="app-banner-content">
-                <p class="app-banner-title">Store these somewhere safe</p>
-                <p class="app-banner-text">
-                  Each code works once if you lose access to your authenticator. They won't be shown again.
-                </p>
-              </div>
+            <ol class="sec-steps">
+              <li>Scan this QR code with your authenticator app.</li>
+              <li>Enter the 6-digit code it shows to confirm.</li>
+            </ol>
+            <div class="sec-qr">
+              <img v-if="setup" :src="setup.qr_code" alt="TOTP QR code" width="200" height="200" />
             </div>
-            <div class="sec-codes">
-              <code v-for="rc in recoveryCodes" :key="rc">{{ rc }}</code>
+            <p class="sec-manual">
+              Can't scan? Enter this key manually:
+              <code class="sec-secret">{{ setup?.secret }}</code>
+            </p>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Verification code</label>
+              <input
+                v-model="code"
+                class="form-input totp-input"
+                inputmode="numeric"
+                placeholder="123456"
+                autocomplete="one-time-code"
+                aria-label="Verification code"
+                required
+                autofocus
+              />
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="copyCodes">Copy</button>
-            <button type="button" class="btn btn-secondary" @click="downloadCodes">Download</button>
-            <button type="button" class="btn btn-primary" @click="closeModal">Done</button>
+            <button type="button" class="btn btn-secondary" @click="closeModal">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="busy">
+              {{ busy ? 'Verifying…' : 'Verify & enable' }}
+            </button>
+          </div>
+        </form>
+      </AppModal>
+
+      <!-- Recovery codes display -->
+      <AppModal v-if="modal === 'codes'" @close="closeModal">
+        <div class="modal-header">
+          <h3>Save your recovery codes</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="closeModal"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <div class="app-banner app-banner--warning">
+            <span class="mdi mdi-alert-outline app-banner-icon"></span>
+            <div class="app-banner-content">
+              <p class="app-banner-title">Store these somewhere safe</p>
+              <p class="app-banner-text">
+                Each code works once if you lose access to your authenticator. They won't be shown again.
+              </p>
+            </div>
+          </div>
+          <div class="sec-codes">
+            <code v-for="rc in recoveryCodes" :key="rc">{{ rc }}</code>
           </div>
         </div>
-      </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="copyCodes">Copy</button>
+          <button type="button" class="btn btn-secondary" @click="downloadCodes">Download</button>
+          <button type="button" class="btn btn-primary" @click="closeModal">Done</button>
+        </div>
+      </AppModal>
 
       <!-- Disable / Regenerate: ask for a code -->
-      <div v-else-if="modal === 'disable' || modal === 'regenerate'" class="modal-overlay">
-        <div class="modal" style="max-width: 460px">
-          <div class="modal-header">
-            <h3>{{ modal === 'disable' ? 'Disable two-factor' : 'Regenerate recovery codes' }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="closeModal"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="modal === 'disable' ? confirmDisable() : confirmRegenerate()">
-            <div class="modal-body">
-              <p class="sec-desc" style="margin-bottom: 14px">
-                {{ modal === 'disable'
-                  ? 'Enter a code from your authenticator app (or a recovery code) to turn off two-factor authentication.'
-                  : 'Enter a code from your authenticator app. This invalidates your existing recovery codes.' }}
-              </p>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">{{ modal === 'disable' ? 'Authentication or recovery code' : 'Authentication code' }}</label>
-                <input
-                  v-model="code"
-                  class="form-input totp-input"
-                  placeholder="123456"
-                  autocomplete="one-time-code"
-                  :aria-label="modal === 'disable' ? 'Authentication or recovery code' : 'Authentication code'"
-                  required
-                  autofocus
-                />
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="closeModal">Cancel</button>
-              <button
-                type="submit"
-                class="btn"
-                :class="modal === 'disable' ? 'btn-danger' : 'btn-primary'"
-                :disabled="busy"
-              >
-                {{ busy ? 'Working…' : modal === 'disable' ? 'Disable' : 'Regenerate' }}
-              </button>
-            </div>
-          </form>
+      <AppModal v-if="modal === 'disable' || modal === 'regenerate'" max-width="460px" @close="closeModal">
+        <div class="modal-header">
+          <h3>{{ modal === 'disable' ? 'Disable two-factor' : 'Regenerate recovery codes' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="closeModal"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="modal === 'disable' ? confirmDisable() : confirmRegenerate()">
+          <div class="modal-body">
+            <p class="sec-desc" style="margin-bottom: 14px">
+              {{ modal === 'disable'
+                ? 'Enter a code from your authenticator app (or a recovery code) to turn off two-factor authentication.'
+                : 'Enter a code from your authenticator app. This invalidates your existing recovery codes.' }}
+            </p>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">{{ modal === 'disable' ? 'Authentication or recovery code' : 'Authentication code' }}</label>
+              <input
+                v-model="code"
+                class="form-input totp-input"
+                placeholder="123456"
+                autocomplete="one-time-code"
+                :aria-label="modal === 'disable' ? 'Authentication or recovery code' : 'Authentication code'"
+                required
+                autofocus
+              />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="closeModal">Cancel</button>
+            <button
+              type="submit"
+              class="btn"
+              :class="modal === 'disable' ? 'btn-danger' : 'btn-primary'"
+              :disabled="busy"
+            >
+              {{ busy ? 'Working…' : modal === 'disable' ? 'Disable' : 'Regenerate' }}
+            </button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
   </div>
 </template>

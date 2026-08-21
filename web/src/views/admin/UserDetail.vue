@@ -8,6 +8,7 @@ import { useLicenseStore } from '@/stores/license'
 import type { AdminUserDetail, AdminEvent } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { copyText } from '@/utils/clipboard'
+import AppModal from '@/components/AppModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -640,45 +641,43 @@ function eventSeverity(e: AdminEvent): string {
       </div>
 
       <!-- Schedule-deletion dialog: per-workspace ownership transfer or delete -->
-      <div v-if="showDeleteDialog" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h2>Delete {{ user.name }}</h2>
-            <button class="btn-icon" aria-label="Close" @click="showDeleteDialog = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <div class="modal-body">
-            <p class="text-muted" style="margin-top: 0">
-              The account stays disabled and is permanently deleted after a grace period, along with all
-              data it still owns. For each workspace that has other members you can transfer ownership
-              instead of deleting it.
-            </p>
-            <div v-if="user.owned_workspaces?.length" class="transfer-list">
-              <div v-for="w in user.owned_workspaces" :key="w.id" class="transfer-row">
-                <div class="transfer-ws">
-                  <span class="transfer-ws-name">{{ w.name }}</span>
-                  <span class="transfer-ws-meta">{{ w.apps }} apps · {{ w.databases }} dbs · {{ w.stacks }} stacks</span>
-                </div>
-                <select v-if="w.members.length" v-model.number="transferChoice[w.id]" class="transfer-select form-select">
-                  <option :value="0">Delete this workspace's data</option>
-                  <option v-for="m in w.members" :key="m.user_id" :value="m.user_id">Transfer to {{ m.name }} ({{ m.email }})</option>
-                </select>
-                <span v-else class="text-muted text-sm">No other members — will be deleted</span>
+      <AppModal v-if="showDeleteDialog" @close="showDeleteDialog = false">
+        <div class="modal-header">
+          <h2>Delete {{ user.name }}</h2>
+          <button class="btn-icon" aria-label="Close" @click="showDeleteDialog = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted" style="margin-top: 0">
+            The account stays disabled and is permanently deleted after a grace period, along with all
+            data it still owns. For each workspace that has other members you can transfer ownership
+            instead of deleting it.
+          </p>
+          <div v-if="user.owned_workspaces?.length" class="transfer-list">
+            <div v-for="w in user.owned_workspaces" :key="w.id" class="transfer-row">
+              <div class="transfer-ws">
+                <span class="transfer-ws-name">{{ w.name }}</span>
+                <span class="transfer-ws-meta">{{ w.apps }} apps · {{ w.databases }} dbs · {{ w.stacks }} stacks</span>
               </div>
-            </div>
-            <p v-else class="text-muted">This user owns no workspaces.</p>
-            <div class="form-group" style="margin: 14px 0 0">
-              <label>Type <code>DELETE</code> to confirm</label>
-              <input v-model="confirmText" class="form-input" placeholder="DELETE" autocomplete="off" />
+              <select v-if="w.members.length" v-model.number="transferChoice[w.id]" class="transfer-select form-select">
+                <option :value="0">Delete this workspace's data</option>
+                <option v-for="m in w.members" :key="m.user_id" :value="m.user_id">Transfer to {{ m.name }} ({{ m.email }})</option>
+              </select>
+              <span v-else class="text-muted text-sm">No other members — will be deleted</span>
             </div>
           </div>
-          <div class="modal-footer">
-            <button class="btn btn-secondary" :disabled="busy" @click="showDeleteDialog = false">Cancel</button>
-            <button class="btn btn-danger" :disabled="busy || confirmText !== 'DELETE'" @click="scheduleDeletion">
-              <span class="mdi mdi-delete-clock"></span> Schedule deletion
-            </button>
+          <p v-else class="text-muted">This user owns no workspaces.</p>
+          <div class="form-group" style="margin: 14px 0 0">
+            <label>Type <code>DELETE</code> to confirm</label>
+            <input v-model="confirmText" class="form-input" placeholder="DELETE" autocomplete="off" />
           </div>
         </div>
-      </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" :disabled="busy" @click="showDeleteDialog = false">Cancel</button>
+          <button class="btn btn-danger" :disabled="busy || confirmText !== 'DELETE'" @click="scheduleDeletion">
+            <span class="mdi mdi-delete-clock"></span> Schedule deletion
+          </button>
+        </div>
+      </AppModal>
     </template>
 
     <ConfirmDialog
@@ -694,30 +693,28 @@ function eventSeverity(e: AdminEvent): string {
 
     <!-- New password: shown exactly once. The admin must copy it now and hand it
          over out-of-band — it is not stored in clear and can't be shown again. -->
-    <div v-if="generatedPassword" class="modal-overlay">
-      <div class="modal">
-        <div class="modal-header">
-          <h2>New password</h2>
-          <button class="btn-icon" aria-label="Close" @click="generatedPassword = null"><span class="mdi mdi-close"></span></button>
-        </div>
-        <div class="modal-body">
-          <p class="text-muted" style="margin-top: 0">
-            A new password has been generated and every session was signed out. Copy it now and share
-            it with the user through a secure channel — <strong>it won't be shown again</strong>.
-          </p>
-          <div class="pw-reveal">
-            <code class="pw-value">{{ generatedPassword }}</code>
-            <button class="btn btn-secondary btn-sm" @click="copyGeneratedPassword">
-              <span class="mdi" :class="pwCopied ? 'mdi-check' : 'mdi-content-copy'"></span>
-              {{ pwCopied ? 'Copied' : 'Copy' }}
-            </button>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-primary btn-sm" @click="generatedPassword = null">Done</button>
+    <AppModal v-if="generatedPassword" @close="generatedPassword = null">
+      <div class="modal-header">
+        <h2>New password</h2>
+        <button class="btn-icon" aria-label="Close" @click="generatedPassword = null"><span class="mdi mdi-close"></span></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted" style="margin-top: 0">
+          A new password has been generated and every session was signed out. Copy it now and share
+          it with the user through a secure channel — <strong>it won't be shown again</strong>.
+        </p>
+        <div class="pw-reveal">
+          <code class="pw-value">{{ generatedPassword }}</code>
+          <button class="btn btn-secondary btn-sm" @click="copyGeneratedPassword">
+            <span class="mdi" :class="pwCopied ? 'mdi-check' : 'mdi-content-copy'"></span>
+            {{ pwCopied ? 'Copied' : 'Copy' }}
+          </button>
         </div>
       </div>
-    </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary btn-sm" @click="generatedPassword = null">Done</button>
+      </div>
+    </AppModal>
   </div>
 </template>
 

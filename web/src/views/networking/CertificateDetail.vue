@@ -8,6 +8,7 @@ import { certificateApi, type CertificateInput } from '@/api/certificates'
 import type { Certificate } from '@/api/types'
 import { fmtDate, expiryBadge } from '@/utils/certificate'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -124,35 +125,33 @@ async function confirmDelete() {
     </div>
 
     <Teleport to="body">
-      <div v-if="showReplace" class="modal-overlay">
-        <div class="modal" style="max-width: 640px; width: 100%">
-          <div class="modal-header">
-            <h3>Replace certificate</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showReplace = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="save">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="form.name" class="form-input" disabled />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Certificate (PEM) — leaf + intermediates</label>
-                <textarea v-model="form.cert_pem" class="form-input" rows="5" required placeholder="-----BEGIN CERTIFICATE-----" style="font-family: monospace; font-size: 12px"></textarea>
-              </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Private key (PEM)</label>
-                <textarea v-model="form.key_pem" class="form-input" rows="4" required placeholder="-----BEGIN PRIVATE KEY-----" style="font-family: monospace; font-size: 12px"></textarea>
-                <p class="form-hint">The key is validated against the certificate, encrypted at rest, and never shown again.</p>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showReplace = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : 'Replace' }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showReplace" max-width="640px" @close="showReplace = false">
+        <div class="modal-header">
+          <h3>Replace certificate</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showReplace = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="save">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="form.name" class="form-input" disabled />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Certificate (PEM) — leaf + intermediates</label>
+              <textarea v-model="form.cert_pem" class="form-input" rows="5" required placeholder="-----BEGIN CERTIFICATE-----" style="font-family: monospace; font-size: 12px"></textarea>
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Private key (PEM)</label>
+              <textarea v-model="form.key_pem" class="form-input" rows="4" required placeholder="-----BEGIN PRIVATE KEY-----" style="font-family: monospace; font-size: 12px"></textarea>
+              <p class="form-hint">The key is validated against the certificate, encrypted at rest, and never shown again.</p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showReplace = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : 'Replace' }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

@@ -12,6 +12,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { fmtSize } from '@/utils/format'
 import { relativeTime } from '@/utils/time'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const props = defineProps<{ wsId: number; canRestore: boolean }>()
 
@@ -332,92 +333,88 @@ function failedArtifacts(b: BundleInfo): number {
 
     <!-- Restore dialog -->
     <Teleport to="body">
-      <div v-if="restoreOpen && restoreTarget" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Restore bundle</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="restoreOpen = false">
-              <span class="mdi mdi-close"></span>
-            </button>
+      <AppModal v-if="restoreOpen && restoreTarget" @close="restoreOpen = false">
+        <div class="modal-header">
+          <h3>Restore bundle</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="restoreOpen = false">
+            <span class="mdi mdi-close"></span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted text-sm mono">{{ restoreTarget.ref }}</p>
+          <p class="text-muted text-sm">
+            Resources are matched by name: anything already here is left exactly as it is, so a
+            restore never overwrites a live secret or app.
+          </p>
+
+          <label class="toggle-row">
+            <input v-model="restoreForm.intoNew" type="checkbox" />
+            <span>Restore into a new workspace (a clone, beside this one)</span>
+          </label>
+          <div v-if="restoreForm.intoNew" class="form-group">
+            <label class="form-label">New workspace name</label>
+            <input v-model="restoreForm.newWorkspace" class="form-input" placeholder="shop-restored" />
           </div>
-          <div class="modal-body">
-            <p class="text-muted text-sm mono">{{ restoreTarget.ref }}</p>
-            <p class="text-muted text-sm">
-              Resources are matched by name: anything already here is left exactly as it is, so a
-              restore never overwrites a live secret or app.
-            </p>
 
-            <label class="toggle-row">
-              <input v-model="restoreForm.intoNew" type="checkbox" />
-              <span>Restore into a new workspace (a clone, beside this one)</span>
-            </label>
-            <div v-if="restoreForm.intoNew" class="form-group">
-              <label class="form-label">New workspace name</label>
-              <input v-model="restoreForm.newWorkspace" class="form-input" placeholder="shop-restored" />
+          <label class="toggle-row">
+            <input v-model="restoreForm.restoreData" type="checkbox" />
+            <span>Restore data (database dumps and volume archives)</span>
+          </label>
+          <label class="toggle-row">
+            <input v-model="restoreForm.deployApps" type="checkbox" />
+            <span>Deploy applications when the restore finishes</span>
+          </label>
+
+          <div class="danger-note">
+            <span class="mdi mdi-alert-outline"></span>
+            <div>
+              Restoring data overwrites the contents of any database or volume of the same name.
+              Domains come back unverified and certificates re-issue only once DNS points here.
             </div>
-
-            <label class="toggle-row">
-              <input v-model="restoreForm.restoreData" type="checkbox" />
-              <span>Restore data (database dumps and volume archives)</span>
-            </label>
-            <label class="toggle-row">
-              <input v-model="restoreForm.deployApps" type="checkbox" />
-              <span>Deploy applications when the restore finishes</span>
-            </label>
-
-            <div class="danger-note">
-              <span class="mdi mdi-alert-outline"></span>
-              <div>
-                Restoring data overwrites the contents of any database or volume of the same name.
-                Domains come back unverified and certificates re-issue only once DNS points here.
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="btn btn-secondary" @click="restoreOpen = false">Cancel</button>
-            <button class="btn btn-primary" :disabled="restoring" @click="confirmRestore">
-              {{ restoring ? 'Starting…' : 'Restore' }}
-            </button>
           </div>
         </div>
-      </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="restoreOpen = false">Cancel</button>
+          <button class="btn btn-primary" :disabled="restoring" @click="confirmRestore">
+            {{ restoring ? 'Starting…' : 'Restore' }}
+          </button>
+        </div>
+      </AppModal>
     </Teleport>
 
     <!-- Run report -->
     <Teleport to="body">
-      <div v-if="openRun" class="modal-overlay">
-        <div class="modal modal-lg">
-          <div class="modal-header">
-            <h3>{{ openRun.kind === 'export' ? 'Export' : 'Restore' }} report</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="openRun = null">
-              <span class="mdi mdi-close"></span>
-            </button>
-          </div>
-          <div class="modal-body">
-            <p class="mono text-sm">{{ openRun.ref }}</p>
-            <p v-if="openRun.error" class="danger-note">
-              <span class="mdi mdi-alert-outline"></span>
-              <span>{{ openRun.error }}</span>
-            </p>
-            <ul v-if="openRun.report?.notes?.length" class="notes">
-              <li v-for="(n, i) in openRun.report.notes" :key="i">{{ n }}</li>
-            </ul>
-            <table v-if="openRun.report?.items?.length" class="table">
-              <thead>
-                <tr><th>Resource</th><th>Name</th><th>Result</th><th>Detail</th></tr>
-              </thead>
-              <tbody>
-                <tr v-for="(it, i) in openRun.report.items" :key="i">
-                  <td class="text-sm">{{ it.kind }}</td>
-                  <td class="text-sm mono">{{ it.name }}</td>
-                  <td><span class="badge" :class="actionClass(it.action)">{{ it.action }}</span></td>
-                  <td class="text-sm text-muted">{{ it.detail }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+      <AppModal v-if="openRun" dialog-class="modal-lg" @close="openRun = null">
+        <div class="modal-header">
+          <h3>{{ openRun.kind === 'export' ? 'Export' : 'Restore' }} report</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="openRun = null">
+            <span class="mdi mdi-close"></span>
+          </button>
         </div>
-      </div>
+        <div class="modal-body">
+          <p class="mono text-sm">{{ openRun.ref }}</p>
+          <p v-if="openRun.error" class="danger-note">
+            <span class="mdi mdi-alert-outline"></span>
+            <span>{{ openRun.error }}</span>
+          </p>
+          <ul v-if="openRun.report?.notes?.length" class="notes">
+            <li v-for="(n, i) in openRun.report.notes" :key="i">{{ n }}</li>
+          </ul>
+          <table v-if="openRun.report?.items?.length" class="table">
+            <thead>
+              <tr><th>Resource</th><th>Name</th><th>Result</th><th>Detail</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="(it, i) in openRun.report.items" :key="i">
+                <td class="text-sm">{{ it.kind }}</td>
+                <td class="text-sm mono">{{ it.name }}</td>
+                <td><span class="badge" :class="actionClass(it.action)">{{ it.action }}</span></td>
+                <td class="text-sm text-muted">{{ it.detail }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

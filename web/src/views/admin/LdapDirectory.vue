@@ -6,6 +6,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { useLicenseStore } from '@/stores/license'
 import { useEntitlement } from '@/composables/useEntitlement'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const notify = useNotificationStore()
 const licenseStore = useLicenseStore()
@@ -241,180 +242,176 @@ function tlsLabel(m: string) {
 
     <!-- Create / edit modal -->
     <Teleport to="body">
-      <div v-if="showForm" class="modal-overlay">
-        <div class="modal" style="max-width: 640px; width: 100%">
-          <div class="modal-header">
-            <h3>{{ editingId ? 'Edit LDAP connection' : 'Add LDAP connection' }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showForm = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="save">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Display name</label>
-                <input v-model="form.display_name" class="form-input" placeholder="e.g. Corp Active Directory" required autofocus />
-              </div>
-
-              <h4 class="form-section">Connection</h4>
-              <div class="form-row">
-                <div class="form-group" style="flex: 2; margin-bottom: 0">
-                  <label class="form-label">Host</label>
-                  <input v-model="form.host" class="form-input mono" placeholder="ldap.corp.example.com" required />
-                </div>
-                <div class="form-group" style="flex: 1; margin-bottom: 0">
-                  <label class="form-label">Port</label>
-                  <input v-model.number="form.port" type="number" class="form-input" placeholder="389" />
-                </div>
-              </div>
-              <div class="form-row" style="margin-top: 12px">
-                <div class="form-group" style="flex: 1; margin-bottom: 0">
-                  <label class="form-label">TLS</label>
-                  <select v-model="form.tls_mode" class="form-select" aria-label="TLS mode">
-                    <option value="starttls">StartTLS (upgrade on 389)</option>
-                    <option value="ldaps">LDAPS (implicit TLS, 636)</option>
-                    <option value="none">None (plaintext — not recommended)</option>
-                  </select>
-                </div>
-                <div class="form-group" style="flex: 1; margin-bottom: 0">
-                  <label class="form-label">Timeout (s)</label>
-                  <input v-model.number="form.timeout_seconds" type="number" class="form-input" placeholder="10" />
-                </div>
-              </div>
-              <div class="form-group" style="margin-top: 12px">
-                <label class="form-label">CA certificate (PEM, optional)</label>
-                <textarea v-model="form.ca_cert_pem" class="form-input mono" rows="2" placeholder="-----BEGIN CERTIFICATE----- …"></textarea>
-              </div>
-              <label class="check-row">
-                <input v-model="form.insecure_skip_tls" type="checkbox" />
-                <span>Skip TLS certificate verification <span class="text-muted">(insecure — dev only)</span></span>
-              </label>
-
-              <h4 class="form-section">Service account (bind)</h4>
-              <div class="form-group">
-                <label class="form-label">Bind DN</label>
-                <input v-model="form.bind_dn" class="form-input mono" placeholder="cn=miabi,ou=svc,dc=corp,dc=example,dc=com" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Bind password</label>
-                <input v-model="form.bind_password" type="password" class="form-input" autocomplete="new-password"
-                  :placeholder="editingHasPassword ? '•••••••• (leave blank to keep)' : 'Service-account password'" />
-              </div>
-
-              <h4 class="form-section">User search</h4>
-              <div class="form-group">
-                <label class="form-label">User base DN</label>
-                <input v-model="form.user_base_dn" class="form-input mono" placeholder="ou=Users,dc=corp,dc=example,dc=com" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">User filter <span class="text-muted">(%s = login)</span></label>
-                <input v-model="form.user_filter" class="form-input mono" placeholder="(sAMAccountName=%s) or (uid=%s)" />
-              </div>
-              <div class="form-row">
-                <div class="form-group" style="flex: 1; margin-bottom: 0">
-                  <label class="form-label">Email attr</label>
-                  <input v-model="form.attr_email" class="form-input mono" placeholder="mail" />
-                </div>
-                <div class="form-group" style="flex: 1; margin-bottom: 0">
-                  <label class="form-label">Name attr</label>
-                  <input v-model="form.attr_name" class="form-input mono" placeholder="displayName" />
-                </div>
-                <div class="form-group" style="flex: 1; margin-bottom: 0">
-                  <label class="form-label">Username attr</label>
-                  <input v-model="form.attr_username" class="form-input mono" placeholder="sAMAccountName" />
-                </div>
-              </div>
-
-              <h4 class="form-section">Groups <span class="text-muted">(optional — drives access)</span></h4>
-              <div class="form-row">
-                <div class="form-group" style="flex: 2; margin-bottom: 0">
-                  <label class="form-label">Group base DN</label>
-                  <input v-model="form.group_base_dn" class="form-input mono" placeholder="ou=Groups,dc=corp,dc=example,dc=com" />
-                </div>
-                <div class="form-group" style="flex: 1; margin-bottom: 0">
-                  <label class="form-label">Member attr</label>
-                  <input v-model="form.member_attr" class="form-input mono" placeholder="memberOf" />
-                </div>
-              </div>
-              <div class="form-group" style="margin-top: 12px">
-                <label class="form-label">Group filter <span class="text-muted">(%s = user DN; blank uses member attr)</span></label>
-                <input v-model="form.group_filter" class="form-input mono" placeholder="(member=%s)" />
-              </div>
-              <label class="check-row">
-                <input v-model="form.nested_groups" type="checkbox" />
-                <span>Expand nested groups <span class="text-muted">(Active Directory)</span></span>
-              </label>
-
-              <label class="check-row">
-                <input v-model="form.enabled" type="checkbox" />
-                <span>Enabled</span>
-              </label>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showForm = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editingId ? 'Save changes' : 'Create') }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showForm" max-width="640px" @close="showForm = false">
+        <div class="modal-header">
+          <h3>{{ editingId ? 'Edit LDAP connection' : 'Add LDAP connection' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showForm = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="save">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Display name</label>
+              <input v-model="form.display_name" class="form-input" placeholder="e.g. Corp Active Directory" required autofocus />
+            </div>
+
+            <h4 class="form-section">Connection</h4>
+            <div class="form-row">
+              <div class="form-group" style="flex: 2; margin-bottom: 0">
+                <label class="form-label">Host</label>
+                <input v-model="form.host" class="form-input mono" placeholder="ldap.corp.example.com" required />
+              </div>
+              <div class="form-group" style="flex: 1; margin-bottom: 0">
+                <label class="form-label">Port</label>
+                <input v-model.number="form.port" type="number" class="form-input" placeholder="389" />
+              </div>
+            </div>
+            <div class="form-row" style="margin-top: 12px">
+              <div class="form-group" style="flex: 1; margin-bottom: 0">
+                <label class="form-label">TLS</label>
+                <select v-model="form.tls_mode" class="form-select" aria-label="TLS mode">
+                  <option value="starttls">StartTLS (upgrade on 389)</option>
+                  <option value="ldaps">LDAPS (implicit TLS, 636)</option>
+                  <option value="none">None (plaintext — not recommended)</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex: 1; margin-bottom: 0">
+                <label class="form-label">Timeout (s)</label>
+                <input v-model.number="form.timeout_seconds" type="number" class="form-input" placeholder="10" />
+              </div>
+            </div>
+            <div class="form-group" style="margin-top: 12px">
+              <label class="form-label">CA certificate (PEM, optional)</label>
+              <textarea v-model="form.ca_cert_pem" class="form-input mono" rows="2" placeholder="-----BEGIN CERTIFICATE----- …"></textarea>
+            </div>
+            <label class="check-row">
+              <input v-model="form.insecure_skip_tls" type="checkbox" />
+              <span>Skip TLS certificate verification <span class="text-muted">(insecure — dev only)</span></span>
+            </label>
+
+            <h4 class="form-section">Service account (bind)</h4>
+            <div class="form-group">
+              <label class="form-label">Bind DN</label>
+              <input v-model="form.bind_dn" class="form-input mono" placeholder="cn=miabi,ou=svc,dc=corp,dc=example,dc=com" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Bind password</label>
+              <input v-model="form.bind_password" type="password" class="form-input" autocomplete="new-password"
+                :placeholder="editingHasPassword ? '•••••••• (leave blank to keep)' : 'Service-account password'" />
+            </div>
+
+            <h4 class="form-section">User search</h4>
+            <div class="form-group">
+              <label class="form-label">User base DN</label>
+              <input v-model="form.user_base_dn" class="form-input mono" placeholder="ou=Users,dc=corp,dc=example,dc=com" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">User filter <span class="text-muted">(%s = login)</span></label>
+              <input v-model="form.user_filter" class="form-input mono" placeholder="(sAMAccountName=%s) or (uid=%s)" />
+            </div>
+            <div class="form-row">
+              <div class="form-group" style="flex: 1; margin-bottom: 0">
+                <label class="form-label">Email attr</label>
+                <input v-model="form.attr_email" class="form-input mono" placeholder="mail" />
+              </div>
+              <div class="form-group" style="flex: 1; margin-bottom: 0">
+                <label class="form-label">Name attr</label>
+                <input v-model="form.attr_name" class="form-input mono" placeholder="displayName" />
+              </div>
+              <div class="form-group" style="flex: 1; margin-bottom: 0">
+                <label class="form-label">Username attr</label>
+                <input v-model="form.attr_username" class="form-input mono" placeholder="sAMAccountName" />
+              </div>
+            </div>
+
+            <h4 class="form-section">Groups <span class="text-muted">(optional — drives access)</span></h4>
+            <div class="form-row">
+              <div class="form-group" style="flex: 2; margin-bottom: 0">
+                <label class="form-label">Group base DN</label>
+                <input v-model="form.group_base_dn" class="form-input mono" placeholder="ou=Groups,dc=corp,dc=example,dc=com" />
+              </div>
+              <div class="form-group" style="flex: 1; margin-bottom: 0">
+                <label class="form-label">Member attr</label>
+                <input v-model="form.member_attr" class="form-input mono" placeholder="memberOf" />
+              </div>
+            </div>
+            <div class="form-group" style="margin-top: 12px">
+              <label class="form-label">Group filter <span class="text-muted">(%s = user DN; blank uses member attr)</span></label>
+              <input v-model="form.group_filter" class="form-input mono" placeholder="(member=%s)" />
+            </div>
+            <label class="check-row">
+              <input v-model="form.nested_groups" type="checkbox" />
+              <span>Expand nested groups <span class="text-muted">(Active Directory)</span></span>
+            </label>
+
+            <label class="check-row">
+              <input v-model="form.enabled" type="checkbox" />
+              <span>Enabled</span>
+            </label>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showForm = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editingId ? 'Save changes' : 'Create') }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <!-- Group mappings modal -->
     <Teleport to="body">
-      <div v-if="mappingConfig" class="modal-overlay">
-        <div class="modal" style="max-width: 620px; width: 100%">
-          <div class="modal-header">
-            <h3>Group mappings — {{ mappingConfig.display_name || mappingConfig.name }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="mappingConfig = null"><span class="mdi mdi-close"></span></button>
-          </div>
-          <div class="modal-body">
-            <p class="text-muted text-sm">Map a directory group (full DN or bare CN) onto platform-admin and/or a workspace role. Reconciled on each login.</p>
-            <div v-if="(mappingConfig.mappings || []).length" class="table-wrapper" style="margin: 12px 0">
-              <table>
-                <thead><tr><th>Group</th><th>Grants</th><th></th></tr></thead>
-                <tbody>
-                  <tr v-for="m in mappingConfig.mappings" :key="m.id">
-                    <td class="cell-sub mono">{{ m.group_dn }}</td>
-                    <td class="cell-sub">
-                      <span v-if="m.system_admin" class="badge badge-warning">platform admin</span>
-                      <span v-if="m.workspace_id" class="badge badge-neutral">ws #{{ m.workspace_id }} · {{ m.workspace_role }}</span>
-                    </td>
-                    <td class="text-right">
-                      <button class="btn-icon btn-icon-danger" title="Remove mapping" aria-label="Remove mapping" :disabled="!canWrite" @click="removeMapping(m)"><span class="mdi mdi-delete-outline"></span></button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <p v-else class="text-muted text-sm" style="margin: 12px 0">No mappings yet — without any, directory users are provisioned but get no admin or workspace access automatically.</p>
-
-            <form v-if="canWrite" class="map-form" @submit.prevent="addMapping">
-              <div class="form-group">
-                <label class="form-label">Group DN or CN</label>
-                <input v-model="mapForm.group_dn" class="form-input mono" placeholder="cn=platform-admins,ou=Groups,… (or just platform-admins)" required />
-              </div>
-              <div class="form-row" style="align-items: flex-end">
-                <label class="check-row" style="flex: 1; margin: 0">
-                  <input v-model="mapForm.system_admin" type="checkbox" />
-                  <span>Platform admin</span>
-                </label>
-                <div class="form-group" style="flex: 1; margin-bottom: 0">
-                  <label class="form-label">Workspace ID</label>
-                  <input v-model.number="mapForm.workspace_id" type="number" class="form-input" placeholder="(optional)" />
-                </div>
-                <div class="form-group" style="flex: 1; margin-bottom: 0">
-                  <label class="form-label">Workspace role</label>
-                  <select v-model="mapForm.workspace_role" class="form-select" aria-label="Workspace role" :disabled="!mapForm.workspace_id">
-                    <option value="owner">Owner</option>
-                    <option value="admin">Admin</option>
-                    <option value="developer">Developer</option>
-                    <option value="viewer">Viewer</option>
-                  </select>
-                </div>
-                <button type="submit" class="btn btn-primary" :disabled="savingMapping">Add</button>
-              </div>
-            </form>
-          </div>
+      <AppModal v-if="mappingConfig" max-width="620px" @close="mappingConfig = null">
+        <div class="modal-header">
+          <h3>Group mappings — {{ mappingConfig.display_name || mappingConfig.name }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="mappingConfig = null"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <div class="modal-body">
+          <p class="text-muted text-sm">Map a directory group (full DN or bare CN) onto platform-admin and/or a workspace role. Reconciled on each login.</p>
+          <div v-if="(mappingConfig.mappings || []).length" class="table-wrapper" style="margin: 12px 0">
+            <table>
+              <thead><tr><th>Group</th><th>Grants</th><th></th></tr></thead>
+              <tbody>
+                <tr v-for="m in mappingConfig.mappings" :key="m.id">
+                  <td class="cell-sub mono">{{ m.group_dn }}</td>
+                  <td class="cell-sub">
+                    <span v-if="m.system_admin" class="badge badge-warning">platform admin</span>
+                    <span v-if="m.workspace_id" class="badge badge-neutral">ws #{{ m.workspace_id }} · {{ m.workspace_role }}</span>
+                  </td>
+                  <td class="text-right">
+                    <button class="btn-icon btn-icon-danger" title="Remove mapping" aria-label="Remove mapping" :disabled="!canWrite" @click="removeMapping(m)"><span class="mdi mdi-delete-outline"></span></button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-else class="text-muted text-sm" style="margin: 12px 0">No mappings yet — without any, directory users are provisioned but get no admin or workspace access automatically.</p>
+
+          <form v-if="canWrite" class="map-form" @submit.prevent="addMapping">
+            <div class="form-group">
+              <label class="form-label">Group DN or CN</label>
+              <input v-model="mapForm.group_dn" class="form-input mono" placeholder="cn=platform-admins,ou=Groups,… (or just platform-admins)" required />
+            </div>
+            <div class="form-row" style="align-items: flex-end">
+              <label class="check-row" style="flex: 1; margin: 0">
+                <input v-model="mapForm.system_admin" type="checkbox" />
+                <span>Platform admin</span>
+              </label>
+              <div class="form-group" style="flex: 1; margin-bottom: 0">
+                <label class="form-label">Workspace ID</label>
+                <input v-model.number="mapForm.workspace_id" type="number" class="form-input" placeholder="(optional)" />
+              </div>
+              <div class="form-group" style="flex: 1; margin-bottom: 0">
+                <label class="form-label">Workspace role</label>
+                <select v-model="mapForm.workspace_role" class="form-select" aria-label="Workspace role" :disabled="!mapForm.workspace_id">
+                  <option value="owner">Owner</option>
+                  <option value="admin">Admin</option>
+                  <option value="developer">Developer</option>
+                  <option value="viewer">Viewer</option>
+                </select>
+              </div>
+              <button type="submit" class="btn btn-primary" :disabled="savingMapping">Add</button>
+            </div>
+          </form>
+        </div>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

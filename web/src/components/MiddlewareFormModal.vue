@@ -3,7 +3,8 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { middlewareApi } from '@/api/middlewares'
 import { useNotificationStore } from '@/stores/notification'
 import { parseYaml, toYaml } from '@/utils/yaml'
-import { useDirtyGuard, useModal } from '@/composables/useModal'
+import { useDirtyGuard } from '@/composables/useModal'
+import AppModal from '@/components/AppModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import MiddlewareField from '@/components/MiddlewareField.vue'
 import type { Middleware, MiddlewareCatalog, MiddlewareDescriptor, MiddlewareField as MwField, MiddlewarePreset } from '@/api/types'
@@ -15,7 +16,6 @@ import type { Middleware, MiddlewareCatalog, MiddlewareDescriptor, MiddlewareFie
 const props = defineProps<{ open: boolean; workspaceId: number | null; editing: Middleware | null }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'saved', m: Middleware): void }>()
 
-const dialog = ref<HTMLElement | null>(null)
 const confirmDiscard = ref(false)
 
 const notify = useNotificationStore()
@@ -118,10 +118,6 @@ function discard() {
   emit('close')
 }
 
-useModal(
-  () => props.open,
-  { onRequestClose: requestClose, container: dialog, escapable: () => !confirmDiscard.value },
-)
 
 // Switching type (in create mode) resets the rule to the new type's defaults.
 function onTypeChange() {
@@ -190,76 +186,74 @@ async function save() {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="modal-overlay">
-      <div ref="dialog" class="modal modal-lg" role="dialog" aria-modal="true" aria-labelledby="mw-form-title">
-        <div class="modal-header">
-          <h3 id="mw-form-title">{{ editing ? 'Edit policy' : 'New security policy' }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" data-modal-skip-focus @click="requestClose"><span class="mdi mdi-close"></span></button>
-        </div>
-        <form @submit.prevent="save">
-          <div class="modal-body">
-            <!-- One-click presets (create only) -->
-            <div v-if="!editing && presets.length" class="presets">
-              <button
-                v-for="p in presets"
-                :key="p.key"
-                type="button"
-                class="preset-chip"
-                :title="p.description"
-                @click="applyPreset(p)"
-              >
-                <span class="mdi mdi-flash-outline"></span> {{ p.display_name }}
-              </button>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Name</label>
-              <input v-model="form.name" class="form-input" placeholder="e.g. basic-auth" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" title="Lowercase letters, digits and hyphens" aria-label="Name" required autofocus />
-              <p class="form-hint">Lowercase letters, digits and hyphens (e.g. basic-auth).</p>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Type</label>
-              <select v-model="form.type" class="form-select" :disabled="!!editing" aria-label="Type" @change="onTypeChange">
-                <optgroup v-for="g in typesByCategory" :key="g.cat" :label="g.cat">
-                  <option v-for="d in g.items" :key="d.type" :value="d.type">{{ d.display_name }}</option>
-                </optgroup>
-                <option v-if="!isCatalogued" :value="form.type">{{ form.type }} (advanced)</option>
-              </select>
-              <p v-if="descriptor" class="form-hint">{{ descriptor.description }}</p>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Paths <span class="text-muted">(comma-separated regular expressions, default /.*)</span></label>
-              <input v-model="form.paths" class="form-input" placeholder="/.*" aria-label="Paths" />
-              <!-- Regexes, not globs: "/admin/*" reads as "zero or more slashes"
-                   after /admin and would not scope the rule the way it looks. -->
-              <small class="form-hint">
-                Matched as regular expressions, so a prefix is written <code>/admin/.*</code> — not <code>/admin/*</code>.
-              </small>
-            </div>
-
-            <!-- Schema-driven fields (recursive: scalars, maps, groups, lists) -->
-            <template v-if="!showAdvanced">
-              <MiddlewareField v-for="f in fields" :key="f.key" :field="f" :model="rule" :editing="!!editing" />
-            </template>
-
-            <!-- Raw YAML: automatic fallback only for an uncatalogued type (no
-                 form schema exists). Not user-selectable — the type picker only
-                 offers catalogued types. -->
-            <div v-else class="form-group" style="margin-bottom: 0">
-              <label class="form-label">Rule <span class="text-muted">(YAML)</span></label>
-              <textarea v-model="ruleText" class="form-textarea mono" rows="8" spellcheck="false" placeholder="requestsPerUnit: 100&#10;unit: minute" aria-label="Rule (YAML)"></textarea>
-              <p v-if="ruleError" class="form-error">{{ ruleError }}</p>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="requestClose">Cancel</button>
-            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Create') }}</button>
-          </div>
-        </form>
+    <AppModal v-if="open" dialog-class="modal-lg" auto-focus :escapable="!confirmDiscard" @close="requestClose">
+      <div class="modal-header">
+        <h3 id="mw-form-title">{{ editing ? 'Edit policy' : 'New security policy' }}</h3>
+        <button class="btn-icon btn-icon-muted" aria-label="Close" data-modal-skip-focus @click="requestClose"><span class="mdi mdi-close"></span></button>
       </div>
-    </div>
+      <form @submit.prevent="save">
+        <div class="modal-body">
+          <!-- One-click presets (create only) -->
+          <div v-if="!editing && presets.length" class="presets">
+            <button
+              v-for="p in presets"
+              :key="p.key"
+              type="button"
+              class="preset-chip"
+              :title="p.description"
+              @click="applyPreset(p)"
+            >
+              <span class="mdi mdi-flash-outline"></span> {{ p.display_name }}
+            </button>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Name</label>
+            <input v-model="form.name" class="form-input" placeholder="e.g. basic-auth" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" title="Lowercase letters, digits and hyphens" aria-label="Name" required autofocus />
+            <p class="form-hint">Lowercase letters, digits and hyphens (e.g. basic-auth).</p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Type</label>
+            <select v-model="form.type" class="form-select" :disabled="!!editing" aria-label="Type" @change="onTypeChange">
+              <optgroup v-for="g in typesByCategory" :key="g.cat" :label="g.cat">
+                <option v-for="d in g.items" :key="d.type" :value="d.type">{{ d.display_name }}</option>
+              </optgroup>
+              <option v-if="!isCatalogued" :value="form.type">{{ form.type }} (advanced)</option>
+            </select>
+            <p v-if="descriptor" class="form-hint">{{ descriptor.description }}</p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Paths <span class="text-muted">(comma-separated regular expressions, default /.*)</span></label>
+            <input v-model="form.paths" class="form-input" placeholder="/.*" aria-label="Paths" />
+            <!-- Regexes, not globs: "/admin/*" reads as "zero or more slashes"
+                 after /admin and would not scope the rule the way it looks. -->
+            <small class="form-hint">
+              Matched as regular expressions, so a prefix is written <code>/admin/.*</code> — not <code>/admin/*</code>.
+            </small>
+          </div>
+
+          <!-- Schema-driven fields (recursive: scalars, maps, groups, lists) -->
+          <template v-if="!showAdvanced">
+            <MiddlewareField v-for="f in fields" :key="f.key" :field="f" :model="rule" :editing="!!editing" />
+          </template>
+
+          <!-- Raw YAML: automatic fallback only for an uncatalogued type (no
+               form schema exists). Not user-selectable — the type picker only
+               offers catalogued types. -->
+          <div v-else class="form-group" style="margin-bottom: 0">
+            <label class="form-label">Rule <span class="text-muted">(YAML)</span></label>
+            <textarea v-model="ruleText" class="form-textarea mono" rows="8" spellcheck="false" placeholder="requestsPerUnit: 100&#10;unit: minute" aria-label="Rule (YAML)"></textarea>
+            <p v-if="ruleError" class="form-error">{{ ruleError }}</p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="requestClose">Cancel</button>
+          <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Create') }}</button>
+        </div>
+      </form>
+    </AppModal>
 
     <ConfirmDialog
       :open="confirmDiscard"

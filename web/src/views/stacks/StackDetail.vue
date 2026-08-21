@@ -9,6 +9,7 @@ import type { Stack, Application, StackEnvVar, AppEvent } from '@/api/types'
 import MetadataCard from '@/components/MetadataCard.vue'
 import EnvVarModal from '@/components/EnvVarModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -403,98 +404,90 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
         @save="saveEnv"
       />
 
-      <div v-if="showAdd" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Add application</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showAdd = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="addApp">
-            <div class="modal-body">
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Application</label>
-                <select v-model="selectedAppId" class="form-select" aria-label="Application">
-                  <option v-for="a in available" :key="a.id" :value="a.id">{{ a.name }}</option>
-                </select>
-                <p class="form-hint">Compose labels apply when the application is next deployed.</p>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showAdd = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="!selectedAppId">Add</button>
-            </div>
-          </form>
+      <AppModal v-if="showAdd" @close="showAdd = false">
+        <div class="modal-header">
+          <h3>Add application</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showAdd = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
-
-      <div v-if="showEdit" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Edit stack</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showEdit = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="saveEdit">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="editForm.name" class="form-input" aria-label="Name" required autofocus />
-              </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Description <span class="text-muted">(optional)</span></label>
-                <input v-model="editForm.description" class="form-input" aria-label="Description" />
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showEdit = false">Cancel</button>
-              <button type="submit" class="btn btn-primary">Save</button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <div v-if="showEnvImport" class="modal-overlay">
-        <div class="modal" style="max-width: 560px; width: 100%">
-          <div class="modal-header">
-            <h3>Import shared .env</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showEnvImport = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="importEnv">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Paste KEY=VALUE lines</label>
-                <textarea v-model="envImport.content" class="form-input" rows="10" spellcheck="false" style="font-family: monospace; font-size: 12px" placeholder="SHARED_SECRET=...&#10;# comments and blank lines are ignored&#10;REGION=eu" aria-label="Paste KEY=VALUE lines" required></textarea>
-              </div>
-              <label class="checkbox-label" style="margin-bottom: 0"><input type="checkbox" v-model="envImport.secret" /> Mark all as secrets (encrypted)</label>
-              <p class="form-hint">Existing keys are overwritten. Applies to each app on its next deploy.</p>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showEnvImport = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="importingEnv">{{ importingEnv ? 'Importing…' : 'Import' }}</button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <div v-if="showDelete" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Delete stack</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDelete = false"><span class="mdi mdi-close"></span></button>
-          </div>
+        <form @submit.prevent="addApp">
           <div class="modal-body">
-            <p>Delete <strong>{{ stack.name }}</strong>?</p>
-            <label class="checkbox-label" style="margin-top: 8px">
-              <input type="checkbox" v-model="deleteWithApps" />
-              Also delete its {{ stack.apps?.length ?? 0 }} application(s) and their containers
-            </label>
-            <p class="text-muted text-sm">{{ deleteWithApps ? 'Applications and their containers will be permanently removed.' : 'Applications are detached and keep running.' }}</p>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Application</label>
+              <select v-model="selectedAppId" class="form-select" aria-label="Application">
+                <option v-for="a in available" :key="a.id" :value="a.id">{{ a.name }}</option>
+              </select>
+              <p class="form-hint">Compose labels apply when the application is next deployed.</p>
+            </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showDelete = false">Cancel</button>
-            <button type="button" class="btn btn-danger" @click="confirmDelete">{{ deleteWithApps ? 'Delete stack & apps' : 'Delete stack' }}</button>
+            <button type="button" class="btn btn-secondary" @click="showAdd = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="!selectedAppId">Add</button>
           </div>
+        </form>
+      </AppModal>
+
+      <AppModal v-if="showEdit" @close="showEdit = false">
+        <div class="modal-header">
+          <h3>Edit stack</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showEdit = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="saveEdit">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="editForm.name" class="form-input" aria-label="Name" required autofocus />
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Description <span class="text-muted">(optional)</span></label>
+              <input v-model="editForm.description" class="form-input" aria-label="Description" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showEdit = false">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save</button>
+          </div>
+        </form>
+      </AppModal>
+
+      <AppModal v-if="showEnvImport" max-width="560px" @close="showEnvImport = false">
+        <div class="modal-header">
+          <h3>Import shared .env</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showEnvImport = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <form @submit.prevent="importEnv">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Paste KEY=VALUE lines</label>
+              <textarea v-model="envImport.content" class="form-input" rows="10" spellcheck="false" style="font-family: monospace; font-size: 12px" placeholder="SHARED_SECRET=...&#10;# comments and blank lines are ignored&#10;REGION=eu" aria-label="Paste KEY=VALUE lines" required></textarea>
+            </div>
+            <label class="checkbox-label" style="margin-bottom: 0"><input type="checkbox" v-model="envImport.secret" /> Mark all as secrets (encrypted)</label>
+            <p class="form-hint">Existing keys are overwritten. Applies to each app on its next deploy.</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showEnvImport = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="importingEnv">{{ importingEnv ? 'Importing…' : 'Import' }}</button>
+          </div>
+        </form>
+      </AppModal>
+
+      <AppModal v-if="showDelete" @close="showDelete = false">
+        <div class="modal-header">
+          <h3>Delete stack</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDelete = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <p>Delete <strong>{{ stack.name }}</strong>?</p>
+          <label class="checkbox-label" style="margin-top: 8px">
+            <input type="checkbox" v-model="deleteWithApps" />
+            Also delete its {{ stack.apps?.length ?? 0 }} application(s) and their containers
+          </label>
+          <p class="text-muted text-sm">{{ deleteWithApps ? 'Applications and their containers will be permanently removed.' : 'Applications are detached and keep running.' }}</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="showDelete = false">Cancel</button>
+          <button type="button" class="btn btn-danger" @click="confirmDelete">{{ deleteWithApps ? 'Delete stack & apps' : 'Delete stack' }}</button>
+        </div>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

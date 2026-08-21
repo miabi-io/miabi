@@ -4,6 +4,7 @@ import { useNotificationStore } from '@/stores/notification'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { copyText } from '@/utils/clipboard'
 import type { Runner, RunnerAdapter } from '@/api/runners'
+import AppModal from '@/components/AppModal.vue'
 
 const props = defineProps<{
   adapter: RunnerAdapter
@@ -243,59 +244,57 @@ function platform(r: Runner): string {
     </div>
 
     <Teleport to="body">
-      <div v-if="showRegister" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>{{ shared ? 'Add shared runner' : 'Add runner' }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showRegister = false"><span class="mdi mdi-close"></span></button>
-          </div>
-
-          <form v-if="!createdToken" @submit.prevent="register">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="name" class="form-input" placeholder="e.g. amd64-builder" required autofocus aria-label="Name" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Display name <span class="text-muted">(optional)</span></label>
-                <input v-model="displayName" class="form-input" placeholder="e.g. Prod build box" aria-label="Display name" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Labels <span class="text-muted">(comma-separated)</span></label>
-                <input v-model="labelsText" class="form-input" placeholder="arch=amd64, buildkit, gpu" style="font-family: monospace" aria-label="Labels" />
-                <p class="form-hint">A job runs on this runner only when its required labels are all present.</p>
-              </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Concurrency</label>
-                <input v-model.number="concurrency" type="number" min="1" class="form-input" style="max-width: 120px" aria-label="Concurrency" />
-                <p class="form-hint">How many jobs this runner may run at once.</p>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showRegister = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : 'Add runner' }}</button>
-            </div>
-          </form>
-
-          <template v-else>
-            <div class="modal-body">
-              <div class="app-banner app-banner--warning">
-                <span class="mdi mdi-alert-outline app-banner-icon"></span>
-                <div class="app-banner-content">
-                  <p class="app-banner-title">Copy the registration token now</p>
-                  <p class="app-banner-text">This is the only time it is shown. Run the runner on your build machine:</p>
-                </div>
-              </div>
-              <div class="code-block" style="margin-top: 14px; white-space: pre">{{ runCommand }}</div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="copy(createdToken!)">Copy token</button>
-              <button type="button" class="btn btn-secondary" @click="copy(runCommand)">Copy command</button>
-              <button type="button" class="btn btn-primary" @click="showRegister = false">Done</button>
-            </div>
-          </template>
+      <AppModal v-if="showRegister" @close="showRegister = false">
+        <div class="modal-header">
+          <h3>{{ shared ? 'Add shared runner' : 'Add runner' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showRegister = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+
+        <form v-if="!createdToken" @submit.prevent="register">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="name" class="form-input" placeholder="e.g. amd64-builder" required autofocus aria-label="Name" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Display name <span class="text-muted">(optional)</span></label>
+              <input v-model="displayName" class="form-input" placeholder="e.g. Prod build box" aria-label="Display name" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Labels <span class="text-muted">(comma-separated)</span></label>
+              <input v-model="labelsText" class="form-input" placeholder="arch=amd64, buildkit, gpu" style="font-family: monospace" aria-label="Labels" />
+              <p class="form-hint">A job runs on this runner only when its required labels are all present.</p>
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Concurrency</label>
+              <input v-model.number="concurrency" type="number" min="1" class="form-input" style="max-width: 120px" aria-label="Concurrency" />
+              <p class="form-hint">How many jobs this runner may run at once.</p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showRegister = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : 'Add runner' }}</button>
+          </div>
+        </form>
+
+        <template v-else>
+          <div class="modal-body">
+            <div class="app-banner app-banner--warning">
+              <span class="mdi mdi-alert-outline app-banner-icon"></span>
+              <div class="app-banner-content">
+                <p class="app-banner-title">Copy the registration token now</p>
+                <p class="app-banner-text">This is the only time it is shown. Run the runner on your build machine:</p>
+              </div>
+            </div>
+            <div class="code-block" style="margin-top: 14px; white-space: pre">{{ runCommand }}</div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="copy(createdToken!)">Copy token</button>
+            <button type="button" class="btn btn-secondary" @click="copy(runCommand)">Copy command</button>
+            <button type="button" class="btn btn-primary" @click="showRegister = false">Done</button>
+          </div>
+        </template>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

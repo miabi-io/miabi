@@ -7,6 +7,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { databaseApi } from '@/api/resources'
 import type { DatabaseInstance, DBEngine, DBStatus } from '@/api/types'
 import NodePicker from '@/components/NodePicker.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -211,52 +212,50 @@ function fmtBytes(n?: number): string {
     </div>
 
     <Teleport to="body">
-      <div v-if="showCreate" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>New database</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="create">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="form.name" class="form-input" placeholder="e.g. app-db" required autofocus />
-              </div>
-              <NodePicker v-model="form.server_id" />
-              <div class="form-group">
-                <label class="form-label">Engine</label>
-                <div class="engine-grid">
-                  <button
-                    v-for="e in engines"
-                    :key="e.value"
-                    type="button"
-                    class="engine-option"
-                    :class="{ active: form.engine === e.value }"
-                    @click="form.engine = e.value"
-                  >
-                    <span class="mdi" :class="e.icon"></span>{{ e.label }}
-                  </button>
-                </div>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Version / tag <span class="text-muted">(optional)</span></label>
-                <input v-model="form.version" class="form-input" :placeholder="defaultVersion" />
-                <p class="form-hint">Image tag for <code>{{ form.engine }}:{{ form.version.trim() || defaultVersion }}</code>. Leave blank for the default.</p>
-              </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Data volume size (MB) <span class="text-muted">(optional)</span></label>
-                <input v-model.number="form.size_mb" type="number" min="0" class="form-input" placeholder="Leave empty for no declared limit" />
-                <p class="form-hint">Declared capacity of the instance's data volume, recorded for quota accounting. Hard enforcement depends on the node's storage backend.</p>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="creating">{{ creating ? 'Provisioning…' : 'Create database' }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showCreate" @close="showCreate = false">
+        <div class="modal-header">
+          <h3>New database</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="create">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="form.name" class="form-input" placeholder="e.g. app-db" required autofocus />
+            </div>
+            <NodePicker v-model="form.server_id" />
+            <div class="form-group">
+              <label class="form-label">Engine</label>
+              <div class="engine-grid">
+                <button
+                  v-for="e in engines"
+                  :key="e.value"
+                  type="button"
+                  class="engine-option"
+                  :class="{ active: form.engine === e.value }"
+                  @click="form.engine = e.value"
+                >
+                  <span class="mdi" :class="e.icon"></span>{{ e.label }}
+                </button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Version / tag <span class="text-muted">(optional)</span></label>
+              <input v-model="form.version" class="form-input" :placeholder="defaultVersion" />
+              <p class="form-hint">Image tag for <code>{{ form.engine }}:{{ form.version.trim() || defaultVersion }}</code>. Leave blank for the default.</p>
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Data volume size (MB) <span class="text-muted">(optional)</span></label>
+              <input v-model.number="form.size_mb" type="number" min="0" class="form-input" placeholder="Leave empty for no declared limit" />
+              <p class="form-hint">Declared capacity of the instance's data volume, recorded for quota accounting. Hard enforcement depends on the node's storage backend.</p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="creating">{{ creating ? 'Provisioning…' : 'Create database' }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
   </div>
 </template>

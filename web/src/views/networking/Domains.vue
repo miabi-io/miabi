@@ -8,6 +8,7 @@ import { dnsProviderApi } from '@/api/dns'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { copyText } from '@/utils/clipboard'
 import type { Domain, DomainTLSMode, DNSProvider } from '@/api/types'
+import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -211,78 +212,74 @@ const tlsModes: { value: DomainTLSMode; label: string }[] = [
 
     <!-- Create / edit -->
     <Teleport to="body">
-      <div v-if="showModal" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>{{ editing ? 'Edit domain' : 'Add domain' }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="save">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Domain name</label>
-                <input v-model="form.name" class="form-input mono" placeholder="example.com" required :autofocus="!editing" :disabled="!!editing" />
-                <p v-if="editing" class="hint">The name is fixed once a domain is added. To change it, delete this domain and add the correct one.</p>
-                <p v-else class="hint">The apex or a subdomain you control. A leading <code>*.</code> is treated as wildcard.</p>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Default TLS</label>
-                <div class="tabs" style="margin-bottom: 0">
-                  <button v-for="t in tlsModes" :key="t.value" type="button" class="tab" :class="{ active: form.tls_mode === t.value }" @click="form.tls_mode = t.value">{{ t.label }}</button>
-                </div>
-              </div>
-              <label class="check"><input type="checkbox" v-model="form.wildcard" /> <span>Wildcard — also cover <code>*.{{ form.name || 'example.com' }}</code></span></label>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Add domain') }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showModal" @close="showModal = false">
+        <div class="modal-header">
+          <h3>{{ editing ? 'Edit domain' : 'Add domain' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="save">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Domain name</label>
+              <input v-model="form.name" class="form-input mono" placeholder="example.com" required :autofocus="!editing" :disabled="!!editing" />
+              <p v-if="editing" class="hint">The name is fixed once a domain is added. To change it, delete this domain and add the correct one.</p>
+              <p v-else class="hint">The apex or a subdomain you control. A leading <code>*.</code> is treated as wildcard.</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Default TLS</label>
+              <div class="tabs" style="margin-bottom: 0">
+                <button v-for="t in tlsModes" :key="t.value" type="button" class="tab" :class="{ active: form.tls_mode === t.value }" @click="form.tls_mode = t.value">{{ t.label }}</button>
+              </div>
+            </div>
+            <label class="check"><input type="checkbox" v-model="form.wildcard" /> <span>Wildcard — also cover <code>*.{{ form.name || 'example.com' }}</code></span></label>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Add domain') }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <!-- DNS verification -->
     <Teleport to="body">
-      <div v-if="showDns && dnsDomain" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Verify {{ dnsDomain.name }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDns = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <div class="modal-body">
-            <div v-if="dnsDomain.verified" class="gate gate-ok">
-              <span class="mdi mdi-check-decagram"></span> Ownership verified.
-            </div>
-            <template v-else-if="dnsDomain.automated">
-              <p class="note"><span class="mdi mdi-auto-fix"></span> A DNS provider is connected — Miabi creates the verification record for you. Just click <strong>Verify</strong>.</p>
-            </template>
-            <template v-else>
-              <p class="note">Add this <strong>TXT</strong> record at your DNS provider, then click Verify. Propagation can take a few minutes. <em>Tip: connect a DNS provider (the DNS column) to skip this step.</em></p>
-              <div class="dns-field">
-                <span class="dns-label">Type</span>
-                <code class="dns-value">TXT</code>
-              </div>
-              <div class="dns-field">
-                <span class="dns-label">Name / Host</span>
-                <code class="dns-value">{{ dnsDomain.challenge_host }}</code>
-                <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(dnsDomain.challenge_host)"><span class="mdi mdi-content-copy"></span></button>
-              </div>
-              <div class="dns-field">
-                <span class="dns-label">Value</span>
-                <code class="dns-value">{{ dnsDomain.challenge_value }}</code>
-                <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(dnsDomain.challenge_value)"><span class="mdi mdi-content-copy"></span></button>
-              </div>
-            </template>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showDns = false">Close</button>
-            <button v-if="ws.canEdit && !dnsDomain.verified" type="button" class="btn btn-primary" :disabled="verifying === dnsDomain.id" @click="verify(dnsDomain)">
-              <span class="mdi" :class="verifying === dnsDomain.id ? 'mdi-loading mdi-spin' : 'mdi-shield-check-outline'"></span> Verify
-            </button>
-          </div>
+      <AppModal v-if="showDns && dnsDomain" @close="showDns = false">
+        <div class="modal-header">
+          <h3>Verify {{ dnsDomain.name }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDns = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <div class="modal-body">
+          <div v-if="dnsDomain.verified" class="gate gate-ok">
+            <span class="mdi mdi-check-decagram"></span> Ownership verified.
+          </div>
+          <template v-else-if="dnsDomain.automated">
+            <p class="note"><span class="mdi mdi-auto-fix"></span> A DNS provider is connected — Miabi creates the verification record for you. Just click <strong>Verify</strong>.</p>
+          </template>
+          <template v-else>
+            <p class="note">Add this <strong>TXT</strong> record at your DNS provider, then click Verify. Propagation can take a few minutes. <em>Tip: connect a DNS provider (the DNS column) to skip this step.</em></p>
+            <div class="dns-field">
+              <span class="dns-label">Type</span>
+              <code class="dns-value">TXT</code>
+            </div>
+            <div class="dns-field">
+              <span class="dns-label">Name / Host</span>
+              <code class="dns-value">{{ dnsDomain.challenge_host }}</code>
+              <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(dnsDomain.challenge_host)"><span class="mdi mdi-content-copy"></span></button>
+            </div>
+            <div class="dns-field">
+              <span class="dns-label">Value</span>
+              <code class="dns-value">{{ dnsDomain.challenge_value }}</code>
+              <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(dnsDomain.challenge_value)"><span class="mdi mdi-content-copy"></span></button>
+            </div>
+          </template>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="showDns = false">Close</button>
+          <button v-if="ws.canEdit && !dnsDomain.verified" type="button" class="btn btn-primary" :disabled="verifying === dnsDomain.id" @click="verify(dnsDomain)">
+            <span class="mdi" :class="verifying === dnsDomain.id ? 'mdi-loading mdi-spin' : 'mdi-shield-check-outline'"></span> Verify
+          </button>
+        </div>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

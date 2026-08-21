@@ -13,6 +13,7 @@ import PipelineWebhookModal from './PipelineWebhookModal.vue'
 import { relativeTime } from '@/utils/time'
 import { statusMeta } from './status'
 import type { PipelineDefinition, Application, PipelineRunEvent } from '@/api/types'
+import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -294,78 +295,76 @@ function openLastRun(p: PipelineDefinition) {
     <Pagination :pageable="pageable" @page="goToPage" />
 
     <Teleport to="body">
-      <div v-if="showModal" class="modal-overlay">
-        <div class="modal modal-lg">
-          <div class="modal-header">
-            <h3>{{ editing ? (editingRepoOwned ? 'Pipeline' : 'Edit pipeline') : 'New pipeline' }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="save">
-            <div class="modal-body">
-              <div v-if="editingRepoOwned" class="repo-notice">
-                <span class="mdi mdi-source-branch"></span>
-                <div>
-                  <strong>Managed by its repository.</strong>
-                  Miabi re-reads <code>{{ editing?.source_path }}</code> on
-                  <code>{{ editing?.source_ref || 'the default branch' }}</code> before every run, so this pipeline
-                  can't be edited here — change the file in git and push. You can still disable it, which makes
-                  <template v-if="appName(editing?.application_id)">{{ appName(editing?.application_id) }}</template>
-                  <template v-else>its application</template>
-                  build and deploy directly again.
-                </div>
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label class="form-label">Name</label>
-                  <input v-model="form.name" class="form-input" placeholder="e.g. web" required autofocus aria-label="Name" :disabled="editingRepoOwned" />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Deploy target <span class="text-muted">(for the deploy step)</span></label>
-                  <select v-model="form.application_id" class="form-select" aria-label="Deploy target" :disabled="editingRepoOwned">
-                    <option :value="null">None</option>
-                    <option v-for="a in apps" :key="a.id" :value="a.id">{{ a.name }}</option>
-                  </select>
-                </div>
-              </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">
-                  Pipeline spec <span class="text-muted">(kind: Pipeline)</span>
-                  <span v-if="editingRepoOwned" class="repo-chip">
-                    <span class="mdi mdi-source-branch"></span> managed by repository
-                  </span>
-                </label>
-                <textarea
-                  v-model="form.spec"
-                  class="form-textarea code"
-                  rows="16"
-                  spellcheck="false"
-                  required
-                  aria-label="Pipeline spec"
-                  :readonly="editingRepoOwned"
-                ></textarea>
-                <p v-if="editingRepoOwned" class="form-hint">
-                  Read-only.
-                  <template v-if="editing?.source_commit">Synced from commit {{ shortCommit(editing.source_commit) }}.</template>
-                </p>
-                <p v-else class="form-hint">
-                  <code>env</code> applies to every step; a step&rsquo;s own <code>env</code> wins. Values may reference a
-                  <router-link :to="{ name: 'secrets' }">workspace secret</router-link>
-                  as <code>{{ secretRefExample }}</code> &mdash; resolved when the run starts and masked in the logs.
-                </p>
-              </div>
-              <label class="check"><input type="checkbox" v-model="form.enabled" /> <span>Enabled</span></label>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showModal = false">
-                {{ editingRepoOwned ? 'Close' : 'Cancel' }}
-              </button>
-              <button type="submit" class="btn btn-primary" :disabled="saving">
-                {{ saving ? 'Saving…' : editingRepoOwned ? 'Save enabled state' : editing ? 'Save' : 'Create' }}
-              </button>
-            </div>
-          </form>
+      <AppModal v-if="showModal" dialog-class="modal-lg" @close="showModal = false">
+        <div class="modal-header">
+          <h3>{{ editing ? (editingRepoOwned ? 'Pipeline' : 'Edit pipeline') : 'New pipeline' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="save">
+          <div class="modal-body">
+            <div v-if="editingRepoOwned" class="repo-notice">
+              <span class="mdi mdi-source-branch"></span>
+              <div>
+                <strong>Managed by its repository.</strong>
+                Miabi re-reads <code>{{ editing?.source_path }}</code> on
+                <code>{{ editing?.source_ref || 'the default branch' }}</code> before every run, so this pipeline
+                can't be edited here — change the file in git and push. You can still disable it, which makes
+                <template v-if="appName(editing?.application_id)">{{ appName(editing?.application_id) }}</template>
+                <template v-else>its application</template>
+                build and deploy directly again.
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Name</label>
+                <input v-model="form.name" class="form-input" placeholder="e.g. web" required autofocus aria-label="Name" :disabled="editingRepoOwned" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Deploy target <span class="text-muted">(for the deploy step)</span></label>
+                <select v-model="form.application_id" class="form-select" aria-label="Deploy target" :disabled="editingRepoOwned">
+                  <option :value="null">None</option>
+                  <option v-for="a in apps" :key="a.id" :value="a.id">{{ a.name }}</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">
+                Pipeline spec <span class="text-muted">(kind: Pipeline)</span>
+                <span v-if="editingRepoOwned" class="repo-chip">
+                  <span class="mdi mdi-source-branch"></span> managed by repository
+                </span>
+              </label>
+              <textarea
+                v-model="form.spec"
+                class="form-textarea code"
+                rows="16"
+                spellcheck="false"
+                required
+                aria-label="Pipeline spec"
+                :readonly="editingRepoOwned"
+              ></textarea>
+              <p v-if="editingRepoOwned" class="form-hint">
+                Read-only.
+                <template v-if="editing?.source_commit">Synced from commit {{ shortCommit(editing.source_commit) }}.</template>
+              </p>
+              <p v-else class="form-hint">
+                <code>env</code> applies to every step; a step&rsquo;s own <code>env</code> wins. Values may reference a
+                <router-link :to="{ name: 'secrets' }">workspace secret</router-link>
+                as <code>{{ secretRefExample }}</code> &mdash; resolved when the run starts and masked in the logs.
+              </p>
+            </div>
+            <label class="check"><input type="checkbox" v-model="form.enabled" /> <span>Enabled</span></label>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showModal = false">
+              {{ editingRepoOwned ? 'Close' : 'Cancel' }}
+            </button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">
+              {{ saving ? 'Saving…' : editingRepoOwned ? 'Save enabled state' : editing ? 'Save' : 'Create' }}
+            </button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <PipelineWebhookModal :open="!!webhookFor" :pipeline="webhookFor" @close="webhookFor = null" />

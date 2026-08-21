@@ -7,6 +7,7 @@ import { registryApi, type RegistryInput } from '@/api/registries'
 import type { Registry } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import CredentialSecretField from '@/components/CredentialSecretField.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -151,40 +152,38 @@ async function confirmDelete() {
     </div>
 
     <Teleport to="body">
-      <div v-if="showModal" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>{{ editing ? 'Edit registry' : 'New registry' }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="save">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="form.name" class="form-input" placeholder="e.g. GHCR (prod)" required autofocus aria-label="Name" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Server <span class="text-muted">(optional, defaults to Docker Hub)</span></label>
-                <input v-model="form.server" class="form-input" placeholder="ghcr.io" aria-label="Server" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Username</label>
-                <input v-model="form.username" class="form-input" placeholder="username" autocomplete="off" aria-label="Username" />
-              </div>
-              <CredentialSecretField
-                v-model="form.secret"
-                label="Password / token"
-                :editing="!!editing"
-                :current-ref="editing?.secret_ref || ''"
-              />
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Add registry') }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showModal" @close="showModal = false">
+        <div class="modal-header">
+          <h3>{{ editing ? 'Edit registry' : 'New registry' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="save">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="form.name" class="form-input" placeholder="e.g. GHCR (prod)" required autofocus aria-label="Name" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Server <span class="text-muted">(optional, defaults to Docker Hub)</span></label>
+              <input v-model="form.server" class="form-input" placeholder="ghcr.io" aria-label="Server" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Username</label>
+              <input v-model="form.username" class="form-input" placeholder="username" autocomplete="off" aria-label="Username" />
+            </div>
+            <CredentialSecretField
+              v-model="form.secret"
+              label="Password / token"
+              :editing="!!editing"
+              :current-ref="editing?.secret_ref || ''"
+            />
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Add registry') }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

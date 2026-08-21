@@ -8,6 +8,7 @@ import { appApi } from '@/api/apps'
 import { registryApi } from '@/api/registries'
 import type { Job, CronJob, Application, Registry } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -290,158 +291,152 @@ const noApps = computed(() => apps.value.length === 0)
 
     <Teleport to="body">
       <!-- Run job modal -->
-      <div v-if="showRun" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Run a job</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showRun = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="run">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Application</label>
-                <select v-model="runForm.app" class="form-select" required aria-label="Application">
-                  <option v-for="a in apps" :key="a.id" :value="a.id">{{ a.name }}</option>
-                </select>
-                <p class="form-hint">Runs in this app's current image and environment.</p>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Command</label>
-                <input v-model="runForm.command" class="form-input" placeholder="rails db:migrate" required autofocus style="font-family: monospace" aria-label="Command" />
-                <p class="form-hint">Split on spaces (no shell quoting).</p>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Image <span class="text-muted">(optional)</span></label>
-                <input v-model="runForm.image" class="form-input" placeholder="leave blank to use the app's current image" style="font-family: monospace" aria-label="Image" />
-                <p class="form-hint">Run a different image in this app's environment (env, networks, node).</p>
-              </div>
-              <div v-if="runForm.image.trim()" class="form-group">
-                <label class="form-label">Registry <span class="text-muted">(for private images)</span></label>
-                <select v-model="runForm.registry" class="form-select" aria-label="Registry">
-                  <option :value="null">App's registry / public</option>
-                  <option v-for="r in registries" :key="r.id" :value="r.id">{{ r.name }}</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Name <span class="text-muted">(optional)</span></label>
-                <input v-model="runForm.name" class="form-input" placeholder="migrate" aria-label="Name" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Run as user <span class="text-muted">(optional)</span></label>
-                <input
-                  v-model="runForm.run_as_user" class="form-input" style="font-family: monospace"
-                  :placeholder="requireNonRoot ? '1000:1000' : 'leave blank to inherit the app\u2019s user'" aria-label="Run as user"
-                />
-                <p v-if="runUserError" class="form-hint" style="color: var(--danger)">{{ runUserError }}</p>
-                <p v-else class="form-hint">
-                  The account this run uses, like <code>docker run --user</code>. Blank inherits the app's.
-                  <span v-if="requireNonRoot">This workspace requires a non-root numeric uid.</span>
-                </p>
-              </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Timeout (seconds, 0 = default)</label>
-                <input v-model.number="runForm.timeout" type="number" min="0" class="form-input" style="max-width: 160px" aria-label="Timeout (seconds, 0 = default)" />
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showRun = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="running">{{ running ? 'Starting…' : 'Run' }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showRun" @close="showRun = false">
+        <div class="modal-header">
+          <h3>Run a job</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showRun = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="run">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Application</label>
+              <select v-model="runForm.app" class="form-select" required aria-label="Application">
+                <option v-for="a in apps" :key="a.id" :value="a.id">{{ a.name }}</option>
+              </select>
+              <p class="form-hint">Runs in this app's current image and environment.</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Command</label>
+              <input v-model="runForm.command" class="form-input" placeholder="rails db:migrate" required autofocus style="font-family: monospace" aria-label="Command" />
+              <p class="form-hint">Split on spaces (no shell quoting).</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Image <span class="text-muted">(optional)</span></label>
+              <input v-model="runForm.image" class="form-input" placeholder="leave blank to use the app's current image" style="font-family: monospace" aria-label="Image" />
+              <p class="form-hint">Run a different image in this app's environment (env, networks, node).</p>
+            </div>
+            <div v-if="runForm.image.trim()" class="form-group">
+              <label class="form-label">Registry <span class="text-muted">(for private images)</span></label>
+              <select v-model="runForm.registry" class="form-select" aria-label="Registry">
+                <option :value="null">App's registry / public</option>
+                <option v-for="r in registries" :key="r.id" :value="r.id">{{ r.name }}</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Name <span class="text-muted">(optional)</span></label>
+              <input v-model="runForm.name" class="form-input" placeholder="migrate" aria-label="Name" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Run as user <span class="text-muted">(optional)</span></label>
+              <input
+                v-model="runForm.run_as_user" class="form-input" style="font-family: monospace"
+                :placeholder="requireNonRoot ? '1000:1000' : 'leave blank to inherit the app\u2019s user'" aria-label="Run as user"
+              />
+              <p v-if="runUserError" class="form-hint" style="color: var(--danger)">{{ runUserError }}</p>
+              <p v-else class="form-hint">
+                The account this run uses, like <code>docker run --user</code>. Blank inherits the app's.
+                <span v-if="requireNonRoot">This workspace requires a non-root numeric uid.</span>
+              </p>
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Timeout (seconds, 0 = default)</label>
+              <input v-model.number="runForm.timeout" type="number" min="0" class="form-input" style="max-width: 160px" aria-label="Timeout (seconds, 0 = default)" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showRun = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="running">{{ running ? 'Starting…' : 'Run' }}</button>
+          </div>
+        </form>
+      </AppModal>
 
       <!-- CronJob modal -->
-      <div v-if="showCron" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>{{ editingCronId ? 'Edit cronjob' : 'New cronjob' }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCron = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="saveCron">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Application</label>
-                <select v-model="cronForm.app" class="form-select" required :disabled="!!editingCronId" aria-label="Application">
-                  <option v-for="a in apps" :key="a.id" :value="a.id">{{ a.name }}</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Name <span class="text-muted">(optional)</span></label>
-                <input v-model="cronForm.name" class="form-input" placeholder="nightly-cleanup" aria-label="Name" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Schedule (cron, UTC)</label>
-                <input v-model="cronForm.schedule" class="form-input" placeholder="0 3 * * *" required style="font-family: monospace; max-width: 220px" aria-label="Schedule (cron, UTC)" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Command</label>
-                <input v-model="cronCommandStr" class="form-input" placeholder="rake cleanup" required style="font-family: monospace" aria-label="Command" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Image <span class="text-muted">(optional)</span></label>
-                <input v-model="cronForm.image" class="form-input" placeholder="leave blank to use the app's current image" style="font-family: monospace" aria-label="Image" />
-              </div>
-              <div v-if="cronForm.image.trim()" class="form-group">
-                <label class="form-label">Registry <span class="text-muted">(for private images)</span></label>
-                <select v-model="cronForm.registry" class="form-select" aria-label="Registry">
-                  <option :value="null">App's registry / public</option>
-                  <option v-for="r in registries" :key="r.id" :value="r.id">{{ r.name }}</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Run as user <span class="text-muted">(optional)</span></label>
-                <input
-                  v-model="cronForm.run_as_user" class="form-input" style="font-family: monospace"
-                  :placeholder="requireNonRoot ? '1000:1000' : 'leave blank to inherit the app\u2019s user'" aria-label="Run as user"
-                />
-                <p v-if="cronUserError" class="form-hint" style="color: var(--danger)">{{ cronUserError }}</p>
-                <p v-else class="form-hint">Applied to every run this schedule spawns. Blank inherits the app's when each run fires.</p>
-              </div>
-              <div class="flex items-center gap-3" style="flex-wrap: wrap">
-                <label class="form-group" style="margin-bottom: 0">
-                  <span class="form-label">Concurrency</span>
-                  <select v-model="cronForm.concurrency_policy" class="form-select" style="max-width: 160px">
-                    <option value="allow">Allow</option>
-                    <option value="forbid">Forbid</option>
-                    <option value="replace">Replace</option>
-                  </select>
-                </label>
-                <label class="form-group" style="margin-bottom: 0">
-                  <span class="form-label">Timeout (s)</span>
-                  <input v-model.number="cronForm.timeout_secs" type="number" min="0" class="form-input" style="max-width: 120px" />
-                </label>
-                <label class="form-group" style="margin-bottom: 0">
-                  <span class="form-label">Keep last</span>
-                  <input v-model.number="cronForm.history_limit" type="number" min="0" class="form-input" style="max-width: 110px" />
-                </label>
-                <label class="checkbox-row" style="align-self: flex-end">
-                  <input type="checkbox" v-model="cronForm.enabled" /> Enabled
-                </label>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showCron = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="savingCron">{{ savingCron ? 'Saving…' : 'Save' }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showCron" @close="showCron = false">
+        <div class="modal-header">
+          <h3>{{ editingCronId ? 'Edit cronjob' : 'New cronjob' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCron = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="saveCron">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Application</label>
+              <select v-model="cronForm.app" class="form-select" required :disabled="!!editingCronId" aria-label="Application">
+                <option v-for="a in apps" :key="a.id" :value="a.id">{{ a.name }}</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Name <span class="text-muted">(optional)</span></label>
+              <input v-model="cronForm.name" class="form-input" placeholder="nightly-cleanup" aria-label="Name" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Schedule (cron, UTC)</label>
+              <input v-model="cronForm.schedule" class="form-input" placeholder="0 3 * * *" required style="font-family: monospace; max-width: 220px" aria-label="Schedule (cron, UTC)" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Command</label>
+              <input v-model="cronCommandStr" class="form-input" placeholder="rake cleanup" required style="font-family: monospace" aria-label="Command" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Image <span class="text-muted">(optional)</span></label>
+              <input v-model="cronForm.image" class="form-input" placeholder="leave blank to use the app's current image" style="font-family: monospace" aria-label="Image" />
+            </div>
+            <div v-if="cronForm.image.trim()" class="form-group">
+              <label class="form-label">Registry <span class="text-muted">(for private images)</span></label>
+              <select v-model="cronForm.registry" class="form-select" aria-label="Registry">
+                <option :value="null">App's registry / public</option>
+                <option v-for="r in registries" :key="r.id" :value="r.id">{{ r.name }}</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Run as user <span class="text-muted">(optional)</span></label>
+              <input
+                v-model="cronForm.run_as_user" class="form-input" style="font-family: monospace"
+                :placeholder="requireNonRoot ? '1000:1000' : 'leave blank to inherit the app\u2019s user'" aria-label="Run as user"
+              />
+              <p v-if="cronUserError" class="form-hint" style="color: var(--danger)">{{ cronUserError }}</p>
+              <p v-else class="form-hint">Applied to every run this schedule spawns. Blank inherits the app's when each run fires.</p>
+            </div>
+            <div class="flex items-center gap-3" style="flex-wrap: wrap">
+              <label class="form-group" style="margin-bottom: 0">
+                <span class="form-label">Concurrency</span>
+                <select v-model="cronForm.concurrency_policy" class="form-select" style="max-width: 160px">
+                  <option value="allow">Allow</option>
+                  <option value="forbid">Forbid</option>
+                  <option value="replace">Replace</option>
+                </select>
+              </label>
+              <label class="form-group" style="margin-bottom: 0">
+                <span class="form-label">Timeout (s)</span>
+                <input v-model.number="cronForm.timeout_secs" type="number" min="0" class="form-input" style="max-width: 120px" />
+              </label>
+              <label class="form-group" style="margin-bottom: 0">
+                <span class="form-label">Keep last</span>
+                <input v-model.number="cronForm.history_limit" type="number" min="0" class="form-input" style="max-width: 110px" />
+              </label>
+              <label class="checkbox-row" style="align-self: flex-end">
+                <input type="checkbox" v-model="cronForm.enabled" /> Enabled
+              </label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showCron = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="savingCron">{{ savingCron ? 'Saving…' : 'Save' }}</button>
+          </div>
+        </form>
+      </AppModal>
 
       <!-- Logs modal -->
-      <div v-if="logModal" class="modal-overlay">
-        <div class="modal" style="max-width: 720px; width: 100%">
-          <div class="modal-header">
-            <h3>Job #{{ logModal.id }} · <span class="badge badge-dot" :class="badge(logModal.status)">{{ logModal.status }}</span></h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="logModal = null"><span class="mdi mdi-close"></span></button>
-          </div>
-          <div class="modal-body">
-            <div class="text-muted text-sm" style="margin-bottom: 8px; font-family: monospace">{{ logModal.image }} · {{ cmd(logModal.command) }}</div>
-            <pre class="log-view">{{ logModal.logs || (logModal.status === 'pending' ? 'Waiting to start…' : '(no output)') }}</pre>
-            <p v-if="logModal.error" class="text-sm" style="color: var(--danger-600); margin-top: 8px">{{ logModal.error }}</p>
-          </div>
+      <AppModal v-if="logModal" max-width="720px" @close="logModal = null">
+        <div class="modal-header">
+          <h3>Job #{{ logModal.id }} · <span class="badge badge-dot" :class="badge(logModal.status)">{{ logModal.status }}</span></h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="logModal = null"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <div class="modal-body">
+          <div class="text-muted text-sm" style="margin-bottom: 8px; font-family: monospace">{{ logModal.image }} · {{ cmd(logModal.command) }}</div>
+          <pre class="log-view">{{ logModal.logs || (logModal.status === 'pending' ? 'Waiting to start…' : '(no output)') }}</pre>
+          <p v-if="logModal.error" class="text-sm" style="color: var(--danger-600); margin-top: 8px">{{ logModal.error }}</p>
+        </div>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

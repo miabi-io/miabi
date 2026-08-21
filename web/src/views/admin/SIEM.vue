@@ -7,6 +7,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { useLicenseStore } from '@/stores/license'
 import { useEntitlement } from '@/composables/useEntitlement'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const notify = useNotificationStore()
 const licenseStore = useLicenseStore()
@@ -200,65 +201,63 @@ async function test(t: SIEMConfig) {
 
     <!-- Create / edit modal -->
     <Teleport to="body">
-      <div v-if="showModal" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>{{ editing ? 'Edit target' : 'Add target' }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="save">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="form.name" class="form-input" placeholder="Splunk prod" required autofocus />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Sink</label>
-                <select v-model="form.sink" class="form-select">
-                  <option value="webhook">Webhook (HTTPS NDJSON)</option>
-                  <option value="syslog">Syslog (RFC 5424)</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Endpoint</label>
-                <input
-                  v-model="form.endpoint"
-                  class="form-input"
-                  :placeholder="form.sink === 'webhook' ? 'https://siem.example.com/ingest' : 'tcp://siem.example.com:514'"
-                  required
-                />
-                <span class="form-hint">{{ form.sink === 'webhook' ? 'HTTPS URL to POST NDJSON batches to.' : 'tcp:// or udp:// host:port.' }}</span>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Format</label>
-                <select v-model="form.format" class="form-select">
-                  <option value="json">JSON</option>
-                  <option value="cef">CEF (syslog)</option>
-                </select>
-              </div>
-              <div v-if="form.sink === 'webhook'" class="form-group">
-                <label class="form-label">Authorization header</label>
-                <input
-                  v-model="form.auth_header"
-                  class="form-input"
-                  type="password"
-                  :placeholder="editing ? 'Leave blank to keep current' : 'Bearer …'"
-                />
-                <span class="form-hint">Sent as the Authorization header; encrypted at rest.</span>
-              </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="check-row"><input v-model="form.enabled" type="checkbox" /> Enabled</label>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="saving || !form.name.trim() || !form.endpoint.trim()">
-                {{ saving ? 'Saving…' : editing ? 'Save' : 'Add target' }}
-              </button>
-            </div>
-          </form>
+      <AppModal v-if="showModal" @close="showModal = false">
+        <div class="modal-header">
+          <h3>{{ editing ? 'Edit target' : 'Add target' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="save">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="form.name" class="form-input" placeholder="Splunk prod" required autofocus />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Sink</label>
+              <select v-model="form.sink" class="form-select">
+                <option value="webhook">Webhook (HTTPS NDJSON)</option>
+                <option value="syslog">Syslog (RFC 5424)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Endpoint</label>
+              <input
+                v-model="form.endpoint"
+                class="form-input"
+                :placeholder="form.sink === 'webhook' ? 'https://siem.example.com/ingest' : 'tcp://siem.example.com:514'"
+                required
+              />
+              <span class="form-hint">{{ form.sink === 'webhook' ? 'HTTPS URL to POST NDJSON batches to.' : 'tcp:// or udp:// host:port.' }}</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Format</label>
+              <select v-model="form.format" class="form-select">
+                <option value="json">JSON</option>
+                <option value="cef">CEF (syslog)</option>
+              </select>
+            </div>
+            <div v-if="form.sink === 'webhook'" class="form-group">
+              <label class="form-label">Authorization header</label>
+              <input
+                v-model="form.auth_header"
+                class="form-input"
+                type="password"
+                :placeholder="editing ? 'Leave blank to keep current' : 'Bearer …'"
+              />
+              <span class="form-hint">Sent as the Authorization header; encrypted at rest.</span>
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="check-row"><input v-model="form.enabled" type="checkbox" /> Enabled</label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving || !form.name.trim() || !form.endpoint.trim()">
+              {{ saving ? 'Saving…' : editing ? 'Save' : 'Add target' }}
+            </button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

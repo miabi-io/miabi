@@ -7,6 +7,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { useLicenseStore } from '@/stores/license'
 import { useEntitlement } from '@/composables/useEntitlement'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AppModal from '@/components/AppModal.vue'
 
 const notify = useNotificationStore()
 const licenseStore = useLicenseStore()
@@ -313,173 +314,171 @@ onMounted(() => {
 
     <!-- Create / Edit modal -->
     <Teleport to="body">
-      <div v-if="showModal" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>{{ editing ? 'Edit provider' : 'Add provider' }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="closeModal">
-              <span class="mdi mdi-close"></span>
-            </button>
-          </div>
-          <form @submit.prevent="save">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Display name</label>
-                <input
-                  v-model="form.name"
-                  class="form-input"
-                  placeholder="Google Workspace"
-                  required
-                  autofocus
-                />
-              </div>
+      <AppModal v-if="showModal" @close="closeModal">
+        <div class="modal-header">
+          <h3>{{ editing ? 'Edit provider' : 'Add provider' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="closeModal">
+            <span class="mdi mdi-close"></span>
+          </button>
+        </div>
+        <form @submit.prevent="save">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Display name</label>
+              <input
+                v-model="form.name"
+                class="form-input"
+                placeholder="Google Workspace"
+                required
+                autofocus
+              />
+            </div>
 
+            <div class="form-group">
+              <label class="form-label">Type</label>
+              <select v-model="form.type" class="form-select">
+                <option value="google">Google</option>
+                <option value="oidc">Generic OIDC</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="form.slug" class="form-input" placeholder="google" />
+              <span class="form-hint">Auto-generated from name if blank.</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Client ID</label>
+              <input v-model="form.client_id" class="form-input" required />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Client Secret</label>
+              <input
+                v-model="form.client_secret"
+                class="form-input"
+                type="password"
+                :placeholder="editing ? 'Leave blank to keep current' : ''"
+                :required="!editing"
+              />
+            </div>
+
+            <template v-if="form.type === 'oidc'">
               <div class="form-group">
-                <label class="form-label">Type</label>
-                <select v-model="form.type" class="form-select">
-                  <option value="google">Google</option>
-                  <option value="oidc">Generic OIDC</option>
+                <label class="form-label">Issuer</label>
+                <input
+                  v-model="form.issuer"
+                  class="form-input"
+                  placeholder="https://id.example.com"
+                />
+                <span class="form-hint">OIDC discovery base URL, e.g. https://id.example.com</span>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Auth URL</label>
+                <input v-model="form.auth_url" class="form-input" />
+                <span class="form-hint">Leave blank to use discovery.</span>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Token URL</label>
+                <input v-model="form.token_url" class="form-input" />
+                <span class="form-hint">Leave blank to use discovery.</span>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Userinfo URL</label>
+                <input v-model="form.userinfo_url" class="form-input" />
+                <span class="form-hint">Leave blank to use discovery.</span>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Email claim</label>
+                <input v-model="form.email_claim" class="form-input" placeholder="email" />
+                <span class="form-hint">Userinfo claim mapped to the user's email. Blank = standard "email".</span>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Name claim</label>
+                <input v-model="form.name_claim" class="form-input" placeholder="name" />
+                <span class="form-hint">Userinfo claim mapped to the display name. Blank = standard "name".</span>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Username claim</label>
+                <input v-model="form.username_claim" class="form-input" placeholder="preferred_username" />
+                <span class="form-hint">
+                  Userinfo claim mapped to the handle. Blank = standard "preferred_username"; if the provider
+                  sends neither, the handle is derived from the email address.
+                </span>
+              </div>
+            </template>
+
+            <div class="form-group">
+              <label class="form-label">Scopes</label>
+              <input v-model="form.scopes" class="form-input" />
+              <span class="form-hint">Default: openid email profile</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Allowed domains</label>
+              <input v-model="form.allowed_domains" class="form-input" />
+              <span class="form-hint">CSV of allowed email domains; blank = any.</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Auto-join workspace</label>
+              <div class="autojoin-row">
+                <input
+                  v-model="form.default_workspace_id"
+                  class="form-input"
+                  type="number"
+                  min="0"
+                  placeholder="Workspace ID"
+                  aria-label="Auto-join workspace ID"
+                />
+                <select v-model="form.default_role" class="form-select" aria-label="Auto-join role">
+                  <option value="">No auto-join</option>
+                  <option value="viewer">Viewer</option>
+                  <option value="developer">Developer</option>
+                  <option value="admin">Admin</option>
                 </select>
               </div>
+              <span class="form-hint">New SSO users join this workspace with the chosen role. Blank ID = none.</span>
+            </div>
 
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="form.slug" class="form-input" placeholder="google" />
-                <span class="form-hint">Auto-generated from name if blank.</span>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Client ID</label>
-                <input v-model="form.client_id" class="form-input" required />
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Client Secret</label>
+            <div class="form-group toggles" style="margin-bottom: 0">
+              <label class="check-row">
+                <input v-model="form.enabled" type="checkbox" />
+                Enabled
+              </label>
+              <label class="check-row" :class="{ 'check-disabled': !hiddenCap.has.value && !form.hidden }">
                 <input
-                  v-model="form.client_secret"
-                  class="form-input"
-                  type="password"
-                  :placeholder="editing ? 'Leave blank to keep current' : ''"
-                  :required="!editing"
+                  v-model="form.hidden"
+                  type="checkbox"
+                  :disabled="!hiddenCap.has.value && !form.hidden"
                 />
-              </div>
-
-              <template v-if="form.type === 'oidc'">
-                <div class="form-group">
-                  <label class="form-label">Issuer</label>
-                  <input
-                    v-model="form.issuer"
-                    class="form-input"
-                    placeholder="https://id.example.com"
-                  />
-                  <span class="form-hint">OIDC discovery base URL, e.g. https://id.example.com</span>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Auth URL</label>
-                  <input v-model="form.auth_url" class="form-input" />
-                  <span class="form-hint">Leave blank to use discovery.</span>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Token URL</label>
-                  <input v-model="form.token_url" class="form-input" />
-                  <span class="form-hint">Leave blank to use discovery.</span>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Userinfo URL</label>
-                  <input v-model="form.userinfo_url" class="form-input" />
-                  <span class="form-hint">Leave blank to use discovery.</span>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Email claim</label>
-                  <input v-model="form.email_claim" class="form-input" placeholder="email" />
-                  <span class="form-hint">Userinfo claim mapped to the user's email. Blank = standard "email".</span>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Name claim</label>
-                  <input v-model="form.name_claim" class="form-input" placeholder="name" />
-                  <span class="form-hint">Userinfo claim mapped to the display name. Blank = standard "name".</span>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Username claim</label>
-                  <input v-model="form.username_claim" class="form-input" placeholder="preferred_username" />
-                  <span class="form-hint">
-                    Userinfo claim mapped to the handle. Blank = standard "preferred_username"; if the provider
-                    sends neither, the handle is derived from the email address.
-                  </span>
-                </div>
-              </template>
-
-              <div class="form-group">
-                <label class="form-label">Scopes</label>
-                <input v-model="form.scopes" class="form-input" />
-                <span class="form-hint">Default: openid email profile</span>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Allowed domains</label>
-                <input v-model="form.allowed_domains" class="form-input" />
-                <span class="form-hint">CSV of allowed email domains; blank = any.</span>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Auto-join workspace</label>
-                <div class="autojoin-row">
-                  <input
-                    v-model="form.default_workspace_id"
-                    class="form-input"
-                    type="number"
-                    min="0"
-                    placeholder="Workspace ID"
-                    aria-label="Auto-join workspace ID"
-                  />
-                  <select v-model="form.default_role" class="form-select" aria-label="Auto-join role">
-                    <option value="">No auto-join</option>
-                    <option value="viewer">Viewer</option>
-                    <option value="developer">Developer</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </div>
-                <span class="form-hint">New SSO users join this workspace with the chosen role. Blank ID = none.</span>
-              </div>
-
-              <div class="form-group toggles" style="margin-bottom: 0">
-                <label class="check-row">
-                  <input v-model="form.enabled" type="checkbox" />
-                  Enabled
-                </label>
-                <label class="check-row" :class="{ 'check-disabled': !hiddenCap.has.value && !form.hidden }">
-                  <input
-                    v-model="form.hidden"
-                    type="checkbox"
-                    :disabled="!hiddenCap.has.value && !form.hidden"
-                  />
-                  Hidden
-                  <span v-if="!hiddenCap.has.value && !form.hidden" class="mdi mdi-lock-outline cap-lock" :title="hiddenTitle"></span>
-                </label>
-                <label class="check-row">
-                  <input v-model="form.auto_register" type="checkbox" />
-                  Auto-register users
-                </label>
-              </div>
+                Hidden
+                <span v-if="!hiddenCap.has.value && !form.hidden" class="mdi mdi-lock-outline cap-lock" :title="hiddenTitle"></span>
+              </label>
+              <label class="check-row">
+                <input v-model="form.auto_register" type="checkbox" />
+                Auto-register users
+              </label>
             </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="closeModal">Cancel</button>
-              <button
-                type="submit"
-                class="btn btn-primary"
-                :disabled="
-                  saving ||
-                  !form.name.trim() ||
-                  !form.client_id.trim() ||
-                  (!editing && !form.client_secret.trim())
-                "
-              >
-                {{ saving ? 'Saving…' : editing ? 'Save' : 'Add provider' }}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="closeModal">Cancel</button>
+            <button
+              type="submit"
+              class="btn btn-primary"
+              :disabled="
+                saving ||
+                !form.name.trim() ||
+                !form.client_id.trim() ||
+                (!editing && !form.client_secret.trim())
+              "
+            >
+              {{ saving ? 'Saving…' : editing ? 'Save' : 'Add provider' }}
+            </button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

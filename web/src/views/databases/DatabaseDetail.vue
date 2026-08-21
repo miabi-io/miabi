@@ -14,6 +14,7 @@ import ResourceIcon from '@/components/ResourceIcon.vue'
 import { engineLogo, engineMdi } from '@/utils/resourceIcon'
 import { copyText } from '@/utils/clipboard'
 import type { DatabaseInstance, DBStatus, UpgradeProgress, LogicalDatabase, ConnectionInfo, ForwardSession, Backup, BackupSchedule, Application, Network, UpgradeOptions, UpgradePlan, StatsSample } from '@/api/types'
+import AppModal from '@/components/AppModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -1102,92 +1103,86 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
 
     <Teleport to="body">
       <!-- Create logical database -->
-      <div v-if="showCreateDb" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>New database</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreateDb = false"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="createDb">
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="dbForm.name" class="form-input" placeholder="e.g. blog" required autofocus />
-                <p class="form-hint">A dedicated user is created with access scoped to this database.</p>
-              </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Attach to app <span class="text-muted">(optional)</span></label>
-                <select v-model="dbForm.app" class="form-select">
-                  <option :value="null">Don't attach</option>
-                  <option v-for="a in appsOnNode" :key="a.id" :value="a.id">{{ a.name }}</option>
-                </select>
-                <p class="form-hint">
-                  Injects DATABASE_URL + DB_* env into the app and redeploys it.
-                  <template v-if="hiddenAppCount > 0"> {{ hiddenAppCount }} app(s) on other nodes are hidden (must share the database's node).</template>
-                </p>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showCreateDb = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="creatingDb">{{ creatingDb ? 'Creating…' : 'Create database' }}</button>
-            </div>
-          </form>
+      <AppModal v-if="showCreateDb" @close="showCreateDb = false">
+        <div class="modal-header">
+          <h3>New database</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreateDb = false"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="createDb">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input v-model="dbForm.name" class="form-input" placeholder="e.g. blog" required autofocus />
+              <p class="form-hint">A dedicated user is created with access scoped to this database.</p>
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Attach to app <span class="text-muted">(optional)</span></label>
+              <select v-model="dbForm.app" class="form-select">
+                <option :value="null">Don't attach</option>
+                <option v-for="a in appsOnNode" :key="a.id" :value="a.id">{{ a.name }}</option>
+              </select>
+              <p class="form-hint">
+                Injects DATABASE_URL + DB_* env into the app and redeploys it.
+                <template v-if="hiddenAppCount > 0"> {{ hiddenAppCount }} app(s) on other nodes are hidden (must share the database's node).</template>
+              </p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showCreateDb = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="creatingDb">{{ creatingDb ? 'Creating…' : 'Create database' }}</button>
+          </div>
+        </form>
+      </AppModal>
 
       <!-- Connection reveal -->
-      <div v-if="connModal" class="modal-overlay">
-        <div class="modal" style="max-width: 560px; width: 100%">
-          <div class="modal-header">
-            <h3>Connection · {{ connModal.title }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="connModal = null"><span class="mdi mdi-close"></span></button>
-          </div>
-          <div class="modal-body">
-            <div v-for="f in [
-              { label: 'Host', value: `${connModal.info.host}:${connModal.info.port}` },
-              { label: 'Database', value: connModal.info.database },
-              { label: 'Username', value: connModal.info.username },
-              { label: 'Password', value: connModal.info.password },
-              { label: 'URI', value: connModal.info.uri },
-            ]" :key="f.label" class="dns-field">
-              <span class="dns-field-label">{{ f.label }}</span>
-              <div class="dns-field-row">
-                <span class="dns-field-value">{{ f.value || '—' }}</span>
-                <button v-if="f.value" class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(f.value)"><span class="mdi mdi-content-copy"></span></button>
-              </div>
+      <AppModal v-if="connModal" max-width="560px" @close="connModal = null">
+        <div class="modal-header">
+          <h3>Connection · {{ connModal.title }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="connModal = null"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <div v-for="f in [
+            { label: 'Host', value: `${connModal.info.host}:${connModal.info.port}` },
+            { label: 'Database', value: connModal.info.database },
+            { label: 'Username', value: connModal.info.username },
+            { label: 'Password', value: connModal.info.password },
+            { label: 'URI', value: connModal.info.uri },
+          ]" :key="f.label" class="dns-field">
+            <span class="dns-field-label">{{ f.label }}</span>
+            <div class="dns-field-row">
+              <span class="dns-field-value">{{ f.value || '—' }}</span>
+              <button v-if="f.value" class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(f.value)"><span class="mdi mdi-content-copy"></span></button>
             </div>
           </div>
         </div>
-      </div>
+      </AppModal>
 
       <!-- Restore dialog -->
-      <div v-if="restoreModal" class="modal-overlay">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>{{ restoreModal.backupId != null ? `Restore backup #${restoreModal.backupId}` : 'Restore from file' }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="restoreModal = null"><span class="mdi mdi-close"></span></button>
-          </div>
-          <form @submit.prevent="runRestore">
-            <div class="modal-body">
-              <div v-if="restoreModal.backupId == null" class="form-group">
-                <label class="form-label">Dump file</label>
-                <input type="file" accept=".sql,.gz,.sql.gz,.dump" class="form-input" required @change="onRestoreFile" />
-                <p class="form-hint">A <code>.sql.gz</code>, <code>.sql</code>, or <code>.dump</code> produced by the matching engine.</p>
-              </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Method</label>
-                <label class="radio-row"><input type="radio" value="normal" v-model="restoreMethod" /> Normal — restore over the existing database</label>
-                <label class="radio-row"><input type="radio" value="force" v-model="restoreMethod" /> Force — drop &amp; recreate the database first</label>
-                <p v-if="restoreMethod === 'force'" class="form-hint" style="color: var(--danger-600)">Force drops the database before restoring. This cannot be undone.</p>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="restoreModal = null">Cancel</button>
-              <button type="submit" class="btn" :class="restoreMethod === 'force' ? 'btn-danger' : 'btn-primary'" :disabled="restoring">{{ restoring ? 'Restoring…' : 'Restore' }}</button>
-            </div>
-          </form>
+      <AppModal v-if="restoreModal" @close="restoreModal = null">
+        <div class="modal-header">
+          <h3>{{ restoreModal.backupId != null ? `Restore backup #${restoreModal.backupId}` : 'Restore from file' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="restoreModal = null"><span class="mdi mdi-close"></span></button>
         </div>
-      </div>
+        <form @submit.prevent="runRestore">
+          <div class="modal-body">
+            <div v-if="restoreModal.backupId == null" class="form-group">
+              <label class="form-label">Dump file</label>
+              <input type="file" accept=".sql,.gz,.sql.gz,.dump" class="form-input" required @change="onRestoreFile" />
+              <p class="form-hint">A <code>.sql.gz</code>, <code>.sql</code>, or <code>.dump</code> produced by the matching engine.</p>
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Method</label>
+              <label class="radio-row"><input type="radio" value="normal" v-model="restoreMethod" /> Normal — restore over the existing database</label>
+              <label class="radio-row"><input type="radio" value="force" v-model="restoreMethod" /> Force — drop &amp; recreate the database first</label>
+              <p v-if="restoreMethod === 'force'" class="form-hint" style="color: var(--danger-600)">Force drops the database before restoring. This cannot be undone.</p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="restoreModal = null">Cancel</button>
+            <button type="submit" class="btn" :class="restoreMethod === 'force' ? 'btn-danger' : 'btn-primary'" :disabled="restoring">{{ restoring ? 'Restoring…' : 'Restore' }}</button>
+          </div>
+        </form>
+      </AppModal>
     </Teleport>
 
     <ConfirmDialog

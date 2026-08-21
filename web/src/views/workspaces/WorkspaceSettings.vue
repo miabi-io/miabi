@@ -6,6 +6,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { workspaceApi, type DeletionJob } from '@/api/workspaces'
 import { memberApi, usageApi } from '@/api/resources'
 import { workspaceBackupApi, type UpdateBackupSettingsInput, type BackupTestResult } from '@/api/workspaceBackup'
+import AppModal from '@/components/AppModal.vue'
 import type { Member, Invitation, WorkspaceRole, WorkspaceUsage, WorkspaceLiveSample, CustomRole } from '@/api/types'
 import { roleApi } from '@/api/rbac'
 import NotificationChannels from '@/views/notifications/Notifications.vue'
@@ -866,71 +867,68 @@ watch(activeTab, (t) => loadTab(t))
 
   <!-- Delete workspace: type-to-confirm, then live teardown progress -->
   <Teleport to="body">
-    <div v-if="deleteModalOpen" class="modal-overlay">
-      <!-- Confirm step -->
-      <div v-if="!deletionJob" class="modal">
-        <div class="modal-header">
-          <h3>Delete workspace</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="closeDeleteModal"><span class="mdi mdi-close"></span></button>
-        </div>
-        <div class="modal-body">
-          <div class="danger-note">
-            <span class="mdi mdi-alert-outline"></span>
-            <div>
-              This permanently removes <strong>{{ form.name }}</strong> and <strong>all its resources</strong> —
-              applications, databases, volumes and stacks. This cannot be undone.
-            </div>
-          </div>
-          <div class="form-group" style="margin-top: 16px">
-            <label class="form-label">Type <strong>{{ form.name }}</strong> to confirm</label>
-            <input
-              v-model="confirmName"
-              class="form-input"
-              :placeholder="form.name"
-              autocomplete="off"
-              autocapitalize="off"
-              spellcheck="false"
-              aria-label="Type workspace name to confirm"
-              @keyup.enter="confirmDelete"
-            />
+    <!-- Confirm step -->
+    <AppModal v-if="deleteModalOpen && (!deletionJob)" @close="closeDeleteModal">
+      <div class="modal-header">
+        <h3>Delete workspace</h3>
+        <button class="btn-icon btn-icon-muted" aria-label="Close" @click="closeDeleteModal"><span class="mdi mdi-close"></span></button>
+      </div>
+      <div class="modal-body">
+        <div class="danger-note">
+          <span class="mdi mdi-alert-outline"></span>
+          <div>
+            This permanently removes <strong>{{ form.name }}</strong> and <strong>all its resources</strong> —
+            applications, databases, volumes and stacks. This cannot be undone.
           </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="closeDeleteModal">Cancel</button>
-          <button type="button" class="btn btn-danger" :disabled="!deleteArmed" @click="confirmDelete">
-            Delete workspace
-          </button>
+        <div class="form-group" style="margin-top: 16px">
+          <label class="form-label">Type <strong>{{ form.name }}</strong> to confirm</label>
+          <input
+            v-model="confirmName"
+            class="form-input"
+            :placeholder="form.name"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            aria-label="Type workspace name to confirm"
+            @keyup.enter="confirmDelete"
+          />
         </div>
       </div>
-
-      <!-- Progress step -->
-      <div v-else class="modal">
-        <div class="modal-header">
-          <h3>{{ deletionJob.status === 'failed' ? 'Deletion failed' : `Deleting ${form.name}` }}</h3>
-          <button v-if="deletionJob.status !== 'running'" class="btn-icon btn-icon-muted" aria-label="Close" @click="closeDeleteModal">
-            <span class="mdi mdi-close"></span>
-          </button>
-        </div>
-        <div class="modal-body">
-          <ul class="delete-steps">
-            <li v-for="p in deletionJob.phases" :key="p.key" class="delete-step" :class="`is-${p.status}`">
-              <span class="mdi step-icon" :class="stepIcon(p.status)"></span>
-              <span class="step-label">{{ p.label }}</span>
-            </li>
-          </ul>
-          <p v-if="deletionJob.status === 'running' && deletionJob.message" class="delete-msg">
-            {{ deletionJob.message }}
-          </p>
-          <div v-else-if="deletionJob.status === 'failed'" class="danger-note" style="margin-top: 14px">
-            <span class="mdi mdi-alert-outline"></span>
-            <div>{{ deletionJob.error || 'The workspace could not be fully deleted.' }}</div>
-          </div>
-        </div>
-        <div v-if="deletionJob.status === 'failed'" class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="closeDeleteModal">Close</button>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" @click="closeDeleteModal">Cancel</button>
+        <button type="button" class="btn btn-danger" :disabled="!deleteArmed" @click="confirmDelete">
+          Delete workspace
+        </button>
+      </div>
+    </AppModal>
+    <!-- Progress step -->
+    <AppModal v-else-if="deleteModalOpen && deletionJob" @close="closeDeleteModal">
+      <div class="modal-header">
+        <h3>{{ deletionJob.status === 'failed' ? 'Deletion failed' : `Deleting ${form.name}` }}</h3>
+        <button v-if="deletionJob.status !== 'running'" class="btn-icon btn-icon-muted" aria-label="Close" @click="closeDeleteModal">
+          <span class="mdi mdi-close"></span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <ul class="delete-steps">
+          <li v-for="p in deletionJob.phases" :key="p.key" class="delete-step" :class="`is-${p.status}`">
+            <span class="mdi step-icon" :class="stepIcon(p.status)"></span>
+            <span class="step-label">{{ p.label }}</span>
+          </li>
+        </ul>
+        <p v-if="deletionJob.status === 'running' && deletionJob.message" class="delete-msg">
+          {{ deletionJob.message }}
+        </p>
+        <div v-else-if="deletionJob.status === 'failed'" class="danger-note" style="margin-top: 14px">
+          <span class="mdi mdi-alert-outline"></span>
+          <div>{{ deletionJob.error || 'The workspace could not be fully deleted.' }}</div>
         </div>
       </div>
-    </div>
+      <div v-if="deletionJob.status === 'failed'" class="modal-footer">
+        <button type="button" class="btn btn-secondary" @click="closeDeleteModal">Close</button>
+      </div>
+    </AppModal>
   </Teleport>
 
   <ConfirmDialog
