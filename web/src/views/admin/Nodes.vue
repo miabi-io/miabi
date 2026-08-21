@@ -787,7 +787,7 @@ function swarmClass(n: Server): string {
 
     <!-- Add node / token reveal -->
     <Teleport to="body">
-      <div v-if="showCreate" class="modal-overlay" @click.self="showCreate = false">
+      <div v-if="showCreate" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Add node</h3>
@@ -885,7 +885,7 @@ function swarmClass(n: Server): string {
 
     <!-- Join nodes to the cluster -->
     <Teleport to="body">
-      <div v-if="showJoin" class="modal-overlay" @click.self="showJoin = false">
+      <div v-if="showJoin" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Join nodes to the cluster</h3>
@@ -934,7 +934,7 @@ function swarmClass(n: Server): string {
 
     <!-- Enable cluster mode -->
     <Teleport to="body">
-      <div v-if="showEnable" class="modal-overlay" @click.self="showEnable = false">
+      <div v-if="showEnable" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Enable cluster mode</h3>
@@ -1010,7 +1010,7 @@ function swarmClass(n: Server): string {
          "certificate signed by unknown authority", which is a dead end unless the choice
          is offered here. -->
     <Teleport to="body">
-      <div v-if="showDeployAgents" class="modal-overlay" @click.self="showDeployAgents = false">
+      <div v-if="showDeployAgents" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Manage cluster nodes</h3>

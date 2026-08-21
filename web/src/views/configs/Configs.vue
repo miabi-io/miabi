@@ -252,7 +252,7 @@ async function confirmDelete() {
     </div>
 
     <!-- Create / edit -->
-    <div v-if="showForm" class="modal-overlay" @click.self="showForm = false">
+    <div v-if="showForm" class="modal-overlay">
       <div class="modal" style="max-width: 860px">
         <div class="modal-header">
           <h3>{{ editingId ? 'Edit config' : 'New config' }}</h3>

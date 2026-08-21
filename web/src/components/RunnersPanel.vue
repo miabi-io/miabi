@@ -243,7 +243,7 @@ function platform(r: Runner): string {
     </div>
 
     <Teleport to="body">
-      <div v-if="showRegister" class="modal-overlay" @click.self="showRegister = false">
+      <div v-if="showRegister" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>{{ shared ? 'Add shared runner' : 'Add runner' }}</h3>

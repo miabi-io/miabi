@@ -176,7 +176,7 @@ async function disconnect() {
     </div>
 
     <Teleport to="body">
-      <div v-if="showConnect" class="modal-overlay" @click.self="showConnect = false">
+      <div v-if="showConnect" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Connect DNS provider</h3>

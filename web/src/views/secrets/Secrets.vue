@@ -261,7 +261,7 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
 
     <Teleport to="body">
       <!-- Create / edit -->
-      <div v-if="showForm" class="modal-overlay" @click.self="showForm = false">
+      <div v-if="showForm" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>{{ editingId ? 'Edit secret' : 'New secret' }}</h3>
@@ -300,7 +300,7 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
       </div>
 
       <!-- Reveal -->
-      <!--       <div v-if="revealed" class="modal-overlay" @click.self="revealed = null">
+      <!--       <div v-if="revealed" class="modal-overlay">
         <div class="modal" style="max-width: 560px; width: 100%">
           <div class="modal-header">
             <h3>{{ revealed.name }}</h3>
@@ -317,7 +317,7 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
           </div>
         </div>
       </div> -->
-      <div v-if="showDetails && selectedSecret" class="modal-overlay" @click.self="closeDetails">
+      <div v-if="showDetails && selectedSecret" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Secret details</h3>

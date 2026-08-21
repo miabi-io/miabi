@@ -314,7 +314,7 @@ function shortSha(sha?: string) { return sha ? sha.slice(0, 7) : '—' }
 
     <!-- Create / edit -->
     <Teleport to="body">
-      <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
+      <div v-if="showModal" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>{{ editing ? 'Edit git source' : 'New git source' }}</h3>
@@ -380,7 +380,7 @@ function shortSha(sha?: string) { return sha ? sha.slice(0, 7) : '—' }
 
     <!-- Diff viewer -->
     <Teleport to="body">
-      <div v-if="showDiff" class="modal-overlay" @click.self="showDiff = false">
+      <div v-if="showDiff" class="modal-overlay">
         <div class="modal modal-lg">
           <div class="modal-header">
             <h3>Diff — {{ diffSource?.name }}</h3>
@@ -424,7 +424,7 @@ function shortSha(sha?: string) { return sha ? sha.slice(0, 7) : '—' }
 
     <!-- Teardown follow-up: what a cascade delete removed -->
     <Teleport to="body">
-      <div v-if="teardown" class="modal-overlay" @click.self="teardown = null">
+      <div v-if="teardown" class="modal-overlay">
         <div class="modal modal-lg">
           <div class="modal-header">
             <h3>Resources removed — {{ teardown.name }}</h3>

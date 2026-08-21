@@ -866,7 +866,7 @@ watch(activeTab, (t) => loadTab(t))
 
   <!-- Delete workspace: type-to-confirm, then live teardown progress -->
   <Teleport to="body">
-    <div v-if="deleteModalOpen" class="modal-overlay" @click.self="closeDeleteModal">
+    <div v-if="deleteModalOpen" class="modal-overlay">
       <!-- Confirm step -->
       <div v-if="!deletionJob" class="modal">
         <div class="modal-header">

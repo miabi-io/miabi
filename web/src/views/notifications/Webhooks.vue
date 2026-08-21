@@ -236,7 +236,7 @@ function fmtTime(s: string) {
 
     <!-- Create / edit / secret-reveal modal -->
     <Teleport to="body">
-      <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
+      <div v-if="showModal" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>{{ revealSecret ? 'Webhook created' : editing ? 'Edit webhook' : 'New webhook' }}</h3>
@@ -305,7 +305,7 @@ function fmtTime(s: string) {
 
     <!-- Deliveries modal -->
     <Teleport to="body">
-      <div v-if="showDeliveries" class="modal-overlay" @click.self="showDeliveries = false">
+      <div v-if="showDeliveries" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Recent deliveries</h3>

@@ -233,7 +233,7 @@ function fmtSize(n?: number): string {
     </template>
 
     <Teleport to="body">
-      <div v-if="showHkPlan && hkPlan" class="modal-overlay" @click.self="showHkPlan = false">
+      <div v-if="showHkPlan && hkPlan" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Confirm housekeeping</h3>

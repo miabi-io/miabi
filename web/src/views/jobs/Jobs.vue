@@ -290,7 +290,7 @@ const noApps = computed(() => apps.value.length === 0)
 
     <Teleport to="body">
       <!-- Run job modal -->
-      <div v-if="showRun" class="modal-overlay" @click.self="showRun = false">
+      <div v-if="showRun" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Run a job</h3>
@@ -352,7 +352,7 @@ const noApps = computed(() => apps.value.length === 0)
       </div>
 
       <!-- CronJob modal -->
-      <div v-if="showCron" class="modal-overlay" @click.self="showCron = false">
+      <div v-if="showCron" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>{{ editingCronId ? 'Edit cronjob' : 'New cronjob' }}</h3>
@@ -429,7 +429,7 @@ const noApps = computed(() => apps.value.length === 0)
       </div>
 
       <!-- Logs modal -->
-      <div v-if="logModal" class="modal-overlay" @click.self="logModal = null">
+      <div v-if="logModal" class="modal-overlay">
         <div class="modal" style="max-width: 720px; width: 100%">
           <div class="modal-header">
             <h3>Job #{{ logModal.id }} · <span class="badge badge-dot" :class="badge(logModal.status)">{{ logModal.status }}</span></h3>

@@ -192,7 +192,7 @@ async function runImport() {
     </div>
 
     <Teleport to="body">
-      <div v-if="showCreate" class="modal-overlay" @click.self="showCreate = false">
+      <div v-if="showCreate" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>New stack</h3>
@@ -217,7 +217,7 @@ async function runImport() {
         </div>
       </div>
 
-      <div v-if="showImport" class="modal-overlay" @click.self="showImport = false">
+      <div v-if="showImport" class="modal-overlay">
         <div class="modal" style="max-width: 640px; width: 100%">
           <div class="modal-header">
             <h3>Import from docker-compose</h3>

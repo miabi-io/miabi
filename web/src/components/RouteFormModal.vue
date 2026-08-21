@@ -6,7 +6,7 @@
 // It loads its own reference data (domains, middlewares, certificates, the
 // selected app's ports), so a host only has to pass the workspace and the apps
 // that may be chosen.
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useNotificationStore } from '@/stores/notification'
 import { routeApi } from '@/api/routes'
 import { middlewareApi } from '@/api/middlewares'
@@ -14,6 +14,8 @@ import { certificateApi } from '@/api/certificates'
 import { appApi } from '@/api/apps'
 import { domainApi } from '@/api/domains'
 import { parseYaml, toYaml } from '@/utils/yaml'
+import { useDirtyGuard, useModal } from '@/composables/useModal'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { Route, Middleware, Application, AppPort, RouteTLSMode, Certificate, Domain } from '@/api/types'
 
 const props = defineProps<{
@@ -30,6 +32,9 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ close: []; saved: [] }>()
+
+const dialog = ref<HTMLElement | null>(null)
+const confirmDiscard = ref(false)
 
 const notify = useNotificationStore()
 
@@ -236,8 +241,39 @@ watch(
     await ensureRefData()
     if (props.editing) resetForEdit(props.editing)
     else resetForCreate()
+    await nextTick()
+    resetDirty()
   },
   { immediate: true },
+)
+
+// A route is a long form — hosts, ports, TLS, middlewares — so closing it after
+// an edit asks before throwing the work away. The backdrop no longer dismisses
+// anything, so this only fires on a deliberate Escape, Cancel or close icon.
+const { dirty, reset: resetDirty } = useDirtyGuard(() => ({
+  form: form.value,
+  hostRows: hostRows.value,
+  advancedConfig: advancedConfig.value,
+  formMode: formMode.value,
+}))
+
+function requestClose() {
+  if (saving.value) return
+  if (dirty.value) {
+    confirmDiscard.value = true
+    return
+  }
+  emit('close')
+}
+
+function discard() {
+  confirmDiscard.value = false
+  emit('close')
+}
+
+useModal(
+  () => props.open,
+  { onRequestClose: requestClose, container: dialog, escapable: () => !confirmDiscard.value },
 )
 
 function resetForCreate() {
@@ -321,11 +357,11 @@ async function save() {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="modal-overlay" @click.self="emit('close')">
-      <div class="modal">
+    <div v-if="open" class="modal-overlay">
+      <div ref="dialog" class="modal" role="dialog" aria-modal="true" aria-labelledby="route-form-title">
         <div class="modal-header">
-          <h3>{{ editing ? 'Edit route' : 'New route' }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="emit('close')"><span class="mdi mdi-close"></span></button>
+          <h3 id="route-form-title">{{ editing ? 'Edit route' : 'New route' }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" data-modal-skip-focus @click="requestClose"><span class="mdi mdi-close"></span></button>
         </div>
       <form @submit.prevent="save">
         <div class="modal-body">
@@ -455,12 +491,23 @@ async function save() {
           </label>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="emit('close')">Cancel</button>
+          <button type="button" class="btn btn-secondary" @click="requestClose">Cancel</button>
           <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Create') }}</button>
         </div>
       </form>
       </div>
     </div>
+
+    <ConfirmDialog
+      :open="confirmDiscard"
+      title="Discard changes?"
+      message="This route has unsaved changes. Closing now loses them."
+      confirm-label="Discard"
+      cancel-label="Keep editing"
+      variant="danger"
+      @confirm="discard"
+      @cancel="confirmDiscard = false"
+    />
   </Teleport>
 </template>
 

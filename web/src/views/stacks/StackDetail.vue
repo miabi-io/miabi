@@ -403,7 +403,7 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
         @save="saveEnv"
       />
 
-      <div v-if="showAdd" class="modal-overlay" @click.self="showAdd = false">
+      <div v-if="showAdd" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Add application</h3>
@@ -427,7 +427,7 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
         </div>
       </div>
 
-      <div v-if="showEdit" class="modal-overlay" @click.self="showEdit = false">
+      <div v-if="showEdit" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Edit stack</h3>
@@ -452,7 +452,7 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
         </div>
       </div>
 
-      <div v-if="showEnvImport" class="modal-overlay" @click.self="showEnvImport = false">
+      <div v-if="showEnvImport" class="modal-overlay">
         <div class="modal" style="max-width: 560px; width: 100%">
           <div class="modal-header">
             <h3>Import shared .env</h3>
@@ -475,7 +475,7 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
         </div>
       </div>
 
-      <div v-if="showDelete" class="modal-overlay" @click.self="showDelete = false">
+      <div v-if="showDelete" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Delete stack</h3>

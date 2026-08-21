@@ -37,7 +37,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 </script>
 
 <template>
-  <div class="modal-overlay" @click.self="emit('close')">
+  <div class="modal-overlay">
     <div class="modal proc-modal">
       <div class="modal-header">
         <h3>

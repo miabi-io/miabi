@@ -553,7 +553,7 @@ onUnmounted(stopJobStream)
 
     <!-- CONFIRMATION / LIVE PROGRESS -->
     <Teleport to="body">
-      <div v-if="confirmOpen && entry" class="modal-overlay" @click.self="!installJob && !installing && (confirmOpen = false)">
+      <div v-if="confirmOpen && entry" class="modal-overlay">
         <!-- Review (before install) -->
         <div v-if="!installJob" class="modal">
           <div class="modal-header">
@@ -631,7 +631,7 @@ onUnmounted(stopJobStream)
 
     <!-- EDIT (custom templates) -->
     <Teleport to="body">
-      <div v-if="editOpen" class="modal-overlay" @click.self="editOpen = false">
+      <div v-if="editOpen" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Edit template</h3>
@@ -659,7 +659,7 @@ onUnmounted(stopJobStream)
 
     <!-- DELETE CONFIRMATION (custom templates) -->
     <Teleport to="body">
-      <div v-if="deleteOpen && entry" class="modal-overlay" @click.self="deleteOpen = false">
+      <div v-if="deleteOpen && entry" class="modal-overlay">
         <div class="modal modal-sm">
           <div class="modal-header">
             <h3>Delete {{ entry.display_name }}?</h3>
@@ -686,7 +686,7 @@ onUnmounted(stopJobStream)
 
     <!-- UPGRADE PREVIEW -->
     <Teleport to="body">
-      <div v-if="upgradeTarget" class="modal-overlay" @click.self="upgradeTarget = null">
+      <div v-if="upgradeTarget" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>Upgrade {{ upgradeTarget.template_display_name }}</h3>

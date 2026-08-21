@@ -214,7 +214,7 @@ onBeforeUnmount(() => {
     </template>
 
     <Teleport to="body">
-      <div v-if="selected" class="modal-overlay" @click.self="selected = null">
+      <div v-if="selected" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h3>
