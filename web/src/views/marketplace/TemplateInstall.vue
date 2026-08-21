@@ -754,9 +754,6 @@ onUnmounted(stopJobStream)
   font-family: var(--font-mono, monospace);
   font-size: 12px;
 }
-.modal-sm {
-  max-width: 440px;
-}
 .danger-note {
   display: flex;
   gap: 10px;

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -18,6 +18,24 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 
 const host = ref<HTMLDivElement | null>(null)
 const status = ref<'connecting' | 'open' | 'closed'>('connecting')
+
+// A shell is worked in, not glanced at, so the chosen size is remembered.
+const sizeKey = 'miabi.shell.size'
+const sizes = ['compact', 'normal', 'full'] as const
+type ShellSize = (typeof sizes)[number]
+
+const stored = localStorage.getItem(sizeKey) as ShellSize | null
+const size = ref<ShellSize>(stored && sizes.includes(stored) ? stored : 'normal')
+
+const dialogClass = { compact: 'modal-lg', normal: 'modal-xl', full: 'modal-full' }
+
+function setSize(next: ShellSize) {
+  size.value = next
+  localStorage.setItem(sizeKey, next)
+}
+
+// The terminal sizes itself to its box, so it has to be told the box changed.
+watch(size, () => nextTick(sendResize))
 
 let term: Terminal | null = null
 let fit: FitAddon | null = null
@@ -85,37 +103,76 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <AppModal dialog-class="shell-modal" @close="emit('close')">
+  <AppModal :dialog-class="dialogClass[size]" @close="emit('close')">
     <div class="modal-header">
       <h3>
         <span class="mdi mdi-console-line"></span>
         Shell — {{ appName }}
         <span class="shell-status" :class="status">{{ status }}</span>
       </h3>
-      <button class="btn-icon btn-icon-muted" title="Close" aria-label="Close" @click="emit('close')">
-        <span class="mdi mdi-close"></span>
-      </button>
+      <div class="shell-controls">
+        <button
+          class="btn-icon btn-icon-muted"
+          :class="{ active: size === 'compact' }"
+          title="Compact"
+          aria-label="Compact"
+          @click="setSize('compact')"
+        >
+          <span class="mdi mdi-window-minimize"></span>
+        </button>
+        <button
+          class="btn-icon btn-icon-muted"
+          :class="{ active: size === 'normal' }"
+          title="Restore"
+          aria-label="Restore"
+          @click="setSize('normal')"
+        >
+          <span class="mdi mdi-window-restore"></span>
+        </button>
+        <button
+          class="btn-icon btn-icon-muted"
+          :class="{ active: size === 'full' }"
+          title="Maximize"
+          aria-label="Maximize"
+          @click="setSize('full')"
+        >
+          <span class="mdi mdi-window-maximize"></span>
+        </button>
+        <button class="btn-icon btn-icon-muted" title="Close" aria-label="Close" @click="emit('close')">
+          <span class="mdi mdi-close"></span>
+        </button>
+      </div>
     </div>
-    <div class="modal-body shell-body">
+    <div class="modal-body shell-body" :class="'shell-' + size">
       <div ref="host" class="shell-host"></div>
     </div>
   </AppModal>
 </template>
 
 <style scoped>
-.shell-modal {
-  max-width: 960px;
-  width: 100%;
+.shell-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.shell-controls .btn-icon.active {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
 }
 .shell-body {
   padding: 0;
   background: #0b0f17;
+  display: flex;
+  flex: 1;
+  min-height: 0;
 }
 .shell-host {
   width: 100%;
-  height: 60vh;
   padding: 8px;
 }
+.shell-compact .shell-host { height: 40vh; }
+.shell-normal .shell-host { height: 60vh; }
+.shell-full .shell-host { height: 100%; }
 .shell-status {
   font-size: 11px;
   font-weight: 500;

@@ -655,6 +655,21 @@ tbody tr:hover td { background: var(--bg-hover); }
   animation: modalSlideUp 200ms ease;
 }
 
+/* Size variants. These must live here, not in a view's scoped block: the class
+   lands on AppModal's element, which carries no caller scope id. */
+.modal-sm { max-width: 440px; }
+.modal-lg { max-width: 720px; }
+.modal-xl { max-width: 960px; }
+/* The overlay already insets the dialog, so full simply fills what it offers. */
+.modal-full {
+  max-width: none;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+}
+
 .modal-header {
   display: flex;
   align-items: center;

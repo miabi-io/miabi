@@ -872,7 +872,7 @@ const policyFlags = computed(() => {
     />
 
     <!-- Preview & sync -->
-    <AppModal v-if="previewOpen" bare dialog-class="preview-modal" @close="previewOpen = false">
+    <AppModal v-if="previewOpen" max-width="560px" @close="previewOpen = false">
       <div class="preview-head">
         <h3>Sync preview</h3>
         <button class="btn-icon btn-icon-muted" aria-label="Close" @click="previewOpen = false"><span class="mdi mdi-close"></span></button>
@@ -982,11 +982,6 @@ const policyFlags = computed(() => {
 .modal-overlay {
   position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
   background: rgba(0, 0, 0, 0.45); padding: 24px;
-}
-.preview-modal {
-  width: 100%; max-width: 560px; max-height: 80vh; display: flex; flex-direction: column;
-  background: var(--bg-primary); border: 1px solid var(--border-primary); border-radius: 12px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
 }
 .preview-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border-primary); }
 .preview-head h3 { margin: 0; font-size: 15px; }

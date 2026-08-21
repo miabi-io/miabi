@@ -808,9 +808,6 @@ async function confirmUninstall() {
 .status-deploying {
   background: var(--warning-500, #d97706);
 }
-.modal-sm {
-  max-width: 440px;
-}
 .danger-note {
   display: flex;
   gap: 10px;

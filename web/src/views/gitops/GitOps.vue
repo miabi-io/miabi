@@ -488,7 +488,6 @@ function shortSha(sha?: string) { return sha ? sha.slice(0, 7) : '—' }
 .check { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 10px; cursor: pointer; }
 .check.disabled { opacity: 0.5; cursor: not-allowed; }
 .hint.warn { color: var(--warning-700, var(--warning-600)); display: flex; align-items: center; gap: 6px; }
-.modal-lg { max-width: 720px; }
 .table-actions .badge + .badge { margin-left: 4px; }
 .diff-list { display: flex; flex-direction: column; gap: 12px; }
 .diff-item { border: 1px solid var(--border-primary); border-radius: 8px; padding: 10px 12px; }
