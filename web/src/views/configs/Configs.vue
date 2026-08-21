@@ -332,6 +332,12 @@ async function confirmDelete() {
               rows="16"
               placeholder="File content…"
             ></textarea>
+            <p class="form-hint">
+              Reference a workspace secret with <code v-pre>${{ secrets.NAME }}</code> or the mounting app's
+              environment with <code v-pre>${{ env.NAME }}</code>. Values are substituted when the app deploys,
+              so rotating a secret updates the file. A secret wins over an app variable of the same name, and a
+              reference that resolves to nothing fails the deploy.
+            </p>
           </div>
         </div>
       </div>

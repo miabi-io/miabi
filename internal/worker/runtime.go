@@ -28,6 +28,7 @@ import (
 type SecretResolver interface {
 	ResolveAll(workspaceID uint, env []string) ([]string, error)
 	CredentialSecret(workspaceID uint, enc, ref string) (string, error)
+	ValueByName(workspaceID uint, name string) (string, bool)
 }
 
 // credentialSecret resolves the secret behind a stored credential — its own encrypted value, or the
@@ -116,6 +117,7 @@ type runtimeBuilder struct {
 type ConfigProjector interface {
 	Get(workspaceID, id uint) (*models.Config, error)
 	Project(cfg *models.Config, mount models.AppMount) ([]config.ProjectedFile, error)
+	ProjectWith(cfg *models.Config, mount models.AppMount, r config.Resolver) ([]config.ProjectedFile, error)
 }
 
 // ClusterCap reports whether the manager engine is a reachable swarm manager.
@@ -293,13 +295,13 @@ func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Cli
 		}
 		mounts[m.DockerName] = m.Path
 	}
-	files, ferr := b.projectConfigs(app)
-	if ferr != nil {
-		return RuntimeContext{}, ferr
-	}
 	env, err := b.buildEnv(app)
 	if err != nil {
 		return RuntimeContext{}, err
+	}
+	files, ferr := b.projectConfigs(app, b.configResolver(app, env))
+	if ferr != nil {
+		return RuntimeContext{}, ferr
 	}
 	return RuntimeContext{
 		Env:         env,
@@ -315,7 +317,30 @@ func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Cli
 // projectConfigs expands the app's config mounts into the files to materialize.
 // A mount whose config has been deleted is skipped rather than failing the
 // deploy: the delete guard already prevents it, so this is belt and braces.
-func (b *runtimeBuilder) projectConfigs(app *models.Application) ([]docker.FileEntry, error) {
+// configResolver reads a config's references against the vault first, then the
+// app's resolved env, so a value moved into the vault needs no config edit.
+func (b *runtimeBuilder) configResolver(app *models.Application, env []string) config.Resolver {
+	values := make(map[string]string, len(env))
+	for _, entry := range env {
+		if k, v, ok := strings.Cut(entry, "="); ok {
+			values[k] = v
+		}
+	}
+	return config.ResolverFunc{
+		SecretFn: func(name string) (string, bool) {
+			if b.secrets == nil {
+				return "", false
+			}
+			return b.secrets.ValueByName(app.WorkspaceID, name)
+		},
+		EnvFn: func(name string) (string, bool) {
+			v, ok := values[name]
+			return v, ok
+		},
+	}
+}
+
+func (b *runtimeBuilder) projectConfigs(app *models.Application, r config.Resolver) ([]docker.FileEntry, error) {
 	if b.configs == nil {
 		return nil, nil
 	}
@@ -328,7 +353,7 @@ func (b *runtimeBuilder) projectConfigs(app *models.Application) ([]docker.FileE
 		if err != nil {
 			continue
 		}
-		files, perr := b.configs.Project(cfg, m)
+		files, perr := b.configs.ProjectWith(cfg, m, r)
 		if perr != nil {
 			return nil, fmt.Errorf("project config %s: %w", cfg.Name, perr)
 		}
@@ -439,7 +464,7 @@ func decryptIfSecret(value string, isSecret bool) string {
 // returns the attachments for its service spec. Object names embed the file
 // digest, so a content change creates a new object and the service update swaps
 // it — a rolling restart for free, since docker configs are immutable.
-func (b *runtimeBuilder) publishConfigs(ctx context.Context, eng docker.Client, app *models.Application, workspaceScope string) ([]docker.ServiceConfig, error) {
+func (b *runtimeBuilder) publishConfigs(ctx context.Context, eng docker.Client, app *models.Application, workspaceScope string, env []string) ([]docker.ServiceConfig, error) {
 	if b.configs == nil {
 		return nil, nil
 	}
@@ -452,7 +477,7 @@ func (b *runtimeBuilder) publishConfigs(ctx context.Context, eng docker.Client, 
 		if err != nil {
 			continue
 		}
-		files, perr := b.configs.Project(cfg, m)
+		files, perr := b.configs.ProjectWith(cfg, m, b.configResolver(app, env))
 		if perr != nil {
 			return nil, fmt.Errorf("project config %s: %w", cfg.Name, perr)
 		}

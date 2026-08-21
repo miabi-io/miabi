@@ -23,12 +23,13 @@ import (
 )
 
 var (
-	ErrInvalidName = errors.New("invalid config name")
-	ErrNameTaken   = errors.New("config name already exists")
-	ErrNotFound    = errors.New("config not found")
-	ErrNoData      = errors.New("config must declare at least one file")
-	ErrInUse       = errors.New("config is mounted by an application")
-	ErrKeyNotFound = errors.New("config has no such file")
+	ErrInvalidName   = errors.New("invalid config name")
+	ErrNameTaken     = errors.New("config name already exists")
+	ErrNotFound      = errors.New("config not found")
+	ErrNoData        = errors.New("config must declare at least one file")
+	ErrInUse         = errors.New("config is mounted by an application")
+	ErrKeyNotFound   = errors.New("config has no such file")
+	ErrUnresolvedRef = errors.New("config references a value that does not exist")
 )
 
 // Limits mirror internal/declarative so a config rejected by a manifest is also
@@ -138,7 +139,8 @@ func (s *Service) Create(workspaceID uint, in Input, userID *uint) (*models.Conf
 	cfg := &models.Config{
 		WorkspaceID: workspaceID, Name: in.Name, DisplayName: in.DisplayName,
 		Description: in.Description, DataEnc: enc, Digest: digest, Mode: in.Mode,
-		Sensitive: in.Sensitive, Delimiters: in.Delimiters, Version: 1, UpdatedByID: userID,
+		Sensitive:  in.Sensitive || referencesSecret(in.Data),
+		Delimiters: in.Delimiters, Version: 1, UpdatedByID: userID,
 	}
 	if err := s.repo.Create(cfg); err != nil {
 		return nil, err
@@ -166,6 +168,10 @@ func (s *Service) Update(workspaceID, id uint, in Input, userID *uint) (*models.
 		if digest != cfg.Digest {
 			cfg.DataEnc, cfg.Digest, changed = enc, digest, true
 			cfg.Version++
+		}
+		// Once a file pulls in a secret, its rendered content is secret material.
+		if referencesSecret(in.Data) {
+			cfg.Sensitive = true
 		}
 	}
 	if in.Mode != "" && in.Mode != cfg.Mode {
@@ -257,6 +263,10 @@ func (s *Service) Usage(workspaceID, id uint) ([]models.Application, error) {
 	return s.consumers.AppsMountingConfig(workspaceID, cfg.ID)
 }
 
+func referencesSecret(data map[string]string) bool {
+	return len(SecretRefNames(data)) > 0
+}
+
 // Data decrypts a config's files. Callers handling a sensitive config must not
 // return this to an unprivileged reader.
 func (s *Service) Data(cfg *models.Config) (map[string]string, error) {
@@ -279,11 +289,29 @@ func (s *Service) Data(cfg *models.Config) (map[string]string, error) {
 // projected under Path as a directory prefix. This is the only place path
 // expansion happens.
 func (s *Service) Project(cfg *models.Config, mount models.AppMount) ([]ProjectedFile, error) {
+	return s.ProjectWith(cfg, mount, nil)
+}
+
+// ProjectWith is Project with references resolved. Resolution happens here, not
+// at save time: one config is mounted by many apps, and a rotated secret must
+// reach the next deploy without the file being edited.
+func (s *Service) ProjectWith(cfg *models.Config, mount models.AppMount, r Resolver) ([]ProjectedFile, error) {
 	data, err := s.Data(cfg)
 	if err != nil {
 		return nil, err
 	}
-	return s.project(cfg, data, mount)
+	files, err := s.project(cfg, data, mount)
+	if err != nil {
+		return nil, err
+	}
+	for i := range files {
+		resolved, rerr := Resolve(files[i].Content, r)
+		if rerr != nil {
+			return nil, fmt.Errorf("config %s: %w", cfg.Name, rerr)
+		}
+		files[i].Content = resolved
+	}
+	return files, nil
 }
 
 // project is Project over already-decrypted data, so callers holding the files

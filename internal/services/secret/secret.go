@@ -347,6 +347,20 @@ func (s *Service) CredentialSecret(workspaceID uint, enc, ref string) (string, e
 	return crypto.Decrypt(enc)
 }
 
+// ValueByName returns a secret's decrypted value, for callers resolving a
+// reference by name. Absent or undecryptable reads as not found.
+func (s *Service) ValueByName(workspaceID uint, name string) (string, bool) {
+	sec, err := s.repo.FindByName(workspaceID, name)
+	if err != nil {
+		return "", false
+	}
+	v, err := crypto.Decrypt(sec.ValueEnc)
+	if err != nil {
+		return "", false
+	}
+	return v, true
+}
+
 // ExistsByName reports whether a secret of that name exists in the workspace. It
 // backs the validation of a credential's secret reference at create/update time,
 // so a typo surfaces in the form rather than at the next deploy.
