@@ -705,7 +705,7 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 	// Config files ride as docker config objects: swarm distributes them over raft,
 	// so a task lands with its files whichever node it schedules to. Per file, never
 	// a directory, so the image's own contents at that path survive.
-	svcConfigs, cfgErr := h.publishConfigs(ctx, h.eng(app), app, fmt.Sprint(app.WorkspaceID))
+	svcConfigs, cfgErr := h.publishConfigs(ctx, h.eng(app), app, fmt.Sprint(app.WorkspaceID), env)
 	if cfgErr != nil {
 		_ = h.fail(dep, fmt.Errorf("publish config files: %w", cfgErr))
 		return

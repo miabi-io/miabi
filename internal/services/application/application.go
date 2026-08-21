@@ -18,6 +18,7 @@ import (
 	"github.com/miabi-io/miabi/internal/hostmount"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/nodes"
+	configsvc "github.com/miabi-io/miabi/internal/services/config"
 	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/services/events"
 	"github.com/miabi-io/miabi/internal/services/node"
@@ -164,6 +165,13 @@ type Service struct {
 	netEnsurer   NetworkEnsurer
 	pipelines    Pipelines
 	imageGuard   ImageGuard
+	configs      ConfigReader
+}
+
+// ConfigReader reads a mounted config's files, for the secret-reference scan.
+type ConfigReader interface {
+	Get(workspaceID, id uint) (*models.Config, error)
+	Data(cfg *models.Config) (map[string]string, error)
 }
 
 // SetQuota wires the plan/quota enforcer (nil-safe; nil skips checks).
@@ -249,6 +257,10 @@ type ImageGuard interface {
 
 // SetImageGuard wires the internal-registry image check (nil skips it).
 func (s *Service) SetImageGuard(g ImageGuard) { s.imageGuard = g }
+
+// SetConfigs supplies the config reader used to spot secrets referenced from a
+// mounted file rather than from env.
+func (s *Service) SetConfigs(c ConfigReader) { s.configs = c }
 
 func (s *Service) checkImage(workspaceID uint, image, tag string) error {
 	if s.imageGuard == nil || strings.TrimSpace(image) == "" {
@@ -1029,14 +1041,43 @@ func (s *Service) AppsReferencingSecret(workspaceID uint, name string) ([]models
 	}
 	out := make([]models.Application, 0)
 	for i := range apps {
-		for _, ev := range apps[i].EnvVars {
-			if secret.ReferencesSecret(ev.Value, name) {
-				out = append(out, apps[i])
-				break
-			}
+		if s.appReferencesSecret(&apps[i], name) {
+			out = append(out, apps[i])
 		}
 	}
 	return out, nil
+}
+
+// appReferencesSecret covers both routes a secret reaches an app: an env value,
+// and a mounted config whose files reference it.
+func (s *Service) appReferencesSecret(app *models.Application, name string) bool {
+	for _, ev := range app.EnvVars {
+		if secret.ReferencesSecret(ev.Value, name) {
+			return true
+		}
+	}
+	if s.configs == nil {
+		return false
+	}
+	for _, mt := range app.Mounts {
+		if mt.ConfigID == 0 {
+			continue
+		}
+		cfg, err := s.configs.Get(app.WorkspaceID, mt.ConfigID)
+		if err != nil {
+			continue
+		}
+		data, derr := s.configs.Data(cfg)
+		if derr != nil {
+			continue
+		}
+		for _, ref := range configsvc.SecretRefNames(data) {
+			if ref == name {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // AppsMountingConfig lists the apps whose mounts reference a config, which drives

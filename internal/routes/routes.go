@@ -541,10 +541,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	secretService.SetConsumers(appService)
 	configService := configsvc.NewService(repositories.NewConfigRepository(db))
 	configService.SetConsumers(appService)
+	appService.SetConfigs(configService)
 	housekeepingService.SetConfigs(configService)
 	databaseService.SetSecrets(secretService)
-	// Certificate store <-> route service: routes resolve custom certs from the
-	// store at render time; the store consults routes for its delete guard/usage.
+
 	certificateService := certificate.NewService(repositories.NewCertificateRepository(db))
 	certificateService.SetRouteRefs(routeService)
 	certificateService.SetQuota(quotaService)
