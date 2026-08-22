@@ -37,6 +37,26 @@ var presets = []Preset{
 		Rule:        map[string]any{"realm": "Restricted", "users": []any{}},
 	},
 	{
+		Key:         "sso",
+		DisplayName: "Single sign-on",
+		Description: "Sign users in at the gateway. Fill in your provider's issuer and client credentials.",
+		Type:        "oidc",
+		Rule: map[string]any{
+			"scopes":       []any{"openid", "email", "profile"},
+			"callbackPath": "/oauth2/callback",
+			"logoutPath":   "/oauth2/logout",
+			"pkce":         true,
+			"session":      map[string]any{"store": "cookie", "ttl": "12h", "idleTimeout": "1h"},
+			"forward": map[string]any{
+				"headers": map[string]any{
+					"X-Auth-User":  "sub",
+					"X-Auth-Email": "email",
+				},
+				"stripInbound": true,
+			},
+		},
+	},
+	{
 		Key:         "ip-allowlist",
 		DisplayName: "IP allowlist",
 		Description: "Allow only the IP ranges you specify; deny everything else.",

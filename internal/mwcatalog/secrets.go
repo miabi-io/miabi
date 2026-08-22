@@ -52,15 +52,17 @@ func MergeKeptSecrets(mwType string, incoming, existing map[string]any) map[stri
 		return incoming
 	}
 	out := shallowCopy(incoming)
-	for _, f := range d.secretFields() {
-		switch f.Type {
-		case FieldUsers:
-			out[f.Key] = mergeKeptUsers(out[f.Key], existing[f.Key])
-		default:
-			if s, _ := out[f.Key].(string); s == RedactedSentinel {
-				out[f.Key] = existing[f.Key]
+	for _, sp := range d.secretPaths() {
+		kept, hasKept := valueAt(existing, sp.keys)
+		_ = updateAt(out, sp.keys, func(v any) (any, error) {
+			if sp.field.Type == FieldUsers {
+				return mergeKeptUsers(v, kept), nil
 			}
-		}
+			if s, _ := v.(string); s == RedactedSentinel && hasKept {
+				return kept, nil
+			}
+			return v, nil
+		})
 	}
 	return out
 }
@@ -74,29 +76,62 @@ func transformSecrets(mwType string, rule map[string]any, fn func(string) (strin
 		return rule, nil
 	}
 	out := shallowCopy(rule)
-	for _, f := range d.secretFields() {
-		v, present := out[f.Key]
-		if !present {
-			continue
-		}
-		switch f.Type {
-		case FieldUsers:
-			users, err := transformUsers(v, fn)
-			if err != nil {
-				return nil, err
+	for _, sp := range d.secretPaths() {
+		err := updateAt(out, sp.keys, func(v any) (any, error) {
+			if sp.field.Type == FieldUsers {
+				return transformUsers(v, fn)
 			}
-			out[f.Key] = users
-		default:
-			if s, ok := v.(string); ok {
-				nv, err := fn(s)
-				if err != nil {
-					return nil, err
-				}
-				out[f.Key] = nv
+			s, ok := v.(string)
+			if !ok {
+				return v, nil
 			}
+			return fn(s)
+		})
+		if err != nil {
+			return nil, err
 		}
 	}
 	return out, nil
+}
+
+// updateAt applies fn to the value at keys, copying every level it walks so the
+// stored rule is never mutated in place. A path that does not exist is skipped.
+func updateAt(root map[string]any, keys []string, fn func(any) (any, error)) error {
+	node := root
+	for _, k := range keys[:len(keys)-1] {
+		child, ok := node[k].(map[string]any)
+		if !ok {
+			return nil
+		}
+		copied := shallowCopy(child)
+		node[k] = copied
+		node = copied
+	}
+	leaf := keys[len(keys)-1]
+	v, present := node[leaf]
+	if !present {
+		return nil
+	}
+	nv, err := fn(v)
+	if err != nil {
+		return err
+	}
+	node[leaf] = nv
+	return nil
+}
+
+// valueAt reads the value at keys, if every level exists.
+func valueAt(root map[string]any, keys []string) (any, bool) {
+	node := root
+	for _, k := range keys[:len(keys)-1] {
+		child, ok := node[k].(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		node = child
+	}
+	v, ok := node[keys[len(keys)-1]]
+	return v, ok
 }
 
 // transformUsers applies fn to each user's password, returning a fresh list so

@@ -46,6 +46,12 @@ gateway:
   # it while directly exposed would let any client forge the header and spoof its
   # IP — bypassing the allowlist.
   #
+  # `trustedProxies` must not be empty: an empty list with `enabled: true` is
+  # rejected and every forwarded header is ignored, since nothing would separate
+  # a proxy from a client that simply sends the header itself. Behind a TLS
+  # terminator this section is required, or the redirectScheme middleware sees
+  # the plaintext hop and redirects in a loop.
+  #
   # For Cloudflare: put Cloudflare's published ranges (https://www.cloudflare.com/ips/)
   # in `trustedProxies` and keep `CF-Connecting-IP` first in `ipHeaders`. The IPs
   # below are examples for a same-host/LAN reverse proxy — replace them.

@@ -88,11 +88,26 @@ type Descriptor struct {
 	Validate func(rule map[string]any) error `json:"-"`
 }
 
-func (d Descriptor) secretFields() []Field {
-	var out []Field
-	for _, f := range d.Fields {
-		if f.Secret {
-			out = append(out, f)
+// secretPath is a secret field and the route to it through nested objects, so a
+// key like session.secret is reachable rather than silently stored in clear.
+type secretPath struct {
+	keys  []string
+	field Field
+}
+
+func (d Descriptor) secretPaths() []secretPath {
+	return collectSecretPaths(d.Fields, nil)
+}
+
+func collectSecretPaths(fields []Field, prefix []string) []secretPath {
+	var out []secretPath
+	for _, f := range fields {
+		keys := append(append([]string{}, prefix...), f.Key)
+		switch {
+		case f.Secret:
+			out = append(out, secretPath{keys: keys, field: f})
+		case f.Type == FieldObject && len(f.Fields) > 0:
+			out = append(out, collectSecretPaths(f.Fields, keys)...)
 		}
 	}
 	return out
@@ -126,16 +141,118 @@ var registry = []Descriptor{
 				Help: "Accepted signing algorithms. Empty uses a safe set for the key type you configured."},
 			{Key: "issuer", Label: "Issuer", Type: FieldString, Help: "Required iss claim."},
 			{Key: "audience", Label: "Audience", Type: FieldString, Help: "Required aud claim."},
-			{Key: "claimsExpression", Label: "Claims expression", Type: FieldString, Help: "Expression the token claims must satisfy."},
+			{Key: "claimsExpression", Label: "Claims expression", Type: FieldString,
+				Placeholder: "Equals('email_verified', true)",
+				Help:        "Expression the token claims must satisfy, e.g. OneOf('role', 'admin', 'ops')."},
 			{Key: "forwardAuthorization", Label: "Forward Authorization header", Type: FieldBool,
 				Help: "Pass the original Authorization header on to the app instead of stripping it."},
 			{Key: "forwardHeaders", Label: "Forward claims as headers", Type: FieldMap,
 				KeyLabel: "Header", ValueLabel: "Claim path",
 				KeyPlaceholder: "X-User-ID", ValuePlaceholder: "sub", AddLabel: "claim header",
-				Help: "Each row sends one claim from the verified token to your app as a request header. " +
-					"Use dot notation for nested claims (user.role, profile.department); booleans arrive as \"true\"/\"false\", " +
-					"and a claim the token doesn't carry is skipped rather than sent empty."},
+				Help: "Deprecated: use \"Send identity to the app\" below. Each row sends one claim from the verified " +
+					"token to your app as a request header."},
+			{Key: "forward", Label: "Send identity to the app", Type: FieldObject, Fields: []Field{
+				{Key: "headers", Label: "Claims as headers", Type: FieldMap,
+					KeyLabel: "Header", ValueLabel: "Claim path",
+					KeyPlaceholder: "X-User-ID", ValuePlaceholder: "sub", AddLabel: "claim header",
+					Help: "Dot notation reaches nested claims (user.role); booleans arrive as \"true\"/\"false\", and a " +
+						"claim the token does not carry is skipped rather than sent empty."},
+				{Key: "query", Label: "Claims as query parameters", Type: FieldMap,
+					KeyLabel: "Parameter", ValueLabel: "Claim path", KeyPlaceholder: "uid", ValuePlaceholder: "sub", AddLabel: "parameter"},
+				{Key: "cookies", Label: "Claims as cookies", Type: FieldMap,
+					KeyLabel: "Cookie", ValueLabel: "Claim path", KeyPlaceholder: "app_user", ValuePlaceholder: "email", AddLabel: "cookie"},
+				{Key: "stripInbound", Label: "Strip client-supplied copies", Type: FieldBool, Default: true,
+					Help: "Leave on. Off lets a caller send these headers itself and choose who your app thinks it is."},
+				{Key: "arraySeparator", Label: "Array separator", Type: FieldString, Placeholder: ","},
+				{Key: "encoding", Label: "Encoding", Type: FieldEnum, Options: []string{"auto", "raw"}},
+				{Key: "maxValueBytes", Label: "Maximum value size", Type: FieldInt, Placeholder: "4096"},
+			}},
 		},
+	},
+	{
+		Type:        "oidc",
+		DisplayName: "OpenID Connect (SSO)",
+		Description: "Sign users in at the gateway against an identity provider, and pass who they are to the app.",
+		Category:    CategoryAccess,
+		Fields: []Field{
+			{Key: "issuer", Label: "Issuer URL", Type: FieldString, Placeholder: "https://id.example.com/application/o/app/",
+				Help: "The provider's issuer. Everything else is discovered from it, so the endpoints below are only for a provider without a discovery document."},
+			{Key: "clientId", Label: "Client ID", Type: FieldString, Required: true},
+			{Key: "clientSecret", Label: "Client secret", Type: FieldString, Required: true, Secret: true},
+			{Key: "provider", Label: "Provider", Type: FieldEnum,
+				Options: []string{"custom", "google", "github", "gitlab", "amazon", "facebook"},
+				Help:    "A well-known provider fills in its own endpoints."},
+			{Key: "scopes", Label: "Scopes", Type: FieldStrings, Placeholder: "openid", AddLabel: "scope",
+				Help: "Requested scopes. Most providers need at least openid, email and profile."},
+			{Key: "audience", Label: "Audience", Type: FieldString,
+				Help: "Enforced as the aud claim on JWT access tokens. The ID token is always checked against the client ID."},
+
+			{Key: "endpoint", Label: "Endpoints", Type: FieldObject,
+				Help: "Only needed without an issuer, or to override what discovery returns.",
+				Fields: []Field{
+					{Key: "authUrl", Label: "Authorization URL", Type: FieldString},
+					{Key: "tokenUrl", Label: "Token URL", Type: FieldString},
+					{Key: "jwksUrl", Label: "JWKS URL", Type: FieldString, Help: "Verifies JWT access tokens and ID tokens."},
+					{Key: "userInfoUrl", Label: "User info URL", Type: FieldString, Help: "Verifies opaque tokens, and supplies claims."},
+				}},
+
+			{Key: "callbackPath", Label: "Callback path", Type: FieldString, Placeholder: "/oauth2/callback",
+				Help: "Where the provider returns the user. Register this exact path with the provider. Defaults to the route path plus /oauth2/callback."},
+			{Key: "logoutPath", Label: "Logout path", Type: FieldString, Placeholder: "/oauth2/logout",
+				Help: "Ends the session when requested. Not served unless set."},
+			{Key: "postLoginRedirect", Label: "After sign-in", Type: FieldString, Placeholder: "/dashboard",
+				Help: "Empty returns the user to the page they asked for."},
+			{Key: "postLogoutRedirect", Label: "After sign-out", Type: FieldString, Placeholder: "/"},
+			{Key: "pkce", Label: "Use PKCE", Type: FieldBool, Default: true,
+				Help: "Proof key on the code exchange. Leave on unless the provider rejects it."},
+
+			{Key: "session", Label: "Session", Type: FieldObject, Fields: []Field{
+				{Key: "store", Label: "Store", Type: FieldEnum, Options: []string{"cookie", "memory", "redis"},
+					Help: "Cookie needs no shared state. Redis shares sessions across gateway replicas and needs Redis configured on the gateway."},
+				{Key: "secret", Label: "Session secret", Type: FieldString, Secret: true,
+					Help: "Keys the sealing of session data. Defaults to the client secret; changing it signs everyone out."},
+				{Key: "ttl", Label: "Maximum age", Type: FieldDuration, Placeholder: "12h",
+					Help: "How long a session lives regardless of activity."},
+				{Key: "idleTimeout", Label: "Idle timeout", Type: FieldDuration, Placeholder: "1h"},
+				{Key: "cookie", Label: "Cookie", Type: FieldObject, Fields: []Field{
+					{Key: "name", Label: "Name", Type: FieldString, Placeholder: "goma_session"},
+					{Key: "path", Label: "Path", Type: FieldString, Placeholder: "/",
+						Help: "Defaults to the route path, so two routes on one host do not share a session."},
+					{Key: "domain", Label: "Domain", Type: FieldString},
+					{Key: "sameSite", Label: "SameSite", Type: FieldEnum, Options: []string{"lax", "strict", "none"},
+						Help: "Strict breaks the provider's callback redirect."},
+					{Key: "secure", Label: "Secure", Type: FieldBool, Help: "Defaults to whether the request arrived over TLS."},
+				}},
+			}},
+
+			{Key: "claimsExpression", Label: "Authorization rule", Type: FieldString,
+				Placeholder: "Contains('groups', 'engineering')",
+				Help:        "Who is allowed in once signed in. Users who do not match get 403."},
+			{Key: "claimsSource", Label: "Claim sources", Type: FieldStrings, Placeholder: "id_token", AddLabel: "source",
+				Help: "Where claims are read from, in increasing precedence: access_token, userinfo, id_token."},
+
+			{Key: "forward", Label: "Send identity to the app", Type: FieldObject, Fields: []Field{
+				{Key: "headers", Label: "Claims as headers", Type: FieldMap,
+					KeyLabel: "Header", ValueLabel: "Claim path",
+					KeyPlaceholder: "X-Auth-Email", ValuePlaceholder: "email", AddLabel: "claim header",
+					Help: "Dot notation reaches nested claims; a template like \"{{ .given_name }} {{ .family_name }}\" joins several."},
+				{Key: "query", Label: "Claims as query parameters", Type: FieldMap,
+					KeyLabel: "Parameter", ValueLabel: "Claim path", KeyPlaceholder: "uid", ValuePlaceholder: "sub", AddLabel: "parameter"},
+				{Key: "cookies", Label: "Claims as cookies", Type: FieldMap,
+					KeyLabel: "Cookie", ValueLabel: "Claim path", KeyPlaceholder: "app_user", ValuePlaceholder: "email", AddLabel: "cookie",
+					Help: "Added to the request sent upstream, never to the browser's response."},
+				{Key: "stripInbound", Label: "Strip client-supplied copies", Type: FieldBool, Default: true,
+					Help: "Leave on. Off lets a caller send these headers itself and choose who your app thinks it is."},
+				{Key: "arraySeparator", Label: "Array separator", Type: FieldString, Placeholder: ","},
+				{Key: "encoding", Label: "Encoding", Type: FieldEnum, Options: []string{"auto", "raw"},
+					Help: "Auto base64-encodes non-ASCII values, which headers cannot carry, and flags them."},
+				{Key: "maxValueBytes", Label: "Maximum value size", Type: FieldInt, Placeholder: "4096"},
+				{Key: "accessTokenHeader", Label: "Forward the access token", Type: FieldString, Placeholder: "Authorization",
+					Help: "Lets the app verify the token itself instead of trusting a header."},
+				{Key: "idTokenHeader", Label: "Forward the ID token", Type: FieldString, Placeholder: "X-Auth-Id-Token"},
+			}},
+		},
+		Validate: validateOIDC,
 	},
 	{
 		Type:        "forwardAuth",
@@ -297,6 +414,9 @@ var registry = []Descriptor{
 				Help: "Restrict the key to these parameters, so tracking parameters don't fragment the cache."},
 			{Key: "disableCacheStatusHeader", Label: "Hide the X-Cache-Status header", Type: FieldBool,
 				Help: "By default Goma reports HIT/MISS on each response."},
+			{Key: "cachePrivateResponses", Label: "Cache authenticated responses", Type: FieldBool,
+				Help: "Off by default: a request carrying an Authorization header or a cookie skips the cache entirely, " +
+					"since one shared entry would be served to every caller. On, each caller gets their own entry."},
 		},
 	},
 	{

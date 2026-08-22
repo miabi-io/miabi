@@ -6,6 +6,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { middlewareApi } from '@/api/middlewares'
 import { routeApi } from '@/api/routes'
+import { copyText } from '@/utils/clipboard'
 import { toYaml } from '@/utils/yaml'
 import { useMiddlewareCatalog } from '@/composables/useMiddlewareCatalog'
 import MiddlewareFormModal from '@/components/MiddlewareFormModal.vue'
@@ -20,6 +21,27 @@ const { currentWorkspaceId } = storeToRefs(ws)
 const { ensure: ensureCatalog, typeInfo } = useMiddlewareCatalog()
 
 const mwId = computed(() => Number(route.params.id))
+
+async function copy(text: string) {
+  if (await copyText(text)) notify.success('Copied')
+  else notify.error('Copy failed — select and copy it manually')
+}
+
+// The callback URL an OIDC policy needs registered with the provider. Miabi is
+// the only place that knows both halves — the route's host and the callback
+// path — and getting it wrong is the usual reason a first sign-in fails.
+const callbackUrls = computed(() => {
+  if (item.value?.type !== 'oidc') return []
+  const rule = (item.value.rule || {}) as Record<string, unknown>
+  const out: string[] = []
+  for (const r of usedBy.value) {
+    const path = String(rule.callbackPath || `${r.path.replace(/\/$/, '')}/oauth2/callback`)
+    for (const host of r.hosts?.length ? r.hosts : ['<your-host>']) {
+      out.push(`https://${host}${path.startsWith('/') ? path : '/' + path}`)
+    }
+  }
+  return [...new Set(out)]
+})
 const item = ref<Middleware | null>(null)
 const usedBy = ref<Route[]>([])
 const loading = ref(false)
@@ -101,6 +123,22 @@ async function confirmDelete() {
       </div>
     </div>
 
+    <div v-if="callbackUrls.length" class="card">
+      <div class="card-header"><h2>Redirect URI</h2></div>
+      <div class="card-body">
+        <p class="text-muted text-sm" style="margin: 0 0 12px">
+          Register these with your identity provider. A provider rejects a sign-in whose redirect URI it does
+          not recognise, which is the usual reason the first attempt fails.
+        </p>
+        <div v-for="url in callbackUrls" :key="url" class="code-box">
+          <code>{{ url }}</code>
+          <button type="button" class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(url)">
+            <span class="mdi mdi-content-copy"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-header"><h2>Used by</h2></div>
       <div class="card-body">
@@ -130,6 +168,23 @@ async function confirmDelete() {
 </template>
 
 <style scoped>
+.code-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+.code-box:last-child { margin-bottom: 0; }
+.code-box code {
+  color: var(--text-primary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .title-group { display: flex; align-items: center; gap: 12px; }
 .title-group h1 { margin: 0; line-height: 1.2; }
 .mono { font-family: monospace; font-size: 13px; }
