@@ -125,6 +125,9 @@ gateway:
         # Optional: restrict the panel + API to trusted IPs. Set your ranges in
         # the miabi-ip-allowlist middleware below, then uncomment this line.
         #- miabi-ip-allowlist
+        # Optional: throttle and auto-ban credential guessing against the auth
+        # endpoints. Uncomment to enable; tune it in miabi-auth-ratelimit below.
+        #- miabi-auth-ratelimit
 
 # Middlewares for the Miabi control-plane route above. Routes for user
 # applications are written separately under /etc/goma/providers and are not
@@ -156,7 +159,36 @@ middlewares:
         - 192.0.2.15         # an admin's static IPv4 address
         - 2001:db8:1234::/48 # office / home LAN (an IPv6 /48 prefix)
         - 2001:db8::1        # an admin's static IPv6 address
-        
+
+  # Optional brute-force protection for the sign-in surface. Only the endpoints
+  # that accept credentials are limited, so the panel and the rest of the API
+  # are untouched — rate-limiting those would break normal use.
+  #
+  # A client over the limit gets 429. After `banAfter` violations it is banned
+  # for `banDuration` and gets 403 until that expires. The defaults leave room
+  # for a person mistyping a password while closing the door on a script:
+  # 10 attempts a minute, 15 in a burst, banned for 15 minutes after 3
+  # violations.
+  #
+  # Clients are identified by IP. If Goma sits behind a CDN or load balancer,
+  # configure `proxy.trustedProxies` above first — otherwise every request
+  # carries the proxy's address, the whole world shares one bucket, and a single
+  # attacker locks everyone out.
+  #
+  # To turn it on, uncomment `- miabi-auth-ratelimit` in the route above.
+  - name: miabi-auth-ratelimit
+    type: rateLimit
+    paths:
+      # Credential-accepting endpoints only: sign-in, the CLI's login token,
+      # password reset, and 2FA verification.
+      - ^/api/v1/auth/(login|login-token|forgot-password|reset-password|complete-password-reset|2fa/verify).*$
+    rule:
+      unit: minute
+      requestsPerUnit: 10
+      burst: 5
+      banAfter: 3
+      banDuration: 15m
+
 # Multi-provider certManager: named providers, selected per-route via
 # `tls.provider: <name>` (or `none` to opt out). defaultProvider serves routes
 # that don't name one.
