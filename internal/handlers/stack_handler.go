@@ -33,7 +33,12 @@ type CreateStackRequest struct {
 
 type UpdateStackRequest struct {
 	Body struct {
+		// Name is immutable. It is still accepted so a client that PATCHes the whole
+		// object back unchanged keeps working; sending a different one is refused
+		// with 409 rather than silently ignored, so a rename never looks like it
+		// succeeded.
 		Name        *string `json:"name"`
+		DisplayName *string `json:"display_name"`
 		Description *string `json:"description"`
 	} `json:"body"`
 }
@@ -102,7 +107,11 @@ func (h *StackHandler) Update(c *okapi.Context, req *UpdateStackRequest) error {
 		return c.AbortBadRequest("invalid stack id")
 	}
 	wsID := middlewares.WorkspaceID(c)
-	st, err := h.svc.Update(wsID, id, stack.UpdateInput{Name: req.Body.Name, Description: req.Body.Description})
+	st, err := h.svc.Update(wsID, id, stack.UpdateInput{
+		Name:        req.Body.Name,
+		DisplayName: req.Body.DisplayName,
+		Description: req.Body.Description,
+	})
 	if err != nil {
 		return h.mapErr(c, err)
 	}
@@ -300,7 +309,8 @@ func (h *StackHandler) record(c *okapi.Context, wsID uint, action string, id uin
 
 func (h *StackHandler) mapErr(c *okapi.Context, err error) error {
 	switch {
-	case errors.Is(err, stack.ErrNameTaken), errors.Is(err, stack.ErrAppInOtherStack):
+	case errors.Is(err, stack.ErrNameTaken), errors.Is(err, stack.ErrAppInOtherStack),
+		errors.Is(err, stack.ErrNameImmutable):
 		return c.AbortWithError(409, err)
 	case errors.Is(err, stack.ErrNameRequired), errors.Is(err, stack.ErrKeyRequired), errors.Is(err, stack.ErrComposeInvalid):
 		return c.AbortBadRequest(err.Error())
