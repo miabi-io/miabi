@@ -24,8 +24,16 @@ import (
 )
 
 var (
-	ErrNameRequired    = errors.New("stack name is required")
-	ErrNameTaken       = errors.New("a stack with this name already exists")
+	ErrNameRequired = errors.New("stack name is required")
+	ErrNameTaken    = errors.New("a stack with this name already exists")
+	// ErrNameImmutable rejects renaming a stack. The name is the stack's identity,
+	// not a label: DockerName (the Compose project name stamped into every member
+	// container's labels), the per-stack Docker network and any volumes provisioned
+	// by an import are all derived from it at creation and never re-derived, and a
+	// GitOps bundle matches stacks by name — so a rename silently detaches the
+	// stack from its own resources and makes an apply create a duplicate. Use
+	// DisplayName for a label that can change.
+	ErrNameImmutable   = errors.New("a stack's name cannot be changed; edit its display name instead")
 	ErrNotFound        = errors.New("stack not found")
 	ErrAppNotFound     = errors.New("application not found in workspace")
 	ErrAppInOtherStack = errors.New("application already belongs to another stack")
@@ -193,7 +201,13 @@ func (s *Service) AppCount(stackID uint) (int64, error) {
 }
 
 type UpdateInput struct {
-	Name        *string
+	// Name is accepted only to be checked: passing the stack's current name is a
+	// no-op (so a client that PATCHes the whole object back still works), and
+	// passing a different one is refused. See ErrNameImmutable.
+	Name *string
+	// DisplayName is the free-text label shown in the console. This is the field
+	// that is meant to change.
+	DisplayName *string
 	Description *string
 	// Annotations, when non-nil, replaces the stack's annotations wholesale.
 	Annotations models.Metadata
@@ -204,21 +218,23 @@ func (s *Service) Update(workspaceID, id uint, in UpdateInput) (*models.Stack, e
 	if err != nil {
 		return nil, ErrNotFound
 	}
+	// Compared against the stored value so a no-op passes through: only an actual
+	// rename is refused.
 	if in.Name != nil {
 		name := slug.Make(*in.Name, "")
 		if name == "" {
 			return nil, ErrNameRequired
 		}
 		if name != st.Name {
-			taken, err := s.repo.ExistsByName(workspaceID, name)
-			if err != nil {
-				return nil, err
-			}
-			if taken {
-				return nil, ErrNameTaken
-			}
-			st.Name = name
+			return nil, ErrNameImmutable
 		}
+	}
+	if in.DisplayName != nil {
+		display := strings.TrimSpace(*in.DisplayName)
+		if display == "" {
+			display = st.Name
+		}
+		st.DisplayName = display
 	}
 	if in.Description != nil {
 		st.Description = strings.TrimSpace(*in.Description)

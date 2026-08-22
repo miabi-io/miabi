@@ -30,7 +30,7 @@ const showDelete = ref(false)
 const busyAction = ref('')
 const deleteWithApps = ref(false)
 const selectedAppId = ref<number | null>(null)
-const editForm = ref({ name: '', description: '' })
+const editForm = ref({ displayName: '', description: '' })
 // Add/update env var modal — the same component the app Environment tab uses.
 // editingEnvKey is set while updating an existing variable (null when adding).
 const showEnvModal = ref(false)
@@ -119,14 +119,20 @@ async function deployAll() {
 
 function openEdit() {
   if (!stack.value) return
-  editForm.value = { name: stack.value.name, description: stack.value.description ?? '' }
+  editForm.value = {
+    displayName: stack.value.display_name || stack.value.name,
+    description: stack.value.description ?? '',
+  }
   showEdit.value = true
 }
 
 async function saveEdit() {
   if (!wid.value) return
   try {
-    await stackApi.update(wid.value, stackId.value, { name: editForm.value.name.trim(), description: editForm.value.description.trim() })
+    await stackApi.update(wid.value, stackId.value, {
+      display_name: editForm.value.displayName.trim(),
+      description: editForm.value.description.trim(),
+    })
     notify.success('Stack updated')
     showEdit.value = false
     load()
@@ -266,14 +272,18 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
         <button class="btn btn-ghost btn-sm" @click="router.push('/stacks')">
           <span class="mdi mdi-arrow-left"></span> Stacks
         </button>
+        <!-- The display name is the editable label; the handle is permanent, so
+             both are shown rather than only the one that can change. -->
         <h1 style="margin-top: 8px">
-          {{ stack.name }}
+          {{ stack.display_name || stack.name }}
           <span class="badge" :class="aggregateClass()" style="margin-left: 8px; vertical-align: middle">
             {{ aggregate.running }}/{{ aggregate.total }} running
           </span>
         </h1>
         <div class="text-muted text-sm">{{ stack.description || 'No description' }}</div>
-        <div class="text-muted text-sm">Docker project: <code>{{ stack.docker_name }}</code></div>
+        <div class="text-muted text-sm">
+          <code>{{ stack.name }}</code> · Docker project: <code>{{ stack.docker_name }}</code>
+        </div>
       </div>
       <div class="flex items-center gap-2">
         <template v-if="ws.canEdit && stack.apps && stack.apps.length">
@@ -434,8 +444,23 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
         <form @submit.prevent="saveEdit">
           <div class="modal-body">
             <div class="form-group">
+              <label class="form-label">Display name</label>
+              <input v-model="editForm.displayName" class="form-input" aria-label="Display name" autofocus />
+              <p class="form-hint">The label shown in the console. Leave blank to fall back to the stack's name.</p>
+            </div>
+            <!-- The name is the stack's identity, not a label: its Compose project
+                 name, its Docker network and the key GitOps matches it by are all
+                 derived from it. Shown read-only so it is visible without looking
+                 editable. -->
+            <div class="form-group">
               <label class="form-label">Name</label>
-              <input v-model="editForm.name" class="form-input" aria-label="Name" required autofocus />
+              <input :value="stack.name" class="form-input" aria-label="Name" readonly disabled
+                style="font-family: monospace" />
+              <p class="form-hint">
+                Permanent. The Docker project name (<code>{{ stack.docker_name }}</code>), the stack's network and its
+                GitOps identity all derive from it. To use a different name, create a new stack and move the apps
+                across.
+              </p>
             </div>
             <div class="form-group" style="margin-bottom: 0">
               <label class="form-label">Description <span class="text-muted">(optional)</span></label>

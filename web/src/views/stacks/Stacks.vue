@@ -168,13 +168,16 @@ async function runImport() {
         <table>
           <thead><tr><th>Stack</th><th>Docker name</th><th>Apps</th><th>Status</th></tr></thead>
           <tbody>
-            <tr v-for="s in filtered" :key="s.id" class="row-clickable" @click="router.push(`/stacks/${s.id}`)">
+            <tr v-for="s in filtered" :key="s.id" class="row-clickable" :title="s.description"
+              @click="router.push(`/stacks/${s.id}`)">
               <td>
                 <div class="cell-id">
                   <span class="avatar avatar-sm"><span class="mdi mdi-layers-outline" style="font-size: 14px"></span></span>
+                  <!-- Label above, permanent handle below — the same shape the
+                       applications list uses, so the two read alike. -->
                   <span class="cell-text">
                     <span class="cell-title">{{ s.display_name || s.name }}</span>
-                    <span class="cell-sub">{{ s.description }}</span>
+                    <span class="cell-sub">{{ s.name }}</span>
                   </span>
                 </div>
               </td>
