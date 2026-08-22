@@ -406,7 +406,6 @@
           "type": "integer"
         },
         "symbols": {
-          "description": "Symbols widens the alphabet from alphanumeric to include punctuation. Pointer so an unset field keeps the historical alphanumeric default while an explicit `symbols: false` is still honored.",
           "type": "boolean"
         },
         "value": {
