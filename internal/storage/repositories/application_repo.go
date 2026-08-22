@@ -209,9 +209,35 @@ func (r *ApplicationRepository) SetCurrentReleaseImage(id, releaseID uint, statu
 
 // SetCanary records (or clears) the in-progress canary release and its traffic
 // weight. Pass releaseID=nil and weight=0 to clear the canary.
+//
+// Clearing also drops the rollout's routing rules. Every promote/abort/supersede
+// path goes through here, so doing it in one place is what guarantees a stale
+// `match` can never survive to target the next canary. The mode is a user
+// preference and is deliberately kept.
 func (r *ApplicationRepository) SetCanary(id uint, releaseID *uint, weight int) error {
+	fields := map[string]any{"canary_release_id": releaseID, "canary_weight": weight}
+	if releaseID == nil {
+		fields["canary_exclusive"] = false
+		fields["canary_priority"] = 0
+		fields["canary_match"] = nil
+	}
+	return r.db.Model(&models.Application{}).Where("id = ?", id).Updates(fields).Error
+}
+
+// SetCanaryRouting stores the app's canary steering: the mode, and (for manual
+// mode) the match rules the gateway routes on. Weight is untouched — it moves
+// through SetCanary — so saving rules never shifts traffic as a side effect.
+func (r *ApplicationRepository) SetCanaryRouting(id uint, mode models.CanaryMode, exclusive bool, priority int, match []models.CanaryMatchRule) error {
+	// Select names every column so the zero values (no rules, not exclusive,
+	// priority 0) are written rather than skipped as a struct update's defaults.
 	return r.db.Model(&models.Application{}).Where("id = ?", id).
-		Updates(map[string]any{"canary_release_id": releaseID, "canary_weight": weight}).Error
+		Select("canary_mode", "canary_exclusive", "canary_priority", "canary_match").
+		Updates(models.Application{
+			CanaryMode:      mode,
+			CanaryExclusive: exclusive,
+			CanaryPriority:  priority,
+			CanaryMatch:     match,
+		}).Error
 }
 
 func (r *ApplicationRepository) UpsertEnvVar(v *models.AppEnvVar) error {

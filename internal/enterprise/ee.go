@@ -50,6 +50,9 @@ const (
 	FlagUserWorkspaceMembershipLimit = "user_workspace_membership_limit"
 	FlagSSOLDAP                      = "sso_ldap"         // LDAP / Active Directory authentication
 	FlagAnalyticsExport              = "analytics_export" // workspace analytics export (CSV) + extended retention
+	// FlagAdvancedCanary gates user-driven canary rollouts: holding the weight
+	// manually instead of watching the ramp, and routing by request attributes.
+	FlagAdvancedCanary = "advanced_canary"
 )
 
 // FlagInfo describes one entitlement flag for tooling and documentation.
@@ -83,6 +86,7 @@ var AllFlags = []FlagInfo{
 	{FlagUserWorkspaceMembershipLimit, "per-user workspace-membership override"},
 	{FlagSSOLDAP, "LDAP / Active Directory authentication"},
 	{FlagAnalyticsExport, "workspace analytics export (CSV) + extended retention"},
+	{FlagAdvancedCanary, "manual canary control + attribute-based canary routing"},
 }
 
 // Commercial tier names. A tier is a preset bundle of flags and limits the issuer expands into a
@@ -199,7 +203,7 @@ const CommunityNodeLimit = -1
 // CommunityRunnerLimit is the number of platform-shared runners allowed without the
 // platform_runners entitlement (-1 = unlimited). The shared pool is uncapped in Community; the
 // entitlement is reserved for future scheduling. Per-workspace runners are always unlimited.
-const CommunityRunnerLimit = -1
+const CommunityRunnerLimit = 2
 
 // Entitlements is the resolved, point-in-time view of the installed license.
 // State is one of "valid" | "grace" | "degraded" | "none" (community).

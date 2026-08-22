@@ -14,11 +14,28 @@ type CertPair struct {
 	KeyPEM  string
 }
 
+// MatchRule is one condition on a request attribute. A backend carrying match
+// rules is only eligible for requests satisfying all of them (attribute-based
+// canary routing); Source, Operator and their valid values mirror the gateway's.
+type MatchRule struct {
+	Source   string // header | query | cookie | ip
+	Name     string // header/query/cookie key; unused for ip
+	Operator string // equals | not_equals | contains | not_contains | starts_with | ends_with | regex | in
+	Value    string // compared value; comma-separated list for `in`
+}
+
 // Backend is a single upstream for a route. Weight enables canary / weighted
-// load-balancing across backends; 0 means unweighted (single backend).
+// load-balancing across backends; 0 means unweighted (single backend). Match,
+// Exclusive and Priority add attribute-based canary routing: a matching
+// Exclusive backend takes all of the matching traffic, while a matching
+// non-exclusive one joins the weighted pool. Priority breaks ties between
+// several matching exclusive backends.
 type Backend struct {
-	Endpoint string // e.g. http://mb-app-1:8080
-	Weight   int    // relative weight; probability = weight / sum(weights)
+	Endpoint  string // e.g. http://mb-app-1:8080
+	Weight    int    // relative weight; probability = weight / sum(weights)
+	Exclusive bool
+	Priority  int
+	Match     []MatchRule
 }
 
 // RenderedRoute is the desired Goma route. Backends (the upstreams) are injected

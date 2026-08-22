@@ -1322,16 +1322,46 @@ func privateBindIP(srv *models.Server) string {
 func aliasBackends(app *models.Application, port int, scheme string) []proxy.Backend {
 	stable := fmt.Sprintf("%s://%s:%d", scheme, node.AppAlias(app), port)
 	w := app.CanaryWeight
-	if app.CanaryReleaseID == nil || w <= 0 {
-		return []proxy.Backend{{Endpoint: stable}}
-	}
 	if w > 100 {
 		w = 100
 	}
+	if w < 0 {
+		w = 0
+	}
+	rules := canaryMatchRules(app)
+	// An exclusive canary serves its matching traffic whatever its weight, so it
+	// stays in the route at weight 0; a plain weighted one drops out.
+	if app.CanaryReleaseID == nil || (w <= 0 && !(app.CanaryExclusive && len(rules) > 0)) {
+		return []proxy.Backend{{Endpoint: stable}}
+	}
+	canary := proxy.Backend{
+		Endpoint: fmt.Sprintf("%s://%s:%d", scheme, node.CanaryAlias(app), port),
+		Weight:   w,
+		Match:    rules,
+	}
+	// Exclusive and priority only mean anything to the gateway alongside rules;
+	// without them an exclusive backend would swallow every request.
+	if len(rules) > 0 {
+		canary.Exclusive = app.CanaryExclusive
+		canary.Priority = app.CanaryPriority
+	}
 	return []proxy.Backend{
 		{Endpoint: stable, Weight: 100 - w},
-		{Endpoint: fmt.Sprintf("%s://%s:%d", scheme, node.CanaryAlias(app), port), Weight: w},
+		canary,
 	}
+}
+
+// canaryMatchRules converts the app's stored match rules to the proxy shape.
+// Returns nil for an empty set so an ordinary canary renders unchanged.
+func canaryMatchRules(app *models.Application) []proxy.MatchRule {
+	if len(app.CanaryMatch) == 0 {
+		return nil
+	}
+	out := make([]proxy.MatchRule, 0, len(app.CanaryMatch))
+	for _, r := range app.CanaryMatch {
+		out = append(out, proxy.MatchRule{Source: r.Source, Name: r.Name, Operator: r.Operator, Value: r.Value})
+	}
+	return out
 }
 
 // portScheme returns the application scheme (http|https) the app declared for a

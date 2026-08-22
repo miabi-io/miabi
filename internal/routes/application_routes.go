@@ -369,6 +369,24 @@ func (r *Router) applicationRoutes() []okapi.RouteDefinition {
 			Handler:     r.h.app.AbortCanary,
 			Summary:     "Abort the canary deployment",
 		},
+		{
+			Method:      http.MethodPut,
+			Path:        base + "/{appID}/canary/routing",
+			Group:       apps,
+			Middlewares: appOp(models.PermAppDeploy),
+			Handler:     okapi.H(r.h.app.SetCanaryRouting),
+			Summary:     "Set canary mode and match rules (Enterprise beyond the automatic ramp)",
+			Request:     &handlers.CanaryRoutingRequest{},
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        base + "/{appID}/canary/preview",
+			Group:       apps,
+			Middlewares: appOp(models.PermAppRead),
+			Handler:     okapi.H(r.h.app.PreviewCanaryRouting),
+			Summary:     "Preview which backend would serve a request",
+			Request:     &handlers.CanaryPreviewRequest{},
+		},
 
 		// Per-resource access policies (Enterprise; gated resource_policies → 402 in CE).
 		{

@@ -1,5 +1,5 @@
 import api from './client'
-import type { ApiResponse, Application, AppOverview, AppPort, Deployment, DeploymentLogHistory, Release, AppEnvVar, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, ProcessList, RuntimeKind, ServiceUpdateConfig, PipelineRun, PipelineDefinition } from './types'
+import type { ApiResponse, Application, AppOverview, AppPort, Deployment, DeploymentLogHistory, Release, AppEnvVar, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, ProcessList, RuntimeKind, ServiceUpdateConfig, PipelineRun, PipelineDefinition, CanaryRoutingPayload, CanaryRoutingResult, CanaryPreview } from './types'
 
 /**
  * What a deploy returns when the app's repository owns a pipeline: the run that
@@ -165,6 +165,15 @@ export interface ResyncPipelineResult {
   adopted: boolean
 }
 
+// CanaryPreviewInput is the hypothetical request the preview is resolved against.
+// Every field is optional; whatever is absent reads as empty at the gateway.
+export interface CanaryPreviewInput {
+  headers?: Record<string, string>
+  query?: Record<string, string>
+  cookies?: Record<string, string>
+  ip?: string
+}
+
 export const appApi = {
   list(ws: number) {
     return api.get<ApiResponse<Application[]>>(`/workspaces/${ws}/apps`)
@@ -247,6 +256,14 @@ export const appApi = {
   },
   abortCanary(ws: number, id: number) {
     return api.delete<ApiResponse<{ message: string }>>(`/workspaces/${ws}/apps/${id}/canary`)
+  },
+  setCanaryRouting(ws: number, id: number, payload: CanaryRoutingPayload) {
+    return api.put<ApiResponse<CanaryRoutingResult>>(`/workspaces/${ws}/apps/${id}/canary/routing`, payload)
+  },
+  // Side-effect free: resolves a hypothetical request against the saved rules, so
+  // a rule set can be understood before production is pointed at it.
+  previewCanaryRouting(ws: number, id: number, req: CanaryPreviewInput) {
+    return api.post<ApiResponse<CanaryPreview>>(`/workspaces/${ws}/apps/${id}/canary/preview`, req)
   },
   // start/restart return a Deployment when they apply pending changes (redeploy),
   // otherwise a message.

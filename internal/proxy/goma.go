@@ -106,8 +106,21 @@ func maintenanceOf(route RenderedRoute) *gomaMaintenance {
 }
 
 type gomaBackend struct {
-	Endpoint string `yaml:"endpoint"`
-	Weight   int    `yaml:"weight,omitempty"`
+	Endpoint  string      `yaml:"endpoint"`
+	Weight    int         `yaml:"weight,omitempty"`
+	Exclusive bool        `yaml:"exclusive,omitempty"`
+	Priority  int         `yaml:"priority,omitempty"`
+	Match     []gomaMatch `yaml:"match,omitempty"`
+}
+
+// gomaMatch is one canary match condition. Every field is required by the
+// gateway, so none is omitempty — an incomplete rule must render visibly rather
+// than silently collapse into a rule that matches everything.
+type gomaMatch struct {
+	Source   string `yaml:"source"`
+	Name     string `yaml:"name"`
+	Operator string `yaml:"operator"`
+	Value    string `yaml:"value"`
 }
 
 // gomaTLS is a route's TLS block: either a named certManager provider serves the cert (the
@@ -238,9 +251,28 @@ func prefixAdvancedMwRefs(workspaceID uint, v any) any {
 func backendsOf(route RenderedRoute) []gomaBackend {
 	backends := make([]gomaBackend, 0, len(route.Backends))
 	for _, b := range route.Backends {
-		backends = append(backends, gomaBackend(b))
+		backends = append(backends, gomaBackend{
+			Endpoint:  b.Endpoint,
+			Weight:    b.Weight,
+			Exclusive: b.Exclusive,
+			Priority:  b.Priority,
+			Match:     matchesOf(b.Match),
+		})
 	}
 	return backends
+}
+
+// matchesOf converts a backend's match rules, returning nil for an empty set so
+// the rendered backend keeps its ordinary (match-less) shape.
+func matchesOf(rules []MatchRule) []gomaMatch {
+	if len(rules) == 0 {
+		return nil
+	}
+	out := make([]gomaMatch, 0, len(rules))
+	for _, r := range rules {
+		out = append(out, gomaMatch{Source: r.Source, Name: r.Name, Operator: r.Operator, Value: r.Value})
+	}
+	return out
 }
 
 // tlsOf returns the route's TLS block: an inline custom certificate when supplied, otherwise a
@@ -299,6 +331,19 @@ func gomaRouteValue(route RenderedRoute) (any, error) {
 			e := map[string]any{"endpoint": b.Endpoint}
 			if b.Weight != 0 {
 				e["weight"] = b.Weight
+			}
+			if b.Exclusive {
+				e["exclusive"] = true
+			}
+			if b.Priority != 0 {
+				e["priority"] = b.Priority
+			}
+			if len(b.Match) > 0 {
+				ml := make([]map[string]any, 0, len(b.Match))
+				for _, m := range b.Match {
+					ml = append(ml, map[string]any{"source": m.Source, "name": m.Name, "operator": m.Operator, "value": m.Value})
+				}
+				e["match"] = ml
 			}
 			bl = append(bl, e)
 		}
