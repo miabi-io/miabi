@@ -3,6 +3,7 @@ import type { ApiResponse, GitRepository, GitAuthType } from './types'
 
 export interface GitRepositoryInput {
   name: string
+  display_name?: string
   url: string
   auth_type?: GitAuthType
   username?: string
@@ -48,7 +49,9 @@ export const gitRepositoryApi = {
   get: (ws: number, id: number) => api.get<ApiResponse<GitRepository>>(`${base(ws)}/${id}`),
   create: (ws: number, input: GitRepositoryInput) => api.post<ApiResponse<GitRepository>>(base(ws), input),
   update: (ws: number, id: number, input: GitRepositoryInput) => api.patch<ApiResponse<GitRepository>>(`${base(ws)}/${id}`, input),
-  test: (ws: number, id: number) => api.post<ApiResponse<{ message: string }>>(`${base(ws)}/${id}/test`),
+  // Returns the repository with its refreshed connection status on success; a
+  // failed check is a 400 carrying the reason, and is persisted just the same.
+  test: (ws: number, id: number) => api.post<ApiResponse<GitRepository>>(`${base(ws)}/${id}/test`),
   remove: (ws: number, id: number) => api.delete<ApiResponse<{ message: string }>>(`${base(ws)}/${id}`),
   /**
    * Probe a repository before an app exists to hang the question off: does it

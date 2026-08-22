@@ -43,6 +43,21 @@ type GitRepository struct {
 	// credential. Mutually exclusive with Secret; a name, so the API returns it.
 	SecretRef string `json:"secret_ref,omitempty"`
 
+	// Connection state from the last reachability check: a `git ls-remote` against
+	// the URL with this credential. Persisted so the list can show whether a
+	// credential actually works without re-probing every remote on every page load
+	// — which would be slow, and would hammer the provider from a read.
+	//
+	// It is a point-in-time observation, not a guarantee: a token can be revoked a
+	// minute after a successful check, so ConnectionCheckedAt is shown alongside
+	// the status rather than the status standing on its own.
+	ConnectionStatus GitConnectionStatus `json:"connection_status,omitempty" gorm:"not null;default:unknown"`
+	// ConnectionError is the failure reason from the last check, empty when it
+	// succeeded. Surfaced verbatim so "authentication required" and "repository not
+	// found" stay distinguishable — they need different fixes.
+	ConnectionError     string     `json:"connection_error,omitempty"`
+	ConnectionCheckedAt *time.Time `json:"connection_checked_at,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
@@ -51,3 +66,17 @@ type GitRepository struct {
 	// reference.
 	HasSecret bool `json:"has_secret" gorm:"-"`
 }
+
+// GitConnectionStatus is the result of the last reachability check.
+type GitConnectionStatus string
+
+const (
+	// GitConnectionUnknown is a credential that has never been checked, or whose
+	// URL/credential changed since the last check.
+	GitConnectionUnknown GitConnectionStatus = "unknown"
+	// GitConnectionOK means the remote answered and the credential authenticated.
+	GitConnectionOK GitConnectionStatus = "ok"
+	// GitConnectionFailed means the last check could not reach or authenticate to
+	// the remote; ConnectionError says why.
+	GitConnectionFailed GitConnectionStatus = "failed"
+)
