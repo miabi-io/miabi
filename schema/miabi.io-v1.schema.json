@@ -390,13 +390,24 @@
     },
     "SecretSpec": {
       "additionalProperties": false,
-      "description": "SecretSpec is a write-only secret value. Value is never read back; the diff engine treats secrets as opaque (presence/absence only).",
+      "description": "SecretSpec is a write-only secret value. Value is never read back; the diff engine treats secrets as opaque (presence/absence only). The generation options mirror the console's generator exactly, so the same policy can be expressed in a manifest and in the UI and mean the same thing. Without them `generate:` could not satisfy a service that requires a symbol, and the two halves of the product would disagree about what generating a secret means.",
       "properties": {
         "generate": {
           "type": "boolean"
         },
         "length": {
           "type": "integer"
+        },
+        "minNumbers": {
+          "description": "MinNumbers / MinSpecial guarantee at least this many digits / symbols appear, for policies that demand them. Asking for symbols implies them.",
+          "type": "integer"
+        },
+        "minSpecial": {
+          "type": "integer"
+        },
+        "symbols": {
+          "description": "Symbols widens the alphabet from alphanumeric to include punctuation. Pointer so an unset field keeps the historical alphanumeric default while an explicit `symbols: false` is still honored.",
+          "type": "boolean"
         },
         "value": {
           "type": "string"

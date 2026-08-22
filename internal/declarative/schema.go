@@ -244,10 +244,30 @@ type RegistrySpec struct {
 
 // SecretSpec is a write-only secret value. Value is never read back; the diff
 // engine treats secrets as opaque (presence/absence only).
+//
+// The generation options mirror the console's generator exactly, so the same
+// policy can be expressed in a manifest and in the UI and mean the same thing.
+// Without them `generate:` could not satisfy a service that requires a symbol,
+// and the two halves of the product would disagree about what generating a
+// secret means.
 type SecretSpec struct {
 	Value    string `yaml:"value,omitempty" json:"value,omitempty"`
 	Generate bool   `yaml:"generate,omitempty" json:"generate,omitempty"`
 	Length   int    `yaml:"length,omitempty" json:"length,omitempty"`
+	Symbols  *bool  `yaml:"symbols,omitempty" json:"symbols,omitempty"`
+	// MinNumbers / MinSpecial guarantee at least this many digits / symbols
+	// appear, for policies that demand them. Asking for symbols implies them.
+	MinNumbers int `yaml:"minNumbers,omitempty" json:"minNumbers,omitempty"`
+	MinSpecial int `yaml:"minSpecial,omitempty" json:"minSpecial,omitempty"`
+}
+
+// WantSymbols reports whether the generated alphabet includes punctuation:
+// explicitly requested, or implied by asking for a minimum number of them.
+func (s SecretSpec) WantSymbols() bool {
+	if s.Symbols != nil {
+		return *s.Symbols
+	}
+	return s.MinSpecial > 0
 }
 
 // ConfigSpec is a set of named files projected into containers at mount time.

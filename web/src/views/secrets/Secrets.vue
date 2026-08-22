@@ -3,6 +3,9 @@ import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
+import GeneratorPanel from '@/components/GeneratorPanel.vue'
+import GenerateButton from '@/components/GenerateButton.vue'
+import SaveAsSecret from '@/components/SaveAsSecret.vue'
 import { secretApi, type SecretInput, type SecretOwnership } from '@/api/secrets'
 import type { Secret } from '@/api/types'
 import { usePagination } from '@/composables/usePagination'
@@ -162,6 +165,30 @@ function reference(s: Secret) {
   return `\${{ secrets.${s.name} }}`
 }
 // Literal reference examples (built in script so the `}}` doesn't confuse the
+// The generator modal: the deliberate "make me a value" path from the vault.
+// It shares GeneratorPanel with the /generator page and the inline button, so
+// the three cannot drift.
+const showGenerator = ref(false)
+const generatorSaving = ref(false)
+
+async function saveGenerated(name: string, description: string, value: string): Promise<boolean> {
+  const id = currentWorkspaceId.value
+  if (!id) return false
+  generatorSaving.value = true
+  try {
+    await secretApi.create(id, { name, value, description })
+    notify.success(`Secret “${name}” created.`)
+    showGenerator.value = false
+    reload()
+    return true
+  } catch (e) {
+    notify.apiError(e)
+    return false
+  } finally {
+    generatorSaving.value = false
+  }
+}
+
 // Vue template's mustache parser).
 const refExample = 'PASSWORD=${{ secrets.NAME }}'
 const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`)
@@ -175,8 +202,12 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
         <div class="text-muted text-sm subtitle">Reference these from any app's env, e.g. <code>{{ refExample }}</code>
           Values are resolved at deploy time and never shown unless revealed.</div>
       </div>
+      <div class="header-actions">
+        <button v-if="ws.canEdit" class="btn btn-secondary" @click="showGenerator = true"><span
+            class="mdi mdi-auto-fix"></span> Generator</button>
         <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate"><span class="mdi mdi-plus"></span> New
           secret</button>
+      </div>
     </div>
 
     <div class="card">
@@ -261,6 +292,22 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
     <Pagination :pageable="pageable" @page="goToPage" />
 
     <Teleport to="body">
+      <!-- Generator -->
+      <AppModal v-if="showGenerator" @close="showGenerator = false">
+        <div class="modal-header">
+          <h3>Generate a value</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showGenerator = false"><span
+              class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <GeneratorPanel>
+            <template #actions="{ value }">
+              <SaveAsSecret :value="value" :saving="generatorSaving" :save="saveGenerated" />
+            </template>
+          </GeneratorPanel>
+        </div>
+      </AppModal>
+
       <!-- Create / edit -->
       <AppModal v-if="showForm" @close="showForm = false">
         <div class="modal-header">
@@ -278,8 +325,11 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
               }}</code>.</p>
             </div>
             <div class="form-group">
-              <label class="form-label">Value <span v-if="editingId" class="text-muted">(leave blank to keep
-                  current)</span></label>
+              <label class="form-label">
+                Value <span v-if="editingId" class="text-muted">(leave blank to keep current)</span>
+                <GenerateButton v-if="ws.canEdit" label="Generate a value for this secret"
+                  @generated="form.value = $event" />
+              </label>
               <textarea v-model="form.value" class="form-input" rows="8" :required="!editingId"
                 placeholder="the secret value&#10;&#10;Multi-line values are stored exactly as entered, so a PEM certificate or private key can be pasted whole."
                 aria-label="Value" style="font-family: monospace; white-space: pre"></textarea>
@@ -390,6 +440,12 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
 </template>
 
 <style scoped>
+.header-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .text-muted {
   color: var(--text-muted);
 }

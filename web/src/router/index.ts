@@ -72,6 +72,7 @@ const routes = [
       { path: 'account/cli', name: 'account-cli', component: () => import('@/views/account/CliAccess.vue'), meta: { title: 'CLI access', noWorkspace: true } },
       { path: 'about', name: 'about', component: () => import('@/views/About.vue'), meta: { title: 'About' } },
       { path: 'webhooks', name: 'webhooks', component: () => import('@/views/notifications/Webhooks.vue'), meta: { title: 'Webhooks' } },
+      { path: 'generator', name: 'generator', component: () => import('@/views/generator/Generator.vue'), meta: { title: 'Generator' } },
       { path: 'workspaces', name: 'workspaces', component: () => import('@/views/workspaces/Workspaces.vue'), meta: { title: 'Workspaces' } },
       { path: 'workspaces/:id', name: 'workspace-detail', component: () => import('@/views/workspaces/WorkspaceSettings.vue'), meta: { title: 'Workspace' } },
       { path: 'events', name: 'workspace-events', component: () => import('@/views/workspaces/Events.vue'), meta: { title: 'Events' } },

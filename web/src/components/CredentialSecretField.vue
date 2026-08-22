@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import SecretPicker from '@/components/SecretPicker.vue'
+import GenerateButton from '@/components/GenerateButton.vue'
 
 /**
  * The secret half of a stored credential (a registry password, a Git token or
@@ -76,16 +77,20 @@ const required = computed(() => !props.editing)
         :required="required"
         :aria-label="label"
       ></textarea>
-      <input
-        v-else
-        v-model="literal"
-        type="password"
-        class="form-input"
-        :placeholder="placeholder || '••••••••'"
-        autocomplete="new-password"
-        :required="required"
-        :aria-label="label"
-      />
+      <!-- Single-line only: an SSH private key is a keypair, not a random
+           string, so offering to generate one here would be wrong. -->
+      <div v-else class="cred-input-row">
+        <input
+          v-model="literal"
+          type="password"
+          class="form-input"
+          :placeholder="placeholder || '••••••••'"
+          autocomplete="new-password"
+          :required="required"
+          :aria-label="label"
+        />
+        <GenerateButton :label="`Generate a value for ${label}`" @generated="literal = $event" />
+      </div>
     </template>
 
     <template v-else>
@@ -104,6 +109,8 @@ const required = computed(() => !props.editing)
 
 <style scoped>
 .source-tabs { margin-bottom: 10px; }
+.cred-input-row { display: flex; align-items: center; gap: 6px; }
+.cred-input-row .form-input { flex: 1; min-width: 0; }
 .text-muted { color: var(--text-muted); font-weight: 400; }
 .form-hint { margin: 6px 0 0; font-size: 12px; color: var(--text-muted); }
 </style>
