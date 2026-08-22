@@ -26,21 +26,23 @@ const (
 // are referenced by services as stable strings so adding a paid feature is "add
 // a constant + call Require", never a change to the license format.
 const (
-	FlagMultiSSO           = "multi_sso"            // more than one OAuth/OIDC provider
-	FlagSSOHiddenProvider  = "sso_hidden_provider"  // hide a provider from the public login page
-	FlagSSOSAML            = "sso_saml"             // SAML 2.0 + enforced SSO
-	FlagSCIM               = "scim"                 // SCIM 2.0 provisioning
-	FlagCustomRoles        = "custom_roles"         // data-driven RBAC roles
-	FlagResourcePolicies   = "resource_policies"    // per-resource permission grants
-	FlagQuotaOverride      = "quota_override"       // per-workspace plan quota overrides
-	FlagAuditLog           = "audit_log"            // view the audit log
-	FlagAuditExport        = "audit_export"         // audit log export + retention
-	FlagSIEMStream         = "siem_stream"          // live audit streaming to a SIEM
-	FlagHA                 = "ha"                   // HA control plane
-	FlagDR                 = "dr"                   // cross-region DR
-	FlagPlatformBackup     = "platform_backup"      // admin platform (control-plane) backup & restore
-	FlagWhiteLabel         = "white_label"          // full white-label branding
-	FlagPrivateRegistry    = "private_registry"     // private workspace template registry
+	FlagMultiSSO          = "multi_sso"           // more than one OAuth/OIDC provider
+	FlagSSOHiddenProvider = "sso_hidden_provider" // hide a provider from the public login page
+	FlagSSOSAML           = "sso_saml"            // SAML 2.0 + enforced SSO
+	FlagSCIM              = "scim"                // SCIM 2.0 provisioning
+	FlagCustomRoles       = "custom_roles"        // data-driven RBAC roles
+	FlagResourcePolicies  = "resource_policies"   // per-resource permission grants
+	FlagQuotaOverride     = "quota_override"      // per-workspace plan quota overrides
+	FlagAuditLog          = "audit_log"           // view the audit log
+	FlagAuditExport       = "audit_export"        // audit log export + retention
+	FlagSIEMStream        = "siem_stream"         // live audit streaming to a SIEM
+	FlagHA                = "ha"                  // HA control plane
+	FlagDR                = "dr"                  // cross-region DR
+	FlagPlatformBackup    = "platform_backup"     // admin platform (control-plane) backup & restore
+	FlagWhiteLabel        = "white_label"         // full white-label branding
+	// FlagPrivateRegistry gates running your own template catalog instead of
+	// Miabi's: a custom MIABI_MARKETPLACE_URL, self-hosted or a static export.
+	FlagPrivateRegistry    = "private_registry"
 	FlagSecurityProfile    = "security_profile"     // restricted (force non-root UID) profile
 	FlagRegistryS3         = "registry_s3"          // S3/MinIO storage for the built-in registry
 	FlagPlatformRunners    = "platform_runners"     // admin-managed platform-shared runner pool
@@ -78,7 +80,7 @@ var AllFlags = []FlagInfo{
 	{FlagDR, "cross-region DR"},
 	{FlagPlatformBackup, "admin platform (control-plane) backup & restore"},
 	{FlagWhiteLabel, "full white-label branding"},
-	{FlagPrivateRegistry, "private workspace template registry"},
+	{FlagPrivateRegistry, "private template registry (custom marketplace URL)"},
 	{FlagSecurityProfile, "restricted (force non-root UID) profile"},
 	{FlagRegistryS3, "S3/MinIO storage for the built-in registry"},
 	{FlagPlatformRunners, "admin-managed platform-shared runner pool"},

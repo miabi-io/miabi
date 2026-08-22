@@ -10,41 +10,114 @@ import (
 	"time"
 
 	"github.com/jkaninda/logger"
+	"github.com/miabi-io/miabi/internal/enterprise"
 	"github.com/miabi-io/miabi/internal/services/marketplace/manifest"
 )
 
-// defaultTTL bounds how long a cached bundle is trusted without a refresh. It is
-// only a safety net: a healthy install refreshes well within it via the sync
-// cron, and a 304 keeps serving the decoded view regardless.
 const defaultTTL = 24 * time.Hour
 
-// Store keeps the synced marketplace catalog: it fetches the export bundle conditionally, caches it in
-// Redis, and serves a decoded, digest-verified in-memory view. A nil client (empty MIABI_MARKETPLACE_URL)
-// is the air-gapped kill switch: Sync is a no-op and the catalog falls back to the embedded floor.
+type entitlementChecker interface {
+	Has(flag string) bool
+}
+
+// Store keeps the synced marketplace catalog
 type Store struct {
-	client *Client
-	cache  Cache
-	ttl    time.Duration
+	configured string
+	official   string
+	ee         entitlementChecker
+
+	cache Cache
+	ttl   time.Duration
 
 	mu        sync.RWMutex
+	client    *Client
+	activeURL string
+	denied    bool
 	etag      string
 	templates []DecodedTemplate
 	index     map[string]*DecodedTemplate // name -> template
 }
 
-// New builds a store for the marketplace at baseURL, backed by cache. An empty
-// baseURL disables syncing (embedded-only). cache may be nil to disable
-// persistence (decoded view is then in-memory only).
 func New(baseURL string, cache Cache) *Store {
-	s := &Store{cache: cache, ttl: defaultTTL, index: map[string]*DecodedTemplate{}}
-	if strings.TrimSpace(baseURL) != "" {
-		s.client = NewClient(baseURL)
-	}
+	s := &Store{configured: baseURL, cache: cache, ttl: defaultTTL, index: map[string]*DecodedTemplate{}}
+	s.resolve()
 	return s
 }
 
+func (s *Store) SetEntitlements(ee entitlementChecker, officialURL string) {
+	s.mu.Lock()
+	s.ee, s.official = ee, strings.TrimSpace(officialURL)
+	s.mu.Unlock()
+	s.resolve()
+}
+
+func (s *Store) effectiveURL() (url string, denied bool) {
+	s.mu.RLock()
+	configured, official, ee := strings.TrimSpace(s.configured), s.official, s.ee
+	s.mu.RUnlock()
+
+	if configured == "" || official == "" || sameMarketplace(configured, official) {
+		return configured, false
+	}
+	if ee != nil && ee.Has(enterprise.FlagPrivateRegistry) {
+		return configured, false
+	}
+	return official, true
+}
+
+// sameMarketplace compares two marketplace URLs the way the fetcher does, so a
+// trailing slash or a case difference in the scheme/host is not read as a custom
+// catalog.
+func sameMarketplace(a, b string) bool {
+	return strings.EqualFold(resolveExportURL(a), resolveExportURL(b))
+}
+
+func (s *Store) resolve() {
+	url, denied := s.effectiveURL()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	wasDenied := s.denied
+	s.denied = denied
+	if url == s.activeURL && (s.client != nil) == (url != "") {
+		if denied && !wasDenied {
+			logCustomMarketplaceDenied(s.configured, url)
+		}
+		return
+	}
+	s.activeURL = url
+	s.client = nil
+	if url != "" {
+		s.client = NewClient(url)
+	}
+	s.etag = ""
+	s.templates = nil
+	s.index = map[string]*DecodedTemplate{}
+	if denied {
+		logCustomMarketplaceDenied(s.configured, url)
+	}
+}
+
+func logCustomMarketplaceDenied(configured, fallback string) {
+	logger.Warn("marketplace: a custom marketplace requires an Enterprise license (the private_registry entitlement); "+
+		"syncing from the official catalog instead",
+		"configured", configured, "using", fallback)
+}
+
 // Enabled reports whether a marketplace URL is configured (sync active).
-func (s *Store) Enabled() bool { return s.client != nil }
+func (s *Store) Enabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.client != nil
+}
+
+// Source returns the marketplace actually being synced from, and whether a
+// configured custom one was refused for want of a license.
+func (s *Store) Source() (url string, denied bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.activeURL, s.denied
+}
 
 // LoadCache populates the in-memory view from a previously-synced bundle, so a
 // restart can serve community templates before the first live sync completes.
@@ -52,7 +125,16 @@ func (s *Store) LoadCache(ctx context.Context) error {
 	if s.cache == nil {
 		return nil
 	}
-	data, etag, err := s.cache.Load(ctx)
+	s.resolve()
+	s.mu.RLock()
+	source := s.activeURL
+	s.mu.RUnlock()
+	if source == "" {
+		return nil
+	}
+	// Scoped to the source: a bundle cached from a marketplace this install may no
+	// longer sync from must not be served after the fallback.
+	data, etag, err := s.cache.Load(ctx, source)
 	if err != nil || len(data) == 0 {
 		return err
 	}
@@ -62,14 +144,18 @@ func (s *Store) LoadCache(ctx context.Context) error {
 // Sync fetches the export bundle conditionally and refreshes the cache and the
 // in-memory view. A 304 (ETag match) is a no-op. Disabled stores return nil.
 func (s *Store) Sync(ctx context.Context) error {
-	if s.client == nil {
+	// Re-resolve first: a license installed or lapsed since the last sync changes
+	// which catalog this install may pull from, without a restart.
+	s.resolve()
+
+	s.mu.RLock()
+	client, source, etag := s.client, s.activeURL, s.etag
+	s.mu.RUnlock()
+	if client == nil {
 		return nil
 	}
-	s.mu.RLock()
-	etag := s.etag
-	s.mu.RUnlock()
 
-	data, newETag, notModified, err := s.client.Fetch(ctx, etag)
+	data, newETag, notModified, err := client.Fetch(ctx, etag)
 	if err != nil {
 		return err
 	}
@@ -80,7 +166,7 @@ func (s *Store) Sync(ctx context.Context) error {
 		return err
 	}
 	if s.cache != nil {
-		if err := s.cache.Save(ctx, data, newETag, s.ttl); err != nil {
+		if err := s.cache.Save(ctx, source, data, newETag, s.ttl); err != nil {
 			logger.Warn("marketplace: failed to cache bundle", "error", err)
 		}
 	}
