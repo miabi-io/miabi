@@ -588,8 +588,19 @@ export interface GitRepository {
   /** Name of the workspace Secret holding the token or key, when the credential
    *  references the vault instead of storing its own copy. */
   secret_ref?: string
+  /** Result of the last reachability check (`git ls-remote` with this
+   *  credential). Recorded when the repository is created, when its URL or
+   *  credential changes, and on an explicit test — never on a read, so the list
+   *  does not re-probe every remote on every page load. */
+  connection_status?: GitConnectionStatus
+  /** Why the last check failed; empty when it succeeded. */
+  connection_error?: string
+  connection_checked_at?: string
   created_at?: string
 }
+
+/** `unknown` = never checked (or the target changed since). */
+export type GitConnectionStatus = 'unknown' | 'ok' | 'failed'
 
 export interface Webhook {
   id: number

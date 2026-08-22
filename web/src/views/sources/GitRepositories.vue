@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { gitRepositoryApi, type GitRepositoryInput } from '@/api/gitRepositories'
-import type { GitRepository, GitAuthType } from '@/api/types'
+import type { GitConnectionStatus, GitRepository, GitAuthType } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import CredentialSecretField from '@/components/CredentialSecretField.vue'
 import AppModal from '@/components/AppModal.vue'
@@ -20,7 +20,7 @@ const testing = ref<number | null>(null)
 const showModal = ref(false)
 const saving = ref(false)
 const editing = ref<GitRepository | null>(null)
-const form = ref<GitRepositoryInput>({ name: '', url: '', auth_type: 'public', username: '', secret: '' })
+const form = ref<GitRepositoryInput>({ name: '', display_name: '', url: '', auth_type: 'public', username: '', secret: '' })
 
 async function load(id: number | null) {
   if (!id) { items.value = []; return }
@@ -37,12 +37,21 @@ watch(currentWorkspaceId, load, { immediate: true })
 
 function openCreate() {
   editing.value = null
-  form.value = { name: '', url: '', auth_type: 'public', username: '', secret: '' }
+  form.value = { name: '', display_name: '', url: '', auth_type: 'public', username: '', secret: '' }
   showModal.value = true
 }
 function openEdit(r: GitRepository) {
   editing.value = r
-  form.value = { name: r.name, url: r.url, auth_type: r.auth_type, username: r.username, secret: '' }
+  form.value = {
+    // The name goes back unchanged: it is permanent, and the API refuses a
+    // rename. display_name is the label that can be edited.
+    name: r.name,
+    display_name: r.display_name || r.name,
+    url: r.url,
+    auth_type: r.auth_type,
+    username: r.username,
+    secret: '',
+  }
   showModal.value = true
 }
 
@@ -50,12 +59,23 @@ async function save() {
   if (!currentWorkspaceId.value) return
   saving.value = true
   try {
-    if (editing.value) {
-      await gitRepositoryApi.update(currentWorkspaceId.value, editing.value.id, form.value)
-      notify.success('Git repository updated')
+    // Saving runs a connection check server-side, and the saved repository comes
+    // back carrying its result — so the outcome is reported here rather than
+    // leaving the user to notice an icon and press Test.
+    const saved = editing.value
+      ? (await gitRepositoryApi.update(currentWorkspaceId.value, editing.value.id, form.value)).data.data
+      : (await gitRepositoryApi.create(currentWorkspaceId.value, form.value)).data.data
+    const verb = editing.value ? 'updated' : 'added'
+    if (saved?.connection_status === 'failed') {
+      // Saved, but it does not work: an error toast, because it needs fixing —
+      // and the repository is on the list either way, with the reason on its row.
+      notify.error(`Git repository ${verb}, but the connection failed`, {
+        detail: saved.connection_error || undefined,
+      })
+    } else if (saved?.connection_status === 'ok') {
+      notify.success(`Git repository ${verb} — connection verified`)
     } else {
-      await gitRepositoryApi.create(currentWorkspaceId.value, form.value)
-      notify.success('Git repository added')
+      notify.success(`Git repository ${verb}`)
     }
     showModal.value = false
     load(currentWorkspaceId.value)
@@ -76,7 +96,33 @@ async function test(r: GitRepository) {
     notify.apiError(e, 'Connection failed')
   } finally {
     testing.value = null
+    // The outcome is recorded server-side either way, so refresh to show it
+    // rather than leaving the row's icon stale.
+    load(currentWorkspaceId.value)
   }
+}
+
+// How the last check is rendered. `unknown` is its own state, not a failure:
+// a credential that has never been checked has not failed anything.
+const CONNECTION: Record<GitConnectionStatus, { icon: string; cls: string; label: string }> = {
+  ok: { icon: 'mdi-check-circle', cls: 'conn-ok', label: 'Connected' },
+  failed: { icon: 'mdi-alert-circle', cls: 'conn-failed', label: 'Connection failed' },
+  unknown: { icon: 'mdi-help-circle-outline', cls: 'conn-unknown', label: 'Not checked yet' },
+}
+
+function connection(r: GitRepository) {
+  return CONNECTION[r.connection_status ?? 'unknown'] ?? CONNECTION.unknown
+}
+
+// The status is a point-in-time observation — a token can be revoked a minute
+// after a green check — so the tooltip always says when it was taken.
+function connectionTitle(r: GitRepository): string {
+  const when = r.connection_checked_at
+    ? ` · checked ${new Date(r.connection_checked_at).toLocaleString()}`
+    : ''
+  if (r.connection_status === 'failed') return `${r.connection_error || 'Connection failed'}${when}`
+  if (r.connection_status === 'ok') return `Connected${when}`
+  return 'Not checked yet — use Test to check this credential.'
 }
 
 const pendingDelete = ref<GitRepository | null>(null)
@@ -125,7 +171,7 @@ const authTypes: { value: GitAuthType; label: string }[] = [
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Repository</th><th>URL</th><th>Auth</th><th></th></tr></thead>
+          <thead><tr><th>Repository</th><th>URL</th><th>Auth</th><th>Connection</th><th></th></tr></thead>
           <tbody>
             <tr v-for="r in items" :key="r.id">
               <td>
@@ -133,7 +179,10 @@ const authTypes: { value: GitAuthType; label: string }[] = [
                   <span class="avatar avatar-sm"><span class="mdi mdi-git" style="font-size: 14px"></span></span>
                   <span class="cell-text">
                     <span class="cell-title">{{ r.display_name || r.name }}</span>
+                    <!-- The handle is what apps and pipelines reference, so it
+                         stays visible even when a display name is set. -->
                     <span class="cell-sub">
+                      <code>{{ r.name }}</code> ·
                       <template v-if="r.secret_ref">
                         <span class="mdi mdi-key-variant"></span> {{ r.secret_ref }}
                       </template>
@@ -144,6 +193,14 @@ const authTypes: { value: GitAuthType; label: string }[] = [
               </td>
               <td class="cell-sub">{{ r.url }}</td>
               <td><span class="badge badge-neutral">{{ r.auth_type }}</span></td>
+              <td>
+                <!-- The icon carries the state; the tooltip carries the reason
+                     and when it was observed. -->
+                <span class="conn" :class="connection(r).cls" :title="connectionTitle(r)">
+                  <span class="mdi" :class="connection(r).icon"></span>
+                  <span class="conn-label">{{ connection(r).label }}</span>
+                </span>
+              </td>
               <td class="text-right table-actions">
                 <button class="btn-icon btn-icon-muted" title="Test connection" aria-label="Test connection" :disabled="testing === r.id" @click="test(r)">
                   <span class="mdi" :class="testing === r.id ? 'mdi-loading mdi-spin' : 'mdi-connection'"></span>
@@ -165,10 +222,26 @@ const authTypes: { value: GitAuthType; label: string }[] = [
         </div>
         <form @submit.prevent="save">
           <div class="modal-body">
-            <div class="form-group">
+            <div v-if="!editing" class="form-group">
               <label class="form-label">Name</label>
               <input v-model="form.name" class="form-input" placeholder="e.g. acme/api" required autofocus aria-label="Name" />
+              <p class="form-hint">Permanent. Choose carefully — to change it later you have to delete and recreate the repository.</p>
             </div>
+            <template v-else>
+              <div class="form-group">
+                <label class="form-label">Display name</label>
+                <input v-model="form.display_name" class="form-input" autofocus aria-label="Display name" />
+                <p class="form-hint">The label shown in the console. Leave blank to fall back to the name.</p>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Name</label>
+                <input :value="form.name" class="form-input" aria-label="Name" readonly disabled style="font-family: monospace" />
+                <p class="form-hint">
+                  Permanent — applications and pipelines reference this credential by name. To use a different one,
+                  delete this repository and create it again.
+                </p>
+              </div>
+            </template>
             <div class="form-group">
               <label class="form-label">Repository URL</label>
               <input v-model="form.url" class="form-input" :placeholder="form.auth_type === 'ssh' ? 'git@github.com:acme/api.git' : 'https://github.com/acme/api.git'" required aria-label="Repository URL" />
@@ -217,6 +290,23 @@ const authTypes: { value: GitAuthType; label: string }[] = [
 </template>
 
 <style scoped>
+.conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.conn .mdi { font-size: 15px; }
+.conn-ok { color: var(--success-500, #22c55e); }
+.conn-failed { color: var(--danger-500, #ef4444); }
+.conn-unknown { color: var(--text-muted); }
+/* On a narrow viewport the icon alone carries the state; the tooltip still has
+   the detail. */
+@media (max-width: 900px) {
+  .conn-label { display: none; }
+}
+
 .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
 .text-muted { color: var(--text-muted); font-weight: 400; }
 .mdi-spin { animation: spin 0.8s linear infinite; }

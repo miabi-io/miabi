@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	gogit "github.com/go-git/go-git/v5"
 	gitconfig "github.com/go-git/go-git/v5/config"
@@ -20,6 +21,7 @@ import (
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 	"github.com/go-git/go-git/v5/storage/memory"
+	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/services/secret"
@@ -32,8 +34,14 @@ var (
 	ErrURLRequired    = errors.New("git repository URL is required")
 	ErrSecretRequired = errors.New("git credential secret is required")
 	ErrNameTaken      = errors.New("a git repository with this name already exists")
-	ErrNotFound       = errors.New("git repository not found")
-	ErrUnknownSecret  = errors.New("the referenced secret does not exist in this workspace")
+	// ErrNameImmutable rejects renaming a git repository. The name is how the
+	// credential is identified everywhere it is referenced — by applications that
+	// clone through it, and by pipelines that will bind to it as their source — so
+	// it is an identity rather than a label. Edit DisplayName instead; to use a
+	// different name, delete the repository and create it again.
+	ErrNameImmutable = errors.New("a git repository's name cannot be changed; edit its display name, or delete and recreate it")
+	ErrNotFound      = errors.New("git repository not found")
+	ErrUnknownSecret = errors.New("the referenced secret does not exist in this workspace")
 )
 
 // Secrets resolves a stored credential's secret: its own encrypted value, or the current value of the
@@ -53,9 +61,25 @@ type Vault interface {
 type Service struct {
 	repo    *repositories.GitRepoRepository
 	secrets Vault
+	// dial performs the reachability check. Swappable so tests can exercise the
+	// status bookkeeping without reaching the network — and so a probe never turns
+	// a unit test into an outbound request to whatever URL a fixture happens to
+	// name.
+	dial dialFunc
 }
 
-func NewService(repo *repositories.GitRepoRepository) *Service { return &Service{repo: repo} }
+// dialFunc probes a remote with a credential, returning nil when it answers and
+// authenticates.
+type dialFunc func(ctx context.Context, g *models.GitRepository) error
+
+func NewService(repo *repositories.GitRepoRepository) *Service {
+	s := &Service{repo: repo}
+	s.dial = s.lsRemote
+	return s
+}
+
+// SetDialer replaces the reachability check. Test-only seam.
+func (s *Service) SetDialer(d dialFunc) { s.dial = d }
 
 // SetSecrets wires the vault, enabling credentials that reference a Secret
 // rather than storing their own copy of the token or key.
@@ -130,6 +154,12 @@ func (s *Service) Create(workspaceID uint, in Input) (*models.GitRepository, err
 	if err := s.repo.Create(g); err != nil {
 		return nil, err
 	}
+	// Probe once, after saving. Deliberately not a precondition: a credential added
+	// before its repository exists, or during a network blip, is still worth
+	// storing — and refusing to save would leave the user with nothing and no
+	// record of what they typed. The failure is recorded on the row, so it is
+	// discarded here rather than failing the create.
+	_ = s.Probe(context.Background(), g)
 	return strip(g), nil
 }
 
@@ -138,30 +168,39 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.GitRepository,
 	if err != nil {
 		return nil, ErrNotFound
 	}
+	// Compared against the stored value so a no-op passes through: only an actual
+	// rename is refused, and a client PATCHing the whole object back still works.
 	if name := slug.Make(in.Name, ""); name != "" && name != g.Name {
-		taken, err := s.repo.ExistsByName(workspaceID, name)
-		if err != nil {
-			return nil, err
-		}
-		if taken {
-			return nil, ErrNameTaken
-		}
-		g.Name = name
+		return nil, ErrNameImmutable
 	}
 	if dn := strings.TrimSpace(in.DisplayName); dn != "" {
 		g.DisplayName = dn
 	}
+	// changed tracks whether anything the connection check depends on moved, so a
+	// pure relabel does not trigger a probe.
+	changed := false
 	if in.URL != "" {
-		g.URL = normalizeGitURL(in.URL)
+		if url := normalizeGitURL(in.URL); url != g.URL {
+			g.URL, changed = url, true
+		}
 	}
 	if in.AuthType != "" {
-		g.AuthType = normalizeAuthType(in.AuthType)
+		if at := normalizeAuthType(in.AuthType); at != g.AuthType {
+			g.AuthType, changed = at, true
+		}
+	}
+	if in.Username != g.Username {
+		changed = true
 	}
 	g.Username = in.Username
 	switch {
 	case g.AuthType == models.GitAuthPublic:
+		if g.Secret != "" || g.SecretRef != "" {
+			changed = true
+		}
 		g.Secret, g.SecretRef = "", "" // public repo carries no credential
 	case strings.TrimSpace(in.Secret) != "":
+		changed = true
 		// Switching between a stored token and a vault reference always clears the
 		// other form.
 		enc, ref, err := s.storeSecret(workspaceID, in.Secret)
@@ -172,6 +211,14 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.GitRepository,
 	}
 	if err := s.repo.Update(g); err != nil {
 		return nil, err
+	}
+	// Only re-probe when something the check actually depends on moved. Renaming
+	// the label should not cost a round trip to the provider, and should not reset
+	// a known-good status to "checking".
+	if changed {
+		// As on create: the outcome lands on the row, so a failed check does not
+		// fail the update that saved a corrected credential.
+		_ = s.Probe(context.Background(), g)
 	}
 	return strip(g), nil
 }
@@ -226,6 +273,51 @@ func (s *Service) TestConnection(ctx context.Context, workspaceID, id uint) erro
 	if err != nil {
 		return ErrNotFound
 	}
+	return s.Probe(ctx, g)
+}
+
+// probeTimeout bounds a reachability check. A create runs one inline, so an
+// unreachable host must not hold the request open for the transport's own
+// (much longer) timeout — the point is a prompt answer, and "timed out" is a
+// perfectly good status to record.
+const probeTimeout = 15 * time.Second
+
+// Probe checks whether the remote answers with this credential and records the
+// result on the row. The returned error is the failure for a caller that wants
+// to surface it; the status is persisted either way.
+//
+// Failures never propagate as a write error: the credential is already stored,
+// and a probe that could not reach the network is not a reason to fail the call
+// that saved it.
+func (s *Service) Probe(ctx context.Context, g *models.GitRepository) error {
+	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+
+	if s.dial == nil {
+		s.dial = s.lsRemote
+	}
+	err := s.dial(ctx, g)
+	now := time.Now().UTC()
+	g.ConnectionCheckedAt = &now
+	if err != nil {
+		g.ConnectionStatus = models.GitConnectionFailed
+		g.ConnectionError = connectionReason(err)
+	} else {
+		g.ConnectionStatus = models.GitConnectionOK
+		g.ConnectionError = ""
+	}
+	// Persisted through a targeted update: Save would rewrite the whole row from a
+	// struct the caller may have handed us stripped of its secret.
+	if uerr := s.repo.SetConnection(g.ID, g.ConnectionStatus, g.ConnectionError, now); uerr != nil {
+		logger.Warn("gitrepo: failed to record connection status", "id", g.ID, "error", uerr)
+	}
+	return err
+}
+
+// lsRemote is the real reachability check: a `git ls-remote`, the cheapest
+// request that proves both that the host answers and that the credential
+// authenticates.
+func (s *Service) lsRemote(ctx context.Context, g *models.GitRepository) error {
 	auth, err := AuthFor(g, s.secrets)
 	if err != nil {
 		return err
@@ -235,6 +327,25 @@ func (s *Service) TestConnection(ctx context.Context, workspaceID, id uint) erro
 		return fmt.Errorf("git connection failed: %w", err)
 	}
 	return nil
+}
+
+// connectionReason turns a transport error into something a user can act on.
+// go-git's messages are terse and the distinction that matters — "the host did
+// not answer" vs "it answered and said no" — is exactly the one that decides
+// whether to fix the URL or the token.
+func connectionReason(err error) string {
+	msg := err.Error()
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timed out reaching the repository — check the URL and that the host is reachable from this server"
+	case strings.Contains(msg, "authentication required"), strings.Contains(msg, "authorization failed"):
+		return "authentication failed — the credential was rejected, or the repository is private and no credential is set"
+	case strings.Contains(msg, "repository not found"):
+		return "repository not found — check the URL, and that the credential can see it"
+	case strings.Contains(msg, "no such host"), strings.Contains(msg, "dial tcp"):
+		return "could not reach the host — check the URL and this server's network access"
+	}
+	return msg
 }
 
 // CloneURLAuth resolves an explicit repository URL plus an optional stored credential into the normalized

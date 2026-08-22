@@ -4,6 +4,8 @@
 package repositories
 
 import (
+	"time"
+
 	"github.com/miabi-io/miabi/internal/models"
 	"gorm.io/gorm"
 )
@@ -16,6 +18,18 @@ func NewGitRepoRepository(db *gorm.DB) *GitRepoRepository { return &GitRepoRepos
 
 func (r *GitRepoRepository) Create(g *models.GitRepository) error { return r.db.Create(g).Error }
 func (r *GitRepoRepository) Update(g *models.GitRepository) error { return r.db.Save(g).Error }
+
+// SetConnection records the outcome of a reachability check. A targeted update
+// rather than a Save: the caller's struct may have been stripped of its secret
+// for a response, and Save would write that emptiness back.
+func (r *GitRepoRepository) SetConnection(id uint, status models.GitConnectionStatus, reason string, at time.Time) error {
+	return r.db.Model(&models.GitRepository{}).Where("id = ?", id).
+		Updates(map[string]any{
+			"connection_status":     status,
+			"connection_error":      reason,
+			"connection_checked_at": at,
+		}).Error
+}
 func (r *GitRepoRepository) Delete(id uint) error {
 	return r.db.Delete(&models.GitRepository{}, id).Error
 }

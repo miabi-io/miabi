@@ -37,11 +37,15 @@ type CreateGitRepoRequest struct {
 
 type UpdateGitRepoRequest struct {
 	Body struct {
-		Name     string `json:"name"`
-		URL      string `json:"url"`
-		AuthType string `json:"auth_type" enum:"public,token,ssh"`
-		Username string `json:"username"`
-		Secret   string `json:"secret"`
+		// Name is immutable. Still accepted so a client that PATCHes the whole
+		// object back unchanged keeps working; a different one is refused with 409
+		// rather than ignored, so a rename never looks like it succeeded.
+		Name        string `json:"name"`
+		DisplayName string `json:"display_name"`
+		URL         string `json:"url"`
+		AuthType    string `json:"auth_type" enum:"public,token,ssh"`
+		Username    string `json:"username"`
+		Secret      string `json:"secret"`
 	} `json:"body"`
 }
 
@@ -85,7 +89,8 @@ func (h *GitRepositoryHandler) Update(c *okapi.Context, req *UpdateGitRepoReques
 	}
 	wsID := middlewares.WorkspaceID(c)
 	g, err := h.svc.Update(wsID, id, gitrepo.Input{
-		Name: req.Body.Name, URL: req.Body.URL, AuthType: models.GitAuthType(req.Body.AuthType),
+		Name: req.Body.Name, DisplayName: req.Body.DisplayName, URL: req.Body.URL,
+		AuthType: models.GitAuthType(req.Body.AuthType),
 		Username: req.Body.Username, Secret: req.Body.Secret,
 	})
 	if err != nil {
@@ -113,13 +118,22 @@ func (h *GitRepositoryHandler) Test(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortBadRequest("invalid git repository id")
 	}
-	if err := h.svc.TestConnection(c.Request().Context(), middlewares.WorkspaceID(c), id); err != nil {
+	wsID := middlewares.WorkspaceID(c)
+	if err := h.svc.TestConnection(c.Request().Context(), wsID, id); err != nil {
 		if errors.Is(err, gitrepo.ErrNotFound) {
 			return c.AbortNotFound("git repository not found")
 		}
+		// The check ran; the answer was no. The outcome is persisted either way, so
+		// the client can refresh the row and see the recorded reason.
 		return c.AbortWithError(400, err)
 	}
-	return message(c, "connection succeeded")
+	// Returns the repository so the caller can update the row it just tested
+	// without re-listing.
+	g, err := h.svc.Get(wsID, id)
+	if err != nil {
+		return message(c, "connection succeeded")
+	}
+	return ok(c, g)
 }
 
 func (h *GitRepositoryHandler) id(c *okapi.Context) (uint, error) {
@@ -137,7 +151,7 @@ func (h *GitRepositoryHandler) record(c *okapi.Context, wsID uint, action string
 
 func (h *GitRepositoryHandler) mapErr(c *okapi.Context, err error) error {
 	switch {
-	case errors.Is(err, gitrepo.ErrNameTaken):
+	case errors.Is(err, gitrepo.ErrNameTaken), errors.Is(err, gitrepo.ErrNameImmutable):
 		return c.AbortWithError(409, err)
 	case errors.Is(err, gitrepo.ErrNameRequired), errors.Is(err, gitrepo.ErrURLRequired),
 		errors.Is(err, gitrepo.ErrSecretRequired), errors.Is(err, gitrepo.ErrUnknownSecret):
