@@ -270,7 +270,7 @@ func matchesOf(rules []MatchRule) []gomaMatch {
 	}
 	out := make([]gomaMatch, 0, len(rules))
 	for _, r := range rules {
-		out = append(out, gomaMatch{Source: r.Source, Name: r.Name, Operator: r.Operator, Value: r.Value})
+		out = append(out, gomaMatch(r))
 	}
 	return out
 }
