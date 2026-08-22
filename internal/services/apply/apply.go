@@ -1065,11 +1065,7 @@ func (s *Service) applySecret(workspaceID uint, ch declarative.Change, desired d
 		spec := desired.Secret
 		value := spec.Value
 		if spec.Generate {
-			n := spec.Length
-			if n <= 0 {
-				n = 32
-			}
-			value = declarative.RandAlphaNum(n)
+			value = declarative.GenerateSecret(*spec)
 		}
 		_, err := s.secrets.Create(workspaceID, ch.Name, value, "", nil)
 		return err

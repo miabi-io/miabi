@@ -10,6 +10,7 @@ import { nextTick, ref, watch } from 'vue'
 import { useDirtyGuard } from '@/composables/useModal'
 import AppModal from '@/components/AppModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import GenerateButton from '@/components/GenerateButton.vue'
 
 const props = defineProps<{
   open: boolean
@@ -98,6 +99,10 @@ function submit() {
               <label class="form-label">
                 Value
                 <span v-if="editingKey && form.secret" class="text-muted">— re-enter (secret values aren't shown)</span>
+                <!-- Only for a value marked secret: generating a plaintext
+                     config value would be nonsense. -->
+                <GenerateButton v-if="form.secret" label="Generate a value for this variable"
+                  @generated="form.value = $event" />
               </label>
               <textarea
                 v-model="form.value"

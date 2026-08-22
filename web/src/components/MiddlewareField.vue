@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import type { MiddlewareField } from '@/api/types'
+import GenerateButton from '@/components/GenerateButton.vue'
 
 // Recursive renderer for one middleware rule field. It mutates model[field.key]
 // in place (matching the form's direct-binding style), and recurses for nested
@@ -262,15 +263,18 @@ function removeTag(i: number) {
       />
     </div>
 
-    <!-- string / duration / secret -->
-    <input
-      v-else
-      v-model="model[f.key]"
-      class="form-input"
-      :type="f.secret ? 'password' : 'text'"
-      :placeholder="f.secret && editing ? '•••• (unchanged)' : f.placeholder || ''"
-      :aria-label="f.label"
-    />
+
+    <div v-else class="mw-input-row">
+      <input
+        v-model="model[f.key]"
+        class="form-input"
+        :type="f.secret ? 'password' : 'text'"
+        :placeholder="f.secret && editing ? '•••• (unchanged)' : f.placeholder || ''"
+        :aria-label="f.label"
+      />
+      <GenerateButton v-if="f.secret" :label="`Generate a value for ${f.label}`"
+        @generated="model[f.key] = $event" />
+    </div>
 
     <p v-if="f.help" class="form-hint">{{ f.help }}</p>
   </div>
@@ -278,6 +282,8 @@ function removeTag(i: number) {
 
 <style scoped>
 .mw-field { margin-bottom: 14px; }
+.mw-input-row { display: flex; align-items: center; gap: 6px; }
+.mw-input-row .form-input { flex: 1; min-width: 0; }
 .form-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 .req { color: var(--danger-600); margin-left: 2px; }
 .secret-ico { font-size: 13px; color: var(--text-muted); margin-left: 6px; }
