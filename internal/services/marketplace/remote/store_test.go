@@ -144,23 +144,40 @@ func TestStoreDisabled(t *testing.T) {
 	}
 }
 
+// memCache stores per source, like the Redis cache, so a test can prove a bundle
+// from one marketplace is never served for another.
 type memCache struct {
-	mu   sync.Mutex
+	mu      sync.Mutex
+	entries map[string]cacheEntry
+}
+
+type cacheEntry struct {
 	data []byte
 	etag string
 }
 
-func (c *memCache) Load(context.Context) ([]byte, string, error) {
+func (c *memCache) Load(_ context.Context, source string) ([]byte, string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.data, c.etag, nil
+	e := c.entries[source]
+	return e.data, e.etag, nil
 }
 
-func (c *memCache) Save(_ context.Context, data []byte, etag string, _ time.Duration) error {
+func (c *memCache) Save(_ context.Context, source string, data []byte, etag string, _ time.Duration) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.data, c.etag = data, etag
+	if c.entries == nil {
+		c.entries = map[string]cacheEntry{}
+	}
+	c.entries[source] = cacheEntry{data: data, etag: etag}
 	return nil
+}
+
+// get is a test helper for asserting on what was cached for a source.
+func (c *memCache) get(source string) cacheEntry {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.entries[source]
 }
 
 func TestStoreCacheRoundTrip(t *testing.T) {
@@ -172,8 +189,8 @@ func TestStoreCacheRoundTrip(t *testing.T) {
 	if err := s1.Sync(context.Background()); err != nil {
 		t.Fatalf("sync: %v", err)
 	}
-	if len(cache.data) == 0 || cache.etag != `"v1"` {
-		t.Fatalf("cache not populated: etag=%q len=%d", cache.etag, len(cache.data))
+	if e := cache.get(srv.URL); len(e.data) == 0 || e.etag != `"v1"` {
+		t.Fatalf("cache not populated: etag=%q len=%d", e.etag, len(e.data))
 	}
 
 	// A fresh store (e.g. after restart) serves the cached bundle without syncing.
