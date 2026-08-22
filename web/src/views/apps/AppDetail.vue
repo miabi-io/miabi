@@ -24,6 +24,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import MetadataCard from '@/components/MetadataCard.vue'
 import EnvVarModal from '@/components/EnvVarModal.vue'
 import RouteFormModal from '@/components/RouteFormModal.vue'
+import CanaryPanel from '@/components/CanaryPanel.vue'
 import AppAccessPanel from '@/components/AppAccessPanel.vue'
 import type { Application, AppOverview, Deployment, Release, AppEnvVar, Route, Network, Stack, Volume, StatsSample, Registry, GitRepository, AppEvent, AppPort, PortBinding, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, DatabaseInstance, LogicalDatabase, NodePlacement, PipelineDefinition } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
@@ -637,6 +638,17 @@ function followDeploy(res: Deployment | PipelineRunAccepted, message: string) {
 // Canary (live rollout state derived from the app)
 const canaryActive = computed(() => !!app.value?.canary_release_id)
 const canaryWeight = computed(() => app.value?.canary_weight ?? 0)
+const canaryManual = computed(() => app.value?.canary_mode === 'manual')
+// What the rollout card says about the weight, which differs entirely by mode:
+// the ramp is going somewhere, a manual canary is being held.
+const canaryModeHint = computed(() => {
+  if (!canaryManual.value) return '· shifting automatically, promotes at 100%'
+  const rules = app.value?.canary_match?.length ?? 0
+  if (!rules) return '· held manually'
+  return `· held manually, ${rules} match rule${rules === 1 ? '' : 's'}`
+})
+// The routing panel is only meaningful for an app that canaries at all.
+const showCanaryPanel = computed(() => canaryActive.value || app.value?.deploy_strategy === 'canary')
 const canaryBusy = ref(false)
 async function promoteCanary() {
   if (!wid.value || !app.value) return
@@ -723,6 +735,21 @@ function onSettingsRepoSelect() {
   if (repo) settingsForm.value.git_repo = repo.url
 }
 
+// The settings form as it was last filled from the server, and which app it was
+// filled for. loadApp() runs on every deployment SSE event and on the canary
+// rollout poll, so a background refresh must never refill the form on top of
+// unsaved work — that erases whatever is being typed.
+const settingsBaseline = ref('')
+const settingsSyncedFor = ref<number | null>(null)
+const settingsEdited = computed(() => JSON.stringify(settingsForm.value) !== settingsBaseline.value)
+
+// refillSettingsForm is what background refreshes call: it fills the form on a
+// first load or an app switch, and otherwise leaves unsaved edits alone. Explicit
+// resets (cancel, source switch, save) still call syncSettingsForm directly.
+function refillSettingsForm() {
+  if (settingsSyncedFor.value !== (app.value?.id ?? null) || !settingsEdited.value) syncSettingsForm()
+}
+
 function syncSettingsForm() {
   if (!app.value) return
   settingsForm.value = {
@@ -758,13 +785,15 @@ function syncSettingsForm() {
     hc_retries: app.value.healthcheck_retries || 3,
     hc_start_period: app.value.healthcheck_start_period_seconds || 0,
   }
+  settingsBaseline.value = JSON.stringify(settingsForm.value)
+  settingsSyncedFor.value = app.value.id
 }
 
 async function loadApp() {
   if (!wid.value || !appId.value) return
   try {
     app.value = (await appApi.get(wid.value, appId.value)).data.data
-    syncSettingsForm()
+    refillSettingsForm()
     await loadRepoPipeline()
   } catch (e) {
     notify.apiError(e)
@@ -2239,7 +2268,7 @@ async function detachDatabase(d: AppDatabase) {
             <div class="canary-legend">
               <span><i class="dot dot-stable"></i> stable {{ 100 - canaryWeight }}%</span>
               <span><i class="dot dot-canary"></i> canary {{ canaryWeight }}%</span>
-              <span class="text-muted">· shifting automatically, promotes at 100%</span>
+              <span class="text-muted">{{ canaryModeHint }}</span>
             </div>
           </div>
           <div v-if="ws.canEdit" class="canary-actions">
@@ -2247,6 +2276,9 @@ async function detachDatabase(d: AppDatabase) {
             <button class="btn btn-secondary btn-sm" :disabled="canaryBusy" @click="abortCanary">Abort</button>
           </div>
         </div>
+      </div>
+      <div v-if="showCanaryPanel && app && wid" class="canary-panel-slot">
+        <CanaryPanel :app="app" :ws-id="wid ?? 0" :can-edit="ws.canEdit" @changed="loadApp" />
       </div>
       <div class="card">
         <div class="card-header"><h2>Deployments</h2></div>
@@ -3674,6 +3706,7 @@ async function detachDatabase(d: AppDatabase) {
 
 /* Canary rollout + deployment strategy */
 .canary-card { border-color: var(--warning-500, #f59e0b); grid-column: 1 / -1; }
+.canary-panel-slot { grid-column: 1 / -1; }
 .canary-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 12px 16px; }
 .canary-title { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; }
 .canary-meter { flex: 1; min-width: 220px; }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/jkaninda/okapi"
+	"github.com/miabi-io/miabi/internal/enterprise"
 	"github.com/miabi-io/miabi/internal/hostmount"
 	"github.com/miabi-io/miabi/internal/logstore"
 	"github.com/miabi-io/miabi/internal/middlewares"
@@ -27,6 +28,7 @@ type ApplicationHandler struct {
 	svc      *application.Service
 	bus      *eventbus.Bus
 	audit    *audit.Logger
+	ee       enterprise.EE
 	logs     *logstore.Store
 	upgrader websocket.Upgrader
 }
@@ -36,11 +38,12 @@ type ApplicationHandler struct {
 // empty, or the object is gone. nil keeps DB-tail-only reads.
 func (h *ApplicationHandler) SetLogStore(s *logstore.Store) { h.logs = s }
 
-func NewApplicationHandler(svc *application.Service, bus *eventbus.Bus, auditLog *audit.Logger) *ApplicationHandler {
+func NewApplicationHandler(svc *application.Service, bus *eventbus.Bus, auditLog *audit.Logger, ee enterprise.EE) *ApplicationHandler {
 	return &ApplicationHandler{
 		svc:   svc,
 		bus:   bus,
 		audit: auditLog,
+		ee:    ee,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  32 * 1024,
 			WriteBufferSize: 32 * 1024,
@@ -846,6 +849,40 @@ type CanaryWeightRequest struct {
 	} `json:"body"`
 }
 
+// CanaryMatchRuleBody is one request-attribute condition in a canary rule set.
+type CanaryMatchRuleBody struct {
+	Source   string `json:"source" enum:"header,query,cookie,ip" required:"true"`
+	Name     string `json:"name"`
+	Operator string `json:"operator" enum:"equals,not_equals,contains,not_contains,starts_with,ends_with,regex,in" required:"true"`
+	Value    string `json:"value" required:"true"`
+}
+
+type CanaryRoutingRequest struct {
+	Body struct {
+		Mode      string                `json:"mode" enum:"auto,manual" required:"true"`
+		Exclusive bool                  `json:"exclusive"`
+		Priority  int                   `json:"priority"`
+		Match     []CanaryMatchRuleBody `json:"match"`
+	} `json:"body"`
+}
+
+// CanaryRoutingResponse confirms a saved rule set. Warnings are advisory — the
+// save happened — and describe something outside Miabi that has to be true for
+// the rules to route as they read (see the client-IP warning).
+type CanaryRoutingResponse struct {
+	Message  string   `json:"message"`
+	Warnings []string `json:"warnings,omitempty"`
+}
+
+type CanaryPreviewRequest struct {
+	Body struct {
+		Headers map[string]string `json:"headers"`
+		Query   map[string]string `json:"query"`
+		Cookies map[string]string `json:"cookies"`
+		IP      string            `json:"ip"`
+	} `json:"body"`
+}
+
 // StartCanary deploys a new version alongside the running release (canary).
 func (h *ApplicationHandler) StartCanary(c *okapi.Context, req *StartCanaryRequest) error {
 	app, err := h.load(c)
@@ -900,6 +937,50 @@ func (h *ApplicationHandler) AbortCanary(c *okapi.Context) error {
 	return message(c, "canary aborted")
 }
 
+func (h *ApplicationHandler) SetCanaryRouting(c *okapi.Context, req *CanaryRoutingRequest) error {
+	app, err := h.load(c)
+	if err != nil {
+		return c.AbortNotFound("application not found")
+	}
+	in := application.CanaryRouting{
+		Mode:      models.CanaryMode(req.Body.Mode),
+		Exclusive: req.Body.Exclusive,
+		Priority:  req.Body.Priority,
+	}
+	for _, r := range req.Body.Match {
+		in.Match = append(in.Match, models.CanaryMatchRule{Source: r.Source, Name: r.Name, Operator: r.Operator, Value: r.Value})
+	}
+
+	if advancedCanaryRequested(in) {
+		if err := h.ee.RequireMutable(enterprise.FlagAdvancedCanary); err != nil {
+			return entitlementAbort(c, err)
+		}
+	}
+	warnings, err := h.svc.SetCanaryRouting(c.Request().Context(), app, in)
+	if err != nil {
+		return h.mapCanaryErr(c, err)
+	}
+	h.record(c, app.WorkspaceID, "app.canary.routing", app.ID)
+	return ok(c, CanaryRoutingResponse{Message: "canary routing updated", Warnings: warnings})
+}
+
+func advancedCanaryRequested(in application.CanaryRouting) bool {
+	return in.Mode == models.CanaryModeManual || len(in.Match) > 0 || in.Exclusive || in.Priority != 0
+}
+
+func (h *ApplicationHandler) PreviewCanaryRouting(c *okapi.Context, req *CanaryPreviewRequest) error {
+	app, err := h.load(c)
+	if err != nil {
+		return c.AbortNotFound("application not found")
+	}
+	return ok(c, application.PreviewCanaryRouting(app, application.CanaryPreviewRequest{
+		Headers: req.Body.Headers,
+		Query:   req.Body.Query,
+		Cookies: req.Body.Cookies,
+		IP:      req.Body.IP,
+	}))
+}
+
 func (h *ApplicationHandler) mapCanaryErr(c *okapi.Context, err error) error {
 	switch {
 	case errors.Is(err, application.ErrNoCanary):
@@ -910,9 +991,30 @@ func (h *ApplicationHandler) mapCanaryErr(c *okapi.Context, err error) error {
 		return c.AbortWithError(409, errors.New("application has no running release; deploy it first"))
 	case errors.Is(err, application.ErrReleaseNotFound):
 		return c.AbortNotFound("release not found")
+	case isCanaryConfigErr(err):
+		return c.AbortBadRequest(err.Error())
 	default:
 		return c.AbortInternalServerError("canary operation failed", err)
 	}
+}
+
+func isCanaryConfigErr(err error) bool {
+	var re *application.ErrCanaryMatchRegex
+	if errors.As(err, &re) {
+		return true
+	}
+	for _, e := range []error{
+		application.ErrCanaryModeInvalid, application.ErrCanaryRulesNeedManual,
+		application.ErrCanaryExclusiveNoMatch, application.ErrCanaryPooledZeroWeight,
+		application.ErrCanaryTooManyRules, application.ErrCanaryMatchSource,
+		application.ErrCanaryMatchOperator, application.ErrCanaryMatchName,
+		application.ErrCanaryMatchValue, application.ErrCanaryPriority,
+	} {
+		if errors.Is(err, e) {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *ApplicationHandler) ListDeployments(c *okapi.Context) error {
@@ -1073,9 +1175,6 @@ func (h *ApplicationHandler) DeploymentLogsDownload(c *okapi.Context) error {
 	return streamLogDownload(c, h.logs, dep.LogRef, dep.Logs, filename)
 }
 
-// DeploymentLogHistory is the non-streaming logs payload for a (usually finished)
-// deployment: the full stored log as lines plus the current status, so the UI can
-// render a completed build with a single GET instead of opening an SSE stream.
 type DeploymentLogHistory struct {
 	Status    string   `json:"status"`
 	Lines     []string `json:"lines"`

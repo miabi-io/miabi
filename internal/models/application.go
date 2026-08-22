@@ -68,6 +68,89 @@ func ValidDeployStrategy(s DeployStrategy) bool {
 	}
 }
 
+// CanaryMode is who moves the canary's traffic weight during a rollout.
+type CanaryMode string
+
+const (
+	// CanaryModeAuto lets the platform ramp the weight on a timer until the canary
+	// reaches 100% and is promoted. Default, and the only mode in Community.
+	CanaryModeAuto CanaryMode = "auto"
+	// CanaryModeManual holds the weight wherever the user put it: the ramp never
+	// moves it, and traffic may additionally be steered by match rules.
+	CanaryModeManual CanaryMode = "manual"
+)
+
+// ValidCanaryMode reports whether m is a known canary mode.
+func ValidCanaryMode(m CanaryMode) bool {
+	switch m {
+	case CanaryModeAuto, CanaryModeManual:
+		return true
+	default:
+		return false
+	}
+}
+
+// Canary match sources: where the gateway reads the value a rule compares.
+const (
+	CanaryMatchSourceHeader = "header"
+	CanaryMatchSourceQuery  = "query"
+	CanaryMatchSourceCookie = "cookie"
+	CanaryMatchSourceIP     = "ip"
+)
+
+// Canary match operators
+const (
+	CanaryMatchOpEquals      = "equals"
+	CanaryMatchOpNotEquals   = "not_equals"
+	CanaryMatchOpContains    = "contains"
+	CanaryMatchOpNotContains = "not_contains"
+	CanaryMatchOpStartsWith  = "starts_with"
+	CanaryMatchOpEndsWith    = "ends_with"
+	CanaryMatchOpRegex       = "regex"
+	CanaryMatchOpIn          = "in"
+)
+
+// CanaryMatchSources / CanaryMatchOperators are the canonical, ordered lists,
+// shared by validation, the API schema and the console.
+var (
+	CanaryMatchSources = []string{
+		CanaryMatchSourceHeader, CanaryMatchSourceQuery, CanaryMatchSourceCookie, CanaryMatchSourceIP,
+	}
+	CanaryMatchOperators = []string{
+		CanaryMatchOpEquals, CanaryMatchOpNotEquals, CanaryMatchOpContains, CanaryMatchOpNotContains,
+		CanaryMatchOpStartsWith, CanaryMatchOpEndsWith, CanaryMatchOpRegex, CanaryMatchOpIn,
+	}
+)
+
+// ValidCanaryMatchSource reports whether s is a source the gateway can read.
+func ValidCanaryMatchSource(s string) bool {
+	for _, v := range CanaryMatchSources {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// ValidCanaryMatchOperator reports whether op is a comparison the gateway implements.
+func ValidCanaryMatchOperator(op string) bool {
+	for _, v := range CanaryMatchOperators {
+		if v == op {
+			return true
+		}
+	}
+	return false
+}
+
+// CanaryMatchRule is one condition a request must satisfy for the canary backend
+// to be eligible. All of an app's rules must hold (AND), matching the gateway.
+type CanaryMatchRule struct {
+	Source   string `json:"source"`
+	Name     string `json:"name"`
+	Operator string `json:"operator"`
+	Value    string `json:"value"`
+}
+
 // RuntimeKind is how an app runs: a single Docker container (default) or a replicated Swarm
 // service. Auto-gated on the manager being a swarm manager — a "service" app only deploys
 // when cluster mode is enabled.
@@ -359,16 +442,19 @@ type Application struct {
 	CanaryReleaseID *uint `json:"canary_release_id,omitempty"`
 	CanaryWeight    int   `json:"canary_weight" gorm:"not null;default:0"`
 
+	CanaryMode CanaryMode `json:"canary_mode" gorm:"not null;default:auto"`
+
+	CanaryExclusive bool              `json:"canary_exclusive" gorm:"not null;default:false"`
+	CanaryPriority  int               `json:"canary_priority" gorm:"not null;default:0"`
+	CanaryMatch     []CanaryMatchRule `json:"canary_match,omitempty" gorm:"serializer:json"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
-	EnvVars  []AppEnvVar `json:"env_vars,omitempty" gorm:"foreignKey:ApplicationID"`
-	Networks []Network   `json:"networks,omitempty" gorm:"many2many:application_networks;"`
-	Ports    []AppPort   `json:"ports,omitempty" gorm:"foreignKey:ApplicationID"`
-	Stack    *Stack      `json:"stack,omitempty" gorm:"foreignKey:StackID;constraint:OnDelete:SET NULL"`
-	// Credential FKs declared so deleting a referenced registry/git credential
-	// nulls the pointer here (ON DELETE SET NULL) instead of dangling. The app
-	// then pulls/clones anonymously until re-linked. Associations not serialized.
+	EnvVars       []AppEnvVar    `json:"env_vars,omitempty" gorm:"foreignKey:ApplicationID"`
+	Networks      []Network      `json:"networks,omitempty" gorm:"many2many:application_networks;"`
+	Ports         []AppPort      `json:"ports,omitempty" gorm:"foreignKey:ApplicationID"`
+	Stack         *Stack         `json:"stack,omitempty" gorm:"foreignKey:StackID;constraint:OnDelete:SET NULL"`
 	Registry      *Registry      `json:"-" gorm:"foreignKey:RegistryID;constraint:OnDelete:SET NULL"`
 	GitRepository *GitRepository `json:"-" gorm:"foreignKey:GitRepositoryID;constraint:OnDelete:SET NULL"`
 }
@@ -425,10 +511,6 @@ func SplitImageRef(ref string) (image, tag string) {
 	return ref, ""
 }
 
-// AppMount attaches storage at a container path: either a managed workspace volume
-// (VolumeID/DockerName) or, for privileged workspaces only, an allow-listed host bind
-// (HostPreset). Mutually exclusive; the host path is resolved server-side, never from input.
-// Reload policies for a mounted config's content change.
 const (
 	ReloadRestart = "restart"
 	ReloadNone    = "none"
@@ -438,14 +520,10 @@ type AppMount struct {
 	VolumeID   uint   `json:"volume_id"`
 	DockerName string `json:"docker_name"`
 	Path       string `json:"path"`
-	HostPreset string `json:"host_preset,omitempty"` // set => privileged host bind, not a volume
-	// HostPath is the bind source for a "host" driver volume (denormalized from the
-	// volume at attach time so the runtime binds it without a volume lookup). When
-	// set, the mount is a bind of HostPath, not a Docker named volume.
+	HostPreset string `json:"host_preset,omitempty"`
+
 	HostPath string `json:"host_path,omitempty"`
-	// ConfigID references a workspace Config, mutually exclusive with VolumeID and
-	// HostPreset; ConfigKey names the single file projected at Path, and Mode
-	// overrides the config's default file mode.
+
 	ConfigID  uint   `json:"config_id,omitempty"`
 	ConfigKey string `json:"config_key,omitempty"`
 	Mode      string `json:"mode,omitempty"`
@@ -471,13 +549,7 @@ const (
 	DeploymentPending   DeploymentStatus = "pending"
 	DeploymentBuilding  DeploymentStatus = "building"
 	DeploymentDeploying DeploymentStatus = "deploying"
-	// DeploymentCanary is non-terminal: the canary is live and serving weighted traffic while
-	// the rollout progresses. It becomes terminal on promote/supersede (succeeded) or abort
-	// (failed), so the deployment's log stream stays open for the whole rollout.
-	DeploymentCanary DeploymentStatus = "canary"
-	// DeploymentSucceeded is the terminal success state of a deploy attempt.
-	// Whether the app is currently live is a property of the active Release, not
-	// of a historical deployment.
+	DeploymentCanary    DeploymentStatus = "canary"
 	DeploymentSucceeded DeploymentStatus = "succeeded"
 	DeploymentFailed    DeploymentStatus = "failed"
 )
@@ -499,44 +571,24 @@ type Deployment struct {
 	Image         string           `json:"image"`
 	Trigger       string           `json:"trigger"`                                  // manual | rollback | auto | pipeline
 	Strategy      DeployStrategy   `json:"strategy" gorm:"not null;default:rolling"` // rollout method for this deploy
-	// Commit pins the source revision this deployment was built from. Set by the
-	// pipeline runner so a deploy reproduces the exact commit the run captured,
-	// even if the app's branch advanced after the run started.
-	Commit string `json:"commit,omitempty"`
-	// ImageID links a deployment to a prebuilt Image (built by a pipeline run on
-	// this node). When set and the image is present locally the deploy worker
-	// runs it directly — no rebuild, no pull.
-	ImageID *uint `json:"image_id,omitempty"`
-	// RegistryID is the registry credential used for this deploy (snapshot of
-	// the app's selection, allowing per-deploy override). nil = anonymous.
-	RegistryID *uint `json:"registry_id,omitempty"`
-	// NoCache rebuilt this deployment's image from scratch. Recorded per deployment because it
-	// explains a build that took minutes longer than the one before it.
-	NoCache bool `json:"no_cache,omitempty" gorm:"not null;default:false"`
-	// RunnerID records which runner built the image this deployment rolls out
-	// (provenance / "built on runner X"); nil for images built by the internal
-	// runner or pulled directly.
-	RunnerID    *uint  `json:"runner_id,omitempty"`
-	ContainerID string `json:"container_id,omitempty"`
-	// Logs is a bounded tail of the build/deploy output for instant display.
-	Logs         string     `json:"logs,omitempty" gorm:"type:text"`
-	LogRef       string     `json:"log_ref,omitempty"`
-	LogBytes     int64      `json:"log_bytes,omitempty"`
-	LogLines     int        `json:"log_lines,omitempty"`
-	LogTruncated bool       `json:"log_truncated,omitempty"`
-	Error        string     `json:"error,omitempty" gorm:"type:text"`
-	StartedAt    *time.Time `json:"started_at"`
-	FinishedAt   *time.Time `json:"finished_at"`
-	CreatedAt    time.Time  `json:"created_at"`
-
-	// Current is a transient flag (not persisted) marking the deployment whose
-	// release is the application's active one — i.e. what is live right now.
-	Current bool `json:"current" gorm:"-"`
+	Commit        string           `json:"commit,omitempty"`
+	ImageID       *uint            `json:"image_id,omitempty"`
+	RegistryID    *uint            `json:"registry_id,omitempty"`
+	NoCache       bool             `json:"no_cache,omitempty" gorm:"not null;default:false"`
+	RunnerID      *uint            `json:"runner_id,omitempty"`
+	ContainerID   string           `json:"container_id,omitempty"`
+	Logs          string           `json:"logs,omitempty" gorm:"type:text"`
+	LogRef        string           `json:"log_ref,omitempty"`
+	LogBytes      int64            `json:"log_bytes,omitempty"`
+	LogLines      int              `json:"log_lines,omitempty"`
+	LogTruncated  bool             `json:"log_truncated,omitempty"`
+	Error         string           `json:"error,omitempty" gorm:"type:text"`
+	StartedAt     *time.Time       `json:"started_at"`
+	FinishedAt    *time.Time       `json:"finished_at"`
+	CreatedAt     time.Time        `json:"created_at"`
+	Current       bool             `json:"current" gorm:"-"`
 }
 
-// BeforeCreate assigns the per-application sequential Number (MAX+1 scoped to the app).
-// Running inside the insert's transaction keeps every creation path consistent without each
-// call site computing it. An explicit Number (e.g. a backfill) is left untouched.
 func (d *Deployment) BeforeCreate(tx *gorm.DB) error {
 	if d.Number != 0 {
 		return nil
@@ -553,26 +605,15 @@ func (d *Deployment) BeforeCreate(tx *gorm.DB) error {
 
 // Release is a successfully deployed, rollback-able version of an application.
 type Release struct {
-	ID uint `json:"id" gorm:"primaryKey"`
-	// (ApplicationID, Version) is unique: concurrent deploys that both compute the
-	// same MAX(version)+1 can no longer both persist — one hits the constraint and
-	// rolls back instead of corrupting history with duplicate versions.
+	ID            uint   `json:"id" gorm:"primaryKey"`
 	ApplicationID uint   `json:"application_id" gorm:"index:idx_release_app_version,unique;index;not null"`
 	DeploymentID  uint   `json:"deployment_id" gorm:"not null"`
 	Version       int    `json:"version" gorm:"index:idx_release_app_version,unique;not null"`
 	Image         string `json:"image" gorm:"not null"`
 	ContainerID   string `json:"container_id"`
 	Active        bool   `json:"active" gorm:"not null;default:false"`
-	// Adopted marks a release whose ContainerID points at a pre-existing container adopted by
-	// the import flow rather than created by the deploy pipeline. It badges the container in the
-	// Docker browser and is cleared when a native deploy supersedes it.
-	Adopted bool `json:"adopted" gorm:"not null;default:false"`
-	// Pinned releases are protected from deletion during cleanup.
-	Pinned bool `json:"pinned" gorm:"not null;default:false"`
-
-	// Provenance (GitOps & CI/CD): image digest + config snapshot + version, so a release is a
-	// promotable artifact flowing through environments. Populated when a deploy comes from a
-	// pipeline run or a digest-pinned apply; zero for legacy hand-triggered deploys.
+	Adopted       bool   `json:"adopted" gorm:"not null;default:false"`
+	Pinned        bool   `json:"pinned" gorm:"not null;default:false"`
 	Digest        string `json:"digest,omitempty"`                       // sha256:… the release ran
 	Commit        string `json:"commit,omitempty"`                       // source commit, when known
 	PipelineRunID *uint  `json:"pipeline_run_id,omitempty" gorm:"index"` // producing run

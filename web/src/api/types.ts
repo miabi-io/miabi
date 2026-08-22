@@ -827,6 +827,13 @@ export interface Application {
   canary_step_interval_seconds?: number
   canary_release_id?: number | null
   canary_weight?: number
+  // Advanced canary (Enterprise: advanced_canary). `manual` stands the ramp down
+  // and lets the rules below steer traffic; cleared with the canary on
+  // promote/abort, while the mode is a standing preference.
+  canary_mode?: CanaryMode
+  canary_exclusive?: boolean
+  canary_priority?: number
+  canary_match?: CanaryMatchRule[]
   memory_bytes?: number
   nano_cpus?: number
   // GPU request (gated by the plan's allow_gpu). gpu_count = whole devices,
@@ -867,6 +874,61 @@ export interface ServiceUpdateConfig {
 }
 
 export type DeployStrategy = 'recreate' | 'rolling' | 'canary'
+
+// CanaryMode is who moves the canary's weight: the platform's timed ramp, or the
+// user.
+export type CanaryMode = 'auto' | 'manual'
+
+export type CanaryMatchSource = 'header' | 'query' | 'cookie' | 'ip'
+export type CanaryMatchOperator =
+  | 'equals'
+  | 'not_equals'
+  | 'contains'
+  | 'not_contains'
+  | 'starts_with'
+  | 'ends_with'
+  | 'regex'
+  | 'in'
+
+// CanaryMatchRule is one condition a request must satisfy for the canary to be
+// eligible. All of an app's rules must hold.
+export interface CanaryMatchRule {
+  source: CanaryMatchSource
+  name: string
+  operator: CanaryMatchOperator
+  value: string
+}
+
+export interface CanaryRoutingPayload {
+  mode: CanaryMode
+  exclusive: boolean
+  priority: number
+  match: CanaryMatchRule[]
+}
+
+// Warnings are advisory: the save happened, but something outside Miabi has to
+// be true for the rules to mean what they read as (see the client-IP warning).
+export interface CanaryRoutingResult {
+  message: string
+  warnings?: string[]
+}
+
+export interface CanaryPreviewRuleResult {
+  rule: CanaryMatchRule
+  actual: string
+  matched: boolean
+}
+
+// CanaryPreview answers "which backend would serve this request?". `split` means
+// both are eligible and the gateway picks by weight, so canary_chance is the
+// share of such requests the canary serves.
+export interface CanaryPreview {
+  backend: 'stable' | 'canary' | 'split'
+  canary_chance: number
+  matched: boolean
+  reason: string
+  rules?: CanaryPreviewRuleResult[]
+}
 
 export type RestartPolicy = 'no' | 'always' | 'unless-stopped' | 'on-failure'
 export type ImagePullPolicy = 'always' | 'if-not-present' | 'never'

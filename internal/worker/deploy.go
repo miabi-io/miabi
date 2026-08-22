@@ -1098,21 +1098,51 @@ func (h *DeployHandler) ProcessCanaryStep(ctx context.Context, task *asynq.Task)
 		}
 	}
 
-	next := nextCanaryWeight(app.CanaryWeight, canaryStep(app))
-	if next >= 100 {
+	action, next := nextCanaryRamp(app)
+	if action == canaryRampPromote {
 		h.autoPromoteCanary(app, rel)
 		return nil
 	}
-	_ = h.apps.SetCanary(app.ID, app.CanaryReleaseID, next)
-	if h.routes != nil {
-		_ = h.routes.SyncRoute(context.Background(), app.ID)
+	if action == canaryRampAdvance {
+		_ = h.apps.SetCanary(app.ID, app.CanaryReleaseID, next)
+		if h.routes != nil {
+			_ = h.routes.SyncRoute(context.Background(), app.ID)
+		}
+		h.recordCanary(app, rel.DeploymentID, models.SeverityInfo, fmt.Sprintf("Canary advanced to %d%% traffic", next))
+		logger.Info("canary advanced", "app", app.ID, "weight", next)
 	}
-	h.recordCanary(app, rel.DeploymentID, models.SeverityInfo, fmt.Sprintf("Canary advanced to %d%% traffic", next))
+	// Reschedule even when holding, so a manual canary keeps its health gate (a
+	// dead container is still auto-aborted) and switching back to automatic
+	// resumes the ramp on the next tick.
 	if h.producer != nil {
 		_ = h.producer.EnqueueCanaryStep(p.DeploymentID, canaryInterval(app), app.ServerID)
 	}
-	logger.Info("canary advanced", "app", app.ID, "weight", next)
 	return nil
+}
+
+// canaryRampAction is what the rollout timer should do on a tick.
+type canaryRampAction int
+
+const (
+	// canaryRampAdvance moves the weight to the returned value.
+	canaryRampAdvance canaryRampAction = iota
+	// canaryRampPromote ends the rollout: the ramp reached 100%.
+	canaryRampPromote
+	// canaryRampHold leaves the weight alone — manual mode, where the user owns it.
+	canaryRampHold
+)
+
+// nextCanaryRamp decides the timer's next move. A manual-mode app is never
+// stepped: its weight only ever moves because someone moved it.
+func nextCanaryRamp(app *models.Application) (canaryRampAction, int) {
+	if app.CanaryMode == models.CanaryModeManual {
+		return canaryRampHold, app.CanaryWeight
+	}
+	next := nextCanaryWeight(app.CanaryWeight, canaryStep(app))
+	if next >= 100 {
+		return canaryRampPromote, 100
+	}
+	return canaryRampAdvance, next
 }
 
 // canaryAppID resolves the application id for a canary deployment id (helper so

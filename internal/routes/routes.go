@@ -994,7 +994,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			apiKey:          handlers.NewAPIKeyHandler(apiKeyService, apiKeyRepo, workspaceRepo, auditLogger),
 			usage:           handlers.NewUsageHandler(quotaService, appRepo, dbRepo, volumeRepo, networkRepo, jobRepo, apiKeyRepo, workspaceRepo, repositories.NewRunnerRepository(db)),
 			workspace:       handlers.NewWorkspaceHandler(workspaceService, accountService, auditRepo, userRepo, auditLogger, ee),
-			app:             handlers.NewApplicationHandler(appService, bus, auditLogger),
+			app:             handlers.NewApplicationHandler(appService, bus, auditLogger, ee),
 			network:         handlers.NewNetworkHandler(networkService, auditLogger),
 			stack:           handlers.NewStackHandler(stackService, auditLogger),
 			route:           handlers.NewRouteHandler(routeService, settingsProvider, auditLogger),

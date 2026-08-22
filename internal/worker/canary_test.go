@@ -71,3 +71,41 @@ func TestCanaryTuningFallbacks(t *testing.T) {
 		t.Errorf("interval = %d, want 30", i)
 	}
 }
+
+// The automatic ramp must leave a manual-mode app's weight exactly where the
+// user put it, on every tick, forever — while still stepping an auto one.
+func TestCanaryRampHoldsInManualMode(t *testing.T) {
+	manual := &models.Application{CanaryMode: models.CanaryModeManual, CanaryWeight: 35, CanaryStepWeight: 20}
+	action, next := nextCanaryRamp(manual)
+	if action != canaryRampHold {
+		t.Errorf("manual mode: action = %v, want hold", action)
+	}
+	if next != 35 {
+		t.Errorf("manual mode moved the weight to %d, want it left at 35", next)
+	}
+	// Even at a weight the ramp would promote from.
+	manual.CanaryWeight = 95
+	if action, _ := nextCanaryRamp(manual); action != canaryRampHold {
+		t.Errorf("manual mode at 95%%: action = %v, want hold (never auto-promote)", action)
+	}
+}
+
+func TestCanaryRampAdvancesInAutoMode(t *testing.T) {
+	auto := &models.Application{CanaryMode: models.CanaryModeAuto, CanaryWeight: 10, CanaryStepWeight: 20}
+	action, next := nextCanaryRamp(auto)
+	if action != canaryRampAdvance || next != 30 {
+		t.Errorf("auto mode: action = %v, next = %d; want advance to 30", action, next)
+	}
+	auto.CanaryWeight = 90
+	if action, _ := nextCanaryRamp(auto); action != canaryRampPromote {
+		t.Errorf("auto mode at 90%% + 20%% step: action = %v, want promote", action)
+	}
+}
+
+// An app that predates canary modes (empty string) must ramp, not stall.
+func TestCanaryRampDefaultsToAuto(t *testing.T) {
+	legacy := &models.Application{CanaryWeight: 10, CanaryStepWeight: 20}
+	if action, next := nextCanaryRamp(legacy); action != canaryRampAdvance || next != 30 {
+		t.Errorf("legacy app: action = %v, next = %d; want advance to 30", action, next)
+	}
+}

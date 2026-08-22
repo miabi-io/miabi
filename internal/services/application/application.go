@@ -1167,6 +1167,9 @@ func normalizeDeployConfig(app *models.Application) {
 	}
 	app.RestartPolicy = normalizeRestartPolicy(app.RestartPolicy)
 	app.ImagePullPolicy = normalizeImagePullPolicy(app.ImagePullPolicy)
+	if !models.ValidCanaryMode(app.CanaryMode) {
+		app.CanaryMode = models.CanaryModeAuto
+	}
 	app.CanaryInitialWeight = clamp(app.CanaryInitialWeight, 1, 99)
 	app.CanaryStepWeight = clamp(app.CanaryStepWeight, 1, 99)
 	if app.CanaryStepIntervalSeconds < 10 {
@@ -2161,15 +2164,22 @@ func (s *Service) StartCanary(app *models.Application, registryOverride *uint, t
 
 // SetCanaryWeight changes the share of traffic sent to the canary (1–99) and
 // re-syncs the route immediately — no redeploy, no downtime.
+//
+// 0 is allowed only for an exclusive canary, where the rules alone decide who
+// reaches it. For any other canary a 0 weight is a rule set that quietly routes
+// nothing, so it is refused rather than clamped.
 func (s *Service) SetCanaryWeight(ctx context.Context, app *models.Application, weight int) error {
 	if app.CanaryReleaseID == nil {
 		return ErrNoCanary
 	}
-	if weight < 1 {
-		weight = 1
+	if weight < 0 {
+		weight = 0
 	}
 	if weight > 99 {
 		weight = 99
+	}
+	if weight == 0 && !(app.CanaryExclusive && len(app.CanaryMatch) > 0) {
+		return ErrCanaryPooledZeroWeight
 	}
 	if err := s.apps.SetCanary(app.ID, app.CanaryReleaseID, weight); err != nil {
 		return err
