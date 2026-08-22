@@ -53,24 +53,43 @@ const editable = computed(() => props.canEdit && advanced.mutable.value)
 // A configured-but-lapsed licence: keep showing what is serving, refuse changes.
 const readOnlyNotice = computed(() => advanced.has.value && !advanced.mutable.value)
 
-// syncFromApp resets the form to what is stored, so a reload or an external
-// change never leaves stale edits looking saved.
+// The canary routing as stored, and as the form currently has it. Both are
+// serialized so they can be compared by value: while a rollout is live the app
+// is re-fetched every few seconds, handing us a brand new object each time with
+// identical contents.
+const storedRouting = computed(() =>
+  JSON.stringify({
+    mode: props.app.canary_mode ?? 'auto',
+    exclusive: !!props.app.canary_exclusive,
+    priority: props.app.canary_priority ?? 0,
+    match: props.app.canary_match ?? [],
+  }),
+)
+const formRouting = computed(() =>
+  JSON.stringify({ mode: mode.value, exclusive: exclusive.value, priority: priority.value, match: rules.value }),
+)
+
+const lastSynced = ref('')
+
+// syncFromApp fills the form from what is stored, discarding unsaved edits.
 function syncFromApp() {
   mode.value = props.app.canary_mode ?? 'auto'
   exclusive.value = !!props.app.canary_exclusive
   priority.value = props.app.canary_priority ?? 0
   rules.value = (props.app.canary_match ?? []).map((r) => ({ ...r }))
+  lastSynced.value = storedRouting.value
 }
-watch(() => props.app, syncFromApp, { immediate: true, deep: true })
 
-const dirty = computed(() => {
-  const stored = {
-    mode: props.app.canary_mode ?? 'auto',
-    exclusive: !!props.app.canary_exclusive,
-    priority: props.app.canary_priority ?? 0,
-    match: props.app.canary_match ?? [],
-  }
-  return JSON.stringify(stored) !== JSON.stringify({ mode: mode.value, exclusive: exclusive.value, priority: priority.value, match: rules.value })
+const dirty = computed(() => formRouting.value !== storedRouting.value)
+// edited: the user has changed something since the form was last filled. Kept
+// apart from `dirty`, which also goes true when the STORED value moves.
+const edited = computed(() => formRouting.value !== lastSynced.value)
+
+// Switching apps always refills the form.
+watch(() => props.app.id, syncFromApp, { immediate: true })
+
+watch(storedRouting, () => {
+  if (!edited.value) syncFromApp()
 })
 
 function addRule() {
@@ -131,6 +150,9 @@ async function save() {
     // Warnings persist as a banner rather than a toast: they describe something
     // outside Miabi that has to be true, which outlives a 4-second notification.
     savedWarnings.value = res.data.data?.warnings ?? []
+    // What is in the form is now what is stored; adopt it as the baseline so the
+    // next fetch doesn't look like an unsaved edit and freeze out later syncs.
+    lastSynced.value = formRouting.value
     notify.success('Canary routing updated')
     emit('changed')
   } catch (e) {
@@ -181,7 +203,7 @@ function seedProbe() {
     if (r.source === 'cookie' && !probe.value.cookieName) probe.value.cookieName = r.name
   }
 }
-watch(() => props.app.canary_match, seedProbe, { immediate: true })
+watch(() => JSON.stringify(props.app.canary_match ?? []), seedProbe, { immediate: true })
 
 async function runPreview() {
   previewBusy.value = true

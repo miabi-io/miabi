@@ -735,6 +735,21 @@ function onSettingsRepoSelect() {
   if (repo) settingsForm.value.git_repo = repo.url
 }
 
+// The settings form as it was last filled from the server, and which app it was
+// filled for. loadApp() runs on every deployment SSE event and on the canary
+// rollout poll, so a background refresh must never refill the form on top of
+// unsaved work — that erases whatever is being typed.
+const settingsBaseline = ref('')
+const settingsSyncedFor = ref<number | null>(null)
+const settingsEdited = computed(() => JSON.stringify(settingsForm.value) !== settingsBaseline.value)
+
+// refillSettingsForm is what background refreshes call: it fills the form on a
+// first load or an app switch, and otherwise leaves unsaved edits alone. Explicit
+// resets (cancel, source switch, save) still call syncSettingsForm directly.
+function refillSettingsForm() {
+  if (settingsSyncedFor.value !== (app.value?.id ?? null) || !settingsEdited.value) syncSettingsForm()
+}
+
 function syncSettingsForm() {
   if (!app.value) return
   settingsForm.value = {
@@ -770,13 +785,15 @@ function syncSettingsForm() {
     hc_retries: app.value.healthcheck_retries || 3,
     hc_start_period: app.value.healthcheck_start_period_seconds || 0,
   }
+  settingsBaseline.value = JSON.stringify(settingsForm.value)
+  settingsSyncedFor.value = app.value.id
 }
 
 async function loadApp() {
   if (!wid.value || !appId.value) return
   try {
     app.value = (await appApi.get(wid.value, appId.value)).data.data
-    syncSettingsForm()
+    refillSettingsForm()
     await loadRepoPipeline()
   } catch (e) {
     notify.apiError(e)
