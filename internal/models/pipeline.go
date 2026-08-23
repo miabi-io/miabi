@@ -17,6 +17,20 @@ const (
 	PipelineSourceRepo PipelineSource = "repo"
 )
 
+// PipelineCheckout names what a pipeline clones into the shared workspace before
+// its steps run. Distinct from PipelineSource, which is about who owns the spec.
+type PipelineCheckout string
+
+const (
+	// CheckoutNone is a command-only pipeline: nothing is cloned, and steps run
+	// against an empty workspace.
+	CheckoutNone PipelineCheckout = "none"
+	// CheckoutApplication clones the bound application's repository.
+	CheckoutApplication PipelineCheckout = "application"
+	// CheckoutRepository clones a registered Git repository directly.
+	CheckoutRepository PipelineCheckout = "repository"
+)
+
 // PipelineDefinition is a versioned, pipeline-as-code definition
 // (kind: Pipeline). The raw YAML spec is stored so the runner reads the same
 // document the repo carries at .miabi/pipeline.yaml.
@@ -28,13 +42,17 @@ type PipelineDefinition struct {
 	Name string `json:"name" gorm:"index:idx_pipeline_ws_name,unique;not null"`
 	// DisplayName is the free-text label shown in the UI; not unique.
 	DisplayName string `json:"display_name"`
-	// ApplicationID optionally binds the pipeline's deploy step to an app.
-	ApplicationID *uint `json:"application_id,omitempty" gorm:"index"`
+	// ApplicationID optionally binds the pipeline to an application: the app
+	// supplies the source to clone, the image repository to push to, and the
+	// target a `uses: deploy` step deploys.
+	ApplicationID   *uint `json:"application_id,omitempty" gorm:"index"`
+	GitRepositoryID *uint `json:"git_repository_id,omitempty" gorm:"index"`
+	// GitRepository is the bound repository's name, filled on read.
+	GitRepository string `json:"git_repository,omitempty" gorm:"-"`
+	Branch        string `json:"branch,omitempty"`
 	// Spec is the raw kind: Pipeline YAML (on/steps). Parsed at run time.
-	Spec    string `json:"spec" gorm:"type:text;not null"`
-	Enabled bool   `json:"enabled" gorm:"not null;default:true"`
-	// WebhookSecret authenticates inbound provider push webhooks that fire this
-	// pipeline. Generated on create; never serialized.
+	Spec          string `json:"spec" gorm:"type:text;not null"`
+	Enabled       bool   `json:"enabled" gorm:"not null;default:true"`
 	WebhookSecret string `json:"-" gorm:"not null;default:''"`
 
 	// Source records who owns Spec. An empty value reads as manual, so pipelines
@@ -62,6 +80,19 @@ type PipelineDefinition struct {
 // IsRepoOwned reports whether the repository owns this pipeline's spec, which
 // makes it read-only in Miabi and re-read on every run.
 func (p *PipelineDefinition) IsRepoOwned() bool { return p.Source == PipelineSourceRepo }
+
+// Checkout reports what this pipeline clones. The application binding wins when
+// both are somehow set, though the service refuses to store that combination.
+func (p *PipelineDefinition) Checkout() PipelineCheckout {
+	switch {
+	case p.ApplicationID != nil:
+		return CheckoutApplication
+	case p.GitRepositoryID != nil:
+		return CheckoutRepository
+	default:
+		return CheckoutNone
+	}
+}
 
 // PipelineRunSummary is a lightweight view of a run for list contexts — enough
 // to render a status badge and "ran 2h ago" without shipping steps or logs.

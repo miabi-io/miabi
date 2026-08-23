@@ -1,14 +1,20 @@
 # Pipelines — triggering from Git
 
-A Miabi pipeline turns a **specific commit** into an **image** and deploys
-that exact artifact. This guide shows the three ways a `git push` (or a commit)
-can start a run. The runner clones the bound app's repo once at the run's commit
-into a shared `/workspace`, runs each step over it, builds an image with a
-captured digest (`uses: build`), and deploys it by that digest (`uses: deploy`).
+A Miabi pipeline turns a **specific commit** into an **image**, and — when it is
+bound to an application — deploys that exact artifact. This guide shows the three
+ways a `git push` (or a commit) can start a run.
 
-See [pipeline.yaml](pipeline.yaml) (minimal) and
+The runner clones the pipeline's bound source once at the run's commit into a
+shared `/workspace`, runs each step over it, and builds an image with a captured
+digest (`uses: build`). The source is either an **application's** repository or a
+registered **Git repository** on its own; only the first can also deploy
+(`uses: deploy`).
+
+See [pipeline.yaml](pipeline.yaml) (minimal),
 [pipeline-multistage.yaml](pipeline-multistage.yaml) (test → build → scan →
-deploy + schedule).
+deploy + schedule), and [pipeline-repository.yaml](pipeline-repository.yaml)
+(build a repository with no application attached — see
+[Build a repository without an application](#build-a-repository-without-an-application)).
 
 ```bash
 BASE=https://miabi.example.com   # your Miabi URL
@@ -21,13 +27,20 @@ TOKEN=mb_xxx                     # API token (Settings → API keys), Developer+
 The `/workspaces/{ws}` path accepts the workspace **name** (handle), its uid, or
 the numeric id — the readable name is used throughout below.
 
-## 0. Prerequisite: bind the pipeline to a Git-backed app
+## 0. Prerequisite: give the pipeline a source
 
-The runner needs a repo to clone, so `uses: build`/`uses: deploy` have a source
-and a target. Create (or pick) an **application** whose source is a Git repo
-(set its repository URL, branch, and — for private repos — a stored Git
-credential), then set the pipeline's **Application** to it. Create the pipeline
-from [pipeline.yaml](pipeline.yaml).
+The runner needs a repo to clone, so `uses: build` has something to build. A
+pipeline binds to one of two things:
+
+- **An application** — for build-and-deploy. Create (or pick) an application whose
+  source is a Git repo (its repository URL, branch, and for private repos a stored
+  Git credential), then set the pipeline's **Application** to it. Create the
+  pipeline from [pipeline.yaml](pipeline.yaml). The rest of this guide assumes
+  this case.
+- **A registered Git repository** — for build-and-push, with nothing deployed. See
+  [Build a repository without an application](#build-a-repository-without-an-application).
+
+It is one or the other, never both.
 
 ## Keep the spec in your repo: `.miabi/pipeline.yaml`
 
@@ -240,6 +253,116 @@ on:
 
 Manual runs come from the UI's **Run now** button or `POST …/trigger` with no
 commit (HEAD of the app's ref is resolved and recorded on the run).
+
+## Build a repository without an application
+
+Not everything you build is a Miabi app. A library, a base image, a CLI, a
+container you push somewhere else — the pipeline should clone the repo, build it,
+push the image, and stop. Bind the pipeline to a **repository** instead of an
+application: see [pipeline-repository.yaml](pipeline-repository.yaml).
+
+**There is no `uses: checkout` step.** The checkout is a property of the pipeline,
+not a step in it — the runner clones the bound source once, at the run's commit,
+before the first step. That is what lets a run have exactly one commit as its
+identity, in the logs, in the cache key, and in the record of what was built.
+
+### 1. Register the repository
+
+**Workspace → Git repositories → New** (or `POST /workspaces/{ws}/git-repositories`).
+Miabi checks the connection when you save it and shows the result on the row, so
+you know the credential works before a runner depends on it.
+
+```bash
+curl -s -X POST "$BASE/api/v1/workspaces/$WS/git-repositories" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{
+        "name": "acme-api",
+        "url": "https://github.com/acme/api.git",
+        "auth_type": "token",
+        "username": "x-access-token",
+        "secret": "ghp_xxx"
+      }'
+```
+
+The response carries `connection_status` — `ok`, or `failed` with
+`connection_error` saying why. Note the `name`; that is what the pipeline binds
+to.
+
+### 2. Create the pipeline bound to it
+
+```bash
+curl -s -X POST "$BASE/api/v1/workspaces/$WS/pipelines" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "$(jq -n --arg spec "$(cat pipeline-repository.yaml)" '{
+        name: "acme-api-image",
+        git_repository: "acme-api",
+        branch: "main",
+        spec: $spec,
+        enabled: true
+      }')"
+```
+
+**`git_repository` takes a name or an id, and the JSON type decides which.** A
+string is a name, a number is an id:
+
+```jsonc
+"git_repository": "acme-api"   // the repository named acme-api
+"git_repository": 3            // the repository with id 3
+"git_repository": "123"        // the repository *named* 123 — not id 123
+"git_repository": null         // unbind (on update)
+```
+
+That is why the type decides rather than a "try one, then the other" rule: an
+all-digit name is a valid handle, so any precedence would silently bind the wrong
+repository for someone. **Prefer the name.** It is immutable, unique per
+workspace, and the only form that means the same thing on another install — ids
+differ per instance. Reads return both: `git_repository` (the name) and
+`git_repository_id` (the resolved id).
+
+Names resolve **within the workspace** only; a pipeline cannot reach a credential
+registered in another one.
+
+From the console: **Pipelines → New**, set **Source** to *Repository*, pick the
+repository and (optionally) a branch.
+
+- **`branch`** is what manual and scheduled runs build. Blank clones the
+  repository's default branch. A push trigger always builds the commit it
+  carries, whatever this says.
+- **`application_id` and `git_repository` are mutually exclusive.** Each supplies
+  the checkout, so sending both is refused — there would be no answer to what the
+  run clones.
+
+### 3. Run it
+
+```bash
+curl -s -X POST "$BASE/api/v1/workspaces/$WS/pipelines/$PIPELINE/trigger" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"trigger":"manual"}'
+```
+
+The image lands at:
+
+```
+<registry-host>/ws_<workspace-id>/pl_acme-api-image:<run-number>
+```
+
+`pl_` keeps pipeline images out of the application namespace, so a pipeline and
+an unrelated app of the same name never push into the same repository. Browse
+them under **Container Registry**.
+
+### What is refused, and when
+
+Both of these are rejected when you **save** the pipeline, not when a runner
+picks it up — so you find out while editing:
+
+| Spec | Refused because |
+|---|---|
+| `uses: deploy` on a repository-bound pipeline | there is no application to deploy to |
+| `uses: build` on a pipeline bound to nothing | it would build an empty workspace and succeed |
+
+> **Repository-bound builds are uncached today.** An application-bound build
+> shares its layer cache with direct deploys of that app; a repository has no
+> equivalent to key that off yet, so every run rebuilds from scratch.
 
 ## Build cache
 

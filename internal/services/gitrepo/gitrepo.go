@@ -231,6 +231,17 @@ func (s *Service) Get(workspaceID, id uint) (*models.GitRepository, error) {
 	return strip(g), nil
 }
 
+// GetByName resolves a repository by its workspace-unique handle, for callers
+// that reference one by name rather than id — a manifest, a CLI flag, a pipeline
+// binding. Safe because the name is immutable.
+func (s *Service) GetByName(workspaceID uint, name string) (*models.GitRepository, error) {
+	g, err := s.repo.FindByName(workspaceID, slug.Make(name, ""))
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	return strip(g), nil
+}
+
 func (s *Service) List(workspaceID uint) ([]models.GitRepository, error) {
 	repos, err := s.repo.ListByWorkspace(workspaceID)
 	if err != nil {
@@ -276,10 +287,6 @@ func (s *Service) TestConnection(ctx context.Context, workspaceID, id uint) erro
 	return s.Probe(ctx, g)
 }
 
-// probeTimeout bounds a reachability check. A create runs one inline, so an
-// unreachable host must not hold the request open for the transport's own
-// (much longer) timeout — the point is a prompt answer, and "timed out" is a
-// perfectly good status to record.
 const probeTimeout = 15 * time.Second
 
 // Probe checks whether the remote answers with this credential and records the
@@ -418,7 +425,7 @@ func Checkout(ctx context.Context, dir, url, ref string, auth transport.AuthMeth
 func AuthFor(g *models.GitRepository, vault Secrets) (transport.AuthMethod, error) {
 	secretValue, err := credentialSecret(g, vault)
 	if err != nil || secretValue == "" {
-		return nil, err // no secret => anonymous clone
+		return nil, err
 	}
 	switch normalizeAuthType(g.AuthType) {
 	case models.GitAuthSSH:

@@ -1,0 +1,57 @@
+# A pipeline that clones a repository, builds it, and pushes the image —
+# with no application attached and nothing deployed.
+#
+# There is no `uses: checkout` step. The checkout is a property of the pipeline,
+# not a step in it: the runner clones the bound source once, at the run's commit,
+# into the shared /workspace before the first step runs. You choose that source
+# when you create the pipeline — an **application**, or a **repository** — and
+# every step then works over the same tree.
+#
+# To use this spec, create the pipeline with `git_repository` set to one of your
+# registered Git repositories (Workspace → Git repositories) — by name:
+#
+#     "git_repository": "acme-api"
+#
+# A numeric value is read as an id instead ("git_repository": 3). Prefer the
+# name: it is immutable, unique per workspace, and the only form that means the
+# same thing on another install. See the "Build a repository without an
+# application" section of README.md.
+#
+# What the binding gives you:
+#   checkout  the registered repository, at the run's commit
+#   push to   <registry>/ws_<workspace-id>/pl_<pipeline-name>:<run-number>
+#   deploy    not available — `uses: deploy` needs an application
+apiVersion: miabi.io/v1
+kind: Pipeline
+metadata:
+  name: acme-api-image
+on:
+  push:
+    branches: [main]   # a push webhook fires this pipeline at the commit it carries
+  manual: true         # and you can run it by hand
+  # schedule: "0 3 * * *"   # nightly rebuild, e.g. to pick up base-image patches
+env:
+  CGO_ENABLED: "0"
+steps:
+  # Container steps see the checked-out repository in /workspace, exactly as they
+  # would for an application-bound pipeline.
+  - name: test
+    image: golang:1.24
+    run: "go test ./..."
+
+  - name: build
+    uses: build
+    dockerfile: Dockerfile   # relative to the repository root; default: Dockerfile
+    # context: .             # build context, if it differs from the root
+    cache: false             # repository-bound builds are uncached today anyway
+
+  # Optional: prove the pushed image is what you think it is. $MIABI_IMAGE is the
+  # digest-pinned reference the build step just pushed.
+  - name: scan
+    image: aquasec/trivy:latest
+    continue-on-error: true
+    run: "TRIVY_USERNAME=$MIABI_REGISTRY_USER TRIVY_PASSWORD=$MIABI_REGISTRY_TOKEN trivy image --exit-code 1 --severity HIGH,CRITICAL $MIABI_IMAGE"
+
+  # No `uses: deploy` here. This pipeline produces an image; nothing consumes it
+  # automatically. Adding a deploy step to a repository-bound pipeline is refused
+  # when you save it, because there is no application to deploy to.

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jkaninda/okapi"
@@ -40,11 +41,19 @@ func (h *PipelineHandler) SetLogStore(s *logstore.Store) { h.logs = s }
 
 type CreatePipelineRequest struct {
 	Body struct {
-		Name          string `json:"name" required:"true"` // desired unique slug handle
-		DisplayName   string `json:"display_name"`         // free-text label (defaults to name)
-		ApplicationID *uint  `json:"application_id"`
-		Spec          string `json:"spec" required:"true"`
-		Enabled       bool   `json:"enabled"`
+		Name        string `json:"name" required:"true"` // desired unique slug handle
+		DisplayName string `json:"display_name"`         // free-text label (defaults to name)
+		// Bind to an application, or to a registered repository — not both. A
+		// repository-bound pipeline builds and pushes without a deploy target.
+		ApplicationID *uint `json:"application_id"`
+		// GitRepository names the repository, or gives its numeric id. The JSON type
+		// decides which: a string is a name, a number is an id. That matters because
+		// an all-digit name is a valid handle, so any "try one then the other" rule
+		// would silently resolve the wrong repository for someone named "123".
+		GitRepository json.RawMessage `json:"git_repository"`
+		Branch        string          `json:"branch"` // ref a repository-bound run builds
+		Spec          string          `json:"spec" required:"true"`
+		Enabled       bool            `json:"enabled"`
 	} `json:"body"`
 }
 
@@ -55,6 +64,10 @@ type UpdatePipelineRequest struct {
 	Body struct {
 		Name          string          `json:"name"`
 		ApplicationID json.RawMessage `json:"application_id"` // omitted=keep, null=unbind, N=bind
+		// GitRepository is the same tri-state, and the same name-or-id form as on
+		// create: omitted keeps the binding, null unbinds, a string or number binds.
+		GitRepository json.RawMessage `json:"git_repository"`
+		Branch        *string         `json:"branch"` // nil=keep
 		Spec          string          `json:"spec"`
 		Enabled       *bool           `json:"enabled"`
 	} `json:"body"`
@@ -85,8 +98,13 @@ func (h *PipelineHandler) List(c *okapi.Context) error {
 
 func (h *PipelineHandler) Create(c *okapi.Context, req *CreatePipelineRequest) error {
 	wsID := middlewares.WorkspaceID(c)
+	_, repoID, err := h.resolveRepositoryRef(wsID, req.Body.GitRepository)
+	if err != nil {
+		return h.mapErr(c, err)
+	}
 	p, err := h.svc.Create(wsID, pipeline.Input{
 		Name: req.Body.Name, DisplayName: req.Body.DisplayName, ApplicationID: req.Body.ApplicationID,
+		GitRepositoryID: repoID, Branch: req.Body.Branch,
 		Spec: req.Body.Spec, Enabled: &req.Body.Enabled,
 	})
 	if err != nil {
@@ -123,6 +141,15 @@ func (h *PipelineHandler) Update(c *okapi.Context, req *UpdatePipelineRequest) e
 	}
 	in.SetApplicationID = present
 	in.ApplicationID = appID
+	repoPresent, repoID, rerr := h.resolveRepositoryRef(wsID, req.Body.GitRepository)
+	if rerr != nil {
+		return h.mapErr(c, rerr)
+	}
+	in.SetGitRepositoryID = repoPresent
+	in.GitRepositoryID = repoID
+	if req.Body.Branch != nil {
+		in.SetBranch, in.Branch = true, *req.Body.Branch
+	}
 	p, err := h.svc.Update(wsID, id, in)
 	if err != nil {
 		return h.mapErr(c, err)
@@ -420,9 +447,56 @@ func (h *PipelineHandler) mapErr(c *okapi.Context, err error) error {
 	case errors.Is(err, pipeline.ErrNoPipelineInRepo), errors.Is(err, pipeline.ErrNotGitApp),
 		errors.Is(err, pipeline.ErrAdoptionUnavailable):
 		return c.AbortBadRequest(err.Error())
-	case errors.Is(err, pipeline.ErrInvalidSpec), errors.Is(err, pipeline.ErrNameRequired), errors.Is(err, pipeline.ErrDisabled):
+	case errors.Is(err, pipeline.ErrInvalidSpec), errors.Is(err, pipeline.ErrNameRequired), errors.Is(err, pipeline.ErrDisabled),
+		errors.Is(err, pipeline.ErrSourceConflict), errors.Is(err, pipeline.ErrDeployNeedsApp),
+		errors.Is(err, pipeline.ErrBuildNeedsSource), errors.Is(err, pipeline.ErrRepositoryNotFound),
+		errors.Is(err, pipeline.ErrRepositoriesUnavailable):
 		return c.AbortBadRequest(err.Error())
 	default:
 		return c.AbortInternalServerError("pipeline operation failed", err)
 	}
+}
+
+// resolveRepositoryRef decodes the API's `git_repository` value into the stored
+// binding, a numeric id.
+//
+// The JSON type is the disambiguator rather than a precedence rule: a string is a
+// name, a number is an id. A repository may legitimately be named "123", so
+// "try an id, then a name" (or the reverse) would quietly bind the wrong one.
+//
+// Tri-state, like application_id: omitted leaves the binding alone, null unbinds,
+// a value binds.
+func (h *PipelineHandler) resolveRepositoryRef(workspaceID uint, raw json.RawMessage) (present bool, id *uint, err error) {
+	if len(raw) == 0 {
+		return false, nil, nil
+	}
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "null" {
+		return true, nil, nil
+	}
+
+	// A JSON string is a name.
+	if strings.HasPrefix(trimmed, `"`) {
+		var name string
+		if uerr := json.Unmarshal(raw, &name); uerr != nil {
+			return false, nil, fmt.Errorf("%w: git_repository must be a name or an id", pipeline.ErrRepositoryNotFound)
+		}
+		if strings.TrimSpace(name) == "" {
+			// An empty string reads as "no repository", not as a lookup for "".
+			return true, nil, nil
+		}
+		resolved, rerr := h.svc.RepositoryIDByName(workspaceID, name)
+		if rerr != nil {
+			return false, nil, rerr
+		}
+		return true, &resolved, nil
+	}
+
+	// Otherwise a number is an id.
+	var n uint64
+	if uerr := json.Unmarshal(raw, &n); uerr != nil || n == 0 {
+		return false, nil, fmt.Errorf("%w: git_repository must be a name or an id", pipeline.ErrRepositoryNotFound)
+	}
+	v := uint(n)
+	return true, &v, nil
 }
