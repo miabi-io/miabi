@@ -70,11 +70,20 @@ type TemplateInstall struct {
 	TemplateName string `json:"template_name" gorm:"index;not null"`
 	// TemplateDisplayName is the catalog label snapshot at install time.
 	TemplateDisplayName string `json:"template_display_name"`
-	Version             string `json:"version"`
-	StackID             *uint  `json:"stack_id,omitempty" gorm:"index"`
-	AppIDs              []uint `json:"app_ids,omitempty" gorm:"serializer:json"`
-	DatabaseIDs         []uint `json:"database_ids,omitempty" gorm:"serializer:json"`
-	VolumeIDs           []uint `json:"volume_ids,omitempty" gorm:"serializer:json"`
+	// DisplayName is the label the user gave *this install*, which every resource
+	// it creates is named after. Recorded so an upgrade can name a resource the
+	// new version adds the same way the install named the rest.
+	DisplayName string `json:"display_name,omitempty"`
+	Version     string `json:"version"`
+	StackID     *uint  `json:"stack_id,omitempty" gorm:"index"`
+	AppIDs      []uint `json:"app_ids,omitempty" gorm:"serializer:json"`
+	DatabaseIDs []uint `json:"database_ids,omitempty" gorm:"serializer:json"`
+	VolumeIDs   []uint `json:"volume_ids,omitempty" gorm:"serializer:json"`
+	// ConfigIDs maps a template-local config name to the workspace config created
+	// for it. A map rather than a list of ids because an upgrade has to resolve
+	// "the config this version calls X" — and the workspace name it was given may
+	// carry a uniqueness suffix that cannot be recomputed.
+	ConfigIDs map[string]uint `json:"config_ids,omitempty" gorm:"serializer:json"`
 	// Inputs holds the non-secret install answers, for re-install/upgrade prompts.
 	Inputs    map[string]string `json:"inputs,omitempty" gorm:"serializer:json"`
 	CreatedAt time.Time         `json:"created_at"`

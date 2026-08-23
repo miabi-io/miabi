@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/miabi-io/miabi/internal/models"
+
 	"github.com/miabi-io/miabi/internal/services/marketplace/manifest"
 )
 
@@ -173,7 +175,8 @@ func TestUpgradeConfigsWithoutConfigService(t *testing.T) {
 		Configs:  []manifest.Config{{Name: "config", Files: map[string]string{"goma.yml": "version: \"2\""}}},
 	}
 	res := &UpgradeApplyResult{}
-	ids := svc.upgradeConfigs(1, &manifest.Manifest{}, newM, manifest.NewRenderer(manifest.Context{}), res)
+	rec := &models.TemplateInstall{DisplayName: "Edge"}
+	ids := svc.upgradeConfigs(1, rec, &manifest.Manifest{}, newM, manifest.NewRenderer(manifest.Context{}), res)
 	if len(ids) != 0 {
 		t.Errorf("no config can be created without the service, got %v", ids)
 	}
@@ -183,7 +186,7 @@ func TestUpgradeConfigsWithoutConfigService(t *testing.T) {
 
 	// A version that ships no configs says nothing at all.
 	res = &UpgradeApplyResult{}
-	svc.upgradeConfigs(1, &manifest.Manifest{}, &manifest.Manifest{}, manifest.NewRenderer(manifest.Context{}), res)
+	svc.upgradeConfigs(1, rec, &manifest.Manifest{}, &manifest.Manifest{}, manifest.NewRenderer(manifest.Context{}), res)
 	if len(res.Warnings) != 0 {
 		t.Errorf("expected no warnings, got %v", res.Warnings)
 	}

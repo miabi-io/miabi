@@ -57,7 +57,7 @@ func isNewer(latest, current string) bool {
 // RemovedResource is one resource a teardown attempted to delete, for the
 // post-delete follow-up. Error is set (and non-fatal) when removal failed.
 type RemovedResource struct {
-	Kind  string `json:"kind"` // application | database | database server | stack | volume
+	Kind  string `json:"kind"` // application | config | database | database server | stack | volume
 	Name  string `json:"name"`
 	Error string `json:"error,omitempty"`
 }
@@ -79,7 +79,7 @@ func (r *UninstallResult) err(kind, name string, e error) {
 }
 
 // Uninstall tears down everything a template install created — the logical databases its apps use, the
-// apps and their stack, the instances and volumes it provisioned — then removes the install record.
+// apps and their stack, the instances, configs and volumes it provisioned — then removes the install record.
 // Best-effort: it continues past individual failures and reports them, so a partial install is cleanable.
 func (s *Service) Uninstall(ctx context.Context, workspaceID, installID uint) (*UninstallResult, error) {
 	rec, err := s.installs.FindInWorkspace(workspaceID, installID)
@@ -149,7 +149,25 @@ func (s *Service) Uninstall(ctx context.Context, workspaceID, installID uint) (*
 		}
 	}
 
-	// 4. Volumes (after the apps that mount them are gone).
+	// 4. Configs (after the apps that mount them: Delete refuses while an app
+	// still does). Left behind, one would be silently adopted and overwritten by
+	// the next install of the same template.
+	for _, id := range rec.ConfigIDs {
+		if s.configs == nil {
+			break
+		}
+		cfg, err := s.configs.Get(workspaceID, id)
+		if err != nil {
+			continue
+		}
+		if err := s.configs.Delete(workspaceID, cfg.ID); err != nil {
+			res.err("config", cfg.Name, err)
+		} else {
+			res.ok("config", cfg.Name)
+		}
+	}
+
+	// 5. Volumes (after the apps that mount them are gone).
 	for _, id := range rec.VolumeIDs {
 		vol, err := s.volumes.Get(workspaceID, id)
 		if err != nil {
@@ -168,7 +186,4 @@ func (s *Service) Uninstall(ctx context.Context, workspaceID, installID uint) (*
 	return res, nil
 }
 
-// Upgrade is implemented in upgrade.go as PlanUpgrade (diff preview) +
-// ApplyUpgrade (converge to a target version). ErrStructuralChange is retained
-// for the API error mapping.
 var _ = ErrStructuralChange
