@@ -577,14 +577,12 @@ func Get(t string) (Descriptor, bool) {
 // site. Every URL here was checked to resolve; a link that 404s is worse than no
 // link, because it reads as "this is documented" and then is not.
 //
-// `oidc` points at the middleware index rather than /middlewares/oidc.html: the
-// page exists in the gateway's repository but the published site has not been
-// rebuilt since the 0.14 release, so the direct link is currently a 404. Point it
-// at the page once it is live.
+// Note `bodyLimit` → boy-limit.html: a typo in the gateway's own filename, and
+// the published URL, so the obvious guess does not resolve.
 var gomaDocs = map[string]string{
 	"basicAuth":        "https://goma.jkaninda.dev/middlewares/basic.html",
 	"jwtAuth":          "https://goma.jkaninda.dev/middlewares/jwt.html",
-	"oidc":             "https://goma.jkaninda.dev/middlewares/",
+	"oidc":             "https://goma.jkaninda.dev/middlewares/oidc.html",
 	"forwardAuth":      "https://goma.jkaninda.dev/middlewares/forward-auth.html",
 	"ldapAuth":         "https://goma.jkaninda.dev/middlewares/ldap.html",
 	"access":           "https://goma.jkaninda.dev/middlewares/access.html",
