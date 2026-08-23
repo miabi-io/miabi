@@ -174,6 +174,7 @@ function provisionSummary(t: CatalogEntry): string {
   if (t.applications) parts.push(`${t.applications} app${t.applications > 1 ? 's' : ''}`)
   if (t.databases) parts.push(`${t.databases} database${t.databases > 1 ? 's' : ''}`)
   if (t.volumes) parts.push(`${t.volumes} volume${t.volumes > 1 ? 's' : ''}`)
+  if (t.configs) parts.push(`${t.configs} config${t.configs > 1 ? 's' : ''}`)
   return parts.join(' · ') || 'no dependencies'
 }
 function sourceBadge(source: string) {

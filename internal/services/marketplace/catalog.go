@@ -39,6 +39,7 @@ type CatalogEntry struct {
 	Applications int              `json:"applications"`     // how many apps it deploys
 	Databases    int              `json:"databases"`        // db dependencies
 	Volumes      int              `json:"volumes"`          // managed volumes
+	Configs      int              `json:"configs"`          // configuration files it ships
 	DBOnly       bool             `json:"db_only"`          // provisions only a database
 	Inputs       []manifest.Input `json:"inputs,omitempty"` // install-wizard questions
 }
@@ -142,7 +143,8 @@ func entryFromManifest(m *manifest.Manifest, source string, versions []string) C
 		Homepage: m.Metadata.Homepage, Author: m.Metadata.Author, Source: source,
 		Version: m.Metadata.Version, Versions: versions,
 		Applications: len(m.Applications), Databases: len(m.Databases), Volumes: len(m.Volumes),
-		DBOnly: m.IsDatabaseOnly(), Inputs: m.Inputs,
+		Configs: len(m.Configs),
+		DBOnly:  m.IsDatabaseOnly(), Inputs: m.Inputs,
 	}
 }
 

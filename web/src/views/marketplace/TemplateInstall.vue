@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { marketplaceApi } from '@/api/marketplace'
-import type { CatalogEntry, TemplateManifest, ManifestDatabase, InstallJob, TemplateInstallView, UpgradePlan } from '@/api/marketplace'
+import type { CatalogEntry, TemplateManifest, ManifestConfig, ManifestDatabase, InstallJob, TemplateInstallView, UpgradePlan } from '@/api/marketplace'
 import { databaseApi } from '@/api/resources'
 import { apiErrorMessage } from '@/api/client'
 import type { DatabaseInstance } from '@/api/types'
@@ -219,6 +219,12 @@ function placementHint(db: ManifestDatabase): string {
 
 function volumeNames(): string {
   return (manifest.value?.volumes ?? []).map((v: { name: string }) => v.name).join(', ')
+}
+// A config is named for the install (<template>-<name>) and carries files; both
+// matter before installing, so the label shows the name and how many files.
+function configLabel(c: ManifestConfig): string {
+  const n = Object.keys(c.files ?? {}).length
+  return `${c.name} — ${n} file${n === 1 ? '' : 's'}`
 }
 
 // ---- custom-template edit / delete (custom source only) ----
@@ -447,6 +453,9 @@ onUnmounted(stopJobStream)
               <li v-for="vol in manifest?.volumes ?? []" :key="'v' + vol.name">
                 <span class="mdi mdi-harddisk"></span> volume <span class="cell-sub">({{ vol.name }})</span>
               </li>
+              <li v-for="cfg in manifest?.configs ?? []" :key="'c' + cfg.name">
+                <span class="mdi mdi-file-document-outline"></span> config <span class="cell-sub">({{ configLabel(cfg) }})</span>
+              </li>
             </ul>
           </div>
 
@@ -589,6 +598,14 @@ onUnmounted(stopJobStream)
               <dt>Volumes</dt>
               <dd>{{ volumeNames() }}</dd>
             </div>
+            <div v-if="(manifest?.configs ?? []).length" class="review-row">
+              <dt>Configs</dt>
+              <dd>
+                <div v-for="c in manifest?.configs ?? []" :key="c.name">
+                  {{ configLabel(c) }}
+                </div>
+              </dd>
+            </div>
           </dl>
         </div>
         <div class="modal-footer">
@@ -708,6 +725,7 @@ onUnmounted(stopJobStream)
             </div>
 
             <p v-if="upgradePlan.new_volumes?.length" class="text-sm">New volumes: <code v-for="v in upgradePlan.new_volumes" :key="v" style="margin-right: 4px">{{ v }}</code></p>
+            <p v-if="upgradePlan.new_configs?.length" class="text-sm">New configs: <code v-for="c in upgradePlan.new_configs" :key="c" style="margin-right: 4px">{{ c }}</code></p>
 
             <div v-if="upgradePlan.new_inputs?.length" class="upg-inputs">
               <p class="text-sm" style="font-weight: 600">New settings to provide</p>

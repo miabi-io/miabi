@@ -41,6 +41,7 @@ export interface CatalogEntry {
   applications: number
   databases: number
   volumes: number
+  configs: number
   db_only: boolean
   inputs?: TemplateInput[]
 }
@@ -50,6 +51,16 @@ export interface ManifestDatabase {
   engine: 'postgres' | 'mysql' | 'mariadb' | 'redis' | string
   version?: string
   placement?: 'auto' | 'dedicated' | 'shared'
+}
+
+// ManifestConfig is a set of configuration files a template ships and mounts
+// into its applications. Content is rendered at install time.
+export interface ManifestConfig {
+  name: string
+  files: Record<string, string>
+  mode?: string
+  sensitive?: boolean
+  delimiters?: string[]
 }
 
 export interface TemplateManifest {
@@ -67,6 +78,7 @@ export interface TemplateManifest {
   inputs?: TemplateInput[]
   databases?: ManifestDatabase[]
   volumes?: { name: string }[]
+  configs?: ManifestConfig[]
   applications?: { name: string; image: string; tag?: string }[]
 }
 
@@ -93,6 +105,7 @@ export interface InstallResult {
   apps?: { id: number; name: string }[]
   databases?: { id: number; name: string }[]
   volumes?: { id: number; name: string }[]
+  configs?: { id: number; name: string }[]
 }
 
 // --- Async install progress (SSE) ---
@@ -190,6 +203,7 @@ export interface UpgradePlan {
   to_version: string
   apps: UpgradeAppChange[]
   new_volumes: string[]
+  new_configs: string[]
   new_databases: string[]
   added_apps: string[]
   removed_apps: string[]
@@ -203,6 +217,7 @@ export interface UpgradeApplyResult {
   apps_bumped: string[]
   env_applied: string[]
   new_volumes: string[]
+  new_configs: string[]
   warnings: string[]
 }
 
