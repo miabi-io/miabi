@@ -5,13 +5,12 @@ package handlers
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// The system plan is the platform's own: pinned to the system workspace and
-// resolved by name. What an operator may change about it is deliberately narrow.
 func TestSystemPlanEdit(t *testing.T) {
 	system := &models.Plan{Name: models.UnlimitedPlanName, System: true}
 	ordinary := &models.Plan{Name: "Pro"}
@@ -57,19 +56,37 @@ func TestSystemPlanEdit(t *testing.T) {
 	}
 }
 
-// The three refusals must be distinguishable: a caller acting on the message
-// needs to know whether to change the name, drop the flag, or give up deleting.
 func TestSystemPlanRefusalsAreDistinct(t *testing.T) {
 	seen := map[string]bool{}
-	for _, err := range []error{errSystemPlanDelete, errSystemPlanRename, errSystemPlanDefault} {
+	for _, err := range []error{errSystemPlanDelete, errSystemPlanRename, errSystemPlanDefault, errSystemPlanAssign} {
 		msg := err.Error()
 		if seen[msg] {
 			t.Errorf("duplicate refusal message: %q", msg)
 		}
 		seen[msg] = true
-		// Each says what cannot be done and why, not merely that it failed.
 		if len(msg) < 40 {
 			t.Errorf("refusal %q is too terse to act on", msg)
+		}
+	}
+}
+
+func TestSystemPlanIsUnreachableByATenant(t *testing.T) {
+	routes := map[string]error{
+		"deleting it":                 errSystemPlanDelete,
+		"renaming it":                 errSystemPlanRename,
+		"making it the default":       errSystemPlanDefault,
+		"assigning it to a workspace": errSystemPlanAssign,
+	}
+	for route, err := range routes {
+		if err == nil {
+			t.Errorf("%s has no refusal", route)
+			continue
+		}
+		// "cannot" plus a reason: a refusal that only says no leaves the reader
+		// guessing whether it is a bug or a rule.
+		msg := err.Error()
+		if !strings.Contains(msg, "cannot") || !strings.Contains(msg, ";") {
+			t.Errorf("refusal for %s does not say what is refused and why: %q", route, msg)
 		}
 	}
 }

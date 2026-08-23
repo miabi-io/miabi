@@ -118,6 +118,7 @@ func SeedPlans(db *gorm.DB) error {
 			MaxMembers:                25,
 			MaxDatabasesPerInstance:   20,
 			MaxCPUCores:               16,
+			MaxRunners:                3,
 			MaxMemoryMB:               32768,
 			MaxDatabaseInstanceSizeMB: 51200, MaxStorageMB: 512000,
 			AllowCustomTLS: true, AllowPrivilegedHostMounts: false, AllowShellExec: true, AllowSharedStorage: true, AllowDNSProviders: true, AllowCustomLabels: true,
@@ -129,6 +130,7 @@ func SeedPlans(db *gorm.DB) error {
 			// the catalog an operator publishes.
 			Name: models.UnlimitedPlanName, Description: "No resource limits; all capabilities.", IsActive: true, System: true,
 			MaxApps: u, MaxDatabaseInstances: u, MaxCronJobs: u, MaxVolumes: u, MaxNetworks: u, MaxAPIKeys: u, MaxMembers: u,
+			MaxRunners:              3,
 			MaxDatabasesPerInstance: u, MaxCPUCores: u, MaxMemoryMB: u, MaxDatabaseInstanceSizeMB: u, MaxStorageMB: u,
 			AllowCustomTLS: true, AllowPrivilegedHostMounts: true, AllowShellExec: true, AllowSharedStorage: true, AllowDNSProviders: true, AllowCustomLabels: true,
 			AllowOfficialImageUser: true,

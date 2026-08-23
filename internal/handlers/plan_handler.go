@@ -88,6 +88,7 @@ var (
 	errSystemPlanDelete  = errors.New("the platform's system plan cannot be deleted; it is pinned to the system workspace")
 	errSystemPlanRename  = errors.New("the platform's system plan cannot be renamed; it is resolved by name")
 	errSystemPlanDefault = errors.New("the platform's system plan cannot be the default; unassigned workspaces would get unlimited resources")
+	errSystemPlanAssign  = errors.New("the platform's system plan cannot be assigned to a workspace; it grants unlimited resources and every capability")
 )
 
 // systemPlanEdit reports why an edit to the platform's own plan is refused, or
@@ -277,8 +278,13 @@ func (h *PlanHandler) AssignWorkspace(c *okapi.Context, req *AssignWorkspacePlan
 		return c.AbortNotFound("workspace not found")
 	}
 	if req.Body.PlanID != nil {
-		if _, err := h.repo.FindByID(*req.Body.PlanID); err != nil {
+		p, err := h.repo.FindByID(*req.Body.PlanID)
+		if err != nil {
 			return c.AbortNotFound("plan not found")
+		}
+
+		if p.System {
+			return c.AbortWithError(409, errSystemPlanAssign)
 		}
 	}
 	if err := h.repo.AssignToWorkspace(uint(wsID), req.Body.PlanID); err != nil {
