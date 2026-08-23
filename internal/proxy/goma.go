@@ -540,6 +540,19 @@ func (g *Goma) SyncRegistry(_ context.Context, cfg RegistryProxy) error {
 	if cfg.TLSProvider != "" {
 		tls = &gomaTLS{Provider: cfg.TLSProvider}
 	}
+	// The HTTPS redirect is omitted entirely when disabled, rather than rendered
+	// and unreferenced: an orphan middleware in the file is a puzzle for whoever
+	// reads it next.
+	mwNames := []string{"mb-registry-nomount", "mb-registry-auth", "mb-registry-ns-rewrite"}
+	var mws []gomaMiddleware
+	if cfg.HTTPSRedirect {
+		mwNames = append([]string{"mb-registry-https"}, mwNames...)
+		mws = append(mws, gomaMiddleware{
+			Name: "mb-registry-https",
+			Type: "redirectScheme",
+			Rule: map[string]any{"scheme": "https", "port": 443, "permanent": true},
+		})
+	}
 	file := gomaFile{
 		Routes: []gomaRoute{{
 			Name:     "mb-registry",
@@ -548,15 +561,10 @@ func (g *Goma) SyncRegistry(_ context.Context, cfg RegistryProxy) error {
 			Backends: []gomaBackend{{Endpoint: cfg.Upstream}},
 			// mb-registry-nomount runs BEFORE the auth check on purpose — see its
 			// definition below.
-			Middlewares: []string{"mb-registry-https", "mb-registry-nomount", "mb-registry-auth", "mb-registry-ns-rewrite"},
+			Middlewares: mwNames,
 			TLS:         tls,
 		}},
-		Middlewares: []gomaMiddleware{
-			{
-				Name: "mb-registry-https",
-				Type: "redirectScheme",
-				Rule: map[string]any{"scheme": "https", "port": 443, "permanent": true},
-			},
+		Middlewares: append(mws, []gomaMiddleware{
 			{
 				// Drop the cross-repository blob mount hint. A docker push offers `?mount=<digest>&from=<repo>` to link a
 				// layer the daemon has seen in another repository instead of uploading it.
@@ -590,7 +598,7 @@ func (g *Goma) SyncRegistry(_ context.Context, cfg RegistryProxy) error {
 					"replacement": "/v2/{{goma.headers.X-Miabi-Registry-Namespace}}/$1",
 				},
 			},
-		},
+		}...),
 	}
 	content, err := yaml.Marshal(file)
 	if err != nil {

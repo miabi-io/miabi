@@ -82,11 +82,24 @@ type Descriptor struct {
 	Description string   `json:"description"`
 	Category    Category `json:"category"`
 	Fields      []Field  `json:"fields"`
+	// MinGatewayVersion is the oldest Goma release that carries this middleware
+	// type. Empty means it has been there as long as Miabi has curated it.
+	//
+	// Advisory, not enforced: Miabi does not read a running gateway's version, so
+	// this is shown in the form rather than used to hide the type. A route
+	// referencing a type its gateway does not have fails at load with a message
+	// naming the type, and this is what tells someone why before they get there.
+	MinGatewayVersion string `json:"min_gateway_version,omitempty"`
 	// Validate is an optional cross-field rule run after the per-field checks pass, for constraints the
 	// field loop can't express. nil for types whose fields fully define them. Not serialized — the
 	// client can't run it, and the server enforces it on write anyway.
 	Validate func(rule map[string]any) error `json:"-"`
 }
+
+// MinGomaOIDCVersion is the first Goma release carrying the `oidc` middleware.
+// Kept beside the descriptor that needs it rather than in config, so the catalog
+// states its own requirements.
+const MinGomaOIDCVersion = "0.14.0"
 
 // secretPath is a secret field and the route to it through nested objects, so a
 // key like session.secret is reachable rather than silently stored in clear.
@@ -170,10 +183,11 @@ var registry = []Descriptor{
 		},
 	},
 	{
-		Type:        "oidc",
-		DisplayName: "OpenID Connect (SSO)",
-		Description: "Sign users in at the gateway against an identity provider, and pass who they are to the app.",
-		Category:    CategoryAccess,
+		Type:              "oidc",
+		DisplayName:       "OpenID Connect (SSO)",
+		Description:       "Sign users in at the gateway against an identity provider, and pass who they are to the app.",
+		Category:          CategoryAccess,
+		MinGatewayVersion: MinGomaOIDCVersion,
 		Fields: []Field{
 			{Key: "issuer", Label: "Issuer URL", Type: FieldString, Placeholder: "https://id.example.com/application/o/app/",
 				Help: "The provider's issuer. Everything else is discovered from it, so the endpoints below are only for a provider without a discovery document."},

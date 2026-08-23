@@ -407,6 +407,20 @@ type RegistryConfig struct {
 	S3AccessKey   string
 	S3SecretKey   string
 	S3ForcePath   bool
+	// HTTPSRedirect adds a redirectScheme middleware to the registry route, so a
+	// plaintext pull is sent to https. On by default, and correct whenever the
+	// gateway terminates TLS itself.
+	//
+	// Turn it OFF when a TLS terminator sits in front (Cloudflare, nginx, a cloud
+	// load balancer) and the gateway's proxy.trustedProxies is not configured.
+	// Goma believes X-Forwarded-Proto only from a trusted proxy, so it sees the
+	// plaintext hop, decides the request is not HTTPS, and redirects — to the
+	// terminator, which forwards plaintext again. The registry then loops until
+	// the client gives up, and every push and pull fails.
+	//
+	// Configuring proxy.trustedProxies on the gateway is the better fix; this is
+	// the escape hatch for an install that cannot.
+	HTTPSRedirect bool
 }
 
 // LogStoreConfig configures the shared execution-log store. The filesystem backend (default)
@@ -561,7 +575,7 @@ func New() *Config {
 		ControlURL:                 goutils.Env("MIABI_CONTROL_URL", goutils.Env("MIABI_API_URL", "")),
 		ExternalBaseDomain:         goutils.Env("MIABI_EXTERNAL_BASE_DOMAIN", ""),
 		ExternalBaseProvider:       goutils.Env("MIABI_EXTERNAL_BASE_PROVIDER", ""),
-		NodeGatewayImage:           goutils.Env("MIABI_NODE_GATEWAY_IMAGE", "jkaninda/goma-gateway:latest"),
+		NodeGatewayImage:           goutils.Env("MIABI_NODE_GATEWAY_IMAGE", DefaultGomaImage),
 		RunnerImage:                goutils.Env("MIABI_RUNNER_IMAGE", "miabi/runner:latest"),
 		GomaConfigEncryptionKey:    goutils.Env("GOMA_CONFIG_ENCRYPTION_KEY", ""),
 		PlatformBackup: PlatformBackupConfig{
@@ -594,6 +608,7 @@ func New() *Config {
 			Enabled:       goutils.EnvBool("MIABI_REGISTRY_ENABLED", false),
 			EnabledSet:    envPresent("MIABI_REGISTRY_ENABLED"),
 			Host:          goutils.Env("MIABI_REGISTRY_HOST", ""),
+			HTTPSRedirect: goutils.EnvBool("MIABI_REGISTRY_HTTPS_REDIRECT", true),
 			StorageType:   goutils.Env("MIABI_REGISTRY_STORAGE", ""),
 			Image:         goutils.Env("MIABI_REGISTRY_IMAGE", ""),
 			AuthURL:       goutils.Env("MIABI_REGISTRY_AUTH_URL", "http://miabi:9000"),

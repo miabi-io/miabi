@@ -21,7 +21,7 @@ env:
   # the default in a PR (with a test run) over tracking Goma's `latest` —
   # otherwise every Goma release silently reaches Miabi users on Goma's schedule,
   # not ours.
-  GOMA_VERSION: ${{ vars.GOMA_VERSION || 'v0.11.0' }}
+  GOMA_VERSION: ${{ vars.GOMA_VERSION || 'v0.14.0' }}
   # miabi/runner versions independently of the panel (0.0.x vs 1.0.x), so it
   # cannot inherit ${GITHUB_REF_NAME}: miabi/runner:1.0.0-beta.4 does not exist.
   RUNNER_VERSION: ${{ vars.RUNNER_VERSION || 'v0.0.7' }}

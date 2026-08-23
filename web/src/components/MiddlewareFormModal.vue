@@ -222,6 +222,14 @@ async function save() {
               <option v-if="!isCatalogued" :value="form.type">{{ form.type }} (advanced)</option>
             </select>
             <p v-if="descriptor" class="form-hint">{{ descriptor.description }}</p>
+            <!-- Advisory: Miabi does not read the gateway's version, so this says
+                 what the type needs rather than pretending to have checked. A
+                 route referencing a type an older gateway lacks fails at load. -->
+            <p v-if="descriptor?.min_gateway_version" class="form-hint gateway-req">
+              <span class="mdi mdi-information-outline"></span>
+              Needs Goma Gateway {{ descriptor.min_gateway_version }} or newer. On an older gateway the route
+              using it fails to load.
+            </p>
           </div>
 
           <div class="form-group">
@@ -269,6 +277,8 @@ async function save() {
 </template>
 
 <style scoped>
+.gateway-req { color: var(--warning-600, var(--warning-500, #f59e0b)); }
+
 .text-muted { color: var(--text-muted); font-weight: 400; }
 .mono { font-family: monospace; }
 .form-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
