@@ -10,6 +10,9 @@ export interface AppInfo {
   name: string
   version: string
   commit_id: string
+  /** When this binary was linked, RFC 3339. Absent for a build with no ldflags,
+   *  so render nothing rather than the word "unknown" in a date field. */
+  build_date?: string
   openapi_docs: boolean
 }
 

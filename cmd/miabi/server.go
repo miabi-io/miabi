@@ -558,6 +558,8 @@ func runServer(cli *okapicli.CLI) {
 		OnStarted: func() {
 			logger.Info("Miabi Server started",
 				"version", config.Version,
+				"commit", config.CommitID,
+				"built", config.BuildDate,
 				"edition", res.entitlements.Edition,
 				"license", res.entitlements.State,
 				"port", cfg.Port)

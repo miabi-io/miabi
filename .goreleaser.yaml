@@ -36,6 +36,7 @@ builds:
       - -s -w
       - -X github.com/miabi-io/miabi/internal/config.Version={{ .Version }}
       - -X github.com/miabi-io/miabi/internal/config.CommitID={{ .ShortCommit }}
+      - -X github.com/miabi-io/miabi/internal/config.BuildDate={{ .CommitDate }}
       # Baked license-signing key; empty is a harmless no-op (stays Community).
       - -X github.com/miabi-io/miabi/internal/enterprise.embeddedPublicKey={{ .Env.LICENSE_PUBLIC_KEY }}
     goos:

@@ -53,8 +53,27 @@ async function load() {
 }
 onMounted(load)
 
+// The build date, as a plain local date. The exact timestamp goes in the title
+// rather than the cell: "23 August 2026" is what someone is checking, and the
+// hour only matters when two builds share a day.
+const buildDate = computed(() => {
+  const raw = info.value?.build_date
+  if (!raw) return null
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return null
+  return { label: d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }), exact: d.toLocaleString() }
+})
+
 function copyVersion() {
-  const v = `${info.value?.name ?? 'Miabi'} ${info.value?.version ?? ''} (${info.value?.commit_id ?? ''})`.trim()
+  // The date travels with it: a version and commit alone do not distinguish two
+  // builds of the same commit, which is exactly the case someone pasting this
+  // into a bug report is usually in.
+  const parts = [
+    `${info.value?.name ?? 'Miabi'} ${info.value?.version ?? ''}`.trim(),
+    info.value?.commit_id ? `(${info.value.commit_id})` : '',
+    buildDate.value ? `built ${buildDate.value.exact}` : '',
+  ].filter(Boolean)
+  const v = parts.join(' ')
   void copyText(v).then((ok) => {
     if (!ok) return
     copied.value = true
@@ -83,6 +102,12 @@ function copyVersion() {
         <div class="card-body">
           <div class="kv"><span class="k">Version</span><span class="v">{{ info?.version ?? '—' }}</span></div>
           <div class="kv"><span class="k">Commit</span><span class="v mono">{{ info?.commit_id ?? '—' }}</span></div>
+          <!-- Absent on a build with no ldflags; showing "—" is honest, where
+               "unknown" in a date field reads as a broken value. -->
+          <div class="kv">
+            <span class="k">Build date</span>
+            <span class="v" :title="buildDate?.exact">{{ buildDate?.label ?? '—' }}</span>
+          </div>
           <div class="kv">
             <span class="k">Edition</span>
             <span class="v">{{ editionLabel ?? (auth.isAdmin ? '—' : 'Restricted') }}</span>
