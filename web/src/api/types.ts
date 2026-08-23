@@ -21,6 +21,11 @@ export interface Plan {
   description: string
   is_default: boolean
   is_active: boolean
+  /** A plan the platform owns rather than one the operator publishes: the
+   *  built-in Unlimited plan, pinned to the system workspace. It does not count
+   *  against the edition's plan-catalog cap, and is not meant to be assigned to
+   *  a tenant. */
+  system?: boolean
   max_apps: number
   max_database_instances: number
   max_cron_jobs: number

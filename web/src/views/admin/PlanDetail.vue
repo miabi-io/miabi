@@ -127,6 +127,8 @@ function fmtDate(s?: string): string {
             <h1>
               {{ plan.name }}
               <span v-if="plan.is_default" class="badge badge-success">default</span>
+              <span v-if="plan.system" class="badge badge-info"
+                title="Owned by the platform: pinned to the system workspace, and not counted against your plan limit">system</span>
               <span v-if="plan.is_active" class="badge badge-dot badge-success">active</span>
               <span v-else class="badge badge-dot badge-danger">inactive</span>
             </h1>
@@ -134,8 +136,11 @@ function fmtDate(s?: string): string {
           </div>
         </div>
         <div class="header-actions">
-          <button v-if="!plan.is_default" class="btn btn-secondary" @click="makeDefault">Set as default</button>
-          <button class="btn btn-danger" @click="showDelete = true">Delete</button>
+          <button v-if="!plan.is_default && !plan.system" class="btn btn-secondary" @click="makeDefault">Set as default</button>
+          <!-- The system plan is the platform's own: deleting it would drop the
+               system workspace onto the default plan's limits, silently. The API
+               refuses it too — this only keeps the console from offering it. -->
+          <button v-if="!plan.system" class="btn btn-danger" @click="showDelete = true">Delete</button>
         </div>
       </div>
 
@@ -146,7 +151,11 @@ function fmtDate(s?: string): string {
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Name</label>
-              <input v-model="form.name" class="form-input" required />
+              <!-- The system plan is resolved by name when it is pinned to the
+                   system workspace, so renaming it would quietly unpin it. Its
+                   limits stay editable. -->
+              <input v-model="form.name" class="form-input" required :disabled="plan.system" />
+              <p v-if="plan.system" class="form-hint">Fixed — the platform resolves this plan by name.</p>
             </div>
             <div class="form-group">
               <label class="form-label">Description</label>
@@ -155,7 +164,8 @@ function fmtDate(s?: string): string {
           </div>
           <div class="toggles">
             <label class="checkbox-label"><input v-model="form.is_active" type="checkbox" /> Active <span class="text-muted">(assignable to workspaces)</span></label>
-            <label class="checkbox-label"><input v-model="form.is_default" type="checkbox" /> Default plan <span class="text-muted">(applied to unassigned workspaces)</span></label>
+            <label class="checkbox-label"><input v-model="form.is_default" type="checkbox" :disabled="plan.system" /> Default plan <span class="text-muted">(applied to unassigned workspaces)</span></label>
+            <p v-if="plan.system" class="form-hint">A system plan cannot be the default — unassigned workspaces would get unlimited resources.</p>
           </div>
         </div>
       </div>

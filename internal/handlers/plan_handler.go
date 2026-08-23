@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -78,6 +79,35 @@ type AssignWorkspacePlanRequest struct {
 	Body struct {
 		PlanID *uint `json:"plan_id"` // null clears the assignment (falls back to default)
 	} `json:"body"`
+}
+
+// Refusals protecting the platform's own plan. 409 rather than 403: the request
+// is well-formed and the caller is authorized — this row is simply not theirs to
+// change that way.
+var (
+	errSystemPlanDelete  = errors.New("the platform's system plan cannot be deleted; it is pinned to the system workspace")
+	errSystemPlanRename  = errors.New("the platform's system plan cannot be renamed; it is resolved by name")
+	errSystemPlanDefault = errors.New("the platform's system plan cannot be the default; unassigned workspaces would get unlimited resources")
+)
+
+// systemPlanEdit reports why an edit to the platform's own plan is refused, or
+// nil when it is allowed.
+//
+// Its limits stay editable — an operator may reasonably want the system
+// workspace bounded. Its identity does not: the name is how
+// workspace.pinUnlimitedPlan finds it, and making it the default would put every
+// unassigned workspace on unlimited resources.
+func systemPlanEdit(p *models.Plan, newName string, makeDefault bool) error {
+	if p == nil || !p.System {
+		return nil
+	}
+	if newName != "" && newName != p.Name {
+		return errSystemPlanRename
+	}
+	if makeDefault {
+		return errSystemPlanDefault
+	}
+	return nil
 }
 
 // guardSecurityProfile enforces that the Enterprise-only restricted security profile may be
@@ -173,11 +203,18 @@ func (h *PlanHandler) Update(c *okapi.Context, req *UpdatePlanRequest) error {
 	if err := h.guardSecurityProfile(req.Body.SecurityProfile); err != nil {
 		return entitlementAbort(c, err)
 	}
+	if err := systemPlanEdit(p, req.Body.Name, req.Body.IsDefault); err != nil {
+		return c.AbortWithError(409, err)
+	}
 	if req.Body.IsDefault && !p.IsDefault {
 		_ = h.repo.ClearDefault(nil)
 	}
 	p.IsDefault = req.Body.IsDefault
+	system := p.System
 	req.Body.PlanBody.apply(p)
+	// apply() writes every settable field. System is not one of them and must not
+	// become one: it is the platform's own bookkeeping, not an operator's choice.
+	p.System = system
 	if err := h.repo.Update(p); err != nil {
 		return c.AbortInternalServerError("failed to update plan", err)
 	}
@@ -187,6 +224,13 @@ func (h *PlanHandler) Update(c *okapi.Context, req *UpdatePlanRequest) error {
 
 func (h *PlanHandler) Delete(c *okapi.Context) error {
 	id := h.id(c)
+	// The system plan is not the operator's to remove. workspace.pinUnlimitedPlan
+	// resolves it by name and fails soft, so deleting it would not error anywhere
+	// — the system workspace would quietly drop onto the default plan's limits and
+	// stay there.
+	if p, err := h.repo.FindByID(id); err == nil && p.System {
+		return c.AbortWithError(409, errSystemPlanDelete)
+	}
 	n, _ := h.repo.CountWorkspaces(id)
 	if n > 0 && c.Query("force") != "true" {
 		return c.AbortWithError(409, fmt.Errorf("plan is assigned to %d workspace(s); pass force=true to delete", n))
@@ -208,6 +252,11 @@ func (h *PlanHandler) SetDefault(c *okapi.Context) error {
 	p, err := h.repo.FindByID(h.id(c))
 	if err != nil {
 		return c.AbortNotFound("plan not found")
+	}
+	// Same rule as the update path: the console hides the button, but the endpoint
+	// is reachable on its own and a guard in only one of them is not a guard.
+	if p.System {
+		return c.AbortWithError(409, errSystemPlanDefault)
 	}
 	_ = h.repo.ClearDefault(nil)
 	p.IsDefault = true
