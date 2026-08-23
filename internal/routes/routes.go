@@ -899,6 +899,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		Volume:      storageService,
 		Database:    databaseService,
 		Secret:      secretService,
+		Config:      configService,
 		Route:       routeService,
 		Middleware:  middlewareService,
 		Domain:      domainService,

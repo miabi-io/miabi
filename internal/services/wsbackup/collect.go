@@ -42,6 +42,9 @@ func (s *Service) collect(workspaceID uint, report *models.BundleReport) (*wsbun
 	if err := s.collectSecrets(workspaceID, st, report); err != nil {
 		return nil, err
 	}
+	if err := s.collectConfigs(workspaceID, st, report); err != nil {
+		return nil, err
+	}
 	if err := s.collectStorage(workspaceID, st, report); err != nil {
 		return nil, err
 	}
@@ -309,6 +312,42 @@ func (s *Service) collectSecrets(workspaceID uint, st *wsbundle.State, report *m
 	return nil
 }
 
+// collectConfigs carries config file sets, contents included — like secrets, and
+// for the same reason: a config is configuration the workspace owns, and a
+// restore that recreated the apps without the files they mount would produce a
+// workspace that looks right and does not run.
+//
+// Managed configs are skipped on the same rule as managed secrets: they belong to
+// a platform resource that mints its own on the target.
+func (s *Service) collectConfigs(workspaceID uint, st *wsbundle.State, report *models.BundleReport) error {
+	if s.Config == nil {
+		return nil
+	}
+	configs, err := s.Config.List(workspaceID)
+	if err != nil {
+		return fmt.Errorf("list configs: %w", err)
+	}
+	for i := range configs {
+		cfg := &configs[i]
+		if cfg.Managed {
+			report.Add("config", cfg.Name, "skipped", "managed by "+cfg.OwnerKind+"; recreated on restore")
+			continue
+		}
+		data, err := s.Config.Data(cfg)
+		if err != nil {
+			report.Add("config", cfg.Name, "failed", "contents could not be decrypted: "+err.Error())
+			continue
+		}
+		st.Configs = append(st.Configs, wsbundle.Config{
+			Name: cfg.Name, DisplayName: cfg.DisplayName, Description: cfg.Description,
+			Data: data, Mode: cfg.Mode, Sensitive: cfg.Sensitive,
+			Delimiters: cfg.Delimiters, Metadata: cfg.Metadata,
+		})
+		report.Add("config", cfg.Name, "captured", "")
+	}
+	return nil
+}
+
 // collectStorage carries volume declarations. Their contents travel separately,
 // as archives (see exportVolumes).
 func (s *Service) collectStorage(workspaceID uint, st *wsbundle.State, report *models.BundleReport) error {
@@ -415,6 +454,21 @@ func (s *Service) collectApps(workspaceID uint, st *wsbundle.State, report *mode
 	for i := range vols {
 		volName[vols[i].ID] = vols[i].Name
 	}
+	// Config mounts reference by id on the source; the bundle references by name.
+	// Only the configs the bundle actually carries are resolvable, so a managed
+	// one (skipped above) is reported rather than silently dropped.
+	cfgName := map[uint]string{}
+	if s.Config != nil {
+		configs, cerr := s.Config.List(workspaceID)
+		if cerr != nil {
+			return fmt.Errorf("list configs: %w", cerr)
+		}
+		for i := range configs {
+			if !configs[i].Managed {
+				cfgName[configs[i].ID] = configs[i].Name
+			}
+		}
+	}
 	stackName := map[uint]string{}
 	stacks, err := s.Stack.List(workspaceID)
 	if err != nil {
@@ -487,6 +541,21 @@ func (s *Service) collectApps(workspaceID uint, st *wsbundle.State, report *mode
 			})
 		}
 		for _, m := range full.Mounts {
+			// A config mount carries by config name; its contents travel in the state
+			// document. Checked before the host-bind branch below, which would
+			// otherwise report it as an unportable host mount and drop it.
+			if m.ConfigID != 0 {
+				name := cfgName[m.ConfigID]
+				if name == "" {
+					report.Add("app", full.Name, "skipped",
+						"config mounted at "+m.Path+" was not captured; re-attach it on the target")
+					continue
+				}
+				a.Mounts = append(a.Mounts, wsbundle.Mount{
+					Config: name, Key: m.ConfigKey, Path: m.Path, Mode: m.Mode, ReadOnly: m.ReadOnly,
+				})
+				continue
+			}
 			if m.VolumeID == 0 {
 				// A privileged host bind: its source is an allow-listed preset on the
 				// node that granted it, which may not exist — or may mean something

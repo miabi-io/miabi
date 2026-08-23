@@ -5,6 +5,7 @@ package wsbackup
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/models"
@@ -142,10 +143,21 @@ func (r *restoreRun) finishApp(_ context.Context, app *models.Application, a wsb
 	if a.DeployStrategy != "" {
 		app.DeployStrategy = models.DeployStrategy(a.DeployStrategy)
 	}
-	// Mounts reference the volumes created earlier in this run, by the name the bundle used. A mount whose
-	// volume did not come back is dropped rather than pointed at nothing — the app then starts without that
-	// data instead of failing to start at all, and the report says which.
+
 	for _, m := range a.Mounts {
+
+		if m.Config != "" {
+			cfg, err := r.configByName(m.Config)
+			if err != nil {
+				r.add("app", app.Name, "skipped",
+					"config mount at "+m.Path+" was dropped: config "+m.Config+" was not restored")
+				continue
+			}
+			app.Mounts = append(app.Mounts, models.AppMount{
+				ConfigID: cfg.ID, ConfigKey: m.Key, Path: m.Path, Mode: m.Mode, ReadOnly: m.ReadOnly,
+			})
+			continue
+		}
 		volID := r.volumeIDs[m.Volume]
 		if volID == 0 {
 			r.add("app", app.Name, "skipped", "mount at "+m.Path+" was dropped: volume "+m.Volume+" was not restored")
@@ -169,3 +181,17 @@ func (r *restoreRun) finishApp(_ context.Context, app *models.Application, a wsb
 	}
 	return nil
 }
+
+// configByName resolves a config the restore created (or found already present)
+// on the target, for rebuilding an app's config mounts. Looked up by name rather
+// than tracked in a map because a mount may point at a config that already
+// existed on the target and was therefore skipped, not created.
+func (r *restoreRun) configByName(name string) (*models.Config, error) {
+	if r.svc.Config == nil {
+		return nil, errConfigsUnavailable
+	}
+	return r.svc.Config.GetByName(r.target, name)
+}
+
+// errConfigsUnavailable reports an install with no config service wired.
+var errConfigsUnavailable = errors.New("configs are not available on this install")

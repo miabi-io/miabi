@@ -9,9 +9,18 @@ import (
 	"time"
 )
 
-// StateSchema is the state document's version. A restore refuses a schema it
-// does not know rather than guessing at fields.
-const StateSchema = 1
+// StateSchema is the version this build writes. A restore accepts anything from
+// MinStateSchema up to it, so an older bundle keeps restoring; a newer one is
+// refused rather than partially understood.
+//
+//	1  the original document
+//	2  adds configs, and config mounts on an application
+const StateSchema = 2
+
+// MinStateSchema is the oldest document this build can read. Every version in
+// [MinStateSchema, StateSchema] differs only by fields that are absent in the
+// older ones and decode to their zero value.
+const MinStateSchema = 1
 
 // State is a workspace's whole configuration, by natural key. Nothing here carries a primary key:
 // across two installs a uint id is meaningless, so every reference is a name and restore rebuilds
@@ -30,6 +39,7 @@ type State struct {
 	DNSProviders []DNSProvider      `json:"dns_providers,omitempty"`
 	Networks     []Network          `json:"networks,omitempty"`
 	Secrets      []Secret           `json:"secrets,omitempty"`
+	Configs      []Config           `json:"configs,omitempty"`
 	Volumes      []Volume           `json:"volumes,omitempty"`
 	Stacks       []Stack            `json:"stacks,omitempty"`
 	Databases    []DatabaseInstance `json:"databases,omitempty"`
@@ -201,6 +211,17 @@ type Secret struct {
 	Metadata    map[string]string `json:"metadata,omitempty"`
 }
 
+type Config struct {
+	Name        string            `json:"name"`
+	DisplayName string            `json:"display_name,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Data        map[string]string `json:"data"`
+	Mode        string            `json:"mode,omitempty"`
+	Sensitive   bool              `json:"sensitive,omitempty"`
+	Delimiters  []string          `json:"delimiters,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+}
+
 // Volume is a managed volume's declaration. Its contents travel separately, as a
 // data artifact named after Name.
 type Volume struct {
@@ -319,6 +340,9 @@ type Port struct {
 // exist — or may mean something else — on the target.
 type Mount struct {
 	Volume   string `json:"volume"`
+	Config   string `json:"config,omitempty"`
+	Key      string `json:"key,omitempty"`
+	Mode     string `json:"mode,omitempty"`
 	Path     string `json:"path"`
 	ReadOnly bool   `json:"read_only,omitempty"`
 }
@@ -380,8 +404,13 @@ type Member struct {
 
 // Validate checks an opened state document is one this build understands.
 func (s *State) Validate() error {
-	if s.Schema != StateSchema {
-		return fmt.Errorf("bundle state schema %d is not supported by this build (expected %d)", s.Schema, StateSchema)
+	// A range rather than an exact match. Refusing an older bundle would strand
+	// every bundle already taken; silently accepting a newer one would restore a
+	// workspace missing whatever that version added — configs, say — and look
+	// like it worked.
+	if s.Schema < MinStateSchema || s.Schema > StateSchema {
+		return fmt.Errorf("bundle state schema %d is not supported by this build (expected %d–%d); "+
+			"a bundle from a newer Miabi needs a newer Miabi to restore", s.Schema, MinStateSchema, StateSchema)
 	}
 	if s.Workspace.Name == "" {
 		return errors.New("bundle state names no workspace")

@@ -67,6 +67,7 @@ type Info struct {
 	Databases int `json:"databases" xml:"databases,omitempty"`
 	Volumes   int `json:"volumes" xml:"volumes,omitempty"`
 	Secrets   int `json:"secrets" xml:"secrets,omitempty"`
+	Configs   int `json:"configs" xml:"configs,omitempty"`
 	Routes    int `json:"routes" xml:"routes,omitempty"`
 	// Certificates, Pipelines and GitOpsSources are counted separately because
 	// they are the classes an operator most often wants to confirm travelled
