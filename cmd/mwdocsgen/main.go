@@ -104,9 +104,6 @@ func page(d mwcatalog.Descriptor, position int) string {
 	if d.MinGatewayVersion != "" {
 		fmt.Fprintf(&b, "| **Requires** | Goma Gateway %s or newer |\n", d.MinGatewayVersion)
 	}
-	if d.DocsURL != "" {
-		fmt.Fprintf(&b, "| **Gateway reference** | [Goma docs: %s](%s) |\n", d.Type, d.DocsURL)
-	}
 	b.WriteString("\n")
 
 	if d.MinGatewayVersion != "" {

@@ -82,11 +82,6 @@ type Descriptor struct {
 	Description string   `json:"description"`
 	Category    Category `json:"category"`
 	Fields      []Field  `json:"fields"`
-	// DocsURL is the gateway's own reference page for this middleware type, for
-	// the fields and semantics Miabi's form summarizes rather than restates.
-	// Curated per type because the upstream slugs do not follow from the type name
-	// (`basicAuth` is documented at `basic`, `bodyLimit` at `boy-limit`).
-	DocsURL string `json:"docs_url,omitempty"`
 	// MinGatewayVersion is the oldest Goma release that carries this middleware
 	// type. Empty means it has been there as long as Miabi has curated it.
 	//
@@ -561,7 +556,6 @@ var registry = []Descriptor{
 var byType = func() map[string]Descriptor {
 	m := make(map[string]Descriptor, len(registry))
 	for _, d := range registry {
-		d.DocsURL = gomaDocs[d.Type]
 		m[d.Type] = d
 	}
 	return m
@@ -573,44 +567,9 @@ func Get(t string) (Descriptor, bool) {
 	return d, ok
 }
 
-// gomaDocs maps a middleware type to its page on the gateway's documentation
-// site. Every URL here was checked to resolve; a link that 404s is worse than no
-// link, because it reads as "this is documented" and then is not.
-//
-// Note `bodyLimit` → boy-limit.html: a typo in the gateway's own filename, and
-// the published URL, so the obvious guess does not resolve.
-var gomaDocs = map[string]string{
-	"basicAuth":        "https://goma.jkaninda.dev/middlewares/basic.html",
-	"jwtAuth":          "https://goma.jkaninda.dev/middlewares/jwt.html",
-	"oidc":             "https://goma.jkaninda.dev/middlewares/oidc.html",
-	"forwardAuth":      "https://goma.jkaninda.dev/middlewares/forward-auth.html",
-	"ldapAuth":         "https://goma.jkaninda.dev/middlewares/ldap.html",
-	"access":           "https://goma.jkaninda.dev/middlewares/access.html",
-	"accessPolicy":     "https://goma.jkaninda.dev/middlewares/access-policy.html",
-	"bodyLimit":        "https://goma.jkaninda.dev/middlewares/boy-limit.html",
-	"rateLimit":        "https://goma.jkaninda.dev/middlewares/rate-limit.html",
-	"redirectScheme":   "https://goma.jkaninda.dev/middlewares/redirect-scheme.html",
-	"redirect":         "https://goma.jkaninda.dev/middlewares/redirect.html",
-	"redirectRegex":    "https://goma.jkaninda.dev/middlewares/redirect-regex.html",
-	"rewriteRegex":     "https://goma.jkaninda.dev/middlewares/rewrite-regex.html",
-	"httpCache":        "https://goma.jkaninda.dev/middlewares/http-caching.html",
-	"addPrefix":        "https://goma.jkaninda.dev/middlewares/add-prefix.html",
-	"userAgentBlock":   "https://goma.jkaninda.dev/middlewares/user-agent-block.html",
-	"requestHeaders":   "https://goma.jkaninda.dev/middlewares/request-headers.html",
-	"responseHeaders":  "https://goma.jkaninda.dev/middlewares/response-headers.html",
-	"errorInterceptor": "https://goma.jkaninda.dev/middlewares/error-interceptor.html",
-	"geoBlock":         "https://goma.jkaninda.dev/middlewares/geo-block.html",
-}
-
-// All returns every catalogued descriptor in display order, each carrying its
-// gateway documentation link.
+// All returns every catalogued descriptor in display order.
 func All() []Descriptor {
 	out := make([]Descriptor, len(registry))
 	copy(out, registry)
-	// Attached here rather than repeated on twenty literals: the link is reference
-	// data about the type, not part of its schema.
-	for i := range out {
-		out[i].DocsURL = gomaDocs[out[i].Type]
-	}
 	return out
 }
