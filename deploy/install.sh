@@ -82,8 +82,8 @@ SKIP_DOCKER_INSTALL="${MIABI_SKIP_DOCKER_INSTALL:-0}"
 # The single place every image is pinned. CI bumps these on release (see
 # .github/workflows/release.yml) and they are passed straight to `miabi setup`, so
 # the manifest it writes records exactly what this release was tested against.
-MIABI_VERSION="${MIABI_VERSION:-v1.8.4}"
-GOMA_VERSION="${GOMA_VERSION:-v0.13.1}"
+MIABI_VERSION="${MIABI_VERSION:-v1.9.0}"
+GOMA_VERSION="${GOMA_VERSION:-v0.14.0}"
 RUNNER_VERSION="${RUNNER_VERSION:-v0.0.10}"
 
 # The miabi CLI is what installs and then manages the stack, and it releases from its own repo
