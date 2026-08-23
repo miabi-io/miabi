@@ -3,7 +3,15 @@ import type { ApiResponse, PageableResponse, PipelineDefinition, PipelineRun, Pi
 
 export interface PipelineInput {
   name: string
+  // A pipeline binds to an application (which supplies the source, the image
+  // repository and the deploy target) or to a registered repository (source and
+  // image only) — never both; the API refuses the combination.
   application_id?: number | null
+  // The repository, by name or by id — the JSON type decides which, because an
+  // all-digit name is a valid handle. Send a name: it is what a person reads, and
+  // the only form portable between installs. null unbinds.
+  git_repository?: string | number | null
+  branch?: string
   spec: string
   enabled: boolean
 }

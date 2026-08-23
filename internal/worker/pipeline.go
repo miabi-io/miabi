@@ -255,7 +255,8 @@ func (h *PipelineHandler) jobInputs(run *models.PipelineRun, def *models.Pipelin
 	in.Registry = reg
 	in.Ref = run.Commit
 	in.Branch = run.Branch
-	if def.ApplicationID != nil {
+	switch def.Checkout() {
+	case models.CheckoutApplication:
 		in.AppID = def.ApplicationID
 		if app, err := h.apps.FindByID(*def.ApplicationID); err == nil {
 			in.AppName = app.Name
@@ -274,9 +275,36 @@ func (h *PipelineHandler) jobInputs(run *models.PipelineRun, def *models.Pipelin
 				in.Repository = fmt.Sprintf("%s/%s/%s", strings.TrimRight(reg, "/"), ns, app.Name)
 			}
 		}
+
+	case models.CheckoutRepository:
+		g, err := h.gitRepos.FindInWorkspace(run.WorkspaceID, *def.GitRepositoryID)
+		if err != nil {
+			return runners.JobInputs{}, fmt.Errorf("pipeline repository %d: %w", *def.GitRepositoryID, err)
+		}
+		su, err := gitrepo.CredentialURL(g.URL, g, h.secrets)
+		if err != nil {
+			return runners.JobInputs{}, err
+		}
+		in.SourceURL = su
+		// No app means no shared cache generation to key off; a repository-bound
+		// build is uncached until the definition carries its own generation.
+		if reg != "" {
+			// Namespaced apart from application images (pl_<name>) so a pipeline and
+			// an unrelated app of the same name can never push into the same image
+			// repository. The first path segment still resolves to this workspace, so
+			// registry authorization is unchanged.
+			in.Repository = fmt.Sprintf("%s/%s/%s", strings.TrimRight(reg, "/"), ns, pipelineImageName(def.Name))
+		}
 	}
 	return in, nil
 }
+
+// pipelineImagePrefix keeps a pipeline's images out of the application namespace.
+const pipelineImagePrefix = "pl_"
+
+// pipelineImageName is the repository path a repository-bound pipeline pushes to,
+// within the workspace namespace.
+func pipelineImageName(name string) string { return pipelineImagePrefix + name }
 
 // sourceURL resolves the app's git clone URL for the runner, embedding the linked HTTPS credential so
 // a private repo clones on the runner. An empty result (no app URL) is a command-only pipeline;

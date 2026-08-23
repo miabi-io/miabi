@@ -6,6 +6,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/miabi-io/miabi/internal/declarative"
@@ -31,6 +32,24 @@ var (
 	ErrNoPipelineInRepo = errors.New("repository carries no pipeline-as-code file")
 	// ErrNotGitApp rejects adoption for an app that has no git source to read.
 	ErrNotGitApp = errors.New("application does not build from a git repository")
+	// ErrSourceConflict rejects binding a pipeline to both an application and a
+	// repository. Each supplies the checkout, so together there is no answer to
+	// what the run clones.
+	ErrSourceConflict = errors.New("bind a pipeline to an application or to a repository, not both")
+	// ErrDeployNeedsApp rejects a `uses: deploy` step on a pipeline with no
+	// application: there is nothing to deploy to.
+	ErrDeployNeedsApp = errors.New("a 'uses: deploy' step needs the pipeline bound to an application")
+	// ErrBuildNeedsSource rejects a `uses: build` step on a pipeline that clones
+	// nothing. It would build an empty workspace and succeed, which is worse than
+	// failing.
+	ErrBuildNeedsSource = errors.New("a 'uses: build' step needs the pipeline bound to an application or a repository")
+	// ErrRepositoryNotFound reports a git_repository reference that names nothing
+	// in this workspace. Names are workspace-scoped: a pipeline can only bind to a
+	// repository its own workspace registered.
+	ErrRepositoryNotFound = errors.New("no git repository with that name in this workspace")
+	// ErrRepositoriesUnavailable reports that repository bindings are not wired
+	// up (no git credential service).
+	ErrRepositoriesUnavailable = errors.New("git repositories are not available")
 	// ErrAdoptionUnavailable reports that repository adoption is not wired up
 	// (no git credential service), so nothing can be discovered.
 	ErrAdoptionUnavailable = errors.New("repository pipeline adoption is not available")
@@ -70,7 +89,16 @@ type Input struct {
 	// a non-nil binds; when SetApplicationID is false the binding is left as-is.
 	ApplicationID    *uint
 	SetApplicationID bool
-	Spec             string
+	// GitRepositoryID binds the pipeline to a registered repository instead of an
+	// application, for build-and-push without a deploy target. Partial-update
+	// aware in the same way as ApplicationID.
+	GitRepositoryID    *uint
+	SetGitRepositoryID bool
+	// Branch is the ref a repository-bound pipeline builds when the trigger names
+	// none. Empty clones the repository's default branch.
+	Branch    string
+	SetBranch bool
+	Spec      string
 	// Enabled is a pointer so an update can leave it unchanged (nil). On create,
 	// nil is treated as disabled (the zero value), matching the prior behavior.
 	Enabled *bool
@@ -93,8 +121,17 @@ func (s *Service) Create(workspaceID uint, in Input) (*models.PipelineDefinition
 	if displayName == "" {
 		displayName = strings.TrimSpace(in.Name)
 	}
-	if _, err := ParseSpec([]byte(in.Spec)); err != nil {
+	spec, err := ParseSpec([]byte(in.Spec))
+	if err != nil {
 		return nil, errors.Join(ErrInvalidSpec, err)
+	}
+	if in.ApplicationID != nil && in.GitRepositoryID != nil {
+		return nil, ErrSourceConflict
+	}
+	// Checked here, where the binding is known: ParseSpec only sees the YAML, and
+	// "this step needs a deploy target" is a fact about the definition.
+	if err := validateStepsAgainstBinding(spec, in.ApplicationID, in.GitRepositoryID); err != nil {
+		return nil, err
 	}
 	if taken, _ := s.repo.ExistsByName(workspaceID, name); taken {
 		return nil, ErrNameTaken
@@ -105,6 +142,7 @@ func (s *Service) Create(workspaceID uint, in Input) (*models.PipelineDefinition
 	}
 	p := &models.PipelineDefinition{
 		WorkspaceID: workspaceID, Name: name, DisplayName: displayName, ApplicationID: in.ApplicationID,
+		GitRepositoryID: in.GitRepositoryID, Branch: strings.TrimSpace(in.Branch),
 		Spec: in.Spec, Enabled: in.Enabled != nil && *in.Enabled, WebhookSecret: declarative.RandAlphaNum(40),
 		Source: source, SourcePath: in.SourcePath, SourceRef: in.SourceRef, SourceCommit: in.SourceCommit,
 	}
@@ -112,6 +150,7 @@ func (s *Service) Create(workspaceID uint, in Input) (*models.PipelineDefinition
 		return nil, err
 	}
 	s.applySchedule(p)
+	s.decorateRepository(p)
 	return p, nil
 }
 
@@ -142,10 +181,28 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.PipelineDefini
 	if dn := strings.TrimSpace(in.DisplayName); dn != "" {
 		p.DisplayName = dn
 	}
-	// Partial update: only touch the app binding / enabled flag when the caller
+	// Partial update: only touch the bindings / enabled flag when the caller
 	// actually supplied them, so a spec-only update can't unbind or disable.
 	if in.SetApplicationID {
 		p.ApplicationID = in.ApplicationID
+	}
+	if in.SetGitRepositoryID {
+		p.GitRepositoryID = in.GitRepositoryID
+	}
+	if in.SetBranch {
+		p.Branch = strings.TrimSpace(in.Branch)
+	}
+	// Re-checked against the merged result, not the payload: a spec-only update
+	// that adds a deploy step to an unbound pipeline has to be caught too.
+	if p.ApplicationID != nil && p.GitRepositoryID != nil {
+		return nil, ErrSourceConflict
+	}
+	spec, err := ParseSpec([]byte(p.Spec))
+	if err != nil {
+		return nil, errors.Join(ErrInvalidSpec, err)
+	}
+	if err := validateStepsAgainstBinding(spec, p.ApplicationID, p.GitRepositoryID); err != nil {
+		return nil, err
 	}
 	if in.Enabled != nil {
 		p.Enabled = *in.Enabled
@@ -158,6 +215,7 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.PipelineDefini
 		return nil, err
 	}
 	s.applySchedule(p)
+	s.decorateRepository(p)
 	return p, nil
 }
 
@@ -170,6 +228,12 @@ func repoOwnedEditRequested(p *models.PipelineDefinition, in Input) bool {
 	}
 	// Tri-state: the caller supplied application_id at all, and it differs.
 	if in.SetApplicationID && !sameAppID(in.ApplicationID, p.ApplicationID) {
+		return true
+	}
+	if in.SetGitRepositoryID && !sameAppID(in.GitRepositoryID, p.GitRepositoryID) {
+		return true
+	}
+	if in.SetBranch && strings.TrimSpace(in.Branch) != p.Branch {
 		return true
 	}
 	if name := slug.Make(in.Name, ""); name != "" && name != p.Name {
@@ -196,6 +260,7 @@ func (s *Service) Get(workspaceID, id uint) (*models.PipelineDefinition, error) 
 	if err != nil {
 		return nil, ErrNotFound
 	}
+	s.decorateRepository(p)
 	return p, nil
 }
 
@@ -211,7 +276,12 @@ func (s *Service) GetWithLastRun(workspaceID, id uint) (*models.PipelineDefiniti
 }
 
 func (s *Service) List(workspaceID uint) ([]models.PipelineDefinition, error) {
-	return s.repo.ListByWorkspace(workspaceID)
+	defs, err := s.repo.ListByWorkspace(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	s.decorateRepositories(workspaceID, defs)
+	return defs, nil
 }
 
 // ListPaged returns a page of pipeline definitions plus the total count, each
@@ -226,6 +296,7 @@ func (s *Service) ListPaged(workspaceID uint, limit, offset int) ([]models.Pipel
 		ptrs[i] = &defs[i]
 	}
 	s.attachLastRuns(ptrs...)
+	s.decorateRepositories(workspaceID, defs)
 	return defs, total, nil
 }
 
@@ -298,6 +369,14 @@ func (s *Service) Trigger(workspaceID, pipelineID uint, in TriggerInput) (*model
 			in.Commit = p.SourceCommit
 		}
 	}
+	// A repository-bound pipeline has no app ref to fall back on, so an untriggered
+	// branch comes from the definition. Without this a manual run clones the
+	// repository's default branch, which for a pipeline tracking any other branch
+	// silently builds the wrong code — the same trap the repo-owned path guards
+	// against a few lines up.
+	if in.Branch == "" && p.GitRepositoryID != nil {
+		in.Branch = p.Branch
+	}
 	spec, err := ParseSpec([]byte(p.Spec))
 	if err != nil {
 		return nil, errors.Join(ErrInvalidSpec, err)
@@ -369,3 +448,72 @@ func (s *Service) ListRunsPaged(workspaceID, pipelineID uint, limit, offset int)
 
 // IDByUID resolves a pipeline's portable uid to its numeric id.
 func (s *Service) IDByUID(uid string) (uint, error) { return s.repo.IDByUID(uid) }
+
+func validateStepsAgainstBinding(spec *Spec, appID, repoID *uint) error {
+	if spec == nil {
+		return nil
+	}
+	for _, st := range spec.Steps {
+		switch st.Uses {
+		case UsesDeploy:
+			if appID == nil {
+				return fmt.Errorf("step %q: %w", st.Name, ErrDeployNeedsApp)
+			}
+		case UsesBuild:
+			if appID == nil && repoID == nil {
+				return fmt.Errorf("step %q: %w", st.Name, ErrBuildNeedsSource)
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Service) RepositoryIDByName(workspaceID uint, name string) (uint, error) {
+
+	if s == nil || s.gitRepos == nil {
+		return 0, ErrRepositoriesUnavailable
+	}
+	g, err := s.gitRepos.GetByName(workspaceID, name)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %q", ErrRepositoryNotFound, name)
+	}
+	return g.ID, nil
+}
+
+func (s *Service) decorateRepository(p *models.PipelineDefinition) {
+	if p == nil || p.GitRepositoryID == nil || s.gitRepos == nil {
+		return
+	}
+	if g, err := s.gitRepos.Get(p.WorkspaceID, *p.GitRepositoryID); err == nil {
+		p.GitRepository = g.Name
+	}
+}
+
+func (s *Service) decorateRepositories(workspaceID uint, defs []models.PipelineDefinition) {
+	if s.gitRepos == nil {
+		return
+	}
+	var bound bool
+	for i := range defs {
+		if defs[i].GitRepositoryID != nil {
+			bound = true
+			break
+		}
+	}
+	if !bound {
+		return
+	}
+	repos, err := s.gitRepos.List(workspaceID)
+	if err != nil {
+		return
+	}
+	byID := make(map[uint]string, len(repos))
+	for i := range repos {
+		byID[repos[i].ID] = repos[i].Name
+	}
+	for i := range defs {
+		if defs[i].GitRepositoryID != nil {
+			defs[i].GitRepository = byID[*defs[i].GitRepositoryID]
+		}
+	}
+}

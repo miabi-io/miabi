@@ -67,8 +67,6 @@ func (s *Service) TriggerScheduled(pipelineID uint) (*models.PipelineRun, error)
 	if err != nil {
 		return nil, ErrNotFound
 	}
-	// A repo-owned pipeline's scheduled run builds the ref it was adopted from;
-	// SourceRef is empty for a manual pipeline, leaving the branch unset as before.
 	return s.Trigger(p.WorkspaceID, p.ID, TriggerInput{Trigger: "schedule", Branch: p.SourceRef})
 }
 

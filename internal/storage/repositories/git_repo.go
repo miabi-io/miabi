@@ -48,6 +48,16 @@ func (r *GitRepoRepository) ListByWorkspace(workspaceID uint) ([]models.GitRepos
 	return repos, err
 }
 
+// FindByName resolves a repository by its workspace-unique handle. Names are
+// immutable, which is what makes them safe for another resource to reference.
+func (r *GitRepoRepository) FindByName(workspaceID uint, name string) (*models.GitRepository, error) {
+	var g models.GitRepository
+	if err := r.db.Where("workspace_id = ? AND name = ?", workspaceID, name).First(&g).Error; err != nil {
+		return nil, err
+	}
+	return &g, nil
+}
+
 func (r *GitRepoRepository) ExistsByName(workspaceID uint, name string) (bool, error) {
 	var count int64
 	err := r.db.Model(&models.GitRepository{}).

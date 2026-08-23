@@ -6,13 +6,14 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { pipelineApi, type PipelineInput } from '@/api/pipelines'
 import { appApi } from '@/api/apps'
+import { gitRepositoryApi } from '@/api/gitRepositories'
 import { usePagination } from '@/composables/usePagination'
 import Pagination from '@/components/Pagination.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import PipelineWebhookModal from './PipelineWebhookModal.vue'
 import { relativeTime } from '@/utils/time'
 import { statusMeta } from './status'
-import type { PipelineDefinition, Application, PipelineRunEvent } from '@/api/types'
+import type { PipelineDefinition, Application, GitRepository, PipelineRunEvent } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
@@ -22,6 +23,11 @@ const { currentWorkspaceId } = storeToRefs(ws)
 
 const items = ref<PipelineDefinition[]>([])
 const apps = ref<Application[]>([])
+const repos = ref<GitRepository[]>([])
+// Which kind of source the form is binding to. The two are mutually exclusive —
+// each supplies the checkout, so together there is no answer to what a run clones.
+type SourceKind = 'none' | 'application' | 'repository'
+const sourceKind = ref<SourceKind>('none')
 const loading = ref(false)
 const triggering = ref<number | null>(null)
 
@@ -42,13 +48,20 @@ const { pageable, goToPage } = usePagination(async (page) => {
 // Reload the current page after a mutation.
 function reload() { goToPage(pageable.value.current_page) }
 
-// Apps (deploy-target picker) load once per workspace, independent of the page.
+// The source pickers load once per workspace, independent of the page.
 async function loadApps(id: number | null) {
-  if (!id) { apps.value = []; return }
+  if (!id) { apps.value = []; repos.value = []; return }
   try {
     apps.value = (await appApi.list(id)).data.data ?? []
   } catch (e) {
     notify.apiError(e)
+  }
+  try {
+    repos.value = (await gitRepositoryApi.list(id)).data.data ?? []
+  } catch {
+    // A workspace with no repositories, or no permission to list them, simply
+    // offers no repository option — it must not break the app picker.
+    repos.value = []
   }
 }
 watch(currentWorkspaceId, (id) => { loadApps(id); goToPage(0) }, { immediate: true })
@@ -115,18 +128,46 @@ steps:
 const secretRefExample = '${{ secrets.NAME }}'
 
 function emptyForm(): PipelineInput {
-  return { name: '', application_id: null, spec: sampleSpec, enabled: true }
+  return { name: '', application_id: null, git_repository: null, branch: '', spec: sampleSpec, enabled: true }
 }
 
 function openCreate() {
   editing.value = null
   form.value = emptyForm()
+  sourceKind.value = 'none'
   showModal.value = true
 }
 function openEdit(p: PipelineDefinition) {
   editing.value = p
-  form.value = { name: p.name, application_id: p.application_id ?? null, spec: p.spec, enabled: p.enabled }
+  form.value = {
+    name: p.name,
+    application_id: p.application_id ?? null,
+    // By name, not id: it is what the API takes, and what round-trips unchanged.
+    git_repository: p.git_repository ?? null,
+    branch: p.branch ?? '',
+    spec: p.spec,
+    enabled: p.enabled,
+  }
+  sourceKind.value = p.application_id ? 'application' : p.git_repository ? 'repository' : 'none'
   showModal.value = true
+}
+
+// Switching kind clears the other binding, so the payload can never carry both —
+// which the API refuses, and which has no meaning anyway.
+watch(sourceKind, (kind) => {
+  if (kind !== 'application') form.value.application_id = null
+  if (kind !== 'repository') form.value.git_repository = null
+})
+
+// Mirrors the worker's naming (ws_<id>/pl_<name>) so the form says where the
+// image lands before the first run does.
+const pipelineImageHint = computed(() => `ws_${currentWorkspaceId.value ?? 0}/pl_${form.value.name || 'name'}`)
+
+// The definition carries the repository's name; show its friendlier display name
+// when the workspace's repositories are loaded, and the name itself otherwise.
+function repoLabel(name?: string | null) {
+  if (!name) return null
+  return repos.value.find((x) => x.name === name)?.display_name || name
 }
 
 // The push webhook is setup information, not configuration — it gets its own
@@ -232,7 +273,7 @@ function openLastRun(p: PipelineDefinition) {
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Pipeline</th><th>Target</th><th>Last run</th><th>State</th><th></th></tr></thead>
+          <thead><tr><th>Pipeline</th><th>Source</th><th>Last run</th><th>State</th><th></th></tr></thead>
           <tbody>
             <tr v-for="p in items" :key="p.id">
               <td>
@@ -250,10 +291,20 @@ function openLastRun(p: PipelineDefinition) {
                 </div>
               </td>
               <td>
-                <span v-if="appName(p.application_id)" class="target-chip">
+                <!-- Which source the pipeline clones: an application, a
+                     repository, or nothing (commands only). -->
+                <span v-if="appName(p.application_id)" class="target-chip" title="Builds and deploys this application">
                   <span class="mdi mdi-application-outline"></span> {{ appName(p.application_id) }}
                 </span>
-                <span v-else class="cell-sub">—</span>
+                <span
+                  v-else-if="p.git_repository"
+                  class="target-chip"
+                  :title="`Clones this repository${p.branch ? ' (' + p.branch + ')' : ''} and pushes an image — no deploy target`"
+                >
+                  <span class="mdi mdi-git"></span> {{ repoLabel(p.git_repository) }}
+                  <span v-if="p.branch" class="branch-chip">{{ p.branch }}</span>
+                </span>
+                <span v-else class="cell-sub" title="Commands only — nothing is checked out">—</span>
               </td>
               <td>
                 <button v-if="p.last_run" class="last-run" :title="`Run #${p.last_run.number} · open`" @click="openLastRun(p)">
@@ -320,13 +371,53 @@ function openLastRun(p: PipelineDefinition) {
                 <input v-model="form.name" class="form-input" placeholder="e.g. web" required autofocus aria-label="Name" :disabled="editingRepoOwned" />
               </div>
               <div class="form-group">
-                <label class="form-label">Deploy target <span class="text-muted">(for the deploy step)</span></label>
-                <select v-model="form.application_id" class="form-select" aria-label="Deploy target" :disabled="editingRepoOwned">
-                  <option :value="null">None</option>
-                  <option v-for="a in apps" :key="a.id" :value="a.id">{{ a.name }}</option>
+                <label class="form-label">Source</label>
+                <select v-model="sourceKind" class="form-select" aria-label="Source" :disabled="editingRepoOwned">
+                  <option value="none">None (commands only)</option>
+                  <option value="application">Application</option>
+                  <option value="repository">Repository</option>
                 </select>
               </div>
             </div>
+
+            <!-- One binding or the other. An application supplies the checkout,
+                 the image repository and the deploy target; a repository supplies
+                 the checkout and the image only. -->
+            <div v-if="sourceKind === 'application'" class="form-group">
+              <label class="form-label">Application <span class="text-muted">(source, image and deploy target)</span></label>
+              <select v-model="form.application_id" class="form-select" aria-label="Application" :disabled="editingRepoOwned">
+                <option :value="null">Select an application…</option>
+                <option v-for="a in apps" :key="a.id" :value="a.id">{{ a.display_name || a.name }}</option>
+              </select>
+            </div>
+
+            <template v-else-if="sourceKind === 'repository'">
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Repository</label>
+                  <!-- Bound by name: the name is immutable and unique per
+                       workspace, and it is the form a manifest or a CLI would
+                       use — an id means nothing on another install. -->
+                  <select v-model="form.git_repository" class="form-select" aria-label="Repository" :disabled="editingRepoOwned">
+                    <option :value="null">Select a repository…</option>
+                    <option v-for="r in repos" :key="r.id" :value="r.name">{{ r.display_name || r.name }}</option>
+                  </select>
+                  <p v-if="!repos.length" class="form-hint">
+                    No repositories registered yet — add one under
+                    <RouterLink to="/git-repositories">Git repositories</RouterLink>.
+                  </p>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Branch <span class="text-muted">(optional)</span></label>
+                  <input v-model="form.branch" class="form-input" placeholder="main" aria-label="Branch" :disabled="editingRepoOwned" />
+                  <p class="form-hint">Built by manual and scheduled runs. Blank uses the repository's default branch.</p>
+                </div>
+              </div>
+              <p class="form-hint source-note">
+                Builds and pushes to <code>{{ pipelineImageHint }}</code>. A <code>uses: deploy</code> step needs an
+                application, so it isn't available here. Builds are uncached for now.
+              </p>
+            </template>
             <div class="form-group" style="margin-bottom: 0">
               <label class="form-label">
                 Pipeline spec <span class="text-muted">(kind: Pipeline)</span>
@@ -385,6 +476,16 @@ function openLastRun(p: PipelineDefinition) {
 </template>
 
 <style scoped>
+.branch-chip {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  font-family: monospace;
+  font-size: 11px;
+}
+.source-note { margin-top: 4px; }
+
 .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
 .subtitle code { font-family: 'JetBrains Mono', monospace; }
 .text-muted { color: var(--text-muted); font-weight: 400; }

@@ -2011,6 +2011,15 @@ export interface PipelineDefinition {
   name: string
   display_name?: string
   application_id?: number | null
+  /** The bound repository's name — the reference format, and what to send back
+   *  when updating. Present only on a repository-bound pipeline. */
+  git_repository?: string
+  /** The resolved numeric binding, for a client that needs to match against a
+   *  repository list. Read-only: write `git_repository`. */
+  git_repository_id?: number | null
+  /** Ref a repository-bound run builds when the trigger names none. Empty clones
+   *  the repository's default branch. */
+  branch?: string
   spec: string
   enabled: boolean
   /** Absent on pipelines created before repository adoption existed — treat as 'manual'. */
