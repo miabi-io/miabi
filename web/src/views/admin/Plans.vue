@@ -183,7 +183,10 @@ async function setDefault(p: Plan) {
             <tr v-for="p in plans" :key="p.id" class="row-clickable" @click="openDetail(p)">
               <td>
                 <div class="cell-text">
-                  <span class="cell-title"><RouterLink :to="`/admin/plans/${p.id}`" @click.stop>{{ p.name }}</RouterLink><span v-if="p.is_default" class="badge badge-success" style="margin-left: 6px">default</span></span>
+                  <span class="cell-title"><RouterLink :to="`/admin/plans/${p.id}`" @click.stop>{{ p.name }}</RouterLink><span
+                    v-if="p.is_default" class="badge badge-success" style="margin-left: 6px">default</span><span
+                    v-if="p.system" class="badge badge-info" style="margin-left: 6px"
+                    title="Owned by the platform: pinned to the system workspace, and not yours to rename, delete or make the default">system</span></span>
                   <span class="cell-sub">{{ p.description || '—' }}</span>
                 </div>
               </td>
@@ -205,7 +208,10 @@ async function setDefault(p: Plan) {
                 <span v-else class="badge badge-dot badge-danger">inactive</span>
               </td>
               <td class="text-right" @click.stop>
-                <button v-if="!p.is_default" class="btn btn-sm btn-secondary" @click="setDefault(p)">Set as default</button>
+                <!-- Never offered for a system plan: it is the platform's own, and
+                     making it the default would put every unassigned workspace on
+                     unlimited resources. -->
+                <button v-if="!p.is_default && !p.system" class="btn btn-sm btn-secondary" @click="setDefault(p)">Set as default</button>
               </td>
             </tr>
           </tbody>

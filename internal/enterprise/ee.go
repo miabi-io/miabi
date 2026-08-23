@@ -26,35 +26,29 @@ const (
 // are referenced by services as stable strings so adding a paid feature is "add
 // a constant + call Require", never a change to the license format.
 const (
-	FlagMultiSSO          = "multi_sso"           // more than one OAuth/OIDC provider
-	FlagSSOHiddenProvider = "sso_hidden_provider" // hide a provider from the public login page
-	FlagSSOSAML           = "sso_saml"            // SAML 2.0 + enforced SSO
-	FlagSCIM              = "scim"                // SCIM 2.0 provisioning
-	FlagCustomRoles       = "custom_roles"        // data-driven RBAC roles
-	FlagResourcePolicies  = "resource_policies"   // per-resource permission grants
-	FlagQuotaOverride     = "quota_override"      // per-workspace plan quota overrides
-	FlagAuditLog          = "audit_log"           // view the audit log
-	FlagAuditExport       = "audit_export"        // audit log export + retention
-	FlagSIEMStream        = "siem_stream"         // live audit streaming to a SIEM
-	FlagHA                = "ha"                  // HA control plane
-	FlagDR                = "dr"                  // cross-region DR
-	FlagPlatformBackup    = "platform_backup"     // admin platform (control-plane) backup & restore
-	FlagWhiteLabel        = "white_label"         // full white-label branding
-	// FlagPrivateRegistry gates running your own template catalog instead of
-	// Miabi's: a custom MIABI_MARKETPLACE_URL, self-hosted or a static export.
-	FlagPrivateRegistry    = "private_registry"
-	FlagSecurityProfile    = "security_profile"     // restricted (force non-root UID) profile
-	FlagRegistryS3         = "registry_s3"          // S3/MinIO storage for the built-in registry
-	FlagPlatformRunners    = "platform_runners"     // admin-managed platform-shared runner pool
-	FlagUserWorkspaceLimit = "user_workspace_limit" // per-user workspace-count override
-	// FlagUserWorkspaceMembershipLimit gates the per-user override of how many
-	// workspaces a user may join as a member.
+	FlagMultiSSO                     = "multi_sso"           // more than one OAuth/OIDC provider
+	FlagSSOHiddenProvider            = "sso_hidden_provider" // hide a provider from the public login page
+	FlagSSOSAML                      = "sso_saml"            // SAML 2.0 + enforced SSO
+	FlagSCIM                         = "scim"                // SCIM 2.0 provisioning
+	FlagCustomRoles                  = "custom_roles"        // data-driven RBAC roles
+	FlagResourcePolicies             = "resource_policies"   // per-resource permission grants
+	FlagQuotaOverride                = "quota_override"      // per-workspace plan quota overrides
+	FlagAuditLog                     = "audit_log"           // view the audit log
+	FlagAuditExport                  = "audit_export"        // audit log export + retention
+	FlagSIEMStream                   = "siem_stream"         // live audit streaming to a SIEM
+	FlagHA                           = "ha"                  // HA control plane
+	FlagDR                           = "dr"                  // cross-region DR
+	FlagPlatformBackup               = "platform_backup"     // admin platform (control-plane) backup & restore
+	FlagWhiteLabel                   = "white_label"         // full white-label branding
+	FlagPrivateRegistry              = "private_registry"
+	FlagSecurityProfile              = "security_profile"     // restricted (force non-root UID) profile
+	FlagRegistryS3                   = "registry_s3"          // S3/MinIO storage for the built-in registry
+	FlagPlatformRunners              = "platform_runners"     // admin-managed platform-shared runner pool
+	FlagUserWorkspaceLimit           = "user_workspace_limit" // per-user workspace-count override
 	FlagUserWorkspaceMembershipLimit = "user_workspace_membership_limit"
 	FlagSSOLDAP                      = "sso_ldap"         // LDAP / Active Directory authentication
 	FlagAnalyticsExport              = "analytics_export" // workspace analytics export (CSV) + extended retention
-	// FlagAdvancedCanary gates user-driven canary rollouts: holding the weight
-	// manually instead of watching the ramp, and routing by request attributes.
-	FlagAdvancedCanary = "advanced_canary"
+	FlagAdvancedCanary               = "advanced_canary"
 )
 
 // FlagInfo describes one entitlement flag for tooling and documentation.
@@ -91,9 +85,6 @@ var AllFlags = []FlagInfo{
 	{FlagAdvancedCanary, "manual canary control + attribute-based canary routing"},
 }
 
-// Commercial tier names. A tier is a preset bundle of flags and limits the issuer expands into a
-// license; the runtime only reads the resolved flags/limits, so the tier is a label for the admin
-// UI, support and pricing — and the single source of truth for what each plan includes.
 const (
 	TierProfessional = "professional" // freelancers & solo builders
 	TierBusiness     = "business"     // small businesses & teams
@@ -108,9 +99,6 @@ type Tier struct {
 	Limits map[string]int
 }
 
-// Tiers is the canonical, ordered set of license presets, shared by the issuer, admin UI, docs and
-// support tooling. Editing a tier here changes what its licenses grant everywhere. Professional is
-// a lean SSO/audit bundle; Business adds directory SSO, RBAC and platform backup.
 var Tiers = []Tier{
 	{
 		Name:  TierProfessional,
@@ -187,34 +175,17 @@ const LimitPlanLimit = "plan_limit"
 // of workspace-analytics rollups are retained.
 const LimitAnalyticsRetentionDays = "analytics_retention_days"
 
-// CommunityAnalyticsRetentionDays caps analytics retention in Community. The dashboards work in
-// full; only the history window is bounded. Extended retention is an Enterprise entitlement, and
-// a license may set an explicit limit that wins.
 const CommunityAnalyticsRetentionDays = 7
 
-// CommunityPlanLimit caps the Community plan catalog at the three seeded plans: admins may edit or
-// delete them, but adding a fourth requires an Enterprise license. A license may set an explicit
-// plan_limit that always wins via PlanLimit.
 const CommunityPlanLimit = 3
-
-// CommunityNodeLimit is the number of registered nodes allowed in Community. -1 means unlimited:
-// CE is not node-capped. A license may still set an explicit node_limit entitlement, which always
-// wins via NodeLimit.
 const CommunityNodeLimit = -1
-
-// CommunityRunnerLimit is the number of platform-shared runners allowed without the
-// platform_runners entitlement (-1 = unlimited). The shared pool is uncapped in Community; the
-// entitlement is reserved for future scheduling. Per-workspace runners are always unlimited.
 const CommunityRunnerLimit = 2
 
 // Entitlements is the resolved, point-in-time view of the installed license.
 // State is one of "valid" | "grace" | "degraded" | "none" (community).
 type Entitlements struct {
-	Edition string `json:"edition"`
-	Tier    string `json:"tier,omitempty"` // commercial plan label (professional|business|enterprise)
-	// InstallID / URL are the instance and host the license is bound to (empty = not bound by that
-	// dimension; both empty = unlimited). When a binding doesn't match, State is StateBindingMismatch,
-	// BindingError names the failed binding, and no flags or limits are granted.
+	Edition      string          `json:"edition"`
+	Tier         string          `json:"tier,omitempty"` // commercial plan label (professional|business|enterprise)
 	InstallID    string          `json:"install_id,omitempty"`
 	URL          string          `json:"url,omitempty"`
 	BindingError string          `json:"binding_error,omitempty"`
@@ -227,9 +198,6 @@ type Entitlements struct {
 	GraceEnds    *time.Time      `json:"grace_ends,omitempty"`
 }
 
-// NodeLimit returns the resolved node cap (-1 = unlimited). An explicit
-// node_limit in the license always wins; otherwise Community is bounded by
-// CommunityNodeLimit and a paid edition with no explicit cap is unlimited.
 func (e Entitlements) NodeLimit() int {
 	if e.Limits != nil {
 		if v, ok := e.Limits[LimitNodeLimit]; ok {
@@ -242,9 +210,6 @@ func (e Entitlements) NodeLimit() int {
 	return -1
 }
 
-// PlanLimit returns the resolved plan-catalog cap (-1 = unlimited). An explicit
-// plan_limit in the license always wins; otherwise Community is bounded by
-// CommunityPlanLimit and a paid edition with no explicit cap is unlimited.
 func (e Entitlements) PlanLimit() int {
 	if e.Limits != nil {
 		if v, ok := e.Limits[LimitPlanLimit]; ok {
@@ -257,9 +222,6 @@ func (e Entitlements) PlanLimit() int {
 	return -1
 }
 
-// AnalyticsRetentionDays returns the resolved retention cap in days (-1 = unlimited). An explicit
-// analytics_retention_days limit always wins; otherwise analytics_export lifts the cap, Community
-// is bounded by CommunityAnalyticsRetentionDays, and a paid edition with neither is unlimited.
 func (e Entitlements) AnalyticsRetentionDays() int {
 	if e.Limits != nil {
 		if v, ok := e.Limits[LimitAnalyticsRetentionDays]; ok {
@@ -275,9 +237,6 @@ func (e Entitlements) AnalyticsRetentionDays() int {
 	return -1
 }
 
-// ClampAnalyticsRetention resolves the effective retention days from the operator's configured
-// value and the entitlement cap. A negative cap is unlimited, so the config is honored as-is;
-// otherwise it is bounded by the cap, and a "keep forever" config (<= 0) clamps down to it.
 func ClampAnalyticsRetention(configured, capDays int) int {
 	if capDays < 0 {
 		return configured
@@ -337,17 +296,8 @@ type LDAPIdentity struct {
 	Provider string   // the matched LDAPConfig name/slug
 }
 
-// LDAPAuthenticator binds credentials against the configured directories. It is
-// implemented only in the enterprise build; the CE stub's LDAP() returns nil so
-// the go-ldap client is never linked into Community.
 type LDAPAuthenticator interface {
-	// Authenticate escapes and binds username/password against every enabled LDAP config, first match
-	// winning. It returns the resolved identity, ErrLDAPNoMatch when no config matched (the caller
-	// falls through), or an error on a failed bind. It never binds on an empty password.
 	Authenticate(ctx context.Context, username, password string) (LDAPIdentity, error)
-	// TestConnection dials and binds the service account for one config and reports the result. A
-	// failed connection, bind or search is OK=false rather than a Go error; a Go error means the
-	// config wasn't found.
 	TestConnection(ctx context.Context, configID uint) (LDAPTestResult, error)
 }
 

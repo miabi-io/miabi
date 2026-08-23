@@ -26,6 +26,15 @@ const busy = ref(false)
 const plans = ref<Plan[]>([])
 const selectedPlanId = ref<number | null>(null)
 
+// The system plan grants unlimited resources and every capability, and the
+// platform pins it to its own workspace itself — so it is not on offer here. It
+// stays listed when this workspace is already on it, so the page reports what it
+// is on rather than showing a blank; the API refuses the change either way.
+const onSystemPlan = computed(() => plans.value.some((p) => p.system && p.id === ws.value?.plan_id))
+const assignablePlans = computed(() =>
+  plans.value.filter((p) => !p.system || p.id === ws.value?.plan_id),
+)
+
 async function load() {
   loading.value = true
   try {
@@ -336,13 +345,16 @@ function eventSeverity(e: AdminEvent): string {
         <div class="card-body" style="display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap">
           <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 220px">
             <label class="form-label">Assigned plan</label>
-            <select v-model="selectedPlanId" class="form-select">
+            <select v-model="selectedPlanId" class="form-select" :disabled="onSystemPlan">
               <option :value="null">Default plan</option>
-              <option v-for="p in plans" :key="p.id" :value="p.id">{{ p.name }}{{ p.is_default ? ' (default)' : '' }}</option>
+              <option v-for="p in assignablePlans" :key="p.id" :value="p.id">{{ p.name }}{{ p.is_default ? ' (default)' : '' }}{{ p.system ? ' (system)' : '' }}</option>
             </select>
-            <p class="form-hint">Caps this workspace's resources. Enforced only when plan enforcement is enabled platform-wide.</p>
+            <p v-if="onSystemPlan" class="form-hint">
+              This is the platform's own workspace, pinned to the system plan. Miabi manages that assignment.
+            </p>
+            <p v-else class="form-hint">Caps this workspace's resources. Enforced only when plan enforcement is enabled platform-wide.</p>
           </div>
-          <button class="btn btn-primary" :disabled="busy || selectedPlanId === (ws.plan_id ?? null)" @click="assignPlan">Save</button>
+          <button class="btn btn-primary" :disabled="busy || onSystemPlan || selectedPlanId === (ws.plan_id ?? null)" @click="assignPlan">Save</button>
         </div>
       </div>
 

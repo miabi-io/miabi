@@ -369,8 +369,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	if sh, ok := crypto.CurrentKeyring().(workspace.KeyShredder); ok {
 		workspaceService.SetKeyShredder(sh)
 	}
-	// Seed the built-in plan catalog (Free/Pro/Unlimited) first, so EnsureSystem
-	// can pin the Miabi System workspace to the Unlimited plan. Idempotent.
+	// Seed the built-in plan catalog (Pro + the System-owned Unlimited) first, so
+	// EnsureSystem can pin the Miabi System workspace to Unlimited. Idempotent.
 	if err := dbstorage.SeedPlans(db); err != nil {
 		logger.Warn("failed to seed default plans", "error", err)
 	}

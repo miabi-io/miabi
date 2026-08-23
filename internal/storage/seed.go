@@ -94,7 +94,7 @@ func SeedAdmin(db *gorm.DB, email, password string) (*models.User, error) {
 
 // SeedPlans creates the built-in plan catalog on first boot if no plans exist.
 // Idempotent — a no-op once any plan is present (so admin edits are preserved).
-// Limits use -1 for unlimited, 0 for none. "Free" is the default plan.
+// Limits use -1 for unlimited, 0 for none.
 func SeedPlans(db *gorm.DB) error {
 	var n int64
 	if err := db.Model(&models.Plan{}).Count(&n).Error; err != nil {
@@ -105,14 +105,6 @@ func SeedPlans(db *gorm.DB) error {
 	}
 	const u = models.Unlimited
 	plans := []models.Plan{
-		{
-			Name: "Free", Description: "Starter limits for small workloads.", IsActive: true,
-			MaxApps: 3, MaxDatabaseInstances: 1, MaxCronJobs: 2, MaxVolumes: 3, MaxNetworks: 1, MaxAPIKeys: 2, MaxMembers: 3,
-			MaxDatabasesPerInstance: 2, MaxCPUCores: 2, MaxMemoryMB: 2048,
-			MaxDatabaseInstanceSizeMB: 2048, MaxStorageMB: 10240,
-			AllowCustomTLS: false, AllowPrivilegedHostMounts: false, AllowShellExec: false, AllowSharedStorage: false, AllowDNSProviders: false, AllowCustomLabels: false,
-			AllowPlatformRunners: true,
-		},
 		{
 			Name: "Pro", Description: "Higher limits and custom TLS for production.",
 			IsDefault:                 true,
@@ -126,6 +118,7 @@ func SeedPlans(db *gorm.DB) error {
 			MaxMembers:                25,
 			MaxDatabasesPerInstance:   20,
 			MaxCPUCores:               16,
+			MaxRunners:                3,
 			MaxMemoryMB:               32768,
 			MaxDatabaseInstanceSizeMB: 51200, MaxStorageMB: 512000,
 			AllowCustomTLS: true, AllowPrivilegedHostMounts: false, AllowShellExec: true, AllowSharedStorage: true, AllowDNSProviders: true, AllowCustomLabels: true,
@@ -133,8 +126,11 @@ func SeedPlans(db *gorm.DB) error {
 			AllowPlatformRunners:   true,
 		},
 		{
-			Name: models.UnlimitedPlanName, Description: "No resource limits; all capabilities.", IsActive: true,
+			// System: the platform's own plan for the system workspace, not part of
+			// the catalog an operator publishes.
+			Name: models.UnlimitedPlanName, Description: "No resource limits; all capabilities.", IsActive: true, System: true,
 			MaxApps: u, MaxDatabaseInstances: u, MaxCronJobs: u, MaxVolumes: u, MaxNetworks: u, MaxAPIKeys: u, MaxMembers: u,
+			MaxRunners:              3,
 			MaxDatabasesPerInstance: u, MaxCPUCores: u, MaxMemoryMB: u, MaxDatabaseInstanceSizeMB: u, MaxStorageMB: u,
 			AllowCustomTLS: true, AllowPrivilegedHostMounts: true, AllowShellExec: true, AllowSharedStorage: true, AllowDNSProviders: true, AllowCustomLabels: true,
 			AllowOfficialImageUser: true,

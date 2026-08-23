@@ -38,82 +38,39 @@ func NormalizeSecurityProfile(p string) string {
 // Plan is an admin-defined per-workspace quota + capability template. Numeric
 // limits use -1 for unlimited and 0 for none; capability booleans gate features.
 type Plan struct {
-	ID          uint   `json:"id" gorm:"primaryKey"`
-	Name        string `json:"name" gorm:"uniqueIndex;not null"`
-	Description string `json:"description"`
-	IsDefault   bool   `json:"is_default" gorm:"not null;default:false"` // applied to workspaces with no plan
-	IsActive    bool   `json:"is_active" gorm:"not null;default:true"`
-
-	// Numeric limits (per workspace unless noted). -1 = unlimited, 0 = none. The DB default is 0
-	// (the Go zero value) so GORM's zero-value omission on insert is a no-op: an intentional 0
-	// persists correctly and -1 is non-zero, so it is always written.
-	MaxApps              int `json:"max_apps" gorm:"not null;default:0"`
-	MaxDatabaseInstances int `json:"max_database_instances" gorm:"not null;default:0"`
-	MaxCronJobs          int `json:"max_cron_jobs" gorm:"not null;default:0"`
-	MaxVolumes           int `json:"max_volumes" gorm:"not null;default:0"`
-	MaxNetworks          int `json:"max_networks" gorm:"not null;default:0"`
-	MaxAPIKeys           int `json:"max_api_keys" gorm:"not null;default:0"`
-	// MaxMembers caps the workspace's member count (owner + invited members).
-	MaxMembers int `json:"max_members" gorm:"not null;default:0"`
-	// MaxDatabasesPerInstance caps logical databases within a single instance.
-	MaxDatabasesPerInstance int `json:"max_databases_per_instance" gorm:"not null;default:0"`
-	// MaxCPUCores / MaxMemoryMB cap the workspace's aggregate app compute.
-	MaxCPUCores int `json:"max_cpu_cores" gorm:"not null;default:0"`
-	MaxMemoryMB int `json:"max_memory_mb" gorm:"not null;default:0"`
-	// MaxDatabaseInstanceSizeMB caps a single DB instance's declared data-volume
-	// size; MaxStorageMB caps the workspace's aggregate declared storage
-	// (volumes + DB instance data volumes).
-	MaxDatabaseInstanceSizeMB int `json:"max_database_instance_size_mb" gorm:"not null;default:0"`
-	MaxStorageMB              int `json:"max_storage_mb" gorm:"not null;default:0"`
-	// MaxRunners caps how many build/pipeline runners a workspace may register
-	// (its own build machines). -1 = unlimited, 0 = none.
-	MaxRunners int `json:"max_runners" gorm:"not null;default:0"`
-	// MaxGPUs caps the aggregate number of whole GPU units a workspace's *running*
-	// apps may hold at once (summed across apps, like MaxCPUCores). 0 = none,
-	// -1 = unlimited. A stopped app frees its units.
-	MaxGPUs int `json:"max_gpus" gorm:"not null;default:0"`
-
-	// Capabilities (feature gates). Default false for the same omission reason.
-	AllowCustomTLS            bool `json:"allow_custom_tls" gorm:"not null;default:false"`
-	AllowPrivilegedHostMounts bool `json:"allow_privileged_host_mounts" gorm:"not null;default:false"`
-	// AllowShellExec gates opening an interactive shell (docker exec) into a
-	// running application container from the panel.
-	AllowShellExec bool `json:"allow_shell_exec" gorm:"not null;default:false"`
-	// AllowSharedStorage gates creating shared-storage volumes (NFS / CIFS-SMB)
-	// that replicas can mount read-write across nodes. Node-local volumes are
-	// always allowed; this only governs the rwx backends.
-	AllowSharedStorage bool `json:"allow_shared_storage" gorm:"not null;default:false"`
-	// AllowDNSProviders gates connecting a managed DNS provider (Cloudflare/Route
-	// 53/DigitalOcean) for automated ownership verification + app records. Manual
-	// (copy-paste) DNS always works; this only governs the automation.
-	AllowDNSProviders bool `json:"allow_dns_providers" gorm:"not null;default:false"`
-	// AllowCustomLabels gates attaching user-defined Docker labels to app
-	// containers (for label-driven tools like Traefik). Off by default; the
-	// reserved-prefix protection (io.miabi.*, com.docker.*) applies regardless.
-	AllowCustomLabels bool `json:"allow_custom_labels" gorm:"not null;default:false"`
-	// AllowPlatformRunners grants this workspace's build/pipeline jobs access to
-	// the platform-shared runner pool (in addition to any runners it owns). Off by
-	// default; owned runners are always usable.
-	AllowPlatformRunners bool `json:"allow_platform_runners" gorm:"not null;default:false"`
-	// AllowCustomBuilder gates a per-app custom buildpack builder image. A custom builder runs on
-	// the runner with docker-daemon access, so it is a privileged input on shared runners; off by
-	// default, using the platform default builder.
-	AllowCustomBuilder bool `json:"allow_custom_builder" gorm:"not null;default:false"`
-	// SecurityProfile hardens how this workspace's app and job containers run: ""/"default" keeps
-	// the image's user, "restricted" forces a non-root platform UID. The "default" DB default is
-	// zero-equivalent, so GORM's zero-value omission still round-trips an intentional value.
-	SecurityProfile string `json:"security_profile" gorm:"not null;default:'default'"`
-	// AllowOfficialImageUser lets apps installed from an official marketplace template keep the
-	// image's own user even under a "restricted" SecurityProfile. Only official-source installs
-	// qualify, and it never relaxes a platform-wide MIABI_FORCE_NON_ROOT_USER mandate.
-	AllowOfficialImageUser bool `json:"allow_official_image_user" gorm:"not null;default:false"`
-	// AllowGPU gates whether this workspace's apps may request GPU devices at all. Off by
-	// default: attaching a GPU is device passthrough (privileged), so it is gated hard here and
-	// is incompatible with the restricted profile.
-	AllowGPU bool `json:"allow_gpu" gorm:"not null;default:false"`
-
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID                        uint      `json:"id" gorm:"primaryKey"`
+	Name                      string    `json:"name" gorm:"uniqueIndex;not null"`
+	Description               string    `json:"description"`
+	IsDefault                 bool      `json:"is_default" gorm:"not null;default:false"` // applied to workspaces with no plan
+	IsActive                  bool      `json:"is_active" gorm:"not null;default:true"`
+	System                    bool      `json:"system" gorm:"not null;default:false"`
+	MaxApps                   int       `json:"max_apps" gorm:"not null;default:0"`
+	MaxDatabaseInstances      int       `json:"max_database_instances" gorm:"not null;default:0"`
+	MaxCronJobs               int       `json:"max_cron_jobs" gorm:"not null;default:0"`
+	MaxVolumes                int       `json:"max_volumes" gorm:"not null;default:0"`
+	MaxNetworks               int       `json:"max_networks" gorm:"not null;default:0"`
+	MaxAPIKeys                int       `json:"max_api_keys" gorm:"not null;default:0"`
+	MaxMembers                int       `json:"max_members" gorm:"not null;default:0"`
+	MaxDatabasesPerInstance   int       `json:"max_databases_per_instance" gorm:"not null;default:0"`
+	MaxCPUCores               int       `json:"max_cpu_cores" gorm:"not null;default:0"`
+	MaxMemoryMB               int       `json:"max_memory_mb" gorm:"not null;default:0"`
+	MaxDatabaseInstanceSizeMB int       `json:"max_database_instance_size_mb" gorm:"not null;default:0"`
+	MaxStorageMB              int       `json:"max_storage_mb" gorm:"not null;default:0"`
+	MaxRunners                int       `json:"max_runners" gorm:"not null;default:0"`
+	MaxGPUs                   int       `json:"max_gpus" gorm:"not null;default:0"`
+	AllowCustomTLS            bool      `json:"allow_custom_tls" gorm:"not null;default:false"`
+	AllowPrivilegedHostMounts bool      `json:"allow_privileged_host_mounts" gorm:"not null;default:false"`
+	AllowShellExec            bool      `json:"allow_shell_exec" gorm:"not null;default:false"`
+	AllowSharedStorage        bool      `json:"allow_shared_storage" gorm:"not null;default:false"`
+	AllowDNSProviders         bool      `json:"allow_dns_providers" gorm:"not null;default:false"`
+	AllowCustomLabels         bool      `json:"allow_custom_labels" gorm:"not null;default:false"`
+	AllowPlatformRunners      bool      `json:"allow_platform_runners" gorm:"not null;default:false"`
+	AllowCustomBuilder        bool      `json:"allow_custom_builder" gorm:"not null;default:false"`
+	SecurityProfile           string    `json:"security_profile" gorm:"not null;default:'default'"`
+	AllowOfficialImageUser    bool      `json:"allow_official_image_user" gorm:"not null;default:false"`
+	AllowGPU                  bool      `json:"allow_gpu" gorm:"not null;default:false"`
+	CreatedAt                 time.Time `json:"created_at"`
+	UpdatedAt                 time.Time `json:"updated_at"`
 }
 
 // WorkspaceQuota holds per-workspace overrides applied on top of the assigned
