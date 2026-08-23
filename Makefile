@@ -3,7 +3,8 @@ AGENT       := miabi-agent
 PKG         := github.com/miabi-io/miabi
 VERSION     ?= dev
 COMMIT      := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
-LDFLAGS     := -X $(PKG)/internal/config.Version=$(VERSION) -X $(PKG)/internal/config.CommitID=$(COMMIT)
+BUILD_DATE  ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS     := -X $(PKG)/internal/config.Version=$(VERSION) -X $(PKG)/internal/config.CommitID=$(COMMIT) -X $(PKG)/internal/config.BuildDate=$(BUILD_DATE)
 AGENT_IMAGE ?= ghcr.io/miabi-io/agent
 
 LICENSE_PUBLIC_KEY ?= $(shell cat ../license-public.key 2>/dev/null)

@@ -32,18 +32,20 @@ COPY . .
 COPY --from=web /web/dist ./internal/web/dist
 ARG VERSION=dev
 ARG COMMIT=unknown
+ARG BUILD_DATE=unknown
 
 ARG GO_TAGS="enterprise"
 ARG LICENSE_PUBLIC_KEY=""
 # CGO disabled → a static binary that runs on any runtime base as-is.
 RUN CGO_ENABLED=0 go build -tags "${GO_TAGS}" \
-    -ldflags "-s -w -X github.com/miabi-io/miabi/internal/config.Version=${VERSION} -X github.com/miabi-io/miabi/internal/config.CommitID=${COMMIT} -X github.com/miabi-io/miabi/internal/enterprise.embeddedPublicKey=${LICENSE_PUBLIC_KEY}" \
+    -ldflags "-s -w -X github.com/miabi-io/miabi/internal/config.Version=${VERSION} -X github.com/miabi-io/miabi/internal/config.CommitID=${COMMIT} -X github.com/miabi-io/miabi/internal/config.BuildDate=${BUILD_DATE} -X github.com/miabi-io/miabi/internal/enterprise.embeddedPublicKey=${LICENSE_PUBLIC_KEY}" \
     -o /out/miabi ./cmd/miabi
 
 FROM alpine:3.24
 # Re-declare build args in this stage so they are in scope for the labels below.
 ARG VERSION=dev
 ARG COMMIT=unknown
+ARG BUILD_DATE=unknown
 LABEL org.opencontainers.image.title="Miabi (rootless)" \
       org.opencontainers.image.description="The open-source, self-hosted Platform-as-a-Service (PaaS) for Docker — API + web UI in a single binary, running as an unprivileged user." \
       org.opencontainers.image.version="${VERSION}" \

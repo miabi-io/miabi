@@ -72,6 +72,9 @@ jobs:
         run: |
           echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           echo "COMMIT=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          # The commit's own timestamp, not "now": re-running this workflow on the
+          # same tag then produces the same binary.
+          echo "BUILD_DATE=$(git show -s --format=%cI "$GITHUB_SHA")" >> "$GITHUB_ENV"
 
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
@@ -102,6 +105,7 @@ jobs:
           build-args: |
             VERSION=${{ env.VERSION }}
             COMMIT=${{ env.COMMIT }}
+            BUILD_DATE=${{ env.BUILD_DATE }}
             GO_TAGS=enterprise
             LICENSE_PUBLIC_KEY=${{ vars.LICENSE_PUBLIC_KEY }}
           tags: |
@@ -123,6 +127,7 @@ jobs:
           build-args: |
             VERSION=${{ env.VERSION }}
             COMMIT=${{ env.COMMIT }}
+            BUILD_DATE=${{ env.BUILD_DATE }}
             GO_TAGS=enterprise
             LICENSE_PUBLIC_KEY=${{ vars.LICENSE_PUBLIC_KEY }}
           tags: |

@@ -11,9 +11,10 @@ import (
 
 // AppInfo describes the running application.
 type AppInfo struct {
-	Name     string `json:"name" example:"Miabi"`
-	Version  string `json:"version"`
-	CommitID string `json:"commit_id"`
+	Name      string `json:"name" example:"Miabi"`
+	Version   string `json:"version"`
+	CommitID  string `json:"commit_id"`
+	BuildDate string `json:"build_date,omitempty"`
 	// OpenAPIDocs reports whether the interactive API reference is served at /docs.
 	OpenAPIDocs bool `json:"openapi_docs"`
 }
@@ -28,8 +29,17 @@ func NewInfo(openAPIDocs bool) okapi.HandlerFunc {
 				Name:        "Miabi",
 				Version:     config.Version,
 				CommitID:    config.CommitID,
+				BuildDate:   buildDate(),
 				OpenAPIDocs: openAPIDocs,
 			},
 		})
 	}
+}
+
+// buildDate returns the linked build date, or empty when none was linked in.
+func buildDate() string {
+	if config.HasBuildDate() {
+		return config.BuildDate
+	}
+	return ""
 }

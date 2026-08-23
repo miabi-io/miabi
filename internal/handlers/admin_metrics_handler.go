@@ -80,8 +80,9 @@ type PlatformMetrics struct {
 	Goroutines      int     `json:"goroutines"`
 	MemoryAllocByte uint64  `json:"memory_alloc_bytes"`
 
-	Version string `json:"version"`
-	Commit  string `json:"commit"`
+	Version   string `json:"version"`
+	Commit    string `json:"commit"`
+	BuildDate string `json:"build_date,omitempty"`
 
 	// NetworkPool reports managed-subnet-pool utilization; nil when the allocator
 	// is disabled.
@@ -153,6 +154,7 @@ func (h *AdminMetricsHandler) collect(ctx context.Context) PlatformMetrics {
 		MemoryAllocByte:   m.Alloc,
 		Version:           config.Version,
 		Commit:            config.CommitID,
+		BuildDate:         buildDate(),
 
 		SharedRunners:          h.countArgs(&models.Runner{}, "scope = ?", string(models.ScopeShared)),
 		SharedRunnersOnline:    h.countArgs(&models.Runner{}, "scope = ? AND status = ?", string(models.ScopeShared), string(models.RunnerStatusOnline)),
