@@ -6,6 +6,7 @@ package wsbundle
 import (
 	"bytes"
 	"errors"
+	"reflect"
 	"testing"
 )
 
@@ -66,6 +67,7 @@ func TestStateCarriesEveryResourceClass(t *testing.T) {
 		DNSProviders: []DNSProvider{{Name: "cf", Type: "cloudflare", Credentials: `{"api_token":"t"}`}},
 		Networks:     []Network{{Name: "internal", Driver: "bridge", Internal: true}},
 		Secrets:      []Secret{{Name: "stripe", Value: "sk"}},
+		Configs:      []Config{{Name: "nginx", Data: map[string]string{"nginx.conf": "server {}"}}},
 		Volumes:      []Volume{{Name: "uploads", SizeBytes: 1 << 30}},
 		Stacks: []Stack{{
 			Name: "web", Env: []EnvVar{{Key: "SHARED", Value: "v", IsSecret: true}},
@@ -80,7 +82,10 @@ func TestStateCarriesEveryResourceClass(t *testing.T) {
 		},
 		Apps: []Application{{
 			Name: "api", Stack: "web", Registry: "ghcr", GitRepository: "app-repo",
-			Mounts: []Mount{{Volume: "uploads", Path: "/data"}},
+			Mounts: []Mount{
+				{Volume: "uploads", Path: "/data"},
+				{Config: "nginx", Key: "nginx.conf", Path: "/etc/nginx/nginx.conf"},
+			},
 		}},
 		CronJobs:     []CronJob{{Name: "nightly", App: "api", Schedule: "0 2 * * *", Command: []string{"rake"}}},
 		Middlewares:  []Middleware{{Name: "auth", Type: "basicAuth", Rule: map[string]any{"users": "admin:pw"}}},
@@ -101,19 +106,14 @@ func TestStateCarriesEveryResourceClass(t *testing.T) {
 		t.Fatalf("open: %v", err)
 	}
 
-	// Every class present.
-	counts := map[string]int{
-		"registries": len(out.Registries), "git repositories": len(out.GitRepos),
-		"dns providers": len(out.DNSProviders), "networks": len(out.Networks),
-		"secrets": len(out.Secrets), "volumes": len(out.Volumes), "stacks": len(out.Stacks),
-		"databases": len(out.Databases), "apps": len(out.Apps), "cron jobs": len(out.CronJobs),
-		"middlewares": len(out.Middlewares), "routes": len(out.Routes), "domains": len(out.Domains),
-		"environments": len(out.Environments), "pipelines": len(out.Pipelines),
-		"gitops sources": len(out.GitSources), "members": len(out.Members),
-	}
-	for class, n := range counts {
-		if n == 0 {
-			t.Errorf("%s did not survive the round trip", class)
+	outV := reflect.ValueOf(*out)
+	for i := 0; i < outV.NumField(); i++ {
+		f := outV.Type().Field(i)
+		if f.Type.Kind() != reflect.Slice {
+			continue
+		}
+		if outV.Field(i).Len() == 0 {
+			t.Errorf("State.%s did not survive the round trip — is it carried by collect and restore?", f.Name)
 		}
 	}
 	if len(out.Certificates) != 2 {
@@ -127,6 +127,13 @@ func TestStateCarriesEveryResourceClass(t *testing.T) {
 	if got := out.Apps[0]; got.Stack != "web" || got.Registry != "ghcr" ||
 		got.GitRepository != "app-repo" || got.Mounts[0].Volume != "uploads" {
 		t.Errorf("app lost a reference: %+v", got)
+	}
+	// A config mount references its config by name and selects one key.
+	if got := out.Apps[0].Mounts[1]; got.Config != "nginx" || got.Key != "nginx.conf" {
+		t.Errorf("app lost its config mount: %+v", got)
+	}
+	if out.Configs[0].Data["nginx.conf"] != "server {}" {
+		t.Errorf("config contents did not survive: %+v", out.Configs[0])
 	}
 	if got := out.Databases[0].Databases[0]; got.App != "api" || got.EnvPrefix != "ORDERS" {
 		t.Errorf("logical database lost its consumer: %+v", got)

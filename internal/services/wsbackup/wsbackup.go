@@ -20,6 +20,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/backup"
 	"github.com/miabi-io/miabi/internal/services/backupsettings"
 	"github.com/miabi-io/miabi/internal/services/certificate"
+	configsvc "github.com/miabi-io/miabi/internal/services/config"
 	"github.com/miabi-io/miabi/internal/services/database"
 	"github.com/miabi-io/miabi/internal/services/dnsprovider"
 	"github.com/miabi-io/miabi/internal/services/domain"
@@ -91,6 +92,7 @@ type Deps struct {
 	Volume      *storage.Service
 	Database    *database.Service
 	Secret      *secret.Service
+	Config      *configsvc.Service
 	Route       *route.Service
 	Middleware  *middleware.Service
 	Domain      *domain.Service

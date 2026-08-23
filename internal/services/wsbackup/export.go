@@ -93,6 +93,7 @@ func (s *Service) runExport(ctx context.Context, b *models.WorkspaceBundle) erro
 	info.Databases = len(state.Databases)
 	info.Volumes = len(state.Volumes)
 	info.Secrets = len(state.Secrets)
+	info.Configs = len(state.Configs)
 	info.Routes = len(state.Routes)
 	info.Certificates = len(state.Certificates)
 	info.Pipelines = len(state.Pipelines)

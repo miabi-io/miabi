@@ -17,6 +17,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/backup"
 	"github.com/miabi-io/miabi/internal/services/backupsettings"
+	configsvc "github.com/miabi-io/miabi/internal/services/config"
 	"github.com/miabi-io/miabi/internal/services/database"
 	"github.com/miabi-io/miabi/internal/services/dnsprovider"
 	"github.com/miabi-io/miabi/internal/services/domain"
@@ -253,6 +254,9 @@ func (r *restoreRun) steps() []restoreStep {
 		{"credentials", func(context.Context) { r.applyCredentials() }},
 		{"networks", r.applyNetworks},
 		{"secrets", func(context.Context) { r.applySecrets() }},
+		// Before apps: an app's mounts reference configs by name, and the mount can
+		// only be rebuilt once the config it points at exists.
+		{"configs", func(context.Context) { r.applyConfigs() }},
 		{"volumes", r.applyVolumes},
 		{"stacks", r.applyStacks},
 		{"databases", r.applyDatabases},
@@ -446,6 +450,36 @@ func (r *restoreRun) applySecrets() {
 			continue
 		}
 		r.add("secret", sec.Name, "created", "")
+	}
+}
+
+func (r *restoreRun) applyConfigs() {
+	if r.svc.Config == nil {
+		for _, cfg := range r.state.Configs {
+			r.add("config", cfg.Name, "skipped", "configs are not available on this install")
+		}
+		return
+	}
+	existing := map[string]bool{}
+	if configs, err := r.svc.Config.List(r.target); err == nil {
+		for i := range configs {
+			existing[configs[i].Name] = true
+		}
+	}
+	for _, cfg := range r.state.Configs {
+		if existing[cfg.Name] {
+			r.add("config", cfg.Name, "skipped", "already exists; its current contents were kept")
+			continue
+		}
+		_, err := r.svc.Config.Create(r.target, configsvc.Input{
+			Name: cfg.Name, DisplayName: cfg.DisplayName, Description: cfg.Description,
+			Data: cfg.Data, Mode: cfg.Mode, Sensitive: cfg.Sensitive, Delimiters: cfg.Delimiters,
+		}, r.bundle.CreatedBy)
+		if err != nil {
+			r.add("config", cfg.Name, "failed", err.Error())
+			continue
+		}
+		r.add("config", cfg.Name, "created", "")
 	}
 }
 
