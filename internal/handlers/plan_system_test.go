@@ -10,9 +10,8 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// The system plan is the platform's own: pinned to the system workspace,
-// resolved by name, and not counted against the catalog cap. What an operator
-// may change about it is deliberately narrow.
+// The system plan is the platform's own: pinned to the system workspace and
+// resolved by name. What an operator may change about it is deliberately narrow.
 func TestSystemPlanEdit(t *testing.T) {
 	system := &models.Plan{Name: models.UnlimitedPlanName, System: true}
 	ordinary := &models.Plan{Name: "Pro"}

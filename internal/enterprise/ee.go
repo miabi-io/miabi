@@ -177,18 +177,7 @@ const LimitAnalyticsRetentionDays = "analytics_retention_days"
 
 const CommunityAnalyticsRetentionDays = 7
 
-// CommunityPlanLimit caps the Community plan catalog at two. The seed publishes
-// one of them (Pro), leaving an operator one slot for a plan of their own before
-// a licence is needed.
-//
-// The Unlimited plan does not count: it is marked System — the platform's own
-// plan for the system workspace, not one an operator offers — and charging a
-// catalog slot for a row nobody created would be arbitrary.
-//
-// An install that predates this loses nothing it could do. Its three seeded
-// plans are unflagged, so all three count and it sits above the cap, but it was
-// already at its old limit of three and could not add a plan either way.
-const CommunityPlanLimit = 2
+const CommunityPlanLimit = 3
 const CommunityNodeLimit = -1
 const CommunityRunnerLimit = 2
 

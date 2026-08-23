@@ -31,25 +31,14 @@ func newPlanRepo(t *testing.T) *PlanRepository {
 	return NewPlanRepository(db)
 }
 
-// Count backs the edition's plan cap, so it counts the catalog an operator
-// publishes — not the platform's own plan, which nobody created and which would
-// otherwise cost them a slot.
-func TestCountExcludesSystemPlans(t *testing.T) {
+func TestCountIncludesSystemPlans(t *testing.T) {
 	repo := newPlanRepo(t)
 
 	n, err := repo.Count()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 2 {
-		t.Errorf("Count() = %d, want 2 (the system plan must not count)", n)
-	}
-
-	all, err := repo.CountAll()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if all != 3 {
-		t.Errorf("CountAll() = %d, want 3", all)
+	if n != 3 {
+		t.Errorf("Count() = %d, want 3 — the system plan counts toward the cap", n)
 	}
 }

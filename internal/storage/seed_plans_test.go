@@ -39,26 +39,18 @@ func TestSeededCatalogFitsTheCommunityCap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var counted int
-	for _, p := range plans(t, db) {
-		if !p.System {
-			counted++
-		}
+	got := len(plans(t, db))
+	if got > enterprise.CommunityPlanLimit {
+		t.Errorf("seed creates %d plans, above the Community cap of %d — a fresh install would boot over its own limit",
+			got, enterprise.CommunityPlanLimit)
 	}
-	if counted > enterprise.CommunityPlanLimit {
-		t.Errorf("seed publishes %d catalog plans, above the Community cap of %d — a fresh install would boot over its own limit",
-			counted, enterprise.CommunityPlanLimit)
-	}
-	// And it should leave room: a cap with no headroom is indistinguishable from
-	// no catalog editing at all.
-	if counted == enterprise.CommunityPlanLimit {
-		t.Errorf("seed fills the Community cap exactly (%d); an operator cannot add a plan of their own", counted)
+
+	if got >= enterprise.CommunityPlanLimit {
+		t.Errorf("seed fills the Community cap exactly (%d of %d); an operator could never add a plan of their own",
+			got, enterprise.CommunityPlanLimit)
 	}
 }
 
-// Unlimited is the platform's own plan, pinned to the system workspace. It must
-// be flagged so it does not consume a catalog slot, and must exist at all —
-// workspace.pinUnlimitedPlan looks it up by name and falls back silently.
 func TestSeededUnlimitedPlanIsASystemPlan(t *testing.T) {
 	db := seedDB(t)
 	if err := SeedPlans(db); err != nil {
@@ -75,7 +67,7 @@ func TestSeededUnlimitedPlanIsASystemPlan(t *testing.T) {
 			models.UnlimitedPlanName)
 	}
 	if !unlimited.System {
-		t.Errorf("the %s plan is not marked System, so it consumes one of the edition's catalog slots",
+		t.Errorf("the %s plan is not marked System, so nothing stops it being renamed, deleted or made the default",
 			models.UnlimitedPlanName)
 	}
 }
@@ -110,7 +102,6 @@ func TestSeedPlansIsIdempotent(t *testing.T) {
 	}
 	before := len(plans(t, db))
 
-	// An operator deletes one and adds their own.
 	if err := db.Where("name = ?", "Pro").Delete(&models.Plan{}).Error; err != nil {
 		t.Fatal(err)
 	}

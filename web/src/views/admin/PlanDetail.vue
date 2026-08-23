@@ -128,7 +128,7 @@ function fmtDate(s?: string): string {
               {{ plan.name }}
               <span v-if="plan.is_default" class="badge badge-success">default</span>
               <span v-if="plan.system" class="badge badge-info"
-                title="Owned by the platform: pinned to the system workspace, and not counted against your plan limit">system</span>
+                title="Owned by the platform: pinned to the system workspace, and not yours to rename, delete or make the default">system</span>
               <span v-if="plan.is_active" class="badge badge-dot badge-success">active</span>
               <span v-else class="badge badge-dot badge-danger">inactive</span>
             </h1>

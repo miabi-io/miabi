@@ -21,12 +21,6 @@ func (r *PlanRepository) Update(p *models.Plan) error { return r.db.Save(p).Erro
 
 func (r *PlanRepository) Count() (int64, error) {
 	var n int64
-	err := r.db.Model(&models.Plan{}).Where("system = ?", false).Count(&n).Error
-	return n, err
-}
-
-func (r *PlanRepository) CountAll() (int64, error) {
-	var n int64
 	err := r.db.Model(&models.Plan{}).Count(&n).Error
 	return n, err
 }
