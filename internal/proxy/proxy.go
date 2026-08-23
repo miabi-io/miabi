@@ -94,6 +94,11 @@ type RegistryProxy struct {
 	Upstream    string // http://mb-registry:5000
 	AuthURL     string // forwardAuth target, e.g. http://miabi:9000/internal/registry/auth
 	TLSProvider string // certManager provider ("" = gateway default)
+	// HTTPSRedirect adds the redirectScheme middleware. Off is for an install
+	// behind a TLS terminator whose gateway has no trusted proxies configured:
+	// Goma would see the plaintext hop, decide the request is not HTTPS, and
+	// redirect it back to the terminator — forever. See RegistryConfig.
+	HTTPSRedirect bool
 }
 
 // Manager applies desired proxy state. A workspace's routes and middlewares are written together

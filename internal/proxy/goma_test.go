@@ -427,11 +427,12 @@ func TestSyncRegistryWritesAndRemoves(t *testing.T) {
 	path := filepath.Join(dir, "mb-registry.yml")
 
 	cfg := RegistryProxy{
-		Enabled:     true,
-		Host:        "registry.example.com",
-		Upstream:    "http://mb-registry:5000",
-		AuthURL:     "http://miabi:9000/internal/registry/auth",
-		TLSProvider: "wildcard",
+		Enabled:       true,
+		Host:          "registry.example.com",
+		Upstream:      "http://mb-registry:5000",
+		AuthURL:       "http://miabi:9000/internal/registry/auth",
+		TLSProvider:   "wildcard",
+		HTTPSRedirect: true,
 	}
 	if err := g.SyncRegistry(context.Background(), cfg); err != nil {
 		t.Fatalf("SyncRegistry: %v", err)
@@ -458,6 +459,31 @@ func TestSyncRegistryWritesAndRemoves(t *testing.T) {
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("rendered registry config missing %q\n%s", want, out)
+		}
+	}
+
+	// Behind a TLS terminator whose gateway has no trusted proxies, the redirect
+	// would loop: Goma sees the plaintext hop, decides the request is not HTTPS,
+	// and sends it back to the terminator. Turning it off must drop the middleware
+	// AND its reference — an orphan reference fails the route at load.
+	noRedirect := cfg
+	noRedirect.HTTPSRedirect = false
+	if err := g.SyncRegistry(context.Background(), noRedirect); err != nil {
+		t.Fatalf("SyncRegistry without the redirect: %v", err)
+	}
+	b, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	plain := string(b)
+	if strings.Contains(plain, "mb-registry-https") || strings.Contains(plain, "redirectScheme") {
+		t.Errorf("the HTTPS redirect survived being disabled:\n%s", plain)
+	}
+	// Everything else still has to be there — disabling the redirect must not
+	// quietly take the auth check with it.
+	for _, want := range []string{"mb-registry-auth", "forwardAuth", "mb-registry-ns-rewrite"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("disabling the redirect dropped %q:\n%s", want, plain)
 		}
 	}
 

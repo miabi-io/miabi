@@ -653,6 +653,9 @@ func (s *Service) proxyConfig(st *models.RegistrySettings, enabled bool) proxy.R
 		Upstream:    fmt.Sprintf("http://%s:%d", Alias, Port),
 		AuthURL:     s.authURL(),
 		TLSProvider: s.settings.String(settings.KeyExternalBaseProvider, ""),
+		// Off only for an install behind a TLS terminator with no trusted proxies
+		// configured on the gateway, where the redirect would loop.
+		HTTPSRedirect: s.cfg.HTTPSRedirect,
 	}
 }
 

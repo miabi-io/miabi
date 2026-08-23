@@ -1196,6 +1196,7 @@ export interface MiddlewareDescriptor {
   display_name: string
   description: string
   category: 'access' | 'security' | 'traffic' | 'transform' | 'observability'
+  min_gateway_version?: string
   fields: MiddlewareField[]
 }
 

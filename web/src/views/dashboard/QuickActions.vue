@@ -14,7 +14,7 @@ const actions = [
   { to: '/apps', icon: 'mdi-cube-outline', label: 'Deploy application', hint: 'From an image or a Git repository', tone: 'primary' },
   { to: '/databases', icon: 'mdi-database-plus-outline', label: 'New database', hint: 'Postgres, MySQL, Redis…', tone: 'primary' },
   { to: '/stacks', icon: 'mdi-layers-outline', label: 'Create stack', hint: 'Compose multiple applications', tone: 'primary' },
-  { to: '/marketplace', icon: 'mdi-storefront-outline', label: 'From template', hint: 'One-click apps and databases', tone: 'primary' },
+  { to: '/marketplace', icon: 'mdi-storefront-outline', label: 'Marketplace', hint: 'One-click apps and databases', tone: 'primary' },
   { to: '/routes', icon: 'mdi-routes', label: 'Add route', hint: 'Expose an application on a domain', tone: 'success' },
   { to: '/domains', icon: 'mdi-web', label: 'Add domain', hint: 'Add and verify a domain you own', tone: 'success' },
   { to: '/secrets', icon: 'mdi-key-variant', label: 'Add secret', hint: 'Store a reusable value', tone: 'info' },
