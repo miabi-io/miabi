@@ -222,7 +222,7 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 	//    a new config mount has something to attach to. A config the install
 	//    already has is never rewritten — its content may have been edited since,
 	//    and a template bump is not a reason to discard that.
-	cfgIDs := s.upgradeConfigs(workspaceID, oldM, newM, renderer, res)
+	cfgIDs := s.upgradeConfigs(workspaceID, rec, oldM, newM, renderer, res)
 
 	// Tracks apps already redeployed this upgrade, so a later shared-env change
 	// doesn't redeploy the same app twice.
@@ -255,7 +255,6 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 			changed = true
 		}
 
-		// Additive env only (never overwrite an existing key or regenerate a secret).
 		secret := secretSet(ns.SecretEnv)
 		for key, tmpl := range ns.Env {
 			if _, existed := os.Env[key]; existed {
@@ -353,12 +352,7 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 	return res, nil
 }
 
-// upgradeConfigs reconciles the install's configs toward the target version and
-// returns the workspace config id per template-local name, for the mount pass.
-// Additive only, like env and volumes: a config the old version already declared
-// keeps its current content (it may have been edited since install), and one whose
-// files changed in the template is surfaced as a warning rather than overwritten.
-func (s *Service) upgradeConfigs(workspaceID uint, oldM, newM *manifest.Manifest, renderer *manifest.Renderer, res *UpgradeApplyResult) map[string]uint {
+func (s *Service) upgradeConfigs(workspaceID uint, rec *models.TemplateInstall, oldM, newM *manifest.Manifest, renderer *manifest.Renderer, res *UpgradeApplyResult) map[string]uint {
 	ids := map[string]uint{}
 	if len(newM.Configs) == 0 {
 		return ids
@@ -368,27 +362,39 @@ func (s *Service) upgradeConfigs(workspaceID uint, oldM, newM *manifest.Manifest
 		return ids
 	}
 	oldCfgs := configsByName(oldM)
+	installed := rec.ConfigIDs
+
+	legacyName := func(name string) string { return sanitizeName(newM.Metadata.Name + "-" + name) }
+	resolve := func(name string) (*models.Config, bool) {
+		if id := installed[name]; id != 0 {
+			if cfg, err := s.configs.Get(workspaceID, id); err == nil {
+				return cfg, true
+			}
+		}
+		if cfg, err := s.configs.GetByName(workspaceID, legacyName(name)); err == nil {
+			return cfg, true
+		}
+		return nil, false
+	}
+
 	for _, c := range newM.Configs {
-		wsName := sanitizeName(newM.Metadata.Name + "-" + c.Name)
 		if oc, existed := oldCfgs[c.Name]; existed {
-			cur, gerr := s.configs.GetByName(workspaceID, wsName)
-			if gerr != nil {
-				res.Warnings = append(res.Warnings, fmt.Sprintf("config %q is missing from this workspace — recreate it manually", wsName))
+			cur, found := resolve(c.Name)
+			if !found {
+				res.Warnings = append(res.Warnings, fmt.Sprintf("config %q is missing from this workspace — recreate it manually", c.Name))
 				continue
 			}
 			ids[c.Name] = cur.ID
 			if !sameFiles(oc.Files, c.Files) {
-				res.Warnings = append(res.Warnings, fmt.Sprintf("config %q changed in the template — review and apply manually (kept current content)", wsName))
+				res.Warnings = append(res.Warnings, fmt.Sprintf("config %q changed in the template — review and apply manually (kept current content)", cur.Name))
 			}
 			continue
 		}
-
-		if s.configs.ExistsByName(workspaceID, wsName) {
-			cur, gerr := s.configs.GetByName(workspaceID, wsName)
-			if gerr == nil {
-				ids[c.Name] = cur.ID
-			}
-			res.Warnings = append(res.Warnings, fmt.Sprintf("config %q already exists — left as it is; compare it with the template's copy", wsName))
+		// New in this version. Name it the way the install names things, so it
+		// sits beside the install's other resources rather than the template's.
+		wsName, nerr := s.configName(workspaceID, installLabel(rec, newM), c.Name)
+		if nerr != nil {
+			res.Warnings = append(res.Warnings, fmt.Sprintf("name config %q: %v", c.Name, nerr))
 			continue
 		}
 		files, rerr := renderer.RenderFiles(c.Name, c.Files, c.Delimiters)
@@ -398,7 +404,7 @@ func (s *Service) upgradeConfigs(workspaceID uint, oldM, newM *manifest.Manifest
 		}
 		cfg, cerr := s.configs.UpsertOwned(workspaceID, models.OwnerTemplateInstall, 0, configsvc.Input{
 			Name:        wsName,
-			DisplayName: c.Name,
+			DisplayName: installLabel(rec, newM) + " " + c.Name,
 			Data:        files,
 			Mode:        c.Mode,
 			Sensitive:   c.Sensitive,
@@ -413,22 +419,33 @@ func (s *Service) upgradeConfigs(workspaceID uint, oldM, newM *manifest.Manifest
 	}
 	for name := range oldCfgs {
 		if !hasConfig(newM, name) {
-			res.Warnings = append(res.Warnings, fmt.Sprintf("config %q was removed from the template — left in place; delete it manually if desired", sanitizeName(newM.Metadata.Name+"-"+name)))
+			res.Warnings = append(res.Warnings, fmt.Sprintf("config %q was removed from the template — left in place; delete it manually if desired", name))
 		}
+	}
+	// Keep the record in step: the mount pass and the next upgrade both resolve
+	// through it, and this version may have added or dropped entries.
+	if s.installs != nil && len(ids) > 0 {
+		rec.ConfigIDs = ids
 	}
 	return ids
 }
 
-// applyStackEnv reconciles the install's shared stack env toward the target version, additively and
-// conservatively like the per-app path: new keys are rendered and set, changed or removed ones are warnings.
-// Shared env only reaches containers at deploy time, so members not already redeployed are redeployed.
+func installLabel(rec *models.TemplateInstall, m *manifest.Manifest) string {
+	if rec != nil && strings.TrimSpace(rec.DisplayName) != "" {
+		return rec.DisplayName
+	}
+	if rec != nil && strings.TrimSpace(rec.TemplateDisplayName) != "" {
+		return rec.TemplateDisplayName
+	}
+	return displayName(m, "")
+}
+
 func (s *Service) applyStackEnv(workspaceID uint, rec *models.TemplateInstall, oldM, newM *manifest.Manifest, byName map[string]uint, renderer *manifest.Renderer, deployed map[uint]bool, res *UpgradeApplyResult) {
 	oldEnv, newEnv := stackEnvOf(oldM), stackEnvOf(newM)
 	if len(oldEnv) == 0 && len(newEnv) == 0 {
 		return
 	}
-	// The new version groups config into a stack the install doesn't have: a
-	// structural change we don't perform automatically (mirrors added apps).
+
 	if len(newEnv) > 0 && (rec.StackID == nil || s.stacks == nil) {
 		res.Warnings = append(res.Warnings, "this version shares configuration across a stack, but this install has no stack — reinstall to adopt it")
 		return
@@ -563,7 +580,7 @@ func newMounts(oldA, newA manifest.AppSpec) []string {
 	for _, m := range oldA.Mounts {
 		had[mountKey(m)] = true
 	}
-	out := []string{} // non-nil so JSON is [] not null (the UI reads .length)
+	out := []string{}
 	for _, m := range newA.Mounts {
 		if !had[mountKey(m)] {
 			out = append(out, mountLabel(m))

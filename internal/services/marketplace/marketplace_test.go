@@ -5,6 +5,7 @@ package marketplace
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -360,5 +361,64 @@ func TestConsumerApp(t *testing.T) {
 	// A stack that names another dependency must not create a spurious link.
 	if got := consumerApp(shared, []*models.Application{app(3), app(4)}, "cache"); got != nil {
 		t.Fatalf("stack-shared-other-dep: want nil, got %v", got)
+	}
+}
+
+// Resources are named after the install, not the template, so the same template
+// can be installed twice without the second one colliding with the first.
+func TestResourceNameIsInstallScoped(t *testing.T) {
+	free := func(string) (bool, error) { return false, nil }
+
+	for _, tc := range []struct{ install, local, want string }{
+		{"Smart", "content", "smart-content"},
+		{"Smart", "db", "smart-db"},
+		{"Shop", "content", "shop-content"},
+		// The default install label is the template's, so a plain install keeps
+		// the names it has always had.
+		{"WordPress", "content", "wordpress-content"},
+		{"Goma Gateway", "config", "goma-gateway-config"},
+		// A config name has to satisfy ^[a-z0-9][a-z0-9-]*$: a user-chosen label
+		// with capitals, spaces or punctuation must still come out valid.
+		{"Smart Shop!", "content", "smart-shop-content"},
+		{"  Édition  ", "data", "dition-data"},
+	} {
+		got, err := resourceName(tc.install, tc.local, free)
+		if err != nil {
+			t.Fatalf("%s/%s: %v", tc.install, tc.local, err)
+		}
+		if got != tc.want {
+			t.Errorf("resourceName(%q, %q) = %q, want %q", tc.install, tc.local, got, tc.want)
+		}
+		// Mirrors the config service's own validator.
+		if !regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`).MatchString(got) {
+			t.Errorf("%q is not a valid workspace resource name", got)
+		}
+	}
+}
+
+// Two installs sharing a label still get distinct names rather than one adopting
+// the other's config — the failure that let a second install overwrite the first.
+func TestResourceNameDisambiguates(t *testing.T) {
+	taken := map[string]bool{"smart-config": true, "smart-config-1": true}
+	exists := func(c string) (bool, error) { return taken[c], nil }
+
+	got, err := resourceName("Smart", "config", exists)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "smart-config-2" {
+		t.Errorf("got %q, want smart-config-2", got)
+	}
+}
+
+// An install label that slugifies to nothing falls back to the template-local
+// name, which the manifest validator already guarantees is a valid slug.
+func TestResourceNameFallsBackToTheLocalName(t *testing.T) {
+	got, err := resourceName("!!!", "content", func(string) (bool, error) { return false, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "content" {
+		t.Errorf("got %q, want content", got)
 	}
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/marketplace/manifest"
 	"github.com/miabi-io/miabi/internal/services/stack"
 	"github.com/miabi-io/miabi/internal/services/storage"
+	"github.com/miabi-io/miabi/internal/slug"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
@@ -305,7 +306,8 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 			models.MetaManagedBy, models.ManagedByMarketplace,
 			models.MetaTemplate, m.Metadata.Name,
 			models.MetaTemplateVersion, m.Metadata.Version)
-		vol, err := s.volumes.Create(ctx, workspaceID, 0, sanitizeName(m.Metadata.Name+"-"+v.Name), 0, volMeta, nil)
+
+		vol, err := s.volumes.Create(ctx, workspaceID, 0, result.DisplayName+" "+v.Name, 0, volMeta, nil)
 		if err != nil {
 			return nil, fmt.Errorf("create volume %q: %w", v.Name, err)
 		}
@@ -372,7 +374,7 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 
 	// Database-only template: nothing else to do.
 	if m.IsDatabaseOnly() {
-		result.InstallID = s.record(workspaceID, source, m, result, kept)
+		result.InstallID = s.record(workspaceID, source, m, result, kept, nil)
 		return result, nil
 	}
 
@@ -416,9 +418,6 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 	result.Apps = created
 	report.phase(PhaseApps, PhaseDone)
 
-	// Owner back-link: attribute the install's volumes and databases to what they back — a volume goes to the
-	// single app that mounts it, otherwise (shared or unmounted) to the bundle: the stack when grouped, else
-	// the single app. Databases follow the bundle. Best-effort; the install already succeeded.
 	bundleKind, bundleID, bundleName := "", uint(0), ""
 	switch {
 	case result.Stack != nil:
@@ -496,9 +495,13 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 			if err != nil {
 				return nil, fmt.Errorf("render config %q: %w", c.Name, err)
 			}
+			name, err := s.configName(workspaceID, result.DisplayName, c.Name)
+			if err != nil {
+				return nil, fmt.Errorf("name config %q: %w", c.Name, err)
+			}
 			cfg, err := s.configs.UpsertOwned(workspaceID, models.OwnerTemplateInstall, 0, configsvc.Input{
-				Name:        sanitizeName(m.Metadata.Name + "-" + c.Name),
-				DisplayName: c.Name,
+				Name:        name,
+				DisplayName: result.DisplayName + " " + c.Name,
 				Data:        files,
 				Mode:        c.Mode,
 				Sensitive:   c.Sensitive,
@@ -558,7 +561,7 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 		}
 	}
 
-	result.InstallID = s.record(workspaceID, source, m, result, kept)
+	result.InstallID = s.record(workspaceID, source, m, result, kept, cfgIDs)
 	// Back-link each app to the install (best-effort; the install already
 	// succeeded). Powers "installed from <template>" on the app page.
 	if result.InstallID != 0 {
@@ -605,12 +608,18 @@ func (s *Service) ListInstalls(workspaceID uint) ([]InstallView, error) {
 	return out, nil
 }
 
-// createApp materializes a single application spec (no env yet). serverID pins the app to the install's
-// chosen node (0 = local default) so it is colocated with the databases it depends on — they share a
-// Docker network, which cannot span nodes.
+func resourceName(installName, localName string, exists func(string) (bool, error)) (string, error) {
+	return slug.Unique(installName+"-"+localName, localName, exists)
+}
+
+func (s *Service) configName(workspaceID uint, installName, localName string) (string, error) {
+	return resourceName(installName, localName, func(candidate string) (bool, error) {
+		return s.configs.ExistsByName(workspaceID, candidate), nil
+	})
+}
+
 func (s *Service) createApp(workspaceID uint, m *manifest.Manifest, spec manifest.AppSpec, baseName string, stackID *uint, serverID uint) (*models.Application, error) {
-	// Single-application installs take the chosen name directly; multi-application
-	// installs prefix each app's service name so they stay distinguishable.
+
 	name := baseName
 	if len(m.Applications) > 1 {
 		name = fmt.Sprintf("%s %s", baseName, spec.Name)
@@ -624,7 +633,6 @@ func (s *Service) createApp(workspaceID uint, m *manifest.Manifest, spec manifes
 		Command:     spec.Command,
 		StackID:     stackID,
 		ServerID:    serverID,
-		// Provenance: built-in metadata recording the source template.
 		Metadata: models.SetBuiltin(models.Metadata{},
 			models.MetaManagedBy, models.ManagedByMarketplace,
 			models.MetaTemplate, m.Metadata.Name,
@@ -733,14 +741,17 @@ func (s *Service) installNode(workspaceID uint, m *manifest.Manifest, in Install
 
 // record persists provenance (best-effort; a failure here never fails an install
 // that already succeeded).
-func (s *Service) record(workspaceID uint, source string, m *manifest.Manifest, r *InstallResult, inputs map[string]string) uint {
+func (s *Service) record(workspaceID uint, source string, m *manifest.Manifest, r *InstallResult, inputs map[string]string, cfgIDs map[string]uint) uint {
 	if s.installs == nil {
 		return 0
 	}
 	rec := &models.TemplateInstall{
 		WorkspaceID: workspaceID, Source: source,
 		TemplateName: m.Metadata.Name, TemplateDisplayName: m.Metadata.DisplayName, Version: m.Metadata.Version,
-		StackID: stackIDOf(r), Inputs: inputs,
+		DisplayName: r.DisplayName, StackID: stackIDOf(r), Inputs: inputs,
+	}
+	if len(cfgIDs) > 0 {
+		rec.ConfigIDs = cfgIDs
 	}
 	for _, a := range r.Apps {
 		rec.AppIDs = append(rec.AppIDs, a.ID)

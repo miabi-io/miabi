@@ -4,9 +4,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { marketplaceApi } from '@/api/marketplace'
-import type { CatalogEntry, TemplateManifest, ManifestConfig, ManifestDatabase, InstallJob, TemplateInstallView, UpgradePlan } from '@/api/marketplace'
+import type { CatalogEntry, TemplateManifest, ManifestDatabase, InstallJob, TemplateInstallView, UpgradePlan } from '@/api/marketplace'
 import { databaseApi } from '@/api/resources'
 import { apiErrorMessage } from '@/api/client'
+import { displayFor, resourceName } from '@/utils/installNames'
 import type { DatabaseInstance } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 
@@ -217,15 +218,96 @@ function placementHint(db: ManifestDatabase): string {
     : `Automatic will provision a new dedicated ${db.engine} instance.`
 }
 
-function volumeNames(): string {
-  return (manifest.value?.volumes ?? []).map((v: { name: string }) => v.name).join(', ')
+// ---- what the install will actually create ----
+//
+// The list shows resolved names (see @/utils/installNames), not the manifest's
+// local ones: what a resource is called depends on the Name field above it, and
+// that is the whole reason two installs of one template no longer collide.
+
+// The label the install is named after: what the user typed, else the template's.
+const installLabel = computed(() => (form.value.name || entry.value?.display_name || '').trim())
+
+interface Provision {
+  icon: string
+  kind: string
+  name: string // as it will appear in the workspace
+  sub?: string // short qualifier for the sidebar
+  detail?: string // fuller wording for the confirmation dialog
 }
-// A config is named for the install (<template>-<name>) and carries files; both
-// matter before installing, so the label shows the name and how many files.
-function configLabel(c: ManifestConfig): string {
-  const n = Object.keys(c.files ?? {}).length
-  return `${c.name} — ${n} file${n === 1 ? '' : 's'}`
+
+// shortPlacement is placementLabel in a few words, for the sidebar row.
+function shortPlacement(db: ManifestDatabase): string {
+  const inst = pickedInstance(db)
+  if (inst) return `in ${inst.name}`
+  if (form.value.placement[db.name] === 'dedicated') return 'new dedicated instance'
+  const existing = instancesFor(db.engine)
+  return existing.length ? `reuses ${existing[0].name}` : 'new instance'
 }
+
+const provisions = computed<Provision[]>(() => {
+  const label = installLabel.value
+  const m = manifest.value
+  const out: Provision[] = []
+  if (!m) return out
+
+  const apps = m.applications ?? []
+  for (const a of apps) {
+    out.push({
+      icon: 'mdi-cube-outline',
+      kind: 'app',
+      name: displayFor(label, a.name, apps.length),
+      sub: `${a.image}${a.tag ? ':' + a.tag : ''}`,
+    })
+  }
+
+  const dbs = m.databases ?? []
+  for (const d of dbs) {
+    out.push({
+      icon: 'mdi-database-outline',
+      kind: `${d.engine} database`,
+      name: displayFor(label, d.name, dbs.length),
+      sub: shortPlacement(d),
+
+      detail: placementLabel(d),
+    })
+  }
+
+  for (const v of m.volumes ?? []) {
+    out.push({
+      icon: 'mdi-harddisk',
+      kind: 'volume',
+      name: `${label} ${v.name}`,
+      sub: resourceName(label, v.name),
+    })
+  }
+
+  for (const c of m.configs ?? []) {
+    const files = Object.keys(c.files ?? {}).length
+    out.push({
+      icon: 'mdi-file-document-outline',
+      kind: 'config',
+      name: resourceName(label, c.name),
+      sub: `${files} file${files === 1 ? '' : 's'}`,
+    })
+  }
+  return out
+})
+
+// reviewGroups is the same list, grouped by kind for the confirmation dialog —
+// "Volumes: Smart content, Smart db" reads better there than one row per item.
+const reviewGroups = computed<Record<string, Provision[]>>(() => {
+  const plural: Record<string, string> = {
+    app: 'Applications',
+    volume: 'Volumes',
+    config: 'Configs',
+  }
+  const out: Record<string, Provision[]> = {}
+  for (const p of provisions.value) {
+    const key = plural[p.kind] ?? (p.kind.endsWith('database') ? 'Databases' : p.kind)
+    ;(out[key] ??= []).push(p)
+  }
+  return out
+})
 
 // ---- custom-template edit / delete (custom source only) ----
 const isCustom = computed(() => entry.value?.source === 'custom')
@@ -444,19 +526,17 @@ onUnmounted(stopJobStream)
           <div class="info-section">
             <div class="info-label">Provisions</div>
             <ul class="provision-list">
-              <li v-for="a in manifest?.applications ?? []" :key="'a' + a.name">
-                <span class="mdi mdi-cube-outline"></span> {{ a.name }} <span class="cell-sub">({{ a.image }}{{ a.tag ? ':' + a.tag : '' }})</span>
-              </li>
-              <li v-for="d in manifest?.databases ?? []" :key="'d' + d.name">
-                <span class="mdi mdi-database-outline"></span> {{ d.engine }} database <span class="cell-sub">({{ d.name }})</span>
-              </li>
-              <li v-for="vol in manifest?.volumes ?? []" :key="'v' + vol.name">
-                <span class="mdi mdi-harddisk"></span> volume <span class="cell-sub">({{ vol.name }})</span>
-              </li>
-              <li v-for="cfg in manifest?.configs ?? []" :key="'c' + cfg.name">
-                <span class="mdi mdi-file-document-outline"></span> config <span class="cell-sub">({{ configLabel(cfg) }})</span>
+              <li v-for="(p, i) in provisions" :key="i">
+                <span class="mdi" :class="p.icon"></span>
+                <span class="prov-text">
+                  <span class="prov-name">{{ p.name }}</span>
+                  <span class="cell-sub">{{ p.kind }}<template v-if="p.sub"> · {{ p.sub }}</template></span>
+                </span>
               </li>
             </ul>
+            <p v-if="provisions.length" class="field-help" style="margin-top: 6px">
+              Named after the install name. A name already in use gets a numeric suffix.
+            </p>
           </div>
 
           <div v-if="entry.author" class="info-section">
@@ -578,31 +658,12 @@ onUnmounted(stopJobStream)
               <dt>Template</dt>
               <dd>{{ entry.display_name }} <span class="cell-sub">v{{ version || entry.version }}</span></dd>
             </div>
-            <div v-if="(manifest?.applications ?? []).length" class="review-row">
-              <dt>{{ (manifest?.applications ?? []).length > 1 ? 'Applications' : 'Application' }}</dt>
+            <div v-for="(group, kind) in reviewGroups" :key="kind" class="review-row">
+              <dt>{{ kind }}</dt>
               <dd>
-                <div v-for="a in manifest?.applications ?? []" :key="a.name">
-                  {{ a.image }}{{ a.tag ? ':' + a.tag : '' }}
-                </div>
-              </dd>
-            </div>
-            <div v-if="(manifest?.databases ?? []).length" class="review-row">
-              <dt>Databases</dt>
-              <dd>
-                <div v-for="d in manifest?.databases ?? []" :key="d.name">
-                  {{ d.engine }} <span class="cell-sub">— {{ placementLabel(d) }}</span>
-                </div>
-              </dd>
-            </div>
-            <div v-if="(manifest?.volumes ?? []).length" class="review-row">
-              <dt>Volumes</dt>
-              <dd>{{ volumeNames() }}</dd>
-            </div>
-            <div v-if="(manifest?.configs ?? []).length" class="review-row">
-              <dt>Configs</dt>
-              <dd>
-                <div v-for="c in manifest?.configs ?? []" :key="c.name">
-                  {{ configLabel(c) }}
+                <div v-for="(p, i) in group" :key="i">
+                  <strong>{{ p.name }}</strong>
+                  <span v-if="p.detail || p.sub" class="cell-sub"> — {{ p.detail || p.sub }}</span>
                 </div>
               </dd>
             </div>
@@ -851,11 +912,27 @@ onUnmounted(stopJobStream)
   font-size: 13px;
   color: var(--text-primary);
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 6px;
+}
+/* Name over qualifier: the sidebar is narrow, and an image reference or a long
+   install name would otherwise push the kind out of the card. */
+.provision-list .prov-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 .provision-list .mdi {
   color: var(--text-muted);
+}
+/* The resolved name is the point of the row, so it wins over the kind label —
+   and a long one wraps instead of pushing the kind out of the card. */
+.provision-list .prov-name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.provision-list .cell-sub {
+  overflow-wrap: anywhere;
 }
 .info-link {
   font-size: 13px;
