@@ -140,8 +140,9 @@ func (h *PlanHandler) Get(c *okapi.Context) error {
 }
 
 func (h *PlanHandler) Create(c *okapi.Context, req *CreatePlanRequest) error {
-	// Edition plan-catalog cap: Community keeps the three seeded plans (editable/
-	// deletable) but can't add a fourth; a license may raise or lift the limit.
+	// Edition plan-catalog cap. System plans (the platform's own Unlimited) do not
+	// count, and an install that predates the cap being lowered keeps its old one —
+	// see planLimit. A licence raises or lifts it.
 	if lim := h.ee.Entitlements().PlanLimit(); lim >= 0 {
 		if n, err := h.repo.Count(); err == nil && n >= int64(lim) {
 			return entitlementAbort(c, enterprise.ErrPlanLimitReached)
