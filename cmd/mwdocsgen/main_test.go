@@ -58,9 +58,9 @@ func TestNoOrphanedPages(t *testing.T) {
 	}
 }
 
-// Every curated type gets a page, and every page a gateway link. A type with no
-// upstream reference is worth noticing: it is either new, or Miabi is curating
-// something the gateway does not document.
+// Every curated type gets a page. A type added to the catalog without one is
+// documented nowhere, which is how twenty types went undocumented in the first
+// place.
 func TestEveryTypeIsDocumented(t *testing.T) {
 	pages, err := Pages()
 	if err != nil {
@@ -69,9 +69,6 @@ func TestEveryTypeIsDocumented(t *testing.T) {
 	for _, d := range mwcatalog.All() {
 		if _, ok := pages[FileName(d.Type)]; !ok {
 			t.Errorf("no page generated for %q", d.Type)
-		}
-		if d.DocsURL == "" {
-			t.Errorf("%q has no gateway documentation link — add one to gomaDocs", d.Type)
 		}
 	}
 }

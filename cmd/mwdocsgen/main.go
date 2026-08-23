@@ -104,9 +104,6 @@ func page(d mwcatalog.Descriptor, position int) string {
 	if d.MinGatewayVersion != "" {
 		fmt.Fprintf(&b, "| **Requires** | Goma Gateway %s or newer |\n", d.MinGatewayVersion)
 	}
-	if d.DocsURL != "" {
-		fmt.Fprintf(&b, "| **Gateway reference** | [%s](%s) |\n", gatewayLinkLabel(d), d.DocsURL)
-	}
 	b.WriteString("\n")
 
 	if d.MinGatewayVersion != "" {
@@ -125,13 +122,6 @@ func page(d mwcatalog.Descriptor, position int) string {
 			"Editing the middleware leaves a stored secret in place unless you type a new value — an empty box means \"keep what is stored\", not \"clear it\".\n:::\n")
 	}
 	return b.String()
-}
-
-func gatewayLinkLabel(d mwcatalog.Descriptor) string {
-	if strings.HasSuffix(d.DocsURL, "/middlewares/") {
-		return "Goma middleware reference"
-	}
-	return "Goma docs: " + d.Type
 }
 
 func writeFieldTable(b *strings.Builder, fields []mwcatalog.Field) {
