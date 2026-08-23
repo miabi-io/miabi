@@ -4,6 +4,7 @@
 package marketplace
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/miabi-io/miabi/internal/services/marketplace/manifest"
@@ -91,16 +92,99 @@ func TestAddedAndMounts(t *testing.T) {
 	if len(nm) != 1 || nm[0] != "cache" {
 		t.Errorf("newMounts = %v, want [cache]", nm)
 	}
-	if isMountNew(oldA, "data") {
+	if isMountNew(oldA, manifest.Mount{Volume: "data"}) {
 		t.Error("data is not a new mount")
 	}
-	if !isMountNew(oldA, "cache") {
+	if !isMountNew(oldA, manifest.Mount{Volume: "cache"}) {
 		t.Error("cache is a new mount")
+	}
+}
+
+// A config mount carries no volume name, so mount identity has to include the
+// config and its key — otherwise every config mount looks like the same one.
+func TestMountIdentityWithConfigs(t *testing.T) {
+	oldA := manifest.AppSpec{Mounts: []manifest.Mount{
+		{Volume: "data", Path: "/etc/goma"},
+	}}
+	newA := manifest.AppSpec{Mounts: []manifest.Mount{
+		{Volume: "data", Path: "/etc/goma"},
+		{Config: "config", Key: "goma.yml", Path: "/etc/goma/goma.yml"},
+	}}
+	nm := newMounts(oldA, newA)
+	if len(nm) != 1 || nm[0] != "config config/goma.yml" {
+		t.Errorf("newMounts = %v, want [config config/goma.yml]", nm)
+	}
+	if !isMountNew(oldA, newA.Mounts[1]) {
+		t.Error("the config mount is new")
+	}
+	if isMountNew(newA, newA.Mounts[1]) {
+		t.Error("the config mount is not new against a spec that already has it")
+	}
+	// Two config mounts of the same config differ by key.
+	if !isMountNew(newA, manifest.Mount{Config: "config", Key: "other.yml", Path: "/etc/goma/other.yml"}) {
+		t.Error("a different key is a different mount")
+	}
+}
+
+func TestDiffConfigs(t *testing.T) {
+	oldM := &manifest.Manifest{Configs: []manifest.Config{
+		{Name: "keep", Files: map[string]string{"a.yml": "1"}},
+		{Name: "edited", Files: map[string]string{"b.yml": "old"}},
+		{Name: "gone", Files: map[string]string{"c.yml": "x"}},
+	}}
+	newM := &manifest.Manifest{Configs: []manifest.Config{
+		{Name: "keep", Files: map[string]string{"a.yml": "1"}},
+		{Name: "edited", Files: map[string]string{"b.yml": "new"}},
+		{Name: "fresh", Files: map[string]string{"d.yml": "y"}},
+	}}
+	var warnings []string
+	got := diffConfigs(oldM, newM, &warnings)
+	if len(got) != 1 || got[0] != "fresh" {
+		t.Errorf("diffConfigs = %v, want [fresh]", got)
+	}
+	joined := strings.Join(warnings, "\n")
+	if !strings.Contains(joined, `"edited"`) {
+		t.Errorf("expected a warning for the edited config, got %v", warnings)
+	}
+	if !strings.Contains(joined, `"gone"`) {
+		t.Errorf("expected a warning for the removed config, got %v", warnings)
+	}
+	if strings.Contains(joined, `"keep"`) {
+		t.Errorf("an unchanged config should not warn, got %v", warnings)
+	}
+	// A template with no configs on either side diffs to nothing.
+	if got := diffConfigs(&manifest.Manifest{}, &manifest.Manifest{}, &warnings); len(got) != 0 {
+		t.Errorf("expected no new configs, got %v", got)
 	}
 }
 
 func TestIsTemplated(t *testing.T) {
 	if !isTemplated("{{ .inputs.X }}") || isTemplated("literal") {
 		t.Error("isTemplated mismatch")
+	}
+}
+
+// A server without the config service must degrade to a warning, not a panic,
+// when the target version ships configuration files.
+func TestUpgradeConfigsWithoutConfigService(t *testing.T) {
+	svc := &Service{}
+	newM := &manifest.Manifest{
+		Metadata: manifest.Metadata{Name: "goma-gateway", Version: "1.1.0"},
+		Configs:  []manifest.Config{{Name: "config", Files: map[string]string{"goma.yml": "version: \"2\""}}},
+	}
+	res := &UpgradeApplyResult{}
+	ids := svc.upgradeConfigs(1, &manifest.Manifest{}, newM, manifest.NewRenderer(manifest.Context{}), res)
+	if len(ids) != 0 {
+		t.Errorf("no config can be created without the service, got %v", ids)
+	}
+	if len(res.Warnings) != 1 {
+		t.Errorf("expected one warning, got %v", res.Warnings)
+	}
+
+	// A version that ships no configs says nothing at all.
+	res = &UpgradeApplyResult{}
+	svc.upgradeConfigs(1, &manifest.Manifest{}, &manifest.Manifest{}, manifest.NewRenderer(manifest.Context{}), res)
+	if len(res.Warnings) != 0 {
+		t.Errorf("expected no warnings, got %v", res.Warnings)
 	}
 }

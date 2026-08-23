@@ -10,6 +10,7 @@ import (
 
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/models"
+	configsvc "github.com/miabi-io/miabi/internal/services/config"
 	"github.com/miabi-io/miabi/internal/services/marketplace/manifest"
 )
 
@@ -40,6 +41,7 @@ type UpgradePlan struct {
 	Apps         []AppChange      `json:"apps"`
 	StackEnv     []EnvChange      `json:"stack_env"` // shared stack env changes (added applied; changed/removed warned)
 	NewVolumes   []string         `json:"new_volumes"`
+	NewConfigs   []string         `json:"new_configs"` // configs the new version ships that the install lacks
 	NewDatabases []string         `json:"new_databases"`
 	AddedApps    []string         `json:"added_apps"`   // in the new version, not installed
 	RemovedApps  []string         `json:"removed_apps"` // installed, dropped by the new version
@@ -54,6 +56,7 @@ type UpgradeApplyResult struct {
 	AppsBumped  []string `json:"apps_bumped"` // apps whose image/env changed + redeployed
 	EnvApplied  []string `json:"env_applied"` // "app:KEY" env values set
 	NewVolumes  []string `json:"new_volumes"` // volumes created
+	NewConfigs  []string `json:"new_configs"` // configs created
 	Warnings    []string `json:"warnings"`    // items surfaced but not applied
 }
 
@@ -106,6 +109,7 @@ func (s *Service) PlanUpgrade(workspaceID, installID uint, target string) (*Upgr
 		Apps:         []AppChange{},
 		StackEnv:     []EnvChange{},
 		NewVolumes:   []string{},
+		NewConfigs:   []string{},
 		NewDatabases: []string{},
 		AddedApps:    []string{},
 		RemovedApps:  []string{},
@@ -146,6 +150,7 @@ func (s *Service) PlanUpgrade(workspaceID, installID uint, target string) (*Upgr
 	}
 
 	plan.NewVolumes = added(volNames(oldM), volNames(newM))
+	plan.NewConfigs = diffConfigs(oldM, newM, &plan.Warnings)
 	plan.NewDatabases = added(dbNames(oldM), dbNames(newM))
 	for _, d := range plan.NewDatabases {
 		plan.Warnings = append(plan.Warnings, fmt.Sprintf("database dependency %q is new in this version — provision it manually (not added automatically)", d))
@@ -168,6 +173,7 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 		AppsBumped:  []string{},
 		EnvApplied:  []string{},
 		NewVolumes:  []string{},
+		NewConfigs:  []string{},
 		Warnings:    []string{},
 	}
 
@@ -203,8 +209,7 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 	oldApps := specsByName(oldM)
 	newApps := specsByName(newM)
 
-	// 2. App-by-app: image bump + additive env + new mounts, then redeploy.
-	//    App aliases feed env interpolation that references siblings.
+	// App aliases feed the env and config-file interpolation that references siblings.
 	appViews := map[string]manifest.AppView{}
 	for name, appID := range byName {
 		if app, gerr := s.apps.Get(workspaceID, appID); gerr == nil {
@@ -213,10 +218,17 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 	}
 	renderer := manifest.NewRenderer(manifest.Context{Inputs: inputs, Applications: appViews})
 
+	// 2. Configs (additive, like volumes). They are created before the app loop so
+	//    a new config mount has something to attach to. A config the install
+	//    already has is never rewritten — its content may have been edited since,
+	//    and a template bump is not a reason to discard that.
+	cfgIDs := s.upgradeConfigs(workspaceID, oldM, newM, renderer, res)
+
 	// Tracks apps already redeployed this upgrade, so a later shared-env change
 	// doesn't redeploy the same app twice.
 	deployed := map[uint]bool{}
 
+	// 3. App-by-app: image bump + additive env + new mounts, then redeploy.
 	for name, ns := range newApps {
 		appID, matched := byName[name]
 		if !matched {
@@ -271,17 +283,32 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 		}
 
 		for _, mt := range ns.Mounts {
-			if isMountNew(os, mt.Volume) {
-				if vid, ok := volIDs[mt.Volume]; ok {
-					if aerr := s.apps.AttachVolume(app, vid, mt.Path); aerr != nil {
-						res.Warnings = append(res.Warnings, fmt.Sprintf("mount %s on %q: %v", mt.Volume, name, aerr))
-					} else {
-						changed = true
-					}
-				} else {
-					res.Warnings = append(res.Warnings, fmt.Sprintf("new mount %s on %q references a volume not created by this upgrade — attach manually", mt.Volume, name))
-				}
+			if !isMountNew(os, mt) {
+				continue
 			}
+			if mt.Config != "" {
+				cid, ok := cfgIDs[mt.Config]
+				if !ok {
+					res.Warnings = append(res.Warnings, fmt.Sprintf("new mount %s on %q references a config that could not be resolved — attach manually", mountLabel(mt), name))
+					continue
+				}
+				if aerr := s.apps.AttachConfig(app, cid, mt.Key, mt.Path, mt.Mode); aerr != nil {
+					res.Warnings = append(res.Warnings, fmt.Sprintf("mount %s on %q: %v", mountLabel(mt), name, aerr))
+					continue
+				}
+				changed = true
+				continue
+			}
+			vid, ok := volIDs[mt.Volume]
+			if !ok {
+				res.Warnings = append(res.Warnings, fmt.Sprintf("new mount %s on %q references a volume not created by this upgrade — attach manually", mt.Volume, name))
+				continue
+			}
+			if aerr := s.apps.AttachVolume(app, vid, mt.Path); aerr != nil {
+				res.Warnings = append(res.Warnings, fmt.Sprintf("mount %s on %q: %v", mt.Volume, name, aerr))
+				continue
+			}
+			changed = true
 		}
 
 		if changed {
@@ -304,12 +331,12 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 		}
 	}
 
-	// 2b. Shared stack env (additive, mirrors per-app env): add new shared keys to
+	// 3b. Shared stack env (additive, mirrors per-app env): add new shared keys to
 	//     the install's stack and redeploy any member not already bumped, since
 	//     shared env only reaches containers at deploy time.
 	s.applyStackEnv(workspaceID, rec, oldM, newM, byName, renderer, deployed, res)
 
-	// 3. Record the new version + merged inputs.
+	// 4. Record the new version + merged inputs.
 	rec.Version = newM.Metadata.Version
 	if len(newInputs) > 0 {
 		if rec.Inputs == nil {
@@ -324,6 +351,72 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 		return res, uerr
 	}
 	return res, nil
+}
+
+// upgradeConfigs reconciles the install's configs toward the target version and
+// returns the workspace config id per template-local name, for the mount pass.
+// Additive only, like env and volumes: a config the old version already declared
+// keeps its current content (it may have been edited since install), and one whose
+// files changed in the template is surfaced as a warning rather than overwritten.
+func (s *Service) upgradeConfigs(workspaceID uint, oldM, newM *manifest.Manifest, renderer *manifest.Renderer, res *UpgradeApplyResult) map[string]uint {
+	ids := map[string]uint{}
+	if len(newM.Configs) == 0 {
+		return ids
+	}
+	if s.configs == nil {
+		res.Warnings = append(res.Warnings, "this version ships configuration files, but configs are unavailable on this server — mount them manually")
+		return ids
+	}
+	oldCfgs := configsByName(oldM)
+	for _, c := range newM.Configs {
+		wsName := sanitizeName(newM.Metadata.Name + "-" + c.Name)
+		if oc, existed := oldCfgs[c.Name]; existed {
+			cur, gerr := s.configs.GetByName(workspaceID, wsName)
+			if gerr != nil {
+				res.Warnings = append(res.Warnings, fmt.Sprintf("config %q is missing from this workspace — recreate it manually", wsName))
+				continue
+			}
+			ids[c.Name] = cur.ID
+			if !sameFiles(oc.Files, c.Files) {
+				res.Warnings = append(res.Warnings, fmt.Sprintf("config %q changed in the template — review and apply manually (kept current content)", wsName))
+			}
+			continue
+		}
+
+		if s.configs.ExistsByName(workspaceID, wsName) {
+			cur, gerr := s.configs.GetByName(workspaceID, wsName)
+			if gerr == nil {
+				ids[c.Name] = cur.ID
+			}
+			res.Warnings = append(res.Warnings, fmt.Sprintf("config %q already exists — left as it is; compare it with the template's copy", wsName))
+			continue
+		}
+		files, rerr := renderer.RenderFiles(c.Name, c.Files, c.Delimiters)
+		if rerr != nil {
+			res.Warnings = append(res.Warnings, fmt.Sprintf("config %q references data that can't be resolved on upgrade — create it manually", wsName))
+			continue
+		}
+		cfg, cerr := s.configs.UpsertOwned(workspaceID, models.OwnerTemplateInstall, 0, configsvc.Input{
+			Name:        wsName,
+			DisplayName: c.Name,
+			Data:        files,
+			Mode:        c.Mode,
+			Sensitive:   c.Sensitive,
+			Delimiters:  c.Delimiters,
+		})
+		if cerr != nil {
+			res.Warnings = append(res.Warnings, fmt.Sprintf("create config %q: %v", wsName, cerr))
+			continue
+		}
+		ids[c.Name] = cfg.ID
+		res.NewConfigs = append(res.NewConfigs, cfg.Name)
+	}
+	for name := range oldCfgs {
+		if !hasConfig(newM, name) {
+			res.Warnings = append(res.Warnings, fmt.Sprintf("config %q was removed from the template — left in place; delete it manually if desired", sanitizeName(newM.Metadata.Name+"-"+name)))
+		}
+	}
+	return ids
 }
 
 // applyStackEnv reconciles the install's shared stack env toward the target version, additively and
@@ -468,24 +561,96 @@ func diffStackEnv(oldM, newM *manifest.Manifest) []EnvChange {
 func newMounts(oldA, newA manifest.AppSpec) []string {
 	had := map[string]bool{}
 	for _, m := range oldA.Mounts {
-		had[m.Volume] = true
+		had[mountKey(m)] = true
 	}
 	out := []string{} // non-nil so JSON is [] not null (the UI reads .length)
 	for _, m := range newA.Mounts {
-		if !had[m.Volume] {
-			out = append(out, m.Volume)
+		if !had[mountKey(m)] {
+			out = append(out, mountLabel(m))
 		}
 	}
 	return out
 }
 
-func isMountNew(oldA manifest.AppSpec, volume string) bool {
+func isMountNew(oldA manifest.AppSpec, mt manifest.Mount) bool {
 	for _, m := range oldA.Mounts {
-		if m.Volume == volume {
+		if mountKey(m) == mountKey(mt) {
 			return false
 		}
 	}
 	return true
+}
+
+// mountKey identifies a mount across two manifest versions. A config mount carries
+// no volume, so keying on the volume name alone collapsed every config mount onto
+// the same empty key — and made each one look new against a version that had any.
+func mountKey(m manifest.Mount) string {
+	if m.Config != "" {
+		return "config:" + m.Config + "/" + m.Key
+	}
+	return "volume:" + m.Volume
+}
+
+// mountLabel names a mount for a plan entry or a warning.
+func mountLabel(m manifest.Mount) string {
+	if m.Config == "" {
+		return m.Volume
+	}
+	if m.Key != "" {
+		return "config " + m.Config + "/" + m.Key
+	}
+	return "config " + m.Config
+}
+
+func configsByName(m *manifest.Manifest) map[string]manifest.Config {
+	out := map[string]manifest.Config{}
+	if m == nil {
+		return out
+	}
+	for _, c := range m.Configs {
+		out[c.Name] = c
+	}
+	return out
+}
+
+func hasConfig(m *manifest.Manifest, name string) bool {
+	_, ok := configsByName(m)[name]
+	return ok
+}
+
+// sameFiles compares two configs' file sets by key and content.
+func sameFiles(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if bv, ok := b[k]; !ok || bv != v {
+			return false
+		}
+	}
+	return true
+}
+
+// diffConfigs lists the configs the target version adds, warning about ones whose
+// content changed or that it dropped — neither is applied automatically.
+func diffConfigs(oldM, newM *manifest.Manifest, warnings *[]string) []string {
+	oldCfgs, newCfgs := configsByName(oldM), configsByName(newM)
+	out := []string{} // non-nil so JSON is [] not null (the UI reads .length)
+	for _, c := range newM.Configs {
+		oc, existed := oldCfgs[c.Name]
+		switch {
+		case !existed:
+			out = append(out, c.Name)
+		case !sameFiles(oc.Files, c.Files):
+			*warnings = append(*warnings, fmt.Sprintf("config %q changed in this version — review and apply manually (current content is kept)", c.Name))
+		}
+	}
+	for name := range oldCfgs {
+		if _, ok := newCfgs[name]; !ok {
+			*warnings = append(*warnings, fmt.Sprintf("config %q was removed in this version — left in place; delete it manually if desired", name))
+		}
+	}
+	return out
 }
 
 func volNames(m *manifest.Manifest) map[string]bool {
