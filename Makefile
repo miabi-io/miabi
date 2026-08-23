@@ -14,7 +14,7 @@ EMBED_WEB_DIR := internal/web/dist
 
 SCHEMA_FILE ?= miabi.io-v1.schema.json
 
-.PHONY: run worker agent build build-agent build-ui build-all dev-ui test lint tidy migrate license-tool schema docker docker-rootless docker-agent compose-up compose-down
+.PHONY: run worker agent build build-agent build-ui build-all dev-ui test lint tidy migrate license-tool schema docker docker-rootless docker-agent compose-up compose-down mwdocs
 
 run: ## Run the API server
 	go run -tags enterprise -ldflags "$(MIABI_LDFLAGS)" ./cmd/miabi server
@@ -60,6 +60,13 @@ schema: ## Generate the miabi.io/v1 JSON Schema and publish it to the docs site 
 	@for d in ../docs/static/schema ../vscode-miabi/schemas; do \
 		if [ -d "$$(dirname $$d)" ]; then mkdir -p "$$d" && cp schema/$(SCHEMA_FILE) "$$d/" && echo "  -> $$d/$(SCHEMA_FILE)"; fi; \
 	done
+
+mwdocs: ## Generate the middleware reference pages for the docs site
+	@if [ -d ../docs/docs ]; then \
+		go run ./cmd/mwdocsgen -o ../docs/docs/middlewares; \
+	else \
+		echo "docs site not checked out beside this repository; skipping"; \
+	fi
 
 tidy: ## Sync go.mod / go.sum
 	go mod tidy
