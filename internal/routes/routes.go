@@ -81,6 +81,7 @@ import (
 	releasesvc "github.com/miabi-io/miabi/internal/services/release"
 	"github.com/miabi-io/miabi/internal/services/route"
 	"github.com/miabi-io/miabi/internal/services/runner"
+	"github.com/miabi-io/miabi/internal/services/search"
 	"github.com/miabi-io/miabi/internal/services/secret"
 	"github.com/miabi-io/miabi/internal/services/session"
 	"github.com/miabi-io/miabi/internal/services/settings"
@@ -135,6 +136,7 @@ type routerHandlers struct {
 	job             *handlers.JobHandler
 	secret          *handlers.SecretHandler
 	config          *handlers.ConfigHandler
+	search          *handlers.SearchHandler
 	certificate     *handlers.CertificateHandler
 	volume          *handlers.VolumeHandler
 	backup          *handlers.BackupHandler
@@ -539,6 +541,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	}, nodeClients)
 	secretService := secret.NewService(repositories.NewSecretRepository(db))
 	secretService.SetConsumers(appService)
+	searchService := search.NewService(repositories.NewSearchRepository(db))
 	configService := configsvc.NewService(repositories.NewConfigRepository(db))
 	configService.SetConsumers(appService)
 	appService.SetConfigs(configService)
@@ -1015,6 +1018,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			job:             handlers.NewJobHandler(jobService, auditLogger),
 			secret:          handlers.NewSecretHandler(secretService, auditLogger),
 			config:          handlers.NewConfigHandler(configService, auditLogger),
+			search:          handlers.NewSearchHandler(searchService),
 			certificate:     handlers.NewCertificateHandler(certificateService, auditLogger),
 			volume:          handlers.NewVolumeHandler(storageService, userRepo, auditLogger),
 			backup:          handlers.NewBackupHandler(backupService, dbRepo, backupRepo, backupSettingsService, cronManager, auditLogger, cfg.RestoreMaxMB),
@@ -1305,6 +1309,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.app.Register(r.jobRoutes()...)
 	r.app.Register(r.secretRoutes()...)
 	r.app.Register(r.configRoutes()...)
+	r.app.Register(r.searchRoutes()...)
 	r.app.Register(r.certificateRoutes()...)
 	r.app.Register(r.networkRoutes()...)
 	r.app.Register(r.stackRoutes()...)

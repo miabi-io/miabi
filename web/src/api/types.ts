@@ -2357,3 +2357,36 @@ export interface PipelineRunEvent {
   started_at?: string
   finished_at?: string
 }
+
+export type SearchKind =
+  | 'application'
+  | 'stack'
+  | 'database'
+  | 'volume'
+  | 'network'
+  | 'domain'
+  | 'route'
+  | 'certificate'
+  | 'secret'
+  | 'config'
+  | 'pipeline'
+  | 'gitsource'
+  | 'environment'
+  | 'registry'
+  | 'gitrepository'
+
+export interface SearchResult {
+  kind: SearchKind
+  id: number
+  uid?: string
+  name: string
+  display_name?: string
+  detail?: string
+}
+
+export interface SearchResponse {
+  query: string
+  kind?: string
+  results: SearchResult[]
+  kinds: string[]
+}
