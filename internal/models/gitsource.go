@@ -59,14 +59,16 @@ type GitSource struct {
 	// WebhookSecret authenticates inbound provider push webhooks. Never serialized.
 	WebhookSecret string `json:"-" gorm:"not null"`
 
-	Status           GitSourceStatus `json:"status" gorm:"not null;default:unknown"`
-	Message          string          `json:"message,omitempty" gorm:"type:text"`
-	LastSyncedCommit string          `json:"last_synced_commit,omitempty"`
-	// LastSyncedAuthor/Subject record who authored the synced commit and its
-	// subject line, for display on the detail page.
+	Status  GitSourceStatus `json:"status" gorm:"not null;default:unknown"`
+	Message string          `json:"message,omitempty" gorm:"type:text"`
+
+	LastSyncedCommit  string     `json:"last_synced_commit,omitempty"`
 	LastSyncedAuthor  string     `json:"last_synced_author,omitempty"`
 	LastSyncedSubject string     `json:"last_synced_subject,omitempty"`
 	LastSyncedAt      *time.Time `json:"last_synced_at,omitempty"`
+
+	LastCheckedCommit string     `json:"last_checked_commit,omitempty"`
+	LastCheckedAt     *time.Time `json:"last_checked_at,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

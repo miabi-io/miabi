@@ -564,11 +564,21 @@ function relTime(ts?: string | null) {
   if (m < 60) return `${m}m ago`
   const h = Math.round(m / 60)
   if (h < 24) return `${h}h ago`
-  return `${Math.round(h / 24)}d ago`
+  const d = Math.round(h / 24)
+  if (d < 60) return `${d}d ago`
+  const mo = Math.round(d / 30)
+  if (mo < 24) return `${mo}mo ago`
+  return `${Math.round(mo / 12)}y ago`
 }
 function absDate(ts?: string | null) {
   return ts ? new Date(ts).toLocaleString() : ''
 }
+// True when the last reconcile saw a newer revision than the one that last changed the workspace — the
+// normal steady state for a repo whose recent commits touched docs, CI, or anything Miabi does not own.
+const checkedBeyondSync = computed(() => {
+  const s = source.value
+  return !!s?.last_checked_commit && s.last_checked_commit !== s.last_synced_commit
+})
 // A browsable https link for the repo, when the URL is http(s) (SSH urls aren't linkified).
 const repoLink = computed(() => {
   const u = source.value?.repo_url || ''
@@ -643,21 +653,39 @@ const policyFlags = computed(() => {
         </span>
       </div>
       <span class="meta-sep"></span>
+      <!-- Last sync is the last reconcile that CHANGED something, so it stands still while a healthy
+           auto-sync source polls. Last check next to it is what moves. -->
       <div class="fact">
         <span class="fact-label">Last sync</span>
-        <span class="fact-value" :title="source.last_synced_subject || ''">
+        <span class="fact-value">
           <template v-if="source.last_synced_at">
             <span v-if="source.last_synced_commit" class="mono">{{ shortSha(source.last_synced_commit) }}</span>
-            <span class="fact-muted"> · {{ relTime(source.last_synced_at) }}</span>
+            <span class="fact-muted" :title="absDate(source.last_synced_at)"> · {{ relTime(source.last_synced_at) }}</span>
             <span v-if="source.last_synced_author" class="fact-muted"> · by {{ source.last_synced_author }}</span>
           </template>
-          <span v-else class="fact-muted">never</span>
+          <span v-else class="fact-muted" title="Nothing has been applied from this repository yet">never</span>
+        </span>
+      </div>
+      <span class="meta-sep"></span>
+      <div class="fact">
+        <span class="fact-label">Last check</span>
+        <span class="fact-value" :title="absDate(source.last_checked_at)">
+          {{ relTime(source.last_checked_at) }}
+          <span v-if="checkedBeyondSync" class="fact-muted" :title="`Reconciled ${source.last_checked_commit} — it changed nothing`">
+            · <span class="mono">{{ shortSha(source.last_checked_commit) }}</span>, no changes
+          </span>
         </span>
       </div>
       <span class="meta-sep"></span>
       <div class="fact">
         <span class="fact-label">Created</span>
         <span class="fact-value" :title="absDate(source.created_at)">{{ relTime(source.created_at) }}</span>
+      </div>
+      <!-- The applied commit's subject, on its own row: a commit message is far too long to sit inline
+           with the facts above, and truncating it to a tooltip hid the one thing that says WHAT shipped. -->
+      <div v-if="source.last_synced_subject" class="fact fact-row">
+        <span class="fact-label">Message</span>
+        <span class="fact-value fact-subject" :title="source.last_synced_subject">{{ source.last_synced_subject }}</span>
       </div>
     </div>
 
@@ -933,6 +961,9 @@ const policyFlags = computed(() => {
 .fact-muted { color: var(--text-muted); }
 .fact .badge + .badge { margin-left: 4px; }
 .meta-sep { width: 1px; height: 18px; background: var(--border-primary); }
+/* Its own line in the wrapping meta bar: a commit subject is long enough to push every other fact off. */
+.fact-row { flex-basis: 100%; min-width: 0; }
+.fact-subject { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 640px) { .meta-sep { display: none; } }
 .mdi-spin { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

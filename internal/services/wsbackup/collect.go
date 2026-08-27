@@ -196,7 +196,7 @@ func (s *Service) collectDelivery(workspaceID uint, st *wsbundle.State, report *
 		entry := wsbundle.GitSource{
 			Name: g.Name, DisplayName: g.DisplayName, RepoURL: g.RepoURL, Ref: g.Ref, Path: g.Path,
 			SyncPolicy: string(g.SyncPolicy), Prune: g.Prune, SelfHeal: g.SelfHeal,
-			AllowEmpty: g.AllowEmpty, LastSyncedCommit: g.LastSyncedCommit,
+			AllowEmpty: g.AllowEmpty, LastSyncedCommit: g.LastCheckedCommit,
 		}
 		if g.GitRepositoryID != nil {
 			entry.GitRepository = repoName[*g.GitRepositoryID]
@@ -385,9 +385,7 @@ func (s *Service) collectStorage(workspaceID uint, st *wsbundle.State, report *m
 			v := vars[j]
 			e, eErr := envEntry(v.Key, v.Value, v.IsSecret)
 			if eErr != nil {
-				// Drop the variable rather than carry ciphertext the target cannot
-				// read: an app given an unreadable value fails in a way that looks
-				// like a bug in the app.
+
 				report.Add("stack", k.Name+"/"+v.Key, "failed", "value could not be decrypted: "+eErr.Error())
 				continue
 			}
