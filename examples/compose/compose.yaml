@@ -16,6 +16,19 @@
 #
 # DNS: point your panel domain AND *.<apps base domain> at this host, so Goma
 # can issue certs and serve one-click app URLs.
+#
+# TWO NETWORKS. `miabi` is the shared one every routed app joins; `miabi-internal`
+# is private to the platform — PostgreSQL, Redis and the control plane sit only
+# there, and the gateway is the one service on both. Everything on a Docker network
+# can dial everything else on it by name, and the control-plane database holds a
+# single superuser password covering every workspace, so an exposed app being
+# compromised must not put it within reach.
+#
+# UPGRADING an existing stack: add MIABI_INTERNAL_NETWORK=miabi-internal to your
+# .env before `docker compose up -d`. Without it the control plane does not know
+# the private network exists, and the helper containers it runs out of process
+# (platform backups, the built-in registry) stay on `miabi` alone — where the
+# database no longer is.
 
 services:
   miabi-postgres:
@@ -33,7 +46,10 @@ services:
       POSTGRES_DB: ${MIABI_DB_NAME:-miabi}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    networks: [miabi]
+    # Private network only. No published ports either: publishing 5432 on a VPS is
+    # how self-hosted databases end up in breach reports, and leaving it on the
+    # network every routed app joins is the same mistake with an extra hop.
+    networks: [miabi-internal]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${MIABI_DB_USER:-miabi}"]
       interval: 5s
@@ -51,7 +67,10 @@ services:
     command: ["redis-server", "--requirepass", "${MIABI_REDIS_PASSWORD:?set MIABI_REDIS_PASSWORD}"]
     volumes:
       - redisdata:/data
-    networks: [miabi]
+    # Private network only. The password below is shared with the gateway, so it is
+    # readable in `docker inspect` of that container — and write access to the asynq
+    # queue Redis holds is code execution in the worker.
+    networks: [miabi-internal]
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${MIABI_REDIS_PASSWORD}", "ping"]
       interval: 5s
@@ -99,7 +118,12 @@ services:
       # DB-IP Lite or IP2Location LITE all work — put it next to this file, and
       # uncomment. Without it the "Top countries" panels stay empty.
       # - ./country.mmdb:/etc/goma/country.mmdb:ro
-    networks: [miabi]
+    # The one service on both, deliberately: `miabi-internal` to reach Miabi and
+    # Redis, `miabi` to reach your apps and the internet for ACME. Being the only
+    # bridge is what keeps the shared network ingress-only — traffic crosses into
+    # the platform at a proxy that terminates TLS and applies your middlewares,
+    # not at a flat Docker bridge.
+    networks: [miabi-internal, miabi]
 
   # Control plane: single binary serving the API + web UI. The background worker
   # runs embedded here by default (see the optional `miabi-worker` below to scale
@@ -135,7 +159,11 @@ services:
       # optional worker below so the panel can read the logs the worker writes.
       - miabi-logs:/var/lib/miabi/logs
       - /proc:/host/proc:ro
-    networks: [miabi]
+    # Private network only. Nothing dials it on the shared one — the gateway reaches
+    # it as a route backend from `miabi-internal`, and nodes, agents and runners use
+    # its public URL. Reaching :9000 directly would be plaintext HTTP that bypasses
+    # every route middleware you configured, and an SSRF target for any app.
+    networks: [miabi-internal]
 
   # OPTIONAL — scale the background worker out of the panel process. It consumes
   # the local job/deploy/backup queues; the panel's embedded worker keeps the
@@ -154,7 +182,7 @@ services:
   #   volumes:
   #     - /var/run/docker.sock:/var/run/docker.sock
   #     - miabi-logs:/var/lib/miabi/logs
-  #   networks: [miabi]
+  #   networks: [miabi-internal]
 
 volumes:
   pgdata:
@@ -164,6 +192,7 @@ volumes:
   miabi-logs:
 
 networks:
+  # Shared: the gateway plus every app container Miabi exposes with a route.
   miabi:
     labels:
       io.miabi.part-of: miabi
@@ -171,3 +200,13 @@ networks:
       io.miabi.managed-by: compose
       io.miabi.protected: "true"
     name: miabi
+
+  # Private: the platform talking to itself. The name comes from the same variable
+  # Miabi reads, so the network and the control plane can never disagree about it.
+  miabi-internal:
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: platform-internal
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
+    name: ${MIABI_INTERNAL_NETWORK:-miabi-internal}

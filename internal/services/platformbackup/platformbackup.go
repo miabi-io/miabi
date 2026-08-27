@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -111,12 +112,18 @@ func (s *Service) assertDBReachable() error {
 				"an address the container can reach: the Postgres container's name when Miabi is installed as a stack "+
 				"(%q, on the %s network), or host.docker.internal when Postgres runs on the host and Docker provides "+
 				"that name",
-			s.db.Host, "miabi-postgres", s.networkName())
+			s.db.Host, "miabi-postgres", s.dbNetworkName())
 	}
 	return nil
 }
 
-func (s *Service) networkName() string {
+// dbNetworkName names the network the control-plane database is reachable on, for the advice above. On a
+// managed install that is the private network, not the proxy one — pointing an operator at the network
+// Postgres deliberately left would send them to check a connection that is supposed to be impossible.
+func (s *Service) dbNetworkName() string {
+	if s.internalNetwork != "" {
+		return s.internalNetwork
+	}
 	if s.network == "" {
 		return "platform"
 	}
@@ -153,17 +160,21 @@ type Enqueuer interface {
 
 // Service backs up and restores the platform's own database and volumes.
 type Service struct {
-	repo        *repositories.PlatformBackupRepository
-	sets        *repositories.PlatformBackupSetRepository
-	settings    *repositories.PlatformBackupSettingsRepository
-	clients     NodeDocker
-	db          DBConn
-	network     string // proxy network attached so pg-bkup can reach a managed DB by name
-	images      ImageResolver
-	enqueuer    Enqueuer
-	logs        *logstore.Store
-	identity    IdentitySource
-	fingerprint func(label string) string
+	repo     *repositories.PlatformBackupRepository
+	sets     *repositories.PlatformBackupSetRepository
+	settings *repositories.PlatformBackupSettingsRepository
+	clients  NodeDocker
+	db       DBConn
+	network  string // proxy network attached so pg-bkup can reach a managed DB by name
+	// internalNetwork is the platform's private network, where the control-plane database lives on a
+	// managed install. Empty on Compose, which keeps everything on the proxy network. The helper joins
+	// BOTH: the database is only on this one, and a self-hosted MinIO is only on the other.
+	internalNetwork string
+	images          ImageResolver
+	enqueuer        Enqueuer
+	logs            *logstore.Store
+	identity        IdentitySource
+	fingerprint     func(label string) string
 	// keyFingerprint derives the fingerprint an *arbitrary* key would produce, so a
 	// key recovered from an identity envelope can be checked against a set.
 	keyFingerprint func(key, label string) string
@@ -183,6 +194,11 @@ type Service struct {
 func NewService(repo *repositories.PlatformBackupRepository, sets *repositories.PlatformBackupSetRepository, settings *repositories.PlatformBackupSettingsRepository, clients NodeDocker, db DBConn, network string) *Service {
 	return &Service{repo: repo, sets: sets, settings: settings, clients: clients, db: db, network: network}
 }
+
+// SetInternalNetwork names the platform's private network, which is where the control-plane database
+// sits on a managed install. Leave it unset for a Compose stack: there is no such network there, and the
+// proxy network alone is what it has always been.
+func (s *Service) SetInternalNetwork(name string) { s.internalNetwork = name }
 
 // SetImageResolver wires the deployment-config resolver for the backup tool images.
 func (s *Service) SetImageResolver(r ImageResolver) { s.images = r }
@@ -234,16 +250,24 @@ func (s *Service) volImage() string {
 	return defaultVolImage
 }
 
-// backupNetworks attaches the helper container to the platform network so it can
-// reach the control-plane database by name.
+// backupNetworks attaches the helper container to every network it needs to do its job: the proxy
+// network, where a self-hosted MinIO and any managed database live, and the platform's private network,
+// which is the only place the control-plane database is reachable once the stack is split.
+//
+// The proxy network is listed first because it is the one with egress on a hardened install — Docker
+// picks the helper's default route from its attachments, and the archive still has to reach S3.
 func (s *Service) backupNetworks(ctx context.Context, dc docker.Client) ([]string, error) {
-	if s.network == "" {
-		return nil, nil
+	var out []string
+	for _, name := range []string{s.network, s.internalNetwork} {
+		if name == "" || slices.Contains(out, name) {
+			continue
+		}
+		if _, err := dc.EnsureNetwork(ctx, name); err != nil {
+			return nil, fmt.Errorf("attach the backup container to network %q (it reaches the database by name there): %w", name, err)
+		}
+		out = append(out, name)
 	}
-	if _, err := dc.EnsureNetwork(ctx, s.network); err != nil {
-		return nil, fmt.Errorf("attach the backup container to network %q (it reaches the database by name there): %w", s.network, err)
-	}
-	return []string{s.network}, nil
+	return out, nil
 }
 
 func (s *Service) docker() (docker.Client, error) { return s.clients.For(0) }
@@ -573,12 +597,10 @@ func (s *Service) restoreDB(ctx context.Context, b *models.PlatformBackup, st *m
 	if b.S3Path != "" {
 		cmd = append(cmd, "--path", b.S3Path)
 	}
-	var nets []string
-	if s.network != "" {
-		if _, err := dc.EnsureNetwork(ctx, s.network); err == nil {
-			nets = []string{s.network}
-		}
-	}
+	// The same attachments a backup gets: the control-plane database is on the private network, while an
+	// S3 endpoint that is really a self-hosted MinIO app is on the proxy one. Best-effort, as before — the
+	// tool's own connection error says more than a network we could not create.
+	nets, _ := s.backupNetworks(ctx, dc)
 
 	image := s.pgImage()
 	if err := dc.PullImage(ctx, image, nil); err != nil {

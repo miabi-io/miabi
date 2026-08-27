@@ -58,6 +58,33 @@ docker network create --driver bridge --subnet 10.63.0.0/16 miabi || true
 docker compose up -d
 ```
 
+### Two networks
+
+The stack comes up on **two** Docker networks, and this is load-bearing:
+
+| Network | Who is on it |
+|---|---|
+| `miabi` | the gateway, and every app container Miabi exposes with a route |
+| `miabi-internal` | PostgreSQL, Redis, the control plane — and the gateway |
+
+Everything on a Docker network can resolve and dial everything else on it by name.
+The control-plane database has a **single superuser password** covering every
+workspace and every stored secret, and Redis holds the background job queue — so
+an application being compromised must not put them one DNS lookup away. The
+gateway is the only service on both, which is what keeps `miabi` ingress-only:
+traffic crosses into the platform at a proxy that terminates TLS and applies your
+[routes and middlewares](https://miabi.io/docs/networking/routing-and-middlewares),
+not at a flat bridge.
+
+Nothing about deploying or exposing apps changes — your containers still join
+`miabi` when they have a route.
+
+**Upgrading a stack that predates this?** Add `MIABI_INTERNAL_NETWORK=miabi-internal`
+to your `.env` before `docker compose up -d`. Miabi reads it to place the helper
+containers it runs out of process (platform backups, the built-in registry); left
+empty, those stay on `miabi` alone — where the database no longer is. Compose
+recreates the containers onto their new networks for you.
+
 ### Prefer Traefik as the edge proxy?
 
 ```sh

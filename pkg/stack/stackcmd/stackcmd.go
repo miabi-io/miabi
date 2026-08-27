@@ -39,7 +39,7 @@ type UI interface {
 type SetupOptions struct {
 	Domain, AdminEmail, ACMEEmail, ControlURL    string
 	Image, GatewayImage, RunnerImage, GomaConfig string
-	RegistryHost, Subnet                         string
+	RegistryHost, Subnet, InternalSubnet         string
 	Registry, NoHostProc, Yes                    bool
 
 	// DefaultImage supplies the control-plane image for a FRESH install when Image is empty. The
@@ -160,6 +160,7 @@ func applySetupOptions(m *stack.Manifest, o SetupOptions) {
 	// would silently fall back to the Go default and drift from that pin.
 	set(&m.Images.Runner, o.RunnerImage)
 	set(&m.Network.Subnet, o.Subnet)
+	set(&m.InternalNetwork.Subnet, o.InternalSubnet)
 
 	if o.Registry {
 		m.Registry.Enabled = true
@@ -182,7 +183,9 @@ func printPlan(ui UI, m *stack.Manifest, path string) {
 	ui.Printf("  gateway     %s\n", m.Images.Gateway)
 	ui.Printf("  database    %s\n", m.Images.Postgres)
 	ui.Printf("  cache       %s\n", m.Images.Redis)
-	ui.Printf("  network     %s (%s)\n", m.Network.Name, m.Network.Subnet)
+	ui.Printf("  network     %s (%s)  — apps + gateway\n", m.Network.Name, m.Network.Subnet)
+	ui.Printf("  private     %s (%s)  — control plane, database, cache\n",
+		m.InternalNetwork.Name, m.InternalNetwork.Subnet)
 	if m.Registry.Enabled {
 		ui.Printf("  registry    %s\n", m.Registry.Host)
 	}

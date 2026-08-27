@@ -40,9 +40,10 @@ const (
 	gomaGeoIPFile = gomaConfigDir + "/GeoLite2-Country.mmdb"
 )
 
-// postgresSpec — the platform database. No published ports: nothing outside the `miabi` network has any
-// business reaching it, and publishing 5432 on a VPS is how self-hosted databases end up in breach
-// reports. The Compose file does the same.
+// postgresSpec — the platform database. No published ports, and NOT on the shared proxy network: it holds
+// one superuser password for the whole control plane, so a tenant container that could dial it owns every
+// workspace. Publishing 5432 on a VPS is how self-hosted databases end up in breach reports; leaving it on
+// a network every routed app joins is the same mistake with an extra hop.
 func postgresSpec(m *Manifest, name, image string) docker.RunSpec {
 	spec := docker.RunSpec{
 		Name:  name,
@@ -53,7 +54,7 @@ func postgresSpec(m *Manifest, name, image string) docker.RunSpec {
 			"POSTGRES_DB=miabi",
 		},
 		Mounts:        map[string]string{VolumePGData: "/var/lib/postgresql/data"},
-		Networks:      []string{m.Network.Name},
+		Networks:      []string{m.InternalNetwork.Name},
 		RestartPolicy: "unless-stopped",
 		Healthcheck: &docker.HealthcheckSpec{
 			Test:     []string{"CMD-SHELL", "pg_isready -U miabi"},
@@ -67,15 +68,16 @@ func postgresSpec(m *Manifest, name, image string) docker.RunSpec {
 	return spec
 }
 
-// redisSpec — cache, rate limiting, and the asynq queue. Shared with the gateway,
-// which uses it for distributed rate limiting, so the password is in both.
+// redisSpec — cache, rate limiting, and the asynq queue. Shared with the gateway, which uses it for
+// distributed rate limiting, so the password is in both — and is therefore readable in a `docker inspect`
+// of the gateway. Private network only: write access to the asynq queue is code execution in the worker.
 func redisSpec(m *Manifest, name, image string) docker.RunSpec {
 	spec := docker.RunSpec{
 		Name:          name,
 		Image:         image,
 		Cmd:           []string{"redis-server", "--requirepass", m.Secrets.RedisPassword},
 		Mounts:        map[string]string{VolumeRedisData: "/data"},
-		Networks:      []string{m.Network.Name},
+		Networks:      []string{m.InternalNetwork.Name},
 		RestartPolicy: "unless-stopped",
 		Healthcheck: &docker.HealthcheckSpec{
 			// -a, not a bare ping: with requirepass set, an unauthenticated PING answers
@@ -94,6 +96,11 @@ func redisSpec(m *Manifest, name, image string) docker.RunSpec {
 // controlPlaneSpec — Miabi itself: API + web UI + the embedded worker. It mounts the Docker socket (that
 // is the whole job) and shares the gateway's providers volume, into which it writes route files that Goma
 // hot-reloads.
+//
+// It is NOT on the proxy network either. Nothing dials it there: the gateway reaches it as a route backend
+// (over the private network), and nodes, agents and runners dial MIABI_CONTROL_URL. Reaching :9000 on the
+// shared network would be plaintext HTTP that bypasses every route middleware an operator configured —
+// rate limits, IP allowlists, security policies — and a ready-made SSRF target for any app.
 func controlPlaneSpec(m *Manifest, name, image string) docker.RunSpec {
 	spec := docker.RunSpec{
 		Name:  name,
@@ -118,6 +125,10 @@ func controlPlaneSpec(m *Manifest, name, image string) docker.RunSpec {
 			// on a private network may reach the control plane at an address the public panel URL never resolves to.
 			"MIABI_CONTROL_URL=" + m.ControlURL,
 			"MIABI_PROXY_NETWORK=" + m.Network.Name,
+			// The private network, so anything the control plane runs OUT of process — the platform backup
+			// helper above all — can still reach Postgres by name. Unset on a Compose install, which has no
+			// private network; every consumer treats empty as "the proxy network is all there is".
+			"MIABI_INTERNAL_NETWORK=" + m.InternalNetwork.Name,
 			"MIABI_ACME_EMAIL=" + m.ACMEEmail,
 			"MIABI_GOMA_PROVIDER_DIR=" + gomaProviders,
 			// Gateways Miabi provisions on remote nodes run the same Goma image as the
@@ -132,7 +143,7 @@ func controlPlaneSpec(m *Manifest, name, image string) docker.RunSpec {
 			VolumeLogs:             "/var/lib/miabi/logs",
 			VolumeGatewayProviders: gomaProviders,
 		},
-		Networks:      []string{m.Network.Name},
+		Networks:      []string{m.InternalNetwork.Name},
 		RestartPolicy: "unless-stopped",
 		// /healthz is the liveness probe: it answers 200 as soon as the server is serving and asserts nothing about
 		// dependencies — right for a Docker healthcheck, which drives restarts. /readyz pings Postgres, so a blip
@@ -199,6 +210,11 @@ func sortedKeys(m map[string]string) []string {
 // gatewaySpec — Goma: TLS termination, ACME, and routing to every app. Ports are published ONLY for the live
 // container: a rollout starts the new image under <name>-test first, and two containers cannot both bind :443,
 // so the test container runs portless. That is the whole reason Build takes the name.
+//
+// The one dual-homed component, and deliberately so: the private network to reach Miabi and Redis, the proxy
+// network to reach routed apps and to have its own egress for ACME. Being the only bridge between the two is
+// what makes the proxy network ingress-only — traffic crosses at a process that terminates TLS and applies
+// the operator's middlewares, not at a flat Docker bridge.
 func gatewaySpec(m *Manifest, name, image string) docker.RunSpec {
 	spec := docker.RunSpec{
 		Name:  name,
@@ -208,7 +224,7 @@ func gatewaySpec(m *Manifest, name, image string) docker.RunSpec {
 			VolumeGatewayCerts:     "/etc/letsencrypt",
 			VolumeGatewayProviders: gomaProviders,
 		},
-		Networks:      []string{m.Network.Name},
+		Networks:      []string{m.InternalNetwork.Name, m.Network.Name},
 		RestartPolicy: "unless-stopped",
 		Healthcheck: &docker.HealthcheckSpec{
 			Test:        []string{"CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null 2>&1 || exit 1"},

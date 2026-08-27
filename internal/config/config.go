@@ -180,6 +180,14 @@ type Config struct {
 	// also be attached to this network.
 	ProxyNetwork string
 
+	// InternalNetwork is the PRIVATE Docker network the platform's own components share — the control
+	// plane, Postgres, Redis and the gateway. Helper containers the control plane runs out of process
+	// (the platform backup above all) must join it to reach the database by name.
+	//
+	// EMPTY on a Compose install, which has no such network: every consumer then behaves exactly as it
+	// did before the split, with ProxyNetwork as the only fabric. Set by the managed installer.
+	InternalNetwork string
+
 	// ControlURL is the public base URL remote nodes reach the control plane at
 	// (e.g. https://miabi.example.com). Used to point a node's own Goma Gateway
 	// at the HTTP-provider endpoint. Falls back to ApiBaseURL when unset.
@@ -572,6 +580,7 @@ func New() *Config {
 		KeyAutoRotate:              goutils.EnvBool("MIABI_KEY_AUTO_ROTATE", false),
 		KeyRotateMonths:            goutils.EnvInt("MIABI_KEY_ROTATE_MONTHS", 6),
 		ProxyNetwork:               goutils.Env("MIABI_PROXY_NETWORK", goutils.Env("MIABI_GOMA_NETWORK", "miabi")),
+		InternalNetwork:            goutils.Env("MIABI_INTERNAL_NETWORK", ""),
 		ControlURL:                 goutils.Env("MIABI_CONTROL_URL", goutils.Env("MIABI_API_URL", "")),
 		ExternalBaseDomain:         goutils.Env("MIABI_EXTERNAL_BASE_DOMAIN", ""),
 		ExternalBaseProvider:       goutils.Env("MIABI_EXTERNAL_BASE_PROVIDER", ""),

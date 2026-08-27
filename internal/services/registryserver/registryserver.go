@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/jkaninda/logger"
@@ -56,17 +57,22 @@ type workspaceFinder interface {
 // Service manages the registry settings, container lifecycle, and per-request
 // authorization.
 type Service struct {
-	repo       *repositories.RegistrySettingsRepository
-	images     imageResolver
-	settings   settingsReader
-	keys       keyVerifier
-	ws         workspaceFinder
-	proxy      proxy.Manager
-	reg        *Client
-	usage      *usageCache
-	network    string
-	controlURL string
-	cfg        config.RegistryConfig
+	repo     *repositories.RegistrySettingsRepository
+	images   imageResolver
+	settings settingsReader
+	keys     keyVerifier
+	ws       workspaceFinder
+	proxy    proxy.Manager
+	reg      *Client
+	usage    *usageCache
+	network  string
+	// internalNetwork is the platform's private network. The registry joins it so the CONTROL PLANE can
+	// reach it — the control plane is not on the proxy network, and every browse, quota and GC call goes
+	// to http://mb-registry:5000 directly. It keeps the proxy attachment for its own egress and for an
+	// S3 backend that is really a self-hosted MinIO app. Empty on Compose.
+	internalNetwork string
+	controlURL      string
+	cfg             config.RegistryConfig
 	// ee gates the licensed S3 storage driver. Checked at every point the driver would actually be used
 	// (container start, GC), not only where it is configured — the configuration now arrives from the
 	// environment, which no API-level check can see.
@@ -112,6 +118,10 @@ func NewService(
 		network: network, controlURL: controlURL, cfg: cfg,
 	}
 }
+
+// SetInternalNetwork names the platform's private network, which is how the control plane reaches the
+// registry once the stack is split. Unset on Compose, where the proxy network is the only fabric.
+func (s *Service) SetInternalNetwork(name string) { s.internalNetwork = name }
 
 func (s *Service) SetEntitlements(ee entitlementChecker) { s.ee = ee }
 
@@ -536,8 +546,9 @@ func (s *Service) volumeMounts(st *models.RegistrySettings) map[string]string {
 // startContainer pulls the image and (re)creates the registry container with the
 // rendered storage env, read-write or read-only. Idempotent.
 func (s *Service) startContainer(ctx context.Context, dc docker.Client, st *models.RegistrySettings, readonly bool) error {
-	if _, err := dc.EnsureNetwork(ctx, s.network); err != nil {
-		return fmt.Errorf("ensure network %q: %w", s.network, err)
+	nets, err := s.networks(ctx, dc)
+	if err != nil {
+		return err
 	}
 	mounts := s.volumeMounts(st)
 	if !st.UsesS3() {
@@ -551,6 +562,7 @@ func (s *Service) startContainer(ctx context.Context, dc docker.Client, st *mode
 	if err != nil {
 		return err
 	}
+
 	img := s.image()
 	if err := dc.PullImage(ctx, img, nil); err != nil {
 		return fmt.Errorf("pull registry image %q: %w", img, err)
@@ -560,7 +572,7 @@ func (s *Service) startContainer(ctx context.Context, dc docker.Client, st *mode
 		Name:           ContainerName,
 		Image:          img,
 		Env:            env,
-		Networks:       []string{s.network},
+		Networks:       nets,
 		NetworkAliases: []string{Alias},
 		Mounts:         mounts,
 		RestartPolicy:  "unless-stopped",
@@ -569,6 +581,27 @@ func (s *Service) startContainer(ctx context.Context, dc docker.Client, st *mode
 		return fmt.Errorf("run registry container: %w", err)
 	}
 	return nil
+}
+
+// networks are the fabrics the registry container joins: the proxy network, for its own egress and for
+// an S3 backend that is really a self-hosted MinIO app, and the platform's private network, where the
+// control plane and the gateway can reach it. The alias is registered on both, so
+// http://mb-registry:5000 resolves from either side.
+//
+// The proxy network is first because Docker picks the container's default route from its attachments,
+// and a registry on the S3 driver has to get out to the bucket.
+func (s *Service) networks(ctx context.Context, dc docker.Client) ([]string, error) {
+	var out []string
+	for _, name := range []string{s.network, s.internalNetwork} {
+		if name == "" || slices.Contains(out, name) {
+			continue
+		}
+		if _, err := dc.EnsureNetwork(ctx, name); err != nil {
+			return nil, fmt.Errorf("ensure network %q: %w", name, err)
+		}
+		out = append(out, name)
+	}
+	return out, nil
 }
 
 // GarbageCollect reclaims storage from deleted or overwritten manifests. To run safely it flips the

@@ -231,6 +231,7 @@ func runWorker() error {
 		nil, repositories.NewWorkspaceRepository(db), nil, cfg.ProxyNetwork, cfg.ControlURL, cfg.Registry,
 	)
 
+	registryDistributor.SetInternalNetwork(cfg.InternalNetwork)
 	registryDistributor.SetEntitlements(edition)
 	deployHandler.SetDistributor(registryDistributor)
 
@@ -249,6 +250,7 @@ func runWorker() error {
 		platformbackup.DBConn{Host: pbHost, Port: pbPort, Name: pbName, User: pbUser, Password: pbPass, SSLMode: pbSSL},
 		cfg.ProxyNetwork,
 	)
+	platformBackupSvc.SetInternalNetwork(cfg.InternalNetwork)
 	platformBackupSvc.SetImageResolver(imageResolver)
 	platformBackupSvc.SetLogStore(logStore)
 	// The worker runs backup ITEMS, so it resolves destination and passphrase itself. Without

@@ -8,7 +8,7 @@ import (
 	"errors"
 )
 
-// Client is the subset of a Docker engine the stack engine drives — 13 of the 68 methods the
+// Client is the subset of a Docker engine the stack engine drives — 15 of the 68 methods the
 // server's own client exposes. It is deliberately narrow: the CLI backs it with a moby/moby
 // implementation, the control plane satisfies it structurally with the client it already has,
 // and neither side's Docker SDK ever appears in a signature.
@@ -25,6 +25,12 @@ type Client interface {
 	ImageExists(ctx context.Context, ref string) (bool, error)
 
 	EnsureNetworkSpec(ctx context.Context, spec NetworkSpec) (string, error)
+	// NetworkConnect / NetworkDisconnect move a RUNNING container between networks. The stack engine
+	// otherwise recreates a component to change its spec, but a network split cannot be done that way:
+	// between recreates the stack would be half on each network and the control plane would lose its
+	// database. Attaching live first makes any recreate order safe.
+	NetworkConnect(ctx context.Context, name, containerID string, aliases []string) error
+	NetworkDisconnect(ctx context.Context, name, containerID string, force bool) error
 
 	CreateVolume(ctx context.Context, name string, labels map[string]string, sizeBytes int64) (Volume, error)
 	InspectVolume(ctx context.Context, name string) (Volume, error)

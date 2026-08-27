@@ -69,6 +69,10 @@ const (
 	// Infrastructure Miabi provisions itself.
 	RoleNodeGateway      = "node-gateway"
 	RoleNodeGatewayRedis = "node-gateway-redis"
+	// RolePlatformInternal marks the private network the platform's own components talk over. It is
+	// the label, not the name, that guards it: an operator who renames the network in the manifest
+	// must not thereby make it attachable from the app-facing APIs.
+	RolePlatformInternal = "platform-internal"
 	RoleRegistry         = "registry"
 	RoleRegistryGC       = "registry-gc" // transient: deliberately NOT protected
 )

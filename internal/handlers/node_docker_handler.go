@@ -130,6 +130,25 @@ func (h *NodeHandler) guardContainerOp(c *okapi.Context, dc docker.Client, nodeI
 	return true
 }
 
+// isPlatformInternalNetwork reports whether name is the network Miabi's own components talk over. The
+// LABEL is the test, not the name: the network's name is the operator's to choose in the stack manifest,
+// and a renamed one must stay just as closed. A network the engine cannot list is treated as ordinary —
+// this guard exists to stop a mistake, and the platform stack is protected at the container level too.
+func (h *NodeHandler) isPlatformInternalNetwork(ctx context.Context, dc docker.Client, name string) bool {
+	nets, err := dc.ListNetworks(ctx)
+	if err != nil {
+		return false
+	}
+	for _, n := range nets {
+		if n.Name != name {
+			continue
+		}
+		role, _ := docker.LabelValue(n.Labels, docker.LabelRole)
+		return role == docker.RolePlatformInternal
+	}
+	return false
+}
+
 // protectedMessage names the component being protected, so the 409 tells the admin
 // what they just tried to break rather than only that they may not.
 func protectedMessage(labels map[string]string) string {
@@ -315,6 +334,14 @@ func (h *NodeHandler) RunContainer(c *okapi.Context, req *RunContainerRequest) e
 	}
 	networks := []string{node.AppNetwork}
 	if req.Body.Network != "" {
+		// The one place an arbitrary Docker network name reaches a container create. Workspace networks
+		// are always mb-ws<id>-<rand>, so a tenant cannot mint the platform's private network by name —
+		// but an admin could type it, and a container on it can dial Postgres and Redis directly.
+		if h.isPlatformInternalNetwork(c.Request().Context(), dc, req.Body.Network) {
+			return c.AbortWithError(http.StatusConflict, fmt.Errorf(
+				"%q is the platform's private network — the control plane, its database and its cache live "+
+					"there and nothing else may join them", req.Body.Network))
+		}
 		networks = []string{req.Body.Network}
 	}
 	id, err := dc.RunContainer(c.Request().Context(), docker.RunSpec{

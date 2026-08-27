@@ -12,6 +12,18 @@
 # DNS: point your panel domain at this host. (One-click wildcard app URLs need
 # Goma — on Traefik you expose each app via labels; see note 1 below.)
 #
+# TWO NETWORKS, same as compose.yaml: `miabi` is shared with every routed app,
+# `miabi-internal` is private to the platform, and Traefik is the one service on
+# both. Traefik's Docker provider defaults to `miabi` for backend discovery, so
+# the control plane carries an explicit `traefik.docker.network` label pointing at
+# the private one — see the miabi service below.
+#
+# UPGRADING an existing stack: add MIABI_INTERNAL_NETWORK=miabi-internal to your
+# .env before `docker compose -f compose.traefik.yaml up -d`, or the control plane
+# will not know the private network exists and the helper containers it runs out
+# of process (platform backups) stay on `miabi` alone — where the database no
+# longer is.
+#
 # ─────────────────────────────────────────────────────────────────────────────
 # Trade-offs vs. the default Goma stack (compose.yaml) — read before choosing:
 #
@@ -58,7 +70,10 @@ services:
       POSTGRES_DB: ${MIABI_DB_NAME:-miabi}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    networks: [miabi]
+    # Private network only: everything on the shared network can dial everything
+    # else on it by name, and this database holds one superuser password covering
+    # every workspace and every stored secret.
+    networks: [miabi-internal]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${MIABI_DB_USER:-miabi}"]
       interval: 5s
@@ -76,7 +91,9 @@ services:
     command: ["redis-server", "--requirepass", "${MIABI_REDIS_PASSWORD:?set MIABI_REDIS_PASSWORD}"]
     volumes:
       - redisdata:/data
-    networks: [miabi]
+    # Private network only. Write access to the asynq queue Redis holds is code
+    # execution in the worker.
+    networks: [miabi-internal]
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${MIABI_REDIS_PASSWORD}", "ping"]
       interval: 5s
@@ -115,7 +132,9 @@ services:
       # in front instead of mounting the socket directly.
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik-certs:/letsencrypt
-    networks: [miabi]
+    # The one service on both: `miabi` to reach your labelled app containers,
+    # `miabi-internal` to reach the control plane it fronts.
+    networks: [miabi, miabi-internal]
 
   # Control plane: single binary serving the API + web UI, with the background
   # worker embedded by default (see the optional `miabi-worker` below).
@@ -149,6 +168,11 @@ services:
     # Miabi itself carries traefik.* labels; your apps get theirs via the panel.
     labels:
       - "traefik.enable=true"
+      # Which network Traefik reads this container's backend IP from. The provider
+      # default is `miabi` (--providers.docker.network above), and the control plane
+      # is deliberately not on it — without this label Traefik finds no address for
+      # the panel and the router 502s. Your apps stay on the provider default.
+      - "traefik.docker.network=${MIABI_INTERNAL_NETWORK:-miabi-internal}"
       - "traefik.http.routers.miabi.rule=Host(`${MIABI_DOMAIN:?set MIABI_DOMAIN}`)"
       - "traefik.http.routers.miabi.entrypoints=websecure"
       - "traefik.http.routers.miabi.tls.certresolver=le"
@@ -159,7 +183,9 @@ services:
       - "io.miabi.role=control-plane"
       - "io.miabi.managed-by=compose"
       - "io.miabi.protected=true"
-    networks: [miabi]
+    # Private network only. Traefik reaches it there (see traefik.docker.network
+    # above); nothing else needs to.
+    networks: [miabi-internal]
 
   # OPTIONAL — scale the background worker out of the panel process. It MUST
   # mount the same miabi-logs volume so the panel can read what it externalizes.
@@ -177,7 +203,7 @@ services:
   #   volumes:
   #     - /var/run/docker.sock:/var/run/docker.sock
   #     - miabi-logs:/var/lib/miabi/logs
-  #   networks: [miabi]
+  #   networks: [miabi-internal]
 
 volumes:
   pgdata:
@@ -186,6 +212,7 @@ volumes:
   miabi-logs:
 
 networks:
+  # Shared: Traefik plus every app container you expose with traefik.* labels.
   miabi:
     labels:
       io.miabi.part-of: miabi
@@ -193,3 +220,13 @@ networks:
       io.miabi.managed-by: compose
       io.miabi.protected: "true"
     name: miabi
+
+  # Private: the platform talking to itself. The name comes from the same variable
+  # Miabi reads, so the network and the control plane can never disagree about it.
+  miabi-internal:
+    labels:
+      io.miabi.part-of: miabi
+      io.miabi.role: platform-internal
+      io.miabi.managed-by: compose
+      io.miabi.protected: "true"
+    name: ${MIABI_INTERNAL_NETWORK:-miabi-internal}

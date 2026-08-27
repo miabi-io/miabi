@@ -45,7 +45,8 @@ func registerStackCommands(cli *okapicli.CLI) {
 		Bool("registry", "", false, "Enable the built-in container registry").
 		Bool("no-host-proc", "", false, "Do not bind the host's /proc into the control plane (for hosts that refuse the bind; host metrics fall back to the container's /proc)").
 		String("registry-host", "", "", "Registry hostname (default registry.<domain>); implies --registry").
-		String("subnet", "", "", "CIDR for the shared `miabi` network (default "+stack.DefaultSubnet+")").
+		String("subnet", "", "", "CIDR for the shared `miabi` network — apps and the gateway (default "+stack.DefaultSubnet+")").
+		String("internal-subnet", "", "", "CIDR for the private `"+stack.DefaultInternalNetwork+"` network — control plane, database, cache (default "+stack.DefaultInternalSubnet+")").
 		String("file", "f", "", "Manifest path (default "+stack.DefaultConfigPath+")").
 		Bool("yes", "y", false, "Do not prompt")
 
@@ -111,20 +112,21 @@ func runInstall(cmd *okapicli.Command) error {
 
 	path := manifestPath(cmd)
 	res, err := stackcmd.Setup(ctx, svc, path, stackcmd.SetupOptions{
-		Domain:       cmd.GetString("domain"),
-		AdminEmail:   cmd.GetString("admin-email"),
-		ACMEEmail:    cmd.GetString("acme-email"),
-		ControlURL:   cmd.GetString("control-url"),
-		Image:        cmd.GetString("image"),
-		GatewayImage: cmd.GetString("gateway-image"),
-		RunnerImage:  cmd.GetString("runner-image"),
-		GomaConfig:   cmd.GetString("goma-config"),
-		RegistryHost: cmd.GetString("registry-host"),
-		Subnet:       cmd.GetString("subnet"),
-		Registry:     cmd.GetBool("registry"),
-		NoHostProc:   cmd.GetBool("no-host-proc"),
-		Yes:          cmd.GetBool("yes"),
-		DefaultImage: imageDefault(dc),
+		Domain:         cmd.GetString("domain"),
+		AdminEmail:     cmd.GetString("admin-email"),
+		ACMEEmail:      cmd.GetString("acme-email"),
+		ControlURL:     cmd.GetString("control-url"),
+		Image:          cmd.GetString("image"),
+		GatewayImage:   cmd.GetString("gateway-image"),
+		RunnerImage:    cmd.GetString("runner-image"),
+		GomaConfig:     cmd.GetString("goma-config"),
+		RegistryHost:   cmd.GetString("registry-host"),
+		Subnet:         cmd.GetString("subnet"),
+		InternalSubnet: cmd.GetString("internal-subnet"),
+		Registry:       cmd.GetBool("registry"),
+		NoHostProc:     cmd.GetBool("no-host-proc"),
+		Yes:            cmd.GetBool("yes"),
+		DefaultImage:   imageDefault(dc),
 	}, imageUI{})
 	if err != nil {
 		return err
