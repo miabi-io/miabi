@@ -646,6 +646,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		platformbackup.DBConn{Host: pbHost, Port: pbPort, Name: pbName, User: pbUser, Password: pbPass, SSLMode: pbSSL},
 		cfg.ProxyNetwork,
 	)
+	platformBackupService.SetInternalNetwork(cfg.InternalNetwork)
 	platformBackupService.SetImageResolver(imageResolver)
 	platformBackupService.SetEnqueuer(producer)
 	platformBackupService.SetLogStore(logStore)
@@ -703,6 +704,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// S3 storage is an Enterprise entitlement, and the environment is now its only
 	// source — so the license is checked where the driver is used (boot, GC), not
 	// at an API that can no longer select it.
+	registryServerService.SetInternalNetwork(cfg.InternalNetwork)
 	registryServerService.SetEntitlements(ee)
 	gitRepoRepo := repositories.NewGitRepoRepository(db)
 	gitRepoService := gitrepo.NewService(gitRepoRepo)
@@ -843,16 +845,17 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// dump on a fresh host is ciphertext under a key that died with the old machine.
 	platformBackupService.SetIdentitySource(func() (*dr.Identity, error) {
 		id := &dr.Identity{
-			InstallID:     installID,
-			MiabiVersion:  config.Version,
-			DBSchema:      dbstorage.SchemaVersion(db),
-			EncryptionKey: cfg.EncryptionKey,
-			JWTSecret:     cfg.JWTSecret,
-			Domain:        urlHost(cfg.AppWebURL),
-			WebURL:        cfg.AppWebURL,
-			ControlURL:    cfg.ControlURL,
-			NetworkName:   cfg.ProxyNetwork,
-			CreatedAt:     time.Now().UTC(),
+			InstallID:           installID,
+			MiabiVersion:        config.Version,
+			DBSchema:            dbstorage.SchemaVersion(db),
+			EncryptionKey:       cfg.EncryptionKey,
+			JWTSecret:           cfg.JWTSecret,
+			Domain:              urlHost(cfg.AppWebURL),
+			WebURL:              cfg.AppWebURL,
+			ControlURL:          cfg.ControlURL,
+			NetworkName:         cfg.ProxyNetwork,
+			InternalNetworkName: cfg.InternalNetwork,
+			CreatedAt:           time.Now().UTC(),
 		}
 		if st, err := registryServerService.Get(); err == nil && st != nil {
 			id.RegistryHost = registryServerService.HostFor(st)

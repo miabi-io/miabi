@@ -401,6 +401,7 @@ func runServer(cli *okapicli.CLI) {
 				nil, repositories.NewWorkspaceRepository(res.db), nil, cfg.ProxyNetwork, cfg.ControlURL, cfg.Registry,
 			)
 
+			registryDistributor.SetInternalNetwork(cfg.InternalNetwork)
 			registryDistributor.SetEntitlements(edition)
 			deployHandler.SetDistributor(registryDistributor)
 			volumeBackupSvc := volumebackup.NewService(repositories.NewVolumeBackupRepository(res.db), repositories.NewVolumeRepository(res.db), nodeClients)
@@ -418,6 +419,7 @@ func runServer(cli *okapicli.CLI) {
 				platformbackup.DBConn{Host: pbHost, Port: pbPort, Name: pbName, User: pbUser, Password: pbPass, SSLMode: pbSSL},
 				cfg.ProxyNetwork,
 			)
+			platformBackupSvc.SetInternalNetwork(cfg.InternalNetwork)
 			platformBackupSvc.SetImageResolver(imageResolver)
 			platformBackupSvc.SetLogStore(logStore)
 			// The embedded worker runs backup ITEMS, so it resolves destination and passphrase itself.

@@ -37,6 +37,10 @@
 #                               hardened host, a socket proxy that forbids host binds);
 #                               host metrics then fall back to the container's /proc,
 #                               which already reflects host CPU/memory.
+#   MIABI_SUBNET                CIDR for the shared app network (default 10.63.0.0/16)
+#   MIABI_INTERNAL_SUBNET       CIDR for the platform's private network — control plane,
+#                               database, cache (default 10.62.0.0/16). Set either one
+#                               where the default collides with an existing route or VPN.
 #   MIABI_ETC                   manifest directory             (default /etc/miabi)
 #   MIABI_VERSION               Miabi release to install       (default: pinned below)
 #   MIABI_CLI_VERSION           miabi CLI release to install   (default: pinned below)
@@ -536,6 +540,13 @@ install_stack() {
   if [ -n "${MIABI_CONTROL_URL:-}" ]; then
     extra+=(--control-url "$MIABI_CONTROL_URL")
   fi
+
+  # The two Docker subnets, for a host whose existing routes or VPN already occupy the defaults
+  # (10.63.0.0/16 for the shared app network, 10.62.0.0/16 for the platform's private one). Left
+  # unset, `miabi setup` picks those defaults — this only exists so a collision is fixable without
+  # hand-editing the manifest after the fact.
+  [ -n "${MIABI_SUBNET:-}" ] && extra+=(--subnet "$MIABI_SUBNET")
+  [ -n "${MIABI_INTERNAL_SUBNET:-}" ] && extra+=(--internal-subnet "$MIABI_INTERNAL_SUBNET")
 
   # Some hosts refuse a bind of /proc: a rootless daemon, a hardened host, a socket
   # proxy that forbids host binds. Miabi then reads its own /proc, which inside a

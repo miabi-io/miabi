@@ -496,6 +496,11 @@ func (s *Service) buildManifest(plan *Plan, opts Options) (*stack.Manifest, erro
 	if id.NetworkSubnet != "" {
 		m.Network.Subnet = id.NetworkSubnet
 	}
+	// Absent on a recovery point taken before the network split, in which case Defaults() has already
+	// supplied the current default — the restored stack simply gains the private network.
+	if id.InternalNetworkName != "" {
+		m.InternalNetwork.Name = id.InternalNetworkName
+	}
 	if id.RegistryHost != "" {
 		m.Registry.Host, m.Registry.Enabled = id.RegistryHost, true
 	}

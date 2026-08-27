@@ -34,6 +34,7 @@ const (
 	RoleControlPlaneWorker = stackdocker.RoleControlPlaneWorker
 	RoleNodeGateway        = stackdocker.RoleNodeGateway
 	RoleNodeGatewayRedis   = stackdocker.RoleNodeGatewayRedis
+	RolePlatformInternal   = stackdocker.RolePlatformInternal
 	RoleRegistry           = stackdocker.RoleRegistry
 	RoleRegistryGC         = stackdocker.RoleRegistryGC
 	ManagedByCompose       = stackdocker.ManagedByCompose

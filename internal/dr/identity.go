@@ -67,18 +67,16 @@ type Identity struct {
 	// JWTSecret keeps issued API tokens and sessions valid across the restore.
 	JWTSecret string `json:"jwt_secret"`
 
-	Domain       string `json:"domain,omitempty"`
-	WebURL       string `json:"web_url,omitempty"`
-	ControlURL   string `json:"control_url,omitempty"`
-	ACMEEmail    string `json:"acme_email,omitempty"`
-	RegistryHost string `json:"registry_host,omitempty"`
-	// RegistryStorage is "filesystem" or "s3". On the S3 driver the registry's
-	// blobs already live off-host, so a restored platform re-attaches to the same
-	// bucket and images survive; on the filesystem driver they do not travel.
+	Domain          string `json:"domain,omitempty"`
+	WebURL          string `json:"web_url,omitempty"`
+	ControlURL      string `json:"control_url,omitempty"`
+	ACMEEmail       string `json:"acme_email,omitempty"`
+	RegistryHost    string `json:"registry_host,omitempty"`
 	RegistryStorage string `json:"registry_storage,omitempty"`
 
-	NetworkName   string `json:"network_name,omitempty"`
-	NetworkSubnet string `json:"network_subnet,omitempty"`
+	NetworkName         string `json:"network_name,omitempty"`
+	NetworkSubnet       string `json:"network_subnet,omitempty"`
+	InternalNetworkName string `json:"internal_network_name,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
 }

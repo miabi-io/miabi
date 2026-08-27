@@ -51,11 +51,18 @@ type Manifest struct {
 	// reach the control plane at an address the public panel URL never resolves to.
 	ControlURL string `yaml:"control_url"`
 
-	Network  NetworkConfig `yaml:"network"`
-	Images   Images        `yaml:"images"`
-	Secrets  Secrets       `yaml:"secrets"`
-	Registry Registry      `yaml:"registry"`
-	Gateway  Gateway       `yaml:"gateway"`
+	Network NetworkConfig `yaml:"network"`
+	// InternalNetwork is the PRIVATE network the platform's own components talk over — the control
+	// plane to Postgres and Redis, the gateway to both of those. Network above stays what it always
+	// was: the shared proxy fabric routed apps join, which is why nothing platform-internal may sit
+	// on it. Added after the fact, so it is a sibling key rather than a nested one: every manifest
+	// written before this release keeps parsing and gains the network on its next converge.
+	InternalNetwork NetworkConfig `yaml:"internal_network"`
+
+	Images   Images   `yaml:"images"`
+	Secrets  Secrets  `yaml:"secrets"`
+	Registry Registry `yaml:"registry"`
+	Gateway  Gateway  `yaml:"gateway"`
 
 	// Env are extra environment variables for the control plane — anything Miabi reads that this manifest
 	// does not already model. It may not contain a variable Miabi sets itself: two sources of truth for the

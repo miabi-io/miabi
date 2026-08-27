@@ -72,6 +72,15 @@ const (
 	DefaultRunnerImage = "miabi/runner:latest"
 	DefaultNetwork     = "miabi"
 	DefaultSubnet      = "10.63.0.0/16"
+	// DefaultInternalNetwork carries the platform's own traffic. It is separate from DefaultNetwork
+	// because that one is the shared proxy fabric: every routed app joins it, so anything reachable
+	// there is reachable from a tenant container — and Postgres holds one superuser password for the
+	// whole control plane.
+	DefaultInternalNetwork = "miabi-internal"
+	// DefaultInternalSubnet sits BELOW DefaultSubnet, not above: 10.64.0.0/12 is the workspace
+	// allocator's pool (MIABI_NETWORK_POOL_CIDR), so 10.64.0.0/16 would collide with the first
+	// workspace block Miabi hands out.
+	DefaultInternalSubnet = "10.62.0.0/16"
 )
 
 // Service installs and updates the stack.
@@ -95,8 +104,9 @@ func New(dc docker.Client, log func(string, ...any), manifestPath string) *Servi
 // installed, and the CLI knows it (it is that version).
 func Defaults(miabiImage string) *Manifest {
 	return &Manifest{
-		Version: CurrentVersion,
-		Network: NetworkConfig{Name: DefaultNetwork, Subnet: DefaultSubnet},
+		Version:         CurrentVersion,
+		Network:         NetworkConfig{Name: DefaultNetwork, Subnet: DefaultSubnet},
+		InternalNetwork: NetworkConfig{Name: DefaultInternalNetwork, Subnet: DefaultInternalSubnet},
 		Images: Images{
 			Miabi:    miabiImage,
 			Postgres: DefaultPostgresImage,
@@ -129,6 +139,19 @@ func (m *Manifest) Normalize() error {
 	}
 	if m.Network.Subnet == "" {
 		m.Network.Subnet = DefaultSubnet
+	}
+	if m.InternalNetwork.Name == "" {
+		m.InternalNetwork.Name = DefaultInternalNetwork
+	}
+	if m.InternalNetwork.Subnet == "" {
+		m.InternalNetwork.Subnet = DefaultInternalSubnet
+	}
+	// The two must differ, or the split silently does nothing: every component would land back on the
+	// proxy network and a hand-edited manifest would report a private stack it does not have.
+	if m.InternalNetwork.Name == m.Network.Name {
+		return fmt.Errorf("internal_network.name and network.name are both %q — the private network "+
+			"exists to keep the platform off the shared proxy network, so they cannot be the same",
+			m.Network.Name)
 	}
 	if m.Images.Miabi == "" {
 		return errors.New("images.miabi is required")
@@ -462,8 +485,12 @@ func (s *Service) Converge(ctx context.Context, m *Manifest) error {
 		return err
 	}
 
-	s.log("ensuring network %s (%s)", m.Network.Name, m.Network.Subnet)
+	s.log("ensuring networks %s (%s) and %s (%s)",
+		m.Network.Name, m.Network.Subnet, m.InternalNetwork.Name, m.InternalNetwork.Subnet)
 	if err := s.ensureNetwork(ctx, m); err != nil {
+		return err
+	}
+	if err := s.migrateNetworks(ctx, m); err != nil {
 		return err
 	}
 
@@ -494,8 +521,12 @@ func (s *Service) ConvergeData(ctx context.Context, m *Manifest) error {
 	if err := m.Normalize(); err != nil {
 		return err
 	}
-	s.log("ensuring network %s (%s)", m.Network.Name, m.Network.Subnet)
+	s.log("ensuring networks %s (%s) and %s (%s)",
+		m.Network.Name, m.Network.Subnet, m.InternalNetwork.Name, m.InternalNetwork.Subnet)
 	if err := s.ensureNetwork(ctx, m); err != nil {
+		return err
+	}
+	if err := s.migrateNetworks(ctx, m); err != nil {
 		return err
 	}
 	s.log("ensuring volumes")
@@ -589,17 +620,82 @@ func (s *Service) ComponentNames(m *Manifest) []string {
 	return out
 }
 
+// ensureNetwork creates both fabrics: the shared proxy network routed apps join, and the private one
+// the platform's own components talk over. The private one is labelled platform-internal, which is what
+// the app-facing APIs refuse to attach a container to — the name is the operator's to change.
 func (s *Service) ensureNetwork(ctx context.Context, m *Manifest) error {
-	_, err := s.dc.EnsureNetworkSpec(ctx, docker.NetworkSpec{
-		Name:   m.Network.Name,
-		Driver: "bridge",
-		Subnet: m.Network.Subnet,
-		Labels: docker.PlatformLabels(docker.RoleControlPlane, docker.ManagedByMiabi, nil),
-	})
-	if err != nil {
-		return fmt.Errorf("ensure network %q: %w", m.Network.Name, err)
+	for _, n := range []struct {
+		cfg  NetworkConfig
+		role string
+	}{
+		{m.Network, docker.RoleControlPlane},
+		{m.InternalNetwork, docker.RolePlatformInternal},
+	} {
+		_, err := s.dc.EnsureNetworkSpec(ctx, docker.NetworkSpec{
+			Name:   n.cfg.Name,
+			Driver: "bridge",
+			Subnet: n.cfg.Subnet,
+			Labels: docker.PlatformLabels(n.role, docker.ManagedByMiabi, nil),
+		})
+		if err != nil {
+			return fmt.Errorf("ensure network %q: %w", n.cfg.Name, err)
+		}
 	}
 	return nil
+}
+
+// migrateNetworks moves an already-running stack onto the private network without restarting anything,
+// and is a no-op once every component is where the manifest says.
+//
+// It has to run BEFORE the component loop. Networks are part of specHash, so the split recreates all
+// four containers — but they are recreated in dependency order, and between Postgres and the control
+// plane the old control plane would be talking to a database that had just left its network. Worse,
+// `miabi upgrade miabi-postgres` recreates exactly one component and would leave the panel down until
+// someone ran a full converge. Attaching live first means every component can reach every other one on
+// BOTH networks, so any recreate order — or an interrupted converge — is safe.
+//
+// The trailing disconnect is for the container the loop then leaves alone (spec hash already current,
+// e.g. a converge that died between the attach and the recreate): without it, it would keep an
+// attachment to the proxy network that the manifest says it must not have.
+func (s *Service) migrateNetworks(ctx context.Context, m *Manifest) error {
+	for _, c := range s.components(m) {
+		cur, err := s.dc.InspectContainer(ctx, c.Name)
+		if errors.Is(err, docker.ErrNotFound) {
+			continue // a fresh install: the component loop creates it on the right networks
+		}
+		if err != nil {
+			return fmt.Errorf("inspect %s: %w", c.Name, err)
+		}
+		want := c.Build(m, c.Name, *c.Image(m)).Networks
+		for _, n := range want {
+			if attachedTo(cur, n) {
+				continue
+			}
+			s.log("  %-14s joining %s", c.Name, n)
+			if err := s.dc.NetworkConnect(ctx, n, c.Name, nil); err != nil {
+				return fmt.Errorf("attach %s to %s: %w", c.Name, n, err)
+			}
+		}
+		if slices.Contains(want, m.Network.Name) || !attachedTo(cur, m.Network.Name) {
+			continue
+		}
+		// Only ever the proxy network, and only when the spec says this component has no business on
+		// it. Disconnecting anything else would be this function guessing at state it did not put there.
+		s.log("  %-14s leaving %s", c.Name, m.Network.Name)
+		if err := s.dc.NetworkDisconnect(ctx, m.Network.Name, c.Name, false); err != nil {
+			return fmt.Errorf("detach %s from %s: %w", c.Name, m.Network.Name, err)
+		}
+	}
+	return nil
+}
+
+func attachedTo(c docker.Container, network string) bool {
+	for _, n := range c.Networks {
+		if n.Name == network {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) ensureVolumes(ctx context.Context) error {
