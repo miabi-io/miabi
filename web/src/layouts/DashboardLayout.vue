@@ -6,6 +6,8 @@ import { useThemeStore } from '@/stores/theme'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import NotificationBell from '@/components/NotificationBell.vue'
+import CommandPalette from '@/components/CommandPalette.vue'
+import { navSections, type NavItem, type NavSection } from '@/data/nav'
 import { useLicenseStore } from '@/stores/license'
 import { infoApi } from '@/api/info'
 import { workspaceApi } from '@/api/workspaces'
@@ -33,148 +35,6 @@ const currentYear = new Date().getFullYear()
 // of the API base prefix. Hidden until /info confirms it's enabled.
 const docsEnabled = ref(false)
 const docsUrl = ((import.meta.env.VITE_API_URL as string) || '/api/v1').replace(/\/api\/v1\/?$/, '') + '/docs'
-
-interface NavItem {
-  name: string
-  path: string
-  icon: string
-  /** Only show when a workspace is selected. */
-  requiresWorkspace?: boolean
-  /** Only show to owners/admins of the current workspace. */
-  requiresWorkspaceAdmin?: boolean
-  /** Only show to the platform admin. */
-  requiresAdmin?: boolean
-  /** Only show when the /docs API reference is enabled. */
-  requiresDocs?: boolean
-  /** Render as an external link (opens docsUrl in a new tab) instead of a route. */
-  external?: boolean
-  /** Deep-link into a tab of the current workspace's detail page. */
-  workspaceTab?: 'settings' | 'members' | 'audit' | 'notifications'
-}
-
-interface NavSection {
-  id: string
-  title: string
-  items: NavItem[]
-  defaultOpen?: boolean
-}
-
-const navSections: NavSection[] = [
-  {
-    id: 'overview',
-    title: 'Overview',
-    items: [{ name: 'Dashboard', path: '/', icon: 'mdi-view-dashboard-outline' }],
-  },
-  {
-    id: 'analytics',
-    title: 'Analytics',
-    items: [
-      { name: 'Overview', path: '/analytics', icon: 'mdi-chart-areaspline', requiresWorkspace: true },
-      { name: 'HTTP Traffic', path: '/analytics/http', icon: 'mdi-earth', requiresWorkspace: true },
-      { name: 'Performance', path: '/analytics/performance', icon: 'mdi-speedometer', requiresWorkspace: true },
-      { name: 'Web Analytics', path: '/analytics/web', icon: 'mdi-account-group-outline', requiresWorkspace: true },
-    ],
-  },
-  {
-    id: 'deploy',
-    title: 'Deploy',
-    items: [
-      { name: 'Applications', path: '/apps', icon: 'mdi-cube-outline', requiresWorkspace: true },
-      { name: 'Stacks', path: '/stacks', icon: 'mdi-layers-outline', requiresWorkspace: true },
-      { name: 'Jobs', path: '/jobs', icon: 'mdi-console-line', requiresWorkspace: true },
-      { name: 'Marketplace', path: '/marketplace', icon: 'mdi-storefront-outline', requiresWorkspace: true },
-    ],
-  },
-  {
-    id: 'data',
-    title: 'Data',
-    items: [
-      { name: 'Databases', path: '/databases', icon: 'mdi-database-outline', requiresWorkspace: true },
-      { name: 'Volumes', path: '/volumes', icon: 'mdi-harddisk', requiresWorkspace: true },
-    ],
-  },
-  {
-    id: 'networking',
-    title: 'Networking',
-    items: [
-      { name: 'Networks', path: '/networks', icon: 'mdi-lan', requiresWorkspace: true },
-      { name: 'Domains', path: '/domains', icon: 'mdi-web', requiresWorkspace: true },
-      { name: 'DNS Providers', path: '/dns-providers', icon: 'mdi-dns', requiresWorkspace: true },
-      { name: 'Routes', path: '/routes', icon: 'mdi-routes', requiresWorkspace: true },
-      { name: 'Middlewares', path: '/middlewares', icon: 'mdi-tune-vertical', requiresWorkspace: true },
-      { name: 'Certificates', path: '/certificates', icon: 'mdi-certificate', requiresWorkspace: true },
-    ],
-  },
-  {
-    id: 'sources',
-    title: 'Sources',
-    items: [
-      { name: 'Secrets', path: '/secrets', icon: 'mdi-key-variant', requiresWorkspace: true },
-      { name: 'Configs', path: '/configs', icon: 'mdi-file-cog-outline', requiresWorkspace: true },
-      { name: 'Registries', path: '/registries', icon: 'mdi-database-lock-outline', requiresWorkspace: true },
-      { name: 'Git Repositories', path: '/git-repositories', icon: 'mdi-git', requiresWorkspace: true },
-    ],
-  },
-  {
-    id: 'cicd',
-    title: 'GitOps & CI/CD',
-    items: [
-      { name: 'Pipelines', path: '/pipelines', icon: 'mdi-pipe', requiresWorkspace: true },
-      { name: 'Runners', path: '/runners', icon: 'mdi-cog-transfer-outline', requiresWorkspace: true },
-      { name: 'GitOps', path: '/gitops', icon: 'mdi-source-branch-sync', requiresWorkspace: true },
-      { name: 'Releases', path: '/releases', icon: 'mdi-tag-outline', requiresWorkspace: true },
-      { name: 'Environments', path: '/environments', icon: 'mdi-layers-triple-outline', requiresWorkspace: true },
-    ],
-  },
-  {
-    id: 'developers',
-    title: 'Developers',
-    items: [
-      { name: 'API Keys', path: '/api-keys', icon: 'mdi-key-outline', requiresWorkspace: true },
-      { name: 'Container Registry', path: '/registry', icon: 'mdi-cube-outline', requiresWorkspace: true },
-      { name: 'Webhooks', path: '/webhooks', icon: 'mdi-webhook', requiresWorkspace: true },
-      { name: 'Generator', path: '/generator', icon: 'mdi-auto-fix', requiresWorkspace: true },
-      { name: 'API Reference', path: '', icon: 'mdi-book-open-page-variant-outline', external: true, requiresDocs: true },
-    ],
-  },
-  {
-    id: 'workspace',
-    title: 'Workspace',
-    items: [
-      { name: 'All Workspaces', path: '/workspaces', icon: 'mdi-briefcase-outline' },
-      { name: 'Members', path: '', icon: 'mdi-account-group-outline', workspaceTab: 'members', requiresWorkspaceAdmin: true },
-      { name: 'Events', path: '/events', icon: 'mdi-timeline-text-outline', requiresWorkspace: true },
-      { name: 'Audit Log', path: '/audit-log', icon: 'mdi-history', requiresWorkspaceAdmin: true },
-      { name: 'Notifications', path: '', icon: 'mdi-bell-outline', workspaceTab: 'notifications', requiresWorkspaceAdmin: true },
-      { name: 'Settings', path: '', icon: 'mdi-cog-outline', workspaceTab: 'settings', requiresWorkspaceAdmin: true },
-    ],
-  },
-  {
-    id: 'admin',
-    title: 'Platform Admin',
-    defaultOpen: true,
-    items: [
-      { name: 'Dashboard', path: '/admin/metrics', icon: 'mdi-view-dashboard-outline', requiresAdmin: true },
-      { name: 'Users', path: '/admin/users', icon: 'mdi-account-group-outline', requiresAdmin: true },
-      { name: 'Workspaces', path: '/admin/workspaces', icon: 'mdi-briefcase-outline', requiresAdmin: true },
-      { name: 'Domains', path: '/admin/domains', icon: 'mdi-web', requiresAdmin: true },
-      { name: 'Routes', path: '/admin/routes', icon: 'mdi-sitemap-outline', requiresAdmin: true },
-      { name: 'Nodes', path: '/admin/nodes', icon: 'mdi-server-network', requiresAdmin: true },
-      { name: 'Shared Runners', path: '/admin/runners', icon: 'mdi-cog-transfer-outline', requiresAdmin: true },
-      { name: 'Events', path: '/admin/events', icon: 'mdi-pulse', requiresAdmin: true },
-      { name: 'Jobs', path: '/admin/jobs', icon: 'mdi-clock-outline', requiresAdmin: true },
-      { name: 'OAuth Providers', path: '/admin/oauth', icon: 'mdi-shield-key-outline', requiresAdmin: true },
-      { name: 'LDAP / AD', path: '/admin/ldap', icon: 'mdi-account-key-outline', requiresAdmin: true },
-      { name: 'Plans', path: '/admin/plans', icon: 'mdi-tune-variant', requiresAdmin: true },
-      { name: 'License', path: '/admin/license', icon: 'mdi-license', requiresAdmin: true },
-      { name: 'SIEM Streaming', path: '/admin/siem', icon: 'mdi-export-variant', requiresAdmin: true },
-      { name: 'Platform Backup', path: '/admin/platform-backup', icon: 'mdi-cloud-upload-outline', requiresAdmin: true },
-      { name: 'Container Registry', path: '/admin/registry', icon: 'mdi-cube-outline', requiresAdmin: true },
-      { name: 'Platform Settings', path: '/admin/settings', icon: 'mdi-cog-outline', requiresAdmin: true },
-      { name: 'Deployment Config', path: '/admin/deployment-config', icon: 'mdi-package-variant-closed', requiresAdmin: true },
-    ],
-  },
-]
 
 const SECTION_STATE_KEY = 'mb_nav_sections'
 function loadSectionState(): Record<string, boolean> {
@@ -347,8 +207,20 @@ async function dismissUpdate() {
   }
 }
 
+const paletteOpen = ref(false)
+const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
+const paletteHint = computed(() => (isMac ? '\u2318K' : 'Ctrl K'))
+
+function onPaletteShortcut(event: KeyboardEvent) {
+  if (event.key !== 'k' && event.key !== 'K') return
+  if (!event.metaKey && !event.ctrlKey) return
+  event.preventDefault()
+  paletteOpen.value = !paletteOpen.value
+}
+
 onMounted(async () => {
   document.addEventListener('click', closeMenus)
+  document.addEventListener('keydown', onPaletteShortcut)
   if (!auth.user) await auth.fetchUser()
   if (auth.isAdmin) license.load().catch(() => { })
   loadUpdate()
@@ -362,7 +234,10 @@ onMounted(async () => {
   // workspace present the Dashboard fetches these itself.
   if (ws.workspaces.length === 0) await loadInvitations()
 })
-onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
+onBeforeUnmount(() => {
+  document.removeEventListener('click', closeMenus)
+  document.removeEventListener('keydown', onPaletteShortcut)
+})
 </script>
 
 <template>
@@ -451,8 +326,16 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
           <button class="mobile-menu-btn" aria-label="Open menu" @click="mobileOpen = true">
             <span class="mdi mdi-menu"></span>
           </button>
+          <button class="topbar-search" type="button" aria-label="Search" @click="paletteOpen = true">
+            <span class="mdi mdi-magnify"></span>
+            <span class="topbar-search-text">Search or jump to…</span>
+            <kbd class="topbar-search-kbd">{{ paletteHint }}</kbd>
+          </button>
         </div>
         <div class="topbar-right">
+          <button class="topbar-search-icon" type="button" aria-label="Search" @click="paletteOpen = true">
+            <span class="mdi mdi-magnify"></span>
+          </button>
           <NotificationBell />
           <div class="user-menu">
             <div class="user-menu-trigger" @click="userMenuOpen = !userMenuOpen">
@@ -662,6 +545,8 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
         </nav>
       </aside>
     </Transition>
+
+    <CommandPalette v-model:open="paletteOpen" :docs-enabled="docsEnabled" :docs-url="docsUrl" />
   </div>
 </template>
 
@@ -1130,6 +1015,74 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
 .topbar-left {
   display: flex;
   align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.topbar-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 380px;
+  height: 34px;
+  padding: 0 8px 0 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition), color var(--transition);
+}
+
+.topbar-search:hover {
+  border-color: var(--border-secondary, var(--border-primary));
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.topbar-search .mdi {
+  font-size: 17px;
+}
+
+.topbar-search-text {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-search-kbd {
+  border: 1px solid var(--border-primary);
+  background: var(--bg-primary);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.topbar-search-icon {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 20px;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition), background var(--transition);
+}
+
+.topbar-search-icon:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 .mobile-menu-btn {
@@ -1608,6 +1561,16 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
   }
 
   .mobile-menu-btn {
+    display: flex;
+  }
+}
+
+@media (max-width: 767px) {
+  .topbar-search {
+    display: none;
+  }
+
+  .topbar-search-icon {
     display: flex;
   }
 }
