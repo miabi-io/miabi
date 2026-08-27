@@ -204,6 +204,15 @@ const actionBadge: Record<PlanAction, string> = {
 
 const planChanges = computed(() => (diffPlan.value?.changes ?? []).filter((c) => c.action !== 'noop'))
 function shortSha(sha?: string) { return sha ? sha.slice(0, 7) : '—' }
+// The column shows the commit that last CHANGED something, which is often behind HEAD. The tooltip is
+// where that gets explained, along with the message — the detail page has room to show it inline.
+function syncedTitle(s: GitSource) {
+  if (!s.last_synced_commit) return 'Nothing has been applied from this repository yet'
+  const parts = [`Last applied commit: ${s.last_synced_commit}`]
+  if (s.last_synced_subject) parts.push(s.last_synced_subject)
+  if (s.last_synced_author) parts.push(`by ${s.last_synced_author}`)
+  return parts.join('\n')
+}
 </script>
 
 <template>
@@ -254,7 +263,7 @@ function shortSha(sha?: string) { return sha ? sha.slice(0, 7) : '—' }
                 </span>
                 <div v-if="s.status === 'error' && s.message" class="cell-sub err">{{ s.message }}</div>
               </td>
-              <td class="cell-sub mono">
+              <td class="cell-sub mono" :title="syncedTitle(s)">
                 <span v-if="s.last_synced_commit">{{ shortSha(s.last_synced_commit) }}</span>
                 <span v-else>—</span>
               </td>
@@ -294,7 +303,7 @@ function shortSha(sha?: string) { return sha ? sha.slice(0, 7) : '—' }
         <div v-if="s.status === 'error' && s.message" class="cell-sub err">{{ s.message }}</div>
         <div class="gc-meta">
           <span class="cell-sub mono">{{ s.ref }}<span v-if="s.path && s.path !== '.'">/{{ s.path }}</span></span>
-          <span class="cell-sub mono" title="Last synced commit"><span class="mdi mdi-source-commit"></span> {{ shortSha(s.last_synced_commit) }}</span>
+          <span class="cell-sub mono" :title="syncedTitle(s)"><span class="mdi mdi-source-commit"></span> {{ shortSha(s.last_synced_commit) }}</span>
         </div>
         <div class="gc-badges">
           <span class="badge badge-neutral">{{ s.sync_policy }}</span>

@@ -1914,10 +1914,14 @@ export interface GitSource {
   allow_empty: boolean
   status: GitSourceStatus
   message?: string
+  // The last reconcile that actually CHANGED something — not the last poll.
   last_synced_commit?: string
   last_synced_author?: string
   last_synced_subject?: string
   last_synced_at?: string | null
+  // Every reconcile attempt, changed or not, succeeded or failed.
+  last_checked_commit?: string
+  last_checked_at?: string | null
   created_at: string
   updated_at: string
 }

@@ -314,6 +314,10 @@ func (s *Service) Reconcile(ctx context.Context, src *models.GitSource) error {
 	if err != nil {
 		return s.markError(src, fmt.Errorf("fetch: %w", err))
 	}
+	// Stamped before the apply, and kept on every path below: the revision was resolved, so "we looked,
+	// and this is what Git had" is true even if applying it then fails.
+	markChecked(src, commit.Hash)
+
 	res, err := s.applier.Apply(ctx, src.WorkspaceID, manifests, apply.Options{Prune: src.Prune, OwnerSource: sourceLabel(src)})
 	if err != nil {
 		return s.markError(src, err)
@@ -322,17 +326,32 @@ func (s *Service) Reconcile(ctx context.Context, src *models.GitSource) error {
 		return s.markError(src, fmt.Errorf("%d change(s) failed: %s", len(res.Failures), res.Failures[0].Error))
 	}
 
-	now := time.Now()
 	src.Status = models.GitSourceSynced
 	src.Message = ""
+	recordSync(src, commit, res.Applied, time.Now())
+	return s.repo.Update(src)
+}
+
+func recordSync(src *models.GitSource, commit commitInfo, applied int, now time.Time) {
+	if applied <= 0 {
+		return
+	}
 	src.LastSyncedCommit = commit.Hash
 	src.LastSyncedAuthor = commit.Author
 	src.LastSyncedSubject = commit.Subject
 	src.LastSyncedAt = &now
-	return s.repo.Update(src)
+}
+
+func markChecked(src *models.GitSource, commitHash string) {
+	now := time.Now()
+	src.LastCheckedAt = &now
+	if commitHash != "" {
+		src.LastCheckedCommit = commitHash
+	}
 }
 
 func (s *Service) markError(src *models.GitSource, err error) error {
+	markChecked(src, "")
 	src.Status = models.GitSourceError
 	src.Message = err.Error()
 	_ = s.repo.Update(src)
