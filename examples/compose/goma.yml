@@ -127,7 +127,7 @@ gateway:
         #- miabi-ip-allowlist
         # Optional: throttle and auto-ban credential guessing against the auth
         # endpoints. Uncomment to enable; tune it in miabi-auth-ratelimit below.
-        - miabi-auth-ratelimit
+        #- miabi-auth-ratelimit
 
 # Middlewares for the Miabi control-plane route above. Routes for user
 # applications are written separately under /etc/goma/providers and are not
