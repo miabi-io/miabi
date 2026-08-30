@@ -11,6 +11,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import MetadataCard from '@/components/MetadataCard.vue'
 import OwnerChip from '@/components/OwnerChip.vue'
 import ResourceIcon from '@/components/ResourceIcon.vue'
+import { fmtSize } from '@/utils/format'
 import { engineLogo, engineMdi } from '@/utils/resourceIcon'
 import { copyText } from '@/utils/clipboard'
 import type { DatabaseInstance, DBStatus, UpgradeProgress, LogicalDatabase, ConnectionInfo, ForwardSession, Backup, BackupSchedule, Application, Network, UpgradeOptions, UpgradePlan, StatsSample } from '@/api/types'
@@ -161,12 +162,6 @@ function stopMetricsPoll() {
 }
 
 // Resource-usage helpers (shared shape with the AppDetail overview).
-function fmtMB(bytes?: number): string {
-  return ((bytes ?? 0) / 1048576).toFixed(0)
-}
-function fmtKB(bytes?: number): string {
-  return ((bytes ?? 0) / 1024).toFixed(0)
-}
 function usageTone(pct: number): string {
   if (pct >= 90) return 'usage-danger'
   if (pct >= 70) return 'usage-warn'
@@ -735,19 +730,19 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
         </div>
         <div class="stat-card">
           <div class="stat-header"><span class="stat-label">Memory</span><span class="stat-icon stat-icon-info"><span class="mdi mdi-memory"></span></span></div>
-          <div class="stat-value">{{ fmtMB(metrics.memory_usage_bytes) }} MB</div>
+          <div class="stat-value">{{ fmtSize(metrics.memory_usage_bytes) }}</div>
           <div class="usage-bar"><div class="usage-fill" :class="usageTone(metrics.memory_percent)" :style="{ width: Math.min(100, metrics.memory_percent) + '%' }"></div></div>
           <div class="stat-sub">
-            {{ metrics.memory_percent.toFixed(1) }}%<template v-if="metrics.memory_limit_bytes"> of {{ fmtMB(metrics.memory_limit_bytes) }} MB</template>
+            {{ metrics.memory_percent.toFixed(1) }}%<template v-if="metrics.memory_limit_bytes"> of {{ fmtSize(metrics.memory_limit_bytes) }}</template>
           </div>
         </div>
         <div class="stat-card">
           <div class="stat-header"><span class="stat-label">Net in</span><span class="stat-icon stat-icon-success"><span class="mdi mdi-download"></span></span></div>
-          <div class="stat-value">{{ fmtKB(metrics.network_rx_bytes) }} KB</div>
+          <div class="stat-value">{{ fmtSize(metrics.network_rx_bytes) }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-header"><span class="stat-label">Net out</span><span class="stat-icon stat-icon-warning"><span class="mdi mdi-upload"></span></span></div>
-          <div class="stat-value">{{ fmtKB(metrics.network_tx_bytes) }} KB</div>
+          <div class="stat-value">{{ fmtSize(metrics.network_tx_bytes) }}</div>
         </div>
       </div>
       <div v-else class="card mb-4">

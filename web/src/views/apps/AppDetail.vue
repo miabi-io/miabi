@@ -28,6 +28,7 @@ import CanaryPanel from '@/components/CanaryPanel.vue'
 import AppAccessPanel from '@/components/AppAccessPanel.vue'
 import type { Application, AppOverview, Deployment, Release, AppEnvVar, Route, Network, Stack, Volume, StatsSample, Registry, GitRepository, AppEvent, AppPort, PortBinding, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, DatabaseInstance, LogicalDatabase, NodePlacement, PipelineDefinition } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
+import { fmtSize } from '@/utils/format'
 
 // Secret-reference example built here so `}}` doesn't break the template's
 // mustache parser.
@@ -1583,12 +1584,6 @@ function fmtUptime(s: number): string {
   return `${Math.floor(s / 86400)}d`
 }
 
-function fmtMB(bytes?: number) {
-  return ((bytes ?? 0) / 1048576).toFixed(0)
-}
-function fmtKB(bytes?: number) {
-  return ((bytes ?? 0) / 1024).toFixed(0)
-}
 
 // Tone for a resource-usage bar by threshold.
 function usageTone(pct: number): string {
@@ -1951,19 +1946,19 @@ async function detachDatabase(d: AppDatabase) {
         </div>
         <div class="stat-card">
           <div class="stat-header"><span class="stat-label">Memory</span><span class="stat-icon stat-icon-info"><span class="mdi mdi-memory"></span></span></div>
-          <div class="stat-value">{{ fmtMB(metrics.memory_usage_bytes) }} MB</div>
+          <div class="stat-value">{{ fmtSize(metrics.memory_usage_bytes) }}</div>
           <div class="usage-bar"><div class="usage-fill" :class="usageTone(metrics.memory_percent)" :style="{ width: Math.min(100, metrics.memory_percent) + '%' }"></div></div>
           <div class="stat-sub">
-            {{ metrics.memory_percent.toFixed(1) }}%<template v-if="metrics.memory_limit_bytes"> of {{ fmtMB(metrics.memory_limit_bytes) }} MB</template>
+            {{ metrics.memory_percent.toFixed(1) }}%<template v-if="metrics.memory_limit_bytes"> of {{ fmtSize(metrics.memory_limit_bytes) }}</template>
           </div>
         </div>
         <div class="stat-card">
           <div class="stat-header"><span class="stat-label">Net in</span><span class="stat-icon stat-icon-success"><span class="mdi mdi-download"></span></span></div>
-          <div class="stat-value">{{ fmtKB(metrics.network_rx_bytes) }} KB</div>
+          <div class="stat-value">{{ fmtSize(metrics.network_rx_bytes) }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-header"><span class="stat-label">Net out</span><span class="stat-icon stat-icon-warning"><span class="mdi mdi-upload"></span></span></div>
-          <div class="stat-value">{{ fmtKB(metrics.network_tx_bytes) }} KB</div>
+          <div class="stat-value">{{ fmtSize(metrics.network_tx_bytes) }}</div>
         </div>
       </div>
       <div v-else class="card mb-4">
