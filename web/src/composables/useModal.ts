@@ -32,6 +32,10 @@ const FOCUSABLE = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',')
 
+// Marks a region whose own keyboard handling owns Tab. Escape still closes the dialog, so the
+// keyboard is never trapped inside one.
+const TAB_THROUGH = '[data-modal-tab-through]'
+
 function focusableIn(container: HTMLElement | null): HTMLElement[] {
   if (!container) return []
   return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
@@ -85,6 +89,12 @@ export function useModal(open: BoolSource, options: UseModalOptions = {}) {
 
     if (event.key !== 'Tab') return
 
+    const active = document.activeElement as HTMLElement | null
+
+    // Some content consumes Tab itself — a shell completes a path with it. The trap runs on capture,
+    // so without this it wraps focus onto the dialog's own buttons before the terminal ever sees the key.
+    if (active?.closest(TAB_THROUGH)) return
+
     // Keep Tab inside the dialog: a focus ring wandering onto the page behind an
     // overlay is disorienting with a mouse and a dead end with a screen reader.
     const focusable = focusableIn(options.container?.value ?? null)
@@ -92,7 +102,6 @@ export function useModal(open: BoolSource, options: UseModalOptions = {}) {
 
     const first = focusable[0]
     const last = focusable[focusable.length - 1]
-    const active = document.activeElement as HTMLElement | null
 
     if (event.shiftKey && (active === first || !options.container?.value?.contains(active))) {
       event.preventDefault()
