@@ -32,6 +32,8 @@ const dialogClass = { compact: 'modal-lg', normal: 'modal-xl', full: 'modal-full
 function setSize(next: ShellSize) {
   size.value = next
   localStorage.setItem(sizeKey, next)
+  // Resizing is not leaving the shell: without this the caret stays on the button that was clicked.
+  void nextTick(() => term?.focus())
 }
 
 // The terminal sizes itself to its box, so it has to be told the box changed.
@@ -68,7 +70,8 @@ onMounted(() => {
   term.loadAddon(fit)
   term.open(host.value)
   fit.fit()
-  term.focus()
+  // After the modal has placed itself, or its focus trap takes the caret back off the shell.
+  void nextTick(() => term?.focus())
 
   socket = new WebSocket(wsUrl(`${props.base}/exec`))
   socket.binaryType = 'arraybuffer'
@@ -103,7 +106,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <AppModal :dialog-class="dialogClass[size]" @close="emit('close')">
+  <AppModal :dialog-class="dialogClass[size]" :auto-focus="false" @close="emit('close')">
     <div class="modal-header">
       <h3>
         <span class="mdi mdi-console-line"></span>
@@ -144,7 +147,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <div class="modal-body shell-body" :class="'shell-' + size">
-      <div ref="host" class="shell-host"></div>
+      <div ref="host" class="shell-host" data-modal-tab-through></div>
     </div>
   </AppModal>
 </template>
