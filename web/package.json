@@ -31,13 +31,13 @@
   },
   "devDependencies": {
     "@types/d3-geo": "^3.1.1",
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.3.0",
     "@types/topojson-client": "^3.1.5",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/tsconfig": "^0.9.1",
     "typescript": "~6.0.2",
-    "vite": "^8.2.1",
+    "vite": "^8.2.2",
     "vitest": "^4.1.11",
-    "vue-tsc": "^3.3.10"
+    "vue-tsc": "^3.3.11"
   }
 }
