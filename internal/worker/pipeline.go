@@ -360,6 +360,10 @@ func (d *PipelineDeployer) DeployByDigest(run *models.PipelineRun, appID uint, i
 		ImageID:       run.ImageID,
 		RunnerID:      run.RunnerID,
 		Commit:        run.Commit,
+		// The app's configured strategy, not the column default. Leaving it unset meant an app set to
+		// canary in its settings rolled straight out when the deploy came from a pipeline — the same
+		// app, the same setting, a different answer depending on what triggered it.
+		Strategy: models.EffectiveDeployStrategy(app, ""),
 	}
 	if err := d.deployments.Create(dep); err != nil {
 		return fmt.Errorf("create deployment: %w", err)

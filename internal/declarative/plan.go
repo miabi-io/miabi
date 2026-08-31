@@ -258,6 +258,12 @@ func diffFields(actual, desired Resource) []FieldDiff {
 	}
 	av := specFields(actual)
 	dv := specFields(desired)
+
+	for f := range optionalWhenUnset {
+		if _, stated := dv[f]; !stated {
+			delete(av, f)
+		}
+	}
 	keys := map[string]bool{}
 	for k := range av {
 		keys[k] = true
@@ -274,6 +280,8 @@ func diffFields(actual, desired Resource) []FieldDiff {
 	sort.Slice(out, func(i, j int) bool { return out[i].Field < out[j].Field })
 	return out
 }
+
+var optionalWhenUnset = map[string]bool{"strategy": true}
 
 // diffRegistry compares a registry credential. Server and username are ordinary visible fields;
 // the password is compared through fingerprints stamped on both sides, never the value. It is
@@ -405,6 +413,11 @@ func specFields(r Resource) map[string]string {
 		f["registry"] = a.Registry
 		// The account the container runs as changes the container, so a change to it must redeploy.
 		f["runAsUser"] = a.RunAsUser
+		// How the next release is rolled out. Only compared when the manifest states one: an app
+		// configured in the console and a manifest that says nothing about rollout must not diff.
+		if a.Strategy != "" {
+			f["strategy"] = a.Strategy
+		}
 		// Mounted config content is not visible in any diffed field, so its
 		// fingerprint is what makes an edit converge as an application update.
 		// Only compared when both sides carry one, like RegistrySpec.PasswordFP.

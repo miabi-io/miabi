@@ -110,7 +110,10 @@ type CreateInput struct {
 	// RunAsUser pins the container to an account ("uid", "uid:gid", "name",
 	// "name:group"); empty keeps the image's user. Validated against the
 	// workspace's security profile.
-	RunAsUser       string
+	RunAsUser string
+	// DeployStrategy is the app's default rollout method. Empty leaves the model's
+	// own default (rolling), so a caller that does not care says nothing.
+	DeployStrategy  models.DeployStrategy
 	RestartPolicy   models.RestartPolicy
 	ImagePullPolicy models.ImagePullPolicy
 	// Cluster runtime (cluster mode). RuntimeKind defaults to container; service
@@ -859,6 +862,7 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 		MemoryBytes: in.MemoryBytes, NanoCPUs: in.NanoCPUs,
 		GPUCount: in.GPUCount, GPUKind: strings.TrimSpace(in.GPUKind),
 		RunAsUser:            runAsUser,
+		DeployStrategy:       validStrategyOrDefault(in.DeployStrategy),
 		RestartPolicy:        normalizeRestartPolicy(in.RestartPolicy),
 		ImagePullPolicy:      normalizeImagePullPolicy(in.ImagePullPolicy),
 		RuntimeKind:          in.RuntimeKind,
@@ -1157,6 +1161,16 @@ func (s *Service) Update(app *models.Application) error {
 	}
 	s.emit(app, models.EventSettingsUpdated, "Settings updated")
 	return nil
+}
+
+// validStrategyOrDefault clamps a caller-supplied strategy on create. normalizeDeployConfig does the
+// same on the settings path, but it does not run here — and an unrecognised value stored raw would
+// deploy as whatever the worker's switch falls through to.
+func validStrategyOrDefault(s models.DeployStrategy) models.DeployStrategy {
+	if models.ValidDeployStrategy(s) {
+		return s
+	}
+	return models.DeployRolling
 }
 
 // normalizeDeployConfig clamps the deployment strategy and canary tuning to safe
@@ -1900,17 +1914,7 @@ func (s *Service) RequestDeploy(app *models.Application, registryOverride *uint,
 // the app's default. Canary needs a running release to shift traffic against, so
 // a canary on a never-deployed app falls back to rolling.
 func (s *Service) resolveStrategy(app *models.Application, requested models.DeployStrategy) models.DeployStrategy {
-	st := requested
-	if !models.ValidDeployStrategy(st) {
-		st = app.DeployStrategy
-	}
-	if !models.ValidDeployStrategy(st) {
-		st = models.DeployRolling
-	}
-	if st == models.DeployCanary && app.CurrentReleaseID == nil {
-		st = models.DeployRolling
-	}
-	return st
+	return models.EffectiveDeployStrategy(app, requested)
 }
 
 // Redeploy enqueues a deploy that applies the app's current configuration.
