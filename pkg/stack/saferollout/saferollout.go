@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 // Package saferollout replaces a running container with a new image without a blind cutover. It generalizes
 // the pattern edgegateway used for node gateways — start the new image under a throwaway name, watch it, then

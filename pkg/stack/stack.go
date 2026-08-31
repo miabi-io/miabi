@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 // Package platformstack installs and updates Miabi's own stack directly against the Docker API, with
 // every component tagged io.miabi.managed-by=miabi. Compose owns what Compose created, so Miabi could
