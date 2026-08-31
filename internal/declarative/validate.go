@@ -148,6 +148,10 @@ func (r *Resource) validate() error {
 	}
 }
 
+// validStrategy mirrors models.DeployStrategy. It is duplicated rather than imported so the
+// declarative package keeps its one dependency; a test asserts the two lists agree.
+var validStrategy = map[string]bool{"recreate": true, "rolling": true, "canary": true}
+
 // validateMeta enforces the key/value rules for the two free-form metadata maps.
 // Keys are constrained for both maps; label values are constrained too, while
 // annotation values are left arbitrary (they exist precisely to hold free text).
@@ -254,6 +258,9 @@ func (r *Resource) validateApplication() error {
 	}
 	if a.Registry != "" && !nameRe.MatchString(a.Registry) {
 		return fmt.Errorf("application %q: registry %q must be a resource name matching %s", r.Metadata.Name, a.Registry, nameRe)
+	}
+	if a.Strategy != "" && !validStrategy[a.Strategy] {
+		return fmt.Errorf("application %q: strategy %q must be recreate, rolling or canary", r.Metadata.Name, a.Strategy)
 	}
 	if a.ReloadPolicy != "" && a.ReloadPolicy != ReloadRestart && a.ReloadPolicy != ReloadNone {
 		return fmt.Errorf("application %q: reloadPolicy %q must be %q or %q", r.Metadata.Name, a.ReloadPolicy, ReloadRestart, ReloadNone)

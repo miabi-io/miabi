@@ -134,6 +134,11 @@ type ApplicationSpec struct {
 	// (default) redeploys the app, "none" leaves it running for apps that watch
 	// their own config file.
 	ReloadPolicy string `yaml:"reloadPolicy,omitempty" json:"reloadPolicy,omitempty"`
+	// Strategy is how a new release replaces the running one: recreate (stop then start), rolling
+	// (start the new container before retiring the old) or canary (run both and shift traffic).
+	// Empty keeps whatever the app is configured with, so a manifest that does not care about
+	// rollout mechanics leaves the console's setting alone instead of silently resetting it.
+	Strategy string `yaml:"strategy,omitempty" json:"strategy,omitempty"`
 	// ConfigFP fingerprints every mounted config's digest, filled by the apply engine
 	// on both sides of the diff so a content change converges as an app update.
 	// Not serialized: derived state, like RegistrySpec.PasswordFP.

@@ -58,6 +58,29 @@ const (
 	DeployCanary DeployStrategy = "canary"
 )
 
+// EffectiveDeployStrategy resolves the strategy one deploy runs with: an explicit request wins, else
+// the app's configured default, else rolling.
+//
+// It lives on the model because every path that creates a Deployment has to apply the same rule, and
+// they do not share a service — a pipeline deploy is built in the worker, a manual one in the
+// application service. When only one of them knew the rule, an app set to canary deployed rolling
+// from CI and nobody could see why.
+func EffectiveDeployStrategy(app *Application, requested DeployStrategy) DeployStrategy {
+	st := requested
+	if !ValidDeployStrategy(st) {
+		st = app.DeployStrategy
+	}
+	if !ValidDeployStrategy(st) {
+		st = DeployRolling
+	}
+	// A canary splits traffic between the running release and the new one. With nothing running there
+	// is nothing to split, so the first deploy of an app is always a straight rollout.
+	if st == DeployCanary && app.CurrentReleaseID == nil {
+		st = DeployRolling
+	}
+	return st
+}
+
 // ValidDeployStrategy reports whether s is a known strategy.
 func ValidDeployStrategy(s DeployStrategy) bool {
 	switch s {

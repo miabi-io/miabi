@@ -1143,6 +1143,11 @@ func appResource(app *models.Application, ext, pub map[int]bool, volNameByID, re
 	if app.ReloadPolicy != "" && app.ReloadPolicy != models.ReloadRestart {
 		spec.ReloadPolicy = app.ReloadPolicy
 	}
+	// Emitted only when it differs from the default, so an exported bundle stays clean and matches a
+	// manifest that simply omits the field.
+	if app.DeployStrategy != "" && app.DeployStrategy != models.DeployRolling {
+		spec.Strategy = string(app.DeployStrategy)
+	}
 	// Managed volume mounts, by the volume's manifest name. Privileged host-preset
 	// binds (VolumeID 0) aren't manifest-expressible, so they're omitted.
 	for _, m := range app.Mounts {
@@ -1767,6 +1772,11 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		// Validated against the workspace's security profile by the app service, which
 		// refuses a run-as user that would escape a non-root mandate.
 		app.RunAsUser = spec.RunAsUser
+		// Only when the manifest states one. A bundle silent about rollout mechanics must leave the
+		// console's setting alone rather than reset every app it touches to rolling.
+		if spec.Strategy != "" {
+			app.DeployStrategy = models.DeployStrategy(spec.Strategy)
+		}
 		if err := s.apps.Update(app); err != nil {
 			return err
 		}
@@ -1945,6 +1955,7 @@ func (s *Service) createInput(ctx context.Context, m declarative.Meta, spec *dec
 		Annotations:     m.Annotations,
 		ContainerLabels: spec.ContainerLabels, // sanitized in the app service Create
 		RunAsUser:       spec.RunAsUser,       // validated in the app service Create
+		DeployStrategy:  models.DeployStrategy(spec.Strategy),
 	}
 	if spec.Resources != nil {
 		in.MemoryBytes, _ = spec.Resources.MemoryBytes()

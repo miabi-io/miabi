@@ -766,9 +766,6 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 		Replicas:       replicas,
 		Networks:       svcNets,
 		NetworkAliases: []string{alias, app.Name},
-		// Also join the shared ingress overlay, but register only the globally-unique upstream alias there
-		// — never app.Name, which is workspace-scoped. That is the name the central gateway resolves to
-		// front the VIP.
 		IngressNetwork: node.IngressOverlay,
 		IngressAlias:   alias,
 		Mounts:         mounts,
