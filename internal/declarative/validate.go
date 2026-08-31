@@ -148,6 +148,31 @@ func (r *Resource) validate() error {
 	}
 }
 
+// validBuildMethod mirrors models.AppBuildMethod, duplicated for the same reason as validStrategy —
+// the declarative package keeps its single dependency, and a test asserts the lists agree.
+var validBuildMethod = map[string]bool{"auto": true, "dockerfile": true, "buildpack": true}
+
+// validateSource checks a build-from-git source. Whether the repository can actually be cloned is a
+// runtime question the build answers; this is the shape.
+func (r *Resource) validateSource(src *SourceSpec) error {
+	name := r.Metadata.Name
+	if strings.TrimSpace(src.Git) == "" {
+		return fmt.Errorf("application %q: source.git is required", name)
+	}
+	if src.BuildMethod != "" && !validBuildMethod[src.BuildMethod] {
+		return fmt.Errorf("application %q: source.buildMethod %q must be auto, dockerfile or buildpack", name, src.BuildMethod)
+	}
+	// Buildpack-only settings on a Dockerfile build are silently ignored at build time, which reads
+	// as the manifest not working. Say so instead.
+	if src.BuildMethod == "dockerfile" && (src.Builder != "" || len(src.Buildpacks) > 0) {
+		return fmt.Errorf("application %q: source.builder and source.buildpacks apply to buildpack builds, not buildMethod: dockerfile", name)
+	}
+	if src.Repository != "" && !nameRe.MatchString(src.Repository) {
+		return fmt.Errorf("application %q: source.repository %q must be a resource name matching %s", name, src.Repository, nameRe)
+	}
+	return nil
+}
+
 // validStrategy mirrors models.DeployStrategy. It is duplicated rather than imported so the
 // declarative package keeps its one dependency; a test asserts the two lists agree.
 var validStrategy = map[string]bool{"recreate": true, "rolling": true, "canary": true}
@@ -225,8 +250,18 @@ func (r *Resource) validateApplication() error {
 	if a == nil {
 		return fmt.Errorf("application %q: spec is required", r.Metadata.Name)
 	}
-	if strings.TrimSpace(a.Image) == "" {
-		return fmt.Errorf("application %q: image is required", r.Metadata.Name)
+	hasImage, hasSource := strings.TrimSpace(a.Image) != "", a.Source != nil
+	switch {
+	case !hasImage && !hasSource:
+		return fmt.Errorf("application %q: one of image or source is required", r.Metadata.Name)
+	case hasImage && hasSource:
+		// Both would leave the engine to pick, and whichever it picked would be the wrong one half
+		// the time — better to say so than to build an image the manifest also tells us to pull.
+		return fmt.Errorf("application %q: image and source are mutually exclusive — an app either pulls an image or builds one", r.Metadata.Name)
+	case hasSource:
+		if err := r.validateSource(a.Source); err != nil {
+			return err
+		}
 	}
 	if a.Digest != "" && !strings.HasPrefix(a.Digest, "sha256:") {
 		return fmt.Errorf("application %q: digest must be a sha256: reference", r.Metadata.Name)

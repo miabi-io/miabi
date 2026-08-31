@@ -35,6 +35,18 @@ func JSONSchema() ([]byte, error) {
 	}
 	sort.Strings(kinds)
 
+	// specConstraints carry the per-kind rules that reflection over struct tags cannot express — a
+	// choice between two fields, rather than a field being required outright.
+	specConstraints := map[Kind]map[string]any{
+		KindApplication: {
+			"oneOf": []any{
+				map[string]any{"required": []string{"image"}},
+				map[string]any{"required": []string{"source"}},
+			},
+			"description": "An application either pulls an image or builds one from source — set exactly one of image and source.",
+		},
+	}
+
 	specFor := map[Kind]any{
 		KindApplication: ApplicationSpec{},
 		KindStack:       StackSpec{},
@@ -51,9 +63,16 @@ func JSONSchema() ([]byte, error) {
 	branches := make([]any, 0, len(kinds))
 	for _, k := range kinds {
 		ref := g.define(reflect.TypeOf(specFor[Kind(k)]))
+		then := map[string]any{"properties": map[string]any{"spec": ref}}
+		if extra := specConstraints[Kind(k)]; extra != nil {
+			// A rule the struct tags cannot carry. Without it an editor would accept a document the
+			// parser then rejects, which is worse than no schema at all — the point of publishing one
+			// is that it agrees with the engine.
+			then = map[string]any{"allOf": []any{then, map[string]any{"properties": map[string]any{"spec": extra}}}}
+		}
 		branches = append(branches, map[string]any{
 			"if":   map[string]any{"properties": map[string]any{"kind": map[string]any{"const": k}}, "required": []string{"kind"}},
-			"then": map[string]any{"properties": map[string]any{"spec": ref}},
+			"then": then,
 		})
 	}
 

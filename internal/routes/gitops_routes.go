@@ -27,6 +27,16 @@ func (r *Router) applyRoutes() []okapi.RouteDefinition {
 			Summary:     "Apply or preview a manifest bundle",
 			Request:     &handlers.ApplyRequest{},
 		},
+		{
+			Method: http.MethodGet,
+			Path:   "/{workspace}/apps/{appID}/manifest",
+			Group:  g,
+			// Viewer: the bundle carries no secret values — a secret env var is emitted as its name
+			// under secretEnv with an empty value, exactly as the plan engine masks it.
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.apply.ExportApplication,
+			Summary:     "Export an application as a miabi.io/v1 manifest bundle",
+		},
 	}
 }
 

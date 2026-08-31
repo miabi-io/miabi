@@ -184,6 +184,11 @@ export const appApi = {
   get(ws: number, id: number) {
     return api.get<ApiResponse<Application>>(`/workspaces/${ws}/apps/${id}`)
   },
+  // The response is the YAML bundle itself, not the {success,data} envelope: it is meant to be
+  // saved to a file, and unwrapping a document to do that helps nobody.
+  manifest(ws: number, id: number) {
+    return api.get<string>(`/workspaces/${ws}/apps/${id}/manifest`, { responseType: 'text' })
+  },
   overview(ws: number, id: number) {
     return api.get<ApiResponse<AppOverview>>(`/workspaces/${ws}/apps/${id}/overview`)
   },
