@@ -76,7 +76,7 @@
           "type": "string"
         },
         "strategy": {
-          "description": "Strategy is how a new release replaces the running one: recreate (stop then start), rolling (start the new container before retiring the old) or canary (run both and shift traffic). Empty keeps whatever the app is configured with, so a manifest that does not care about rollout mechanics leaves the console's setting alone instead of silently resetting it. A canary needs a running release to split traffic against, so the FIRST deploy of an app is a straight rollout whatever this says. Canary weights and interval stay console-side: they are tuning for a rollout in flight, not desired state.",
+          "description": "Strategy is how a new release replaces the running one: recreate (stop then start), rolling (start the new container before retiring the old) or canary (run both and shift traffic). Empty keeps whatever the app is configured with, so a manifest that does not care about rollout mechanics leaves the console's setting alone instead of silently resetting it.",
           "type": "string"
         },
         "tag": {
