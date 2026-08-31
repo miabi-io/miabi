@@ -139,6 +139,8 @@ func (r *Resource) validate() error {
 		return r.validateRegistry()
 	case KindConfig:
 		return r.validateConfig()
+	case KindMiddleware:
+		return r.validateMiddleware()
 	case KindVolume, KindStack, KindSecret, KindProject:
 		return nil
 	default:
@@ -309,6 +311,26 @@ func hasNonEmpty(s []string) bool {
 	return false
 }
 
+// validateMiddleware checks the envelope only. The rule itself is deliberately not validated here:
+// the gateway's middleware catalogue already owns that schema, and a second copy in this package
+// would drift the moment the catalogue gains a field. An invalid rule fails on apply, where the
+// catalogue validates it — the same place an unpullable image fails.
+func (r *Resource) validateMiddleware() error {
+	mw := r.Middleware
+	if mw == nil {
+		return fmt.Errorf("middleware %q: spec is required", r.Metadata.Name)
+	}
+	if strings.TrimSpace(mw.Type) == "" {
+		return fmt.Errorf("middleware %q: type is required", r.Metadata.Name)
+	}
+	for _, p := range mw.Paths {
+		if strings.TrimSpace(p) == "" {
+			return fmt.Errorf("middleware %q: paths must not contain an empty entry", r.Metadata.Name)
+		}
+	}
+	return nil
+}
+
 func (r *Resource) validateRoute() error {
 	rt := r.Route
 	if rt == nil {
@@ -322,6 +344,19 @@ func (r *Resource) validateRoute() error {
 	}
 	if !validTLS[rt.TLS] {
 		return fmt.Errorf("route %q: tls must be acme, custom or off", r.Metadata.Name)
+	}
+	// The chain is ordered and executed in order, so a repeated name is a mistake
+	// rather than a stronger policy — and the gateway would run it twice.
+	seen := map[string]bool{}
+	for _, name := range rt.Middlewares {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return fmt.Errorf("route %q: middlewares must not contain an empty name", r.Metadata.Name)
+		}
+		if seen[name] {
+			return fmt.Errorf("route %q: middleware %q is listed twice", r.Metadata.Name, name)
+		}
+		seen[name] = true
 	}
 	return nil
 }

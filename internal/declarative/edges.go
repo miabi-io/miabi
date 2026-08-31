@@ -23,6 +23,10 @@ const (
 	EdgeAppRef   EdgeType = "app-ref"  // Application -> Application (env {{ .applications.X }})
 	EdgeRegistry EdgeType = "registry" // Application -> Registry (spec.registry)
 	EdgeConfig   EdgeType = "config"   // Application -> Config   (mounts[].config)
+	// EdgeMiddleware is Route -> Middleware (spec.middlewares). Only drawn for a
+	// middleware declared in the same bundle: a route may just as well name one the
+	// workspace already has, and that is not a dangling reference.
+	EdgeMiddleware EdgeType = "middleware"
 )
 
 // Edge is a directed dependency from one resource to another, keyed by Resource
@@ -99,6 +103,9 @@ func Edges(set *ResourceSet) []Edge {
 			}
 		case r.Route != nil:
 			add(KindRoute, name, KindApplication, r.Route.App, EdgeRoute)
+			for _, mw := range r.Route.Middlewares {
+				add(KindRoute, name, KindMiddleware, mw, EdgeMiddleware)
+			}
 			// Link the route to each owning Domain when a host is the domain or a
 			// subdomain of it (the Domain's name is a real FQDN). A route may answer
 			// on several hosts spanning more than one domain.

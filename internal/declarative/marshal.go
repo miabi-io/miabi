@@ -56,6 +56,8 @@ func (r Resource) spec() any {
 		return r.Secret
 	case r.Config != nil:
 		return r.Config
+	case r.Middleware != nil:
+		return r.Middleware
 	case r.Domain != nil:
 		return r.Domain
 	case r.Registry != nil:

@@ -38,6 +38,12 @@ const (
 	// read-only files. Secret carries one opaque value consumed as env; Config
 	// carries named text payloads consumed as files. Both are encrypted at rest.
 	KindConfig Kind = "Config"
+	// KindMiddleware is a gateway middleware — rate limiting, basic auth, an access
+	// policy — that Routes reference by name through spec.middlewares. It is a
+	// resource of its own rather than a block inside RouteSpec because one policy is
+	// normally shared: writing the rate limit once and naming it from five routes is
+	// the point, and inlining it would make five copies to keep in step.
+	KindMiddleware Kind = "Middleware"
 )
 
 // knownKinds is the set of recognized kinds, used by the parser to route a
@@ -53,6 +59,7 @@ var knownKinds = map[Kind]bool{
 	KindRegistry:    true,
 	KindProject:     true,
 	KindConfig:      true,
+	KindMiddleware:  true,
 }
 
 // Meta is the identity block shared by every kind. Labels are short and identifying (for selection
@@ -85,6 +92,7 @@ type Resource struct {
 	Registry    *RegistrySpec    `yaml:"-" json:"registry,omitempty"`
 	Project     *ProjectSpec     `yaml:"-" json:"project,omitempty"`
 	Config      *ConfigSpec      `yaml:"-" json:"config,omitempty"`
+	Middleware  *MiddlewareSpec  `yaml:"-" json:"middleware,omitempty"`
 }
 
 // Key is the stable identity of a resource within a workspace: "<kind>/<name>".
@@ -201,6 +209,13 @@ type RouteSpec struct {
 	// Maintenance parks the route at the gateway. Omitting it means "serving",
 	// so removing the block from a manifest resumes traffic.
 	Maintenance *RouteMaintenanceSpec `yaml:"maintenance,omitempty" json:"maintenance,omitempty"`
+	// Middlewares is the gateway chain this route runs, by Middleware name. ORDER IS
+	// BEHAVIOUR, not presentation: the gateway executes the array in sequence, so
+	// rate-limit before basic-auth throttles anonymous requests while the reverse
+	// makes every request authenticate first. A name need not be declared in the same
+	// bundle — one absent from it resolves against the workspace's existing
+	// middlewares, so the defaults seeded at workspace creation can be named directly.
+	Middlewares []string `yaml:"middlewares,omitempty" json:"middlewares,omitempty"`
 }
 
 // RouteSecuritySpec holds a route's gateway security switches, mirroring Goma's
@@ -219,6 +234,27 @@ type RouteMaintenanceSpec struct {
 	// healthy to uptime monitors and search engines.
 	StatusCode int    `yaml:"statusCode,omitempty" json:"statusCode,omitempty"`
 	Message    string `yaml:"message,omitempty" json:"message,omitempty"`
+}
+
+// MiddlewareSpec is one gateway middleware. Type selects the behaviour from the gateway's catalogue
+// (basicAuth, rateLimit, accessPolicy, …) and Rule carries that type's own configuration, so the
+// manifest reads like the gateway config it produces rather than a Miabi-shaped translation of it.
+type MiddlewareSpec struct {
+	Type string `yaml:"type" json:"type"`
+	// Paths narrows the middleware to the request paths listed; empty applies it to
+	// everything the route serves.
+	Paths []string `yaml:"paths,omitempty" json:"paths,omitempty"`
+	// Rule is the type's configuration, passed through to the gateway. It is free-form
+	// because the catalogue owns the shape: validating it here would be a second copy
+	// of a schema that already exists, drifting the moment the gateway adds a field.
+	Rule map[string]any `yaml:"rule,omitempty" json:"rule,omitempty"`
+	// RuleFP fingerprints the rule INCLUDING its secret fields, and is filled in by the
+	// apply engine on both sides of the diff. A middleware's secrets (a basicAuth
+	// password, an OIDC client secret) are stored encrypted and never read back into a
+	// plan, so without a fingerprint rotating one would converge to nothing. Not
+	// serialized, for the same reason as RegistrySpec.PasswordFP: it is derived state,
+	// so a Marshal->Parse round trip recomputes it.
+	RuleFP string `yaml:"-" json:"-"`
 }
 
 // DomainSpec declares an owned hostname/zone; the hostname is the resource's metadata.name (a real

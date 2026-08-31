@@ -100,9 +100,10 @@ func (p *Plan) Counts() (create, update, del, noop int) {
 // from plans entirely.
 func applyRank(k Kind) int {
 	switch k {
-	case KindSecret, KindVolume, KindDomain, KindConfig:
+	case KindSecret, KindVolume, KindDomain, KindConfig, KindMiddleware:
 		// Independent, foundational resources. Domains come before the routes that
-		// bind hostnames under them.
+		// bind hostnames under them, and so do middlewares: a route naming a chain
+		// is refused until every middleware in it exists.
 		return 0
 	case KindDatabase, KindStack, KindRegistry:
 		// A registry credential ranks above Secret rather than beside it: its password is typically
@@ -252,6 +253,9 @@ func diffFields(actual, desired Resource) []FieldDiff {
 	if desired.Kind == KindConfig {
 		return diffConfig(actual, desired)
 	}
+	if desired.Kind == KindMiddleware {
+		return diffMiddleware(actual, desired)
+	}
 	av := specFields(actual)
 	dv := specFields(desired)
 	keys := map[string]bool{}
@@ -291,6 +295,33 @@ func diffRegistry(actual, desired Resource) []FieldDiff {
 	}
 	if d.Password != "" && d.PasswordFP != "" && a.PasswordFP != "" && a.PasswordFP != d.PasswordFP {
 		out = append(out, FieldDiff{Field: "password", From: "(current)", To: "(rotated)"})
+	}
+	return out
+}
+
+// diffMiddleware compares a gateway middleware. Type and paths are ordinary visible fields; the rule
+// is compared through the fingerprint stamped on both sides, because it can carry a password the plan
+// must never print. The rendered rule is what gets fingerprinted, so rotating a secret still converges.
+func diffMiddleware(actual, desired Resource) []FieldDiff {
+	a, d := actual.Middleware, desired.Middleware
+	if d == nil {
+		return nil
+	}
+	if a == nil {
+		a = &MiddlewareSpec{}
+	}
+	var out []FieldDiff
+	if a.Type != d.Type {
+		out = append(out, FieldDiff{Field: "type", From: a.Type, To: d.Type})
+	}
+	ap, dp := strings.Join(a.Paths, ","), strings.Join(d.Paths, ",")
+	if ap != dp {
+		out = append(out, FieldDiff{Field: "paths", From: ap, To: dp})
+	}
+	// Only when both sides carry one, like RegistrySpec.PasswordFP: an install whose
+	// engine did not stamp it must not read as drift on every plan.
+	if a.RuleFP != "" && d.RuleFP != "" && a.RuleFP != d.RuleFP {
+		out = append(out, FieldDiff{Field: "rule", From: "(current)", To: "(changed)"})
 	}
 	return out
 }
@@ -455,6 +486,9 @@ func specFields(r Resource) map[string]string {
 		f["maintenance.enabled"] = fmt.Sprintf("%t", mt.Enabled)
 		f["maintenance.statusCode"] = fmt.Sprintf("%d", mt.StatusCode)
 		f["maintenance.message"] = mt.Message
+		// Order is behaviour at the gateway, so the chain is compared as an ordered
+		// list — swapping rate-limit and basic-auth is a real change.
+		f["middlewares"] = strings.Join(r.Route.Middlewares, ",")
 	case r.Stack != nil:
 		f["description"] = r.Stack.Description
 	case r.Domain != nil:

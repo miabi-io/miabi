@@ -46,6 +46,7 @@ func JSONSchema() ([]byte, error) {
 		KindRegistry:    RegistrySpec{},
 		KindProject:     ProjectSpec{},
 		KindConfig:      ConfigSpec{},
+		KindMiddleware:  MiddlewareSpec{},
 	}
 	branches := make([]any, 0, len(kinds))
 	for _, k := range kinds {
