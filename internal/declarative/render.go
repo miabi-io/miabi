@@ -24,14 +24,38 @@ type ConnView struct {
 	URI      string
 }
 
+// AppView is how one application appears to another's manifest. Host is the app's own NAME, which is
+// registered as a DNS alias on every workspace network it joins — so a sibling can be addressed with
+// a value the manifest author writes rather than one the platform mints. Alias is the container's
+// exact identity (mb-app-<token>-<id>), kept because it predates Host and Config files use it.
+type AppView struct {
+	Host   string
+	Port   string
+	Scheme string
+	Alias  string
+}
+
+// URL is the address a sibling actually dials. Falls back to the host alone when the app declares no
+// port, which is better than emitting a trailing colon.
+func (a AppView) URL() string {
+	scheme := a.Scheme
+	if scheme == "" {
+		scheme = "http"
+	}
+	if a.Port == "" || a.Port == "0" {
+		return scheme + "://" + a.Host
+	}
+	return scheme + "://" + a.Host + ":" + a.Port
+}
+
 // RenderContext is the read-only data env interpolation resolves against. It
 // mirrors the marketplace renderer's context but adds secrets, so GitOps and
 // apply share one interpolation surface.
 type RenderContext struct {
 	Inputs    map[string]string
 	Databases map[string]ConnView
-	Apps      map[string]string // app name -> network alias
-	Secrets   map[string]string // secret name -> value
+	Apps      map[string]AppView // app name -> how a sibling addresses it
+	Secrets   map[string]string  // secret name -> value
 }
 
 // Renderer interpolates manifest strings against a RenderContext.
@@ -48,7 +72,7 @@ func NewRenderer(ctx RenderContext) *Renderer {
 		ctx.Databases = map[string]ConnView{}
 	}
 	if ctx.Apps == nil {
-		ctx.Apps = map[string]string{}
+		ctx.Apps = map[string]AppView{}
 	}
 	if ctx.Secrets == nil {
 		ctx.Secrets = map[string]string{}
@@ -66,8 +90,14 @@ func (r *Renderer) data() map[string]any {
 		}
 	}
 	apps := map[string]map[string]string{}
-	for name, alias := range r.ctx.Apps {
-		apps[name] = map[string]string{"alias": alias}
+	for name, a := range r.ctx.Apps {
+		apps[name] = map[string]string{
+			"host": a.Host, "port": a.Port, "scheme": a.Scheme,
+			"url": a.URL(),
+			// The container's exact identity. Predates host and is what a Config may
+			// already reference, so it keeps resolving.
+			"alias": a.Alias,
+		}
 	}
 	return map[string]any{
 		"inputs":       r.ctx.Inputs,
@@ -183,14 +213,22 @@ func (r *Renderer) ref(coll string, keys ...string) (string, error) {
 		}
 		return v, nil
 	case "applications":
-		alias, ok := r.ctx.Apps[name]
+		a, ok := r.ctx.Apps[name]
 		if !ok {
 			return "", fmt.Errorf("unknown application %q", name)
 		}
-		if field != "" && field != "alias" {
+		fields := map[string]string{
+			"host": a.Host, "port": a.Port, "scheme": a.Scheme,
+			"url": a.URL(), "alias": a.Alias,
+		}
+		if field == "" {
+			field = "url" // ".applications.x" alone means the address to dial, as ".databases.x" means its URI
+		}
+		v, ok := fields[field]
+		if !ok {
 			return "", fmt.Errorf("application %q has no field %q", name, field)
 		}
-		return alias, nil
+		return v, nil
 	}
 	return "", fmt.Errorf("unknown reference collection %q", coll)
 }

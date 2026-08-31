@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -75,6 +76,10 @@ type Service struct {
 	// configs converges kind: Config; nil leaves a manifest declaring one
 	// erroring rather than silently skipping the resource an app mounts.
 	configs *configsvc.Service
+	// cluster reports whether the workspace networks are cluster-wide overlays. Off cluster mode they
+	// are node-local bridges, which is what makes a cross-node application reference unroutable.
+	// Nil means "assume not clustered", the conservative reading.
+	cluster ClusterCap
 	// middlewares converges kind: Middleware, and is what lets a Route name a chain.
 	// Nil for the same reason as configs: a manifest declaring one must fail loudly
 	// rather than have the resource its routes depend on quietly disappear.
@@ -83,6 +88,18 @@ type Service struct {
 
 // SetConfigs wires the config service (kind: Config).
 func (s *Service) SetConfigs(c *configsvc.Service) { s.configs = c }
+
+// ClusterCap reports whether Swarm cluster mode is on, which decides whether a workspace network
+// spans nodes.
+type ClusterCap interface {
+	CapCluster() bool
+}
+
+// SetCluster wires cluster-mode detection, used to decide whether an application reference across
+// two nodes can resolve.
+func (s *Service) SetCluster(c ClusterCap) { s.cluster = c }
+
+func (s *Service) clusterOn() bool { return s.cluster != nil && s.cluster.CapCluster() }
 
 // SetMiddlewares wires the gateway-middleware service (kind: Middleware).
 func (s *Service) SetMiddlewares(m *middlewaresvc.Service) { s.middlewares = m }
@@ -190,7 +207,7 @@ func (s *Service) Apply(ctx context.Context, workspaceID uint, manifests []byte,
 			continue
 		}
 		dr, _ := desired.Get(string(ch.Kind) + "/" + ch.Name)
-		if err := s.execute(ctx, workspaceID, ch, dr); err != nil {
+		if err := s.execute(ctx, workspaceID, ch, dr, desired); err != nil {
 			res.Failures = append(res.Failures, Failure{
 				Kind: string(ch.Kind), Name: ch.Name, Action: string(ch.Action), Error: err.Error(),
 			})
@@ -224,7 +241,7 @@ func (s *Service) ApplyResource(ctx context.Context, workspaceID uint, manifests
 			return res, nil
 		}
 		dr, _ := desired.Get(key)
-		if err := s.execute(ctx, workspaceID, ch, dr); err != nil {
+		if err := s.execute(ctx, workspaceID, ch, dr, desired); err != nil {
 			res.Failures = append(res.Failures, Failure{Kind: string(ch.Kind), Name: ch.Name, Action: string(ch.Action), Error: err.Error()})
 			return res, nil
 		}
@@ -248,7 +265,7 @@ func (s *Service) DeleteResource(ctx context.Context, workspaceID uint, kind, na
 	}
 	ch := declarative.Change{Kind: declarative.Kind(kind), Name: name, Action: declarative.ActionDelete}
 	res := &Result{WorkspaceID: workspaceID, Plan: &declarative.Plan{Changes: []declarative.Change{ch}}}
-	if err := s.execute(ctx, workspaceID, ch, declarative.Resource{}); err != nil {
+	if err := s.execute(ctx, workspaceID, ch, declarative.Resource{}, nil); err != nil {
 		res.Failures = append(res.Failures, Failure{Kind: kind, Name: name, Action: string(ch.Action), Error: err.Error()})
 		return res, err
 	}
@@ -353,7 +370,7 @@ func (s *Service) Teardown(ctx context.Context, workspaceID uint, sourceID strin
 		if ch.Action != declarative.ActionDelete {
 			continue
 		}
-		if err := s.execute(ctx, workspaceID, ch, declarative.Resource{}); err != nil {
+		if err := s.execute(ctx, workspaceID, ch, declarative.Resource{}, nil); err != nil {
 			res.Failures = append(res.Failures, Failure{
 				Kind: string(ch.Kind), Name: ch.Name, Action: string(ch.Action), Error: err.Error(),
 			})
@@ -393,7 +410,7 @@ func (s *Service) Delete(ctx context.Context, workspaceID uint, manifests []byte
 		if ch.Action != declarative.ActionDelete {
 			continue
 		}
-		if err := s.execute(ctx, workspaceID, ch, declarative.Resource{}); err != nil {
+		if err := s.execute(ctx, workspaceID, ch, declarative.Resource{}, nil); err != nil {
 			res.Failures = append(res.Failures, Failure{
 				Kind: string(ch.Kind), Name: ch.Name, Action: string(ch.Action), Error: err.Error(),
 			})
@@ -411,6 +428,9 @@ func (s *Service) render(workspaceID uint, desired *declarative.ResourceSet) {
 	ctx := declarative.RenderContext{
 		Databases: s.databaseViews(workspaceID),
 		Secrets:   s.secretViews(workspaceID),
+		// Overlaid with the bundle, so an app referencing a sibling declared in the same
+		// apply resolves on the first run rather than only once that sibling exists.
+		Apps: s.appViews(workspaceID, desired),
 	}
 	r := declarative.NewRenderer(ctx)
 	for i := range desired.All() {
@@ -564,13 +584,17 @@ func (s *Service) renderRegistryPasswordLenient(r *declarative.Renderer, name st
 // renderAppEnv resolves an application's env templates at execution time, against the databases that are
 // live right now — including any declared earlier in the same bundle and just created. Strict: a reference
 // that still cannot resolve (a typo, or a database that genuinely does not exist) is a real error.
-func (s *Service) renderAppEnv(workspaceID uint, spec *declarative.ApplicationSpec) error {
+func (s *Service) renderAppEnv(workspaceID uint, spec *declarative.ApplicationSpec, set *declarative.ResourceSet) error {
 	if spec == nil || len(spec.Env) == 0 {
 		return nil
 	}
 	r := declarative.NewRenderer(declarative.RenderContext{
 		Databases: s.databaseViews(workspaceID),
 		Secrets:   s.secretViews(workspaceID),
+		// Applications share a plan rank, so a referenced sibling may not exist yet when this runs.
+		// The bundle overlay is what makes that work: an app's address is its own name, which is
+		// known from the manifest alone.
+		Apps: s.appViews(workspaceID, set),
 	})
 	rendered, err := r.RenderEnv("application", spec.Env)
 	if err != nil {
@@ -578,6 +602,92 @@ func (s *Service) renderAppEnv(workspaceID uint, spec *declarative.ApplicationSp
 	}
 	spec.Env = rendered
 	return nil
+}
+
+// appRefPattern finds the applications this spec's env addresses. It runs on the RAW env, so it has
+// to be called before renderAppEnv replaces the templates with their values.
+var appRefPattern = regexp.MustCompile(`\{\{[-\s]*\.applications\.([A-Za-z0-9_-]+)`)
+
+// checkAppRefPlacement refuses an application reference that cannot resolve at runtime: two apps
+// pinned to different nodes, with cluster mode off, share no network. In cluster mode the workspace
+// network is an overlay spanning every node, so the reference is fine and the check is skipped.
+//
+// Only a reference whose target placement is actually known is judged; an app declared without a
+// node, or absent from both the bundle and the workspace, is left to the render to report.
+func (s *Service) checkAppRefPlacement(workspaceID uint, name string, spec *declarative.ApplicationSpec, set *declarative.ResourceSet) error {
+	if spec == nil || len(spec.Env) == 0 || s.clusterOn() {
+		return nil
+	}
+	refs := map[string]bool{}
+	for _, v := range spec.Env {
+		for _, m := range appRefPattern.FindAllStringSubmatch(v, -1) {
+			refs[m[1]] = true
+		}
+	}
+	if len(refs) == 0 {
+		return nil
+	}
+	nodes, err := s.appNodes(workspaceID)
+	if err != nil {
+		return nil // placement unknown: never fail an apply on a lookup that is only advisory
+	}
+	return crossNodeRefError(name, refs, nodes)
+}
+
+// crossNodeRefError names the first reference that spans two nodes, or nil when every one of them
+// can resolve. Pure, so the rule can be tested without a workspace behind it.
+func crossNodeRefError(name string, refs map[string]bool, nodes map[string]appPlacement) error {
+	self, ok := nodes[name]
+	if !ok {
+		return nil // this app has no live placement yet, so nothing to compare against
+	}
+	for _, ref := range sortedKeys(refs) {
+		target, known := nodes[ref]
+		if !known || target.id == self.id {
+			continue
+		}
+		return fmt.Errorf("%w: application %q references %q, but they run on different nodes (%s and %s) "+
+			"and a workspace network is node-local outside cluster mode — the address would not resolve. "+
+			"Place them on one node, or enable cluster mode so the network spans both",
+			ErrInvalidManifest, name, ref, self.node, target.node)
+	}
+	return nil
+}
+
+// sortedKeys makes the reported reference deterministic: with two offending refs, an operator who
+// re-runs an apply must see the same message rather than a coin flip.
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+type appPlacement struct {
+	id   uint
+	node string
+}
+
+func (s *Service) appNodes(workspaceID uint) (map[string]appPlacement, error) {
+	apps, err := s.apps.List(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]appPlacement, len(apps))
+	for i := range apps {
+		a := &apps[i]
+		label := a.ServerName
+		if label == "" {
+			label = fmt.Sprintf("node %d", a.ServerID)
+			if a.ServerID == 0 {
+				label = "the local node"
+			}
+		}
+		out[a.Name] = appPlacement{id: a.ServerID, node: label}
+	}
+	return out, nil
 }
 
 // databaseViews resolves connection details for {{ .databases.<name>.* }}, keyed by the declarative Database name.
@@ -661,18 +771,85 @@ func connView(conn database.ConnectionInfo) declarative.ConnView {
 // secretViews resolves the plaintext value of every workspace secret, keyed by name, so {{ .secrets.<name> }}
 // resolves during render in both the lenient plan pass and the strict execute-time re-render. Without it any
 // env referencing a secret fails the strict render, so the app update errors out and never redeploys.
-// appAliasViews exposes each app's stable network alias, so a config file can
-// point at a sibling by name rather than a hardcoded host.
-func (s *Service) appAliasViews(workspaceID uint) map[string]string {
-	out := map[string]string{}
-	apps, err := s.apps.List(workspaceID)
-	if err != nil {
+// appViews exposes how each application is addressed by a sibling: its own name, which the deploy
+// path registers as a DNS alias on every workspace network it joins, plus the port and scheme to
+// dial. desired, when given, overlays the live workspace so an app declared in the same bundle —
+// and therefore not created yet — is still addressable. The bundle wins: it is the desired state.
+func (s *Service) appViews(workspaceID uint, desired *declarative.ResourceSet) map[string]declarative.AppView {
+	out := map[string]declarative.AppView{}
+	if apps, err := s.apps.List(workspaceID); err == nil {
+		for i := range apps {
+			a := &apps[i]
+			out[a.Name] = declarative.AppView{
+				Host: a.Name, Port: portString(a.Port), Scheme: "http", Alias: node.AppAlias(a),
+			}
+		}
+	}
+	return overlayDesiredApps(out, desired)
+}
+
+// overlayDesiredApps layers the bundle's applications over the live ones. Split out because it is
+// the half that decides whether a first apply works, and it needs no database to exercise.
+func overlayDesiredApps(live map[string]declarative.AppView, desired *declarative.ResourceSet) map[string]declarative.AppView {
+	out := make(map[string]declarative.AppView, len(live))
+	for k, v := range live {
+		out[k] = v
+	}
+	if desired == nil {
 		return out
 	}
-	for i := range apps {
-		out[apps[i].Name] = node.AppAlias(&apps[i])
+	for _, res := range desired.All() {
+		if res.Application == nil {
+			continue
+		}
+		name := res.Metadata.Name
+		view := declarative.AppView{Host: name, Scheme: "http", Alias: out[name].Alias}
+		if p, ok := primaryPort(res.Application.Ports); ok {
+			view.Port = portString(p.Container)
+			if p.Scheme != "" {
+				view.Scheme = p.Scheme
+			}
+		} else {
+			// Declared without ports: keep whatever the live app reports rather than
+			// dropping to a portless URL on a bundle that simply omits them.
+			view.Port, view.Scheme = out[name].Port, firstNonEmpty(out[name].Scheme, "http")
+		}
+		out[name] = view
 	}
 	return out
+}
+
+// primaryPort is the port a sibling dials: the manifest's first, which is the same rule the app
+// service uses when it records models.Application.Port.
+func primaryPort(ports []declarative.PortSpec) (declarative.PortSpec, bool) {
+	for _, p := range ports {
+		if p.Container > 0 {
+			return p, true
+		}
+	}
+	return declarative.PortSpec{}, false
+}
+
+func portString(p int) string {
+	if p <= 0 {
+		return ""
+	}
+	return strconv.Itoa(p)
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// appAliasViews is the pre-reference view: name -> container alias only. Kept for the render paths
+// that predate application references and have no desired set to overlay.
+func (s *Service) appAliasViews(workspaceID uint) map[string]declarative.AppView {
+	return s.appViews(workspaceID, nil)
 }
 
 func (s *Service) secretViews(workspaceID uint) map[string]string {
@@ -1043,10 +1220,13 @@ func tlsFromSpec(tls string) models.RouteTLSMode {
 	}
 }
 
-func (s *Service) execute(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource) error {
+// set is the whole desired bundle, needed where one resource's values reference another that the same
+// apply is still creating — an application addressing a sibling. Nil on the delete-only paths, which
+// render nothing.
+func (s *Service) execute(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource, set *declarative.ResourceSet) error {
 	switch ch.Kind {
 	case declarative.KindApplication:
-		return s.applyApplication(ctx, workspaceID, ch, desired)
+		return s.applyApplication(ctx, workspaceID, ch, desired, set)
 	case declarative.KindVolume:
 		return s.applyVolume(ctx, workspaceID, ch, desired)
 	case declarative.KindDatabase:
@@ -1512,13 +1692,19 @@ func (s *Service) deleteInstance(ctx context.Context, inst *models.DatabaseInsta
 	return s.dbs.Delete(ctx, inst)
 }
 
-func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource) error {
+func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource, set *declarative.ResourceSet) error {
 	spec := desired.Application
 	// Resolve env templates now: databases declared in the same bundle run before applications (plan order),
 	// so {{ .databases.x.host }} references are live by this point even on a first apply. The plan-time render
 	// was lenient and may have left them as templates.
-	if err := s.renderAppEnv(workspaceID, spec); err != nil {
+	if err := s.renderAppEnv(workspaceID, spec, set); err != nil {
 		return fmt.Errorf("%w: application %q: %v", ErrInvalidManifest, ch.Name, err)
+	}
+	// A workspace network is a node-local bridge off cluster mode, so an app referencing a sibling on
+	// another node renders a hostname that will never resolve. Refusing here beats a connection
+	// refused hours later, when nothing points at the manifest that caused it.
+	if err := s.checkAppRefPlacement(workspaceID, ch.Name, spec, set); err != nil {
+		return err
 	}
 	// Resolve the pull credential before anything is created, so a typo'd name
 	// fails the change instead of deploying an app that cannot pull its image.
