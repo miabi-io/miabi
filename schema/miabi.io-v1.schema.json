@@ -378,6 +378,10 @@
       "additionalProperties": false,
       "description": "RouteSpec binds one or more hostnames (and an optional path) to an application's port with a TLS mode — an HTTP routing rule. List every hostname the route should answer on, e.g. both example.com and www.example.com.",
       "properties": {
+        "advancedConfig": {
+          "description": "AdvancedConfig is raw Goma route YAML that SUPERSEDES the structured fields above. It is the escape hatch for a gateway feature the manifest does not model; prefer the structured fields, because nothing here validates what it contains beyond it being YAML without an inline certificate.",
+          "type": "string"
+        },
         "app": {
           "description": "target application name",
           "type": "string"
@@ -392,6 +396,13 @@
           "$ref": "#/$defs/RouteMaintenanceSpec",
           "description": "Maintenance parks the route at the gateway. Omitting it means \"serving\", so removing the block from a manifest resumes traffic."
         },
+        "methods": {
+          "description": "Methods narrows the route to these HTTP methods. Empty accepts every method, which is what a route without the field has always done.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "middlewares": {
           "description": "Middlewares is the gateway chain this route runs, by Middleware name. ORDER IS BEHAVIOUR, not presentation: the gateway executes the array in sequence, so rate-limit before basic-auth throttles anonymous requests while the reverse makes every request authenticate first. A name need not be declared in the same bundle — one absent from it resolves against the workspace's existing middlewares, so the defaults seeded at workspace creation can be named directly.",
           "items": {
@@ -404,6 +415,10 @@
         },
         "port": {
           "type": "integer"
+        },
+        "rewrite": {
+          "description": "Rewrite replaces the matched path prefix before the request reaches the app, so a route on /api can serve a backend that expects /.",
+          "type": "string"
         },
         "security": {
           "$ref": "#/$defs/RouteSecuritySpec",

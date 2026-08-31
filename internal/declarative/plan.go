@@ -498,6 +498,13 @@ func specFields(r Resource) map[string]string {
 		f["path"] = r.Route.Path
 		f["tls"] = r.Route.TLS
 		f["port"] = fmt.Sprintf("%d", r.Route.Port)
+		f["rewrite"] = r.Route.Rewrite
+		// Order-independent: the gateway matches on membership, so listing GET before POST is the
+		// same route.
+		methods := append([]string(nil), r.Route.Methods...)
+		sort.Strings(methods)
+		f["methods"] = strings.Join(methods, ",")
+		f["advancedConfig"] = r.Route.AdvancedConfig
 		sec := r.Route.Security
 		if sec == nil {
 			sec = &RouteSecuritySpec{}
