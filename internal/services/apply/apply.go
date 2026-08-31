@@ -1653,7 +1653,12 @@ func (s *Service) routeInput(name string, appID uint, spec *declarative.RouteSpe
 	return route.Input{
 		Name: name, ApplicationID: appID, Hosts: spec.Hosts,
 		Path: path, TargetPort: spec.Port, TLSMode: tlsFromSpec(spec.TLS),
-		Middlewares:       spec.Middlewares,
+		Middlewares: spec.Middlewares,
+		// Carried explicitly because route.Update assigns them unconditionally: leaving them out of
+		// the input does not preserve what is stored, it erases it.
+		Rewrite:           spec.Rewrite,
+		Methods:           spec.Methods,
+		AdvancedConfig:    spec.AdvancedConfig,
 		ExploitProtection: &exploit,
 		// Always non-nil: the manifest is the desired state, so dropping the
 		// maintenance block has to resume traffic rather than leave it parked.
@@ -1668,7 +1673,10 @@ func routeSpecOf(r models.Route, app, path string) *declarative.RouteSpec {
 	spec := &declarative.RouteSpec{
 		Hosts: append([]string(nil), r.Hosts...), App: app, Port: r.TargetPort,
 		Path: path, TLS: tlsToSpec(r.TLSMode),
-		Middlewares: append([]string(nil), r.Middlewares...),
+		Middlewares:    append([]string(nil), r.Middlewares...),
+		Rewrite:        r.Rewrite,
+		Methods:        append([]string(nil), r.Methods...),
+		AdvancedConfig: r.AdvancedConfig,
 	}
 	if r.ExploitProtection {
 		spec.Security = &declarative.RouteSecuritySpec{ExploitProtection: true}

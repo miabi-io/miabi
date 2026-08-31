@@ -173,6 +173,13 @@ func (r *Resource) validateSource(src *SourceSpec) error {
 	return nil
 }
 
+// validHTTPMethod is the set a route may be narrowed to. A typo here would silently drop every
+// request that used the method the author meant, which is the kind of thing found in production.
+var validHTTPMethod = map[string]bool{
+	"GET": true, "HEAD": true, "POST": true, "PUT": true, "PATCH": true,
+	"DELETE": true, "CONNECT": true, "OPTIONS": true, "TRACE": true,
+}
+
 // validStrategy mirrors models.DeployStrategy. It is duplicated rather than imported so the
 // declarative package keeps its one dependency; a test asserts the two lists agree.
 var validStrategy = map[string]bool{"recreate": true, "rolling": true, "canary": true}
@@ -386,6 +393,11 @@ func (r *Resource) validateRoute() error {
 	}
 	if !validTLS[rt.TLS] {
 		return fmt.Errorf("route %q: tls must be acme, custom or off", r.Metadata.Name)
+	}
+	for _, m := range rt.Methods {
+		if !validHTTPMethod[strings.ToUpper(strings.TrimSpace(m))] {
+			return fmt.Errorf("route %q: method %q is not an HTTP method", r.Metadata.Name, m)
+		}
 	}
 	// The chain is ordered and executed in order, so a repeated name is a mistake
 	// rather than a stronger policy — and the gateway would run it twice.

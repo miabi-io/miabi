@@ -237,6 +237,17 @@ type RouteSpec struct {
 	Port  int      `yaml:"port,omitempty" json:"port,omitempty"`
 	Path  string   `yaml:"path,omitempty" json:"path,omitempty"`
 	TLS   string   `yaml:"tls,omitempty" json:"tls,omitempty"` // acme|custom|off (default acme)
+	// Rewrite replaces the matched path prefix before the request reaches the app, so a route on
+	// /api can serve a backend that expects /.
+	Rewrite string `yaml:"rewrite,omitempty" json:"rewrite,omitempty"`
+	// Methods narrows the route to these HTTP methods. Empty accepts every method, which is what a
+	// route without the field has always done.
+	Methods []string `yaml:"methods,omitempty" json:"methods,omitempty"`
+	// AdvancedConfig is raw Goma route YAML that SUPERSEDES the structured fields above. It is the
+	// escape hatch for a gateway feature the manifest does not model; prefer the structured fields,
+	// because nothing here validates what it contains beyond it being YAML without an inline
+	// certificate.
+	AdvancedConfig string `yaml:"advancedConfig,omitempty" json:"advancedConfig,omitempty"`
 	// Security carries the gateway's per-route switches.
 	Security *RouteSecuritySpec `yaml:"security,omitempty" json:"security,omitempty"`
 	// Maintenance parks the route at the gateway. Omitting it means "serving",
