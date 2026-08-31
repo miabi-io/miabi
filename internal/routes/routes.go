@@ -1035,7 +1035,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			registry:        handlers.NewRegistryHandler(registryService, auditLogger),
 			gitRepo:         handlers.NewGitRepositoryHandler(gitRepoService, auditLogger),
 			gitInspect:      handlers.NewGitInspectHandler(gitRepoService),
-			apply:           handlers.NewApplyHandler(applyService, auditLogger),
+			apply:           handlers.NewApplyHandler(applyService, appService, auditLogger),
 			gitops:          handlers.NewGitOpsHandler(gitopsService, auditLogger),
 			pipeline:        handlers.NewPipelineHandler(pipelineService, bus, auditLogger),
 			image:           handlers.NewImageHandler(imageService, dockerClient, auditLogger),

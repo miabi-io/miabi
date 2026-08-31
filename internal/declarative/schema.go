@@ -102,7 +102,12 @@ func (r Resource) Key() string { return string(r.Kind) + "/" + r.Metadata.Name }
 // ApplicationSpec is a long-running container workload. CI writes the immutable
 // Digest; GitOps converges runtime to it.
 type ApplicationSpec struct {
-	Image     string            `yaml:"image" json:"image"`
+	// Source builds the image from a Git repository instead of pulling one. Exactly one of source and
+	// image is set: an app either builds or pulls, and a manifest declaring both would not say which
+	// wins. Image stays the plain, common case; source is what makes a build-from-git app expressible
+	// at all, so an app created in the console can be exported and re-applied as itself.
+	Source    *SourceSpec       `yaml:"source,omitempty" json:"source,omitempty"`
+	Image     string            `yaml:"image,omitempty" json:"image,omitempty"`
 	Tag       string            `yaml:"tag,omitempty" json:"tag,omitempty"`
 	Digest    string            `yaml:"digest,omitempty" json:"digest,omitempty"` // sha256:… (immutable pin)
 	Command   []string          `yaml:"command,omitempty" json:"command,omitempty"`
@@ -143,6 +148,29 @@ type ApplicationSpec struct {
 	// on both sides of the diff so a content change converges as an app update.
 	// Not serialized: derived state, like RegistrySpec.PasswordFP.
 	ConfigFP string `yaml:"-" json:"-"`
+}
+
+// SourceSpec builds an application's image from a Git repository. It mirrors the console's Source
+// card: where the code is, which ref to build, and how to turn it into an image.
+type SourceSpec struct {
+	// Git is the repository URL (https or ssh). Required.
+	Git string `yaml:"git" json:"git"`
+	// Ref is the branch, tag or commit to build. Empty builds the repository's default branch.
+	Ref string `yaml:"ref,omitempty" json:"ref,omitempty"`
+	// BuildMethod is auto (Dockerfile if present, else buildpacks), dockerfile or buildpack.
+	// Empty means auto.
+	BuildMethod string `yaml:"buildMethod,omitempty" json:"buildMethod,omitempty"`
+	// Builder is the Cloud Native Buildpacks builder image; Buildpacks pins the buildpacks to run.
+	// Both apply to the buildpack path only.
+	Builder    string   `yaml:"builder,omitempty" json:"builder,omitempty"`
+	Buildpacks []string `yaml:"buildpacks,omitempty" json:"buildpacks,omitempty"`
+	// BuildEnv are variables available to the BUILD, not to the running container — a private module
+	// token, a feature flag the compiler reads. Runtime env belongs in spec.env.
+	BuildEnv map[string]string `yaml:"buildEnv,omitempty" json:"buildEnv,omitempty"`
+	// Repository names a stored Git credential for a private repo, by its name in the workspace. It
+	// is not a declarable kind, so it resolves against credentials that already exist — the same rule
+	// spec.registry follows for an image pull.
+	Repository string `yaml:"repository,omitempty" json:"repository,omitempty"`
 }
 
 // PortSpec is a container port and how it is reached. The two exposure knobs are orthogonal:

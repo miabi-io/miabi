@@ -407,6 +407,19 @@ func specFields(r Resource) map[string]string {
 		f["image"] = a.Image
 		f["tag"] = a.Tag
 		f["digest"] = a.Digest
+		// What the app is built from is as much its identity as the image it pulls: repointing it at
+		// another repo or ref must converge, not sit as invisible drift.
+		if src := a.Source; src != nil {
+			f["source.git"] = src.Git
+			f["source.ref"] = src.Ref
+			f["source.buildMethod"] = src.BuildMethod
+			f["source.builder"] = src.Builder
+			f["source.buildpacks"] = strings.Join(src.Buildpacks, ",")
+			f["source.repository"] = src.Repository
+			for k, v := range src.BuildEnv {
+				f["source.buildEnv."+k] = v
+			}
+		}
 		f["command"] = strings.Join(a.Command, " ")
 		// The credential the image is pulled with is part of the app's identity:
 		// re-pointing it at another registry must converge like any other change.

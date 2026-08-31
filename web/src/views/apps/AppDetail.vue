@@ -29,6 +29,7 @@ import AppAccessPanel from '@/components/AppAccessPanel.vue'
 import type { Application, AppOverview, Deployment, Release, AppEnvVar, Route, Network, Stack, Volume, StatsSample, Registry, GitRepository, AppEvent, AppPort, PortBinding, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, DatabaseInstance, LogicalDatabase, NodePlacement, PipelineDefinition } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 import { fmtSize } from '@/utils/format'
+import { copyText } from '@/utils/clipboard'
 
 // Secret-reference example built here so `}}` doesn't break the template's
 // mustache parser.
@@ -232,6 +233,52 @@ watch([() => filteredRuntimeLogs.value.length, logSize], () => {
 // Copy / download operate on the currently-visible lines, so an active search
 // narrows the export to what you see.
 const logCopied = ref(false)
+// --- GitOps manifest export -------------------------------------------------
+const manifestOpen = ref(false)
+const manifestYaml = ref('')
+const manifestLoading = ref(false)
+const manifestCopied = ref(false)
+
+// Marketplace- and GitOps-managed apps are excluded: the first is described by its template, the
+// second already has a manifest, and a second copy invites two documents claiming the same app.
+const canExportManifest = computed(() => !!app.value && !imageManaged.value)
+
+async function openManifest() {
+  manifestOpen.value = true
+  if (manifestYaml.value || !app.value) return
+  manifestLoading.value = true
+  try {
+    const { data } = await appApi.manifest(ws.currentWorkspaceId!, app.value.id)
+    manifestYaml.value = typeof data === 'string' ? data : String(data)
+  } catch (e) {
+    manifestOpen.value = false
+    notify.apiError(e, 'Failed to generate the manifest')
+  } finally {
+    manifestLoading.value = false
+  }
+}
+
+async function copyManifest() {
+  if (!(await copyText(manifestYaml.value))) {
+    notify.error('Could not copy the manifest')
+    return
+  }
+  manifestCopied.value = true
+  setTimeout(() => { manifestCopied.value = false }, 1500)
+}
+
+function downloadManifest() {
+  const blob = new Blob([manifestYaml.value], { type: 'application/yaml;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${app.value?.name || 'app'}.yaml`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 async function copyLogs() {
   try {
     await navigator.clipboard.writeText(filteredRuntimeLogs.value.join('\n'))
@@ -3158,6 +3205,28 @@ async function detachDatabase(d: AppDatabase) {
         </div>
       </div>
 
+      <!-- Moving this app into Git: render it as the manifest that would recreate it. -->
+      <div v-if="canExportManifest" class="card mb-4">
+        <div class="card-header">
+          <h2>GitOps manifest</h2>
+          <p class="card-subtitle">
+            Describe this application as a <code>miabi.io/v1</code> manifest — its source, ports,
+            environment and mounted volumes — to commit alongside your code.
+          </p>
+        </div>
+        <div class="card-body">
+          <p class="text-muted text-sm mb-3">
+            Applying the manifest elsewhere recreates the application as it is configured here. Secret
+            values are <strong>not</strong> included: each is listed by name under
+            <code>secretEnv</code>, so the vault stays the only place the value lives.
+          </p>
+          <button type="button" class="btn btn-secondary" :disabled="manifestLoading" @click="openManifest">
+            <span class="mdi" :class="manifestLoading ? 'mdi-loading mdi-spin' : 'mdi-file-code-outline'"></span>
+            Generate manifest
+          </button>
+        </div>
+      </div>
+
       <div class="card">
       <div class="card-header"><h2 style="color: var(--danger-600)">Danger zone</h2></div>
       <div class="card-body flex items-center justify-between">
@@ -3526,6 +3595,35 @@ async function detachDatabase(d: AppDatabase) {
     </Teleport>
 
     <Teleport to="body">
+      <AppModal v-if="manifestOpen" dialog-class="modal-xl" @close="manifestOpen = false">
+        <div class="modal-header">
+          <h3><span class="mdi mdi-file-code-outline"></span> Manifest — {{ app.name }}</h3>
+          <div class="manifest-actions">
+            <button type="button" class="btn btn-ghost btn-sm" @click="copyManifest">
+              <span class="mdi" :class="manifestCopied ? 'mdi-check' : 'mdi-content-copy'"></span>
+              {{ manifestCopied ? 'Copied' : 'Copy' }}
+            </button>
+            <button type="button" class="btn btn-ghost btn-sm" @click="downloadManifest">
+              <span class="mdi mdi-download"></span> Download
+            </button>
+            <button class="btn-icon btn-icon-muted" title="Close" aria-label="Close" @click="manifestOpen = false">
+              <span class="mdi mdi-close"></span>
+            </button>
+          </div>
+        </div>
+        <div class="modal-body manifest-body">
+          <div v-if="manifestLoading" class="manifest-loading"><span class="spinner"></span></div>
+          <pre v-else class="manifest-yaml"><code>{{ manifestYaml }}</code></pre>
+        </div>
+        <div class="modal-footer manifest-footer">
+          <span class="text-muted text-sm">
+            Commit this as <code>{{ app.name }}.yaml</code> and point a
+            <a href="/gitops">GitOps source</a> at it, or apply it with
+            <code>miabi apply -f {{ app.name }}.yaml</code>.
+          </span>
+        </div>
+      </AppModal>
+
       <ShellTerminal v-if="shellOpen && app" :base="base" :app-name="app.name" @close="shellOpen = false" />
       <ContainerProcesses v-if="processesOpen && app && wid" :ws="wid" :app-id="appId" :app-name="app.name" @close="processesOpen = false" />
     </Teleport>
@@ -3534,6 +3632,35 @@ async function detachDatabase(d: AppDatabase) {
 </template>
 
 <style scoped>
+/* ─── GitOps manifest export ─── */
+.manifest-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.manifest-body {
+  padding: 0;
+  max-height: 60vh;
+  overflow: auto;
+}
+.manifest-yaml {
+  margin: 0;
+  padding: 16px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  white-space: pre;
+}
+.manifest-loading {
+  display: flex;
+  justify-content: center;
+  padding: 48px 0;
+}
+.manifest-footer {
+  justify-content: flex-start;
+}
+
 /* ─── Environment tab ─── */
 .card-subtitle { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); max-width: 640px; }
 .card-subtitle code { font-size: 12px; }

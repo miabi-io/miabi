@@ -870,6 +870,44 @@ func (s *Service) secretViews(workspaceID uint) map[string]string {
 
 // snapshot builds the live ResourceSet for the workspace across every kind the
 // executor manages. Each resource is labeled with its owner so prune stays safe.
+// ErrNotExportable is returned for an application a manifest cannot faithfully describe.
+var ErrNotExportable = errors.New("this application cannot be exported as a manifest")
+
+// ExportApplication renders one application, and the volumes it mounts, as a miabi.io/v1 bundle —
+// the starting point for moving an app that was created in the console into Git.
+//
+// It reuses the snapshot the plan engine already builds, rather than projecting the app a second
+// time: an export that drifted from what apply reads back would hand someone a manifest that plans
+// changes the moment they applied it.
+//
+// Only the volumes this app mounts are included. A workspace's other resources are not this app's to
+// describe, and a bundle that carried them would prune them if applied elsewhere with --prune.
+func (s *Service) ExportApplication(ctx context.Context, workspaceID uint, name string) ([]byte, error) {
+	set, err := s.snapshot(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	app, ok := set.Get(string(declarative.KindApplication) + "/" + name)
+	if !ok {
+		return nil, fmt.Errorf("%w: application %q not found", ErrNotExportable, name)
+	}
+	out := declarative.NewResourceSet()
+	// Volumes first: the bundle reads top-down, and a mount reads better after the thing it mounts.
+	for _, mt := range app.Application.Mounts {
+		if mt.Volume == "" {
+			continue
+		}
+		if v, found := set.Get(string(declarative.KindVolume) + "/" + mt.Volume); found {
+			out.Add(v)
+		}
+	}
+	// Identity is per-install: a uid exported into a manifest would be matched ahead of the name on
+	// another install and bind this document to a resource that is not the same resource.
+	app.Metadata = declarative.Meta{Name: app.Metadata.Name, Annotations: app.Metadata.Annotations}
+	out.Add(app)
+	return declarative.Marshal(out)
+}
+
 func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.ResourceSet, error) {
 	set := declarative.NewResourceSet()
 	appSlugByID := map[uint]string{}
@@ -1133,6 +1171,19 @@ func appResource(app *models.Application, ext, pub map[int]bool, volNameByID, re
 		ContainerLabels: app.ContainerLabels,
 		ExternalLabel:   app.ExternalLabel,
 		RunAsUser:       app.RunAsUser,
+	}
+	// A git app is described by what it builds, not by the image that build produced: the image ref
+	// carries a generated tag that means nothing in a manifest, and re-applying it elsewhere would
+	// pull an artefact instead of rebuilding the code.
+	if app.SourceType == models.AppSourceGit {
+		spec.Image, spec.Tag, spec.Digest = "", "", ""
+		spec.Source = &declarative.SourceSpec{
+			Git: app.GitRepo, Ref: app.GitRef,
+			Builder: app.Builder, Buildpacks: app.Buildpacks, BuildEnv: app.BuildEnv,
+		}
+		if app.BuildMethod != "" && app.BuildMethod != models.BuildAuto {
+			spec.Source.BuildMethod = string(app.BuildMethod)
+		}
 	}
 	// The pull credential, by its manifest name. A credential deleted out from
 	// under the app leaves RegistryID dangling only until the FK nulls it, so an
@@ -1748,6 +1799,18 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		app.Image = spec.Image
 		app.Tag = spec.Tag
 		app.Command = spec.Command
+		// Converge the build source. Switching an app between pulling and building is a real change a
+		// manifest may express, so both directions are written rather than only the git one.
+		if src := spec.Source; src != nil {
+			app.SourceType = models.AppSourceGit
+			app.Image, app.Tag = "", ""
+			app.GitRepo, app.GitRef = src.Git, src.Ref
+			app.BuildMethod = models.AppBuildMethod(src.BuildMethod)
+			app.Builder, app.Buildpacks, app.BuildEnv = src.Builder, src.Buildpacks, src.BuildEnv
+		} else if app.SourceType == models.AppSourceGit {
+			app.SourceType = models.AppSourceImage
+			app.GitRepo, app.GitRef, app.Builder, app.Buildpacks, app.BuildEnv = "", "", "", nil, nil
+		}
 		// Dropping spec.registry clears the credential (regID is nil), so the app
 		// converges back to an anonymous pull instead of silently keeping the old
 		// one.
@@ -1956,6 +2019,15 @@ func (s *Service) createInput(ctx context.Context, m declarative.Meta, spec *dec
 		ContainerLabels: spec.ContainerLabels, // sanitized in the app service Create
 		RunAsUser:       spec.RunAsUser,       // validated in the app service Create
 		DeployStrategy:  models.DeployStrategy(spec.Strategy),
+	}
+	// A source block makes this a build-from-git app instead of an image pull. Validation has already
+	// refused a manifest declaring both, so the two branches cannot overlap.
+	if src := spec.Source; src != nil {
+		in.SourceType = models.AppSourceGit
+		in.Image, in.Tag = "", ""
+		in.GitRepo, in.GitRef = src.Git, src.Ref
+		in.BuildMethod = models.AppBuildMethod(src.BuildMethod)
+		in.Builder, in.Buildpacks, in.BuildEnv = src.Builder, src.Buildpacks, src.BuildEnv
 	}
 	if spec.Resources != nil {
 		in.MemoryBytes, _ = spec.Resources.MemoryBytes()

@@ -71,6 +71,10 @@
           },
           "type": "array"
         },
+        "source": {
+          "$ref": "#/$defs/SourceSpec",
+          "description": "Source builds the image from a Git repository instead of pulling one. Exactly one of source and image is set: an app either builds or pulls, and a manifest declaring both would not say which wins. Image stays the plain, common case; source is what makes a build-from-git app expressible at all, so an app created in the console can be exported and re-applied as itself."
+        },
         "stack": {
           "description": "Stack optionally names the owning Stack resource.",
           "type": "string"
@@ -83,9 +87,6 @@
           "type": "string"
         }
       },
-      "required": [
-        "image"
-      ],
       "type": "object"
     },
     "ConfigSpec": {
@@ -450,6 +451,49 @@
       },
       "type": "object"
     },
+    "SourceSpec": {
+      "additionalProperties": false,
+      "description": "SourceSpec builds an application's image from a Git repository. It mirrors the console's Source card: where the code is, which ref to build, and how to turn it into an image.",
+      "properties": {
+        "buildEnv": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "BuildEnv are variables available to the BUILD, not to the running container — a private module token, a feature flag the compiler reads. Runtime env belongs in spec.env.",
+          "type": "object"
+        },
+        "buildMethod": {
+          "description": "BuildMethod is auto (Dockerfile if present, else buildpacks), dockerfile or buildpack. Empty means auto.",
+          "type": "string"
+        },
+        "builder": {
+          "description": "Builder is the Cloud Native Buildpacks builder image; Buildpacks pins the buildpacks to run. Both apply to the buildpack path only.",
+          "type": "string"
+        },
+        "buildpacks": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "git": {
+          "description": "Git is the repository URL (https or ssh). Required.",
+          "type": "string"
+        },
+        "ref": {
+          "description": "Ref is the branch, tag or commit to build. Empty builds the repository's default branch.",
+          "type": "string"
+        },
+        "repository": {
+          "description": "Repository names a stored Git credential for a private repo, by its name in the workspace. It is not a declarable kind, so it resolves against credentials that already exist — the same rule spec.registry follows for an image pull.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "git"
+      ],
+      "type": "object"
+    },
     "StackSpec": {
       "additionalProperties": false,
       "description": "StackSpec groups applications into one logical unit / network.",
@@ -488,11 +532,34 @@
         ]
       },
       "then": {
-        "properties": {
-          "spec": {
-            "$ref": "#/$defs/ApplicationSpec"
+        "allOf": [
+          {
+            "properties": {
+              "spec": {
+                "$ref": "#/$defs/ApplicationSpec"
+              }
+            }
+          },
+          {
+            "properties": {
+              "spec": {
+                "description": "An application either pulls an image or builds one from source — set exactly one of image and source.",
+                "oneOf": [
+                  {
+                    "required": [
+                      "image"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "source"
+                    ]
+                  }
+                ]
+              }
+            }
           }
-        }
+        ]
       }
     },
     {
