@@ -283,7 +283,7 @@ func TestConfigMarshalRoundTrip(t *testing.T) {
 func TestRenderFilesWithCustomDelimitersResolvesHyphenatedNames(t *testing.T) {
 	r := d.NewRenderer(d.RenderContext{
 		Databases: map[string]d.ConnView{"shop-db": {URI: "postgres://u:p@dp/shop", Host: "mb-db"}},
-		Apps:      map[string]string{"api": "mb-app-api"},
+		Apps:      map[string]d.AppView{"api": {Host: "api", Alias: "mb-app-api"}},
 	})
 	out, err := r.RenderFiles("config.c", map[string]string{
 		"app.conf": "db = << .databases.shop-db.uri >>\nupstream = << .applications.api.alias >>\nlabel = \"{{ $labels.instance }}\"\n",

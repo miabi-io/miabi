@@ -469,10 +469,7 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 	// Deploy-specific: expose the app on its stack network by its service name, so sibling apps resolve
 	// it by name. A Job never registers this alias (it must not impersonate the service). The alias is
 	// ignored for any network the container did not actually join.
-	aliasesByNet := map[string][]string{}
-	if app.Stack != nil && app.Stack.DockerNetwork != "" {
-		aliasesByNet[app.Stack.DockerNetwork] = []string{app.Name}
-	}
+	aliasesByNet := nameAliasesByNetwork(app, canary)
 	// Publish admin-approved host port bindings. A canary shares the host with the stable container,
 	// so it must not re-publish the same host ports; the canary is reachable over the proxy weight only.
 	ports := map[string]string{}
@@ -1744,4 +1741,46 @@ func (h *DeployHandler) logTo(deploymentID uint, line string) {
 
 func (h *DeployHandler) publishStatus(dep *models.Deployment, status models.DeploymentStatus) {
 	h.bus.Publish(DeployTopic(dep.ID), eventbus.Event{Type: "status", Data: string(status)})
+}
+
+// nameAliasesByNetwork registers the app's own name as a DNS alias on the networks where it is safe
+// to do so: its stack network (so siblings resolve it by service name) and every WORKSPACE network
+// (so {{ .applications.<name>.host }} resolves to a value the manifest author wrote, rather than the
+// mb-app-<token>-<id> the platform mints).
+//
+// PER-NETWORK, never through NetworkAliases: that applies to every network the container joins,
+// including the shared proxy network, which spans every workspace on the host — a bare "api" there
+// would answer for another tenant's app.
+//
+// A canary registers nothing: it runs beside the stable release, and taking over the name would send
+// sibling traffic to the release under test.
+func nameAliasesByNetwork(app *models.Application, canary bool) map[string][]string {
+	out := map[string][]string{}
+	if app.Stack != nil && app.Stack.DockerNetwork != "" {
+		out[app.Stack.DockerNetwork] = []string{app.Name}
+	}
+	// The stack alias above is registered for a canary too, as it always has been. The workspace
+	// alias is not: a sibling resolving {{ .applications.api.host }} must reach the stable release,
+	// not land on the release under test by DNS round-robin.
+	if canary {
+		return out
+	}
+	for _, n := range app.Networks {
+		if n.DockerName == "" {
+			continue
+		}
+		out[n.DockerName] = appendUniqueAlias(out[n.DockerName], app.Name)
+	}
+	return out
+}
+
+// appendUniqueAlias adds name unless the slice already carries it. A stacked app's stack network may
+// also be one of its workspace networks, and Docker refuses a duplicate alias on one attachment.
+func appendUniqueAlias(list []string, name string) []string {
+	for _, v := range list {
+		if v == name {
+			return list
+		}
+	}
+	return append(list, name)
 }

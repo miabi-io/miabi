@@ -640,7 +640,7 @@ func TestRenderHyphenatedRefs(t *testing.T) {
 	r := d.NewRenderer(d.RenderContext{
 		Databases: map[string]d.ConnView{"shop-db": {URI: "postgres://u:p@dp/shop", Host: "mb-db"}},
 		Secrets:   map[string]string{"app-key": "s3cret"},
-		Apps:      map[string]string{"shop-web": "mb-app-shop"},
+		Apps:      map[string]d.AppView{"shop-web": {Host: "shop-web", Port: "8080", Alias: "mb-app-shop"}},
 	})
 	cases := map[string]string{
 		"{{ .databases.shop-db.uri }}":               "postgres://u:p@dp/shop",
