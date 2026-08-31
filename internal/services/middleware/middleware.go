@@ -135,6 +135,22 @@ func (s *Service) Get(workspaceID, id uint) (*models.Middleware, error) {
 	return m, nil
 }
 
+// GetByName resolves a middleware by its workspace-unique name, which is how the
+// declarative engine addresses one: a manifest names resources, and the numeric id
+// is not portable across installs.
+func (s *Service) GetByName(workspaceID uint, name string) (*models.Middleware, error) {
+	list, err := s.repo.ListByWorkspace(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range list {
+		if list[i].Name == name {
+			return &list[i], nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
 func (s *Service) List(workspaceID uint) ([]models.Middleware, error) {
 	return s.repo.ListByWorkspace(workspaceID)
 }

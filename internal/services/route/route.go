@@ -494,6 +494,15 @@ func (s *Service) Create(ctx context.Context, workspaceID uint, in Input) (*mode
 	if err := validateAdvanced(in.AdvancedConfig); err != nil {
 		return nil, err
 	}
+	// The chain is validated here, not only in SetMiddlewares: Create and Update are what the API and
+	// the declarative engine call, and an unchecked name would be stored happily and then render a
+	// gateway config referencing a middleware that does not exist.
+	chain, err := normalizeChain(in.Middlewares, func(n string) (bool, error) {
+		return s.middlewares.ExistsByName(workspaceID, n)
+	})
+	if err != nil {
+		return nil, err
+	}
 	rt := &models.Route{
 		WorkspaceID:    workspaceID,
 		ApplicationID:  app.ID,
@@ -502,7 +511,7 @@ func (s *Service) Create(ctx context.Context, workspaceID uint, in Input) (*mode
 		Path:           defaultPath(in.Path),
 		Hosts:          in.Hosts,
 		Methods:        in.Methods,
-		Middlewares:    in.Middlewares,
+		Middlewares:    chain,
 		Rewrite:        in.Rewrite,
 		TargetPort:     in.TargetPort,
 		TLSMode:        defaultTLS(in.TLSMode),
@@ -572,9 +581,15 @@ func (s *Service) Update(ctx context.Context, workspaceID, id uint, in Input) (*
 			return nil, err
 		}
 	}
+	chain, err := normalizeChain(in.Middlewares, func(n string) (bool, error) {
+		return s.middlewares.ExistsByName(workspaceID, n)
+	})
+	if err != nil {
+		return nil, err
+	}
 	rt.Hosts = in.Hosts
 	rt.Methods = in.Methods
-	rt.Middlewares = in.Middlewares
+	rt.Middlewares = chain
 	rt.Rewrite = in.Rewrite
 	rt.TargetPort = in.TargetPort
 	if in.TLSMode != "" {

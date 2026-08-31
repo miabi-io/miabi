@@ -189,6 +189,31 @@
       ],
       "type": "object"
     },
+    "MiddlewareSpec": {
+      "additionalProperties": false,
+      "description": "MiddlewareSpec is one gateway middleware. Type selects the behaviour from the gateway's catalogue (basicAuth, rateLimit, accessPolicy, …) and Rule carries that type's own configuration, so the manifest reads like the gateway config it produces rather than a Miabi-shaped translation of it.",
+      "properties": {
+        "paths": {
+          "description": "Paths narrows the middleware to the request paths listed; empty applies it to everything the route serves.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rule": {
+          "additionalProperties": {},
+          "description": "Rule is the type's configuration, passed through to the gateway. It is free-form because the catalogue owns the shape: validating it here would be a second copy of a schema that already exists, drifting the moment the gateway adds a field.",
+          "type": "object"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "type": "object"
+    },
     "MountSpec": {
       "additionalProperties": false,
       "description": "MountSpec attaches a managed Volume into the container filesystem.",
@@ -362,6 +387,13 @@
           "$ref": "#/$defs/RouteMaintenanceSpec",
           "description": "Maintenance parks the route at the gateway. Omitting it means \"serving\", so removing the block from a manifest resumes traffic."
         },
+        "middlewares": {
+          "description": "Middlewares is the gateway chain this route runs, by Middleware name. ORDER IS BEHAVIOUR, not presentation: the gateway executes the array in sequence, so rate-limit before basic-auth throttles anonymous requests while the reverse makes every request authenticate first. A name need not be declared in the same bundle — one absent from it resolves against the workspace's existing middlewares, so the defaults seeded at workspace creation can be named directly.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "path": {
           "type": "string"
         },
@@ -520,6 +552,25 @@
       "if": {
         "properties": {
           "kind": {
+            "const": "Middleware"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/MiddlewareSpec"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
             "const": "Project"
           }
         },
@@ -644,6 +695,7 @@
         "Config",
         "Database",
         "Domain",
+        "Middleware",
         "Project",
         "Registry",
         "Route",

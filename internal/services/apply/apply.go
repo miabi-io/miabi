@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -19,10 +20,12 @@ import (
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/declarative"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/mwcatalog"
 	"github.com/miabi-io/miabi/internal/services/application"
 	configsvc "github.com/miabi-io/miabi/internal/services/config"
 	"github.com/miabi-io/miabi/internal/services/database"
 	"github.com/miabi-io/miabi/internal/services/domain"
+	middlewaresvc "github.com/miabi-io/miabi/internal/services/middleware"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/portbinding"
 	"github.com/miabi-io/miabi/internal/services/registry"
@@ -72,10 +75,17 @@ type Service struct {
 	// configs converges kind: Config; nil leaves a manifest declaring one
 	// erroring rather than silently skipping the resource an app mounts.
 	configs *configsvc.Service
+	// middlewares converges kind: Middleware, and is what lets a Route name a chain.
+	// Nil for the same reason as configs: a manifest declaring one must fail loudly
+	// rather than have the resource its routes depend on quietly disappear.
+	middlewares *middlewaresvc.Service
 }
 
 // SetConfigs wires the config service (kind: Config).
 func (s *Service) SetConfigs(c *configsvc.Service) { s.configs = c }
+
+// SetMiddlewares wires the gateway-middleware service (kind: Middleware).
+func (s *Service) SetMiddlewares(m *middlewaresvc.Service) { s.middlewares = m }
 
 // NewService wires the apply engine over the existing resource services.
 func NewService(apps *application.Service, storage *storage.Service, dbs *database.Service, stacks *stack.Service, secrets *secret.Service, routes *route.Service, domains *domain.Service, registries *registry.Service) *Service {
@@ -420,6 +430,13 @@ func (s *Service) render(workspaceID uint, desired *declarative.ResourceSet) {
 				res.Config.DigestFP = configsvc.Digest(data)
 			}
 			desired.Add(res)
+		case res.Middleware != nil:
+			// Lenient for the same reason, and fingerprinted from the RENDERED rule so
+			// a rotated "{{ .secrets.x }}" converges instead of comparing equal.
+			if rule, err := s.renderMiddlewareRule(workspaceID, res.Middleware); err == nil {
+				res.Middleware.RuleFP = middlewareRuleFP(rule)
+			}
+			desired.Add(res)
 		}
 	}
 	s.stampConfigFP(workspaceID, desired)
@@ -452,6 +469,46 @@ func (s *Service) stampConfigFP(workspaceID uint, set *declarative.ResourceSet) 
 		}
 		res.Application.ConfigFP = configFingerprint(res.Application.Mounts, digests)
 		set.Add(res)
+	}
+}
+
+// middlewareRuleFP fingerprints a rule, secrets included. Canonical JSON, so map ordering — which Go
+// randomizes — cannot make an unchanged rule look changed on every plan.
+func middlewareRuleFP(rule map[string]any) string {
+	if len(rule) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(canonicalRule(rule))
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+// canonicalRule rebuilds a rule with every map replaced by a key-sorted ordered form, so
+// encoding/json emits the same bytes for the same content regardless of how it was parsed.
+func canonicalRule(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		keys := make([]string, 0, len(t))
+		for k := range t {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		out := make([][2]any, 0, len(keys))
+		for _, k := range keys {
+			out = append(out, [2]any{k, canonicalRule(t[k])})
+		}
+		return out
+	case []any:
+		out := make([]any, len(t))
+		for i := range t {
+			out[i] = canonicalRule(t[i])
+		}
+		return out
+	default:
+		return v
 	}
 }
 
@@ -791,6 +848,33 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 		}
 	}
 
+	if s.middlewares != nil {
+		mws, merr := s.middlewares.List(workspaceID)
+		if merr != nil {
+			return nil, fmt.Errorf("snapshot middlewares: %w", merr)
+		}
+		for i := range mws {
+			mw := mws[i]
+			// Stored secrets are ciphertext, so the fingerprint is taken over the decrypted
+			// rule — the same value the desired side renders — and the rule that reaches the
+			// plan is redacted, so no credential is ever printed.
+			plain, derr := mwcatalog.DecryptSecrets(mw.Type, mw.Rule)
+			if derr != nil {
+				plain = mw.Rule
+			}
+			set.Add(declarative.Resource{
+				APIVersion: declarative.APIVersion, Kind: declarative.KindMiddleware,
+				Metadata: declarative.Meta{Name: mw.Name},
+				Middleware: &declarative.MiddlewareSpec{
+					Type:   mw.Type,
+					Paths:  append([]string(nil), mw.Paths...),
+					Rule:   mwcatalog.Redact(mw.Type, mw.Rule),
+					RuleFP: middlewareRuleFP(plain),
+				},
+			})
+		}
+	}
+
 	routes, err := s.routes.List(workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("snapshot routes: %w", err)
@@ -979,6 +1063,8 @@ func (s *Service) execute(ctx context.Context, workspaceID uint, ch declarative.
 		return s.applyRegistry(ctx, workspaceID, ch, desired)
 	case declarative.KindConfig:
 		return s.applyConfig(workspaceID, ch, desired)
+	case declarative.KindMiddleware:
+		return s.applyMiddleware(ctx, workspaceID, ch, desired)
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedKind, ch.Kind)
 	}
@@ -1122,6 +1208,99 @@ func (s *Service) applyConfig(workspaceID uint, ch declarative.Change, desired d
 	return nil
 }
 
+// applyMiddleware converges a gateway middleware. Its rule is rendered like any other manifest value,
+// so a password can be "{{ .secrets.basic_auth }}" instead of a literal in the repository — which is
+// the whole reason the rule is not simply passed through verbatim.
+func (s *Service) applyMiddleware(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource) error {
+	if s.middlewares == nil {
+		return fmt.Errorf("%w: %s", ErrUnsupportedKind, declarative.KindMiddleware)
+	}
+	switch ch.Action {
+	case declarative.ActionCreate, declarative.ActionUpdate:
+		spec := desired.Middleware
+		if spec == nil {
+			return fmt.Errorf("%w: middleware %q: spec is required", ErrInvalidManifest, ch.Name)
+		}
+		rule, err := s.renderMiddlewareRule(workspaceID, spec)
+		if err != nil {
+			return fmt.Errorf("%w: middleware %q: %v", ErrInvalidManifest, ch.Name, err)
+		}
+		in := middlewaresvc.Input{Name: ch.Name, Type: spec.Type, Paths: spec.Paths, Rule: rule}
+		if ch.Action == declarative.ActionCreate {
+			_, cerr := s.middlewares.Create(ctx, workspaceID, in)
+			return cerr
+		}
+		mw, gerr := s.middlewares.GetByName(workspaceID, ch.Name)
+		if gerr != nil {
+			return gerr
+		}
+		_, uerr := s.middlewares.Update(ctx, workspaceID, mw.ID, in)
+		return uerr
+	case declarative.ActionDelete:
+		mw, err := s.middlewares.GetByName(workspaceID, ch.Name)
+		if err != nil {
+			return err
+		}
+		return s.middlewares.Delete(ctx, workspaceID, mw.ID)
+	}
+	return nil
+}
+
+// renderMiddlewareRule interpolates the rule's string values, so a credential can be a vault
+// reference rather than a literal committed to Git. Only strings are touched; numbers, booleans and
+// the structure itself pass through as authored.
+func (s *Service) renderMiddlewareRule(workspaceID uint, spec *declarative.MiddlewareSpec) (map[string]any, error) {
+	if len(spec.Rule) == 0 {
+		return nil, nil
+	}
+	r := declarative.NewRenderer(declarative.RenderContext{
+		Databases: s.databaseViews(workspaceID),
+		Secrets:   s.secretViews(workspaceID),
+		Apps:      s.appAliasViews(workspaceID),
+	})
+	out, err := renderRuleValues(r, "middleware", spec.Rule)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// renderRuleValues walks a rule and renders every string it finds, at any depth. A middleware rule is
+// free-form by design (the gateway's catalogue owns its shape), so the walk cannot be driven by a
+// struct — it has to handle whatever nesting the type uses.
+func renderRuleValues(r *declarative.Renderer, scope string, in map[string]any) (map[string]any, error) {
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		rv, err := renderRuleValue(r, scope+"."+k, v)
+		if err != nil {
+			return nil, err
+		}
+		out[k] = rv
+	}
+	return out, nil
+}
+
+func renderRuleValue(r *declarative.Renderer, scope string, v any) (any, error) {
+	switch t := v.(type) {
+	case string:
+		return r.RenderString(scope, t)
+	case map[string]any:
+		return renderRuleValues(r, scope, t)
+	case []any:
+		out := make([]any, len(t))
+		for i := range t {
+			rv, err := renderRuleValue(r, fmt.Sprintf("%s[%d]", scope, i), t[i])
+			if err != nil {
+				return nil, err
+			}
+			out[i] = rv
+		}
+		return out, nil
+	default:
+		return v, nil
+	}
+}
+
 // renderConfigData interpolates a config's files, honouring its own delimiters so
 // a file whose syntax uses {{ }} is not mangled.
 func (s *Service) renderConfigData(workspaceID uint, name string, spec *declarative.ConfigSpec) (map[string]string, error) {
@@ -1238,6 +1417,7 @@ func (s *Service) routeInput(name string, appID uint, spec *declarative.RouteSpe
 	return route.Input{
 		Name: name, ApplicationID: appID, Hosts: spec.Hosts,
 		Path: path, TargetPort: spec.Port, TLSMode: tlsFromSpec(spec.TLS),
+		Middlewares:       spec.Middlewares,
 		ExploitProtection: &exploit,
 		// Always non-nil: the manifest is the desired state, so dropping the
 		// maintenance block has to resume traffic rather than leave it parked.
@@ -1252,6 +1432,7 @@ func routeSpecOf(r models.Route, app, path string) *declarative.RouteSpec {
 	spec := &declarative.RouteSpec{
 		Hosts: append([]string(nil), r.Hosts...), App: app, Port: r.TargetPort,
 		Path: path, TLS: tlsToSpec(r.TLSMode),
+		Middlewares: append([]string(nil), r.Middlewares...),
 	}
 	if r.ExploitProtection {
 		spec.Security = &declarative.RouteSecuritySpec{ExploitProtection: true}
