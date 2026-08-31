@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 // Package docker is the Docker seam the platform-stack engine talks through. It declares the
 // narrow client interface the engine needs and the types that cross it — deliberately none of

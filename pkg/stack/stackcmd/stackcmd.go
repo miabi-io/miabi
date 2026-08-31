@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 // Package stackcmd is the behaviour behind the host-side verbs — install/converge, upgrade,
 // restart, status and uninstall — with no command-line framework attached.

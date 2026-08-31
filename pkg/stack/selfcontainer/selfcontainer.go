@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 // Package selfcontainer detects the Docker container ID of the running process,
 // so Miabi can recognise its own container and refuse to stop or delete it from

@@ -12,6 +12,13 @@ LICENSE file and is available at https://www.gnu.org/licenses/agpl-3.0.html.
 A commercial license is available for uses that do not fit the AGPL; see
 LICENSING.md.
 
+The reusable Go packages under pkg/ are an exception: they are licensed under the
+Apache License, Version 2.0 (Apache-2.0), so the miabi CLI and any third-party
+tool may embed them without taking on the AGPL's obligations. A copy of that
+license is in pkg/LICENSE and is available at
+https://www.apache.org/licenses/LICENSE-2.0. Nothing under pkg/ depends on the
+AGPL-licensed code in this repository.
+
 The Miabi Enterprise Edition — the source under internal/enterprise/ (compiled
 only with the "enterprise" build tag) — is NOT licensed under the AGPL. It is
 proprietary and governed by a separate commercial license; see

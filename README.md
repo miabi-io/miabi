@@ -515,6 +515,12 @@ v3.0 or later (AGPL-3.0-or-later)** — see [LICENSE](./LICENSE) and [NOTICE](./
 A **commercial license** is available for uses that don't fit the AGPL (e.g.
 offering a modified Miabi as a hosted service without publishing your changes).
 
+The reusable packages under [`pkg/`](./pkg) are **Apache-2.0** — see
+[`pkg/LICENSE`](./pkg/LICENSE). They are the importable half of the project
+(`pkg/stack` is the host installer and lifecycle engine the CLI drives), so
+embedding them carries no AGPL obligation. Nothing under `pkg/` depends on the
+AGPL-licensed code.
+
 Enterprise features (everything under [`internal/enterprise/`](./internal/enterprise),
 built with the `enterprise` tag) are **not** AGPL: they are licensed under the
 **Miabi Enterprise License** — see [`internal/enterprise/LICENSE.md`](./internal/enterprise/LICENSE.md)
