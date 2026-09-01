@@ -67,8 +67,10 @@ spec:
   port: 8080
   tls: acme
 ---
-# A domain served with a custom certificate. Upload the cert/key out-of-band
-# (the imperative certificate API); the Route just selects `custom`.
+# A domain served with a stored certificate. Import the cert/key out of band (the
+# certificate API or the console) — a private key does not belong in a manifest —
+# then name it here. `tls: custom` without a certificate serves no TLS at all, so
+# the two are required together.
 apiVersion: miabi.io/v1
 kind: Route
 metadata: { name: shop-custom-cert }
@@ -77,6 +79,7 @@ spec:
   app: shop-web
   port: 8080
   tls: custom
+  certificate: shop-wildcard
 ---
 # Gateway-level switches. exploitProtection blocks common injection/traversal
 # signatures before the backend sees them. maintenance parks the route: the
