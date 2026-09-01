@@ -23,6 +23,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/mwcatalog"
 	"github.com/miabi-io/miabi/internal/services/application"
+	certificatesvc "github.com/miabi-io/miabi/internal/services/certificate"
 	configsvc "github.com/miabi-io/miabi/internal/services/config"
 	"github.com/miabi-io/miabi/internal/services/database"
 	"github.com/miabi-io/miabi/internal/services/domain"
@@ -80,6 +81,11 @@ type Service struct {
 	// are node-local bridges, which is what makes a cross-node application reference unroutable.
 	// Nil means "assume not clustered", the conservative reading.
 	cluster ClusterCap
+	// certificates resolves a Route's certificate: <name> to the stored certificate it serves.
+	// Certificates are not a declarable kind — they carry a private key — so a manifest can only
+	// reference one that already exists. Nil leaves tls: custom unresolvable rather than silently
+	// applying a route with no certificate.
+	certificates *certificatesvc.Service
 	// middlewares converges kind: Middleware, and is what lets a Route name a chain.
 	// Nil for the same reason as configs: a manifest declaring one must fail loudly
 	// rather than have the resource its routes depend on quietly disappear.
@@ -100,6 +106,10 @@ type ClusterCap interface {
 func (s *Service) SetCluster(c ClusterCap) { s.cluster = c }
 
 func (s *Service) clusterOn() bool { return s.cluster != nil && s.cluster.CapCluster() }
+
+// SetCertificates wires the certificate service, so a Route may name the stored certificate it
+// serves with tls: custom.
+func (s *Service) SetCertificates(c *certificatesvc.Service) { s.certificates = c }
 
 // SetMiddlewares wires the gateway-middleware service (kind: Middleware).
 func (s *Service) SetMiddlewares(m *middlewaresvc.Service) { s.middlewares = m }
@@ -1090,6 +1100,17 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 		}
 	}
 
+	// Certificates are not a declarable kind, but a route names the one it serves — so the id has to
+	// be mapped back to that name or every custom-TLS route would read as drift.
+	certNameByID := map[uint]string{}
+	if s.certificates != nil {
+		if certs, cerr := s.certificates.List(workspaceID); cerr == nil {
+			for i := range certs {
+				certNameByID[certs[i].ID] = certs[i].Name
+			}
+		}
+	}
+
 	routes, err := s.routes.List(workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("snapshot routes: %w", err)
@@ -1108,7 +1129,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 		set.Add(declarative.Resource{
 			APIVersion: declarative.APIVersion, Kind: declarative.KindRoute,
 			Metadata: meta(r.UID, r.Name, r.Metadata),
-			Route:    routeSpecOf(r, appSlugByID[r.ApplicationID], path),
+			Route:    routeSpecOf(r, appSlugByID[r.ApplicationID], path, certNameByID),
 		})
 	}
 
@@ -1611,7 +1632,10 @@ func (s *Service) applyRoute(ctx context.Context, workspaceID uint, ch declarati
 		if err != nil {
 			return fmt.Errorf("route %q: %w", ch.Name, err)
 		}
-		in := s.routeInput(ch.Name, app.ID, spec)
+		in, ierr := s.routeInput(workspaceID, ch.Name, app.ID, spec)
+		if ierr != nil {
+			return ierr
+		}
 		in.Metadata = tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, ManagedByGitOps))
 		_, err = s.routes.Create(ctx, workspaceID, in)
 		return err
@@ -1624,7 +1648,10 @@ func (s *Service) applyRoute(ctx context.Context, workspaceID uint, ch declarati
 		if err != nil {
 			return fmt.Errorf("route %q: %w", ch.Name, err)
 		}
-		in := s.routeInput(ch.Name, app.ID, spec)
+		in, ierr := s.routeInput(workspaceID, ch.Name, app.ID, spec)
+		if ierr != nil {
+			return ierr
+		}
 		in.Metadata = tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, ManagedByGitOps))
 		_, err = s.routes.Update(ctx, workspaceID, rt.ID, in)
 		return err
@@ -1638,7 +1665,7 @@ func (s *Service) applyRoute(ctx context.Context, workspaceID uint, ch declarati
 	return nil
 }
 
-func (s *Service) routeInput(name string, appID uint, spec *declarative.RouteSpec) route.Input {
+func (s *Service) routeInput(workspaceID uint, name string, appID uint, spec *declarative.RouteSpec) (route.Input, error) {
 	path := spec.Path
 	if path == "" {
 		path = "/"
@@ -1650,9 +1677,17 @@ func (s *Service) routeInput(name string, appID uint, spec *declarative.RouteSpe
 			Enabled: spec.Maintenance.Enabled, StatusCode: spec.Maintenance.StatusCode, Message: spec.Maintenance.Message,
 		}
 	}
+	certID, err := s.resolveCertificate(workspaceID, name, spec)
+	if err != nil {
+		return route.Input{}, err
+	}
 	return route.Input{
 		Name: name, ApplicationID: appID, Hosts: spec.Hosts,
 		Path: path, TargetPort: spec.Port, TLSMode: tlsFromSpec(spec.TLS),
+		CertificateID: certID,
+		// Always non-nil from a manifest: the bundle is desired state, so clearing the field in the
+		// manifest has to clear it on the route.
+		TLSProvider: &spec.TLSProvider,
 		Middlewares: spec.Middlewares,
 		// Carried explicitly because route.Update assigns them unconditionally: leaving them out of
 		// the input does not preserve what is stored, it erases it.
@@ -1663,13 +1698,38 @@ func (s *Service) routeInput(name string, appID uint, spec *declarative.RouteSpe
 		// Always non-nil: the manifest is the desired state, so dropping the
 		// maintenance block has to resume traffic rather than leave it parked.
 		Maintenance: &mt,
+	}, nil
+}
+
+// resolveCertificate turns a route's certificate: <name> into the stored certificate's id. A name
+// that matches nothing fails the change rather than creating a custom-TLS route with no certificate,
+// which would serve no TLS at all on the hosts it claims.
+func (s *Service) resolveCertificate(workspaceID uint, routeName string, spec *declarative.RouteSpec) (*uint, error) {
+	if spec.Certificate == "" {
+		return nil, nil
 	}
+	if s.certificates == nil {
+		return nil, fmt.Errorf("%w: route %q: certificates are not available on this install", ErrUnsupportedKind, routeName)
+	}
+	list, err := s.certificates.List(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range list {
+		if list[i].Name == spec.Certificate {
+			id := list[i].ID
+			return &id, nil
+		}
+	}
+	return nil, fmt.Errorf("%w: route %q references certificate %q, which does not exist in this workspace — "+
+		"import it first (certificates hold a private key, so they are not declarable in a manifest)",
+		ErrInvalidManifest, routeName, spec.Certificate)
 }
 
 // routeSpecOf projects a live route onto its manifest shape. Maintenance is
 // emitted only while parked, so an exported bundle stays clean and matches a
 // manifest that simply omits the block.
-func routeSpecOf(r models.Route, app, path string) *declarative.RouteSpec {
+func routeSpecOf(r models.Route, app, path string, certNameByID map[uint]string) *declarative.RouteSpec {
 	spec := &declarative.RouteSpec{
 		Hosts: append([]string(nil), r.Hosts...), App: app, Port: r.TargetPort,
 		Path: path, TLS: tlsToSpec(r.TLSMode),
@@ -1677,6 +1737,13 @@ func routeSpecOf(r models.Route, app, path string) *declarative.RouteSpec {
 		Rewrite:        r.Rewrite,
 		Methods:        append([]string(nil), r.Methods...),
 		AdvancedConfig: r.AdvancedConfig,
+		TLSProvider:    r.TLSProvider,
+	}
+	// The certificate by its manifest name. A certificate deleted out from under the route leaves the
+	// FK nulled, so an unresolved id emits nothing rather than inventing a name the manifest could
+	// not resolve back.
+	if r.CertificateID != nil {
+		spec.Certificate = certNameByID[*r.CertificateID]
 	}
 	if r.ExploitProtection {
 		spec.Security = &declarative.RouteSecuritySpec{ExploitProtection: true}

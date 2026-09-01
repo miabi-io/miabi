@@ -400,9 +400,7 @@ func specFields(r Resource) map[string]string {
 	f := map[string]string{}
 	switch {
 	case r.Application != nil:
-		// Apply v1 converges the fields it can map back from live state without ambiguity: image identity,
-		// command, resource caps and non-secret env. Structural create-time attributes (ports, mounts,
-		// stack) are not diffed, so a converged app never shows phantom drift.
+
 		a := r.Application
 		f["image"] = a.Image
 		f["tag"] = a.Tag
@@ -474,9 +472,6 @@ func specFields(r Resource) map[string]string {
 			}
 			f["env."+k] = v
 		}
-		// Port exposure is presence-based so it converges without phantom drift:
-		// the exact auto-allocated host port / generated subdomain is create-time
-		// state that the snapshot can't pin back to the manifest.
 		for _, p := range a.Ports {
 			if p.ExternalAccess {
 				f[fmt.Sprintf("port.%d.external", p.Container)] = "true"
@@ -489,7 +484,7 @@ func specFields(r Resource) map[string]string {
 		f["engine"] = r.Database.Engine
 		f["version"] = r.Database.Version
 	case r.Volume != nil:
-		// Volumes are presence-only: size is fixed at create time.
+
 	case r.Route != nil:
 		hosts := append([]string(nil), r.Route.Hosts...)
 		sort.Strings(hosts) // order-independent so reordering hosts isn't a change
@@ -497,6 +492,8 @@ func specFields(r Resource) map[string]string {
 		f["app"] = r.Route.App
 		f["path"] = r.Route.Path
 		f["tls"] = r.Route.TLS
+		f["certificate"] = r.Route.Certificate
+		f["tlsProvider"] = r.Route.TLSProvider
 		f["port"] = fmt.Sprintf("%d", r.Route.Port)
 		f["rewrite"] = r.Route.Rewrite
 		// Order-independent: the gateway matches on membership, so listing GET before POST is the

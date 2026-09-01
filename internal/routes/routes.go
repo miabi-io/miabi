@@ -818,6 +818,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	applyService.SetConfigs(configService)
 	applyService.SetMiddlewares(middlewareService)
 	applyService.SetCluster(clusterService)
+	applyService.SetCertificates(certificateService)
 	// Declarative Application port exposure: externalAccess (reverse-proxy URLs,
 	// over the platform base domain) and publish/hostPort (host-port bindings).
 	applyService.SetPortExposure(func() route.ExternalConfig {
