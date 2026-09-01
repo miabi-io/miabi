@@ -191,6 +191,9 @@ const filters: Array<{ value: SecretOwnership; label: string }> = [
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   max-height: 320px; overflow-y: auto;
 }
+[data-theme="dark"] .results {
+  background: var(--bg-elevated, var(--bg, #1a1a2e));
+}
 .filters { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border); }
 .chip {
   padding: 3px 10px; font-size: 12px; border-radius: 999px; cursor: pointer;
