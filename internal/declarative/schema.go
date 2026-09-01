@@ -232,34 +232,23 @@ type VolumeSpec struct {
 // application's port with a TLS mode — an HTTP routing rule. List every hostname
 // the route should answer on, e.g. both example.com and www.example.com.
 type RouteSpec struct {
-	Hosts []string `yaml:"hosts" json:"hosts"`
-	App   string   `yaml:"app" json:"app"` // target application name
-	Port  int      `yaml:"port,omitempty" json:"port,omitempty"`
-	Path  string   `yaml:"path,omitempty" json:"path,omitempty"`
-	TLS   string   `yaml:"tls,omitempty" json:"tls,omitempty"` // acme|custom|off (default acme)
-	// Rewrite replaces the matched path prefix before the request reaches the app, so a route on
-	// /api can serve a backend that expects /.
-	Rewrite string `yaml:"rewrite,omitempty" json:"rewrite,omitempty"`
-	// Methods narrows the route to these HTTP methods. Empty accepts every method, which is what a
-	// route without the field has always done.
-	Methods []string `yaml:"methods,omitempty" json:"methods,omitempty"`
-	// AdvancedConfig is raw Goma route YAML that SUPERSEDES the structured fields above. It is the
-	// escape hatch for a gateway feature the manifest does not model; prefer the structured fields,
-	// because nothing here validates what it contains beyond it being YAML without an inline
-	// certificate.
+	Hosts       []string `yaml:"hosts" json:"hosts"`
+	App         string   `yaml:"app" json:"app"` // target application name
+	Port        int      `yaml:"port,omitempty" json:"port,omitempty"`
+	Path        string   `yaml:"path,omitempty" json:"path,omitempty"`
+	TLS         string   `yaml:"tls,omitempty" json:"tls,omitempty"` // acme|custom|off (default acme)
+	Certificate string   `yaml:"certificate,omitempty" json:"certificate,omitempty"`
+	TLSProvider string   `yaml:"tlsProvider,omitempty" json:"tlsProvider,omitempty"`
+	Rewrite     string   `yaml:"rewrite,omitempty" json:"rewrite,omitempty"`
+	Methods     []string `yaml:"methods,omitempty" json:"methods,omitempty"`
+	// AdvancedConfig is raw Goma route YAML that SUPERSEDES the structured fields above.
 	AdvancedConfig string `yaml:"advancedConfig,omitempty" json:"advancedConfig,omitempty"`
 	// Security carries the gateway's per-route switches.
 	Security *RouteSecuritySpec `yaml:"security,omitempty" json:"security,omitempty"`
 	// Maintenance parks the route at the gateway. Omitting it means "serving",
 	// so removing the block from a manifest resumes traffic.
 	Maintenance *RouteMaintenanceSpec `yaml:"maintenance,omitempty" json:"maintenance,omitempty"`
-	// Middlewares is the gateway chain this route runs, by Middleware name. ORDER IS
-	// BEHAVIOUR, not presentation: the gateway executes the array in sequence, so
-	// rate-limit before basic-auth throttles anonymous requests while the reverse
-	// makes every request authenticate first. A name need not be declared in the same
-	// bundle — one absent from it resolves against the workspace's existing
-	// middlewares, so the defaults seeded at workspace creation can be named directly.
-	Middlewares []string `yaml:"middlewares,omitempty" json:"middlewares,omitempty"`
+	Middlewares []string              `yaml:"middlewares,omitempty" json:"middlewares,omitempty"`
 }
 
 // RouteSecuritySpec holds a route's gateway security switches, mirroring Goma's
@@ -288,17 +277,9 @@ type MiddlewareSpec struct {
 	// Paths narrows the middleware to the request paths listed; empty applies it to
 	// everything the route serves.
 	Paths []string `yaml:"paths,omitempty" json:"paths,omitempty"`
-	// Rule is the type's configuration, passed through to the gateway. It is free-form
-	// because the catalogue owns the shape: validating it here would be a second copy
-	// of a schema that already exists, drifting the moment the gateway adds a field.
-	Rule map[string]any `yaml:"rule,omitempty" json:"rule,omitempty"`
-	// RuleFP fingerprints the rule INCLUDING its secret fields, and is filled in by the
-	// apply engine on both sides of the diff. A middleware's secrets (a basicAuth
-	// password, an OIDC client secret) are stored encrypted and never read back into a
-	// plan, so without a fingerprint rotating one would converge to nothing. Not
-	// serialized, for the same reason as RegistrySpec.PasswordFP: it is derived state,
-	// so a Marshal->Parse round trip recomputes it.
-	RuleFP string `yaml:"-" json:"-"`
+	// Rule is the type's configuration, passed through to the gateway.
+	Rule   map[string]any `yaml:"rule,omitempty" json:"rule,omitempty"`
+	RuleFP string         `yaml:"-" json:"-"`
 }
 
 // DomainSpec declares an owned hostname/zone; the hostname is the resource's metadata.name (a real
