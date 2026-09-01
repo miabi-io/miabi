@@ -181,11 +181,11 @@ defineExpose({ regenerate, value })
     <div class="gen-output">
       <input id="generator-output" class="form-input gen-value" :value="value" readonly aria-label="Generated value"
         :placeholder="wordlistLoading ? 'Loading wordlist…' : ''" @focus="($event.target as HTMLInputElement).select()" />
-      <button type="button" class="btn-icon" title="Generate another" aria-label="Generate another"
+      <button type="button" class="btn btn-icon" title="Generate another" aria-label="Generate another"
         @click="regenerate">
         <span class="mdi mdi-refresh"></span>
       </button>
-      <button type="button" class="btn-icon" :title="copied ? 'Copied' : 'Copy'" aria-label="Copy" :disabled="!value"
+      <button type="button" class="btn btn-icon" :title="copied ? 'Copied' : 'Copy'" aria-label="Copy" :disabled="!value"
         @click="copy">
         <span class="mdi" :class="copied ? 'mdi-check' : 'mdi-content-copy'"></span>
       </button>
@@ -254,7 +254,7 @@ defineExpose({ regenerate, value })
         <span>Bytes <strong>{{ token.bytes }}</strong></span>
         <input v-model.number="token.bytes" type="range" :min="TOKEN_MIN_BYTES" :max="TOKEN_MAX_BYTES" />
       </label>
-      <div class="gen-checks" role="radiogroup" aria-label="Encoding">
+      <div class="gen-radios" role="radiogroup" aria-label="Encoding">
         <label><input v-model="token.encoding" type="radio" value="base64url" /> base64url</label>
         <label><input v-model="token.encoding" type="radio" value="hex" /> hex</label>
       </div>
@@ -304,6 +304,20 @@ defineExpose({ regenerate, value })
 .gen-mins label { flex: 1; min-width: 120px; }
 .gen-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
+.gen-radios {display: flex;flex-wrap: wrap;gap: 10px 16px;font-size: 13px;color: var(--text-primary);}
+.gen-radios label {display: inline-flex;align-items: center;gap: 8px;color: var(--text-secondary);cursor: pointer;user-select: none;}
+
 .compact .gen-tab { padding: 6px 9px; font-size: 12px; }
 .compact .gen-value { font-size: 13px; }
+
+.btn-icon {width: 34px;height: 34px;padding: 0;display: inline-flex;align-items: center;justify-content: center;
+background-color: var(--bg-tertiary);color: var(--text-secondary);border: 1px solid var(--border-primary);border-radius: var(--radius);
+cursor: pointer;user-select: none;transition: background-color var(--transition),  border-color var(--transition),  color var(--transition),  transform 100ms ease;}
+.btn-icon:hover:not(:disabled) {background-color: var(--bg-hover);color: var(--text-primary);border-color: var(--border-input);}
+.btn-icon:active:not(:disabled) {transform: scale(0.95);background-color: var(--bg-secondary);}
+.btn-icon:focus-visible {outline: none;border-color: var(--border-focus);box-shadow: var(--shadow-focus);}
+.btn-icon:disabled {opacity: 0.4;cursor: not-allowed;background-color: var(--bg-tertiary);border-color: var(--border-primary);}
+.btn-icon .mdi {font-size: 18px;line-height: 1;}
+.btn-icon .mdi-check {color: var(--success-600);}
+[data-theme="dark"] .btn-icon .mdi-check {color: var(--success-400);}
 </style>

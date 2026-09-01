@@ -849,6 +849,52 @@ input[type="checkbox"]:checked::before {
   transform: scale(1);
 }
 
+input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-input);
+  
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  margin: 0;
+}
+
+input[type="radio"]:hover:not(:disabled) {
+  border-color: var(--border-focus);
+}
+
+input[type="radio"]:checked {
+  background-color: var(--primary-600);
+  border-color: var(--primary-600);
+}
+
+input[type="radio"]::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--text-on-primary);
+  
+  transform: scale(0);
+  transition: transform 0.1s ease-in-out;
+}
+
+input[type="radio"]:checked::before {
+  transform: scale(1);
+}
+
+input[type="radio"]:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
 /* ─── Code block ─── */
 .code-block {
   background: var(--bg-code);
