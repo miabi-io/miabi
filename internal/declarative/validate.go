@@ -394,6 +394,20 @@ func (r *Resource) validateRoute() error {
 	if !validTLS[rt.TLS] {
 		return fmt.Errorf("route %q: tls must be acme, custom or off", r.Metadata.Name)
 	}
+
+	switch {
+	case rt.TLS == "custom" && strings.TrimSpace(rt.Certificate) == "":
+		return fmt.Errorf("route %q: tls: custom needs certificate: <name> — the certificate to serve for its hosts", r.Metadata.Name)
+	case rt.TLS != "custom" && rt.Certificate != "":
+		return fmt.Errorf("route %q: certificate %q applies to tls: custom, but this route is tls: %s", r.Metadata.Name, rt.Certificate, rt.TLS)
+	}
+	if rt.Certificate != "" && !nameRe.MatchString(rt.Certificate) {
+		return fmt.Errorf("route %q: certificate %q must be a resource name matching %s", r.Metadata.Name, rt.Certificate, nameRe)
+	}
+
+	if rt.TLSProvider != "" && rt.TLS != "acme" {
+		return fmt.Errorf("route %q: tlsProvider applies to tls: acme, but this route is tls: %s", r.Metadata.Name, rt.TLS)
+	}
 	for _, m := range rt.Methods {
 		if !validHTTPMethod[strings.ToUpper(strings.TrimSpace(m))] {
 			return fmt.Errorf("route %q: method %q is not an HTTP method", r.Metadata.Name, m)

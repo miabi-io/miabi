@@ -434,16 +434,20 @@ type Input struct {
 	// Name is the unique slug handle; it must already be canonical slug form (it
 	// becomes the Goma route name). DisplayName is the free-text label (falls back
 	// to Name when blank).
-	Name              string
-	DisplayName       string
-	ApplicationID     uint
-	Path              string
-	Hosts             []string
-	Methods           []string
-	Middlewares       []string
-	Rewrite           string
-	TargetPort        int
-	TLSMode           models.RouteTLSMode
+	Name          string
+	DisplayName   string
+	ApplicationID uint
+	Path          string
+	Hosts         []string
+	Methods       []string
+	Middlewares   []string
+	Rewrite       string
+	TargetPort    int
+	TLSMode       models.RouteTLSMode
+	// TLSProvider names the gateway certManager provider that issues this route's certificate. A
+	// POINTER, like Enabled: the console has no field for it, so nil must mean "leave it as stored".
+	// Assigning it unconditionally would have every console edit wipe a provider a manifest set.
+	TLSProvider       *string
 	AdvancedConfig    string // raw Goma route YAML; supersedes structured fields
 	CertificateID     *uint  // stored certificate (required for custom TLS)
 	Enabled           *bool
@@ -515,6 +519,7 @@ func (s *Service) Create(ctx context.Context, workspaceID uint, in Input) (*mode
 		Rewrite:        in.Rewrite,
 		TargetPort:     in.TargetPort,
 		TLSMode:        defaultTLS(in.TLSMode),
+		TLSProvider:    trimPtr(in.TLSProvider),
 		AdvancedConfig: strings.TrimSpace(in.AdvancedConfig),
 		CertificateID:  in.CertificateID,
 		Enabled:        in.Enabled == nil || *in.Enabled,
@@ -594,6 +599,9 @@ func (s *Service) Update(ctx context.Context, workspaceID, id uint, in Input) (*
 	rt.TargetPort = in.TargetPort
 	if in.TLSMode != "" {
 		rt.TLSMode = in.TLSMode
+	}
+	if in.TLSProvider != nil {
+		rt.TLSProvider = strings.TrimSpace(*in.TLSProvider)
 	}
 	if err := validateAdvanced(in.AdvancedConfig); err != nil {
 		return nil, err
@@ -1561,6 +1569,15 @@ func (s *Service) applyCert(rt *models.Route, _ Input) error {
 func strip(rt *models.Route) *models.Route {
 	rt.HasCustomCert = rt.CertificateID != nil
 	return rt
+}
+
+// trimPtr is the create-side counterpart of the nil check on update: an unset pointer leaves the
+// field empty rather than dereferencing nothing.
+func trimPtr(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return strings.TrimSpace(*p)
 }
 
 func defaultPath(p string) string {
