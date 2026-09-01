@@ -505,7 +505,7 @@ watch(activeTab, (t) => loadTab(t))
               autocomplete="off"
               spellcheck="false"
               aria-label="Name"
-              style="max-width: 320px"
+              style="max-width: 420px"
             />
             <button
               v-if="isAdmin && !isSystemWs"
@@ -525,7 +525,9 @@ watch(activeTab, (t) => loadTab(t))
         </div>
         <div class="form-group">
           <label class="form-label">Description</label>
-          <input v-model="form.description" class="form-input" :disabled="!isAdmin" placeholder="What is this workspace for?" aria-label="Description" style="max-width: 420px" />
+          <textarea v-model="form.description" class="form-textarea" :disabled="!isAdmin"
+            placeholder="What is this workspace for?" aria-label="Description" style="line-height: 1.5;"></textarea>
+
         </div>
         <button v-if="isAdmin" class="btn btn-primary" :disabled="savingMeta" @click="saveMeta">
           {{ savingMeta ? 'Saving…' : 'Save changes' }}
@@ -533,13 +535,26 @@ watch(activeTab, (t) => loadTab(t))
         <p v-else class="text-muted text-sm">You need admin access to edit workspace settings.</p>
       </div>
       <template v-if="isOwner && !isSystemWs">
-        <div class="card-header" style="border-top: 1px solid var(--border-primary)"><h2 style="color: var(--danger-600)">Danger zone</h2></div>
-        <div class="card-body flex items-center justify-between">
-          <div>
-            <div style="font-weight: 600; color: var(--text-primary)">Delete this workspace</div>
-            <div class="text-muted text-sm">Permanently removes the workspace and all its resources.</div>
+        <div class="card card-danger mt-4">
+          <div class="card-header danger-header">
+            <div class="flex items-center gap-2">
+              <h2>Danger Zone</h2>
+            </div>
           </div>
-          <button class="btn btn-danger" @click="openDeleteModal">Delete workspace</button>
+
+          <div class="card-body card-body-danger">
+            <div class="danger-info">
+              <div class="danger-title">Delete this workspace</div>
+              <div class="text-muted text-sm">
+                Permanently removes the workspace, repositories, and all associated resources. This action cannot be
+                undone.
+              </div>
+            </div>
+
+            <button class="btn btn-danger btn-sm" @click="openDeleteModal">
+              Delete workspace
+            </button>
+          </div>
         </div>
       </template>
     </div>
