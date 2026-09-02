@@ -32,6 +32,31 @@ function emptyForm(): DomainInput {
   return { name: '', tls_mode: 'acme', wildcard: false }
 }
 
+// verifiedLabel qualifies the verified badge with how ownership was established, so an
+// admin override never looks like a DNS proof.
+function verifiedLabel(d: Domain): string {
+  if (d.verified_via === 'admin') return 'verified · admin override'
+  if (d.verified_via === 'dns_provider') return 'verified · DNS provider'
+  return 'verified'
+}
+
+// proofPresent reports whether the last ownership check found the TXT record. Meaningful
+// for any domain that has ever been checked, verified or not.
+function proofPresent(d: Domain): boolean {
+  return !!d.verification_checked_at && !d.verification_error
+}
+
+function lastChecked(d: Domain): string {
+  if (!d.verification_checked_at) return 'never checked'
+  const secs = Math.max(0, Math.round((Date.now() - new Date(d.verification_checked_at).getTime()) / 1000))
+  if (secs < 60) return 'checked just now'
+  const mins = Math.round(secs / 60)
+  if (mins < 60) return `checked ${mins}m ago`
+  const hours = Math.round(mins / 60)
+  if (hours < 24) return `checked ${hours}h ago`
+  return `checked ${Math.round(hours / 24)}d ago`
+}
+
 async function load(id: number | null) {
   if (!id) { items.value = []; dnsProviders.value = []; return }
   loading.value = true
@@ -193,11 +218,16 @@ const tlsModes: { value: DomainTLSMode; label: string }[] = [
               </td>
               <td>
                 <span v-if="d.banned" class="badge badge-danger" title="Banned by a platform administrator"><span class="mdi mdi-cancel"></span> banned</span>
-                <span v-else-if="d.verified" class="badge badge-success"><span class="mdi mdi-check-decagram"></span> verified</span>
+                <span v-else-if="d.verified" class="badge" :class="d.verified_via === 'admin' ? 'badge-info' : 'badge-success'" :title="d.verified_via === 'admin' ? 'Granted by a platform administrator, not proven by DNS' : ''">
+                  <span class="mdi" :class="d.verified_via === 'admin' ? 'mdi-shield-account-outline' : 'mdi-check-decagram'"></span> {{ verifiedLabel(d) }}
+                </span>
+                <span v-else-if="d.serving_unverified" class="badge badge-info" title="Serving because this workspace is privileged; ownership is still unproven">
+                  <span class="mdi mdi-shield-star-outline"></span> serving · unverified
+                </span>
                 <span v-else class="badge badge-warning"><span class="mdi mdi-clock-alert-outline"></span> pending</span>
               </td>
               <td class="text-right table-actions">
-                <button v-if="!d.verified && !d.banned" class="btn-icon btn-icon-muted" title="DNS setup" aria-label="DNS setup" @click="openDns(d)"><span class="mdi mdi-dns-outline"></span></button>
+                <button v-if="!d.banned" class="btn-icon btn-icon-muted" title="DNS records" aria-label="DNS records" @click="openDns(d)"><span class="mdi mdi-dns-outline"></span></button>
                 <button v-if="ws.canEdit && !d.verified && !d.banned" class="btn-icon btn-icon-muted" title="Verify now" aria-label="Verify now" :disabled="verifying === d.id" @click="verify(d)">
                   <span class="mdi" :class="verifying === d.id ? 'mdi-loading mdi-spin' : 'mdi-shield-check-outline'"></span>
                 </button>
@@ -245,38 +275,55 @@ const tlsModes: { value: DomainTLSMode; label: string }[] = [
     <Teleport to="body">
       <AppModal v-if="showDns && dnsDomain" @close="showDns = false">
         <div class="modal-header">
-          <h3>Verify {{ dnsDomain.name }}</h3>
+          <h3>DNS for {{ dnsDomain.name }}</h3>
           <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDns = false"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
-          <div v-if="dnsDomain.verified" class="gate gate-ok">
-            <span class="mdi mdi-check-decagram"></span> Ownership verified.
+          <!-- Ownership state first, then the record — the panel stays a diagnostic
+               after verification, which is when people actually need to read it. -->
+          <div v-if="dnsDomain.verified && dnsDomain.verified_via === 'admin'" class="gate gate-warn">
+            <span class="mdi mdi-shield-account-outline"></span>
+            Verified by a platform administrator, not by DNS. Routes serve normally and this is never
+            revoked automatically. Publish the record below and it converts to a DNS proof on its own.
           </div>
-          <template v-else-if="dnsDomain.automated">
-            <p class="note"><span class="mdi mdi-auto-fix"></span> A DNS provider is connected — Miabi creates the verification record for you. Just click <strong>Verify</strong>.</p>
-          </template>
-          <template v-else>
-            <p class="note">Add this <strong>TXT</strong> record at your DNS provider, then click Verify. Propagation can take a few minutes. <em>Tip: connect a DNS provider (the DNS column) to skip this step.</em></p>
-            <div class="dns-field">
-              <span class="dns-label">Type</span>
-              <code class="dns-value">TXT</code>
-            </div>
-            <div class="dns-field">
-              <span class="dns-label">Name / Host</span>
-              <code class="dns-value">{{ dnsDomain.challenge_host }}</code>
-              <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(dnsDomain.challenge_host)"><span class="mdi mdi-content-copy"></span></button>
-            </div>
-            <div class="dns-field">
-              <span class="dns-label">Value</span>
-              <code class="dns-value">{{ dnsDomain.challenge_value }}</code>
-              <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(dnsDomain.challenge_value)"><span class="mdi mdi-content-copy"></span></button>
-            </div>
-          </template>
+          <div v-else-if="dnsDomain.verified" class="gate gate-ok">
+            <span class="mdi mdi-check-decagram"></span> Ownership verified{{ dnsDomain.verified_via === 'dns_provider' ? ' through the connected DNS provider' : ' by DNS' }}.
+          </div>
+          <div v-else-if="dnsDomain.serving_unverified" class="gate gate-warn">
+            <span class="mdi mdi-shield-star-outline"></span>
+            Serving because this workspace is privileged — ownership is still unproven. Add the record
+            below to verify it properly.
+          </div>
+
+          <p class="check-line">
+            <span class="mdi" :class="proofPresent(dnsDomain) ? 'mdi-check-circle-outline check-ok' : 'mdi-alert-circle-outline check-bad'"></span>
+            {{ proofPresent(dnsDomain) ? 'TXT record found' : 'TXT record not found' }} · {{ lastChecked(dnsDomain) }}
+          </p>
+
+          <p v-if="dnsDomain.automated" class="note"><span class="mdi mdi-auto-fix"></span> A DNS provider is connected — Miabi creates and maintains this record for you.</p>
+          <p v-else-if="!dnsDomain.verified" class="note">Add this <strong>TXT</strong> record at your DNS provider, then click Verify. Propagation can take a few minutes. <em>Tip: connect a DNS provider (the DNS column) to skip this step.</em></p>
+          <p v-else class="note">This is the record that proves ownership. Keep it in place — removing it un-verifies the domain and takes its routes offline.</p>
+
+          <div class="dns-field">
+            <span class="dns-label">Type</span>
+            <code class="dns-value">TXT</code>
+          </div>
+          <div class="dns-field">
+            <span class="dns-label">Name / Host</span>
+            <code class="dns-value">{{ dnsDomain.challenge_host }}</code>
+            <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(dnsDomain.challenge_host)"><span class="mdi mdi-content-copy"></span></button>
+          </div>
+          <div class="dns-field">
+            <span class="dns-label">Value</span>
+            <code class="dns-value">{{ dnsDomain.challenge_value }}</code>
+            <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(dnsDomain.challenge_value)"><span class="mdi mdi-content-copy"></span></button>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" @click="showDns = false">Close</button>
-          <button v-if="ws.canEdit && !dnsDomain.verified" type="button" class="btn btn-primary" :disabled="verifying === dnsDomain.id" @click="verify(dnsDomain)">
-            <span class="mdi" :class="verifying === dnsDomain.id ? 'mdi-loading mdi-spin' : 'mdi-shield-check-outline'"></span> Verify
+          <button v-if="ws.canEdit" type="button" class="btn btn-primary" :disabled="verifying === dnsDomain.id" @click="verify(dnsDomain)">
+            <span class="mdi" :class="verifying === dnsDomain.id ? 'mdi-loading mdi-spin' : 'mdi-shield-check-outline'"></span>
+            {{ dnsDomain.verified ? 'Re-check' : 'Verify' }}
           </button>
         </div>
       </AppModal>
@@ -308,6 +355,10 @@ const tlsModes: { value: DomainTLSMode; label: string }[] = [
 .gate { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; font-size: 13px; }
 .gate .mdi { font-size: 18px; }
 .gate-ok { background: var(--success-50); color: var(--success-600); }
+.gate-warn { background: var(--warning-50); color: var(--warning-600); align-items: flex-start; line-height: 1.5; }
+.check-line { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); margin: 12px 0; }
+.check-ok { color: var(--success-500); }
+.check-bad { color: var(--warning-500); }
 .dns-field { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
 .dns-label { width: 92px; font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
 .dns-value { flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 12px; background: var(--bg-tertiary); padding: 6px 10px; border-radius: 6px; overflow-x: auto; white-space: nowrap; }

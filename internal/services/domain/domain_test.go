@@ -85,3 +85,67 @@ func TestDomainsOverlap(t *testing.T) {
 		})
 	}
 }
+
+// TestReverifyDecisionProofDecays pins the existing drift behaviour for a DNS-proven
+// domain: consecutive misses accumulate and the proof is revoked at the threshold.
+func TestReverifyDecisionProofDecays(t *testing.T) {
+	misses := 0
+	for i := 1; i < verifyMissThreshold; i++ {
+		out := reverifyDecision(models.VerifiedViaDNS, misses, i > 1, false)
+		if out.Unverify {
+			t.Fatalf("miss %d un-verified early (threshold %d)", i, verifyMissThreshold)
+		}
+		if !out.Failed || !out.Write {
+			t.Fatalf("miss %d = %+v, want a recorded failure", i, out)
+		}
+		misses = out.Misses
+	}
+	out := reverifyDecision(models.VerifiedViaDNS, misses, true, false)
+	if !out.Unverify {
+		t.Fatalf("miss %d = %+v, want the proof revoked", verifyMissThreshold, out)
+	}
+}
+
+// TestReverifyDecisionWaiverSurvives is the regression for the reported bug: an admin
+// override used to be re-checked like a proof, so the drift cron un-verified it a few
+// runs later and took its routes offline. A waiver must never be revoked, however many
+// times the TXT it never had fails to resolve.
+func TestReverifyDecisionWaiverSurvives(t *testing.T) {
+	misses := 0
+	for i := 1; i <= verifyMissThreshold*3; i++ {
+		out := reverifyDecision(models.VerifiedViaAdmin, misses, i > 1, false)
+		if out.Unverify {
+			t.Fatalf("admin waiver revoked after %d misses; a waiver has no proof to lose", i)
+		}
+		if !out.Failed {
+			t.Fatalf("miss %d = %+v, want the absent proof still recorded", i, out)
+		}
+		misses = out.Misses
+	}
+	if misses != verifyMissThreshold*3 {
+		t.Fatalf("misses = %d, want them still counted for display", misses)
+	}
+}
+
+// TestReverifyDecisionWaiverGraduates covers the promotion path: once an overridden
+// domain can prove itself, it stops being an override nobody remembers granting.
+func TestReverifyDecisionWaiverGraduates(t *testing.T) {
+	out := reverifyDecision(models.VerifiedViaAdmin, 4, true, true)
+	if !out.Promote || !out.Write {
+		t.Fatalf("a resolving waiver = %+v, want Promote and Write", out)
+	}
+	if out.Misses != 0 || out.Failed {
+		t.Fatalf("a resolving waiver = %+v, want the failure state cleared", out)
+	}
+}
+
+// TestReverifyDecisionCleanProofSkipsWrite keeps the steady state free of database
+// writes: a proven domain that still resolves changes nothing.
+func TestReverifyDecisionCleanProofSkipsWrite(t *testing.T) {
+	if out := reverifyDecision(models.VerifiedViaDNS, 0, false, true); out.Write {
+		t.Fatalf("a clean re-check = %+v, want no write", out)
+	}
+	if out := reverifyDecision(models.VerifiedViaDNS, 2, true, true); !out.Write {
+		t.Fatal("a recovered domain must clear its failure state")
+	}
+}

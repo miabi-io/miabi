@@ -16,6 +16,26 @@ const (
 	DomainTLSCustom DomainTLSMode = "custom"
 )
 
+// VerifiedVia records how a domain's ownership was established. It is the difference
+// between a proof and a waiver: only a DNS proof can go stale, so only a DNS proof may
+// be revoked by the drift cron.
+type VerifiedVia string
+
+const (
+	// VerifiedViaDNS is ownership proven by the challenge TXT record.
+	VerifiedViaDNS VerifiedVia = "dns"
+	// VerifiedViaDNSProvider is the same proof, on a domain whose records Miabi
+	// manages through a connected DNS provider.
+	VerifiedViaDNSProvider VerifiedVia = "dns_provider"
+	// VerifiedViaAdmin is a platform-admin override (ForceVerify) — a waiver granted
+	// for private or otherwise unreachable DNS, not a proof of ownership.
+	VerifiedViaAdmin VerifiedVia = "admin"
+)
+
+// IsWaiver reports whether ownership was granted rather than proven. A waiver is
+// never revoked by the drift cron: there is no record for it to lose.
+func (v VerifiedVia) IsWaiver() bool { return v == VerifiedViaAdmin }
+
 // Domain is a hostname (or zone) a workspace owns, tracking DNS-verified ownership and the
 // default TLS policy; routes bind hostnames resolving under a verified domain. Distinct from
 // the declarative Route kind, which is an HTTP routing rule.
@@ -34,6 +54,8 @@ type Domain struct {
 	Verified          bool       `json:"verified" gorm:"not null;default:false"`
 	VerifiedAt        *time.Time `json:"verified_at,omitempty"`
 	VerificationToken string     `json:"verification_token" gorm:"not null"`
+	// VerifiedVia records how ownership was established
+	VerifiedVia VerifiedVia `json:"verified_via" gorm:"not null;default:dns"`
 
 	// VerificationCheckedAt records the last ownership check (successful or not) and
 	// VerificationError the last failure reason. Together they give the UI a verification history
@@ -55,11 +77,12 @@ type Domain struct {
 	// DNSProviderID optionally links the domain to a connected DNS provider so
 	// Miabi automates the ownership TXT (and, later, app A/AAAA) records. nil =
 	// manual: the user adds DNS records by hand (today's copy-paste flow).
-	DNSProviderID *uint `json:"dns_provider_id,omitempty" gorm:"index"`
-	// DNSProvider declares the FK so deleting the provider nulls this link
-	// (ON DELETE SET NULL) — the domain reverts to manual DNS — instead of
-	// dangling. Association not serialized.
-	DNSProvider *DNSProvider `json:"-" gorm:"foreignKey:DNSProviderID;constraint:OnDelete:SET NULL"`
+	DNSProviderID *uint        `json:"dns_provider_id,omitempty" gorm:"index"`
+	DNSProvider   *DNSProvider `json:"-" gorm:"foreignKey:DNSProviderID;constraint:OnDelete:SET NULL"`
+
+	// ServingUnverified marks a domain the gateway serves despite failing the ownership
+	// gate
+	ServingUnverified bool `json:"serving_unverified,omitempty" gorm:"-"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

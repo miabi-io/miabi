@@ -72,6 +72,14 @@ const (
 	verifyMissThreshold = 3
 )
 
+// WorkspacePolicy reports whether a workspace is privileged. A privileged workspace's routes serve on a
+// registered-but-unverified domain (the route service's verified-host gate exempts them), so the domain
+// service reads the same signal to report that state instead of showing "pending" on a domain that is
+// plainly serving. Implemented by the workspace repository; injected after construction and nil-safe.
+type WorkspacePolicy interface {
+	IsPrivileged(workspaceID uint) (bool, error)
+}
+
 // ProxyResyncer re-renders a workspace's gateway config. The domain service calls it when ownership
 // changes, so the workspace's routes go live or offline without further action. Implemented by the route
 // service; injected after construction and nil-safe.
@@ -85,6 +93,7 @@ type Service struct {
 	lookup    lookupTXT
 	automator DNSAutomator
 	resyncer  ProxyResyncer
+	wsPolicy  WorkspacePolicy
 }
 
 // NewService wires the domain service. The default TXT lookup queries the
@@ -101,6 +110,38 @@ func (s *Service) SetDNSAutomator(a DNSAutomator) { s.automator = a }
 // SetProxyResyncer wires the gateway re-sync triggered on a verification change
 // (nil-safe; nil disables the automatic route go-live/offline).
 func (s *Service) SetProxyResyncer(r ProxyResyncer) { s.resyncer = r }
+
+// SetWorkspacePolicy wires the privileged-workspace lookup used to report which
+// unverified domains are being served anyway (nil-safe).
+func (s *Service) SetWorkspacePolicy(p WorkspacePolicy) { s.wsPolicy = p }
+
+// privileged reports whether a workspace bypasses the domain-verification gate.
+// A missing policy or a lookup error reads as not privileged, matching the route
+// service's fail-closed gate.
+func (s *Service) privileged(workspaceID uint) bool {
+	if s.wsPolicy == nil {
+		return false
+	}
+	p, err := s.wsPolicy.IsPrivileged(workspaceID)
+	if err != nil {
+		logger.Warn("failed to load workspace privilege for domain view", "workspace", workspaceID, "err", err)
+		return false
+	}
+	return p
+}
+
+// annotateServing fills the transient ServingUnverified flag on domains the gateway
+// serves without an ownership proof. Privilege is a serving exemption, never a claim,
+// so this only ever describes state — it must not verify anything.
+func (s *Service) annotateServing(workspaceID uint, domains []models.Domain) {
+	if len(domains) == 0 || !s.privileged(workspaceID) {
+		return
+	}
+	for i := range domains {
+		d := &domains[i]
+		d.ServingUnverified = !d.Verified && !d.Banned
+	}
+}
 
 // resync re-renders the workspace's gateway config after an ownership change, so
 // its routes flip live/offline. Best-effort: a failure is logged, not returned —
@@ -178,11 +219,18 @@ func (s *Service) Get(workspaceID, id uint) (*models.Domain, error) {
 	if err != nil {
 		return nil, ErrNotFound
 	}
-	return d, nil
+	one := []models.Domain{*d}
+	s.annotateServing(workspaceID, one)
+	return &one[0], nil
 }
 
 func (s *Service) List(workspaceID uint) ([]models.Domain, error) {
-	return s.repo.ListByWorkspace(workspaceID)
+	out, err := s.repo.ListByWorkspace(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	s.annotateServing(workspaceID, out)
+	return out, nil
 }
 
 func (s *Service) Delete(ctx context.Context, workspaceID, id uint) error {
@@ -273,6 +321,12 @@ func (s *Service) Verify(ctx context.Context, workspaceID, id uint) (*models.Dom
 		d.VerificationCheckedAt = &now
 		d.VerificationError = ""
 		d.VerificationMisses = 0
+		// A real proof supersedes any prior admin waiver, so an override stops being
+		// load-bearing the moment the domain can prove itself.
+		d.VerifiedVia = models.VerifiedViaDNS
+		if automated {
+			d.VerifiedVia = models.VerifiedViaDNSProvider
+		}
 		if err := s.repo.Update(d); err != nil {
 			return nil, err
 		}
@@ -345,6 +399,9 @@ func (s *Service) ForceVerify(ctx context.Context, workspaceID, id uint) (*model
 	d.VerificationCheckedAt = &now
 	d.VerificationError = ""
 	d.VerificationMisses = 0
+	// A waiver, not a proof: this is what stops the drift cron from un-verifying the
+	// domain a few runs later and taking its routes offline with it.
+	d.VerifiedVia = models.VerifiedViaAdmin
 	if err := s.repo.Update(d); err != nil {
 		return nil, err
 	}
@@ -399,6 +456,11 @@ func (s *Service) Unban(ctx context.Context, workspaceID, id uint) (*models.Doma
 // Reverify re-checks ownership for every verified, manually-managed domain and un-verifies any whose TXT
 // record has been missing for verifyMissThreshold consecutive runs, so transient DNS failures are
 // absorbed. Provider-automated domains are skipped — the DNS reconcile cron reasserts their records.
+//
+// Admin waivers are re-checked but never un-verified: a ForceVerify exists precisely because no TXT
+// record can be published, so revoking it would take the routes offline an hour after an override that
+// looked like it worked. They are still probed, because an absent proof is worth reporting and a proof
+// that appears promotes the waiver away (see reverifyOne).
 func (s *Service) Reverify(ctx context.Context) error {
 	domains, err := s.repo.ListVerifiedManual()
 	if err != nil {
@@ -415,25 +477,53 @@ func (s *Service) Reverify(ctx context.Context) error {
 	return nil
 }
 
-// reverifyOne re-checks a single verified domain's TXT record and persists the
-// outcome, un-verifying it once misses cross the threshold.
+// reverifyOutcome is what one drift re-check implies for a domain's stored state.
+type reverifyOutcome struct {
+	Misses   int  // the new consecutive-miss count
+	Failed   bool // record the verification error
+	Unverify bool // revoke the proof — never applied to a waiver
+	Promote  bool // a waiver proved itself; record it as a DNS proof from now on
+	Write    bool // anything worth persisting
+}
+
+// reverifyDecision is the pure state transition of one drift re-check, split out from the
+// I/O so the waiver rules are testable without a database. The rule it encodes: a proof
+// can go stale, a waiver cannot, and a waiver that starts resolving becomes a proof.
+func reverifyDecision(via models.VerifiedVia, misses int, hadError, matched bool) reverifyOutcome {
+	waiver := via.IsWaiver()
+	if matched {
+		return reverifyOutcome{Promote: waiver, Write: waiver || misses != 0 || hadError}
+	}
+	misses++
+	return reverifyOutcome{
+		Misses:   misses,
+		Failed:   true,
+		Unverify: !waiver && misses >= verifyMissThreshold,
+		Write:    true,
+	}
+}
+
+// reverifyOne re-checks a single verified domain's TXT record and persists the outcome. A proven domain
+// is un-verified once misses cross the threshold; a waiver only ever records what the check saw.
 func (s *Service) reverifyOne(ctx context.Context, d *models.Domain) {
 	now := time.Now()
 	d.VerificationCheckedAt = &now
-	if s.txtMatches(ctx, d) {
-		if d.VerificationMisses == 0 && d.VerificationError == "" {
-			return // still good, nothing changed — skip the write
-		}
-		d.VerificationMisses = 0
-		d.VerificationError = ""
-		if err := s.repo.Update(d); err != nil {
-			logger.Warn("domain reverify update failed", "domain", d.ID, "error", err)
-		}
-		return
+	out := reverifyDecision(d.VerifiedVia, d.VerificationMisses, d.VerificationError != "", s.txtMatches(ctx, d))
+	if !out.Write {
+		return // still good, nothing changed — skip the write
 	}
-	d.VerificationMisses++
-	d.VerificationError = ErrVerificationFailed.Error()
-	if d.VerificationMisses >= verifyMissThreshold {
+	d.VerificationMisses = out.Misses
+	if out.Failed {
+		d.VerificationError = ErrVerificationFailed.Error()
+	} else {
+		d.VerificationError = ""
+	}
+	if out.Promote {
+		d.VerifiedVia = models.VerifiedViaDNS
+		logger.Info("domain proved ownership; promoting admin override to a DNS proof",
+			"domain", d.ID, "name", d.Name)
+	}
+	if out.Unverify {
 		d.Verified = false
 		d.VerifiedAt = nil
 		logger.Warn("domain ownership lost; un-verifying", "domain", d.ID, "name", d.Name)
