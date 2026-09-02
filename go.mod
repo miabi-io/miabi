@@ -22,10 +22,31 @@ require (
 	github.com/jkaninda/okapi v0.11.0
 	github.com/jkaninda/wstunnel v0.0.2
 	github.com/joho/godotenv v1.5.1
+	github.com/libdns/acmedns v0.5.0
+	github.com/libdns/azure v0.5.0
+	github.com/libdns/bunny v1.6.1
 	github.com/libdns/cloudflare v0.2.2
+	github.com/libdns/cloudns v1.2.0
 	github.com/libdns/digitalocean v0.0.0-20250606071607-dfa7af5c2e31
+	github.com/libdns/gandi v1.1.0
+	github.com/libdns/glesys v1.0.0
+	github.com/libdns/godaddy v1.1.0
+	github.com/libdns/googleclouddns v1.2.0
+	github.com/libdns/hetzner v1.0.0
+	github.com/libdns/huaweicloud v1.0.1
+	github.com/libdns/infomaniak v0.2.0
 	github.com/libdns/libdns v1.1.1
+	github.com/libdns/linode v0.5.0
+	github.com/libdns/luadns v0.2.0
+	github.com/libdns/namecheap v1.0.0
+	github.com/libdns/namesilo v1.1.1
+	github.com/libdns/netcup v1.0.0
+	github.com/libdns/ovh v1.1.0
+	github.com/libdns/powerdns v0.1.4
 	github.com/libdns/route53 v1.6.2
+	github.com/libdns/scaleway v0.3.1
+	github.com/libdns/tencentcloud v1.4.3
+	github.com/libdns/transip v1.1.2
 	github.com/miabi-io/runner v0.0.10
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.24.1
@@ -39,7 +60,15 @@ require (
 )
 
 require (
+	cloud.google.com/go/auth v0.20.0 // indirect
+	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
+	cloud.google.com/go/compute/metadata v0.9.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.1 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.1 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/internal v1.12.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dns/armdns v1.2.0 // indirect
 	github.com/Azure/go-ntlmssp v0.1.1 // indirect
+	github.com/AzureAD/microsoft-authentication-library-for-go v1.6.0 // indirect
 	github.com/ProtonMail/go-mime v0.0.0-20230322103455-7d82a3887f2f // indirect
 	github.com/ProtonMail/gopenpgp/v2 v2.8.2 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.17 // indirect
@@ -47,9 +76,27 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.37 // indirect
 	github.com/dgryski/go-metro v0.0.0-20250106013310-edb8663e5e33 // indirect
 	github.com/go-asn1-ber/asn1-ber v1.5.8 // indirect
+	github.com/go-resty/resty/v2 v2.17.2 // indirect
+	github.com/google/s2a-go v0.1.9 // indirect
+	github.com/googleapis/enterprise-certificate-proxy v0.3.14 // indirect
+	github.com/googleapis/gax-go/v2 v2.21.0 // indirect
 	github.com/jkaninda/njia v0.0.3 // indirect
 	github.com/kamstrup/intmap v0.5.2 // indirect
+	github.com/kylelemons/godebug v1.1.0 // indirect
+	github.com/linode/linodego v1.68.0 // indirect
+	github.com/luadns/luadns-go v0.3.0 // indirect
+	github.com/mittwald/go-powerdns v0.6.6 // indirect
+	github.com/ovh/go-ovh v1.9.0 // indirect
+	github.com/pbergman/provider v1.1.1 // indirect
+	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
+	github.com/scaleway/scaleway-sdk-go v1.0.0-beta.36 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
+	google.golang.org/api v0.276.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
+	google.golang.org/grpc v1.81.1 // indirect
+	gopkg.in/ini.v1 v1.67.1 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
 require (
@@ -74,7 +121,7 @@ require (
 	github.com/aws/smithy-go v1.27.8
 	github.com/beevik/etree v1.5.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/boombuler/barcode v1.0.1 // indirect
+	github.com/boombuler/barcode v1.0.2 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect

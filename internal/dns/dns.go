@@ -8,17 +8,14 @@ package dns
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/libdns/cloudflare"
-	"github.com/libdns/digitalocean"
 	"github.com/libdns/libdns"
-	"github.com/libdns/route53"
 	"github.com/miabi-io/miabi/internal/dnscatalog"
-	"github.com/miabi-io/miabi/internal/models"
 )
 
 // Record is Miabi's provider-agnostic view of a DNS record. Name is a FQDN (the
@@ -66,31 +63,26 @@ func Build(providerType string, creds Credentials) (Provider, error) {
 	if err := d.Validate(creds); err != nil {
 		return nil, err
 	}
-	switch d.Type {
-	case models.DNSProviderCloudflare:
-		return newAdapter(&cloudflare.Provider{APIToken: creds["api_token"]}), nil
-	case models.DNSProviderDigitalOcean:
-		return newAdapter(&digitalocean.Provider{APIToken: creds["api_token"]}), nil
-	case models.DNSProviderRoute53:
-		return newAdapter(&route53.Provider{
-			AccessKeyId:     creds["access_key_id"],
-			SecretAccessKey: creds["secret_access_key"],
-			Region:          creds["region"],
-		}), nil
-	default:
+	build, ok := constructors[d.Type]
+	if !ok {
 		return nil, fmt.Errorf("DNS provider type %q is catalogued but not wired", providerType)
 	}
+	return newAdapter(build(creds)), nil
 }
+
+// probeDepth bounds parent-suffix probing for providers without zone enumeration.
+const probeDepth = 3
 
 type adapter struct {
 	z      zoneClient
 	lister libdns.ZoneLister
 	mu     sync.Mutex
 	zones  map[string]string
+	failed map[string]string
 }
 
 func newAdapter(z zoneClient) *adapter {
-	a := &adapter{z: z, zones: map[string]string{}}
+	a := &adapter{z: z, zones: map[string]string{}, failed: map[string]string{}}
 	if zl, ok := z.(libdns.ZoneLister); ok {
 		a.lister = zl
 	}
@@ -106,12 +98,21 @@ func (a *adapter) resolveZone(ctx context.Context, domain string) (string, error
 	}
 	a.mu.Lock()
 	cached, ok := a.zones[key]
+	failure, failedBefore := a.failed[key]
 	a.mu.Unlock()
 	if ok {
 		return cached, nil
 	}
+	// Negative results are cached too: without this, every record write for a domain the
+	// provider does not host repeats the whole probe against a rate-limited API.
+	if failedBefore {
+		return "", errors.New(failure)
+	}
 	zone, err := a.discoverZone(ctx, key)
 	if err != nil {
+		a.mu.Lock()
+		a.failed[key] = err.Error()
+		a.mu.Unlock()
 		return "", err
 	}
 	a.mu.Lock()
@@ -146,14 +147,32 @@ func (a *adapter) discoverZone(ctx context.Context, domain string) (string, erro
 		}
 		return canonicalZone(best), nil
 	}
-	// Fallback for providers without zone enumeration: try the domain and each
-	// parent
+	// Fallback for providers without zone enumeration: probe the domain and its parents,
+	// most specific first. Bounded to probeDepth candidates so a deep subdomain does not
+	// issue one API call per label against a rate-limited host.
 	labels := strings.Split(domain, ".")
-	for i := 0; i+1 < len(labels); i++ {
-		cand := strings.Join(labels[i:], ".")
-		if _, err := a.z.GetRecords(ctx, canonicalZone(cand)); err == nil {
-			return canonicalZone(cand), nil
+	empty := ""
+	tried := 0
+	for i := 0; i+1 < len(labels) && tried < probeDepth; i++ {
+		cand := canonicalZone(strings.Join(labels[i:], "."))
+		tried++
+		recs, err := a.z.GetRecords(ctx, cand)
+		if err != nil {
+			continue
 		}
+		// A zone that returns records is proof. An empty success is not — some hosts
+		// answer 200 with nothing for a zone the account does not hold — but an owned
+		// zone can legitimately be empty, so keep the first as a fallback rather than
+		// rejecting it.
+		if len(recs) > 0 {
+			return cand, nil
+		}
+		if empty == "" {
+			empty = cand
+		}
+	}
+	if empty != "" {
+		return empty, nil
 	}
 	return "", fmt.Errorf("could not find a DNS zone that manages %s", domain)
 }
