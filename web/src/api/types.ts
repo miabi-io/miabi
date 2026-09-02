@@ -162,8 +162,31 @@ export interface WorkspaceHistoryPoint {
   memory_bytes: number
 }
 
-// DNSProviderType is a connectable managed DNS host.
-export type DNSProviderType = 'cloudflare' | 'route53' | 'digitalocean'
+// DNSProviderType is a connectable managed DNS host. The dns-provider-catalog endpoint
+// is authoritative; this stays a string so a new host needs no frontend change.
+export type DNSProviderType = string
+
+export type DNSFieldType = 'string' | 'password' | 'textarea' | 'enum'
+
+export interface DNSProviderField {
+  key: string
+  label: string
+  type: DNSFieldType
+  required?: boolean
+  secret?: boolean
+  default?: string
+  options?: string[]
+  placeholder?: string
+  help?: string
+}
+
+export interface DNSProviderDescriptor {
+  type: string
+  label: string
+  fields: DNSProviderField[]
+  docs_url?: string
+  challenge_only?: boolean
+}
 
 // DNSProvider is a workspace's connection to a DNS host. Credentials are
 // write-only and never returned.
@@ -175,22 +198,25 @@ export interface DNSProvider {
   type: DNSProviderType
   status: 'ok' | 'error'
   last_error?: string
+  credentials_public?: Record<string, string>
   created_at?: string
   updated_at?: string
 }
 
-// DNSProviderCredentials carries the per-type credential fields (write-only).
-export interface DNSProviderCredentials {
-  api_token?: string // cloudflare, digitalocean
-  access_key_id?: string // route53
-  secret_access_key?: string // route53
-  region?: string // route53
-}
+// DNSProviderCredentials is keyed by the field names the type's descriptor declares.
+export type DNSProviderCredentials = Record<string, string>
 
 export interface ConnectDNSProviderInput {
   name: string
+  display_name?: string
   type: DNSProviderType
   credentials: DNSProviderCredentials
+  test_zone?: string
+}
+
+export interface UpdateDNSProviderInput {
+  display_name?: string
+  credentials?: DNSProviderCredentials
   test_zone?: string
 }
 

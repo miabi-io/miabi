@@ -8,8 +8,9 @@ import (
 	"strconv"
 
 	"github.com/jkaninda/okapi"
-	"github.com/miabi-io/miabi/internal/dns"
+	"github.com/miabi-io/miabi/internal/dnscatalog"
 	"github.com/miabi-io/miabi/internal/middlewares"
+	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/dnsprovider"
 )
@@ -25,31 +26,21 @@ func NewDNSProviderHandler(svc *dnsprovider.Service, auditLog *audit.Logger) *DN
 	return &DNSProviderHandler{svc: svc, audit: auditLog}
 }
 
-// credentialsBody carries every provider's credential fields; only those for the
-// chosen type are read. Write-only (never serialized back).
-type credentialsBody struct {
-	APIToken        string `json:"api_token,omitempty"`         // cloudflare, digitalocean
-	AccessKeyID     string `json:"access_key_id,omitempty"`     // route53
-	SecretAccessKey string `json:"secret_access_key,omitempty"` // route53
-	Region          string `json:"region,omitempty"`            // route53
-}
-
-func (b credentialsBody) toCredentials() dns.Credentials {
-	return dns.Credentials{
-		APIToken: b.APIToken, AccessKeyID: b.AccessKeyID,
-		SecretAccessKey: b.SecretAccessKey, Region: b.Region,
-	}
-}
-
 type ConnectDNSProviderRequest struct {
 	Body struct {
-		Name        string          `json:"name" required:"true"` // desired unique slug handle
-		DisplayName string          `json:"display_name"`         // free-text label (defaults to name)
-		Type        string          `json:"type" required:"true" enum:"cloudflare,route53,digitalocean"`
-		Credentials credentialsBody `json:"credentials"`
-		// TestZone, when set, is one of your domains on this provider; the
-		// credential is validated against it before being stored.
-		TestZone string `json:"test_zone,omitempty"`
+		Name        string            `json:"name" required:"true"` // desired unique slug handle
+		DisplayName string            `json:"display_name"`         // free-text label (defaults to name)
+		Type        string            `json:"type" required:"true"`
+		Credentials map[string]string `json:"credentials"`
+		TestZone    string            `json:"test_zone,omitempty"`
+	} `json:"body"`
+}
+
+type UpdateDNSProviderRequest struct {
+	Body struct {
+		DisplayName *string           `json:"display_name,omitempty"`
+		Credentials map[string]string `json:"credentials,omitempty"`
+		TestZone    string            `json:"test_zone,omitempty"`
 	} `json:"body"`
 }
 
@@ -59,25 +50,38 @@ type TestDNSProviderRequest struct {
 	} `json:"body"`
 }
 
+type providerView struct {
+	*models.DNSProvider
+	CredentialsPublic map[string]string `json:"credentials_public"`
+}
+
+func (h *DNSProviderHandler) view(p *models.DNSProvider) providerView {
+	return providerView{DNSProvider: p, CredentialsPublic: h.svc.PublicCredentials(p)}
+}
+
 func (h *DNSProviderHandler) List(c *okapi.Context) error {
 	items, err := h.svc.List(middlewares.WorkspaceID(c))
 	if err != nil {
 		return c.AbortInternalServerError("failed to list DNS providers", err)
 	}
-	return ok(c, items)
+	out := make([]providerView, 0, len(items))
+	for i := range items {
+		out = append(out, h.view(&items[i]))
+	}
+	return ok(c, out)
 }
 
 func (h *DNSProviderHandler) Connect(c *okapi.Context, req *ConnectDNSProviderRequest) error {
 	wsID := middlewares.WorkspaceID(c)
 	p, err := h.svc.Connect(c.Request().Context(), wsID, dnsprovider.ConnectInput{
 		Name: req.Body.Name, DisplayName: req.Body.DisplayName, Type: req.Body.Type,
-		Credentials: req.Body.Credentials.toCredentials(), TestZone: req.Body.TestZone,
+		Credentials: req.Body.Credentials, TestZone: req.Body.TestZone,
 	})
 	if err != nil {
 		return h.mapErr(c, err)
 	}
 	h.record(c, wsID, "dns_provider.connect", p.ID)
-	return created(c, p)
+	return created(c, h.view(p))
 }
 
 func (h *DNSProviderHandler) Get(c *okapi.Context) error {
@@ -90,6 +94,29 @@ func (h *DNSProviderHandler) Get(c *okapi.Context) error {
 		return c.AbortNotFound("DNS provider not found")
 	}
 	return ok(c, p)
+}
+
+func (h *DNSProviderHandler) Update(c *okapi.Context, req *UpdateDNSProviderRequest) error {
+	id, err := uintParam(c, "providerID")
+	if err != nil {
+		return c.AbortBadRequest("invalid provider id")
+	}
+	wsID := middlewares.WorkspaceID(c)
+	p, err := h.svc.Update(c.Request().Context(), wsID, id, dnsprovider.UpdateInput{
+		DisplayName: req.Body.DisplayName,
+		Credentials: req.Body.Credentials,
+		TestZone:    req.Body.TestZone,
+	})
+	if err != nil {
+		return h.mapErr(c, err)
+	}
+	h.record(c, wsID, "dns_provider.update", id)
+	return ok(c, h.view(p))
+}
+
+// Catalog lists the connectable DNS hosts and the credential fields each needs.
+func (h *DNSProviderHandler) Catalog(c *okapi.Context) error {
+	return ok(c, dnscatalog.All())
 }
 
 func (h *DNSProviderHandler) Test(c *okapi.Context, req *TestDNSProviderRequest) error {
@@ -134,7 +161,8 @@ func (h *DNSProviderHandler) mapErr(c *okapi.Context, err error) error {
 		return c.AbortNotFound("DNS provider not found")
 	case errors.Is(err, dnsprovider.ErrNameTaken):
 		return c.AbortWithError(409, err)
-	case errors.Is(err, dnsprovider.ErrNameRequired), errors.Is(err, dnsprovider.ErrInvalidType):
+	case errors.Is(err, dnsprovider.ErrNameRequired), errors.Is(err, dnsprovider.ErrInvalidType),
+		errors.Is(err, dnsprovider.ErrInvalidCredentials):
 		return c.AbortBadRequest(err.Error())
 	default:
 		// A failed connection test (bad token / no zone access) is a client error.

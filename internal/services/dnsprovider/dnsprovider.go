@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/miabi-io/miabi/internal/dns"
+	"github.com/miabi-io/miabi/internal/dnscatalog"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/services/quota"
@@ -28,6 +29,8 @@ var (
 	ErrNameRequired = errors.New("name is required")
 	ErrNameTaken    = errors.New("a DNS provider with that name already exists")
 	ErrInvalidType  = errors.New("unknown DNS provider type")
+	// ErrInvalidCredentials rejects a rotation whose credential cannot build a provider.
+	ErrInvalidCredentials = errors.New("the credentials are not valid for this provider type")
 )
 
 // Service manages DNS provider connections and the records Miabi creates through
@@ -76,7 +79,7 @@ func (s *Service) Connect(ctx context.Context, workspaceID uint, in ConnectInput
 	if displayName == "" {
 		displayName = strings.TrimSpace(in.Name)
 	}
-	if !models.ValidDNSProviderType(in.Type) {
+	if _, ok := dnscatalog.Get(in.Type); !ok {
 		return nil, ErrInvalidType
 	}
 	if s.quota.Enabled() {
@@ -110,6 +113,61 @@ func (s *Service) Connect(ctx context.Context, workspaceID uint, in ConnectInput
 		return nil, err
 	}
 	return p, nil
+}
+
+// UpdateInput rotates a provider's credentials and/or renames it. Type is immutable.
+type UpdateInput struct {
+	DisplayName *string
+	Credentials dns.Credentials
+	TestZone    string
+}
+
+// Update rotates credentials and/or renames a provider. A credential that fails to build, or
+// fails TestZone, leaves the stored one untouched.
+func (s *Service) Update(ctx context.Context, workspaceID, id uint, in UpdateInput) (*models.DNSProvider, error) {
+	p, err := s.get(workspaceID, id)
+	if err != nil {
+		return nil, err
+	}
+	if len(in.Credentials) > 0 {
+		prov, berr := dns.Build(p.Type, in.Credentials)
+		if berr != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidCredentials, berr)
+		}
+		if zone := strings.TrimSpace(in.TestZone); zone != "" {
+			if terr := prov.Test(ctx, zone); terr != nil {
+				return nil, fmt.Errorf("connection test failed: %w", terr)
+			}
+		}
+		enc, eerr := encryptCreds(workspaceID, in.Credentials)
+		if eerr != nil {
+			return nil, eerr
+		}
+		p.CredentialsEnc = enc
+		p.Status, p.LastError = models.DNSProviderStatusOK, ""
+	}
+	if in.DisplayName != nil {
+		if name := strings.TrimSpace(*in.DisplayName); name != "" {
+			p.DisplayName = name
+		}
+	}
+	if err := s.repo.Update(p); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+// PublicCredentials returns the non-secret credential fields for display.
+func (s *Service) PublicCredentials(p *models.DNSProvider) map[string]string {
+	d, ok := dnscatalog.Get(p.Type)
+	if !ok {
+		return map[string]string{}
+	}
+	creds, err := decryptCreds(p.CredentialsEnc)
+	if err != nil {
+		return map[string]string{}
+	}
+	return d.Public(creds)
 }
 
 // Test re-validates a stored provider against a zone and records the result on

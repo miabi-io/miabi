@@ -21,6 +21,8 @@ const (
 )
 
 // ValidDNSProviderType reports whether t is a known provider type.
+//
+// Deprecated: the dnscatalog package is the source of truth; call dnscatalog.Get.
 func ValidDNSProviderType(t string) bool {
 	switch t {
 	case DNSProviderCloudflare, DNSProviderRoute53, DNSProviderDigitalOcean:
