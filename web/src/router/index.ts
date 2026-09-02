@@ -52,6 +52,7 @@ const routes = [
       { path: 'environments', name: 'environments', component: () => import('@/views/environments/Environments.vue'), meta: { title: 'Environments' } },
       { path: 'networks', name: 'networks', component: () => import('@/views/networking/Networks.vue'), meta: { title: 'Networks' } },
       { path: 'domains', name: 'domains', component: () => import('@/views/networking/Domains.vue'), meta: { title: 'Domains' } },
+      { path: 'domains/:id', name: 'domain-detail', component: () => import('@/views/networking/DomainDetail.vue'), meta: { title: 'Domain' } },
       { path: 'dns-providers', name: 'dns-providers', component: () => import('@/views/networking/DnsProviders.vue'), meta: { title: 'DNS Providers' } },
       { path: 'routes', name: 'routes', component: () => import('@/views/networking/Routes.vue'), meta: { title: 'Routes' } },
       { path: 'routes/:id', name: 'route-detail', component: () => import('@/views/networking/RouteDetail.vue'), meta: { title: 'Route' } },

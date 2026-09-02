@@ -1,5 +1,5 @@
 import api from './client'
-import type { ApiResponse, Domain, DomainTLSMode } from './types'
+import type { ApiResponse, Domain, DomainDetail, DomainTLSMode } from './types'
 
 export interface DomainInput {
   name: string
@@ -11,7 +11,7 @@ const base = (ws: number) => `/workspaces/${ws}/domains`
 
 export const domainApi = {
   list: (ws: number) => api.get<ApiResponse<Domain[]>>(base(ws)),
-  get: (ws: number, id: number) => api.get<ApiResponse<Domain>>(`${base(ws)}/${id}`),
+  get: (ws: number, id: number) => api.get<ApiResponse<DomainDetail>>(`${base(ws)}/${id}`),
   create: (ws: number, input: DomainInput) => api.post<ApiResponse<Domain>>(base(ws), input),
   update: (ws: number, id: number, input: DomainInput) =>
     api.patch<ApiResponse<Domain>>(`${base(ws)}/${id}`, input),

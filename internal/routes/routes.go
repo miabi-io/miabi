@@ -1015,7 +1015,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			network:         handlers.NewNetworkHandler(networkService, auditLogger),
 			stack:           handlers.NewStackHandler(stackService, auditLogger),
 			route:           handlers.NewRouteHandler(routeService, settingsProvider, auditLogger),
-			domain:          handlers.NewDomainHandler(domainService, auditLogger),
+			domain:          handlers.NewDomainHandler(domainService, routeRepo, auditLogger),
 			dnsProvider:     handlers.NewDNSProviderHandler(dnsProviderService, auditLogger),
 			middleware:      handlers.NewMiddlewareHandler(middlewareService, auditLogger),
 			portBinding:     handlers.NewPortBindingHandler(portBindingService, auditLogger),

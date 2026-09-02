@@ -2350,6 +2350,22 @@ export interface AdminDomainRoute {
   enabled: boolean
 }
 
+// DomainRoute is a route served under a domain, shown on the domain detail page.
+export interface DomainRoute {
+  id: number
+  name: string
+  hosts: string[]
+  status: RouteStatus
+  status_reason?: string
+  enabled: boolean
+}
+
+// DomainDetail is the single-domain response: the list shape plus the routes this
+// domain gates.
+export interface DomainDetail extends Domain {
+  routes: DomainRoute[]
+}
+
 export interface AdminDomainDetail extends Domain {
   workspace_name: string
   workspace_privileged: boolean
