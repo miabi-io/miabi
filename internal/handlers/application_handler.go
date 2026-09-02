@@ -619,7 +619,8 @@ func (h *ApplicationHandler) AttachVolume(c *okapi.Context, req *AttachVolumeReq
 			return c.AbortNotFound("volume not found")
 		case errors.Is(err, application.ErrMountPathRequired):
 			return c.AbortBadRequest("path is required")
-		case errors.Is(err, application.ErrNodeMismatch), errors.Is(err, application.ErrLocalVolumeReplicated):
+		case errors.Is(err, application.ErrNodeMismatch), errors.Is(err, application.ErrLocalVolumeReplicated),
+			errors.Is(err, application.ErrVolumeUnverifiable):
 			return c.AbortBadRequest(err.Error())
 		default:
 			return c.AbortInternalServerError("failed to attach volume", err)
@@ -1247,15 +1248,14 @@ func (h *ApplicationHandler) mapErr(c *okapi.Context, err error) error {
 	case errors.Is(err, application.ErrNameInvalid):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, application.ErrImageNotPermitted):
-		// A tenant boundary, not a malformed field: the image exists, it just isn't
-		// this workspace's to run.
 		return c.AbortForbidden(err.Error())
 	case errors.Is(err, application.ErrImageRequired), errors.Is(err, application.ErrGitRepoRequired),
 		errors.Is(err, application.ErrBuildConfigOnImage), errors.Is(err, application.ErrInvalidBuildMethod),
 		errors.Is(err, application.ErrInvalidGPUCount):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, application.ErrResourceCap), errors.Is(err, application.ErrClusterDisabled),
-		errors.Is(err, application.ErrLocalVolumeReplicated), errors.Is(err, application.ErrTooManyReplicas),
+		errors.Is(err, application.ErrLocalVolumeReplicated), errors.Is(err, application.ErrVolumeUnverifiable),
+		errors.Is(err, application.ErrTooManyReplicas),
 		errors.Is(err, application.ErrPortRange), errors.Is(err, models.ErrRunAsUserInvalid),
 		errors.Is(err, models.ErrRunAsUserRoot):
 		return c.AbortBadRequest(err.Error())
