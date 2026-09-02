@@ -28,6 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/slug"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 	"github.com/miabi-io/miabi/internal/worker"
+	"gorm.io/gorm"
 )
 
 var (
@@ -67,8 +68,11 @@ var (
 	ErrNotService            = errors.New("this operation is only valid for service-runtime (cluster) applications")
 	ErrLocalVolumeReplicated = errors.New("a replicated (replicas>1) service cannot mount a node-local volume; use a shared (nfs/cifs) volume or set replicas to 1")
 	ErrHostBindService       = errors.New("a service-runtime app cannot use a privileged host mount; host paths are node-local and don't follow a rescheduled task — use the container runtime or a managed volume")
-	ErrTooManyReplicas       = fmt.Errorf("replica count exceeds the maximum of %d", MaxReplicas)
-	ErrPortRange             = errors.New("container port must be between 1 and 65535")
+	// ErrVolumeUnverifiable fails the storage guards closed. A guard that cannot read a
+	// mounted volume cannot prove it is shared, and guessing "shared" forks the data.
+	ErrVolumeUnverifiable = errors.New("a mounted volume could not be read, so it cannot be confirmed as shared storage; replication is refused until it resolves")
+	ErrTooManyReplicas    = fmt.Errorf("replica count exceeds the maximum of %d", MaxReplicas)
+	ErrPortRange          = errors.New("container port must be between 1 and 65535")
 )
 
 // MaxReplicas caps a service app's replica count so a single request can't ask
@@ -147,7 +151,7 @@ type Service struct {
 	apps         *repositories.ApplicationRepository
 	deployments  *repositories.DeploymentRepository
 	releases     *repositories.ReleaseRepository
-	volumes      *repositories.VolumeRepository
+	volumes      volumeLookup
 	routes       *repositories.RouteRepository
 	networks     *repositories.NetworkRepository
 	stacks       *repositories.StackRepository
@@ -457,6 +461,12 @@ func normalizeHealthcheck(app *models.Application) {
 	if app.HealthcheckStartPeriodSeconds < 0 {
 		app.HealthcheckStartPeriodSeconds = 0
 	}
+}
+
+// volumeLookup resolves a mounted volume within its workspace. Narrowed to the one
+// method the storage guards need so they can be tested against a fake.
+type volumeLookup interface {
+	FindInWorkspace(workspaceID, id uint) (*models.Volume, error)
 }
 
 func NewService(
@@ -1223,6 +1233,22 @@ func (s *Service) validateRuntime(app *models.Application) error {
 	return s.requireSharedStorage(app, app.Replicas)
 }
 
+// resolveMountVolume reads a mount's volume for the storage guards.
+func (s *Service) resolveMountVolume(workspaceID, volumeID uint) (*models.Volume, error) {
+	if s.volumes == nil {
+		return nil, ErrVolumeUnverifiable
+	}
+	v, err := s.volumes.FindInWorkspace(workspaceID, volumeID)
+	switch {
+	case err == nil:
+		return v, nil
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		return nil, ErrVolumeNotFound
+	default:
+		return nil, fmt.Errorf("%w (volume %d: %v)", ErrVolumeUnverifiable, volumeID, err)
+	}
+}
+
 // requireSharedStorage guards a service app's storage against the ways a scheduled swarm task and
 // node-local data diverge: a privileged host-path bind can never follow a task to another node and is
 // rejected outright, and a node-local (rwo) volume is rejected once replicas > 1. No-op for container apps.
@@ -1237,9 +1263,9 @@ func (s *Service) requireSharedStorage(app *models.Application, replicas int) er
 		if m.VolumeID == 0 || replicas <= 1 {
 			continue
 		}
-		v, err := s.volumes.FindInWorkspace(app.WorkspaceID, m.VolumeID)
+		v, err := s.resolveMountVolume(app.WorkspaceID, m.VolumeID)
 		if err != nil {
-			continue
+			return err
 		}
 		if v.AccessMode != models.AccessRWX {
 			return ErrLocalVolumeReplicated
@@ -1259,8 +1285,9 @@ func (s *Service) hasNodeLocalStorage(app *models.Application) bool {
 		if m.VolumeID == 0 {
 			continue
 		}
-		if v, err := s.volumes.FindInWorkspace(app.WorkspaceID, m.VolumeID); err == nil && v.AccessMode != models.AccessRWX {
-			return true // rwo managed volume: node-local
+		v, err := s.resolveMountVolume(app.WorkspaceID, m.VolumeID)
+		if err != nil || v.AccessMode != models.AccessRWX {
+			return true // rwo managed volume, or one we cannot read: treat as node-local
 		}
 	}
 	return false
@@ -1274,8 +1301,7 @@ func (s *Service) reconcileAutoRuntime(appID uint) {
 	if err != nil || app.Metadata[models.MetaRuntimeAutoService] != "true" {
 		return
 	}
-	// Only re-evaluate before the first release exists; after that the runtime is
-	// settled and changing it mid-life would be a disruptive surprise.
+
 	downgrade := app.CurrentReleaseID == nil && app.RuntimeKind == models.RuntimeService && s.hasNodeLocalStorage(app)
 	if downgrade {
 		app.RuntimeKind = models.RuntimeContainer
@@ -1706,9 +1732,9 @@ func (s *Service) AttachConfig(app *models.Application, configID uint, key, path
 }
 
 func (s *Service) AttachVolume(app *models.Application, volumeID uint, path string) error {
-	vol, err := s.volumes.FindInWorkspace(app.WorkspaceID, volumeID)
+	vol, err := s.resolveMountVolume(app.WorkspaceID, volumeID)
 	if err != nil {
-		return ErrVolumeNotFound
+		return err
 	}
 	// A host-path volume binds an operator-managed path present on every node, so
 	// it is node-agnostic (unlike a node-local Docker volume, which must co-locate
