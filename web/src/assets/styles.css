@@ -602,6 +602,57 @@ tbody tr:hover td { background: var(--bg-hover); }
 .stat-icon-secondary { background: var(--bg-tertiary); color: var(--text-secondary); }
 .stat-icon-info { background: var(--primary-50); color: var(--primary-500); }
 
+
+/* ─── danger card ─── */
+
+.card-danger {
+  border: 1px solid var(--danger-200);
+  background: var(--bg-primary);
+}
+
+[data-theme="dark"] .card-danger {
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.card-header.danger-header {
+  background: var(--danger-50);
+  border-bottom: 1px solid var(--danger-200);
+  padding: 14px 24px;
+}
+
+[data-theme="dark"] .card-header.danger-header {
+  background: color-mix(in srgb, var(--danger-900) 20%, transparent);
+  border-bottom-color: rgba(239, 68, 68, 0.2);
+}
+
+.card-header.danger-header h2 {
+  color: var(--danger-600);
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+[data-theme="dark"] .card-header.danger-header h2 {
+  color: var(--danger-400);
+}
+
+.danger-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.danger-info {
+  max-width: 520px;
+}
+.card-body-danger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 /* ─── Page Headers ─── */
 .page-header {
   display: flex;
@@ -798,6 +849,52 @@ input[type="checkbox"]:checked::before {
   transform: scale(1);
 }
 
+input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-input);
+  
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  margin: 0;
+}
+
+input[type="radio"]:hover:not(:disabled) {
+  border-color: var(--border-focus);
+}
+
+input[type="radio"]:checked {
+  background-color: var(--primary-600);
+  border-color: var(--primary-600);
+}
+
+input[type="radio"]::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--text-on-primary);
+  
+  transform: scale(0);
+  transition: transform 0.1s ease-in-out;
+}
+
+input[type="radio"]:checked::before {
+  transform: scale(1);
+}
+
+input[type="radio"]:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
 /* ─── Code block ─── */
 .code-block {
   background: var(--bg-code);
@@ -1209,5 +1306,15 @@ input[type="checkbox"]:checked::before {
     padding: 8px 12px;
     font-size: 14px;
     flex-shrink: 0;
+  }
+
+  .card-body-danger {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .card-body-danger .btn {
+    width: 100%; 
   }
 }
