@@ -24,6 +24,8 @@ const (
 	EventDomainVerified   AppEventType = "domain.verified"
 	EventVolumeAttached   AppEventType = "volume.attached"
 	EventVolumeDetached   AppEventType = "volume.detached"
+	EventConfigAttached   AppEventType = "config.attached"
+	EventConfigDetached   AppEventType = "config.detached"
 	EventSettingsUpdated  AppEventType = "settings.updated"
 	EventAppCreated       AppEventType = "app.created"
 	EventAppDeleted       AppEventType = "app.deleted"

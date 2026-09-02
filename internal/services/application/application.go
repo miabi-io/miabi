@@ -58,6 +58,9 @@ var (
 	ErrStackNotFound      = errors.New("stack not found in workspace")
 	ErrAppRunning         = errors.New("stop the application before deleting it")
 	ErrNodeMismatch       = errors.New("the volume is on a different node than this application")
+	ErrConfigNotFound     = errors.New("config not found in workspace")
+	ErrConfigKeyNotFound  = errors.New("the config does not contain that file")
+	ErrMountNotFound      = errors.New("that mount is not attached to this application")
 
 	ErrUnknownHostPreset      = errors.New("unknown host mount preset")
 	ErrHostMountNotPrivileged = errors.New("host mounts require a privileged workspace")
@@ -1719,6 +1722,12 @@ func (s *Service) AttachConfig(app *models.Application, configID uint, key, path
 	if path == "" {
 		return ErrMountPathRequired
 	}
+	// Validated here rather than at deploy: a mount naming a config from another
+	// workspace, or a key the config does not carry, fails silently in the runtime
+	// far from whoever created it.
+	if err := s.validateConfigMount(app.WorkspaceID, configID, key); err != nil {
+		return err
+	}
 	for i, m := range app.Mounts {
 		if m.ConfigID == configID && m.ConfigKey == key {
 			app.Mounts[i].Path, app.Mounts[i].Mode = path, mode
@@ -1728,7 +1737,70 @@ func (s *Service) AttachConfig(app *models.Application, configID uint, key, path
 	app.Mounts = append(app.Mounts, models.AppMount{
 		ConfigID: configID, ConfigKey: key, Path: path, Mode: mode, ReadOnly: true,
 	})
-	return s.apps.Update(app)
+	if err := s.apps.Update(app); err != nil {
+		return err
+	}
+	s.emit(app, models.EventConfigAttached, "Config file mounted at "+path)
+	return nil
+}
+
+// validateConfigMount confirms the config is this workspace's and, when a single
+// file is selected, that the config actually carries that key. A nil config reader
+// (none wired) skips the check rather than blocking the mount.
+func (s *Service) validateConfigMount(workspaceID, configID uint, key string) error {
+	if s.configs == nil {
+		return nil
+	}
+	cfg, err := s.configs.Get(workspaceID, configID)
+	if err != nil {
+		return ErrConfigNotFound
+	}
+	if key == "" {
+		return nil // the whole config projects under Path; every key is in scope
+	}
+	data, err := s.configs.Data(cfg)
+	if err != nil {
+		// The content cannot be read, so the key cannot be disproved. Attaching a
+		// mount is not the place to fail on a decryption problem the config page
+		// reports properly.
+		return nil
+	}
+	if _, ok := data[key]; !ok {
+		return ErrConfigKeyNotFound
+	}
+	return nil
+}
+
+// DetachConfig removes a config mount. key selects one of several mounts of the
+// same config; an empty key removes the whole-config mount. Takes effect on the
+// next deploy, like every other mount change.
+func (s *Service) DetachConfig(app *models.Application, configID uint, key string) error {
+	out, removed := removeConfigMount(app.Mounts, configID, key)
+	if !removed {
+		return ErrMountNotFound
+	}
+	app.Mounts = out
+	if err := s.apps.Update(app); err != nil {
+		return err
+	}
+	s.emit(app, models.EventConfigDetached, "Config file mount removed")
+	return nil
+}
+
+// removeConfigMount drops the mount of configID projecting key, and reports whether
+// one was found. Both halves of the identity matter: the same config can be mounted
+// several times, once per file, and matching on the id alone would remove them all.
+func removeConfigMount(mounts []models.AppMount, configID uint, key string) ([]models.AppMount, bool) {
+	out := make([]models.AppMount, 0, len(mounts))
+	removed := false
+	for _, m := range mounts {
+		if m.ConfigID == configID && m.ConfigKey == key {
+			removed = true
+			continue
+		}
+		out = append(out, m)
+	}
+	return out, removed
 }
 
 func (s *Service) AttachVolume(app *models.Application, volumeID uint, path string) error {

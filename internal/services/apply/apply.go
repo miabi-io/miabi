@@ -2146,7 +2146,27 @@ func (s *Service) reconcileEnv(appID uint, spec *declarative.ApplicationSpec) er
 // manifest-expressible and are left untouched. Volumes apply before their app, so they resolve on a first apply.
 func (s *Service) reconcileMounts(workspaceID uint, app *models.Application, spec *declarative.ApplicationSpec) error {
 	keep := make(map[uint]bool, len(spec.Mounts))
+	// configMountKey identifies one config mount: the same config may be mounted
+	// several times, once per file it projects.
+	type configMountKey struct {
+		id  uint
+		key string
+	}
+	keepConfig := map[configMountKey]bool{}
+
 	for _, mt := range spec.Mounts {
+		// A mount declares a volume or a config, never both (enforced by validation).
+		if mt.Config != "" {
+			cfg, err := s.findConfig(workspaceID, mt.Config)
+			if err != nil {
+				return fmt.Errorf("%w: application %q: %v", ErrInvalidManifest, app.Name, err)
+			}
+			if err := s.apps.AttachConfig(app, cfg.ID, mt.Key, mt.Path, mt.Mode); err != nil {
+				return fmt.Errorf("mount config %q on %q: %w", mt.Config, app.Name, err)
+			}
+			keepConfig[configMountKey{cfg.ID, mt.Key}] = true
+			continue
+		}
 		vol, err := s.findVolume(workspaceID, mt.Volume)
 		if err != nil {
 			return fmt.Errorf("%w: application %q: %v", ErrInvalidManifest, app.Name, err)
@@ -2168,7 +2188,31 @@ func (s *Service) reconcileMounts(workspaceID uint, app *models.Application, spe
 			return fmt.Errorf("detach volume from %q: %w", app.Name, err)
 		}
 	}
+	// Same for config mounts the manifest no longer declares.
+	var staleConfigs []configMountKey
+	for _, m := range app.Mounts {
+		if m.ConfigID != 0 && !keepConfig[configMountKey{m.ConfigID, m.ConfigKey}] {
+			staleConfigs = append(staleConfigs, configMountKey{m.ConfigID, m.ConfigKey})
+		}
+	}
+	for _, k := range staleConfigs {
+		if err := s.apps.DetachConfig(app, k.id, k.key); err != nil {
+			return fmt.Errorf("remove config mount from %q: %w", app.Name, err)
+		}
+	}
 	return nil
+}
+
+// findConfig resolves a config by its manifest name within the workspace.
+func (s *Service) findConfig(workspaceID uint, name string) (*models.Config, error) {
+	if s.configs == nil {
+		return nil, fmt.Errorf("config %q not found", name)
+	}
+	cfg, err := s.configs.GetByName(workspaceID, name)
+	if err != nil {
+		return nil, fmt.Errorf("config %q not found", name)
+	}
+	return cfg, nil
 }
 
 func (s *Service) findApp(workspaceID uint, slug string) (*models.Application, error) {

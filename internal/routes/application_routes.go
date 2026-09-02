@@ -210,6 +210,24 @@ func (r *Router) applicationRoutes() []okapi.RouteDefinition {
 			Summary:     "Detach a volume",
 		},
 
+		{
+			Method:      http.MethodPut,
+			Path:        base + "/{appID}/configs",
+			Group:       apps,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     okapi.H(r.h.app.AttachConfig),
+			Summary:     "Mount a config file set",
+			Request:     &handlers.AttachConfigRequest{},
+		},
+		{
+			Method:      http.MethodDelete,
+			Path:        base + "/{appID}/configs/{configID}",
+			Group:       apps,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     r.h.app.DetachConfig,
+			Summary:     "Remove a config file mount",
+		},
+
 		// One-click external access: auto-generated public hostnames + Gateway routes.
 		{
 			Method:      http.MethodGet,

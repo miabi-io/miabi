@@ -11,6 +11,7 @@ import { gitRepositoryApi } from '@/api/gitRepositories'
 import { networkApi } from '@/api/networks'
 import { stackApi } from '@/api/stacks'
 import { routeApi } from '@/api/routes'
+import { configApi, type Config } from '@/api/configs'
 import { portBindingApi } from '@/api/portBindings'
 import { eventsApi } from '@/api/events'
 import { sseUrl } from '@/api/client'
@@ -1537,6 +1538,77 @@ async function detachVolume(volumeId: number) {
   loadApp()
 }
 
+// --- Config file mounts ---
+// A config is a set of named files. Mounting it whole projects every file under a
+// directory; mounting one key places that single file at an exact path. Both shapes
+// exist in the manifest, so the form exposes both rather than only the simple one.
+const workspaceConfigs = ref<Config[]>([])
+const configMount = ref<{ config_id: number | null; whole: boolean; key: string; path: string }>({
+  config_id: null, whole: true, key: '', path: '',
+})
+const configAttaching = ref(false)
+
+const selectedConfig = computed(
+  () => workspaceConfigs.value.find((c) => c.id === configMount.value.config_id) ?? null,
+)
+
+async function loadWorkspaceConfigs() {
+  if (!wid.value || workspaceConfigs.value.length) return
+  try {
+    workspaceConfigs.value = (await configApi.list(wid.value)).data.data ?? []
+  } catch (e) { notify.apiError(e) }
+}
+
+// Reset the file selection whenever the config changes: a key from the previous
+// config is never valid for the new one, and the API refuses it.
+watch(() => configMount.value.config_id, () => {
+  configMount.value.key = ''
+})
+
+function configName(id?: number) {
+  return workspaceConfigs.value.find((c) => c.id === id)?.name || `config ${id}`
+}
+
+// The exact container paths the current form would produce. Path shape is where
+// config mounts go wrong, so it is shown rather than described.
+const configPathPreview = computed<string[]>(() => {
+  const path = configMount.value.path.trim()
+  if (!path || !selectedConfig.value) return []
+  if (!configMount.value.whole) return [path]
+  const dir = path.endsWith('/') ? path : path + '/'
+  return (selectedConfig.value.keys ?? []).map((k) => dir + k)
+})
+
+const canAttachConfig = computed(() => {
+  if (!configMount.value.config_id || !configMount.value.path.trim()) return false
+  return configMount.value.whole || !!configMount.value.key
+})
+
+async function attachConfig() {
+  if (!wid.value || !canAttachConfig.value) return
+  configAttaching.value = true
+  try {
+    await appApi.attachConfig(
+      wid.value, appId.value, configMount.value.config_id!,
+      configMount.value.path.trim(),
+      configMount.value.whole ? '' : configMount.value.key,
+    )
+    notify.success('Config mounted' + changeNote())
+    configMount.value = { config_id: null, whole: true, key: '', path: '' }
+    loadApp()
+  } catch (e) { notify.apiError(e) }
+  finally { configAttaching.value = false }
+}
+
+async function detachConfig(configId: number, key: string) {
+  if (!wid.value) return
+  try {
+    await appApi.detachConfig(wid.value, appId.value, configId, key)
+    notify.success('Config mount removed' + changeNote())
+    loadApp()
+  } catch (e) { notify.apiError(e) }
+}
+
 // --- Privileged host mounts (allow-listed; privileged workspaces only) ---
 const hostPresets = ref<HostMountPreset[]>([])
 const hostMount = ref({ preset: '', path: '', read_only: false })
@@ -2575,11 +2647,6 @@ async function detachDatabase(d: AppDatabase) {
           {{ hiddenVolumeCount }} volume(s) on other nodes are hidden — an app can only mount volumes on its own node.
         </p>
       </div>
-      <p v-if="configMounts.length > 0" class="form-hint" style="padding: 0 16px 12px">
-        This app also mounts {{ configMounts.length }} configuration file set(s):
-        {{ configMounts.map((m) => m.path).join(', ') }}. Manage them under
-        <router-link to="/configs">Configs</router-link>.
-      </p>
       <div v-if="volumeMounts.length === 0" class="empty-state">
         <span class="mdi mdi-harddisk" style="font-size: 36px; color: var(--text-muted)"></span>
         <p>No volumes attached.</p>
@@ -2595,6 +2662,115 @@ async function detachDatabase(d: AppDatabase) {
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- Config file mounts. A separate card from volumes because the two are
+           different resources with different shapes: a volume is one path, a config
+           is a set of files that can be projected whole or one at a time. -->
+      <div class="card mt-4">
+        <div class="card-header">
+          <h2>Config files</h2>
+          <span class="text-muted text-sm">Read-only files mounted from workspace configs.</span>
+        </div>
+        <div class="card-body">
+          <div v-if="configMounts.length === 0" class="text-muted text-sm" style="margin-top: 0">
+            No config files mounted.
+          </div>
+          <div v-else class="table-wrapper">
+            <table>
+              <thead><tr><th>Config</th><th>File</th><th>Mount path</th><th></th></tr></thead>
+              <tbody>
+                <tr v-for="m in configMounts" :key="`${m.config_id}:${m.config_key || ''}`">
+                  <td><router-link to="/configs">{{ configName(m.config_id) }}</router-link></td>
+                  <td>
+                    <code v-if="m.config_key">{{ m.config_key }}</code>
+                    <span v-else class="text-muted text-sm">all files</span>
+                  </td>
+                  <td><code>{{ m.path }}</code></td>
+                  <td class="text-right">
+                    <button
+                      v-if="ws.canEdit"
+                      class="btn-icon btn-icon-danger"
+                      title="Remove mount"
+                      aria-label="Remove mount"
+                      @click="detachConfig(m.config_id!, m.config_key || '')"
+                    >
+                      <span class="mdi mdi-close"></span>
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div v-if="ws.canEdit" class="config-attach">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="cfg-select">Config</label>
+                <select
+                  id="cfg-select"
+                  v-model="configMount.config_id"
+                  class="form-input"
+                  @focus="loadWorkspaceConfigs"
+                >
+                  <option :value="null">Select a config…</option>
+                  <option v-for="c in workspaceConfigs" :key="c.id" :value="c.id">
+                    {{ c.display_name || c.name }} ({{ c.keys.length }} file{{ c.keys.length === 1 ? '' : 's' }})
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            <template v-if="selectedConfig">
+              <div class="form-group">
+                <label class="form-label">Mount</label>
+                <div class="tabs" style="margin-bottom: 0">
+                  <button type="button" class="tab" :class="{ active: configMount.whole }" @click="configMount.whole = true">
+                    All files
+                  </button>
+                  <button type="button" class="tab" :class="{ active: !configMount.whole }" @click="configMount.whole = false">
+                    A single file
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="!configMount.whole" class="form-group">
+                <label class="form-label" for="cfg-key">File</label>
+                <select id="cfg-key" v-model="configMount.key" class="form-input">
+                  <option value="">Select a file…</option>
+                  <option v-for="k in selectedConfig.keys" :key="k" :value="k">{{ k }}</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="cfg-path">
+                  {{ configMount.whole ? 'Directory in the container' : 'File path in the container' }}
+                </label>
+                <input
+                  id="cfg-path"
+                  v-model="configMount.path"
+                  class="form-input mono"
+                  :placeholder="configMount.whole ? '/etc/myapp' : '/etc/myapp/app.conf'"
+                />
+              </div>
+
+              <!-- Path shape is the thing people get wrong, so show the result
+                   rather than explaining the rule. -->
+              <div v-if="configPathPreview.length" class="cfg-preview">
+                <span class="form-label" style="margin-bottom: 4px; display: block">Files in the container</span>
+                <code v-for="p in configPathPreview" :key="p" class="cfg-preview-path">{{ p }}</code>
+              </div>
+
+              <p class="form-hint">
+                Mounted read-only. Changes to the config apply on the app's next deploy.
+              </p>
+
+              <button class="btn btn-primary btn-sm" :disabled="!canAttachConfig || configAttaching" @click="attachConfig">
+                {{ configAttaching ? 'Mounting…' : 'Mount config' }}
+              </button>
+            </template>
+          </div>
+        </div>
       </div>
 
       <!-- Privileged host mounts -->
@@ -3934,4 +4110,13 @@ async function detachDatabase(d: AppDatabase) {
   flex: 1;
   min-width: 80px;
 }}
+.config-attach { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-primary); }
+.cfg-preview { margin-bottom: 12px; }
+.cfg-preview-path {
+  display: block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 2px 0;
+}
 </style>
