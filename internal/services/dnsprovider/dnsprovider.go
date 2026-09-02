@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/miabi-io/miabi/internal/dns"
 	"github.com/miabi-io/miabi/internal/dnscatalog"
@@ -155,6 +156,20 @@ func (s *Service) Update(ctx context.Context, workspaceID, id uint, in UpdateInp
 		return nil, err
 	}
 	return p, nil
+}
+
+// PropagationTimeout is the DNS-01 ceiling for a provider, from its catalog descriptor.
+// Zero leaves the ACME client's default in place.
+func (s *Service) PropagationTimeout(workspaceID, providerID uint) time.Duration {
+	p, err := s.repo.FindInWorkspace(workspaceID, providerID)
+	if err != nil {
+		return 0
+	}
+	d, ok := dnscatalog.Get(p.Type)
+	if !ok {
+		return 0
+	}
+	return d.PropagationTimeout
 }
 
 // PublicCredentials returns the non-secret credential fields for display.

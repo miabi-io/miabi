@@ -41,11 +41,13 @@ func (f *fakeLister) DeleteRecords(_ context.Context, zone string, recs []libdns
 // fakeNoList cannot enumerate zones (like Route 53/DigitalOcean here): GetRecords
 // errors unless asked for the one zone it actually hosts.
 type fakeNoList struct {
-	zone    string // the single hosted zone, no trailing dot
-	setZone string
+	zone     string // the single hosted zone, no trailing dot
+	setZone  string
+	getCalls int
 }
 
 func (f *fakeNoList) GetRecords(_ context.Context, zone string) ([]libdns.Record, error) {
+	f.getCalls++
 	if strings.TrimSuffix(zone, ".") == f.zone {
 		return nil, nil
 	}
@@ -112,5 +114,56 @@ func TestSetRecordResolvesSubdomain_ProbeFallback(t *testing.T) {
 	}
 	if f.setZone != "miabi.io." {
 		t.Errorf("probed zone = %q, want %q", f.setZone, "miabi.io.")
+	}
+}
+
+type countingProbe struct {
+	fakeNoList
+	calls int
+	// owned returns records; every other zone answers empty-but-successful.
+	owned string
+}
+
+func (c *countingProbe) GetRecords(_ context.Context, zone string) ([]libdns.Record, error) {
+	c.calls++
+	if strings.TrimSuffix(zone, ".") == c.owned {
+		return []libdns.Record{libdns.RR{Type: "A", Name: "@", Data: "203.0.113.1"}}, nil
+	}
+	return nil, nil
+}
+
+func TestProbePrefersZoneWithRecords(t *testing.T) {
+	p := &countingProbe{owned: "miabi.io"}
+	a := newAdapter(p)
+	got, err := a.resolveZone(context.Background(), "apps.demo.miabi.io")
+	if err != nil {
+		t.Fatalf("resolveZone: %v", err)
+	}
+	if got != "miabi.io." {
+		t.Errorf("resolved %q, want the zone that actually returned records", got)
+	}
+}
+
+func TestProbeIsBounded(t *testing.T) {
+	p := &countingProbe{owned: "unreachable"}
+	a := newAdapter(p)
+	_, _ = a.resolveZone(context.Background(), "a.b.c.d.example.com")
+	if p.calls > probeDepth {
+		t.Errorf("probe made %d calls, want at most %d", p.calls, probeDepth)
+	}
+}
+
+func TestProbeFailureIsCached(t *testing.T) {
+	f := &fakeNoList{zone: "elsewhere.com"}
+	a := newAdapter(f)
+	if _, err := a.resolveZone(context.Background(), "nope.example.com"); err == nil {
+		t.Fatal("expected a resolve failure")
+	}
+	before := f.getCalls
+	if _, err := a.resolveZone(context.Background(), "nope.example.com"); err == nil {
+		t.Fatal("expected the cached failure")
+	}
+	if f.getCalls != before {
+		t.Errorf("second resolve issued %d more probes; the failure should be cached", f.getCalls-before)
 	}
 }

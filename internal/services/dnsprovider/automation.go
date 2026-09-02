@@ -12,6 +12,7 @@ import (
 
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/dns"
+	"github.com/miabi-io/miabi/internal/dnscatalog"
 	"github.com/miabi-io/miabi/internal/models"
 )
 
@@ -27,6 +28,18 @@ const managedTTL = 60 * time.Second
 func (s *Service) ProviderExists(workspaceID, providerID uint) bool {
 	_, err := s.repo.FindInWorkspace(workspaceID, providerID)
 	return err == nil
+}
+
+// RecordsSupported reports whether a provider can own ordinary DNS records. A challenge-only
+// host (acme-dns) answers for its own delegated subdomain and nothing else, so it can solve
+// DNS-01 but can neither carry the ownership TXT nor an app's A/AAAA records.
+func (s *Service) RecordsSupported(workspaceID, providerID uint) bool {
+	p, err := s.repo.FindInWorkspace(workspaceID, providerID)
+	if err != nil {
+		return false
+	}
+	d, ok := dnscatalog.Get(p.Type)
+	return ok && !d.ChallengeOnly
 }
 
 // EnsureVerificationRecord idempotently creates the ownership TXT for a provider-connected domain and

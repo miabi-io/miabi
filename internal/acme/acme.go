@@ -17,6 +17,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/go-acme/lego/v4/certcrypto"
 	"github.com/go-acme/lego/v4/certificate"
@@ -110,12 +111,18 @@ func Register(caDirURL, email string, key crypto.PrivateKey) (*registration.Reso
 // Obtain issues a certificate for the given domains using the account, solving
 // DNS-01 via the supplied solver. Returns the leaf+chain PEM and the private-key
 // PEM. ctx bounds the whole operation (DNS propagation + validation).
-func Obtain(ctx context.Context, caDirURL string, acc *Account, domains []string, solver SolverFuncs) (certPEM, keyPEM string, err error) {
+// propagationTimeout raises the ceiling lego waits for the challenge record to appear on the
+// authoritative servers. It polls, so this only bounds a slow host; it never adds a fixed wait.
+func Obtain(ctx context.Context, caDirURL string, acc *Account, domains []string, solver SolverFuncs, propagationTimeout time.Duration) (certPEM, keyPEM string, err error) {
 	client, err := newClient(caDirURL, acc)
 	if err != nil {
 		return "", "", err
 	}
-	if err := client.Challenge.SetDNS01Provider(&dnsProvider{ctx: ctx, solver: solver}); err != nil {
+	var opts []dns01.ChallengeOption
+	if propagationTimeout > 0 {
+		opts = append(opts, dns01.AddDNSTimeout(propagationTimeout))
+	}
+	if err := client.Challenge.SetDNS01Provider(&dnsProvider{ctx: ctx, solver: solver}, opts...); err != nil {
 		return "", "", fmt.Errorf("acme: set dns-01 provider: %w", err)
 	}
 	res, err := client.Certificate.Obtain(certificate.ObtainRequest{Domains: domains, Bundle: true})

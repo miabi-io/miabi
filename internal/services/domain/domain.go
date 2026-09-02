@@ -32,6 +32,8 @@ var (
 	// ErrProviderNotFound means the linked DNS provider does not exist in the
 	// workspace (or no automator is wired).
 	ErrProviderNotFound = errors.New("DNS provider not found in this workspace")
+	// ErrChallengeOnlyProvider rejects a DNS-01-only host (acme-dns) for record automation.
+	ErrChallengeOnlyProvider = errors.New("this DNS provider only solves certificate challenges; it cannot manage a domain's records")
 	// ErrDomainBanned means the domain has been banned by a platform admin and
 	// cannot be verified or served.
 	ErrDomainBanned = errors.New("this domain has been banned by a platform administrator")
@@ -54,6 +56,8 @@ type lookupTXT func(ctx context.Context, host string) ([]string, error)
 type DNSAutomator interface {
 	// ProviderExists reports whether a provider id belongs to the workspace.
 	ProviderExists(workspaceID, providerID uint) bool
+	// RecordsSupported reports whether the provider can own ordinary records.
+	RecordsSupported(workspaceID, providerID uint) bool
 	// EnsureVerificationRecord creates the ownership TXT for a provider-connected
 	// domain (no-op when the domain has no provider).
 	EnsureVerificationRecord(ctx context.Context, d *models.Domain) error
@@ -257,6 +261,9 @@ func (s *Service) SetDNSProvider(workspaceID, id uint, providerID *uint) (*model
 	if providerID != nil {
 		if s.automator == nil || !s.automator.ProviderExists(workspaceID, *providerID) {
 			return nil, ErrProviderNotFound
+		}
+		if !s.automator.RecordsSupported(workspaceID, *providerID) {
+			return nil, ErrChallengeOnlyProvider
 		}
 	}
 	d.DNSProviderID = providerID

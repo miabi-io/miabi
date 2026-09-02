@@ -130,7 +130,7 @@ func (s *Service) issue(workspaceID, certID uint, names []string, providerID *ui
 	ctx, cancel := context.WithTimeout(context.Background(), issueTimeout)
 	defer cancel()
 
-	zone, prov, err := s.resolveZoneAndProvider(workspaceID, names, providerID)
+	zone, prov, propagation, err := s.resolveZoneAndProvider(workspaceID, names, providerID)
 	if err != nil {
 		s.fail(workspaceID, certID, err)
 		return
@@ -148,7 +148,7 @@ func (s *Service) issue(workspaceID, certID uint, names []string, providerID *ui
 			return prov.DeleteRecord(ctx, zone, dns.Record{Type: "TXT", Name: strings.TrimSuffix(fqdn, "."), Value: value})
 		},
 	}
-	certPEM, keyPEM, err := acme.Obtain(ctx, s.caDirURL, acct, names, solver)
+	certPEM, keyPEM, err := acme.Obtain(ctx, s.caDirURL, acct, names, solver, propagation)
 	if err != nil {
 		s.fail(workspaceID, certID, err)
 		return
@@ -167,14 +167,14 @@ func (s *Service) fail(workspaceID, certID uint, cause error) {
 
 // resolveZoneAndProvider finds the registrable zone the names fall under (the
 // longest matching verified domain) and the dns.Provider to solve with.
-func (s *Service) resolveZoneAndProvider(workspaceID uint, names []string, providerID *uint) (string, dns.Provider, error) {
+func (s *Service) resolveZoneAndProvider(workspaceID uint, names []string, providerID *uint) (string, dns.Provider, time.Duration, error) {
 	if len(names) == 0 {
-		return "", nil, ErrDomainNotFound
+		return "", nil, 0, ErrDomainNotFound
 	}
 	base := strings.ToLower(strings.TrimPrefix(names[0], "*."))
 	doms, err := s.domains.ListByWorkspace(workspaceID)
 	if err != nil {
-		return "", nil, err
+		return "", nil, 0, err
 	}
 	var zone *models.Domain
 	for i := range doms {
@@ -186,20 +186,20 @@ func (s *Service) resolveZoneAndProvider(workspaceID uint, names []string, provi
 		}
 	}
 	if zone == nil {
-		return "", nil, ErrDomainNotFound
+		return "", nil, 0, ErrDomainNotFound
 	}
 	pid := providerID
 	if pid == nil {
 		pid = zone.DNSProviderID
 	}
 	if pid == nil {
-		return "", nil, ErrNoProvider
+		return "", nil, 0, ErrNoProvider
 	}
 	prov, err := s.dnsProviders.Provider(workspaceID, *pid)
 	if err != nil {
-		return "", nil, err
+		return "", nil, 0, err
 	}
-	return zone.Name, prov, nil
+	return zone.Name, prov, s.dnsProviders.PropagationTimeout(workspaceID, *pid), nil
 }
 
 // account loads the platform ACME account for the configured CA, registering and

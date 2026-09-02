@@ -217,6 +217,8 @@ func (h *DomainHandler) mapErr(c *okapi.Context, err error) error {
 		return c.AbortWithError(409, err)
 	case errors.Is(err, domain.ErrNameRequired), errors.Is(err, domain.ErrInvalidName), errors.Is(err, domain.ErrNameImmutable):
 		return c.AbortBadRequest(err.Error())
+	case errors.Is(err, domain.ErrChallengeOnlyProvider):
+		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, domain.ErrProviderNotFound):
 		return c.AbortNotFound(err.Error())
 	case errors.Is(err, dnsprovider.ErrConflict):
