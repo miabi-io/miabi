@@ -17,6 +17,7 @@ import (
 	"github.com/libdns/digitalocean"
 	"github.com/libdns/libdns"
 	"github.com/libdns/route53"
+	"github.com/miabi-io/miabi/internal/dnscatalog"
 	"github.com/miabi-io/miabi/internal/models"
 )
 
@@ -30,14 +31,9 @@ type Record struct {
 	TTL   time.Duration `json:"-"`     // 0 = provider default
 }
 
-// Credentials is the union of fields across provider types, parsed from the
-// decrypted JSON blob. Only the fields relevant to a given Type are set.
-type Credentials struct {
-	APIToken        string `json:"api_token,omitempty"`         // cloudflare, digitalocean
-	AccessKeyID     string `json:"access_key_id,omitempty"`     // route53
-	SecretAccessKey string `json:"secret_access_key,omitempty"` // route53
-	Region          string `json:"region,omitempty"`            // route53
-}
+// Credentials is a provider's credential blob, keyed by the field names its dnscatalog
+// descriptor declares. Wire-compatible with the flat struct it replaced.
+type Credentials map[string]string
 
 // Provider is Miabi's view of a DNS host. Implementations are idempotent and
 // safe for concurrent use (libdns guarantees the latter).
@@ -60,29 +56,29 @@ type zoneClient interface {
 	libdns.RecordDeleter
 }
 
-// Build returns a Provider for a connection type + its (already-decrypted)
-// credentials. Unknown types return an error.
+// Build returns a Provider for a connection type + its (already-decrypted) credentials.
+// Required fields are validated against the catalog before the per-type constructor runs.
 func Build(providerType string, creds Credentials) (Provider, error) {
-	switch providerType {
+	d, ok := dnscatalog.Get(providerType)
+	if !ok {
+		return nil, fmt.Errorf("unknown DNS provider type %q", providerType)
+	}
+	if err := d.Validate(creds); err != nil {
+		return nil, err
+	}
+	switch d.Type {
 	case models.DNSProviderCloudflare:
-		if creds.APIToken == "" {
-			return nil, fmt.Errorf("cloudflare: api_token is required")
-		}
-		return newAdapter(&cloudflare.Provider{APIToken: creds.APIToken}), nil
+		return newAdapter(&cloudflare.Provider{APIToken: creds["api_token"]}), nil
 	case models.DNSProviderDigitalOcean:
-		if creds.APIToken == "" {
-			return nil, fmt.Errorf("digitalocean: api_token is required")
-		}
-		return newAdapter(&digitalocean.Provider{APIToken: creds.APIToken}), nil
+		return newAdapter(&digitalocean.Provider{APIToken: creds["api_token"]}), nil
 	case models.DNSProviderRoute53:
-		if creds.AccessKeyID == "" || creds.SecretAccessKey == "" {
-			return nil, fmt.Errorf("route53: access_key_id and secret_access_key are required")
-		}
 		return newAdapter(&route53.Provider{
-			AccessKeyId: creds.AccessKeyID, SecretAccessKey: creds.SecretAccessKey, Region: creds.Region,
+			AccessKeyId:     creds["access_key_id"],
+			SecretAccessKey: creds["secret_access_key"],
+			Region:          creds["region"],
 		}), nil
 	default:
-		return nil, fmt.Errorf("unknown DNS provider type %q", providerType)
+		return nil, fmt.Errorf("DNS provider type %q is catalogued but not wired", providerType)
 	}
 }
 

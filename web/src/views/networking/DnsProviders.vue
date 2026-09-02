@@ -6,6 +6,8 @@ import { useNotificationStore } from '@/stores/notification'
 import { dnsProviderApi } from '@/api/dns'
 import { usageApi } from '@/api/resources'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import { useDnsProviderCatalog } from '@/composables/useDnsProviderCatalog'
+import DnsProviderField from '@/components/DnsProviderField.vue'
 import type { DNSProvider, DNSProviderType, WorkspaceUsage } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 
@@ -22,19 +24,33 @@ const saving = ref(false)
 // Capability gate: only constrains the UI when enforcement is on.
 const allowed = computed(() => !usage.value || !usage.value.enforced || usage.value.capabilities.dns_providers)
 
-// Connect form.
+const { catalog, ensure: ensureCatalog, describe, label: typeLabel } = useDnsProviderCatalog()
+
 const name = ref('')
-const ptype = ref<DNSProviderType>('cloudflare')
-const apiToken = ref('')
-const accessKeyId = ref('')
-const secretAccessKey = ref('')
-const region = ref('')
+const ptype = ref<DNSProviderType>('')
+const creds = ref<Record<string, string>>({})
 const testZone = ref('')
 
-const TYPE_LABEL: Record<DNSProviderType, string> = {
-  cloudflare: 'Cloudflare',
-  route53: 'AWS Route 53',
-  digitalocean: 'DigitalOcean',
+const descriptor = computed(() => describe(ptype.value))
+
+function selectType(t: string) {
+  ptype.value = t
+  creds.value = {}
+  for (const f of describe(t)?.fields ?? []) {
+    if (f.default) creds.value[f.key] = f.default
+  }
+}
+
+const credsComplete = computed(() =>
+  (descriptor.value?.fields ?? []).every((f) => !f.required || (creds.value[f.key] ?? '').trim() !== ''),
+)
+
+function filled(source: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(source)) {
+    if (v.trim() !== '') out[k] = v.trim()
+  }
+  return out
 }
 
 async function load(id: number | null) {
@@ -49,14 +65,14 @@ async function load(id: number | null) {
     loading.value = false
   }
 }
-watch(currentWorkspaceId, load, { immediate: true })
+watch(currentWorkspaceId, (id) => { load(id); ensureCatalog(id) }, { immediate: true })
 
 function openConnect() {
   name.value = ''
-  ptype.value = 'cloudflare'
-  apiToken.value = ''
-  accessKeyId.value = ''; secretAccessKey.value = ''; region.value = ''
+  ptype.value = ''
+  creds.value = {}
   testZone.value = ''
+  ensureCatalog(currentWorkspaceId.value)
   showConnect.value = true
 }
 
@@ -64,11 +80,8 @@ async function connect() {
   if (!currentWorkspaceId.value) return
   saving.value = true
   try {
-    const credentials = ptype.value === 'route53'
-      ? { access_key_id: accessKeyId.value.trim(), secret_access_key: secretAccessKey.value.trim(), region: region.value.trim() }
-      : { api_token: apiToken.value.trim() }
     await dnsProviderApi.connect(currentWorkspaceId.value, {
-      name: name.value.trim(), type: ptype.value, credentials,
+      name: name.value.trim(), type: ptype.value, credentials: filled(creds.value),
       test_zone: testZone.value.trim() || undefined,
     })
     notify.success('DNS provider connected')
@@ -78,6 +91,42 @@ async function connect() {
     notify.apiError(e)
   } finally {
     saving.value = false
+  }
+}
+
+// Rotate: replace a stored credential without disconnecting, which would unlink domains.
+const rotating = ref<DNSProvider | null>(null)
+const rotateCreds = ref<Record<string, string>>({})
+const rotateZone = ref('')
+const rotateSaving = ref(false)
+const rotateDescriptor = computed(() => (rotating.value ? describe(rotating.value.type) : null))
+const rotateComplete = computed(() =>
+  (rotateDescriptor.value?.fields ?? []).every((f) => !f.required || (rotateCreds.value[f.key] ?? '').trim() !== ''),
+)
+
+function openRotate(p: DNSProvider) {
+  rotateCreds.value = {}
+  rotateZone.value = ''
+  ensureCatalog(currentWorkspaceId.value)
+  rotating.value = p
+}
+
+async function rotate() {
+  const p = rotating.value
+  if (!currentWorkspaceId.value || !p) return
+  rotateSaving.value = true
+  try {
+    await dnsProviderApi.update(currentWorkspaceId.value, p.id, {
+      credentials: filled(rotateCreds.value),
+      test_zone: rotateZone.value.trim() || undefined,
+    })
+    notify.success('Credentials rotated')
+    rotating.value = null
+    load(currentWorkspaceId.value)
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    rotateSaving.value = false
   }
 }
 
@@ -161,13 +210,14 @@ async function disconnect() {
           <tbody>
             <tr v-for="p in providers" :key="p.id">
               <td><span class="cell-title">{{ p.display_name || p.name }}</span></td>
-              <td class="cell-sub">{{ TYPE_LABEL[p.type] }}</td>
+              <td class="cell-sub">{{ typeLabel(p.type) }}</td>
               <td>
                 <span class="badge" :class="p.status === 'ok' ? 'badge-success' : 'badge-danger'">{{ p.status }}</span>
                 <span v-if="p.last_error" class="cell-sub" :title="p.last_error" style="margin-left: 8px">⚠</span>
               </td>
               <td style="text-align: right">
                 <button v-if="ws.canEdit" class="btn btn-secondary btn-sm" @click="openTest(p)">Test</button>
+                <button v-if="ws.canEdit" class="btn btn-secondary btn-sm" style="margin-left: 8px" @click="openRotate(p)">Rotate</button>
                 <button v-if="ws.canEdit" class="btn btn-danger btn-sm" style="margin-left: 8px" @click="pendingDisconnect = p">Disconnect</button>
               </td>
             </tr>
@@ -189,33 +239,29 @@ async function disconnect() {
               <input v-model="name" class="form-input" placeholder="e.g. cloudflare-prod" required autofocus />
             </div>
             <div class="form-group">
-              <label class="form-label">Type</label>
-              <select v-model="ptype" class="form-select">
-                <option value="cloudflare">Cloudflare</option>
-                <option value="route53">AWS Route 53</option>
-                <option value="digitalocean">DigitalOcean</option>
+              <label class="form-label" for="dns-type">Type</label>
+              <select
+                id="dns-type"
+                class="form-select"
+                :value="ptype"
+                @change="selectType(($event.target as HTMLSelectElement).value)"
+              >
+                <option value="" disabled>Select a provider…</option>
+                <option v-for="d in catalog ?? []" :key="d.type" :value="d.type">{{ d.label }}</option>
               </select>
             </div>
-            <template v-if="ptype === 'route53'">
-              <div class="form-group">
-                <label class="form-label">Access key ID</label>
-                <input v-model="accessKeyId" class="form-input" autocomplete="off" required style="font-family: monospace" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Secret access key</label>
-                <input v-model="secretAccessKey" type="password" class="form-input" autocomplete="new-password" required />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Region <span class="text-muted">(optional)</span></label>
-                <input v-model="region" class="form-input" placeholder="us-east-1" style="font-family: monospace" />
-              </div>
-            </template>
-            <template v-else>
-              <div class="form-group">
-                <label class="form-label">API token</label>
-                <input v-model="apiToken" type="password" class="form-input" autocomplete="new-password" required />
-                <p class="form-hint">Use a scoped token (Cloudflare: Zone.DNS edit on your zone).</p>
-              </div>
+
+            <template v-if="descriptor">
+              <DnsProviderField
+                v-for="f in descriptor.fields"
+                :key="f.key"
+                :field="f"
+                :model-value="creds[f.key] ?? ''"
+                @update:model-value="creds[f.key] = $event"
+              />
+              <p v-if="descriptor.docs_url" class="form-hint">
+                <a :href="descriptor.docs_url" target="_blank" rel="noopener">Where to create these credentials</a>
+              </p>
             </template>
             <div class="form-group" style="margin-bottom: 0">
               <label class="form-label">Test zone <span class="text-muted">(optional)</span></label>
@@ -225,7 +271,44 @@ async function disconnect() {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showConnect = false">Cancel</button>
-            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Connecting…' : 'Connect' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving || !ptype || !credsComplete">{{ saving ? 'Connecting…' : 'Connect' }}</button>
+          </div>
+        </form>
+      </AppModal>
+    </Teleport>
+
+    <Teleport to="body">
+      <AppModal v-if="rotating" @close="rotating = null">
+        <div class="modal-header">
+          <h3>Rotate credentials — {{ rotating.display_name || rotating.name }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="rotating = null"><span class="mdi mdi-close"></span></button>
+        </div>
+        <form @submit.prevent="rotate">
+          <div class="modal-body">
+            <p class="form-hint" style="margin-top: 0">
+              Replaces the stored credentials for {{ typeLabel(rotating.type) }}. Domains stay linked —
+              disconnecting instead would unlink them.
+            </p>
+            <template v-if="rotateDescriptor">
+              <DnsProviderField
+                v-for="f in rotateDescriptor.fields"
+                :key="f.key"
+                :field="f"
+                :model-value="rotateCreds[f.key] ?? ''"
+                @update:model-value="rotateCreds[f.key] = $event"
+              />
+            </template>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label" for="rotate-zone">Test zone <span class="text-muted">(optional)</span></label>
+              <input id="rotate-zone" v-model="rotateZone" class="form-input" placeholder="example.com" style="font-family: monospace" />
+              <p class="form-hint">If set, the new credential is verified before it replaces the old one.</p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="rotating = null">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="rotateSaving || !rotateComplete">
+              {{ rotateSaving ? 'Rotating…' : 'Rotate' }}
+            </button>
           </div>
         </form>
       </AppModal>
@@ -234,7 +317,7 @@ async function disconnect() {
     <ConfirmDialog
       :open="!!testProvider"
       title="Test DNS provider"
-      :message="`Enter one of your domains on ${testProvider ? TYPE_LABEL[testProvider.type] : ''} to test ${testProvider?.name}.`"
+      :message="`Enter one of your domains on ${testProvider ? typeLabel(testProvider.type) : ''} to test ${testProvider?.name}.`"
       confirm-label="Test"
       variant="primary"
       :busy="probing"

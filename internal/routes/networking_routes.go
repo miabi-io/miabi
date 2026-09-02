@@ -231,6 +231,14 @@ func (r *Router) dnsProviderRoutes() []okapi.RouteDefinition {
 	return []okapi.RouteDefinition{
 		{
 			Method:      http.MethodGet,
+			Path:        "/{workspace}/dns-provider-catalog",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.dnsProvider.Catalog,
+			Summary:     "List connectable DNS hosts and their credential fields",
+		},
+		{
+			Method:      http.MethodGet,
 			Path:        base,
 			Group:       g,
 			Middlewares: scoped(models.WorkspaceRoleViewer),
@@ -253,6 +261,15 @@ func (r *Router) dnsProviderRoutes() []okapi.RouteDefinition {
 			Middlewares: scoped(models.WorkspaceRoleViewer),
 			Handler:     r.h.dnsProvider.Get,
 			Summary:     "Get a DNS provider",
+		},
+		{
+			Method:      http.MethodPut,
+			Path:        base + "/{providerID}",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleAdmin),
+			Handler:     okapi.H(r.h.dnsProvider.Update),
+			Summary:     "Rotate a DNS provider's credentials",
+			Request:     &handlers.UpdateDNSProviderRequest{},
 		},
 		{
 			Method:      http.MethodPost,
