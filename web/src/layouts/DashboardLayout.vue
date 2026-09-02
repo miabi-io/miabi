@@ -95,6 +95,17 @@ const toggleSidebar = () => {
   localStorage.setItem('mb_sidebar_collapsed', String(sidebarCollapsed.value))
 }
 
+// makeDefaultWorkspace pins where future sessions land. Separate from switching on
+// purpose: navigating between workspaces should not silently rewrite the default.
+async function makeDefaultWorkspace(id: number) {
+  try {
+    await ws.makeDefault(id)
+    notify.success('Default workspace saved')
+  } catch (e) {
+    notify.apiError(e)
+  }
+}
+
 function switchWorkspace(id: number) {
   ws.setWorkspace(id)
   wsSwitcherOpen.value = false
@@ -221,7 +232,12 @@ function onPaletteShortcut(event: KeyboardEvent) {
 onMounted(async () => {
   document.addEventListener('click', closeMenus)
   document.addEventListener('keydown', onPaletteShortcut)
-  if (!auth.user) await auth.fetchUser()
+  // A cached profile from before preferences existed has no `preferences` key, so
+  // refresh it — the workspace store and the theme both read fields that only a
+  // current /me carries.
+  if (!auth.user || !auth.user.preferences) await auth.fetchUser()
+  // The account's theme wins over this device's cached one, so it follows the user.
+  theme.adopt(auth.user?.preferences?.theme)
   if (auth.isAdmin) license.load().catch(() => { })
   loadUpdate()
   infoApi.get().then((res) => { docsEnabled.value = res.data.data.openapi_docs }).catch(() => { })
@@ -280,6 +296,11 @@ onBeforeUnmount(() => {
                 <span class="ws-switcher-option-handle">{{ w.name }}</span>
               </span>
               <span v-if="w.role" class="ws-role-badge">{{ w.role }}</span>
+              <span v-if="auth.user?.default_workspace_id === w.id" class="mdi mdi-pin ws-default-pin"
+                title="Sessions land here by default"></span>
+              <button v-else class="mdi mdi-pin-outline ws-default-set" title="Make this my default workspace"
+                aria-label="Make this my default workspace"
+                @click.stop="makeDefaultWorkspace(w.id)"></button>
             </div>
             <div v-if="!ws.workspaces.length" class="ws-switcher-empty">No workspaces yet</div>
             <div class="ws-switcher-divider"></div>
@@ -377,6 +398,9 @@ onBeforeUnmount(() => {
                 </RouterLink>
                 <RouterLink to="/account/profile" class="user-dropdown-item" @click.stop="userMenuOpen = false">
                   <span class="mdi mdi-account-outline"></span> Profile
+                </RouterLink>
+                <RouterLink to="/account/preferences" class="user-dropdown-item" @click.stop="userMenuOpen = false">
+                  <span class="mdi mdi-tune-variant"></span> Preferences
                 </RouterLink>
                 <RouterLink to="/account/security" class="user-dropdown-item" @click.stop="userMenuOpen = false">
                   <span class="mdi mdi-shield-key-outline"></span> Security
@@ -830,6 +854,26 @@ onBeforeUnmount(() => {
   letter-spacing: 0.05em;
   flex-shrink: 0;
 }
+
+/* The pin sits after the role badge, which already claims margin-left:auto. */
+.ws-default-pin,
+.ws-default-set {
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1;
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+}
+
+.ws-default-pin { color: var(--primary-500); cursor: default; }
+/* Hidden until the row is hovered or the button is focused, so the list stays calm
+   but the action is still reachable from the keyboard. */
+.ws-default-set { color: var(--text-muted); opacity: 0; transition: opacity 0.12s; }
+.ws-switcher-option:hover .ws-default-set,
+.ws-default-set:focus-visible { opacity: 1; }
+.ws-default-set:hover { color: var(--primary-500); }
 
 .ws-switcher-empty {
   padding: 10px;

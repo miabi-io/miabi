@@ -96,6 +96,13 @@ export const useAuthStore = defineStore('auth', () => {
     await updateProfile(name)
   }
 
+  // setUser replaces the cached profile. Used when another store learns of a change
+  // to it (the default workspace) without a full /me round-trip.
+  function setUser(u: User) {
+    user.value = u
+    localStorage.setItem('mb_user', JSON.stringify(u))
+  }
+
   // Hides the getting-started checklist permanently; refreshes the cache so it survives a reload.
   async function dismissOnboarding() {
     const res = await authApi.dismissOnboarding()
@@ -103,5 +110,5 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('mb_user', JSON.stringify(res.data.data))
   }
 
-  return { user, isAuthenticated, isAdmin, pendingReset, login, completeReset, cancelReset, logout, clearSession, fetchUser, updateName, updateProfile, dismissOnboarding }
+  return { user, isAuthenticated, isAdmin, pendingReset, login, completeReset, cancelReset, logout, clearSession, fetchUser, setUser, updateName, updateProfile, dismissOnboarding }
 })

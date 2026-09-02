@@ -69,6 +69,7 @@ const routes = [
       // The :repo param is a catch-all: an image name may contain slashes.
       { path: 'registry/images/:repo(.*)', name: 'registry-image', component: () => import('@/views/registry/ImageDetail.vue'), meta: { title: 'Image' } },
       { path: 'account/profile', name: 'account-profile', component: () => import('@/views/account/Profile.vue'), meta: { title: 'Profile', noWorkspace: true } },
+      { path: 'account/preferences', name: 'account-preferences', component: () => import('@/views/account/Preferences.vue'), meta: { title: 'Preferences', noWorkspace: true } },
       { path: 'account/security', name: 'account-security', component: () => import('@/views/account/Security.vue'), meta: { title: 'Security', noWorkspace: true } },
       { path: 'account/cli', name: 'account-cli', component: () => import('@/views/account/CliAccess.vue'), meta: { title: 'CLI access', noWorkspace: true } },
       { path: 'about', name: 'about', component: () => import('@/views/About.vue'), meta: { title: 'About' } },
