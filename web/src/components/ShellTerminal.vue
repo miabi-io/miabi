@@ -112,6 +112,7 @@ onBeforeUnmount(() => {
         <span class="mdi mdi-console-line"></span>
         Shell — {{ appName }}
         <span class="shell-status" :class="status">{{ status }}</span>
+        <span v-if="status !== 'closed'" class="shell-hint">Esc goes to the shell · Shift+Tab to leave it</span>
       </h3>
       <div class="shell-controls">
         <button
@@ -147,7 +148,12 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <div class="modal-body shell-body" :class="'shell-' + size">
-      <div ref="host" class="shell-host" data-modal-tab-through></div>
+      <div
+        ref="host"
+        class="shell-host"
+        data-modal-tab-through
+        :data-modal-escape-through="status === 'closed' ? undefined : ''"
+      ></div>
     </div>
   </AppModal>
 </template>
@@ -176,6 +182,15 @@ onBeforeUnmount(() => {
 .shell-compact .shell-host { height: 40vh; }
 .shell-normal .shell-host { height: 60vh; }
 .shell-full .shell-host { height: 100%; }
+.shell-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: 10px;
+  vertical-align: middle;
+  text-transform: none;
+  letter-spacing: 0;
+}
 .shell-status {
   font-size: 11px;
   font-weight: 500;
