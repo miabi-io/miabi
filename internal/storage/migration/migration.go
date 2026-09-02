@@ -43,6 +43,7 @@ func Run(db *gorm.DB) error {
 		&models.Server{},
 		&models.GPUDevice{},
 		&models.User{},
+		&models.UserSetting{},
 		&models.Session{},
 		&models.APIKey{},
 		&models.Workspace{},

@@ -4,9 +4,11 @@
 package repositories
 
 import (
+	"errors"
 	"strings"
 	"time"
 
+	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/models"
 	"gorm.io/gorm"
 )
@@ -141,4 +143,83 @@ func (r *UserRepository) ListDueForDeletion(now time.Time) ([]models.User, error
 	var users []models.User
 	err := r.db.Where("scheduled_deletion_at IS NOT NULL AND scheduled_deletion_at <= ?", now).Find(&users).Error
 	return users, err
+}
+
+// DefaultWorkspace resolves where a client with no workspace in mind should land,
+// with the caller's role in it.
+//
+// Membership is re-checked on every read, so a default naming a workspace the user
+// has left — or one that was deleted — never dead-ends the console. It falls back to
+// the user's OLDEST membership, which is almost always their primary workspace (the
+// membership list is ordered newest-first for display, which is the wrong guess
+// here), and repairs the stored value in place.
+//
+// Returns (nil, nil) when the user belongs to no workspace at all.
+func (r *UserRepository) DefaultWorkspace(userID uint) (*models.WorkspaceWithRole, error) {
+	var user models.User
+	if err := r.db.Select("id", "default_workspace_id").First(&user, userID).Error; err != nil {
+		return nil, err
+	}
+	if user.DefaultWorkspaceID != nil {
+		ws, err := r.workspaceForMember(userID, *user.DefaultWorkspaceID)
+		if err == nil {
+			return ws, nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+	}
+	ws, err := r.oldestMembership(userID)
+	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+		// No membership left to point at; drop the stale pointer rather than keep
+		// handing back a workspace the user cannot open.
+		if user.DefaultWorkspaceID != nil {
+			_ = r.SetDefaultWorkspace(userID, nil)
+		}
+		return nil, nil
+	}
+	if err := r.SetDefaultWorkspace(userID, &ws.ID); err != nil {
+		logger.Warn("failed to repair default workspace", "user", userID, "error", err)
+	}
+	return ws, nil
+}
+
+// SetDefaultWorkspace records where header-less clients land. Nil clears it. The
+// caller is responsible for checking membership — see workspace.Service.SetDefault.
+func (r *UserRepository) SetDefaultWorkspace(userID uint, workspaceID *uint) error {
+	return r.db.Model(&models.User{}).Where("id = ?", userID).
+		Update("default_workspace_id", workspaceID).Error
+}
+
+// workspaceForMember returns the workspace and the caller's role in it, or
+// gorm.ErrRecordNotFound when they are not a member.
+func (r *UserRepository) workspaceForMember(userID, workspaceID uint) (*models.WorkspaceWithRole, error) {
+	var row models.WorkspaceWithRole
+	err := r.db.Model(&models.Workspace{}).
+		Select("workspaces.*, workspace_members.role AS role").
+		Joins("JOIN workspace_members ON workspace_members.workspace_id = workspaces.id").
+		Where("workspace_members.user_id = ? AND workspaces.id = ?", userID, workspaceID).
+		First(&row).Error
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+// oldestMembership returns the workspace the user has belonged to longest.
+func (r *UserRepository) oldestMembership(userID uint) (*models.WorkspaceWithRole, error) {
+	var row models.WorkspaceWithRole
+	err := r.db.Model(&models.Workspace{}).
+		Select("workspaces.*, workspace_members.role AS role").
+		Joins("JOIN workspace_members ON workspace_members.workspace_id = workspaces.id").
+		Where("workspace_members.user_id = ?", userID).
+		Order("workspace_members.created_at ASC, workspaces.id ASC").
+		First(&row).Error
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
 }

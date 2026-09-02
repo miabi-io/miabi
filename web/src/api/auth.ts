@@ -1,5 +1,5 @@
 import api from './client'
-import type { ApiResponse, AuthResponse, AuthStatus, LoginTokenResponse, RecoveryCodes, Session, TwoFactorSetup, User } from './types'
+import type { ApiResponse, AuthResponse, AuthStatus, LoginTokenResponse, RecoveryCodes, Session, TwoFactorSetup, User, UserPreferences, UserPreferencesInput } from './types'
 
 export const authApi = {
   // Advertises which auth features are enabled (e.g. self-service password
@@ -59,6 +59,16 @@ export const authApi = {
   },
   dismissOnboarding() {
     return api.post<ApiResponse<User>>('/me/onboarding/dismiss')
+  },
+  // Partial update: omitted fields keep their stored value.
+  updatePreferences(input: UserPreferencesInput) {
+    return api.patch<ApiResponse<UserPreferences>>('/me/preferences', input)
+  },
+  // null clears the choice, so the next sign-in falls back to the oldest membership.
+  setDefaultWorkspace(workspaceId: number | null) {
+    return api.put<ApiResponse<{ workspace_id?: number }>>('/me/default-workspace', {
+      workspace_id: workspaceId,
+    })
   },
   listSessions() {
     return api.get<ApiResponse<Session[]>>('/me/sessions')

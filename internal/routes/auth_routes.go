@@ -9,6 +9,7 @@ import (
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/dto"
 	"github.com/miabi-io/miabi/internal/handlers"
+	"github.com/miabi-io/miabi/internal/models"
 )
 
 func (r *Router) authRoutes() []okapi.RouteDefinition {
@@ -164,6 +165,27 @@ func (r *Router) authRoutes() []okapi.RouteDefinition {
 			Summary:     "Update current user profile",
 			Request:     &handlers.UpdateProfileRequest{},
 			Response:    &dto.Response[handlers.UserProfile]{},
+		},
+		{
+			Method:      http.MethodPatch,
+			Path:        "/me/preferences",
+			Group:       r.v1,
+			Middlewares: protected,
+			Handler:     okapi.H(r.h.auth.UpdatePreferences),
+			Tags:        []string{"Auth"},
+			Summary:     "Update console preferences",
+			Request:     &handlers.UpdatePreferencesRequest{},
+			Response:    &dto.Response[models.UserSetting]{},
+		},
+		{
+			Method:      http.MethodPut,
+			Path:        "/me/default-workspace",
+			Group:       r.v1,
+			Middlewares: protected,
+			Handler:     okapi.H(r.h.auth.SetDefaultWorkspace),
+			Tags:        []string{"Auth"},
+			Summary:     "Set the workspace a session lands on",
+			Request:     &handlers.SetDefaultWorkspaceRequest{},
 		},
 		{
 			Method:      http.MethodPost,

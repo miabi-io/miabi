@@ -67,6 +67,8 @@ type Service struct {
 	plans  *repositories.PlanRepository
 	quota  *quota.Service
 	keys   KeyShredder
+	// adopter claims a user's first workspace as their landing workspace.
+	adopter DefaultAdopter
 	// globalLimit returns the platform-wide max_workspaces_per_user (0/negative =
 	// unlimited); overrideEntitled reports whether the Enterprise per-user override
 	// may be applied. Both nil-safe — unset leaves workspace ownership uncapped.
@@ -87,6 +89,15 @@ func NewService(repo *repositories.WorkspaceRepository, users *repositories.User
 // workspace to the Unlimited plan. Optional: when unset, the system workspace
 // falls back to the default plan.
 func (s *Service) SetPlans(plans *repositories.PlanRepository) { s.plans = plans }
+
+// DefaultAdopter claims a user's first workspace as their landing workspace.
+// Satisfied by usersettings.Service; injected after construction and nil-safe.
+type DefaultAdopter interface {
+	AdoptFirstWorkspace(userID, workspaceID uint)
+}
+
+// SetDefaultAdopter wires the first-workspace landing adoption (nil-safe).
+func (s *Service) SetDefaultAdopter(a DefaultAdopter) { s.adopter = a }
 
 // SetKeyShredder wires crypto-shred of a workspace's keys on delete (nil-safe).
 func (s *Service) SetKeyShredder(k KeyShredder) { s.keys = k }
@@ -248,6 +259,10 @@ func (s *Service) Create(ownerID uint, displayName, handle, description string) 
 		if err := s.seeder.SeedDefaults(context.Background(), ws.ID); err != nil {
 			logger.Warn("failed to seed default middlewares for workspace", "workspace", ws.ID, "error", err)
 		}
+	}
+
+	if s.adopter != nil {
+		s.adopter.AdoptFirstWorkspace(ownerID, ws.ID)
 	}
 	return ws, nil
 }

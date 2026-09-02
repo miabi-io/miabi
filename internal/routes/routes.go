@@ -88,6 +88,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/stack"
 	"github.com/miabi-io/miabi/internal/services/storage"
 	"github.com/miabi-io/miabi/internal/services/updatecheck"
+	"github.com/miabi-io/miabi/internal/services/usersettings"
 	"github.com/miabi-io/miabi/internal/services/volumebackup"
 	"github.com/miabi-io/miabi/internal/services/webhook"
 	"github.com/miabi-io/miabi/internal/services/workspace"
@@ -348,6 +349,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		func() int { n, _ := networkService.PendingMigration(); return n },
 	)
 	workspaceService := workspace.NewService(workspaceRepo, userRepo, networkService)
+	userSettingsService := usersettings.NewService(userRepo, repositories.NewUserSettingRepository(db), workspaceRepo)
+	// A user's first workspace becomes their landing place without them finding a setting.
+	workspaceService.SetDefaultAdopter(userSettingsService)
+
 	workspaceService.SetPlans(planRepo)
 	workspaceService.SetQuota(quotaService)
 	// Per-user workspace-count limit: the platform-global max_workspaces_per_user
@@ -1080,6 +1085,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			adminRunner:         handlers.NewAdminRunnerHandler(runnerService, ee, auditLogger),
 		},
 	}
+
+	r.h.auth.SetUserSettings(userSettingsService)
 
 	// Edge gateways buffer their events on the node's own Redis; the agent forwards
 	// them here, so they land in the same stream the consumer already reads.

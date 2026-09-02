@@ -23,17 +23,21 @@ import (
 	"github.com/miabi-io/miabi/internal/services/mailer"
 	"github.com/miabi-io/miabi/internal/services/settings"
 	"github.com/miabi-io/miabi/internal/services/twofactor"
+	"github.com/miabi-io/miabi/internal/services/usersettings"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
 type AuthHandler struct {
-	auth     *auth.Service
-	users    *repositories.UserRepository
-	sessions *repositories.SessionRepository
-	audit    *audit.Logger
-	settings *settings.Provider
-	mailer   *mailer.Service
-	devMode  bool
+	auth *auth.Service
+	// userSettings owns the caller's preferences and landing workspace. Nil-safe:
+	// /me simply omits them.
+	userSettings *usersettings.Service
+	users        *repositories.UserRepository
+	sessions     *repositories.SessionRepository
+	audit        *audit.Logger
+	settings     *settings.Provider
+	mailer       *mailer.Service
+	devMode      bool
 	// passwordResetEnabled gates the self-service "forgot password" flow. A
 	// critical auth control, so it is fixed at boot from MIABI_PASSWORD_RESET_ENABLED
 	// rather than a runtime setting — changing it requires a restart.
@@ -73,6 +77,10 @@ func (h *AuthHandler) SetMailer(m *mailer.Service) { h.mailer = m }
 func NewAuthHandler(a *auth.Service, users *repositories.UserRepository, sessions *repositories.SessionRepository, auditLog *audit.Logger, settingsProvider *settings.Provider, devMode, passwordResetEnabled bool) *AuthHandler {
 	return &AuthHandler{auth: a, users: users, sessions: sessions, audit: auditLog, settings: settingsProvider, devMode: devMode, passwordResetEnabled: passwordResetEnabled}
 }
+
+// SetUserSettings wires per-user preferences and the default-workspace resolver
+// (nil-safe; nil leaves /me without them and refuses the preference endpoints).
+func (h *AuthHandler) SetUserSettings(s *usersettings.Service) { h.userSettings = s }
 
 type LoginRequest struct {
 	Body struct {
@@ -195,6 +203,13 @@ type UserProfile struct {
 	// Auth describes the credential the request authenticated with. Populated on
 	// /me only, so a CLI/Terraform can discover the workspace its token manages.
 	Auth *AuthContext `json:"auth,omitempty"`
+	// DefaultWorkspaceID is where a client with no workspace in mind should land.
+	// Resolved (and repaired) on /me, so it always names a workspace the caller can
+	// actually open, or is absent when they belong to none. It is a landing hint:
+	// authorization still comes from the WorkspaceScope middleware on every request.
+	DefaultWorkspaceID *uint `json:"default_workspace_id,omitempty"`
+	// Preferences are the user's console settings. Populated on /me only.
+	Preferences *models.UserSetting `json:"preferences,omitempty"`
 }
 
 // AuthContext reports the principal behind the current request: how it
@@ -561,7 +576,73 @@ func (h *AuthHandler) Me(c *okapi.Context) error {
 		profile.Auth.WorkspaceID = middlewares.APIKeyWorkspaceID(c)
 		profile.Auth.Scopes = middlewares.APIKeyScopes(c)
 	}
+	if h.userSettings != nil {
+		if ws, err := h.userSettings.DefaultWorkspace(user.ID); err == nil && ws != nil {
+			id := ws.ID
+			profile.DefaultWorkspaceID = &id
+		}
+		if prefs, err := h.userSettings.Get(user.ID); err == nil {
+			profile.Preferences = prefs
+		}
+	}
 	return ok(c, profile)
+}
+
+type UpdatePreferencesRequest struct {
+	Body struct {
+		Theme       *string `json:"theme,omitempty"`
+		Timezone    *string `json:"timezone,omitempty"`
+		Locale      *string `json:"locale,omitempty"`
+		LandingView *string `json:"landing_view,omitempty"`
+	} `json:"body"`
+}
+
+// UpdatePreferences saves the caller's console preferences.
+func (h *AuthHandler) UpdatePreferences(c *okapi.Context, req *UpdatePreferencesRequest) error {
+	if h.userSettings == nil {
+		return c.AbortInternalServerError("preferences are unavailable", nil)
+	}
+	out, err := h.userSettings.Save(middlewares.UserID(c), usersettings.Update{
+		Theme: req.Body.Theme, Timezone: req.Body.Timezone,
+		Locale: req.Body.Locale, LandingView: req.Body.LandingView,
+	})
+	if err != nil {
+		if errors.Is(err, usersettings.ErrInvalidTheme) || errors.Is(err, usersettings.ErrInvalidLandingView) {
+			return c.AbortBadRequest(err.Error())
+		}
+		return c.AbortInternalServerError("failed to save preferences", err)
+	}
+	return ok(c, out)
+}
+
+type SetDefaultWorkspaceRequest struct {
+	Body struct {
+		WorkspaceID *uint `json:"workspace_id"`
+	} `json:"body"`
+}
+
+// SetDefaultWorkspace records the caller's landing workspace.
+func (h *AuthHandler) SetDefaultWorkspace(c *okapi.Context, req *SetDefaultWorkspaceRequest) error {
+	if h.userSettings == nil {
+		return c.AbortInternalServerError("preferences are unavailable", nil)
+	}
+	userID := middlewares.UserID(c)
+	if err := h.userSettings.SetDefaultWorkspace(userID, req.Body.WorkspaceID); err != nil {
+		if errors.Is(err, usersettings.ErrNotMember) {
+			return c.AbortForbidden(err.Error())
+		}
+		return c.AbortInternalServerError("failed to set the default workspace", err)
+	}
+	ws, err := h.userSettings.DefaultWorkspace(userID)
+	if err != nil {
+		return c.AbortInternalServerError("failed to resolve the default workspace", err)
+	}
+	out := SetDefaultWorkspaceRequest{}.Body
+	if ws != nil {
+		id := ws.ID
+		out.WorkspaceID = &id
+	}
+	return ok(c, out)
 }
 
 // ForgotPassword issues a reset token and emails the reset link, always returning 200 so it

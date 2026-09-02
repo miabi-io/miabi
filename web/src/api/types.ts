@@ -222,6 +222,31 @@ export interface User {
   // Populated on /me only: the credential behind the request. For a
   // workspace-bound API key, auth.workspace_id is the workspace the token manages.
   auth?: AuthContext
+  // Populated on /me only. default_workspace_id is already resolved server-side, so
+  // it always names a workspace the user can open (absent when they belong to none).
+  default_workspace_id?: number
+  preferences?: UserPreferences
+}
+
+export type ThemeMode = 'system' | 'light' | 'dark'
+
+// UserPreferences are the console settings that follow a user between browsers and
+// machines, as opposed to the per-device values cached in localStorage.
+export interface UserPreferences {
+  theme: ThemeMode
+  /** Display only — timestamps are stored and served in UTC. */
+  timezone: string
+  locale: string
+  /** The console section a session opens on within the default workspace. */
+  landing_view: string
+}
+
+// UserPreferencesInput is a partial update: omitted fields keep their stored value.
+export interface UserPreferencesInput {
+  theme?: ThemeMode
+  timezone?: string
+  locale?: string
+  landing_view?: string
 }
 
 export interface AuthContext {
