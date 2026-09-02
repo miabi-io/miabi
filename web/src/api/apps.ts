@@ -336,6 +336,17 @@ export const appApi = {
   detachVolume(ws: number, id: number, volumeId: number) {
     return api.delete<ApiResponse<Application>>(`/workspaces/${ws}/apps/${id}/volumes/${volumeId}`)
   },
+  // key selects one file from the config; omit it to project every file under path.
+  attachConfig(ws: number, id: number, configId: number, path: string, key = '', mode = '') {
+    return api.put<ApiResponse<Application>>(`/workspaces/${ws}/apps/${id}/configs`, {
+      config_id: configId, key, path, mode,
+    })
+  },
+  detachConfig(ws: number, id: number, configId: number, key = '') {
+    return api.delete<ApiResponse<Application>>(`/workspaces/${ws}/apps/${id}/configs/${configId}`, {
+      params: key ? { key } : undefined,
+    })
+  },
   hostMountPresets(ws: number) {
     return api.get<ApiResponse<HostMountPreset[]>>(`/workspaces/${ws}/host-mount-presets`)
   },

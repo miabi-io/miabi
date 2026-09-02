@@ -608,6 +608,57 @@ func (h *ApplicationHandler) mapLabelErr(c *okapi.Context, err error) error {
 	}
 }
 
+type AttachConfigRequest struct {
+	Body struct {
+		ConfigID uint   `json:"config_id" required:"true"`
+		Key      string `json:"key"`
+		Path     string `json:"path" required:"true"`
+		Mode     string `json:"mode"`
+	} `json:"body"`
+}
+
+func (h *ApplicationHandler) AttachConfig(c *okapi.Context, req *AttachConfigRequest) error {
+	app, err := h.load(c)
+	if err != nil {
+		return c.AbortNotFound("application not found")
+	}
+	if err := h.svc.AttachConfig(app, req.Body.ConfigID, req.Body.Key, req.Body.Path, req.Body.Mode); err != nil {
+		switch {
+		case errors.Is(err, application.ErrConfigNotFound):
+			return c.AbortNotFound(err.Error())
+		case errors.Is(err, application.ErrConfigKeyNotFound), errors.Is(err, application.ErrMountPathRequired):
+			return c.AbortBadRequest(err.Error())
+		default:
+			return c.AbortInternalServerError("failed to attach config", err)
+		}
+	}
+	h.record(c, app.WorkspaceID, "app.config_attach", app.ID)
+	h.markRedeploy(c, app)
+	return ok(c, app)
+}
+
+// DetachConfig removes one config mount. The optional `key` query parameter picks
+// between several mounts of the same config; omit it for the whole-config mount.
+func (h *ApplicationHandler) DetachConfig(c *okapi.Context) error {
+	app, err := h.load(c)
+	if err != nil {
+		return c.AbortNotFound("application not found")
+	}
+	configID, err := strconv.Atoi(c.Param("configID"))
+	if err != nil || configID <= 0 {
+		return c.AbortBadRequest("invalid config id")
+	}
+	if err := h.svc.DetachConfig(app, uint(configID), c.Query("key")); err != nil {
+		if errors.Is(err, application.ErrMountNotFound) {
+			return c.AbortNotFound(err.Error())
+		}
+		return c.AbortInternalServerError("failed to detach config", err)
+	}
+	h.record(c, app.WorkspaceID, "app.config_detach", app.ID)
+	h.markRedeploy(c, app)
+	return ok(c, app)
+}
+
 func (h *ApplicationHandler) AttachVolume(c *okapi.Context, req *AttachVolumeRequest) error {
 	app, err := h.load(c)
 	if err != nil {
