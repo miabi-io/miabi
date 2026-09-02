@@ -84,6 +84,14 @@ func TestClassifyUA(t *testing.T) {
 	if _, _, _, bot := classifyUA("Googlebot/2.1 (+http://www.google.com/bot.html)"); !bot {
 		t.Error("googlebot not detected")
 	}
+
+	fam, _, dev, bot = classifyUA("curl/8.4.0")
+	if fam != "curl" || dev != "bot" || !bot {
+		t.Errorf("curl: %q %q bot=%v", fam, dev, bot)
+	}
+	if fam, _, _, _ := classifyUA("Wget/1.21.4"); fam != "Bot" {
+		t.Errorf("wget family = %q, want Bot", fam)
+	}
 }
 
 func TestAggregatorIngestFlushAndMerge(t *testing.T) {

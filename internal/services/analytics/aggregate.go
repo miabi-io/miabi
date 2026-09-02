@@ -145,7 +145,9 @@ func classifyUA(ua string) (family, os, device string, bot bool) {
 		return "Unknown", "Unknown", "unknown", false
 	}
 	switch {
-	case containsAny(u, "bot", "crawler", "spider", "slurp", "bingpreview", "headless", "curl", "wget", "python-requests", "go-http-client"):
+	case strings.Contains(u, "curl"):
+		return "curl", osFamily(u), "bot", true
+	case containsAny(u, "bot", "crawler", "spider", "slurp", "bingpreview", "headless", "wget", "python-requests", "go-http-client"):
 		return "Bot", osFamily(u), "bot", true
 	}
 	switch {
