@@ -198,7 +198,7 @@ const tlsModes: { value: DomainTLSMode; label: string }[] = [
                 <div class="cell-id">
                   <span class="avatar avatar-sm"><span class="mdi mdi-web" style="font-size: 14px"></span></span>
                   <span class="cell-text">
-                    <span class="cell-title">{{ d.name }}</span>
+                    <router-link :to="`/domains/${d.id}`" class="cell-title cell-link">{{ d.name }}</router-link>
                     <span v-if="d.wildcard" class="cell-sub">wildcard · *.{{ d.name }}</span>
                   </span>
                 </div>
@@ -350,6 +350,8 @@ const tlsModes: { value: DomainTLSMode; label: string }[] = [
 .hint code, .check code { font-family: 'JetBrains Mono', monospace; background: var(--bg-tertiary); padding: 1px 5px; border-radius: 4px; }
 .check { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 10px; cursor: pointer; }
 .note { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; }
+.cell-link { color: inherit; text-decoration: none; }
+.cell-link:hover { text-decoration: underline; }
 .mdi-spin { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .gate { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; font-size: 13px; }

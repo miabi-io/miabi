@@ -6,6 +6,7 @@ package handlers
 import (
 	"errors"
 	"strconv"
+	"strings"
 
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/middlewares"
@@ -13,16 +14,18 @@ import (
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/dnsprovider"
 	"github.com/miabi-io/miabi/internal/services/domain"
+	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
 // DomainHandler exposes workspace-owned domain CRUD and DNS verification.
 type DomainHandler struct {
-	svc   *domain.Service
-	audit *audit.Logger
+	svc    *domain.Service
+	routes *repositories.RouteRepository
+	audit  *audit.Logger
 }
 
-func NewDomainHandler(svc *domain.Service, auditLog *audit.Logger) *DomainHandler {
-	return &DomainHandler{svc: svc, audit: auditLog}
+func NewDomainHandler(svc *domain.Service, routes *repositories.RouteRepository, auditLog *audit.Logger) *DomainHandler {
+	return &DomainHandler{svc: svc, routes: routes, audit: auditLog}
 }
 
 type CreateDomainRequest struct {
@@ -49,6 +52,43 @@ type domainView struct {
 	ChallengeHost  string `json:"challenge_host"`
 	ChallengeValue string `json:"challenge_value"`
 	Automated      bool   `json:"automated"`
+}
+
+type domainRoute struct {
+	ID           uint               `json:"id"`
+	Name         string             `json:"name"`
+	Hosts        []string           `json:"hosts"`
+	Status       models.RouteStatus `json:"status"`
+	StatusReason string             `json:"status_reason,omitempty"`
+	Enabled      bool               `json:"enabled"`
+}
+
+type domainDetail struct {
+	domainView
+	Routes []domainRoute `json:"routes"`
+}
+
+func (h *DomainHandler) dependentRoutes(d *models.Domain) []domainRoute {
+	out := []domainRoute{}
+	if h.routes == nil {
+		return out
+	}
+	routes, err := h.routes.ListByWorkspace(d.WorkspaceID)
+	if err != nil {
+		return out
+	}
+	name := strings.ToLower(d.Name)
+	for i := range routes {
+		rt := &routes[i]
+		if !routeHostsUnder(rt.Hosts, name) {
+			continue
+		}
+		out = append(out, domainRoute{
+			ID: rt.ID, Name: rt.Name, Hosts: rt.Hosts, Status: rt.Status,
+			StatusReason: rt.StatusReason, Enabled: rt.Enabled,
+		})
+	}
+	return out
 }
 
 func view(d *models.Domain) domainView {
@@ -91,7 +131,7 @@ func (h *DomainHandler) Get(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortNotFound("domain not found")
 	}
-	return ok(c, view(d))
+	return ok(c, domainDetail{domainView: view(d), Routes: h.dependentRoutes(d)})
 }
 
 func (h *DomainHandler) Update(c *okapi.Context, req *UpdateDomainRequest) error {
