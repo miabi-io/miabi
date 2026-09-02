@@ -2255,6 +2255,8 @@ export interface LicenseHealth {
 
 export type DomainTLSMode = 'acme' | 'custom'
 
+export type VerifiedVia = 'dns' | 'dns_provider' | 'admin'
+
 export interface Domain {
   id: number
   workspace_id: number
@@ -2264,6 +2266,9 @@ export interface Domain {
   verified: boolean
   verified_at?: string | null
   verification_token: string
+  // How ownership was established. "admin" is a waiver, not a proof: the drift cron
+  // records what it sees but never un-verifies it.
+  verified_via?: VerifiedVia
   // Last ownership check (whether it passed or failed) and the last failure reason.
   verification_checked_at?: string | null
   verification_error?: string
@@ -2278,6 +2283,9 @@ export interface Domain {
   // automated mirrors it (provider linked).
   dns_provider_id?: number | null
   automated?: boolean
+  // serving_unverified marks a domain the gateway serves despite no ownership proof,
+  // because the workspace is privileged. Computed per request, never stored.
+  serving_unverified?: boolean
   created_at: string
   updated_at: string
 }

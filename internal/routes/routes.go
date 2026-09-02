@@ -811,6 +811,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Privileged workspaces may expose routes under registered-but-unverified
 	// domains (a banned domain is still blocked).
 	routeService.SetWorkspacePolicy(workspaceRepo)
+	// Same signal, read-only: the domains UI reports which unverified domains serve anyway.
+	domainService.SetWorkspacePolicy(workspaceRepo)
 	// Gate custom-certificate imports on the workspace's registered domains.
 	certificateService.SetDomains(domainRepo)
 	// Declarative apply engine (shared by the one-shot apply API and GitOps).
