@@ -32,9 +32,50 @@ const FOCUSABLE = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',')
 
-// Marks a region whose own keyboard handling owns Tab. Escape still closes the dialog, so the
-// keyboard is never trapped inside one.
+// Marks a region whose own keyboard handling owns Tab — a shell completes a path with it.
 const TAB_THROUGH = '[data-modal-tab-through]'
+
+// Marks a region that owns Escape too, for content where Escape is a working key rather than a
+// dismissal: a terminal running vim, most obviously. Shift+Tab is deliberately NOT forwarded to
+// such a region (see onKeydown), so it always leads back out to the dialog's own controls — which
+// is what keeps the keyboard from being trapped once Escape no longer closes the dialog.
+const ESCAPE_THROUGH = '[data-modal-escape-through]'
+
+/**
+ * ModalKeyAction is what a modal should do with a key press:
+ * - `close` — dismiss the dialog
+ * - `trap-tab` — run the focus trap
+ * - `ignore` — leave the key to the focused content
+ */
+export type ModalKeyAction = 'close' | 'trap-tab' | 'ignore'
+
+/**
+ * modalKeyAction is the keyboard policy, separated from the DOM so it can be read
+ * and tested on its own. The rules it encodes, in order:
+ *
+ * 1. A dialog mid-action (`escapable: false`) ignores Escape entirely.
+ * 2. Content that owns Escape keeps it — a terminal running vim needs Escape to
+ *    leave insert mode, and dismissing the dialog instead loses the session.
+ * 3. Content that owns Tab keeps it, so a shell can complete a path.
+ * 4. Shift+Tab always runs the trap, even inside that content. It is the way back
+ *    out to the dialog's controls, and it is what stops rule 2 from trapping a
+ *    keyboard user in a dialog they can no longer dismiss.
+ */
+export function modalKeyAction(opts: {
+  key: string
+  shiftKey: boolean
+  escapable: boolean
+  inEscapeThrough: boolean
+  inTabThrough: boolean
+}): ModalKeyAction {
+  if (opts.key === 'Escape') {
+    if (!opts.escapable || opts.inEscapeThrough) return 'ignore'
+    return 'close'
+  }
+  if (opts.key !== 'Tab') return 'ignore'
+  if (!opts.shiftKey && opts.inTabThrough) return 'ignore'
+  return 'trap-tab'
+}
 
 function focusableIn(container: HTMLElement | null): HTMLElement[] {
   if (!container) return []
@@ -79,21 +120,23 @@ export function useModal(open: BoolSource, options: UseModalOptions = {}) {
   let listening = false
 
   function onKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
-      if (!escapable.value) return
+    const active = document.activeElement as HTMLElement | null
+
+    const action = modalKeyAction({
+      key: event.key,
+      shiftKey: event.shiftKey,
+      escapable: escapable.value,
+      inEscapeThrough: !!active?.closest(ESCAPE_THROUGH),
+      inTabThrough: !!active?.closest(TAB_THROUGH),
+    })
+    if (action === 'ignore') return
+
+    if (action === 'close') {
       event.stopPropagation()
       event.preventDefault()
       options.onRequestClose?.()
       return
     }
-
-    if (event.key !== 'Tab') return
-
-    const active = document.activeElement as HTMLElement | null
-
-    // Some content consumes Tab itself — a shell completes a path with it. The trap runs on capture,
-    // so without this it wraps focus onto the dialog's own buttons before the terminal ever sees the key.
-    if (active?.closest(TAB_THROUGH)) return
 
     // Keep Tab inside the dialog: a focus ring wandering onto the page behind an
     // overlay is disorienting with a mouse and a dead end with a screen reader.

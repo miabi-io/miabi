@@ -36,11 +36,7 @@ const mode = ref<Mode>(props.currentRef ? 'secret' : 'value')
 const literal = ref('')
 const selected = ref(props.currentRef)
 
-// The field owns mode/literal/selected and only ever pushes outward. It is not
-// re-synced from modelValue: the parent echoes what we emit, and reacting to
-// that echo would snap the mode back on every keystroke. Re-initializing is
-// unnecessary anyway — the modal is v-if'd, so this component is created fresh
-// each time it opens, with the props of the credential being edited.
+
 function emitCurrent() {
   emit('update:modelValue', mode.value === 'secret'
     ? (selected.value ? `\${{ secrets.${selected.value} }}` : '')
@@ -48,7 +44,6 @@ function emitCurrent() {
 }
 watch([mode, literal, selected], emitCurrent)
 
-// On create the field is required; on edit, blank means "keep what is stored".
 const required = computed(() => !props.editing)
 </script>
 
@@ -94,10 +89,6 @@ const required = computed(() => !props.editing)
     </template>
 
     <template v-else>
-      <!-- Defaults to unmanaged: a managed secret is owned by another resource
-           (a provisioned database's password) and rotates with it, so it is
-           rarely the right thing to authenticate a registry or repo with. The
-           filter is right there when it is. -->
       <SecretPicker v-model="selected" :label="label" default-ownership="unmanaged" />
       <p v-if="required && !selected" class="form-hint">Choose a secret to continue.</p>
       <p v-else class="form-hint">
