@@ -319,7 +319,7 @@ take when you **don't have root**:
 docker run --rm -it \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /etc/miabi:/etc/miabi \
-  miabi/miabi:1.8.0 install --domain miabi.example.com --admin-email you@example.com
+  miabi/miabi:latest install --domain miabi.example.com --admin-email you@example.com
 ```
 
 `install`, `upgrade`, `restart`, `status` and `uninstall` on the image are the same
