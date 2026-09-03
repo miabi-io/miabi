@@ -39,6 +39,7 @@ type AnalyticsRollup struct {
 	TopReferrers  map[string]int64 `gorm:"serializer:json" json:"-"`
 	TopCountries  map[string]int64 `gorm:"serializer:json" json:"-"`
 	TopUAFamilies map[string]int64 `gorm:"serializer:json" json:"-"` // browser family
+	TopUserAgents map[string]int64 `gorm:"serializer:json" json:"-"` // raw user-agent string
 	TopOS         map[string]int64 `gorm:"serializer:json" json:"-"`
 	TopDevice     map[string]int64 `gorm:"serializer:json" json:"-"` // desktop | mobile | tablet | bot
 	TopMethods    map[string]int64 `gorm:"serializer:json" json:"-"`

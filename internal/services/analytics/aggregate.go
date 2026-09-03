@@ -104,6 +104,24 @@ func clipPath(p string) string {
 
 // topKAdd adds n to key in m, keeping m bounded: once at cap, a new key only
 // displaces the current minimum (approximate top-K, fine for a dashboard).
+// maxUALen bounds a stored user-agent string; some clients send several hundred bytes.
+const maxUALen = 180
+
+func clipUA(ua string) string {
+	ua = strings.TrimSpace(ua)
+	if ua == "" {
+		return "Unknown"
+	}
+	if len(ua) <= maxUALen {
+		return ua
+	}
+	cut := maxUALen
+	for cut > 0 && !utf8.RuneStart(ua[cut]) {
+		cut--
+	}
+	return ua[:cut] + "…"
+}
+
 func topKAdd(m map[string]int64, key string, n int64) {
 	if key == "" || n == 0 {
 		return
@@ -145,9 +163,7 @@ func classifyUA(ua string) (family, os, device string, bot bool) {
 		return "Unknown", "Unknown", "unknown", false
 	}
 	switch {
-	case strings.Contains(u, "curl"):
-		return "curl", osFamily(u), "bot", true
-	case containsAny(u, "bot", "crawler", "spider", "slurp", "bingpreview", "headless", "wget", "python-requests", "go-http-client"):
+	case containsAny(u, "bot", "crawler", "spider", "slurp", "bingpreview", "headless", "curl", "wget", "python-requests", "go-http-client"):
 		return "Bot", osFamily(u), "bot", true
 	}
 	switch {
@@ -266,7 +282,8 @@ func (a *Aggregator) Ingest(e *Event, ws, app uint) {
 				DurationHist: make([]int64, histLen()), UpstreamHist: make([]int64, histLen()),
 				TopPaths: map[string]int64{}, TopReferrers: map[string]int64{},
 				TopCountries: map[string]int64{}, TopUAFamilies: map[string]int64{},
-				TopOS: map[string]int64{}, TopDevice: map[string]int64{}, TopMethods: map[string]int64{},
+				TopUserAgents: map[string]int64{},
+				TopOS:         map[string]int64{}, TopDevice: map[string]int64{}, TopMethods: map[string]int64{},
 			},
 			hll: hyperloglog.New(),
 		}
@@ -308,6 +325,7 @@ func (a *Aggregator) Ingest(e *Event, ws, app uint) {
 	if fam != "" {
 		topKAdd(r.TopUAFamilies, fam, 1)
 	}
+	topKAdd(r.TopUserAgents, clipUA(e.UA), 1)
 	topKAdd(r.TopOS, os, 1)
 	topKAdd(r.TopDevice, device, 1)
 	if bot {
@@ -361,6 +379,7 @@ func Merge(dst, src *models.AnalyticsRollup) {
 	dst.TopReferrers = ensureMap(dst.TopReferrers)
 	dst.TopCountries = ensureMap(dst.TopCountries)
 	dst.TopUAFamilies = ensureMap(dst.TopUAFamilies)
+	dst.TopUserAgents = ensureMap(dst.TopUserAgents)
 	dst.TopOS = ensureMap(dst.TopOS)
 	dst.TopDevice = ensureMap(dst.TopDevice)
 	dst.TopMethods = ensureMap(dst.TopMethods)
@@ -368,6 +387,7 @@ func Merge(dst, src *models.AnalyticsRollup) {
 	mergeTopK(dst.TopReferrers, src.TopReferrers)
 	mergeTopK(dst.TopCountries, src.TopCountries)
 	mergeTopK(dst.TopUAFamilies, src.TopUAFamilies)
+	mergeTopK(dst.TopUserAgents, src.TopUserAgents)
 	mergeTopK(dst.TopOS, src.TopOS)
 	mergeTopK(dst.TopDevice, src.TopDevice)
 	mergeTopK(dst.TopMethods, src.TopMethods)

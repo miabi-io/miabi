@@ -57,9 +57,16 @@ function botPct(r: AnalyticsReport): number {
       <Breakdown title="Operating systems" :items="report.web.top_os" />
       <Breakdown title="Devices" :items="report.web.top_devices" />
     </div>
+
+    <div class="ua-grid">
+      <Breakdown title="Top user agents" :items="report.web.top_user_agents"
+        empty-hint="No requests carried a User-Agent header in this range." />
+    </div>
   </AnalyticsShell>
 </template>
 
 <style scoped>
 .web-title { margin: 0 0 14px; font-size: 18px; color: var(--text-primary); }
+.ua-grid { margin-top: 14px; }
+.ua-grid :deep(.brow-label) { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
 </style>
