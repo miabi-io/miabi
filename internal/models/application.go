@@ -467,6 +467,9 @@ type Application struct {
 
 	CanaryMode CanaryMode `json:"canary_mode" gorm:"not null;default:auto"`
 
+	// CanaryPausedAt holds the ramp where it stands; nil means it is advancing.
+	CanaryPausedAt *time.Time `json:"canary_paused_at,omitempty"`
+
 	CanaryExclusive bool              `json:"canary_exclusive" gorm:"not null;default:false"`
 	CanaryPriority  int               `json:"canary_priority" gorm:"not null;default:0"`
 	CanaryMatch     []CanaryMatchRule `json:"canary_match,omitempty" gorm:"serializer:json"`

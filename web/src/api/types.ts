@@ -897,6 +897,7 @@ export interface Application {
   canary_step_interval_seconds?: number
   canary_release_id?: number | null
   canary_weight?: number
+  canary_paused_at?: string | null
   // Advanced canary (Enterprise: advanced_canary). `manual` stands the ramp down
   // and lets the rules below steer traffic; cleared with the canary on
   // promote/abort, while the mode is a standing preference.

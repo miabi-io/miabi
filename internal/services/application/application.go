@@ -2293,6 +2293,39 @@ func (s *Service) SetCanaryWeight(ctx context.Context, app *models.Application, 
 	return nil
 }
 
+// PauseCanary holds the ramp at the current weight.
+func (s *Service) PauseCanary(app *models.Application) error {
+	if app.CanaryReleaseID == nil {
+		return ErrNoCanary
+	}
+	if app.CanaryPausedAt != nil {
+		return nil
+	}
+	now := time.Now()
+	if err := s.apps.SetCanaryPaused(app.ID, &now); err != nil {
+		return err
+	}
+	app.CanaryPausedAt = &now
+	s.emit(app, models.EventDeployStarted, fmt.Sprintf("Canary rollout paused at %d%%", app.CanaryWeight))
+	return nil
+}
+
+// ResumeCanary hands the rollout back to the ramp from its current weight.
+func (s *Service) ResumeCanary(app *models.Application) error {
+	if app.CanaryReleaseID == nil {
+		return ErrNoCanary
+	}
+	if app.CanaryPausedAt == nil {
+		return nil
+	}
+	if err := s.apps.SetCanaryPaused(app.ID, nil); err != nil {
+		return err
+	}
+	app.CanaryPausedAt = nil
+	s.emit(app, models.EventDeployStarted, fmt.Sprintf("Canary rollout resumed from %d%%", app.CanaryWeight))
+	return nil
+}
+
 // PromoteCanary makes the canary the new stable release. It enqueues a normal
 // deploy of the canary's image; the deploy pipeline retires the old stable and
 // the in-progress canary, leaving a single full-traffic release.

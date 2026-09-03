@@ -373,6 +373,22 @@ func (r *Router) applicationRoutes() []okapi.RouteDefinition {
 		},
 		{
 			Method:      http.MethodPost,
+			Path:        base + "/{appID}/canary/pause",
+			Group:       apps,
+			Middlewares: appOp(models.PermAppDeploy),
+			Handler:     r.h.app.PauseCanary,
+			Summary:     "Pause the canary rollout at its current weight",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        base + "/{appID}/canary/resume",
+			Group:       apps,
+			Middlewares: appOp(models.PermAppDeploy),
+			Handler:     r.h.app.ResumeCanary,
+			Summary:     "Resume a paused canary rollout",
+		},
+		{
+			Method:      http.MethodPost,
 			Path:        base + "/{appID}/canary/promote",
 			Group:       apps,
 			Middlewares: appOp(models.PermAppDeploy),

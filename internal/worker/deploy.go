@@ -958,6 +958,7 @@ func (h *DeployHandler) releaseCanary(app *models.Application, dep *models.Deplo
 
 	weight := canaryInitialWeight(app)
 	_ = h.apps.SetCanary(app.ID, &rel.ID, weight)
+	_ = h.apps.SetCanaryPaused(app.ID, nil)
 	// Both stable and canary are now serving — the app is running, not "deploying".
 	_ = h.apps.SetStatus(app.ID, models.AppStatusRunning)
 
@@ -1129,7 +1130,7 @@ const (
 // nextCanaryRamp decides the timer's next move. A manual-mode app is never
 // stepped: its weight only ever moves because someone moved it.
 func nextCanaryRamp(app *models.Application) (canaryRampAction, int) {
-	if app.CanaryMode == models.CanaryModeManual {
+	if app.CanaryPausedAt != nil || app.CanaryMode == models.CanaryModeManual {
 		return canaryRampHold, app.CanaryWeight
 	}
 	next := nextCanaryWeight(app.CanaryWeight, canaryStep(app))

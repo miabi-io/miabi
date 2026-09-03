@@ -25,6 +25,7 @@ type canaryRow struct {
 	CanaryExclusive bool
 	CanaryPriority  int
 	CanaryMatch     string
+	CanaryPausedAt  *time.Time
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }
@@ -50,7 +51,7 @@ func loadCanary(t *testing.T, db *gorm.DB) models.Application {
 	t.Helper()
 	var app models.Application
 	if err := db.Session(&gorm.Session{}).Model(&models.Application{}).
-		Select("id", "canary_release_id", "canary_weight", "canary_mode", "canary_exclusive", "canary_priority", "canary_match").
+		Select("id", "canary_release_id", "canary_weight", "canary_mode", "canary_exclusive", "canary_priority", "canary_match", "canary_paused_at").
 		Where("id = ?", 1).Take(&app).Error; err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -106,6 +107,11 @@ func TestSetCanaryClearClearsRules(t *testing.T) {
 		t.Fatalf("SetCanaryRouting: %v", err)
 	}
 
+	now := time.Now()
+	if err := repo.SetCanaryPaused(1, &now); err != nil {
+		t.Fatalf("SetCanaryPaused: %v", err)
+	}
+
 	if err := repo.SetCanary(1, nil, 0); err != nil {
 		t.Fatalf("SetCanary (clear): %v", err)
 	}
@@ -115,6 +121,9 @@ func TestSetCanaryClearClearsRules(t *testing.T) {
 	}
 	if len(got.CanaryMatch) != 0 || got.CanaryExclusive || got.CanaryPriority != 0 {
 		t.Errorf("routing rules survived the clear: %+v", got)
+	}
+	if got.CanaryPausedAt != nil {
+		t.Error("a paused flag survived the clear; the next rollout would start paused")
 	}
 	// The mode is the user's standing preference and must survive.
 	if got.CanaryMode != models.CanaryModeManual {
