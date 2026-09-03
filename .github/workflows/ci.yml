@@ -33,12 +33,12 @@ jobs:
       - name: Lint Community Edition
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.12.2
+          version: v2.13.2
 
       - name: Lint Enterprise Edition
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.12.2
+          version: v2.13.2
           args: --build-tags enterprise
 
   test:
