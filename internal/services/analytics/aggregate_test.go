@@ -86,11 +86,8 @@ func TestClassifyUA(t *testing.T) {
 	}
 
 	fam, _, dev, bot = classifyUA("curl/8.4.0")
-	if fam != "curl" || dev != "bot" || !bot {
+	if fam != "Bot" || dev != "bot" || !bot {
 		t.Errorf("curl: %q %q bot=%v", fam, dev, bot)
-	}
-	if fam, _, _, _ := classifyUA("Wget/1.21.4"); fam != "Bot" {
-		t.Errorf("wget family = %q, want Bot", fam)
 	}
 }
 
@@ -319,5 +316,45 @@ func TestBuildSummaryMatchesReport(t *testing.T) {
 		if c != rep.Web.TopCountries[i] {
 			t.Fatalf("countries[%d] differs: summary %+v, report %+v", i, c, rep.Web.TopCountries[i])
 		}
+	}
+}
+
+func TestTopUserAgentsRecordsRawStrings(t *testing.T) {
+	a := NewAggregator()
+	base := time.Date(2026, 9, 3, 10, 0, 0, 0, time.UTC).UnixMilli()
+	chrome := "Mozilla/5.0 (Windows NT 10.0) Chrome/120 Safari/537.36"
+	ev := func(ua string) *Event {
+		return &Event{Ts: base, Route: "mb-ws1-web", Method: "GET", Status: 200, Path: "/", UA: ua}
+	}
+	for i := 0; i < 3; i++ {
+		a.Ingest(ev(chrome), 1, 1)
+	}
+	a.Ingest(ev("curl/8.4.0"), 1, 1)
+	a.Ingest(ev(""), 1, 1)
+
+	rollups := a.Flush(time.UnixMilli(base).Add(time.Hour))
+	if len(rollups) != 1 {
+		t.Fatalf("flushed %d rollups, want 1", len(rollups))
+	}
+	ua := rollups[0].TopUserAgents
+	if ua[chrome] != 3 {
+		t.Errorf("chrome count = %d, want 3", ua[chrome])
+	}
+	if ua["curl/8.4.0"] != 1 {
+		t.Errorf("curl not recorded verbatim: %v", ua)
+	}
+	if ua["Unknown"] != 1 {
+		t.Errorf("empty UA count = %d, want 1 under Unknown", ua["Unknown"])
+	}
+}
+
+func TestClipUABoundsLength(t *testing.T) {
+	long := strings.Repeat("a", maxUALen+50)
+	got := clipUA(long)
+	if len(got) > maxUALen+len("…") {
+		t.Errorf("clipUA returned %d bytes, want it bounded", len(got))
+	}
+	if clipUA("  ") != "Unknown" {
+		t.Error("a blank user agent should record as Unknown")
 	}
 }

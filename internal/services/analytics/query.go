@@ -14,21 +14,16 @@ import (
 // over a time range: the Traffic, Performance and Web Analytics pillars share one
 // pass over the same rollups so the three dashboard tabs come from a single query.
 type Report struct {
-	Range       Window        `json:"range"`
-	Granularity string        `json:"granularity"` // "minute" | "hour" | "day"
-	Totals      Totals        `json:"totals"`
-	Series      []SeriesPoint `json:"series"`
-	Status      StatusBreak   `json:"status"`
-	Performance Performance   `json:"performance"`
-	Web         WebAnalytics  `json:"web"`
-	// Compare holds the totals of the immediately preceding, equal-length window,
-	// so the UI can render period-over-period deltas. Nil when not requested.
-	Compare *Totals `json:"compare,omitempty"`
-	// RetentionDays is the effective retention cap in days (-1 = unlimited), and Exportable reports whether
-	// analytics export is entitled. Both are set by the handler from the license so the UI can bound the
-	// range picker and show upgrade hints. They are edition metadata, not computed from rows.
-	RetentionDays int  `json:"retention_days"`
-	Exportable    bool `json:"exportable"`
+	Range         Window        `json:"range"`
+	Granularity   string        `json:"granularity"` // "minute" | "hour" | "day"
+	Totals        Totals        `json:"totals"`
+	Series        []SeriesPoint `json:"series"`
+	Status        StatusBreak   `json:"status"`
+	Performance   Performance   `json:"performance"`
+	Web           WebAnalytics  `json:"web"`
+	Compare       *Totals       `json:"compare,omitempty"`
+	RetentionDays int           `json:"retention_days"`
+	Exportable    bool          `json:"exportable"`
 }
 
 type Window struct {
@@ -74,13 +69,12 @@ type StatusBreak struct {
 // Performance covers the latency pillar: request vs upstream percentiles plus the
 // slowest routes by p95.
 type Performance struct {
-	RequestP50  float64 `json:"request_p50_ms"`
-	RequestP95  float64 `json:"request_p95_ms"`
-	RequestP99  float64 `json:"request_p99_ms"`
-	UpstreamP50 float64 `json:"upstream_p50_ms"`
-	UpstreamP95 float64 `json:"upstream_p95_ms"`
-	UpstreamP99 float64 `json:"upstream_p99_ms"`
-	// Mean total, upstream (backend) and gateway overhead (total − upstream) in ms.
+	RequestP50    float64     `json:"request_p50_ms"`
+	RequestP95    float64     `json:"request_p95_ms"`
+	RequestP99    float64     `json:"request_p99_ms"`
+	UpstreamP50   float64     `json:"upstream_p50_ms"`
+	UpstreamP95   float64     `json:"upstream_p95_ms"`
+	UpstreamP99   float64     `json:"upstream_p99_ms"`
 	AvgRequestMs  float64     `json:"avg_request_ms"`
 	AvgUpstreamMs float64     `json:"avg_upstream_ms"`
 	AvgOverheadMs float64     `json:"avg_overhead_ms"`
@@ -105,6 +99,7 @@ type WebAnalytics struct {
 	TopReferrers   []Category `json:"top_referrers"`
 	TopCountries   []Category `json:"top_countries"`
 	TopBrowsers    []Category `json:"top_browsers"`
+	TopUserAgents  []Category `json:"top_user_agents"`
 	TopOS          []Category `json:"top_os"`
 	TopDevices     []Category `json:"top_devices"`
 	TopMethods     []Category `json:"top_methods"`
@@ -193,23 +188,15 @@ const SummaryTopCountries = 8
 // and the top countries. It deliberately omits the remaining breakdowns, per-route stats and upstream
 // percentiles the analytics pages need, so the dashboard's traffic card doesn't pay for them.
 type Summary struct {
-	Range       Window        `json:"range"`
-	Granularity string        `json:"granularity"`
-	Totals      Totals        `json:"totals"`
-	Series      []SeriesPoint `json:"series"`
-	Status      StatusBreak   `json:"status"`
-	// TopCountries is the SummaryTopCountries busiest origins, for the dashboard's
-	// country panel. Empty when the gateway has no GeoIP database — which is
-	// indistinguishable here from "no traffic", so the panel simply doesn't render.
-	TopCountries []Category `json:"top_countries"`
-	// Compare holds the totals of the immediately preceding, equal-length window,
-	// for period-over-period deltas. Nil when not requested.
-	Compare *Totals `json:"compare,omitempty"`
+	Range        Window        `json:"range"`
+	Granularity  string        `json:"granularity"`
+	Totals       Totals        `json:"totals"`
+	Series       []SeriesPoint `json:"series"`
+	Status       StatusBreak   `json:"status"`
+	TopCountries []Category    `json:"top_countries"`
+	Compare      *Totals       `json:"compare,omitempty"`
 }
 
-// BuildSummary reduces rollups to the dashboard's view of a range. Feed it rows
-// from AnalyticsRepository.RangeSummary — it reads only the counters, the latency
-// histogram, the visitor sketch and the country top-K.
 func BuildSummary(rows []models.AnalyticsRollup, since, until time.Time) Summary {
 	gran, trunc, step := granularityFor(until.Sub(since))
 	sum := Summary{
@@ -272,6 +259,7 @@ func BuildReport(rows []models.AnalyticsRollup, since, until time.Time) Report {
 	referrers := map[string]int64{}
 	countries := map[string]int64{}
 	browsers := map[string]int64{}
+	userAgents := map[string]int64{}
 	oses := map[string]int64{}
 	devices := map[string]int64{}
 	methods := map[string]int64{}
@@ -301,6 +289,7 @@ func BuildReport(rows []models.AnalyticsRollup, since, until time.Time) Report {
 		mergeTopK(referrers, row.TopReferrers)
 		mergeTopK(countries, row.TopCountries)
 		mergeTopK(browsers, row.TopUAFamilies)
+		mergeTopK(userAgents, row.TopUserAgents)
 		mergeTopK(oses, row.TopOS)
 		mergeTopK(devices, row.TopDevice)
 		mergeTopK(methods, row.TopMethods)
@@ -363,6 +352,7 @@ func BuildReport(rows []models.AnalyticsRollup, since, until time.Time) Report {
 		TopReferrers:   topN(referrers, 15),
 		TopCountries:   topN(countries, 15),
 		TopBrowsers:    topN(browsers, 10),
+		TopUserAgents:  topN(userAgents, 15),
 		TopOS:          topN(oses, 10),
 		TopDevices:     topN(devices, 10),
 		TopMethods:     topN(methods, 10),

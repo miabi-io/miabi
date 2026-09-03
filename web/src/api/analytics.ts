@@ -71,6 +71,7 @@ export interface AnalyticsWeb {
   top_referrers: Category[]
   top_countries: Category[]
   top_browsers: Category[]
+  top_user_agents: Category[]
   top_os: Category[]
   top_devices: Category[]
   top_methods: Category[]
