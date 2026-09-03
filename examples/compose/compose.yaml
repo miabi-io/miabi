@@ -82,7 +82,7 @@ services:
   # providers volume. goma.yml here interpolates the domains + Redis password
   # from this service's environment.
   gateway:
-    image: jkaninda/goma-gateway:0.14.0
+    image: jkaninda/goma-gateway:0.14.1
     labels:
       io.miabi.part-of: miabi
       io.miabi.role: gateway
