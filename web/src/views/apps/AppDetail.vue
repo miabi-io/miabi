@@ -690,12 +690,44 @@ const canaryWeight = computed(() => app.value?.canary_weight ?? 0)
 const canaryManual = computed(() => app.value?.canary_mode === 'manual')
 // What the rollout card says about the weight, which differs entirely by mode:
 // the ramp is going somewhere, a manual canary is being held.
+const canaryPaused = computed(() => !!app.value?.canary_paused_at)
+
+const canaryPausedFor = computed(() => {
+  const at = app.value?.canary_paused_at
+  if (!at) return ''
+  const mins = Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 60000))
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m`
+  const hours = Math.round(mins / 60)
+  return hours < 24 ? `${hours}h` : `${Math.round(hours / 24)}d`
+})
+
 const canaryModeHint = computed(() => {
+  if (canaryPaused.value) return `· paused ${canaryPausedFor.value}`
   if (!canaryManual.value) return '· shifting automatically, promotes at 100%'
   const rules = app.value?.canary_match?.length ?? 0
   if (!rules) return '· held manually'
   return `· held manually, ${rules} match rule${rules === 1 ? '' : 's'}`
 })
+
+async function toggleCanaryPause() {
+  if (!wid.value) return
+  canaryBusy.value = true
+  try {
+    if (canaryPaused.value) {
+      await appApi.resumeCanary(wid.value, appId.value)
+      notify.success('Canary rollout resumed')
+    } else {
+      await appApi.pauseCanary(wid.value, appId.value)
+      notify.success('Canary rollout paused')
+    }
+    loadApp()
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    canaryBusy.value = false
+  }
+}
 // The routing panel is only meaningful for an app that canaries at all.
 const showCanaryPanel = computed(() => canaryActive.value || app.value?.deploy_strategy === 'canary')
 const canaryBusy = ref(false)
@@ -2386,6 +2418,16 @@ async function detachDatabase(d: AppDatabase) {
             </div>
           </div>
           <div v-if="ws.canEdit" class="canary-actions">
+            <button
+              v-if="!canaryManual"
+              class="btn btn-secondary btn-sm"
+              :disabled="canaryBusy"
+              :title="canaryPaused ? 'Hand the rollout back to the ramp' : 'Hold traffic at the current split'"
+              @click="toggleCanaryPause"
+            >
+              <span class="mdi" :class="canaryPaused ? 'mdi-play' : 'mdi-pause'"></span>
+              {{ canaryPaused ? 'Resume' : 'Pause' }}
+            </button>
             <button class="btn btn-primary btn-sm" :disabled="canaryBusy" @click="promoteCanary">Promote</button>
             <button class="btn btn-secondary btn-sm" :disabled="canaryBusy" @click="abortCanary">Abort</button>
           </div>

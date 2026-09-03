@@ -256,6 +256,12 @@ export const appApi = {
   setCanaryWeight(ws: number, id: number, weight: number) {
     return api.patch<ApiResponse<{ message: string }>>(`/workspaces/${ws}/apps/${id}/canary`, { weight })
   },
+  pauseCanary(ws: number, id: number) {
+    return api.post<ApiResponse<{ message: string }>>(`/workspaces/${ws}/apps/${id}/canary/pause`)
+  },
+  resumeCanary(ws: number, id: number) {
+    return api.post<ApiResponse<{ message: string }>>(`/workspaces/${ws}/apps/${id}/canary/resume`)
+  },
   promoteCanary(ws: number, id: number) {
     return api.post<ApiResponse<Deployment>>(`/workspaces/${ws}/apps/${id}/canary/promote`)
   },

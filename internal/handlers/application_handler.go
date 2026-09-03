@@ -949,6 +949,30 @@ func (h *ApplicationHandler) StartCanary(c *okapi.Context, req *StartCanaryReque
 	return created(c, dep)
 }
 
+func (h *ApplicationHandler) PauseCanary(c *okapi.Context) error {
+	app, err := h.load(c)
+	if err != nil {
+		return c.AbortNotFound("application not found")
+	}
+	if err := h.svc.PauseCanary(app); err != nil {
+		return h.mapCanaryErr(c, err)
+	}
+	h.record(c, app.WorkspaceID, "app.canary.pause", app.ID)
+	return message(c, "canary rollout paused")
+}
+
+func (h *ApplicationHandler) ResumeCanary(c *okapi.Context) error {
+	app, err := h.load(c)
+	if err != nil {
+		return c.AbortNotFound("application not found")
+	}
+	if err := h.svc.ResumeCanary(app); err != nil {
+		return h.mapCanaryErr(c, err)
+	}
+	h.record(c, app.WorkspaceID, "app.canary.resume", app.ID)
+	return message(c, "canary rollout resumed")
+}
+
 // SetCanaryWeight shifts the share of traffic going to the canary (no redeploy).
 func (h *ApplicationHandler) SetCanaryWeight(c *okapi.Context, req *CanaryWeightRequest) error {
 	app, err := h.load(c)

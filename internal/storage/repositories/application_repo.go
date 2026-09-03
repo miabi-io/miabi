@@ -5,6 +5,7 @@ package repositories
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/miabi-io/miabi/internal/models"
 	"gorm.io/gorm"
@@ -220,8 +221,14 @@ func (r *ApplicationRepository) SetCanary(id uint, releaseID *uint, weight int) 
 		fields["canary_exclusive"] = false
 		fields["canary_priority"] = 0
 		fields["canary_match"] = nil
+		fields["canary_paused_at"] = nil
 	}
 	return r.db.Model(&models.Application{}).Where("id = ?", id).Updates(fields).Error
+}
+
+func (r *ApplicationRepository) SetCanaryPaused(id uint, at *time.Time) error {
+	return r.db.Model(&models.Application{}).Where("id = ?", id).
+		Update("canary_paused_at", at).Error
 }
 
 // SetCanaryRouting stores the app's canary steering: the mode, and (for manual

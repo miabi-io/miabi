@@ -6,6 +6,7 @@ package worker
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/miabi-io/miabi/internal/models"
 )
@@ -107,5 +108,29 @@ func TestCanaryRampDefaultsToAuto(t *testing.T) {
 	legacy := &models.Application{CanaryWeight: 10, CanaryStepWeight: 20}
 	if action, next := nextCanaryRamp(legacy); action != canaryRampAdvance || next != 30 {
 		t.Errorf("legacy app: action = %v, next = %d; want advance to 30", action, next)
+	}
+}
+
+func TestCanaryRampHoldsWhilePaused(t *testing.T) {
+	at := time.Now()
+	paused := &models.Application{
+		CanaryMode: models.CanaryModeAuto, CanaryWeight: 40, CanaryStepWeight: 20, CanaryPausedAt: &at,
+	}
+	action, next := nextCanaryRamp(paused)
+	if action != canaryRampHold {
+		t.Errorf("paused: action = %v, want hold", action)
+	}
+	if next != 40 {
+		t.Errorf("paused rollout moved to %d, want it held at 40", next)
+	}
+
+	paused.CanaryWeight = 95
+	if action, _ := nextCanaryRamp(paused); action != canaryRampHold {
+		t.Errorf("paused at 95%%: action = %v, want hold (never auto-promote)", action)
+	}
+
+	paused.CanaryPausedAt = nil
+	if action, next := nextCanaryRamp(paused); action != canaryRampPromote || next != 100 {
+		t.Errorf("resumed at 95%%: action = %v, next = %d; want promote at 100", action, next)
 	}
 }
