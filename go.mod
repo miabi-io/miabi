@@ -52,7 +52,7 @@ require (
 	github.com/libdns/tencentcloud v1.4.3
 	github.com/libdns/transip v1.1.2
 	github.com/miabi-io/runner v0.0.10
-	github.com/miekg/dns v1.1.72
+	github.com/miekg/dns v1.1.73
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/redis/go-redis/v9 v9.22.0
@@ -191,7 +191,6 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	golang.org/x/tools v0.49.0 // indirect
 	google.golang.org/api v0.276.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
