@@ -87,7 +87,7 @@ SKIP_DOCKER_INSTALL="${MIABI_SKIP_DOCKER_INSTALL:-0}"
 # .github/workflows/release.yml) and they are passed straight to `miabi setup`, so
 # the manifest it writes records exactly what this release was tested against.
 MIABI_VERSION="${MIABI_VERSION:-v1.9.4}"
-GOMA_VERSION="${GOMA_VERSION:-v0.14.0}"
+GOMA_VERSION="${GOMA_VERSION:-v0.15.1}"
 RUNNER_VERSION="${RUNNER_VERSION:-v0.0.10}"
 
 # The miabi CLI is what installs and then manages the stack, and it releases from its own repo
