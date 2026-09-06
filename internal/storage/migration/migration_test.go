@@ -22,10 +22,8 @@ type legacyBackup struct {
 
 func (legacyBackup) TableName() string { return "backups" }
 
-// TestBackfillBackupNumbers verifies the pre-AutoMigrate fixup adds the column and
-// numbers existing rows per database (1, 2, 3… by id), leaving the result unique on
-// (database_id, number) so AutoMigrate's index can be created. Also checks the second
-// run is a no-op.
+// TestBackfillBackupNumbers pins the upgrade path: the result must be unique per database,
+// or the index AutoMigrate adds next cannot be created.
 func TestBackfillBackupNumbers(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
@@ -79,7 +77,6 @@ func TestBackfillBackupNumbers(t *testing.T) {
 	}
 }
 
-// TestBackfillBackupNumbersNoTable verifies a fresh install (no backups table yet) is skipped.
 func TestBackfillBackupNumbersNoTable(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {

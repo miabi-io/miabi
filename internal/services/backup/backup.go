@@ -81,6 +81,13 @@ type BackupAlerter interface {
 	BackupSucceeded(workspaceID, databaseID uint)
 }
 
+// EventRecorder writes backup and restore outcomes to the owning instance's timeline. The
+// subject is the instance, not the logical database, so one timeline covers the whole
+// instance; the logical database name rides along in the metadata.
+type EventRecorder interface {
+	EmitDatabase(workspaceID, databaseID uint, name string, t models.AppEventType, sev models.AppEventSeverity, message string, meta map[string]string, actorID *uint)
+}
+
 type Service struct {
 	repo    *repositories.BackupRepository
 	dbs     *repositories.DatabaseRepository
@@ -89,10 +96,22 @@ type Service struct {
 	ddl     DDLRunner
 	logs    *logstore.Store
 	alerter BackupAlerter
+	events  EventRecorder
 }
 
 func NewService(repo *repositories.BackupRepository, dbs *repositories.DatabaseRepository, clients NodeDocker) *Service {
 	return &Service{repo: repo, dbs: dbs, clients: clients}
+}
+
+// SetEventRecorder wires the instance timeline recorder (nil-safe: unset means no events).
+func (s *Service) SetEventRecorder(r EventRecorder) { s.events = r }
+
+// emit is best-effort and nil-safe: recording must never break a backup.
+func (s *Service) emit(workspaceID, instanceID uint, instanceName string, t models.AppEventType, sev models.AppEventSeverity, msg string, meta map[string]string) {
+	if s.events == nil || instanceID == 0 {
+		return
+	}
+	s.events.EmitDatabase(workspaceID, instanceID, instanceName, t, sev, msg, meta, nil)
 }
 
 // SetImageResolver wires the deployment-config resolver for backup tool images.
@@ -287,6 +306,9 @@ func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *mo
 	if s.alerter != nil {
 		s.alerter.BackupSucceeded(b.WorkspaceID, b.DatabaseID)
 	}
+	s.emit(b.WorkspaceID, inst.ID, inst.Name, models.EventDatabaseBackupSucceeded, models.SeverityInfo,
+		fmt.Sprintf("Backup #%d of %q completed", b.Number, db.Name),
+		map[string]string{"database": db.Name, "backup": fmt.Sprint(b.Number), "trigger": trigger, "destination": dest.Type})
 	logger.Info("backup completed", "database", db.ID, "destination", dest.Type, "file", b.Filename)
 	return b, nil
 }
@@ -391,8 +413,25 @@ func (s *Service) RestoreFromBackup(ctx context.Context, inst *models.DatabaseIn
 }
 
 // Restore restores a logical database from the given source. When spec.Force is
-// set the database is dropped & recreated first (clean slate).
+// set the database is dropped & recreated first (clean slate). It wraps restore so that every
+// one of its early returns still reports an outcome to the instance timeline.
 func (s *Service) Restore(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, spec RestoreSpec) error {
+	err := s.restore(ctx, inst, db, spec)
+	meta := map[string]string{"database": db.Name, "file": spec.Filename, "source": spec.Destination}
+	if spec.Force {
+		meta["force"] = "true"
+	}
+	if err != nil {
+		s.emit(inst.WorkspaceID, inst.ID, inst.Name, models.EventDatabaseRestoreFailed, models.SeverityError,
+			fmt.Sprintf("Restore of %q failed: %s", db.Name, err.Error()), meta)
+		return err
+	}
+	s.emit(inst.WorkspaceID, inst.ID, inst.Name, models.EventDatabaseRestoreSucceeded, models.SeverityInfo,
+		fmt.Sprintf("Restored %q from %s", db.Name, spec.Filename), meta)
+	return nil
+}
+
+func (s *Service) restore(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, spec RestoreSpec) error {
 	image, ok := s.bkupImage(inst.Engine)
 	if !ok {
 		return ErrUnsupportedEngine
@@ -601,13 +640,27 @@ func (s *Service) fail(b *models.Backup, cause error) *models.Backup {
 	b.FinishedAt = &fin
 	_ = s.repo.Update(b)
 	s.externalizeLog(b)
+	var (
+		name       string
+		instanceID uint
+	)
+	// FindDatabaseByID, not FindByID: b.DatabaseID is a logical database id, and FindByID
+	// resolves instance ids — it would name an unrelated instance that shares the number.
+	if db, err := s.dbs.FindDatabaseByID(b.DatabaseID); err == nil && db != nil {
+		name, instanceID = db.Name, db.InstanceID
+	}
 	if s.alerter != nil {
-		name := ""
-		if db, err := s.dbs.FindByID(b.DatabaseID); err == nil && db != nil {
-			name = db.Name
-		}
 		s.alerter.BackupFailed(b.WorkspaceID, b.DatabaseID, name, cause.Error())
 	}
+	var instanceName string
+	if instanceID != 0 {
+		if inst, err := s.dbs.FindByID(instanceID); err == nil && inst != nil {
+			instanceName = inst.Name
+		}
+	}
+	s.emit(b.WorkspaceID, instanceID, instanceName, models.EventDatabaseBackupFailed, models.SeverityError,
+		fmt.Sprintf("Backup #%d of %q failed: %s", b.Number, name, cause.Error()),
+		map[string]string{"database": name, "backup": fmt.Sprint(b.Number), "trigger": b.Trigger})
 	logger.Error("backup failed", "database", b.DatabaseID, "error", cause)
 	return b
 }

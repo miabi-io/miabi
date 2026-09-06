@@ -471,6 +471,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	volumeBackupRepo := repositories.NewVolumeBackupRepository(db)
 	databaseService := database.NewService(dbRepo, nodeClients, producer)
 	databaseService.SetEventBus(bus) // live status SSE; shares the bus with the embedded worker
+	databaseService.SetEventRecorder(eventsService)
 	databaseService.SetNodeGuard(nodeService)
 	databaseService.SetServerInfo(nodeService)
 	databaseService.SetQuota(quotaService)
@@ -636,6 +637,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	)
 	backupService.SetImageResolver(imageResolver)
 	backupService.SetLogStore(logStore) // externalize backup run logs to the shared store
+	backupService.SetEventRecorder(eventsService)
 	// Volume backup: archives a volume to the workspace S3 target (volume-bkup).
 	volumeBackupService := volumebackup.NewService(volumeBackupRepo, volumeRepo, nodeClients)
 	volumeBackupService.SetImageResolver(imageResolver)
@@ -1049,7 +1051,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			image:           handlers.NewImageHandler(imageService, dockerClient, auditLogger),
 			environment:     handlers.NewEnvironmentHandler(environmentService, auditLogger),
 			release:         handlers.NewReleaseHandler(releaseService, auditLogger),
-			events:          handlers.NewEventsHandler(eventsService, bus, appService, monitoringService),
+			events:          handlers.NewEventsHandler(eventsService, bus, appService, databaseService, monitoringService),
 			webhook:         handlers.NewWebhookHandler(webhookService, auditLogger),
 			notification:    handlers.NewNotificationHandler(notificationService, auditLogger),
 			node:            handlers.NewNodeHandler(nodeService, nodeManager, nodeGateway, dockerImportService, housekeepingService, clusterService, imageResolver, cfg.ControlURL, auditLogger, bus, cfg.HostProcPath),

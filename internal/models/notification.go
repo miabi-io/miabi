@@ -5,9 +5,10 @@ package models
 
 import "time"
 
-// NotifiableEvents is the curated set of application lifecycle events that
-// webhooks and notification channels may subscribe to. Configuration changes
-// and other timeline noise are intentionally excluded.
+// NotifiableEvents is the curated set of lifecycle events that webhooks and notification
+// channels may subscribe to. Configuration changes and other timeline noise are intentionally
+// excluded. Routine database transitions (started/stopped/restarted) are left out for the same
+// reason: only outcomes worth waking someone for are here.
 var NotifiableEvents = []AppEventType{
 	EventDeployStarted,
 	EventDeploySucceeded,
@@ -16,6 +17,14 @@ var NotifiableEvents = []AppEventType{
 	EventContainerStopped,
 	EventContainerDied,
 	EventContainerOOM,
+	EventDatabaseProvisioned,
+	EventDatabaseProvisionFailed,
+	EventDatabaseUpgraded,
+	EventDatabaseUpgradeFailed,
+	EventDatabaseBackupSucceeded,
+	EventDatabaseBackupFailed,
+	EventDatabaseRestoreSucceeded,
+	EventDatabaseRestoreFailed,
 }
 
 var notifiableSet = func() map[AppEventType]struct{} {

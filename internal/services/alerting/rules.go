@@ -48,10 +48,102 @@ func appSubject(appID uint) (typ, ref, link string) {
 	return "app", fmt.Sprintf("app:%d", appID), fmt.Sprintf("/apps/%d", appID)
 }
 
-// Evaluate maps one app event to zero or more alert intents. appName is the
-// resolved display name (falls back to "app #<id>" upstream). It is pure: no I/O,
-// no state — the engine handles counting, persistence and fan-out.
-func evaluate(e *models.AppEvent, appName string) []intent {
+func databaseSubject(dbID uint) (typ, ref, link string) {
+	return "database", fmt.Sprintf("database:%d", dbID), fmt.Sprintf("/databases/%d", dbID)
+}
+
+// evaluate maps one event to zero or more alert intents, dispatching on its subject. name is the
+// resolved display name of that subject. It is pure: no I/O, no state — the engine handles
+// counting, persistence and fan-out.
+func evaluate(e *models.AppEvent, name string) []intent {
+	if subject, id := e.Subject(); subject == models.SubjectDatabase {
+		return evaluateDatabase(e, id, name)
+	}
+	return evaluateApp(e, name)
+}
+
+// evaluateDatabase maps a database instance event to alert intents. Backup outcomes are
+// deliberately absent: the backup service already raises those through the Signal path
+// ("backup_failed"/"backup_ok"), and firing here as well would open a second alert for one
+// failure.
+func evaluateDatabase(e *models.AppEvent, dbID uint, name string) []intent {
+	if dbID == 0 {
+		return nil
+	}
+	typ, ref, link := databaseSubject(dbID)
+	base := intent{
+		category:    models.CategoryDatabase,
+		subjectType: typ,
+		subjectRef:  ref,
+		subjectLink: link,
+		minRole:     models.WorkspaceRoleDeveloper,
+	}
+	crashKey := fmt.Sprintf("crashloop:database:%d", dbID)
+	oomKey := fmt.Sprintf("oom:database:%d", dbID)
+	unhealthyKey := fmt.Sprintf("unhealthy:database:%d", dbID)
+	provisionKey := fmt.Sprintf("provision:database:%d", dbID)
+	upgradeKey := fmt.Sprintf("upgrade:database:%d", dbID)
+
+	switch e.Type {
+	case models.EventContainerOOM:
+		i := base
+		i.kind, i.ruleKey, i.dedupKey = fire, "database_oom", oomKey
+		i.severity = models.AlertCritical
+		i.title = fmt.Sprintf("Out of memory — %s", name)
+		i.body = orDefault(e.Message, "The database container was OOM-killed. Consider raising its memory limit.")
+		return []intent{i}
+
+	case models.EventContainerDied:
+		i := base
+		i.kind, i.ruleKey, i.dedupKey = countFire, "database_crash_loop", crashKey
+		i.severity = models.AlertCritical
+		i.threshold, i.window = 5, 3*time.Minute
+		i.title = fmt.Sprintf("Crash-looping — %s", name)
+		i.body = orDefault(e.Message, "The database container keeps exiting and restarting.")
+		return []intent{i}
+
+	case models.EventContainerHealth:
+		if e.Severity == models.SeverityWarning {
+			i := base
+			i.kind, i.ruleKey, i.dedupKey = fire, "database_unhealthy", unhealthyKey
+			i.severity = models.AlertWarning
+			i.title = fmt.Sprintf("Unhealthy — %s", name)
+			i.body = orDefault(e.Message, "The database container's health check is failing.")
+			return []intent{i}
+		}
+		return resolves(unhealthyKey, crashKey, oomKey)
+
+	case models.EventDatabaseProvisionFailed:
+		i := base
+		i.kind, i.ruleKey, i.dedupKey = fire, "database_provision_failed", provisionKey
+		i.severity = models.AlertCritical
+		i.title = fmt.Sprintf("Provisioning failed — %s", name)
+		i.body = orDefault(e.Message, "The database instance did not finish provisioning.")
+		return []intent{i}
+
+	case models.EventDatabaseProvisioned:
+		return resolves(provisionKey)
+
+	case models.EventDatabaseUpgradeFailed:
+		i := base
+		i.kind, i.ruleKey, i.dedupKey = fire, "database_upgrade_failed", upgradeKey
+		i.severity = models.AlertCritical
+		i.title = fmt.Sprintf("Upgrade failed — %s", name)
+		i.body = orDefault(e.Message, "The database upgrade did not complete.")
+		return []intent{i}
+
+	case models.EventDatabaseUpgraded:
+		return resolves(upgradeKey)
+
+	case models.EventDatabaseStarted:
+		return resolves(crashKey, oomKey, unhealthyKey)
+	}
+	return nil
+}
+
+// evaluateApp maps one application event to zero or more alert intents. appName is the
+// resolved display name (falls back to "app #<id>" upstream).
+func evaluateApp(e *models.AppEvent, appName string) []intent {
 	if e.ApplicationID == 0 {
 		return nil
 	}

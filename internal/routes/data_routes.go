@@ -197,6 +197,24 @@ func (r *Router) databaseRoutes() []okapi.RouteDefinition {
 			Summary:     "Detach a network from a database",
 		},
 
+		// "timeline", not "events": /{databaseID}/events above is already the live status
+		// stream. This is the persisted history, i.e. the app-side /apps/{appID}/events.
+		{
+			Method:      http.MethodGet,
+			Path:        base + "/{databaseID}/timeline",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.events.DatabaseList,
+			Summary:     "List database instance timeline events",
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        base + "/{databaseID}/timeline/stream",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.events.DatabaseStream,
+			Summary:     "Stream database instance timeline events (SSE)",
+		},
 		// Logical databases hosted on an instance (SQL engines).
 		{
 			Method:      http.MethodGet,

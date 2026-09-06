@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package events records and serves application timeline events: lifecycle
+// Package events records and serves resource timeline events: lifecycle
 // transitions, runtime container events, and configuration changes. Events are
 // persisted and fanned out live over the in-process event bus.
+//
+// A single recorder serves every subject (applications, database instances), so a new
+// subject inherits alerting, outbound notifications and the workspace feed for free.
 package events
 
 import (
@@ -15,11 +18,14 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// retainPerApp bounds the event history kept per application.
-const retainPerApp = 500
+// retainPerSubject bounds the event history kept per subject (application or database).
+const retainPerSubject = 500
 
 // Topic is the event-bus topic carrying an application's live events.
 func Topic(appID uint) string { return fmt.Sprintf("app-events:%d", appID) }
+
+// DatabaseTopic is the event-bus topic carrying a database instance's live events.
+func DatabaseTopic(databaseID uint) string { return fmt.Sprintf("db-events:%d", databaseID) }
 
 // WorkspaceTopic carries every application event in a workspace, so one
 // subscriber (the dashboard) can watch activity and health across all apps
@@ -63,18 +69,25 @@ func (s *Service) SetAlertSink(n Notifier) { s.alertSink = n }
 // Record persists an event and publishes it live. Best-effort: a failure never
 // propagates to the caller (recording must not break deploys or mutations).
 func (s *Service) Record(e *models.AppEvent) {
-	if e == nil || e.ApplicationID == 0 {
+	if e == nil {
+		return
+	}
+	if e.SubjectType == "" {
+		e.SubjectType = models.SubjectApp
+	}
+	if !e.HasSubject() {
 		return
 	}
 	if e.Severity == "" {
 		e.Severity = models.SeverityInfo
 	}
+	subject, subjectID := e.Subject()
 	if err := s.repo.Create(e); err != nil {
-		logger.Error("failed to record app event", "app", e.ApplicationID, "type", e.Type, "error", err)
+		logger.Error("failed to record event", "subject", subject, "id", subjectID, "type", e.Type, "error", err)
 		return
 	}
 	if s.bus != nil {
-		s.bus.Publish(Topic(e.ApplicationID), eventbus.Event{Type: "event", Data: e})
+		s.bus.Publish(subjectTopic(subject, subjectID), eventbus.Event{Type: "event", Data: e})
 		// Fan out to the workspace-wide topic so the dashboard's live feed sees
 		// events across every app without a per-app subscription.
 		if e.WorkspaceID != 0 {
@@ -92,13 +105,25 @@ func (s *Service) Record(e *models.AppEvent) {
 		s.alertSink.OnEvent(e)
 	}
 	// Opportunistic retention trim (cheap; ignores errors).
-	_ = s.repo.TrimByApp(e.ApplicationID, retainPerApp)
+	if subject == models.SubjectDatabase {
+		_ = s.repo.TrimByDatabase(subjectID, retainPerSubject)
+	} else {
+		_ = s.repo.TrimByApp(subjectID, retainPerSubject)
+	}
+}
+
+func subjectTopic(subject models.EventSubjectType, id uint) string {
+	if subject == models.SubjectDatabase {
+		return DatabaseTopic(id)
+	}
+	return Topic(id)
 }
 
 // Emit is a convenience constructor + Record.
 func (s *Service) Emit(workspaceID, appID uint, t models.AppEventType, sev models.AppEventSeverity, message string, meta map[string]string, actorID *uint) {
 	s.Record(&models.AppEvent{
 		WorkspaceID:   workspaceID,
+		SubjectType:   models.SubjectApp,
 		ApplicationID: appID,
 		Type:          t,
 		Severity:      sev,
@@ -106,6 +131,36 @@ func (s *Service) Emit(workspaceID, appID uint, t models.AppEventType, sev model
 		Metadata:      meta,
 		ActorID:       actorID,
 	})
+}
+
+// EmitDatabase records an event about a database instance. The instance is the subject even
+// for backup and restore events, whose logical database name goes in meta, so one timeline
+// covers the whole instance.
+//
+// name is not persisted, but it rides along on the live bus event so SSE consumers can label
+// the subject without a lookup they have no data for.
+func (s *Service) EmitDatabase(workspaceID, databaseID uint, name string, t models.AppEventType, sev models.AppEventSeverity, message string, meta map[string]string, actorID *uint) {
+	s.Record(&models.AppEvent{
+		WorkspaceID:  workspaceID,
+		SubjectType:  models.SubjectDatabase,
+		DatabaseID:   databaseID,
+		DatabaseName: name,
+		Type:         t,
+		Severity:     sev,
+		Message:      message,
+		Metadata:     meta,
+		ActorID:      actorID,
+	})
+}
+
+// ListByDatabase returns a database instance's events newest-first (cursor via before).
+func (s *Service) ListByDatabase(databaseID uint, limit int, before uint) ([]models.AppEvent, error) {
+	return s.repo.ListByDatabase(databaseID, limit, before)
+}
+
+// DeleteByDatabase drops a deleted instance's timeline.
+func (s *Service) DeleteByDatabase(databaseID uint) error {
+	return s.repo.DeleteByDatabase(databaseID)
 }
 
 // List returns an application's events newest-first (cursor via before).

@@ -29,15 +29,17 @@ type WebhookDeliverHandler struct {
 	deliveries *repositories.WebhookDeliveryRepository
 	events     *repositories.AppEventRepository
 	apps       *repositories.ApplicationRepository
+	databases  *repositories.DatabaseRepository
 	client     *http.Client
 }
 
-func NewWebhookDeliverHandler(webhooks *repositories.WebhookRepository, deliveries *repositories.WebhookDeliveryRepository, events *repositories.AppEventRepository, apps *repositories.ApplicationRepository) *WebhookDeliverHandler {
+func NewWebhookDeliverHandler(webhooks *repositories.WebhookRepository, deliveries *repositories.WebhookDeliveryRepository, events *repositories.AppEventRepository, apps *repositories.ApplicationRepository, databases *repositories.DatabaseRepository) *WebhookDeliverHandler {
 	return &WebhookDeliverHandler{
 		webhooks:   webhooks,
 		deliveries: deliveries,
 		events:     events,
 		apps:       apps,
+		databases:  databases,
 		client:     netguard.Client(10 * time.Second),
 	}
 }
@@ -65,7 +67,7 @@ func (h *WebhookDeliverHandler) ProcessTask(ctx context.Context, task *asynq.Tas
 		return err
 	}
 
-	enrichEvent(e, h.apps)
+	enrichEvent(e, h.apps, h.databases)
 
 	secret, err := crypto.Decrypt(w.Secret)
 	if err != nil {

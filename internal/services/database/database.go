@@ -154,6 +154,14 @@ type NodeGuard interface {
 	Placeable(serverID uint) error
 }
 
+// EventRecorder writes instance timeline events (provision/start/stop/restart/upgrade
+// outcomes) and drops a deleted instance's timeline. Injected post-construction so the
+// database service depends on the capability, not the events package.
+type EventRecorder interface {
+	EmitDatabase(workspaceID, databaseID uint, name string, t models.AppEventType, sev models.AppEventSeverity, message string, meta map[string]string, actorID *uint)
+	DeleteByDatabase(databaseID uint) error
+}
+
 // ServerInfo resolves a node's display metadata by id. Implemented by the node
 // service; injected after construction (optional — read paths degrade to an
 // empty server name when unset, e.g. in the worker).
@@ -178,6 +186,7 @@ type Service struct {
 	// to SSE subscribers. Shared with the embedded worker so worker-driven phase
 	// changes reach an open detail-page stream. Nil-safe (no-op when unwired).
 	bus         *eventbus.Bus
+	events      EventRecorder
 	sizeSyncing sync.Map
 }
 
@@ -191,6 +200,22 @@ func (s *Service) SetOwnerExister(fn OwnerExister) { s.ownerOf = fn }
 
 func NewService(repo *repositories.DatabaseRepository, clients NodeDocker, enqueuer Enqueuer) *Service {
 	return &Service{repo: repo, clients: clients, enqueuer: enqueuer}
+}
+
+// SetEventRecorder wires the timeline recorder (nil-safe: unset means no events).
+func (s *Service) SetEventRecorder(r EventRecorder) { s.events = r }
+
+// emit is best-effort and nil-safe: recording must never break a lifecycle operation.
+func (s *Service) emit(inst *models.DatabaseInstance, t models.AppEventType, sev models.AppEventSeverity, msg string, meta map[string]string) {
+	if s.events == nil || inst == nil {
+		return
+	}
+	if meta == nil {
+		meta = map[string]string{}
+	}
+	meta["engine"] = string(inst.Engine)
+	meta["version"] = inst.Version
+	s.events.EmitDatabase(inst.WorkspaceID, inst.ID, inst.Name, t, sev, msg, meta, nil)
 }
 
 // SetEventBus wires the in-process bus used to stream live instance status over
@@ -640,6 +665,7 @@ func (s *Service) RunProvision(ctx context.Context, instanceID uint) error {
 		inst.Status = models.DBStatusFailed
 		_ = s.repo.Update(inst)
 		s.publishStatus(inst)
+		s.emit(inst, models.EventDatabaseProvisionFailed, models.SeverityError, "Provisioning failed: "+err.Error(), nil)
 		return err
 	}
 	// Apply any logical databases that were reserved before bring-up (e.g. a
@@ -651,6 +677,7 @@ func (s *Service) RunProvision(ctx context.Context, instanceID uint) error {
 		s.applyPendingDatabases(ctx, inst)
 	}
 	s.publishStatus(inst) // bring-up succeeded → running
+	s.emit(inst, models.EventDatabaseProvisioned, models.SeverityInfo, fmt.Sprintf("Provisioned %s %s", inst.Engine, inst.Version), nil)
 	return nil
 }
 
@@ -1034,6 +1061,7 @@ func (s *Service) Start(ctx context.Context, inst *models.DatabaseInstance) erro
 		return err
 	}
 	s.publishStatus(inst)
+	s.emit(inst, models.EventDatabaseStarted, models.SeverityInfo, "Instance started", nil)
 	// Heal any logical databases left pending from a racy bring-up (no-op when
 	// none are pending). Async so the request returns immediately.
 	go s.applyPendingDatabases(context.Background(), inst)
@@ -1061,6 +1089,7 @@ func (s *Service) Stop(ctx context.Context, inst *models.DatabaseInstance) error
 		return err
 	}
 	s.publishStatus(inst)
+	s.emit(inst, models.EventDatabaseStopped, models.SeverityInfo, "Instance stopped", nil)
 	return nil
 }
 
@@ -1084,6 +1113,7 @@ func (s *Service) Restart(ctx context.Context, inst *models.DatabaseInstance) er
 		return err
 	}
 	s.publishStatus(inst)
+	s.emit(inst, models.EventDatabaseRestarted, models.SeverityInfo, "Instance restarted", nil)
 	// Heal any logical databases left pending from a racy bring-up (no-op when none).
 	go s.applyPendingDatabases(context.Background(), inst)
 	return nil
@@ -1133,6 +1163,13 @@ func (s *Service) Delete(ctx context.Context, inst *models.DatabaseInstance) err
 		s.cascadeDeleteSecrets(inst.WorkspaceID, SecretOwnerDatabase, logicalDBs[i].ID)
 	}
 	s.cascadeDeleteSecrets(inst.WorkspaceID, SecretOwnerInstance, inst.ID)
+	// The timeline is instance-scoped, so it goes with the instance rather than lingering
+	// as rows no page can reach.
+	if s.events != nil {
+		if err := s.events.DeleteByDatabase(inst.ID); err != nil {
+			logger.Error("delete database events", "id", inst.ID, "error", err)
+		}
+	}
 	return nil
 }
 

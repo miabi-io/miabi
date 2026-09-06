@@ -68,7 +68,7 @@ func formatMessage(e *models.AppEvent) string {
 	var b strings.Builder
 	b.WriteString(eventEmoji(e.Type))
 	b.WriteString(" ")
-	if subject := appLabel(e); subject != "" {
+	if subject := subjectLabel(e); subject != "" {
 		fmt.Fprintf(&b, "%s — %s", subject, eventTitle(e.Type))
 	} else {
 		b.WriteString(eventTitle(e.Type))
@@ -82,26 +82,39 @@ func formatMessage(e *models.AppEvent) string {
 	return b.String()
 }
 
-// appLabel returns the best available human label for the event's application:
-// its name when enrichment populated it, otherwise a "#id" fallback (e.g. the
-// app was deleted before delivery), or empty when the event has no application.
-func appLabel(e *models.AppEvent) string {
-	switch {
-	case e.ApplicationName != "":
-		return e.ApplicationName
-	case e.ApplicationID != 0:
-		return fmt.Sprintf("#%d", e.ApplicationID)
-	default:
+// subjectLabel returns the best available human label for the event's subject: its name when
+// enrichment populated it, otherwise a "#id" fallback (e.g. the resource was deleted before
+// delivery), or empty when the event names no subject.
+func subjectLabel(e *models.AppEvent) string {
+	subject, id := e.Subject()
+	if id == 0 {
 		return ""
 	}
+	name := e.ApplicationName
+	if subject == models.SubjectDatabase {
+		name = e.DatabaseName
+	}
+	if name != "" {
+		return name
+	}
+	return fmt.Sprintf("#%d", id)
 }
 
 func eventEmoji(t models.AppEventType) string {
 	switch t {
 	case models.EventDeploySucceeded, models.EventContainerStarted:
 		return "✅"
-	case models.EventDeployFailed, models.EventContainerDied, models.EventContainerOOM:
+	case models.EventDeployFailed, models.EventContainerDied, models.EventContainerOOM,
+		models.EventDatabaseProvisionFailed, models.EventDatabaseUpgradeFailed,
+		models.EventDatabaseBackupFailed, models.EventDatabaseRestoreFailed:
 		return "❌"
+	case models.EventDatabaseProvisioned, models.EventDatabaseStarted,
+		models.EventDatabaseBackupSucceeded, models.EventDatabaseRestoreSucceeded:
+		return "✅"
+	case models.EventDatabaseStopped:
+		return "🛑"
+	case models.EventDatabaseUpgraded:
+		return "⬆️"
 	case models.EventDeployStarted:
 		return "🚀"
 	case models.EventContainerStopped:
@@ -127,6 +140,28 @@ func eventTitle(t models.AppEventType) string {
 		return "Container exited"
 	case models.EventContainerOOM:
 		return "Container out of memory"
+	case models.EventDatabaseProvisioned:
+		return "Database provisioned"
+	case models.EventDatabaseProvisionFailed:
+		return "Database provisioning failed"
+	case models.EventDatabaseStarted:
+		return "Database started"
+	case models.EventDatabaseStopped:
+		return "Database stopped"
+	case models.EventDatabaseRestarted:
+		return "Database restarted"
+	case models.EventDatabaseUpgraded:
+		return "Database upgraded"
+	case models.EventDatabaseUpgradeFailed:
+		return "Database upgrade failed"
+	case models.EventDatabaseBackupSucceeded:
+		return "Backup completed"
+	case models.EventDatabaseBackupFailed:
+		return "Backup failed"
+	case models.EventDatabaseRestoreSucceeded:
+		return "Restore completed"
+	case models.EventDatabaseRestoreFailed:
+		return "Restore failed"
 	default:
 		return string(t)
 	}

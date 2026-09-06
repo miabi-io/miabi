@@ -707,16 +707,24 @@ export interface NotificationChannel {
 
 export type AppEventSeverity = 'info' | 'warning' | 'error'
 
+// A timeline entry for a resource. subject_type says which id is meaningful:
+// "app" -> application_id, "database" -> database_id (the other is 0).
+export type EventSubjectType = 'app' | 'database'
+
 export interface AppEvent {
   id: number
   workspace_id: number
+  subject_type: EventSubjectType
   application_id: number
+  database_id?: number
   type: string
   severity: AppEventSeverity
   message: string
   metadata?: Record<string, string>
   actor_id?: number
   created_at: string
+  application_name?: string
+  database_name?: string
 }
 
 export interface AppPort {

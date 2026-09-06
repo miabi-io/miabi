@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { databaseApi, backupApi } from '@/api/resources'
+import { eventsApi } from '@/api/events'
 import { appApi } from '@/api/apps'
 import { networkApi } from '@/api/networks'
 import { apiErrorMessage } from '@/api/client'
@@ -14,7 +15,7 @@ import ResourceIcon from '@/components/ResourceIcon.vue'
 import { fmtSize } from '@/utils/format'
 import { engineLogo, engineMdi } from '@/utils/resourceIcon'
 import { copyText } from '@/utils/clipboard'
-import type { DatabaseInstance, DBStatus, UpgradeProgress, LogicalDatabase, ConnectionInfo, ForwardSession, Backup, BackupSchedule, Application, Network, UpgradeOptions, UpgradePlan, StatsSample } from '@/api/types'
+import type { DatabaseInstance, DBStatus, UpgradeProgress, LogicalDatabase, ConnectionInfo, ForwardSession, Backup, BackupSchedule, Application, Network, UpgradeOptions, UpgradePlan, StatsSample, AppEvent } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 
 const route = useRoute()
@@ -64,16 +65,16 @@ const appsOnNode = computed(() =>
 const hiddenAppCount = computed(() => apps.value.length - appsOnNode.value.length)
 
 // --- Tabs (state mirrored in the URL query, like the app detail page) ---
-type TabKey = 'overview' | 'databases' | 'backups' | 'logs' | 'network' | 'settings'
+type TabKey = 'overview' | 'databases' | 'backups' | 'events' | 'logs' | 'network' | 'settings'
 const tabs = computed<{ key: TabKey; label: string }[]>(() => {
   const t: { key: TabKey; label: string }[] = [{ key: 'overview', label: 'Overview' }]
   if (supportsLogical.value) t.push({ key: 'databases', label: 'Databases' }, { key: 'backups', label: 'Backups' })
-  t.push({ key: 'logs', label: 'Logs' }, { key: 'network', label: 'Network' }, { key: 'settings', label: 'Settings' })
+  t.push({ key: 'events', label: 'Events' }, { key: 'logs', label: 'Logs' }, { key: 'network', label: 'Network' }, { key: 'settings', label: 'Settings' })
   return t
 })
 function tabFromQuery(): TabKey {
   const q = route.query.tab
-  const valid: TabKey[] = ['overview', 'databases', 'backups', 'logs', 'network', 'settings']
+  const valid: TabKey[] = ['overview', 'databases', 'backups', 'events', 'logs', 'network', 'settings']
   return typeof q === 'string' && valid.includes(q as TabKey) ? (q as TabKey) : 'overview'
 }
 const tab = ref<TabKey>(tabFromQuery())
@@ -81,7 +82,73 @@ watch(tab, (t) => {
   router.replace({ query: { ...route.query, tab: t } })
   if (t === 'logs') startLogs()
   else stopLogs()
+  if (t === 'events') startEvents()
+  else stopEvents()
 })
+
+const EVENTS_PAGE = 50
+const events = ref<AppEvent[]>([])
+const eventsLoading = ref(false)
+const eventsHasMore = ref(false)
+const loadingMoreEvents = ref(false)
+let eventsES: EventSource | null = null
+
+async function startEvents() {
+  if (!wid.value || eventsES) return
+  eventsLoading.value = true
+  try {
+    const first = (await eventsApi.databaseList(wid.value, instId.value, undefined, EVENTS_PAGE)).data.data ?? []
+    events.value = first
+    eventsHasMore.value = first.length === EVENTS_PAGE
+  } catch (e) { notify.apiError(e) }
+  finally { eventsLoading.value = false }
+
+  eventsES = new EventSource(eventsApi.databaseStreamUrl(wid.value, instId.value))
+  eventsES.onmessage = (ev) => {
+    try {
+      const payload = JSON.parse(ev.data) as { data?: AppEvent }
+      const e = payload.data
+      // The bus replays on reconnect, so drop anything already listed.
+      if (e && !events.value.some((x) => x.id === e.id)) events.value.unshift(e)
+    } catch { /* ignore keep-alives */ }
+  }
+  eventsES.onerror = () => { eventsES?.close(); eventsES = null }
+}
+function stopEvents() {
+  eventsES?.close()
+  eventsES = null
+}
+async function loadMoreEvents() {
+  if (!wid.value || loadingMoreEvents.value || events.value.length === 0) return
+  loadingMoreEvents.value = true
+  try {
+    const oldest = events.value[events.value.length - 1].id
+    const older = (await eventsApi.databaseList(wid.value, instId.value, oldest, EVENTS_PAGE)).data.data ?? []
+    events.value = events.value.concat(older)
+    eventsHasMore.value = older.length === EVENTS_PAGE
+  } catch (e) { notify.apiError(e) }
+  finally { loadingMoreEvents.value = false }
+}
+
+function eventIcon(type: string): string {
+  if (type === 'container.died' || type === 'container.oom') return 'mdi-alert-circle-outline'
+  if (type === 'container.health') return 'mdi-heart-pulse'
+  if (type.startsWith('container')) return 'mdi-cube-outline'
+  if (type.startsWith('backup') || type.startsWith('restore')) return 'mdi-backup-restore'
+  if (type === 'database.upgraded' || type === 'database.upgrade_failed') return 'mdi-arrow-up-bold-box-outline'
+  if (type.startsWith('database')) return 'mdi-database-outline'
+  return 'mdi-circle-small'
+}
+
+function relTime(ts: string): string {
+  const s = Math.round((Date.now() - new Date(ts).getTime()) / 1000)
+  if (s < 60) return `${s}s ago`
+  const m = Math.round(s / 60)
+  if (m < 60) return `${m}m ago`
+  const h = Math.round(m / 60)
+  if (h < 24) return `${h}h ago`
+  return `${Math.round(h / 24)}d ago`
+}
 
 // --- Container logs (SSE) ---
 const logs = ref<string[]>([])
@@ -106,7 +173,7 @@ function stopLogs() {
   logsES = null
   logsConnected.value = false
 }
-onUnmounted(stopLogs)
+onUnmounted(() => { stopLogs(); stopEvents() })
 
 async function load() {
   if (!wid.value) return
@@ -917,6 +984,36 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
     </template>
 
     <!-- LOGS -->
+    <div v-else-if="tab === 'events'" class="card">
+      <div class="card-header">
+        <h2>Events</h2>
+        <span class="live-dot" title="Live"></span>
+      </div>
+      <div v-if="eventsLoading && events.length === 0" class="card-body"><span class="spinner"></span></div>
+      <div v-else-if="events.length === 0" class="empty-state">
+        <span class="mdi mdi-timeline-text-outline" style="font-size: 40px; color: var(--text-muted)"></span>
+        <h3>No events yet</h3>
+        <p>Provisioning, start/stop, upgrades, crashes, and backup or restore results show up here.</p>
+      </div>
+      <template v-else>
+        <ul class="timeline">
+          <li v-for="e in events" :key="e.id" class="event">
+            <span class="event-icon" :class="`sev-${e.severity}`"><span class="mdi" :class="eventIcon(e.type)"></span></span>
+            <div class="event-body">
+              <div class="event-row">
+                <span class="event-msg">{{ e.message || e.type }}</span>
+                <span class="event-time">{{ relTime(e.created_at) }}</span>
+              </div>
+              <span class="event-type">{{ e.type }}</span>
+            </div>
+          </li>
+        </ul>
+        <div v-if="eventsHasMore" class="text-center" style="padding: 8px 0 4px">
+          <button class="btn btn-secondary btn-sm" :disabled="loadingMoreEvents" @click="loadMoreEvents">{{ loadingMoreEvents ? 'Loading…' : 'Load more' }}</button>
+        </div>
+      </template>
+    </div>
+
     <div v-else-if="tab === 'logs'" class="card">
       <div class="card-header">
         <h2>Container logs</h2>
@@ -1243,4 +1340,29 @@ tr.selected { background: var(--bg-tertiary); }
 .upgrade-step.is-todo { opacity: 0.6; }
 .mdi-spin { animation: mdi-spin 1s linear infinite; }
 @keyframes mdi-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+/* Instance timeline (Events tab) — mirrors the application timeline. */
+.timeline { list-style: none; margin: 0; padding: 8px 0; }
+.event { display: flex; gap: 12px; padding: 10px 20px; }
+.event + .event { border-top: 1px solid var(--border-secondary); }
+.event-icon {
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 16px;
+  background: var(--bg-tertiary); color: var(--text-secondary);
+}
+.event-icon.sev-warning { background: var(--warning-50); color: var(--warning-600); }
+.event-icon.sev-error { background: var(--danger-50); color: var(--danger-600); }
+.event-body { flex: 1; min-width: 0; }
+.event-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.event-msg { font-size: 14px; color: var(--text-primary); }
+.event-time { flex-shrink: 0; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.event-type { font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+.live-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--success-500);
+  box-shadow: 0 0 0 0 var(--success-500); animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--success-500) 50%, transparent); }
+  70% { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
 </style>

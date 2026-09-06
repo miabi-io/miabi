@@ -8,6 +8,7 @@ import { workspaceEventApi } from '@/api/resources'
 import { usePagination } from '@/composables/usePagination'
 import Pagination from '@/components/Pagination.vue'
 import type { RecentEvent } from '@/api/types'
+import { eventIcon, eventSubjectLabel, eventSubjectLink } from '@/utils/eventSubject'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -49,20 +50,6 @@ watch(currentWorkspaceId, () => goToPage(0))
 // Filters/sort reset to the first page.
 watch([order, severity], () => goToPage(0))
 
-function eventIcon(type: string): string {
-  if (type.startsWith('deploy')) return 'mdi-rocket-launch-outline'
-  if (type.startsWith('rollback')) return 'mdi-backup-restore'
-  if (type.startsWith('release')) return 'mdi-tag-outline'
-  if (type === 'container.died' || type === 'container.oom') return 'mdi-alert-circle-outline'
-  if (type === 'container.health') return 'mdi-heart-pulse'
-  if (type.startsWith('container')) return 'mdi-cube-outline'
-  if (type.startsWith('domain') || type.startsWith('route')) return 'mdi-web'
-  if (type.startsWith('env')) return 'mdi-tune-variant'
-  if (type.startsWith('volume')) return 'mdi-harddisk'
-  if (type.startsWith('settings')) return 'mdi-cog-outline'
-  return 'mdi-circle-small'
-}
-
 function sevClass(sev: string): string {
   if (sev === 'error' || sev === 'critical') return 'sev-error'
   if (sev === 'warning') return 'sev-warning'
@@ -80,7 +67,7 @@ function when(ts: string): string {
     <div class="page-header">
       <div>
         <h1>Events</h1>
-        <p class="subtitle">Application activity in {{ ws.contextLabel }}</p>
+        <p class="subtitle">Application and database activity in {{ ws.contextLabel }}</p>
       </div>
       <button class="btn btn-ghost btn-sm" :disabled="loading" @click="goToPage(pageable.current_page)">
         <span class="mdi" :class="loading ? 'mdi-loading mdi-spin' : 'mdi-refresh'"></span> Refresh
@@ -110,19 +97,19 @@ function when(ts: string): string {
       <div v-else-if="events.length === 0" class="empty-state">
         <span class="mdi mdi-timeline-text-outline" style="font-size: 44px; color: var(--text-muted)"></span>
         <h3>No events yet</h3>
-        <p>Deploys, container lifecycle, and configuration changes will appear here.</p>
+        <p>Deploys, database lifecycle, container events, and configuration changes will appear here.</p>
       </div>
       <div v-else class="table-wrapper">
         <table>
           <thead>
-            <tr><th>Event</th><th>Application</th><th class="text-right">When</th></tr>
+            <tr><th>Event</th><th>Resource</th><th class="text-right">When</th></tr>
           </thead>
           <tbody>
             <tr
               v-for="e in events"
               :key="e.id"
               class="row-clickable"
-              @click="router.push(`/apps/${e.application_id}`)"
+              @click="router.push(eventSubjectLink(e))"
             >
               <td>
                 <div class="evt">
@@ -135,8 +122,9 @@ function when(ts: string): string {
               </td>
               <td>
                 <span class="cell-text">
-                  <span class="cell-title">{{ e.app_display_name || e.app_name || `app #${e.application_id}` }}</span>
-                  <span v-if="e.app_name" class="cell-sub">{{ e.app_name }}</span>
+                  <span class="cell-title">{{ eventSubjectLabel(e) }}</span>
+                  <span v-if="e.subject_type === 'database'" class="cell-sub">database</span>
+                  <span v-else-if="e.app_name" class="cell-sub">{{ e.app_name }}</span>
                 </span>
               </td>
               <td class="text-right cell-sub">{{ when(e.created_at) }}</td>
