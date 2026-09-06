@@ -29,7 +29,9 @@ type Step struct {
 	Run     func(ctx context.Context, db *gorm.DB) error
 }
 
-// steps is the ordered registry of upgrade steps. Append new steps here.
+// steps is the ordered registry of upgrade steps, filled by each step file's init. Go runs
+// those in filename order, so the steps_YYYY_MM_DD_ prefix is what puts them in chronological
+// order — name a new file for the day it is added.
 var steps []Step
 
 // Run applies any not-yet-applied steps in order.
