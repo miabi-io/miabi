@@ -108,6 +108,10 @@ type Config struct {
 	// Worker settings.
 	WorkerConcurrency int
 	WorkerMaxRetries  int
+	// WorkerHealthEnabled serves /healthz and /readyz from a dedicated worker on
+	// MIABI_PORT. Turn it off to run a worker beside the server on one host, where
+	// both would otherwise bind the same port.
+	WorkerHealthEnabled bool
 
 	// DockerHost is the Docker engine endpoint (informational; the SDK reads
 	// DOCKER_HOST from the environment via FromEnv).
@@ -561,6 +565,7 @@ func New() *Config {
 		WebhookAllowPrivateTargets: goutils.EnvBool("MIABI_WEBHOOK_ALLOW_PRIVATE_TARGETS", false),
 		WorkerConcurrency:          goutils.EnvInt("MIABI_WORKER_CONCURRENCY", 10),
 		WorkerMaxRetries:           goutils.EnvInt("MIABI_WORKER_MAX_RETRIES", 5),
+		WorkerHealthEnabled:        goutils.EnvBool("MIABI_WORKER_HEALTH_ENABLED", true),
 		DockerHost:                 goutils.Env("DOCKER_HOST", "unix:///var/run/docker.sock"),
 		MarketplaceURL:             goutils.Env("MIABI_MARKETPLACE_URL", marketplaceURL),
 		GomaProviderDir:            goutils.Env("MIABI_GOMA_PROVIDER_DIR", "/etc/goma/providers"),

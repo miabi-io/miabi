@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/jkaninda/logger"
@@ -253,12 +254,7 @@ func runWorker() error {
 	platformBackupSvc.SetInternalNetwork(cfg.InternalNetwork)
 	platformBackupSvc.SetImageResolver(imageResolver)
 	platformBackupSvc.SetLogStore(logStore)
-	// The worker runs backup ITEMS, so it resolves destination and passphrase itself. Without
-	// the environment overlay it reads only the stored row — empty on a deployment configured
-	// purely through MIABI_PLATFORM_BACKUP_*, failing every run with "no S3 target".
 	platformBackupSvc.SetEnv(cfg.PlatformBackup)
-	// Tenant artifacts are enqueued by the API server and RUN here, so this process needs the
-	// tenant source too, or every tenant database and volume fails with "no tenant source".
 	platformBackupSvc.EnableTenantCapture(db, upgradeBackupService)
 	platformBackupHandler := worker.NewPlatformBackupHandler(platformBackupSvc)
 
@@ -273,12 +269,8 @@ func runWorker() error {
 		producer,
 	)
 	pipelineHandler.SetLogStore(logStore)
-	// Resolve a Git credential that references a workspace Secret instead of
-	// storing its own copy of the token.
 	pipelineHandler.SetSecrets(secretService)
 
-	// A standalone worker has no agent tunnels, so it must not consume the remote-node queue —
-	// those are reserved for the server's embedded worker. It still handles all local tasks.
 	srv := worker.NewServer(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB, cfg.WorkerConcurrency, false)
 
 	// A standalone worker joins the same consumer group as the embedded one, so gateway events
@@ -295,6 +287,13 @@ func runWorker() error {
 
 		stopAnalytics := analyticsConsumer.Start(context.Background())
 		defer stopAnalytics()
+	}
+
+	if cfg.WorkerHealthEnabled {
+		healthAddr := fmt.Sprintf(":%d", cfg.Port)
+		stopHealth := worker.NewHealthServer(healthAddr, db, cfg.Redis.Client).Start()
+		defer stopHealth()
+		logger.Info("worker health endpoints", "addr", healthAddr)
 	}
 
 	logger.Info("Miabi worker started", "version", config.Version, "concurrency", cfg.WorkerConcurrency)
