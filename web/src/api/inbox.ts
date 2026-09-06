@@ -3,17 +3,23 @@ import type { ApiResponse } from './types'
 
 export type AlertSeverity = 'info' | 'warning' | 'critical'
 
-// InboxNotification is one per-user bell/inbox item (delivery of an alert).
+// InboxNotification is one per-user bell/inbox item — the delivery of an alert or
+// a platform announcement. workspace_id is 0 for platform-scoped items.
 export interface InboxNotification {
   id: number
   workspace_id: number
   alert_id?: number
-  kind: 'alert' | 'info'
+  announcement_id?: number
+  kind: 'alert' | 'info' | 'announcement'
   category: string
   severity: AlertSeverity
   title: string
   body: string
   subject_link?: string
+  action_text?: string
+  pinned: boolean
+  expires_at?: string | null
+  dismissed_at?: string | null
   read_at?: string | null
   created_at: string
 }
@@ -42,5 +48,7 @@ export const inboxApi = {
     api.post<ApiResponse<{ message: string }>>('/notifications/read-all', null, {
       params: workspace ? { workspace } : {},
     }),
+  banners: () => api.get<ApiResponse<InboxNotification[]>>('/notifications/banners'),
+  dismiss: (ids: number[]) => api.post<ApiResponse<{ message: string }>>('/notifications/dismiss', { ids }),
   streamUrl: () => sseUrl('/notifications/stream'),
 }

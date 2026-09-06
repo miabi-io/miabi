@@ -29,6 +29,7 @@ import (
 	"github.com/miabi-io/miabi/internal/runners"
 	"github.com/miabi-io/miabi/internal/services/account"
 	"github.com/miabi-io/miabi/internal/services/analytics"
+	"github.com/miabi-io/miabi/internal/services/announcement"
 	"github.com/miabi-io/miabi/internal/services/application"
 	"github.com/miabi-io/miabi/internal/services/apply"
 	"github.com/miabi-io/miabi/internal/services/audit"
@@ -193,6 +194,7 @@ type routerHandlers struct {
 	auditExport         *handlers.AuditExportHandler
 	resourcePolicy      *handlers.ResourcePolicyHandler
 	siemAdmin           *handlers.SIEMAdminHandler
+	adminAnnouncement   *handlers.AdminAnnouncementHandler
 	adminRunner         *handlers.AdminRunnerHandler
 }
 
@@ -999,6 +1001,22 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 
 	jwtAuth := middlewares.JWTAuth(cfg, sessionStore)
 
+	// Platform announcements deliver into the same per-user inbox the alerting
+	// engine writes to, so the bell, the SSE stream and the notifications page need
+	// no announcement-specific handling.
+	announcementRepo := repositories.NewAnnouncementRepository(db)
+	inboxRepo := repositories.NewNotificationInboxRepository(db)
+	announcementService := announcement.NewService(announcementRepo, inboxRepo, bus)
+	if cronManager != nil {
+		// Scheduled broadcasts only. Expiry is evaluated on every read, so a lapsed
+		// notice stops showing when it lapses rather than when this next runs.
+		if err := cronManager.RegisterTask("announcements", 0, "Publish scheduled announcements", "@every 1m", func() error {
+			return announcementService.Tick()
+		}); err != nil {
+			logger.Warn("failed to schedule announcement publishing", "error", err)
+		}
+	}
+
 	r := &Router{
 		app:          app,
 		cfg:          cfg,
@@ -1039,7 +1057,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			workspaceBundle: handlers.NewWorkspaceBundleHandler(wsBundleService, auditLogger),
 			monitoring:      handlers.NewMonitoringHandler(monitoringService),
 			analytics:       handlers.NewAnalyticsHandler(repositories.NewAnalyticsRepository(db), ee, analytics.NewLiveTracker(redisClient, time.Duration(cfg.AnalyticsLiveWindowSeconds)*time.Second)),
-			inbox:           handlers.NewNotificationInboxHandler(repositories.NewNotificationInboxRepository(db), bus),
+			inbox:           handlers.NewNotificationInboxHandler(inboxRepo, bus, announcementService),
 			alerts:          handlers.NewAlertHandler(repositories.NewAlertRepository(db)),
 			marketplace:     handlers.NewMarketplaceHandler(marketplaceService, auditLogger),
 			registry:        handlers.NewRegistryHandler(registryService, auditLogger),
@@ -1084,6 +1102,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			auditExport:         handlers.NewAuditExportHandler(auditRepo, ee),
 			resourcePolicy:      handlers.NewResourcePolicyHandler(resourcePolicyRepo, workspaceRepo, ee, auditLogger),
 			siemAdmin:           handlers.NewSIEMAdminHandler(siemConfigRepo, siemStreamer, ee, auditLogger),
+			adminAnnouncement:   handlers.NewAdminAnnouncementHandler(announcementService, announcementRepo, userRepo, ee, auditLogger),
 			adminRunner:         handlers.NewAdminRunnerHandler(runnerService, ee, auditLogger),
 		},
 	}

@@ -5,6 +5,7 @@ import { storeToRefs } from 'pinia'
 import { inboxApi, type InboxNotification } from '@/api/inbox'
 import { useInboxStore } from '@/stores/inbox'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { followNotificationLink } from '@/utils/notificationLink'
 
 const router = useRouter()
 const inbox = useInboxStore()
@@ -41,7 +42,7 @@ async function open(n: InboxNotification) {
     const it = items.value.find((x) => x.id === n.id)
     if (it) it.read_at = new Date().toISOString()
   }
-  if (n.subject_link) router.push(n.subject_link)
+  followNotificationLink(router, n.subject_link)
 }
 
 async function markAll() {
@@ -49,15 +50,18 @@ async function markAll() {
   await load()
 }
 
+// Workspace 0 is the platform scope: an announcement belongs to no one workspace.
 function wsName(id: number) {
+  if (id === 0) return 'Platform'
   const w = workspaces.value.find((x) => x.id === id)
   return w?.display_name || w?.name || `Workspace #${id}`
 }
 function sevClass(s: string) {
   return s === 'critical' ? 'sev-crit' : s === 'warning' ? 'sev-warn' : 'sev-info'
 }
-function sevIcon(s: string) {
-  return s === 'critical' ? 'mdi-alert-octagon' : s === 'warning' ? 'mdi-alert' : 'mdi-information-outline'
+function itemIcon(n: InboxNotification) {
+  if (n.kind === 'announcement') return 'mdi-bullhorn-outline'
+  return n.severity === 'critical' ? 'mdi-alert-octagon' : n.severity === 'warning' ? 'mdi-alert' : 'mdi-information-outline'
 }
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleString()
@@ -102,13 +106,13 @@ onMounted(() => load())
           :class="{ unread: !n.read_at }"
           @click="open(n)"
         >
-          <span class="mdi n-sev" :class="[sevClass(n.severity), sevIcon(n.severity)]"></span>
+          <span class="mdi n-sev" :class="[sevClass(n.severity), itemIcon(n)]"></span>
           <span class="n-body">
             <span class="n-title">{{ n.title }}</span>
             <span class="n-text">{{ n.body }}</span>
             <span class="n-meta">
               <span class="badge badge-neutral">{{ wsName(n.workspace_id) }}</span>
-              <span class="badge badge-neutral">{{ n.category }}</span>
+              <span v-if="n.category" class="badge badge-neutral">{{ n.category }}</span>
               <span class="n-time">{{ fmtTime(n.created_at) }}</span>
             </span>
           </span>

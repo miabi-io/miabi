@@ -103,6 +103,7 @@ const routes = [
       { path: 'admin/plans/:id', name: 'admin-plan-detail', component: () => import('@/views/admin/PlanDetail.vue'), meta: { title: 'Plan', admin: true } },
       { path: 'admin/license', name: 'admin-license', component: () => import('@/views/admin/License.vue'), meta: { title: 'License', admin: true } },
       { path: 'admin/siem', name: 'admin-siem', component: () => import('@/views/admin/SIEM.vue'), meta: { title: 'SIEM Streaming', admin: true } },
+      { path: 'admin/announcements', name: 'admin-announcements', component: () => import('@/views/admin/Announcements.vue'), meta: { title: 'Announcements', admin: true } },
       { path: 'admin/platform-backup', name: 'admin-platform-backup', component: () => import('@/views/admin/PlatformBackup.vue'), meta: { title: 'Platform Backup', admin: true } },
       { path: 'admin/registry', name: 'admin-registry', component: () => import('@/views/admin/Registry.vue'), meta: { title: 'Container Registry', admin: true } },
       { path: 'admin/settings', name: 'admin-settings', component: () => import('@/views/admin/Settings.vue'), meta: { title: 'Platform Settings', admin: true } },

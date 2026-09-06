@@ -126,6 +126,7 @@ export const navSections: NavSection[] = [
       { name: 'Plans', path: '/admin/plans', icon: 'mdi-tune-variant', requiresAdmin: true },
       { name: 'License', path: '/admin/license', icon: 'mdi-license', requiresAdmin: true },
       { name: 'SIEM Streaming', path: '/admin/siem', icon: 'mdi-export-variant', requiresAdmin: true },
+      { name: 'Announcements', path: '/admin/announcements', icon: 'mdi-bullhorn-outline', requiresAdmin: true },
       { name: 'Platform Backup', path: '/admin/platform-backup', icon: 'mdi-cloud-upload-outline', requiresAdmin: true },
       { name: 'Container Registry', path: '/admin/registry', icon: 'mdi-cube-outline', requiresAdmin: true },
       { name: 'Platform Settings', path: '/admin/settings', icon: 'mdi-cog-outline', requiresAdmin: true },

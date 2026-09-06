@@ -29,6 +29,10 @@ func (r *Router) inboxRoutes() []okapi.RouteDefinition {
 			Request: &handlers.MarkReadRequest{}, Summary: "Mark notifications read"},
 		{Method: http.MethodPost, Path: "/read-all", Group: g, Middlewares: auth, Handler: r.h.inbox.MarkAllRead,
 			Summary: "Mark all my notifications read (?workspace=)"},
+		{Method: http.MethodGet, Path: "/banners", Group: g, Middlewares: auth, Handler: r.h.inbox.Banners,
+			Summary: "My pinned, undismissed notices (app-wide banner)"},
+		{Method: http.MethodPost, Path: "/dismiss", Group: g, Middlewares: auth, Handler: okapi.H(r.h.inbox.Dismiss),
+			Request: &handlers.DismissRequest{}, Summary: "Dismiss notices from the banner"},
 	}
 }
 

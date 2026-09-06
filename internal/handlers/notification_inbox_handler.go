@@ -10,6 +10,7 @@ import (
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/services/alerting"
+	"github.com/miabi-io/miabi/internal/services/announcement"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
@@ -18,12 +19,29 @@ import (
 // the dashboard bell and Notifications page. Everything is scoped to the
 // authenticated user; a user never sees another user's (or workspace's) items.
 type NotificationInboxHandler struct {
-	repo *repositories.NotificationInboxRepository
-	bus  *eventbus.Bus
+	repo          *repositories.NotificationInboxRepository
+	bus           *eventbus.Bus
+	announcements *announcement.Service
 }
 
-func NewNotificationInboxHandler(repo *repositories.NotificationInboxRepository, bus *eventbus.Bus) *NotificationInboxHandler {
-	return &NotificationInboxHandler{repo: repo, bus: bus}
+func NewNotificationInboxHandler(repo *repositories.NotificationInboxRepository, bus *eventbus.Bus, announcements *announcement.Service) *NotificationInboxHandler {
+	return &NotificationInboxHandler{repo: repo, bus: bus, announcements: announcements}
+}
+
+// DismissRequest hides items from the app-wide banner.
+type DismissRequest struct {
+	Body struct {
+		IDs []uint `json:"ids"`
+	}
+}
+
+// syncAnnouncements catches the caller up on any live announcement they have not
+// received. It runs on the read paths rather than only at broadcast time so a user
+// created after the fact — or newly added to a targeted workspace — still sees it.
+func (h *NotificationInboxHandler) syncAnnouncements(userID uint) {
+	if h.announcements != nil {
+		h.announcements.SyncUser(userID)
+	}
 }
 
 // MarkReadRequest marks specific notifications read.
@@ -37,6 +55,7 @@ type MarkReadRequest struct {
 // unread (bool), before (id cursor), limit.
 func (h *NotificationInboxHandler) List(c *okapi.Context) error {
 	userID := middlewares.UserID(c)
+	h.syncAnnouncements(userID)
 	ws := uintQuery(c, "workspace")
 	before := uintQuery(c, "before")
 	limit := 30
@@ -54,7 +73,9 @@ func (h *NotificationInboxHandler) List(c *okapi.Context) error {
 
 // UnreadCount returns the bell badge count for the user.
 func (h *NotificationInboxHandler) UnreadCount(c *okapi.Context) error {
-	n, err := h.repo.UnreadCount(middlewares.UserID(c))
+	userID := middlewares.UserID(c)
+	h.syncAnnouncements(userID)
+	n, err := h.repo.UnreadCount(userID)
 	if err != nil {
 		return c.AbortInternalServerError("failed to count notifications", err)
 	}
@@ -74,6 +95,26 @@ func (h *NotificationInboxHandler) MarkRead(c *okapi.Context, req *MarkReadReque
 func (h *NotificationInboxHandler) MarkAllRead(c *okapi.Context) error {
 	if err := h.repo.MarkAllRead(middlewares.UserID(c), uintQuery(c, "workspace")); err != nil {
 		return c.AbortInternalServerError("failed to mark all read", err)
+	}
+	return ok(c, map[string]string{"message": "ok"})
+}
+
+// Banners returns the pinned, live, undismissed items for the caller — the notices
+// the app renders above the page rather than behind the bell.
+func (h *NotificationInboxHandler) Banners(c *okapi.Context) error {
+	userID := middlewares.UserID(c)
+	h.syncAnnouncements(userID)
+	items, err := h.repo.Banners(userID, time.Now().UTC())
+	if err != nil {
+		return c.AbortInternalServerError("failed to list banners", err)
+	}
+	return ok(c, items)
+}
+
+// Dismiss hides the given items from the banner (ownership-scoped to the user).
+func (h *NotificationInboxHandler) Dismiss(c *okapi.Context, req *DismissRequest) error {
+	if err := h.repo.Dismiss(middlewares.UserID(c), req.Body.IDs); err != nil {
+		return c.AbortInternalServerError("failed to dismiss", err)
 	}
 	return ok(c, map[string]string{"message": "ok"})
 }
