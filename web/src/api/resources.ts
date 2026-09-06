@@ -136,7 +136,11 @@ const b = (ws: number, inst: number, db: number) => `${w(ws)}/databases/${inst}/
 export const backupApi = {
   list: (ws: number, inst: number, db: number) => api.get<ApiResponse<Backup[]>>(`${b(ws, inst, db)}/backups`),
   // Destination is decided server-side: the workspace S3 target when configured, else local.
-  run: (ws: number, inst: number, db: number) => api.post<ApiResponse<Backup>>(`${b(ws, inst, db)}/backups`, {}),
+  run: (ws: number, inst: number, db: number, comment = '') =>
+    api.post<ApiResponse<Backup>>(`${b(ws, inst, db)}/backups`, { comment }),
+  // Edit a backup's note and retention pin. Omitted fields are left untouched.
+  update: (ws: number, inst: number, db: number, id: number, patch: { comment?: string; pinned?: boolean }) =>
+    api.patch<ApiResponse<Backup>>(`${b(ws, inst, db)}/backups/${id}`, patch),
   restore: (ws: number, inst: number, db: number, id: number, method: 'normal' | 'force' = 'normal') =>
     api.post<ApiResponse<{ message: string }>>(`${b(ws, inst, db)}/backups/${id}/restore`, { method }),
   restoreFile: (ws: number, inst: number, db: number, file: File, method: 'normal' | 'force' = 'normal') => {

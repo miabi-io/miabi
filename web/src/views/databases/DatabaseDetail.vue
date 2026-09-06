@@ -378,23 +378,67 @@ async function loadBackups() {
     schedules.value = (await backupApi.schedules(wid.value, instId.value, selected.value.id)).data.data ?? []
   } catch (e) { notify.apiError(e) }
 }
+// Annotating at run time is the common case ("before the v1.3.0 rollout"), so the
+// note sits next to the button rather than behind a dialog.
+const backupComment = ref('')
 async function runBackup() {
   if (!wid.value || !selected.value) return
   running.value = true
   try {
-    const b = (await backupApi.run(wid.value, instId.value, selected.value.id)).data.data
+    const b = (await backupApi.run(wid.value, instId.value, selected.value.id, backupComment.value.trim())).data.data
     notify[b.status === 'completed' ? 'success' : 'error'](`Backup #${b.number} ${b.status}`)
+    backupComment.value = ''
     loadBackups()
   } catch (e) { notify.apiError(e) }
   finally { running.value = false }
 }
+
+// --- Backup annotations: a note and a retention pin, both editable after the run.
+// A scheduled or pre-upgrade backup has nobody present when it happens, and what a
+// backup was for is often only clear once the change it guarded went wrong.
+const editingNote = ref<number | null>(null)
+const noteDraft = ref('')
+
+function startNote(b: Backup) {
+  editingNote.value = b.id
+  noteDraft.value = b.comment ?? ''
+}
+function cancelNote() {
+  editingNote.value = null
+  noteDraft.value = ''
+}
+async function saveNote(b: Backup) {
+  if (!wid.value || !selected.value) return
+  const comment = noteDraft.value.trim()
+  cancelNote()
+  if (comment === (b.comment ?? '')) return
+  try {
+    b.comment = comment
+    await backupApi.update(wid.value, instId.value, selected.value.id, b.id, { comment })
+  } catch (e) {
+    notify.apiError(e)
+    loadBackups()
+  }
+}
+async function togglePin(b: Backup) {
+  if (!wid.value || !selected.value) return
+  const pinned = !b.pinned
+  try {
+    b.pinned = pinned
+    await backupApi.update(wid.value, instId.value, selected.value.id, b.id, { pinned })
+    notify.success(pinned ? `Backup #${b.number} pinned — retention will skip it` : `Backup #${b.number} unpinned`)
+  } catch (e) {
+    b.pinned = !pinned
+    notify.apiError(e)
+  }
+}
 // --- Restore dialog (existing backup or uploaded file; normal or force) ---
-const restoreModal = ref<{ backupId: number | null; number: number | null } | null>(null)
+const restoreModal = ref<{ backupId: number | null; number: number | null; comment: string; version: string } | null>(null)
 const restoreMethod = ref<'normal' | 'force'>('normal')
 const restoreFile = ref<File | null>(null)
 const restoring = ref(false)
 function openRestore(b: Backup | null) {
-  restoreModal.value = { backupId: b?.id ?? null, number: b?.number ?? null }
+  restoreModal.value = { backupId: b?.id ?? null, number: b?.number ?? null, comment: b?.comment ?? '', version: b?.version ?? '' }
   restoreMethod.value = 'normal'
   restoreFile.value = null
 }
@@ -909,6 +953,15 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
             <h3 style="margin: 0"><code>{{ selected.name }}</code></h3>
             <div class="flex items-center gap-2">
               <button v-if="ws.canEdit" class="btn btn-sm btn-secondary" @click="openRestore(null)"><span class="mdi mdi-upload-outline"></span> Restore from file</button>
+              <input
+                v-if="ws.canEdit"
+                v-model="backupComment"
+                class="form-input backup-note-input"
+                maxlength="200"
+                placeholder="Note (optional) — e.g. before the v1.3.0 rollout"
+                :disabled="running"
+                @keyup.enter="runBackup"
+              />
               <button v-if="ws.canEdit" class="btn btn-sm btn-primary" :disabled="running" @click="runBackup">{{ running ? 'Backing up…' : 'Run backup' }}</button>
             </div>
           </div>
@@ -922,11 +975,50 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
               <tbody>
                 <tr v-for="b in backups" :key="b.id">
                   <td>
-                    <span class="cell-title">#{{ b.number }}</span>
-                    <div class="cell-sub">{{ b.trigger }} · {{ b.destination }}<template v-if="b.filename"> · {{ b.filename }}</template></div>
+                    <span class="cell-title">
+                      #{{ b.number }}
+                      <span v-if="b.pinned" class="badge badge-neutral" style="margin-left: 4px">pinned</span>
+                    </span>
+                    <div class="cell-sub">
+                      {{ b.trigger }} · {{ b.destination }}<template v-if="b.version"> · {{ b.engine }} {{ b.version }}</template><template v-if="b.filename"> · {{ b.filename }}</template>
+                    </div>
+                    <div v-if="editingNote === b.id" class="backup-note-edit">
+                      <input
+                        v-model="noteDraft"
+                        class="form-input"
+                        maxlength="200"
+                        placeholder="What was this backup for?"
+                        autofocus
+                        @keyup.enter="saveNote(b)"
+                        @keyup.esc="cancelNote"
+                      />
+                      <button class="btn btn-sm btn-primary" @click="saveNote(b)">Save</button>
+                      <button class="btn btn-sm btn-secondary" @click="cancelNote">Cancel</button>
+                    </div>
+                    <button
+                      v-else-if="ws.canEdit"
+                      class="backup-note"
+                      :class="{ empty: !b.comment }"
+                      :title="b.comment ? 'Edit note' : 'Add a note'"
+                      @click="startNote(b)"
+                    >
+                      <span class="mdi mdi-note-edit-outline"></span>
+                      <span>{{ b.comment || 'Add a note' }}</span>
+                    </button>
+                    <div v-else-if="b.comment" class="backup-note static">{{ b.comment }}</div>
                   </td>
                   <td><span class="badge badge-dot" :class="badge(b.status)">{{ b.status }}</span></td>
                   <td class="text-right table-actions">
+                    <button
+                      v-if="ws.canEdit"
+                      class="btn-icon btn-icon-muted"
+                      :class="{ 'backup-pinned': b.pinned }"
+                      :title="b.pinned ? 'Pinned — retention will not delete this backup' : 'Pin to exempt from retention'"
+                      :aria-label="b.pinned ? 'Unpin backup' : 'Pin backup'"
+                      @click="togglePin(b)"
+                    >
+                      <span class="mdi" :class="b.pinned ? 'mdi-pin' : 'mdi-pin-outline'"></span>
+                    </button>
                     <button v-if="b.status === 'completed' && b.destination === 'local' && ws.canEdit" class="btn-icon btn-icon-muted" title="Download" aria-label="Download" @click="downloadBackup(b)"><span class="mdi mdi-download-outline"></span></button>
                     <button v-if="b.status === 'completed' && ws.canEdit" class="btn btn-sm btn-secondary" @click="openRestore(b)">Restore</button>
                     <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="askRemoveBackup(b)"><span class="mdi mdi-delete-outline"></span></button>
@@ -956,6 +1048,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
             </label>
             <button class="btn btn-primary" style="align-self: flex-end">Add schedule</button>
           </form>
+          <p class="form-hint" style="margin-top: 8px">Pinned backups are never deleted by retention, and do not count towards the limit.</p>
         </div>
         <div v-if="schedules.length === 0" class="empty-state"><p>No schedules.</p></div>
         <div v-else class="table-wrapper">
@@ -1257,6 +1350,12 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
         </div>
         <form @submit.prevent="runRestore">
           <div class="modal-body">
+            <p v-if="restoreModal.comment" class="restore-note">
+              <span class="mdi mdi-note-outline"></span> {{ restoreModal.comment }}
+            </p>
+            <p v-if="restoreModal.version" class="form-hint" style="margin-bottom: 12px">
+              Taken from {{ inst?.engine }} {{ restoreModal.version }}<template v-if="inst?.version && inst.version !== restoreModal.version">; this instance now runs {{ inst.version }}</template>.
+            </p>
             <div v-if="restoreModal.backupId == null" class="form-group">
               <label class="form-label">Dump file</label>
               <input type="file" accept=".sql,.gz,.sql.gz,.dump" class="form-input" required @change="onRestoreFile" />
@@ -1298,6 +1397,88 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
 </template>
 
 <style scoped>
+.restore-note {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.backup-note-input {
+  max-width: 280px;
+  height: 32px;
+  font-size: 12px;
+}
+
+/* The note reads as text until hovered, so an unannotated history stays quiet
+   rather than showing a row of buttons. */
+.backup-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
+  padding: 1px 5px 1px 3px;
+  margin-left: -3px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+  color: var(--text-secondary);
+}
+
+.backup-note .mdi {
+  font-size: 13px;
+  opacity: 0;
+  color: var(--text-muted);
+}
+
+.backup-note:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.backup-note:hover .mdi,
+.backup-note.empty .mdi {
+  opacity: 1;
+}
+
+.backup-note.empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.backup-note.static {
+  display: block;
+  cursor: default;
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.backup-note-edit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.backup-note-edit .form-input {
+  max-width: 320px;
+  height: 30px;
+  font-size: 12px;
+}
+
+.backup-pinned {
+  color: var(--primary-500);
+}
+
 /* Resource usage section (mirrors the AppDetail overview) */
 .section-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
 .live-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 500; color: var(--text-muted); }

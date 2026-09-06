@@ -39,6 +39,15 @@ func (r *Router) backupRoutes() []okapi.RouteDefinition {
 			Request:     &handlers.RunBackupRequest{},
 		},
 		{
+			Method:      http.MethodPatch,
+			Path:        base + "/{backupID}",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     okapi.H(r.h.backup.Update),
+			Summary:     "Edit a backup's comment and retention pin",
+			Request:     &handlers.UpdateBackupRequest{},
+		},
+		{
 			Method:      http.MethodPost,
 			Path:        base + "/{backupID}/restore",
 			Group:       g,

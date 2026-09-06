@@ -82,6 +82,16 @@ type RunBackupRequest struct {
 	Body struct {
 		Destination string  `json:"destination" enum:"local,s3"`
 		S3          *S3Body `json:"s3"`
+		Comment     string  `json:"comment" max:"200"`
+	} `json:"body"`
+}
+
+// UpdateBackupRequest edits a backup's note and retention pin. Both fields are
+// pointers so omitting one leaves it untouched.
+type UpdateBackupRequest struct {
+	Body struct {
+		Comment *string `json:"comment" max:"200"`
+		Pinned  *bool   `json:"pinned"`
 	} `json:"body"`
 }
 
@@ -134,7 +144,8 @@ func (h *BackupHandler) Run(c *okapi.Context, req *RunBackupRequest) error {
 			dest = backup.Destination{Type: "s3", S3: cfg}
 		}
 	}
-	b, err := h.svc.Run(c.Request().Context(), inst, db, "manual", dest)
+	b, err := h.svc.Run(c.Request().Context(), inst, db,
+		backup.RunOptions{Trigger: "manual", Comment: strings.TrimSpace(req.Body.Comment)}, dest)
 	if err != nil {
 		if errors.Is(err, backup.ErrUnsupportedEngine) {
 			return c.AbortBadRequest("backups are not supported for this engine yet")
@@ -143,6 +154,23 @@ func (h *BackupHandler) Run(c *okapi.Context, req *RunBackupRequest) error {
 	}
 	h.record(c, db.WorkspaceID, "backup.run", b.ID)
 	// Backup runs synchronously; the record's status reflects success/failure.
+	return ok(c, b)
+}
+
+// Update edits a backup's comment and retention pin.
+func (h *BackupHandler) Update(c *okapi.Context, req *UpdateBackupRequest) error {
+	db, err := h.loadDB(c)
+	if err != nil {
+		return c.AbortNotFound("database not found")
+	}
+	b, err := h.loadBackup(c, db.WorkspaceID)
+	if err != nil {
+		return c.AbortNotFound("backup not found")
+	}
+	if err := h.svc.Annotate(b, req.Body.Comment, req.Body.Pinned); err != nil {
+		return c.AbortInternalServerError("failed to update backup", err)
+	}
+	h.record(c, db.WorkspaceID, "backup.update", b.ID)
 	return ok(c, b)
 }
 

@@ -211,7 +211,7 @@ func (m *Manager) runBackup(scheduleID, workspaceID, databaseID uint) error {
 	if err != nil {
 		return fmt.Errorf("schedule not found: %w", err)
 	}
-	if _, err := m.backups.Run(context.Background(), inst, db, "scheduled", m.destinationFor(workspaceID)); err != nil {
+	if _, err := m.backups.Run(context.Background(), inst, db, backup.RunOptions{Trigger: "scheduled"}, m.destinationFor(workspaceID)); err != nil {
 		return err
 	}
 	now := time.Now()

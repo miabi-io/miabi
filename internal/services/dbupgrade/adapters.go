@@ -43,8 +43,8 @@ func Backup(b *backup.Service) database.LogicalBackup { return logicalBackup{b} 
 
 type logicalBackup struct{ b *backup.Service }
 
-func (d logicalBackup) Dump(ctx context.Context, inst *models.DatabaseInstance, db *models.Database) (database.DumpRef, error) {
-	bk, err := d.b.Run(ctx, inst, db, "upgrade", backup.Destination{Type: "local"})
+func (d logicalBackup) Dump(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, comment string) (database.DumpRef, error) {
+	bk, err := d.b.Run(ctx, inst, db, backup.RunOptions{Trigger: "upgrade", Comment: comment}, backup.Destination{Type: "local"})
 	if err != nil {
 		return database.DumpRef{}, err
 	}
