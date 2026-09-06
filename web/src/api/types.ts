@@ -1498,10 +1498,17 @@ export interface Backup {
   // Per-database sequential backup number (1, 2, 3…), independent of the global
   // id — shown to users as "#<number>".
   number: number
+  engine: DBEngine
   status: 'pending' | 'running' | 'completed' | 'failed'
   trigger: string
   destination: string
   filename?: string
+  // Engine version the dump was taken from.
+  version?: string
+  // Free-text note the operator attached, e.g. "before the v1.3.0 rollout".
+  comment?: string
+  // Pinned backups are exempt from retention pruning.
+  pinned: boolean
   error?: string
   created_at: string
 }

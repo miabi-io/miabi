@@ -186,7 +186,7 @@ func (s *Service) exportDatabases(ctx context.Context, b *models.WorkspaceBundle
 				S3:            withPath(cfg, path),
 				GPGPassphrase: passphrase,
 			}
-			rec, err := s.Backup.Run(ctx, inst, db, "bundle", dest)
+			rec, err := s.Backup.Run(ctx, inst, db, backup.RunOptions{Trigger: "bundle"}, dest)
 			switch {
 			case err != nil:
 				art.Error = err.Error()

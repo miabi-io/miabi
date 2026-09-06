@@ -213,9 +213,17 @@ func ensureDBNetworks(ctx context.Context, dc docker.Client, inst *models.Databa
 	return names, nil
 }
 
+// RunOptions carries the metadata of a backup run: why it was taken, and any note
+// the operator attached. It replaces a bare trigger string so the two adjacent
+// free-text values cannot be passed the wrong way round.
+type RunOptions struct {
+	Trigger string // manual | scheduled | upgrade | bundle | platform-dr
+	Comment string
+}
+
 // Run performs a backup of a logical database to the given destination and
 // records the result. inst is the server hosting db.
-func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, trigger string, dest Destination) (*models.Backup, error) {
+func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, opts RunOptions, dest Destination) (*models.Backup, error) {
 	image, ok := s.bkupImage(inst.Engine)
 	if !ok {
 		return nil, ErrUnsupportedEngine
@@ -230,7 +238,8 @@ func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *mo
 	now := time.Now()
 	b := &models.Backup{
 		WorkspaceID: db.WorkspaceID, DatabaseID: db.ID, Engine: inst.Engine, ServerID: inst.ServerID,
-		Status: models.BackupRunning, Trigger: trigger, Destination: dest.Type, StartedAt: &now,
+		Status: models.BackupRunning, Trigger: opts.Trigger, Destination: dest.Type, StartedAt: &now,
+		Version: inst.Version, Comment: opts.Comment,
 	}
 	if err := s.repo.Create(b); err != nil {
 		return nil, err
@@ -308,7 +317,7 @@ func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *mo
 	}
 	s.emit(b.WorkspaceID, inst.ID, inst.Name, models.EventDatabaseBackupSucceeded, models.SeverityInfo,
 		fmt.Sprintf("Backup #%d of %q completed", b.Number, db.Name),
-		map[string]string{"database": db.Name, "backup": fmt.Sprint(b.Number), "trigger": trigger, "destination": dest.Type})
+		map[string]string{"database": db.Name, "backup": fmt.Sprint(b.Number), "trigger": opts.Trigger, "destination": dest.Type})
 	logger.Info("backup completed", "database", db.ID, "destination", dest.Type, "file", b.Filename)
 	return b, nil
 }
@@ -496,6 +505,20 @@ func (s *Service) List(databaseID uint) ([]models.Backup, error) {
 	return s.repo.ListByDatabase(databaseID)
 }
 
+// Annotate updates a backup's note and pin. Both are nil-able so a caller can
+// change one without restating the other. Editing after the fact is the point:
+// scheduled and pre-upgrade backups have no operator present when they run, and
+// what a backup was for is often only clear once the change it guarded went wrong.
+func (s *Service) Annotate(b *models.Backup, comment *string, pinned *bool) error {
+	if comment != nil {
+		b.Comment = strings.TrimSpace(*comment)
+	}
+	if pinned != nil {
+		b.Pinned = *pinned
+	}
+	return s.repo.Update(b)
+}
+
 // Delete removes a backup record and, for local backups, its artifact file from
 // the workspace backup volume (best-effort). S3 artifacts are left in place.
 func (s *Service) Delete(ctx context.Context, b *models.Backup) error {
@@ -521,6 +544,9 @@ func (s *Service) Delete(ctx context.Context, b *models.Backup) error {
 // Prune enforces a retention policy on a database's backups: keep at most
 // maxBackups most-recent, and delete any older than retentionDays. A zero bound
 // is ignored. Returns the number of backups removed.
+//
+// Pinned backups are never pruned, and do not occupy a maxBackups slot: pinning a
+// backup must not silently shrink how much rolling history the policy keeps.
 func (s *Service) Prune(ctx context.Context, databaseID uint, maxBackups, retentionDays int) (int, error) {
 	if maxBackups <= 0 && retentionDays <= 0 {
 		return 0, nil
@@ -534,10 +560,15 @@ func (s *Service) Prune(ctx context.Context, databaseID uint, maxBackups, retent
 		cutoff = time.Now().AddDate(0, 0, -retentionDays)
 	}
 	removed := 0
+	rank := 0
 	for i := range backups {
 		b := &backups[i]
-		overCount := maxBackups > 0 && i >= maxBackups
+		if b.Pinned {
+			continue
+		}
+		overCount := maxBackups > 0 && rank >= maxBackups
 		tooOld := retentionDays > 0 && b.CreatedAt.Before(cutoff)
+		rank++
 		if overCount || tooOld {
 			if err := s.Delete(ctx, b); err != nil {
 				logger.Error("prune backup", "backup", b.ID, "error", err)

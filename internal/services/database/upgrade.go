@@ -33,7 +33,7 @@ type DumpRef struct {
 // backup service by the composition root (keeps the database service decoupled
 // from the backup package and its types).
 type LogicalBackup interface {
-	Dump(ctx context.Context, inst *models.DatabaseInstance, db *models.Database) (DumpRef, error)
+	Dump(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, comment string) (DumpRef, error)
 	Load(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, ref DumpRef, force bool) error
 }
 
@@ -204,7 +204,10 @@ func (s *Service) RunUpgradeJob(ctx context.Context, instanceID uint, target, pa
 		}
 		dumps = make(map[uint]DumpRef, len(logicalDBs))
 		for i := range logicalDBs {
-			ref, derr := s.backups.Dump(ctx, inst, &logicalDBs[i])
+			// The safety backup names the upgrade it guarded, because it is the one a
+			// operator goes looking for when the upgrade turns out to have been a mistake.
+			ref, derr := s.backups.Dump(ctx, inst, &logicalDBs[i],
+				fmt.Sprintf("Safety backup before the %s → %s upgrade", inst.Version, target))
 			if derr != nil {
 				s.finishFailed(inst, fmt.Errorf("backup %q: %w", logicalDBs[i].Name, derr))
 				return nil

@@ -38,6 +38,18 @@ type Backup struct {
 	S3Path      string       `json:"s3_path,omitempty"`
 	Filename    string       `json:"filename,omitempty"`
 	SizeBytes   int64        `json:"size_bytes"`
+	// Version is the engine version the dump was taken from. Recorded because a
+	// dump does not always restore into a different major version, and because the
+	// question "what was running when this was taken" is the usual one.
+	Version string `json:"version,omitempty"`
+	// Comment is a free-text note the operator attaches to a backup — "before the
+	// v1.3.0 rollout" — so it can be identified later by why it was taken rather
+	// than only by when.
+	Comment string `json:"comment,omitempty"`
+	// Pinned exempts the backup from retention pruning, as it does for a Release.
+	// Deliberately separate from Comment: pinning is a decision, not a side effect
+	// of writing a note.
+	Pinned bool `json:"pinned" gorm:"not null;default:false"`
 	// Logs is a bounded tail of the backup output for instant display
 	Logs         string     `json:"logs,omitempty" gorm:"type:text"`
 	LogRef       string     `json:"log_ref,omitempty"`

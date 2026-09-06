@@ -16,7 +16,7 @@ import (
 // DBBackupRunner is the slice of services/backup platform DR needs: dump and
 // restore a managed database against a destination it chooses.
 type DBBackupRunner interface {
-	Run(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, trigger string, dest backup.Destination) (*models.Backup, error)
+	Run(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, opts backup.RunOptions, dest backup.Destination) (*models.Backup, error)
 	Restore(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, spec backup.RestoreSpec) error
 }
 
@@ -125,7 +125,7 @@ func (s *RepoTenantSource) BackupTenantDatabase(ctx context.Context, td TenantDa
 	if s.runner == nil {
 		return nil, fmt.Errorf("no database backup runner is wired")
 	}
-	return s.runner.Run(ctx, td.Instance, td.Database, "platform-dr", dest)
+	return s.runner.Run(ctx, td.Instance, td.Database, backup.RunOptions{Trigger: "platform-dr"}, dest)
 }
 
 // RestoreTenantDatabase loads a dump back into a live database instance. Force is set, so the database is
