@@ -222,10 +222,10 @@ func (h *StackHandler) DeployOutdated(c *okapi.Context) error {
 // staleMsg tells the caller how far the change has spread: a shared env var is
 // only live once each member application is redeployed.
 func staleMsg(base string, apps int) string {
-	switch {
-	case apps == 0:
+	switch apps {
+	case 0:
 		return base
-	case apps == 1:
+	case 1:
 		return base + " — 1 app needs a redeploy"
 	default:
 		return fmt.Sprintf("%s — %d apps need a redeploy", base, apps)
