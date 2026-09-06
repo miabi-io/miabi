@@ -539,7 +539,7 @@ func (r *restoreRun) applyStacks(ctx context.Context) {
 			continue
 		}
 		for _, e := range k.Env {
-			if err := r.svc.Stack.SetEnvVar(r.target, created.ID, e.Key, e.Value, e.IsSecret); err != nil {
+			if _, err := r.svc.Stack.SetEnvVar(r.target, created.ID, e.Key, e.Value, e.IsSecret); err != nil {
 				logger.Warn("bundle: could not restore stack env", "stack", k.Name, "key", e.Key, "error", err)
 			}
 		}

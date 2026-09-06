@@ -47,4 +47,9 @@ type StackEnvVar struct {
 	IsSecret  bool      `json:"is_secret" gorm:"not null;default:false"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// OverriddenBy names the member applications that define the same key. An
+	// app-level variable wins, so a shared value can be inert for some members;
+	// derived on read rather than stored.
+	OverriddenBy []string `json:"overridden_by,omitempty" gorm:"-"`
 }

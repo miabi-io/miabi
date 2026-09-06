@@ -16,9 +16,11 @@ import (
 // the stack.AppService interface (lifecycle methods used here, the rest are
 // no-ops for these tests).
 type fakeApp struct {
-	errByID map[uint]error
-	stops   []uint
-	waited  []uint
+	errByID  map[uint]error
+	stops    []uint
+	waited   []uint
+	marked   []uint
+	deployed []uint
 }
 
 func (f *fakeApp) Start(_ context.Context, app *models.Application) (*models.Deployment, error) {
@@ -36,9 +38,18 @@ func (f *fakeApp) WaitRunning(_ context.Context, app *models.Application) error 
 	return nil
 }
 func (f *fakeApp) Deploy(app *models.Application, _ *uint, _ string, _ models.DeployStrategy) (*models.Deployment, error) {
+	f.deployed = append(f.deployed, app.ID)
 	return &models.Deployment{ApplicationID: app.ID}, nil
 }
+
+// MarkRedeployRequired mirrors the real one: an app that has never been deployed
+// has no stale container, so nothing is marked.
 func (f *fakeApp) MarkRedeployRequired(app *models.Application) (bool, error) {
+	if app.CurrentReleaseID == nil {
+		return false, nil
+	}
+	app.RedeployRequired = true
+	f.marked = append(f.marked, app.ID)
 	return true, nil
 }
 func (f *fakeApp) Delete(_ context.Context, _ *models.Application) error { return nil }

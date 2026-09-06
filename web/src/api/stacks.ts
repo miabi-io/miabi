@@ -52,12 +52,22 @@ export const stackApi = {
   restart: (ws: number, id: number, rolling = false) =>
     api.post<ApiResponse<StackActionResult[]>>(`${base(ws)}/${id}/restart${rolling ? '?rolling=true' : ''}`),
   deploy: (ws: number, id: number) => api.post<ApiResponse<StackDeployResult[]>>(`${base(ws)}/${id}/deploy`),
+  // Deploy only the members whose configuration has moved on since their last one.
+  deployOutdated: (ws: number, id: number) =>
+    api.post<ApiResponse<StackDeployResult[]>>(`${base(ws)}/${id}/deploy-outdated`),
   events: (ws: number, id: number) => api.get<ApiResponse<AppEvent[]>>(`${base(ws)}/${id}/events`),
   envVars: (ws: number, id: number) => api.get<ApiResponse<StackEnvVar[]>>(`${base(ws)}/${id}/env`),
   setEnvVar: (ws: number, id: number, key: string, value: string, isSecret: boolean) =>
     api.put<ApiResponse<{ message: string }>>(`${base(ws)}/${id}/env`, { key, value, is_secret: isSecret }),
   importEnvVars: (ws: number, id: number, content: string, isSecret: boolean) =>
-    api.post<ApiResponse<{ imported: number }>>(`${base(ws)}/${id}/env/import`, { content, is_secret: isSecret }),
+    api.post<ApiResponse<{ imported: number; apps_pending_redeploy: number }>>(
+      `${base(ws)}/${id}/env/import`, { content, is_secret: isSecret },
+    ),
+  // Admin-only and audited, mirroring the per-app reveal.
+  revealEnvVar: (ws: number, id: number, key: string) =>
+    api.get<ApiResponse<{ key: string; value: string }>>(
+      `${base(ws)}/${id}/env/${encodeURIComponent(key)}/reveal`,
+    ),
   deleteEnvVar: (ws: number, id: number, key: string) =>
     api.delete<ApiResponse<{ message: string }>>(`${base(ws)}/${id}/env/${encodeURIComponent(key)}`),
   remove: (ws: number, id: number, withApps = false) =>

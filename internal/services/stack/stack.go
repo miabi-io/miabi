@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/miabi-io/miabi/internal/docker"
@@ -39,6 +40,7 @@ var (
 	ErrAppInOtherStack = errors.New("application already belongs to another stack")
 	ErrInvalidAction   = errors.New("invalid stack action")
 	ErrKeyRequired     = errors.New("environment variable key is required")
+	ErrEnvVarNotFound  = errors.New("environment variable not found")
 )
 
 // AppService is the slice of *application.Service the stack service drives:
@@ -401,9 +403,18 @@ func (s *Service) DeployAll(workspaceID, stackID uint) ([]DeployResult, error) {
 	if err != nil {
 		return nil, ErrNotFound
 	}
-	results := make([]DeployResult, 0, len(st.Apps))
-	for i := range st.Apps {
-		app := &st.Apps[i]
+	return s.deployApps(st.Apps, false), nil
+}
+
+// deployApps enqueues a deploy per application, optionally skipping those already
+// current. Best-effort: one app's failure to enqueue doesn't stop the others.
+func (s *Service) deployApps(apps []models.Application, onlyOutdated bool) []DeployResult {
+	results := make([]DeployResult, 0, len(apps))
+	for i := range apps {
+		app := &apps[i]
+		if onlyOutdated && !app.RedeployRequired {
+			continue
+		}
 		res := DeployResult{AppID: app.ID, AppName: app.Name, Status: "queued"}
 		dep, derr := s.app.Deploy(app, nil, "", "")
 		if derr != nil {
@@ -413,7 +424,19 @@ func (s *Service) DeployAll(workspaceID, stackID uint) ([]DeployResult, error) {
 		}
 		results = append(results, res)
 	}
-	return results, nil
+	return results
+}
+
+// DeployOutdated enqueues a deploy for only the member applications whose
+// configuration has moved on since their last one. Preferred over DeployAll after
+// a shared env change: it leaves apps that are already current — and apps never
+// deployed at all — alone, rather than restarting a whole stack to fix part of it.
+func (s *Service) DeployOutdated(workspaceID, stackID uint) ([]DeployResult, error) {
+	st, err := s.repo.FindInWorkspaceWithApps(workspaceID, stackID)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	return s.deployApps(st.Apps, true), nil
 }
 
 // StatusCounts is an aggregate of member-app statuses for the health badge.
@@ -460,72 +483,161 @@ func (s *Service) Events(workspaceID, stackID uint, limit int) ([]models.AppEven
 	return s.events.ListByApps(ids, limit)
 }
 
-// ListEnvVars returns the stack's shared env vars (secret values masked).
+// ListEnvVars returns the stack's shared env vars (secret values masked), each
+// annotated with the member applications that shadow it.
 func (s *Service) ListEnvVars(workspaceID, stackID uint) ([]models.StackEnvVar, error) {
-	if _, err := s.repo.FindInWorkspace(workspaceID, stackID); err != nil {
+	st, err := s.repo.FindInWorkspaceWithApps(workspaceID, stackID)
+	if err != nil {
 		return nil, ErrNotFound
 	}
 	vars, err := s.env.ListByStack(stackID)
 	if err != nil {
 		return nil, err
 	}
+	overrides := s.overridesFor(st)
 	for i := range vars {
 		if vars[i].IsSecret {
 			vars[i].Value = "••••••••"
 		}
+		vars[i].OverriddenBy = overrides[vars[i].Key]
 	}
 	return vars, nil
 }
 
-// SetEnvVar upserts a shared env var on the stack (secret values encrypted).
-func (s *Service) SetEnvVar(workspaceID, stackID uint, key, value string, isSecret bool) error {
+// overridesFor maps each key to the member applications that define it themselves.
+// An app-level variable wins over the stack's, so without this a shared value can
+// be set, seen in the list, and quietly ignored by the app it was meant for.
+func (s *Service) overridesFor(st *models.Stack) map[string][]string {
+	if len(st.Apps) == 0 {
+		return nil
+	}
+	ids := make([]uint, 0, len(st.Apps))
+	names := make(map[uint]string, len(st.Apps))
+	for i := range st.Apps {
+		app := &st.Apps[i]
+		ids = append(ids, app.ID)
+		names[app.ID] = app.Name
+	}
+	owners, err := s.apps.EnvKeyOwners(ids)
+	if err != nil {
+		return nil // annotation is advisory; the list is still correct without it
+	}
+	out := make(map[string][]string, len(owners))
+	for key, appIDs := range owners {
+		for _, id := range appIDs {
+			if n := names[id]; n != "" {
+				out[key] = append(out[key], n)
+			}
+		}
+		sort.Strings(out[key])
+	}
+	return out
+}
+
+// RevealEnvVar returns a shared env var's decrypted value. Mirrors the per-app
+// reveal: list and set are lower-privileged, but reading a secret's plaintext is
+// gated to workspace admins by the route and audited by the handler.
+func (s *Service) RevealEnvVar(workspaceID, stackID uint, key string) (string, error) {
 	if _, err := s.repo.FindInWorkspace(workspaceID, stackID); err != nil {
-		return ErrNotFound
+		return "", ErrNotFound
+	}
+	vars, err := s.env.ListByStack(stackID)
+	if err != nil {
+		return "", err
+	}
+	for _, v := range vars {
+		if v.Key == key {
+			if v.IsSecret {
+				return crypto.Decrypt(v.Value)
+			}
+			return v.Value, nil
+		}
+	}
+	return "", ErrEnvVarNotFound
+}
+
+// SetEnvVar upserts a shared env var on the stack (secret values encrypted) and
+// returns how many member applications it left needing a redeploy.
+func (s *Service) SetEnvVar(workspaceID, stackID uint, key, value string, isSecret bool) (int, error) {
+	st, err := s.repo.FindInWorkspaceWithApps(workspaceID, stackID)
+	if err != nil {
+		return 0, ErrNotFound
 	}
 	key = strings.TrimSpace(key)
 	if key == "" {
-		return ErrKeyRequired
+		return 0, ErrKeyRequired
 	}
 	stored := value
 	if isSecret {
 		enc, err := crypto.EncryptWS(workspaceID, value)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		stored = enc
 	}
-	return s.env.Upsert(&models.StackEnvVar{StackID: stackID, Key: key, Value: stored, IsSecret: isSecret})
+	if err := s.env.Upsert(&models.StackEnvVar{StackID: stackID, Key: key, Value: stored, IsSecret: isSecret}); err != nil {
+		return 0, err
+	}
+	return s.markMembersStale(st), nil
 }
 
-// ImportEnvVars bulk-upserts shared env vars from .env-style content,
-// encrypting them when isSecret. Returns the number set.
-func (s *Service) ImportEnvVars(workspaceID, stackID uint, content string, isSecret bool) (int, error) {
-	if _, err := s.repo.FindInWorkspace(workspaceID, stackID); err != nil {
-		return 0, ErrNotFound
+// markMembersStale flags every already-deployed member application as needing a
+// redeploy, and reports how many it flagged.
+//
+// A stack env var is injected into each member's container at deploy time, so
+// changing one leaves every running member behind its own configuration. Without
+// this the drift is invisible until something unrelated triggers a deploy.
+func (s *Service) markMembersStale(st *models.Stack) int {
+	n := 0
+	for i := range st.Apps {
+		// An app that has never been deployed has no stale container to replace;
+		// MarkRedeployRequired reports that by marking nothing.
+		if marked, err := s.app.MarkRedeployRequired(&st.Apps[i]); err == nil && marked {
+			n++
+		}
+	}
+	return n
+}
+
+// ImportEnvVars bulk-upserts shared env vars from .env-style content, encrypting
+// them when isSecret. Returns the number set and how many member applications
+// were left needing a redeploy.
+func (s *Service) ImportEnvVars(workspaceID, stackID uint, content string, isSecret bool) (imported, stale int, err error) {
+	st, err := s.repo.FindInWorkspaceWithApps(workspaceID, stackID)
+	if err != nil {
+		return 0, 0, ErrNotFound
 	}
 	pairs := dotenv.Parse(content)
 	for _, p := range pairs {
 		stored := p.Value
 		if isSecret {
-			enc, err := crypto.EncryptWS(workspaceID, p.Value)
-			if err != nil {
-				return 0, err
+			enc, encErr := crypto.EncryptWS(workspaceID, p.Value)
+			if encErr != nil {
+				return 0, 0, encErr
 			}
 			stored = enc
 		}
-		if err := s.env.Upsert(&models.StackEnvVar{StackID: stackID, Key: p.Key, Value: stored, IsSecret: isSecret}); err != nil {
-			return 0, err
+		if uerr := s.env.Upsert(&models.StackEnvVar{StackID: stackID, Key: p.Key, Value: stored, IsSecret: isSecret}); uerr != nil {
+			return 0, 0, uerr
 		}
 	}
-	return len(pairs), nil
+	if len(pairs) == 0 {
+		return 0, 0, nil
+	}
+	return len(pairs), s.markMembersStale(st), nil
 }
 
-// DeleteEnvVar removes a shared env var from the stack.
-func (s *Service) DeleteEnvVar(workspaceID, stackID uint, key string) error {
-	if _, err := s.repo.FindInWorkspace(workspaceID, stackID); err != nil {
-		return ErrNotFound
+// DeleteEnvVar removes a shared env var from the stack and returns how many
+// member applications it left needing a redeploy.
+func (s *Service) DeleteEnvVar(workspaceID, stackID uint, key string) (int, error) {
+	st, err := s.repo.FindInWorkspaceWithApps(workspaceID, stackID)
+	if err != nil {
+		return 0, ErrNotFound
 	}
-	return s.env.Delete(stackID, key)
+	if err := s.env.Delete(stackID, key); err != nil {
+		return 0, err
+	}
+	return s.markMembersStale(st), nil
 }
 
 // IDByUID resolves a stack's portable uid to its numeric id.

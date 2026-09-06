@@ -478,7 +478,7 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 		}
 		secret := secretSet(m.Stack.SecretEnv)
 		for k, v := range stackEnv {
-			if err := s.stacks.SetEnvVar(workspaceID, result.Stack.ID, k, v, secret[k]); err != nil {
+			if _, err := s.stacks.SetEnvVar(workspaceID, result.Stack.ID, k, v, secret[k]); err != nil {
 				return nil, fmt.Errorf("set stack env %s: %w", k, err)
 			}
 		}

@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 
 	"github.com/jkaninda/okapi"
@@ -202,6 +203,35 @@ func (h *StackHandler) DeployAll(c *okapi.Context) error {
 	return ok(c, results)
 }
 
+// DeployOutdated redeploys only the member applications whose configuration has
+// moved on since their last deploy.
+func (h *StackHandler) DeployOutdated(c *okapi.Context) error {
+	id, err := h.id(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid stack id")
+	}
+	wsID := middlewares.WorkspaceID(c)
+	results, err := h.svc.DeployOutdated(wsID, id)
+	if err != nil {
+		return h.mapErr(c, err)
+	}
+	h.record(c, wsID, "stack.deploy_outdated", id)
+	return ok(c, results)
+}
+
+// staleMsg tells the caller how far the change has spread: a shared env var is
+// only live once each member application is redeployed.
+func staleMsg(base string, apps int) string {
+	switch {
+	case apps == 0:
+		return base
+	case apps == 1:
+		return base + " — 1 app needs a redeploy"
+	default:
+		return fmt.Sprintf("%s — %d apps need a redeploy", base, apps)
+	}
+}
+
 // Events returns the stack's combined application activity feed.
 func (h *StackHandler) Events(c *okapi.Context) error {
 	id, err := h.id(c)
@@ -235,11 +265,12 @@ func (h *StackHandler) SetEnvVar(c *okapi.Context, req *SetStackEnvVarRequest) e
 		return c.AbortBadRequest("invalid stack id")
 	}
 	wsID := middlewares.WorkspaceID(c)
-	if err := h.svc.SetEnvVar(wsID, id, req.Body.Key, req.Body.Value, req.Body.IsSecret); err != nil {
+	stale, err := h.svc.SetEnvVar(wsID, id, req.Body.Key, req.Body.Value, req.Body.IsSecret)
+	if err != nil {
 		return h.mapErr(c, err)
 	}
 	h.record(c, wsID, "stack.env_set", id)
-	return message(c, "environment variable set")
+	return message(c, staleMsg("environment variable set", stale))
 }
 
 // ImportEnvVars bulk-upserts the stack's shared env vars from a .env block.
@@ -249,12 +280,33 @@ func (h *StackHandler) ImportEnvVars(c *okapi.Context, req *ImportEnvVarsRequest
 		return c.AbortBadRequest("invalid stack id")
 	}
 	wsID := middlewares.WorkspaceID(c)
-	n, err := h.svc.ImportEnvVars(wsID, id, req.Body.Content, req.Body.IsSecret)
+	n, stale, err := h.svc.ImportEnvVars(wsID, id, req.Body.Content, req.Body.IsSecret)
 	if err != nil {
 		return h.mapErr(c, err)
 	}
 	h.record(c, wsID, "stack.env_import", id)
-	return ok(c, map[string]any{"imported": n})
+	return ok(c, map[string]any{"imported": n, "apps_pending_redeploy": stale})
+}
+
+// RevealEnvVar returns a shared env var's decrypted value (workspace Admin only,
+// audited). Mirrors the per-app reveal: a stack secret that can only be
+// overwritten and never read back is write-only storage, not a secret store.
+func (h *StackHandler) RevealEnvVar(c *okapi.Context) error {
+	id, err := h.id(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid stack id")
+	}
+	wsID := middlewares.WorkspaceID(c)
+	key := c.Param("key")
+	val, err := h.svc.RevealEnvVar(wsID, id, key)
+	if err != nil {
+		if errors.Is(err, stack.ErrEnvVarNotFound) {
+			return c.AbortNotFound("environment variable not found")
+		}
+		return h.mapErr(c, err)
+	}
+	h.record(c, wsID, "stack.env_reveal", id)
+	return ok(c, map[string]string{"key": key, "value": val})
 }
 
 // DeleteEnvVar removes a shared environment variable from the stack.
@@ -264,11 +316,12 @@ func (h *StackHandler) DeleteEnvVar(c *okapi.Context) error {
 		return c.AbortBadRequest("invalid stack id")
 	}
 	wsID := middlewares.WorkspaceID(c)
-	if err := h.svc.DeleteEnvVar(wsID, id, c.Param("key")); err != nil {
+	stale, err := h.svc.DeleteEnvVar(wsID, id, c.Param("key"))
+	if err != nil {
 		return h.mapErr(c, err)
 	}
 	h.record(c, wsID, "stack.env_delete", id)
-	return message(c, "environment variable removed")
+	return message(c, staleMsg("environment variable removed", stale))
 }
 
 // Import creates a stack and its apps from a docker-compose file.
