@@ -1113,6 +1113,8 @@ export interface StackEnvVar {
   key: string
   value: string
   is_secret: boolean
+  /** Member apps that define the same key; their value wins over the stack's. */
+  overridden_by?: string[]
 }
 
 export interface Stack {

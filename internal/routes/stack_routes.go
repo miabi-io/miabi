@@ -121,6 +121,14 @@ func (r *Router) stackRoutes() []okapi.RouteDefinition {
 			Summary:     "Deploy all applications in a stack",
 		},
 		{
+			Method:      http.MethodPost,
+			Path:        base + "/{stackID}/deploy-outdated",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     r.h.stack.DeployOutdated,
+			Summary:     "Deploy only the stack's applications that need a redeploy",
+		},
+		{
 			Method:      http.MethodGet,
 			Path:        base + "/{stackID}/events",
 			Group:       g,
@@ -153,6 +161,14 @@ func (r *Router) stackRoutes() []okapi.RouteDefinition {
 			Handler:     okapi.H(r.h.stack.ImportEnvVars),
 			Summary:     "Bulk-import shared env vars from .env",
 			Request:     &handlers.ImportEnvVarsRequest{},
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        base + "/{stackID}/env/{key}/reveal",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleAdmin),
+			Handler:     r.h.stack.RevealEnvVar,
+			Summary:     "Reveal a shared env var's value (admin)",
 		},
 		{
 			Method:      http.MethodDelete,

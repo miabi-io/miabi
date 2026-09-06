@@ -6,6 +6,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { stackApi, type StackActionResult } from '@/api/stacks'
 import { appApi } from '@/api/apps'
 import type { Stack, Application, StackEnvVar, AppEvent } from '@/api/types'
+import { useWorkspaceStream } from '@/views/dashboard/useWorkspaceStream'
 import MetadataCard from '@/components/MetadataCard.vue'
 import EnvVarModal from '@/components/EnvVarModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -37,6 +38,9 @@ const showEnvModal = ref(false)
 const editingEnvKey = ref<string | null>(null)
 const envForm = ref({ key: '', value: '', secret: false })
 const savingEnv = ref(false)
+// Revealed secret values, keyed by variable name; mirrors the per-app reveal.
+const revealedEnv = ref<Record<string, string>>({})
+const revealingEnv = ref('')
 const showEnvImport = ref(false)
 const envImport = ref({ content: '', secret: false })
 const importingEnv = ref(false)
@@ -58,21 +62,43 @@ function aggregateClass() {
   return 'badge-warning'
 }
 
-async function load() {
+// silent is used by the live reconcile: a background refresh must not blank the
+// page behind a spinner.
+async function load(silent = false) {
   if (!wid.value) return
-  loading.value = true
+  if (!silent) loading.value = true
   try {
     stack.value = (await stackApi.get(wid.value, stackId.value)).data.data
     allApps.value = (await appApi.list(wid.value)).data.data ?? []
     envVars.value = (await stackApi.envVars(wid.value, stackId.value)).data.data ?? []
+    if (!silent) revealedEnv.value = {}
     events.value = (await stackApi.events(wid.value, stackId.value)).data.data ?? []
   } catch (e) {
-    notify.apiError(e)
+    if (!silent) notify.apiError(e)
   } finally {
     loading.value = false
   }
 }
-watch([stackId, wid], load, { immediate: true })
+
+// Deploys are enqueued, not applied inline: the worker clears redeploy_required
+// long after the request returns, so without the event stream the page stays
+// stale until a manual refresh. Only a member's activity earns a refetch.
+let memberActivity = false
+const { open: openStream } = useWorkspaceStream(() => {
+  if (!memberActivity) return
+  memberActivity = false
+  load(true)
+})
+
+watch([stackId, wid], ([, id]) => {
+  load()
+  openStream(id ?? null, (e) => {
+    if (!(stack.value?.apps ?? []).some((a) => a.id === e.application_id)) return
+    memberActivity = true
+    // Prepend for immediacy; the reconcile a moment later replaces the list.
+    if (!events.value.some((x) => x.id === e.id)) events.value = [e, ...events.value].slice(0, 30)
+  })
+}, { immediate: true })
 
 function summarize(results: StackActionResult[], verb: string) {
   const ok = results.filter((r) => r.status === 'ok').length
@@ -93,6 +119,26 @@ async function lifecycle(action: 'start' | 'stop' | 'restart', rolling = false) 
         ? (await stackApi.restart(wid.value, stackId.value, rolling)).data.data ?? []
         : (await stackApi[action](wid.value, stackId.value)).data.data ?? []
     summarize(results, action === 'start' ? 'started' : action === 'stop' ? 'stopped' : 'restarted')
+    load()
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    busyAction.value = ''
+  }
+}
+
+// A shared env var only reaches a container at deploy time, so a member deployed
+// before the change is running stale configuration until it is redeployed.
+const outdated = computed(() => (stack.value?.apps ?? []).filter((a) => a.redeploy_required))
+
+async function deployOutdated() {
+  if (!wid.value || busyAction.value) return
+  busyAction.value = 'deploy-outdated'
+  try {
+    const results = (await stackApi.deployOutdated(wid.value, stackId.value)).data.data ?? []
+    const queued = results.filter((r) => r.status === 'queued').length
+    const failed = results.filter((r) => r.status === 'failed').length
+    notify[failed ? 'error' : 'success'](`${queued} deploy${queued === 1 ? '' : 's'} queued${failed ? `, ${failed} failed` : ''}`)
     load()
   } catch (e) {
     notify.apiError(e)
@@ -193,14 +239,34 @@ async function saveEnv(v: { key: string; value: string; secret: boolean }) {
   if (!wid.value || !v.key) return
   savingEnv.value = true
   try {
-    await stackApi.setEnvVar(wid.value, stackId.value, v.key, v.value, v.secret)
-    notify.success((editingEnvKey.value ? 'Variable updated' : 'Variable added') + ' — applies on each app’s next deploy')
+    const res = (await stackApi.setEnvVar(wid.value, stackId.value, v.key, v.value, v.secret)).data.data
+    notify.success(res.message)
     showEnvModal.value = false
     envVars.value = (await stackApi.envVars(wid.value, stackId.value)).data.data ?? []
+    load() // refresh the members' redeploy_required for the banner and badges
   } catch (e) {
     notify.apiError(e)
   } finally {
     savingEnv.value = false
+  }
+}
+
+async function toggleReveal(v: StackEnvVar) {
+  if (revealedEnv.value[v.key] !== undefined) {
+    const next = { ...revealedEnv.value }
+    delete next[v.key]
+    revealedEnv.value = next
+    return
+  }
+  if (!wid.value) return
+  revealingEnv.value = v.key
+  try {
+    const value = (await stackApi.revealEnvVar(wid.value, stackId.value, v.key)).data.data.value
+    revealedEnv.value = { ...revealedEnv.value, [v.key]: value }
+  } catch (err) {
+    notify.apiError(err, 'Failed to reveal value')
+  } finally {
+    revealingEnv.value = ''
   }
 }
 
@@ -209,6 +275,7 @@ async function deleteEnv(key: string) {
   try {
     await stackApi.deleteEnvVar(wid.value, stackId.value, key)
     envVars.value = envVars.value.filter((v) => v.key !== key)
+    load()
   } catch (e) {
     notify.apiError(e)
   }
@@ -219,10 +286,15 @@ async function importEnv() {
   importingEnv.value = true
   try {
     const res = (await stackApi.importEnvVars(wid.value, stackId.value, envImport.value.content, envImport.value.secret)).data.data
-    notify.success(`Imported ${res?.imported ?? 0} variable(s)`)
+    const pending = res?.apps_pending_redeploy ?? 0
+    notify.success(
+      `Imported ${res?.imported ?? 0} variable(s)` +
+      (pending ? ` — ${pending} app${pending === 1 ? '' : 's'} need${pending === 1 ? 's' : ''} a redeploy` : ''),
+    )
     showEnvImport.value = false
     envImport.value = { content: '', secret: false }
     envVars.value = (await stackApi.envVars(wid.value, stackId.value)).data.data ?? []
+    load()
   } catch (e) {
     notify.apiError(e)
   } finally {
@@ -316,6 +388,25 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
           <span class="mdi mdi-plus"></span> Add application
         </button>
       </div>
+      <!-- A shared env var reaches a container only at deploy time, so say plainly
+           which members are still running the old values and offer the fix. -->
+      <div v-if="outdated.length" class="stale-banner">
+        <span class="mdi mdi-alert-outline"></span>
+        <span class="stale-text">
+          <strong>{{ outdated.length }}</strong>
+          {{ outdated.length === 1 ? 'application is' : 'applications are' }} running configuration
+          older than this stack's. Redeploy to apply the shared environment.
+        </span>
+        <button
+          v-if="ws.canEdit"
+          class="btn btn-sm btn-primary"
+          :disabled="!!busyAction"
+          @click="deployOutdated"
+        >
+          {{ busyAction === 'deploy-outdated' ? 'Deploying…' : `Redeploy ${outdated.length}` }}
+        </button>
+      </div>
+
       <div v-if="loading && !stack.apps" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="!stack.apps || stack.apps.length === 0" class="empty-state">
         <span class="mdi mdi-cube-outline" style="font-size: 44px; color: var(--text-muted)"></span>
@@ -331,7 +422,16 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
                 <div class="cell-id">
                   <span class="avatar avatar-sm">{{ (a.display_name || a.name).charAt(0).toUpperCase() }}</span>
                   <span class="cell-text">
-                    <span class="cell-title">{{ a.display_name || a.name }}</span>
+                    <span class="cell-title">
+                      {{ a.display_name || a.name }}
+                      <span
+                        v-if="a.redeploy_required"
+                        class="badge badge-warning"
+                        title="Configuration changed since this app was last deployed — redeploy to apply it"
+                      >
+                        <span class="mdi mdi-alert-outline"></span> Redeploy required
+                      </span>
+                    </span>
                     <span class="cell-sub">{{ a.name }}</span>
                   </span>
                 </div>
@@ -363,9 +463,40 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
         <table v-if="envVars.length" style="margin-bottom: 12px">
           <tbody>
             <tr v-for="v in envVars" :key="v.id">
-              <td class="cell-title" style="font-family: monospace">{{ v.key }}</td>
-              <td class="cell-sub" style="font-family: monospace">{{ v.is_secret ? '••••••••' : v.value }}</td>
+              <td class="cell-title" style="font-family: monospace">
+                {{ v.key }}
+                <span v-if="v.is_secret" class="badge badge-neutral env-tag" title="Encrypted at rest">
+                  <span class="mdi mdi-lock-outline"></span> secret
+                </span>
+                <!-- An app's own variable wins, so a shared value can be set here
+                     and never reach the app it was meant for. -->
+                <span
+                  v-if="v.overridden_by?.length"
+                  class="badge badge-warning env-tag"
+                  :title="`Overridden by ${v.overridden_by.join(', ')} — these apps define their own ${v.key} and will ignore this value`"
+                >
+                  <span class="mdi mdi-arrow-down-bold-outline"></span>
+                  overridden in {{ v.overridden_by.join(', ') }}
+                </span>
+              </td>
+              <td class="cell-sub" style="font-family: monospace">
+                <template v-if="v.is_secret">
+                  <code v-if="revealedEnv[v.key] !== undefined">{{ revealedEnv[v.key] }}</code>
+                  <span v-else aria-label="Hidden secret value">••••••••</span>
+                </template>
+                <code v-else>{{ v.value }}</code>
+              </td>
               <td class="text-right">
+                <button
+                  v-if="v.is_secret && ws.isWorkspaceAdmin"
+                  class="btn-icon btn-icon-muted"
+                  :title="revealedEnv[v.key] !== undefined ? 'Hide value' : 'Reveal value'"
+                  :aria-label="revealedEnv[v.key] !== undefined ? 'Hide value' : 'Reveal value'"
+                  :disabled="revealingEnv === v.key"
+                  @click="toggleReveal(v)"
+                >
+                  <span class="mdi" :class="revealingEnv === v.key ? 'mdi-loading mdi-spin' : (revealedEnv[v.key] !== undefined ? 'mdi-eye-off-outline' : 'mdi-eye-outline')"></span>
+                </button>
                 <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" title="Edit" aria-label="Edit" @click="openEnvEdit(v)"><span class="mdi mdi-pencil-outline"></span></button>
                 <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="deleteEnv(v.key)"><span class="mdi mdi-delete-outline"></span></button>
               </td>
@@ -529,6 +660,34 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
 </template>
 
 <style scoped>
+.env-tag {
+  margin-left: 6px;
+  font-family: var(--font-sans, sans-serif);
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+.stale-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--warning-50, var(--bg-secondary));
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.stale-banner > .mdi {
+  font-size: 18px;
+  color: var(--warning-600);
+  flex-shrink: 0;
+}
+
+.stale-text {
+  flex: 1;
+}
+
 .text-muted { color: var(--text-muted); }
 .header-divider { width: 1px; height: 22px; background: var(--border-secondary); margin: 0 4px; }
 .form-hint code { background: var(--bg-tertiary); padding: 1px 6px; border-radius: 4px; }

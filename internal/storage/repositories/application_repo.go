@@ -268,6 +268,25 @@ func (r *ApplicationRepository) ListEnvVars(appID uint) ([]models.AppEnvVar, err
 	return vars, err
 }
 
+// EnvKeyOwners maps each env-var key defined by the given applications to the ids
+// of the applications defining it. One query, so showing which stack variables a
+// member shadows does not cost a round trip per app.
+func (r *ApplicationRepository) EnvKeyOwners(appIDs []uint) (map[string][]uint, error) {
+	out := map[string][]uint{}
+	if len(appIDs) == 0 {
+		return out, nil
+	}
+	var rows []models.AppEnvVar
+	if err := r.db.Select("application_id", "key").
+		Where("application_id IN ?", appIDs).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, v := range rows {
+		out[v.Key] = append(out[v.Key], v.ApplicationID)
+	}
+	return out, nil
+}
+
 // IDByUID resolves an application's uid to its numeric id.
 func (r *ApplicationRepository) IDByUID(uid string) (uint, error) {
 	return idByUID[models.Application](r.db, uid)

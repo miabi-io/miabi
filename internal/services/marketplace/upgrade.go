@@ -465,7 +465,7 @@ func (s *Service) applyStackEnv(workspaceID uint, rec *models.TemplateInstall, o
 			res.Warnings = append(res.Warnings, fmt.Sprintf("stack env %s references data that can't be resolved on upgrade — set it manually", key))
 			continue
 		}
-		if serr := s.stacks.SetEnvVar(workspaceID, *rec.StackID, key, rendered, secret[key]); serr != nil {
+		if _, serr := s.stacks.SetEnvVar(workspaceID, *rec.StackID, key, rendered, secret[key]); serr != nil {
 			res.Warnings = append(res.Warnings, fmt.Sprintf("set stack env %s: %v", key, serr))
 			continue
 		}
