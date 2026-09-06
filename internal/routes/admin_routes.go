@@ -9,6 +9,7 @@ import (
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/dto"
 	"github.com/miabi-io/miabi/internal/handlers"
+	"github.com/miabi-io/miabi/internal/models"
 )
 
 // adminRoutes registers platform-admin endpoints under /admin; every route requires a super-admin.
@@ -764,6 +765,68 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Middlewares: admin,
 			Handler:     r.h.siemAdmin.Test,
 			Summary:     "Send a synthetic event to a SIEM target",
+		},
+
+		// Platform announcements (Enterprise; gated announcements → 402 in CE).
+		{
+			Method:      http.MethodGet,
+			Path:        "/announcements",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminAnnouncement.List),
+			Summary:     "List announcements",
+			Request:     &handlers.ListAnnouncementsRequest{},
+			Response:    &dto.PageableResponse[models.Announcement]{},
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/announcements/audience",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminAnnouncement.Preview),
+			Summary:     "Preview how many users an audience reaches",
+			Request:     &handlers.AudiencePreviewRequest{},
+			Response:    &dto.Response[handlers.AudiencePreview]{},
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/announcements",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminAnnouncement.Create),
+			Summary:     "Broadcast or schedule an announcement",
+			Request:     &handlers.CreateAnnouncementRequest{},
+			Options: []okapi.RouteOption{
+				okapi.DocResponse(201, &dto.Response[models.Announcement]{}),
+			},
+		},
+		{
+			Method:      http.MethodPut,
+			Path:        "/announcements/{id}",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminAnnouncement.Update),
+			Summary:     "Edit an announcement and every inbox it reached",
+			Request:     &handlers.UpdateAnnouncementRequest{},
+			Response:    &dto.Response[models.Announcement]{},
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/announcements/{id}/publish",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminAnnouncement.Publish,
+			Summary:     "Broadcast a scheduled announcement now",
+			Response:    &dto.Response[models.Announcement]{},
+		},
+		{
+			Method:      http.MethodDelete,
+			Path:        "/announcements/{id}",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminAnnouncement.Retract,
+			Summary:     "Retract an announcement and its deliveries",
+			Response:    &dto.Response[dto.MessageData]{},
 		},
 	}
 }

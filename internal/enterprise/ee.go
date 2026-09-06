@@ -49,6 +49,7 @@ const (
 	FlagSSOLDAP                      = "sso_ldap"         // LDAP / Active Directory authentication
 	FlagAnalyticsExport              = "analytics_export" // workspace analytics export (CSV) + extended retention
 	FlagAdvancedCanary               = "advanced_canary"
+	FlagAnnouncements                = "announcements" // platform-wide announcements to user inboxes
 )
 
 // FlagInfo describes one entitlement flag for tooling and documentation.
@@ -83,6 +84,7 @@ var AllFlags = []FlagInfo{
 	{FlagSSOLDAP, "LDAP / Active Directory authentication"},
 	{FlagAnalyticsExport, "workspace analytics export (CSV) + extended retention"},
 	{FlagAdvancedCanary, "manual canary control + attribute-based canary routing"},
+	{FlagAnnouncements, "platform announcements broadcast to user inboxes"},
 }
 
 const (
@@ -116,7 +118,7 @@ var Tiers = []Tier{
 			FlagMultiSSO, FlagSSOHiddenProvider, FlagSSOSAML, FlagSSOLDAP, FlagSCIM,
 			FlagCustomRoles, FlagResourcePolicies, FlagQuotaOverride, FlagUserWorkspaceLimit,
 			FlagUserWorkspaceMembershipLimit,
-			FlagAuditLog, FlagAuditExport, FlagPlatformBackup,
+			FlagAuditLog, FlagAuditExport, FlagPlatformBackup, FlagAnnouncements,
 			FlagPrivateRegistry, FlagRegistryS3, FlagPlatformRunners, FlagSecurityProfile,
 		},
 		Limits: map[string]int{

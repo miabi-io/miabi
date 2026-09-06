@@ -151,6 +151,7 @@ func Run(db *gorm.DB) error {
 		&models.AnalyticsRollup{},
 		&models.Alert{},
 		&models.Notification{},
+		&models.Announcement{},
 	); err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
@@ -183,6 +184,16 @@ func Run(db *gorm.DB) error {
 			`ON alerts (workspace_id, dedup_key) WHERE state IN ('firing', 'acknowledged')`,
 	).Error; err != nil {
 		return fmt.Errorf("failed to create active-alert uniqueness index: %w", err)
+	}
+
+	// Unique index making an announcement's delivery idempotent: the broadcast
+	// fan-out and the per-user backfill both insert, and without this a user who
+	// read their inbox as a broadcast landed could receive the notice twice.
+	if err := db.Exec(
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_user_announcement ` +
+			`ON notifications (user_id, announcement_id) WHERE announcement_id IS NOT NULL`,
+	).Error; err != nil {
+		return fmt.Errorf("failed to create announcement-delivery uniqueness index: %w", err)
 	}
 
 	logger.Info("database migrations applied")

@@ -6,6 +6,7 @@ import { useThemeStore } from '@/stores/theme'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import NotificationBell from '@/components/NotificationBell.vue'
+import AnnouncementBanner from '@/components/AnnouncementBanner.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
 import { navSections, type NavItem, type NavSection } from '@/data/nav'
 import { useLicenseStore } from '@/stores/license'
@@ -423,6 +424,8 @@ onBeforeUnmount(() => {
       </header>
 
       <main class="main-content">
+        <AnnouncementBanner />
+
         <router-link v-if="licenseBanner" to="/admin/license" class="license-banner"
           :class="`license-banner-${licenseBanner.level}`">
           <span class="mdi mdi-alert-outline"></span>

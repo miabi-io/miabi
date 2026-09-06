@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useInboxStore } from '@/stores/inbox'
 import type { InboxNotification } from '@/api/inbox'
+import { followNotificationLink } from '@/utils/notificationLink'
 
 const store = useInboxStore()
 const { unread, items, loading } = storeToRefs(store)
@@ -23,16 +24,17 @@ function close() {
 async function activate(n: InboxNotification) {
   if (!n.read_at) await store.markRead([n.id])
   close()
-  if (n.subject_link) router.push(n.subject_link)
+  followNotificationLink(router, n.subject_link)
 }
 
 function sevClass(s: string) {
   return s === 'critical' ? 'sev-crit' : s === 'warning' ? 'sev-warn' : 'sev-info'
 }
-function sevIcon(s: string) {
-  return s === 'critical'
+function itemIcon(n: InboxNotification) {
+  if (n.kind === 'announcement') return 'mdi-bullhorn-outline'
+  return n.severity === 'critical'
     ? 'mdi-alert-octagon'
-    : s === 'warning'
+    : n.severity === 'warning'
       ? 'mdi-alert'
       : 'mdi-information-outline'
 }
@@ -91,7 +93,7 @@ onBeforeUnmount(() => {
             :class="{ unread: !n.read_at }"
             @click="activate(n)"
           >
-            <span class="mdi bell-sev" :class="[sevClass(n.severity), sevIcon(n.severity)]"></span>
+            <span class="mdi bell-sev" :class="[sevClass(n.severity), itemIcon(n)]"></span>
             <span class="bell-body">
               <span class="bell-title">{{ n.title }}</span>
               <span class="bell-sub">{{ n.body }}</span>
