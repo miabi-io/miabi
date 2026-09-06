@@ -1487,6 +1487,9 @@ export interface VolumeFile {
 
 export interface Backup {
   id: number
+  // Per-database sequential backup number (1, 2, 3…), independent of the global
+  // id — shown to users as "#<number>".
+  number: number
   status: 'pending' | 'running' | 'completed' | 'failed'
   trigger: string
   destination: string

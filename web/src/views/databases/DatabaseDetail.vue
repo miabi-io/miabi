@@ -316,18 +316,18 @@ async function runBackup() {
   running.value = true
   try {
     const b = (await backupApi.run(wid.value, instId.value, selected.value.id)).data.data
-    notify[b.status === 'completed' ? 'success' : 'error'](`Backup ${b.status}`)
+    notify[b.status === 'completed' ? 'success' : 'error'](`Backup #${b.number} ${b.status}`)
     loadBackups()
   } catch (e) { notify.apiError(e) }
   finally { running.value = false }
 }
 // --- Restore dialog (existing backup or uploaded file; normal or force) ---
-const restoreModal = ref<{ backupId: number | null } | null>(null)
+const restoreModal = ref<{ backupId: number | null; number: number | null } | null>(null)
 const restoreMethod = ref<'normal' | 'force'>('normal')
 const restoreFile = ref<File | null>(null)
 const restoring = ref(false)
-function openRestore(backupId: number | null) {
-  restoreModal.value = { backupId }
+function openRestore(b: Backup | null) {
+  restoreModal.value = { backupId: b?.id ?? null, number: b?.number ?? null }
   restoreMethod.value = 'normal'
   restoreFile.value = null
 }
@@ -357,7 +357,7 @@ async function downloadBackup(b: Backup) {
     const url = URL.createObjectURL(res.data)
     const a = document.createElement('a')
     a.href = url
-    a.download = b.filename || `backup-${b.id}.sql.gz`
+    a.download = b.filename || `backup-${b.number}.sql.gz`
     document.body.appendChild(a)
     a.click()
     a.remove()
@@ -367,7 +367,7 @@ async function downloadBackup(b: Backup) {
 function askRemoveBackup(b: Backup) {
   confirm.value = {
     kind: 'remove-backup', title: 'Delete backup', confirmLabel: 'Delete', variant: 'danger',
-    message: `Delete backup #${b.id}? The artifact will be removed.`,
+    message: `Delete backup #${b.number}? The artifact will be removed.`,
     run: () => removeBackup(b),
   }
 }
@@ -855,13 +855,13 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
               <tbody>
                 <tr v-for="b in backups" :key="b.id">
                   <td>
-                    <span class="cell-title">#{{ b.id }}</span>
+                    <span class="cell-title">#{{ b.number }}</span>
                     <div class="cell-sub">{{ b.trigger }} · {{ b.destination }}<template v-if="b.filename"> · {{ b.filename }}</template></div>
                   </td>
                   <td><span class="badge badge-dot" :class="badge(b.status)">{{ b.status }}</span></td>
                   <td class="text-right table-actions">
                     <button v-if="b.status === 'completed' && b.destination === 'local' && ws.canEdit" class="btn-icon btn-icon-muted" title="Download" aria-label="Download" @click="downloadBackup(b)"><span class="mdi mdi-download-outline"></span></button>
-                    <button v-if="b.status === 'completed' && ws.canEdit" class="btn btn-sm btn-secondary" @click="openRestore(b.id)">Restore</button>
+                    <button v-if="b.status === 'completed' && ws.canEdit" class="btn btn-sm btn-secondary" @click="openRestore(b)">Restore</button>
                     <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="askRemoveBackup(b)"><span class="mdi mdi-delete-outline"></span></button>
                   </td>
                 </tr>
@@ -1155,7 +1155,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
       <!-- Restore dialog -->
       <AppModal v-if="restoreModal" @close="restoreModal = null">
         <div class="modal-header">
-          <h3>{{ restoreModal.backupId != null ? `Restore backup #${restoreModal.backupId}` : 'Restore from file' }}</h3>
+          <h3>{{ restoreModal.backupId != null ? `Restore backup #${restoreModal.number}` : 'Restore from file' }}</h3>
           <button class="btn-icon btn-icon-muted" aria-label="Close" @click="restoreModal = null"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="runRestore">

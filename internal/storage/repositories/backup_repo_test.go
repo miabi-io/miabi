@@ -51,3 +51,35 @@ func TestBackupSetLogMeta(t *testing.T) {
 			got.LogRef, got.Logs, got.LogBytes, got.LogLines, ref)
 	}
 }
+
+// TestBackupNumberPerDatabase verifies the BeforeCreate hook assigns a per-database
+// sequential Number (1, 2, 3…) independent of the global ID, and restarts at 1 for a
+// different logical database.
+func TestBackupNumberPerDatabase(t *testing.T) {
+	repo := newBackupDB(t)
+
+	// Interleave two databases so the global IDs and per-database numbers diverge.
+	want := []struct {
+		dbID   uint
+		number int
+	}{
+		{dbID: 1, number: 1},
+		{dbID: 1, number: 2},
+		{dbID: 2, number: 1}, // a different database starts its own sequence at 1
+		{dbID: 1, number: 3},
+		{dbID: 2, number: 2},
+	}
+	for i, w := range want {
+		b := &models.Backup{WorkspaceID: 7, DatabaseID: w.dbID}
+		if err := repo.Create(b); err != nil {
+			t.Fatalf("create #%d: %v", i, err)
+		}
+		if b.Number != w.number {
+			t.Errorf("backup %d (database %d): Number = %d, want %d", i, w.dbID, b.Number, w.number)
+		}
+		// The global ID is monotonic across all databases; the number is per-database.
+		if b.ID != uint(i+1) {
+			t.Errorf("backup %d: ID = %d, want %d", i, b.ID, i+1)
+		}
+	}
+}

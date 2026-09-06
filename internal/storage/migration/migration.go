@@ -29,11 +29,41 @@ func detachOrphanPlatformBackups(db *gorm.DB) error {
 	return nil
 }
 
+// backfillBackupNumbers assigns backups.number (per-database, 1-based, ordered by id) to rows
+// written before the column existed. It runs BEFORE AutoMigrate — and adds the column itself —
+// because AutoMigrate is what creates the (database_id, number) unique index, which every
+// pre-existing row at the default 0 would violate. Idempotent: a second run matches nothing.
+func backfillBackupNumbers(db *gorm.DB) error {
+	m := db.Migrator()
+	if !m.HasTable("backups") {
+		return nil
+	}
+	if !m.HasColumn(&models.Backup{}, "number") {
+		if err := m.AddColumn(&models.Backup{}, "Number"); err != nil {
+			return fmt.Errorf("add backups.number: %w", err)
+		}
+	}
+	res := db.Exec(`UPDATE backups SET number = (
+		SELECT COUNT(*) FROM backups AS p
+		WHERE p.database_id = backups.database_id AND p.id <= backups.id
+	) WHERE number = 0`)
+	if res.Error != nil {
+		return fmt.Errorf("backfill backups.number: %w", res.Error)
+	}
+	if res.RowsAffected > 0 {
+		logger.Info("migration: numbered existing database backups", "rows", res.RowsAffected)
+	}
+	return nil
+}
+
 // Run executes all schema migrations via GORM AutoMigrate.
 func Run(db *gorm.DB) error {
 	// Fixups that must happen BEFORE AutoMigrate, because AutoMigrate is what
 	// adds the constraint they make satisfiable.
 	if err := detachOrphanPlatformBackups(db); err != nil {
+		return err
+	}
+	if err := backfillBackupNumbers(db); err != nil {
 		return err
 	}
 
