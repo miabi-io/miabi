@@ -3,7 +3,11 @@
 
 package models
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
 
 // BackupStatus is the state of a backup run.
 type BackupStatus string
@@ -17,9 +21,13 @@ const (
 
 // Backup is a single backup run of a managed database.
 type Backup struct {
-	ID          uint         `json:"id" gorm:"primaryKey"`
+	ID uint `json:"id" gorm:"primaryKey"`
+	// Number is the per-database sequential backup number, independent of the global ID.
+	// Assigned in BeforeCreate; the composite unique index keeps it gap-free per database
+	// and prevents duplicates.
+	Number      int          `json:"number" gorm:"index:idx_backup_db_number,unique;not null;default:0"`
 	WorkspaceID uint         `json:"workspace_id" gorm:"index;not null"`
-	DatabaseID  uint         `json:"database_id" gorm:"index;not null"`
+	DatabaseID  uint         `json:"database_id" gorm:"index:idx_backup_db_number,unique;index;not null"`
 	Engine      DBEngine     `json:"engine"`
 	ServerID    uint         `json:"server_id" gorm:"index;not null;default:0"` // node the backup ran on
 	Status      BackupStatus `json:"status" gorm:"not null;default:pending"`
@@ -40,6 +48,20 @@ type Backup struct {
 	StartedAt    *time.Time `json:"started_at"`
 	FinishedAt   *time.Time `json:"finished_at"`
 	CreatedAt    time.Time  `json:"created_at"`
+}
+
+func (b *Backup) BeforeCreate(tx *gorm.DB) error {
+	if b.Number != 0 {
+		return nil
+	}
+	var max int
+	if err := tx.Model(&Backup{}).
+		Where("database_id = ?", b.DatabaseID).
+		Select("COALESCE(MAX(number), 0)").Scan(&max).Error; err != nil {
+		return err
+	}
+	b.Number = max + 1
+	return nil
 }
 
 // BackupSchedule runs backups of a database on a cron schedule. When
