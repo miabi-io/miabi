@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jkaninda/okapi/client"
+	"github.com/miabi-io/miabi/internal/config"
 )
 
 const (
@@ -44,7 +45,7 @@ func NewClient(base string) *Client {
 		http: client.New("",
 			client.WithHTTPClient(httpClient),
 			client.WithTimeout(30*time.Second),
-			client.WithUserAgent("miabi-marketplace-sync"),
+			client.WithUserAgent("miabi/"+config.Version),
 		),
 	}
 }
