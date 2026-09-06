@@ -4,26 +4,12 @@
 import { useRouter } from 'vue-router'
 import type { RecentEvent } from '@/api/types'
 import { relTime } from './format'
+import { eventIcon, eventSubjectLabel, eventSubjectLink } from '@/utils/eventSubject'
 
 defineProps<{ events: RecentEvent[] | null; freshId: number | null }>()
 
 const router = useRouter()
 
-function eventIcon(type: string): string {
-  if (type === 'app.created') return 'mdi-cube-outline'
-  if (type === 'app.deleted') return 'mdi-delete-outline'
-  if (type.startsWith('deploy')) return 'mdi-rocket-launch-outline'
-  if (type.startsWith('rollback')) return 'mdi-backup-restore'
-  if (type.startsWith('release')) return 'mdi-tag-outline'
-  if (type === 'container.died' || type === 'container.oom') return 'mdi-alert-circle-outline'
-  if (type === 'container.health') return 'mdi-heart-pulse'
-  if (type.startsWith('container')) return 'mdi-cube-outline'
-  if (type.startsWith('domain')) return 'mdi-web'
-  if (type.startsWith('env')) return 'mdi-tune-variant'
-  if (type.startsWith('volume')) return 'mdi-harddisk'
-  if (type.startsWith('settings')) return 'mdi-cog-outline'
-  return 'mdi-circle-small'
-}
 </script>
 
 <template>
@@ -35,7 +21,7 @@ function eventIcon(type: string): string {
 
     <div v-if="!events || events.length === 0" class="empty-state" style="padding: 28px">
       <span class="mdi mdi-timeline-text-outline" style="font-size: 32px; color: var(--text-muted)"></span>
-      <p>No application activity yet.</p>
+      <p>No activity yet.</p>
     </div>
 
     <ul v-else class="timeline">
@@ -44,7 +30,7 @@ function eventIcon(type: string): string {
         :key="e.id"
         class="event row-clickable"
         :class="{ 'event-fresh': e.id === freshId }"
-        @click="router.push(`/apps/${e.application_id}`)"
+        @click="router.push(eventSubjectLink(e))"
       >
         <span class="event-icon" :class="`sev-${e.severity}`"><span class="mdi" :class="eventIcon(e.type)"></span></span>
         <div class="event-body">
@@ -52,7 +38,7 @@ function eventIcon(type: string): string {
             <span class="event-msg">{{ e.message || e.type }}</span>
             <span class="event-time">{{ relTime(e.created_at) }}</span>
           </div>
-          <span class="event-type">{{ e.app_display_name || e.app_name || `app #${e.application_id}` }} · {{ e.type }}</span>
+          <span class="event-type">{{ eventSubjectLabel(e) }} · {{ e.type }}</span>
         </div>
       </li>
     </ul>

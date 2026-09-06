@@ -42,11 +42,16 @@ const EventTest = "webhook.test"
 
 // Payload is the JSON body POSTed to a webhook endpoint.
 type Payload struct {
-	Event           string            `json:"event"`
-	WorkspaceID     uint              `json:"workspace_id"`
+	Event       string `json:"event"`
+	WorkspaceID uint   `json:"workspace_id"`
+	// SubjectType says which resource the event is about; app-event consumers can ignore it
+	// and keep reading application_*.
+	SubjectType     string            `json:"subject_type,omitempty"`
 	ApplicationID   uint              `json:"application_id,omitempty"`
 	ApplicationName string            `json:"application_name,omitempty"`
 	ApplicationSlug string            `json:"application_slug,omitempty"`
+	DatabaseID      uint              `json:"database_id,omitempty"`
+	DatabaseName    string            `json:"database_name,omitempty"`
 	Severity        string            `json:"severity,omitempty"`
 	Message         string            `json:"message,omitempty"`
 	Metadata        map[string]string `json:"metadata,omitempty"`
@@ -245,12 +250,16 @@ func (s *Service) Test(ctx context.Context, workspaceID, id uint) error {
 
 // BuildPayload serializes an application event into a webhook payload.
 func BuildPayload(e *models.AppEvent) ([]byte, error) {
+	subject, _ := e.Subject()
 	return json.Marshal(Payload{
 		Event:           string(e.Type),
 		WorkspaceID:     e.WorkspaceID,
+		SubjectType:     string(subject),
 		ApplicationID:   e.ApplicationID,
 		ApplicationName: e.ApplicationName,
 		ApplicationSlug: e.ApplicationSlug,
+		DatabaseID:      e.DatabaseID,
+		DatabaseName:    e.DatabaseName,
 		Severity:        string(e.Severity),
 		Message:         e.Message,
 		Metadata:        e.Metadata,

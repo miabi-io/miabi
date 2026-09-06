@@ -13,22 +13,24 @@ import (
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/application"
+	"github.com/miabi-io/miabi/internal/services/database"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 	"github.com/miabi-io/miabi/internal/services/events"
 	"github.com/miabi-io/miabi/internal/services/monitoring"
 )
 
-// EventsHandler serves the application timeline (events) and runtime container
-// logs. Both are workspace-scoped; SSE endpoints accept a query-token.
+// EventsHandler serves resource timelines (application and database-instance events) and
+// runtime container logs. All are workspace-scoped; SSE endpoints accept a query-token.
 type EventsHandler struct {
 	events     *events.Service
 	bus        *eventbus.Bus
 	apps       *application.Service
+	databases  *database.Service
 	monitoring *monitoring.Service
 }
 
-func NewEventsHandler(ev *events.Service, bus *eventbus.Bus, apps *application.Service, mon *monitoring.Service) *EventsHandler {
-	return &EventsHandler{events: ev, bus: bus, apps: apps, monitoring: mon}
+func NewEventsHandler(ev *events.Service, bus *eventbus.Bus, apps *application.Service, dbs *database.Service, mon *monitoring.Service) *EventsHandler {
+	return &EventsHandler{events: ev, bus: bus, apps: apps, databases: dbs, monitoring: mon}
 }
 
 // List returns an application's events (newest first, cursor via ?before=).
@@ -46,8 +48,50 @@ func (h *EventsHandler) List(c *okapi.Context) error {
 	return ok(c, list)
 }
 
-// WorkspaceEvent is an application event enriched with its application's
-// name/slug so the workspace-wide events feed can show where each event belongs.
+// DatabaseList returns a database instance's events (newest first, cursor via ?before=).
+func (h *EventsHandler) DatabaseList(c *okapi.Context) error {
+	inst, err := h.loadDatabase(c)
+	if err != nil {
+		return c.AbortNotFound("database instance not found")
+	}
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	before, _ := strconv.ParseUint(c.Query("before"), 10, 64)
+	list, err := h.events.ListByDatabase(inst.ID, limit, uint(before))
+	if err != nil {
+		return c.AbortInternalServerError("failed to list events", err)
+	}
+	for i := range list {
+		list[i].DatabaseName = inst.Name
+	}
+	return ok(c, list)
+}
+
+// DatabaseStream pushes live events for a database instance over SSE.
+func (h *EventsHandler) DatabaseStream(c *okapi.Context) error {
+	inst, err := h.loadDatabase(c)
+	if err != nil {
+		return c.AbortNotFound("database instance not found")
+	}
+	ch, unsubscribe := h.bus.Subscribe(events.DatabaseTopic(inst.ID))
+	defer unsubscribe()
+
+	ctx := c.Request().Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case e, ok := <-ch:
+			if !ok {
+				return nil
+			}
+			_ = c.SSESendJSON(e)
+		}
+	}
+}
+
+// WorkspaceEvent is a timeline event enriched with its subject's name so the workspace-wide
+// feed can show where each event belongs. Database events name the subject through the
+// embedded AppEvent.DatabaseName instead of these fields.
 type WorkspaceEvent struct {
 	models.AppEvent
 	AppName        string `json:"app_name"`         // unique slug handle
@@ -63,18 +107,28 @@ func (h *EventsHandler) WorkspaceList(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortInternalServerError("failed to list events", err)
 	}
-	// Enrich with application names in one pass over the workspace's apps.
-	names := map[uint]models.Application{}
+	appNames := map[uint]models.Application{}
 	if apps, err := h.apps.List(wsID); err == nil {
 		for _, a := range apps {
-			names[a.ID] = a
+			appNames[a.ID] = a
+		}
+	}
+	dbNames := map[uint]string{}
+	if insts, err := h.databases.List(wsID); err == nil {
+		for _, d := range insts {
+			dbNames[d.ID] = d.Name
 		}
 	}
 	out := make([]WorkspaceEvent, 0, len(list))
 	for _, e := range list {
 		we := WorkspaceEvent{AppEvent: e}
-		if a, ok := names[e.ApplicationID]; ok {
-			we.AppName, we.AppDisplayName = a.Name, a.DisplayName
+		switch subject, id := e.Subject(); subject {
+		case models.SubjectDatabase:
+			we.DatabaseName = dbNames[id]
+		default:
+			if a, ok := appNames[id]; ok {
+				we.AppName, we.AppDisplayName = a.Name, a.DisplayName
+			}
 		}
 		out = append(out, we)
 	}
@@ -153,6 +207,14 @@ func (h *EventsHandler) LogsStream(c *okapi.Context) error {
 		return c.AbortWithError(409, err)
 	}
 	return err
+}
+
+func (h *EventsHandler) loadDatabase(c *okapi.Context) (*models.DatabaseInstance, error) {
+	id, err := strconv.Atoi(c.Param("databaseID"))
+	if err != nil || id <= 0 {
+		return nil, errors.New("invalid database id")
+	}
+	return h.databases.Get(middlewares.WorkspaceID(c), uint(id))
 }
 
 func (h *EventsHandler) load(c *okapi.Context) (*models.Application, error) {

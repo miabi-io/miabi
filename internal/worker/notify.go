@@ -98,14 +98,15 @@ func (h *FanoutHandler) suppressed(ctx context.Context, workspaceID, appID uint,
 
 // ChannelSendHandler delivers one event to one notification channel.
 type ChannelSendHandler struct {
-	channels *repositories.NotificationChannelRepository
-	events   *repositories.AppEventRepository
-	apps     *repositories.ApplicationRepository
-	registry *notify.Registry
+	channels  *repositories.NotificationChannelRepository
+	events    *repositories.AppEventRepository
+	apps      *repositories.ApplicationRepository
+	databases *repositories.DatabaseRepository
+	registry  *notify.Registry
 }
 
-func NewChannelSendHandler(channels *repositories.NotificationChannelRepository, events *repositories.AppEventRepository, apps *repositories.ApplicationRepository, registry *notify.Registry) *ChannelSendHandler {
-	return &ChannelSendHandler{channels: channels, events: events, apps: apps, registry: registry}
+func NewChannelSendHandler(channels *repositories.NotificationChannelRepository, events *repositories.AppEventRepository, apps *repositories.ApplicationRepository, databases *repositories.DatabaseRepository, registry *notify.Registry) *ChannelSendHandler {
+	return &ChannelSendHandler{channels: channels, events: events, apps: apps, databases: databases, registry: registry}
 }
 
 func (h *ChannelSendHandler) ProcessTask(ctx context.Context, task *asynq.Task) error {
@@ -130,7 +131,7 @@ func (h *ChannelSendHandler) ProcessTask(ctx context.Context, task *asynq.Task) 
 		}
 		return err
 	}
-	enrichEvent(e, h.apps)
+	enrichEvent(e, h.apps, h.databases)
 	if err := h.registry.Send(ctx, ch, e); err != nil {
 		logger.Error("notification channel delivery failed", "channel", ch.ID, "event", e.ID, "error", err)
 		return err // let asynq retry with backoff

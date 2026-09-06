@@ -247,6 +247,8 @@ func (s *Service) RunUpgradeJob(ctx context.Context, instanceID uint, target, pa
 		logger.Error("finalize db upgrade", "id", inst.ID, "error", uerr)
 	}
 	s.publishStatus(inst)
+	s.emit(inst, models.EventDatabaseUpgraded, models.SeverityInfo,
+		fmt.Sprintf("Upgraded to %s", target), map[string]string{"target": target, "path": path})
 	logger.Info("database upgrade complete", "id", inst.ID, "version", target)
 	return nil
 }
@@ -277,6 +279,7 @@ func (s *Service) finishFailed(inst *models.DatabaseInstance, cause error) {
 		logger.Error("persist upgrade failure", "id", inst.ID, "error", err)
 	}
 	s.publishStatus(inst)
+	s.emit(inst, models.EventDatabaseUpgradeFailed, models.SeverityError, "Upgrade failed: "+cause.Error(), nil)
 }
 
 // ensureUp brings the instance's container up on its current volume if it is not

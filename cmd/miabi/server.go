@@ -252,6 +252,12 @@ func runServer(cli *okapicli.CLI) {
 				repositories.NewWorkspaceRepository(res.db),
 				alertNamer, bus, alerting.NewRedisCounter(res.redis),
 			)
+			alertEngine.SetDatabaseNamer(alerting.DatabaseNameFunc(func(id uint) string {
+				if inst, err := repositories.NewDatabaseRepository(res.db).FindByID(id); err == nil && inst != nil {
+					return inst.Name
+				}
+				return ""
+			}))
 			alertEngine.SetCertLister(repositories.NewCertificateRepository(res.db))
 			alertEngine.SetVolumeLister(repositories.NewVolumeRepository(res.db))
 			alertEngine.SetSystemAdmins(repositories.NewUserRepository(res.db))
@@ -274,8 +280,8 @@ func runServer(cli *okapicli.CLI) {
 			channelRepo := repositories.NewNotificationChannelRepository(res.db)
 			notifyRegistry := notify.NewRegistry()
 			fanoutHandler := worker.NewFanoutHandler(webhookRepo, channelRepo, eventRepo, res.producer, res.redis)
-			webhookHandler := worker.NewWebhookDeliverHandler(webhookRepo, webhookDeliveryRepo, eventRepo, appEventRepo)
-			channelHandler := worker.NewChannelSendHandler(channelRepo, eventRepo, appEventRepo, notifyRegistry)
+			webhookHandler := worker.NewWebhookDeliverHandler(webhookRepo, webhookDeliveryRepo, eventRepo, appEventRepo, repositories.NewDatabaseRepository(res.db))
+			channelHandler := worker.NewChannelSendHandler(channelRepo, eventRepo, appEventRepo, repositories.NewDatabaseRepository(res.db), notifyRegistry)
 			secretService := secret.NewService(repositories.NewSecretRepository(res.db))
 			// The embedded deploy worker re-syncs Goma, so its route service must apply the same
 			// domain-verification gate (and privileged-workspace waiver) as the HTTP service, or a
@@ -305,6 +311,9 @@ func runServer(cli *okapicli.CLI) {
 			dbService := database.NewService(dbRepo, nodeClients, res.producer)
 			dbService.SetEventBus(bus)                // same bus as the HTTP service → worker phase changes reach open SSE streams
 			dbService.SetImageResolver(imageResolver) // honor admin image overrides on worker-side provisioning
+			// Provisioning and upgrades run here rather than in the HTTP service, so this is
+			// the instance that records their outcomes.
+			dbService.SetEventRecorder(eventsSvc)
 			provisionHandler := worker.NewProvisionDBHandler(dbService)
 
 			// A database version upgrade may run here, so wire the app service (quiesce/restart
@@ -328,6 +337,7 @@ func runServer(cli *okapicli.CLI) {
 			upgradeBackupService.SetDDLRunner(dbService)
 			upgradeBackupService.SetImageResolver(imageResolver)
 			upgradeBackupService.SetLogStore(logStore)
+			upgradeBackupService.SetEventRecorder(eventsSvc)
 			dbService.SetAppController(dbupgrade.AppController(upgradeAppService))
 			dbService.SetLogicalBackup(dbupgrade.Backup(upgradeBackupService))
 			upgradeHandler := worker.NewUpgradeDBHandler(dbService)
@@ -444,14 +454,15 @@ func runServer(cli *okapicli.CLI) {
 			// Resolve a Git credential that references a workspace Secret instead of
 			// storing its own copy of the token.
 			pipelineHandler.SetSecrets(secretService)
-			// Translate Docker daemon events into application events (start/crash/oom/health): one
-			// subscriber for the local node, plus one per remote node as agents connect and drop.
+			// Translate Docker daemon events into timeline events for apps AND database
+			// instances (start/crash/oom/health): one subscriber for the local node, plus one
+			// per remote node as agents connect and drop.
 			eventCtx, cancelEvents := context.WithCancel(context.Background())
 			res.cancelEvents = cancelEvents
-			go events.NewSubscriber(dockerClient, appEventRepo, repositories.NewReleaseRepository(res.db), eventsSvc).Run(eventCtx)
+			go events.NewSubscriber(dockerClient, appEventRepo, repositories.NewReleaseRepository(res.db), dbRepo, eventsSvc).Run(eventCtx)
 			nodeManager.SetSubscriber(func(ctx context.Context, nodeID uint, dc docker.Client) {
 				logger.Info("starting node event subscriber", "node", nodeID)
-				events.NewSubscriber(dc, appEventRepo, repositories.NewReleaseRepository(res.db), eventsSvc).Run(ctx)
+				events.NewSubscriber(dc, appEventRepo, repositories.NewReleaseRepository(res.db), dbRepo, eventsSvc).Run(ctx)
 			})
 
 			// Direct-access nodes (socket/api) have no inbound tunnel: build
@@ -486,6 +497,9 @@ func runServer(cli *okapicli.CLI) {
 			backupService.SetImageResolver(imageResolver)
 			backupService.SetLogStore(logStore)
 			backupService.SetAlerter(backupAlerter{alertEngine})
+			// Scheduled backups run through this service and never touch a handler, so this is
+			// the only place their outcomes become visible.
+			backupService.SetEventRecorder(eventsSvc)
 			res.cron = cronpkg.NewManager(backupService, dbRepo, backupRepo, backupsettings.NewService(repositories.NewWorkspaceBackupSettingsRepository(res.db)))
 			res.cron.Start()
 

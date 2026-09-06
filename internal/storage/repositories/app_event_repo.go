@@ -41,6 +41,21 @@ func (r *AppEventRepository) ListByApp(appID uint, limit int, before uint) ([]mo
 	return events, err
 }
 
+// ListByDatabase returns a database instance's events newest-first. When before > 0, only
+// events with a smaller ID are returned (cursor pagination). Mirrors ListByApp.
+func (r *AppEventRepository) ListByDatabase(databaseID uint, limit int, before uint) ([]models.AppEvent, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	q := r.db.Where("database_id = ?", databaseID)
+	if before > 0 {
+		q = q.Where("id < ?", before)
+	}
+	var events []models.AppEvent
+	err := q.Order("id DESC").Limit(limit).Find(&events).Error
+	return events, err
+}
+
 // ListByWorkspace returns the workspace's application events newest-first,
 // across all of its applications. Used for the dashboard activity feed.
 func (r *AppEventRepository) ListByWorkspace(workspaceID uint, limit int) ([]models.AppEvent, error) {
@@ -85,6 +100,27 @@ func (r *AppEventRepository) ListByApps(appIDs []uint, limit int) ([]models.AppE
 	err := r.db.Where("application_id IN ?", appIDs).
 		Order("id DESC").Limit(limit).Find(&events).Error
 	return events, err
+}
+
+// TrimByDatabase deletes all but the most recent keep events for a database instance.
+func (r *AppEventRepository) TrimByDatabase(databaseID uint, keep int) error {
+	var cutoff uint
+	err := r.db.Model(&models.AppEvent{}).
+		Where("database_id = ?", databaseID).
+		Order("id DESC").
+		Offset(keep).Limit(1).
+		Select("id").Scan(&cutoff).Error
+	if err != nil || cutoff == 0 {
+		return err
+	}
+	return r.db.Where("database_id = ? AND id <= ?", databaseID, cutoff).
+		Delete(&models.AppEvent{}).Error
+}
+
+// DeleteByDatabase removes a database instance's events. Called when the instance is deleted,
+// so its timeline does not outlive it as orphaned rows.
+func (r *AppEventRepository) DeleteByDatabase(databaseID uint) error {
+	return r.db.Where("database_id = ?", databaseID).Delete(&models.AppEvent{}).Error
 }
 
 // TrimByApp deletes all but the most recent keep events for an application.

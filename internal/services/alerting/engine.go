@@ -54,6 +54,17 @@ type AppNameFunc func(id uint) string
 
 func (f AppNameFunc) AppName(id uint) string { return f(id) }
 
+// DatabaseNamer resolves a database instance's display name for alert titles. Optional: when
+// unwired the engine falls back to "database #<id>".
+type DatabaseNamer interface {
+	DatabaseName(id uint) string
+}
+
+// DatabaseNameFunc adapts a plain function to the DatabaseNamer interface.
+type DatabaseNameFunc func(id uint) string
+
+func (f DatabaseNameFunc) DatabaseName(id uint) string { return f(id) }
+
 type Publisher interface {
 	Publish(topic string, e eventbus.Event)
 }
@@ -66,6 +77,7 @@ type Engine struct {
 	inbox   InboxStore
 	members MemberLister
 	namer   AppNamer
+	dbNamer DatabaseNamer
 	bus     Publisher
 	counter Counter
 	// Optional scan sources; each enables a category of the periodic scanner.
@@ -98,15 +110,8 @@ func (e *Engine) OnEvent(ev *models.AppEvent) {
 	if ev == nil || ev.WorkspaceID == 0 {
 		return
 	}
-	appName := ev.ApplicationName
-	if appName == "" && e.namer != nil {
-		appName = e.namer.AppName(ev.ApplicationID)
-	}
-	if appName == "" {
-		appName = fmt.Sprintf("app #%d", ev.ApplicationID)
-	}
 	ctx := context.Background()
-	for _, in := range evaluate(ev, appName) {
+	for _, in := range evaluate(ev, e.subjectName(ev)) {
 		switch in.kind {
 		case fire:
 			e.doFire(ctx, ev.WorkspaceID, in)
@@ -125,6 +130,33 @@ func (e *Engine) OnEvent(ev *models.AppEvent) {
 		}
 	}
 }
+
+func (e *Engine) subjectName(ev *models.AppEvent) string {
+	subject, id := ev.Subject()
+	if subject == models.SubjectDatabase {
+		if ev.DatabaseName != "" {
+			return ev.DatabaseName
+		}
+		if e.dbNamer != nil {
+			if n := e.dbNamer.DatabaseName(id); n != "" {
+				return n
+			}
+		}
+		return fmt.Sprintf("database #%d", id)
+	}
+	if ev.ApplicationName != "" {
+		return ev.ApplicationName
+	}
+	if e.namer != nil {
+		if n := e.namer.AppName(id); n != "" {
+			return n
+		}
+	}
+	return fmt.Sprintf("app #%d", id)
+}
+
+// SetDatabaseNamer wires the database display-name resolver (optional).
+func (e *Engine) SetDatabaseNamer(n DatabaseNamer) { e.dbNamer = n }
 
 // doFire opens or folds an alert and, only when it is newly opened, fans a notification out to the
 // workspace's eligible members. A folded repeat (e.g. the 6th crash in a loop) just bumps the alert's

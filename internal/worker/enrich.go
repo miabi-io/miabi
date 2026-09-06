@@ -9,16 +9,31 @@ import (
 )
 
 // enrichEvent populates the non-persisted display fields on an event so downstream renderers can
-// name the application instead of showing a bare id. It fails soft: a missing app or nil repository
-// leaves the fields empty and renderers fall back to "#id".
-func enrichEvent(e *models.AppEvent, apps *repositories.ApplicationRepository) {
-	if e == nil || apps == nil || e.ApplicationID == 0 {
+// name the resource instead of showing a bare id. It fails soft: a deleted resource or nil
+// repository leaves the fields empty and renderers fall back to "#id".
+func enrichEvent(e *models.AppEvent, apps *repositories.ApplicationRepository, dbs *repositories.DatabaseRepository) {
+	if e == nil {
 		return
 	}
-	app, err := apps.FindByID(e.ApplicationID)
-	if err != nil || app == nil {
-		return
+	switch subject, id := e.Subject(); subject {
+	case models.SubjectDatabase:
+		if dbs == nil || id == 0 {
+			return
+		}
+		inst, err := dbs.FindByID(id)
+		if err != nil || inst == nil {
+			return
+		}
+		e.DatabaseName = inst.Name
+	default:
+		if apps == nil || id == 0 {
+			return
+		}
+		app, err := apps.FindByID(id)
+		if err != nil || app == nil {
+			return
+		}
+		e.ApplicationName = app.DisplayName
+		e.ApplicationSlug = app.Name
 	}
-	e.ApplicationName = app.DisplayName
-	e.ApplicationSlug = app.Name
 }

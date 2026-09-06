@@ -97,6 +97,7 @@ func runWorker() error {
 
 	appRepo := repositories.NewApplicationRepository(db)
 	eventRepo := repositories.NewAppEventRepository(db)
+	dbRepo := repositories.NewDatabaseRepository(db)
 	eventsSvc := events.NewService(eventRepo, eventbus.New())
 	// Record events fan out to workspace webhooks and channels via background tasks.
 	eventsSvc.SetNotifier(notify.NewDispatcher(producer))
@@ -104,8 +105,8 @@ func runWorker() error {
 	webhookDeliveryRepo := repositories.NewWebhookDeliveryRepository(db)
 	channelRepo := repositories.NewNotificationChannelRepository(db)
 	fanoutHandler := worker.NewFanoutHandler(webhookRepo, channelRepo, eventRepo, producer, cfg.Redis.Client)
-	webhookHandler := worker.NewWebhookDeliverHandler(webhookRepo, webhookDeliveryRepo, eventRepo, appRepo)
-	channelHandler := worker.NewChannelSendHandler(channelRepo, eventRepo, appRepo, notify.NewRegistry())
+	webhookHandler := worker.NewWebhookDeliverHandler(webhookRepo, webhookDeliveryRepo, eventRepo, appRepo, dbRepo)
+	channelHandler := worker.NewChannelSendHandler(channelRepo, eventRepo, appRepo, dbRepo, notify.NewRegistry())
 	secretService := secret.NewService(repositories.NewSecretRepository(db))
 	// The worker re-syncs Goma on deploy, so its route service must apply the same
 	// domain-verification gate as the API server — otherwise a deploy would re-render
@@ -136,6 +137,8 @@ func runWorker() error {
 
 	dbService := database.NewService(repositories.NewDatabaseRepository(db), nodeClients, producer)
 	dbService.SetImageResolver(imageResolver) // honor admin image overrides on worker-side provisioning
+	// Provisioning and upgrades run here, so this is the instance that records their outcomes.
+	dbService.SetEventRecorder(eventsSvc)
 	provisionHandler := worker.NewProvisionDBHandler(dbService)
 
 	// A queued database version upgrade may run here, so the worker needs the app service
@@ -159,6 +162,7 @@ func runWorker() error {
 	upgradeBackupService.SetDDLRunner(dbService)
 	upgradeBackupService.SetImageResolver(imageResolver)
 	upgradeBackupService.SetLogStore(logStore)
+	upgradeBackupService.SetEventRecorder(eventsSvc)
 	dbService.SetAppController(dbupgrade.AppController(upgradeAppService))
 	dbService.SetLogicalBackup(dbupgrade.Backup(upgradeBackupService))
 	upgradeHandler := worker.NewUpgradeDBHandler(dbService)
