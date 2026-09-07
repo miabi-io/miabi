@@ -176,7 +176,7 @@ function setBool(key: string, checked: boolean) {
 </script>
 
 <template>
-  <div class="space-y">
+
     <div class="page-header">
       <h1>Platform Settings</h1>
       <button class="btn btn-primary" :disabled="!dirty || saving" @click="save">
@@ -188,133 +188,133 @@ function setBool(key: string, checked: boolean) {
     <div v-if="loading" class="spinner"></div>
 
     <template v-else>
-      <div>
+      <div class="space-y">
         <!-- Encryption posture (read-only; operator-configured via env) -->
-      <div v-if="encryption" class="card">
-        <div class="card-body">
-          <h2 class="card-title">Encryption</h2>
-          <p class="text-muted text-sm" style="margin-bottom: 12px">
-            Secrets are encrypted at rest. Per-workspace keys, auto-rotation, and gateway config
-            encryption are configured via environment variables; rotate a workspace's key on demand
-            from its admin page.
-          </p>
-          <div class="enc-grid">
-            <span class="text-muted">Encryption</span>
-            <span class="badge" :class="encryption.encryption_enabled ? 'badge-success' : 'badge-danger'">{{ encryption.encryption_enabled ? 'enabled' : 'disabled (no key)' }}</span>
-            <span class="text-muted">Per-workspace keys</span>
-            <span class="badge" :class="encryption.per_workspace_keys ? 'badge-success' : 'badge-neutral'">{{ encryption.per_workspace_keys ? 'on' : 'off' }}</span>
-            <span class="text-muted">Auto-rotation</span>
-            <span class="badge" :class="encryption.auto_rotate ? 'badge-success' : 'badge-neutral'">{{ encryption.auto_rotate ? `every ${encryption.rotate_months} months` : 'off' }}</span>
-            <span class="text-muted" title="Encryption of the config Miabi sends to Goma Gateway (middleware rules &amp; TLS), via GOMA_CONFIG_ENCRYPTION_KEY">Gateway config encryption</span>
-            <span class="badge" :class="encryption.gateway_config_encryption ? 'badge-success' : 'badge-neutral'">{{ encryption.gateway_config_encryption ? 'enabled' : 'disabled (no key)' }}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- System-managed, read-only (e.g. install_id) -->
-      <div v-if="readonlyItems.length" class="card">
-        <div class="card-body">
-          <div class="section-title">Deployment</div>
-          <div v-for="item in readonlyItems" :key="item.key" class="setting-row">
-            <div class="setting-label">
-              <label class="form-label">{{ item.label }}</label>
-              <div class="form-hint text-muted">{{ item.key }} · read-only</div>
-            </div>
-            <div class="setting-control">
-              <input class="form-input mono" :value="item.value" readonly disabled />
+        <div v-if="encryption" class="card">
+          <div class="card-body">
+            <h2 class="card-title">Encryption</h2>
+            <p class="text-muted text-sm" style="margin-bottom: 12px">
+              Secrets are encrypted at rest. Per-workspace keys, auto-rotation, and gateway config
+              encryption are configured via environment variables; rotate a workspace's key on demand
+              from its admin page.
+            </p>
+            <div class="enc-grid">
+              <span class="text-muted">Encryption</span>
+              <span class="badge" :class="encryption.encryption_enabled ? 'badge-success' : 'badge-danger'">{{ encryption.encryption_enabled ? 'enabled' : 'disabled (no key)' }}</span>
+              <span class="text-muted">Per-workspace keys</span>
+              <span class="badge" :class="encryption.per_workspace_keys ? 'badge-success' : 'badge-neutral'">{{ encryption.per_workspace_keys ? 'on' : 'off' }}</span>
+              <span class="text-muted">Auto-rotation</span>
+              <span class="badge" :class="encryption.auto_rotate ? 'badge-success' : 'badge-neutral'">{{ encryption.auto_rotate ? `every ${encryption.rotate_months} months` : 'off' }}</span>
+              <span class="text-muted" title="Encryption of the config Miabi sends to Goma Gateway (middleware rules &amp; TLS), via GOMA_CONFIG_ENCRYPTION_KEY">Gateway config encryption</span>
+              <span class="badge" :class="encryption.gateway_config_encryption ? 'badge-success' : 'badge-neutral'">{{ encryption.gateway_config_encryption ? 'enabled' : 'disabled (no key)' }}</span>
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- Known sections -->
-      <div v-for="section in visibleSections" :key="section.id" class="card">
-        <div class="card-body">
-          <div class="section-title">
-            {{ section.title }}
-            <span v-if="sectionDirty(section.keys)" class="text-muted unsaved">unsaved</span>
-          </div>
-
-          <div v-for="key in section.keys" :key="key" class="setting-row">
-            <div class="setting-label">
-              <label class="form-label" :for="`set-${key}`">{{ friendlyLabel(section, key) }}</label>
-              <div class="form-hint text-muted">{{ key }}</div>
+        <!-- System-managed, read-only (e.g. install_id) -->
+        <div v-if="readonlyItems.length" class="card">
+          <div class="card-body">
+            <div class="section-title">Deployment</div>
+            <div v-for="item in readonlyItems" :key="item.key" class="setting-row">
+              <div class="setting-label">
+                <label class="form-label">{{ item.label }}</label>
+                <div class="form-hint text-muted">{{ item.key }} · read-only</div>
+              </div>
+              <div class="setting-control">
+                <input class="form-input mono" :value="item.value" readonly disabled />
+              </div>
             </div>
-            <div class="setting-control">
-              <label v-if="types[key] === 'bool'" class="switch">
+          </div>
+        </div>
+
+        <!-- Known sections -->
+        <div v-for="section in visibleSections" :key="section.id" class="card">
+          <div class="card-body">
+            <div class="section-title">
+              {{ section.title }}
+              <span v-if="sectionDirty(section.keys)" class="text-muted unsaved">unsaved</span>
+            </div>
+
+            <div v-for="key in section.keys" :key="key" class="setting-row">
+              <div class="setting-label">
+                <label class="form-label" :for="`set-${key}`">{{ friendlyLabel(section, key) }}</label>
+                <div class="form-hint text-muted">{{ key }}</div>
+              </div>
+              <div class="setting-control">
+                <label v-if="types[key] === 'bool'" class="switch">
+                  <input
+                    :id="`set-${key}`"
+                    type="checkbox"
+                    :checked="boolValue(key)"
+                    @change="setBool(key, ($event.target as HTMLInputElement).checked)"
+                  />
+                </label>
                 <input
+                  v-else-if="types[key] === 'int'"
                   :id="`set-${key}`"
-                  type="checkbox"
-                  :checked="boolValue(key)"
-                  @change="setBool(key, ($event.target as HTMLInputElement).checked)"
+                  v-model="values[key]"
+                  type="number"
+                  class="form-input"
                 />
-              </label>
-              <input
-                v-else-if="types[key] === 'int'"
-                :id="`set-${key}`"
-                v-model="values[key]"
-                type="number"
-                class="form-input"
-              />
-              <input
-                v-else
-                :id="`set-${key}`"
-                v-model="values[key]"
-                type="text"
-                class="form-input"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Other / unknown settings -->
-      <div v-if="otherKeys.length" class="card">
-        <div class="card-body">
-          <div class="section-title">
-            Other
-            <span v-if="sectionDirty(otherKeys)" class="text-muted unsaved">unsaved</span>
-          </div>
-
-          <div v-for="key in otherKeys" :key="key" class="setting-row">
-            <div class="setting-label">
-              <label class="form-label" :for="`set-${key}`">{{ key }}</label>
-              <div class="form-hint text-muted">{{ key }}</div>
-            </div>
-            <div class="setting-control">
-              <label v-if="types[key] === 'bool'" class="switch">
                 <input
+                  v-else
                   :id="`set-${key}`"
-                  type="checkbox"
-                  :checked="boolValue(key)"
-                  @change="setBool(key, ($event.target as HTMLInputElement).checked)"
+                  v-model="values[key]"
+                  type="text"
+                  class="form-input"
                 />
-              </label>
-              <input
-                v-else-if="types[key] === 'int'"
-                :id="`set-${key}`"
-                v-model="values[key]"
-                type="number"
-                class="form-input"
-              />
-              <input
-                v-else
-                :id="`set-${key}`"
-                v-model="values[key]"
-                type="text"
-                class="form-input"
-              />
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      </div>
 
-      <div v-if="!keys.length" class="card">
-        <div class="card-body text-muted">No platform settings available.</div>
+        <!-- Other / unknown settings -->
+        <div v-if="otherKeys.length" class="card">
+          <div class="card-body">
+            <div class="section-title">
+              Other
+              <span v-if="sectionDirty(otherKeys)" class="text-muted unsaved">unsaved</span>
+            </div>
+
+            <div v-for="key in otherKeys" :key="key" class="setting-row">
+              <div class="setting-label">
+                <label class="form-label" :for="`set-${key}`">{{ key }}</label>
+                <div class="form-hint text-muted">{{ key }}</div>
+              </div>
+              <div class="setting-control">
+                <label v-if="types[key] === 'bool'" class="switch">
+                  <input
+                    :id="`set-${key}`"
+                    type="checkbox"
+                    :checked="boolValue(key)"
+                    @change="setBool(key, ($event.target as HTMLInputElement).checked)"
+                  />
+                </label>
+                <input
+                  v-else-if="types[key] === 'int'"
+                  :id="`set-${key}`"
+                  v-model="values[key]"
+                  type="number"
+                  class="form-input"
+                />
+                <input
+                  v-else
+                  :id="`set-${key}`"
+                  v-model="values[key]"
+                  type="text"
+                  class="form-input"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="!keys.length" class="card">
+          <div class="card-body text-muted">No platform settings available.</div>
+        </div>
       </div>
     </template>
-  </div>
+
 </template>
 
 <style scoped>
