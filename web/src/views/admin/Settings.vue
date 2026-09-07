@@ -176,7 +176,7 @@ function setBool(key: string, checked: boolean) {
 </script>
 
 <template>
-  <div>
+  <div class="space-y">
     <div class="page-header">
       <h1>Platform Settings</h1>
       <button class="btn btn-primary" :disabled="!dirty || saving" @click="save">
@@ -188,7 +188,8 @@ function setBool(key: string, checked: boolean) {
     <div v-if="loading" class="spinner"></div>
 
     <template v-else>
-      <!-- Encryption posture (read-only; operator-configured via env) -->
+      <div>
+        <!-- Encryption posture (read-only; operator-configured via env) -->
       <div v-if="encryption" class="card">
         <div class="card-body">
           <h2 class="card-title">Encryption</h2>
@@ -307,6 +308,7 @@ function setBool(key: string, checked: boolean) {
           </div>
         </div>
       </div>
+      </div>
 
       <div v-if="!keys.length" class="card">
         <div class="card-body text-muted">No platform settings available.</div>
@@ -386,4 +388,11 @@ function setBool(key: string, checked: boolean) {
   height: 18px;
   cursor: pointer;
 }
+
+.space-y {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 </style>
