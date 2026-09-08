@@ -286,7 +286,7 @@ Docker Engine — local socket, and remote nodes via the outbound agent tunnel
 | Frontend | Vue 3 + Pinia + Vite, built and statically served by the binary |
 | Database | PostgreSQL (GORM) |
 | Queue / cache | Redis + Asynq |
-| Runtime | Docker Engine via the Docker SDK for Go, optional Swarm |
+| Runtime | Docker Engine 25+ via the Moby SDK for Go (`moby/moby/client`), optional Swarm |
 | Reverse proxy / TLS | [Goma Gateway](https://github.com/jkaninda/goma-gateway) |
 | Metrics | Prometheus |
 

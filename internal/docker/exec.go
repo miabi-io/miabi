@@ -7,9 +7,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 )
 
 // ExecOptions configures an interactive command run inside a running container.
@@ -32,10 +30,10 @@ type ExecStream interface {
 // Exec creates and attaches to an interactive command inside a running
 // container, returning a bidirectional stream. Callers must Close the stream.
 func (e *engineClient) Exec(ctx context.Context, containerID string, opts ExecOptions) (ExecStream, error) {
-	created, err := e.cli.ContainerExecCreate(ctx, containerID, container.ExecOptions{
+	created, err := e.cli.ExecCreate(ctx, containerID, client.ExecCreateOptions{
 		Cmd:          opts.Cmd,
 		Env:          opts.Env,
-		Tty:          opts.Tty,
+		TTY:          opts.Tty,
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
@@ -43,11 +41,11 @@ func (e *engineClient) Exec(ctx context.Context, containerID string, opts ExecOp
 	if err != nil {
 		return nil, wrapNotFound(err)
 	}
-	hj, err := e.cli.ContainerExecAttach(ctx, created.ID, container.ExecAttachOptions{Tty: opts.Tty})
+	att, err := e.cli.ExecAttach(ctx, created.ID, client.ExecAttachOptions{TTY: opts.Tty})
 	if err != nil {
 		return nil, wrapNotFound(err)
 	}
-	return &execStream{cli: e.cli, id: created.ID, hj: hj}, nil
+	return &execStream{cli: e.cli, id: created.ID, hj: att.HijackedResponse}, nil
 }
 
 // Top lists the running processes in a container via the daemon's "docker top"
@@ -58,7 +56,7 @@ func (e *engineClient) Top(ctx context.Context, containerID, psArgs string) (Pro
 	if f := strings.Fields(psArgs); len(f) > 0 {
 		args = f
 	}
-	body, err := e.cli.ContainerTop(ctx, containerID, args)
+	body, err := e.cli.ContainerTop(ctx, containerID, client.ContainerTopOptions{Arguments: args})
 	if err != nil {
 		return ProcessList{}, wrapNotFound(err)
 	}
@@ -70,14 +68,15 @@ func (e *engineClient) Top(ctx context.Context, containerID, psArgs string) (Pro
 type execStream struct {
 	cli *client.Client
 	id  string
-	hj  types.HijackedResponse
+	hj  client.HijackedResponse
 }
 
 func (s *execStream) Read(p []byte) (int, error)  { return s.hj.Reader.Read(p) }
 func (s *execStream) Write(p []byte) (int, error) { return s.hj.Conn.Write(p) }
 
 func (s *execStream) Resize(ctx context.Context, height, width uint) error {
-	return s.cli.ContainerExecResize(ctx, s.id, container.ResizeOptions{Height: height, Width: width})
+	_, err := s.cli.ExecResize(ctx, s.id, client.ExecResizeOptions{Height: height, Width: width})
+	return err
 }
 
 func (s *execStream) Close() error {

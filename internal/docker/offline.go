@@ -18,6 +18,9 @@ type offlineClient struct{ err error }
 
 func (o offlineClient) Ping(context.Context) error         { return o.err }
 func (o offlineClient) Info(context.Context) (Info, error) { return Info{}, o.err }
+func (o offlineClient) Capabilities(context.Context) (Capabilities, error) {
+	return Capabilities{}, o.err
+}
 func (o offlineClient) ListContainers(context.Context, bool) ([]Container, error) {
 	return nil, o.err
 }

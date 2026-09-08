@@ -10,14 +10,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/api/types/registry"
-	"github.com/docker/docker/api/types/swarm"
-	"github.com/docker/docker/errdefs"
-	"github.com/docker/docker/pkg/stdcopy"
+	cerrdefs "github.com/containerd/errdefs"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/swarm"
+	"github.com/moby/moby/client"
 )
 
 // ServiceSpec describes a replicated Swarm service to create or update — the cluster-mode
@@ -207,23 +205,9 @@ func buildSwarmServiceSpec(spec ServiceSpec) swarm.ServiceSpec {
 	return s
 }
 
-// encodeRegistryAuth base64-encodes a registry credential for the Docker API's X-Registry-Auth
-// header. Returns "" (no error) when auth is nil or empty, so callers can pass it through
-// unconditionally.
-func encodeRegistryAuth(auth *RegistryAuth) (string, error) {
-	if auth == nil || (auth.Username == "" && auth.Password == "") {
-		return "", nil
-	}
-	return registry.EncodeAuthConfig(registry.AuthConfig{
-		Username:      auth.Username,
-		Password:      auth.Password,
-		ServerAddress: auth.Server,
-	})
-}
-
 // ServiceCreate creates a replicated Swarm service and returns its id.
 func (e *engineClient) ServiceCreate(ctx context.Context, spec ServiceSpec) (string, error) {
-	opts := types.ServiceCreateOptions{}
+	opts := client.ServiceCreateOptions{Spec: buildSwarmServiceSpec(spec)}
 	enc, err := encodeRegistryAuth(spec.RegistryAuth)
 	if err != nil {
 		return "", fmt.Errorf("encode registry auth: %w", err)
@@ -232,7 +216,7 @@ func (e *engineClient) ServiceCreate(ctx context.Context, spec ServiceSpec) (str
 		opts.EncodedRegistryAuth = enc
 		opts.QueryRegistry = true
 	}
-	resp, err := e.cli.ServiceCreate(ctx, buildSwarmServiceSpec(spec), opts)
+	resp, err := e.cli.ServiceCreate(ctx, opts)
 	if err != nil {
 		return "", err
 	}
@@ -242,40 +226,42 @@ func (e *engineClient) ServiceCreate(ctx context.Context, spec ServiceSpec) (str
 // ServiceUpdate updates an existing service in place; Swarm performs a rolling
 // replacement of its tasks.
 func (e *engineClient) ServiceUpdate(ctx context.Context, idOrName string, spec ServiceSpec) error {
-	cur, _, err := e.cli.ServiceInspectWithRaw(ctx, idOrName, types.ServiceInspectOptions{})
+	res, err := e.cli.ServiceInspect(ctx, idOrName, client.ServiceInspectOptions{})
 	if err != nil {
 		return err
 	}
-	opts := types.ServiceUpdateOptions{}
+	cur := res.Service
+	opts := client.ServiceUpdateOptions{Version: cur.Version, Spec: buildSwarmServiceSpec(spec)}
 	enc, err := encodeRegistryAuth(spec.RegistryAuth)
 	if err != nil {
 		return fmt.Errorf("encode registry auth: %w", err)
 	}
 	if enc != "" {
 		opts.EncodedRegistryAuth = enc
-		opts.RegistryAuthFrom = types.RegistryAuthFromSpec
+		opts.RegistryAuthFrom = swarm.RegistryAuthFromSpec
 	}
-	_, err = e.cli.ServiceUpdate(ctx, cur.ID, cur.Version, buildSwarmServiceSpec(spec), opts)
+	_, err = e.cli.ServiceUpdate(ctx, cur.ID, opts)
 	return err
 }
 
 // ServiceScale sets a replicated service's desired replica count.
 func (e *engineClient) ServiceScale(ctx context.Context, idOrName string, replicas uint64) error {
-	cur, _, err := e.cli.ServiceInspectWithRaw(ctx, idOrName, types.ServiceInspectOptions{})
+	res, err := e.cli.ServiceInspect(ctx, idOrName, client.ServiceInspectOptions{})
 	if err != nil {
 		return err
 	}
+	cur := res.Service
 	if cur.Spec.Mode.Replicated == nil {
 		return fmt.Errorf("service %s is not replicated", idOrName)
 	}
 	cur.Spec.Mode.Replicated.Replicas = &replicas
-	_, err = e.cli.ServiceUpdate(ctx, cur.ID, cur.Version, cur.Spec, types.ServiceUpdateOptions{})
+	_, err = e.cli.ServiceUpdate(ctx, cur.ID, client.ServiceUpdateOptions{Version: cur.Version, Spec: cur.Spec})
 	return err
 }
 
 // ServiceRemove deletes a service. A missing service is treated as success.
 func (e *engineClient) ServiceRemove(ctx context.Context, idOrName string) error {
-	if err := e.cli.ServiceRemove(ctx, idOrName); err != nil && !errdefs.IsNotFound(err) {
+	if _, err := e.cli.ServiceRemove(ctx, idOrName, client.ServiceRemoveOptions{}); err != nil && !cerrdefs.IsNotFound(err) {
 		return err
 	}
 	return nil
@@ -283,10 +269,11 @@ func (e *engineClient) ServiceRemove(ctx context.Context, idOrName string) error
 
 // ServiceInspect returns a service's desired replicas and running-task count.
 func (e *engineClient) ServiceInspect(ctx context.Context, idOrName string) (ServiceStatus, error) {
-	svc, _, err := e.cli.ServiceInspectWithRaw(ctx, idOrName, types.ServiceInspectOptions{})
+	res, err := e.cli.ServiceInspect(ctx, idOrName, client.ServiceInspectOptions{})
 	if err != nil {
 		return ServiceStatus{}, err
 	}
+	svc := res.Service
 	st := ServiceStatus{ID: svc.ID, Name: svc.Spec.Name}
 	if cs := svc.Spec.TaskTemplate.ContainerSpec; cs != nil {
 		st.Image = cs.Image
@@ -294,13 +281,12 @@ func (e *engineClient) ServiceInspect(ctx context.Context, idOrName string) (Ser
 	if svc.Spec.Mode.Replicated != nil && svc.Spec.Mode.Replicated.Replicas != nil {
 		st.Replicas = *svc.Spec.Mode.Replicated.Replicas
 	}
-	tasks, terr := e.cli.TaskList(ctx, types.TaskListOptions{Filters: filters.NewArgs(
-		filters.Arg("service", svc.ID),
-		filters.Arg("desired-state", "running"),
-	)})
+	tasks, terr := e.cli.TaskList(ctx, client.TaskListOptions{
+		Filters: selectorFilters("service", svc.ID, "desired-state", "running"),
+	})
 	if terr == nil {
 		var oldest time.Time
-		for _, t := range tasks {
+		for _, t := range tasks.Items {
 			if t.Status.State != swarm.TaskStateRunning {
 				continue
 			}
@@ -329,12 +315,12 @@ func (e *engineClient) ServiceInspect(ctx context.Context, idOrName string) (Ser
 
 // ServiceList returns the swarm's services (identity + desired replicas).
 func (e *engineClient) ServiceList(ctx context.Context) ([]ServiceStatus, error) {
-	list, err := e.cli.ServiceList(ctx, types.ServiceListOptions{})
+	res, err := e.cli.ServiceList(ctx, client.ServiceListOptions{})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]ServiceStatus, 0, len(list))
-	for _, s := range list {
+	out := make([]ServiceStatus, 0, len(res.Items))
+	for _, s := range res.Items {
 		st := ServiceStatus{ID: s.ID, Name: s.Spec.Name}
 		if s.Spec.Mode.Replicated != nil && s.Spec.Mode.Replicated.Replicas != nil {
 			st.Replicas = *s.Spec.Mode.Replicated.Replicas
@@ -347,12 +333,13 @@ func (e *engineClient) ServiceList(ctx context.Context) ([]ServiceStatus, error)
 // ServiceRestart forces a rolling restart of a service's tasks in place
 // (equivalent to `docker service update --force`), without changing its spec.
 func (e *engineClient) ServiceRestart(ctx context.Context, idOrName string) error {
-	cur, _, err := e.cli.ServiceInspectWithRaw(ctx, idOrName, types.ServiceInspectOptions{})
+	res, err := e.cli.ServiceInspect(ctx, idOrName, client.ServiceInspectOptions{})
 	if err != nil {
 		return err
 	}
+	cur := res.Service
 	cur.Spec.TaskTemplate.ForceUpdate++
-	_, err = e.cli.ServiceUpdate(ctx, cur.ID, cur.Version, cur.Spec, types.ServiceUpdateOptions{})
+	_, err = e.cli.ServiceUpdate(ctx, cur.ID, client.ServiceUpdateOptions{Version: cur.Version, Spec: cur.Spec})
 	return err
 }
 
@@ -360,15 +347,15 @@ func (e *engineClient) ServiceRestart(ctx context.Context, idOrName string) erro
 // engine, so logs/stats/exec/top can attach to it. Returns ErrNotFound when no task runs here —
 // resolve the node with ServiceTaskNodeID. A non-running task is used as a fallback.
 func (e *engineClient) ServiceTaskContainerID(ctx context.Context, serviceName string) (string, error) {
-	list, err := e.cli.ContainerList(ctx, container.ListOptions{
+	res, err := e.cli.ContainerList(ctx, client.ContainerListOptions{
 		All:     true,
-		Filters: filters.NewArgs(filters.Arg("label", "com.docker.swarm.service.name="+serviceName)),
+		Filters: selectorFilters("label", "com.docker.swarm.service.name="+serviceName),
 	})
 	if err != nil {
 		return "", err
 	}
 	fallback := ""
-	for _, c := range list {
+	for _, c := range res.Items {
 		if c.State == "running" {
 			return c.ID, nil
 		}
@@ -386,11 +373,11 @@ func (e *engineClient) ServiceTaskContainerID(ctx context.Context, serviceName s
 // re-deriving it from stored state. The result usually carries secrets, so it is for the service
 // layer to inspect and never to return to a client.
 func (e *engineClient) ServiceEnv(ctx context.Context, idOrName string) ([]string, error) {
-	svc, _, err := e.cli.ServiceInspectWithRaw(ctx, idOrName, types.ServiceInspectOptions{})
+	res, err := e.cli.ServiceInspect(ctx, idOrName, client.ServiceInspectOptions{})
 	if err != nil {
 		return nil, wrapNotFound(err)
 	}
-	if cs := svc.Spec.TaskTemplate.ContainerSpec; cs != nil {
+	if cs := res.Service.Spec.TaskTemplate.ContainerSpec; cs != nil {
 		return cs.Env, nil
 	}
 	return nil, nil
@@ -401,7 +388,7 @@ func (e *engineClient) ServiceEnv(ctx context.Context, idOrName string) ([]strin
 // client for, and it aggregates all replicas, which reading one container never could.
 func (e *engineClient) StreamServiceLogs(ctx context.Context, serviceName string, follow bool, tail string, sink func(LogLine) error) error {
 	tail = sanitizeTail(tail)
-	rc, err := e.cli.ServiceLogs(ctx, serviceName, container.LogsOptions{
+	rc, err := e.cli.ServiceLogs(ctx, serviceName, client.ServiceLogsOptions{
 		ShowStdout: true, ShowStderr: true, Follow: follow, Tail: tail,
 	})
 	if err != nil {

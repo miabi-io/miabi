@@ -55,6 +55,15 @@ func (f *fakeNodes) Get(id uint) (*models.Server, error) {
 	}
 	return nil, errors.New("not found")
 }
+func (f *fakeNodes) SetEngineVersion(swarmNodeID, version string) error {
+	for i := range f.servers {
+		if f.servers[i].SwarmNodeID == swarmNodeID {
+			f.servers[i].EngineVersion = version
+			return nil
+		}
+	}
+	return nil
+}
 func (f *fakeNodes) SetSwarmNodeID(id uint, swarmNodeID string) error {
 	for i := range f.servers {
 		if f.servers[i].ID == id {

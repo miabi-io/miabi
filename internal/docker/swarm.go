@@ -8,9 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/swarm"
+	"github.com/moby/moby/api/types/swarm"
+	"github.com/moby/moby/client"
 )
 
 // defaultSwarmListenAddr is the management-plane bind used when a caller does not specify one
@@ -113,11 +112,11 @@ type SwarmJoinRequest struct {
 // Swarm reports this engine's swarm participation, derived from `docker info`.
 // It never requires a manager role, so it is safe to call on any node.
 func (e *engineClient) Swarm(ctx context.Context) (SwarmInfo, error) {
-	info, err := e.cli.Info(ctx)
+	res, err := e.cli.Info(ctx, client.InfoOptions{})
 	if err != nil {
 		return SwarmInfo{}, err
 	}
-	s := info.Swarm
+	s := res.Info.Swarm
 	out := SwarmInfo{
 		LocalNodeState:   string(s.LocalNodeState),
 		ControlAvailable: s.ControlAvailable,
@@ -142,11 +141,15 @@ func (e *engineClient) SwarmInit(ctx context.Context, req SwarmInitRequest) (str
 	if listen == "" {
 		listen = defaultSwarmListenAddr
 	}
-	return e.cli.SwarmInit(ctx, swarm.InitRequest{
+	res, err := e.cli.SwarmInit(ctx, client.SwarmInitOptions{
 		AdvertiseAddr: req.AdvertiseAddr,
 		ListenAddr:    listen,
 		DataPathAddr:  req.DataPathAddr,
 	})
+	if err != nil {
+		return "", err
+	}
+	return res.NodeID, nil
 }
 
 // SwarmJoin joins this engine to an existing swarm using the given token and
@@ -156,34 +159,36 @@ func (e *engineClient) SwarmJoin(ctx context.Context, req SwarmJoinRequest) erro
 	if listen == "" {
 		listen = defaultSwarmListenAddr
 	}
-	return e.cli.SwarmJoin(ctx, swarm.JoinRequest{
+	_, err := e.cli.SwarmJoin(ctx, client.SwarmJoinOptions{
 		RemoteAddrs:   req.RemoteAddrs,
 		JoinToken:     req.JoinToken,
 		AdvertiseAddr: req.AdvertiseAddr,
 		ListenAddr:    listen,
 	})
+	return err
 }
 
 // SwarmLeave removes this engine from its swarm. Leaving as the last manager
 // requires force.
 func (e *engineClient) SwarmLeave(ctx context.Context, force bool) error {
-	return e.cli.SwarmLeave(ctx, force)
+	_, err := e.cli.SwarmLeave(ctx, client.SwarmLeaveOptions{Force: force})
+	return err
 }
 
 // SwarmJoinTokens returns the swarm's worker and manager join tokens. Requires
 // this engine to be a reachable manager.
 func (e *engineClient) SwarmJoinTokens(ctx context.Context) (SwarmJoinTokens, error) {
-	sw, err := e.cli.SwarmInspect(ctx)
+	res, err := e.cli.SwarmInspect(ctx, client.SwarmInspectOptions{})
 	if err != nil {
 		return SwarmJoinTokens{}, err
 	}
-	return SwarmJoinTokens{Worker: sw.JoinTokens.Worker, Manager: sw.JoinTokens.Manager}, nil
+	return SwarmJoinTokens{Worker: res.Swarm.JoinTokens.Worker, Manager: res.Swarm.JoinTokens.Manager}, nil
 }
 
 // SwarmNodes lists the swarm's nodes. Requires this engine to be a reachable
 // manager.
 func (e *engineClient) SwarmNodes(ctx context.Context) ([]SwarmNode, error) {
-	list, err := e.cli.NodeList(ctx, types.NodeListOptions{})
+	res, err := e.cli.NodeList(ctx, client.NodeListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -191,8 +196,8 @@ func (e *engineClient) SwarmNodes(ctx context.Context) ([]SwarmNode, error) {
 	// failure here leaves Tasks at 0 rather than failing the whole listing.
 	load := e.swarmTaskCounts(ctx)
 
-	out := make([]SwarmNode, 0, len(list))
-	for _, n := range list {
+	out := make([]SwarmNode, 0, len(res.Items))
+	for _, n := range res.Items {
 		sn := SwarmNode{
 			ID:            n.ID,
 			Hostname:      n.Description.Hostname,
@@ -224,14 +229,14 @@ func (e *engineClient) SwarmNodes(ctx context.Context) ([]SwarmNode, error) {
 // swarmTaskCounts maps a swarm node id to the number of tasks running on it. Best-effort: an
 // error yields an empty map, so callers simply report no load.
 func (e *engineClient) swarmTaskCounts(ctx context.Context) map[string]int {
-	tasks, err := e.cli.TaskList(ctx, types.TaskListOptions{
-		Filters: filters.NewArgs(filters.Arg("desired-state", "running")),
+	tasks, err := e.cli.TaskList(ctx, client.TaskListOptions{
+		Filters: selectorFilters("desired-state", "running"),
 	})
 	if err != nil {
 		return map[string]int{}
 	}
-	counts := make(map[string]int, len(tasks))
-	for _, t := range tasks {
+	counts := make(map[string]int, len(tasks.Items))
+	for _, t := range tasks.Items {
 		if t.NodeID != "" && t.Status.State == swarm.TaskStateRunning {
 			counts[t.NodeID]++
 		}
@@ -243,7 +248,8 @@ func (e *engineClient) swarmTaskCounts(ctx context.Context) map[string]int {
 // (after the node has left). force is needed for nodes that have not gracefully
 // left. Used to keep the Nodes page free of stale "down" entries.
 func (e *engineClient) SwarmNodeRemove(ctx context.Context, nodeID string, force bool) error {
-	return e.cli.NodeRemove(ctx, nodeID, types.NodeRemoveOptions{Force: force})
+	_, err := e.cli.NodeRemove(ctx, nodeID, client.NodeRemoveOptions{Force: force})
+	return err
 }
 
 // SwarmNodeAvailability sets a node's scheduling availability (active / pause / drain); requires
@@ -261,37 +267,38 @@ func (e *engineClient) SwarmNodeAvailability(ctx context.Context, nodeID, availa
 	default:
 		return fmt.Errorf("unsupported availability %q (want active, pause or drain)", availability)
 	}
-	n, _, err := e.cli.NodeInspectWithRaw(ctx, nodeID)
+	res, err := e.cli.NodeInspect(ctx, nodeID, client.NodeInspectOptions{})
 	if err != nil {
 		return wrapNotFound(err)
 	}
-	spec := n.Spec
+	spec := res.Node.Spec
 	spec.Availability = av
-	return e.cli.NodeUpdate(ctx, nodeID, n.Version, spec)
+	_, err = e.cli.NodeUpdate(ctx, nodeID, client.NodeUpdateOptions{Version: res.Node.Version, Spec: spec})
+	return err
 }
 
 // SwarmTasks lists the swarm's tasks, optionally filtered to one node. Requires a
 // manager. Only the manager can enumerate these: the containers live on the nodes,
 // which Miabi may hold no Docker client for.
 func (e *engineClient) SwarmTasks(ctx context.Context, nodeID string) ([]SwarmTask, error) {
-	args := filters.NewArgs()
+	var filterPairs []string
 	if nodeID != "" {
-		args.Add("node", nodeID)
+		filterPairs = append(filterPairs, "node", nodeID)
 	}
-	list, err := e.cli.TaskList(ctx, types.TaskListOptions{Filters: args})
+	list, err := e.cli.TaskList(ctx, client.TaskListOptions{Filters: selectorFilters(filterPairs...)})
 	if err != nil {
 		return nil, err
 	}
 	// Task -> service name, resolved once rather than per task.
-	svcs, serr := e.cli.ServiceList(ctx, types.ServiceListOptions{})
+	svcs, serr := e.cli.ServiceList(ctx, client.ServiceListOptions{})
 	names := map[string]string{}
 	if serr == nil {
-		for _, s := range svcs {
+		for _, s := range svcs.Items {
 			names[s.ID] = s.Spec.Name
 		}
 	}
-	out := make([]SwarmTask, 0, len(list))
-	for _, t := range list {
+	out := make([]SwarmTask, 0, len(list.Items))
+	for _, t := range list.Items {
 		st := SwarmTask{
 			ID:           t.ID,
 			ServiceName:  names[t.ServiceID],

@@ -54,16 +54,76 @@ jobs:
       - name: go vet
         run: go vet ./...
 
-      # - name: govulncheck
-      #   run: |
-      #     go install golang.org/x/vuln/cmd/govulncheck@latest
-      #     govulncheck ./...
+      # The SDK boundary, enforced independently of depguard's glob semantics: no
+      # package outside internal/docker may import a Docker/Moby SDK.
+      - name: Docker SDK is confined to internal/docker
+        run: |
+          hits=$(git grep -l -E 'github.com/docker/docker|github.com/moby/moby|github.com/docker/go-connections' -- '*.go' ':!internal/docker/*' ':!*_test.go' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::Docker/Moby SDK imported outside internal/docker:"
+            echo "$hits"
+            exit 1
+          fi
+          echo "OK: the Docker SDK is confined to internal/docker."
+
+      # The deprecated github.com/docker/docker module must never re-enter the
+      # module graph (it stops at v28 and no longer gets security fixes). This is
+      # the module-level guard; the git-grep step above is the import-level one.
+      - name: docker/docker must not return to the module graph
+        run: |
+          if go list -m all | grep -q 'github.com/docker/docker'; then
+            echo "::error::github.com/docker/docker is back in the module graph — the migration to moby/moby is regressed."
+            go list -m all | grep 'github.com/docker/docker'
+            exit 1
+          fi
+          echo "OK: github.com/docker/docker is absent from the module graph."
+
+      # Blocking: the moby/moby migration removed the unfixable
+      # docker/docker@v27.5.1 CVEs, so the scan is clean and a regression that
+      # reintroduces a called vulnerability fails CI here.
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
 
       - name: Test Community Edition
         run: go test -race ./...
 
       - name: Test Enterprise Edition
         run: go test -race -tags enterprise ./...
+
+  integration:
+    name: Integration (engine ${{ matrix.engine }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: ["25", "26", "27", "28"] # add "29" once the daemon image exists
+    services:
+      docker:
+        image: docker:${{ matrix.engine }}-dind
+        options: --privileged
+        ports:
+          - 2375:2375
+        env:
+          DOCKER_TLS_CERTDIR: "" # serve plain TCP on 2375 for the test host
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Characterization suite in internal/docker: skips unless
+      # MIABI_TEST_DOCKER_HOST is set, so it is a no-op for local `go test ./...`.
+      # The engines green here are Miabi's supported Docker Engine range.
+      - name: Integration tests against engine ${{ matrix.engine }}
+        run: go test -tags integration -race -v ./internal/docker/...
+        env:
+          MIABI_TEST_DOCKER_HOST: tcp://localhost:2375
+          # The DinD engine is throwaway, so the swarm tests may initialize a
+          # single-node swarm on it.
+          MIABI_TEST_SWARM: "1"
 
   web:
     name: Web UI
