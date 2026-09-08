@@ -6,6 +6,7 @@ import type { AdminWorkspace } from '@/api/types'
 import type { AlertSeverity } from '@/api/inbox'
 import { useNotificationStore } from '@/stores/notification'
 import { useEntitlement } from '@/composables/useEntitlement'
+import AnnouncementBannerItem from '@/components/AnnouncementBannerItem.vue'
 import AppModal from '@/components/AppModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
@@ -414,6 +415,18 @@ onMounted(async () => {
                   Nobody can close this banner and nothing retires it. Set an expiry, or plan to
                   retract it yourself.
                 </div>
+
+                <span class="form-label pin-label">Preview</span>
+                <div class="preview-frame" aria-hidden="true">
+                  <AnnouncementBannerItem
+                    :severity="form.severity"
+                    :title="form.title || 'Your announcement'"
+                    :body="form.message"
+                    :action-text="form.action_text"
+                    :has-action="!!form.link"
+                    :dismissible="form.dismissal !== 'never'"
+                  />
+                </div>
               </template>
             </div>
           </div>
@@ -515,6 +528,10 @@ onMounted(async () => {
   color: var(--warning-600);
   font-size: 16px;
   flex-shrink: 0;
+}
+
+.preview-frame {
+  pointer-events: none;
 }
 
 </style>

@@ -138,9 +138,18 @@ func (r *NotificationInboxRepository) ApplyAlertUpdate(alertID uint, tmpl models
 	return userIDs, err
 }
 
-// Prune deletes notifications older than `before` (retention).
+// Prune deletes notifications older than `before` (retention). Deliveries of an
+// announcement that is still live are exempt: deleting one only makes the backfill
+// re-create it on the reader's next inbox read, resurrecting as unread a notice
+// they had already read or dismissed.
 func (r *NotificationInboxRepository) Prune(before time.Time) (int64, error) {
-	res := r.db.Where("created_at < ?", before).Delete(&models.Notification{})
+	now := time.Now().UTC()
+	res := r.db.Where("created_at < ?", before).
+		Where(`announcement_id IS NULL OR NOT EXISTS (
+			SELECT 1 FROM announcements a WHERE a.id = notifications.announcement_id
+			AND a.published_at IS NOT NULL AND a.published_at <= ?
+			AND (a.expires_at IS NULL OR a.expires_at > ?))`, now, now).
+		Delete(&models.Notification{})
 	return res.RowsAffected, res.Error
 }
 
@@ -202,12 +211,15 @@ func (r *NotificationInboxRepository) CountForAnnouncement(announcementID uint) 
 }
 
 // Banners returns the pinned, live, undismissed items for a user — what the
-// app-wide banner renders, newest and most severe first.
+// app-wide banner renders, newest and most severe first. Undismissable notices
+// sort ahead of everything else: the reader cannot clear them, so the limit below
+// must not be what quietly takes one off their screen.
 func (r *NotificationInboxRepository) Banners(userID uint, now time.Time) ([]models.Notification, error) {
 	var out []models.Notification
 	err := r.db.Where("user_id = ? AND pinned = ? AND dismissed_at IS NULL", userID, true).
 		Where("expires_at IS NULL OR expires_at > ?", now).
-		Order("CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END, id DESC").
+		Order("CASE WHEN dismissal = 'never' THEN 0 ELSE 1 END, " +
+			"CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END, id DESC").
 		Limit(5).Find(&out).Error
 	return out, err
 }
