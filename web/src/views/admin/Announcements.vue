@@ -37,6 +37,7 @@ const blank = (): AnnouncementPayload => ({
   audience: 'all',
   workspace_ids: [],
   pinned: false,
+  dismissal: 'once',
   publish_at: '',
   expires_at: '',
 })
@@ -46,6 +47,16 @@ const form = ref<AnnouncementPayload>(blank())
 // targeting — the blast radius shown before the send, not after.
 const reach = ref<number | null>(null)
 const audienceHint = computed(() => audiences.find((a) => a.value === form.value.audience)?.hint ?? '')
+
+const dismissalHint = computed(() =>
+  form.value.dismissal === 'never'
+    ? 'The banner has no close button; it goes away when it expires or you retract it.'
+    : 'The banner disappears for each reader once they close it.',
+)
+
+// A banner nobody can close and nothing retires stays on every recipient's screen
+// indefinitely, which is worth saying before the send rather than after.
+const lockedForever = computed(() => form.value.pinned && form.value.dismissal === 'never' && !form.value.expires_at)
 
 async function loadReach() {
   if (form.value.audience === 'workspaces' && !form.value.workspace_ids?.length) {
@@ -100,6 +111,7 @@ function openEdit(a: Announcement) {
     audience: a.audience,
     workspace_ids: a.workspace_ids ?? [],
     pinned: a.pinned,
+    dismissal: a.dismissal ?? 'once',
     publish_at: toLocalInput(a.publish_at),
     expires_at: toLocalInput(a.expires_at),
   }
@@ -258,6 +270,11 @@ onMounted(async () => {
                   <div class="cell-title">
                     {{ a.title }}
                     <span v-if="a.pinned" class="mdi mdi-pin" title="Pinned as a banner"></span>
+                    <span
+                      v-if="a.pinned && a.dismissal === 'never'"
+                      class="mdi mdi-lock-outline"
+                      title="Readers cannot dismiss this banner"
+                    ></span>
                   </div>
                   <div class="cell-sub">{{ a.message }}</div>
                 </td>
@@ -381,9 +398,23 @@ onMounted(async () => {
             <div class="form-group" style="margin-bottom: 0">
               <label class="check-row">
                 <input v-model="form.pinned" type="checkbox" />
-                Pin as a banner across the app until each reader dismisses it
+                Pin as a banner across the app
               </label>
               <span class="form-hint">Reserve this for notices that change what someone should do right now.</span>
+
+              <template v-if="form.pinned">
+                <label class="form-label pin-label">Dismissal</label>
+                <select v-model="form.dismissal" class="form-select">
+                  <option value="once">Readers can close it</option>
+                  <option value="never">Readers cannot close it</option>
+                </select>
+                <span class="form-hint">{{ dismissalHint }}</span>
+                <div v-if="lockedForever" class="warn-row">
+                  <span class="mdi mdi-alert-outline"></span>
+                  Nobody can close this banner and nothing retires it. Set an expiry, or plan to
+                  retract it yourself.
+                </div>
+              </template>
             </div>
           </div>
           <div class="modal-footer">
@@ -461,6 +492,29 @@ onMounted(async () => {
 .check-row input {
   width: auto;
   margin: 0;
+}
+
+.pin-label {
+  display: block;
+  margin-top: 12px;
+}
+
+.warn-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--warning-600);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.warn-row .mdi {
+  color: var(--warning-600);
+  font-size: 16px;
+  flex-shrink: 0;
 }
 
 </style>

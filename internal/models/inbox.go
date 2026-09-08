@@ -35,6 +35,9 @@ type Notification struct {
 	// Pinned raises the item to an app-wide banner until dismissed. Denormalized
 	// from the announcement so the banner is a plain inbox query with no join.
 	Pinned bool `json:"pinned" gorm:"not null;default:false"`
+	// Dismissal is denormalized from the announcement, for the same reason Pinned
+	// is: the banner stays a plain per-user query with no join.
+	Dismissal AnnouncementDismissal `json:"dismissal" gorm:"not null;default:once"`
 	// ExpiresAt retires the item from the banner without deleting the history.
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 	// DismissedAt hides the item from the banner. Distinct from ReadAt: opening the

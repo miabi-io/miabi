@@ -210,6 +210,7 @@ func (s *Service) delivery(a *models.Announcement, userID uint) models.Notificat
 		SubjectLink:    strings.TrimSpace(a.Link),
 		ActionText:     strings.TrimSpace(a.ActionText),
 		Pinned:         a.Pinned,
+		Dismissal:      a.Dismissal,
 		ExpiresAt:      a.ExpiresAt,
 	}
 }

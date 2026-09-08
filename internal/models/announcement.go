@@ -31,6 +31,25 @@ func (a AnnouncementAudience) Valid() bool {
 	return false
 }
 
+// AnnouncementDismissal decides how a pinned notice retires for the reader. It is
+// one field rather than a pair of flags so the combinations that mean nothing
+// cannot be expressed, and so a further presentation can be added as a value.
+type AnnouncementDismissal string
+
+const (
+	DismissOnce  AnnouncementDismissal = "once"
+	DismissNever AnnouncementDismissal = "never"
+)
+
+// Valid reports whether d is a known dismissal mode.
+func (d AnnouncementDismissal) Valid() bool {
+	switch d {
+	case DismissOnce, DismissNever:
+		return true
+	}
+	return false
+}
+
 // AnnouncementStatus is the derived lifecycle position shown in the admin list.
 type AnnouncementStatus string
 
@@ -59,10 +78,12 @@ type Announcement struct {
 	// WorkspaceIDs narrows AudienceWorkspaces; ignored for every other audience.
 	WorkspaceIDs []uint `json:"workspace_ids,omitempty" gorm:"serializer:json"`
 
-	// Pinned raises the notice to a banner across the app until the reader
-	// dismisses it, instead of resting in the bell. Reserve it for notices that
-	// change what a user should do right now.
+	// Pinned raises the notice to a banner across the app instead of leaving it to
+	// rest in the bell. Reserve it for notices that change what a user should do
+	// right now. How the banner goes away is Dismissal's business.
 	Pinned bool `json:"pinned" gorm:"not null;default:false"`
+	// Dismissal governs the banner's close control; it means nothing unless Pinned.
+	Dismissal AnnouncementDismissal `json:"dismissal" gorm:"not null;default:once"`
 
 	// PublishAt schedules the broadcast; nil means it went out on creation.
 	PublishAt *time.Time `json:"publish_at,omitempty"`

@@ -7,7 +7,8 @@ import { followNotificationLink } from '@/utils/notificationLink'
 
 // Renders the pinned notices an administrator broadcast. They sit above the page
 // rather than behind the bell because they change what the reader should do right
-// now; dismissal is per-user and permanent.
+// now; dismissal is per-user and permanent. A notice marked undismissable has no
+// close control and stays until it expires or is retracted.
 const store = useInboxStore()
 const { banners } = storeToRefs(store)
 const router = useRouter()
@@ -34,7 +35,12 @@ function follow(n: InboxNotification) {
       <button v-if="n.subject_link" class="btn btn-secondary btn-sm" @click="follow(n)">
         {{ n.action_text || 'Open' }}
       </button>
-      <button class="btn-icon btn-icon-muted" aria-label="Dismiss" @click="store.dismiss([n.id])">
+      <button
+        v-if="n.dismissal !== 'never'"
+        class="btn-icon btn-icon-muted"
+        aria-label="Dismiss"
+        @click="store.dismiss([n.id])"
+      >
         <span class="mdi mdi-close"></span>
       </button>
     </div>

@@ -1,7 +1,8 @@
 import api from './client'
 import type { ApiResponse, PageableResponse } from './types'
-import type { AlertSeverity } from './inbox'
+import type { AlertSeverity, AnnouncementDismissal } from './inbox'
 
+export type { AnnouncementDismissal }
 export type AnnouncementAudience = 'all' | 'admins' | 'owners' | 'workspaces'
 export type AnnouncementStatus = 'scheduled' | 'published' | 'expired'
 
@@ -15,6 +16,7 @@ export interface Announcement {
   audience: AnnouncementAudience
   workspace_ids?: number[]
   pinned: boolean
+  dismissal: AnnouncementDismissal
   publish_at?: string | null
   expires_at?: string | null
   published_at?: string | null
@@ -34,6 +36,7 @@ export interface AnnouncementPayload {
   audience: AnnouncementAudience
   workspace_ids?: number[]
   pinned?: boolean
+  dismissal?: AnnouncementDismissal
   publish_at?: string
   expires_at?: string
 }

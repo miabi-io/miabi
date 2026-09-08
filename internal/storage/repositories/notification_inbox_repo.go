@@ -166,6 +166,7 @@ func (r *NotificationInboxRepository) ApplyAnnouncementUpdate(announcementID uin
 		"subject_link": tmpl.SubjectLink,
 		"action_text":  tmpl.ActionText,
 		"pinned":       tmpl.Pinned,
+		"dismissal":    tmpl.Dismissal,
 		"expires_at":   tmpl.ExpiresAt,
 		"updated_at":   time.Now().UTC(),
 	}
@@ -213,6 +214,8 @@ func (r *NotificationInboxRepository) Banners(userID uint, now time.Time) ([]mod
 
 // Dismiss hides items from the banner. It also marks them read: someone who
 // dismissed a notice has seen it, and leaving the bell badge lit would be noise.
+// Rows the operator marked undismissable are skipped here and not only in the UI,
+// so hiding one takes retracting or expiring it rather than a hand-made request.
 func (r *NotificationInboxRepository) Dismiss(userID uint, ids []uint) error {
 	if len(ids) == 0 {
 		return nil
@@ -220,5 +223,6 @@ func (r *NotificationInboxRepository) Dismiss(userID uint, ids []uint) error {
 	now := time.Now().UTC()
 	return r.db.Model(&models.Notification{}).
 		Where("user_id = ? AND id IN ? AND dismissed_at IS NULL", userID, ids).
+		Where("dismissal <> ?", models.DismissNever).
 		Updates(map[string]any{"dismissed_at": now, "read_at": gorm.Expr("COALESCE(read_at, ?)", now)}).Error
 }
