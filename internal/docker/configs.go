@@ -9,9 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/swarm"
+	"github.com/moby/moby/api/types/swarm"
+	"github.com/moby/moby/client"
 )
 
 // Config object labels. Ownership is recorded on the object itself so GC and a
@@ -67,29 +66,31 @@ func (c ConfigObject) ObjectName() string {
 // already holds exactly this content.
 func (e *engineClient) EnsureConfig(ctx context.Context, obj ConfigObject) (string, error) {
 	name := obj.ObjectName()
-	existing, err := e.cli.ConfigList(ctx, types.ConfigListOptions{
-		Filters: filters.NewArgs(filters.Arg("name", name)),
+	existing, err := e.cli.ConfigList(ctx, client.ConfigListOptions{
+		Filters: selectorFilters("name", name),
 	})
 	if err != nil {
 		return "", fmt.Errorf("list configs: %w", err)
 	}
-	for _, c := range existing {
+	for _, c := range existing.Items {
 		if c.Spec.Name == name {
 			return c.ID, nil
 		}
 	}
-	created, err := e.cli.ConfigCreate(ctx, swarm.ConfigSpec{
-		Annotations: swarm.Annotations{
-			Name: name,
-			Labels: map[string]string{
-				ManagedLabel:         "true",
-				ConfigWorkspaceLabel: obj.Workspace,
-				ConfigNameLabel:      obj.Config,
-				ConfigKeyLabel:       obj.Key,
-				ConfigDigestLabel:    obj.Digest,
+	created, err := e.cli.ConfigCreate(ctx, client.ConfigCreateOptions{
+		Spec: swarm.ConfigSpec{
+			Annotations: swarm.Annotations{
+				Name: name,
+				Labels: map[string]string{
+					ManagedLabel:         "true",
+					ConfigWorkspaceLabel: obj.Workspace,
+					ConfigNameLabel:      obj.Config,
+					ConfigKeyLabel:       obj.Key,
+					ConfigDigestLabel:    obj.Digest,
+				},
 			},
+			Data: []byte(obj.Content),
 		},
-		Data: []byte(obj.Content),
 	})
 	if err != nil {
 		return "", fmt.Errorf("create config %s: %w", name, err)
@@ -99,14 +100,14 @@ func (e *engineClient) EnsureConfig(ctx context.Context, obj ConfigObject) (stri
 
 // ListManagedConfigs returns every config object the platform owns, for GC.
 func (e *engineClient) ListManagedConfigs(ctx context.Context) ([]ConfigInfo, error) {
-	cfgs, err := e.cli.ConfigList(ctx, types.ConfigListOptions{
-		Filters: filters.NewArgs(filters.Arg("label", ManagedLabel+"=true")),
+	cfgs, err := e.cli.ConfigList(ctx, client.ConfigListOptions{
+		Filters: selectorFilters("label", ManagedLabel+"=true"),
 	})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]ConfigInfo, 0, len(cfgs))
-	for _, c := range cfgs {
+	out := make([]ConfigInfo, 0, len(cfgs.Items))
+	for _, c := range cfgs.Items {
 		out = append(out, ConfigInfo{
 			ID:        c.ID,
 			Name:      c.Spec.Name,
@@ -121,5 +122,6 @@ func (e *engineClient) ListManagedConfigs(ctx context.Context) ([]ConfigInfo, er
 // RemoveConfig deletes a config object. Docker refuses while a service still
 // references it, which is the safety net that keeps GC from breaking a task.
 func (e *engineClient) RemoveConfig(ctx context.Context, id string) error {
-	return wrapNotFound(e.cli.ConfigRemove(ctx, id))
+	_, err := e.cli.ConfigRemove(ctx, id, client.ConfigRemoveOptions{})
+	return wrapNotFound(err)
 }

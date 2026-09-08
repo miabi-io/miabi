@@ -13,10 +13,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 )
 
 // DialNetwork bridges a raw TCP stream to host:port through an ephemeral socat
@@ -41,23 +41,29 @@ func (e *engineClient) DialNetwork(ctx context.Context, netName, image, host str
 	// AutoRemove so the relay self-deletes when socat exits, in addition to
 	// explicit removal on Close. The two race harmlessly — removing a gone
 	// container is ignored.
-	created, err := e.cli.ContainerCreate(ctx, cfg, &container.HostConfig{AutoRemove: true}, netCfg, nil, name)
+	created, err := e.cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config:           cfg,
+		HostConfig:       &container.HostConfig{AutoRemove: true},
+		NetworkingConfig: netCfg,
+		Name:             name,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create relay: %w", err)
 	}
 	remove := func() {
-		_ = e.cli.ContainerRemove(context.Background(), created.ID, container.RemoveOptions{Force: true})
+		_, _ = e.cli.ContainerRemove(context.Background(), created.ID, client.ContainerRemoveOptions{Force: true})
 	}
 
 	// Attach before start so no early bytes are missed.
-	hj, err := e.cli.ContainerAttach(ctx, created.ID, container.AttachOptions{
+	att, err := e.cli.ContainerAttach(ctx, created.ID, client.ContainerAttachOptions{
 		Stream: true, Stdin: true, Stdout: true, Stderr: true,
 	})
 	if err != nil {
 		remove()
 		return nil, fmt.Errorf("attach relay: %w", err)
 	}
-	if err := e.cli.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
+	hj := att.HijackedResponse
+	if _, err := e.cli.ContainerStart(ctx, created.ID, client.ContainerStartOptions{}); err != nil {
 		hj.Close()
 		remove()
 		return nil, fmt.Errorf("start relay: %w", err)
@@ -78,7 +84,7 @@ func (e *engineClient) DialNetwork(ctx context.Context, netName, image, host str
 // relayConn is a net.Conn over a Docker attach stream: writes go to the relay's stdin (raw),
 // reads come from its demultiplexed stdout.
 type relayConn struct {
-	hj     types.HijackedResponse
+	hj     client.HijackedResponse
 	rd     *io.PipeReader
 	remove func()
 	once   sync.Once

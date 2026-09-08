@@ -89,6 +89,16 @@ func (r *ServerRepository) UpdateSwarmNodeID(id uint, swarmNodeID string) error 
 		Update("swarm_node_id", swarmNodeID).Error
 }
 
+// UpdateEngineVersionBySwarmNodeID writes just the engine_version column for the
+// node with the given swarm node id. Column-scoped for the same reason as
+// UpdateSwarmNodeID: the cluster refresh loop and the agent-connect path both
+// write this row, and a full Save would race them.
+func (r *ServerRepository) UpdateEngineVersionBySwarmNodeID(swarmNodeID, version string) error {
+	return r.db.Model(&models.Server{}).
+		Where("swarm_node_id = ?", swarmNodeID).
+		Update("engine_version", version).Error
+}
+
 func (r *ServerRepository) FindLocal() (*models.Server, error) {
 	var s models.Server
 	if err := r.db.Where("is_local = ?", true).First(&s).Error; err != nil {

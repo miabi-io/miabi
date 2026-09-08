@@ -5,7 +5,24 @@
 version: "2"
 
 linters:
+  enable:
+    # Only internal/docker (the adapter) may import a Docker/Moby SDK; every other
+    # package depends on the docker.Client interface and Miabi's own domain types.
+    - depguard
   settings:
+    depguard:
+      rules:
+        no-docker-sdk:
+          files:
+            - "**/*.go"
+            - "!**/internal/docker/**"
+          deny:
+            - pkg: github.com/docker/docker
+              desc: Use internal/docker (the docker.Client interface). Only the adapter may import the SDK.
+            - pkg: github.com/moby/moby
+              desc: Use internal/docker (the docker.Client interface). Only the adapter may import the SDK.
+            - pkg: github.com/docker/go-connections
+              desc: Use internal/docker. Only the adapter may import the SDK.
     staticcheck:
       checks:
         - all

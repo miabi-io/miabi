@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 )
 
 // DialFunc opens a new connection to a remote Docker engine. For multi-node, it
@@ -37,10 +37,9 @@ func NewRemote(dial DialFunc) (Client, error) {
 	// Order matters: WithHost runs sockets.ConfigureTransport on the *current* client's transport (which would
 	// clobber our DialContext). Apply it first against the throwaway default client, then install our http
 	// client last so our tunnel dialer survives.
-	cli, err := client.NewClientWithOpts(
+	cli, err := client.New(
 		client.WithHost("http://docker.invalid"),
 		client.WithHTTPClient(httpc),
-		client.WithAPIVersionNegotiation(),
 	)
 	if err != nil {
 		return nil, err

@@ -1676,6 +1676,7 @@ export interface Server {
   public_hostname?: string
   agent_connected?: boolean
   agent_version?: string
+  engine_version?: string
   cordoned?: boolean
   labels?: Record<string, string>
   gateway_deployed_at?: string | null
