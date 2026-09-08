@@ -4,6 +4,7 @@
 package announcement
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -253,6 +254,7 @@ func TestUpdateRewritesEveryDelivery(t *testing.T) {
 	a.Title = "Maintenance moved to 04:00"
 	a.Severity = models.AlertWarning
 	a.Pinned = true
+	a.Dismissal = models.DismissNever
 	if err := svc.Update(a); err != nil {
 		t.Fatalf("update: %v", err)
 	}
@@ -264,6 +266,58 @@ func TestUpdateRewritesEveryDelivery(t *testing.T) {
 		if n.Severity != models.AlertWarning || !n.Pinned {
 			t.Fatalf("delivery for user %d kept severity %q pinned=%v", n.UserID, n.Severity, n.Pinned)
 		}
+		if n.Dismissal != models.DismissNever {
+			t.Fatalf("delivery for user %d kept dismissal %q", n.UserID, n.Dismissal)
+		}
+	}
+}
+
+func TestUndismissableBannerSurvivesADismissRequest(t *testing.T) {
+	svc, db, inbox := newService(t)
+	seedUsers(t, db)
+	now := time.Now().UTC()
+	svc.now = func() time.Time { return now }
+
+	a := &models.Announcement{
+		Title: "Demo environment", Audience: models.AudienceAll,
+		Pinned: true, Dismissal: models.DismissNever,
+	}
+	if err := svc.Create(a); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	got, err := inbox.Banners(2, now)
+	if err != nil {
+		t.Fatalf("banners: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("%d banners, want 1", len(got))
+	}
+
+	if err := inbox.Dismiss(2, []uint{got[0].ID}); err != nil {
+		t.Fatalf("dismiss: %v", err)
+	}
+	got, err = inbox.Banners(2, now)
+	if err != nil {
+		t.Fatalf("banners after dismiss: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("%d banners after a dismiss request, want the notice to stay", len(got))
+	}
+
+	// Unlocking it through an edit hands the close control back.
+	a.Dismissal = models.DismissOnce
+	if err := svc.Update(a); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if err := inbox.Dismiss(2, []uint{got[0].ID}); err != nil {
+		t.Fatalf("dismiss after unlock: %v", err)
+	}
+	got, err = inbox.Banners(2, now)
+	if err != nil {
+		t.Fatalf("banners after unlock: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("%d banners after unlocking and dismissing, want 0", len(got))
 	}
 }
 
@@ -371,4 +425,76 @@ func TestSyncUserIsThrottledPerUser(t *testing.T) {
 	if n != 1 {
 		t.Fatal("a sync past the throttle interval must run")
 	}
+}
+
+func TestUndismissableBannerOutranksTheBannerLimit(t *testing.T) {
+	svc, db, inbox := newService(t)
+	seedUsers(t, db)
+	now := time.Now().UTC()
+	svc.now = func() time.Time { return now }
+
+	standing := &models.Announcement{
+		Title: "Demo environment", Audience: models.AudienceAll,
+		Severity: models.AlertInfo, Pinned: true, Dismissal: models.DismissNever,
+	}
+	if err := svc.Create(standing); err != nil {
+		t.Fatalf("create standing: %v", err)
+	}
+	// Louder and newer, these would otherwise take every slot the banner has.
+	for i := 0; i < 5; i++ {
+		a := &models.Announcement{
+			Title: fmt.Sprintf("Incident %d", i), Audience: models.AudienceAll,
+			Severity: models.AlertCritical, Pinned: true,
+		}
+		if err := svc.Create(a); err != nil {
+			t.Fatalf("create incident %d: %v", i, err)
+		}
+	}
+
+	got, err := inbox.Banners(2, now)
+	if err != nil {
+		t.Fatalf("banners: %v", err)
+	}
+	if len(got) == 0 || got[0].Title != "Demo environment" {
+		t.Fatalf("banners = %v, want the undismissable notice first", titles(got))
+	}
+}
+
+func TestPruneKeepsDeliveriesOfLiveAnnouncements(t *testing.T) {
+	svc, db, inbox := newService(t)
+	seedUsers(t, db)
+	now := time.Now().UTC()
+	svc.now = func() time.Time { return now }
+
+	live := &models.Announcement{Title: "Still running", Audience: models.AudienceAll, Pinned: true}
+	if err := svc.Create(live); err != nil {
+		t.Fatalf("create live: %v", err)
+	}
+	past := now.Add(-time.Hour)
+	lapsed := &models.Announcement{Title: "Over", Audience: models.AudienceAll, ExpiresAt: &past}
+	if err := svc.Create(lapsed); err != nil {
+		t.Fatalf("create lapsed: %v", err)
+	}
+	if err := db.Model(&models.Notification{}).Where("1 = 1").
+		Update("created_at", now.Add(-90*24*time.Hour)).Error; err != nil {
+		t.Fatalf("age deliveries: %v", err)
+	}
+
+	if _, err := inbox.Prune(now.Add(-30 * 24 * time.Hour)); err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if len(deliveries(t, db, live.ID)) == 0 {
+		t.Fatal("retention deleted a live announcement's deliveries; the backfill would resurrect them unread")
+	}
+	if n := len(deliveries(t, db, lapsed.ID)); n != 0 {
+		t.Fatalf("%d deliveries of the lapsed announcement survived retention", n)
+	}
+}
+
+func titles(rows []models.Notification) []string {
+	out := make([]string, 0, len(rows))
+	for _, n := range rows {
+		out = append(out, n.Title)
+	}
+	return out
 }

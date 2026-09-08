@@ -45,6 +45,7 @@ type announcementBody struct {
 	Audience     string `json:"audience" enum:"all,admins,owners,workspaces"`
 	WorkspaceIDs []uint `json:"workspace_ids"`
 	Pinned       bool   `json:"pinned"`
+	Dismissal    string `json:"dismissal" enum:"once,never"`
 	PublishAt    string `json:"publish_at"` // RFC3339; empty broadcasts immediately
 	ExpiresAt    string `json:"expires_at"` // RFC3339; empty never expires
 }
@@ -223,6 +224,14 @@ func (h *AdminAnnouncementHandler) apply(c *okapi.Context, a *models.Announcemen
 	if publishAt != nil && expiresAt != nil && !expiresAt.After(*publishAt) {
 		return c.AbortBadRequest("expires_at must be after publish_at")
 	}
+	dismissal := models.AnnouncementDismissal(orStr(b.Dismissal, string(models.DismissOnce)))
+	if !dismissal.Valid() {
+		return c.AbortBadRequest("unknown dismissal mode")
+	}
+	// An unpinned notice rests in the bell, where there is nothing to withhold.
+	if !b.Pinned {
+		dismissal = models.DismissOnce
+	}
 
 	a.Title = title
 	a.Message = strings.TrimSpace(b.Message)
@@ -235,6 +244,7 @@ func (h *AdminAnnouncementHandler) apply(c *okapi.Context, a *models.Announcemen
 		a.WorkspaceIDs = b.WorkspaceIDs
 	}
 	a.Pinned = b.Pinned
+	a.Dismissal = dismissal
 	a.ExpiresAt = expiresAt
 	// A broadcast that has gone out cannot be rescheduled; only its expiry moves.
 	if a.PublishedAt == nil {
@@ -266,6 +276,8 @@ func (h *AdminAnnouncementHandler) record(c *okapi.Context, action string, a *mo
 			"title":      a.Title,
 			"audience":   string(a.Audience),
 			"severity":   string(a.Severity),
+			"pinned":     a.Pinned,
+			"dismissal":  string(a.Dismissal),
 			"recipients": a.Recipients,
 		},
 	})
