@@ -5,7 +5,7 @@ name: CI
 # so they are excluded here to avoid duplicate runs.
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev,feat/migration-docker-to-moby]
   pull_request:
     branches: [main, dev]
 
