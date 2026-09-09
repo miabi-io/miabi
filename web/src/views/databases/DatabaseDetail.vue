@@ -1358,8 +1358,20 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
             </p>
             <div v-if="restoreModal.backupId == null" class="form-group">
               <label class="form-label">Dump file</label>
-              <input type="file" accept=".sql,.gz,.sql.gz,.dump" class="form-input" required @change="onRestoreFile" />
-              <p class="form-hint">A <code>.sql.gz</code>, <code>.sql</code>, or <code>.dump</code> produced by the matching engine.</p>
+
+              <div class="file-drop-zone">
+                <input type="file" accept=".sql,.gz,.sql.gz,.dump" class="file-input-hidden" required
+                  @change="onRestoreFile" />
+                <div class="file-drop-content">
+                  <span class="mdi mdi-upload-cloud file-icon"></span>
+                  <span class="file-text">Click to upload or drag & drop</span>
+                  <span class="file-subtext">SQL, GZ, or DUMP files supported</span>
+                </div>
+              </div>
+
+              <p class="form-hint">
+                A <code>.sql.gz</code>, <code>.sql</code>, or <code>.dump</code> produced by the matching engine.
+              </p>
             </div>
             <div class="form-group" style="margin-bottom: 0">
               <label class="form-label">Method</label>
