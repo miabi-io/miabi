@@ -38,6 +38,10 @@ type Backup struct {
 	S3Path      string       `json:"s3_path,omitempty"`
 	Filename    string       `json:"filename,omitempty"`
 	SizeBytes   int64        `json:"size_bytes"`
+	// Encrypted records that the artifact was GPG-encrypted with the workspace's
+	// backup passphrase, so the history can say which backups need it to restore.
+	// Restore still keys off the ".gpg" filename, which is what the tools read.
+	Encrypted bool `json:"encrypted" gorm:"not null;default:false"`
 	// Version is the engine version the dump was taken from. Recorded because a
 	// dump does not always restore into a different major version, and because the
 	// question "what was running when this was taken" is the usual one.

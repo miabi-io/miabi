@@ -176,9 +176,12 @@ const backup = ref<UpdateBackupSettingsInput>({
   volume_backup_path: '',
   bundle_path: '',
   bundle_passphrase: '',
+  backup_passphrase: '',
+  backup_passphrase_clear: false,
 })
 const backupSecretSet = ref(false)
 const bundlePassphraseSet = ref(false)
+const backupPassphraseSet = ref(false)
 // The last connection test's result, kept on screen: it names each prefix it
 // wrote to, which is the detail that makes a failure actionable.
 const backupTest = ref<BackupTestResult | null>(null)
@@ -202,9 +205,12 @@ async function loadBackup() {
       volume_backup_path: s.volume_backup_path ?? '',
       bundle_path: s.bundle_path ?? '',
       bundle_passphrase: '', // never returned; left blank keeps the stored one
+      backup_passphrase: '', // never returned; left blank keeps the stored one
+      backup_passphrase_clear: false,
     }
     backupSecretSet.value = s.s3_secret_set
     bundlePassphraseSet.value = s.bundle_passphrase_set
+    backupPassphraseSet.value = s.backup_passphrase_set
   } catch (e) {
     notify.apiError(e)
   }
@@ -221,8 +227,11 @@ async function saveBackup() {
     const s = (await workspaceBackupApi.update(wsId.value, backup.value)).data.data
     backupSecretSet.value = s.s3_secret_set
     bundlePassphraseSet.value = s.bundle_passphrase_set
+    backupPassphraseSet.value = s.backup_passphrase_set
     backup.value.s3_secret_key = ''
     backup.value.bundle_passphrase = ''
+    backup.value.backup_passphrase = ''
+    backup.value.backup_passphrase_clear = false
     notify.success('Backup settings saved')
   } catch (e) {
     notify.apiError(e)
@@ -799,6 +808,33 @@ watch(activeTab, (t) => loadTab(t))
               <div class="form-group">
                 <label class="form-label">Volume backup path</label>
                 <input v-model="backup.volume_backup_path" class="form-input" placeholder="backups/volumes" aria-label="Volume backup path" />
+              </div>
+            </div>
+
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">
+                  Database backup passphrase
+                  <span v-if="backupPassphraseSet" class="text-muted">(encryption on)</span>
+                </label>
+                <input
+                  v-model="backup.backup_passphrase"
+                  class="form-input"
+                  type="password"
+                  autocomplete="new-password"
+                  :disabled="backup.backup_passphrase_clear"
+                  :placeholder="backupPassphraseSet ? '••••• (set — leave blank to keep)' : 'at least 12 characters'"
+                  aria-label="Database backup passphrase"
+                />
+                <p class="text-muted text-sm" style="margin: 6px 0 0">
+                  Encrypts every database backup before it is stored. Without one, dumps are written
+                  to the bucket in plain text. Record it outside Miabi — a backup cannot be restored
+                  without it. Backups already taken stay readable as they are.
+                </p>
+                <label v-if="backupPassphraseSet" class="toggle-row" style="margin-top: 8px">
+                  <input v-model="backup.backup_passphrase_clear" type="checkbox" />
+                  <span>Turn encryption off — new backups will be stored unencrypted</span>
+                </label>
               </div>
             </div>
 

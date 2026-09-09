@@ -138,10 +138,18 @@ func (h *BackupHandler) Run(c *okapi.Context, req *RunBackupRequest) error {
 	// Prefer the workspace's centralized S3 target when configured and the request
 	// didn't supply its own S3 config — so manual backups go to S3 whenever the
 	// workspace has backup settings set up, instead of defaulting to local.
-	if dest.S3 == nil && h.settings != nil {
-		if cfg, path, terr := h.settings.DatabaseBackupTarget(db.WorkspaceID); terr == nil && cfg != nil {
-			cfg.Path = path
-			dest = backup.Destination{Type: "s3", S3: cfg}
+	if h.settings != nil {
+		if dest.S3 == nil {
+			if wd, derr := h.settings.DatabaseDestination(db.WorkspaceID); derr == nil && wd.S3 != nil {
+				dest = wd
+			}
+		}
+		if dest.GPGPassphrase == "" {
+			// A caller-supplied bucket is still this workspace's data, so it is sealed
+			// with the same passphrase and restores through the same path.
+			if pass, perr := h.settings.DatabaseBackupPassphrase(db.WorkspaceID); perr == nil {
+				dest.GPGPassphrase = pass
+			}
 		}
 	}
 	b, err := h.svc.Run(c.Request().Context(), inst, db,
@@ -189,6 +197,13 @@ func (h *BackupHandler) Restore(c *okapi.Context, req *RestoreRequest) error {
 		return c.AbortNotFound("backup not found")
 	}
 	dest := backup.Destination{Type: b.Destination, S3: req.Body.S3.toConfig()}
+	if h.settings != nil {
+		// RestoreFromBackup applies this only to a ".gpg" artifact, so supplying it
+		// unconditionally still restores older cleartext backups.
+		if pass, perr := h.settings.DatabaseBackupPassphrase(db.WorkspaceID); perr == nil {
+			dest.GPGPassphrase = pass
+		}
+	}
 	// For an S3 backup with no per-request credentials, fall back to the
 	// workspace's centralized S3 target (how the backup was created).
 	if b.Destination == "s3" && dest.S3 == nil && h.settings != nil {

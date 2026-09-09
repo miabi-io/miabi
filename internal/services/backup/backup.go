@@ -303,6 +303,7 @@ func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *mo
 		return s.fail(b, nameErr), nil
 	}
 	b.Filename = name
+	b.Encrypted = encrypted
 	if dest.GPGPassphrase != "" && !encrypted {
 		logger.Warn("backup stored UNENCRYPTED despite a passphrase being supplied: the backup tool does not support encryption — upgrade the image",
 			"database", db.Name, "artifact", name)
@@ -405,6 +406,16 @@ type RestoreSpec struct {
 	GPGPassphrase string
 }
 
+// passphraseFor returns pass only when filename names an encrypted artifact. The
+// ".gpg" suffix is what the *-bkup tools append when they encrypt, so it is the
+// record of whether this particular backup needs a passphrase to read back.
+func passphraseFor(filename, pass string) string {
+	if strings.HasSuffix(filename, ".gpg") {
+		return pass
+	}
+	return ""
+}
+
 // RestoreFromBackup restores a logical database from a stored backup record. For
 // an S3 backup, dest.S3 must supply the bucket credentials again.
 func (s *Service) RestoreFromBackup(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, b *models.Backup, dest Destination, force bool) error {
@@ -418,6 +429,9 @@ func (s *Service) RestoreFromBackup(ctx context.Context, inst *models.DatabaseIn
 		S3:          dest.S3,
 		S3Path:      b.S3Path,
 		Force:       force,
+		// Keyed off the artifact, not the workspace: a backup taken before a passphrase
+		// was set is still cleartext and must restore without one.
+		GPGPassphrase: passphraseFor(b.Filename, dest.GPGPassphrase),
 	})
 }
 

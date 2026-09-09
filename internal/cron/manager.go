@@ -229,9 +229,8 @@ func (m *Manager) runBackup(scheduleID, workspaceID, databaseID uint) error {
 // when configured, else local. Schedules no longer carry their own S3 config.
 func (m *Manager) destinationFor(workspaceID uint) backup.Destination {
 	if m.settings != nil {
-		if cfg, path, err := m.settings.DatabaseBackupTarget(workspaceID); err == nil && cfg != nil {
-			cfg.Path = path
-			return backup.Destination{Type: "s3", S3: cfg}
+		if dest, err := m.settings.DatabaseDestination(workspaceID); err == nil {
+			return dest
 		}
 	}
 	return backup.Destination{Type: "local"}
