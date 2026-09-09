@@ -2710,7 +2710,7 @@ async function detachDatabase(d: AppDatabase) {
            different resources with different shapes: a volume is one path, a config
            is a set of files that can be projected whole or one at a time. -->
       <div class="card mt-4">
-        <div class="card-header">
+        <div class="card-header page-header">
           <h2>Config files</h2>
           <span class="text-muted text-sm">Read-only files mounted from workspace configs.</span>
         </div>
@@ -2752,7 +2752,8 @@ async function detachDatabase(d: AppDatabase) {
                 <select
                   id="cfg-select"
                   v-model="configMount.config_id"
-                  class="form-input"
+                  class="form-select"
+                  style="min-width: 300px"
                   @focus="loadWorkspaceConfigs"
                 >
                   <option :value="null">Select a config…</option>
