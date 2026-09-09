@@ -1,7 +1,7 @@
 import api, { sseUrl } from './client'
 import type {
   ApiResponse, DatabaseInstance, DBLiveStatus, LogicalDatabase, ConnectionInfo, ForwardSession, DBEngine, EngineDefault, UpgradeOptions, UpgradePlan,
-  Volume, VolumeDetail, VolumeFile, VolumeBackup, WorkspaceStorage, Backup, BackupSchedule, DatabaseBackupSet, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput,
+  Volume, VolumeDetail, VolumeFile, VolumeBackup, WorkspaceStorage, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, BackupSetsResponse, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput,
   Member, Invitation, AuditLog, AuditLogDetail, RecentEvent, PageableResponse, Job, CronJob, WorkspaceUsage, WorkspaceLiveSample, WorkspaceHistoryPoint,
 } from './types'
 
@@ -165,11 +165,20 @@ export const backupApi = {
 
   // Sets span every database on the instance, so they hang off the instance.
   sets: (ws: number, inst: number) =>
-    api.get<ApiResponse<DatabaseBackupSet[]>>(`${w(ws)}/databases/${inst}/backup-sets`),
+    api.get<ApiResponse<BackupSetsResponse>>(`${w(ws)}/databases/${inst}/backup-sets`),
   runSet: (ws: number, inst: number, comment = '') =>
     api.post<ApiResponse<DatabaseBackupSet>>(`${w(ws)}/databases/${inst}/backup-sets`, { comment }),
   removeSet: (ws: number, inst: number, id: number) =>
     api.delete<ApiResponse<{ message: string }>>(`${w(ws)}/databases/${inst}/backup-sets/${id}`),
+
+  setSchedules: (ws: number, inst: number) =>
+    api.get<ApiResponse<DatabaseBackupSetSchedule[]>>(`${w(ws)}/databases/${inst}/backup-set-schedules`),
+  createSetSchedule: (ws: number, inst: number, cron: string, maxSets = 0, retentionDays = 0) =>
+    api.post<ApiResponse<DatabaseBackupSetSchedule>>(`${w(ws)}/databases/${inst}/backup-set-schedules`, {
+      cron, max_sets: maxSets, retention_days: retentionDays, enabled: true,
+    }),
+  deleteSetSchedule: (ws: number, inst: number, id: number) =>
+    api.delete<ApiResponse<{ message: string }>>(`${w(ws)}/databases/${inst}/backup-set-schedules/${id}`),
 }
 
 

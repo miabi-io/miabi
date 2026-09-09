@@ -22,6 +22,7 @@ func (r *Router) backupRoutes() []okapi.RouteDefinition {
 	// Sets are instance-level: they span every database on the instance, so they
 	// hang off the instance rather than one of its databases.
 	const sets = "/{workspace}/databases/{databaseID}/backup-sets"
+	const setSched = "/{workspace}/databases/{databaseID}/backup-set-schedules"
 
 	return []okapi.RouteDefinition{
 		{
@@ -48,6 +49,31 @@ func (r *Router) backupRoutes() []okapi.RouteDefinition {
 			Middlewares: scoped(models.WorkspaceRoleDeveloper),
 			Handler:     r.h.backup.DeleteSet,
 			Summary:     "Delete a backup set and its artifacts",
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        setSched,
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.backup.ListSetSchedules,
+			Summary:     "List an instance's recovery-point schedules",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        setSched,
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     okapi.H(r.h.backup.CreateSetSchedule),
+			Summary:     "Schedule recovery points for the instance",
+			Request:     &handlers.SetScheduleRequest{},
+		},
+		{
+			Method:      http.MethodDelete,
+			Path:        setSched + "/{scheduleID}",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     r.h.backup.DeleteSetSchedule,
+			Summary:     "Delete a recovery-point schedule",
 		},
 		{
 			Method:      http.MethodGet,

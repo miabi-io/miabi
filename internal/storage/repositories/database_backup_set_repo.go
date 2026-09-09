@@ -62,3 +62,40 @@ func (r *DatabaseBackupSetRepository) ListByInstance(instanceID uint) ([]models.
 func (r *DatabaseBackupSetRepository) Delete(id uint) error {
 	return r.db.Delete(&models.DatabaseBackupSet{}, id).Error
 }
+
+// CreateSchedule stores a new instance-level set schedule.
+func (r *DatabaseBackupSetRepository) CreateSchedule(s *models.DatabaseBackupSetSchedule) error {
+	return r.db.Create(s).Error
+}
+
+func (r *DatabaseBackupSetRepository) UpdateSchedule(s *models.DatabaseBackupSetSchedule) error {
+	return r.db.Save(s).Error
+}
+
+func (r *DatabaseBackupSetRepository) DeleteSchedule(id uint) error {
+	return r.db.Delete(&models.DatabaseBackupSetSchedule{}, id).Error
+}
+
+// FindScheduleInWorkspace scopes the lookup so a schedule id from another tenant
+// reads as not found.
+func (r *DatabaseBackupSetRepository) FindScheduleInWorkspace(workspaceID, id uint) (*models.DatabaseBackupSetSchedule, error) {
+	var s models.DatabaseBackupSetSchedule
+	err := r.db.Where("workspace_id = ? AND id = ?", workspaceID, id).First(&s).Error
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+func (r *DatabaseBackupSetRepository) ListSchedulesByInstance(instanceID uint) ([]models.DatabaseBackupSetSchedule, error) {
+	var out []models.DatabaseBackupSetSchedule
+	err := r.db.Where("instance_id = ?", instanceID).Order("id ASC").Find(&out).Error
+	return out, err
+}
+
+// ListEnabledSchedules feeds the cron manager at startup.
+func (r *DatabaseBackupSetRepository) ListEnabledSchedules() ([]models.DatabaseBackupSetSchedule, error) {
+	var out []models.DatabaseBackupSetSchedule
+	err := r.db.Where("enabled = ?", true).Find(&out).Error
+	return out, err
+}

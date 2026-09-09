@@ -500,7 +500,7 @@ func runServer(cli *okapicli.CLI) {
 			// Scheduled backups run through this service and never touch a handler, so this is
 			// the only place their outcomes become visible.
 			backupService.SetEventRecorder(eventsSvc)
-			res.cron = cronpkg.NewManager(backupService, dbRepo, backupRepo, backupsettings.NewService(repositories.NewWorkspaceBackupSettingsRepository(res.db)))
+			res.cron = cronpkg.NewManager(backupService, dbRepo, backupRepo, repositories.NewDatabaseBackupSetRepository(res.db), backupsettings.NewService(repositories.NewWorkspaceBackupSettingsRepository(res.db)))
 			res.cron.Start()
 
 			if logStore.Enabled() {
