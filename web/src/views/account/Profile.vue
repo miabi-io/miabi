@@ -277,6 +277,9 @@ onMounted(loadSessions)
   background: var(--primary-50);
 }
 
+[data-theme="dark"] .session-current {
+  border-color: var(--primary-900);
+} 
 .session-info {
   min-width: 0;
 }
