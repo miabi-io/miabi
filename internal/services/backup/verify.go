@@ -95,15 +95,12 @@ func checkSetAgainstBucket(set *models.DatabaseBackupSet, sizes map[string]int64
 	res.EnvelopeOK = set.Envelope == ""
 	envelopeErr := ""
 	if set.Envelope != "" {
-		switch {
-		case passphrase == "":
+		if passphrase == "" {
 			envelopeErr = "encrypted, and no workspace backup passphrase is set to check it with"
-		default:
-			if _, err := dbenvelope.Open(set.Envelope, passphrase); err != nil {
-				envelopeErr = "the workspace passphrase no longer opens this recovery point"
-			} else {
-				res.EnvelopeOK = true
-			}
+		} else if _, err := dbenvelope.Open(set.Envelope, passphrase); err != nil {
+			envelopeErr = "the workspace passphrase no longer opens this recovery point"
+		} else {
+			res.EnvelopeOK = true
 		}
 	}
 
