@@ -15,7 +15,7 @@ import ResourceIcon from '@/components/ResourceIcon.vue'
 import { fmtSize } from '@/utils/format'
 import { engineLogo, engineMdi } from '@/utils/resourceIcon'
 import { copyText } from '@/utils/clipboard'
-import type { DatabaseInstance, DBStatus, UpgradeProgress, LogicalDatabase, ConnectionInfo, ForwardSession, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, Application, Network, UpgradeOptions, UpgradePlan, StatsSample, AppEvent } from '@/api/types'
+import type { DatabaseInstance, DBStatus, UpgradeProgress, LogicalDatabase, ConnectionInfo, ForwardSession, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, DiscoveredSet, Application, Network, UpgradeOptions, UpgradePlan, StatsSample, AppEvent } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 import { relativeTime } from '@/utils/time'
 
@@ -37,6 +37,8 @@ const sets = ref<DatabaseBackupSet[]>([])
 // rather than silently writing somewhere that dies with the host.
 const setsS3Ready = ref(false)
 const runningSet = ref(false)
+const discovered = ref<DiscoveredSet[] | null>(null)
+const scanning = ref(false)
 const setSchedules = ref<DatabaseBackupSetSchedule[]>([])
 const setCron = ref('0 3 * * *')
 const setMax = ref(7)
@@ -420,6 +422,18 @@ async function runSet() {
   } catch (e) { notify.apiError(e) }
   finally { runningSet.value = false }
 }
+// Reads the bucket rather than this workspace's history, so it finds recovery
+// points taken by an install that is no longer here.
+async function scanBucket() {
+  if (!wid.value) return
+  scanning.value = true
+  try {
+    discovered.value = (await backupApi.discoverSets(wid.value)).data.data ?? []
+    if (discovered.value.length === 0) notify.info('No recovery points found in the bucket')
+  } catch (e) { notify.apiError(e) }
+  finally { scanning.value = false }
+}
+
 async function addSetSchedule() {
   if (!wid.value) return
   try {
@@ -434,6 +448,21 @@ async function removeSetSchedule(id: number) {
     await backupApi.deleteSetSchedule(wid.value, instId.value, id)
     notify.success('Schedule deleted')
     loadSets()
+  } catch (e) { notify.apiError(e) }
+}
+
+// The kit is what someone reads when Miabi is not there to read it for them, so it
+// is a file to keep, not a page to visit.
+async function downloadRecoveryKit(set: DatabaseBackupSet) {
+  if (!wid.value) return
+  try {
+    const res = await backupApi.recoveryKit(wid.value, instId.value, set.id)
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${set.ref}-recovery-kit.md`
+    a.click()
+    URL.revokeObjectURL(url)
   } catch (e) { notify.apiError(e) }
 }
 
@@ -1014,6 +1043,15 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
           <h2>Recovery points</h2>
           <div class="flex items-center gap-2">
             <button
+              v-if="ws.canEdit && setsS3Ready"
+              class="btn btn-sm btn-secondary"
+              :disabled="scanning"
+              title="List the recovery points in the bucket, including any this install has no record of"
+              @click="scanBucket"
+            >
+              {{ scanning ? 'Scanning…' : 'Scan bucket' }}
+            </button>
+            <button
               v-if="ws.canEdit"
               class="btn btn-sm btn-primary"
               :disabled="runningSet || !databases.length || !setsS3Ready"
@@ -1067,6 +1105,15 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
                   </td>
                   <td><span class="badge badge-dot" :class="badge(s.status)">{{ s.status }}</span></td>
                   <td class="text-right table-actions">
+                    <button
+                      v-if="ws.canEdit"
+                      class="btn-icon btn-icon-muted"
+                      title="Download recovery kit — how to restore this without Miabi"
+                      aria-label="Download recovery kit"
+                      @click="downloadRecoveryKit(s)"
+                    >
+                      <span class="mdi mdi-lifebuoy"></span>
+                    </button>
                     <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete recovery point" @click="askRemoveSet(s)">
                       <span class="mdi mdi-delete-outline"></span>
                     </button>
@@ -1088,6 +1135,33 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
             </tbody>
           </table>
         </div>
+        <div v-if="discovered" class="card-body" style="border-top: 1px solid var(--border-primary)">
+          <div class="flex items-center gap-2" style="margin-bottom: 10px">
+            <h3 style="margin: 0; font-size: 0.95rem">In the bucket</h3>
+            <span class="text-muted text-sm">{{ discovered.length }} found</span>
+            <button class="btn-icon btn-icon-muted" title="Hide" aria-label="Hide bucket scan" @click="discovered = null">
+              <span class="mdi mdi-close"></span>
+            </button>
+          </div>
+          <p v-if="discovered.length === 0" class="form-hint">
+            Nothing under this workspace's database backup path.
+          </p>
+          <ul v-else class="set-items">
+            <li v-for="d in discovered" :key="d.ref">
+              <code>{{ d.ref }}</code>
+              <span v-if="d.known" class="badge badge-neutral">known</span>
+              <span v-else class="badge badge-info">not in this install</span>
+              <span v-if="d.encrypted" class="badge badge-success"><span class="mdi mdi-lock-outline"></span> encrypted</span>
+              <span class="text-muted text-sm">
+                {{ d.engine }}<template v-if="d.version"> {{ d.version }}</template> ·
+                {{ d.artifacts.length }} database(s)<template v-if="d.size_bytes"> · {{ fmtBytes(d.size_bytes) }}</template>
+              </span>
+              <span v-if="d.reason" class="text-warning text-sm">{{ d.reason }}</span>
+              <span v-else-if="d.openable" class="text-muted text-sm">ready to restore</span>
+            </li>
+          </ul>
+        </div>
+
         <div v-if="setsS3Ready" class="card-body" style="border-top: 1px solid var(--border-primary)">
           <form v-if="ws.canEdit" class="flex items-center gap-2" style="flex-wrap: wrap" @submit.prevent="addSetSchedule">
             <label class="sched-field">

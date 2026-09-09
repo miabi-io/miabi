@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"errors"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -128,6 +129,54 @@ func (h *BackupHandler) loadSet(c *okapi.Context, workspaceID uint) (*models.Dat
 		return nil, errors.New("invalid set id")
 	}
 	return h.sets.FindInWorkspace(workspaceID, uint(id))
+}
+
+// DiscoverSets lists the recovery points in the workspace's bucket, including any
+// this platform has no record of. Read-only: it reads the cleartext descriptors and
+// writes nothing.
+func (h *BackupHandler) DiscoverSets(c *okapi.Context) error {
+	wsID := middlewares.WorkspaceID(c)
+	if h.settings == nil {
+		return c.AbortBadRequest("workspace backup settings are not available")
+	}
+	cfg, base, err := h.settings.DatabaseBackupTarget(wsID)
+	if err != nil {
+		return c.AbortInternalServerError("failed to read the backup target", err)
+	}
+	if cfg == nil {
+		return c.AbortBadRequest("recovery points need the workspace S3 backup target — configure it under Workspace settings → Backups")
+	}
+	// Optional: without it the list still shows what exists, just not what opens.
+	pass, _ := h.settings.DatabaseBackupPassphrase(wsID)
+
+	found, err := h.svc.DiscoverSets(c.Request().Context(), cfg, base, pass)
+	if err != nil {
+		return c.AbortInternalServerError("failed to read the bucket", err)
+	}
+	return ok(c, found)
+}
+
+// RecoveryKit downloads the instructions for reading a recovery point back without
+// Miabi. The kit carries the sealed envelope but never the data key, so it is only
+// useful to someone who also has the passphrase.
+func (h *BackupHandler) RecoveryKit(c *okapi.Context) error {
+	wsID := middlewares.WorkspaceID(c)
+	set, err := h.loadSet(c, wsID)
+	if err != nil {
+		return c.AbortNotFound("backup set not found")
+	}
+	filename, body, err := h.svc.RecoveryKit(set)
+	if err != nil {
+		return c.AbortInternalServerError("failed to build the recovery kit", err)
+	}
+	h.record(c, wsID, "database.backup_set_recovery_kit", set.ID)
+	c.SetHeader("Content-Type", "text/markdown; charset=utf-8")
+	c.SetHeader("Content-Disposition", `attachment; filename="`+filename+`"`)
+	c.SetHeader("Content-Length", strconv.Itoa(len(body)))
+	w := c.Response()
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+	return nil
 }
 
 // SetScheduleRequest creates or replaces an instance's recovery-point schedule.

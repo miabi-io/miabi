@@ -52,6 +52,22 @@ func (r *Router) backupRoutes() []okapi.RouteDefinition {
 		},
 		{
 			Method:      http.MethodGet,
+			Path:        "/{workspace}/backup-sets/discover",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     r.h.backup.DiscoverSets,
+			Summary:     "List the recovery points in the workspace's bucket, including unknown ones",
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        sets + "/{setID}/recovery-kit",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     r.h.backup.RecoveryKit,
+			Summary:     "Download instructions for restoring a recovery point without Miabi",
+		},
+		{
+			Method:      http.MethodGet,
 			Path:        setSched,
 			Group:       g,
 			Middlewares: scoped(models.WorkspaceRoleViewer),

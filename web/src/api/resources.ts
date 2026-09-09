@@ -1,7 +1,7 @@
 import api, { sseUrl } from './client'
 import type {
   ApiResponse, DatabaseInstance, DBLiveStatus, LogicalDatabase, ConnectionInfo, ForwardSession, DBEngine, EngineDefault, UpgradeOptions, UpgradePlan,
-  Volume, VolumeDetail, VolumeFile, VolumeBackup, WorkspaceStorage, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, BackupSetsResponse, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput,
+  Volume, VolumeDetail, VolumeFile, VolumeBackup, WorkspaceStorage, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, BackupSetsResponse, DiscoveredSet, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput,
   Member, Invitation, AuditLog, AuditLogDetail, RecentEvent, PageableResponse, Job, CronJob, WorkspaceUsage, WorkspaceLiveSample, WorkspaceHistoryPoint,
 } from './types'
 
@@ -171,6 +171,11 @@ export const backupApi = {
   removeSet: (ws: number, inst: number, id: number) =>
     api.delete<ApiResponse<{ message: string }>>(`${w(ws)}/databases/${inst}/backup-sets/${id}`),
 
+  // Reads the bucket, not this workspace's rows. Writes nothing.
+  discoverSets: (ws: number) =>
+    api.get<ApiResponse<DiscoveredSet[]>>(`${w(ws)}/backup-sets/discover`),
+  recoveryKit: (ws: number, inst: number, id: number) =>
+    api.get<Blob>(`${w(ws)}/databases/${inst}/backup-sets/${id}/recovery-kit`, { responseType: 'blob' }),
   setSchedules: (ws: number, inst: number) =>
     api.get<ApiResponse<DatabaseBackupSetSchedule[]>>(`${w(ws)}/databases/${inst}/backup-set-schedules`),
   createSetSchedule: (ws: number, inst: number, cron: string, maxSets = 0, retentionDays = 0) =>

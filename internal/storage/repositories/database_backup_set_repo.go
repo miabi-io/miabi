@@ -117,3 +117,17 @@ func (r *DatabaseBackupSetRepository) ListEnabledSchedules() ([]models.DatabaseB
 	err := r.db.Where("enabled = ?", true).Find(&out).Error
 	return out, err
 }
+
+// ListAllRefs maps every known set ref to its row id, so discovery can mark which
+// of the bucket's recovery points this platform already has.
+func (r *DatabaseBackupSetRepository) ListAllRefs() (map[string]uint, error) {
+	var rows []models.DatabaseBackupSet
+	if err := r.db.Select("id", "ref").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[string]uint, len(rows))
+	for i := range rows {
+		out[rows[i].Ref] = rows[i].ID
+	}
+	return out, nil
+}

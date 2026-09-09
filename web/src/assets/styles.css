@@ -1067,6 +1067,8 @@ input[type="radio"]:focus-visible {
 .text-right { text-align: right; }
 .text-sm { font-size: 13px; }
 .text-muted { color: var(--text-muted); }
+.text-danger { color: var(--danger-600); }
+.text-warning { color: var(--warning-700); }
 .mt-4 { margin-top: 16px; }
 .mb-4 { margin-bottom: 16px; }
 .flex { display: flex; }
