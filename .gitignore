@@ -4,7 +4,7 @@
 
 # Env
 .env
-
+.idea
 # Go
 *.test
 *.out
