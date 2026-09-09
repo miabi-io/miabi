@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -431,6 +432,42 @@ func (s *Service) artifactPassphrase(b *models.Backup, workspacePassphrase strin
 	return dataKey, nil
 }
 
+// ErrRestoreVersionTooNew refuses to load a dump into an engine older than the one
+// it came from. A PostgreSQL 17 dump does not load into 16, and the failure lands
+// mid-restore over a database that has already been dropped on a force run.
+var ErrRestoreVersionTooNew = errors.New("the backup was taken from a newer engine than this instance runs")
+
+// majorVersion returns a version string's leading component. Mirrors the database
+// service's majorOf; kept local so the backup service does not depend on it.
+func majorVersion(v string) (int, bool) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0, false
+	}
+	head := v
+	if i := strings.IndexAny(v, ".-+ "); i >= 0 {
+		head = v[:i]
+	}
+	n, err := strconv.Atoi(head)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// checkRestoreVersion gates a restore on the engine version. Only the backwards
+// direction is refused: an older dump loading into a newer engine is ordinary.
+// Unparseable versions do not block — refusing on a version nobody can read would
+// be worse than attempting the restore.
+func checkRestoreVersion(instVersion, backupVersion string) error {
+	from, okFrom := majorVersion(backupVersion)
+	to, okTo := majorVersion(instVersion)
+	if !okFrom || !okTo || from <= to {
+		return nil
+	}
+	return fmt.Errorf("%w: %s vs %s", ErrRestoreVersionTooNew, backupVersion, instVersion)
+}
+
 // passphraseFor returns pass only when filename names an encrypted artifact. The
 // ".gpg" suffix is what the *-bkup tools append when they encrypt, so it is the
 // record of whether this particular backup needs a passphrase to read back.
@@ -443,9 +480,14 @@ func passphraseFor(filename, pass string) string {
 
 // RestoreFromBackup restores a logical database from a stored backup record. For
 // an S3 backup, dest.S3 must supply the bucket credentials again.
-func (s *Service) RestoreFromBackup(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, b *models.Backup, dest Destination, force bool) error {
+func (s *Service) RestoreFromBackup(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, b *models.Backup, dest Destination, force, allowVersionMismatch bool) error {
 	if b.Filename == "" {
 		return ErrNoBackupFile
+	}
+	if !allowVersionMismatch {
+		if err := checkRestoreVersion(inst.Version, b.Version); err != nil {
+			return err
+		}
 	}
 	pass, err := s.artifactPassphrase(b, dest.GPGPassphrase)
 	if err != nil {

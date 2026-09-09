@@ -102,6 +102,10 @@ type RestoreRequest struct {
 		// Method: "normal" (default) restores over the existing database; "force"
 		// drops & recreates it first.
 		Method string `json:"method" enum:"normal,force"`
+		// AllowVersionMismatch loads a dump taken from a newer engine anyway. Refused
+		// by default: the failure lands mid-restore, over a database a force run has
+		// already dropped.
+		AllowVersionMismatch bool `json:"allow_version_mismatch"`
 	} `json:"body"`
 }
 
@@ -212,7 +216,11 @@ func (h *BackupHandler) Restore(c *okapi.Context, req *RestoreRequest) error {
 			dest.S3 = cfg
 		}
 	}
-	if err := h.svc.RestoreFromBackup(c.Request().Context(), inst, db, b, dest, req.Body.Method == "force"); err != nil {
+	if err := h.svc.RestoreFromBackup(c.Request().Context(), inst, db, b, dest,
+		req.Body.Method == "force", req.Body.AllowVersionMismatch); err != nil {
+		if errors.Is(err, backup.ErrRestoreVersionTooNew) {
+			return c.AbortBadRequest(err.Error() + " — restore into a matching or newer engine, or confirm to override")
+		}
 		return c.AbortInternalServerError("restore failed", err)
 	}
 	h.record(c, db.WorkspaceID, "backup.restore", b.ID)

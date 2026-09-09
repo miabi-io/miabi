@@ -1,7 +1,7 @@
 import api, { sseUrl } from './client'
 import type {
   ApiResponse, DatabaseInstance, DBLiveStatus, LogicalDatabase, ConnectionInfo, ForwardSession, DBEngine, EngineDefault, UpgradeOptions, UpgradePlan,
-  Volume, VolumeDetail, VolumeFile, VolumeBackup, WorkspaceStorage, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, BackupSetsResponse, DiscoveredSet, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput,
+  Volume, VolumeDetail, VolumeFile, VolumeBackup, WorkspaceStorage, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, BackupSetsResponse, DiscoveredSet, AdoptResult, SetRestoreResult, VerifyResult, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput,
   Member, Invitation, AuditLog, AuditLogDetail, RecentEvent, PageableResponse, Job, CronJob, WorkspaceUsage, WorkspaceLiveSample, WorkspaceHistoryPoint,
 } from './types'
 
@@ -174,6 +174,12 @@ export const backupApi = {
   // Reads the bucket, not this workspace's rows. Writes nothing.
   discoverSets: (ws: number) =>
     api.get<ApiResponse<DiscoveredSet[]>>(`${w(ws)}/backup-sets/discover`),
+  adoptSet: (ws: number, inst: number, ref: string) =>
+    api.post<ApiResponse<AdoptResult>>(`${w(ws)}/databases/${inst}/backup-sets/adopt`, { ref }),
+  restoreSet: (ws: number, inst: number, id: number, method: 'normal' | 'force' = 'normal') =>
+    api.post<ApiResponse<SetRestoreResult>>(`${w(ws)}/databases/${inst}/backup-sets/${id}/restore`, { method }),
+  verifySet: (ws: number, inst: number, id: number) =>
+    api.post<ApiResponse<VerifyResult>>(`${w(ws)}/databases/${inst}/backup-sets/${id}/verify`, {}),
   recoveryKit: (ws: number, inst: number, id: number) =>
     api.get<Blob>(`${w(ws)}/databases/${inst}/backup-sets/${id}/recovery-kit`, { responseType: 'blob' }),
   setSchedules: (ws: number, inst: number) =>

@@ -434,6 +434,48 @@ async function scanBucket() {
   finally { scanning.value = false }
 }
 
+async function verifySet(set: DatabaseBackupSet) {
+  if (!wid.value) return
+  try {
+    const res = (await backupApi.verifySet(wid.value, instId.value, set.id)).data.data
+    notify[res.ok ? 'success' : 'error'](
+      res.ok ? `${set.ref} verified — ${res.checked} artifact(s) intact` : `${set.ref}: ${res.error}`,
+    )
+    loadSets()
+  } catch (e) { notify.apiError(e) }
+}
+
+async function adoptSet(d: DiscoveredSet) {
+  if (!wid.value) return
+  try {
+    const res = (await backupApi.adoptSet(wid.value, instId.value, d.ref)).data.data
+    if (res.already_known) notify.info(`${d.ref} was already in this workspace`)
+    else notify.success(`Adopted ${d.ref} — ${res.adopted} database(s)`)
+    if (res.skipped?.length) {
+      notify.error(`${res.skipped.length} artifact(s) skipped: ${res.skipped.map((k) => k.database).join(', ')} — no database of that name here`)
+    }
+    loadSets()
+  } catch (e) { notify.apiError(e) }
+}
+function askRestoreSet(set: DatabaseBackupSet) {
+  confirm.value = {
+    kind: 'restore-backup-set', title: 'Restore recovery point', confirmLabel: 'Restore', variant: 'danger',
+    message: `Restore all ${set.items?.length ?? 0} database(s) from ${set.ref}? Their current contents are overwritten.`,
+    run: () => restoreSet(set),
+  }
+}
+async function restoreSet(set: DatabaseBackupSet) {
+  if (!wid.value) return
+  try {
+    const res = (await backupApi.restoreSet(wid.value, instId.value, set.id)).data.data
+    if (res.failed?.length) {
+      notify.error(`Restored ${res.restored.length}, failed ${res.failed.length}: ${res.failed.join('; ')}`)
+    } else {
+      notify.success(`Restored ${res.restored.length} database(s) from ${set.ref}`)
+    }
+  } catch (e) { notify.apiError(e) }
+}
+
 async function addSetSchedule() {
   if (!wid.value) return
   try {
@@ -623,7 +665,7 @@ async function lifecycle(action: 'start' | 'stop' | 'restart') {
 }
 
 // --- Confirmation dialog (delete / stop / restart) ---
-type ConfirmKind = 'delete' | 'stop' | 'restart' | 'remove-db' | 'remove-backup' | 'remove-backup-set' | 'upgrade'
+type ConfirmKind = 'delete' | 'stop' | 'restart' | 'remove-db' | 'remove-backup' | 'remove-backup-set' | 'restore-backup-set' | 'upgrade'
 const confirm = ref<{
   kind: ConfirmKind
   title: string
@@ -1095,6 +1137,15 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
                       {{ s.trigger }} · {{ s.destination }}<template v-if="s.version"> · {{ s.engine }} {{ s.version }}</template>
                       <template v-if="s.size_bytes"> · {{ fmtBytes(s.size_bytes) }}</template>
                     </div>
+                    <div class="cell-sub">
+                      <template v-if="s.verify_status === 'ok'">
+                        <span class="mdi mdi-shield-check-outline"></span> verified {{ relativeTime(s.verified_at) }}
+                      </template>
+                      <template v-else-if="s.verify_status === 'failed'">
+                        <span class="text-danger"><span class="mdi mdi-shield-alert-outline"></span> failed verification: {{ s.verify_error }}</span>
+                      </template>
+                      <template v-else>never verified</template>
+                    </div>
                     <div v-if="s.error" class="cell-sub text-danger">{{ s.error }}</div>
                   </td>
                   <td>
@@ -1108,11 +1159,28 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
                     <button
                       v-if="ws.canEdit"
                       class="btn-icon btn-icon-muted"
+                      title="Check this recovery point against the bucket"
+                      aria-label="Verify recovery point"
+                      @click="verifySet(s)"
+                    >
+                      <span class="mdi mdi-shield-search"></span>
+                    </button>
+                    <button
+                      v-if="ws.canEdit"
+                      class="btn-icon btn-icon-muted"
                       title="Download recovery kit — how to restore this without Miabi"
                       aria-label="Download recovery kit"
                       @click="downloadRecoveryKit(s)"
                     >
                       <span class="mdi mdi-lifebuoy"></span>
+                    </button>
+                    <button
+                      v-if="ws.canEdit && s.status === 'completed'"
+                      class="btn btn-sm btn-secondary"
+                      title="Restore every database in this recovery point"
+                      @click="askRestoreSet(s)"
+                    >
+                      Restore
                     </button>
                     <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete recovery point" @click="askRemoveSet(s)">
                       <span class="mdi mdi-delete-outline"></span>
@@ -1158,6 +1226,14 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
               </span>
               <span v-if="d.reason" class="text-warning text-sm">{{ d.reason }}</span>
               <span v-else-if="d.openable" class="text-muted text-sm">ready to restore</span>
+              <button
+                v-if="ws.canEdit && !d.known"
+                class="btn btn-sm btn-secondary"
+                title="Add this recovery point to the history so it can be restored"
+                @click="adoptSet(d)"
+              >
+                Adopt
+              </button>
             </li>
           </ul>
         </div>
