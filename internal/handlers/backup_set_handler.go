@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"errors"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -128,6 +129,29 @@ func (h *BackupHandler) loadSet(c *okapi.Context, workspaceID uint) (*models.Dat
 		return nil, errors.New("invalid set id")
 	}
 	return h.sets.FindInWorkspace(workspaceID, uint(id))
+}
+
+// RecoveryKit downloads the instructions for reading a recovery point back without
+// Miabi. The kit carries the sealed envelope but never the data key, so it is only
+// useful to someone who also has the passphrase.
+func (h *BackupHandler) RecoveryKit(c *okapi.Context) error {
+	wsID := middlewares.WorkspaceID(c)
+	set, err := h.loadSet(c, wsID)
+	if err != nil {
+		return c.AbortNotFound("backup set not found")
+	}
+	filename, body, err := h.svc.RecoveryKit(set)
+	if err != nil {
+		return c.AbortInternalServerError("failed to build the recovery kit", err)
+	}
+	h.record(c, wsID, "database.backup_set_recovery_kit", set.ID)
+	c.SetHeader("Content-Type", "text/markdown; charset=utf-8")
+	c.SetHeader("Content-Disposition", `attachment; filename="`+filename+`"`)
+	c.SetHeader("Content-Length", strconv.Itoa(len(body)))
+	w := c.Response()
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+	return nil
 }
 
 // SetScheduleRequest creates or replaces an instance's recovery-point schedule.

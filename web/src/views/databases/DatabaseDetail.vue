@@ -437,6 +437,21 @@ async function removeSetSchedule(id: number) {
   } catch (e) { notify.apiError(e) }
 }
 
+// The kit is what someone reads when Miabi is not there to read it for them, so it
+// is a file to keep, not a page to visit.
+async function downloadRecoveryKit(set: DatabaseBackupSet) {
+  if (!wid.value) return
+  try {
+    const res = await backupApi.recoveryKit(wid.value, instId.value, set.id)
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${set.ref}-recovery-kit.md`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e) { notify.apiError(e) }
+}
+
 function askRemoveSet(set: DatabaseBackupSet) {
   confirm.value = {
     kind: 'remove-backup-set', title: 'Delete recovery point', confirmLabel: 'Delete', variant: 'danger',
@@ -1067,6 +1082,15 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
                   </td>
                   <td><span class="badge badge-dot" :class="badge(s.status)">{{ s.status }}</span></td>
                   <td class="text-right table-actions">
+                    <button
+                      v-if="ws.canEdit"
+                      class="btn-icon btn-icon-muted"
+                      title="Download recovery kit — how to restore this without Miabi"
+                      aria-label="Download recovery kit"
+                      @click="downloadRecoveryKit(s)"
+                    >
+                      <span class="mdi mdi-lifebuoy"></span>
+                    </button>
                     <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete recovery point" @click="askRemoveSet(s)">
                       <span class="mdi mdi-delete-outline"></span>
                     </button>

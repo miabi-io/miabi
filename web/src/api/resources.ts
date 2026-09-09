@@ -171,6 +171,8 @@ export const backupApi = {
   removeSet: (ws: number, inst: number, id: number) =>
     api.delete<ApiResponse<{ message: string }>>(`${w(ws)}/databases/${inst}/backup-sets/${id}`),
 
+  recoveryKit: (ws: number, inst: number, id: number) =>
+    api.get<Blob>(`${w(ws)}/databases/${inst}/backup-sets/${id}/recovery-kit`, { responseType: 'blob' }),
   setSchedules: (ws: number, inst: number) =>
     api.get<ApiResponse<DatabaseBackupSetSchedule[]>>(`${w(ws)}/databases/${inst}/backup-set-schedules`),
   createSetSchedule: (ws: number, inst: number, cron: string, maxSets = 0, retentionDays = 0) =>

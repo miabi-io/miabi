@@ -176,3 +176,37 @@ func zero(b []byte) {
 func deriveKey(passphrase string, salt []byte) []byte {
 	return argon2.IDKey([]byte(passphrase), salt, argonTime, argonMemory, argonLanes, keyLen)
 }
+
+// Spec describes the envelope format precisely enough to reimplement it without
+// this code. It exists so a recovery kit documents the real parameters rather than
+// a copy that can drift away from them.
+type Spec struct {
+	Magic         string `json:"magic"`
+	FormatVersion int    `json:"format_version"`
+	KDF           string `json:"kdf"`
+	ArgonTime     int    `json:"argon_time"`
+	ArgonMemoryKB int    `json:"argon_memory_kib"`
+	ArgonLanes    int    `json:"argon_lanes"`
+	KeyLen        int    `json:"key_len"`
+	SaltLen       int    `json:"salt_len"`
+	NonceLen      int    `json:"nonce_len"`
+	HeaderLen     int    `json:"header_len"`
+	Cipher        string `json:"cipher"`
+}
+
+// Format returns the parameters this build seals with.
+func Format() Spec {
+	return Spec{
+		Magic:         magic,
+		FormatVersion: formatVer,
+		KDF:           "argon2id",
+		ArgonTime:     argonTime,
+		ArgonMemoryKB: argonMemory,
+		ArgonLanes:    argonLanes,
+		KeyLen:        keyLen,
+		SaltLen:       saltLen,
+		NonceLen:      nonceLen,
+		HeaderLen:     headerLen,
+		Cipher:        "AES-256-GCM",
+	}
+}
