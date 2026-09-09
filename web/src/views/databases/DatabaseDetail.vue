@@ -788,7 +788,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
           </div>
         </div>
       </div>
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-3 database-header-actions">
         <span class="badge badge-dot" :class="badge(inst.status)">{{ inst.status }}</span>
         <button class="btn btn-secondary btn-sm" @click="revealInstance"><span class="mdi mdi-eye-outline"></span> Admin connection</button>
         <button v-if="ws.isWorkspaceAdmin" class="btn btn-secondary btn-sm" :disabled="inst.status !== 'running' || forwardBusy" title="Open a temporary external connection to this database" @click="openForward"><span class="mdi mdi-lan-connect"></span> Connect externally</button>
@@ -1557,5 +1557,21 @@ tr.selected { background: var(--bg-tertiary); }
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--success-500) 50%, transparent); }
   70% { box-shadow: 0 0 0 6px transparent; }
   100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+.database-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.database-header-actions button {
+  flex: 1 1 auto;
+  min-width: max-content;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>
