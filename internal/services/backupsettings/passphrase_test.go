@@ -171,4 +171,107 @@ func TestSavePassphraseLifecycle(t *testing.T) {
 	})
 }
 
+// A fake rotator, so the settings service can be exercised without the backup
+// service and its Docker dependencies.
+type fakeRotator struct {
+	sealed   int
+	rotated  [][2]string
+	rotError error
+}
+
+func (f *fakeRotator) RewrapSets(_ uint, oldP, newP string) (int, error) {
+	if f.rotError != nil {
+		return 0, f.rotError
+	}
+	f.rotated = append(f.rotated, [2]string{oldP, newP})
+	return f.sealed, nil
+}
+func (f *fakeRotator) SealedSetCount(uint) (int, error) { return f.sealed, nil }
+
+// Changing the passphrase must re-seal the recovery points sealed with the old
+// one, or they become unreadable the moment the new value is stored.
+func TestSavePassphraseRotatesSealedSets(t *testing.T) {
+	svc := newSettingsService(t)
+	rot := &fakeRotator{sealed: 3}
+	svc.SetEnvelopeRotator(rot)
+
+	in := s3Input()
+	in.BackupPassphrase = ptr(goodPass)
+	if _, err := svc.Save(1, in); err != nil {
+		t.Fatalf("first save: %v", err)
+	}
+	if len(rot.rotated) != 0 {
+		t.Error("rotated on the first passphrase, when there was nothing sealed yet")
+	}
+
+	const second = "second-passphrase-2"
+	in.BackupPassphrase = ptr(second)
+	if _, err := svc.Save(1, in); err != nil {
+		t.Fatalf("second save: %v", err)
+	}
+	if len(rot.rotated) != 1 {
+		t.Fatalf("rotations = %d, want 1", len(rot.rotated))
+	}
+	if rot.rotated[0] != [2]string{goodPass, second} {
+		t.Errorf("rotated %v, want the old and new passphrase", rot.rotated[0])
+	}
+}
+
+// If rewrapping fails the old passphrase must remain stored: it still opens every
+// set, which is recoverable. Storing the new one would strand them.
+func TestSavePassphraseKeepsTheOldOneWhenRotationFails(t *testing.T) {
+	svc := newSettingsService(t)
+	in := s3Input()
+	in.BackupPassphrase = ptr(goodPass)
+	if _, err := svc.Save(1, in); err != nil {
+		t.Fatal(err)
+	}
+	svc.SetEnvelopeRotator(&fakeRotator{sealed: 2, rotError: errors.New("nope")})
+
+	in.BackupPassphrase = ptr("another-passphrase-3")
+	if _, err := svc.Save(1, in); err == nil {
+		t.Fatal("save succeeded despite a failed rotation")
+	}
+	pass, err := svc.DatabaseBackupPassphrase(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pass != goodPass {
+		t.Errorf("stored passphrase = %q, want the original kept", pass)
+	}
+}
+
+// Clearing the passphrase would leave Miabi unable to open sets it still holds.
+func TestSaveRefusesToClearWhileSetsAreSealed(t *testing.T) {
+	svc := newSettingsService(t)
+	svc.SetEnvelopeRotator(&fakeRotator{sealed: 1})
+	in := s3Input()
+	in.BackupPassphrase = ptr(goodPass)
+	if _, err := svc.Save(1, in); err != nil {
+		t.Fatal(err)
+	}
+	in.BackupPassphrase = ptr("")
+	if _, err := svc.Save(1, in); !errors.Is(err, ErrSealedSetsExist) {
+		t.Fatalf("error = %v, want ErrSealedSetsExist", err)
+	}
+}
+
+func TestSaveAllowsClearingWithNoSealedSets(t *testing.T) {
+	svc := newSettingsService(t)
+	svc.SetEnvelopeRotator(&fakeRotator{sealed: 0})
+	in := s3Input()
+	in.BackupPassphrase = ptr(goodPass)
+	if _, err := svc.Save(1, in); err != nil {
+		t.Fatal(err)
+	}
+	in.BackupPassphrase = ptr("")
+	st, err := svc.Save(1, in)
+	if err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	if st.BackupPassphraseSet {
+		t.Error("the passphrase was not cleared")
+	}
+}
+
 func ptr(s string) *string { return &s }

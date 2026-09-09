@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/jkaninda/logger"
+	"github.com/miabi-io/miabi/internal/dbenvelope"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/logstore"
 	"github.com/miabi-io/miabi/internal/models"
@@ -410,6 +411,26 @@ type RestoreSpec struct {
 	GPGPassphrase string
 }
 
+// artifactPassphrase resolves what actually decrypts b's artifact. A backup taken
+// as part of a recovery point is sealed with that set's data key, so the workspace
+// passphrase opens the envelope rather than the dump itself.
+func (s *Service) artifactPassphrase(b *models.Backup, workspacePassphrase string) (string, error) {
+	if b.SetID == nil || s.sets == nil || workspacePassphrase == "" {
+		return workspacePassphrase, nil
+	}
+	set, err := s.sets.FindByID(*b.SetID)
+	if err != nil || set.Envelope == "" {
+		// A set from before envelopes existed sealed its artifacts with the
+		// passphrase directly, so that still restores.
+		return workspacePassphrase, nil
+	}
+	dataKey, err := dbenvelope.Open(set.Envelope, workspacePassphrase)
+	if err != nil {
+		return "", fmt.Errorf("recovery point %s: %w", set.Ref, err)
+	}
+	return dataKey, nil
+}
+
 // passphraseFor returns pass only when filename names an encrypted artifact. The
 // ".gpg" suffix is what the *-bkup tools append when they encrypt, so it is the
 // record of whether this particular backup needs a passphrase to read back.
@@ -426,6 +447,10 @@ func (s *Service) RestoreFromBackup(ctx context.Context, inst *models.DatabaseIn
 	if b.Filename == "" {
 		return ErrNoBackupFile
 	}
+	pass, err := s.artifactPassphrase(b, dest.GPGPassphrase)
+	if err != nil {
+		return err
+	}
 	return s.Restore(ctx, inst, db, RestoreSpec{
 		Filename:    b.Filename,
 		Destination: b.Destination,
@@ -435,7 +460,7 @@ func (s *Service) RestoreFromBackup(ctx context.Context, inst *models.DatabaseIn
 		Force:       force,
 		// Keyed off the artifact, not the workspace: a backup taken before a passphrase
 		// was set is still cleartext and must restore without one.
-		GPGPassphrase: passphraseFor(b.Filename, dest.GPGPassphrase),
+		GPGPassphrase: passphraseFor(b.Filename, pass),
 	})
 }
 

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/miabi-io/miabi/internal/dbenvelope"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 	"gorm.io/driver/sqlite"
@@ -272,6 +273,96 @@ func TestPruneSetsCountsSetsNotItems(t *testing.T) {
 	}
 	if got := remainingRefs(t, sets); len(got) != 2 {
 		t.Errorf("kept %q, want 2 sets", got)
+	}
+}
+
+// Rotation is the whole reason artifacts are sealed with a per-set data key: the
+// new passphrase must open every existing set, and the key inside must not change,
+// because it is what the stored dumps were actually encrypted with.
+func TestRewrapSetsKeepsEveryDataKey(t *testing.T) {
+	svc, sets, db := newSetService(t)
+	const oldPass, newPass = "old-passphrase-1", "new-passphrase-2"
+
+	keys := map[string]string{}
+	for _, ref := range []string{"one", "two", "three"} {
+		set := seedSet(t, db, sets, ref, models.BackupCompleted, 0, false)
+		dk, err := dbenvelope.NewDataKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if set.Envelope, err = dbenvelope.Seal(dk, oldPass); err != nil {
+			t.Fatal(err)
+		}
+		if err := sets.Update(set); err != nil {
+			t.Fatal(err)
+		}
+		keys[ref] = dk
+	}
+
+	n, err := svc.RewrapSets(1, oldPass, newPass)
+	if err != nil {
+		t.Fatalf("RewrapSets: %v", err)
+	}
+	if n != 3 {
+		t.Errorf("rewrapped %d sets, want 3", n)
+	}
+	after, err := sets.ListSealed(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range after {
+		got, err := dbenvelope.Open(after[i].Envelope, newPass)
+		if err != nil {
+			t.Fatalf("%s does not open with the new passphrase: %v", after[i].Ref, err)
+		}
+		if got != keys[after[i].Ref] {
+			t.Errorf("%s: data key changed across rotation", after[i].Ref)
+		}
+		if _, err := dbenvelope.Open(after[i].Envelope, oldPass); err == nil {
+			t.Errorf("%s still opens with the old passphrase", after[i].Ref)
+		}
+	}
+}
+
+// A wrong old passphrase must stop rather than rewrap the remaining sets under a
+// secret that does not match what they were sealed with.
+func TestRewrapSetsStopsOnAWrongOldPassphrase(t *testing.T) {
+	svc, sets, db := newSetService(t)
+	set := seedSet(t, db, sets, "sealed", models.BackupCompleted, 0, false)
+	dk, _ := dbenvelope.NewDataKey()
+	set.Envelope, _ = dbenvelope.Seal(dk, "the-real-passphrase-1")
+	if err := sets.Update(set); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RewrapSets(1, "wrong-passphrase-9", "new-passphrase-2"); !errors.Is(err, dbenvelope.ErrBadPassphrase) {
+		t.Errorf("error = %v, want ErrBadPassphrase", err)
+	}
+}
+
+func TestRewrapSetsIsANoOpWithoutAChange(t *testing.T) {
+	svc, _, _ := newSetService(t)
+	for _, c := range [][2]string{{"", "new"}, {"old", ""}, {"same", "same"}} {
+		if n, err := svc.RewrapSets(1, c[0], c[1]); err != nil || n != 0 {
+			t.Errorf("RewrapSets(%q, %q) = %d, %v; want 0, nil", c[0], c[1], n, err)
+		}
+	}
+}
+
+func TestSealedSetCount(t *testing.T) {
+	svc, sets, db := newSetService(t)
+	seedSet(t, db, sets, "plain", models.BackupCompleted, 0, false)
+	sealed := seedSet(t, db, sets, "sealed", models.BackupCompleted, 0, false)
+	dk, _ := dbenvelope.NewDataKey()
+	sealed.Envelope, _ = dbenvelope.Seal(dk, "a-passphrase-1")
+	if err := sets.Update(sealed); err != nil {
+		t.Fatal(err)
+	}
+	n, err := svc.SealedSetCount(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("SealedSetCount = %d, want 1 — only the sealed set counts", n)
 	}
 }
 
