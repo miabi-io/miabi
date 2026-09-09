@@ -33,7 +33,7 @@ const (
 	// MinEngineVersion is the minimum Docker Engine release Miabi SUPPORTS — the
 	// number quoted by the README, installer, admin UI and changelog, and the
 	// threshold the Nodes warning badge uses. It is the floor of the tested CI
-	// engine matrix (25, 26, 27, 28). The SDK's own floor (MinAPIVersion / Docker
+	// engine matrix (25-29). The SDK's own floor (MinAPIVersion / Docker
 	// 19.03) is well below it, so the client never limits a supported node.
 	MinEngineVersion = "25.0"
 )

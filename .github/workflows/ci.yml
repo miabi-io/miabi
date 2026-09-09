@@ -98,21 +98,45 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        engine: ["25", "26", "27", "28"] # add "29" once the daemon image exists
+        engine: ["25", "26", "27", "28", "29"]
     services:
       docker:
         image: docker:${{ matrix.engine }}-dind
-        options: --privileged
+        # The dind image ships no HEALTHCHECK, so without one here Actions starts the
+        # container and runs the steps immediately — but dockerd needs ~35s to bind
+        # 2375, and the suite fails every test on a refused connection. Probing over
+        # TCP (not the unix socket) gates on the listener the tests actually dial.
+        options: >-
+          --privileged
+          --health-cmd "docker -H tcp://127.0.0.1:2375 info"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+          --health-start-period 10s
         ports:
           - 2375:2375
         env:
           DOCKER_TLS_CERTDIR: "" # serve plain TCP on 2375 for the test host
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
+      - name: Wait for the engine
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            if docker -H tcp://127.0.0.1:2375 version >/dev/null 2>&1; then
+              docker -H tcp://127.0.0.1:2375 version --format \
+                'engine {{.Server.Version}} (API {{.Server.APIVersion}}) ready after '"${attempt}"' attempt(s)'
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::engine ${{ matrix.engine }} never accepted TCP on 2375"
+          docker logs "${{ job.services.docker.id }}" 2>&1 | tail -50
+          exit 1
 
       # Characterization suite in internal/docker: skips unless
       # MIABI_TEST_DOCKER_HOST is set, so it is a no-op for local `go test ./...`.
@@ -120,7 +144,7 @@ jobs:
       - name: Integration tests against engine ${{ matrix.engine }}
         run: go test -tags integration -race -v ./internal/docker/...
         env:
-          MIABI_TEST_DOCKER_HOST: tcp://localhost:2375
+          MIABI_TEST_DOCKER_HOST: tcp://127.0.0.1:2375
           # The DinD engine is throwaway, so the swarm tests may initialize a
           # single-node swarm on it.
           MIABI_TEST_SWARM: "1"

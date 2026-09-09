@@ -13,7 +13,7 @@
 //
 // They are gated behind the `integration` build tag AND the MIABI_TEST_DOCKER_HOST
 // environment variable, so a normal `go test ./...` never runs them. CI runs them
-// against a DinD engine matrix (25-28) — see .github/workflows/ci.yml. Run locally
+// against a DinD engine matrix (25-29) — see .github/workflows/ci.yml. Run locally
 // against your own daemon with:
 //
 //	MIABI_TEST_DOCKER_HOST=unix:///var/run/docker.sock \
