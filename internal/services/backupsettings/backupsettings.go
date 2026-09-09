@@ -9,6 +9,7 @@ package backupsettings
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/miabi-io/miabi/internal/models"
@@ -29,9 +30,27 @@ var (
 	ErrNoPassphrase = errors.New("no bundle passphrase is set for this workspace")
 )
 
-type Service struct {
-	repo *repositories.WorkspaceBackupSettingsRepository
+// EnvelopeRotator re-seals recovery-point envelopes when the backup passphrase
+// changes, and reports how many are sealed. Implemented by the backup service;
+// nil-safe, so a build without it simply cannot rotate.
+type EnvelopeRotator interface {
+	RewrapSets(workspaceID uint, oldPassphrase, newPassphrase string) (int, error)
+	SealedSetCount(workspaceID uint) (int, error)
 }
+
+type Service struct {
+	repo    *repositories.WorkspaceBackupSettingsRepository
+	rotator EnvelopeRotator
+}
+
+// SetEnvelopeRotator wires recovery-point rotation (nil-safe).
+func (s *Service) SetEnvelopeRotator(r EnvelopeRotator) { s.rotator = r }
+
+// ErrSealedSetsExist refuses to discard a passphrase that recovery points are
+// still sealed with. Clearing it does not destroy them — it makes Miabi forget the
+// only secret that opens them, which is worse, because it looks like nothing
+// happened until someone tries to restore.
+var ErrSealedSetsExist = errors.New("recovery points are still sealed with this passphrase; delete them first or keep the passphrase")
 
 func NewService(repo *repositories.WorkspaceBackupSettingsRepository) *Service {
 	return &Service{repo: repo}
@@ -116,12 +135,35 @@ func (s *Service) Save(workspaceID uint, in SaveInput) (*models.WorkspaceBackupS
 	if in.BackupPassphrase != nil {
 		// An explicit empty string clears it — the only way back to cleartext backups.
 		// nil means "unchanged", as it does for every other secret here.
+		var old string
+		if st.BackupPassphraseEnc != "" {
+			if old, err = crypto.Decrypt(st.BackupPassphraseEnc); err != nil {
+				return nil, err
+			}
+		}
 		switch *in.BackupPassphrase {
 		case "":
+			if s.rotator != nil {
+				n, cerr := s.rotator.SealedSetCount(workspaceID)
+				if cerr != nil {
+					return nil, cerr
+				}
+				if n > 0 {
+					return nil, ErrSealedSetsExist
+				}
+			}
 			st.BackupPassphraseEnc = ""
 		default:
 			if err := wsbundle.ValidatePassphrase(*in.BackupPassphrase); err != nil {
 				return nil, err
+			}
+			// Rotate the envelopes BEFORE storing the new passphrase. If rewrapping
+			// fails the stored passphrase still opens every set, which is recoverable;
+			// the reverse would leave sets sealed with a secret nobody has.
+			if old != "" && s.rotator != nil {
+				if _, rerr := s.rotator.RewrapSets(workspaceID, old, *in.BackupPassphrase); rerr != nil {
+					return nil, fmt.Errorf("rotate recovery point envelopes: %w", rerr)
+				}
 			}
 			enc, err := crypto.EncryptWS(workspaceID, *in.BackupPassphrase)
 			if err != nil {

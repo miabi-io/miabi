@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jkaninda/logger"
+	"github.com/miabi-io/miabi/internal/dbenvelope"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
@@ -73,6 +74,24 @@ func (s *Service) RunSet(ctx context.Context, inst *models.DatabaseInstance, opt
 		return nil, ErrNoDatabases
 	}
 
+	var envelope string
+
+	// The artifacts are encrypted with a per-set data key rather than the passphrase
+	// itself; the envelope is what ties that key back to the passphrase. Without a
+	// passphrase the set is unencrypted, exactly as a per-database backup would be.
+	if dest.GPGPassphrase != "" {
+		dataKey, kerr := dbenvelope.NewDataKey()
+		if kerr != nil {
+			return nil, kerr
+		}
+		sealed, serr := dbenvelope.Seal(dataKey, dest.GPGPassphrase)
+		if serr != nil {
+			return nil, fmt.Errorf("seal the set data key: %w", serr)
+		}
+		envelope = sealed
+		dest.GPGPassphrase = dataKey
+	}
+
 	now := time.Now()
 	set := &models.DatabaseBackupSet{
 		WorkspaceID: inst.WorkspaceID,
@@ -85,6 +104,7 @@ func (s *Service) RunSet(ctx context.Context, inst *models.DatabaseInstance, opt
 		Destination: dest.Type,
 		S3Bucket:    dest.S3.Bucket,
 		S3Path:      dest.S3.Path,
+		Envelope:    envelope,
 		StartedAt:   &now,
 	}
 	if err := s.sets.Create(set); err != nil {
@@ -266,4 +286,52 @@ func (s *Service) PruneSets(ctx context.Context, instanceID uint, maxSets, reten
 		logger.Info("pruned backup sets", "instance", instanceID, "removed", removed)
 	}
 	return removed, nil
+}
+
+// RewrapSets re-seals every sealed recovery point in a workspace from one
+// passphrase to the next. This is the whole reason the artifacts are encrypted
+// with a per-set data key: rotation rewrites a few hundred bytes per set and never
+// re-reads a dump.
+//
+// It stops at the first envelope that will not open, because that means the old
+// passphrase is wrong and continuing would rewrap the rest under a mismatched
+// secret. Sets already rewrapped stay rewrapped; the operation is resumable.
+func (s *Service) RewrapSets(workspaceID uint, oldPassphrase, newPassphrase string) (int, error) {
+	if s.sets == nil {
+		return 0, ErrSetsUnavailable
+	}
+	if oldPassphrase == "" || newPassphrase == "" || oldPassphrase == newPassphrase {
+		return 0, nil
+	}
+	sealed, err := s.sets.ListSealed(workspaceID)
+	if err != nil {
+		return 0, err
+	}
+	rewrapped := 0
+	for i := range sealed {
+		set := &sealed[i]
+		next, err := dbenvelope.Rewrap(set.Envelope, oldPassphrase, newPassphrase)
+		if err != nil {
+			return rewrapped, fmt.Errorf("recovery point %s: %w", set.Ref, err)
+		}
+		set.Envelope = next
+		if err := s.sets.Update(set); err != nil {
+			return rewrapped, fmt.Errorf("recovery point %s: %w", set.Ref, err)
+		}
+		rewrapped++
+	}
+	if rewrapped > 0 {
+		logger.Info("rewrapped backup set envelopes", "workspace", workspaceID, "sets", rewrapped)
+	}
+	return rewrapped, nil
+}
+
+// SealedSetCount reports how many recovery points in a workspace are sealed, so a
+// caller can refuse to discard the passphrase that opens them.
+func (s *Service) SealedSetCount(workspaceID uint) (int, error) {
+	if s.sets == nil {
+		return 0, nil
+	}
+	sealed, err := s.sets.ListSealed(workspaceID)
+	return len(sealed), err
 }

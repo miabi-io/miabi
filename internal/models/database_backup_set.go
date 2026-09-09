@@ -34,6 +34,13 @@ type DatabaseBackupSet struct {
 	// Encrypted reports that the artifacts are GPG-encrypted, so the passphrase is
 	// needed to restore. False on a set with no items.
 	Encrypted bool `json:"encrypted" gorm:"not null;default:false"`
+	// Envelope seals this set's random data key under the workspace backup
+	// passphrase (see internal/dbenvelope). The artifacts are encrypted with that
+	// key rather than the passphrase itself, so rotating the passphrase re-seals a
+	// few hundred bytes instead of stranding every set behind the secret it was
+	// taken with. Never serialized: it is ciphertext, but publishing it would hand
+	// out the thing an offline attack targets.
+	Envelope string `json:"-" gorm:"type:text"`
 
 	Destination string `json:"destination"` // local | s3
 	S3Bucket    string `json:"s3_bucket,omitempty"`

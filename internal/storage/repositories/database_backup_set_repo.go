@@ -63,6 +63,24 @@ func (r *DatabaseBackupSetRepository) Delete(id uint) error {
 	return r.db.Delete(&models.DatabaseBackupSet{}, id).Error
 }
 
+// FindByID loads a set without workspace scoping, for callers that already hold a
+// workspace-scoped row pointing at it.
+func (r *DatabaseBackupSetRepository) FindByID(id uint) (*models.DatabaseBackupSet, error) {
+	var s models.DatabaseBackupSet
+	if err := r.db.First(&s, id).Error; err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// ListSealed returns the workspace's sets that carry an envelope, which are the
+// ones a passphrase rotation has to re-wrap.
+func (r *DatabaseBackupSetRepository) ListSealed(workspaceID uint) ([]models.DatabaseBackupSet, error) {
+	var out []models.DatabaseBackupSet
+	err := r.db.Where("workspace_id = ? AND envelope <> ''", workspaceID).Find(&out).Error
+	return out, err
+}
+
 // CreateSchedule stores a new instance-level set schedule.
 func (r *DatabaseBackupSetRepository) CreateSchedule(s *models.DatabaseBackupSetSchedule) error {
 	return r.db.Create(s).Error

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jkaninda/okapi"
+	"github.com/miabi-io/miabi/internal/dbenvelope"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/backupsettings"
@@ -102,9 +103,13 @@ func (h *WorkspaceBackupSettingsHandler) Update(c *okapi.Context, req *UpdateBac
 		BackupPassphrase:   backupPass,
 	})
 	if err != nil {
-		// A rejected passphrase is the user's to fix, not an internal failure.
-		if errors.Is(err, wsbundle.ErrWeakPassphrase) {
+		// A rejected passphrase is the user's to fix, not an internal failure. So is
+		// discarding one that recovery points are still sealed with.
+		if errors.Is(err, wsbundle.ErrWeakPassphrase) || errors.Is(err, backupsettings.ErrSealedSetsExist) {
 			return c.AbortBadRequest(err.Error())
+		}
+		if errors.Is(err, dbenvelope.ErrBadPassphrase) {
+			return c.AbortBadRequest("the stored passphrase no longer opens this workspace's recovery points, so it cannot be rotated")
 		}
 		return c.AbortInternalServerError("failed to save backup settings", err)
 	}
