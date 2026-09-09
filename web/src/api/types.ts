@@ -1540,8 +1540,23 @@ export interface DatabaseBackupSet {
   started_at?: string | null
   finished_at?: string | null
   created_at: string
+  // When the set was last checked against the bucket, and how it went. Absent
+  // means never checked.
+  verified_at?: string | null
+  verify_status?: 'ok' | 'failed'
+  verify_error?: string
   // The per-database backups this set is made of.
   items?: Backup[]
+}
+
+export interface VerifyResult {
+  ref: string
+  ok: boolean
+  checked: number
+  missing?: string[]
+  resized?: string[]
+  envelope_ok: boolean
+  error?: string
 }
 
 // Recovery points plus whether the workspace can take one. The capability comes
@@ -1592,6 +1607,23 @@ export interface DiscoveredSet {
   // The workspace's passphrase opens it and every artifact is present.
   openable: boolean
   reason?: string
+}
+
+// What adopting a discovered recovery point produced.
+export interface AdoptResult {
+  ref: string
+  set_id: number
+  adopted: number
+  already_known: boolean
+  // Artifacts with no database of that name on the instance. They stay in the
+  // bucket; recreate the database and adopt again to pick them up.
+  skipped?: { database: string; filename: string; reason: string }[]
+}
+
+export interface SetRestoreResult {
+  ref: string
+  restored: string[]
+  failed?: string[]
 }
 
 export interface BackupSchedule {

@@ -75,6 +75,9 @@ func (s *Service) RunSet(ctx context.Context, inst *models.DatabaseInstance, opt
 	}
 
 	var envelope string
+	// dest.GPGPassphrase becomes the data key below, so the passphrase that opens
+	// the envelope has to be kept for the verification that follows the run.
+	envelopePassphrase := dest.GPGPassphrase
 
 	// The artifacts are encrypted with a per-set data key rather than the passphrase
 	// itself; the envelope is what ties that key back to the passphrase. Without a
@@ -130,6 +133,14 @@ func (s *Service) RunSet(ctx context.Context, inst *models.DatabaseInstance, opt
 	if err := writeSetInfo(ctx, dest.S3, dest.S3.Path, setInfoFor(done, inst.Name, names)); err != nil {
 		logger.Error("write recovery point descriptor; the set is stored but will not be discoverable",
 			"set", done.Ref, "error", err)
+	}
+
+	// Check it immediately. A backup nobody has read back is a backup nobody knows
+	// works, and the cheapest moment to find a failed upload is right after it.
+	if done.Status == models.BackupCompleted {
+		if _, err := s.VerifySet(ctx, dest.S3, done, envelopePassphrase); err != nil {
+			logger.Warn("could not verify the new recovery point", "set", done.Ref, "error", err)
+		}
 	}
 	return done, nil
 }
@@ -365,4 +376,51 @@ func (s *Service) SealedSetCount(workspaceID uint) (int, error) {
 	}
 	sealed, err := s.sets.ListSealed(workspaceID)
 	return len(sealed), err
+}
+
+// SetRestoreResult reports what a set-level restore did.
+type SetRestoreResult struct {
+	Ref      string   `json:"ref"`
+	Restored []string `json:"restored"`
+	Failed   []string `json:"failed,omitempty"`
+}
+
+// RestoreSet restores every database in a recovery point, in one operation.
+//
+// Unlike a backup, this does NOT stop at the first failure. A restore is run when
+// something has already gone wrong, and abandoning the remaining databases because
+// one of them failed would turn a partial recovery into a smaller one. Every
+// outcome is reported and the caller decides.
+func (s *Service) RestoreSet(ctx context.Context, inst *models.DatabaseInstance, set *models.DatabaseBackupSet,
+	dest Destination, force, allowVersionMismatch bool) (*SetRestoreResult, error) {
+
+	if s.sets == nil {
+		return nil, ErrSetsUnavailable
+	}
+	if len(set.Items) == 0 {
+		return nil, ErrNoBackupFile
+	}
+	res := &SetRestoreResult{Ref: set.Ref}
+	for i := range set.Items {
+		item := &set.Items[i]
+		db, err := s.dbs.FindDatabaseInWorkspace(set.WorkspaceID, item.DatabaseID)
+		if err != nil {
+			res.Failed = append(res.Failed, fmt.Sprintf("database #%d: %v", item.DatabaseID, err))
+			continue
+		}
+		if err := s.RestoreFromBackup(ctx, inst, db, item, dest, force, allowVersionMismatch); err != nil {
+			res.Failed = append(res.Failed, fmt.Sprintf("%s: %v", db.Name, err))
+			continue
+		}
+		res.Restored = append(res.Restored, db.Name)
+	}
+	sev, msg := models.SeverityInfo, fmt.Sprintf("Restored %d database(s) from %s", len(res.Restored), set.Ref)
+	evt := models.EventDatabaseRestoreSucceeded
+	if len(res.Failed) > 0 {
+		sev, evt = models.SeverityError, models.EventDatabaseRestoreFailed
+		msg = fmt.Sprintf("Restore of %s: %d succeeded, %d failed", set.Ref, len(res.Restored), len(res.Failed))
+	}
+	s.emit(set.WorkspaceID, inst.ID, inst.Name, evt, sev, msg,
+		map[string]string{"set": set.Ref, "restored": fmt.Sprint(len(res.Restored)), "failed": fmt.Sprint(len(res.Failed))})
+	return res, nil
 }

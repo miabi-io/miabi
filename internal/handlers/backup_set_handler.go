@@ -156,6 +156,110 @@ func (h *BackupHandler) DiscoverSets(c *okapi.Context) error {
 	return ok(c, found)
 }
 
+// AdoptSetRequest names the recovery point to pull into this workspace's history.
+type AdoptSetRequest struct {
+	Body struct {
+		Ref string `json:"ref" required:"true"`
+	} `json:"body"`
+}
+
+// AdoptSet writes a recovery point found in the bucket into this instance's
+// history. It creates rows and touches no data.
+func (h *BackupHandler) AdoptSet(c *okapi.Context, req *AdoptSetRequest) error {
+	inst, err := h.loadInstance(c)
+	if err != nil {
+		return c.AbortNotFound("database instance not found")
+	}
+	cfg, base, err := h.bucketFor(inst.WorkspaceID)
+	if err != nil {
+		return c.AbortBadRequest(err.Error())
+	}
+	res, err := h.svc.AdoptSet(c.Request().Context(), cfg, base, inst, strings.TrimSpace(req.Body.Ref))
+	switch {
+	case errors.Is(err, backup.ErrSetNotInBucket):
+		return c.AbortNotFound("no recovery point with that ref is in the bucket")
+	case errors.Is(err, backup.ErrEngineMismatch):
+		return c.AbortBadRequest(err.Error())
+	case err != nil:
+		return c.AbortInternalServerError("failed to adopt the recovery point", err)
+	}
+	h.record(c, inst.WorkspaceID, "database.backup_set_adopt", res.SetID)
+	return ok(c, res)
+}
+
+// RestoreSetRequest carries the restore method for a whole recovery point.
+type RestoreSetRequest struct {
+	Body struct {
+		// "force" drops and recreates each database first; anything else restores
+		// over what is there.
+		Method string `json:"method" enum:"normal,force"`
+		// AllowVersionMismatch loads dumps taken from a newer engine anyway.
+		AllowVersionMismatch bool `json:"allow_version_mismatch"`
+	} `json:"body"`
+}
+
+// RestoreSet restores every database in a recovery point.
+func (h *BackupHandler) RestoreSet(c *okapi.Context, req *RestoreSetRequest) error {
+	wsID := middlewares.WorkspaceID(c)
+	set, err := h.loadSet(c, wsID)
+	if err != nil {
+		return c.AbortNotFound("backup set not found")
+	}
+	inst, err := h.dbs.FindInWorkspace(wsID, set.InstanceID)
+	if err != nil {
+		return c.AbortNotFound("database instance not found")
+	}
+	dest, err := h.setDestination(wsID)
+	if err != nil {
+		return c.AbortInternalServerError("failed to resolve the backup destination", err)
+	}
+	res, err := h.svc.RestoreSet(c.Request().Context(), inst, set, dest,
+		req.Body.Method == "force", req.Body.AllowVersionMismatch)
+	if err != nil {
+		if errors.Is(err, backup.ErrNoBackupFile) {
+			return c.AbortBadRequest("this recovery point has no artifacts to restore")
+		}
+		return c.AbortInternalServerError("failed to restore the recovery point", err)
+	}
+	h.record(c, wsID, "database.backup_set_restore", set.ID)
+	return ok(c, res)
+}
+
+// bucketFor resolves the workspace's object-storage target, or says why it cannot.
+func (h *BackupHandler) bucketFor(workspaceID uint) (*backup.S3Config, string, error) {
+	if h.settings == nil {
+		return nil, "", errors.New("workspace backup settings are not available")
+	}
+	cfg, base, err := h.settings.DatabaseBackupTarget(workspaceID)
+	if err != nil {
+		return nil, "", err
+	}
+	if cfg == nil {
+		return nil, "", errors.New("recovery points need the workspace S3 backup target — configure it under Workspace settings → Backups")
+	}
+	return cfg, base, nil
+}
+
+// VerifySet re-checks a recovery point against the bucket on demand.
+func (h *BackupHandler) VerifySet(c *okapi.Context) error {
+	wsID := middlewares.WorkspaceID(c)
+	set, err := h.loadSet(c, wsID)
+	if err != nil {
+		return c.AbortNotFound("backup set not found")
+	}
+	cfg, _, err := h.bucketFor(wsID)
+	if err != nil {
+		return c.AbortBadRequest(err.Error())
+	}
+	pass, _ := h.settings.DatabaseBackupPassphrase(wsID)
+	res, err := h.svc.VerifySet(c.Request().Context(), cfg, set, pass)
+	if err != nil {
+		return c.AbortInternalServerError("failed to verify the recovery point", err)
+	}
+	h.record(c, wsID, "database.backup_set_verify", set.ID)
+	return ok(c, res)
+}
+
 // RecoveryKit downloads the instructions for reading a recovery point back without
 // Miabi. The kit carries the sealed envelope but never the data key, so it is only
 // useful to someone who also has the passphrase.

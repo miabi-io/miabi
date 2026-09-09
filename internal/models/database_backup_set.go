@@ -55,6 +55,13 @@ type DatabaseBackupSet struct {
 	FinishedAt *time.Time `json:"finished_at"`
 	CreatedAt  time.Time  `json:"created_at"`
 
+	// Verification. An untested backup is the most common reason a recovery fails,
+	// so the history says when a set was last checked and not only when it was
+	// taken. An empty VerifyStatus means never checked.
+	VerifiedAt   *time.Time `json:"verified_at,omitempty"`
+	VerifyStatus string     `json:"verify_status,omitempty"` // ok | failed
+	VerifyError  string     `json:"verify_error,omitempty" gorm:"type:text"`
+
 	// Items are this recovery point's per-database backups. CASCADE because they
 	// have no meaning without it: an artifact whose set is gone cannot be restored
 	// as part of one, and leaving it behind shows half a recovery point in the
