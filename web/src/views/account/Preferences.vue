@@ -108,7 +108,7 @@ async function saveDisplay() {
           <label class="form-label" for="default-ws">Workspace</label>
           <select
             id="default-ws"
-            class="form-input"
+            class="form-select"
             :value="defaultWorkspaceId == null ? '' : String(defaultWorkspaceId)"
             :disabled="saving"
             @change="saveDefaultWorkspace(($event.target as HTMLSelectElement).value)"
@@ -147,7 +147,7 @@ async function saveDisplay() {
       <div class="card-body">
         <div class="form-group">
           <label class="form-label" for="landing">Open on</label>
-          <select id="landing" v-model="landingView" class="form-input">
+          <select id="landing" v-model="landingView" class="form-select">
             <option v-for="v in landingViews" :key="v.value" :value="v.value">{{ v.label }}</option>
           </select>
           <p class="form-hint">The section a new session opens on inside your default workspace.</p>
