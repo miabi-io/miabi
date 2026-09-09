@@ -16,12 +16,14 @@ export interface BackupSettings {
   bundle_path?: string
   s3_secret_set: boolean
   bundle_passphrase_set: boolean
+  backup_passphrase_set: boolean
   created_at?: string
   updated_at?: string
 }
 
-// UpdateBackupSettingsInput mirrors the backend body. Leave s3_secret_key or
-// bundle_passphrase empty to keep the stored value unchanged.
+// UpdateBackupSettingsInput mirrors the backend body. Leave s3_secret_key,
+// bundle_passphrase or backup_passphrase empty to keep the stored value unchanged;
+// backup_passphrase_clear is the only way to turn database encryption back off.
 export interface UpdateBackupSettingsInput {
   s3_enabled: boolean
   s3_endpoint: string
@@ -35,6 +37,8 @@ export interface UpdateBackupSettingsInput {
   volume_backup_path: string
   bundle_path: string
   bundle_passphrase: string
+  backup_passphrase: string
+  backup_passphrase_clear: boolean
 }
 
 // One prefix's result from a connection test: the probe wrote a small object

@@ -27,6 +27,11 @@ type WorkspaceBackupSettings struct {
 	// workspace's data-encryption key.
 	BundlePassphraseEnc string `json:"-" gorm:"column:bundle_passphrase_enc"`
 
+	// BackupPassphraseEnc encrypts database backup artifacts, at rest itself under the
+	// workspace's data-encryption key. Set means every new database backup leaves the
+	// platform as GPG ciphertext; unset preserves the previous cleartext behaviour.
+	BackupPassphraseEnc string `json:"-" gorm:"column:backup_passphrase_enc"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
@@ -34,6 +39,7 @@ type WorkspaceBackupSettings struct {
 	// Not persisted; populated on read so the UI can render "••••• (set)".
 	S3SecretSet         bool `json:"s3_secret_set" gorm:"-"`
 	BundlePassphraseSet bool `json:"bundle_passphrase_set" gorm:"-"`
+	BackupPassphraseSet bool `json:"backup_passphrase_set" gorm:"-"`
 }
 
 // DefaultBundlePath is where bundles live when the workspace sets no prefix.

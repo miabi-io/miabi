@@ -149,3 +149,34 @@ func TestArtifactNameWithNoMatch(t *testing.T) {
 		t.Fatal("output naming no artifact was accepted")
 	}
 }
+
+// Enabling encryption must not strand the backups taken before it. The artifact's
+// own suffix decides whether a passphrase is applied, so a workspace holds a mix of
+// encrypted and cleartext backups and both restore.
+func TestPassphraseForKeysOffTheArtifact(t *testing.T) {
+	cases := []struct {
+		name     string
+		filename string
+		want     string
+	}{
+		{"encrypted sql dump", "app_20260909.sql.gz.gpg", "secret"},
+		{"encrypted mongo archive", "app_20260909.archive.gz.gpg", "secret"},
+		{"cleartext dump taken before the passphrase was set", "app_20260101.sql.gz", ""},
+		{"cleartext mongo archive", "app_20260101.archive.gz", ""},
+		{"no filename", "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := passphraseFor(tc.filename, "secret"); got != tc.want {
+				t.Errorf("passphraseFor(%q) = %q, want %q", tc.filename, got, tc.want)
+			}
+		})
+	}
+}
+
+// With no passphrase configured there is nothing to apply, encrypted suffix or not.
+func TestPassphraseForWithoutAPassphrase(t *testing.T) {
+	if got := passphraseFor("app.sql.gz.gpg", ""); got != "" {
+		t.Errorf("passphraseFor with no passphrase = %q, want empty", got)
+	}
+}

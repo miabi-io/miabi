@@ -45,6 +45,12 @@ type UpdateBackupSettingsRequest struct {
 
 		BundlePath       string `json:"bundle_path"`
 		BundlePassphrase string `json:"bundle_passphrase"`
+
+		// BackupPassphrase encrypts database backups. Omitted keeps the stored value;
+		// BackupPassphraseClear is the only way to go back to cleartext, so that
+		// clearing it is always deliberate and never an empty field submitted by accident.
+		BackupPassphrase      string `json:"backup_passphrase"`
+		BackupPassphraseClear bool   `json:"backup_passphrase_clear"`
 	} `json:"body"`
 }
 
@@ -72,6 +78,14 @@ func (h *WorkspaceBackupSettingsHandler) Update(c *okapi.Context, req *UpdateBac
 	if b.BundlePassphrase != "" {
 		passphrase = &b.BundlePassphrase
 	}
+	var backupPass *string
+	switch {
+	case b.BackupPassphraseClear:
+		empty := ""
+		backupPass = &empty
+	case b.BackupPassphrase != "":
+		backupPass = &b.BackupPassphrase
+	}
 	st, err := h.svc.Save(wsID, backupsettings.SaveInput{
 		S3Enabled:          b.S3Enabled,
 		S3Endpoint:         b.S3Endpoint,
@@ -85,6 +99,7 @@ func (h *WorkspaceBackupSettingsHandler) Update(c *okapi.Context, req *UpdateBac
 		VolumeBackupPath:   b.VolumeBackupPath,
 		BundlePath:         b.BundlePath,
 		BundlePassphrase:   passphrase,
+		BackupPassphrase:   backupPass,
 	})
 	if err != nil {
 		// A rejected passphrase is the user's to fix, not an internal failure.

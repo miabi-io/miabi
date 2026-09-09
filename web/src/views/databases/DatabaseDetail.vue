@@ -433,12 +433,12 @@ async function togglePin(b: Backup) {
   }
 }
 // --- Restore dialog (existing backup or uploaded file; normal or force) ---
-const restoreModal = ref<{ backupId: number | null; number: number | null; comment: string; version: string } | null>(null)
+const restoreModal = ref<{ backupId: number | null; number: number | null; comment: string; version: string; encrypted: boolean } | null>(null)
 const restoreMethod = ref<'normal' | 'force'>('normal')
 const restoreFile = ref<File | null>(null)
 const restoring = ref(false)
 function openRestore(b: Backup | null) {
-  restoreModal.value = { backupId: b?.id ?? null, number: b?.number ?? null, comment: b?.comment ?? '', version: b?.version ?? '' }
+  restoreModal.value = { backupId: b?.id ?? null, number: b?.number ?? null, comment: b?.comment ?? '', version: b?.version ?? '', encrypted: b?.encrypted ?? false }
   restoreMethod.value = 'normal'
   restoreFile.value = null
 }
@@ -978,6 +978,14 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
                     <span class="cell-title">
                       #{{ b.number }}
                       <span v-if="b.pinned" class="badge badge-neutral" style="margin-left: 4px">pinned</span>
+                      <span
+                        v-if="b.encrypted"
+                        class="badge badge-success"
+                        style="margin-left: 4px"
+                        title="Encrypted with the workspace backup passphrase, which is required to restore it"
+                      >
+                        <span class="mdi mdi-lock-outline"></span> encrypted
+                      </span>
                     </span>
                     <div class="cell-sub">
                       {{ b.trigger }} · {{ b.destination }}<template v-if="b.version"> · {{ b.engine }} {{ b.version }}</template><template v-if="b.filename"> · {{ b.filename }}</template>
@@ -1355,6 +1363,11 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
             </p>
             <p v-if="restoreModal.version" class="form-hint" style="margin-bottom: 12px">
               Taken from {{ inst?.engine }} {{ restoreModal.version }}<template v-if="inst?.version && inst.version !== restoreModal.version">; this instance now runs {{ inst.version }}</template>.
+            </p>
+            <p v-if="restoreModal.encrypted" class="form-hint" style="margin-bottom: 12px">
+              <span class="mdi mdi-lock-outline"></span>
+              Encrypted. It is decrypted with the workspace backup passphrase, so restoring needs the
+              same one it was taken with.
             </p>
             <div v-if="restoreModal.backupId == null" class="form-group">
               <label class="form-label">Dump file</label>

@@ -1511,6 +1511,9 @@ export interface Backup {
   comment?: string
   // Pinned backups are exempt from retention pruning.
   pinned: boolean
+  // The artifact was GPG-encrypted with the workspace backup passphrase, which is
+  // then required to restore it.
+  encrypted: boolean
   error?: string
   created_at: string
 }

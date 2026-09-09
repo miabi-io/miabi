@@ -34,7 +34,7 @@ var backupSettingsColumns = []string{
 	"s3_enabled", "s3_endpoint", "s3_bucket", "s3_region", "s3_access_key",
 	"s3_secret_key_enc", "s3_use_ssl", "s3_force_path_style",
 	"database_backup_path", "volume_backup_path",
-	"bundle_path", "bundle_passphrase_enc", "updated_at",
+	"bundle_path", "bundle_passphrase_enc", "backup_passphrase_enc", "updated_at",
 }
 
 // Upsert inserts or updates the workspace's settings (keyed by workspace_id).

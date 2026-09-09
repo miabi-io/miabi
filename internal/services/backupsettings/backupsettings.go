@@ -49,6 +49,7 @@ func (s *Service) Get(workspaceID uint) (*models.WorkspaceBackupSettings, error)
 	}
 	st.S3SecretSet = st.S3SecretKeyEnc != ""
 	st.BundlePassphraseSet = st.BundlePassphraseEnc != ""
+	st.BackupPassphraseSet = st.BackupPassphraseEnc != ""
 	return st, nil
 }
 
@@ -69,6 +70,7 @@ type SaveInput struct {
 	VolumeBackupPath   string
 	BundlePath         string
 	BundlePassphrase   *string
+	BackupPassphrase   *string
 }
 
 // Save upserts the workspace's settings, encrypting the secret when a new one is
@@ -111,12 +113,30 @@ func (s *Service) Save(workspaceID uint, in SaveInput) (*models.WorkspaceBackupS
 		}
 		st.BundlePassphraseEnc = enc
 	}
+	if in.BackupPassphrase != nil {
+		// An explicit empty string clears it — the only way back to cleartext backups.
+		// nil means "unchanged", as it does for every other secret here.
+		switch *in.BackupPassphrase {
+		case "":
+			st.BackupPassphraseEnc = ""
+		default:
+			if err := wsbundle.ValidatePassphrase(*in.BackupPassphrase); err != nil {
+				return nil, err
+			}
+			enc, err := crypto.EncryptWS(workspaceID, *in.BackupPassphrase)
+			if err != nil {
+				return nil, err
+			}
+			st.BackupPassphraseEnc = enc
+		}
+	}
 
 	if err := s.repo.Upsert(st); err != nil {
 		return nil, err
 	}
 	st.S3SecretSet = st.S3SecretKeyEnc != ""
 	st.BundlePassphraseSet = st.BundlePassphraseEnc != ""
+	st.BackupPassphraseSet = st.BackupPassphraseEnc != ""
 	return st, nil
 }
 
@@ -291,4 +311,44 @@ func (s *Service) DatabaseBackupTarget(workspaceID uint) (*backup.S3Config, stri
 		return nil, "", err
 	}
 	return cfg, st.DatabaseBackupPath, nil
+}
+
+// DatabaseBackupPassphrase returns the workspace's database-backup passphrase, or ""
+// when none is set. Empty is a valid answer, not an error: a workspace that has not
+// chosen one keeps taking cleartext backups.
+func (s *Service) DatabaseBackupPassphrase(workspaceID uint) (string, error) {
+	st, err := s.repo.FindByWorkspace(workspaceID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if st.BackupPassphraseEnc == "" {
+		return "", nil
+	}
+	return crypto.Decrypt(st.BackupPassphraseEnc)
+}
+
+// DatabaseDestination builds the complete destination for a workspace's database
+// backups: the centralized S3 target with its path prefix when configured, else the
+// local volume, carrying the backup passphrase either way.
+//
+// It exists so no caller has to remember the passphrase separately. Every path that
+// takes a database backup on the workspace's behalf goes through here; assembling a
+// bare Destination is how database backups came to be written in the clear.
+func (s *Service) DatabaseDestination(workspaceID uint) (backup.Destination, error) {
+	pass, err := s.DatabaseBackupPassphrase(workspaceID)
+	if err != nil {
+		return backup.Destination{}, err
+	}
+	cfg, path, err := s.DatabaseBackupTarget(workspaceID)
+	if err != nil {
+		return backup.Destination{}, err
+	}
+	if cfg == nil {
+		return backup.Destination{Type: "local", GPGPassphrase: pass}, nil
+	}
+	cfg.Path = path
+	return backup.Destination{Type: "s3", S3: cfg, GPGPassphrase: pass}, nil
 }
