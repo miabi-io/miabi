@@ -47,6 +47,7 @@ type Manager struct {
 	backups  *backup.Service
 	dbs      *repositories.DatabaseRepository
 	sched    *repositories.BackupRepository
+	sets     *repositories.DatabaseBackupSetRepository
 	settings *backupsettings.Service
 
 	mu      sync.Mutex
@@ -54,7 +55,7 @@ type Manager struct {
 	state   map[string]*jobState
 }
 
-func NewManager(backups *backup.Service, dbs *repositories.DatabaseRepository, sched *repositories.BackupRepository, settings *backupsettings.Service) *Manager {
+func NewManager(backups *backup.Service, dbs *repositories.DatabaseRepository, sched *repositories.BackupRepository, sets *repositories.DatabaseBackupSetRepository, settings *backupsettings.Service) *Manager {
 	return &Manager{
 		// SkipIfStillRunning drops a tick whose previous invocation of the same task
 		// is still running, so a job slower than its interval (e.g. a large backup)
@@ -63,6 +64,7 @@ func NewManager(backups *backup.Service, dbs *repositories.DatabaseRepository, s
 		backups:  backups,
 		dbs:      dbs,
 		sched:    sched,
+		sets:     sets,
 		settings: settings,
 		entries:  make(map[string]cron.EntryID),
 		state:    make(map[string]*jobState),
@@ -175,8 +177,17 @@ func (m *Manager) Start() {
 	for _, s := range schedules {
 		m.Register(s)
 	}
+	var setSchedules []models.DatabaseBackupSetSchedule
+	if m.sets != nil {
+		if setSchedules, err = m.sets.ListEnabledSchedules(); err != nil {
+			logger.Error("failed to load backup set schedules", "error", err)
+		}
+		for _, s := range setSchedules {
+			m.RegisterSet(s)
+		}
+	}
 	m.c.Start()
-	logger.Info("scheduler started", "backup_schedules", len(schedules))
+	logger.Info("scheduler started", "backup_schedules", len(schedules), "backup_set_schedules", len(setSchedules))
 }
 
 // Stop halts the cron loop.
@@ -197,6 +208,50 @@ func (m *Manager) Register(s models.BackupSchedule) {
 
 // Unregister removes a backup schedule from the running cron.
 func (m *Manager) Unregister(scheduleID uint) { m.UnregisterTask("backup", scheduleID) }
+
+// RegisterSet adds (or replaces) an instance-level recovery-point schedule.
+func (m *Manager) RegisterSet(s models.DatabaseBackupSetSchedule) {
+	id, ws, instID := s.ID, s.WorkspaceID, s.InstanceID
+	name := fmt.Sprintf("Recovery point: instance #%d", s.InstanceID)
+	if err := m.RegisterTask("backup-set", id, name, s.Cron, func() error { return m.runBackupSet(id, ws, instID) }); err != nil {
+		logger.Error("invalid backup set cron", "schedule", s.ID, "cron", s.Cron, "error", err)
+	}
+}
+
+// UnregisterSet removes a recovery-point schedule from the running cron.
+func (m *Manager) UnregisterSet(scheduleID uint) { m.UnregisterTask("backup-set", scheduleID) }
+
+func (m *Manager) runBackupSet(scheduleID, workspaceID, instanceID uint) error {
+	inst, err := m.dbs.FindInWorkspace(workspaceID, instanceID)
+	if err != nil {
+		return fmt.Errorf("instance not found: %w", err)
+	}
+	sched, err := m.sets.FindScheduleInWorkspace(workspaceID, scheduleID)
+	if err != nil {
+		return fmt.Errorf("schedule not found: %w", err)
+	}
+	set, err := m.backups.RunSet(context.Background(), inst, backup.SetOptions{
+		Trigger: "scheduled", Concurrency: sched.Concurrency,
+	}, m.destinationFor(workspaceID))
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	sched.LastRunAt = &now
+	_ = m.sets.UpdateSchedule(sched)
+
+	// Retention runs only after a set that actually completed. Pruning around a
+	// failed run could retire a good recovery point in favour of a broken one.
+	if set.Status == models.BackupCompleted && (sched.MaxSets > 0 || sched.RetentionDays > 0) {
+		if _, perr := m.backups.PruneSets(context.Background(), instanceID, sched.MaxSets, sched.RetentionDays); perr != nil {
+			logger.Error("prune backup sets", "instance", instanceID, "error", perr)
+		}
+	}
+	if set.Status != models.BackupCompleted {
+		return fmt.Errorf("recovery point %s failed: %s", set.Ref, set.Error)
+	}
+	return nil
+}
 
 func (m *Manager) runBackup(scheduleID, workspaceID, databaseID uint) error {
 	db, err := m.dbs.FindDatabaseInWorkspace(workspaceID, databaseID)

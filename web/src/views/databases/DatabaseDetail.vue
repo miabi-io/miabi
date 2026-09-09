@@ -15,8 +15,9 @@ import ResourceIcon from '@/components/ResourceIcon.vue'
 import { fmtSize } from '@/utils/format'
 import { engineLogo, engineMdi } from '@/utils/resourceIcon'
 import { copyText } from '@/utils/clipboard'
-import type { DatabaseInstance, DBStatus, UpgradeProgress, LogicalDatabase, ConnectionInfo, ForwardSession, Backup, BackupSchedule, DatabaseBackupSet, Application, Network, UpgradeOptions, UpgradePlan, StatsSample, AppEvent } from '@/api/types'
+import type { DatabaseInstance, DBStatus, UpgradeProgress, LogicalDatabase, ConnectionInfo, ForwardSession, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, Application, Network, UpgradeOptions, UpgradePlan, StatsSample, AppEvent } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
+import { relativeTime } from '@/utils/time'
 
 const route = useRoute()
 const router = useRouter()
@@ -32,7 +33,14 @@ const apps = ref<Application[]>([])
 const selected = ref<LogicalDatabase | null>(null)
 const backups = ref<Backup[]>([])
 const sets = ref<DatabaseBackupSet[]>([])
+// Recovery points require object storage; without it the action is unavailable
+// rather than silently writing somewhere that dies with the host.
+const setsS3Ready = ref(false)
 const runningSet = ref(false)
+const setSchedules = ref<DatabaseBackupSetSchedule[]>([])
+const setCron = ref('0 3 * * *')
+const setMax = ref(7)
+const setRetentionDays = ref(0)
 // Which recovery point has its per-database items open. One at a time: the point
 // of the list is the sets, not their contents.
 const openSet = ref<number | null>(null)
@@ -390,7 +398,10 @@ async function loadBackups() {
 async function loadSets() {
   if (!wid.value) return
   try {
-    sets.value = (await backupApi.sets(wid.value, instId.value)).data.data ?? []
+    const res = (await backupApi.sets(wid.value, instId.value)).data.data
+    sets.value = res?.sets ?? []
+    setsS3Ready.value = res?.s3_configured ?? false
+    setSchedules.value = (await backupApi.setSchedules(wid.value, instId.value)).data.data ?? []
   } catch (e) { notify.apiError(e) }
 }
 async function runSet() {
@@ -409,6 +420,23 @@ async function runSet() {
   } catch (e) { notify.apiError(e) }
   finally { runningSet.value = false }
 }
+async function addSetSchedule() {
+  if (!wid.value) return
+  try {
+    await backupApi.createSetSchedule(wid.value, instId.value, setCron.value, setMax.value, setRetentionDays.value)
+    notify.success('Schedule created')
+    loadSets()
+  } catch (e) { notify.apiError(e) }
+}
+async function removeSetSchedule(id: number) {
+  if (!wid.value) return
+  try {
+    await backupApi.deleteSetSchedule(wid.value, instId.value, id)
+    notify.success('Schedule deleted')
+    loadSets()
+  } catch (e) { notify.apiError(e) }
+}
+
 function askRemoveSet(set: DatabaseBackupSet) {
   confirm.value = {
     kind: 'remove-backup-set', title: 'Delete recovery point', confirmLabel: 'Delete', variant: 'danger',
@@ -985,12 +1013,25 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
         <div class="card-header">
           <h2>Recovery points</h2>
           <div class="flex items-center gap-2">
-            <button v-if="ws.canEdit" class="btn btn-sm btn-primary" :disabled="runningSet || !databases.length" @click="runSet">
+            <button
+              v-if="ws.canEdit"
+              class="btn btn-sm btn-primary"
+              :disabled="runningSet || !databases.length || !setsS3Ready"
+              :title="setsS3Ready ? '' : 'Configure the workspace S3 backup target first'"
+              @click="runSet"
+            >
               {{ runningSet ? 'Backing up…' : 'Back up all databases' }}
             </button>
           </div>
         </div>
-        <div v-if="sets.length === 0" class="empty-state">
+        <div v-if="!setsS3Ready" class="empty-state">
+          <span class="mdi mdi-cloud-off-outline" style="font-size: 36px; color: var(--text-muted)"></span>
+          <p>
+            Recovery points are stored in object storage, so they survive losing this host.
+            Set the workspace S3 backup target under <strong>Workspace settings → Backups</strong> to use them.
+          </p>
+        </div>
+        <div v-else-if="sets.length === 0" class="empty-state">
           <span class="mdi mdi-database-lock-outline" style="font-size: 36px; color: var(--text-muted)"></span>
           <p>No recovery points yet. One backs up every database on this instance together, so they restore as a set.</p>
         </div>
@@ -1046,6 +1087,40 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
               </template>
             </tbody>
           </table>
+        </div>
+        <div v-if="setsS3Ready" class="card-body" style="border-top: 1px solid var(--border-primary)">
+          <form v-if="ws.canEdit" class="flex items-center gap-2" style="flex-wrap: wrap" @submit.prevent="addSetSchedule">
+            <label class="sched-field">
+              <span class="text-muted text-sm">Cron (UTC)</span>
+              <input v-model="setCron" class="form-input" placeholder="0 3 * * *" style="max-width: 160px" />
+            </label>
+            <label class="sched-field">
+              <span class="text-muted text-sm">Keep last (0 = all)</span>
+              <input v-model.number="setMax" type="number" min="0" class="form-input" style="max-width: 120px" />
+            </label>
+            <label class="sched-field">
+              <span class="text-muted text-sm">Max age days (0 = ∞)</span>
+              <input v-model.number="setRetentionDays" type="number" min="0" class="form-input" style="max-width: 130px" />
+            </label>
+            <button class="btn btn-primary" style="align-self: flex-end">Add schedule</button>
+          </form>
+          <p v-if="setSchedules.length === 0" class="form-hint" style="margin-top: 8px">
+            No schedule yet. Retention only runs after a scheduled recovery point, and the newest
+            successful one is never deleted whatever the policy says.
+          </p>
+          <ul v-else class="set-items" style="margin-top: 12px">
+            <li v-for="sc in setSchedules" :key="sc.id">
+              <code>{{ sc.cron }}</code>
+              <span class="text-muted text-sm">
+                keep {{ sc.max_sets || 'all' }}<template v-if="sc.retention_days"> · max {{ sc.retention_days }}d</template>
+                <template v-if="sc.last_run_at"> · last {{ relativeTime(sc.last_run_at) }}</template>
+              </span>
+              <span v-if="!sc.enabled" class="badge badge-neutral">disabled</span>
+              <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete schedule" aria-label="Delete schedule" @click="removeSetSchedule(sc.id)">
+                <span class="mdi mdi-delete-outline"></span>
+              </button>
+            </li>
+          </ul>
         </div>
       </div>
 

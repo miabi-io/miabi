@@ -22,6 +22,11 @@ var (
 	// reaches here too: its data rides on the volume, so it has no logical
 	// databases and is covered by a volume backup instead.
 	ErrNoDatabases = errors.New("the instance has no database to back up")
+	// ErrS3Required means the workspace has no object-storage target. A recovery
+	// point exists to survive the loss of the host it was taken from, and the local
+	// backup volume dies with that host — so a local set would promise something it
+	// cannot deliver. Rediscovering sets from a bucket depends on this too.
+	ErrS3Required = errors.New("backup sets require the workspace S3 backup target")
 )
 
 // defaultSetConcurrency is deliberately 1. Several dumps at once against one
@@ -43,6 +48,7 @@ type SetOptions struct {
 func (s *Service) SetSetRepository(r *repositories.DatabaseBackupSetRepository) { s.sets = r }
 
 // RunSet backs up every logical database on an instance as one recovery point.
+// It requires the workspace S3 target and returns ErrS3Required without one.
 //
 // The set is marked failed if any item fails, and the error names the first
 // failure: a recovery point that is missing a database is not one, and reporting
@@ -55,15 +61,16 @@ func (s *Service) RunSet(ctx context.Context, inst *models.DatabaseInstance, opt
 	if _, ok := s.bkupImage(inst.Engine); !ok {
 		return nil, ErrUnsupportedEngine
 	}
+	// Cheapest precondition first: refuse before touching the database or the node.
+	if dest.Type != "s3" || dest.S3 == nil {
+		return nil, ErrS3Required
+	}
 	dbs, err := s.dbs.ListDatabases(inst.ID)
 	if err != nil {
 		return nil, err
 	}
 	if len(dbs) == 0 {
 		return nil, ErrNoDatabases
-	}
-	if dest.Type == "" {
-		dest.Type = "local"
 	}
 
 	now := time.Now()
@@ -76,11 +83,9 @@ func (s *Service) RunSet(ctx context.Context, inst *models.DatabaseInstance, opt
 		Engine:      inst.Engine,
 		Version:     inst.Version,
 		Destination: dest.Type,
+		S3Bucket:    dest.S3.Bucket,
+		S3Path:      dest.S3.Path,
 		StartedAt:   &now,
-	}
-	if dest.S3 != nil {
-		set.S3Bucket = dest.S3.Bucket
-		set.S3Path = dest.S3.Path
 	}
 	if err := s.sets.Create(set); err != nil {
 		return nil, err
@@ -189,8 +194,8 @@ func (s *Service) GetSet(workspaceID, id uint) (*models.DatabaseBackupSet, error
 }
 
 // DeleteSet removes a recovery point and every artifact it carries. The items'
-// rows cascade with the set, but their artifacts are files on a volume or objects
-// in a bucket, which only this service can remove.
+// rows cascade with the set, but their artifacts are objects in a bucket, which
+// only this service can remove.
 func (s *Service) DeleteSet(ctx context.Context, set *models.DatabaseBackupSet) error {
 	if s.sets == nil {
 		return ErrSetsUnavailable

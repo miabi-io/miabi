@@ -76,3 +76,32 @@ func (s *DatabaseBackupSet) HasPinnedItem() bool {
 	}
 	return false
 }
+
+// DatabaseBackupSetSchedule runs a recovery point across an instance on a cron,
+// then applies retention to what it produced.
+//
+// Deliberately separate from BackupSchedule rather than a nullable InstanceID on
+// it: that model is keyed to a required DatabaseID, its retention counts
+// individual backups rather than sets, and it still carries the per-schedule S3
+// fields that are no longer used. Widening it would weaken a constraint every
+// existing row depends on.
+type DatabaseBackupSetSchedule struct {
+	ID          uint   `json:"id" gorm:"primaryKey"`
+	WorkspaceID uint   `json:"workspace_id" gorm:"index;not null"`
+	InstanceID  uint   `json:"instance_id" gorm:"index;not null"`
+	Cron        string `json:"cron" gorm:"not null"`
+	Enabled     bool   `json:"enabled" gorm:"not null;default:true"`
+
+	// Retention, applied after each run. 0 = unlimited. MaxSets counts recovery
+	// points, not the backups inside them.
+	MaxSets       int `json:"max_sets" gorm:"not null;default:0"`
+	RetentionDays int `json:"retention_days" gorm:"not null;default:0"`
+
+	// Concurrency caps how many databases are dumped at once, as for a manual run.
+	// 0 uses the conservative service default.
+	Concurrency int `json:"concurrency" gorm:"not null;default:0"`
+
+	LastRunAt *time.Time `json:"last_run_at"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+}

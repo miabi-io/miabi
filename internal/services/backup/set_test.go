@@ -5,6 +5,7 @@ package backup
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -225,6 +226,52 @@ func TestFinishSetEncryptedOnlyWhenEveryItemIs(t *testing.T) {
 				t.Errorf("Encrypted = %v, want %v", got.Encrypted, tc.want)
 			}
 		})
+	}
+}
+
+// A recovery point exists to survive the loss of its host, so it must live in
+// object storage. The local backup volume dies with the node it is on.
+func TestRunSetRefusesWithoutS3(t *testing.T) {
+	svc, _, _ := newSetService(t)
+	inst := &models.DatabaseInstance{ID: 7, Name: "pg", WorkspaceID: 1, Engine: models.DBEnginePostgres}
+
+	for _, dest := range []Destination{
+		{Type: "local"},
+		{Type: ""},
+		{Type: "s3"}, // s3 named but no target configured
+	} {
+		if _, err := svc.RunSet(context.Background(), inst, SetOptions{Trigger: "manual"}, dest); !errors.Is(err, ErrS3Required) {
+			t.Errorf("RunSet(%+v) error = %v, want ErrS3Required", dest, err)
+		}
+	}
+}
+
+// Retention counts sets, not the backups inside them: a set of eight databases is
+// one recovery point, so "keep 2" keeps two sets and not two dumps.
+func TestPruneSetsCountsSetsNotItems(t *testing.T) {
+	svc, sets, db := newSetService(t)
+	for i, ref := range []string{"newest", "middle", "oldest"} {
+		set := seedSet(t, db, sets, ref, models.BackupCompleted, time.Duration(i)*time.Hour, false)
+		// Three more databases in each set, so item counts cannot be what is counted.
+		for n := 2; n <= 4; n++ {
+			extra := &models.Backup{
+				WorkspaceID: 1, DatabaseID: uint(n), SetID: &set.ID,
+				Status: models.BackupCompleted, Destination: "s3", CreatedAt: set.CreatedAt,
+			}
+			if err := db.Create(extra).Error; err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	removed, err := svc.PruneSets(context.Background(), 7, 2, 0)
+	if err != nil {
+		t.Fatalf("PruneSets: %v", err)
+	}
+	if removed != 1 {
+		t.Errorf("removed = %d sets, want 1", removed)
+	}
+	if got := remainingRefs(t, sets); len(got) != 2 {
+		t.Errorf("kept %q, want 2 sets", got)
 	}
 }
 

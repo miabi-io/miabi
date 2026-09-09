@@ -1544,6 +1544,29 @@ export interface DatabaseBackupSet {
   items?: Backup[]
 }
 
+// Recovery points plus whether the workspace can take one. The capability comes
+// from the API because reading the workspace backup settings needs admin rights,
+// which a developer looking at this page may not have.
+export interface BackupSetsResponse {
+  sets: DatabaseBackupSet[]
+  s3_configured: boolean
+}
+
+// An instance-level schedule: one recovery point per tick, then retention.
+export interface DatabaseBackupSetSchedule {
+  id: number
+  workspace_id: number
+  instance_id: number
+  cron: string
+  enabled: boolean
+  // 0 means unbounded. The newest completed set always survives regardless.
+  max_sets: number
+  retention_days: number
+  concurrency: number
+  last_run_at?: string | null
+  created_at: string
+}
+
 export interface BackupSchedule {
   id: number
   cron: string
