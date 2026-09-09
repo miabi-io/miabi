@@ -1,0 +1,264 @@
+// SPDX-FileCopyrightText: 2026 Jonas Kaninda
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package backup
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+	"time"
+
+	"github.com/jkaninda/logger"
+	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/storage/repositories"
+)
+
+var (
+	// ErrSetsUnavailable means the set repository was never wired.
+	ErrSetsUnavailable = errors.New("backup sets are not available")
+	// ErrNoDatabases means the instance has no logical database to back up. Redis
+	// reaches here too: its data rides on the volume, so it has no logical
+	// databases and is covered by a volume backup instead.
+	ErrNoDatabases = errors.New("the instance has no database to back up")
+)
+
+// defaultSetConcurrency is deliberately 1. Several dumps at once against one
+// engine container is felt by whatever else is using it, and a backup that slows
+// production is a backup people turn off.
+const defaultSetConcurrency = 1
+
+// SetOptions tunes a set run.
+type SetOptions struct {
+	Trigger string // manual | scheduled
+	Comment string
+	// Concurrency caps how many databases are dumped at once. Zero uses
+	// defaultSetConcurrency.
+	Concurrency int
+}
+
+// SetSetRepository wires recovery-point storage (nil-safe: unset means RunSet and
+// the prune below report ErrSetsUnavailable rather than panicking).
+func (s *Service) SetSetRepository(r *repositories.DatabaseBackupSetRepository) { s.sets = r }
+
+// RunSet backs up every logical database on an instance as one recovery point.
+//
+// The set is marked failed if any item fails, and the error names the first
+// failure: a recovery point that is missing a database is not one, and reporting
+// it as a success is how people discover the gap during an incident instead of
+// after the run.
+func (s *Service) RunSet(ctx context.Context, inst *models.DatabaseInstance, opts SetOptions, dest Destination) (*models.DatabaseBackupSet, error) {
+	if s.sets == nil {
+		return nil, ErrSetsUnavailable
+	}
+	if _, ok := s.bkupImage(inst.Engine); !ok {
+		return nil, ErrUnsupportedEngine
+	}
+	dbs, err := s.dbs.ListDatabases(inst.ID)
+	if err != nil {
+		return nil, err
+	}
+	if len(dbs) == 0 {
+		return nil, ErrNoDatabases
+	}
+	if dest.Type == "" {
+		dest.Type = "local"
+	}
+
+	now := time.Now()
+	set := &models.DatabaseBackupSet{
+		WorkspaceID: inst.WorkspaceID,
+		InstanceID:  inst.ID,
+		Ref:         models.NewDatabaseBackupSetRef(inst.Name, now),
+		Trigger:     opts.Trigger,
+		Status:      models.BackupRunning,
+		Engine:      inst.Engine,
+		Version:     inst.Version,
+		Destination: dest.Type,
+		StartedAt:   &now,
+	}
+	if dest.S3 != nil {
+		set.S3Bucket = dest.S3.Bucket
+		set.S3Path = dest.S3.Path
+	}
+	if err := s.sets.Create(set); err != nil {
+		return nil, err
+	}
+
+	items := s.runSetItems(ctx, inst, dbs, set.ID, opts, dest)
+	return s.finishSet(set, inst, items), nil
+}
+
+// runSetItems dumps each database, at most Concurrency at a time, and returns the
+// items in the order the databases were listed.
+func (s *Service) runSetItems(ctx context.Context, inst *models.DatabaseInstance, dbs []models.Database,
+	setID uint, opts SetOptions, dest Destination) []*models.Backup {
+
+	limit := opts.Concurrency
+	if limit <= 0 {
+		limit = defaultSetConcurrency
+	}
+	if limit > len(dbs) {
+		limit = len(dbs)
+	}
+
+	items := make([]*models.Backup, len(dbs))
+	sem := make(chan struct{}, limit)
+	var wg sync.WaitGroup
+	for i := range dbs {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			db := dbs[i]
+			b, err := s.Run(ctx, inst, &db, RunOptions{
+				Trigger: opts.Trigger, Comment: opts.Comment, SetID: &setID,
+			}, dest)
+			if err != nil {
+				// Run returns an error only when it could not start; a dump that ran
+				// and failed comes back as a failed record. Synthesize one so the set
+				// still names the database that stopped it.
+				logger.Error("backup set item could not start", "set", setID, "database", db.Name, "error", err)
+				items[i] = &models.Backup{DatabaseID: db.ID, Status: models.BackupFailed, Error: err.Error()}
+				return
+			}
+			items[i] = b
+		}(i)
+	}
+	wg.Wait()
+	return items
+}
+
+// finishSet aggregates the items into the set's outcome and persists it.
+func (s *Service) finishSet(set *models.DatabaseBackupSet, inst *models.DatabaseInstance, items []*models.Backup) *models.DatabaseBackupSet {
+	fin := time.Now()
+	set.FinishedAt = &fin
+	set.Status = models.BackupCompleted
+	encrypted := len(items) > 0
+
+	for _, b := range items {
+		if b == nil {
+			continue
+		}
+		if b.Status != models.BackupCompleted {
+			set.Status = models.BackupFailed
+			if set.Error == "" {
+				set.Error = fmt.Sprintf("database %d: %s", b.DatabaseID, b.Error)
+			}
+			continue
+		}
+		set.SizeBytes += b.SizeBytes
+		if !b.Encrypted {
+			encrypted = false
+		}
+	}
+	// Only a set whose every artifact is sealed can be described as encrypted; a
+	// mixed set would need the passphrase for some items and not others.
+	set.Encrypted = encrypted && set.Status == models.BackupCompleted
+
+	if err := s.sets.Update(set); err != nil {
+		logger.Error("finalize backup set", "set", set.ID, "error", err)
+	}
+	sev, msg := models.SeverityInfo, fmt.Sprintf("Backup set %s completed (%d databases)", set.Ref, len(items))
+	evt := models.EventDatabaseBackupSucceeded
+	if set.Status == models.BackupFailed {
+		sev, evt = models.SeverityError, models.EventDatabaseBackupFailed
+		msg = fmt.Sprintf("Backup set %s failed: %s", set.Ref, set.Error)
+	}
+	s.emit(set.WorkspaceID, inst.ID, inst.Name, evt, sev, msg,
+		map[string]string{"set": set.Ref, "databases": fmt.Sprint(len(items))})
+	return set
+}
+
+// ListSets returns an instance's recovery points, newest first.
+func (s *Service) ListSets(instanceID uint) ([]models.DatabaseBackupSet, error) {
+	if s.sets == nil {
+		return nil, ErrSetsUnavailable
+	}
+	return s.sets.ListByInstance(instanceID)
+}
+
+// GetSet loads one recovery point with its items.
+func (s *Service) GetSet(workspaceID, id uint) (*models.DatabaseBackupSet, error) {
+	if s.sets == nil {
+		return nil, ErrSetsUnavailable
+	}
+	return s.sets.FindInWorkspace(workspaceID, id)
+}
+
+// DeleteSet removes a recovery point and every artifact it carries. The items'
+// rows cascade with the set, but their artifacts are files on a volume or objects
+// in a bucket, which only this service can remove.
+func (s *Service) DeleteSet(ctx context.Context, set *models.DatabaseBackupSet) error {
+	if s.sets == nil {
+		return ErrSetsUnavailable
+	}
+	for i := range set.Items {
+		if err := s.Delete(ctx, &set.Items[i]); err != nil {
+			return fmt.Errorf("remove backup %d: %w", set.Items[i].ID, err)
+		}
+	}
+	return s.sets.Delete(set.ID)
+}
+
+// PruneSets enforces retention over an instance's recovery points: keep at most
+// maxSets most-recent, and delete any older than retentionDays. A zero bound is
+// ignored. Returns the number of sets removed.
+//
+// Three rules the per-database prune does not have:
+//
+//   - Whole sets only. Pruning items out of a set would leave the half recovery
+//     point the set exists to prevent.
+//   - A set with any pinned member is never pruned, and does not occupy a
+//     maxSets slot, mirroring how a pinned backup behaves.
+//   - The newest completed set always survives, whatever the policy says. A
+//     mistyped retention must not be able to leave an instance with nothing.
+func (s *Service) PruneSets(ctx context.Context, instanceID uint, maxSets, retentionDays int) (int, error) {
+	if s.sets == nil {
+		return 0, ErrSetsUnavailable
+	}
+	if maxSets <= 0 && retentionDays <= 0 {
+		return 0, nil
+	}
+	sets, err := s.sets.ListByInstance(instanceID) // newest-first
+	if err != nil {
+		return 0, err
+	}
+
+	keep := uint(0)
+	for i := range sets {
+		if sets[i].Status == models.BackupCompleted {
+			keep = sets[i].ID
+			break
+		}
+	}
+	var cutoff time.Time
+	if retentionDays > 0 {
+		cutoff = time.Now().AddDate(0, 0, -retentionDays)
+	}
+
+	removed, rank := 0, 0
+	for i := range sets {
+		set := &sets[i]
+		if set.HasPinnedItem() {
+			continue
+		}
+		overCount := maxSets > 0 && rank >= maxSets
+		tooOld := retentionDays > 0 && set.CreatedAt.Before(cutoff)
+		rank++
+		if set.ID == keep || !(overCount || tooOld) {
+			continue
+		}
+		if err := s.DeleteSet(ctx, set); err != nil {
+			logger.Error("prune backup set", "set", set.ID, "error", err)
+			continue
+		}
+		removed++
+	}
+	if removed > 0 {
+		logger.Info("pruned backup sets", "instance", instanceID, "removed", removed)
+	}
+	return removed, nil
+}

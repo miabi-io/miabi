@@ -97,6 +97,7 @@ type Service struct {
 	logs    *logstore.Store
 	alerter BackupAlerter
 	events  EventRecorder
+	sets    *repositories.DatabaseBackupSetRepository
 }
 
 func NewService(repo *repositories.BackupRepository, dbs *repositories.DatabaseRepository, clients NodeDocker) *Service {
@@ -219,6 +220,9 @@ func ensureDBNetworks(ctx context.Context, dc docker.Client, inst *models.Databa
 type RunOptions struct {
 	Trigger string // manual | scheduled | upgrade | bundle | platform-dr
 	Comment string
+	// SetID marks this backup as one item of a recovery point. Nil for an ordinary
+	// single-database backup.
+	SetID *uint
 }
 
 // Run performs a backup of a logical database to the given destination and
@@ -239,7 +243,7 @@ func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *mo
 	b := &models.Backup{
 		WorkspaceID: db.WorkspaceID, DatabaseID: db.ID, Engine: inst.Engine, ServerID: inst.ServerID,
 		Status: models.BackupRunning, Trigger: opts.Trigger, Destination: dest.Type, StartedAt: &now,
-		Version: inst.Version, Comment: opts.Comment,
+		Version: inst.Version, Comment: opts.Comment, SetID: opts.SetID,
 	}
 	if err := s.repo.Create(b); err != nil {
 		return nil, err
