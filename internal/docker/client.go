@@ -1136,8 +1136,6 @@ func (e *engineClient) RemoveVolume(ctx context.Context, name string, force bool
 	return wrapNotFound(err)
 }
 
-// --- helpers ---
-
 // encodeRegistryAuth base64-encodes a registry credential for the Docker API's
 // X-Registry-Auth header. Returns "" (no error) when auth is nil/empty.
 func encodeRegistryAuth(auth *RegistryAuth) (string, error) {

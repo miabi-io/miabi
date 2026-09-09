@@ -178,11 +178,9 @@ func TestSwarmServiceLifecycle(t *testing.T) {
 		t.Fatalf("ServiceRestart: %v", err)
 	}
 
-	// Remove and confirm it is gone. NOTE: ServiceInspect returns the raw SDK
-	// not-found error here — it does NOT normalize to ErrNotFound the way
-	// InspectContainer/CopyFileFromVolume do. That asymmetry is current behavior;
-	// this suite locks it in (asserting a non-nil error, not ErrNotFound) so the
-	// migration preserves it rather than silently changing the error surface.
+	// ServiceInspect returns the raw SDK not-found error here — it does NOT normalize
+	// to ErrNotFound the way InspectContainer/CopyFileFromVolume do. Asserting only a
+	// non-nil error locks that asymmetry in so a migration cannot silently change it.
 	if err := cli.ServiceRemove(ctx, name); err != nil {
 		t.Fatalf("ServiceRemove: %v", err)
 	}

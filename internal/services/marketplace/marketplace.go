@@ -295,8 +295,8 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 
 	result := &InstallResult{Template: m.Metadata.Name, DisplayName: displayName(m, in.DisplayName), Version: m.Metadata.Version}
 
-	// 1. Volumes. They carry the same marketplace provenance as the install's apps
-	//    and databases so the detail page attributes them to the template.
+	// Volumes carry the same marketplace provenance as the install's apps and
+	// databases so the detail page attributes them to the template.
 	if len(m.Volumes) > 0 {
 		report.phase(PhaseVolumes, PhaseActive)
 	}
@@ -323,9 +323,8 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 	// dependency binding to an existing instance makes that instance's node win; otherwise the local node.
 	targetNode := s.installNode(workspaceID, m, in)
 
-	// 2. Databases (placement-aware), building the render views. The database is named after the install —
-	//    the user-chosen name, defaulting to the template name — and a multi-database template
-	//    disambiguates with the dependency name.
+	// The database is named after the install — the user-chosen name, defaulting to the
+	// template name — and a multi-database template disambiguates with the dependency name.
 	if len(m.Databases) > 0 {
 		report.phase(PhaseDatabases, PhaseActive)
 	}
@@ -378,9 +377,9 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 		return result, nil
 	}
 
-	// 3. Stack: created when grouping more than one application, or whenever the template declares a stack
-	//    block, which also carries its description, annotations and shared env. Shared env is rendered and
-	//    attached in step 5, once the render context exists.
+	// A stack is created when grouping more than one application, or whenever the template
+	// declares a stack block. Its shared env is rendered and attached further down, once the
+	// render context exists.
 	var stackID *uint
 	if m.WantsStack() && s.stacks != nil {
 		in := stack.Input{
@@ -402,8 +401,8 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 		result.Stack = st
 	}
 
-	// 4. Create all apps first so every application's network alias is known
-	//    before env is rendered (apps can reference each other by alias).
+	// Create all apps first so every application's network alias is known before env is
+	// rendered — apps can reference each other by alias.
 	report.phase(PhaseApps, PhaseActive)
 	created := make([]*models.Application, 0, len(m.Applications))
 	appViews := map[string]manifest.AppView{}
@@ -465,7 +464,6 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 		}
 	}
 
-	// 5. Render env + secrets and attach mounts for every app.
 	report.phase(PhaseConfig, PhaseActive)
 	r := manifest.NewRenderer(manifest.Context{Inputs: inputs, Databases: dbViews, Applications: appViews})
 
@@ -546,8 +544,8 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 	}
 	report.phase(PhaseConfig, PhaseDone)
 
-	// 6. Deploy each configured app. The deploy phase stays active until the
-	//    containers come online (StartInstall waits and completes it).
+	// The deploy phase stays active until the containers come online — StartInstall
+	// waits and completes it.
 	report.phase(PhaseDeploy, PhaseActive)
 	for i, spec := range m.Applications {
 		app := created[i]

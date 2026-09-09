@@ -15,8 +15,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// --- fakes ---
-
 type fakeAuth struct {
 	ident enterprise.LDAPIdentity
 	err   error
@@ -66,8 +64,6 @@ func newService(t *testing.T, db *gorm.DB, auth enterprise.LDAPAuthenticator) *S
 	return NewService(fakeEE{auth: auth}, repositories.NewUserRepository(db),
 		repositories.NewWorkspaceRepository(db), repositories.NewLDAPRepository(db))
 }
-
-// --- Login / provisioning ---
 
 func TestLogin_NoDirectory_FallsThrough(t *testing.T) {
 	db := newTestDB(t)
@@ -169,8 +165,6 @@ func TestLogin_BindError_Propagates(t *testing.T) {
 	}
 }
 
-// --- Group reconciliation ---
-
 func TestReconcile_GrantsAdminAndWorkspace(t *testing.T) {
 	db := newTestDB(t)
 	// A seeded admin so the LDAP user isn't the first (and to allow later demotion).
@@ -232,8 +226,6 @@ func TestReconcile_RemovesManagedMembershipWhenNoLongerMatched(t *testing.T) {
 		t.Error("expected managed membership to be revoked when group no longer matches")
 	}
 }
-
-// --- pure helpers ---
 
 func TestGroupMatches(t *testing.T) {
 	groups := normalizeGroups([]string{"CN=Admins,OU=Groups,DC=corp,DC=com", "cn=devs,ou=g,dc=c"})

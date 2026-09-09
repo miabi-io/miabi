@@ -254,8 +254,6 @@ func TestStatsBusyVsIdle(t *testing.T) {
 	}
 }
 
-// --- small local helpers -----------------------------------------------------
-
 // readerOf adapts an ExecStream to an io.Reader for io.ReadAll.
 func readerOf(s ExecStream) io.Reader { return execReader{s} }
 

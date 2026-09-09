@@ -144,7 +144,6 @@ func (s *Service) Preflight(ctx context.Context, opts Options) (*Plan, error) {
 		return nil, fmt.Errorf("%q is not a recovery point ref (they start with %s)", ref, dr.RefPrefix)
 	}
 
-	// 1. The recovery point's own description of itself, from the backup root.
 	man, err := readManifest(ctx, store, opts.Path, ref)
 	if err != nil {
 		return nil, err
@@ -161,9 +160,8 @@ func (s *Service) Preflight(ctx context.Context, opts Options) (*Plan, error) {
 		return nil, fmt.Errorf("recovery point %s is sealed with a backup passphrase: pass --passphrase-file, or set MIABI_BACKUP_PASSPHRASE", ref)
 	}
 
-	// 2. The identity envelope. Opening it proves the operator holds the
-	// passphrase, and yields the master key everything in the dump is encrypted
-	// under.
+	// Opening the envelope proves the operator holds the passphrase, and yields the
+	// master key everything in the dump is encrypted under.
 	sealed, err := store.GetBytes(ctx, dr.IdentityObject(opts.Path, ref))
 	if err != nil {
 		if errors.Is(err, blob.ErrNotFound) {
@@ -176,7 +174,7 @@ func (s *Service) Preflight(ctx context.Context, opts Options) (*Plan, error) {
 		return nil, err
 	}
 
-	// 3. The envelope must belong to THIS recovery point. An envelope from before
+	// The envelope must belong to THIS recovery point. An envelope from before
 	// a key rotation opens perfectly and restores a database nobody can read, so
 	// the mismatch is caught here rather than after the platform is up.
 	if man.KEKFingerprint != "" {
@@ -185,19 +183,19 @@ func (s *Service) Preflight(ctx context.Context, opts Options) (*Plan, error) {
 		}
 	}
 
-	// 4. Every artifact this restore will USE must actually be in the bucket.
+	// Every artifact this restore will USE must actually be in the bucket.
 	missingTenant, err := s.assertArtifactsPresent(ctx, store, man)
 	if err != nil {
 		return nil, err
 	}
 
-	// 5. Never restore into an older binary than the one that produced the dump:
+	// Never restore into an older binary than the one that produced the dump:
 	// the schema would be ahead of the code, and the failure is silent.
 	if err := assertVersionForward(man.MiabiVersion); err != nil {
 		return nil, err
 	}
 
-	// 6. The host must be clean. A fresh install onto an existing Postgres volume
+	// The host must be clean. A fresh install onto an existing Postgres volume
 	// can never work — the data directory keeps the password it was created with —
 	// and the stack service already knows how to say so.
 	if _, err := stack.Load(manifestPathOf(opts)); err == nil {
@@ -214,9 +212,8 @@ func (s *Service) Preflight(ctx context.Context, opts Options) (*Plan, error) {
 		return nil, stack.PortConflictError(conflicts)
 	}
 
-	// 4. Clone safety. Reusing an install id across two live platforms breaks
-	// licensing; inheriting production's hostnames would have the clone fight it
-	// for DNS and certificates.
+	// Reusing an install id across two live platforms breaks licensing; inheriting
+	// production's hostnames would have the clone fight it for DNS and certificates.
 	if opts.Clone && strings.TrimSpace(opts.Domain) == "" {
 		return nil, errors.New("--clone requires --domain: a clone must not answer on the hostnames the original still serves")
 	}

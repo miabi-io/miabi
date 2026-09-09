@@ -160,10 +160,9 @@ func (a *adapter) discoverZone(ctx context.Context, domain string) (string, erro
 		if err != nil {
 			continue
 		}
-		// A zone that returns records is proof. An empty success is not — some hosts
-		// answer 200 with nothing for a zone the account does not hold — but an owned
-		// zone can legitimately be empty, so keep the first as a fallback rather than
-		// rejecting it.
+		// An empty success is not proof — some hosts answer 200 with nothing for a zone
+		// the account does not hold — but an owned zone can legitimately be empty, so
+		// keep the first as a fallback rather than rejecting it.
 		if len(recs) > 0 {
 			return cand, nil
 		}

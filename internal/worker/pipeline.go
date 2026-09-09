@@ -289,10 +289,9 @@ func (h *PipelineHandler) jobInputs(run *models.PipelineRun, def *models.Pipelin
 		// No app means no shared cache generation to key off; a repository-bound
 		// build is uncached until the definition carries its own generation.
 		if reg != "" {
-			// Namespaced apart from application images (pl_<name>) so a pipeline and
-			// an unrelated app of the same name can never push into the same image
-			// repository. The first path segment still resolves to this workspace, so
-			// registry authorization is unchanged.
+			// Namespaced apart from application images (pl_<name>) so a pipeline and an
+			// unrelated app of the same name never share an image repository. The first
+			// path segment still resolves to this workspace, so authorization is unchanged.
 			in.Repository = fmt.Sprintf("%s/%s/%s", strings.TrimRight(reg, "/"), ns, pipelineImageName(def.Name))
 		}
 	}

@@ -75,6 +75,13 @@ jobs:
           # The commit's own timestamp, not "now": re-running this workflow on the
           # same tag then produces the same binary.
           echo "BUILD_DATE=$(git show -s --format=%cI "$GITHUB_SHA")" >> "$GITHUB_ENV"
+          # A prerelease tag (v1.9.4-rc.1) must not move the floating tags: `latest` is
+          # what an unpinned pull and the installer resolve to. Keys on the same "-"
+          # suffix GoReleaser's `prerelease: auto` does, so both agree on what an rc is.
+          case "${GITHUB_REF_NAME}" in
+            *-*) echo "PRERELEASE=true"  >> "$GITHUB_ENV" ;;
+            *)   echo "PRERELEASE=false" >> "$GITHUB_ENV" ;;
+          esac
 
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
@@ -109,12 +116,12 @@ jobs:
             GO_TAGS=enterprise
             LICENSE_PUBLIC_KEY=${{ vars.LICENSE_PUBLIC_KEY }}
           tags: |
-            miabi/miabi:rootless
-            miabi/miabi:latest-rootless
             miabi/miabi:${{ env.VERSION }}-rootless
-            ghcr.io/miabi-io/miabi:rootless
-            ghcr.io/miabi-io/miabi:latest-rootless
             ghcr.io/miabi-io/miabi:${{ env.VERSION }}-rootless
+            ${{ env.PRERELEASE == 'false' && 'miabi/miabi:rootless' || '' }}
+            ${{ env.PRERELEASE == 'false' && 'miabi/miabi:latest-rootless' || '' }}
+            ${{ env.PRERELEASE == 'false' && 'ghcr.io/miabi-io/miabi:rootless' || '' }}
+            ${{ env.PRERELEASE == 'false' && 'ghcr.io/miabi-io/miabi:latest-rootless' || '' }}
 
       # Default runtime (Alpine, root).
       - name: Build and push Miabi
@@ -132,9 +139,9 @@ jobs:
             LICENSE_PUBLIC_KEY=${{ vars.LICENSE_PUBLIC_KEY }}
           tags: |
             miabi/miabi:${{ env.VERSION }}
-            miabi/miabi:latest
             ghcr.io/miabi-io/miabi:${{ env.VERSION }}
-            ghcr.io/miabi-io/miabi:latest
+            ${{ env.PRERELEASE == 'false' && 'miabi/miabi:latest' || '' }}
+            ${{ env.PRERELEASE == 'false' && 'ghcr.io/miabi-io/miabi:latest' || '' }}
 
 
 

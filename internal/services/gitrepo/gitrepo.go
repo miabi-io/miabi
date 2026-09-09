@@ -154,11 +154,9 @@ func (s *Service) Create(workspaceID uint, in Input) (*models.GitRepository, err
 	if err := s.repo.Create(g); err != nil {
 		return nil, err
 	}
-	// Probe once, after saving. Deliberately not a precondition: a credential added
-	// before its repository exists, or during a network blip, is still worth
-	// storing — and refusing to save would leave the user with nothing and no
-	// record of what they typed. The failure is recorded on the row, so it is
-	// discarded here rather than failing the create.
+	// Deliberately not a precondition: a credential added before its repository exists,
+	// or during a network blip, is still worth storing. The failure is recorded on the
+	// row, so it is discarded here rather than failing the create.
 	_ = s.Probe(context.Background(), g)
 	return strip(g), nil
 }

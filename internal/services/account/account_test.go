@@ -164,8 +164,6 @@ func (f *fakeStorageOps) Delete(_ context.Context, v *models.Volume) error {
 	return f.db.Delete(&models.Volume{}, v.ID).Error
 }
 
-// --- harness -----------------------------------------------------------------
-
 func newTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	// Shared-cache named memory DB so the pool sees one schema.
@@ -226,8 +224,6 @@ func mk[T any](t *testing.T, db *gorm.DB, row *T) *T {
 	}
 	return row
 }
-
-// --- tests -------------------------------------------------------------------
 
 func TestStopOwned(t *testing.T) {
 	db := newTestDB(t)

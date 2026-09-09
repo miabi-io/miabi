@@ -16,7 +16,6 @@ type Image struct {
 	Tag         string `json:"tag,omitempty"`
 	SizeBytes   int64  `json:"size_bytes"`
 
-	// Provenance.
 	PipelineRunID *uint      `json:"pipeline_run_id,omitempty" gorm:"index"`
 	ApplicationID *uint      `json:"application_id,omitempty" gorm:"index"`
 	Commit        string     `json:"commit,omitempty"`

@@ -239,10 +239,9 @@ func (s *Service) Refresh(ctx context.Context) {
 		if list, lerr := local.SwarmNodes(ctx); lerr == nil {
 			for _, n := range list {
 				nodesByID[n.ID] = n
-				// Persist each node's Docker engine version from the manager's view,
-				// so the Nodes page can flag daemons too old for the SDK — known even
-				// for a node Miabi holds no client for. Best-effort; a write failure
-				// just leaves the last value.
+				// From the manager's view, so the Nodes page can flag daemons too old
+				// for the SDK even on a node Miabi holds no client for. Best-effort:
+				// a write failure just leaves the last value.
 				if n.EngineVersion != "" {
 					if serr := s.nodes.SetEngineVersion(n.ID, n.EngineVersion); serr != nil {
 						logger.Warn("failed to persist node engine version", "swarm_node_id", n.ID, "error", serr)

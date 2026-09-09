@@ -370,10 +370,8 @@ func (s *Service) Trigger(workspaceID, pipelineID uint, in TriggerInput) (*model
 		}
 	}
 	// A repository-bound pipeline has no app ref to fall back on, so an untriggered
-	// branch comes from the definition. Without this a manual run clones the
-	// repository's default branch, which for a pipeline tracking any other branch
-	// silently builds the wrong code — the same trap the repo-owned path guards
-	// against a few lines up.
+	// branch comes from the definition. Otherwise a manual run clones the repository's
+	// default branch and silently builds the wrong code.
 	if in.Branch == "" && p.GitRepositoryID != nil {
 		in.Branch = p.Branch
 	}

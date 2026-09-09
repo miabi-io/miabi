@@ -11,8 +11,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// --- fakes ---
-
 // fakeDocker implements docker.Client; only the methods the housekeeping service
 // touches are overridden. Anything else panics (embedded nil interface), which
 // keeps the tests honest about what the service actually calls.
@@ -103,8 +101,6 @@ func cont(id, name, image string, labels map[string]string) docker.Container {
 	return docker.Container{ID: id, Names: []string{"/" + name}, Image: image, State: "running", Labels: labels}
 }
 
-// --- drift analyzer ---
-
 func TestAnalyzeDrift(t *testing.T) {
 	dc := &fakeDocker{
 		containers: []docker.Container{
@@ -165,8 +161,6 @@ func TestAnalyzeDrift_NeverFlagsInfraOrLive(t *testing.T) {
 		t.Fatalf("infra/job/live must never be orphans, got %+v", drift.Orphans)
 	}
 }
-
-// --- apply safety ---
 
 // Apply must remove only resources that re-confirm as orphans; a crafted ref to
 // a managed-but-live container is silently ignored, never removed.

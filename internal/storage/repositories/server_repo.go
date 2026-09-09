@@ -36,8 +36,7 @@ func (r *ServerRepository) Delete(id uint) error {
 }
 
 // FindByName resolves a node by its unique handle — the value
-// /api/v1/provider/{name} is built from. Renamed from FindBySlug along with the
-// column it reads.
+// /api/v1/provider/{name} is built from.
 func (r *ServerRepository) FindByName(name string) (*models.Server, error) {
 	var s models.Server
 	if err := r.db.Where("name = ?", name).First(&s).Error; err != nil {

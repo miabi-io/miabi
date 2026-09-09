@@ -186,7 +186,6 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 		inputs[k] = v
 	}
 
-	// 1. New volumes (additive). Mounts attach below.
 	volIDs := map[string]uint{}
 	for _, v := range added(volNames(oldM), volNames(newM)) {
 		meta := models.SetBuiltin(models.Metadata{},
@@ -218,17 +217,15 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 	}
 	renderer := manifest.NewRenderer(manifest.Context{Inputs: inputs, Applications: appViews})
 
-	// 2. Configs (additive, like volumes). They are created before the app loop so
-	//    a new config mount has something to attach to. A config the install
-	//    already has is never rewritten — its content may have been edited since,
-	//    and a template bump is not a reason to discard that.
+	// Configs are created before the app loop so a new config mount has something to
+	// attach to. An existing config is never rewritten — its content may have been
+	// edited since, and a template bump is not a reason to discard that.
 	cfgIDs := s.upgradeConfigs(workspaceID, rec, oldM, newM, renderer, res)
 
 	// Tracks apps already redeployed this upgrade, so a later shared-env change
 	// doesn't redeploy the same app twice.
 	deployed := map[uint]bool{}
 
-	// 3. App-by-app: image bump + additive env + new mounts, then redeploy.
 	for name, ns := range newApps {
 		appID, matched := byName[name]
 		if !matched {
@@ -330,12 +327,11 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 		}
 	}
 
-	// 3b. Shared stack env (additive, mirrors per-app env): add new shared keys to
-	//     the install's stack and redeploy any member not already bumped, since
-	//     shared env only reaches containers at deploy time.
+	// Shared stack env is additive, mirroring per-app env: new keys go on the install's
+	// stack and any member not already bumped is redeployed, since shared env only
+	// reaches containers at deploy time.
 	s.applyStackEnv(workspaceID, rec, oldM, newM, byName, renderer, deployed, res)
 
-	// 4. Record the new version + merged inputs.
 	rec.Version = newM.Metadata.Version
 	if len(newInputs) > 0 {
 		if rec.Inputs == nil {

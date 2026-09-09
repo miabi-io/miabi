@@ -619,19 +619,19 @@ func (s *Service) GarbageCollect(ctx context.Context, dc docker.Client) error {
 		return errors.New("registry gc: " + reason)
 	}
 
-	// 1. Read-only so no writes race the collector.
+	// Read-only so no writes race the collector.
 	if err := s.startContainer(ctx, dc, st, true); err != nil {
 		return fmt.Errorf("registry gc: enter read-only: %w", err)
 	}
-	// 3. Always restore read-write, even if GC fails.
+	// Always restore read-write, even if GC fails.
 	defer func() {
 		if err := s.startContainer(ctx, dc, st, false); err != nil {
 			logger.Error("registry gc: failed to restore read-write — registry left read-only", "error", err)
 		}
 	}()
 
-	// 2. One-shot collector over the same storage. Override the image entrypoint
-	// (which would otherwise `serve`) to run the garbage-collect subcommand.
+	// Override the image entrypoint, which would otherwise `serve`, to run the
+	// garbage-collect subcommand against the same storage.
 	env, err := s.renderEnv(st, false)
 	if err != nil {
 		return err

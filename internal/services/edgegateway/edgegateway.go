@@ -224,8 +224,6 @@ func (s *Service) helperImg() string {
 	return helperImage
 }
 
-// --- Goma config schema (subset we render) ---
-
 type gomaConfig struct {
 	Version     int          `yaml:"version"`
 	CertManager *certManager `yaml:"certManager,omitempty"`

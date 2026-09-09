@@ -54,9 +54,9 @@ type DatabaseInstance struct {
 	ID          uint `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint `json:"workspace_id" gorm:"index:idx_dbinst_workspace_name,unique;not null"`
 	// Name is the unique, URL/CLI/docker handle (lowercase [a-z0-9-]) scoped to the
-	// workspace. Renamed from the former "slug".
+	// workspace.
 	Name string `json:"name" gorm:"index:idx_dbinst_workspace_name,unique;not null"`
-	// DisplayName is the free-text label shown in the UI. Renamed from "name".
+	// DisplayName is the free-text label shown in the UI.
 	DisplayName string   `json:"display_name"`
 	Engine      DBEngine `json:"engine" gorm:"not null"`
 	Version     string   `json:"version" gorm:"not null"`

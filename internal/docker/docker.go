@@ -49,7 +49,6 @@ type Client interface {
 	// Returns ErrEngineTooOld if the daemon is below MinAPIVersion.
 	Capabilities(ctx context.Context) (Capabilities, error)
 
-	// Containers.
 	ListContainers(ctx context.Context, all bool) ([]Container, error)
 	InspectContainer(ctx context.Context, id string) (Container, error)
 	// InspectContainerConfig returns the full runtime configuration of a container
@@ -128,13 +127,12 @@ type Client interface {
 	// psArgs are ps flags (e.g. "aux"); blank uses the daemon default. Read-only.
 	Top(ctx context.Context, containerID, psArgs string) (ProcessList, error)
 
-	// Streaming. The sink is invoked per item; return a non-nil error to stop.
+	// The sink is invoked per item; return a non-nil error to stop.
 	StreamLogs(ctx context.Context, id string, follow bool, tail string, sink func(LogLine) error) error
 	StreamStats(ctx context.Context, id string, sink func(StatsSample) error) error
 	// StatsOnce returns a single resource-usage sample.
 	StatsOnce(ctx context.Context, id string) (StatsSample, error)
 
-	// Networks & volumes.
 	EnsureNetwork(ctx context.Context, name string) (string, error)
 	CreateNetwork(ctx context.Context, name, driver string, internal bool) (string, error)
 	// CreateNetworkSpec creates a managed network with explicit options, including an optional

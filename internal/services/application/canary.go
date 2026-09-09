@@ -91,10 +91,9 @@ func (s *Service) SetCanaryRouting(ctx context.Context, app *models.Application,
 	}
 	app.CanaryMode, app.CanaryExclusive = routing.Mode, routing.Exclusive
 	app.CanaryPriority, app.CanaryMatch = routing.Priority, routing.Match
-	// Handing a running canary back to the ramp: an exclusive rollout may have
-	// been held at 0%, which now means no traffic at all rather than "rules only".
-	// Restart it at the app's initial weight so the ramp resumes from somewhere
-	// real instead of leaving the canary dark until the next tick.
+	// An exclusive rollout may have been held at 0%, which now means no traffic at all
+	// rather than "rules only". Restart at the app's initial weight so the ramp resumes
+	// instead of leaving the canary dark until the next tick.
 	if routing.Mode == models.CanaryModeAuto && app.CanaryReleaseID != nil && app.CanaryWeight <= 0 {
 		if err := s.apps.SetCanary(app.ID, app.CanaryReleaseID, app.CanaryInitialWeight); err == nil {
 			app.CanaryWeight = app.CanaryInitialWeight
@@ -199,10 +198,9 @@ func canaryRoutingWarnings(in CanaryRouting) []string {
 	var out []string
 	for _, r := range in.Match {
 		if r.Source == models.CanaryMatchSourceIP {
-			// Behind a CDN or load balancer the client IP is whatever the proxy
-			// reports — and with no trusted proxies configured, whatever the caller
-			// reports. An ip rule is then attacker-selectable: anyone can put
-			// themselves in the canary by setting a header.
+			// Behind a CDN or load balancer the client IP is whatever the proxy reports —
+			// with no trusted proxies configured, whatever the caller reports. An ip rule
+			// is then attacker-selectable via a header.
 			out = append(out, "This canary routes on client IP. Unless the gateway has proxy.trustedProxies configured, "+
 				"the client address is whatever the caller claims, so anyone can put themselves in the canary. "+
 				"See "+GomaProxyDocsURL)
