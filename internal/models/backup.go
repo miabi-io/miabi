@@ -25,9 +25,12 @@ type Backup struct {
 	// Number is the per-database sequential backup number, independent of the global ID.
 	// Assigned in BeforeCreate; the composite unique index keeps it gap-free per database
 	// and prevents duplicates.
-	Number      int          `json:"number" gorm:"index:idx_backup_db_number,unique;not null;default:0"`
-	WorkspaceID uint         `json:"workspace_id" gorm:"index;not null"`
-	DatabaseID  uint         `json:"database_id" gorm:"index:idx_backup_db_number,unique;index;not null"`
+	Number      int  `json:"number" gorm:"index:idx_backup_db_number,unique;not null;default:0"`
+	WorkspaceID uint `json:"workspace_id" gorm:"index;not null"`
+	DatabaseID  uint `json:"database_id" gorm:"index:idx_backup_db_number,unique;index;not null"`
+	// SetID names the recovery point this backup belongs to, when it was taken as
+	// part of one. Nil for an ordinary single-database backup.
+	SetID       *uint        `json:"set_id,omitempty" gorm:"index"`
 	Engine      DBEngine     `json:"engine"`
 	ServerID    uint         `json:"server_id" gorm:"index;not null;default:0"` // node the backup ran on
 	Status      BackupStatus `json:"status" gorm:"not null;default:pending"`

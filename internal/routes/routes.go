@@ -469,6 +469,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// New workspaces are seeded with a default security-policy set (best-effort).
 	workspaceService.SetMiddlewareSeeder(middlewareService)
 	backupRepo := repositories.NewBackupRepository(db)
+	backupSetRepo := repositories.NewDatabaseBackupSetRepository(db)
 	backupSettingsRepo := repositories.NewWorkspaceBackupSettingsRepository(db)
 	volumeBackupRepo := repositories.NewVolumeBackupRepository(db)
 	databaseService := database.NewService(dbRepo, nodeClients, producer)
@@ -640,6 +641,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	backupService.SetImageResolver(imageResolver)
 	backupService.SetLogStore(logStore) // externalize backup run logs to the shared store
 	backupService.SetEventRecorder(eventsService)
+	backupService.SetSetRepository(backupSetRepo) // instance-wide recovery points
 	// Volume backup: archives a volume to the workspace S3 target (volume-bkup).
 	volumeBackupService := volumebackup.NewService(volumeBackupRepo, volumeRepo, nodeClients)
 	volumeBackupService.SetImageResolver(imageResolver)
@@ -1050,7 +1052,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			search:          handlers.NewSearchHandler(searchService),
 			certificate:     handlers.NewCertificateHandler(certificateService, auditLogger),
 			volume:          handlers.NewVolumeHandler(storageService, userRepo, auditLogger),
-			backup:          handlers.NewBackupHandler(backupService, dbRepo, backupRepo, backupSettingsService, cronManager, auditLogger, cfg.RestoreMaxMB),
+			backup:          handlers.NewBackupHandler(backupService, dbRepo, backupRepo, backupSetRepo, backupSettingsService, cronManager, auditLogger, cfg.RestoreMaxMB),
 			backupSettings:  handlers.NewWorkspaceBackupSettingsHandler(backupSettingsService, auditLogger),
 			volumeBackup:    handlers.NewVolumeBackupHandler(volumeBackupService, volumeRepo, volumeBackupRepo, auditLogger),
 			workspaceBundle: handlers.NewWorkspaceBundleHandler(wsBundleService, auditLogger),

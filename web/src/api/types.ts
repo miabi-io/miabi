@@ -1505,6 +1505,7 @@ export interface Backup {
   trigger: string
   destination: string
   filename?: string
+  size_bytes: number
   // Engine version the dump was taken from.
   version?: string
   // Free-text note the operator attached, e.g. "before the v1.3.0 rollout".
@@ -1516,6 +1517,31 @@ export interface Backup {
   encrypted: boolean
   error?: string
   created_at: string
+}
+
+// A recovery point: every database on an instance backed up in one run.
+export interface DatabaseBackupSet {
+  id: number
+  workspace_id: number
+  instance_id: number
+  // Stable, quotable name: "mbdb_<instance>_<UTC stamp>".
+  ref: string
+  trigger: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  engine: DBEngine
+  version?: string
+  // Every artifact in the set is encrypted, so the passphrase is needed to restore.
+  encrypted: boolean
+  destination: string
+  s3_bucket?: string
+  s3_path?: string
+  size_bytes: number
+  error?: string
+  started_at?: string | null
+  finished_at?: string | null
+  created_at: string
+  // The per-database backups this set is made of.
+  items?: Backup[]
 }
 
 export interface BackupSchedule {

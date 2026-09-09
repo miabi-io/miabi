@@ -1,7 +1,7 @@
 import api, { sseUrl } from './client'
 import type {
   ApiResponse, DatabaseInstance, DBLiveStatus, LogicalDatabase, ConnectionInfo, ForwardSession, DBEngine, EngineDefault, UpgradeOptions, UpgradePlan,
-  Volume, VolumeDetail, VolumeFile, VolumeBackup, WorkspaceStorage, Backup, BackupSchedule, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput,
+  Volume, VolumeDetail, VolumeFile, VolumeBackup, WorkspaceStorage, Backup, BackupSchedule, DatabaseBackupSet, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput,
   Member, Invitation, AuditLog, AuditLogDetail, RecentEvent, PageableResponse, Job, CronJob, WorkspaceUsage, WorkspaceLiveSample, WorkspaceHistoryPoint,
 } from './types'
 
@@ -162,6 +162,14 @@ export const backupApi = {
     }),
   deleteSchedule: (ws: number, inst: number, db: number, id: number) =>
     api.delete<ApiResponse<{ message: string }>>(`${b(ws, inst, db)}/backup-schedules/${id}`),
+
+  // Sets span every database on the instance, so they hang off the instance.
+  sets: (ws: number, inst: number) =>
+    api.get<ApiResponse<DatabaseBackupSet[]>>(`${w(ws)}/databases/${inst}/backup-sets`),
+  runSet: (ws: number, inst: number, comment = '') =>
+    api.post<ApiResponse<DatabaseBackupSet>>(`${w(ws)}/databases/${inst}/backup-sets`, { comment }),
+  removeSet: (ws: number, inst: number, id: number) =>
+    api.delete<ApiResponse<{ message: string }>>(`${w(ws)}/databases/${inst}/backup-sets/${id}`),
 }
 
 

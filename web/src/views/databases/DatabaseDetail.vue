@@ -15,7 +15,7 @@ import ResourceIcon from '@/components/ResourceIcon.vue'
 import { fmtSize } from '@/utils/format'
 import { engineLogo, engineMdi } from '@/utils/resourceIcon'
 import { copyText } from '@/utils/clipboard'
-import type { DatabaseInstance, DBStatus, UpgradeProgress, LogicalDatabase, ConnectionInfo, ForwardSession, Backup, BackupSchedule, Application, Network, UpgradeOptions, UpgradePlan, StatsSample, AppEvent } from '@/api/types'
+import type { DatabaseInstance, DBStatus, UpgradeProgress, LogicalDatabase, ConnectionInfo, ForwardSession, Backup, BackupSchedule, DatabaseBackupSet, Application, Network, UpgradeOptions, UpgradePlan, StatsSample, AppEvent } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 
 const route = useRoute()
@@ -31,6 +31,11 @@ const databases = ref<LogicalDatabase[]>([])
 const apps = ref<Application[]>([])
 const selected = ref<LogicalDatabase | null>(null)
 const backups = ref<Backup[]>([])
+const sets = ref<DatabaseBackupSet[]>([])
+const runningSet = ref(false)
+// Which recovery point has its per-database items open. One at a time: the point
+// of the list is the sets, not their contents.
+const openSet = ref<number | null>(null)
 const schedules = ref<BackupSchedule[]>([])
 const cron = ref('0 3 * * *')
 const maxBackups = ref(0)
@@ -84,6 +89,7 @@ watch(tab, (t) => {
   else stopLogs()
   if (t === 'events') startEvents()
   else stopEvents()
+  if (t === 'backups') loadSets()
 })
 
 const EVENTS_PAGE = 50
@@ -193,6 +199,7 @@ async function load() {
 }
 watch([instId, wid], async () => {
   await load()
+  if (tab.value === 'backups') loadSets() // the tab may be the one restored from the URL
   loadUpgradeOptions()
   startStatusStream() // live provisioning/upgrade/start-stop status (SSE)
   startMetricsPoll() // live CPU/memory utilisation while running
@@ -378,6 +385,47 @@ async function loadBackups() {
     schedules.value = (await backupApi.schedules(wid.value, instId.value, selected.value.id)).data.data ?? []
   } catch (e) { notify.apiError(e) }
 }
+// Recovery points span the whole instance, so they load with the tab rather than
+// with the selected database.
+async function loadSets() {
+  if (!wid.value) return
+  try {
+    sets.value = (await backupApi.sets(wid.value, instId.value)).data.data ?? []
+  } catch (e) { notify.apiError(e) }
+}
+async function runSet() {
+  if (!wid.value) return
+  runningSet.value = true
+  try {
+    const set = (await backupApi.runSet(wid.value, instId.value, backupComment.value.trim())).data.data
+    notify[set.status === 'completed' ? 'success' : 'error'](
+      set.status === 'completed'
+        ? `Recovery point ${set.ref} created`
+        : `Recovery point failed: ${set.error ?? 'see the instance events'}`,
+    )
+    backupComment.value = ''
+    loadSets()
+    if (selected.value) loadBackups()
+  } catch (e) { notify.apiError(e) }
+  finally { runningSet.value = false }
+}
+function askRemoveSet(set: DatabaseBackupSet) {
+  confirm.value = {
+    kind: 'remove-backup-set', title: 'Delete recovery point', confirmLabel: 'Delete', variant: 'danger',
+    message: `Delete ${set.ref}? Its ${set.items?.length ?? 0} database backup(s) and their artifacts are removed.`,
+    run: () => removeSet(set),
+  }
+}
+async function removeSet(set: DatabaseBackupSet) {
+  if (!wid.value) return
+  try {
+    await backupApi.removeSet(wid.value, instId.value, set.id)
+    notify.success('Recovery point deleted')
+    loadSets()
+    if (selected.value) loadBackups()
+  } catch (e) { notify.apiError(e) }
+}
+
 // Annotating at run time is the common case ("before the v1.3.0 rollout"), so the
 // note sits next to the button rather than behind a dialog.
 const backupComment = ref('')
@@ -518,7 +566,7 @@ async function lifecycle(action: 'start' | 'stop' | 'restart') {
 }
 
 // --- Confirmation dialog (delete / stop / restart) ---
-type ConfirmKind = 'delete' | 'stop' | 'restart' | 'remove-db' | 'remove-backup' | 'upgrade'
+type ConfirmKind = 'delete' | 'stop' | 'restart' | 'remove-db' | 'remove-backup' | 'remove-backup-set' | 'upgrade'
 const confirm = ref<{
   kind: ConfirmKind
   title: string
@@ -933,6 +981,74 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
 
     <!-- BACKUPS (SQL engines; per logical database) -->
     <template v-else-if="tab === 'backups'">
+      <div class="card mb-4">
+        <div class="card-header">
+          <h2>Recovery points</h2>
+          <div class="flex items-center gap-2">
+            <button v-if="ws.canEdit" class="btn btn-sm btn-primary" :disabled="runningSet || !databases.length" @click="runSet">
+              {{ runningSet ? 'Backing up…' : 'Back up all databases' }}
+            </button>
+          </div>
+        </div>
+        <div v-if="sets.length === 0" class="empty-state">
+          <span class="mdi mdi-database-lock-outline" style="font-size: 36px; color: var(--text-muted)"></span>
+          <p>No recovery points yet. One backs up every database on this instance together, so they restore as a set.</p>
+        </div>
+        <div v-else class="table-wrapper">
+          <table>
+            <thead><tr><th>Recovery point</th><th>Databases</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              <template v-for="s in sets" :key="s.id">
+                <tr>
+                  <td>
+                    <span class="cell-title">
+                      <code>{{ s.ref }}</code>
+                      <span
+                        v-if="s.encrypted"
+                        class="badge badge-success"
+                        style="margin-left: 6px"
+                        title="Every artifact in this set is encrypted; the workspace backup passphrase is required to restore it"
+                      >
+                        <span class="mdi mdi-lock-outline"></span> encrypted
+                      </span>
+                    </span>
+                    <div class="cell-sub">
+                      {{ s.trigger }} · {{ s.destination }}<template v-if="s.version"> · {{ s.engine }} {{ s.version }}</template>
+                      <template v-if="s.size_bytes"> · {{ fmtBytes(s.size_bytes) }}</template>
+                    </div>
+                    <div v-if="s.error" class="cell-sub text-danger">{{ s.error }}</div>
+                  </td>
+                  <td>
+                    <button class="btn btn-sm btn-secondary" @click="openSet = openSet === s.id ? null : s.id">
+                      {{ s.items?.length ?? 0 }}
+                      <span class="mdi" :class="openSet === s.id ? 'mdi-chevron-up' : 'mdi-chevron-down'"></span>
+                    </button>
+                  </td>
+                  <td><span class="badge badge-dot" :class="badge(s.status)">{{ s.status }}</span></td>
+                  <td class="text-right table-actions">
+                    <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete recovery point" @click="askRemoveSet(s)">
+                      <span class="mdi mdi-delete-outline"></span>
+                    </button>
+                  </td>
+                </tr>
+                <tr v-if="openSet === s.id">
+                  <td colspan="4" style="padding-top: 0">
+                    <ul class="set-items">
+                      <li v-for="it in s.items ?? []" :key="it.id">
+                        <span class="badge badge-dot" :class="badge(it.status)">{{ it.status }}</span>
+                        <code>{{ it.filename || '—' }}</code>
+                        <span class="text-muted text-sm">#{{ it.number }}<template v-if="it.size_bytes"> · {{ fmtBytes(it.size_bytes) }}</template></span>
+                        <span v-if="it.error" class="text-danger text-sm">{{ it.error }}</span>
+                      </li>
+                    </ul>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="card mb-4">
         <div class="card-header">
           <h2>Backups</h2>
@@ -1442,6 +1558,22 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
 
 /* The note reads as text until hovered, so an unannotated history stays quiet
    rather than showing a row of buttons. */
+.set-items {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-left: 2px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.set-items li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .backup-note {
   display: inline-flex;
   align-items: center;
