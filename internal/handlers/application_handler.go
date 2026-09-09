@@ -184,21 +184,19 @@ type UpdateAppRequest struct {
 		// ContainerLabels are user-defined Docker labels stamped on the app's container(s). Gated by the
 		// AllowCustomLabels plan capability plus a global kill-switch; reserved keys (io.miabi.*,
 		// com.docker.*) are rejected. nil leaves them unchanged; a redeploy applies changes.
-		ContainerLabels map[string]string `json:"container_labels"`
-		// Deployment strategy and canary tuning.
-		DeployStrategy            string `json:"deploy_strategy" enum:"recreate,rolling,canary"`
-		CanaryInitialWeight       int    `json:"canary_initial_weight"`
-		CanaryStepWeight          int    `json:"canary_step_weight"`
-		CanaryStepIntervalSeconds int    `json:"canary_step_interval_seconds"`
-		// Healthcheck.
-		HealthcheckType               string `json:"healthcheck_type" enum:"none,http,command"`
-		HealthcheckHTTPPath           string `json:"healthcheck_http_path"`
-		HealthcheckPort               int    `json:"healthcheck_port"`
-		HealthcheckCommand            string `json:"healthcheck_command"`
-		HealthcheckIntervalSeconds    int    `json:"healthcheck_interval_seconds"`
-		HealthcheckTimeoutSeconds     int    `json:"healthcheck_timeout_seconds"`
-		HealthcheckRetries            int    `json:"healthcheck_retries"`
-		HealthcheckStartPeriodSeconds int    `json:"healthcheck_start_period_seconds"`
+		ContainerLabels               map[string]string `json:"container_labels"`
+		DeployStrategy                string            `json:"deploy_strategy" enum:"recreate,rolling,canary"`
+		CanaryInitialWeight           int               `json:"canary_initial_weight"`
+		CanaryStepWeight              int               `json:"canary_step_weight"`
+		CanaryStepIntervalSeconds     int               `json:"canary_step_interval_seconds"`
+		HealthcheckType               string            `json:"healthcheck_type" enum:"none,http,command"`
+		HealthcheckHTTPPath           string            `json:"healthcheck_http_path"`
+		HealthcheckPort               int               `json:"healthcheck_port"`
+		HealthcheckCommand            string            `json:"healthcheck_command"`
+		HealthcheckIntervalSeconds    int               `json:"healthcheck_interval_seconds"`
+		HealthcheckTimeoutSeconds     int               `json:"healthcheck_timeout_seconds"`
+		HealthcheckRetries            int               `json:"healthcheck_retries"`
+		HealthcheckStartPeriodSeconds int               `json:"healthcheck_start_period_seconds"`
 	} `json:"body"`
 }
 

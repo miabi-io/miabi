@@ -66,7 +66,6 @@ func TestBundleLayoutRoundTrip_Integration(t *testing.T) {
 		_ = store.Delete(context.Background(), infoKey)
 	})
 
-	// --- what an export writes: artifacts first, index last ---
 	if err := store.Put(ctx, stateKey, sealed); err != nil {
 		t.Fatalf("upload state: %v", err)
 	}
@@ -87,7 +86,6 @@ func TestBundleLayoutRoundTrip_Integration(t *testing.T) {
 		t.Fatalf("upload info: %v", err)
 	}
 
-	// --- what a restore reads: list the prefix, recognize the index, open it ---
 	objects, err := store.List(ctx, prefix)
 	if err != nil {
 		t.Fatalf("list: %v", err)
@@ -137,7 +135,6 @@ func TestBundleLayoutRoundTrip_Integration(t *testing.T) {
 		t.Fatal("the state file opened with the wrong passphrase")
 	}
 
-	// --- what deleting a bundle does: the branch, then the index ---
 	branch, err := store.List(ctx, wsbundle.Root(prefix, ref))
 	if err != nil {
 		t.Fatalf("list branch: %v", err)

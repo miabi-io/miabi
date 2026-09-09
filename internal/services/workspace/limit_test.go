@@ -133,8 +133,6 @@ func TestUnwiredLimitsAllowEverything(t *testing.T) {
 	}
 }
 
-// --- membership (workspaces-joined) limit ---
-
 // seedJoined builds a service where user 1 is a non-owner member of `joined`
 // non-system workspaces — plus one workspace they OWN and the system workspace,
 // neither of which may count toward the membership limit.

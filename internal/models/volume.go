@@ -43,9 +43,9 @@ type Volume struct {
 	ID          uint `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint `json:"workspace_id" gorm:"index:idx_vol_workspace_name,unique;not null"`
 	// Name is the unique, URL/CLI/docker handle (lowercase [a-z0-9-]) scoped to the
-	// workspace. Renamed from the former "slug".
+	// workspace.
 	Name string `json:"name" gorm:"index:idx_vol_workspace_name,unique;not null"`
-	// DisplayName is the free-text label shown in the UI. Renamed from "name".
+	// DisplayName is the free-text label shown in the UI.
 	DisplayName string `json:"display_name"`
 	DockerName  string `json:"docker_name" gorm:"uniqueIndex;not null"`
 	// ServerID is the node this volume lives on (0 = local control-plane node).

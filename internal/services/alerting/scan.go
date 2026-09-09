@@ -139,8 +139,6 @@ func volName(v *models.Volume) string {
 	return v.Name
 }
 
-// ==== Runners (CI) ==================
-
 const (
 	runnerOfflineAfter = 2 * time.Minute
 	runnerStableFor    = 2 * time.Minute
@@ -240,8 +238,6 @@ func (e *Engine) systemWorkspace() uint {
 	}
 	return e.sysWorkspace()
 }
-
-// =========== Quotas
 
 // QuotaBreach is one workspace resource at/over the near-limit threshold.
 type QuotaBreach struct {

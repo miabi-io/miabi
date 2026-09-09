@@ -451,10 +451,9 @@ func (s *Service) importContainer(ctx context.Context, actorID, wsID, serverID u
 		MemoryBytes:   cfg.MemoryBytes,
 		NanoCPUs:      cfg.NanoCPUs,
 		RestartPolicy: models.RestartPolicy(cfg.RestartPolicy),
-		// Carry the account the adopted container was already running as, so the first native
-		// redeploy doesn't silently move it to the image's default user. A workspace under the
-		// restricted profile rejects a root value here — the import says so rather than importing
-		// an app that cannot deploy.
+		// Carry the account the adopted container already ran as, so the first native redeploy
+		// doesn't silently move it to the image's default user. A restricted-profile workspace
+		// rejects a root value here rather than importing an app that cannot deploy.
 		RunAsUser:  cfg.User,
 		Ports:      specs,
 		NetworkIDs: networkIDs,

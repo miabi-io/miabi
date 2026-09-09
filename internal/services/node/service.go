@@ -832,6 +832,17 @@ func (s *Service) MarkConnected(id uint, agentVersion string) {
 	_ = s.repo.Update(srv)
 }
 
+// SetEngineVersion persists a node's Docker daemon version, keyed by its swarm
+// node id (the stable handle the cluster refresh has for every node, including
+// ones with no Miabi client). Column-scoped so it never clobbers a field the
+// agent-connect path writes concurrently.
+func (s *Service) SetEngineVersion(swarmNodeID, version string) error {
+	if swarmNodeID == "" || version == "" {
+		return nil
+	}
+	return s.repo.UpdateEngineVersionBySwarmNodeID(swarmNodeID, version)
+}
+
 // MarkDisconnected records that a node's agent dropped.
 func (s *Service) MarkDisconnected(id uint) {
 	srv, err := s.repo.FindByID(id)

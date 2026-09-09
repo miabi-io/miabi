@@ -60,21 +60,20 @@ func (h *OAuthAdminHandler) canHide() bool { return hiddenAllowed(h.ee) }
 
 type CreateOAuthProviderRequest struct {
 	Body struct {
-		DisplayName    string `json:"display_name" required:"true"`
-		Name           string `json:"name"`
-		Type           string `json:"type" required:"true" enum:"google,oidc"`
-		ClientID       string `json:"client_id" required:"true"`
-		ClientSecret   string `json:"client_secret" required:"true"`
-		Issuer         string `json:"issuer"`
-		AuthURL        string `json:"auth_url"`
-		TokenURL       string `json:"token_url"`
-		UserInfoURL    string `json:"userinfo_url"`
-		Scopes         string `json:"scopes"`
-		Enabled        *bool  `json:"enabled"`
-		Hidden         *bool  `json:"hidden"`
-		AutoRegister   *bool  `json:"auto_register"`
-		AllowedDomains string `json:"allowed_domains"`
-		// Claim mapping + auto-join.
+		DisplayName        string `json:"display_name" required:"true"`
+		Name               string `json:"name"`
+		Type               string `json:"type" required:"true" enum:"google,oidc"`
+		ClientID           string `json:"client_id" required:"true"`
+		ClientSecret       string `json:"client_secret" required:"true"`
+		Issuer             string `json:"issuer"`
+		AuthURL            string `json:"auth_url"`
+		TokenURL           string `json:"token_url"`
+		UserInfoURL        string `json:"userinfo_url"`
+		Scopes             string `json:"scopes"`
+		Enabled            *bool  `json:"enabled"`
+		Hidden             *bool  `json:"hidden"`
+		AutoRegister       *bool  `json:"auto_register"`
+		AllowedDomains     string `json:"allowed_domains"`
 		EmailClaim         string `json:"email_claim"`
 		NameClaim          string `json:"name_claim"`
 		UsernameClaim      string `json:"username_claim"`

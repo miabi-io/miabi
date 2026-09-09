@@ -404,10 +404,9 @@ type Member struct {
 
 // Validate checks an opened state document is one this build understands.
 func (s *State) Validate() error {
-	// A range rather than an exact match. Refusing an older bundle would strand
-	// every bundle already taken; silently accepting a newer one would restore a
-	// workspace missing whatever that version added — configs, say — and look
-	// like it worked.
+	// A range rather than an exact match: refusing an older bundle would strand every
+	// bundle already taken, and silently accepting a newer one would restore a workspace
+	// missing whatever that version added, looking like it worked.
 	if s.Schema < MinStateSchema || s.Schema > StateSchema {
 		return fmt.Errorf("bundle state schema %d is not supported by this build (expected %d–%d); "+
 			"a bundle from a newer Miabi needs a newer Miabi to restore", s.Schema, MinStateSchema, StateSchema)

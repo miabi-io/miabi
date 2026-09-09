@@ -72,8 +72,7 @@ type Config struct {
 	// LicenseFile, when set, is a path to a signed license token auto-installed on
 	// boot (air-gapped / IaC friendly: drop the file and restart). A newer
 	// DB-installed license still takes precedence.
-	LicenseFile string
-	// Metrics history scraper.
+	LicenseFile           string
 	MetricsScrapeSeconds  int
 	MetricsRetentionHours int
 
@@ -105,7 +104,6 @@ type Config struct {
 	// (incl. cloud metadata) are always blocked regardless. Off by default.
 	WebhookAllowPrivateTargets bool
 
-	// Worker settings.
 	WorkerConcurrency int
 	WorkerMaxRetries  int
 	// WorkerHealthEnabled serves /healthz and /readyz from a dedicated worker on

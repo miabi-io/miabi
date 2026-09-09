@@ -8,14 +8,35 @@ package docker
 
 import (
 	"context"
-	stackdocker "github.com/miabi-io/miabi/pkg/stack/docker"
+	"errors"
 	"io"
 	"net"
+
+	stackdocker "github.com/miabi-io/miabi/pkg/stack/docker"
 )
 
 // ErrNotFound is returned when a container/image/volume does not exist.
 // ErrNotFound is owned by the stack seam so both sides compare against one value.
 var ErrNotFound = stackdocker.ErrNotFound
+
+// ErrEngineTooOld is returned when the daemon's API version is below the minimum
+// the Docker SDK client supports (MinAPIVersion). The client cannot talk to such
+// a daemon at all, so this is surfaced as a clear Miabi error rather than an
+// obscure SDK "invalid argument" deep in a deploy log.
+var ErrEngineTooOld = errors.New("docker: engine too old")
+
+const (
+	// MinAPIVersion is the lowest Docker Engine API version the moby SDK client
+	// can negotiate at all; a daemon below it is refused by the client itself.
+	// This is the hard technical floor, distinct from the product minimum below.
+	MinAPIVersion = "1.40"
+	// MinEngineVersion is the minimum Docker Engine release Miabi SUPPORTS — the
+	// number quoted by the README, installer, admin UI and changelog, and the
+	// threshold the Nodes warning badge uses. It is the floor of the tested CI
+	// engine matrix (25-29). The SDK's own floor (MinAPIVersion / Docker
+	// 19.03) is well below it, so the client never limits a supported node.
+	MinEngineVersion = "25.0"
+)
 
 // Client is the abstraction the rest of the app depends on.
 type Client interface {
@@ -23,8 +44,11 @@ type Client interface {
 	Ping(ctx context.Context) error
 	// Info returns engine information.
 	Info(ctx context.Context) (Info, error)
+	// Capabilities reports what the connected engine supports (API/engine
+	// version, OS/arch, swarm state), derived from Ping + Info in one round-trip.
+	// Returns ErrEngineTooOld if the daemon is below MinAPIVersion.
+	Capabilities(ctx context.Context) (Capabilities, error)
 
-	// Containers.
 	ListContainers(ctx context.Context, all bool) ([]Container, error)
 	InspectContainer(ctx context.Context, id string) (Container, error)
 	// InspectContainerConfig returns the full runtime configuration of a container
@@ -103,13 +127,12 @@ type Client interface {
 	// psArgs are ps flags (e.g. "aux"); blank uses the daemon default. Read-only.
 	Top(ctx context.Context, containerID, psArgs string) (ProcessList, error)
 
-	// Streaming. The sink is invoked per item; return a non-nil error to stop.
+	// The sink is invoked per item; return a non-nil error to stop.
 	StreamLogs(ctx context.Context, id string, follow bool, tail string, sink func(LogLine) error) error
 	StreamStats(ctx context.Context, id string, sink func(StatsSample) error) error
 	// StatsOnce returns a single resource-usage sample.
 	StatsOnce(ctx context.Context, id string) (StatsSample, error)
 
-	// Networks & volumes.
 	EnsureNetwork(ctx context.Context, name string) (string, error)
 	CreateNetwork(ctx context.Context, name, driver string, internal bool) (string, error)
 	// CreateNetworkSpec creates a managed network with explicit options, including an optional

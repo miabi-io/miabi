@@ -6,22 +6,20 @@ package docker
 import (
 	"context"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/volume"
+	"github.com/moby/moby/api/types/volume"
+	"github.com/moby/moby/client"
 )
 
 // ListImages enumerates the node's local images, flagging dangling (untagged)
 // ones and carrying the container-reference count so a report can tell which are
 // reclaimable. SharedSize/Containers are computed by the daemon here.
 func (e *engineClient) ListImages(ctx context.Context) ([]Image, error) {
-	list, err := e.cli.ImageList(ctx, image.ListOptions{All: false, SharedSize: true})
+	res, err := e.cli.ImageList(ctx, client.ImageListOptions{All: false, SharedSize: true})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Image, 0, len(list))
-	for _, im := range list {
+	out := make([]Image, 0, len(res.Items))
+	for _, im := range res.Items {
 		out = append(out, Image{
 			ID:          im.ID,
 			RepoTags:    im.RepoTags,
@@ -48,78 +46,60 @@ func isDanglingImage(repoTags []string) bool {
 	return true
 }
 
-// DiskUsage returns a `docker system df`-style breakdown for the node. Per category it reports
-// total bytes, reclaimable bytes (an upper bound that ignores cross-image layer sharing, as the
-// Docker CLI also does), and how many items are in use.
+// DiskUsage returns a `docker system df`-style breakdown for the node. The client pre-aggregates
+// per-category counts and total/reclaimable bytes (the same numbers `docker system df` shows), so
+// this is a direct projection.
 func (e *engineClient) DiskUsage(ctx context.Context) (DiskUsage, error) {
-	du, err := e.cli.DiskUsage(ctx, types.DiskUsageOptions{})
+	du, err := e.cli.DiskUsage(ctx, client.DiskUsageOptions{
+		Containers: true, Images: true, Volumes: true, BuildCache: true,
+	})
 	if err != nil {
 		return DiskUsage{}, err
 	}
-	var out DiskUsage
-
-	out.Images.TotalBytes = du.LayersSize // unique on-disk size across all images
-	for _, im := range du.Images {
-		out.Images.Count++
-		switch {
-		case im.Containers > 0:
-			out.Images.Active++
-		default: // unused (0) or not-computed (-1): treat as reclaimable
-			out.Images.Reclaimable += im.Size
-		}
-	}
-
-	for _, ct := range du.Containers {
-		out.Containers.Count++
-		out.Containers.TotalBytes += ct.SizeRw
-		if ct.State == "running" {
-			out.Containers.Active++
-		} else {
-			out.Containers.Reclaimable += ct.SizeRw
-		}
-	}
-
-	for _, v := range volumeUsageFrom(du.Volumes) {
-		out.Volumes.Count++
-		out.Volumes.TotalBytes += v.Bytes
-		if v.RefCount > 0 {
-			out.Volumes.Active++
-		} else {
-			out.Volumes.Reclaimable += v.Bytes
-		}
-	}
-
-	for _, bc := range du.BuildCache {
-		if bc.Shared {
-			continue // shared records are counted under their owning record
-		}
-		out.BuildCache.Count++
-		out.BuildCache.TotalBytes += bc.Size
-		if bc.InUse {
-			out.BuildCache.Active++
-		} else {
-			out.BuildCache.Reclaimable += bc.Size
-		}
-	}
-	return out, nil
+	return DiskUsage{
+		Images: DiskUsageCategory{
+			Count:       int(du.Images.TotalCount),
+			Active:      int(du.Images.ActiveCount),
+			TotalBytes:  du.Images.TotalSize,
+			Reclaimable: du.Images.Reclaimable,
+		},
+		Containers: DiskUsageCategory{
+			Count:       int(du.Containers.TotalCount),
+			Active:      int(du.Containers.ActiveCount),
+			TotalBytes:  du.Containers.TotalSize,
+			Reclaimable: du.Containers.Reclaimable,
+		},
+		Volumes: DiskUsageCategory{
+			Count:       int(du.Volumes.TotalCount),
+			Active:      int(du.Volumes.ActiveCount),
+			TotalBytes:  du.Volumes.TotalSize,
+			Reclaimable: du.Volumes.Reclaimable,
+		},
+		BuildCache: DiskUsageCategory{
+			Count:       int(du.BuildCache.TotalCount),
+			Active:      int(du.BuildCache.ActiveCount),
+			TotalBytes:  du.BuildCache.TotalSize,
+			Reclaimable: du.BuildCache.Reclaimable,
+		},
+	}, nil
 }
 
 // VolumeUsage returns measured on-disk bytes per Docker volume name. Runs the
 // daemon's `system df` filesystem walk, so it is sweep-only — never per read.
 func (e *engineClient) VolumeUsage(ctx context.Context) ([]VolumeUsage, error) {
-	du, err := e.cli.DiskUsage(ctx, types.DiskUsageOptions{})
+	du, err := e.cli.DiskUsage(ctx, client.DiskUsageOptions{Volumes: true})
 	if err != nil {
 		return nil, err
 	}
-	return volumeUsageFrom(du.Volumes), nil
+	return volumeUsageFrom(du.Volumes.Items), nil
 }
 
 // volumeUsageFrom projects the SDK volumes into our shape, skipping ones the daemon did not size
 // (nil UsageData, or Size -1).
-func volumeUsageFrom(vols []*volume.Volume) []VolumeUsage {
+func volumeUsageFrom(vols []volume.Volume) []VolumeUsage {
 	out := make([]VolumeUsage, 0, len(vols))
 	for _, v := range vols {
-		if v == nil || v.UsageData == nil || v.UsageData.Size < 0 {
+		if v.UsageData == nil || v.UsageData.Size < 0 {
 			continue
 		}
 		out = append(out, VolumeUsage{
@@ -135,21 +115,19 @@ func volumeUsageFrom(vols []*volume.Volume) []VolumeUsage {
 // otherwise it removes every image no container references — callers must apply their
 // referenced-image guard first. An optional Until age filter restricts it to older images.
 func (e *engineClient) PruneImages(ctx context.Context, opts PruneImagesOptions) (PruneReport, error) {
-	f := filters.NewArgs()
+	pairs := []string{"dangling", "false"}
 	if opts.Dangling {
-		f.Add("dangling", "true")
-	} else {
-		f.Add("dangling", "false")
+		pairs = []string{"dangling", "true"}
 	}
 	if opts.Until != "" {
-		f.Add("until", opts.Until)
+		pairs = append(pairs, "until", opts.Until)
 	}
-	rep, err := e.cli.ImagesPrune(ctx, f)
+	rep, err := e.cli.ImagePrune(ctx, client.ImagePruneOptions{Filters: selectorFilters(pairs...)})
 	if err != nil {
 		return PruneReport{}, err
 	}
-	out := PruneReport{SpaceReclaimed: int64(rep.SpaceReclaimed)}
-	for _, d := range rep.ImagesDeleted {
+	out := PruneReport{SpaceReclaimed: int64(rep.Report.SpaceReclaimed)}
+	for _, d := range rep.Report.ImagesDeleted {
 		if d.Deleted != "" {
 			out.ItemsDeleted = append(out.ItemsDeleted, d.Deleted)
 		} else if d.Untagged != "" {
@@ -162,12 +140,12 @@ func (e *engineClient) PruneImages(ctx context.Context, opts PruneImagesOptions)
 // PruneBuildCache reclaims the BuildKit build cache. It removes only unused
 // records (no All flag), so an in-progress or referenced build is never touched.
 func (e *engineClient) PruneBuildCache(ctx context.Context) (PruneReport, error) {
-	rep, err := e.cli.BuildCachePrune(ctx, types.BuildCachePruneOptions{})
+	rep, err := e.cli.BuildCachePrune(ctx, client.BuildCachePruneOptions{})
 	if err != nil {
 		return PruneReport{}, err
 	}
-	if rep == nil {
-		return PruneReport{}, nil
-	}
-	return PruneReport{ItemsDeleted: rep.CachesDeleted, SpaceReclaimed: int64(rep.SpaceReclaimed)}, nil
+	return PruneReport{
+		ItemsDeleted:   rep.Report.CachesDeleted,
+		SpaceReclaimed: int64(rep.Report.SpaceReclaimed),
+	}, nil
 }

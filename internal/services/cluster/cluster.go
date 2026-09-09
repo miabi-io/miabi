@@ -49,6 +49,7 @@ type Nodes interface {
 	List(ctx context.Context) ([]models.Server, error)
 	Get(id uint) (*models.Server, error)
 	SetSwarmNodeID(id uint, swarmNodeID string) error
+	SetEngineVersion(swarmNodeID, version string) error
 }
 
 // Service tracks the manager's swarm state and exposes cluster operations.
@@ -238,6 +239,14 @@ func (s *Service) Refresh(ctx context.Context) {
 		if list, lerr := local.SwarmNodes(ctx); lerr == nil {
 			for _, n := range list {
 				nodesByID[n.ID] = n
+				// From the manager's view, so the Nodes page can flag daemons too old
+				// for the SDK even on a node Miabi holds no client for. Best-effort:
+				// a write failure just leaves the last value.
+				if n.EngineVersion != "" {
+					if serr := s.nodes.SetEngineVersion(n.ID, n.EngineVersion); serr != nil {
+						logger.Warn("failed to persist node engine version", "swarm_node_id", n.ID, "error", serr)
+					}
+				}
 			}
 		} else {
 			logger.Warn("failed to list swarm nodes", "error", lerr)

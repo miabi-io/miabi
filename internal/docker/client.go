@@ -11,25 +11,22 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/netip"
 	"path"
 	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	dockerevents "github.com/docker/docker/api/types/events"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/api/types/registry"
-	"github.com/docker/docker/api/types/volume"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/errdefs"
-	"github.com/docker/docker/pkg/archive"
-	"github.com/docker/docker/pkg/stdcopy"
-	"github.com/docker/go-connections/nat"
+	cerrdefs "github.com/containerd/errdefs"
+	"github.com/moby/go-archive"
+	"github.com/moby/go-archive/compression"
+	"github.com/moby/moby/api/pkg/authconfig"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/api/types/registry"
+	"github.com/moby/moby/client"
 )
 
 type engineClient struct {
@@ -39,7 +36,7 @@ type engineClient struct {
 // New connects to the Docker engine using the standard environment
 // (DOCKER_HOST etc.) with API version negotiation.
 func New() (Client, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, err
 	}
@@ -49,16 +46,17 @@ func New() (Client, error) {
 func (e *engineClient) Close() error { return e.cli.Close() }
 
 func (e *engineClient) Ping(ctx context.Context) error {
-	_, err := e.cli.Ping(ctx)
+	_, err := e.cli.Ping(ctx, client.PingOptions{})
 	return err
 }
 
 func (e *engineClient) Info(ctx context.Context) (Info, error) {
-	info, err := e.cli.Info(ctx)
+	res, err := e.cli.Info(ctx, client.InfoOptions{})
 	if err != nil {
 		return Info{}, err
 	}
-	ping, _ := e.cli.Ping(ctx)
+	info := res.Info
+	ping, _ := e.cli.Ping(ctx, client.PingOptions{})
 	runtimes := make([]string, 0, len(info.Runtimes))
 	for name := range info.Runtimes {
 		runtimes = append(runtimes, name)
@@ -66,7 +64,7 @@ func (e *engineClient) Info(ctx context.Context) (Info, error) {
 	return Info{
 		Name:          info.Name,
 		Version:       info.ServerVersion,
-		APIVersion:    string(ping.APIVersion),
+		APIVersion:    ping.APIVersion,
 		OS:            info.OperatingSystem,
 		Arch:          info.Architecture,
 		Containers:    info.Containers,
@@ -78,9 +76,50 @@ func (e *engineClient) Info(ctx context.Context) (Info, error) {
 	}, nil
 }
 
-// toDeviceRequests maps Miabi GPU requests to Docker's DeviceRequest form, targeting the "nvidia"
-// driver. DeviceIDs pins exact cards; a nil DeviceIDs falls back to Count-of-any (-1 = all). An
-// empty capability set defaults to [["gpu"]].
+// Capabilities reports what the connected engine supports, from Ping + Info in
+// one round-trip. It maps the SDK's too-old-daemon error onto ErrEngineTooOld so
+// the caller sees a clear reason ("engine too old, Miabi requires >= X") rather
+// than an obscure SDK error.
+func (e *engineClient) Capabilities(ctx context.Context) (Capabilities, error) {
+	ping, err := e.cli.Ping(ctx, client.PingOptions{NegotiateAPIVersion: true})
+	if err != nil {
+		if cerrdefs.IsInvalidArgument(err) {
+			return Capabilities{}, fmt.Errorf("%w: Miabi requires Docker Engine >= %s: %v",
+				ErrEngineTooOld, MinEngineVersion, err)
+		}
+		return Capabilities{}, err
+	}
+	info, err := e.cli.Info(ctx, client.InfoOptions{})
+	if err != nil {
+		return Capabilities{}, err
+	}
+	caps := Capabilities{
+		APIVersion:    ping.APIVersion,
+		EngineVersion: info.Info.ServerVersion,
+		OS:            info.Info.OSType,
+		Arch:          info.Info.Architecture,
+	}
+	sw := info.Info.Swarm
+	caps.SwarmActive = string(sw.LocalNodeState) == "active"
+	caps.SwarmManager = sw.ControlAvailable
+	return caps, nil
+}
+
+// selectorFilters is the ONLY place internal/docker constructs an engine filter
+// set, so a future change to the Filters API touches one function. Pairs are
+// key,value,key,value…; a trailing unpaired key is ignored.
+func selectorFilters(pairs ...string) client.Filters {
+	f := client.Filters{}
+	for i := 0; i+1 < len(pairs); i += 2 {
+		f.Add(pairs[i], pairs[i+1])
+	}
+	return f
+}
+
+// toDeviceRequests maps Miabi GPU requests to Docker's DeviceRequest form. Each
+// request targets the "nvidia" device driver; DeviceIDs pins exact cards while a
+// nil DeviceIDs falls back to Count-of-any (-1 = all). An empty capability set
+// defaults to [["gpu"]].
 func toDeviceRequests(gpus []GPURequest) []container.DeviceRequest {
 	if len(gpus) == 0 {
 		return nil
@@ -102,18 +141,18 @@ func toDeviceRequests(gpus []GPURequest) []container.DeviceRequest {
 }
 
 func (e *engineClient) ListContainers(ctx context.Context, all bool) ([]Container, error) {
-	list, err := e.cli.ContainerList(ctx, container.ListOptions{All: all})
+	res, err := e.cli.ContainerList(ctx, client.ContainerListOptions{All: all})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Container, 0, len(list))
-	for _, c := range list {
+	out := make([]Container, 0, len(res.Items))
+	for _, c := range res.Items {
 		ports := make([]Port, 0, len(c.Ports))
 		for _, p := range c.Ports {
 			ports = append(ports, Port{PrivatePort: p.PrivatePort, PublicPort: p.PublicPort, Protocol: p.Type})
 		}
 		out = append(out, Container{
-			ID: c.ID, Names: c.Names, Image: c.Image, State: c.State,
+			ID: c.ID, Names: c.Names, Image: c.Image, State: string(c.State),
 			Status: c.Status, Created: c.Created, Ports: ports, Labels: c.Labels,
 		})
 	}
@@ -121,22 +160,27 @@ func (e *engineClient) ListContainers(ctx context.Context, all bool) ([]Containe
 }
 
 func (e *engineClient) InspectContainer(ctx context.Context, id string) (Container, error) {
-	c, err := e.cli.ContainerInspect(ctx, id)
+	res, err := e.cli.ContainerInspect(ctx, id, client.ContainerInspectOptions{})
 	if err != nil {
 		return Container{}, wrapNotFound(err)
 	}
+	c := res.Container
 	health := ""
 	if c.State.Health != nil {
-		health = c.State.Health.Status
+		health = string(c.State.Health.Status)
 	}
 	var nets []ContainerNetwork
 	if c.NetworkSettings != nil {
 		for name, ep := range c.NetworkSettings.Networks {
-			if ep == nil || ep.IPAddress == "" {
+			if ep == nil || !ep.IPAddress.IsValid() {
 				continue
 			}
+			gateway := ""
+			if ep.Gateway.IsValid() {
+				gateway = ep.Gateway.String()
+			}
 			nets = append(nets, ContainerNetwork{
-				Name: name, IPAddress: ep.IPAddress, Gateway: ep.Gateway, Aliases: ep.Aliases,
+				Name: name, IPAddress: ep.IPAddress.String(), Gateway: gateway, Aliases: ep.Aliases,
 			})
 		}
 	}
@@ -144,8 +188,8 @@ func (e *engineClient) InspectContainer(ctx context.Context, id string) (Contain
 		ID:           c.ID,
 		Names:        []string{strings.TrimPrefix(c.Name, "/")},
 		Image:        c.Config.Image,
-		State:        c.State.Status,
-		Status:       c.State.Status,
+		State:        string(c.State.Status),
+		Status:       string(c.State.Status),
 		Health:       health,
 		Restarting:   c.State.Restarting,
 		RestartCount: c.RestartCount,
@@ -157,14 +201,15 @@ func (e *engineClient) InspectContainer(ctx context.Context, id string) (Contain
 }
 
 func (e *engineClient) InspectContainerConfig(ctx context.Context, id string) (ContainerConfig, error) {
-	c, err := e.cli.ContainerInspect(ctx, id)
+	res, err := e.cli.ContainerInspect(ctx, id, client.ContainerInspectOptions{})
 	if err != nil {
 		return ContainerConfig{}, wrapNotFound(err)
 	}
+	c := res.Container
 	cfg := ContainerConfig{
 		ID:    c.ID,
 		Name:  strings.TrimPrefix(c.Name, "/"),
-		State: c.State.Status,
+		State: string(c.State.Status),
 	}
 	if c.Config != nil {
 		cfg.Image = c.Config.Image
@@ -179,7 +224,7 @@ func (e *engineClient) InspectContainerConfig(ctx context.Context, id string) (C
 		cfg.NanoCPUs = c.HostConfig.NanoCPUs
 		cfg.RestartPolicy = restartPolicyString(c.HostConfig.RestartPolicy)
 		for p, binds := range c.HostConfig.PortBindings {
-			pm := PortMapping{ContainerPort: p.Int(), Protocol: p.Proto()}
+			pm := PortMapping{ContainerPort: int(p.Num()), Protocol: string(p.Proto())}
 			for _, b := range binds {
 				if hp, perr := strconv.Atoi(b.HostPort); perr == nil && hp > 0 {
 					pm.HostPort = hp
@@ -255,16 +300,21 @@ func containerVolumeMounts(spec RunSpec) ([]string, []mount.Mount) {
 }
 
 func (e *engineClient) RunContainer(ctx context.Context, spec RunSpec) (string, error) {
-	exposed := nat.PortSet{}
-	bindings := nat.PortMap{}
+	exposed := network.PortSet{}
+	bindings := network.PortMap{}
 	for cp, hp := range spec.Ports {
-		p := nat.Port(cp)
-		exposed[p] = struct{}{}
-		hostIP := "0.0.0.0"
-		if ip := spec.PortBindIPs[cp]; ip != "" {
-			hostIP = ip // publish on a specific interface (e.g. the node's private IP)
+		p, perr := network.ParsePort(cp) // cp is "containerPort/proto", e.g. "80/tcp"
+		if perr != nil {
+			continue
 		}
-		bindings[p] = []nat.PortBinding{{HostIP: hostIP, HostPort: hp}}
+		exposed[p] = struct{}{}
+		hostIP := netip.IPv4Unspecified() // 0.0.0.0 — all interfaces
+		if ip := spec.PortBindIPs[cp]; ip != "" {
+			if addr, aerr := netip.ParseAddr(ip); aerr == nil {
+				hostIP = addr // publish on a specific interface (e.g. the node's private IP)
+			}
+		}
+		bindings[p] = []network.PortBinding{{HostIP: hostIP, HostPort: hp}}
 	}
 
 	binds, volMounts := containerVolumeMounts(spec)
@@ -325,7 +375,9 @@ func (e *engineClient) RunContainer(ctx context.Context, spec RunSpec) (string, 
 		netCfg = &network.NetworkingConfig{EndpointsConfig: endpoints}
 	}
 
-	created, err := e.cli.ContainerCreate(ctx, cfg, hostCfg, netCfg, nil, spec.Name)
+	created, err := e.cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config: cfg, HostConfig: hostCfg, NetworkingConfig: netCfg, Name: spec.Name,
+	})
 	if err != nil {
 		return "", err
 	}
@@ -334,7 +386,7 @@ func (e *engineClient) RunContainer(ctx context.Context, spec RunSpec) (string, 
 	if err := e.copyFiles(ctx, created.ID, spec.Files); err != nil {
 		return created.ID, err
 	}
-	if err := e.cli.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
+	if _, err := e.cli.ContainerStart(ctx, created.ID, client.ContainerStartOptions{}); err != nil {
 		return created.ID, err
 	}
 	return created.ID, nil
@@ -385,7 +437,7 @@ func (e *engineClient) copyFiles(ctx context.Context, id string, files []FileEnt
 	if err := tw.Close(); err != nil {
 		return err
 	}
-	if err := e.cli.CopyToContainer(ctx, id, "/", &buf, container.CopyToContainerOptions{}); err != nil {
+	if _, err := e.cli.CopyToContainer(ctx, id, client.CopyToContainerOptions{DestinationPath: "/", Content: &buf}); err != nil {
 		return fmt.Errorf("copy config files: %w", err)
 	}
 	return nil
@@ -414,21 +466,25 @@ func restartPolicy(p string) container.RestartPolicy {
 }
 
 func (e *engineClient) StartContainer(ctx context.Context, id string) error {
-	return wrapNotFound(e.cli.ContainerStart(ctx, id, container.StartOptions{}))
+	_, err := e.cli.ContainerStart(ctx, id, client.ContainerStartOptions{})
+	return wrapNotFound(err)
 }
 
 func (e *engineClient) StopContainer(ctx context.Context, id string, timeoutSeconds int) error {
 	t := timeoutSeconds
-	return wrapNotFound(e.cli.ContainerStop(ctx, id, container.StopOptions{Timeout: &t}))
+	_, err := e.cli.ContainerStop(ctx, id, client.ContainerStopOptions{Timeout: &t})
+	return wrapNotFound(err)
 }
 
 func (e *engineClient) RestartContainer(ctx context.Context, id string, timeoutSeconds int) error {
 	t := timeoutSeconds
-	return wrapNotFound(e.cli.ContainerRestart(ctx, id, container.StopOptions{Timeout: &t}))
+	_, err := e.cli.ContainerRestart(ctx, id, client.ContainerRestartOptions{Timeout: &t})
+	return wrapNotFound(err)
 }
 
 func (e *engineClient) RemoveContainer(ctx context.Context, id string, force bool) error {
-	return wrapNotFound(e.cli.ContainerRemove(ctx, id, container.RemoveOptions{Force: force}))
+	_, err := e.cli.ContainerRemove(ctx, id, client.ContainerRemoveOptions{Force: force})
+	return wrapNotFound(err)
 }
 
 // createOneShot creates (but does not start) a one-shot helper container from a RunSpec. Resource
@@ -470,7 +526,9 @@ func (e *engineClient) createOneShot(ctx context.Context, spec RunSpec) (string,
 		netCfg = &network.NetworkingConfig{EndpointsConfig: endpoints}
 	}
 
-	created, err := e.cli.ContainerCreate(ctx, cfg, hostCfg, netCfg, nil, spec.Name)
+	created, err := e.cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config: cfg, HostConfig: hostCfg, NetworkingConfig: netCfg, Name: spec.Name,
+	})
 	if err != nil {
 		return "", err
 	}
@@ -483,21 +541,21 @@ func (e *engineClient) RunOneShot(ctx context.Context, spec RunSpec) (int, strin
 		return -1, "", err
 	}
 	defer func() {
-		_ = e.cli.ContainerRemove(context.Background(), id, container.RemoveOptions{Force: true})
+		_, _ = e.cli.ContainerRemove(context.Background(), id, client.ContainerRemoveOptions{Force: true})
 	}()
 
-	if err := e.cli.ContainerStart(ctx, id, container.StartOptions{}); err != nil {
+	if _, err := e.cli.ContainerStart(ctx, id, client.ContainerStartOptions{}); err != nil {
 		return -1, "", err
 	}
 
-	statusCh, errCh := e.cli.ContainerWait(ctx, id, container.WaitConditionNotRunning)
+	wait := e.cli.ContainerWait(ctx, id, client.ContainerWaitOptions{Condition: container.WaitConditionNotRunning})
 	var exitCode int
 	select {
-	case err := <-errCh:
+	case err := <-wait.Error:
 		if err != nil {
 			return -1, e.collectLogs(id), err
 		}
-	case st := <-statusCh:
+	case st := <-wait.Result:
 		exitCode = int(st.StatusCode)
 	case <-ctx.Done():
 		return -1, e.collectLogs(id), ctx.Err()
@@ -514,19 +572,19 @@ func (e *engineClient) RunOneShotStream(ctx context.Context, spec RunSpec, sink 
 		return -1, err
 	}
 	defer func() {
-		_ = e.cli.ContainerRemove(context.Background(), id, container.RemoveOptions{Force: true})
+		_, _ = e.cli.ContainerRemove(context.Background(), id, client.ContainerRemoveOptions{Force: true})
 	}()
 
 	// Wait must be set up before start so a fast-exiting container's status isn't
 	// missed.
-	statusCh, errCh := e.cli.ContainerWait(ctx, id, container.WaitConditionNotRunning)
-	if err := e.cli.ContainerStart(ctx, id, container.StartOptions{}); err != nil {
+	wait := e.cli.ContainerWait(ctx, id, client.ContainerWaitOptions{Condition: container.WaitConditionNotRunning})
+	if _, err := e.cli.ContainerStart(ctx, id, client.ContainerStartOptions{}); err != nil {
 		return -1, err
 	}
 
 	// Follow the logs until the stream closes (container exit) or the context is
 	// cancelled. stdout and stderr both feed the same sink, interleaved as emitted.
-	rc, lerr := e.cli.ContainerLogs(ctx, id, container.LogsOptions{
+	rc, lerr := e.cli.ContainerLogs(ctx, id, client.ContainerLogsOptions{
 		ShowStdout: true, ShowStderr: true, Follow: true,
 	})
 	if lerr == nil {
@@ -536,11 +594,11 @@ func (e *engineClient) RunOneShotStream(ctx context.Context, spec RunSpec, sink 
 	}
 
 	select {
-	case err := <-errCh:
+	case err := <-wait.Error:
 		if err != nil {
 			return -1, err
 		}
-	case st := <-statusCh:
+	case st := <-wait.Result:
 		return int(st.StatusCode), nil
 	case <-ctx.Done():
 		return -1, ctx.Err()
@@ -548,15 +606,15 @@ func (e *engineClient) RunOneShotStream(ctx context.Context, spec RunSpec, sink 
 	return -1, nil
 }
 
-func (e *engineClient) CopyToVolume(ctx context.Context, volume, image, name string, content io.Reader, size int64) error {
+func (e *engineClient) CopyToVolume(ctx context.Context, volumeName, image, name string, content io.Reader, size int64) error {
 	cfg := &container.Config{Image: image, Labels: map[string]string{ManagedLabel: "true"}}
-	hostCfg := &container.HostConfig{Binds: []string{volume + ":/dpvol"}}
-	created, err := e.cli.ContainerCreate(ctx, cfg, hostCfg, nil, nil, "")
+	hostCfg := &container.HostConfig{Binds: []string{volumeName + ":/dpvol"}}
+	created, err := e.cli.ContainerCreate(ctx, client.ContainerCreateOptions{Config: cfg, HostConfig: hostCfg})
 	if err != nil {
 		return err
 	}
 	defer func() {
-		_ = e.cli.ContainerRemove(context.Background(), created.ID, container.RemoveOptions{Force: true})
+		_, _ = e.cli.ContainerRemove(context.Background(), created.ID, client.ContainerRemoveOptions{Force: true})
 	}()
 
 	// CopyToContainer extracts a tar at the destination path; stream a single-file
@@ -576,7 +634,7 @@ func (e *engineClient) CopyToVolume(ctx context.Context, volume, image, name str
 		_ = tw.Close()
 		_ = pw.Close()
 	}()
-	if err := e.cli.CopyToContainer(ctx, created.ID, "/dpvol", pr, types.CopyToContainerOptions{}); err != nil {
+	if _, err := e.cli.CopyToContainer(ctx, created.ID, client.CopyToContainerOptions{DestinationPath: "/dpvol", Content: pr}); err != nil {
 		return fmt.Errorf("copy to volume: %w", err)
 	}
 	return nil
@@ -585,12 +643,12 @@ func (e *engineClient) CopyToVolume(ctx context.Context, volume, image, name str
 // ReadContainerFile reads a single regular file from a container's filesystem
 // via CopyFromContainer (a tar stream with one entry), capped at 5 MiB.
 func (e *engineClient) ReadContainerFile(ctx context.Context, containerID, path string) ([]byte, error) {
-	tarStream, _, err := e.cli.CopyFromContainer(ctx, containerID, path)
+	res, err := e.cli.CopyFromContainer(ctx, containerID, client.CopyFromContainerOptions{SourcePath: path})
 	if err != nil {
 		return nil, wrapNotFound(err)
 	}
-	defer func() { _ = tarStream.Close() }()
-	tr := tar.NewReader(tarStream)
+	defer func() { _ = res.Content.Close() }()
+	tr := tar.NewReader(res.Content)
 	for {
 		hdr, err := tr.Next()
 		if errors.Is(err, io.EOF) {
@@ -607,35 +665,35 @@ func (e *engineClient) ReadContainerFile(ctx context.Context, containerID, path 
 	}
 }
 
-func (e *engineClient) CopyFileFromVolume(ctx context.Context, volume, image, file string) (io.ReadCloser, int64, error) {
+func (e *engineClient) CopyFileFromVolume(ctx context.Context, volumeName, image, file string) (io.ReadCloser, int64, error) {
 	cfg := &container.Config{Image: image, Labels: map[string]string{ManagedLabel: "true"}}
-	hostCfg := &container.HostConfig{Binds: []string{volume + ":/backup:ro"}}
-	created, err := e.cli.ContainerCreate(ctx, cfg, hostCfg, nil, nil, "")
+	hostCfg := &container.HostConfig{Binds: []string{volumeName + ":/backup:ro"}}
+	created, err := e.cli.ContainerCreate(ctx, client.ContainerCreateOptions{Config: cfg, HostConfig: hostCfg})
 	if err != nil {
 		return nil, 0, err
 	}
 	cleanup := func() {
-		_ = e.cli.ContainerRemove(context.Background(), created.ID, container.RemoveOptions{Force: true})
+		_, _ = e.cli.ContainerRemove(context.Background(), created.ID, client.ContainerRemoveOptions{Force: true})
 	}
 
 	// CopyFromContainer returns the path as a tar stream; the file we want is
 	// the single entry inside it.
-	tarStream, _, err := e.cli.CopyFromContainer(ctx, created.ID, "/backup/"+file)
+	res, err := e.cli.CopyFromContainer(ctx, created.ID, client.CopyFromContainerOptions{SourcePath: "/backup/" + file})
 	if err != nil {
 		cleanup()
 		return nil, 0, wrapNotFound(err)
 	}
-	tr := tar.NewReader(tarStream)
+	tr := tar.NewReader(res.Content)
 	hdr, err := tr.Next()
 	if err != nil {
-		_ = tarStream.Close()
+		_ = res.Content.Close()
 		cleanup()
 		if errors.Is(err, io.EOF) {
 			return nil, 0, ErrNotFound
 		}
 		return nil, 0, err
 	}
-	return &volumeFileReader{tr: tr, closer: tarStream, cleanup: cleanup}, hdr.Size, nil
+	return &volumeFileReader{tr: tr, closer: res.Content, cleanup: cleanup}, hdr.Size, nil
 }
 
 // volumeFileReader streams one file out of a CopyFromContainer tar archive and, on Close,
@@ -658,7 +716,7 @@ func (r *volumeFileReader) Close() error {
 }
 
 func (e *engineClient) collectLogs(id string) string {
-	rc, err := e.cli.ContainerLogs(context.Background(), id, container.LogsOptions{
+	rc, err := e.cli.ContainerLogs(context.Background(), id, client.ContainerLogsOptions{
 		ShowStdout: true, ShowStderr: true, Tail: "all",
 	})
 	if err != nil {
@@ -671,18 +729,16 @@ func (e *engineClient) collectLogs(id string) string {
 }
 
 func (e *engineClient) StreamEvents(ctx context.Context, sink func(EngineEvent) error) error {
-	f := filters.NewArgs()
-	f.Add("type", "container")
 	// Stream all container lifecycle events and filter in Go: the subscriber
 	// cheaply ignores any without an io.miabi.app label (see events.Subscriber).
-	msgs, errs := e.cli.Events(ctx, dockerevents.ListOptions{Filters: f})
+	evs := e.cli.Events(ctx, client.EventsListOptions{Filters: selectorFilters("type", "container")})
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case err := <-errs:
+		case err := <-evs.Err:
 			return err
-		case m := <-msgs:
+		case m := <-evs.Messages:
 			if err := sink(EngineEvent{
 				Action:      string(m.Action),
 				ContainerID: m.Actor.ID,
@@ -695,17 +751,11 @@ func (e *engineClient) StreamEvents(ctx context.Context, sink func(EngineEvent) 
 }
 
 func (e *engineClient) PullImage(ctx context.Context, ref string, auth *RegistryAuth) error {
-	opts := image.PullOptions{}
-	if auth != nil && (auth.Username != "" || auth.Password != "") {
-		encoded, err := registry.EncodeAuthConfig(registry.AuthConfig{
-			Username:      auth.Username,
-			Password:      auth.Password,
-			ServerAddress: auth.Server,
-		})
-		if err != nil {
-			return fmt.Errorf("encode registry auth: %w", err)
-		}
-		opts.RegistryAuth = encoded
+	opts := client.ImagePullOptions{}
+	if enc, err := encodeRegistryAuth(auth); err != nil {
+		return fmt.Errorf("encode registry auth: %w", err)
+	} else if enc != "" {
+		opts.RegistryAuth = enc
 	}
 	rc, err := e.cli.ImagePull(ctx, ref, opts)
 	if err != nil {
@@ -717,21 +767,16 @@ func (e *engineClient) PullImage(ctx context.Context, ref string, auth *Registry
 }
 
 func (e *engineClient) TagImage(ctx context.Context, source, target string) error {
-	return e.cli.ImageTag(ctx, source, target)
+	_, err := e.cli.ImageTag(ctx, client.ImageTagOptions{Source: source, Target: target})
+	return err
 }
 
 func (e *engineClient) PushImage(ctx context.Context, ref string, auth *RegistryAuth) error {
-	opts := image.PushOptions{}
-	if auth != nil && (auth.Username != "" || auth.Password != "") {
-		encoded, err := registry.EncodeAuthConfig(registry.AuthConfig{
-			Username:      auth.Username,
-			Password:      auth.Password,
-			ServerAddress: auth.Server,
-		})
-		if err != nil {
-			return fmt.Errorf("encode registry auth: %w", err)
-		}
-		opts.RegistryAuth = encoded
+	opts := client.ImagePushOptions{}
+	if enc, err := encodeRegistryAuth(auth); err != nil {
+		return fmt.Errorf("encode registry auth: %w", err)
+	} else if enc != "" {
+		opts.RegistryAuth = enc
 	}
 	rc, err := e.cli.ImagePush(ctx, ref, opts)
 	if err != nil {
@@ -761,13 +806,13 @@ func (e *engineClient) BuildImage(ctx context.Context, contextDir, dockerfile, t
 	if dockerfile == "" {
 		dockerfile = "Dockerfile"
 	}
-	tar, err := archive.Tar(contextDir, archive.Uncompressed)
+	tarball, err := archive.Tar(contextDir, compression.None)
 	if err != nil {
 		return fmt.Errorf("tar build context: %w", err)
 	}
-	defer func() { _ = tar.Close() }()
+	defer func() { _ = tarball.Close() }()
 
-	resp, err := e.cli.ImageBuild(ctx, tar, types.ImageBuildOptions{
+	resp, err := e.cli.ImageBuild(ctx, tarball, client.ImageBuildOptions{
 		Tags:       []string{tag},
 		Dockerfile: dockerfile,
 		Remove:     true,
@@ -804,7 +849,7 @@ func (e *engineClient) BuildImage(ctx context.Context, contextDir, dockerfile, t
 // the pipeline build step to capture the digest of the image it just built and
 // by deploy-by-digest to record what ran.
 func (e *engineClient) InspectImage(ctx context.Context, ref string) (ImageInspect, error) {
-	insp, _, err := e.cli.ImageInspectWithRaw(ctx, ref)
+	insp, err := e.cli.ImageInspect(ctx, ref)
 	if err != nil {
 		return ImageInspect{}, wrapNotFound(err)
 	}
@@ -823,9 +868,9 @@ func (e *engineClient) InspectImage(ctx context.Context, ref string) (ImageInspe
 // ImageExists reports whether ref resolves to a local image. It lets a deploy
 // no-op a redundant pull/build when the artifact is already present on the node.
 func (e *engineClient) ImageExists(ctx context.Context, ref string) (bool, error) {
-	_, _, err := e.cli.ImageInspectWithRaw(ctx, ref)
+	_, err := e.cli.ImageInspect(ctx, ref)
 	if err != nil {
-		if errdefs.IsNotFound(err) {
+		if cerrdefs.IsNotFound(err) {
 			return false, nil
 		}
 		return false, err
@@ -836,8 +881,8 @@ func (e *engineClient) ImageExists(ctx context.Context, ref string) (bool, error
 // RemoveImage deletes a local image by reference. A not-found image is success
 // (idempotent), so GC can prune a row whose image a prior sweep already removed.
 func (e *engineClient) RemoveImage(ctx context.Context, ref string, force bool) error {
-	_, err := e.cli.ImageRemove(ctx, ref, image.RemoveOptions{Force: force, PruneChildren: true})
-	if err != nil && errdefs.IsNotFound(err) {
+	_, err := e.cli.ImageRemove(ctx, ref, client.ImageRemoveOptions{Force: force, PruneChildren: true})
+	if err != nil && cerrdefs.IsNotFound(err) {
 		return nil
 	}
 	return err
@@ -869,7 +914,7 @@ func sanitizeTail(tail string) string {
 
 func (e *engineClient) StreamLogs(ctx context.Context, id string, follow bool, tail string, sink func(LogLine) error) error {
 	tail = sanitizeTail(tail)
-	rc, err := e.cli.ContainerLogs(ctx, id, container.LogsOptions{
+	rc, err := e.cli.ContainerLogs(ctx, id, client.ContainerLogsOptions{
 		ShowStdout: true, ShowStderr: true, Follow: follow, Tail: tail,
 	})
 	if err != nil {
@@ -887,13 +932,13 @@ func (e *engineClient) StreamLogs(ctx context.Context, id string, follow bool, t
 }
 
 func (e *engineClient) StreamStats(ctx context.Context, id string, sink func(StatsSample) error) error {
-	resp, err := e.cli.ContainerStats(ctx, id, true)
+	res, err := e.cli.ContainerStats(ctx, id, client.ContainerStatsOptions{Stream: true})
 	if err != nil {
 		return wrapNotFound(err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { _ = res.Body.Close() }()
 
-	dec := json.NewDecoder(resp.Body)
+	dec := json.NewDecoder(res.Body)
 	for {
 		if ctx.Err() != nil {
 			return nil
@@ -912,13 +957,15 @@ func (e *engineClient) StreamStats(ctx context.Context, id string, sink func(Sta
 }
 
 func (e *engineClient) StatsOnce(ctx context.Context, id string) (StatsSample, error) {
-	resp, err := e.cli.ContainerStatsOneShot(ctx, id)
+	// IncludePreviousSample makes the daemon collect a prior sample so PreCPUStats
+	// is populated and the CPU delta is non-zero on a single read.
+	res, err := e.cli.ContainerStats(ctx, id, client.ContainerStatsOptions{IncludePreviousSample: true})
 	if err != nil {
 		return StatsSample{}, wrapNotFound(err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { _ = res.Body.Close() }()
 	var s container.StatsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&s); err != nil {
+	if err := json.NewDecoder(res.Body).Decode(&s); err != nil {
 		return StatsSample{}, err
 	}
 	return sampleFromStats(s), nil
@@ -932,8 +979,9 @@ func (e *engineClient) CreateNetwork(ctx context.Context, name, driver string, i
 	return e.CreateNetworkSpec(ctx, NetworkSpec{Name: name, Driver: driver, Internal: internal})
 }
 
-// createNetworkOptions builds the Docker create options from a NetworkSpec, including IPAM.
-func createNetworkOptions(spec NetworkSpec) network.CreateOptions {
+// createNetworkOptions builds the Docker create options from a NetworkSpec,
+// including IPAM when a subnet is set.
+func createNetworkOptions(spec NetworkSpec) client.NetworkCreateOptions {
 	driver := spec.Driver
 	if driver == "" {
 		driver = "bridge"
@@ -942,7 +990,7 @@ func createNetworkOptions(spec NetworkSpec) network.CreateOptions {
 	for k, v := range spec.Labels {
 		labels[k] = v
 	}
-	opts := network.CreateOptions{
+	opts := client.NetworkCreateOptions{
 		Driver:     driver,
 		Internal:   spec.Internal,
 		Attachable: spec.Attachable,
@@ -952,7 +1000,15 @@ func createNetworkOptions(spec NetworkSpec) network.CreateOptions {
 		opts.Options = map[string]string{"encrypted": ""}
 	}
 	if spec.Subnet != "" {
-		opts.IPAM = &network.IPAM{Config: []network.IPAMConfig{{Subnet: spec.Subnet, Gateway: spec.Gateway}}}
+		if prefix, perr := netip.ParsePrefix(spec.Subnet); perr == nil {
+			cfg := network.IPAMConfig{Subnet: prefix}
+			if spec.Gateway != "" {
+				if gw, gerr := netip.ParseAddr(spec.Gateway); gerr == nil {
+					cfg.Gateway = gw
+				}
+			}
+			opts.IPAM = &network.IPAM{Config: []network.IPAMConfig{cfg}}
+		}
 	}
 	return opts
 }
@@ -969,22 +1025,25 @@ func (e *engineClient) CreateNetworkSpec(ctx context.Context, spec NetworkSpec) 
 // EnsureNetworkSpec returns the existing network of the same name, or creates it
 // from the spec. Idempotent — used for the shared gateway and remote-node recreate.
 func (e *engineClient) EnsureNetworkSpec(ctx context.Context, spec NetworkSpec) (string, error) {
-	if existing, err := e.cli.NetworkInspect(ctx, spec.Name, network.InspectOptions{}); err == nil {
-		return existing.ID, nil
+	if existing, err := e.cli.NetworkInspect(ctx, spec.Name, client.NetworkInspectOptions{}); err == nil {
+		return existing.Network.ID, nil
 	}
 	return e.CreateNetworkSpec(ctx, spec)
 }
 
 func (e *engineClient) RemoveNetwork(ctx context.Context, name string) error {
-	err := e.cli.NetworkRemove(ctx, name)
-	if errdefs.IsNotFound(err) {
+	_, err := e.cli.NetworkRemove(ctx, name, client.NetworkRemoveOptions{})
+	if cerrdefs.IsNotFound(err) {
 		return nil
 	}
 	return err
 }
 
 func (e *engineClient) NetworkConnect(ctx context.Context, name, containerID string, aliases []string) error {
-	err := e.cli.NetworkConnect(ctx, name, containerID, &network.EndpointSettings{Aliases: aliases})
+	_, err := e.cli.NetworkConnect(ctx, name, client.NetworkConnectOptions{
+		Container:      containerID,
+		EndpointConfig: &network.EndpointSettings{Aliases: aliases},
+	})
 	// Already attached: treat as success so reconciles are idempotent.
 	if err != nil && strings.Contains(strings.ToLower(err.Error()), "already exists") {
 		return nil
@@ -993,24 +1052,24 @@ func (e *engineClient) NetworkConnect(ctx context.Context, name, containerID str
 }
 
 func (e *engineClient) NetworkDisconnect(ctx context.Context, name, containerID string, force bool) error {
-	err := e.cli.NetworkDisconnect(ctx, name, containerID, force)
+	_, err := e.cli.NetworkDisconnect(ctx, name, client.NetworkDisconnectOptions{Container: containerID, Force: force})
 	// Not attached (or the network/container is gone): nothing to do.
-	if errdefs.IsNotFound(err) || (err != nil && strings.Contains(strings.ToLower(err.Error()), "is not connected")) {
+	if cerrdefs.IsNotFound(err) || (err != nil && strings.Contains(strings.ToLower(err.Error()), "is not connected")) {
 		return nil
 	}
 	return err
 }
 
 func (e *engineClient) ListNetworks(ctx context.Context) ([]Network, error) {
-	nets, err := e.cli.NetworkList(ctx, network.ListOptions{})
+	res, err := e.cli.NetworkList(ctx, client.NetworkListOptions{})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Network, 0, len(nets))
-	for _, n := range nets {
+	out := make([]Network, 0, len(res.Items))
+	for _, n := range res.Items {
 		subnet := ""
-		if len(n.IPAM.Config) > 0 {
-			subnet = n.IPAM.Config[0].Subnet
+		if len(n.IPAM.Config) > 0 && n.IPAM.Config[0].Subnet.IsValid() {
+			subnet = n.IPAM.Config[0].Subnet.String()
 		}
 		out = append(out, Network{ID: n.ID, Name: n.Name, Driver: n.Driver, Scope: n.Scope, Labels: n.Labels, Subnet: subnet})
 	}
@@ -1033,7 +1092,7 @@ func (e *engineClient) CreateVolumeWith(ctx context.Context, spec VolumeSpec) (V
 	if spec.SizeBytes > 0 {
 		labels[LabelSizeBytes] = strconv.FormatInt(spec.SizeBytes, 10)
 	}
-	opts := volume.CreateOptions{Name: spec.Name, Labels: labels}
+	opts := client.VolumeCreateOptions{Name: spec.Name, Labels: labels}
 	// Shared-storage drivers (nfs/cifs/…) carry their backend in driver options;
 	// an empty driver uses Docker's default (local). The NFS/CIFS case uses the
 	// built-in local driver with mount options, so no external plugin is needed.
@@ -1043,39 +1102,55 @@ func (e *engineClient) CreateVolumeWith(ctx context.Context, spec VolumeSpec) (V
 	if len(spec.DriverOpts) > 0 {
 		opts.DriverOpts = spec.DriverOpts
 	}
-	v, err := e.cli.VolumeCreate(ctx, opts)
+	res, err := e.cli.VolumeCreate(ctx, opts)
 	if err != nil {
 		return Volume{}, err
 	}
+	v := res.Volume
 	return Volume{Name: v.Name, Driver: v.Driver, Mountpoint: v.Mountpoint, CreatedAt: v.CreatedAt}, nil
 }
 
 func (e *engineClient) ListVolumes(ctx context.Context) ([]Volume, error) {
-	resp, err := e.cli.VolumeList(ctx, volume.ListOptions{})
+	res, err := e.cli.VolumeList(ctx, client.VolumeListOptions{})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Volume, 0, len(resp.Volumes))
-	for _, v := range resp.Volumes {
+	out := make([]Volume, 0, len(res.Items))
+	for _, v := range res.Items {
 		out = append(out, Volume{Name: v.Name, Driver: v.Driver, Mountpoint: v.Mountpoint, CreatedAt: v.CreatedAt, Labels: v.Labels})
 	}
 	return out, nil
 }
 
 func (e *engineClient) InspectVolume(ctx context.Context, name string) (Volume, error) {
-	v, err := e.cli.VolumeInspect(ctx, name)
+	res, err := e.cli.VolumeInspect(ctx, name, client.VolumeInspectOptions{})
 	if err != nil {
 		return Volume{}, wrapNotFound(err)
 	}
+	v := res.Volume
 	return Volume{Name: v.Name, Driver: v.Driver, Mountpoint: v.Mountpoint, CreatedAt: v.CreatedAt, Labels: v.Labels}, nil
 }
 
 func (e *engineClient) RemoveVolume(ctx context.Context, name string, force bool) error {
-	return wrapNotFound(e.cli.VolumeRemove(ctx, name, force))
+	_, err := e.cli.VolumeRemove(ctx, name, client.VolumeRemoveOptions{Force: force})
+	return wrapNotFound(err)
+}
+
+// encodeRegistryAuth base64-encodes a registry credential for the Docker API's
+// X-Registry-Auth header. Returns "" (no error) when auth is nil/empty.
+func encodeRegistryAuth(auth *RegistryAuth) (string, error) {
+	if auth == nil || (auth.Username == "" && auth.Password == "") {
+		return "", nil
+	}
+	return authconfig.Encode(registry.AuthConfig{
+		Username:      auth.Username,
+		Password:      auth.Password,
+		ServerAddress: auth.Server,
+	})
 }
 
 func wrapNotFound(err error) error {
-	if err != nil && errdefs.IsNotFound(err) {
+	if err != nil && cerrdefs.IsNotFound(err) {
 		return ErrNotFound
 	}
 	return err

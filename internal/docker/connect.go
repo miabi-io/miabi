@@ -9,7 +9,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 )
 
 // TLSMaterial holds PEM-encoded TLS material for a TCP Docker endpoint. A nil
@@ -43,7 +43,7 @@ func (m *TLSMaterial) config() (*tls.Config, error) {
 // NewSocket connects to a Docker engine at a socket/host string (e.g.
 // "unix:///var/run/docker.sock" or "tcp://host:2375" without TLS).
 func NewSocket(host string) (Client, error) {
-	cli, err := client.NewClientWithOpts(client.WithHost(host), client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.WithHost(host))
 	if err != nil {
 		return nil, err
 	}
@@ -65,11 +65,10 @@ func NewTCP(host string, tlsm *TLSMaterial) (Client, error) {
 	// WithHTTPClient first so our TLS transport survives WithHost's
 	// ConfigureTransport (which only installs a tcp dialer); WithScheme forces
 	// HTTPS over the TCP endpoint.
-	cli, err := client.NewClientWithOpts(
+	cli, err := client.New(
 		client.WithHTTPClient(httpc),
 		client.WithHost(host),
 		client.WithScheme("https"),
-		client.WithAPIVersionNegotiation(),
 	)
 	if err != nil {
 		return nil, err

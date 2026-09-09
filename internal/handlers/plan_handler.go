@@ -225,10 +225,9 @@ func (h *PlanHandler) Update(c *okapi.Context, req *UpdatePlanRequest) error {
 
 func (h *PlanHandler) Delete(c *okapi.Context) error {
 	id := h.id(c)
-	// The system plan is not the operator's to remove. workspace.pinUnlimitedPlan
-	// resolves it by name and fails soft, so deleting it would not error anywhere
-	// — the system workspace would quietly drop onto the default plan's limits and
-	// stay there.
+	// workspace.pinUnlimitedPlan resolves the system plan by name and fails soft, so
+	// deleting it would not error anywhere — the system workspace would quietly drop
+	// onto the default plan's limits and stay there.
 	if p, err := h.repo.FindByID(id); err == nil && p.System {
 		return c.AbortWithError(409, errSystemPlanDelete)
 	}

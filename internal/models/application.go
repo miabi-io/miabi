@@ -220,8 +220,8 @@ type ServiceUpdateConfig struct {
 type RestartPolicy string
 
 const (
-	RestartNo            RestartPolicy = "no"             // never restart
-	RestartAlways        RestartPolicy = "always"         // always restart
+	RestartNo            RestartPolicy = "no"
+	RestartAlways        RestartPolicy = "always"
 	RestartUnlessStopped RestartPolicy = "unless-stopped" // restart unless explicitly stopped (default)
 	RestartOnFailure     RestartPolicy = "on-failure"     // restart only on non-zero exit
 )
@@ -293,11 +293,9 @@ type Application struct {
 	ID          uint `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint `json:"workspace_id" gorm:"index:idx_app_workspace_name,unique;not null"`
 	// Name is the unique, URL/CLI/docker handle (lowercase [a-z0-9-]) scoped to
-	// the workspace. Renamed from the former "slug"; the numeric ID/UID remain the
-	// stable internal references.
+	// the workspace; the numeric ID/UID remain the stable internal references.
 	Name string `json:"name" gorm:"index:idx_app_workspace_name,unique;not null"`
-	// DisplayName is the free-text label shown in the UI. Renamed from the former
-	// "name"; not unique.
+	// DisplayName is the free-text label shown in the UI; not unique.
 	DisplayName string        `json:"display_name"`
 	SourceType  AppSourceType `json:"source_type" gorm:"not null;default:image"`
 	// Alias is the stable in-network DNS name and container hostname, "mb-app-<token>-<id>".
@@ -334,7 +332,6 @@ type Application struct {
 	Image string `json:"image"`
 	Tag   string `json:"tag,omitempty"`
 
-	// Git source.
 	GitRepo string `json:"git_repo,omitempty"`
 	GitRef  string `json:"git_ref,omitempty"`
 
@@ -394,7 +391,6 @@ type Application struct {
 	// their own config file.
 	ReloadPolicy string `json:"reload_policy,omitempty"`
 
-	// Runtime config.
 	Command     []string   `json:"command,omitempty" gorm:"serializer:json"`
 	Mounts      []AppMount `json:"mounts,omitempty" gorm:"serializer:json"` // attached volumes
 	Port        int        `json:"port,omitempty"`                          // primary container port

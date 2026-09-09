@@ -462,10 +462,9 @@ func TestSyncRegistryWritesAndRemoves(t *testing.T) {
 		}
 	}
 
-	// Behind a TLS terminator whose gateway has no trusted proxies, the redirect
-	// would loop: Goma sees the plaintext hop, decides the request is not HTTPS,
-	// and sends it back to the terminator. Turning it off must drop the middleware
-	// AND its reference — an orphan reference fails the route at load.
+	// Behind a TLS terminator with no trusted proxies the redirect would loop: Goma sees
+	// the plaintext hop and sends it back. Turning it off must drop the middleware AND
+	// its reference — an orphan reference fails the route at load.
 	noRedirect := cfg
 	noRedirect.HTTPSRedirect = false
 	if err := g.SyncRegistry(context.Background(), noRedirect); err != nil {

@@ -678,10 +678,9 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	marketplaceService.SetConfigs(configService)
 	marketplaceService.SetEventBus(bus) // live install-progress SSE
 	marketplaceRemote := marketremote.New(cfg.MarketplaceURL, marketremote.NewRedisCache(redisClient))
-	// A custom marketplace is an Enterprise entitlement, and the environment is its
-	// only source — so the license is checked where the catalog is fetched (boot,
-	// each sync), not at an API. An unlicensed install falls back to the official
-	// catalog rather than losing its marketplace.
+	// A custom marketplace is an Enterprise entitlement whose only source is the
+	// environment, so the license is checked where the catalog is fetched, not at an
+	// API. An unlicensed install falls back to the official catalog.
 	marketplaceRemote.SetEntitlements(ee, config.OfficialMarketplaceURL)
 	marketplaceService.SetRemote(marketplaceRemote)
 	if marketplaceRemote.Enabled() {

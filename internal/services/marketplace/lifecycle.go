@@ -88,9 +88,9 @@ func (s *Service) Uninstall(ctx context.Context, workspaceID, installID uint) (*
 	}
 	res := &UninstallResult{}
 
-	// 1. Logical databases the apps use — deleted first, while their instances are still up so the DROP runs,
-	// and so a dedicated instance is not later blocked by ErrInstanceInUse (the app→db link). This also reaps
-	// logical databases on shared instances, which are not in DatabaseIDs and would otherwise orphan.
+	// Logical databases go first, while their instances are still up so the DROP runs and no
+	// dedicated instance is later blocked by ErrInstanceInUse. This also reaps databases on
+	// shared instances, which are absent from DatabaseIDs and would otherwise orphan.
 	for _, id := range rec.AppIDs {
 		dbs, lerr := s.dbs.ListByApp(workspaceID, id)
 		if lerr != nil {
@@ -105,9 +105,8 @@ func (s *Service) Uninstall(ctx context.Context, workspaceID, installID uint) (*
 		}
 	}
 
-	// 2. Stop, then delete each app the install created — an app must be stopped
-	// before it can be deleted. (AppIDs covers grouped and ungrouped installs;
-	// the stack record itself is removed afterwards.)
+	// An app must be stopped before it can be deleted. AppIDs covers grouped and
+	// ungrouped installs; the stack record itself is removed afterwards.
 	for _, id := range rec.AppIDs {
 		app, err := s.apps.Get(workspaceID, id)
 		if err != nil {
@@ -131,9 +130,8 @@ func (s *Service) Uninstall(ctx context.Context, workspaceID, installID uint) (*
 		}
 	}
 
-	// 3. Database instances this install provisioned (its dedicated servers). Stop
-	// a running instance first (Delete refuses while running); its logical
-	// databases were already removed above, so ErrInstanceInUse no longer applies.
+	// Delete refuses while an instance runs, so stop it first; its logical databases
+	// were removed above, so ErrInstanceInUse no longer applies.
 	for _, id := range rec.DatabaseIDs {
 		inst, err := s.dbs.Get(workspaceID, id)
 		if err != nil {
@@ -149,9 +147,9 @@ func (s *Service) Uninstall(ctx context.Context, workspaceID, installID uint) (*
 		}
 	}
 
-	// 4. Configs (after the apps that mount them: Delete refuses while an app
-	// still does). Left behind, one would be silently adopted and overwritten by
-	// the next install of the same template.
+	// After the apps that mount them: Delete refuses while one still does. Left behind,
+	// a config would be silently adopted and overwritten by the next install of the
+	// same template.
 	for _, id := range rec.ConfigIDs {
 		if s.configs == nil {
 			break
@@ -167,7 +165,7 @@ func (s *Service) Uninstall(ctx context.Context, workspaceID, installID uint) (*
 		}
 	}
 
-	// 5. Volumes (after the apps that mount them are gone).
+	// After the apps that mount them are gone.
 	for _, id := range rec.VolumeIDs {
 		vol, err := s.volumes.Get(workspaceID, id)
 		if err != nil {

@@ -90,8 +90,6 @@ func TestNormalizeHandlesBakedTagWithoutV(t *testing.T) {
 	}
 }
 
-// --- Check() against a fake GitHub ---
-
 func testDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:uc_"+t.Name()+"?mode=memory&cache=shared"),

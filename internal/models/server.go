@@ -135,6 +135,7 @@ type Server struct {
 	// connection manager).
 	AgentConnected bool              `json:"agent_connected" gorm:"-"`
 	AgentVersion   string            `json:"agent_version,omitempty"`
+	EngineVersion  string            `json:"engine_version,omitempty"`
 	Cordoned       bool              `json:"cordoned" gorm:"not null;default:false"`
 	Labels         map[string]string `json:"labels,omitempty" gorm:"serializer:json"`
 	SwarmNodeID    string            `json:"swarm_node_id,omitempty" gorm:"index"`

@@ -161,16 +161,16 @@ func (s *Service) convertAll(ctx context.Context, from, to string) (MigrationRep
 }
 
 func (s *Service) convertOne(ctx context.Context, n *models.Network, newName, toDriver string, forEachEngine func(func(string, docker.Client))) error {
-	// 1. Create the replacement on the manager. An overlay is swarm-scoped — Docker materializes it on a
-	//    worker only when a container there attaches — so it is never created per node. Create-or-reuse, so
-	//    a resumed run picks up where it left off. (A bridge is created per node as containers move.)
+	// An overlay is swarm-scoped — Docker materializes it on a worker only when a container
+	// there attaches — so it is never created per node. Create-or-reuse, so a resumed run
+	// picks up where it left off.
 	if err := s.provisionDockerNetwork(ctx, newName, toDriver, n.Internal); err != nil {
 		return fmt.Errorf("create %s network %s: %w", toDriver, newName, err)
 	}
 
-	// 2. A bridge is node-local, so it must exist on each node before a container there can join it —
-	//    recreated from the same pool subnet, exactly as syncNetworks does at deploy time. (An overlay needs
-	//    none of this: swarm materializes it on the node at attach time.)
+	// A bridge is node-local, so it must exist on each node before a container there can join
+	// it — recreated from the same pool subnet, exactly as syncNetworks does at deploy time.
+	// An overlay needs none of this: swarm materializes it on the node at attach time.
 	var moveErr error
 	if toDriver == DriverBridge && s.alloc != nil {
 		forEachEngine(func(nodeName string, dc docker.Client) {
@@ -187,9 +187,8 @@ func (s *Service) convertOne(ctx context.Context, n *models.Network, newName, to
 		}
 	}
 
-	// 3. Move every attached container across, on every reachable node, carrying its
-	//    DNS aliases so names keep resolving. Connect before disconnect: the
-	//    container is never left without a network.
+	// Aliases travel with the container so names keep resolving. Connect before
+	// disconnect: the container is never left without a network.
 	forEachEngine(func(nodeName string, dc docker.Client) {
 		if moveErr != nil {
 			return
@@ -202,9 +201,9 @@ func (s *Service) convertOne(ctx context.Context, n *models.Network, newName, to
 		return moveErr
 	}
 
-	// 4. Repoint the records BEFORE removing the old network. If we die here, the
-	//    old network lingers as a harmless empty one and a re-run is a no-op — far
-	//    better than records pointing at a network that no longer exists.
+	// Repoint the records BEFORE removing the old network. If we die here, the old
+	// network lingers as a harmless empty one and a re-run is a no-op — far better
+	// than records pointing at a network that no longer exists.
 	if err := s.dbs.RetargetNetwork(n.DockerName, newName); err != nil {
 		return fmt.Errorf("repoint database instances: %w", err)
 	}
@@ -214,8 +213,7 @@ func (s *Service) convertOne(ctx context.Context, n *models.Network, newName, to
 		return fmt.Errorf("update network record: %w", err)
 	}
 
-	// 5. Tear the old network down everywhere and return its subnet to the pool.
-	//    Best-effort: a leftover empty network is cosmetic, not a failure.
+	// Best-effort: a leftover empty network is cosmetic, not a failure.
 	forEachEngine(func(nodeName string, dc docker.Client) {
 		if err := dc.RemoveNetwork(ctx, oldName); err != nil {
 			logger.Warn("network conversion: could not remove the old network",

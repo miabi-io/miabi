@@ -4,6 +4,17 @@ import { useRoute, useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
 import { nodesApi, type CreateNodePayload, type NodeWorkloads, type NodeGPUList, type GPUDevice } from '@/api/nodes'
 import { clusterApi } from '@/api/cluster'
+
+// MIN_ENGINE_VERSION mirrors docker.MinEngineVersion (Go) — the minimum Docker
+// Engine Miabi supports (the CI engine-matrix floor). A node below it should be
+// upgraded before the enforcement release; surface it as a warning here first.
+const MIN_ENGINE_VERSION = '25.0'
+function engineTooOld(v?: string): boolean {
+  if (!v) return false
+  const maj = parseInt(v.split('.')[0], 10)
+  if (isNaN(maj)) return false
+  return maj < 25
+}
 import { ACCESS_MODES, CONNECTIVITY_TYPES, nodeOptionDescription } from '@/constants/node'
 import type { Server, NodeStats, NodeHostMetrics, GatewayStatus, GatewayCandidate, GatewayUpdateProgress, StatsSample, Container, ContainerStat, DockerVolume, DockerNetwork, NodePortUsage, ClusterMember, SwarmTask } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -1037,6 +1048,17 @@ const gwBadge = computed(() => {
           <div v-if="!node.is_local" class="detail">
             <span class="text-muted">Agent version</span>
             <span>{{ node.agent_version || '—' }}</span>
+          </div>
+          <div v-if="node.engine_version" class="detail">
+            <span class="text-muted">Docker engine</span>
+            <span>
+              {{ node.engine_version }}
+              <span
+                v-if="engineTooOld(node.engine_version)"
+                class="badge badge-warning"
+                :title="`Miabi requires Docker Engine ≥ ${MIN_ENGINE_VERSION}. Upgrade Docker on this node before the next release, or it will stop accepting deployments.`"
+              >Upgrade — below {{ MIN_ENGINE_VERSION }}</span>
+            </span>
           </div>
           <div class="detail">
             <span class="text-muted">Handle</span>

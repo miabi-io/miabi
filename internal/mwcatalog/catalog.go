@@ -58,7 +58,6 @@ type Field struct {
 	// Fields is the sub-schema for FieldList rows and structured FieldObject groups.
 	Fields []Field `json:"fields,omitempty"`
 
-	// --- form presentation ---
 	// Placeholder is the example shown in an empty scalar or tag input.
 	Placeholder string `json:"placeholder,omitempty"`
 	// KeyLabel/ValueLabel name the two columns of a FieldMap or FieldPairs editor. They differ per

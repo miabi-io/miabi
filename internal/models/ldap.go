@@ -22,7 +22,6 @@ type LDAPConfig struct {
 	Name        string `json:"name" gorm:"uniqueIndex;not null"`
 	DisplayName string `json:"display_name"`
 
-	// Connection.
 	Host            string `json:"host" gorm:"not null"`
 	Port            int    `json:"port" gorm:"not null;default:389"`
 	TLSMode         string `json:"tls_mode" gorm:"not null;default:'starttls'"` // none | starttls | ldaps
@@ -37,7 +36,6 @@ type LDAPConfig struct {
 	// package). Never serialized; BindPasswordSet exposes only whether it is set.
 	BindPasswordEnc string `json:"-" gorm:"type:text"`
 
-	// User search.
 	UserBaseDN   string `json:"user_base_dn"`
 	UserFilter   string `json:"user_filter"`   // %s = escaped identifier, e.g. (sAMAccountName=%s) or (uid=%s)
 	AttrEmail    string `json:"attr_email"`    // mail | userPrincipalName (blank → "mail")

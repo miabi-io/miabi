@@ -114,7 +114,6 @@ type PlatformBackupSettings struct {
 	// the difference between megabytes and the size of the install.
 	IncludeTenantData bool `json:"include_tenant_data"`
 
-	// Schedule + retention.
 	ScheduleEnabled bool     `json:"schedule_enabled"`
 	ScheduleCron    string   `json:"schedule_cron,omitempty"`
 	MaxBackups      int      `json:"max_backups"`

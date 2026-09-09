@@ -163,6 +163,7 @@ type nameRow struct {
 	GatewayRedisPasswordEnc string
 	GatewayDeployedAt       *time.Time
 	AgentVersion            string
+	EngineVersion           string
 	SwarmNodeID             string
 	AutoJoined              bool
 	SwarmRole               string

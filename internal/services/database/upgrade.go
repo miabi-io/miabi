@@ -191,8 +191,8 @@ func (s *Service) RunUpgradeJob(ctx context.Context, instanceID uint, target, pa
 	spec := specs[inst.Engine]
 	affected := s.affectedAppIDs(instanceID)
 
-	// 1. Safety backup of every logical database (also the copy source for a major
-	//    upgrade). Redis has no logical databases — its data rides on the volume.
+	// The safety dumps double as the copy source for a major upgrade. Redis has no
+	// logical databases — its data rides on the volume.
 	var dumps map[uint]DumpRef
 	logicalDBs, _ := s.repo.ListDatabases(inst.ID)
 	if s.backups != nil && inst.SupportsLogicalDatabases() && len(logicalDBs) > 0 {
@@ -216,7 +216,7 @@ func (s *Service) RunUpgradeJob(ctx context.Context, instanceID uint, target, pa
 		}
 	}
 
-	// 2. Quiesce writers.
+	// Quiesce writers before the data moves.
 	if stopApps && s.apps != nil {
 		s.setPhase(inst, "stopping-apps")
 		for _, appID := range affected {
@@ -226,7 +226,6 @@ func (s *Service) RunUpgradeJob(ctx context.Context, instanceID uint, target, pa
 		}
 	}
 
-	// 3. Carry the data across.
 	switch path {
 	case PathInPlace:
 		err = s.upgradeInPlace(ctx, inst, spec, target)
@@ -243,7 +242,6 @@ func (s *Service) RunUpgradeJob(ctx context.Context, instanceID uint, target, pa
 		return nil
 	}
 
-	// 4. Success: clear progress and mark running.
 	inst.Status = models.DBStatusRunning
 	inst.Upgrade = nil
 	if uerr := s.repo.Update(inst); uerr != nil {

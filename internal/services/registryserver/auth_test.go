@@ -99,7 +99,6 @@ func TestAuthorize(t *testing.T) {
 		{"catalog forbidden", wsToken(rw), AuthInput{Authorization: basic("x", "t"), Method: "GET", URI: "/v2/_catalog"}, http.StatusForbidden, false},
 		{"unknown namespace forbidden", wsToken(rw), AuthInput{Authorization: basic("x", "t"), Method: "GET", URI: "/v2/ghost/web/manifests/1"}, http.StatusForbidden, false},
 
-		// --- workspace-scoped token (form #1) ---
 		{"ws token pulls own ns", wsToken([]string{models.ScopeRead}), AuthInput{Authorization: basic("acme", "t"), Method: "GET", URI: "/v2/acme/web/manifests/1"}, http.StatusOK, false},
 		{"ws token pushes own ns", wsToken(rw), AuthInput{Authorization: basic("acme", "t"), Method: "PUT", URI: "/v2/acme/web/blobs/uploads/x"}, http.StatusOK, false},
 		{"ws token rejected on other ns", wsToken(rw), AuthInput{Authorization: basic("acme", "t"), Method: "GET", URI: "/v2/other/web/manifests/1"}, http.StatusForbidden, false},
@@ -107,7 +106,6 @@ func TestAuthorize(t *testing.T) {
 		{"ws token rejected on ws_8 id form", wsToken(rw), AuthInput{Authorization: basic("acme", "t"), Method: "GET", URI: "/v2/ws_8/web/manifests/1"}, http.StatusForbidden, false},
 		{"read-only ws token cannot push", wsToken([]string{models.ScopeRead}), AuthInput{Authorization: basic("acme", "t"), Method: "POST", URI: "/v2/acme/web/blobs/uploads/"}, http.StatusForbidden, false},
 
-		// --- account-wide user token (form #2) ---
 		{"user (developer) pulls a member workspace", userToken(42, rw), AuthInput{Authorization: basic("jane", "t"), Method: "GET", URI: "/v2/acme/web/manifests/1"}, http.StatusOK, false},
 		{"user (developer) pushes a member workspace", userToken(42, rw), AuthInput{Authorization: basic("jane", "t"), Method: "PUT", URI: "/v2/acme/web/manifests/1"}, http.StatusOK, false},
 		{"user (viewer) pulls a member workspace", userToken(99, []string{models.ScopeRead}), AuthInput{Authorization: basic("vic", "t"), Method: "GET", URI: "/v2/acme/web/manifests/1"}, http.StatusOK, false},
@@ -116,7 +114,6 @@ func TestAuthorize(t *testing.T) {
 		{"user with read-only scope cannot push", userToken(42, []string{models.ScopeRead}), AuthInput{Authorization: basic("jane", "t"), Method: "PUT", URI: "/v2/acme/web/manifests/1"}, http.StatusForbidden, false},
 		{"user via ws_7 id form pushes", userToken(42, rw), AuthInput{Authorization: basic("jane", "t"), Method: "PUT", URI: "/v2/ws_7/web/blobs/uploads/x"}, http.StatusOK, false},
 
-		// --- dedicated registry scopes ---
 		{"registry_write pushes", wsToken([]string{models.ScopeRegistryWrite}), AuthInput{Authorization: basic("acme", "t"), Method: "PUT", URI: "/v2/acme/web/manifests/1"}, http.StatusOK, false},
 		{"registry_read pulls", wsToken([]string{models.ScopeRegistryRead}), AuthInput{Authorization: basic("acme", "t"), Method: "GET", URI: "/v2/acme/web/manifests/1"}, http.StatusOK, false},
 		{"registry_read cannot push", wsToken([]string{models.ScopeRegistryRead}), AuthInput{Authorization: basic("acme", "t"), Method: "PUT", URI: "/v2/acme/web/manifests/1"}, http.StatusForbidden, false},

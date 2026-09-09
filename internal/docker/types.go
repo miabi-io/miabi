@@ -50,6 +50,24 @@ type Info struct {
 	Runtimes []string `json:"runtimes,omitempty"`
 }
 
+// Capabilities is a snapshot of what the connected engine supports, derived from
+// Ping + Info. It is what the node engine-version preflight reads to decide
+// whether a daemon is too old, GPU-capable, or a reachable swarm manager.
+type Capabilities struct {
+	// APIVersion is the Docker Engine API version the client negotiated with this
+	// daemon (e.g. "1.51"). A daemon below MinAPIVersion is refused before this.
+	APIVersion string `json:"api_version"`
+	// EngineVersion is the daemon's reported server version (e.g. "27.5.1").
+	EngineVersion string `json:"engine_version"`
+	// OS / Arch are the daemon's platform ("linux", "x86_64"/"aarch64").
+	OS   string `json:"os"`
+	Arch string `json:"arch"`
+	// SwarmActive is true when the engine is in swarm mode; SwarmManager is true
+	// when it is also a reachable manager (can drive cluster operations).
+	SwarmActive  bool `json:"swarm_active"`
+	SwarmManager bool `json:"swarm_manager"`
+}
+
 // EngineEvent is a Docker daemon event for a managed container. Attributes
 // carries the container's labels (e.g. "io.miabi.app") and event metadata
 // (e.g. "exitCode").
@@ -157,12 +175,9 @@ type DiskUsageCategory struct {
 	Reclaimable int64 `json:"reclaimable_bytes"`
 }
 
-// PruneImagesOptions selects what an image prune targets. Dangling restricts it to untagged
-// (`<none>`) images, which are always safe to remove; the all-unused mode requires the caller's
-// referenced-image guard and is not used by the safe default flow.
 type PruneImagesOptions struct {
-	Dangling bool   // true: only dangling images; false: all unused images
-	Until    string // optional max-age filter (Go duration, e.g. "168h"); "" = no age limit
+	Dangling bool
+	Until    string
 }
 
 // PruneReport is the outcome of a prune: what was removed and the bytes freed.

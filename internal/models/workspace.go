@@ -48,11 +48,10 @@ type Workspace struct {
 	UIDModel
 	ID uint `json:"id" gorm:"primaryKey"`
 	// Name is the unique, URL/CLI/docker handle (lowercase [a-z0-9-]). It is the
-	// human key for scoped routes and the registry namespace. Renamed from the
-	// former "slug"; the numeric ID/UID remain the stable internal references.
+	// human key for scoped routes and the registry namespace; the numeric ID/UID
+	// remain the stable internal references.
 	Name string `json:"name" gorm:"uniqueIndex;not null"`
-	// DisplayName is the free-text label shown in the UI. Renamed from the former
-	// "name"; not unique.
+	// DisplayName is the free-text label shown in the UI; not unique.
 	DisplayName string `json:"display_name"`
 	Description string `json:"description"`
 	OwnerID     uint   `json:"owner_id" gorm:"index;not null"`
