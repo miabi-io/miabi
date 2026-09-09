@@ -93,10 +93,15 @@ func (s *Service) RunSet(ctx context.Context, inst *models.DatabaseInstance, opt
 	}
 
 	now := time.Now()
+	ref := models.NewDatabaseBackupSetRef(inst.Name, now)
+	// One prefix per set, so discovery can read a recovery point as a unit instead
+	// of parsing filenames out of a prefix every set shares.
+	dest.S3.Path = SetPrefix(dest.S3.Path, inst.Name, ref)
+
 	set := &models.DatabaseBackupSet{
 		WorkspaceID: inst.WorkspaceID,
 		InstanceID:  inst.ID,
-		Ref:         models.NewDatabaseBackupSetRef(inst.Name, now),
+		Ref:         ref,
 		Trigger:     opts.Trigger,
 		Status:      models.BackupRunning,
 		Engine:      inst.Engine,
@@ -112,7 +117,33 @@ func (s *Service) RunSet(ctx context.Context, inst *models.DatabaseInstance, opt
 	}
 
 	items := s.runSetItems(ctx, inst, dbs, set.ID, opts, dest)
-	return s.finishSet(set, inst, items), nil
+	done := s.finishSet(set, inst, items)
+
+	// The descriptor is what makes the set readable from the bucket alone. Written
+	// last, so it describes what actually landed; best-effort, because failing here
+	// would discard a recovery point whose dumps are already safely stored.
+	names := make(map[uint]string, len(dbs))
+	for i := range dbs {
+		names[dbs[i].ID] = dbs[i].Name
+	}
+	done.Items = derefItems(items)
+	if err := writeSetInfo(ctx, dest.S3, dest.S3.Path, setInfoFor(done, inst.Name, names)); err != nil {
+		logger.Error("write recovery point descriptor; the set is stored but will not be discoverable",
+			"set", done.Ref, "error", err)
+	}
+	return done, nil
+}
+
+// derefItems collects the non-nil item records, so the descriptor and the returned
+// set carry what the run actually produced.
+func derefItems(items []*models.Backup) []models.Backup {
+	out := make([]models.Backup, 0, len(items))
+	for _, b := range items {
+		if b != nil {
+			out = append(out, *b)
+		}
+	}
+	return out
 }
 
 // runSetItems dumps each database, at most Concurrency at a time, and returns the

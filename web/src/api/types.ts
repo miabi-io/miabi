@@ -1567,6 +1567,33 @@ export interface DatabaseBackupSetSchedule {
   created_at: string
 }
 
+// A recovery point found in the bucket, which may or may not be one this
+// workspace has a record of.
+export interface DiscoveredSet {
+  ref: string
+  instance: string
+  engine: DBEngine
+  version?: string
+  created_at: string
+  size_bytes: number
+  encrypted: boolean
+  prefix: string
+  artifacts: {
+    database: string
+    filename: string
+    size_bytes?: number
+    encrypted: boolean
+    // Whether the object is actually still in the bucket.
+    present: boolean
+  }[]
+  // Already in this workspace's own history.
+  known: boolean
+  set_id?: number
+  // The workspace's passphrase opens it and every artifact is present.
+  openable: boolean
+  reason?: string
+}
+
 export interface BackupSchedule {
   id: number
   cron: string
