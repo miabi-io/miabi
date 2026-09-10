@@ -238,7 +238,7 @@ onMounted(async () => {
   // current /me carries.
   if (!auth.user || !auth.user.preferences) await auth.fetchUser()
   // The account's theme wins over this device's cached one, so it follows the user.
-  theme.adopt(auth.user?.preferences?.theme)
+  theme.adopt(auth.user?.preferences?.theme, auth.user?.preferences?.accent)
   if (auth.isAdmin) license.load().catch(() => { })
   loadUpdate()
   infoApi.get().then((res) => { docsEnabled.value = res.data.data.openapi_docs }).catch(() => { })

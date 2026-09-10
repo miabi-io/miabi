@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useThemeStore, type ThemeMode } from '@/stores/theme'
+import { ACCENTS as accents } from '@/theme/accents'
 import { useNotificationStore } from '@/stores/notification'
 import { authApi } from '@/api/auth'
 
@@ -146,6 +147,27 @@ async function saveDisplay() {
       <div class="card-header"><h2>Display</h2></div>
       <div class="card-body">
         <div class="form-group">
+          <label class="form-label">Accent</label>
+          <div class="accent-grid">
+            <button
+              v-for="a in accents"
+              :key="a.code"
+              type="button"
+              class="accent-option"
+              :class="{ active: theme.accent === a.code }"
+              :aria-pressed="theme.accent === a.code"
+              @click="theme.setAccent(a.code)"
+            >
+              <span class="accent-swatch" :style="{ background: a.swatch }"></span>
+              <span>{{ a.label }}</span>
+            </button>
+          </div>
+          <p class="form-hint">
+            Applies immediately and follows your account to other browsers. Status colours
+            are unaffected — success, warning and danger keep their own meaning.
+          </p>
+        </div>
+        <div class="form-group">
           <label class="form-label" for="landing">Open on</label>
           <select id="landing" v-model="landingView" class="form-select">
             <option v-for="v in landingViews" :key="v.value" :value="v.value">{{ v.label }}</option>
@@ -185,6 +207,16 @@ async function saveDisplay() {
 .form-hint code { font-family: 'JetBrains Mono', monospace; background: var(--bg-tertiary); padding: 1px 5px; border-radius: 4px; }
 .mono { font-family: 'JetBrains Mono', monospace; font-size: 13px; }
 .theme-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.accent-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
+.accent-option {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; border: 1px solid var(--border-primary); border-radius: 8px;
+  background: var(--bg-primary); color: var(--text-primary); cursor: pointer;
+  font-size: 13px; text-align: left;
+}
+.accent-option:hover { border-color: var(--border-input); }
+.accent-option.active { border-color: var(--primary-500); box-shadow: var(--shadow-focus); }
+.accent-swatch { width: 18px; height: 18px; border-radius: 50%; flex: none; border: 1px solid rgba(0, 0, 0, 0.12); }
 .theme-option {
   display: flex; flex-direction: column; align-items: center; gap: 8px;
   padding: 16px 12px; border: 1px solid var(--border-primary); border-radius: 8px;

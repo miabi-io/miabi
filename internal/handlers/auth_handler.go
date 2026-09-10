@@ -592,6 +592,7 @@ type UpdatePreferencesRequest struct {
 	Body struct {
 		Theme       *string `json:"theme,omitempty"`
 		Timezone    *string `json:"timezone,omitempty"`
+		Accent      *string `json:"accent,omitempty"`
 		Locale      *string `json:"locale,omitempty"`
 		LandingView *string `json:"landing_view,omitempty"`
 	} `json:"body"`
@@ -604,10 +605,11 @@ func (h *AuthHandler) UpdatePreferences(c *okapi.Context, req *UpdatePreferences
 	}
 	out, err := h.userSettings.Save(middlewares.UserID(c), usersettings.Update{
 		Theme: req.Body.Theme, Timezone: req.Body.Timezone,
-		Locale: req.Body.Locale, LandingView: req.Body.LandingView,
+		Accent: req.Body.Accent, Locale: req.Body.Locale, LandingView: req.Body.LandingView,
 	})
 	if err != nil {
-		if errors.Is(err, usersettings.ErrInvalidTheme) || errors.Is(err, usersettings.ErrInvalidLandingView) {
+		if errors.Is(err, usersettings.ErrInvalidTheme) || errors.Is(err, usersettings.ErrInvalidAccent) ||
+			errors.Is(err, usersettings.ErrInvalidLandingView) {
 			return c.AbortBadRequest(err.Error())
 		}
 		return c.AbortInternalServerError("failed to save preferences", err)

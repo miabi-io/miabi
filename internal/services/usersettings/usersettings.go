@@ -16,6 +16,7 @@ import (
 var (
 	ErrNotMember          = errors.New("you are not a member of this workspace")
 	ErrInvalidTheme       = errors.New("theme must be one of: system, light, dark")
+	ErrInvalidAccent      = errors.New("accent must be one of: default, blue, indigo, slate, orange, lime")
 	ErrInvalidLandingView = errors.New("landing view is not a known console section")
 )
 
@@ -51,6 +52,7 @@ func (s *Service) Get(userID uint) (*models.UserSetting, error) {
 
 type Update struct {
 	Theme       *string
+	Accent      *string
 	Timezone    *string
 	Locale      *string
 	LandingView *string
@@ -62,6 +64,13 @@ func (s *Service) Save(userID uint, in Update) (*models.UserSetting, error) {
 		theme = models.Theme(strings.ToLower(strings.TrimSpace(*in.Theme)))
 		if !models.ValidTheme(theme) {
 			return nil, ErrInvalidTheme
+		}
+	}
+	var accent models.Accent
+	if in.Accent != nil {
+		accent = models.Accent(strings.ToLower(strings.TrimSpace(*in.Accent)))
+		if !models.ValidAccent(accent) {
+			return nil, ErrInvalidAccent
 		}
 	}
 	var view string
@@ -78,6 +87,9 @@ func (s *Service) Save(userID uint, in Update) (*models.UserSetting, error) {
 	cur.UserID = userID
 	if in.Theme != nil {
 		cur.Theme = theme
+	}
+	if in.Accent != nil {
+		cur.Accent = accent
 	}
 	if in.LandingView != nil {
 		cur.LandingView = view

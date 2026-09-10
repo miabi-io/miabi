@@ -1,9 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { authApi } from '@/api/auth'
+import type { AccentCode } from '@/api/types'
+import { ACCENTS } from '@/theme/accents'
 import { useAuthStore } from '@/stores/auth'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
+export type { AccentCode } from '@/api/types'
 
 // AdoptAction is what to do once the account's stored theme is known: take the
 // server's value, push this device's value up to it, or leave both alone.
@@ -42,6 +45,12 @@ export const useThemeStore = defineStore('theme', () => {
   // known, or saved unsuccessfully. See themeAdoptAction.
   let unsynced = false
 
+  const storedAccent = localStorage.getItem('miabi_accent') as AccentCode | null
+  const accent = ref<AccentCode>(
+    storedAccent && ACCENTS.some((a) => a.code === storedAccent) ? storedAccent : 'default',
+  )
+  let accentUnsynced = false
+
   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
 
   const isDark = computed(() => {
@@ -51,6 +60,17 @@ export const useThemeStore = defineStore('theme', () => {
 
   function apply() {
     document.documentElement.setAttribute('data-theme', isDark.value ? 'dark' : 'light')
+  }
+
+  // Separate attribute from data-theme: the two are orthogonal, so light/dark keeps
+  // working exactly as it did and an accent is a second, independent axis.
+  function applyAccent() {
+    document.documentElement.setAttribute('data-accent', accent.value)
+  }
+
+  function setAccent(a: AccentCode) {
+    if (!persist) accentUnsynced = true
+    accent.value = a
   }
 
   // save persists the mode against the account AND refreshes the cached profile.
@@ -72,6 +92,19 @@ export const useThemeStore = defineStore('theme', () => {
       })
   }
 
+  function saveAccent(val: AccentCode) {
+    void authApi
+      .updatePreferences({ accent: val })
+      .then((res) => {
+        accentUnsynced = false
+        const auth = useAuthStore()
+        if (auth.user) auth.setUser({ ...auth.user, preferences: res.data.data })
+      })
+      .catch(() => {
+        accentUnsynced = true
+      })
+  }
+
   function setMode(m: ThemeMode) {
     if (!persist) unsynced = true
     mode.value = m
@@ -84,13 +117,26 @@ export const useThemeStore = defineStore('theme', () => {
   // adopt reconciles this device's theme with the one stored against the account,
   // so a preference follows the user to a new browser. Called once the profile is
   // known.
-  function adopt(serverMode: ThemeMode | undefined) {
+  function adopt(serverMode: ThemeMode | undefined, serverAccent?: AccentCode) {
     const action = themeAdoptAction(mode.value, serverMode, unsynced)
     if (action.kind === 'take') {
       unsynced = false
       mode.value = action.mode
     } else if (action.kind === 'push') {
       save(action.mode)
+    }
+    // The same rule, on the same shape of problem — an accent chosen before the
+    // profile loaded is still the user's most recent intent.
+    const accentAction = themeAdoptAction(
+      accent.value as ThemeMode,
+      serverAccent as ThemeMode | undefined,
+      accentUnsynced,
+    )
+    if (accentAction.kind === 'take') {
+      accentUnsynced = false
+      accent.value = accentAction.mode as AccentCode
+    } else if (accentAction.kind === 'push') {
+      saveAccent(accentAction.mode as AccentCode)
     }
     persist = true
   }
@@ -109,5 +155,11 @@ export const useThemeStore = defineStore('theme', () => {
     if (mode.value === 'system') apply()
   })
 
-  return { mode, isDark, toggle, setMode, adopt }
+  watch(accent, (val) => {
+    localStorage.setItem('miabi_accent', val)
+    applyAccent()
+    if (persist) saveAccent(val)
+  }, { immediate: true, flush: 'sync' })
+
+  return { mode, isDark, toggle, setMode, accent, setAccent, adopt }
 })

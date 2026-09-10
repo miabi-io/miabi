@@ -258,8 +258,14 @@ export type ThemeMode = 'system' | 'light' | 'dark'
 
 // UserPreferences are the console settings that follow a user between browsers and
 // machines, as opposed to the per-device values cached in localStorage.
+// AccentCode is one of the accents the console ships. Not an arbitrary colour:
+// see web/src/theme/accents.json for why.
+export type AccentCode = 'default' | 'blue' | 'indigo' | 'slate' | 'orange' | 'lime'
+
 export interface UserPreferences {
   theme: ThemeMode
+  /** The console's primary colour, from the fixed set in theme/accents.json. */
+  accent: AccentCode
   /** Display only — timestamps are stored and served in UTC. */
   timezone: string
   locale: string
@@ -270,6 +276,7 @@ export interface UserPreferences {
 // UserPreferencesInput is a partial update: omitted fields keep their stored value.
 export interface UserPreferencesInput {
   theme?: ThemeMode
+  accent?: AccentCode
   timezone?: string
   locale?: string
   landing_view?: string
