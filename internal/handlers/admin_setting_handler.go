@@ -18,11 +18,16 @@ import (
 
 const reservedSettingPrefix = "app."
 
-// reservedSettingPrefixes are key prefixes managed by dedicated screens (not the
-// generic settings list): app.* (internal) and image.* (Deployment Config).
-var reservedSettingPrefixes = []string{reservedSettingPrefix, "image."}
+var reservedSettingPrefixes = []string{reservedSettingPrefix, "image.", "brand."}
+
+var reservedSettingKeys = map[string]bool{
+	"cluster_name": true,
+}
 
 func isReservedSetting(key string) bool {
+	if reservedSettingKeys[key] {
+		return true
+	}
 	for _, p := range reservedSettingPrefixes {
 		if strings.HasPrefix(key, p) {
 			return true
@@ -31,20 +36,15 @@ func isReservedSetting(key string) bool {
 	return false
 }
 
-// readOnlySettingKeys are system-managed: they appear in the settings list so an admin can see
-// them, but Update silently skips them, so they can never be changed from the dashboard or API.
-// install_id is the stable deployment identity — rewriting it would break license binding.
 var readOnlySettingKeys = map[string]bool{
 	storage.InstallIDKey: true,
 }
 
 // AdminSettingHandler exposes platform-wide settings (super-admin only).
 type AdminSettingHandler struct {
-	repo     *repositories.SettingRepository
-	provider *settings.Provider
-	audit    *audit.Logger
-	// reg and passwordReset back AuthAccess. Both are fixed at boot rather than
-	// stored, so they are reported, never written.
+	repo          *repositories.SettingRepository
+	provider      *settings.Provider
+	audit         *audit.Logger
 	reg           *registration.Service
 	passwordReset bool
 }
@@ -61,12 +61,9 @@ func (h *AdminSettingHandler) SetAuthAccess(reg *registration.Service, passwordR
 // AuthAccessStatus reports the auth controls an admin cannot change from here,
 // so the settings screen can show them beside the ones they can.
 type AuthAccessStatus struct {
-	RegistrationEnabled  bool `json:"registration_enabled"`
-	PasswordResetEnabled bool `json:"password_reset_enabled"`
-	// Blocked explains a sign-up that is switched on but cannot be offered, which
-	// is otherwise indistinguishable from one that was never switched on. Empty
-	// when there is nothing to explain.
-	Blocked string `json:"blocked,omitempty"`
+	RegistrationEnabled  bool   `json:"registration_enabled"`
+	PasswordResetEnabled bool   `json:"password_reset_enabled"`
+	Blocked              string `json:"blocked,omitempty"`
 }
 
 // AuthAccess reports the env-fixed registration and password-reset controls.
@@ -102,8 +99,6 @@ func (h *AdminSettingHandler) List(c *okapi.Context) error {
 		if isReservedSetting(s.Key) {
 			continue
 		}
-		// An env-supplied key is re-forced on every boot, so the console shows it
-		// read-only rather than offering an edit that silently reverts on restart.
 		s.Pinned = h.provider != nil && h.provider.Pinned(s.Key)
 		out = append(out, s)
 	}
@@ -121,14 +116,11 @@ func (h *AdminSettingHandler) Update(c *okapi.Context, req *UpdateSettingsReques
 		if key == "" || isReservedSetting(key) {
 			return c.AbortBadRequest("invalid or reserved setting key")
 		}
-		// System-managed keys (e.g. install_id) are shown but never editable; the
-		// UI resubmits every key, so skip rather than reject.
+
 		if readOnlySettingKeys[key] {
 			continue
 		}
-		// Same reasoning as readOnlySettingKeys: the UI resubmits every key, so an
-		// env-pinned one is skipped rather than rejected. Writing it would be
-		// pointless anyway — the next boot overwrites it from the environment.
+
 		if h.provider != nil && h.provider.Pinned(key) {
 			continue
 		}
