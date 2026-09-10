@@ -84,3 +84,74 @@ func TestLink(t *testing.T) {
 		t.Errorf("empty token must omit query: %q", got)
 	}
 }
+
+// A template that fails to parse or references a missing field only breaks at
+// send time, in a goroutine, where nobody sees it. Rendering every one here is
+// the cheapest way to keep that from shipping.
+func TestRenderEveryTemplate(t *testing.T) {
+	s := NewService(configured(), "Miabi", "https://miabi.example.com/")
+
+	t.Run("welcome", func(t *testing.T) {
+		out, err := s.render(TemplateWelcome, map[string]any{
+			"AppName": "Miabi", "AppURL": s.appURL, "Subject": "Welcome",
+			"UserName": "Jane", "LoginURL": s.link("/login"),
+		})
+		if err != nil {
+			t.Fatalf("render: %v", err)
+		}
+		for _, want := range []string{"Welcome to Miabi", "Jane", "https://miabi.example.com/login"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("welcome email missing %q", want)
+			}
+		}
+	})
+
+	t.Run("email verification", func(t *testing.T) {
+		out, err := s.render(TemplateEmailVerification, map[string]any{
+			"AppName": "Miabi", "AppURL": s.appURL, "Subject": "Verify your email address",
+			"UserName": "Jane", "VerifyURL": s.link("/verify-email", "token", "v3r1fy"), "ExpiryHours": 48,
+		})
+		if err != nil {
+			t.Fatalf("render: %v", err)
+		}
+		for _, want := range []string{
+			"Verify your email address", "Jane",
+			"https://miabi.example.com/verify-email?token=v3r1fy", "48 hours",
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("verification email missing %q", want)
+			}
+		}
+	})
+
+	t.Run("workspace role change", func(t *testing.T) {
+		out, err := s.render(TemplateWorkspaceRoleChange, map[string]any{
+			"AppName": "Miabi", "AppURL": s.appURL, "Subject": "Your role changed",
+			"UserName": "Jane", "WorkspaceName": "Acme", "ActorName": "Jonas",
+			"OldRole": "developer", "NewRole": "viewer", "RoleSummary": roleSummary("viewer"),
+			"WorkspaceURL": s.link("/"),
+		})
+		if err != nil {
+			t.Fatalf("render: %v", err)
+		}
+		// Both roles must appear: "your role changed" without saying from what is
+		// not much of a notice.
+		for _, want := range []string{"Acme", "Jonas", "developer", "viewer", "read-only"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("role change email missing %q", want)
+			}
+		}
+	})
+}
+
+func TestRoleSummary(t *testing.T) {
+	for _, role := range []string{"owner", "admin", "developer", "viewer"} {
+		if got := roleSummary(role); got == "" || !strings.Contains(strings.ToLower(got), role) {
+			t.Errorf("roleSummary(%q) = %q, want it to name the role", role, got)
+		}
+	}
+	// An unknown role still gets a sentence rather than an empty paragraph.
+	if roleSummary("sorcerer") == "" {
+		t.Error("an unknown role produced no summary")
+	}
+}

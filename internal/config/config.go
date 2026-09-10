@@ -194,6 +194,17 @@ type Config struct {
 	// (e.g. https://miabi.example.com). Used to point a node's own Goma Gateway
 	// at the HTTP-provider endpoint. Falls back to ApiBaseURL when unset.
 	ControlURL string
+	// Self-service registration. Each is EMPTY when the operator has not set the
+	// variable, which is what leaves the setting admin-managed: a set value pins the
+	// field and is re-applied on every boot, so an IaC install stays authoritative.
+	//
+	//   MIABI_REGISTRATION_ENABLED         "true" | "false"
+	//   MIABI_REQUIRE_EMAIL_VERIFICATION   "true" | "false"
+	//   MIABI_ALLOWED_SIGNUP_DOMAINS       comma-separated, e.g. "acme.com,acme.co.uk"
+	RegistrationEnabled      string
+	RequireEmailVerification string
+	AllowedSignupDomains     string
+
 	// ExternalBaseDomain is the wildcard base domain for one-click external access (e.g.
 	// "apps.example.com", DNS *.apps.example.com). When set it is authoritative for the
 	// `external_base_domain` setting on every boot; leave empty to manage it from the admin UI.
@@ -585,6 +596,9 @@ func New() *Config {
 		ProxyNetwork:               goutils.Env("MIABI_PROXY_NETWORK", goutils.Env("MIABI_GOMA_NETWORK", "miabi")),
 		InternalNetwork:            goutils.Env("MIABI_INTERNAL_NETWORK", ""),
 		ControlURL:                 goutils.Env("MIABI_CONTROL_URL", goutils.Env("MIABI_API_URL", "")),
+		RegistrationEnabled:        goutils.Env("MIABI_REGISTRATION_ENABLED", ""),
+		RequireEmailVerification:   goutils.Env("MIABI_REQUIRE_EMAIL_VERIFICATION", ""),
+		AllowedSignupDomains:       goutils.Env("MIABI_ALLOWED_SIGNUP_DOMAINS", ""),
 		ExternalBaseDomain:         goutils.Env("MIABI_EXTERNAL_BASE_DOMAIN", ""),
 		ExternalBaseProvider:       goutils.Env("MIABI_EXTERNAL_BASE_PROVIDER", ""),
 		NodeGatewayImage:           goutils.Env("MIABI_NODE_GATEWAY_IMAGE", DefaultGomaImage),

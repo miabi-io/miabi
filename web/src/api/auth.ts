@@ -1,11 +1,17 @@
 import api from './client'
-import type { ApiResponse, AuthResponse, AuthStatus, LoginTokenResponse, RecoveryCodes, Session, TwoFactorSetup, User, UserPreferences, UserPreferencesInput } from './types'
+import type { ApiResponse, AuthResponse, AuthStatus, RegisterInput, RegisterResult, LoginTokenResponse, RecoveryCodes, Session, TwoFactorSetup, User, UserPreferences, UserPreferencesInput } from './types'
 
 export const authApi = {
   // Advertises which auth features are enabled (e.g. self-service password
   // reset), so the login/forgot screens can render conditionally.
   status() {
     return api.get<ApiResponse<AuthStatus>>('/auth/status')
+  },
+  register(input: RegisterInput) {
+    return api.post<ApiResponse<RegisterResult>>('/auth/register', input)
+  },
+  verifyEmail(token: string) {
+    return api.post<ApiResponse<RegisterResult>>('/auth/verify-email', { token })
   },
   // identifier is a username or an email address (sent as `username`).
   login(identifier: string, password: string, twoFactorCode?: string) {

@@ -4,10 +4,26 @@ import { adminApi } from '@/api/admin'
 import type { SettingInput } from '@/api/admin'
 import type { PlatformSetting } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
+import { authApi } from '@/api/auth'
 import { brandingApi, type BrandingSettings } from '@/api/resources'
 import type { AccentCode } from '@/api/types'
 
 const notify = useNotificationStore()
+
+// password_reset_enabled is NOT a stored setting: it is fixed at boot from
+// MIABI_PASSWORD_RESET_ENABLED because it gates a critical auth flow and should
+// not be flippable at runtime. It is shown here anyway, read-only, because an
+// admin looking for "can people reset their own password" looks in this card —
+// and finding nothing is worse than finding it and learning where it lives.
+const passwordResetEnabled = ref<boolean | null>(null)
+
+async function loadAuthStatus() {
+  try {
+    passwordResetEnabled.value = (await authApi.status()).data.data?.password_reset_enabled ?? null
+  } catch {
+    passwordResetEnabled.value = null
+  }
+}
 
 // --- Branding: the operator's identity on the sign-in page (Enterprise) ---
 // Loaded separately from the key/value settings: it is its own endpoint, gated on
@@ -62,6 +78,9 @@ const encryption = ref<{ encryption_enabled: boolean; per_workspace_keys: boolea
 // Edited values, keyed by setting key.
 const values = ref<Record<string, string>>({})
 const types = ref<Record<string, PlatformSetting['type']>>({})
+// Keys an environment variable supplies. They are re-forced on every boot, so the
+// console shows them rather than offering an edit that reverts on restart.
+const pinned = ref<Set<string>>(new Set())
 // Originally-loaded values, for dirty comparison.
 const original = ref<Record<string, string>>({})
 // API key order, preserved for the generic "Other" section.
@@ -77,19 +96,20 @@ interface SectionDef {
 const SECTIONS: SectionDef[] = [
   {
     id: 'access',
-    title: 'Access',
-    keys: ['allowed_signup_domains'],
+    title: 'Registration & access',
+    keys: ['registration_enabled', 'require_email_verification', 'allowed_signup_domains'],
     labels: {
-      allowed_signup_domains: 'Allowed signup domains (CSV)',
+      registration_enabled: 'Allow self-service sign-up',
+      require_email_verification: 'Require email verification',
+      allowed_signup_domains: 'Allowed signup domains (CSV, blank = any)',
     },
   },
   {
     id: 'platform',
     title: 'Platform',
-    keys: ['maintenance_mode', 'require_email_verification', 'default_workspace_role', 'custom_labels_enabled'],
+    keys: ['maintenance_mode', 'default_workspace_role', 'custom_labels_enabled'],
     labels: {
       maintenance_mode: 'Maintenance mode',
-      require_email_verification: 'Require email verification',
       default_workspace_role: 'Default workspace role',
       custom_labels_enabled: 'Allow custom container labels (Traefik &c.) — fleet-wide kill-switch',
     },
@@ -165,11 +185,14 @@ function applySettings(settings: PlatformSetting[]) {
   const nextValues: Record<string, string> = {}
   const nextTypes: Record<string, PlatformSetting['type']> = {}
   const nextKeys: string[] = []
+  const nextPinned = new Set<string>()
   for (const s of settings) {
     nextValues[s.key] = s.value ?? ''
     nextTypes[s.key] = s.type
     nextKeys.push(s.key)
+    if (s.pinned) nextPinned.add(s.key)
   }
+  pinned.value = nextPinned
   values.value = nextValues
   types.value = nextTypes
   original.value = { ...nextValues }
@@ -192,6 +215,7 @@ async function load() {
 onMounted(() => {
   load()
   loadBranding()
+  loadAuthStatus()
 })
 
 async function save() {
@@ -284,10 +308,29 @@ function setBool(key: string, checked: boolean) {
               <span v-if="sectionDirty(section.keys)" class="text-muted unsaved">unsaved</span>
             </div>
 
+            <div
+              v-if="section.id === 'access' && passwordResetEnabled !== null"
+              class="setting-row"
+            >
+              <div class="setting-label">
+                <label class="form-label">Allow self-service password reset</label>
+                <div class="form-hint text-muted">
+                  MIABI_PASSWORD_RESET_ENABLED · set by environment, applied at boot
+                </div>
+              </div>
+              <div class="setting-control">
+                <span class="badge" :class="passwordResetEnabled ? 'badge-success' : 'badge-neutral'">
+                  {{ passwordResetEnabled ? 'enabled' : 'disabled' }}
+                </span>
+              </div>
+            </div>
+
             <div v-for="key in section.keys" :key="key" class="setting-row">
               <div class="setting-label">
                 <label class="form-label" :for="`set-${key}`">{{ friendlyLabel(section, key) }}</label>
-                <div class="form-hint text-muted">{{ key }}</div>
+                <div class="form-hint text-muted">
+                  {{ key }}<template v-if="pinned.has(key)"> · set by environment</template>
+                </div>
               </div>
               <div class="setting-control">
                 <label v-if="types[key] === 'bool'" class="switch">
@@ -295,6 +338,7 @@ function setBool(key: string, checked: boolean) {
                     :id="`set-${key}`"
                     type="checkbox"
                     :checked="boolValue(key)"
+                    :disabled="pinned.has(key)"
                     @change="setBool(key, ($event.target as HTMLInputElement).checked)"
                   />
                 </label>
@@ -304,6 +348,7 @@ function setBool(key: string, checked: boolean) {
                   v-model="values[key]"
                   type="number"
                   class="form-input"
+                  :disabled="pinned.has(key)"
                 />
                 <input
                   v-else
@@ -311,6 +356,7 @@ function setBool(key: string, checked: boolean) {
                   v-model="values[key]"
                   type="text"
                   class="form-input"
+                  :disabled="pinned.has(key)"
                 />
               </div>
             </div>

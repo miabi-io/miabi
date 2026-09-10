@@ -24,4 +24,9 @@ type Setting struct {
 	Type      SettingType `json:"type" gorm:"default:string;not null"`
 	CreatedAt time.Time   `json:"created_at"`
 	UpdatedAt time.Time   `json:"updated_at"`
+
+	// Pinned reports that an environment variable supplies this value. Not
+	// persisted: populated on read so the console can show the field as
+	// operator-managed instead of offering an edit that reverts on restart.
+	Pinned bool `json:"pinned" gorm:"-"`
 }

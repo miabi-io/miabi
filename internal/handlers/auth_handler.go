@@ -23,6 +23,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/directory"
 	"github.com/miabi-io/miabi/internal/services/logintoken"
 	"github.com/miabi-io/miabi/internal/services/mailer"
+	"github.com/miabi-io/miabi/internal/services/registration"
 	"github.com/miabi-io/miabi/internal/services/settings"
 	"github.com/miabi-io/miabi/internal/services/twofactor"
 	"github.com/miabi-io/miabi/internal/services/usersettings"
@@ -48,6 +49,8 @@ type AuthHandler struct {
 	// them the page shows Miabi's own, which is what Community does anyway.
 	branding *branding.Service
 	ee       enterprise.EE
+	// registration decides whether the sign-in page offers a sign-up link.
+	registration *registration.Service
 	// enforceSSO reports whether a user must sign in via SSO (password login blocked). Set by
 	// SetSSOEnforcement; nil means never enforced. Platform admins are exempt by the closure so a
 	// misconfigured IdP can't lock everyone out.
@@ -85,6 +88,9 @@ func (h *AuthHandler) SetMailer(m *mailer.Service) { h.mailer = m }
 func (h *AuthHandler) SetBranding(b *branding.Service, ee enterprise.EE) {
 	h.branding, h.ee = b, ee
 }
+
+// SetRegistration wires the sign-up policy (nil-safe: unset reports closed).
+func (h *AuthHandler) SetRegistration(r *registration.Service) { h.registration = r }
 
 func NewAuthHandler(a *auth.Service, users *repositories.UserRepository, sessions *repositories.SessionRepository, auditLog *audit.Logger, settingsProvider *settings.Provider, devMode, passwordResetEnabled bool) *AuthHandler {
 	return &AuthHandler{auth: a, users: users, sessions: sessions, audit: auditLog, settings: settingsProvider, devMode: devMode, passwordResetEnabled: passwordResetEnabled}
@@ -288,6 +294,10 @@ type AuthStatus struct {
 	// Brand is the operator's identity for the sign-in page, which has no user and
 	// therefore no personal preference to read. Empty fields mean Miabi's own.
 	Brand branding.Branding `json:"brand"`
+	// RegistrationEnabled tells the sign-in page whether to offer a "create
+	// account" link. False also when sign-up is on but unusable — see
+	// registration.Available.
+	RegistrationEnabled bool `json:"registration_enabled"`
 }
 
 func profileOf(u *models.User) UserProfile {
@@ -299,6 +309,9 @@ func profileOf(u *models.User) UserProfile {
 // admin from the Users page.
 func (h *AuthHandler) Status(c *okapi.Context) error {
 	st := AuthStatus{PasswordResetEnabled: h.passwordResetEnabled}
+	if h.registration != nil {
+		st.RegistrationEnabled = h.registration.Available() == nil
+	}
 	// Read, not write: an expired licence must not blank an operator's sign-in page
 	// and replace it with someone else's branding. See SetBranding.
 	if h.branding != nil && h.ee != nil && h.ee.Has(enterprise.FlagWhiteLabel) {

@@ -69,6 +69,9 @@ func (h *AdminSettingHandler) List(c *okapi.Context) error {
 		if isReservedSetting(s.Key) {
 			continue
 		}
+		// An env-supplied key is re-forced on every boot, so the console shows it
+		// read-only rather than offering an edit that silently reverts on restart.
+		s.Pinned = h.provider != nil && h.provider.Pinned(s.Key)
 		out = append(out, s)
 	}
 	return ok(c, out)
@@ -88,6 +91,12 @@ func (h *AdminSettingHandler) Update(c *okapi.Context, req *UpdateSettingsReques
 		// System-managed keys (e.g. install_id) are shown but never editable; the
 		// UI resubmits every key, so skip rather than reject.
 		if readOnlySettingKeys[key] {
+			continue
+		}
+		// Same reasoning as readOnlySettingKeys: the UI resubmits every key, so an
+		// env-pinned one is skipped rather than rejected. Writing it would be
+		// pointless anyway — the next boot overwrites it from the environment.
+		if h.provider != nil && h.provider.Pinned(key) {
 			continue
 		}
 		t := models.SettingType(s.Type)

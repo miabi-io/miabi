@@ -1,11 +1,18 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { authApi } from '@/api/auth'
 import { apiErrorMessage } from '@/api/client'
 import AuthShell from './AuthShell.vue'
+import type { Brand } from '@/api/types'
 
 const router = useRouter()
+
+// Reached from the sign-in page, so it wears the operator's identity like the
+// other front doors. Status is already fetched below; the brand rides along.
+const brand = ref<Brand>({})
+const brandName = computed(() => brand.value.name?.trim() || 'Miabi')
+const brandLogo = computed(() => brand.value.logo_url?.trim() || '/brand/miabi-mark.svg')
 
 const email = ref('')
 const error = ref('')
@@ -21,6 +28,10 @@ onMounted(async () => {
     if (!data.data?.password_reset_enabled) {
       router.replace({ name: 'login' })
       return
+    }
+    brand.value = data.data?.brand ?? {}
+    if (brand.value.accent) {
+      document.documentElement.setAttribute('data-accent', brand.value.accent)
     }
   } catch {
     // Status is best-effort; let the form render and the request decide.
@@ -46,6 +57,9 @@ async function submit() {
 
 <template>
   <AuthShell
+    hero
+    :brand-name="brand.name ? brandName : undefined"
+    :brand-logo="brandLogo"
     :title="sent ? 'Check your email' : 'Reset your password'"
     :subtitle="sent ? '' : 'Enter your account email and we\'ll send you a reset link.'"
     :error="error"

@@ -28,6 +28,8 @@ const (
 	TemplatePasswordReset       = "password_reset"
 	TemplateWorkspaceInvitation = "workspace_invitation"
 	TemplateWelcome             = "welcome"
+	TemplateEmailVerification   = "email_verification"
+	TemplateWorkspaceRoleChange = "workspace_role_change"
 )
 
 // Service renders and sends platform notification emails.
@@ -50,7 +52,13 @@ func NewService(smtp config.SystemSMTPConfig, appName, appURL string) *Service {
 		appURL:    strings.TrimRight(strings.TrimSpace(appURL), "/"),
 		templates: map[string]*template.Template{},
 	}
-	for _, name := range []string{TemplatePasswordReset, TemplateWorkspaceInvitation, TemplateWelcome} {
+	// Every template the service can send. A name missing here parses nowhere and
+	// fails only at send time, inside a goroutine — mailer_test renders all of them
+	// so that cannot ship.
+	for _, name := range []string{
+		TemplatePasswordReset, TemplateWorkspaceInvitation, TemplateWelcome,
+		TemplateEmailVerification, TemplateWorkspaceRoleChange,
+	} {
 		s.templates[name] = template.Must(template.ParseFS(templateFS, "templates/base.tmpl", "templates/"+name+".tmpl"))
 	}
 	return s
@@ -99,6 +107,55 @@ func (s *Service) SendWelcome(to, name string) {
 		"UserName": nameOr(name, to),
 		"LoginURL": s.link("/login"),
 	})
+}
+
+// SendEmailVerification asks a new account holder to confirm their address. Until
+// they do, the platform refuses their sign-in when verification is required, so
+// this is the only thing standing between them and a usable account.
+func (s *Service) SendEmailVerification(to, name, token string, expiryHours int) {
+	if !s.IsConfigured() {
+		return
+	}
+	s.dispatch(to, "Verify your email address", TemplateEmailVerification, map[string]any{
+		"UserName":    nameOr(name, to),
+		"VerifyURL":   s.link("/verify-email", "token", token),
+		"ExpiryHours": expiryHours,
+	})
+}
+
+// SendWorkspaceRoleChanged tells a member their permissions changed. Worth an
+// email rather than a silent change: it takes effect immediately, and someone who
+// suddenly cannot deploy deserves to know why before they hit the wall.
+func (s *Service) SendWorkspaceRoleChanged(to, name, workspaceName, actorName, oldRole, newRole string) {
+	if !s.IsConfigured() {
+		return
+	}
+	s.dispatch(to, "Your role in "+workspaceName+" changed", TemplateWorkspaceRoleChange, map[string]any{
+		"UserName":      nameOr(name, to),
+		"WorkspaceName": workspaceName,
+		"ActorName":     nameOr(actorName, "A workspace owner"),
+		"OldRole":       oldRole,
+		"NewRole":       newRole,
+		"RoleSummary":   roleSummary(newRole),
+		"WorkspaceURL":  s.link("/"),
+	})
+}
+
+// roleSummary says in a sentence what the new role can do, so the mail is useful
+// to someone who does not know Miabi's role names by heart.
+func roleSummary(role string) string {
+	switch strings.ToLower(role) {
+	case "owner":
+		return "As an owner you have full control of the workspace, including billing, members and deletion."
+	case "admin":
+		return "As an admin you can manage the workspace's resources and its members."
+	case "developer":
+		return "As a developer you can deploy and manage applications, databases and domains."
+	case "viewer":
+		return "As a viewer you have read-only access: you can see the workspace but not change it."
+	default:
+		return "Your permissions in the workspace have changed."
+	}
 }
 
 // dispatch renders and sends in the background, logging any failure. A no-op when

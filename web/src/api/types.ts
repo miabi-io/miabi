@@ -356,6 +356,19 @@ export interface Brand {
 export interface AuthStatus {
   password_reset_enabled: boolean
   brand?: Brand
+  /** Whether self-service sign-up is open AND usable. */
+  registration_enabled: boolean
+}
+
+export interface RegisterInput {
+  name: string
+  email: string
+  password: string
+}
+
+export interface RegisterResult {
+  verification_required: boolean
+  message: string
 }
 
 // --- Platform admin ---
@@ -525,6 +538,11 @@ export interface PlatformSetting {
   value: string
   type: 'string' | 'int' | 'bool' | 'json'
   updated_at?: string
+  /**
+   * An environment variable supplies this value, so the console shows it
+   * read-only: an edit here would revert at the next restart.
+   */
+  pinned?: boolean
 }
 
 // UpdateInfo is the cached result of the daily release check (GET /admin/update).

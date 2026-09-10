@@ -248,11 +248,52 @@ func (h *WorkspaceHandler) UpdateMemberRole(c *okapi.Context, req *UpdateMemberR
 	if err != nil || memberUserID <= 0 {
 		return c.AbortBadRequest("invalid user id")
 	}
+	// Read the old role first: after the update there is nothing left to compare
+	// against, and "your role changed" without saying from what is not much of a
+	// notice.
+	oldRole := h.memberRole(wsID, uint(memberUserID))
 	if err := h.svc.UpdateMemberRole(wsID, middlewares.WorkspaceRole(c), uint(memberUserID), models.WorkspaceRole(req.Body.Role)); err != nil {
 		return h.mapWorkspaceErr(c, err)
 	}
 	h.record(c, wsID, "workspace.member_role_update", "user", strconv.Itoa(memberUserID))
+	h.notifyRoleChange(c, wsID, uint(memberUserID), oldRole, req.Body.Role)
 	return message(c, "member role updated")
+}
+
+// memberRole reads a member's current role, or "" when it cannot be determined.
+func (h *WorkspaceHandler) memberRole(wsID, userID uint) string {
+	members, err := h.svc.ListMembers(wsID)
+	if err != nil {
+		return ""
+	}
+	for i := range members {
+		if members[i].UserID == userID {
+			return string(members[i].Role)
+		}
+	}
+	return ""
+}
+
+// notifyRoleChange emails the member. Best-effort and silent on failure: the role
+// has already changed, and a mail server problem must not fail the request that
+// changed it.
+func (h *WorkspaceHandler) notifyRoleChange(c *okapi.Context, wsID, userID uint, oldRole, newRole string) {
+	if h.mailer == nil || oldRole == newRole || newRole == "" {
+		return
+	}
+	member, err := h.users.FindByID(userID)
+	if err != nil {
+		return
+	}
+	ws, err := h.svc.Get(wsID)
+	if err != nil {
+		return
+	}
+	var actorName string
+	if actor, aerr := h.users.FindByID(middlewares.UserID(c)); aerr == nil {
+		actorName = actor.Name
+	}
+	h.mailer.SendWorkspaceRoleChanged(member.Email, member.Name, ws.DisplayName, actorName, oldRole, newRole)
 }
 
 // RemoveMember removes a member (admin+, bounded by the caller's rank).

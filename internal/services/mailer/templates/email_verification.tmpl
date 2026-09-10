@@ -1,0 +1,17 @@
+{{ define "content" }}
+<h2 style="color: #111827; font-size: 20px; line-height: 1.3; margin: 0 0 18px; font-weight: 700; letter-spacing: -0.01em;">Verify your email address</h2>
+<p style="margin: 0 0 16px;">Hi {{ .UserName }},</p>
+<p class="lead" style="margin: 0 0 16px; font-size: 15px; color: #4b5563;">Confirm this address to finish setting up your {{ .AppName }} account. You won't be able to sign in until it's verified.</p>
+
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin: 28px auto;">
+  <tr><td align="center" bgcolor="#9333ea" style="border-radius: 8px;">
+    <a href="{{ .VerifyURL }}" class="btn" style="display: inline-block; padding: 13px 30px; background-color: #9333ea; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; line-height: 1;">Verify email address</a>
+  </td></tr>
+</table>
+
+<p class="muted" style="margin: 0 0 16px; color: #6b7280; font-size: 13px;">This link expires in {{ .ExpiryHours }} hours and can be used once. If the button doesn't work, copy this address into your browser:</p>
+<p class="muted" style="margin: 0 0 16px; color: #6b7280; font-size: 13px; word-break: break-all;">{{ .VerifyURL }}</p>
+
+<div class="divider" style="height: 1px; line-height: 1px; font-size: 1px; background-color: #eceef2; margin: 28px 0;"></div>
+<p class="muted" style="margin: 0 0 16px; color: #6b7280; font-size: 13px;">If you didn't create an account on {{ .AppName }}, you can safely ignore this email — no account is usable until this link is followed.</p>
+{{ end }}

@@ -78,6 +78,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/portforward"
 	"github.com/miabi-io/miabi/internal/services/quota"
 	"github.com/miabi-io/miabi/internal/services/recovery"
+	"github.com/miabi-io/miabi/internal/services/registration"
 	"github.com/miabi-io/miabi/internal/services/registry"
 	"github.com/miabi-io/miabi/internal/services/registryserver"
 	releasesvc "github.com/miabi-io/miabi/internal/services/release"
@@ -178,6 +179,7 @@ type routerHandlers struct {
 	adminEvent          *handlers.AdminEventHandler
 	adminSetting        *handlers.AdminSettingHandler
 	adminBranding       *handlers.AdminBrandingHandler
+	register            *handlers.RegisterHandler
 	update              *handlers.UpdateHandler
 	adminPlan           *handlers.PlanHandler
 	deploymentCfg       *handlers.DeploymentConfigHandler
@@ -232,8 +234,11 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	recoveryRepo := repositories.NewTwoFactorRecoveryRepository(db)
 	authService := auth.NewService(userRepo, resetRepo, recoveryRepo, sessionStore, cfg.JWTSecret)
 	settingsProvider := settings.NewProvider(settingRepo, map[string]string{
-		settings.KeyExternalBaseDomain:   cfg.ExternalBaseDomain,
-		settings.KeyExternalBaseProvider: cfg.ExternalBaseProvider,
+		settings.KeyExternalBaseDomain:       cfg.ExternalBaseDomain,
+		settings.KeyExternalBaseProvider:     cfg.ExternalBaseProvider,
+		settings.KeyRegistrationEnabled:      cfg.RegistrationEnabled,
+		settings.KeyRequireEmailVerification: cfg.RequireEmailVerification,
+		settings.KeyAllowedSignupDomains:     cfg.AllowedSignupDomains,
 	})
 	oauthService := oauth.NewService(oauthRepo, userRepo, redisClient)
 	oauthService.SetWorkspaces(workspaceRepo) // auto-join SSO users to a provider's default workspace
@@ -973,6 +978,9 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// invitations, account welcomes) over the system SMTP server. A no-op until
 	// MIABI_SMTP_* is configured.
 	platformMailer := mailer.NewService(cfg.SystemSMTP, cfg.AppName, cfg.AppWebURL)
+	// Self-service sign-up: off unless an operator turns it on. It takes the mailer
+	// so it can refuse to open sign-up that needs a verification email nobody can send.
+	registrationService := registration.NewService(settingsProvider, platformMailer)
 
 	// Per-workspace key rotation: register the secret-owning services
 	// as reencryptors with the live keyring, and schedule auto-rotation when on.
@@ -1092,6 +1100,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			adminEvent:          handlers.NewAdminEventHandler(auditRepo, bus, ee),
 			adminSetting:        handlers.NewAdminSettingHandler(settingRepo, settingsProvider, auditLogger),
 			adminBranding:       handlers.NewAdminBrandingHandler(brandingService, ee, auditLogger),
+			register:            handlers.NewRegisterHandler(registrationService, authService, userRepo, platformMailer, auditLogger),
 			update:              handlers.NewUpdateHandler(updateService),
 			adminPlan:           handlers.NewPlanHandler(planRepo, quotaOverrideRepo, workspaceRepo, ee, auditLogger),
 			deploymentCfg:       handlers.NewDeploymentConfigHandler(imageResolver, settingRepo, settingsProvider, auditLogger, ee),
@@ -1161,6 +1170,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.pipeline.SetLogStore(logStore)
 	r.h.backup.SetLogStore(logStore)
 	r.h.auth.SetBranding(brandingService, ee) // the sign-in page's operator identity
+	r.h.auth.SetRegistration(registrationService)
+	authService.SetEmailVerifications(repositories.NewEmailVerificationRepository(db))
 	// An account that never picked an accent follows the operator's.
 	userSettingsService.SetBrandAccent(func() models.Accent {
 		if !ee.Has(enterprise.FlagWhiteLabel) {

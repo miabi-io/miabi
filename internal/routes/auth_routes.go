@@ -28,6 +28,28 @@ func (r *Router) authRoutes() []okapi.RouteDefinition {
 			Response: &dto.Response[handlers.AuthStatus]{},
 		},
 		{
+			Method: http.MethodPost,
+			Path:   "/register",
+			Group:  auth,
+			// Rate limited like every other unauthenticated endpoint: sign-up is the
+			// one that creates rows, so it is the one worth flooding.
+			Middlewares: limited,
+			Handler:     okapi.H(r.h.register.Register),
+			Summary:     "Create an account (when self-service registration is open)",
+			Request:     &handlers.RegisterRequest{},
+			Response:    &dto.Response[handlers.RegisterResponse]{},
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/verify-email",
+			Group:       auth,
+			Middlewares: limited,
+			Handler:     okapi.H(r.h.register.VerifyEmail),
+			Summary:     "Confirm an email address from a verification link",
+			Request:     &handlers.VerifyEmailRequest{},
+			Response:    &dto.Response[handlers.RegisterResponse]{},
+		},
+		{
 			Method:      http.MethodPost,
 			Path:        "/login",
 			Group:       auth,
