@@ -56,7 +56,7 @@ type Manager struct {
 }
 
 func NewManager(backups *backup.Service, dbs *repositories.DatabaseRepository, sched *repositories.BackupRepository, sets *repositories.DatabaseBackupSetRepository, settings *backupsettings.Service) *Manager {
-	return &Manager{
+	m := &Manager{
 		// SkipIfStillRunning drops a tick whose previous invocation of the same task
 		// is still running, so a job slower than its interval (e.g. a large backup)
 		// never overlaps itself on the same schedule/database.
@@ -69,6 +69,11 @@ func NewManager(backups *backup.Service, dbs *repositories.DatabaseRepository, s
 		entries:  make(map[string]cron.EntryID),
 		state:    make(map[string]*jobState),
 	}
+
+	if backups != nil && sets != nil {
+		backups.SetSetRepository(sets)
+	}
+	return m
 }
 
 // Snapshot returns the current status of every registered task.
