@@ -4,7 +4,6 @@ export interface NavItem {
   icon: string
   requiresWorkspace?: boolean
   requiresWorkspaceAdmin?: boolean
-  requiresAdmin?: boolean
   requiresDocs?: boolean
   external?: boolean
   workspaceTab?: 'settings' | 'members' | 'audit' | 'notifications'
@@ -17,6 +16,8 @@ export interface NavSection {
   defaultOpen?: boolean
 }
 
+// The workspace console's navigation. Platform administration is a separate
+// console with its own shell and its own sections — see adminNavSections.
 export const navSections: NavSection[] = [
   {
     id: 'overview',
@@ -105,32 +106,6 @@ export const navSections: NavSection[] = [
       { name: 'Audit Log', path: '/audit-log', icon: 'mdi-history', requiresWorkspaceAdmin: true },
       { name: 'Notifications', path: '', icon: 'mdi-bell-outline', workspaceTab: 'notifications', requiresWorkspaceAdmin: true },
       { name: 'Settings', path: '', icon: 'mdi-cog-outline', workspaceTab: 'settings', requiresWorkspaceAdmin: true },
-    ],
-  },
-  {
-    id: 'admin',
-    title: 'Platform Admin',
-    defaultOpen: true,
-    items: [
-      { name: 'Dashboard', path: '/admin/metrics', icon: 'mdi-view-dashboard-outline', requiresAdmin: true },
-      { name: 'Users', path: '/admin/users', icon: 'mdi-account-group-outline', requiresAdmin: true },
-      { name: 'Workspaces', path: '/admin/workspaces', icon: 'mdi-briefcase-outline', requiresAdmin: true },
-      { name: 'Domains', path: '/admin/domains', icon: 'mdi-web', requiresAdmin: true },
-      { name: 'Routes', path: '/admin/routes', icon: 'mdi-sitemap-outline', requiresAdmin: true },
-      { name: 'Nodes', path: '/admin/nodes', icon: 'mdi-server-network', requiresAdmin: true },
-      { name: 'Shared Runners', path: '/admin/runners', icon: 'mdi-cog-transfer-outline', requiresAdmin: true },
-      { name: 'Events', path: '/admin/events', icon: 'mdi-pulse', requiresAdmin: true },
-      { name: 'Jobs', path: '/admin/jobs', icon: 'mdi-clock-outline', requiresAdmin: true },
-      { name: 'OAuth Providers', path: '/admin/oauth', icon: 'mdi-shield-key-outline', requiresAdmin: true },
-      { name: 'LDAP / AD', path: '/admin/ldap', icon: 'mdi-account-key-outline', requiresAdmin: true },
-      { name: 'Plans', path: '/admin/plans', icon: 'mdi-tune-variant', requiresAdmin: true },
-      { name: 'License', path: '/admin/license', icon: 'mdi-license', requiresAdmin: true },
-      { name: 'SIEM Streaming', path: '/admin/siem', icon: 'mdi-export-variant', requiresAdmin: true },
-      { name: 'Announcements', path: '/admin/announcements', icon: 'mdi-bullhorn-outline', requiresAdmin: true },
-      { name: 'Platform Backup', path: '/admin/platform-backup', icon: 'mdi-cloud-upload-outline', requiresAdmin: true },
-      { name: 'Container Registry', path: '/admin/registry', icon: 'mdi-cube-outline', requiresAdmin: true },
-      { name: 'Platform Settings', path: '/admin/settings', icon: 'mdi-cog-outline', requiresAdmin: true },
-      { name: 'Deployment Config', path: '/admin/deployment-config', icon: 'mdi-package-variant-closed', requiresAdmin: true },
     ],
   },
 ]
