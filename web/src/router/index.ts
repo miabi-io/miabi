@@ -102,6 +102,7 @@ const routes = [
       { path: 'routes', name: 'admin-routes', component: () => import('@/views/admin/Routes.vue'), meta: { title: 'Routes', admin: true } },
       { path: 'domains/:id', name: 'admin-domain-detail', component: () => import('@/views/admin/DomainDetail.vue'), meta: { title: 'Domain', admin: true } },
       { path: 'nodes', name: 'admin-nodes', component: () => import('@/views/admin/Nodes.vue'), meta: { title: 'Nodes', admin: true } },
+      { path: 'ports', name: 'admin-ports', component: () => import('@/views/admin/Ports.vue'), meta: { title: 'Ports', admin: true } },
       { path: 'runners', name: 'admin-runners', component: () => import('@/views/admin/Runners.vue'), meta: { title: 'Shared Runners', admin: true } },
       { path: 'runners/:id', name: 'admin-runner-detail', component: () => import('@/views/runners/RunnerDetail.vue'), meta: { title: 'Runner', admin: true } },
       { path: 'nodes/:id', name: 'admin-node-detail', component: () => import('@/views/admin/NodeDetail.vue'), meta: { title: 'Node', admin: true } },

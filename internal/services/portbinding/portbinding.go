@@ -45,6 +45,8 @@ type Service struct {
 	ports      *repositories.AppPortRepository
 	workspaces *repositories.WorkspaceRepository
 	docker     DockerClients
+	servers    ServerLister
+	notify     ReviewNotifier
 	minPort    int
 	maxPort    int
 }
@@ -101,6 +103,7 @@ func (s *Service) Request(workspaceID, userID uint, in RequestInput) (*models.Po
 	if b.Status == models.PortBindingApproved {
 		s.markAppRedeploy(b.ApplicationID)
 	}
+	s.notifyPending(b)
 	return b, nil
 }
 
@@ -252,20 +255,28 @@ func (s *Service) hostPortConflict(serverID uint, hostPort int, proto string, ex
 // running container on the node. Empty when no Docker client is wired or the
 // node is unreachable (the table-only check still applies).
 func (s *Service) livePublishedPorts(serverID uint) map[string]string {
+	ports, _ := s.inspectNode(serverID)
+	return ports
+}
+
+// inspectNode is livePublishedPorts plus whether the node actually answered. A
+// conflict check treats "unreachable" and "nothing published" the same way, but
+// the admin overview must not: one is a clean node, the other is no information.
+func (s *Service) inspectNode(serverID uint) (map[string]string, bool) {
 	if s.docker == nil {
-		return nil
+		return nil, false
 	}
 	dc, err := s.docker.For(serverID)
 	if err != nil {
-		return nil // node offline / no client: can't verify live, rely on the table
+		return nil, false // node offline / no client: rely on the table
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	conts, err := dc.ListContainers(ctx, false) // running only
 	if err != nil {
-		return nil
+		return nil, false
 	}
-	return publishedPorts(conts)
+	return publishedPorts(conts), true
 }
 
 // publishedPorts maps host:proto -> owning container name across the given
@@ -286,6 +297,19 @@ func publishedPorts(conts []docker.Container) map[string]string {
 
 func portKey(hostPort int, proto string) string {
 	return fmt.Sprintf("%d/%s", hostPort, normProto(proto))
+}
+
+// parsePortKey is portKey's inverse, for entries that exist only as a live port.
+func parsePortKey(key string) (int, string) {
+	port, proto, found := strings.Cut(key, "/")
+	if !found {
+		return 0, "tcp"
+	}
+	n := 0
+	if _, err := fmt.Sscanf(port, "%d", &n); err != nil {
+		return 0, normProto(proto)
+	}
+	return n, normProto(proto)
 }
 
 func containerName(ct docker.Container) string {

@@ -112,6 +112,16 @@ func (h *PortBindingHandler) AdminList(c *okapi.Context) error {
 	return ok(c, list)
 }
 
+// AdminOverview reports every external port the platform knows about, per node,
+// reconciled against what each node actually has published.
+func (h *PortBindingHandler) AdminOverview(c *okapi.Context) error {
+	ov, err := h.svc.Overview()
+	if err != nil {
+		return c.AbortInternalServerError("failed to build the port overview", err)
+	}
+	return ok(c, ov)
+}
+
 func (h *PortBindingHandler) Approve(c *okapi.Context, req *ReviewPortBindingRequest) error {
 	id, err := bindingID(c)
 	if err != nil {

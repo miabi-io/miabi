@@ -2647,3 +2647,40 @@ export interface AuthAccessStatus {
   // Why a switched-on sign-up still cannot be offered; empty when it can.
   blocked?: string
 }
+
+// PortEntryState: what a host port is actually doing on a node.
+//   pending   — a request awaiting review; nothing is published
+//   reserved  — approved, but not on the node until the app redeploys
+//   published — approved and live
+//   unmanaged — a container holds the port with no binding behind it
+export type PortEntryState = 'pending' | 'reserved' | 'published' | 'unmanaged'
+
+export interface PortEntry {
+  host_port: number
+  protocol: string
+  state: PortEntryState
+  binding_id?: number
+  workspace_id?: number
+  application_id?: number
+  app_name?: string
+  container_port?: number
+  container?: string
+  managed?: boolean
+  requested_by?: number
+  created_at?: string
+}
+
+export interface PortNodeOverview {
+  server_id: number
+  name: string
+  // False when the node could not be reached: the entries then come from the
+  // binding table alone and say nothing about unmanaged ports.
+  inspected: boolean
+  entries: PortEntry[]
+}
+
+export interface PortOverview {
+  min_port: number
+  max_port: number
+  nodes: PortNodeOverview[]
+}

@@ -7,9 +7,11 @@ import (
 	"net/http"
 
 	"github.com/jkaninda/okapi"
+	"github.com/miabi-io/miabi/internal/dto"
 	"github.com/miabi-io/miabi/internal/handlers"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/services/portbinding"
 )
 
 func (r *Router) networkRoutes() []okapi.RouteDefinition {
@@ -344,6 +346,15 @@ func (r *Router) portBindingRoutes() []okapi.RouteDefinition {
 			Middlewares: admin,
 			Handler:     r.h.portBinding.AdminList,
 			Summary:     "List port bindings for review (admin)",
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/ports",
+			Group:       sys,
+			Middlewares: admin,
+			Handler:     r.h.portBinding.AdminOverview,
+			Summary:     "Every external port per node, reconciled against the nodes (admin)",
+			Response:    &dto.Response[portbinding.Overview]{},
 		},
 		{
 			Method:      http.MethodPost,
