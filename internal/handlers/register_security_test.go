@@ -30,10 +30,9 @@ func registerTestHandler(t *testing.T, allowedDomains string) (*RegisterHandler,
 	}
 	users := repositories.NewUserRepository(db)
 	provider := settings.NewFixedProvider(map[string]models.Setting{
-		settings.KeyRegistrationEnabled:  {Key: settings.KeyRegistrationEnabled, Value: "true", Type: models.SettingTypeBool},
 		settings.KeyAllowedSignupDomains: {Key: settings.KeyAllowedSignupDomains, Value: allowedDomains, Type: models.SettingTypeString},
 	})
-	return NewRegisterHandler(registration.NewService(provider, nil), nil, users, nil, nil), users
+	return NewRegisterHandler(registration.NewService(true, provider, nil), nil, users, nil, nil), users
 }
 
 type registerResult struct {
@@ -107,10 +106,7 @@ func TestRejectedDomainAnswersLikeSuccess(t *testing.T) {
 // Sign-up being shut is public — the sign-in page has to know — so it is the one
 // refusal that may look like a refusal.
 func TestClosedPlatformRefusesOutright(t *testing.T) {
-	provider := settings.NewFixedProvider(map[string]models.Setting{
-		settings.KeyRegistrationEnabled: {Key: settings.KeyRegistrationEnabled, Value: "false", Type: models.SettingTypeBool},
-	})
-	h := NewRegisterHandler(registration.NewService(provider, nil), nil, nil, nil, nil)
+	h := NewRegisterHandler(registration.NewService(false, settings.NewFixedProvider(nil), nil), nil, nil, nil, nil)
 
 	rec := httptest.NewRecorder()
 	c := okapi.NewContext(okapi.New(), rec, httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", nil))

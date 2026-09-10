@@ -236,7 +236,6 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	settingsProvider := settings.NewProvider(settingRepo, map[string]string{
 		settings.KeyExternalBaseDomain:       cfg.ExternalBaseDomain,
 		settings.KeyExternalBaseProvider:     cfg.ExternalBaseProvider,
-		settings.KeyRegistrationEnabled:      cfg.RegistrationEnabled,
 		settings.KeyRequireEmailVerification: cfg.RequireEmailVerification,
 		settings.KeyAllowedSignupDomains:     cfg.AllowedSignupDomains,
 	})
@@ -980,7 +979,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	platformMailer := mailer.NewService(cfg.SystemSMTP, cfg.AppName, cfg.AppWebURL)
 	// Self-service sign-up: off unless an operator turns it on. It takes the mailer
 	// so it can refuse to open sign-up that needs a verification email nobody can send.
-	registrationService := registration.NewService(settingsProvider, platformMailer)
+	registrationService := registration.NewService(cfg.RegistrationEnabled, settingsProvider, platformMailer)
 
 	// Per-workspace key rotation: register the secret-owning services
 	// as reencryptors with the live keyring, and schedule auto-rotation when on.
@@ -1124,6 +1123,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	}
 
 	r.h.auth.SetUserSettings(userSettingsService)
+	r.h.adminSetting.SetAuthAccess(registrationService, cfg.PasswordResetEnabled)
 
 	// Edge gateways buffer their events on the node's own Redis; the agent forwards
 	// them here, so they land in the same stream the consumer already reads.

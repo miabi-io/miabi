@@ -27,10 +27,9 @@ const cacheTTL = 15 * time.Second
 // and surfaced in the admin UI.
 const (
 	KeyMaintenanceMode = "maintenance_mode"
-	// KeyRegistrationEnabled gates self-service sign-up. Default false: a
-	// self-hosted platform that upgrades into this feature must not silently start
-	// accepting accounts from anyone who can reach it.
-	KeyRegistrationEnabled      = "registration_enabled"
+	// Self-service sign-up itself is not here: it is fixed at boot from
+	// MIABI_REGISTRATION_ENABLED (config.RegistrationEnabled). These two shape the
+	// policy that applies once it is open.
 	KeyRequireEmailVerification = "require_email_verification"
 	KeyAllowedSignupDomains     = "allowed_signup_domains"
 	KeyDefaultWorkspaceRole     = "default_workspace_role"
@@ -64,7 +63,6 @@ const (
 // admin via the API.
 var defaults = []models.Setting{
 	{Key: KeyMaintenanceMode, Value: "false", Type: models.SettingTypeBool},
-	{Key: KeyRegistrationEnabled, Value: "false", Type: models.SettingTypeBool},
 	{Key: KeyRequireEmailVerification, Value: "false", Type: models.SettingTypeBool},
 	{Key: KeyAllowedSignupDomains, Value: "", Type: models.SettingTypeString},
 	{Key: KeyDefaultWorkspaceRole, Value: "viewer", Type: models.SettingTypeString},

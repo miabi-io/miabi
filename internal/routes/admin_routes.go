@@ -351,6 +351,15 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Summary:     "Update platform settings",
 			Request:     &handlers.UpdateSettingsRequest{},
 		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/settings/auth-access",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminSetting.AuthAccess,
+			Summary:     "Report the env-fixed registration and password-reset controls",
+			Response:    &dto.Response[handlers.AuthAccessStatus]{},
+		},
 
 		{
 			Method:      http.MethodGet,

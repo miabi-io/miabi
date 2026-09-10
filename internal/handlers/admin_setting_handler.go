@@ -10,6 +10,7 @@ import (
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
+	"github.com/miabi-io/miabi/internal/services/registration"
 	"github.com/miabi-io/miabi/internal/services/settings"
 	"github.com/miabi-io/miabi/internal/storage"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
@@ -42,10 +43,42 @@ type AdminSettingHandler struct {
 	repo     *repositories.SettingRepository
 	provider *settings.Provider
 	audit    *audit.Logger
+	// reg and passwordReset back AuthAccess. Both are fixed at boot rather than
+	// stored, so they are reported, never written.
+	reg           *registration.Service
+	passwordReset bool
 }
 
 func NewAdminSettingHandler(repo *repositories.SettingRepository, provider *settings.Provider, auditLog *audit.Logger) *AdminSettingHandler {
 	return &AdminSettingHandler{repo: repo, provider: provider, audit: auditLog}
+}
+
+// SetAuthAccess wires the env-fixed auth controls that AuthAccess reports.
+func (h *AdminSettingHandler) SetAuthAccess(reg *registration.Service, passwordReset bool) {
+	h.reg, h.passwordReset = reg, passwordReset
+}
+
+// AuthAccessStatus reports the auth controls an admin cannot change from here,
+// so the settings screen can show them beside the ones they can.
+type AuthAccessStatus struct {
+	RegistrationEnabled  bool `json:"registration_enabled"`
+	PasswordResetEnabled bool `json:"password_reset_enabled"`
+	// Blocked explains a sign-up that is switched on but cannot be offered, which
+	// is otherwise indistinguishable from one that was never switched on. Empty
+	// when there is nothing to explain.
+	Blocked string `json:"blocked,omitempty"`
+}
+
+// AuthAccess reports the env-fixed registration and password-reset controls.
+func (h *AdminSettingHandler) AuthAccess(c *okapi.Context) error {
+	st := AuthAccessStatus{PasswordResetEnabled: h.passwordReset}
+	if h.reg != nil {
+		st.RegistrationEnabled = h.reg.Enabled()
+		if err := h.reg.Available(); err != nil && st.RegistrationEnabled {
+			st.Blocked = err.Error()
+		}
+	}
+	return ok(c, st)
 }
 
 type UpdateSettingsRequest struct {

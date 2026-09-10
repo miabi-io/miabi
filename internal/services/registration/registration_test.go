@@ -93,9 +93,9 @@ func provider(t *testing.T, kv map[string]string) *settings.Provider {
 // Sign-up stays shut until an operator opens it. An upgrade must not start
 // accepting accounts from anyone who can reach the platform.
 func TestClosedByDefault(t *testing.T) {
-	s := NewService(provider(t, nil), fakeMailer{configured: true})
+	s := NewService(false, provider(t, nil), fakeMailer{configured: true})
 	if s.Enabled() {
-		t.Error("registration is enabled with no setting")
+		t.Error("registration is enabled with the environment unset")
 	}
 	if err := s.Available(); !errors.Is(err, ErrClosed) {
 		t.Errorf("Available = %v, want ErrClosed", err)
@@ -106,19 +106,15 @@ func TestClosedByDefault(t *testing.T) {
 // in and cannot verify themselves. Refuse the door rather than open one that
 // leads nowhere.
 func TestRefusesWhenVerificationCannotBeDelivered(t *testing.T) {
-	on := map[string]string{
-		settings.KeyRegistrationEnabled:      "true",
-		settings.KeyRequireEmailVerification: "true",
-	}
-	if err := NewService(provider(t, on), fakeMailer{configured: false}).Available(); !errors.Is(err, ErrVerificationUnavailable) {
+	on := map[string]string{settings.KeyRequireEmailVerification: "true"}
+	if err := NewService(true, provider(t, on), fakeMailer{configured: false}).Available(); !errors.Is(err, ErrVerificationUnavailable) {
 		t.Errorf("Available = %v, want ErrVerificationUnavailable", err)
 	}
-	if err := NewService(provider(t, on), fakeMailer{configured: true}).Available(); err != nil {
+	if err := NewService(true, provider(t, on), fakeMailer{configured: true}).Available(); err != nil {
 		t.Errorf("Available with a mailer = %v, want nil", err)
 	}
 	// Without verification a mailer is irrelevant.
-	noVerify := map[string]string{settings.KeyRegistrationEnabled: "true"}
-	if err := NewService(provider(t, noVerify), fakeMailer{configured: false}).Available(); err != nil {
+	if err := NewService(true, provider(t, nil), fakeMailer{configured: false}).Available(); err != nil {
 		t.Errorf("Available without verification = %v, want nil", err)
 	}
 }
@@ -127,8 +123,7 @@ func TestRefusesWhenVerificationCannotBeDelivered(t *testing.T) {
 // never conflated with the platform being shut — the handler is what has to make
 // the two indistinguishable from outside.
 func TestRejectedDomainIsDistinctFromClosed(t *testing.T) {
-	s := NewService(provider(t, map[string]string{
-		settings.KeyRegistrationEnabled:  "true",
+	s := NewService(true, provider(t, map[string]string{
 		settings.KeyAllowedSignupDomains: "acme.com",
 	}), fakeMailer{configured: true})
 
@@ -145,7 +140,7 @@ func TestRejectedDomainIsDistinctFromClosed(t *testing.T) {
 }
 
 func TestNoAllowListAdmitsAnyone(t *testing.T) {
-	s := NewService(provider(t, map[string]string{settings.KeyRegistrationEnabled: "true"}), fakeMailer{configured: true})
+	s := NewService(true, provider(t, nil), fakeMailer{configured: true})
 	if err := s.Check("someone@anywhere.example"); err != nil {
 		t.Errorf("Check = %v, want nil with no allow-list", err)
 	}

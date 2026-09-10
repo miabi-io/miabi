@@ -16,6 +16,7 @@ import type {
   DomainStatus,
   PlatformMetrics,
   AdminEvent,
+  AuthAccessStatus,
   PlatformSetting,
   UpdateInfo,
   JobStatus,
@@ -262,6 +263,7 @@ export const adminApi = {
 
   // Settings
   listSettings: () => api.get<ApiResponse<PlatformSetting[]>>('/admin/settings'),
+  authAccess: () => api.get<ApiResponse<AuthAccessStatus>>('/admin/settings/auth-access'),
   updateSettings: (settings: SettingInput[]) =>
     api.put<ApiResponse<PlatformSetting[]>>('/admin/settings', { settings }),
 

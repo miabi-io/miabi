@@ -4,9 +4,9 @@
 // Package registration owns self-service sign-up: whether it is open, who may
 // take it, and what state a new account lands in.
 //
-// Sign-up is off by default and stays off until an operator turns it on. A
-// self-hosted platform that upgrades into this feature must not silently begin
-// accepting accounts from anyone who can reach it.
+// Sign-up is off by default and stays off until an operator turns it on in the
+// environment. A self-hosted platform that upgrades into this feature must not
+// silently begin accepting accounts from anyone who can reach it.
 package registration
 
 import (
@@ -35,18 +35,21 @@ var (
 type Mailer interface{ IsConfigured() bool }
 
 type Service struct {
+	enabled  bool
 	settings *settings.Provider
 	mailer   Mailer
 }
 
-func NewService(s *settings.Provider, m Mailer) *Service {
-	return &Service{settings: s, mailer: m}
+// NewService builds the policy. enabled comes from the environment and is fixed
+// for the life of the process — see Enabled.
+func NewService(enabled bool, s *settings.Provider, m Mailer) *Service {
+	return &Service{enabled: enabled, settings: s, mailer: m}
 }
 
 // Enabled reports whether sign-up is switched on.
-func (s *Service) Enabled() bool {
-	return s.settings.Bool(settings.KeyRegistrationEnabled, false)
-}
+//
+// Read from MIABI_REGISTRATION_ENABLED at boot, never from the settings table.
+func (s *Service) Enabled() bool { return s.enabled }
 
 // RequiresVerification reports whether a new account starts unverified. The same
 // setting already gates login, so an unverified account cannot sign in.

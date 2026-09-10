@@ -2638,3 +2638,12 @@ export interface SearchResponse {
   results: SearchResult[]
   kinds: string[]
 }
+
+// AuthAccessStatus reports the auth controls fixed at boot from the environment,
+// which the settings screen shows beside the ones an admin can change.
+export interface AuthAccessStatus {
+  registration_enabled: boolean
+  password_reset_enabled: boolean
+  // Why a switched-on sign-up still cannot be offered; empty when it can.
+  blocked?: string
+}

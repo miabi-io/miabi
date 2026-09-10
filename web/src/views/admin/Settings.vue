@@ -2,26 +2,30 @@
 import { computed, onMounted, ref } from 'vue'
 import { adminApi } from '@/api/admin'
 import type { SettingInput } from '@/api/admin'
-import type { PlatformSetting } from '@/api/types'
+import type { AuthAccessStatus, PlatformSetting } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
-import { authApi } from '@/api/auth'
 import { brandingApi, type BrandingSettings } from '@/api/resources'
 import type { AccentCode } from '@/api/types'
 
 const notify = useNotificationStore()
 
-// password_reset_enabled is NOT a stored setting: it is fixed at boot from
-// MIABI_PASSWORD_RESET_ENABLED because it gates a critical auth flow and should
-// not be flippable at runtime. It is shown here anyway, read-only, because an
-// admin looking for "can people reset their own password" looks in this card —
-// and finding nothing is worse than finding it and learning where it lives.
-const passwordResetEnabled = ref<boolean | null>(null)
+// Neither of these is a stored setting: both are fixed at boot from the
+// environment because they gate who can become a principal at all, and neither
+// should be flippable from a session. They are shown here anyway, read-only,
+// because an admin looking for "can people sign themselves up" looks in this card
+// — and finding nothing is worse than finding it and learning where it lives.
+const authAccess = ref<AuthAccessStatus | null>(null)
 
-async function loadAuthStatus() {
+const ENV_ACCESS: { key: keyof AuthAccessStatus; label: string; env: string }[] = [
+  { key: 'registration_enabled', label: 'Allow self-service sign-up', env: 'MIABI_REGISTRATION_ENABLED' },
+  { key: 'password_reset_enabled', label: 'Allow self-service password reset', env: 'MIABI_PASSWORD_RESET_ENABLED' },
+]
+
+async function loadAuthAccess() {
   try {
-    passwordResetEnabled.value = (await authApi.status()).data.data?.password_reset_enabled ?? null
+    authAccess.value = (await adminApi.authAccess()).data.data ?? null
   } catch {
-    passwordResetEnabled.value = null
+    authAccess.value = null
   }
 }
 
@@ -97,9 +101,8 @@ const SECTIONS: SectionDef[] = [
   {
     id: 'access',
     title: 'Registration & access',
-    keys: ['registration_enabled', 'require_email_verification', 'allowed_signup_domains'],
+    keys: ['require_email_verification', 'allowed_signup_domains'],
     labels: {
-      registration_enabled: 'Allow self-service sign-up',
       require_email_verification: 'Require email verification',
       allowed_signup_domains: 'Allowed signup domains (CSV, blank = any)',
     },
@@ -215,7 +218,7 @@ async function load() {
 onMounted(() => {
   load()
   loadBranding()
-  loadAuthStatus()
+  loadAuthAccess()
 })
 
 async function save() {
@@ -308,22 +311,27 @@ function setBool(key: string, checked: boolean) {
               <span v-if="sectionDirty(section.keys)" class="text-muted unsaved">unsaved</span>
             </div>
 
-            <div
-              v-if="section.id === 'access' && passwordResetEnabled !== null"
-              class="setting-row"
-            >
-              <div class="setting-label">
-                <label class="form-label">Allow self-service password reset</label>
-                <div class="form-hint text-muted">
-                  MIABI_PASSWORD_RESET_ENABLED · set by environment, applied at boot
+            <template v-if="section.id === 'access' && authAccess">
+              <div v-for="item in ENV_ACCESS" :key="item.key" class="setting-row">
+                <div class="setting-label">
+                  <label class="form-label">{{ item.label }}</label>
+                  <div class="form-hint text-muted">
+                    {{ item.env }} · set by environment, applied at boot
+                  </div>
+                  <div
+                    v-if="item.key === 'registration_enabled' && authAccess.blocked"
+                    class="form-hint text-warning"
+                  >
+                    {{ authAccess.blocked }}
+                  </div>
+                </div>
+                <div class="setting-control">
+                  <span class="badge" :class="authAccess[item.key] ? 'badge-success' : 'badge-neutral'">
+                    {{ authAccess[item.key] ? 'enabled' : 'disabled' }}
+                  </span>
                 </div>
               </div>
-              <div class="setting-control">
-                <span class="badge" :class="passwordResetEnabled ? 'badge-success' : 'badge-neutral'">
-                  {{ passwordResetEnabled ? 'enabled' : 'disabled' }}
-                </span>
-              </div>
-            </div>
+            </template>
 
             <div v-for="key in section.keys" :key="key" class="setting-row">
               <div class="setting-label">
