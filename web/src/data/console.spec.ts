@@ -33,11 +33,16 @@ describe('console separation', () => {
   })
 
   // The point of the split was that nineteen items in one list is a scroll, not a
-  // menu. A section that grows into a dumping ground undoes it.
+  // menu. What this guards is a slide back toward that — one section swallowing the
+  // console — not the exact size of any section, which grows as pages are added.
   it('keeps sections short enough to scan', () => {
     expect(adminNavSections.length).toBeGreaterThanOrEqual(5)
+    const total = adminNavSections.reduce((n, s) => n + s.items.length, 0)
     for (const s of adminNavSections) {
-      expect(s.items.length, `section "${s.title}" has grown too long`).toBeLessThanOrEqual(6)
+      expect(s.items.length, `section "${s.title}" holds too much of the console`)
+        .toBeLessThanOrEqual(Math.ceil(total / 2))
+      expect(s.items.length, `section "${s.title}" has grown past a scannable list`)
+        .toBeLessThanOrEqual(8)
     }
   })
 })

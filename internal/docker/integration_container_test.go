@@ -25,7 +25,7 @@ func TestContainerCreateInspect(t *testing.T) {
 	cli := newClient(t)
 	const (
 		wantMem = int64(64 * 1024 * 1024) // 64Mi
-		wantCPU = int64(500_000_000)       // 0.5 CPU in NanoCPUs
+		wantCPU = int64(500_000_000)      // 0.5 CPU in NanoCPUs
 	)
 	id := run(t, cli, RunSpec{
 		Image:           imgAlpine,

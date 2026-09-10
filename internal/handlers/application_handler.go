@@ -109,12 +109,15 @@ type CreateAppRequest struct {
 		// RunAsUser pins the container to an account ("1000", "1000:1000", "node"),
 		// like `docker run --user`. Empty keeps the image's own user; a workspace
 		// under the restricted security profile must give a non-root numeric uid.
-		RunAsUser       string `json:"run_as_user"`
-		RestartPolicy   string `json:"restart_policy" enum:"no,always,unless-stopped,on-failure"`
-		ImagePullPolicy string `json:"image_pull_policy" enum:"always,if-not-present,never"`
-		// Cluster runtime (cluster mode). runtime_kind defaults to container;
-		// "service" runs the app as a replicated Swarm service.
-		RuntimeKind          string                   `json:"runtime_kind" enum:"container,service"`
+		RunAsUser string `json:"run_as_user"`
+		// Allow-listed kernel privileges; need a privileged workspace.
+		AddCapabilities []string `json:"add_capabilities"`
+		Devices         []string `json:"devices"`
+		RestartPolicy   string   `json:"restart_policy" enum:"no,always,unless-stopped,on-failure"`
+		ImagePullPolicy string   `json:"image_pull_policy" enum:"always,if-not-present,never"`
+		// "service" runs the app as a replicated Swarm service; omitted means a
+		// container, which Okapi fills in so the stored kind is never empty.
+		RuntimeKind          string                   `json:"runtime_kind" enum:"container,service" default:"container"`
 		Replicas             int                      `json:"replicas" min:"0" max:"100"`
 		PlacementConstraints []string                 `json:"placement_constraints"`
 		UpdateConfig         *ServiceUpdateConfigBody `json:"update_config"`
@@ -163,11 +166,14 @@ type UpdateAppRequest struct {
 		// RunAsUser pins the container to an account ("1000", "1000:1000", "node").
 		// Empty clears it back to the image's own user; a workspace under the
 		// restricted security profile must give a non-root numeric uid. Needs a redeploy.
-		RunAsUser       string `json:"run_as_user"`
-		RestartPolicy   string `json:"restart_policy" enum:"no,always,unless-stopped,on-failure"`
-		ImagePullPolicy string `json:"image_pull_policy" enum:"always,if-not-present,never"`
-		// Cluster runtime. Empty runtime_kind leaves the stored kind unchanged;
-		// replicas <= 0 leaves it unchanged.
+		RunAsUser string `json:"run_as_user"`
+		// Replace the stored sets; an empty array revokes. Need a redeploy.
+		AddCapabilities []string `json:"add_capabilities"`
+		Devices         []string `json:"devices"`
+		RestartPolicy   string   `json:"restart_policy" enum:"no,always,unless-stopped,on-failure"`
+		ImagePullPolicy string   `json:"image_pull_policy" enum:"always,if-not-present,never"`
+		// Empty runtime_kind leaves the stored kind. Deliberately not defaulted like
+		// the create field: that would demote a live service on any settings save.
 		RuntimeKind          string                   `json:"runtime_kind" enum:"container,service"`
 		Replicas             int                      `json:"replicas" min:"0" max:"100"`
 		PlacementConstraints []string                 `json:"placement_constraints"`
@@ -275,6 +281,8 @@ func (h *ApplicationHandler) Create(c *okapi.Context, req *CreateAppRequest) err
 		MemoryBytes: req.Body.MemoryBytes, NanoCPUs: req.Body.NanoCPUs,
 		GPUCount: req.Body.GPUCount, GPUKind: req.Body.GPUKind,
 		RunAsUser:            req.Body.RunAsUser,
+		AddCapabilities:      req.Body.AddCapabilities,
+		Devices:              req.Body.Devices,
 		RestartPolicy:        models.RestartPolicy(req.Body.RestartPolicy),
 		ImagePullPolicy:      models.ImagePullPolicy(req.Body.ImagePullPolicy),
 		RuntimeKind:          models.RuntimeKind(req.Body.RuntimeKind),
@@ -382,7 +390,9 @@ func (h *ApplicationHandler) Update(c *okapi.Context, req *UpdateAppRequest) err
 	app.NanoCPUs = req.Body.NanoCPUs
 	app.GPUCount = req.Body.GPUCount
 	app.GPUKind = req.Body.GPUKind
-	app.RunAsUser = req.Body.RunAsUser // validated against the security profile in the service
+	app.RunAsUser = req.Body.RunAsUser             // validated against the security profile in the service
+	app.AddCapabilities = req.Body.AddCapabilities // allow-listed + gated in the service
+	app.Devices = req.Body.Devices
 	if req.Body.RestartPolicy != "" {
 		app.RestartPolicy = models.RestartPolicy(req.Body.RestartPolicy)
 	}

@@ -295,6 +295,15 @@ func (r *Resource) validateApplication() error {
 	if _, err := models.NormalizeRunAsUser(a.RunAsUser); err != nil {
 		return fmt.Errorf("application %q: runAsUser %q: %w", r.Metadata.Name, a.RunAsUser, err)
 	}
+	// Shape and allow-list only; the workspace gate is the app service's, as above.
+	if a.Security != nil {
+		if _, err := models.NormalizeCapabilities(a.Security.AddCapabilities); err != nil {
+			return fmt.Errorf("application %q: %w", r.Metadata.Name, err)
+		}
+		if _, err := models.NormalizeDevices(a.Security.Devices); err != nil {
+			return fmt.Errorf("application %q: %w", r.Metadata.Name, err)
+		}
+	}
 	if a.ExternalLabel != "" && !nameRe.MatchString(a.ExternalLabel) {
 		return fmt.Errorf("application %q: externalLabel %q must be a DNS label", r.Metadata.Name, a.ExternalLabel)
 	}

@@ -118,6 +118,11 @@ type CreateInput struct {
 	// "name:group"); empty keeps the image's user. Validated against the
 	// workspace's security profile.
 	RunAsUser string
+	// AddCapabilities / Devices grant kernel privileges beyond the container
+	// default. Both are allow-listed and gated on the workspace; empty grants
+	// nothing.
+	AddCapabilities []string
+	Devices         []string
 	// DeployStrategy is the app's default rollout method. Empty leaves the model's
 	// own default (rolling), so a caller that does not care says nothing.
 	DeployStrategy  models.DeployStrategy
@@ -151,31 +156,33 @@ type CreateInput struct {
 }
 
 type Service struct {
-	apps         *repositories.ApplicationRepository
-	deployments  *repositories.DeploymentRepository
-	releases     *repositories.ReleaseRepository
-	volumes      volumeLookup
-	routes       *repositories.RouteRepository
-	networks     *repositories.NetworkRepository
-	stacks       *repositories.StackRepository
-	ports        *repositories.AppPortRepository
-	appEvents    *repositories.AppEventRepository
-	clients      NodeDocker
-	producer     *worker.Producer
-	events       events.Recorder
-	routeSync    RouteSyncer
-	settings     *settings.Provider
-	nodeGuard    NodeGuard
-	serverInfo   ServerInfo
-	nodeNamer    NodeNamer
-	workspaces   WorkspaceInfo
-	portBindings *repositories.PortBindingRepository
-	quota        *quota.Service
-	cluster      ClusterCap
-	netEnsurer   NetworkEnsurer
-	pipelines    Pipelines
-	imageGuard   ImageGuard
-	configs      ConfigReader
+	// grantsEnabled is MIABI_CONTAINER_GRANTS_ENABLED; false until an operator opts in.
+	grantsEnabled bool
+	apps          *repositories.ApplicationRepository
+	deployments   *repositories.DeploymentRepository
+	releases      *repositories.ReleaseRepository
+	volumes       volumeLookup
+	routes        *repositories.RouteRepository
+	networks      *repositories.NetworkRepository
+	stacks        *repositories.StackRepository
+	ports         *repositories.AppPortRepository
+	appEvents     *repositories.AppEventRepository
+	clients       NodeDocker
+	producer      *worker.Producer
+	events        events.Recorder
+	routeSync     RouteSyncer
+	settings      *settings.Provider
+	nodeGuard     NodeGuard
+	serverInfo    ServerInfo
+	nodeNamer     NodeNamer
+	workspaces    WorkspaceInfo
+	portBindings  *repositories.PortBindingRepository
+	quota         *quota.Service
+	cluster       ClusterCap
+	netEnsurer    NetworkEnsurer
+	pipelines     Pipelines
+	imageGuard    ImageGuard
+	configs       ConfigReader
 }
 
 // ConfigReader reads a mounted config's files, for the secret-reference scan.
@@ -838,6 +845,14 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 	if err != nil {
 		return nil, err
 	}
+	addCaps, err := s.validCapabilities(workspaceID, in.AddCapabilities)
+	if err != nil {
+		return nil, err
+	}
+	devices, err := s.validDevices(workspaceID, in.Devices)
+	if err != nil {
+		return nil, err
+	}
 	// Placement: default to the local node; validate the chosen node accepts new
 	// placements (exists, not cordoned) and is reachable.
 	serverID := in.ServerID
@@ -875,6 +890,8 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 		MemoryBytes: in.MemoryBytes, NanoCPUs: in.NanoCPUs,
 		GPUCount: in.GPUCount, GPUKind: strings.TrimSpace(in.GPUKind),
 		RunAsUser:            runAsUser,
+		AddCapabilities:      addCaps,
+		Devices:              devices,
 		DeployStrategy:       validStrategyOrDefault(in.DeployStrategy),
 		RestartPolicy:        normalizeRestartPolicy(in.RestartPolicy),
 		ImagePullPolicy:      normalizeImagePullPolicy(in.ImagePullPolicy),
@@ -896,7 +913,7 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 		app.RuntimeKind = models.RuntimeService
 		app.Metadata = models.SetBuiltin(app.Metadata, models.MetaRuntimeAutoService, "true")
 	}
-	if err := s.validateRuntime(app); err != nil {
+	if err := s.validateRuntime(app, ""); err != nil {
 		// Surface the reason for an explicit choice; for the cluster-mode default,
 		// degrade to a container rather than failing a create the caller didn't ask
 		// to be a service (e.g. an app that can't run replicated).
@@ -1160,9 +1177,21 @@ func (s *Service) Update(app *models.Application) error {
 		return err
 	}
 	app.RunAsUser = runAsUser
+	// Re-validated so revoking a workspace's privilege strips grants on next write.
+	if app.AddCapabilities, err = s.validCapabilities(app.WorkspaceID, app.AddCapabilities); err != nil {
+		return err
+	}
+	if app.Devices, err = s.validDevices(app.WorkspaceID, app.Devices); err != nil {
+		return err
+	}
 	normalizeDeployConfig(app)
 	normalizeHealthcheck(app)
-	if err := s.validateRuntime(app); err != nil {
+	// The app arrives already mutated, so the previous runtime has to be read back.
+	stored := models.RuntimeKind("")
+	if current, err := s.apps.FindByID(app.ID); err == nil {
+		stored = current.RuntimeKind
+	}
+	if err := s.validateRuntime(app, stored); err != nil {
 		return err
 	}
 	// Defense-in-depth: never let a reserved key reach the container via Update
@@ -1223,12 +1252,21 @@ func normalizeRuntime(app *models.Application) {
 	}
 }
 
-// validateRuntime rejects a service-runtime app when cluster mode is off, so a
-// user can't create one that could never deploy, and guards against replicating
-// an app backed by node-local storage (which would silently fork its data).
-func (s *Service) validateRuntime(app *models.Application) error {
+// validateRuntime rejects an app that asks for the service runtime when cluster
+// mode is off, and guards against replicating node-local storage. stored is the
+// runtime the app already has (""=none): the rule is about the change, not the
+// state, or an app already a service could never be edited back out of one.
+func (s *Service) validateRuntime(app *models.Application, stored models.RuntimeKind) error {
 	if app.RuntimeKind == models.RuntimeService && !s.clusterEnabled() {
-		return ErrClusterDisabled
+		switch {
+		case app.Metadata[models.MetaRuntimeAutoService] == "true":
+			// The platform chose this runtime, so it un-chooses it — the same
+			// degrade the create path and reconcileAutoRuntime perform.
+			app.RuntimeKind = models.RuntimeContainer
+			delete(app.Metadata, models.MetaRuntimeAutoService)
+		case stored != models.RuntimeService:
+			return ErrClusterDisabled
+		}
 	}
 	if app.Replicas > MaxReplicas {
 		return ErrTooManyReplicas

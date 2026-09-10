@@ -241,6 +241,10 @@ type Config struct {
 
 	LogStore LogStoreConfig
 
+	// ContainerGrantsEnabled allows attaching capabilities and host devices to an
+	// application (MIABI_CONTAINER_GRANTS_ENABLED, default false)
+	ContainerGrantsEnabled bool
+
 	// HostPortMin/HostPortMax bound the host ports an admin may approve for port
 	// bindings, and the pool auto-allocation draws from. Defaults allow the full
 	// non-privileged range; privileged workspaces may request any port.
@@ -658,23 +662,24 @@ func New() *Config {
 			TailBytes:     goutils.EnvInt("MIABI_LOG_TAIL_BYTES", 16<<10),
 			Compression:   goutils.Env("MIABI_LOG_COMPRESSION", "gzip"),
 		},
-		AcmeEmail:            goutils.Env("MIABI_ACME_EMAIL", ""),
-		HostPortMin:          goutils.EnvInt("MIABI_HOST_PORT_MIN", 1024),
-		HostPortMax:          goutils.EnvInt("MIABI_HOST_PORT_MAX", 65535),
-		ForwardBindAddr:      goutils.Env("MIABI_FORWARD_BIND_ADDR", "127.0.0.1"),
-		ForwardAdvertiseHost: goutils.Env("MIABI_FORWARD_ADVERTISE_HOST", ""),
-		ForwardRelayImage:    goutils.Env("MIABI_FORWARD_RELAY_IMAGE", "alpine/socat:latest"),
-		ForwardTTLMinutes:    goutils.EnvInt("MIABI_FORWARD_TTL_MINUTES", 30),
-		RestoreMaxMB:         goutils.EnvInt("MIABI_RESTORE_MAX_MB", 1024),
-		RestrictedUID:        goutils.EnvInt("MIABI_RESTRICTED_UID", 100000),
-		ForceNonRootUser:     goutils.EnvBool("MIABI_FORCE_NON_ROOT_USER", false),
-		SecurityInitImage:    goutils.Env("MIABI_SECURITY_INIT_IMAGE", "busybox:latest"),
-		NetworkPoolCIDR:      goutils.Env("MIABI_NETWORK_POOL_CIDR", "10.64.0.0/12"),
-		NetworkSubnetPrefix:  goutils.EnvInt("MIABI_NETWORK_SUBNET_PREFIX", 24),
-		BuildTimeoutMinutes:  goutils.EnvInt("MIABI_BUILD_TIMEOUT_MINUTES", 30),
-		RunnerWaitTimeout:    time.Duration(goutils.EnvInt("MIABI_RUNNER_WAIT_TIMEOUT_MINUTES", 30)) * time.Minute,
-		JobAPITokenEnabled:   goutils.EnvBool("MIABI_JOB_API_TOKEN_ENABLED", true),
-		securitySchemes:      okapi.SecuritySchemes{},
+		AcmeEmail:              goutils.Env("MIABI_ACME_EMAIL", ""),
+		ContainerGrantsEnabled: goutils.EnvBool("MIABI_CONTAINER_GRANTS_ENABLED", false),
+		HostPortMin:            goutils.EnvInt("MIABI_HOST_PORT_MIN", 1024),
+		HostPortMax:            goutils.EnvInt("MIABI_HOST_PORT_MAX", 65535),
+		ForwardBindAddr:        goutils.Env("MIABI_FORWARD_BIND_ADDR", "127.0.0.1"),
+		ForwardAdvertiseHost:   goutils.Env("MIABI_FORWARD_ADVERTISE_HOST", ""),
+		ForwardRelayImage:      goutils.Env("MIABI_FORWARD_RELAY_IMAGE", "alpine/socat:latest"),
+		ForwardTTLMinutes:      goutils.EnvInt("MIABI_FORWARD_TTL_MINUTES", 30),
+		RestoreMaxMB:           goutils.EnvInt("MIABI_RESTORE_MAX_MB", 1024),
+		RestrictedUID:          goutils.EnvInt("MIABI_RESTRICTED_UID", 100000),
+		ForceNonRootUser:       goutils.EnvBool("MIABI_FORCE_NON_ROOT_USER", false),
+		SecurityInitImage:      goutils.Env("MIABI_SECURITY_INIT_IMAGE", "busybox:latest"),
+		NetworkPoolCIDR:        goutils.Env("MIABI_NETWORK_POOL_CIDR", "10.64.0.0/12"),
+		NetworkSubnetPrefix:    goutils.EnvInt("MIABI_NETWORK_SUBNET_PREFIX", 24),
+		BuildTimeoutMinutes:    goutils.EnvInt("MIABI_BUILD_TIMEOUT_MINUTES", 30),
+		RunnerWaitTimeout:      time.Duration(goutils.EnvInt("MIABI_RUNNER_WAIT_TIMEOUT_MINUTES", 30)) * time.Minute,
+		JobAPITokenEnabled:     goutils.EnvBool("MIABI_JOB_API_TOKEN_ENABLED", true),
+		securitySchemes:        okapi.SecuritySchemes{},
 	}
 }
 

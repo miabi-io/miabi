@@ -71,6 +71,10 @@
           },
           "type": "array"
         },
+        "security": {
+          "$ref": "#/$defs/SecuritySpec",
+          "description": "Security grants kernel privileges beyond the container default, gated by the app service on apply — the same check the console goes through."
+        },
         "source": {
           "$ref": "#/$defs/SourceSpec",
           "description": "Source builds the image from a Git repository instead of pulling one. Exactly one of source and image is set: an app either builds or pulls, and a manifest declaring both would not say which wins. Image stays the plain, common case; source is what makes a build-from-git app expressible at all, so an app created in the console can be exported and re-applied as itself."
@@ -323,7 +327,6 @@
     },
     "ResourceSpec": {
       "additionalProperties": false,
-      "description": "ResourceSpec caps memory/CPU and requests GPUs. Empty/zero means unlimited/none.",
       "properties": {
         "cpu": {
           "description": "e.g. \"0.5\"",
@@ -465,6 +468,27 @@
         },
         "value": {
           "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "SecuritySpec": {
+      "additionalProperties": false,
+      "description": "ResourceSpec caps memory/CPU and requests GPUs. Empty/zero means unlimited/none. SecuritySpec grants kernel privileges beyond the container default.",
+      "properties": {
+        "addCapabilities": {
+          "description": "AddCapabilities are Linux capabilities, e.g. [\"NET_ADMIN\"]; the CAP_ prefix is optional. Anything off the allow-list is refused on apply, not dropped.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "devices": {
+          "description": "Devices are host device nodes exposed to the container, e.g. [\"/dev/net/tun\"].",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "type": "object"

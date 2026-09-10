@@ -121,6 +121,9 @@ type ApplicationSpec struct {
 	// profile must give a non-root numeric uid; anything else is refused on apply, not silently
 	// dropped, since the manifest is the source of truth for what should be running.
 	RunAsUser string `yaml:"runAsUser,omitempty" json:"runAsUser,omitempty"`
+	// Security grants kernel privileges beyond the container default, gated by the
+	// app service on apply — the same check the console goes through.
+	Security *SecuritySpec `yaml:"security,omitempty" json:"security,omitempty"`
 	// ContainerLabels are user-defined Docker labels stamped on the app's container(s), for
 	// label-driven tools like Traefik. Reserved keys (io.miabi.*, com.docker.*) are stripped on apply
 	// — a manifest is machine-authored, so import is fail-soft rather than erroring.
@@ -202,6 +205,15 @@ type MountSpec struct {
 }
 
 // ResourceSpec caps memory/CPU and requests GPUs. Empty/zero means unlimited/none.
+// SecuritySpec grants kernel privileges beyond the container default.
+type SecuritySpec struct {
+	// AddCapabilities are Linux capabilities, e.g. ["NET_ADMIN"]; the CAP_ prefix is
+	// optional. Anything off the allow-list is refused on apply, not dropped.
+	AddCapabilities []string `yaml:"addCapabilities,omitempty" json:"addCapabilities,omitempty"`
+	// Devices are host device nodes exposed to the container, e.g. ["/dev/net/tun"].
+	Devices []string `yaml:"devices,omitempty" json:"devices,omitempty"`
+}
+
 type ResourceSpec struct {
 	Memory string `yaml:"memory,omitempty" json:"memory,omitempty"` // e.g. "512Mi"
 	CPU    string `yaml:"cpu,omitempty" json:"cpu,omitempty"`       // e.g. "0.5"
