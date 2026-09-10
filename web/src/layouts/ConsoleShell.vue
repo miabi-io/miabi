@@ -4,29 +4,35 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { useNotificationStore } from '@/stores/notification'
 import NotificationBell from '@/components/NotificationBell.vue'
-import AnnouncementBanner from '@/components/AnnouncementBanner.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
-import { navSections, type NavItem, type NavSection } from '@/data/nav'
-import { useLicenseStore } from '@/stores/license'
+import ContextSwitcher from '@/components/ContextSwitcher.vue'
+import { type NavItem, type NavSection } from '@/data/nav'
 import { infoApi } from '@/api/info'
-import { workspaceApi } from '@/api/workspaces'
-import { adminApi } from '@/api/admin'
-import type { PendingInvitation, UpdateInfo } from '@/api/types'
+import { ADMIN_HOME } from '@/data/console'
+
+// The frame both consoles share. What differs is the navigation it is handed and
+// which identity the context switcher wears — everything else (topbar, user menu,
+// mobile drawer, palette, footer) is the same product chrome, and was previously
+// duplicated between the desktop and mobile sidebars of one 1,700-line file.
+const props = defineProps<{
+  sections: NavSection[]
+  console: 'workspace' | 'admin'
+  // Section state is remembered per console: the admin sections are not the
+  // workspace ones, so one shared key would have them fight over the same names.
+  sectionStateKey: string
+  home: string
+}>()
 
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 const theme = useThemeStore()
 const ws = useWorkspaceStore()
-const notify = useNotificationStore()
-const license = useLicenseStore()
 
 const sidebarCollapsed = ref(localStorage.getItem('mb_sidebar_collapsed') === 'true')
 const mobileOpen = ref(false)
 const userMenuOpen = ref(false)
-const wsSwitcherOpen = ref(false)
 const themeModes = ['light', 'dark', 'system'] as const
 
 const user = computed(() => auth.user)
@@ -37,12 +43,11 @@ const currentYear = new Date().getFullYear()
 const docsEnabled = ref(false)
 const docsUrl = ((import.meta.env.VITE_API_URL as string) || '/api/v1').replace(/\/api\/v1\/?$/, '') + '/docs'
 
-const SECTION_STATE_KEY = 'mb_nav_sections'
 function loadSectionState(): Record<string, boolean> {
   const defaults: Record<string, boolean> = {}
-  navSections.forEach((s) => (defaults[s.id] = s.defaultOpen !== false))
+  props.sections.forEach((s) => (defaults[s.id] = s.defaultOpen !== false))
   try {
-    return { ...defaults, ...JSON.parse(localStorage.getItem(SECTION_STATE_KEY) || '{}') }
+    return { ...defaults, ...JSON.parse(localStorage.getItem(props.sectionStateKey) || '{}') }
   } catch {
     return defaults
   }
@@ -50,21 +55,18 @@ function loadSectionState(): Record<string, boolean> {
 const sectionOpen = ref<Record<string, boolean>>(loadSectionState())
 function toggleSection(id: string) {
   sectionOpen.value[id] = !sectionOpen.value[id]
-  localStorage.setItem(SECTION_STATE_KEY, JSON.stringify(sectionOpen.value))
+  localStorage.setItem(props.sectionStateKey, JSON.stringify(sectionOpen.value))
 }
 
 function sectionItems(section: NavSection): NavItem[] {
   return section.items.filter((item) => {
-    if (item.requiresAdmin && !auth.isAdmin) return false
     if (item.requiresWorkspace && !ws.isWorkspaceContext) return false
     if (item.requiresWorkspaceAdmin && !(ws.isWorkspaceContext && ws.isWorkspaceAdmin)) return false
     if (item.requiresDocs && !docsEnabled.value) return false
     return true
   })
 }
-const visibleSections = computed(() =>
-  navSections.filter((s) => sectionItems(s).length > 0),
-)
+const visibleSections = computed(() => props.sections.filter((s) => sectionItems(s).length > 0))
 
 function itemTo(item: NavItem): string {
   if (item.workspaceTab) return `/workspaces/${ws.currentWorkspaceId}?tab=${item.workspaceTab}`
@@ -73,6 +75,8 @@ function itemTo(item: NavItem): string {
 
 function isActive(path: string): boolean {
   if (path === '/') return route.path === '/'
+  // The admin dashboard also answers /admin, so it stays lit on the bare path.
+  if (path === '/admin/metrics' && route.path === ADMIN_HOME) return true
   return route.path === path || route.path.startsWith(path + '/')
 }
 function isItemActive(item: NavItem): boolean {
@@ -96,132 +100,22 @@ const toggleSidebar = () => {
   localStorage.setItem('mb_sidebar_collapsed', String(sidebarCollapsed.value))
 }
 
-// makeDefaultWorkspace pins where future sessions land. Separate from switching on
-// purpose: navigating between workspaces should not silently rewrite the default.
-async function makeDefaultWorkspace(id: number) {
-  try {
-    await ws.makeDefault(id)
-    notify.success('Default workspace saved')
-  } catch (e) {
-    notify.apiError(e)
-  }
-}
-
-function switchWorkspace(id: number) {
-  ws.setWorkspace(id)
-  wsSwitcherOpen.value = false
-  mobileOpen.value = false
-  if (route.path !== '/') router.push('/')
-}
-function goWorkspaces() {
-  wsSwitcherOpen.value = false
-  mobileOpen.value = false
-  router.push('/workspaces')
-}
-function createWorkspace() {
-  wsSwitcherOpen.value = false
-  mobileOpen.value = false
-  router.push('/workspaces?create=1')
-}
-
-// Pending invitations addressed to the current user. The Dashboard renders these
-// too, but a user with no workspaces never reaches it — the empty state below
-// replaces <router-view>. Without this, an invitee's only way out is to create a
-// workspace they don't need.
-const invitations = ref<PendingInvitation[]>([])
-const acceptingId = ref<number | null>(null)
-
-async function loadInvitations() {
-  try {
-    invitations.value = (await workspaceApi.myInvitations()).data.data ?? []
-  } catch {
-    // Non-critical: the empty state still offers "Create workspace".
-  }
-}
-
-async function acceptInvitation(inv: PendingInvitation) {
-  acceptingId.value = inv.id
-  try {
-    await workspaceApi.acceptInvitation(inv.id)
-    notify.success(`Joined ${inv.workspace_name}`)
-    await ws.fetchWorkspaces()
-    ws.setWorkspace(inv.workspace_id)
-    await loadInvitations()
-  } catch (e) {
-    notify.apiError(e, 'Failed to accept invitation')
-  } finally {
-    acceptingId.value = null
-  }
-}
-
 function logout() {
   auth.logout()
   ws.clear()
   router.push('/login')
 }
 
-
-// Close on any outside click. Match by class (not a template ref): the workspace
-// switcher is rendered twice — once in the desktop sidebar and once in the mobile
-// sidebar — so a single ref can't cover both. `.closest('.ws-switcher')` keeps a
-// click inside either instance from closing the dropdown it just opened.
+// Close on any outside click. Match by class (not a template ref): the switcher is
+// rendered twice — desktop sidebar and mobile sidebar — so one ref can't cover both.
 function closeMenus(e: MouseEvent) {
   const target = e.target as Element
   if (userMenuOpen.value && !target.closest?.('.user-menu')) userMenuOpen.value = false
-  if (wsSwitcherOpen.value && !target.closest?.('.ws-switcher')) wsSwitcherOpen.value = false
-}
-
-// License banner: admins see a warning when the license is in grace, expired,
-// nearing expiry, or over the node limit. Driven by the cached entitlements.
-const licenseBanner = computed(() => {
-  if (!auth.isAdmin) return null
-  const w = license.warnings
-  if (w.includes('license_expired')) {
-    return { level: 'danger', text: 'Your license has expired. Enterprise features are now read-only.' }
-  }
-  if (w.includes('license_grace')) {
-    return { level: 'warning', text: 'Your license has expired and is in its grace period — renew to avoid losing access to paid features.' }
-  }
-  if (w.includes('nearing_expiry')) {
-    return { level: 'warning', text: 'Your license expires soon. Renew to avoid interruption.' }
-  }
-  if (w.includes('over_node_limit')) {
-    return { level: 'warning', text: 'You have exceeded your licensed node limit — adding nodes is blocked.' }
-  }
-  return null
-})
-
-// New-release notice (platform admins). Dismissal is stored server-side against
-// the version, not in localStorage: it must survive a browser change and it must
-// come back when the *next* version lands.
-const update = ref<UpdateInfo | null>(null)
-const showUpdateBanner = computed(() => auth.isAdmin && update.value?.update_available === true)
-
-async function loadUpdate() {
-  if (!auth.isAdmin) return
-  try {
-    update.value = (await adminApi.getUpdate()).data.data
-  } catch {
-    // Non-critical; the panel works without it.
-  }
-}
-
-async function dismissUpdate() {
-  const version = update.value?.latest_version
-  if (!version) return
-  const previous = update.value
-  update.value = { ...previous!, update_available: false } // optimistic
-  try {
-    await adminApi.dismissUpdate(version)
-  } catch (e) {
-    update.value = previous
-    notify.apiError(e, 'Failed to dismiss the update notice')
-  }
 }
 
 const paletteOpen = ref(false)
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
-const paletteHint = computed(() => (isMac ? '\u2318K' : 'Ctrl K'))
+const paletteHint = computed(() => (isMac ? '⌘K' : 'Ctrl K'))
 
 function onPaletteShortcut(event: KeyboardEvent) {
   if (event.key !== 'k' && event.key !== 'K') return
@@ -230,26 +124,11 @@ function onPaletteShortcut(event: KeyboardEvent) {
   paletteOpen.value = !paletteOpen.value
 }
 
-onMounted(async () => {
+onMounted(() => {
   document.addEventListener('click', closeMenus)
   document.addEventListener('keydown', onPaletteShortcut)
-  // A cached profile from before preferences existed has no `preferences` key, so
-  // refresh it — the workspace store and the theme both read fields that only a
-  // current /me carries.
-  if (!auth.user || !auth.user.preferences) await auth.fetchUser()
-  // The account's theme wins over this device's cached one, so it follows the user.
   theme.adopt(auth.user?.preferences?.theme, auth.user?.preferences?.accent)
-  if (auth.isAdmin) license.load().catch(() => { })
-  loadUpdate()
   infoApi.get().then((res) => { docsEnabled.value = res.data.data.openapi_docs }).catch(() => { })
-  try {
-    await ws.fetchWorkspaces()
-  } catch {
-    notify.error('Failed to load workspaces')
-  }
-  // Only when the empty state is what the user will actually see; with a
-  // workspace present the Dashboard fetches these itself.
-  if (ws.workspaces.length === 0) await loadInvitations()
 })
 onBeforeUnmount(() => {
   document.removeEventListener('click', closeMenus)
@@ -258,12 +137,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="layout" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+  <div class="layout" :class="[{ 'sidebar-collapsed': sidebarCollapsed }, `console-${props.console}`]">
     <!-- Desktop sidebar -->
     <aside class="sidebar">
       <div class="sidebar-header">
-        <img src="/brand/miabi-mark-white.svg" alt="Miabi" class="sidebar-logo" @click="navigate('/')" />
-        <span class="sidebar-brand-text" @click="navigate('/')">Miabi<span
+        <img src="/brand/miabi-mark-white.svg" alt="Miabi" class="sidebar-logo" @click="navigate(props.home)" />
+        <span class="sidebar-brand-text" @click="navigate(props.home)">Miabi<span
             class="sidebar-brand-accent">.io</span></span>
         <button class="sidebar-collapse-btn" :title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
           :aria-label="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'" @click="toggleSidebar">
@@ -277,43 +156,7 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
-      <!-- Workspace switcher -->
-      <div class="ws-switcher">
-        <div class="ws-switcher-toggle" @click="wsSwitcherOpen = !wsSwitcherOpen">
-          <div class="ws-switcher-current">
-            <div class="ws-avatar">{{ (ws.currentWorkspace?.display_name ||
-              ws.currentWorkspace?.name)?.charAt(0)?.toUpperCase() || 'D' }}</div>
-            <span v-if="!sidebarCollapsed" class="ws-switcher-name">{{ ws.contextLabel }}</span>
-          </div>
-          <span v-if="!sidebarCollapsed" class="mdi mdi-unfold-more-horizontal ws-switcher-chevron"></span>
-        </div>
-        <Transition name="dropdown">
-          <div v-if="wsSwitcherOpen" class="ws-switcher-dropdown">
-            <div v-for="w in ws.workspaces" :key="w.id" class="ws-switcher-option"
-              :class="{ active: ws.currentWorkspaceId === w.id }" @click="switchWorkspace(w.id)">
-              <div class="ws-avatar-sm">{{ (w.display_name || w.name).charAt(0).toUpperCase() }}</div>
-              <span class="ws-switcher-option-name">
-                {{ w.display_name || w.name }}
-                <span class="ws-switcher-option-handle">{{ w.name }}</span>
-              </span>
-              <span v-if="w.role" class="ws-role-badge">{{ w.role }}</span>
-              <span v-if="auth.user?.default_workspace_id === w.id" class="mdi mdi-pin ws-default-pin"
-                title="Sessions land here by default"></span>
-              <button v-else class="mdi mdi-pin-outline ws-default-set" title="Make this my default workspace"
-                aria-label="Make this my default workspace"
-                @click.stop="makeDefaultWorkspace(w.id)"></button>
-            </div>
-            <div v-if="!ws.workspaces.length" class="ws-switcher-empty">No workspaces yet</div>
-            <div class="ws-switcher-divider"></div>
-            <div class="ws-switcher-action" @click="createWorkspace">
-              <span class="mdi mdi-plus"></span><span>Create workspace</span>
-            </div>
-            <div class="ws-switcher-action" @click="goWorkspaces">
-              <span class="mdi mdi-briefcase-outline"></span><span>Manage workspaces…</span>
-            </div>
-          </div>
-        </Transition>
-      </div>
+      <ContextSwitcher :mode="props.console" :collapsed="sidebarCollapsed" />
 
       <nav class="sidebar-nav">
         <div v-for="section in visibleSections" :key="section.id" class="nav-section">
@@ -393,10 +236,6 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
                 <div class="user-dropdown-divider"></div>
-                <RouterLink v-if="auth.isAdmin" to="/admin/metrics" class="user-dropdown-item"
-                  @click.stop="userMenuOpen = false">
-                  <span class="mdi mdi-shield-crown-outline"></span> Platform Admin
-                </RouterLink>
                 <RouterLink to="/account/profile" class="user-dropdown-item" @click.stop="userMenuOpen = false">
                   <span class="mdi mdi-account-outline"></span> Profile
                 </RouterLink>
@@ -424,66 +263,8 @@ onBeforeUnmount(() => {
       </header>
 
       <main class="main-content">
-        <AnnouncementBanner />
-
-        <router-link v-if="licenseBanner" to="/admin/license" class="license-banner"
-          :class="`license-banner-${licenseBanner.level}`">
-          <span class="mdi mdi-alert-outline"></span>
-          <span>{{ licenseBanner.text }}</span>
-          <span class="license-banner-cta">Manage license →</span>
-        </router-link>
-
-        <!-- A newer Miabi release exists (admins). Links to the release notes; it
-             never upgrades anything on its own. -->
-        <div v-if="showUpdateBanner" class="update-banner">
-          <span class="mdi mdi-arrow-up-bold-circle-outline update-banner-icon"></span>
-          <span class="update-banner-text">
-            <strong>Miabi {{ update?.latest_version }}</strong> is available — you're running
-            {{ update?.current_version }}.
-          </span>
-          <a :href="update?.release_url" target="_blank" rel="noopener noreferrer" class="update-banner-cta">
-            Release notes →
-          </a>
-          <button class="update-banner-dismiss" title="Dismiss until the next release"
-            aria-label="Dismiss until the next release" @click="dismissUpdate">
-            <span class="mdi mdi-close"></span>
-          </button>
-        </div>
-
-        <div v-if="ws.loaded && ws.workspaces.length === 0 && route.path !== '/workspaces' && !route.meta.noWorkspace"
-          class="empty-state">
-          <!-- An invitee has somewhere to go that isn't "create a workspace". -->
-          <template v-if="invitations.length">
-            <span class="mdi mdi-email-outline" style="font-size: 48px; color: var(--text-muted)"></span>
-            <h3>You've been invited</h3>
-            <p>Accept an invitation to join a workspace.</p>
-            <ul class="empty-invites">
-              <li v-for="inv in invitations" :key="inv.id" class="empty-invite">
-                <div class="empty-invite-info">
-                  <span class="empty-invite-name">{{ inv.workspace_name }}</span>
-                  <span class="empty-invite-sub">
-                    Invited as <strong>{{ inv.role }}</strong>
-                    <template v-if="inv.invited_by_name"> by {{ inv.invited_by_name }}</template>
-                  </span>
-                </div>
-                <button class="btn btn-primary btn-sm" :disabled="acceptingId === inv.id"
-                  @click="acceptInvitation(inv)">
-                  {{ acceptingId === inv.id ? 'Joining…' : 'Accept' }}
-                </button>
-              </li>
-            </ul>
-            <button class="btn btn-secondary mt-4" @click="createWorkspace">
-              Or create your own workspace
-            </button>
-          </template>
-          <template v-else>
-            <span class="mdi mdi-briefcase-plus-outline" style="font-size: 48px; color: var(--text-muted)"></span>
-            <h3>No workspaces yet</h3>
-            <p>Create your first workspace to deploy applications.</p>
-            <button class="btn btn-primary mt-4" @click="createWorkspace">Create workspace</button>
-          </template>
-        </div>
-        <router-view v-else />
+        <slot name="banners" />
+        <slot />
       </main>
 
       <footer class="main-footer">
@@ -516,36 +297,7 @@ onBeforeUnmount(() => {
             <span class="mdi mdi-close"></span>
           </button>
         </div>
-        <div class="ws-switcher">
-          <div class="ws-switcher-toggle" @click.stop="wsSwitcherOpen = !wsSwitcherOpen">
-            <div class="ws-switcher-current">
-              <div class="ws-avatar">{{ (ws.currentWorkspace?.display_name ||
-                ws.currentWorkspace?.name)?.charAt(0)?.toUpperCase() || 'D' }}</div>
-              <span class="ws-switcher-name">{{ ws.contextLabel }}</span>
-            </div>
-            <span class="mdi mdi-unfold-more-horizontal ws-switcher-chevron"></span>
-          </div>
-          <Transition name="dropdown">
-            <div v-if="wsSwitcherOpen" class="ws-switcher-dropdown">
-              <div v-for="w in ws.workspaces" :key="w.id" class="ws-switcher-option"
-                :class="{ active: ws.currentWorkspaceId === w.id }" @click="switchWorkspace(w.id)">
-                <div class="ws-avatar-sm">{{ (w.display_name || w.name).charAt(0).toUpperCase() }}</div>
-                <span class="ws-switcher-option-name">
-                  {{ w.display_name || w.name }}
-                  <span class="ws-switcher-option-handle">{{ w.name }}</span>
-                </span>
-                <span v-if="w.role" class="ws-role-badge">{{ w.role }}</span>
-              </div>
-              <div class="ws-switcher-divider"></div>
-              <div class="ws-switcher-action" @click="createWorkspace">
-                <span class="mdi mdi-plus"></span><span>Create workspace</span>
-              </div>
-              <div class="ws-switcher-action" @click="goWorkspaces">
-                <span class="mdi mdi-briefcase-outline"></span><span>Manage workspaces…</span>
-              </div>
-            </div>
-          </Transition>
-        </div>
+        <ContextSwitcher :mode="props.console" @navigate="mobileOpen = false" />
         <nav class="sidebar-nav">
           <div v-for="section in visibleSections" :key="section.id" class="nav-section">
             <button class="nav-section-title" @click="toggleSection(section.id)">
@@ -584,53 +336,6 @@ onBeforeUnmount(() => {
   background: var(--bg-secondary);
 }
 
-/* ─── Pending invitations in the no-workspace empty state ─── */
-.empty-invites {
-  list-style: none;
-  margin: 20px 0 0;
-  padding: 0;
-  width: 100%;
-  max-width: 480px;
-  border: 1px solid var(--border-secondary);
-  border-radius: 8px;
-  text-align: left;
-}
-
-.empty-invite {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 16px;
-}
-
-.empty-invite+.empty-invite {
-  border-top: 1px solid var(--border-secondary);
-}
-
-.empty-invite-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.empty-invite-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.empty-invite-sub {
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.empty-invite-sub strong {
-  color: var(--text-secondary);
-  text-transform: capitalize;
-}
-
 /* ─── Sidebar ─── */
 .sidebar {
   position: fixed;
@@ -643,6 +348,19 @@ onBeforeUnmount(() => {
   flex-direction: column;
   z-index: 40;
   transition: width var(--transition-slow);
+}
+
+/* The admin console's sidebar carries a warm cast so the console you are in is
+   readable at a glance. Deleting an app and deleting a user look identical
+   otherwise, and only one of them is recoverable. */
+.console-admin .sidebar {
+  background:
+    linear-gradient(to bottom,
+      color-mix(in srgb, var(--warning-600, #d97706) 26%, transparent),
+      color-mix(in srgb, var(--warning-600, #d97706) 8%, transparent) 45%,
+      transparent 75%),
+    var(--bg-sidebar);
+  box-shadow: inset -2px 0 0 color-mix(in srgb, var(--warning-600, #d97706) 45%, transparent);
 }
 
 .sidebar-collapsed .sidebar:not(.sidebar-mobile) {
@@ -1024,7 +742,6 @@ onBeforeUnmount(() => {
 .sidebar-collapsed .sidebar:not(.sidebar-mobile) .nav-label {
   display: none;
 }
-
 /* ─── Main wrapper ─── */
 .main-wrapper {
   flex: 1;
@@ -1356,167 +1073,6 @@ onBeforeUnmount(() => {
   min-width: 0;
   padding: 28px;
 }
-
-/* ─── License banner ─── */
-.license-banner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
-  margin-bottom: 20px;
-  border-radius: 8px;
-  border: 1px solid;
-  font-size: 13px;
-  font-weight: 500;
-  text-decoration: none;
-}
-
-.license-banner .mdi {
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.license-banner-cta {
-  margin-left: auto;
-  white-space: nowrap;
-  font-weight: 600;
-  opacity: 0.85;
-}
-
-.license-banner-warning {
-  background: var(--warning-bg, rgba(245, 158, 11, 0.12));
-  border-color: var(--warning, #d97706);
-  color: var(--warning, #b45309);
-}
-
-.license-banner-danger {
-  background: var(--danger-bg, rgba(239, 68, 68, 0.12));
-  border-color: var(--danger, #dc2626);
-  color: var(--danger, #b91c1c);
-}
-
-/* ─── Community Edition banner ─── */
-/* ─── New-release notice (admins) ─── */
-.update-banner {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  margin-bottom: 20px;
-  border-radius: 10px;
-  border: 1px solid var(--success-500, #16a34a);
-  background: var(--success-50, rgba(22, 163, 74, 0.08));
-  color: var(--text-secondary, var(--text-muted));
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-[data-theme="dark"] .update-banner {
-  border: 1px solid var(--success-800, #16a34a4c);
-}
-
-.update-banner-icon {
-  font-size: 20px;
-  flex-shrink: 0;
-  color: var(--success-500, #16a34a);
-}
-
-.update-banner-text strong {
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.update-banner-cta {
-  margin-left: auto;
-  white-space: nowrap;
-  font-weight: 600;
-  text-decoration: none;
-  color: var(--success-500, #16a34a);
-}
-
-.update-banner-cta:hover {
-  text-decoration: underline;
-}
-
-.update-banner-dismiss {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  padding: 2px;
-  border: none;
-  border-radius: 4px;
-  background: none;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.update-banner-dismiss:hover {
-  color: var(--text-primary);
-}
-
-.ce-banner {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  margin-bottom: 20px;
-  border-radius: 10px;
-  border: 1px solid var(--accent, #6366f1);
-  background: var(--accent-bg, rgba(99, 102, 241, 0.08));
-  color: var(--text-secondary, var(--text-muted));
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-[data-theme="dark"] .ce-banner {
-  border: 1px solid var(--accent, #6365f152);
-}
-
-.ce-banner-icon {
-  font-size: 20px;
-  flex-shrink: 0;
-  color: var(--accent, #6366f1);
-}
-
-.ce-banner-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.ce-banner-text strong {
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.ce-banner-cta {
-  margin-left: auto;
-  white-space: nowrap;
-  font-weight: 600;
-  text-decoration: none;
-  color: var(--accent, #6366f1);
-}
-
-.ce-banner-cta:hover {
-  text-decoration: underline;
-}
-
-.ce-banner-dismiss {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  padding: 4px;
-  border: none;
-  border-radius: 4px;
-  background: none;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.ce-banner-dismiss:hover {
-  color: var(--text-primary);
-  background: var(--bg-tertiary, rgba(127, 127, 127, 0.12));
-}
-
 /* ─── Footer ─── */
 .main-footer {
   display: flex;
@@ -1596,7 +1152,6 @@ onBeforeUnmount(() => {
 .sidebar-slide-leave-to {
   transform: translateX(-100%);
 }
-
 /* ─── Responsive ─── */
 @media (max-width: 1024px) {
   .sidebar:not(.sidebar-mobile) {
@@ -1641,58 +1196,6 @@ onBeforeUnmount(() => {
   .user-name,
   .user-email {
     display: none;
-  }
-}
-
-@media (max-width: 639px) {
-
-  .ce-banner,
-  .update-banner {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 8px 12px;
-    padding: 10px;
-    margin-left: 2px;
-    margin-right: 2px;
-  }
-
-  .ce-banner-icon,
-  .update-banner-icon {
-    grid-column: 1;
-    grid-row: 1;
-    align-self: start;
-    margin-top: 2px;
-  }
-
-  .ce-banner-text,
-  .update-banner-text {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  .ce-banner-cta,
-  .update-banner-cta {
-    grid-column: 2;
-    grid-row: 2;
-    margin-left: 0;
-    align-self: start;
-  }
-
-  .ce-banner,
-  .update-banner {
-    position: relative;
-  }
-
-  .ce-banner-dismiss,
-  .update-banner-dismiss {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-  }
-
-  .ce-banner-text,
-  .update-banner-text {
-    padding-right: 24px;
   }
 }
 </style>

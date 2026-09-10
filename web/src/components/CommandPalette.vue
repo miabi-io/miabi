@@ -4,7 +4,8 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { searchApi } from '@/api/search'
-import { navSections, type NavItem } from '@/data/nav'
+import { navSections, type NavItem, type NavSection } from '@/data/nav'
+import { adminNavSections } from '@/data/adminNav'
 import type { SearchKind, SearchResult } from '@/api/types'
 
 const props = defineProps<{ open: boolean; docsEnabled?: boolean; docsUrl?: string }>()
@@ -54,23 +55,31 @@ const kindMeta: Record<SearchKind, { label: string; icon: string; route: (r: Sea
   gitrepository: { label: 'Git Repositories', icon: 'mdi-git', route: () => '/git-repositories' },
 }
 
+// Both consoles are indexed for an admin, so ⌘K reaches platform administration
+// from inside a workspace without switching first — the menu is the discoverable
+// path, this is the fast one. Admin entries say so, since the destination leaves
+// the console the user is looking at.
 const navEntries = computed<Entry[]>(() => {
   const out: Entry[] = []
-  for (const section of navSections) {
-    for (const item of section.items) {
-      if (item.requiresAdmin && !auth.isAdmin) continue
-      if (item.requiresWorkspace && !ws.isWorkspaceContext) continue
-      if (item.requiresWorkspaceAdmin && !(ws.isWorkspaceContext && ws.isWorkspaceAdmin)) continue
-      if (item.requiresDocs && !props.docsEnabled) continue
-      out.push({
-        id: `nav:${section.id}:${item.name}`,
-        group: section.title,
-        label: item.name,
-        sub: section.title,
-        icon: item.icon,
-        to: item.external ? undefined : navPath(item),
-        href: item.external ? props.docsUrl : undefined,
-      })
+  const sources: { sections: NavSection[]; admin: boolean }[] = [{ sections: navSections, admin: false }]
+  if (auth.isAdmin) sources.push({ sections: adminNavSections, admin: true })
+
+  for (const { sections, admin } of sources) {
+    for (const section of sections) {
+      for (const item of section.items) {
+        if (item.requiresWorkspace && !ws.isWorkspaceContext) continue
+        if (item.requiresWorkspaceAdmin && !(ws.isWorkspaceContext && ws.isWorkspaceAdmin)) continue
+        if (item.requiresDocs && !props.docsEnabled) continue
+        out.push({
+          id: `nav:${section.id}:${item.name}`,
+          group: admin ? `Platform admin · ${section.title}` : section.title,
+          label: item.name,
+          sub: admin ? `Admin · ${section.title}` : section.title,
+          icon: item.icon,
+          to: item.external ? undefined : navPath(item),
+          href: item.external ? props.docsUrl : undefined,
+        })
+      }
     }
   }
   return out
