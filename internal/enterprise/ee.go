@@ -75,7 +75,7 @@ var AllFlags = []FlagInfo{
 	{FlagDR, "cross-region DR"},
 	{FlagPlatformBackup, "admin platform (control-plane) backup & restore"},
 	{FlagWhiteLabel, "full white-label branding"},
-	{FlagPrivateRegistry, "private template registry (custom marketplace URL)"},
+	{FlagPrivateRegistry, "private registries: custom marketplace URL + platform image registry mirror"},
 	{FlagSecurityProfile, "restricted (force non-root UID) profile"},
 	{FlagRegistryS3, "S3/MinIO storage for the built-in registry"},
 	{FlagPlatformRunners, "admin-managed platform-shared runner pool"},

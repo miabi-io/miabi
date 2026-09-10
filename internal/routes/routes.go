@@ -1094,7 +1094,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			adminBranding:       handlers.NewAdminBrandingHandler(brandingService, ee, auditLogger),
 			update:              handlers.NewUpdateHandler(updateService),
 			adminPlan:           handlers.NewPlanHandler(planRepo, quotaOverrideRepo, workspaceRepo, ee, auditLogger),
-			deploymentCfg:       handlers.NewDeploymentConfigHandler(imageResolver, settingRepo, settingsProvider, auditLogger),
+			deploymentCfg:       handlers.NewDeploymentConfigHandler(imageResolver, settingRepo, settingsProvider, auditLogger, ee),
 			adminJob:            handlers.NewAdminJobHandler(cronManager),
 			adminPlatformBackup: handlers.NewAdminPlatformBackupHandler(platformBackupService, ee, auditLogger),
 			adminRegistry:       handlers.NewAdminRegistryHandler(registryServerService, ee, auditLogger),

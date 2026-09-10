@@ -7,6 +7,9 @@ const notify = useNotificationStore()
 
 const images = ref<ImageCatalogItem[]>([])
 const mirror = ref('')
+// The mirror is Enterprise (private_registry); the per-image overrides below are
+// not. A mirror already set stays in effect either way — only editing is gated.
+const mirrorEditable = ref(true)
 const overrides = ref<Record<string, string>>({})
 const loading = ref(false)
 const saving = ref(false)
@@ -17,6 +20,7 @@ async function load() {
     const cfg = (await adminApi.getDeploymentConfig()).data.data
     images.value = cfg.images ?? []
     mirror.value = cfg.mirror ?? ''
+    mirrorEditable.value = cfg.mirror_editable !== false
     overrides.value = Object.fromEntries(images.value.map((i) => [i.key, i.override || '']))
   } catch (e) { notify.apiError(e) }
   finally { loading.value = false }
@@ -69,10 +73,26 @@ async function save() {
 
     <template v-else>
       <div class="card mb-4">
-        <div class="card-header"><h2>Registry mirror</h2></div>
+        <div class="card-header">
+          <h2>Registry mirror</h2>
+          <span v-if="!mirrorEditable" class="badge badge-neutral">
+            <span class="mdi mdi-lock-outline"></span> Enterprise
+          </span>
+        </div>
         <div class="card-body">
-          <input v-model="mirror" class="form-input" placeholder="e.g. registry.internal/proxy (blank = none)" aria-label="Registry mirror" style="max-width: 420px; font-family: monospace" />
+          <input
+            v-model="mirror"
+            class="form-input"
+            placeholder="e.g. registry.internal/proxy (blank = none)"
+            aria-label="Registry mirror"
+            :disabled="!mirrorEditable"
+            style="max-width: 420px; font-family: monospace"
+          />
           <p class="text-muted text-sm" style="margin-top: 6px">Prefixes every image not already qualified with a registry host — for private/air-gapped installs.</p>
+          <p v-if="!mirrorEditable" class="text-muted text-sm" style="margin-top: 6px">
+            Changing the mirror needs an Enterprise licence. A mirror already set keeps working and
+            still prefixes every image below — the per-image overrides remain editable.
+          </p>
         </div>
       </div>
 
