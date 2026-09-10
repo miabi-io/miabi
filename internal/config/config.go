@@ -242,8 +242,7 @@ type Config struct {
 	LogStore LogStoreConfig
 
 	// ContainerGrantsEnabled allows attaching capabilities and host devices to an
-	// application (MIABI_CONTAINER_GRANTS_ENABLED, default false). Boot-time like
-	// PasswordResetEnabled: it decides whether the platform ever grants privileges.
+	// application (MIABI_CONTAINER_GRANTS_ENABLED, default false)
 	ContainerGrantsEnabled bool
 
 	// HostPortMin/HostPortMax bound the host ports an admin may approve for port
