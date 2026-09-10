@@ -36,6 +36,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/auth"
 	"github.com/miabi-io/miabi/internal/services/backup"
 	"github.com/miabi-io/miabi/internal/services/backupsettings"
+	"github.com/miabi-io/miabi/internal/services/branding"
 	"github.com/miabi-io/miabi/internal/services/certificate"
 	"github.com/miabi-io/miabi/internal/services/cluster"
 	configsvc "github.com/miabi-io/miabi/internal/services/config"
@@ -176,6 +177,7 @@ type routerHandlers struct {
 	adminMetrics        *handlers.AdminMetricsHandler
 	adminEvent          *handlers.AdminEventHandler
 	adminSetting        *handlers.AdminSettingHandler
+	adminBranding       *handlers.AdminBrandingHandler
 	update              *handlers.UpdateHandler
 	adminPlan           *handlers.PlanHandler
 	deploymentCfg       *handlers.DeploymentConfigHandler
@@ -617,6 +619,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	databaseService.SetLogicalBackup(dbupgrade.Backup(backupService))
 	// Per-workspace shared S3 backup target (used by database & volume backups).
 	backupSettingsService := backupsettings.NewService(backupSettingsRepo)
+	// The sign-in page's operator identity: name, logo, accent and links.
+	brandingService := branding.NewService(settingRepo)
 	// Deployment-config image catalog: resolver over settings, with env config as
 	// the built-in default for the gateway/relay images. Wired into every service
 	// that runs a platform image.
@@ -1087,6 +1091,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			adminMetrics:        handlers.NewAdminMetricsHandler(db, dockerClient, redisClient, time.Now()),
 			adminEvent:          handlers.NewAdminEventHandler(auditRepo, bus, ee),
 			adminSetting:        handlers.NewAdminSettingHandler(settingRepo, settingsProvider, auditLogger),
+			adminBranding:       handlers.NewAdminBrandingHandler(brandingService, ee, auditLogger),
 			update:              handlers.NewUpdateHandler(updateService),
 			adminPlan:           handlers.NewPlanHandler(planRepo, quotaOverrideRepo, workspaceRepo, ee, auditLogger),
 			deploymentCfg:       handlers.NewDeploymentConfigHandler(imageResolver, settingRepo, settingsProvider, auditLogger),
@@ -1155,6 +1160,14 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.job.SetLogStore(logStore)
 	r.h.pipeline.SetLogStore(logStore)
 	r.h.backup.SetLogStore(logStore)
+	r.h.auth.SetBranding(brandingService, ee) // the sign-in page's operator identity
+	// An account that never picked an accent follows the operator's.
+	userSettingsService.SetBrandAccent(func() models.Accent {
+		if !ee.Has(enterprise.FlagWhiteLabel) {
+			return ""
+		}
+		return brandingService.Get().Accent
+	})
 	r.h.volumeBackup.SetLogStore(logStore)
 	r.h.adminPlatformBackup.SetLogStore(logStore)
 

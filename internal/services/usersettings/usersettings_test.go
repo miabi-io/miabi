@@ -163,3 +163,61 @@ func TestDefaultUserSettingIsUsable(t *testing.T) {
 		t.Fatalf("defaults leave display fields empty: %+v", d)
 	}
 }
+
+// An account that never picked an accent follows the operator's brand. The stored
+// value stays empty, so changing the brand later still moves that account — which
+// would not happen if the default were written down at account creation.
+func TestUnsetAccentFollowsTheBrand(t *testing.T) {
+	s := NewService(&fakeUsers{}, &fakeSettings{}, fakeMembers{})
+	s.SetBrandAccent(func() models.Accent { return models.AccentBlue })
+
+	got, err := s.Get(7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Accent != models.AccentBlue {
+		t.Errorf("accent = %q, want the brand's blue", got.Accent)
+	}
+}
+
+// A chosen accent is not a default and must survive whatever the operator sets.
+func TestChosenAccentBeatsTheBrand(t *testing.T) {
+	s := NewService(&fakeUsers{}, &fakeSettings{}, fakeMembers{})
+	s.SetBrandAccent(func() models.Accent { return models.AccentBlue })
+
+	saved, err := s.Save(7, Update{Accent: ptrString(string(models.AccentSlate))})
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if saved.Accent != models.AccentSlate {
+		t.Errorf("accent after save = %q, want slate", saved.Accent)
+	}
+	got, _ := s.Get(7)
+	if got.Accent != models.AccentSlate {
+		t.Errorf("accent on read = %q, want the chosen slate", got.Accent)
+	}
+}
+
+// No brand, or a brand naming an accent this build cannot render, falls back to
+// Miabi's own rather than rendering nothing.
+func TestAccentFallsBackWhenTheBrandIsUnusable(t *testing.T) {
+	for name, f := range map[string]BrandAccent{
+		"no provider":    nil,
+		"empty brand":    func() models.Accent { return "" },
+		"unknown accent": func() models.Accent { return "chartreuse" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := NewService(&fakeUsers{}, &fakeSettings{}, fakeMembers{})
+			s.SetBrandAccent(f)
+			got, err := s.Get(7)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Accent != models.AccentDefault {
+				t.Errorf("accent = %q, want the default", got.Accent)
+			}
+		})
+	}
+}
+
+func ptrString(s string) *string { return &s }

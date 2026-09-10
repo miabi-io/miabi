@@ -4,8 +4,54 @@ import { adminApi } from '@/api/admin'
 import type { SettingInput } from '@/api/admin'
 import type { PlatformSetting } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
+import { brandingApi, type BrandingSettings } from '@/api/resources'
+import type { AccentCode } from '@/api/types'
 
 const notify = useNotificationStore()
+
+// --- Branding: the operator's identity on the sign-in page (Enterprise) ---
+// Loaded separately from the key/value settings: it is its own endpoint, gated on
+// white_label, and a Community install simply gets a 402 and shows nothing.
+const brand = ref<BrandingSettings | null>(null)
+const brandForm = ref({ name: '', logo_url: '', accent: '' as AccentCode | '' })
+const brandLinks = ref<{ label: string; url: string }[]>([])
+const savingBrand = ref(false)
+
+async function loadBranding() {
+  try {
+    const b = (await brandingApi.get()).data.data
+    brand.value = b
+    brandForm.value = { name: b.name ?? '', logo_url: b.logo_url ?? '', accent: b.accent ?? '' }
+    brandLinks.value = (b.links ?? []).map((l) => ({ ...l }))
+  } catch {
+    // 402 on Community, or no licence for white_label. Not an error to surface:
+    // the section simply does not exist for this install.
+    brand.value = null
+  }
+}
+
+function addBrandLink() {
+  if (brandLinks.value.length < 6) brandLinks.value.push({ label: '', url: '' })
+}
+
+async function saveBranding() {
+  savingBrand.value = true
+  try {
+    const b = (await brandingApi.update({
+      name: brandForm.value.name,
+      logo_url: brandForm.value.logo_url,
+      accent: brandForm.value.accent || undefined,
+      links: brandLinks.value,
+    })).data.data
+    brand.value = b
+    brandLinks.value = (b.links ?? []).map((l) => ({ ...l }))
+    notify.success('Branding saved')
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    savingBrand.value = false
+  }
+}
 
 const loading = ref(false)
 const saving = ref(false)
@@ -143,7 +189,10 @@ async function load() {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadBranding()
+})
 
 async function save() {
   if (!dirty.value || saving.value) return
@@ -305,6 +354,61 @@ function setBool(key: string, checked: boolean) {
                   class="form-input"
                 />
               </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="brand" class="card">
+          <div class="card-header">
+            <h2>Sign-in page</h2>
+            <button class="btn btn-primary" :disabled="savingBrand || !brand.editable" @click="saveBranding">
+              {{ savingBrand ? 'Saving…' : 'Save branding' }}
+            </button>
+          </div>
+          <div class="card-body">
+            <p v-if="!brand.editable" class="form-hint" style="margin-bottom: 14px">
+              Your licence can show this branding but not change it. What is already set stays on the
+              sign-in page — renew to edit it.
+            </p>
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label" for="brand-name">Name</label>
+                <input id="brand-name" v-model="brandForm.name" class="form-input" placeholder="Miabi" :disabled="!brand.editable" />
+                <p class="form-hint">Replaces "Miabi" on the sign-in page. Blank keeps it.</p>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="brand-logo">Logo URL</label>
+                <input id="brand-logo" v-model="brandForm.logo_url" class="form-input" placeholder="https://acme.example/logo.svg" :disabled="!brand.editable" />
+                <p class="form-hint">An http:// or https:// URL. Blank keeps the Miabi mark.</p>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="brand-accent">Accent</label>
+              <select id="brand-accent" v-model="brandForm.accent" class="form-select" :disabled="!brand.editable">
+                <option value="">Miabi purple</option>
+                <option v-for="a in brand.accents" :key="a" :value="a">{{ a }}</option>
+              </select>
+              <p class="form-hint">
+                Colours the sign-in page, and becomes the default for accounts that have not picked
+                their own. A personal choice always wins.
+              </p>
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Links</label>
+              <div v-for="(l, i) in brandLinks" :key="i" class="flex items-center gap-2" style="margin-bottom: 8px">
+                <input v-model="l.label" class="form-input" style="max-width: 160px" placeholder="Privacy" maxlength="32" :disabled="!brand.editable" />
+                <input v-model="l.url" class="form-input" placeholder="https://acme.example/privacy" :disabled="!brand.editable" />
+                <button class="btn-icon btn-icon-danger" title="Remove" aria-label="Remove link" :disabled="!brand.editable" @click="brandLinks.splice(i, 1)">
+                  <span class="mdi mdi-close"></span>
+                </button>
+              </div>
+              <button class="btn btn-sm btn-secondary" :disabled="!brand.editable || brandLinks.length >= 6" @click="addBrandLink">
+                Add link
+              </button>
+              <p class="form-hint">
+                Shown below the sign-in form, up to six. Each opens in a new tab. Only http:// and
+                https:// addresses are accepted.
+              </p>
             </div>
           </div>
         </div>

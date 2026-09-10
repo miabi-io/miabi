@@ -36,6 +36,15 @@ const (
 	AccentLime    Accent = "lime"
 )
 
+// AccentCodes lists every accent, so an API can offer exactly what the console can
+// render rather than restating the list somewhere it can drift.
+func AccentCodes() []string {
+	return []string{
+		string(AccentDefault), string(AccentBlue), string(AccentIndigo),
+		string(AccentSlate), string(AccentOrange), string(AccentLime),
+	}
+}
+
 // ValidAccent reports whether a is an accent the console ships. Keep in step with
 // web/src/theme/accents.json, which is what actually renders them.
 func ValidAccent(a Accent) bool {
@@ -50,8 +59,11 @@ type UserSetting struct {
 	ID     uint `json:"-" gorm:"primaryKey"`
 	UserID uint `json:"-" gorm:"uniqueIndex;not null"`
 
-	Theme       Theme  `json:"theme" gorm:"size:10;not null;default:system"`
-	Accent      Accent `json:"accent" gorm:"size:16;not null;default:default"`
+	Theme Theme `json:"theme" gorm:"size:10;not null;default:system"`
+	// Accent is EMPTY until the user picks one, which is not the same as picking
+	// the default: an unset accent inherits the operator's brand accent, and a
+	// chosen one does not. Resolved on read; see usersettings.
+	Accent      Accent `json:"accent" gorm:"size:16;not null;default:''"`
 	Timezone    string `json:"timezone" gorm:"size:64;not null;default:UTC"`
 	Locale      string `json:"locale" gorm:"size:10;not null;default:en"`
 	LandingView string `json:"landing_view" gorm:"size:32;not null;default:dashboard"`
@@ -61,7 +73,7 @@ type UserSetting struct {
 }
 
 func DefaultUserSetting() UserSetting {
-	return UserSetting{Theme: ThemeSystem, Accent: AccentDefault, Timezone: "UTC", Locale: "en", LandingView: "dashboard"}
+	return UserSetting{Theme: ThemeSystem, Timezone: "UTC", Locale: "en", LandingView: "dashboard"}
 }
 
 func ValidLandingView(v string) bool {

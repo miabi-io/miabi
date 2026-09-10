@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
+import type { Brand } from '@/api/types'
 import { apiErrorMessage } from '@/api/client'
 import { authApi } from '@/api/auth'
 import { oauthApi, authorizeUrl } from '@/api/oauth'
@@ -55,6 +56,12 @@ const ssoEmailInput = ref<HTMLInputElement | null>(null)
 // Self-service password reset is admin-gated; the "Forgot password?" link only
 // shows when the platform advertises it as enabled.
 const passwordResetEnabled = ref(false)
+const brand = ref<Brand>({})
+// Empty fields fall back to Miabi's own identity, so Community and an Enterprise
+// install that has set nothing look identical.
+const brandName = computed(() => brand.value.name?.trim() || 'Miabi')
+const brandLogo = computed(() => brand.value.logo_url?.trim() || '/brand/miabi-mark.svg')
+const brandLinks = computed(() => brand.value.links ?? [])
 
 // Friendly messages for error codes handed back by the OAuth callback redirect.
 const oauthErrors: Record<string, string> = {
@@ -86,6 +93,12 @@ onMounted(async () => {
   try {
     const { data } = await authApi.status()
     passwordResetEnabled.value = data.data?.password_reset_enabled ?? false
+    brand.value = data.data?.brand ?? {}
+    // The sign-in page has no user, so it wears the operator's accent rather than
+    // anyone's preference. Applied to <html>, where the derived tokens resolve.
+    if (brand.value.accent) {
+      document.documentElement.setAttribute('data-accent', brand.value.accent)
+    }
   } catch {
     // Best-effort: leave the reset link hidden if status can't be read.
   }
@@ -170,7 +183,10 @@ function providerIcon(type: string): string {
              trailing ".io" carries the brand accent. -->
         <div class="auth-hero-wordmark">
           <img src="/brand/miabi-mark-white.svg" alt="" class="auth-hero-mark" />
-          <span class="auth-hero-name">Miabi<span class="wm-io">.io</span></span>
+          <span class="auth-hero-name">
+            <template v-if="brand.name">{{ brandName }}</template>
+            <template v-else>Miabi<span class="wm-io">.io</span></template>
+          </span>
         </div>
 
         <div class="auth-hero-body">
@@ -196,12 +212,12 @@ function providerIcon(type: string): string {
     <main class="auth-main">
       <div class="auth-card">
         <div class="auth-head">
-          <img src="/brand/miabi-mark.svg" alt="Miabi" class="auth-logo" />
+          <img :src="brandLogo" :alt="brandName" class="auth-logo" />
           <h1 class="auth-title">
-            {{ step === 'twofactor' ? 'Two-factor authentication' : ssoMode ? 'Continue with SSO' : 'Welcome to Miabi' }}
+            {{ step === 'twofactor' ? 'Two-factor authentication' : ssoMode ? 'Continue with SSO' : `Welcome to ${brandName}` }}
           </h1>
           <p class="auth-subtitle">
-            {{ step === 'twofactor' ? 'Enter the code from your authenticator app' : ssoMode ? 'Enter your email to find your sign-in provider' : 'Sign in to your Miabi workspace' }}
+            {{ step === 'twofactor' ? 'Enter the code from your authenticator app' : ssoMode ? 'Enter your email to find your sign-in provider' : `Sign in to your ${brandName} workspace` }}
           </p>
         </div>
 
@@ -354,6 +370,18 @@ function providerIcon(type: string): string {
         <p v-if="step === 'credentials' && !ssoMode" class="auth-footer">
           Don't have an account? Contact your platform administrator.
         </p>
+
+        <!-- Operator links. rel="noopener noreferrer" on every one: these are
+             admin-supplied URLs on a page shown to unauthenticated visitors. -->
+        <nav v-if="brandLinks.length" class="auth-links" aria-label="Site links">
+          <a
+            v-for="l in brandLinks"
+            :key="l.url"
+            :href="l.url"
+            target="_blank"
+            rel="noopener noreferrer"
+          >{{ l.label }}</a>
+        </nav>
       </div>
     </main>
 
@@ -676,6 +704,17 @@ function providerIcon(type: string): string {
 .oauth-btn .mdi {
   font-size: 18px;
 }
+.auth-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 16px;
+  margin-top: 14px;
+  font-size: 12px;
+}
+.auth-links a { color: var(--text-muted); text-decoration: none; }
+.auth-links a:hover { color: var(--primary-600); text-decoration: underline; }
+
 .auth-footer {
   margin-top: 22px;
   text-align: center;

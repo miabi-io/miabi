@@ -339,8 +339,23 @@ export interface RecoveryCodes {
   recovery_codes: string[]
 }
 
+export interface BrandLink {
+  label: string
+  url: string
+}
+
+// The operator's identity for the sign-in page, which has no user and therefore no
+// personal preference to read. Empty fields mean Miabi's own.
+export interface Brand {
+  name?: string
+  logo_url?: string
+  accent?: AccentCode
+  links?: BrandLink[]
+}
+
 export interface AuthStatus {
   password_reset_enabled: boolean
+  brand?: Brand
 }
 
 // --- Platform admin ---

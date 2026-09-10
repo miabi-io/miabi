@@ -14,10 +14,12 @@ import (
 
 	"github.com/jkaninda/logger"
 	"github.com/jkaninda/okapi"
+	"github.com/miabi-io/miabi/internal/enterprise"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/auth"
+	"github.com/miabi-io/miabi/internal/services/branding"
 	"github.com/miabi-io/miabi/internal/services/directory"
 	"github.com/miabi-io/miabi/internal/services/logintoken"
 	"github.com/miabi-io/miabi/internal/services/mailer"
@@ -42,6 +44,10 @@ type AuthHandler struct {
 	// critical auth control, so it is fixed at boot from MIABI_PASSWORD_RESET_ENABLED
 	// rather than a runtime setting — changing it requires a restart.
 	passwordResetEnabled bool
+	// branding and ee drive the sign-in page's identity. Both nil-safe: without
+	// them the page shows Miabi's own, which is what Community does anyway.
+	branding *branding.Service
+	ee       enterprise.EE
 	// enforceSSO reports whether a user must sign in via SSO (password login blocked). Set by
 	// SetSSOEnforcement; nil means never enforced. Platform admins are exempt by the closure so a
 	// misconfigured IdP can't lock everyone out.
@@ -73,6 +79,12 @@ func (h *AuthHandler) SetDirectoryLogin(fn func(ctx context.Context, identifier,
 // SetMailer wires the platform mailer used to deliver password-reset emails.
 // Optional; without it (or without SMTP configured) the email is skipped.
 func (h *AuthHandler) SetMailer(m *mailer.Service) { h.mailer = m }
+
+// SetBranding wires the sign-in page's operator identity. Nil-safe: unset means
+// the page shows Miabi's own, exactly as Community does.
+func (h *AuthHandler) SetBranding(b *branding.Service, ee enterprise.EE) {
+	h.branding, h.ee = b, ee
+}
 
 func NewAuthHandler(a *auth.Service, users *repositories.UserRepository, sessions *repositories.SessionRepository, auditLog *audit.Logger, settingsProvider *settings.Provider, devMode, passwordResetEnabled bool) *AuthHandler {
 	return &AuthHandler{auth: a, users: users, sessions: sessions, audit: auditLog, settings: settingsProvider, devMode: devMode, passwordResetEnabled: passwordResetEnabled}
@@ -273,6 +285,9 @@ type RegenerateCodesRequest struct {
 // register screens can render conditionally.
 type AuthStatus struct {
 	PasswordResetEnabled bool `json:"password_reset_enabled"`
+	// Brand is the operator's identity for the sign-in page, which has no user and
+	// therefore no personal preference to read. Empty fields mean Miabi's own.
+	Brand branding.Branding `json:"brand"`
 }
 
 func profileOf(u *models.User) UserProfile {
@@ -283,9 +298,13 @@ func profileOf(u *models.User) UserProfile {
 // closed — the platform admin is seeded at install; accounts are created by an
 // admin from the Users page.
 func (h *AuthHandler) Status(c *okapi.Context) error {
-	return ok(c, AuthStatus{
-		PasswordResetEnabled: h.passwordResetEnabled,
-	})
+	st := AuthStatus{PasswordResetEnabled: h.passwordResetEnabled}
+	// Read, not write: an expired licence must not blank an operator's sign-in page
+	// and replace it with someone else's branding. See SetBranding.
+	if h.branding != nil && h.ee != nil && h.ee.Has(enterprise.FlagWhiteLabel) {
+		st.Brand = h.branding.Get()
+	}
+	return ok(c, st)
 }
 
 // errEmailUnverified / errSSORequired are credential-check policy failures,
