@@ -408,6 +408,11 @@ type Application struct {
 	// profile it must be a non-root numeric uid, and it replaces the platform UID rather than
 	// escaping it. Managed volumes are chowned to it on deploy; needs a redeploy.
 	RunAsUser string `json:"run_as_user,omitempty"`
+	// AddCapabilities and Devices are kernel privileges beyond the container
+	// default, allow-listed in capabilities.go and gated on the workspace. Empty
+	// grants nothing; both need a redeploy.
+	AddCapabilities []string `json:"add_capabilities,omitempty" gorm:"serializer:json"`
+	Devices         []string `json:"devices,omitempty" gorm:"serializer:json"`
 	// RestartPolicy is the Docker restart policy for the app's container.
 	// Defaults to unless-stopped (the platform's historical behavior).
 	RestartPolicy RestartPolicy `json:"restart_policy" gorm:"not null;default:unless-stopped"`

@@ -55,6 +55,10 @@ type Security struct {
 	User            string // "uid:gid" the container runs as; "" = image default
 	NoNewPrivileges bool
 	CapDrop         []string
+	// CapAdd and Devices are the app's own grants; the profile above is the
+	// workspace's. One is additive, the other subtractive.
+	CapAdd  []string
+	Devices []string
 	// Restricted marks the "restricted" security profile as in force for this workload — the
 	// non-root mandate, not merely the presence of a user.
 	Restricted bool
@@ -68,6 +72,8 @@ func (s Security) applyTo(spec *docker.RunSpec) {
 	spec.User = s.User
 	spec.NoNewPrivileges = s.NoNewPrivileges
 	spec.CapDrop = s.CapDrop
+	spec.CapAdd = s.CapAdd
+	spec.Devices = s.Devices
 }
 
 // SecurityResolver resolves the security profile for a workspace's app/job containers. Optional
@@ -110,6 +116,25 @@ type runtimeBuilder struct {
 	// configs projects config mounts into the files a container is started with;
 	// nil in processes that never deploy.
 	configs ConfigProjector
+	// grants re-checks an app's grants at deploy: a workspace can lose its
+	// privileged flag and never be written to again. Nil = no re-check.
+	grants GrantGuard
+}
+
+// GrantGuard reports whether a workspace may still hold a grant of the given tier.
+type GrantGuard interface {
+	GrantAllowed(workspaceID uint, tier models.CapabilityTier) error
+}
+
+// GrantGuardFunc adapts a plain function to GrantGuard.
+type GrantGuardFunc func(workspaceID uint, tier models.CapabilityTier) error
+
+// GrantAllowed implements GrantGuard.
+func (f GrantGuardFunc) GrantAllowed(workspaceID uint, tier models.CapabilityTier) error {
+	if f == nil {
+		return nil
+	}
+	return f(workspaceID, tier)
 }
 
 // ConfigProjector resolves a workspace config and expands a mount into files.
@@ -176,10 +201,40 @@ func (s Security) withRunAsUser(runAsUser string) (Security, error) {
 	return s, nil
 }
 
+// SetGrantGuard wires the deploy-time re-check of capability and device grants.
+func (b *runtimeBuilder) SetGrantGuard(g GrantGuard) { b.grants = g }
+
 // workloadSecurity resolves the hardening a container runs with: the workspace's
-// profile, with the app's or job's own run-as user layered on top.
+// profile, with the app's own run-as user and grants layered on top.
 func (b *runtimeBuilder) workloadSecurity(app *models.Application, runAsUser string) (Security, error) {
-	return b.containerSecurity(app).withRunAsUser(runAsUser)
+	sec, err := b.containerSecurity(app).withRunAsUser(runAsUser)
+	if err != nil {
+		return sec, err
+	}
+	return b.withGrants(sec, app)
+}
+
+// withGrants applies the app's grants, refusing if the workspace no longer
+// qualifies: a grant that outlived its authorisation stops the deploy.
+func (b *runtimeBuilder) withGrants(sec Security, app *models.Application) (Security, error) {
+	if len(app.AddCapabilities) == 0 && len(app.Devices) == 0 {
+		return sec, nil
+	}
+	if sec.Restricted {
+		return sec, models.ErrCapabilityRestricted
+	}
+	if b.grants != nil {
+		tier := models.HighestCapabilityTier(app.AddCapabilities)
+		if dt := models.HighestDeviceTier(app.Devices); dt > tier {
+			tier = dt
+		}
+		if err := b.grants.GrantAllowed(app.WorkspaceID, tier); err != nil {
+			return sec, err
+		}
+	}
+	sec.CapAdd = app.AddCapabilities
+	sec.Devices = app.Devices
+	return sec, nil
 }
 
 // prepareVolumeOwnership makes an app's managed volumes writable by the user the container is pinned

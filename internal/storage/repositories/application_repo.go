@@ -102,6 +102,18 @@ func (r *ApplicationRepository) ListRunning() ([]models.Application, error) {
 	return apps, err
 }
 
+// ListWithGrants returns every application holding a grant. Both columns are JSON,
+// so "no grant" is NULL or one of two empty encodings depending on the writer.
+func (r *ApplicationRepository) ListWithGrants() ([]models.Application, error) {
+	var apps []models.Application
+	empty := []string{"", "[]", "null"}
+	err := r.db.
+		Where("(add_capabilities IS NOT NULL AND add_capabilities NOT IN ?) OR (devices IS NOT NULL AND devices NOT IN ?)", empty, empty).
+		Order("workspace_id ASC, name ASC").
+		Find(&apps).Error
+	return apps, err
+}
+
 func (r *ApplicationRepository) ListByWorkspace(workspaceID uint) ([]models.Application, error) {
 	var apps []models.Application
 	err := r.db.Where("workspace_id = ?", workspaceID).Order("created_at DESC").Find(&apps).Error

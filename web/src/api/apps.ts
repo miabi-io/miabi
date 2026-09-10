@@ -34,6 +34,9 @@ export interface AppResourceInput {
   // --user`. Empty keeps the image's own user; a workspace under the restricted
   // security profile must give a non-root numeric uid.
   run_as_user?: string
+  /** Extra Linux capabilities and host devices. An empty array revokes. */
+  add_capabilities?: string[]
+  devices?: string[]
   restart_policy?: RestartPolicy
   image_pull_policy?: ImagePullPolicy
   healthcheck_type?: HealthcheckType

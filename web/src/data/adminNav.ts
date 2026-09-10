@@ -40,6 +40,7 @@ export const adminNavSections: NavSection[] = [
     items: [
       { name: 'Nodes', path: '/admin/nodes', icon: 'mdi-server-network' },
       { name: 'Ports', path: '/admin/ports', icon: 'mdi-lan-connect' },
+      { name: 'Kernel grants', path: '/admin/grants', icon: 'mdi-shield-key-outline' },
       { name: 'Shared Runners', path: '/admin/runners', icon: 'mdi-cog-transfer-outline' },
       { name: 'Container Registry', path: '/admin/registry', icon: 'mdi-cube-outline' },
       { name: 'Domains', path: '/admin/domains', icon: 'mdi-web' },

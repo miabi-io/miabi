@@ -13,6 +13,7 @@ import { stackApi } from '@/api/stacks'
 import { routeApi } from '@/api/routes'
 import { configApi, type Config } from '@/api/configs'
 import { portBindingApi } from '@/api/portBindings'
+import { capabilityApi } from '@/api/capabilities'
 import { eventsApi } from '@/api/events'
 import { sseUrl } from '@/api/client'
 import ResourceIcon from '@/components/ResourceIcon.vue'
@@ -27,7 +28,7 @@ import EnvVarModal from '@/components/EnvVarModal.vue'
 import RouteFormModal from '@/components/RouteFormModal.vue'
 import CanaryPanel from '@/components/CanaryPanel.vue'
 import AppAccessPanel from '@/components/AppAccessPanel.vue'
-import type { Application, AppOverview, Deployment, Release, AppEnvVar, Route, Network, Stack, Volume, StatsSample, Registry, GitRepository, AppEvent, AppPort, PortBinding, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, DatabaseInstance, LogicalDatabase, NodePlacement, PipelineDefinition } from '@/api/types'
+import type { Application, AppOverview, Deployment, Release, AppEnvVar, Route, Network, Stack, Volume, StatsSample, Registry, GitRepository, AppEvent, AppPort, PortBinding, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, DatabaseInstance, LogicalDatabase, NodePlacement, PipelineDefinition, CapabilityCatalog } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 import { fmtSize } from '@/utils/format'
 import { copyText } from '@/utils/clipboard'
@@ -467,7 +468,7 @@ interface SettingsForm {
   stack_id: number | null; network_ids: number[]; ports: AppPort[]
   deploy_strategy: DeployStrategy; canary_initial_weight: number; canary_step_weight: number; canary_step_interval_seconds: number
   // Resources (0 = unlimited)
-  cpu_cores: number; memory_mb: number; gpu_count: number; gpu_kind: string; run_as_user: string; restart_policy: RestartPolicy; image_pull_policy: ImagePullPolicy
+  cpu_cores: number; memory_mb: number; gpu_count: number; gpu_kind: string; run_as_user: string; add_capabilities: string[]; devices: string[]; restart_policy: RestartPolicy; image_pull_policy: ImagePullPolicy
   // Healthcheck
   hc_type: HealthcheckType; hc_path: string; hc_port: number | null; hc_command: string
   hc_interval: number; hc_timeout: number; hc_retries: number; hc_start_period: number
@@ -476,7 +477,7 @@ function emptySettingsForm(): SettingsForm {
   return {
     image: '', tag: '', command: '', registry_id: null, git_repository_id: null, git_repo: '', git_ref: '', build_method: 'auto', builder: '', stack_id: null, network_ids: [], ports: [],
     deploy_strategy: 'rolling', canary_initial_weight: 10, canary_step_weight: 20, canary_step_interval_seconds: 60,
-    cpu_cores: 0, memory_mb: 0, gpu_count: 0, gpu_kind: '', run_as_user: '', restart_policy: 'unless-stopped', image_pull_policy: 'always',
+    cpu_cores: 0, memory_mb: 0, gpu_count: 0, gpu_kind: '', run_as_user: '', add_capabilities: [], devices: [], restart_policy: 'unless-stopped', image_pull_policy: 'always',
     hc_type: 'none', hc_path: '/', hc_port: null, hc_command: '', hc_interval: 30, hc_timeout: 5, hc_retries: 3, hc_start_period: 0,
   }
 }
@@ -788,6 +789,39 @@ const gpuAllowed = ref(false)
 // mandate), so a run-as user has to be a non-root numeric uid.
 const requireNonRoot = ref(false)
 // Mirrors the server's rule so the field explains itself before a save round-trips.
+// The card is absent, not disabled, in an ordinary workspace: it would be greyed
+// in nearly all of them.
+const capCatalog = ref<CapabilityCatalog | null>(null)
+const canGrant = computed(() => ws.currentWorkspace?.privileged === true && !requireNonRoot.value)
+const grantsElevated = computed(() => ws.currentWorkspace?.system === true)
+
+const offeredCapabilities = computed(() =>
+  (capCatalog.value?.capabilities ?? []).filter((c) => c.tier === 0 || grantsElevated.value),
+)
+const offeredDevices = computed(() =>
+  (capCatalog.value?.devices ?? []).filter((d) => d.tier === 0 || grantsElevated.value),
+)
+
+async function loadCapabilityCatalog() {
+  if (capCatalog.value) return
+  try {
+    capCatalog.value = (await capabilityApi.catalog()).data.data ?? null
+  } catch {
+    // The picker does not render; the server is the gate either way.
+  }
+}
+
+function toggleCapability(name: string) {
+  const list = settingsForm.value.add_capabilities
+  const i = list.indexOf(name)
+  if (i >= 0) list.splice(i, 1)
+  else list.push(name)
+}
+
+function addDevice() {
+  settingsForm.value.devices.push('')
+}
+
 const runAsUserError = computed(() => {
   const v = settingsForm.value.run_as_user.trim()
   if (!v) return ''
@@ -855,6 +889,8 @@ function syncSettingsForm() {
     gpu_count: app.value.gpu_count || 0,
     gpu_kind: app.value.gpu_kind || '',
     run_as_user: app.value.run_as_user || '',
+    add_capabilities: [...(app.value.add_capabilities ?? [])],
+    devices: [...(app.value.devices ?? [])],
     restart_policy: app.value.restart_policy || 'unless-stopped',
     image_pull_policy: app.value.image_pull_policy || 'always',
     hc_type: app.value.healthcheck_type || 'none',
@@ -922,6 +958,9 @@ async function loadTab() {
     else if (tab.value === 'settings') {
       // The strategy picker greys out rolling when a host port is published.
       await loadBindings()
+      // Unconditional: canGrant depends on the workspace list, which may not have
+      // resolved yet. The card's v-if does the gating.
+      loadCapabilityCatalog()
       registries.value = (await registryApi.list(wid.value)).data.data ?? []
       gitRepos.value = (await gitRepositoryApi.list(wid.value)).data.data ?? []
       networks.value = (await networkApi.list(wid.value)).data.data ?? []
@@ -1080,6 +1119,8 @@ async function saveSettings() {
       gpu_count: gpuAllowed.value ? Math.max(0, Math.round(settingsForm.value.gpu_count || 0)) : 0,
       gpu_kind: gpuAllowed.value ? settingsForm.value.gpu_kind.trim() : '',
       run_as_user: settingsForm.value.run_as_user.trim(),
+      add_capabilities: settingsForm.value.add_capabilities,
+      devices: settingsForm.value.devices.map((d) => d.trim()).filter(Boolean),
       restart_policy: settingsForm.value.restart_policy,
       image_pull_policy: settingsForm.value.image_pull_policy,
       healthcheck_type: settingsForm.value.hc_type,
@@ -3306,6 +3347,52 @@ async function detachDatabase(d: AppDatabase) {
               numeric uid. A name can’t be used, because the image decides what it maps to.</span>
             </p>
           </div>
+          <div v-if="canGrant && offeredCapabilities.length" class="form-group">
+            <label class="form-label">Kernel capabilities</label>
+            <div class="cap-grid">
+              <label v-for="c in offeredCapabilities" :key="c.name" class="cap-option"
+                :class="{ 'cap-elevated': c.tier === 1 }">
+                <input type="checkbox" :checked="settingsForm.add_capabilities.includes(c.name)"
+                  :disabled="!ws.canEdit" @change="toggleCapability(c.name)" />
+                <span class="cap-body">
+                  <span class="cap-name">
+                    {{ c.name }}
+                    <span v-if="c.tier === 1" class="badge badge-warning cap-badge">elevated</span>
+                  </span>
+                  <span class="cap-help">{{ c.help }}</span>
+                </span>
+              </label>
+            </div>
+            <p class="form-hint">
+              Granted on top of Docker's default set, like <code>docker run --cap-add</code>. Applied on the
+              next deploy. Grant only what the image actually needs — each one widens what a compromise of
+              this container reaches.
+            </p>
+          </div>
+
+          <div v-if="canGrant && offeredDevices.length" class="form-group">
+            <label class="form-label">Host devices</label>
+            <div v-for="(_, i) in settingsForm.devices" :key="i" class="device-row">
+              <input v-model="settingsForm.devices[i]" type="text" class="form-input mono"
+                placeholder="/dev/net/tun" :disabled="!ws.canEdit" aria-label="Host device path" />
+              <button class="btn-icon btn-icon-danger" title="Remove" aria-label="Remove device"
+                :disabled="!ws.canEdit" @click="settingsForm.devices.splice(i, 1)">
+                <span class="mdi mdi-close"></span>
+              </button>
+            </div>
+            <button class="btn btn-sm btn-secondary" :disabled="!ws.canEdit || settingsForm.devices.length >= (capCatalog?.max_devices ?? 8)"
+              @click="addDevice">
+              <span class="mdi mdi-plus"></span> Add device
+            </button>
+            <p class="form-hint">
+              Exposed at the same path inside the container. Allowed:
+              <template v-for="(d, i) in offeredDevices" :key="d.path">
+                <code>{{ d.path }}{{ d.exact ? '' : '*' }}</code><span v-if="i < offeredDevices.length - 1">, </span>
+              </template>.
+              Raw block devices are never granted — they are the host's filesystem.
+            </p>
+          </div>
+
           <div class="form-group">
             <label class="form-label">Restart policy</label>
             <select v-model="settingsForm.restart_policy" class="form-select" :disabled="!ws.canEdit">
@@ -4161,5 +4248,62 @@ async function detachDatabase(d: AppDatabase) {
   font-size: 12px;
   color: var(--text-muted);
   padding: 2px 0;
+}
+
+/* ─── Kernel grants ─── */
+.cap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.cap-option {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.cap-option:hover {
+  background: var(--bg-hover);
+}
+
+.cap-elevated {
+  border-color: color-mix(in srgb, var(--warning-600, #d97706) 40%, var(--border-secondary));
+}
+
+.cap-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cap-name {
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.cap-badge {
+  margin-left: 6px;
+  font-family: var(--font-sans, inherit);
+}
+
+.cap-help {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.device-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
 }
 </style>

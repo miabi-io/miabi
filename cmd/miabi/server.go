@@ -376,7 +376,9 @@ func runServer(cli *okapicli.CLI) {
 				dbs:  dbRepo,
 			})
 			securityResolver := newSecurityResolver(cfg, securityQuota)
+			grantGuard := newGrantGuard(cfg.ContainerGrantsEnabled, repositories.NewWorkspaceRepository(res.db), securityQuota)
 			deployHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
+			deployHandler.SetGrantGuard(grantGuard)
 			deployHandler.SetBuilderPolicy(securityQuota)
 			gpuScheduler := gpu.NewService(
 				repositories.NewGPUDeviceRepository(res.db),
@@ -388,6 +390,7 @@ func runServer(cli *okapicli.CLI) {
 			gpuScheduler.SetQuota(securityQuota)
 			deployHandler.SetGPU(gpuScheduler)
 			jobHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
+			jobHandler.SetGrantGuard(grantGuard)
 			// Managed-subnet allocator: overlay networks + remote-node network
 			// recreate draw from the Miabi pool, not Docker's default address pool.
 			subnetAllocator := newSubnetAllocator(cfg, res.db)

@@ -116,6 +116,23 @@ func selectorFilters(pairs ...string) client.Filters {
 	return f
 }
 
+// toDeviceMappings exposes host device nodes at the same path in the container.
+// Paths are allow-listed before they reach here; this does no policy.
+func toDeviceMappings(paths []string) []container.DeviceMapping {
+	if len(paths) == 0 {
+		return nil
+	}
+	out := make([]container.DeviceMapping, 0, len(paths))
+	for _, p := range paths {
+		out = append(out, container.DeviceMapping{
+			PathOnHost:        p,
+			PathInContainer:   p,
+			CgroupPermissions: "rwm",
+		})
+	}
+	return out
+}
+
 // toDeviceRequests maps Miabi GPU requests to Docker's DeviceRequest form. Each
 // request targets the "nvidia" device driver; DeviceIDs pins exact cards while a
 // nil DeviceIDs falls back to Count-of-any (-1 = all). An empty capability set
@@ -353,9 +370,11 @@ func (e *engineClient) RunContainer(ctx context.Context, spec RunSpec) (string, 
 			Memory:         spec.MemoryBytes,
 			NanoCPUs:       spec.NanoCPUs,
 			DeviceRequests: toDeviceRequests(spec.GPUs),
+			Devices:        toDeviceMappings(spec.Devices),
 		},
 		RestartPolicy: restartPolicy(spec.RestartPolicy),
 		CapDrop:       spec.CapDrop,
+		CapAdd:        spec.CapAdd,
 		GroupAdd:      spec.GroupAdd,
 	}
 	if spec.NoNewPrivileges {

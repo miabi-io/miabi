@@ -137,6 +137,7 @@ type routerHandlers struct {
 	dnsProvider     *handlers.DNSProviderHandler
 	middleware      *handlers.MiddlewareHandler
 	portBinding     *handlers.PortBindingHandler
+	capability      *handlers.CapabilityHandler
 	database        *handlers.DatabaseHandler
 	job             *handlers.JobHandler
 	secret          *handlers.SecretHandler
@@ -467,7 +468,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	appService.SetNodeNamer(nodeService)       // resolve swarm node ids -> names for cluster placement display
 	appService.SetWorkspaceInfo(workspaceRepo) // gate privileged host mounts
 	appService.SetQuota(quotaService)
-	appService.SetClusterCap(clusterService)     // gate "service" runtime apps on cluster mode
+	appService.SetClusterCap(clusterService) // gate "service" runtime apps on cluster mode
+	appService.SetGrantsEnabled(cfg.ContainerGrantsEnabled)
 	appService.SetNetworkEnsurer(networkService) // apps always join the workspace's default network (self-heals a missing one)
 	storageService.SetNodeGuard(nodeService)
 	storageService.SetServerInfo(nodeService)
@@ -1104,6 +1106,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			adminEvent:          handlers.NewAdminEventHandler(auditRepo, bus, ee),
 			adminSetting:        handlers.NewAdminSettingHandler(settingRepo, settingsProvider, auditLogger),
 			adminBranding:       handlers.NewAdminBrandingHandler(brandingService, ee, auditLogger),
+			capability:          handlers.NewCapabilityHandler(cfg.ContainerGrantsEnabled, appRepo, workspaceRepo),
 			register:            handlers.NewRegisterHandler(registrationService, authService, userRepo, platformMailer, auditLogger),
 			update:              handlers.NewUpdateHandler(updateService),
 			adminPlan:           handlers.NewPlanHandler(planRepo, quotaOverrideRepo, workspaceRepo, ee, auditLogger),
@@ -1382,6 +1385,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.app.Register(r.dnsProviderRoutes()...)
 	r.app.Register(r.middlewareRoutes()...)
 	r.app.Register(r.portBindingRoutes()...)
+	r.app.Register(r.capabilityRoutes()...)
 	r.app.Register(r.databaseRoutes()...)
 	r.app.Register(r.volumeRoutes()...)
 	r.app.Register(r.volumeBackupRoutes()...)

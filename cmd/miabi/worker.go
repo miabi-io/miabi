@@ -194,7 +194,9 @@ func runWorker() error {
 	securityQuota.SetEdition(edition)
 	securityQuota.SetForceNonRoot(cfg.ForceNonRootUser)
 	securityResolver := newSecurityResolver(cfg, securityQuota)
+	grantGuard := newGrantGuard(cfg.ContainerGrantsEnabled, repositories.NewWorkspaceRepository(db), securityQuota)
 	deployHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
+	deployHandler.SetGrantGuard(grantGuard)
 	configService := configsvc.NewService(repositories.NewConfigRepository(db))
 	deployHandler.SetConfigs(configService)
 	deployHandler.SetBuilderPolicy(securityQuota)
@@ -208,6 +210,7 @@ func runWorker() error {
 	gpuScheduler.SetQuota(securityQuota)
 	deployHandler.SetGPU(gpuScheduler)
 	jobHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
+	jobHandler.SetGrantGuard(grantGuard)
 	// Managed-subnet allocator: overlay networks + remote-node network recreate
 	// draw from the Miabi pool instead of Docker's default address pool.
 	subnetAllocator := newSubnetAllocator(cfg, db)

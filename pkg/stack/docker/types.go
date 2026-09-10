@@ -140,6 +140,10 @@ type RunSpec struct {
 	User            string
 	NoNewPrivileges bool
 	CapDrop         []string
+	// CapAdd and Devices are per-application grants, allow-listed before they get
+	// here (models.NormalizeCapabilities / NormalizeDevices).
+	CapAdd  []string
+	Devices []string
 	// GroupAdd are supplementary groups (Docker --group-add), by GID or name. The
 	// control plane needs the host's "docker" group to read /var/run/docker.sock when
 	// it does not run as root — the same thing compose.yaml's `group_add` does.

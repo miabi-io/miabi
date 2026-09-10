@@ -962,6 +962,8 @@ export interface Application {
   // Account the container runs as ("1000", "1000:1000", "node"), like `docker run
   // --user`. Empty keeps the image's own user.
   run_as_user?: string
+  add_capabilities?: string[]
+  devices?: string[]
   restart_policy?: RestartPolicy
   image_pull_policy?: ImagePullPolicy
   // Cluster runtime (cluster mode). "service" runs the app as a replicated Swarm
@@ -1426,6 +1428,8 @@ export interface Job {
   registry_id?: number
   pull?: boolean
   run_as_user?: string
+  add_capabilities?: string[]
+  devices?: string[]
   status: JobRunStatus
   exit_code?: number
   logs?: string
@@ -1449,6 +1453,8 @@ export interface CronJob {
   image?: string
   registry_id?: number
   run_as_user?: string
+  add_capabilities?: string[]
+  devices?: string[]
   timeout_secs: number
   enabled: boolean
   concurrency_policy: 'allow' | 'forbid' | 'replace'
@@ -2683,4 +2689,40 @@ export interface PortOverview {
   min_port: number
   max_port: number
   nodes: PortNodeOverview[]
+}
+
+// 0 = common (any privileged workspace), 1 = elevated (the system workspace).
+export type CapabilityTier = 0 | 1
+
+export interface Capability {
+  name: string
+  tier: CapabilityTier
+  help: string
+}
+
+export interface DeviceCatalogEntry {
+  path: string
+  /** True when the path is the whole device; false when it is a prefix (/dev/ttyUSB → /dev/ttyUSB0). */
+  exact: boolean
+  tier: CapabilityTier
+  help: string
+}
+
+export interface CapabilityCatalog {
+  /** False means the lists are empty because nothing may be granted. */
+  enabled: boolean
+  capabilities: Capability[]
+  devices: DeviceCatalogEntry[]
+  max_capabilities: number
+  max_devices: number
+}
+
+export interface GrantedApp {
+  application_id: number
+  application_name: string
+  workspace_id: number
+  workspace_name: string
+  elevated: boolean
+  add_capabilities?: string[]
+  devices?: string[]
 }

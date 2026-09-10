@@ -1192,6 +1192,7 @@ func appResource(app *models.Application, ext, pub map[int]bool, volNameByID, re
 		ContainerLabels: app.ContainerLabels,
 		ExternalLabel:   app.ExternalLabel,
 		RunAsUser:       app.RunAsUser,
+		Security:        securitySpecOf(app),
 	}
 	// A git app is described by what it builds, not by the image that build produced: the image ref
 	// carries a generated tag that means nothing in a manifest, and re-applying it elsewhere would
@@ -1910,6 +1911,9 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		// Validated against the workspace's security profile by the app service, which
 		// refuses a run-as user that would escape a non-root mandate.
 		app.RunAsUser = spec.RunAsUser
+		// Absent means "no grants", not "unchanged", or GitOps could never revoke.
+		app.AddCapabilities = capabilitiesOf(spec)
+		app.Devices = devicesOf(spec)
 		// Only when the manifest states one. A bundle silent about rollout mechanics must leave the
 		// console's setting alone rather than reset every app it touches to rolling.
 		if spec.Strategy != "" {
@@ -2093,6 +2097,8 @@ func (s *Service) createInput(ctx context.Context, m declarative.Meta, spec *dec
 		Annotations:     m.Annotations,
 		ContainerLabels: spec.ContainerLabels, // sanitized in the app service Create
 		RunAsUser:       spec.RunAsUser,       // validated in the app service Create
+		AddCapabilities: capabilitiesOf(spec), // allow-listed + gated in the app service
+		Devices:         devicesOf(spec),
 		DeployStrategy:  models.DeployStrategy(spec.Strategy),
 	}
 	// A source block makes this a build-from-git app instead of an image pull. Validation has already
@@ -2291,4 +2297,27 @@ func (s *Service) findRoute(workspaceID uint, name string) (*models.Route, error
 		}
 	}
 	return nil, fmt.Errorf("route %q not found", name)
+}
+
+// securitySpecOf renders an app's grants into a manifest, omitting the block when
+// there are none.
+func securitySpecOf(app *models.Application) *declarative.SecuritySpec {
+	if len(app.AddCapabilities) == 0 && len(app.Devices) == 0 {
+		return nil
+	}
+	return &declarative.SecuritySpec{AddCapabilities: app.AddCapabilities, Devices: app.Devices}
+}
+
+func capabilitiesOf(spec *declarative.ApplicationSpec) []string {
+	if spec == nil || spec.Security == nil {
+		return nil
+	}
+	return spec.Security.AddCapabilities
+}
+
+func devicesOf(spec *declarative.ApplicationSpec) []string {
+	if spec == nil || spec.Security == nil {
+		return nil
+	}
+	return spec.Security.Devices
 }
