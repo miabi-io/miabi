@@ -72,12 +72,14 @@ func (s *Service) TriggerScheduled(pipelineID uint) (*models.PipelineRun, error)
 
 // VerifyWebhook checks an inbound push webhook's signature against the pipeline's
 // secret: GitHub's X-Hub-Signature-256 HMAC scheme, or GitLab's bare-token style.
+// Both comparisons are constant-time — the bare-token path compares the secret
+// itself, so a byte-by-byte compare would leak it to an unauthenticated caller.
 func (s *Service) VerifyWebhook(p *models.PipelineDefinition, signature string, body []byte) bool {
 	signature = strings.TrimSpace(signature)
 	if signature == "" || p.WebhookSecret == "" {
 		return false
 	}
-	if signature == p.WebhookSecret { // GitLab X-Gitlab-Token
+	if hmac.Equal([]byte(signature), []byte(p.WebhookSecret)) { // GitLab X-Gitlab-Token
 		return true
 	}
 	mac := hmac.New(sha256.New, []byte(p.WebhookSecret))
