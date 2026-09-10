@@ -89,6 +89,16 @@ func (r *PortBindingRepository) ListByStatus(status models.PortBindingStatus) ([
 }
 
 // ListApprovedByApp returns the app's approved (published) bindings.
+// ListActive returns every binding that holds or asks for a host port. Rejected
+// ones are excluded: they claim nothing, so they are history rather than state.
+func (r *PortBindingRepository) ListActive() ([]models.PortBinding, error) {
+	var out []models.PortBinding
+	err := r.db.Where("status IN ?", []models.PortBindingStatus{
+		models.PortBindingPending, models.PortBindingApproved,
+	}).Order("server_id ASC, host_port ASC").Find(&out).Error
+	return out, err
+}
+
 func (r *PortBindingRepository) ListApprovedByApp(appID uint) ([]models.PortBinding, error) {
 	var bindings []models.PortBinding
 	err := r.db.Where("application_id = ? AND status = ?", appID, models.PortBindingApproved).Find(&bindings).Error

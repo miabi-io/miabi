@@ -28,6 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/proxy"
 	"github.com/miabi-io/miabi/internal/runners"
 	"github.com/miabi-io/miabi/internal/services/account"
+	"github.com/miabi-io/miabi/internal/services/alerting"
 	"github.com/miabi-io/miabi/internal/services/analytics"
 	"github.com/miabi-io/miabi/internal/services/announcement"
 	"github.com/miabi-io/miabi/internal/services/application"
@@ -423,6 +424,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Check host-port conflicts against ports actually published on the node
 	// (incl. non-Miabi containers), not just the binding table.
 	portBindingService.SetDocker(nodeClients)
+	portBindingService.SetServers(serverRepo)
+	// A pending request nobody is told about waits until somebody thinks to look.
+	portBindingService.SetReviewNotifier(alerting.NewAdminNotifier(
+		userRepo, repositories.NewNotificationInboxRepository(db), bus))
 	stackService := stack.NewService(stackRepo, appRepo, stackEnvRepo, appEventRepo, appService, storageService, dockerClient, portBindingService)
 	stackService.SetAllocator(subnetAllocator)
 	dockerImportService := dockerimport.NewService(nodeClients, appService, stackService, appRepo, releaseRepo, deploymentRepo, volumeRepo, networkRepo, stackRepo, portBindingRepo)

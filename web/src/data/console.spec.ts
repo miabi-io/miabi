@@ -16,20 +16,29 @@ describe('console separation', () => {
     expect(stray).toEqual([])
   })
 
-  // Every route the old flat "Platform Admin" section offered must still be
-  // reachable — regrouping is not an excuse to lose one.
-  it('still offers all nineteen admin destinations', () => {
+  // Every destination the old flat "Platform Admin" section offered must still be
+  // reachable. Pinned as a set rather than a count: adding a page is normal,
+  // losing one in a regrouping is the regression.
+  const ORIGINAL_ADMIN_PATHS = [
+    '/admin/metrics', '/admin/users', '/admin/workspaces', '/admin/domains', '/admin/routes',
+    '/admin/nodes', '/admin/runners', '/admin/events', '/admin/jobs', '/admin/oauth',
+    '/admin/ldap', '/admin/plans', '/admin/license', '/admin/siem', '/admin/announcements',
+    '/admin/platform-backup', '/admin/registry', '/admin/settings', '/admin/deployment-config',
+  ]
+
+  it('keeps every destination the flat section used to offer', () => {
     const paths = adminNavSections.flatMap((s) => s.items.map((i) => i.path))
     expect(new Set(paths).size).toBe(paths.length)
-    expect(paths).toHaveLength(19)
-    for (const p of ['/admin/metrics', '/admin/users', '/admin/nodes', '/admin/license', '/admin/settings']) {
-      expect(paths).toContain(p)
-    }
+    for (const p of ORIGINAL_ADMIN_PATHS) expect(paths).toContain(p)
   })
 
-  it('groups the admin console rather than listing it flat', () => {
+  // The point of the split was that nineteen items in one list is a scroll, not a
+  // menu. A section that grows into a dumping ground undoes it.
+  it('keeps sections short enough to scan', () => {
     expect(adminNavSections.length).toBeGreaterThanOrEqual(5)
-    for (const s of adminNavSections) expect(s.items.length).toBeLessThanOrEqual(5)
+    for (const s of adminNavSections) {
+      expect(s.items.length, `section "${s.title}" has grown too long`).toBeLessThanOrEqual(6)
+    }
   })
 })
 

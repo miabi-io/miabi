@@ -1,5 +1,5 @@
 import api from './client'
-import type { ApiResponse, PortBinding, PortBindingStatus } from './types'
+import type { ApiResponse, PortBinding, PortBindingStatus, PortOverview } from './types'
 
 export interface PortBindingRequest {
   application_id: number
@@ -20,6 +20,7 @@ export const portBindingApi = {
   cancel: (ws: number, id: number) => api.delete<ApiResponse<{ message: string }>>(`${base(ws)}/${id}`),
 
   // Platform-admin review queue.
+  overview: () => api.get<ApiResponse<PortOverview>>('/system/ports'),
   adminList: (status: PortBindingStatus = 'pending') => api.get<ApiResponse<PortBinding[]>>(`/system/port-bindings?status=${status}`),
   approve: (id: number, note = '') => api.post<ApiResponse<PortBinding>>(`/system/port-bindings/${id}/approve`, { note }),
   reject: (id: number, note = '') => api.post<ApiResponse<PortBinding>>(`/system/port-bindings/${id}/reject`, { note }),
