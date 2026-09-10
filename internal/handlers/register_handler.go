@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"errors"
 	"strings"
 	"time"
 
@@ -58,10 +59,9 @@ func (h *RegisterHandler) Register(c *okapi.Context, req *RegisterRequest) error
 	email := strings.ToLower(strings.TrimSpace(req.Body.Email))
 	name := strings.TrimSpace(req.Body.Name)
 
-	// Policy first, before anything is read or written: a closed platform should do
-	// no work at all on an anonymous request.
-	if err := h.reg.Check(email); err != nil {
-		return c.AbortWithError(403, err)
+	policy := h.reg.Check(email)
+	if policy != nil && !errors.Is(policy, registration.ErrDomainNotAllowed) {
+		return c.AbortWithError(403, policy)
 	}
 	if name == "" {
 		return c.AbortBadRequest("a name is required")
@@ -73,40 +73,36 @@ func (h *RegisterHandler) Register(c *okapi.Context, req *RegisterRequest) error
 		return c.AbortBadRequest("password must be at least 12 characters")
 	}
 
-	exists, err := h.users.ExistsByEmail(email)
-	if err != nil {
-		return c.AbortInternalServerError("failed to check email", err)
-	}
-	if exists {
-		// Deliberately the same shape of answer as success. Telling an anonymous
-		// caller that an address is registered turns sign-up into an account
-		// oracle: anyone could enumerate who has one.
-		return ok(c, h.pendingResponse())
-	}
-
-	username, err := validateUsername(h.users, "", 0)
-	if err != nil {
-		return c.AbortInternalServerError("failed to allocate a username", err)
-	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Body.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return c.AbortInternalServerError("failed to hash password", err)
 	}
 
+	exists, err := h.users.ExistsByEmail(email)
+	if err != nil {
+		return c.AbortInternalServerError("failed to check email", err)
+	}
+	if exists || policy != nil {
+		return h.declineQuietly(c, email, policy)
+	}
+
 	user := &models.User{
 		Name:         name,
-		Username:     username,
 		Email:        email,
 		PasswordHash: string(hash),
-		// Self-service sign-up never grants admin, whatever else is configured.
-		Role:   models.SystemRoleUser,
-		Active: true,
+		Role:         models.SystemRoleUser,
+		Active:       true,
 	}
 	if !h.reg.RequiresVerification() {
 		now := time.Now()
 		user.EmailVerifiedAt = &now
 	}
 	if err := h.users.Create(user); err != nil {
+		// Two sign-ups racing for one address: the loser must look like any other
+		// duplicate rather than a 500 that says the address was free a moment ago.
+		if dup, dupErr := h.users.ExistsByEmail(email); dupErr == nil && dup {
+			return h.declineQuietly(c, email, nil)
+		}
 		return c.AbortInternalServerError("failed to create account", err)
 	}
 
@@ -165,8 +161,20 @@ type VerifyEmailRequest struct {
 	} `json:"body"`
 }
 
-// pendingResponse is what both a real sign-up and a duplicate address return, so
-// the two cannot be told apart from outside.
+func (h *RegisterHandler) declineQuietly(c *okapi.Context, email string, policy error) error {
+	reason := "email_taken"
+	if errors.Is(policy, registration.ErrDomainNotAllowed) {
+		reason = "domain_not_allowed"
+	}
+	h.audit.Record(audit.Entry{
+		Action: "auth.register.declined", TargetType: "user", TargetID: email,
+		IP: c.RealIP(), Metadata: map[string]any{"reason": reason},
+	})
+	return ok(c, h.pendingResponse())
+}
+
+// pendingResponse is what both a real sign-up and a declined one return, so the
+// two cannot be told apart from outside.
 func (h *RegisterHandler) pendingResponse() RegisterResponse {
 	if h.reg.RequiresVerification() {
 		return RegisterResponse{

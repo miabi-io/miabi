@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { authApi } from '@/api/auth'
 import { apiErrorMessage } from '@/api/client'
 import AuthShell from './AuthShell.vue'
 
 const route = useRoute()
+const router = useRouter()
 const state = ref<'working' | 'done' | 'failed'>('working')
 const error = ref('')
 
@@ -13,6 +14,10 @@ const error = ref('')
 // they are and is here to finish one thing.
 onMounted(async () => {
   const token = String(route.query.token ?? '')
+  // Drop it from the address bar before doing anything with it: a token left in
+  // the URL is copied into browser history, and into the Referer of every request
+  // the page makes afterwards.
+  if (token) router.replace({ name: 'verify-email', query: {} })
   if (!token) {
     state.value = 'failed'
     error.value = 'That link is missing its verification token.'

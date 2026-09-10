@@ -123,10 +123,10 @@ func TestRefusesWhenVerificationCannotBeDelivered(t *testing.T) {
 	}
 }
 
-// A rejected domain must be indistinguishable from sign-up being shut: the
-// allow-list is internal policy, and a different answer lets an anonymous caller
-// map which domains an organisation uses.
-func TestRejectedDomainLooksLikeClosed(t *testing.T) {
+// A rejected domain is reported to the caller of Check, which is trusted, and
+// never conflated with the platform being shut — the handler is what has to make
+// the two indistinguishable from outside.
+func TestRejectedDomainIsDistinctFromClosed(t *testing.T) {
 	s := NewService(provider(t, map[string]string{
 		settings.KeyRegistrationEnabled:  "true",
 		settings.KeyAllowedSignupDomains: "acme.com",
@@ -136,11 +136,11 @@ func TestRejectedDomainLooksLikeClosed(t *testing.T) {
 		t.Errorf("an allowed domain was refused: %v", err)
 	}
 	err := s.Check("someone@evil.example")
-	if !errors.Is(err, ErrClosed) {
-		t.Fatalf("Check = %v, want ErrClosed", err)
+	if !errors.Is(err, ErrDomainNotAllowed) {
+		t.Fatalf("Check = %v, want ErrDomainNotAllowed", err)
 	}
-	if errors.Is(err, ErrDomainNotAllowed) {
-		t.Error("the refusal told an anonymous caller the domain was the problem")
+	if errors.Is(err, ErrClosed) {
+		t.Error("a rejected domain reported the platform as closed, which it is not")
 	}
 }
 

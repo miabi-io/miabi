@@ -21,8 +21,8 @@ var (
 	// answer whether the setting is off or the caller's domain is not allowed —
 	// see Check.
 	ErrClosed = errors.New("self-service registration is not available on this platform")
-	// ErrDomainNotAllowed is returned only where the caller is already known to be
-	// permitted to see the domain policy, i.e. never to an anonymous sign-up.
+	// ErrDomainNotAllowed reports a rejected domain to the caller of Check. It must
+	// never reach an HTTP response: see Check.
 	ErrDomainNotAllowed = errors.New("that email domain is not allowed to sign up")
 	// ErrVerificationUnavailable refuses to open sign-up that would create accounts
 	// nobody can activate: verification is required but the platform cannot send
@@ -82,10 +82,11 @@ func (s *Service) Available() error {
 
 // Check validates an email against the sign-up policy.
 //
-// A rejected domain returns ErrClosed rather than ErrDomainNotAllowed. The
-// allow-list is an internal policy, and telling an anonymous caller "that domain
-// is not allowed" confirms both that sign-up exists and which domains are not on
-// it — a probe that costs nothing and gives away the shape of the organisation.
+// ErrClosed means the platform is not accepting sign-ups at all, which is public
+// (the sign-in page has to know). ErrDomainNotAllowed is different: the caller
+// must answer it exactly as it answers success, because a distinguishable answer
+// lets anyone probe candidate domains one at a time and read back the allow-list,
+// which describes the organisation.
 func (s *Service) Check(email string) error {
 	if err := s.Available(); err != nil {
 		return err
@@ -95,7 +96,7 @@ func (s *Service) Check(email string) error {
 		return nil
 	}
 	if !DomainAllowed(email, allowed) {
-		return ErrClosed
+		return ErrDomainNotAllowed
 	}
 	return nil
 }
