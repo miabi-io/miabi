@@ -20,6 +20,23 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 	return []okapi.RouteDefinition{
 		{
 			Method:      http.MethodGet,
+			Path:        "/branding",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminBranding.Get,
+			Summary:     "Read the sign-in page's branding",
+		},
+		{
+			Method:      http.MethodPut,
+			Path:        "/branding",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminBranding.Update),
+			Summary:     "Set the sign-in page's name, logo, accent and links",
+			Request:     &handlers.UpdateBrandingRequest{},
+		},
+		{
+			Method:      http.MethodGet,
 			Path:        "/users",
 			Group:       g,
 			Middlewares: admin,
@@ -333,6 +350,15 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Handler:     okapi.H(r.h.adminSetting.Update),
 			Summary:     "Update platform settings",
 			Request:     &handlers.UpdateSettingsRequest{},
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/settings/auth-access",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminSetting.AuthAccess,
+			Summary:     "Report the env-fixed registration and password-reset controls",
+			Response:    &dto.Response[handlers.AuthAccessStatus]{},
 		},
 
 		{

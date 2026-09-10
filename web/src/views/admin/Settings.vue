@@ -2,10 +2,76 @@
 import { computed, onMounted, ref } from 'vue'
 import { adminApi } from '@/api/admin'
 import type { SettingInput } from '@/api/admin'
-import type { PlatformSetting } from '@/api/types'
+import type { AuthAccessStatus, PlatformSetting } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
+import { brandingApi, type BrandingSettings } from '@/api/resources'
+import type { AccentCode } from '@/api/types'
 
 const notify = useNotificationStore()
+
+// Neither of these is a stored setting: both are fixed at boot from the
+// environment because they gate who can become a principal at all, and neither
+// should be flippable from a session. They are shown here anyway, read-only,
+// because an admin looking for "can people sign themselves up" looks in this card
+// — and finding nothing is worse than finding it and learning where it lives.
+const authAccess = ref<AuthAccessStatus | null>(null)
+
+const ENV_ACCESS: { key: keyof AuthAccessStatus; label: string; env: string }[] = [
+  { key: 'registration_enabled', label: 'Allow self-service sign-up', env: 'MIABI_REGISTRATION_ENABLED' },
+  { key: 'password_reset_enabled', label: 'Allow self-service password reset', env: 'MIABI_PASSWORD_RESET_ENABLED' },
+]
+
+async function loadAuthAccess() {
+  try {
+    authAccess.value = (await adminApi.authAccess()).data.data ?? null
+  } catch {
+    authAccess.value = null
+  }
+}
+
+// --- Branding: the operator's identity on the sign-in page (Enterprise) ---
+// Loaded separately from the key/value settings: it is its own endpoint, gated on
+// white_label, and a Community install simply gets a 402 and shows nothing.
+const brand = ref<BrandingSettings | null>(null)
+const brandForm = ref({ name: '', logo_url: '', accent: '' as AccentCode | '' })
+const brandLinks = ref<{ label: string; url: string }[]>([])
+const savingBrand = ref(false)
+
+async function loadBranding() {
+  try {
+    const b = (await brandingApi.get()).data.data
+    brand.value = b
+    brandForm.value = { name: b.name ?? '', logo_url: b.logo_url ?? '', accent: b.accent ?? '' }
+    brandLinks.value = (b.links ?? []).map((l) => ({ ...l }))
+  } catch {
+    // 402 on Community, or no licence for white_label. Not an error to surface:
+    // the section simply does not exist for this install.
+    brand.value = null
+  }
+}
+
+function addBrandLink() {
+  if (brandLinks.value.length < 6) brandLinks.value.push({ label: '', url: '' })
+}
+
+async function saveBranding() {
+  savingBrand.value = true
+  try {
+    const b = (await brandingApi.update({
+      name: brandForm.value.name,
+      logo_url: brandForm.value.logo_url,
+      accent: brandForm.value.accent || undefined,
+      links: brandLinks.value,
+    })).data.data
+    brand.value = b
+    brandLinks.value = (b.links ?? []).map((l) => ({ ...l }))
+    notify.success('Branding saved')
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    savingBrand.value = false
+  }
+}
 
 const loading = ref(false)
 const saving = ref(false)
@@ -16,6 +82,9 @@ const encryption = ref<{ encryption_enabled: boolean; per_workspace_keys: boolea
 // Edited values, keyed by setting key.
 const values = ref<Record<string, string>>({})
 const types = ref<Record<string, PlatformSetting['type']>>({})
+// Keys an environment variable supplies. They are re-forced on every boot, so the
+// console shows them rather than offering an edit that reverts on restart.
+const pinned = ref<Set<string>>(new Set())
 // Originally-loaded values, for dirty comparison.
 const original = ref<Record<string, string>>({})
 // API key order, preserved for the generic "Other" section.
@@ -31,21 +100,22 @@ interface SectionDef {
 const SECTIONS: SectionDef[] = [
   {
     id: 'access',
-    title: 'Access',
-    keys: ['allowed_signup_domains'],
+    title: 'Registration & access',
+    keys: ['require_email_verification', 'allowed_signup_domains'],
     labels: {
-      allowed_signup_domains: 'Allowed signup domains (CSV)',
+      require_email_verification: 'Require email verification',
+      allowed_signup_domains: 'Allowed signup domains (CSV, blank = any)',
     },
   },
   {
     id: 'platform',
     title: 'Platform',
-    keys: ['maintenance_mode', 'require_email_verification', 'default_workspace_role', 'custom_labels_enabled'],
+    keys: ['maintenance_mode', 'default_workspace_role', 'custom_labels_enabled', 'repo_pipelines_enabled'],
     labels: {
       maintenance_mode: 'Maintenance mode',
-      require_email_verification: 'Require email verification',
       default_workspace_role: 'Default workspace role',
       custom_labels_enabled: 'Allow custom container labels (Traefik &c.) — fleet-wide kill-switch',
+      repo_pipelines_enabled: 'Allow pipelines from .miabi/pipeline.yaml — fleet-wide kill-switch',
     },
   },
   {
@@ -119,11 +189,14 @@ function applySettings(settings: PlatformSetting[]) {
   const nextValues: Record<string, string> = {}
   const nextTypes: Record<string, PlatformSetting['type']> = {}
   const nextKeys: string[] = []
+  const nextPinned = new Set<string>()
   for (const s of settings) {
     nextValues[s.key] = s.value ?? ''
     nextTypes[s.key] = s.type
     nextKeys.push(s.key)
+    if (s.pinned) nextPinned.add(s.key)
   }
+  pinned.value = nextPinned
   values.value = nextValues
   types.value = nextTypes
   original.value = { ...nextValues }
@@ -143,7 +216,11 @@ async function load() {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadBranding()
+  loadAuthAccess()
+})
 
 async function save() {
   if (!dirty.value || saving.value) return
@@ -235,10 +312,34 @@ function setBool(key: string, checked: boolean) {
               <span v-if="sectionDirty(section.keys)" class="text-muted unsaved">unsaved</span>
             </div>
 
+            <template v-if="section.id === 'access' && authAccess">
+              <div v-for="item in ENV_ACCESS" :key="item.key" class="setting-row">
+                <div class="setting-label">
+                  <label class="form-label">{{ item.label }}</label>
+                  <div class="form-hint text-muted">
+                    {{ item.env }} · set by environment, applied at boot
+                  </div>
+                  <div
+                    v-if="item.key === 'registration_enabled' && authAccess.blocked"
+                    class="form-hint text-warning"
+                  >
+                    {{ authAccess.blocked }}
+                  </div>
+                </div>
+                <div class="setting-control">
+                  <span class="badge" :class="authAccess[item.key] ? 'badge-success' : 'badge-neutral'">
+                    {{ authAccess[item.key] ? 'enabled' : 'disabled' }}
+                  </span>
+                </div>
+              </div>
+            </template>
+
             <div v-for="key in section.keys" :key="key" class="setting-row">
               <div class="setting-label">
                 <label class="form-label" :for="`set-${key}`">{{ friendlyLabel(section, key) }}</label>
-                <div class="form-hint text-muted">{{ key }}</div>
+                <div class="form-hint text-muted">
+                  {{ key }}<template v-if="pinned.has(key)"> · set by environment</template>
+                </div>
               </div>
               <div class="setting-control">
                 <label v-if="types[key] === 'bool'" class="switch">
@@ -246,6 +347,7 @@ function setBool(key: string, checked: boolean) {
                     :id="`set-${key}`"
                     type="checkbox"
                     :checked="boolValue(key)"
+                    :disabled="pinned.has(key)"
                     @change="setBool(key, ($event.target as HTMLInputElement).checked)"
                   />
                 </label>
@@ -255,6 +357,7 @@ function setBool(key: string, checked: boolean) {
                   v-model="values[key]"
                   type="number"
                   class="form-input"
+                  :disabled="pinned.has(key)"
                 />
                 <input
                   v-else
@@ -262,6 +365,7 @@ function setBool(key: string, checked: boolean) {
                   v-model="values[key]"
                   type="text"
                   class="form-input"
+                  :disabled="pinned.has(key)"
                 />
               </div>
             </div>
@@ -305,6 +409,61 @@ function setBool(key: string, checked: boolean) {
                   class="form-input"
                 />
               </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="brand" class="card">
+          <div class="card-header">
+            <h2>Sign-in page</h2>
+            <button class="btn btn-primary" :disabled="savingBrand || !brand.editable" @click="saveBranding">
+              {{ savingBrand ? 'Saving…' : 'Save branding' }}
+            </button>
+          </div>
+          <div class="card-body">
+            <p v-if="!brand.editable" class="form-hint" style="margin-bottom: 14px">
+              Your licence can show this branding but not change it. What is already set stays on the
+              sign-in page — renew to edit it.
+            </p>
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label" for="brand-name">Name</label>
+                <input id="brand-name" v-model="brandForm.name" class="form-input" placeholder="Miabi" :disabled="!brand.editable" />
+                <p class="form-hint">Replaces "Miabi" on the sign-in page. Blank keeps it.</p>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="brand-logo">Logo URL</label>
+                <input id="brand-logo" v-model="brandForm.logo_url" class="form-input" placeholder="https://acme.example/logo.svg" :disabled="!brand.editable" />
+                <p class="form-hint">An http:// or https:// URL. Blank keeps the Miabi mark.</p>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="brand-accent">Accent</label>
+              <select id="brand-accent" v-model="brandForm.accent" class="form-select" :disabled="!brand.editable">
+                <option value="">Miabi purple</option>
+                <option v-for="a in brand.accents" :key="a" :value="a">{{ a }}</option>
+              </select>
+              <p class="form-hint">
+                Colours the sign-in page, and becomes the default for accounts that have not picked
+                their own. A personal choice always wins.
+              </p>
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Links</label>
+              <div v-for="(l, i) in brandLinks" :key="i" class="flex items-center gap-2" style="margin-bottom: 8px">
+                <input v-model="l.label" class="form-input" style="max-width: 160px" placeholder="Privacy" maxlength="32" :disabled="!brand.editable" />
+                <input v-model="l.url" class="form-input" placeholder="https://acme.example/privacy" :disabled="!brand.editable" />
+                <button class="btn-icon btn-icon-danger" title="Remove" aria-label="Remove link" :disabled="!brand.editable" @click="brandLinks.splice(i, 1)">
+                  <span class="mdi mdi-close"></span>
+                </button>
+              </div>
+              <button class="btn btn-sm btn-secondary" :disabled="!brand.editable || brandLinks.length >= 6" @click="addBrandLink">
+                Add link
+              </button>
+              <p class="form-hint">
+                Shown below the sign-in form, up to six. Each opens in a new tab. Only http:// and
+                https:// addresses are accepted.
+              </p>
             </div>
           </div>
         </div>

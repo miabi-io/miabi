@@ -36,6 +36,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/auth"
 	"github.com/miabi-io/miabi/internal/services/backup"
 	"github.com/miabi-io/miabi/internal/services/backupsettings"
+	"github.com/miabi-io/miabi/internal/services/branding"
 	"github.com/miabi-io/miabi/internal/services/certificate"
 	"github.com/miabi-io/miabi/internal/services/cluster"
 	configsvc "github.com/miabi-io/miabi/internal/services/config"
@@ -77,6 +78,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/portforward"
 	"github.com/miabi-io/miabi/internal/services/quota"
 	"github.com/miabi-io/miabi/internal/services/recovery"
+	"github.com/miabi-io/miabi/internal/services/registration"
 	"github.com/miabi-io/miabi/internal/services/registry"
 	"github.com/miabi-io/miabi/internal/services/registryserver"
 	releasesvc "github.com/miabi-io/miabi/internal/services/release"
@@ -176,6 +178,8 @@ type routerHandlers struct {
 	adminMetrics        *handlers.AdminMetricsHandler
 	adminEvent          *handlers.AdminEventHandler
 	adminSetting        *handlers.AdminSettingHandler
+	adminBranding       *handlers.AdminBrandingHandler
+	register            *handlers.RegisterHandler
 	update              *handlers.UpdateHandler
 	adminPlan           *handlers.PlanHandler
 	deploymentCfg       *handlers.DeploymentConfigHandler
@@ -230,8 +234,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	recoveryRepo := repositories.NewTwoFactorRecoveryRepository(db)
 	authService := auth.NewService(userRepo, resetRepo, recoveryRepo, sessionStore, cfg.JWTSecret)
 	settingsProvider := settings.NewProvider(settingRepo, map[string]string{
-		settings.KeyExternalBaseDomain:   cfg.ExternalBaseDomain,
-		settings.KeyExternalBaseProvider: cfg.ExternalBaseProvider,
+		settings.KeyExternalBaseDomain:       cfg.ExternalBaseDomain,
+		settings.KeyExternalBaseProvider:     cfg.ExternalBaseProvider,
+		settings.KeyRequireEmailVerification: cfg.RequireEmailVerification,
+		settings.KeyAllowedSignupDomains:     cfg.AllowedSignupDomains,
 	})
 	oauthService := oauth.NewService(oauthRepo, userRepo, redisClient)
 	oauthService.SetWorkspaces(workspaceRepo) // auto-join SSO users to a provider's default workspace
@@ -617,6 +623,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	databaseService.SetLogicalBackup(dbupgrade.Backup(backupService))
 	// Per-workspace shared S3 backup target (used by database & volume backups).
 	backupSettingsService := backupsettings.NewService(backupSettingsRepo)
+	// The sign-in page's operator identity: name, logo, accent and links.
+	brandingService := branding.NewService(settingRepo)
 	// Deployment-config image catalog: resolver over settings, with env config as
 	// the built-in default for the gateway/relay images. Wired into every service
 	// that runs a platform image.
@@ -969,6 +977,9 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// invitations, account welcomes) over the system SMTP server. A no-op until
 	// MIABI_SMTP_* is configured.
 	platformMailer := mailer.NewService(cfg.SystemSMTP, cfg.AppName, cfg.AppWebURL)
+	// Self-service sign-up: off unless an operator turns it on. It takes the mailer
+	// so it can refuse to open sign-up that needs a verification email nobody can send.
+	registrationService := registration.NewService(cfg.RegistrationEnabled, settingsProvider, platformMailer)
 
 	// Per-workspace key rotation: register the secret-owning services
 	// as reencryptors with the live keyring, and schedule auto-rotation when on.
@@ -1087,9 +1098,11 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			adminMetrics:        handlers.NewAdminMetricsHandler(db, dockerClient, redisClient, time.Now()),
 			adminEvent:          handlers.NewAdminEventHandler(auditRepo, bus, ee),
 			adminSetting:        handlers.NewAdminSettingHandler(settingRepo, settingsProvider, auditLogger),
+			adminBranding:       handlers.NewAdminBrandingHandler(brandingService, ee, auditLogger),
+			register:            handlers.NewRegisterHandler(registrationService, authService, userRepo, platformMailer, auditLogger),
 			update:              handlers.NewUpdateHandler(updateService),
 			adminPlan:           handlers.NewPlanHandler(planRepo, quotaOverrideRepo, workspaceRepo, ee, auditLogger),
-			deploymentCfg:       handlers.NewDeploymentConfigHandler(imageResolver, settingRepo, settingsProvider, auditLogger),
+			deploymentCfg:       handlers.NewDeploymentConfigHandler(imageResolver, settingRepo, settingsProvider, auditLogger, ee),
 			adminJob:            handlers.NewAdminJobHandler(cronManager),
 			adminPlatformBackup: handlers.NewAdminPlatformBackupHandler(platformBackupService, ee, auditLogger),
 			adminRegistry:       handlers.NewAdminRegistryHandler(registryServerService, ee, auditLogger),
@@ -1110,6 +1123,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	}
 
 	r.h.auth.SetUserSettings(userSettingsService)
+	r.h.adminSetting.SetAuthAccess(registrationService, cfg.PasswordResetEnabled)
 
 	// Edge gateways buffer their events on the node's own Redis; the agent forwards
 	// them here, so they land in the same stream the consumer already reads.
@@ -1155,6 +1169,16 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.job.SetLogStore(logStore)
 	r.h.pipeline.SetLogStore(logStore)
 	r.h.backup.SetLogStore(logStore)
+	r.h.auth.SetBranding(brandingService, ee) // the sign-in page's operator identity
+	r.h.auth.SetRegistration(registrationService)
+	authService.SetEmailVerifications(repositories.NewEmailVerificationRepository(db))
+	// An account that never picked an accent follows the operator's.
+	userSettingsService.SetBrandAccent(func() models.Accent {
+		if !ee.Has(enterprise.FlagWhiteLabel) {
+			return ""
+		}
+		return brandingService.Get().Accent
+	})
 	r.h.volumeBackup.SetLogStore(logStore)
 	r.h.adminPlatformBackup.SetLogStore(logStore)
 

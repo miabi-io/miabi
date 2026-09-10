@@ -16,6 +16,7 @@ import (
 var (
 	ErrNotMember          = errors.New("you are not a member of this workspace")
 	ErrInvalidTheme       = errors.New("theme must be one of: system, light, dark")
+	ErrInvalidAccent      = errors.New("accent must be one of: default, blue, indigo, slate, orange, lime")
 	ErrInvalidLandingView = errors.New("landing view is not a known console section")
 )
 
@@ -35,9 +36,10 @@ type Settings interface {
 }
 
 type Service struct {
-	users    Users
-	settings Settings
-	members  Members
+	users       Users
+	settings    Settings
+	members     Members
+	brandAccent BrandAccent
 }
 
 func NewService(users Users, settings Settings, members Members) *Service {
@@ -45,12 +47,42 @@ func NewService(users Users, settings Settings, members Members) *Service {
 }
 
 // Get returns a user's preferences, defaulted when they have never saved any.
+// BrandAccent supplies the operator's accent for accounts that have not chosen
+// one. A function rather than the branding service itself, so preferences do not
+// depend on branding — the arrow points one way.
+type BrandAccent func() models.Accent
+
+// SetBrandAccent wires the operator default (nil-safe: unset means Miabi's own).
+func (s *Service) SetBrandAccent(f BrandAccent) { s.brandAccent = f }
+
 func (s *Service) Get(userID uint) (*models.UserSetting, error) {
-	return s.settings.Get(userID)
+	cur, err := s.settings.Get(userID)
+	if err != nil {
+		return nil, err
+	}
+	s.resolve(cur)
+	return cur, nil
+}
+
+// resolve fills in what the user has not chosen. The stored value stays empty, so
+// an operator changing their brand accent still moves everyone who never picked —
+// which is the point, and would not happen if the default were written down at
+// account creation.
+func (s *Service) resolve(cur *models.UserSetting) {
+	if cur == nil || cur.Accent != "" {
+		return
+	}
+	cur.Accent = models.AccentDefault
+	if s.brandAccent != nil {
+		if a := s.brandAccent(); models.ValidAccent(a) {
+			cur.Accent = a
+		}
+	}
 }
 
 type Update struct {
 	Theme       *string
+	Accent      *string
 	Timezone    *string
 	Locale      *string
 	LandingView *string
@@ -62,6 +94,13 @@ func (s *Service) Save(userID uint, in Update) (*models.UserSetting, error) {
 		theme = models.Theme(strings.ToLower(strings.TrimSpace(*in.Theme)))
 		if !models.ValidTheme(theme) {
 			return nil, ErrInvalidTheme
+		}
+	}
+	var accent models.Accent
+	if in.Accent != nil {
+		accent = models.Accent(strings.ToLower(strings.TrimSpace(*in.Accent)))
+		if !models.ValidAccent(accent) {
+			return nil, ErrInvalidAccent
 		}
 	}
 	var view string
@@ -78,6 +117,9 @@ func (s *Service) Save(userID uint, in Update) (*models.UserSetting, error) {
 	cur.UserID = userID
 	if in.Theme != nil {
 		cur.Theme = theme
+	}
+	if in.Accent != nil {
+		cur.Accent = accent
 	}
 	if in.LandingView != nil {
 		cur.LandingView = view
@@ -96,6 +138,7 @@ func (s *Service) Save(userID uint, in Update) (*models.UserSetting, error) {
 	if err := s.settings.Save(cur); err != nil {
 		return nil, err
 	}
+	s.resolve(cur)
 	return cur, nil
 }
 

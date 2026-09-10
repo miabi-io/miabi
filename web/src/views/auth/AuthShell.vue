@@ -1,21 +1,35 @@
 <script setup lang="ts">
-// Centered single-card chrome shared by the secondary auth pages (forgot /
-// reset password). Mirrors the right-hand panel of Login.vue without the
-// marketing hero. The form and a footer link are provided via slots; the alert
-// and success notice are driven by props so their styling lives in one place.
-defineProps<{
-  title: string
-  subtitle?: string
-  error?: string
-  notice?: string
-}>()
+import AuthHero from './AuthHero.vue'
+
+// Single-card chrome shared by the secondary auth pages. The form and a footer
+// link come from slots; the alert and success notice are props so their styling
+// lives in one place.
+//
+// `hero` opts into Login's two-column layout with the marketing panel. It is
+// opt-in rather than the default because most pages here are arrived at from a
+// link in an email — a reset, a CLI authorisation — where a marketing panel is
+// noise. Sign-up is the exception: it is a front door, like signing in.
+withDefaults(
+  defineProps<{
+    title: string
+    subtitle?: string
+    error?: string
+    notice?: string
+    hero?: boolean
+    brandName?: string
+    brandLogo?: string
+  }>(),
+  { hero: false },
+)
 </script>
 
 <template>
-  <div class="auth-shell">
+  <div :class="hero ? 'auth-split' : 'auth-shell'">
+    <AuthHero v-if="hero" :brand-name="brandName" />
+    <div :class="hero ? 'auth-main' : ''">
     <div class="auth-card">
       <div class="auth-head">
-        <img src="/brand/miabi-mark.svg" alt="Miabi" class="auth-logo" />
+        <img :src="brandLogo || '/brand/miabi-mark.svg'" :alt="brandName || 'Miabi'" class="auth-logo" />
         <h1 class="auth-title">{{ title }}</h1>
         <p v-if="subtitle" class="auth-subtitle">{{ subtitle }}</p>
       </div>
@@ -39,10 +53,29 @@ defineProps<{
         <slot name="footer" />
       </div>
     </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.auth-split {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  background: var(--bg-primary);
+}
+.auth-split .auth-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+}
+@media (max-width: 900px) {
+  .auth-split {
+    grid-template-columns: 1fr;
+  }
+}
+
 .auth-shell {
   min-height: 100vh;
   display: flex;

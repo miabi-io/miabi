@@ -16,6 +16,7 @@ import type {
   DomainStatus,
   PlatformMetrics,
   AdminEvent,
+  AuthAccessStatus,
   PlatformSetting,
   UpdateInfo,
   JobStatus,
@@ -53,6 +54,11 @@ export interface ImageCatalogItem {
 export interface DeploymentConfig {
   images: ImageCatalogItem[]
   mirror: string
+  /**
+   * Whether this licence may CHANGE the mirror. A mirror set under a licence
+   * keeps working after it lapses — only editing it needs private_registry.
+   */
+  mirror_editable: boolean
 }
 
 
@@ -257,6 +263,7 @@ export const adminApi = {
 
   // Settings
   listSettings: () => api.get<ApiResponse<PlatformSetting[]>>('/admin/settings'),
+  authAccess: () => api.get<ApiResponse<AuthAccessStatus>>('/admin/settings/auth-access'),
   updateSettings: (settings: SettingInput[]) =>
     api.put<ApiResponse<PlatformSetting[]>>('/admin/settings', { settings }),
 

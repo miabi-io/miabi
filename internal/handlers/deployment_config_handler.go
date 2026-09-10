@@ -4,7 +4,10 @@
 package handlers
 
 import (
+	"strings"
+
 	"github.com/jkaninda/okapi"
+	"github.com/miabi-io/miabi/internal/enterprise"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
@@ -20,18 +23,26 @@ type DeploymentConfigHandler struct {
 	repo     *repositories.SettingRepository
 	provider *settings.Provider
 	audit    *audit.Logger
+	ee       enterprise.EE
 }
 
-func NewDeploymentConfigHandler(resolver *platformimage.Resolver, repo *repositories.SettingRepository, provider *settings.Provider, auditLog *audit.Logger) *DeploymentConfigHandler {
-	return &DeploymentConfigHandler{resolver: resolver, repo: repo, provider: provider, audit: auditLog}
+func NewDeploymentConfigHandler(resolver *platformimage.Resolver, repo *repositories.SettingRepository, provider *settings.Provider, auditLog *audit.Logger, ee enterprise.EE) *DeploymentConfigHandler {
+	return &DeploymentConfigHandler{resolver: resolver, repo: repo, provider: provider, audit: auditLog, ee: ee}
+}
+
+// mirrorEditable reports whether this licence may change the registry mirror.
+// Per-image overrides stay Community; only the mirror is gated.
+func (h *DeploymentConfigHandler) mirrorEditable() bool {
+	return h.ee != nil && h.ee.Mutable(enterprise.FlagPrivateRegistry)
 }
 
 // Get returns the image catalog (default / override / effective per image) and
 // the registry mirror.
 func (h *DeploymentConfigHandler) Get(c *okapi.Context) error {
 	return ok(c, map[string]any{
-		"images": h.resolver.Catalog(),
-		"mirror": h.resolver.Mirror(),
+		"images":          h.resolver.Catalog(),
+		"mirror":          h.resolver.Mirror(),
+		"mirror_editable": h.mirrorEditable(),
 	})
 }
 
@@ -45,9 +56,19 @@ type UpdateDeploymentConfigRequest struct {
 }
 
 // Update writes image overrides + the mirror. Unknown keys are ignored.
+//
+// The registry mirror needs the private_registry entitlement to CHANGE, not to
+// keep. A mirror set under a licence goes on working after it lapses — an
+// air-gapped platform that suddenly resolved every image to an unreachable
+// registry would stop being able to start anything, which is not a licensing
+// outcome worth defending. Per-image overrides are unaffected and stay Community.
 func (h *DeploymentConfigHandler) Update(c *okapi.Context, req *UpdateDeploymentConfigRequest) error {
+	mirror := normalizeMirror(req.Body.Mirror)
+	if mirrorChangeRefused(h.resolver.Mirror(), mirror, h.mirrorEditable()) {
+		return c.AbortWithError(402, enterprise.ErrLicenseRequired)
+	}
 	toSave := []models.Setting{
-		{Key: platformimage.MirrorSettingKey(), Value: req.Body.Mirror, Type: models.SettingTypeString},
+		{Key: platformimage.MirrorSettingKey(), Value: mirror, Type: models.SettingTypeString},
 	}
 	for key, val := range req.Body.Images {
 		if !h.resolver.ValidKey(key) {
@@ -62,4 +83,20 @@ func (h *DeploymentConfigHandler) Update(c *okapi.Context, req *UpdateDeployment
 	actor := middlewares.UserID(c)
 	h.audit.Record(audit.Entry{ActorID: &actor, Action: "admin.deployment_config.update", TargetType: "deployment_config", IP: c.RealIP(), Metadata: map[string]any{"count": len(toSave)}})
 	return h.Get(c)
+}
+
+// normalizeMirror trims the value the way Resolver.Mirror reports it, so a
+// trailing slash or stray space is not mistaken for a change.
+func normalizeMirror(v string) string {
+	return strings.TrimRight(strings.TrimSpace(v), "/")
+}
+
+// mirrorChangeRefused reports whether this request tries to change the registry
+// mirror without the entitlement to.
+//
+// Only a real change is refused. The admin form round-trips the current mirror on
+// every save, so refusing on presence rather than on difference would stop a
+// Community admin editing the per-image overrides that are theirs to edit.
+func mirrorChangeRefused(current, requested string, editable bool) bool {
+	return !editable && normalizeMirror(requested) != normalizeMirror(current)
 }

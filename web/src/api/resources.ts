@@ -1,7 +1,7 @@
 import api, { sseUrl } from './client'
 import type {
   ApiResponse, DatabaseInstance, DBLiveStatus, LogicalDatabase, ConnectionInfo, ForwardSession, DBEngine, EngineDefault, UpgradeOptions, UpgradePlan,
-  Volume, VolumeDetail, VolumeFile, VolumeBackup, WorkspaceStorage, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, BackupSetsResponse, DiscoveredSet, AdoptResult, SetRestoreResult, VerifyResult, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput,
+  Volume, VolumeDetail, VolumeFile, VolumeBackup, WorkspaceStorage, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, BackupSetsResponse, DiscoveredSet, AdoptResult, SetRestoreResult, VerifyResult, AccentCode, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput,
   Member, Invitation, AuditLog, AuditLogDetail, RecentEvent, PageableResponse, Job, CronJob, WorkspaceUsage, WorkspaceLiveSample, WorkspaceHistoryPoint,
 } from './types'
 
@@ -242,4 +242,21 @@ export const workspaceEventApi = {
     api.get<PageableResponse<RecentEvent>>(`${w(ws)}/events`, {
       params: { page, size, order, severity: severity || undefined },
     }),
+}
+
+// Branding: the operator's identity on the sign-in page. Enterprise (white_label).
+export interface BrandingSettings {
+  name?: string
+  logo_url?: string
+  accent?: AccentCode
+  links?: { label: string; url: string }[]
+  /** Whether this licence may CHANGE the branding, not merely show it. */
+  editable: boolean
+  accents: AccentCode[]
+}
+
+export const brandingApi = {
+  get: () => api.get<ApiResponse<BrandingSettings>>('/admin/branding'),
+  update: (input: Omit<BrandingSettings, 'editable' | 'accents'>) =>
+    api.put<ApiResponse<BrandingSettings>>('/admin/branding', input),
 }

@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
+import type { Brand } from '@/api/types'
+import AuthHero from './AuthHero.vue'
 import { apiErrorMessage } from '@/api/client'
 import { authApi } from '@/api/auth'
 import { oauthApi, authorizeUrl } from '@/api/oauth'
@@ -55,6 +57,14 @@ const ssoEmailInput = ref<HTMLInputElement | null>(null)
 // Self-service password reset is admin-gated; the "Forgot password?" link only
 // shows when the platform advertises it as enabled.
 const passwordResetEnabled = ref(false)
+// Sign-up is off by default, so the link only exists where an operator opened it.
+const registrationEnabled = ref(false)
+const brand = ref<Brand>({})
+// Empty fields fall back to Miabi's own identity, so Community and an Enterprise
+// install that has set nothing look identical.
+const brandName = computed(() => brand.value.name?.trim() || 'Miabi')
+const brandLogo = computed(() => brand.value.logo_url?.trim() || '/brand/miabi-mark.svg')
+const brandLinks = computed(() => brand.value.links ?? [])
 
 // Friendly messages for error codes handed back by the OAuth callback redirect.
 const oauthErrors: Record<string, string> = {
@@ -86,6 +96,13 @@ onMounted(async () => {
   try {
     const { data } = await authApi.status()
     passwordResetEnabled.value = data.data?.password_reset_enabled ?? false
+    registrationEnabled.value = data.data?.registration_enabled ?? false
+    brand.value = data.data?.brand ?? {}
+    // The sign-in page has no user, so it wears the operator's accent rather than
+    // anyone's preference. Applied to <html>, where the derived tokens resolve.
+    if (brand.value.accent) {
+      document.documentElement.setAttribute('data-accent', brand.value.accent)
+    }
   } catch {
     // Best-effort: leave the reset link hidden if status can't be read.
   }
@@ -164,44 +181,18 @@ function providerIcon(type: string): string {
 <template>
   <div class="auth">
     <!-- Brand / marketing panel -->
-    <aside class="auth-hero">
-      <div class="auth-hero-inner">
-        <!-- Brand lockup: the new pinwheel mark + "Miabi.io" wordmark; the
-             trailing ".io" carries the brand accent. -->
-        <div class="auth-hero-wordmark">
-          <img src="/brand/miabi-mark-white.svg" alt="" class="auth-hero-mark" />
-          <span class="auth-hero-name">Miabi<span class="wm-io">.io</span></span>
-        </div>
-
-        <div class="auth-hero-body">
-          <h2 class="auth-hero-title">Self-hosting,<br />reimagined.</h2>
-          <p class="auth-hero-lead">
-            Deploy, scale, and manage applications from one intuitive platform.
-          </p>
-          <ul class="auth-hero-features">
-            <li><span class="mdi mdi-package-variant-closed"></span> Built-in Container Registry</li>
-            <li><span class="mdi mdi-lock-check-outline"></span> Secrets &amp; Automatic TLS</li>
-            <li><span class="mdi mdi-infinity"></span> GitOps &amp; Canary Deployments</li>
-            <li><span class="mdi mdi-database-outline"></span> Managed databases, backups &amp; volumes</li>
-            <li><span class="mdi mdi-chart-areaspline"></span> Monitoring &amp; Release History</li>
-            <li><span class="mdi mdi-account-group-outline"></span> Multi-tenant Workspaces &amp; RBAC</li>
-          </ul>
-        </div>
-
-        <p class="auth-hero-foot">Open-source · Self-hosted PaaS for Docker</p>
-      </div>
-    </aside>
+    <AuthHero :brand-name="brand.name ? brandName : undefined" />
 
     <!-- Form panel -->
     <main class="auth-main">
       <div class="auth-card">
         <div class="auth-head">
-          <img src="/brand/miabi-mark.svg" alt="Miabi" class="auth-logo" />
+          <img :src="brandLogo" :alt="brandName" class="auth-logo" />
           <h1 class="auth-title">
-            {{ step === 'twofactor' ? 'Two-factor authentication' : ssoMode ? 'Continue with SSO' : 'Welcome to Miabi' }}
+            {{ step === 'twofactor' ? 'Two-factor authentication' : ssoMode ? 'Continue with SSO' : `Welcome to ${brandName}` }}
           </h1>
           <p class="auth-subtitle">
-            {{ step === 'twofactor' ? 'Enter the code from your authenticator app' : ssoMode ? 'Enter your email to find your sign-in provider' : 'Sign in to your Miabi workspace' }}
+            {{ step === 'twofactor' ? 'Enter the code from your authenticator app' : ssoMode ? 'Enter your email to find your sign-in provider' : `Sign in to your ${brandName} workspace` }}
           </p>
         </div>
 
@@ -352,8 +343,24 @@ function providerIcon(type: string): string {
         </div>
 
         <p v-if="step === 'credentials' && !ssoMode" class="auth-footer">
-          Don't have an account? Contact your platform administrator.
+          <template v-if="registrationEnabled">
+            Don't have an account?
+            <RouterLink :to="{ name: 'register' }">Create one</RouterLink>.
+          </template>
+          <template v-else>Don't have an account? Contact your platform administrator.</template>
         </p>
+
+        <!-- Operator links. rel="noopener noreferrer" on every one: these are
+             admin-supplied URLs on a page shown to unauthenticated visitors. -->
+        <nav v-if="brandLinks.length" class="auth-links" aria-label="Site links">
+          <a
+            v-for="l in brandLinks"
+            :key="l.url"
+            :href="l.url"
+            target="_blank"
+            rel="noopener noreferrer"
+          >{{ l.label }}</a>
+        </nav>
       </div>
     </main>
 
@@ -404,107 +411,6 @@ function providerIcon(type: string): string {
 }
 
 /* ─── Brand / marketing panel ─── */
-.auth-hero {
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  color: #fff;
-  background:
-    radial-gradient(120% 80% at 100% 0%, rgba(255, 255, 255, 0.16), transparent 55%),
-    radial-gradient(90% 70% at 0% 100%, rgba(13, 20, 36, 0.5), transparent 60%),
-    linear-gradient(150deg, var(--primary-600) 0%, var(--primary-800) 70%, #2a0f4d 100%);
-}
-/* faint glyph watermark */
-.auth-hero::after {
-  content: '';
-  position: absolute;
-  right: -8%;
-  bottom: -12%;
-  width: 520px;
-  height: 520px;
-  background: url('/brand/miabi-mark-white.svg') center / contain no-repeat;
-  opacity: 0.06;
-  pointer-events: none;
-}
-.auth-hero-inner {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-width: 460px;
-  margin: auto;
-  padding: 56px 52px;
-}
-.auth-hero-wordmark {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  align-self: flex-start;
-  margin-bottom: auto;
-}
-.auth-hero-mark {
-  height: 40px;
-  width: 40px;
-}
-.auth-hero-name {
-  font-size: 1.6rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: #fff;
-}
-.auth-hero-name .wm-io {
-  color: var(--primary-400); /* the ".io" accent */
-}
-.auth-hero-body {
-  margin: 48px 0;
-}
-.auth-hero-title {
-  font-size: clamp(1.9rem, 2.6vw, 2.6rem);
-  font-weight: 800;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  margin: 0 0 16px;
-}
-.auth-hero-lead {
-  font-size: 15px;
-  line-height: 1.6;
-  color: rgba(255, 255, 255, 0.82);
-  max-width: 40ch;
-  margin: 0 0 28px;
-}
-.auth-hero-features {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.auth-hero-features li {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.92);
-}
-.auth-hero-features .mdi {
-  font-size: 20px;
-  flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.12);
-}
-.auth-hero-foot {
-  margin: 0;
-  font-size: 12.5px;
-  color: rgba(255, 255, 255, 0.6);
-}
-
 /* ─── Form panel ─── */
 .auth-main {
   display: flex;
@@ -676,6 +582,17 @@ function providerIcon(type: string): string {
 .oauth-btn .mdi {
   font-size: 18px;
 }
+.auth-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 16px;
+  margin-top: 14px;
+  font-size: 12px;
+}
+.auth-links a { color: var(--text-muted); text-decoration: none; }
+.auth-links a:hover { color: var(--primary-600); text-decoration: underline; }
+
 .auth-footer {
   margin-top: 22px;
   text-align: center;
@@ -701,9 +618,6 @@ function providerIcon(type: string): string {
 @media (max-width: 900px) {
   .auth {
     grid-template-columns: 1fr;
-  }
-  .auth-hero {
-    display: none;
   }
 }
 </style>

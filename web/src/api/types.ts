@@ -258,8 +258,14 @@ export type ThemeMode = 'system' | 'light' | 'dark'
 
 // UserPreferences are the console settings that follow a user between browsers and
 // machines, as opposed to the per-device values cached in localStorage.
+// AccentCode is one of the accents the console ships. Not an arbitrary colour:
+// see web/src/theme/accents.json for why.
+export type AccentCode = 'default' | 'blue' | 'indigo' | 'slate' | 'orange' | 'lime'
+
 export interface UserPreferences {
   theme: ThemeMode
+  /** The console's primary colour, from the fixed set in theme/accents.json. */
+  accent: AccentCode
   /** Display only — timestamps are stored and served in UTC. */
   timezone: string
   locale: string
@@ -270,6 +276,7 @@ export interface UserPreferences {
 // UserPreferencesInput is a partial update: omitted fields keep their stored value.
 export interface UserPreferencesInput {
   theme?: ThemeMode
+  accent?: AccentCode
   timezone?: string
   locale?: string
   landing_view?: string
@@ -332,8 +339,36 @@ export interface RecoveryCodes {
   recovery_codes: string[]
 }
 
+export interface BrandLink {
+  label: string
+  url: string
+}
+
+// The operator's identity for the sign-in page, which has no user and therefore no
+// personal preference to read. Empty fields mean Miabi's own.
+export interface Brand {
+  name?: string
+  logo_url?: string
+  accent?: AccentCode
+  links?: BrandLink[]
+}
+
 export interface AuthStatus {
   password_reset_enabled: boolean
+  brand?: Brand
+  /** Whether self-service sign-up is open AND usable. */
+  registration_enabled: boolean
+}
+
+export interface RegisterInput {
+  name: string
+  email: string
+  password: string
+}
+
+export interface RegisterResult {
+  verification_required: boolean
+  message: string
 }
 
 // --- Platform admin ---
@@ -503,6 +538,11 @@ export interface PlatformSetting {
   value: string
   type: 'string' | 'int' | 'bool' | 'json'
   updated_at?: string
+  /**
+   * An environment variable supplies this value, so the console shows it
+   * read-only: an edit here would revert at the next restart.
+   */
+  pinned?: boolean
 }
 
 // UpdateInfo is the cached result of the daily release check (GET /admin/update).
@@ -2597,4 +2637,13 @@ export interface SearchResponse {
   kind?: string
   results: SearchResult[]
   kinds: string[]
+}
+
+// AuthAccessStatus reports the auth controls fixed at boot from the environment,
+// which the settings screen shows beside the ones an admin can change.
+export interface AuthAccessStatus {
+  registration_enabled: boolean
+  password_reset_enabled: boolean
+  // Why a switched-on sign-up still cannot be offered; empty when it can.
+  blocked?: string
 }

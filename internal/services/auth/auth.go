@@ -50,12 +50,20 @@ var (
 )
 
 type Service struct {
-	users    *repositories.UserRepository
-	resets   *repositories.PasswordResetRepository
-	recovery *repositories.TwoFactorRecoveryRepository
-	store    *session.Store
-	jwtKey   []byte
-	aud      string
+	users  *repositories.UserRepository
+	resets *repositories.PasswordResetRepository
+	// verifications is optional: unset means the platform cannot issue or consume
+	// email-verification links, and the two methods below say so rather than panic.
+	verifications *repositories.EmailVerificationRepository
+	recovery      *repositories.TwoFactorRecoveryRepository
+	store         *session.Store
+	jwtKey        []byte
+	aud           string
+}
+
+// SetEmailVerifications wires the verification token store (nil-safe).
+func (s *Service) SetEmailVerifications(r *repositories.EmailVerificationRepository) {
+	s.verifications = r
 }
 
 func NewService(users *repositories.UserRepository, resets *repositories.PasswordResetRepository, recovery *repositories.TwoFactorRecoveryRepository, store *session.Store, jwtSecret string) *Service {
@@ -124,6 +132,57 @@ func (s *Service) CreatePasswordReset(email string) (rawToken string, user *mode
 		return "", nil, err
 	}
 	return raw, user, nil
+}
+
+// EmailVerificationTTL bounds a verification link. Longer than a password reset:
+// the address may sit unread overnight, and the link grants nothing but proof the
+// recipient can read their own mail.
+const EmailVerificationTTL = 48 * time.Hour
+
+// CreateEmailVerification issues a fresh verification link for a user, retiring
+// any outstanding one so a re-send leaves exactly one live link.
+func (s *Service) CreateEmailVerification(user *models.User) (rawToken string, err error) {
+	if s.verifications == nil {
+		return "", errors.New("email verification is not available")
+	}
+	if err := s.verifications.InvalidateForUser(user.ID); err != nil {
+		return "", err
+	}
+	raw, hash := generateToken()
+	rec := &models.EmailVerificationToken{UserID: user.ID, TokenHash: hash, ExpiresAt: time.Now().Add(EmailVerificationTTL)}
+	if err := s.verifications.Create(rec); err != nil {
+		return "", err
+	}
+	return raw, nil
+}
+
+// ConfirmEmailVerification consumes a token and marks the address verified.
+// Returns the user so a caller can greet them by name.
+func (s *Service) ConfirmEmailVerification(rawToken string) (*models.User, error) {
+	if s.verifications == nil {
+		return nil, errors.New("email verification is not available")
+	}
+	rec, err := s.verifications.FindValidByHash(hashToken(rawToken))
+	if err != nil {
+		return nil, ErrInvalidToken
+	}
+	user, err := s.users.FindByID(rec.UserID)
+	if err != nil {
+		return nil, ErrInvalidToken
+	}
+	// Spend the token before the update: a token that verified an address must not
+	// stay usable if the write below fails and the caller retries.
+	if err := s.verifications.MarkUsed(rec.ID); err != nil {
+		return nil, err
+	}
+	if user.EmailVerifiedAt == nil {
+		now := time.Now()
+		user.EmailVerifiedAt = &now
+		if err := s.users.Update(user); err != nil {
+			return nil, err
+		}
+	}
+	return user, nil
 }
 
 // ResetPassword consumes a reset token and sets a new password.

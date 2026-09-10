@@ -80,6 +80,7 @@ func Run(db *gorm.DB) error {
 		&models.WorkspaceMember{},
 		&models.WorkspaceInvitation{},
 		&models.PasswordResetToken{},
+		&models.EmailVerificationToken{},
 		&models.TwoFactorRecoveryCode{},
 		&models.AuditLog{},
 		&models.Registry{},

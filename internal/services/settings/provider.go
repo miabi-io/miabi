@@ -7,7 +7,9 @@
 package settings
 
 import (
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,7 +26,10 @@ const cacheTTL = 15 * time.Second
 // Well-known setting keys. Only a subset is enforced today; the rest are stored
 // and surfaced in the admin UI.
 const (
-	KeyMaintenanceMode          = "maintenance_mode"
+	KeyMaintenanceMode = "maintenance_mode"
+	// Self-service sign-up itself is not here: it is fixed at boot from
+	// MIABI_REGISTRATION_ENABLED (config.RegistrationEnabled). These two shape the
+	// policy that applies once it is open.
 	KeyRequireEmailVerification = "require_email_verification"
 	KeyAllowedSignupDomains     = "allowed_signup_domains"
 	KeyDefaultWorkspaceRole     = "default_workspace_role"
@@ -76,6 +81,11 @@ var defaults = []models.Setting{
 type Provider struct {
 	repo *repositories.SettingRepository
 
+	// pinned names the keys an environment variable supplies. They are re-forced on
+	// every boot, so the console must not offer them as editable: an admin who
+	// changed one would watch it revert at the next restart with no explanation.
+	pinned map[string]bool
+
 	mu sync.RWMutex
 	// ttl bounds how long the cache is served before a lazy reload; 0 disables
 	// auto-refresh (used by tests that inject a fixed cache). loadedAt is when the
@@ -89,7 +99,12 @@ type Provider struct {
 // existing admin values are never overwritten. envOverrides maps setting keys to env-provided values: a
 // non-empty value is authoritative and re-applied on every boot; an empty one leaves the key admin-managed.
 func NewProvider(repo *repositories.SettingRepository, envOverrides map[string]string) *Provider {
-	p := &Provider{repo: repo, cache: map[string]models.Setting{}, ttl: cacheTTL}
+	p := &Provider{repo: repo, cache: map[string]models.Setting{}, ttl: cacheTTL, pinned: map[string]bool{}}
+	for key, val := range envOverrides {
+		if strings.TrimSpace(val) != "" {
+			p.pinned[key] = true
+		}
+	}
 	p.seed(envOverrides)
 	p.reload()
 	return p
@@ -156,6 +171,30 @@ func (p *Provider) reload() {
 }
 
 // Invalidate refreshes the cache from the database. Call after a write.
+// NewFixedProvider builds a provider over a fixed cache and no backing store, for
+// callers that need to exercise settings-driven behaviour without a database.
+func NewFixedProvider(cache map[string]models.Setting) *Provider {
+	if cache == nil {
+		cache = map[string]models.Setting{}
+	}
+	return &Provider{cache: cache, pinned: map[string]bool{}}
+}
+
+// Pinned reports whether an environment variable supplies this key, which makes it
+// read-only in the console.
+func (p *Provider) Pinned(key string) bool { return p.pinned[key] }
+
+// PinnedKeys lists every env-supplied key, for an API that has to tell the console
+// what it may not edit.
+func (p *Provider) PinnedKeys() []string {
+	out := make([]string, 0, len(p.pinned))
+	for k := range p.pinned {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func (p *Provider) Invalidate() { p.reload() }
 
 // refreshIfStale lazily reloads the cache once it is older than the TTL, so an

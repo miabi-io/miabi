@@ -3,6 +3,9 @@ import { useAuthStore } from '@/stores/auth'
 
 const routes = [
   { path: '/login', name: 'login', component: () => import('@/views/auth/Login.vue'), meta: { guest: true, title: 'Sign in' } },
+  { path: '/register', name: 'register', component: () => import('@/views/auth/Register.vue'), meta: { guest: true, title: 'Create account' } },
+  // Not guest-gated: a verification link from email must work even if a session exists.
+  { path: '/verify-email', name: 'verify-email', component: () => import('@/views/auth/VerifyEmail.vue'), meta: { title: 'Verify email' } },
   { path: '/forgot-password', name: 'forgot-password', component: () => import('@/views/auth/ForgotPassword.vue'), meta: { guest: true, title: 'Reset password' } },
   // Not guest-gated: a reset link from email must work even if a session exists.
   { path: '/reset-password', name: 'reset-password', component: () => import('@/views/auth/ResetPassword.vue'), meta: { title: 'Reset password' } },

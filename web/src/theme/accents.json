@@ -1,0 +1,136 @@
+{
+  "_comment": [
+    "The accent themes the console offers. This file is the ONE source: the picker",
+    "reads it, and scripts/gen-accents.mjs turns it into assets/accents.css. Edit",
+    "here and run `npm run gen:accents` \u2014 it also runs before every build, so the",
+    "shipped stylesheet cannot drift from this file.",
+    "",
+    "Steps 500 and up are pulled one step darker than the usual Tailwind ramp for the",
+    "warm accents. At their normal weight, orange-500 and lime-500 carry a focus ring",
+    "on white at under 3:1 and white button text at under 4.5:1 \u2014 legible on the dark",
+    "theme and not on the light one. accents.spec.ts is what found that.",
+    "",
+    "nearState declares that an accent sits within 25\u00b0 of a state colour. Orange is",
+    "17\u00b0 from warning and is shipped deliberately; it stays tellable apart because it",
+    "is materially deeper than warning-500, and because the console conveys state with",
+    "an icon and a word as well as a colour.",
+    "",
+    "The declaration is not a mute button: the test checks it names the state the",
+    "accent is ACTUALLY nearest, so it cannot go stale, and an undeclared collision",
+    "still fails.",
+    "",
+    "Green and red were asked for and dropped: both land at 0\u00b0 \u2014 green-500 IS",
+    "success-500 and red-500 IS danger-500. An accent indistinguishable from 'this",
+    "went wrong' makes every primary button read as a warning.",
+    "",
+    "Teal was tried and dropped: teal-600 carries white button text at only 3.74:1.",
+    "",
+    "dark50 is the only step a dark theme overrides: the -50 tint has to darken rather",
+    "than lighten, while steps 100-900 read correctly on both grounds."
+  ],
+  "accents": [
+    {
+      "code": "default",
+      "label": "Purple",
+      "ramp": {
+        "50": "#faf5ff",
+        "100": "#f3e8ff",
+        "200": "#e9d5ff",
+        "300": "#d8b4fe",
+        "400": "#c084fc",
+        "500": "#a855f7",
+        "600": "#9333ea",
+        "700": "#7e22ce",
+        "800": "#6b21a8",
+        "900": "#581c87"
+      },
+      "dark50": "#1e0d30"
+    },
+    {
+      "code": "blue",
+      "label": "Blue",
+      "ramp": {
+        "50": "#eff6ff",
+        "100": "#dbeafe",
+        "200": "#bfdbfe",
+        "300": "#93c5fd",
+        "400": "#60a5fa",
+        "500": "#3b82f6",
+        "600": "#2563eb",
+        "700": "#1d4ed8",
+        "800": "#1e40af",
+        "900": "#1e3a8a"
+      },
+      "dark50": "#0d1a30"
+    },
+    {
+      "code": "indigo",
+      "label": "Indigo",
+      "ramp": {
+        "50": "#eef2ff",
+        "100": "#e0e7ff",
+        "200": "#c7d2fe",
+        "300": "#a5b4fc",
+        "400": "#818cf8",
+        "500": "#6366f1",
+        "600": "#4f46e5",
+        "700": "#4338ca",
+        "800": "#3730a3",
+        "900": "#312e81"
+      },
+      "dark50": "#14132e"
+    },
+    {
+      "code": "slate",
+      "label": "Slate",
+      "ramp": {
+        "50": "#f8fafc",
+        "100": "#f1f5f9",
+        "200": "#e2e8f0",
+        "300": "#cbd5e1",
+        "400": "#94a3b8",
+        "500": "#64748b",
+        "600": "#475569",
+        "700": "#334155",
+        "800": "#1e293b",
+        "900": "#0f172a"
+      },
+      "dark50": "#12171d"
+    },
+    {
+      "code": "orange",
+      "label": "Orange",
+      "nearState": "warning",
+      "ramp": {
+        "50": "#fff7ed",
+        "100": "#ffedd5",
+        "200": "#fed7aa",
+        "300": "#fdba74",
+        "400": "#fb923c",
+        "500": "#ea580c",
+        "600": "#c2410c",
+        "700": "#9a3412",
+        "800": "#7c2d12",
+        "900": "#431407"
+      },
+      "dark50": "#2a1409"
+    },
+    {
+      "code": "lime",
+      "label": "Lime",
+      "ramp": {
+        "50": "#f7fee7",
+        "100": "#ecfccb",
+        "200": "#d9f99d",
+        "300": "#bef264",
+        "400": "#a3e635",
+        "500": "#65a30d",
+        "600": "#4d7c0f",
+        "700": "#3f6212",
+        "800": "#365314",
+        "900": "#1a2e05"
+      },
+      "dark50": "#17250a"
+    }
+  ]
+}
