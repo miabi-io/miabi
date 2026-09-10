@@ -98,14 +98,10 @@ onMounted(async () => {
     passwordResetEnabled.value = data.data?.password_reset_enabled ?? false
     registrationEnabled.value = data.data?.registration_enabled ?? false
     brand.value = data.data?.brand ?? {}
-    // The sign-in page has no user, so it wears the operator's accent rather than
-    // anyone's preference. Applied to <html>, where the derived tokens resolve.
-    if (brand.value.accent) {
-      document.documentElement.setAttribute('data-accent', brand.value.accent)
-    }
   } catch {
     // Best-effort: leave the reset link hidden if status can't be read.
   }
+  theme.applyBrandAccent(brand.value.accent)
 })
 
 async function submit() {

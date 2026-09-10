@@ -68,6 +68,12 @@ export const useThemeStore = defineStore('theme', () => {
     document.documentElement.setAttribute('data-accent', accent.value)
   }
 
+  // The sign-in screens have no user, so they wear the operator's accent or Miabi's
+  // own, never the cached accent of whoever signed in last.
+  function applyBrandAccent(a?: AccentCode) {
+    document.documentElement.setAttribute('data-accent', a || 'default')
+  }
+
   function setAccent(a: AccentCode) {
     if (!persist) accentUnsynced = true
     accent.value = a
@@ -138,6 +144,9 @@ export const useThemeStore = defineStore('theme', () => {
     } else if (accentAction.kind === 'push') {
       saveAccent(accentAction.mode as AccentCode)
     }
+    // A sign-in screen may have swapped in the brand accent, and the watcher only
+    // fires when the value changes.
+    applyAccent()
     persist = true
   }
 
@@ -161,5 +170,5 @@ export const useThemeStore = defineStore('theme', () => {
     if (persist) saveAccent(val)
   }, { immediate: true, flush: 'sync' })
 
-  return { mode, isDark, toggle, setMode, accent, setAccent, adopt }
+  return { mode, isDark, toggle, setMode, accent, setAccent, applyBrandAccent, adopt }
 })

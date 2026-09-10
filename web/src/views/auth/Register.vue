@@ -5,8 +5,10 @@ import { authApi } from '@/api/auth'
 import { apiErrorMessage } from '@/api/client'
 import AuthShell from './AuthShell.vue'
 import type { Brand } from '@/api/types'
+import { useThemeStore } from '@/stores/theme'
 
 const router = useRouter()
+const theme = useThemeStore()
 
 // The sign-up page is a front door like signing in, so it wears the operator's
 // identity too — same source, same fallbacks.
@@ -37,12 +39,10 @@ onMounted(async () => {
       return
     }
     brand.value = data.data?.brand ?? {}
-    if (brand.value.accent) {
-      document.documentElement.setAttribute('data-accent', brand.value.accent)
-    }
   } catch {
     // Status is best-effort; let the form render and the request decide.
   }
+  theme.applyBrandAccent(brand.value.accent)
   nameInput.value?.focus()
 })
 
