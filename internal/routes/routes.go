@@ -419,8 +419,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	})
 	gpuService.SetQuota(quotaService)
 	appService := application.NewService(appRepo, deploymentRepo, releaseRepo, volumeRepo, routeRepo, networkRepo, stackRepo, appPortRepo, appEventRepo, nodeClients, producer, eventsService)
-	// Lets the app service (re)publish host ports when a port-forward app gains a
-	// route, and clean a deleted app's bindings.
+	// Lets the app service clean a deleted app's bindings.
 	appService.SetPortBindings(portBindingRepo)
 	storageService := storage.NewService(volumeRepo, appRepo, nodeClients)
 	portBindingService := portbinding.NewService(portBindingRepo, appRepo, appPortRepo, workspaceRepo, cfg.HostPortMin, cfg.HostPortMax)

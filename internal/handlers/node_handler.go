@@ -125,7 +125,7 @@ type CreateNodeRequest struct {
 		// PublicIP / PublicHostname are the node's externally reachable DNS target.
 		PublicIP       string `json:"public_ip"`
 		PublicHostname string `json:"public_hostname"`
-		Connectivity   string `json:"connectivity" enum:"port-forward,edge-gateway"`
+		Connectivity   string `json:"connectivity" enum:"edge-gateway,cluster"`
 		// AccessMode is how the control plane reaches this node's Docker engine.
 		AccessMode string `json:"access_mode" enum:"agent,api,socket"`
 		// DockerEndpoint is required for api: tcp://host:2376.

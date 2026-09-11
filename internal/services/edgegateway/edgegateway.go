@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package edgegateway provisions the Goma Gateway container fronting an edge-gateway node's public
-// ingress. Unlike port-forward nodes, such a node terminates TLS locally and serves its own routes,
+// ingress. Unlike cluster-gateway nodes, such a node terminates TLS locally and serves its own routes,
 // pulled from the control plane's HTTP provider using the node's own agent token.
 package edgegateway
 
