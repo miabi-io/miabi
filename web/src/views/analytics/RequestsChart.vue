@@ -225,7 +225,7 @@ const summary = computed(
 .rc-bar.cap { border-radius: 3px 3px 0 0; }
 /* 2px of card surface separates touching segments — no strokes. */
 .rc-bar.gap { margin-bottom: 2px; }
-.b-ok { background: var(--primary-500); }
+.b-ok { background: var(--chart-2xx); }
 .b-4xx { background: var(--chart-4xx); }
 .b-5xx { background: var(--chart-5xx); }
 /* A bucket with no traffic keeps a baseline mark, so "zero" never reads as "missing". */
@@ -253,7 +253,7 @@ const summary = computed(
 .rc-tip-foot { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.14); font-size: 11px; opacity: 0.72; white-space: nowrap; }
 .rc-tip-foot.no-top { margin-top: 0; padding-top: 0; border-top: none; }
 .k { width: 10px; height: 2px; border-radius: 1px; flex: 0 0 auto; }
-.k-ok { background: var(--primary-500); }
+.k-ok { background: var(--chart-2xx); }
 .k-4xx { background: var(--chart-4xx); }
 .k-5xx { background: var(--chart-5xx); }
 
