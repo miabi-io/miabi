@@ -7,8 +7,10 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import NotificationBell from '@/components/NotificationBell.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
 import ContextSwitcher from '@/components/ContextSwitcher.vue'
+import MiabiWordmark from '@/components/MiabiWordmark.vue'
 import { type NavItem, type NavSection } from '@/data/nav'
 import { infoApi } from '@/api/info'
+import { authApi } from '@/api/auth'
 import { ADMIN_HOME } from '@/data/console'
 
 // The frame both consoles share. What differs is the navigation it is handed and
@@ -113,6 +115,9 @@ function closeMenus(e: MouseEvent) {
   if (userMenuOpen.value && !target.closest?.('.user-menu')) userMenuOpen.value = false
 }
 
+// Empty unless an Enterprise operator set one; status only exposes it under the license.
+const brandName = ref('')
+
 const paletteOpen = ref(false)
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
 const paletteHint = computed(() => (isMac ? '⌘K' : 'Ctrl K'))
@@ -129,6 +134,7 @@ onMounted(() => {
   document.addEventListener('keydown', onPaletteShortcut)
   theme.adopt(auth.user?.preferences?.theme, auth.user?.preferences?.accent)
   infoApi.get().then((res) => { docsEnabled.value = res.data.data.openapi_docs }).catch(() => { })
+  authApi.status().then((res) => { brandName.value = res.data.data?.brand?.name?.trim() ?? '' }).catch(() => { })
 })
 onBeforeUnmount(() => {
   document.removeEventListener('click', closeMenus)
@@ -142,8 +148,10 @@ onBeforeUnmount(() => {
     <aside class="sidebar">
       <div class="sidebar-header">
         <img src="/brand/miabi-mark-white.svg" alt="Miabi" class="sidebar-logo" @click="navigate(props.home)" />
-        <span class="sidebar-brand-text" @click="navigate(props.home)">Miabi<span
-            class="sidebar-brand-accent">.io</span></span>
+        <span class="sidebar-brand-text" @click="navigate(props.home)">
+          <span v-if="brandName" class="sidebar-brand-name">{{ brandName }}</span>
+          <MiabiWordmark v-else />
+        </span>
         <button class="sidebar-collapse-btn" :title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
           :aria-label="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'" @click="toggleSidebar">
           <!-- Panel toggle: a sidebar glyph whose inner chevron points the way it will move. -->
@@ -292,7 +300,10 @@ onBeforeUnmount(() => {
       <aside v-if="mobileOpen" class="sidebar sidebar-mobile">
         <div class="sidebar-header">
           <img src="/brand/miabi-mark-white.svg" alt="Miabi" class="sidebar-logo" />
-          <span class="sidebar-brand-text">Miabi<span class="sidebar-brand-accent">.io</span></span>
+          <span class="sidebar-brand-text">
+            <span v-if="brandName" class="sidebar-brand-name">{{ brandName }}</span>
+            <MiabiWordmark v-else />
+          </span>
           <button class="sidebar-collapse-btn" aria-label="Close" @click="mobileOpen = false">
             <span class="mdi mdi-close"></span>
           </button>
@@ -384,19 +395,22 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-brand-text {
-  font-size: 19px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
   color: #fff;
-  white-space: nowrap;
   overflow: hidden;
   cursor: pointer;
   transition: opacity var(--transition-slow);
 }
 
-/* Two-tone wordmark: the trailing .io carries the brand accent. */
-.sidebar-brand-accent {
-  color: var(--primary-400);
+.sidebar-brand-text svg {
+  display: block;
+}
+
+.sidebar-brand-name {
+  display: block;
+  font-family: var(--font-brand);
+  font-size: 19px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .sidebar-collapsed .sidebar:not(.sidebar-mobile) .sidebar-brand-text {

@@ -5,6 +5,8 @@
 //
 // brandName replaces the wordmark for a white-labelled install; unset keeps the
 // "Miabi.io" lockup with its accented ".io".
+import MiabiWordmark from '@/components/MiabiWordmark.vue'
+
 defineProps<{ brandName?: string }>()
 </script>
 
@@ -15,10 +17,8 @@ defineProps<{ brandName?: string }>()
              trailing ".io" carries the brand accent. -->
         <div class="auth-hero-wordmark">
           <img src="/brand/miabi-mark-white.svg" alt="" class="auth-hero-mark" />
-          <span class="auth-hero-name">
-            <template v-if="brandName">{{ brandName }}</template>
-            <template v-else>Miabi<span class="wm-io">.io</span></template>
-          </span>
+          <span v-if="brandName" class="auth-hero-name">{{ brandName }}</span>
+          <MiabiWordmark v-else :height="24" />
         </div>
 
         <div class="auth-hero-body">
@@ -86,13 +86,10 @@ defineProps<{ brandName?: string }>()
   width: 40px;
 }
 .auth-hero-name {
+  font-family: var(--font-brand);
   font-size: 1.6rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-weight: 700;
   color: #fff;
-}
-.auth-hero-name .wm-io {
-  color: var(--primary-400); /* the ".io" accent */
 }
 .auth-hero-body {
   margin: 48px 0;

@@ -5,6 +5,7 @@ import { copyText } from '@/utils/clipboard'
 import type { AppInfo } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
 import { useLicenseStore } from '@/stores/license'
+import MiabiWordmark from '@/components/MiabiWordmark.vue'
 
 const auth = useAuthStore()
 const license = useLicenseStore()
@@ -29,6 +30,7 @@ const editionLabel = computed(() => {
 })
 
 const resources = [
+  { label: 'Website', icon: 'mdi-web', href: 'https://miabi.io' },
   { label: 'Documentation', icon: 'mdi-book-open-page-variant-outline', href: 'https://docs.miabi.io' },
   { label: 'Source code', icon: 'mdi-github', href: 'https://github.com/miabi-io/miabi' },
   { label: 'Report an issue', icon: 'mdi-bug-outline', href: 'https://github.com/miabi-io/miabi/issues' },
@@ -87,7 +89,7 @@ function copyVersion() {
     <!-- Hero -->
     <section class="hero">
       <img src="/brand/miabi-mark.svg" alt="Miabi" class="hero-mark" />
-      <h1 class="hero-title">Miabi<span class="hero-accent">.io</span></h1>
+      <h1 class="hero-title"><MiabiWordmark :height="32" /></h1>
       <p class="hero-tagline">The open-source, self-hosted Platform-as-a-Service (PaaS) for Docker.</p>
       <div class="hero-badges">
         <span v-if="info" class="badge badge-neutral">v{{ info.version }}</span>
@@ -184,13 +186,11 @@ function copyVersion() {
   margin-bottom: 14px;
 }
 .hero-title {
-  font-size: 34px;
-  font-weight: 700;
+  display: flex;
+  justify-content: center;
   margin: 0;
-  letter-spacing: -0.02em;
-}
-.hero-accent {
-  color: var(--accent, #6366f1);
+  color: var(--text-primary);
+  --wm-accent: var(--primary-500);
 }
 .hero-tagline {
   margin: 8px 0 16px;
