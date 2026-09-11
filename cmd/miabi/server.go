@@ -400,6 +400,7 @@ func runServer(cli *okapicli.CLI) {
 			// central gateway reaches it on any node without a published host port.
 			deployHandler.SetCluster(clusterService)
 			jobHandler.SetCluster(clusterService)
+			deployRouteSvc.SetCluster(clusterService)
 			// Git builds run on runners: the resolver supplies the admin-controlled builder image and
 			// the image catalog records build provenance.
 			deployHandler.SetBuildProvenance(

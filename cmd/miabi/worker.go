@@ -211,28 +211,23 @@ func runWorker() error {
 	deployHandler.SetGPU(gpuScheduler)
 	jobHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
 	jobHandler.SetGrantGuard(grantGuard)
-	// Managed-subnet allocator: overlay networks + remote-node network recreate
-	// draw from the Miabi pool instead of Docker's default address pool.
+
 	subnetAllocator := newSubnetAllocator(cfg, db)
 	deployHandler.SetAllocator(subnetAllocator)
 	jobHandler.SetAllocator(subnetAllocator)
-	// Cluster mode: a routed app also joins the shared ingress overlay, so the central gateway
-	// reaches it on any node without a published host port. This worker detects swarm state
-	// itself and re-detects on interval, so enabling cluster mode needs no restart.
+
 	clusterService := cluster.NewService(nodeClients, node.NewService(repositories.NewServerRepository(db), dockerClient))
 	clusterService.Refresh(context.Background())
 	go clusterService.RefreshLoop(context.Background(), 30*time.Second)
 	deployHandler.SetCluster(clusterService)
 	jobHandler.SetCluster(clusterService)
-	// Git builds run on runners; here the resolver supplies the admin-controlled
-	// builder image (passed to the runner) and the image catalog records provenance.
+	workerRouteSvc.SetCluster(clusterService)
+
 	deployHandler.SetBuildProvenance(
 		imageResolver,
 		image.NewService(repositories.NewImageRepository(db), repositories.NewReleaseRepository(db)),
 	)
-	// Distribute Git-built images via the internal registry so other nodes can pull them. The
-	// workspace repository is required: resolving an image namespace to a workspace is how the
-	// deploy path proves the image belongs to the app, and the check fails closed.
+
 	registryDistributor := registryserver.NewService(
 		repositories.NewRegistrySettingsRepository(db), imageResolver,
 		settings.NewProvider(repositories.NewSettingRepository(db), nil),
