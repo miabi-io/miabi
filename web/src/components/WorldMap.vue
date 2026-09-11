@@ -43,8 +43,8 @@ function fillFor(id: string): string {
   const c = byId.value[id]
   if (!c) return '' // fall back to CSS default fill
   // sqrt scale so mid-volume countries stay visible against a few hot ones.
-  const alpha = 0.2 + 0.8 * Math.sqrt(c / max.value)
-  return `rgba(168, 85, 247, ${alpha.toFixed(3)})`
+  const pct = 20 + 80 * Math.sqrt(c / max.value)
+  return `color-mix(in srgb, var(--primary-500) ${pct.toFixed(1)}%, transparent)`
 }
 
 const tip = ref<{ x: number; y: number; text: string } | null>(null)
