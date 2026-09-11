@@ -145,7 +145,10 @@ func runServer(cli *okapicli.CLI) {
 
 			// Auto-detects whether the manager engine is a swarm manager; a no-op on plain Docker.
 			// Refreshed once at boot so CapCluster is correct before the first request.
+			clusterRepo := repositories.NewClusterRepository(res.db)
+			nodeService.SetClusters(clusterRepo)
 			clusterService := cluster.NewService(nodeClients, nodeService)
+			clusterService.SetStore(clusterRepo)
 			clusterService.Refresh(context.Background())
 
 			imageResolver := platformimage.New(

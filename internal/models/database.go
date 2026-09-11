@@ -62,7 +62,8 @@ type DatabaseInstance struct {
 	Version     string   `json:"version" gorm:"not null"`
 	Status      DBStatus `json:"status" gorm:"not null;default:provisioning"`
 	// ServerID is the node this instance runs on (0 = local control-plane node).
-	ServerID uint `json:"server_id" gorm:"index;not null;default:0"`
+	ServerID  uint `json:"server_id" gorm:"index;not null;default:0"`
+	ClusterID uint `json:"cluster_id" gorm:"index;not null;default:0"`
 	// ServerName is the display name of the node (transient; populated on read so
 	// the UI can show where the instance lives). Empty if the node is unknown.
 	ServerName  string `json:"server_name,omitempty" gorm:"-"`

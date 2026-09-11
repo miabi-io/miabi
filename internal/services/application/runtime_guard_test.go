@@ -4,9 +4,11 @@
 package application
 
 import (
+	"context"
 	"errors"
 	"testing"
 
+	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/models"
 )
 
@@ -14,7 +16,10 @@ import (
 // was made a service while there was one.
 type clusterOff struct{}
 
-func (clusterOff) CapCluster() bool { return false }
+func (clusterOff) IsSwarm(uint) bool { return false }
+func (clusterOff) Manager(context.Context, uint) (docker.Client, error) {
+	return nil, docker.ErrNotFound
+}
 
 // The reported bug: an app stored as a service, cluster mode since switched off,
 // and every settings save refused — including the memory limit the user was
@@ -72,7 +77,10 @@ func TestAutoPromotedServiceIsDemotedNotRefused(t *testing.T) {
 // With a working cluster nothing is demoted and nothing is refused.
 type clusterOn struct{}
 
-func (clusterOn) CapCluster() bool { return true }
+func (clusterOn) IsSwarm(uint) bool { return true }
+func (clusterOn) Manager(context.Context, uint) (docker.Client, error) {
+	return nil, docker.ErrNotFound
+}
 
 func TestServiceRuntimeIsUntouchedWithAClusterUp(t *testing.T) {
 	s := &Service{cluster: clusterOn{}}

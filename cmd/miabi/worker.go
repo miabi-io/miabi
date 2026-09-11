@@ -217,6 +217,7 @@ func runWorker() error {
 	jobHandler.SetAllocator(subnetAllocator)
 
 	clusterService := cluster.NewService(nodeClients, node.NewService(repositories.NewServerRepository(db), dockerClient))
+	clusterService.SetStore(repositories.NewClusterRepository(db))
 	clusterService.Refresh(context.Background())
 	go clusterService.RefreshLoop(context.Background(), 30*time.Second)
 	deployHandler.SetCluster(clusterService)

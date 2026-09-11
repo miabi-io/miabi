@@ -9,15 +9,8 @@ import (
 	"testing"
 )
 
-type memTokens struct{ m map[string]string }
-
-func newMemTokens() *memTokens { return &memTokens{m: map[string]string{}} }
-
-func (t *memTokens) Get(k string) (string, error) { return t.m[k], nil }
-func (t *memTokens) Set(k, v string) error        { t.m[k] = v; return nil }
-
 func TestClusterNameRoundTrips(t *testing.T) {
-	s := &Service{tokens: newMemTokens()}
+	s := &Service{store: &memStore{}}
 
 	if got := s.Name(); got != "" {
 		t.Fatalf("an unnamed cluster should report %q, got %q", "", got)
@@ -33,7 +26,7 @@ func TestClusterNameRoundTrips(t *testing.T) {
 // An operator who no longer wants a label should be able to drop it, not be stuck with
 // one — so an empty name clears rather than being rejected.
 func TestClusterNameCanBeCleared(t *testing.T) {
-	s := &Service{tokens: newMemTokens()}
+	s := &Service{store: &memStore{}}
 	_ = s.SetName("staging")
 
 	if err := s.SetName(""); err != nil {
@@ -45,15 +38,14 @@ func TestClusterNameCanBeCleared(t *testing.T) {
 }
 
 func TestClusterNameTooLongIsRejected(t *testing.T) {
-	s := &Service{tokens: newMemTokens()}
+	s := &Service{store: &memStore{}}
 	err := s.SetName(strings.Repeat("x", maxClusterNameLen+1))
 	if !errors.Is(err, ErrNameTooLong) {
 		t.Fatalf("want ErrNameTooLong, got %v", err)
 	}
 }
 
-// The name store is optional (nil on a build that never wires it), and reading a name
-// must never be the thing that panics a status call.
+// Reading a name must never be the thing that panics a status call.
 func TestClusterNameIsNilSafe(t *testing.T) {
 	s := &Service{}
 	if got := s.Name(); got != "" {

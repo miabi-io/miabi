@@ -229,18 +229,27 @@ type NetworkEnsurer interface {
 // create a missing one.
 func (s *Service) SetNetworkEnsurer(e NetworkEnsurer) { s.netEnsurer = e }
 
-// ClusterCap reports whether the manager is a swarm manager (cluster mode on).
-// Implemented by the cluster service; used to gate "service" runtime apps.
+// ClusterCap is the per-cluster control path. Implemented by the cluster service; used to gate
+// "service" runtime apps and to reach the swarm they run in.
 type ClusterCap interface {
-	CapCluster() bool
+	IsSwarm(clusterID uint) bool
+	Manager(ctx context.Context, clusterID uint) (docker.Client, error)
 }
 
 // SetClusterCap wires the cluster-capability check (nil-safe; nil means cluster
 // mode is treated as off, so service-runtime apps are rejected).
 func (s *Service) SetClusterCap(c ClusterCap) { s.cluster = c }
 
+// clusterEnabled reports whether service apps can run: they all run in the default cluster's swarm.
 func (s *Service) clusterEnabled() bool {
-	return s.cluster != nil && s.cluster.CapCluster()
+	return s.cluster != nil && s.cluster.IsSwarm(models.DefaultClusterID)
+}
+
+func (s *Service) swarmManager(ctx context.Context) (docker.Client, error) {
+	if s.cluster == nil {
+		return s.clients.For(0)
+	}
+	return s.cluster.Manager(ctx, models.DefaultClusterID)
 }
 
 // SetPortBindings wires the port-binding repository used by EnsurePublished to
@@ -346,10 +355,10 @@ func (s *Service) annotatePlacement(ctx context.Context, app *models.Application
 	if app == nil || app.RuntimeKind != models.RuntimeService {
 		return
 	}
-	if s.cluster == nil || !s.cluster.CapCluster() {
+	if !s.clusterEnabled() {
 		return
 	}
-	mgr, err := s.clients.For(0)
+	mgr, err := s.swarmManager(ctx)
 	if err != nil {
 		return
 	}
@@ -678,7 +687,7 @@ func (s *Service) LiveStatus(ctx context.Context, app *models.Application) LiveS
 // manager's view of its Swarm service: desired replicas vs running tasks. There
 // is no single container to inspect, so status is derived from task convergence.
 func (s *Service) serviceLiveStatus(ctx context.Context, app *models.Application, ls LiveStatus) LiveStatus {
-	mgr, err := s.clients.For(0)
+	mgr, err := s.swarmManager(ctx)
 	if err != nil {
 		return ls // manager unreachable — report the stored status
 	}
@@ -1517,7 +1526,7 @@ func (s *Service) Start(ctx context.Context, app *models.Application) (*models.D
 		if replicas < 1 {
 			replicas = 1
 		}
-		mgr, err := s.clients.For(0)
+		mgr, err := s.swarmManager(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -1548,7 +1557,7 @@ func (s *Service) Stop(ctx context.Context, app *models.Application) error {
 	prev := app.Status
 	_ = s.apps.SetStatus(app.ID, models.AppStatusStopped)
 	if app.RuntimeKind == models.RuntimeService {
-		mgr, err := s.clients.For(0)
+		mgr, err := s.swarmManager(ctx)
 		if err != nil {
 			_ = s.apps.SetStatus(app.ID, prev)
 			return err
@@ -1580,7 +1589,7 @@ func (s *Service) Restart(ctx context.Context, app *models.Application) (*models
 	}
 	if app.RuntimeKind == models.RuntimeService {
 		// Restart = force a rolling restart of the service's tasks in place.
-		mgr, err := s.clients.For(0)
+		mgr, err := s.swarmManager(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -1623,7 +1632,7 @@ func (s *Service) Scale(ctx context.Context, app *models.Application, replicas i
 	if err := s.checkCompute(app, replicas); err != nil {
 		return err
 	}
-	mgr, err := s.clients.For(0)
+	mgr, err := s.swarmManager(ctx)
 	if err != nil {
 		return err
 	}

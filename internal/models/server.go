@@ -85,6 +85,7 @@ type Server struct {
 	ID           uint               `json:"id" gorm:"primaryKey"`
 	Name         string             `json:"name" gorm:"uniqueIndex;not null"`
 	DisplayName  string             `json:"display_name"`
+	ClusterID    uint               `json:"cluster_id" gorm:"index;not null;default:0"`
 	Connectivity ServerConnectivity `json:"connectivity" gorm:"not null;default:port-forward"`
 	// AccessMode is how the control plane reaches this node's Docker engine.
 	// Existing rows backfill to "agent" (column default); the local node is set

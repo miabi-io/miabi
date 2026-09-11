@@ -70,6 +70,7 @@ func Run(db *gorm.DB) error {
 	if err := db.AutoMigrate(
 		&models.UpgradeStep{},
 		&models.UpdateStatus{},
+		&models.Cluster{},
 		&models.Server{},
 		&models.GPUDevice{},
 		&models.User{},
@@ -197,6 +198,12 @@ func Run(db *gorm.DB) error {
 			`ON notifications (user_id, announcement_id) WHERE announcement_id IS NOT NULL`,
 	).Error; err != nil {
 		return fmt.Errorf("failed to create announcement-delivery uniqueness index: %w", err)
+	}
+
+	if err := db.Exec(
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_cluster_default ON clusters (is_default) WHERE is_default`,
+	).Error; err != nil {
+		return fmt.Errorf("failed to create default-cluster uniqueness index: %w", err)
 	}
 
 	logger.Info("database migrations applied")

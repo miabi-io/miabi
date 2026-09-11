@@ -19,6 +19,7 @@ type Stack struct {
 	// DisplayName is the free-text label shown in the UI; not unique.
 	DisplayName string `json:"display_name"`
 	DockerName  string `json:"docker_name" gorm:"uniqueIndex;not null"`
+	ClusterID   uint   `json:"cluster_id" gorm:"index;not null;default:0"`
 	// DockerNetwork is the platform-managed Docker network shared by the stack's
 	// apps, giving them service-name DNS discovery isolated from other stacks.
 	DockerNetwork string `json:"docker_network,omitempty"`

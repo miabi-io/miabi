@@ -25,6 +25,7 @@ type stackRow struct {
 	Name          string
 	DisplayName   string
 	DockerName    string
+	ClusterID     uint
 	DockerNetwork string
 	Description   string
 	Metadata      string

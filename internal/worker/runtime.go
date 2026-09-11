@@ -145,10 +145,10 @@ type ConfigProjector interface {
 	ProjectWith(cfg *models.Config, mount models.AppMount, r config.Resolver) ([]config.ProjectedFile, error)
 }
 
-// ClusterCap reports whether the manager engine is a reachable swarm manager.
-// Implemented by services/cluster.
+// ClusterCap is the per-cluster control path. Implemented by services/cluster.
 type ClusterCap interface {
-	CapCluster() bool
+	IsSwarm(clusterID uint) bool
+	Manager(ctx context.Context, clusterID uint) (docker.Client, error)
 }
 
 // SetCluster wires swarm detection (nil-safe). Shared by the deploy and job
@@ -158,7 +158,9 @@ func (b *runtimeBuilder) SetCluster(c ClusterCap) { b.cluster = c }
 // SetConfigs supplies the projector that turns config mounts into files.
 func (b *runtimeBuilder) SetConfigs(c ConfigProjector) { b.configs = c }
 
-func (b *runtimeBuilder) clusterOn() bool { return b.cluster != nil && b.cluster.CapCluster() }
+func (b *runtimeBuilder) isSwarm(clusterID uint) bool {
+	return b.cluster != nil && b.cluster.IsSwarm(clusterID)
+}
 
 // SetAllocator wires the subnet allocator used when recreating networks on a
 // node (nil-safe). Shared by the deploy and job handlers.
@@ -308,7 +310,7 @@ func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Cli
 		// In cluster mode the central gateway reaches a routed app over the shared ingress overlay instead of
 		// a published host port, so the app joins that overlay too. Only the globally-unique upstream alias is
 		// registered — never app.Name, which is workspace-scoped. The overlay itself is owned by services/cluster.
-		if b.clusterOn() {
+		if b.isSwarm(app.ClusterID) {
 			networks = append(networks, node.IngressOverlay)
 		}
 	}

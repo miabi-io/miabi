@@ -122,6 +122,9 @@ func (r *ServerRepository) EnsureLocal(name, endpoint string) (*models.Server, e
 		Role: models.RoleManager, Connectivity: models.ConnectivityEdgeGateway,
 		Status: models.ServerStatusUnknown,
 	}
+	if def, derr := NewClusterRepository(r.db).FindDefault(); derr == nil {
+		s.ClusterID = def.ID
+	}
 	if err := r.Create(s); err != nil {
 		return nil, err
 	}

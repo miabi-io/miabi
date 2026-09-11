@@ -49,7 +49,8 @@ type Volume struct {
 	DisplayName string `json:"display_name"`
 	DockerName  string `json:"docker_name" gorm:"uniqueIndex;not null"`
 	// ServerID is the node this volume lives on (0 = local control-plane node).
-	ServerID uint `json:"server_id" gorm:"index;not null;default:0"`
+	ServerID  uint `json:"server_id" gorm:"index;not null;default:0"`
+	ClusterID uint `json:"cluster_id" gorm:"index;not null;default:0"`
 	// ServerName is the display name of the node (transient; populated on read).
 	ServerName string `json:"server_name,omitempty" gorm:"-"`
 	Mountpoint string `json:"mountpoint,omitempty"`

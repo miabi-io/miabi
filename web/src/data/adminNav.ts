@@ -38,6 +38,7 @@ export const adminNavSections: NavSection[] = [
     id: 'admin-infrastructure',
     title: 'Infrastructure',
     items: [
+      { name: 'Clusters', path: '/admin/clusters', icon: 'mdi-lan' },
       { name: 'Nodes', path: '/admin/nodes', icon: 'mdi-server-network' },
       { name: 'Ports', path: '/admin/ports', icon: 'mdi-lan-connect' },
       { name: 'Kernel grants', path: '/admin/grants', icon: 'mdi-shield-key-outline' },
