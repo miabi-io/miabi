@@ -73,6 +73,37 @@ func (r *ClusterRepository) FindByName(name string) (*models.Cluster, error) {
 	return &c, nil
 }
 
+// FindByAgentTokenHash resolves the cluster whose agent service carries the token with this hash.
+func (r *ClusterRepository) FindByAgentTokenHash(hash string) (*models.Cluster, error) {
+	var c models.Cluster
+	if err := r.db.Where("agent_token_hash = ? AND agent_token_hash <> ''", hash).First(&c).Error; err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// CountWorkloads counts the apps, database instances and volumes placed in a cluster.
+func (r *ClusterRepository) CountWorkloads(clusterID uint) (int64, error) {
+	return r.countPlaced("cluster_id", clusterID)
+}
+
+// CountServerWorkloads counts the apps, database instances and volumes placed on a node.
+func (r *ClusterRepository) CountServerWorkloads(serverID uint) (int64, error) {
+	return r.countPlaced("server_id", serverID)
+}
+
+func (r *ClusterRepository) countPlaced(column string, id uint) (int64, error) {
+	var total int64
+	for _, m := range []any{&models.Application{}, &models.DatabaseInstance{}, &models.Volume{}} {
+		var n int64
+		if err := r.db.Model(m).Where(column+" = ?", id).Count(&n).Error; err != nil {
+			return 0, err
+		}
+		total += n
+	}
+	return total, nil
+}
+
 // IDByUID resolves a cluster's uid to its numeric id.
 func (r *ClusterRepository) IDByUID(uid string) (uint, error) {
 	return idByUID[models.Cluster](r.db, uid)

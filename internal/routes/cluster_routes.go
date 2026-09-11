@@ -10,37 +10,20 @@ import (
 	"github.com/miabi-io/miabi/internal/handlers"
 )
 
-// clusterRoutes registers platform-admin cluster (Docker Swarm) management. Status is always
-// available (reporting "not enabled" on plain Docker); mutations enable, adopt or disable
-// cluster mode and join or leave nodes.
+// clusterRoutes registers the default cluster's Swarm management under /admin/cluster. Status works on
+// plain Docker too, reporting "not enabled". Every cluster's routes live under /admin/clusters/{clusterID}.
 func (r *Router) clusterRoutes() []okapi.RouteDefinition {
-	g := r.v1.Group("/admin/cluster").WithTagInfo(okapi.GroupTag{Name: "Cluster", Description: "Cluster networking (Docker Swarm), opt-in and auto-detected."})
+	g := r.v1.Group("/admin/cluster").WithTagInfo(okapi.GroupTag{Name: "Cluster", Description: "The default cluster's Docker Swarm, opt-in and auto-detected."})
 	admin := []okapi.Middleware{r.authenticate, r.systemAdmin}
 
-	return []okapi.RouteDefinition{
+	defs := []okapi.RouteDefinition{
 		{
 			Method:      http.MethodGet,
 			Path:        "",
 			Group:       g,
 			Middlewares: admin,
 			Handler:     r.h.cluster.Status,
-			Summary:     "Cluster (swarm) status and capability",
-		},
-		{
-			Method:      http.MethodGet,
-			Path:        "/nodes",
-			Group:       g,
-			Middlewares: admin,
-			Handler:     r.h.cluster.Members,
-			Summary:     "List swarm nodes (managed + unmanaged members)",
-		},
-		{
-			Method:      http.MethodGet,
-			Path:        "/join-token",
-			Group:       g,
-			Middlewares: admin,
-			Handler:     r.h.cluster.JoinToken,
-			Summary:     "Manual swarm join command + worker token",
+			Summary:     "Default cluster swarm status and capability",
 		},
 		{
 			Method:      http.MethodPost,
@@ -65,33 +48,8 @@ func (r *Router) clusterRoutes() []okapi.RouteDefinition {
 			Group:       g,
 			Middlewares: admin,
 			Handler:     okapi.H(r.h.cluster.Rename),
-			Summary:     "Rename the cluster",
+			Summary:     "Rename the default cluster",
 			Request:     &handlers.RenameClusterRequest{},
-		},
-		{
-			Method:      http.MethodPost,
-			Path:        "/network/apply",
-			Group:       g,
-			Middlewares: admin,
-			Handler:     r.h.cluster.ApplyNetworking,
-			Summary:     "Convert workspace networks to cluster overlays (cross-node east-west)",
-		},
-		{
-			Method:      http.MethodPost,
-			Path:        "/agents",
-			Group:       g,
-			Middlewares: admin,
-			Handler:     okapi.H(r.h.cluster.DeployAgents),
-			Summary:     "Install the Miabi agent on every swarm worker (global service)",
-			Request:     &handlers.DeployAgentsRequest{},
-		},
-		{
-			Method:      http.MethodDelete,
-			Path:        "/agents",
-			Group:       g,
-			Middlewares: admin,
-			Handler:     r.h.cluster.RemoveAgents,
-			Summary:     "Remove the cluster agent service (nodes become unmanaged)",
 		},
 		{
 			Method:      http.MethodGet,
@@ -101,17 +59,66 @@ func (r *Router) clusterRoutes() []okapi.RouteDefinition {
 			Handler:     r.h.cluster.ControlPlaneCert,
 			Summary:     "The certificate the control plane serves, so agents can be pinned to it",
 		},
+	}
+	return append(defs, r.swarmRoutes(g, "", admin)...)
+}
+
+// swarmRoutes are the Swarm operations shared by the default cluster's routes and each cluster's
+// routes under /admin/clusters/{clusterID}; prefix carries the cluster path parameter.
+func (r *Router) swarmRoutes(g *okapi.Group, prefix string, admin []okapi.Middleware) []okapi.RouteDefinition {
+	return []okapi.RouteDefinition{
 		{
 			Method:      http.MethodGet,
-			Path:        "/preflight",
+			Path:        prefix + "/nodes",
 			Group:       g,
 			Middlewares: admin,
-			Handler:     r.h.cluster.Preflight,
-			Summary:     "Can this host run multi-node cluster mode, and what must be open?",
+			Handler:     r.h.cluster.Members,
+			Summary:     "List swarm nodes (managed + unmanaged members)",
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        prefix + "/join-token",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.cluster.JoinToken,
+			Summary:     "Manual swarm join command + worker token",
 		},
 		{
 			Method:      http.MethodPost,
-			Path:        "/net-check",
+			Path:        prefix + "/network/apply",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.cluster.ApplyNetworking,
+			Summary:     "Convert workspace networks to cluster overlays (cross-node east-west)",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        prefix + "/agents",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.cluster.DeployAgents),
+			Summary:     "Install the Miabi agent on every swarm node (global service)",
+			Request:     &handlers.DeployAgentsRequest{},
+		},
+		{
+			Method:      http.MethodDelete,
+			Path:        prefix + "/agents",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.cluster.RemoveAgents,
+			Summary:     "Remove the cluster agent service (nodes become unmanaged)",
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        prefix + "/preflight",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.cluster.Preflight,
+			Summary:     "Can this cluster's manager run multi-node Swarm, and what must be open?",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        prefix + "/net-check",
 			Group:       g,
 			Middlewares: admin,
 			Handler:     r.h.cluster.NetCheck,
@@ -119,7 +126,7 @@ func (r *Router) clusterRoutes() []okapi.RouteDefinition {
 		},
 		{
 			Method:      http.MethodPost,
-			Path:        "/members/{swarmNodeID}/availability",
+			Path:        prefix + "/members/{swarmNodeID}/availability",
 			Group:       g,
 			Middlewares: admin,
 			Handler:     okapi.H(r.h.cluster.SetAvailability),
@@ -128,7 +135,7 @@ func (r *Router) clusterRoutes() []okapi.RouteDefinition {
 		},
 		{
 			Method:      http.MethodGet,
-			Path:        "/members/{swarmNodeID}/tasks",
+			Path:        prefix + "/members/{swarmNodeID}/tasks",
 			Group:       g,
 			Middlewares: admin,
 			Handler:     r.h.cluster.NodeTasks,
@@ -136,7 +143,7 @@ func (r *Router) clusterRoutes() []okapi.RouteDefinition {
 		},
 		{
 			Method:      http.MethodPost,
-			Path:        "/nodes/{nodeID}/join",
+			Path:        prefix + "/nodes/{nodeID}/join",
 			Group:       g,
 			Middlewares: admin,
 			Handler:     r.h.cluster.JoinNode,
@@ -144,7 +151,7 @@ func (r *Router) clusterRoutes() []okapi.RouteDefinition {
 		},
 		{
 			Method:      http.MethodPost,
-			Path:        "/nodes/{nodeID}/leave",
+			Path:        prefix + "/nodes/{nodeID}/leave",
 			Group:       g,
 			Middlewares: admin,
 			Handler:     r.h.cluster.LeaveNode,

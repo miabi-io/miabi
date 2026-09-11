@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/miabi-io/miabi/internal/docker"
+	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/node"
 )
 
@@ -38,7 +39,9 @@ func (f *netFake) NetworkDisconnect(_ context.Context, name, containerID string,
 
 type clusterStub bool
 
-func (c clusterStub) IsSwarm(uint) bool { return bool(c) }
+func (c clusterStub) IsSwarm(uint) bool                                                { return bool(c) }
+func (c clusterStub) WorkspaceOverlay(uint, models.Network) bool                       { return bool(c) }
+func (clusterStub) EnsureWorkspaceOverlay(context.Context, uint, models.Network) error { return nil }
 func (c clusterStub) Manager(context.Context, uint) (docker.Client, error) {
 	return nil, docker.ErrNotFound
 }

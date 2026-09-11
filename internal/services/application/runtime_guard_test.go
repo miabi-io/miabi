@@ -16,7 +16,8 @@ import (
 // was made a service while there was one.
 type clusterOff struct{}
 
-func (clusterOff) IsSwarm(uint) bool { return false }
+func (clusterOff) IsSwarm(uint) bool         { return false }
+func (clusterOff) ClusterOfServer(uint) uint { return 0 }
 func (clusterOff) Manager(context.Context, uint) (docker.Client, error) {
 	return nil, docker.ErrNotFound
 }
@@ -77,7 +78,8 @@ func TestAutoPromotedServiceIsDemotedNotRefused(t *testing.T) {
 // With a working cluster nothing is demoted and nothing is refused.
 type clusterOn struct{}
 
-func (clusterOn) IsSwarm(uint) bool { return true }
+func (clusterOn) IsSwarm(uint) bool         { return true }
+func (clusterOn) ClusterOfServer(uint) uint { return 0 }
 func (clusterOn) Manager(context.Context, uint) (docker.Client, error) {
 	return nil, docker.ErrNotFound
 }

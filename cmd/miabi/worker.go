@@ -214,10 +214,13 @@ func runWorker() error {
 
 	subnetAllocator := newSubnetAllocator(cfg, db)
 	deployHandler.SetAllocator(subnetAllocator)
+	deployHandler.SetClusterConcurrency(cfg.WorkerConcurrency / 2)
 	jobHandler.SetAllocator(subnetAllocator)
 
 	clusterService := cluster.NewService(nodeClients, node.NewService(repositories.NewServerRepository(db), dockerClient))
 	clusterService.SetStore(repositories.NewClusterRepository(db))
+	clusterService.SetAllocator(subnetAllocator)
+	dbService.SetSwarmNetworks(clusterService)
 	clusterService.Refresh(context.Background())
 	go clusterService.RefreshLoop(context.Background(), 30*time.Second)
 	deployHandler.SetCluster(clusterService)

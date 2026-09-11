@@ -7,18 +7,20 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/middlewares"
+	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/nodes"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/cluster"
 	"github.com/miabi-io/miabi/internal/services/node"
 )
 
-// ClusterHandler exposes platform-admin cluster (Docker Swarm) management: status,
-// enable/adopt/disable, and per-node join/leave. Cluster mode is opt-in and auto-detected —
-// these endpoints work on plain Docker too, reporting "not enabled" and refusing mutations.
+// ClusterHandler exposes platform-admin cluster management: the cluster inventory and each cluster's
+// Docker Swarm. Swarm routes under /admin/clusters/{clusterID} target that cluster; the legacy
+// /admin/cluster routes target the default one. On plain Docker they report "not enabled".
 type ClusterHandler struct {
 	cluster *cluster.Service
 	nodes   *node.Service
@@ -29,18 +31,29 @@ func NewClusterHandler(c *cluster.Service, n *node.Service, auditLog *audit.Logg
 	return &ClusterHandler{cluster: c, nodes: n, audit: auditLog}
 }
 
-// Status returns the manager's current cluster (swarm) status.
-func (h *ClusterHandler) Status(c *okapi.Context) error {
-	return ok(c, h.clusterStatus(c))
+func (h *ClusterHandler) clusterID(c *okapi.Context) (uint, error) {
+	ref := c.Param("clusterID")
+	if ref == "" {
+		return models.DefaultClusterID, nil
+	}
+	return resolveID(ref, h.cluster.ClusterIDByUID)
 }
 
-// clusterStatus is Status() plus the facts that need a context to read — currently
-// whether the global agent service is deployed, which decides whether swarm workers
-// are managed or merely running tasks Miabi cannot see into.
-func (h *ClusterHandler) clusterStatus(c *okapi.Context) cluster.Status {
-	st := h.cluster.Status()
+// Status returns a cluster's swarm status.
+func (h *ClusterHandler) Status(c *okapi.Context) error {
+	id, err := h.clusterID(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid cluster id")
+	}
+	return ok(c, h.clusterStatus(c, id))
+}
+
+// clusterStatus adds what needs a live manager call to the cached status: whether the global agent
+// service is deployed, which decides whether swarm members are managed.
+func (h *ClusterHandler) clusterStatus(c *okapi.Context, id uint) cluster.Status {
+	st := h.cluster.Status(id)
 	if st.Enabled {
-		a := h.cluster.AgentStatus(c.Request().Context())
+		a := h.cluster.AgentStatus(c.Request().Context(), id)
 		st.AgentsDeployed, st.AgentTasks = a.Deployed, a.Running
 		st.AgentInsecureTLS, st.AgentCustomCA = a.InsecureTLS, a.CustomCA
 		st.AgentCACertPath = a.CACertPath
@@ -48,104 +61,106 @@ func (h *ClusterHandler) clusterStatus(c *okapi.Context) cluster.Status {
 	return st
 }
 
-// EnableClusterRequest enables (or adopts) cluster mode.
+// EnableClusterRequest enables (or adopts) Swarm on a cluster.
 type EnableClusterRequest struct {
 	Body struct {
-		// AdvertiseAddr is the address swarm peers reach this manager on (its
-		// private/WG address, host or host:port). Required when initializing a new
-		// swarm; ignored when adopting one Docker is already in.
+		// AdvertiseAddr is the address swarm peers reach the manager on (its private address, host or
+		// host:port). Required when initializing a new swarm; ignored when adopting one.
 		AdvertiseAddr string `json:"advertise_addr"`
-		// Name labels the cluster. Swarm gives it an unreadable id and a manager address
-		// that moves, so without a name the UI can only say "the cluster" — which is fine
-		// with one and useless with two. Optional; nameable later.
+		// Name labels the default cluster. Optional; ignored for other clusters, which are renamed with PATCH.
 		Name string `json:"name"`
 	} `json:"body"`
 }
 
-// Enable puts the manager into swarm mode (or adopts an existing swarm).
+// Enable initializes (or adopts) a swarm on the cluster's manager node.
 func (h *ClusterHandler) Enable(c *okapi.Context, req *EnableClusterRequest) error {
-	status, err := h.cluster.Enable(c.Request().Context(), req.Body.AdvertiseAddr, req.Body.Name)
+	id, err := h.clusterID(c)
 	if err != nil {
-		if errors.Is(err, cluster.ErrAdvertiseAddrRequired) {
-			return c.AbortBadRequest("an advertise address is required to enable cluster mode")
-		}
-		return c.AbortInternalServerError("failed to enable cluster mode", err)
+		return c.AbortBadRequest("invalid cluster id")
 	}
-	h.record(c, "cluster.enable", 0)
+	if name := strings.TrimSpace(req.Body.Name); name != "" && id == models.DefaultClusterID {
+		if err := h.cluster.SetName(name); err != nil {
+			return h.mapErr(c, err, "failed to name the cluster")
+		}
+	}
+	status, err := h.cluster.Enable(c.Request().Context(), id, req.Body.AdvertiseAddr)
+	if err != nil {
+		return h.mapErr(c, err, "failed to enable cluster mode")
+	}
+	h.record(c, "cluster.enable", id)
 	return ok(c, status)
 }
 
-// Disable removes the manager (and member nodes) from the swarm.
+// Disable takes the cluster out of swarm mode; its member nodes become standalone clusters.
 func (h *ClusterHandler) Disable(c *okapi.Context) error {
-	if err := h.cluster.Disable(c.Request().Context()); err != nil {
-		if errors.Is(err, cluster.ErrNotEnabled) {
-			return c.AbortBadRequest("cluster mode is not enabled")
-		}
-		return c.AbortInternalServerError("failed to disable cluster mode", err)
+	id, err := h.clusterID(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid cluster id")
 	}
-	h.record(c, "cluster.disable", 0)
+	if err := h.cluster.Disable(c.Request().Context(), id); err != nil {
+		return h.mapErr(c, err, "failed to disable cluster mode")
+	}
+	h.record(c, "cluster.disable", id)
 	return message(c, "cluster mode disabled")
 }
 
-// ApplyNetworking converts the workspace networks still on node-local bridges into swarm
-// overlays, so apps and databases reach each other across nodes. Enable already does this; this
-// is for an install already clustered when it upgraded, or to re-run after a node returns.
+// ApplyNetworking converts the default cluster's workspace networks still on node-local bridges into
+// swarm overlays, for an install already clustered when it upgraded.
 func (h *ClusterHandler) ApplyNetworking(c *okapi.Context) error {
-	if err := h.cluster.ApplyNetworking(c.Request().Context()); err != nil {
-		if errors.Is(err, cluster.ErrNotEnabled) {
-			return c.AbortBadRequest("cluster mode is not enabled")
-		}
-		return c.AbortInternalServerError("failed to apply cluster networking", err)
+	id, err := h.clusterID(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid cluster id")
 	}
-	h.record(c, "cluster.network.apply", 0)
-	return ok(c, h.clusterStatus(c))
+	if err := h.cluster.ApplyNetworking(c.Request().Context(), id); err != nil {
+		return h.mapErr(c, err, "failed to apply cluster networking")
+	}
+	h.record(c, "cluster.network.apply", id)
+	return ok(c, h.clusterStatus(c, id))
 }
 
-// RenameClusterRequest relabels the cluster.
+// RenameClusterRequest relabels the default cluster.
 type RenameClusterRequest struct {
 	Body struct {
-		// Name is the operator's label. Empty clears it — someone who no longer wants a
-		// label should be able to drop it, not be stuck with one.
+		// Name is the operator's label. Empty clears it.
 		Name string `json:"name"`
 	} `json:"body"`
 }
 
-// Rename labels the cluster. It is a label and nothing more — one control plane drives
-// one swarm, and this is not a step toward managing several.
+// Rename labels the default cluster.
 func (h *ClusterHandler) Rename(c *okapi.Context, req *RenameClusterRequest) error {
 	if err := h.cluster.SetName(req.Body.Name); err != nil {
-		if errors.Is(err, cluster.ErrNameTooLong) {
-			return c.AbortBadRequest(err.Error())
-		}
-		return c.AbortInternalServerError("failed to rename the cluster", err)
+		return h.mapErr(c, err, "failed to rename the cluster")
 	}
 	h.record(c, "cluster.rename", 0)
-	return ok(c, h.clusterStatus(c))
+	return ok(c, h.clusterStatus(c, models.DefaultClusterID))
 }
 
-// Preflight reports what this host can and cannot do before cluster mode is turned
-// on: whether its Docker engine can carry the overlay data plane to other hosts at
-// all, and the ports that must be open between nodes. Read-only.
+// Preflight reports what the cluster's manager engine can and cannot do before Swarm is turned on, and
+// the ports that must be open between nodes. Read-only.
 func (h *ClusterHandler) Preflight(c *okapi.Context) error {
-	p, err := h.cluster.Preflight(c.Request().Context())
+	id, err := h.clusterID(c)
 	if err != nil {
-		return c.AbortInternalServerError("failed to inspect the Docker engine", err)
+		return c.AbortBadRequest("invalid cluster id")
+	}
+	p, err := h.cluster.Preflight(c.Request().Context(), id)
+	if err != nil {
+		return h.mapErr(c, err, "failed to inspect the Docker engine")
 	}
 	return ok(c, p)
 }
 
-// NetCheck probes the overlay data plane between every pair of nodes, separating the three
-// failures indistinguishable from inside an app: a name that will not resolve, a connection that
-// never completes, and a payload that dies at the MTU. It starts probe containers, so it mutates.
+// NetCheck probes the cluster's overlay data plane between every pair of its nodes, separating a name
+// that will not resolve, a connection that never completes, and a payload that dies at the MTU.
 func (h *ClusterHandler) NetCheck(c *okapi.Context) error {
-	res, err := h.cluster.NetCheck(c.Request().Context())
+	id, err := h.clusterID(c)
 	if err != nil {
-		if errors.Is(err, cluster.ErrNotEnabled) {
-			return c.AbortBadRequest("cluster mode is not enabled")
-		}
-		return c.AbortInternalServerError("failed to run the network check", err)
+		return c.AbortBadRequest("invalid cluster id")
 	}
-	h.record(c, "cluster.netcheck", 0)
+	res, err := h.cluster.NetCheck(c.Request().Context(), id)
+	if err != nil {
+		return h.mapErr(c, err, "failed to run the network check")
+	}
+	h.record(c, "cluster.netcheck", id)
 	return ok(c, res)
 }
 
@@ -158,33 +173,34 @@ type SetAvailabilityRequest struct {
 	} `json:"body"`
 }
 
-// SetAvailability changes a swarm node's scheduling availability. Keyed by SWARM
-// node id, so an unmanaged member (no Miabi agent) can be drained too.
+// SetAvailability changes a swarm node's scheduling availability. Keyed by swarm node id, so an
+// unmanaged member (no Miabi agent) can be drained too.
 func (h *ClusterHandler) SetAvailability(c *okapi.Context, req *SetAvailabilityRequest) error {
+	id, err := h.clusterID(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid cluster id")
+	}
 	swarmNodeID := c.Param("swarmNodeID")
 	if swarmNodeID == "" {
 		return c.AbortBadRequest("swarm node id is required")
 	}
-	err := h.cluster.SetAvailability(c.Request().Context(), swarmNodeID, req.Body.Availability)
-	switch {
-	case errors.Is(err, cluster.ErrNotEnabled):
-		return c.AbortBadRequest("cluster mode is not enabled")
-	case errors.Is(err, cluster.ErrInvalidAvailability):
-		return c.AbortBadRequest(err.Error())
-	case err != nil:
-		return c.AbortInternalServerError("failed to change node availability", err)
+	if err := h.cluster.SetAvailability(c.Request().Context(), id, swarmNodeID, req.Body.Availability); err != nil {
+		return h.mapErr(c, err, "failed to change node availability")
 	}
-	h.record(c, "cluster.node.availability", 0)
+	h.record(c, "cluster.node.availability", id)
 	return message(c, "node availability set to "+req.Body.Availability)
 }
 
-// NodeTasks lists the service tasks the scheduler placed on a swarm node. This is
-// the only way to see the workload of an unmanaged member — the containers live on
-// the node, which Miabi has no Docker client for.
+// NodeTasks lists the service tasks the scheduler placed on a swarm node, the only way to see an
+// unmanaged member's workload.
 func (h *ClusterHandler) NodeTasks(c *okapi.Context) error {
-	tasks, err := h.cluster.Tasks(c.Request().Context(), c.Param("swarmNodeID"))
+	id, err := h.clusterID(c)
 	if err != nil {
-		return c.AbortInternalServerError("failed to list the node's tasks", err)
+		return c.AbortBadRequest("invalid cluster id")
+	}
+	tasks, err := h.cluster.Tasks(c.Request().Context(), id, c.Param("swarmNodeID"))
+	if err != nil {
+		return h.mapErr(c, err, "failed to list the node's tasks")
 	}
 	return ok(c, tasks)
 }
@@ -192,58 +208,50 @@ func (h *ClusterHandler) NodeTasks(c *okapi.Context) error {
 // DeployAgentsRequest configures the global agent service.
 type DeployAgentsRequest struct {
 	Body struct {
-		// InsecureSkipVerify makes the agents skip verification of the control plane's TLS certificate,
-		// needed behind a self-signed or private-CA cert. It is a real downgrade — an interceptor could
-		// impersonate a control plane that drives Docker on every node — so it is never a default.
+		// InsecureSkipVerify makes the agents skip verification of the control plane's TLS certificate. A real
+		// downgrade: an interceptor could impersonate a control plane that drives Docker on every node.
 		InsecureSkipVerify bool `json:"insecure_skip_verify"`
-		// CACert trusts a specific authority instead of skipping verification: the agents still VERIFY,
-		// anchored on this CA, so a forged certificate is still rejected. This is what makes a control
-		// plane behind a private CA safe, and is the option to reach for first.
+		// CACert trusts a specific authority instead: the agents still verify, anchored on this CA.
 		CACert string `json:"ca_cert"`
-		// CACertPath is a CA file that already exists on every node, usually the host's own trust anchor.
-		// It is bind-mounted into each agent, which is more direct than copying the PEM through an
-		// environment variable and stays correct when the CA is rotated on the hosts.
+		// CACertPath is a CA file that already exists on every node, bind-mounted into each agent.
 		CACertPath string `json:"ca_cert_path"`
 	} `json:"body"`
 }
 
-// DeployAgents installs the Miabi agent on every swarm worker as a global service, so Swarm
-// carries it to each node including ones that join later. It is explicit, not something enabling
-// cluster mode does silently: it grants Miabi the Docker socket on every machine in this swarm.
+// DeployAgents installs the Miabi agent on every node of the cluster's swarm as a global service. It is
+// explicit because it grants Miabi the Docker socket on every machine in this swarm.
 func (h *ClusterHandler) DeployAgents(c *okapi.Context, req *DeployAgentsRequest) error {
-	err := h.cluster.DeployAgents(c.Request().Context(), cluster.AgentOptions{
+	id, err := h.clusterID(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid cluster id")
+	}
+	err = h.cluster.DeployAgents(c.Request().Context(), id, cluster.AgentOptions{
 		InsecureTLS: req.Body.InsecureSkipVerify,
 		CACert:      req.Body.CACert,
 		CACertPath:  req.Body.CACertPath,
 	})
-	switch {
-	case errors.Is(err, cluster.ErrNotEnabled):
-		return c.AbortBadRequest("cluster mode is not enabled")
-	case errors.Is(err, cluster.ErrControlURLRequired), errors.Is(err, cluster.ErrAgentImageRequired):
-		return c.AbortBadRequest(err.Error())
-	case err != nil:
-		return c.AbortInternalServerError("failed to deploy the cluster agents", err)
+	if err != nil {
+		return h.mapErr(c, err, "failed to deploy the cluster agents")
 	}
-	h.record(c, "cluster.agents.deploy", 0)
-	return ok(c, h.cluster.AgentStatus(c.Request().Context()))
+	h.record(c, "cluster.agents.deploy", id)
+	return ok(c, h.cluster.AgentStatus(c.Request().Context(), id))
 }
 
-// RemoveAgents tears the global agent service down. The node records stay — their
-// history and placements are still real — they simply go back to being unmanaged.
+// RemoveAgents tears the cluster's global agent service down. Its nodes go back to being unmanaged.
 func (h *ClusterHandler) RemoveAgents(c *okapi.Context) error {
-	if err := h.cluster.RemoveAgents(c.Request().Context()); err != nil {
-		if errors.Is(err, cluster.ErrNotEnabled) {
-			return c.AbortBadRequest("cluster mode is not enabled")
-		}
-		return c.AbortInternalServerError("failed to remove the cluster agents", err)
+	id, err := h.clusterID(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid cluster id")
 	}
-	h.record(c, "cluster.agents.remove", 0)
+	if err := h.cluster.RemoveAgents(c.Request().Context(), id); err != nil {
+		return h.mapErr(c, err, "failed to remove the cluster agents")
+	}
+	h.record(c, "cluster.agents.remove", id)
 	return message(c, "cluster agents removed")
 }
 
 // ControlPlaneCert returns the certificate the control plane currently serves, so the agents can
-// be pinned to it instead of skipping verification. Asking an operator to find and paste a PEM is
-// how you get them to pick "skip verification" instead.
+// be pinned to it instead of skipping verification.
 func (h *ClusterHandler) ControlPlaneCert(c *okapi.Context) error {
 	cert, err := h.cluster.FetchControlPlaneCert(c.Request().Context())
 	switch {
@@ -255,56 +263,59 @@ func (h *ClusterHandler) ControlPlaneCert(c *okapi.Context) error {
 	return ok(c, cert)
 }
 
-// Members lists the swarm's nodes (docker node ls), annotated with whether each
-// maps to a managed Miabi node. Drives the manager detail page's cluster view.
+// Members lists the cluster's swarm nodes, annotated with whether each maps to a managed Miabi node.
 func (h *ClusterHandler) Members(c *okapi.Context) error {
-	members, err := h.cluster.Members(c.Request().Context())
+	id, err := h.clusterID(c)
 	if err != nil {
-		return c.AbortInternalServerError("failed to list cluster nodes", err)
+		return c.AbortBadRequest("invalid cluster id")
+	}
+	members, err := h.cluster.Members(c.Request().Context(), id)
+	if err != nil {
+		return h.mapErr(c, err, "failed to list cluster nodes")
 	}
 	return ok(c, members)
 }
 
-// JoinToken returns the manual join command + worker token for joining a host
-// that is not connected to the manager over the agent tunnel.
+// JoinToken returns the manual join command and worker token for a host not connected over a tunnel.
 func (h *ClusterHandler) JoinToken(c *okapi.Context) error {
-	inst, err := h.cluster.JoinInstructions(c.Request().Context())
+	id, err := h.clusterID(c)
 	if err != nil {
-		switch {
-		case errors.Is(err, cluster.ErrNotEnabled):
-			return c.AbortBadRequest("cluster mode is not enabled")
-		case errors.Is(err, cluster.ErrManagerAddrUnknown):
-			return c.AbortWithError(http.StatusConflict, err)
-		default:
-			return c.AbortInternalServerError("failed to get cluster join command", err)
-		}
+		return c.AbortBadRequest("invalid cluster id")
+	}
+	inst, err := h.cluster.JoinInstructions(c.Request().Context(), id)
+	if err != nil {
+		return h.mapErr(c, err, "failed to get cluster join command")
 	}
 	return ok(c, inst)
 }
 
-// JoinNode joins a worker node to the swarm.
+// JoinNode joins a node to the cluster's swarm and moves it into the cluster.
 func (h *ClusterHandler) JoinNode(c *okapi.Context) error {
-	id, err := h.nodeID(c)
+	id, err := h.clusterID(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid cluster id")
+	}
+	nodeID, err := h.nodeID(c)
 	if err != nil {
 		return c.AbortBadRequest("invalid node id")
 	}
-	if err := h.cluster.JoinNode(c.Request().Context(), id); err != nil {
-		return h.mapErr(c, err)
+	if err := h.cluster.JoinNode(c.Request().Context(), id, nodeID); err != nil {
+		return h.mapErr(c, err, "failed to join the node")
 	}
-	h.record(c, "cluster.node_join", id)
+	h.record(c, "cluster.node_join", nodeID)
 	return message(c, "node joined the cluster")
 }
 
-// LeaveNode removes a worker node from the swarm.
+// LeaveNode removes a node from its cluster's swarm; the node becomes a standalone cluster.
 func (h *ClusterHandler) LeaveNode(c *okapi.Context) error {
-	id, err := h.nodeID(c)
+	nodeID, err := h.nodeID(c)
 	if err != nil {
 		return c.AbortBadRequest("invalid node id")
 	}
-	if err := h.cluster.LeaveNode(c.Request().Context(), id, true); err != nil {
-		return h.mapErr(c, err)
+	if err := h.cluster.LeaveNode(c.Request().Context(), nodeID, true); err != nil {
+		return h.mapErr(c, err, "failed to remove the node from the cluster")
 	}
-	h.record(c, "cluster.node_leave", id)
+	h.record(c, "cluster.node_leave", nodeID)
 	return message(c, "node removed from the cluster")
 }
 
@@ -312,20 +323,27 @@ func (h *ClusterHandler) nodeID(c *okapi.Context) (uint, error) {
 	return resolveID(c.Param("nodeID"), h.nodes.IDByUID)
 }
 
-func (h *ClusterHandler) mapErr(c *okapi.Context, err error) error {
+func (h *ClusterHandler) mapErr(c *okapi.Context, err error, fallback string) error {
 	switch {
 	case errors.Is(err, cluster.ErrNotEnabled):
 		return c.AbortBadRequest("cluster mode is not enabled")
 	case errors.Is(err, cluster.ErrManagerNode):
 		return c.AbortBadRequest("the manager node cannot be used for this operation")
-	case errors.Is(err, cluster.ErrManagerAddrUnknown):
+	case errors.Is(err, cluster.ErrAdvertiseAddrRequired), errors.Is(err, cluster.ErrNameTooLong),
+		errors.Is(err, cluster.ErrInvalidAvailability), errors.Is(err, cluster.ErrControlURLRequired),
+		errors.Is(err, cluster.ErrAgentImageRequired):
+		return c.AbortBadRequest(err.Error())
+	case errors.Is(err, cluster.ErrManagerAddrUnknown), errors.Is(err, cluster.ErrNodeHasWorkloads),
+		errors.Is(err, cluster.ErrClusterHasWorkloads), errors.Is(err, cluster.ErrNodeInOtherSwarm):
 		return c.AbortWithError(http.StatusConflict, err)
+	case errors.Is(err, cluster.ErrClusterNotFound):
+		return c.AbortNotFound("cluster not found")
 	case errors.Is(err, node.ErrNodeNotFound):
 		return c.AbortNotFound("node not found")
 	case errors.Is(err, nodes.ErrNodeOffline):
 		return c.AbortWithError(http.StatusServiceUnavailable, err)
 	default:
-		return c.AbortInternalServerError("cluster operation failed", err)
+		return c.AbortInternalServerError(fallback, err)
 	}
 }
 

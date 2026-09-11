@@ -178,6 +178,7 @@ type Service struct {
 	secrets    SecretWriter
 	images     ImageResolver
 	networks   NetworkProvider
+	swarm      SwarmNetworks
 	quota      *quota.Service
 	ownerOf    OwnerExister
 	apps       AppController
@@ -255,6 +256,29 @@ type NetworkProvider interface {
 // unset, databases fall back to the shared gateway network.
 func (s *Service) SetNetworkProvider(p NetworkProvider) { s.networks = p }
 
+// SwarmNetworks creates workspace networks in a remote swarm. Implemented by services/cluster.
+type SwarmNetworks interface {
+	WorkspaceOverlay(clusterID uint, n models.Network) bool
+	EnsureWorkspaceOverlay(ctx context.Context, clusterID uint, n models.Network) error
+}
+
+// SetSwarmNetworks wires network creation for instances in a remote swarm (nil-safe; nil treats every
+// network per its record, as in the default cluster).
+func (s *Service) SetSwarmNetworks(sw SwarmNetworks) { s.swarm = sw }
+
+// ensureNetwork makes one of an instance's networks usable on its node: an overlay in a remote swarm goes
+// through that swarm's manager, any other overlay already exists, and a bridge is created on the node.
+func (s *Service) ensureNetwork(ctx context.Context, dc docker.Client, clusterID uint, n models.Network) error {
+	switch {
+	case s.swarm != nil && s.swarm.WorkspaceOverlay(clusterID, n):
+		return s.swarm.EnsureWorkspaceOverlay(ctx, clusterID, n)
+	case n.SwarmScoped():
+		return nil
+	}
+	_, err := dc.EnsureNetwork(ctx, n.DockerName)
+	return err
+}
+
 // defaultNetwork resolves the workspace's default network record (where databases
 // live alongside the workspace's apps), or nil if no provider is wired or the
 // lookup fails — callers fall back to the gateway network.
@@ -282,12 +306,16 @@ func instanceNetworkNames(inst *models.DatabaseInstance) []string {
 // Returning the primary alone risks a network the instance is not on: "could not translate host name".
 func (s *Service) ensureInstanceNetworks(ctx context.Context, dc docker.Client, inst *models.DatabaseInstance) ([]string, error) {
 	names := instanceNetworkNames(inst)
-	for _, n := range names {
-		if inst.SwarmScoped(n) {
-			continue
+	for _, name := range names {
+		n := models.Network{DockerName: name}
+		for i := range inst.Networks {
+			if inst.Networks[i].DockerName == name {
+				n = inst.Networks[i]
+				break
+			}
 		}
-		if _, err := dc.EnsureNetwork(ctx, n); err != nil {
-			return nil, fmt.Errorf("ensure network %s: %w", n, err)
+		if err := s.ensureNetwork(ctx, dc, inst.ClusterID, n); err != nil {
+			return nil, fmt.Errorf("ensure network %s: %w", name, err)
 		}
 	}
 	return names, nil
@@ -978,11 +1006,7 @@ func (s *Service) AttachNetwork(ctx context.Context, workspaceID, instanceID, ne
 	// node reconciles on the next bring-up.
 	if inst.ContainerID != "" {
 		if dc, derr := s.dockerFor(inst); derr == nil {
-			var eerr error
-			if !net.SwarmScoped() {
-				_, eerr = dc.EnsureNetwork(ctx, net.DockerName)
-			}
-			if eerr == nil {
+			if eerr := s.ensureNetwork(ctx, dc, inst.ClusterID, *net); eerr == nil {
 				if cerr := dc.NetworkConnect(ctx, net.DockerName, inst.ContainerID, []string{inst.Host}); cerr != nil {
 					logger.Warn("attach network to running database", "instance", inst.ID, "network", net.DockerName, "error", cerr)
 				}

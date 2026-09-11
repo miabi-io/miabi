@@ -81,8 +81,8 @@ func (s *Service) probeImage() string {
 // NetCheck probes the cluster's overlay data plane from every node to every other
 // node. It requires cluster mode, runs only on nodes Miabi has a Docker client for
 // (it must start a container there), and cleans up after itself.
-func (s *Service) NetCheck(ctx context.Context) (NetCheck, error) {
-	if !s.CapCluster() {
+func (s *Service) NetCheck(ctx context.Context, clusterID uint) (NetCheck, error) {
+	if !s.IsSwarm(clusterID) {
 		return NetCheck{}, ErrNotEnabled
 	}
 	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
@@ -107,6 +107,9 @@ func (s *Service) NetCheck(ctx context.Context) (NetCheck, error) {
 	var targets []target
 	for i := range servers {
 		srv := servers[i]
+		if !s.inCluster(&srv, clusterID) {
+			continue
+		}
 		p := NetCheckProbe{ServerID: srv.ID, NodeName: srv.Name}
 		dc, derr := s.clients.For(srv.ID)
 		if derr != nil {

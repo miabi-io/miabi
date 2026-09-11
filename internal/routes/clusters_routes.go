@@ -16,7 +16,34 @@ func (r *Router) clustersRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/admin/clusters").WithTagInfo(okapi.GroupTag{Name: "Clusters", Description: "Deploy targets: every node belongs to exactly one cluster."})
 	admin := []okapi.Middleware{r.authenticate, r.systemAdmin}
 
-	return []okapi.RouteDefinition{
+	defs := []okapi.RouteDefinition{
+		{
+			Method:      http.MethodGet,
+			Path:        "/{clusterID}/swarm",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.cluster.Status,
+			Summary:     "A cluster's swarm status",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/{clusterID}/swarm/enable",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.cluster.Enable),
+			Summary:     "Initialize or adopt a swarm on the cluster's node",
+			Request:     &handlers.EnableClusterRequest{},
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/{clusterID}/swarm/disable",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.cluster.Disable,
+			Summary:     "Take the cluster out of swarm mode",
+		},
+	}
+	return append(defs, append(r.swarmRoutes(g, "/{clusterID}", admin), []okapi.RouteDefinition{
 		{
 			Method:      http.MethodGet,
 			Path:        "",
@@ -42,5 +69,5 @@ func (r *Router) clustersRoutes() []okapi.RouteDefinition {
 			Summary:     "Rename a cluster and set its location code",
 			Request:     &handlers.UpdateClusterRequest{},
 		},
-	}
+	}...)...)
 }

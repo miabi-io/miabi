@@ -63,6 +63,7 @@ type DeployHandler struct {
 	logs          *logstore.Store
 	deployLock    DeployLock
 	builderPolicy BuilderPolicy
+	clusterSlots  *clusterSlots
 
 	// Runner build dispatch: a git-source app's image is built on a registered
 	// runner (which pushes it to the internal registry), never on this node.
@@ -119,6 +120,13 @@ func (h *DeployHandler) SetBuildDispatch(d BuildDispatcher, registryHost string,
 // SetDeployLock wires the per-app deploy serialization lock (optional; nil runs
 // deploys without cross-worker serialization).
 func (h *DeployHandler) SetDeployLock(l DeployLock) { h.deployLock = l }
+
+// SetClusterConcurrency caps how many deploys run at once per cluster (0 disables the cap).
+func (h *DeployHandler) SetClusterConcurrency(limit int) {
+	if limit > 0 {
+		h.clusterSlots = newClusterSlots(limit)
+	}
+}
 
 // SetLogStore wires the shared execution-log store. When set, a deployment's
 // full build/deploy log is externalized to the store on terminal state and the
@@ -247,6 +255,15 @@ func (h *DeployHandler) ProcessTask(ctx context.Context, task *asynq.Task) error
 	app, err := h.apps.FindByID(dep.ApplicationID)
 	if err != nil {
 		return h.fail(dep, fmt.Errorf("application %d not found: %w", dep.ApplicationID, err))
+	}
+
+	if h.clusterSlots != nil {
+		release, ok := h.clusterSlots.acquire(app.ClusterID)
+		if !ok {
+			logger.Info("deploy deferred: its cluster is at its deploy concurrency", "app", app.ID, "cluster", app.ClusterID, "deployment", dep.ID)
+			return h.producer.EnqueueDeployIn(dep.ID, app.ServerID, 5*time.Second)
+		}
+		defer release()
 	}
 
 	// Serialize deploys per app: two concurrent deploys of the same app would race on version
@@ -607,12 +624,12 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 	h.swapAndRelease(app, dep, image, containerID)
 }
 
-// manager returns the manager (control-plane) Docker client, where Swarm
-// services are created and inspected. Offline client on failure.
-func (h *DeployHandler) manager() docker.Client {
+// manager returns the Docker client driving the app's cluster swarm, where its service is created and
+// inspected. Offline client on failure.
+func (h *DeployHandler) manager(ctx context.Context, app *models.Application) docker.Client {
 	dc, err := h.clients.For(0)
 	if h.cluster != nil {
-		dc, err = h.cluster.Manager(context.Background(), models.DefaultClusterID)
+		dc, err = h.cluster.Manager(ctx, app.ClusterID)
 	}
 	if err != nil {
 		return docker.Offline(err)
@@ -630,7 +647,11 @@ func (h *DeployHandler) serviceNetworks(ctx context.Context, mgr docker.Client, 
 	out := make([]string, 0, len(app.Networks))
 	for i := range app.Networks {
 		n := app.Networks[i]
-		if n.Driver != network.DriverOverlay {
+		overlay := n.Driver == network.DriverOverlay
+		if h.cluster != nil {
+			overlay = h.cluster.WorkspaceOverlay(app.ClusterID, n)
+		}
+		if !overlay {
 			return nil, fmt.Errorf(
 				"workspace network %q is a node-local bridge, which a replicated service cannot join. "+
 					"Enable cluster networking so workspace networks become overlays — otherwise this service "+
@@ -657,7 +678,7 @@ func (h *DeployHandler) serviceNetworks(ctx context.Context, mgr docker.Client, 
 // performs the rolling task replacement. The service joins two overlays: its per-workspace one for
 // encrypted east-west traffic, and the shared ingress overlay so the gateway can reach its VIP.
 func (h *DeployHandler) deployService(ctx context.Context, app *models.Application, dep *models.Deployment, image string, buildMethod models.AppBuildMethod) {
-	mgr := h.manager()
+	mgr := h.manager(ctx, app)
 	sw, err := mgr.Swarm(ctx)
 	if err != nil || sw.LocalNodeState != "active" || !sw.ControlAvailable {
 		_ = h.fail(dep, fmt.Errorf("cluster mode is not enabled; cannot deploy %q as a swarm service", app.Name))

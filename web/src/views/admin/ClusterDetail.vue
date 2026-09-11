@@ -40,7 +40,7 @@ async function load() {
     const [c, n] = await Promise.all([clustersApi.get(id), nodesApi.list()])
     cluster.value = c.data.data
     nodes.value = n.data.data ?? []
-    if (cluster.value?.is_default) await loadStatus()
+    await loadStatus()
   } catch (e) {
     notify.apiError(e)
   } finally {
@@ -88,7 +88,7 @@ const ingressAttachCmd = computed(() =>
 
 async function loadStatus() {
   try {
-    status.value = (await clusterApi.status()).data.data
+    status.value = (await clusterApi.status(id)).data.data
   } catch { /* best-effort; the page works without it */ }
 }
 
@@ -100,7 +100,7 @@ async function applyNetworking() {
   showApplyNetworking.value = false
   busy.value = true
   try {
-    status.value = (await clusterApi.applyNetworking()).data.data
+    status.value = (await clusterApi.applyNetworking(id)).data.data
     notify.success('Workspace networks converted to cluster overlays')
   } catch (e) {
     notify.apiError(e, 'Failed to apply cluster networking')
@@ -114,7 +114,7 @@ const preflightLoading = ref(false)
 async function loadPreflight() {
   preflightLoading.value = true
   try {
-    preflight.value = (await clusterApi.preflight()).data.data
+    preflight.value = (await clusterApi.preflight(id)).data.data
   } catch {
     preflight.value = null
   } finally {
@@ -128,7 +128,7 @@ async function runNetCheck() {
   netChecking.value = true
   netCheck.value = null
   try {
-    netCheck.value = (await clusterApi.netCheck()).data.data
+    netCheck.value = (await clusterApi.netCheck(id)).data.data
     if (netCheck.value?.ok) notify.success('All cross-node paths are healthy')
   } catch (e) {
     notify.apiError(e, 'Network check failed')
@@ -186,7 +186,7 @@ async function deployAgents() {
   showDeployAgents.value = false
   busy.value = true
   try {
-    await clusterApi.deployAgents({
+    await clusterApi.deployAgents(id, {
       insecureSkipVerify: agentTls.value === 'skip',
       caCertPath: agentTls.value === 'ca' && caMode.value === 'file' ? caCertPath.value.trim() : '',
       caCert: agentTls.value === 'ca' && caMode.value === 'paste' ? caCert.value.trim() : '',
@@ -203,7 +203,7 @@ async function removeAgents() {
   showRemoveAgents.value = false
   busy.value = true
   try {
-    await clusterApi.removeAgents()
+    await clusterApi.removeAgents(id)
     notify.success('Cluster agents removed')
     await load()
   } catch (e) {
@@ -217,14 +217,14 @@ const showEnable = ref(false)
 const advertiseAddr = ref('')
 function openEnable() {
   void loadPreflight()
-  const mgr = nodes.value.find((n) => n.is_local)
+  const mgr = managerNode.value
   advertiseAddr.value = mgr?.address || mgr?.public_ip || ''
   showEnable.value = true
 }
 async function enableSwarm() {
   busy.value = true
   try {
-    status.value = (await clusterApi.enable(advertiseAddr.value.trim(), '')).data.data
+    status.value = (await clusterApi.enable(id, advertiseAddr.value.trim())).data.data
     showEnable.value = false
     notify.success('Cluster mode enabled')
     await load()
@@ -240,7 +240,7 @@ async function disableSwarm() {
   showDisable.value = false
   busy.value = true
   try {
-    await clusterApi.disable()
+    await clusterApi.disable(id)
     notify.success('Cluster mode disabled')
     await load()
   } catch (e) {
@@ -257,7 +257,7 @@ async function leaveNode() {
   pendingLeave.value = null
   busy.value = true
   try {
-    await clusterApi.leaveNode(n.id)
+    await clusterApi.leaveNode(id, n.id)
     notify.success(`${n.display_name || n.name} removed from the cluster`)
     await load()
   } catch (e) {
@@ -271,7 +271,9 @@ const showJoin = ref(false)
 const joinBusy = ref(false)
 const joinSelected = ref<Record<number, boolean>>({})
 const manualJoin = ref<ClusterJoinInstructions | null>(null)
-const joinCandidates = computed(() => nodes.value.filter((n) => !n.is_local && !n.in_swarm))
+const joinCandidates = computed(() =>
+  nodes.value.filter((n) => !n.is_local && !n.in_swarm && n.id !== cluster.value?.manager_server_id),
+)
 const selectedJoinIds = computed(() =>
   joinCandidates.value.filter((n) => joinSelected.value[n.id] && n.agent_connected).map((n) => n.id),
 )
@@ -282,7 +284,7 @@ async function openJoin() {
   manualJoin.value = null
   showJoin.value = true
   try {
-    manualJoin.value = (await clusterApi.joinToken()).data.data
+    manualJoin.value = (await clusterApi.joinToken(id)).data.data
   } catch { /* best-effort; the host-side command just won't show */ }
 }
 async function joinSelectedNodes() {
@@ -292,7 +294,7 @@ async function joinSelectedNodes() {
   let joined = 0
   for (const nodeID of ids) {
     try {
-      await clusterApi.joinNode(nodeID)
+      await clusterApi.joinNode(id, nodeID)
       joined++
     } catch (e) {
       notify.apiError(e)
@@ -343,7 +345,7 @@ function swarmClass(n: Server): string {
         </h1>
       </div>
       <div v-if="cluster" class="header-actions">
-        <button v-if="isDefault && swarmEnabled" class="btn btn-secondary" @click="openJoin"><span class="mdi mdi-lan-connect"></span> Join nodes</button>
+        <button v-if="swarmEnabled" class="btn btn-secondary" @click="openJoin"><span class="mdi mdi-lan-connect"></span> Join nodes</button>
         <button class="btn btn-secondary" @click="openEdit"><span class="mdi mdi-pencil-outline"></span> Edit</button>
       </div>
     </div>
@@ -381,7 +383,7 @@ function swarmClass(n: Server): string {
         </div>
       </div>
 
-      <div v-if="isDefault && status" class="card cluster-bar">
+      <div v-if="status" class="card cluster-bar">
         <div class="cluster-bar-main">
           <span class="mdi" :class="swarmEnabled ? 'mdi-lan-connect' : 'mdi-lan-disconnect'" style="font-size: 22px"></span>
           <div>
@@ -590,6 +592,10 @@ function swarmClass(n: Server): string {
               The manager initializes a Docker Swarm. Member nodes can then be joined to a private overlay network.
               If Docker is already in swarm mode, Miabi adopts it instead.
             </p>
+            <p v-if="!isDefault" class="form-hint" style="margin-bottom: 12px">
+              The node must have no apps, databases or volumes yet: this cluster's workspace networks are
+              created as overlays, and nodes join or leave it only when empty.
+            </p>
             <!-- A VM-backed engine (Docker Desktop, OrbStack) forms a swarm, then drops every cross-node packet. -->
             <div v-if="preflightLoading" class="cell-sub" style="margin-bottom: 12px">Checking this host…</div>
             <template v-else-if="preflight">
@@ -781,7 +787,9 @@ Apps scheduled on those nodes will stop showing metrics, stats and a shell. The 
     <ConfirmDialog
       :open="showDisable"
       title="Disable Docker Swarm?"
-      message="The manager and all member nodes will leave the swarm. Workspace networks are moved back to node-local bridges first, so apps and databases stop being reachable across nodes — anything relying on that will break. Containers are not restarted."
+      :message="isDefault
+        ? 'The manager and all member nodes will leave the swarm. Workspace networks are moved back to node-local bridges first, so apps and databases stop being reachable across nodes — anything relying on that will break. Containers are not restarted.'
+        : 'Every node leaves the swarm and becomes a standalone cluster of its own. The cluster must have no apps, databases or volumes left.'"
       confirm-label="Disable Swarm"
       variant="danger"
       :busy="busy"

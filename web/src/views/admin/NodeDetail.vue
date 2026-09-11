@@ -72,8 +72,13 @@ const isEdge = computed(() => node.value?.connectivity === 'edge-gateway')
 // the manager is the swarm's source of truth. Includes unmanaged members.
 const clusterMembers = ref<ClusterMember[]>([])
 async function loadClusterMembers() {
+  const clusterId = node.value?.cluster_id
+  if (!clusterId) {
+    clusterMembers.value = []
+    return
+  }
   try {
-    clusterMembers.value = (await clusterApi.members()).data.data ?? []
+    clusterMembers.value = (await clusterApi.members(clusterId)).data.data ?? []
   } catch { clusterMembers.value = [] }
 }
 
@@ -140,7 +145,7 @@ async function confirmDrain() {
 async function setAvailability(m: ClusterMember, availability: 'active' | 'pause' | 'drain') {
   availBusy.value = m.id
   try {
-    await clusterApi.setAvailability(m.id, availability)
+    await clusterApi.setAvailability(node.value?.cluster_id ?? 0, m.id, availability)
     notify.success(`${m.hostname || 'Node'} set to ${availability}`)
     await loadClusterMembers()
   } catch (e) {
@@ -161,7 +166,7 @@ async function loadNodeTasks() {
   if (!swarmNodeID.value) { nodeTasks.value = []; return }
   tasksLoading.value = true
   try {
-    nodeTasks.value = (await clusterApi.nodeTasks(swarmNodeID.value)).data.data ?? []
+    nodeTasks.value = (await clusterApi.nodeTasks(node.value?.cluster_id ?? 0, swarmNodeID.value)).data.data ?? []
   } catch {
     nodeTasks.value = []
   } finally {

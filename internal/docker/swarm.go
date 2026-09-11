@@ -277,6 +277,25 @@ func (e *engineClient) SwarmNodeAvailability(ctx context.Context, nodeID, availa
 	return err
 }
 
+// SwarmNodeSetLabel sets one label on a swarm node; requires a manager. Version-checked like
+// SwarmNodeAvailability, and a no-op when the label already holds the value.
+func (e *engineClient) SwarmNodeSetLabel(ctx context.Context, nodeID, key, value string) error {
+	res, err := e.cli.NodeInspect(ctx, nodeID, client.NodeInspectOptions{})
+	if err != nil {
+		return wrapNotFound(err)
+	}
+	spec := res.Node.Spec
+	if v, ok := spec.Labels[key]; ok && v == value {
+		return nil
+	}
+	if spec.Labels == nil {
+		spec.Labels = map[string]string{}
+	}
+	spec.Labels[key] = value
+	_, err = e.cli.NodeUpdate(ctx, nodeID, client.NodeUpdateOptions{Version: res.Node.Version, Spec: spec})
+	return err
+}
+
 // SwarmTasks lists the swarm's tasks, optionally filtered to one node. Requires a
 // manager. Only the manager can enumerate these: the containers live on the nodes,
 // which Miabi may hold no Docker client for.

@@ -22,10 +22,29 @@ type fakeDocker struct {
 	initCalled   bool
 	initAddr     string
 	overlaysMade []string
+	labelled     []string
+	joinReq      *docker.SwarmJoinRequest
+	ensured      []docker.NetworkSpec
 }
 
 func (f *fakeDocker) Swarm(context.Context) (docker.SwarmInfo, error)        { return f.info, nil }
 func (f *fakeDocker) SwarmNodes(context.Context) ([]docker.SwarmNode, error) { return f.nodes, nil }
+func (f *fakeDocker) EnsureNetworkSpec(_ context.Context, spec docker.NetworkSpec) (string, error) {
+	f.ensured = append(f.ensured, spec)
+	return spec.Name, nil
+}
+func (f *fakeDocker) SwarmNodeSetLabel(_ context.Context, nodeID, _, _ string) error {
+	f.labelled = append(f.labelled, nodeID)
+	return nil
+}
+func (f *fakeDocker) SwarmJoinTokens(context.Context) (docker.SwarmJoinTokens, error) {
+	return docker.SwarmJoinTokens{Worker: "SWMTKN-worker"}, nil
+}
+func (f *fakeDocker) SwarmJoin(_ context.Context, req docker.SwarmJoinRequest) error {
+	f.joinReq = &req
+	f.info = docker.SwarmInfo{LocalNodeState: "active", NodeID: "w9"}
+	return nil
+}
 func (f *fakeDocker) CreateOverlayNetwork(_ context.Context, name string) (string, error) {
 	f.overlaysMade = append(f.overlaysMade, name)
 	return name, nil
@@ -81,7 +100,7 @@ func TestCapClusterFalseOnPlainDocker(t *testing.T) {
 	if s.CapCluster() {
 		t.Fatal("expected CapCluster=false on inactive engine")
 	}
-	if got := s.Status().LocalNodeState; got != "inactive" {
+	if got := s.Status(models.DefaultClusterID).LocalNodeState; got != "inactive" {
 		t.Fatalf("status local_node_state = %q, want inactive", got)
 	}
 }
@@ -131,7 +150,7 @@ func TestEnrichRolesAndStandalone(t *testing.T) {
 func TestEnableRequiresAdvertiseAddr(t *testing.T) {
 	fd := &fakeDocker{info: docker.SwarmInfo{LocalNodeState: "inactive"}}
 	s := NewService(fakeClients{local: fd}, &fakeNodes{})
-	if _, err := s.Enable(context.Background(), "", ""); !errors.Is(err, ErrAdvertiseAddrRequired) {
+	if _, err := s.Enable(context.Background(), models.DefaultClusterID, ""); !errors.Is(err, ErrAdvertiseAddrRequired) {
 		t.Fatalf("Enable(\"\") error = %v, want ErrAdvertiseAddrRequired", err)
 	}
 	if fd.initCalled {
@@ -143,7 +162,7 @@ func TestEnableInitializesSwarm(t *testing.T) {
 	fd := &fakeDocker{info: docker.SwarmInfo{LocalNodeState: "inactive"}}
 	nodes := &fakeNodes{servers: []models.Server{{ID: 1, IsLocal: true}}}
 	s := NewService(fakeClients{local: fd}, nodes)
-	status, err := s.Enable(context.Background(), "10.0.0.1", "prod-eu-west-1")
+	status, err := s.Enable(context.Background(), models.DefaultClusterID, "10.0.0.1")
 	if err != nil {
 		t.Fatalf("Enable: %v", err)
 	}

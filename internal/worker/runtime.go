@@ -149,6 +149,8 @@ type ConfigProjector interface {
 type ClusterCap interface {
 	IsSwarm(clusterID uint) bool
 	Manager(ctx context.Context, clusterID uint) (docker.Client, error)
+	WorkspaceOverlay(clusterID uint, n models.Network) bool
+	EnsureWorkspaceOverlay(ctx context.Context, clusterID uint, n models.Network) error
 }
 
 // SetCluster wires swarm detection (nil-safe). Shared by the deploy and job
@@ -458,6 +460,12 @@ func (b *runtimeBuilder) syncNetworks(ctx context.Context, eng docker.Client, ap
 		// An overlay is swarm-scoped: created once on the manager, and Docker materializes it on this node the
 		// moment a container attaches. A worker cannot create one and must not try, so there is nothing to do
 		// — the network simply won't be listed until the first attachment.
+		if b.cluster != nil && b.cluster.WorkspaceOverlay(app.ClusterID, n) {
+			if err := b.cluster.EnsureWorkspaceOverlay(ctx, app.ClusterID, n); err != nil {
+				return err
+			}
+			continue
+		}
 		if n.Driver == network.DriverOverlay {
 			continue
 		}

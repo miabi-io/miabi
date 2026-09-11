@@ -71,11 +71,11 @@ func NewService(apps *repositories.ApplicationRepository, releases *repositories
 // the local engine).
 func (s *Service) SetSwarmManager(m SwarmManager) { s.swarm = m }
 
-func (s *Service) swarmManager(ctx context.Context) (docker.Client, error) {
+func (s *Service) swarmManager(ctx context.Context, app *models.Application) (docker.Client, error) {
 	if s.swarm == nil {
 		return s.clients.For(0)
 	}
-	return s.swarm.Manager(ctx, models.DefaultClusterID)
+	return s.swarm.Manager(ctx, app.ClusterID)
 }
 
 // SetServerInfo wires the resolver used to label apps with their node's name.
@@ -162,7 +162,7 @@ func (s *Service) StreamAppLogs(ctx context.Context, workspaceID, appID uint, fo
 		tail = "200"
 	}
 	if app.RuntimeKind == models.RuntimeService {
-		mgr, merr := s.swarmManager(ctx)
+		mgr, merr := s.swarmManager(ctx, app)
 		if merr != nil {
 			return ErrNoActiveContainer
 		}
