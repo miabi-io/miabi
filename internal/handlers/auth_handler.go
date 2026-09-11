@@ -641,7 +641,7 @@ func (h *AuthHandler) UpdatePreferences(c *okapi.Context, req *UpdatePreferences
 	})
 	if err != nil {
 		if errors.Is(err, usersettings.ErrInvalidTheme) || errors.Is(err, usersettings.ErrInvalidAccent) ||
-			errors.Is(err, usersettings.ErrInvalidLandingView) {
+			errors.Is(err, usersettings.ErrInvalidLocale) || errors.Is(err, usersettings.ErrInvalidLandingView) {
 			return c.AbortBadRequest(err.Error())
 		}
 		return c.AbortInternalServerError("failed to save preferences", err)

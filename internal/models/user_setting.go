@@ -3,7 +3,10 @@
 
 package models
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type Theme string
 
@@ -55,6 +58,36 @@ func ValidAccent(a Accent) bool {
 	return false
 }
 
+// Display languages the console ships. Keep in step with web/src/i18n/languages.ts,
+// which is what the Preferences picker renders.
+const (
+	LocaleEnglish = "en"
+	LocaleFrench  = "fr"
+)
+
+// ValidLocale reports whether l is a display language the console ships.
+func ValidLocale(l string) bool {
+	switch l {
+	case LocaleEnglish, LocaleFrench:
+		return true
+	}
+	return false
+}
+
+// ResolveLocale maps a stored value onto a shipped language: the code itself, then
+// its primary subtag ("fr-CA" is French), then English. Rows saved while Language
+// was a free-text field hold arbitrary BCP 47 tags.
+func ResolveLocale(l string) string {
+	l = strings.ToLower(strings.TrimSpace(l))
+	if ValidLocale(l) {
+		return l
+	}
+	if i := strings.IndexAny(l, "-_"); i > 0 && ValidLocale(l[:i]) {
+		return l[:i]
+	}
+	return LocaleEnglish
+}
+
 type UserSetting struct {
 	ID     uint `json:"-" gorm:"primaryKey"`
 	UserID uint `json:"-" gorm:"uniqueIndex;not null"`
@@ -73,7 +106,7 @@ type UserSetting struct {
 }
 
 func DefaultUserSetting() UserSetting {
-	return UserSetting{Theme: ThemeSystem, Timezone: "UTC", Locale: "en", LandingView: "dashboard"}
+	return UserSetting{Theme: ThemeSystem, Timezone: "UTC", Locale: LocaleEnglish, LandingView: "dashboard"}
 }
 
 func ValidLandingView(v string) bool {
