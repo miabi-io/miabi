@@ -78,5 +78,14 @@ func (r *Router) clustersRoutes() []okapi.RouteDefinition {
 			Summary:     "Pick the node that serves a swarm cluster's routes",
 			Request:     &handlers.SetClusterGatewayRequest{},
 		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/{clusterID}/convert",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.cluster.ConvertIngress),
+			Summary:     "Give a standalone cluster's node a gateway: its own, or a swarm's",
+			Request:     &handlers.ConvertIngressRequest{},
+		},
 	}...)...)
 }

@@ -436,7 +436,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	dockerImportService := dockerimport.NewService(nodeClients, appService, stackService, appRepo, releaseRepo, deploymentRepo, volumeRepo, networkRepo, stackRepo, portBindingRepo)
 	// Node housekeeping: reclaim disk + reconcile drift between Docker and the DB.
 	housekeepingService := housekeeping.NewService(nodeClients, appRepo, dbRepo, stackRepo, volumeRepo)
-	routeService := route.NewService(routeRepo, middlewareRepo, appRepo, releaseRepo, serverRepo, portBindingRepo, proxyMgr, cfg.HostPortMin, cfg.HostPortMax)
+	routeService := route.NewService(routeRepo, middlewareRepo, appRepo, releaseRepo, serverRepo, proxyMgr)
 	// Attach/detach an app from the shared proxy network as its routes come and go
 	// (only route-exposed apps stay on it), reconciled live without a redeploy.
 	proxyReconciler := worker.NewProxyNetworkReconciler(appRepo, releaseRepo, nodeClients)
@@ -445,16 +445,11 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// ingress overlay on every cluster refresh, so a gateway recreate can't leave clustered apps
 	// publicly dark — plus once now, so a fresh boot doesn't wait a whole refresh interval.
 	clusterService.SetIngressReconciler(proxyReconciler.ReconcileIngressGateway)
-	// In cluster mode the gateway reaches a remote app over the ingress overlay by
-	// its DNS alias, so no host port is published for it — and canary weights, which
-	// the port-forward upstream cannot carry, start working on remote nodes.
+	// A swarm outside the default cluster is served by its own ingress node's gateway.
 	routeService.SetCluster(clusterService)
 	clusterService.SetGatewayListener(routeService.SyncCluster)
 	proxyReconciler.SetCluster(clusterService)
 	go func() { _ = proxyReconciler.ReconcileIngressGateway(context.Background()) }()
-	// Auto port-forwarding: when a port-forward app gains a route, redeploy it so
-	// the node actually publishes the allocated host port the gateway targets.
-	routeService.SetPortPublisher(appService)
 	// After a workspace proxy sync, tell affected edge-gateway nodes to pull their
 	// config immediately instead of waiting for the HTTP-provider poll interval.
 	routeService.SetEdgeReloader(newEdgeReloader(nodeService, nodeGateway))
@@ -1354,6 +1349,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Gate node container-log streaming by workspace membership: a platform admin
 	// can list/operate containers, but not read another workspace's container logs.
 	r.h.node.SetMembership(workspaceRepo)
+	r.h.cluster.SetConnectivityApplier(r.h.node.ApplyConnectivity)
 	// Block stop/remove of managed containers from the admin node view unless the
 	// operator has explicitly disabled security enforcement (break-glass).
 	r.h.node.SetSecurityEnforcement(r.cfg.SecurityEnforcement)
@@ -1452,6 +1448,14 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// file watcher sees the converged state in a single reload.
 	if err := routeService.ResyncAllProxy(context.Background()); err != nil {
 		logger.Warn("proxy startup resync failed", "err", err)
+	}
+	// A node converted from port-forward at upgrade moves its routes and DNS to its own gateway.
+	if list, err := clusterService.Clusters(); err == nil {
+		for i := range list {
+			if list[i].LegacyIngress {
+				go routeService.SyncCluster(context.Background(), list[i].ID)
+			}
+		}
 	}
 
 	// The bundle service goes back to the caller so the embedded worker can run

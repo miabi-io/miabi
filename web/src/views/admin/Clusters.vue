@@ -51,7 +51,7 @@ onMounted(load)
                         v-if="c.legacy_ingress"
                         class="badge badge-warning"
                         style="margin-left: 8px"
-                        title="Converted from a port-forward node: the central gateway still reaches its apps by host port"
+                        title="Converted from a port-forward node: confirm its own gateway or join it to a swarm cluster"
                       >legacy ingress</span>
                     </span>
                     <span class="cell-sub mono">{{ c.name }}</span>

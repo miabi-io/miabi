@@ -689,7 +689,7 @@ async function regenerate() {
 const showEdit = ref(false)
 const editSaving = ref(false)
 const editForm = ref<CreateNodePayload>({
-  display_name: '', address: '', public_ip: '', public_hostname: '', connectivity: 'port-forward', access_mode: 'agent',
+  display_name: '', address: '', public_ip: '', public_hostname: '', connectivity: 'edge-gateway', access_mode: 'agent',
   docker_endpoint: '', tls_ca_cert: '', tls_cert: '', tls_key: '',
 })
 function openEdit() {
@@ -704,7 +704,7 @@ function openEdit() {
   // changed one is rejected by the server.
   editForm.value = {
     display_name: n.display_name || n.name, address: n.address || '', public_ip: n.public_ip || '', public_hostname: n.public_hostname || '',
-    connectivity: n.connectivity || 'port-forward',
+    connectivity: n.connectivity || 'edge-gateway',
     access_mode: n.access_mode || 'agent', docker_endpoint: n.docker_endpoint || '',
     tls_ca_cert: '', tls_cert: '', tls_key: '',
   }
@@ -747,14 +747,14 @@ const connSaving = ref(false)
 const connAck = ref(false)
 const connImpact = ref<NodeWorkloads | null>(null)
 const connForm = ref<CreateNodePayload>({
-  display_name: '', address: '', public_ip: '', public_hostname: '', connectivity: 'port-forward',
+  display_name: '', address: '', public_ip: '', public_hostname: '', connectivity: 'edge-gateway',
   access_mode: 'agent', docker_endpoint: '', tls_ca_cert: '', tls_cert: '', tls_key: '',
 })
 const connEndpointPlaceholder = computed(() => connForm.value.access_mode === 'api' ? 'tcp://10.0.0.10:2376' : '')
 const connAccessModeDesc = computed(() => nodeOptionDescription(ACCESS_MODES, connForm.value.access_mode))
 const connConnectivityDesc = computed(() => nodeOptionDescription(CONNECTIVITY_TYPES, connForm.value.connectivity))
 const connectivityOptions = computed(() =>
-  CONNECTIVITY_TYPES.filter((o) => o.value !== 'port-forward' || node.value?.connectivity === 'port-forward'),
+  CONNECTIVITY_TYPES.filter((o) => o.value !== 'cluster' || node.value?.is_local || node.value?.in_swarm || node.value?.connectivity === 'cluster'),
 )
 async function openConnectivity() {
   if (!node.value) return
@@ -767,7 +767,7 @@ async function openConnectivity() {
   // (display name / public addresses) alongside the connectivity changes.
   connForm.value = {
     display_name: n.display_name || n.name, address: n.address || '', public_ip: n.public_ip || '', public_hostname: n.public_hostname || '',
-    connectivity: n.connectivity || 'port-forward',
+    connectivity: n.connectivity || 'edge-gateway',
     access_mode: n.access_mode || 'agent', docker_endpoint: n.docker_endpoint || '',
     tls_ca_cert: '', tls_cert: '', tls_key: '',
   }
@@ -839,7 +839,7 @@ function fmtSize(n?: number): string {
   return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`
 }
 function connectivityLabel(): string {
-  return isEdge.value ? 'Edge gateway (own TLS)' : 'Port forwarding'
+  return isEdge.value ? 'Edge gateway (own TLS)' : 'Cluster gateway'
 }
 const gwBadge = computed(() => {
   if (!gateway.value?.deployed) return { cls: 'badge-neutral', text: 'not deployed' }

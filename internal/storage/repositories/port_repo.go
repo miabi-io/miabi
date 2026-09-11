@@ -79,12 +79,10 @@ func (r *PortBindingRepository) ListByWorkspace(workspaceID uint) ([]models.Port
 	return bindings, err
 }
 
-// ListByStatus returns user-requested bindings across all workspaces in a given
-// status (the admin review queue). Managed (auto-forward) bindings are excluded
-// — they are control-plane resources, never reviewed.
+// ListByStatus returns bindings across all workspaces in a given status (the admin review queue).
 func (r *PortBindingRepository) ListByStatus(status models.PortBindingStatus) ([]models.PortBinding, error) {
 	var bindings []models.PortBinding
-	err := r.db.Where("status = ? AND managed = ?", status, false).Order("created_at ASC").Find(&bindings).Error
+	err := r.db.Where("status = ?", status).Order("created_at ASC").Find(&bindings).Error
 	return bindings, err
 }
 
@@ -102,13 +100,6 @@ func (r *PortBindingRepository) ListActive() ([]models.PortBinding, error) {
 func (r *PortBindingRepository) ListApprovedByApp(appID uint) ([]models.PortBinding, error) {
 	var bindings []models.PortBinding
 	err := r.db.Where("application_id = ? AND status = ?", appID, models.PortBindingApproved).Find(&bindings).Error
-	return bindings, err
-}
-
-// ListManagedByApp returns the app's managed (auto-forward) bindings.
-func (r *PortBindingRepository) ListManagedByApp(appID uint) ([]models.PortBinding, error) {
-	var bindings []models.PortBinding
-	err := r.db.Where("application_id = ? AND managed = ?", appID, true).Find(&bindings).Error
 	return bindings, err
 }
 

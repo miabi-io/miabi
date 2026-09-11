@@ -111,7 +111,7 @@ func runWorker() error {
 	// The worker re-syncs Goma on deploy, so its route service must apply the same
 	// domain-verification gate as the API server — otherwise a deploy would re-render
 	// unverified or banned routes as live.
-	workerRouteSvc := route.NewService(repositories.NewRouteRepository(db), repositories.NewMiddlewareRepository(db), appRepo, repositories.NewReleaseRepository(db), repositories.NewServerRepository(db), repositories.NewPortBindingRepository(db), proxyMgr, cfg.HostPortMin, cfg.HostPortMax)
+	workerRouteSvc := route.NewService(repositories.NewRouteRepository(db), repositories.NewMiddlewareRepository(db), appRepo, repositories.NewReleaseRepository(db), repositories.NewServerRepository(db), proxyMgr)
 	workerRouteSvc.SetDomains(repositories.NewDomainRepository(db))
 	workerRouteSvc.SetWorkspacePolicy(repositories.NewWorkspaceRepository(db))
 	deployHandler := worker.NewDeployHandler(

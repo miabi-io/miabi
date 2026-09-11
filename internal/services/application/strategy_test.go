@@ -91,22 +91,3 @@ func TestNormalizeDeployConfig(t *testing.T) {
 		t.Errorf("interval = %d, want clamped to 10", app.CanaryStepIntervalSeconds)
 	}
 }
-
-func TestSamePortSet(t *testing.T) {
-	cases := []struct {
-		name string
-		a, b map[int]bool
-		want bool
-	}{
-		{"both empty", map[int]bool{}, map[int]bool{}, true},
-		{"equal", map[int]bool{1024: true, 8080: true}, map[int]bool{8080: true, 1024: true}, true},
-		{"added", map[int]bool{1024: true}, map[int]bool{1024: true, 9000: true}, false},
-		{"removed (route deleted)", map[int]bool{1024: true}, map[int]bool{}, false},
-		{"different", map[int]bool{1024: true}, map[int]bool{2048: true}, false},
-	}
-	for _, c := range cases {
-		if got := samePortSet(c.a, c.b); got != c.want {
-			t.Errorf("%s: samePortSet = %v, want %v", c.name, got, c.want)
-		}
-	}
-}

@@ -2219,7 +2219,7 @@ func (s *Service) reconcileExposure(ctx context.Context, workspaceID uint, app *
 
 // reconcileBindings converges an app's host-port bindings to the manifest's publish/hostPort ports.
 // Presence-based: an existing binding for a still-desired port is left as-is, so a possibly auto-allocated
-// host port is not churned; bindings for ports no longer published are cancelled. Managed ones are untouched.
+// host port is not churned; bindings for ports no longer published are cancelled.
 func (s *Service) reconcileBindings(workspaceID, appID uint, spec *declarative.ApplicationSpec) error {
 	desired := map[int]declarative.PortSpec{}
 	for _, p := range spec.Ports {
@@ -2233,9 +2233,6 @@ func (s *Service) reconcileBindings(workspaceID, appID uint, spec *declarative.A
 	}
 	have := map[int]*models.PortBinding{}
 	for i := range existing {
-		if existing[i].Managed {
-			continue
-		}
 		have[existing[i].ContainerPort] = &existing[i]
 	}
 	for cport, p := range desired {
@@ -2263,8 +2260,8 @@ func (s *Service) reconcileBindings(workspaceID, appID uint, spec *declarative.A
 }
 
 // exposedPorts derives an app's live exposure: container ports that have a
-// generated external-access route, and container ports with a (non-managed)
-// host-port binding. Powers idempotent diffing.
+// generated external-access route, and container ports with a host-port binding.
+// Powers idempotent diffing.
 func (s *Service) exposedPorts(workspaceID, appID uint) (ext, pub map[int]bool) {
 	ext, pub = map[int]bool{}, map[int]bool{}
 	if routes, err := s.routes.ListByApp(workspaceID, appID); err == nil {
@@ -2277,9 +2274,7 @@ func (s *Service) exposedPorts(workspaceID, appID uint) (ext, pub map[int]bool) 
 	if s.bindings != nil {
 		if bs, err := s.bindings.ListByApp(workspaceID, appID); err == nil {
 			for i := range bs {
-				if !bs[i].Managed {
-					pub[bs[i].ContainerPort] = true
-				}
+				pub[bs[i].ContainerPort] = true
 			}
 		}
 	}

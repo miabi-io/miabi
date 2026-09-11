@@ -265,9 +265,7 @@ func (s *Service) swarmManager(ctx context.Context, app *models.Application) (do
 	return s.cluster.Manager(ctx, app.ClusterID)
 }
 
-// SetPortBindings wires the port-binding repository used by EnsurePublished to
-// learn which host ports an app's container must publish (injected after
-// construction).
+// SetPortBindings wires the port-binding repository, whose rows go with a deleted app.
 func (s *Service) SetPortBindings(r *repositories.PortBindingRepository) { s.portBindings = r }
 
 // ExternalLabelTaken reports whether another application already owns the given
@@ -2125,69 +2123,6 @@ func (s *Service) Redeploy(app *models.Application) (*models.Deployment, error) 
 		image = app.ImageRef("")
 	}
 	return s.enqueue(app.ID, app.ServerID, image, "auto", app.RegistryID, models.DeployRolling, false)
-}
-
-// EnsurePublished reconciles the host ports an app's running container publishes with its approved
-// bindings, enqueuing a rolling redeploy when they differ — Docker cannot add a port to a running
-// container. Idempotent and best-effort. Satisfies the route service's PortPublisher.
-func (s *Service) EnsurePublished(ctx context.Context, appID uint) error {
-	if s.portBindings == nil {
-		return nil
-	}
-	app, err := s.apps.FindByID(appID)
-	if err != nil {
-		return err
-	}
-	if app.CurrentReleaseID == nil {
-		return nil // not running yet — the first deploy publishes everything
-	}
-	rel, err := s.releases.FindActive(appID)
-	if err != nil || rel.ContainerID == "" {
-		return nil
-	}
-	eng, err := s.clients.For(app.ServerID)
-	if err != nil {
-		return nil // node offline — republishes on its next deploy
-	}
-	cfg, err := eng.InspectContainerConfig(ctx, rel.ContainerID)
-	if err != nil {
-		return nil
-	}
-	approved, err := s.portBindings.ListApprovedByApp(appID)
-	if err != nil {
-		return err
-	}
-	want := map[int]bool{}
-	for _, b := range approved {
-		want[b.HostPort] = true
-	}
-	live := map[int]bool{}
-	for _, p := range cfg.Ports {
-		if p.HostPort != 0 {
-			live[p.HostPort] = true
-		}
-	}
-	if !samePortSet(want, live) {
-		// A binding was added or removed since the last deploy: redeploy so the container publishes
-		// exactly the approved set. This asks for rolling, but the worker downgrades it to recreate
-		// whenever host ports are published — two containers cannot hold the same host port.
-		_, derr := s.Redeploy(app)
-		return derr
-	}
-	return nil
-}
-
-// samePortSet reports whether two host-port sets are equal.
-func samePortSet(a, b map[int]bool) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for p := range a {
-		if !b[p] {
-			return false
-		}
-	}
-	return true
 }
 
 func (s *Service) AutoRedeploy(app *models.Application) (*models.Deployment, error) {

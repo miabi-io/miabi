@@ -83,10 +83,24 @@ func (s *Service) SetGateway(ctx context.Context, clusterID uint, p GatewayPatch
 		return nil, err
 	}
 	s.AttachGateway(ctx, c.ID)
-	if s.gatewayListener != nil {
-		go s.gatewayListener(context.WithoutCancel(ctx), c.ID)
-	}
+	s.ResyncRoutes(ctx, c.ID)
 	return s.Cluster(c.ID)
+}
+
+// ResyncRoutes re-syncs a cluster's routes in the background, after the gateway serving them changed.
+func (s *Service) ResyncRoutes(ctx context.Context, clusterID uint) {
+	if s.gatewayListener != nil {
+		go s.gatewayListener(context.WithoutCancel(ctx), clusterID)
+	}
+}
+
+// ConfirmGateway records that a node converted from port-forward serves its apps through its own gateway.
+func (s *Service) ConfirmGateway(clusterID uint) error {
+	c, err := s.Cluster(clusterID)
+	if err != nil {
+		return err
+	}
+	return s.store.UpdateColumns(c.ID, map[string]any{"legacy_ingress": false, "ingress_server_id": c.ManagerServerID})
 }
 
 // AttachGateway joins a swarm cluster's ingress-node gateway to the cluster's ingress overlay, which is how it

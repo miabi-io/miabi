@@ -163,7 +163,7 @@ func (h *PortBindingHandler) record(c *okapi.Context, wsID *uint, action string,
 
 func (h *PortBindingHandler) mapErr(c *okapi.Context, err error) error {
 	switch {
-	case errors.Is(err, portbinding.ErrHostPortTaken), errors.Is(err, portbinding.ErrManagedBinding):
+	case errors.Is(err, portbinding.ErrHostPortTaken):
 		return c.AbortWithError(409, err)
 	case errors.Is(err, portbinding.ErrPortNotExposed), errors.Is(err, portbinding.ErrHostPortRange), errors.Is(err, portbinding.ErrNotPending):
 		return c.AbortBadRequest(err.Error())

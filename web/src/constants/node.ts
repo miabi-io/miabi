@@ -27,9 +27,9 @@ export const CONNECTIVITY_TYPES: NodeOption[] = [
     description: 'The node runs its own gateway for public ingress and TLS termination at the edge.',
   },
   {
-    value: 'port-forward',
-    label: 'Port forwarding (legacy)',
-    description: 'A central proxy forwards traffic to node:port. No longer offered for new nodes: a node without public ports should join the cluster instead.',
+    value: 'cluster',
+    label: 'Cluster gateway',
+    description: "The node runs no gateway of its own: its swarm cluster's gateway serves its apps over the overlay. Only for swarm members.",
   },
 ]
 

@@ -42,14 +42,7 @@ type PortBinding struct {
 	// ServerID is the node the host port is published on. Host ports are a
 	// per-host resource, so conflict checks + allocation are scoped to it
 	// (0 = the local/manager node). Backfilled from the owning app.
-	ServerID uint `json:"server_id" gorm:"index;not null;default:0"`
-	// Managed marks a control-plane auto-forward binding (created for a
-	// port-forward node's route ingress) rather than a user request. Managed
-	// bindings are auto-approved and never enter the admin review queue.
-	Managed bool `json:"managed" gorm:"not null;default:false"`
-	// BindIP is the host interface the port is published on ("" = all/0.0.0.0).
-	// Managed bindings use the node's private address so ingress stays private.
-	BindIP      string    `json:"bind_ip,omitempty"`
+	ServerID    uint      `json:"server_id" gorm:"index;not null;default:0"`
 	RequestedBy uint      `json:"requested_by"`
 	ReviewedBy  *uint     `json:"reviewed_by,omitempty"`
 	ReviewNote  string    `json:"review_note,omitempty"`

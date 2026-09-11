@@ -29,7 +29,6 @@ var (
 	ErrHostPortRange  = errors.New("host port is outside the allowed range")
 	ErrHostPortTaken  = errors.New("host port is already in use")
 	ErrNotPending     = errors.New("binding is not pending review")
-	ErrManagedBinding = errors.New("this binding is managed automatically and cannot be changed")
 )
 
 // DockerClients resolves a node's Docker client so host-port conflicts can be
@@ -373,16 +372,11 @@ func (s *Service) ListByWorkspace(workspaceID uint) ([]models.PortBinding, error
 	return s.repo.ListByWorkspace(workspaceID)
 }
 
-// Cancel removes a workspace's own binding (e.g. withdraw a request). Managed
-// auto-forward bindings are control-plane owned and cannot be cancelled here —
-// they are released automatically when their route is removed.
+// Cancel removes a workspace's own binding (e.g. withdraw a request).
 func (s *Service) Cancel(workspaceID, id uint) error {
 	b, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
 		return ErrNotFound
-	}
-	if b.Managed {
-		return ErrManagedBinding
 	}
 	return s.repo.Delete(b.ID)
 }

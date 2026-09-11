@@ -36,7 +36,6 @@ type PortEntry struct {
 	AppName       string    `json:"app_name,omitempty"`
 	ContainerPort int       `json:"container_port,omitempty"`
 	Container     string    `json:"container,omitempty"`
-	Managed       bool      `json:"managed,omitempty"`
 	RequestedBy   uint      `json:"requested_by,omitempty"`
 	CreatedAt     time.Time `json:"created_at,omitempty"`
 }
@@ -146,8 +145,7 @@ func (s *Service) reconcile(bindings []models.PortBinding, live map[string]strin
 		e := PortEntry{
 			HostPort: b.HostPort, Protocol: normProto(b.Protocol),
 			BindingID: b.ID, WorkspaceID: b.WorkspaceID, ApplicationID: b.ApplicationID,
-			ContainerPort: b.ContainerPort, Managed: b.Managed,
-			RequestedBy: b.RequestedBy, CreatedAt: b.CreatedAt,
+			ContainerPort: b.ContainerPort, RequestedBy: b.RequestedBy, CreatedAt: b.CreatedAt,
 			Container: live[key],
 		}
 		switch {

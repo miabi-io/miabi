@@ -70,8 +70,7 @@ async function saveChain() {
 const availableMw = computed(() => allMiddlewares.value.filter((m) => !attachedMw.value.includes(m.name)))
 
 const port = computed(() => item.value?.target_port || app.value?.port || 80)
-// Prefer the real backend resolved server-side (e.g. a port-forward node's
-// address:hostPort); fall back to the in-network alias for display.
+// Prefer the backend resolved server-side; fall back to the in-network alias for display.
 const stableEndpoint = computed(() => item.value?.backends?.[0] || (app.value ? `http://mb-app-${app.value.id}:${port.value}` : ''))
 const canaryEndpoint = computed(() => item.value?.backends?.[1] || (app.value ? `http://mb-app-${app.value.id}-canary:${port.value}` : ''))
 
