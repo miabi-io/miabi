@@ -18,7 +18,7 @@ import (
 
 // ProviderHandler serves a remote node's Goma Gateway config over Goma's HTTP provider: a node's
 // Gateway polls these endpoints with its join token. The bundle contains every middleware (routes
-// reference them by name) but only the routes for apps placed on that node.
+// reference them by name) but only the routes for apps that node's gateway serves.
 type ProviderHandler struct {
 	nodes     *node.Service
 	routes    *route.Service

@@ -9,6 +9,7 @@ import { volumeApi, monitoringApi, databaseApi, usageApi } from '@/api/resources
 import { registryApi } from '@/api/registries'
 import { gitRepositoryApi } from '@/api/gitRepositories'
 import { networkApi } from '@/api/networks'
+import LocationName from '@/components/LocationName.vue'
 import { stackApi } from '@/api/stacks'
 import { routeApi } from '@/api/routes'
 import { configApi, type Config } from '@/api/configs'
@@ -1982,6 +1983,7 @@ async function detachDatabase(d: AppDatabase) {
                    by the scheduler, so its real placement is shown in the overview. -->
               <template v-if="!isService && app.server_name"> · <span class="mdi mdi-server-network"></span> {{ app.server_name }}</template>
               <template v-else-if="isService && nodePlacement.length"> · <span class="mdi mdi-server-network"></span> {{ nodePlacementLabel }}</template>
+              <LocationName :cluster-id="app.cluster_id" />
               <!-- Provenance: where this app came from, linking to its source. -->
               <template v-if="template"> · <span class="mdi mdi-storefront-outline"></span>
                 <router-link

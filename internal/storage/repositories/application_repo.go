@@ -136,6 +136,13 @@ func (r *ApplicationRepository) ListByServer(serverID uint) ([]models.Applicatio
 	return apps, err
 }
 
+// ListByCluster returns all applications in a cluster (across workspaces), for the cluster's gateway.
+func (r *ApplicationRepository) ListByCluster(clusterID uint) ([]models.Application, error) {
+	var apps []models.Application
+	err := r.db.Preload("Ports").Where("cluster_id = ?", clusterID).Find(&apps).Error
+	return apps, err
+}
+
 func (r *ApplicationRepository) ExistsByName(workspaceID uint, name string) (bool, error) {
 	var count int64
 	err := r.db.Model(&models.Application{}).

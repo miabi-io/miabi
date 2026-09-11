@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LocationPicker from '@/components/LocationPicker.vue'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
@@ -6,7 +7,6 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { volumeApi, usageApi } from '@/api/resources'
 import type { Volume, WorkspaceUsage, WorkspaceStorage } from '@/api/types'
-import NodePicker from '@/components/NodePicker.vue'
 import { fmtSize } from '@/utils/format'
 import { relativeTime } from '@/utils/time'
 import AppModal from '@/components/AppModal.vue'
@@ -40,6 +40,7 @@ const showCreate = ref(false)
 const creating = ref(false)
 const name = ref('')
 const serverId = ref(0)
+const volLocation = ref('')
 const sizeMb = ref<number | null>(null)
 // local = node-local (rwo); nfs/cifs = shared (rwx) for replicated cluster apps;
 // host = bind an operator-managed /mnt/* path present on every node (rwx).
@@ -78,6 +79,7 @@ watch(currentWorkspaceId, load, { immediate: true })
 function openCreate() {
   name.value = ''
   serverId.value = 0
+  volLocation.value = ''
   sizeMb.value = null
   driver.value = 'local'
   nfsServer.value = ''; nfsExport.value = ''
@@ -109,7 +111,7 @@ async function create() {
   creating.value = true
   try {
     const d = driver.value === 'local' ? undefined : driver.value
-    await volumeApi.create(currentWorkspaceId.value, name.value.trim(), serverId.value, sizeMb.value ?? undefined, d, driverOpts())
+    await volumeApi.create(currentWorkspaceId.value, name.value.trim(), serverId.value || undefined, sizeMb.value ?? undefined, d, driverOpts(), volLocation.value || undefined)
     notify.success('Volume created')
     showCreate.value = false
     load(currentWorkspaceId.value)
@@ -236,7 +238,7 @@ function fmtDate(s?: string) {
               <label class="form-label">Name</label>
               <input v-model="name" class="form-input" placeholder="e.g. app-data" required autofocus />
             </div>
-            <NodePicker v-model="serverId" />
+            <LocationPicker v-model="volLocation" v-model:server-id="serverId" />
             <div class="form-group">
               <label class="form-label">Type</label>
               <select v-model="driver" class="form-select">

@@ -159,6 +159,16 @@ func (s *Service) PlanUpgrade(workspaceID, installID uint, target string) (*Upgr
 	return plan, nil
 }
 
+// upgradeNode is the node an install's apps run on, so a volume an upgrade adds lands where it is mounted.
+func (s *Service) upgradeNode(workspaceID uint, appIDs []uint) uint {
+	for _, id := range appIDs {
+		if app, err := s.apps.Get(workspaceID, id); err == nil {
+			return app.ServerID
+		}
+	}
+	return 0
+}
+
 // ApplyUpgrade converges an install to the target version: it bumps each matched app's image, adds new
 // env, creates new volumes and attaches their mounts, redeploys, and records the new version. Changed or
 // removed env, new databases and structural app changes are surfaced as warnings, not applied.
@@ -187,12 +197,13 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 	}
 
 	volIDs := map[string]uint{}
+	volNode := s.upgradeNode(workspaceID, rec.AppIDs)
 	for _, v := range added(volNames(oldM), volNames(newM)) {
 		meta := models.SetBuiltin(models.Metadata{},
 			models.MetaManagedBy, models.ManagedByMarketplace,
 			models.MetaTemplate, newM.Metadata.Name,
 			models.MetaTemplateVersion, newM.Metadata.Version)
-		vol, verr := s.volumes.Create(ctx, workspaceID, 0, sanitizeName(newM.Metadata.Name+"-"+v), 0, meta, nil)
+		vol, verr := s.volumes.Create(ctx, workspaceID, volNode, sanitizeName(newM.Metadata.Name+"-"+v), 0, meta, nil)
 		if verr != nil {
 			res.Warnings = append(res.Warnings, fmt.Sprintf("create volume %q: %v", v, verr))
 			continue

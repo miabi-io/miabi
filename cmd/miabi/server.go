@@ -202,6 +202,7 @@ func runServer(cli *okapicli.CLI) {
 					return
 				}
 				nodeService.MarkGatewayDeployed(srv.ID)
+				clusterService.AttachGateway(ctx, srv.ClusterID)
 			})
 			nodeManager.SetOnRemove(func(ctx context.Context, srv *models.Server, dc docker.Client) {
 				if srv.Connectivity != models.ConnectivityEdgeGateway {

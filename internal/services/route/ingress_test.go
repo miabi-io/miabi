@@ -135,12 +135,46 @@ func TestEdgeGatewayAndDNSTarget(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := s.edgeGateway(tt.app); got != tt.wantEdge {
-				t.Errorf("edgeGateway = %v, want %v", got, tt.wantEdge)
+			if _, got := s.gatewayServer(tt.app); got != tt.wantEdge {
+				t.Errorf("gatewayServer = %v, want %v", got, tt.wantEdge)
 			}
 			if ip, _ := s.dnsTarget(tt.app); ip != tt.wantIP {
 				t.Errorf("dnsTarget = %q, want %q", ip, tt.wantIP)
 			}
 		})
+	}
+}
+
+// The control-plane gateway cannot join a remote swarm's overlay, so the swarm's ingress node serves every app
+// in it, service apps included, whichever node they run on.
+func TestRemoteSwarmIsServedByItsIngressNode(t *testing.T) {
+	s := newIngressService(t, false)
+	gw := &models.Cluster{ID: 9, Mode: models.ClusterModeSwarm, IngressServerID: edgeServer}
+	s.SetCluster(fakeCluster{on: true, gateway: gw})
+
+	for _, app := range []*models.Application{
+		{ClusterID: 9, ServerID: noAddrFwdServer, Alias: "mb-app-x-7"},
+		{ClusterID: 9, ServerID: noAddrFwdServer, RuntimeKind: models.RuntimeService, Alias: "mb-app-x-8"},
+	} {
+		if id, ok := s.gatewayServer(app); !ok || id != edgeServer {
+			t.Errorf("app %s: gatewayServer = %d, %v, want the ingress node", app.Alias, id, ok)
+		}
+		if ip, _ := s.dnsTarget(app); ip != "203.0.113.3" {
+			t.Errorf("app %s: dnsTarget = %q, want the ingress node's address", app.Alias, ip)
+		}
+		if err := s.requireRoutableNode(app); err != nil {
+			t.Errorf("app %s: requireRoutableNode = %v, want nil", app.Alias, err)
+		}
+		if got := s.displayBackends(app, 8080); len(got) != 1 || got[0] != "http://"+app.Alias+":8080" {
+			t.Errorf("app %s: displayBackends = %v, want its alias", app.Alias, got)
+		}
+	}
+
+	gw.IngressIP = "192.0.2.10"
+	if ip, _ := s.dnsTarget(&models.Application{ClusterID: 9, ServerID: noAddrFwdServer}); ip != "192.0.2.10" {
+		t.Errorf("dnsTarget = %q, want the cluster's ingress address", ip)
+	}
+	if _, ok := s.gatewayServer(&models.Application{ClusterID: 1, ServerID: portFwdServer}); ok {
+		t.Error("an app outside the swarm was handed to its gateway")
 	}
 }

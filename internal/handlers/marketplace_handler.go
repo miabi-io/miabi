@@ -15,13 +15,17 @@ import (
 )
 
 type MarketplaceHandler struct {
-	svc   *marketplace.Service
-	audit *audit.Logger
+	svc    *marketplace.Service
+	audit  *audit.Logger
+	placer *Placer
 }
 
 func NewMarketplaceHandler(svc *marketplace.Service, auditLog *audit.Logger) *MarketplaceHandler {
 	return &MarketplaceHandler{svc: svc, audit: auditLog}
 }
+
+// SetPlacer wires the platform-admin check that lets an install target a restricted location.
+func (h *MarketplaceHandler) SetPlacer(p *Placer) { h.placer = p }
 
 // InstallRequest installs a template version into the workspace. Inputs answers
 // the template's questions; Placements optionally pins a database dependency
@@ -34,6 +38,8 @@ type InstallRequest struct {
 		Inputs         map[string]string `json:"inputs"`
 		Placements     map[string]uint   `json:"placements"`
 		PlacementModes map[string]string `json:"placement_modes"`
+		// Location is where the install runs; empty uses the workspace's default location.
+		Location string `json:"location"`
 	} `json:"body"`
 }
 
@@ -65,6 +71,8 @@ func (h *MarketplaceHandler) Install(c *okapi.Context, req *InstallRequest) erro
 		Inputs:         req.Body.Inputs,
 		Placements:     req.Body.Placements,
 		PlacementModes: req.Body.PlacementModes,
+		Location:       req.Body.Location,
+		Admin:          h.placer.admin(c),
 	})
 	if err != nil {
 		switch {
@@ -99,6 +107,8 @@ func (h *MarketplaceHandler) StartInstall(c *okapi.Context, req *InstallRequest)
 		Inputs:         req.Body.Inputs,
 		Placements:     req.Body.Placements,
 		PlacementModes: req.Body.PlacementModes,
+		Location:       req.Body.Location,
+		Admin:          h.placer.admin(c),
 	})
 	if err != nil {
 		switch {

@@ -73,6 +73,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/notify"
 	"github.com/miabi-io/miabi/internal/services/oauth"
 	"github.com/miabi-io/miabi/internal/services/pipeline"
+	"github.com/miabi-io/miabi/internal/services/placement"
 	"github.com/miabi-io/miabi/internal/services/platformbackup"
 	"github.com/miabi-io/miabi/internal/services/platformimage"
 	"github.com/miabi-io/miabi/internal/services/portbinding"
@@ -129,6 +130,7 @@ type routerHandlers struct {
 	auth            *handlers.AuthHandler
 	apiKey          *handlers.APIKeyHandler
 	workspace       *handlers.WorkspaceHandler
+	location        *handlers.LocationHandler
 	app             *handlers.ApplicationHandler
 	network         *handlers.NetworkHandler
 	stack           *handlers.StackHandler
@@ -447,6 +449,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// its DNS alias, so no host port is published for it — and canary weights, which
 	// the port-forward upstream cannot carry, start working on remote nodes.
 	routeService.SetCluster(clusterService)
+	clusterService.SetGatewayListener(routeService.SyncCluster)
 	proxyReconciler.SetCluster(clusterService)
 	go func() { _ = proxyReconciler.ReconcileIngressGateway(context.Background()) }()
 	// Auto port-forwarding: when a port-forward app gains a route, redeploy it so
@@ -694,7 +697,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	monitoringService := monitoring.NewService(appRepo, releaseRepo, dbRepo, stackRepo, appEventRepo, repositories.NewMetricRepository(db), nodeClients)
 	monitoringService.SetSwarmManager(clusterService)
 	monitoringService.SetServerInfo(nodeService)
+	placementService := placement.NewService(repositories.NewClusterRepository(db), serverRepo, nodeClients.Connected)
+	placer := handlers.NewPlacer(placementService, userRepo)
 	marketplaceService := marketplace.NewService(appService, databaseService, storageService, stackService, repositories.NewTemplateInstallRepository(db), repositories.NewTemplateRepository(db))
+	marketplaceService.SetPlacer(placementService)
 	marketplaceService.SetConfigs(configService)
 	marketplaceService.SetEventBus(bus) // live install-progress SSE
 	marketplaceRemote := marketremote.New(cfg.MarketplaceURL, marketremote.NewRedisCache(redisClient))
@@ -848,6 +854,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	applyService.SetConfigs(configService)
 	applyService.SetMiddlewares(middlewareService)
 	applyService.SetCluster(clusterService)
+	applyService.SetPlacer(placementService)
 	applyService.SetCertificates(certificateService)
 	// Declarative Application port exposure: externalAccess (reverse-proxy URLs,
 	// over the platform base domain) and publish/hostPort (host-port bindings).
@@ -1058,6 +1065,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			apiKey:          handlers.NewAPIKeyHandler(apiKeyService, apiKeyRepo, workspaceRepo, auditLogger),
 			usage:           handlers.NewUsageHandler(quotaService, appRepo, dbRepo, volumeRepo, networkRepo, jobRepo, apiKeyRepo, workspaceRepo, repositories.NewRunnerRepository(db)),
 			workspace:       handlers.NewWorkspaceHandler(workspaceService, accountService, auditRepo, userRepo, auditLogger, ee),
+			location:        handlers.NewLocationHandler(placer, auditLogger),
 			app:             handlers.NewApplicationHandler(appService, bus, auditLogger, ee),
 			network:         handlers.NewNetworkHandler(networkService, auditLogger),
 			stack:           handlers.NewStackHandler(stackService, auditLogger),
@@ -1172,6 +1180,11 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Surface cluster-mode availability as a workspace capability, so any member — not just a
 	// platform admin — can be offered the replicated "service" runtime when creating an app.
 	r.h.usage.SetClusterCap(clusterService)
+	r.h.app.SetPlacer(placer)
+	r.h.database.SetPlacer(placer)
+	r.h.volume.SetPlacer(placer)
+	r.h.stack.SetPlacer(placer)
+	r.h.marketplace.SetPlacer(placer)
 
 	// Log reads replay a finished run's full history from the shared store and expose a
 	// full-log download; nil-safe, falling back to the DB tail when disabled.
@@ -1411,6 +1424,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.app.Register(r.nodeRoutes()...)
 	r.app.Register(r.clusterRoutes()...)
 	r.app.Register(r.clustersRoutes()...)
+	r.app.Register(r.locationRoutes()...)
 	r.app.Register(r.runnerRoutes()...)
 	r.app.Register(r.adminRunnerRoutes()...)
 	r.app.Register(r.runnerGatewayRoutes()...)

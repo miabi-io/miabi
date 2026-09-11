@@ -52,14 +52,14 @@ func (s *Service) ResolveDependency(ctx context.Context, workspaceID, serverID, 
 		return s.provisionDedicated(ctx, workspaceID, base, declName, engine, version, serverID, meta)
 
 	case placement == PlacementShared:
-		inst := s.findReusable(workspaceID, engine)
+		inst := s.findReusable(workspaceID, engine, serverID)
 		if inst == nil {
 			return nil, nil, ConnectionInfo{}, false, ErrNoSharedInstance
 		}
 		return s.logicalOn(ctx, workspaceID, inst, base, declName, meta)
 
 	default: // PlacementAuto
-		if inst := s.findReusable(workspaceID, engine); inst != nil {
+		if inst := s.findReusable(workspaceID, engine, serverID); inst != nil {
 			return s.logicalOn(ctx, workspaceID, inst, base, declName, meta)
 		}
 		return s.provisionDedicated(ctx, workspaceID, base, declName, engine, version, serverID, meta)
@@ -142,20 +142,38 @@ func (s *Service) tagLogical(d *models.Database, declName string, meta models.Me
 // reuse for engine, or nil. Exposed so a caller can pre-resolve a dependency's
 // target node without performing the placement.
 func (s *Service) FindReusableInstance(workspaceID uint, engine models.DBEngine) *models.DatabaseInstance {
-	return s.findReusable(workspaceID, engine)
+	return s.findReusable(workspaceID, engine, 0)
 }
 
-func (s *Service) findReusable(workspaceID uint, engine models.DBEngine) *models.DatabaseInstance {
+// findReusable picks a running instance of engine, in the location of serverID when one is given:
+// private networks don't span locations.
+func (s *Service) findReusable(workspaceID uint, engine models.DBEngine, serverID uint) *models.DatabaseInstance {
 	list, err := s.List(workspaceID)
 	if err != nil {
 		return nil
 	}
+	cluster, scoped := s.clusterOfServer(serverID)
 	for i := range list {
-		if list[i].Engine == engine && list[i].Status == models.DBStatusRunning {
-			return &list[i]
+		if list[i].Engine != engine || list[i].Status != models.DBStatusRunning {
+			continue
 		}
+		if scoped && list[i].ClusterID != cluster {
+			continue
+		}
+		return &list[i]
 	}
 	return nil
+}
+
+func (s *Service) clusterOfServer(serverID uint) (uint, bool) {
+	if serverID == 0 || s.serverInfo == nil {
+		return 0, false
+	}
+	srv, err := s.serverInfo.Get(serverID)
+	if err != nil || srv == nil {
+		return 0, false
+	}
+	return srv.ClusterID, true
 }
 
 // ListDatabasesByWorkspace returns every logical database in the workspace.

@@ -105,6 +105,7 @@ type Service struct {
 	// ingressReconciler re-asserts the central gateway's attachment to the default cluster's ingress overlay,
 	// so a gateway recreate can't leave clustered apps dark for longer than a refresh interval.
 	ingressReconciler func(context.Context) error
+	gatewayListener   func(context.Context, uint)
 
 	// networkMigrator converts the default cluster's workspace bridges into overlays when Swarm is enabled,
 	// networkRollback reverses it before leaving, and networkPending counts bridges still left.
@@ -366,6 +367,11 @@ func (s *Service) Refresh(ctx context.Context) {
 	s.mu.Unlock()
 	s.syncDefaultMode(info)
 	s.reconcileMembership(ctx, states)
+	for id, st := range states {
+		if id != models.DefaultClusterID && st.active() {
+			s.AttachGateway(ctx, id)
+		}
+	}
 
 	if info.NodeID != "" {
 		if id := s.clients.LocalID(); id != 0 {

@@ -56,8 +56,8 @@ export const databaseApi = {
   eventsUrl: (ws: number, id: number) => sseUrl(`${w(ws)}/databases/${id}/events`),
   // SSE stream of live status for every instance in the workspace (list page).
   workspaceEventsUrl: (ws: number) => sseUrl(`${w(ws)}/databases/events`),
-  create: (ws: number, name: string, engine: DBEngine, version?: string, serverId?: number, sizeMb?: number) =>
-    api.post<ApiResponse<DatabaseInstance>>(`${w(ws)}/databases`, { name, engine, version, server_id: serverId, size_mb: sizeMb }),
+  create: (ws: number, name: string, engine: DBEngine, version?: string, serverId?: number, sizeMb?: number, location?: string) =>
+    api.post<ApiResponse<DatabaseInstance>>(`${w(ws)}/databases`, { name, engine, version, server_id: serverId, size_mb: sizeMb, location }),
   credentials: (ws: number, id: number) => api.get<ApiResponse<ConnectionInfo>>(`${w(ws)}/databases/${id}/credentials`),
   start: (ws: number, id: number) => api.post<ApiResponse<{ message: string }>>(`${w(ws)}/databases/${id}/start`),
   stop: (ws: number, id: number) => api.post<ApiResponse<{ message: string }>>(`${w(ws)}/databases/${id}/stop`),
@@ -98,8 +98,8 @@ export const volumeApi = {
   // Declared-vs-measured storage summary; served from cached columns (no live df).
   storage: (ws: number) => api.get<ApiResponse<WorkspaceStorage>>(`${w(ws)}/storage`),
   get: (ws: number, id: number) => api.get<ApiResponse<VolumeDetail>>(`${w(ws)}/volumes/${id}`),
-  create: (ws: number, name: string, serverId?: number, sizeMb?: number, driver?: string, driverOpts?: Record<string, string>) =>
-    api.post<ApiResponse<Volume>>(`${w(ws)}/volumes`, { name, server_id: serverId, size_mb: sizeMb, driver, driver_opts: driverOpts }),
+  create: (ws: number, name: string, serverId?: number, sizeMb?: number, driver?: string, driverOpts?: Record<string, string>, location?: string) =>
+    api.post<ApiResponse<Volume>>(`${w(ws)}/volumes`, { name, server_id: serverId, size_mb: sizeMb, driver, driver_opts: driverOpts, location }),
   remove: (ws: number, id: number) => api.delete<ApiResponse<{ message: string }>>(`${w(ws)}/volumes/${id}`),
 
   // Files stored inside a volume.

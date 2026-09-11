@@ -66,9 +66,11 @@ type Workspace struct {
 	System bool `json:"system" gorm:"not null;default:false"`
 	// PlanID is the assigned plan (nil → the default plan → unlimited). Drives
 	// per-workspace resource quotas when plan enforcement is enabled.
-	PlanID    *uint     `json:"plan_id,omitempty" gorm:"index"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	PlanID *uint `json:"plan_id,omitempty" gorm:"index"`
+	// DefaultClusterID is the location a create lands in when it names none; nil means the default cluster.
+	DefaultClusterID *uint     `json:"default_cluster_id,omitempty" gorm:"index"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 
 	Members []WorkspaceMember `json:"-" gorm:"foreignKey:WorkspaceID"`
 }

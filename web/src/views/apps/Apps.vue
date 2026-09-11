@@ -11,8 +11,8 @@ import { gitRepositoryApi, type GitInspectResult } from '@/api/gitRepositories'
 import { networkApi } from '@/api/networks'
 import { stackApi } from '@/api/stacks'
 import type { Application, Registry, GitRepository, Network, Stack, AppPort, BuildMethod, RuntimeKind } from '@/api/types'
-import NodePicker from '@/components/NodePicker.vue'
 import PlacementPicker from '@/components/PlacementPicker.vue'
+import LocationPicker from '@/components/LocationPicker.vue'
 import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
@@ -47,6 +47,7 @@ const clusterEnabled = ref(false)
 interface AppForm {
   name: string
   server_id: number
+  location: string
   source_type: 'image' | 'git'
   image: string
   tag: string
@@ -69,7 +70,7 @@ interface AppForm {
   use_pipeline: boolean
 }
 function emptyForm(): AppForm {
-  return { name: '', server_id: 0, source_type: 'image', image: '', tag: '', git_repo: '', git_ref: '', build_method: 'auto', builder: '', registry_id: null, git_repository_id: null, stack_id: null, network_ids: [], ports: [{ container_port: 8080, protocol: 'tcp', scheme: 'http', name: '' }], runtime_kind: 'container', replicas: 1, placement_constraints: [], use_pipeline: true }
+  return { name: '', server_id: 0, location: '', source_type: 'image', image: '', tag: '', git_repo: '', git_ref: '', build_method: 'auto', builder: '', registry_id: null, git_repository_id: null, stack_id: null, network_ids: [], ports: [{ container_port: 8080, protocol: 'tcp', scheme: 'http', name: '' }], runtime_kind: 'container', replicas: 1, placement_constraints: [], use_pipeline: true }
 }
 
 // --- Repository inspection ---
@@ -175,7 +176,8 @@ async function create() {
     const isImage = form.value.source_type === 'image'
     await appApi.create(currentWorkspaceId.value, {
       display_name: form.value.name.trim(),
-      server_id: form.value.server_id,
+      server_id: isService.value ? undefined : form.value.server_id || undefined,
+      location: form.value.location || undefined,
       source_type: form.value.source_type,
       image: isImage ? form.value.image.trim() : undefined,
       tag: isImage ? form.value.tag.trim() || undefined : undefined,
@@ -320,14 +322,9 @@ function formatCreated(ts?: string) {
                 <input v-model.number="form.replicas" type="number" min="1" class="form-input" placeholder="1" />
               </div>
             </div>
-            <!--
-              A container is placed by server_id; a service is placed by the Swarm
-              scheduler, which ignores server_id. Showing the node picker for a
-              service would silently discard the choice, so each runtime gets the
-              control that actually decides where it runs.
-            -->
-            <NodePicker v-if="!isService" v-model="form.server_id" />
-            <PlacementPicker v-else v-model="form.placement_constraints" :replicas="form.replicas" />
+            <!-- The Swarm scheduler ignores server_id, so only a container can pin a node. -->
+            <LocationPicker v-model="form.location" v-model:server-id="form.server_id" :allow-pin="!isService" />
+            <PlacementPicker v-if="isService" v-model="form.placement_constraints" :replicas="form.replicas" />
             <p v-if="isService" class="form-hint">
               Runs as a Swarm service on the workspace overlay network with {{ Math.max(1, form.replicas) }} replica(s).
             </p>

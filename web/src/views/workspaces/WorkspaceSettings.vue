@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { workspaceApi, type DeletionJob } from '@/api/workspaces'
+import { locationApi, type Location } from '@/api/locations'
+import { locationLabel } from '@/utils/locations'
 import { memberApi, usageApi } from '@/api/resources'
 import { workspaceBackupApi, type UpdateBackupSettingsInput, type BackupTestResult } from '@/api/workspaceBackup'
 import AppModal from '@/components/AppModal.vue'
@@ -256,7 +258,34 @@ async function testBackup() {
   }
 }
 
+const locations = ref<Location[]>([])
+const defaultLocation = ref('')
+const savingLocation = ref(false)
+
+async function loadLocations() {
+  try {
+    locations.value = (await locationApi.list(wsId.value)).data.data ?? []
+    defaultLocation.value = locations.value.find((l) => l.default)?.name ?? ''
+  } catch {
+    locations.value = []
+  }
+}
+
+async function saveDefaultLocation() {
+  if (!isAdmin.value) return
+  savingLocation.value = true
+  try {
+    locations.value = (await locationApi.setDefault(wsId.value, defaultLocation.value)).data.data ?? []
+    notify.success('Default location updated')
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    savingLocation.value = false
+  }
+}
+
 async function loadWorkspace() {
+  loadLocations()
   const w = ws.workspaces.find((x) => x.id === wsId.value)
   if (w) {
     form.value = { displayName: w.display_name || w.name, name: w.name, description: w.description || '' }
@@ -530,6 +559,20 @@ watch(activeTab, (t) => loadTab(t))
             Lowercase letters, digits, and hyphens. <strong>Changing it updates every URL and the
             docker handle</strong>, and reserved names are not allowed.
             <template v-if="isSystemWs"> The system workspace name is reserved and cannot be changed.</template>
+          </p>
+        </div>
+        <div v-if="locations.length > 1" class="form-group">
+          <label class="form-label">Default location</label>
+          <div class="slug-row">
+            <select v-model="defaultLocation" class="form-select" :disabled="!isAdmin" aria-label="Default location" style="max-width: 420px">
+              <option v-for="l in locations" :key="l.id" :value="l.name">{{ locationLabel(l) }}</option>
+            </select>
+            <button v-if="isAdmin" class="btn btn-secondary" :disabled="savingLocation" @click="saveDefaultLocation">
+              {{ savingLocation ? 'Saving…' : 'Set default' }}
+            </button>
+          </div>
+          <p class="text-muted text-sm" style="margin-top: 4px">
+            Where new apps, databases, volumes and stacks run when their form names no location.
           </p>
         </div>
         <div class="form-group">

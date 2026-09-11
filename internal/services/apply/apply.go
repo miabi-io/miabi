@@ -29,6 +29,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/domain"
 	middlewaresvc "github.com/miabi-io/miabi/internal/services/middleware"
 	"github.com/miabi-io/miabi/internal/services/node"
+	"github.com/miabi-io/miabi/internal/services/placement"
 	"github.com/miabi-io/miabi/internal/services/portbinding"
 	"github.com/miabi-io/miabi/internal/services/registry"
 	"github.com/miabi-io/miabi/internal/services/route"
@@ -77,10 +78,10 @@ type Service struct {
 	// configs converges kind: Config; nil leaves a manifest declaring one
 	// erroring rather than silently skipping the resource an app mounts.
 	configs *configsvc.Service
-	// cluster reports whether the workspace networks are cluster-wide overlays. Off cluster mode they
-	// are node-local bridges, which is what makes a cross-node application reference unroutable.
-	// Nil means "assume not clustered", the conservative reading.
+	// cluster decides whether a reference resolves: locations never share a network, and a location's
+	// nodes share one only in a swarm. Nil means "assume not clustered", the conservative reading.
 	cluster ClusterCap
+	placer  Placer
 	// certificates resolves a Route's certificate: <name> to the stored certificate it serves.
 	// Certificates are not a declarable kind — they carry a private key — so a manifest can only
 	// reference one that already exists. Nil leaves tls: custom unresolvable rather than silently
@@ -95,18 +96,94 @@ type Service struct {
 // SetConfigs wires the config service (kind: Config).
 func (s *Service) SetConfigs(c *configsvc.Service) { s.configs = c }
 
-// ClusterCap reports whether Swarm cluster mode is on, which decides whether a workspace network
-// spans nodes.
+// ClusterCap describes the clusters workloads run in, which decides whether a reference between two
+// of them can resolve.
 type ClusterCap interface {
 	IsSwarm(clusterID uint) bool
+	ClusterOfServer(serverID uint) uint
+	LocationLabel(clusterID uint) string
 }
 
-// SetCluster wires cluster-mode detection, used to decide whether an application reference across
-// two nodes can resolve.
+// SetCluster wires cluster detection, used to decide whether a reference across two nodes or two
+// locations can resolve.
 func (s *Service) SetCluster(c ClusterCap) { s.cluster = c }
 
-func (s *Service) clusterOn() bool {
-	return s.cluster != nil && s.cluster.IsSwarm(models.DefaultClusterID)
+// Placer resolves where a created resource lands. Satisfied by the placement service.
+type Placer interface {
+	Place(req placement.Request) (placement.Result, error)
+	LocationName(clusterID uint) string
+}
+
+// SetPlacer wires spec.location. Without it every resource is created on the local node.
+func (s *Service) SetPlacer(p Placer) { s.placer = p }
+
+func (s *Service) place(workspaceID uint, ch declarative.Change, location string, service bool) (placement.Result, error) {
+	if s.placer == nil {
+		return placement.Result{}, nil
+	}
+	res, err := s.placer.Place(placement.Request{WorkspaceID: workspaceID, Location: location, Service: service})
+	if err != nil {
+		return res, fmt.Errorf("%w: %s %q: %v", ErrInvalidManifest, strings.ToLower(string(ch.Kind)), ch.Name, err)
+	}
+	return res, nil
+}
+
+// placeApp puts a new app in its location, else its stack's, and on the node of a volume it mounts.
+func (s *Service) placeApp(workspaceID uint, name string, spec *declarative.ApplicationSpec) (placement.Result, error) {
+	if s.placer == nil {
+		return placement.Result{}, nil
+	}
+	req := placement.Request{WorkspaceID: workspaceID, Location: spec.Location}
+	if req.Location == "" && spec.Stack != "" {
+		if st, err := s.findStack(workspaceID, spec.Stack); err == nil {
+			req.Location = s.placer.LocationName(st.ClusterID)
+		}
+	}
+	var mounted string
+	for _, m := range spec.Mounts {
+		if m.Volume == "" {
+			continue
+		}
+		if v, err := s.findVolume(workspaceID, m.Volume); err == nil && v.Driver != models.VolumeDriverHost && v.ServerID != 0 {
+			req.Colocate, mounted = v.ServerID, m.Volume
+			break
+		}
+	}
+	res, err := s.placer.Place(req)
+	switch {
+	case errors.Is(err, placement.ErrLocationMismatch):
+		return res, fmt.Errorf("%w: application %q mounts volume %q, which is in another location. Declare the same location on both",
+			ErrInvalidManifest, name, mounted)
+	case err != nil:
+		return res, fmt.Errorf("%w: application %q: %v", ErrInvalidManifest, name, err)
+	}
+	return res, nil
+}
+
+func (s *Service) locationName(clusterID uint) string {
+	if s.placer == nil {
+		return ""
+	}
+	return s.placer.LocationName(clusterID)
+}
+
+// refuseMove fails an update that would move a resource to another location: nothing is rescheduled
+// after create.
+func refuseMove(ch declarative.Change) error {
+	for _, f := range ch.Fields {
+		if f.Field == "location" {
+			return fmt.Errorf("%w: %s %q is in %q; moving it to %q is not supported. Delete it and apply again",
+				ErrInvalidManifest, strings.ToLower(string(ch.Kind)), ch.Name, f.From, f.To)
+		}
+	}
+	return nil
+}
+
+func (s *Service) clusterID(id uint) uint {
+	if id == models.DefaultClusterID && s.cluster != nil {
+		return s.cluster.ClusterOfServer(0)
+	}
+	return id
 }
 
 // SetCertificates wires the certificate service, so a Route may name the stored certificate it
@@ -620,48 +697,98 @@ func (s *Service) renderAppEnv(workspaceID uint, spec *declarative.ApplicationSp
 // to be called before renderAppEnv replaces the templates with their values.
 var appRefPattern = regexp.MustCompile(`\{\{[-\s]*\.applications\.([A-Za-z0-9_-]+)`)
 
-// checkAppRefPlacement refuses an application reference that cannot resolve at runtime: two apps
-// pinned to different nodes, with cluster mode off, share no network. In cluster mode the workspace
-// network is an overlay spanning every node, so the reference is fine and the check is skipped.
+var dbRefPattern = regexp.MustCompile(`\{\{[-\s]*\.databases\.([A-Za-z0-9_-]+)`)
+
+type specRefs struct {
+	apps, dbs map[string]bool
+}
+
+func refsOf(spec *declarative.ApplicationSpec) specRefs {
+	if spec == nil {
+		return specRefs{}
+	}
+	return specRefs{apps: envRefs(spec.Env, appRefPattern), dbs: envRefs(spec.Env, dbRefPattern)}
+}
+
+// checkAppRefPlacement refuses an application or database reference that cannot resolve at runtime:
+// the two sit in different locations, or on different nodes of a location that runs no swarm. self is
+// where an app not created yet is about to land.
 //
-// Only a reference whose target placement is actually known is judged; an app declared without a
+// Only a reference whose target placement is actually known is judged; a resource declared without a
 // node, or absent from both the bundle and the workspace, is left to the render to report.
-func (s *Service) checkAppRefPlacement(workspaceID uint, name string, spec *declarative.ApplicationSpec, set *declarative.ResourceSet) error {
-	if spec == nil || len(spec.Env) == 0 || s.clusterOn() {
+func (s *Service) checkAppRefPlacement(workspaceID uint, name string, refs specRefs, self *appPlacement) error {
+	if len(refs.apps) == 0 && len(refs.dbs) == 0 {
 		return nil
 	}
-	refs := map[string]bool{}
-	for _, v := range spec.Env {
-		for _, m := range appRefPattern.FindAllStringSubmatch(v, -1) {
-			refs[m[1]] = true
-		}
-	}
-	if len(refs) == 0 {
-		return nil
-	}
-	nodes, err := s.appNodes(workspaceID)
+	apps, err := s.appNodes(workspaceID)
 	if err != nil {
 		return nil // placement unknown: never fail an apply on a lookup that is only advisory
 	}
-	return crossNodeRefError(name, refs, nodes)
+	if self != nil {
+		apps[name] = *self
+	}
+	check := s.refCheck()
+	if err := check.refError(name, apps, "application", refs.apps, apps); err != nil {
+		return err
+	}
+	if len(refs.dbs) == 0 {
+		return nil
+	}
+	return check.refError(name, apps, "database", refs.dbs, s.databaseNodes(workspaceID))
 }
 
-// crossNodeRefError names the first reference that spans two nodes, or nil when every one of them
-// can resolve. Pure, so the rule can be tested without a workspace behind it.
-func crossNodeRefError(name string, refs map[string]bool, nodes map[string]appPlacement) error {
-	self, ok := nodes[name]
+func envRefs(env map[string]string, pattern *regexp.Regexp) map[string]bool {
+	refs := map[string]bool{}
+	for _, v := range env {
+		for _, m := range pattern.FindAllStringSubmatch(v, -1) {
+			refs[m[1]] = true
+		}
+	}
+	return refs
+}
+
+type refCheck struct {
+	swarm func(clusterID uint) bool
+	label func(clusterID uint) string
+}
+
+func (s *Service) refCheck() refCheck {
+	if s.cluster == nil {
+		return refCheck{}
+	}
+	return refCheck{swarm: s.cluster.IsSwarm, label: s.cluster.LocationLabel}
+}
+
+func (c refCheck) location(clusterID uint) string {
+	if c.label == nil {
+		return fmt.Sprintf("location %d", clusterID)
+	}
+	return c.label(clusterID)
+}
+
+// refError names the first reference that cannot resolve, or nil when every one of them can. Pure,
+// so the rule can be tested without a workspace behind it.
+func (c refCheck) refError(name string, apps map[string]appPlacement, kind string, refs map[string]bool, targets map[string]appPlacement) error {
+	self, ok := apps[name]
 	if !ok {
 		return nil // this app has no live placement yet, so nothing to compare against
 	}
 	for _, ref := range sortedKeys(refs) {
-		target, known := nodes[ref]
-		if !known || target.id == self.id {
+		target, known := targets[ref]
+		if !known {
 			continue
 		}
-		return fmt.Errorf("%w: application %q references %q, but they run on different nodes (%s and %s) "+
+		if target.cluster != self.cluster {
+			return fmt.Errorf("%w: application %q is in %s, %s %q is in %s — private networks don't span locations. "+
+				"Deploy them to one location", ErrInvalidManifest, name, c.location(self.cluster), kind, ref, c.location(target.cluster))
+		}
+		if target.id == self.id || (c.swarm != nil && c.swarm(self.cluster)) {
+			continue
+		}
+		return fmt.Errorf("%w: application %q references %s %q, but they run on different nodes (%s and %s) "+
 			"and a workspace network is node-local outside cluster mode — the address would not resolve. "+
 			"Place them on one node, or enable cluster mode so the network spans both",
-			ErrInvalidManifest, name, ref, self.node, target.node)
+			ErrInvalidManifest, name, kind, ref, self.node, target.node)
 	}
 	return nil
 }
@@ -678,8 +805,20 @@ func sortedKeys(m map[string]bool) []string {
 }
 
 type appPlacement struct {
-	id   uint
-	node string
+	id      uint
+	node    string
+	cluster uint
+}
+
+func (s *Service) placementOf(serverID uint, serverName string, clusterID uint) appPlacement {
+	label := serverName
+	if label == "" {
+		label = fmt.Sprintf("node %d", serverID)
+		if serverID == 0 {
+			label = "the local node"
+		}
+	}
+	return appPlacement{id: serverID, node: label, cluster: s.clusterID(clusterID)}
 }
 
 func (s *Service) appNodes(workspaceID uint) (map[string]appPlacement, error) {
@@ -690,16 +829,38 @@ func (s *Service) appNodes(workspaceID uint) (map[string]appPlacement, error) {
 	out := make(map[string]appPlacement, len(apps))
 	for i := range apps {
 		a := &apps[i]
-		label := a.ServerName
-		if label == "" {
-			label = fmt.Sprintf("node %d", a.ServerID)
-			if a.ServerID == 0 {
-				label = "the local node"
-			}
-		}
-		out[a.Name] = appPlacement{id: a.ServerID, node: label}
+		out[a.Name] = s.placementOf(a.ServerID, a.ServerName, a.ClusterID)
 	}
 	return out, nil
+}
+
+// databaseNodes keys instances the way {{ .databases.<name> }} resolves: a declared logical database
+// by its manifest name, anything else by its instance name.
+func (s *Service) databaseNodes(workspaceID uint) map[string]appPlacement {
+	out := map[string]appPlacement{}
+	instances, err := s.dbs.List(workspaceID)
+	if err != nil {
+		return out
+	}
+	byID := make(map[uint]appPlacement, len(instances))
+	for i := range instances {
+		inst := &instances[i]
+		p := s.placementOf(inst.ServerID, inst.ServerName, inst.ClusterID)
+		byID[inst.ID] = p
+		out[inst.Name] = p
+	}
+	dbs, err := s.dbs.ListDatabasesByWorkspace(workspaceID)
+	if err != nil {
+		return out
+	}
+	for i := range dbs {
+		if n := dbs[i].Metadata[models.MetaDeclarativeName]; n != "" {
+			if p, ok := byID[dbs[i].InstanceID]; ok {
+				out[n] = p
+			}
+		}
+	}
+	return out
 }
 
 // databaseViews resolves connection details for {{ .databases.<name>.* }}, keyed by the declarative Database name.
@@ -943,7 +1104,8 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 		volNameByID[vols[i].ID] = vols[i].Name
 		set.Add(declarative.Resource{
 			APIVersion: declarative.APIVersion, Kind: declarative.KindVolume,
-			Metadata: metaA(vols[i].UID, vols[i].Name, vols[i].Metadata, vols[i].Annotations), Volume: &declarative.VolumeSpec{},
+			Metadata: metaA(vols[i].UID, vols[i].Name, vols[i].Metadata, vols[i].Annotations),
+			Volume:   &declarative.VolumeSpec{Location: s.locationName(vols[i].ClusterID)},
 		})
 	}
 
@@ -983,7 +1145,9 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 			continue
 		}
 		ext, pub := s.exposedPorts(workspaceID, full.ID)
-		set.Add(appResource(full, ext, pub, volNameByID, regNameByID, cfgNameByID))
+		r := appResource(full, ext, pub, volNameByID, regNameByID, cfgNameByID)
+		r.Application.Location = s.locationName(full.ClusterID)
+		set.Add(r)
 	}
 
 	instances, err := s.dbs.List(workspaceID)
@@ -1013,6 +1177,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 					Metadata: metaA(d.UID, d.Metadata[models.MetaDeclarativeName], d.Metadata, nil),
 					Database: &declarative.DatabaseSpec{
 						Engine: string(inst.Engine), Version: inst.Version, Placement: "auto",
+						Location: s.locationName(inst.ClusterID),
 					},
 				})
 			}
@@ -1023,6 +1188,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 			Metadata: metaA(inst.UID, inst.Name, inst.Metadata, inst.Annotations),
 			Database: &declarative.DatabaseSpec{
 				Engine: string(inst.Engine), Version: inst.Version, Placement: "auto",
+				Location: s.locationName(inst.ClusterID),
 			},
 		})
 	}
@@ -1035,7 +1201,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 		set.Add(declarative.Resource{
 			APIVersion: declarative.APIVersion, Kind: declarative.KindStack,
 			Metadata: metaA(stacks[i].UID, stacks[i].Name, stacks[i].Metadata, stacks[i].Annotations),
-			Stack:    &declarative.StackSpec{Description: stacks[i].Description},
+			Stack:    &declarative.StackSpec{Description: stacks[i].Description, Location: s.locationName(stacks[i].ClusterID)},
 		})
 	}
 
@@ -1378,14 +1544,22 @@ func (s *Service) findDomain(workspaceID uint, name string) (*models.Domain, err
 func (s *Service) applyStack(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource) error {
 	switch ch.Action {
 	case declarative.ActionCreate:
-		_, err := s.stacks.Create(ctx, workspaceID, stack.Input{
+		target, err := s.place(workspaceID, ch, desired.Stack.Location, true)
+		if err != nil {
+			return err
+		}
+		_, err = s.stacks.Create(ctx, workspaceID, stack.Input{
 			Name:        ch.Name,
 			Description: desired.Stack.Description,
+			ClusterID:   target.ClusterID,
 			Metadata:    tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, ManagedByGitOps)),
 			Annotations: desired.Metadata.Annotations,
 		})
 		return err
 	case declarative.ActionUpdate:
+		if err := refuseMove(ch); err != nil {
+			return err
+		}
 		st, err := s.findStack(workspaceID, ch.Name)
 		if err != nil {
 			return err
@@ -1763,8 +1937,18 @@ func (s *Service) applyVolume(ctx context.Context, workspaceID uint, ch declarat
 	switch ch.Action {
 	case declarative.ActionCreate:
 		meta := tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, ManagedByGitOps))
-		_, err := s.storage.Create(ctx, workspaceID, 0, ch.Name, 0, meta, desired.Metadata.Annotations)
+		var location string
+		if desired.Volume != nil {
+			location = desired.Volume.Location
+		}
+		target, err := s.place(workspaceID, ch, location, false)
+		if err != nil {
+			return err
+		}
+		_, err = s.storage.Create(ctx, workspaceID, target.ServerID, ch.Name, 0, meta, desired.Metadata.Annotations)
 		return err
+	case declarative.ActionUpdate:
+		return refuseMove(ch)
 	case declarative.ActionDelete:
 		v, err := s.findVolume(workspaceID, ch.Name)
 		if err != nil {
@@ -1783,8 +1967,12 @@ func (s *Service) applyDatabase(ctx context.Context, workspaceID uint, ch declar
 		// Honor the manifest's placement via the shared resolver, mirroring the marketplace install. The logical
 		// database is stamped with the manifest name so databaseViews resolves to this exact database, not "the first
 		// on the instance". The CREATE DDL is deferred for a freshly provisioned instance and runs when it comes up.
-		_, _, _, _, err := s.dbs.ResolveDependency(
-			ctx, workspaceID, 0, 0, ch.Name, ch.Name,
+		target, err := s.place(workspaceID, ch, spec.Location, false)
+		if err != nil {
+			return err
+		}
+		_, _, _, _, err = s.dbs.ResolveDependency(
+			ctx, workspaceID, target.ServerID, 0, ch.Name, ch.Name,
 			models.DBEngine(spec.Engine), spec.Version, database.Placement(spec.Placement), meta,
 		)
 		return err
@@ -1808,6 +1996,9 @@ func (s *Service) applyDatabase(ctx context.Context, workspaceID uint, ch declar
 		}
 		return s.deleteInstance(ctx, inst)
 	case declarative.ActionUpdate:
+		if err := refuseMove(ch); err != nil {
+			return err
+		}
 		// Engine/version changes are not converged in place (would recreate data).
 		return fmt.Errorf("database %q: in-place engine/version change is not supported", ch.Name)
 	}
@@ -1828,16 +2019,16 @@ func (s *Service) deleteInstance(ctx context.Context, inst *models.DatabaseInsta
 
 func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource, set *declarative.ResourceSet) error {
 	spec := desired.Application
+	refs := refsOf(spec)
 	// Resolve env templates now: databases declared in the same bundle run before applications (plan order),
 	// so {{ .databases.x.host }} references are live by this point even on a first apply. The plan-time render
 	// was lenient and may have left them as templates.
 	if err := s.renderAppEnv(workspaceID, spec, set); err != nil {
 		return fmt.Errorf("%w: application %q: %v", ErrInvalidManifest, ch.Name, err)
 	}
-	// A workspace network is a node-local bridge off cluster mode, so an app referencing a sibling on
-	// another node renders a hostname that will never resolve. Refusing here beats a connection
-	// refused hours later, when nothing points at the manifest that caused it.
-	if err := s.checkAppRefPlacement(workspaceID, ch.Name, spec, set); err != nil {
+	// A reference across locations, or across nodes without a swarm, renders a hostname that never
+	// resolves. Refusing here beats a connection refused hours later.
+	if err := s.checkAppRefPlacement(workspaceID, ch.Name, refs, nil); err != nil {
 		return err
 	}
 	// Resolve the pull credential before anything is created, so a typo'd name
@@ -1850,6 +2041,17 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 	case declarative.ActionCreate:
 		in := s.createInput(ctx, desired.Metadata, spec)
 		in.RegistryID = regID
+		target, err := s.placeApp(workspaceID, ch.Name, spec)
+		if err != nil {
+			return err
+		}
+		in.ServerID = target.ServerID
+		if s.placer != nil {
+			self := s.placementOf(target.ServerID, "", target.ClusterID)
+			if err := s.checkAppRefPlacement(workspaceID, ch.Name, refs, &self); err != nil {
+				return err
+			}
+		}
 		app, err := s.apps.Create(workspaceID, in)
 		if err != nil {
 			return err
@@ -1870,6 +2072,9 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		_, err = s.apps.Deploy(app, nil, "", "")
 		return err
 	case declarative.ActionUpdate:
+		if err := refuseMove(ch); err != nil {
+			return err
+		}
 		app, err := s.findApp(workspaceID, ch.Name)
 		if err != nil {
 			return err

@@ -16,15 +16,20 @@ import (
 	"github.com/miabi-io/miabi/internal/nodes"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/node"
+	"github.com/miabi-io/miabi/internal/services/placement"
 	"github.com/miabi-io/miabi/internal/services/storage"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
 type VolumeHandler struct {
-	svc   *storage.Service
-	users *repositories.UserRepository
-	audit *audit.Logger
+	svc    *storage.Service
+	users  *repositories.UserRepository
+	audit  *audit.Logger
+	placer *Placer
 }
+
+// SetPlacer wires location placement for volume creates.
+func (h *VolumeHandler) SetPlacer(p *Placer) { h.placer = p }
 
 func NewVolumeHandler(svc *storage.Service, users *repositories.UserRepository, auditLog *audit.Logger) *VolumeHandler {
 	return &VolumeHandler{svc: svc, users: users, audit: auditLog}
@@ -33,9 +38,12 @@ func NewVolumeHandler(svc *storage.Service, users *repositories.UserRepository, 
 // VolumeCreateRequest is the body for creating a managed volume.
 type VolumeCreateRequest struct {
 	Body struct {
-		Name     string `json:"name" required:"true"`
-		ServerID uint   `json:"server_id"` // node to place on (0 = local)
-		SizeMB   int    `json:"size_mb"`   // declared capacity in MB (0 = unspecified)
+		Name string `json:"name" required:"true"`
+		// Location is where the volume lives; empty uses the workspace's default location.
+		Location string `json:"location"`
+		// ServerID pins a node; platform admins only.
+		ServerID uint `json:"server_id"`
+		SizeMB   int  `json:"size_mb"` // declared capacity in MB (0 = unspecified)
 		// Driver: "local" (default, node-local); "nfs"/"cifs" for shared storage a replicated cluster app
 		// can mount across nodes; or "host" to bind an operator-managed host path (privileged workspaces
 		// only). DriverOpts are the backend mount options, encrypted at rest and never returned.
@@ -50,7 +58,14 @@ func (h *VolumeHandler) Create(c *okapi.Context, req *VolumeCreateRequest) error
 	if req.Body.SizeMB > 0 {
 		sizeBytes = int64(req.Body.SizeMB) * 1024 * 1024
 	}
-	v, err := h.svc.CreateWith(c.Request().Context(), wsID, req.Body.ServerID, req.Body.Name, sizeBytes, req.Body.Driver, req.Body.DriverOpts, selfOwnerMeta(h.users, c), nil)
+	placed, err := h.placer.place(c, placement.Request{Location: req.Body.Location, ServerID: req.Body.ServerID})
+	if err != nil {
+		if a := placementAbort(c, err); a != nil {
+			return a
+		}
+		return c.AbortInternalServerError("failed to place the volume", err)
+	}
+	v, err := h.svc.CreateWith(c.Request().Context(), wsID, placed.ServerID, req.Body.Name, sizeBytes, req.Body.Driver, req.Body.DriverOpts, selfOwnerMeta(h.users, c), nil)
 	if err != nil {
 		if a := quotaAbort(c, err); a != nil {
 			return a

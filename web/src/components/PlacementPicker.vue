@@ -2,8 +2,6 @@
 import { onMounted, ref, computed } from 'vue'
 import { nodesApi, type PlaceableNode } from '@/api/nodes'
 
-// The service-runtime counterpart of NodePicker.
-//
 // A container app is placed by `server_id`. A *service* app is placed by the
 // Swarm scheduler, which ignores `server_id` entirely — so offering a node picker
 // there would silently discard the choice. Pinning a service to a node instead

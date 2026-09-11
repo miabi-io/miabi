@@ -6,6 +6,7 @@ package cluster
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/miabi-io/miabi/internal/docker"
@@ -82,6 +83,14 @@ func (m *memStore) UpdateColumns(id uint, cols map[string]any) error {
 			c.Mode = v.(models.ClusterMode)
 		case "ingress_server_id":
 			c.IngressServerID = v.(uint)
+		case "ingress_ip":
+			c.IngressIP = v.(string)
+		case "ingress_hostname":
+			c.IngressHostname = v.(string)
+		case "visibility":
+			c.Visibility = v.(models.ClusterVisibility)
+		case "cordoned":
+			c.Cordoned = v.(bool)
 		}
 	}
 	if c.ID == m.def.ID {
@@ -250,6 +259,9 @@ func TestEnablingARemoteSwarmInitializesItOnTheNode(t *testing.T) {
 	}
 	if len(node8.labelled) == 0 || nodes.servers[0].SwarmNodeID != "mgr1" {
 		t.Errorf("labelled=%v swarm id=%q; want the manager labelled and recorded", node8.labelled, nodes.servers[0].SwarmNodeID)
+	}
+	if want := "miabi-ingress/mb-node-gateway"; !slices.Contains(node8.connected, want) {
+		t.Errorf("connected = %v, want the ingress node's gateway on the cluster's ingress overlay", node8.connected)
 	}
 }
 

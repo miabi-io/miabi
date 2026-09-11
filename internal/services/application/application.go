@@ -58,6 +58,8 @@ var (
 	ErrStackNotFound      = errors.New("stack not found in workspace")
 	ErrAppRunning         = errors.New("stop the application before deleting it")
 	ErrNodeMismatch       = errors.New("the volume is on a different node than this application")
+	ErrVolumeLocation     = errors.New("the volume is in a different location than this application")
+	ErrStackLocation      = errors.New("the stack is in a different location than this application")
 	ErrConfigNotFound     = errors.New("config not found in workspace")
 	ErrConfigKeyNotFound  = errors.New("the config does not contain that file")
 	ErrMountNotFound      = errors.New("that mount is not attached to this application")
@@ -245,6 +247,9 @@ func (s *Service) SetClusterCap(c ClusterCap) { s.cluster = c }
 func (s *Service) isSwarm(clusterID uint) bool {
 	return s.cluster != nil && s.cluster.IsSwarm(clusterID)
 }
+
+// ClusterOfServer is the cluster a node belongs to, resolved even for the local node.
+func (s *Service) ClusterOfServer(serverID uint) uint { return s.clusterOf(serverID) }
 
 func (s *Service) clusterOf(serverID uint) uint {
 	if s.cluster == nil {
@@ -515,14 +520,32 @@ func NewService(
 
 // validateStack confirms a referenced stack belongs to the workspace. A nil id
 // (ungrouped) validates trivially.
-func (s *Service) validateStack(workspaceID uint, stackID *uint) error {
+func (s *Service) validateStack(workspaceID uint, stackID *uint) (*models.Stack, error) {
 	if stackID == nil {
-		return nil
+		return nil, nil
 	}
-	if _, err := s.stacks.FindInWorkspace(workspaceID, *stackID); err != nil {
-		return ErrStackNotFound
+	st, err := s.stacks.FindInWorkspace(workspaceID, *stackID)
+	if err != nil {
+		return nil, ErrStackNotFound
 	}
-	return nil
+	return st, nil
+}
+
+func (s *Service) sameLocation(a, b uint) bool {
+	if a == models.DefaultClusterID {
+		a = s.clusterOf(0)
+	}
+	if b == models.DefaultClusterID {
+		b = s.clusterOf(0)
+	}
+	return a == b
+}
+
+// joinsStack reports whether an update moves the app into a stack. Membership that predates
+// locations is left alone even when the stack sits elsewhere.
+func (s *Service) joinsStack(app *models.Application) bool {
+	prev, err := s.apps.FindByID(app.ID)
+	return err != nil || prev.StackID == nil || app.StackID == nil || *prev.StackID != *app.StackID
 }
 
 // PortSpec describes a container port to declare on an application.
@@ -840,8 +863,10 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 	if err := s.customBuilderAllowed(workspaceID, in.Builder); err != nil {
 		return nil, err
 	}
-	if err := s.validateStack(workspaceID, in.StackID); err != nil {
+	if st, err := s.validateStack(workspaceID, in.StackID); err != nil {
 		return nil, err
+	} else if st != nil && !s.sameLocation(st.ClusterID, s.clusterOf(in.ServerID)) {
+		return nil, ErrStackLocation
 	}
 	if err := s.validateResources(in.MemoryBytes, in.NanoCPUs); err != nil {
 		return nil, err
@@ -1158,8 +1183,10 @@ func (s *Service) Update(app *models.Application) error {
 	if err := s.checkImage(app.WorkspaceID, app.Image, app.Tag); err != nil {
 		return err
 	}
-	if err := s.validateStack(app.WorkspaceID, app.StackID); err != nil {
+	if st, err := s.validateStack(app.WorkspaceID, app.StackID); err != nil {
 		return err
+	} else if st != nil && !s.sameLocation(st.ClusterID, app.ClusterID) && s.joinsStack(app) {
+		return ErrStackLocation
 	}
 	// A git app needs a clone URL or an attached repository to derive one from.
 	if app.SourceType == models.AppSourceGit && strings.TrimSpace(app.GitRepo) == "" && app.GitRepositoryID == nil {
@@ -1878,6 +1905,9 @@ func (s *Service) AttachVolume(app *models.Application, volumeID uint, path stri
 	vol, err := s.resolveMountVolume(app.WorkspaceID, volumeID)
 	if err != nil {
 		return err
+	}
+	if !s.sameLocation(vol.ClusterID, app.ClusterID) {
+		return ErrVolumeLocation
 	}
 	// A host-path volume binds an operator-managed path present on every node, so
 	// it is node-agnostic (unlike a node-local Docker volume, which must co-locate

@@ -54,6 +54,8 @@ export interface CreateAppInput extends AppRuntimeInput {
   display_name: string
   // Optional explicit slug handle (derived from display_name when omitted).
   name?: string
+  // Location is where the app runs ('' = the workspace default); server_id pins a node, admins only.
+  location?: string
   server_id?: number
   source_type?: 'image' | 'git'
   image?: string

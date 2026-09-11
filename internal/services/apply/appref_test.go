@@ -107,7 +107,7 @@ func TestCrossNodeReferenceIsRefused(t *testing.T) {
 		"web": {id: 0, node: "the local node"},
 		"api": {id: 3, node: "edge-1"},
 	}
-	err := crossNodeRefError("web", map[string]bool{"api": true}, nodes)
+	err := refCheck{}.refError("web", nodes, "application", map[string]bool{"api": true}, nodes)
 	if err == nil {
 		t.Fatal("a cross-node reference was accepted")
 	}
@@ -123,7 +123,7 @@ func TestSameNodeReferenceIsFine(t *testing.T) {
 		"web": {id: 3, node: "edge-1"},
 		"api": {id: 3, node: "edge-1"},
 	}
-	if err := crossNodeRefError("web", map[string]bool{"api": true}, nodes); err != nil {
+	if err := (refCheck{}).refError("web", nodes, "application", map[string]bool{"api": true}, nodes); err != nil {
 		t.Errorf("same-node reference refused: %v", err)
 	}
 }
@@ -132,10 +132,10 @@ func TestSameNodeReferenceIsFine(t *testing.T) {
 // same apply has no node yet, and guessing would fail a manifest that is perfectly fine.
 func TestUnknownPlacementIsNotRefused(t *testing.T) {
 	nodes := map[string]appPlacement{"web": {id: 0, node: "the local node"}}
-	if err := crossNodeRefError("web", map[string]bool{"api": true}, nodes); err != nil {
+	if err := (refCheck{}).refError("web", nodes, "application", map[string]bool{"api": true}, nodes); err != nil {
 		t.Errorf("an unplaced target was refused: %v", err)
 	}
-	if err := crossNodeRefError("absent", map[string]bool{"api": true}, nodes); err != nil {
+	if err := (refCheck{}).refError("absent", nodes, "application", map[string]bool{"api": true}, nodes); err != nil {
 		t.Errorf("an unplaced referrer was refused: %v", err)
 	}
 }
@@ -147,11 +147,43 @@ func TestCrossNodeMessageIsDeterministic(t *testing.T) {
 		"web": {id: 0, node: "local"}, "api": {id: 3, node: "edge-1"}, "cache": {id: 4, node: "edge-2"},
 	}
 	refs := map[string]bool{"api": true, "cache": true}
-	first := crossNodeRefError("web", refs, nodes).Error()
+	first := refCheck{}.refError("web", nodes, "application", refs, nodes).Error()
 	for i := 0; i < 30; i++ {
-		if got := crossNodeRefError("web", refs, nodes).Error(); got != first {
+		if got := (refCheck{}).refError("web", nodes, "application", refs, nodes).Error(); got != first {
 			t.Fatalf("run %d reported a different reference:\n%s\n%s", i, got, first)
 		}
+	}
+}
+
+// A swarm spans a location's nodes but never two locations.
+func TestCrossLocationReferenceIsRefusedEvenInASwarm(t *testing.T) {
+	check := refCheck{
+		swarm: func(uint) bool { return true },
+		label: func(id uint) string { return map[uint]string{1: "eu-central", 2: "eu-east"}[id] },
+	}
+	apps := map[string]appPlacement{
+		"web": {id: 1, node: "a", cluster: 1},
+		"api": {id: 2, node: "b", cluster: 1},
+	}
+	if err := check.refError("web", apps, "application", map[string]bool{"api": true}, apps); err != nil {
+		t.Errorf("a cross-node reference inside a swarm was refused: %v", err)
+	}
+	dbs := map[string]appPlacement{"pg": {id: 3, node: "c", cluster: 2}}
+	err := check.refError("web", apps, "database", map[string]bool{"pg": true}, dbs)
+	if err == nil {
+		t.Fatal("a cross-location database reference was accepted")
+	}
+	for _, want := range []string{"web", "eu-central", "database \"pg\"", "eu-east", "locations"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("message is missing %q: %v", want, err)
+		}
+	}
+}
+
+func TestDBRefPatternFindsTheDatabaseName(t *testing.T) {
+	m := dbRefPattern.FindAllStringSubmatch("postgres://{{ .databases.pg.user }}@{{- .databases.pg.host }}", -1)
+	if len(m) != 2 || m[0][1] != "pg" || m[1][1] != "pg" {
+		t.Errorf("matches = %v", m)
 	}
 }
 

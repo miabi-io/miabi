@@ -21,6 +21,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 	"github.com/miabi-io/miabi/internal/services/node"
+	"github.com/miabi-io/miabi/internal/services/placement"
 	"github.com/miabi-io/miabi/internal/worker"
 )
 
@@ -30,6 +31,7 @@ type ApplicationHandler struct {
 	audit    *audit.Logger
 	ee       enterprise.EE
 	logs     *logstore.Store
+	placer   *Placer
 	upgrader websocket.Upgrader
 }
 
@@ -37,6 +39,9 @@ type ApplicationHandler struct {
 // deployment's full history, falling back to the DB tail when the store is disabled, the ref is
 // empty, or the object is gone. nil keeps DB-tail-only reads.
 func (h *ApplicationHandler) SetLogStore(s *logstore.Store) { h.logs = s }
+
+// SetPlacer wires location placement for app creates.
+func (h *ApplicationHandler) SetPlacer(p *Placer) { h.placer = p }
 
 func NewApplicationHandler(svc *application.Service, bus *eventbus.Bus, auditLog *audit.Logger, ee enterprise.EE) *ApplicationHandler {
 	return &ApplicationHandler{
@@ -76,12 +81,15 @@ type CreateAppRequest struct {
 		// slug handle; derived from DisplayName when blank.
 		DisplayName string `json:"display_name" required:"true"`
 		Name        string `json:"name"`
-		ServerID    uint   `json:"server_id"` // node to place on (0 = local)
-		SourceType  string `json:"source_type" enum:"image,git"`
-		Image       string `json:"image"`
-		Tag         string `json:"tag"`
-		GitRepo     string `json:"git_repo"`
-		GitRef      string `json:"git_ref"`
+		// Location is where the app runs; empty uses the workspace's default location.
+		Location string `json:"location"`
+		// ServerID pins a node; platform admins only.
+		ServerID   uint   `json:"server_id"`
+		SourceType string `json:"source_type" enum:"image,git"`
+		Image      string `json:"image"`
+		Tag        string `json:"tag"`
+		GitRepo    string `json:"git_repo"`
+		GitRef     string `json:"git_ref"`
 		// Build config (git source). BuildMethod: auto (default) | dockerfile |
 		// buildpack. Builder optionally overrides the buildpack builder image;
 		// Buildpacks/BuildEnv tune a buildpack build. Rejected for image apps.
@@ -268,8 +276,18 @@ type AttachVolumeRequest struct {
 
 func (h *ApplicationHandler) Create(c *okapi.Context, req *CreateAppRequest) error {
 	wsID := middlewares.WorkspaceID(c)
+	placed, err := h.placer.place(c, placement.Request{
+		Location: req.Body.Location, ServerID: req.Body.ServerID,
+		Service: req.Body.RuntimeKind == string(models.RuntimeService),
+	})
+	if err != nil {
+		if a := placementAbort(c, err); a != nil {
+			return a
+		}
+		return h.mapErr(c, err)
+	}
 	app, err := h.svc.Create(wsID, application.CreateInput{
-		DisplayName: req.Body.DisplayName, Handle: req.Body.Name, ServerID: req.Body.ServerID, SourceType: models.AppSourceType(req.Body.SourceType),
+		DisplayName: req.Body.DisplayName, Handle: req.Body.Name, ServerID: placed.ServerID, SourceType: models.AppSourceType(req.Body.SourceType),
 		Image: req.Body.Image, Tag: req.Body.Tag, GitRepo: req.Body.GitRepo, GitRef: req.Body.GitRef,
 		BuildMethod: models.AppBuildMethod(req.Body.BuildMethod), Builder: req.Body.Builder,
 		Buildpacks: req.Body.Buildpacks, BuildEnv: req.Body.BuildEnv,
@@ -679,7 +697,7 @@ func (h *ApplicationHandler) AttachVolume(c *okapi.Context, req *AttachVolumeReq
 		case errors.Is(err, application.ErrMountPathRequired):
 			return c.AbortBadRequest("path is required")
 		case errors.Is(err, application.ErrNodeMismatch), errors.Is(err, application.ErrLocalVolumeReplicated),
-			errors.Is(err, application.ErrVolumeUnverifiable):
+			errors.Is(err, application.ErrVolumeUnverifiable), errors.Is(err, application.ErrVolumeLocation):
 			return c.AbortBadRequest(err.Error())
 		default:
 			return c.AbortInternalServerError("failed to attach volume", err)
@@ -1345,7 +1363,8 @@ func (h *ApplicationHandler) mapErr(c *okapi.Context, err error) error {
 	case errors.Is(err, application.ErrStackNotFound):
 		return c.AbortNotFound(err.Error())
 	case errors.Is(err, application.ErrNodeMismatch), errors.Is(err, application.ErrVolumeNotFound),
-		errors.Is(err, application.ErrMountPathRequired):
+		errors.Is(err, application.ErrMountPathRequired), errors.Is(err, application.ErrVolumeLocation),
+		errors.Is(err, application.ErrStackLocation):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, nodes.ErrNodeOffline), errors.Is(err, node.ErrNodeCordoned), errors.Is(err, node.ErrNodeNotFound):
 		return c.AbortWithError(409, err)
