@@ -20,7 +20,7 @@
 
 <p align="center">
   <a href="https://github.com/miabi-io/miabi/actions/workflows/ci.yml"><img src="https://github.com/miabi-io/miabi/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <a href="https://goreportcard.com/report/github.com/miabi-io/miabi"><img src="https://goreportcard.com/badge/github.com/miabi-io/miabi" alt="Go Report Card" /></a>
+  <a href="https://go.dev/"><img src="https://img.shields.io/github/go-mod/go-version/miabi-io/miabi" alt="Go Report Card"/></a>
   <a href="https://github.com/miabi-io/miabi/releases"><img src="https://img.shields.io/github/v/release/miabi-io/miabi" alt="Release" /></a>
   <a href="https://hub.docker.com/r/miabi/miabi"><img src="https://img.shields.io/docker/pulls/miabi/miabi" alt="Docker Pulls" /></a>
   <a href="./LICENSE"><img src="https://img.shields.io/github/license/miabi-io/miabi" alt="License" /></a>
