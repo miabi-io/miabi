@@ -25,6 +25,8 @@ type dbInstRow struct {
 	Engine      string
 	Version     string
 	Status      string
+	ClusterID   uint
+	CreatedAt   time.Time
 }
 
 func (dbInstRow) TableName() string { return "database_instances" }
@@ -112,5 +114,28 @@ func TestFindDatabaseByDeclName(t *testing.T) {
 	}
 	if _, _, ok := s.FindDatabaseByDeclName(ws, ""); ok {
 		t.Error("FindDatabaseByDeclName(\"\"): empty name must never match")
+	}
+}
+
+// Reuse never crosses a location: an instance in another cluster is unreachable from the install's network.
+func TestFindReusableInstanceStaysInTheLocation(t *testing.T) {
+	s, db := newDeclNameSvc(t)
+	const ws = uint(1)
+	running, pg := string(models.DBStatusRunning), string(models.DBEnginePostgres)
+	if err := db.Create(&[]dbInstRow{
+		{ID: 1, UID: "pg-1", WorkspaceID: ws, Name: "pg-central", Engine: pg, Version: "17", Status: running, ClusterID: 1},
+		{ID: 2, UID: "pg-2", WorkspaceID: ws, Name: "pg-east", Engine: pg, Version: "17", Status: running, ClusterID: 2},
+	}).Error; err != nil {
+		t.Fatalf("seed instances: %v", err)
+	}
+
+	if got := s.FindReusableInstance(ws, models.DBEnginePostgres, 2); got == nil || got.ID != 2 {
+		t.Errorf("location 2 reused %v, want pg-east", got)
+	}
+	if got := s.FindReusableInstance(ws, models.DBEnginePostgres, 3); got != nil {
+		t.Errorf("a location with no postgres reused %q", got.Name)
+	}
+	if got := s.FindReusableInstance(ws, models.DBEnginePostgres, 0); got == nil {
+		t.Error("an unscoped search found nothing")
 	}
 }

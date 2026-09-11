@@ -1,5 +1,5 @@
 import api, { sseUrl } from './client'
-import type { ApiResponse } from './types'
+import type { ApiResponse, DatabaseInstance } from './types'
 
 // TemplateInput is an install-wizard question.
 export interface TemplateInput {
@@ -234,6 +234,9 @@ export const marketplaceApi = {
   // Async install: start a job, then stream its progress over SSE.
   startInstall: (ws: number, input: InstallInput) =>
     api.post<ApiResponse<InstallJob>>(`${w(ws)}/marketplace/install/jobs`, input),
+  // Database instances an install into a location may reuse or pin ('' = the workspace default).
+  databases: (ws: number, location = '') =>
+    api.get<ApiResponse<DatabaseInstance[]>>(`${w(ws)}/marketplace/databases${location ? `?location=${encodeURIComponent(location)}` : ''}`),
   installJob: (ws: number, id: string) =>
     api.get<ApiResponse<InstallJob>>(`${w(ws)}/marketplace/install/jobs/${id}`),
   installJobEventsUrl: (ws: number, id: string) =>

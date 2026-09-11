@@ -718,15 +718,20 @@ func referencesDep(env map[string]string, token string) bool {
 
 // installNode decides the single node every resource in an install must land on, so each app can share a Docker
 // network with the databases it uses — a network cannot span nodes. A dependency binding to an existing
-// instance makes that instance's node authoritative; the first such binding wins. Otherwise 0, the local node.
-func (s *Service) installNode(workspaceID uint, m *manifest.Manifest, in InstallInput) uint {
+// instance in the install's cluster (any cluster when 0) makes that instance's node authoritative; the first
+// such binding wins. Otherwise 0, the local node.
+func (s *Service) installNode(workspaceID uint, m *manifest.Manifest, in InstallInput, clusterID uint) (uint, error) {
 	for _, d := range m.Databases {
 		// A pinned instance dictates the node outright.
 		if id := in.Placements[d.Name]; id != 0 {
-			if inst, err := s.dbs.Get(workspaceID, id); err == nil {
-				return inst.ServerID
+			inst, err := s.dbs.Get(workspaceID, id)
+			if err != nil {
+				continue
 			}
-			continue
+			if clusterID != 0 && inst.ClusterID != clusterID {
+				return 0, fmt.Errorf("%w: database %q is in another location than this install", ErrInvalidInput, inst.Name)
+			}
+			return inst.ServerID, nil
 		}
 		placement := d.Placement
 		if mode := manifest.Placement(strings.TrimSpace(in.PlacementModes[d.Name])); mode.Valid() {
@@ -738,12 +743,12 @@ func (s *Service) installNode(workspaceID uint, m *manifest.Manifest, in Install
 		reuses := placement == manifest.PlacementShared ||
 			(placement == manifest.PlacementAuto && models.EngineSupportsLogicalDatabases(engine))
 		if reuses {
-			if inst := s.dbs.FindReusableInstance(workspaceID, engine); inst != nil {
-				return inst.ServerID
+			if inst := s.dbs.FindReusableInstance(workspaceID, engine, clusterID); inst != nil {
+				return inst.ServerID, nil
 			}
 		}
 	}
-	return 0
+	return 0, nil
 }
 
 // record persists provenance (best-effort; a failure here never fails an install

@@ -141,18 +141,23 @@ func (s *Service) tagLogical(d *models.Database, declName string, meta models.Me
 // FindReusableInstance returns the running instance a shared/auto placement would
 // reuse for engine, or nil. Exposed so a caller can pre-resolve a dependency's
 // target node without performing the placement.
-func (s *Service) FindReusableInstance(workspaceID uint, engine models.DBEngine) *models.DatabaseInstance {
-	return s.findReusable(workspaceID, engine, 0)
+// A non-zero clusterID keeps the search inside that location.
+func (s *Service) FindReusableInstance(workspaceID uint, engine models.DBEngine, clusterID uint) *models.DatabaseInstance {
+	return s.reusableIn(workspaceID, engine, clusterID, clusterID != 0)
 }
 
 // findReusable picks a running instance of engine, in the location of serverID when one is given:
 // private networks don't span locations.
 func (s *Service) findReusable(workspaceID uint, engine models.DBEngine, serverID uint) *models.DatabaseInstance {
+	cluster, scoped := s.clusterOfServer(serverID)
+	return s.reusableIn(workspaceID, engine, cluster, scoped)
+}
+
+func (s *Service) reusableIn(workspaceID uint, engine models.DBEngine, cluster uint, scoped bool) *models.DatabaseInstance {
 	list, err := s.List(workspaceID)
 	if err != nil {
 		return nil
 	}
-	cluster, scoped := s.clusterOfServer(serverID)
 	for i := range list {
 		if list[i].Engine != engine || list[i].Status != models.DBStatusRunning {
 			continue

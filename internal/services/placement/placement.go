@@ -97,6 +97,12 @@ func (s *Service) onNode(serverID uint, location string) (Result, error) {
 	return Result{ClusterID: srv.ClusterID, ServerID: serverID}, nil
 }
 
+// ResolveLocation is the cluster a create naming location lands in: that location, else the workspace
+// default, else the first location the workspace may use.
+func (s *Service) ResolveLocation(workspaceID uint, location string, admin bool) (*models.Cluster, error) {
+	return s.resolveCluster(workspaceID, location, admin)
+}
+
 func allowed(c *models.Cluster, admin bool) bool {
 	return admin || c.Visibility != models.ClusterVisibilityRestricted
 }

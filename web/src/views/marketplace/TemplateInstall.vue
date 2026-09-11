@@ -5,7 +5,6 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { marketplaceApi } from '@/api/marketplace'
 import type { CatalogEntry, TemplateManifest, ManifestDatabase, InstallJob, TemplateInstallView, UpgradePlan } from '@/api/marketplace'
-import { databaseApi } from '@/api/resources'
 import { apiErrorMessage } from '@/api/client'
 import { displayFor, resourceName } from '@/utils/installNames'
 import type { DatabaseInstance } from '@/api/types'
@@ -154,16 +153,27 @@ function onVersionChange(e: Event) {
 
 watch(version, loadDetail)
 
+// Only instances in the chosen location can be reused or pinned: private networks don't span locations.
+async function loadInstances() {
+  if (!ws.currentWorkspaceId) return
+  try {
+    instances.value = (await marketplaceApi.databases(ws.currentWorkspaceId, form.value.location)).data.data ?? []
+  } catch {
+    instances.value = []
+  }
+  for (const db of manifest.value?.databases ?? []) {
+    const v = form.value.placement[db.name]
+    if (v && v !== 'auto' && v !== 'dedicated' && !instances.value.some((i) => String(i.id) === v)) {
+      form.value.placement[db.name] = defaultPlacement(db)
+    }
+  }
+}
+watch(() => form.value.location, loadInstances)
+
 onMounted(async () => {
   // Load instances before the manifest so placement defaults (e.g. a "shared"
   // template) can pre-select an existing instance.
-  if (ws.currentWorkspaceId) {
-    try {
-      instances.value = (await databaseApi.list(ws.currentWorkspaceId)).data.data ?? []
-    } catch {
-      instances.value = []
-    }
-  }
+  await loadInstances()
   await Promise.all([loadDetail(), loadInstalls()])
   // Deep link: marketplace/<slug>?upgrade opens the upgrade plan for this
   // template's install (used by the app detail "Upgrade via Marketplace" action
