@@ -78,7 +78,7 @@ function itemTo(item: NavItem): string {
 function isActive(path: string): boolean {
   if (path === '/') return route.path === '/'
   // The admin dashboard also answers /admin, so it stays lit on the bare path.
-  if (path === '/admin/metrics' && route.path === ADMIN_HOME) return true
+  if (path === '/admin/dashboard' && route.path === ADMIN_HOME) return true
   return route.path === path || route.path.startsWith(path + '/')
 }
 function isItemActive(item: NavItem): boolean {

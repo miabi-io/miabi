@@ -93,7 +93,7 @@ const routes = [
     children: [
       // A bare /admin is a real destination: the console switcher and a typed URL
       // both need somewhere to land.
-      { path: '', redirect: { name: 'admin-metrics' } },
+      { path: '', redirect: { name: 'admin-dashboard' } },
       { path: 'users', name: 'admin-users', component: () => import('@/views/admin/Users.vue'), meta: { title: 'Users', admin: true } },
       { path: 'users/:id', name: 'admin-user-detail', component: () => import('@/views/admin/UserDetail.vue'), meta: { title: 'User', admin: true } },
       { path: 'workspaces', name: 'admin-workspaces', component: () => import('@/views/admin/Workspaces.vue'), meta: { title: 'Workspaces', admin: true } },
@@ -110,7 +110,9 @@ const routes = [
       { path: 'nodes/:id/import', name: 'admin-node-import', component: () => import('@/views/admin/NodeImport.vue'), meta: { title: 'Import resources', admin: true } },
       { path: 'nodes/:id/housekeeping', name: 'admin-node-housekeeping', component: () => import('@/views/admin/NodeHousekeeping.vue'), meta: { title: 'Housekeeping', admin: true } },
       { path: 'nodes/:id/containers/:cid', name: 'admin-node-container', component: () => import('@/views/admin/NodeContainerDetail.vue'), meta: { title: 'Container', admin: true } },
-      { path: 'metrics', name: 'admin-metrics', component: () => import('@/views/admin/Metrics.vue'), meta: { title: 'Admin Dashboard', admin: true } },
+      { path: 'dashboard', name: 'admin-dashboard', component: () => import('@/views/admin/Dashboard.vue'), meta: { title: 'Admin Dashboard', admin: true } },
+      // Old bookmarks and links.
+      { path: 'metrics', redirect: { name: 'admin-dashboard' } },
       { path: 'events', name: 'admin-events', component: () => import('@/views/admin/Events.vue'), meta: { title: 'Events', admin: true } },
       { path: 'jobs', name: 'admin-jobs', component: () => import('@/views/admin/Jobs.vue'), meta: { title: 'Jobs', admin: true } },
       { path: 'oauth', name: 'admin-oauth', component: () => import('@/views/admin/OAuthProviders.vue'), meta: { title: 'OAuth Providers', admin: true } },
