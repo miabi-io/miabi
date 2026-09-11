@@ -89,3 +89,17 @@ func TestServiceRuntimeIsUntouchedWithAClusterUp(t *testing.T) {
 		t.Errorf("runtime = %q, want service", app.RuntimeKind)
 	}
 }
+
+// Swarm services have no device mapping, so a device grant would be silently dropped.
+func TestServiceRuntimeRefusesDevices(t *testing.T) {
+	s := &Service{cluster: clusterOn{}}
+	app := &models.Application{RuntimeKind: models.RuntimeService, Replicas: 1, Devices: []string{"/dev/net/tun"}}
+
+	if err := s.validateRuntime(app, ""); !errors.Is(err, models.ErrDevicesOnService) {
+		t.Errorf("service with devices err = %v, want ErrDevicesOnService", err)
+	}
+	app.RuntimeKind = models.RuntimeContainer
+	if err := s.validateRuntime(app, ""); err != nil {
+		t.Errorf("container with devices was refused: %v", err)
+	}
+}

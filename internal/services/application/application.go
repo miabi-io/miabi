@@ -795,9 +795,6 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 		if err := s.quota.CheckCreate(workspaceID, quota.ResourceApps, int(n)); err != nil {
 			return nil, err
 		}
-		if err := s.quota.CheckComputeAdd(workspaceID, in.NanoCPUs, in.MemoryBytes, 0); err != nil {
-			return nil, err
-		}
 	}
 	if in.SourceType == "" {
 		in.SourceType = models.AppSourceImage
@@ -922,6 +919,9 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 		}
 		app.RuntimeKind = models.RuntimeContainer
 		delete(app.Metadata, models.MetaRuntimeAutoService)
+	}
+	if err := s.checkCompute(app, app.Replicas); err != nil {
+		return nil, err
 	}
 	if err := s.apps.Create(app); err != nil {
 		return nil, err
@@ -1157,10 +1157,6 @@ func (s *Service) Update(app *models.Application) error {
 	if err := s.validateResources(app.MemoryBytes, app.NanoCPUs); err != nil {
 		return err
 	}
-	// Aggregate workspace compute, excluding this app's current contribution.
-	if err := s.quota.CheckComputeAdd(app.WorkspaceID, app.NanoCPUs, app.MemoryBytes, app.ID); err != nil {
-		return err
-	}
 	if err := validateGPUCount(app.GPUCount); err != nil {
 		return err
 	}
@@ -1192,6 +1188,9 @@ func (s *Service) Update(app *models.Application) error {
 		stored = current.RuntimeKind
 	}
 	if err := s.validateRuntime(app, stored); err != nil {
+		return err
+	}
+	if err := s.checkCompute(app, app.Replicas); err != nil {
 		return err
 	}
 	// Defense-in-depth: never let a reserved key reach the container via Update
@@ -1271,7 +1270,20 @@ func (s *Service) validateRuntime(app *models.Application, stored models.Runtime
 	if app.Replicas > MaxReplicas {
 		return ErrTooManyReplicas
 	}
+	if app.RuntimeKind == models.RuntimeService && len(app.Devices) > 0 {
+		return models.ErrDevicesOnService
+	}
 	return s.requireSharedStorage(app, app.Replicas)
+}
+
+// checkCompute checks the workspace compute quota with the app counted at the given
+// replicas (a container app always counts once), excluding its stored contribution.
+func (s *Service) checkCompute(app *models.Application, replicas int) error {
+	n := int64(1)
+	if app.RuntimeKind == models.RuntimeService && replicas > 1 {
+		n = int64(replicas)
+	}
+	return s.quota.CheckComputeAdd(app.WorkspaceID, app.NanoCPUs*n, app.MemoryBytes*n, app.ID)
 }
 
 // resolveMountVolume reads a mount's volume for the storage guards.
@@ -1606,6 +1618,9 @@ func (s *Service) Scale(ctx context.Context, app *models.Application, replicas i
 		return ErrTooManyReplicas
 	}
 	if err := s.requireSharedStorage(app, replicas); err != nil {
+		return err
+	}
+	if err := s.checkCompute(app, replicas); err != nil {
 		return err
 	}
 	mgr, err := s.clients.For(0)

@@ -20,6 +20,7 @@ var (
 	ErrDeviceBlockDevice    = errors.New("raw block devices expose the host's filesystem and are never granted")
 	ErrTooManyCapabilities  = errors.New("too many capabilities requested")
 	ErrTooManyDevices       = errors.New("too many devices requested")
+	ErrDevicesOnService     = errors.New("host devices cannot be attached to a replicated service; run the app as a container instead")
 )
 
 // CapabilityTier decides which workspaces may grant a capability or device.

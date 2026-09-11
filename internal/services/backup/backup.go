@@ -209,6 +209,9 @@ func s3Env(c *S3Config) []string {
 func ensureDBNetworks(ctx context.Context, dc docker.Client, inst *models.DatabaseInstance) ([]string, error) {
 	names := inst.NetworkNames(node.AppNetwork)
 	for _, n := range names {
+		if inst.SwarmScoped(n) {
+			continue
+		}
 		if _, err := dc.EnsureNetwork(ctx, n); err != nil {
 			return nil, fmt.Errorf("ensure network %s: %w", n, err)
 		}
