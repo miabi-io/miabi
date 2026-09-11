@@ -17,6 +17,7 @@ var (
 	ErrNotMember          = errors.New("you are not a member of this workspace")
 	ErrInvalidTheme       = errors.New("theme must be one of: system, light, dark")
 	ErrInvalidAccent      = errors.New("accent must be one of: default, blue, indigo, slate, orange, lime")
+	ErrInvalidLocale      = errors.New("locale must be one of: en, fr")
 	ErrInvalidLandingView = errors.New("landing view is not a known console section")
 )
 
@@ -69,7 +70,11 @@ func (s *Service) Get(userID uint) (*models.UserSetting, error) {
 // which is the point, and would not happen if the default were written down at
 // account creation.
 func (s *Service) resolve(cur *models.UserSetting) {
-	if cur == nil || cur.Accent != "" {
+	if cur == nil {
+		return
+	}
+	cur.Locale = models.ResolveLocale(cur.Locale)
+	if cur.Accent != "" {
 		return
 	}
 	cur.Accent = models.AccentDefault
@@ -103,6 +108,13 @@ func (s *Service) Save(userID uint, in Update) (*models.UserSetting, error) {
 			return nil, ErrInvalidAccent
 		}
 	}
+	var locale string
+	if in.Locale != nil {
+		locale = strings.ToLower(strings.TrimSpace(*in.Locale))
+		if locale != "" && !models.ValidLocale(locale) {
+			return nil, ErrInvalidLocale
+		}
+	}
 	var view string
 	if in.LandingView != nil {
 		view = strings.ToLower(strings.TrimSpace(*in.LandingView))
@@ -130,10 +142,8 @@ func (s *Service) Save(userID uint, in Update) (*models.UserSetting, error) {
 			cur.Timezone = tz
 		}
 	}
-	if in.Locale != nil {
-		if l := strings.TrimSpace(*in.Locale); l != "" {
-			cur.Locale = l
-		}
+	if locale != "" {
+		cur.Locale = locale
 	}
 	if err := s.settings.Save(cur); err != nil {
 		return nil, err

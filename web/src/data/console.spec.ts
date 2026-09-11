@@ -20,7 +20,7 @@ describe('console separation', () => {
   // reachable. Pinned as a set rather than a count: adding a page is normal,
   // losing one in a regrouping is the regression.
   const ORIGINAL_ADMIN_PATHS = [
-    '/admin/metrics', '/admin/users', '/admin/workspaces', '/admin/domains', '/admin/routes',
+    '/admin/dashboard', '/admin/users', '/admin/workspaces', '/admin/domains', '/admin/routes',
     '/admin/nodes', '/admin/runners', '/admin/events', '/admin/jobs', '/admin/oauth',
     '/admin/ldap', '/admin/plans', '/admin/license', '/admin/siem', '/admin/announcements',
     '/admin/platform-backup', '/admin/registry', '/admin/settings', '/admin/deployment-config',

@@ -1,5 +1,7 @@
 // Shared API types.
 
+import type { LanguageCode } from '@/i18n/languages'
+
 export interface ApiResponse<T> {
   success: boolean
   data: T
@@ -268,7 +270,8 @@ export interface UserPreferences {
   accent: AccentCode
   /** Display only — timestamps are stored and served in UTC. */
   timezone: string
-  locale: string
+  /** Display language, from the fixed set in i18n/languages.ts. */
+  locale: LanguageCode
   /** The console section a session opens on within the default workspace. */
   landing_view: string
 }
@@ -278,7 +281,7 @@ export interface UserPreferencesInput {
   theme?: ThemeMode
   accent?: AccentCode
   timezone?: string
-  locale?: string
+  locale?: LanguageCode
   landing_view?: string
 }
 

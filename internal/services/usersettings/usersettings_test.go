@@ -108,6 +108,10 @@ func TestSaveValidatesEnums(t *testing.T) {
 	if _, err := s.Save(1, Update{Theme: &bad}); !errors.Is(err, ErrInvalidTheme) {
 		t.Fatalf("theme %q = %v, want ErrInvalidTheme", bad, err)
 	}
+	lang := "fr-CA"
+	if _, err := s.Save(1, Update{Locale: &lang}); !errors.Is(err, ErrInvalidLocale) {
+		t.Fatalf("locale %q = %v, want ErrInvalidLocale", lang, err)
+	}
 	view := "../../etc/passwd"
 	if _, err := s.Save(1, Update{LandingView: &view}); !errors.Is(err, ErrInvalidLandingView) {
 		t.Fatalf("landing view %q = %v, want ErrInvalidLandingView", view, err)
@@ -156,7 +160,7 @@ func TestValidThemeAndLandingView(t *testing.T) {
 
 func TestDefaultUserSettingIsUsable(t *testing.T) {
 	d := models.DefaultUserSetting()
-	if !models.ValidTheme(d.Theme) || !models.ValidLandingView(d.LandingView) {
+	if !models.ValidTheme(d.Theme) || !models.ValidLocale(d.Locale) || !models.ValidLandingView(d.LandingView) {
 		t.Fatalf("defaults are not self-consistent: %+v", d)
 	}
 	if d.Timezone == "" || d.Locale == "" {
@@ -217,6 +221,33 @@ func TestAccentFallsBackWhenTheBrandIsUnusable(t *testing.T) {
 				t.Errorf("accent = %q, want the default", got.Accent)
 			}
 		})
+	}
+}
+
+func TestResolveLocale(t *testing.T) {
+	for in, want := range map[string]string{
+		"en": "en", "fr": "fr", "FR": "fr", "fr-CA": "fr", "en_US": "en",
+		"de": "en", "": "en", "-fr": "en",
+	} {
+		if got := models.ResolveLocale(in); got != want {
+			t.Errorf("ResolveLocale(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// A row saved while Language was free text must reach the console as a shipped
+// language, not as the raw tag.
+func TestGetResolvesALegacyLocale(t *testing.T) {
+	legacy := models.DefaultUserSetting()
+	legacy.UserID, legacy.Locale = 7, "fr-CA"
+	s := NewService(&fakeUsers{}, &fakeSettings{rows: map[uint]*models.UserSetting{7: &legacy}}, fakeMembers{})
+
+	got, err := s.Get(7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Locale != models.LocaleFrench {
+		t.Errorf("locale = %q, want fr", got.Locale)
 	}
 }
 

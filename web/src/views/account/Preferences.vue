@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useThemeStore, type ThemeMode } from '@/stores/theme'
 import { ACCENTS as accents } from '@/theme/accents'
+import { LANGUAGES as languages, resolveLanguage } from '@/i18n/languages'
 import { useNotificationStore } from '@/stores/notification'
 import { authApi } from '@/api/auth'
 
@@ -17,7 +18,7 @@ const { workspaces } = storeToRefs(ws)
 const saving = ref(false)
 const defaultWorkspaceId = ref<number | null>(auth.user?.default_workspace_id ?? null)
 const timezone = ref(auth.user?.preferences?.timezone || 'UTC')
-const locale = ref(auth.user?.preferences?.locale || 'en')
+const locale = ref(resolveLanguage(auth.user?.preferences?.locale))
 const landingView = ref(auth.user?.preferences?.landing_view || 'dashboard')
 
 const themeModes: { value: ThemeMode; label: string; icon: string }[] = [
@@ -76,7 +77,7 @@ async function saveDisplay() {
   try {
     const prefs = (await authApi.updatePreferences({
       timezone: timezone.value.trim() || 'UTC',
-      locale: locale.value.trim() || 'en',
+      locale: locale.value,
       landing_view: landingView.value,
     })).data.data
     if (auth.user) auth.setUser({ ...auth.user, preferences: prefs })
@@ -187,8 +188,10 @@ async function saveDisplay() {
         </div>
         <div class="form-group" style="margin-bottom: 0">
           <label class="form-label" for="locale">Language</label>
-          <input id="locale" v-model="locale" class="form-input mono" placeholder="en" />
-          <p class="form-hint">A BCP&nbsp;47 tag such as <code>en</code> or <code>fr-CA</code>, used for date and number formatting.</p>
+          <select id="locale" v-model="locale" class="form-select">
+            <option v-for="l in languages" :key="l.code" :value="l.code" :lang="l.code">{{ l.label }}</option>
+          </select>
+          <p class="form-hint">Translations are on the way; until they land, the console stays in English.</p>
         </div>
       </div>
       <div class="card-footer">
