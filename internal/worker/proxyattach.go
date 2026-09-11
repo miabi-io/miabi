@@ -22,11 +22,16 @@ type ProxyNetworkReconciler struct {
 	apps     *repositories.ApplicationRepository
 	releases *repositories.ReleaseRepository
 	clients  NodeDocker
+	cluster  ClusterCap
 }
 
 func NewProxyNetworkReconciler(apps *repositories.ApplicationRepository, releases *repositories.ReleaseRepository, clients NodeDocker) *ProxyNetworkReconciler {
 	return &ProxyNetworkReconciler{apps: apps, releases: releases, clients: clients}
 }
+
+// SetCluster wires swarm detection (nil-safe), so routed containers also join the ingress overlay in
+// cluster mode.
+func (r *ProxyNetworkReconciler) SetCluster(c ClusterCap) { r.cluster = c }
 
 // ReconcileProxyAttachment connects or disconnects the app's active and canary release containers
 // from the proxy network, with the app's stable DNS alias. Idempotent and best-effort: a missing
@@ -45,27 +50,41 @@ func (r *ProxyNetworkReconciler) ReconcileProxyAttachment(ctx context.Context, a
 	if err != nil {
 		return nil // node offline: reconciles again on next deploy/route change
 	}
-	type target struct {
-		id    string
-		alias string
-	}
-	var targets []target
+	var targets []attachTarget
 	if rel, err := r.releases.FindActive(appID); err == nil && rel.ContainerID != "" {
-		targets = append(targets, target{rel.ContainerID, node.AppAlias(app)})
+		targets = append(targets, attachTarget{rel.ContainerID, node.AppAlias(app)})
 	}
 	if app.CanaryReleaseID != nil {
 		if rel, err := r.releases.FindByID(*app.CanaryReleaseID); err == nil && rel.ContainerID != "" {
-			targets = append(targets, target{rel.ContainerID, node.CanaryAlias(app)})
+			targets = append(targets, attachTarget{rel.ContainerID, node.CanaryAlias(app)})
 		}
+	}
+	r.applyAttachment(ctx, eng, targets, attached)
+	return nil
+}
+
+type attachTarget struct {
+	id    string
+	alias string
+}
+
+// applyAttachment connects or disconnects each target from the proxy network. In cluster mode it does the
+// same for the ingress overlay, mirroring buildRuntimeContext, so a container started before cluster mode
+// was enabled becomes reachable by alias without a redeploy.
+func (r *ProxyNetworkReconciler) applyAttachment(ctx context.Context, eng docker.Client, targets []attachTarget, attached bool) {
+	networks := []string{node.AppNetwork}
+	if r.cluster != nil && r.cluster.CapCluster() {
+		networks = append(networks, node.IngressOverlay)
 	}
 	for _, t := range targets {
-		if attached {
-			_ = eng.NetworkConnect(ctx, node.AppNetwork, t.id, []string{t.alias})
-		} else {
-			_ = eng.NetworkDisconnect(ctx, node.AppNetwork, t.id, true)
+		for _, n := range networks {
+			if attached {
+				_ = eng.NetworkConnect(ctx, n, t.id, []string{t.alias})
+			} else {
+				_ = eng.NetworkDisconnect(ctx, n, t.id, true)
+			}
 		}
 	}
-	return nil
 }
 
 // reconcileServiceIngress ensures the central gateway can reach a cluster app's service VIP for

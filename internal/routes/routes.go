@@ -447,6 +447,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// its DNS alias, so no host port is published for it — and canary weights, which
 	// the port-forward upstream cannot carry, start working on remote nodes.
 	routeService.SetCluster(clusterService)
+	proxyReconciler.SetCluster(clusterService)
 	go func() { _ = proxyReconciler.ReconcileIngressGateway(context.Background()) }()
 	// Auto port-forwarding: when a port-forward app gains a route, redeploy it so
 	// the node actually publishes the allocated host port the gateway targets.

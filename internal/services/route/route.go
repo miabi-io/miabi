@@ -26,44 +26,23 @@ import (
 )
 
 var (
-	ErrNameRequired = errors.New("route name is required")
-	ErrInvalidName  = errors.New("name must be lowercase letters, digits and hyphens (e.g. my-api)")
-	// ErrHostRequired rejects a structured route with no hostname: a hostless route
-	// on path "/" matches every request, so the gateway would funnel all traffic to
-	// it. (Advanced-config routes declare their hosts in the raw YAML.)
-	ErrHostRequired       = errors.New("at least one host is required")
-	ErrMaintenanceStatus  = errors.New("maintenance status code must be between 400 and 599")
-	ErrMaintenanceMessage = errors.New("maintenance message is too long (max 1024 characters)")
-	ErrNameTaken          = errors.New("a route with this name already exists")
-	ErrAppRequired        = errors.New("application not found in workspace")
-	ErrNotFound           = errors.New("route not found")
-	ErrCertRequired       = errors.New("custom TLS requires a stored certificate")
-	ErrInvalidYAML        = errors.New("advanced config is not valid YAML")
-	// ErrDomainNotRegistered is returned when a route host does not fall under
-	// any domain registered in the workspace. Register the domain first.
+	ErrNameRequired        = errors.New("route name is required")
+	ErrInvalidName         = errors.New("name must be lowercase letters, digits and hyphens (e.g. my-api)")
+	ErrHostRequired        = errors.New("at least one host is required")
+	ErrMaintenanceStatus   = errors.New("maintenance status code must be between 400 and 599")
+	ErrMaintenanceMessage  = errors.New("maintenance message is too long (max 1024 characters)")
+	ErrNameTaken           = errors.New("a route with this name already exists")
+	ErrAppRequired         = errors.New("application not found in workspace")
+	ErrNotFound            = errors.New("route not found")
+	ErrCertRequired        = errors.New("custom TLS requires a stored certificate")
+	ErrInvalidYAML         = errors.New("advanced config is not valid YAML")
 	ErrDomainNotRegistered = errors.New("no matching domain is registered in this workspace; add the domain first")
-	// ErrDomainBanned is returned when a route host falls under a domain a platform
-	// admin has banned. Banned domains can never be served.
-	ErrDomainBanned = errors.New("this domain has been banned by a platform administrator")
-	// ErrHostTaken is returned when a route's hostname is already claimed by another route. Hostnames are
-	// globally unique: another workspace owning the host is rejected outright, and within a workspace the
-	// same host may only be reused on a different path.
-	ErrHostTaken = errors.New("hostname is already used by another route")
-	// ErrNodeAddressRequired is returned when routing an app on a port-forward
-	// node that has no address the gateway can reach it at.
+	ErrDomainBanned        = errors.New("this domain has been banned by a platform administrator")
+	ErrHostTaken           = errors.New("hostname is already used by another route")
 	ErrNodeAddressRequired = errors.New("the node has no address set; set its private address before adding a route")
-	// ErrAdvancedTLSCert rejects an advanced route config carrying an inline TLS certificate or key. Miabi
-	// manages TLS via the route's TLS mode and a domain-validated stored certificate, so a hand-typed cert
-	// — which could assert a host the workspace doesn't control — is refused rather than silently dropped.
-	ErrAdvancedTLSCert = errors.New("set TLS via the route's TLS mode and a managed certificate, not an inline tls certificate in advanced config")
-	// ErrMiddlewareRequired is returned when an attach/detach call omits the name.
-	ErrMiddlewareRequired = errors.New("middleware name is required")
-	// ErrMiddlewareNotFound is returned when attaching a middleware that does not
-	// exist in the workspace (detach is idempotent and never returns this).
-	ErrMiddlewareNotFound = errors.New("middleware not found in this workspace")
-	// ErrMiddlewareDuplicate rejects a chain naming the same middleware twice:
-	// the gateway would run it twice, and the second position is unreachable
-	// intent rather than a configuration anyone means.
+	ErrAdvancedTLSCert     = errors.New("set TLS via the route's TLS mode and a managed certificate, not an inline tls certificate in advanced config")
+	ErrMiddlewareRequired  = errors.New("middleware name is required")
+	ErrMiddlewareNotFound  = errors.New("middleware not found in this workspace")
 	ErrMiddlewareDuplicate = errors.New("the same middleware is listed twice")
 )
 
@@ -431,9 +410,6 @@ func NewService(
 }
 
 type Input struct {
-	// Name is the unique slug handle; it must already be canonical slug form (it
-	// becomes the Goma route name). DisplayName is the free-text label (falls back
-	// to Name when blank).
 	Name          string
 	DisplayName   string
 	ApplicationID uint
@@ -444,19 +420,14 @@ type Input struct {
 	Rewrite       string
 	TargetPort    int
 	TLSMode       models.RouteTLSMode
-	// TLSProvider names the gateway certManager provider that issues this route's certificate. A
-	// POINTER, like Enabled: the console has no field for it, so nil must mean "leave it as stored".
-	// Assigning it unconditionally would have every console edit wipe a provider a manifest set.
+
 	TLSProvider       *string
 	AdvancedConfig    string // raw Goma route YAML; supersedes structured fields
 	CertificateID     *uint  // stored certificate (required for custom TLS)
 	Enabled           *bool
 	ExploitProtection *bool
 	Maintenance       *models.RouteMaintenance
-	// Metadata carries provenance labels (managed-by, gitops-source) for routes created by the apply/GitOps
-	// engine, so a route participates in prune and per-project teardown like every other kind. Nil for
-	// UI-created routes and on a UI edit, which leaves any existing labels untouched.
-	Metadata models.Metadata
+	Metadata          models.Metadata
 }
 
 func (s *Service) Create(ctx context.Context, workspaceID uint, in Input) (*models.Route, error) {
@@ -845,9 +816,7 @@ func (s *Service) Delete(ctx context.Context, workspaceID, id uint) error {
 	if err := s.routes.Delete(rt.ID); err != nil {
 		return err
 	}
-	// Re-sync the app's remaining routes (re-renders the workspace file without the
-	// deleted route) and reconcile its proxy-network membership (detaches the app
-	// when this was its last route).
+
 	_ = s.SyncRoute(ctx, rt.ApplicationID)
 	return nil
 }
@@ -930,31 +899,21 @@ func (s *Service) SyncRoute(ctx context.Context, appID uint) error {
 		_ = s.routes.Delete(orphans[i].ID)
 	}
 	routes = kept
-	// Keep the app on the shared proxy network only while it has a route; a
-	// running container is attached/detached live so route changes take effect
-	// without a redeploy.
+
 	if s.attacher != nil {
 		_ = s.attacher.ReconcileProxyAttachment(ctx, appID, len(routes) > 0)
 	}
-	// Keep the app's public A/AAAA/CNAME records in sync with its routed hosts (a
-	// no-op unless a host falls under a verified, provider-connected domain). Runs
-	// for every app type — the DNS target follows the serving gateway (dnsTarget).
+	// Keep the app's public A/AAAA/CNAME records in sync with its routed hosts
 	s.reconcileAppDNS(ctx, app, routes)
-	// Cluster (service) apps are always served centrally via their overlay service
-	// VIP — they don't use edge gateways or port-forward host ports. The attacher
-	// joins the central gateway to the workspace overlay so it can resolve the VIP.
+
 	if app.RuntimeKind == models.RuntimeService {
 		return s.SyncWorkspaceProxy(ctx, app.WorkspaceID)
 	}
-	// edge-gateway nodes serve their own routes via the HTTP-provider endpoint, so
-	// the central proxy must not carry them; SyncWorkspaceProxy already excludes
-	// edge apps, so a workspace re-render drops them from the central file.
+
 	if s.edgeGateway(app) {
 		return s.SyncWorkspaceProxy(ctx, app.WorkspaceID)
 	}
-	// Pre-render side effects for a centrally-served app: on a port-forward node, ensure each routed port has
-	// its ingress host port allocated (backendsFor provisions it), which SyncWorkspaceProxy then reads back
-	// read-only. Track the enabled ports so managed bindings for ports no longer routed get released.
+
 	enabledPorts := map[int]bool{}
 	if app.CurrentReleaseID != nil {
 		for i := range routes {
@@ -966,7 +925,7 @@ func (s *Service) SyncRoute(ctx context.Context, appID uint) error {
 			_ = s.backendsFor(app, port)
 		}
 	}
-	if isRemotePortForward(s.serverFor(app)) {
+	if srv := s.serverFor(app); !s.useAliasUpstream(srv) {
 		s.reconcileManagedPorts(app.ID, enabledPorts)
 		if s.publisher != nil {
 			_ = s.publisher.EnsurePublished(ctx, app.ID)
@@ -1006,22 +965,17 @@ func (s *Service) SyncWorkspaceProxy(ctx context.Context, workspaceID uint) erro
 	if err != nil {
 		return err
 	}
-	// A route is only served when all its hosts fall under a verified (or, for a privileged workspace, merely
-	// registered) and un-banned domain; otherwise it is rendered disabled and reported offline. gate is off
-	// when the registry isn't wired (mirrors validateHosts).
+
 	gate := s.domains != nil
 	domains := s.workspaceDomains(workspaceID)
 	privileged := s.privileged(workspaceID)
 	var renderedRoutes []proxy.RenderedRoute
-	// pending tracks the status each route should get once the gateway write
-	// outcome is known (committed below).
+
 	var pending []routeStatus
-	// edgeServers collects the edge-gateway nodes whose own (HTTP-provider) config
-	// this sync may have changed, so they can be told to pull immediately.
+
 	edgeServers := map[uint]struct{}{}
 	for i := range apps {
-		// ListByWorkspace doesn't preload Ports (needed for backend scheme), so
-		// load the app fully.
+
 		app, err := s.apps.FindByID(apps[i].ID)
 		if err != nil {
 			continue
@@ -1029,10 +983,7 @@ func (s *Service) SyncWorkspaceProxy(ctx context.Context, workspaceID uint) erro
 		if app.CurrentReleaseID == nil {
 			continue
 		}
-		// edge-gateway nodes serve their own (container) routes over the HTTP
-		// provider; exclude them centrally. Cluster service apps are the exception —
-		// they are always served centrally via their overlay VIP.
-		if app.RuntimeKind != models.RuntimeService && s.edgeGateway(app) {
+		if s.edgeGateway(app) {
 			edgeServers[app.ServerID] = struct{}{}
 			continue
 		}
@@ -1115,18 +1066,12 @@ func (s *Service) ResyncAllProxy(ctx context.Context) error {
 	return nil
 }
 
-// renderBackends returns a route's central-proxy upstreams read-only: it never allocates a host port
-// (unlike backendsFor). A port-forward node uses its already-provisioned ingress host port; other
-// placements use the node-local alias with canary weighting.
 func (s *Service) renderBackends(app *models.Application, port int) []proxy.Backend {
-	// Cluster (service) apps: target the service VIP via its overlay DNS alias.
-	// Swarm load-balances across the replicas; the central gateway resolves it
-	// because the attacher joined it to the workspace overlay.
 	if app.RuntimeKind == models.RuntimeService {
 		return []proxy.Backend{{Endpoint: fmt.Sprintf("%s://%s:%d", portScheme(app, port), node.AppAlias(app), port)}}
 	}
 	srv, _ := s.servers.FindByID(app.ServerID)
-	if isRemotePortForward(srv) {
+	if !s.useAliasUpstream(srv) {
 		if hp := s.hostPort(app.ID, port); hp > 0 && strings.TrimSpace(srv.Address) != "" {
 			return []proxy.Backend{{Endpoint: fmt.Sprintf("%s://%s:%d", portScheme(app, port), srv.Address, hp)}}
 		}
@@ -1143,12 +1088,11 @@ func (s *Service) serverFor(app *models.Application) *models.Server {
 	return srv
 }
 
-// requireRoutableNode rejects routing an app on a port-forward node that has no
-// address the gateway can reach it at (otherwise the route would be a dead
-// upstream). Other placements always have a reachable upstream.
+// requireRoutableNode rejects routing an app the gateway must reach by host port when its node has no
+// address (otherwise the route would be a dead upstream). Alias upstreams need no node address.
 func (s *Service) requireRoutableNode(app *models.Application) error {
 	srv := s.serverFor(app)
-	if isRemotePortForward(srv) && strings.TrimSpace(srv.Address) == "" {
+	if !s.useAliasUpstream(srv) && strings.TrimSpace(srv.Address) == "" {
 		return ErrNodeAddressRequired
 	}
 	return nil
@@ -1169,8 +1113,10 @@ func (s *Service) reconcileManagedPorts(appID uint, keep map[int]bool) {
 	}
 }
 
-// edgeGateway reports whether the app runs on a node that runs its own edge gateway.
 func (s *Service) edgeGateway(app *models.Application) bool {
+	if app.RuntimeKind == models.RuntimeService {
+		return false
+	}
 	srv, err := s.servers.FindByID(app.ServerID)
 	return err == nil && !srv.IsLocal && srv.Connectivity == models.ConnectivityEdgeGateway
 }
@@ -1196,12 +1142,13 @@ func (s *Service) reconcileAppDNS(ctx context.Context, app *models.Application, 
 }
 
 // dnsTarget resolves the public address a route's hosts should point at: the gateway that terminates the
-// route. An edge-gateway node serves its own ingress (use that node's public address); every other app is
-// fronted by the control-plane gateway (use the local node's public address).
+// route. An app its node's edge gateway serves (see edgeGateway) uses that node's public address; every
+// other app, service apps included, is fronted by the control-plane gateway (the local node's address).
 func (s *Service) dnsTarget(app *models.Application) (ip, hostname string) {
-	if srv, err := s.servers.FindByID(app.ServerID); err == nil && srv != nil &&
-		!srv.IsLocal && srv.Connectivity == models.ConnectivityEdgeGateway {
-		return srv.PublicIP, srv.PublicHostname
+	if s.edgeGateway(app) {
+		if srv := s.serverFor(app); srv != nil {
+			return srv.PublicIP, srv.PublicHostname
+		}
 	}
 	if local, err := s.servers.FindLocal(); err == nil && local != nil {
 		return local.PublicIP, local.PublicHostname
@@ -1220,19 +1167,15 @@ func (s *Service) enrichDNS(rt *models.Route) {
 	rt.Backends = s.displayBackends(app, routePort(rt, app))
 }
 
-// displayBackends returns the upstream endpoints for a route, read-only (it
-// never allocates a host port — unlike backendsFor). For a port-forward node it
-// reflects the already-provisioned address:hostPort, or nil while none exists.
 func (s *Service) displayBackends(app *models.Application, port int) []string {
 	if app.RuntimeKind == models.RuntimeService {
 		return []string{fmt.Sprintf("%s://%s:%d", portScheme(app, port), node.AppAlias(app), port)}
 	}
-	if isRemotePortForward(s.serverFor(app)) {
-		srv := s.serverFor(app)
+	if srv := s.serverFor(app); !s.useAliasUpstream(srv) {
 		if hp := s.hostPort(app.ID, port); hp > 0 && strings.TrimSpace(srv.Address) != "" {
 			return []string{fmt.Sprintf("%s://%s:%d", portScheme(app, port), srv.Address, hp)}
 		}
-		return nil // not yet provisioned (e.g. app not deployed)
+		return nil
 	}
 	out := make([]string, 0, 2)
 	for _, b := range aliasBackends(app, port, portScheme(app, port)) {
@@ -1305,20 +1248,14 @@ func (s *Service) backendsFor(app *models.Application, port int) []proxy.Backend
 	if s.useAliasUpstream(srv) {
 		return aliasBackends(app, port, portScheme(app, port))
 	}
-	// The host port for a port-forward node is a control-plane resource: it is
-	// auto-provisioned (and auto-approved) when an app is attached to a route, so
-	// admins never manage these bindings manually.
+
 	hp, _ := s.ensureRemotePort(app, srv, port)
 	if hp > 0 && strings.TrimSpace(srv.Address) != "" {
 		return []proxy.Backend{{Endpoint: fmt.Sprintf("%s://%s:%d", portScheme(app, port), srv.Address, hp)}}
 	}
-	// No host port allocated or no node address — no usable upstream.
 	return nil
 }
 
-// useAliasUpstream reports whether the gateway can dial the app by DNS alias rather than a published host port.
-// True for the local node, edge-gateway nodes, and a port-forward node once cluster mode is on. Canary
-// weighting depends on it: a host-port upstream names one container, so only an alias can carry the split.
 func (s *Service) useAliasUpstream(srv *models.Server) bool {
 	return !isRemotePortForward(srv) || s.clusterOn()
 }
@@ -1329,9 +1266,6 @@ func isRemotePortForward(srv *models.Server) bool {
 	return srv != nil && !srv.IsLocal && srv.Connectivity == models.ConnectivityPortForward
 }
 
-// privateBindIP returns the node's address to publish managed ports on when it
-// ingress stays on the private interface. For a hostname or non-IPv4 address it returns "" (publish on all
-// interfaces; the node must be firewalled so only the manager can reach the host-port range).
 func privateBindIP(srv *models.Server) string {
 	if ip := net.ParseIP(strings.TrimSpace(srv.Address)); ip != nil && ip.To4() != nil {
 		return ip.String()
@@ -1352,8 +1286,6 @@ func aliasBackends(app *models.Application, port int, scheme string) []proxy.Bac
 		w = 0
 	}
 	rules := canaryMatchRules(app)
-	// An exclusive canary serves its matching traffic whatever its weight, so it
-	// stays in the route at weight 0; a plain weighted one drops out.
 	if app.CanaryReleaseID == nil || (w <= 0 && !(app.CanaryExclusive && len(rules) > 0)) {
 		return []proxy.Backend{{Endpoint: stable}}
 	}
@@ -1362,8 +1294,7 @@ func aliasBackends(app *models.Application, port int, scheme string) []proxy.Bac
 		Weight:   w,
 		Match:    rules,
 	}
-	// Exclusive and priority only mean anything to the gateway alongside rules;
-	// without them an exclusive backend would swallow every request.
+
 	if len(rules) > 0 {
 		canary.Exclusive = app.CanaryExclusive
 		canary.Priority = app.CanaryPriority
@@ -1501,8 +1432,7 @@ func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.Rend
 		if app.CurrentReleaseID == nil {
 			continue
 		}
-		// Cluster (service) apps route via their overlay service VIP, not a
-		// node-local container alias; skip them in the node bundle for now.
+
 		if app.RuntimeKind == models.RuntimeService {
 			continue
 		}
@@ -1531,8 +1461,7 @@ func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.Rend
 				rr.Certs = []proxy.CertPair{pair}
 			}
 			renderedRoutes = append(renderedRoutes, rr)
-			// Edge routes are excluded from the central sync, so the node bundle is
-			// their only status source — record what the node will serve.
+
 			s.persistRouteStatus(rt, status, reason, now)
 		}
 	}
