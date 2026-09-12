@@ -6,6 +6,7 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 
 	"github.com/jkaninda/okapi"
@@ -60,6 +61,8 @@ type PlanBody struct {
 	AllowGPU                  bool   `json:"allow_gpu"`
 	SecurityProfile           string `json:"security_profile"`          // "default" | "restricted"
 	AllowOfficialImageUser    bool   `json:"allow_official_image_user"` // exempt official-template apps from the restricted UID
+	// Placement binds the plan to locations and a node pool (Enterprise placement_policy).
+	Placement models.PlanPlacement `json:"placement"`
 }
 
 type CreatePlanRequest struct {
@@ -150,6 +153,24 @@ func (b PlanBody) apply(p *models.Plan) {
 	p.AllowGPU = b.AllowGPU
 	p.SecurityProfile = models.NormalizeSecurityProfile(b.SecurityProfile)
 	p.AllowOfficialImageUser = b.AllowOfficialImageUser
+	p.Placement = b.Placement
+}
+
+var errInvalidPlanPool = errors.New("a pool name is lowercase letters, digits and hyphens (max 32), e.g. pro")
+
+// checkPlacement refuses an invalid pool, and binding to locations or a pool without placement_policy.
+// Clearing or resending an unchanged binding is always allowed, so a lapsed license never strands one.
+func (h *PlanHandler) checkPlacement(c *okapi.Context, prev, next models.PlanPlacement) error {
+	if next.Pool != "" && !models.ValidPoolName(next.Pool) {
+		return c.AbortBadRequest(errInvalidPlanPool.Error())
+	}
+	if (len(next.Locations) == 0 && next.Pool == "") || (next.Pool == prev.Pool && slices.Equal(next.Locations, prev.Locations)) {
+		return nil
+	}
+	if err := h.ee.RequireMutable(enterprise.FlagPlacementPolicy); err != nil {
+		return entitlementAbort(c, err)
+	}
+	return nil
 }
 
 // List returns a paginated, searchable plan catalog.
@@ -184,6 +205,9 @@ func (h *PlanHandler) Create(c *okapi.Context, req *CreatePlanRequest) error {
 	if err := h.guardSecurityProfile(body.SecurityProfile); err != nil {
 		return entitlementAbort(c, err)
 	}
+	if a := h.checkPlacement(c, models.PlanPlacement{}, body.Placement); a != nil {
+		return a
+	}
 	if body.IsDefault {
 		_ = h.repo.ClearDefault(nil)
 	}
@@ -203,6 +227,9 @@ func (h *PlanHandler) Update(c *okapi.Context, req *UpdatePlanRequest) error {
 	}
 	if err := h.guardSecurityProfile(req.Body.SecurityProfile); err != nil {
 		return entitlementAbort(c, err)
+	}
+	if a := h.checkPlacement(c, p.Placement, req.Body.Placement); a != nil {
+		return a
 	}
 	if err := systemPlanEdit(p, req.Body.Name, req.Body.IsDefault); err != nil {
 		return c.AbortWithError(409, err)
@@ -332,6 +359,15 @@ func (h *PlanHandler) SetWorkspaceQuota(c *okapi.Context, req *SetWorkspaceQuota
 	if req.Body.SecurityProfile != nil && models.NormalizeSecurityProfile(*req.Body.SecurityProfile) == models.SecurityProfileRestricted {
 		if err := h.ee.RequireMutable(enterprise.FlagSecurityProfile); err != nil {
 			return entitlementAbort(c, err)
+		}
+	}
+	if req.Body.Placement != nil {
+		var prev models.PlanPlacement
+		if o, err := h.overrides.FindByWorkspace(wsID); err == nil && o.Placement != nil {
+			prev = *o.Placement
+		}
+		if a := h.checkPlacement(c, prev, *req.Body.Placement); a != nil {
+			return a
 		}
 	}
 	q := req.Body

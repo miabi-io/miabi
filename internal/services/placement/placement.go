@@ -7,6 +7,9 @@ package placement
 
 import (
 	"errors"
+	"fmt"
+	"slices"
+	"sort"
 	"strings"
 
 	"github.com/miabi-io/miabi/internal/models"
@@ -32,10 +35,31 @@ type Service struct {
 	clusters *repositories.ClusterRepository
 	servers  *repositories.ServerRepository
 	online   Online
+	policy   Policy
 }
 
 func NewService(clusters *repositories.ClusterRepository, servers *repositories.ServerRepository, online Online) *Service {
 	return &Service{clusters: clusters, servers: servers, online: online}
+}
+
+// Policy resolves the locations and node pool a workspace's plan binds it to; false means no policy applies.
+// Satisfied by the quota service.
+type Policy interface {
+	EffectivePlacement(workspaceID uint) (models.PlanPlacement, bool)
+}
+
+// SetPolicy wires plan placement (nil-safe; nil binds no workspace to locations or pools).
+func (s *Service) SetPolicy(p Policy) { s.policy = p }
+
+func (s *Service) planPlacement(workspaceID uint) (models.PlanPlacement, bool) {
+	if s.policy == nil {
+		return models.PlanPlacement{}, false
+	}
+	return s.policy.EffectivePlacement(workspaceID)
+}
+
+func permits(p models.PlanPlacement, enforced bool, clusterID uint) bool {
+	return !enforced || len(p.Locations) == 0 || slices.Contains(p.Locations, clusterID)
 }
 
 // Request describes a resource to place.
@@ -73,7 +97,8 @@ func (s *Service) Place(req Request) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	serverID, err := s.pickNode(c, req.Service)
+	policy, enforced := s.planPlacement(req.WorkspaceID)
+	serverID, err := s.pickNode(c, req.Service, policy.Pool, enforced)
 	if err != nil {
 		return Result{}, err
 	}
@@ -110,12 +135,16 @@ func allowed(c *models.Cluster, admin bool) bool {
 // resolveCluster picks the named location, else the workspace's default, else the first location the
 // workspace may use (the default cluster comes first).
 func (s *Service) resolveCluster(workspaceID uint, location string, admin bool) (*models.Cluster, error) {
+	policy, enforced := s.planPlacement(workspaceID)
+	usable := func(c *models.Cluster) bool {
+		return allowed(c, admin) && !c.Cordoned && permits(policy, enforced, c.ID)
+	}
 	if name := strings.TrimSpace(location); name != "" {
 		c, err := s.clusters.FindByName(name)
 		if err != nil {
 			return nil, ErrLocationNotFound
 		}
-		if !allowed(c, admin) {
+		if !allowed(c, admin) || !permits(policy, enforced, c.ID) {
 			return nil, ErrLocationNotAllowed
 		}
 		if c.Cordoned {
@@ -123,15 +152,22 @@ func (s *Service) resolveCluster(workspaceID uint, location string, admin bool) 
 		}
 		return c, nil
 	}
-	if def, err := s.clusters.WorkspaceDefault(workspaceID); err == nil && allowed(def, admin) && !def.Cordoned {
+	if def, err := s.clusters.WorkspaceDefault(workspaceID); err == nil && usable(def) {
 		return def, nil
+	}
+	if enforced {
+		for _, id := range policy.Locations {
+			if c, err := s.clusters.FindByID(id); err == nil && usable(c) {
+				return c, nil
+			}
+		}
 	}
 	list, err := s.clusters.List()
 	if err != nil {
 		return nil, err
 	}
 	for i := range list {
-		if allowed(&list[i], admin) && !list[i].Cordoned {
+		if usable(&list[i]) {
 			return &list[i], nil
 		}
 	}
@@ -139,8 +175,20 @@ func (s *Service) resolveCluster(workspaceID uint, location string, admin bool) 
 }
 
 // pickNode chooses the node inside a cluster: its only node when standalone, the manager for a service,
-// and otherwise the online, uncordoned node with the least container memory already placed on it.
-func (s *Service) pickNode(c *models.Cluster, service bool) (uint, error) {
+// and otherwise the online, uncordoned node with the least container memory already placed on it. With a
+// pooled plan only nodes in the plan's pool count, and a cluster with none of them refuses the create.
+func (s *Service) pickNode(c *models.Cluster, service bool, pool string, pooled bool) (uint, error) {
+	if pooled && (c.Mode != models.ClusterModeSwarm || service) {
+		servers, err := s.servers.List()
+		if err != nil {
+			return 0, err
+		}
+		if !slices.ContainsFunc(servers, func(srv models.Server) bool {
+			return srv.ClusterID == c.ID && !srv.Cordoned && models.PoolOf(&srv) == pool
+		}) {
+			return 0, poolUnavailable(pool)
+		}
+	}
 	if c.Mode != models.ClusterModeSwarm || service {
 		if c.IsDefault {
 			local, err := s.servers.FindLocal()
@@ -166,15 +214,55 @@ func (s *Service) pickNode(c *models.Cluster, service bool) (uint, error) {
 		if srv.ClusterID != c.ID || srv.Cordoned || (!srv.IsLocal && (s.online == nil || !s.online(srv.ID))) {
 			continue
 		}
+		if pooled && models.PoolOf(srv) != pool {
+			continue
+		}
 		load := loads[srv.ID]
 		if best == 0 || load.Less(bestLoad) {
 			best, bestLoad = srv.ID, load
 		}
 	}
+	if best == 0 && pooled {
+		return 0, poolUnavailable(pool)
+	}
 	if best == 0 {
 		return 0, ErrNoSchedulableNode
 	}
 	return best, nil
+}
+
+func poolUnavailable(pool string) error {
+	if pool == "" {
+		return fmt.Errorf("%w: every node there is in a pool this workspace's plan does not use", ErrNoSchedulableNode)
+	}
+	return fmt.Errorf("%w: none is in the %q pool this workspace's plan requires", ErrNoSchedulableNode, pool)
+}
+
+// PoolConstraints are the Swarm constraints that keep a workspace's services in its plan's pool: that pool's
+// label, or for a plan without a pool, every pool present in the cluster excluded. Nil when no policy applies.
+func (s *Service) PoolConstraints(workspaceID, clusterID uint) []string {
+	policy, enforced := s.planPlacement(workspaceID)
+	if !enforced {
+		return nil
+	}
+	if policy.Pool != "" {
+		return []string{fmt.Sprintf("node.labels.%s==%s", models.PoolLabel, policy.Pool)}
+	}
+	servers, err := s.servers.List()
+	if err != nil {
+		return nil
+	}
+	clusterID = s.resolveID(clusterID)
+	seen := map[string]bool{}
+	var out []string
+	for i := range servers {
+		if p := models.PoolOf(&servers[i]); p != "" && servers[i].ClusterID == clusterID && !seen[p] {
+			seen[p] = true
+			out = append(out, fmt.Sprintf("node.labels.%s!=%s", models.PoolLabel, p))
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Location is a cluster as a workspace sees it: no nodes, addresses or capacity.
@@ -194,10 +282,11 @@ func (s *Service) Locations(workspaceID uint, admin bool) ([]Location, error) {
 		return nil, err
 	}
 	fallback, _ := s.resolveCluster(workspaceID, "", admin)
+	policy, enforced := s.planPlacement(workspaceID)
 	out := make([]Location, 0, len(list))
 	for i := range list {
 		c := &list[i]
-		if !allowed(c, admin) || c.Cordoned {
+		if !allowed(c, admin) || c.Cordoned || !permits(policy, enforced, c.ID) {
 			continue
 		}
 		out = append(out, Location{
@@ -222,7 +311,7 @@ func (s *Service) SetDefaultLocation(workspaceID uint, location string, admin bo
 	if err != nil {
 		return ErrLocationNotFound
 	}
-	if !allowed(c, admin) {
+	if policy, enforced := s.planPlacement(workspaceID); !allowed(c, admin) || !permits(policy, enforced, c.ID) {
 		return ErrLocationNotAllowed
 	}
 	return s.clusters.SetWorkspaceDefault(workspaceID, &c.ID)

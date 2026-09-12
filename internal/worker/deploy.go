@@ -63,6 +63,7 @@ type DeployHandler struct {
 	logs          *logstore.Store
 	deployLock    DeployLock
 	builderPolicy BuilderPolicy
+	poolPolicy    PoolPolicy
 	clusterSlots  *clusterSlots
 
 	// Runner build dispatch: a git-source app's image is built on a registered
@@ -187,6 +188,21 @@ type BuilderPolicy interface {
 // a builder set while granted stops being honored if the capability is later
 // revoked, e.g. a plan downgrade). Optional; nil honors the app's builder.
 func (h *DeployHandler) SetBuilderPolicy(p BuilderPolicy) { h.builderPolicy = p }
+
+// PoolPolicy resolves the Swarm constraints that keep a workspace's services in its plan's node pool.
+type PoolPolicy interface {
+	PoolConstraints(workspaceID, clusterID uint) []string
+}
+
+// SetPoolPolicy wires plan node pools into service placement (nil adds no pool constraints).
+func (h *DeployHandler) SetPoolPolicy(p PoolPolicy) { h.poolPolicy = p }
+
+func (h *DeployHandler) serviceConstraints(app *models.Application) []string {
+	if h.poolPolicy == nil {
+		return app.PlacementConstraints
+	}
+	return append(append([]string{}, app.PlacementConstraints...), h.poolPolicy.PoolConstraints(app.WorkspaceID, app.ClusterID)...)
+}
 
 // NodeDocker resolves the Docker client for a node id (0 = local).
 type NodeDocker interface {
@@ -795,7 +811,7 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 		Configs:        svcConfigs,
 		MemoryBytes:    app.MemoryBytes,
 		NanoCPUs:       app.NanoCPUs,
-		Constraints:    app.PlacementConstraints,
+		Constraints:    h.serviceConstraints(app),
 		Healthcheck:    buildHealthcheck(app),
 		User:           sec.User,
 		CapAdd:         sec.CapAdd,

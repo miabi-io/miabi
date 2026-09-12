@@ -68,6 +68,28 @@ onBeforeUnmount(stopGatewayEvents)
 const connected = computed(() => !!node.value && (node.value.is_local || !!node.value.agent_connected))
 const isEdge = computed(() => node.value?.connectivity === 'edge-gateway')
 
+const pool = computed(() => node.value?.labels?.['miabi.pool'] ?? '')
+const showPool = ref(false)
+const poolForm = ref('')
+const poolSaving = ref(false)
+function openPool() {
+  poolForm.value = pool.value
+  showPool.value = true
+}
+async function savePool() {
+  const name = poolForm.value.trim()
+  poolSaving.value = true
+  try {
+    node.value = (await nodesApi.setPool(id, name)).data.data
+    showPool.value = false
+    notify.success(name ? `Node is now in the ${name} pool` : 'Node removed from its pool')
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    poolSaving.value = false
+  }
+}
+
 // Cluster membership (docker node ls) — shown on the manager's page only, since
 // the manager is the swarm's source of truth. Includes unmanaged members.
 const clusterMembers = ref<ClusterMember[]>([])
@@ -887,6 +909,9 @@ const gwBadge = computed(() => {
             <div class="hero-chips">
               <span class="chip"><span class="mdi mdi-shield-account-outline"></span> {{ roleLabel }}</span>
               <span class="chip"><span class="mdi mdi-transit-connection-variant"></span> {{ connectivityLabel() }}</span>
+              <button type="button" class="chip" :title="pool ? 'Change the node pool' : 'Put the node in a pool'" @click="openPool">
+                <span class="mdi mdi-tag-outline"></span> {{ pool ? `pool: ${pool}` : 'no pool' }}
+              </button>
               <span v-if="node.cordoned" class="chip chip-warn"><span class="mdi mdi-cancel"></span> cordoned</span>
               <span v-else class="chip chip-ok"><span class="mdi mdi-check"></span> schedulable</span>
             </div>
@@ -1515,6 +1540,31 @@ const gwBadge = computed(() => {
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showEdit = false">Cancel</button>
             <button type="submit" class="btn btn-primary" :disabled="editSaving">{{ editSaving ? 'Saving…' : 'Save changes' }}</button>
+          </div>
+        </form>
+      </AppModal>
+    </Teleport>
+
+    <Teleport to="body">
+      <AppModal v-if="showPool" @close="showPool = false">
+        <div class="modal-header">
+          <h3>Node pool — {{ node?.name }}</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showPool = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <form @submit.prevent="savePool">
+          <div class="modal-body">
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Pool</label>
+              <input v-model="poolForm" class="form-input mono" placeholder="e.g. pro" autofocus />
+              <p class="form-hint">
+                Workspaces whose plan names this pool run on its nodes, and plans without a pool never land here
+                (Enterprise plan placement). Empty takes the node out of its pool. Running workloads stay where they are.
+              </p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showPool = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="poolSaving">{{ poolSaving ? 'Saving…' : 'Save' }}</button>
           </div>
         </form>
       </AppModal>

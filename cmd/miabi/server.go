@@ -41,6 +41,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/monitoring"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/notify"
+	"github.com/miabi-io/miabi/internal/services/placement"
 	"github.com/miabi-io/miabi/internal/services/platformbackup"
 	"github.com/miabi-io/miabi/internal/services/platformimage"
 	"github.com/miabi-io/miabi/internal/services/portforward"
@@ -384,6 +385,9 @@ func runServer(cli *okapicli.CLI) {
 			deployHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
 			deployHandler.SetGrantGuard(grantGuard)
 			deployHandler.SetBuilderPolicy(securityQuota)
+			poolPlacement := placement.NewService(repositories.NewClusterRepository(res.db), repositories.NewServerRepository(res.db), nil)
+			poolPlacement.SetPolicy(securityQuota)
+			deployHandler.SetPoolPolicy(poolPlacement)
 			gpuScheduler := gpu.NewService(
 				repositories.NewGPUDeviceRepository(res.db),
 				repositories.NewServerRepository(res.db),

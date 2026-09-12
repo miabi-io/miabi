@@ -2,7 +2,8 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { adminApi } from '@/api/admin'
-import type { Plan, PlanInput } from '@/api/types'
+import { clustersApi } from '@/api/clusters'
+import type { Cluster, Plan, PlanInput } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
 import { useEntitlement } from '@/composables/useEntitlement'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -14,6 +15,9 @@ const notify = useNotificationStore()
 // The restricted security profile is an Enterprise-only policy; in Community the
 // profile stays default.
 const securityProfile = useEntitlement('security_profile')
+const placementPolicy = useEntitlement('placement_policy')
+const clusters = ref<Cluster[]>([])
+clustersApi.list().then((r) => { clusters.value = r.data.data ?? [] }).catch(() => { clusters.value = [] })
 
 const planId = computed(() => Number(route.params.id))
 const plan = ref<Plan | null>(null)
@@ -67,6 +71,24 @@ async function load() {
   }
 }
 watch(planId, load, { immediate: true })
+
+const placementLocations = computed(() => form.value?.placement?.locations ?? [])
+const placementPool = computed({
+  get: () => form.value?.placement?.pool ?? '',
+  set: (pool: string) => {
+    if (form.value) form.value.placement = { ...form.value.placement, pool }
+  },
+})
+function setLocations(locations: number[]) {
+  if (form.value) form.value.placement = { ...form.value.placement, locations }
+}
+function toggleLocation(clusterId: number) {
+  const ids = placementLocations.value
+  setLocations(ids.includes(clusterId) ? ids.filter((x) => x !== clusterId) : [...ids, clusterId])
+}
+function makeDefaultLocation(clusterId: number) {
+  setLocations([clusterId, ...placementLocations.value.filter((x) => x !== clusterId)])
+}
 
 async function save() {
   if (!form.value || !plan.value || !form.value.name.trim()) return
@@ -226,6 +248,39 @@ function fmtDate(s?: string): string {
               Exempt official marketplace apps (keep the image's default user)
             </label>
             <p class="form-hint">When Restricted, apps installed from an <strong>official</strong> marketplace template still run as the image's own user, so curated images that need it aren't broken. Only official installs qualify; the user's own apps stay non-root.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt-4">
+        <div class="card-header">
+          <h2>Placement</h2>
+          <span v-if="!placementPolicy.has.value" class="badge badge-neutral" title="Plan placement requires an Enterprise license">
+            <span class="mdi mdi-lock-outline"></span> Enterprise
+          </span>
+        </div>
+        <div class="card-body">
+          <p class="form-hint" style="margin-top: 0">
+            Where this plan's workspaces may run. Enforced only while plan enforcement is on.
+            <template v-if="!placementPolicy.has.value"> Requires an Enterprise license; without one, workspaces may use any location and any node.</template>
+          </p>
+          <label class="form-label" style="margin-top: 12px">Locations</label>
+          <label v-for="c in clusters" :key="c.id" class="checkbox-label">
+            <input type="checkbox" :checked="placementLocations.includes(c.id)" :disabled="!placementPolicy.mutable.value" @change="toggleLocation(c.id)" />
+            {{ c.display_name || c.name }}<span v-if="c.location_code" class="text-muted"> ({{ c.location_code }})</span>
+            <span v-if="placementLocations[0] === c.id" class="badge badge-info" style="margin-left: 6px">default</span>
+            <button
+              v-else-if="placementLocations.includes(c.id) && placementPolicy.mutable.value"
+              type="button"
+              class="btn btn-ghost btn-sm"
+              @click.prevent="makeDefaultLocation(c.id)"
+            >Make default</button>
+          </label>
+          <p class="form-hint">None checked allows every location. The default is where a workspace's resources land when it names no location.</p>
+          <div class="form-group" style="margin-top: 12px; max-width: 360px">
+            <label class="form-label">Node pool</label>
+            <input v-model.trim="placementPool" class="form-input mono" placeholder="e.g. pro" :disabled="!placementPolicy.mutable.value" />
+            <p class="form-hint">Workspaces run only on nodes in this pool. Empty keeps them on nodes that are in no pool.</p>
           </div>
         </div>
       </div>

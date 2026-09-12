@@ -5,6 +5,7 @@ package placement
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,6 +43,7 @@ type serverTable struct {
 	ClusterID uint
 	IsLocal   bool
 	Cordoned  bool
+	Labels    map[string]string `gorm:"serializer:json"`
 }
 
 func (serverTable) TableName() string { return "servers" }
@@ -92,7 +94,7 @@ func newPlacement(t *testing.T, online map[uint]bool) (*Service, *gorm.DB) {
 		{ID: 1, Name: "manager", ClusterID: 1, IsLocal: true},
 		{ID: 10, Name: "warsaw-1", ClusterID: 2},
 		{ID: 11, Name: "warsaw-2", ClusterID: 2},
-		{ID: 12, Name: "warsaw-3", ClusterID: 2},
+		{ID: 12, Name: "warsaw-3", ClusterID: 2, Labels: map[string]string{models.PoolLabel: "pro"}},
 		{ID: 13, Name: "warsaw-4", ClusterID: 2, Cordoned: true},
 		{ID: 20, Name: "gpu-1", ClusterID: 3},
 	})
@@ -187,6 +189,65 @@ func TestPlacementRefusals(t *testing.T) {
 	}
 	if err := s.SetDefaultLocation(5, "gpu", false); !errors.Is(err, ErrLocationNotAllowed) {
 		t.Errorf("tenant default in a restricted location err = %v", err)
+	}
+}
+
+type fakePolicy struct{ placement models.PlanPlacement }
+
+func (f fakePolicy) EffectivePlacement(uint) (models.PlanPlacement, bool) { return f.placement, true }
+
+// A pooled plan lands only on its pool's nodes, and a plan without a pool never on a pooled one.
+func TestPlacementHonorsThePlanPool(t *testing.T) {
+	s, _ := newPlacement(t, map[uint]bool{10: true, 11: true, 12: true})
+
+	s.SetPolicy(fakePolicy{models.PlanPlacement{Pool: "pro"}})
+	if got, err := s.Place(Request{WorkspaceID: 5, Location: "eu-east"}); err != nil || got.ServerID != 12 {
+		t.Errorf("pro plan placed on node %d (%v), want the pro node 12", got.ServerID, err)
+	}
+	if got := s.PoolConstraints(5, 2); len(got) != 1 || got[0] != "node.labels.miabi.pool==pro" {
+		t.Errorf("pro plan constraints = %v", got)
+	}
+
+	s.SetPolicy(fakePolicy{})
+	if got, err := s.Place(Request{WorkspaceID: 5, Location: "eu-east"}); err != nil || got.ServerID != 11 {
+		t.Errorf("unpooled plan placed on node %d (%v), want the least loaded unpooled node 11", got.ServerID, err)
+	}
+	if got := s.PoolConstraints(5, 2); len(got) != 1 || got[0] != "node.labels.miabi.pool!=pro" {
+		t.Errorf("unpooled plan constraints = %v, want the pro pool excluded", got)
+	}
+	if got := s.PoolConstraints(5, 1); len(got) != 0 {
+		t.Errorf("a cluster without pools needs no constraints, got %v", got)
+	}
+
+	s.SetPolicy(fakePolicy{models.PlanPlacement{Pool: "gpu"}})
+	for _, loc := range []string{"eu-east", "default"} {
+		_, err := s.Place(Request{WorkspaceID: 5, Location: loc})
+		if !errors.Is(err, ErrNoSchedulableNode) || !strings.Contains(err.Error(), `"gpu"`) {
+			t.Errorf("%s with no gpu node: err = %v, want a refusal naming the pool", loc, err)
+		}
+	}
+}
+
+// A plan's locations bound what a workspace sees and where it may create; the first is its default.
+func TestPlacementHonorsThePlanLocations(t *testing.T) {
+	s, _ := newPlacement(t, map[uint]bool{10: true, 11: true})
+	s.SetPolicy(fakePolicy{models.PlanPlacement{Locations: []uint{2}}})
+
+	if got, err := s.Place(Request{WorkspaceID: 5}); err != nil || got.ClusterID != 2 {
+		t.Errorf("placed %+v (%v), want the plan's first location", got, err)
+	}
+	if _, err := s.Place(Request{WorkspaceID: 5, Location: "default"}); !errors.Is(err, ErrLocationNotAllowed) {
+		t.Errorf("a location outside the plan: err = %v", err)
+	}
+	if err := s.SetDefaultLocation(5, "default", false); !errors.Is(err, ErrLocationNotAllowed) {
+		t.Errorf("a default outside the plan: err = %v", err)
+	}
+	locs, err := s.Locations(5, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(locs) != 1 || locs[0].Name != "eu-east" || !locs[0].Default {
+		t.Errorf("locations = %+v, want only eu-east, as the default", locs)
 	}
 }
 

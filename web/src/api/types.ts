@@ -57,8 +57,15 @@ export interface Plan {
   // Let apps installed from an official marketplace template keep the image's own
   // default user even under the "restricted" security profile.
   allow_official_image_user: boolean
+  // Binds the plan to locations (cluster ids, the first is the default) and a node pool. Enterprise.
+  placement?: PlanPlacement
   created_at?: string
   updated_at?: string
+}
+
+export interface PlanPlacement {
+  locations?: number[]
+  pool?: string
 }
 
 // SecurityProfile hardens how a workspace's app/job containers run. "restricted"
@@ -94,6 +101,7 @@ export interface WorkspaceQuotaOverride {
   allow_gpu: boolean | null
   security_profile: SecurityProfile | null
   allow_official_image_user: boolean | null
+  placement?: PlanPlacement | null
 }
 
 export interface ResourceUsage {

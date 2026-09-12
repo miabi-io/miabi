@@ -244,6 +244,9 @@ type EditionGate interface {
 // package needs no enterprise import.
 const flagSecurityProfile = "security_profile"
 
+// flagPlacementPolicy is a local copy of enterprise.FlagPlacementPolicy.
+const flagPlacementPolicy = "placement_policy"
+
 // Service resolves and enforces effective workspace limits.
 type Service struct {
 	plans     *repositories.PlanRepository
@@ -282,6 +285,30 @@ func (s *Service) effectivePlan(workspaceID uint) *models.Plan {
 		return p
 	}
 	return nil
+}
+
+// EffectivePlacement resolves the locations and node pool a workspace's plan binds it to (override -> plan ->
+// default). The bool is false when no policy applies, because plan enforcement is off or placement_policy is
+// not licensed; the workspace may then use any location and any node.
+func (s *Service) EffectivePlacement(workspaceID uint) (models.PlanPlacement, bool) {
+	if !s.Enabled() || !s.entitled(flagPlacementPolicy) {
+		return models.PlanPlacement{}, false
+	}
+	var o *models.WorkspaceQuota
+	if s.overrides != nil {
+		o, _ = s.overrides.FindByWorkspace(workspaceID)
+	}
+	return placementFrom(s.effectivePlan(workspaceID), o), true
+}
+
+func placementFrom(p *models.Plan, o *models.WorkspaceQuota) models.PlanPlacement {
+	if o != nil && o.Placement != nil {
+		return *o.Placement
+	}
+	if p == nil {
+		return models.PlanPlacement{}
+	}
+	return p.Placement
 }
 
 // EffectivePlanName returns the name of the workspace's resolved plan, or ""
