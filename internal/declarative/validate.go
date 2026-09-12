@@ -435,6 +435,17 @@ func (r *Resource) validateDatabase() error {
 	if !engineSupportsLogical(d.Engine) && d.Instance == "shared" {
 		return fmt.Errorf("database %q: engine %q has no logical databases; instance cannot be 'shared'", r.Metadata.Name, d.Engine)
 	}
+	if res := d.Resources; res != nil {
+		if _, err := res.MemoryBytes(); err != nil {
+			return fmt.Errorf("database %q: resources: %w", r.Metadata.Name, err)
+		}
+		if _, err := res.NanoCPUs(); err != nil {
+			return fmt.Errorf("database %q: resources: %w", r.Metadata.Name, err)
+		}
+		if d.Instance == "shared" {
+			return fmt.Errorf("database %q: resources size an instance of its own; a shared database runs with its host's", r.Metadata.Name)
+		}
+	}
 	return nil
 }
 

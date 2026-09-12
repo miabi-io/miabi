@@ -188,6 +188,19 @@
       },
       "type": "object"
     },
+    "DatabaseResourcesSpec": {
+      "additionalProperties": false,
+      "description": "DatabaseResourcesSpec limits a database instance. Memory accepts Ki/Mi/Gi; CPU is a number of cores, \"0.5\" for half of one. \"0\" removes a limit.",
+      "properties": {
+        "cpu": {
+          "type": "string"
+        },
+        "memory": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "DatabaseSpec": {
       "additionalProperties": false,
       "description": "DatabaseSpec requests a logical database on a DatabaseInstance.",
@@ -221,6 +234,10 @@
               "type": "string"
             }
           ]
+        },
+        "resources": {
+          "$ref": "#/$defs/DatabaseResourcesSpec",
+          "description": "Resources limit the database's instance, the engine tuned to the memory. Stating them gives the database an instance of its own, since a reused one already runs with another's size. Omitted, the instance keeps its limits."
         },
         "version": {
           "description": "e.g. \"16-alpine\"",

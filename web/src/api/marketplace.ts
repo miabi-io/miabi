@@ -51,6 +51,8 @@ export interface ManifestDatabase {
   engine: 'postgres' | 'mysql' | 'mariadb' | 'redis' | string
   version?: string
   placement?: 'auto' | 'dedicated' | 'shared'
+  // The size the template gives the instance; a sized database always gets an instance of its own.
+  resources?: { memory?: string; cpu?: string }
 }
 
 // ManifestConfig is a set of configuration files a template ships and mounts

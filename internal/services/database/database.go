@@ -78,7 +78,7 @@ var specs = map[models.DBEngine]engineSpec{
 	models.DBEngineMySQL: {
 		image:          func(v string) string { return "mysql:" + v },
 		defaultVersion: "8.4", port: 3306, dataDir: "/var/lib/mysql",
-		minMemoryMB: 512, defaultMemoryMB: 1024,
+		minMemoryMB: 1024, defaultMemoryMB: 1024,
 		adminUser: "root",
 		adminEnv:  func(u, p string) []string { return []string{"MYSQL_ROOT_PASSWORD=" + p} },
 	},
@@ -92,14 +92,14 @@ var specs = map[models.DBEngine]engineSpec{
 	models.DBEngineRedis: {
 		image:          func(v string) string { return "redis:" + v },
 		defaultVersion: "7-alpine", port: 6379, dataDir: "/data",
-		minMemoryMB: 32, defaultMemoryMB: 256,
+		minMemoryMB: 64, defaultMemoryMB: 256,
 		adminEnv: func(u, p string) []string { return nil },
 		cmd:      func(p string) []string { return []string{"redis-server", "--requirepass", p} },
 	},
 	models.DBEngineMongoDB: {
 		image:          func(v string) string { return "mongo:" + v },
 		defaultVersion: "7.0", port: 27017, dataDir: "/data/db",
-		minMemoryMB: 512, defaultMemoryMB: 1024,
+		minMemoryMB: 1024, defaultMemoryMB: 1024,
 		adminUser: "admin",
 		// The official image enables authentication automatically when the root
 		// credentials are set; the user is created in the `admin` database. No cmd

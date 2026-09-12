@@ -119,6 +119,16 @@ func (v *VolumeSpec) Location() string {
 	return v.Placement.Location
 }
 
+// MemoryBytes parses the memory limit into bytes; empty or "0" is unlimited.
+func (r *DatabaseResourcesSpec) MemoryBytes() (int64, error) {
+	return (&ResourceSpec{Memory: r.Memory}).MemoryBytes()
+}
+
+// NanoCPUs parses the CPU limit into nano-CPUs; empty or "0" is unlimited.
+func (r *DatabaseResourcesSpec) NanoCPUs() (int64, error) {
+	return (&ResourceSpec{CPU: r.CPU}).NanoCPUs()
+}
+
 // UnmarshalYAML reads the block, or the bare string the field held before it became one.
 func (p *DatabasePlacementSpec) UnmarshalYAML(n *yaml.Node) error {
 	if n.Kind == yaml.ScalarNode {

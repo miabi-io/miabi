@@ -58,10 +58,14 @@ func tuningArgs(engine models.DBEngine, memoryBytes int64) []string {
 	switch engine {
 	case models.DBEnginePostgres:
 		return []string{"-c", fmt.Sprintf("shared_buffers=%dMB", mb/4), "-c", fmt.Sprintf("effective_cache_size=%dMB", mb*3/4)}
-	case models.DBEngineMySQL, models.DBEngineMariaDB:
-		return []string{fmt.Sprintf("--innodb-buffer-pool-size=%dM", mb*6/10)}
+	case models.DBEngineMySQL:
+		// MySQL needs about 450 MB besides the pool, and rounds the pool up to whole 128 MB chunks, so the pool
+		// leaves it room and is rounded down here instead.
+		return []string{fmt.Sprintf("--innodb-buffer-pool-size=%dM", max(128, min(mb*6/10, mb-640)/128*128))}
+	case models.DBEngineMariaDB:
+		return []string{fmt.Sprintf("--innodb-buffer-pool-size=%dM", max(64, min(mb*6/10, mb-160)))}
 	case models.DBEngineRedis:
-		return []string{"--maxmemory", strconv.FormatInt(memoryBytes*8/10, 10)}
+		return []string{"--maxmemory", strconv.FormatInt(memoryBytes*3/4, 10)}
 	case models.DBEngineMongoDB:
 		return []string{"--wiredTigerCacheSizeGB", strconv.FormatFloat(max(0.25, float64(mb-1024)/2/1024), 'f', 2, 64)}
 	}

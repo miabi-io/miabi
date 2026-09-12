@@ -19,9 +19,11 @@ func TestTuningArgs(t *testing.T) {
 		want   []string
 	}{
 		{models.DBEnginePostgres, gb, []string{"-c", "shared_buffers=256MB", "-c", "effective_cache_size=768MB"}},
-		{models.DBEngineMySQL, gb, []string{"--innodb-buffer-pool-size=614M"}},
+		{models.DBEngineMySQL, gb, []string{"--innodb-buffer-pool-size=384M"}},
+		{models.DBEngineMySQL, 2 * gb, []string{"--innodb-buffer-pool-size=1152M"}},
+		{models.DBEngineMariaDB, gb / 4, []string{"--innodb-buffer-pool-size=96M"}},
 		{models.DBEngineMariaDB, gb / 2, []string{"--innodb-buffer-pool-size=307M"}},
-		{models.DBEngineRedis, gb / 2, []string{"--maxmemory", "429496729"}},
+		{models.DBEngineRedis, gb / 2, []string{"--maxmemory", "402653184"}},
 		{models.DBEngineMongoDB, gb / 2, []string{"--wiredTigerCacheSizeGB", "0.25"}},
 		{models.DBEngineMongoDB, 4 * gb, []string{"--wiredTigerCacheSizeGB", "1.50"}},
 		{models.DBEngineLibSQL, gb, nil},

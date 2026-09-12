@@ -96,6 +96,17 @@ func (m *Manifest) Validate() error {
 		if !engineSupportsLogical(d.Engine) && d.Placement == PlacementShared {
 			return fmt.Errorf("database %q: engine %q has no logical databases; placement cannot be 'shared'", d.Name, d.Engine)
 		}
+		if r := d.Resources; r != nil {
+			if _, err := r.MemoryBytes(); err != nil {
+				return fmt.Errorf("database %q: resources: %w", d.Name, err)
+			}
+			if _, err := r.NanoCPUs(); err != nil {
+				return fmt.Errorf("database %q: resources: %w", d.Name, err)
+			}
+			if d.Placement == PlacementShared {
+				return fmt.Errorf("database %q: resources size an instance of its own; a shared database runs with its host's", d.Name)
+			}
+		}
 	}
 
 	// Volumes: unique names.
