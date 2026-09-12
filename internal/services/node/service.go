@@ -35,7 +35,7 @@ var (
 	// ErrConnectivityAckRequired is returned when an update changes the node's
 	// reachability settings without the caller acknowledging the impact.
 	ErrConnectivityAckRequired = &connectivityAckError{}
-	ErrPortForwardRetired      = errors.New("port-forward connectivity is no longer available: use an edge gateway, or join the node to the cluster")
+	ErrInvalidConnectivity     = errors.New("a node either runs its own gateway (edge-gateway) or, as a swarm member, is served by its cluster's gateway (cluster)")
 )
 
 // NodeLimitError is returned when registering a node would exceed the edition's node cap. It exposes a
@@ -263,8 +263,8 @@ func (s *Service) CreateNode(in NodeInput) (*models.Server, string, error) {
 	if !models.ValidAccessMode(mode) {
 		mode = models.AccessAgent
 	}
-	if in.Connectivity == models.ConnectivityPortForward {
-		return nil, "", ErrPortForwardRetired
+	if in.Connectivity != "" && in.Connectivity != models.ConnectivityEdgeGateway {
+		return nil, "", ErrInvalidConnectivity
 	}
 	in.Connectivity = models.ConnectivityEdgeGateway
 	// The handle is derived from the label. slug.Unique suffixes a collision
@@ -319,8 +319,8 @@ func (s *Service) UpdateNode(id uint, in NodeInput) (*models.Server, error) {
 	if err != nil {
 		return nil, ErrNodeNotFound
 	}
-	if in.Connectivity == models.ConnectivityPortForward && srv.Connectivity != models.ConnectivityPortForward {
-		return nil, ErrPortForwardRetired
+	if err := s.checkConnectivity(srv, in.Connectivity); err != nil {
+		return nil, err
 	}
 	if reachabilityChanged(srv, in) && !in.Acknowledge {
 		return nil, ErrConnectivityAckRequired
@@ -331,7 +331,7 @@ func (s *Service) UpdateNode(id uint, in NodeInput) (*models.Server, error) {
 		}
 		srv.PublicIP = strings.TrimSpace(in.PublicIP)
 		srv.PublicHostname = strings.TrimSpace(in.PublicHostname)
-		if in.Connectivity == models.ConnectivityEdgeGateway || in.Connectivity == models.ConnectivityPortForward {
+		if validConnectivity(in.Connectivity) {
 			srv.Connectivity = in.Connectivity
 		}
 		if err := s.repo.Update(srv); err != nil {
@@ -345,7 +345,7 @@ func (s *Service) UpdateNode(id uint, in NodeInput) (*models.Server, error) {
 	if models.ValidAccessMode(in.AccessMode) {
 		srv.AccessMode = in.AccessMode
 	}
-	if in.Connectivity == models.ConnectivityEdgeGateway || in.Connectivity == models.ConnectivityPortForward {
+	if validConnectivity(in.Connectivity) {
 		srv.Connectivity = in.Connectivity
 	}
 	srv.DockerEndpoint = strings.TrimSpace(in.DockerEndpoint)
@@ -389,7 +389,7 @@ func (s *Service) RegisterClusterNode(clusterID uint, swarmNodeID, hostname stri
 		IsLocal:        false,
 		Role:           models.RoleNode,
 		AccessMode:     models.AccessAgent,
-		Connectivity:   models.ConnectivityPortForward,
+		Connectivity:   models.ConnectivityCluster,
 		Status:         models.ServerStatusUnknown,
 		SwarmNodeID:    swarmNodeID,
 		AutoJoined:     true,
@@ -513,10 +513,43 @@ func (*connectivityAckError) Error() string {
 }
 func (*connectivityAckError) Code() string { return "CONNECTIVITY_ACK_REQUIRED" }
 
-// validConnectivity reports whether c is one of the two known connectivity modes
-// (blank/unknown values are ignored by UpdateNode, so they are not "changes").
+// validConnectivity reports whether c is one of the known connectivity modes.
 func validConnectivity(c models.ServerConnectivity) bool {
-	return c == models.ConnectivityEdgeGateway || c == models.ConnectivityPortForward
+	return c == models.ConnectivityEdgeGateway || c == models.ConnectivityCluster
+}
+
+// checkConnectivity refuses a connectivity the node cannot have: only the control-plane node or a swarm
+// member can rely on its cluster's gateway, or nothing reaches its apps. Empty leaves it unchanged.
+func (s *Service) checkConnectivity(srv *models.Server, c models.ServerConnectivity) error {
+	switch {
+	case c == "" || c == srv.Connectivity || c == models.ConnectivityEdgeGateway:
+		return nil
+	case c != models.ConnectivityCluster:
+		return ErrInvalidConnectivity
+	case srv.IsLocal || s.clusters == nil:
+		return nil
+	}
+	cl, err := s.clusters.FindByID(srv.ClusterID)
+	if err != nil || cl.Mode != models.ClusterModeSwarm {
+		return ErrInvalidConnectivity
+	}
+	return nil
+}
+
+// SetConnectivity changes only how a node's apps are served, leaving its other reachability settings alone.
+func (s *Service) SetConnectivity(id uint, c models.ServerConnectivity) (*models.Server, error) {
+	srv, err := s.repo.FindByID(id)
+	if err != nil {
+		return nil, ErrNodeNotFound
+	}
+	if err := s.checkConnectivity(srv, c); err != nil {
+		return nil, err
+	}
+	srv.Connectivity = c
+	if err := s.repo.Update(srv); err != nil {
+		return nil, err
+	}
+	return srv, nil
 }
 
 // reachabilityChanged reports whether in would actually alter how the control plane reaches the node or how

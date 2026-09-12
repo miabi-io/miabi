@@ -125,7 +125,7 @@ type CreateNodeRequest struct {
 		// PublicIP / PublicHostname are the node's externally reachable DNS target.
 		PublicIP       string `json:"public_ip"`
 		PublicHostname string `json:"public_hostname"`
-		Connectivity   string `json:"connectivity" enum:"port-forward,edge-gateway"`
+		Connectivity   string `json:"connectivity" enum:"edge-gateway,cluster"`
 		// AccessMode is how the control plane reaches this node's Docker engine.
 		AccessMode string `json:"access_mode" enum:"agent,api,socket"`
 		// DockerEndpoint is required for api: tcp://host:2376.
@@ -221,7 +221,7 @@ func (h *NodeHandler) List(c *okapi.Context) error {
 func (h *NodeHandler) Create(c *okapi.Context, req *CreateNodeRequest) error {
 	srv, token, err := h.nodes.CreateNode(req.input())
 	if err != nil {
-		if errors.Is(err, node.ErrPortForwardRetired) {
+		if errors.Is(err, node.ErrInvalidConnectivity) {
 			return c.AbortBadRequest(err.Error())
 		}
 		if errors.Is(err, node.ErrNameRequired) {
@@ -339,6 +339,11 @@ func (h *NodeHandler) Workloads(c *okapi.Context) error {
 		return c.AbortInternalServerError("failed to count node workloads", err)
 	}
 	return ok(c, map[string]any{"apps": apps, "databases": dbs})
+}
+
+// ApplyConnectivity deploys or tears down a node's gateway after its connectivity changed elsewhere.
+func (h *NodeHandler) ApplyConnectivity(ctx context.Context, prev, srv *models.Server) {
+	h.applyConnectivity(ctx, prev, srv)
 }
 
 // applyConnectivity deploys or tears down the node gateway after a connectivity
@@ -674,7 +679,7 @@ func (h *NodeHandler) mapErr(c *okapi.Context, err error) error {
 		return c.AbortBadRequest("the local node cannot be modified this way")
 	case errors.Is(err, node.ErrConnectivityAckRequired):
 		return c.AbortWithError(409, err)
-	case errors.Is(err, node.ErrPortForwardRetired):
+	case errors.Is(err, node.ErrInvalidConnectivity):
 		return c.AbortBadRequest(err.Error())
 	default:
 		return c.AbortInternalServerError("node operation failed", err)

@@ -490,15 +490,10 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 	// Publish admin-approved host port bindings. A canary shares the host with the stable container,
 	// so it must not re-publish the same host ports; the canary is reachable over the proxy weight only.
 	ports := map[string]string{}
-	bindIPs := map[string]string{}
 	if h.portBindings != nil && !canary {
 		if approved, err := h.portBindings.ListApprovedByApp(app.ID); err == nil {
 			for _, b := range approved {
-				key := fmt.Sprintf("%d/%s", b.ContainerPort, b.Protocol)
-				ports[key] = fmt.Sprintf("%d", b.HostPort)
-				if b.BindIP != "" {
-					bindIPs[key] = b.BindIP // publish on the node's private interface
-				}
+				ports[fmt.Sprintf("%d/%s", b.ContainerPort, b.Protocol)] = fmt.Sprintf("%d", b.HostPort)
 			}
 		}
 	}
@@ -580,7 +575,6 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 		Binds:            rc.Binds,
 		Networks:         rc.Networks,
 		Ports:            ports,
-		PortBindIPs:      bindIPs,
 		NetworkAliases:   []string{upstreamAlias}, // upstream alias for the proxy (stable or canary)
 		AliasesByNetwork: aliasesByNet,
 		MemoryBytes:      rc.MemoryBytes,

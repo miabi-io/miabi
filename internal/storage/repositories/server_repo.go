@@ -116,7 +116,7 @@ func (r *ServerRepository) EnsureLocal(name, endpoint string) (*models.Server, e
 		return nil, err
 	}
 	// Control-plane node defaults to manager + edge-gateway so it can run its own
-	// Goma gateway for public ingress + TLS. Admin can switch back to port-forward.
+	// Goma gateway for public ingress + TLS. Admin can switch it to cluster (the central gateway).
 	s = &models.Server{
 		Name: name, DisplayName: name, DockerEndpoint: endpoint, IsLocal: true,
 		Role: models.RoleManager, Connectivity: models.ConnectivityEdgeGateway,

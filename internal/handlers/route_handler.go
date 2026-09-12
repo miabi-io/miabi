@@ -372,7 +372,7 @@ func (h *RouteHandler) mapErr(c *okapi.Context, err error) error {
 		return c.AbortWithError(409, err)
 	case errors.Is(err, route.ErrNameRequired), errors.Is(err, route.ErrInvalidName), errors.Is(err, route.ErrCertRequired), errors.Is(err, route.ErrInvalidYAML), errors.Is(err, route.ErrDomainNotRegistered), errors.Is(err, route.ErrDomainBanned), errors.Is(err, route.ErrAdvancedTLSCert):
 		return c.AbortBadRequest(err.Error())
-	case errors.Is(err, route.ErrAppRequired), errors.Is(err, route.ErrNodeAddressRequired), errors.Is(err, route.ErrExternalAccessDisabled), errors.Is(err, route.ErrMiddlewareRequired):
+	case errors.Is(err, route.ErrAppRequired), errors.Is(err, route.ErrExternalAccessDisabled), errors.Is(err, route.ErrMiddlewareRequired):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, route.ErrMiddlewareDuplicate), errors.Is(err, route.ErrMaintenanceStatus), errors.Is(err, route.ErrMaintenanceMessage):
 		return c.AbortBadRequest(err.Error())

@@ -83,6 +83,9 @@ func (h *MarketplaceHandler) Install(c *okapi.Context, req *InstallRequest) erro
 			errors.Is(err, marketplace.ErrNoSharedInstance):
 			return c.AbortBadRequest(err.Error())
 		default:
+			if a := placementAbort(c, err); a != nil {
+				return a
+			}
 			return c.AbortInternalServerError("install failed", err)
 		}
 	}
@@ -119,12 +122,28 @@ func (h *MarketplaceHandler) StartInstall(c *okapi.Context, req *InstallRequest)
 			errors.Is(err, marketplace.ErrNoSharedInstance):
 			return c.AbortBadRequest(err.Error())
 		default:
+			if a := placementAbort(c, err); a != nil {
+				return a
+			}
 			return c.AbortInternalServerError("install failed", err)
 		}
 	}
 	actor := middlewares.UserID(c)
 	h.audit.Record(audit.Entry{ActorID: &actor, WorkspaceID: &wsID, Action: "marketplace.install", TargetType: "template:" + req.Body.Name, TargetID: req.Body.Name, IP: c.RealIP()})
 	return created(c, job)
+}
+
+// LocationDatabases lists the database instances an install into ?location= may reuse or pin; an empty
+// location is the workspace default.
+func (h *MarketplaceHandler) LocationDatabases(c *okapi.Context) error {
+	list, err := h.svc.LocationDatabases(middlewares.WorkspaceID(c), c.Query("location"), h.placer.admin(c))
+	if err != nil {
+		if a := placementAbort(c, err); a != nil {
+			return a
+		}
+		return c.AbortInternalServerError("failed to list databases", err)
+	}
+	return ok(c, list)
 }
 
 // InstallJob returns a one-shot snapshot of an install job (REST fallback).

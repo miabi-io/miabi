@@ -196,7 +196,6 @@ func (r *ClusterRepository) CreateStandalone(srv *models.Server, name string) (*
 		Mode:            models.ClusterModeStandalone,
 		ManagerServerID: srv.ID,
 		Visibility:      models.ClusterVisibilityAll,
-		LegacyIngress:   srv.Connectivity == models.ConnectivityPortForward,
 	}
 	if srv.Connectivity == models.ConnectivityEdgeGateway {
 		c.IngressServerID = srv.ID

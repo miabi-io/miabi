@@ -182,7 +182,7 @@ async function copy(text: string) {
 }
 
 function connectivityLabel(c?: ServerConnectivity): string {
-  return c === 'edge-gateway' ? 'Edge gateway' : 'Port forwarding'
+  return c === 'edge-gateway' ? 'Edge gateway' : 'Cluster gateway'
 }
 function statusClass(n: Server): string {
   if (n.is_local || n.agent_connected) return 'badge-success badge-dot'
@@ -351,7 +351,7 @@ function swarmClass(n: Server): string {
               </template>
 
               <div v-if="form.access_mode !== 'api'" class="form-group">
-                <label class="form-label">Address <span class="cell-sub">(host/IP the proxy reaches published ports at)</span></label>
+                <label class="form-label">Address <span class="cell-sub">(the node's private host or IP)</span></label>
                 <input v-model="form.address" class="form-input" placeholder="e.g. 10.0.0.7" />
               </div>
               <div class="form-group" style="margin-bottom: 0">

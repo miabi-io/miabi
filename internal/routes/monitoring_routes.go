@@ -236,6 +236,14 @@ func (r *Router) marketplaceRoutes() []okapi.RouteDefinition {
 		},
 		{
 			Method:      http.MethodGet,
+			Path:        "/{workspace}/marketplace/databases",
+			Group:       ws,
+			Middlewares: scopedDev,
+			Handler:     r.h.marketplace.LocationDatabases,
+			Summary:     "List the database instances an install into ?location= may reuse",
+		},
+		{
+			Method:      http.MethodGet,
 			Path:        "/{workspace}/marketplace/installs/{installID}/upgrade/plan",
 			Group:       ws,
 			Middlewares: scopedDev,

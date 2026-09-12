@@ -101,8 +101,7 @@ type Route struct {
 	DNSTarget   string `json:"dns_target,omitempty" gorm:"-"`
 	DNSHostname string `json:"dns_hostname,omitempty" gorm:"-"`
 
-	// Backends are the actual upstream endpoints the gateway uses for this route
-	// (the node-local DNS alias, or a port-forward node's address:hostPort).
+	// Backends are the actual upstream endpoints (DNS aliases) the gateway uses for this route.
 	// Transient, populated on read so the UI shows the real backend.
 	Backends []string `json:"backends,omitempty" gorm:"-"`
 }

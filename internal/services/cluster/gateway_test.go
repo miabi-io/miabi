@@ -22,7 +22,7 @@ func newGatewayService() *Service {
 	}
 	nodes := &fakeNodes{servers: []models.Server{
 		{ID: 11, ClusterID: 5, Connectivity: models.ConnectivityEdgeGateway},
-		{ID: 12, ClusterID: 5, Connectivity: models.ConnectivityPortForward},
+		{ID: 12, ClusterID: 5, Connectivity: models.ConnectivityCluster},
 		{ID: 13, ClusterID: 1, Connectivity: models.ConnectivityEdgeGateway},
 		{ID: 14, ClusterID: 6, Connectivity: models.ConnectivityEdgeGateway},
 	}}

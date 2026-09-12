@@ -290,7 +290,7 @@ func runServer(cli *okapicli.CLI) {
 			// The embedded deploy worker re-syncs Goma, so its route service must apply the same
 			// domain-verification gate (and privileged-workspace waiver) as the HTTP service, or a
 			// deploy would re-render unverified or banned routes as live.
-			deployRouteSvc := route.NewService(repositories.NewRouteRepository(res.db), repositories.NewMiddlewareRepository(res.db), repositories.NewApplicationRepository(res.db), repositories.NewReleaseRepository(res.db), serverRepo, repositories.NewPortBindingRepository(res.db), proxyMgr, cfg.HostPortMin, cfg.HostPortMax)
+			deployRouteSvc := route.NewService(repositories.NewRouteRepository(res.db), repositories.NewMiddlewareRepository(res.db), repositories.NewApplicationRepository(res.db), repositories.NewReleaseRepository(res.db), serverRepo, proxyMgr)
 			deployRouteSvc.SetDomains(repositories.NewDomainRepository(res.db))
 			deployRouteSvc.SetWorkspacePolicy(repositories.NewWorkspaceRepository(res.db))
 			deployHandler := worker.NewDeployHandler(

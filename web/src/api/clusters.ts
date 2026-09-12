@@ -8,6 +8,11 @@ export interface ClusterUpdate {
   cordoned?: boolean
 }
 
+export interface ConvertIngressInput {
+  action: 'gateway' | 'join'
+  target_cluster_id?: number
+}
+
 export interface ClusterGatewayInput {
   server_id: number
   ingress_ip?: string
@@ -21,4 +26,6 @@ export const clustersApi = {
   update: (id: number, body: ClusterUpdate) => api.patch<ApiResponse<Cluster>>(`/admin/clusters/${id}`, body),
   setGateway: (id: number, body: ClusterGatewayInput) =>
     api.put<ApiResponse<Cluster>>(`/admin/clusters/${id}/gateway`, body),
+  convertIngress: (id: number, body: ConvertIngressInput) =>
+    api.post<ApiResponse<{ message: string }>>(`/admin/clusters/${id}/convert`, body),
 }

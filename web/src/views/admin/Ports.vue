@@ -206,8 +206,6 @@ const STATE_CLASS: Record<string, string> = {
               <td class="mono">{{ e.host_port }}/{{ e.protocol }}</td>
               <td>
                 <span class="badge" :class="STATE_CLASS[e.state]">{{ STATE_LABEL[e.state] }}</span>
-                <span v-if="e.managed" class="badge badge-neutral" style="margin-left: 6px"
-                  title="Created by Miabi for route ingress; not a user request">auto</span>
               </td>
               <td>
                 <template v-if="e.state === 'unmanaged'">

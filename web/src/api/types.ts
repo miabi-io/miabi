@@ -800,8 +800,6 @@ export interface PortBinding {
   host_port: number
   status: PortBindingStatus
   server_id?: number
-  managed?: boolean
-  bind_ip?: string
   requested_by: number
   reviewed_by?: number
   review_note?: string
@@ -1221,8 +1219,7 @@ export interface Route {
   has_custom_cert: boolean
   dns_target?: string
   dns_hostname?: string
-  // Actual upstream endpoints the gateway uses (alias, or a port-forward node's
-  // address:hostPort). Populated on read.
+  // Actual upstream endpoints the gateway uses. Populated on read.
   backends?: string[]
   created_at?: string
 }
@@ -1815,7 +1812,7 @@ export interface AuditLogDetail extends AuditLog {
   actor_email?: string
 }
 
-export type ServerConnectivity = 'port-forward' | 'edge-gateway'
+export type ServerConnectivity = 'edge-gateway' | 'cluster'
 
 export type ServerRole = 'manager' | 'node'
 
@@ -2702,7 +2699,6 @@ export interface PortEntry {
   app_name?: string
   container_port?: number
   container?: string
-  managed?: boolean
   requested_by?: number
   created_at?: string
 }

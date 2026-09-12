@@ -59,12 +59,12 @@ const (
 type ServerConnectivity string
 
 const (
-	// ConnectivityPortForward: the central proxy forwards to the node's published
-	// host port (http://<address>:<hostPort>). For trusted/private networks.
-	ConnectivityPortForward ServerConnectivity = "port-forward"
 	// ConnectivityEdgeGateway: the node runs its own gateway (public ingress, its
 	// own TLS) that pulls its routes from the control plane's HTTP provider.
 	ConnectivityEdgeGateway ServerConnectivity = "edge-gateway"
+	// ConnectivityCluster: the node has no gateway of its own; its cluster's gateway serves its apps, over
+	// the overlay for a swarm member. The control-plane node is one too.
+	ConnectivityCluster ServerConnectivity = "cluster"
 )
 
 func (s *Server) Label() string {
@@ -86,7 +86,7 @@ type Server struct {
 	Name         string             `json:"name" gorm:"uniqueIndex;not null"`
 	DisplayName  string             `json:"display_name"`
 	ClusterID    uint               `json:"cluster_id" gorm:"index;not null;default:0"`
-	Connectivity ServerConnectivity `json:"connectivity" gorm:"not null;default:port-forward"`
+	Connectivity ServerConnectivity `json:"connectivity" gorm:"not null;default:cluster"`
 	// AccessMode is how the control plane reaches this node's Docker engine.
 	// Existing rows backfill to "agent" (column default); the local node is set
 	// to "socket" at bootstrap.

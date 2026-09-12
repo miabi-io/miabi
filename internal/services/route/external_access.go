@@ -88,15 +88,11 @@ func (s *Service) SetExternalAccess(ctx context.Context, workspaceID, appID uint
 		}
 	}
 	base := sanitizeBase(cfg.BaseDomain)
-	// Exposing requires a base domain and a reachable node; disabling (no ports)
-	// must always proceed so the generated routes can be cleaned up even if the
-	// base domain was later cleared or the node lost its address.
+	// Exposing requires a base domain; disabling (no ports) must always proceed so the generated
+	// routes can be cleaned up even if the base domain was later cleared.
 	if len(want) > 0 {
 		if base == "" {
 			return nil, ErrExternalAccessDisabled
-		}
-		if err := s.requireRoutableNode(app); err != nil {
-			return nil, err
 		}
 		// Assign the stable subdomain label once, so the URL survives renames.
 		if strings.TrimSpace(app.ExternalLabel) == "" {

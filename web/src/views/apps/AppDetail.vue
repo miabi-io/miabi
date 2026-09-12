@@ -127,7 +127,7 @@ async function saveExternalAccess() {
   }
 }
 // Turn external access off entirely: clears the selection and removes all
-// generated routes (and their managed host ports on port-forward nodes).
+// generated routes.
 function disableExternalAccess() {
   extSelected.value = new Set()
   saveExternalAccess()
@@ -2686,15 +2686,14 @@ async function detachDatabase(d: AppDatabase) {
             <tbody>
               <tr v-for="b in appBindings" :key="b.id">
                 <td class="cell-title">
-                  {{ b.bind_ip ? b.bind_ip + ':' : '' }}{{ b.host_port }} → {{ b.container_port }}/{{ b.protocol }}
-                  <span v-if="b.managed" class="badge badge-info" title="Auto-provisioned for this app's route ingress; managed by Miabi" style="margin-left: 6px">auto</span>
+                  {{ b.host_port }} → {{ b.container_port }}/{{ b.protocol }}
                 </td>
                 <td>
                   <span class="badge badge-dot" :class="bindBadge(b.status)">{{ b.status }}</span>
                   <span v-if="b.review_note" class="cell-sub" style="margin-left: 8px">{{ b.review_note }}</span>
                 </td>
                 <td class="text-right">
-                  <button v-if="ws.canEdit && !b.managed" class="btn-icon btn-icon-danger" :title="b.status === 'approved' ? 'Release host port' : 'Cancel request'" :aria-label="b.status === 'approved' ? 'Release host port' : 'Cancel request'" @click="removeBind(b)"><span class="mdi" :class="b.status === 'approved' ? 'mdi-delete-outline' : 'mdi-close'"></span></button>
+                  <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="b.status === 'approved' ? 'Release host port' : 'Cancel request'" :aria-label="b.status === 'approved' ? 'Release host port' : 'Cancel request'" @click="removeBind(b)"><span class="mdi" :class="b.status === 'approved' ? 'mdi-delete-outline' : 'mdi-close'"></span></button>
                 </td>
               </tr>
             </tbody>

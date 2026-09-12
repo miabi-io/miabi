@@ -229,30 +229,27 @@ func TestNewNodesDefaultToEdgeGateway(t *testing.T) {
 	if srv.Connectivity != models.ConnectivityEdgeGateway {
 		t.Errorf("connectivity = %q, want edge-gateway", srv.Connectivity)
 	}
-	if _, _, err := s.CreateNode(NodeInput{DisplayName: "Lyon", Connectivity: models.ConnectivityPortForward}); !errors.Is(err, ErrPortForwardRetired) {
-		t.Errorf("port-forward create err = %v, want ErrPortForwardRetired", err)
+	if _, _, err := s.CreateNode(NodeInput{DisplayName: "Lyon", Connectivity: models.ConnectivityCluster}); !errors.Is(err, ErrInvalidConnectivity) {
+		t.Errorf("cluster create err = %v, want ErrInvalidConnectivity", err)
 	}
 }
 
-func TestOnlyLegacyNodesKeepPortForward(t *testing.T) {
-	repo := nameRepo(t)
-	s := NewService(repo, nil)
+// Port-forward is gone: a client still sending it is refused rather than silently ignored.
+func TestRetiredConnectivityIsRefused(t *testing.T) {
+	s := NewService(nameRepo(t), nil)
 	srv, _, err := s.CreateNode(NodeInput{DisplayName: "Paris"})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-
-	toPortForward := NodeInput{DisplayName: "Paris", Connectivity: models.ConnectivityPortForward, Acknowledge: true}
-	if _, err := s.UpdateNode(srv.ID, toPortForward); !errors.Is(err, ErrPortForwardRetired) {
-		t.Fatalf("switch to port-forward err = %v, want ErrPortForwardRetired", err)
+	if _, _, err := s.CreateNode(NodeInput{DisplayName: "Lyon", Connectivity: "port-forward"}); !errors.Is(err, ErrInvalidConnectivity) {
+		t.Errorf("create err = %v, want ErrInvalidConnectivity", err)
 	}
-
-	srv.Connectivity = models.ConnectivityPortForward
-	if err := repo.Update(srv); err != nil {
-		t.Fatalf("seed legacy node: %v", err)
+	in := NodeInput{DisplayName: "Paris", Connectivity: "port-forward", Acknowledge: true}
+	if _, err := s.UpdateNode(srv.ID, in); !errors.Is(err, ErrInvalidConnectivity) {
+		t.Errorf("update err = %v, want ErrInvalidConnectivity", err)
 	}
-	if _, err := s.UpdateNode(srv.ID, toPortForward); err != nil {
-		t.Errorf("editing a legacy port-forward node was refused: %v", err)
+	if _, err := s.SetConnectivity(srv.ID, "port-forward"); !errors.Is(err, ErrInvalidConnectivity) {
+		t.Errorf("set err = %v, want ErrInvalidConnectivity", err)
 	}
 }
 

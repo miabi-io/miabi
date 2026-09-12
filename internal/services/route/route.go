@@ -10,7 +10,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"slices"
 	"strings"
 	"time"
@@ -39,7 +38,6 @@ var (
 	ErrDomainNotRegistered = errors.New("no matching domain is registered in this workspace; add the domain first")
 	ErrDomainBanned        = errors.New("this domain has been banned by a platform administrator")
 	ErrHostTaken           = errors.New("hostname is already used by another route")
-	ErrNodeAddressRequired = errors.New("the node has no address set; set its private address before adding a route")
 	ErrAdvancedTLSCert     = errors.New("set TLS via the route's TLS mode and a managed certificate, not an inline tls certificate in advanced config")
 	ErrMiddlewareRequired  = errors.New("middleware name is required")
 	ErrMiddlewareNotFound  = errors.New("middleware not found in this workspace")
@@ -92,34 +90,23 @@ type Service struct {
 	apps        *repositories.ApplicationRepository
 	releases    *repositories.ReleaseRepository
 	servers     *repositories.ServerRepository
-	ports       *repositories.PortBindingRepository
 	proxy       proxy.Manager
 	certs       CertResolver
 	attacher    ProxyAttacher
-	publisher   PortPublisher
 	domains     DomainLister
 	wsPolicy    WorkspacePolicy
 	dnsAddr     DNSAddresser
 	reloader    EdgeReloader
 	cluster     ClusterCap
-	minPort     int
-	maxPort     int
 }
 
-// ClusterCap reports whether a cluster runs a swarm and whether a gateway of its own serves it.
-// Implemented by services/cluster.
+// ClusterCap reports whether a gateway of its own serves a cluster. Implemented by services/cluster.
 type ClusterCap interface {
-	IsSwarm(clusterID uint) bool
 	OwnGateway(clusterID uint) (*models.Cluster, bool)
 }
 
-// SetCluster wires swarm detection (nil-safe; nil = never cluster mode, so
-// remote nodes keep being reached by published host port).
+// SetCluster wires cluster gateways (nil-safe; nil = every cluster is served as the default one).
 func (s *Service) SetCluster(c ClusterCap) { s.cluster = c }
-
-func (s *Service) isSwarm(clusterID uint) bool {
-	return s.cluster != nil && s.cluster.IsSwarm(clusterID)
-}
 
 // EdgeReloader notifies edge-gateway nodes to pull their configuration immediately after a change,
 // instead of waiting for their HTTP-provider poll interval. Calls are best-effort. Optional: when
@@ -369,17 +356,6 @@ func (s *Service) persistRouteStatus(rt *models.Route, status models.RouteStatus
 	}
 }
 
-// PortPublisher ensures a port-forward app's container actually publishes the host ports its routes
-// need, rolling-redeploying if the live container is missing them. Implemented by the application
-// service; injected after construction to avoid an import cycle. nil means no auto-redeploy.
-type PortPublisher interface {
-	EnsurePublished(ctx context.Context, appID uint) error
-}
-
-// SetPortPublisher wires the publisher used to (re)publish host ports when a
-// port-forward app gains a route.
-func (s *Service) SetPortPublisher(p PortPublisher) { s.publisher = p }
-
 // ProxyAttacher reconciles whether an application's running container(s) are attached to the shared
 // reverse-proxy network, so only route-exposed apps join it. Implemented by the deploy worker, which
 // holds the per-node Docker clients; optional (nil means attachment is decided only at deploy time).
@@ -405,11 +381,9 @@ func NewService(
 	apps *repositories.ApplicationRepository,
 	releases *repositories.ReleaseRepository,
 	servers *repositories.ServerRepository,
-	ports *repositories.PortBindingRepository,
 	proxyMgr proxy.Manager,
-	minPort, maxPort int,
 ) *Service {
-	return &Service{routes: routes, middlewares: middlewares, apps: apps, releases: releases, servers: servers, ports: ports, proxy: proxyMgr, minPort: minPort, maxPort: maxPort}
+	return &Service{routes: routes, middlewares: middlewares, apps: apps, releases: releases, servers: servers, proxy: proxyMgr}
 }
 
 type Input struct {
@@ -448,9 +422,6 @@ func (s *Service) Create(ctx context.Context, workspaceID uint, in Input) (*mode
 	app, err := s.apps.FindInWorkspace(workspaceID, in.ApplicationID)
 	if err != nil {
 		return nil, ErrAppRequired
-	}
-	if err := s.requireRoutableNode(app); err != nil {
-		return nil, err
 	}
 	in.Hosts = normalizeHosts(in.Hosts)
 	if strings.TrimSpace(in.AdvancedConfig) == "" && len(in.Hosts) == 0 {
@@ -530,11 +501,6 @@ func (s *Service) Update(ctx context.Context, workspaceID, id uint, in Input) (*
 			return nil, ErrAppRequired
 		}
 		rt.ApplicationID = app.ID
-	}
-	if app, aerr := s.apps.FindByID(rt.ApplicationID); aerr == nil {
-		if err := s.requireRoutableNode(app); err != nil {
-			return nil, err
-		}
 	}
 	if in.Name != "" {
 		name := strings.TrimSpace(in.Name)
@@ -908,32 +874,6 @@ func (s *Service) SyncRoute(ctx context.Context, appID uint) error {
 	}
 	// Keep the app's public A/AAAA/CNAME records in sync with its routed hosts
 	s.reconcileAppDNS(ctx, app, routes)
-
-	if app.RuntimeKind == models.RuntimeService {
-		return s.SyncWorkspaceProxy(ctx, app.WorkspaceID)
-	}
-
-	if _, ok := s.gatewayServer(app); ok {
-		return s.SyncWorkspaceProxy(ctx, app.WorkspaceID)
-	}
-
-	enabledPorts := map[int]bool{}
-	if app.CurrentReleaseID != nil {
-		for i := range routes {
-			rt := &routes[i]
-			port := routePort(rt, app)
-			if rt.Enabled {
-				enabledPorts[port] = true
-			}
-			_ = s.backendsFor(app, port)
-		}
-	}
-	if srv := s.serverFor(app); !s.useAliasUpstream(srv) {
-		s.reconcileManagedPorts(app.ID, enabledPorts)
-		if s.publisher != nil {
-			_ = s.publisher.EnsurePublished(ctx, app.ID)
-		}
-	}
 	return s.SyncWorkspaceProxy(ctx, app.WorkspaceID)
 }
 
@@ -998,7 +938,7 @@ func (s *Service) SyncWorkspaceProxy(ctx context.Context, workspaceID uint) erro
 			rt := &routes[j]
 			serve, status, reason := routeServeState(rt, domains, gate, privileged)
 			port := routePort(rt, app)
-			rr := renderedRoute(rt, s.renderBackends(app, port), !serve)
+			rr := renderedRoute(rt, gatewayBackends(app, port), !serve)
 			if pair, ok := s.certPair(rt); ok {
 				rr.Certs = []proxy.CertPair{pair}
 			}
@@ -1067,56 +1007,6 @@ func (s *Service) ResyncAllProxy(ctx context.Context) error {
 		}
 	}
 	return nil
-}
-
-func (s *Service) renderBackends(app *models.Application, port int) []proxy.Backend {
-	if app.RuntimeKind == models.RuntimeService {
-		return []proxy.Backend{{Endpoint: fmt.Sprintf("%s://%s:%d", portScheme(app, port), node.AppAlias(app), port)}}
-	}
-	srv, _ := s.servers.FindByID(app.ServerID)
-	if !s.useAliasUpstream(srv) {
-		if hp := s.hostPort(app.ID, port); hp > 0 && strings.TrimSpace(srv.Address) != "" {
-			return []proxy.Backend{{Endpoint: fmt.Sprintf("%s://%s:%d", portScheme(app, port), srv.Address, hp)}}
-		}
-		return nil
-	}
-	return aliasBackends(app, port, portScheme(app, port))
-}
-
-func (s *Service) serverFor(app *models.Application) *models.Server {
-	srv, err := s.servers.FindByID(app.ServerID)
-	if err != nil {
-		return nil
-	}
-	return srv
-}
-
-// requireRoutableNode rejects routing an app the gateway must reach by host port when its node has no
-// address (otherwise the route would be a dead upstream). Alias upstreams need no node address.
-func (s *Service) requireRoutableNode(app *models.Application) error {
-	if _, ok := s.gatewayServer(app); ok {
-		return nil
-	}
-	srv := s.serverFor(app)
-	if !s.useAliasUpstream(srv) && strings.TrimSpace(srv.Address) == "" {
-		return ErrNodeAddressRequired
-	}
-	return nil
-}
-
-// reconcileManagedPorts deletes the app's managed (auto-forward) bindings whose container port is no
-// longer referenced by an enabled route. The published port on the running container is harmless until the
-// next deploy drops it; the gateway already stops targeting it when the route is removed.
-func (s *Service) reconcileManagedPorts(appID uint, keep map[int]bool) {
-	managed, err := s.ports.ListManagedByApp(appID)
-	if err != nil {
-		return
-	}
-	for i := range managed {
-		if !keep[managed[i].ContainerPort] {
-			_ = s.ports.Delete(managed[i].ID)
-		}
-	}
 }
 
 func (s *Service) clusterGateway(clusterID uint) (*models.Cluster, bool) {
@@ -1202,14 +1092,6 @@ func (s *Service) enrichDNS(rt *models.Route) {
 }
 
 func (s *Service) displayBackends(app *models.Application, port int) []string {
-	if _, served := s.gatewayServer(app); !served && app.RuntimeKind != models.RuntimeService {
-		if srv := s.serverFor(app); !s.useAliasUpstream(srv) {
-			if hp := s.hostPort(app.ID, port); hp > 0 && strings.TrimSpace(srv.Address) != "" {
-				return []string{fmt.Sprintf("%s://%s:%d", portScheme(app, port), srv.Address, hp)}
-			}
-			return nil
-		}
-	}
 	backends := gatewayBackends(app, port)
 	out := make([]string, 0, len(backends))
 	for _, b := range backends {
@@ -1274,39 +1156,6 @@ func routePort(rt *models.Route, app *models.Application) int {
 	return port
 }
 
-// backendsFor builds the central proxy's upstreams for an app's route: the app's
-// DNS alias where the gateway can reach it, otherwise a published host port on its
-// node (see useAliasUpstream).
-func (s *Service) backendsFor(app *models.Application, port int) []proxy.Backend {
-	srv, _ := s.servers.FindByID(app.ServerID)
-	if s.useAliasUpstream(srv) {
-		return aliasBackends(app, port, portScheme(app, port))
-	}
-
-	hp, _ := s.ensureRemotePort(app, srv, port)
-	if hp > 0 && strings.TrimSpace(srv.Address) != "" {
-		return []proxy.Backend{{Endpoint: fmt.Sprintf("%s://%s:%d", portScheme(app, port), srv.Address, hp)}}
-	}
-	return nil
-}
-
-func (s *Service) useAliasUpstream(srv *models.Server) bool {
-	return !isRemotePortForward(srv) || s.isSwarm(srv.ClusterID)
-}
-
-// isRemotePortForward reports whether srv is a remote node reached by publishing
-// host ports (the auto-port-forward case).
-func isRemotePortForward(srv *models.Server) bool {
-	return srv != nil && !srv.IsLocal && srv.Connectivity == models.ConnectivityPortForward
-}
-
-func privateBindIP(srv *models.Server) string {
-	if ip := net.ParseIP(strings.TrimSpace(srv.Address)); ip != nil && ip.To4() != nil {
-		return ip.String()
-	}
-	return ""
-}
-
 // aliasBackends builds node-local DNS-alias upstreams (control-plane Goma for the
 // local node, or the node's own gateway for edge-gateway nodes), with canary
 // weighting. scheme (http|https) is the app port's application protocol.
@@ -1362,66 +1211,6 @@ func portScheme(app *models.Application, port int) string {
 		}
 	}
 	return "http"
-}
-
-func (s *Service) hostPort(appID uint, containerPort int) int {
-	bindings, err := s.ports.ListApprovedByApp(appID)
-	if err != nil {
-		return 0
-	}
-	for _, b := range bindings {
-		if b.ContainerPort == containerPort {
-			return b.HostPort
-		}
-	}
-	return 0
-}
-
-// ensureRemotePort returns the host port published for a port-forward node app's container port,
-// auto-provisioning an approved binding the first time the app is routed — these are control-plane-managed,
-// so it allocates from the node's range directly. Idempotent; created is true only for a new binding.
-func (s *Service) ensureRemotePort(app *models.Application, srv *models.Server, containerPort int) (int, bool) {
-	if hp := s.hostPort(app.ID, containerPort); hp > 0 {
-		return hp, false
-	}
-	hp := s.allocateHostPort(app.ServerID)
-	if hp == 0 {
-		logger.Warn("host-port range exhausted; route has no upstream",
-			"app", app.ID, "server", app.ServerID, "range", fmt.Sprintf("%d-%d", s.minPort, s.maxPort))
-		return 0, false
-	}
-	b := &models.PortBinding{
-		WorkspaceID:   app.WorkspaceID,
-		ApplicationID: app.ID,
-		ServerID:      app.ServerID,
-		ContainerPort: containerPort,
-		Protocol:      "tcp",
-		HostPort:      hp,
-		Status:        models.PortBindingApproved,
-		Managed:       true,
-		BindIP:        privateBindIP(srv),
-		ReviewNote:    "Auto-provisioned for port-forward node ingress",
-	}
-	if err := s.ports.Create(b); err != nil {
-		return 0, false
-	}
-	return hp, true
-}
-
-// allocateHostPort scans the configured host-port range for a port not already
-// claimed on the given node, returning 0 when the range is exhausted. Host ports
-// are per-node, so the same number can be reused across different nodes.
-func (s *Service) allocateHostPort(serverID uint) int {
-	for p := s.minPort; p <= s.maxPort; p++ {
-		inUse, err := s.ports.HostPortInUse(serverID, p, "tcp", 0)
-		if err != nil {
-			return 0
-		}
-		if !inUse {
-			return p
-		}
-	}
-	return 0
 }
 
 // RouteNamesForNode returns the Goma route names a node serves, as they appear in

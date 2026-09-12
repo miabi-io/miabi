@@ -67,41 +67,6 @@ func TestPortScheme(t *testing.T) {
 	}
 }
 
-func TestIsRemotePortForward(t *testing.T) {
-	cases := []struct {
-		name string
-		srv  *models.Server
-		want bool
-	}{
-		{"nil", nil, false},
-		{"local manager", &models.Server{IsLocal: true, Connectivity: models.ConnectivityPortForward}, false},
-		{"remote port-forward", &models.Server{Connectivity: models.ConnectivityPortForward}, true},
-		{"remote edge-gateway", &models.Server{Connectivity: models.ConnectivityEdgeGateway}, false},
-	}
-	for _, c := range cases {
-		if got := isRemotePortForward(c.srv); got != c.want {
-			t.Errorf("%s: isRemotePortForward = %v, want %v", c.name, got, c.want)
-		}
-	}
-}
-
-func TestPrivateBindIP(t *testing.T) {
-	cases := []struct {
-		addr, want string
-	}{
-		{"10.0.0.7", "10.0.0.7"},       // private IPv4 → bind to it
-		{"203.0.113.5", "203.0.113.5"}, // any IPv4 is returned (privacy via firewall)
-		{"node.example.com", ""},       // hostname → all interfaces
-		{"", ""},                       // unset → all interfaces
-		{"fd00::1", ""},                // IPv6 → all interfaces (avoid host:port ambiguity)
-	}
-	for _, c := range cases {
-		if got := privateBindIP(&models.Server{Address: c.addr}); got != c.want {
-			t.Errorf("privateBindIP(%q) = %q, want %q", c.addr, got, c.want)
-		}
-	}
-}
-
 func TestSanitizeBase(t *testing.T) {
 	cases := map[string]string{
 		"apps.example.com":    "apps.example.com",
@@ -195,51 +160,12 @@ func (f fakeCluster) OwnGateway(id uint) (*models.Cluster, bool) {
 	return f.gateway, f.gateway != nil && f.gateway.ID == id
 }
 
-// A port-forward node is reached by a published host port — until cluster mode is
-// on, at which point the app is on the shared ingress overlay and the gateway
-// dials its DNS alias instead, on any node, with nothing published.
-func TestUseAliasUpstream(t *testing.T) {
-	local := &models.Server{IsLocal: true}
-	edge := &models.Server{Connectivity: models.ConnectivityEdgeGateway}
-	portFwd := &models.Server{Connectivity: models.ConnectivityPortForward}
-
-	tests := []struct {
-		name      string
-		srv       *models.Server
-		clusterOn bool
-		want      bool
-	}{
-		{name: "local node always uses its alias", srv: local, want: true},
-		{name: "edge-gateway node shares a network with its own gateway", srv: edge, want: true},
-		{name: "port-forward node without cluster publishes a host port", srv: portFwd, want: false},
-		{name: "port-forward node with cluster reaches the alias over the ingress overlay", srv: portFwd, clusterOn: true, want: true},
-		{name: "unknown node falls back to the alias", srv: nil, want: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			s := &Service{}
-			if tt.clusterOn {
-				s.SetCluster(fakeCluster{on: true})
-			}
-			if got := s.useAliasUpstream(tt.srv); got != tt.want {
-				t.Errorf("useAliasUpstream = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-// Regression: on a port-forward node the host-port upstream can only name one
-// container, so a canary there received 0% of traffic while the UI reported its
-// weight. In cluster mode the alias upstream must carry the split.
-func TestCanaryWeightSurvivesOnAPortForwardNodeInClusterMode(t *testing.T) {
+// Regression: the old host-port upstream could only name one container, so a canary received 0% of traffic
+// while the UI reported its weight. The alias upstream must carry the split.
+func TestCanaryWeightSplitsTheAliasUpstream(t *testing.T) {
 	rel := uint(9)
 	app := &models.Application{Alias: "mb-app-tok-7", CanaryReleaseID: &rel, CanaryWeight: 20}
 
-	s := &Service{}
-	s.SetCluster(fakeCluster{on: true})
-	if !s.useAliasUpstream(&models.Server{Connectivity: models.ConnectivityPortForward}) {
-		t.Fatal("cluster mode must route a port-forward node over its alias")
-	}
 	b := aliasBackends(app, 80, "http")
 	if len(b) != 2 {
 		t.Fatalf("want a weighted stable+canary split, got %d backend(s): %+v", len(b), b)

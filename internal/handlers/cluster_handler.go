@@ -22,9 +22,10 @@ import (
 // Docker Swarm. Swarm routes under /admin/clusters/{clusterID} target that cluster; the legacy
 // /admin/cluster routes target the default one. On plain Docker they report "not enabled".
 type ClusterHandler struct {
-	cluster *cluster.Service
-	nodes   *node.Service
-	audit   *audit.Logger
+	cluster           *cluster.Service
+	nodes             *node.Service
+	audit             *audit.Logger
+	applyConnectivity ConnectivityApplier
 }
 
 func NewClusterHandler(c *cluster.Service, n *node.Service, auditLog *audit.Logger) *ClusterHandler {

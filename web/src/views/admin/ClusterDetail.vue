@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
 import { clustersApi } from '@/api/clusters'
@@ -107,6 +107,41 @@ async function saveGateway() {
     notify.apiError(e, 'Failed to update the gateway')
   } finally {
     saving.value = false
+  }
+}
+
+const needsIngress = computed(() =>
+  !!cluster.value && !isDefault.value && cluster.value.mode === 'standalone' &&
+  (cluster.value.legacy_ingress || (!!managerNode.value && managerNode.value.connectivity !== 'edge-gateway')),
+)
+const swarmTargets = ref<Cluster[]>([])
+const convertTarget = ref(0)
+const converting = ref(false)
+watch(needsIngress, async (needed) => {
+  if (!needed) return
+  try {
+    swarmTargets.value = ((await clustersApi.list()).data.data ?? []).filter((c) => c.mode === 'swarm' && c.id !== cluster.value?.id)
+    convertTarget.value = swarmTargets.value[0]?.id ?? 0
+  } catch {
+    swarmTargets.value = []
+  }
+})
+async function convertIngress(action: 'gateway' | 'join') {
+  if (!cluster.value) return
+  converting.value = true
+  try {
+    await clustersApi.convertIngress(cluster.value.id, { action, target_cluster_id: action === 'join' ? convertTarget.value : undefined })
+    if (action === 'join') {
+      notify.success('Node joined the swarm cluster')
+      router.push(`/admin/clusters/${convertTarget.value}`)
+    } else {
+      notify.success('Gateway confirmed')
+      await load()
+    }
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    converting.value = false
   }
 }
 
@@ -406,7 +441,6 @@ function swarmClass(n: Server): string {
           <dt>Gateway</dt>
           <dd>
             <router-link v-if="ingressNode" :to="`/admin/nodes/${ingressNode.id}`">{{ ingressNode.display_name || ingressNode.name }}</router-link>
-            <span v-else-if="cluster.legacy_ingress">Central gateway, by host port</span>
             <span v-else>—</span>
             <span v-if="canSetGateway && (cluster.ingress_hostname || cluster.ingress_ip)" class="badge badge-muted mono">{{ cluster.ingress_hostname || cluster.ingress_ip }}</span>
             <button v-if="canSetGateway" class="btn btn-ghost btn-sm" @click="openGateway">Change</button>
@@ -417,12 +451,31 @@ function swarmClass(n: Server): string {
             <span v-if="cluster.cordoned" class="badge badge-warning">cordoned</span>
           </dd>
         </dl>
-        <div v-if="cluster.legacy_ingress" class="pending-hint">
+        <div v-if="needsIngress" class="pending-hint">
           <span class="mdi mdi-alert-outline"></span>
-          <span>
-            This cluster was converted from a port-forward node. Give the node its own gateway, or join it to the
-            default cluster as a worker: port-forward connectivity is being retired.
-          </span>
+          <div>
+            <p v-if="cluster.legacy_ingress" style="margin: 0 0 8px">
+              Port forwarding is retired, so this node now runs its own gateway, which needs public ports 80 and 443.
+              If it has none, join it to a swarm cluster, whose gateway then serves its apps.
+            </p>
+            <p v-else style="margin: 0 0 8px">
+              This node runs no gateway of its own, so its apps are not publicly routed. Give it one, or join it to a
+              swarm cluster.
+            </p>
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+              <button class="btn btn-secondary btn-sm" :disabled="converting" @click="convertIngress('gateway')">
+                {{ cluster.legacy_ingress ? 'Keep its own gateway' : 'Give it a gateway' }}
+              </button>
+              <template v-if="swarmTargets.length">
+                <select v-model.number="convertTarget" class="form-select" style="width: auto" aria-label="Swarm cluster">
+                  <option v-for="t in swarmTargets" :key="t.id" :value="t.id">{{ t.display_name || t.name }}</option>
+                </select>
+                <button class="btn btn-secondary btn-sm" :disabled="converting || !convertTarget" @click="convertIngress('join')">
+                  Join as a worker
+                </button>
+              </template>
+            </div>
+          </div>
         </div>
       </div>
 

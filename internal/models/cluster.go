@@ -56,8 +56,8 @@ type Cluster struct {
 	IngressHostname string            `json:"ingress_hostname,omitempty"`
 	Visibility      ClusterVisibility `json:"visibility" gorm:"not null;default:all"`
 	Cordoned        bool              `json:"cordoned" gorm:"not null;default:false"`
-	// LegacyIngress marks a cluster converted from a port-forward node: the central gateway still
-	// reaches its apps by host port until it gets a gateway of its own or joins a swarm.
+	// LegacyIngress marks a cluster whose port-forward node became an edge gateway at upgrade, until an
+	// admin confirms that gateway or joins the node to a swarm.
 	LegacyIngress bool      `json:"legacy_ingress" gorm:"not null;default:false"`
 	NodeCount     int64     `json:"node_count" gorm:"-"`
 	CreatedAt     time.Time `json:"created_at"`
