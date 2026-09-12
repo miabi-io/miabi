@@ -168,6 +168,16 @@ func (i *DatabaseInstance) NetworkNames(fallback string) []string {
 	return out
 }
 
+// SwarmScoped reports whether name is one of the instance's overlay networks.
+func (i *DatabaseInstance) SwarmScoped(name string) bool {
+	for n := range i.Networks {
+		if i.Networks[n].DockerName == name {
+			return i.Networks[n].SwarmScoped()
+		}
+	}
+	return false
+}
+
 // Database is a logical database hosted on a DatabaseInstance, with its own
 // dedicated user (privileges scoped to this database). The password is
 // encrypted at rest. Optionally owned by an application.

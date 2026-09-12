@@ -1338,7 +1338,7 @@ func (h *ApplicationHandler) mapErr(c *okapi.Context, err error) error {
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, application.ErrResourceCap), errors.Is(err, application.ErrClusterDisabled),
 		errors.Is(err, application.ErrLocalVolumeReplicated), errors.Is(err, application.ErrVolumeUnverifiable),
-		errors.Is(err, application.ErrTooManyReplicas),
+		errors.Is(err, application.ErrTooManyReplicas), errors.Is(err, models.ErrDevicesOnService),
 		errors.Is(err, application.ErrPortRange), errors.Is(err, models.ErrRunAsUserInvalid),
 		errors.Is(err, models.ErrRunAsUserRoot):
 		return c.AbortBadRequest(err.Error())
