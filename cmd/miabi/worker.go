@@ -238,7 +238,7 @@ func runWorker() error {
 
 	registryDistributor := registryserver.NewService(
 		repositories.NewRegistrySettingsRepository(db), imageResolver,
-		settings.NewProvider(repositories.NewSettingRepository(db), nil),
+		clusterService,
 		nil, repositories.NewWorkspaceRepository(db), nil, cfg.ProxyNetwork, cfg.ControlURL, cfg.Registry,
 	)
 

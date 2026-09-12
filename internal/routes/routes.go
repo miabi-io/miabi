@@ -239,8 +239,6 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	recoveryRepo := repositories.NewTwoFactorRecoveryRepository(db)
 	authService := auth.NewService(userRepo, resetRepo, recoveryRepo, sessionStore, cfg.JWTSecret)
 	settingsProvider := settings.NewProvider(settingRepo, map[string]string{
-		settings.KeyExternalBaseDomain:       cfg.ExternalBaseDomain,
-		settings.KeyExternalBaseProvider:     cfg.ExternalBaseProvider,
 		settings.KeyRequireEmailVerification: cfg.RequireEmailVerification,
 		settings.KeyAllowedSignupDomains:     cfg.AllowedSignupDomains,
 	})
@@ -447,6 +445,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	clusterService.SetIngressReconciler(proxyReconciler.ReconcileIngressGateway)
 	// A swarm outside the default cluster is served by its own ingress node's gateway.
 	routeService.SetCluster(clusterService)
+	routeService.SetExternalDomains(clusterService)
 	clusterService.SetGatewayListener(routeService.SyncCluster)
 	proxyReconciler.SetCluster(clusterService)
 	go func() { _ = proxyReconciler.ReconcileIngressGateway(context.Background()) }()
@@ -733,7 +732,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Built-in Docker registry (distinct from the external-creds registryService).
 	registryServerService := registryserver.NewService(
 		repositories.NewRegistrySettingsRepository(db),
-		imageResolver, settingsProvider, apiKeyService, workspaceRepo,
+		imageResolver, clusterService, apiKeyService, workspaceRepo,
 		proxyMgr, cfg.ProxyNetwork, cfg.ControlURL, cfg.Registry,
 	)
 	// S3 storage is an Enterprise entitlement, and the environment is now its only
@@ -855,13 +854,20 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	applyService.SetPlacer(placementService)
 	applyService.SetCertificates(certificateService)
 	// Declarative Application port exposure: externalAccess (reverse-proxy URLs,
-	// over the platform base domain) and publish/hostPort (host-port bindings).
-	applyService.SetPortExposure(func() route.ExternalConfig {
-		return route.ExternalConfig{
-			BaseDomain: settingsProvider.String(settings.KeyExternalBaseDomain, ""),
-			Provider:   settingsProvider.String(settings.KeyExternalBaseProvider, ""),
+	// over the app's cluster domain) and publish/hostPort (host-port bindings).
+	applyService.SetPortExposure(portBindingService)
+	// Wired once every route service dependency is, since a pinned domain that changed re-hosts routes right away.
+	clusterService.SetExternalAccessListener(func(ctx context.Context, clusterID uint) {
+		routeService.RehostCluster(ctx, clusterID)
+		if c, err := clusterService.Cluster(clusterID); err == nil && c.IsDefault {
+			if err := registryServerService.SyncGateway(ctx); err != nil {
+				logger.Warn("registry: re-publishing the gateway route failed", "error", err)
+			}
 		}
-	}, portBindingService)
+	})
+	if err := clusterService.PinExternalAccess(cfg.ExternalBaseDomain, cfg.ExternalBaseProvider); err != nil {
+		logger.Error("external access from the environment was not applied", "error", err)
+	}
 	// GitOps: reconcile a repo of miabi.io/v1 manifests via the apply engine.
 	gitopsService := gitops.NewService(repositories.NewGitSourceRepository(db), gitRepoRepo, applyService)
 	gitopsService.SetSecrets(secretService) // resolve a vault-backed Git credential when fetching
@@ -1067,7 +1073,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			app:             handlers.NewApplicationHandler(appService, bus, auditLogger, ee),
 			network:         handlers.NewNetworkHandler(networkService, auditLogger),
 			stack:           handlers.NewStackHandler(stackService, auditLogger),
-			route:           handlers.NewRouteHandler(routeService, settingsProvider, auditLogger),
+			route:           handlers.NewRouteHandler(routeService, auditLogger),
 			domain:          handlers.NewDomainHandler(domainService, routeRepo, auditLogger),
 			dnsProvider:     handlers.NewDNSProviderHandler(dnsProviderService, auditLogger),
 			middleware:      handlers.NewMiddlewareHandler(middlewareService, auditLogger),

@@ -87,6 +87,16 @@ func (r *ClusterRepository) CountWorkloads(clusterID uint) (int64, error) {
 	return r.countPlaced("cluster_id", clusterID)
 }
 
+// CountExternalApps counts the apps in a cluster holding generated external-access routes.
+func (r *ClusterRepository) CountExternalApps(clusterID uint) (int64, error) {
+	var n int64
+	err := r.db.Model(&models.Route{}).
+		Joins("JOIN applications ON applications.id = routes.application_id").
+		Where("routes.generated = ? AND applications.cluster_id = ?", true, clusterID).
+		Distinct("routes.application_id").Count(&n).Error
+	return n, err
+}
+
 // CountServerWorkloadsByKind counts the apps, database instances and volumes placed on a node, each on its own.
 func (r *ClusterRepository) CountServerWorkloadsByKind(serverID uint) (apps, databases, volumes int64, err error) {
 	var counts [3]int64

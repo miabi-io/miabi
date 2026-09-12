@@ -38,11 +38,12 @@ func (h *ClusterHandler) GetCluster(c *okapi.Context) error {
 	if err != nil {
 		return h.mapClusterErr(c, err)
 	}
+	cl.ExternalApps = h.cluster.ExternalApps(cl.ID)
 	return ok(c, cl)
 }
 
-// UpdateClusterRequest sets a cluster's tenant-facing identity and who may place into it. Omitted fields are
-// left unchanged.
+// UpdateClusterRequest sets a cluster's tenant-facing identity, who may place into it, and where its generated app
+// URLs live. Omitted fields are left unchanged.
 type UpdateClusterRequest struct {
 	Body struct {
 		// DisplayName is the location name tenants see, e.g. "Frankfurt". Empty clears it.
@@ -53,6 +54,11 @@ type UpdateClusterRequest struct {
 		Visibility string `json:"visibility" enum:"all,restricted"`
 		// Cordoned stops new placements in the location; running workloads stay.
 		Cordoned *bool `json:"cordoned"`
+		// ExternalBaseDomain is the wildcard domain for generated app URLs here, e.g. "apps.eu-central.example.com".
+		// Empty turns one-click external access off in the location; a change re-hosts the URLs already generated.
+		ExternalBaseDomain *string `json:"external_base_domain"`
+		// ExternalCertProvider names the gateway's certManager provider for those URLs; empty uses its default.
+		ExternalCertProvider *string `json:"external_cert_provider"`
 	} `json:"body"`
 }
 
@@ -71,10 +77,12 @@ func (h *ClusterHandler) UpdateCluster(c *okapi.Context, req *UpdateClusterReque
 		v := models.ClusterVisibility(req.Body.Visibility)
 		patch.Visibility = &v
 	}
+	patch.ExternalBaseDomain, patch.ExternalCertProvider = req.Body.ExternalBaseDomain, req.Body.ExternalCertProvider
 	cl, err := h.cluster.UpdateCluster(id, patch)
 	if err != nil {
 		return h.mapClusterErr(c, err)
 	}
+	cl.ExternalApps = h.cluster.ExternalApps(cl.ID)
 	h.record(c, "cluster.update", cl.ID)
 	return ok(c, cl)
 }
@@ -176,6 +184,11 @@ func (h *ClusterHandler) mapClusterErr(c *okapi.Context, err error) error {
 		errors.Is(err, cluster.ErrInvalidIngressIP), errors.Is(err, cluster.ErrInvalidIngressHostname),
 		errors.Is(err, node.ErrInvalidConnectivity):
 		return c.AbortBadRequest(err.Error())
+	case errors.Is(err, cluster.ErrInvalidExternalDomain), errors.Is(err, cluster.ErrInvalidCertProvider),
+		errors.Is(err, cluster.ErrExternalAccessPinned):
+		return c.AbortBadRequest(err.Error())
+	case errors.Is(err, cluster.ErrExternalDomainTaken):
+		return c.AbortWithError(409, err)
 	default:
 		return c.AbortInternalServerError("cluster operation failed", err)
 	}

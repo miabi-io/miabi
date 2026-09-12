@@ -12,12 +12,7 @@ import (
 
 type baseDomain string
 
-func (b baseDomain) String(_, def string) string {
-	if b == "" {
-		return def
-	}
-	return string(b)
-}
+func (b baseDomain) ExternalAccess(uint) (string, string) { return string(b), "" }
 
 // MIABI_REGISTRY_ENABLED pins enablement when it is set, and only then. An absent variable leaves the
 // switch to the stored row — i.e. to the admin UI — so an install that configures nothing in the
@@ -77,7 +72,7 @@ func TestHostResolution(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			svc := &Service{cfg: config.RegistryConfig{Host: tc.envHost}, settings: baseDomain(tc.base)}
+			svc := &Service{cfg: config.RegistryConfig{Host: tc.envHost}, external: baseDomain(tc.base)}
 			st := &models.RegistrySettings{Host: tc.storedHost}
 			svc.applyEnvConfig(st)
 			if got := svc.HostFor(st); got != tc.wantHost {
@@ -96,7 +91,7 @@ func TestHostResolution(t *testing.T) {
 func TestEnvPinnedFieldsBeatStoredValues(t *testing.T) {
 	svc := &Service{
 		cfg:      config.RegistryConfig{Enabled: false, EnabledSet: true, Host: "registry.env.test", StorageType: "filesystem"},
-		settings: baseDomain(""),
+		external: baseDomain(""),
 	}
 	st := &models.RegistrySettings{Enabled: true, Host: "registry.stale.test", StorageType: models.RegistryStorageS3}
 	svc.applyEnvConfig(st)
@@ -118,7 +113,7 @@ func TestEnvPinnedFieldsBeatStoredValues(t *testing.T) {
 
 // With nothing in the environment, every field is the console's to set.
 func TestNothingIsLockedWithoutEnv(t *testing.T) {
-	svc := &Service{cfg: config.RegistryConfig{}, settings: baseDomain("")}
+	svc := &Service{cfg: config.RegistryConfig{}, external: baseDomain("")}
 	if locks := svc.Locks(); locks.Any() {
 		t.Errorf("Locks = %+v, want nothing pinned", locks)
 	}

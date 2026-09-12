@@ -12,24 +12,15 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/route"
-	"github.com/miabi-io/miabi/internal/services/settings"
 )
 
 type RouteHandler struct {
-	svc      *route.Service
-	settings *settings.Provider
-	audit    *audit.Logger
+	svc   *route.Service
+	audit *audit.Logger
 }
 
-func NewRouteHandler(svc *route.Service, settingsProvider *settings.Provider, auditLog *audit.Logger) *RouteHandler {
-	return &RouteHandler{svc: svc, settings: settingsProvider, audit: auditLog}
-}
-
-func (h *RouteHandler) externalConfig() route.ExternalConfig {
-	return route.ExternalConfig{
-		BaseDomain: h.settings.String(settings.KeyExternalBaseDomain, ""),
-		Provider:   h.settings.String(settings.KeyExternalBaseProvider, ""),
-	}
+func NewRouteHandler(svc *route.Service, auditLog *audit.Logger) *RouteHandler {
+	return &RouteHandler{svc: svc, audit: auditLog}
 }
 
 type CreateRouteRequest struct {
@@ -331,7 +322,7 @@ func (h *RouteHandler) ExternalAccess(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortBadRequest("invalid application id")
 	}
-	out, err := h.svc.GetExternalAccess(middlewares.WorkspaceID(c), appID, h.externalConfig())
+	out, err := h.svc.GetExternalAccess(middlewares.WorkspaceID(c), appID)
 	if err != nil {
 		return h.mapErr(c, err)
 	}
@@ -353,7 +344,7 @@ func (h *RouteHandler) SetExternalAccess(c *okapi.Context, req *SetExternalAcces
 		return c.AbortBadRequest("invalid application id")
 	}
 	wsID := middlewares.WorkspaceID(c)
-	out, err := h.svc.SetExternalAccess(c.Request().Context(), wsID, appID, req.Body.Ports, h.externalConfig())
+	out, err := h.svc.SetExternalAccess(c.Request().Context(), wsID, appID, req.Body.Ports)
 	if err != nil {
 		return h.mapErr(c, err)
 	}

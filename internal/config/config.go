@@ -209,13 +209,12 @@ type Config struct {
 	RequireEmailVerification string
 	AllowedSignupDomains     string
 
-	// ExternalBaseDomain is the wildcard base domain for one-click external access (e.g.
-	// "apps.example.com", DNS *.apps.example.com). When set it is authoritative for the
-	// `external_base_domain` setting on every boot; leave empty to manage it from the admin UI.
+	// ExternalBaseDomain is the default cluster's wildcard domain for one-click external access (e.g.
+	// "apps.example.com", DNS *.apps.example.com). When set it pins that cluster's external domain on
+	// every boot; leave empty to manage it from the cluster page. Other clusters set their own there.
 	ExternalBaseDomain string
-	// ExternalBaseProvider names the Goma certManager provider used for the generated
-	// external-access routes' certificates ("" = the gateway default). Authoritative for the
-	// `external_base_provider` setting when set, like ExternalBaseDomain.
+	// ExternalBaseProvider names the Goma certManager provider for the default cluster's generated
+	// URLs ("" = the gateway default). When set it pins that field, like ExternalBaseDomain.
 	ExternalBaseProvider string
 	// NodeGatewayImage is the Goma Gateway image deployed on edge-gateway nodes.
 	NodeGatewayImage string

@@ -422,7 +422,7 @@ func runServer(cli *okapicli.CLI) {
 			// platform token) for multi-node pulls; it also resolves the host for runner pushes.
 			registryDistributor := registryserver.NewService(
 				repositories.NewRegistrySettingsRepository(res.db), imageResolver,
-				settings.NewProvider(repositories.NewSettingRepository(res.db), nil),
+				clusterService,
 				nil, repositories.NewWorkspaceRepository(res.db), nil, cfg.ProxyNetwork, cfg.ControlURL, cfg.Registry,
 			)
 

@@ -21,9 +21,9 @@ type RegistrySettings struct {
 	// Read-only: MIABI_REGISTRY_ENABLED. Default false → a no-op so single-node
 	// installs are unchanged.
 	Enabled bool `json:"enabled"`
-	// Host is the public registry hostname (e.g. registry.<external-base-domain>),
+	// Host is the public registry hostname (e.g. registry.<external-domain>),
 	// the docker login target. Read-only: MIABI_REGISTRY_HOST, else derived from
-	// the external base domain.
+	// the default cluster's external domain.
 	Host string `json:"host,omitempty"`
 
 	// StorageType is "filesystem" (a managed volume) or "s3" (S3/MinIO).

@@ -137,15 +137,6 @@ const SECTIONS: SectionDef[] = [
       max_memory_mb: 'Max memory per app, MB (0 = unlimited)',
     },
   },
-  {
-    id: 'external-access',
-    title: 'External access',
-    keys: ['external_base_domain', 'external_base_provider'],
-    labels: {
-      external_base_domain: 'External base domain (wildcard, e.g. apps.example.com — point *.<domain> at the gateway)',
-      external_base_provider: 'Cert provider for generated routes (blank = gateway default)',
-    },
-  },
 ]
 
 // System-managed keys: shown read-only, never editable, and excluded from saves.

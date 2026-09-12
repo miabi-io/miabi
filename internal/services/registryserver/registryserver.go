@@ -21,7 +21,6 @@ import (
 	"github.com/miabi-io/miabi/internal/proxy"
 	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/services/platformimage"
-	"github.com/miabi-io/miabi/internal/services/settings"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 	"gorm.io/gorm"
 )
@@ -37,7 +36,11 @@ const (
 
 type imageResolver interface{ Ref(key string) string }
 
-type settingsReader interface{ String(key, def string) string }
+// externalAccessReader resolves a cluster's external domain and certificate provider (satisfied by services/cluster).
+// The registry is published under the default cluster's.
+type externalAccessReader interface {
+	ExternalAccess(clusterID uint) (domain, provider string)
+}
 
 type keyVerifier interface {
 	Verify(plaintext string) (*models.APIKey, error)
@@ -59,7 +62,7 @@ type workspaceFinder interface {
 type Service struct {
 	repo     *repositories.RegistrySettingsRepository
 	images   imageResolver
-	settings settingsReader
+	external externalAccessReader
 	keys     keyVerifier
 	ws       workspaceFinder
 	proxy    proxy.Manager
@@ -103,7 +106,7 @@ func (s *Service) platformToken() string {
 func NewService(
 	repo *repositories.RegistrySettingsRepository,
 	images imageResolver,
-	settingsReader settingsReader,
+	external externalAccessReader,
 	keys keyVerifier,
 	ws workspaceFinder,
 	proxyMgr proxy.Manager,
@@ -112,7 +115,7 @@ func NewService(
 	cfg config.RegistryConfig,
 ) *Service {
 	return &Service{
-		repo: repo, images: images, settings: settingsReader, keys: keys, ws: ws,
+		repo: repo, images: images, external: external, keys: keys, ws: ws,
 		proxy: proxyMgr, reg: NewClient(fmt.Sprintf("http://%s:%d", Alias, Port)),
 		usage:   newUsageCache(),
 		network: network, controlURL: controlURL, cfg: cfg,
@@ -371,8 +374,8 @@ func (s *Service) StorageUnavailableReason(st *models.RegistrySettings) string {
 	return ""
 }
 
-// HostFor returns the effective registry hostname: MIABI_REGISTRY_HOST, else registry.<external-base-domain>,
-// else empty. Both candidates are validated — an unusable host resolves to "", so distribution reports
+// HostFor returns the effective registry hostname: MIABI_REGISTRY_HOST, else registry.<default cluster's external
+// domain>, else empty. Both candidates are validated — an unusable host resolves to "", so distribution reports
 // itself unavailable with a reason rather than silently failing to match any image reference.
 func (s *Service) HostFor(st *models.RegistrySettings) string {
 	if host := s.envHost(); host != "" {
@@ -384,16 +387,16 @@ func (s *Service) HostFor(st *models.RegistrySettings) string {
 	if host, err := NormalizeHost(st.Host); err == nil && host != "" {
 		return host
 	}
-	if s.settings == nil {
+	if s.external == nil {
 		return ""
 	}
-	base := strings.TrimSpace(s.settings.String(settings.KeyExternalBaseDomain, ""))
-	if base == "" {
+	base, _ := s.external.ExternalAccess(models.DefaultClusterID)
+	if base = strings.TrimSpace(base); base == "" {
 		return ""
 	}
 	host, err := NormalizeHost("registry." + base)
 	if err != nil {
-		logger.Error("registry: external base domain does not yield a usable registry host", "base_domain", base, "error", err)
+		logger.Error("registry: the default cluster's external domain does not yield a usable registry host", "base_domain", base, "error", err)
 		return ""
 	}
 	return host
@@ -502,7 +505,7 @@ func (s *Service) Ensure(ctx context.Context, dc docker.Client) error {
 		// The container can run, but nothing can reach it: the gateway route below
 		// is what terminates TLS and enforces forwardAuth, and it needs a hostname.
 		// Say so plainly — otherwise the only symptom is pulls failing on nodes.
-		logger.Error("internal registry is enabled but has no usable hostname — set MIABI_REGISTRY_HOST or an external base domain and restart; no gateway route will be published")
+		logger.Error("internal registry is enabled but has no usable hostname — set MIABI_REGISTRY_HOST or the default cluster's external domain; no gateway route is published until then")
 	}
 	if err := s.startContainer(ctx, dc, st, false); err != nil {
 		return err
@@ -679,13 +682,37 @@ func (s *Service) authURL() string {
 	return base + "/internal/registry/auth"
 }
 
+// SyncGateway re-publishes the registry's gateway route, so a change to the default cluster's external domain or
+// certificate provider takes effect without a restart.
+func (s *Service) SyncGateway(ctx context.Context) error {
+	if s.proxy == nil {
+		return nil
+	}
+	st, err := s.Get()
+	if err != nil {
+		return err
+	}
+	if !st.Enabled || s.StorageUnavailableReason(st) != "" {
+		return nil
+	}
+	return s.proxy.SyncRegistry(ctx, s.proxyConfig(st, true))
+}
+
+func (s *Service) certProvider() string {
+	if s.external == nil {
+		return ""
+	}
+	_, provider := s.external.ExternalAccess(models.DefaultClusterID)
+	return provider
+}
+
 func (s *Service) proxyConfig(st *models.RegistrySettings, enabled bool) proxy.RegistryProxy {
 	return proxy.RegistryProxy{
 		Enabled:     enabled,
 		Host:        s.HostFor(st),
 		Upstream:    fmt.Sprintf("http://%s:%d", Alias, Port),
 		AuthURL:     s.authURL(),
-		TLSProvider: s.settings.String(settings.KeyExternalBaseProvider, ""),
+		TLSProvider: s.certProvider(),
 		// Off only for an install behind a TLS terminator with no trusted proxies
 		// configured on the gateway, where the redirect would loop.
 		HTTPSRedirect: s.cfg.HTTPSRedirect,

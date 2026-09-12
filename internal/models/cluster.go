@@ -56,6 +56,14 @@ type Cluster struct {
 	IngressHostname string            `json:"ingress_hostname,omitempty"`
 	Visibility      ClusterVisibility `json:"visibility" gorm:"not null;default:all"`
 	Cordoned        bool              `json:"cordoned" gorm:"not null;default:false"`
+	// ExternalBaseDomain is the wildcard domain generated app URLs in this cluster live under, empty when one-click
+	// external access is off here; ExternalCertProvider is the gateway's certManager provider for them.
+	ExternalBaseDomain   string `json:"external_base_domain,omitempty"`
+	ExternalCertProvider string `json:"external_cert_provider,omitempty"`
+	// The environment pins the default cluster's external access fields. ExternalApps counts apps with generated URLs.
+	ExternalDomainPinned   bool  `json:"external_domain_pinned,omitempty" gorm:"-"`
+	ExternalProviderPinned bool  `json:"external_provider_pinned,omitempty" gorm:"-"`
+	ExternalApps           int64 `json:"external_apps,omitempty" gorm:"-"`
 	// LegacyIngress marks a cluster whose port-forward node became an edge gateway at upgrade, until an
 	// admin confirms that gateway or joins the node to a swarm.
 	LegacyIngress bool      `json:"legacy_ingress" gorm:"not null;default:false"`

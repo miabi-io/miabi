@@ -185,7 +185,7 @@ func TestDistributionReportsUnlicensedStorage(t *testing.T) {
 	svc := &Service{
 		ee:       unlicensed(),
 		cfg:      config.RegistryConfig{Enabled: true, EnabledSet: true, Host: "registry.example.com", StorageType: "s3", S3Bucket: "b"},
-		settings: baseDomain(""),
+		external: baseDomain(""),
 	}
 	reason := svc.DistributionUnavailableReason()
 	if !strings.Contains(reason, "Enterprise license") {
