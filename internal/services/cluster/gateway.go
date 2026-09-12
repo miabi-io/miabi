@@ -10,6 +10,9 @@ import (
 	"regexp"
 	"strings"
 
+	cerrdefs "github.com/containerd/errdefs"
+	"github.com/jkaninda/logger"
+	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/edgegateway"
 	"github.com/miabi-io/miabi/internal/services/node"
@@ -104,25 +107,40 @@ func (s *Service) ConfirmGateway(clusterID uint) error {
 }
 
 // AttachGateway joins a swarm cluster's ingress-node gateway to the cluster's ingress overlay, which is how it
-// reaches apps on the other nodes. A gateway redeploy drops the attachment, so every refresh re-asserts it.
+// reaches apps on the other nodes. Every refresh re-asserts it, in case the attachment was lost.
 func (s *Service) AttachGateway(ctx context.Context, clusterID uint) {
 	c, ok := s.OwnGateway(clusterID)
-	if !ok || !s.IsSwarm(c.ID) {
+	if !ok {
 		return
 	}
 	srv, err := s.nodes.Get(c.IngressNode())
 	if err != nil {
 		return
 	}
-	mgr, err := s.Manager(ctx, c.ID)
-	if err != nil {
-		return
-	}
-	ensureIngressOverlay(ctx, mgr)
 	dc, err := s.clients.For(srv.ID)
 	if err != nil {
 		return
 	}
-	// Fails harmlessly once attached, or before the gateway container exists.
-	_ = dc.NetworkConnect(ctx, node.IngressOverlay, edgegateway.ContainerNameFor(srv), nil)
+	s.attachGateway(ctx, c, dc, edgegateway.ContainerNameFor(srv))
+}
+
+// AttachNodeGateway joins a node's freshly started gateway to its cluster's ingress overlay when the node is the
+// ingress node of a swarm cluster other than the default one. It reads the stored cluster rather than the refreshed
+// swarm state, which still lags when an agent has just reconnected.
+func (s *Service) AttachNodeGateway(ctx context.Context, dc docker.Client, srv *models.Server, container string) {
+	c, ok := s.OwnGateway(srv.ClusterID)
+	if !ok || c.IngressNode() != srv.ID {
+		return
+	}
+	s.attachGateway(ctx, c, dc, container)
+}
+
+func (s *Service) attachGateway(ctx context.Context, c *models.Cluster, dc docker.Client, container string) {
+	if mgr, err := s.Manager(ctx, c.ID); err == nil {
+		ensureIngressOverlay(ctx, mgr)
+	}
+	// A gateway not deployed yet has nothing to attach; its deploy attaches it.
+	if err := dc.NetworkConnect(ctx, node.IngressOverlay, container, nil); err != nil && !cerrdefs.IsNotFound(err) {
+		logger.Warn("could not join the cluster gateway to its ingress overlay", "cluster", c.Name, "container", container, "error", err)
+	}
 }

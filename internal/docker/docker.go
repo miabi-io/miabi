@@ -181,6 +181,7 @@ type Client interface {
 	ServiceUpdate(ctx context.Context, idOrName string, spec ServiceSpec) error
 	ServiceRemove(ctx context.Context, idOrName string) error
 	ServiceScale(ctx context.Context, idOrName string, replicas uint64) error
+	ServiceSetEndpointMode(ctx context.Context, idOrName, mode string) error
 	ServiceInspect(ctx context.Context, idOrName string) (ServiceStatus, error)
 
 	// Swarm config objects backing kind: Config on a replicated service.

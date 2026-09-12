@@ -177,6 +177,8 @@ func runServer(cli *okapicli.CLI) {
 			)
 			// When set, gateways encrypt sensitive config (middleware rules + TLS) at rest.
 			nodeGateway.SetConfigEncryptionKey(cfg.GomaConfigEncryptionKey)
+			// A swarm cluster's ingress-node gateway reaches the cluster's apps over its ingress overlay.
+			nodeGateway.SetGatewayAttacher(clusterService.AttachNodeGateway)
 			nodeManager.SetOnConnect(func(ctx context.Context, srv *models.Server, token string, dc docker.Client) {
 
 				clusterService.ReaffirmNode(ctx, srv.ID)
@@ -203,7 +205,6 @@ func runServer(cli *okapicli.CLI) {
 					return
 				}
 				nodeService.MarkGatewayDeployed(srv.ID)
-				clusterService.AttachGateway(ctx, srv.ClusterID)
 			})
 			nodeManager.SetOnRemove(func(ctx context.Context, srv *models.Server, dc docker.Client) {
 				if srv.Connectivity != models.ConnectivityEdgeGateway {

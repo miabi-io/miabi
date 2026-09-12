@@ -34,6 +34,7 @@ type clusterTable struct {
 
 	ExternalBaseDomain   string
 	ExternalCertProvider string
+	ServiceEndpointMode  string
 }
 
 func (clusterTable) TableName() string { return "clusters" }

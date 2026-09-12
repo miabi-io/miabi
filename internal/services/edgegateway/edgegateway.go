@@ -111,7 +111,16 @@ type Service struct {
 	// hand a gateway that directory, so the manager's gateway polls the HTTP provider like a remote node does.
 	// See SetProvidersVolume.
 	providersVolume string
+	// attach joins a live gateway to networks beyond the node's app network, right after it starts.
+	attach GatewayAttacher
 }
+
+// GatewayAttacher joins a freshly started live gateway container to further networks, such as a swarm cluster's
+// ingress overlay. Called on every start, since recreating the container drops such attachments.
+type GatewayAttacher func(ctx context.Context, dc docker.Client, srv *models.Server, container string)
+
+// SetGatewayAttacher wires the attachment made after each live gateway start. Optional.
+func (s *Service) SetGatewayAttacher(fn GatewayAttacher) { s.attach = fn }
 
 func NewService(workspaces *repositories.WorkspaceRepository, controlURL, image, network, acmeEmail string) *Service {
 	return &Service{
@@ -684,6 +693,9 @@ func (s *Service) runGateway(ctx context.Context, dc docker.Client, srv *models.
 	}
 	if _, err := dc.RunContainer(ctx, spec); err != nil {
 		return fmt.Errorf("run gateway container %q: %w", name, err)
+	}
+	if publishPorts && s.attach != nil {
+		s.attach(ctx, dc, srv, name)
 	}
 	return nil
 }

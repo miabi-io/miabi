@@ -1948,6 +1948,7 @@ export interface Cluster {
   external_domain_pinned?: boolean
   external_provider_pinned?: boolean
   external_apps?: number
+  service_endpoint_mode?: 'vip' | 'dnsrr'
   node_count: number
   created_at?: string
   updated_at?: string
@@ -2048,6 +2049,8 @@ export interface NetCheck {
   network: string
   probes: NetCheckProbe[]
   results: NetCheckResult[]
+  // A service virtual IP dialed on the node its task runs on.
+  vip?: NetCheckResult
   ok: boolean
   summary: string
 }

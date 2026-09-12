@@ -6,6 +6,7 @@ package cluster
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/miabi-io/miabi/internal/docker"
@@ -29,6 +30,30 @@ func newGatewayService() *Service {
 	s := NewService(fakeClients{local: &fakeDocker{info: docker.SwarmInfo{LocalNodeState: "inactive"}}}, nodes)
 	s.SetStore(store)
 	return s
+}
+
+// Recreating the gateway drops the overlay attachment, and right after an agent reconnects the swarm state is still
+// stale, so the attach right after a deploy must decide from the stored cluster.
+func TestANodeGatewayJoinsTheIngressOverlayRightAfterItStarts(t *testing.T) {
+	s := newGatewayService()
+	for _, tt := range []struct {
+		name string
+		srv  models.Server
+		want bool
+	}{
+		{"ingress node of a remote swarm", models.Server{ID: 11, ClusterID: 5}, true},
+		{"another member of that swarm", models.Server{ID: 12, ClusterID: 5}, false},
+		{"standalone cluster", models.Server{ID: 14, ClusterID: 6}, false},
+		{"default cluster", models.Server{ID: 13, ClusterID: 1}, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			gw := &fakeDocker{}
+			s.AttachNodeGateway(context.Background(), gw, &tt.srv, "mb-node-gateway")
+			if got := slices.Contains(gw.connected, "miabi-ingress/mb-node-gateway"); got != tt.want {
+				t.Errorf("attached = %v (connected %v), want %v", got, gw.connected, tt.want)
+			}
+		})
+	}
 }
 
 func TestSetGatewayRefusals(t *testing.T) {

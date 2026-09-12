@@ -49,6 +49,16 @@ func TestBuildSwarmServiceSpecIngressAliases(t *testing.T) {
 	}
 }
 
+// A cluster on hosts without IPVS asks for dnsrr; anything else must keep the virtual IP.
+func TestBuildSwarmServiceSpecEndpointMode(t *testing.T) {
+	for mode, want := range map[string]string{"": "vip", "vip": "vip", "dnsrr": "dnsrr", "bogus": "vip"} {
+		spec := buildSwarmServiceSpec(ServiceSpec{Name: "svc", Image: "nginx", EndpointMode: mode})
+		if got := string(spec.EndpointSpec.Mode); got != want {
+			t.Errorf("EndpointMode %q built mode %q, want %q", mode, got, want)
+		}
+	}
+}
+
 // TestBuildSwarmServiceSpecMountDrivers verifies a shared-volume mount carries
 // its driver config into the swarm spec (so every node materializes the real
 // backing share), while a plain mount without a driver config does not.

@@ -45,6 +45,9 @@ func (clusterStub) EnsureWorkspaceOverlay(context.Context, uint, models.Network)
 func (c clusterStub) Manager(context.Context, uint) (docker.Client, error) {
 	return nil, docker.ErrNotFound
 }
+func (clusterStub) ServiceEndpointMode(uint) models.ServiceEndpointMode {
+	return models.ServiceEndpointVIP
+}
 
 // In cluster mode the gateway dials routed apps over the ingress overlay, so a route change must attach a
 // running container to it as well — a container started before cluster mode was enabled is not on it.

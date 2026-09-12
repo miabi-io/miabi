@@ -95,6 +95,8 @@ func (m *memStore) UpdateColumns(id uint, cols map[string]any) error {
 			c.ExternalBaseDomain = v.(string)
 		case "external_cert_provider":
 			c.ExternalCertProvider = v.(string)
+		case "service_endpoint_mode":
+			c.ServiceEndpointMode = v.(models.ServiceEndpointMode)
 		}
 	}
 	if c.ID == m.def.ID {

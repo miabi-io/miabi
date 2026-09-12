@@ -647,6 +647,14 @@ func (h *DeployHandler) manager(ctx context.Context, app *models.Application) do
 	return dc
 }
 
+// endpointMode is how the app's cluster reaches its services by name.
+func (h *DeployHandler) endpointMode(app *models.Application) string {
+	if h.cluster == nil {
+		return string(models.ServiceEndpointVIP)
+	}
+	return string(h.cluster.ServiceEndpointMode(app.ClusterID))
+}
+
 // serviceNetworks resolves the swarm-scoped networks a service attaches to: the app's workspace
 // networks, which in cluster mode are overlays shared with its databases and container apps. A
 // node-local bridge cannot attach to a service, so a workspace still on bridges is a hard failure.
@@ -805,6 +813,7 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 		NetworkAliases:  []string{alias, app.Name},
 		IngressNetwork:  node.IngressOverlay,
 		IngressAlias:    alias,
+		EndpointMode:    h.endpointMode(app),
 		Mounts:          mounts,
 		MountDrivers:    mountDrivers,
 		Binds:           binds,

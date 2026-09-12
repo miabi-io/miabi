@@ -154,6 +154,7 @@ type ClusterCap interface {
 	Manager(ctx context.Context, clusterID uint) (docker.Client, error)
 	WorkspaceOverlay(clusterID uint, n models.Network) bool
 	EnsureWorkspaceOverlay(ctx context.Context, clusterID uint, n models.Network) error
+	ServiceEndpointMode(clusterID uint) models.ServiceEndpointMode
 }
 
 // SetCluster wires swarm detection (nil-safe). Shared by the deploy and job
