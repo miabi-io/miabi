@@ -75,7 +75,7 @@ type Store interface {
 	IDByUID(uid string) (uint, error)
 	UpdateColumns(id uint, cols map[string]any) error
 	CountWorkloads(clusterID uint) (int64, error)
-	CountServerWorkloads(serverID uint) (int64, error)
+	CountServerWorkloadsByKind(serverID uint) (apps, databases, volumes int64, err error)
 	CreateStandalone(srv *models.Server, name string) (*models.Cluster, error)
 	AssignServer(serverID, clusterID uint) error
 }
@@ -629,7 +629,7 @@ func (s *Service) enableRemote(ctx context.Context, c *models.Cluster, advertise
 		s.Refresh(ctx)
 		return s.Status(c.ID), nil
 	}
-	if err := s.requireEmptyNode(c.ManagerServerID); err != nil {
+	if err := s.requireEmptyNode(c.ManagerServerID, EnableSwarmAction); err != nil {
 		return Status{}, err
 	}
 	dc, err := s.clients.For(c.ManagerServerID)
@@ -684,20 +684,6 @@ func labelDirect(ctx context.Context, mgr docker.Client, swarmNodeID string) {
 	if err := mgr.SwarmNodeSetLabel(ctx, swarmNodeID, AgentLabel, agentLabelDirect); err != nil {
 		logger.Warn("failed to label a directly connected swarm node", "swarm_node_id", swarmNodeID, "error", err)
 	}
-}
-
-func (s *Service) requireEmptyNode(serverID uint) error {
-	if s.store == nil {
-		return nil
-	}
-	n, err := s.store.CountServerWorkloads(serverID)
-	if err != nil {
-		return err
-	}
-	if n > 0 {
-		return ErrNodeHasWorkloads
-	}
-	return nil
 }
 
 // Disable takes a cluster out of swarm mode. Its member nodes leave first and each becomes a standalone
@@ -805,7 +791,7 @@ func (s *Service) JoinNode(ctx context.Context, clusterID, serverID uint) error 
 			return ErrNodeInOtherSwarm
 		}
 		if !c.IsDefault {
-			if err := s.requireEmptyNode(serverID); err != nil {
+			if err := s.requireEmptyNode(serverID, JoinAction); err != nil {
 				return err
 			}
 		}
@@ -1041,7 +1027,7 @@ func (s *Service) LeaveNode(ctx context.Context, serverID uint, force bool) erro
 		if srv.ID == c.ManagerServerID {
 			return ErrManagerNode
 		}
-		if err := s.requireEmptyNode(serverID); err != nil {
+		if err := s.requireEmptyNode(serverID, LeaveAction); err != nil {
 			return err
 		}
 	}

@@ -111,8 +111,8 @@ func (m *memStore) CountWorkloads(clusterID uint) (int64, error) {
 	return n, nil
 }
 
-func (m *memStore) CountServerWorkloads(serverID uint) (int64, error) {
-	return m.workloads[serverID], nil
+func (m *memStore) CountServerWorkloadsByKind(serverID uint) (int64, int64, int64, error) {
+	return m.workloads[serverID], 0, 0, nil
 }
 
 func (m *memStore) CreateStandalone(srv *models.Server, name string) (*models.Cluster, error) {

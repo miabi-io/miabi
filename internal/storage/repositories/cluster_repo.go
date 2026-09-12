@@ -87,9 +87,15 @@ func (r *ClusterRepository) CountWorkloads(clusterID uint) (int64, error) {
 	return r.countPlaced("cluster_id", clusterID)
 }
 
-// CountServerWorkloads counts the apps, database instances and volumes placed on a node.
-func (r *ClusterRepository) CountServerWorkloads(serverID uint) (int64, error) {
-	return r.countPlaced("server_id", serverID)
+// CountServerWorkloadsByKind counts the apps, database instances and volumes placed on a node, each on its own.
+func (r *ClusterRepository) CountServerWorkloadsByKind(serverID uint) (apps, databases, volumes int64, err error) {
+	var counts [3]int64
+	for i, m := range []any{&models.Application{}, &models.DatabaseInstance{}, &models.Volume{}} {
+		if err := r.db.Model(m).Where("server_id = ?", serverID).Count(&counts[i]).Error; err != nil {
+			return 0, 0, 0, err
+		}
+	}
+	return counts[0], counts[1], counts[2], nil
 }
 
 func (r *ClusterRepository) countPlaced(column string, id uint) (int64, error) {
