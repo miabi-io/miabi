@@ -2249,8 +2249,8 @@ async function detachDatabase(d: AppDatabase) {
         <div class="card-body">
           <template v-if="extAccess && !extAccess.enabled">
             <p class="text-muted text-sm" style="margin-top: 0">
-              Expose this app on the internet with an auto-generated URL. An admin must first set the
-              <strong>external base domain</strong> in platform settings.
+              Expose this app on the internet with an auto-generated URL. External access is off in this app's
+              location: a platform admin must first set the location's <strong>external domain</strong> on its cluster.
             </p>
           </template>
           <template v-else-if="extAccess">

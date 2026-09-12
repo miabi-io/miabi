@@ -69,10 +69,10 @@ type Service struct {
 	domains    *domain.Service
 	registries *registry.Service
 
-	// Port-exposure reconcilers (optional; wired via SetPortExposure). extConfig
-	// resolves the platform external-access base domain at apply time; bindings
+	// Port-exposure reconcilers (optional; wired via SetPortExposure). extAccess
+	// reconciles externalAccess ports under the app's cluster domain; bindings
 	// manages host-port bindings.
-	extConfig func() route.ExternalConfig
+	extAccess bool
 	bindings  *portbinding.Service
 
 	// configs converges kind: Config; nil leaves a manifest declaring one
@@ -306,8 +306,8 @@ func NewService(apps *application.Service, storage *storage.Service, dbs *databa
 // SetPortExposure wires the reconcilers for an Application's per-port exposure:
 // externalAccess (reverse-proxy URLs) and publish/hostPort (host-port bindings).
 // Nil-safe: when unset, those manifest fields are ignored.
-func (s *Service) SetPortExposure(extConfig func() route.ExternalConfig, bindings *portbinding.Service) {
-	s.extConfig, s.bindings = extConfig, bindings
+func (s *Service) SetPortExposure(bindings *portbinding.Service) {
+	s.extAccess, s.bindings = true, bindings
 }
 
 // Options tunes a plan/apply.
@@ -2447,14 +2447,14 @@ func (s *Service) reconcileExposure(ctx context.Context, workspaceID uint, app *
 	}
 	// Reverse-proxy external access: the set of ports flagged externalAccess.
 	// SetExternalAccess is idempotent and also tears down ports no longer flagged.
-	if s.extConfig != nil {
+	if s.extAccess {
 		var ext []int
 		for _, p := range spec.Ports {
 			if p.ExternalAccess {
 				ext = append(ext, p.Container)
 			}
 		}
-		if _, err := s.routes.SetExternalAccess(ctx, workspaceID, app.ID, ext, s.extConfig()); err != nil {
+		if _, err := s.routes.SetExternalAccess(ctx, workspaceID, app.ID, ext); err != nil {
 			return fmt.Errorf("external access: %w", err)
 		}
 	}

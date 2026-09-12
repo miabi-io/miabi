@@ -88,16 +88,12 @@ func TestResolveImageRefFailsClosedWithoutWorkspaceFinder(t *testing.T) {
 // With no registry host there is no internal registry to cross into, so every
 // reference is external and passes through.
 func TestResolveImageRefWithoutHost(t *testing.T) {
-	svc := &Service{cfg: config.RegistryConfig{}, ws: wsFixture(), settings: noSettings{}}
+	svc := &Service{cfg: config.RegistryConfig{}, ws: wsFixture()}
 	got, err := svc.ResolveImageRef(7, "registry.example.com/ws_8/api:1")
 	if err != nil || got != "registry.example.com/ws_8/api:1" {
 		t.Fatalf("ref = (%q,%v), want the input unchanged", got, err)
 	}
 }
-
-type noSettings struct{}
-
-func (noSettings) String(_, def string) string { return def }
 
 func TestValidateImageRef(t *testing.T) {
 	svc := refService("registry.example.com")

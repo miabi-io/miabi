@@ -98,6 +98,7 @@ type Service struct {
 	dnsAddr     DNSAddresser
 	reloader    EdgeReloader
 	cluster     ClusterCap
+	external    ExternalDomains
 }
 
 // ClusterCap reports whether a gateway of its own serves a cluster. Implemented by services/cluster.

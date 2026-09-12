@@ -75,6 +75,7 @@ type Store interface {
 	IDByUID(uid string) (uint, error)
 	UpdateColumns(id uint, cols map[string]any) error
 	CountWorkloads(clusterID uint) (int64, error)
+	CountExternalApps(clusterID uint) (int64, error)
 	CountServerWorkloadsByKind(serverID uint) (apps, databases, volumes int64, err error)
 	CreateStandalone(srv *models.Server, name string) (*models.Cluster, error)
 	AssignServer(serverID, clusterID uint) error
@@ -106,6 +107,10 @@ type Service struct {
 	// so a gateway recreate can't leave clustered apps dark for longer than a refresh interval.
 	ingressReconciler func(context.Context) error
 	gatewayListener   func(context.Context, uint)
+	externalListener  func(context.Context, uint)
+	// externalDomainEnv and externalProviderEnv pin the default cluster's external access from the environment.
+	externalDomainEnv   string
+	externalProviderEnv string
 
 	// networkMigrator converts the default cluster's workspace bridges into overlays when Swarm is enabled,
 	// networkRollback reverses it before leaving, and networkPending counts bridges still left.

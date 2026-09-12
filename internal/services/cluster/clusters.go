@@ -5,6 +5,7 @@ package cluster
 
 import (
 	"errors"
+	"maps"
 	"regexp"
 	"strings"
 
@@ -25,6 +26,9 @@ type ClusterPatch struct {
 	LocationCode *string
 	Visibility   *models.ClusterVisibility
 	Cordoned     *bool
+	// ExternalBaseDomain and ExternalCertProvider set where generated app URLs live; a change re-hosts them.
+	ExternalBaseDomain   *string
+	ExternalCertProvider *string
 }
 
 // Clusters lists every cluster, the default first, with its node count.
@@ -32,7 +36,12 @@ func (s *Service) Clusters() ([]models.Cluster, error) {
 	if s.store == nil {
 		return []models.Cluster{}, nil
 	}
-	return s.store.List()
+	list, err := s.store.List()
+	if err != nil {
+		return nil, err
+	}
+	s.markExternalPins(list)
+	return list, nil
 }
 
 // Cluster returns one cluster with its node count; id 0 is the default cluster.
@@ -57,7 +66,7 @@ func (s *Service) ClusterIDByUID(uid string) (uint, error) {
 	return s.store.IDByUID(uid)
 }
 
-// UpdateCluster renames a cluster, changes its location code, or changes who may place into it.
+// UpdateCluster renames a cluster, changes its location code, who may place into it, or its external access.
 func (s *Service) UpdateCluster(id uint, p ClusterPatch) (*models.Cluster, error) {
 	c, err := s.Cluster(id)
 	if err != nil {
@@ -87,10 +96,18 @@ func (s *Service) UpdateCluster(id uint, p ClusterPatch) (*models.Cluster, error
 	if p.Cordoned != nil {
 		cols["cordoned"] = *p.Cordoned
 	}
+	external, err := s.externalColumns(c, p)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(cols, external)
 	if len(cols) > 0 {
 		if err := s.store.UpdateColumns(c.ID, cols); err != nil {
 			return nil, err
 		}
+	}
+	if len(external) > 0 {
+		s.externalChanged(c.ID)
 	}
 	return s.Cluster(c.ID)
 }

@@ -31,9 +31,20 @@ type clusterTable struct {
 	LegacyIngress   bool
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+
+	ExternalBaseDomain   string
+	ExternalCertProvider string
 }
 
 func (clusterTable) TableName() string { return "clusters" }
+
+type clusterRouteTable struct {
+	ID            uint `gorm:"primaryKey"`
+	ApplicationID uint
+	Generated     bool
+}
+
+func (clusterRouteTable) TableName() string { return "routes" }
 
 type clusterServerTable struct {
 	ID        uint `gorm:"primaryKey"`
@@ -66,6 +77,32 @@ func newClusterRepo(t *testing.T) (*ClusterRepository, *gorm.DB) {
 		}
 	}
 	return NewClusterRepository(db), db
+}
+
+// The count drives the confirmation before a domain change, so an app is counted once however many URLs it has.
+func TestCountExternalAppsCountsAppsWithGeneratedRoutes(t *testing.T) {
+	repo, db := newClusterRepo(t)
+	if err := db.AutoMigrate(&clusterRouteTable{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, app := range []clusterPlacedTable{{ID: 1, ClusterID: 3}, {ID: 2, ClusterID: 3}, {ID: 3, ClusterID: 4}} {
+		if err := db.Table("applications").Create(&app).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, rt := range []clusterRouteTable{
+		{ID: 1, ApplicationID: 1, Generated: true},
+		{ID: 2, ApplicationID: 1, Generated: true},
+		{ID: 3, ApplicationID: 2},
+		{ID: 4, ApplicationID: 3, Generated: true},
+	} {
+		if err := db.Create(&rt).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, err := repo.CountExternalApps(3); err != nil || n != 1 {
+		t.Errorf("cluster 3 = %d, %v; want 1 (one app with two generated URLs, one with only a custom route)", n, err)
+	}
 }
 
 func TestJoiningTheDefaultClusterMovesANodeAndItsWorkloads(t *testing.T) {

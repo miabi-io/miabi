@@ -51,18 +51,52 @@ onMounted(load)
 
 const showEdit = ref(false)
 const saving = ref(false)
-const editForm = ref({ display_name: '', location_code: '', visibility: 'all' as Cluster['visibility'], cordoned: false })
+const editForm = ref({
+  display_name: '', location_code: '', visibility: 'all' as Cluster['visibility'], cordoned: false,
+  external_base_domain: '', external_cert_provider: '',
+})
 function openEdit() {
   editForm.value = {
     display_name: cluster.value?.display_name ?? '',
     location_code: cluster.value?.location_code ?? '',
     visibility: cluster.value?.visibility ?? 'all',
     cordoned: cluster.value?.cordoned ?? false,
+    external_base_domain: cluster.value?.external_base_domain ?? '',
+    external_cert_provider: cluster.value?.external_cert_provider ?? '',
   }
   showEdit.value = true
 }
-async function saveEdit() {
+
+function normalizeDomain(domain: string) {
+  return domain.trim().toLowerCase().replace(/^\*\./, '').replace(/^\.|\.$/g, '')
+}
+const editDomain = computed(() => normalizeDomain(editForm.value.external_base_domain))
+const dnsTarget = computed(() =>
+  cluster.value?.ingress_hostname || cluster.value?.ingress_ip || ingressNode.value?.public_hostname || ingressNode.value?.public_ip || '',
+)
+// Moving or clearing the domain changes URLs people already use, so it is confirmed with the number of apps affected.
+const confirmRehost = ref(false)
+const rehostMessage = computed(() => {
+  const n = cluster.value?.external_apps ?? 0
+  const apps = n === 1 ? '1 app has' : `${n} apps have`
+  const from = `*.${cluster.value?.external_base_domain}`
+  return editDomain.value
+    ? `${apps} generated URLs under ${from}. They move to *.${editDomain.value}, and the old URLs stop working. Custom domains are not affected.`
+    : `${apps} generated URLs under ${from}. They are removed, and those apps stop answering on them. Custom domains are not affected.`
+})
+
+function saveEdit() {
+  const c = cluster.value
+  if (!c) return
+  if ((c.external_apps ?? 0) > 0 && editDomain.value !== (c.external_base_domain ?? '')) {
+    confirmRehost.value = true
+    return
+  }
+  void persistEdit()
+}
+async function persistEdit() {
   if (!cluster.value) return
+  confirmRehost.value = false
   saving.value = true
   try {
     cluster.value = (await clustersApi.update(cluster.value.id, {
@@ -70,6 +104,8 @@ async function saveEdit() {
       location_code: editForm.value.location_code.trim(),
       visibility: editForm.value.visibility,
       cordoned: editForm.value.cordoned,
+      external_base_domain: editForm.value.external_base_domain.trim(),
+      external_cert_provider: editForm.value.external_cert_provider.trim(),
     })).data.data
     showEdit.value = false
     notify.success('Cluster updated')
@@ -450,6 +486,12 @@ function swarmClass(n: Server): string {
             {{ cluster.visibility === 'restricted' ? 'Platform admins only' : 'All workspaces' }}
             <span v-if="cluster.cordoned" class="badge badge-warning">cordoned</span>
           </dd>
+          <dt>External access</dt>
+          <dd>
+            <span v-if="cluster.external_base_domain" class="mono">*.{{ cluster.external_base_domain }}</span>
+            <span v-else class="text-muted">Off</span>
+            <span v-if="cluster.external_domain_pinned" class="badge badge-muted">set by environment</span>
+          </dd>
         </dl>
         <div v-if="needsIngress" class="pending-hint">
           <span class="mdi mdi-alert-outline"></span>
@@ -632,9 +674,38 @@ function swarmClass(n: Server): string {
                 <option value="restricted">Platform admins only</option>
               </select>
             </div>
-            <div class="form-group" style="margin-bottom: 0">
+            <div class="form-group">
               <label class="form-label"><input v-model="editForm.cordoned" type="checkbox" /> Cordoned</label>
               <p class="form-hint">No new apps, databases or volumes land here; running ones stay.</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label">External domain</label>
+              <input
+                v-model="editForm.external_base_domain"
+                class="form-input mono"
+                placeholder="e.g. apps.eu-central.example.com"
+                :disabled="cluster?.external_domain_pinned"
+              />
+              <p v-if="editDomain" class="form-hint">
+                Point <code>*.{{ editDomain }}</code> at <code v-if="dnsTarget">{{ dnsTarget }}</code><template v-else>this cluster's gateway</template>.
+                Apps here get one-click URLs under it.
+              </p>
+              <p v-else class="form-hint">Empty turns one-click external access off in this location. Custom domains still work.</p>
+              <p v-if="cluster?.external_domain_pinned" class="form-hint">Set by environment (MIABI_EXTERNAL_BASE_DOMAIN).</p>
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Certificate provider</label>
+              <input
+                v-model="editForm.external_cert_provider"
+                class="form-input mono"
+                placeholder="Gateway default"
+                :disabled="cluster?.external_provider_pinned"
+              />
+              <p class="form-hint">
+                {{ cluster?.external_provider_pinned
+                  ? 'Set by environment (MIABI_EXTERNAL_BASE_PROVIDER).'
+                  : 'The gateway certManager provider for generated URLs. Empty uses its default.' }}
+              </p>
             </div>
           </div>
           <div class="modal-footer">
@@ -903,6 +974,17 @@ function swarmClass(n: Server): string {
         </form>
       </AppModal>
     </Teleport>
+
+    <ConfirmDialog
+      :open="confirmRehost"
+      :title="editDomain ? 'Move generated URLs?' : 'Remove generated URLs?'"
+      :message="rehostMessage"
+      :confirm-label="editDomain ? 'Move URLs' : 'Remove URLs'"
+      variant="danger"
+      :busy="saving"
+      @confirm="persistEdit"
+      @cancel="confirmRehost = false"
+    />
 
     <ConfirmDialog
       :open="showRemoveAgents"

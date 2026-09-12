@@ -60,9 +60,9 @@ const envManaged = computed(() => Object.values(locks.value).some(Boolean))
 const hostOrigin = computed(() => {
   switch (hostSource.value) {
     case 'env': return 'Pinned by MIABI_REGISTRY_HOST.'
-    case 'base_domain': return 'Derived from the external base domain (registry.<domain>) — set a host here to override it.'
+    case 'base_domain': return 'Derived from the external domain of the default cluster (registry.<domain>) — set a host here to override it.'
     case 'stored': return 'Set here.'
-    default: return 'No usable hostname yet — set one here, or configure an external base domain.'
+    default: return 'No usable hostname yet — set one here, or set an external domain on the default cluster.'
   }
 })
 

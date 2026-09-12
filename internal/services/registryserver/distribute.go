@@ -40,7 +40,7 @@ func (s *Service) DistributionUnavailableReason() string {
 	// The platform token is derived from the master key, so it is always present
 	// (no operator action needed); only enablement and a resolvable host remain.
 	if s.HostFor(st) == "" {
-		return "the registry host cannot be resolved (set MIABI_REGISTRY_HOST, or configure the external base domain so it defaults to registry.<domain>)"
+		return "the registry host cannot be resolved (set MIABI_REGISTRY_HOST, or set the default cluster's external domain so it defaults to registry.<domain>)"
 	}
 	return ""
 }

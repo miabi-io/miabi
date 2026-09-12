@@ -42,12 +42,6 @@ const (
 	KeyMaxCPUCores = "max_cpu_cores"
 	KeyMaxMemoryMB = "max_memory_mb"
 
-	// KeyExternalBaseDomain is the wildcard base domain for one-click external access (e.g. "apps.example.com",
-	// DNS *.apps.example.com); empty means off. KeyExternalBaseProvider names the Goma certManager provider used
-	// for the generated routes, with "" meaning the gateway's default provider.
-	KeyExternalBaseDomain   = "external_base_domain"
-	KeyExternalBaseProvider = "external_base_provider"
-
 	// KeyCustomLabelsEnabled is the fleet-wide kill-switch for user-defined Docker labels on app containers. When
 	// false, custom labels are disabled everywhere regardless of any plan capability; when true, the per-plan
 	// AllowCustomLabels capability decides. Default true.
@@ -71,8 +65,6 @@ var defaults = []models.Setting{
 	{Key: KeyAuditLogRetentionDays, Value: "90", Type: models.SettingTypeInt},
 	{Key: KeyMaxCPUCores, Value: "0", Type: models.SettingTypeInt},
 	{Key: KeyMaxMemoryMB, Value: "0", Type: models.SettingTypeInt},
-	{Key: KeyExternalBaseDomain, Value: "", Type: models.SettingTypeString},
-	{Key: KeyExternalBaseProvider, Value: "", Type: models.SettingTypeString},
 	{Key: KeyCustomLabelsEnabled, Value: "true", Type: models.SettingTypeBool},
 	{Key: KeyRepoPipelinesEnabled, Value: "true", Type: models.SettingTypeBool},
 }
@@ -117,7 +109,7 @@ func (p *Provider) seed(envOverrides map[string]string) {
 		}
 	}
 	// Env-provided values win: force them on every boot so a key like
-	// external_base_domain can be set from the environment (12-factor) rather than
+	// allowed_signup_domains can be set from the environment (12-factor) rather than
 	// only the admin UI. Empty values are ignored (the key stays admin-managed).
 	var forced []models.Setting
 	for key, val := range envOverrides {

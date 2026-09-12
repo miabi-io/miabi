@@ -1943,6 +1943,11 @@ export interface Cluster {
   visibility: 'all' | 'restricted'
   cordoned: boolean
   legacy_ingress: boolean
+  external_base_domain?: string
+  external_cert_provider?: string
+  external_domain_pinned?: boolean
+  external_provider_pinned?: boolean
+  external_apps?: number
   node_count: number
   created_at?: string
   updated_at?: string

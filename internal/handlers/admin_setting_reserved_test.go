@@ -28,7 +28,7 @@ func TestReservedSettingsAreHiddenFromTheGenericList(t *testing.T) {
 		"repo_pipelines_enabled",
 		"require_email_verification",
 		"allowed_signup_domains",
-		"external_base_domain",
+		"max_memory_mb",
 		"branding_notes",
 		"cluster_names",
 		"imagemagick_enabled",

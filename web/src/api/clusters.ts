@@ -6,6 +6,8 @@ export interface ClusterUpdate {
   location_code?: string
   visibility?: Cluster['visibility']
   cordoned?: boolean
+  external_base_domain?: string
+  external_cert_provider?: string
 }
 
 export interface ConvertIngressInput {

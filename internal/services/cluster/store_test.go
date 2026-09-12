@@ -91,6 +91,10 @@ func (m *memStore) UpdateColumns(id uint, cols map[string]any) error {
 			c.Visibility = v.(models.ClusterVisibility)
 		case "cordoned":
 			c.Cordoned = v.(bool)
+		case "external_base_domain":
+			c.ExternalBaseDomain = v.(string)
+		case "external_cert_provider":
+			c.ExternalCertProvider = v.(string)
 		}
 	}
 	if c.ID == m.def.ID {
@@ -100,6 +104,8 @@ func (m *memStore) UpdateColumns(id uint, cols map[string]any) error {
 	}
 	return nil
 }
+
+func (m *memStore) CountExternalApps(uint) (int64, error) { return 0, nil }
 
 func (m *memStore) CountWorkloads(clusterID uint) (int64, error) {
 	var n int64
