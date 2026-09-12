@@ -121,8 +121,13 @@ type CreateAppRequest struct {
 		// Allow-listed kernel privileges; need a privileged workspace.
 		AddCapabilities []string `json:"add_capabilities"`
 		Devices         []string `json:"devices"`
-		RestartPolicy   string   `json:"restart_policy" enum:"no,always,unless-stopped,on-failure"`
-		ImagePullPolicy string   `json:"image_pull_policy" enum:"always,if-not-present,never"`
+		// Hardening on top of the workspace's security profile. drop_capabilities takes any Linux
+		// capability, or ALL.
+		ReadOnlyRootFilesystem bool     `json:"read_only_root_filesystem"`
+		NoNewPrivileges        bool     `json:"no_new_privileges"`
+		DropCapabilities       []string `json:"drop_capabilities"`
+		RestartPolicy          string   `json:"restart_policy" enum:"no,always,unless-stopped,on-failure"`
+		ImagePullPolicy        string   `json:"image_pull_policy" enum:"always,if-not-present,never"`
 		// "service" runs the app as a replicated Swarm service; omitted means a
 		// container, which Okapi fills in so the stored kind is never empty.
 		RuntimeKind          string                   `json:"runtime_kind" enum:"container,service" default:"container"`
@@ -178,8 +183,12 @@ type UpdateAppRequest struct {
 		// Replace the stored sets; an empty array revokes. Need a redeploy.
 		AddCapabilities []string `json:"add_capabilities"`
 		Devices         []string `json:"devices"`
-		RestartPolicy   string   `json:"restart_policy" enum:"no,always,unless-stopped,on-failure"`
-		ImagePullPolicy string   `json:"image_pull_policy" enum:"always,if-not-present,never"`
+		// Hardening; omitted leaves it unchanged, so a partial update never loosens a container.
+		ReadOnlyRootFilesystem *bool    `json:"read_only_root_filesystem"`
+		NoNewPrivileges        *bool    `json:"no_new_privileges"`
+		DropCapabilities       []string `json:"drop_capabilities"`
+		RestartPolicy          string   `json:"restart_policy" enum:"no,always,unless-stopped,on-failure"`
+		ImagePullPolicy        string   `json:"image_pull_policy" enum:"always,if-not-present,never"`
 		// Empty runtime_kind leaves the stored kind. Deliberately not defaulted like
 		// the create field: that would demote a live service on any settings save.
 		RuntimeKind          string                   `json:"runtime_kind" enum:"container,service"`
@@ -298,15 +307,18 @@ func (h *ApplicationHandler) Create(c *okapi.Context, req *CreateAppRequest) err
 		Command: req.Body.Command, Port: req.Body.Port,
 		MemoryBytes: req.Body.MemoryBytes, NanoCPUs: req.Body.NanoCPUs,
 		GPUCount: req.Body.GPUCount, GPUKind: req.Body.GPUKind,
-		RunAsUser:            req.Body.RunAsUser,
-		AddCapabilities:      req.Body.AddCapabilities,
-		Devices:              req.Body.Devices,
-		RestartPolicy:        models.RestartPolicy(req.Body.RestartPolicy),
-		ImagePullPolicy:      models.ImagePullPolicy(req.Body.ImagePullPolicy),
-		RuntimeKind:          models.RuntimeKind(req.Body.RuntimeKind),
-		Replicas:             req.Body.Replicas,
-		PlacementConstraints: req.Body.PlacementConstraints,
-		UpdateConfig:         req.Body.UpdateConfig.toModel(),
+		RunAsUser:              req.Body.RunAsUser,
+		AddCapabilities:        req.Body.AddCapabilities,
+		Devices:                req.Body.Devices,
+		ReadOnlyRootFilesystem: req.Body.ReadOnlyRootFilesystem,
+		NoNewPrivileges:        req.Body.NoNewPrivileges,
+		DropCapabilities:       req.Body.DropCapabilities,
+		RestartPolicy:          models.RestartPolicy(req.Body.RestartPolicy),
+		ImagePullPolicy:        models.ImagePullPolicy(req.Body.ImagePullPolicy),
+		RuntimeKind:            models.RuntimeKind(req.Body.RuntimeKind),
+		Replicas:               req.Body.Replicas,
+		PlacementConstraints:   req.Body.PlacementConstraints,
+		UpdateConfig:           req.Body.UpdateConfig.toModel(),
 		// Strip any reserved keys a client tries to set; Create stamps managed-by.
 		Metadata: models.SanitizeUserMetadata(req.Body.Metadata),
 	})
@@ -411,6 +423,15 @@ func (h *ApplicationHandler) Update(c *okapi.Context, req *UpdateAppRequest) err
 	app.RunAsUser = req.Body.RunAsUser             // validated against the security profile in the service
 	app.AddCapabilities = req.Body.AddCapabilities // allow-listed + gated in the service
 	app.Devices = req.Body.Devices
+	if req.Body.ReadOnlyRootFilesystem != nil {
+		app.ReadOnlyRootFilesystem = *req.Body.ReadOnlyRootFilesystem
+	}
+	if req.Body.NoNewPrivileges != nil {
+		app.NoNewPrivileges = *req.Body.NoNewPrivileges
+	}
+	if req.Body.DropCapabilities != nil {
+		app.DropCapabilities = req.Body.DropCapabilities
+	}
 	if req.Body.RestartPolicy != "" {
 		app.RestartPolicy = models.RestartPolicy(req.Body.RestartPolicy)
 	}
@@ -1358,7 +1379,8 @@ func (h *ApplicationHandler) mapErr(c *okapi.Context, err error) error {
 		errors.Is(err, application.ErrLocalVolumeReplicated), errors.Is(err, application.ErrVolumeUnverifiable),
 		errors.Is(err, application.ErrTooManyReplicas), errors.Is(err, models.ErrDevicesOnService),
 		errors.Is(err, application.ErrPortRange), errors.Is(err, models.ErrRunAsUserInvalid),
-		errors.Is(err, models.ErrRunAsUserRoot):
+		errors.Is(err, models.ErrRunAsUserRoot), errors.Is(err, models.ErrCapabilityNotLinux),
+		errors.Is(err, models.ErrCapabilityConflict):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, application.ErrStackNotFound):
 		return c.AbortNotFound(err.Error())

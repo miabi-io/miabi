@@ -1,5 +1,23 @@
 {
   "$defs": {
+    "ApplicationPlacementSpec": {
+      "additionalProperties": false,
+      "description": "ApplicationPlacementSpec is where an application runs.",
+      "properties": {
+        "constraints": {
+          "description": "Constraints narrow the nodes of the location a service is scheduled on, in Swarm syntax: node.labels.disk==ssd. An empty list clears them; omitting the field keeps them.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "location": {
+          "description": "Location names where the app is created. Omitted, the app follows its stack, a volume it mounts or the databases it references, else the workspace default. Fixed once created.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "ApplicationSpec": {
       "additionalProperties": false,
       "description": "ApplicationSpec is a long-running container workload. CI writes the immutable Digest; GitOps converges runtime to it.",
@@ -16,6 +34,10 @@
           },
           "description": "ContainerLabels are user-defined Docker labels stamped on the app's container(s), for label-driven tools like Traefik. Reserved keys (io.miabi.*, com.docker.*) are stripped on apply — a manifest is machine-authored, so import is fail-soft rather than erroring.",
           "type": "object"
+        },
+        "deployment": {
+          "$ref": "#/$defs/DeploymentSpec",
+          "description": "Deployment is how the app runs and how a new release replaces the running one."
         },
         "digest": {
           "description": "sha256:… (immutable pin)",
@@ -34,15 +56,15 @@
         "image": {
           "type": "string"
         },
-        "location": {
-          "description": "Location names where the app is created: empty uses its stack's location, else the workspace default. Fixed once created.",
-          "type": "string"
-        },
         "mounts": {
           "items": {
             "$ref": "#/$defs/MountSpec"
           },
           "type": "array"
+        },
+        "placement": {
+          "$ref": "#/$defs/ApplicationPlacementSpec",
+          "description": "Placement is where the app runs: the location it is created in and, for a service, the nodes Swarm may schedule it on."
         },
         "ports": {
           "items": {
@@ -66,7 +88,7 @@
           "$ref": "#/$defs/ResourceSpec"
         },
         "runAsUser": {
-          "description": "RunAsUser pins the container to an account — \"1000\", \"1000:1000\", \"node\", \"node:node\" — like `docker run --user`. Empty keeps the image's own user. A workspace under the restricted security profile must give a non-root numeric uid; anything else is refused on apply, not silently dropped, since the manifest is the source of truth for what should be running.",
+          "description": "Deprecated: use security.runAsUser. Still accepted; setting both is an error.",
           "type": "string"
         },
         "secretEnv": {
@@ -77,7 +99,7 @@
         },
         "security": {
           "$ref": "#/$defs/SecuritySpec",
-          "description": "Security grants kernel privileges beyond the container default, gated by the app service on apply — the same check the console goes through."
+          "description": "Security is the account the container runs as, the hardening it runs with and the kernel privileges it is granted, checked on apply the way the console checks them."
         },
         "source": {
           "$ref": "#/$defs/SourceSpec",
@@ -88,11 +110,37 @@
           "type": "string"
         },
         "strategy": {
-          "description": "Strategy is how a new release replaces the running one: recreate (stop then start), rolling (start the new container before retiring the old) or canary (run both and shift traffic). Empty keeps whatever the app is configured with, so a manifest that does not care about rollout mechanics leaves the console's setting alone instead of silently resetting it.",
+          "description": "Deprecated: use deployment.strategy. Still accepted; setting both is an error.",
+          "enum": [
+            "canary",
+            "recreate",
+            "rolling"
+          ],
           "type": "string"
         },
         "tag": {
           "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CapabilitiesSpec": {
+      "additionalProperties": false,
+      "description": "CapabilitiesSpec changes the Linux capabilities a container starts with. The CAP_ prefix is optional.",
+      "properties": {
+        "add": {
+          "description": "Add grants capabilities, e.g. [\"NET_ADMIN\"]. Anything off the allow-list is refused on apply, not dropped.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "drop": {
+          "description": "Drop removes capabilities from the default set. ALL removes every one, leaving only what add grants.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "type": "object"
@@ -129,6 +177,17 @@
       ],
       "type": "object"
     },
+    "DatabasePlacementSpec": {
+      "additionalProperties": false,
+      "description": "DatabasePlacementSpec is where a database is created. It also reads the string this field held before it became a block (placement: dedicated) as the old spelling of instance.",
+      "properties": {
+        "location": {
+          "description": "Location names where the database is created; omitted, the workspace default. Fixed once created.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "DatabaseSpec": {
       "additionalProperties": false,
       "description": "DatabaseSpec requests a logical database on a DatabaseInstance.",
@@ -137,17 +196,31 @@
           "description": "postgres|mysql|mariadb|redis",
           "type": "string"
         },
-        "location": {
-          "description": "Location names where the database is created; empty uses the workspace default. Fixed once created.",
-          "type": "string"
-        },
-        "placement": {
+        "instance": {
+          "description": "Instance decides which instance hosts the database: auto (default) reuses a compatible running one and provisions one when none exists, dedicated always provisions one, shared requires an existing one.",
           "enum": [
             "auto",
             "dedicated",
             "shared"
           ],
           "type": "string"
+        },
+        "placement": {
+          "description": "Placement is where the database is created. The string form (placement: dedicated) is the deprecated spelling of instance.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/DatabasePlacementSpec"
+            },
+            {
+              "description": "Deprecated: use instance.",
+              "enum": [
+                "auto",
+                "dedicated",
+                "shared"
+              ],
+              "type": "string"
+            }
+          ]
         },
         "version": {
           "description": "e.g. \"16-alpine\"",
@@ -157,6 +230,38 @@
       "required": [
         "engine"
       ],
+      "type": "object"
+    },
+    "DeploymentSpec": {
+      "additionalProperties": false,
+      "description": "DeploymentSpec is how an application runs and rolls out.",
+      "properties": {
+        "replicas": {
+          "description": "Replicas is how many tasks a service runs, 1 to 100. Omitted, a new service runs one and an existing one keeps its count, so a scale made in the console is not undone.",
+          "type": "integer"
+        },
+        "runtime": {
+          "description": "Runtime is container (one Docker container) or service (a replicated Swarm service, which needs a location that runs a swarm). Omitted, a new app is a container and an existing one keeps its runtime.",
+          "enum": [
+            "container",
+            "service"
+          ],
+          "type": "string"
+        },
+        "strategy": {
+          "description": "Strategy is how a new release replaces the running one: recreate (stop then start), rolling (start the new container before retiring the old) or canary (run both and shift traffic). Omitted, the app keeps the strategy it is configured with.",
+          "enum": [
+            "canary",
+            "recreate",
+            "rolling"
+          ],
+          "type": "string"
+        },
+        "update": {
+          "$ref": "#/$defs/UpdateSpec",
+          "description": "Update tunes how Swarm rolls a new release of a service out."
+        }
+      },
       "type": "object"
     },
     "DomainSpec": {
@@ -260,6 +365,17 @@
       ],
       "type": "object"
     },
+    "PlacementSpec": {
+      "additionalProperties": false,
+      "description": "PlacementSpec is where a stack or volume is created.",
+      "properties": {
+        "location": {
+          "description": "Location names where the resource is created; omitted, the workspace default. Fixed once created.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "PortSpec": {
       "additionalProperties": false,
       "description": "PortSpec is a container port and how it is reached. The two exposure knobs are orthogonal: externalAccess gives it a public HTTPS URL through the reverse proxy, while publish/hostPort binds it to a raw port on the node, like `docker -p`.",
@@ -335,6 +451,7 @@
     },
     "ResourceSpec": {
       "additionalProperties": false,
+      "description": "ResourceSpec caps memory/CPU and requests GPUs. Empty/zero means unlimited/none.",
       "properties": {
         "cpu": {
           "description": "e.g. \"0.5\"",
@@ -482,14 +599,18 @@
     },
     "SecuritySpec": {
       "additionalProperties": false,
-      "description": "ResourceSpec caps memory/CPU and requests GPUs. Empty/zero means unlimited/none. SecuritySpec grants kernel privileges beyond the container default.",
+      "description": "SecuritySpec is the account a container runs as, its hardening and the kernel privileges it is granted. An omitted field means the container default, so removing one from a manifest converges.",
       "properties": {
         "addCapabilities": {
-          "description": "AddCapabilities are Linux capabilities, e.g. [\"NET_ADMIN\"]; the CAP_ prefix is optional. Anything off the allow-list is refused on apply, not dropped.",
+          "description": "Deprecated: use capabilities.add. Still accepted; setting both is an error.",
           "items": {
             "type": "string"
           },
           "type": "array"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/CapabilitiesSpec",
+          "description": "Capabilities adds Linux capabilities beyond Docker's default set and drops any from it."
         },
         "devices": {
           "description": "Devices are host device nodes exposed to the container, e.g. [\"/dev/net/tun\"].",
@@ -497,6 +618,18 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "noNewPrivileges": {
+          "description": "NoNewPrivileges stops a process gaining privileges through setuid binaries. The restricted security profile always sets it, so false is refused there rather than silently overridden.",
+          "type": "boolean"
+        },
+        "readOnlyRootFilesystem": {
+          "description": "ReadOnlyRootFilesystem mounts the container's root filesystem read-only. Volumes stay writable, so an image that writes elsewhere (/tmp, /var/run) needs a volume there.",
+          "type": "boolean"
+        },
+        "runAsUser": {
+          "description": "RunAsUser pins the container to an account — \"1000\", \"1000:1000\", \"node\", \"node:node\" — like `docker run --user`. Empty keeps the image's own user. A workspace under the restricted security profile must give a non-root numeric uid; anything else is refused on apply, not silently dropped, since the manifest is the source of truth for what should be running.",
+          "type": "string"
         }
       },
       "type": "object"
@@ -551,9 +684,22 @@
         "description": {
           "type": "string"
         },
-        "location": {
-          "description": "Location names where the stack is created; empty uses the workspace default. Fixed once created.",
-          "type": "string"
+        "placement": {
+          "$ref": "#/$defs/PlacementSpec",
+          "description": "Placement is where the stack is created. Member applications that name no location follow it."
+        }
+      },
+      "type": "object"
+    },
+    "UpdateSpec": {
+      "additionalProperties": false,
+      "description": "UpdateSpec is a service rollout: how many tasks are replaced at once, and the pause between batches.",
+      "properties": {
+        "delaySeconds": {
+          "type": "integer"
+        },
+        "parallelism": {
+          "type": "integer"
         }
       },
       "type": "object"
@@ -562,9 +708,9 @@
       "additionalProperties": false,
       "description": "VolumeSpec declares persistent storage.",
       "properties": {
-        "location": {
-          "description": "Location names where the volume is created; empty uses the workspace default. Fixed once created.",
-          "type": "string"
+        "placement": {
+          "$ref": "#/$defs/PlacementSpec",
+          "description": "Placement is where the volume is created."
         },
         "size": {
           "description": "e.g. \"5Gi\" (0/empty = unbounded)",

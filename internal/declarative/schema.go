@@ -116,13 +116,13 @@ type ApplicationSpec struct {
 	SecretEnv []string          `yaml:"secretEnv,omitempty" json:"secretEnv,omitempty"`
 	Mounts    []MountSpec       `yaml:"mounts,omitempty" json:"mounts,omitempty"`
 	Resources *ResourceSpec     `yaml:"resources,omitempty" json:"resources,omitempty"`
-	// RunAsUser pins the container to an account — "1000", "1000:1000", "node", "node:node" — like
-	// `docker run --user`. Empty keeps the image's own user. A workspace under the restricted security
-	// profile must give a non-root numeric uid; anything else is refused on apply, not silently
-	// dropped, since the manifest is the source of truth for what should be running.
-	RunAsUser string `yaml:"runAsUser,omitempty" json:"runAsUser,omitempty"`
-	// Security grants kernel privileges beyond the container default, gated by the
-	// app service on apply — the same check the console goes through.
+	// Placement is where the app runs: the location it is created in and, for a service, the nodes Swarm
+	// may schedule it on.
+	Placement *ApplicationPlacementSpec `yaml:"placement,omitempty" json:"placement,omitempty"`
+	// Deployment is how the app runs and how a new release replaces the running one.
+	Deployment *DeploymentSpec `yaml:"deployment,omitempty" json:"deployment,omitempty"`
+	// Security is the account the container runs as, the hardening it runs with and the kernel privileges
+	// it is granted, checked on apply the way the console checks them.
 	Security *SecuritySpec `yaml:"security,omitempty" json:"security,omitempty"`
 	// ContainerLabels are user-defined Docker labels stamped on the app's container(s), for
 	// label-driven tools like Traefik. Reserved keys (io.miabi.*, com.docker.*) are stripped on apply
@@ -130,9 +130,6 @@ type ApplicationSpec struct {
 	ContainerLabels map[string]string `yaml:"containerLabels,omitempty" json:"containerLabels,omitempty"`
 	// Stack optionally names the owning Stack resource.
 	Stack string `yaml:"stack,omitempty" json:"stack,omitempty"`
-	// Location names where the app is created: empty uses its stack's location, else the workspace
-	// default. Fixed once created.
-	Location string `yaml:"location,omitempty" json:"location,omitempty"`
 	// Registry names the Registry credential used to pull this image; empty means an anonymous public
 	// pull. It need not be declared in the same bundle: a name not in the manifest resolves against
 	// the workspace's existing credentials, so a token created once in the UI can be reused.
@@ -145,15 +142,61 @@ type ApplicationSpec struct {
 	// (default) redeploys the app, "none" leaves it running for apps that watch
 	// their own config file.
 	ReloadPolicy string `yaml:"reloadPolicy,omitempty" json:"reloadPolicy,omitempty"`
-	// Strategy is how a new release replaces the running one: recreate (stop then start), rolling
-	// (start the new container before retiring the old) or canary (run both and shift traffic).
-	// Empty keeps whatever the app is configured with, so a manifest that does not care about
-	// rollout mechanics leaves the console's setting alone instead of silently resetting it.
-	Strategy string `yaml:"strategy,omitempty" json:"strategy,omitempty"`
+	// Deprecated: use security.runAsUser. Still accepted; setting both is an error.
+	DeprecatedRunAsUser string `yaml:"runAsUser,omitempty" json:"runAsUser,omitempty"`
+	// Deprecated: use deployment.strategy. Still accepted; setting both is an error.
+	DeprecatedStrategy string `yaml:"strategy,omitempty" json:"strategy,omitempty"`
 	// ConfigFP fingerprints every mounted config's digest, filled by the apply engine
 	// on both sides of the diff so a content change converges as an app update.
 	// Not serialized: derived state, like RegistrySpec.PasswordFP.
 	ConfigFP string `yaml:"-" json:"-"`
+}
+
+// ApplicationPlacementSpec is where an application runs.
+type ApplicationPlacementSpec struct {
+	// Location names where the app is created. Omitted, the app follows its stack, a volume it mounts or
+	// the databases it references, else the workspace default. Fixed once created.
+	Location string `yaml:"location,omitempty" json:"location,omitempty"`
+	// Constraints narrow the nodes of the location a service is scheduled on, in Swarm syntax:
+	// node.labels.disk==ssd. An empty list clears them; omitting the field keeps them.
+	Constraints []string `yaml:"constraints,omitempty" json:"constraints,omitempty"`
+}
+
+// DeploymentSpec is how an application runs and rolls out.
+type DeploymentSpec struct {
+	// Runtime is container (one Docker container) or service (a replicated Swarm service, which needs a
+	// location that runs a swarm). Omitted, a new app is a container and an existing one keeps its runtime.
+	Runtime string `yaml:"runtime,omitempty" json:"runtime,omitempty"`
+	// Replicas is how many tasks a service runs, 1 to 100. Omitted, a new service runs one and an
+	// existing one keeps its count, so a scale made in the console is not undone.
+	Replicas int `yaml:"replicas,omitempty" json:"replicas,omitempty"`
+	// Strategy is how a new release replaces the running one: recreate (stop then start), rolling
+	// (start the new container before retiring the old) or canary (run both and shift traffic).
+	// Omitted, the app keeps the strategy it is configured with.
+	Strategy string `yaml:"strategy,omitempty" json:"strategy,omitempty"`
+	// Update tunes how Swarm rolls a new release of a service out.
+	Update *UpdateSpec `yaml:"update,omitempty" json:"update,omitempty"`
+}
+
+// UpdateSpec is a service rollout: how many tasks are replaced at once, and the pause between batches.
+type UpdateSpec struct {
+	Parallelism  int `yaml:"parallelism,omitempty" json:"parallelism,omitempty"`
+	DelaySeconds int `yaml:"delaySeconds,omitempty" json:"delaySeconds,omitempty"`
+}
+
+// PlacementSpec is where a stack or volume is created.
+type PlacementSpec struct {
+	// Location names where the resource is created; omitted, the workspace default. Fixed once created.
+	Location string `yaml:"location,omitempty" json:"location,omitempty"`
+}
+
+// DatabasePlacementSpec is where a database is created. It also reads the string this field held
+// before it became a block (placement: dedicated) as the old spelling of instance.
+type DatabasePlacementSpec struct {
+	// Location names where the database is created; omitted, the workspace default. Fixed once created.
+	Location string `yaml:"location,omitempty" json:"location,omitempty"`
+
+	legacyInstance string
 }
 
 // SourceSpec builds an application's image from a Git repository. It mirrors the console's Source
@@ -207,16 +250,38 @@ type MountSpec struct {
 	ReadOnly bool   `yaml:"readOnly,omitempty" json:"readOnly,omitempty"`
 }
 
-// ResourceSpec caps memory/CPU and requests GPUs. Empty/zero means unlimited/none.
-// SecuritySpec grants kernel privileges beyond the container default.
+// SecuritySpec is the account a container runs as, its hardening and the kernel privileges it is
+// granted. An omitted field means the container default, so removing one from a manifest converges.
 type SecuritySpec struct {
-	// AddCapabilities are Linux capabilities, e.g. ["NET_ADMIN"]; the CAP_ prefix is
-	// optional. Anything off the allow-list is refused on apply, not dropped.
-	AddCapabilities []string `yaml:"addCapabilities,omitempty" json:"addCapabilities,omitempty"`
+	// RunAsUser pins the container to an account — "1000", "1000:1000", "node", "node:node" — like
+	// `docker run --user`. Empty keeps the image's own user. A workspace under the restricted security
+	// profile must give a non-root numeric uid; anything else is refused on apply, not silently
+	// dropped, since the manifest is the source of truth for what should be running.
+	RunAsUser string `yaml:"runAsUser,omitempty" json:"runAsUser,omitempty"`
+	// ReadOnlyRootFilesystem mounts the container's root filesystem read-only. Volumes stay writable, so
+	// an image that writes elsewhere (/tmp, /var/run) needs a volume there.
+	ReadOnlyRootFilesystem bool `yaml:"readOnlyRootFilesystem,omitempty" json:"readOnlyRootFilesystem,omitempty"`
+	// NoNewPrivileges stops a process gaining privileges through setuid binaries. The restricted security
+	// profile always sets it, so false is refused there rather than silently overridden.
+	NoNewPrivileges *bool `yaml:"noNewPrivileges,omitempty" json:"noNewPrivileges,omitempty"`
+	// Capabilities adds Linux capabilities beyond Docker's default set and drops any from it.
+	Capabilities *CapabilitiesSpec `yaml:"capabilities,omitempty" json:"capabilities,omitempty"`
 	// Devices are host device nodes exposed to the container, e.g. ["/dev/net/tun"].
 	Devices []string `yaml:"devices,omitempty" json:"devices,omitempty"`
+	// Deprecated: use capabilities.add. Still accepted; setting both is an error.
+	DeprecatedAddCapabilities []string `yaml:"addCapabilities,omitempty" json:"addCapabilities,omitempty"`
 }
 
+// CapabilitiesSpec changes the Linux capabilities a container starts with. The CAP_ prefix is optional.
+type CapabilitiesSpec struct {
+	// Add grants capabilities, e.g. ["NET_ADMIN"]. Anything off the allow-list is refused on apply, not
+	// dropped.
+	Add []string `yaml:"add,omitempty" json:"add,omitempty"`
+	// Drop removes capabilities from the default set. ALL removes every one, leaving only what add grants.
+	Drop []string `yaml:"drop,omitempty" json:"drop,omitempty"`
+}
+
+// ResourceSpec caps memory/CPU and requests GPUs. Empty/zero means unlimited/none.
 type ResourceSpec struct {
 	Memory string `yaml:"memory,omitempty" json:"memory,omitempty"` // e.g. "512Mi"
 	CPU    string `yaml:"cpu,omitempty" json:"cpu,omitempty"`       // e.g. "0.5"
@@ -229,24 +294,27 @@ type ResourceSpec struct {
 // StackSpec groups applications into one logical unit / network.
 type StackSpec struct {
 	Description string `yaml:"description,omitempty" json:"description,omitempty"`
-	// Location names where the stack is created; empty uses the workspace default. Fixed once created.
-	Location string `yaml:"location,omitempty" json:"location,omitempty"`
+	// Placement is where the stack is created. Member applications that name no location follow it.
+	Placement *PlacementSpec `yaml:"placement,omitempty" json:"placement,omitempty"`
 }
 
 // DatabaseSpec requests a logical database on a DatabaseInstance.
 type DatabaseSpec struct {
-	Engine    string `yaml:"engine" json:"engine"`                       // postgres|mysql|mariadb|redis
-	Version   string `yaml:"version,omitempty" json:"version,omitempty"` // e.g. "16-alpine"
-	Placement string `yaml:"placement,omitempty" json:"placement,omitempty"`
-	// Location names where the database is created; empty uses the workspace default. Fixed once created.
-	Location string `yaml:"location,omitempty" json:"location,omitempty"`
+	Engine  string `yaml:"engine" json:"engine"`                       // postgres|mysql|mariadb|redis
+	Version string `yaml:"version,omitempty" json:"version,omitempty"` // e.g. "16-alpine"
+	// Instance decides which instance hosts the database: auto (default) reuses a compatible running one
+	// and provisions one when none exists, dedicated always provisions one, shared requires an existing one.
+	Instance string `yaml:"instance,omitempty" json:"instance,omitempty"`
+	// Placement is where the database is created. The string form (placement: dedicated) is the
+	// deprecated spelling of instance.
+	Placement *DatabasePlacementSpec `yaml:"placement,omitempty" json:"placement,omitempty"`
 }
 
 // VolumeSpec declares persistent storage.
 type VolumeSpec struct {
 	Size string `yaml:"size,omitempty" json:"size,omitempty"` // e.g. "5Gi" (0/empty = unbounded)
-	// Location names where the volume is created; empty uses the workspace default. Fixed once created.
-	Location string `yaml:"location,omitempty" json:"location,omitempty"`
+	// Placement is where the volume is created.
+	Placement *PlacementSpec `yaml:"placement,omitempty" json:"placement,omitempty"`
 }
 
 // RouteSpec binds one or more hostnames (and an optional path) to an

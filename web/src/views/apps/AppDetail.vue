@@ -470,6 +470,7 @@ interface SettingsForm {
   deploy_strategy: DeployStrategy; canary_initial_weight: number; canary_step_weight: number; canary_step_interval_seconds: number
   // Resources (0 = unlimited)
   cpu_cores: number; memory_mb: number; gpu_count: number; gpu_kind: string; run_as_user: string; add_capabilities: string[]; devices: string[]; restart_policy: RestartPolicy; image_pull_policy: ImagePullPolicy
+  read_only_root_filesystem: boolean; no_new_privileges: boolean; drop_capabilities: string
   // Healthcheck
   hc_type: HealthcheckType; hc_path: string; hc_port: number | null; hc_command: string
   hc_interval: number; hc_timeout: number; hc_retries: number; hc_start_period: number
@@ -479,6 +480,7 @@ function emptySettingsForm(): SettingsForm {
     image: '', tag: '', command: '', registry_id: null, git_repository_id: null, git_repo: '', git_ref: '', build_method: 'auto', builder: '', stack_id: null, network_ids: [], ports: [],
     deploy_strategy: 'rolling', canary_initial_weight: 10, canary_step_weight: 20, canary_step_interval_seconds: 60,
     cpu_cores: 0, memory_mb: 0, gpu_count: 0, gpu_kind: '', run_as_user: '', add_capabilities: [], devices: [], restart_policy: 'unless-stopped', image_pull_policy: 'always',
+    read_only_root_filesystem: false, no_new_privileges: false, drop_capabilities: '',
     hc_type: 'none', hc_path: '/', hc_port: null, hc_command: '', hc_interval: 30, hc_timeout: 5, hc_retries: 3, hc_start_period: 0,
   }
 }
@@ -823,6 +825,16 @@ function addDevice() {
   settingsForm.value.devices.push('')
 }
 
+const dropCapabilityList = computed(() =>
+  settingsForm.value.drop_capabilities.split(/[\s,]+/).map((c) => c.trim().toUpperCase()).filter(Boolean),
+)
+function setNoNewPrivileges(e: Event) {
+  settingsForm.value.no_new_privileges = (e.target as HTMLInputElement).checked
+}
+const dropCapabilitiesError = computed(() =>
+  dropCapabilityList.value.some((c) => !/^(CAP_)?[A-Z_]+$/.test(c)) ? 'List capability names such as NET_RAW, or ALL.' : '',
+)
+
 const runAsUserError = computed(() => {
   const v = settingsForm.value.run_as_user.trim()
   if (!v) return ''
@@ -892,6 +904,9 @@ function syncSettingsForm() {
     run_as_user: app.value.run_as_user || '',
     add_capabilities: [...(app.value.add_capabilities ?? [])],
     devices: [...(app.value.devices ?? [])],
+    read_only_root_filesystem: !!app.value.read_only_root_filesystem,
+    no_new_privileges: !!app.value.no_new_privileges,
+    drop_capabilities: (app.value.drop_capabilities ?? []).join(', '),
     restart_policy: app.value.restart_policy || 'unless-stopped',
     image_pull_policy: app.value.image_pull_policy || 'always',
     hc_type: app.value.healthcheck_type || 'none',
@@ -1122,6 +1137,9 @@ async function saveSettings() {
       run_as_user: settingsForm.value.run_as_user.trim(),
       add_capabilities: settingsForm.value.add_capabilities,
       devices: settingsForm.value.devices.map((d) => d.trim()).filter(Boolean),
+      read_only_root_filesystem: settingsForm.value.read_only_root_filesystem,
+      no_new_privileges: settingsForm.value.no_new_privileges,
+      drop_capabilities: dropCapabilityList.value,
       restart_policy: settingsForm.value.restart_policy,
       image_pull_policy: settingsForm.value.image_pull_policy,
       healthcheck_type: settingsForm.value.hc_type,
@@ -3348,6 +3366,41 @@ async function detachDatabase(d: AppDatabase) {
               numeric uid. A name can’t be used, because the image decides what it maps to.</span>
             </p>
           </div>
+          <div class="form-group">
+            <label class="form-label">Hardening</label>
+            <label class="checkbox-label">
+              <input v-model="settingsForm.read_only_root_filesystem" type="checkbox" :disabled="!ws.canEdit" />
+              Read-only root filesystem
+            </label>
+            <p class="form-hint">
+              The container can write only to its volumes. An image that writes elsewhere, such as <code>/tmp</code>,
+              needs a volume mounted there or it fails to start. One-off jobs keep a writable filesystem.
+            </p>
+            <label class="checkbox-label">
+              <input
+                type="checkbox" :checked="settingsForm.no_new_privileges || requireNonRoot" :disabled="!ws.canEdit || requireNonRoot"
+                @change="setNoNewPrivileges"
+              />
+              No new privileges
+            </label>
+            <p class="form-hint">
+              Stops processes gaining privileges through setuid binaries, like <code>--security-opt no-new-privileges</code>.
+              <span v-if="requireNonRoot">Always on under this workspace’s restricted security profile.</span>
+            </p>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Drop capabilities</label>
+            <input
+              v-model="settingsForm.drop_capabilities" type="text" class="form-input mono" placeholder="NET_RAW, SYS_CHROOT or ALL"
+              :disabled="!ws.canEdit" aria-label="Capabilities to drop"
+            />
+            <p v-if="dropCapabilitiesError" class="form-hint" style="color: var(--danger)">{{ dropCapabilitiesError }}</p>
+            <p v-else class="form-hint">
+              Removed from Docker’s default set, like <code>docker run --cap-drop</code>. <code>ALL</code> drops every one,
+              leaving only the capabilities granted to the app. Applied on the next deploy.
+            </p>
+          </div>
+
           <div v-if="canGrant && offeredCapabilities.length" class="form-group">
             <label class="form-label">Kernel capabilities</label>
             <div class="cap-grid">
@@ -3412,7 +3465,7 @@ async function detachDatabase(d: AppDatabase) {
               already. Digest-pinned images are never re-pulled.
             </p>
           </div>
-          <button v-if="ws.canEdit" class="btn btn-primary" :disabled="savingSettings || !resourcesValid || !!runAsUserError" @click="saveSettings">
+          <button v-if="ws.canEdit" class="btn btn-primary" :disabled="savingSettings || !resourcesValid || !!runAsUserError || !!dropCapabilitiesError" @click="saveSettings">
             {{ savingSettings ? 'Saving…' : 'Save resources' }}
           </button>
         </div>

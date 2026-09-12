@@ -174,6 +174,17 @@ func (g *schemaGen) field(owner reflect.Type, f reflect.StructField) map[string]
 	if vals := enumFor(owner.Name(), f.Name); len(vals) > 0 {
 		out["enum"] = vals
 	}
+	// The field was a string before it became a block, and the parser still reads that spelling.
+	if owner.Name()+"."+f.Name == "DatabaseSpec.Placement" {
+		desc := out["description"]
+		delete(out, "description")
+		out = map[string]any{
+			"description": desc,
+			"oneOf": []any{out, map[string]any{
+				"type": "string", "enum": sortedKeys(placements), "description": "Deprecated: use instance.",
+			}},
+		}
+	}
 	return out
 }
 
@@ -239,8 +250,12 @@ func enumFor(typeName, field string) []string {
 		return sortedKeys(validTLS)
 	case "DomainSpec.TLS":
 		return sortedKeys(validDomainTLS)
-	case "DatabaseSpec.Placement":
+	case "DatabaseSpec.Instance":
 		return sortedKeys(placements)
+	case "DeploymentSpec.Strategy", "ApplicationSpec.DeprecatedStrategy":
+		return sortedKeys(validStrategy)
+	case "DeploymentSpec.Runtime":
+		return []string{"container", "service"}
 	case "ApplicationSpec.ReloadPolicy":
 		return []string{ReloadRestart, ReloadNone}
 	case "PortSpec.Protocol":

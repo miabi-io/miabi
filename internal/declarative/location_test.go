@@ -13,7 +13,7 @@ func stackSet(location string) *d.ResourceSet {
 	set := d.NewResourceSet()
 	set.Add(d.Resource{
 		APIVersion: d.APIVersion, Kind: d.KindStack,
-		Metadata: d.Meta{Name: "shop"}, Stack: &d.StackSpec{Location: location},
+		Metadata: d.Meta{Name: "shop"}, Stack: &d.StackSpec{Placement: &d.PlacementSpec{Location: location}},
 	})
 	return set
 }
@@ -36,18 +36,18 @@ func TestUnstatedLocationIsNotDrift(t *testing.T) {
 
 func TestChangedLocationPlansAnUpdate(t *testing.T) {
 	c, _ := stackChange("eu-east", "eu-central")
-	if c.Action != d.ActionUpdate || len(c.Fields) != 1 || c.Fields[0].Field != "location" {
+	if c.Action != d.ActionUpdate || len(c.Fields) != 1 || c.Fields[0].Field != "placement.location" {
 		t.Errorf("change = %+v, want an update of the location alone", c)
 	}
 }
 
 func TestLocationParses(t *testing.T) {
-	set, err := d.Parse([]byte("apiVersion: miabi.io/v1\nkind: Volume\nmetadata:\n  name: data\nspec:\n  location: eu-east\n"))
+	set, err := d.Parse([]byte("apiVersion: miabi.io/v1\nkind: Volume\nmetadata:\n  name: data\nspec:\n  placement:\n    location: eu-east\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	r, _ := set.Get("Volume/data")
-	if r.Volume == nil || r.Volume.Location != "eu-east" {
+	if r.Volume == nil || r.Volume.Location() != "eu-east" {
 		t.Errorf("volume = %+v, want location eu-east", r.Volume)
 	}
 }

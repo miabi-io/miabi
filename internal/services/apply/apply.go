@@ -112,31 +112,42 @@ func (s *Service) SetCluster(c ClusterCap) { s.cluster = c }
 type Placer interface {
 	Place(req placement.Request) (placement.Result, error)
 	LocationName(clusterID uint) string
+	ResolveLocation(workspaceID uint, location string, admin bool) (*models.Cluster, error)
 }
 
 // SetPlacer wires spec.location. Without it every resource is created on the local node.
 func (s *Service) SetPlacer(p Placer) { s.placer = p }
 
-func (s *Service) place(workspaceID uint, ch declarative.Change, location string, service bool) (placement.Result, error) {
+func (s *Service) place(ctx context.Context, workspaceID uint, ch declarative.Change, location string, service bool) (placement.Result, error) {
 	if s.placer == nil {
 		return placement.Result{}, nil
 	}
-	res, err := s.placer.Place(placement.Request{WorkspaceID: workspaceID, Location: location, Service: service})
+	res, err := s.placer.Place(placement.Request{WorkspaceID: workspaceID, Location: location, Service: service, Admin: isAdmin(ctx)})
 	if err != nil {
 		return res, fmt.Errorf("%w: %s %q: %v", ErrInvalidManifest, strings.ToLower(string(ch.Kind)), ch.Name, err)
 	}
 	return res, nil
 }
 
-// placeApp puts a new app in its location, else its stack's, and on the node of a volume it mounts.
-func (s *Service) placeApp(workspaceID uint, name string, spec *declarative.ApplicationSpec) (placement.Result, error) {
+// placeApp puts a new app in its location, else its stack's, and on the node of a volume it mounts. With
+// none of those it follows the databases it references, when they share one location.
+func (s *Service) placeApp(ctx context.Context, workspaceID uint, name string, spec *declarative.ApplicationSpec, refs specRefs) (placement.Result, error) {
 	if s.placer == nil {
 		return placement.Result{}, nil
 	}
-	req := placement.Request{WorkspaceID: workspaceID, Location: spec.Location}
-	if req.Location == "" && spec.Stack != "" {
+	req := placement.Request{
+		WorkspaceID: workspaceID, Location: spec.Location(), Admin: isAdmin(ctx),
+		Service: spec.Runtime() == string(models.RuntimeService),
+	}
+	if spec.Stack != "" {
 		if st, err := s.findStack(workspaceID, spec.Stack); err == nil {
-			req.Location = s.placer.LocationName(st.ClusterID)
+			stackLocation := s.placer.LocationName(st.ClusterID)
+			switch {
+			case req.Location == "":
+				req.Location = stackLocation
+			case stackLocation != "" && stackLocation != req.Location:
+				return placement.Result{}, stackLocationError(name, req.Location, spec.Stack, stackLocation)
+			}
 		}
 	}
 	var mounted string
@@ -147,6 +158,11 @@ func (s *Service) placeApp(workspaceID uint, name string, spec *declarative.Appl
 		if v, err := s.findVolume(workspaceID, m.Volume); err == nil && v.Driver != models.VolumeDriverHost && v.ServerID != 0 {
 			req.Colocate, mounted = v.ServerID, m.Volume
 			break
+		}
+	}
+	if req.Location == "" && mounted == "" && len(refs.dbs) > 0 {
+		if cluster := sharedCluster(refs.dbs, s.databaseNodes(workspaceID)); cluster != 0 {
+			req.Location = s.placer.LocationName(cluster)
 		}
 	}
 	res, err := s.placer.Place(req)
@@ -160,6 +176,92 @@ func (s *Service) placeApp(workspaceID uint, name string, spec *declarative.Appl
 	return res, nil
 }
 
+// sharedCluster is the one cluster every known referenced resource sits in, or 0 when they span several
+// or none is known.
+func sharedCluster(refs map[string]bool, nodes map[string]appPlacement) uint {
+	var cluster uint
+	for ref := range refs {
+		p, ok := nodes[ref]
+		if !ok {
+			continue
+		}
+		if cluster != 0 && p.cluster != cluster {
+			return 0
+		}
+		cluster = p.cluster
+	}
+	return cluster
+}
+
+func stackLocationError(app, location, stack, stackLocation string) error {
+	return fmt.Errorf("%w: application %q is declared in %q, but its stack %q is in %q, and an app runs in its stack's location. "+
+		"Set location to %q or leave it out", ErrInvalidManifest, app, location, stack, stackLocation, stackLocation)
+}
+
+// checkLocations fails the whole plan when a create names a location it cannot use, before anything in
+// the bundle is applied. Existing resources are not judged: a location cordoned since is not an error.
+func (s *Service) checkLocations(workspaceID uint, plan *declarative.Plan, desired *declarative.ResourceSet, admin bool) error {
+	if s.placer == nil {
+		return nil
+	}
+	for _, ch := range plan.Changes {
+		if ch.Action != declarative.ActionCreate {
+			continue
+		}
+		r, ok := desired.Get(string(ch.Kind) + "/" + ch.Name)
+		if !ok {
+			continue
+		}
+		location := locationOf(r)
+		if location == "" {
+			continue
+		}
+		c, err := s.placer.ResolveLocation(workspaceID, location, admin)
+		if err != nil {
+			return fmt.Errorf("%w: %s %q: location %q: %v", ErrInvalidManifest, strings.ToLower(string(ch.Kind)), ch.Name, location, err)
+		}
+		a := r.Application
+		if a == nil {
+			continue
+		}
+		if a.Runtime() == string(models.RuntimeService) && s.cluster != nil && !s.cluster.IsSwarm(c.ID) {
+			return fmt.Errorf("%w: application %q runs as a service, but location %q runs no swarm. "+
+				"Use runtime: container or a location that runs a swarm", ErrInvalidManifest, ch.Name, location)
+		}
+		if st, ok := desired.Get(string(declarative.KindStack) + "/" + a.Stack); ok && a.Stack != "" &&
+			st.Stack.Location() != "" && st.Stack.Location() != location {
+			return stackLocationError(ch.Name, location, a.Stack, st.Stack.Location())
+		}
+	}
+	return nil
+}
+
+func locationOf(r declarative.Resource) string {
+	switch {
+	case r.Application != nil:
+		return r.Application.Location()
+	case r.Stack != nil:
+		return r.Stack.Location()
+	case r.Database != nil:
+		return r.Database.Location()
+	case r.Volume != nil:
+		return r.Volume.Location()
+	}
+	return ""
+}
+
+// defaultLocation is where a create that names no location lands, so an export can leave it unsaid.
+func (s *Service) defaultLocation(workspaceID uint) string {
+	if s.placer == nil {
+		return ""
+	}
+	c, err := s.placer.ResolveLocation(workspaceID, "", false)
+	if err != nil {
+		return ""
+	}
+	return c.Name
+}
+
 func (s *Service) locationName(clusterID uint) string {
 	if s.placer == nil {
 		return ""
@@ -171,7 +273,7 @@ func (s *Service) locationName(clusterID uint) string {
 // after create.
 func refuseMove(ch declarative.Change) error {
 	for _, f := range ch.Fields {
-		if f.Field == "location" {
+		if f.Field == "placement.location" {
 			return fmt.Errorf("%w: %s %q is in %q; moving it to %q is not supported. Delete it and apply again",
 				ErrInvalidManifest, strings.ToLower(string(ch.Kind)), ch.Name, f.From, f.To)
 		}
@@ -215,6 +317,24 @@ type Options struct {
 	// resource created/updated in the run is labeled with it (miabi.io/gitops-source)
 	// so the project's resources can later be listed or torn down on their own.
 	OwnerSource string
+	// Admin marks an apply run by a platform admin, who may create in restricted locations. GitOps never
+	// sets it: a sync acts on nobody's behalf.
+	Admin bool
+}
+
+type adminCtxKey struct{}
+
+func withRunOptions(ctx context.Context, opts Options) context.Context {
+	ctx = withOwnerSource(ctx, opts.OwnerSource)
+	if opts.Admin {
+		ctx = context.WithValue(ctx, adminCtxKey{}, true)
+	}
+	return ctx
+}
+
+func isAdmin(ctx context.Context) bool {
+	v, _ := ctx.Value(adminCtxKey{}).(bool)
+	return v
 }
 
 // ownerSourceCtxKey carries the owning GitOps source id through execute → applyX
@@ -278,6 +398,9 @@ func (s *Service) Plan(ctx context.Context, workspaceID uint, manifests []byte, 
 	plan := declarative.BuildPlan(desired, actual, declarative.PlanOptions{
 		Prune: opts.Prune, PruneManagedBy: ManagedByGitOps, PruneGitOpsSource: opts.OwnerSource,
 	})
+	if err := s.checkLocations(workspaceID, plan, desired, opts.Admin); err != nil {
+		return nil, nil, err
+	}
 	return plan, desired, nil
 }
 
@@ -289,7 +412,7 @@ func (s *Service) Apply(ctx context.Context, workspaceID uint, manifests []byte,
 		return nil, err
 	}
 	// Carry the owning source into execution so created resources get labeled.
-	ctx = withOwnerSource(ctx, opts.OwnerSource)
+	ctx = withRunOptions(ctx, opts)
 	res := &Result{Plan: plan, WorkspaceID: workspaceID}
 	for _, ch := range plan.Changes {
 		if ch.Action == declarative.ActionNoop {
@@ -319,7 +442,7 @@ func (s *Service) ApplyResource(ctx context.Context, workspaceID uint, manifests
 		return nil, err
 	}
 	key := string(declarative.Kind(kind)) + "/" + name
-	ctx = withOwnerSource(ctx, opts.OwnerSource)
+	ctx = withRunOptions(ctx, opts)
 	res := &Result{WorkspaceID: workspaceID}
 	for _, ch := range plan.Changes {
 		if string(ch.Kind)+"/"+ch.Name != key {
@@ -1065,20 +1188,63 @@ func (s *Service) ExportApplication(ctx context.Context, workspaceID uint, name 
 		return nil, fmt.Errorf("%w: application %q not found", ErrNotExportable, name)
 	}
 	out := declarative.NewResourceSet()
+	// A location the bundle would land in anyway is left out, so the export applies to another install.
+	defaultLocation := s.defaultLocation(workspaceID)
 	// Volumes first: the bundle reads top-down, and a mount reads better after the thing it mounts.
 	for _, mt := range app.Application.Mounts {
 		if mt.Volume == "" {
 			continue
 		}
 		if v, found := set.Get(string(declarative.KindVolume) + "/" + mt.Volume); found {
+			if v.Volume != nil && v.Volume.Location() == defaultLocation {
+				v.Volume.Placement = nil
+			}
 			out.Add(v)
 		}
 	}
+	trimDefaults(app.Application, defaultLocation)
 	// Identity is per-install: a uid exported into a manifest would be matched ahead of the name on
 	// another install and bind this document to a resource that is not the same resource.
 	app.Metadata = declarative.Meta{Name: app.Metadata.Name, Annotations: app.Metadata.Annotations}
 	out.Add(app)
 	return declarative.Marshal(out)
+}
+
+// trimDefaults drops what an apply elsewhere would choose anyway, and the blocks that leaves empty.
+func trimDefaults(a *declarative.ApplicationSpec, defaultLocation string) {
+	if p := a.Placement; p != nil {
+		if p.Location == defaultLocation {
+			p.Location = ""
+		}
+		if p.Location == "" && p.Constraints == nil {
+			a.Placement = nil
+		}
+	}
+	if d := a.Deployment; d != nil {
+		if d.Runtime == string(models.RuntimeContainer) {
+			d.Runtime = ""
+		}
+		if d.Strategy == string(models.DeployRolling) {
+			d.Strategy = ""
+		}
+		if *d == (declarative.DeploymentSpec{}) {
+			a.Deployment = nil
+		}
+	}
+}
+
+func locationSpec(location string) *declarative.PlacementSpec {
+	if location == "" {
+		return nil
+	}
+	return &declarative.PlacementSpec{Location: location}
+}
+
+func databaseLocationSpec(location string) *declarative.DatabasePlacementSpec {
+	if location == "" {
+		return nil
+	}
+	return &declarative.DatabasePlacementSpec{Location: location}
 }
 
 func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.ResourceSet, error) {
@@ -1105,7 +1271,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 		set.Add(declarative.Resource{
 			APIVersion: declarative.APIVersion, Kind: declarative.KindVolume,
 			Metadata: metaA(vols[i].UID, vols[i].Name, vols[i].Metadata, vols[i].Annotations),
-			Volume:   &declarative.VolumeSpec{Location: s.locationName(vols[i].ClusterID)},
+			Volume:   &declarative.VolumeSpec{Placement: locationSpec(s.locationName(vols[i].ClusterID))},
 		})
 	}
 
@@ -1146,7 +1312,12 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 		}
 		ext, pub := s.exposedPorts(workspaceID, full.ID)
 		r := appResource(full, ext, pub, volNameByID, regNameByID, cfgNameByID)
-		r.Application.Location = s.locationName(full.ClusterID)
+		if loc := s.locationName(full.ClusterID); loc != "" {
+			if r.Application.Placement == nil {
+				r.Application.Placement = &declarative.ApplicationPlacementSpec{}
+			}
+			r.Application.Placement.Location = loc
+		}
 		set.Add(r)
 	}
 
@@ -1176,8 +1347,8 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 					APIVersion: declarative.APIVersion, Kind: declarative.KindDatabase,
 					Metadata: metaA(d.UID, d.Metadata[models.MetaDeclarativeName], d.Metadata, nil),
 					Database: &declarative.DatabaseSpec{
-						Engine: string(inst.Engine), Version: inst.Version, Placement: "auto",
-						Location: s.locationName(inst.ClusterID),
+						Engine: string(inst.Engine), Version: inst.Version, Instance: "auto",
+						Placement: databaseLocationSpec(s.locationName(inst.ClusterID)),
 					},
 				})
 			}
@@ -1187,8 +1358,8 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 			APIVersion: declarative.APIVersion, Kind: declarative.KindDatabase,
 			Metadata: metaA(inst.UID, inst.Name, inst.Metadata, inst.Annotations),
 			Database: &declarative.DatabaseSpec{
-				Engine: string(inst.Engine), Version: inst.Version, Placement: "auto",
-				Location: s.locationName(inst.ClusterID),
+				Engine: string(inst.Engine), Version: inst.Version, Instance: "auto",
+				Placement: databaseLocationSpec(s.locationName(inst.ClusterID)),
 			},
 		})
 	}
@@ -1201,7 +1372,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 		set.Add(declarative.Resource{
 			APIVersion: declarative.APIVersion, Kind: declarative.KindStack,
 			Metadata: metaA(stacks[i].UID, stacks[i].Name, stacks[i].Metadata, stacks[i].Annotations),
-			Stack:    &declarative.StackSpec{Description: stacks[i].Description, Location: s.locationName(stacks[i].ClusterID)},
+			Stack:    &declarative.StackSpec{Description: stacks[i].Description, Placement: locationSpec(s.locationName(stacks[i].ClusterID))},
 		})
 	}
 
@@ -1359,8 +1530,8 @@ func appResource(app *models.Application, ext, pub map[int]bool, volNameByID, re
 		Command:         app.Command,
 		ContainerLabels: app.ContainerLabels,
 		ExternalLabel:   app.ExternalLabel,
-		RunAsUser:       app.RunAsUser,
 		Security:        securitySpecOf(app),
+		Deployment:      deploymentSpecOf(app),
 	}
 	// A git app is described by what it builds, not by the image that build produced: the image ref
 	// carries a generated tag that means nothing in a manifest, and re-applying it elsewhere would
@@ -1384,10 +1555,8 @@ func appResource(app *models.Application, ext, pub map[int]bool, volNameByID, re
 	if app.ReloadPolicy != "" && app.ReloadPolicy != models.ReloadRestart {
 		spec.ReloadPolicy = app.ReloadPolicy
 	}
-	// Emitted only when it differs from the default, so an exported bundle stays clean and matches a
-	// manifest that simply omits the field.
-	if app.DeployStrategy != "" && app.DeployStrategy != models.DeployRolling {
-		spec.Strategy = string(app.DeployStrategy)
+	if app.RuntimeKind == models.RuntimeService && len(app.PlacementConstraints) > 0 {
+		spec.Placement = &declarative.ApplicationPlacementSpec{Constraints: app.PlacementConstraints}
 	}
 	// Managed volume mounts, by the volume's manifest name. Privileged host-preset
 	// binds (VolumeID 0) aren't manifest-expressible, so they're omitted.
@@ -1544,7 +1713,7 @@ func (s *Service) findDomain(workspaceID uint, name string) (*models.Domain, err
 func (s *Service) applyStack(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource) error {
 	switch ch.Action {
 	case declarative.ActionCreate:
-		target, err := s.place(workspaceID, ch, desired.Stack.Location, true)
+		target, err := s.place(ctx, workspaceID, ch, desired.Stack.Location(), true)
 		if err != nil {
 			return err
 		}
@@ -1937,11 +2106,7 @@ func (s *Service) applyVolume(ctx context.Context, workspaceID uint, ch declarat
 	switch ch.Action {
 	case declarative.ActionCreate:
 		meta := tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, ManagedByGitOps))
-		var location string
-		if desired.Volume != nil {
-			location = desired.Volume.Location
-		}
-		target, err := s.place(workspaceID, ch, location, false)
+		target, err := s.place(ctx, workspaceID, ch, desired.Volume.Location(), false)
 		if err != nil {
 			return err
 		}
@@ -1967,13 +2132,13 @@ func (s *Service) applyDatabase(ctx context.Context, workspaceID uint, ch declar
 		// Honor the manifest's placement via the shared resolver, mirroring the marketplace install. The logical
 		// database is stamped with the manifest name so databaseViews resolves to this exact database, not "the first
 		// on the instance". The CREATE DDL is deferred for a freshly provisioned instance and runs when it comes up.
-		target, err := s.place(workspaceID, ch, spec.Location, false)
+		target, err := s.place(ctx, workspaceID, ch, spec.Location(), false)
 		if err != nil {
 			return err
 		}
 		_, _, _, _, err = s.dbs.ResolveDependency(
 			ctx, workspaceID, target.ServerID, 0, ch.Name, ch.Name,
-			models.DBEngine(spec.Engine), spec.Version, database.Placement(spec.Placement), meta,
+			models.DBEngine(spec.Engine), spec.Version, database.Placement(spec.Instance), meta,
 		)
 		return err
 	case declarative.ActionDelete:
@@ -2031,6 +2196,9 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 	if err := s.checkAppRefPlacement(workspaceID, ch.Name, refs, nil); err != nil {
 		return err
 	}
+	if err := s.refuseWeakerThanProfile(workspaceID, ch.Name, spec); err != nil {
+		return err
+	}
 	// Resolve the pull credential before anything is created, so a typo'd name
 	// fails the change instead of deploying an app that cannot pull its image.
 	regID, err := s.resolveRegistry(workspaceID, ch.Name, spec)
@@ -2041,7 +2209,7 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 	case declarative.ActionCreate:
 		in := s.createInput(ctx, desired.Metadata, spec)
 		in.RegistryID = regID
-		target, err := s.placeApp(workspaceID, ch.Name, spec)
+		target, err := s.placeApp(ctx, workspaceID, ch.Name, spec, refs)
 		if err != nil {
 			return err
 		}
@@ -2117,14 +2285,29 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		app.ContainerLabels = spec.ContainerLabels
 		// Validated against the workspace's security profile by the app service, which
 		// refuses a run-as user that would escape a non-root mandate.
-		app.RunAsUser = spec.RunAsUser
-		// Absent means "no grants", not "unchanged", or GitOps could never revoke.
-		app.AddCapabilities = capabilitiesOf(spec)
-		app.Devices = devicesOf(spec)
+		app.RunAsUser = spec.RunAsUser()
+		// Absent means "no grants" and "no hardening", not "unchanged", or GitOps could never revoke.
+		app.AddCapabilities = spec.AddCapabilities()
+		app.DropCapabilities = spec.DropCapabilities()
+		app.Devices = spec.Devices()
+		app.ReadOnlyRootFilesystem = spec.ReadOnlyRootFilesystem()
+		app.NoNewPrivileges = spec.NoNewPrivileges()
 		// Only when the manifest states one. A bundle silent about rollout mechanics must leave the
 		// console's setting alone rather than reset every app it touches to rolling.
-		if spec.Strategy != "" {
-			app.DeployStrategy = models.DeployStrategy(spec.Strategy)
+		if s := spec.Strategy(); s != "" {
+			app.DeployStrategy = models.DeployStrategy(s)
+		}
+		if rt := spec.Runtime(); rt != "" {
+			app.RuntimeKind = models.RuntimeKind(rt)
+		}
+		if n := spec.Replicas(); n > 0 {
+			app.Replicas = n
+		}
+		if c := spec.Constraints(); c != nil {
+			app.PlacementConstraints = c
+		}
+		if spec.Update() != nil {
+			app.UpdateConfig = updateConfigOf(spec)
 		}
 		if err := s.apps.Update(app); err != nil {
 			return err
@@ -2297,11 +2480,20 @@ func (s *Service) createInput(ctx context.Context, m declarative.Meta, spec *dec
 		Command:         spec.Command,
 		Metadata:        md,
 		Annotations:     m.Annotations,
-		ContainerLabels: spec.ContainerLabels, // sanitized in the app service Create
-		RunAsUser:       spec.RunAsUser,       // validated in the app service Create
-		AddCapabilities: capabilitiesOf(spec), // allow-listed + gated in the app service
-		Devices:         devicesOf(spec),
-		DeployStrategy:  models.DeployStrategy(spec.Strategy),
+		ContainerLabels: spec.ContainerLabels,   // sanitized in the app service Create
+		RunAsUser:       spec.RunAsUser(),       // validated in the app service Create
+		AddCapabilities: spec.AddCapabilities(), // allow-listed + gated in the app service
+		Devices:         spec.Devices(),
+		DeployStrategy:  models.DeployStrategy(spec.Strategy()),
+
+		DropCapabilities:       spec.DropCapabilities(),
+		ReadOnlyRootFilesystem: spec.ReadOnlyRootFilesystem(),
+		NoNewPrivileges:        spec.NoNewPrivileges(),
+
+		RuntimeKind:          models.RuntimeKind(spec.Runtime()),
+		Replicas:             spec.Replicas(),
+		PlacementConstraints: spec.Constraints(),
+		UpdateConfig:         updateConfigOf(spec),
 	}
 	// A source block makes this a build-from-git app instead of an image pull. Validation has already
 	// refused a manifest declaring both, so the two branches cannot overlap.
@@ -2324,6 +2516,25 @@ func (s *Service) createInput(ctx context.Context, m declarative.Meta, spec *dec
 		}
 	}
 	return in
+}
+
+func updateConfigOf(spec *declarative.ApplicationSpec) *models.ServiceUpdateConfig {
+	u := spec.Update()
+	if u == nil {
+		return nil
+	}
+	return &models.ServiceUpdateConfig{Parallelism: u.Parallelism, DelaySeconds: u.DelaySeconds}
+}
+
+// refuseWeakerThanProfile fails a manifest that turns no-new-privileges off where the workspace's profile
+// forces it on: the container would never run as described, so it is refused like runAsUser: root.
+func (s *Service) refuseWeakerThanProfile(workspaceID uint, name string, spec *declarative.ApplicationSpec) error {
+	sec := spec.Security
+	if sec == nil || sec.NoNewPrivileges == nil || *sec.NoNewPrivileges || !s.apps.EnforcesNoNewPrivileges(workspaceID) {
+		return nil
+	}
+	return fmt.Errorf("%w: application %q sets security.noNewPrivileges: false, but this workspace's restricted security "+
+		"profile always sets it. Remove the field", ErrInvalidManifest, name)
 }
 
 // reconcileEnv sets desired env vars and removes ones no longer declared.
@@ -2501,25 +2712,39 @@ func (s *Service) findRoute(workspaceID uint, name string) (*models.Route, error
 	return nil, fmt.Errorf("route %q not found", name)
 }
 
-// securitySpecOf renders an app's grants into a manifest, omitting the block when
-// there are none.
+// securitySpecOf renders an app's account, hardening and grants into a manifest, omitting the block when
+// the container runs with the defaults.
 func securitySpecOf(app *models.Application) *declarative.SecuritySpec {
-	if len(app.AddCapabilities) == 0 && len(app.Devices) == 0 {
+	sec := &declarative.SecuritySpec{RunAsUser: app.RunAsUser, ReadOnlyRootFilesystem: app.ReadOnlyRootFilesystem}
+	if app.NoNewPrivileges {
+		on := true
+		sec.NoNewPrivileges = &on
+	}
+	if len(app.AddCapabilities) > 0 || len(app.DropCapabilities) > 0 {
+		sec.Capabilities = &declarative.CapabilitiesSpec{Add: app.AddCapabilities, Drop: app.DropCapabilities}
+	}
+	if len(app.Devices) > 0 {
+		sec.Devices = app.Devices
+	}
+	if sec.RunAsUser == "" && !sec.ReadOnlyRootFilesystem && sec.NoNewPrivileges == nil && sec.Capabilities == nil && sec.Devices == nil {
 		return nil
 	}
-	return &declarative.SecuritySpec{AddCapabilities: app.AddCapabilities, Devices: app.Devices}
+	return sec
 }
 
-func capabilitiesOf(spec *declarative.ApplicationSpec) []string {
-	if spec == nil || spec.Security == nil {
-		return nil
+// deploymentSpecOf always states the runtime and strategy, so a manifest naming the default still diffs
+// against an app that is not on it; an export trims them back out.
+func deploymentSpecOf(app *models.Application) *declarative.DeploymentSpec {
+	d := &declarative.DeploymentSpec{Runtime: string(models.RuntimeContainer), Strategy: string(models.DeployRolling)}
+	if app.DeployStrategy != "" {
+		d.Strategy = string(app.DeployStrategy)
 	}
-	return spec.Security.AddCapabilities
-}
-
-func devicesOf(spec *declarative.ApplicationSpec) []string {
-	if spec == nil || spec.Security == nil {
-		return nil
+	if app.RuntimeKind == models.RuntimeService {
+		d.Runtime = string(models.RuntimeService)
+		d.Replicas = max(app.Replicas, 1)
+		if u := app.UpdateConfig; u != nil {
+			d.Update = &declarative.UpdateSpec{Parallelism: u.Parallelism, DelaySeconds: u.DelaySeconds}
+		}
 	}
-	return spec.Security.Devices
+	return d
 }

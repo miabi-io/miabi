@@ -6,7 +6,10 @@ package declarative
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
+
+	"github.com/miabi-io/miabi/internal/models"
 )
 
 // Action is the operation a plan entry performs.
@@ -281,7 +284,20 @@ func diffFields(actual, desired Resource) []FieldDiff {
 	return out
 }
 
-var optionalWhenUnset = map[string]bool{"strategy": true, "location": true}
+var optionalWhenUnset = map[string]bool{
+	"placement.location": true, "placement.constraints": true,
+	"deployment.strategy": true, "deployment.runtime": true, "deployment.replicas": true,
+	"deployment.update.parallelism": true, "deployment.update.delaySeconds": true,
+}
+
+// normalizedList compares a set the way the app service stores it, so CAP_NET_ADMIN in a manifest does not
+// drift against a stored NET_ADMIN. A set that fails to normalize compares raw; validation has refused it.
+func normalizedList(in []string, normalize func([]string) ([]string, error)) string {
+	if out, err := normalize(in); err == nil {
+		return strings.Join(out, ",")
+	}
+	return strings.Join(in, ",")
+}
 
 // diffRegistry compares a registry credential. Server and username are ordinary visible fields;
 // the password is compared through fingerprints stamped on both sides, never the value. It is
@@ -422,15 +438,34 @@ func specFields(r Resource) map[string]string {
 		// The credential the image is pulled with is part of the app's identity:
 		// re-pointing it at another registry must converge like any other change.
 		f["registry"] = a.Registry
-		// The account the container runs as changes the container, so a change to it must redeploy.
-		f["runAsUser"] = a.RunAsUser
-		if a.Location != "" {
-			f["location"] = a.Location
+		// The account, hardening and grants change the container, so a change to any must redeploy. Absent means
+		// the container default, so removing one from a manifest converges too.
+		f["security.runAsUser"] = a.RunAsUser()
+		f["security.readOnlyRootFilesystem"] = strconv.FormatBool(a.ReadOnlyRootFilesystem())
+		f["security.noNewPrivileges"] = strconv.FormatBool(a.NoNewPrivileges())
+		f["security.capabilities.add"] = normalizedList(a.AddCapabilities(), models.NormalizeCapabilities)
+		f["security.capabilities.drop"] = normalizedList(a.DropCapabilities(), models.NormalizeDropCapabilities)
+		f["security.devices"] = normalizedList(a.Devices(), models.NormalizeDevices)
+		if loc := a.Location(); loc != "" {
+			f["placement.location"] = loc
 		}
-		// How the next release is rolled out. Only compared when the manifest states one: an app
-		// configured in the console and a manifest that says nothing about rollout must not diff.
-		if a.Strategy != "" {
-			f["strategy"] = a.Strategy
+		// How the app runs and rolls out. Only compared when the manifest states it: an app configured in
+		// the console and a manifest that says nothing about it must not diff.
+		if s := a.Strategy(); s != "" {
+			f["deployment.strategy"] = s
+		}
+		if rt := a.Runtime(); rt != "" {
+			f["deployment.runtime"] = rt
+		}
+		if n := a.Replicas(); n > 0 {
+			f["deployment.replicas"] = strconv.Itoa(n)
+		}
+		if c := a.Constraints(); c != nil {
+			f["placement.constraints"] = strings.Join(c, ",")
+		}
+		if u := a.Update(); u != nil {
+			f["deployment.update.parallelism"] = strconv.Itoa(u.Parallelism)
+			f["deployment.update.delaySeconds"] = strconv.Itoa(u.DelaySeconds)
 		}
 		// Mounted config content is not visible in any diffed field, so its
 		// fingerprint is what makes an edit converge as an application update.
@@ -486,12 +521,12 @@ func specFields(r Resource) map[string]string {
 	case r.Database != nil:
 		f["engine"] = r.Database.Engine
 		f["version"] = r.Database.Version
-		if r.Database.Location != "" {
-			f["location"] = r.Database.Location
+		if loc := r.Database.Location(); loc != "" {
+			f["placement.location"] = loc
 		}
 	case r.Volume != nil:
-		if r.Volume.Location != "" {
-			f["location"] = r.Volume.Location
+		if loc := r.Volume.Location(); loc != "" {
+			f["placement.location"] = loc
 		}
 
 	case r.Route != nil:
@@ -530,8 +565,8 @@ func specFields(r Resource) map[string]string {
 		f["middlewares"] = strings.Join(r.Route.Middlewares, ",")
 	case r.Stack != nil:
 		f["description"] = r.Stack.Description
-		if r.Stack.Location != "" {
-			f["location"] = r.Stack.Location
+		if loc := r.Stack.Location(); loc != "" {
+			f["placement.location"] = loc
 		}
 	case r.Domain != nil:
 		f["tls"] = r.Domain.TLS

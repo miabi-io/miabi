@@ -21,7 +21,60 @@ var (
 	ErrTooManyCapabilities  = errors.New("too many capabilities requested")
 	ErrTooManyDevices       = errors.New("too many devices requested")
 	ErrDevicesOnService     = errors.New("host devices cannot be attached to a replicated service; run the app as a container instead")
+	ErrCapabilityNotLinux   = errors.New("that is not a Linux capability")
+	ErrCapabilityConflict   = errors.New("a capability cannot be both added and dropped")
 )
+
+// CapabilityAll names every capability in a drop.
+const CapabilityAll = "ALL"
+
+// linuxCapabilities is every capability the kernel defines. Any may be dropped; only the allow-list may be added.
+var linuxCapabilities = map[string]bool{
+	"AUDIT_CONTROL": true, "AUDIT_READ": true, "AUDIT_WRITE": true, "BLOCK_SUSPEND": true, "BPF": true,
+	"CHECKPOINT_RESTORE": true, "CHOWN": true, "DAC_OVERRIDE": true, "DAC_READ_SEARCH": true, "FOWNER": true,
+	"FSETID": true, "IPC_LOCK": true, "IPC_OWNER": true, "KILL": true, "LEASE": true, "LINUX_IMMUTABLE": true,
+	"MAC_ADMIN": true, "MAC_OVERRIDE": true, "MKNOD": true, "NET_ADMIN": true, "NET_BIND_SERVICE": true,
+	"NET_BROADCAST": true, "NET_RAW": true, "PERFMON": true, "SETFCAP": true, "SETGID": true, "SETPCAP": true,
+	"SETUID": true, "SYSLOG": true, "SYS_ADMIN": true, "SYS_BOOT": true, "SYS_CHROOT": true, "SYS_MODULE": true,
+	"SYS_NICE": true, "SYS_PACCT": true, "SYS_PTRACE": true, "SYS_RAWIO": true, "SYS_RESOURCE": true,
+	"SYS_TIME": true, "SYS_TTY_CONFIG": true, "WAKE_ALARM": true,
+}
+
+// NormalizeDropCapabilities cleans, de-duplicates and sorts the capabilities to drop. ALL already covers
+// every other name, so it is kept alone.
+func NormalizeDropCapabilities(in []string) ([]string, error) {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(in))
+	for _, raw := range in {
+		name := NormalizeCapability(raw)
+		switch {
+		case name == "" || seen[name]:
+			continue
+		case name != CapabilityAll && !linuxCapabilities[name]:
+			return nil, fmt.Errorf("%w: %s", ErrCapabilityNotLinux, name)
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	if seen[CapabilityAll] {
+		return []string{CapabilityAll}, nil
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// CheckCapabilityConflict refuses a capability both added and dropped by name. Dropping ALL while adding
+// some is the intended way to keep only those, so it is no conflict. Both sets must be normalized.
+func CheckCapabilityConflict(add, drop []string) error {
+	for _, d := range drop {
+		for _, a := range add {
+			if a == d {
+				return fmt.Errorf("%w: %s", ErrCapabilityConflict, a)
+			}
+		}
+	}
+	return nil
+}
 
 // CapabilityTier decides which workspaces may grant a capability or device.
 type CapabilityTier int

@@ -132,3 +132,16 @@ func TestBuildSwarmServiceSpecAddsCapabilities(t *testing.T) {
 		t.Errorf("CapabilityAdd = %v, want [CAP_NET_ADMIN]", got)
 	}
 }
+
+func TestBuildSwarmServiceSpecHardensTasks(t *testing.T) {
+	cs := buildSwarmServiceSpec(ServiceSpec{
+		Name: "svc", Image: "nginx", CapDrop: []string{"ALL"}, NoNewPrivileges: true, ReadOnlyRootfs: true,
+	}).TaskTemplate.ContainerSpec
+	if len(cs.CapabilityDrop) != 1 || !cs.ReadOnly || cs.Privileges == nil || !cs.Privileges.NoNewPrivileges {
+		t.Errorf("container spec = %+v, want ALL dropped, a read-only root and no-new-privileges", cs)
+	}
+	plain := buildSwarmServiceSpec(ServiceSpec{Name: "svc", Image: "nginx"}).TaskTemplate.ContainerSpec
+	if plain.Privileges != nil || plain.ReadOnly {
+		t.Errorf("an unhardened service grew hardening: %+v", plain)
+	}
+}

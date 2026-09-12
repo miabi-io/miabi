@@ -70,13 +70,18 @@ func (r *Resource) normalize() {
 		if r.Application.ReloadPolicy == "" {
 			r.Application.ReloadPolicy = ReloadRestart
 		}
+		r.Application.adoptDeprecated()
 	case r.Config != nil:
 		if r.Config.Mode == "" {
 			r.Config.Mode = DefaultFileMode
 		}
 	case r.Database != nil:
-		if r.Database.Placement == "" {
-			r.Database.Placement = "auto"
+		d := r.Database
+		if d.Placement != nil && d.Placement.legacyInstance != "" && d.Instance == "" {
+			d.Instance, d.Placement = d.Placement.legacyInstance, nil
+		}
+		if d.Instance == "" {
+			d.Instance = "auto"
 		}
 	case r.Route != nil:
 		if r.Route.TLS == "" {
@@ -91,6 +96,29 @@ func (r *Resource) normalize() {
 		}
 	case r.Registry != nil:
 		r.Registry.Server = normalizeRegistryServer(r.Registry.Server)
+	}
+}
+
+// adoptDeprecated moves the spellings from before these fields were grouped into their blocks. One given
+// alongside its new spelling stays put, for validate to refuse rather than pick a winner.
+func (a *ApplicationSpec) adoptDeprecated() {
+	if a.DeprecatedStrategy != "" && a.Strategy() == "" {
+		if a.Deployment == nil {
+			a.Deployment = &DeploymentSpec{}
+		}
+		a.Deployment.Strategy, a.DeprecatedStrategy = a.DeprecatedStrategy, ""
+	}
+	if a.DeprecatedRunAsUser != "" && a.RunAsUser() == "" {
+		if a.Security == nil {
+			a.Security = &SecuritySpec{}
+		}
+		a.Security.RunAsUser, a.DeprecatedRunAsUser = a.DeprecatedRunAsUser, ""
+	}
+	if sec := a.Security; sec != nil && sec.DeprecatedAddCapabilities != nil && a.AddCapabilities() == nil {
+		if sec.Capabilities == nil {
+			sec.Capabilities = &CapabilitiesSpec{}
+		}
+		sec.Capabilities.Add, sec.DeprecatedAddCapabilities = sec.DeprecatedAddCapabilities, nil
 	}
 }
 
@@ -184,6 +212,34 @@ var validHTTPMethod = map[string]bool{
 // declarative package keeps its one dependency; a test asserts the two lists agree.
 var validStrategy = map[string]bool{"recreate": true, "rolling": true, "canary": true}
 
+var constraintRe = regexp.MustCompile(`^[A-Za-z0-9_.-]+\s*(==|!=)\s*[^\s=!].*$`)
+
+// validateRuntime refuses service settings on a container rather than ignoring them: a manifest
+// asking for three replicas must not quietly run one.
+func validateRuntime(name string, a *ApplicationSpec) error {
+	runtime := a.Runtime()
+	service := runtime == string(models.RuntimeService)
+	switch {
+	case runtime != "" && !models.ValidRuntimeKind(models.RuntimeKind(runtime)):
+		return fmt.Errorf("application %q: deployment.runtime %q must be container or service", name, runtime)
+	case !service && (a.Replicas() != 0 || a.Constraints() != nil || a.Update() != nil):
+		return fmt.Errorf("application %q: deployment.replicas, deployment.update and placement.constraints need deployment.runtime: service", name)
+	case a.Replicas() < 0 || a.Replicas() > models.MaxServiceReplicas:
+		return fmt.Errorf("application %q: deployment.replicas %d must be between 1 and %d", name, a.Replicas(), models.MaxServiceReplicas)
+	case service && len(a.Devices()) > 0:
+		return fmt.Errorf("application %q: %w", name, models.ErrDevicesOnService)
+	}
+	for _, c := range a.Constraints() {
+		if !constraintRe.MatchString(strings.TrimSpace(c)) {
+			return fmt.Errorf("application %q: placement constraint %q must read <attribute>==<value> or <attribute>!=<value>", name, c)
+		}
+	}
+	if u := a.Update(); u != nil && (u.Parallelism < 0 || u.DelaySeconds < 0) {
+		return fmt.Errorf("application %q: deployment.update parallelism and delaySeconds cannot be negative", name)
+	}
+	return nil
+}
+
 // validateMeta enforces the key/value rules for the two free-form metadata maps.
 // Keys are constrained for both maps; label values are constrained too, while
 // annotation values are left arbitrary (they exist precisely to hold free text).
@@ -257,6 +313,14 @@ func (r *Resource) validateApplication() error {
 	if a == nil {
 		return fmt.Errorf("application %q: spec is required", r.Metadata.Name)
 	}
+	switch {
+	case a.DeprecatedStrategy != "":
+		return fmt.Errorf("application %q: strategy is the old spelling of deployment.strategy; set only deployment.strategy", r.Metadata.Name)
+	case a.DeprecatedRunAsUser != "":
+		return fmt.Errorf("application %q: runAsUser is the old spelling of security.runAsUser; set only security.runAsUser", r.Metadata.Name)
+	case a.Security != nil && a.Security.DeprecatedAddCapabilities != nil:
+		return fmt.Errorf("application %q: security.addCapabilities is the old spelling of security.capabilities.add; set only security.capabilities.add", r.Metadata.Name)
+	}
 	hasImage, hasSource := strings.TrimSpace(a.Image) != "", a.Source != nil
 	switch {
 	case !hasImage && !hasSource:
@@ -292,15 +356,23 @@ func (r *Resource) validateApplication() error {
 	}
 	// Shape only: whether the account is allowed at all depends on the target workspace's
 	// security profile, which the app service checks on apply.
-	if _, err := models.NormalizeRunAsUser(a.RunAsUser); err != nil {
-		return fmt.Errorf("application %q: runAsUser %q: %w", r.Metadata.Name, a.RunAsUser, err)
+	if _, err := models.NormalizeRunAsUser(a.RunAsUser()); err != nil {
+		return fmt.Errorf("application %q: security.runAsUser %q: %w", r.Metadata.Name, a.RunAsUser(), err)
 	}
 	// Shape and allow-list only; the workspace gate is the app service's, as above.
 	if a.Security != nil {
-		if _, err := models.NormalizeCapabilities(a.Security.AddCapabilities); err != nil {
+		add, err := models.NormalizeCapabilities(a.AddCapabilities())
+		if err != nil {
 			return fmt.Errorf("application %q: %w", r.Metadata.Name, err)
 		}
-		if _, err := models.NormalizeDevices(a.Security.Devices); err != nil {
+		drop, err := models.NormalizeDropCapabilities(a.DropCapabilities())
+		if err != nil {
+			return fmt.Errorf("application %q: %w", r.Metadata.Name, err)
+		}
+		if err := models.CheckCapabilityConflict(add, drop); err != nil {
+			return fmt.Errorf("application %q: %w", r.Metadata.Name, err)
+		}
+		if _, err := models.NormalizeDevices(a.Devices()); err != nil {
 			return fmt.Errorf("application %q: %w", r.Metadata.Name, err)
 		}
 	}
@@ -310,8 +382,11 @@ func (r *Resource) validateApplication() error {
 	if a.Registry != "" && !nameRe.MatchString(a.Registry) {
 		return fmt.Errorf("application %q: registry %q must be a resource name matching %s", r.Metadata.Name, a.Registry, nameRe)
 	}
-	if a.Strategy != "" && !validStrategy[a.Strategy] {
-		return fmt.Errorf("application %q: strategy %q must be recreate, rolling or canary", r.Metadata.Name, a.Strategy)
+	if s := a.Strategy(); s != "" && !validStrategy[s] {
+		return fmt.Errorf("application %q: deployment.strategy %q must be recreate, rolling or canary", r.Metadata.Name, s)
+	}
+	if err := validateRuntime(r.Metadata.Name, a); err != nil {
+		return err
 	}
 	if a.ReloadPolicy != "" && a.ReloadPolicy != ReloadRestart && a.ReloadPolicy != ReloadNone {
 		return fmt.Errorf("application %q: reloadPolicy %q must be %q or %q", r.Metadata.Name, a.ReloadPolicy, ReloadRestart, ReloadNone)
@@ -351,11 +426,14 @@ func (r *Resource) validateDatabase() error {
 	if !validEngines[d.Engine] {
 		return fmt.Errorf("database %q: unsupported engine %q", r.Metadata.Name, d.Engine)
 	}
-	if !placements[d.Placement] {
-		return fmt.Errorf("database %q: invalid placement %q", r.Metadata.Name, d.Placement)
+	if d.Placement != nil && d.Placement.legacyInstance != "" {
+		return fmt.Errorf("database %q: placement: %s is the old spelling of instance; set only instance", r.Metadata.Name, d.Placement.legacyInstance)
 	}
-	if !engineSupportsLogical(d.Engine) && d.Placement == "shared" {
-		return fmt.Errorf("database %q: engine %q has no logical databases; placement cannot be 'shared'", r.Metadata.Name, d.Engine)
+	if !placements[d.Instance] {
+		return fmt.Errorf("database %q: invalid instance %q", r.Metadata.Name, d.Instance)
+	}
+	if !engineSupportsLogical(d.Engine) && d.Instance == "shared" {
+		return fmt.Errorf("database %q: engine %q has no logical databases; instance cannot be 'shared'", r.Metadata.Name, d.Engine)
 	}
 	return nil
 }

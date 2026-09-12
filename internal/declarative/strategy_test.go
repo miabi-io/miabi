@@ -21,7 +21,7 @@ spec:
   ports: [{ container: 8080 }]
 `
 	if strategy != "" {
-		body += "  strategy: " + strategy + "\n"
+		body += "  deployment:\n    strategy: " + strategy + "\n"
 	}
 	return body
 }
@@ -33,8 +33,8 @@ func TestStrategyParses(t *testing.T) {
 			t.Fatalf("%s: %v", st, err)
 		}
 		r, _ := set.Get("Application/web")
-		if r.Application.Strategy != st {
-			t.Errorf("strategy = %q, want %q", r.Application.Strategy, st)
+		if r.Application.Strategy() != st {
+			t.Errorf("strategy = %q, want %q", r.Application.Strategy(), st)
 		}
 	}
 }
@@ -86,7 +86,7 @@ func TestDeclaredStrategyConverges(t *testing.T) {
 	plan := d.BuildPlan(desired, actual, d.PlanOptions{})
 	for _, c := range plan.Changes {
 		for _, f := range c.Fields {
-			if f.Field == "strategy" && f.From == "rolling" && f.To == "canary" {
+			if f.Field == "deployment.strategy" && f.From == "rolling" && f.To == "canary" {
 				return
 			}
 		}

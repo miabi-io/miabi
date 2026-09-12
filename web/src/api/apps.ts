@@ -37,6 +37,10 @@ export interface AppResourceInput {
   /** Extra Linux capabilities and host devices. An empty array revokes. */
   add_capabilities?: string[]
   devices?: string[]
+  /** Hardening on top of the workspace's security profile; ALL drops every capability. */
+  read_only_root_filesystem?: boolean
+  no_new_privileges?: boolean
+  drop_capabilities?: string[]
   restart_policy?: RestartPolicy
   image_pull_policy?: ImagePullPolicy
   healthcheck_type?: HealthcheckType

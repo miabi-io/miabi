@@ -187,6 +187,10 @@ const (
 	RuntimeService RuntimeKind = "service"
 )
 
+// MaxServiceReplicas caps a service app's replica count so a single request can't ask Swarm to
+// schedule an unbounded number of tasks (node resource-exhaustion DoS).
+const MaxServiceReplicas = 100
+
 // ValidRuntimeKind reports whether k is a known runtime kind.
 func ValidRuntimeKind(k RuntimeKind) bool {
 	switch k {
@@ -414,6 +418,11 @@ type Application struct {
 	// grants nothing; both need a redeploy.
 	AddCapabilities []string `json:"add_capabilities,omitempty" gorm:"serializer:json"`
 	Devices         []string `json:"devices,omitempty" gorm:"serializer:json"`
+	// ReadOnlyRootFilesystem, NoNewPrivileges and DropCapabilities (ALL for every one) harden the container
+	// on top of the workspace's security profile, which they can tighten but never loosen. Need a redeploy.
+	ReadOnlyRootFilesystem bool     `json:"read_only_root_filesystem" gorm:"not null;default:false"`
+	NoNewPrivileges        bool     `json:"no_new_privileges" gorm:"not null;default:false"`
+	DropCapabilities       []string `json:"drop_capabilities,omitempty" gorm:"serializer:json"`
 	// RestartPolicy is the Docker restart policy for the app's container.
 	// Defaults to unless-stopped (the platform's historical behavior).
 	RestartPolicy RestartPolicy `json:"restart_policy" gorm:"not null;default:unless-stopped"`

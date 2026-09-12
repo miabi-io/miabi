@@ -59,6 +59,8 @@ type Security struct {
 	// workspace's. One is additive, the other subtractive.
 	CapAdd  []string
 	Devices []string
+	// ReadOnlyRootfs is the app's own. The app's hardening also joins NoNewPrivileges and CapDrop.
+	ReadOnlyRootfs bool
 	// Restricted marks the "restricted" security profile as in force for this workload — the
 	// non-root mandate, not merely the presence of a user.
 	Restricted bool
@@ -74,6 +76,7 @@ func (s Security) applyTo(spec *docker.RunSpec) {
 	spec.CapDrop = s.CapDrop
 	spec.CapAdd = s.CapAdd
 	spec.Devices = s.Devices
+	spec.ReadOnlyRootfs = s.ReadOnlyRootfs
 }
 
 // SecurityResolver resolves the security profile for a workspace's app/job containers. Optional
@@ -209,13 +212,43 @@ func (s Security) withRunAsUser(runAsUser string) (Security, error) {
 func (b *runtimeBuilder) SetGrantGuard(g GrantGuard) { b.grants = g }
 
 // workloadSecurity resolves the hardening a container runs with: the workspace's
-// profile, with the app's own run-as user and grants layered on top.
+// profile, with the app's own run-as user, grants and hardening layered on top.
 func (b *runtimeBuilder) workloadSecurity(app *models.Application, runAsUser string) (Security, error) {
 	sec, err := b.containerSecurity(app).withRunAsUser(runAsUser)
 	if err != nil {
 		return sec, err
 	}
-	return b.withGrants(sec, app)
+	if sec, err = b.withGrants(sec, app); err != nil {
+		return sec, err
+	}
+	return sec.withHardening(app), nil
+}
+
+// withHardening layers the app's own hardening over the profile's. Both only take privileges away, so they
+// combine rather than one replacing the other.
+func (s Security) withHardening(app *models.Application) Security {
+	s.NoNewPrivileges = s.NoNewPrivileges || app.NoNewPrivileges
+	s.ReadOnlyRootfs = app.ReadOnlyRootFilesystem
+	if len(app.DropCapabilities) == 0 {
+		return s
+	}
+	drop := append([]string(nil), s.CapDrop...)
+	for _, c := range app.DropCapabilities {
+		if !containsString(drop, c) {
+			drop = append(drop, c)
+		}
+	}
+	s.CapDrop = drop
+	return s
+}
+
+func containsString(list []string, v string) bool {
+	for _, s := range list {
+		if s == v {
+			return true
+		}
+	}
+	return false
 }
 
 // withGrants applies the app's grants, refusing if the workspace no longer

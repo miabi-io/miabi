@@ -1,7 +1,7 @@
 # Pinning the account an application's container runs as — the manifest equivalent
 # of `docker run --user`.
 #
-# `runAsUser` accepts `uid`, `uid:gid`, `name` and `name:group`. Omit it and the
+# `security.runAsUser` accepts `uid`, `uid:gid`, `name` and `name:group`. Omit it and the
 # container runs as whatever user the image declares, which for a lot of images is
 # still root.
 #
@@ -11,7 +11,7 @@
 #      `node` (uid 1000), nginx-unprivileged ships uid 101 — running as anything
 #      else means the process can't write its own working directory.
 #   2. The workspace runs under the restricted security profile, which forces a
-#      non-root platform UID. `runAsUser` lets one app override *which* non-root
+#      non-root platform UID. `security.runAsUser` lets one app override *which* non-root
 #      uid that is, without dropping the workspace's hardening.
 #
 # Under the restricted profile the value must be a **numeric** non-root uid. A
@@ -40,7 +40,8 @@ metadata:
 spec:
   image: ghcr.io/acme/api
   tag: "2.1.0"
-  runAsUser: "1000:1000"
+  security:
+    runAsUser: "1000:1000"
   ports:
     - container: 8080
       externalAccess: true
@@ -58,4 +59,5 @@ spec:
   image: node
   tag: "22-alpine"
   command: ["node", "worker.js"]
-  runAsUser: node
+  security:
+    runAsUser: node
