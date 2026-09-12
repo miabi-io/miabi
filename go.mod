@@ -52,7 +52,7 @@ require (
 	github.com/libdns/transip v1.1.2
 	github.com/miabi-io/runner v0.0.10
 	github.com/miekg/dns v1.1.73
-	github.com/moby/go-archive v0.3.0
+	github.com/moby/go-archive v0.3.3
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.0
 	github.com/pquerna/otp v1.5.0
