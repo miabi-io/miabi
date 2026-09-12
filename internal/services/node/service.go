@@ -375,7 +375,7 @@ func (s *Service) FindBySwarmNodeID(swarmNodeID string) (*models.Server, error) 
 // RegisterClusterNode creates the record for a swarm worker that registered itself through the global agent
 // service. The caller has already verified the swarm node id is a member of THIS swarm, so this is not an
 // open registration endpoint. The node is marked AutoJoined: the cluster brought it in, an admin did not.
-func (s *Service) RegisterClusterNode(swarmNodeID, hostname string) (*models.Server, error) {
+func (s *Service) RegisterClusterNode(clusterID uint, swarmNodeID, hostname string) (*models.Server, error) {
 	if err := s.checkNodeLimit(); err != nil {
 		return nil, err
 	}
@@ -395,7 +395,8 @@ func (s *Service) RegisterClusterNode(swarmNodeID, hostname string) (*models.Ser
 		AutoJoined:     true,
 		PublicHostname: strings.TrimSpace(hostname),
 	}
-	if s.clusters != nil {
+	srv.ClusterID = clusterID
+	if clusterID == models.DefaultClusterID && s.clusters != nil {
 		if def, err := s.clusters.FindDefault(); err == nil {
 			srv.ClusterID = def.ID
 		}

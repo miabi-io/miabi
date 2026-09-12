@@ -535,6 +535,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}()
 	}
 	databaseService.SetNetworkProvider(networkService) // DBs run on the workspace's default network, alongside its apps
+	databaseService.SetSwarmNetworks(clusterService)
 	// Delete guard: refuse to orphan a volume/database whose owning app/database/
 	// stack still exists (records its owner in metadata; see models.Owner). A
 	// stale owner (already deleted) returns false here and does not block.

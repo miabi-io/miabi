@@ -59,11 +59,14 @@ func firewallRules() []FirewallRule {
 	}
 }
 
-// Preflight inspects the manager's Docker engine and reports what an operator needs
-// to know before enabling cluster mode. It never mutates anything, and it works
-// whether or not cluster mode is already on.
-func (s *Service) Preflight(ctx context.Context) (Preflight, error) {
-	info, err := s.clients.Local().Info(ctx)
+// Preflight inspects a cluster's manager engine and reports what an operator needs to know before
+// enabling Swarm there. It never mutates anything, and it works whether or not Swarm is already on.
+func (s *Service) Preflight(ctx context.Context, clusterID uint) (Preflight, error) {
+	mgr, err := s.Manager(ctx, clusterID)
+	if err != nil {
+		return Preflight{}, err
+	}
+	info, err := mgr.Info(ctx)
 	if err != nil {
 		return Preflight{}, err
 	}

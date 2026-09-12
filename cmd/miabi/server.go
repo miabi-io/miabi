@@ -398,6 +398,9 @@ func runServer(cli *okapicli.CLI) {
 			// recreate draw from the Miabi pool, not Docker's default address pool.
 			subnetAllocator := newSubnetAllocator(cfg, res.db)
 			deployHandler.SetAllocator(subnetAllocator)
+			clusterService.SetAllocator(subnetAllocator)
+			dbService.SetSwarmNetworks(clusterService)
+			deployHandler.SetClusterConcurrency(cfg.WorkerConcurrency / 2)
 			jobHandler.SetAllocator(subnetAllocator)
 			// Cluster mode: a routed app also joins the shared ingress overlay, so the
 			// central gateway reaches it on any node without a published host port.

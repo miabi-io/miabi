@@ -234,22 +234,30 @@ func (s *Service) SetNetworkEnsurer(e NetworkEnsurer) { s.netEnsurer = e }
 type ClusterCap interface {
 	IsSwarm(clusterID uint) bool
 	Manager(ctx context.Context, clusterID uint) (docker.Client, error)
+	ClusterOfServer(serverID uint) uint
 }
 
 // SetClusterCap wires the cluster-capability check (nil-safe; nil means cluster
 // mode is treated as off, so service-runtime apps are rejected).
 func (s *Service) SetClusterCap(c ClusterCap) { s.cluster = c }
 
-// clusterEnabled reports whether service apps can run: they all run in the default cluster's swarm.
-func (s *Service) clusterEnabled() bool {
-	return s.cluster != nil && s.cluster.IsSwarm(models.DefaultClusterID)
+// isSwarm reports whether the app's cluster runs the swarm a service app needs.
+func (s *Service) isSwarm(clusterID uint) bool {
+	return s.cluster != nil && s.cluster.IsSwarm(clusterID)
 }
 
-func (s *Service) swarmManager(ctx context.Context) (docker.Client, error) {
+func (s *Service) clusterOf(serverID uint) uint {
+	if s.cluster == nil {
+		return models.DefaultClusterID
+	}
+	return s.cluster.ClusterOfServer(serverID)
+}
+
+func (s *Service) swarmManager(ctx context.Context, app *models.Application) (docker.Client, error) {
 	if s.cluster == nil {
 		return s.clients.For(0)
 	}
-	return s.cluster.Manager(ctx, models.DefaultClusterID)
+	return s.cluster.Manager(ctx, app.ClusterID)
 }
 
 // SetPortBindings wires the port-binding repository used by EnsurePublished to
@@ -355,10 +363,10 @@ func (s *Service) annotatePlacement(ctx context.Context, app *models.Application
 	if app == nil || app.RuntimeKind != models.RuntimeService {
 		return
 	}
-	if !s.clusterEnabled() {
+	if !s.isSwarm(app.ClusterID) {
 		return
 	}
-	mgr, err := s.swarmManager(ctx)
+	mgr, err := s.swarmManager(ctx, app)
 	if err != nil {
 		return
 	}
@@ -687,7 +695,7 @@ func (s *Service) LiveStatus(ctx context.Context, app *models.Application) LiveS
 // manager's view of its Swarm service: desired replicas vs running tasks. There
 // is no single container to inspect, so status is derived from task convergence.
 func (s *Service) serviceLiveStatus(ctx context.Context, app *models.Application, ls LiveStatus) LiveStatus {
-	mgr, err := s.swarmManager(ctx)
+	mgr, err := s.swarmManager(ctx, app)
 	if err != nil {
 		return ls // manager unreachable — report the stored status
 	}
@@ -887,8 +895,9 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 	}
 	app := &models.Application{
 		WorkspaceID: workspaceID, Name: appName, DisplayName: displayName, SourceType: in.SourceType, ServerID: serverID,
-		Icon:  in.Icon,
-		Image: in.Image, Tag: in.Tag, GitRepo: in.GitRepo, GitRef: in.GitRef,
+		ClusterID: s.clusterOf(serverID),
+		Icon:      in.Icon,
+		Image:     in.Image, Tag: in.Tag, GitRepo: in.GitRepo, GitRef: in.GitRef,
 		BuildMethod: buildMethodForSource(in.SourceType, in.BuildMethod),
 		Builder:     in.Builder, Buildpacks: in.Buildpacks, BuildEnv: in.BuildEnv,
 		RegistryID: in.RegistryID, GitRepositoryID: in.GitRepositoryID, StackID: in.StackID,
@@ -915,7 +924,7 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 	// only; declarative sources stay deterministic. normalizeRuntime has already turned an unspecified kind into
 	// "container", so branch on the original input, and mark the choice for reconcileAutoRuntime to re-check.
 	interactive := app.Metadata[models.MetaManagedBy] == models.ManagedByUser
-	if defaultToServiceRuntime(in.RuntimeKind, s.clusterEnabled(), interactive) {
+	if defaultToServiceRuntime(in.RuntimeKind, s.isSwarm(app.ClusterID), interactive) {
 		app.RuntimeKind = models.RuntimeService
 		app.Metadata = models.SetBuiltin(app.Metadata, models.MetaRuntimeAutoService, "true")
 	}
@@ -1265,7 +1274,7 @@ func normalizeRuntime(app *models.Application) {
 // runtime the app already has (""=none): the rule is about the change, not the
 // state, or an app already a service could never be edited back out of one.
 func (s *Service) validateRuntime(app *models.Application, stored models.RuntimeKind) error {
-	if app.RuntimeKind == models.RuntimeService && !s.clusterEnabled() {
+	if app.RuntimeKind == models.RuntimeService && !s.isSwarm(app.ClusterID) {
 		switch {
 		case app.Metadata[models.MetaRuntimeAutoService] == "true":
 			// The platform chose this runtime, so it un-chooses it — the same
@@ -1526,7 +1535,7 @@ func (s *Service) Start(ctx context.Context, app *models.Application) (*models.D
 		if replicas < 1 {
 			replicas = 1
 		}
-		mgr, err := s.swarmManager(ctx)
+		mgr, err := s.swarmManager(ctx, app)
 		if err != nil {
 			return nil, err
 		}
@@ -1557,7 +1566,7 @@ func (s *Service) Stop(ctx context.Context, app *models.Application) error {
 	prev := app.Status
 	_ = s.apps.SetStatus(app.ID, models.AppStatusStopped)
 	if app.RuntimeKind == models.RuntimeService {
-		mgr, err := s.swarmManager(ctx)
+		mgr, err := s.swarmManager(ctx, app)
 		if err != nil {
 			_ = s.apps.SetStatus(app.ID, prev)
 			return err
@@ -1589,7 +1598,7 @@ func (s *Service) Restart(ctx context.Context, app *models.Application) (*models
 	}
 	if app.RuntimeKind == models.RuntimeService {
 		// Restart = force a rolling restart of the service's tasks in place.
-		mgr, err := s.swarmManager(ctx)
+		mgr, err := s.swarmManager(ctx, app)
 		if err != nil {
 			return nil, err
 		}
@@ -1617,7 +1626,7 @@ func (s *Service) Scale(ctx context.Context, app *models.Application, replicas i
 	if app.RuntimeKind != models.RuntimeService {
 		return ErrNotService
 	}
-	if !s.clusterEnabled() {
+	if !s.isSwarm(app.ClusterID) {
 		return ErrClusterDisabled
 	}
 	if replicas < 1 {
@@ -1632,7 +1641,7 @@ func (s *Service) Scale(ctx context.Context, app *models.Application, replicas i
 	if err := s.checkCompute(app, replicas); err != nil {
 		return err
 	}
-	mgr, err := s.swarmManager(ctx)
+	mgr, err := s.swarmManager(ctx, app)
 	if err != nil {
 		return err
 	}
