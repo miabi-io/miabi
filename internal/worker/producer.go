@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hibiken/asynq"
+	"github.com/miabi-io/miabi/internal/services/database"
 )
 
 // Queue names, ordered by priority weight in the worker config.
@@ -56,6 +57,11 @@ type CanaryStepPayload struct {
 // ProvisionDBPayload identifies the database to provision.
 type ProvisionDBPayload struct {
 	DatabaseID uint `json:"database_id"`
+	// Resize recreates an existing instance's container with its new limits; the previous ones are what a failed
+	// resize restores.
+	Resize          bool  `json:"resize,omitempty"`
+	PrevMemoryBytes int64 `json:"prev_memory_bytes,omitempty"`
+	PrevNanoCPUs    int64 `json:"prev_nano_cpus,omitempty"`
 }
 
 // UpgradeDBPayload describes a queued database version upgrade.
@@ -198,6 +204,20 @@ func (p *Producer) EnqueueProvisionDB(databaseID, serverID uint) error {
 		return err
 	}
 	task := asynq.NewTask(TypeProvisionDB, payload, asynq.Queue(p.nodeQueue(serverID, QueueDefault)), asynq.MaxRetry(p.maxRetries))
+	_, err = p.client.Enqueue(task)
+	return err
+}
+
+// EnqueueResizeDB schedules recreating a database's container with new limits. MaxRetry is 0, like an upgrade:
+// the job restores the previous limits itself on failure.
+func (p *Producer) EnqueueResizeDB(databaseID, serverID uint, previous database.Resources) error {
+	payload, err := json.Marshal(ProvisionDBPayload{
+		DatabaseID: databaseID, Resize: true, PrevMemoryBytes: previous.MemoryBytes, PrevNanoCPUs: previous.NanoCPUs,
+	})
+	if err != nil {
+		return err
+	}
+	task := asynq.NewTask(TypeProvisionDB, payload, asynq.Queue(p.nodeQueue(serverID, QueueDefault)), asynq.MaxRetry(0))
 	_, err = p.client.Enqueue(task)
 	return err
 }

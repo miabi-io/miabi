@@ -28,6 +28,9 @@ func (h *ProvisionDBHandler) ProcessTask(ctx context.Context, task *asynq.Task) 
 	if err := json.Unmarshal(task.Payload(), &p); err != nil {
 		return fmt.Errorf("bad provision payload: %w", err)
 	}
+	if p.Resize {
+		return h.dbs.RunResize(ctx, p.DatabaseID, database.Resources{MemoryBytes: p.PrevMemoryBytes, NanoCPUs: p.PrevNanoCPUs})
+	}
 	if err := h.dbs.RunProvision(ctx, p.DatabaseID); err != nil {
 		logger.Error("database provisioning failed", "database", p.DatabaseID, "error", err)
 		return err

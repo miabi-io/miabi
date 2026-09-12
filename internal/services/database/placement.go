@@ -70,7 +70,7 @@ func (s *Service) ResolveDependency(ctx context.Context, workspaceID, serverID, 
 // database with its own scoped user, whose CREATE DDL runs when the instance comes up, and returns that
 // connection. Redis and libSQL host no logical databases, so the app receives the instance connection.
 func (s *Service) provisionDedicated(ctx context.Context, workspaceID uint, base, declName string, engine models.DBEngine, version string, serverID uint, meta models.Metadata) (*models.DatabaseInstance, *models.Database, ConnectionInfo, bool, error) {
-	inst, err := s.Provision(ctx, workspaceID, serverID, strings.TrimSpace(base), engine, version, 0, meta, nil)
+	inst, err := s.Provision(ctx, workspaceID, serverID, strings.TrimSpace(base), engine, version, 0, Resources{}, meta, nil)
 	if err != nil {
 		return nil, nil, ConnectionInfo{}, false, err
 	}

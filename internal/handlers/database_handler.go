@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"errors"
+	"math"
 	"strconv"
 	"strings"
 
@@ -64,7 +65,23 @@ type CreateDatabaseRequest struct {
 		// ServerID pins a node; platform admins only.
 		ServerID uint `json:"server_id"`
 		SizeMB   int  `json:"size_mb"` // data-volume capacity in MB (0 = unspecified)
+		// MemoryMB and CPUCores limit the container (0 = unlimited, or the engine's default size when the
+		// plan caps the database budget).
+		MemoryMB int     `json:"memory_mb" min:"0"`
+		CPUCores float64 `json:"cpu_cores" min:"0"`
 	} `json:"body"`
+}
+
+// ResizeDatabaseRequest sets an instance's container limits. The instance restarts to apply them.
+type ResizeDatabaseRequest struct {
+	Body struct {
+		MemoryMB int     `json:"memory_mb" min:"0"`
+		CPUCores float64 `json:"cpu_cores" min:"0"`
+	} `json:"body"`
+}
+
+func databaseResources(memoryMB int, cpuCores float64) database.Resources {
+	return database.Resources{MemoryBytes: int64(memoryMB) * 1024 * 1024, NanoCPUs: int64(math.Round(cpuCores * 1e9))}
 }
 
 // Create provisions a new database server instance (the container is brought up
@@ -82,13 +99,17 @@ func (h *DatabaseHandler) Create(c *okapi.Context, req *CreateDatabaseRequest) e
 		}
 		return c.AbortInternalServerError("failed to place the database", err)
 	}
-	inst, err := h.svc.Provision(c.Request().Context(), wsID, placed.ServerID, req.Body.Name, models.DBEngine(req.Body.Engine), req.Body.Version, sizeBytes, selfOwnerMeta(h.users, c), nil)
+	inst, err := h.svc.Provision(c.Request().Context(), wsID, placed.ServerID, req.Body.Name, models.DBEngine(req.Body.Engine), req.Body.Version, sizeBytes,
+		databaseResources(req.Body.MemoryMB, req.Body.CPUCores), selfOwnerMeta(h.users, c), nil)
 	if err != nil {
 		if a := quotaAbort(c, err); a != nil {
 			return a
 		}
 		if errors.Is(err, database.ErrUnsupportedEngine) {
 			return c.AbortBadRequest("unsupported engine")
+		}
+		if errors.Is(err, database.ErrInvalidResources) {
+			return c.AbortBadRequest(err.Error())
 		}
 		if errors.Is(err, nodes.ErrNodeOffline) || errors.Is(err, node.ErrNodeCordoned) || errors.Is(err, node.ErrNodeNotFound) {
 			return c.AbortWithError(409, err)
@@ -282,6 +303,29 @@ func (h *DatabaseHandler) Restart(c *okapi.Context) error {
 	}
 	h.record(c, inst.WorkspaceID, "database.restart", inst.ID)
 	return message(c, "database restarted")
+}
+
+// Resize sets the instance's CPU and memory limits; the container is recreated in the background to apply them.
+func (h *DatabaseHandler) Resize(c *okapi.Context, req *ResizeDatabaseRequest) error {
+	inst, err := h.load(c)
+	if err != nil {
+		return c.AbortNotFound("database not found")
+	}
+	updated, err := h.svc.Resize(c.Request().Context(), inst, databaseResources(req.Body.MemoryMB, req.Body.CPUCores))
+	if err != nil {
+		if a := quotaAbort(c, err); a != nil {
+			return a
+		}
+		switch {
+		case errors.Is(err, database.ErrInvalidResources):
+			return c.AbortBadRequest(err.Error())
+		case errors.Is(err, database.ErrInstanceBusy):
+			return c.AbortWithError(409, err)
+		}
+		return h.mapInstanceErr(c, err)
+	}
+	h.record(c, inst.WorkspaceID, "database.resize", inst.ID)
+	return ok(c, updated)
 }
 
 // UpgradeOptions returns the suggested upgrade targets + affected apps for an

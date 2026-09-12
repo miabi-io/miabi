@@ -256,6 +256,8 @@ type DatabaseInstance struct {
 	Engine      string            `json:"engine"`
 	Version     string            `json:"version,omitempty"`
 	VolumeSize  int64             `json:"volume_size_bytes,omitempty"`
+	MemoryBytes int64             `json:"memory_bytes,omitempty"`
+	NanoCPUs    int64             `json:"nano_cpus,omitempty"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
 	Annotations map[string]string `json:"annotations,omitempty"`
 	Databases   []LogicalDatabase `json:"logical_databases,omitempty"`

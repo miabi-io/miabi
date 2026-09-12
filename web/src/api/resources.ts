@@ -56,12 +56,15 @@ export const databaseApi = {
   eventsUrl: (ws: number, id: number) => sseUrl(`${w(ws)}/databases/${id}/events`),
   // SSE stream of live status for every instance in the workspace (list page).
   workspaceEventsUrl: (ws: number) => sseUrl(`${w(ws)}/databases/events`),
-  create: (ws: number, name: string, engine: DBEngine, version?: string, serverId?: number, sizeMb?: number, location?: string) =>
-    api.post<ApiResponse<DatabaseInstance>>(`${w(ws)}/databases`, { name, engine, version, server_id: serverId, size_mb: sizeMb, location }),
+  create: (ws: number, name: string, engine: DBEngine, version?: string, serverId?: number, sizeMb?: number, location?: string, memoryMb?: number, cpuCores?: number) =>
+    api.post<ApiResponse<DatabaseInstance>>(`${w(ws)}/databases`, { name, engine, version, server_id: serverId, size_mb: sizeMb, location, memory_mb: memoryMb, cpu_cores: cpuCores }),
   credentials: (ws: number, id: number) => api.get<ApiResponse<ConnectionInfo>>(`${w(ws)}/databases/${id}/credentials`),
   start: (ws: number, id: number) => api.post<ApiResponse<{ message: string }>>(`${w(ws)}/databases/${id}/start`),
   stop: (ws: number, id: number) => api.post<ApiResponse<{ message: string }>>(`${w(ws)}/databases/${id}/stop`),
   restart: (ws: number, id: number) => api.post<ApiResponse<{ message: string }>>(`${w(ws)}/databases/${id}/restart`),
+  // Sets CPU and memory limits (0 = unlimited); the instance restarts to apply them.
+  resize: (ws: number, id: number, memoryMb: number, cpuCores: number) =>
+    api.put<ApiResponse<DatabaseInstance>>(`${w(ws)}/databases/${id}/resources`, { memory_mb: memoryMb, cpu_cores: cpuCores }),
   syncSizes: (ws: number, id: number) => api.post<ApiResponse<DatabaseInstance>>(`${w(ws)}/databases/${id}/sync-sizes`),
   logsUrl: (ws: number, id: number) => sseUrl(`${w(ws)}/databases/${id}/logs`),
   upgradeOptions: (ws: number, id: number) => api.get<ApiResponse<UpgradeOptions>>(`${w(ws)}/databases/${id}/upgrade`),

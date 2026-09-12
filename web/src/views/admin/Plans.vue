@@ -63,6 +63,7 @@ type LimitKey =
   | 'max_volumes' | 'max_networks' | 'max_api_keys' | 'max_members'
   | 'max_databases_per_instance' | 'max_cpu_cores' | 'max_memory_mb'
   | 'max_database_instance_size_mb' | 'max_storage_mb' | 'max_runners'
+  | 'max_database_cpu_cores' | 'max_database_memory_mb'
 const limitFields: { key: LimitKey; label: string }[] = [
   { key: 'max_apps', label: 'Apps' },
   { key: 'max_database_instances', label: 'DB instances' },
@@ -75,6 +76,8 @@ const limitFields: { key: LimitKey; label: string }[] = [
   { key: 'max_runners', label: 'Runners' },
   { key: 'max_cpu_cores', label: 'CPU cores' },
   { key: 'max_memory_mb', label: 'Memory (MB)' },
+  { key: 'max_database_cpu_cores', label: 'DB CPU cores' },
+  { key: 'max_database_memory_mb', label: 'DB memory (MB)' },
   { key: 'max_database_instance_size_mb', label: 'DB size (MB)' },
   { key: 'max_storage_mb', label: 'Storage (MB)' },
 ]
@@ -95,6 +98,7 @@ function blank(): PlanInput {
     max_volumes: -1, max_networks: -1, max_api_keys: -1, max_members: -1,
     max_databases_per_instance: -1, max_cpu_cores: -1, max_memory_mb: -1,
     max_database_instance_size_mb: -1, max_storage_mb: -1, max_runners: -1, max_gpus: 0,
+    max_database_cpu_cores: -1, max_database_memory_mb: -1,
     allow_custom_tls: true, allow_privileged_host_mounts: true, allow_shell_exec: true,
     allow_shared_storage: true, allow_dns_providers: true, allow_custom_labels: true,
     allow_platform_runners: false, allow_gpu: false,

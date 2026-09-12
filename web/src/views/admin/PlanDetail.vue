@@ -28,7 +28,7 @@ const saving = ref(false)
 type LimitKey = keyof Pick<PlanInput,
   | 'max_apps' | 'max_database_instances' | 'max_databases_per_instance' | 'max_cron_jobs'
   | 'max_volumes' | 'max_networks' | 'max_api_keys' | 'max_members' | 'max_runners' | 'max_cpu_cores' | 'max_memory_mb'
-  | 'max_database_instance_size_mb' | 'max_storage_mb' | 'max_gpus'>
+  | 'max_database_instance_size_mb' | 'max_storage_mb' | 'max_gpus' | 'max_database_cpu_cores' | 'max_database_memory_mb'>
 
 interface LimitField { key: LimitKey; label: string; desc: string; unit?: string }
 const countFields: LimitField[] = [
@@ -45,6 +45,8 @@ const countFields: LimitField[] = [
 const computeFields: LimitField[] = [
   { key: 'max_cpu_cores', label: 'CPU', desc: 'Aggregate CPU across all apps.', unit: 'cores' },
   { key: 'max_memory_mb', label: 'Memory', desc: 'Aggregate memory across all apps.', unit: 'MB' },
+  { key: 'max_database_cpu_cores', label: 'Database CPU', desc: 'Aggregate CPU limits across all database instances, apart from the apps.', unit: 'cores' },
+  { key: 'max_database_memory_mb', label: 'Database memory', desc: 'Aggregate memory limits across all database instances, apart from the apps.', unit: 'MB' },
   { key: 'max_database_instance_size_mb', label: 'DB instance size', desc: 'Declared data-volume size of one instance.', unit: 'MB' },
   { key: 'max_storage_mb', label: 'Total storage', desc: 'Aggregate volumes + DB instance data volumes.', unit: 'MB' },
   { key: 'max_gpus', label: 'GPUs', desc: 'Aggregate GPU units the workspace’s running apps may hold. Requires the GPU capability below.', unit: 'GPUs' },

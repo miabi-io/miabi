@@ -48,6 +48,8 @@ var (
 	ErrInstanceNotUpgradable = errors.New("instance must be running or stopped to upgrade")
 	ErrDefaultNetwork        = errors.New("the workspace default network cannot be detached")
 	ErrNoNetworkProvider     = errors.New("network management is not available")
+	ErrInvalidResources      = errors.New("invalid database resources")
+	ErrInstanceBusy          = errors.New("the instance is being provisioned or upgraded; try again once it is running")
 )
 
 type engineSpec struct {
@@ -58,12 +60,16 @@ type engineSpec struct {
 	adminUser      string
 	adminEnv       func(adminUser, adminPass string) []string
 	cmd            func(pass string) []string
+	// minMemoryMB is the least memory the engine starts with; defaultMemoryMB sizes an instance created
+	// without a limit in a workspace whose plan caps database memory.
+	minMemoryMB, defaultMemoryMB int
 }
 
 var specs = map[models.DBEngine]engineSpec{
 	models.DBEnginePostgres: {
 		image:          func(v string) string { return "postgres:" + v },
 		defaultVersion: "17-alpine", port: 5432, dataDir: "/var/lib/postgresql/data",
+		minMemoryMB: 128, defaultMemoryMB: 512,
 		adminUser: "postgres",
 		adminEnv: func(u, p string) []string {
 			return []string{"POSTGRES_USER=" + u, "POSTGRES_PASSWORD=" + p}
@@ -72,24 +78,28 @@ var specs = map[models.DBEngine]engineSpec{
 	models.DBEngineMySQL: {
 		image:          func(v string) string { return "mysql:" + v },
 		defaultVersion: "8.4", port: 3306, dataDir: "/var/lib/mysql",
+		minMemoryMB: 512, defaultMemoryMB: 1024,
 		adminUser: "root",
 		adminEnv:  func(u, p string) []string { return []string{"MYSQL_ROOT_PASSWORD=" + p} },
 	},
 	models.DBEngineMariaDB: {
 		image:          func(v string) string { return "mariadb:" + v },
 		defaultVersion: "11", port: 3306, dataDir: "/var/lib/mysql",
+		minMemoryMB: 256, defaultMemoryMB: 512,
 		adminUser: "root",
 		adminEnv:  func(u, p string) []string { return []string{"MARIADB_ROOT_PASSWORD=" + p} },
 	},
 	models.DBEngineRedis: {
 		image:          func(v string) string { return "redis:" + v },
 		defaultVersion: "7-alpine", port: 6379, dataDir: "/data",
+		minMemoryMB: 32, defaultMemoryMB: 256,
 		adminEnv: func(u, p string) []string { return nil },
 		cmd:      func(p string) []string { return []string{"redis-server", "--requirepass", p} },
 	},
 	models.DBEngineMongoDB: {
 		image:          func(v string) string { return "mongo:" + v },
 		defaultVersion: "7.0", port: 27017, dataDir: "/data/db",
+		minMemoryMB: 512, defaultMemoryMB: 1024,
 		adminUser: "admin",
 		// The official image enables authentication automatically when the root
 		// credentials are set; the user is created in the `admin` database. No cmd
@@ -101,6 +111,7 @@ var specs = map[models.DBEngine]engineSpec{
 	models.DBEngineLibSQL: {
 		image:          func(v string) string { return "ghcr.io/tursodatabase/libsql-server:" + v },
 		defaultVersion: "latest", port: libsqlHTTPPort, dataDir: libsqlDataDir,
+		minMemoryMB: 64, defaultMemoryMB: 256,
 		// libSQL takes no admin user/password; the JWT-auth server env is built in
 		// bringUp from the instance's keypair (it needs the public key).
 		adminEnv: func(u, p string) []string { return nil },
@@ -140,6 +151,7 @@ func postgresMajor(version string) int {
 type Enqueuer interface {
 	EnqueueProvisionDB(instanceID, serverID uint) error
 	EnqueueUpgradeDB(instanceID, serverID uint, target, path string, stopApps bool) error
+	EnqueueResizeDB(instanceID, serverID uint, previous Resources) error
 }
 
 // NodeDocker resolves the Docker client for a node id (0 = local).
@@ -544,7 +556,7 @@ type ConnectionInfo struct {
 
 // Provision creates the instance record (admin credentials and connection
 // details known up front) and enqueues the container bring-up to the worker.
-func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, name string, engine models.DBEngine, version string, volumeSizeBytes int64, meta, annotations models.Metadata) (*models.DatabaseInstance, error) {
+func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, name string, engine models.DBEngine, version string, volumeSizeBytes int64, res Resources, meta, annotations models.Metadata) (*models.DatabaseInstance, error) {
 	if volumeSizeBytes < 0 {
 		volumeSizeBytes = 0
 	}
@@ -552,7 +564,15 @@ func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, nam
 	if !ok {
 		return nil, ErrUnsupportedEngine
 	}
+	if err := res.validate(engine, spec); err != nil {
+		return nil, err
+	}
+	cpuCapped, memoryCapped := s.quota.DatabaseComputeCapped(workspaceID)
+	res = res.withDefaults(spec, cpuCapped, memoryCapped)
 	if s.quota.Enabled() {
+		if err := s.quota.CheckDatabaseComputeAdd(workspaceID, res.NanoCPUs, res.MemoryBytes, 0); err != nil {
+			return nil, err
+		}
 		n, _ := s.repo.CountInstancesByWorkspace(workspaceID)
 		if err := s.quota.CheckCreate(workspaceID, quota.ResourceDatabaseInstances, int(n)); err != nil {
 			return nil, err
@@ -607,6 +627,8 @@ func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, nam
 		Image: image, AdminUser: spec.adminUser, AdminPasswordEnc: encPass,
 		JWTPrivateKeyEnc: libsqlPrivEnc,
 		VolumeSizeBytes:  volumeSizeBytes,
+		MemoryBytes:      res.MemoryBytes,
+		NanoCPUs:         res.NanoCPUs,
 		Metadata:         models.DefaultManagedBy(meta, models.ManagedByUser),
 		Annotations:      annotations,
 	}
@@ -809,6 +831,9 @@ func (s *Service) bringUp(ctx context.Context, inst *models.DatabaseInstance, sp
 	if spec.cmd != nil {
 		cmd = spec.cmd(adminPass)
 	}
+	// The official images prepend the server binary to arguments starting with a dash, so tuning flags work
+	// with or without an explicit command.
+	cmd = append(cmd, tuningArgs(inst.Engine, inst.MemoryBytes)...)
 	// libSQL is JWT-authenticated: its server env is derived from the instance's
 	// keypair rather than the admin password.
 	env := spec.adminEnv(inst.AdminUser, adminPass)
@@ -830,6 +855,8 @@ func (s *Service) bringUp(ctx context.Context, inst *models.DatabaseInstance, sp
 		Cmd:            cmd,
 		Networks:       netNames,
 		NetworkAliases: []string{inst.Host},
+		MemoryBytes:    inst.MemoryBytes,
+		NanoCPUs:       inst.NanoCPUs,
 		Mounts:         map[string]string{inst.VolumeName: dataMount(inst.Engine, inst.Version, spec.dataDir)},
 		Labels: map[string]string{
 			docker.LabelDatabase:  fmt.Sprint(inst.ID),

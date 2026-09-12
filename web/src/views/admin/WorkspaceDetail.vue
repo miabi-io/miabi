@@ -70,7 +70,7 @@ async function assignPlan() {
 type NumKey =
   | 'max_apps' | 'max_database_instances' | 'max_databases_per_instance' | 'max_cron_jobs'
   | 'max_volumes' | 'max_networks' | 'max_api_keys' | 'max_members' | 'max_runners' | 'max_cpu_cores' | 'max_memory_mb'
-  | 'max_database_instance_size_mb' | 'max_storage_mb' | 'max_gpus'
+  | 'max_database_instance_size_mb' | 'max_storage_mb' | 'max_gpus' | 'max_database_cpu_cores' | 'max_database_memory_mb'
 const overrideFields: { key: NumKey; label: string }[] = [
   { key: 'max_apps', label: 'Apps' },
   { key: 'max_database_instances', label: 'DB instances' },
@@ -83,6 +83,8 @@ const overrideFields: { key: NumKey; label: string }[] = [
   { key: 'max_runners', label: 'Runners' },
   { key: 'max_cpu_cores', label: 'CPU cores' },
   { key: 'max_memory_mb', label: 'Memory (MB)' },
+  { key: 'max_database_cpu_cores', label: 'DB CPU cores' },
+  { key: 'max_database_memory_mb', label: 'DB memory (MB)' },
   { key: 'max_database_instance_size_mb', label: 'DB size (MB)' },
   { key: 'max_storage_mb', label: 'Storage (MB)' },
   { key: 'max_gpus', label: 'GPUs' },

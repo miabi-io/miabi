@@ -138,6 +138,15 @@ func (r *Router) databaseRoutes() []okapi.RouteDefinition {
 			Summary:     "Restart the database instance",
 		},
 		{
+			Method:      http.MethodPut,
+			Path:        base + "/{databaseID}/resources",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     okapi.H(r.h.database.Resize),
+			Summary:     "Set the database instance's CPU and memory limits",
+			Request:     &handlers.ResizeDatabaseRequest{},
+		},
+		{
 			Method:      http.MethodPost,
 			Path:        base + "/{databaseID}/sync-sizes",
 			Group:       g,

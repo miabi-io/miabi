@@ -49,6 +49,9 @@ type PlanBody struct {
 	MaxDatabaseInstanceSizeMB int    `json:"max_database_instance_size_mb"`
 	MaxStorageMB              int    `json:"max_storage_mb"`
 	MaxRunners                int    `json:"max_runners"`
+	// The database budget. Omitted keeps the stored value, or unlimited on create, so older clients leave it alone.
+	MaxDatabaseCPUCores       *int   `json:"max_database_cpu_cores"`
+	MaxDatabaseMemoryMB       *int   `json:"max_database_memory_mb"`
 	MaxGPUs                   int    `json:"max_gpus"`
 	AllowCustomTLS            bool   `json:"allow_custom_tls"`
 	AllowPrivilegedHostMounts bool   `json:"allow_privileged_host_mounts"`
@@ -142,6 +145,12 @@ func (b PlanBody) apply(p *models.Plan) {
 	p.MaxStorageMB = b.MaxStorageMB
 	p.MaxRunners = b.MaxRunners
 	p.MaxGPUs = b.MaxGPUs
+	if b.MaxDatabaseCPUCores != nil {
+		p.MaxDatabaseCPUCores = *b.MaxDatabaseCPUCores
+	}
+	if b.MaxDatabaseMemoryMB != nil {
+		p.MaxDatabaseMemoryMB = *b.MaxDatabaseMemoryMB
+	}
 	p.AllowCustomTLS = b.AllowCustomTLS
 	p.AllowPrivilegedHostMounts = b.AllowPrivilegedHostMounts
 	p.AllowShellExec = b.AllowShellExec
@@ -211,7 +220,7 @@ func (h *PlanHandler) Create(c *okapi.Context, req *CreatePlanRequest) error {
 	if body.IsDefault {
 		_ = h.repo.ClearDefault(nil)
 	}
-	p := &models.Plan{IsDefault: body.IsDefault}
+	p := &models.Plan{IsDefault: body.IsDefault, MaxDatabaseCPUCores: models.Unlimited, MaxDatabaseMemoryMB: models.Unlimited}
 	body.apply(p)
 	if err := h.repo.Create(p); err != nil {
 		return c.AbortInternalServerError("failed to create plan", err)

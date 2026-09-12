@@ -564,7 +564,8 @@ func (r *restoreRun) applyDatabases(ctx context.Context) {
 			continue
 		}
 		inst, err := r.svc.Database.Provision(ctx, r.target, 0, d.Name,
-			models.DBEngine(d.Engine), d.Version, d.VolumeSize, d.Metadata, d.Annotations)
+			models.DBEngine(d.Engine), d.Version, d.VolumeSize,
+			database.Resources{MemoryBytes: d.MemoryBytes, NanoCPUs: d.NanoCPUs}, d.Metadata, d.Annotations)
 		if err != nil {
 			r.add("database", d.Name, "failed", err.Error())
 			continue

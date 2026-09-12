@@ -131,3 +131,16 @@ func (r *DatabaseRepository) SumVolumeSizeByWorkspace(workspaceID uint) (int64, 
 		Select("COALESCE(SUM(volume_size_bytes),0)").Scan(&total).Error
 	return total, err
 }
+
+// SumResourcesByWorkspace returns the total CPU (nano) and memory (bytes) limits of a workspace's database
+// instances, leaving out excludeID.
+func (r *DatabaseRepository) SumResourcesByWorkspace(workspaceID, excludeID uint) (int64, int64, error) {
+	var row struct {
+		CPU    int64
+		Memory int64
+	}
+	err := r.db.Model(&models.DatabaseInstance{}).
+		Where("workspace_id = ? AND id <> ?", workspaceID, excludeID).
+		Select("COALESCE(SUM(nano_cpus),0) AS cpu, COALESCE(SUM(memory_bytes),0) AS memory").Scan(&row).Error
+	return row.CPU, row.Memory, err
+}
