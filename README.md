@@ -156,7 +156,9 @@ Everything in the console is also in the REST API, the CLI, and the Terraform pr
 - **Nodes** — add remote Docker hosts; the [node agent](https://github.com/miabi-io/agent) dials the control plane over an **outbound** WebSocket tunnel, so it works behind NAT and firewalls
 - **Cluster mode** — optional, auto-detected **Docker Swarm** with encrypted overlay networks
 - **Replicated service apps** — in cluster mode apps deploy as replicated Swarm services by default (opt out per app); stateful apps with node-local storage stay pinned automatically
-- **Cluster ingress** — traffic reaches a clustered app's tasks wherever the scheduler placed them, through the central gateway on a shared ingress overlay that survives gateway restarts; the app detail view shows the real nodes replicas run on
+- **Multiple clusters & locations** — one control plane drives many clusters: the default cluster, standalone nodes connected over their agent tunnel, and remote Docker Swarms in other regions. Workspaces pick a location, and apps, databases and volumes are placed inside it
+- **Cluster ingress** — each cluster is served by its own gateway (the central gateway, a node's own edge gateway, or a remote swarm's ingress node) with DNS pointing at it; traffic reaches a clustered app's tasks wherever the scheduler placed them, and the app detail view shows the real nodes replicas run on
+- **Node pools** — group nodes by tier; Enterprise plan placement keeps each plan's workspaces on its locations and pool
 - **Image distribution** — built images are pushed to the internal registry so any node can pull them, making multi-node deploys and rollbacks of Git-built apps work across the cluster
 - **Housekeeping** to reconcile drift and reclaim disk, and **Docker import** to adopt pre-existing containers, volumes, and networks
 
@@ -277,7 +279,10 @@ Miabi control plane (single Go binary: REST API + embedded Vue console)
         ├─ PostgreSQL (GORM) · Redis (cache/queue)
         │
         ▼
-Docker Engine — local socket, and remote nodes via the outbound agent tunnel
+Clusters (Docker Engine, optional Swarm per cluster)
+        ├─ default cluster ── local socket, plus its Swarm members
+        ├─ standalone nodes ── outbound agent tunnel, own edge gateway
+        └─ remote Swarm clusters ── managers via agent tunnel, own ingress gateway
 ```
 
 | Layer | Technology |

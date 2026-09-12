@@ -133,7 +133,7 @@ const meters = computed<Meter[]>(() => {
   out.push({
     key: 'containers', label: 'Containers running', icon: 'mdi-docker',
     value: `${m.running_containers}/${m.total_containers}`,
-    detail: stopped ? `${stopped} stopped` : 'all running',
+    detail: `${stopped ? `${stopped} stopped` : 'all running'} on the control-plane node`,
     pct: m.total_containers ? Math.round((m.running_containers / m.total_containers) * 100) : 0,
     level: stoppedPct >= 40 ? 'warn' : 'ok',
     invert: true,
@@ -191,6 +191,14 @@ const health = computed<Health>(() => {
       raise('crit')
       reasons.push('No workers connected — deploys and jobs will queue')
     }
+    if (m.offline_nodes > 0) {
+      raise('warn')
+      reasons.push(`${m.offline_nodes} node${m.offline_nodes === 1 ? '' : 's'} offline`)
+    }
+    if (m.clusters_awaiting_gateway > 0) {
+      raise('warn')
+      reasons.push(`${m.clusters_awaiting_gateway} converted node${m.clusters_awaiting_gateway === 1 ? '' : 's'} awaiting a gateway decision`)
+    }
     for (const meter of meters.value) {
       if (meter.level === 'ok') continue
       raise(meter.level)
@@ -231,7 +239,27 @@ const inventory = computed(() => {
 const fleetMeters = computed<Meter[]>(() => {
   const m = metrics.value
   if (!m) return []
+  const agentless = Math.max(0, m.total_nodes - m.online_nodes - m.offline_nodes)
+  const standaloneClusters = Math.max(0, m.total_clusters - m.swarm_clusters)
   const out: Meter[] = [{
+    key: 'nodes', label: 'Nodes online', icon: 'mdi-server-network', to: '/admin/nodes',
+    value: `${m.online_nodes}/${m.total_nodes}`,
+    detail: [
+      m.offline_nodes ? `${m.offline_nodes} offline` : 'no agent offline',
+      agentless ? `${agentless} without an agent` : '',
+      m.cordoned_nodes ? `${m.cordoned_nodes} cordoned` : '',
+    ].filter(Boolean).join(' · '),
+    pct: m.total_nodes ? Math.round((m.online_nodes / m.total_nodes) * 100) : 0,
+    level: m.offline_nodes > 0 ? 'warn' : 'ok',
+    invert: true,
+  }, {
+    key: 'clusters', label: 'Clusters', icon: 'mdi-lan', to: '/admin/clusters',
+    value: `${m.total_clusters}`,
+    detail: `${m.swarm_clusters} swarm · ${standaloneClusters} standalone`,
+    pct: m.total_clusters ? Math.round((m.swarm_clusters / m.total_clusters) * 100) : 0,
+    level: m.clusters_awaiting_gateway > 0 ? 'warn' : 'ok',
+    hint: m.clusters_awaiting_gateway > 0 ? 'Confirm or replace the gateway of converted nodes.' : undefined,
+  }, {
     key: 'workers', label: 'Workers', icon: 'mdi-cog-sync-outline',
     value: `${m.connected_workers}`,
     detail: m.connected_workers > 0 ? 'processing jobs' : 'nothing processing jobs',
@@ -262,6 +290,7 @@ const systemRows = computed(() => [...meters.value, ...fleetMeters.value])
 const quickActions = computed(() => {
   const m = metrics.value
   return [
+    { label: 'Clusters', icon: 'mdi-lan', to: '/admin/clusters', count: m?.total_clusters },
     { label: 'Nodes', icon: 'mdi-server-network', to: '/admin/nodes', count: m?.total_nodes },
     { label: 'Routes', icon: 'mdi-sitemap-outline', to: '/admin/routes', count: m?.total_routes },
     { label: 'Users', icon: 'mdi-account-group-outline', to: '/admin/users', count: m?.total_users },
@@ -354,7 +383,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="hero-figure">
           <span class="hero-number">{{ metrics.running_containers }}</span>
-          <span class="hero-number-label">containers running</span>
+          <span class="hero-number-label">containers running on the control plane</span>
           <Sparkline
             v-if="trend.containers.length > 1"
             :values="trend.containers" :width="120" :height="26"

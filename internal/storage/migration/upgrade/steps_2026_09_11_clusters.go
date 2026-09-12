@@ -46,7 +46,7 @@ func (clusterServerRow) TableName() string { return "servers" }
 
 var clusterSettingKeys = []string{"cluster_name", "cluster_agent_token_hash"}
 
-// clustersStep introduces clusters on an existing install (plans/multi-cluster-plan.md §10). The default
+// clustersStep introduces clusters on an existing install. The default
 // cluster takes the control-plane host and its swarm members; every other node becomes its own standalone
 // cluster, so gateways, DNS targets and Swarm objects stay exactly as they were. Safe to re-run.
 func clustersStep(ctx context.Context, db *gorm.DB) error {
