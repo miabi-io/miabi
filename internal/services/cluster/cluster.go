@@ -111,6 +111,8 @@ type Service struct {
 	// externalDomainEnv and externalProviderEnv pin the default cluster's external access from the environment.
 	externalDomainEnv   string
 	externalProviderEnv string
+	// endpointModeListener switches a cluster's running services after its service endpoint mode changed.
+	endpointModeListener func(context.Context, uint, models.ServiceEndpointMode)
 
 	// networkMigrator converts the default cluster's workspace bridges into overlays when Swarm is enabled,
 	// networkRollback reverses it before leaving, and networkPending counts bridges still left.

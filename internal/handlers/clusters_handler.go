@@ -59,6 +59,9 @@ type UpdateClusterRequest struct {
 		ExternalBaseDomain *string `json:"external_base_domain"`
 		// ExternalCertProvider names the gateway's certManager provider for those URLs; empty uses its default.
 		ExternalCertProvider *string `json:"external_cert_provider"`
+		// ServiceEndpointMode is how service apps are reached by name: "vip", or "dnsrr" on hosts that cannot run
+		// IPVS, such as LXC containers. Running services switch in place.
+		ServiceEndpointMode string `json:"service_endpoint_mode" enum:"vip,dnsrr"`
 	} `json:"body"`
 }
 
@@ -78,6 +81,10 @@ func (h *ClusterHandler) UpdateCluster(c *okapi.Context, req *UpdateClusterReque
 		patch.Visibility = &v
 	}
 	patch.ExternalBaseDomain, patch.ExternalCertProvider = req.Body.ExternalBaseDomain, req.Body.ExternalCertProvider
+	if req.Body.ServiceEndpointMode != "" {
+		mode := models.ServiceEndpointMode(req.Body.ServiceEndpointMode)
+		patch.ServiceEndpointMode = &mode
+	}
 	cl, err := h.cluster.UpdateCluster(id, patch)
 	if err != nil {
 		return h.mapClusterErr(c, err)
@@ -185,7 +192,7 @@ func (h *ClusterHandler) mapClusterErr(c *okapi.Context, err error) error {
 		errors.Is(err, node.ErrInvalidConnectivity):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, cluster.ErrInvalidExternalDomain), errors.Is(err, cluster.ErrInvalidCertProvider),
-		errors.Is(err, cluster.ErrExternalAccessPinned):
+		errors.Is(err, cluster.ErrExternalAccessPinned), errors.Is(err, cluster.ErrInvalidEndpointMode):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, cluster.ErrExternalDomainTaken):
 		return c.AbortWithError(409, err)

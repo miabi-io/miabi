@@ -138,6 +138,9 @@ func (o offlineClient) ServiceCreate(context.Context, ServiceSpec) (string, erro
 func (o offlineClient) ServiceUpdate(context.Context, string, ServiceSpec) error { return o.err }
 func (o offlineClient) ServiceRemove(context.Context, string) error              { return o.err }
 func (o offlineClient) ServiceScale(context.Context, string, uint64) error       { return o.err }
+func (o offlineClient) ServiceSetEndpointMode(context.Context, string, string) error {
+	return o.err
+}
 func (o offlineClient) ServiceInspect(context.Context, string) (ServiceStatus, error) {
 	return ServiceStatus{}, o.err
 }

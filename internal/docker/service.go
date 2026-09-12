@@ -70,6 +70,9 @@ type ServiceSpec struct {
 	// registered on this shared network, where they would collide across workspaces. Empty disables it.
 	IngressNetwork string
 	IngressAlias   string
+	// EndpointMode is "vip" (the default: one IPVS-balanced virtual IP) or "dnsrr" (the name resolves to the task
+	// addresses, for hosts that cannot program IPVS).
+	EndpointMode string
 }
 
 // ServiceBind is a host-path bind mount for a swarm service task (mount.TypeBind).
@@ -212,7 +215,7 @@ func buildSwarmServiceSpec(spec ServiceSpec) swarm.ServiceSpec {
 		Annotations:  swarm.Annotations{Name: spec.Name, Labels: labels},
 		TaskTemplate: task,
 		Mode:         mode,
-		EndpointSpec: &swarm.EndpointSpec{Mode: swarm.ResolutionModeVIP},
+		EndpointSpec: &swarm.EndpointSpec{Mode: endpointMode(spec.EndpointMode)},
 	}
 	if spec.UpdateParallelism > 0 || spec.UpdateDelay > 0 {
 		s.UpdateConfig = &swarm.UpdateConfig{Parallelism: spec.UpdateParallelism, Delay: spec.UpdateDelay}
@@ -272,6 +275,32 @@ func (e *engineClient) ServiceScale(ctx context.Context, idOrName string, replic
 	cur.Spec.Mode.Replicated.Replicas = &replicas
 	_, err = e.cli.ServiceUpdate(ctx, cur.ID, client.ServiceUpdateOptions{Version: cur.Version, Spec: cur.Spec})
 	return err
+}
+
+// ServiceSetEndpointMode switches how a service is reached by name ("vip" or "dnsrr") in place; its tasks keep running.
+func (e *engineClient) ServiceSetEndpointMode(ctx context.Context, idOrName, mode string) error {
+	res, err := e.cli.ServiceInspect(ctx, idOrName, client.ServiceInspectOptions{})
+	if err != nil {
+		return wrapNotFound(err)
+	}
+	cur := res.Service
+	want := endpointMode(mode)
+	if cur.Spec.EndpointSpec == nil {
+		cur.Spec.EndpointSpec = &swarm.EndpointSpec{}
+	}
+	if cur.Spec.EndpointSpec.Mode == want {
+		return nil
+	}
+	cur.Spec.EndpointSpec.Mode = want
+	_, err = e.cli.ServiceUpdate(ctx, cur.ID, client.ServiceUpdateOptions{Version: cur.Version, Spec: cur.Spec})
+	return err
+}
+
+func endpointMode(mode string) swarm.ResolutionMode {
+	if mode == string(swarm.ResolutionModeDNSRR) {
+		return swarm.ResolutionModeDNSRR
+	}
+	return swarm.ResolutionModeVIP
 }
 
 // ServiceRemove deletes a service. A missing service is treated as success.

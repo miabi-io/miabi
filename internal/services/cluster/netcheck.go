@@ -23,7 +23,8 @@ const (
 	probePort     = 9099
 	probePayload  = 1400 // bytes; large enough to exceed a broken overlay MTU
 	probeNameBase = "mb-netcheck"
-	probeTimeout  = 90 * time.Second
+	probeTimeout  = 150 * time.Second
+	vipProbeName  = probeNameBase + "-vip"
 )
 
 // NetCheckProbe is one node's participation in the check.
@@ -55,6 +56,7 @@ type NetCheck struct {
 	Network string           `json:"network"`
 	Probes  []NetCheckProbe  `json:"probes"`
 	Results []NetCheckResult `json:"results"`
+	VIP     *NetCheckResult  `json:"vip,omitempty"` // a service virtual IP dialed on the node its task runs on
 	OK      bool             `json:"ok"`
 	Summary string           `json:"summary"`
 }
@@ -128,9 +130,14 @@ func (s *Service) NetCheck(ctx context.Context, clusterID uint) (NetCheck, error
 		out.Probes = append(out.Probes, p)
 		targets = append(targets, target{srv: srv, dc: dc, alias: alias})
 	}
+	mode := s.ServiceEndpointMode(clusterID)
+	if len(targets) > 0 {
+		out.VIP = s.probeVIP(ctx, clusterID, image, overlay, targets[0].dc, targets[0].srv)
+	}
 	if len(targets) < 2 {
 		out.OK = len(targets) == 1
 		out.Summary = "Need at least two nodes with a Miabi agent to test cross-node connectivity."
+		finishVIP(&out, mode)
 		return out, nil
 	}
 
@@ -166,7 +173,103 @@ func (s *Service) NetCheck(ctx context.Context, clusterID uint) (NetCheck, error
 	wg.Wait()
 
 	out.OK, out.Summary = summarize(out.Results)
+	finishVIP(&out, mode)
 	return out, nil
+}
+
+// probeVIP dials a probe service's virtual IP from the node its task is pinned to, so a failure cannot be the
+// network between nodes: it is Docker failing to program IPVS there, as inside an LXC container.
+func (s *Service) probeVIP(ctx context.Context, clusterID uint, image, overlay string, dc docker.Client, srv models.Server) *NetCheckResult {
+	r := &NetCheckResult{From: srv.Name, To: "a service virtual IP"}
+	mgr, err := s.Manager(ctx, clusterID)
+	if err != nil {
+		r.Error, r.Verdict = err.Error(), "could not reach the cluster's manager to start the probe service"
+		return r
+	}
+	spec := docker.ServiceSpec{
+		Name:           vipProbeName,
+		Image:          image,
+		Cmd:            []string{fmt.Sprintf("TCP-LISTEN:%d,fork,reuseaddr", probePort), "EXEC:/bin/cat"},
+		Replicas:       1,
+		Networks:       []string{overlay},
+		NetworkAliases: []string{vipProbeName},
+		Labels:         map[string]string{docker.ManagedLabel: "true"},
+		EndpointMode:   string(models.ServiceEndpointVIP),
+	}
+	if srv.SwarmNodeID != "" {
+		spec.Constraints = []string{"node.id==" + srv.SwarmNodeID}
+	}
+	_ = mgr.ServiceRemove(ctx, vipProbeName)
+	if _, err := mgr.ServiceCreate(ctx, spec); err != nil {
+		r.Error, r.Verdict = err.Error(), "could not start the probe service"
+		return r
+	}
+	defer func() {
+		rctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if err := mgr.ServiceRemove(rctx, vipProbeName); err != nil {
+			logger.Warn("net check: could not remove the probe service", "service", vipProbeName, "error", err)
+		}
+	}()
+	if err := waitForTask(ctx, mgr, vipProbeName); err != nil {
+		r.Error, r.Verdict = err.Error(), "the probe service never started a task"
+		return r
+	}
+	res := s.probePair(ctx, dc, image, overlay, r.From, r.To, vipProbeName)
+	res.Verdict = vipVerdict(res)
+	return &res
+}
+
+// waitForTask waits for a service to run a task, then briefly for its name to reach the swarm's DNS.
+func waitForTask(ctx context.Context, mgr docker.Client, name string) error {
+	for {
+		if st, err := mgr.ServiceInspect(ctx, name); err == nil && st.RunningTasks > 0 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(2 * time.Second):
+		return nil
+	}
+}
+
+func vipVerdict(r NetCheckResult) string {
+	switch {
+	case r.Error != "":
+		return r.Verdict
+	case r.Payload:
+		return "ok"
+	case r.TCP:
+		return verdict(r)
+	case r.DNS:
+		return "Service virtual IPs do not work on this node: the name resolves but connections are refused, because " +
+			"Docker cannot program IPVS here, as inside an LXC container."
+	default:
+		return "The probe service's name did not resolve on this node."
+	}
+}
+
+// finishVIP folds the virtual IP probe into the report. A broken virtual IP only fails the check while the cluster
+// still reaches its services through one.
+func finishVIP(out *NetCheck, mode models.ServiceEndpointMode) {
+	v := out.VIP
+	switch {
+	case v == nil || v.Payload:
+	case v.Error != "":
+		out.Summary += " The service virtual IP check could not run: " + v.Verdict + "."
+	case mode == models.ServiceEndpointDNSRR:
+		out.Summary += " Service virtual IPs do not work, which this cluster avoids with DNS round-robin."
+	default:
+		out.OK = false
+		out.Summary += " Service virtual IPs do not work: set the cluster's service load balancing to DNS round-robin."
+	}
 }
 
 // startProbe runs an echo server on the overlay, reachable by its alias.

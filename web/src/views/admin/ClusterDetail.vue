@@ -54,6 +54,7 @@ const saving = ref(false)
 const editForm = ref({
   display_name: '', location_code: '', visibility: 'all' as Cluster['visibility'], cordoned: false,
   external_base_domain: '', external_cert_provider: '',
+  service_endpoint_mode: 'vip' as NonNullable<Cluster['service_endpoint_mode']>,
 })
 function openEdit() {
   editForm.value = {
@@ -63,6 +64,7 @@ function openEdit() {
     cordoned: cluster.value?.cordoned ?? false,
     external_base_domain: cluster.value?.external_base_domain ?? '',
     external_cert_provider: cluster.value?.external_cert_provider ?? '',
+    service_endpoint_mode: cluster.value?.service_endpoint_mode ?? 'vip',
   }
   showEdit.value = true
 }
@@ -106,6 +108,7 @@ async function persistEdit() {
       cordoned: editForm.value.cordoned,
       external_base_domain: editForm.value.external_base_domain.trim(),
       external_cert_provider: editForm.value.external_cert_provider.trim(),
+      service_endpoint_mode: editForm.value.service_endpoint_mode,
     })).data.data
     showEdit.value = false
     notify.success('Cluster updated')
@@ -492,6 +495,10 @@ function swarmClass(n: Server): string {
             <span v-else class="text-muted">Off</span>
             <span v-if="cluster.external_domain_pinned" class="badge badge-muted">set by environment</span>
           </dd>
+          <template v-if="cluster.mode === 'swarm'">
+            <dt>Service load balancing</dt>
+            <dd>{{ cluster.service_endpoint_mode === 'dnsrr' ? 'DNS round-robin' : 'Virtual IP' }}</dd>
+          </template>
         </dl>
         <div v-if="needsIngress" class="pending-hint">
           <span class="mdi mdi-alert-outline"></span>
@@ -579,12 +586,17 @@ function swarmClass(n: Server): string {
                   <span class="mdi mdi-lan-pending"></span>
                   {{ netChecking ? 'Probing every path…' : 'Run network check' }}
                 </button>
-                <span class="cell-sub">Probes DNS, a TCP connection and a 1400-byte payload between every pair of nodes.</span>
+                <span class="cell-sub">Probes DNS, a TCP connection and a 1400-byte payload between every pair of nodes, and a service virtual IP.</span>
               </div>
               <template v-if="netCheck">
                 <div class="netcheck-summary" :class="netCheck.ok ? 'ok' : 'bad'">
                   <span class="mdi" :class="netCheck.ok ? 'mdi-check-circle-outline' : 'mdi-alert-circle-outline'"></span>
                   {{ netCheck.summary }}
+                </div>
+                <div v-if="netCheck.vip" class="cell-sub" style="margin-top: 6px">
+                  <span class="mdi" :class="netCheck.vip.payload ? 'mdi-check text-ok' : 'mdi-close text-bad'"></span>
+                  Service virtual IP on <strong>{{ netCheck.vip.from }}</strong>:
+                  {{ netCheck.vip.payload ? 'works' : netCheck.vip.verdict }}
                 </div>
                 <div v-if="netCheck.results.length" class="table-wrapper" style="margin-top: 8px">
                   <table>
@@ -677,6 +689,17 @@ function swarmClass(n: Server): string {
             <div class="form-group">
               <label class="form-label"><input v-model="editForm.cordoned" type="checkbox" /> Cordoned</label>
               <p class="form-hint">No new apps, databases or volumes land here; running ones stay.</p>
+            </div>
+            <div v-if="cluster?.mode === 'swarm'" class="form-group">
+              <label class="form-label">Service load balancing</label>
+              <select v-model="editForm.service_endpoint_mode" class="form-select">
+                <option value="vip">Virtual IP</option>
+                <option value="dnsrr">DNS round-robin</option>
+              </select>
+              <p class="form-hint">
+                How service apps are reached by name. Choose DNS round-robin when the network check reports that
+                virtual IPs do not work, as on nodes that are LXC containers. Running services switch in place.
+              </p>
             </div>
             <div class="form-group">
               <label class="form-label">External domain</label>

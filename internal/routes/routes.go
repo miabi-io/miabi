@@ -447,6 +447,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	routeService.SetCluster(clusterService)
 	routeService.SetExternalDomains(clusterService)
 	clusterService.SetGatewayListener(routeService.SyncCluster)
+	clusterService.SetEndpointModeListener(appService.ApplyServiceEndpointMode)
 	proxyReconciler.SetCluster(clusterService)
 	go func() { _ = proxyReconciler.ReconcileIngressGateway(context.Background()) }()
 	// After a workspace proxy sync, tell affected edge-gateway nodes to pull their

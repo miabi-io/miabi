@@ -29,6 +29,8 @@ type ClusterPatch struct {
 	// ExternalBaseDomain and ExternalCertProvider set where generated app URLs live; a change re-hosts them.
 	ExternalBaseDomain   *string
 	ExternalCertProvider *string
+	// ServiceEndpointMode switches how the cluster's service apps are reached by name; running services follow.
+	ServiceEndpointMode *models.ServiceEndpointMode
 }
 
 // Clusters lists every cluster, the default first, with its node count.
@@ -101,6 +103,16 @@ func (s *Service) UpdateCluster(id uint, p ClusterPatch) (*models.Cluster, error
 		return nil, err
 	}
 	maps.Copy(cols, external)
+	modeChanged := false
+	if p.ServiceEndpointMode != nil {
+		if !models.ValidServiceEndpointMode(*p.ServiceEndpointMode) {
+			return nil, ErrInvalidEndpointMode
+		}
+		if *p.ServiceEndpointMode != c.EndpointMode() {
+			cols["service_endpoint_mode"] = *p.ServiceEndpointMode
+			modeChanged = true
+		}
+	}
 	if len(cols) > 0 {
 		if err := s.store.UpdateColumns(c.ID, cols); err != nil {
 			return nil, err
@@ -108,6 +120,9 @@ func (s *Service) UpdateCluster(id uint, p ClusterPatch) (*models.Cluster, error
 	}
 	if len(external) > 0 {
 		s.externalChanged(c.ID)
+	}
+	if modeChanged {
+		s.endpointModeChanged(c.ID, *p.ServiceEndpointMode)
 	}
 	return s.Cluster(c.ID)
 }

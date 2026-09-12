@@ -8,6 +8,7 @@ export interface ClusterUpdate {
   cordoned?: boolean
   external_base_domain?: string
   external_cert_provider?: string
+  service_endpoint_mode?: 'vip' | 'dnsrr'
 }
 
 export interface ConvertIngressInput {

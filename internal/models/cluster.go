@@ -37,6 +37,22 @@ func ValidClusterVisibility(v ClusterVisibility) bool {
 	return v == ClusterVisibilityAll || v == ClusterVisibilityRestricted
 }
 
+// ServiceEndpointMode is how a cluster's swarm services are reached by name.
+type ServiceEndpointMode string
+
+const (
+	// ServiceEndpointVIP gives each service one virtual IP that Docker balances across its tasks with IPVS.
+	ServiceEndpointVIP ServiceEndpointMode = "vip"
+	// ServiceEndpointDNSRR resolves a service's name to its tasks' own addresses, for hosts where Docker cannot
+	// program IPVS, such as LXC containers.
+	ServiceEndpointDNSRR ServiceEndpointMode = "dnsrr"
+)
+
+// ValidServiceEndpointMode reports whether m is a known endpoint mode.
+func ValidServiceEndpointMode(m ServiceEndpointMode) bool {
+	return m == ServiceEndpointVIP || m == ServiceEndpointDNSRR
+}
+
 // Cluster is a deploy target: nodes that share private networking and one ingress. Tenants see it
 // as a location. Every node belongs to exactly one cluster; the default one holds the control plane.
 type Cluster struct {
@@ -64,6 +80,8 @@ type Cluster struct {
 	ExternalDomainPinned   bool  `json:"external_domain_pinned,omitempty" gorm:"-"`
 	ExternalProviderPinned bool  `json:"external_provider_pinned,omitempty" gorm:"-"`
 	ExternalApps           int64 `json:"external_apps,omitempty" gorm:"-"`
+	// ServiceEndpointMode is how service apps are reached by name; dnsrr serves hosts that cannot run IPVS.
+	ServiceEndpointMode ServiceEndpointMode `json:"service_endpoint_mode" gorm:"not null;default:vip"`
 	// LegacyIngress marks a cluster whose port-forward node became an edge gateway at upgrade, until an
 	// admin confirms that gateway or joins the node to a swarm.
 	LegacyIngress bool      `json:"legacy_ingress" gorm:"not null;default:false"`
@@ -81,6 +99,14 @@ func (c *Cluster) Label() string {
 		return l
 	}
 	return c.Name
+}
+
+// EndpointMode is the cluster's service endpoint mode, a virtual IP when unset.
+func (c *Cluster) EndpointMode() ServiceEndpointMode {
+	if c == nil || c.ServiceEndpointMode != ServiceEndpointDNSRR {
+		return ServiceEndpointVIP
+	}
+	return ServiceEndpointDNSRR
 }
 
 // IngressNode is the node whose gateway serves the cluster, falling back to its manager.
