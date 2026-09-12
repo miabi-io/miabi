@@ -81,6 +81,9 @@ type DatabaseInstance struct {
 	// limit, and both count against the plan's database budget.
 	MemoryBytes int64 `json:"memory_bytes" gorm:"not null;default:0"`
 	NanoCPUs    int64 `json:"nano_cpus" gorm:"not null;default:0"`
+	// SizeClass names the database size the limits came from (Enterprise); empty for limits set by hand. A label
+	// only: editing the size later does not change the instance.
+	SizeClass string `json:"size_class,omitempty"`
 	// MountPath is the in-container data directory the volume is mounted at
 	// (transient; populated on read from the engine spec).
 	MountPath string `json:"mount_path,omitempty" gorm:"-"`

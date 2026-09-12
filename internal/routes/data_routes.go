@@ -29,6 +29,14 @@ func (r *Router) databaseRoutes() []okapi.RouteDefinition {
 			Handler:     r.h.database.Engines,
 			Summary:     "List engine default images/versions",
 		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/{workspace}/database-sizes",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.database.Sizes,
+			Summary:     "List the database sizes the workspace may pick from",
+		},
 
 		{
 			Method:      http.MethodGet,

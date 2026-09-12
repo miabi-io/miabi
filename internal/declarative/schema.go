@@ -314,11 +314,13 @@ type DatabaseSpec struct {
 	Resources *DatabaseResourcesSpec `yaml:"resources,omitempty" json:"resources,omitempty"`
 }
 
-// DatabaseResourcesSpec limits a database instance. Memory accepts Ki/Mi/Gi; CPU is a number of cores, "0.5" for
-// half of one. "0" removes a limit.
+// DatabaseResourcesSpec limits a database instance, by memory and CPU or by a named size. Memory accepts Ki/Mi/Gi;
+// CPU is a number of cores, "0.5" for half of one. "0" removes a limit.
 type DatabaseResourcesSpec struct {
 	Memory string `yaml:"memory,omitempty" json:"memory,omitempty"`
 	CPU    string `yaml:"cpu,omitempty" json:"cpu,omitempty"`
+	// Size names a database size the platform offers (Enterprise), instead of memory and cpu.
+	Size string `yaml:"size,omitempty" json:"size,omitempty"`
 }
 
 // VolumeSpec declares persistent storage.

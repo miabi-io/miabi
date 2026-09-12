@@ -24,6 +24,8 @@ import type {
   OAuthProvider,
   Plan,
   PlanInput,
+  DatabaseSize,
+  DatabaseSizeInput,
   WorkspaceQuotaOverride,
   LicenseView,
   LicenseHealth,
@@ -310,6 +312,13 @@ export const adminApi = {
   deletePlan: (id: number, force = false) =>
     api.delete<ApiResponse<{ message: string }>>(`/admin/plans/${id}`, { params: { force: force || undefined } }),
   setDefaultPlan: (id: number) => api.post<ApiResponse<Plan>>(`/admin/plans/${id}/default`),
+
+  // Database sizes (Enterprise): named CPU and memory limits a plan offers.
+  listDatabaseSizes: () => api.get<ApiResponse<DatabaseSize[]>>('/admin/database-sizes'),
+  createDatabaseSize: (payload: DatabaseSizeInput) => api.post<ApiResponse<DatabaseSize>>('/admin/database-sizes', payload),
+  updateDatabaseSize: (id: number, payload: DatabaseSizeInput) =>
+    api.put<ApiResponse<DatabaseSize>>(`/admin/database-sizes/${id}`, payload),
+  deleteDatabaseSize: (id: number) => api.delete<ApiResponse<{ message: string }>>(`/admin/database-sizes/${id}`),
   assignWorkspacePlan: (workspaceId: number, planId: number | null) =>
     api.put<ApiResponse<{ message: string }>>(`/admin/workspaces/${workspaceId}/plan`, { plan_id: planId }),
   getWorkspaceQuota: (workspaceId: number) =>

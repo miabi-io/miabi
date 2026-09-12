@@ -190,12 +190,16 @@
     },
     "DatabaseResourcesSpec": {
       "additionalProperties": false,
-      "description": "DatabaseResourcesSpec limits a database instance. Memory accepts Ki/Mi/Gi; CPU is a number of cores, \"0.5\" for half of one. \"0\" removes a limit.",
+      "description": "DatabaseResourcesSpec limits a database instance, by memory and CPU or by a named size. Memory accepts Ki/Mi/Gi; CPU is a number of cores, \"0.5\" for half of one. \"0\" removes a limit.",
       "properties": {
         "cpu": {
           "type": "string"
         },
         "memory": {
+          "type": "string"
+        },
+        "size": {
+          "description": "Size names a database size the platform offers (Enterprise), instead of memory and cpu.",
           "type": "string"
         }
       },

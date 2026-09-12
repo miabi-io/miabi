@@ -3,7 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { adminApi } from '@/api/admin'
 import { clustersApi } from '@/api/clusters'
-import type { Cluster, Plan, PlanInput } from '@/api/types'
+import type { Cluster, DatabaseSize, Plan, PlanInput } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
 import { useEntitlement } from '@/composables/useEntitlement'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -18,6 +18,9 @@ const securityProfile = useEntitlement('security_profile')
 const placementPolicy = useEntitlement('placement_policy')
 const clusters = ref<Cluster[]>([])
 clustersApi.list().then((r) => { clusters.value = r.data.data ?? [] }).catch(() => { clusters.value = [] })
+const databaseSizesPolicy = useEntitlement('database_sizes')
+const databaseSizes = ref<DatabaseSize[]>([])
+adminApi.listDatabaseSizes().then((r) => { databaseSizes.value = r.data.data ?? [] }).catch(() => { databaseSizes.value = [] })
 
 const planId = computed(() => Number(route.params.id))
 const plan = ref<Plan | null>(null)
@@ -90,6 +93,21 @@ function toggleLocation(clusterId: number) {
 }
 function makeDefaultLocation(clusterId: number) {
   setLocations([clusterId, ...placementLocations.value.filter((x) => x !== clusterId)])
+}
+
+const planSizes = computed(() => form.value?.database_sizes ?? [])
+function setPlanSizes(ids: number[]) {
+  if (form.value) form.value.database_sizes = ids
+}
+function toggleSize(id: number) {
+  const ids = planSizes.value
+  setPlanSizes(ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id])
+}
+function makeDefaultSize(id: number) {
+  setPlanSizes([id, ...planSizes.value.filter((x) => x !== id)])
+}
+function sizeSummary(s: DatabaseSize): string {
+  return `${+(s.nano_cpus / 1e9).toFixed(2)} CPU · ${Math.round(s.memory_bytes / 1048576)} MB`
 }
 
 async function save() {
@@ -284,6 +302,35 @@ function fmtDate(s?: string): string {
             <input v-model.trim="placementPool" class="form-input mono" placeholder="e.g. pro" :disabled="!placementPolicy.mutable.value" />
             <p class="form-hint">Workspaces run only on nodes in this pool. Empty keeps them on nodes that are in no pool.</p>
           </div>
+        </div>
+      </div>
+
+      <div class="card mt-4">
+        <div class="card-header">
+          <h2>Database sizes</h2>
+          <span v-if="!databaseSizesPolicy.has.value" class="badge badge-neutral" title="Database sizes require an Enterprise license">
+            <span class="mdi mdi-lock-outline"></span> Enterprise
+          </span>
+        </div>
+        <div class="card-body">
+          <p class="form-hint" style="margin-top: 0">
+            The <router-link to="/admin/database-sizes">database sizes</router-link> this plan's workspaces pick from. A database
+            created with memory and CPU instead gets the smallest checked size covering them. Enforced only while plan enforcement is on.
+            <template v-if="!databaseSizesPolicy.has.value"> Requires an Enterprise license.</template>
+          </p>
+          <p v-if="databaseSizesPolicy.has.value && !databaseSizes.length" class="text-muted text-sm">No database sizes exist yet.</p>
+          <label v-for="s in databaseSizes" :key="s.id" class="checkbox-label">
+            <input type="checkbox" :checked="planSizes.includes(s.id)" :disabled="!databaseSizesPolicy.mutable.value" @change="toggleSize(s.id)" />
+            {{ s.display_name || s.name }} <span class="text-muted">({{ sizeSummary(s) }})</span>
+            <span v-if="planSizes[0] === s.id" class="badge badge-info" style="margin-left: 6px">default</span>
+            <button
+              v-else-if="planSizes.includes(s.id) && databaseSizesPolicy.mutable.value"
+              type="button"
+              class="btn btn-ghost btn-sm"
+              @click.prevent="makeDefaultSize(s.id)"
+            >Make default</button>
+          </label>
+          <p class="form-hint">None checked leaves sizes optional: workspaces may pick any size, or set memory and CPU themselves.</p>
         </div>
       </div>
 

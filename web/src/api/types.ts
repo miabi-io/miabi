@@ -62,8 +62,37 @@ export interface Plan {
   allow_official_image_user: boolean
   // Binds the plan to locations (cluster ids, the first is the default) and a node pool. Enterprise.
   placement?: PlanPlacement
+  // Database sizes the plan offers (ids, the first the default). Enterprise.
+  database_sizes?: number[] | null
   created_at?: string
   updated_at?: string
+}
+
+// A named CPU and memory limit a database can be given. Enterprise.
+export interface DatabaseSize {
+  id: number
+  name: string
+  display_name?: string
+  description?: string
+  memory_bytes: number
+  nano_cpus: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface DatabaseSizeInput {
+  name: string
+  display_name: string
+  description: string
+  memory_mb: number
+  cpu_cores: number
+}
+
+// The sizes a workspace may give a database; bound means its plan requires one of them.
+export interface DatabaseSizeOffer {
+  sizes: DatabaseSize[]
+  default_id?: number
+  bound: boolean
 }
 
 export interface PlanPlacement {
@@ -107,6 +136,7 @@ export interface WorkspaceQuotaOverride {
   security_profile: SecurityProfile | null
   allow_official_image_user: boolean | null
   placement?: PlanPlacement | null
+  database_sizes?: number[] | null
 }
 
 export interface ResourceUsage {
@@ -1383,6 +1413,8 @@ export interface DatabaseInstance {
   // Container limits; 0 = unlimited.
   memory_bytes?: number
   nano_cpus?: number
+  // The database size the limits came from; empty for limits set by hand.
+  size_class?: string
   mount_path?: string
   size_bytes?: number
   size_synced_at?: string | null

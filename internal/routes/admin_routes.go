@@ -361,6 +361,48 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Response:    &dto.Response[handlers.AuthAccessStatus]{},
 		},
 
+		// Database sizes (Enterprise; gated database_sizes → 402 in CE, except delete).
+		{
+			Method:      http.MethodGet,
+			Path:        "/database-sizes",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminDatabaseSize.List,
+			Summary:     "List database sizes",
+			Response:    &dto.Response[[]models.DatabaseSize]{},
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/database-sizes",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminDatabaseSize.Create),
+			Summary:     "Create a database size",
+			Request:     &handlers.CreateDatabaseSizeRequest{},
+			Options: []okapi.RouteOption{
+				okapi.DocResponse(201, &dto.Response[models.DatabaseSize]{}),
+			},
+		},
+		{
+			Method:      http.MethodPut,
+			Path:        "/database-sizes/{id}",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminDatabaseSize.Update),
+			Summary:     "Update a database size for databases given it from now on",
+			Request:     &handlers.UpdateDatabaseSizeRequest{},
+			Response:    &dto.Response[models.DatabaseSize]{},
+		},
+		{
+			Method:      http.MethodDelete,
+			Path:        "/database-sizes/{id}",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminDatabaseSize.Delete,
+			Summary:     "Delete a database size no plan offers",
+			Response:    &dto.Response[dto.MessageData]{},
+		},
+
 		{
 			Method:      http.MethodGet,
 			Path:        "/plans",

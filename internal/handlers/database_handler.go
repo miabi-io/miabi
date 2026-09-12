@@ -69,19 +69,34 @@ type CreateDatabaseRequest struct {
 		// plan caps the database budget).
 		MemoryMB int     `json:"memory_mb" min:"0"`
 		CPUCores float64 `json:"cpu_cores" min:"0"`
+		// Size names a database size (Enterprise) instead of memory and CPU; see GET /database-sizes.
+		Size string `json:"size"`
 	} `json:"body"`
 }
 
-// ResizeDatabaseRequest sets an instance's container limits. The instance restarts to apply them.
+// ResizeDatabaseRequest sets an instance's container limits, by memory and CPU or by a named size. The instance
+// restarts to apply them.
 type ResizeDatabaseRequest struct {
 	Body struct {
 		MemoryMB int     `json:"memory_mb" min:"0"`
 		CPUCores float64 `json:"cpu_cores" min:"0"`
+		Size     string  `json:"size"`
 	} `json:"body"`
 }
 
-func databaseResources(memoryMB int, cpuCores float64) database.Resources {
-	return database.Resources{MemoryBytes: int64(memoryMB) * 1024 * 1024, NanoCPUs: int64(math.Round(cpuCores * 1e9))}
+func databaseResources(memoryMB int, cpuCores float64, size string) database.Resources {
+	return database.Resources{
+		MemoryBytes: int64(memoryMB) * 1024 * 1024, NanoCPUs: int64(math.Round(cpuCores * 1e9)), Size: strings.TrimSpace(size),
+	}
+}
+
+// Sizes lists the database sizes the workspace may pick from (Enterprise), its plan's default first.
+func (h *DatabaseHandler) Sizes(c *okapi.Context) error {
+	offer, err := h.svc.SizesFor(middlewares.WorkspaceID(c))
+	if err != nil {
+		return c.AbortInternalServerError("failed to list database sizes", err)
+	}
+	return ok(c, offer)
 }
 
 // Create provisions a new database server instance (the container is brought up
@@ -100,7 +115,7 @@ func (h *DatabaseHandler) Create(c *okapi.Context, req *CreateDatabaseRequest) e
 		return c.AbortInternalServerError("failed to place the database", err)
 	}
 	inst, err := h.svc.Provision(c.Request().Context(), wsID, placed.ServerID, req.Body.Name, models.DBEngine(req.Body.Engine), req.Body.Version, sizeBytes,
-		databaseResources(req.Body.MemoryMB, req.Body.CPUCores), selfOwnerMeta(h.users, c), nil)
+		databaseResources(req.Body.MemoryMB, req.Body.CPUCores, req.Body.Size), selfOwnerMeta(h.users, c), nil)
 	if err != nil {
 		if a := quotaAbort(c, err); a != nil {
 			return a
@@ -110,6 +125,9 @@ func (h *DatabaseHandler) Create(c *okapi.Context, req *CreateDatabaseRequest) e
 		}
 		if errors.Is(err, database.ErrInvalidResources) {
 			return c.AbortBadRequest(err.Error())
+		}
+		if errors.Is(err, database.ErrSizesUnavailable) {
+			return c.AbortWithError(402, err)
 		}
 		if errors.Is(err, nodes.ErrNodeOffline) || errors.Is(err, node.ErrNodeCordoned) || errors.Is(err, node.ErrNodeNotFound) {
 			return c.AbortWithError(409, err)
@@ -311,7 +329,7 @@ func (h *DatabaseHandler) Resize(c *okapi.Context, req *ResizeDatabaseRequest) e
 	if err != nil {
 		return c.AbortNotFound("database not found")
 	}
-	updated, err := h.svc.Resize(c.Request().Context(), inst, databaseResources(req.Body.MemoryMB, req.Body.CPUCores))
+	updated, err := h.svc.Resize(c.Request().Context(), inst, databaseResources(req.Body.MemoryMB, req.Body.CPUCores, req.Body.Size))
 	if err != nil {
 		if a := quotaAbort(c, err); a != nil {
 			return a
@@ -319,6 +337,8 @@ func (h *DatabaseHandler) Resize(c *okapi.Context, req *ResizeDatabaseRequest) e
 		switch {
 		case errors.Is(err, database.ErrInvalidResources):
 			return c.AbortBadRequest(err.Error())
+		case errors.Is(err, database.ErrSizesUnavailable):
+			return c.AbortWithError(402, err)
 		case errors.Is(err, database.ErrInstanceBusy):
 			return c.AbortWithError(409, err)
 		}
