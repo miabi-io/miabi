@@ -99,6 +99,7 @@ func Run(db *gorm.DB) error {
 		&models.AppEvent{},
 		&models.Route{},
 		&models.Middleware{},
+		&models.DatabaseSize{},
 		&models.DatabaseInstance{},
 		&models.Database{},
 		&models.Volume{},

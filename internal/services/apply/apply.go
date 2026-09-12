@@ -1246,6 +1246,7 @@ func databaseResourcesSpec(inst *models.DatabaseInstance) *declarative.DatabaseR
 	return &declarative.DatabaseResourcesSpec{
 		Memory: strconv.FormatInt(inst.MemoryBytes, 10),
 		CPU:    strconv.FormatFloat(float64(inst.NanoCPUs)/1e9, 'f', -1, 64),
+		Size:   inst.SizeClass,
 	}
 }
 
@@ -1255,7 +1256,7 @@ func databaseResources(spec *declarative.DatabaseSpec) database.Resources {
 	}
 	mb, _ := spec.Resources.MemoryBytes()
 	nc, _ := spec.Resources.NanoCPUs()
-	return database.Resources{MemoryBytes: mb, NanoCPUs: nc}
+	return database.Resources{MemoryBytes: mb, NanoCPUs: nc, Size: spec.Resources.Size}
 }
 
 func databaseLocationSpec(location string) *declarative.DatabasePlacementSpec {
@@ -2203,11 +2204,14 @@ func (s *Service) resizeDatabase(ctx context.Context, workspaceID uint, name str
 		return err
 	}
 	res := databaseResources(spec)
-	if spec == nil || spec.Resources == nil || spec.Resources.Memory == "" {
-		res.MemoryBytes = inst.MemoryBytes
-	}
-	if spec == nil || spec.Resources == nil || spec.Resources.CPU == "" {
-		res.NanoCPUs = inst.NanoCPUs
+	// A named size carries both limits; with plain numbers, one left unstated keeps the instance's.
+	if res.Size == "" {
+		if spec == nil || spec.Resources == nil || spec.Resources.Memory == "" {
+			res.MemoryBytes = inst.MemoryBytes
+		}
+		if spec == nil || spec.Resources == nil || spec.Resources.CPU == "" {
+			res.NanoCPUs = inst.NanoCPUs
+		}
 	}
 	if _, err := s.dbs.Resize(ctx, inst, res); err != nil {
 		return fmt.Errorf("database %q: %w", name, err)

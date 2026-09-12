@@ -252,6 +252,9 @@ const flagSecurityProfile = "security_profile"
 // flagPlacementPolicy is a local copy of enterprise.FlagPlacementPolicy.
 const flagPlacementPolicy = "placement_policy"
 
+// flagDatabaseSizes is a local copy of enterprise.FlagDatabaseSizes.
+const flagDatabaseSizes = "database_sizes"
+
 // Service resolves and enforces effective workspace limits.
 type Service struct {
 	plans     *repositories.PlanRepository
@@ -315,6 +318,33 @@ func placementFrom(p *models.Plan, o *models.WorkspaceQuota) models.PlanPlacemen
 	}
 	return p.Placement
 }
+
+// EffectiveDatabaseSizes resolves the database sizes a workspace's plan offers (override -> plan), the first being
+// the default. The bool is false when no binding applies, because plan enforcement is off or database_sizes is not
+// licensed. An empty list binds nothing: every size is offered.
+func (s *Service) EffectiveDatabaseSizes(workspaceID uint) ([]uint, bool) {
+	if !s.Enabled() || !s.entitled(flagDatabaseSizes) {
+		return nil, false
+	}
+	var o *models.WorkspaceQuota
+	if s.overrides != nil {
+		o, _ = s.overrides.FindByWorkspace(workspaceID)
+	}
+	return databaseSizesFrom(s.effectivePlan(workspaceID), o), true
+}
+
+func databaseSizesFrom(p *models.Plan, o *models.WorkspaceQuota) []uint {
+	if o != nil && o.DatabaseSizes != nil {
+		return *o.DatabaseSizes
+	}
+	if p == nil {
+		return nil
+	}
+	return p.DatabaseSizes
+}
+
+// DatabaseSizesLicensed reports whether database sizes may be used at all, whether a plan binds them or not.
+func (s *Service) DatabaseSizesLicensed() bool { return s != nil && s.entitled(flagDatabaseSizes) }
 
 // EffectivePlanName returns the name of the workspace's resolved plan, or ""
 // when no plan applies (unlimited).

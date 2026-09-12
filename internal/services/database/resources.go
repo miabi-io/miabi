@@ -17,6 +17,8 @@ import (
 type Resources struct {
 	MemoryBytes int64
 	NanoCPUs    int64
+	// Size names the database size the limits come from (Enterprise); empty for limits set by hand.
+	Size string
 }
 
 const (
@@ -82,6 +84,10 @@ func (s *Service) Resize(ctx context.Context, inst *models.DatabaseInstance, res
 	if !ok {
 		return nil, ErrUnsupportedEngine
 	}
+	res, err := s.resolveSize(inst.WorkspaceID, spec, res, true)
+	if err != nil {
+		return nil, err
+	}
 	if err := res.validate(inst.Engine, spec); err != nil {
 		return nil, err
 	}
@@ -92,14 +98,14 @@ func (s *Service) Resize(ctx context.Context, inst *models.DatabaseInstance, res
 	case cpuCapped && res.NanoCPUs == 0:
 		return nil, fmt.Errorf("%w: this workspace's plan caps database CPU, so the instance needs a CPU limit", ErrInvalidResources)
 	}
-	previous := Resources{MemoryBytes: inst.MemoryBytes, NanoCPUs: inst.NanoCPUs}
+	previous := Resources{MemoryBytes: inst.MemoryBytes, NanoCPUs: inst.NanoCPUs, Size: inst.SizeClass}
 	if res == previous {
 		return inst, nil
 	}
 	if err := s.quota.CheckDatabaseComputeAdd(inst.WorkspaceID, res.NanoCPUs, res.MemoryBytes, inst.ID); err != nil {
 		return nil, err
 	}
-	inst.MemoryBytes, inst.NanoCPUs = res.MemoryBytes, res.NanoCPUs
+	inst.MemoryBytes, inst.NanoCPUs, inst.SizeClass = res.MemoryBytes, res.NanoCPUs, res.Size
 	if err := s.repo.Update(inst); err != nil {
 		return nil, err
 	}
@@ -132,7 +138,7 @@ func (s *Service) RunResize(ctx context.Context, instanceID uint, previous Resou
 	s.publishProgress(inst, "Applying new resources")
 	if err := s.bringUp(ctx, inst, spec, adminPass); err != nil {
 		logger.Warn("database resize failed; restoring previous resources", "id", inst.ID, "error", err)
-		inst.MemoryBytes, inst.NanoCPUs = previous.MemoryBytes, previous.NanoCPUs
+		inst.MemoryBytes, inst.NanoCPUs, inst.SizeClass = previous.MemoryBytes, previous.NanoCPUs, previous.Size
 		_ = s.repo.Update(inst)
 		msg := "Applying new resources failed, previous resources restored: " + err.Error()
 		if rb := s.bringUp(ctx, inst, spec, adminPass); rb != nil {
@@ -162,6 +168,9 @@ func describeResources(inst *models.DatabaseInstance) string {
 	}
 	if inst.MemoryBytes > 0 {
 		memory = fmt.Sprintf("%d MB of memory", inst.MemoryBytes/mebibyte)
+	}
+	if inst.SizeClass != "" {
+		return fmt.Sprintf("size %s: %s and %s", inst.SizeClass, cpu, memory)
 	}
 	return cpu + " and " + memory
 }

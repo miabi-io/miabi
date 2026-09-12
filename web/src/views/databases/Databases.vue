@@ -6,7 +6,7 @@ import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { databaseApi } from '@/api/resources'
-import type { DatabaseInstance, DBEngine, DBStatus } from '@/api/types'
+import type { DatabaseInstance, DatabaseSize, DatabaseSizeOffer, DBEngine, DBStatus } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
@@ -20,9 +20,22 @@ const showCreate = ref(false)
 const creating = ref(false)
 interface CreateForm {
   name: string; engine: DBEngine; version: string; server_id: number; location: string
-  size_mb: number | null; memory_mb: number | null; cpu_cores: number | null
+  size_mb: number | null; memory_mb: number | null; cpu_cores: number | null; size: string
 }
-const emptyForm = (): CreateForm => ({ name: '', engine: 'postgres', version: '', server_id: 0, location: '', size_mb: null, memory_mb: null, cpu_cores: null })
+const emptyForm = (): CreateForm => ({ name: '', engine: 'postgres', version: '', server_id: 0, location: '', size_mb: null, memory_mb: null, cpu_cores: null, size: '' })
+
+const sizeOffer = ref<DatabaseSizeOffer>({ sizes: [], bound: false })
+const defaultSizeName = computed(() => sizeOffer.value.sizes.find((s) => s.id === sizeOffer.value.default_id)?.name ?? '')
+async function loadSizes(id: number) {
+  try {
+    sizeOffer.value = (await databaseApi.sizes(id)).data.data ?? { sizes: [], bound: false }
+  } catch {
+    sizeOffer.value = { sizes: [], bound: false }
+  }
+}
+function sizeLabel(s: DatabaseSize): string {
+  return `${s.display_name || s.name} · ${+(s.nano_cpus / 1e9).toFixed(2)} CPU · ${Math.round(s.memory_bytes / 1048576)} MB`
+}
 const form = ref<CreateForm>(emptyForm())
 
 // Live updates: one SSE connection streams status deltas for the whole workspace
@@ -119,6 +132,7 @@ async function loadWorkspace(id: number | null) {
   if (!id) return
   loading.value = true
   loadEngines(id)
+  loadSizes(id)
   await reconcile(id)
   loading.value = false
   openStream(id)
@@ -138,7 +152,7 @@ onBeforeUnmount(() => {
 })
 
 function openCreate() {
-  form.value = emptyForm()
+  form.value = { ...emptyForm(), size: defaultSizeName.value }
   showCreate.value = true
 }
 
@@ -148,7 +162,8 @@ async function create() {
   try {
     const f = form.value
     await databaseApi.create(currentWorkspaceId.value, f.name.trim(), f.engine, f.version.trim() || undefined, f.server_id || undefined,
-      Number(f.size_mb) || undefined, f.location || undefined, Number(f.memory_mb) || undefined, Number(f.cpu_cores) || undefined)
+      Number(f.size_mb) || undefined, f.location || undefined,
+      f.size ? undefined : Number(f.memory_mb) || undefined, f.size ? undefined : Number(f.cpu_cores) || undefined, f.size || undefined)
     notify.success('Database provisioning…')
     showCreate.value = false
     reconcile(currentWorkspaceId.value) // pull in the new row; SSE then drives it to running
@@ -251,7 +266,15 @@ function fmtBytes(n?: number): string {
               <input v-model="form.version" class="form-input" :placeholder="defaultVersion" />
               <p class="form-hint">Image tag for <code>{{ form.engine }}:{{ form.version.trim() || defaultVersion }}</code>. Leave blank for the default.</p>
             </div>
-            <div class="form-group">
+            <div v-if="sizeOffer.sizes.length" class="form-group">
+              <label class="form-label">Size</label>
+              <select v-model="form.size" class="form-select">
+                <option v-if="!sizeOffer.bound" value="">Custom</option>
+                <option v-for="s in sizeOffer.sizes" :key="s.id" :value="s.name">{{ sizeLabel(s) }}{{ s.id === sizeOffer.default_id ? ' (default)' : '' }}</option>
+              </select>
+              <p class="form-hint">{{ sizeOffer.bound ? 'The sizes this workspace’s plan offers.' : 'A named size, or Custom to set memory and CPU yourself.' }}</p>
+            </div>
+            <div v-if="!form.size" class="form-group">
               <label class="form-label">Resources <span class="text-muted">(optional)</span></label>
               <div class="flex gap-3">
                 <input v-model.number="form.memory_mb" type="number" min="0" class="form-input" placeholder="Memory (MB)" aria-label="Memory in MB" />

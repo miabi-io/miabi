@@ -59,9 +59,10 @@ type ProvisionDBPayload struct {
 	DatabaseID uint `json:"database_id"`
 	// Resize recreates an existing instance's container with its new limits; the previous ones are what a failed
 	// resize restores.
-	Resize          bool  `json:"resize,omitempty"`
-	PrevMemoryBytes int64 `json:"prev_memory_bytes,omitempty"`
-	PrevNanoCPUs    int64 `json:"prev_nano_cpus,omitempty"`
+	Resize          bool   `json:"resize,omitempty"`
+	PrevMemoryBytes int64  `json:"prev_memory_bytes,omitempty"`
+	PrevNanoCPUs    int64  `json:"prev_nano_cpus,omitempty"`
+	PrevSize        string `json:"prev_size,omitempty"`
 }
 
 // UpgradeDBPayload describes a queued database version upgrade.
@@ -213,6 +214,7 @@ func (p *Producer) EnqueueProvisionDB(databaseID, serverID uint) error {
 func (p *Producer) EnqueueResizeDB(databaseID, serverID uint, previous database.Resources) error {
 	payload, err := json.Marshal(ProvisionDBPayload{
 		DatabaseID: databaseID, Resize: true, PrevMemoryBytes: previous.MemoryBytes, PrevNanoCPUs: previous.NanoCPUs,
+		PrevSize: previous.Size,
 	})
 	if err != nil {
 		return err

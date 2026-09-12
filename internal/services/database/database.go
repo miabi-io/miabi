@@ -192,6 +192,7 @@ type Service struct {
 	networks   NetworkProvider
 	swarm      SwarmNetworks
 	quota      *quota.Service
+	sizes      SizeCatalog
 	ownerOf    OwnerExister
 	apps       AppController
 	backups    LogicalBackup
@@ -564,6 +565,10 @@ func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, nam
 	if !ok {
 		return nil, ErrUnsupportedEngine
 	}
+	res, err := s.resolveSize(workspaceID, spec, res, false)
+	if err != nil {
+		return nil, err
+	}
 	if err := res.validate(engine, spec); err != nil {
 		return nil, err
 	}
@@ -629,6 +634,7 @@ func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, nam
 		VolumeSizeBytes:  volumeSizeBytes,
 		MemoryBytes:      res.MemoryBytes,
 		NanoCPUs:         res.NanoCPUs,
+		SizeClass:        res.Size,
 		Metadata:         models.DefaultManagedBy(meta, models.ManagedByUser),
 		Annotations:      annotations,
 	}

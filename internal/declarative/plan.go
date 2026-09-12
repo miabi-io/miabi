@@ -299,7 +299,7 @@ var optionalWhenUnset = map[string]bool{
 // come from the console or a plan's default size, so a manifest silent about them leaves them be; an app's
 // resources keep converging to the manifest.
 var optionalWhenUnsetByKind = map[Kind]map[string]bool{
-	KindDatabase: {"resources.memory": true, "resources.cpu": true},
+	KindDatabase: {"resources.memory": true, "resources.cpu": true, "resources.size": true},
 }
 
 // normalizedList compares a set the way the app service stores it, so CAP_NET_ADMIN in a manifest does not
@@ -546,6 +546,9 @@ func specFields(r Resource) map[string]string {
 			if res.CPU != "" {
 				nc, _ := res.NanoCPUs()
 				f["resources.cpu"] = strconv.FormatInt(nc, 10)
+			}
+			if res.Size != "" {
+				f["resources.size"] = res.Size
 			}
 		}
 	case r.Volume != nil:

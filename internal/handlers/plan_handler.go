@@ -22,12 +22,13 @@ type PlanHandler struct {
 	repo       *repositories.PlanRepository
 	overrides  *repositories.WorkspaceQuotaRepository
 	workspaces *repositories.WorkspaceRepository
+	sizes      *repositories.DatabaseSizeRepository
 	ee         enterprise.EE
 	audit      *audit.Logger
 }
 
-func NewPlanHandler(repo *repositories.PlanRepository, overrides *repositories.WorkspaceQuotaRepository, workspaces *repositories.WorkspaceRepository, ee enterprise.EE, auditLog *audit.Logger) *PlanHandler {
-	return &PlanHandler{repo: repo, overrides: overrides, workspaces: workspaces, ee: ee, audit: auditLog}
+func NewPlanHandler(repo *repositories.PlanRepository, overrides *repositories.WorkspaceQuotaRepository, workspaces *repositories.WorkspaceRepository, sizes *repositories.DatabaseSizeRepository, ee enterprise.EE, auditLog *audit.Logger) *PlanHandler {
+	return &PlanHandler{repo: repo, overrides: overrides, workspaces: workspaces, sizes: sizes, ee: ee, audit: auditLog}
 }
 
 // PlanBody carries every settable plan field. Limits use -1 = unlimited, 0 = none.
@@ -66,6 +67,9 @@ type PlanBody struct {
 	AllowOfficialImageUser    bool   `json:"allow_official_image_user"` // exempt official-template apps from the restricted UID
 	// Placement binds the plan to locations and a node pool (Enterprise placement_policy).
 	Placement models.PlanPlacement `json:"placement"`
+	// DatabaseSizes are the database sizes the plan offers, the first its default (Enterprise database_sizes).
+	// Omitted keeps the stored list.
+	DatabaseSizes *[]uint `json:"database_sizes"`
 }
 
 type CreatePlanRequest struct {
@@ -163,6 +167,28 @@ func (b PlanBody) apply(p *models.Plan) {
 	p.SecurityProfile = models.NormalizeSecurityProfile(b.SecurityProfile)
 	p.AllowOfficialImageUser = b.AllowOfficialImageUser
 	p.Placement = b.Placement
+	if b.DatabaseSizes != nil {
+		p.DatabaseSizes = *b.DatabaseSizes
+	}
+}
+
+var errUnknownDatabaseSize = errors.New("the list names a database size that does not exist")
+
+// checkDatabaseSizes refuses unknown sizes, and offering sizes without database_sizes. Clearing or resending an
+// unchanged list is always allowed, so a lapsed license never strands one.
+func (h *PlanHandler) checkDatabaseSizes(c *okapi.Context, prev []uint, next *[]uint) error {
+	if next == nil || len(*next) == 0 || slices.Equal(prev, *next) {
+		return nil
+	}
+	if err := h.ee.RequireMutable(enterprise.FlagDatabaseSizes); err != nil {
+		return entitlementAbort(c, err)
+	}
+	for _, id := range *next {
+		if _, err := h.sizes.FindByID(id); err != nil {
+			return c.AbortBadRequest(errUnknownDatabaseSize.Error())
+		}
+	}
+	return nil
 }
 
 var errInvalidPlanPool = errors.New("a pool name is lowercase letters, digits and hyphens (max 32), e.g. pro")
@@ -217,6 +243,9 @@ func (h *PlanHandler) Create(c *okapi.Context, req *CreatePlanRequest) error {
 	if a := h.checkPlacement(c, models.PlanPlacement{}, body.Placement); a != nil {
 		return a
 	}
+	if a := h.checkDatabaseSizes(c, nil, body.DatabaseSizes); a != nil {
+		return a
+	}
 	if body.IsDefault {
 		_ = h.repo.ClearDefault(nil)
 	}
@@ -238,6 +267,9 @@ func (h *PlanHandler) Update(c *okapi.Context, req *UpdatePlanRequest) error {
 		return entitlementAbort(c, err)
 	}
 	if a := h.checkPlacement(c, p.Placement, req.Body.Placement); a != nil {
+		return a
+	}
+	if a := h.checkDatabaseSizes(c, p.DatabaseSizes, req.Body.DatabaseSizes); a != nil {
 		return a
 	}
 	if err := systemPlanEdit(p, req.Body.Name, req.Body.IsDefault); err != nil {
@@ -376,6 +408,15 @@ func (h *PlanHandler) SetWorkspaceQuota(c *okapi.Context, req *SetWorkspaceQuota
 			prev = *o.Placement
 		}
 		if a := h.checkPlacement(c, prev, *req.Body.Placement); a != nil {
+			return a
+		}
+	}
+	if req.Body.DatabaseSizes != nil {
+		var prev []uint
+		if o, err := h.overrides.FindByWorkspace(wsID); err == nil && o.DatabaseSizes != nil {
+			prev = *o.DatabaseSizes
+		}
+		if a := h.checkDatabaseSizes(c, prev, req.Body.DatabaseSizes); a != nil {
 			return a
 		}
 	}

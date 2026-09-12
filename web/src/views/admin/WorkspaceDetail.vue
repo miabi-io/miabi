@@ -7,7 +7,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { useLicenseStore } from '@/stores/license'
 import { useEntitlement } from '@/composables/useEntitlement'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import type { AdminWorkspaceDetail, AdminEvent, AdminWorkspaceMember, Cluster, Plan, WorkspaceQuotaOverride } from '@/api/types'
+import type { AdminWorkspaceDetail, AdminEvent, AdminWorkspaceMember, Cluster, DatabaseSize, Plan, WorkspaceQuotaOverride } from '@/api/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -154,7 +154,26 @@ function toggleOverrideLocation(clusterId: number) {
   p.locations = ids.includes(clusterId) ? ids.filter((x) => x !== clusterId) : [...ids, clusterId]
 }
 
-watch(wsId, () => { load(); loadOverride(); loadClusters(); licenseStore.load() }, { immediate: true })
+const databaseSizesPolicy = useEntitlement('database_sizes')
+const databaseSizes = ref<DatabaseSize[]>([])
+async function loadDatabaseSizes() {
+  try {
+    databaseSizes.value = (await adminApi.listDatabaseSizes()).data.data ?? []
+  } catch {
+    databaseSizes.value = []
+  }
+}
+function setSizesMode(raw: string) {
+  if (!override.value) return
+  override.value.database_sizes = raw === 'override' ? [] : null
+}
+function toggleOverrideSize(id: number) {
+  const ids = override.value?.database_sizes
+  if (!override.value || !ids) return
+  override.value.database_sizes = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]
+}
+
+watch(wsId, () => { load(); loadOverride(); loadClusters(); loadDatabaseSizes(); licenseStore.load() }, { immediate: true })
 
 function back() {
   router.push('/admin/workspaces')
@@ -490,6 +509,26 @@ function eventSeverity(e: AdminEvent): string {
               <label class="form-label form-label-sm">Node pool</label>
               <input v-model.trim="override.placement.pool" class="form-input mono" placeholder="empty = nodes in no pool" />
             </div>
+          </template>
+          <div class="form-group" style="margin: 14px 0 0; max-width: 360px">
+            <label class="form-label form-label-sm">
+              Database sizes
+              <span v-if="!databaseSizesPolicy.has.value" class="badge badge-neutral" style="margin-left: 6px" title="Database sizes require an Enterprise license">
+                <span class="mdi mdi-lock-outline"></span> Enterprise
+              </span>
+            </label>
+            <select class="form-select" :value="override.database_sizes ? 'override' : ''" @change="setSizesMode(($event.target as HTMLSelectElement).value)">
+              <option value="">Inherit the plan</option>
+              <option value="override" :disabled="!databaseSizesPolicy.mutable.value">Override the sizes offered</option>
+            </select>
+          </div>
+          <template v-if="override.database_sizes">
+            <label v-for="s in databaseSizes" :key="s.id" class="checkbox-label" style="display: block; margin-top: 8px">
+              <input type="checkbox" :checked="override.database_sizes.includes(s.id)" @change="toggleOverrideSize(s.id)" />
+              {{ s.display_name || s.name }}
+              <span v-if="override.database_sizes[0] === s.id" class="badge badge-info" style="margin-left: 6px">default</span>
+            </label>
+            <p class="form-hint">None checked leaves sizes optional; the first checked is the default.</p>
           </template>
           <div style="display: flex; gap: 10px; margin-top: 20px">
             <button

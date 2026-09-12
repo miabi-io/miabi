@@ -51,6 +51,7 @@ const (
 	FlagAnalyticsExport              = "analytics_export" // workspace analytics export (CSV) + extended retention
 	FlagAdvancedCanary               = "advanced_canary"
 	FlagAnnouncements                = "announcements" // platform-wide announcements to user inboxes
+	FlagDatabaseSizes                = "database_sizes"
 )
 
 // FlagInfo describes one entitlement flag for tooling and documentation.
@@ -87,6 +88,7 @@ var AllFlags = []FlagInfo{
 	{FlagAnalyticsExport, "workspace analytics export (CSV) + extended retention"},
 	{FlagAdvancedCanary, "manual canary control + attribute-based canary routing"},
 	{FlagAnnouncements, "platform announcements broadcast to user inboxes"},
+	{FlagDatabaseSizes, "named database sizes (CPU and memory), offered per plan"},
 }
 
 const (
@@ -118,7 +120,7 @@ var Tiers = []Tier{
 		Desc: "Small businesses & teams",
 		Flags: []string{
 			FlagMultiSSO, FlagSSOHiddenProvider, FlagSSOSAML, FlagSSOLDAP, FlagSCIM,
-			FlagCustomRoles, FlagResourcePolicies, FlagQuotaOverride, FlagPlacementPolicy, FlagUserWorkspaceLimit,
+			FlagCustomRoles, FlagResourcePolicies, FlagQuotaOverride, FlagPlacementPolicy, FlagDatabaseSizes, FlagUserWorkspaceLimit,
 			FlagUserWorkspaceMembershipLimit,
 			FlagAuditLog, FlagAuditExport, FlagPlatformBackup, FlagAnnouncements,
 			FlagPrivateRegistry, FlagRegistryS3, FlagPlatformRunners, FlagSecurityProfile,

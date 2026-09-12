@@ -203,6 +203,7 @@ type routerHandlers struct {
 	resourcePolicy      *handlers.ResourcePolicyHandler
 	siemAdmin           *handlers.SIEMAdminHandler
 	adminAnnouncement   *handlers.AdminAnnouncementHandler
+	adminDatabaseSize   *handlers.AdminDatabaseSizeHandler
 	adminRunner         *handlers.AdminRunnerHandler
 }
 
@@ -489,6 +490,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	databaseService.SetNodeGuard(nodeService)
 	databaseService.SetServerInfo(nodeService)
 	databaseService.SetQuota(quotaService)
+	databaseSizeRepo := repositories.NewDatabaseSizeRepository(db)
+	databaseService.SetSizeCatalog(databaseSizeRepo)
 
 	// Account teardown: stop a disabled user's workloads, and cascade-delete all
 	// of a deleted user's owned-workspace resources.
@@ -1114,7 +1117,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			capability:          handlers.NewCapabilityHandler(cfg.ContainerGrantsEnabled, appRepo, workspaceRepo),
 			register:            handlers.NewRegisterHandler(registrationService, authService, userRepo, platformMailer, auditLogger),
 			update:              handlers.NewUpdateHandler(updateService),
-			adminPlan:           handlers.NewPlanHandler(planRepo, quotaOverrideRepo, workspaceRepo, ee, auditLogger),
+			adminPlan:           handlers.NewPlanHandler(planRepo, quotaOverrideRepo, workspaceRepo, databaseSizeRepo, ee, auditLogger),
 			deploymentCfg:       handlers.NewDeploymentConfigHandler(imageResolver, settingRepo, settingsProvider, auditLogger, ee),
 			adminJob:            handlers.NewAdminJobHandler(cronManager),
 			adminPlatformBackup: handlers.NewAdminPlatformBackupHandler(platformBackupService, ee, auditLogger),
@@ -1131,6 +1134,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			resourcePolicy:      handlers.NewResourcePolicyHandler(resourcePolicyRepo, workspaceRepo, ee, auditLogger),
 			siemAdmin:           handlers.NewSIEMAdminHandler(siemConfigRepo, siemStreamer, ee, auditLogger),
 			adminAnnouncement:   handlers.NewAdminAnnouncementHandler(announcementService, announcementRepo, userRepo, ee, auditLogger),
+			adminDatabaseSize:   handlers.NewAdminDatabaseSizeHandler(databaseSizeRepo, ee, auditLogger),
 			adminRunner:         handlers.NewAdminRunnerHandler(runnerService, ee, auditLogger),
 		},
 	}

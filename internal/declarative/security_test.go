@@ -146,6 +146,8 @@ func TestDatabaseResources(t *testing.T) {
 		{"bad memory", "  resources:\n    memory: lots\n", "invalid memory"},
 		{"bad cpu", "  resources:\n    cpu: half\n", "invalid cpu"},
 		{"shared", "  instance: shared\n  resources:\n    memory: 1Gi\n", "instance of its own"},
+		{"size and memory", "  resources:\n    size: medium\n    memory: 1Gi\n", "not both"},
+		{"bad size name", "  resources:\n    size: Medium_1\n", "must be a size name"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, err := d.Parse(dbManifest(tc.spec)); err == nil || !strings.Contains(err.Error(), tc.want) {
@@ -185,6 +187,14 @@ func TestDatabaseResourcesConvergeOnlyWhenStated(t *testing.T) {
 	}
 	if len(got) != 2 || got["resources.memory"] != "2147483648" || got["resources.cpu"] != "0" {
 		t.Errorf("fields = %v, want memory raised and the CPU limit removed", got)
+	}
+	// A named size compares by name alone; the limits it carries are the instance's.
+	sized := &d.DatabaseResourcesSpec{Memory: "2147483648", CPU: "1", Size: "medium"}
+	if fields := dbFields(&d.DatabaseResourcesSpec{Size: "medium"}, sized); len(fields) != 0 {
+		t.Errorf("same size: fields = %+v, want no drift", fields)
+	}
+	if fields := dbFields(&d.DatabaseResourcesSpec{Size: "large"}, sized); len(fields) != 1 || fields[0].Field != "resources.size" {
+		t.Errorf("another size: fields = %+v, want the size change alone", fields)
 	}
 }
 

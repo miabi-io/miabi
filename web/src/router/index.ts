@@ -121,6 +121,7 @@ const routes = [
       { path: 'ldap', name: 'admin-ldap', component: () => import('@/views/admin/LdapDirectory.vue'), meta: { title: 'LDAP / Active Directory', admin: true } },
       { path: 'plans', name: 'admin-plans', component: () => import('@/views/admin/Plans.vue'), meta: { title: 'Plans', admin: true } },
       { path: 'plans/:id', name: 'admin-plan-detail', component: () => import('@/views/admin/PlanDetail.vue'), meta: { title: 'Plan', admin: true } },
+      { path: 'database-sizes', name: 'admin-database-sizes', component: () => import('@/views/admin/DatabaseSizes.vue'), meta: { title: 'Database sizes', admin: true } },
       { path: 'license', name: 'admin-license', component: () => import('@/views/admin/License.vue'), meta: { title: 'License', admin: true } },
       { path: 'siem', name: 'admin-siem', component: () => import('@/views/admin/SIEM.vue'), meta: { title: 'SIEM Streaming', admin: true } },
       { path: 'announcements', name: 'admin-announcements', component: () => import('@/views/admin/Announcements.vue'), meta: { title: 'Announcements', admin: true } },

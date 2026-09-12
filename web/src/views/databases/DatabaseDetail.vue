@@ -16,7 +16,7 @@ import ResourceIcon from '@/components/ResourceIcon.vue'
 import { fmtSize } from '@/utils/format'
 import { engineLogo, engineMdi } from '@/utils/resourceIcon'
 import { copyText } from '@/utils/clipboard'
-import type { DatabaseInstance, DBStatus, UpgradeProgress, LogicalDatabase, ConnectionInfo, ForwardSession, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, DiscoveredSet, Application, Network, UpgradeOptions, UpgradePlan, StatsSample, AppEvent } from '@/api/types'
+import type { DatabaseInstance, DBStatus, UpgradeProgress, LogicalDatabase, ConnectionInfo, ForwardSession, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, DiscoveredSet, Application, Network, UpgradeOptions, UpgradePlan, StatsSample, AppEvent, DatabaseSize, DatabaseSizeOffer } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 import { relativeTime } from '@/utils/time'
 
@@ -194,21 +194,35 @@ onUnmounted(() => { stopLogs(); stopEvents() })
 
 const showResize = ref(false)
 const resizing = ref(false)
-const resizeForm = ref<{ memory_mb: number | null; cpu_cores: number | null }>({ memory_mb: null, cpu_cores: null })
+const resizeForm = ref<{ memory_mb: number | null; cpu_cores: number | null; size: string }>({ memory_mb: null, cpu_cores: null, size: '' })
+const sizeOffer = ref<DatabaseSizeOffer>({ sizes: [], bound: false })
 function openResize() {
   if (!inst.value) return
   resizeForm.value = {
     memory_mb: inst.value.memory_bytes ? Math.round(inst.value.memory_bytes / 1048576) : null,
     cpu_cores: inst.value.nano_cpus ? inst.value.nano_cpus / 1e9 : null,
+    size: inst.value.size_class ?? '',
   }
   showResize.value = true
+  if (!wid.value) return
+  databaseApi.sizes(wid.value).then((r) => {
+    sizeOffer.value = r.data.data ?? { sizes: [], bound: false }
+    const offered = sizeOffer.value.sizes.some((s) => s.name === resizeForm.value.size)
+    if (sizeOffer.value.bound && !offered) {
+      resizeForm.value.size = sizeOffer.value.sizes.find((s) => s.id === sizeOffer.value.default_id)?.name ?? ''
+    }
+  }).catch(() => { sizeOffer.value = { sizes: [], bound: false } })
+}
+function sizeLabel(s: DatabaseSize): string {
+  return `${s.display_name || s.name} · ${+(s.nano_cpus / 1e9).toFixed(2)} CPU · ${Math.round(s.memory_bytes / 1048576)} MB`
 }
 async function saveResize() {
   if (!wid.value || !inst.value) return
   resizing.value = true
   try {
     const f = resizeForm.value
-    inst.value = (await databaseApi.resize(wid.value, inst.value.id, Number(f.memory_mb) || 0, Number(f.cpu_cores) || 0)).data.data
+    inst.value = (await databaseApi.resize(wid.value, inst.value.id,
+      f.size ? 0 : Number(f.memory_mb) || 0, f.size ? 0 : Number(f.cpu_cores) || 0, f.size || undefined)).data.data
     notify.success('Resources saved; the instance restarts to apply them')
     showResize.value = false
   } catch (e) {
@@ -220,7 +234,7 @@ async function saveResize() {
 function fmtLimits(i: DatabaseInstance): string {
   const cpu = i.nano_cpus ? `${+(i.nano_cpus / 1e9).toFixed(2)} CPU` : 'unlimited CPU'
   const memory = i.memory_bytes ? fmtSize(i.memory_bytes) : 'unlimited memory'
-  return `${cpu} · ${memory}`
+  return i.size_class ? `${i.size_class} · ${cpu} · ${memory}` : `${cpu} · ${memory}`
 }
 
 async function load() {
@@ -1678,15 +1692,24 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
         </div>
         <form @submit.prevent="saveResize">
           <div class="modal-body">
-            <div class="form-group">
-              <label class="form-label">Memory (MB)</label>
-              <input v-model.number="resizeForm.memory_mb" type="number" min="0" class="form-input" placeholder="Unlimited" />
-              <p class="form-hint">The engine is tuned to this limit.</p>
+            <div v-if="sizeOffer.sizes.length" class="form-group">
+              <label class="form-label">Size</label>
+              <select v-model="resizeForm.size" class="form-select">
+                <option v-if="!sizeOffer.bound" value="">Custom</option>
+                <option v-for="s in sizeOffer.sizes" :key="s.id" :value="s.name">{{ sizeLabel(s) }}</option>
+              </select>
             </div>
-            <div class="form-group">
-              <label class="form-label">CPU cores</label>
-              <input v-model.number="resizeForm.cpu_cores" type="number" min="0" step="0.25" class="form-input" placeholder="Unlimited" />
-            </div>
+            <template v-if="!resizeForm.size">
+              <div class="form-group">
+                <label class="form-label">Memory (MB)</label>
+                <input v-model.number="resizeForm.memory_mb" type="number" min="0" class="form-input" placeholder="Unlimited" />
+                <p class="form-hint">The engine is tuned to this limit.</p>
+              </div>
+              <div class="form-group">
+                <label class="form-label">CPU cores</label>
+                <input v-model.number="resizeForm.cpu_cores" type="number" min="0" step="0.25" class="form-input" placeholder="Unlimited" />
+              </div>
+            </template>
             <p class="form-hint" style="margin-bottom: 0">
               The container is recreated on the same data volume, so the database restarts briefly. If it does not
               come up with the new limits, the previous ones are restored.
