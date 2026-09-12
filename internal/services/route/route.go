@@ -104,6 +104,9 @@ type Service struct {
 // ClusterCap reports whether a gateway of its own serves a cluster. Implemented by services/cluster.
 type ClusterCap interface {
 	OwnGateway(clusterID uint) (*models.Cluster, bool)
+	// IngressAddress is where a cluster's public DNS records point; id 0 is the default cluster.
+	IngressAddress(clusterID uint) (ip, hostname string)
+	IsDefaultCluster(clusterID uint) bool
 }
 
 // SetCluster wires cluster gateways (nil-safe; nil = every cluster is served as the default one).
@@ -1018,7 +1021,8 @@ func (s *Service) clusterGateway(clusterID uint) (*models.Cluster, bool) {
 }
 
 // gatewayServer returns the node whose gateway serves an app, or false when the control-plane gateway does. A
-// remote swarm's ingress node serves every app in its cluster; an edge-gateway node serves its own containers.
+// remote swarm's ingress node serves every app in its cluster; an edge-gateway node outside the default cluster
+// serves its own containers.
 func (s *Service) gatewayServer(app *models.Application) (uint, bool) {
 	if c, ok := s.clusterGateway(app.ClusterID); ok {
 		return c.IngressNode(), true
@@ -1027,10 +1031,14 @@ func (s *Service) gatewayServer(app *models.Application) (uint, bool) {
 		return 0, false
 	}
 	srv, err := s.servers.FindByID(app.ServerID)
-	if err != nil || srv.IsLocal || srv.Connectivity != models.ConnectivityEdgeGateway {
+	if err != nil || srv.IsLocal || srv.Connectivity != models.ConnectivityEdgeGateway || s.inDefaultCluster(srv.ClusterID) {
 		return 0, false
 	}
 	return srv.ID, true
+}
+
+func (s *Service) inDefaultCluster(clusterID uint) bool {
+	return s.cluster != nil && s.cluster.IsDefaultCluster(clusterID)
 }
 
 // gatewayBackends are the upstreams a gateway dials by alias: a service's VIP, or the app's containers.
@@ -1062,23 +1070,23 @@ func (s *Service) reconcileAppDNS(ctx context.Context, app *models.Application, 
 	}
 }
 
-// dnsTarget resolves the public address a route's hosts should point at: the gateway that terminates the
-// route. A remote swarm's configured ingress address wins; an app a node gateway serves (see gatewayServer)
-// uses that node's public address; every other app is fronted by the control-plane gateway (the local node).
+// dnsTarget resolves the public address a route's hosts should point at: the address of the cluster whose gateway
+// terminates the route. Apps the control-plane gateway serves use the default cluster's address.
 func (s *Service) dnsTarget(app *models.Application) (ip, hostname string) {
-	if c, ok := s.clusterGateway(app.ClusterID); ok && (c.IngressIP != "" || c.IngressHostname != "") {
-		return c.IngressIP, c.IngressHostname
-	}
-	if id, ok := s.gatewayServer(app); ok {
-		if srv, err := s.servers.FindByID(id); err == nil {
-			return srv.PublicIP, srv.PublicHostname
-		}
+	if s.cluster == nil {
 		return "", ""
 	}
-	if local, err := s.servers.FindLocal(); err == nil && local != nil {
-		return local.PublicIP, local.PublicHostname
+	clusterID := models.DefaultClusterID
+	if c, ok := s.clusterGateway(app.ClusterID); ok {
+		clusterID = c.ID
+	} else if id, ok := s.gatewayServer(app); ok {
+		srv, err := s.servers.FindByID(id)
+		if err != nil {
+			return "", ""
+		}
+		clusterID = srv.ClusterID
 	}
-	return "", ""
+	return s.cluster.IngressAddress(clusterID)
 }
 
 // enrichDNS populates a route's transient DNS-target + backend fields for

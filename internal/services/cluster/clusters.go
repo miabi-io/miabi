@@ -4,6 +4,7 @@
 package cluster
 
 import (
+	"context"
 	"errors"
 	"maps"
 	"regexp"
@@ -31,6 +32,9 @@ type ClusterPatch struct {
 	ExternalCertProvider *string
 	// ServiceEndpointMode switches how the cluster's service apps are reached by name; running services follow.
 	ServiceEndpointMode *models.ServiceEndpointMode
+	// IngressIP and IngressHostname are where the cluster's public DNS records point.
+	IngressIP       *string
+	IngressHostname *string
 }
 
 // Clusters lists every cluster, the default first, with its node count.
@@ -113,6 +117,23 @@ func (s *Service) UpdateCluster(id uint, p ClusterPatch) (*models.Cluster, error
 			modeChanged = true
 		}
 	}
+	ingressChanged := false
+	if p.IngressIP != nil || p.IngressHostname != nil {
+		ip, host := c.IngressIP, c.IngressHostname
+		if p.IngressIP != nil {
+			ip = *p.IngressIP
+		}
+		if p.IngressHostname != nil {
+			host = *p.IngressHostname
+		}
+		if ip, host, err = normalizeIngress(ip, host); err != nil {
+			return nil, err
+		}
+		if ip != c.IngressIP || host != c.IngressHostname {
+			cols["ingress_ip"], cols["ingress_hostname"] = ip, host
+			ingressChanged = true
+		}
+	}
 	if len(cols) > 0 {
 		if err := s.store.UpdateColumns(c.ID, cols); err != nil {
 			return nil, err
@@ -123,6 +144,9 @@ func (s *Service) UpdateCluster(id uint, p ClusterPatch) (*models.Cluster, error
 	}
 	if modeChanged {
 		s.endpointModeChanged(c.ID, *p.ServiceEndpointMode)
+	}
+	if ingressChanged {
+		s.ResyncRoutes(context.Background(), c.ID)
 	}
 	return s.Cluster(c.ID)
 }

@@ -55,6 +55,7 @@ const editForm = ref({
   display_name: '', location_code: '', visibility: 'all' as Cluster['visibility'], cordoned: false,
   external_base_domain: '', external_cert_provider: '',
   service_endpoint_mode: 'vip' as NonNullable<Cluster['service_endpoint_mode']>,
+  ingress_ip: '', ingress_hostname: '',
 })
 function openEdit() {
   editForm.value = {
@@ -65,6 +66,8 @@ function openEdit() {
     external_base_domain: cluster.value?.external_base_domain ?? '',
     external_cert_provider: cluster.value?.external_cert_provider ?? '',
     service_endpoint_mode: cluster.value?.service_endpoint_mode ?? 'vip',
+    ingress_ip: cluster.value?.ingress_ip ?? '',
+    ingress_hostname: cluster.value?.ingress_hostname ?? '',
   }
   showEdit.value = true
 }
@@ -73,9 +76,7 @@ function normalizeDomain(domain: string) {
   return domain.trim().toLowerCase().replace(/^\*\./, '').replace(/^\.|\.$/g, '')
 }
 const editDomain = computed(() => normalizeDomain(editForm.value.external_base_domain))
-const dnsTarget = computed(() =>
-  cluster.value?.ingress_hostname || cluster.value?.ingress_ip || ingressNode.value?.public_hostname || ingressNode.value?.public_ip || '',
-)
+const dnsTarget = computed(() => editForm.value.ingress_ip.trim() || editForm.value.ingress_hostname.trim())
 // Moving or clearing the domain changes URLs people already use, so it is confirmed with the number of apps affected.
 const confirmRehost = ref(false)
 const rehostMessage = computed(() => {
@@ -109,6 +110,8 @@ async function persistEdit() {
       external_base_domain: editForm.value.external_base_domain.trim(),
       external_cert_provider: editForm.value.external_cert_provider.trim(),
       service_endpoint_mode: editForm.value.service_endpoint_mode,
+      ingress_ip: editForm.value.ingress_ip.trim(),
+      ingress_hostname: editForm.value.ingress_hostname.trim(),
     })).data.data
     showEdit.value = false
     notify.success('Cluster updated')
@@ -122,23 +125,20 @@ async function persistEdit() {
 const canSetGateway = computed(() => cluster.value?.mode === 'swarm' && !isDefault.value)
 const gatewayCandidates = computed(() => members.value.filter((n) => n.connectivity === 'edge-gateway'))
 const showGateway = ref(false)
-const gatewayForm = ref({ server_id: 0, ingress_ip: '', ingress_hostname: '' })
+const gatewayForm = ref({ server_id: 0 })
 function openGateway() {
-  gatewayForm.value = {
-    server_id: ingressNode.value?.id || gatewayCandidates.value[0]?.id || 0,
-    ingress_ip: cluster.value?.ingress_ip ?? '',
-    ingress_hostname: cluster.value?.ingress_hostname ?? '',
-  }
+  gatewayForm.value = { server_id: ingressNode.value?.id || gatewayCandidates.value[0]?.id || 0 }
   showGateway.value = true
 }
 async function saveGateway() {
   if (!cluster.value) return
   saving.value = true
   try {
+    // The public address is edited on the cluster; the gateway call replaces it, so it is sent unchanged.
     cluster.value = (await clustersApi.setGateway(cluster.value.id, {
       server_id: gatewayForm.value.server_id,
-      ingress_ip: gatewayForm.value.ingress_ip.trim(),
-      ingress_hostname: gatewayForm.value.ingress_hostname.trim(),
+      ingress_ip: cluster.value.ingress_ip ?? '',
+      ingress_hostname: cluster.value.ingress_hostname ?? '',
     })).data.data
     showGateway.value = false
     notify.success('Gateway updated')
@@ -326,7 +326,7 @@ const advertiseAddr = ref('')
 function openEnable() {
   void loadPreflight()
   const mgr = managerNode.value
-  advertiseAddr.value = mgr?.address || mgr?.public_ip || ''
+  advertiseAddr.value = mgr?.address || ''
   showEnable.value = true
 }
 async function enableSwarm() {
@@ -481,8 +481,14 @@ function swarmClass(n: Server): string {
           <dd>
             <router-link v-if="ingressNode" :to="`/admin/nodes/${ingressNode.id}`">{{ ingressNode.display_name || ingressNode.name }}</router-link>
             <span v-else>—</span>
-            <span v-if="canSetGateway && (cluster.ingress_hostname || cluster.ingress_ip)" class="badge badge-muted mono">{{ cluster.ingress_hostname || cluster.ingress_ip }}</span>
             <button v-if="canSetGateway" class="btn btn-ghost btn-sm" @click="openGateway">Change</button>
+          </dd>
+          <dt>Public address</dt>
+          <dd>
+            <span v-if="cluster.ingress_ip || cluster.ingress_hostname" class="mono">
+              {{ [cluster.ingress_ip, cluster.ingress_hostname].filter(Boolean).join(' · ') }}
+            </span>
+            <span v-else class="text-muted">Not set: no DNS records are managed for this location</span>
           </dd>
           <dt>Placement</dt>
           <dd>
@@ -702,6 +708,18 @@ function swarmClass(n: Server): string {
               </p>
             </div>
             <div class="form-group">
+              <label class="form-label">Public IP</label>
+              <input v-model="editForm.ingress_ip" class="form-input mono" placeholder="e.g. 203.0.113.10" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Public hostname</label>
+              <input v-model="editForm.ingress_hostname" class="form-input mono" placeholder="e.g. lb.eu-central.example.com" />
+              <p class="form-hint">
+                Where DNS records for this location's routes point: its gateway, or a load balancer in front of it.
+                The hostname is used only without an IP, as a CNAME target.
+              </p>
+            </div>
+            <div class="form-group">
               <label class="form-label">External domain</label>
               <input
                 v-model="editForm.external_base_domain"
@@ -750,21 +768,13 @@ function swarmClass(n: Server): string {
             <p class="cell-sub" style="margin-bottom: 12px">
               The node whose gateway serves every route in this cluster: the control plane's gateway cannot reach into its overlay.
             </p>
-            <div class="form-group">
+            <div class="form-group" style="margin-bottom: 0">
               <label class="form-label">Gateway node</label>
               <select v-model.number="gatewayForm.server_id" class="form-select" required>
                 <option v-for="n in gatewayCandidates" :key="n.id" :value="n.id">{{ n.display_name || n.name }}</option>
               </select>
               <p v-if="gatewayCandidates.length === 0" class="form-hint">No node of this cluster runs its own gateway yet: set one to edge-gateway connectivity.</p>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Ingress IP</label>
-              <input v-model="gatewayForm.ingress_ip" class="form-input mono" placeholder="e.g. 203.0.113.10" />
-            </div>
-            <div class="form-group" style="margin-bottom: 0">
-              <label class="form-label">Ingress hostname</label>
-              <input v-model="gatewayForm.ingress_hostname" class="form-input mono" placeholder="e.g. lb.eu-central.example.com" />
-              <p class="form-hint">What DNS records point at, e.g. a load balancer. Empty uses the node's public address.</p>
+              <p class="form-hint">The public address DNS records point at is set in the cluster's Edit dialog.</p>
             </div>
           </div>
           <div class="modal-footer">

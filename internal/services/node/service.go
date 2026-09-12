@@ -181,17 +181,6 @@ func (s *Service) Bootstrap(ctx context.Context, endpoint string) {
 		server.DisplayName = "manager"
 		dirty = true
 	}
-	// Auto-stamp the manager's hostname from the Docker host (info.Name is the real machine hostname, not the
-	// Miabi container's), so it needn't be entered by hand. Non-destructive — only fills it when the admin
-	// left it blank. Skipped silently if Docker is unreachable.
-	if server.PublicHostname == "" {
-		if info, ierr := s.docker.Info(ctx); ierr == nil {
-			if hn := strings.TrimSpace(info.Name); hn != "" {
-				server.PublicHostname = hn
-				dirty = true
-			}
-		}
-	}
 	if dirty {
 		_ = s.repo.Update(server)
 	}
@@ -234,12 +223,10 @@ type NodeInput struct {
 	// DisplayName is the free-text label, and the only name a caller supplies. The URL-safe handle is derived
 	// from it at creation and never settable: it is what /api/v1/provider/{name} is built from, a deployed edge
 	// gateway polls that URL, and nothing is gained by letting an operator change a value they never type again.
-	DisplayName    string
-	Address        string
-	PublicIP       string
-	PublicHostname string
-	Connectivity   models.ServerConnectivity
-	AccessMode     models.ServerAccessMode
+	DisplayName  string
+	Address      string
+	Connectivity models.ServerConnectivity
+	AccessMode   models.ServerAccessMode
 	// DockerEndpoint is the host for non-agent modes (unix://… / tcp://host:2376).
 	DockerEndpoint string
 	TLSCACert      string // api, optional (PEM)
@@ -291,8 +278,6 @@ func (s *Service) CreateNode(in NodeInput) (*models.Server, string, error) {
 		AccessMode:     mode,
 		DockerEndpoint: strings.TrimSpace(in.DockerEndpoint),
 		Address:        deriveAddress(mode, in.DockerEndpoint, in.Address),
-		PublicIP:       strings.TrimSpace(in.PublicIP),
-		PublicHostname: strings.TrimSpace(in.PublicHostname),
 		IsLocal:        false,
 		Status:         models.ServerStatusOffline,
 	}
@@ -330,8 +315,6 @@ func (s *Service) UpdateNode(id uint, in NodeInput) (*models.Server, error) {
 		if strings.TrimSpace(in.DisplayName) != "" {
 			srv.DisplayName = strings.TrimSpace(in.DisplayName)
 		}
-		srv.PublicIP = strings.TrimSpace(in.PublicIP)
-		srv.PublicHostname = strings.TrimSpace(in.PublicHostname)
 		if validConnectivity(in.Connectivity) {
 			srv.Connectivity = in.Connectivity
 		}
@@ -351,8 +334,6 @@ func (s *Service) UpdateNode(id uint, in NodeInput) (*models.Server, error) {
 	}
 	srv.DockerEndpoint = strings.TrimSpace(in.DockerEndpoint)
 	srv.Address = deriveAddress(srv.AccessMode, in.DockerEndpoint, in.Address)
-	srv.PublicIP = strings.TrimSpace(in.PublicIP)
-	srv.PublicHostname = strings.TrimSpace(in.PublicHostname)
 	if err := applyCredentials(srv, in); err != nil {
 		return nil, err
 	}
@@ -385,16 +366,15 @@ func (s *Service) RegisterClusterNode(clusterID uint, swarmNodeID, hostname stri
 		name = "node-" + shortID(swarmNodeID)
 	}
 	srv := &models.Server{
-		Name:           slug.Make(name, shortID(swarmNodeID)),
-		DisplayName:    uniqueName(s.repo, name),
-		IsLocal:        false,
-		Role:           models.RoleNode,
-		AccessMode:     models.AccessAgent,
-		Connectivity:   models.ConnectivityCluster,
-		Status:         models.ServerStatusUnknown,
-		SwarmNodeID:    swarmNodeID,
-		AutoJoined:     true,
-		PublicHostname: strings.TrimSpace(hostname),
+		Name:         slug.Make(name, shortID(swarmNodeID)),
+		DisplayName:  uniqueName(s.repo, name),
+		IsLocal:      false,
+		Role:         models.RoleNode,
+		AccessMode:   models.AccessAgent,
+		Connectivity: models.ConnectivityCluster,
+		Status:       models.ServerStatusUnknown,
+		SwarmNodeID:  swarmNodeID,
+		AutoJoined:   true,
 	}
 	srv.ClusterID = clusterID
 	if clusterID == models.DefaultClusterID && s.clusters != nil {
@@ -459,38 +439,10 @@ func (s *Service) LearnSwarmNodeID(id uint, swarmNodeID string) {
 	logger.Info("learned a node's swarm id from its agent", "node", id, "swarm_node_id", swarmNodeID)
 }
 
-// LearnEndpoint fills a node's public IP and hostname discovered from its agent connection, so an admin
-// need not know them when adding the node. Non-destructive: it only fills fields the admin left blank, and
-// only a routable public IP is adopted, since a private or NAT source address would be misleading.
-func (s *Service) LearnEndpoint(id uint, ip, hostname string) {
-	srv, err := s.repo.FindByID(id)
-	if err != nil {
-		return
-	}
-	changed := false
-	if srv.PublicIP == "" {
-		if pip := publicIP(ip); pip != "" {
-			srv.PublicIP = pip
-			changed = true
-		}
-	}
-	if h := strings.TrimSpace(hostname); h != "" && srv.PublicHostname == "" {
-		srv.PublicHostname = h
-		changed = true
-	}
-	if changed {
-		if err := s.repo.Update(srv); err != nil {
-			logger.Warn("failed to persist learned node endpoint", "node", id, "error", err)
-			return
-		}
-		logger.Info("learned node public endpoint from agent", "node", id, "public_ip", srv.PublicIP, "hostname", srv.PublicHostname)
-	}
-}
-
-// publicIP returns raw as a normalized IP only when it is a routable public
+// PublicIP returns raw as a normalized IP only when it is a routable public
 // address; loopback/private/link-local/unspecified sources return "". raw may
 // carry a port (RemoteAddr fallback), which is stripped.
-func publicIP(raw string) string {
+func PublicIP(raw string) string {
 	host := strings.TrimSpace(raw)
 	if host == "" {
 		return ""
@@ -519,19 +471,28 @@ func validConnectivity(c models.ServerConnectivity) bool {
 	return c == models.ConnectivityEdgeGateway || c == models.ConnectivityCluster
 }
 
-// checkConnectivity refuses a connectivity the node cannot have: only the control-plane node or a swarm
-// member can rely on its cluster's gateway, or nothing reaches its apps. Empty leaves it unchanged.
+// ErrEdgeGatewayInDefaultCluster is returned for a node of the default cluster set to run its own gateway.
+var ErrEdgeGatewayInDefaultCluster = errors.New("a node of the default cluster is served by the control-plane gateway and cannot run one of its own; remove it from the swarm to give it its own cluster")
+
+// checkConnectivity refuses a connectivity the node cannot have. Only the control-plane node or a swarm member
+// can rely on its cluster's gateway, or nothing reaches its apps, and a node of the default cluster cannot run a
+// gateway of its own, since the control plane serves every app there. Empty leaves it unchanged.
 func (s *Service) checkConnectivity(srv *models.Server, c models.ServerConnectivity) error {
 	switch {
-	case c == "" || c == srv.Connectivity || c == models.ConnectivityEdgeGateway:
+	case c == "" || c == srv.Connectivity:
 		return nil
-	case c != models.ConnectivityCluster:
+	case !validConnectivity(c):
 		return ErrInvalidConnectivity
 	case srv.IsLocal || s.clusters == nil:
 		return nil
 	}
 	cl, err := s.clusters.FindByID(srv.ClusterID)
-	if err != nil || cl.Mode != models.ClusterModeSwarm {
+	switch {
+	case err != nil:
+		return ErrInvalidConnectivity
+	case c == models.ConnectivityEdgeGateway && cl.IsDefault:
+		return ErrEdgeGatewayInDefaultCluster
+	case c == models.ConnectivityCluster && cl.Mode != models.ClusterModeSwarm:
 		return ErrInvalidConnectivity
 	}
 	return nil
@@ -854,7 +815,7 @@ func (s *Service) SetSwarmNodeID(id uint, swarmNodeID string) error {
 		return nil
 	}
 	// Column-scoped: the row is also written on the same agent connect by
-	// MarkConnected and LearnEndpoint, and a full Save from each would race them.
+	// MarkConnected, and a full Save from both would race.
 	return s.repo.UpdateSwarmNodeID(id, swarmNodeID)
 }
 

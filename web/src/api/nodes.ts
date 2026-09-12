@@ -171,8 +171,6 @@ export interface CreateNodePayload {
    */
   display_name: string
   address?: string
-  public_ip?: string
-  public_hostname?: string
   connectivity: ServerConnectivity
   access_mode?: ServerAccessMode
   docker_endpoint?: string

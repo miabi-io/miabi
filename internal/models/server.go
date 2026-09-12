@@ -114,8 +114,6 @@ type Server struct {
 	// published app ports (e.g. "10.0.0.7").
 	Address string `json:"address,omitempty"`
 
-	PublicIP       string `json:"public_ip,omitempty"`
-	PublicHostname string `json:"public_hostname,omitempty"`
 	// TokenHash is the SHA-256 of the agent join token; the plaintext is shown
 	// once at creation and never stored.
 	TokenHash       string `json:"-" gorm:"index"`

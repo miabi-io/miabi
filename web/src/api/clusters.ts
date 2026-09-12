@@ -9,6 +9,8 @@ export interface ClusterUpdate {
   external_base_domain?: string
   external_cert_provider?: string
   service_endpoint_mode?: 'vip' | 'dnsrr'
+  ingress_ip?: string
+  ingress_hostname?: string
 }
 
 export interface ConvertIngressInput {

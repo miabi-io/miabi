@@ -70,13 +70,9 @@ func (s *Service) SetGateway(ctx context.Context, clusterID uint, p GatewayPatch
 	if srv.Connectivity != models.ConnectivityEdgeGateway {
 		return nil, ErrGatewayNodeNoGateway
 	}
-	ip := strings.TrimSpace(p.IP)
-	if ip != "" && net.ParseIP(ip) == nil {
-		return nil, ErrInvalidIngressIP
-	}
-	host := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(p.Hostname)), ".")
-	if host != "" && !hostnamePattern.MatchString(host) {
-		return nil, ErrInvalidIngressHostname
+	ip, host, err := normalizeIngress(p.IP, p.Hostname)
+	if err != nil {
+		return nil, err
 	}
 	if err := s.store.UpdateColumns(c.ID, map[string]any{
 		"ingress_server_id": srv.ID,
@@ -88,6 +84,19 @@ func (s *Service) SetGateway(ctx context.Context, clusterID uint, p GatewayPatch
 	s.AttachGateway(ctx, c.ID)
 	s.ResyncRoutes(ctx, c.ID)
 	return s.Cluster(c.ID)
+}
+
+// normalizeIngress validates a cluster's public address: an IP, and a DNS name for records that cannot use one.
+func normalizeIngress(ip, hostname string) (string, string, error) {
+	ip = strings.TrimSpace(ip)
+	if ip != "" && net.ParseIP(ip) == nil {
+		return "", "", ErrInvalidIngressIP
+	}
+	hostname = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(hostname)), ".")
+	if hostname != "" && !hostnamePattern.MatchString(hostname) {
+		return "", "", ErrInvalidIngressHostname
+	}
+	return ip, hostname, nil
 }
 
 // ResyncRoutes re-syncs a cluster's routes in the background, after the gateway serving them changed.

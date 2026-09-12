@@ -36,6 +36,8 @@ type ImageRef interface {
 // for the Nodes page. Implemented by cluster.Service; nil on builds without it.
 type SwarmEnricher interface {
 	Enrich(servers []models.Server)
+	// LearnIngressIP gives a node's cluster the public IP its agent connected from, when the cluster has none.
+	LearnIngressIP(serverID uint, remoteAddr string)
 }
 
 // ClusterAgentAuth authorizes an agent presenting the CLUSTER-wide token carried by the global
@@ -124,10 +126,8 @@ type CreateNodeRequest struct {
 		// supplies. The URL-safe handle is derived from it at creation.
 		DisplayName string `json:"display_name" required:"true"`
 		Address     string `json:"address"`
-		// PublicIP / PublicHostname are the node's externally reachable DNS target.
-		PublicIP       string `json:"public_ip"`
-		PublicHostname string `json:"public_hostname"`
-		Connectivity   string `json:"connectivity" enum:"edge-gateway,cluster"`
+		// Connectivity "cluster" relies on the cluster's gateway, "edge-gateway" runs one on the node.
+		Connectivity string `json:"connectivity" enum:"edge-gateway,cluster"`
 		// AccessMode is how the control plane reaches this node's Docker engine.
 		AccessMode string `json:"access_mode" enum:"agent,api,socket"`
 		// DockerEndpoint is required for api: tcp://host:2376.
@@ -146,8 +146,6 @@ func (r *CreateNodeRequest) input() node.NodeInput {
 	return node.NodeInput{
 		DisplayName:    r.Body.DisplayName,
 		Address:        r.Body.Address,
-		PublicIP:       r.Body.PublicIP,
-		PublicHostname: r.Body.PublicHostname,
 		Connectivity:   models.ServerConnectivity(r.Body.Connectivity),
 		AccessMode:     models.ServerAccessMode(r.Body.AccessMode),
 		DockerEndpoint: r.Body.DockerEndpoint,
@@ -570,10 +568,11 @@ func (h *NodeHandler) Connect(c *okapi.Context) error {
 			return c.AbortUnauthorized("invalid agent token")
 		}
 	}
-	// Learn what only the node can tell us, before the upgrade hijacks the request. Its public endpoint
-	// (source IP + self-reported hostname), so the admin needn't enter them — non-destructive, it only fills
-	// blank fields.
-	h.nodes.LearnEndpoint(srv.ID, c.RealIP(), hostname)
+	// Learn what only the node can tell us, before the upgrade hijacks the request. The public IP it connects
+	// from gives its cluster a public address when none is set, so the admin needn't enter one.
+	if h.cluster != nil {
+		h.cluster.LearnIngressIP(srv.ID, c.RealIP())
+	}
 	// And its swarm node id, which the control plane cannot work out for itself: it records one only
 	// when Miabi ran the `swarm join`, so a host that joined any other way stayed unmapped — and an
 	// unmapped node cannot be resolved from a service's task, leaving its logs and metrics unreachable.
@@ -715,7 +714,7 @@ func (h *NodeHandler) mapErr(c *okapi.Context, err error) error {
 		return c.AbortBadRequest("the local node cannot be modified this way")
 	case errors.Is(err, node.ErrConnectivityAckRequired):
 		return c.AbortWithError(409, err)
-	case errors.Is(err, node.ErrInvalidConnectivity):
+	case errors.Is(err, node.ErrInvalidConnectivity), errors.Is(err, node.ErrEdgeGatewayInDefaultCluster):
 		return c.AbortBadRequest(err.Error())
 	default:
 		return c.AbortInternalServerError("node operation failed", err)

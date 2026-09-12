@@ -62,6 +62,10 @@ type UpdateClusterRequest struct {
 		// ServiceEndpointMode is how service apps are reached by name: "vip", or "dnsrr" on hosts that cannot run
 		// IPVS, such as LXC containers. Running services switch in place.
 		ServiceEndpointMode string `json:"service_endpoint_mode" enum:"vip,dnsrr"`
+		// IngressIP and IngressHostname are where the location's public DNS records point: its gateway, or a load
+		// balancer in front of it. The hostname is used only when there is no IP. Empty clears them.
+		IngressIP       *string `json:"ingress_ip"`
+		IngressHostname *string `json:"ingress_hostname"`
 	} `json:"body"`
 }
 
@@ -81,6 +85,7 @@ func (h *ClusterHandler) UpdateCluster(c *okapi.Context, req *UpdateClusterReque
 		patch.Visibility = &v
 	}
 	patch.ExternalBaseDomain, patch.ExternalCertProvider = req.Body.ExternalBaseDomain, req.Body.ExternalCertProvider
+	patch.IngressIP, patch.IngressHostname = req.Body.IngressIP, req.Body.IngressHostname
 	if req.Body.ServiceEndpointMode != "" {
 		mode := models.ServiceEndpointMode(req.Body.ServiceEndpointMode)
 		patch.ServiceEndpointMode = &mode
@@ -99,8 +104,8 @@ type SetClusterGatewayRequest struct {
 	Body struct {
 		// ServerID is an edge-gateway node of the cluster.
 		ServerID uint `json:"server_id" required:"true"`
-		// IngressIP and IngressHostname are what DNS records point at, e.g. a load balancer in front of the
-		// node. Empty uses the node's public address.
+		// IngressIP and IngressHostname replace the cluster's public address, what DNS records point at, e.g. a load
+		// balancer in front of the node. Empty leaves the cluster without one.
 		IngressIP       string `json:"ingress_ip"`
 		IngressHostname string `json:"ingress_hostname"`
 	} `json:"body"`

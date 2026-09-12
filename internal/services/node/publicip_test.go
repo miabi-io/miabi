@@ -25,8 +25,8 @@ func TestPublicIP(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := publicIP(tc.in); got != tc.want {
-				t.Errorf("publicIP(%q) = %q, want %q", tc.in, got, tc.want)
+			if got := PublicIP(tc.in); got != tc.want {
+				t.Errorf("PublicIP(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
 	}
