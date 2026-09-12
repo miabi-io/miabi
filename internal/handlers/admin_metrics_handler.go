@@ -59,6 +59,17 @@ type PlatformMetrics struct {
 	TotalRoutes       int64 `json:"total_routes"`
 	ActiveSessions    int64 `json:"active_sessions"`
 
+	// Nodes online (the local node, or a connected agent) and offline (an agent that dropped); the rest are
+	// swarm members Miabi reaches without an agent.
+	OnlineNodes   int64 `json:"online_nodes"`
+	OfflineNodes  int64 `json:"offline_nodes"`
+	CordonedNodes int64 `json:"cordoned_nodes"`
+	TotalClusters int64 `json:"total_clusters"`
+	SwarmClusters int64 `json:"swarm_clusters"`
+	// ClustersAwaitingGateway counts clusters whose node was converted from port-forward and whose gateway
+	// nobody has confirmed yet.
+	ClustersAwaitingGateway int64 `json:"clusters_awaiting_gateway"`
+
 	RunningContainers int `json:"running_containers"`
 	TotalContainers   int `json:"total_containers"`
 
@@ -163,6 +174,14 @@ func (h *AdminMetricsHandler) collect(ctx context.Context) PlatformMetrics {
 
 		StorageDeclaredBytes: h.sumBytes(&models.Volume{}, "size_bytes"),
 		StorageUsedBytes:     h.sumBytes(&models.Volume{}, "used_bytes"),
+
+		OnlineNodes:   h.countArgs(&models.Server{}, "is_local = ? OR status = ?", true, string(models.ServerStatusOnline)),
+		OfflineNodes:  h.countArgs(&models.Server{}, "is_local = ? AND status = ?", false, string(models.ServerStatusOffline)),
+		CordonedNodes: h.countArgs(&models.Server{}, "cordoned = ?", true),
+		TotalClusters: h.count(&models.Cluster{}, ""),
+		SwarmClusters: h.countArgs(&models.Cluster{}, "mode = ?", string(models.ClusterModeSwarm)),
+
+		ClustersAwaitingGateway: h.countArgs(&models.Cluster{}, "legacy_ingress = ?", true),
 	}
 
 	if h.docker != nil {

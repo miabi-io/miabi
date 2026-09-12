@@ -493,6 +493,15 @@ export interface PlatformMetrics {
   total_stacks: number
   total_volumes: number
   total_nodes: number
+  // Online = the local node or a connected agent; offline = an agent that dropped. The rest are swarm
+  // members without an agent.
+  online_nodes: number
+  offline_nodes: number
+  cordoned_nodes: number
+  total_clusters: number
+  swarm_clusters: number
+  // Clusters whose node was converted from port-forward and still awaits a gateway decision.
+  clusters_awaiting_gateway: number
   total_routes: number
   active_sessions: number
   running_containers: number
