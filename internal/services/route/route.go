@@ -106,9 +106,11 @@ type Service struct {
 	maxPort     int
 }
 
-// ClusterCap reports whether a cluster runs a swarm. Implemented by services/cluster.
+// ClusterCap reports whether a cluster runs a swarm and whether a gateway of its own serves it.
+// Implemented by services/cluster.
 type ClusterCap interface {
 	IsSwarm(clusterID uint) bool
+	OwnGateway(clusterID uint) (*models.Cluster, bool)
 }
 
 // SetCluster wires swarm detection (nil-safe; nil = never cluster mode, so
@@ -911,7 +913,7 @@ func (s *Service) SyncRoute(ctx context.Context, appID uint) error {
 		return s.SyncWorkspaceProxy(ctx, app.WorkspaceID)
 	}
 
-	if s.edgeGateway(app) {
+	if _, ok := s.gatewayServer(app); ok {
 		return s.SyncWorkspaceProxy(ctx, app.WorkspaceID)
 	}
 
@@ -984,8 +986,8 @@ func (s *Service) SyncWorkspaceProxy(ctx context.Context, workspaceID uint) erro
 		if app.CurrentReleaseID == nil {
 			continue
 		}
-		if s.edgeGateway(app) {
-			edgeServers[app.ServerID] = struct{}{}
+		if id, ok := s.gatewayServer(app); ok {
+			edgeServers[id] = struct{}{}
 			continue
 		}
 		routes, err := s.routes.ListByApp(app.ID)
@@ -1092,6 +1094,9 @@ func (s *Service) serverFor(app *models.Application) *models.Server {
 // requireRoutableNode rejects routing an app the gateway must reach by host port when its node has no
 // address (otherwise the route would be a dead upstream). Alias upstreams need no node address.
 func (s *Service) requireRoutableNode(app *models.Application) error {
+	if _, ok := s.gatewayServer(app); ok {
+		return nil
+	}
 	srv := s.serverFor(app)
 	if !s.useAliasUpstream(srv) && strings.TrimSpace(srv.Address) == "" {
 		return ErrNodeAddressRequired
@@ -1114,12 +1119,36 @@ func (s *Service) reconcileManagedPorts(appID uint, keep map[int]bool) {
 	}
 }
 
-func (s *Service) edgeGateway(app *models.Application) bool {
+func (s *Service) clusterGateway(clusterID uint) (*models.Cluster, bool) {
+	if s.cluster == nil {
+		return nil, false
+	}
+	return s.cluster.OwnGateway(clusterID)
+}
+
+// gatewayServer returns the node whose gateway serves an app, or false when the control-plane gateway does. A
+// remote swarm's ingress node serves every app in its cluster; an edge-gateway node serves its own containers.
+func (s *Service) gatewayServer(app *models.Application) (uint, bool) {
+	if c, ok := s.clusterGateway(app.ClusterID); ok {
+		return c.IngressNode(), true
+	}
 	if app.RuntimeKind == models.RuntimeService {
-		return false
+		return 0, false
 	}
 	srv, err := s.servers.FindByID(app.ServerID)
-	return err == nil && !srv.IsLocal && srv.Connectivity == models.ConnectivityEdgeGateway
+	if err != nil || srv.IsLocal || srv.Connectivity != models.ConnectivityEdgeGateway {
+		return 0, false
+	}
+	return srv.ID, true
+}
+
+// gatewayBackends are the upstreams a gateway dials by alias: a service's VIP, or the app's containers.
+func gatewayBackends(app *models.Application, port int) []proxy.Backend {
+	scheme := portScheme(app, port)
+	if app.RuntimeKind == models.RuntimeService {
+		return []proxy.Backend{{Endpoint: fmt.Sprintf("%s://%s:%d", scheme, node.AppAlias(app), port)}}
+	}
+	return aliasBackends(app, port, scheme)
 }
 
 // reconcileAppDNS upserts/prunes the app's public address records (A/AAAA/CNAME) to match its enabled
@@ -1143,13 +1172,17 @@ func (s *Service) reconcileAppDNS(ctx context.Context, app *models.Application, 
 }
 
 // dnsTarget resolves the public address a route's hosts should point at: the gateway that terminates the
-// route. An app its node's edge gateway serves (see edgeGateway) uses that node's public address; every
-// other app, service apps included, is fronted by the control-plane gateway (the local node's address).
+// route. A remote swarm's configured ingress address wins; an app a node gateway serves (see gatewayServer)
+// uses that node's public address; every other app is fronted by the control-plane gateway (the local node).
 func (s *Service) dnsTarget(app *models.Application) (ip, hostname string) {
-	if s.edgeGateway(app) {
-		if srv := s.serverFor(app); srv != nil {
+	if c, ok := s.clusterGateway(app.ClusterID); ok && (c.IngressIP != "" || c.IngressHostname != "") {
+		return c.IngressIP, c.IngressHostname
+	}
+	if id, ok := s.gatewayServer(app); ok {
+		if srv, err := s.servers.FindByID(id); err == nil {
 			return srv.PublicIP, srv.PublicHostname
 		}
+		return "", ""
 	}
 	if local, err := s.servers.FindLocal(); err == nil && local != nil {
 		return local.PublicIP, local.PublicHostname
@@ -1169,17 +1202,17 @@ func (s *Service) enrichDNS(rt *models.Route) {
 }
 
 func (s *Service) displayBackends(app *models.Application, port int) []string {
-	if app.RuntimeKind == models.RuntimeService {
-		return []string{fmt.Sprintf("%s://%s:%d", portScheme(app, port), node.AppAlias(app), port)}
-	}
-	if srv := s.serverFor(app); !s.useAliasUpstream(srv) {
-		if hp := s.hostPort(app.ID, port); hp > 0 && strings.TrimSpace(srv.Address) != "" {
-			return []string{fmt.Sprintf("%s://%s:%d", portScheme(app, port), srv.Address, hp)}
+	if _, served := s.gatewayServer(app); !served && app.RuntimeKind != models.RuntimeService {
+		if srv := s.serverFor(app); !s.useAliasUpstream(srv) {
+			if hp := s.hostPort(app.ID, port); hp > 0 && strings.TrimSpace(srv.Address) != "" {
+				return []string{fmt.Sprintf("%s://%s:%d", portScheme(app, port), srv.Address, hp)}
+			}
+			return nil
 		}
-		return nil
 	}
-	out := make([]string, 0, 2)
-	for _, b := range aliasBackends(app, port, portScheme(app, port)) {
+	backends := gatewayBackends(app, port)
+	out := make([]string, 0, len(backends))
+	for _, b := range backends {
 		out = append(out, b.Endpoint)
 	}
 	return out
@@ -1407,9 +1440,23 @@ func (s *Service) RouteNamesForNode(serverID uint) (map[string]bool, error) {
 	return names, nil
 }
 
+// SyncCluster re-syncs the routes of every app in a cluster, so they follow its gateway to another node.
+func (s *Service) SyncCluster(ctx context.Context, clusterID uint) {
+	apps, err := s.apps.ListByCluster(clusterID)
+	if err != nil {
+		logger.Warn("cluster route resync failed", "cluster", clusterID, "error", err)
+		return
+	}
+	for i := range apps {
+		if err := s.SyncRoute(ctx, apps[i].ID); err != nil {
+			logger.Warn("route resync after a gateway change failed", "app", apps[i].ID, "error", err)
+		}
+	}
+}
+
 // NodeBundle renders the Goma config a remote node's Gateway pulls over the HTTP
 // provider: every middleware (routes reference them by name) plus only the
-// routes for apps placed on that node, with node-local upstreams.
+// routes for apps that node's gateway serves (see gatewayServer).
 func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.RenderedMiddleware, error) {
 	mws, err := s.middlewares.ListAll()
 	if err != nil {
@@ -1417,7 +1464,7 @@ func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.Rend
 	}
 	renderedMw := renderMiddlewares(mws)
 
-	apps, err := s.apps.ListByServer(serverID)
+	apps, err := s.bundleApps(serverID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1433,8 +1480,7 @@ func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.Rend
 		if app.CurrentReleaseID == nil {
 			continue
 		}
-
-		if app.RuntimeKind == models.RuntimeService {
+		if gw, ok := s.gatewayServer(app); !ok || gw != serverID {
 			continue
 		}
 		domains, ok := domainCache[app.WorkspaceID]
@@ -1457,7 +1503,7 @@ func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.Rend
 			// Disabled routes are still emitted (with enabled:false) so the node's
 			// gateway stops serving them rather than relying on the route vanishing
 			// from the bundle.
-			rr := renderedRoute(rt, aliasBackends(app, routePort(rt, app), portScheme(app, routePort(rt, app))), !serve)
+			rr := renderedRoute(rt, gatewayBackends(app, routePort(rt, app)), !serve)
 			if pair, ok := s.certPair(rt); ok {
 				rr.Certs = []proxy.CertPair{pair}
 			}
@@ -1467,6 +1513,17 @@ func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.Rend
 		}
 	}
 	return renderedRoutes, renderedMw, nil
+}
+
+// bundleApps lists the apps a node's gateway may serve: its own, or the whole cluster's on a remote swarm's
+// ingress node.
+func (s *Service) bundleApps(serverID uint) ([]models.Application, error) {
+	if srv, err := s.servers.FindByID(serverID); err == nil {
+		if c, ok := s.clusterGateway(srv.ClusterID); ok && c.IngressNode() == serverID {
+			return s.apps.ListByCluster(c.ID)
+		}
+	}
+	return s.apps.ListByServer(serverID)
 }
 
 // certPair resolves a custom-TLS route's certificate for proxy rendering from

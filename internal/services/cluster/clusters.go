@@ -14,12 +14,17 @@ import (
 // ErrInvalidLocationCode is returned for a location code that is not a short lowercase slug.
 var ErrInvalidLocationCode = errors.New("the location code must be lowercase letters, digits and hyphens (max 32), e.g. eu-central")
 
+// ErrInvalidVisibility is returned for a visibility other than "all" or "restricted".
+var ErrInvalidVisibility = errors.New("visibility must be all or restricted")
+
 var locationCodePattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$`)
 
-// ClusterPatch edits a cluster's tenant-facing identity. Nil fields are left unchanged.
+// ClusterPatch edits a cluster's tenant-facing identity and who may place into it. Nil fields are left unchanged.
 type ClusterPatch struct {
 	DisplayName  *string
 	LocationCode *string
+	Visibility   *models.ClusterVisibility
+	Cordoned     *bool
 }
 
 // Clusters lists every cluster, the default first, with its node count.
@@ -52,7 +57,7 @@ func (s *Service) ClusterIDByUID(uid string) (uint, error) {
 	return s.store.IDByUID(uid)
 }
 
-// UpdateCluster renames a cluster or changes its location code.
+// UpdateCluster renames a cluster, changes its location code, or changes who may place into it.
 func (s *Service) UpdateCluster(id uint, p ClusterPatch) (*models.Cluster, error) {
 	c, err := s.Cluster(id)
 	if err != nil {
@@ -72,6 +77,15 @@ func (s *Service) UpdateCluster(id uint, p ClusterPatch) (*models.Cluster, error
 			return nil, ErrInvalidLocationCode
 		}
 		cols["location_code"] = code
+	}
+	if p.Visibility != nil {
+		if !models.ValidClusterVisibility(*p.Visibility) {
+			return nil, ErrInvalidVisibility
+		}
+		cols["visibility"] = *p.Visibility
+	}
+	if p.Cordoned != nil {
+		cols["cordoned"] = *p.Cordoned
 	}
 	if len(cols) > 0 {
 		if err := s.store.UpdateColumns(c.ID, cols); err != nil {

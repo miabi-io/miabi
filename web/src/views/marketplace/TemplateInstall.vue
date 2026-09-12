@@ -10,6 +10,7 @@ import { apiErrorMessage } from '@/api/client'
 import { displayFor, resourceName } from '@/utils/installNames'
 import type { DatabaseInstance } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
+import LocationPicker from '@/components/LocationPicker.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,10 +27,11 @@ const manifest = ref<TemplateManifest | null>(null)
 const instances = ref<DatabaseInstance[]>([])
 
 // Each placement value is a select token: 'auto' | 'dedicated' | '<instanceId>'.
-const form = ref<{ name: string; inputs: Record<string, string>; placement: Record<string, string> }>({
+const form = ref<{ name: string; inputs: Record<string, string>; placement: Record<string, string>; location: string }>({
   name: '',
   inputs: {},
   placement: {},
+  location: '',
 })
 
 // defaultPlacement seeds the selector from the template's declared placement, so
@@ -410,6 +412,7 @@ async function install() {
         inputs: form.value.inputs,
         placements,
         placement_modes,
+        location: form.value.location || undefined,
       })
     ).data.data
     installJob.value = job // switches the modal to the progress view
@@ -596,6 +599,8 @@ onUnmounted(stopJobStream)
               <input v-model="form.name" class="form-input" :placeholder="entry.display_name" aria-label="Name" />
               <p class="field-help">Display name for the installed {{ entry.applications > 1 ? 'apps' : 'app' }}.</p>
             </div>
+
+            <LocationPicker v-model="form.location" :allow-pin="false" />
 
             <div v-for="inp in manifest?.inputs ?? []" :key="inp.key" class="form-group">
               <label class="form-label">

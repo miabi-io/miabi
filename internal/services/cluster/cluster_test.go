@@ -25,6 +25,12 @@ type fakeDocker struct {
 	labelled     []string
 	joinReq      *docker.SwarmJoinRequest
 	ensured      []docker.NetworkSpec
+	connected    []string
+}
+
+func (f *fakeDocker) NetworkConnect(_ context.Context, network, container string, _ []string) error {
+	f.connected = append(f.connected, network+"/"+container)
+	return nil
 }
 
 func (f *fakeDocker) Swarm(context.Context) (docker.SwarmInfo, error)        { return f.info, nil }

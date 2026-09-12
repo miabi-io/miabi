@@ -12,23 +12,30 @@ import (
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
+	"github.com/miabi-io/miabi/internal/services/placement"
 	"github.com/miabi-io/miabi/internal/services/stack"
 )
 
 type StackHandler struct {
-	svc   *stack.Service
-	audit *audit.Logger
+	svc    *stack.Service
+	audit  *audit.Logger
+	placer *Placer
 }
 
 func NewStackHandler(svc *stack.Service, auditLog *audit.Logger) *StackHandler {
 	return &StackHandler{svc: svc, audit: auditLog}
 }
 
+// SetPlacer wires location placement for stack creates.
+func (h *StackHandler) SetPlacer(p *Placer) { h.placer = p }
+
 type CreateStackRequest struct {
 	Body struct {
 		Name        string `json:"name" required:"true"` // desired unique slug handle
 		DisplayName string `json:"display_name"`         // free-text label (defaults to name)
 		Description string `json:"description"`
+		// Location is where the stack's members run; empty uses the workspace's default location.
+		Location string `json:"location"`
 	} `json:"body"`
 }
 
@@ -67,7 +74,16 @@ type stackListItem struct {
 
 func (h *StackHandler) Create(c *okapi.Context, req *CreateStackRequest) error {
 	wsID := middlewares.WorkspaceID(c)
-	st, err := h.svc.Create(c.Request().Context(), wsID, stack.Input{Name: req.Body.Name, DisplayName: req.Body.DisplayName, Description: req.Body.Description})
+	placed, err := h.placer.place(c, placement.Request{Location: req.Body.Location, Service: true})
+	if err != nil {
+		if a := placementAbort(c, err); a != nil {
+			return a
+		}
+		return c.AbortInternalServerError("failed to place the stack", err)
+	}
+	st, err := h.svc.Create(c.Request().Context(), wsID, stack.Input{
+		Name: req.Body.Name, DisplayName: req.Body.DisplayName, Description: req.Body.Description, ClusterID: placed.ClusterID,
+	})
 	if err != nil {
 		return h.mapErr(c, err)
 	}

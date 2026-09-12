@@ -66,8 +66,17 @@ func (r *Router) clustersRoutes() []okapi.RouteDefinition {
 			Group:       g,
 			Middlewares: admin,
 			Handler:     okapi.H(r.h.cluster.UpdateCluster),
-			Summary:     "Rename a cluster and set its location code",
+			Summary:     "Rename a cluster, set its location code, visibility or cordon",
 			Request:     &handlers.UpdateClusterRequest{},
+		},
+		{
+			Method:      http.MethodPut,
+			Path:        "/{clusterID}/gateway",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.cluster.SetClusterGateway),
+			Summary:     "Pick the node that serves a swarm cluster's routes",
+			Request:     &handlers.SetClusterGatewayRequest{},
 		},
 	}...)...)
 }

@@ -281,7 +281,7 @@ func diffFields(actual, desired Resource) []FieldDiff {
 	return out
 }
 
-var optionalWhenUnset = map[string]bool{"strategy": true}
+var optionalWhenUnset = map[string]bool{"strategy": true, "location": true}
 
 // diffRegistry compares a registry credential. Server and username are ordinary visible fields;
 // the password is compared through fingerprints stamped on both sides, never the value. It is
@@ -424,6 +424,9 @@ func specFields(r Resource) map[string]string {
 		f["registry"] = a.Registry
 		// The account the container runs as changes the container, so a change to it must redeploy.
 		f["runAsUser"] = a.RunAsUser
+		if a.Location != "" {
+			f["location"] = a.Location
+		}
 		// How the next release is rolled out. Only compared when the manifest states one: an app
 		// configured in the console and a manifest that says nothing about rollout must not diff.
 		if a.Strategy != "" {
@@ -483,7 +486,13 @@ func specFields(r Resource) map[string]string {
 	case r.Database != nil:
 		f["engine"] = r.Database.Engine
 		f["version"] = r.Database.Version
+		if r.Database.Location != "" {
+			f["location"] = r.Database.Location
+		}
 	case r.Volume != nil:
+		if r.Volume.Location != "" {
+			f["location"] = r.Volume.Location
+		}
 
 	case r.Route != nil:
 		hosts := append([]string(nil), r.Route.Hosts...)
@@ -521,6 +530,9 @@ func specFields(r Resource) map[string]string {
 		f["middlewares"] = strings.Join(r.Route.Middlewares, ",")
 	case r.Stack != nil:
 		f["description"] = r.Stack.Description
+		if r.Stack.Location != "" {
+			f["location"] = r.Stack.Location
+		}
 	case r.Domain != nil:
 		f["tls"] = r.Domain.TLS
 		f["wildcard"] = fmt.Sprintf("%t", r.Domain.Wildcard)

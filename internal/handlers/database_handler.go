@@ -18,6 +18,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/database"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 	"github.com/miabi-io/miabi/internal/services/node"
+	"github.com/miabi-io/miabi/internal/services/placement"
 	"github.com/miabi-io/miabi/internal/services/portforward"
 	"github.com/miabi-io/miabi/internal/services/secret"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
@@ -31,7 +32,11 @@ type DatabaseHandler struct {
 	users   *repositories.UserRepository
 	audit   *audit.Logger
 	cluster ClusterCap
+	placer  *Placer
 }
+
+// SetPlacer wires location placement for database creates.
+func (h *DatabaseHandler) SetPlacer(p *Placer) { h.placer = p }
 
 // NewDatabaseHandler builds the handler. cluster may be nil (never cluster mode),
 // in which case the co-location guards below always apply.
@@ -39,20 +44,26 @@ func NewDatabaseHandler(svc *database.Service, apps *application.Service, forwar
 	return &DatabaseHandler{svc: svc, apps: apps, forward: forward, secrets: secrets, users: users, audit: auditLog, cluster: cluster}
 }
 
-// crossNodeOK reports whether an app may attach to a database on another node. Only in cluster
-// mode, where the workspace network is a swarm overlay so the instance's DNS alias resolves
-// anywhere. Otherwise a cross-node attach deploys fine and fails at runtime, so it is refused.
-func (h *DatabaseHandler) crossNodeOK() bool {
-	return h.cluster != nil && h.cluster.IsSwarm(models.DefaultClusterID)
+// reach refuses attaching an app to a database it cannot address: such an attach deploys fine and
+// only fails at runtime.
+func (h *DatabaseHandler) reach(app *models.Application, inst *models.DatabaseInstance) error {
+	return h.placer.reach(
+		placement.Site{Kind: "application", Name: app.Name, ClusterID: app.ClusterID, ServerID: app.ServerID},
+		placement.Site{Kind: "database", Name: inst.Name, ClusterID: inst.ClusterID, ServerID: inst.ServerID},
+		func(id uint) bool { return h.cluster != nil && h.cluster.IsSwarm(id) },
+	)
 }
 
 type CreateDatabaseRequest struct {
 	Body struct {
-		Name     string `json:"name" required:"true"`
-		Engine   string `json:"engine" required:"true" enum:"postgres,mysql,mariadb,redis,mongodb,libsql"`
-		Version  string `json:"version"`
-		ServerID uint   `json:"server_id"` // node to place on (0 = local)
-		SizeMB   int    `json:"size_mb"`   // data-volume capacity in MB (0 = unspecified)
+		Name    string `json:"name" required:"true"`
+		Engine  string `json:"engine" required:"true" enum:"postgres,mysql,mariadb,redis,mongodb,libsql"`
+		Version string `json:"version"`
+		// Location is where the database runs; empty uses the workspace's default location.
+		Location string `json:"location"`
+		// ServerID pins a node; platform admins only.
+		ServerID uint `json:"server_id"`
+		SizeMB   int  `json:"size_mb"` // data-volume capacity in MB (0 = unspecified)
 	} `json:"body"`
 }
 
@@ -64,7 +75,14 @@ func (h *DatabaseHandler) Create(c *okapi.Context, req *CreateDatabaseRequest) e
 	if req.Body.SizeMB > 0 {
 		sizeBytes = int64(req.Body.SizeMB) * 1024 * 1024
 	}
-	inst, err := h.svc.Provision(c.Request().Context(), wsID, req.Body.ServerID, req.Body.Name, models.DBEngine(req.Body.Engine), req.Body.Version, sizeBytes, selfOwnerMeta(h.users, c), nil)
+	placed, err := h.placer.place(c, placement.Request{Location: req.Body.Location, ServerID: req.Body.ServerID})
+	if err != nil {
+		if a := placementAbort(c, err); a != nil {
+			return a
+		}
+		return c.AbortInternalServerError("failed to place the database", err)
+	}
+	inst, err := h.svc.Provision(c.Request().Context(), wsID, placed.ServerID, req.Body.Name, models.DBEngine(req.Body.Engine), req.Body.Version, sizeBytes, selfOwnerMeta(h.users, c), nil)
 	if err != nil {
 		if a := quotaAbort(c, err); a != nil {
 			return a
@@ -385,11 +403,11 @@ func (h *DatabaseHandler) CreateDatabase(c *okapi.Context, req *CreateLogicalDat
 		return c.AbortNotFound("database not found")
 	}
 	wsID := inst.WorkspaceID
-	// Co-location: outside cluster mode a database may only attach to an app on the
-	// same node, because the workspace network is a node-local bridge.
-	if req.Body.ApplicationID != nil && !h.crossNodeOK() {
-		if app, aerr := h.apps.Get(wsID, *req.Body.ApplicationID); aerr == nil && app.ServerID != inst.ServerID {
-			return c.AbortBadRequest("the application is on a different node than this database. Enable cluster networking to run apps and databases across nodes")
+	if req.Body.ApplicationID != nil {
+		if app, aerr := h.apps.Get(wsID, *req.Body.ApplicationID); aerr == nil {
+			if err := h.reach(app, inst); err != nil {
+				return c.AbortBadRequest(err.Error())
+			}
 		}
 	}
 	db, err := h.svc.CreateDatabase(c.Request().Context(), wsID, inst.ID, req.Body.Name, req.Body.ApplicationID)
@@ -504,8 +522,8 @@ func (h *DatabaseHandler) AttachToApp(c *okapi.Context, req *AttachDatabaseReque
 	if err != nil {
 		return c.AbortNotFound("database instance not found")
 	}
-	if app.ServerID != inst.ServerID && !h.crossNodeOK() {
-		return c.AbortBadRequest("the application is on a different node than this database. Enable cluster networking to run apps and databases across nodes")
+	if err := h.reach(app, inst); err != nil {
+		return c.AbortBadRequest(err.Error())
 	}
 	if db.ApplicationID != nil && *db.ApplicationID != uint(appID) {
 		return c.AbortWithError(409, errors.New("this database is already attached to another application"))

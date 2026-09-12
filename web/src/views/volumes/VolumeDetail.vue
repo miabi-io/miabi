@@ -8,6 +8,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ResourceIcon from '@/components/ResourceIcon.vue'
 import MetadataCard from '@/components/MetadataCard.vue'
 import OwnerChip from '@/components/OwnerChip.vue'
+import LocationName from '@/components/LocationName.vue'
 import { copyText } from '@/utils/clipboard'
 import type { VolumeDetail, VolumeFile, VolumeBackup } from '@/api/types'
 
@@ -345,6 +346,7 @@ function isFileVisible(file: VolumeFile): boolean {
             <div class="text-muted text-sm">
               <span class="mdi mdi-docker"></span> Persistent volume · {{ vol.driver || 'local' }}
               <template v-if="vol.server_name"> · <span class="mdi mdi-server-network"></span> {{ vol.server_name }}</template>
+              <LocationName :cluster-id="vol.cluster_id" />
             </div>
           </div>
         </div>

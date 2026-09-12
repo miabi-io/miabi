@@ -912,6 +912,7 @@ export interface Application {
   workspace_id: number
   server_id?: number
   server_name?: string
+  cluster_id?: number
   // Real per-node replica placement for a cluster ("service") app, populated on
   // the app-detail read: where Swarm actually scheduled the running tasks.
   nodes?: NodePlacement[]
@@ -1343,6 +1344,7 @@ export interface DatabaseInstance {
   name: string
   server_id?: number
   server_name?: string
+  cluster_id?: number
   display_name: string
   engine: DBEngine
   version: string
@@ -1495,6 +1497,7 @@ export interface Volume {
   name: string
   server_id?: number
   server_name?: string
+  cluster_id?: number
   display_name: string
   docker_name: string
   mountpoint?: string

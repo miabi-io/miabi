@@ -7,6 +7,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { stackApi } from '@/api/stacks'
 import type { Stack } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
+import LocationPicker from '@/components/LocationPicker.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -32,7 +33,7 @@ const showCreate = ref(false)
 const showImport = ref(false)
 const saving = ref(false)
 const importing = ref(false)
-const form = ref({ name: '', description: '' })
+const form = ref({ name: '', description: '', location: '' })
 const importForm = ref({ name: '', compose: '' })
 
 function stackBadge(s: Stack) {
@@ -58,7 +59,7 @@ async function load(id: number | null) {
 watch(currentWorkspaceId, load, { immediate: true })
 
 function openCreate() {
-  form.value = { name: '', description: '' }
+  form.value = { name: '', description: '', location: '' }
   showCreate.value = true
 }
 
@@ -69,6 +70,7 @@ async function create() {
     const stack = (await stackApi.create(currentWorkspaceId.value, {
       name: form.value.name.trim(),
       description: form.value.description.trim() || undefined,
+      location: form.value.location || undefined,
     })).data.data
     notify.success('Stack created')
     showCreate.value = false
@@ -207,10 +209,11 @@ async function runImport() {
               <label class="form-label">Name</label>
               <input v-model="form.name" class="form-input" placeholder="e.g. blog" aria-label="Name" required autofocus />
             </div>
-            <div class="form-group" style="margin-bottom: 0">
+            <div class="form-group">
               <label class="form-label">Description <span class="text-muted">(optional)</span></label>
               <input v-model="form.description" class="form-input" placeholder="WordPress + MySQL + Redis" aria-label="Description" />
             </div>
+            <LocationPicker v-model="form.location" :allow-pin="false" />
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>

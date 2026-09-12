@@ -130,6 +130,9 @@ type ApplicationSpec struct {
 	ContainerLabels map[string]string `yaml:"containerLabels,omitempty" json:"containerLabels,omitempty"`
 	// Stack optionally names the owning Stack resource.
 	Stack string `yaml:"stack,omitempty" json:"stack,omitempty"`
+	// Location names where the app is created: empty uses its stack's location, else the workspace
+	// default. Fixed once created.
+	Location string `yaml:"location,omitempty" json:"location,omitempty"`
 	// Registry names the Registry credential used to pull this image; empty means an anonymous public
 	// pull. It need not be declared in the same bundle: a name not in the manifest resolves against
 	// the workspace's existing credentials, so a token created once in the UI can be reused.
@@ -226,6 +229,8 @@ type ResourceSpec struct {
 // StackSpec groups applications into one logical unit / network.
 type StackSpec struct {
 	Description string `yaml:"description,omitempty" json:"description,omitempty"`
+	// Location names where the stack is created; empty uses the workspace default. Fixed once created.
+	Location string `yaml:"location,omitempty" json:"location,omitempty"`
 }
 
 // DatabaseSpec requests a logical database on a DatabaseInstance.
@@ -233,11 +238,15 @@ type DatabaseSpec struct {
 	Engine    string `yaml:"engine" json:"engine"`                       // postgres|mysql|mariadb|redis
 	Version   string `yaml:"version,omitempty" json:"version,omitempty"` // e.g. "16-alpine"
 	Placement string `yaml:"placement,omitempty" json:"placement,omitempty"`
+	// Location names where the database is created; empty uses the workspace default. Fixed once created.
+	Location string `yaml:"location,omitempty" json:"location,omitempty"`
 }
 
 // VolumeSpec declares persistent storage.
 type VolumeSpec struct {
 	Size string `yaml:"size,omitempty" json:"size,omitempty"` // e.g. "5Gi" (0/empty = unbounded)
+	// Location names where the volume is created; empty uses the workspace default. Fixed once created.
+	Location string `yaml:"location,omitempty" json:"location,omitempty"`
 }
 
 // RouteSpec binds one or more hostnames (and an optional path) to an

@@ -11,6 +11,7 @@ import { apiErrorMessage } from '@/api/client'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import MetadataCard from '@/components/MetadataCard.vue'
 import OwnerChip from '@/components/OwnerChip.vue'
+import LocationName from '@/components/LocationName.vue'
 import ResourceIcon from '@/components/ResourceIcon.vue'
 import { fmtSize } from '@/utils/format'
 import { engineLogo, engineMdi } from '@/utils/resourceIcon'
@@ -930,6 +931,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
               <span class="mdi mdi-docker"></span>
               {{ inst.engine }} {{ inst.version }}
               <template v-if="inst.server_name"> · <span class="mdi mdi-server-network"></span> {{ inst.server_name }}</template>
+              <LocationName :cluster-id="inst.cluster_id" />
               · <code :title="'In-network address — reachable by apps on ' + (inst.server_name || 'this node')">{{ inst.host }}:{{ inst.port }}</code>
             </div>
           </div>

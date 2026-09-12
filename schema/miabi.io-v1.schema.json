@@ -34,6 +34,10 @@
         "image": {
           "type": "string"
         },
+        "location": {
+          "description": "Location names where the app is created: empty uses its stack's location, else the workspace default. Fixed once created.",
+          "type": "string"
+        },
         "mounts": {
           "items": {
             "$ref": "#/$defs/MountSpec"
@@ -131,6 +135,10 @@
       "properties": {
         "engine": {
           "description": "postgres|mysql|mariadb|redis",
+          "type": "string"
+        },
+        "location": {
+          "description": "Location names where the database is created; empty uses the workspace default. Fixed once created.",
           "type": "string"
         },
         "placement": {
@@ -542,6 +550,10 @@
       "properties": {
         "description": {
           "type": "string"
+        },
+        "location": {
+          "description": "Location names where the stack is created; empty uses the workspace default. Fixed once created.",
+          "type": "string"
         }
       },
       "type": "object"
@@ -550,6 +562,10 @@
       "additionalProperties": false,
       "description": "VolumeSpec declares persistent storage.",
       "properties": {
+        "location": {
+          "description": "Location names where the volume is created; empty uses the workspace default. Fixed once created.",
+          "type": "string"
+        },
         "size": {
           "description": "e.g. \"5Gi\" (0/empty = unbounded)",
           "type": "string"

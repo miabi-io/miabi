@@ -75,6 +75,14 @@ func (c *Cluster) Label() string {
 	return c.Name
 }
 
+// IngressNode is the node whose gateway serves the cluster, falling back to its manager.
+func (c *Cluster) IngressNode() uint {
+	if c.IngressServerID != 0 {
+		return c.IngressServerID
+	}
+	return c.ManagerServerID
+}
+
 // clusterOfServer resolves the cluster of the node a new resource lands on (0 = the local node). A
 // failed lookup leaves DefaultClusterID, which resolves to the default cluster anyway.
 func clusterOfServer(tx *gorm.DB, serverID uint) uint {

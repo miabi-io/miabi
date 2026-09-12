@@ -30,7 +30,7 @@ const managerNode = computed(() =>
 )
 const ingressNode = computed(() => {
   if (isDefault.value) return nodes.value.find((n) => n.is_local)
-  const ingressID = cluster.value?.ingress_server_id
+  const ingressID = cluster.value?.ingress_server_id || (cluster.value?.mode === 'swarm' ? cluster.value?.manager_server_id : 0)
   return ingressID ? nodes.value.find((n) => n.id === ingressID) : undefined
 })
 
@@ -51,11 +51,13 @@ onMounted(load)
 
 const showEdit = ref(false)
 const saving = ref(false)
-const editForm = ref({ display_name: '', location_code: '' })
+const editForm = ref({ display_name: '', location_code: '', visibility: 'all' as Cluster['visibility'], cordoned: false })
 function openEdit() {
   editForm.value = {
     display_name: cluster.value?.display_name ?? '',
     location_code: cluster.value?.location_code ?? '',
+    visibility: cluster.value?.visibility ?? 'all',
+    cordoned: cluster.value?.cordoned ?? false,
   }
   showEdit.value = true
 }
@@ -66,11 +68,43 @@ async function saveEdit() {
     cluster.value = (await clustersApi.update(cluster.value.id, {
       display_name: editForm.value.display_name.trim(),
       location_code: editForm.value.location_code.trim(),
+      visibility: editForm.value.visibility,
+      cordoned: editForm.value.cordoned,
     })).data.data
     showEdit.value = false
     notify.success('Cluster updated')
   } catch (e) {
     notify.apiError(e, 'Failed to update the cluster')
+  } finally {
+    saving.value = false
+  }
+}
+
+const canSetGateway = computed(() => cluster.value?.mode === 'swarm' && !isDefault.value)
+const gatewayCandidates = computed(() => members.value.filter((n) => n.connectivity === 'edge-gateway'))
+const showGateway = ref(false)
+const gatewayForm = ref({ server_id: 0, ingress_ip: '', ingress_hostname: '' })
+function openGateway() {
+  gatewayForm.value = {
+    server_id: ingressNode.value?.id || gatewayCandidates.value[0]?.id || 0,
+    ingress_ip: cluster.value?.ingress_ip ?? '',
+    ingress_hostname: cluster.value?.ingress_hostname ?? '',
+  }
+  showGateway.value = true
+}
+async function saveGateway() {
+  if (!cluster.value) return
+  saving.value = true
+  try {
+    cluster.value = (await clustersApi.setGateway(cluster.value.id, {
+      server_id: gatewayForm.value.server_id,
+      ingress_ip: gatewayForm.value.ingress_ip.trim(),
+      ingress_hostname: gatewayForm.value.ingress_hostname.trim(),
+    })).data.data
+    showGateway.value = false
+    notify.success('Gateway updated')
+  } catch (e) {
+    notify.apiError(e, 'Failed to update the gateway')
   } finally {
     saving.value = false
   }
@@ -342,6 +376,8 @@ function swarmClass(n: Server): string {
           {{ label }}
           <code v-if="cluster?.name" class="handle" title="Name (fixed at creation)">{{ cluster.name }}</code>
           <span v-if="isDefault" class="badge badge-info">default</span>
+          <span v-if="cluster?.visibility === 'restricted'" class="badge badge-muted">admins only</span>
+          <span v-if="cluster?.cordoned" class="badge badge-warning">cordoned</span>
         </h1>
       </div>
       <div v-if="cluster" class="header-actions">
@@ -372,6 +408,13 @@ function swarmClass(n: Server): string {
             <router-link v-if="ingressNode" :to="`/admin/nodes/${ingressNode.id}`">{{ ingressNode.display_name || ingressNode.name }}</router-link>
             <span v-else-if="cluster.legacy_ingress">Central gateway, by host port</span>
             <span v-else>—</span>
+            <span v-if="canSetGateway && (cluster.ingress_hostname || cluster.ingress_ip)" class="badge badge-muted mono">{{ cluster.ingress_hostname || cluster.ingress_ip }}</span>
+            <button v-if="canSetGateway" class="btn btn-ghost btn-sm" @click="openGateway">Change</button>
+          </dd>
+          <dt>Placement</dt>
+          <dd>
+            {{ cluster.visibility === 'restricted' ? 'Platform admins only' : 'All workspaces' }}
+            <span v-if="cluster.cordoned" class="badge badge-warning">cordoned</span>
           </dd>
         </dl>
         <div v-if="cluster.legacy_ingress" class="pending-hint">
@@ -524,15 +567,62 @@ function swarmClass(n: Server): string {
               <label class="form-label">Location name</label>
               <input v-model="editForm.display_name" class="form-input" maxlength="40" placeholder="e.g. Frankfurt" autofocus />
             </div>
-            <div class="form-group" style="margin-bottom: 0">
+            <div class="form-group">
               <label class="form-label">Location code</label>
               <input v-model="editForm.location_code" class="form-input mono" maxlength="32" placeholder="e.g. eu-central" />
               <p class="form-hint">Lowercase letters, digits and hyphens. Two clusters may share a code.</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Who can place here</label>
+              <select v-model="editForm.visibility" class="form-select">
+                <option value="all">All workspaces</option>
+                <option value="restricted">Platform admins only</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label"><input v-model="editForm.cordoned" type="checkbox" /> Cordoned</label>
+              <p class="form-hint">No new apps, databases or volumes land here; running ones stay.</p>
             </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showEdit = false">Cancel</button>
             <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : 'Save' }}</button>
+          </div>
+        </form>
+      </AppModal>
+    </Teleport>
+
+    <Teleport to="body">
+      <AppModal v-if="showGateway" @close="showGateway = false">
+        <div class="modal-header">
+          <h3>Cluster gateway</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showGateway = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <form @submit.prevent="saveGateway">
+          <div class="modal-body">
+            <p class="cell-sub" style="margin-bottom: 12px">
+              The node whose gateway serves every route in this cluster: the control plane's gateway cannot reach into its overlay.
+            </p>
+            <div class="form-group">
+              <label class="form-label">Gateway node</label>
+              <select v-model.number="gatewayForm.server_id" class="form-select" required>
+                <option v-for="n in gatewayCandidates" :key="n.id" :value="n.id">{{ n.display_name || n.name }}</option>
+              </select>
+              <p v-if="gatewayCandidates.length === 0" class="form-hint">No node of this cluster runs its own gateway yet: set one to edge-gateway connectivity.</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Ingress IP</label>
+              <input v-model="gatewayForm.ingress_ip" class="form-input mono" placeholder="e.g. 203.0.113.10" />
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label">Ingress hostname</label>
+              <input v-model="gatewayForm.ingress_hostname" class="form-input mono" placeholder="e.g. lb.eu-central.example.com" />
+              <p class="form-hint">What DNS records point at, e.g. a load balancer. Empty uses the node's public address.</p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showGateway = false">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving || !gatewayForm.server_id">{{ saving ? 'Saving…' : 'Save' }}</button>
           </div>
         </form>
       </AppModal>

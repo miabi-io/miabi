@@ -94,6 +94,7 @@ export interface InstallInput {
   inputs?: Record<string, string>
   placements?: Record<string, number>
   placement_modes?: Record<string, string>
+  location?: string
 }
 
 export interface InstallResult {

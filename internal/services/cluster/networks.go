@@ -30,6 +30,16 @@ func (s *Service) ClusterOfServer(serverID uint) uint {
 	return srv.ClusterID
 }
 
+// LocationLabel names a cluster the way tenants see it.
+func (s *Service) LocationLabel(clusterID uint) string {
+	if s.store != nil {
+		if c, err := s.store.FindByID(clusterID); err == nil {
+			return c.Label()
+		}
+	}
+	return fmt.Sprintf("location %d", clusterID)
+}
+
 // WorkspaceOverlay reports whether a workspace network is an overlay in a cluster. In the default cluster its
 // record decides; a remote swarm only takes empty nodes, so its workspace networks are overlays from the start.
 func (s *Service) WorkspaceOverlay(clusterID uint, n models.Network) bool {

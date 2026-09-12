@@ -65,6 +65,7 @@ type Service struct {
 	// Live install-progress jobs (single-node, in-process), streamed over the
 	// event bus to the install UI. bus may be nil in tests / when unwired.
 	bus    *eventbus.Bus
+	placer Placer
 	jobsMu sync.Mutex
 	jobs   map[string]*InstallJob
 }
@@ -257,6 +258,10 @@ type InstallInput struct {
 	// shared) when no instance is pinned. Empty uses the placement declared by the template, letting a user
 	// fall back to Automatic for a template that defaults to a dedicated instance.
 	PlacementModes map[string]string `json:"placement_modes,omitempty"`
+	// Location is where the install runs; empty uses the workspace's default location.
+	Location string `json:"location,omitempty"`
+	// Admin lets a platform admin install into a restricted location. Set by the caller, never from JSON.
+	Admin bool `json:"-"`
 }
 
 // InstallResult reports everything an install created.
@@ -295,6 +300,14 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 
 	result := &InstallResult{Template: m.Metadata.Name, DisplayName: displayName(m, in.DisplayName), Version: m.Metadata.Version}
 
+	// Every resource of an install lands on one node: apps reach their databases over a Docker network, which
+	// cannot span nodes. Decided before the volumes, which would otherwise land on the local node.
+	target, err := s.installTarget(workspaceID, m, in)
+	if err != nil {
+		return nil, err
+	}
+	targetNode := target.ServerID
+
 	// Volumes carry the same marketplace provenance as the install's apps and
 	// databases so the detail page attributes them to the template.
 	if len(m.Volumes) > 0 {
@@ -307,7 +320,7 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 			models.MetaTemplate, m.Metadata.Name,
 			models.MetaTemplateVersion, m.Metadata.Version)
 
-		vol, err := s.volumes.Create(ctx, workspaceID, 0, result.DisplayName+" "+v.Name, 0, volMeta, nil)
+		vol, err := s.volumes.Create(ctx, workspaceID, targetNode, result.DisplayName+" "+v.Name, 0, volMeta, nil)
 		if err != nil {
 			return nil, fmt.Errorf("create volume %q: %w", v.Name, err)
 		}
@@ -317,11 +330,6 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 	if len(m.Volumes) > 0 {
 		report.phase(PhaseVolumes, PhaseDone)
 	}
-
-	// Pick the single node every resource in this install lands on: apps reach their databases over a shared Docker
-	// network, which cannot span nodes, so a freshly provisioned database and the apps must be colocated. A
-	// dependency binding to an existing instance makes that instance's node win; otherwise the local node.
-	targetNode := s.installNode(workspaceID, m, in)
 
 	// The database is named after the install — the user-chosen name, defaulting to the
 	// template name — and a multi-database template disambiguates with the dependency name.
@@ -393,6 +401,7 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 			in.Description = m.Stack.Description
 			in.Annotations = models.Metadata(m.Stack.Annotations)
 		}
+		in.ClusterID = target.ClusterID
 		st, err := s.stacks.Create(ctx, workspaceID, in)
 		if err != nil {
 			return nil, fmt.Errorf("create stack: %w", err)

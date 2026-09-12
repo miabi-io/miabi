@@ -4,6 +4,7 @@ import type { ApiResponse, Stack, StackEnvVar, AppEvent } from './types'
 export interface StackInput {
   name: string
   description?: string
+  location?: string
 }
 
 export interface StackUpdateInput {

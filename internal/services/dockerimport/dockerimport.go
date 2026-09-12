@@ -307,7 +307,7 @@ func (s *Service) Import(ctx context.Context, actorID, serverID uint, req Import
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, err
 		}
-		st, err := s.stacks.Create(ctx, req.WorkspaceID, stack.Input{Name: name, Description: "Imported from existing Docker resources"})
+		st, err := s.stacks.Create(ctx, req.WorkspaceID, stack.Input{Name: name, Description: "Imported from existing Docker resources", ClusterID: s.apps.ClusterOfServer(serverID)})
 		if err != nil {
 			return nil, fmt.Errorf("create stack %q: %w", name, err)
 		}

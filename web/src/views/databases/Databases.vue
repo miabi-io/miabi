@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LocationPicker from '@/components/LocationPicker.vue'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
@@ -6,7 +7,6 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { databaseApi } from '@/api/resources'
 import type { DatabaseInstance, DBEngine, DBStatus } from '@/api/types'
-import NodePicker from '@/components/NodePicker.vue'
 import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
@@ -18,7 +18,7 @@ const dbs = ref<DatabaseInstance[]>([])
 const loading = ref(false) // first-load spinner only; background updates never toggle it
 const showCreate = ref(false)
 const creating = ref(false)
-const form = ref<{ name: string; engine: DBEngine; version: string; server_id: number; size_mb: number | null }>({ name: '', engine: 'postgres', version: '', server_id: 0, size_mb: null })
+const form = ref<{ name: string; engine: DBEngine; version: string; server_id: number; location: string; size_mb: number | null }>({ name: '', engine: 'postgres', version: '', server_id: 0, location: '', size_mb: null })
 
 // Live updates: one SSE connection streams status deltas for the whole workspace
 // (no per-row polling). A slow reconcile is kept only as a safety net — to catch
@@ -133,7 +133,7 @@ onBeforeUnmount(() => {
 })
 
 function openCreate() {
-  form.value = { name: '', engine: 'postgres', version: '', server_id: 0, size_mb: null }
+  form.value = { name: '', engine: 'postgres', version: '', server_id: 0, location: '', size_mb: null }
   showCreate.value = true
 }
 
@@ -141,7 +141,7 @@ async function create() {
   if (!currentWorkspaceId.value) return
   creating.value = true
   try {
-    await databaseApi.create(currentWorkspaceId.value, form.value.name.trim(), form.value.engine, form.value.version.trim() || undefined, form.value.server_id, form.value.size_mb ?? undefined)
+    await databaseApi.create(currentWorkspaceId.value, form.value.name.trim(), form.value.engine, form.value.version.trim() || undefined, form.value.server_id || undefined, form.value.size_mb ?? undefined, form.value.location || undefined)
     notify.success('Database provisioning…')
     showCreate.value = false
     reconcile(currentWorkspaceId.value) // pull in the new row; SSE then drives it to running
@@ -223,7 +223,7 @@ function fmtBytes(n?: number): string {
               <label class="form-label">Name</label>
               <input v-model="form.name" class="form-input" placeholder="e.g. app-db" required autofocus />
             </div>
-            <NodePicker v-model="form.server_id" />
+            <LocationPicker v-model="form.location" v-model:server-id="form.server_id" />
             <div class="form-group">
               <label class="form-label">Engine</label>
               <div class="engine-grid">

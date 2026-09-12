@@ -117,6 +117,8 @@ type Input struct {
 	// Annotations is the stack's initial annotations: free-form descriptive notes
 	// with no reserved keys (the manifest's metadata.annotations).
 	Annotations models.Metadata
+	// ClusterID is the location the stack's members run in; 0 is the default cluster.
+	ClusterID uint
 }
 
 func (s *Service) Create(ctx context.Context, workspaceID uint, in Input) (*models.Stack, error) {
@@ -166,6 +168,7 @@ func (s *Service) Create(ctx context.Context, workspaceID uint, in Input) (*mode
 		Description:   strings.TrimSpace(in.Description),
 		Metadata:      models.DefaultManagedBy(in.Metadata, models.ManagedByUser),
 		Annotations:   in.Annotations,
+		ClusterID:     in.ClusterID,
 	}
 	if err := s.repo.Create(st); err != nil {
 		if s.docker != nil {
