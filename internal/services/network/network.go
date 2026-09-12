@@ -32,11 +32,10 @@ var (
 	ErrInvalidDriver = errors.New("unsupported network driver")
 )
 
-// ClusterCap reports whether the manager engine is a reachable swarm manager
-// (cluster mode on). Implemented by services/cluster. A workspace network is a
-// swarm-scoped overlay in cluster mode and a node-local bridge otherwise.
+// ClusterCap reports whether a cluster runs a swarm. Implemented by services/cluster. A workspace
+// network is a swarm-scoped overlay while the default cluster is a swarm, a node-local bridge otherwise.
 type ClusterCap interface {
-	CapCluster() bool
+	IsSwarm(clusterID uint) bool
 }
 
 type Service struct {
@@ -73,7 +72,9 @@ func (s *Service) SetCluster(c ClusterCap) { s.cluster = c }
 // SetClients wires the per-node Docker client registry used by the migration.
 func (s *Service) SetClients(r Resolver) { s.clients = r }
 
-func (s *Service) clusterOn() bool { return s.cluster != nil && s.cluster.CapCluster() }
+func (s *Service) clusterOn() bool {
+	return s.cluster != nil && s.cluster.IsSwarm(models.DefaultClusterID)
+}
 
 // DriverBridge and DriverOverlay are the two drivers a workspace network can be
 // provisioned with. Overlay spans nodes (requires swarm); bridge is node-local.

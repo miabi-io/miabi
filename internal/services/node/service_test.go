@@ -142,6 +142,7 @@ type nameRow struct {
 	UID                     string
 	Name                    string
 	DisplayName             string
+	ClusterID               uint
 	Connectivity            string
 	AccessMode              string
 	DockerEndpoint          string

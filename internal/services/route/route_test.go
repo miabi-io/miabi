@@ -186,7 +186,7 @@ func ids(rs []models.Route) []uint {
 
 type fakeCluster struct{ on bool }
 
-func (f fakeCluster) CapCluster() bool { return f.on }
+func (f fakeCluster) IsSwarm(uint) bool { return f.on }
 
 // A port-forward node is reached by a published host port — until cluster mode is
 // on, at which point the app is on the shared ingress overlay and the gateway

@@ -59,7 +59,7 @@ func (r *ProxyNetworkReconciler) ReconcileProxyAttachment(ctx context.Context, a
 			targets = append(targets, attachTarget{rel.ContainerID, node.CanaryAlias(app)})
 		}
 	}
-	r.applyAttachment(ctx, eng, targets, attached)
+	r.applyAttachment(ctx, eng, app.ClusterID, targets, attached)
 	return nil
 }
 
@@ -71,9 +71,9 @@ type attachTarget struct {
 // applyAttachment connects or disconnects each target from the proxy network. In cluster mode it does the
 // same for the ingress overlay, mirroring buildRuntimeContext, so a container started before cluster mode
 // was enabled becomes reachable by alias without a redeploy.
-func (r *ProxyNetworkReconciler) applyAttachment(ctx context.Context, eng docker.Client, targets []attachTarget, attached bool) {
+func (r *ProxyNetworkReconciler) applyAttachment(ctx context.Context, eng docker.Client, clusterID uint, targets []attachTarget, attached bool) {
 	networks := []string{node.AppNetwork}
-	if r.cluster != nil && r.cluster.CapCluster() {
+	if r.cluster != nil && r.cluster.IsSwarm(clusterID) {
 		networks = append(networks, node.IngressOverlay)
 	}
 	for _, t := range targets {
@@ -104,7 +104,10 @@ func (r *ProxyNetworkReconciler) reconcileServiceIngress(ctx context.Context, ap
 // overlay, creating it if needed, so public traffic can reach every clustered app's service VIP. It
 // re-asserts an attachment a compose recreate silently drops. Idempotent; a no-op off cluster mode.
 func (r *ProxyNetworkReconciler) ReconcileIngressGateway(ctx context.Context) error {
-	mgr, err := r.clients.For(0) // the central gateway runs on the manager (local)
+	mgr, err := r.clients.For(0)
+	if r.cluster != nil {
+		mgr, err = r.cluster.Manager(ctx, models.DefaultClusterID)
+	}
 	if err != nil {
 		return nil
 	}

@@ -106,17 +106,18 @@ type Service struct {
 	maxPort     int
 }
 
-// ClusterCap reports whether the manager engine is a reachable swarm manager.
-// Implemented by services/cluster.
+// ClusterCap reports whether a cluster runs a swarm. Implemented by services/cluster.
 type ClusterCap interface {
-	CapCluster() bool
+	IsSwarm(clusterID uint) bool
 }
 
 // SetCluster wires swarm detection (nil-safe; nil = never cluster mode, so
 // remote nodes keep being reached by published host port).
 func (s *Service) SetCluster(c ClusterCap) { s.cluster = c }
 
-func (s *Service) clusterOn() bool { return s.cluster != nil && s.cluster.CapCluster() }
+func (s *Service) isSwarm(clusterID uint) bool {
+	return s.cluster != nil && s.cluster.IsSwarm(clusterID)
+}
 
 // EdgeReloader notifies edge-gateway nodes to pull their configuration immediately after a change,
 // instead of waiting for their HTTP-provider poll interval. Calls are best-effort. Optional: when
@@ -1257,7 +1258,7 @@ func (s *Service) backendsFor(app *models.Application, port int) []proxy.Backend
 }
 
 func (s *Service) useAliasUpstream(srv *models.Server) bool {
-	return !isRemotePortForward(srv) || s.clusterOn()
+	return !isRemotePortForward(srv) || s.isSwarm(srv.ClusterID)
 }
 
 // isRemotePortForward reports whether srv is a remote node reached by publishing

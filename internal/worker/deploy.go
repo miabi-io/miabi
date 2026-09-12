@@ -611,6 +611,9 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 // services are created and inspected. Offline client on failure.
 func (h *DeployHandler) manager() docker.Client {
 	dc, err := h.clients.For(0)
+	if h.cluster != nil {
+		dc, err = h.cluster.Manager(context.Background(), models.DefaultClusterID)
+	}
 	if err != nil {
 		return docker.Offline(err)
 	}

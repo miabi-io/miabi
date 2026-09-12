@@ -98,14 +98,16 @@ func (s *Service) SetConfigs(c *configsvc.Service) { s.configs = c }
 // ClusterCap reports whether Swarm cluster mode is on, which decides whether a workspace network
 // spans nodes.
 type ClusterCap interface {
-	CapCluster() bool
+	IsSwarm(clusterID uint) bool
 }
 
 // SetCluster wires cluster-mode detection, used to decide whether an application reference across
 // two nodes can resolve.
 func (s *Service) SetCluster(c ClusterCap) { s.cluster = c }
 
-func (s *Service) clusterOn() bool { return s.cluster != nil && s.cluster.CapCluster() }
+func (s *Service) clusterOn() bool {
+	return s.cluster != nil && s.cluster.IsSwarm(models.DefaultClusterID)
+}
 
 // SetCertificates wires the certificate service, so a Route may name the stored certificate it
 // serves with tls: custom.

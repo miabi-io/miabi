@@ -36,7 +36,8 @@ type Job struct {
 	WorkspaceID   uint `json:"workspace_id" gorm:"index;not null"`
 	ApplicationID uint `json:"application_id" gorm:"index;not null"`
 	// ServerID is the node the job ran on (0 = local), copied from the app.
-	ServerID uint `json:"server_id" gorm:"not null;default:0"`
+	ServerID  uint `json:"server_id" gorm:"not null;default:0"`
+	ClusterID uint `json:"cluster_id" gorm:"index;not null;default:0"`
 	// CronJobID links runs spawned by a CronJob to their schedule.
 	CronJobID *uint `json:"cronjob_id,omitempty" gorm:"index"`
 	// AppName is the owning application's name (transient; populated on read for

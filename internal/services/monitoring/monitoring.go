@@ -46,6 +46,11 @@ type ServerInfo interface {
 	Get(id uint) (*models.Server, error)
 }
 
+// SwarmManager resolves the client that drives a cluster's swarm. Implemented by services/cluster.
+type SwarmManager interface {
+	Manager(ctx context.Context, clusterID uint) (docker.Client, error)
+}
+
 type Service struct {
 	apps       *repositories.ApplicationRepository
 	releases   *repositories.ReleaseRepository
@@ -55,10 +60,22 @@ type Service struct {
 	metrics    *repositories.MetricRepository
 	clients    NodeDocker
 	serverInfo ServerInfo
+	swarm      SwarmManager
 }
 
 func NewService(apps *repositories.ApplicationRepository, releases *repositories.ReleaseRepository, dbs *repositories.DatabaseRepository, stacks *repositories.StackRepository, events *repositories.AppEventRepository, metrics *repositories.MetricRepository, clients NodeDocker) *Service {
 	return &Service{apps: apps, releases: releases, dbs: dbs, stacks: stacks, events: events, metrics: metrics, clients: clients}
+}
+
+// SetSwarmManager wires the cluster control path used to read service-app logs (nil-safe; nil reads
+// the local engine).
+func (s *Service) SetSwarmManager(m SwarmManager) { s.swarm = m }
+
+func (s *Service) swarmManager(ctx context.Context) (docker.Client, error) {
+	if s.swarm == nil {
+		return s.clients.For(0)
+	}
+	return s.swarm.Manager(ctx, models.DefaultClusterID)
 }
 
 // SetServerInfo wires the resolver used to label apps with their node's name.
@@ -145,7 +162,7 @@ func (s *Service) StreamAppLogs(ctx context.Context, workspaceID, appID uint, fo
 		tail = "200"
 	}
 	if app.RuntimeKind == models.RuntimeService {
-		mgr, merr := s.clients.For(0)
+		mgr, merr := s.swarmManager(ctx)
 		if merr != nil {
 			return ErrNoActiveContainer
 		}

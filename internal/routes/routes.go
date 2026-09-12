@@ -648,7 +648,6 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// registers itself from the swarm node id its own engine reports, and the manager
 	// verifies that id against its own membership before trusting the shared token.
 	clusterService.SetAgentDeps(
-		cluster.NewSettingsTokenStore(repositories.NewSettingRepository(db)),
 		nodeService,
 		cfg.ControlURL,
 		imageResolver,
@@ -692,6 +691,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	forwardService.SetImageResolver(imageResolver)
 	storageService.SetImageResolver(imageResolver)
 	monitoringService := monitoring.NewService(appRepo, releaseRepo, dbRepo, stackRepo, appEventRepo, repositories.NewMetricRepository(db), nodeClients)
+	monitoringService.SetSwarmManager(clusterService)
 	monitoringService.SetServerInfo(nodeService)
 	marketplaceService := marketplace.NewService(appService, databaseService, storageService, stackService, repositories.NewTemplateInstallRepository(db), repositories.NewTemplateRepository(db))
 	marketplaceService.SetConfigs(configService)
@@ -1409,6 +1409,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.app.Register(r.alertRoutes()...)
 	r.app.Register(r.nodeRoutes()...)
 	r.app.Register(r.clusterRoutes()...)
+	r.app.Register(r.clustersRoutes()...)
 	r.app.Register(r.runnerRoutes()...)
 	r.app.Register(r.adminRunnerRoutes()...)
 	r.app.Register(r.runnerGatewayRoutes()...)

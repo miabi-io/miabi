@@ -15,7 +15,7 @@ import (
 // fakeCluster stubs swarm detection.
 type fakeCluster struct{ on bool }
 
-func (f fakeCluster) CapCluster() bool { return f.on }
+func (f fakeCluster) IsSwarm(uint) bool { return f.on }
 
 // call records one mutation the migration performed on the fake engine, so tests
 // can assert on ordering (connect must precede disconnect) as well as content.

@@ -62,6 +62,8 @@ type Service struct {
 	swarm       map[string]docker.SwarmNode // swarm node id -> node (last refresh)
 	refreshedAt time.Time
 
+	defaultClusterID uint
+
 	// ingressReconciler re-asserts the central gateway's attachment to the shared cluster ingress overlay, run
 	// on each refresh so a gateway recreate (compose up -d) can't leave clustered apps publicly dark for
 	// longer than a refresh interval. Optional (nil = no-op); wired after construction.
@@ -85,10 +87,10 @@ type Service struct {
 	probeImages        NetCheckImages
 	probeImageFallback string
 
-	// The global agent service (see agents.go): the token store, the registrar that
-	// turns a self-reporting agent into a Miabi node, the address the agents dial
-	// back on, and the agent image.
-	tokens             TokenStore
+	store Store
+
+	// The global agent service (see agents.go): the registrar that turns a self-reporting
+	// agent into a Miabi node, the address the agents dial back on, and the agent image.
 	registrar          NodeRegistrar
 	controlURL         string
 	agentImages        NetCheckImages
@@ -142,6 +144,93 @@ func (s *Service) SetIngressReconciler(fn func(context.Context) error) {
 	s.mu.Unlock()
 }
 
+// Store reads and writes cluster rows. Satisfied by repositories.ClusterRepository.
+type Store interface {
+	List() ([]models.Cluster, error)
+	FindDefault() (*models.Cluster, error)
+	FindByID(id uint) (*models.Cluster, error)
+	IDByUID(uid string) (uint, error)
+	UpdateColumns(id uint, cols map[string]any) error
+}
+
+// SetStore wires the cluster rows (nil-safe; nil leaves the cluster unnamed and the agent service off).
+func (s *Service) SetStore(st Store) { s.store = st }
+
+var (
+	// ErrClusterNotFound is returned for a cluster id with no row.
+	ErrClusterNotFound = errors.New("cluster not found")
+	// ErrRemoteSwarm is returned for a swarm cluster other than the default one.
+	ErrRemoteSwarm = errors.New("swarm clusters other than the default one are not supported yet")
+)
+
+// IsSwarm reports whether a cluster runs a swarm the control plane drives. Only the default
+// cluster can today, and it follows the local engine.
+func (s *Service) IsSwarm(clusterID uint) bool {
+	return s.isDefault(clusterID) && s.CapCluster()
+}
+
+// Manager returns a Docker client that can issue Swarm and engine calls for the cluster: the local
+// socket for the default cluster, the node itself for a standalone one.
+func (s *Service) Manager(_ context.Context, clusterID uint) (docker.Client, error) {
+	if s.isDefault(clusterID) {
+		return s.clients.Local(), nil
+	}
+	if s.store == nil {
+		return nil, ErrClusterNotFound
+	}
+	c, err := s.store.FindByID(clusterID)
+	if err != nil {
+		return nil, ErrClusterNotFound
+	}
+	if c.Mode == models.ClusterModeSwarm {
+		return nil, ErrRemoteSwarm
+	}
+	return s.clients.For(c.ManagerServerID)
+}
+
+func (s *Service) isDefault(clusterID uint) bool {
+	return clusterID == models.DefaultClusterID || clusterID == s.defaultID()
+}
+
+// defaultID caches the default cluster's id, which never changes once created.
+func (s *Service) defaultID() uint {
+	s.mu.RLock()
+	id := s.defaultClusterID
+	s.mu.RUnlock()
+	if id != 0 || s.store == nil {
+		return id
+	}
+	def, err := s.store.FindDefault()
+	if err != nil {
+		return 0
+	}
+	s.mu.Lock()
+	s.defaultClusterID = def.ID
+	s.mu.Unlock()
+	return def.ID
+}
+
+// syncDefaultMode records whether the default cluster currently runs a swarm, which the local engine
+// decides: cluster mode stays auto-detected rather than configured.
+func (s *Service) syncDefaultMode(info docker.SwarmInfo) {
+	if s.store == nil {
+		return
+	}
+	def, err := s.store.FindDefault()
+	if err != nil {
+		return
+	}
+	mode := models.ClusterModeStandalone
+	if info.LocalNodeState == swarmStateActive && info.ControlAvailable {
+		mode = models.ClusterModeSwarm
+	}
+	if def.Mode != mode {
+		if err := s.store.UpdateColumns(def.ID, map[string]any{"mode": mode}); err != nil {
+			logger.Warn("failed to record the default cluster's mode", "mode", mode, "error", err)
+		}
+	}
+}
+
 // CapCluster reports whether the manager is a reachable swarm manager, the gate
 // every cluster feature is conditioned on. False on plain Docker.
 func (s *Service) CapCluster() bool {
@@ -158,9 +247,7 @@ func (s *Service) capLocked() bool {
 type Status struct {
 	// Enabled mirrors CapCluster: the manager is a reachable swarm manager.
 	Enabled bool `json:"enabled"`
-	// Name is the operator's label for this cluster. Swarm identifies a cluster by an unreadable id and a
-	// manager address that moves, so without this the UI can only say "the cluster" — fine with one,
-	// useless once someone runs prod-eu-west-1 and prod-us-east-1. A label, not a step toward multi-cluster.
+	// Name is the default cluster's display name.
 	Name string `json:"name,omitempty"`
 	// LocalNodeState is the manager engine's swarm state (inactive on plain
 	// Docker).
@@ -258,6 +345,7 @@ func (s *Service) Refresh(ctx context.Context) {
 	s.refreshedAt = time.Now()
 	ingress := s.ingressReconciler
 	s.mu.Unlock()
+	s.syncDefaultMode(info)
 
 	// Persist the manager's own swarm node id so the Nodes page can correlate it.
 	if info.NodeID != "" {

@@ -1823,6 +1823,7 @@ export interface Server {
   name: string
   /** Free-text label shown in the UI; not unique. */
   display_name?: string
+  cluster_id?: number
   role?: ServerRole
   connectivity?: ServerConnectivity
   access_mode?: 'socket' | 'agent' | 'api'
@@ -1858,6 +1859,30 @@ export interface Server {
 // SwarmRole is a node's role within the cluster's swarm; "standalone" means
 // cluster mode is on but the node is not a swarm member.
 export type SwarmRole = 'leader' | 'manager' | 'worker' | 'standalone'
+
+export type ClusterMode = 'standalone' | 'swarm'
+
+// Cluster is a deploy target: nodes that share private networking and one ingress.
+// Tenants see it as a location.
+export interface Cluster {
+  id: number
+  uid: string
+  name: string
+  display_name?: string
+  location_code?: string
+  mode: ClusterMode
+  is_default: boolean
+  manager_server_id: number
+  ingress_server_id: number
+  ingress_ip?: string
+  ingress_hostname?: string
+  visibility: 'all' | 'restricted'
+  cordoned: boolean
+  legacy_ingress: boolean
+  node_count: number
+  created_at?: string
+  updated_at?: string
+}
 
 // ClusterStatus is the manager's swarm capability + state.
 export interface ClusterStatus {

@@ -6,15 +6,16 @@ package handlers
 import (
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/middlewares"
+	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/quota"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// ClusterCap reports whether cluster (Docker Swarm) mode is enabled — surfaced as a workspace
-// capability so any member, not just a platform admin, can tell whether the "service" runtime is
-// offerable when creating an app. Injected after construction (nil = cluster mode off).
+// ClusterCap reports whether a cluster runs a swarm — surfaced as a workspace capability so any
+// member, not just a platform admin, can tell whether the "service" runtime is offerable when
+// creating an app. Injected after construction (nil = cluster mode off).
 type ClusterCap interface {
-	CapCluster() bool
+	IsSwarm(clusterID uint) bool
 }
 
 // UsageHandler reports a workspace's current resource usage against its plan.
@@ -130,6 +131,6 @@ func (h *UsageHandler) Get(c *okapi.Context) error {
 	u.Capabilities.CustomBuilder = l.AllowCustomBuilder
 	u.Capabilities.OfficialImageUser = l.AllowOfficialImageUser
 	u.Capabilities.RequireNonRoot = h.quota.RequireNonRootUser(wsID, false)
-	u.Capabilities.ClusterEnabled = h.cluster != nil && h.cluster.CapCluster()
+	u.Capabilities.ClusterEnabled = h.cluster != nil && h.cluster.IsSwarm(models.DefaultClusterID)
 	return ok(c, u)
 }

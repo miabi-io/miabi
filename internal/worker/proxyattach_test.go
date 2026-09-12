@@ -38,7 +38,10 @@ func (f *netFake) NetworkDisconnect(_ context.Context, name, containerID string,
 
 type clusterStub bool
 
-func (c clusterStub) CapCluster() bool { return bool(c) }
+func (c clusterStub) IsSwarm(uint) bool { return bool(c) }
+func (c clusterStub) Manager(context.Context, uint) (docker.Client, error) {
+	return nil, docker.ErrNotFound
+}
 
 // In cluster mode the gateway dials routed apps over the ingress overlay, so a route change must attach a
 // running container to it as well — a container started before cluster mode was enabled is not on it.
@@ -80,7 +83,7 @@ func TestApplyAttachmentFollowsClusterMode(t *testing.T) {
 			f := &netFake{}
 			r := &ProxyNetworkReconciler{}
 			r.SetCluster(tt.cluster)
-			r.applyAttachment(context.Background(), f, targets, tt.attached)
+			r.applyAttachment(context.Background(), f, 0, targets, tt.attached)
 			if !reflect.DeepEqual(f.calls, tt.want) {
 				t.Errorf("calls = %+v, want %+v", f.calls, tt.want)
 			}

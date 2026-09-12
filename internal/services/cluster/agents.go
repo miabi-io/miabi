@@ -44,14 +44,6 @@ var (
 	ErrNotSwarmMember = errors.New("the agent's swarm node id is not a member of this cluster")
 )
 
-// TokenStore persists the cluster agent token's hash. Only the hash is kept: the
-// plaintext lives in the service spec (where Docker already holds it) and nowhere
-// else, so there is no second copy of a secret to leak.
-type TokenStore interface {
-	Get(key string) (string, error)
-	Set(key, value string) error
-}
-
 // NodeRegistrar creates or updates the Miabi node record an agent registers as.
 // Satisfied by services/node.
 type NodeRegistrar interface {
@@ -60,12 +52,10 @@ type NodeRegistrar interface {
 }
 
 // SetAgentDeps wires what the global agent service needs (nil-safe; nil disables it).
-func (s *Service) SetAgentDeps(tokens TokenStore, reg NodeRegistrar, controlURL string, images NetCheckImages, fallbackImage string) {
-	s.tokens, s.registrar, s.controlURL = tokens, reg, controlURL
+func (s *Service) SetAgentDeps(reg NodeRegistrar, controlURL string, images NetCheckImages, fallbackImage string) {
+	s.registrar, s.controlURL = reg, controlURL
 	s.agentImages, s.agentImageFallback = images, fallbackImage
 }
-
-const clusterAgentTokenKey = "cluster_agent_token_hash"
 
 func (s *Service) agentImage() string {
 	if s.agentImages != nil {
@@ -156,7 +146,7 @@ func (s *Service) DeployAgents(ctx context.Context, opts AgentOptions) error {
 	if !s.CapCluster() {
 		return ErrNotEnabled
 	}
-	if s.tokens == nil || s.registrar == nil {
+	if s.store == nil || s.registrar == nil {
 		return errors.New("the cluster agent service is not wired")
 	}
 	if strings.TrimSpace(s.controlURL) == "" {
@@ -166,12 +156,16 @@ func (s *Service) DeployAgents(ctx context.Context, opts AgentOptions) error {
 	if strings.TrimSpace(image) == "" {
 		return ErrAgentImageRequired
 	}
+	def, err := s.store.FindDefault()
+	if err != nil {
+		return fmt.Errorf("find the default cluster: %w", err)
+	}
 
 	// Mint a fresh token and store only its hash. The plaintext goes into the service spec, which Docker
 	// already holds — keeping a second copy would be a second thing to leak. Rotating on every deploy means a
 	// token that ever escaped stops working the next time an admin redeploys.
 	token := clusterTokenPrefix + randHex(32)
-	if err := s.tokens.Set(clusterAgentTokenKey, hashClusterToken(token)); err != nil {
+	if err := s.store.UpdateColumns(def.ID, map[string]any{"agent_token_hash": hashClusterToken(token)}); err != nil {
 		return fmt.Errorf("store the cluster agent token: %w", err)
 	}
 
@@ -246,8 +240,10 @@ func (s *Service) RemoveAgents(ctx context.Context) error {
 	}
 	// Invalidate the token with it: an agent container that outlives the service (a
 	// stale task, a hand-run copy) must not keep a working credential.
-	if s.tokens != nil {
-		_ = s.tokens.Set(clusterAgentTokenKey, "")
+	if s.store != nil {
+		if def, err := s.store.FindDefault(); err == nil {
+			_ = s.store.UpdateColumns(def.ID, map[string]any{"agent_token_hash": ""})
+		}
 	}
 	logger.Info("cluster agent service removed")
 	return nil
@@ -257,14 +253,14 @@ func (s *Service) RemoveAgents(ctx context.Context) error {
 // is. The token alone proves nothing — every agent carries the same one — so identity comes from the
 // swarm node id the agent read off its engine, trusted only because the manager can verify membership.
 func (s *Service) AuthenticateAgent(ctx context.Context, token, swarmNodeID, hostname string) (*models.Server, error) {
-	if s.tokens == nil || s.registrar == nil {
+	if s.store == nil || s.registrar == nil {
 		return nil, ErrBadClusterToken
 	}
-	want, err := s.tokens.Get(clusterAgentTokenKey)
-	if err != nil || strings.TrimSpace(want) == "" {
+	def, err := s.store.FindDefault()
+	if err != nil || strings.TrimSpace(def.AgentTokenHash) == "" {
 		return nil, ErrBadClusterToken // no agent service deployed
 	}
-	if subtle.ConstantTimeCompare([]byte(hashClusterToken(token)), []byte(want)) != 1 {
+	if subtle.ConstantTimeCompare([]byte(hashClusterToken(token)), []byte(def.AgentTokenHash)) != 1 {
 		return nil, ErrBadClusterToken
 	}
 	swarmNodeID = strings.TrimSpace(swarmNodeID)

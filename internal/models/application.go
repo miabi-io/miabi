@@ -305,7 +305,8 @@ type Application struct {
 	// ServerID is the node this app runs on (0 = local control-plane node). In
 	// cluster mode (RuntimeService) it is a placement hint rather than a fixed
 	// node — Swarm schedules the tasks subject to PlacementConstraints.
-	ServerID uint `json:"server_id" gorm:"index;not null;default:0"`
+	ServerID  uint `json:"server_id" gorm:"index;not null;default:0"`
+	ClusterID uint `json:"cluster_id" gorm:"index;not null;default:0"`
 	// ServerName is the display name of the node (transient; populated on read so
 	// the UI can show where the app runs). Empty if the node is unknown.
 	ServerName string `json:"server_name,omitempty" gorm:"-"`

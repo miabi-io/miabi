@@ -95,12 +95,38 @@ const IngressOverlay = "miabi-ingress"
 
 type Service struct {
 	repo      *repositories.ServerRepository
+	clusters  *repositories.ClusterRepository
 	docker    docker.Client
 	nodeLimit func() int // resolved edition node cap (-1 = unlimited); nil = unlimited
 }
 
 func NewService(repo *repositories.ServerRepository, dockerClient docker.Client) *Service {
 	return &Service{repo: repo, docker: dockerClient}
+}
+
+// SetClusters wires the cluster rows every node belongs to (nil-safe; nil leaves new nodes unassigned,
+// which resolves to the default cluster).
+func (s *Service) SetClusters(r *repositories.ClusterRepository) { s.clusters = r }
+
+func (s *Service) placeInStandaloneCluster(srv *models.Server) error {
+	if s.clusters == nil {
+		return nil
+	}
+	name, err := slug.Unique(srv.Name, "node", func(c string) (bool, error) {
+		_, e := s.clusters.FindByName(c)
+		if e == nil {
+			return true, nil
+		}
+		if errors.Is(e, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, e
+	})
+	if err != nil {
+		return err
+	}
+	_, err = s.clusters.CreateStandalone(srv, name)
+	return err
 }
 
 // SetNodeLimit wires the resolved edition node cap (manager + remotes). The closure is re-evaluated on every
@@ -280,6 +306,9 @@ func (s *Service) CreateNode(in NodeInput) (*models.Server, string, error) {
 	if err := s.repo.Create(srv); err != nil {
 		return nil, "", err
 	}
+	if err := s.placeInStandaloneCluster(srv); err != nil {
+		logger.Warn("created the node, but could not give it a standalone cluster", "node", srv.ID, "error", err)
+	}
 	return srv, token, nil
 }
 
@@ -365,6 +394,11 @@ func (s *Service) RegisterClusterNode(swarmNodeID, hostname string) (*models.Ser
 		SwarmNodeID:    swarmNodeID,
 		AutoJoined:     true,
 		PublicHostname: strings.TrimSpace(hostname),
+	}
+	if s.clusters != nil {
+		if def, err := s.clusters.FindDefault(); err == nil {
+			srv.ClusterID = def.ID
+		}
 	}
 	if err := s.repo.Create(srv); err != nil {
 		return nil, err
@@ -802,7 +836,15 @@ func (s *Service) DeleteNode(id uint) error {
 	if srv.IsLocal {
 		return ErrLocalNode
 	}
-	return s.repo.Delete(srv.ID)
+	if err := s.repo.Delete(srv.ID); err != nil {
+		return err
+	}
+	if s.clusters != nil && srv.ClusterID != models.DefaultClusterID {
+		if err := s.clusters.DeleteIfEmpty(srv.ClusterID); err != nil {
+			logger.Warn("deleted the node, but not its empty cluster", "node", srv.ID, "cluster", srv.ClusterID, "error", err)
+		}
+	}
+	return nil
 }
 
 // Authenticate resolves the node an agent token belongs to (constant-time-ish

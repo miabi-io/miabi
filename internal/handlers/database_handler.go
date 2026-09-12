@@ -43,7 +43,7 @@ func NewDatabaseHandler(svc *database.Service, apps *application.Service, forwar
 // mode, where the workspace network is a swarm overlay so the instance's DNS alias resolves
 // anywhere. Otherwise a cross-node attach deploys fine and fails at runtime, so it is refused.
 func (h *DatabaseHandler) crossNodeOK() bool {
-	return h.cluster != nil && h.cluster.CapCluster()
+	return h.cluster != nil && h.cluster.IsSwarm(models.DefaultClusterID)
 }
 
 type CreateDatabaseRequest struct {
