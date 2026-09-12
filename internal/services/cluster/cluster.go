@@ -372,6 +372,7 @@ func (s *Service) Refresh(ctx context.Context) {
 			s.AttachGateway(ctx, id)
 		}
 	}
+	s.reassertPoolLabels(ctx)
 
 	if info.NodeID != "" {
 		if id := s.clients.LocalID(); id != 0 {

@@ -33,6 +33,7 @@ const (
 	FlagCustomRoles                  = "custom_roles"        // data-driven RBAC roles
 	FlagResourcePolicies             = "resource_policies"   // per-resource permission grants
 	FlagQuotaOverride                = "quota_override"      // per-workspace plan quota overrides
+	FlagPlacementPolicy              = "placement_policy"    // bind plans to locations and node pools
 	FlagAuditLog                     = "audit_log"           // view the audit log
 	FlagAuditExport                  = "audit_export"        // audit log export + retention
 	FlagSIEMStream                   = "siem_stream"         // live audit streaming to a SIEM
@@ -68,6 +69,7 @@ var AllFlags = []FlagInfo{
 	{FlagCustomRoles, "data-driven RBAC roles"},
 	{FlagResourcePolicies, "per-resource permission grants"},
 	{FlagQuotaOverride, "per-workspace plan quota overrides"},
+	{FlagPlacementPolicy, "bind plans to locations and node pools"},
 	{FlagAuditLog, "view the audit log"},
 	{FlagAuditExport, "audit log export + retention"},
 	{FlagSIEMStream, "live audit streaming to a SIEM"},
@@ -116,7 +118,7 @@ var Tiers = []Tier{
 		Desc: "Small businesses & teams",
 		Flags: []string{
 			FlagMultiSSO, FlagSSOHiddenProvider, FlagSSOSAML, FlagSSOLDAP, FlagSCIM,
-			FlagCustomRoles, FlagResourcePolicies, FlagQuotaOverride, FlagUserWorkspaceLimit,
+			FlagCustomRoles, FlagResourcePolicies, FlagQuotaOverride, FlagPlacementPolicy, FlagUserWorkspaceLimit,
 			FlagUserWorkspaceMembershipLimit,
 			FlagAuditLog, FlagAuditExport, FlagPlatformBackup, FlagAnnouncements,
 			FlagPrivateRegistry, FlagRegistryS3, FlagPlatformRunners, FlagSecurityProfile,

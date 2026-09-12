@@ -35,6 +35,7 @@ var (
 	// ErrConnectivityAckRequired is returned when an update changes the node's
 	// reachability settings without the caller acknowledging the impact.
 	ErrConnectivityAckRequired = &connectivityAckError{}
+	ErrInvalidPool             = errors.New("a pool name is lowercase letters, digits and hyphens (max 32), e.g. pro")
 	ErrInvalidConnectivity     = errors.New("a node either runs its own gateway (edge-gateway) or, as a swarm member, is served by its cluster's gateway (cluster)")
 )
 
@@ -534,6 +535,31 @@ func (s *Service) checkConnectivity(srv *models.Server, c models.ServerConnectiv
 		return ErrInvalidConnectivity
 	}
 	return nil
+}
+
+// SetPool puts a node in a pool, or in none for an empty name. A plan bound to a pool places its workspaces'
+// workloads only on that pool's nodes.
+func (s *Service) SetPool(id uint, pool string) (*models.Server, error) {
+	pool = strings.TrimSpace(pool)
+	if pool != "" && !models.ValidPoolName(pool) {
+		return nil, ErrInvalidPool
+	}
+	srv, err := s.repo.FindByID(id)
+	if err != nil {
+		return nil, ErrNodeNotFound
+	}
+	if srv.Labels == nil {
+		srv.Labels = map[string]string{}
+	}
+	if pool == "" {
+		delete(srv.Labels, models.PoolLabel)
+	} else {
+		srv.Labels[models.PoolLabel] = pool
+	}
+	if err := s.repo.Update(srv); err != nil {
+		return nil, err
+	}
+	return srv, nil
 }
 
 // SetConnectivity changes only how a node's apps are served, leaving its other reachability settings alone.

@@ -2,11 +2,12 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { adminApi } from '@/api/admin'
+import { clustersApi } from '@/api/clusters'
 import { useNotificationStore } from '@/stores/notification'
 import { useLicenseStore } from '@/stores/license'
 import { useEntitlement } from '@/composables/useEntitlement'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import type { AdminWorkspaceDetail, AdminEvent, AdminWorkspaceMember, Plan, WorkspaceQuotaOverride } from '@/api/types'
+import type { AdminWorkspaceDetail, AdminEvent, AdminWorkspaceMember, Cluster, Plan, WorkspaceQuotaOverride } from '@/api/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -131,7 +132,27 @@ async function clearOverride() {
   }
 }
 
-watch(wsId, () => { load(); loadOverride(); licenseStore.load() }, { immediate: true })
+const placementPolicy = useEntitlement('placement_policy')
+const clusters = ref<Cluster[]>([])
+async function loadClusters() {
+  try {
+    clusters.value = (await clustersApi.list()).data.data ?? []
+  } catch {
+    clusters.value = []
+  }
+}
+function setPlacementMode(raw: string) {
+  if (!override.value) return
+  override.value.placement = raw === 'override' ? { locations: [], pool: '' } : null
+}
+function toggleOverrideLocation(clusterId: number) {
+  const p = override.value?.placement
+  if (!p) return
+  const ids = p.locations ?? []
+  p.locations = ids.includes(clusterId) ? ids.filter((x) => x !== clusterId) : [...ids, clusterId]
+}
+
+watch(wsId, () => { load(); loadOverride(); loadClusters(); licenseStore.load() }, { immediate: true })
 
 function back() {
   router.push('/admin/workspaces')
@@ -444,6 +465,30 @@ function eventSeverity(e: AdminEvent): string {
               </select>
             </div>
           </div>
+          <div class="form-group" style="margin: 14px 0 0; max-width: 360px">
+            <label class="form-label form-label-sm">
+              Placement
+              <span v-if="!placementPolicy.has.value" class="badge badge-neutral" style="margin-left: 6px" title="Plan placement requires an Enterprise license">
+                <span class="mdi mdi-lock-outline"></span> Enterprise
+              </span>
+            </label>
+            <select class="form-select" :value="override.placement ? 'override' : ''" @change="setPlacementMode(($event.target as HTMLSelectElement).value)">
+              <option value="">Inherit the plan</option>
+              <option value="override" :disabled="!placementPolicy.mutable.value">Override locations and pool</option>
+            </select>
+          </div>
+          <template v-if="override.placement">
+            <label v-for="c in clusters" :key="c.id" class="checkbox-label" style="display: block; margin-top: 8px">
+              <input type="checkbox" :checked="(override.placement.locations ?? []).includes(c.id)" @change="toggleOverrideLocation(c.id)" />
+              {{ c.display_name || c.name }}
+              <span v-if="override.placement.locations?.[0] === c.id" class="badge badge-info" style="margin-left: 6px">default</span>
+            </label>
+            <p class="form-hint">None checked allows every location; the first checked is the default.</p>
+            <div class="form-group" style="margin-bottom: 0; max-width: 360px">
+              <label class="form-label form-label-sm">Node pool</label>
+              <input v-model.trim="override.placement.pool" class="form-input mono" placeholder="empty = nodes in no pool" />
+            </div>
+          </template>
           <div style="display: flex; gap: 10px; margin-top: 20px">
             <button
               class="btn btn-primary"

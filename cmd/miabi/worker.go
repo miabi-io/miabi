@@ -31,6 +31,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/keyring"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/notify"
+	"github.com/miabi-io/miabi/internal/services/placement"
 	"github.com/miabi-io/miabi/internal/services/platformbackup"
 	"github.com/miabi-io/miabi/internal/services/platformimage"
 	"github.com/miabi-io/miabi/internal/services/quota"
@@ -200,6 +201,9 @@ func runWorker() error {
 	configService := configsvc.NewService(repositories.NewConfigRepository(db))
 	deployHandler.SetConfigs(configService)
 	deployHandler.SetBuilderPolicy(securityQuota)
+	poolPlacement := placement.NewService(repositories.NewClusterRepository(db), repositories.NewServerRepository(db), nil)
+	poolPlacement.SetPolicy(securityQuota)
+	deployHandler.SetPoolPolicy(poolPlacement)
 	gpuScheduler := gpu.NewService(
 		repositories.NewGPUDeviceRepository(db),
 		repositories.NewServerRepository(db),

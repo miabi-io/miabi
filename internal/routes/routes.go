@@ -692,6 +692,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	monitoringService.SetSwarmManager(clusterService)
 	monitoringService.SetServerInfo(nodeService)
 	placementService := placement.NewService(repositories.NewClusterRepository(db), serverRepo, nodeClients.Connected)
+	placementService.SetPolicy(quotaService)
 	placer := handlers.NewPlacer(placementService, userRepo)
 	marketplaceService := marketplace.NewService(appService, databaseService, storageService, stackService, repositories.NewTemplateInstallRepository(db), repositories.NewTemplateRepository(db))
 	marketplaceService.SetPlacer(placementService)
@@ -1349,6 +1350,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// can list/operate containers, but not read another workspace's container logs.
 	r.h.node.SetMembership(workspaceRepo)
 	r.h.cluster.SetConnectivityApplier(r.h.node.ApplyConnectivity)
+	r.h.node.SetPoolLabeler(clusterService.SyncPoolLabel)
 	// Block stop/remove of managed containers from the admin node view unless the
 	// operator has explicitly disabled security enforcement (break-glass).
 	r.h.node.SetSecurityEnforcement(r.cfg.SecurityEnforcement)

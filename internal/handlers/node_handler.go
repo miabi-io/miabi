@@ -63,7 +63,9 @@ type NodeHandler struct {
 	// containers from the admin node view (MIABI_SECURITY_ENFORCEMENT, default on).
 	secEnforce bool
 	hostProc   string // procfs dir for local-node host metrics (default /host/proc)
-	upgrader   websocket.Upgrader
+	// poolLabeler mirrors a node's pool onto its Swarm node label; nil leaves it to the cluster refresh.
+	poolLabeler func(context.Context, *models.Server) error
+	upgrader    websocket.Upgrader
 }
 
 // WorkspaceMembership lists the workspaces a user belongs to. It gates node container-log
@@ -339,6 +341,40 @@ func (h *NodeHandler) Workloads(c *okapi.Context) error {
 		return c.AbortInternalServerError("failed to count node workloads", err)
 	}
 	return ok(c, map[string]any{"apps": apps, "databases": dbs})
+}
+
+// SetPoolLabeler wires mirroring a node's pool onto its Swarm node label.
+func (h *NodeHandler) SetPoolLabeler(fn func(ctx context.Context, srv *models.Server) error) {
+	h.poolLabeler = fn
+}
+
+// SetNodePoolRequest puts a node in a pool.
+type SetNodePoolRequest struct {
+	Body struct {
+		// Pool is the pool name, e.g. "pro"; empty takes the node out of its pool.
+		Pool string `json:"pool"`
+	} `json:"body"`
+}
+
+// SetPool puts a node in a pool and mirrors it onto the node's Swarm label.
+func (h *NodeHandler) SetPool(c *okapi.Context, req *SetNodePoolRequest) error {
+	id, err := h.id(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid node id")
+	}
+	srv, err := h.nodes.SetPool(id, req.Body.Pool)
+	if errors.Is(err, node.ErrInvalidPool) {
+		return c.AbortBadRequest(err.Error())
+	}
+	if err != nil {
+		return h.mapErr(c, err)
+	}
+	if h.poolLabeler != nil {
+		// Best-effort: the cluster refresh re-asserts the label once the swarm is reachable.
+		_ = h.poolLabeler(c.Request().Context(), srv)
+	}
+	h.record(c, "node.pool", srv.ID)
+	return ok(c, srv)
 }
 
 // ApplyConnectivity deploys or tears down a node's gateway after its connectivity changed elsewhere.

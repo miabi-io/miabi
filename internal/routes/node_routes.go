@@ -60,6 +60,15 @@ func (r *Router) nodeRoutes() []okapi.RouteDefinition {
 			Request:     &handlers.CreateNodeRequest{},
 		},
 		{
+			Method:      http.MethodPut,
+			Path:        "/{nodeID}/pool",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.node.SetPool),
+			Summary:     "Put a node in a pool",
+			Request:     &handlers.SetNodePoolRequest{},
+		},
+		{
 			Method:      http.MethodGet,
 			Path:        "/{nodeID}/workloads",
 			Group:       g,

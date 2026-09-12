@@ -241,6 +241,8 @@ export const nodesApi = {
     api.post<ApiResponse<NodeCreated>>('/admin/nodes', payload),
   update: (id: number, payload: CreateNodePayload) =>
     api.put<ApiResponse<Server>>(`/admin/nodes/${id}`, payload),
+  // An empty pool takes the node out of its pool.
+  setPool: (id: number, pool: string) => api.put<ApiResponse<Server>>(`/admin/nodes/${id}/pool`, { pool }),
   workloads: (id: number) =>
     api.get<ApiResponse<NodeWorkloads>>(`/admin/nodes/${id}/workloads`),
 
