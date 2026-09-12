@@ -50,7 +50,7 @@ func TestLearnSwarmNodeIDFillsAnUnmappedNode(t *testing.T) {
 }
 
 // A node can leave one swarm and join another. Its own report is always more current
-// than ours, so unlike LearnEndpoint (which only fills blanks) this overwrites.
+// than ours, so it overwrites what we stored.
 func TestLearnSwarmNodeIDOverwritesAStaleID(t *testing.T) {
 	repo := newSwarmRepo(t, swarmRow{ID: 1, Name: "dns", SwarmNodeID: "old-swarm-id"})
 	s := NewService(repo, nil)

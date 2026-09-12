@@ -573,7 +573,7 @@ func roleOf(n docker.SwarmNode) string {
 // matchByHostname is the fallback correlation when a node's swarm id is not yet stored. The label is
 // often the machine's hostname while the handle is slugified from it, so both are tried.
 func matchByHostname(swarmNodes map[string]docker.SwarmNode, srv *models.Server) (docker.SwarmNode, bool) {
-	candidates := []string{srv.PublicHostname, srv.DisplayName, srv.Name}
+	candidates := []string{srv.DisplayName, srv.Name}
 	for _, n := range swarmNodes {
 		for _, c := range candidates {
 			if c != "" && strings.EqualFold(n.Hostname, c) {
@@ -908,8 +908,7 @@ func (s *Service) Members(ctx context.Context, clusterID uint) ([]Member, error)
 				if servers[i].SwarmNodeID != "" {
 					continue
 				}
-				if strings.EqualFold(servers[i].PublicHostname, n.Hostname) ||
-					strings.EqualFold(servers[i].DisplayName, n.Hostname) ||
+				if strings.EqualFold(servers[i].DisplayName, n.Hostname) ||
 					strings.EqualFold(servers[i].Name, n.Hostname) {
 					srv = &servers[i]
 					break

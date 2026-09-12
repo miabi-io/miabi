@@ -152,12 +152,29 @@ func ids(rs []models.Route) []uint {
 type fakeCluster struct {
 	on      bool
 	gateway *models.Cluster
+	// defaultID is the default cluster's id; ingress holds each cluster's public IP.
+	defaultID uint
+	ingress   map[uint]string
 }
 
 func (f fakeCluster) IsSwarm(uint) bool { return f.on }
 
 func (f fakeCluster) OwnGateway(id uint) (*models.Cluster, bool) {
 	return f.gateway, f.gateway != nil && f.gateway.ID == id
+}
+
+func (f fakeCluster) IsDefaultCluster(id uint) bool {
+	return id == models.DefaultClusterID || id == f.defaultID
+}
+
+func (f fakeCluster) IngressAddress(id uint) (string, string) {
+	if f.gateway != nil && f.gateway.ID == id {
+		return f.gateway.IngressIP, f.gateway.IngressHostname
+	}
+	if f.IsDefaultCluster(id) {
+		id = f.defaultID
+	}
+	return f.ingress[id], ""
 }
 
 // Regression: the old host-port upstream could only name one container, so a canary received 0% of traffic

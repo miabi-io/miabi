@@ -1897,8 +1897,6 @@ export interface Server {
   status: 'online' | 'offline' | 'unknown'
   last_seen_at?: string | null
   address?: string
-  public_ip?: string
-  public_hostname?: string
   agent_connected?: boolean
   agent_version?: string
   engine_version?: string

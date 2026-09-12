@@ -147,8 +147,6 @@ type nameRow struct {
 	AccessMode              string
 	DockerEndpoint          string
 	Address                 string
-	PublicIP                string
-	PublicHostname          string
 	IsLocal                 bool
 	Role                    string
 	Status                  string

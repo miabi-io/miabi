@@ -711,21 +711,21 @@ async function regenerate() {
 const showEdit = ref(false)
 const editSaving = ref(false)
 const editForm = ref<CreateNodePayload>({
-  display_name: '', address: '', public_ip: '', public_hostname: '', connectivity: 'edge-gateway', access_mode: 'agent',
+  display_name: '', address: '', connectivity: 'edge-gateway', access_mode: 'agent',
   docker_endpoint: '', tls_ca_cert: '', tls_cert: '', tls_key: '',
 })
 function openEdit() {
   if (!node.value) return
   const n = node.value
   // Seed every field from the node — the Edit modal only exposes the safe
-  // metadata (display name / public addresses); the reachability fields ride
+  // metadata (display name); the reachability fields ride
   // along unchanged so this save never resets them. Credentials are write-only
   // (never returned), so they stay blank = "keep".
   //
   // The handle is deliberately absent: it is fixed at creation, and sending a
   // changed one is rejected by the server.
   editForm.value = {
-    display_name: n.display_name || n.name, address: n.address || '', public_ip: n.public_ip || '', public_hostname: n.public_hostname || '',
+    display_name: n.display_name || n.name, address: n.address || '',
     connectivity: n.connectivity || 'edge-gateway',
     access_mode: n.access_mode || 'agent', docker_endpoint: n.docker_endpoint || '',
     tls_ca_cert: '', tls_cert: '', tls_key: '',
@@ -743,8 +743,6 @@ async function submitEdit() {
   const payload: CreateNodePayload = {
     display_name: editForm.value.display_name.trim(),
     address: editForm.value.address?.trim() || undefined,
-    public_ip: editForm.value.public_ip?.trim() || undefined,
-    public_hostname: editForm.value.public_hostname?.trim() || undefined,
     connectivity: editForm.value.connectivity,
     access_mode: mode,
     docker_endpoint: editForm.value.docker_endpoint?.trim() || undefined,
@@ -769,7 +767,7 @@ const connSaving = ref(false)
 const connAck = ref(false)
 const connImpact = ref<NodeWorkloads | null>(null)
 const connForm = ref<CreateNodePayload>({
-  display_name: '', address: '', public_ip: '', public_hostname: '', connectivity: 'edge-gateway',
+  display_name: '', address: '', connectivity: 'edge-gateway',
   access_mode: 'agent', docker_endpoint: '', tls_ca_cert: '', tls_cert: '', tls_key: '',
 })
 const connEndpointPlaceholder = computed(() => connForm.value.access_mode === 'api' ? 'tcp://10.0.0.10:2376' : '')
@@ -786,9 +784,9 @@ async function openConnectivity() {
   connImpact.value = null
   nodesApi.workloads(id).then((r) => { connImpact.value = r.data.data }).catch(() => { connImpact.value = null })
   // Seed every field so the reachability save preserves the node's metadata
-  // (display name / public addresses) alongside the connectivity changes.
+  // (display name) alongside the connectivity changes.
   connForm.value = {
-    display_name: n.display_name || n.name, address: n.address || '', public_ip: n.public_ip || '', public_hostname: n.public_hostname || '',
+    display_name: n.display_name || n.name, address: n.address || '',
     connectivity: n.connectivity || 'edge-gateway',
     access_mode: n.access_mode || 'agent', docker_endpoint: n.docker_endpoint || '',
     tls_ca_cert: '', tls_cert: '', tls_key: '',
@@ -806,8 +804,6 @@ async function submitConnectivity() {
   const payload: CreateNodePayload = {
     display_name: connForm.value.display_name.trim(),
     address: connForm.value.address?.trim() || undefined,
-    public_ip: connForm.value.public_ip?.trim() || undefined,
-    public_hostname: connForm.value.public_hostname?.trim() || undefined,
     connectivity: connForm.value.connectivity,
     access_mode: mode,
     docker_endpoint: connForm.value.docker_endpoint?.trim() || undefined,
@@ -1069,14 +1065,6 @@ const gwBadge = computed(() => {
           <div class="detail">
             <span class="text-muted">Address</span>
             <span><code v-if="node.address">{{ node.address }}</code><span v-else>{{ node.is_local ? 'local socket' : '—' }}</span></span>
-          </div>
-          <div class="detail">
-            <span class="text-muted">Public IP</span>
-            <span><code v-if="node.public_ip">{{ node.public_ip }}</code><span v-else>—</span></span>
-          </div>
-          <div class="detail">
-            <span class="text-muted">Public hostname</span>
-            <span><code v-if="node.public_hostname">{{ node.public_hostname }}</code><span v-else>—</span></span>
           </div>
           <div v-if="!node.is_local" class="detail">
             <span class="text-muted">Agent version</span>
@@ -1522,14 +1510,6 @@ const gwBadge = computed(() => {
                    creation (an edge gateway polls a URL built from it) and is
                    shown in the page header, so it is not repeated in the form. -->
               <input v-model="editForm.display_name" class="form-input" placeholder="e.g. Frankfurt Edge" required autofocus />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Public IP <span class="text-muted">(A/AAAA record target for domains served by this node)</span></label>
-              <input v-model="editForm.public_ip" class="form-input" placeholder="e.g. 203.0.113.10" style="font-family: monospace" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Public hostname <span class="text-muted">(optional CNAME target, e.g. node.example.com)</span></label>
-              <input v-model="editForm.public_hostname" class="form-input" placeholder="optional" style="font-family: monospace" />
             </div>
             <p class="conn-note" style="margin-bottom: 0">
               <span class="mdi mdi-lan-connect"></span>
