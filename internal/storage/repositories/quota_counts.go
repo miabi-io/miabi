@@ -68,15 +68,16 @@ func (r *DatabaseRepository) CountDatabasesByInstance(instanceID uint) (int64, e
 }
 
 // SumResourcesByWorkspace returns the aggregate requested CPU (nanoCPUs) and
-// memory (bytes) across a workspace's apps, optionally excluding one app (for
-// update checks). excludeAppID = 0 excludes nothing.
+// memory (bytes) across a workspace's apps, counting every replica of a service
+// app, optionally excluding one app (for update checks). excludeAppID = 0 excludes nothing.
 func (r *ApplicationRepository) SumResourcesByWorkspace(workspaceID, excludeAppID uint) (nanoCPUs, memoryBytes int64, err error) {
 	var row struct {
 		CPU int64
 		Mem int64
 	}
+	replicas := "CASE WHEN runtime_kind = 'service' AND replicas > 1 THEN replicas ELSE 1 END"
 	q := r.db.Model(&models.Application{}).
-		Select("COALESCE(SUM(nano_cpus),0) AS cpu, COALESCE(SUM(memory_bytes),0) AS mem").
+		Select("COALESCE(SUM(nano_cpus * "+replicas+"),0) AS cpu, COALESCE(SUM(memory_bytes * "+replicas+"),0) AS mem").
 		Where("workspace_id = ?", workspaceID)
 	if excludeAppID > 0 {
 		q = q.Where("id <> ?", excludeAppID)

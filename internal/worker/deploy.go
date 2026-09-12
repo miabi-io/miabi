@@ -754,6 +754,9 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 	// also resolves to the service VIP via Swarm embedded DNS.
 	alias := node.AppAlias(app)
 	sec, secErr := h.workloadSecurity(app, app.RunAsUser)
+	if secErr == nil && len(sec.Devices) > 0 {
+		secErr = models.ErrDevicesOnService
+	}
 	if secErr != nil {
 		_ = h.fail(dep, secErr)
 		return
@@ -777,6 +780,7 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 		Constraints:    app.PlacementConstraints,
 		Healthcheck:    buildHealthcheck(app),
 		User:           sec.User,
+		CapAdd:         sec.CapAdd,
 		Labels:         containerLabels(app, dep.ID),
 		RegistryAuth:   regAuth,
 	}

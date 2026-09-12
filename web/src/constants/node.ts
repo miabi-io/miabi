@@ -22,14 +22,14 @@ export const ACCESS_MODES: NodeOption[] = [
 
 export const CONNECTIVITY_TYPES: NodeOption[] = [
   {
-    value: 'port-forward',
-    label: 'Port forwarding',
-    description: 'A central proxy forwards traffic to node:port. Best for private or trusted networks.',
-  },
-  {
     value: 'edge-gateway',
     label: 'Edge gateway',
     description: 'The node runs its own gateway for public ingress and TLS termination at the edge.',
+  },
+  {
+    value: 'port-forward',
+    label: 'Port forwarding (legacy)',
+    description: 'A central proxy forwards traffic to node:port. No longer offered for new nodes: a node without public ports should join the cluster instead.',
   },
 ]
 

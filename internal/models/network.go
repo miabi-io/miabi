@@ -27,3 +27,7 @@ type Network struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+// SwarmScoped reports whether the network is a swarm overlay. A worker cannot see one until a
+// container there attaches, so ensuring it by name on a worker would create a same-named bridge.
+func (n *Network) SwarmScoped() bool { return n.Driver == "overlay" }

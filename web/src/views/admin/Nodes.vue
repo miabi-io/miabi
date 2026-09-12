@@ -393,7 +393,7 @@ onMounted(() => { load(); loadAgentImage(); loadCluster(); license.load() })
 const showCreate = ref(false)
 const creating = ref(false)
 const blankForm = (): CreateNodePayload => ({
-  display_name: '', address: '', connectivity: 'port-forward', access_mode: 'agent',
+  display_name: '', address: '', connectivity: 'edge-gateway', access_mode: 'agent',
   docker_endpoint: '', tls_ca_cert: '', tls_cert: '', tls_key: '',
 })
 const form = ref<CreateNodePayload>(blankForm())
@@ -846,12 +846,9 @@ function swarmClass(n: Server): string {
               </div>
               <div class="form-group" style="margin-bottom: 0">
                 <span class="form-label label-row">
-                  Connectivity
+                  Connectivity: Edge gateway
                   <FieldInfo :items="CONNECTIVITY_TYPES" title="Connectivity types explained" placement="top" />
                 </span>
-                <select v-model="form.connectivity" class="form-select">
-                  <option v-for="o in CONNECTIVITY_TYPES" :key="o.value" :value="o.value">{{ o.label }}</option>
-                </select>
                 <p class="form-hint">{{ connectivityDesc }}</p>
               </div>
             </div>

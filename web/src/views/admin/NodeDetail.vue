@@ -748,6 +748,9 @@ const connForm = ref<CreateNodePayload>({
 const connEndpointPlaceholder = computed(() => connForm.value.access_mode === 'api' ? 'tcp://10.0.0.10:2376' : '')
 const connAccessModeDesc = computed(() => nodeOptionDescription(ACCESS_MODES, connForm.value.access_mode))
 const connConnectivityDesc = computed(() => nodeOptionDescription(CONNECTIVITY_TYPES, connForm.value.connectivity))
+const connectivityOptions = computed(() =>
+  CONNECTIVITY_TYPES.filter((o) => o.value !== 'port-forward' || node.value?.connectivity === 'port-forward'),
+)
 async function openConnectivity() {
   if (!node.value) return
   const n = node.value
@@ -1545,7 +1548,7 @@ const gwBadge = computed(() => {
                 <FieldInfo :items="CONNECTIVITY_TYPES" title="Connectivity types explained" />
               </span>
               <select v-model="connForm.connectivity" class="form-select">
-                <option v-for="o in CONNECTIVITY_TYPES" :key="o.value" :value="o.value">{{ o.label }}</option>
+                <option v-for="o in connectivityOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
               </select>
               <p class="form-hint">{{ connConnectivityDesc }}</p>
               <p v-if="node?.is_local" class="text-muted" style="font-size: 12px; margin-top: 4px">

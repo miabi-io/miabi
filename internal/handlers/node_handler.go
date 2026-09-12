@@ -221,6 +221,9 @@ func (h *NodeHandler) List(c *okapi.Context) error {
 func (h *NodeHandler) Create(c *okapi.Context, req *CreateNodeRequest) error {
 	srv, token, err := h.nodes.CreateNode(req.input())
 	if err != nil {
+		if errors.Is(err, node.ErrPortForwardRetired) {
+			return c.AbortBadRequest(err.Error())
+		}
 		if errors.Is(err, node.ErrNameRequired) {
 			return c.AbortBadRequest("node name is required")
 		}
@@ -671,6 +674,8 @@ func (h *NodeHandler) mapErr(c *okapi.Context, err error) error {
 		return c.AbortBadRequest("the local node cannot be modified this way")
 	case errors.Is(err, node.ErrConnectivityAckRequired):
 		return c.AbortWithError(409, err)
+	case errors.Is(err, node.ErrPortForwardRetired):
+		return c.AbortBadRequest(err.Error())
 	default:
 		return c.AbortInternalServerError("node operation failed", err)
 	}

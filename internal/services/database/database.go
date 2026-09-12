@@ -283,6 +283,9 @@ func instanceNetworkNames(inst *models.DatabaseInstance) []string {
 func (s *Service) ensureInstanceNetworks(ctx context.Context, dc docker.Client, inst *models.DatabaseInstance) ([]string, error) {
 	names := instanceNetworkNames(inst)
 	for _, n := range names {
+		if inst.SwarmScoped(n) {
+			continue
+		}
 		if _, err := dc.EnsureNetwork(ctx, n); err != nil {
 			return nil, fmt.Errorf("ensure network %s: %w", n, err)
 		}
@@ -975,7 +978,11 @@ func (s *Service) AttachNetwork(ctx context.Context, workspaceID, instanceID, ne
 	// node reconciles on the next bring-up.
 	if inst.ContainerID != "" {
 		if dc, derr := s.dockerFor(inst); derr == nil {
-			if _, eerr := dc.EnsureNetwork(ctx, net.DockerName); eerr == nil {
+			var eerr error
+			if !net.SwarmScoped() {
+				_, eerr = dc.EnsureNetwork(ctx, net.DockerName)
+			}
+			if eerr == nil {
 				if cerr := dc.NetworkConnect(ctx, net.DockerName, inst.ContainerID, []string{inst.Host}); cerr != nil {
 					logger.Warn("attach network to running database", "instance", inst.ID, "network", net.DockerName, "error", cerr)
 				}

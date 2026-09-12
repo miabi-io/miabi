@@ -35,6 +35,7 @@ var (
 	// ErrConnectivityAckRequired is returned when an update changes the node's
 	// reachability settings without the caller acknowledging the impact.
 	ErrConnectivityAckRequired = &connectivityAckError{}
+	ErrPortForwardRetired      = errors.New("port-forward connectivity is no longer available: use an edge gateway, or join the node to the cluster")
 )
 
 // NodeLimitError is returned when registering a node would exceed the edition's node cap. It exposes a
@@ -236,9 +237,10 @@ func (s *Service) CreateNode(in NodeInput) (*models.Server, string, error) {
 	if !models.ValidAccessMode(mode) {
 		mode = models.AccessAgent
 	}
-	if in.Connectivity != models.ConnectivityEdgeGateway {
-		in.Connectivity = models.ConnectivityPortForward
+	if in.Connectivity == models.ConnectivityPortForward {
+		return nil, "", ErrPortForwardRetired
 	}
+	in.Connectivity = models.ConnectivityEdgeGateway
 	// The handle is derived from the label. slug.Unique suffixes a collision
 	// rather than failing, so a second "Frankfurt Edge" becomes frankfurt-edge-2.
 	nodeSlug, err := slug.Unique(in.DisplayName, "node", func(c string) (bool, error) {
@@ -287,6 +289,9 @@ func (s *Service) UpdateNode(id uint, in NodeInput) (*models.Server, error) {
 	srv, err := s.repo.FindByID(id)
 	if err != nil {
 		return nil, ErrNodeNotFound
+	}
+	if in.Connectivity == models.ConnectivityPortForward && srv.Connectivity != models.ConnectivityPortForward {
+		return nil, ErrPortForwardRetired
 	}
 	if reachabilityChanged(srv, in) && !in.Acknowledge {
 		return nil, ErrConnectivityAckRequired

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -214,6 +215,43 @@ func TestCreateNodeDerivesHandleFromDisplayName(t *testing.T) {
 	}
 	if b.Name == a.Name {
 		t.Errorf("two nodes share the handle %q; it is the unique key", b.Name)
+	}
+}
+
+func TestNewNodesDefaultToEdgeGateway(t *testing.T) {
+	s := NewService(nameRepo(t), nil)
+
+	srv, _, err := s.CreateNode(NodeInput{DisplayName: "Paris"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if srv.Connectivity != models.ConnectivityEdgeGateway {
+		t.Errorf("connectivity = %q, want edge-gateway", srv.Connectivity)
+	}
+	if _, _, err := s.CreateNode(NodeInput{DisplayName: "Lyon", Connectivity: models.ConnectivityPortForward}); !errors.Is(err, ErrPortForwardRetired) {
+		t.Errorf("port-forward create err = %v, want ErrPortForwardRetired", err)
+	}
+}
+
+func TestOnlyLegacyNodesKeepPortForward(t *testing.T) {
+	repo := nameRepo(t)
+	s := NewService(repo, nil)
+	srv, _, err := s.CreateNode(NodeInput{DisplayName: "Paris"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	toPortForward := NodeInput{DisplayName: "Paris", Connectivity: models.ConnectivityPortForward, Acknowledge: true}
+	if _, err := s.UpdateNode(srv.ID, toPortForward); !errors.Is(err, ErrPortForwardRetired) {
+		t.Fatalf("switch to port-forward err = %v, want ErrPortForwardRetired", err)
+	}
+
+	srv.Connectivity = models.ConnectivityPortForward
+	if err := repo.Update(srv); err != nil {
+		t.Fatalf("seed legacy node: %v", err)
+	}
+	if _, err := s.UpdateNode(srv.ID, toPortForward); err != nil {
+		t.Errorf("editing a legacy port-forward node was refused: %v", err)
 	}
 }
 

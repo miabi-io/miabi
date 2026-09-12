@@ -53,6 +53,7 @@ type ServiceSpec struct {
 	Constraints []string
 	Healthcheck *HealthcheckSpec
 	User        string
+	CapAdd      []string
 	// Rolling update tuning (0 = Swarm defaults).
 	UpdateParallelism uint64
 	UpdateDelay       time.Duration
@@ -122,11 +123,12 @@ func buildSwarmServiceSpec(spec ServiceSpec) swarm.ServiceSpec {
 	labels[ManagedLabel] = "true"
 
 	cspec := &swarm.ContainerSpec{
-		Image:  spec.Image,
-		Env:    spec.Env,
-		Args:   spec.Cmd,
-		User:   spec.User,
-		Labels: labels,
+		Image:         spec.Image,
+		Env:           spec.Env,
+		Args:          spec.Cmd,
+		User:          spec.User,
+		Labels:        labels,
+		CapabilityAdd: spec.CapAdd,
 	}
 	for vol, path := range spec.Mounts {
 		m := mount.Mount{Type: mount.TypeVolume, Source: vol, Target: path}
@@ -169,7 +171,11 @@ func buildSwarmServiceSpec(spec ServiceSpec) swarm.ServiceSpec {
 		RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},
 	}
 	if spec.MemoryBytes > 0 || spec.NanoCPUs > 0 {
-		task.Resources = &swarm.ResourceRequirements{Limits: &swarm.Limit{MemoryBytes: spec.MemoryBytes, NanoCPUs: spec.NanoCPUs}}
+		// Reserving the limit is what makes Swarm refuse to overcommit a node.
+		task.Resources = &swarm.ResourceRequirements{
+			Limits:       &swarm.Limit{MemoryBytes: spec.MemoryBytes, NanoCPUs: spec.NanoCPUs},
+			Reservations: &swarm.Resources{MemoryBytes: spec.MemoryBytes, NanoCPUs: spec.NanoCPUs},
+		}
 	}
 	if len(spec.Constraints) > 0 {
 		task.Placement = &swarm.Placement{Constraints: spec.Constraints}

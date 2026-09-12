@@ -110,3 +110,25 @@ func TestBuildSwarmServiceSpecNoIngress(t *testing.T) {
 		t.Fatalf("expected 1 network attachment, got %d", got)
 	}
 }
+
+func TestBuildSwarmServiceSpecReservesItsLimits(t *testing.T) {
+	spec := buildSwarmServiceSpec(ServiceSpec{Name: "svc", Image: "nginx", MemoryBytes: 512 << 20, NanoCPUs: 5e8})
+	res := spec.TaskTemplate.Resources
+	if res == nil || res.Limits == nil || res.Reservations == nil {
+		t.Fatalf("resources = %+v, want limits and reservations", res)
+	}
+	if res.Reservations.MemoryBytes != 512<<20 || res.Reservations.NanoCPUs != 5e8 {
+		t.Errorf("reservations = %+v, want the limits", res.Reservations)
+	}
+
+	if unlimited := buildSwarmServiceSpec(ServiceSpec{Name: "svc", Image: "nginx"}); unlimited.TaskTemplate.Resources != nil {
+		t.Errorf("an unlimited service reserved %+v", unlimited.TaskTemplate.Resources)
+	}
+}
+
+func TestBuildSwarmServiceSpecAddsCapabilities(t *testing.T) {
+	spec := buildSwarmServiceSpec(ServiceSpec{Name: "svc", Image: "nginx", CapAdd: []string{"CAP_NET_ADMIN"}})
+	if got := spec.TaskTemplate.ContainerSpec.CapabilityAdd; len(got) != 1 || got[0] != "CAP_NET_ADMIN" {
+		t.Errorf("CapabilityAdd = %v, want [CAP_NET_ADMIN]", got)
+	}
+}
