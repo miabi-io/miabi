@@ -35,7 +35,7 @@ var ErrNoSharedInstance = errors.New("no compatible running database instance to
 // ResolveDependency satisfies a database dependency per its placement, returning the hosting instance,
 // the app-scoped logical database, a connection, and whether a new instance was provisioned. declName
 // stamps the logical database so a declarative reconcile maps a manifest name back to it exactly.
-func (s *Service) ResolveDependency(ctx context.Context, workspaceID, serverID, pinInstance uint, base, declName string, engine models.DBEngine, version string, placement Placement, meta models.Metadata) (*models.DatabaseInstance, *models.Database, ConnectionInfo, bool, error) {
+func (s *Service) ResolveDependency(ctx context.Context, workspaceID, serverID, pinInstance uint, base, declName string, engine models.DBEngine, version string, placement Placement, res Resources, meta models.Metadata) (*models.DatabaseInstance, *models.Database, ConnectionInfo, bool, error) {
 	logical := models.EngineSupportsLogicalDatabases(engine)
 
 	// Explicit instance pin → logical database on it (when the engine has them).
@@ -48,8 +48,9 @@ func (s *Service) ResolveDependency(ctx context.Context, workspaceID, serverID, 
 	}
 
 	switch {
-	case !logical, placement == PlacementDedicated:
-		return s.provisionDedicated(ctx, workspaceID, base, declName, engine, version, serverID, meta)
+	// A sized dependency needs an instance of its own: a reused one already runs with another's limits.
+	case !logical, placement == PlacementDedicated, placement == PlacementAuto && res != (Resources{}):
+		return s.provisionDedicated(ctx, workspaceID, base, declName, engine, version, serverID, res, meta)
 
 	case placement == PlacementShared:
 		inst := s.findReusable(workspaceID, engine, serverID)
@@ -62,15 +63,15 @@ func (s *Service) ResolveDependency(ctx context.Context, workspaceID, serverID, 
 		if inst := s.findReusable(workspaceID, engine, serverID); inst != nil {
 			return s.logicalOn(ctx, workspaceID, inst, base, declName, meta)
 		}
-		return s.provisionDedicated(ctx, workspaceID, base, declName, engine, version, serverID, meta)
+		return s.provisionDedicated(ctx, workspaceID, base, declName, engine, version, serverID, res, meta)
 	}
 }
 
 // provisionDedicated provisions a fresh instance for a dependency. For a SQL engine it also reserves a logical
 // database with its own scoped user, whose CREATE DDL runs when the instance comes up, and returns that
 // connection. Redis and libSQL host no logical databases, so the app receives the instance connection.
-func (s *Service) provisionDedicated(ctx context.Context, workspaceID uint, base, declName string, engine models.DBEngine, version string, serverID uint, meta models.Metadata) (*models.DatabaseInstance, *models.Database, ConnectionInfo, bool, error) {
-	inst, err := s.Provision(ctx, workspaceID, serverID, strings.TrimSpace(base), engine, version, 0, meta, nil)
+func (s *Service) provisionDedicated(ctx context.Context, workspaceID uint, base, declName string, engine models.DBEngine, version string, serverID uint, res Resources, meta models.Metadata) (*models.DatabaseInstance, *models.Database, ConnectionInfo, bool, error) {
+	inst, err := s.Provision(ctx, workspaceID, serverID, strings.TrimSpace(base), engine, version, 0, res, meta, nil)
 	if err != nil {
 		return nil, nil, ConnectionInfo{}, false, err
 	}

@@ -133,6 +133,61 @@ spec:
 	}
 }
 
+func TestDatabaseResources(t *testing.T) {
+	set, err := d.Parse(dbManifest("  resources:\n    memory: 1Gi\n    cpu: \"0.5\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, _ := set.Get("Database/pg")
+	if res := r.Database.Resources; res == nil || res.Memory != "1Gi" || res.CPU != "0.5" {
+		t.Errorf("resources = %+v", res)
+	}
+	for _, tc := range []struct{ name, spec, want string }{
+		{"bad memory", "  resources:\n    memory: lots\n", "invalid memory"},
+		{"bad cpu", "  resources:\n    cpu: half\n", "invalid cpu"},
+		{"shared", "  instance: shared\n  resources:\n    memory: 1Gi\n", "instance of its own"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := d.Parse(dbManifest(tc.spec)); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("err = %v, want it to mention %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func dbFields(desired, actual *d.DatabaseResourcesSpec) []d.FieldDiff {
+	set := func(res *d.DatabaseResourcesSpec) *d.ResourceSet {
+		s := d.NewResourceSet()
+		s.Add(d.Resource{APIVersion: d.APIVersion, Kind: d.KindDatabase, Metadata: d.Meta{Name: "pg"},
+			Database: &d.DatabaseSpec{Engine: "postgres", Instance: "auto", Resources: res}})
+		return s
+	}
+	for _, c := range d.BuildPlan(set(desired), set(actual), d.PlanOptions{}).Changes {
+		if c.Kind == d.KindDatabase {
+			return c.Fields
+		}
+	}
+	return nil
+}
+
+// A limit set in the console, or by a plan's default size, must not be undone by a manifest silent about it.
+func TestDatabaseResourcesConvergeOnlyWhenStated(t *testing.T) {
+	live := &d.DatabaseResourcesSpec{Memory: "1073741824", CPU: "1"}
+	if fields := dbFields(nil, live); len(fields) != 0 {
+		t.Errorf("unstated: fields = %+v, want no drift", fields)
+	}
+	if fields := dbFields(&d.DatabaseResourcesSpec{Memory: "1Gi"}, live); len(fields) != 0 {
+		t.Errorf("same size in another spelling: fields = %+v, want no drift", fields)
+	}
+	got := map[string]string{}
+	for _, f := range dbFields(&d.DatabaseResourcesSpec{Memory: "2Gi", CPU: "0"}, live) {
+		got[f.Field] = f.To
+	}
+	if len(got) != 2 || got["resources.memory"] != "2147483648" || got["resources.cpu"] != "0" {
+		t.Errorf("fields = %v, want memory raised and the CPU limit removed", got)
+	}
+}
+
 func TestDatabasePlacementIsStrict(t *testing.T) {
 	if _, err := d.Parse(dbManifest("  placement: dedicated\n  instance: shared\n")); err == nil || !strings.Contains(err.Error(), "old spelling of instance") {
 		t.Errorf("err = %v, want both spellings refused", err)

@@ -45,6 +45,9 @@ export interface Plan {
   max_storage_mb: number
   max_runners: number
   max_gpus: number
+  // The database budget: instance CPU and memory limits summed, apart from the apps'.
+  max_database_cpu_cores: number
+  max_database_memory_mb: number
   allow_custom_tls: boolean
   allow_privileged_host_mounts: boolean
   allow_shell_exec: boolean
@@ -91,6 +94,8 @@ export interface WorkspaceQuotaOverride {
   max_storage_mb: number | null
   max_runners: number | null
   max_gpus: number | null
+  max_database_cpu_cores: number | null
+  max_database_memory_mb: number | null
   allow_custom_tls: boolean | null
   allow_privileged_host_mounts: boolean | null
   allow_shell_exec: boolean | null
@@ -113,7 +118,8 @@ export interface ResourceUsage {
 export type WorkspaceLimits = Pick<Plan,
   | 'max_apps' | 'max_database_instances' | 'max_cron_jobs' | 'max_volumes' | 'max_networks'
   | 'max_api_keys' | 'max_members' | 'max_databases_per_instance' | 'max_cpu_cores' | 'max_memory_mb'
-  | 'max_database_instance_size_mb' | 'max_storage_mb' | 'max_runners' | 'max_gpus' | 'allow_custom_tls' | 'allow_privileged_host_mounts'
+  | 'max_database_instance_size_mb' | 'max_storage_mb' | 'max_runners' | 'max_gpus' | 'max_database_cpu_cores' | 'max_database_memory_mb'
+  | 'allow_custom_tls' | 'allow_privileged_host_mounts'
   | 'allow_shell_exec' | 'allow_shared_storage' | 'allow_dns_providers' | 'allow_custom_labels' | 'allow_platform_runners' | 'allow_gpu' | 'security_profile'
   | 'allow_official_image_user'>
 
@@ -132,6 +138,8 @@ export interface WorkspaceUsage {
   cpu_cores: ResourceUsage
   memory_mb: ResourceUsage
   storage_mb: ResourceUsage
+  database_cpu_cores: ResourceUsage
+  database_memory_mb: ResourceUsage
   capabilities: {
     custom_tls: boolean
     privileged_host_mounts: boolean
@@ -1372,6 +1380,9 @@ export interface DatabaseInstance {
   admin_user: string
   volume_name?: string
   volume_size_bytes?: number
+  // Container limits; 0 = unlimited.
+  memory_bytes?: number
+  nano_cpus?: number
   mount_path?: string
   size_bytes?: number
   size_synced_at?: string | null

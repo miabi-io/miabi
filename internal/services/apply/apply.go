@@ -1240,6 +1240,24 @@ func locationSpec(location string) *declarative.PlacementSpec {
 	return &declarative.PlacementSpec{Location: location}
 }
 
+// databaseResourcesSpec always states both limits on the live side, "0" for none, so a manifest removing a limit
+// with "0" still compares against it.
+func databaseResourcesSpec(inst *models.DatabaseInstance) *declarative.DatabaseResourcesSpec {
+	return &declarative.DatabaseResourcesSpec{
+		Memory: strconv.FormatInt(inst.MemoryBytes, 10),
+		CPU:    strconv.FormatFloat(float64(inst.NanoCPUs)/1e9, 'f', -1, 64),
+	}
+}
+
+func databaseResources(spec *declarative.DatabaseSpec) database.Resources {
+	if spec == nil || spec.Resources == nil {
+		return database.Resources{}
+	}
+	mb, _ := spec.Resources.MemoryBytes()
+	nc, _ := spec.Resources.NanoCPUs()
+	return database.Resources{MemoryBytes: mb, NanoCPUs: nc}
+}
+
 func databaseLocationSpec(location string) *declarative.DatabasePlacementSpec {
 	if location == "" {
 		return nil
@@ -1349,6 +1367,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 					Database: &declarative.DatabaseSpec{
 						Engine: string(inst.Engine), Version: inst.Version, Instance: "auto",
 						Placement: databaseLocationSpec(s.locationName(inst.ClusterID)),
+						Resources: databaseResourcesSpec(inst),
 					},
 				})
 			}
@@ -1360,6 +1379,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 			Database: &declarative.DatabaseSpec{
 				Engine: string(inst.Engine), Version: inst.Version, Instance: "auto",
 				Placement: databaseLocationSpec(s.locationName(inst.ClusterID)),
+				Resources: databaseResourcesSpec(inst),
 			},
 		})
 	}
@@ -2138,7 +2158,7 @@ func (s *Service) applyDatabase(ctx context.Context, workspaceID uint, ch declar
 		}
 		_, _, _, _, err = s.dbs.ResolveDependency(
 			ctx, workspaceID, target.ServerID, 0, ch.Name, ch.Name,
-			models.DBEngine(spec.Engine), spec.Version, database.Placement(spec.Instance), meta,
+			models.DBEngine(spec.Engine), spec.Version, database.Placement(spec.Instance), databaseResources(spec), meta,
 		)
 		return err
 	case declarative.ActionDelete:
@@ -2164,10 +2184,47 @@ func (s *Service) applyDatabase(ctx context.Context, workspaceID uint, ch declar
 		if err := refuseMove(ch); err != nil {
 			return err
 		}
-		// Engine/version changes are not converged in place (would recreate data).
-		return fmt.Errorf("database %q: in-place engine/version change is not supported", ch.Name)
+		for _, f := range ch.Fields {
+			if !strings.HasPrefix(f.Field, "resources.") {
+				// Engine/version changes are not converged in place (would recreate data).
+				return fmt.Errorf("database %q: in-place engine/version change is not supported", ch.Name)
+			}
+		}
+		return s.resizeDatabase(ctx, workspaceID, ch.Name, desired.Database)
 	}
 	return nil
+}
+
+// resizeDatabase converges a manifest database's limits onto its instance, which has to be its own: an instance
+// other databases share runs with limits that are not one manifest's to set.
+func (s *Service) resizeDatabase(ctx context.Context, workspaceID uint, name string, spec *declarative.DatabaseSpec) error {
+	inst, err := s.ownedInstance(workspaceID, name)
+	if err != nil {
+		return err
+	}
+	res := databaseResources(spec)
+	if spec == nil || spec.Resources == nil || spec.Resources.Memory == "" {
+		res.MemoryBytes = inst.MemoryBytes
+	}
+	if spec == nil || spec.Resources == nil || spec.Resources.CPU == "" {
+		res.NanoCPUs = inst.NanoCPUs
+	}
+	if _, err := s.dbs.Resize(ctx, inst, res); err != nil {
+		return fmt.Errorf("database %q: %w", name, err)
+	}
+	return nil
+}
+
+func (s *Service) ownedInstance(workspaceID uint, name string) (*models.DatabaseInstance, error) {
+	if _, inst, ok := s.dbs.FindDatabaseByDeclName(workspaceID, name); ok {
+		remaining, _ := s.dbs.ListDatabases(workspaceID, inst.ID)
+		if len(remaining) > 1 || inst.Name != name {
+			return nil, fmt.Errorf("%w: database %q shares instance %q with other databases, so its resources are that "+
+				"instance's. Change them on the instance", ErrInvalidManifest, name, inst.Name)
+		}
+		return inst, nil
+	}
+	return s.findInstance(workspaceID, name)
 }
 
 // deleteInstance tears down a database instance during a prune. Prune is an automated reconcile, not an

@@ -122,6 +122,9 @@ type Database struct {
 	Engine    string    `yaml:"engine" json:"engine"`
 	Version   string    `yaml:"version,omitempty" json:"version,omitempty"`
 	Placement Placement `yaml:"placement,omitempty" json:"placement,omitempty"`
+	// Resources size the instance the database gets. A sized database is never put on an instance the workspace
+	// already runs, since that one has its own limits.
+	Resources *Resources `yaml:"resources,omitempty" json:"resources,omitempty"`
 }
 
 // Volume is a managed volume created before the applications start.

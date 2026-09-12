@@ -418,6 +418,7 @@ func (s *Service) collectDatabases(workspaceID uint, st *wsbundle.State, report 
 		entry := wsbundle.DatabaseInstance{
 			Name: inst.Name, DisplayName: inst.DisplayName, Engine: string(inst.Engine),
 			Version: inst.Version, VolumeSize: inst.VolumeSizeBytes,
+			MemoryBytes: inst.MemoryBytes, NanoCPUs: inst.NanoCPUs,
 			Metadata: inst.Metadata, Annotations: inst.Annotations,
 		}
 		dbs, err := s.Database.ListDatabases(workspaceID, inst.ID)

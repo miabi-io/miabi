@@ -664,7 +664,16 @@ func (s *Service) createApp(workspaceID uint, m *manifest.Manifest, spec manifes
 // materializes the app's env immediately rather than via a reconcile, so its databases carry no declarative name.
 func (s *Service) resolveDatabase(ctx context.Context, workspaceID uint, base string, d manifest.Database, pinInstance, serverID uint, meta models.Metadata) (*models.DatabaseInstance, *models.Database, database.ConnectionInfo, bool, error) {
 	return s.dbs.ResolveDependency(ctx, workspaceID, serverID, pinInstance, base, "",
-		models.DBEngine(d.Engine), d.Version, database.Placement(d.Placement), meta)
+		models.DBEngine(d.Engine), d.Version, database.Placement(d.Placement), databaseResources(d), meta)
+}
+
+func databaseResources(d manifest.Database) database.Resources {
+	if d.Resources == nil {
+		return database.Resources{}
+	}
+	mb, _ := d.Resources.MemoryBytes()
+	nc, _ := d.Resources.NanoCPUs()
+	return database.Resources{MemoryBytes: mb, NanoCPUs: nc}
 }
 
 // consumerApp returns the created application consuming the database dependency depName — the app referencing
@@ -739,9 +748,11 @@ func (s *Service) installNode(workspaceID uint, m *manifest.Manifest, in Install
 		}
 		engine := models.DBEngine(d.Engine)
 		// Shared always reuses an existing instance; auto reuses one when the engine
-		// has logical databases and a running instance exists. Dedicated never does.
+		// has logical databases, the template names no size and a running instance exists.
+		// Dedicated never does.
 		reuses := placement == manifest.PlacementShared ||
-			(placement == manifest.PlacementAuto && models.EngineSupportsLogicalDatabases(engine))
+			(placement == manifest.PlacementAuto && models.EngineSupportsLogicalDatabases(engine) &&
+				databaseResources(d) == (database.Resources{}))
 		if reuses {
 			if inst := s.dbs.FindReusableInstance(workspaceID, engine, clusterID); inst != nil {
 				return inst.ServerID, nil

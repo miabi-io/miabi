@@ -82,6 +82,10 @@ type WorkspaceUsage struct {
 		// capability — a platform-level flag exposed here for any workspace member.
 		ClusterEnabled bool `json:"cluster_enabled"`
 	} `json:"capabilities"`
+
+	// The database budget, summed over instance limits and apart from the apps' CPU and memory.
+	DatabaseCPUCores ResourceUsage `json:"database_cpu_cores"`
+	DatabaseMemoryMB ResourceUsage `json:"database_memory_mb"`
 }
 
 const (
@@ -105,6 +109,7 @@ func (h *UsageHandler) Get(c *okapi.Context) error {
 	cpuNano, memBytes, _ := h.apps.SumResourcesByWorkspace(wsID, 0)
 	volBytes, _ := h.volumes.SumSizeByWorkspace(wsID)
 	dbBytes, _ := h.dbs.SumVolumeSizeByWorkspace(wsID)
+	dbCPUNano, dbMemBytes, _ := h.dbs.SumResourcesByWorkspace(wsID, 0)
 
 	u := WorkspaceUsage{
 		Enforced:          h.quota.Enabled(),
@@ -121,6 +126,8 @@ func (h *UsageHandler) Get(c *okapi.Context) error {
 		CPUCores:          ResourceUsage{Used: cpuNano / nanoPerCore, Limit: l.MaxCPUCores},
 		MemoryMB:          ResourceUsage{Used: memBytes / bytesPerMB, Limit: l.MaxMemoryMB},
 		StorageMB:         ResourceUsage{Used: (volBytes + dbBytes) / bytesPerMB, Limit: l.MaxStorageMB},
+		DatabaseCPUCores:  ResourceUsage{Used: dbCPUNano / nanoPerCore, Limit: l.MaxDatabaseCPUCores},
+		DatabaseMemoryMB:  ResourceUsage{Used: dbMemBytes / bytesPerMB, Limit: l.MaxDatabaseMemoryMB},
 	}
 	u.Capabilities.CustomTLS = l.AllowCustomTLS
 	u.Capabilities.PrivilegedHostMounts = l.AllowPrivilegedHostMounts

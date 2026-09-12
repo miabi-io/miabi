@@ -85,6 +85,8 @@ type Plan struct {
 	MaxStorageMB              int           `json:"max_storage_mb" gorm:"not null;default:0"`
 	MaxRunners                int           `json:"max_runners" gorm:"not null;default:0"`
 	MaxGPUs                   int           `json:"max_gpus" gorm:"not null;default:0"`
+	MaxDatabaseCPUCores       int           `json:"max_database_cpu_cores" gorm:"not null;default:-1"` // database budget, apart from the apps'
+	MaxDatabaseMemoryMB       int           `json:"max_database_memory_mb" gorm:"not null;default:-1"` // -1 by default: older plans stay unchanged
 	AllowCustomTLS            bool          `json:"allow_custom_tls" gorm:"not null;default:false"`
 	AllowPrivilegedHostMounts bool          `json:"allow_privileged_host_mounts" gorm:"not null;default:false"`
 	AllowShellExec            bool          `json:"allow_shell_exec" gorm:"not null;default:false"`
@@ -119,6 +121,8 @@ type WorkspaceQuota struct {
 	MaxStorageMB              *int           `json:"max_storage_mb,omitempty"`
 	MaxRunners                *int           `json:"max_runners,omitempty"`
 	MaxGPUs                   *int           `json:"max_gpus,omitempty"`
+	MaxDatabaseCPUCores       *int           `json:"max_database_cpu_cores,omitempty"`
+	MaxDatabaseMemoryMB       *int           `json:"max_database_memory_mb,omitempty"`
 	AllowCustomTLS            *bool          `json:"allow_custom_tls,omitempty"`
 	AllowPrivilegedHostMounts *bool          `json:"allow_privileged_host_mounts,omitempty"`
 	AllowShellExec            *bool          `json:"allow_shell_exec,omitempty"`

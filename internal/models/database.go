@@ -77,6 +77,10 @@ type DatabaseInstance struct {
 	// bytes (0 = unspecified/unlimited), distinct from the measured SizeBytes
 	// below. Recorded at provision time for quota accounting.
 	VolumeSizeBytes int64 `json:"volume_size_bytes" gorm:"not null;default:0"`
+	// MemoryBytes and NanoCPUs are the container's limits (0 = unlimited). The engine is tuned to the memory
+	// limit, and both count against the plan's database budget.
+	MemoryBytes int64 `json:"memory_bytes" gorm:"not null;default:0"`
+	NanoCPUs    int64 `json:"nano_cpus" gorm:"not null;default:0"`
 	// MountPath is the in-container data directory the volume is mounted at
 	// (transient; populated on read from the engine spec).
 	MountPath string `json:"mount_path,omitempty" gorm:"-"`

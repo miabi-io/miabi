@@ -198,6 +198,12 @@ function review() {
   confirmOpen.value = true
 }
 
+// sizeOf describes the size a template gives a database, or '' when it names none.
+function sizeOf(db: ManifestDatabase): string {
+  const parts = [db.resources?.memory && `${db.resources.memory} of memory`, db.resources?.cpu && `${db.resources.cpu} CPU`]
+  return parts.filter((p) => p && !p.startsWith('0 ')).join(' and ')
+}
+
 // pickedInstance returns the instance a placement token points at, if any.
 function pickedInstance(db: ManifestDatabase): DatabaseInstance | undefined {
   const v = form.value.placement[db.name]
@@ -212,6 +218,7 @@ function placementLabel(db: ManifestDatabase): string {
   if (v === 'dedicated') return 'New dedicated instance'
   const inst = pickedInstance(db)
   if (inst) return `Use existing: ${inst.name}`
+  if (sizeOf(db)) return `Automatic — new instance with ${sizeOf(db)}`
   const existing = instancesFor(db.engine)
   return existing.length ? `Automatic — reuse ${existing[0].name}` : 'Automatic — new instance'
 }
@@ -219,11 +226,13 @@ function placementLabel(db: ManifestDatabase): string {
 // placementHint surfaces, inline under the selector, what the current choice will
 // do — whether Automatic will reuse an existing instance or provision a new one.
 function placementHint(db: ManifestDatabase): string {
-  if (db.engine === 'redis') return 'Redis is always provisioned as a dedicated instance.'
+  const size = sizeOf(db) ? ` The template gives it ${sizeOf(db)}.` : ''
+  if (db.engine === 'redis') return 'Redis is always provisioned as a dedicated instance.' + size
   const v = form.value.placement[db.name]
-  if (v === 'dedicated') return 'A new dedicated instance will be provisioned.'
+  if (v === 'dedicated') return 'A new dedicated instance will be provisioned.' + size
   const inst = pickedInstance(db)
-  if (inst) return `A new database will be created in “${inst.name}”.`
+  if (inst) return `A new database will be created in “${inst.name}”, which keeps its own size.`
+  if (size) return `Automatic will provision a new dedicated ${db.engine} instance, since a sized database gets its own.` + size
   const existing = instancesFor(db.engine)
   return existing.length
     ? `♻ Automatic will reuse “${existing[0].name}” — no new container.`
@@ -251,7 +260,7 @@ interface Provision {
 function shortPlacement(db: ManifestDatabase): string {
   const inst = pickedInstance(db)
   if (inst) return `in ${inst.name}`
-  if (form.value.placement[db.name] === 'dedicated') return 'new dedicated instance'
+  if (form.value.placement[db.name] === 'dedicated' || sizeOf(db)) return 'new dedicated instance'
   const existing = instancesFor(db.engine)
   return existing.length ? `reuses ${existing[0].name}` : 'new instance'
 }

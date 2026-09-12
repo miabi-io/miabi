@@ -112,6 +112,8 @@ type Limits struct {
 	MaxStorageMB              int    `json:"max_storage_mb"`
 	MaxRunners                int    `json:"max_runners"`
 	MaxGPUs                   int    `json:"max_gpus"`
+	MaxDatabaseCPUCores       int    `json:"max_database_cpu_cores"`
+	MaxDatabaseMemoryMB       int    `json:"max_database_memory_mb"`
 	AllowCustomTLS            bool   `json:"allow_custom_tls"`
 	AllowPrivilegedHostMounts bool   `json:"allow_privileged_host_mounts"`
 	AllowShellExec            bool   `json:"allow_shell_exec"`
@@ -130,7 +132,7 @@ func unlimited() Limits {
 		MaxApps: -1, MaxDatabaseInstances: -1, MaxCronJobs: -1, MaxVolumes: -1,
 		MaxNetworks: -1, MaxAPIKeys: -1, MaxMembers: -1, MaxDatabasesPerInstance: -1,
 		MaxCPUCores: -1, MaxMemoryMB: -1, MaxDatabaseInstanceSizeMB: -1, MaxStorageMB: -1,
-		MaxRunners: -1, MaxGPUs: -1,
+		MaxRunners: -1, MaxGPUs: -1, MaxDatabaseCPUCores: -1, MaxDatabaseMemoryMB: -1,
 		AllowCustomTLS: true, AllowPrivilegedHostMounts: true, AllowShellExec: true,
 		AllowSharedStorage: true, AllowDNSProviders: true, AllowCustomLabels: true,
 		AllowPlatformRunners: true, AllowCustomBuilder: true, AllowGPU: true,
@@ -149,6 +151,7 @@ func limitsFromPlan(p *models.Plan) Limits {
 		MaxDatabasesPerInstance: p.MaxDatabasesPerInstance, MaxCPUCores: p.MaxCPUCores, MaxMemoryMB: p.MaxMemoryMB,
 		MaxDatabaseInstanceSizeMB: p.MaxDatabaseInstanceSizeMB, MaxStorageMB: p.MaxStorageMB,
 		MaxRunners: p.MaxRunners, MaxGPUs: p.MaxGPUs,
+		MaxDatabaseCPUCores: p.MaxDatabaseCPUCores, MaxDatabaseMemoryMB: p.MaxDatabaseMemoryMB,
 		AllowCustomTLS: p.AllowCustomTLS, AllowPrivilegedHostMounts: p.AllowPrivilegedHostMounts,
 		AllowShellExec:         p.AllowShellExec,
 		AllowSharedStorage:     p.AllowSharedStorage,
@@ -190,6 +193,8 @@ func applyOverride(l Limits, o *models.WorkspaceQuota) Limits {
 	set(&l.MaxStorageMB, o.MaxStorageMB)
 	set(&l.MaxRunners, o.MaxRunners)
 	set(&l.MaxGPUs, o.MaxGPUs)
+	set(&l.MaxDatabaseCPUCores, o.MaxDatabaseCPUCores)
+	set(&l.MaxDatabaseMemoryMB, o.MaxDatabaseMemoryMB)
 	setb(&l.AllowCustomTLS, o.AllowCustomTLS)
 	setb(&l.AllowPrivilegedHostMounts, o.AllowPrivilegedHostMounts)
 	setb(&l.AllowShellExec, o.AllowShellExec)
@@ -529,4 +534,38 @@ func (s *Service) CheckStorageAdd(workspaceID uint, addBytes int64) error {
 		return quotaExceeded("workspace storage %d MB exceeds the %d MB limit", (cur+addBytes)/bytesPerMB, l.MaxStorageMB)
 	}
 	return nil
+}
+
+// CheckDatabaseComputeAdd verifies that adding a database instance's CPU and memory limits keeps the workspace's
+// database budget, which is apart from the apps', within its plan. excludeInstanceID drops an instance being
+// resized, so its current limits are not counted twice.
+func (s *Service) CheckDatabaseComputeAdd(workspaceID uint, addNanoCPUs, addMemBytes int64, excludeInstanceID uint) error {
+	if !s.Enabled() {
+		return nil
+	}
+	l := s.EffectiveLimits(workspaceID)
+	if l.MaxDatabaseCPUCores < 0 && l.MaxDatabaseMemoryMB < 0 {
+		return nil
+	}
+	curCPU, curMem, err := s.dbs.SumResourcesByWorkspace(workspaceID, excludeInstanceID)
+	if err != nil {
+		return nil // fail open on a count error, like the app budget
+	}
+	if l.MaxDatabaseCPUCores >= 0 && curCPU+addNanoCPUs > int64(l.MaxDatabaseCPUCores)*nanoPerCore {
+		return quotaExceeded("database CPU %.2f cores exceeds the %d-core limit", float64(curCPU+addNanoCPUs)/nanoPerCore, l.MaxDatabaseCPUCores)
+	}
+	if l.MaxDatabaseMemoryMB >= 0 && curMem+addMemBytes > int64(l.MaxDatabaseMemoryMB)*bytesPerMB {
+		return quotaExceeded("database memory %d MB exceeds the %d MB limit", (curMem+addMemBytes)/bytesPerMB, l.MaxDatabaseMemoryMB)
+	}
+	return nil
+}
+
+// DatabaseComputeCapped reports which dimensions of the database budget the workspace's plan caps, so an
+// instance created without a size gets one instead of escaping the budget.
+func (s *Service) DatabaseComputeCapped(workspaceID uint) (cpu, memory bool) {
+	if !s.Enabled() {
+		return false, false
+	}
+	l := s.EffectiveLimits(workspaceID)
+	return l.MaxDatabaseCPUCores >= 0, l.MaxDatabaseMemoryMB >= 0
 }

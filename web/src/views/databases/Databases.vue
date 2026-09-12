@@ -18,7 +18,12 @@ const dbs = ref<DatabaseInstance[]>([])
 const loading = ref(false) // first-load spinner only; background updates never toggle it
 const showCreate = ref(false)
 const creating = ref(false)
-const form = ref<{ name: string; engine: DBEngine; version: string; server_id: number; location: string; size_mb: number | null }>({ name: '', engine: 'postgres', version: '', server_id: 0, location: '', size_mb: null })
+interface CreateForm {
+  name: string; engine: DBEngine; version: string; server_id: number; location: string
+  size_mb: number | null; memory_mb: number | null; cpu_cores: number | null
+}
+const emptyForm = (): CreateForm => ({ name: '', engine: 'postgres', version: '', server_id: 0, location: '', size_mb: null, memory_mb: null, cpu_cores: null })
+const form = ref<CreateForm>(emptyForm())
 
 // Live updates: one SSE connection streams status deltas for the whole workspace
 // (no per-row polling). A slow reconcile is kept only as a safety net — to catch
@@ -133,7 +138,7 @@ onBeforeUnmount(() => {
 })
 
 function openCreate() {
-  form.value = { name: '', engine: 'postgres', version: '', server_id: 0, location: '', size_mb: null }
+  form.value = emptyForm()
   showCreate.value = true
 }
 
@@ -141,7 +146,9 @@ async function create() {
   if (!currentWorkspaceId.value) return
   creating.value = true
   try {
-    await databaseApi.create(currentWorkspaceId.value, form.value.name.trim(), form.value.engine, form.value.version.trim() || undefined, form.value.server_id || undefined, form.value.size_mb ?? undefined, form.value.location || undefined)
+    const f = form.value
+    await databaseApi.create(currentWorkspaceId.value, f.name.trim(), f.engine, f.version.trim() || undefined, f.server_id || undefined,
+      Number(f.size_mb) || undefined, f.location || undefined, Number(f.memory_mb) || undefined, Number(f.cpu_cores) || undefined)
     notify.success('Database provisioning…')
     showCreate.value = false
     reconcile(currentWorkspaceId.value) // pull in the new row; SSE then drives it to running
@@ -243,6 +250,17 @@ function fmtBytes(n?: number): string {
               <label class="form-label">Version / tag <span class="text-muted">(optional)</span></label>
               <input v-model="form.version" class="form-input" :placeholder="defaultVersion" />
               <p class="form-hint">Image tag for <code>{{ form.engine }}:{{ form.version.trim() || defaultVersion }}</code>. Leave blank for the default.</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Resources <span class="text-muted">(optional)</span></label>
+              <div class="flex gap-3">
+                <input v-model.number="form.memory_mb" type="number" min="0" class="form-input" placeholder="Memory (MB)" aria-label="Memory in MB" />
+                <input v-model.number="form.cpu_cores" type="number" min="0" step="0.25" class="form-input" placeholder="CPU cores" aria-label="CPU cores" />
+              </div>
+              <p class="form-hint">
+                Container limits; the engine is tuned to the memory. Left empty they are unlimited, or the engine's
+                default size when the workspace's plan caps database resources. They can be changed later.
+              </p>
             </div>
             <div class="form-group" style="margin-bottom: 0">
               <label class="form-label">Data volume size (MB) <span class="text-muted">(optional)</span></label>

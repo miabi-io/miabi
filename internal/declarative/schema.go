@@ -308,6 +308,17 @@ type DatabaseSpec struct {
 	// Placement is where the database is created. The string form (placement: dedicated) is the
 	// deprecated spelling of instance.
 	Placement *DatabasePlacementSpec `yaml:"placement,omitempty" json:"placement,omitempty"`
+	// Resources limit the database's instance, the engine tuned to the memory. Stating them gives the database
+	// an instance of its own, since a reused one already runs with another's size. Omitted, the instance keeps
+	// its limits.
+	Resources *DatabaseResourcesSpec `yaml:"resources,omitempty" json:"resources,omitempty"`
+}
+
+// DatabaseResourcesSpec limits a database instance. Memory accepts Ki/Mi/Gi; CPU is a number of cores, "0.5" for
+// half of one. "0" removes a limit.
+type DatabaseResourcesSpec struct {
+	Memory string `yaml:"memory,omitempty" json:"memory,omitempty"`
+	CPU    string `yaml:"cpu,omitempty" json:"cpu,omitempty"`
 }
 
 // VolumeSpec declares persistent storage.

@@ -267,6 +267,11 @@ func diffFields(actual, desired Resource) []FieldDiff {
 			delete(av, f)
 		}
 	}
+	for f := range optionalWhenUnsetByKind[desired.Kind] {
+		if _, stated := dv[f]; !stated {
+			delete(av, f)
+		}
+	}
 	keys := map[string]bool{}
 	for k := range av {
 		keys[k] = true
@@ -288,6 +293,13 @@ var optionalWhenUnset = map[string]bool{
 	"placement.location": true, "placement.constraints": true,
 	"deployment.strategy": true, "deployment.runtime": true, "deployment.replicas": true,
 	"deployment.update.parallelism": true, "deployment.update.delaySeconds": true,
+}
+
+// optionalWhenUnsetByKind holds the fields compared only when stated for one kind alone. A database's limits may
+// come from the console or a plan's default size, so a manifest silent about them leaves them be; an app's
+// resources keep converging to the manifest.
+var optionalWhenUnsetByKind = map[Kind]map[string]bool{
+	KindDatabase: {"resources.memory": true, "resources.cpu": true},
 }
 
 // normalizedList compares a set the way the app service stores it, so CAP_NET_ADMIN in a manifest does not
@@ -523,6 +535,18 @@ func specFields(r Resource) map[string]string {
 		f["version"] = r.Database.Version
 		if loc := r.Database.Location(); loc != "" {
 			f["placement.location"] = loc
+		}
+		// Compared by canonical value, so "1Gi" matches the byte count the snapshot reports. "0" is stated too:
+		// it removes a limit.
+		if res := r.Database.Resources; res != nil {
+			if res.Memory != "" {
+				mb, _ := res.MemoryBytes()
+				f["resources.memory"] = strconv.FormatInt(mb, 10)
+			}
+			if res.CPU != "" {
+				nc, _ := res.NanoCPUs()
+				f["resources.cpu"] = strconv.FormatInt(nc, 10)
+			}
 		}
 	case r.Volume != nil:
 		if loc := r.Volume.Location(); loc != "" {

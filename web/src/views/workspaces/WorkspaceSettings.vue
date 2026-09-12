@@ -54,7 +54,7 @@ const myRole = computed<WorkspaceRole>(() => {
 // Usage vs plan limits.
 const usage = ref<WorkspaceUsage | null>(null)
 const usageLoading = ref(false)
-type UsageKey = keyof Pick<WorkspaceUsage, 'apps' | 'database_instances' | 'cron_jobs' | 'volumes' | 'networks' | 'api_keys' | 'members' | 'runners' | 'cpu_cores' | 'memory_mb' | 'storage_mb'>
+type UsageKey = keyof Pick<WorkspaceUsage, 'apps' | 'database_instances' | 'cron_jobs' | 'volumes' | 'networks' | 'api_keys' | 'members' | 'runners' | 'cpu_cores' | 'memory_mb' | 'storage_mb' | 'database_cpu_cores' | 'database_memory_mb'>
 const usageRows: { key: UsageKey; label: string; unit?: string }[] = [
   { key: 'apps', label: 'Applications' },
   { key: 'database_instances', label: 'Database instances' },
@@ -66,6 +66,8 @@ const usageRows: { key: UsageKey; label: string; unit?: string }[] = [
   { key: 'runners', label: 'Runners' },
   { key: 'cpu_cores', label: 'CPU', unit: 'cores' },
   { key: 'memory_mb', label: 'Memory', unit: 'MB' },
+  { key: 'database_cpu_cores', label: 'Database CPU', unit: 'cores' },
+  { key: 'database_memory_mb', label: 'Database memory', unit: 'MB' },
   { key: 'storage_mb', label: 'Storage', unit: 'MB' },
 ]
 async function loadUsage() {
