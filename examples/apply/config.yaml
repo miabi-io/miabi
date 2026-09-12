@@ -78,7 +78,7 @@ metadata:
 spec:
   engine: postgres
   version: "17-alpine"
-  placement: auto
+  instance: auto
 
 ---
 apiVersion: miabi.io/v1

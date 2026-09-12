@@ -22,7 +22,7 @@ spec:
       spec:
         engine: postgres
         version: "16-alpine"
-        placement: auto          # auto | dedicated | shared
+        instance: auto           # auto | dedicated | shared
 
     - apiVersion: miabi.io/v1
       kind: Volume

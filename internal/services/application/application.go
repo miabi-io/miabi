@@ -80,9 +80,8 @@ var (
 	ErrPortRange          = errors.New("container port must be between 1 and 65535")
 )
 
-// MaxReplicas caps a service app's replica count so a single request can't ask
-// Swarm to schedule an unbounded number of tasks (node resource-exhaustion DoS).
-const MaxReplicas = 100
+// MaxReplicas caps a service app's replica count.
+const MaxReplicas = models.MaxServiceReplicas
 
 // CreateInput describes a new application.
 type CreateInput struct {
@@ -125,6 +124,11 @@ type CreateInput struct {
 	// nothing.
 	AddCapabilities []string
 	Devices         []string
+	// ReadOnlyRootFilesystem, NoNewPrivileges and DropCapabilities harden the container on top of the
+	// workspace's security profile.
+	ReadOnlyRootFilesystem bool
+	NoNewPrivileges        bool
+	DropCapabilities       []string
 	// DeployStrategy is the app's default rollout method. Empty leaves the model's
 	// own default (rolling), so a caller that does not care says nothing.
 	DeployStrategy  models.DeployStrategy
@@ -890,6 +894,10 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 	if err != nil {
 		return nil, err
 	}
+	dropCaps, err := validDropCapabilities(addCaps, in.DropCapabilities)
+	if err != nil {
+		return nil, err
+	}
 	// Placement: default to the local node; validate the chosen node accepts new
 	// placements (exists, not cordoned) and is reachable.
 	serverID := in.ServerID
@@ -927,20 +935,23 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 		Command: in.Command, Port: in.Port,
 		MemoryBytes: in.MemoryBytes, NanoCPUs: in.NanoCPUs,
 		GPUCount: in.GPUCount, GPUKind: strings.TrimSpace(in.GPUKind),
-		RunAsUser:            runAsUser,
-		AddCapabilities:      addCaps,
-		Devices:              devices,
-		DeployStrategy:       validStrategyOrDefault(in.DeployStrategy),
-		RestartPolicy:        normalizeRestartPolicy(in.RestartPolicy),
-		ImagePullPolicy:      normalizeImagePullPolicy(in.ImagePullPolicy),
-		RuntimeKind:          in.RuntimeKind,
-		Replicas:             in.Replicas,
-		PlacementConstraints: in.PlacementConstraints,
-		UpdateConfig:         in.UpdateConfig,
-		Status:               models.AppStatusCreated,
-		Metadata:             models.DefaultManagedBy(in.Metadata, models.ManagedByUser),
-		Annotations:          in.Annotations,
-		ContainerLabels:      docker.SanitizeUserLabels(in.ContainerLabels),
+		RunAsUser:              runAsUser,
+		AddCapabilities:        addCaps,
+		Devices:                devices,
+		DropCapabilities:       dropCaps,
+		ReadOnlyRootFilesystem: in.ReadOnlyRootFilesystem,
+		NoNewPrivileges:        in.NoNewPrivileges,
+		DeployStrategy:         validStrategyOrDefault(in.DeployStrategy),
+		RestartPolicy:          normalizeRestartPolicy(in.RestartPolicy),
+		ImagePullPolicy:        normalizeImagePullPolicy(in.ImagePullPolicy),
+		RuntimeKind:            in.RuntimeKind,
+		Replicas:               in.Replicas,
+		PlacementConstraints:   in.PlacementConstraints,
+		UpdateConfig:           in.UpdateConfig,
+		Status:                 models.AppStatusCreated,
+		Metadata:               models.DefaultManagedBy(in.Metadata, models.ManagedByUser),
+		Annotations:            in.Annotations,
+		ContainerLabels:        docker.SanitizeUserLabels(in.ContainerLabels),
 	}
 	normalizeRuntime(app)
 	// In cluster mode, default a caller-unspecified runtime to a replicated Swarm service for interactive creates
@@ -1221,6 +1232,9 @@ func (s *Service) Update(app *models.Application) error {
 		return err
 	}
 	if app.Devices, err = s.validDevices(app.WorkspaceID, app.Devices); err != nil {
+		return err
+	}
+	if app.DropCapabilities, err = validDropCapabilities(app.AddCapabilities, app.DropCapabilities); err != nil {
 		return err
 	}
 	normalizeDeployConfig(app)

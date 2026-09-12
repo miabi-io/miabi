@@ -109,6 +109,9 @@ func (h *JobHandler) run(ctx context.Context, j *models.Job) {
 		h.finish(j, models.JobFailed, nil, secErr.Error())
 		return
 	}
+	// A job is a one-off task, a migration or an asset build, that may write into the image; only the app's own
+	// containers run read-only.
+	sec.ReadOnlyRootfs = false
 	if sec.HasUser() {
 		if err := h.prepareVolumeOwnership(runCtx, dc, sec, j.Image, rc.Mounts); err != nil {
 			h.finish(j, models.JobFailed, nil, fmt.Sprintf("prepare volumes: %v", err))

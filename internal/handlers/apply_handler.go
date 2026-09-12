@@ -23,12 +23,14 @@ type ApplyHandler struct {
 	svc *apply.Service
 	// apps resolves the application an export names. The apply service works in manifest names; the
 	// route addresses an app the way every other app route does, by id or uid.
-	apps  *application.Service
-	audit *audit.Logger
+	apps *application.Service
+	// placer tells a platform admin's apply apart, which may create in restricted locations.
+	placer *Placer
+	audit  *audit.Logger
 }
 
-func NewApplyHandler(svc *apply.Service, apps *application.Service, auditLog *audit.Logger) *ApplyHandler {
-	return &ApplyHandler{svc: svc, apps: apps, audit: auditLog}
+func NewApplyHandler(svc *apply.Service, apps *application.Service, placer *Placer, auditLog *audit.Logger) *ApplyHandler {
+	return &ApplyHandler{svc: svc, apps: apps, placer: placer, audit: auditLog}
 }
 
 // ExportApplication renders one application as a miabi.io/v1 bundle, for moving an app created in
@@ -102,7 +104,7 @@ func (h *ApplyHandler) Apply(c *okapi.Context, req *ApplyRequest) error {
 		return ok(c, res)
 	}
 
-	opts := apply.Options{Prune: req.Body.Prune}
+	opts := apply.Options{Prune: req.Body.Prune, Admin: h.placer.admin(c)}
 	if req.Body.DryRun {
 		plan, _, err := h.svc.Plan(ctx, wsID, []byte(req.Body.Manifests), opts)
 		if err != nil {

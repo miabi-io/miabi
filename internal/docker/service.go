@@ -54,6 +54,10 @@ type ServiceSpec struct {
 	Healthcheck *HealthcheckSpec
 	User        string
 	CapAdd      []string
+	CapDrop     []string
+	// NoNewPrivileges and ReadOnlyRootfs harden each task the way RunSpec hardens a container.
+	NoNewPrivileges bool
+	ReadOnlyRootfs  bool
 	// Rolling update tuning (0 = Swarm defaults).
 	UpdateParallelism uint64
 	UpdateDelay       time.Duration
@@ -123,12 +127,17 @@ func buildSwarmServiceSpec(spec ServiceSpec) swarm.ServiceSpec {
 	labels[ManagedLabel] = "true"
 
 	cspec := &swarm.ContainerSpec{
-		Image:         spec.Image,
-		Env:           spec.Env,
-		Args:          spec.Cmd,
-		User:          spec.User,
-		Labels:        labels,
-		CapabilityAdd: spec.CapAdd,
+		Image:          spec.Image,
+		Env:            spec.Env,
+		Args:           spec.Cmd,
+		User:           spec.User,
+		Labels:         labels,
+		CapabilityAdd:  spec.CapAdd,
+		CapabilityDrop: spec.CapDrop,
+		ReadOnly:       spec.ReadOnlyRootfs,
+	}
+	if spec.NoNewPrivileges {
+		cspec.Privileges = &swarm.Privileges{NoNewPrivileges: true}
 	}
 	for vol, path := range spec.Mounts {
 		m := mount.Mount{Type: mount.TypeVolume, Source: vol, Target: path}

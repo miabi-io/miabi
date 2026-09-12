@@ -14,7 +14,7 @@ import (
 func TestRefuseMove(t *testing.T) {
 	moved := declarative.Change{Kind: declarative.KindDatabase, Name: "pg", Fields: []declarative.FieldDiff{
 		{Field: "version", From: "16", To: "17"},
-		{Field: "location", From: "eu-central", To: "eu-east"},
+		{Field: "placement.location", From: "eu-central", To: "eu-east"},
 	}}
 	err := refuseMove(moved)
 	if !errors.Is(err, ErrInvalidManifest) {

@@ -372,10 +372,11 @@ func (e *engineClient) RunContainer(ctx context.Context, spec RunSpec) (string, 
 			DeviceRequests: toDeviceRequests(spec.GPUs),
 			Devices:        toDeviceMappings(spec.Devices),
 		},
-		RestartPolicy: restartPolicy(spec.RestartPolicy),
-		CapDrop:       spec.CapDrop,
-		CapAdd:        spec.CapAdd,
-		GroupAdd:      spec.GroupAdd,
+		RestartPolicy:  restartPolicy(spec.RestartPolicy),
+		CapDrop:        spec.CapDrop,
+		CapAdd:         spec.CapAdd,
+		GroupAdd:       spec.GroupAdd,
+		ReadonlyRootfs: spec.ReadOnlyRootfs,
 	}
 	if spec.NoNewPrivileges {
 		hostCfg.SecurityOpt = append(hostCfg.SecurityOpt, "no-new-privileges")

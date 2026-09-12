@@ -144,6 +144,8 @@ type RunSpec struct {
 	// here (models.NormalizeCapabilities / NormalizeDevices).
 	CapAdd  []string
 	Devices []string
+	// ReadOnlyRootfs mounts the container's root filesystem read-only (--read-only).
+	ReadOnlyRootfs bool
 	// GroupAdd are supplementary groups (Docker --group-add), by GID or name. The
 	// control plane needs the host's "docker" group to read /var/run/docker.sock when
 	// it does not run as root — the same thing compose.yaml's `group_add` does.

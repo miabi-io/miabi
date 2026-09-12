@@ -983,6 +983,10 @@ export interface Application {
   run_as_user?: string
   add_capabilities?: string[]
   devices?: string[]
+  // Hardening on top of the workspace's security profile.
+  read_only_root_filesystem?: boolean
+  no_new_privileges?: boolean
+  drop_capabilities?: string[]
   restart_policy?: RestartPolicy
   image_pull_policy?: ImagePullPolicy
   // Cluster runtime (cluster mode). "service" runs the app as a replicated Swarm
