@@ -223,6 +223,7 @@ func runWorker() error {
 
 	clusterService := cluster.NewService(nodeClients, node.NewService(repositories.NewServerRepository(db), dockerClient))
 	clusterService.SetStore(repositories.NewClusterRepository(db))
+	nodeClients.SetSwarmManagers(clusterService.Manager)
 	clusterService.SetAllocator(subnetAllocator)
 	dbService.SetSwarmNetworks(clusterService)
 	clusterService.Refresh(context.Background())

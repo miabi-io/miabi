@@ -331,3 +331,67 @@ func assertHasOrphan(t *testing.T, orphans []DriftItem, kind, ref string) {
 	}
 	t.Fatalf("expected orphan %s/%s not found in %+v", kind, ref, orphans)
 }
+
+// fakeSwarm is a cluster manager that knows which services exist.
+type fakeSwarm struct {
+	docker.Client
+	services map[string]bool
+}
+
+func (f fakeSwarm) ServiceInspect(_ context.Context, name string) (docker.ServiceStatus, error) {
+	if !f.services[name] {
+		return docker.ServiceStatus{}, docker.ErrNotFound
+	}
+	return docker.ServiceStatus{Name: name, Replicas: 1, RunningTasks: 1}, nil
+}
+
+// fakeManagers maps cluster ids to their manager; any other cluster is unreachable.
+type fakeManagers map[uint]docker.Client
+
+func (f fakeManagers) Manager(_ context.Context, clusterID uint) (docker.Client, error) {
+	if mgr, ok := f[clusterID]; ok {
+		return mgr, nil
+	}
+	return nil, context.DeadlineExceeded
+}
+
+// Regression: a service app's tasks run wherever Swarm put them, so a node holding none of its
+// containers reported every such app missing. Only the app's own cluster manager can say so.
+func TestAnalyzeDrift_ServiceAppsAskTheirSwarm(t *testing.T) {
+	dc := &fakeDocker{} // this node runs none of these apps' containers
+	apps := []models.Application{
+		{ID: 70, Name: "web", Alias: "mb-app-aa-70", RuntimeKind: models.RuntimeService, ClusterID: 1, Status: models.AppStatusRunning}, // tasks elsewhere → keep
+		{ID: 71, Name: "api", Alias: "mb-app-bb-71", RuntimeKind: models.RuntimeService, ClusterID: 1, Status: models.AppStatusRunning}, // service deleted → missing
+		{ID: 72, Name: "far", Alias: "mb-app-cc-72", RuntimeKind: models.RuntimeService, ClusterID: 9, Status: models.AppStatusRunning}, // manager unreachable → unknown
+		{ID: 73, Name: "box", RuntimeKind: models.RuntimeContainer, Status: models.AppStatusRunning},                                    // container gone → missing
+	}
+	s := newTestService(dc, apps, existsSet())
+	s.swarms = fakeManagers{1: fakeSwarm{services: map[string]bool{"mb-app-aa-70": true}}}
+
+	drift, err := s.analyzeDrift(context.Background(), dc, 1)
+	if err != nil {
+		t.Fatalf("analyzeDrift: %v", err)
+	}
+	if len(drift.Missing) != 2 {
+		t.Fatalf("want 2 missing (apps 71, 73), got %+v", drift.Missing)
+	}
+	want := map[uint]string{71: "service", 73: "container"}
+	for _, m := range drift.Missing {
+		if want[m.OwnerID] != m.Kind {
+			t.Errorf("missing app %d has kind %q, want %q", m.OwnerID, m.Kind, want[m.OwnerID])
+		}
+	}
+}
+
+// Without a manager lookup there is no way to tell, so no service app is reported missing.
+func TestAnalyzeDrift_ServiceAppsNeedTheirSwarm(t *testing.T) {
+	apps := []models.Application{{ID: 71, Name: "api", RuntimeKind: models.RuntimeService, Status: models.AppStatusRunning}}
+	s := newTestService(&fakeDocker{}, apps, existsSet())
+	drift, err := s.analyzeDrift(context.Background(), &fakeDocker{}, 1)
+	if err != nil {
+		t.Fatalf("analyzeDrift: %v", err)
+	}
+	if len(drift.Missing) != 0 {
+		t.Fatalf("want no missing apps without a swarm lookup, got %+v", drift.Missing)
+	}
+}

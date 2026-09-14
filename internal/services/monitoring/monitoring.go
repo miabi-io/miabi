@@ -37,7 +37,7 @@ type NodeDocker interface {
 	For(serverID uint) (docker.Client, error)
 	// ForServiceTask finds the engine holding a swarm service's task container.
 	// A service has no fixed node, and only the node running the task can see it.
-	ForServiceTask(ctx context.Context, serviceName string) (docker.Client, string, error)
+	ForServiceTask(ctx context.Context, clusterID uint, serviceName string) (docker.Client, string, error)
 }
 
 // ServerInfo resolves a node record by id, so the overview can label each app
@@ -121,7 +121,7 @@ func (s *Service) appEngine(ctx context.Context, workspaceID, appID uint) (docke
 // translating the registry's outcome into this package's errors. Only metrics/stats need it — logs go
 // through the manager instead, which works even when the task is unreachable (see StreamAppLogs).
 func (s *Service) serviceEngine(ctx context.Context, app *models.Application) (docker.Client, string, error) {
-	dc, cid, err := s.clients.ForServiceTask(ctx, node.AppAlias(app))
+	dc, cid, err := s.clients.ForServiceTask(ctx, app.ClusterID, node.AppAlias(app))
 	switch {
 	case err == nil:
 		return dc, cid, nil
@@ -220,7 +220,7 @@ func (s *Service) workspaceTargets(ctx context.Context, workspaceID uint) []samp
 				// Sample the task wherever Swarm placed it. A task on an unmanaged swarm
 				// node is absent from the aggregate: there is no engine to read it through,
 				// and Docker has no manager-side stats to fall back on.
-				if dc, cid, err := s.clients.ForServiceTask(ctx, node.AppAlias(&a)); err == nil {
+				if dc, cid, err := s.clients.ForServiceTask(ctx, a.ClusterID, node.AppAlias(&a)); err == nil {
 					targets = append(targets, sampleTarget{dc: dc, containerID: cid})
 				}
 				continue

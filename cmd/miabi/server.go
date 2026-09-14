@@ -150,6 +150,7 @@ func runServer(cli *okapicli.CLI) {
 			nodeService.SetClusters(clusterRepo)
 			clusterService := cluster.NewService(nodeClients, nodeService)
 			clusterService.SetStore(clusterRepo)
+			nodeClients.SetSwarmManagers(clusterService.Manager)
 			clusterService.Refresh(context.Background())
 
 			imageResolver := platformimage.New(

@@ -18,6 +18,9 @@ import (
 // agent is not currently connected.
 var ErrNodeOffline = errors.New("node is offline (no connected agent)")
 
+// SwarmManagers resolves the client that drives a cluster's swarm. Implemented by the cluster service.
+type SwarmManagers func(ctx context.Context, clusterID uint) (docker.Client, error)
+
 // Clients resolves a Docker client for a given server/node id: the local node uses the direct
 // engine client, remote nodes a tunneled client registered when their agent connects. A server id
 // of 0 resolves to the local node, so paths that don't carry placement still work single-node.
@@ -32,11 +35,23 @@ type Clients struct {
 	// container, as reported by the agent at connect time.
 	localSelf  string
 	remoteSelf map[uint]string
+
+	// managers reaches a cluster's swarm manager. nil falls back to the local engine, which
+	// manages only the default cluster's swarm.
+	managers SwarmManagers
 }
 
 // NewClients creates the registry seeded with the local node's client.
 func NewClients(localID uint, local docker.Client) *Clients {
 	return &Clients{localID: localID, local: local, remote: map[uint]docker.Client{}, remoteSelf: map[uint]string{}}
+}
+
+// SetSwarmManagers wires how a cluster's swarm manager is reached, so a service in any cluster
+// is checked against its own swarm.
+func (c *Clients) SetSwarmManagers(fn SwarmManagers) {
+	c.mu.Lock()
+	c.managers = fn
+	c.mu.Unlock()
 }
 
 // SetLocalSelf records the control-plane's own container ID (detected at
@@ -113,10 +128,10 @@ func (c *Clients) For(serverID uint) (docker.Client, error) {
 // distinct from docker.ErrNotFound: reporting "nothing running" for a 1/1 service is simply false.
 var ErrTaskUnreachable = errors.New("the service's task runs on a swarm node with no Miabi agent")
 
-// ForServiceTask resolves the engine and container id of a task of the named swarm service,
-// wherever the scheduler placed it. Correlating the task's swarm node id is unreliable, so it asks
-// the engines directly — local first, then each connected node. Exactly one node runs the task.
-func (c *Clients) ForServiceTask(ctx context.Context, serviceName string) (docker.Client, string, error) {
+// ForServiceTask resolves the engine and container id of a task of the named swarm service in the
+// given cluster, wherever the scheduler placed it. Correlating the task's swarm node id is unreliable,
+// so it asks the engines directly — local first, then each connected node. Exactly one node runs the task.
+func (c *Clients) ForServiceTask(ctx context.Context, clusterID uint, serviceName string) (docker.Client, string, error) {
 	c.mu.RLock()
 	engines := make([]docker.Client, 0, len(c.remote)+1)
 	if c.local != nil {
@@ -125,6 +140,7 @@ func (c *Clients) ForServiceTask(ctx context.Context, serviceName string) (docke
 	for _, cl := range c.remote {
 		engines = append(engines, cl)
 	}
+	managers := c.managers
 	c.mu.RUnlock()
 
 	for _, dc := range engines {
@@ -132,11 +148,17 @@ func (c *Clients) ForServiceTask(ctx context.Context, serviceName string) (docke
 			return dc, cid, nil
 		}
 	}
-	// No engine has it. Ask the manager whether the service is running anyway: if it
-	// is, the task sits on a node we hold no client for, and saying "nothing is
-	// running" would be a lie.
-	if c.local != nil {
-		if st, err := c.local.ServiceInspect(ctx, serviceName); err == nil && st.RunningTasks > 0 {
+	// No engine has it. Ask the service's own swarm manager whether it is running anyway: if it
+	// is, the task sits on a node we hold no client for, and saying "nothing is running" would be a lie.
+	mgr := c.local
+	if managers != nil {
+		mgr = nil
+		if m, err := managers(ctx, clusterID); err == nil {
+			mgr = m
+		}
+	}
+	if mgr != nil {
+		if st, err := mgr.ServiceInspect(ctx, serviceName); err == nil && st.RunningTasks > 0 {
 			return nil, "", ErrTaskUnreachable
 		}
 	}

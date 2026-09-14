@@ -131,7 +131,7 @@ func TestForServiceTaskFindsATaskOnARemoteNode(t *testing.T) {
 	c := NewClients(1, manager)
 	c.SetRemote(2, node1)
 
-	dc, cid, err := c.ForServiceTask(context.Background(), "mb-app-hefpkzz4-6")
+	dc, cid, err := c.ForServiceTask(context.Background(), 0, "mb-app-hefpkzz4-6")
 	if err != nil {
 		t.Fatalf("service task on a worker was not found: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestForServiceTaskPrefersTheLocalEngine(t *testing.T) {
 	c := NewClients(1, manager)
 	c.SetRemote(2, &taskClient{containerID: "remote-xyz"})
 
-	dc, cid, err := c.ForServiceTask(context.Background(), "mb-app-1")
+	dc, cid, err := c.ForServiceTask(context.Background(), 0, "mb-app-1")
 	if err != nil {
 		t.Fatalf("ForServiceTask: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestForServiceTaskPrefersTheLocalEngine(t *testing.T) {
 func TestForServiceTaskNotFound(t *testing.T) {
 	c := NewClients(1, &taskClient{runningTasks: 0})
 	c.SetRemote(2, &taskClient{})
-	if _, _, err := c.ForServiceTask(context.Background(), "mb-app-1"); !errors.Is(err, docker.ErrNotFound) {
+	if _, _, err := c.ForServiceTask(context.Background(), 0, "mb-app-1"); !errors.Is(err, docker.ErrNotFound) {
 		t.Fatalf("want docker.ErrNotFound, got %v", err)
 	}
 }
@@ -176,12 +176,40 @@ func TestForServiceTaskRunningOnAnUnmanagedNode(t *testing.T) {
 	// The manager sees no container of its own, but its swarm view says 1 task is up.
 	c := NewClients(1, &taskClient{runningTasks: 1})
 
-	_, _, err := c.ForServiceTask(context.Background(), "mb-app-1")
+	_, _, err := c.ForServiceTask(context.Background(), 0, "mb-app-1")
 	if !errors.Is(err, ErrTaskUnreachable) {
 		t.Fatalf("want ErrTaskUnreachable, got %v", err)
 	}
 	if errors.Is(err, docker.ErrNotFound) {
 		t.Error("a running task must not be reported as not-found — that is what made a " +
 			"healthy 1/1 service look like it had no container")
+	}
+}
+
+// Regression: a service in a remote swarm, its task on an agentless node. The local engine manages
+// another swarm (or none), so asking it reported "nothing running" for a healthy service.
+func TestForServiceTaskAsksTheServicesOwnSwarm(t *testing.T) {
+	local := &taskClient{runningTasks: 0}
+	remoteManager := &taskClient{runningTasks: 1}
+	c := NewClients(1, local)
+	c.SetSwarmManagers(func(_ context.Context, clusterID uint) (docker.Client, error) {
+		if clusterID == 7 {
+			return remoteManager, nil
+		}
+		return local, nil
+	})
+
+	if _, _, err := c.ForServiceTask(context.Background(), 7, "mb-app-1"); !errors.Is(err, ErrTaskUnreachable) {
+		t.Fatalf("want ErrTaskUnreachable from the remote swarm's manager, got %v", err)
+	}
+}
+
+// An unreachable manager leaves the question open; the local engine is not a stand-in for it.
+func TestForServiceTaskManagerUnreachable(t *testing.T) {
+	c := NewClients(1, &taskClient{runningTasks: 1})
+	c.SetSwarmManagers(func(context.Context, uint) (docker.Client, error) { return nil, ErrNodeOffline })
+
+	if _, _, err := c.ForServiceTask(context.Background(), 7, "mb-app-1"); !errors.Is(err, docker.ErrNotFound) {
+		t.Fatalf("want docker.ErrNotFound, got %v", err)
 	}
 }

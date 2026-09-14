@@ -8,11 +8,13 @@ package housekeeping
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
@@ -25,6 +27,11 @@ type Clients interface {
 // by the application repository in production; a fake in tests.
 type appLister interface {
 	ListByServer(serverID uint) ([]models.Application, error)
+}
+
+// SwarmManagers resolves the client that drives a cluster's swarm. Implemented by the cluster service.
+type SwarmManagers interface {
+	Manager(ctx context.Context, clusterID uint) (docker.Client, error)
 }
 
 // recordExister reports whether the owning DB record for a managed resource (by
@@ -43,6 +50,9 @@ type Service struct {
 	// volumeNamed reports whether a volume row claims a Docker volume name, for
 	// volumes created before they were labelled. nil never classifies an orphan.
 	volumeNamed func(dockerName string) (bool, error)
+	// swarms answers for service apps, whose tasks may run on any node of their
+	// cluster. nil never reports a service app missing.
+	swarms SwarmManagers
 }
 
 // configLookup resolves a config by name within a workspace.
@@ -52,6 +62,9 @@ type configLookup interface {
 
 // SetConfigs wires the config lookup used to classify swarm config objects.
 func (s *Service) SetConfigs(c configLookup) { s.configs = c }
+
+// SetSwarmManagers wires the cluster manager lookup used to check service apps.
+func (s *Service) SetSwarmManagers(m SwarmManagers) { s.swarms = m }
 
 // NewService wires the housekeeping service against the node client registry and
 // the repos it joins live Docker state against. The repos are composed into a
@@ -115,7 +128,7 @@ type DriftSummary struct {
 // Drift classes.
 const (
 	ClassOrphan    = "orphan"    // managed label present, DB record gone — still running on the node
-	ClassMissing   = "missing"   // DB record expects it live, no container present
+	ClassMissing   = "missing"   // DB record expects it live, nothing running for it
 	ClassUntracked = "untracked" // no miabi.* label — a hand-run resource
 )
 
@@ -129,7 +142,7 @@ const (
 // DriftItem is one resource that diverges from intent.
 type DriftItem struct {
 	Class     string `json:"class"`
-	Kind      string `json:"kind"` // container | volume
+	Kind      string `json:"kind"` // container | volume | config | service
 	Ref       string `json:"ref"`  // container ID or volume name (the apply handle)
 	Name      string `json:"name"`
 	Image     string `json:"image,omitempty"`
@@ -170,7 +183,7 @@ func (s *Service) Analyze(ctx context.Context, nodeID uint) (*Report, error) {
 
 // analyzeDrift classifies every live container + volume on the node against the
 // DB by the miabi.* label scheme, then derives missing apps (record exists,
-// no live container).
+// nothing running for it).
 func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uint) (*DriftSummary, error) {
 	containers, err := dc.ListContainers(ctx, true) // all states
 	if err != nil {
@@ -272,7 +285,7 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 		}
 	}
 
-	// Missing: apps placed on this node, expected running, with no live container.
+	// Missing: apps placed on this node, expected running, with nothing running for them.
 	apps, aerr := s.apps.ListByServer(nodeID)
 	if aerr != nil {
 		return nil, aerr
@@ -280,6 +293,15 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 	for i := range apps {
 		a := &apps[i]
 		if a.Status != models.AppStatusRunning {
+			continue
+		}
+		if a.RuntimeKind == models.RuntimeService {
+			if s.serviceMissing(ctx, a) {
+				out.Missing = append(out.Missing, DriftItem{
+					Class: ClassMissing, Kind: "service", Ref: fmt.Sprintf("app:%d", a.ID),
+					Name: a.Name, OwnerKind: OwnerApp, OwnerID: a.ID, Action: ActionRedeploy,
+				})
+			}
 			continue
 		}
 		if liveApps[a.ID] {
@@ -291,6 +313,21 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 		})
 	}
 	return out, nil
+}
+
+// serviceMissing reports whether a service app's swarm service is gone. Its tasks run wherever Swarm
+// placed them, often on another node, so this node's containers say nothing about it; only its cluster's
+// manager can. An unreachable manager, or no lookup wired, is unknown — never missing.
+func (s *Service) serviceMissing(ctx context.Context, app *models.Application) bool {
+	if s.swarms == nil {
+		return false
+	}
+	mgr, err := s.swarms.Manager(ctx, app.ClusterID)
+	if err != nil {
+		return false
+	}
+	_, err = mgr.ServiceInspect(ctx, node.AppAlias(app))
+	return errors.Is(err, docker.ErrNotFound)
 }
 
 // unlabelledVolumeOrphan classifies a volume that names no owner. Volumes storage created before it
