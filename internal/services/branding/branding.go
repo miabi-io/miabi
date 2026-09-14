@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package branding owns the operator's identity: the name, logos, accent and links
-// shown on the sign-in page and in the console chrome, and whether accounts may
-// pick an accent of their own.
+// Package branding owns the operator's identity: the name, logos, favicon, accent,
+// sign-in notice and links shown on the sign-in page and in the console chrome, and
+// whether accounts may pick an accent of their own.
 //
 // It is deliberately separate from a user's own appearance preference. A personal
 // accent belongs to a person and follows them between browsers; a brand belongs to
@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
@@ -32,6 +33,7 @@ const (
 	KeyLogoDark     = "brand.logo_dark_url"
 	KeyAccent       = "brand.accent"
 	KeyAccentPolicy = "brand.accent_policy"
+	KeySigninNotice = "brand.signin_notice"
 	KeyLinks        = "brand.links"
 )
 
@@ -44,11 +46,12 @@ const (
 	AccentPolicyEnforced AccentPolicy = "enforced"
 )
 
-// Limits on the sign-in links. The page is not a nav bar, and an unbounded list
-// from an admin form is a layout break waiting to happen.
+// Limits on the sign-in page. It is not a nav bar or a terms page, and unbounded
+// input from an admin form is a layout break waiting to happen.
 const (
-	MaxLinks      = 6
-	MaxLabelRunes = 32
+	MaxLinks       = 6
+	MaxLabelRunes  = 32
+	MaxNoticeRunes = 600
 )
 
 var (
@@ -67,6 +70,8 @@ var (
 	ErrInvalidAccent = errors.New("brand accent must be one of the accents the console ships")
 	// ErrInvalidAccentPolicy rejects a policy other than default or enforced.
 	ErrInvalidAccentPolicy = errors.New("accent policy must be one of: default, enforced")
+	// ErrNoticeTooLong caps the sign-in notice.
+	ErrNoticeTooLong = fmt.Errorf("the sign-in notice may be at most %d characters", MaxNoticeRunes)
 )
 
 // Link is one entry in the sign-in page footer.
@@ -81,20 +86,28 @@ type Branding struct {
 	Name    string `json:"name,omitempty"`
 	LogoURL string `json:"logo_url,omitempty"`
 	// LogoDarkURL is for dark grounds: the console sidebar and the dark sign-in page.
-	LogoDarkURL  string        `json:"logo_dark_url,omitempty"`
+	LogoDarkURL string `json:"logo_dark_url,omitempty"`
+	// FaviconURL is only ever an uploaded image, filled in by Public; never saved.
+	FaviconURL   string        `json:"favicon_url,omitempty"`
 	Accent       models.Accent `json:"accent,omitempty"`
 	AccentPolicy AccentPolicy  `json:"accent_policy,omitempty"`
-	Links        []Link        `json:"links,omitempty"`
+	// SigninNotice is plain text above the sign-in form, such as an authorised-use
+	// warning. Rendered escaped, with its line breaks kept.
+	SigninNotice string `json:"signin_notice,omitempty"`
+	Links        []Link `json:"links,omitempty"`
 }
 
 // AccentEnforced reports whether every account wears the brand accent.
 func (b Branding) AccentEnforced() bool { return b.AccentPolicy == AccentPolicyEnforced }
 
 type Service struct {
-	repo *repositories.SettingRepository
+	repo   *repositories.SettingRepository
+	assets *repositories.BrandAssetRepository
 }
 
-func NewService(repo *repositories.SettingRepository) *Service { return &Service{repo: repo} }
+func NewService(repo *repositories.SettingRepository, assets *repositories.BrandAssetRepository) *Service {
+	return &Service{repo: repo, assets: assets}
+}
 
 // Get reads the stored branding. A missing or unreadable value is not an error:
 // the sign-in page must render whatever else happens, so anything unusable falls
@@ -108,11 +121,29 @@ func (s *Service) Get() Branding {
 		b.Accent = a
 	}
 	b.AccentPolicy, _ = ParseAccentPolicy(s.value(KeyAccentPolicy))
+	b.SigninNotice = s.value(KeySigninNotice)
 	if raw := s.value(KeyLinks); raw != "" {
 		var links []Link
 		if json.Unmarshal([]byte(raw), &links) == nil {
 			b.Links = links
 		}
+	}
+	return b
+}
+
+// Public is the branding as the sign-in page and the console render it: an uploaded
+// image takes the place of the matching URL.
+func (s *Service) Public() Branding {
+	b := s.Get()
+	assets := s.Assets()
+	if a, ok := assets[AssetLogo]; ok {
+		b.LogoURL = a.URL
+	}
+	if a, ok := assets[AssetLogoDark]; ok {
+		b.LogoDarkURL = a.URL
+	}
+	if a, ok := assets[AssetFavicon]; ok {
+		b.FaviconURL = a.URL
 	}
 	return b
 }
@@ -133,6 +164,10 @@ func (s *Service) Save(in Branding) error {
 		return ErrInvalidAccent
 	}
 	policy, err := ParseAccentPolicy(string(in.AccentPolicy))
+	if err != nil {
+		return err
+	}
+	notice, err := NormalizeNotice(in.SigninNotice)
 	if err != nil {
 		return err
 	}
@@ -157,6 +192,7 @@ func (s *Service) Save(in Branding) error {
 		{Key: KeyLogoDark, Value: strings.TrimSpace(in.LogoDarkURL), Type: models.SettingTypeString},
 		{Key: KeyAccent, Value: string(in.Accent), Type: models.SettingTypeString},
 		{Key: KeyAccentPolicy, Value: string(policy), Type: models.SettingTypeString},
+		{Key: KeySigninNotice, Value: notice, Type: models.SettingTypeString},
 		{Key: KeyLinks, Value: string(encoded), Type: models.SettingTypeJSON},
 	})
 }
@@ -171,6 +207,16 @@ func ParseAccentPolicy(raw string) (AccentPolicy, error) {
 		return p, nil
 	}
 	return AccentPolicyDefault, ErrInvalidAccentPolicy
+}
+
+// NormalizeNotice trims the sign-in notice, unifies line endings and caps its length
+// in runes, so a notice in any script gets the same allowance.
+func NormalizeNotice(raw string) (string, error) {
+	notice := strings.TrimSpace(strings.ReplaceAll(raw, "\r\n", "\n"))
+	if utf8.RuneCountInString(notice) > MaxNoticeRunes {
+		return "", ErrNoticeTooLong
+	}
+	return notice, nil
 }
 
 // NormalizeLinks trims, validates and caps the list. Exported because the same

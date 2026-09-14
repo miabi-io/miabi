@@ -18,6 +18,8 @@ withDefaults(
     hero?: boolean
     brandName?: string
     brandLogo?: string
+    /** The operator's sign-in notice, for the pages that are front doors. */
+    brandNotice?: string
   }>(),
   { hero: false },
 )
@@ -32,6 +34,11 @@ withDefaults(
         <img :src="brandLogo || '/brand/miabi-mark.svg'" :alt="brandName || 'Miabi'" class="auth-logo" />
         <h1 class="auth-title">{{ title }}</h1>
         <p v-if="subtitle" class="auth-subtitle">{{ subtitle }}</p>
+      </div>
+
+      <div v-if="brandNotice" class="auth-brand-notice" role="note">
+        <span class="mdi mdi-information-outline"></span>
+        <span>{{ brandNotice }}</span>
       </div>
 
       <Transition name="fade">
@@ -95,6 +102,7 @@ withDefaults(
 .auth-logo {
   width: 64px;
   height: 64px;
+  object-fit: contain;
   margin-bottom: 16px;
 }
 .auth-title {
@@ -110,7 +118,8 @@ withDefaults(
   margin: 0;
 }
 .auth-alert,
-.auth-notice {
+.auth-notice,
+.auth-brand-notice {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -129,8 +138,16 @@ withDefaults(
   color: var(--success-700);
   border: 1px solid var(--success-100, var(--success-50));
 }
+.auth-brand-notice {
+  align-items: flex-start;
+  background: var(--bg-secondary);
+  color: var(--text-secondary, var(--text-primary));
+  border: 1px solid var(--border-primary);
+  white-space: pre-line;
+}
 .auth-alert .mdi,
-.auth-notice .mdi {
+.auth-notice .mdi,
+.auth-brand-notice .mdi {
   font-size: 18px;
   flex-shrink: 0;
 }

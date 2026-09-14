@@ -36,6 +36,22 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Request:     &handlers.UpdateBrandingRequest{},
 		},
 		{
+			Method:      http.MethodPut,
+			Path:        "/branding/assets/{slot}",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminBranding.UploadAsset,
+			Summary:     "Upload a brand image (multipart file): logo, logo_dark or favicon",
+		},
+		{
+			Method:      http.MethodDelete,
+			Path:        "/branding/assets/{slot}",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminBranding.DeleteAsset,
+			Summary:     "Remove an uploaded brand image",
+		},
+		{
 			Method:      http.MethodGet,
 			Path:        "/users",
 			Group:       g,

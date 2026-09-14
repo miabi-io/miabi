@@ -75,6 +75,7 @@ func Run(db *gorm.DB) error {
 		&models.GPUDevice{},
 		&models.User{},
 		&models.UserSetting{},
+		&models.BrandAsset{},
 		&models.Session{},
 		&models.APIKey{},
 		&models.Workspace{},

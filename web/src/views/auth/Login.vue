@@ -195,6 +195,11 @@ function providerIcon(type: string): string {
           </p>
         </div>
 
+        <div v-if="brand.signin_notice" class="auth-brand-notice" role="note">
+          <span class="mdi mdi-information-outline"></span>
+          <span>{{ brand.signin_notice }}</span>
+        </div>
+
         <Transition name="fade">
           <div v-if="error" class="auth-alert" role="alert" aria-live="assertive">
             <span class="mdi mdi-alert-circle-outline"></span>
@@ -455,6 +460,23 @@ function providerIcon(type: string): string {
   font-size: 13px;
 }
 .auth-alert .mdi {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.auth-brand-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  color: var(--text-secondary, var(--text-primary));
+  border: 1px solid var(--border-primary);
+  font-size: 13px;
+  white-space: pre-line;
+}
+.auth-brand-notice .mdi {
   font-size: 18px;
   flex-shrink: 0;
 }

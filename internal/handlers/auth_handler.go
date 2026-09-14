@@ -315,7 +315,7 @@ func (h *AuthHandler) Status(c *okapi.Context) error {
 	// Read, not write: an expired licence must not blank an operator's sign-in page
 	// and replace it with someone else's branding. See SetBranding.
 	if h.branding != nil && h.ee != nil && h.ee.Has(enterprise.FlagWhiteLabel) {
-		st.Brand = h.branding.Get()
+		st.Brand = h.branding.Public()
 	}
 	return ok(c, st)
 }
