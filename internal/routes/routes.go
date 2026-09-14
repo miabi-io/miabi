@@ -632,8 +632,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	databaseService.SetLogicalBackup(dbupgrade.Backup(backupService))
 	// Per-workspace shared S3 backup target (used by database & volume backups).
 	backupSettingsService := backupsettings.NewService(backupSettingsRepo)
-	// The sign-in page's operator identity: name, logo, accent and links.
-	brandingService := branding.NewService(settingRepo)
+	// The operator identity on the sign-in page and in the console chrome.
+	brandingService := branding.NewService(settingRepo, repositories.NewBrandAssetRepository(db))
 	// Deployment-config image catalog: resolver over settings, with env config as
 	// the built-in default for the gateway/relay images. Wired into every service
 	// that runs a platform image.

@@ -77,6 +77,7 @@ async function submit() {
     hero
     :brand-name="brand.name ? brandName : undefined"
     :brand-logo="brandLogo"
+    :brand-notice="done ? undefined : brand.signin_notice"
     :title="done ? 'Account created' : `Create your ${brandName} account`"
     :subtitle="done ? '' : 'Sign up to get started.'"
     :error="error"

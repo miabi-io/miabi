@@ -18,8 +18,10 @@ export const useBrandStore = defineStore('brand', () => {
     brand.value = b ?? {}
   }
 
-  function load(): Promise<void> {
-    if (!loading) {
+  // force re-reads after an admin change: uploaded images reach the console only as
+  // the resolved URLs status hands out.
+  function load(force = false): Promise<void> {
+    if (!loading || force) {
       loading = authApi
         .status()
         .then((res) => set(res.data.data?.brand))
@@ -40,6 +42,22 @@ export const useBrandStore = defineStore('brand', () => {
     const suffix = n || 'Miabi'
     document.title = p ? `${p} — ${suffix}` : suffix
   }, { flush: 'sync' })
+
+  // index.html ships Miabi's icons. They are repointed rather than replaced, so
+  // clearing the brand favicon restores them; a stale type would make browsers skip one.
+  const originalIcons = new Map<HTMLLinkElement, { href: string; type: string | null }>()
+
+  watch(() => brand.value.favicon_url, (url) => {
+    document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"], link[rel="apple-touch-icon"]').forEach((link) => {
+      if (!originalIcons.has(link)) {
+        originalIcons.set(link, { href: link.getAttribute('href') ?? '', type: link.getAttribute('type') })
+      }
+      const original = originalIcons.get(link)!
+      link.setAttribute('href', url || original.href)
+      if (url || original.type === null) link.removeAttribute('type')
+      else link.setAttribute('type', original.type)
+    })
+  })
 
   return { brand, name, sidebarLogo, set, load, setTitle }
 })

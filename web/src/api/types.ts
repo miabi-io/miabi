@@ -406,8 +406,12 @@ export interface Brand {
   logo_url?: string
   /** For dark grounds: the console sidebar and the dark sign-in page. */
   logo_dark_url?: string
+  /** Set only when a favicon was uploaded. */
+  favicon_url?: string
   accent?: AccentCode
   accent_policy?: AccentPolicy
+  /** Plain text shown above the sign-in form. */
+  signin_notice?: string
   links?: BrandLink[]
 }
 

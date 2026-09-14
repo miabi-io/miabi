@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { authApi } from '@/api/auth'
-import { brandingApi, type BrandingSettings } from '@/api/resources'
+import { brandingApi, type BrandAssetSlot, type BrandingSettings } from '@/api/resources'
 import type { AccentCode, AccentPolicy, BrandLink } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
 import { useBrandStore } from '@/stores/brand'
@@ -10,6 +10,7 @@ import { useThemeStore } from '@/stores/theme'
 import { ACCENTS } from '@/theme/accents'
 
 const MAX_LINKS = 6
+const IMAGE_TYPES = 'image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon,.ico'
 
 interface BrandForm {
   name: string
@@ -17,6 +18,7 @@ interface BrandForm {
   logo_dark_url: string
   accent: AccentCode
   accent_policy: AccentPolicy
+  signin_notice: string
   links: BrandLink[]
 }
 
@@ -29,12 +31,25 @@ const brand = ref<BrandingSettings | null>(null)
 const locked = ref(false)
 const loading = ref(true)
 const saving = ref(false)
+const busySlot = ref<BrandAssetSlot | null>(null)
 const form = ref<BrandForm>(toForm({}))
 const saved = ref('')
 
 const editable = computed(() => !!brand.value?.editable)
 const dirty = computed(() => JSON.stringify(form.value) !== saved.value)
 const accents = computed(() => ACCENTS.filter((a) => brand.value?.accents.includes(a.code)))
+const noticeLength = computed(() => [...form.value.signin_notice].length)
+
+const assetSlots: { slot: BrandAssetSlot; label: string; hint: string; urlKey?: 'logo_url' | 'logo_dark_url' }[] = [
+  { slot: 'logo', label: 'Logo', hint: 'For light backgrounds: the sign-in page.', urlKey: 'logo_url' },
+  {
+    slot: 'logo_dark',
+    label: 'Logo for dark backgrounds',
+    hint: 'The sidebar and the dark sign-in page. Without one, the logo above is used.',
+    urlKey: 'logo_dark_url',
+  },
+  { slot: 'favicon', label: 'Favicon', hint: 'The browser tab icon. SVG or ICO stay sharp at every size.' },
+]
 
 const policies: { value: AccentPolicy; label: string; hint: string }[] = [
   {
@@ -56,10 +71,20 @@ function previewable(url: string): string {
   return /^https?:\/\/[^/\s]+\/\S+$/i.test(u) ? u : ''
 }
 
-const lightPreview = computed(() => previewable(form.value.logo_url) || '/brand/miabi-mark.svg')
+function assetUrl(slot: BrandAssetSlot): string {
+  return brand.value?.assets?.[slot]?.url ?? ''
+}
+
+const lightLogo = computed(() => assetUrl('logo') || previewable(form.value.logo_url))
+const lightPreview = computed(() => lightLogo.value || '/brand/miabi-mark.svg')
 const darkPreview = computed(
-  () => previewable(form.value.logo_dark_url) || previewable(form.value.logo_url) || '/brand/miabi-mark-white.svg',
+  () => assetUrl('logo_dark') || previewable(form.value.logo_dark_url) || lightLogo.value || '/brand/miabi-mark-white.svg',
 )
+const faviconPreview = computed(() => assetUrl('favicon') || '/favicon.svg')
+
+function formatSize(bytes: number): string {
+  return bytes < 1024 ? `${bytes} B` : `${Math.round(bytes / 1024)} KB`
+}
 
 function toForm(b: Partial<BrandingSettings>): BrandForm {
   return {
@@ -68,6 +93,7 @@ function toForm(b: Partial<BrandingSettings>): BrandForm {
     logo_dark_url: b.logo_dark_url ?? '',
     accent: b.accent || 'default',
     accent_policy: b.accent_policy || 'default',
+    signin_notice: b.signin_notice ?? '',
     links: (b.links ?? []).map((l) => ({ ...l })),
   }
 }
@@ -97,15 +123,52 @@ function addLink() {
 async function save() {
   saving.value = true
   try {
-    const b = (await brandingApi.update(form.value)).data.data
-    apply(b)
-    brandStore.set(b)
+    apply((await brandingApi.update(form.value)).data.data)
+    void brandStore.load(true)
     notify.success('Branding saved')
     void refreshOwnAccent()
   } catch (e) {
     notify.apiError(e)
   } finally {
     saving.value = false
+  }
+}
+
+// Uploads apply at once, apart from the form, so unsaved edits there are kept.
+function applyAssets(b: BrandingSettings) {
+  if (brand.value) brand.value = { ...brand.value, assets: b.assets }
+  void brandStore.load(true)
+}
+
+async function upload(slot: BrandAssetSlot, event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !brand.value) return
+  if (file.size > brand.value.max_asset_bytes) {
+    notify.error(`Images may be at most ${formatSize(brand.value.max_asset_bytes)}.`)
+    return
+  }
+  busySlot.value = slot
+  try {
+    applyAssets((await brandingApi.uploadAsset(slot, file)).data.data)
+    notify.success('Image uploaded')
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    busySlot.value = null
+  }
+}
+
+async function removeAsset(slot: BrandAssetSlot) {
+  busySlot.value = slot
+  try {
+    applyAssets((await brandingApi.deleteAsset(slot)).data.data)
+    notify.success('Image removed')
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    busySlot.value = null
   }
 }
 
@@ -167,18 +230,44 @@ onMounted(load)
             <input id="brand-name" v-model="form.name" class="form-input" placeholder="Miabi" :disabled="!editable" />
             <p class="form-hint">Replaces "Miabi" on the sign-in page, in the sidebar and in browser tab titles. Blank keeps it.</p>
           </div>
-          <div class="logo-grid">
-            <div class="form-group">
-              <label class="form-label" for="brand-logo">Logo URL</label>
-              <input id="brand-logo" v-model="form.logo_url" class="form-input" placeholder="https://acme.example/logo.svg" :disabled="!editable" />
-              <p class="form-hint">For light backgrounds. Blank keeps the Miabi mark.</p>
+
+          <div v-for="s in assetSlots" :key="s.slot" class="asset-row">
+            <div class="asset-info">
+              <span class="form-label">{{ s.label }}</span>
+              <span class="form-hint">{{ s.hint }}</span>
+              <input
+                v-if="s.urlKey && !brand.assets[s.slot]"
+                v-model="form[s.urlKey]"
+                class="form-input asset-url"
+                :aria-label="`${s.label} URL`"
+                placeholder="Upload an image, or link to https://…"
+                :disabled="!editable"
+              />
             </div>
-            <div class="form-group">
-              <label class="form-label" for="brand-logo-dark">Logo URL for dark backgrounds</label>
-              <input id="brand-logo-dark" v-model="form.logo_dark_url" class="form-input" placeholder="https://acme.example/logo-white.svg" :disabled="!editable" />
-              <p class="form-hint">The sidebar and the dark sign-in page. Blank uses the logo above.</p>
+            <div class="asset-actions">
+              <span v-if="brand.assets[s.slot]" class="asset-size">{{ formatSize(brand.assets[s.slot]?.size ?? 0) }}</span>
+              <label class="btn btn-sm btn-secondary asset-pick" :class="{ disabled: !editable || busySlot !== null }">
+                <input
+                  type="file"
+                  class="asset-file"
+                  :accept="IMAGE_TYPES"
+                  :disabled="!editable || busySlot !== null"
+                  @change="upload(s.slot, $event)"
+                />
+                {{ busySlot === s.slot ? 'Working…' : brand.assets[s.slot] ? 'Replace' : 'Upload' }}
+              </label>
+              <button
+                v-if="brand.assets[s.slot]"
+                type="button"
+                class="btn btn-sm btn-ghost"
+                :disabled="!editable || busySlot !== null"
+                @click="removeAsset(s.slot)"
+              >
+                Remove
+              </button>
             </div>
           </div>
+
           <div class="logo-previews" aria-hidden="true">
             <div class="logo-preview logo-preview-light">
               <img :src="lightPreview" alt="" />
@@ -190,9 +279,16 @@ onMounted(load)
               <span class="logo-preview-name">{{ form.name || 'Miabi' }}</span>
               <span class="logo-preview-caption">Sidebar</span>
             </div>
+            <div class="logo-preview logo-preview-tab">
+              <img :src="faviconPreview" alt="" class="tab-icon" />
+              <span class="tab-title">Dashboard — {{ form.name || 'Miabi' }}</span>
+              <span class="logo-preview-caption">Browser tab</span>
+            </div>
           </div>
           <p class="form-hint" style="margin-bottom: 0">
-            Use a square mark: the sidebar shows it at 28 px. Only http:// and https:// URLs are accepted.
+            PNG, JPEG, WebP, SVG or ICO, up to {{ formatSize(brand.max_asset_bytes) }}; use a square mark.
+            Uploads apply at once. Prefer them to links: a linked image makes every visitor's browser
+            contact that host.
           </p>
         </div>
       </div>
@@ -245,6 +341,22 @@ onMounted(load)
       <div class="card">
         <div class="card-header"><h2>Sign-in page</h2></div>
         <div class="card-body">
+          <div class="form-group">
+            <label class="form-label" for="brand-notice">Notice</label>
+            <textarea
+              id="brand-notice"
+              v-model="form.signin_notice"
+              class="form-textarea"
+              rows="3"
+              :maxlength="brand.max_notice_runes"
+              placeholder="This system is for authorised use only. Activity may be monitored."
+              :disabled="!editable"
+            ></textarea>
+            <p class="form-hint">
+              Shown above the sign-in and sign-up forms as plain text, line breaks kept.
+              {{ noticeLength }}/{{ brand.max_notice_runes }}
+            </p>
+          </div>
           <div class="form-group" style="margin-bottom: 0">
             <label class="form-label">Links</label>
             <div v-for="(l, i) in form.links" :key="i" class="flex items-center gap-2" style="margin-bottom: 8px">
@@ -275,16 +387,32 @@ onMounted(load)
 .locked { display: flex; align-items: flex-start; gap: 14px; }
 .locked > .mdi { font-size: 24px; color: var(--text-muted); }
 .locked p { margin: 0 0 12px; font-size: 13px; color: var(--text-muted); }
-.logo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 16px; }
-.logo-previews { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+.asset-row {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  padding: 12px 0; border-top: 1px solid var(--border-primary);
+}
+.asset-info { display: flex; flex-direction: column; flex: 1 1 260px; min-width: 0; }
+.asset-info .form-label { margin-bottom: 0; }
+.asset-info .form-hint { margin-top: 2px; }
+.asset-url { margin-top: 8px; }
+.asset-actions { display: flex; align-items: center; gap: 8px; }
+.asset-size { font-size: 12px; color: var(--text-muted); }
+.asset-pick { position: relative; cursor: pointer; }
+.asset-pick.disabled { opacity: 0.6; cursor: default; }
+.asset-pick:focus-within { box-shadow: var(--shadow-focus); }
+.asset-file { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.logo-previews { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0; }
 .logo-preview {
-  display: flex; align-items: center; gap: 10px; flex: 1 1 200px;
+  display: flex; align-items: center; gap: 10px; flex: 1 1 200px; min-width: 0;
   padding: 12px 14px; border: 1px solid var(--border-primary); border-radius: 8px;
 }
 .logo-preview img { width: 28px; height: 28px; object-fit: contain; flex: none; }
 .logo-preview-light { background: #ffffff; color: #111827; }
 .logo-preview-dark { background: var(--bg-sidebar); color: #ffffff; }
+.logo-preview-tab { background: var(--bg-secondary); color: var(--text-primary); }
+.logo-preview .tab-icon { width: 16px; height: 16px; }
 .logo-preview-name { font-family: var(--font-brand); font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tab-title { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .logo-preview-caption { margin-left: auto; font-size: 11px; opacity: 0.6; white-space: nowrap; }
 .accent-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
 .accent-option {

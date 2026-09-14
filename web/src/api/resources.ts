@@ -253,18 +253,42 @@ export const workspaceEventApi = {
 // Enterprise (white_label).
 export interface BrandingSettings {
   name?: string
+  /** An external URL. An uploaded logo, in `assets`, takes its place. */
   logo_url?: string
   logo_dark_url?: string
   accent?: AccentCode
   accent_policy?: AccentPolicy
+  signin_notice?: string
   links?: { label: string; url: string }[]
   /** Whether this licence may CHANGE the branding, not merely show it. */
   editable: boolean
   accents: AccentCode[]
+  assets: Partial<Record<BrandAssetSlot, BrandAsset>>
+  max_asset_bytes: number
+  max_notice_runes: number
+}
+
+export type BrandAssetSlot = 'logo' | 'logo_dark' | 'favicon'
+
+// An uploaded brand image. The URL is versioned by content, so it changes on replace.
+export interface BrandAsset {
+  url: string
+  content_type: string
+  size: number
+  updated_at: string
 }
 
 export const brandingApi = {
   get: () => api.get<ApiResponse<BrandingSettings>>('/admin/branding'),
-  update: (input: Omit<BrandingSettings, 'editable' | 'accents'>) =>
+  update: (input: Omit<BrandingSettings, 'editable' | 'accents' | 'assets' | 'max_asset_bytes' | 'max_notice_runes'>) =>
     api.put<ApiResponse<BrandingSettings>>('/admin/branding', input),
+  uploadAsset: (slot: BrandAssetSlot, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.put<ApiResponse<BrandingSettings>>(`/admin/branding/assets/${slot}`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  deleteAsset: (slot: BrandAssetSlot) =>
+    api.delete<ApiResponse<BrandingSettings>>(`/admin/branding/assets/${slot}`),
 }

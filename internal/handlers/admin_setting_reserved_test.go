@@ -15,6 +15,7 @@ func TestReservedSettingsAreHiddenFromTheGenericList(t *testing.T) {
 		"brand.logo_url",
 		"brand.logo_dark_url",
 		"brand.accent_policy",
+		"brand.signin_notice",
 		"cluster_name",
 	}
 	for _, key := range reserved {

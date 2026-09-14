@@ -28,6 +28,13 @@ func (r *Router) authRoutes() []okapi.RouteDefinition {
 			Response: &dto.Response[handlers.AuthStatus]{},
 		},
 		{
+			Method:  http.MethodGet,
+			Path:    "/branding/{slot}",
+			Group:   auth,
+			Handler: r.h.adminBranding.ServeAsset,
+			Summary: "Serve an uploaded brand image: logo, logo_dark or favicon",
+		},
+		{
 			Method: http.MethodPost,
 			Path:   "/register",
 			Group:  auth,
