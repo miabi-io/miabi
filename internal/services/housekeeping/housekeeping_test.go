@@ -248,6 +248,77 @@ func TestPlan_MatchesApply(t *testing.T) {
 	}
 }
 
+// namedSet stands in for the volume repository's docker-name lookup.
+func namedSet(names ...string) func(string) (bool, error) {
+	set := map[string]bool{}
+	for _, n := range names {
+		set[n] = true
+	}
+	return func(name string) (bool, error) { return set[name], nil }
+}
+
+// Volumes created before storage labelled them carry only their Miabi name, and a
+// database's data volume carries the instance id. Nothing else unlabelled is drift.
+func TestAnalyzeDrift_VolumesWithoutVolumeLabel(t *testing.T) {
+	dc := &fakeDocker{volumes: []docker.Volume{
+		{Name: "mb-vol-3-uploads", Labels: map[string]string{labelWorkspace: "3"}}, // row claims it → keep
+		{Name: "mb-vol-3-ghost", Labels: map[string]string{labelWorkspace: "3"}},   // no row → orphan
+		{Name: "mb-vol-3-shared"}, // swarm's copy of a shared volume → keep
+		{Name: "mb-db-k3x9-5-data", Labels: map[string]string{labelDatabase: "5", labelWorkspace: "3"}}, // instance gone → orphan
+		{Name: "mb-db-p2q8-6-data", Labels: map[string]string{labelDatabase: "6", labelWorkspace: "3"}}, // instance lives → keep
+		{Name: "mb-backups-3", Labels: map[string]string{labelWorkspace: "3"}},                          // backup scratch → skip
+		{Name: "miabi_pgdata", Labels: map[string]string{labelRole: docker.RolePlatformDB}},             // infra → skip
+		{Name: "legacy_data"}, // imported or hand-made → skip
+	}}
+	s := newTestService(dc, nil, existsSet("database:6"))
+	s.volumeNamed = namedSet("mb-vol-3-uploads", "mb-vol-3-shared")
+
+	drift, err := s.analyzeDrift(context.Background(), dc, 1)
+	if err != nil {
+		t.Fatalf("analyzeDrift: %v", err)
+	}
+	if len(drift.Orphans) != 2 {
+		t.Fatalf("want 2 orphans, got %d: %+v", len(drift.Orphans), drift.Orphans)
+	}
+	assertHasOrphan(t, drift.Orphans, "volume", "mb-vol-3-ghost")
+	assertHasOrphan(t, drift.Orphans, "volume", "mb-db-k3x9-5-data")
+	for _, o := range drift.Orphans {
+		if o.Ref == "mb-db-k3x9-5-data" && (o.OwnerKind != OwnerDatabase || o.OwnerID != 5) {
+			t.Errorf("database volume orphan owner = %s #%d, want database #5", o.OwnerKind, o.OwnerID)
+		}
+	}
+}
+
+// Without the name lookup wired, an unlabelled volume can never be proven orphaned.
+func TestAnalyzeDrift_UnlabelledVolumeNeedsLookup(t *testing.T) {
+	dc := &fakeDocker{volumes: []docker.Volume{{Name: "mb-vol-3-ghost"}}}
+	s := newTestService(dc, nil, existsSet())
+	drift, err := s.analyzeDrift(context.Background(), dc, 1)
+	if err != nil {
+		t.Fatalf("analyzeDrift: %v", err)
+	}
+	if len(drift.Orphans) != 0 {
+		t.Fatalf("no lookup wired must mean no orphans, got %+v", drift.Orphans)
+	}
+}
+
+func TestApply_RemovesUnlabelledVolumeOrphan(t *testing.T) {
+	dc := &fakeDocker{volumes: []docker.Volume{{Name: "mb-vol-3-ghost"}, {Name: "mb-vol-3-uploads"}}}
+	s := newTestService(dc, nil, existsSet())
+	s.volumeNamed = namedSet("mb-vol-3-uploads")
+
+	_, err := s.Apply(context.Background(), 1, Selection{Orphans: []ResourceRef{
+		{Kind: "volume", Ref: "mb-vol-3-ghost"},
+		{Kind: "volume", Ref: "mb-vol-3-uploads"}, // still claimed by a row: must be refused
+	}})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if len(dc.removedVolumes) != 1 || dc.removedVolumes[0] != "mb-vol-3-ghost" {
+		t.Fatalf("only the unclaimed volume may be removed, removed: %v", dc.removedVolumes)
+	}
+}
+
 func assertHasOrphan(t *testing.T, orphans []DriftItem, kind, ref string) {
 	t.Helper()
 	for _, o := range orphans {

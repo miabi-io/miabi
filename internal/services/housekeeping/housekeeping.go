@@ -40,6 +40,9 @@ type Service struct {
 	// configs resolves a workspace config by name, so an orphaned swarm config
 	// object can be told apart from a live one. nil never classifies an orphan.
 	configs configLookup
+	// volumeNamed reports whether a volume row claims a Docker volume name, for
+	// volumes created before they were labelled. nil never classifies an orphan.
+	volumeNamed func(dockerName string) (bool, error)
 }
 
 // configLookup resolves a config by name within a workspace.
@@ -76,7 +79,7 @@ func NewService(
 			return true, nil
 		}
 	}
-	return &Service{clients: clients, apps: apps, exists: exists}
+	return &Service{clients: clients, apps: apps, exists: exists, volumeNamed: volumes.ExistsByDockerName}
 }
 
 // Report is the full housekeeping analysis for a node: disk usage, the safe
@@ -215,28 +218,33 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 
 	for i := range volumes {
 		v := volumes[i]
-		// Only volumes that carry an explicit miabi.volume=<id> back-reference
-		// are orphan-eligible; unmanaged volumes are an import concern, not drift we
-		// remove. Infra volumes (role-labelled) are skipped.
+		// Unmanaged volumes are an import concern, not drift we remove, and infra
+		// volumes (role-labelled) are managed through their own pages.
 		if isPlatformInfra(v.Labels) {
 			continue
 		}
-		idStr, _ := docker.LabelValue(v.Labels, docker.LabelVolume)
-		if idStr == "" {
-			continue
-		}
-		id, ok := parseID(idStr)
+		kind, id, ok := volumeOwner(v.Labels)
 		if !ok {
+			orphan, oerr := s.unlabelledVolumeOrphan(v.Name)
+			if oerr != nil {
+				return nil, oerr
+			}
+			if orphan {
+				out.Orphans = append(out.Orphans, DriftItem{
+					Class: ClassOrphan, Kind: "volume", Ref: v.Name, Name: v.Name,
+					OwnerKind: OwnerVolume, Action: ActionRemove,
+				})
+			}
 			continue
 		}
-		exists, eerr := s.exists(OwnerVolume, id)
+		exists, eerr := s.exists(kind, id)
 		if eerr != nil {
 			return nil, eerr
 		}
 		if !exists {
 			out.Orphans = append(out.Orphans, DriftItem{
 				Class: ClassOrphan, Kind: "volume", Ref: v.Name, Name: v.Name,
-				OwnerKind: OwnerVolume, OwnerID: id, Action: ActionRemove,
+				OwnerKind: kind, OwnerID: id, Action: ActionRemove,
 			})
 		}
 	}
@@ -283,6 +291,20 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 		})
 	}
 	return out, nil
+}
+
+// unlabelledVolumeOrphan classifies a volume that names no owner. Volumes storage created before it
+// wrote io.miabi.volume keep only their Miabi name, and volume rows are hard-deleted, so a Miabi-named
+// volume no row claims is one deleted in Miabi.
+func (s *Service) unlabelledVolumeOrphan(name string) (bool, error) {
+	if s.volumeNamed == nil || !isMiabiVolumeName(name) {
+		return false, nil
+	}
+	claimed, err := s.volumeNamed(name)
+	if err != nil {
+		return false, err
+	}
+	return !claimed, nil
 }
 
 // configExists reports whether a workspace still has a config by that name; a
