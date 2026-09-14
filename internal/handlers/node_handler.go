@@ -390,6 +390,9 @@ func (h *NodeHandler) applyConnectivity(ctx context.Context, prev, srv *models.S
 	}
 	switch {
 	case srv.Connectivity == models.ConnectivityEdgeGateway:
+		if !edgegateway.AutoDeploy(srv) {
+			return // an imported gateway already serves the node
+		}
 		if tok, terr := h.nodes.GatewayToken(srv.ID); terr == nil {
 			if derr := h.gateway.Ensure(ctx, dc, srv, tok, h.gatewayRedisPassword(srv)); derr == nil {
 				h.nodes.MarkGatewayDeployed(srv.ID)

@@ -218,6 +218,13 @@ func ContainerNameFor(srv *models.Server) string {
 	return ContainerName
 }
 
+// AutoDeploy reports whether Miabi may (re)deploy its own gateway on srv without an admin asking: on
+// agent reconnect or a connectivity switch. An imported gateway is the operator's container on the node's
+// ingress ports, so recreating mb-node-gateway beside it fails to bind or runs a second gateway.
+func AutoDeploy(srv *models.Server) bool {
+	return srv != nil && srv.Connectivity == models.ConnectivityEdgeGateway && !srv.GatewayImported
+}
+
 // LooksLikeGateway reports whether an image reference looks like a Goma gateway,
 // used to surface import candidates.
 func LooksLikeGateway(image string) bool {

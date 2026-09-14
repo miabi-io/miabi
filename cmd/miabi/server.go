@@ -183,7 +183,7 @@ func runServer(cli *okapicli.CLI) {
 			nodeManager.SetOnConnect(func(ctx context.Context, srv *models.Server, token string, dc docker.Client) {
 
 				clusterService.ReaffirmNode(ctx, srv.ID)
-				if srv.Connectivity != models.ConnectivityEdgeGateway {
+				if !edgegateway.AutoDeploy(srv) {
 					return
 				}
 				// Use the node's recoverable gateway token (not the one-time join
