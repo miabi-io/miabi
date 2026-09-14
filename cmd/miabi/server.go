@@ -313,6 +313,7 @@ func runServer(cli *okapicli.CLI) {
 				secretService,
 			)
 			deployHandler.SetLogStore(logStore)
+			deployHandler.SetDeployLock(worker.NewRedisDeployLock(res.redis))
 			deployHandler.SetConfigs(configsvc.NewService(repositories.NewConfigRepository(res.db)))
 			dbRepo := repositories.NewDatabaseRepository(res.db)
 			dbService := database.NewService(dbRepo, nodeClients, res.producer)
