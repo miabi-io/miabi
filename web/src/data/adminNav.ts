@@ -54,6 +54,7 @@ export const adminNavSections: NavSection[] = [
     title: 'Platform',
     items: [
       { name: 'Platform Settings', path: '/admin/settings', icon: 'mdi-cog-outline' },
+      { name: 'Branding', path: '/admin/branding', icon: 'mdi-palette-outline' },
       { name: 'Deployment Config', path: '/admin/deployment-config', icon: 'mdi-package-variant-closed' },
       { name: 'Platform Backup', path: '/admin/platform-backup', icon: 'mdi-cloud-upload-outline' },
     ],

@@ -15,7 +15,8 @@ import (
 	"github.com/miabi-io/miabi/internal/services/branding"
 )
 
-// AdminBrandingHandler owns the operator's identity on the sign-in page.
+// AdminBrandingHandler owns the operator's identity: the sign-in page, the console
+// chrome, and whether accounts may pick their own accent.
 type AdminBrandingHandler struct {
 	svc   *branding.Service
 	ee    enterprise.EE
@@ -52,10 +53,12 @@ func (h *AdminBrandingHandler) Get(c *okapi.Context) error {
 // UpdateBrandingRequest is the admin form's body.
 type UpdateBrandingRequest struct {
 	Body struct {
-		Name    string          `json:"name"`
-		LogoURL string          `json:"logo_url"`
-		Accent  string          `json:"accent"`
-		Links   []branding.Link `json:"links"`
+		Name         string          `json:"name"`
+		LogoURL      string          `json:"logo_url"`
+		LogoDarkURL  string          `json:"logo_dark_url"`
+		Accent       string          `json:"accent"`
+		AccentPolicy string          `json:"accent_policy"`
+		Links        []branding.Link `json:"links"`
 	} `json:"body"`
 }
 
@@ -69,10 +72,12 @@ func (h *AdminBrandingHandler) Update(c *okapi.Context, req *UpdateBrandingReque
 		return c.AbortWithError(402, err)
 	}
 	in := branding.Branding{
-		Name:    req.Body.Name,
-		LogoURL: req.Body.LogoURL,
-		Accent:  models.Accent(req.Body.Accent),
-		Links:   req.Body.Links,
+		Name:         req.Body.Name,
+		LogoURL:      req.Body.LogoURL,
+		LogoDarkURL:  req.Body.LogoDarkURL,
+		Accent:       models.Accent(req.Body.Accent),
+		AccentPolicy: branding.AccentPolicy(req.Body.AccentPolicy),
+		Links:        req.Body.Links,
 	}
 	if err := h.svc.Save(in); err != nil {
 		switch {
@@ -80,7 +85,8 @@ func (h *AdminBrandingHandler) Update(c *okapi.Context, req *UpdateBrandingReque
 			errors.Is(err, branding.ErrTooManyLinks),
 			errors.Is(err, branding.ErrLabelTooLong),
 			errors.Is(err, branding.ErrLabelRequired),
-			errors.Is(err, branding.ErrInvalidAccent):
+			errors.Is(err, branding.ErrInvalidAccent),
+			errors.Is(err, branding.ErrInvalidAccentPolicy):
 			return c.AbortBadRequest(err.Error())
 		}
 		return c.AbortInternalServerError("failed to save branding", err)

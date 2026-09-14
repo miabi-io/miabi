@@ -1201,12 +1201,14 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.auth.SetBranding(brandingService, ee) // the sign-in page's operator identity
 	r.h.auth.SetRegistration(registrationService)
 	authService.SetEmailVerifications(repositories.NewEmailVerificationRepository(db))
-	// An account that never picked an accent follows the operator's.
-	userSettingsService.SetBrandAccent(func() models.Accent {
+	// An account that never picked an accent follows the operator's; an enforced
+	// brand accent overrides every account. Has, not Mutable: expiry keeps the lock.
+	userSettingsService.SetBrandAccent(func() (models.Accent, bool) {
 		if !ee.Has(enterprise.FlagWhiteLabel) {
-			return ""
+			return "", false
 		}
-		return brandingService.Get().Accent
+		b := brandingService.Get()
+		return b.Accent, b.AccentEnforced()
 	})
 	r.h.volumeBackup.SetLogStore(logStore)
 	r.h.adminPlatformBackup.SetLogStore(logStore)

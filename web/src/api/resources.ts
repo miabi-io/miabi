@@ -1,7 +1,7 @@
 import api, { sseUrl } from './client'
 import type {
   ApiResponse, DatabaseInstance, DatabaseSizeOffer, DBLiveStatus, LogicalDatabase, ConnectionInfo, ForwardSession, DBEngine, EngineDefault, UpgradeOptions, UpgradePlan,
-  Volume, VolumeDetail, VolumeFile, VolumeBackup, WorkspaceStorage, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, BackupSetsResponse, DiscoveredSet, AdoptResult, SetRestoreResult, VerifyResult, AccentCode, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput,
+  Volume, VolumeDetail, VolumeFile, VolumeBackup, WorkspaceStorage, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, BackupSetsResponse, DiscoveredSet, AdoptResult, SetRestoreResult, VerifyResult, AccentCode, AccentPolicy, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput,
   Member, Invitation, AuditLog, AuditLogDetail, RecentEvent, PageableResponse, Job, CronJob, WorkspaceUsage, WorkspaceLiveSample, WorkspaceHistoryPoint,
 } from './types'
 
@@ -249,11 +249,14 @@ export const workspaceEventApi = {
     }),
 }
 
-// Branding: the operator's identity on the sign-in page. Enterprise (white_label).
+// Branding: the operator's identity on the sign-in page and in the console.
+// Enterprise (white_label).
 export interface BrandingSettings {
   name?: string
   logo_url?: string
+  logo_dark_url?: string
   accent?: AccentCode
+  accent_policy?: AccentPolicy
   links?: { label: string; url: string }[]
   /** Whether this licence may CHANGE the branding, not merely show it. */
   editable: boolean

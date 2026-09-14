@@ -100,6 +100,9 @@ type UserSetting struct {
 	Timezone    string `json:"timezone" gorm:"size:64;not null;default:UTC"`
 	Locale      string `json:"locale" gorm:"size:10;not null;default:en"`
 	LandingView string `json:"landing_view" gorm:"size:32;not null;default:dashboard"`
+	// AccentLocked means the operator enforces the brand accent, so Accent is theirs
+	// and the console offers no choice. Resolved on read, never stored.
+	AccentLocked bool `json:"accent_locked" gorm:"-"`
 
 	CreatedAt time.Time `json:"-"`
 	UpdatedAt time.Time `json:"-"`

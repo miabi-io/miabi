@@ -310,10 +310,16 @@ export type ThemeMode = 'system' | 'light' | 'dark'
 // see web/src/theme/accents.json for why.
 export type AccentCode = 'default' | 'blue' | 'indigo' | 'slate' | 'orange' | 'lime'
 
+// AccentPolicy is whether the brand accent is a default accounts may override, or
+// the accent every account wears.
+export type AccentPolicy = 'default' | 'enforced'
+
 export interface UserPreferences {
   theme: ThemeMode
   /** The console's primary colour, from the fixed set in theme/accents.json. */
   accent: AccentCode
+  /** The operator enforces the brand accent, so `accent` is theirs, not a choice. */
+  accent_locked?: boolean
   /** Display only — timestamps are stored and served in UTC. */
   timezone: string
   /** Display language, from the fixed set in i18n/languages.ts. */
@@ -394,11 +400,14 @@ export interface BrandLink {
 }
 
 // The operator's identity for the sign-in page, which has no user and therefore no
-// personal preference to read. Empty fields mean Miabi's own.
+// personal preference to read, and for the console chrome. Empty fields mean Miabi's own.
 export interface Brand {
   name?: string
   logo_url?: string
+  /** For dark grounds: the console sidebar and the dark sign-in page. */
+  logo_dark_url?: string
   accent?: AccentCode
+  accent_policy?: AccentPolicy
   links?: BrandLink[]
 }
 

@@ -19,6 +19,7 @@ var (
 	ErrInvalidAccent      = errors.New("accent must be one of: default, blue, indigo, slate, orange, lime")
 	ErrInvalidLocale      = errors.New("locale must be one of: en, fr")
 	ErrInvalidLandingView = errors.New("landing view is not a known console section")
+	ErrAccentLocked       = errors.New("the accent is set by your organization")
 )
 
 type Members interface {
@@ -47,15 +48,15 @@ func NewService(users Users, settings Settings, members Members) *Service {
 	return &Service{users: users, settings: settings, members: members}
 }
 
-// Get returns a user's preferences, defaulted when they have never saved any.
-// BrandAccent supplies the operator's accent for accounts that have not chosen
-// one. A function rather than the branding service itself, so preferences do not
-// depend on branding — the arrow points one way.
-type BrandAccent func() models.Accent
+// BrandAccent supplies the operator's accent and whether it is enforced on every
+// account. A function rather than the branding service itself, so preferences do
+// not depend on branding — the arrow points one way.
+type BrandAccent func() (accent models.Accent, enforced bool)
 
 // SetBrandAccent wires the operator default (nil-safe: unset means Miabi's own).
 func (s *Service) SetBrandAccent(f BrandAccent) { s.brandAccent = f }
 
+// Get returns a user's preferences, defaulted when they have never saved any.
 func (s *Service) Get(userID uint) (*models.UserSetting, error) {
 	cur, err := s.settings.Get(userID)
 	if err != nil {
@@ -63,6 +64,17 @@ func (s *Service) Get(userID uint) (*models.UserSetting, error) {
 	}
 	s.resolve(cur)
 	return cur, nil
+}
+
+func (s *Service) brand() (models.Accent, bool) {
+	if s.brandAccent == nil {
+		return "", false
+	}
+	a, enforced := s.brandAccent()
+	if !models.ValidAccent(a) {
+		a = ""
+	}
+	return a, enforced
 }
 
 // resolve fills in what the user has not chosen. The stored value stays empty, so
@@ -74,15 +86,15 @@ func (s *Service) resolve(cur *models.UserSetting) {
 		return
 	}
 	cur.Locale = models.ResolveLocale(cur.Locale)
-	if cur.Accent != "" {
-		return
+	brand, enforced := s.brand()
+	// Enforcement replaces the pick on read only, so lifting it gives the pick back.
+	if enforced || cur.Accent == "" {
+		cur.Accent = brand
 	}
-	cur.Accent = models.AccentDefault
-	if s.brandAccent != nil {
-		if a := s.brandAccent(); models.ValidAccent(a) {
-			cur.Accent = a
-		}
+	if cur.Accent == "" {
+		cur.Accent = models.AccentDefault
 	}
+	cur.AccentLocked = enforced
 }
 
 type Update struct {
@@ -106,6 +118,9 @@ func (s *Service) Save(userID uint, in Update) (*models.UserSetting, error) {
 		accent = models.Accent(strings.ToLower(strings.TrimSpace(*in.Accent)))
 		if !models.ValidAccent(accent) {
 			return nil, ErrInvalidAccent
+		}
+		if _, enforced := s.brand(); enforced {
+			return nil, ErrAccentLocked
 		}
 	}
 	var locale string

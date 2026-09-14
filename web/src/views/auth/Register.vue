@@ -6,15 +6,17 @@ import { apiErrorMessage } from '@/api/client'
 import AuthShell from './AuthShell.vue'
 import type { Brand } from '@/api/types'
 import { useThemeStore } from '@/stores/theme'
+import { useBrandStore } from '@/stores/brand'
 
 const router = useRouter()
 const theme = useThemeStore()
+const brandStore = useBrandStore()
 
 // The sign-up page is a front door like signing in, so it wears the operator's
 // identity too — same source, same fallbacks.
 const brand = ref<Brand>({})
 const brandName = computed(() => brand.value.name?.trim() || 'Miabi')
-const brandLogo = computed(() => brand.value.logo_url?.trim() || '/brand/miabi-mark.svg')
+const brandLogo = computed(() => (theme.isDark && brand.value.logo_dark_url?.trim()) || brand.value.logo_url?.trim() || '/brand/miabi-mark.svg')
 
 const name = ref('')
 const email = ref('')
@@ -39,6 +41,7 @@ onMounted(async () => {
       return
     }
     brand.value = data.data?.brand ?? {}
+    brandStore.set(brand.value)
   } catch {
     // Status is best-effort; let the form render and the request decide.
   }

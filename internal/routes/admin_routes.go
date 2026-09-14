@@ -24,7 +24,7 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Group:       g,
 			Middlewares: admin,
 			Handler:     r.h.adminBranding.Get,
-			Summary:     "Read the sign-in page's branding",
+			Summary:     "Read the platform branding",
 		},
 		{
 			Method:      http.MethodPut,
@@ -32,7 +32,7 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Group:       g,
 			Middlewares: admin,
 			Handler:     okapi.H(r.h.adminBranding.Update),
-			Summary:     "Set the sign-in page's name, logo, accent and links",
+			Summary:     "Set the platform branding: name, logos, accent policy and sign-in links",
 			Request:     &handlers.UpdateBrandingRequest{},
 		},
 		{

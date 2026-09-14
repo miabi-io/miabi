@@ -34,11 +34,14 @@ func (f *fakeUsers) FindByID(id uint) (*models.User, error) {
 	return &models.User{ID: id, DefaultWorkspaceID: f.defaultWS[id]}, nil
 }
 
+// fakeSettings copies rows in and out, as the database does: the service resolves
+// a row in place, and a shared pointer would write the resolved value back.
 type fakeSettings struct{ rows map[uint]*models.UserSetting }
 
 func (f *fakeSettings) Get(userID uint) (*models.UserSetting, error) {
 	if s, ok := f.rows[userID]; ok {
-		return s, nil
+		c := *s
+		return &c, nil
 	}
 	d := models.DefaultUserSetting()
 	d.UserID = userID
@@ -49,7 +52,8 @@ func (f *fakeSettings) Save(s *models.UserSetting) error {
 	if f.rows == nil {
 		f.rows = map[uint]*models.UserSetting{}
 	}
-	f.rows[s.UserID] = s
+	c := *s
+	f.rows[s.UserID] = &c
 	return nil
 }
 
@@ -173,7 +177,7 @@ func TestDefaultUserSettingIsUsable(t *testing.T) {
 // would not happen if the default were written down at account creation.
 func TestUnsetAccentFollowsTheBrand(t *testing.T) {
 	s := NewService(&fakeUsers{}, &fakeSettings{}, fakeMembers{})
-	s.SetBrandAccent(func() models.Accent { return models.AccentBlue })
+	s.SetBrandAccent(func() (models.Accent, bool) { return models.AccentBlue, false })
 
 	got, err := s.Get(7)
 	if err != nil {
@@ -182,12 +186,15 @@ func TestUnsetAccentFollowsTheBrand(t *testing.T) {
 	if got.Accent != models.AccentBlue {
 		t.Errorf("accent = %q, want the brand's blue", got.Accent)
 	}
+	if got.AccentLocked {
+		t.Error("a default brand accent must not lock the picker")
+	}
 }
 
 // A chosen accent is not a default and must survive whatever the operator sets.
 func TestChosenAccentBeatsTheBrand(t *testing.T) {
 	s := NewService(&fakeUsers{}, &fakeSettings{}, fakeMembers{})
-	s.SetBrandAccent(func() models.Accent { return models.AccentBlue })
+	s.SetBrandAccent(func() (models.Accent, bool) { return models.AccentBlue, false })
 
 	saved, err := s.Save(7, Update{Accent: ptrString(string(models.AccentSlate))})
 	if err != nil {
@@ -207,8 +214,8 @@ func TestChosenAccentBeatsTheBrand(t *testing.T) {
 func TestAccentFallsBackWhenTheBrandIsUnusable(t *testing.T) {
 	for name, f := range map[string]BrandAccent{
 		"no provider":    nil,
-		"empty brand":    func() models.Accent { return "" },
-		"unknown accent": func() models.Accent { return "chartreuse" },
+		"empty brand":    func() (models.Accent, bool) { return "", false },
+		"unknown accent": func() (models.Accent, bool) { return "chartreuse", false },
 	} {
 		t.Run(name, func(t *testing.T) {
 			s := NewService(&fakeUsers{}, &fakeSettings{}, fakeMembers{})
@@ -221,6 +228,65 @@ func TestAccentFallsBackWhenTheBrandIsUnusable(t *testing.T) {
 				t.Errorf("accent = %q, want the default", got.Accent)
 			}
 		})
+	}
+}
+
+// An enforced accent replaces a personal pick on read and refuses a new one, but
+// the pick is kept, so lifting the policy gives it back.
+func TestEnforcedAccentOverridesAndKeepsAChoice(t *testing.T) {
+	enforced := false
+	s := NewService(&fakeUsers{}, &fakeSettings{}, fakeMembers{})
+	s.SetBrandAccent(func() (models.Accent, bool) { return models.AccentBlue, enforced })
+
+	if _, err := s.Save(7, Update{Accent: ptrString(string(models.AccentSlate))}); err != nil {
+		t.Fatalf("save before enforcing: %v", err)
+	}
+
+	enforced = true
+	got, err := s.Get(7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Accent != models.AccentBlue || !got.AccentLocked {
+		t.Errorf("enforced read = %q locked=%v, want blue and locked", got.Accent, got.AccentLocked)
+	}
+	if _, err := s.Save(7, Update{Accent: ptrString(string(models.AccentLime))}); !errors.Is(err, ErrAccentLocked) {
+		t.Errorf("saving an accent under enforcement = %v, want ErrAccentLocked", err)
+	}
+
+	enforced = false
+	got, _ = s.Get(7)
+	if got.Accent != models.AccentSlate || got.AccentLocked {
+		t.Errorf("after lifting = %q locked=%v, want the kept slate, unlocked", got.Accent, got.AccentLocked)
+	}
+}
+
+// Enforcement covers the accent alone; the rest of the preferences still save.
+func TestEnforcedAccentLeavesOtherPreferencesEditable(t *testing.T) {
+	s := NewService(&fakeUsers{}, &fakeSettings{}, fakeMembers{})
+	s.SetBrandAccent(func() (models.Accent, bool) { return models.AccentOrange, true })
+
+	dark := "dark"
+	out, err := s.Save(7, Update{Theme: &dark})
+	if err != nil {
+		t.Fatalf("save theme under an enforced accent: %v", err)
+	}
+	if out.Theme != models.ThemeDark || out.Accent != models.AccentOrange || !out.AccentLocked {
+		t.Errorf("got theme=%q accent=%q locked=%v, want dark, orange, locked", out.Theme, out.Accent, out.AccentLocked)
+	}
+}
+
+// Enforcing without a usable brand accent locks everyone to Miabi's own.
+func TestEnforcedAccentWithoutABrandUsesTheDefault(t *testing.T) {
+	s := NewService(&fakeUsers{}, &fakeSettings{}, fakeMembers{})
+	s.SetBrandAccent(func() (models.Accent, bool) { return "", true })
+
+	got, err := s.Get(7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Accent != models.AccentDefault || !got.AccentLocked {
+		t.Errorf("accent = %q locked=%v, want the default, locked", got.Accent, got.AccentLocked)
 	}
 }
 

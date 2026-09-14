@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package branding owns the operator's identity on the surfaces that have no user
-// yet: the name, logo, accent and links shown on the sign-in page.
+// Package branding owns the operator's identity: the name, logos, accent and links
+// shown on the sign-in page and in the console chrome, and whether accounts may
+// pick an accent of their own.
 //
 // It is deliberately separate from a user's own appearance preference. A personal
 // accent belongs to a person and follows them between browsers; a brand belongs to
@@ -24,12 +25,23 @@ import (
 )
 
 // Setting keys. Values live in the platform key/value store rather than a table of
-// their own: there are four of them and they are read on every sign-in.
+// their own: there are a handful of them and they are read on every sign-in.
 const (
-	KeyName   = "brand.name"
-	KeyLogo   = "brand.logo_url"
-	KeyAccent = "brand.accent"
-	KeyLinks  = "brand.links"
+	KeyName         = "brand.name"
+	KeyLogo         = "brand.logo_url"
+	KeyLogoDark     = "brand.logo_dark_url"
+	KeyAccent       = "brand.accent"
+	KeyAccentPolicy = "brand.accent_policy"
+	KeyLinks        = "brand.links"
+)
+
+// AccentPolicy decides whether the brand accent is a default accounts may override
+// or the accent every account wears.
+type AccentPolicy string
+
+const (
+	AccentPolicyDefault  AccentPolicy = "default"
+	AccentPolicyEnforced AccentPolicy = "enforced"
 )
 
 // Limits on the sign-in links. The page is not a nav bar, and an unbounded list
@@ -53,6 +65,8 @@ var (
 	ErrUnsupportedScheme = errors.New("a link must be an http:// or https:// URL")
 	// ErrInvalidAccent rejects a brand accent the console cannot render.
 	ErrInvalidAccent = errors.New("brand accent must be one of the accents the console ships")
+	// ErrInvalidAccentPolicy rejects a policy other than default or enforced.
+	ErrInvalidAccentPolicy = errors.New("accent policy must be one of: default, enforced")
 )
 
 // Link is one entry in the sign-in page footer.
@@ -64,11 +78,17 @@ type Link struct {
 // Branding is the operator's identity. Empty fields mean "use Miabi's own", so a
 // Community install and an Enterprise one that has set nothing look identical.
 type Branding struct {
-	Name    string        `json:"name,omitempty"`
-	LogoURL string        `json:"logo_url,omitempty"`
-	Accent  models.Accent `json:"accent,omitempty"`
-	Links   []Link        `json:"links,omitempty"`
+	Name    string `json:"name,omitempty"`
+	LogoURL string `json:"logo_url,omitempty"`
+	// LogoDarkURL is for dark grounds: the console sidebar and the dark sign-in page.
+	LogoDarkURL  string        `json:"logo_dark_url,omitempty"`
+	Accent       models.Accent `json:"accent,omitempty"`
+	AccentPolicy AccentPolicy  `json:"accent_policy,omitempty"`
+	Links        []Link        `json:"links,omitempty"`
 }
+
+// AccentEnforced reports whether every account wears the brand accent.
+func (b Branding) AccentEnforced() bool { return b.AccentPolicy == AccentPolicyEnforced }
 
 type Service struct {
 	repo *repositories.SettingRepository
@@ -83,9 +103,11 @@ func (s *Service) Get() Branding {
 	var b Branding
 	b.Name = s.value(KeyName)
 	b.LogoURL = s.value(KeyLogo)
+	b.LogoDarkURL = s.value(KeyLogoDark)
 	if a := models.Accent(s.value(KeyAccent)); models.ValidAccent(a) {
 		b.Accent = a
 	}
+	b.AccentPolicy, _ = ParseAccentPolicy(s.value(KeyAccentPolicy))
 	if raw := s.value(KeyLinks); raw != "" {
 		var links []Link
 		if json.Unmarshal([]byte(raw), &links) == nil {
@@ -110,6 +132,10 @@ func (s *Service) Save(in Branding) error {
 	if in.Accent != "" && !models.ValidAccent(in.Accent) {
 		return ErrInvalidAccent
 	}
+	policy, err := ParseAccentPolicy(string(in.AccentPolicy))
+	if err != nil {
+		return err
+	}
 	links, err := NormalizeLinks(in.Links)
 	if err != nil {
 		return err
@@ -118,17 +144,33 @@ func (s *Service) Save(in Branding) error {
 	if err != nil {
 		return err
 	}
-	if in.LogoURL != "" {
-		if err := checkURL(in.LogoURL); err != nil {
-			return err
+	for _, logo := range []string{in.LogoURL, in.LogoDarkURL} {
+		if logo = strings.TrimSpace(logo); logo != "" {
+			if err := checkURL(logo); err != nil {
+				return err
+			}
 		}
 	}
 	return s.repo.BulkUpsert([]models.Setting{
 		{Key: KeyName, Value: strings.TrimSpace(in.Name), Type: models.SettingTypeString},
 		{Key: KeyLogo, Value: strings.TrimSpace(in.LogoURL), Type: models.SettingTypeString},
+		{Key: KeyLogoDark, Value: strings.TrimSpace(in.LogoDarkURL), Type: models.SettingTypeString},
 		{Key: KeyAccent, Value: string(in.Accent), Type: models.SettingTypeString},
+		{Key: KeyAccentPolicy, Value: string(policy), Type: models.SettingTypeString},
 		{Key: KeyLinks, Value: string(encoded), Type: models.SettingTypeJSON},
 	})
+}
+
+// ParseAccentPolicy reads a stored or submitted policy. Blank is the default, so an
+// install that predates the policy keeps letting accounts choose.
+func ParseAccentPolicy(raw string) (AccentPolicy, error) {
+	switch p := AccentPolicy(strings.ToLower(strings.TrimSpace(raw))); p {
+	case "", AccentPolicyDefault:
+		return AccentPolicyDefault, nil
+	case AccentPolicyEnforced:
+		return p, nil
+	}
+	return AccentPolicyDefault, ErrInvalidAccentPolicy
 }
 
 // NormalizeLinks trims, validates and caps the list. Exported because the same

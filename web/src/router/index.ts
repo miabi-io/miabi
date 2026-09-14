@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useBrandStore } from '@/stores/brand'
 
 const routes = [
   { path: '/login', name: 'login', component: () => import('@/views/auth/Login.vue'), meta: { guest: true, title: 'Sign in' } },
@@ -128,6 +129,7 @@ const routes = [
       { path: 'platform-backup', name: 'admin-platform-backup', component: () => import('@/views/admin/PlatformBackup.vue'), meta: { title: 'Platform Backup', admin: true } },
       { path: 'registry', name: 'admin-registry', component: () => import('@/views/admin/Registry.vue'), meta: { title: 'Container Registry', admin: true } },
       { path: 'settings', name: 'admin-settings', component: () => import('@/views/admin/Settings.vue'), meta: { title: 'Platform Settings', admin: true } },
+      { path: 'branding', name: 'admin-branding', component: () => import('@/views/admin/Branding.vue'), meta: { title: 'Branding', admin: true } },
       { path: 'deployment-config', name: 'admin-deployment-config', component: () => import('@/views/admin/DeploymentConfig.vue'), meta: { title: 'Deployment Config', admin: true } },
     ],
   },
@@ -150,8 +152,7 @@ router.beforeEach((to) => {
   if (to.meta.auth && !auth.isAuthenticated) return { name: 'login' }
   if (to.meta.guest && auth.isAuthenticated) return { name: 'dashboard' }
   if (to.meta.admin && !auth.isAdmin) return { name: 'dashboard' }
-  const title = to.meta.title as string | undefined
-  document.title = title ? `${title} — Miabi` : 'Miabi'
+  useBrandStore().setTitle(to.meta.title as string | undefined)
   return true
 })
 
