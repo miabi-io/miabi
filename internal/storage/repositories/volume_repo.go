@@ -93,6 +93,14 @@ func (r *VolumeRepository) FindByDockerName(dockerName string) (*models.Volume, 
 	return &v, nil
 }
 
+// ExistsByDockerName reports whether any volume row claims this Docker volume name.
+// Housekeeping uses it for volumes created before they carried io.miabi.volume.
+func (r *VolumeRepository) ExistsByDockerName(dockerName string) (bool, error) {
+	var count int64
+	err := r.db.Model(&models.Volume{}).Where("docker_name = ?", dockerName).Count(&count).Error
+	return count > 0, err
+}
+
 // IDByUID resolves a volume's uid to its numeric id.
 func (r *VolumeRepository) IDByUID(uid string) (uint, error) {
 	return idByUID[models.Volume](r.db, uid)

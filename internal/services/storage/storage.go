@@ -293,16 +293,6 @@ func (s *Service) CreateWith(ctx context.Context, workspaceID, serverID uint, na
 	}
 	dockerName := fmt.Sprintf("mb-vol-%d-%s", workspaceID, volName)
 	dockerSpec.Name = dockerName
-	// A host-path volume is a bind, not a Docker volume — nothing to create; its
-	// "mountpoint" is the host path the operator manages, present on every node.
-	mountpoint := hostPath
-	if driver != models.VolumeDriverHost {
-		dv, cerr := dc.CreateVolumeWith(ctx, dockerSpec)
-		if cerr != nil {
-			return nil, cerr
-		}
-		mountpoint = dv.Mountpoint
-	}
 	// Encrypt the backing driver options at rest (they may carry a CIFS password)
 	// and never return them. The volume is immutable, so options are create-only.
 	optsEnc := ""
@@ -315,15 +305,33 @@ func (s *Service) CreateWith(ctx context.Context, workspaceID, serverID uint, na
 	}
 	v := &models.Volume{
 		WorkspaceID: workspaceID, Name: volName, DisplayName: name, ServerID: serverID,
-		DockerName: dockerName, Mountpoint: mountpoint, SizeBytes: sizeBytes,
+		DockerName: dockerName, Mountpoint: hostPath, SizeBytes: sizeBytes,
 		Driver: driver, AccessMode: accessMode, DriverOptsEnc: optsEnc, HostPath: hostPath,
 		// Default provenance + owner; richer callers (marketplace/stack/apply) pass
 		// their own via meta and win over these defaults.
 		Metadata:    models.DefaultManagedBy(meta, models.ManagedByUser),
 		Annotations: annotations,
 	}
+	// The row goes first so the Docker volume can carry its id: labels are fixed at
+	// create, and housekeeping needs that back-reference to find an orphaned volume.
 	if err := s.repo.Create(v); err != nil {
 		return nil, err
+	}
+	// A host-path volume is a bind, not a Docker volume — nothing to create; its
+	// "mountpoint" is the host path the operator manages, present on every node.
+	if driver != models.VolumeDriverHost {
+		dockerSpec.Labels[docker.LabelVolume] = fmt.Sprint(v.ID)
+		dv, cerr := dc.CreateVolumeWith(ctx, dockerSpec)
+		if cerr != nil {
+			_ = s.repo.Delete(v.ID)
+			return nil, cerr
+		}
+		if dv.Mountpoint != "" {
+			v.Mountpoint = dv.Mountpoint
+			if err := s.repo.Update(v); err != nil {
+				return nil, err
+			}
+		}
 	}
 	return v, nil
 }

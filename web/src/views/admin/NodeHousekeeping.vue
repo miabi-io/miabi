@@ -203,7 +203,7 @@ function fmtSize(n?: number): string {
                 <td class="trunc mono" :title="o.name">{{ o.name }}<div v-if="o.image" class="cell-sub">{{ o.image }}</div></td>
                 <td class="cell-sub">{{ o.kind }}</td>
                 <td><span class="badge badge-danger">orphan</span></td>
-                <td class="cell-sub">remove <span class="text-muted" v-if="o.owner_kind">({{ o.owner_kind }} #{{ o.owner_id }} deleted in Miabi)</span></td>
+                <td class="cell-sub">remove <span class="text-muted" v-if="o.owner_kind">({{ o.owner_kind }}{{ o.owner_id ? ' #' + o.owner_id : '' }} deleted in Miabi)</span></td>
               </tr>
               <tr v-for="o in housekeeping.drift.missing" :key="'m-' + o.ref">
                 <td></td>

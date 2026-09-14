@@ -77,6 +77,38 @@ func ownerOf(labels map[string]string) (kind string, id uint, ok bool) {
 	return "", 0, false
 }
 
+// volumeOwner returns the record a managed Docker volume backs: a volume row, or the database instance
+// whose data it holds. App and stack labels are not owners here: neither record owns a volume's data.
+func volumeOwner(labels map[string]string) (kind string, id uint, ok bool) {
+	if isPlatformInfra(labels) {
+		return "", 0, false
+	}
+	if v, present := docker.LabelValue(labels, docker.LabelVolume); present {
+		id, ok = parseID(v)
+		return OwnerVolume, id, ok
+	}
+	if v, present := docker.LabelValue(labels, docker.LabelDatabase); present {
+		id, ok = parseID(v)
+		return OwnerDatabase, id, ok
+	}
+	return "", 0, false
+}
+
+// isMiabiVolumeName reports whether name is the Docker name storage gives a volume,
+// mb-vol-<workspaceID>-<name>. Keep in step with storage.CreateWith.
+func isMiabiVolumeName(name string) bool {
+	rest, ok := strings.CutPrefix(name, "mb-vol-")
+	if !ok {
+		return false
+	}
+	ws, handle, ok := strings.Cut(rest, "-")
+	if !ok || handle == "" {
+		return false
+	}
+	_, ok = parseID(ws)
+	return ok
+}
+
 func parseID(s string) (uint, bool) {
 	n, err := strconv.ParseUint(strings.TrimSpace(s), 10, 64)
 	if err != nil || n == 0 {
