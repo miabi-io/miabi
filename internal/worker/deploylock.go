@@ -23,8 +23,8 @@ type DeployLock interface {
 }
 
 // redisDeployLock is a Redis SET-NX lock with a background refresh: the TTL is short so a crashed
-// worker's lock frees quickly, but it is renewed while held so a long build never loses it. Release
-// is a compare-and-delete, so an expired lock retaken by another worker is never deleted.
+// worker's lock frees quickly, but it is renewed while held so a long build never loses it. Refresh
+// and release both compare the token, so a lock that expired and was retaken is never touched.
 type redisDeployLock struct {
 	rdb *redis.Client
 	ttl time.Duration
@@ -41,6 +41,13 @@ func deployLockKey(appID uint) string { return fmt.Sprintf("miabi:deploylock:app
 var releaseScript = redis.NewScript(`
 if redis.call("get", KEYS[1]) == ARGV[1] then
   return redis.call("del", KEYS[1])
+end
+return 0`)
+
+// refreshScript extends the key's TTL only if it still holds our token.
+var refreshScript = redis.NewScript(`
+if redis.call("get", KEYS[1]) == ARGV[1] then
+  return redis.call("pexpire", KEYS[1], ARGV[2])
 end
 return 0`)
 
@@ -65,8 +72,16 @@ func (l *redisDeployLock) Acquire(ctx context.Context, appID uint) (bool, func()
 			case <-refreshCtx.Done():
 				return
 			case <-t.C:
-				if err := l.rdb.PExpire(refreshCtx, key, l.ttl).Err(); err != nil && refreshCtx.Err() == nil {
-					logger.Warn("deploy lock: refresh failed", "app", appID, "error", err)
+				held, err := refreshScript.Run(refreshCtx, l.rdb, []string{key}, token, l.ttl.Milliseconds()).Int()
+				switch {
+				case err != nil:
+					if refreshCtx.Err() == nil {
+						logger.Warn("deploy lock: refresh failed", "app", appID, "error", err)
+					}
+				case held == 0:
+					// It expired, and another deploy may hold it now; there is nothing left to renew.
+					logger.Warn("deploy lock: lost while the deploy was running", "app", appID)
+					return
 				}
 			}
 		}
