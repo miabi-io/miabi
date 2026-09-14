@@ -315,7 +315,7 @@ func (e *engineClient) ServiceRemove(ctx context.Context, idOrName string) error
 func (e *engineClient) ServiceInspect(ctx context.Context, idOrName string) (ServiceStatus, error) {
 	res, err := e.cli.ServiceInspect(ctx, idOrName, client.ServiceInspectOptions{})
 	if err != nil {
-		return ServiceStatus{}, err
+		return ServiceStatus{}, wrapNotFound(err)
 	}
 	svc := res.Service
 	st := ServiceStatus{ID: svc.ID, Name: svc.Spec.Name}

@@ -319,7 +319,7 @@ type NodeDocker interface {
 	LocalID() uint
 	// ForServiceTask finds the engine holding a swarm service's task container.
 	// A service has no fixed node, and only the node running the task can see it.
-	ForServiceTask(ctx context.Context, serviceName string) (docker.Client, string, error)
+	ForServiceTask(ctx context.Context, clusterID uint, serviceName string) (docker.Client, string, error)
 }
 
 // NodeGuard validates that a node can accept a new placement (exists, not
@@ -757,7 +757,7 @@ func (s *Service) serviceLiveStatus(ctx context.Context, app *models.Application
 	// `docker service stats`), so this only works when the task landed on a node Miabi has a client for; on an
 	// unmanaged swarm member it is silently absent, and the rest of the status still holds.
 	if ls.Running {
-		if dc, cid, cerr := s.clients.ForServiceTask(ctx, node.AppAlias(app)); cerr == nil {
+		if dc, cid, cerr := s.clients.ForServiceTask(ctx, app.ClusterID, node.AppAlias(app)); cerr == nil {
 			if sample, serr := dc.StatsOnce(ctx, cid); serr == nil {
 				ls.Stats = &sample
 			}
@@ -1544,7 +1544,7 @@ func (s *Service) activeContainerID(appID uint) (string, error) {
 // ErrTaskOnUnmanagedNode when a service runs on an agentless node, ErrNoActiveContainer when nothing is running.
 func (s *Service) runtimeContainerID(ctx context.Context, app *models.Application) (string, docker.Client, error) {
 	if app.RuntimeKind == models.RuntimeService {
-		dc, cid, err := s.clients.ForServiceTask(ctx, node.AppAlias(app))
+		dc, cid, err := s.clients.ForServiceTask(ctx, app.ClusterID, node.AppAlias(app))
 		switch {
 		case err == nil:
 			return cid, dc, nil
