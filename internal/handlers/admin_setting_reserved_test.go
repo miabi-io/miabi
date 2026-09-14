@@ -13,6 +13,8 @@ func TestReservedSettingsAreHiddenFromTheGenericList(t *testing.T) {
 		"brand.links",
 		"brand.accent",
 		"brand.logo_url",
+		"brand.logo_dark_url",
+		"brand.accent_policy",
 		"cluster_name",
 	}
 	for _, key := range reserved {

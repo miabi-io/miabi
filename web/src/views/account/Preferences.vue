@@ -157,13 +157,17 @@ async function saveDisplay() {
               class="accent-option"
               :class="{ active: theme.accent === a.code }"
               :aria-pressed="theme.accent === a.code"
+              :disabled="theme.accentLocked"
               @click="theme.setAccent(a.code)"
             >
               <span class="accent-swatch" :style="{ background: a.swatch }"></span>
               <span>{{ a.label }}</span>
             </button>
           </div>
-          <p class="form-hint">
+          <p v-if="theme.accentLocked" class="form-hint">
+            <span class="mdi mdi-lock-outline"></span> Set by your organization for every account.
+          </p>
+          <p v-else class="form-hint">
             Applies immediately and follows your account to other browsers. Status colours
             are unaffected — success, warning and danger keep their own meaning.
           </p>
@@ -217,8 +221,10 @@ async function saveDisplay() {
   background: var(--bg-primary); color: var(--text-primary); cursor: pointer;
   font-size: 13px; text-align: left;
 }
-.accent-option:hover { border-color: var(--border-input); }
+.accent-option:not(:disabled):hover { border-color: var(--border-input); }
 .accent-option.active { border-color: var(--primary-500); box-shadow: var(--shadow-focus); }
+.accent-option:disabled { cursor: default; }
+.accent-option:disabled:not(.active) { opacity: 0.5; }
 .accent-swatch { width: 18px; height: 18px; border-radius: 50%; flex: none; border: 1px solid rgba(0, 0, 0, 0.12); }
 .theme-option {
   display: flex; flex-direction: column; align-items: center; gap: 8px;

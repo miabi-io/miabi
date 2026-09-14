@@ -95,3 +95,19 @@ func TestLinkCap(t *testing.T) {
 		t.Errorf("exactly the cap was refused: %v", err)
 	}
 }
+
+// Blank is how every install that predates the policy reads, and it must keep
+// letting accounts choose.
+func TestParseAccentPolicy(t *testing.T) {
+	for raw, want := range map[string]AccentPolicy{
+		"": AccentPolicyDefault, "default": AccentPolicyDefault,
+		"enforced": AccentPolicyEnforced, " Enforced ": AccentPolicyEnforced,
+	} {
+		if got, err := ParseAccentPolicy(raw); err != nil || got != want {
+			t.Errorf("ParseAccentPolicy(%q) = %q, %v; want %q", raw, got, err, want)
+		}
+	}
+	if got, err := ParseAccentPolicy("locked"); !errors.Is(err, ErrInvalidAccentPolicy) || got != AccentPolicyDefault {
+		t.Errorf("ParseAccentPolicy(%q) = %q, %v; want the default and ErrInvalidAccentPolicy", "locked", got, err)
+	}
+}

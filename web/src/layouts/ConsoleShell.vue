@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
+import { useBrandStore } from '@/stores/brand'
 import { useWorkspaceStore } from '@/stores/workspace'
 import NotificationBell from '@/components/NotificationBell.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
@@ -10,7 +11,6 @@ import ContextSwitcher from '@/components/ContextSwitcher.vue'
 import MiabiWordmark from '@/components/MiabiWordmark.vue'
 import { type NavItem, type NavSection } from '@/data/nav'
 import { infoApi } from '@/api/info'
-import { authApi } from '@/api/auth'
 import { ADMIN_HOME } from '@/data/console'
 
 // The frame both consoles share. What differs is the navigation it is handed and
@@ -115,8 +115,7 @@ function closeMenus(e: MouseEvent) {
   if (userMenuOpen.value && !target.closest?.('.user-menu')) userMenuOpen.value = false
 }
 
-// Empty unless an Enterprise operator set one; status only exposes it under the license.
-const brandName = ref('')
+const brand = useBrandStore()
 
 const paletteOpen = ref(false)
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
@@ -132,9 +131,10 @@ function onPaletteShortcut(event: KeyboardEvent) {
 onMounted(() => {
   document.addEventListener('click', closeMenus)
   document.addEventListener('keydown', onPaletteShortcut)
-  theme.adopt(auth.user?.preferences?.theme, auth.user?.preferences?.accent)
+  const prefs = auth.user?.preferences
+  theme.adopt(prefs?.theme, prefs?.accent, prefs?.accent_locked)
   infoApi.get().then((res) => { docsEnabled.value = res.data.data.openapi_docs }).catch(() => { })
-  authApi.status().then((res) => { brandName.value = res.data.data?.brand?.name?.trim() ?? '' }).catch(() => { })
+  brand.load()
 })
 onBeforeUnmount(() => {
   document.removeEventListener('click', closeMenus)
@@ -147,9 +147,9 @@ onBeforeUnmount(() => {
     <!-- Desktop sidebar -->
     <aside class="sidebar">
       <div class="sidebar-header">
-        <img src="/brand/miabi-mark-white.svg" alt="Miabi" class="sidebar-logo" @click="navigate(props.home)" />
+        <img :src="brand.sidebarLogo || '/brand/miabi-mark-white.svg'" :alt="brand.name || 'Miabi'" class="sidebar-logo" @click="navigate(props.home)" />
         <span class="sidebar-brand-text" @click="navigate(props.home)">
-          <span v-if="brandName" class="sidebar-brand-name">{{ brandName }}</span>
+          <span v-if="brand.name" class="sidebar-brand-name">{{ brand.name }}</span>
           <MiabiWordmark v-else />
         </span>
         <button class="sidebar-collapse-btn" :title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
@@ -299,9 +299,9 @@ onBeforeUnmount(() => {
     <Transition name="sidebar-slide">
       <aside v-if="mobileOpen" class="sidebar sidebar-mobile">
         <div class="sidebar-header">
-          <img src="/brand/miabi-mark-white.svg" alt="Miabi" class="sidebar-logo" />
+          <img :src="brand.sidebarLogo || '/brand/miabi-mark-white.svg'" :alt="brand.name || 'Miabi'" class="sidebar-logo" />
           <span class="sidebar-brand-text">
-            <span v-if="brandName" class="sidebar-brand-name">{{ brandName }}</span>
+            <span v-if="brand.name" class="sidebar-brand-name">{{ brand.name }}</span>
             <MiabiWordmark v-else />
           </span>
           <button class="sidebar-collapse-btn" aria-label="Close" @click="mobileOpen = false">
@@ -390,6 +390,7 @@ onBeforeUnmount(() => {
 .sidebar-logo {
   width: 28px;
   height: 28px;
+  object-fit: contain;
   flex-shrink: 0;
   cursor: pointer;
 }

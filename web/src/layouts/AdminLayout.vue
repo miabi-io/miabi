@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { useLicenseStore } from '@/stores/license'
+import { useBrandStore } from '@/stores/brand'
 import AnnouncementBanner from '@/components/AnnouncementBanner.vue'
 import ConsoleShell from './ConsoleShell.vue'
 import { adminNavSections } from '@/data/adminNav'
@@ -21,6 +22,7 @@ const auth = useAuthStore()
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
 const license = useLicenseStore()
+const brand = useBrandStore()
 
 // License banner: admins see a warning when the license is in grace, expired,
 // nearing expiry, or over the node limit. Driven by the cached entitlements.
@@ -71,8 +73,8 @@ async function dismissUpdate() {
 // A background tab should say which console it is, so an admin returning to a
 // window does not act on the wrong one.
 function applyTitlePrefix() {
-  const base = (route.meta.title as string | undefined) ?? 'Miabi'
-  document.title = `Admin · ${base} — Miabi`
+  const base = route.meta.title as string | undefined
+  brand.setTitle(base ? `Admin · ${base}` : 'Admin')
 }
 watch(() => route.fullPath, applyTitlePrefix)
 
@@ -87,8 +89,7 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => {
   // Leaving the console hands the title back to the router's own handling.
-  const base = (route.meta.title as string | undefined) ?? 'Miabi'
-  document.title = `${base} — Miabi`
+  brand.setTitle(route.meta.title as string | undefined)
 })
 </script>
 

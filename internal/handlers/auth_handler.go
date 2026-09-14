@@ -640,6 +640,9 @@ func (h *AuthHandler) UpdatePreferences(c *okapi.Context, req *UpdatePreferences
 		Accent: req.Body.Accent, Locale: req.Body.Locale, LandingView: req.Body.LandingView,
 	})
 	if err != nil {
+		if errors.Is(err, usersettings.ErrAccentLocked) {
+			return c.AbortForbidden(err.Error())
+		}
 		if errors.Is(err, usersettings.ErrInvalidTheme) || errors.Is(err, usersettings.ErrInvalidAccent) ||
 			errors.Is(err, usersettings.ErrInvalidLocale) || errors.Is(err, usersettings.ErrInvalidLandingView) {
 			return c.AbortBadRequest(err.Error())

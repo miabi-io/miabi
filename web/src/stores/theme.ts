@@ -50,6 +50,9 @@ export const useThemeStore = defineStore('theme', () => {
     storedAccent && ACCENTS.some((a) => a.code === storedAccent) ? storedAccent : 'default',
   )
   let accentUnsynced = false
+  // Set when the operator enforces the brand accent: the account's accent is theirs,
+  // so there is nothing to pick, reconcile or save.
+  const accentLocked = ref(false)
 
   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
 
@@ -75,6 +78,7 @@ export const useThemeStore = defineStore('theme', () => {
   }
 
   function setAccent(a: AccentCode) {
+    if (accentLocked.value) return
     if (!persist) accentUnsynced = true
     accent.value = a
   }
@@ -123,7 +127,11 @@ export const useThemeStore = defineStore('theme', () => {
   // adopt reconciles this device's theme with the one stored against the account,
   // so a preference follows the user to a new browser. Called once the profile is
   // known.
-  function adopt(serverMode: ThemeMode | undefined, serverAccent?: AccentCode) {
+  function adopt(serverMode: ThemeMode | undefined, serverAccent?: AccentCode, serverAccentLocked = false) {
+    // adopt runs again on every console mount and after a branding change. Taking the
+    // account's values must not echo them back: a resolved accent saved as a choice
+    // would stop following the brand.
+    persist = false
     const action = themeAdoptAction(mode.value, serverMode, unsynced)
     if (action.kind === 'take') {
       unsynced = false
@@ -131,18 +139,24 @@ export const useThemeStore = defineStore('theme', () => {
     } else if (action.kind === 'push') {
       save(action.mode)
     }
-    // The same rule, on the same shape of problem — an accent chosen before the
-    // profile loaded is still the user's most recent intent.
-    const accentAction = themeAdoptAction(
-      accent.value as ThemeMode,
-      serverAccent as ThemeMode | undefined,
-      accentUnsynced,
-    )
-    if (accentAction.kind === 'take') {
+    accentLocked.value = serverAccentLocked
+    if (serverAccentLocked && serverAccent) {
       accentUnsynced = false
-      accent.value = accentAction.mode as AccentCode
-    } else if (accentAction.kind === 'push') {
-      saveAccent(accentAction.mode as AccentCode)
+      accent.value = serverAccent
+    } else {
+      // The same rule, on the same shape of problem — an accent chosen before the
+      // profile loaded is still the user's most recent intent.
+      const accentAction = themeAdoptAction(
+        accent.value as ThemeMode,
+        serverAccent as ThemeMode | undefined,
+        accentUnsynced,
+      )
+      if (accentAction.kind === 'take') {
+        accentUnsynced = false
+        accent.value = accentAction.mode as AccentCode
+      } else if (accentAction.kind === 'push') {
+        saveAccent(accentAction.mode as AccentCode)
+      }
     }
     // A sign-in screen may have swapped in the brand accent, and the watcher only
     // fires when the value changes.
@@ -170,5 +184,5 @@ export const useThemeStore = defineStore('theme', () => {
     if (persist) saveAccent(val)
   }, { immediate: true, flush: 'sync' })
 
-  return { mode, isDark, toggle, setMode, accent, setAccent, applyBrandAccent, adopt }
+  return { mode, isDark, toggle, setMode, accent, accentLocked, setAccent, applyBrandAccent, adopt }
 })

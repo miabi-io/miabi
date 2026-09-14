@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
+import { useBrandStore } from '@/stores/brand'
 import type { Brand } from '@/api/types'
 import AuthHero from './AuthHero.vue'
 import { apiErrorMessage } from '@/api/client'
@@ -12,6 +13,7 @@ import type { PublicProvider } from '@/api/types'
 
 const auth = useAuthStore()
 const theme = useThemeStore()
+const brandStore = useBrandStore()
 const router = useRouter()
 const route = useRoute()
 
@@ -63,7 +65,7 @@ const brand = ref<Brand>({})
 // Empty fields fall back to Miabi's own identity, so Community and an Enterprise
 // install that has set nothing look identical.
 const brandName = computed(() => brand.value.name?.trim() || 'Miabi')
-const brandLogo = computed(() => brand.value.logo_url?.trim() || '/brand/miabi-mark.svg')
+const brandLogo = computed(() => (theme.isDark && brand.value.logo_dark_url?.trim()) || brand.value.logo_url?.trim() || '/brand/miabi-mark.svg')
 const brandLinks = computed(() => brand.value.links ?? [])
 
 // Friendly messages for error codes handed back by the OAuth callback redirect.
@@ -98,6 +100,7 @@ onMounted(async () => {
     passwordResetEnabled.value = data.data?.password_reset_enabled ?? false
     registrationEnabled.value = data.data?.registration_enabled ?? false
     brand.value = data.data?.brand ?? {}
+    brandStore.set(brand.value)
   } catch {
     // Best-effort: leave the reset link hidden if status can't be read.
   }
