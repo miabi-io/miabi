@@ -49,6 +49,7 @@ type Manager struct {
 	sched    *repositories.BackupRepository
 	sets     *repositories.DatabaseBackupSetRepository
 	settings *backupsettings.Service
+	leader   Leader
 
 	mu      sync.Mutex
 	entries map[string]cron.EntryID
@@ -75,6 +76,15 @@ func NewManager(backups *backup.Service, dbs *repositories.DatabaseRepository, s
 	}
 	return m
 }
+
+// Leader reports whether this process leads the control plane. Satisfied by *leader.Elector.
+type Leader interface {
+	Leading() bool
+}
+
+// SetLeader runs tasks only while l leads, so two control-plane processes never run the same job
+// twice. Tasks registered with RegisterLocalTask run regardless. Without a leader every task runs.
+func (m *Manager) SetLeader(l Leader) { m.leader = l }
 
 // Snapshot returns the current status of every registered task.
 func (m *Manager) Snapshot() []JobStatus {
@@ -105,9 +115,19 @@ func (m *Manager) Snapshot() []JobStatus {
 // RegisterTask adds (or replaces) a task in the running cron, keyed by kind:id.
 // fn runs on each tick; its error is surfaced in the snapshot's LastError.
 func (m *Manager) RegisterTask(kind string, id uint, name, schedule string, fn func() error) error {
+	return m.register(kind, id, name, schedule, false, fn)
+}
+
+// RegisterLocalTask is RegisterTask for a task that only touches this process's own state, such as
+// the agent tunnels it holds, so it runs whether or not the process leads.
+func (m *Manager) RegisterLocalTask(kind string, id uint, name, schedule string, fn func() error) error {
+	return m.register(kind, id, name, schedule, true, fn)
+}
+
+func (m *Manager) register(kind string, id uint, name, schedule string, local bool, fn func() error) error {
 	key := taskKey(kind, id)
 	m.UnregisterTask(kind, id)
-	entryID, err := m.c.AddFunc(schedule, func() { m.run(key, fn) })
+	entryID, err := m.c.AddFunc(schedule, func() { m.run(key, local, fn) })
 	if err != nil {
 		return err
 	}
@@ -139,7 +159,10 @@ func ValidateSpec(spec string) error {
 	return err
 }
 
-func (m *Manager) run(key string, fn func() error) {
+func (m *Manager) run(key string, local bool, fn func() error) {
+	if !local && m.leader != nil && !m.leader.Leading() {
+		return
+	}
 	m.setRunning(key, true)
 	err := fn()
 	if err != nil {

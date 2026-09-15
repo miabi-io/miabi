@@ -81,6 +81,11 @@ type Store interface {
 	AssignServer(serverID, clusterID uint) error
 }
 
+// Leader reports whether this process leads the control plane. Satisfied by *leader.Elector.
+type Leader interface {
+	Leading() bool
+}
+
 // swarmState is one cluster's swarm as its manager reported it at the last refresh.
 type swarmState struct {
 	info  docker.SwarmInfo
@@ -97,6 +102,7 @@ type Service struct {
 	nodes   Nodes
 	store   Store
 	alloc   *netalloc.Service
+	leader  Leader
 
 	mu               sync.RWMutex
 	states           map[uint]swarmState // by cluster id; the default cluster is kept under 0
@@ -138,6 +144,11 @@ func NewService(clients NodeDocker, nodes Nodes) *Service {
 
 // SetStore wires the cluster rows (nil-safe; nil leaves only the default cluster, unnamed).
 func (s *Service) SetStore(st Store) { s.store = st }
+
+// SetLeader makes Refresh only read swarm state while l does not lead: persisting what it observed
+// and re-asserting memberships, pool labels and gateway attachments is left to the leading process.
+// Without a leader every refresh writes.
+func (s *Service) SetLeader(l Leader) { s.leader = l }
 
 // SetNetworkMigrator wires the default cluster's workspace-network conversion: `migrate` (bridge -> overlay)
 // runs on Enable, `rollback` on Disable, and `pending` counts the networks still on bridges. Nil-safe.
@@ -372,6 +383,10 @@ func (s *Service) Refresh(ctx context.Context) {
 	s.refreshedAt = time.Now()
 	ingress := s.ingressReconciler
 	s.mu.Unlock()
+	if s.leader != nil && !s.leader.Leading() {
+		return
+	}
+	s.recordEngineVersions(states)
 	s.syncDefaultMode(info)
 	s.reconcileMembership(ctx, states)
 	for id, st := range states {
@@ -407,14 +422,23 @@ func (s *Service) readSwarm(ctx context.Context, mgr docker.Client, info docker.
 	}
 	for _, n := range list {
 		st.nodes[n.ID] = n
-		// From the manager's view, so a daemon too old for the SDK is flagged even without a client for it.
-		if n.EngineVersion != "" {
-			if serr := s.nodes.SetEngineVersion(n.ID, n.EngineVersion); serr != nil {
-				logger.Warn("failed to persist node engine version", "swarm_node_id", n.ID, "error", serr)
+	}
+	return st
+}
+
+// recordEngineVersions persists each member's engine version from its manager's view, so a daemon too old
+// for the SDK is flagged even without a client for it.
+func (s *Service) recordEngineVersions(states map[uint]swarmState) {
+	for _, st := range states {
+		for _, n := range st.nodes {
+			if n.EngineVersion == "" {
+				continue
+			}
+			if err := s.nodes.SetEngineVersion(n.ID, n.EngineVersion); err != nil {
+				logger.Warn("failed to persist node engine version", "swarm_node_id", n.ID, "error", err)
 			}
 		}
 	}
-	return st
 }
 
 func (s *Service) refreshRemote(ctx context.Context) map[uint]swarmState {

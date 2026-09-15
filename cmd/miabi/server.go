@@ -16,6 +16,7 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/enterprise"
 	"github.com/miabi-io/miabi/internal/enterprise/license"
+	"github.com/miabi-io/miabi/internal/leader"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/netguard"
 	"github.com/miabi-io/miabi/internal/nodes"
@@ -74,6 +75,7 @@ type serverResources struct {
 	forward      *portforward.Service
 	stopScraper  context.CancelFunc
 	cancelEvents context.CancelFunc
+	stopLeader   func()
 	// stopAnalytics stops the analytics consumer and waits for its final flush.
 	stopAnalytics func()
 	// entitlements is the license/edition snapshot captured at startup for the OnStarted log.
@@ -116,6 +118,11 @@ func runServer(cli *okapicli.CLI) {
 				logger.Fatal("failed to run upgrade steps", "error", err)
 			}
 
+			// Scheduled jobs, periodic scans and cluster reconciliation run in one process only: a second
+			// control plane started against the same Redis stands by instead of doubling them.
+			elector := leader.New(res.redis, "control-plane")
+			res.stopLeader = elector.Start(context.Background())
+
 			res.producer = worker.NewProducer(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB, cfg.WorkerMaxRetries)
 
 			dockerClient, err := docker.New()
@@ -150,6 +157,7 @@ func runServer(cli *okapicli.CLI) {
 			nodeService.SetClusters(clusterRepo)
 			clusterService := cluster.NewService(nodeClients, nodeService)
 			clusterService.SetStore(clusterRepo)
+			clusterService.SetLeader(elector)
 			nodeClients.SetSwarmManagers(clusterService.Manager)
 			clusterService.Refresh(context.Background())
 
@@ -493,7 +501,7 @@ func runServer(cli *okapicli.CLI) {
 
 			// Periodic, self-contained checks (TLS cert expiry/issuance) that aren't event-driven.
 			// Fires and auto-resolves as certs renew.
-			go alertEngine.ScanLoop(eventCtx)
+			go elector.While(eventCtx, alertEngine.ScanLoop)
 
 			// Roll up Goma's per-request events into minute buckets. A standalone worker joins the
 			// same consumer group, so events are rolled up exactly once.
@@ -519,6 +527,7 @@ func runServer(cli *okapicli.CLI) {
 			// the only place their outcomes become visible.
 			backupService.SetEventRecorder(eventsSvc)
 			res.cron = cronpkg.NewManager(backupService, dbRepo, backupRepo, repositories.NewDatabaseBackupSetRepository(res.db), backupsettings.NewService(repositories.NewWorkspaceBackupSettingsRepository(res.db)))
+			res.cron.SetLeader(elector)
 			res.cron.Start()
 
 			if logStore.Enabled() {
@@ -532,8 +541,9 @@ func runServer(cli *okapicli.CLI) {
 			}
 
 			// Actively probe each connected node's tunnel and tear down any that stopped responding,
-			// so a node that dropped ungracefully stops showing online.
-			_ = res.cron.RegisterTask("node-health", 0, "Node health sweep", "@every 1m", func() error {
+			// so a node that dropped ungracefully stops showing online. Tunnels belong to the process their
+			// agent dialled, so every process sweeps its own.
+			_ = res.cron.RegisterLocalTask("node-health", 0, "Node health sweep", "@every 1m", func() error {
 				nodeManager.ReconcileHealth(context.Background())
 				return nil
 			})
@@ -584,9 +594,11 @@ func runServer(cli *okapicli.CLI) {
 					repositories.NewMetricRepository(res.db),
 					nodeClients,
 				)
-				go mon.StartScraper(scrapeCtx,
-					time.Duration(cfg.MetricsScrapeSeconds)*time.Second,
-					time.Duration(cfg.MetricsRetentionHours)*time.Hour)
+				go elector.While(scrapeCtx, func(ctx context.Context) {
+					mon.StartScraper(ctx,
+						time.Duration(cfg.MetricsScrapeSeconds)*time.Second,
+						time.Duration(cfg.MetricsRetentionHours)*time.Hour)
+				})
 			}
 		},
 		OnStarted: func() {
@@ -654,6 +666,10 @@ func shutdownServer(res *serverResources) {
 	}
 	if res.cron != nil {
 		res.cron.Stop()
+	}
+	// Released as soon as the singleton work is stopped, so a standby needn't wait out the lease.
+	if res.stopLeader != nil {
+		res.stopLeader()
 	}
 	if res.forward != nil {
 		res.forward.Shutdown()

@@ -53,9 +53,25 @@ var (
 	})
 )
 
+// Control-plane leadership, so a second control plane started by mistake shows as a standby
+// rather than a process that silently runs no scheduled jobs.
+var leaderHeld = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	Name: "miabi_leader",
+	Help: "1 while this process holds the named leader lease, 0 while it stands by.",
+}, []string{"lease"})
+
 func init() {
 	prometheus.MustRegister(buildInfo, subnetPoolUsed, subnetPoolTotal, gpuDevicesTotal, gpuDevicesEnabled, gpuAllocated,
-		analyticsIngested, analyticsRejected)
+		analyticsIngested, analyticsRejected, leaderHeld)
+}
+
+// SetLeader records whether this process holds the named leader lease.
+func SetLeader(lease string, held bool) {
+	v := 0.0
+	if held {
+		v = 1
+	}
+	leaderHeld.WithLabelValues(lease).Set(v)
 }
 
 // SetBuildInfo records the running build's version and commit.
