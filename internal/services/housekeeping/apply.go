@@ -5,6 +5,7 @@ package housekeeping
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/miabi-io/miabi/internal/docker"
 )
@@ -27,8 +28,8 @@ type ReclaimSelection struct {
 
 // ResourceRef identifies a drift item to act on.
 type ResourceRef struct {
-	Kind string `json:"kind"` // container | volume
-	Ref  string `json:"ref"`  // container ID or volume name
+	Kind string `json:"kind"` // container | volume | config
+	Ref  string `json:"ref"`  // container ID, volume name or config ID
 }
 
 // Plan is the dry-run preview of a Selection: exactly what would be reclaimed
@@ -133,8 +134,12 @@ func (s *Service) removeOrphan(ctx context.Context, dc docker.Client, item Drift
 		return dc.RemoveContainer(ctx, item.Ref, true)
 	case "volume":
 		return dc.RemoveVolume(ctx, item.Ref, true)
+	case "config":
+		// Docker refuses to remove a config a service still references, so a stale
+		// classification cannot pull one out from under a running task.
+		return dc.RemoveConfig(ctx, item.Ref)
 	default:
-		return nil
+		return fmt.Errorf("unsupported orphan kind %q", item.Kind)
 	}
 }
 

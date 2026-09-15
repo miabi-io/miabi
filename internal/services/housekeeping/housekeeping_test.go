@@ -395,3 +395,49 @@ func TestAnalyzeDrift_ServiceAppsNeedTheirSwarm(t *testing.T) {
 		t.Fatalf("want no missing apps without a swarm lookup, got %+v", drift.Missing)
 	}
 }
+
+// configDocker adds swarm config removal to fakeDocker.
+type configDocker struct {
+	*fakeDocker
+	removedConfigs []string
+}
+
+func (c *configDocker) RemoveConfig(_ context.Context, id string) error {
+	c.removedConfigs = append(c.removedConfigs, id)
+	return nil
+}
+
+// fakeConfigs holds the config rows that exist, keyed "<workspace id>/<name>".
+type fakeConfigs map[string]bool
+
+func (f fakeConfigs) GetByName(workspaceID uint, name string) (*models.Config, error) {
+	if f[itoa(workspaceID)+"/"+name] {
+		return &models.Config{}, nil
+	}
+	return nil, docker.ErrNotFound
+}
+
+// Regression: config orphans were reported and audited as removed, but removeOrphan skipped the
+// kind, so nothing was ever deleted.
+func TestApply_RemovesConfigOrphans(t *testing.T) {
+	dc := &configDocker{fakeDocker: &fakeDocker{configs: []docker.ConfigInfo{
+		{ID: "cfg-ghost", Name: "mb-cfg-ghost", Workspace: "3", Config: "ghost"},
+		{ID: "cfg-live", Name: "mb-cfg-nginx", Workspace: "3", Config: "nginx"},
+	}}}
+	s := newTestService(dc, nil, existsSet())
+	s.configs = fakeConfigs{"3/nginx": true}
+
+	res, err := s.Apply(context.Background(), 1, Selection{Orphans: []ResourceRef{
+		{Kind: "config", Ref: "cfg-ghost"},
+		{Kind: "config", Ref: "cfg-live"}, // its config row still exists: must be refused
+	}})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if len(dc.removedConfigs) != 1 || dc.removedConfigs[0] != "cfg-ghost" {
+		t.Fatalf("only the orphaned config may be removed, removed: %v", dc.removedConfigs)
+	}
+	if len(res.OrphansRemoved) != 1 || res.OrphansRemoved[0].Ref != "cfg-ghost" {
+		t.Fatalf("result must report exactly what was removed, got %+v", res.OrphansRemoved)
+	}
+}

@@ -719,11 +719,15 @@ func (s *Service) MarkGatewayDeployed(id uint) {
 
 // AdoptGateway tracks a pre-existing gateway container as this node's gateway. It records the container name
 // and image, optionally copies the gateway's existing config into the node's stored config, switches the
-// node to edge-gateway connectivity, and stamps the deploy time — without recreating anything.
+// node to edge-gateway connectivity, and stamps the deploy time — without recreating anything. A node that
+// cannot run its own gateway is refused, as it would be when changing its connectivity directly.
 func (s *Service) AdoptGateway(id uint, container, image, configYAML string) (*models.Server, error) {
 	srv, err := s.repo.FindByID(id)
 	if err != nil {
 		return nil, ErrNodeNotFound
+	}
+	if err := s.checkConnectivity(srv, models.ConnectivityEdgeGateway); err != nil {
+		return nil, err
 	}
 	srv.Connectivity = models.ConnectivityEdgeGateway
 	srv.GatewayContainer = strings.TrimSpace(container)
@@ -742,8 +746,8 @@ func (s *Service) AdoptGateway(id uint, container, image, configYAML string) (*m
 	return srv, nil
 }
 
-// ReleaseGateway stops tracking an imported gateway without touching the
-// container (the inverse of AdoptGateway).
+// ReleaseGateway stops tracking an imported gateway without touching the container. The image and config
+// the import copied stay as the node's gateway settings for a later install, and connectivity is unchanged.
 func (s *Service) ReleaseGateway(id uint) (*models.Server, error) {
 	srv, err := s.repo.FindByID(id)
 	if err != nil {

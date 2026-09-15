@@ -884,7 +884,7 @@ func (h *NodeHandler) GatewayImport(c *okapi.Context, req *ImportGatewayRequest)
 		configYAML = string(data)
 	}
 	if _, err := h.nodes.AdoptGateway(id, name, cfg.Image, configYAML); err != nil {
-		return c.AbortInternalServerError("failed to adopt gateway", err)
+		return h.mapErr(c, err)
 	}
 	h.record(c, "node.gateway_import", id)
 	return h.GatewayState(c)
