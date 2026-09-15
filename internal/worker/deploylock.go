@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jkaninda/logger"
+	"github.com/miabi-io/miabi/internal/leader"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -22,9 +23,8 @@ type DeployLock interface {
 	Acquire(ctx context.Context, appID uint) (ok bool, release func(), err error)
 }
 
-// redisDeployLock is a Redis SET-NX lock with a background refresh: the TTL is short so a crashed
-// worker's lock frees quickly, but it is renewed while held so a long build never loses it. Refresh
-// and release both compare the token, so a lock that expired and was retaken is never touched.
+// redisDeployLock is a per-app leader.Lease with a background refresh: the TTL is short so a crashed
+// worker's lock frees quickly, but it is renewed while held so a long build never loses it.
 type redisDeployLock struct {
 	rdb *redis.Client
 	ttl time.Duration
@@ -37,32 +37,12 @@ func NewRedisDeployLock(rdb *redis.Client) DeployLock {
 
 func deployLockKey(appID uint) string { return fmt.Sprintf("miabi:deploylock:app:%d", appID) }
 
-// releaseScript deletes the key only if it still holds our token.
-var releaseScript = redis.NewScript(`
-if redis.call("get", KEYS[1]) == ARGV[1] then
-  return redis.call("del", KEYS[1])
-end
-return 0`)
-
-// refreshScript extends the key's TTL only if it still holds our token.
-var refreshScript = redis.NewScript(`
-if redis.call("get", KEYS[1]) == ARGV[1] then
-  return redis.call("pexpire", KEYS[1], ARGV[2])
-end
-return 0`)
-
 func (l *redisDeployLock) Acquire(ctx context.Context, appID uint) (bool, func(), error) {
-	key := deployLockKey(appID)
-	// Unique per acquisition so release only ever deletes our own lock.
-	token := fmt.Sprintf("%d-%d", appID, time.Now().UnixNano())
-	ok, err := l.rdb.SetNX(ctx, key, token, l.ttl).Result()
-	if err != nil {
+	lease := leader.NewLease(l.rdb, deployLockKey(appID), l.ttl)
+	ok, err := lease.Acquire(ctx)
+	if err != nil || !ok {
 		return false, nil, err
 	}
-	if !ok {
-		return false, nil, nil
-	}
-	// Refresh the TTL at a third of its length while the deploy runs.
 	refreshCtx, stop := context.WithCancel(context.Background())
 	go func() {
 		t := time.NewTicker(l.ttl / 3)
@@ -72,13 +52,13 @@ func (l *redisDeployLock) Acquire(ctx context.Context, appID uint) (bool, func()
 			case <-refreshCtx.Done():
 				return
 			case <-t.C:
-				held, err := refreshScript.Run(refreshCtx, l.rdb, []string{key}, token, l.ttl.Milliseconds()).Int()
+				held, err := lease.Refresh(refreshCtx)
 				switch {
 				case err != nil:
 					if refreshCtx.Err() == nil {
 						logger.Warn("deploy lock: refresh failed", "app", appID, "error", err)
 					}
-				case held == 0:
+				case !held:
 					// It expired, and another deploy may hold it now; there is nothing left to renew.
 					logger.Warn("deploy lock: lost while the deploy was running", "app", appID)
 					return
@@ -88,7 +68,7 @@ func (l *redisDeployLock) Acquire(ctx context.Context, appID uint) (bool, func()
 	}()
 	release := func() {
 		stop()
-		if err := releaseScript.Run(context.Background(), l.rdb, []string{key}, token).Err(); err != nil {
+		if err := lease.Release(context.Background()); err != nil {
 			logger.Warn("deploy lock: release failed", "app", appID, "error", err)
 		}
 	}

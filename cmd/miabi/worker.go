@@ -12,6 +12,7 @@ import (
 	"github.com/miabi-io/miabi/internal/config"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/enterprise"
+	"github.com/miabi-io/miabi/internal/leader"
 	"github.com/miabi-io/miabi/internal/netguard"
 	"github.com/miabi-io/miabi/internal/nodes"
 	"github.com/miabi-io/miabi/internal/proxy"
@@ -223,6 +224,9 @@ func runWorker() error {
 
 	clusterService := cluster.NewService(nodeClients, node.NewService(repositories.NewServerRepository(db), dockerClient))
 	clusterService.SetStore(repositories.NewClusterRepository(db))
+	// The worker holds no agent tunnels, so its view of remote clusters is partial: it refreshes swarm state
+	// for its own deploys and leaves writing it to the control plane.
+	clusterService.SetLeader(leader.Never)
 	nodeClients.SetSwarmManagers(clusterService.Manager)
 	clusterService.SetAllocator(subnetAllocator)
 	dbService.SetSwarmNetworks(clusterService)
