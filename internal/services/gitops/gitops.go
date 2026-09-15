@@ -469,12 +469,17 @@ func (s *Service) auth(src *models.GitSource) (transport.AuthMethod, string, err
 // VerifyWebhook checks an inbound push webhook's HMAC-SHA256 signature against
 // the source's secret (GitHub's X-Hub-Signature-256 scheme). A bare secret
 // match (GitLab's X-Gitlab-Token) is also accepted.
+//
+// A source with no stored secret verifies nothing: HMAC over an empty key is
+// reproducible by anyone holding the body, so an empty secret would let this
+// unauthenticated route accept forged pushes. Both comparisons are
+// constant-time — the bare-token path compares the secret itself.
 func (s *Service) VerifyWebhook(src *models.GitSource, signature string, body []byte) bool {
 	signature = strings.TrimSpace(signature)
-	if signature == "" {
+	if signature == "" || src.WebhookSecret == "" {
 		return false
 	}
-	if signature == src.WebhookSecret { // GitLab token style
+	if hmac.Equal([]byte(signature), []byte(src.WebhookSecret)) { // GitLab token style
 		return true
 	}
 	mac := hmac.New(sha256.New, []byte(src.WebhookSecret))
