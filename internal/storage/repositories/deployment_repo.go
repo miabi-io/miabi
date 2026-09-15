@@ -54,6 +54,16 @@ func (r *DeploymentRepository) LatestNumberByApp(appID uint) (int, error) {
 	return n, err
 }
 
+// InProgressAppIDs returns the apps with a deployment still pending, building or deploying. A canary rollout is
+// not in progress in this sense: the stable release keeps running for as long as it lasts.
+func (r *DeploymentRepository) InProgressAppIDs() ([]uint, error) {
+	var ids []uint
+	err := r.db.Model(&models.Deployment{}).
+		Where("status IN ?", []models.DeploymentStatus{models.DeploymentPending, models.DeploymentBuilding, models.DeploymentDeploying}).
+		Distinct().Pluck("application_id", &ids).Error
+	return ids, err
+}
+
 // AppendLog appends a line to the deployment's stored log tail.
 func (r *DeploymentRepository) AppendLog(id uint, line string) error {
 	return r.db.Model(&models.Deployment{}).Where("id = ?", id).

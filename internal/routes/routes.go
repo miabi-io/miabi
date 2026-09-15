@@ -41,6 +41,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/certificate"
 	"github.com/miabi-io/miabi/internal/services/cluster"
 	configsvc "github.com/miabi-io/miabi/internal/services/config"
+	"github.com/miabi-io/miabi/internal/services/controlmanager"
 	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/services/customrole"
 	"github.com/miabi-io/miabi/internal/services/database"
@@ -188,6 +189,7 @@ type routerHandlers struct {
 	adminPlan           *handlers.PlanHandler
 	deploymentCfg       *handlers.DeploymentConfigHandler
 	adminJob            *handlers.AdminJobHandler
+	adminControlManager *handlers.AdminControlManagerHandler
 	adminPlatformBackup *handlers.AdminPlatformBackupHandler
 	adminRecovery       *handlers.AdminRecoveryHandler
 	adminRegistry       *handlers.AdminRegistryHandler
@@ -241,6 +243,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	settingsProvider := settings.NewProvider(settingRepo, map[string]string{
 		settings.KeyRequireEmailVerification: cfg.RequireEmailVerification,
 		settings.KeyAllowedSignupDomains:     cfg.AllowedSignupDomains,
+		settings.KeyControlManagerMode:       cfg.ControlManagerMode,
 	})
 	oauthService := oauth.NewService(oauthRepo, userRepo, redisClient)
 	oauthService.SetWorkspaces(workspaceRepo) // auto-join SSO users to a provider's default workspace
@@ -469,6 +472,12 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	appService.SetQuota(quotaService)
 	appService.SetClusterCap(clusterService) // gate "service" runtime apps on cluster mode
 	housekeepingService.SetSwarmManagers(clusterService)
+	// Watches for workloads that disappeared from their node or cluster. It runs on the cron manager, so only the
+	// leading control plane sweeps.
+	controlManager := controlmanager.New(nodeClients, clusterService, appRepo, releaseRepo, deploymentRepo, eventsService, settingsProvider)
+	if err := cronManager.RegisterTask("control-manager", 0, "Control manager sweep", "@every 1m", controlManager.Tick); err != nil {
+		logger.Error("failed to register the control manager sweep", "error", err)
+	}
 	appService.SetGrantsEnabled(cfg.ContainerGrantsEnabled)
 	appService.SetNetworkEnsurer(networkService) // apps always join the workspace's default network (self-heals a missing one)
 	storageService.SetNodeGuard(nodeService)
@@ -1128,6 +1137,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			adminPlan:           handlers.NewPlanHandler(planRepo, quotaOverrideRepo, workspaceRepo, databaseSizeRepo, ee, auditLogger),
 			deploymentCfg:       handlers.NewDeploymentConfigHandler(imageResolver, settingRepo, settingsProvider, auditLogger, ee),
 			adminJob:            handlers.NewAdminJobHandler(cronManager),
+			adminControlManager: handlers.NewAdminControlManagerHandler(controlManager),
 			adminPlatformBackup: handlers.NewAdminPlatformBackupHandler(platformBackupService, ee, auditLogger),
 			adminRegistry:       handlers.NewAdminRegistryHandler(registryServerService, ee, auditLogger),
 			registryServer:      handlers.NewRegistryServerHandler(registryServerService, workspaceRepo),

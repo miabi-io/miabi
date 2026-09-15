@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/pkg/stack/selfcontainer"
@@ -29,6 +30,8 @@ type Clients struct {
 	localID uint
 	local   docker.Client
 	remote  map[uint]docker.Client
+	// connectedAt is when each remote client was registered: a fresh agent's view can still be partial.
+	connectedAt map[uint]time.Time
 
 	// Container IDs of Miabi's own runtime, used to stop these from being killed via the admin containers
 	// list. localSelf is the control-plane (manager) container; remoteSelf holds each connected node's agent
@@ -43,7 +46,7 @@ type Clients struct {
 
 // NewClients creates the registry seeded with the local node's client.
 func NewClients(localID uint, local docker.Client) *Clients {
-	return &Clients{localID: localID, local: local, remote: map[uint]docker.Client{}, remoteSelf: map[uint]string{}}
+	return &Clients{localID: localID, local: local, remote: map[uint]docker.Client{}, connectedAt: map[uint]time.Time{}, remoteSelf: map[uint]string{}}
 }
 
 // SetSwarmManagers wires how a cluster's swarm manager is reached, so a service in any cluster
@@ -193,7 +196,22 @@ func (c *Clients) RemoteIDs() []uint {
 func (c *Clients) SetRemote(serverID uint, cl docker.Client) {
 	c.mu.Lock()
 	c.remote[serverID] = cl
+	c.connectedAt[serverID] = time.Now()
 	c.mu.Unlock()
+}
+
+// ConnectedSince reports when a remote node's client was registered, and whether the node has one at all. The
+// local engine is always reachable, so it reports the zero time.
+func (c *Clients) ConnectedSince(serverID uint) (time.Time, bool) {
+	if c.IsLocal(serverID) {
+		return time.Time{}, true
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if _, ok := c.remote[serverID]; !ok {
+		return time.Time{}, false
+	}
+	return c.connectedAt[serverID], true
 }
 
 // RemoveRemote drops a remote node's client when its agent disconnects.
@@ -203,6 +221,7 @@ func (c *Clients) RemoveRemote(serverID uint) {
 		_ = cl.Close()
 		delete(c.remote, serverID)
 	}
+	delete(c.connectedAt, serverID)
 	delete(c.remoteSelf, serverID)
 	c.mu.Unlock()
 }

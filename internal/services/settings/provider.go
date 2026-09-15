@@ -51,6 +51,10 @@ const (
 	// .miabi/pipeline.yaml. Adopting one lets the repository choose the step images and shell commands a runner
 	// executes, so an operator can disable it entirely; git apps then always build directly. Default true.
 	KeyRepoPipelinesEnabled = "repo_pipelines_enabled"
+
+	// KeyControlManagerMode is how far the control manager goes: "observe" reports workloads that disappeared
+	// from their node or cluster, "off" stops watching. Observe is the default because it acts on nothing.
+	KeyControlManagerMode = "control_manager_mode"
 )
 
 // defaults seeds first-boot values. Keys absent here can still be created by the
@@ -67,6 +71,7 @@ var defaults = []models.Setting{
 	{Key: KeyMaxMemoryMB, Value: "0", Type: models.SettingTypeInt},
 	{Key: KeyCustomLabelsEnabled, Value: "true", Type: models.SettingTypeBool},
 	{Key: KeyRepoPipelinesEnabled, Value: "true", Type: models.SettingTypeBool},
+	{Key: KeyControlManagerMode, Value: "observe", Type: models.SettingTypeString},
 }
 
 // Provider caches settings in memory and exposes typed getters.
