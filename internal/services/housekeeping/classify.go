@@ -10,20 +10,11 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 )
 
-// The managed-resource label scheme lives in the docker package (io.miabi.*).
-// Housekeeping joins live Docker against the DB by these labels to classify drift.
-
-// Owner kinds — the DB record class a managed resource belongs to.
-const (
-	OwnerApp      = "app"
-	OwnerDatabase = "database"
-	OwnerVolume   = "volume"
-	OwnerStack    = "stack"
-	OwnerConfig   = "config"
-)
+// The managed-resource label scheme lives in the docker package (io.miabi.*), and the owner a label names
+// is resolved by the drift package. Housekeeping joins live Docker against the DB by these labels.
 
 // Local aliases for the platform label keys (canonical definitions live in the
-// docker package); used here and by the package tests.
+// docker package); used by the package tests.
 const (
 	labelApp       = docker.LabelApp
 	labelDatabase  = docker.LabelDatabase
@@ -46,52 +37,6 @@ func isManaged(labels map[string]string) bool {
 // managed through their own pages, not reclaimed here.
 func isPlatformInfra(labels map[string]string) bool {
 	return docker.IsPlatformInfra(labels)
-}
-
-// ownerOf returns the owning DB record (kind and numeric id) encoded in a managed resource's labels, so drift
-// can check whether that record still exists. ok is false when the resource is not orphan-eligible. Precedence
-// matters: an app's container carries both app and stack labels, and the app is the owning record.
-func ownerOf(labels map[string]string) (kind string, id uint, ok bool) {
-	if isPlatformInfra(labels) {
-		return "", 0, false
-	}
-	if _, isJob := docker.LabelValue(labels, docker.LabelJob); isJob {
-		return "", 0, false // jobs are one-shot; their leftovers are not "deleted workloads"
-	}
-	if v, present := docker.LabelValue(labels, docker.LabelApp); present {
-		id, ok = parseID(v)
-		return OwnerApp, id, ok
-	}
-	if v, present := docker.LabelValue(labels, docker.LabelDatabase); present {
-		id, ok = parseID(v)
-		return OwnerDatabase, id, ok
-	}
-	if v, present := docker.LabelValue(labels, docker.LabelVolume); present {
-		id, ok = parseID(v)
-		return OwnerVolume, id, ok
-	}
-	if v, present := docker.LabelValue(labels, docker.LabelStack); present {
-		id, ok = parseID(v)
-		return OwnerStack, id, ok
-	}
-	return "", 0, false
-}
-
-// volumeOwner returns the record a managed Docker volume backs: a volume row, or the database instance
-// whose data it holds. App and stack labels are not owners here: neither record owns a volume's data.
-func volumeOwner(labels map[string]string) (kind string, id uint, ok bool) {
-	if isPlatformInfra(labels) {
-		return "", 0, false
-	}
-	if v, present := docker.LabelValue(labels, docker.LabelVolume); present {
-		id, ok = parseID(v)
-		return OwnerVolume, id, ok
-	}
-	if v, present := docker.LabelValue(labels, docker.LabelDatabase); present {
-		id, ok = parseID(v)
-		return OwnerDatabase, id, ok
-	}
-	return "", 0, false
 }
 
 // isMiabiVolumeName reports whether name is the Docker name storage gives a volume,

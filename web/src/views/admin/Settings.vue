@@ -64,12 +64,13 @@ const SECTIONS: SectionDef[] = [
   {
     id: 'platform',
     title: 'Platform',
-    keys: ['maintenance_mode', 'default_workspace_role', 'custom_labels_enabled', 'repo_pipelines_enabled'],
+    keys: ['maintenance_mode', 'default_workspace_role', 'custom_labels_enabled', 'repo_pipelines_enabled', 'control_manager_mode'],
     labels: {
       maintenance_mode: 'Maintenance mode',
       default_workspace_role: 'Default workspace role',
       custom_labels_enabled: 'Allow custom container labels (Traefik &c.) — fleet-wide kill-switch',
       repo_pipelines_enabled: 'Allow pipelines from .miabi/pipeline.yaml — fleet-wide kill-switch',
+      control_manager_mode: 'Control manager — observe (report missing workloads) or off',
     },
   },
   {

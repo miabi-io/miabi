@@ -1730,6 +1730,9 @@ func (s *Service) Delete(ctx context.Context, app *models.Application) error {
 	// stream sees it even though the app row is removed below.
 	s.emit(app, models.EventAppDeleted, "Application deleted")
 	if rel, err := s.releases.FindActive(app.ID); err == nil && rel.ContainerID != "" {
+		// Recorded first, as Stop does, so the container's die and destroy events read as a deliberate stop
+		// rather than a crash or a container removed from under the app.
+		_ = s.apps.SetStatus(app.ID, models.AppStatusStopped)
 		_ = s.eng(app).StopContainer(ctx, rel.ContainerID, 10)
 		_ = s.eng(app).RemoveContainer(ctx, rel.ContainerID, true)
 	}

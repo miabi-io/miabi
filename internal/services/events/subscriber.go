@@ -81,6 +81,9 @@ func (s *Subscriber) handleApp(ev docker.EngineEvent, appID uint) {
 	if err != nil {
 		return // app deleted; ignore
 	}
+	if ev.Action == "destroy" && !s.activeContainerRemoved(ev, app) {
+		return
+	}
 	typ, sev, msg, ok := classify(ev, app.Status == models.AppStatusStopped)
 	if !ok {
 		return
@@ -103,12 +106,12 @@ func (s *Subscriber) handleApp(ev docker.EngineEvent, appID uint) {
 // upgrade state machine) and the detail page reads live status from Docker anyway, so writing it
 // here would race the service for no gain.
 func (s *Subscriber) handleDatabase(ev docker.EngineEvent, databaseID uint) {
-	if s.databases == nil {
+	if s.databases == nil || ev.Action == "destroy" {
 		return
 	}
 	inst, err := s.databases.FindByID(databaseID)
 	if err != nil {
-		return // instance deleted; ignore
+		return
 	}
 	typ, sev, msg, ok := classify(ev, inst.Status == models.DBStatusStopped)
 	if !ok {
@@ -149,6 +152,8 @@ func classify(ev docker.EngineEvent, userStopped bool) (typ models.AppEventType,
 		} else {
 			typ, sev, msg = models.EventContainerDied, models.SeverityError, "Container exited (code "+code+")"
 		}
+	case ev.Action == "destroy":
+		typ, sev, msg = models.EventContainerRemoved, models.SeverityWarning, "Container removed"
 	default:
 		return "", "", "", false
 	}
@@ -169,6 +174,17 @@ func (s *Subscriber) reconcileStatus(ev docker.EngineEvent, app *models.Applicat
 	if next, change := nextStoredStatus(ev.Action, ev.Attributes["exitCode"], app.Status); change {
 		_ = s.apps.SetStatus(app.ID, next)
 	}
+}
+
+// activeContainerRemoved reports whether a destroy event removed the app's active release container outside a
+// deploy or a stop, which remove containers as a matter of course. That removal is what makes an app's
+// container missing, so the timeline should show it happened rather than a crash.
+func (s *Subscriber) activeContainerRemoved(ev docker.EngineEvent, app *models.Application) bool {
+	if s.releases == nil || app.Status == models.AppStatusDeploying || app.Status == models.AppStatusStopped {
+		return false
+	}
+	rel, err := s.releases.FindActive(app.ID)
+	return err == nil && rel.ContainerID != "" && rel.ContainerID == ev.ContainerID
 }
 
 // dieIsStop reports whether a container "die" with the given exit code is a clean stop rather than

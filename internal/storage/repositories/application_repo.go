@@ -102,6 +102,17 @@ func (r *ApplicationRepository) ListRunning() ([]models.Application, error) {
 	return apps, err
 }
 
+// ListReconcilable returns the apps expected to be running, across workspaces, for the control manager: those
+// with a release that are neither created, deploying nor stopped. Failed stays in, because the event subscriber
+// marks an app failed when its container is killed on the way to being removed.
+func (r *ApplicationRepository) ListReconcilable() ([]models.Application, error) {
+	var apps []models.Application
+	err := r.db.Where("current_release_id IS NOT NULL AND status NOT IN ?",
+		[]models.AppStatus{models.AppStatusCreated, models.AppStatusDeploying, models.AppStatusStopped}).
+		Find(&apps).Error
+	return apps, err
+}
+
 // ListWithGrants returns every application holding a grant. Both columns are JSON,
 // so "no grant" is NULL or one of two empty encodings depending on the writer.
 func (r *ApplicationRepository) ListWithGrants() ([]models.Application, error) {

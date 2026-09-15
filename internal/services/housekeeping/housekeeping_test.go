@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/miabi-io/miabi/internal/docker"
+	"github.com/miabi-io/miabi/internal/drift"
 	"github.com/miabi-io/miabi/internal/models"
 )
 
@@ -123,22 +124,22 @@ func TestAnalyzeDrift(t *testing.T) {
 	exists := existsSet("app:42", "volume:3")
 
 	s := newTestService(dc, apps, exists)
-	drift, err := s.analyzeDrift(context.Background(), dc, 1)
+	summary, err := s.analyzeDrift(context.Background(), dc, 1)
 	if err != nil {
 		t.Fatalf("analyzeDrift: %v", err)
 	}
 
-	if len(drift.Orphans) != 2 {
-		t.Fatalf("want 2 orphans, got %d: %+v", len(drift.Orphans), drift.Orphans)
+	if len(summary.Orphans) != 2 {
+		t.Fatalf("want 2 orphans, got %d: %+v", len(summary.Orphans), summary.Orphans)
 	}
-	assertHasOrphan(t, drift.Orphans, "container", "c-app99")
-	assertHasOrphan(t, drift.Orphans, "volume", "vol-ghost")
+	assertHasOrphan(t, summary.Orphans, "container", "c-app99")
+	assertHasOrphan(t, summary.Orphans, "volume", "vol-ghost")
 
-	if len(drift.Untracked) != 1 || drift.Untracked[0].Ref != "c-hand" {
-		t.Fatalf("want 1 untracked (c-hand), got %+v", drift.Untracked)
+	if len(summary.Untracked) != 1 || summary.Untracked[0].Ref != "c-hand" {
+		t.Fatalf("want 1 untracked (c-hand), got %+v", summary.Untracked)
 	}
-	if len(drift.Missing) != 1 || drift.Missing[0].OwnerID != 50 {
-		t.Fatalf("want 1 missing (app 50), got %+v", drift.Missing)
+	if len(summary.Missing) != 1 || summary.Missing[0].OwnerID != 50 {
+		t.Fatalf("want 1 missing (app 50), got %+v", summary.Missing)
 	}
 }
 
@@ -153,12 +154,12 @@ func TestAnalyzeDrift_NeverFlagsInfraOrLive(t *testing.T) {
 		},
 	}
 	s := newTestService(dc, nil, existsSet("app:42"))
-	drift, err := s.analyzeDrift(context.Background(), dc, 1)
+	summary, err := s.analyzeDrift(context.Background(), dc, 1)
 	if err != nil {
 		t.Fatalf("analyzeDrift: %v", err)
 	}
-	if len(drift.Orphans) != 0 {
-		t.Fatalf("infra/job/live must never be orphans, got %+v", drift.Orphans)
+	if len(summary.Orphans) != 0 {
+		t.Fatalf("infra/job/live must never be orphans, got %+v", summary.Orphans)
 	}
 }
 
@@ -273,17 +274,17 @@ func TestAnalyzeDrift_VolumesWithoutVolumeLabel(t *testing.T) {
 	s := newTestService(dc, nil, existsSet("database:6"))
 	s.volumeNamed = namedSet("mb-vol-3-uploads", "mb-vol-3-shared")
 
-	drift, err := s.analyzeDrift(context.Background(), dc, 1)
+	summary, err := s.analyzeDrift(context.Background(), dc, 1)
 	if err != nil {
 		t.Fatalf("analyzeDrift: %v", err)
 	}
-	if len(drift.Orphans) != 2 {
-		t.Fatalf("want 2 orphans, got %d: %+v", len(drift.Orphans), drift.Orphans)
+	if len(summary.Orphans) != 2 {
+		t.Fatalf("want 2 orphans, got %d: %+v", len(summary.Orphans), summary.Orphans)
 	}
-	assertHasOrphan(t, drift.Orphans, "volume", "mb-vol-3-ghost")
-	assertHasOrphan(t, drift.Orphans, "volume", "mb-db-k3x9-5-data")
-	for _, o := range drift.Orphans {
-		if o.Ref == "mb-db-k3x9-5-data" && (o.OwnerKind != OwnerDatabase || o.OwnerID != 5) {
+	assertHasOrphan(t, summary.Orphans, "volume", "mb-vol-3-ghost")
+	assertHasOrphan(t, summary.Orphans, "volume", "mb-db-k3x9-5-data")
+	for _, o := range summary.Orphans {
+		if o.Ref == "mb-db-k3x9-5-data" && (o.OwnerKind != drift.OwnerDatabase || o.OwnerID != 5) {
 			t.Errorf("database volume orphan owner = %s #%d, want database #5", o.OwnerKind, o.OwnerID)
 		}
 	}
@@ -293,12 +294,12 @@ func TestAnalyzeDrift_VolumesWithoutVolumeLabel(t *testing.T) {
 func TestAnalyzeDrift_UnlabelledVolumeNeedsLookup(t *testing.T) {
 	dc := &fakeDocker{volumes: []docker.Volume{{Name: "mb-vol-3-ghost"}}}
 	s := newTestService(dc, nil, existsSet())
-	drift, err := s.analyzeDrift(context.Background(), dc, 1)
+	summary, err := s.analyzeDrift(context.Background(), dc, 1)
 	if err != nil {
 		t.Fatalf("analyzeDrift: %v", err)
 	}
-	if len(drift.Orphans) != 0 {
-		t.Fatalf("no lookup wired must mean no orphans, got %+v", drift.Orphans)
+	if len(summary.Orphans) != 0 {
+		t.Fatalf("no lookup wired must mean no orphans, got %+v", summary.Orphans)
 	}
 }
 
@@ -319,11 +320,11 @@ func TestApply_RemovesUnlabelledVolumeOrphan(t *testing.T) {
 	}
 }
 
-func assertHasOrphan(t *testing.T, orphans []DriftItem, kind, ref string) {
+func assertHasOrphan(t *testing.T, orphans []drift.Item, kind, ref string) {
 	t.Helper()
 	for _, o := range orphans {
 		if o.Kind == kind && o.Ref == ref {
-			if o.Class != ClassOrphan || o.Action != ActionRemove {
+			if o.Class != drift.ClassOrphan || o.Action != drift.ActionRemove {
 				t.Fatalf("orphan %s/%s has wrong class/action: %+v", kind, ref, o)
 			}
 			return
@@ -368,15 +369,15 @@ func TestAnalyzeDrift_ServiceAppsAskTheirSwarm(t *testing.T) {
 	s := newTestService(dc, apps, existsSet())
 	s.swarms = fakeManagers{1: fakeSwarm{services: map[string]bool{"mb-app-aa-70": true}}}
 
-	drift, err := s.analyzeDrift(context.Background(), dc, 1)
+	summary, err := s.analyzeDrift(context.Background(), dc, 1)
 	if err != nil {
 		t.Fatalf("analyzeDrift: %v", err)
 	}
-	if len(drift.Missing) != 2 {
-		t.Fatalf("want 2 missing (apps 71, 73), got %+v", drift.Missing)
+	if len(summary.Missing) != 2 {
+		t.Fatalf("want 2 missing (apps 71, 73), got %+v", summary.Missing)
 	}
 	want := map[uint]string{71: "service", 73: "container"}
-	for _, m := range drift.Missing {
+	for _, m := range summary.Missing {
 		if want[m.OwnerID] != m.Kind {
 			t.Errorf("missing app %d has kind %q, want %q", m.OwnerID, m.Kind, want[m.OwnerID])
 		}
@@ -387,12 +388,12 @@ func TestAnalyzeDrift_ServiceAppsAskTheirSwarm(t *testing.T) {
 func TestAnalyzeDrift_ServiceAppsNeedTheirSwarm(t *testing.T) {
 	apps := []models.Application{{ID: 71, Name: "api", RuntimeKind: models.RuntimeService, Status: models.AppStatusRunning}}
 	s := newTestService(&fakeDocker{}, apps, existsSet())
-	drift, err := s.analyzeDrift(context.Background(), &fakeDocker{}, 1)
+	summary, err := s.analyzeDrift(context.Background(), &fakeDocker{}, 1)
 	if err != nil {
 		t.Fatalf("analyzeDrift: %v", err)
 	}
-	if len(drift.Missing) != 0 {
-		t.Fatalf("want no missing apps without a swarm lookup, got %+v", drift.Missing)
+	if len(summary.Missing) != 0 {
+		t.Fatalf("want no missing apps without a swarm lookup, got %+v", summary.Missing)
 	}
 }
 

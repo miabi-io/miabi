@@ -10,6 +10,7 @@ import (
 	"github.com/miabi-io/miabi/internal/dto"
 	"github.com/miabi-io/miabi/internal/handlers"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/services/controlmanager"
 )
 
 // adminRoutes registers platform-admin endpoints under /admin; every route requires a super-admin.
@@ -538,6 +539,15 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Handler:     r.h.adminJob.Stats,
 			Summary:     "Scheduled-jobs dashboard summary",
 			Response:    &dto.Response[handlers.JobStats]{},
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/control-manager",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminControlManager.Status,
+			Summary:     "Control manager status: missing workloads and unobserved nodes",
+			Response:    &dto.Response[controlmanager.Status]{},
 		},
 
 		// Platform backup (Enterprise; gated platform_backup → 402 in CE).

@@ -29,6 +29,8 @@ export function eventIcon(type: string): string {
   if (type.startsWith('rollback')) return 'mdi-backup-restore'
   if (type.startsWith('release')) return 'mdi-tag-outline'
   if (type === 'container.died' || type === 'container.oom') return 'mdi-alert-circle-outline'
+  if (type === 'container.removed' || type === 'drift.detected') return 'mdi-alert-outline'
+  if (type === 'drift.resolved') return 'mdi-check-circle-outline'
   if (type === 'container.health') return 'mdi-heart-pulse'
   if (type.startsWith('container')) return 'mdi-cube-outline'
   if (type.startsWith('backup') || type.startsWith('restore')) return 'mdi-backup-restore'
