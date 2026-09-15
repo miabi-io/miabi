@@ -1,11 +1,9 @@
 BINARY      := miabi
-AGENT       := miabi-agent
 PKG         := github.com/miabi-io/miabi
 VERSION     ?= dev
 COMMIT      := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE  ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS     := -X $(PKG)/internal/config.Version=$(VERSION) -X $(PKG)/internal/config.CommitID=$(COMMIT) -X $(PKG)/internal/config.BuildDate=$(BUILD_DATE)
-AGENT_IMAGE ?= ghcr.io/miabi-io/agent
 
 LICENSE_PUBLIC_KEY ?= $(shell cat ../license-public.key 2>/dev/null)
 MIABI_LDFLAGS := $(LDFLAGS) -X $(PKG)/internal/enterprise.embeddedPublicKey=$(LICENSE_PUBLIC_KEY)
@@ -15,7 +13,7 @@ EMBED_WEB_DIR := internal/web/dist
 
 SCHEMA_FILE ?= miabi.io-v1.schema.json
 
-.PHONY: run worker agent build build-agent build-ui build-all dev-ui test lint tidy migrate license-tool schema docker docker-rootless docker-agent compose-up compose-down mwdocs
+.PHONY: run worker build build-ui build-all dev-ui test lint tidy migrate license-tool schema docker docker-rootless compose-up compose-down mwdocs
 
 run: ## Run the API server
 	go run -tags enterprise -ldflags "$(MIABI_LDFLAGS)" ./cmd/miabi server
@@ -23,17 +21,11 @@ run: ## Run the API server
 worker: ## Run the background worker
 	go run -tags enterprise -ldflags "$(MIABI_LDFLAGS)" ./cmd/miabi worker
 
-agent: ## Run the node agent (needs MIABI_CONTROL_URL + MIABI_NODE_TOKEN)
-	go run -ldflags "$(LDFLAGS)" ./cmd/agent
-
 build: ## Build the control-plane binary
 	go build -tags enterprise -ldflags "$(MIABI_LDFLAGS)" -o bin/$(BINARY) ./cmd/miabi
 
 license-tool: ## Build the internal license issuer (holds the signing key; never shipped)
 	go build -ldflags "$(LDFLAGS)" -o bin/miabi-license ./cmd/miabi-license
-
-build-agent: ## Build the node agent binary
-	go build -ldflags "$(LDFLAGS)" -o bin/$(AGENT) ./cmd/agent
 
 build-ui: ## Build the web UI (Vue) and stage it for embedding (internal/web/dist)
 	npm --prefix $(WEB_DIR) ci
@@ -44,7 +36,7 @@ build-ui: ## Build the web UI (Vue) and stage it for embedding (internal/web/dis
 	cp -r $(WEB_DIR)/dist $(EMBED_WEB_DIR)
 	touch $(EMBED_WEB_DIR)/.gitkeep
 
-build-all: build-ui build build-agent ## Build the UI, server binary, and node agent
+build-all: build-ui build ## Build the UI and the server binary (the node agent ships from github.com/miabi-io/agent)
 
 dev-ui: ## Run the Vite dev server (proxies /api/v1 -> :9000)
 	npm --prefix $(WEB_DIR) run dev
@@ -82,9 +74,6 @@ docker-rootless: ## Build the Docker image
 	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) \
 		--build-arg GO_TAGS=enterprise --build-arg LICENSE_PUBLIC_KEY=$(LICENSE_PUBLIC_KEY) \
 		-f docker/Dockerfile.rootless -t miabi:$(VERSION)-rootless .
-
-docker-agent: ## Build the node agent Docker image
-	docker build -f Dockerfile.agent -t $(AGENT_IMAGE):$(VERSION) -t $(AGENT_IMAGE):latest .
 
 compose-up: ## Start local dev stack (builds app + Postgres + Redis)
 	docker compose -f compose.dev.yaml up -d
