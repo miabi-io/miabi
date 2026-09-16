@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package registryserver runs and authorizes the platform's built-in, multi-tenant Docker registry. The
-// registry container runs auth-less on the gateway network; authentication is enforced at the edge by a
+// registry container runs auth-less on the platform's private network; authentication is enforced at the edge by a
 // Goma forwardAuth middleware calling Authorize. Distinct from services/registry (external credentials).
 package registryserver
 
@@ -10,7 +10,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/jkaninda/logger"
@@ -25,8 +24,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// ContainerName / Alias are the registry container's name and its gateway-network
-// DNS alias (the route upstream is http://mb-registry:5000).
+// ContainerName / Alias are the registry container's name and its DNS alias on the
+// platform's private network (the route upstream is http://mb-registry:5000).
 const (
 	ContainerName = "mb-registry"
 	Alias         = "mb-registry"
@@ -68,11 +67,12 @@ type Service struct {
 	proxy    proxy.Manager
 	reg      *Client
 	usage    *usageCache
-	network  string
-	// internalNetwork is the platform's private network. The registry joins it so the CONTROL PLANE can
-	// reach it — the control plane is not on the proxy network, and every browse, quota and GC call goes
-	// to http://mb-registry:5000 directly. It keeps the proxy attachment for its own egress and for an
-	// S3 backend that is really a self-hosted MinIO app. Empty on Compose.
+	// network is the shared proxy network, used only as a fallback: a Compose stack that declares no
+	// private network has no other fabric the gateway can reach the registry on.
+	network string
+	// internalNetwork is the platform's private network, and the only one the registry joins when it
+	// exists. The control plane calls the registry directly there and the gateway reaches it as a route
+	// backend, while no tenant container can dial it. Empty on a stack that predates the split.
 	internalNetwork string
 	controlURL      string
 	cfg             config.RegistryConfig
@@ -122,8 +122,8 @@ func NewService(
 	}
 }
 
-// SetInternalNetwork names the platform's private network, which is how the control plane reaches the
-// registry once the stack is split. Unset on Compose, where the proxy network is the only fabric.
+// SetInternalNetwork names the platform's private network: the only network the registry joins, and how
+// the control plane and gateway reach it. Unset on a stack that has nothing but the proxy network.
 func (s *Service) SetInternalNetwork(name string) { s.internalNetwork = name }
 
 func (s *Service) SetEntitlements(ee entitlementChecker) { s.ee = ee }
@@ -480,8 +480,8 @@ func (s *Service) renderEnv(st *models.RegistrySettings, readonly bool) ([]strin
 }
 
 // Ensure (re)creates the registry container per the current settings on the
-// gateway network and seeds its gateway route. Idempotent. A no-op (teardown)
-// when disabled. dc is the control-plane Docker client.
+// platform's private network and seeds its gateway route. Idempotent. A no-op
+// (teardown) when disabled. dc is the control-plane Docker client.
 func (s *Service) Ensure(ctx context.Context, dc docker.Client) error {
 	st, err := s.Get()
 	if err != nil {
@@ -586,25 +586,27 @@ func (s *Service) startContainer(ctx context.Context, dc docker.Client, st *mode
 	return nil
 }
 
-// networks are the fabrics the registry container joins: the proxy network, for its own egress and for
-// an S3 backend that is really a self-hosted MinIO app, and the platform's private network, where the
-// control plane and the gateway can reach it. The alias is registered on both, so
-// http://mb-registry:5000 resolves from either side.
+// networks is the one fabric the registry container joins: the platform's private network. The registry
+// serves auth-less — the token and namespace checks live in the gateway's forwardAuth middleware — so an
+// attachment to the shared proxy network would let any app container pull any workspace's images from
+// http://mb-registry:5000 with no credential at all.
 //
-// The proxy network is first because Docker picks the container's default route from its attachments,
-// and a registry on the S3 driver has to get out to the bucket.
+// A stack that declares no private network falls back to the proxy network, the only fabric it has, and
+// is warned every time the registry starts.
 func (s *Service) networks(ctx context.Context, dc docker.Client) ([]string, error) {
-	var out []string
-	for _, name := range []string{s.network, s.internalNetwork} {
-		if name == "" || slices.Contains(out, name) {
-			continue
+	name := s.internalNetwork
+	if name == "" {
+		if s.network == "" {
+			return nil, errors.New("no Docker network is configured for the registry: set MIABI_INTERNAL_NETWORK")
 		}
-		if _, err := dc.EnsureNetwork(ctx, name); err != nil {
-			return nil, fmt.Errorf("ensure network %q: %w", name, err)
-		}
-		out = append(out, name)
+		name = s.network
+		logger.Warn("internal registry is on the shared proxy network, where every app container can reach it and pull any workspace's images — move the platform onto its private network and set MIABI_INTERNAL_NETWORK",
+			"network", name, "endpoint", fmt.Sprintf("http://%s:%d", Alias, Port))
 	}
-	return out, nil
+	if _, err := dc.EnsureNetwork(ctx, name); err != nil {
+		return nil, fmt.Errorf("ensure network %q: %w", name, err)
+	}
+	return []string{name}, nil
 }
 
 // GarbageCollect reclaims storage from deleted or overwritten manifests. To run safely it flips the

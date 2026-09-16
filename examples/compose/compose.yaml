@@ -28,7 +28,8 @@
 # .env before `docker compose up -d`. Without it the control plane does not know
 # the private network exists, and the helper containers it runs out of process
 # (platform backups, the built-in registry) stay on `miabi` alone — where the
-# database no longer is.
+# database no longer is, and where the registry serves every workspace's images
+# to any app container that asks.
 
 services:
   miabi-postgres:

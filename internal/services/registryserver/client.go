@@ -25,8 +25,8 @@ var manifestAccept = strings.Join([]string{
 }, ", ")
 
 // Client is a minimal client for the auth-less internal registry (reached over
-// the gateway network at http://mb-registry:5000). Used for the workspace
-// repository view and tag deletion, never exposed to tenants directly.
+// the platform's private network at http://mb-registry:5000). Used for the
+// workspace repository view and tag deletion, never exposed to tenants directly.
 type Client struct {
 	base string
 	http *http.Client
