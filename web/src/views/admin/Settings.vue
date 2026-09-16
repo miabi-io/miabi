@@ -70,7 +70,7 @@ const SECTIONS: SectionDef[] = [
       default_workspace_role: 'Default workspace role',
       custom_labels_enabled: 'Allow custom container labels (Traefik &c.) — fleet-wide kill-switch',
       repo_pipelines_enabled: 'Allow pipelines from .miabi/pipeline.yaml — fleet-wide kill-switch',
-      control_manager_mode: 'Control manager — observe (report missing workloads) or off',
+      control_manager_mode: 'Control manager — observe (report missing workloads), enforce (redeploy them in place) or off',
     },
   },
   {

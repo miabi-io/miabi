@@ -493,6 +493,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// report of lost data points at: Miabi never restores one unattended.
 	controlManager := controlmanager.New(nodeClients, clusterService, appRepo, releaseRepo, deploymentRepo, volumeRepo, dbRepo, eventsService, settingsProvider)
 	controlManager.SetBackups(volumeBackupRepo, backupSetRepo)
+	// Enforcement, which only runs when control_manager_mode is "enforce": redeploy through the ordinary deploy
+	// path so the app goes back on its own node, never onto a cordoned one, and never while it is missing
+	// something it needs — its data, or a config it mounts.
+	controlManager.SetEnforcement(appService, nodeService, repositories.NewConfigRepository(db), auditLogger)
 	if err := cronManager.RegisterTask("control-manager", 0, "Control manager sweep", "@every 1m", controlManager.Tick); err != nil {
 		logger.Error("failed to register the control manager sweep", "error", err)
 	}

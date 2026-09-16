@@ -606,7 +606,7 @@ type Deployment struct {
 	ApplicationID uint             `json:"application_id" gorm:"index:idx_deploy_app_number,unique;index;not null"`
 	Status        DeploymentStatus `json:"status" gorm:"not null;default:pending"`
 	Image         string           `json:"image"`
-	Trigger       string           `json:"trigger"`                                  // manual | rollback | auto | pipeline
+	Trigger       string           `json:"trigger"`                                  // manual | rollback | auto | pipeline | reconcile
 	Strategy      DeployStrategy   `json:"strategy" gorm:"not null;default:rolling"` // rollout method for this deploy
 	Commit        string           `json:"commit,omitempty"`
 	ImageID       *uint            `json:"image_id,omitempty"`

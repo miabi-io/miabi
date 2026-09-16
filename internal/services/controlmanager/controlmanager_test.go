@@ -81,9 +81,21 @@ func (f fakeReleases) FindActive(appID uint) (*models.Release, error) {
 	return &models.Release{ApplicationID: appID, ContainerID: cid, Active: true}, nil
 }
 
-type fakeDeploys []uint
+type fakeDeploys struct {
+	inProgress []uint
+	byID       map[uint]*models.Deployment
+}
 
-func (f *fakeDeploys) InProgressAppIDs() ([]uint, error) { return *f, nil }
+func (f *fakeDeploys) InProgressAppIDs() ([]uint, error) { return f.inProgress, nil }
+
+// FindByID answers pending for a deployment it was never told about, which is what a redeploy the control
+// manager just started looks like.
+func (f *fakeDeploys) FindByID(id uint) (*models.Deployment, error) {
+	if d, ok := f.byID[id]; ok {
+		return d, nil
+	}
+	return &models.Deployment{ID: id, Status: models.DeploymentPending}, nil
+}
 
 type fakeVolumes struct {
 	rows    []models.Volume
@@ -319,7 +331,7 @@ func TestAppWithADeployUnderWayIsNotObserved(t *testing.T) {
 	h.releases[7] = "c7"
 	h.sweep(t)
 
-	*h.deploys = fakeDeploys{7}
+	h.deploys.inProgress = []uint{7}
 	if st := h.confirm(t); len(st.Findings) != 0 || len(h.events.events) != 0 {
 		t.Fatalf("findings=%+v events=%v; an app being deployed was reported missing", st.Findings, h.events.events)
 	}
