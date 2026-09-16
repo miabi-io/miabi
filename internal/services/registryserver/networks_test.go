@@ -21,10 +21,11 @@ func (n *netDocker) EnsureNetwork(_ context.Context, name string) (string, error
 	return name, nil
 }
 
-// The control plane is not on the proxy network, and it talks to the registry over the network — every
-// browse, quota and GC call goes to http://mb-registry:5000 (see NewService). So the registry has to be
-// on the private network, or the built-in registry's whole admin surface fails with "no such host".
-func TestRegistryIsReachableFromTheControlPlane(t *testing.T) {
+// The registry serves auth-less: every token and namespace check happens in the gateway's forwardAuth
+// middleware. On the shared proxy network, any app container could therefore pull any workspace's images
+// straight from http://mb-registry:5000 — `docker pull mb-registry:5000/ws_<id>/<app>` with no credential
+// — so the registry must not be attached to it.
+func TestRegistryIsNotOnTheSharedNetwork(t *testing.T) {
 	s := &Service{network: "miabi", internalNetwork: "miabi-internal"}
 	dc := &netDocker{}
 
@@ -32,18 +33,22 @@ func TestRegistryIsReachableFromTheControlPlane(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(nets, "miabi-internal") {
-		t.Errorf("registry networks = %v, missing the private network the control plane dials it on", nets)
+	if slices.Contains(nets, "miabi") {
+		t.Errorf("registry networks = %v, want no attachment to the shared network app containers join", nets)
 	}
-	// It keeps the proxy attachment for its own egress — an S3 backend may be a self-hosted MinIO app —
-	// and Docker picks the default route from the attachments, so that one goes first.
-	if len(nets) == 0 || nets[0] != "miabi" {
-		t.Errorf("registry networks = %v, want the egress-carrying network first", nets)
+	// The control plane is on the private network and talks to the registry over it — every browse, quota
+	// and GC call goes to http://mb-registry:5000 — and the gateway reaches it there as a route backend.
+	if len(nets) != 1 || nets[0] != "miabi-internal" {
+		t.Errorf("registry networks = %v, want only the private network", nets)
+	}
+	if !slices.Contains(dc.ensured, "miabi-internal") {
+		t.Errorf("ensured networks = %v, want the private network created if absent", dc.ensured)
 	}
 }
 
-// Compose has no private network, and the registry there has always been on the proxy network alone.
-func TestRegistryOnComposeIsUnchanged(t *testing.T) {
+// A stack that predates the network split has only the proxy network, and a registry with no network at
+// all is worse than an over-reachable one: nothing could pull, including the platform's own deploys.
+func TestRegistryFallsBackToTheProxyNetwork(t *testing.T) {
 	s := &Service{network: "miabi"}
 	nets, err := s.networks(context.Background(), &netDocker{})
 	if err != nil {
@@ -54,15 +59,9 @@ func TestRegistryOnComposeIsUnchanged(t *testing.T) {
 	}
 }
 
-// Docker refuses a duplicate attachment, so a manifest that names one network twice would leave the
-// registry unable to start at all.
-func TestRegistryDoesNotAttachTheSameNetworkTwice(t *testing.T) {
-	s := &Service{network: "miabi", internalNetwork: "miabi"}
-	nets, err := s.networks(context.Background(), &netDocker{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(nets) != 1 {
-		t.Errorf("registry networks = %v, want one", nets)
+func TestRegistryWithNoNetworkConfiguredFails(t *testing.T) {
+	s := &Service{}
+	if _, err := s.networks(context.Background(), &netDocker{}); err == nil {
+		t.Error("networks() = nil error, want a failure naming MIABI_INTERNAL_NETWORK")
 	}
 }
