@@ -14,7 +14,7 @@ import (
 // authenticator (so the go-ldap client is never compiled in) and that the
 // sso_ldap flag is denied.
 func TestCommunityLDAPDisabled(t *testing.T) {
-	ee := New(nil, "", "", "", "")
+	ee := New(nil, "", "", "")
 	if ee.LDAP() != nil {
 		t.Error("Community LDAP() must be nil")
 	}

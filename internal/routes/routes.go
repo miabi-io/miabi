@@ -263,7 +263,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	}
 	// Commercial edition seam: gates licensed features behind a verified license.
 	// In Community builds this is the deny-all stub (no verification code linked).
-	ee := enterprise.New(db, cfg.LicensePublicKey, cfg.LicenseFile, cfg.DeploymentURL(), installID)
+	ee := enterprise.New(db, cfg.LicenseFile, cfg.DeploymentURL(), installID)
 	// Enterprise SIEM streaming: ships the audit log to external sinks at-least-once
 	// via a durable cursor. Dormant unless the siem_stream entitlement is present.
 	siemStreamer := siem.NewStreamer(auditRepo, siemConfigRepo, ee)

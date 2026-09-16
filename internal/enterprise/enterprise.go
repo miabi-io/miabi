@@ -23,19 +23,13 @@ import (
 	"gorm.io/gorm"
 )
 
-// embeddedPublicKey is the license-signing public key baked in at build time via -ldflags. When
-// empty, the runtime-configured MIABI_LICENSE_PUBLIC_KEY is used instead — convenient for dev.
-// Production builds bake the key in so it cannot be swapped to forge a license.
 var embeddedPublicKey string
 
 // New constructs the real EE implementation: it loads any installed license from the database,
 // falling back to MIABI_LICENSE_FILE for air-gapped installs. A license bound to a different
 // instance grants no features. An empty instanceURL disables the URL check; install_id always applies.
-func New(db *gorm.DB, publicKeyB64 string, licenseFile string, instanceURL string, installID string) EE {
-	pub := strings.TrimSpace(publicKeyB64)
-	if pub == "" {
-		pub = strings.TrimSpace(embeddedPublicKey)
-	}
+func New(db *gorm.DB, licenseFile string, instanceURL string, installID string) EE {
+	pub := strings.TrimSpace(embeddedPublicKey)
 	e := &impl{db: db, pub: pub, instanceURL: instanceURL, installID: installID}
 	if pub == "" {
 		logger.Warn("enterprise: no license public key configured; licenses cannot be verified")
@@ -94,7 +88,7 @@ func (e *impl) bindingResult(c *license.Claims, requestHost string) (ok bool, re
 func urlAllowed(licenseURL string, candidates ...string) bool {
 	want := normalizeHost(licenseURL)
 	if want == "" {
-		return true // unlimited: any URL, any number of instances
+		return true
 	}
 	known := false
 	for _, cand := range candidates {

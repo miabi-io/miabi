@@ -14,7 +14,7 @@ EMBED_WEB_DIR := internal/web/dist
 SCHEMA_FILE ?= miabi.io-v1.schema.json
 INSTALL_SCHEMA_FILE ?= install.miabi.io-v1.schema.json
 
-.PHONY: run worker build build-ui build-all dev-ui test lint tidy migrate license-tool schema docker docker-rootless compose-up compose-down mwdocs
+.PHONY: run worker build build-ui build-all dev-ui test lint tidy migrate schema docker docker-rootless compose-up compose-down mwdocs
 
 run: ## Run the API server
 	go run -tags enterprise -ldflags "$(MIABI_LDFLAGS)" ./cmd/miabi server
@@ -24,9 +24,6 @@ worker: ## Run the background worker
 
 build: ## Build the control-plane binary
 	go build -tags enterprise -ldflags "$(MIABI_LDFLAGS)" -o bin/$(BINARY) ./cmd/miabi
-
-license-tool: ## Build the internal license issuer (holds the signing key; never shipped)
-	go build -ldflags "$(LDFLAGS)" -o bin/miabi-license ./cmd/miabi-license
 
 build-ui: ## Build the web UI (Vue) and stage it for embedding (internal/web/dist)
 	npm --prefix $(WEB_DIR) ci
