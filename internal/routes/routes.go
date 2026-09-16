@@ -459,6 +459,11 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			edgegateway.AdoptCentral(context.Background(), dockerClient, nodeService, local)
 		}
 	}()
+	// Config encryption is global, so a node running an imported gateway — one Miabi never redeploys,
+	// and therefore never hands the key to — serves routes it cannot decrypt. Name those nodes.
+	if list, lerr := serverRepo.List(); lerr == nil {
+		edgegateway.WarnMissingConfigKey(cfg.GomaConfigEncryptionKey, list)
+	}
 	// After a workspace proxy sync, tell affected edge-gateway nodes to pull their
 	// config immediately instead of waiting for the HTTP-provider poll interval.
 	routeService.SetEdgeReloader(newEdgeReloader(nodeService, nodeGateway))

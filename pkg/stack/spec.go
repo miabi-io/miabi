@@ -184,6 +184,11 @@ func controlPlaneSpec(m *Manifest, name, image string) docker.RunSpec {
 		spec.Env = append(spec.Env, gomaConfigEncryptionKey+"="+v)
 	}
 
+	// The settings only the install document models. They compile to variables the control plane
+	// already reads, so the manifest pins them through the mechanisms that exist rather than
+	// growing a reconciler of its own.
+	spec.Env = append(spec.Env, installEnv(m)...)
+
 	// The operator's own variables, last. Normalize has already refused any key Miabi sets above, so this can never
 	// shadow one — there are no duplicate keys, and therefore no ordering rule to reason about. Sorted, because Go
 	// map iteration is random and specHash would otherwise differ on every run, recreating the whole stack.

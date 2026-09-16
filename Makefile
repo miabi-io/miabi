@@ -12,6 +12,7 @@ WEB_DIR := web
 EMBED_WEB_DIR := internal/web/dist
 
 SCHEMA_FILE ?= miabi.io-v1.schema.json
+INSTALL_SCHEMA_FILE ?= install.miabi.io-v1.schema.json
 
 .PHONY: run worker build build-ui build-all dev-ui test lint tidy migrate license-tool schema docker docker-rootless compose-up compose-down mwdocs
 
@@ -48,10 +49,12 @@ lint: ## Static analysis
 	go vet ./...
 	@command -v golangci-lint >/dev/null 2>&1 && golangci-lint run || echo "golangci-lint not installed, skipping"
 
-schema: ## Generate the miabi.io/v1 JSON Schema and publish it to the docs site + VS Code extension
-	go run ./cmd/schemagen -o schema/$(SCHEMA_FILE)
+schema: ## Generate the JSON Schemas
+	go run ./cmd/schemagen -o schema/$(SCHEMA_FILE) -install-o schema/$(INSTALL_SCHEMA_FILE)
 	@for d in ../docs/static/schema ../vscode-miabi/schemas; do \
-		if [ -d "$$(dirname $$d)" ]; then mkdir -p "$$d" && cp schema/$(SCHEMA_FILE) "$$d/" && echo "  -> $$d/$(SCHEMA_FILE)"; fi; \
+		if [ -d "$$(dirname $$d)" ]; then mkdir -p "$$d" && \
+			cp schema/$(SCHEMA_FILE) "$$d/" && echo "  -> $$d/$(SCHEMA_FILE)" && \
+			cp schema/$(INSTALL_SCHEMA_FILE) "$$d/" && echo "  -> $$d/$(INSTALL_SCHEMA_FILE)"; fi; \
 	done
 
 mwdocs: ## Generate the middleware reference pages for the docs site

@@ -68,6 +68,11 @@ func Setup(ctx context.Context, svc *stack.Service, path string, o SetupOptions,
 			def = o.DefaultImage()
 		}
 		m, newInstall = stack.Defaults(def), true
+		// Config encryption is on by default for a FRESH install only. An existing host may run an
+		// imported gateway, which Miabi never redeploys and so could never hand the key to.
+		if kerr := m.GenerateGatewayConfigKey(); kerr != nil {
+			return nil, kerr
+		}
 	default:
 		return nil, err
 	}

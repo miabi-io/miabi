@@ -45,6 +45,8 @@ type Document struct {
 	Spec       Spec         `yaml:"spec"`
 }
 
+// DocumentMeta identifies the install. There is one per host, so the name is decoration: it labels
+// `miabi stack status` output and nothing else. Renaming it renames nothing.
 type DocumentMeta struct {
 	Name string `yaml:"name,omitempty"`
 }
@@ -69,16 +71,24 @@ type Spec struct {
 	RunnerImage string         `yaml:"runnerImage,omitempty"`
 }
 
+// Endpoints are the URLs the platform answers on. Control is where nodes, agents and runners dial
+// back, and is separate from Web because a node on a private network may reach the control plane at
+// an address the public panel URL never resolves to.
 type Endpoints struct {
 	Web     string `yaml:"web,omitempty"`
 	Control string `yaml:"control,omitempty"`
 }
 
+// ACME is the certificate authority used for every acme-managed host on this install. Email is the
+// contact Let's Encrypt sends expiry notices to, and doubles as the admin login when none is given.
 type ACME struct {
 	Email        string `yaml:"email,omitempty"`
 	DirectoryURL string `yaml:"directoryUrl,omitempty"`
 }
 
+// ServerSpec is the control plane's own container: the image it runs, the read-only host /proc bind
+// that lets the Nodes page report real host CPU and memory, and any variable Miabi reads that this
+// document does not already model.
 type ServerSpec struct {
 	Image string `yaml:"image,omitempty"`
 	// HostProc is a pointer because absent must mean on.
@@ -87,10 +97,13 @@ type ServerSpec struct {
 	Env       map[string]string `yaml:"env,omitempty"`
 }
 
+// ImageSpec pins a component that has nothing to configure but the image it runs.
 type ImageSpec struct {
 	Image string `yaml:"image,omitempty"`
 }
 
+// GatewaySpec is Goma Gateway: the image, the config file bind-mounted read-only from beside this
+// manifest, and anything that config interpolates.
 type GatewaySpec struct {
 	Image  string `yaml:"image,omitempty"`
 	Config string `yaml:"config,omitempty"`
@@ -100,12 +113,16 @@ type GatewaySpec struct {
 	Env       map[string]string `yaml:"env,omitempty"`
 }
 
+// RegistrySpec is the built-in OCI registry. The host anchors every image reference Miabi has
+// recorded and decides which workspace owns an image, which is why the console shows it read-only.
 type RegistrySpec struct {
 	Enabled bool   `yaml:"enabled"`
 	Host    string `yaml:"host,omitempty"`
 	Storage string `yaml:"storage,omitempty"`
 }
 
+// AdminSpec is the first admin account. Only the address: the password is generated into
+// spec.secrets, because this is an identity and that is a credential.
 type AdminSpec struct {
 	Email string `yaml:"email,omitempty"`
 }
@@ -124,6 +141,9 @@ type SecretsSpec struct {
 	RegistryPlatformToken   string `yaml:"registryPlatformToken,omitempty"`
 }
 
+// NetworkingSpec covers the two Docker fabrics and the address policy around them: the shared proxy
+// network routed apps join, the private one the platform talks over, and the pools and ranges Miabi
+// allocates from. Named as a topic rather than a plural because only two of its fields are networks.
 type NetworkingSpec struct {
 	Proxy     NetworkConfig `yaml:"proxy,omitempty"`
 	Internal  NetworkConfig `yaml:"internal,omitempty"`
@@ -133,25 +153,34 @@ type NetworkingSpec struct {
 	DNS       DNSSpec       `yaml:"dns,omitempty"`
 }
 
+// PoolSpec is the CIDR Miabi carves every managed network out of, handed to Docker as explicit IPAM
+// so its own small default pools cannot exhaust. It must not overlap the proxy network, your LAN or
+// a VPN.
 type PoolSpec struct {
 	CIDR         string `yaml:"cidr,omitempty"`
 	SubnetPrefix int    `yaml:"subnetPrefix,omitempty"`
 }
 
+// HostPortsSpec bounds the host ports an application may ask to publish.
 type HostPortsSpec struct {
 	Min int `yaml:"min,omitempty"`
 	Max int `yaml:"max,omitempty"`
 }
 
+// ExternalSpec is the wildcard domain one-click application URLs are published under on the default
+// cluster. Setting it here pins it; leave it empty to manage it from Clusters.
 type ExternalSpec struct {
 	BaseDomain   string `yaml:"baseDomain,omitempty"`
 	CertProvider string `yaml:"certProvider,omitempty"`
 }
 
+// DNSSpec paces the managed-DNS re-assert sweep.
 type DNSSpec struct {
 	ReconcileMinutes int `yaml:"reconcileMinutes,omitempty"`
 }
 
+// BackupSpec is the platform's own backup (Enterprise). Stating any of it pins the console's
+// corresponding fields, which is the point on an install described by infrastructure-as-code.
 type BackupSpec struct {
 	Schedule          string            `yaml:"schedule,omitempty"`
 	Destination       BackupDestination `yaml:"destination,omitempty"`
@@ -160,6 +189,8 @@ type BackupSpec struct {
 	Retention         BackupRetention   `yaml:"retention,omitempty"`
 }
 
+// BackupDestination is the S3-compatible target. Bucket, accessKey and secretKey are all-or-nothing:
+// with any one missing the control plane ignores the whole block and leaves the console in charge.
 type BackupDestination struct {
 	Endpoint       string `yaml:"endpoint,omitempty"`
 	Bucket         string `yaml:"bucket,omitempty"`
@@ -173,17 +204,24 @@ type BackupDestination struct {
 	VolumePath     string `yaml:"volumePath,omitempty"`
 }
 
+// BackupEncryption seals the recovery point. The passphrase is NOT the platform's master key and
+// must never be set to it: it protects the database that would otherwise be the only place it lived,
+// and a real disaster is exactly when the in-platform copy is unreachable. includeIdentity seals the
+// master key in, which is what a restore onto fresh hardware needs.
 type BackupEncryption struct {
 	Passphrase      string `yaml:"passphrase,omitempty"`
 	Encrypt         *bool  `yaml:"encrypt,omitempty"`
 	IncludeIdentity *bool  `yaml:"includeIdentity,omitempty"`
 }
 
+// BackupRetention caps whole recovery points. Zero is unbounded.
 type BackupRetention struct {
 	Max  int `yaml:"max,omitempty"`
 	Days int `yaml:"days,omitempty"`
 }
 
+// LicenseSpec points at a signed Enterprise license on disk. It is installed only when the database
+// holds none: a license added through the console takes precedence.
 type LicenseSpec struct {
 	File string `yaml:"file,omitempty"`
 }

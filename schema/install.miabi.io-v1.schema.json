@@ -1,0 +1,425 @@
+{
+  "$defs": {
+    "ACME": {
+      "additionalProperties": false,
+      "description": "ACME is the certificate authority used for every acme-managed host on this install. Email is the contact Let's Encrypt sends expiry notices to, and doubles as the admin login when none is given.",
+      "properties": {
+        "directoryUrl": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "AdminSpec": {
+      "additionalProperties": false,
+      "description": "AdminSpec is the first admin account. Only the address: the password is generated into spec.secrets, because this is an identity and that is a credential.",
+      "properties": {
+        "email": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BackupDestination": {
+      "additionalProperties": false,
+      "description": "BackupDestination is the S3-compatible target. Bucket, accessKey and secretKey are all-or-nothing: with any one missing the control plane ignores the whole block and leaves the console in charge.",
+      "properties": {
+        "accessKey": {
+          "type": "string"
+        },
+        "bucket": {
+          "type": "string"
+        },
+        "databasePath": {
+          "type": "string"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "forcePathStyle": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string"
+        },
+        "region": {
+          "type": "string"
+        },
+        "secretKey": {
+          "type": "string"
+        },
+        "useSSL": {
+          "type": "boolean"
+        },
+        "volumePath": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BackupEncryption": {
+      "additionalProperties": false,
+      "description": "BackupEncryption seals the recovery point. The passphrase is NOT the platform's master key and must never be set to it: it protects the database that would otherwise be the only place it lived, and a real disaster is exactly when the in-platform copy is unreachable. includeIdentity seals the master key in, which is what a restore onto fresh hardware needs.",
+      "properties": {
+        "encrypt": {
+          "type": "boolean"
+        },
+        "includeIdentity": {
+          "type": "boolean"
+        },
+        "passphrase": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BackupRetention": {
+      "additionalProperties": false,
+      "description": "BackupRetention caps whole recovery points. Zero is unbounded.",
+      "properties": {
+        "days": {
+          "type": "integer"
+        },
+        "max": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "BackupSpec": {
+      "additionalProperties": false,
+      "description": "BackupSpec is the platform's own backup (Enterprise). Stating any of it pins the console's corresponding fields, which is the point on an install described by infrastructure-as-code.",
+      "properties": {
+        "destination": {
+          "$ref": "#/$defs/BackupDestination"
+        },
+        "encryption": {
+          "$ref": "#/$defs/BackupEncryption"
+        },
+        "includeTenantData": {
+          "type": "boolean"
+        },
+        "retention": {
+          "$ref": "#/$defs/BackupRetention"
+        },
+        "schedule": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "DNSSpec": {
+      "additionalProperties": false,
+      "description": "DNSSpec paces the managed-DNS re-assert sweep.",
+      "properties": {
+        "reconcileMinutes": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "DocumentMeta": {
+      "additionalProperties": false,
+      "description": "DocumentMeta identifies the install. There is one per host, so the name is decoration: it labels `miabi stack status` output and nothing else. Renaming it renames nothing.",
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Endpoints": {
+      "additionalProperties": false,
+      "description": "Endpoints are the URLs the platform answers on. Control is where nodes, agents and runners dial back, and is separate from Web because a node on a private network may reach the control plane at an address the public panel URL never resolves to.",
+      "properties": {
+        "control": {
+          "type": "string"
+        },
+        "web": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ExternalSpec": {
+      "additionalProperties": false,
+      "description": "ExternalSpec is the wildcard domain one-click application URLs are published under on the default cluster. Setting it here pins it; leave it empty to manage it from Clusters.",
+      "properties": {
+        "baseDomain": {
+          "type": "string"
+        },
+        "certProvider": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GatewaySpec": {
+      "additionalProperties": false,
+      "description": "GatewaySpec is Goma Gateway: the image, the config file bind-mounted read-only from beside this manifest, and anything that config interpolates.",
+      "properties": {
+        "config": {
+          "type": "string"
+        },
+        "configSha": {
+          "description": "ConfigSha is written by Miabi, never by the operator: it records the digest of the DEFAULT config last written, which is what keeps a customized goma.yml from being overwritten.",
+          "type": "string"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "image": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "HostPortsSpec": {
+      "additionalProperties": false,
+      "description": "HostPortsSpec bounds the host ports an application may ask to publish.",
+      "properties": {
+        "max": {
+          "type": "integer"
+        },
+        "min": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "ImageSpec": {
+      "additionalProperties": false,
+      "description": "ImageSpec pins a component that has nothing to configure but the image it runs.",
+      "properties": {
+        "image": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "LicenseSpec": {
+      "additionalProperties": false,
+      "description": "LicenseSpec points at a signed Enterprise license on disk. It is installed only when the database holds none: a license added through the console takes precedence.",
+      "properties": {
+        "file": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "NetworkConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "subnet": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "subnet"
+      ],
+      "type": "object"
+    },
+    "NetworkingSpec": {
+      "additionalProperties": false,
+      "description": "NetworkingSpec covers the two Docker fabrics and the address policy around them: the shared proxy network routed apps join, the private one the platform talks over, and the pools and ranges Miabi allocates from. Named as a topic rather than a plural because only two of its fields are networks.",
+      "properties": {
+        "dns": {
+          "$ref": "#/$defs/DNSSpec"
+        },
+        "external": {
+          "$ref": "#/$defs/ExternalSpec"
+        },
+        "hostPorts": {
+          "$ref": "#/$defs/HostPortsSpec"
+        },
+        "internal": {
+          "$ref": "#/$defs/NetworkConfig"
+        },
+        "pool": {
+          "$ref": "#/$defs/PoolSpec"
+        },
+        "proxy": {
+          "$ref": "#/$defs/NetworkConfig"
+        }
+      },
+      "type": "object"
+    },
+    "PoolSpec": {
+      "additionalProperties": false,
+      "description": "PoolSpec is the CIDR Miabi carves every managed network out of, handed to Docker as explicit IPAM so its own small default pools cannot exhaust. It must not overlap the proxy network, your LAN or a VPN.",
+      "properties": {
+        "cidr": {
+          "type": "string"
+        },
+        "subnetPrefix": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "RegistrySpec": {
+      "additionalProperties": false,
+      "description": "RegistrySpec is the built-in OCI registry. The host anchors every image reference Miabi has recorded and decides which workspace owns an image, which is why the console shows it read-only.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "host": {
+          "type": "string"
+        },
+        "storage": {
+          "enum": [
+            "filesystem",
+            "s3"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "enabled"
+      ],
+      "type": "object"
+    },
+    "SecretsSpec": {
+      "additionalProperties": false,
+      "description": "SecretsSpec holds the install's secrets in plaintext, as the flat schema always has. The file is mode 0600 on a root-owned host, and anyone who can read it already holds the Docker socket.",
+      "properties": {
+        "adminPassword": {
+          "type": "string"
+        },
+        "dbPassword": {
+          "type": "string"
+        },
+        "encryptionKey": {
+          "type": "string"
+        },
+        "gomaConfigEncryptionKey": {
+          "description": "GomaConfigEncryptionKey is the one secret here that is safe to lose: the gateway config it protects is rendered from the database on every sync, so rotating it costs a converge.",
+          "type": "string"
+        },
+        "jwtSecret": {
+          "type": "string"
+        },
+        "redisPassword": {
+          "type": "string"
+        },
+        "registryPlatformToken": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ServerSpec": {
+      "additionalProperties": false,
+      "description": "ServerSpec is the control plane's own container: the image it runs, the read-only host /proc bind that lets the Nodes page report real host CPU and memory, and any variable Miabi reads that this document does not already model.",
+      "properties": {
+        "dockerGid": {
+          "type": "string"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "hostProc": {
+          "description": "HostProc is a pointer because absent must mean on.",
+          "type": "boolean"
+        },
+        "image": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Spec": {
+      "additionalProperties": false,
+      "description": "Spec is the ControlPlane's desired state. Optional scalars that pin a console-owned setting are pointers: an emitted environment variable locks the field in the UI, so \"unset\" and \"set to the zero value\" have to stay distinguishable.",
+      "properties": {
+        "acme": {
+          "$ref": "#/$defs/ACME"
+        },
+        "admin": {
+          "$ref": "#/$defs/AdminSpec"
+        },
+        "backup": {
+          "$ref": "#/$defs/BackupSpec"
+        },
+        "cache": {
+          "$ref": "#/$defs/ImageSpec"
+        },
+        "database": {
+          "$ref": "#/$defs/ImageSpec"
+        },
+        "domain": {
+          "type": "string"
+        },
+        "endpoints": {
+          "$ref": "#/$defs/Endpoints"
+        },
+        "gateway": {
+          "$ref": "#/$defs/GatewaySpec"
+        },
+        "license": {
+          "$ref": "#/$defs/LicenseSpec"
+        },
+        "networking": {
+          "$ref": "#/$defs/NetworkingSpec"
+        },
+        "registry": {
+          "$ref": "#/$defs/RegistrySpec"
+        },
+        "runnerImage": {
+          "type": "string"
+        },
+        "secrets": {
+          "$ref": "#/$defs/SecretsSpec"
+        },
+        "server": {
+          "$ref": "#/$defs/ServerSpec"
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://docs.miabi.io/schema/install.miabi.io-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A Miabi install: the desired state of the stack on one host.",
+  "properties": {
+    "apiVersion": {
+      "const": "install.miabi.io/v1"
+    },
+    "kind": {
+      "enum": [
+        "ControlPlane"
+      ]
+    },
+    "metadata": {
+      "$ref": "#/$defs/DocumentMeta"
+    },
+    "spec": {
+      "$ref": "#/$defs/Spec"
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "spec"
+  ],
+  "title": "ControlPlane",
+  "type": "object"
+}

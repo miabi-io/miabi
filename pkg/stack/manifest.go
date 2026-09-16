@@ -155,6 +155,23 @@ type Secrets struct {
 	AdminPassword string `yaml:"admin_password"`
 }
 
+// GenerateGatewayConfigKey mints the Goma config-encryption key, and is called ONLY for a fresh
+// install.
+func (m *Manifest) GenerateGatewayConfigKey() error {
+	if m.Gateway.Env[gomaConfigEncryptionKey] != "" {
+		return nil
+	}
+	v, err := randomHex(32)
+	if err != nil {
+		return err
+	}
+	if m.Gateway.Env == nil {
+		m.Gateway.Env = map[string]string{}
+	}
+	m.Gateway.Env[gomaConfigEncryptionKey] = v
+	return nil
+}
+
 // ManifestPath resolves the manifest location: MIABI_CONFIG_FILE, else the older MIABI_STACK_FILE,
 // else /etc/miabi/miabi.yaml. The legacy /etc/miabi/stack.yaml is no longer read implicitly — Load
 // detects it and says how to migrate, which beats silently operating on a path the operator was
