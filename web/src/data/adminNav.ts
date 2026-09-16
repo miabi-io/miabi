@@ -14,6 +14,7 @@ export const adminNavSections: NavSection[] = [
       { name: 'Dashboard', path: '/admin/dashboard', icon: 'mdi-view-dashboard-outline' },
       { name: 'Events', path: '/admin/events', icon: 'mdi-pulse' },
       { name: 'Jobs', path: '/admin/jobs', icon: 'mdi-clock-outline' },
+      { name: 'Reconciliation', path: '/admin/reconciliation', icon: 'mdi-autorenew' },
     ],
   },
   {

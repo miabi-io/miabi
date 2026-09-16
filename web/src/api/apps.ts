@@ -1,5 +1,5 @@
 import api from './client'
-import type { ApiResponse, Application, AppOverview, AppPort, Deployment, DeploymentLogHistory, Release, AppEnvVar, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, ProcessList, RuntimeKind, ServiceUpdateConfig, PipelineRun, PipelineDefinition, CanaryRoutingPayload, CanaryRoutingResult, CanaryPreview } from './types'
+import type { ApiResponse, Application, AppOverview, AppPort, Deployment, DeploymentLogHistory, Release, AppEnvVar, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, ReconcilePolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, ProcessList, RuntimeKind, ServiceUpdateConfig, PipelineRun, PipelineDefinition, CanaryRoutingPayload, CanaryRoutingResult, CanaryPreview } from './types'
 
 /**
  * What a deploy returns when the app's repository owns a pipeline: the run that
@@ -43,6 +43,11 @@ export interface AppResourceInput {
   drop_capabilities?: string[]
   restart_policy?: RestartPolicy
   image_pull_policy?: ImagePullPolicy
+  /**
+   * How much the control manager may do about this app: inherit the platform mode, leave the app out of
+   * reconciliation, report it without acting, or allow an in-place redeploy. Omitted leaves it unchanged.
+   */
+  reconcile_policy?: ReconcilePolicy
   healthcheck_type?: HealthcheckType
   healthcheck_http_path?: string
   healthcheck_port?: number

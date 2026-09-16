@@ -29,7 +29,7 @@ import EnvVarModal from '@/components/EnvVarModal.vue'
 import RouteFormModal from '@/components/RouteFormModal.vue'
 import CanaryPanel from '@/components/CanaryPanel.vue'
 import AppAccessPanel from '@/components/AppAccessPanel.vue'
-import type { Application, AppOverview, Deployment, Release, AppEnvVar, Route, Network, Stack, Volume, StatsSample, Registry, GitRepository, AppEvent, AppPort, PortBinding, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, DatabaseInstance, LogicalDatabase, NodePlacement, PipelineDefinition, CapabilityCatalog } from '@/api/types'
+import type { Application, AppOverview, Deployment, Release, AppEnvVar, Route, Network, Stack, Volume, StatsSample, Registry, GitRepository, AppEvent, AppPort, PortBinding, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, ReconcilePolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, DatabaseInstance, LogicalDatabase, NodePlacement, PipelineDefinition, CapabilityCatalog } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 import { fmtSize } from '@/utils/format'
 import { copyText } from '@/utils/clipboard'
@@ -470,6 +470,7 @@ interface SettingsForm {
   deploy_strategy: DeployStrategy; canary_initial_weight: number; canary_step_weight: number; canary_step_interval_seconds: number
   // Resources (0 = unlimited)
   cpu_cores: number; memory_mb: number; gpu_count: number; gpu_kind: string; run_as_user: string; add_capabilities: string[]; devices: string[]; restart_policy: RestartPolicy; image_pull_policy: ImagePullPolicy
+  reconcile_policy: ReconcilePolicy
   read_only_root_filesystem: boolean; no_new_privileges: boolean; drop_capabilities: string
   // Healthcheck
   hc_type: HealthcheckType; hc_path: string; hc_port: number | null; hc_command: string
@@ -480,6 +481,7 @@ function emptySettingsForm(): SettingsForm {
     image: '', tag: '', command: '', registry_id: null, git_repository_id: null, git_repo: '', git_ref: '', build_method: 'auto', builder: '', stack_id: null, network_ids: [], ports: [],
     deploy_strategy: 'rolling', canary_initial_weight: 10, canary_step_weight: 20, canary_step_interval_seconds: 60,
     cpu_cores: 0, memory_mb: 0, gpu_count: 0, gpu_kind: '', run_as_user: '', add_capabilities: [], devices: [], restart_policy: 'unless-stopped', image_pull_policy: 'always',
+    reconcile_policy: 'inherit',
     read_only_root_filesystem: false, no_new_privileges: false, drop_capabilities: '',
     hc_type: 'none', hc_path: '/', hc_port: null, hc_command: '', hc_interval: 30, hc_timeout: 5, hc_retries: 3, hc_start_period: 0,
   }
@@ -611,6 +613,14 @@ const IMAGE_PULL_POLICIES: { value: ImagePullPolicy; label: string }[] = [
   { value: 'always', label: 'Always' },
   { value: 'if-not-present', label: 'If not present' },
   { value: 'never', label: 'Never' },
+]
+// What the control manager may do about this app if its container disappears. Set one app to "off" or
+// "observe" when an automatic redeploy would interrupt you, rather than changing the whole platform.
+const RECONCILE_POLICIES: { value: ReconcilePolicy; label: string }[] = [
+  { value: 'inherit', label: 'Platform default' },
+  { value: 'off', label: 'Leave this app alone' },
+  { value: 'observe', label: 'Report only' },
+  { value: 'enforce', label: 'Redeploy in place' },
 ]
 const MB = 1024 * 1024
 // Cap guards (0 cap = unlimited). Used to disable Save + show inline errors.
@@ -909,6 +919,7 @@ function syncSettingsForm() {
     drop_capabilities: (app.value.drop_capabilities ?? []).join(', '),
     restart_policy: app.value.restart_policy || 'unless-stopped',
     image_pull_policy: app.value.image_pull_policy || 'always',
+    reconcile_policy: app.value.reconcile_policy || 'inherit',
     hc_type: app.value.healthcheck_type || 'none',
     hc_path: app.value.healthcheck_http_path || '/',
     hc_port: app.value.healthcheck_port || null,
@@ -1142,6 +1153,7 @@ async function saveSettings() {
       drop_capabilities: dropCapabilityList.value,
       restart_policy: settingsForm.value.restart_policy,
       image_pull_policy: settingsForm.value.image_pull_policy,
+      reconcile_policy: settingsForm.value.reconcile_policy,
       healthcheck_type: settingsForm.value.hc_type,
       healthcheck_http_path: settingsForm.value.hc_path,
       healthcheck_port: settingsForm.value.hc_port || 0,
@@ -3463,6 +3475,19 @@ async function detachDatabase(d: AppDatabase) {
               Whether a deploy pulls the image from the registry: <strong>Always</strong> fetches the tag each deploy,
               <strong>If not present</strong> reuses a locally cached image, <strong>Never</strong> requires it to be present
               already. Digest-pinned images are never re-pulled.
+            </p>
+          </div>
+          <div class="form-group">
+            <label class="form-label">If this app disappears</label>
+            <select v-model="settingsForm.reconcile_policy" class="form-select" :disabled="!ws.canEdit">
+              <option v-for="p in RECONCILE_POLICIES" :key="p.value" :value="p.value">{{ p.label }}</option>
+            </select>
+            <p class="form-hint">
+              What the platform's reconciliation does when this app's container is gone from its node:
+              <strong>Platform default</strong> follows the server-wide setting, <strong>Leave this app alone</strong>
+              stops watching it at all, <strong>Report only</strong> records the problem without touching it, and
+              <strong>Redeploy in place</strong> brings it back on the same node. A missing data volume always stops a
+              redeploy — the data has to be restored first.
             </p>
           </div>
           <button v-if="ws.canEdit" class="btn btn-primary" :disabled="savingSettings || !resourcesValid || !!runAsUserError || !!dropCapabilitiesError" @click="saveSettings">

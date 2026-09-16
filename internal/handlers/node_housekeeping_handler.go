@@ -29,6 +29,11 @@ type HousekeepingSelectionRequest struct {
 			Kind string `json:"kind"` // container | volume
 			Ref  string `json:"ref"`
 		} `json:"orphans"`
+		// Missing are the workloads to redeploy: container | service, ref "app:<id>".
+		Missing []struct {
+			Kind string `json:"kind"`
+			Ref  string `json:"ref"`
+		} `json:"missing"`
 	} `json:"body"`
 }
 
@@ -41,6 +46,9 @@ func (r *HousekeepingSelectionRequest) selection() housekeeping.Selection {
 	}
 	for _, o := range r.Body.Orphans {
 		sel.Orphans = append(sel.Orphans, housekeeping.ResourceRef{Kind: o.Kind, Ref: o.Ref})
+	}
+	for _, m := range r.Body.Missing {
+		sel.Missing = append(sel.Missing, housekeeping.ResourceRef{Kind: m.Kind, Ref: m.Ref})
 	}
 	return sel
 }
@@ -103,6 +111,15 @@ func (h *NodeHandler) auditHousekeeping(c *okapi.Context, nodeID uint, res *hous
 				"images_deleted":              res.ImagesDeleted,
 				"images_reclaimed_bytes":      res.ImagesBytes,
 				"build_cache_reclaimed_bytes": res.BuildCacheBytes,
+			},
+		})
+	}
+	for _, m := range res.Redeployed {
+		h.audit.Record(audit.Entry{
+			ActorID: &actor, Action: "node.housekeeping.redeploy", TargetType: "node", TargetID: nodeStr, IP: c.RealIP(),
+			Metadata: map[string]any{
+				"kind": m.Kind, "ref": m.Ref, "name": m.Name,
+				"owner_kind": m.OwnerKind, "owner_id": m.OwnerID,
 			},
 		})
 	}

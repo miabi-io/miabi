@@ -191,6 +191,32 @@ const (
 // schedule an unbounded number of tasks (node resource-exhaustion DoS).
 const MaxServiceReplicas = 100
 
+// ReconcilePolicy is how much the control manager may do about this app, overriding the platform-wide mode.
+// It exists because the first thing an operator wants, the first time a debugging session is undone by an
+// automatic redeploy, is a way to exempt one app without switching the whole platform back to observing.
+type ReconcilePolicy string
+
+const (
+	// ReconcileInherit follows the platform's control_manager_mode. The default.
+	ReconcileInherit ReconcilePolicy = "inherit"
+	// ReconcileOff leaves the app out of reconciliation entirely: not watched, not reported, not touched.
+	ReconcileOff ReconcilePolicy = "off"
+	// ReconcileObserve reports the app's drift but never acts on it, even while the platform enforces.
+	ReconcileObserve ReconcilePolicy = "observe"
+	// ReconcileEnforce lets the app be redeployed in place even while the platform only observes.
+	ReconcileEnforce ReconcilePolicy = "enforce"
+)
+
+// ValidReconcilePolicy reports whether p is a known policy.
+func ValidReconcilePolicy(p ReconcilePolicy) bool {
+	switch p {
+	case ReconcileInherit, ReconcileOff, ReconcileObserve, ReconcileEnforce:
+		return true
+	default:
+		return false
+	}
+}
+
 // ValidRuntimeKind reports whether k is a known runtime kind.
 func ValidRuntimeKind(k RuntimeKind) bool {
 	switch k {
@@ -462,6 +488,10 @@ type Application struct {
 	// DeployStrategy is the app's default rollout method, applied when a deploy
 	// does not specify one. See DeployStrategy constants.
 	DeployStrategy DeployStrategy `json:"deploy_strategy" gorm:"not null;default:rolling"`
+
+	// ReconcilePolicy overrides the platform's control-manager mode for this app: leave it out of
+	// reconciliation, report it without acting, or let it be redeployed in place. Inherit follows the platform.
+	ReconcilePolicy ReconcilePolicy `json:"reconcile_policy" gorm:"not null;default:inherit"`
 
 	// Canary tuning (used when DeployStrategy is canary or a deploy overrides to
 	// canary). The platform starts at CanaryInitialWeight and adds

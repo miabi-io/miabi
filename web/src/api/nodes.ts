@@ -107,16 +107,20 @@ export interface ReclaimCategoryStat {
   bytes: number
 }
 
+// DriftItem is one resource that diverges from what Miabi recorded. Shared by node housekeeping (which
+// reports orphans, missing workloads and untracked resources on one node) and the platform-wide
+// reconciliation report, which adds replaced volumes and node gateways.
 export interface DriftItem {
-  class: 'orphan' | 'missing' | 'untracked'
-  kind: 'container' | 'volume'
+  class: 'orphan' | 'missing' | 'untracked' | 'replaced'
+  kind: 'container' | 'volume' | 'service' | 'config' | 'gateway'
   ref: string
   name: string
   image?: string
   state?: string
   owner_kind?: string
   owner_id?: number
-  action: 'remove' | 'redeploy' | 'import'
+  // 'none' is drift Miabi must report but may not touch, because something else owns the resource.
+  action: 'remove' | 'redeploy' | 'import' | 'restore' | 'none'
 }
 
 export interface HousekeepingReport {
@@ -136,6 +140,8 @@ export interface HousekeepingReport {
 export interface HousekeepingSelection {
   reclaim: { dangling_images: boolean; build_cache: boolean }
   orphans: { kind: string; ref: string }[]
+  // Workloads to redeploy, through the ordinary deploy path.
+  missing?: { kind: string; ref: string }[]
 }
 
 export interface HousekeepingPlan {
@@ -143,6 +149,7 @@ export interface HousekeepingPlan {
   dangling_images: ReclaimCategoryStat
   build_cache: ReclaimCategoryStat
   orphans: DriftItem[]
+  missing?: DriftItem[]
   estimated_bytes: number
 }
 
@@ -151,6 +158,7 @@ export interface HousekeepingResult {
   images_reclaimed_bytes: number
   build_cache_reclaimed_bytes: number
   orphans_removed: DriftItem[]
+  redeployed?: DriftItem[]
   errors?: string[]
 }
 

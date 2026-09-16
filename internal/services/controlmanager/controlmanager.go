@@ -252,6 +252,8 @@ type item struct {
 
 	// app is carried so enforcement can redeploy it exactly where it already is.
 	app *models.Application
+	// policy is the app's effective mode: its own override, or the platform's.
+	policy Mode
 
 	containerID string // container items: the active release's container
 	service     string // service items: the swarm service name
@@ -317,6 +319,7 @@ func (s *Service) plan(ctx context.Context) ([]item, error) {
 		byName[v.DockerName] = volumeKey(v.ID)
 	}
 
+	platform := s.Mode()
 	items := make([]item, 0, len(apps)+len(volumes)+len(instances))
 	mountedBy := map[string][]subject{}
 	for i := range apps {
@@ -324,8 +327,12 @@ func (s *Service) plan(ctx context.Context) ([]item, error) {
 		if deploying[a.ID] {
 			continue
 		}
+		policy := effectivePolicy(a, platform)
+		if policy == ModeOff {
+			continue // exempted by its own policy: not watched, not reported, not touched
+		}
 		it := item{
-			name: a.Name, ref: appKey(a.ID), owner: drift.OwnerApp, id: a.ID, app: a,
+			name: a.Name, ref: appKey(a.ID), owner: drift.OwnerApp, id: a.ID, app: a, policy: policy,
 			key: appKey(a.ID), workspaceID: a.WorkspaceID, nodeID: a.ServerID, clusterID: a.ClusterID,
 			subjects: []subject{{workspaceID: a.WorkspaceID, appID: a.ID}},
 		}
@@ -416,6 +423,25 @@ func (s *Service) gatewayItems(ctx context.Context) []item {
 		})
 	}
 	return out
+}
+
+// effectivePolicy resolves what may be done about one app: its own override when it has one, else the
+// platform's mode. An app may opt out of enforcement, or into it, without the platform changing.
+func effectivePolicy(a *models.Application, platform Mode) Mode {
+	switch a.ReconcilePolicy {
+	case models.ReconcileOff:
+		return ModeOff
+	case models.ReconcileObserve:
+		return ModeObserve
+	case models.ReconcileEnforce:
+		// Enforcing needs a sweep to run at all, which the platform mode decides.
+		if platform == ModeOff {
+			return ModeOff
+		}
+		return ModeEnforce
+	default:
+		return platform
+	}
 }
 
 // latestVolumeBackup names the newest completed archive of a volume. A failed or half-finished one is not

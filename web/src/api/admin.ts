@@ -21,6 +21,7 @@ import type {
   UpdateInfo,
   JobStatus,
   JobStats,
+  ControlManagerStatus,
   OAuthProvider,
   Plan,
   PlanInput,
@@ -278,6 +279,9 @@ export const adminApi = {
   listJobs: (page = 0, size = 20) =>
     api.get<PageableResponse<JobStatus>>('/admin/jobs', { params: { page, size } }),
   jobStats: () => api.get<ApiResponse<JobStats>>('/admin/jobs/stats'),
+
+  // Control manager: the last platform-wide reconciliation sweep.
+  controlManager: () => api.get<ApiResponse<ControlManagerStatus>>('/admin/control-manager'),
 
   // OAuth providers
   listProviders: () => api.get<ApiResponse<OAuthProvider[]>>('/admin/oauth/providers'),

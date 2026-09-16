@@ -54,6 +54,10 @@ type Service struct {
 	// swarms answers for service apps, whose tasks may run on any node of their
 	// cluster. nil never reports a service app missing.
 	swarms SwarmManagers
+	// redeployer and appsByID turn a reported missing workload into an actionable one. nil leaves the
+	// missing rows report-only.
+	redeployer Redeployer
+	appsByID   appFinder
 }
 
 // configLookup resolves a config by name within a workspace.

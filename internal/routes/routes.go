@@ -478,6 +478,9 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	appService.SetQuota(quotaService)
 	appService.SetClusterCap(clusterService) // gate "service" runtime apps on cluster mode
 	housekeepingService.SetSwarmManagers(clusterService)
+	// A "missing" row on a node's housekeeping page is now actionable: redeploying goes through the ordinary
+	// deploy path, which refuses an app whose data volume is gone.
+	housekeepingService.SetRedeployer(appService, appRepo)
 	appService.SetGrantsEnabled(cfg.ContainerGrantsEnabled)
 	appService.SetNetworkEnsurer(networkService) // apps always join the workspace's default network (self-heals a missing one)
 	storageService.SetNodeGuard(nodeService)
