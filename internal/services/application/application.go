@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jkaninda/logger"
+	"github.com/miabi-io/miabi/internal/datavolume"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/dotenv"
 	"github.com/miabi-io/miabi/internal/hostmount"
@@ -501,6 +502,8 @@ func normalizeHealthcheck(app *models.Application) {
 // method the storage guards need so they can be tested against a fake.
 type volumeLookup interface {
 	FindInWorkspace(workspaceID, id uint) (*models.Volume, error)
+	// FindByDockerName resolves a mount that carries only the Docker name, so the data guard can judge it.
+	FindByDockerName(name string) (*models.Volume, error)
 }
 
 func NewService(
@@ -1493,6 +1496,12 @@ func clamp(v, lo, hi int) int {
 // container to attach a shell to.
 var ErrNoActiveContainer = errors.New("application has no active container")
 
+// guardData refuses to start an app whose data is gone. Docker would create an empty volume in its place,
+// so the only way forward is restoring the volume — which Miabi never does on its own.
+func (s *Service) guardData(ctx context.Context, app *models.Application) error {
+	return datavolume.CheckApp(ctx, s.clients, s.volumes, app)
+}
+
 // ErrTaskOnUnmanagedNode is the user-facing form of nodes.ErrTaskUnreachable: the app IS running, but
 // on a swarm node with no Miabi agent, so there is no engine to open a shell through. Docker offers no
 // manager-side exec, so this is a hard limit. Logs are unaffected — the manager aggregates those.
@@ -1565,6 +1574,9 @@ func (s *Service) runtimeContainerID(ctx context.Context, app *models.Applicatio
 // stopped) it redeploys instead, so the new config is applied rather than starting a stale container,
 // returning that deployment so the caller can follow its logs. A plain start returns nil.
 func (s *Service) Start(ctx context.Context, app *models.Application) (*models.Deployment, error) {
+	if err := s.guardData(ctx, app); err != nil {
+		return nil, err
+	}
 	if app.RedeployRequired {
 		return s.Redeploy(app)
 	}
@@ -1632,6 +1644,9 @@ func (s *Service) Stop(ctx context.Context, app *models.Application) error {
 // stopped) it redeploys instead, so the new config is applied rather than restarting a stale
 // container, returning that deployment so the caller can follow its logs. A plain restart returns nil.
 func (s *Service) Restart(ctx context.Context, app *models.Application) (*models.Deployment, error) {
+	if err := s.guardData(ctx, app); err != nil {
+		return nil, err
+	}
 	if app.RedeployRequired {
 		return s.Redeploy(app)
 	}
@@ -2444,6 +2459,13 @@ func (s *Service) finalizeCanaryDeployment(deploymentID uint, line string) {
 }
 
 func (s *Service) enqueue(appID, serverID uint, image, trigger string, registryID *uint, strategy models.DeployStrategy, noCache bool) (*models.Deployment, error) {
+	// Every deploy, redeploy, rollback and canary passes through here, and each of them starts a container
+	// that would mount the app's volumes — so this is where a lost one has to stop them.
+	if app, err := s.apps.FindByID(appID); err == nil {
+		if derr := s.guardData(context.Background(), app); derr != nil {
+			return nil, derr
+		}
+	}
 	if !models.ValidDeployStrategy(strategy) {
 		strategy = models.DeployRolling
 	}

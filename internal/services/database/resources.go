@@ -134,6 +134,11 @@ func (s *Service) RunResize(ctx context.Context, instanceID uint, previous Resou
 	if err != nil {
 		return err
 	}
+	// Recreating the container would mount its data volume again, so a lost one stops the resize here rather
+	// than bringing the instance up on an empty volume.
+	if err := s.guardData(ctx, inst); err != nil {
+		return err
+	}
 	wasStopped := inst.Status == models.DBStatusStopped
 	s.publishProgress(inst, "Applying new resources")
 	if err := s.bringUp(ctx, inst, spec, adminPass); err != nil {

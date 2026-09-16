@@ -64,7 +64,7 @@ var leaderHeld = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 func init() {
 	prometheus.MustRegister(buildInfo, subnetPoolUsed, subnetPoolTotal, gpuDevicesTotal, gpuDevicesEnabled, gpuAllocated,
 		analyticsIngested, analyticsRejected, leaderHeld,
-		controlManagerSweep, controlManagerDrift, controlManagerUnobserved)
+		controlManagerSweep, controlManagerDrift, controlManagerUnobserved, controlManagerBlocked)
 }
 
 // SetLeader records whether this process holds the named leader lease.
@@ -92,6 +92,10 @@ var (
 		Name: "miabi_control_manager_unobserved",
 		Help: "Nodes and clusters the last control manager sweep could not observe.",
 	}, []string{"scope"})
+	controlManagerBlocked = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "miabi_control_manager_blocked_apps",
+		Help: "Apps that must not be redeployed because the volume holding their data is gone.",
+	})
 )
 
 // ObserveControlManagerSweep records how long a control manager sweep took.
@@ -99,12 +103,27 @@ func ObserveControlManagerSweep(d time.Duration) {
 	controlManagerSweep.Observe(d.Seconds())
 }
 
-// SetControlManagerDrift records the last sweep's confirmed missing workloads and the scopes it could not observe.
-func SetControlManagerDrift(containers, services, nodes, clusters int) {
-	controlManagerDrift.WithLabelValues("missing", "container").Set(float64(containers))
-	controlManagerDrift.WithLabelValues("missing", "service").Set(float64(services))
-	controlManagerUnobserved.WithLabelValues("node").Set(float64(nodes))
-	controlManagerUnobserved.WithLabelValues("cluster").Set(float64(clusters))
+// ControlManagerDrift is one sweep's outcome: what it confirmed missing or replaced, how many apps it
+// would refuse to redeploy because their data is gone, and what it could not observe.
+type ControlManagerDrift struct {
+	MissingContainers  int
+	MissingServices    int
+	MissingVolumes     int
+	ReplacedVolumes    int
+	BlockedApps        int
+	UnobservedNodes    int
+	UnobservedClusters int
+}
+
+// SetControlManagerDrift records the last control manager sweep.
+func SetControlManagerDrift(d ControlManagerDrift) {
+	controlManagerDrift.WithLabelValues("missing", "container").Set(float64(d.MissingContainers))
+	controlManagerDrift.WithLabelValues("missing", "service").Set(float64(d.MissingServices))
+	controlManagerDrift.WithLabelValues("missing", "volume").Set(float64(d.MissingVolumes))
+	controlManagerDrift.WithLabelValues("replaced", "volume").Set(float64(d.ReplacedVolumes))
+	controlManagerBlocked.Set(float64(d.BlockedApps))
+	controlManagerUnobserved.WithLabelValues("node").Set(float64(d.UnobservedNodes))
+	controlManagerUnobserved.WithLabelValues("cluster").Set(float64(d.UnobservedClusters))
 }
 
 // SetBuildInfo records the running build's version and commit.

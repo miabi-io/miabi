@@ -10,50 +10,55 @@ import (
 	"strings"
 
 	"github.com/miabi-io/miabi/internal/docker"
-	"github.com/miabi-io/miabi/internal/models"
-	"github.com/miabi-io/miabi/internal/services/node"
+	"github.com/miabi-io/miabi/internal/drift"
 )
 
 const (
 	kindContainer = "container"
 	kindService   = "service"
+	kindVolume    = "volume"
 )
 
-type presence int
+type state int
 
 const (
-	unknown presence = iota
-	present
-	missing
+	// unknown is a sweep that could not see the item: an offline node, a fresh agent, an unreachable
+	// manager. It is never evidence of absence.
+	unknown state = iota
+	intact
+	gone
+	// replaced is a volume that exists under its own name but was created again since Miabi recorded it:
+	// the row survived, the data did not.
+	replaced
 )
 
 type observation struct {
-	presence presence
-	kind     string
+	state state
+	kind  string
 }
 
-// Skip is a node or cluster a sweep could not observe. Its apps are unknown, never missing: an offline node is
-// not an empty one.
+// Skip is a node or cluster a sweep could not observe. Its items are unknown, never missing: an offline
+// node is not an empty one.
 type Skip struct {
 	Scope  string `json:"scope"` // node | cluster
 	ID     uint   `json:"id"`
 	Reason string `json:"reason"`
 }
 
-// observe judges container apps per node and service apps per cluster, since a service's tasks run wherever
-// Swarm placed them and only its cluster's manager knows whether it exists.
-func (s *Service) observe(ctx context.Context, apps []models.Application) (map[uint]observation, []Skip) {
-	byNode := map[uint][]*models.Application{}
-	byCluster := map[uint][]*models.Application{}
-	for i := range apps {
-		a := &apps[i]
-		if a.RuntimeKind == models.RuntimeService {
-			byCluster[a.ClusterID] = append(byCluster[a.ClusterID], a)
+// observe judges container and volume items per node and service items per cluster, since a service's
+// tasks run wherever Swarm placed them and only its cluster's manager knows whether it exists.
+func (s *Service) observe(ctx context.Context, items []item) (map[string]observation, []Skip) {
+	byNode := map[uint][]*item{}
+	byCluster := map[uint][]*item{}
+	for i := range items {
+		it := &items[i]
+		if it.kind == kindService {
+			byCluster[it.clusterID] = append(byCluster[it.clusterID], it)
 		} else {
-			byNode[a.ServerID] = append(byNode[a.ServerID], a)
+			byNode[it.nodeID] = append(byNode[it.nodeID], it)
 		}
 	}
-	seen := make(map[uint]observation, len(apps))
+	seen := make(map[string]observation, len(items))
 	var skipped []Skip
 	for id, group := range byNode {
 		if reason := s.observeNode(ctx, id, group, seen); reason != "" {
@@ -74,9 +79,9 @@ func (s *Service) observe(ctx context.Context, apps []models.Application) (map[u
 	return seen, skipped
 }
 
-// observeNode lists a node's containers once and looks for each app's active release container. An exited
-// container still counts as present: a crash belongs to the restart policy and the user, not to drift.
-func (s *Service) observeNode(ctx context.Context, nodeID uint, apps []*models.Application, seen map[uint]observation) string {
+// observeNode lists a node's containers and volumes once each, then judges every item placed on it. An
+// exited container still counts as intact: a crash belongs to the restart policy and the user, not to drift.
+func (s *Service) observeNode(ctx context.Context, nodeID uint, items []*item, seen map[string]observation) string {
 	since, connected := s.nodes.ConnectedSince(nodeID)
 	if !connected {
 		return "offline"
@@ -88,42 +93,93 @@ func (s *Service) observeNode(ctx context.Context, nodeID uint, apps []*models.A
 	if err != nil {
 		return "offline"
 	}
-	containers, err := dc.ListContainers(ctx, true)
-	if err != nil {
-		return "listing containers failed: " + err.Error()
-	}
-	for _, a := range apps {
-		rel, err := s.releases.FindActive(a.ID)
-		if err != nil || rel.ContainerID == "" {
-			continue
-		}
-		o := observation{kind: kindContainer, presence: missing}
-		for _, c := range containers {
-			if strings.HasPrefix(c.ID, rel.ContainerID) {
-				o.presence = present
-				break
+
+	var containers []docker.Container
+	live := map[string]docker.Volume{}
+	for _, it := range items {
+		switch {
+		case it.kind == kindContainer && containers == nil:
+			containers, err = dc.ListContainers(ctx, true)
+			if err != nil {
+				return "listing containers failed: " + err.Error()
+			}
+		case it.kind == kindVolume && len(live) == 0:
+			vols, verr := dc.ListVolumes(ctx)
+			if verr != nil {
+				return "listing volumes failed: " + verr.Error()
+			}
+			for _, v := range vols {
+				live[v.Name] = v
 			}
 		}
-		seen[a.ID] = o
+	}
+
+	for _, it := range items {
+		switch it.kind {
+		case kindContainer:
+			seen[it.key] = observation{kind: kindContainer, state: containerState(containers, it.containerID)}
+		case kindVolume:
+			st, adopt := volumeState(live, it.volumeName, it.engineCreatedAt)
+			// A volume created before Miabi recorded a timestamp adopts the engine's, so it reads as intact
+			// rather than replaced for the rest of its life.
+			if adopt != "" && it.adopt != nil {
+				_ = it.adopt(adopt)
+			}
+			seen[it.key] = observation{kind: kindVolume, state: st}
+		}
 	}
 	return ""
 }
 
-// observeCluster asks a cluster's manager for each service app's service. Only a not-found answer is missing;
-// a manager that can't be reached leaves the whole cluster unknown.
-func (s *Service) observeCluster(ctx context.Context, clusterID uint, apps []*models.Application, seen map[uint]observation) string {
+// observeCluster asks a cluster's manager for each service app's service. Only a not-found answer is
+// missing; a manager that can't be reached leaves the whole cluster unknown.
+func (s *Service) observeCluster(ctx context.Context, clusterID uint, items []*item, seen map[string]observation) string {
 	mgr, err := s.clusters.Manager(ctx, clusterID)
 	if err != nil {
 		return "manager unreachable: " + err.Error()
 	}
-	for _, a := range apps {
-		_, err := mgr.ServiceInspect(ctx, node.AppAlias(a))
+	for _, it := range items {
+		_, err := mgr.ServiceInspect(ctx, it.service)
 		switch {
 		case err == nil:
-			seen[a.ID] = observation{kind: kindService, presence: present}
+			seen[it.key] = observation{kind: kindService, state: intact}
 		case errors.Is(err, docker.ErrNotFound):
-			seen[a.ID] = observation{kind: kindService, presence: missing}
+			seen[it.key] = observation{kind: kindService, state: gone}
 		}
 	}
 	return ""
+}
+
+func containerState(containers []docker.Container, containerID string) state {
+	for _, c := range containers {
+		if strings.HasPrefix(c.ID, containerID) {
+			return intact
+		}
+	}
+	return gone
+}
+
+// volumeState judges a volume against the node's live volumes, and reports the engine timestamp to adopt
+// when Miabi has none recorded. What counts as replaced is drift's rule, shared with the guard that
+// refuses to start a workload whose data is gone.
+func volumeState(live map[string]docker.Volume, name, recorded string) (state, string) {
+	v, ok := live[name]
+	switch {
+	case !ok:
+		return gone, ""
+	case recorded == "":
+		return intact, v.CreatedAt
+	case drift.Replaced(recorded, v.CreatedAt):
+		return replaced, ""
+	default:
+		return intact, ""
+	}
+}
+
+// class names the drift a state represents, for the report and the events.
+func (st state) class() string {
+	if st == replaced {
+		return drift.ClassReplaced
+	}
+	return drift.ClassMissing
 }

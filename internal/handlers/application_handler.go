@@ -11,6 +11,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/jkaninda/okapi"
+	"github.com/miabi-io/miabi/internal/datavolume"
 	"github.com/miabi-io/miabi/internal/enterprise"
 	"github.com/miabi-io/miabi/internal/hostmount"
 	"github.com/miabi-io/miabi/internal/logstore"
@@ -886,6 +887,9 @@ func (h *ApplicationHandler) lifecycle(c *okapi.Context, action string) error {
 	if errors.Is(err, application.ErrNotDeployable) {
 		return c.AbortWithError(409, errors.New("application has no running container; deploy it first"))
 	}
+	if errors.Is(err, datavolume.ErrLost) {
+		return c.AbortWithError(409, err)
+	}
 	if err != nil {
 		return c.AbortInternalServerError("failed to "+action+" application", err)
 	}
@@ -1388,7 +1392,8 @@ func (h *ApplicationHandler) mapErr(c *okapi.Context, err error) error {
 		errors.Is(err, application.ErrMountPathRequired), errors.Is(err, application.ErrVolumeLocation),
 		errors.Is(err, application.ErrStackLocation):
 		return c.AbortBadRequest(err.Error())
-	case errors.Is(err, nodes.ErrNodeOffline), errors.Is(err, node.ErrNodeCordoned), errors.Is(err, node.ErrNodeNotFound):
+	case errors.Is(err, nodes.ErrNodeOffline), errors.Is(err, node.ErrNodeCordoned), errors.Is(err, node.ErrNodeNotFound),
+		errors.Is(err, datavolume.ErrLost):
 		return c.AbortWithError(409, err)
 	default:
 		return c.AbortInternalServerError("application operation failed", err)

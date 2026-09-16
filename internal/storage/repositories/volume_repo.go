@@ -66,6 +66,18 @@ func (r *VolumeRepository) SetUsage(dockerName string, usedBytes int64, at time.
 		Updates(map[string]any{"used_bytes": usedBytes, "used_measured_at": at}).Error
 }
 
+// SetEngineCreatedAt records the creation timestamp Docker reports for a volume, and only while the row
+// has none: keeping the first one is what lets a volume deleted and recreated by hand read as replaced
+// rather than quietly adopting the new, empty one.
+func (r *VolumeRepository) SetEngineCreatedAt(id uint, at string) error {
+	if at == "" {
+		return nil
+	}
+	return r.db.Model(&models.Volume{}).
+		Where("id = ? AND (engine_created_at IS NULL OR engine_created_at = ?)", id, "").
+		Update("engine_created_at", at).Error
+}
+
 // ExistsByID reports whether a (non-deleted) volume record with this id exists.
 // A soft-deleted volume reads as absent — exactly the housekeeping "orphan"
 // condition (a volume deleted in Miabi but still on the node).

@@ -87,6 +87,17 @@ func (r *DatabaseRepository) ListAllInstances() ([]models.DatabaseInstance, erro
 	return out, err
 }
 
+// SetVolumeEngineCreatedAt records the creation timestamp Docker reports for an instance's data volume,
+// and only while the row has none, so a volume recreated by hand keeps the original and reads as replaced.
+func (r *DatabaseRepository) SetVolumeEngineCreatedAt(id uint, at string) error {
+	if at == "" {
+		return nil
+	}
+	return r.db.Model(&models.DatabaseInstance{}).
+		Where("id = ? AND (volume_engine_created_at IS NULL OR volume_engine_created_at = ?)", id, "").
+		Update("volume_engine_created_at", at).Error
+}
+
 func (r *DatabaseRepository) ListByWorkspace(workspaceID uint) ([]models.DatabaseInstance, error) {
 	var dbs []models.DatabaseInstance
 	err := r.db.Where("workspace_id = ?", workspaceID).Order("created_at DESC").Find(&dbs).Error

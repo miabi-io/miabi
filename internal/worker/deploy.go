@@ -14,6 +14,7 @@ import (
 
 	"github.com/hibiken/asynq"
 	"github.com/jkaninda/logger"
+	"github.com/miabi-io/miabi/internal/datavolume"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/logstore"
 	"github.com/miabi-io/miabi/internal/models"
@@ -316,6 +317,15 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 	} else {
 		h.emit(app, dep, models.EventDeployStarted, models.SeverityInfo, "Deployment started")
 		h.log(dep, fmt.Sprintf("deployment started — %s strategy", dep.Strategy))
+	}
+
+	// Before anything starts: if a volume holding this app's data is gone, Docker would create an empty one
+	// and the app would come up on it. A deploy enqueued before the loss, or driven by a pipeline or webhook,
+	// reaches here without passing the API's guard.
+	if err := datavolume.CheckApp(ctx, h.clients, h.volumes, app); err != nil {
+		h.log(dep, "refusing to deploy: "+err.Error())
+		_ = h.fail(dep, err)
+		return
 	}
 
 	// Before anything looks at the image: if it addresses the built-in registry, prove this workspace

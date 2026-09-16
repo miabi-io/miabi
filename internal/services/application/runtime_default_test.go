@@ -76,6 +76,18 @@ type fakeVolumes struct {
 	err  error
 }
 
+func (f fakeVolumes) FindByDockerName(name string) (*models.Volume, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	for _, v := range f.byID {
+		if v.DockerName == name {
+			return v, nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
 func (f fakeVolumes) FindInWorkspace(_, id uint) (*models.Volume, error) {
 	if f.err != nil {
 		return nil, f.err
