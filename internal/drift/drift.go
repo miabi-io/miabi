@@ -30,6 +30,9 @@ const (
 	// ActionRestore is for lost data: recreating the volume would give an empty one, so the way back is a
 	// backup, not a redeploy.
 	ActionRestore = "restore"
+	// ActionNone is for drift Miabi must report but may not touch, because something else owns the resource —
+	// the platform's own gateway, installed and owned by the Miabi stack.
+	ActionNone = "none"
 )
 
 // Owner kinds: the DB record class a managed resource belongs to.
@@ -39,6 +42,8 @@ const (
 	OwnerVolume   = "volume"
 	OwnerStack    = "stack"
 	OwnerConfig   = "config"
+	// OwnerNode is for what a node itself owns rather than a workspace: its gateway.
+	OwnerNode = "node"
 )
 
 // Item is one resource that diverges from intent.

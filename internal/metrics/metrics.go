@@ -122,6 +122,7 @@ type ControlManagerDrift struct {
 	MissingServices    int
 	MissingVolumes     int
 	ReplacedVolumes    int
+	MissingGateways    int
 	BlockedApps        int
 	UnobservedNodes    int
 	UnobservedClusters int
@@ -133,6 +134,7 @@ func SetControlManagerDrift(d ControlManagerDrift) {
 	controlManagerDrift.WithLabelValues("missing", "service").Set(float64(d.MissingServices))
 	controlManagerDrift.WithLabelValues("missing", "volume").Set(float64(d.MissingVolumes))
 	controlManagerDrift.WithLabelValues("replaced", "volume").Set(float64(d.ReplacedVolumes))
+	controlManagerDrift.WithLabelValues("missing", "gateway").Set(float64(d.MissingGateways))
 	controlManagerBlocked.Set(float64(d.BlockedApps))
 	controlManagerUnobserved.WithLabelValues("node").Set(float64(d.UnobservedNodes))
 	controlManagerUnobserved.WithLabelValues("cluster").Set(float64(d.UnobservedClusters))

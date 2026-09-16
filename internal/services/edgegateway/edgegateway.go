@@ -536,15 +536,27 @@ func Validate(config string) error {
 // HTTP provider. redisPassword is the per-node Redis password for remote edge nodes; empty on the
 // manager, which reuses the platform Redis. Idempotent, so it is safe on every agent reconnect.
 func (s *Service) Ensure(ctx context.Context, dc docker.Client, srv *models.Server, token, redisPassword string) error {
-	if err := s.prepare(ctx, dc, srv, redisPassword); err != nil {
+	gw := s.Image(srv)
+	cfg, err := s.resolvedConfig(srv)
+	if err != nil {
 		return err
 	}
-	gw := s.Image(srv)
+	// A gateway already running the spec and config we would deploy needs nothing done to it. Without this,
+	// every agent reconnect pulled the image and recreated the node's only ingress — an outage per reconnect,
+	// and on a swarm cluster's ingress node an outage for every app in the cluster.
+	want := hashSpec(s.gatewaySpec(srv, token, redisPassword, ContainerName, gw, cfg, true))
+	if cur, ierr := dc.InspectContainer(ctx, ContainerName); ierr == nil &&
+		cur.Labels[docker.LabelSpecHash] == want && cur.State == "running" {
+		return nil
+	}
+	if err := s.prepareWith(ctx, dc, srv, redisPassword, cfg); err != nil {
+		return err
+	}
 	if err := dc.PullImage(ctx, gw, nil); err != nil {
 		return fmt.Errorf("pull gateway image %q: %w", gw, err)
 	}
 	_ = dc.RemoveContainer(ctx, ContainerName, true)
-	if err := s.runGateway(ctx, dc, srv, token, redisPassword, ContainerName, gw, true); err != nil {
+	if err := s.runGateway(ctx, dc, srv, token, redisPassword, ContainerName, gw, cfg, true); err != nil {
 		return err
 	}
 	logger.Info("node gateway deployed", "node", srv.ID, "node_name", srv.Name, "image", gw)
@@ -563,7 +575,11 @@ func (s *Service) SafeUpdate(ctx context.Context, dc docker.Client, srv *models.
 	}
 
 	onPhase("pulling", nil)
-	if err := s.prepare(ctx, dc, srv, redisPassword); err != nil {
+	cfg, cerr := s.resolvedConfig(srv)
+	if cerr != nil {
+		return fail(cerr)
+	}
+	if err := s.prepareWith(ctx, dc, srv, redisPassword, cfg); err != nil {
 		return fail(err)
 	}
 	if err := dc.PullImage(ctx, gw, nil); err != nil {
@@ -574,7 +590,7 @@ func (s *Service) SafeUpdate(ctx context.Context, dc docker.Client, srv *models.
 	// runs alongside the live gateway).
 	onPhase("testing", nil)
 	_ = dc.RemoveContainer(ctx, TestContainer, true)
-	if err := s.runGateway(ctx, dc, srv, token, redisPassword, TestContainer, gw, false); err != nil {
+	if err := s.runGateway(ctx, dc, srv, token, redisPassword, TestContainer, gw, cfg, false); err != nil {
 		return fail(err)
 	}
 
@@ -598,7 +614,7 @@ func (s *Service) SafeUpdate(ctx context.Context, dc docker.Client, srv *models.
 	onPhase("promoting", nil)
 	_ = dc.RemoveContainer(ctx, TestContainer, true)
 	_ = dc.RemoveContainer(ctx, ContainerName, true)
-	if err := s.runGateway(ctx, dc, srv, token, redisPassword, ContainerName, gw, true); err != nil {
+	if err := s.runGateway(ctx, dc, srv, token, redisPassword, ContainerName, gw, cfg, true); err != nil {
 		return fail(err)
 	}
 
@@ -614,18 +630,22 @@ func (s *Service) SafeUpdate(ctx context.Context, dc docker.Client, srv *models.
 // prepare resolves the node's config, ensures the shared network and (for remote
 // edge nodes) the per-node Redis, and seeds the config volume with goma.yml.
 // Shared by Ensure and SafeUpdate.
-func (s *Service) prepare(ctx context.Context, dc docker.Client, srv *models.Server, redisPassword string) error {
-	// Use the node's custom config when set, else the rendered default. A remote
-	// node's default uses the HTTP provider and needs the control URL; the
-	// manager's default uses the file provider and does not.
-	cfg := strings.TrimSpace(srv.GatewayConfigYAML)
-	if cfg == "" {
-		if !s.usesFileProvider(srv) && s.controlURL == "" {
-			return fmt.Errorf("control URL is not configured (set MIABI_CONTROL_URL)")
-		}
-		cfg = s.RenderConfig(srv)
+// resolvedConfig is the config the gateway would run with: the node's custom one when set, else the rendered
+// default. A remote node's default uses the HTTP provider and needs the control URL; the manager's default
+// uses the file provider and does not.
+func (s *Service) resolvedConfig(srv *models.Server) (string, error) {
+	if cfg := strings.TrimSpace(srv.GatewayConfigYAML); cfg != "" {
+		return cfg, nil
 	}
+	if !s.usesFileProvider(srv) && s.controlURL == "" {
+		return "", fmt.Errorf("control URL is not configured (set MIABI_CONTROL_URL)")
+	}
+	return s.RenderConfig(srv), nil
+}
 
+// prepareWith seeds the node with what the gateway container needs before it runs, given an already-resolved
+// config: the shared network, the per-node Redis on a remote edge node, and goma.yml in the config volume.
+func (s *Service) prepareWith(ctx context.Context, dc docker.Client, srv *models.Server, redisPassword, cfg string) error {
 	// The gateway must share the node's app network to reach app containers by
 	// their DNS alias.
 	if _, err := dc.EnsureNetwork(ctx, s.network); err != nil {
@@ -662,10 +682,25 @@ func (s *Service) prepare(ctx context.Context, dc docker.Client, srv *models.Ser
 	return nil
 }
 
-// runGateway creates and starts a gateway container named name from image.
-// publishPorts binds 80/443 (the live gateway); a test container omits them so
-// it can run alongside the live one.
-func (s *Service) runGateway(ctx context.Context, dc docker.Client, srv *models.Server, token, redisPassword, name, image string, publishPorts bool) error {
+// runGateway creates and starts a gateway container named name from image, stamping the spec fingerprint so a
+// later Ensure can tell an unchanged gateway from one that must be recreated. publishPorts binds 80/443 (the
+// live gateway); a test container omits them so it can run alongside the live one.
+func (s *Service) runGateway(ctx context.Context, dc docker.Client, srv *models.Server, token, redisPassword, name, image, cfg string, publishPorts bool) error {
+	spec := s.gatewaySpec(srv, token, redisPassword, name, image, cfg, publishPorts)
+	spec.Labels[docker.LabelSpecHash] = hashSpec(spec)
+	if _, err := dc.RunContainer(ctx, spec); err != nil {
+		return fmt.Errorf("run gateway container %q: %w", name, err)
+	}
+	if publishPorts && s.attach != nil {
+		s.attach(ctx, dc, srv, name)
+	}
+	return nil
+}
+
+// gatewaySpec builds the container spec for a gateway, carrying a fingerprint of the config it will read:
+// the config lives in a volume rather than in the spec, so without it a config edit would look like no
+// change at all.
+func (s *Service) gatewaySpec(srv *models.Server, token, redisPassword, name, image, cfg string, publishPorts bool) docker.RunSpec {
 	mounts := map[string]string{
 		ConfigVolume: configPath,
 		CertsVolume:  "/etc/letsencrypt",
@@ -695,16 +730,11 @@ func (s *Service) runGateway(ctx context.Context, dc docker.Client, srv *models.
 			StartPeriod: 15 * time.Second,
 		},
 	}
+	spec.Labels[configHashLabel] = configFingerprint(cfg)
 	if publishPorts {
 		spec.Ports = map[string]string{"80/tcp": "80", "443/tcp": "443"}
 	}
-	if _, err := dc.RunContainer(ctx, spec); err != nil {
-		return fmt.Errorf("run gateway container %q: %w", name, err)
-	}
-	if publishPorts && s.attach != nil {
-		s.attach(ctx, dc, srv, name)
-	}
-	return nil
+	return spec
 }
 
 // gatewayEnv builds the gateway container's env: the provider token (referenced
@@ -784,8 +814,10 @@ func (s *Service) Teardown(ctx context.Context, dc docker.Client) {
 // never offered for import or stopped from the containers list.
 func (s *Service) labels(srv *models.Server) map[string]string {
 	extra := map[string]string{docker.LabelNode: srv.Name}
-	if ws, err := s.workspaces.FindSystem(); err == nil {
-		extra[docker.LabelWorkspace] = fmt.Sprintf("%d", ws.ID)
+	if s.workspaces != nil {
+		if ws, err := s.workspaces.FindSystem(); err == nil {
+			extra[docker.LabelWorkspace] = fmt.Sprintf("%d", ws.ID)
+		}
 	}
 	// managed-by=miabi: unlike the central gateway, Miabi provisions this one itself
 	// and may freely recreate it (that is what SafeUpdate does).

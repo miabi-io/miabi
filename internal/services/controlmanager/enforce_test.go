@@ -113,8 +113,10 @@ func TestEnforceRedeploysAMissingContainerInPlace(t *testing.T) {
 	if len(e.audit.entries) != 1 {
 		t.Fatalf("audit = %+v; want one entry", e.audit.entries)
 	}
-	if a := e.audit.entries[0]; a.Action != "app.reconcile.redeploy" || a.ActorID != nil || a.Metadata["actor"] != actorName || a.TargetID != "7" {
-		t.Fatalf("audit entry = %+v; want an unattended app.reconcile.redeploy for app 7", a)
+	// The action names what it was performed on, so a node's gateway is never filed as an application.
+	if a := e.audit.entries[0]; a.Action != "application.reconcile.restore" || a.TargetType != "application" ||
+		a.ActorID != nil || a.Metadata["actor"] != actorName || a.TargetID != "7" {
+		t.Fatalf("audit entry = %+v; want an unattended application.reconcile.restore for app 7", a)
 	}
 }
 

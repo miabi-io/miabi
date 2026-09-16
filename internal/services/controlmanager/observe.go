@@ -17,6 +17,7 @@ const (
 	kindContainer = "container"
 	kindService   = "service"
 	kindVolume    = "volume"
+	kindGateway   = "gateway"
 )
 
 type state int
@@ -118,6 +119,8 @@ func (s *Service) observeNode(ctx context.Context, nodeID uint, items []*item, s
 		switch it.kind {
 		case kindContainer:
 			seen[it.key] = observation{kind: kindContainer, state: containerState(containers, it.containerID)}
+		case kindGateway:
+			seen[it.key] = observation{kind: kindGateway, state: gatewayState(ctx, dc, it.gatewayName)}
 		case kindVolume:
 			st, adopt := volumeState(live, it.volumeName, it.engineCreatedAt)
 			// A volume created before Miabi recorded a timestamp adopts the engine's, so it reads as intact
@@ -148,6 +151,23 @@ func (s *Service) observeCluster(ctx context.Context, clusterID uint, items []*i
 		}
 	}
 	return ""
+}
+
+// gatewayState asks the node about its gateway container by name. A gateway that exists but is not running
+// counts as gone: containers run unless-stopped, so one that is down was stopped by hand or cannot start, and
+// either way the node is serving nothing.
+func gatewayState(ctx context.Context, dc docker.Client, name string) state {
+	c, err := dc.InspectContainer(ctx, name)
+	switch {
+	case errors.Is(err, docker.ErrNotFound):
+		return gone
+	case err != nil:
+		return unknown
+	case c.State != "running":
+		return gone
+	default:
+		return intact
+	}
 }
 
 func containerState(containers []docker.Container, containerID string) state {

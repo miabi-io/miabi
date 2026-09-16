@@ -22,6 +22,7 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/drift"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/services/edgegateway"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/settings"
 )
@@ -103,6 +104,19 @@ type DatabaseBackupStore interface {
 	ListByInstance(instanceID uint) ([]models.DatabaseBackupSet, error)
 }
 
+// ServerStore lists the nodes, so the gateway that fronts each one can be checked too. Satisfied by
+// *node.Service.
+type ServerStore interface {
+	List(ctx context.Context) ([]models.Server, error)
+}
+
+// GatewayEnsurer redeploys a node's own gateway, idempotently. Satisfied by the wiring in internal/routes,
+// which mints the node's gateway token and calls edgegateway.Ensure. It is never used for a gateway Miabi did
+// not deploy: an imported one, including the platform's own on the manager, belongs to whoever installed it.
+type GatewayEnsurer interface {
+	EnsureGateway(ctx context.Context, serverID uint) error
+}
+
 // Recorder writes timeline events. Satisfied by *events.Service.
 type Recorder interface {
 	Emit(workspaceID, appID uint, t models.AppEventType, sev models.AppEventSeverity, message string, meta map[string]string, actorID *uint)
@@ -125,6 +139,8 @@ type Service struct {
 	databases     DatabaseStore
 	volumeBackups VolumeBackupStore
 	dbBackups     DatabaseBackupStore
+	servers       ServerStore
+	gateways      GatewayEnsurer
 	events        Recorder
 	settings      Settings
 	now           func() time.Time
@@ -165,6 +181,12 @@ func (s *Service) SetBackups(volumes VolumeBackupStore, databases DatabaseBackup
 	s.volumeBackups, s.dbBackups = volumes, databases
 }
 
+// SetGateways wires node-gateway watching: the nodes to check, and how to put a Miabi-deployed gateway back.
+// Nil-safe — without them gateways are simply not watched.
+func (s *Service) SetGateways(servers ServerStore, ensurer GatewayEnsurer) {
+	s.servers, s.gateways = servers, ensurer
+}
+
 // Mode returns the configured mode. Off and enforce are both deliberate choices, so they are matched
 // exactly; anything else observes, because an unrecognized value must neither switch detection off nor start
 // redeploying things on its own.
@@ -194,7 +216,7 @@ func (s *Service) Sweep(ctx context.Context) error {
 		return nil
 	}
 	start := s.now()
-	items, err := s.plan()
+	items, err := s.plan(ctx)
 	if err != nil {
 		return err
 	}
@@ -202,7 +224,7 @@ func (s *Service) Sweep(ctx context.Context) error {
 	s.record(items, seen, skipped, start)
 	// Acting comes last, on what this sweep just confirmed: never on a finding it has not seen twice, and
 	// never on one the same sweep marked blocked.
-	s.act(items)
+	s.act(ctx, items)
 	return nil
 }
 
@@ -234,6 +256,11 @@ type item struct {
 	containerID string // container items: the active release's container
 	service     string // service items: the swarm service name
 
+	// gatewayName is the gateway container to inspect on the node; imported marks one Miabi did not deploy and
+	// must never recreate.
+	gatewayName string
+	imported    bool
+
 	volumeName string // volume items: the Docker volume
 	// engineCreatedAt is what Miabi recorded for the volume. Empty means it was created before Miabi
 	// recorded one, and the next sweep adopts whatever the engine reports.
@@ -253,10 +280,12 @@ type item struct {
 func appKey(id uint) string      { return fmt.Sprintf("app:%d", id) }
 func volumeKey(id uint) string   { return fmt.Sprintf("volume:%d", id) }
 func dbVolumeKey(id uint) string { return fmt.Sprintf("dbvolume:%d", id) }
+func gatewayKey(id uint) string  { return fmt.Sprintf("gateway:%d", id) }
+func nodeRef(id uint) string     { return fmt.Sprintf("node:%d", id) }
 
 // plan builds what the sweep expects to exist. Apps with a deploy under way are left out: the deploy
 // path is removing and starting their containers, and what it leaves behind is judged by a later sweep.
-func (s *Service) plan() ([]item, error) {
+func (s *Service) plan(ctx context.Context) ([]item, error) {
 	apps, err := s.apps.ListReconcilable()
 	if err != nil {
 		return nil, fmt.Errorf("list apps: %w", err)
@@ -358,7 +387,35 @@ func (s *Service) plan() ([]item, error) {
 			}},
 		})
 	}
+
+	items = append(items, s.gatewayItems(ctx)...)
 	return items, nil
+}
+
+// gatewayItems expects a gateway on every node Miabi recorded one for. That includes the manager's own, which
+// the platform stack installs and Miabi adopts as an imported gateway: an ingress nobody is watching is an
+// outage waiting to be reported by a user, and on a swarm cluster's ingress node it fronts every app there.
+func (s *Service) gatewayItems(ctx context.Context) []item {
+	if s.servers == nil {
+		return nil
+	}
+	servers, err := s.servers.List(ctx)
+	if err != nil {
+		return nil
+	}
+	out := make([]item, 0, len(servers))
+	for i := range servers {
+		srv := &servers[i]
+		if srv.GatewayDeployedAt == nil || srv.Connectivity != models.ConnectivityEdgeGateway {
+			continue
+		}
+		out = append(out, item{
+			key: gatewayKey(srv.ID), kind: kindGateway, name: srv.Name, ref: nodeRef(srv.ID),
+			owner: drift.OwnerNode, id: srv.ID, nodeID: srv.ID, clusterID: srv.ClusterID,
+			gatewayName: edgegateway.ContainerNameFor(srv), imported: srv.GatewayImported,
+		})
+	}
+	return out
 }
 
 // latestVolumeBackup names the newest completed archive of a volume. A failed or half-finished one is not
