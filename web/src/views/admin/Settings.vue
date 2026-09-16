@@ -98,11 +98,8 @@ const SECTIONS: SectionDef[] = [
 const READONLY_KEYS = new Set(['install_id'])
 const READONLY_LABELS: Record<string, string> = { install_id: 'Install ID' }
 
-// Settings whose values are a fixed set. Typed free-hand, a near-miss is accepted and stored: the
-// server treats an unknown control-manager mode as "observe" and an unknown role as no role at all,
-// neither of which is visible from this page afterwards.
+
 const CHOICES: Record<string, string[]> = {
-  // Least privileged first, so the safe choice is the one nearest the default.
   default_workspace_role: ['viewer', 'developer', 'admin', 'owner'],
   control_manager_mode: ['observe', 'enforce', 'off'],
 }
