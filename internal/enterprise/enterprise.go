@@ -23,11 +23,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// embeddedPublicKey is the license-signing public key, baked in at build time via -ldflags. It is the
-// ONLY source. A key supplied at runtime could be swapped for one whose private half the operator
-// holds, which is forging a license — and the override that allowed it used to WIN over this value,
-// so a release build did not have the property its own comment claimed. Every Makefile target that
-// runs or builds Miabi bakes the key, so dev and release now resolve it identically.
 var embeddedPublicKey string
 
 // New constructs the real EE implementation: it loads any installed license from the database,
@@ -93,7 +88,7 @@ func (e *impl) bindingResult(c *license.Claims, requestHost string) (ok bool, re
 func urlAllowed(licenseURL string, candidates ...string) bool {
 	want := normalizeHost(licenseURL)
 	if want == "" {
-		return true // unlimited: any URL, any number of instances
+		return true
 	}
 	known := false
 	for _, cand := range candidates {
