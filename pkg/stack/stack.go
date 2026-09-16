@@ -104,7 +104,10 @@ func New(dc docker.Client, log func(string, ...any), manifestPath string) *Servi
 // installed, and the CLI knows it (it is that version).
 func Defaults(miabiImage string) *Manifest {
 	return &Manifest{
-		Version:         CurrentVersion,
+		Version: CurrentVersion,
+		// A fresh install starts on the kinded document. Existing flat files keep their shape until
+		// `miabi upgrade` converts them, so no host changes shape without being told.
+		kinded:          true,
 		Network:         NetworkConfig{Name: DefaultNetwork, Subnet: DefaultSubnet},
 		InternalNetwork: NetworkConfig{Name: DefaultInternalNetwork, Subnet: DefaultInternalSubnet},
 		Images: Images{
