@@ -126,12 +126,12 @@ function copyVersion() {
         <div class="card-header"><h2>About</h2></div>
         <div class="card-body">
           <p class="prose">
-            Miabi lets you deploy apps, manage domains, provision databases, get automatic SSL, monitor
-            services, and manage teams from one web interface — without touching Docker commands.
+            Miabi is an open-source, self-hosted Platform-as-a-Service for deploying and operating
+            applications on Docker.
           </p>
           <p class="prose">
-            It's <strong>API-first</strong>, <strong>Docker-first</strong>, multi-tenant, and
-            self-hosted first. AGPL-3.0 licensed and open-source friendly.
+            Deploy applications, manage domains and TLS, provision databases, configure storage, monitor
+            services, manage teams, and scale across nodes — all from a single platform.
           </p>
         </div>
       </div>

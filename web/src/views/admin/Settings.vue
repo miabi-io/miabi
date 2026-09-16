@@ -70,7 +70,7 @@ const SECTIONS: SectionDef[] = [
       default_workspace_role: 'Default workspace role',
       custom_labels_enabled: 'Allow custom container labels (Traefik &c.) — fleet-wide kill-switch',
       repo_pipelines_enabled: 'Allow pipelines from .miabi/pipeline.yaml — fleet-wide kill-switch',
-      control_manager_mode: 'Control manager — observe (report missing workloads), enforce (redeploy them in place) or off',
+      control_manager_mode: 'Control manager',
     },
   },
   {
@@ -97,6 +97,15 @@ const SECTIONS: SectionDef[] = [
 // System-managed keys: shown read-only, never editable, and excluded from saves.
 const READONLY_KEYS = new Set(['install_id'])
 const READONLY_LABELS: Record<string, string> = { install_id: 'Install ID' }
+
+// Settings whose values are a fixed set. Typed free-hand, a near-miss is accepted and stored: the
+// server treats an unknown control-manager mode as "observe" and an unknown role as no role at all,
+// neither of which is visible from this page afterwards.
+const CHOICES: Record<string, string[]> = {
+  // Least privileged first, so the safe choice is the one nearest the default.
+  default_workspace_role: ['viewer', 'developer', 'admin', 'owner'],
+  control_manager_mode: ['observe', 'enforce', 'off'],
+}
 
 // All keys explicitly placed in a known section.
 const knownKeys = computed(() => new Set(SECTIONS.flatMap((s) => s.keys)))
@@ -296,6 +305,15 @@ function setBool(key: string, checked: boolean) {
                     @change="setBool(key, ($event.target as HTMLInputElement).checked)"
                   />
                 </label>
+                <select
+                  v-else-if="CHOICES[key]"
+                  :id="`set-${key}`"
+                  v-model="values[key]"
+                  class="form-select"
+                  :disabled="pinned.has(key)"
+                >
+                  <option v-for="c in CHOICES[key]" :key="c" :value="c">{{ c }}</option>
+                </select>
                 <input
                   v-else-if="types[key] === 'int'"
                   :id="`set-${key}`"
