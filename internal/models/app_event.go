@@ -19,6 +19,7 @@ const (
 	EventContainerDied    AppEventType = "container.died"
 	EventContainerOOM     AppEventType = "container.oom"
 	EventContainerHealth  AppEventType = "container.health"
+	EventContainerRemoved AppEventType = "container.removed"
 	EventEnvUpdated       AppEventType = "env.updated"
 	EventDomainAttached   AppEventType = "domain.attached"
 	EventDomainVerified   AppEventType = "domain.verified"
@@ -49,6 +50,13 @@ const (
 	EventDatabaseBackupFailed     AppEventType = "backup.failed"
 	EventDatabaseRestoreSucceeded AppEventType = "restore.succeeded"
 	EventDatabaseRestoreFailed    AppEventType = "restore.failed"
+)
+
+// Drift event types, recorded by the control manager on the timeline of an app whose workload
+// disappeared from under it, and again once it exists again.
+const (
+	EventDriftDetected AppEventType = "drift.detected"
+	EventDriftResolved AppEventType = "drift.resolved"
 )
 
 // EventSubjectType names the kind of resource a timeline event is about. An event carries

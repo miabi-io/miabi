@@ -7,6 +7,7 @@ package metrics
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/jkaninda/okapi"
 	"github.com/prometheus/client_golang/prometheus"
@@ -62,7 +63,8 @@ var leaderHeld = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 
 func init() {
 	prometheus.MustRegister(buildInfo, subnetPoolUsed, subnetPoolTotal, gpuDevicesTotal, gpuDevicesEnabled, gpuAllocated,
-		analyticsIngested, analyticsRejected, leaderHeld)
+		analyticsIngested, analyticsRejected, leaderHeld,
+		controlManagerSweep, controlManagerDrift, controlManagerUnobserved)
 }
 
 // SetLeader records whether this process holds the named leader lease.
@@ -72,6 +74,37 @@ func SetLeader(lease string, held bool) {
 		v = 1
 	}
 	leaderHeld.WithLabelValues(lease).Set(v)
+}
+
+// Control manager sweeps: how long they take, the drift they confirm, and what they could not observe. These
+// are what tell whether observe mode is quiet enough to act on its findings.
+var (
+	controlManagerSweep = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "miabi_control_manager_sweep_duration_seconds",
+		Help:    "Duration of a control manager sweep.",
+		Buckets: prometheus.ExponentialBuckets(0.05, 2, 11),
+	})
+	controlManagerDrift = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "miabi_control_manager_drift_items",
+		Help: "Workloads the last control manager sweep confirmed missing.",
+	}, []string{"class", "kind"})
+	controlManagerUnobserved = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "miabi_control_manager_unobserved",
+		Help: "Nodes and clusters the last control manager sweep could not observe.",
+	}, []string{"scope"})
+)
+
+// ObserveControlManagerSweep records how long a control manager sweep took.
+func ObserveControlManagerSweep(d time.Duration) {
+	controlManagerSweep.Observe(d.Seconds())
+}
+
+// SetControlManagerDrift records the last sweep's confirmed missing workloads and the scopes it could not observe.
+func SetControlManagerDrift(containers, services, nodes, clusters int) {
+	controlManagerDrift.WithLabelValues("missing", "container").Set(float64(containers))
+	controlManagerDrift.WithLabelValues("missing", "service").Set(float64(services))
+	controlManagerUnobserved.WithLabelValues("node").Set(float64(nodes))
+	controlManagerUnobserved.WithLabelValues("cluster").Set(float64(clusters))
 }
 
 // SetBuildInfo records the running build's version and commit.

@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/miabi-io/miabi/internal/docker"
+	"github.com/miabi-io/miabi/internal/drift"
 )
 
 // Selection is what an admin chose to reclaim and/or reconcile. It is always
@@ -38,18 +39,18 @@ type Plan struct {
 	Reclaim        ReclaimSelection `json:"reclaim"`
 	DanglingImages CategoryStat     `json:"dangling_images"`
 	BuildCache     CategoryStat     `json:"build_cache"`
-	Orphans        []DriftItem      `json:"orphans"`
+	Orphans        []drift.Item     `json:"orphans"`
 	EstimatedBytes int64            `json:"estimated_bytes"`
 }
 
 // Result is the outcome of an Apply: bytes freed per category and the orphans
 // removed. The caller audits each removal from this.
 type Result struct {
-	ImagesDeleted   int         `json:"images_deleted"`
-	ImagesBytes     int64       `json:"images_reclaimed_bytes"`
-	BuildCacheBytes int64       `json:"build_cache_reclaimed_bytes"`
-	OrphansRemoved  []DriftItem `json:"orphans_removed"`
-	Errors          []string    `json:"errors,omitempty"`
+	ImagesDeleted   int          `json:"images_deleted"`
+	ImagesBytes     int64        `json:"images_reclaimed_bytes"`
+	BuildCacheBytes int64        `json:"build_cache_reclaimed_bytes"`
+	OrphansRemoved  []drift.Item `json:"orphans_removed"`
+	Errors          []string     `json:"errors,omitempty"`
 }
 
 // Plan re-analyzes the node and intersects the selection with what is actually
@@ -59,7 +60,7 @@ func (s *Service) Plan(ctx context.Context, nodeID uint, sel Selection) (*Plan, 
 	if err != nil {
 		return nil, err
 	}
-	p := &Plan{Reclaim: sel.Reclaim, Orphans: []DriftItem{}}
+	p := &Plan{Reclaim: sel.Reclaim, Orphans: []drift.Item{}}
 	if sel.Reclaim.DanglingImages {
 		p.DanglingImages = rep.Reclaim.DanglingImages
 		p.EstimatedBytes += rep.Reclaim.DanglingImages.Bytes
@@ -85,7 +86,7 @@ func (s *Service) Apply(ctx context.Context, nodeID uint, sel Selection) (*Resul
 	if err != nil {
 		return nil, err
 	}
-	res := &Result{OrphansRemoved: []DriftItem{}}
+	res := &Result{OrphansRemoved: []drift.Item{}}
 
 	if sel.Reclaim.DanglingImages {
 		if rep, perr := dc.PruneImages(ctx, docker.PruneImagesOptions{Dangling: true}); perr != nil {
@@ -106,11 +107,11 @@ func (s *Service) Apply(ctx context.Context, nodeID uint, sel Selection) (*Resul
 	if len(sel.Orphans) > 0 {
 		// Re-confirm orphan status against fresh state so a selection can never
 		// remove a resource that is no longer (or never was) an orphan.
-		drift, derr := s.analyzeDrift(ctx, dc, nodeID)
+		summary, derr := s.analyzeDrift(ctx, dc, nodeID)
 		if derr != nil {
 			return nil, derr
 		}
-		confirmed := orphanIndex(drift.Orphans)
+		confirmed := orphanIndex(summary.Orphans)
 		for _, ref := range sel.Orphans {
 			item, ok := confirmed[refKey(ref.Kind, ref.Ref)]
 			if !ok {
@@ -128,7 +129,7 @@ func (s *Service) Apply(ctx context.Context, nodeID uint, sel Selection) (*Resul
 
 // removeOrphan deletes a confirmed orphan. Force is used because an orphan's DB
 // record is already gone, so the admin's reclaim is the authoritative intent.
-func (s *Service) removeOrphan(ctx context.Context, dc docker.Client, item DriftItem) error {
+func (s *Service) removeOrphan(ctx context.Context, dc docker.Client, item drift.Item) error {
 	switch item.Kind {
 	case "container":
 		return dc.RemoveContainer(ctx, item.Ref, true)
@@ -144,8 +145,8 @@ func (s *Service) removeOrphan(ctx context.Context, dc docker.Client, item Drift
 }
 
 // orphanIndex keys orphan items by kind+ref for O(1) re-confirmation.
-func orphanIndex(orphans []DriftItem) map[string]DriftItem {
-	m := make(map[string]DriftItem, len(orphans))
+func orphanIndex(orphans []drift.Item) map[string]drift.Item {
+	m := make(map[string]drift.Item, len(orphans))
 	for _, o := range orphans {
 		m[refKey(o.Kind, o.Ref)] = o
 	}

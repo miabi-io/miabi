@@ -209,6 +209,10 @@ type Config struct {
 	RequireEmailVerification string
 	AllowedSignupDomains     string
 
+	// ControlManagerMode pins the control manager's mode, MIABI_CONTROL_MANAGER_MODE ("observe" | "off"). Empty
+	// leaves it to Platform Settings.
+	ControlManagerMode string
+
 	// ExternalBaseDomain is the default cluster's wildcard domain for one-click external access (e.g.
 	// "apps.example.com", DNS *.apps.example.com). When set it pins that cluster's external domain on
 	// every boot; leave empty to manage it from the cluster page. Other clusters set their own there.
@@ -606,6 +610,7 @@ func New() *Config {
 		RegistrationEnabled:        goutils.EnvBool("MIABI_REGISTRATION_ENABLED", false),
 		RequireEmailVerification:   goutils.Env("MIABI_REQUIRE_EMAIL_VERIFICATION", ""),
 		AllowedSignupDomains:       goutils.Env("MIABI_ALLOWED_SIGNUP_DOMAINS", ""),
+		ControlManagerMode:         goutils.Env("MIABI_CONTROL_MANAGER_MODE", ""),
 		ExternalBaseDomain:         goutils.Env("MIABI_EXTERNAL_BASE_DOMAIN", ""),
 		ExternalBaseProvider:       goutils.Env("MIABI_EXTERNAL_BASE_PROVIDER", ""),
 		NodeGatewayImage:           goutils.Env("MIABI_NODE_GATEWAY_IMAGE", DefaultGomaImage),

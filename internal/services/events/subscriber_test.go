@@ -84,6 +84,7 @@ func TestClassify(t *testing.T) {
 		{"healthy", ev("health_status: healthy", ""), false, models.EventContainerHealth, models.SeverityInfo, true},
 		{"crash", ev("die", "137"), false, models.EventContainerDied, models.SeverityError, true},
 		{"stop", ev("die", "137"), true, models.EventContainerStopped, models.SeverityInfo, true},
+		{"removed", ev("destroy", ""), false, models.EventContainerRemoved, models.SeverityWarning, true},
 		{"unrelated action", ev("attach", ""), false, "", "", false},
 	}
 	for _, c := range cases {

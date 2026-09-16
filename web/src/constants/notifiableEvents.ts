@@ -13,6 +13,9 @@ export const NOTIFIABLE_EVENTS: NotifiableEvent[] = [
   { value: 'container.stopped', label: 'Container stopped' },
   { value: 'container.died', label: 'Container exited' },
   { value: 'container.oom', label: 'Container out of memory' },
+  { value: 'container.removed', label: 'Container removed' },
+  { value: 'drift.detected', label: 'Workload missing' },
+  { value: 'drift.resolved', label: 'Workload back' },
 ]
 
 const labels: Record<string, string> = Object.fromEntries(

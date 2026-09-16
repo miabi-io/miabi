@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/miabi-io/miabi/internal/docker"
+	"github.com/miabi-io/miabi/internal/drift"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
@@ -78,13 +79,13 @@ func NewService(
 ) *Service {
 	exists := func(kind string, id uint) (bool, error) {
 		switch kind {
-		case OwnerApp:
+		case drift.OwnerApp:
 			return apps.ExistsByID(id)
-		case OwnerDatabase:
+		case drift.OwnerDatabase:
 			return dbs.ExistsByID(id)
-		case OwnerVolume:
+		case drift.OwnerVolume:
 			return volumes.ExistsByID(id)
-		case OwnerStack:
+		case drift.OwnerStack:
 			return stacks.ExistsByID(id)
 		default:
 			// Unknown owner kind: treat as existing so we never remove something we
@@ -120,36 +121,9 @@ type CategoryStat struct {
 
 // DriftSummary groups drift items by class.
 type DriftSummary struct {
-	Orphans   []DriftItem `json:"orphans"`
-	Missing   []DriftItem `json:"missing"`
-	Untracked []DriftItem `json:"untracked"`
-}
-
-// Drift classes.
-const (
-	ClassOrphan    = "orphan"    // managed label present, DB record gone — still running on the node
-	ClassMissing   = "missing"   // DB record expects it live, nothing running for it
-	ClassUntracked = "untracked" // no miabi.* label — a hand-run resource
-)
-
-// Recommended actions per drift item.
-const (
-	ActionRemove   = "remove"   // orphan → delete the lingering resource
-	ActionRedeploy = "redeploy" // missing → redeploy from the owning resource
-	ActionImport   = "import"   // untracked → adopt via the existing import flow
-)
-
-// DriftItem is one resource that diverges from intent.
-type DriftItem struct {
-	Class     string `json:"class"`
-	Kind      string `json:"kind"` // container | volume | config | service
-	Ref       string `json:"ref"`  // container ID or volume name (the apply handle)
-	Name      string `json:"name"`
-	Image     string `json:"image,omitempty"`
-	State     string `json:"state,omitempty"`
-	OwnerKind string `json:"owner_kind,omitempty"` // app | database | volume | stack
-	OwnerID   uint   `json:"owner_id,omitempty"`
-	Action    string `json:"action"`
+	Orphans   []drift.Item `json:"orphans"`
+	Missing   []drift.Item `json:"missing"`
+	Untracked []drift.Item `json:"untracked"`
 }
 
 // Analyze joins live Docker against the DB and builds the full report. Pure read.
@@ -173,11 +147,11 @@ func (s *Service) Analyze(ctx context.Context, nodeID uint) (*Report, error) {
 		}
 	}
 
-	drift, derr := s.analyzeDrift(ctx, dc, nodeID)
+	summary, derr := s.analyzeDrift(ctx, dc, nodeID)
 	if derr != nil {
 		return nil, derr
 	}
-	rep.Drift = *drift
+	rep.Drift = *summary
 	return rep, nil
 }
 
@@ -194,26 +168,26 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 		return nil, fmt.Errorf("list volumes: %w", err)
 	}
 
-	out := &DriftSummary{Orphans: []DriftItem{}, Missing: []DriftItem{}, Untracked: []DriftItem{}}
+	out := &DriftSummary{Orphans: []drift.Item{}, Missing: []drift.Item{}, Untracked: []drift.Item{}}
 	// app IDs that have at least one live container, so a record with none can be
 	// flagged missing.
 	liveApps := map[uint]bool{}
 
 	for i := range containers {
 		c := containers[i]
-		kind, id, ok := ownerOf(c.Labels)
+		kind, id, ok := drift.OwnerOf(c.Labels)
 		switch {
 		case !isManaged(c.Labels):
-			out.Untracked = append(out.Untracked, DriftItem{
-				Class: ClassUntracked, Kind: "container", Ref: c.ID,
-				Name: containerName(c), Image: c.Image, State: c.State, Action: ActionImport,
+			out.Untracked = append(out.Untracked, drift.Item{
+				Class: drift.ClassUntracked, Kind: "container", Ref: c.ID,
+				Name: containerName(c), Image: c.Image, State: c.State, Action: drift.ActionImport,
 			})
 		case !ok:
 			// Managed platform infra (gateway/redis), a job, or a stack-only
 			// container: tracked, never an orphan target. Skip.
 			continue
 		default:
-			if kind == OwnerApp {
+			if kind == drift.OwnerApp {
 				liveApps[id] = true
 			}
 			exists, eerr := s.exists(kind, id)
@@ -221,9 +195,9 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 				return nil, eerr
 			}
 			if !exists {
-				out.Orphans = append(out.Orphans, DriftItem{
-					Class: ClassOrphan, Kind: "container", Ref: c.ID, Name: containerName(c),
-					Image: c.Image, State: c.State, OwnerKind: kind, OwnerID: id, Action: ActionRemove,
+				out.Orphans = append(out.Orphans, drift.Item{
+					Class: drift.ClassOrphan, Kind: "container", Ref: c.ID, Name: containerName(c),
+					Image: c.Image, State: c.State, OwnerKind: kind, OwnerID: id, Action: drift.ActionRemove,
 				})
 			}
 		}
@@ -236,16 +210,16 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 		if isPlatformInfra(v.Labels) {
 			continue
 		}
-		kind, id, ok := volumeOwner(v.Labels)
+		kind, id, ok := drift.VolumeOwner(v.Labels)
 		if !ok {
 			orphan, oerr := s.unlabelledVolumeOrphan(v.Name)
 			if oerr != nil {
 				return nil, oerr
 			}
 			if orphan {
-				out.Orphans = append(out.Orphans, DriftItem{
-					Class: ClassOrphan, Kind: "volume", Ref: v.Name, Name: v.Name,
-					OwnerKind: OwnerVolume, Action: ActionRemove,
+				out.Orphans = append(out.Orphans, drift.Item{
+					Class: drift.ClassOrphan, Kind: "volume", Ref: v.Name, Name: v.Name,
+					OwnerKind: drift.OwnerVolume, Action: drift.ActionRemove,
 				})
 			}
 			continue
@@ -255,9 +229,9 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 			return nil, eerr
 		}
 		if !exists {
-			out.Orphans = append(out.Orphans, DriftItem{
-				Class: ClassOrphan, Kind: "volume", Ref: v.Name, Name: v.Name,
-				OwnerKind: kind, OwnerID: id, Action: ActionRemove,
+			out.Orphans = append(out.Orphans, drift.Item{
+				Class: drift.ClassOrphan, Kind: "volume", Ref: v.Name, Name: v.Name,
+				OwnerKind: kind, OwnerID: id, Action: drift.ActionRemove,
 			})
 		}
 	}
@@ -278,9 +252,9 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 			if lerr != nil || live {
 				continue
 			}
-			out.Orphans = append(out.Orphans, DriftItem{
-				Class: ClassOrphan, Kind: "config", Ref: c.ID, Name: c.Name,
-				OwnerKind: OwnerConfig, OwnerID: 0, Action: ActionRemove,
+			out.Orphans = append(out.Orphans, drift.Item{
+				Class: drift.ClassOrphan, Kind: "config", Ref: c.ID, Name: c.Name,
+				OwnerKind: drift.OwnerConfig, OwnerID: 0, Action: drift.ActionRemove,
 			})
 		}
 	}
@@ -297,9 +271,9 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 		}
 		if a.RuntimeKind == models.RuntimeService {
 			if s.serviceMissing(ctx, a) {
-				out.Missing = append(out.Missing, DriftItem{
-					Class: ClassMissing, Kind: "service", Ref: fmt.Sprintf("app:%d", a.ID),
-					Name: a.Name, OwnerKind: OwnerApp, OwnerID: a.ID, Action: ActionRedeploy,
+				out.Missing = append(out.Missing, drift.Item{
+					Class: drift.ClassMissing, Kind: "service", Ref: fmt.Sprintf("app:%d", a.ID),
+					Name: a.Name, OwnerKind: drift.OwnerApp, OwnerID: a.ID, Action: drift.ActionRedeploy,
 				})
 			}
 			continue
@@ -307,9 +281,9 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 		if liveApps[a.ID] {
 			continue
 		}
-		out.Missing = append(out.Missing, DriftItem{
-			Class: ClassMissing, Kind: "container", Ref: fmt.Sprintf("app:%d", a.ID),
-			Name: a.Name, OwnerKind: OwnerApp, OwnerID: a.ID, Action: ActionRedeploy,
+		out.Missing = append(out.Missing, drift.Item{
+			Class: drift.ClassMissing, Kind: "container", Ref: fmt.Sprintf("app:%d", a.ID),
+			Name: a.Name, OwnerKind: drift.OwnerApp, OwnerID: a.ID, Action: drift.ActionRedeploy,
 		})
 	}
 	return out, nil
