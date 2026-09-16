@@ -380,7 +380,7 @@ func runServer(cli *okapicli.CLI) {
 			)
 			// The restricted profile is an Enterprise entitlement; without it the resolver
 			// clamps every workspace back to the default (image's user).
-			edition := enterprise.New(res.db, cfg.LicensePublicKey, cfg.LicenseFile, cfg.DeploymentURL(), installIDOf(res.db))
+			edition := enterprise.New(res.db, cfg.LicenseFile, cfg.DeploymentURL(), installIDOf(res.db))
 			securityQuota.SetEdition(edition)
 			securityQuota.SetForceNonRoot(cfg.ForceNonRootUser)
 			res.entitlements = edition.Entitlements()

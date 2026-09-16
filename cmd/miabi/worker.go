@@ -192,7 +192,7 @@ func runWorker() error {
 	)
 	// The restricted profile is an Enterprise entitlement; without it the resolver clamps every
 	// workspace back to the image's user. The same edition governs analytics retention below.
-	edition := enterprise.New(db, cfg.LicensePublicKey, cfg.LicenseFile, cfg.DeploymentURL(), installIDOf(db))
+	edition := enterprise.New(db, cfg.LicenseFile, cfg.DeploymentURL(), installIDOf(db))
 	securityQuota.SetEdition(edition)
 	securityQuota.SetForceNonRoot(cfg.ForceNonRootUser)
 	securityResolver := newSecurityResolver(cfg, securityQuota)

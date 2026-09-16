@@ -23,19 +23,18 @@ import (
 	"gorm.io/gorm"
 )
 
-// embeddedPublicKey is the license-signing public key baked in at build time via -ldflags. When
-// empty, the runtime-configured MIABI_LICENSE_PUBLIC_KEY is used instead — convenient for dev.
-// Production builds bake the key in so it cannot be swapped to forge a license.
+// embeddedPublicKey is the license-signing public key, baked in at build time via -ldflags. It is the
+// ONLY source. A key supplied at runtime could be swapped for one whose private half the operator
+// holds, which is forging a license — and the override that allowed it used to WIN over this value,
+// so a release build did not have the property its own comment claimed. Every Makefile target that
+// runs or builds Miabi bakes the key, so dev and release now resolve it identically.
 var embeddedPublicKey string
 
 // New constructs the real EE implementation: it loads any installed license from the database,
 // falling back to MIABI_LICENSE_FILE for air-gapped installs. A license bound to a different
 // instance grants no features. An empty instanceURL disables the URL check; install_id always applies.
-func New(db *gorm.DB, publicKeyB64 string, licenseFile string, instanceURL string, installID string) EE {
-	pub := strings.TrimSpace(publicKeyB64)
-	if pub == "" {
-		pub = strings.TrimSpace(embeddedPublicKey)
-	}
+func New(db *gorm.DB, licenseFile string, instanceURL string, installID string) EE {
+	pub := strings.TrimSpace(embeddedPublicKey)
 	e := &impl{db: db, pub: pub, instanceURL: instanceURL, installID: installID}
 	if pub == "" {
 		logger.Warn("enterprise: no license public key configured; licenses cannot be verified")
