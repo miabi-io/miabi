@@ -64,7 +64,8 @@ var leaderHeld = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 func init() {
 	prometheus.MustRegister(buildInfo, subnetPoolUsed, subnetPoolTotal, gpuDevicesTotal, gpuDevicesEnabled, gpuAllocated,
 		analyticsIngested, analyticsRejected, leaderHeld,
-		controlManagerSweep, controlManagerDrift, controlManagerUnobserved, controlManagerBlocked)
+		controlManagerSweep, controlManagerDrift, controlManagerUnobserved, controlManagerBlocked,
+		controlManagerActions)
 }
 
 // SetLeader records whether this process holds the named leader lease.
@@ -96,7 +97,18 @@ var (
 		Name: "miabi_control_manager_blocked_apps",
 		Help: "Apps that must not be redeployed because the volume holding their data is gone.",
 	})
+	controlManagerActions = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "miabi_control_manager_actions_total",
+		Help: "Actions the control manager took on drift, by action and outcome.",
+	}, []string{"action", "result"})
 )
+
+// ControlManagerAction counts what enforcement did: a redeploy started, deferred by a budget, blocked
+// because the app is not whole, failed, or a breaker opening. This is how an operator sees whether the
+// control manager is helping or thrashing.
+func ControlManagerAction(action, result string) {
+	controlManagerActions.WithLabelValues(action, result).Inc()
+}
 
 // ObserveControlManagerSweep records how long a control manager sweep took.
 func ObserveControlManagerSweep(d time.Duration) {

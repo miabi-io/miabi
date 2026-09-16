@@ -32,7 +32,13 @@ type Mode string
 const (
 	ModeOff     Mode = "off"
 	ModeObserve Mode = "observe"
+	// ModeEnforce redeploys a container or service app that disappeared, where it already runs. It never
+	// places or moves a workload, and never acts on an app that is missing anything else it needs.
+	ModeEnforce Mode = "enforce"
 )
+
+// actorName signs the events and audit entries of work nobody asked for.
+const actorName = "control-manager"
 
 const (
 	sweepTimeout = 50 * time.Second
@@ -64,9 +70,11 @@ type ReleaseStore interface {
 	FindActive(appID uint) (*models.Release, error)
 }
 
-// DeploymentStore reports the apps with a deploy under way. Satisfied by *repositories.DeploymentRepository.
+// DeploymentStore reports the apps with a deploy under way, and how a redeploy the control manager started
+// is getting on. Satisfied by *repositories.DeploymentRepository.
 type DeploymentStore interface {
 	InProgressAppIDs() ([]uint, error)
+	FindByID(id uint) (*models.Deployment, error)
 }
 
 // VolumeStore reads volume rows and adopts the engine's creation timestamp into one that has none.
@@ -121,12 +129,20 @@ type Service struct {
 	settings      Settings
 	now           func() time.Time
 
-	mu        sync.Mutex
-	findings  map[string]*Finding // by item key
-	blocked   map[uint]string     // app id -> why it must not be redeployed
-	skipped   []Skip
-	lastSweep *time.Time
-	sweepTook time.Duration
+	// Enforcement (nil until SetEnforcement): what it takes to put an app back where it was.
+	redeployer Redeployer
+	placement  NodePlacement
+	configs    ConfigStore
+	auditor    Auditor
+
+	mu              sync.Mutex
+	findings        map[string]*Finding // by item key
+	blocked         map[uint]string     // app id -> why it must not be redeployed
+	attempts        map[string]*attempt // by item key: backoff, failures, breaker
+	inflightDeploys map[uint]uint       // deployment id -> node id, for the in-flight budgets
+	skipped         []Skip
+	lastSweep       *time.Time
+	sweepTook       time.Duration
 }
 
 // New builds the control manager. It does nothing until Tick is scheduled.
@@ -135,9 +151,11 @@ func New(nodes NodeDocker, clusters ClusterManager, apps AppStore, releases Rele
 	return &Service{
 		nodes: nodes, clusters: clusters, apps: apps, releases: releases, deploys: deploys,
 		volumes: volumes, databases: databases, events: events, settings: settings,
-		now:      time.Now,
-		findings: map[string]*Finding{},
-		blocked:  map[uint]string{},
+		now:             time.Now,
+		findings:        map[string]*Finding{},
+		blocked:         map[uint]string{},
+		attempts:        map[string]*attempt{},
+		inflightDeploys: map[uint]uint{},
 	}
 }
 
@@ -147,13 +165,18 @@ func (s *Service) SetBackups(volumes VolumeBackupStore, databases DatabaseBackup
 	s.volumeBackups, s.dbBackups = volumes, databases
 }
 
-// Mode returns the configured mode. Any value but off observes: observing acts on nothing, and an
-// unrecognized value must not quietly switch detection off.
+// Mode returns the configured mode. Off and enforce are both deliberate choices, so they are matched
+// exactly; anything else observes, because an unrecognized value must neither switch detection off nor start
+// redeploying things on its own.
 func (s *Service) Mode() Mode {
-	if strings.EqualFold(strings.TrimSpace(s.settings.String(settings.KeyControlManagerMode, "")), string(ModeOff)) {
+	switch Mode(strings.ToLower(strings.TrimSpace(s.settings.String(settings.KeyControlManagerMode, "")))) {
+	case ModeOff:
 		return ModeOff
+	case ModeEnforce:
+		return ModeEnforce
+	default:
+		return ModeObserve
 	}
-	return ModeObserve
 }
 
 // Tick runs one sweep with its own deadline. It is scheduled on the cron manager, which runs it only on the
@@ -177,6 +200,9 @@ func (s *Service) Sweep(ctx context.Context) error {
 	}
 	seen, skipped := s.observe(ctx, items)
 	s.record(items, seen, skipped, start)
+	// Acting comes last, on what this sweep just confirmed: never on a finding it has not seen twice, and
+	// never on one the same sweep marked blocked.
+	s.act(items)
 	return nil
 }
 
@@ -201,6 +227,9 @@ type item struct {
 	workspaceID uint
 	nodeID      uint
 	clusterID   uint
+
+	// app is carried so enforcement can redeploy it exactly where it already is.
+	app *models.Application
 
 	containerID string // container items: the active release's container
 	service     string // service items: the swarm service name
@@ -267,7 +296,7 @@ func (s *Service) plan() ([]item, error) {
 			continue
 		}
 		it := item{
-			name: a.Name, ref: appKey(a.ID), owner: drift.OwnerApp, id: a.ID,
+			name: a.Name, ref: appKey(a.ID), owner: drift.OwnerApp, id: a.ID, app: a,
 			key: appKey(a.ID), workspaceID: a.WorkspaceID, nodeID: a.ServerID, clusterID: a.ClusterID,
 			subjects: []subject{{workspaceID: a.WorkspaceID, appID: a.ID}},
 		}

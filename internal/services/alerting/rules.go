@@ -173,6 +173,7 @@ func evaluateApp(e *models.AppEvent, appName string) []intent {
 	unhealthyKey := fmt.Sprintf("unhealthy:app:%d", e.ApplicationID)
 	driftKey := fmt.Sprintf("drift:app:%d", e.ApplicationID)
 	dataKey := fmt.Sprintf("datavolume:app:%d", e.ApplicationID)
+	breakerKey := fmt.Sprintf("reconcile:app:%d", e.ApplicationID)
 
 	switch e.Type {
 	case models.EventDriftDetected:
@@ -192,11 +193,20 @@ func evaluateApp(e *models.AppEvent, appName string) []intent {
 		i.body = orDefault(e.Message, "The app's workload disappeared from its node or cluster.")
 		return []intent{i}
 
+	case models.EventReconcileBreakerOpen:
+		i := base
+		i.kind, i.ruleKey, i.dedupKey = fire, "reconcile_breaker_open", breakerKey
+		i.severity = models.AlertCritical
+		i.title = fmt.Sprintf("Cannot be brought back — %s", appName)
+		i.body = orDefault(e.Message, "The control manager stopped trying to redeploy this app after repeated failures.")
+		return []intent{i}
+
 	case models.EventDriftResolved:
 		if e.Metadata["kind"] == "volume" {
 			return resolves(dataKey)
 		}
-		return resolves(driftKey)
+		// The workload is back, so both the drift and the giving-up alert are over.
+		return resolves(driftKey, breakerKey)
 
 	case models.EventDeployFailed:
 		i := base

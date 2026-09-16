@@ -59,6 +59,14 @@ const (
 	EventDriftResolved AppEventType = "drift.resolved"
 )
 
+// Reconcile event types, recorded when the control manager acts on drift — or declines to, which matters
+// just as much: an app left alone because its data is gone has to say so.
+const (
+	EventReconcileRedeploy    AppEventType = "reconcile.redeploy"
+	EventReconcileBlocked     AppEventType = "reconcile.blocked"
+	EventReconcileBreakerOpen AppEventType = "reconcile.breaker_open"
+)
+
 // EventSubjectType names the kind of resource a timeline event is about. An event carries
 // exactly one subject; the matching id column holds it and the other stays 0.
 type EventSubjectType string

@@ -20,6 +20,8 @@ var NotifiableEvents = []AppEventType{
 	EventContainerRemoved,
 	EventDriftDetected,
 	EventDriftResolved,
+	EventReconcileRedeploy,
+	EventReconcileBreakerOpen,
 	EventDatabaseProvisioned,
 	EventDatabaseProvisionFailed,
 	EventDatabaseUpgraded,

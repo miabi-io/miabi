@@ -38,6 +38,11 @@ type Finding struct {
 	// Confirmed is set once enough sweeps agree. Only confirmed findings are recorded as events and counted
 	// in metrics.
 	Confirmed bool `json:"confirmed"`
+	// Attempts, NextAttemptAt and BreakerOpen report what enforcement has tried: how many redeploys, when the
+	// next one is due under backoff, and whether it has given up and left this to a person.
+	Attempts      int        `json:"attempts,omitempty"`
+	NextAttemptAt *time.Time `json:"next_attempt_at,omitempty"`
+	BreakerOpen   bool       `json:"breaker_open,omitempty"`
 	// Restore is set on lost data: the backup to bring it back from.
 	Restore *Restore `json:"restore,omitempty"`
 	// Blocked marks a workload nothing may start again, because the volume holding its data is gone.
@@ -77,8 +82,16 @@ func (s *Service) Status() Status {
 		out.LastSweepAt = &at
 		out.SweepMillis = s.sweepTook.Milliseconds()
 	}
-	for _, f := range s.findings {
-		out.Findings = append(out.Findings, *f)
+	for key, f := range s.findings {
+		cp := *f
+		if a := s.attempts[key]; a != nil {
+			cp.Attempts, cp.BreakerOpen = a.tries, a.breakerOpen
+			if !a.nextAt.IsZero() {
+				next := a.nextAt
+				cp.NextAttemptAt = &next
+			}
+		}
+		out.Findings = append(out.Findings, cp)
 	}
 	sort.Slice(out.Findings, func(i, j int) bool {
 		if out.Findings[i].Kind != out.Findings[j].Kind {
@@ -160,6 +173,13 @@ func (s *Service) record(items []item, seen map[string]observation, skipped []Sk
 			delete(s.findings, key)
 		}
 	}
+	// An item's attempt history outlives its finding for a while, so an app that keeps disappearing does not
+	// reset its own backoff by looking healthy for one sweep.
+	for key, a := range s.attempts {
+		if _, still := s.findings[key]; !still && now.Sub(a.lastActedAt) > forgetAfter {
+			delete(s.attempts, key)
+		}
+	}
 	s.blocked = s.blockLocked(items)
 	s.skipped = skipped
 	s.lastSweep = &start
@@ -213,6 +233,8 @@ func (s *Service) reset() {
 	s.mu.Lock()
 	s.findings = map[string]*Finding{}
 	s.blocked = map[uint]string{}
+	s.attempts = map[string]*attempt{}
+	s.inflightDeploys = map[uint]uint{}
 	s.skipped = nil
 	s.lastSweep = nil
 	s.sweepTook = 0

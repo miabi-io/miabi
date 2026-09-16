@@ -2157,6 +2157,21 @@ func (s *Service) Redeploy(app *models.Application) (*models.Deployment, error) 
 	return s.enqueue(app.ID, app.ServerID, image, "auto", app.RegistryID, models.DeployRolling, false)
 }
 
+// ReconcileRedeploy brings an app back where it already runs, after the control manager found its container
+// or service gone. It is deliberately the ordinary deploy path — same queue, same per-app lock, same
+// guards, routed by the app's own ServerID — so nothing is placed or moved, and the data guard in enqueue
+// refuses it outright if a volume is missing. The distinct trigger is what tells this apart from a deploy a
+// person asked for, in history and in the timeline.
+func (s *Service) ReconcileRedeploy(app *models.Application, reason string) (*models.Deployment, error) {
+	image := ""
+	if app.SourceType != models.AppSourceGit {
+		image = app.ImageRef("")
+	}
+	logger.Info("control manager: redeploying an app whose workload disappeared",
+		"app", app.Name, "app_id", app.ID, "node", app.ServerID, "reason", reason)
+	return s.enqueue(app.ID, app.ServerID, image, "reconcile", app.RegistryID, models.DeployRolling, false)
+}
+
 func (s *Service) AutoRedeploy(app *models.Application) (*models.Deployment, error) {
 	if app.CurrentReleaseID == nil {
 		return nil, nil
