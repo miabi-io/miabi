@@ -41,13 +41,7 @@ type SetupOptions struct {
 	Image, GatewayImage, RunnerImage, GomaConfig string
 	RegistryHost, Subnet, InternalSubnet         string
 	Registry, NoHostProc, Yes                    bool
-
-	// DefaultImage supplies the control-plane image for a FRESH install when Image is empty. The
-	// two front-ends answer this differently and neither answer generalizes: the server image
-	// inspects the container it is running in (so `docker run miabi/miabi:1.8.0 install` lands
-	// exactly 1.8.0, private registry included), while the CLI has no self-container and uses its
-	// build stamp. Return "" when it cannot be determined.
-	DefaultImage func() string
+	DefaultImage                                 func() string
 }
 
 // SetupResult reports what a Setup did, so the caller can print its own next-steps hint — the one
@@ -74,6 +68,11 @@ func Setup(ctx context.Context, svc *stack.Service, path string, o SetupOptions,
 			def = o.DefaultImage()
 		}
 		m, newInstall = stack.Defaults(def), true
+		// Config encryption is on by default for a FRESH install only. An existing host may run an
+		// imported gateway, which Miabi never redeploys and so could never hand the key to.
+		if kerr := m.GenerateGatewayConfigKey(); kerr != nil {
+			return nil, kerr
+		}
 	default:
 		return nil, err
 	}
@@ -354,6 +353,9 @@ func Upgrade(ctx context.Context, svc *stack.Service, path string, o UpgradeOpti
 	if prev == target && !isDrifted(ctx, svc, name, target) {
 		ui.Info("%s is already at %s.", name, target)
 		if wholeStack {
+			if err := convertManifest(path, m, ui); err != nil {
+				return err
+			}
 			return convergeRest(ctx, svc, m, path)
 		}
 		return nil
@@ -362,6 +364,12 @@ func Upgrade(ctx context.Context, svc *stack.Service, path string, o UpgradeOpti
 	ui.Printf("\nMiabi will roll out:\n\n  %-14s %s → %s\n\n", name, prev, target)
 	if !o.Yes && !ui.Confirm("Proceed?") {
 		return errors.New("cancelled")
+	}
+
+	// Convert only once the upgrade is going ahead, so a cancelled or misspelled one never leaves a
+	// stray copy behind.
+	if err := convertManifest(path, m, ui); err != nil {
+		return err
 	}
 
 	*pin = target
@@ -390,6 +398,21 @@ func Upgrade(ctx context.Context, svc *stack.Service, path string, o UpgradeOpti
 	}
 	ui.Printf("\n")
 	ui.Success("Upgraded. %s", m.WebURL)
+	return nil
+}
+
+// convertManifest moves a flat manifest onto the kinded document, keeping a copy. An upgrade is
+// where the shape changes: it is the one command every host eventually runs, so there is no separate
+// migration step to find out about. `setup` never converts.
+func convertManifest(path string, m *stack.Manifest, ui UI) error {
+	converted, err := stack.ConvertFile(path, m)
+	if err != nil {
+		return err
+	}
+	if converted {
+		ui.Info("Converted %s to %s. The previous file is kept as %s%s — an older CLI cannot read the new one.",
+			path, stack.APIVersion, path, stack.BackupSuffix)
+	}
 	return nil
 }
 

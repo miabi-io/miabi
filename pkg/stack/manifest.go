@@ -78,6 +78,15 @@ type Manifest struct {
 	// Turning it off is safe — Miabi falls back to its own /proc, which already reflects host CPU/memory.
 	HostProc *bool `yaml:"host_proc"`
 
+	// Install carries the settings only the kinded document models — the managed subnet pool, the host
+	// port range, external access, the DNS interval, platform backup and the license. Not serialized:
+	// the flat schema never had them, and the document writer maps them field by field.
+	Install InstallSettings `yaml:"-"`
+
+	// kinded records which on-disk shape Load read, so Save writes the file back in the shape it was
+	// found in. Converting is an explicit act (ConvertFile), never a side effect of saving.
+	kinded bool `yaml:"-"`
+
 	// gatewayHostConfig is the gateway config's path AS THE DOCKER DAEMON SEES IT, resolved by
 	// EnsureGatewayConfig. Not serialized: it describes this run's environment — are we in a container, which
 	// host dir is bound — not the desired state, so writing it into miabi.yaml would make the manifest wrong.
@@ -146,6 +155,23 @@ type Secrets struct {
 	AdminPassword string `yaml:"admin_password"`
 }
 
+// GenerateGatewayConfigKey mints the Goma config-encryption key, and is called ONLY for a fresh
+// install.
+func (m *Manifest) GenerateGatewayConfigKey() error {
+	if m.Gateway.Env[gomaConfigEncryptionKey] != "" {
+		return nil
+	}
+	v, err := randomHex(32)
+	if err != nil {
+		return err
+	}
+	if m.Gateway.Env == nil {
+		m.Gateway.Env = map[string]string{}
+	}
+	m.Gateway.Env[gomaConfigEncryptionKey] = v
+	return nil
+}
+
 // ManifestPath resolves the manifest location: MIABI_CONFIG_FILE, else the older MIABI_STACK_FILE,
 // else /etc/miabi/miabi.yaml. The legacy /etc/miabi/stack.yaml is no longer read implicitly — Load
 // detects it and says how to migrate, which beats silently operating on a path the operator was
@@ -180,6 +206,16 @@ func Load(path string) (*Manifest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
+	// The kinded document is strict about unknown fields; the flat schema stays lenient. Tightening a
+	// file already sitting on thousands of hosts is how an upgrade turns into an outage — those hosts
+	// get the check when they are converted.
+	if IsDocument(b) {
+		d, derr := ParseDocument(b)
+		if derr != nil {
+			return nil, fmt.Errorf("parse %s: %w", path, derr)
+		}
+		return d.Manifest(), nil
+	}
 	var m Manifest
 	if err := yaml.Unmarshal(b, &m); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
@@ -201,11 +237,10 @@ func Save(path string, m *Manifest) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create %s: %w", filepath.Dir(path), err)
 	}
-	b, err := yaml.Marshal(m)
+	body, err := render(m)
 	if err != nil {
-		return fmt.Errorf("encode manifest: %w", err)
+		return err
 	}
-	body := append([]byte(manifestHeader), b...)
 
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, body, manifestMode); err != nil {
@@ -222,6 +257,72 @@ func Save(path string, m *Manifest) error {
 	}
 	return nil
 }
+
+// render writes the manifest in the shape it was read in.
+func render(m *Manifest) ([]byte, error) {
+	if m.kinded {
+		b, err := MarshalDocument(NewDocument(m))
+		if err != nil {
+			return nil, err
+		}
+		return append([]byte(documentHeader), b...), nil
+	}
+	b, err := yaml.Marshal(m)
+	if err != nil {
+		return nil, fmt.Errorf("encode manifest: %w", err)
+	}
+	return append([]byte(manifestHeader), b...), nil
+}
+
+// BackupSuffix names the copy ConvertFile leaves behind.
+const BackupSuffix = ".bak"
+
+// ConvertFile copies a flat manifest aside and marks m so the next Save writes the kinded document.
+// A no-op for a manifest that is already kinded, and it never writes the new shape itself — the
+// caller's Save does, so a converge that fails in between leaves the original copy intact.
+//
+// The copy is not optional: this file is the only record of the install's secrets, and an older CLI
+// cannot read what replaces it.
+func ConvertFile(path string, m *Manifest) (bool, error) {
+	if m.kinded {
+		return false, nil
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return false, fmt.Errorf("read %s: %w", path, err)
+	}
+	bak := path + BackupSuffix
+	if err := os.WriteFile(bak, b, manifestMode); err != nil {
+		return false, fmt.Errorf("write %s: %w", bak, err)
+	}
+	m.kinded = true
+	return true, nil
+}
+
+const documentHeader = `# Miabi — installed stack manifest (` + APIVersion + `).
+#
+# WRITTEN BY MIABI. Hand-edits are respected — re-run 'miabi setup' and the stack
+# converges to whatever this says — but comments you add here are NOT preserved:
+# the file is rewritten from scratch on the next setup/upgrade.
+#
+# This file holds the database password, JWT secret and encryption key in plain
+# text, at mode 0600. It is the only copy. Back it up somewhere safe: without it
+# you cannot decrypt the secrets Miabi has stored, and the database is
+# unrecoverable. The one exception is spec.secrets.gomaConfigEncryptionKey, which
+# protects config rendered from the database — rotating it costs a converge.
+#
+# Fields marked WRITTEN BY MIABI (spec.gateway.configSha, spec.server.dockerGid)
+# are derived state. Editing them is how a customized goma.yml gets overwritten.
+#
+# Extra settings go under spec.server.env — anything Miabi reads that this file
+# does not already model (SMTP, OAuth, HTTP_PROXY, …). Variables Miabi sets
+# itself are REFUSED there rather than merged.
+#
+#   miabi stack status    show the running stack against this file
+#   miabi setup           converge the stack to this file (safe to re-run)
+#   miabi upgrade         roll the stack forward to a newer image
+#
+`
 
 const manifestHeader = `# Miabi — installed stack manifest.
 #

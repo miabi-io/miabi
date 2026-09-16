@@ -104,7 +104,10 @@ func New(dc docker.Client, log func(string, ...any), manifestPath string) *Servi
 // installed, and the CLI knows it (it is that version).
 func Defaults(miabiImage string) *Manifest {
 	return &Manifest{
-		Version:         CurrentVersion,
+		Version: CurrentVersion,
+		// A fresh install starts on the kinded document. Existing flat files keep their shape until
+		// `miabi upgrade` converts them, so no host changes shape without being told.
+		kinded:          true,
 		Network:         NetworkConfig{Name: DefaultNetwork, Subnet: DefaultSubnet},
 		InternalNetwork: NetworkConfig{Name: DefaultInternalNetwork, Subnet: DefaultInternalSubnet},
 		Images: Images{
@@ -182,6 +185,11 @@ func (m *Manifest) Normalize() error {
 		return err
 	}
 	if err := m.normalizeGateway(); err != nil {
+		return err
+	}
+	// Before normalizeEnv: its probe reads back what the spec emits, so the install settings have to
+	// be valid by the time the reserved-key set is derived from them.
+	if err := m.normalizeInstall(); err != nil {
 		return err
 	}
 	if err := m.normalizeEnv(); err != nil {
@@ -270,6 +278,68 @@ func (m *Manifest) normalizeGateway() error {
 	return nil
 }
 
+// Registry storage drivers. Shared with the JSON Schema generator, so the values an editor offers
+// and the values Normalize accepts cannot drift apart.
+const (
+	registryStorageFilesystem = "filesystem"
+	registryStorageS3         = "s3"
+)
+
+// normalizeInstall validates the settings only the install document carries. They compile into the
+// control plane's environment, so a wrong value is otherwise found at boot — or not at all, having
+// quietly pinned a console field to something nobody meant.
+func (m *Manifest) normalizeInstall() error {
+	in := &m.Install
+
+	if s := strings.ToLower(strings.TrimSpace(in.RegistryStorage)); s != "" {
+		if s != registryStorageFilesystem && s != registryStorageS3 {
+			return fmt.Errorf("registry.storage %q is not a storage driver (use %s or %s)",
+				in.RegistryStorage, registryStorageFilesystem, registryStorageS3)
+		}
+		in.RegistryStorage = s
+	}
+	if p := in.Pool.SubnetPrefix; p != 0 && (p < 8 || p > 30) {
+		return fmt.Errorf("networking.pool.subnetPrefix /%d is out of range (8–30)", p)
+	}
+	if hp := in.HostPorts; hp.Min != 0 || hp.Max != 0 {
+		if hp.Min < 1 || hp.Max > 65535 {
+			return fmt.Errorf("networking.hostPorts must fall within 1–65535 (got %d–%d)", hp.Min, hp.Max)
+		}
+		if hp.Min > hp.Max {
+			return fmt.Errorf("networking.hostPorts.min %d is above max %d", hp.Min, hp.Max)
+		}
+	}
+	if d := in.DNS.ReconcileMinutes; d < 0 {
+		return fmt.Errorf("networking.dns.reconcileMinutes cannot be negative (got %d)", d)
+	}
+	return m.normalizeBackup()
+}
+
+// normalizeBackup enforces the rule the control plane already applies to the destination: it
+// overrides the stored settings only when bucket, access key and secret key are ALL present. A
+// partial block therefore pins nothing and leaves the console in charge — the opposite of what an
+// operator writing it into the manifest is asking for, and silent about it.
+func (m *Manifest) normalizeBackup() error {
+	b := m.Install.Backup
+	if b == nil {
+		return nil
+	}
+	given := 0
+	for _, v := range []string{b.Destination.Bucket, b.Destination.AccessKey, b.Destination.SecretKey} {
+		if strings.TrimSpace(v) != "" {
+			given++
+		}
+	}
+	if given != 0 && given != 3 {
+		return errors.New("backup.destination needs bucket, accessKey and secretKey together — " +
+			"with any one missing the control plane ignores the whole block and leaves the console in charge")
+	}
+	if b.Retention.Days < 0 || b.Retention.Max < 0 {
+		return fmt.Errorf("backup.retention cannot be negative (max %d, days %d)", b.Retention.Max, b.Retention.Days)
+	}
+	return nil
+}
+
 // reservedEnvPrefixes are settings the manifest models with a dedicated field, so setting them through env:
 // would create a second source of truth that can silently disagree with the first. A bare
 // MIABI_REGISTRY_ENABLED in env: would turn the registry on while `miabi stack status` still said it was off.
@@ -347,8 +417,9 @@ func (m *Manifest) normalizeEnv() error {
 		// Setting it here would give it to the control plane only, and Goma would read a config it cannot decrypt
 		// — routing broken, no obvious cause. It has exactly one home.
 		if key == gomaConfigEncryptionKey {
-			return fmt.Errorf("env: %s belongs under `gateway.env` — set it there and Miabi "+
-				"gives it to BOTH the gateway and the control plane, which is what it needs "+
+			return fmt.Errorf("env: %s has exactly one home — spec.secrets.gomaConfigEncryptionKey "+
+				"in the install document, or gateway.env in the older flat manifest. Set it there and "+
+				"Miabi gives it to BOTH the gateway and the control plane, which is what it needs "+
 				"(Miabi encrypts the config Goma decrypts)", key)
 		}
 		clean[key] = v
