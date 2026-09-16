@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,6 +32,15 @@ func (f *fakeEngine) ListContainers(context.Context, bool) ([]docker.Container, 
 }
 
 func (f *fakeEngine) ListVolumes(context.Context) ([]docker.Volume, error) { return f.volumes, nil }
+
+func (f *fakeEngine) InspectContainer(_ context.Context, id string) (docker.Container, error) {
+	for _, c := range f.containers {
+		if c.ID == id || (len(c.Names) > 0 && strings.TrimPrefix(c.Names[0], "/") == id) {
+			return c, nil
+		}
+	}
+	return docker.Container{}, docker.ErrNotFound
+}
 
 func (f *fakeEngine) ServiceInspect(_ context.Context, name string) (docker.ServiceStatus, error) {
 	if f.services[name] {

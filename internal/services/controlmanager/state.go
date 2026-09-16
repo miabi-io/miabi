@@ -253,6 +253,8 @@ func (s *Service) countsLocked() metrics.ControlManagerDrift {
 			c.ReplacedVolumes++
 		case f.Kind == kindVolume:
 			c.MissingVolumes++
+		case f.Kind == kindGateway:
+			c.MissingGateways++
 		default:
 			c.MissingContainers++
 		}
@@ -271,6 +273,11 @@ func newFinding(it *item, st state, now time.Time) *Finding {
 		FirstSeenAt: now, LastSeenAt: now,
 		subjects: it.subjects,
 	}
+	if it.kind == kindGateway && it.imported {
+		// An imported gateway is somebody else's container — the platform stack's own on the manager, or an
+		// operator's. Miabi reports it and stops there.
+		f.Action = drift.ActionNone
+	}
 	if it.kind == kindVolume {
 		// Recreating a volume gives an empty one, which is data loss dressed up as self-healing. The way
 		// back is a backup, and choosing one is a person's call.
@@ -288,11 +295,13 @@ func newFinding(it *item, st state, now time.Time) *Finding {
 var detectedMessages = map[string]string{
 	kindContainer: "The active release's container no longer exists on its node",
 	kindService:   "The app's swarm service no longer exists in its cluster",
+	kindGateway:   "The node's gateway is not running, so the node is serving nothing",
 }
 
 var resolvedMessages = map[string]string{
 	kindContainer: "The active release's container exists again",
 	kindService:   "The app's swarm service exists again",
+	kindGateway:   "The node's gateway is running again",
 }
 
 // message describes a finding for the timeline. A volume names itself, since the event is recorded on the

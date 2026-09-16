@@ -453,6 +453,12 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	clusterService.SetEndpointModeListener(appService.ApplyServiceEndpointMode)
 	proxyReconciler.SetCluster(clusterService)
 	go func() { _ = proxyReconciler.ReconcileIngressGateway(context.Background()) }()
+	// A fresh install already ships a gateway on the manager (the one the Miabi stack installs).
+	go func() {
+		if local, err := serverRepo.FindLocal(); err == nil {
+			edgegateway.AdoptCentral(context.Background(), dockerClient, nodeService, local)
+		}
+	}()
 	// After a workspace proxy sync, tell affected edge-gateway nodes to pull their
 	// config immediately instead of waiting for the HTTP-provider poll interval.
 	routeService.SetEdgeReloader(newEdgeReloader(nodeService, nodeGateway))
@@ -497,6 +503,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// path so the app goes back on its own node, never onto a cordoned one, and never while it is missing
 	// something it needs — its data, or a config it mounts.
 	controlManager.SetEnforcement(appService, nodeService, repositories.NewConfigRepository(db), auditLogger)
+	// Gateways are watched too
+	controlManager.SetGateways(nodeService, nodeGateway.Ensurer(nodeService, nodeClients))
 	if err := cronManager.RegisterTask("control-manager", 0, "Control manager sweep", "@every 1m", controlManager.Tick); err != nil {
 		logger.Error("failed to register the control manager sweep", "error", err)
 	}
