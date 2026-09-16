@@ -328,9 +328,12 @@ func (s *Service) CreateWith(ctx context.Context, workspaceID, serverID uint, na
 		}
 		if dv.Mountpoint != "" {
 			v.Mountpoint = dv.Mountpoint
-			if err := s.repo.Update(v); err != nil {
-				return nil, err
-			}
+		}
+		// The engine's creation timestamp is recorded so a volume deleted and recreated by hand later reads
+		// as replaced instead of intact.
+		v.EngineCreatedAt = dv.CreatedAt
+		if err := s.repo.Update(v); err != nil {
+			return nil, err
 		}
 	}
 	return v, nil

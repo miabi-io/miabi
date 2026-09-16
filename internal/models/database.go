@@ -73,6 +73,10 @@ type DatabaseInstance struct {
 	// engine default).
 	Image      string `json:"image,omitempty"`
 	VolumeName string `json:"volume_name,omitempty"`
+	// VolumeEngineCreatedAt is the creation timestamp Docker reported for the data volume. A timestamp that
+	// moved means the volume was deleted and recreated, so the instance's data is gone even though the row
+	// and the volume name are intact.
+	VolumeEngineCreatedAt string `json:"volume_engine_created_at,omitempty"`
 	// VolumeSizeBytes is the declared capacity of the instance's data volume in
 	// bytes (0 = unspecified/unlimited), distinct from the measured SizeBytes
 	// below. Recorded at provision time for quota accounting.

@@ -472,12 +472,6 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	appService.SetQuota(quotaService)
 	appService.SetClusterCap(clusterService) // gate "service" runtime apps on cluster mode
 	housekeepingService.SetSwarmManagers(clusterService)
-	// Watches for workloads that disappeared from their node or cluster. It runs on the cron manager, so only the
-	// leading control plane sweeps.
-	controlManager := controlmanager.New(nodeClients, clusterService, appRepo, releaseRepo, deploymentRepo, eventsService, settingsProvider)
-	if err := cronManager.RegisterTask("control-manager", 0, "Control manager sweep", "@every 1m", controlManager.Tick); err != nil {
-		logger.Error("failed to register the control manager sweep", "error", err)
-	}
 	appService.SetGrantsEnabled(cfg.ContainerGrantsEnabled)
 	appService.SetNetworkEnsurer(networkService) // apps always join the workspace's default network (self-heals a missing one)
 	storageService.SetNodeGuard(nodeService)
@@ -494,6 +488,14 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	backupSetRepo := repositories.NewDatabaseBackupSetRepository(db)
 	backupSettingsRepo := repositories.NewWorkspaceBackupSettingsRepository(db)
 	volumeBackupRepo := repositories.NewVolumeBackupRepository(db)
+	// Watches for workloads that disappeared from their node or cluster, and for volumes whose data is gone.
+	// It runs on the cron manager, so only the leading control plane sweeps. The backup histories are what a
+	// report of lost data points at: Miabi never restores one unattended.
+	controlManager := controlmanager.New(nodeClients, clusterService, appRepo, releaseRepo, deploymentRepo, volumeRepo, dbRepo, eventsService, settingsProvider)
+	controlManager.SetBackups(volumeBackupRepo, backupSetRepo)
+	if err := cronManager.RegisterTask("control-manager", 0, "Control manager sweep", "@every 1m", controlManager.Tick); err != nil {
+		logger.Error("failed to register the control manager sweep", "error", err)
+	}
 	databaseService := database.NewService(dbRepo, nodeClients, producer)
 	databaseService.SetEventBus(bus) // live status SSE; shares the bus with the embedded worker
 	databaseService.SetEventRecorder(eventsService)

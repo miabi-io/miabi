@@ -83,8 +83,20 @@ func evaluateDatabase(e *models.AppEvent, dbID uint, name string) []intent {
 	unhealthyKey := fmt.Sprintf("unhealthy:database:%d", dbID)
 	provisionKey := fmt.Sprintf("provision:database:%d", dbID)
 	upgradeKey := fmt.Sprintf("upgrade:database:%d", dbID)
+	dataKey := fmt.Sprintf("datavolume:database:%d", dbID)
 
 	switch e.Type {
+	case models.EventDriftDetected:
+		i := base
+		i.kind, i.ruleKey, i.dedupKey = fire, "data_volume_lost", dataKey
+		i.category, i.severity = models.CategoryStorage, models.AlertCritical
+		i.title = fmt.Sprintf("Data volume lost — %s", name)
+		i.body = orDefault(e.Message, "The volume holding this instance's data is gone. Restore it from a recovery point: Miabi will not recreate the volume, and starting the instance on an empty one would initialize a new, empty database.")
+		return []intent{i}
+
+	case models.EventDriftResolved:
+		return resolves(dataKey)
+
 	case models.EventContainerOOM:
 		i := base
 		i.kind, i.ruleKey, i.dedupKey = fire, "database_oom", oomKey
@@ -159,8 +171,33 @@ func evaluateApp(e *models.AppEvent, appName string) []intent {
 	crashKey := fmt.Sprintf("crashloop:app:%d", e.ApplicationID)
 	oomKey := fmt.Sprintf("oom:app:%d", e.ApplicationID)
 	unhealthyKey := fmt.Sprintf("unhealthy:app:%d", e.ApplicationID)
+	driftKey := fmt.Sprintf("drift:app:%d", e.ApplicationID)
+	dataKey := fmt.Sprintf("datavolume:app:%d", e.ApplicationID)
 
 	switch e.Type {
+	case models.EventDriftDetected:
+		i := base
+		i.kind = fire
+		if e.Metadata["kind"] == "volume" {
+			// The app's data is gone; a redeploy would start it on an empty volume.
+			i.ruleKey, i.dedupKey = "data_volume_lost", dataKey
+			i.category, i.severity = models.CategoryStorage, models.AlertCritical
+			i.title = fmt.Sprintf("Data volume lost — %s", appName)
+			i.body = orDefault(e.Message, "The volume holding this app's data is gone. Restore it from a backup: Miabi will not recreate the volume, and redeploying would start the app on an empty one.")
+			return []intent{i}
+		}
+		i.ruleKey, i.dedupKey = "workload_missing", driftKey
+		i.severity = models.AlertWarning
+		i.title = fmt.Sprintf("Workload missing — %s", appName)
+		i.body = orDefault(e.Message, "The app's workload disappeared from its node or cluster.")
+		return []intent{i}
+
+	case models.EventDriftResolved:
+		if e.Metadata["kind"] == "volume" {
+			return resolves(dataKey)
+		}
+		return resolves(driftKey)
+
 	case models.EventDeployFailed:
 		i := base
 		i.kind, i.ruleKey, i.dedupKey = fire, "deploy_failed", deployKey

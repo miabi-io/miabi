@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/jkaninda/logger"
+	"github.com/miabi-io/miabi/internal/datavolume"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/crypto"
@@ -545,6 +546,14 @@ func (s *Service) dockerFor(inst *models.DatabaseInstance) (docker.Client, error
 	return s.clients.For(inst.ServerID)
 }
 
+// guardData refuses to start an instance whose data volume is gone. Docker would create an empty one and
+// the engine would initialize a fresh, empty database over the data it should have kept, so the way forward
+// is a restore — which Miabi never performs by itself. The upgrade paths deliberately create and drop
+// volumes of their own, so they are not guarded here.
+func (s *Service) guardData(ctx context.Context, inst *models.DatabaseInstance) error {
+	return datavolume.CheckVolume(ctx, s.clients, inst.ServerID, inst.VolumeName, inst.VolumeEngineCreatedAt, inst.Name)
+}
+
 // ConnectionInfo is the (sensitive) connection detail for a database.
 type ConnectionInfo struct {
 	Host     string `json:"host"`
@@ -669,8 +678,12 @@ func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, nam
 	// immediately — independent of the async container bring-up (which, for heavier engines, may lag or fail
 	// to pull). bringUp re-ensures it idempotently.
 	if dc, derr := s.clients.For(serverID); derr == nil {
-		if _, err := dc.CreateVolume(ctx, inst.VolumeName, map[string]string{docker.LabelDatabase: fmt.Sprint(inst.ID), docker.LabelWorkspace: fmt.Sprint(inst.WorkspaceID)}, inst.VolumeSizeBytes); err != nil {
+		dv, err := dc.CreateVolume(ctx, inst.VolumeName, map[string]string{docker.LabelDatabase: fmt.Sprint(inst.ID), docker.LabelWorkspace: fmt.Sprint(inst.WorkspaceID)}, inst.VolumeSizeBytes)
+		if err != nil {
 			logger.Warn("failed to pre-create database volume", "id", inst.ID, "volume", inst.VolumeName, "error", err)
+		} else {
+			// Recorded so a volume deleted and recreated by hand later reads as replaced, not intact.
+			_ = s.repo.SetVolumeEngineCreatedAt(inst.ID, dv.CreatedAt)
 		}
 	}
 
@@ -825,9 +838,13 @@ func (s *Service) bringUp(ctx context.Context, inst *models.DatabaseInstance, sp
 	if err != nil {
 		return err
 	}
-	if _, err := dc.CreateVolume(ctx, inst.VolumeName, map[string]string{docker.LabelDatabase: fmt.Sprint(inst.ID), docker.LabelWorkspace: fmt.Sprint(inst.WorkspaceID)}, inst.VolumeSizeBytes); err != nil {
+	dv, err := dc.CreateVolume(ctx, inst.VolumeName, map[string]string{docker.LabelDatabase: fmt.Sprint(inst.ID), docker.LabelWorkspace: fmt.Sprint(inst.WorkspaceID)}, inst.VolumeSizeBytes)
+	if err != nil {
 		return fmt.Errorf("create volume: %w", err)
 	}
+	// Only recorded while the instance has none, so a volume replaced by hand keeps the original timestamp
+	// and the sweep can still tell the data is gone.
+	_ = s.repo.SetVolumeEngineCreatedAt(inst.ID, dv.CreatedAt)
 	image := s.engineImage(spec, inst)
 	s.publishProgress(inst, "Pulling "+image)
 	if err := dc.PullImage(ctx, image, nil); err != nil {
@@ -1113,6 +1130,9 @@ func (s *Service) Start(ctx context.Context, inst *models.DatabaseInstance) erro
 	if inst.ContainerID == "" {
 		return ErrNoContainer
 	}
+	if err := s.guardData(ctx, inst); err != nil {
+		return err
+	}
 	dc, err := s.dockerFor(inst)
 	if err != nil {
 		return err
@@ -1164,6 +1184,9 @@ func (s *Service) Restart(ctx context.Context, inst *models.DatabaseInstance) er
 	}
 	if inst.ContainerID == "" {
 		return ErrNoContainer
+	}
+	if err := s.guardData(ctx, inst); err != nil {
+		return err
 	}
 	dc, err := s.dockerFor(inst)
 	if err != nil {

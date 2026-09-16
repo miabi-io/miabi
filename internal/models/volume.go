@@ -54,6 +54,10 @@ type Volume struct {
 	// ServerName is the display name of the node (transient; populated on read).
 	ServerName string `json:"server_name,omitempty" gorm:"-"`
 	Mountpoint string `json:"mountpoint,omitempty"`
+	// EngineCreatedAt is the creation timestamp Docker reported when the volume was created. A volume whose
+	// engine timestamp moved was deleted and recreated by hand: the row survived, the data did not. Empty on
+	// volumes created before Miabi recorded it, which adopt the engine's on the next sweep.
+	EngineCreatedAt string `json:"engine_created_at,omitempty"`
 	// SizeBytes is the declared capacity / size limit of the volume in bytes
 	// (0 = unspecified/unlimited). Recorded at create time and used for quota
 	// accounting; hard enforcement depends on the node's storage backend.

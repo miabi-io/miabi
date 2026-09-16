@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/jkaninda/okapi"
+	"github.com/miabi-io/miabi/internal/datavolume"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
@@ -775,7 +776,7 @@ func (h *DatabaseHandler) dbID(c *okapi.Context) uint {
 }
 
 func (h *DatabaseHandler) mapInstanceErr(c *okapi.Context, err error) error {
-	if errors.Is(err, database.ErrNoContainer) {
+	if errors.Is(err, database.ErrNoContainer) || errors.Is(err, datavolume.ErrLost) {
 		return c.AbortWithError(409, err)
 	}
 	return c.AbortInternalServerError("database operation failed", err)

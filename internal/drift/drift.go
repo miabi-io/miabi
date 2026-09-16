@@ -17,6 +17,9 @@ const (
 	ClassOrphan    = "orphan"    // managed label present, DB record gone — still running on the node
 	ClassMissing   = "missing"   // DB record expects it live, nothing running for it
 	ClassUntracked = "untracked" // no miabi.* label — a hand-run resource
+	// ClassReplaced is a resource whose record is intact but whose contents are not: a volume deleted and
+	// recreated by hand keeps its name and its row, and holds none of the data they describe.
+	ClassReplaced = "replaced"
 )
 
 // Recommended actions per item.
@@ -24,6 +27,9 @@ const (
 	ActionRemove   = "remove"   // orphan → delete the lingering resource
 	ActionRedeploy = "redeploy" // missing → redeploy from the owning resource
 	ActionImport   = "import"   // untracked → adopt via the existing import flow
+	// ActionRestore is for lost data: recreating the volume would give an empty one, so the way back is a
+	// backup, not a redeploy.
+	ActionRestore = "restore"
 )
 
 // Owner kinds: the DB record class a managed resource belongs to.
