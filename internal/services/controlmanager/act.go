@@ -85,7 +85,9 @@ func backoff(tries int) time.Duration {
 // act restores what it can, in place. It runs after record, so it sees only confirmed findings, and only on
 // the leading control plane — the cron manager runs the sweep nowhere else.
 func (s *Service) act(ctx context.Context, items []item) {
-	if s.Mode() != ModeEnforce {
+	// The platform mode gates the sweep acting at all; per item, canAct has the final say, since an app may
+	// enforce while the platform observes.
+	if s.Mode() == ModeOff {
 		return
 	}
 	perNode, total := s.inflight()
@@ -153,9 +155,11 @@ func (a actionable) action() string {
 func (s *Service) canAct(it *item) bool {
 	switch it.kind {
 	case kindContainer, kindService:
-		return it.app != nil && s.redeployer != nil
+		// The app's own policy decides, which is the platform's unless it overrides it.
+		return it.app != nil && s.redeployer != nil && it.policy == ModeEnforce
 	case kindGateway:
-		return !it.imported && s.gateways != nil
+		// A gateway has no app to carry a policy, so it follows the platform.
+		return !it.imported && s.gateways != nil && s.Mode() == ModeEnforce
 	default:
 		return false
 	}

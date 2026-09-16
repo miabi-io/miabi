@@ -208,19 +208,22 @@ type UpdateAppRequest struct {
 		// ContainerLabels are user-defined Docker labels stamped on the app's container(s). Gated by the
 		// AllowCustomLabels plan capability plus a global kill-switch; reserved keys (io.miabi.*,
 		// com.docker.*) are rejected. nil leaves them unchanged; a redeploy applies changes.
-		ContainerLabels               map[string]string `json:"container_labels"`
-		DeployStrategy                string            `json:"deploy_strategy" enum:"recreate,rolling,canary"`
-		CanaryInitialWeight           int               `json:"canary_initial_weight"`
-		CanaryStepWeight              int               `json:"canary_step_weight"`
-		CanaryStepIntervalSeconds     int               `json:"canary_step_interval_seconds"`
-		HealthcheckType               string            `json:"healthcheck_type" enum:"none,http,command"`
-		HealthcheckHTTPPath           string            `json:"healthcheck_http_path"`
-		HealthcheckPort               int               `json:"healthcheck_port"`
-		HealthcheckCommand            string            `json:"healthcheck_command"`
-		HealthcheckIntervalSeconds    int               `json:"healthcheck_interval_seconds"`
-		HealthcheckTimeoutSeconds     int               `json:"healthcheck_timeout_seconds"`
-		HealthcheckRetries            int               `json:"healthcheck_retries"`
-		HealthcheckStartPeriodSeconds int               `json:"healthcheck_start_period_seconds"`
+		ContainerLabels map[string]string `json:"container_labels"`
+		DeployStrategy  string            `json:"deploy_strategy" enum:"recreate,rolling,canary"`
+		// Empty leaves the stored policy, so a partial update never re-arms reconciliation for an app an
+		// operator deliberately exempted.
+		ReconcilePolicy               string `json:"reconcile_policy" enum:"inherit,off,observe,enforce"`
+		CanaryInitialWeight           int    `json:"canary_initial_weight"`
+		CanaryStepWeight              int    `json:"canary_step_weight"`
+		CanaryStepIntervalSeconds     int    `json:"canary_step_interval_seconds"`
+		HealthcheckType               string `json:"healthcheck_type" enum:"none,http,command"`
+		HealthcheckHTTPPath           string `json:"healthcheck_http_path"`
+		HealthcheckPort               int    `json:"healthcheck_port"`
+		HealthcheckCommand            string `json:"healthcheck_command"`
+		HealthcheckIntervalSeconds    int    `json:"healthcheck_interval_seconds"`
+		HealthcheckTimeoutSeconds     int    `json:"healthcheck_timeout_seconds"`
+		HealthcheckRetries            int    `json:"healthcheck_retries"`
+		HealthcheckStartPeriodSeconds int    `json:"healthcheck_start_period_seconds"`
 	} `json:"body"`
 }
 
@@ -467,6 +470,9 @@ func (h *ApplicationHandler) Update(c *okapi.Context, req *UpdateAppRequest) err
 		app.Builder = req.Body.Builder
 		app.Buildpacks = req.Body.Buildpacks
 		app.BuildEnv = req.Body.BuildEnv
+	}
+	if p := models.ReconcilePolicy(req.Body.ReconcilePolicy); p != "" && models.ValidReconcilePolicy(p) {
+		app.ReconcilePolicy = p
 	}
 	if req.Body.DeployStrategy != "" {
 		app.DeployStrategy = models.DeployStrategy(req.Body.DeployStrategy)

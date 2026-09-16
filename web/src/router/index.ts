@@ -118,6 +118,7 @@ const routes = [
       { path: 'metrics', redirect: { name: 'admin-dashboard' } },
       { path: 'events', name: 'admin-events', component: () => import('@/views/admin/Events.vue'), meta: { title: 'Events', admin: true } },
       { path: 'jobs', name: 'admin-jobs', component: () => import('@/views/admin/Jobs.vue'), meta: { title: 'Jobs', admin: true } },
+      { path: 'reconciliation', name: 'admin-reconciliation', component: () => import('@/views/admin/Reconciliation.vue'), meta: { title: 'Reconciliation', admin: true } },
       { path: 'oauth', name: 'admin-oauth', component: () => import('@/views/admin/OAuthProviders.vue'), meta: { title: 'OAuth Providers', admin: true } },
       { path: 'ldap', name: 'admin-ldap', component: () => import('@/views/admin/LdapDirectory.vue'), meta: { title: 'LDAP / Active Directory', admin: true } },
       { path: 'plans', name: 'admin-plans', component: () => import('@/views/admin/Plans.vue'), meta: { title: 'Plans', admin: true } },

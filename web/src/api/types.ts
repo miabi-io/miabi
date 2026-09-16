@@ -630,6 +630,8 @@ export interface UpdateInfo {
   last_error?: string
 }
 
+import type { DriftItem } from './nodes'
+
 export interface JobStatus {
   kind?: string // backup | cronjob
   id: number
@@ -639,6 +641,69 @@ export interface JobStatus {
   last_run_at?: string | null
   last_error?: string
   next_run_at?: string | null
+}
+
+// --- Control manager (platform-wide reconciliation) -------------------------
+
+export type ControlManagerMode = 'off' | 'observe' | 'enforce'
+
+// ReconcilePolicy is one app's override of the platform mode: inherit follows it, off leaves the app out of
+// reconciliation entirely, observe reports without acting, enforce allows an in-place redeploy.
+export type ReconcilePolicy = 'inherit' | 'off' | 'observe' | 'enforce'
+
+// RestoreSuggestion names the backup lost data comes back from. Miabi never restores one itself, so this is
+// what the report points an operator at.
+export interface RestoreSuggestion {
+  from: 'volume-backup' | 'recovery-point'
+  // available is false when there is no completed backup to restore — the worst case, said out loud.
+  available: boolean
+  backup_id?: number
+  ref?: string
+  created_at?: string
+  size_bytes?: number
+}
+
+// ControlManagerFinding is a workload the sweep found missing or replaced. It carries the shared drift-item
+// fields plus what only the platform-wide sweep knows: when it was first seen, and what enforcement tried.
+export interface ControlManagerFinding extends DriftItem {
+  workspace_id: number
+  server_id: number
+  cluster_id: number
+  first_seen_at: string
+  last_seen_at: string
+  // confirmed is false until two consecutive checks agree; only confirmed findings are reported or acted on.
+  confirmed: boolean
+  restore?: RestoreSuggestion
+  blocked?: boolean
+  blocked_reason?: string
+  attempts?: number
+  next_attempt_at?: string
+  breaker_open?: boolean
+}
+
+// ControlManagerBlockedApp is an app that must not be started again: the volume holding its data is gone, so
+// only a restore brings it back.
+export interface ControlManagerBlockedApp {
+  app_id: number
+  name?: string
+  reason: string
+}
+
+// ControlManagerSkip is a node or cluster the sweep could not look at, so its workloads are unknown rather
+// than missing.
+export interface ControlManagerSkip {
+  scope: 'node' | 'cluster'
+  id: number
+  reason: string
+}
+
+export interface ControlManagerStatus {
+  mode: ControlManagerMode
+  last_sweep_at?: string | null
+  sweep_ms: number
+  findings: ControlManagerFinding[]
+  blocked: ControlManagerBlockedApp[]
+  skipped: ControlManagerSkip[]
 }
 
 // JobStats is the scheduled-jobs dashboard summary (computed over all jobs).
@@ -1040,6 +1105,8 @@ export interface Application {
   drop_capabilities?: string[]
   restart_policy?: RestartPolicy
   image_pull_policy?: ImagePullPolicy
+  // How much the control manager may do about this app, overriding the platform mode.
+  reconcile_policy?: ReconcilePolicy
   // Cluster runtime (cluster mode). "service" runs the app as a replicated Swarm
   // service; otherwise a single container.
   runtime_kind?: RuntimeKind

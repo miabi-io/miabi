@@ -71,6 +71,21 @@ function toggleOrphan(o: DriftItem) {
   hkOrphans.value = next
 }
 
+// Missing workloads are selectable too: redeploying goes through the ordinary deploy path, which refuses an
+// app whose data volume is gone rather than starting it on an empty one.
+const hkMissing = ref<Set<string>>(new Set())
+
+function toggleMissing(m: DriftItem) {
+  const k = orphanKey(m)
+  const next = new Set(hkMissing.value)
+  next.has(k) ? next.delete(k) : next.add(k)
+  hkMissing.value = next
+}
+
+const hkSelectedMissingList = computed<DriftItem[]>(() =>
+  (housekeeping.value?.drift.missing ?? []).filter((m) => hkMissing.value.has(orphanKey(m))),
+)
+
 const hkSelectedOrphanList = computed<DriftItem[]>(() =>
   (housekeeping.value?.drift.orphans ?? []).filter((o) => hkOrphans.value.has(orphanKey(o))),
 )
@@ -89,13 +104,14 @@ const driftCount = computed(() => {
   return dr ? dr.orphans.length + dr.missing.length + dr.untracked.length : 0
 })
 const hkHasSelection = computed(() =>
-  hkReclaim.value.dangling_images || hkReclaim.value.build_cache || hkOrphans.value.size > 0,
+  hkReclaim.value.dangling_images || hkReclaim.value.build_cache || hkOrphans.value.size > 0 || hkMissing.value.size > 0,
 )
 
 function hkSelection() {
   return {
     reclaim: { dangling_images: hkReclaim.value.dangling_images, build_cache: hkReclaim.value.build_cache },
     orphans: hkSelectedOrphanList.value.map((o) => ({ kind: o.kind, ref: o.ref })),
+    missing: hkSelectedMissingList.value.map((m) => ({ kind: m.kind, ref: m.ref })),
   }
 }
 
@@ -206,7 +222,7 @@ function fmtSize(n?: number): string {
                 <td class="cell-sub">remove <span class="text-muted" v-if="o.owner_kind">({{ o.owner_kind }}{{ o.owner_id ? ' #' + o.owner_id : '' }} deleted in Miabi)</span></td>
               </tr>
               <tr v-for="o in housekeeping.drift.missing" :key="'m-' + o.ref">
-                <td></td>
+                <td><input type="checkbox" :checked="hkMissing.has(orphanKey(o))" @change="toggleMissing(o)" /></td>
                 <td class="trunc" :title="o.name">{{ o.name }}</td>
                 <td class="cell-sub">{{ o.kind }}</td>
                 <td><span class="badge badge-warning">missing</span></td>
@@ -245,7 +261,8 @@ function fmtSize(n?: number): string {
             <li v-if="hkPlan.reclaim.dangling_images">Prune {{ hkPlan.dangling_images.count }} dangling image(s) — {{ fmtSize(hkPlan.dangling_images.bytes) }}</li>
             <li v-if="hkPlan.reclaim.build_cache">Prune build cache — {{ fmtSize(hkPlan.build_cache.bytes) }}</li>
             <li v-for="o in hkPlan.orphans" :key="'p-' + o.kind + o.ref">Remove orphan {{ o.kind }} <strong>{{ o.name }}</strong></li>
-            <li v-if="!hkPlan.reclaim.dangling_images && !hkPlan.reclaim.build_cache && hkPlan.orphans.length === 0" class="text-muted">Nothing selected.</li>
+            <li v-for="m in hkPlan.missing ?? []" :key="'r-' + m.kind + m.ref">Redeploy <strong>{{ m.name }}</strong> ({{ m.kind }})</li>
+            <li v-if="!hkPlan.reclaim.dangling_images && !hkPlan.reclaim.build_cache && hkPlan.orphans.length === 0 && !(hkPlan.missing ?? []).length" class="text-muted">Nothing selected.</li>
           </ul>
           <p style="margin-top: 12px; font-weight: 600">Estimated reclaim: {{ fmtSize(hkPlan.estimated_bytes) }}</p>
           <p class="text-muted" style="font-size: 12px; margin-top: 6px">Orphan removal is irreversible. Platform-managed apps, databases and the gateway are never affected.</p>
