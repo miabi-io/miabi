@@ -20,6 +20,14 @@ import (
 type serverRow struct {
 	ID   uint `gorm:"primaryKey"`
 	Name string
+	// Capacity columns the repository writes on create; the tests never read them, but the insert
+	// names them, so the stand-in has to carry them.
+	CPUCores         int
+	MemoryBytes      int64
+	StorageBytes     int64
+	StorageFreeBytes int64
+	CPUPercent       float64
+	MemUsedBytes     int64
 }
 
 func (serverRow) TableName() string { return "servers" }
@@ -173,6 +181,14 @@ type nameRow struct {
 	Labels                  string
 	GatewayUpdate           string
 	LastSeenAt              *time.Time
+	CPUCores                int
+	MemoryBytes             int64
+	StorageBytes            int64
+	StorageFreeBytes        int64
+	CapacityMeasuredAt      *time.Time
+	CPUPercent              float64
+	MemUsedBytes            int64
+	UsageMeasuredAt         *time.Time
 	CreatedAt               time.Time
 	UpdatedAt               time.Time
 }

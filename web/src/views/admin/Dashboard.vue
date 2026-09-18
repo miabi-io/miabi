@@ -236,6 +236,20 @@ const meters = computed<Meter[]>(() => {
     }
   }
 
+  // Node disk: the filesystem Docker actually writes images, containers and unclassed volumes to.
+  // Distinct from the storage-class meter below, which covers the operator's extra disks.
+  if (fleet && fleet.storage_bytes > 0) {
+    const usedPct = Math.min(100, Math.round(((fleet.storage_bytes - fleet.storage_free_bytes) / fleet.storage_bytes) * 100))
+    out.push({
+      key: 'node-disk', label: 'Node disk', icon: 'mdi-harddisk', to: '/admin/nodes',
+      value: `${usedPct}%`,
+      detail: `${fmtBytes(fleet.storage_free_bytes)} free of ${fmtBytes(fleet.storage_bytes)} on the nodes' Docker disks`,
+      pct: usedPct,
+      level: levelFor(usedPct, 80, 92),
+      hint: usedPct >= 80 ? 'Pulls and deploys fail when a node fills up — prune images or add disk.' : undefined,
+    })
+  }
+
   // Disk pressure beats a class count: how many classes exist tells nobody anything, but the
   // fullest one is what breaks first.
   const sc = m.storage_classes

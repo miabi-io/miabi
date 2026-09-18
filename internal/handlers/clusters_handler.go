@@ -6,12 +6,17 @@ package handlers
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/cluster"
 	"github.com/miabi-io/miabi/internal/services/node"
 )
+
+// clusterUsageMaxAge bounds how old a node's load reading may be before a cluster stops counting it,
+// so a node that stopped reporting fades out of the cluster's figures.
+const clusterUsageMaxAge = 5 * time.Minute
 
 // ConnectivityApplier deploys or tears down a node's gateway after its connectivity changed.
 type ConnectivityApplier func(ctx context.Context, prev, srv *models.Server)
@@ -24,6 +29,16 @@ func (h *ClusterHandler) ListClusters(c *okapi.Context) error {
 	list, err := h.cluster.Clusters()
 	if err != nil {
 		return c.AbortInternalServerError("failed to list clusters", err)
+	}
+	// One pass over the nodes for the whole list, rather than a query per cluster.
+	if h.capacity != nil {
+		if byCluster, cerr := h.capacity.SumCapacityByCluster(clusterUsageMaxAge); cerr == nil {
+			for i := range list {
+				if cap, ok := byCluster[list[i].ID]; ok {
+					list[i].Capacity = clusterCapacity(cap)
+				}
+			}
+		}
 	}
 	return ok(c, list)
 }
@@ -39,6 +54,11 @@ func (h *ClusterHandler) GetCluster(c *okapi.Context) error {
 		return h.mapClusterErr(c, err)
 	}
 	cl.ExternalApps = h.cluster.ExternalApps(cl.ID)
+	if h.capacity != nil {
+		if cap, cerr := h.capacity.SumCapacity(cl.ID, clusterUsageMaxAge); cerr == nil {
+			cl.Capacity = clusterCapacity(cap)
+		}
+	}
 	return ok(c, cl)
 }
 

@@ -596,7 +596,9 @@ export interface FleetCapacity {
   // utilization, and blind to workloads that set no limit.
   committed_nano_cpus: number
   committed_memory_bytes: number
-  measured_at: string
+  // Disk behind each node's Docker data root, summed.
+  storage_bytes: number
+  storage_free_bytes: number
   // Real utilization sampled on the nodes themselves; nodes_sampled is 0 when none answered, which
   // means "unknown", not "idle".
   cpu_percent: number
@@ -620,6 +622,19 @@ export interface PlatformSignals {
   firing_alerts: number
   last_backup_at?: string | null
   last_backup_failed: boolean
+}
+
+// ClusterCapacity is the sum of a cluster's nodes, derived on read from what the node sweep stored.
+export interface ClusterCapacity {
+  nodes: number
+  nodes_measured: number
+  cpu_cores: number
+  memory_bytes: number
+  storage_bytes: number
+  storage_free_bytes: number
+  nodes_with_usage: number
+  cpu_percent: number
+  mem_used_bytes: number
 }
 
 export interface NetworkPoolStats {
@@ -2124,6 +2139,8 @@ export interface Cluster {
   external_apps?: number
   service_endpoint_mode?: 'vip' | 'dnsrr'
   node_count: number
+  // Summed from the cluster's nodes; absent until at least one has been measured.
+  capacity?: ClusterCapacity | null
   created_at?: string
   updated_at?: string
 }

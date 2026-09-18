@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/middlewares"
@@ -16,6 +17,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/cluster"
 	"github.com/miabi-io/miabi/internal/services/node"
+	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
 // ClusterHandler exposes platform-admin cluster management: the cluster inventory and each cluster's
@@ -26,6 +28,26 @@ type ClusterHandler struct {
 	nodes             *node.Service
 	audit             *audit.Logger
 	applyConnectivity ConnectivityApplier
+	capacity          ClusterCapacityStore
+}
+
+// ClusterCapacityStore sums the nodes of each cluster. Satisfied by repositories.ServerRepository.
+type ClusterCapacityStore interface {
+	SumCapacity(clusterID uint, usageMaxAge time.Duration) (repositories.Capacity, error)
+	SumCapacityByCluster(usageMaxAge time.Duration) (map[uint]repositories.Capacity, error)
+}
+
+// SetCapacityStore wires the node-capacity source used to annotate clusters (nil-safe).
+func (h *ClusterHandler) SetCapacityStore(s ClusterCapacityStore) { h.capacity = s }
+
+// clusterCapacity converts a node sum into the shape the API returns.
+func clusterCapacity(c repositories.Capacity) *models.ClusterCapacity {
+	return &models.ClusterCapacity{
+		Nodes: c.Nodes, NodesMeasured: c.NodesMeasured,
+		CPUCores: c.CPUCores, MemoryBytes: c.MemoryBytes,
+		StorageBytes: c.StorageBytes, StorageFreeBytes: c.StorageFreeBytes,
+		NodesWithUsage: c.NodesWithUsage, CPUPercent: c.CPUPercent, MemUsedBytes: c.MemUsedBytes,
+	}
 }
 
 func NewClusterHandler(c *cluster.Service, n *node.Service, auditLog *audit.Logger) *ClusterHandler {

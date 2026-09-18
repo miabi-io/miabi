@@ -4,15 +4,11 @@
 package handlers
 
 import (
-	"context"
-	"errors"
-	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/miabi-io/miabi/internal/docker"
-
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/storage/repositories"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -157,64 +153,25 @@ func TestSignalsReportsAFailedNewestBackup(t *testing.T) {
 	}
 }
 
-// slowClients stands in for a fleet where every node takes a while to answer.
-type slowClients struct {
-	delay time.Duration
-	calls int32
+type serverTable struct {
+	ID                 uint `gorm:"primaryKey"`
+	Name               string
+	Status             string
+	IsLocal            bool
+	ClusterID          uint
+	CPUCores           int
+	MemoryBytes        int64
+	StorageBytes       int64
+	StorageFreeBytes   int64
+	CapacityMeasuredAt *time.Time
+	CPUPercent         float64
+	MemUsedBytes       int64
+	UsageMeasuredAt    *time.Time
 }
 
-func (s *slowClients) For(uint) (docker.Client, error) {
-	atomic.AddInt32(&s.calls, 1)
-	time.Sleep(s.delay)
-	return nil, errors.New("probe finished")
-}
+func (serverTable) TableName() string { return "servers" }
 
-// The dashboard must not get slower as nodes are added: the probe belongs behind the cache, not on
-// the request. This is the regression that made it feel broken on a multi-node install.
-func TestFleetNeverProbesOnTheRequestPath(t *testing.T) {
-	db := metricsDB(t)
-	clients := &slowClients{delay: 300 * time.Millisecond}
-	h := &AdminMetricsHandler{db: db, nodeClients: clients}
-	for i := 0; i < 6; i++ {
-		if err := db.Create(&serverTable{Name: "node", Status: "online"}).Error; err != nil {
-			t.Fatalf("seed node: %v", err)
-		}
-	}
-
-	start := time.Now()
-	got := h.fleet(context.Background())
-	elapsed := time.Since(start)
-
-	if got == nil {
-		t.Fatal("fleet returned nil with clients wired")
-	}
-	// Six nodes at 300ms each is ~1.8s sequentially, and ~300ms even probed in parallel. The
-	// request itself must be neither.
-	if elapsed > 150*time.Millisecond {
-		t.Fatalf("fleet() took %v — it is probing on the request path", elapsed)
-	}
-}
-
-// A second caller arriving while a refresh is running must not start another one.
-func TestFleetRefreshIsNotStartedTwice(t *testing.T) {
-	db := metricsDB(t)
-	clients := &slowClients{delay: 200 * time.Millisecond}
-	h := &AdminMetricsHandler{db: db, nodeClients: clients}
-	if err := db.Create(&serverTable{Name: "node", Status: "online"}).Error; err != nil {
-		t.Fatalf("seed node: %v", err)
-	}
-
-	for i := 0; i < 5; i++ {
-		h.fleet(context.Background())
-	}
-	time.Sleep(400 * time.Millisecond) // let the one refresh finish
-
-	if n := atomic.LoadInt32(&clients.calls); n != 1 {
-		t.Fatalf("node probed %d times across 5 concurrent-ish reads, want 1", n)
-	}
-}
-
-// Limits the committed sums read; present so the sums return a real zero rather than an error.
+// The committed sums read these; present so the sums return a real zero rather than an error.
 type applicationTable struct {
 	ID          uint `gorm:"primaryKey"`
 	NanoCPUs    int64
@@ -231,11 +188,66 @@ type databaseInstanceTable struct {
 
 func (databaseInstanceTable) TableName() string { return "database_instances" }
 
-type serverTable struct {
-	ID      uint `gorm:"primaryKey"`
-	Name    string
-	Status  string
-	IsLocal bool
+// Capacity is read from what the node sweep stored, so the dashboard is a query: it must not grow
+// slower as nodes are added, and a node nobody has measured must not read as a node with none.
+func TestFleetSumsOnlyMeasuredNodes(t *testing.T) {
+	db := metricsDB(t)
+	now := time.Now()
+	stale := now.Add(-time.Hour)
+	rows := []serverTable{
+		// Measured, with fresh usage.
+		{Name: "a", CPUCores: 8, MemoryBytes: 16 << 30, StorageBytes: 500 << 30, StorageFreeBytes: 200 << 30,
+			CapacityMeasuredAt: &now, CPUPercent: 50, MemUsedBytes: 8 << 30, UsageMeasuredAt: &now},
+		// Measured, but its usage stopped being reported an hour ago.
+		{Name: "b", CPUCores: 4, MemoryBytes: 8 << 30, StorageBytes: 100 << 30, StorageFreeBytes: 50 << 30,
+			CapacityMeasuredAt: &now, CPUPercent: 90, MemUsedBytes: 7 << 30, UsageMeasuredAt: &stale},
+		// Never measured at all: counted as a node, contributes nothing.
+		{Name: "c"},
+	}
+	for i := range rows {
+		if err := db.Create(&rows[i]).Error; err != nil {
+			t.Fatalf("seed %s: %v", rows[i].Name, err)
+		}
+	}
+
+	h := &AdminMetricsHandler{db: db, nodeCapacity: repositories.NewServerRepository(db)}
+	got := h.fleet()
+	if got == nil {
+		t.Fatal("fleet returned nil with a capacity store wired")
+	}
+	if got.NodesTotal != 3 || got.NodesCounted != 2 {
+		t.Fatalf("nodes total=%d measured=%d, want 3/2", got.NodesTotal, got.NodesCounted)
+	}
+	if got.CPUCores != 12 || got.MemoryBytes != 24<<30 {
+		t.Fatalf("capacity = %d cores / %d bytes, want 12 / %d", got.CPUCores, got.MemoryBytes, int64(24)<<30)
+	}
+	if got.StorageBytes != 600<<30 || got.StorageFreeBytes != 250<<30 {
+		t.Fatalf("storage = %d / %d free", got.StorageBytes, got.StorageFreeBytes)
+	}
+	// Only node a has usage recent enough to count.
+	if got.NodesSampled != 1 || got.MemoryUsedBytes != 8<<30 {
+		t.Fatalf("usage nodes=%d mem=%d, want 1 / %d", got.NodesSampled, got.MemoryUsedBytes, int64(8)<<30)
+	}
+	if got.CPUPercent != 50 {
+		t.Fatalf("cpu percent = %v, want 50 (the stale node must not drag it up)", got.CPUPercent)
+	}
 }
 
-func (serverTable) TableName() string { return "servers" }
+// CPU is averaged by core count, so a busy big node outweighs an idle small one.
+func TestFleetCPUIsWeightedByCores(t *testing.T) {
+	db := metricsDB(t)
+	now := time.Now()
+	rows := []serverTable{
+		{Name: "big", CPUCores: 30, MemoryBytes: 1, CapacityMeasuredAt: &now, CPUPercent: 100, UsageMeasuredAt: &now},
+		{Name: "small", CPUCores: 10, MemoryBytes: 1, CapacityMeasuredAt: &now, CPUPercent: 0, UsageMeasuredAt: &now},
+	}
+	for i := range rows {
+		if err := db.Create(&rows[i]).Error; err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+	h := &AdminMetricsHandler{db: db, nodeCapacity: repositories.NewServerRepository(db)}
+	if got := h.fleet().CPUPercent; got != 75 {
+		t.Fatalf("cpu percent = %v, want 75 (30 busy cores of 40)", got)
+	}
+}
