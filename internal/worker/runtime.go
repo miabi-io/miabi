@@ -180,10 +180,16 @@ func (b *runtimeBuilder) SetSecurity(r SecurityResolver, initImage string) {
 }
 
 func (b *runtimeBuilder) containerSecurity(app *models.Application) Security {
+	return b.containerSecurityFor(app, app.OfficialTemplate)
+}
+
+// containerSecurityFor resolves the profile with an explicit official-template claim, so a caller
+// running something other than the template's own image can decline the exemption.
+func (b *runtimeBuilder) containerSecurityFor(app *models.Application, officialTemplate bool) Security {
 	if b.security == nil {
 		return Security{}
 	}
-	return b.security.ContainerSecurity(app.WorkspaceID, app.OfficialTemplate)
+	return b.security.ContainerSecurity(app.WorkspaceID, officialTemplate)
 }
 
 // ErrRunAsUserForbidden refuses a workload whose pinned run-as user would escape the restricted
@@ -215,7 +221,15 @@ func (b *runtimeBuilder) SetGrantGuard(g GrantGuard) { b.grants = g }
 // workloadSecurity resolves the hardening a container runs with: the workspace's
 // profile, with the app's own run-as user, grants and hardening layered on top.
 func (b *runtimeBuilder) workloadSecurity(app *models.Application, runAsUser string) (Security, error) {
-	sec, err := b.containerSecurity(app).withRunAsUser(runAsUser)
+	return b.workloadSecurityFor(app, runAsUser, app.OfficialTemplate)
+}
+
+// workloadSecurityFor is workloadSecurity with the official-template claim supplied. A job that runs
+// its OWN image is not running the template's image, so it must not inherit the exemption that image
+// was granted — otherwise "official template + job with an arbitrary image" runs as root on a
+// workspace whose profile forbids it.
+func (b *runtimeBuilder) workloadSecurityFor(app *models.Application, runAsUser string, officialTemplate bool) (Security, error) {
+	sec, err := b.containerSecurityFor(app, officialTemplate).withRunAsUser(runAsUser)
 	if err != nil {
 		return sec, err
 	}

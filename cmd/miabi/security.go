@@ -20,9 +20,20 @@ func newSecurityResolver(cfg *config.Config, q *quota.Service) worker.SecurityRe
 	}
 	user := fmt.Sprintf("%d:0", cfg.RestrictedUID) // GID 0: arbitrary-UID convention
 	return worker.SecurityFunc(func(workspaceID uint, officialTemplate bool) worker.Security {
-		if !q.RequireNonRootUser(workspaceID, officialTemplate) {
-			return worker.Security{} // profile is "default": image user, no hardening
-		}
-		return worker.Security{User: user, NoNewPrivileges: true, CapDrop: []string{"NET_RAW"}, Restricted: true}
+		// Asking with officialTemplate=false answers "is this workspace restricted at all", ignoring
+		// the template exemption; asking with the real claim answers "does it also get the UID".
+		restricted := q.RequireNonRootUser(workspaceID, false)
+		return securityFor(user, restricted, restricted && !q.RequireNonRootUser(workspaceID, officialTemplate))
 	})
+}
+
+func securityFor(user string, restricted, exemptUID bool) worker.Security {
+	if !restricted {
+		return worker.Security{} // profile is "default": image user, no hardening
+	}
+	sec := worker.Security{NoNewPrivileges: true, CapDrop: []string{"NET_RAW"}, Restricted: true}
+	if !exemptUID {
+		sec.User = user
+	}
+	return sec
 }
