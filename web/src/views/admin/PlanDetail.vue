@@ -3,7 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { adminApi } from '@/api/admin'
 import { clustersApi } from '@/api/clusters'
-import type { Cluster, DatabaseSize, Plan, PlanInput } from '@/api/types'
+import type { Cluster, DatabaseSize, Plan, PlanInput, StorageClass } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
 import { useEntitlement } from '@/composables/useEntitlement'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -21,6 +21,8 @@ clustersApi.list().then((r) => { clusters.value = r.data.data ?? [] }).catch(() 
 const databaseSizesPolicy = useEntitlement('database_sizes')
 const databaseSizes = ref<DatabaseSize[]>([])
 adminApi.listDatabaseSizes().then((r) => { databaseSizes.value = r.data.data ?? [] }).catch(() => { databaseSizes.value = [] })
+const storageClasses = ref<StorageClass[]>([])
+adminApi.listStorageClasses().then((r) => { storageClasses.value = r.data.data ?? [] }).catch(() => { storageClasses.value = [] })
 
 const planId = computed(() => Number(route.params.id))
 const plan = ref<Plan | null>(null)
@@ -67,7 +69,9 @@ async function load() {
     plan.value = (await adminApi.getPlan(planId.value)).data.data
     const { id, created_at, updated_at, ...rest } = plan.value
     void id; void created_at; void updated_at
-    form.value = { ...rest }
+    // The API reads a null default as "keep what is stored", so the select must always hand back a
+    // concrete string — otherwise clearing it back to the node's own default would be impossible.
+    form.value = { ...rest, default_storage_class: rest.default_storage_class ?? '' }
   } catch (e) {
     notify.apiError(e)
     router.replace('/admin/plans')
@@ -102,6 +106,17 @@ function setPlanSizes(ids: number[]) {
 function toggleSize(id: number) {
   const ids = planSizes.value
   setPlanSizes(ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id])
+}
+
+const planClasses = computed(() => form.value?.storage_classes ?? [])
+function toggleClass(name: string) {
+  if (!form.value) return
+  const names = planClasses.value
+  form.value.storage_classes = names.includes(name) ? names.filter((n) => n !== name) : [...names, name]
+  // A default outside the offered list would resolve to a class the plan refuses.
+  if (form.value.default_storage_class && !form.value.storage_classes.includes(form.value.default_storage_class)) {
+    form.value.default_storage_class = ''
+  }
 }
 function makeDefaultSize(id: number) {
   setPlanSizes([id, ...planSizes.value.filter((x) => x !== id)])
@@ -331,6 +346,35 @@ function fmtDate(s?: string): string {
             >Make default</button>
           </label>
           <p class="form-hint">None checked leaves sizes optional: workspaces may pick any size, or set memory and CPU themselves.</p>
+        </div>
+      </div>
+
+      <div class="card mt-4">
+        <div class="card-header"><h2>Storage classes</h2></div>
+        <div class="card-body">
+          <p class="form-hint" style="margin-top: 0">
+            The <router-link to="/admin/storage-classes">storage classes</router-link> this plan's workspaces may create volumes on —
+            which of the operator's disks their data lands on. Checking none offers every class, leaving the choice to the node's
+            default. Enforced only while plan enforcement is on.
+          </p>
+          <p v-if="!storageClasses.length" class="text-muted text-sm">No storage classes are registered yet.</p>
+          <label v-for="c in storageClasses" :key="c.id" class="checkbox-label">
+            <input type="checkbox" :checked="planClasses.includes(c.name)" @change="toggleClass(c.name)" />
+            {{ c.display_name || c.name }} <span class="text-muted mono">{{ c.name }}</span>
+            <span v-if="!c.enabled" class="badge" style="margin-left: 6px">disabled</span>
+          </label>
+          <div v-if="form" class="form-group" style="margin-top: 12px; max-width: 360px">
+            <label class="form-label">Default storage class</label>
+            <select v-model="form.default_storage_class" class="form-select">
+              <option value="">The node's own default</option>
+              <option
+                v-for="c in storageClasses.filter((c) => !planClasses.length || planClasses.includes(c.name))"
+                :key="c.id"
+                :value="c.name"
+              >{{ c.display_name || c.name }}</option>
+            </select>
+            <p class="form-hint">Used when a volume names no class, before the node's default.</p>
+          </div>
         </div>
       </div>
 

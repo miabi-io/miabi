@@ -99,7 +99,9 @@ type Plan struct {
 	AllowOfficialImageUser    bool          `json:"allow_official_image_user" gorm:"not null;default:false"`
 	AllowGPU                  bool          `json:"allow_gpu" gorm:"not null;default:false"`
 	Placement                 PlanPlacement `json:"placement" gorm:"type:text;serializer:json"`
-	DatabaseSizes             []uint        `json:"database_sizes" gorm:"type:text;serializer:json"` // sizes offered, the first the default (Enterprise)
+	DatabaseSizes             []uint        `json:"database_sizes" gorm:"type:text;serializer:json"`
+	StorageClasses            []string      `json:"storage_classes" gorm:"type:text;serializer:json"`
+	DefaultStorageClass       string        `json:"default_storage_class"`
 	CreatedAt                 time.Time     `json:"created_at"`
 	UpdatedAt                 time.Time     `json:"updated_at"`
 }
@@ -137,6 +139,8 @@ type WorkspaceQuota struct {
 	AllowOfficialImageUser    *bool          `json:"allow_official_image_user,omitempty"`                       // nil = inherit plan
 	Placement                 *PlanPlacement `json:"placement,omitempty" gorm:"type:text;serializer:json"`      // nil = inherit plan
 	DatabaseSizes             *[]uint        `json:"database_sizes,omitempty" gorm:"type:text;serializer:json"` // nil = inherit plan
+	StorageClasses            *[]string      `json:"storage_classes,omitempty" gorm:"type:text;serializer:json"`
+	DefaultStorageClass       *string        `json:"default_storage_class,omitempty"`
 
 	UpdatedAt time.Time `json:"updated_at"`
 }

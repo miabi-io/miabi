@@ -326,8 +326,19 @@ type DatabaseResourcesSpec struct {
 // VolumeSpec declares persistent storage.
 type VolumeSpec struct {
 	Size string `yaml:"size,omitempty" json:"size,omitempty"` // e.g. "5Gi" (0/empty = unbounded)
+	// StorageClass names the admin-registered storage the volume is created on (e.g. "ssd-fast").
+	// Omit it to take whatever this install's plan and node defaults decide, which is what keeps one
+	// manifest portable across installs with different disks. A class cannot be changed afterwards:
+	// the data is already under it, so apply refuses the edit rather than recreating the volume.
+	StorageClass string `yaml:"storageClass,omitempty" json:"storageClass,omitempty"`
 	// Placement is where the volume is created.
 	Placement *PlacementSpec `yaml:"placement,omitempty" json:"placement,omitempty"`
+}
+
+// SizeBytes parses the declared capacity (e.g. "5Gi") into bytes. Empty or "0" means unbounded.
+func (v *VolumeSpec) SizeBytes() (int64, error) {
+	rs := ResourceSpec{Memory: v.Size}
+	return rs.MemoryBytes()
 }
 
 // RouteSpec binds one or more hostnames (and an optional path) to an

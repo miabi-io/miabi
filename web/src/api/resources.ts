@@ -1,7 +1,7 @@
 import api, { sseUrl } from './client'
 import type {
   ApiResponse, DatabaseInstance, DatabaseSizeOffer, DBLiveStatus, LogicalDatabase, ConnectionInfo, ForwardSession, DBEngine, EngineDefault, UpgradeOptions, UpgradePlan,
-  Volume, VolumeDetail, VolumeFile, VolumeBackup, WorkspaceStorage, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, BackupSetsResponse, DiscoveredSet, AdoptResult, SetRestoreResult, VerifyResult, AccentCode, AccentPolicy, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput,
+  Volume, VolumeDetail, VolumeFile, VolumeBackup, WorkspaceStorage, StorageClassOption, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, BackupSetsResponse, DiscoveredSet, AdoptResult, SetRestoreResult, VerifyResult, AccentCode, AccentPolicy, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput,
   Member, Invitation, AuditLog, AuditLogDetail, RecentEvent, PageableResponse, Job, CronJob, WorkspaceUsage, WorkspaceLiveSample, WorkspaceHistoryPoint,
 } from './types'
 
@@ -103,8 +103,11 @@ export const volumeApi = {
   // Declared-vs-measured storage summary; served from cached columns (no live df).
   storage: (ws: number) => api.get<ApiResponse<WorkspaceStorage>>(`${w(ws)}/storage`),
   get: (ws: number, id: number) => api.get<ApiResponse<VolumeDetail>>(`${w(ws)}/volumes/${id}`),
-  create: (ws: number, name: string, serverId?: number, sizeMb?: number, driver?: string, driverOpts?: Record<string, string>, location?: string) =>
-    api.post<ApiResponse<Volume>>(`${w(ws)}/volumes`, { name, server_id: serverId, size_mb: sizeMb, driver, driver_opts: driverOpts, location }),
+  create: (ws: number, name: string, serverId?: number, sizeMb?: number, driver?: string, driverOpts?: Record<string, string>, location?: string, storageClass?: string) =>
+    api.post<ApiResponse<Volume>>(`${w(ws)}/volumes`, { name, server_id: serverId, size_mb: sizeMb, driver, driver_opts: driverOpts, location, storage_class: storageClass }),
+  // The classes this workspace may create volumes on, narrowed to its plan.
+  storageClasses: (ws: number, location?: string) =>
+    api.get<ApiResponse<StorageClassOption[]>>(`${w(ws)}/storage-classes${location ? `?location=${encodeURIComponent(location)}` : ''}`),
   remove: (ws: number, id: number) => api.delete<ApiResponse<{ message: string }>>(`${w(ws)}/volumes/${id}`),
 
   // Files stored inside a volume.

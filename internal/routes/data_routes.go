@@ -294,6 +294,14 @@ func (r *Router) volumeRoutes() []okapi.RouteDefinition {
 			Summary:     "Workspace storage summary (declared vs measured usage)",
 		},
 		{
+			Method:      http.MethodGet,
+			Path:        "/{workspace}/storage-classes",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.volume.StorageClasses,
+			Summary:     "List the storage classes this workspace may create volumes on",
+		},
+		{
 			Method:      http.MethodPost,
 			Path:        base,
 			Group:       g,

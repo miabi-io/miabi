@@ -171,6 +171,10 @@ type BindMount struct {
 	Source   string // host path
 	Target   string // container path
 	ReadOnly bool
+	// NoCreate refuses the mount when Source does not exist on the host instead of letting the
+	// daemon create an empty directory for it. Storage classes rely on this: a class whose disk is
+	// not mounted must fail loudly, not silently get a directory on the root filesystem.
+	NoCreate bool
 }
 
 // GPURequest describes a set of GPU devices to attach via the NVIDIA runtime (Docker

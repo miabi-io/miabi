@@ -404,7 +404,7 @@ const selfStat = computed(() =>
 )
 
 // Real host CPU/memory for the local node, read from procfs by the backend.
-// available is false for remote nodes (or when no procfs is readable).
+// available is false only when the node could not be read or sampled.
 const hostMetrics = ref<NodeHostMetrics | null>(null)
 
 // Node resource usage: aggregated live from the running containers' stats we
@@ -431,6 +431,14 @@ const nodeUsage = computed(() => {
   }
 })
 
+// Where the figure came from, and whose machine it describes — a node that is itself a container
+// reports its physical host, which is worth seeing but must not be read as the node's own.
+function hostUsageNote(h: NodeHostMetrics): string {
+  if (h.physical_host) return 'Physical host this node runs on'
+  if (h.sampled) return 'Sampled on the node (up to 1 min old)'
+  return 'Real host usage'
+}
+
 // Unified resource usage for the card: prefer real host metrics (procfs) when the
 // node reports them, otherwise fall back to the container-stats aggregate.
 const usage = computed(() => {
@@ -442,8 +450,8 @@ const usage = computed(() => {
       memUsed: h.mem_used_bytes,
       memTotal: h.mem_total_bytes,
       memPercent: Math.min(100, h.mem_percent),
-      cpuSub: 'Real host usage',
-      memSub: 'Real host usage',
+      cpuSub: hostUsageNote(h),
+      memSub: hostUsageNote(h),
     }
   }
   const n = nodeUsage.value

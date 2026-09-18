@@ -27,6 +27,8 @@ import type {
   PlanInput,
   DatabaseSize,
   DatabaseSizeInput,
+  StorageClass,
+  StorageClassInput,
   WorkspaceQuotaOverride,
   LicenseView,
   LicenseHealth,
@@ -323,6 +325,16 @@ export const adminApi = {
   updateDatabaseSize: (id: number, payload: DatabaseSizeInput) =>
     api.put<ApiResponse<DatabaseSize>>(`/admin/database-sizes/${id}`, payload),
   deleteDatabaseSize: (id: number) => api.delete<ApiResponse<{ message: string }>>(`/admin/database-sizes/${id}`),
+
+  // Storage classes: where on a node the platform creates volumes. A class's name and path are
+  // immutable, so update only carries the editable fields.
+  listStorageClasses: () => api.get<ApiResponse<StorageClass[]>>('/admin/storage-classes'),
+  createStorageClass: (payload: StorageClassInput) =>
+    api.post<ApiResponse<StorageClass>>('/admin/storage-classes', payload),
+  updateStorageClass: (id: number, payload: Omit<StorageClassInput, 'name' | 'path'>) =>
+    api.put<ApiResponse<StorageClass>>(`/admin/storage-classes/${id}`, payload),
+  deleteStorageClass: (id: number) =>
+    api.delete<ApiResponse<{ message: string }>>(`/admin/storage-classes/${id}`),
   assignWorkspacePlan: (workspaceId: number, planId: number | null) =>
     api.put<ApiResponse<{ message: string }>>(`/admin/workspaces/${workspaceId}/plan`, { plan_id: planId }),
   getWorkspaceQuota: (workspaceId: number) =>

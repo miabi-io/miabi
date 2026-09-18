@@ -64,6 +64,10 @@ export interface Plan {
   placement?: PlanPlacement
   // Database sizes the plan offers (ids, the first the default). Enterprise.
   database_sizes?: number[] | null
+  // Storage classes, by name, the plan's workspaces may create volumes on; empty offers every one.
+  storage_classes?: string[] | null
+  // The class a volume naming none gets, before the node's own default.
+  default_storage_class?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -137,6 +141,8 @@ export interface WorkspaceQuotaOverride {
   allow_official_image_user: boolean | null
   placement?: PlanPlacement | null
   database_sizes?: number[] | null
+  storage_classes?: string[] | null
+  default_storage_class?: string | null
 }
 
 export interface ResourceUsage {
@@ -571,9 +577,51 @@ export interface PlatformMetrics {
   version: string
   commit: string
   network_pool?: NetworkPoolStats | null
+  // Node CPU/memory capacity vs what workloads have reserved. Absent when per-node clients are
+  // not wired; capacity is collected on a TTL, not on every stream tick.
+  fleet?: FleetCapacity | null
+  storage_classes: StorageClassStats
+  signals: PlatformSignals
 }
 
 // NetworkPoolStats is the managed network subnet pool's utilization.
+export interface FleetCapacity {
+  cpu_cores: number
+  memory_bytes: number
+  // Nodes that answered the last capacity probe; an unreachable node is absent from the totals
+  // rather than counted as zero.
+  nodes_counted: number
+  nodes_total: number
+  // Sum of the explicit limits set on apps and database instances — a reservation floor, not
+  // utilization, and blind to workloads that set no limit.
+  committed_nano_cpus: number
+  committed_memory_bytes: number
+  measured_at: string
+  // Real utilization sampled on the nodes themselves; nodes_sampled is 0 when none answered, which
+  // means "unknown", not "idle".
+  cpu_percent: number
+  memory_used_bytes: number
+  nodes_sampled: number
+}
+
+export interface StorageClassStats {
+  total: number
+  managed: number
+  capacity_bytes: number
+  available_bytes: number
+  fullest_name?: string
+  fullest_pct?: number
+  unmeasured: number
+}
+
+export interface PlatformSignals {
+  certs_expiring_soon: number
+  certs_expired: number
+  firing_alerts: number
+  last_backup_at?: string | null
+  last_backup_failed: boolean
+}
+
 export interface NetworkPoolStats {
   used: number
   available: number
@@ -1641,7 +1689,6 @@ export interface Volume {
   cluster_id?: number
   display_name: string
   docker_name: string
-  mountpoint?: string
   size_bytes?: number
   // Measured on-disk usage (vs declared size_bytes); absent = never measured.
   used_bytes?: number
@@ -1653,9 +1700,58 @@ export interface Volume {
   access_mode?: 'rwo' | 'rwx'
   // Bind source for a "host" driver volume (the /mnt/* path); empty otherwise.
   host_path?: string
+  // The storage class the volume was created on, deciding where on the node its data lives.
+  // "default" is the built-in class: the Docker engine's own data directory.
+  storage_class?: string
   metadata?: Record<string, string>
   annotations?: Record<string, string>
   created_at?: string
+}
+
+// StorageClass is an admin-registered directory volumes are created in. Name and path are set once
+// at registration and can never be edited: volumes and GitOps manifests reference the name, and the
+// data of existing volumes already sits under the path.
+export interface StorageClass {
+  id: number
+  name: string
+  display_name: string
+  description?: string
+  server_id: number
+  server_name?: string
+  cluster_id: number
+  path: string
+  shared: boolean
+  is_default: boolean
+  enabled: boolean
+  reclaim_policy: 'delete' | 'retain'
+  builtin: boolean
+  capacity_bytes?: number
+  available_bytes?: number
+  measured_at?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface StorageClassInput {
+  name: string
+  display_name: string
+  description: string
+  server_id: number
+  path: string
+  shared: boolean
+  is_default: boolean
+  enabled: boolean
+  reclaim_policy: 'delete' | 'retain'
+}
+
+// StorageClassOption is a class as a workspace sees it in the create form: the handle and what it
+// is for, never the operator's host path.
+export interface StorageClassOption {
+  name: string
+  display_name: string
+  description?: string
+  is_default: boolean
+  shared: boolean
 }
 
 export interface VolumeUsage {
@@ -2221,11 +2317,16 @@ export interface ContainerStat extends StatsSample {
   id: string
 }
 
-// NodeHostMetrics is the real host CPU/memory usage for the local node (read from
-// procfs). available is false for remote nodes or when no procfs is readable.
+// NodeHostMetrics is a node's real host CPU/memory usage. The local node is read from procfs; a
+// remote node is sampled by a short-lived container on the node, which sets `sampled` and means the
+// figure can be up to a minute old.
 export interface NodeHostMetrics {
   available: boolean
   reason?: string
+  sampled?: boolean
+  // True when the reading describes the machine the node runs on rather than the node itself: /proc
+  // is not cgroup-aware, so a containerised or memory-limited node reports its host.
+  physical_host?: boolean
   cpu_percent: number
   mem_total_bytes: number
   mem_used_bytes: number

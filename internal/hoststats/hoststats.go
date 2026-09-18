@@ -54,6 +54,11 @@ func Read(ctx context.Context, procPath string) (Stats, error) {
 	if err != nil {
 		return Stats{}, err
 	}
+	return statsFrom(c1, c2, memTotal, memAvail), nil
+}
+
+// statsFrom assembles a snapshot from two CPU samples and a memory reading.
+func statsFrom(c1, c2 cpuTimes, memTotal, memAvail uint64) Stats {
 	used := uint64(0)
 	if memTotal > memAvail {
 		used = memTotal - memAvail
@@ -67,7 +72,7 @@ func Read(ctx context.Context, procPath string) (Stats, error) {
 		MemTotalBytes: memTotal,
 		MemUsedBytes:  used,
 		MemPercent:    memPct,
-	}, nil
+	}
 }
 
 type cpuTimes struct {
@@ -88,28 +93,36 @@ func readCPU(procPath string) (cpuTimes, error) {
 		if !strings.HasPrefix(line, "cpu ") {
 			continue
 		}
-		// Fields: user nice system idle iowait irq softirq steal guest guest_nice
-		fields := strings.Fields(line)[1:]
-		var t cpuTimes
-		for i, fld := range fields {
-			v, perr := strconv.ParseUint(fld, 10, 64)
-			if perr != nil {
-				continue
-			}
-			t.total += v
-			if i == 3 || i == 4 { // idle, iowait
-				t.idle += v
-			}
-		}
-		if t.total == 0 {
-			return cpuTimes{}, fmt.Errorf("hoststats: empty cpu line")
-		}
-		return t, nil
+		return parseCPULine(line)
 	}
 	if err := sc.Err(); err != nil {
 		return cpuTimes{}, err
 	}
 	return cpuTimes{}, fmt.Errorf("hoststats: no cpu line in %s/stat", procPath)
+}
+
+// parseCPULine reads the aggregate "cpu" row of /proc/stat. Shared with the remote sampler, which
+// gets the same line from a helper container's stdout rather than from a file.
+func parseCPULine(line string) (cpuTimes, error) {
+	fields := strings.Fields(line)
+	if len(fields) < 2 {
+		return cpuTimes{}, fmt.Errorf("hoststats: malformed cpu line")
+	}
+	var t cpuTimes
+	for i, fld := range fields[1:] {
+		v, perr := strconv.ParseUint(fld, 10, 64)
+		if perr != nil {
+			continue
+		}
+		t.total += v
+		if i == 3 || i == 4 { // idle, iowait
+			t.idle += v
+		}
+	}
+	if t.total == 0 {
+		return cpuTimes{}, fmt.Errorf("hoststats: empty cpu line")
+	}
+	return t, nil
 }
 
 func cpuPercent(a, b cpuTimes) float64 {
@@ -148,6 +161,12 @@ func readMem(procPath string) (total, avail uint64, err error) {
 	if err := sc.Err(); err != nil {
 		return 0, 0, err
 	}
+	return memFromVals(vals)
+}
+
+// memFromVals resolves total and available memory from parsed meminfo keys (bytes). MemAvailable is
+// preferred; the MemFree+Buffers+Cached sum is the fallback for kernels without it.
+func memFromVals(vals map[string]uint64) (total, avail uint64, err error) {
 	total = vals["MemTotal"]
 	if total == 0 {
 		return 0, 0, fmt.Errorf("hoststats: MemTotal not found")

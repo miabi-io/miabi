@@ -32,6 +32,10 @@ type AdminMetricsHandler struct {
 	inspector *asynq.Inspector // lists connected asynq worker servers; nil disables the panel
 	startTime time.Time
 	subnets   SubnetPoolStater // nil = no network-pool panel
+
+	nodeClients NodeCapacityClients // nil = no fleet-capacity panel
+	nodeStats   NodeHostStats       // nil = capacity and commitment only, no utilization
+	fleetCache  fleetCache
 }
 
 // SetSubnetAllocator wires the subnet-pool stats source (nil-safe).
@@ -91,13 +95,18 @@ type PlatformMetrics struct {
 	Goroutines      int     `json:"goroutines"`
 	MemoryAllocByte uint64  `json:"memory_alloc_bytes"`
 
-	Version   string `json:"version"`
-	Commit    string `json:"commit"`
-	BuildDate string `json:"build_date,omitempty"`
-
-	// NetworkPool reports managed-subnet-pool utilization; nil when the allocator
-	// is disabled.
+	Version     string            `json:"version"`
+	Commit      string            `json:"commit"`
+	BuildDate   string            `json:"build_date,omitempty"`
 	NetworkPool *NetworkPoolStats `json:"network_pool,omitempty"`
+
+	// Fleet is node CPU/memory capacity against what workloads have reserved; nil when per-node
+	// clients are not wired.
+	Fleet *FleetCapacity `json:"fleet,omitempty"`
+	// StorageClasses aggregates the operator's registered disks.
+	StorageClasses StorageClassStats `json:"storage_classes"`
+	// Signals are the expiring/failing things worth surfacing unprompted.
+	Signals PlatformSignals `json:"signals"`
 }
 
 // NetworkPoolStats is the managed network subnet pool's utilization.
@@ -202,6 +211,9 @@ func (h *AdminMetricsHandler) collect(ctx context.Context) PlatformMetrics {
 		used, total := h.subnets.Stats()
 		pm.NetworkPool = &NetworkPoolStats{Used: used, Available: total - used, Total: total}
 	}
+	pm.Fleet = h.fleet(ctx)
+	pm.StorageClasses = h.storageClasses()
+	pm.Signals = h.signals()
 	return pm
 }
 

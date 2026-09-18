@@ -86,6 +86,10 @@ type VolumeSpec struct {
 	SizeBytes  int64
 	Driver     string
 	DriverOpts map[string]string
+	// DevicePath backs the volume with an operator-chosen host directory (a storage class) instead
+	// of the engine's data root, using the local driver's bind options. The volume stays an
+	// ordinary named, labelled Docker volume, so backup, housekeeping and mounts are unchanged.
+	DevicePath string
 }
 
 // Network summarizes a Docker network.

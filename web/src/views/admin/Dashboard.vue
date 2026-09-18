@@ -121,6 +121,36 @@ const storagePct = computed(() => {
   return Math.round((m.storage_used_bytes / m.storage_declared_bytes) * 100)
 })
 
+// Whole days since the last successful platform backup; null when there has never been one, which
+// is not the same as stale and is reported separately.
+const backupAgeDays = computed<number | null>(() => {
+  const at = metrics.value?.signals?.last_backup_at
+  if (!at) return null
+  const then = new Date(at).getTime()
+  if (Number.isNaN(then)) return null
+  return Math.floor((Date.now() - then) / 86400000)
+})
+
+// "Never" is a different problem from "stale", so they read differently rather than both showing
+// as a dash.
+const backupLabel = computed<string>(() => {
+  if (!metrics.value?.signals) return '—'
+  if (metrics.value.signals.last_backup_at === undefined) return '—'
+  const days = backupAgeDays.value
+  if (days === null) return 'never'
+  if (days === 0) return 'today'
+  return `${days}d ago`
+})
+
+const backupLevel = computed<Level>(() => {
+  const days = backupAgeDays.value
+  if (metrics.value?.signals?.last_backup_failed) return 'warn'
+  if (days === null) return 'ok' // never configured is a choice, not a fault
+  if (days > 14) return 'crit'
+  if (days > 7) return 'warn'
+  return 'ok'
+})
+
 const meters = computed<Meter[]>(() => {
   const m = metrics.value
   if (!m) return []
@@ -150,6 +180,73 @@ const meters = computed<Meter[]>(() => {
       pct: storagePct.value,
       level: levelFor(storagePct.value, 75, 90),
       hint: storagePct.value >= 75 ? 'Raise volume quotas or reclaim space.' : undefined,
+    })
+  }
+
+  const fleet = m.fleet
+  if (fleet && fleet.nodes_sampled > 0) {
+    // Measured on the nodes themselves, so this is what the fleet is actually doing — as opposed
+    // to the commitment meters below, which are what it has promised.
+    const cpuPct = Math.round(fleet.cpu_percent)
+    out.push({
+      key: 'cpu-used', label: 'CPU in use', icon: 'mdi-chart-areaspline', to: '/admin/nodes',
+      value: `${cpuPct}%`,
+      detail: `measured across ${fleet.nodes_sampled} of ${fleet.nodes_counted} node${fleet.nodes_counted === 1 ? '' : 's'}`,
+      pct: cpuPct,
+      level: levelFor(cpuPct, 85, 95),
+      hint: cpuPct >= 85 ? 'The fleet is running hot — check for a runaway workload.' : undefined,
+    })
+    if (fleet.memory_bytes > 0) {
+      const memPct = Math.min(100, Math.round((fleet.memory_used_bytes / fleet.memory_bytes) * 100))
+      out.push({
+        key: 'mem-used', label: 'Memory in use', icon: 'mdi-memory', to: '/admin/nodes',
+        value: `${memPct}%`,
+        detail: `${fmtBytes(fleet.memory_used_bytes)} of ${fmtBytes(fleet.memory_bytes)} across ${fleet.nodes_sampled} of ${fleet.nodes_counted} node${fleet.nodes_counted === 1 ? '' : 's'}`,
+        pct: memPct,
+        level: levelFor(memPct, 85, 95),
+        hint: memPct >= 85 ? 'Little memory left — the OOM killer is the next thing to act.' : undefined,
+      })
+    }
+  }
+  if (fleet && fleet.nodes_counted > 0) {
+    // Commitment, not utilization: the control plane knows exactly what it has promised, and that
+    // is what decides whether the next workload fits. Apps with no limit set are invisible here.
+    if (fleet.cpu_cores > 0) {
+      const cores = fleet.committed_nano_cpus / 1e9
+      const pct = Math.round((cores / fleet.cpu_cores) * 100)
+      out.push({
+        key: 'cpu', label: 'CPU committed', icon: 'mdi-cpu-64-bit', to: '/admin/nodes',
+        value: `${pct}%`,
+        detail: `${cores.toFixed(1)} of ${fleet.cpu_cores} cores reserved across ${fleet.nodes_counted} node${fleet.nodes_counted === 1 ? '' : 's'}`,
+        pct,
+        level: levelFor(pct, 80, 100),
+        hint: pct >= 80 ? 'Little headroom left to schedule new workloads — add a node or lower limits.' : undefined,
+      })
+    }
+    if (fleet.memory_bytes > 0) {
+      const pct = Math.round((fleet.committed_memory_bytes / fleet.memory_bytes) * 100)
+      out.push({
+        key: 'memory', label: 'Memory committed', icon: 'mdi-memory', to: '/admin/nodes',
+        value: `${pct}%`,
+        detail: `${fmtBytes(fleet.committed_memory_bytes)} of ${fmtBytes(fleet.memory_bytes)} reserved`,
+        pct,
+        level: levelFor(pct, 80, 100),
+        hint: pct >= 80 ? 'Memory is nearly fully reserved — the next deploy may not fit.' : undefined,
+      })
+    }
+  }
+
+  // Disk pressure beats a class count: how many classes exist tells nobody anything, but the
+  // fullest one is what breaks first.
+  const sc = m.storage_classes
+  if (sc && sc.managed > 0 && sc.capacity_bytes > 0) {
+    out.push({
+      key: 'classes', label: 'Fullest disk', icon: 'mdi-harddisk', to: '/admin/storage-classes',
+      value: `${sc.fullest_pct ?? 0}%`,
+      detail: `${sc.fullest_name || 'storage class'} · ${fmtBytes(sc.available_bytes)} free across ${sc.managed} class${sc.managed === 1 ? '' : 'es'}`,
+      pct: sc.fullest_pct ?? 0,
+      level: levelFor(sc.fullest_pct ?? 0, 80, 92),
+      hint: (sc.fullest_pct ?? 0) >= 80 ? 'Volumes on this class will fail to write when it fills.' : undefined,
     })
   }
 
@@ -212,6 +309,37 @@ const health = computed<Health>(() => {
       raise('warn')
       reasons.push('No build runners online — builds cannot start')
     }
+
+    // Signals: things that are fine until suddenly they are not, and that nobody thinks to check.
+    const sig = m.signals
+    if (sig) {
+      if (sig.certs_expired > 0) {
+        raise('crit')
+        reasons.push(`${sig.certs_expired} certificate${sig.certs_expired === 1 ? ' has' : 's have'} expired`)
+      }
+      if (sig.certs_expiring_soon > 0) {
+        raise('warn')
+        reasons.push(`${sig.certs_expiring_soon} certificate${sig.certs_expiring_soon === 1 ? '' : 's'} expiring within 14 days`)
+      }
+      if (sig.firing_alerts > 0) {
+        raise('warn')
+        reasons.push(`${sig.firing_alerts} alert${sig.firing_alerts === 1 ? '' : 's'} firing`)
+      }
+      if (sig.last_backup_failed) {
+        raise('warn')
+        reasons.push('The last platform backup failed')
+      }
+      // Silence is the failure mode of a backup: nobody notices it stopped running.
+      if (backupAgeDays.value !== null && backupAgeDays.value > 7) {
+        raise('warn')
+        reasons.push(`No successful platform backup in ${backupAgeDays.value} days`)
+      }
+    }
+
+    if (m.storage_classes && m.storage_classes.unmeasured > 0) {
+      raise('warn')
+      reasons.push(`${m.storage_classes.unmeasured} storage class${m.storage_classes.unmeasured === 1 ? '' : 'es'} never measured — its node may be unreachable`)
+    }
   }
 
   // Distinct icon per state, so severity does not rest on hue alone.
@@ -229,6 +357,7 @@ const inventory = computed(() => {
     { label: 'Databases', value: m.total_databases, icon: 'mdi-database-outline' },
     { label: 'Stacks', value: m.total_stacks, icon: 'mdi-layers-outline' },
     { label: 'Volumes', value: m.total_volumes, icon: 'mdi-harddisk' },
+    { label: 'Storage classes', value: m.storage_classes?.total ?? 0, icon: 'mdi-database-settings-outline', to: '/admin/storage-classes' },
     { label: 'Routes', value: m.total_routes, icon: 'mdi-sitemap-outline', to: '/admin/routes' },
     { label: 'Active users', value: m.active_users, icon: 'mdi-account-check-outline', to: '/admin/users' },
     { label: 'Sessions', value: m.active_sessions, icon: 'mdi-key-outline' },
@@ -393,6 +522,17 @@ onBeforeUnmount(() => {
         <div class="hero-meta">
           <div class="hero-stat"><span class="hero-stat-label">Uptime</span><span class="hero-stat-value">{{ fmtUptime(metrics.uptime_seconds) }}</span></div>
           <div class="hero-stat"><span class="hero-stat-label">Version</span><span class="hero-stat-value">{{ metrics.version || 'dev' }}</span></div>
+          <div class="hero-stat">
+            <span class="hero-stat-label">Last backup</span>
+            <span class="hero-stat-value" :class="backupLevel !== 'ok' ? `lvl-${backupLevel}` : ''">{{ backupLabel }}</span>
+          </div>
+          <div v-if="metrics.fleet && metrics.fleet.nodes_counted" class="hero-stat">
+            <span class="hero-stat-label">Fleet</span>
+            <span class="hero-stat-value">
+              {{ metrics.fleet.cpu_cores }} cores · {{ fmtBytes(metrics.fleet.memory_bytes) }}
+              <template v-if="metrics.fleet.nodes_sampled"> · {{ Math.round(metrics.fleet.cpu_percent) }}% busy</template>
+            </span>
+          </div>
         </div>
       </div>
 

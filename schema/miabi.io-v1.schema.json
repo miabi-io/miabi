@@ -736,6 +736,10 @@
         "size": {
           "description": "e.g. \"5Gi\" (0/empty = unbounded)",
           "type": "string"
+        },
+        "storageClass": {
+          "description": "StorageClass names the admin-registered storage the volume is created on (e.g. \"ssd-fast\"). Omit it to take whatever this install's plan and node defaults decide, which is what keeps one manifest portable across installs with different disks. A class cannot be changed afterwards: the data is already under it, so apply refuses the edit rather than recreating the volume.",
+          "type": "string"
         }
       },
       "type": "object"

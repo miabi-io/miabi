@@ -400,9 +400,9 @@ function isFileVisible(file: VolumeFile): boolean {
           <div><span class="detail-label">Status</span><span class="badge badge-dot" :class="vol.in_use ? 'badge-success' : 'badge-neutral'">{{ vol.in_use ? 'in use' : 'unused' }}</span></div>
           <div><span class="detail-label">Owner</span><OwnerChip :metadata="vol.metadata" /></div>
           <div><span class="detail-label">Driver</span>{{ vol.driver || 'local' }}</div>
+          <div v-if="vol.storage_class"><span class="detail-label">Storage class</span>{{ vol.storage_class }}</div>
           <div v-if="vol.host_path"><span class="detail-label">Host path</span><code class="copyable" title="Copy" @click="copy(vol.host_path || '')">{{ vol.host_path }} <span class="mdi mdi-content-copy"></span></code></div>
           <div><span class="detail-label">Docker name</span><code class="copyable" title="Copy" @click="copy(vol.docker_name)">{{ vol.docker_name }} <span class="mdi mdi-content-copy"></span></code></div>
-          <div v-if="vol.mountpoint"><span class="detail-label">Mountpoint</span><code class="copyable" title="Copy" @click="copy(vol.mountpoint)">{{ vol.mountpoint }} <span class="mdi mdi-content-copy"></span></code></div>
           <div v-if="vol.server_name"><span class="detail-label">Node</span>{{ vol.server_name }}</div>
           <div><span class="detail-label">Created</span>{{ fmtTime(vol.created_at) }}</div>
         </div>
