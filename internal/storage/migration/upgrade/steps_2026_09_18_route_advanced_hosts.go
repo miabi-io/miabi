@@ -50,8 +50,7 @@ func routeAdvancedHostsStep(ctx context.Context, db *gorm.DB) error {
 			if !claimed && !hostless {
 				continue
 			}
-			// Hostless routes match every request on their path, so they are disabled for the same
-			// reason — that guard used to skip advanced routes entirely.
+
 			reason := "advanced config set hosts, path or priority"
 			if !claimed {
 				reason = "advanced route has no structured hosts"

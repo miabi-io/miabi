@@ -17,10 +17,8 @@ func TestAdvancedClaimsRouting(t *testing.T) {
 		"enabled: true":                     true,
 		"target: http://elsewhere":          true,
 		"backends:\n  - endpoint: http://x": true,
-		"Hosts: [victim.example.com]":       true, // case is not a bypass
-		// Unparseable config is treated as claiming: it cannot be cleared, and Goma rejects the whole
-		// bundle over it, so it must not stay live either way.
-		"hosts: [unterminated": true,
+		"Hosts: [victim.example.com]":       true,
+		"hosts: [unterminated":              true,
 	}
 	for cfg, want := range cases {
 		if got := advancedClaimsRouting(cfg); got != want {
