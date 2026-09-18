@@ -9,12 +9,16 @@ import (
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/dto"
 	"github.com/miabi-io/miabi/internal/handlers"
+	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
 )
 
 func (r *Router) authRoutes() []okapi.RouteDefinition {
 	auth := r.v1.Group("/auth").WithTagInfo(okapi.GroupTag{Name: "Auth", Description: "Registration, login, sessions, and password reset."})
 	protected := []okapi.Middleware{r.authenticate}
+	// Changing how an account authenticates — 2FA, its sessions — is a session action. An API key
+	// that could do it could make itself permanent; see middlewares.RequireSession.
+	sessionOnly := []okapi.Middleware{r.authenticate, middlewares.RequireSession()}
 	// Throttle unauthenticated, abuse-prone endpoints (per IP + path).
 	limited := []okapi.Middleware{r.authRateLimit}
 
@@ -139,7 +143,7 @@ func (r *Router) authRoutes() []okapi.RouteDefinition {
 			Method:      http.MethodPost,
 			Path:        "/2fa/setup",
 			Group:       auth,
-			Middlewares: protected,
+			Middlewares: sessionOnly,
 			Handler:     r.h.auth.Setup2FA,
 			Summary:     "Begin two-factor (TOTP) setup",
 			Response:    &dto.Response[handlers.Setup2FAResponse]{},
@@ -148,7 +152,7 @@ func (r *Router) authRoutes() []okapi.RouteDefinition {
 			Method:      http.MethodPost,
 			Path:        "/2fa/verify",
 			Group:       auth,
-			Middlewares: protected,
+			Middlewares: sessionOnly,
 			Handler:     okapi.H(r.h.auth.Verify2FA),
 			Summary:     "Confirm and enable two-factor",
 			Request:     &handlers.Verify2FARequest{},
@@ -158,7 +162,7 @@ func (r *Router) authRoutes() []okapi.RouteDefinition {
 			Method:      http.MethodPost,
 			Path:        "/2fa/disable",
 			Group:       auth,
-			Middlewares: protected,
+			Middlewares: sessionOnly,
 			Handler:     okapi.H(r.h.auth.Disable2FA),
 			Summary:     "Disable two-factor",
 			Request:     &handlers.Disable2FARequest{},
@@ -168,7 +172,7 @@ func (r *Router) authRoutes() []okapi.RouteDefinition {
 			Method:      http.MethodPost,
 			Path:        "/2fa/recovery-codes",
 			Group:       auth,
-			Middlewares: protected,
+			Middlewares: sessionOnly,
 			Handler:     okapi.H(r.h.auth.RegenerateRecoveryCodes),
 			Summary:     "Regenerate recovery codes",
 			Request:     &handlers.RegenerateCodesRequest{},
@@ -240,7 +244,7 @@ func (r *Router) authRoutes() []okapi.RouteDefinition {
 			Method:      http.MethodDelete,
 			Path:        "/me/sessions/{id}",
 			Group:       r.v1,
-			Middlewares: protected,
+			Middlewares: sessionOnly,
 			Handler:     r.h.auth.RevokeSession,
 			Tags:        []string{"Auth"},
 			Summary:     "Revoke a session",
@@ -250,7 +254,7 @@ func (r *Router) authRoutes() []okapi.RouteDefinition {
 			Method:      http.MethodPost,
 			Path:        "/me/sessions/revoke-others",
 			Group:       r.v1,
-			Middlewares: protected,
+			Middlewares: sessionOnly,
 			Handler:     r.h.auth.RevokeOtherSessions,
 			Tags:        []string{"Auth"},
 			Summary:     "Revoke all other sessions",
@@ -262,13 +266,17 @@ func (r *Router) authRoutes() []okapi.RouteDefinition {
 func (r *Router) apiKeyRoutes() []okapi.RouteDefinition {
 	keys := r.v1.Group("/api-keys").WithTagInfo(okapi.GroupTag{Name: "API Keys", Description: "Long-lived programmatic access tokens."})
 	protected := []okapi.Middleware{r.authenticate}
+	// Minting a key is how a stolen credential makes itself permanent and unscoped, so it takes a
+	// signed-in session. Listing and revoking stay open to keys, which is what lets automation clean
+	// up after itself.
+	sessionOnly := []okapi.Middleware{r.authenticate, middlewares.RequireSession()}
 
 	return []okapi.RouteDefinition{
 		{
 			Method:      http.MethodPost,
 			Path:        "",
 			Group:       keys,
-			Middlewares: protected,
+			Middlewares: sessionOnly,
 			Handler:     okapi.H(r.h.apiKey.Create),
 			Summary:     "Create an API key",
 			Request:     &handlers.CreateAPIKeyRequest{},
