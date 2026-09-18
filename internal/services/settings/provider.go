@@ -55,6 +55,18 @@ const (
 	// KeyControlManagerMode is how far the control manager goes: "observe" reports workloads that disappeared
 	// from their node or cluster, "off" stops watching. Observe is the default because it acts on nothing.
 	KeyControlManagerMode = "control_manager_mode"
+
+	// KeyImagePruneEnabled toggles the monthly image-prune sweep (every node's unused, aged-out Docker
+	// images). Dangling images are unaffected by this switch — that reclaim is always safe and runs
+	// regardless. Default true.
+	KeyImagePruneEnabled = "image_prune_enabled"
+	// KeyImagePruneRetentionDays is how old (by the image's Created time) an unused, non-dangling image
+	// must be before the sweep considers it for removal. Default 30.
+	KeyImagePruneRetentionDays = "image_prune_retention_days"
+	// KeyImagePruneKeepLast is how many of an app's most recent releases the sweep always keeps
+	// regardless of age, on top of its currently active and any pinned release — so a rollback target
+	// never ages out from under an admin. Default 3.
+	KeyImagePruneKeepLast = "image_prune_keep_last"
 )
 
 // defaults seeds first-boot values. Keys absent here can still be created by the
@@ -72,6 +84,9 @@ var defaults = []models.Setting{
 	{Key: KeyCustomLabelsEnabled, Value: "true", Type: models.SettingTypeBool},
 	{Key: KeyRepoPipelinesEnabled, Value: "true", Type: models.SettingTypeBool},
 	{Key: KeyControlManagerMode, Value: "observe", Type: models.SettingTypeString},
+	{Key: KeyImagePruneEnabled, Value: "true", Type: models.SettingTypeBool},
+	{Key: KeyImagePruneRetentionDays, Value: "30", Type: models.SettingTypeInt},
+	{Key: KeyImagePruneKeepLast, Value: "3", Type: models.SettingTypeInt},
 }
 
 // Provider caches settings in memory and exposes typed getters.

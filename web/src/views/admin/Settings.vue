@@ -92,6 +92,16 @@ const SECTIONS: SectionDef[] = [
       max_memory_mb: 'Max memory per app, MB (0 = unlimited)',
     },
   },
+  {
+    id: 'image-prune',
+    title: 'Image pruning',
+    keys: ['image_prune_enabled', 'image_prune_retention_days', 'image_prune_keep_last'],
+    labels: {
+      image_prune_enabled: 'Automatically prune old images on every node (runs monthly)',
+      image_prune_retention_days: 'Remove an unused image once it is older than (days)',
+      image_prune_keep_last: 'Always keep the last N releases per app, regardless of age',
+    },
+  },
 ]
 
 // System-managed keys: shown read-only, never editable, and excluded from saves.

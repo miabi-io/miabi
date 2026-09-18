@@ -16,6 +16,7 @@ import (
 	"github.com/miabi-io/miabi/internal/drift"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/node"
+	"github.com/miabi-io/miabi/internal/services/settings"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
@@ -28,6 +29,19 @@ type Clients interface {
 // by the application repository in production; a fake in tests.
 type appLister interface {
 	ListByServer(serverID uint) ([]models.Application, error)
+}
+
+// serverLister yields every node, for the image-prune sweep. Backed by the
+// server repository in production; a fake in tests.
+type serverLister interface {
+	List() ([]models.Server, error)
+}
+
+// releaseLister yields an app's releases, newest first, so the sweep can tell its
+// most recent versions from the rest. Backed by the release repository in
+// production; a fake in tests.
+type releaseLister interface {
+	ListByApp(appID uint) ([]models.Release, error)
 }
 
 // SwarmManagers resolves the client that drives a cluster's swarm. Implemented by the cluster service.
@@ -58,6 +72,11 @@ type Service struct {
 	// missing rows report-only.
 	redeployer Redeployer
 	appsByID   appFinder
+	// servers, releases and pruneSettings back the monthly image-prune sweep (Sweep). Any of them nil
+	// makes Sweep a no-op, so a build that never wires them simply never runs it.
+	servers       serverLister
+	releases      releaseLister
+	pruneSettings *settings.Provider
 }
 
 // configLookup resolves a config by name within a workspace.
@@ -70,6 +89,13 @@ func (s *Service) SetConfigs(c configLookup) { s.configs = c }
 
 // SetSwarmManagers wires the cluster manager lookup used to check service apps.
 func (s *Service) SetSwarmManagers(m SwarmManagers) { s.swarms = m }
+
+// SetImagePrune wires the monthly image-prune sweep's dependencies: every node, each app's release
+// history, and the admin-configurable settings (enabled, retention days, kept versions per app).
+// Without this call, Sweep is a no-op.
+func (s *Service) SetImagePrune(servers serverLister, releases releaseLister, pruneSettings *settings.Provider) {
+	s.servers, s.releases, s.pruneSettings = servers, releases, pruneSettings
+}
 
 // NewService wires the housekeeping service against the node client registry and
 // the repos it joins live Docker state against. The repos are composed into a

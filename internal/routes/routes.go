@@ -437,6 +437,12 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	dockerImportService := dockerimport.NewService(nodeClients, appService, stackService, appRepo, releaseRepo, deploymentRepo, volumeRepo, networkRepo, stackRepo, portBindingRepo)
 	// Node housekeeping: reclaim disk + reconcile drift between Docker and the DB.
 	housekeepingService := housekeeping.NewService(nodeClients, appRepo, dbRepo, stackRepo, volumeRepo)
+	// Monthly automatic sweep: every node's dangling images, plus aged-out unused images guarded by a
+	// per-app "keep last N releases" retention. Toggle and thresholds are admin-configurable settings.
+	housekeepingService.SetImagePrune(serverRepo, releaseRepo, settingsProvider)
+	_ = cronManager.RegisterTask("image-prune", 0, "Monthly image prune", "@monthly", func() error {
+		return housekeepingService.Sweep(context.Background())
+	})
 	routeService := route.NewService(routeRepo, middlewareRepo, appRepo, releaseRepo, serverRepo, proxyMgr)
 	// Attach/detach an app from the shared proxy network as its routes come and go
 	// (only route-exposed apps stay on it), reconciled live without a redeploy.
