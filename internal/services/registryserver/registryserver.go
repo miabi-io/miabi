@@ -45,6 +45,13 @@ type keyVerifier interface {
 	Verify(plaintext string) (*models.APIKey, error)
 }
 
+// appNamer resolves an application's repository name from its id, so an app-bound job credential can
+// be held to the one repository it was minted for. Satisfied by the application repository; nil
+// means an app-bound key is refused rather than allowed everywhere.
+type appNamer interface {
+	FindByID(id uint) (*models.Application, error)
+}
+
 // entitlementChecker reports whether a licensed capability is usable (satisfied
 // by enterprise.EE). A nil checker entitles nothing: the S3 driver is a paid
 // feature, so an unwired checker must fail closed rather than grant it.
@@ -64,6 +71,7 @@ type Service struct {
 	external externalAccessReader
 	keys     keyVerifier
 	ws       workspaceFinder
+	apps     appNamer
 	proxy    proxy.Manager
 	reg      *Client
 	usage    *usageCache
@@ -127,6 +135,10 @@ func NewService(
 func (s *Service) SetInternalNetwork(name string) { s.internalNetwork = name }
 
 func (s *Service) SetEntitlements(ee entitlementChecker) { s.ee = ee }
+
+// SetApps wires the application lookup used to hold an app-bound job credential to its own
+// repository. Without it such a key is refused on push, not waved through.
+func (s *Service) SetApps(a appNamer) { s.apps = a }
 
 // S3Entitled reports whether this install may use the S3 storage driver.
 func (s *Service) S3Entitled() bool {

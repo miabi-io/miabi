@@ -308,3 +308,74 @@ func TestMountSourceTraversalIsRefused(t *testing.T) {
 		t.Error("a traversing blob mount source was accepted")
 	}
 }
+
+// fakeApps resolves application ids to rows for the app-bound credential check.
+type fakeApps map[uint]*models.Application
+
+func (f fakeApps) FindByID(id uint) (*models.Application, error) {
+	if a, ok := f[id]; ok {
+		return a, nil
+	}
+	return nil, errors.New("application not found")
+}
+
+// A pipeline's registry token is minted for one application, and the docs say the login is limited
+// to that app's repository. Nothing enforced it: the token could push over any repository in its
+// workspace, which is enough to replace another app's image and have it deployed.
+func TestAuthorizeHoldsAppBoundTokenToItsRepository(t *testing.T) {
+	ws := uint(7)
+	app := uint(3)
+	svc := &Service{
+		keys: fakeKeys{key: &models.APIKey{
+			WorkspaceID: &ws, ApplicationID: &app, UserID: 1, Ephemeral: true,
+			Scopes: []string{models.ScopeRegistryWrite, models.ScopeRegistryRead},
+		}},
+		ws:   wsFixture(),
+		apps: fakeApps{3: {ID: 3, WorkspaceID: 7, Name: "billing"}},
+	}
+
+	// Its own repository: allowed.
+	got := svc.Authorize(AuthInput{Authorization: basic("x", "tok"), URI: "/v2/acme/billing/blobs/uploads/", Method: "POST"})
+	if got.Status != http.StatusOK {
+		t.Fatalf("own repository refused: %d %s", got.Status, got.Reason)
+	}
+
+	// Another application in the same workspace: refused.
+	got = svc.Authorize(AuthInput{Authorization: basic("x", "tok"), URI: "/v2/acme/payments/blobs/uploads/", Method: "POST"})
+	if got.Status != http.StatusForbidden {
+		t.Fatalf("push to another app's repository = %d %s, want 403", got.Status, got.Reason)
+	}
+
+	// Pulls are confined too: the token has no business reading another app's images.
+	got = svc.Authorize(AuthInput{Authorization: basic("x", "tok"), URI: "/v2/acme/payments/manifests/latest", Method: "GET"})
+	if got.Status != http.StatusForbidden {
+		t.Fatalf("pull from another app's repository = %d %s, want 403", got.Status, got.Reason)
+	}
+}
+
+// With no resolver wired the binding cannot be checked, so an app-bound key is refused rather than
+// waved through.
+func TestAuthorizeRefusesAppBoundTokenWithoutResolver(t *testing.T) {
+	ws := uint(7)
+	app := uint(3)
+	svc := &Service{
+		keys: fakeKeys{key: &models.APIKey{
+			WorkspaceID: &ws, ApplicationID: &app, UserID: 1,
+			Scopes: []string{models.ScopeRegistryWrite, models.ScopeRegistryRead},
+		}},
+		ws: wsFixture(),
+	}
+	got := svc.Authorize(AuthInput{Authorization: basic("x", "tok"), URI: "/v2/acme/billing/blobs/uploads/", Method: "POST"})
+	if got.Status != http.StatusForbidden {
+		t.Fatalf("unresolvable binding = %d %s, want 403", got.Status, got.Reason)
+	}
+}
+
+// An ordinary user token is unaffected: it is not app-bound.
+func TestAuthorizeLeavesUnboundTokensAlone(t *testing.T) {
+	svc := wsToken([]string{models.ScopeRegistryWrite, models.ScopeRegistryRead})
+	got := svc.Authorize(AuthInput{Authorization: basic("x", "tok"), URI: "/v2/acme/anything/blobs/uploads/", Method: "POST"})
+	if got.Status != http.StatusOK {
+		t.Fatalf("unbound workspace token refused: %d %s", got.Status, got.Reason)
+	}
+}

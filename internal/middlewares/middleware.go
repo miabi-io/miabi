@@ -21,19 +21,16 @@ import (
 
 // Context keys populated by these middlewares.
 const (
-	CtxUserID        = "user_id"
-	CtxAuthMethod    = "auth_method"
-	CtxWorkspaceID   = "workspace_id"
-	CtxWorkspaceRole = "workspace_role"
-	// CtxPermissions holds the caller's effective permission set
-	// (map[models.Permission]bool), resolved by WorkspaceScope.
-	CtxPermissions  = "workspace_permissions"
-	CtxAPIKeyID     = "api_key_id"
-	CtxAPIKeyScopes = "api_key_scopes"
-	// CtxAPIKeyWorkspaceID holds the workspace an API key is bound to, when the presented key is
-	// workspace-scoped (nil for account-wide keys). It lets /me report which workspace a token
-	// manages, so machine clients need only supply the token.
+	CtxUserID            = "user_id"
+	CtxAuthMethod        = "auth_method"
+	CtxWorkspaceID       = "workspace_id"
+	CtxWorkspaceRole     = "workspace_role"
+	CtxPermissions       = "workspace_permissions"
+	CtxAPIKeyID          = "api_key_id"
+	CtxAPIKeyScopes      = "api_key_scopes"
 	CtxAPIKeyWorkspaceID = "api_key_workspace_id"
+	CtxAPIKeyEphemeral   = "api_key_ephemeral"
+	CtxAPIKeyAppID       = "api_key_app_id"
 	ctxJTI               = "jti"
 )
 
@@ -47,10 +44,7 @@ func baseJWT(cfg *config.Config, store *session.Store) okapi.JWTAuth {
 		SigningSecret: []byte(cfg.JWTSecret),
 		Audience:      "miabi",
 		ContextKey:    "jwt_user",
-		// Header (CLI/API) first, then the browser session cookie. The JWT is NOT accepted via ?token= — browsers
-		// send the cookie on SSE/WebSocket handshakes and CLIs set the Authorization header — so a session token
-		// never lands in a URL (and thus proxy/access logs or browser history).
-		TokenLookup: "header:Authorization,cookie:" + SessionCookieName,
+		TokenLookup:   "header:Authorization,cookie:" + SessionCookieName,
 		ForwardClaims: map[string]string{
 			CtxUserID: "sub",
 			"email":   "email",
@@ -89,22 +83,20 @@ func JWTAuth(cfg *config.Config, store *session.Store) okapi.JWTAuth {
 // Authenticate accepts a user JWT or an API key. API keys (mb_...) are read from the Authorization
 // header or the ?token= query param; any other credential is treated as a JWT and resolved from
 // the header or session cookie per JWTAuth.TokenLookup — a JWT is never accepted via ?token=.
-func Authenticate(jwtAuth okapi.JWTAuth, apiKeys *auth.APIKeyService, users *repositories.UserRepository) okapi.Middleware {
+func Authenticate(jwtAuth okapi.JWTAuth, apiKeys *auth.APIKeyService, users *repositories.UserRepository, apps AppIDResolver) okapi.Middleware {
 	return func(c *okapi.Context) error {
 		raw := bearerToken(c)
 		if raw == "" {
 			raw = strings.TrimSpace(c.Query("token"))
 		}
 		if raw == "" {
-			// Browser clients present the JWT as an HttpOnly cookie (no header/query);
-			// surface it so the empty-credential guard below passes. Okapi's JWT
-			// middleware re-reads it from the cookie via TokenLookup.
+
 			if ck, err := c.Cookie(SessionCookieName); err == nil {
 				raw = strings.TrimSpace(ck)
 			}
 		}
 		if strings.HasPrefix(raw, "mb_") {
-			return authAPIKey(c, apiKeys, users, raw)
+			return authAPIKey(c, apiKeys, users, apps, raw)
 		}
 		if raw == "" {
 			return c.AbortUnauthorized("authentication required")
@@ -120,7 +112,7 @@ func bearerToken(c *okapi.Context) string {
 	return strings.TrimSpace(strings.TrimPrefix(c.Header("Authorization"), "Bearer "))
 }
 
-func authAPIKey(c *okapi.Context, apiKeys *auth.APIKeyService, users *repositories.UserRepository, raw string) error {
+func authAPIKey(c *okapi.Context, apiKeys *auth.APIKeyService, users *repositories.UserRepository, apps AppIDResolver, raw string) error {
 	key, err := apiKeys.Verify(raw)
 	if err != nil {
 		return c.AbortUnauthorized("invalid API key")
@@ -150,10 +142,21 @@ func authAPIKey(c *okapi.Context, apiKeys *auth.APIKeyService, users *repositori
 	c.Set(CtxAuthMethod, "api_key")
 	c.Set(CtxAPIKeyID, int(key.ID))
 	c.Set(CtxAPIKeyScopes, strings.Join(scopes, ","))
-	// A workspace-bound key carries its workspace; expose it so /me can report it.
-	// (Purely additive: tenant resolution still happens in WorkspaceScope.)
+
 	if key.WorkspaceID != nil {
 		c.Set(CtxAPIKeyWorkspaceID, int(*key.WorkspaceID))
+	}
+	var boundApp uint
+	if key.ApplicationID != nil {
+		boundApp = *key.ApplicationID
+		c.Set(CtxAPIKeyAppID, int(boundApp))
+	}
+	// A machine-minted job credential is confined to the application it was issued for.
+	if key.Ephemeral {
+		c.Set(CtxAPIKeyEphemeral, true)
+		if err := confineEphemeralKey(c, boundApp, apps); err != nil {
+			return err
+		}
 	}
 	return c.Next()
 }
@@ -194,6 +197,12 @@ func RequireScope(scope string) okapi.Middleware {
 		return c.AbortForbidden("API key missing required scope: " + scope)
 	}
 }
+
+// APIKeyEphemeral reports whether the caller presented a machine-minted job credential.
+func APIKeyEphemeral(c *okapi.Context) bool { return c.GetBool(CtxAPIKeyEphemeral) }
+
+// APIKeyAppID returns the application an API key is bound to, or 0 when it is not app-bound.
+func APIKeyAppID(c *okapi.Context) uint { return uint(c.GetInt(CtxAPIKeyAppID)) }
 
 // UserID returns the authenticated user id (0 if absent).
 func UserID(c *okapi.Context) uint {
