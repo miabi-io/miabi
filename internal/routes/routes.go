@@ -740,6 +740,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		logger.Warn("failed to seed the built-in storage class", "error", err)
 	}
 	storageService.SetStorageClasses(storageClassService)
+
+	go storageService.AuditSharedVolumes()
 	monitoringService := monitoring.NewService(appRepo, releaseRepo, dbRepo, stackRepo, appEventRepo, repositories.NewMetricRepository(db), nodeClients)
 	monitoringService.SetSwarmManager(clusterService)
 	monitoringService.SetServerInfo(nodeService)

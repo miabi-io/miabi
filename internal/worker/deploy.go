@@ -28,6 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/platformimage"
 	runnersvc "github.com/miabi-io/miabi/internal/services/runner"
+	storagesvc "github.com/miabi-io/miabi/internal/services/storage"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 	"github.com/miabi-io/runner/proto"
 )
@@ -909,6 +910,12 @@ func (h *DeployHandler) sharedMountDriver(workspaceID, volumeID uint) *docker.Se
 	}
 	opts := map[string]string{}
 	if err := json.Unmarshal([]byte(raw), &opts); err != nil || len(opts) == 0 {
+		return nil
+	}
+
+	if err := storagesvc.SharedDriverOptsValid(opts); err != nil {
+		logger.Error("refusing to mount a shared volume with unsafe driver options",
+			"workspace", workspaceID, "volume", volumeID, "error", err)
 		return nil
 	}
 	// nfs/cifs volumes are backed by Docker's built-in local driver with mount
