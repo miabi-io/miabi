@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/enterprise"
@@ -70,6 +71,11 @@ type PlanBody struct {
 	// DatabaseSizes are the database sizes the plan offers, the first its default (Enterprise database_sizes).
 	// Omitted keeps the stored list.
 	DatabaseSizes *[]uint `json:"database_sizes"`
+	// StorageClasses are the storage classes, by name, the plan may create volumes on; empty offers
+	// every class. DefaultStorageClass is the one a volume naming none gets. Omitted keeps the
+	// stored values.
+	StorageClasses      *[]string `json:"storage_classes"`
+	DefaultStorageClass *string   `json:"default_storage_class"`
 }
 
 type CreatePlanRequest struct {
@@ -169,6 +175,12 @@ func (b PlanBody) apply(p *models.Plan) {
 	p.Placement = b.Placement
 	if b.DatabaseSizes != nil {
 		p.DatabaseSizes = *b.DatabaseSizes
+	}
+	if b.StorageClasses != nil {
+		p.StorageClasses = *b.StorageClasses
+	}
+	if b.DefaultStorageClass != nil {
+		p.DefaultStorageClass = strings.TrimSpace(*b.DefaultStorageClass)
 	}
 }
 

@@ -71,6 +71,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/netalloc"
 	"github.com/miabi-io/miabi/internal/services/network"
 	"github.com/miabi-io/miabi/internal/services/node"
+	"github.com/miabi-io/miabi/internal/services/nodestats"
 	"github.com/miabi-io/miabi/internal/services/notify"
 	"github.com/miabi-io/miabi/internal/services/oauth"
 	"github.com/miabi-io/miabi/internal/services/pipeline"
@@ -93,6 +94,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/settings"
 	"github.com/miabi-io/miabi/internal/services/stack"
 	"github.com/miabi-io/miabi/internal/services/storage"
+	"github.com/miabi-io/miabi/internal/services/storageclass"
 	"github.com/miabi-io/miabi/internal/services/updatecheck"
 	"github.com/miabi-io/miabi/internal/services/usersettings"
 	"github.com/miabi-io/miabi/internal/services/volumebackup"
@@ -206,6 +208,7 @@ type routerHandlers struct {
 	siemAdmin           *handlers.SIEMAdminHandler
 	adminAnnouncement   *handlers.AdminAnnouncementHandler
 	adminDatabaseSize   *handlers.AdminDatabaseSizeHandler
+	adminStorageClass   *handlers.AdminStorageClassHandler
 	adminRunner         *handlers.AdminRunnerHandler
 }
 
@@ -723,6 +726,19 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	platformBackupService.SetAppStopper(platformbackup.NewMountAppStopper(appRepo, appService))
 	forwardService.SetImageResolver(imageResolver)
 	storageService.SetImageResolver(imageResolver)
+	// Real host CPU/memory for ANY node, sampled by a short-lived container on the node itself: a
+	// container's /proc is the host's, so this needs no agent support and no bound host path.
+	nodeStatsService := nodestats.NewService(nodeClients)
+	nodeStatsService.SetImageResolver(imageResolver)
+	// Storage classes decide WHERE on a node a volume's data lands. The built-in "default" class is
+	// seeded here so every install — and every pre-existing volume, which backfills to it — has one.
+	storageClassService := storageclass.NewService(repositories.NewStorageClassRepository(db), nodeClients)
+	storageClassService.SetImageResolver(imageResolver)
+	storageClassService.SetServerInfo(nodeService)
+	if err := storageClassService.EnsureBuiltin(); err != nil {
+		logger.Warn("failed to seed the built-in storage class", "error", err)
+	}
+	storageService.SetStorageClasses(storageClassService)
 	monitoringService := monitoring.NewService(appRepo, releaseRepo, dbRepo, stackRepo, appEventRepo, repositories.NewMetricRepository(db), nodeClients)
 	monitoringService.SetSwarmManager(clusterService)
 	monitoringService.SetServerInfo(nodeService)
@@ -836,6 +852,13 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			return storageService.MeasureUsage(context.Background())
 		}); err != nil {
 			logger.Warn("failed to register storage usage task", "error", err)
+		}
+		// A class's free space is what tells an operator which disk to send the next volume to, so
+		// it rides the same interval as the per-volume sweep.
+		if err := cronManager.RegisterTask("storage_class_capacity", 0, "Measure storage class capacity", fmt.Sprintf("@every %dm", usageEvery), func() error {
+			return storageClassService.MeasureCapacity(context.Background())
+		}); err != nil {
+			logger.Warn("failed to register storage class capacity task", "error", err)
 		}
 		// Seed after boot so a fresh install shows numbers without waiting a full
 		// interval. Off the startup path.
@@ -1175,6 +1198,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			siemAdmin:           handlers.NewSIEMAdminHandler(siemConfigRepo, siemStreamer, ee, auditLogger),
 			adminAnnouncement:   handlers.NewAdminAnnouncementHandler(announcementService, announcementRepo, userRepo, ee, auditLogger),
 			adminDatabaseSize:   handlers.NewAdminDatabaseSizeHandler(databaseSizeRepo, ee, auditLogger),
+			adminStorageClass:   handlers.NewAdminStorageClassHandler(storageClassService, auditLogger),
 			adminRunner:         handlers.NewAdminRunnerHandler(runnerService, ee, auditLogger),
 		},
 	}
@@ -1222,6 +1246,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.app.SetPlacer(placer)
 	r.h.database.SetPlacer(placer)
 	r.h.volume.SetPlacer(placer)
+	r.h.volume.SetStorageClasses(storageClassService, quotaService)
 	r.h.stack.SetPlacer(placer)
 	r.h.marketplace.SetPlacer(placer)
 
@@ -1254,6 +1279,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	if subnetAllocator != nil {
 		r.h.adminMetrics.SetSubnetAllocator(subnetAllocator)
 	}
+	// Fleet CPU/memory capacity, collected per node on a TTL (see fleetTTL).
+	r.h.adminMetrics.SetNodeClients(nodeClients)
+	r.h.adminMetrics.SetNodeHostStats(nodeStatsService)
+	r.h.node.SetNodeStats(nodeStatsService)
 
 	// Restrict browser WebSocket upgrades (exec/log/node/runner tunnels) to
 	// same-origin plus the configured allowlist, blocking cross-site hijacking.

@@ -43,6 +43,7 @@ export const adminNavSections: NavSection[] = [
       { name: 'Clusters', path: '/admin/clusters', icon: 'mdi-lan' },
       { name: 'Nodes', path: '/admin/nodes', icon: 'mdi-server-network' },
       { name: 'Ports', path: '/admin/ports', icon: 'mdi-lan-connect' },
+      { name: 'Storage classes', path: '/admin/storage-classes', icon: 'mdi-harddisk' },
       { name: 'Kernel grants', path: '/admin/grants', icon: 'mdi-shield-key-outline' },
       { name: 'Shared Runners', path: '/admin/runners', icon: 'mdi-cog-transfer-outline' },
       { name: 'Container Registry', path: '/admin/registry', icon: 'mdi-cube-outline' },

@@ -300,6 +300,10 @@ var optionalWhenUnset = map[string]bool{
 // resources keep converging to the manifest.
 var optionalWhenUnsetByKind = map[Kind]map[string]bool{
 	KindDatabase: {"resources.memory": true, "resources.cpu": true, "resources.size": true},
+	// A manifest silent about the storage class takes this install's default, so the same repository
+	// stays portable across installs whose disks differ. Only a class named in the manifest is
+	// enforced — and then it is immutable, so it is refused rather than converged.
+	KindVolume: {"storage.class": true},
 }
 
 // normalizedList compares a set the way the app service stores it, so CAP_NET_ADMIN in a manifest does not
@@ -554,6 +558,17 @@ func specFields(r Resource) map[string]string {
 	case r.Volume != nil:
 		if loc := r.Volume.Location(); loc != "" {
 			f["placement.location"] = loc
+		}
+		// The class has to appear on BOTH sides of the diff: only on the desired side it would make
+		// every apply a phantom update, and only on the actual side the immutability refusal in
+		// applyVolume could never fire.
+		if sc := strings.TrimSpace(r.Volume.StorageClass); sc != "" {
+			f["storage.class"] = sc
+		}
+		// Canonical bytes, so "20Gi" matches the byte count the snapshot reports.
+		if r.Volume.Size != "" {
+			b, _ := r.Volume.SizeBytes()
+			f["size"] = strconv.FormatInt(b, 10)
 		}
 
 	case r.Route != nil:

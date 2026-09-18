@@ -287,11 +287,32 @@ func restartPolicyString(p container.RestartPolicy) string {
 func hostBinds(mounts []BindMount) []string {
 	out := make([]string, 0, len(mounts))
 	for _, m := range mounts {
+		if m.NoCreate {
+			continue // carried as a mount.Mount instead; see hostBindMounts
+		}
 		b := m.Source + ":" + m.Target
 		if m.ReadOnly {
 			b += ":ro"
 		}
 		out = append(out, b)
+	}
+	return out
+}
+
+// hostBindMounts renders the binds that must not be auto-created. A bind string makes the daemon
+// create a missing source directory; the Mount API with CreateMountpoint unset makes it refuse,
+// which is how a storage class whose disk is not mounted fails loudly instead of quietly landing
+// on the root filesystem.
+func hostBindMounts(mounts []BindMount) []mount.Mount {
+	var out []mount.Mount
+	for _, m := range mounts {
+		if !m.NoCreate {
+			continue
+		}
+		out = append(out, mount.Mount{
+			Type: mount.TypeBind, Source: m.Source, Target: m.Target, ReadOnly: m.ReadOnly,
+			BindOptions: &mount.BindOptions{CreateMountpoint: false},
+		})
 	}
 	return out
 }
@@ -313,6 +334,7 @@ func containerVolumeMounts(spec RunSpec) ([]string, []mount.Mount) {
 		binds = append(binds, vol+":"+path)
 	}
 	binds = append(binds, hostBinds(spec.Binds)...)
+	volMounts = append(volMounts, hostBindMounts(spec.Binds)...)
 	return binds, volMounts
 }
 
@@ -525,7 +547,8 @@ func (e *engineClient) createOneShot(ctx context.Context, spec RunSpec) (string,
 
 	cfg := &container.Config{Image: spec.Image, Env: spec.Env, Entrypoint: spec.Entrypoint, Cmd: spec.Cmd, WorkingDir: spec.WorkingDir, Labels: labels}
 	hostCfg := &container.HostConfig{
-		Binds: binds,
+		Binds:  binds,
+		Mounts: hostBindMounts(spec.Binds),
 		Resources: container.Resources{
 			Memory:         spec.MemoryBytes,
 			NanoCPUs:       spec.NanoCPUs,
@@ -1121,6 +1144,17 @@ func (e *engineClient) CreateVolumeWith(ctx context.Context, spec VolumeSpec) (V
 	}
 	if len(spec.DriverOpts) > 0 {
 		opts.DriverOpts = spec.DriverOpts
+	}
+	// A storage class backs the volume with a host directory via the local driver's bind options.
+	// Docker accepts this even when the directory is absent and only fails when a container mounts
+	// it, so the caller creates the directory first (storageclass.EnsureDir).
+	if p := strings.TrimSpace(spec.DevicePath); p != "" {
+		if opts.DriverOpts == nil {
+			opts.DriverOpts = map[string]string{}
+		}
+		opts.DriverOpts["type"] = "none"
+		opts.DriverOpts["o"] = "bind"
+		opts.DriverOpts["device"] = p
 	}
 	res, err := e.cli.VolumeCreate(ctx, opts)
 	if err != nil {

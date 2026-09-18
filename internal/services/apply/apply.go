@@ -281,6 +281,42 @@ func refuseMove(ch declarative.Change) error {
 	return nil
 }
 
+// refuseImmutable fails an update that changes a field the platform cannot converge without
+// destroying data. A volume's storage class is where its bytes physically are, so converging one
+// would mean deleting and recreating the volume — silently, from a git push.
+func refuseImmutable(ch declarative.Change) error {
+	if err := refuseMove(ch); err != nil {
+		return err
+	}
+	for _, f := range ch.Fields {
+		if f.Field == "storage.class" {
+			return fmt.Errorf("%w: %s %q is on storage class %q; moving it to %q would relocate its data. Delete it and apply again, or migrate it",
+				ErrInvalidManifest, strings.ToLower(string(ch.Kind)), ch.Name, f.From, f.To)
+		}
+	}
+	return nil
+}
+
+// resizeVolume converges the one volume field that can change in place. The declared size is a
+// soft number used for quota accounting, so growing it is a row update rather than a data move.
+func (s *Service) resizeVolume(workspaceID uint, ch declarative.Change) error {
+	for _, f := range ch.Fields {
+		if f.Field != "size" {
+			continue
+		}
+		size, err := strconv.ParseInt(f.To, 10, 64)
+		if err != nil {
+			return fmt.Errorf("%w: volume %q: invalid size %q", ErrInvalidManifest, ch.Name, f.To)
+		}
+		v, err := s.findVolume(workspaceID, ch.Name)
+		if err != nil {
+			return err
+		}
+		return s.storage.Resize(workspaceID, v.ID, size)
+	}
+	return nil
+}
+
 func (s *Service) clusterID(id uint) uint {
 	if id == models.DefaultClusterID && s.cluster != nil {
 		return s.cluster.ClusterOfServer(0)
@@ -1287,10 +1323,18 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 	volNameByID := make(map[uint]string, len(vols))
 	for i := range vols {
 		volNameByID[vols[i].ID] = vols[i].Name
+		size := ""
+		if vols[i].SizeBytes > 0 {
+			size = strconv.FormatInt(vols[i].SizeBytes, 10)
+		}
 		set.Add(declarative.Resource{
 			APIVersion: declarative.APIVersion, Kind: declarative.KindVolume,
 			Metadata: metaA(vols[i].UID, vols[i].Name, vols[i].Metadata, vols[i].Annotations),
-			Volume:   &declarative.VolumeSpec{Placement: locationSpec(s.locationName(vols[i].ClusterID))},
+			Volume: &declarative.VolumeSpec{
+				Size:         size,
+				StorageClass: vols[i].StorageClassName,
+				Placement:    locationSpec(s.locationName(vols[i].ClusterID)),
+			},
 		})
 	}
 
@@ -2131,10 +2175,23 @@ func (s *Service) applyVolume(ctx context.Context, workspaceID uint, ch declarat
 		if err != nil {
 			return err
 		}
-		_, err = s.storage.Create(ctx, workspaceID, target.ServerID, ch.Name, 0, meta, desired.Metadata.Annotations)
+		size, err := desired.Volume.SizeBytes()
+		if err != nil {
+			return fmt.Errorf("%w: volume %q: %s", ErrInvalidManifest, ch.Name, err)
+		}
+		_, err = s.storage.CreateOn(ctx, workspaceID, target.ServerID, storage.CreateInput{
+			Name:         ch.Name,
+			SizeBytes:    size,
+			StorageClass: desired.Volume.StorageClass,
+			Meta:         meta,
+			Annotations:  desired.Metadata.Annotations,
+		})
 		return err
 	case declarative.ActionUpdate:
-		return refuseMove(ch)
+		if err := refuseImmutable(ch); err != nil {
+			return err
+		}
+		return s.resizeVolume(workspaceID, ch)
 	case declarative.ActionDelete:
 		v, err := s.findVolume(workspaceID, ch.Name)
 		if err != nil {

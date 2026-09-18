@@ -6,7 +6,7 @@ import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { volumeApi, usageApi } from '@/api/resources'
-import type { Volume, WorkspaceUsage, WorkspaceStorage } from '@/api/types'
+import type { Volume, WorkspaceUsage, WorkspaceStorage, StorageClassOption } from '@/api/types'
 import { fmtSize } from '@/utils/format'
 import { relativeTime } from '@/utils/time'
 import AppModal from '@/components/AppModal.vue'
@@ -17,13 +17,13 @@ const router = useRouter()
 const { currentWorkspaceId } = storeToRefs(ws)
 
 const volumes = ref<Volume[]>([])
-// Client-side filter over the list (matches name, docker name, node, driver, mountpoint).
+// Client-side filter over the list (matches name, docker name, node, driver, storage class).
 const search = ref('')
 const filteredVolumes = computed(() => {
   const q = search.value.trim().toLowerCase()
   if (!q) return volumes.value
   return volumes.value.filter((v) =>
-    [v.display_name, v.name, v.docker_name, v.server_name, v.driver, v.mountpoint]
+    [v.display_name, v.name, v.docker_name, v.server_name, v.driver, v.storage_class]
       .some((f) => (f || '').toLowerCase().includes(q)),
   )
 })
@@ -51,12 +51,19 @@ const cifsShare = ref('')
 const cifsUser = ref('')
 const cifsPass = ref('')
 const hostPath = ref('')
+// The storage classes this workspace may use, i.e. which of the operator's disks a volume can land
+// on. Empty means the install registered none and Docker's own directory is the only option.
+const storageClasses = ref<StorageClassOption[]>([])
+const storageClass = ref('')
+// name -> display name, for the Storage column.
+const classLabels = ref<Record<string, string>>({})
 
 async function load(id: number | null) {
   if (!id) { volumes.value = []; usage.value = null; storage.value = null; return }
   loading.value = true
   try {
     volumes.value = (await volumeApi.list(id)).data.data ?? []
+    void loadStorageClasses()
     usage.value = (await usageApi.get(id)).data.data
     // Non-critical; never block the volume list on it.
     storage.value = (await volumeApi.storage(id).catch(() => null))?.data.data ?? null
@@ -85,7 +92,30 @@ function openCreate() {
   nfsServer.value = ''; nfsExport.value = ''
   cifsShare.value = ''; cifsUser.value = ''; cifsPass.value = ''
   hostPath.value = ''
+  storageClass.value = ''
   showCreate.value = true
+  void loadStorageClasses()
+}
+
+// The offered classes depend on the node, so they are reloaded when the location changes. A failure
+// is not fatal: the field simply disappears and the create falls back to the install's default.
+async function loadStorageClasses() {
+  if (!currentWorkspaceId.value) return
+  try {
+    const res = await volumeApi.storageClasses(currentWorkspaceId.value, volLocation.value || undefined)
+    storageClasses.value = res.data.data ?? []
+    for (const c of storageClasses.value) classLabels.value[c.name] = c.display_name || c.name
+  } catch {
+    storageClasses.value = []
+  }
+}
+watch(volLocation, () => { if (showCreate.value) void loadStorageClasses() })
+
+// A volume stores its class by name; the readable label lives on the class. A class the workspace
+// can no longer be offered — disabled, or dropped from its plan — simply shows its name.
+function classLabel(name?: string): string {
+  if (!name) return '—'
+  return classLabels.value[name] || name
 }
 
 // Docker mount options for the selected shared-storage backend (undefined for
@@ -111,7 +141,7 @@ async function create() {
   creating.value = true
   try {
     const d = driver.value === 'local' ? undefined : driver.value
-    await volumeApi.create(currentWorkspaceId.value, name.value.trim(), serverId.value || undefined, sizeMb.value ?? undefined, d, driverOpts(), volLocation.value || undefined)
+    await volumeApi.create(currentWorkspaceId.value, name.value.trim(), serverId.value || undefined, sizeMb.value ?? undefined, d, driverOpts(), volLocation.value || undefined, storageClass.value || undefined)
     notify.success('Volume created')
     showCreate.value = false
     load(currentWorkspaceId.value)
@@ -181,7 +211,7 @@ function fmtDate(s?: string) {
         </div>
         <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Volume</th><th>Usage</th><th>Node</th><th>Mountpoint</th><th>Created</th></tr></thead>
+          <thead><tr><th>Volume</th><th>Usage</th><th>Node</th><th>Storage</th><th>Created</th></tr></thead>
           <tbody>
             <tr v-for="v in filteredVolumes" :key="v.id" class="row-clickable" @click="router.push(`/volumes/${v.id}`)">
               <td>
@@ -217,7 +247,7 @@ function fmtDate(s?: string) {
                 <span v-if="v.server_name"><span class="mdi mdi-server-network"></span> {{ v.server_name }}</span>
                 <span v-else>—</span>
               </td>
-              <td class="cell-sub">{{ v.mountpoint || '—' }}</td>
+              <td class="cell-sub">{{ classLabel(v.storage_class) }}</td>
               <td class="cell-sub">{{ fmtDate(v.created_at) }}</td>
             </tr>
           </tbody>
@@ -289,6 +319,23 @@ function fmtDate(s?: string) {
                 <label class="form-label">Host path</label>
                 <input v-model="hostPath" class="form-input" placeholder="/mnt/nas/app" required style="font-family: monospace" />
                 <p class="form-hint">Must be an absolute path under <code>/mnt/</code>. The operator is responsible for mounting the storage at this exact path on every node.</p>
+              </div>
+            </template>
+            <template v-if="driver === 'local' && storageClasses.length > 1">
+              <div class="form-group">
+                <label class="form-label">Storage</label>
+                <select v-model="storageClass" class="form-select">
+                  <option value="">
+                    {{ storageClasses.find(c => c.is_default)?.display_name || 'Default' }} (default)
+                  </option>
+                  <option v-for="c in storageClasses.filter(c => !c.is_default)" :key="c.name" :value="c.name">
+                    {{ c.display_name || c.name }}
+                  </option>
+                </select>
+                <p class="form-hint">
+                  {{ storageClasses.find(c => c.name === storageClass)?.description
+                    || 'Which of this node\'s disks the volume is created on. It cannot be changed later — the data lives there.' }}
+                </p>
               </div>
             </template>
             <div class="form-group" style="margin-bottom: 0; margin-top: 16px">

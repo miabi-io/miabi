@@ -24,6 +24,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/gpu"
 	"github.com/miabi-io/miabi/internal/services/housekeeping"
 	"github.com/miabi-io/miabi/internal/services/node"
+	"github.com/miabi-io/miabi/internal/services/nodestats"
 )
 
 // ImageRef resolves a platform-image catalog key to an image ref (implemented
@@ -64,7 +65,8 @@ type NodeHandler struct {
 	// secEnforce blocks disruptive raw-Docker actions (stop/remove) on managed
 	// containers from the admin node view (MIABI_SECURITY_ENFORCEMENT, default on).
 	secEnforce bool
-	hostProc   string // procfs dir for local-node host metrics (default /host/proc)
+	hostProc   string          // procfs dir for local-node host metrics (default /host/proc)
+	nodeStats  NodeHostSampler // nil = remote nodes report no host metrics
 	// poolLabeler mirrors a node's pool onto its Swarm node label; nil leaves it to the cluster refresh.
 	poolLabeler func(context.Context, *models.Server) error
 	upgrader    websocket.Upgrader
@@ -88,6 +90,15 @@ func (h *NodeHandler) SetSecurityEnforcement(on bool) { h.secEnforce = on }
 // SetGPU wires the GPU inventory/policy service (nil-safe; nil = GPU support
 // disabled, so the GPU endpoints report it off).
 func (h *NodeHandler) SetGPU(g *gpu.Service) { h.gpu = g }
+
+// NodeHostSampler reads a node's real host CPU/memory by sampling it on the node. Satisfied by
+// nodestats.Service.
+type NodeHostSampler interface {
+	Get(ctx context.Context, serverID uint) (nodestats.Sample, error)
+}
+
+// SetNodeStats wires the remote host-stats sampler (nil-safe).
+func (h *NodeHandler) SetNodeStats(s NodeHostSampler) { h.nodeStats = s }
 
 func NewNodeHandler(n *node.Service, mgr *nodes.Manager, gw *edgegateway.Service, importer *dockerimport.Service, housekeeper *housekeeping.Service, clusterEnricher SwarmEnricher, images ImageRef, controlURL string, auditLog *audit.Logger, bus *eventbus.Bus, hostProc string) *NodeHandler {
 	return &NodeHandler{
@@ -513,12 +524,13 @@ func (h *NodeHandler) Stats(c *okapi.Context) error {
 	return ok(c, stats)
 }
 
-// HostMetricsResponse reports real host CPU/memory for the local node. Available
-// is false when host stats can't be read here — for remote nodes (the procfs is
-// the control plane's, not theirs) or when no readable procfs is mounted.
+// HostMetricsResponse reports real host CPU/memory for a node. Available is false when the stats
+// cannot be read: no readable procfs locally, or a remote node that could not be sampled.
 type HostMetricsResponse struct {
-	Available bool   `json:"available"`
-	Reason    string `json:"reason,omitempty"`
+	Available    bool   `json:"available"`
+	Reason       string `json:"reason,omitempty"`
+	Sampled      bool   `json:"sampled,omitempty"`
+	PhysicalHost bool   `json:"physical_host,omitempty"`
 	hoststats.Stats
 }
 
@@ -534,8 +546,21 @@ func (h *NodeHandler) HostMetrics(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortNotFound("node not found")
 	}
+	// A remote node is sampled on the node itself: a container's /proc is the host's, so this reads
+	// its real CPU and memory without an agent change or any bound host path.
 	if !srv.IsLocal {
-		return ok(c, HostMetricsResponse{Available: false, Reason: "host metrics are only available for the local node"})
+		if h.nodeStats == nil {
+			return ok(c, HostMetricsResponse{Available: false, Reason: "host metrics are only available for the local node"})
+		}
+		st, serr := h.nodeStats.Get(c.Request().Context(), srv.ID)
+		if serr != nil {
+			return ok(c, HostMetricsResponse{Available: false, Reason: "could not sample the node: " + serr.Error()})
+		}
+		// /proc is not cgroup-aware, so a node that is itself a container or a limited VM reports the
+		// machine underneath it. Still worth showing — but say whose numbers these are.
+		return ok(c, HostMetricsResponse{
+			Available: true, Sampled: true, PhysicalHost: !st.DescribesNode, Stats: st.Stats,
+		})
 	}
 	// Prefer the configured path (default /host/proc); fall back to /proc, which
 	// already reflects host CPU/memory even from inside a container.
@@ -571,18 +596,15 @@ func (h *NodeHandler) Connect(c *okapi.Context) error {
 			return c.AbortUnauthorized("invalid agent token")
 		}
 	}
-	// Learn what only the node can tell us, before the upgrade hijacks the request. The public IP it connects
-	// from gives its cluster a public address when none is set, so the admin needn't enter one.
+
 	if h.cluster != nil {
 		h.cluster.LearnIngressIP(srv.ID, c.RealIP())
 	}
-	// And its swarm node id, which the control plane cannot work out for itself: it records one only
-	// when Miabi ran the `swarm join`, so a host that joined any other way stayed unmapped — and an
-	// unmapped node cannot be resolved from a service's task, leaving its logs and metrics unreachable.
+
 	h.nodes.LearnSwarmNodeID(srv.ID, swarmNodeID)
 	ws, err := h.upgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {
-		return nil // upgrade failed; response already handled
+		return nil
 	}
 	h.manager.Handle(srv, token, c.Header("X-Agent-Version"), c.Header("X-Agent-Container-ID"), ws)
 	return nil

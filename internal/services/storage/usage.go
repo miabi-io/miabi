@@ -77,6 +77,38 @@ func (s *Service) MeasureUsage(ctx context.Context) error {
 			measured++
 		}
 	}
+	measured += s.measureClassUsage(ctx)
 	logger.Debug("storage usage sweep complete", "nodes", nodesOK, "volumes", measured)
 	return nil
+}
+
+// measureClassUsage sizes the volumes on operator-managed storage classes. `docker system df` sizes
+// a bind-backed volume's mountpoint stub rather than the data behind the bind, so those volumes are
+// measured with one du per class instead, overwriting whatever the df pass recorded for them.
+func (s *Service) measureClassUsage(ctx context.Context) int {
+	if s.classes == nil {
+		return 0
+	}
+	classes, err := s.classes.ListManaged()
+	if err != nil {
+		logger.Warn("storage usage sweep: list storage classes failed", "error", err)
+		return 0
+	}
+	var measured int
+	now := time.Now()
+	for i := range classes {
+		usage, err := s.classes.DiskUsageAll(ctx, &classes[i])
+		if err != nil {
+			logger.Warn("storage usage sweep: class measure failed", "class", classes[i].Name, "error", err)
+			continue
+		}
+		for dockerName, bytes := range usage {
+			if err := s.repo.SetUsage(dockerName, bytes, now); err != nil {
+				logger.Warn("storage usage sweep: record failed", "docker_name", dockerName, "error", err)
+				continue
+			}
+			measured++
+		}
+	}
+	return measured
 }

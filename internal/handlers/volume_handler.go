@@ -17,19 +17,28 @@ import (
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/placement"
+	"github.com/miabi-io/miabi/internal/services/quota"
 	"github.com/miabi-io/miabi/internal/services/storage"
+	"github.com/miabi-io/miabi/internal/services/storageclass"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
 type VolumeHandler struct {
-	svc    *storage.Service
-	users  *repositories.UserRepository
-	audit  *audit.Logger
-	placer *Placer
+	svc     *storage.Service
+	users   *repositories.UserRepository
+	audit   *audit.Logger
+	placer  *Placer
+	classes *storageclass.Service
+	quota   *quota.Service
 }
 
 // SetPlacer wires location placement for volume creates.
 func (h *VolumeHandler) SetPlacer(p *Placer) { h.placer = p }
+
+// SetStorageClasses wires the storage-class catalog used by the create form.
+func (h *VolumeHandler) SetStorageClasses(s *storageclass.Service, q *quota.Service) {
+	h.classes, h.quota = s, q
+}
 
 func NewVolumeHandler(svc *storage.Service, users *repositories.UserRepository, auditLog *audit.Logger) *VolumeHandler {
 	return &VolumeHandler{svc: svc, users: users, audit: auditLog}
@@ -49,6 +58,9 @@ type VolumeCreateRequest struct {
 		// only). DriverOpts are the backend mount options, encrypted at rest and never returned.
 		Driver     string            `json:"driver" enum:"local,nfs,cifs,host"`
 		DriverOpts map[string]string `json:"driver_opts"`
+		// StorageClass names the storage the volume is created on. Empty takes the workspace
+		// plan's default, then the node's.
+		StorageClass string `json:"storage_class"`
 	} `json:"body"`
 }
 
@@ -65,13 +77,26 @@ func (h *VolumeHandler) Create(c *okapi.Context, req *VolumeCreateRequest) error
 		}
 		return c.AbortInternalServerError("failed to place the volume", err)
 	}
-	v, err := h.svc.CreateWith(c.Request().Context(), wsID, placed.ServerID, req.Body.Name, sizeBytes, req.Body.Driver, req.Body.DriverOpts, selfOwnerMeta(h.users, c), nil)
+	v, err := h.svc.CreateOn(c.Request().Context(), wsID, placed.ServerID, storage.CreateInput{
+		Name:         req.Body.Name,
+		SizeBytes:    sizeBytes,
+		Driver:       req.Body.Driver,
+		DriverOpts:   req.Body.DriverOpts,
+		StorageClass: req.Body.StorageClass,
+		Meta:         selfOwnerMeta(h.users, c),
+	})
 	if err != nil {
 		if a := quotaAbort(c, err); a != nil {
 			return a
 		}
 		if errors.Is(err, storage.ErrInvalidDriver) || errors.Is(err, storage.ErrDriverDeviceRequired) || errors.Is(err, storage.ErrHostPathRequired) || errors.Is(err, hostmount.ErrInvalidHostPath) {
 			return c.AbortBadRequest(err.Error())
+		}
+		if errors.Is(err, storageclass.ErrNotFound) || errors.Is(err, storageclass.ErrDisabled) {
+			return c.AbortBadRequest(err.Error())
+		}
+		if errors.Is(err, storageclass.ErrPathMissing) {
+			return c.AbortWithError(409, err)
 		}
 		if errors.Is(err, storage.ErrHostMountNotPrivileged) {
 			return c.AbortForbidden(err.Error())
@@ -217,4 +242,52 @@ func (h *VolumeHandler) load(c *okapi.Context) (*models.Volume, error) {
 func (h *VolumeHandler) record(c *okapi.Context, wsID uint, action string, id uint) {
 	actor := middlewares.UserID(c)
 	h.audit.Record(audit.Entry{ActorID: &actor, WorkspaceID: &wsID, Action: action, TargetType: "volume", TargetID: strconv.Itoa(int(id)), IP: c.RealIP()})
+}
+
+// StorageClassOption is a storage class as a tenant sees it: the name to ask for and what it is,
+// never the operator's host path. Where a volume physically sits is the operator's business, and
+// the create form only needs the handle.
+type StorageClassOption struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Description string `json:"description,omitempty"`
+	IsDefault   bool   `json:"is_default"`
+	Shared      bool   `json:"shared"`
+}
+
+// StorageClasses lists the classes this workspace may create volumes on: the node's classes,
+// narrowed to what the plan allows. The default flag marks the one an unstated create would get.
+func (h *VolumeHandler) StorageClasses(c *okapi.Context) error {
+	if h.classes == nil {
+		return ok(c, []StorageClassOption{})
+	}
+	wsID := middlewares.WorkspaceID(c)
+	placed, err := h.placer.place(c, placement.Request{Location: c.Query("location")})
+	if err != nil {
+		if a := placementAbort(c, err); a != nil {
+			return a
+		}
+		return c.AbortInternalServerError("failed to resolve the location", err)
+	}
+	classes, err := h.classes.ListForNode(placed.ServerID)
+	if err != nil {
+		return c.AbortInternalServerError("failed to list storage classes", err)
+	}
+	binding := h.quota.EffectiveStorageClasses(wsID)
+	out := []StorageClassOption{}
+	for i := range classes {
+		sc := classes[i]
+		if !sc.Enabled || !binding.Allows(sc.Name) {
+			continue
+		}
+		isDefault := sc.IsDefault
+		if binding.Default != "" {
+			isDefault = sc.Name == binding.Default
+		}
+		out = append(out, StorageClassOption{
+			Name: sc.Name, DisplayName: sc.DisplayName, Description: sc.Description,
+			IsDefault: isDefault, Shared: sc.Shared,
+		})
+	}
+	return ok(c, out)
 }

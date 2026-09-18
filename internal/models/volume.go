@@ -52,24 +52,13 @@ type Volume struct {
 	ServerID  uint `json:"server_id" gorm:"index;not null;default:0"`
 	ClusterID uint `json:"cluster_id" gorm:"index;not null;default:0"`
 	// ServerName is the display name of the node (transient; populated on read).
-	ServerName string `json:"server_name,omitempty" gorm:"-"`
-	Mountpoint string `json:"mountpoint,omitempty"`
-	// EngineCreatedAt is the creation timestamp Docker reported when the volume was created. A volume whose
-	// engine timestamp moved was deleted and recreated by hand: the row survived, the data did not. Empty on
-	// volumes created before Miabi recorded it, which adopt the engine's on the next sweep.
-	EngineCreatedAt string `json:"engine_created_at,omitempty"`
-	// SizeBytes is the declared capacity / size limit of the volume in bytes
-	// (0 = unspecified/unlimited). Recorded at create time and used for quota
-	// accounting; hard enforcement depends on the node's storage backend.
-	SizeBytes int64 `json:"size_bytes" gorm:"not null;default:0"`
-	// UsedBytes is the last MEASURED on-disk usage (docker system df), distinct
-	// from the declared SizeBytes. 0 with nil UsedMeasuredAt = never measured.
-	UsedBytes      int64      `json:"used_bytes" gorm:"not null;default:0"`
-	UsedMeasuredAt *time.Time `json:"used_measured_at,omitempty"`
-	// Imported marks a volume that references a pre-existing external Docker volume
-	// by its own name (DockerName = the existing name; no data was moved/created).
-	Imported bool `json:"imported" gorm:"not null;default:false"`
-
+	ServerName      string     `json:"server_name,omitempty" gorm:"-"`
+	Mountpoint      string     `json:"-"`
+	EngineCreatedAt string     `json:"engine_created_at,omitempty"`
+	SizeBytes       int64      `json:"size_bytes" gorm:"not null;default:0"`
+	UsedBytes       int64      `json:"used_bytes" gorm:"not null;default:0"`
+	UsedMeasuredAt  *time.Time `json:"used_measured_at,omitempty"`
+	Imported        bool       `json:"imported" gorm:"not null;default:false"`
 	// Shared storage (cluster mode). Driver is the Docker volume driver: "local"
 	// (default, node-local) or "nfs"/"cifs" (a backend a replicated service can
 	// share across nodes). AccessMode follows from it: local => rwo, shared => rwx.
@@ -80,7 +69,8 @@ type Volume struct {
 	// DriverOptsEnc is the encrypted JSON of the driver's mount options (which may
 	// include a CIFS password). Set at create time, never returned. The volume is
 	// immutable, so options can't be edited after creation.
-	DriverOptsEnc string `json:"-" gorm:"type:text"`
+	DriverOptsEnc    string `json:"-" gorm:"type:text"`
+	StorageClassName string `json:"storage_class" gorm:"not null;default:default"`
 	// HostPath is the operator-managed host directory a "host" driver volume binds
 	// (under /mnt/*). Empty for every other driver. Not a secret — it is the bind
 	// source, mounted directly into the app's containers on each node.
