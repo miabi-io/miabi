@@ -730,6 +730,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// container's /proc is the host's, so this needs no agent support and no bound host path.
 	nodeStatsService := nodestats.NewService(nodeClients)
 	nodeStatsService.SetImageResolver(imageResolver)
+	nodeStatsService.SetServers(serverRepo)
 	// Storage classes decide WHERE on a node a volume's data lands. The built-in "default" class is
 	// seeded here so every install — and every pre-existing volume, which backfills to it — has one.
 	storageClassService := storageclass.NewService(repositories.NewStorageClassRepository(db), nodeClients)
@@ -853,6 +854,13 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}); err != nil {
 			logger.Warn("failed to register storage usage task", "error", err)
 		}
+		// Node capacity and load, measured on each node and stored on its row. Everything that wants
+		// fleet figures then reads the database instead of fanning out to every node.
+		if err := cronManager.RegisterTask("node_capacity", 0, "Measure node capacity and load", fmt.Sprintf("@every %dm", usageEvery), func() error {
+			return nodeStatsService.Sweep(context.Background())
+		}); err != nil {
+			logger.Warn("failed to register node capacity task", "error", err)
+		}
 		// A class's free space is what tells an operator which disk to send the next volume to, so
 		// it rides the same interval as the per-volume sweep.
 		if err := cronManager.RegisterTask("storage_class_capacity", 0, "Measure storage class capacity", fmt.Sprintf("@every %dm", usageEvery), func() error {
@@ -867,6 +875,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
 			_ = storageService.MeasureUsage(ctx)
+			_ = nodeStatsService.Sweep(ctx)
 		}()
 	}
 
@@ -1279,9 +1288,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	if subnetAllocator != nil {
 		r.h.adminMetrics.SetSubnetAllocator(subnetAllocator)
 	}
-	// Fleet CPU/memory capacity, collected per node on a TTL (see fleetTTL).
-	r.h.adminMetrics.SetNodeClients(nodeClients)
-	r.h.adminMetrics.SetNodeHostStats(nodeStatsService)
+	// The dashboard reads capacity the node sweep has already measured and stored, so it stays a
+	// query no matter how many nodes there are.
+	r.h.adminMetrics.SetNodeCapacity(serverRepo)
+	r.h.cluster.SetCapacityStore(serverRepo)
 	r.h.node.SetNodeStats(nodeStatsService)
 
 	// Restrict browser WebSocket upgrades (exec/log/node/runner tunnels) to

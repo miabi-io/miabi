@@ -44,6 +44,9 @@ type Info struct {
 	Images        int    `json:"images"`
 	CPUs          int    `json:"cpus"`
 	MemTotal      int64  `json:"mem_total"`
+	// DataRoot is where the daemon keeps images, containers and volumes. Sizing the filesystem
+	// behind it is how a node's storage capacity is measured.
+	DataRoot string `json:"data_root,omitempty"`
 	// Runtimes are the container runtimes the daemon advertises (docker info). The "nvidia" key is
 	// present exactly when the NVIDIA Container Toolkit is installed, so it is how the control plane
 	// decides a node is GPU-capable before ever probing it.

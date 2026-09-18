@@ -67,6 +67,7 @@ func (e *engineClient) Info(ctx context.Context) (Info, error) {
 		APIVersion:    ping.APIVersion,
 		OS:            info.OperatingSystem,
 		Arch:          info.Architecture,
+		DataRoot:      info.DockerRootDir,
 		Containers:    info.Containers,
 		ContainersRun: info.ContainersRunning,
 		Images:        info.Images,

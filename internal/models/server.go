@@ -148,6 +148,25 @@ type Server struct {
 	// InSwarm reports whether this node is currently a member of the swarm.
 	InSwarm bool `json:"in_swarm" gorm:"-"`
 
+	// Capacity as DOCKER reports it, refreshed by the node capacity sweep. Docker's figures are
+	// cgroup-aware, so they describe the node even when it is itself a container or a limited VM —
+	// unlike /proc, which describes the machine underneath.
+	CPUCores    int   `json:"cpu_cores" gorm:"not null;default:0"`
+	MemoryBytes int64 `json:"memory_bytes" gorm:"not null;default:0"`
+	// StorageBytes and StorageFreeBytes size the filesystem holding Docker's data root — the disk
+	// images, containers and unclassed volumes actually consume.
+	StorageBytes     int64 `json:"storage_bytes" gorm:"not null;default:0"`
+	StorageFreeBytes int64 `json:"storage_free_bytes" gorm:"not null;default:0"`
+	// CapacityMeasuredAt is nil on a node never measured, which is not the same as a node with no
+	// capacity: totals skip it rather than adding zero.
+	CapacityMeasuredAt *time.Time `json:"capacity_measured_at,omitempty"`
+
+	// Last measured usage. Recorded only when the sample describes THIS node; a node whose /proc
+	// reports its physical host is left unmeasured rather than contributing another machine's load.
+	CPUPercent      float64    `json:"cpu_percent" gorm:"not null;default:0"`
+	MemUsedBytes    int64      `json:"mem_used_bytes" gorm:"not null;default:0"`
+	UsageMeasuredAt *time.Time `json:"usage_measured_at,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

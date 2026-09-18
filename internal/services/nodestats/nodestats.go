@@ -24,7 +24,9 @@ const (
 	// second SampleCommand spends measuring, so this is a dashboard figure, not a live graph.
 	ttl = 60 * time.Second
 	// runTimeout covers image pull, container start and the sample window.
-	runTimeout       = 45 * time.Second
+	runTimeout = 45 * time.Second
+	// probeTimeout keeps one unreachable node from stalling a sweep.
+	probeTimeout     = 5 * time.Second
 	defaultHelperImg = "busybox:1.36"
 )
 
@@ -66,6 +68,8 @@ const memTolerancePct = 5
 type Service struct {
 	clients NodeDocker
 	images  ImageResolver
+
+	servers Servers
 
 	mu    sync.Mutex
 	cache map[uint]entry

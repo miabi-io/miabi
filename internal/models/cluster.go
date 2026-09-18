@@ -84,10 +84,27 @@ type Cluster struct {
 	ServiceEndpointMode ServiceEndpointMode `json:"service_endpoint_mode" gorm:"not null;default:vip"`
 	// LegacyIngress marks a cluster whose port-forward node became an edge gateway at upgrade, until an
 	// admin confirms that gateway or joins the node to a swarm.
-	LegacyIngress bool      `json:"legacy_ingress" gorm:"not null;default:false"`
-	NodeCount     int64     `json:"node_count" gorm:"-"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	LegacyIngress bool  `json:"legacy_ingress" gorm:"not null;default:false"`
+	NodeCount     int64 `json:"node_count" gorm:"-"`
+	// Capacity is the sum of the cluster's nodes, derived on read rather than stored: a second copy
+	// of a figure the nodes already carry is a copy that can drift.
+	Capacity  *ClusterCapacity `json:"capacity,omitempty" gorm:"-"`
+	CreatedAt time.Time        `json:"created_at"`
+	UpdatedAt time.Time        `json:"updated_at"`
+}
+
+// ClusterCapacity is what a cluster's nodes add up to, and how much of that is measured. A cluster
+// with unmeasured nodes reports fewer than it has rather than counting them as empty.
+type ClusterCapacity struct {
+	Nodes            int64   `json:"nodes"`
+	NodesMeasured    int64   `json:"nodes_measured"`
+	CPUCores         int64   `json:"cpu_cores"`
+	MemoryBytes      int64   `json:"memory_bytes"`
+	StorageBytes     int64   `json:"storage_bytes"`
+	StorageFreeBytes int64   `json:"storage_free_bytes"`
+	NodesWithUsage   int64   `json:"nodes_with_usage"`
+	CPUPercent       float64 `json:"cpu_percent"`
+	MemUsedBytes     int64   `json:"mem_used_bytes"`
 }
 
 // Label is the cluster's display name, falling back to its handle.

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
 import { clustersApi } from '@/api/clusters'
 import type { Cluster } from '@/api/types'
+import { fmtSize } from '@/utils/format'
 
 const notify = useNotificationStore()
 const router = useRouter()
@@ -37,7 +38,7 @@ onMounted(load)
       <div v-if="loading && clusters.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Name</th><th>Location code</th><th>Mode</th><th>Nodes</th></tr></thead>
+          <thead><tr><th>Name</th><th>Location code</th><th>Mode</th><th>Nodes</th><th>Capacity</th><th>In use</th></tr></thead>
           <tbody>
             <tr v-for="c in clusters" :key="c.id" class="row-clickable" @click="router.push(`/admin/clusters/${c.id}`)">
               <td>
@@ -68,6 +69,21 @@ onMounted(load)
                 </span>
               </td>
               <td class="cell-sub">{{ c.node_count }}</td>
+              <td class="cell-sub">
+                <template v-if="c.capacity && c.capacity.nodes_measured">
+                  {{ c.capacity.cpu_cores }} cores · {{ fmtSize(c.capacity.memory_bytes) }}
+                  <span v-if="c.capacity.nodes_measured < c.capacity.nodes" class="cell-sub">
+                    ({{ c.capacity.nodes_measured }} of {{ c.capacity.nodes }} measured)
+                  </span>
+                </template>
+                <span v-else class="text-muted">—</span>
+              </td>
+              <td class="cell-sub">
+                <template v-if="c.capacity && c.capacity.nodes_with_usage">
+                  {{ Math.round(c.capacity.cpu_percent) }}% CPU · {{ fmtSize(c.capacity.mem_used_bytes) }}
+                </template>
+                <span v-else class="text-muted">—</span>
+              </td>
             </tr>
           </tbody>
         </table>

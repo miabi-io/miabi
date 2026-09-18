@@ -33,9 +33,7 @@ type AdminMetricsHandler struct {
 	startTime time.Time
 	subnets   SubnetPoolStater // nil = no network-pool panel
 
-	nodeClients NodeCapacityClients // nil = no fleet-capacity panel
-	nodeStats   NodeHostStats       // nil = capacity and commitment only, no utilization
-	fleetCache  fleetCache
+	nodeCapacity NodeCapacityStore // nil = no fleet panel
 }
 
 // SetSubnetAllocator wires the subnet-pool stats source (nil-safe).
@@ -211,7 +209,7 @@ func (h *AdminMetricsHandler) collect(ctx context.Context) PlatformMetrics {
 		used, total := h.subnets.Stats()
 		pm.NetworkPool = &NetworkPoolStats{Used: used, Available: total - used, Total: total}
 	}
-	pm.Fleet = h.fleet(ctx)
+	pm.Fleet = h.fleet()
 	pm.StorageClasses = h.storageClasses()
 	pm.Signals = h.signals()
 	return pm

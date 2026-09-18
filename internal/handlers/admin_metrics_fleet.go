@@ -4,13 +4,10 @@
 package handlers
 
 import (
-	"context"
-	"sync"
 	"time"
 
-	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/models"
-	"github.com/miabi-io/miabi/internal/services/nodestats"
+	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
 // FleetCapacity is what the fleet physically has, and how much of it workloads have already claimed.
@@ -27,8 +24,9 @@ type FleetCapacity struct {
 	// Workloads with no limit are invisible here, so this is a floor, not a ceiling.
 	CommittedNanoCPUs    int64 `json:"committed_nano_cpus"`
 	CommittedMemoryBytes int64 `json:"committed_memory_bytes"`
-	// MeasuredAt is when the node capacities were last collected (they are cached; see fleetTTL).
-	MeasuredAt time.Time `json:"measured_at"`
+	// StorageBytes and StorageFreeBytes size the filesystems behind each node's Docker data root.
+	StorageBytes     int64 `json:"storage_bytes"`
+	StorageFreeBytes int64 `json:"storage_free_bytes"`
 
 	// Real utilization, sampled on the nodes themselves. CPUPercent is weighted by each node's core
 	// count, so a busy 16-core node counts for more than a busy 2-core one. NodesSampled is how many
@@ -65,160 +63,50 @@ type PlatformSignals struct {
 }
 
 const (
-	// fleetTTL bounds how often node capacity is collected: it is one Docker Info per node, and the
-	// dashboard streams every 5s, so it must not ride the tick.
-	fleetTTL = 60 * time.Second
-	// fleetProbeTimeout keeps one unreachable node from stalling the whole snapshot.
-	fleetProbeTimeout = 3 * time.Second
-	// fleetConcurrency bounds how many nodes are probed at once, so the sweep is flat in fleet size
-	// without opening a connection per node on a large one.
-	fleetConcurrency = 8
-	// fleetRefreshTimeout caps a whole background sweep, so a wedged node cannot leave the refresh
-	// flag set forever and freeze the figures.
-	fleetRefreshTimeout = 2 * time.Minute
+	// usageMaxAge bounds how old a node's usage reading may be before it stops counting toward the
+	// fleet figures, so a node that quietly stopped reporting fades out instead of freezing them.
+	usageMaxAge = 5 * time.Minute
 	// certExpiryWindow is how far ahead a certificate counts as "expiring soon". Two weeks is long
 	// enough to act on a renewal that is not self-healing, short enough not to cry wolf.
 	certExpiryWindow = 14 * 24 * time.Hour
 )
 
-// NodeCapacityClients resolves per-node Docker clients for the capacity sweep. Satisfied by
-// nodes.Clients; nil leaves the fleet panel out rather than reporting zeros.
-type NodeCapacityClients interface {
-	For(serverID uint) (docker.Client, error)
+// NodeCapacityStore reads the stored fleet capacity. Satisfied by repositories.ServerRepository.
+type NodeCapacityStore interface {
+	SumCapacity(clusterID uint, usageMaxAge time.Duration) (repositories.Capacity, error)
 }
 
-// NodeHostStats reads a node's real CPU/memory use. Satisfied by nodestats.Service; nil leaves the
-// fleet figures as capacity and commitment only.
-type NodeHostStats interface {
-	Get(ctx context.Context, serverID uint) (nodestats.Sample, error)
-}
+// SetNodeCapacity wires the stored-capacity reader (nil-safe).
+func (h *AdminMetricsHandler) SetNodeCapacity(c NodeCapacityStore) { h.nodeCapacity = c }
 
-// SetNodeHostStats wires the per-node host sampler (nil-safe).
-func (h *AdminMetricsHandler) SetNodeHostStats(s NodeHostStats) { h.nodeStats = s }
-
-// SetNodeClients wires the per-node Docker clients used for fleet capacity (nil-safe).
-func (h *AdminMetricsHandler) SetNodeClients(c NodeCapacityClients) { h.nodeClients = c }
-
-// fleetCache holds the last capacity sweep, so the SSE tick reads memory instead of the fleet.
-type fleetCache struct {
-	mu         sync.Mutex
-	at         time.Time
-	data       FleetCapacity
-	refreshing bool
-}
-
-// fleet returns fleet capacity WITHOUT ever probing on the caller's path. A probe costs a Docker
-// round trip and a one-second sample per node, so doing it inline made the dashboard slower the
-// more nodes an install had — and, while it held the cache lock, blocked every other reader too.
-// A stale answer is served immediately and the refresh happens behind it; the dashboard streams
-// every 5s, so the new figures arrive on their own.
-//
-// The committed half is a pair of SQL sums, cheap enough to recompute per call and so always live.
-func (h *AdminMetricsHandler) fleet(ctx context.Context) *FleetCapacity {
-	if h.nodeClients == nil {
+// fleet reports the fleet from STORED capacity: the node sweep measures each node on its own
+// schedule and writes what it found, so the dashboard is a query rather than a fan-out of Docker
+// calls. That is what keeps it flat in the number of nodes — probing here made it slower with
+// every node added, and blocked every concurrent reader while it ran.
+func (h *AdminMetricsHandler) fleet() *FleetCapacity {
+	if h.nodeCapacity == nil {
 		return nil
 	}
-	h.fleetCache.mu.Lock()
-	out, at, refreshing := h.fleetCache.data, h.fleetCache.at, h.fleetCache.refreshing
-	if (at.IsZero() || time.Since(at) > fleetTTL) && !refreshing {
-		h.fleetCache.refreshing = true
-		go h.refreshFleet()
+	cap, err := h.nodeCapacity.SumCapacity(0, usageMaxAge)
+	if err != nil {
+		return nil
 	}
-	h.fleetCache.mu.Unlock()
-
+	out := FleetCapacity{
+		CPUCores:         int(cap.CPUCores),
+		MemoryBytes:      cap.MemoryBytes,
+		StorageBytes:     cap.StorageBytes,
+		StorageFreeBytes: cap.StorageFreeBytes,
+		NodesCounted:     int(cap.NodesMeasured),
+		NodesTotal:       int(cap.Nodes),
+		CPUPercent:       cap.CPUPercent,
+		MemoryUsedBytes:  cap.MemUsedBytes,
+		NodesSampled:     int(cap.NodesWithUsage),
+	}
 	out.CommittedNanoCPUs = h.sumBytes(&models.Application{}, "nano_cpus") +
 		h.sumBytes(&models.DatabaseInstance{}, "nano_cpus")
 	out.CommittedMemoryBytes = h.sumBytes(&models.Application{}, "memory_bytes") +
 		h.sumBytes(&models.DatabaseInstance{}, "memory_bytes")
 	return &out
-}
-
-// refreshFleet probes the fleet in the background. It deliberately does NOT use the request context:
-// the request that triggered it has usually returned long before the probe finishes.
-func (h *AdminMetricsHandler) refreshFleet() {
-	ctx, cancel := context.WithTimeout(context.Background(), fleetRefreshTimeout)
-	defer cancel()
-	data := h.probeFleet(ctx)
-
-	h.fleetCache.mu.Lock()
-	h.fleetCache.data = data
-	h.fleetCache.at = time.Now()
-	h.fleetCache.refreshing = false
-	h.fleetCache.mu.Unlock()
-}
-
-// probeFleet asks every node that should be reachable for its CPU and memory totals.
-func (h *AdminMetricsHandler) probeFleet(ctx context.Context) FleetCapacity {
-	var servers []models.Server
-	if err := h.db.Find(&servers).Error; err != nil {
-		return FleetCapacity{}
-	}
-	out := FleetCapacity{NodesTotal: len(servers), MeasuredAt: time.Now()}
-	var weighted, weight float64
-
-	// Nodes are probed concurrently: sequentially, one unreachable node spent its whole timeout
-	// before the next was even tried, so the sweep grew with the size of the fleet. Bounded, so a
-	// large fleet does not open an unbounded number of Docker connections at once.
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, fleetConcurrency)
-	for i := range servers {
-		s := servers[i]
-		if !s.IsLocal && s.Status == models.ServerStatusOffline {
-			continue
-		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			dc, err := h.nodeClients.For(s.ID)
-			if err != nil {
-				return
-			}
-			probeCtx, cancel := context.WithTimeout(ctx, fleetProbeTimeout)
-			info, err := dc.Info(probeCtx)
-			cancel()
-			if err != nil {
-				return
-			}
-			mu.Lock()
-			out.CPUCores += info.CPUs
-			out.MemoryBytes += info.MemTotal
-			out.NodesCounted++
-			mu.Unlock()
-
-			// Sampling runs a container on the node, so it rides this TTL sweep rather than the 5s
-			// stream tick. A node that cannot be sampled simply contributes no utilization.
-			if h.nodeStats == nil {
-				return
-			}
-			st, serr := h.nodeStats.Get(ctx, s.ID)
-			// A sample that describes the physical machine rather than this node is left out of the
-			// totals: several nodes on one box would each add that box's whole usage, which is how
-			// the fleet came to report more memory in use than it has.
-			if serr != nil || !st.DescribesNode {
-				return
-			}
-			mu.Lock()
-			used := int64(st.MemUsedBytes)
-			if used > info.MemTotal {
-				used = info.MemTotal
-			}
-			weighted += st.CPUPercent * float64(info.CPUs)
-			weight += float64(info.CPUs)
-			out.MemoryUsedBytes += used
-			out.NodesSampled++
-			mu.Unlock()
-		}()
-	}
-	wg.Wait()
-
-	if weight > 0 {
-		out.CPUPercent = weighted / weight
-	}
-	return out
 }
 
 // storageClasses aggregates the registered classes and finds the one closest to full.

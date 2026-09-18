@@ -5,6 +5,7 @@ package repositories
 
 import (
 	"errors"
+	"time"
 
 	"github.com/miabi-io/miabi/internal/models"
 	"gorm.io/gorm"
@@ -134,4 +135,101 @@ func (r *ServerRepository) EnsureLocal(name, endpoint string) (*models.Server, e
 // IDByUID resolves a node's uid to its numeric id.
 func (r *ServerRepository) IDByUID(uid string) (uint, error) {
 	return idByUID[models.Server](r.db, uid)
+}
+
+// SetCapacity records what Docker reports a node has. Targeted columns, not a full Save: the sweep
+// runs alongside edits from the console and must not write back a stale copy of the rest of the row.
+func (r *ServerRepository) SetCapacity(id uint, cores int, memory, storage, storageFree int64, at time.Time) error {
+	return r.db.Model(&models.Server{}).Where("id = ?", id).Updates(map[string]any{
+		"cpu_cores":            cores,
+		"memory_bytes":         memory,
+		"storage_bytes":        storage,
+		"storage_free_bytes":   storageFree,
+		"capacity_measured_at": at,
+	}).Error
+}
+
+// SetUsage records a node's last measured load.
+func (r *ServerRepository) SetUsage(id uint, cpuPercent float64, memUsed int64, at time.Time) error {
+	return r.db.Model(&models.Server{}).Where("id = ?", id).Updates(map[string]any{
+		"cpu_percent":       cpuPercent,
+		"mem_used_bytes":    memUsed,
+		"usage_measured_at": at,
+	}).Error
+}
+
+// Capacity is the summed capacity of a set of nodes, with the usage of those measured recently.
+// Nodes never measured are skipped rather than counted as empty, so the totals describe the fleet
+// Miabi can actually see — and NodesMeasured says how much of it that is.
+type Capacity struct {
+	Nodes            int64   `json:"nodes"`
+	NodesMeasured    int64   `json:"nodes_measured"`
+	CPUCores         int64   `json:"cpu_cores"`
+	MemoryBytes      int64   `json:"memory_bytes"`
+	StorageBytes     int64   `json:"storage_bytes"`
+	StorageFreeBytes int64   `json:"storage_free_bytes"`
+	NodesWithUsage   int64   `json:"nodes_with_usage"`
+	CPUPercent       float64 `json:"cpu_percent"` // weighted by core count
+	MemUsedBytes     int64   `json:"mem_used_bytes"`
+}
+
+// SumCapacity aggregates nodes, optionally scoped to one cluster (0 = every cluster). usageMaxAge
+// bounds how old a usage reading may be before it stops counting, so a node that stopped reporting
+// fades out of the figures instead of freezing them.
+func (r *ServerRepository) SumCapacity(clusterID uint, usageMaxAge time.Duration) (Capacity, error) {
+	var servers []models.Server
+	q := r.db.Model(&models.Server{})
+	if clusterID != 0 {
+		q = q.Where("cluster_id = ?", clusterID)
+	}
+	if err := q.Find(&servers).Error; err != nil {
+		return Capacity{}, err
+	}
+	return sumCapacity(servers, usageMaxAge), nil
+}
+
+// SumCapacityByCluster returns the capacity of every cluster in one pass, for the clusters list.
+func (r *ServerRepository) SumCapacityByCluster(usageMaxAge time.Duration) (map[uint]Capacity, error) {
+	var servers []models.Server
+	if err := r.db.Find(&servers).Error; err != nil {
+		return nil, err
+	}
+	byCluster := map[uint][]models.Server{}
+	for i := range servers {
+		byCluster[servers[i].ClusterID] = append(byCluster[servers[i].ClusterID], servers[i])
+	}
+	out := make(map[uint]Capacity, len(byCluster))
+	for id, list := range byCluster {
+		out[id] = sumCapacity(list, usageMaxAge)
+	}
+	return out, nil
+}
+
+func sumCapacity(servers []models.Server, usageMaxAge time.Duration) Capacity {
+	out := Capacity{Nodes: int64(len(servers))}
+	cutoff := time.Now().Add(-usageMaxAge)
+	var weighted, weight float64
+	for i := range servers {
+		s := servers[i]
+		if s.CapacityMeasuredAt == nil {
+			continue
+		}
+		out.NodesMeasured++
+		out.CPUCores += int64(s.CPUCores)
+		out.MemoryBytes += s.MemoryBytes
+		out.StorageBytes += s.StorageBytes
+		out.StorageFreeBytes += s.StorageFreeBytes
+
+		if s.UsageMeasuredAt == nil || s.UsageMeasuredAt.Before(cutoff) {
+			continue
+		}
+		out.NodesWithUsage++
+		out.MemUsedBytes += s.MemUsedBytes
+		weighted += s.CPUPercent * float64(s.CPUCores)
+		weight += float64(s.CPUCores)
+	}
+	if weight > 0 {
+		out.CPUPercent = weighted / weight
+	}
+	return out
 }
