@@ -369,13 +369,26 @@ func gomaRouteValue(route RenderedRoute) (any, error) {
 		if mt := maintenanceOf(route); mt != nil {
 			m["maintenance"] = mt
 		}
+		// Who this route answers for is Miabi's to decide, never the YAML's. Validation already
+		// refuses these keys, but a config stored before that rule — or written straight to the
+		// database — must not be able to claim another tenant's hostname or outrank the console by
+		// declaring a longer path. Overwrite rather than merge.
+		m["hosts"] = route.Hosts
+		path := route.Path
+		if path == "" {
+			path = "/"
+		}
+		m["path"] = path
+		delete(m, "priority")
 		// A disabled route is force-marked so the gateway stops serving it,
 		// regardless of any hand-typed value.
 		if route.Disabled {
 			m["enabled"] = false
 		}
-		if _, ok := m["path"]; !ok {
-			m["path"] = "/"
+		// Same catch-all guard as the structured branch: a route with no host matches every request
+		// on its path.
+		if len(route.Hosts) == 0 {
+			m["enabled"] = false
 		}
 		return m, nil
 	}

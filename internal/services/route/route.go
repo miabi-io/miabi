@@ -21,7 +21,6 @@ import (
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/slug"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
-	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -45,38 +44,6 @@ var (
 )
 
 const maintenanceMessageMax = 1024
-
-// validateAdvanced ensures a non-empty advanced config parses as YAML and does
-// not try to set an inline TLS certificate (Miabi owns TLS).
-func validateAdvanced(cfg string) error {
-	if strings.TrimSpace(cfg) == "" {
-		return nil
-	}
-	var out map[string]any
-	if err := yaml.Unmarshal([]byte(cfg), &out); err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidYAML, err)
-	}
-	if advancedHasInlineCert(out) {
-		return ErrAdvancedTLSCert
-	}
-	return nil
-}
-
-// advancedHasInlineCert reports whether an advanced route config tries to set an inline TLS certificate —
-// i.e. a `tls` mapping carrying certificate/key material (Goma spells it `tls.certificate.{cert,key}`; we
-// also catch the common `certificate`/`cert`/`key`/`certFile`/`keyFile` spellings defensively).
-func advancedHasInlineCert(m map[string]any) bool {
-	tls, ok := m["tls"].(map[string]any)
-	if !ok {
-		return false
-	}
-	for _, k := range []string{"certificate", "cert", "key", "certFile", "keyFile"} {
-		if _, present := tls[k]; present {
-			return true
-		}
-	}
-	return false
-}
 
 // CertResolver resolves a stored certificate's PEM + decrypted key for proxy
 // rendering. Implemented by the certificate service; injected after construction.
@@ -308,10 +275,8 @@ func routeServeState(rt *models.Route, domains []models.Domain, gate, privileged
 	if rt.Generated {
 		return true, models.RouteStatusLive, ""
 	}
-	// A structured route with no hostname matches every request on its path, so the
-	// gateway would funnel all traffic to it. Refuse to serve it (advanced-config
-	// routes carry their hosts in the raw YAML, so they are exempt here).
-	if strings.TrimSpace(rt.AdvancedConfig) == "" && !hasHost(rt.Hosts) {
+
+	if !hasHost(rt.Hosts) {
 		return false, models.RouteStatusOffline, "route has no hosts"
 	}
 	if gate {
@@ -335,8 +300,7 @@ func routeServeState(rt *models.Route, domains []models.Domain, gate, privileged
 }
 
 // workspaceDomains loads a workspace's registered domains for the verified-host
-// gate. A nil registry (or error) yields nil, which disables gating — matching
-// validateHosts, where an unset registry means "don't gate".
+// gate.
 func (s *Service) workspaceDomains(workspaceID uint) []models.Domain {
 	if s.domains == nil {
 		return nil
@@ -428,7 +392,8 @@ func (s *Service) Create(ctx context.Context, workspaceID uint, in Input) (*mode
 		return nil, ErrAppRequired
 	}
 	in.Hosts = normalizeHosts(in.Hosts)
-	if strings.TrimSpace(in.AdvancedConfig) == "" && len(in.Hosts) == 0 {
+
+	if len(in.Hosts) == 0 {
 		return nil, ErrHostRequired
 	}
 	if err := s.validateHosts(workspaceID, in.Hosts); err != nil {
@@ -520,7 +485,7 @@ func (s *Service) Update(ctx context.Context, workspaceID, id uint, in Input) (*
 	// are gated on a registered domain and global hostname uniqueness.
 	if !rt.Generated {
 		in.Hosts = normalizeHosts(in.Hosts)
-		if strings.TrimSpace(in.AdvancedConfig) == "" && len(in.Hosts) == 0 {
+		if len(in.Hosts) == 0 {
 			return nil, ErrHostRequired
 		}
 		if err := s.validateHosts(workspaceID, in.Hosts); err != nil {

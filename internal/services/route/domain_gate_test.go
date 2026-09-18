@@ -37,14 +37,11 @@ func (f fakeDomains) ListByWorkspace(uint) ([]models.Domain, error) { return f.l
 
 func TestValidateHosts(t *testing.T) {
 	s := &Service{}
-	// No registry wired → check disabled.
 	if err := s.validateHosts(1, []string{"anything.com"}); err != nil {
 		t.Errorf("nil registry should skip: %v", err)
 	}
 	s.SetDomains(fakeDomains{list: []models.Domain{{Name: "example.com"}}})
 
-	// validateHosts only checks that supplied hosts are registered; presence is
-	// enforced separately in Create/Update (ErrHostRequired), so empty passes here.
 	if err := s.validateHosts(1, nil); err != nil {
 		t.Errorf("empty hosts should pass: %v", err)
 	}
@@ -118,11 +115,18 @@ func TestRouteServeState(t *testing.T) {
 		t.Errorf("hostless route: serve=%v status=%q reason=%q, want not-served/offline/\"route has no hosts\"", serve, status, reason)
 	}
 
-	// An advanced-config route declares its hosts in the raw YAML, so the
-	// structured-host gate does not apply.
-	serve, status, _ = routeServeState(&models.Route{Enabled: true, AdvancedConfig: "path: /"}, verified, true, false)
+	// An advanced-config route is gated exactly like any other. It used to be exempt, on the theory
+	// that it carried its hosts in the raw YAML — which is precisely how a route could claim a
+	// hostname nobody checked against the workspace's verified domains.
+	serve, status, reason = routeServeState(&models.Route{Enabled: true, AdvancedConfig: "methods: [GET]"}, verified, true, false)
+	if serve || status != models.RouteStatusOffline || reason != "route has no hosts" {
+		t.Errorf("hostless advanced route: serve=%v status=%q reason=%q, want not-served/offline/\"route has no hosts\"", serve, status, reason)
+	}
+
+	// With structured hosts it goes live through the same gate as everything else.
+	serve, status, _ = routeServeState(&models.Route{Enabled: true, Hosts: host, AdvancedConfig: "methods: [GET]"}, verified, true, false)
 	if !serve || status != models.RouteStatusLive {
-		t.Errorf("advanced route: serve=%v status=%q, want served/live", serve, status)
+		t.Errorf("advanced route with hosts: serve=%v status=%q, want served/live", serve, status)
 	}
 
 	// Platform-generated external-access route goes live without a verified domain
@@ -166,27 +170,52 @@ func TestNormalizePath(t *testing.T) {
 	}
 }
 
-func TestValidateAdvancedRejectsInlineCert(t *testing.T) {
+func TestValidateAdvanced(t *testing.T) {
 	cases := []struct {
 		name    string
 		cfg     string
 		wantErr error
 	}{
 		{"empty", "", nil},
-		{"plain", "path: /\nmethods: [GET]", nil},
-		{"tls provider only", "tls:\n  provider: acme", nil},
+		{"allowed fields", "methods: [GET]\nrewrite: /v2\ndisableMetrics: true", nil},
+		{"security without tls", "security:\n  forwardHostHeaders: false", nil},
+		{"health check", "healthCheck:\n  path: /healthz\n  interval: 10s", nil},
+
+		// The hijack: a route that can name its own hosts can name somebody else's, and one that can
+		// set its own path can outrank the console's `/` on the platform domain.
+		{"hosts", "hosts: [victim.example.com]", ErrAdvancedReservedKey},
+		{"path", "path: /api/v1/auth", ErrAdvancedReservedKey},
+		{"priority", "priority: 9999", ErrAdvancedReservedKey},
+		{"enabled", "enabled: true", ErrAdvancedReservedKey},
+		{"disabled", "disabled: false", ErrAdvancedReservedKey},
+		{"name", "name: mb-ws2-other", ErrAdvancedReservedKey},
+		{"target", "target: http://elsewhere", ErrAdvancedReservedKey},
+		{"destination", "destination: http://elsewhere", ErrAdvancedReservedKey},
+		{"backends", "backends:\n  - endpoint: http://elsewhere", ErrAdvancedReservedKey},
+		{"hosts in mixed case", "Hosts: [victim.example.com]", ErrAdvancedReservedKey},
+
+		// TLS is Miabi's entirely — the renderer replaces the block, so accepting one here would only
+		// be a silent no-op.
+		{"tls provider", "tls:\n  provider: acme", ErrAdvancedTLSCert},
 		{"tls certificate", "tls:\n  certificate:\n    cert: AAAA\n    key: BBBB", ErrAdvancedTLSCert},
-		{"tls cert key", "tls:\n  cert: AAAA\n  key: BBBB", ErrAdvancedTLSCert},
 		{"tls certFile", "tls:\n  certFile: /etc/x.pem", ErrAdvancedTLSCert},
+
+		// security.tls names files the GATEWAY reads, so it is outside the allow-list.
+		{"security tls client cert", "security:\n  tls:\n    clientCert: /etc/goma/any.pem", ErrAdvancedUnknownKey},
+
+		{"unknown field", "notARealGomaField: 1", ErrAdvancedUnknownKey},
+		{"wrong type", "methods: 5", ErrAdvancedUnknownKey},
 		{"bad yaml", "tls: [unterminated", ErrInvalidYAML},
 	}
 	for _, c := range cases {
-		err := validateAdvanced(c.cfg)
-		if c.wantErr == nil && err != nil {
-			t.Errorf("%s: unexpected error %v", c.name, err)
-		}
-		if c.wantErr != nil && !errors.Is(err, c.wantErr) {
-			t.Errorf("%s: got %v, want %v", c.name, err, c.wantErr)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			err := validateAdvanced(c.cfg)
+			if c.wantErr == nil && err != nil {
+				t.Errorf("unexpected error %v", err)
+			}
+			if c.wantErr != nil && !errors.Is(err, c.wantErr) {
+				t.Errorf("got %v, want %v", err, c.wantErr)
+			}
+		})
 	}
 }
