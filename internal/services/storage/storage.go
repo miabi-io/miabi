@@ -309,15 +309,11 @@ func (s *Service) CreateOn(ctx context.Context, workspaceID, serverID uint, in C
 			return nil, err
 		}
 		accessMode = models.AccessRWX
-		opts := map[string]string{}
-		for k, v := range driverOpts {
-			opts[strings.TrimSpace(k)] = v
+
+		opts, verr := validateSharedDriverOpts(driver, driverOpts)
+		if verr != nil {
+			return nil, verr
 		}
-		if strings.TrimSpace(opts["device"]) == "" {
-			return nil, ErrDriverDeviceRequired
-		}
-		// Docker's local driver backs NFS/CIFS via a "type" mount option.
-		opts["type"] = driver
 		driverOpts = opts
 		dockerSpec.DriverOpts = opts // Driver stays "" (local backing) by design
 	case models.VolumeDriverHost:
