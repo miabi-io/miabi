@@ -158,6 +158,12 @@ func authAPIKey(c *okapi.Context, apiKeys *auth.APIKeyService, users *repositori
 			return err
 		}
 	}
+
+	if key.WorkspaceID != nil {
+		if err := confineWorkspaceKey(c); err != nil {
+			return err
+		}
+	}
 	return c.Next()
 }
 
