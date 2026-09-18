@@ -109,7 +109,7 @@ func (s *Service) Authorize(in AuthInput) AuthResult {
 	}
 
 	push := isPush(in.Method)
-	if reason := s.authorizePrincipal(key, ws.ID, push); reason != "" {
+	if reason := s.authorizePrincipal(key, ws.ID, repo, push); reason != "" {
 		return AuthResult{Status: http.StatusForbidden, Reason: reason}
 	}
 	if reason := s.authorizeMountSource(in.URI, ws.ID); reason != "" {
@@ -173,12 +173,15 @@ func mountSource(uri string) string {
 
 // authorizePrincipal returns "" when the token may perform the action on the
 // workspace, else a human denial reason.
-func (s *Service) authorizePrincipal(key *models.APIKey, workspaceID uint, push bool) string {
+func (s *Service) authorizePrincipal(key *models.APIKey, workspaceID uint, repo string, push bool) string {
 	if !scopeAllows(key, push) {
 		if push {
 			return "push requires a write or deploy scope"
 		}
 		return "pull requires a read scope"
+	}
+	if reason := s.authorizeBoundApp(key, repo); reason != "" {
+		return reason
 	}
 	if key.WorkspaceID != nil {
 		if *key.WorkspaceID != workspaceID {
@@ -193,6 +196,33 @@ func (s *Service) authorizePrincipal(key *models.APIKey, workspaceID uint, push 
 	}
 	if !roleAllows(member.Role, push) {
 		return "your role does not permit pushing to this workspace"
+	}
+	return ""
+}
+
+func (s *Service) authorizeBoundApp(key *models.APIKey, repo string) string {
+	if key.ApplicationID == nil {
+		return ""
+	}
+	if s.apps == nil {
+		return "this credential is limited to one application, which could not be resolved"
+	}
+	app, err := s.apps.FindByID(*key.ApplicationID)
+	if err != nil {
+		return "this credential is limited to one application, which could not be resolved"
+	}
+	// repo is "<namespace>/<app>"; the segment after the namespace is the application's name.
+	name := strings.TrimSpace(repoTail(repo))
+	if name == "" || !strings.EqualFold(name, app.Name) {
+		return "this credential is limited to the " + app.Name + " repository"
+	}
+	return ""
+}
+
+// repoTail returns everything after the first path segment (the workspace namespace).
+func repoTail(repo string) string {
+	if i := strings.IndexByte(repo, '/'); i >= 0 {
+		return repo[i+1:]
 	}
 	return ""
 }

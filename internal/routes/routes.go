@@ -792,6 +792,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// at an API that can no longer select it.
 	registryServerService.SetInternalNetwork(cfg.InternalNetwork)
 	registryServerService.SetEntitlements(ee)
+	// Holds a pipeline's app-bound registry token to that app's own repository.
+	registryServerService.SetApps(appRepo)
 	gitRepoRepo := repositories.NewGitRepoRepository(db)
 	gitRepoService := gitrepo.NewService(gitRepoRepo)
 	gitRepoService.SetSecrets(secretService) // same vault-reference support as registries
@@ -1121,7 +1123,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		app:          app,
 		cfg:          cfg,
 		v1:           app.Group("/api/v1"),
-		authenticate: middlewares.Authenticate(jwtAuth, apiKeyService, userRepo),
+		authenticate: middlewares.Authenticate(jwtAuth, apiKeyService, userRepo, appRepo),
 		scope:        middlewares.WorkspaceScope(workspaceRepo, customRoleRepo),
 		systemAdmin:  middlewares.RequireSystemAdmin(userRepo),
 		// Auth endpoints fall back to a local limiter if Redis is down (brute-force
