@@ -150,21 +150,69 @@ func TestRenderAdvancedInjectsNameAndBackends(t *testing.T) {
 		ID:          12,
 		WorkspaceID: 1,
 		Name:        "adv",
-		// User-authored config; note a hand-typed (wrong) target that must be ignored.
-		AdvancedYAML: "path: /api\nhosts: [api.example.com]\nrewrite: /v2\ntarget: http://evil:9999\nmiddlewares: [basic-auth]\n",
+		Hosts:       []string{"api.example.com"},
+		Path:        "/api",
+		// User-authored config; the hand-typed target must be ignored.
+		AdvancedYAML: "rewrite: /v2\ntarget: http://evil:9999\nmiddlewares: [basic-auth]\n",
 		Backends:     []Backend{{Endpoint: "http://mb-app-12:80"}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := string(out)
-	for _, want := range []string{"name: mb-ws1-adv", "path: /api", "rewrite: /v2", "endpoint: http://mb-app-12:80", "mb-ws1-basic-auth"} {
+	for _, want := range []string{"name: mb-ws1-adv", "path: /api", "api.example.com", "rewrite: /v2", "endpoint: http://mb-app-12:80", "mb-ws1-basic-auth"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("advanced route missing %q:\n%s", want, s)
 		}
 	}
 	if strings.Contains(s, "evil") {
 		t.Errorf("advanced route leaked the hand-typed target:\n%s", s)
+	}
+}
+
+// The renderer is the last line: even a config stored before the allow-list existed, or written
+// straight into the database, must not be able to claim a hostname or a path of its own.
+func TestRenderAdvancedCannotOverrideHostsOrPath(t *testing.T) {
+	out, err := RenderRoute(RenderedRoute{
+		ID:           12,
+		WorkspaceID:  1,
+		Name:         "adv",
+		Hosts:        []string{"mine.example.com"},
+		Path:         "/app",
+		AdvancedYAML: "hosts: [console.example.com]\npath: /api/v1/auth\npriority: 9999\n",
+		Backends:     []Backend{{Endpoint: "http://mb-app-12:80"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(out)
+	if strings.Contains(s, "console.example.com") {
+		t.Errorf("advanced config hijacked the hostname:\n%s", s)
+	}
+	if strings.Contains(s, "/api/v1/auth") {
+		t.Errorf("advanced config hijacked the path:\n%s", s)
+	}
+	if strings.Contains(s, "priority") {
+		t.Errorf("advanced config kept its ordering weapon:\n%s", s)
+	}
+	if !strings.Contains(s, "mine.example.com") || !strings.Contains(s, "path: /app") {
+		t.Errorf("the route's own host and path were not used:\n%s", s)
+	}
+}
+
+// A hostless advanced route matches every request on its path, so the renderer force-disables it —
+// the same guard the structured branch has always had.
+func TestRenderHostlessAdvancedRouteIsDisabled(t *testing.T) {
+	out, err := RenderRoute(RenderedRoute{
+		ID: 12, WorkspaceID: 1, Name: "adv",
+		AdvancedYAML: "rewrite: /v2\n",
+		Backends:     []Backend{{Endpoint: "http://mb-app-12:80"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "enabled: false") {
+		t.Errorf("hostless advanced route was not disabled:\n%s", out)
 	}
 }
 
