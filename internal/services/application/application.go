@@ -823,6 +823,29 @@ func (s *Service) emitSeverity(app *models.Application, t models.AppEventType, s
 	})
 }
 
+// clearStaleOfficialTemplate drops the official-template mark when the app is repointed at different
+// code. The mark relaxes the restricted profile's UID rule on the grounds that an official image is
+// known to need its own user — a claim about THAT image. Repoint the app elsewhere and the claim no
+// longer holds, so "install an official template, then change the image" must not be a way to keep
+// the relaxed UID for an arbitrary one.
+//
+// A tag change is not a repoint: upgrading an official template to a newer tag is the ordinary thing
+// to do with it, and the image is still that template's.
+func (s *Service) clearStaleOfficialTemplate(app *models.Application) {
+	if !app.OfficialTemplate || app.ID == 0 {
+		return
+	}
+	prev, err := s.apps.FindByID(app.ID)
+	if err != nil {
+		return
+	}
+	if prev.SourceType != app.SourceType ||
+		!strings.EqualFold(strings.TrimSpace(prev.Image), strings.TrimSpace(app.Image)) ||
+		!strings.EqualFold(strings.TrimSpace(prev.GitRepo), strings.TrimSpace(app.GitRepo)) {
+		app.OfficialTemplate = false
+	}
+}
+
 // normalizeImageTag keeps the Image field as a bare repository by splitting a tag embedded in the image
 // reference into the Tag field. A tag in the image reference wins over a separately supplied tag; a
 // digest-pinned ref is left intact (kept whole in Image, no tag).
@@ -1192,6 +1215,7 @@ func (s *Service) Update(app *models.Application) error {
 	if app.SourceType == models.AppSourceImage {
 		app.Image, app.Tag = normalizeImageTag(app.Image, app.Tag)
 	}
+	s.clearStaleOfficialTemplate(app)
 	if err := s.checkImage(app.WorkspaceID, app.Image, app.Tag); err != nil {
 		return err
 	}

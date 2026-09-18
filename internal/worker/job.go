@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -102,9 +103,8 @@ func (h *JobHandler) run(ctx context.Context, j *models.Job) {
 		defer cancel()
 	}
 
-	// The workspace's security profile applies to one-off jobs too, with the job's own run-as user
-	// (or the app's) layered on top; chown the app's managed volumes to whoever that is first.
-	sec, secErr := h.workloadSecurity(app, j.RunAsUser)
+	ownImage := strings.TrimSpace(j.Image) != "" && !strings.EqualFold(strings.TrimSpace(j.Image), strings.TrimSpace(app.Image))
+	sec, secErr := h.workloadSecurityFor(app, j.RunAsUser, app.OfficialTemplate && !ownImage)
 	if secErr != nil {
 		h.finish(j, models.JobFailed, nil, secErr.Error())
 		return

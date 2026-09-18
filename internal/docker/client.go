@@ -368,7 +368,6 @@ func (e *engineClient) RunContainer(ctx context.Context, spec RunSpec) (string, 
 	cfg := &container.Config{
 		Image:        spec.Image,
 		Hostname:     spec.Hostname,
-		User:         spec.User, // "" = image default; "uid:0" under the restricted profile
 		Env:          spec.Env,
 		Entrypoint:   spec.Entrypoint,
 		Cmd:          spec.Cmd,
@@ -393,17 +392,10 @@ func (e *engineClient) RunContainer(ctx context.Context, spec RunSpec) (string, 
 			Memory:         spec.MemoryBytes,
 			NanoCPUs:       spec.NanoCPUs,
 			DeviceRequests: toDeviceRequests(spec.GPUs),
-			Devices:        toDeviceMappings(spec.Devices),
 		},
-		RestartPolicy:  restartPolicy(spec.RestartPolicy),
-		CapDrop:        spec.CapDrop,
-		CapAdd:         spec.CapAdd,
-		GroupAdd:       spec.GroupAdd,
-		ReadonlyRootfs: spec.ReadOnlyRootfs,
+		RestartPolicy: restartPolicy(spec.RestartPolicy),
 	}
-	if spec.NoNewPrivileges {
-		hostCfg.SecurityOpt = append(hostCfg.SecurityOpt, "no-new-privileges")
-	}
+	applyContainerSecurity(cfg, hostCfg, spec)
 
 	var netCfg *network.NetworkingConfig
 	if len(spec.Networks) > 0 {
@@ -530,9 +522,18 @@ func (e *engineClient) RemoveContainer(ctx context.Context, id string, force boo
 	return wrapNotFound(err)
 }
 
-// createOneShot creates (but does not start) a one-shot helper container from a RunSpec. Resource
-// limits and the restart policy are honored so callers can cap a build/probe container; one-shots
-// never restart.
+func applyContainerSecurity(cfg *container.Config, hostCfg *container.HostConfig, spec RunSpec) {
+	cfg.User = spec.User // "" = image default; "uid:0" under the restricted profile
+	hostCfg.CapDrop = spec.CapDrop
+	hostCfg.CapAdd = spec.CapAdd
+	hostCfg.GroupAdd = spec.GroupAdd
+	hostCfg.ReadonlyRootfs = spec.ReadOnlyRootfs
+	hostCfg.Resources.Devices = toDeviceMappings(spec.Devices)
+	if spec.NoNewPrivileges {
+		hostCfg.SecurityOpt = append(hostCfg.SecurityOpt, "no-new-privileges")
+	}
+}
+
 func (e *engineClient) createOneShot(ctx context.Context, spec RunSpec) (string, error) {
 	labels := spec.Labels
 	if labels == nil {
@@ -540,22 +541,19 @@ func (e *engineClient) createOneShot(ctx context.Context, spec RunSpec) (string,
 	}
 	labels[ManagedLabel] = "true"
 
-	binds := make([]string, 0, len(spec.Mounts)+len(spec.Binds))
-	for vol, path := range spec.Mounts {
-		binds = append(binds, vol+":"+path)
-	}
-	binds = append(binds, hostBinds(spec.Binds)...)
+	binds, volMounts := containerVolumeMounts(spec)
 
 	cfg := &container.Config{Image: spec.Image, Env: spec.Env, Entrypoint: spec.Entrypoint, Cmd: spec.Cmd, WorkingDir: spec.WorkingDir, Labels: labels}
 	hostCfg := &container.HostConfig{
 		Binds:  binds,
-		Mounts: hostBindMounts(spec.Binds),
+		Mounts: volMounts,
 		Resources: container.Resources{
 			Memory:         spec.MemoryBytes,
 			NanoCPUs:       spec.NanoCPUs,
 			DeviceRequests: toDeviceRequests(spec.GPUs), // used by the GPU inventory probe
 		},
 	}
+	applyContainerSecurity(cfg, hostCfg, spec)
 
 	var netCfg *network.NetworkingConfig
 	if len(spec.Networks) > 0 {
