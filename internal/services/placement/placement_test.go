@@ -17,6 +17,7 @@ import (
 
 type clusterTable struct {
 	ID              uint `gorm:"primaryKey"`
+	OrganizationID  *uint
 	UID             string
 	Name            string
 	DisplayName     string
@@ -275,6 +276,85 @@ func TestPlacementRefusesACordonedHostNode(t *testing.T) {
 	got, err := s.Place(Request{WorkspaceID: 5, Location: "eu-east", Service: true})
 	if err != nil || got.ServerID != 10 {
 		t.Errorf("service on a swarm cluster whose manager is cordoned: node %d (%v), want node 10", got.ServerID, err)
+	}
+}
+
+// fakeOrgs answers the placement engine's organization questions from a fixed map.
+type fakeOrgs struct {
+	ofWorkspace map[uint]uint
+	owners      map[uint]bool
+}
+
+func (f fakeOrgs) OrganizationOfWorkspace(id uint) uint { return f.ofWorkspace[id] }
+func (f fakeOrgs) OwnsClusters(orgID uint) bool         { return f.owners[orgID] }
+
+// A cluster dedicated to an organization is invisible to every other tenant, and an organization that
+// owns one is CONFINED to it — a dedicated tenant must never quietly land on shared hardware.
+func TestPlacementIsolatesOrganizationClusters(t *testing.T) {
+	s, db := newPlacement(t, map[uint]bool{10: true, 11: true, 20: true})
+	acme := uint(7)
+	if err := db.Model(&clusterTable{}).Where("id = ?", 3).
+		Updates(map[string]any{"organization_id": acme, "visibility": "organization"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	// Workspace 5 is in Acme, which owns cluster 3; workspace 6 is an ordinary tenant.
+	if err := db.Create(&workspaceTable{ID: 6}).Error; err != nil {
+		t.Fatal(err)
+	}
+	s.SetOrgs(fakeOrgs{
+		ofWorkspace: map[uint]uint{5: acme, 6: 2},
+		owners:      map[uint]bool{acme: true},
+	})
+
+	// The owning tenant may place there, and only there.
+	if got, err := s.Place(Request{WorkspaceID: 5, Location: "gpu"}); err != nil || got.ClusterID != 3 {
+		t.Errorf("acme in its own cluster: %+v (%v), want cluster 3", got, err)
+	}
+	if _, err := s.Place(Request{WorkspaceID: 5, Location: "default"}); !errors.Is(err, ErrLocationNotAllowed) {
+		t.Errorf("acme on a shared cluster: err = %v, want ErrLocationNotAllowed", err)
+	}
+	if got, err := s.Place(Request{WorkspaceID: 5}); err != nil || got.ClusterID != 3 {
+		t.Errorf("acme with no location named: %+v (%v), want its own cluster 3, never a shared fallback", got, err)
+	}
+
+	// Another tenant cannot reach it, by name or through the location list.
+	if _, err := s.Place(Request{WorkspaceID: 6, Location: "gpu"}); !errors.Is(err, ErrLocationNotAllowed) {
+		t.Errorf("outsider naming a dedicated cluster: err = %v, want ErrLocationNotAllowed", err)
+	}
+	locs, err := s.Locations(6, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range locs {
+		if l.Name == "gpu" {
+			t.Error("a dedicated cluster must not appear in another tenant's locations")
+		}
+	}
+	if err := s.SetDefaultLocation(6, "gpu", false); !errors.Is(err, ErrLocationNotAllowed) {
+		t.Errorf("outsider defaulting to a dedicated cluster: err = %v", err)
+	}
+
+	// Colocation follows an existing resource, so it is the one path that could cross realms.
+	if _, err := s.Place(Request{WorkspaceID: 6, Colocate: 20}); !errors.Is(err, ErrLocationNotAllowed) {
+		t.Errorf("colocation into another organization's cluster: err = %v, want ErrLocationNotAllowed", err)
+	}
+
+	// A platform admin still sees and places everywhere.
+	if got, err := s.Place(Request{WorkspaceID: 6, Location: "gpu", Admin: true}); err != nil || got.ClusterID != 3 {
+		t.Errorf("admin in a dedicated cluster: %+v (%v), want cluster 3", got, err)
+	}
+}
+
+// Without dedicated clusters nothing changes: every tenant keeps the shared locations it had.
+func TestPlacementUnaffectedWithoutOrganizationClusters(t *testing.T) {
+	s, _ := newPlacement(t, map[uint]bool{10: true, 11: true})
+	s.SetOrgs(fakeOrgs{ofWorkspace: map[uint]uint{5: 7}})
+
+	if got, err := s.Place(Request{WorkspaceID: 5}); err != nil || got.ClusterID != 1 {
+		t.Errorf("placed %+v (%v), want the shared default cluster 1", got, err)
+	}
+	if got, err := s.Place(Request{WorkspaceID: 5, Location: "eu-east"}); err != nil || got.ClusterID != 2 {
+		t.Errorf("placed %+v (%v), want the shared cluster 2", got, err)
 	}
 }
 

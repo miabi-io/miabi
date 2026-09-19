@@ -11,12 +11,14 @@ import (
 	"time"
 
 	"github.com/jkaninda/okapi"
+	"github.com/miabi-io/miabi/internal/enterprise"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/nodes"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/cluster"
 	"github.com/miabi-io/miabi/internal/services/node"
+	"github.com/miabi-io/miabi/internal/services/organization"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
@@ -29,6 +31,14 @@ type ClusterHandler struct {
 	audit             *audit.Logger
 	applyConnectivity ConnectivityApplier
 	capacity          ClusterCapacityStore
+	ee                enterprise.EE
+	orgs              *organization.Service
+}
+
+// SetOrganizations wires organization-dedicated clusters and the entitlement that gates them
+// (nil-safe; without it a cluster cannot be assigned to an organization).
+func (h *ClusterHandler) SetOrganizations(svc *organization.Service, ee enterprise.EE) {
+	h.orgs, h.ee = svc, ee
 }
 
 // ClusterCapacityStore sums the nodes of each cluster. Satisfied by repositories.ServerRepository.

@@ -75,6 +75,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/nodestats"
 	"github.com/miabi-io/miabi/internal/services/notify"
 	"github.com/miabi-io/miabi/internal/services/oauth"
+	"github.com/miabi-io/miabi/internal/services/organization"
 	"github.com/miabi-io/miabi/internal/services/pipeline"
 	"github.com/miabi-io/miabi/internal/services/placement"
 	"github.com/miabi-io/miabi/internal/services/platformbackup"
@@ -203,6 +204,7 @@ type routerHandlers struct {
 	oauthAdmin          *handlers.OAuthAdminHandler
 	oauthPublic         *handlers.OAuthHandler
 	license             *handlers.LicenseHandler
+	adminOrganization   *handlers.AdminOrganizationHandler
 	ssoAdmin            *handlers.SSOAdminHandler
 	ldapAdmin           *handlers.LDAPAdminHandler
 	permission          *handlers.PermissionHandler
@@ -255,6 +257,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	oauthService := oauth.NewService(oauthRepo, userRepo, redisClient)
 	oauthService.SetWorkspaces(workspaceRepo) // auto-join SSO users to a provider's default workspace
 	orgRepo := repositories.NewOrganizationRepository(db)
+	clusterRepo := repositories.NewClusterRepository(db)
+	// Organizations: the tenant realm workspaces belong to, their workspace cap, and the clusters
+	// dedicated to them. One default org always exists, so this is wired in every edition.
+	organizationService := organization.NewService(orgRepo)
 	samlConfigRepo := repositories.NewSAMLConfigRepository(db)
 	scimTokenRepo := repositories.NewSCIMTokenRepository(db)
 	ldapRepo := repositories.NewLDAPRepository(db)
@@ -484,6 +490,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Enforce platform CPU/memory caps on app create/update.
 	appService.SetSettings(settingsProvider)
 	nodeService.SetNodeLimit(func() int { return ee.Entitlements().NodeLimit() })
+	organizationService.SetClusters(clusterRepo)
+	workspaceService.SetOrgs(organizationService)
 	// A cordon binds Miabi's placement; Swarm schedules service tasks itself and has to be told too.
 	nodeService.SetSwarmCordon(clusterService.MirrorCordon)
 	if cronManager != nil {
@@ -762,8 +770,11 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	monitoringService := monitoring.NewService(appRepo, releaseRepo, dbRepo, stackRepo, appEventRepo, repositories.NewMetricRepository(db), nodeClients)
 	monitoringService.SetSwarmManager(clusterService)
 	monitoringService.SetServerInfo(nodeService)
-	placementService := placement.NewService(repositories.NewClusterRepository(db), serverRepo, nodeClients.Connected)
+	placementService := placement.NewService(clusterRepo, serverRepo, nodeClients.Connected)
 	placementService.SetPolicy(quotaService)
+	// Dedicated clusters: a tenant sees the shared locations plus its own organization's, and an
+	// organization that owns clusters is confined to them.
+	placementService.SetOrgs(orgPlacement{orgs: organizationService, workspaces: workspaceRepo, clusters: clusterRepo})
 	placer := handlers.NewPlacer(placementService, userRepo)
 	marketplaceService := marketplace.NewService(appService, databaseService, storageService, stackService, repositories.NewTemplateInstallRepository(db), repositories.NewTemplateRepository(db))
 	marketplaceService.SetPlacer(placementService)
@@ -1231,6 +1242,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			oauthPublic:         handlers.NewOAuthHandler(oauthService, oauthRepo, authService, sessionRepo, auditLogger, cfg),
 			license:             handlers.NewLicenseHandler(ee, licenseNodeCount, func() int64 { n, _ := planRepo.Count(); return n }, installID, auditLogger),
 			ssoAdmin:            handlers.NewSSOAdminHandler(orgRepo, samlConfigRepo, scimTokenRepo, ee, auditLogger),
+			adminOrganization:   handlers.NewAdminOrganizationHandler(organizationService, userRepo, clusterRepo, ee, auditLogger),
 			ldapAdmin:           handlers.NewLDAPAdminHandler(ldapRepo, ee, auditLogger),
 			permission:          handlers.NewPermissionHandler(),
 			customRole:          handlers.NewCustomRoleHandler(customRoleService, workspaceRepo, ee, auditLogger),
@@ -1324,6 +1336,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// query no matter how many nodes there are.
 	r.h.adminMetrics.SetNodeCapacity(serverRepo)
 	r.h.cluster.SetCapacityStore(serverRepo)
+	r.h.cluster.SetOrganizations(organizationService, ee)
 	r.h.node.SetNodeStats(nodeStatsService)
 
 	// Restrict browser WebSocket upgrades (exec/log/node/runner tunnels) to

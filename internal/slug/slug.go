@@ -77,7 +77,7 @@ var reserved = map[string]bool{
 	"api": true, "v1": true, "internal": true, "registry": true,
 	"login": true, "logout": true, "invitations": true, "new": true,
 	"settings": true, "catalog": true,
-	// Top-level API path segments that sit beside the workspace handle.
+	"organizations": true, "orgs": true, "org": true,
 	"workspaces": true, "users": true, "auth": true, "health": true,
 }
 

@@ -30,20 +30,21 @@ type NetworkEnsurer interface {
 const InvitationTTL = 7 * 24 * time.Hour
 
 var (
-	ErrNameTaken              = errors.New("workspace name already taken")
-	ErrNameInvalid            = errors.New("name must contain only lowercase letters, digits and hyphens")
-	ErrNameReserved           = errors.New("that workspace name is reserved")
-	ErrSystemNameLocked       = errors.New("the system workspace name cannot be changed")
-	ErrLastOwner              = errors.New("cannot remove or demote the last owner")
-	ErrAlreadyMember          = errors.New("user is already a member")
-	ErrInvitePending          = errors.New("a pending invitation for this email already exists")
-	ErrInvalidInvite          = errors.New("invalid or expired invitation")
-	ErrInvalidRole            = errors.New("invalid role")
-	ErrSystemProtected        = errors.New("the platform system workspace cannot be deleted")
-	ErrOutranked              = errors.New("cannot modify a member whose role outranks yours")
-	ErrRoleAboveSelf          = errors.New("cannot grant a role more privileged than your own")
-	ErrWorkspaceLimitReached  = errors.New("workspace limit reached for this user")
-	ErrMembershipLimitReached = errors.New("workspace membership limit reached for this user")
+	ErrNameTaken                = errors.New("workspace name already taken")
+	ErrNameInvalid              = errors.New("name must contain only lowercase letters, digits and hyphens")
+	ErrNameReserved             = errors.New("that workspace name is reserved")
+	ErrSystemNameLocked         = errors.New("the system workspace name cannot be changed")
+	ErrLastOwner                = errors.New("cannot remove or demote the last owner")
+	ErrAlreadyMember            = errors.New("user is already a member")
+	ErrInvitePending            = errors.New("a pending invitation for this email already exists")
+	ErrInvalidInvite            = errors.New("invalid or expired invitation")
+	ErrInvalidRole              = errors.New("invalid role")
+	ErrSystemProtected          = errors.New("the platform system workspace cannot be deleted")
+	ErrOutranked                = errors.New("cannot modify a member whose role outranks yours")
+	ErrRoleAboveSelf            = errors.New("cannot grant a role more privileged than your own")
+	ErrWorkspaceLimitReached    = errors.New("workspace limit reached for this user")
+	ErrOrgWorkspaceLimitReached = errors.New("this organization has reached its workspace limit")
+	ErrMembershipLimitReached   = errors.New("workspace membership limit reached for this user")
 )
 
 // KeyShredder permanently deletes a workspace's encryption keys (crypto-shred on
@@ -62,6 +63,7 @@ type MiddlewareSeeder interface {
 type Service struct {
 	repo   *repositories.WorkspaceRepository
 	users  *repositories.UserRepository
+	orgs   Orgs
 	nets   NetworkEnsurer
 	seeder MiddlewareSeeder
 	plans  *repositories.PlanRepository
@@ -104,6 +106,38 @@ func (s *Service) SetKeyShredder(k KeyShredder) { s.keys = k }
 
 // SetMiddlewareSeeder wires the default-policy seeder used at workspace creation.
 func (s *Service) SetMiddlewareSeeder(m MiddlewareSeeder) { s.seeder = m }
+
+// Orgs resolves a user's home organization and that organization's workspace cap. Satisfied by the
+// organization service.
+type Orgs interface {
+	HomeOrganization(u *models.User) uint
+	CapReached(orgID uint) bool
+	Get(orgID uint) (*models.Organization, error)
+}
+
+// SetOrgs wires organization ownership of workspaces (nil-safe; without it a workspace is created
+// with no organization, which resolves to the default one).
+func (s *Service) SetOrgs(o Orgs) { s.orgs = o }
+
+// organizationFor is the organization a user's new workspace belongs to, and the default location it
+// should land in. Both are zero when organizations are not wired.
+func (s *Service) organizationFor(ownerID uint) (orgID uint, defaultCluster *uint) {
+	if s.orgs == nil {
+		return 0, nil
+	}
+	u, err := s.users.FindByID(ownerID)
+	if err != nil {
+		return 0, nil
+	}
+	orgID = s.orgs.HomeOrganization(u)
+	if orgID == 0 {
+		return 0, nil
+	}
+	if org, err := s.orgs.Get(orgID); err == nil {
+		defaultCluster = org.DefaultClusterID
+	}
+	return orgID, defaultCluster
+}
 
 // SetQuota wires the quota service so member invitations/acceptances are gated
 // by the workspace's effective max-members limit. Optional: when unset (or with
@@ -232,6 +266,10 @@ func (s *Service) Create(ownerID uint, displayName, handle, description string) 
 	if err := s.canOwnAnother(ownerID); err != nil {
 		return nil, err
 	}
+	orgID, orgCluster := s.organizationFor(ownerID)
+	if orgID != 0 && s.orgs.CapReached(orgID) {
+		return nil, ErrOrgWorkspaceLimitReached
+	}
 	base := strings.TrimSpace(handle)
 	if base == "" {
 		base = displayName
@@ -244,6 +282,10 @@ func (s *Service) Create(ownerID uint, displayName, handle, description string) 
 		displayName = name
 	}
 	ws := &models.Workspace{Name: name, DisplayName: displayName, Description: description, OwnerID: ownerID}
+	if orgID != 0 {
+		ws.OrganizationID = &orgID
+		ws.DefaultClusterID = orgCluster
+	}
 	if err := s.repo.CreateWithOwner(ws); err != nil {
 		return nil, err
 	}

@@ -911,6 +911,64 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Summary:     "Send a synthetic event to a SIEM target",
 		},
 
+		// Organizations. Reading is always allowed — one org always exists — while creating a second
+		// realm, dedicating a cluster to one or changing the default is gated on `organizations`.
+		{
+			Method:      http.MethodGet,
+			Path:        "/organizations",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminOrganization.List,
+			Summary:     "List organizations",
+			Response:    &dto.Response[[]models.Organization]{},
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/organizations/{id}",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminOrganization.Get,
+			Summary:     "Get an organization and the clusters dedicated to it",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/organizations",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminOrganization.Create),
+			Summary:     "Create an organization",
+			Request:     &handlers.AdminCreateOrganizationRequest{},
+			Options: []okapi.RouteOption{
+				okapi.DocResponse(201, &dto.Response[models.Organization]{}),
+			},
+		},
+		{
+			Method:      http.MethodPut,
+			Path:        "/organizations/{id}",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminOrganization.Update),
+			Summary:     "Update an organization's label, owner, workspace cap or default location",
+			Request:     &handlers.AdminUpdateOrganizationRequest{},
+			Response:    &dto.Response[models.Organization]{},
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/organizations/{id}/default",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminOrganization.SetDefault,
+			Summary:     "Make this the default organization",
+		},
+		{
+			Method:      http.MethodDelete,
+			Path:        "/organizations/{id}",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminOrganization.Delete,
+			Summary:     "Delete an empty organization",
+		},
+
 		// Platform announcements (Enterprise; gated announcements → 402 in CE).
 		{
 			Method:      http.MethodGet,
