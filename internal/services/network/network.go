@@ -266,3 +266,49 @@ func randHex(n int) string {
 	}
 	return hex.EncodeToString(b)
 }
+
+// Detail is a workspace network with the addressing the engine actually gave it. The stored row says
+// what Miabi asked for; this says what exists, which is what an operator debugging connectivity
+// needs — and the only place the IPv6 half is visible at all.
+type Detail struct {
+	models.Network
+	// Exists is false when the network is recorded but absent from the engine — a node rebuilt
+	// without it, or a hand-removed network. The addressing fields are then empty rather than stale.
+	Exists      bool   `json:"exists"`
+	Subnet      string `json:"subnet,omitempty"`
+	Gateway     string `json:"gateway,omitempty"`
+	IPv6Subnet  string `json:"ipv6_subnet,omitempty"`
+	IPv6Gateway string `json:"ipv6_gateway,omitempty"`
+	EnableIPv6  bool   `json:"enable_ipv6"`
+	Scope       string `json:"scope,omitempty"`
+}
+
+// Detail returns one workspace network with its live addressing. A network the engine does not have
+// (an overlay no local container has attached yet, an offline node) comes back with Exists false
+// rather than an error: the row is still the truth about what the workspace owns.
+func (s *Service) Detail(ctx context.Context, workspaceID, id uint) (*Detail, error) {
+	n, err := s.repo.FindInWorkspace(workspaceID, id)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	out := &Detail{Network: *n}
+	if s.docker == nil {
+		return out, nil
+	}
+	nets, lerr := s.docker.ListNetworks(ctx)
+	if lerr != nil {
+		return out, nil
+	}
+	for i := range nets {
+		if nets[i].Name != n.DockerName {
+			continue
+		}
+		live := nets[i]
+		out.Exists = true
+		out.Subnet, out.Gateway = live.Subnet, live.Gateway
+		out.IPv6Subnet, out.IPv6Gateway = live.IPv6Subnet, live.IPv6Gateway
+		out.EnableIPv6, out.Scope = live.EnableIPv6, live.Scope
+		break
+	}
+	return out, nil
+}

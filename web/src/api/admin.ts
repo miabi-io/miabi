@@ -27,6 +27,7 @@ import type {
   PlanInput,
   DatabaseSize,
   DatabaseSizeInput,
+  NetworkingInfo,
   StorageClass,
   StorageClassInput,
   WorkspaceQuotaOverride,
@@ -246,6 +247,8 @@ export const adminApi = {
   // DEK version). Returns { version, reencrypted }.
   rotateWorkspaceKey: (id: number) =>
     api.post<ApiResponse<{ version: number; reencrypted: number }>>(`/admin/workspaces/${id}/rotate-key`),
+  // Read-only networking posture (IPv6, the managed subnet pool, the shared proxy network).
+  getNetworkingInfo: () => api.get<ApiResponse<NetworkingInfo>>('/admin/networking'),
   // Read-only encryption posture (per-workspace keys, auto-rotation, gateway config encryption).
   getEncryptionInfo: () =>
     api.get<ApiResponse<{ encryption_enabled: boolean; per_workspace_keys: boolean; auto_rotate: boolean; rotate_months: number; gateway_config_encryption: boolean }>>('/admin/encryption'),

@@ -113,8 +113,11 @@ import (
 
 // Router holds the app, config, versioned group, middleware, and handlers.
 type Router struct {
-	app              *okapi.Okapi
-	cfg              *config.Config
+	app *okapi.Okapi
+	cfg *config.Config
+	// netInfo is the networking posture the admin Settings page reports. Resolved at boot because
+	// the IPv6 answer depends on the engine, not only on the environment.
+	netInfo          handlers.NetworkingInfo
 	v1               *okapi.Group
 	authenticate     okapi.Middleware
 	scope            okapi.Middleware
@@ -341,6 +344,9 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Subnet allocator: hands out pool subnets for every managed Docker network so
 	// creation doesn't exhaust Docker's small built-in address pools. Nil-safe —
 	// on a config error the services fall back to Docker's default pool.
+	// Resolved at boot because it depends on the engine; reported to the admin Settings page so an
+	// operator sees why a requested setting is not in force.
+	var ipv6Active bool
 	subnetAllocator, err := netalloc.NewService(repositories.NewNetworkAllocationRepository(db), cfg.NetworkPoolCIDR, cfg.NetworkSubnetPrefix)
 	if err != nil {
 		logger.Warn("subnet allocator disabled; falling back to Docker's default address pool", "error", err)
@@ -350,7 +356,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		// hand out an overlapping one (best-effort; skipped when Docker is offline).
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		_ = subnetAllocator.ImportExisting(ctx, dockerClient, 0)
-		subnetAllocator.SetIPv6(ipv6Enabled(ctx, dockerClient, cfg), cfg.NetworkIPv6ULAPrefix)
+		ipv6Active = ipv6Enabled(ctx, dockerClient, cfg)
+		subnetAllocator.SetIPv6(ipv6Active, cfg.NetworkIPv6ULAPrefix)
 		cancel()
 	}
 	networkService := network.NewService(networkRepo, dockerClient)
@@ -1131,8 +1138,16 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	}
 
 	r := &Router{
-		app:          app,
-		cfg:          cfg,
+		app: app,
+		cfg: cfg,
+		netInfo: handlers.NetworkingInfo{
+			IPv6Enabled:   cfg.NetworkIPv6,
+			IPv6Active:    ipv6Active,
+			IPv6ULAPrefix: cfg.NetworkIPv6ULAPrefix,
+			PoolCIDR:      cfg.NetworkPoolCIDR,
+			SubnetPrefix:  cfg.NetworkSubnetPrefix,
+			ProxyNetwork:  cfg.ProxyNetwork,
+		},
 		v1:           app.Group("/api/v1"),
 		authenticate: middlewares.Authenticate(jwtAuth, apiKeyService, userRepo, appRepo),
 		scope:        middlewares.WorkspaceScope(workspaceRepo, customRoleRepo),

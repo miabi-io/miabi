@@ -102,9 +102,16 @@ type Network struct {
 	Driver string            `json:"driver"`
 	Scope  string            `json:"scope"`
 	Labels map[string]string `json:"labels,omitempty"`
-	// Subnet is the network's first IPAM subnet (CIDR), empty if unset. Used by the
+	// Subnet is the network's first IPv4 IPAM subnet (CIDR), empty if unset. Used by the
 	// subnet allocator to reserve pool subnets already in use by existing networks.
-	Subnet string `json:"subnet,omitempty"`
+	Subnet  string `json:"subnet,omitempty"`
+	Gateway string `json:"gateway,omitempty"`
+	// IPv6Subnet and IPv6Gateway are the v6 half of a dual-stack network, empty on an IPv4-only one.
+	// EnableIPv6 is what the daemon reports, which is the honest answer for a network created before
+	// Miabi set the flag explicitly.
+	IPv6Subnet  string `json:"ipv6_subnet,omitempty"`
+	IPv6Gateway string `json:"ipv6_gateway,omitempty"`
+	EnableIPv6  bool   `json:"enable_ipv6"`
 }
 
 // LogLine is a single demultiplexed log line.

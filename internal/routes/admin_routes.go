@@ -201,6 +201,14 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 		},
 		{
 			Method:      http.MethodGet,
+			Path:        "/networking",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     handlers.NewNetworkingInfo(r.netInfo),
+			Summary:     "Networking posture (IPv6, the managed subnet pool, the shared proxy network)",
+		},
+		{
+			Method:      http.MethodGet,
 			Path:        "/encryption",
 			Group:       g,
 			Middlewares: admin,

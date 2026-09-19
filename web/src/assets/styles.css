@@ -1160,6 +1160,19 @@ input[type="radio"]:focus-visible {
   background: transparent; border-color: transparent; color: var(--text-tertiary);
 }
 .btn-icon-danger:hover:not(:disabled) { background: var(--danger-50); color: var(--danger-600); }
+/* Accent icon button. Unlike the muted and danger variants it carries the accent AT REST: it marks an
+   action worth noticing in a row rather than one you reach for only when you already mean to. The
+   accent ramp is themeable (assets/accents.css), so this follows whatever the install has chosen. */
+.btn-icon-accent {
+  background: transparent; border-color: transparent; color: var(--primary-500);
+}
+.btn-icon-accent:hover:not(:disabled) { background: var(--primary-50); color: var(--primary-600); }
+/* Compact icon button for dense row actions sitting beside text, where the 32px square is heavier
+   than the line it belongs to. */
+.btn-icon-sm {
+  width: 26px; height: 26px;
+  font-size: 15px;
+}
 
 /* Warning button (referenced by views but previously undefined). */
 .btn-warning {

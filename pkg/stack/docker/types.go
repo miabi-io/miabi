@@ -32,7 +32,12 @@ type Container struct {
 type ContainerNetwork struct {
 	Name      string `json:"name"`
 	IPAddress string `json:"ip_address"`
-	Gateway   string `json:"gateway,omitempty"`
+	// IPv6Address is empty on a single-stack network. It answers the one question enabling IPv6
+	// creates that nothing else can: the network detail shows the v6 SUBNET, this shows whether a
+	// container was actually given an address out of it — a container started before the switch was
+	// flipped has none.
+	IPv6Address string `json:"ipv6_address,omitempty"`
+	Gateway     string `json:"gateway,omitempty"`
 	// Aliases are the container's DNS aliases on this network — the only stable way to address it, so
 	// moving a container between networks (see the bridge -> overlay migration in services/network)
 	// must carry them across verbatim rather than recomputing them.

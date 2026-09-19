@@ -7,6 +7,7 @@ import { networkApi } from '@/api/networks'
 import type { Network } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AppModal from '@/components/AppModal.vue'
+import NetworkDetailModal from '@/components/NetworkDetailModal.vue'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -19,6 +20,9 @@ const toDelete = ref<Network | null>(null)
 const deleting = ref(false)
 const saving = ref(false)
 const form = ref({ name: '', driver: 'bridge', internal: false })
+
+// The detail modal reads the addressing itself; this page only chooses which network to show.
+const detailFor = ref<Network | null>(null)
 
 async function load(id: number | null) {
   if (!id) { items.value = []; return }
@@ -106,7 +110,10 @@ async function confirmRemove() {
               <td class="cell-sub">{{ n.docker_name }}</td>
               <td class="cell-sub">{{ n.driver }}</td>
               <td class="text-right">
-                <button v-if="ws.canEdit && !n.is_default" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="toDelete = n">
+                <button class="btn-icon btn-icon-sm btn-icon-accent" title="Network details" aria-label="Network details" @click="detailFor = n">
+                  <span class="mdi mdi-ip-network-outline"></span>
+                </button>
+                <button v-if="ws.canEdit && !n.is_default" class="btn-icon btn-icon-sm btn-icon-danger" title="Delete" aria-label="Delete" @click="toDelete = n">
                   <span class="mdi mdi-delete-outline"></span>
                 </button>
               </td>
@@ -117,6 +124,13 @@ async function confirmRemove() {
     </div>
 
     <Teleport to="body">
+      <NetworkDetailModal
+        v-if="detailFor"
+        :workspace-id="currentWorkspaceId"
+        :network="detailFor"
+        @close="detailFor = null"
+      />
+
       <AppModal v-if="showCreate" @close="showCreate = false">
         <div class="modal-header">
           <h3>New network</h3>
