@@ -437,7 +437,8 @@ func (h *NodeHandler) setCordon(c *okapi.Context, v bool) error {
 	if err != nil {
 		return c.AbortBadRequest("invalid node id")
 	}
-	if err := h.nodes.SetCordoned(id, v); err != nil {
+	err = h.nodes.SetCordoned(c.Request().Context(), id, v)
+	if err != nil && !errors.Is(err, node.ErrSwarmNotMirrored) {
 		return h.mapErr(c, err)
 	}
 	action := "node.uncordon"
@@ -445,6 +446,11 @@ func (h *NodeHandler) setCordon(c *okapi.Context, v bool) error {
 		action = "node.cordon"
 	}
 	h.record(c, action, id)
+	// The flag is saved either way; a mirror that failed is reported so the operator knows Swarm was
+	// not told, rather than reading "node updated" and trusting a cordon Swarm will ignore.
+	if err != nil {
+		return message(c, err.Error())
+	}
 	return message(c, "node updated")
 }
 

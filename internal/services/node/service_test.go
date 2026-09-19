@@ -4,6 +4,7 @@
 package node
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -322,5 +323,59 @@ func TestUpdateManagerRenamesLabel(t *testing.T) {
 	}
 	if !updated.IsLocal {
 		t.Error("the manager should still be the local node")
+	}
+}
+
+// A cordon is mirrored to the swarm scheduler, and a mirror that fails still saves the flag — but says
+// so, because a cordon Swarm never heard about keeps taking service tasks.
+func TestSetCordonedMirrorsToTheSwarmScheduler(t *testing.T) {
+	repo := nameRepo(t)
+	srv := &models.Server{Name: "worker-a"}
+	if err := repo.Create(srv); err != nil {
+		t.Fatal(err)
+	}
+	s := NewService(repo, nil)
+
+	cordoned := func() bool {
+		t.Helper()
+		got, err := repo.FindByID(srv.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.Cordoned
+	}
+
+	// Unwired, the cordon stays Miabi-side and reports no problem.
+	if err := s.SetCordoned(context.Background(), srv.ID, true); err != nil {
+		t.Fatalf("cordon without a mirror: %v", err)
+	}
+	if !cordoned() {
+		t.Error("the node should be cordoned")
+	}
+
+	var got []bool
+	s.SetSwarmCordon(func(_ context.Context, serverID uint, c bool) error {
+		if serverID != srv.ID {
+			t.Errorf("mirrored node %d, want %d", serverID, srv.ID)
+		}
+		got = append(got, c)
+		return nil
+	})
+	if err := s.SetCordoned(context.Background(), srv.ID, false); err != nil {
+		t.Fatalf("uncordon: %v", err)
+	}
+	if len(got) != 1 || got[0] {
+		t.Errorf("mirror calls = %v, want one call with cordoned=false", got)
+	}
+	if cordoned() {
+		t.Error("the node should no longer be cordoned")
+	}
+
+	s.SetSwarmCordon(func(context.Context, uint, bool) error { return errors.New("swarm manager unreachable") })
+	if err := s.SetCordoned(context.Background(), srv.ID, true); !errors.Is(err, ErrSwarmNotMirrored) {
+		t.Errorf("failed mirror err = %v, want ErrSwarmNotMirrored", err)
+	}
+	if !cordoned() {
+		t.Error("the flag should be saved even when the mirror fails")
 	}
 }
