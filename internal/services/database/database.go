@@ -7,6 +7,7 @@
 package database
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -30,16 +31,17 @@ import (
 )
 
 var (
-	ErrUnsupportedEngine = errors.New("unsupported database engine")
-	ErrSlugTaken         = errors.New("database name already taken in workspace")
-	ErrNoLogicalDBs      = errors.New("this engine does not support multiple databases")
-	ErrInstanceNotReady  = errors.New("database instance is not running yet")
-	ErrNotFound          = errors.New("not found")
-	ErrNameTaken         = errors.New("a database with this name already exists on the instance")
-	ErrNoContainer       = errors.New("database has no container; re-provision it")
-	ErrInstanceInUse     = errors.New("a database on this instance is attached to an application; detach it first")
-	ErrInstanceRunning   = errors.New("stop the database before deleting it")
-	ErrInstanceOwned     = errors.New("database is owned by another resource")
+	ErrUnsupportedEngine  = errors.New("unsupported database engine")
+	ErrSlugTaken          = errors.New("database name already taken in workspace")
+	ErrNoLogicalDBs       = errors.New("this engine does not support multiple databases")
+	ErrInstanceNotReady   = errors.New("database instance is not running yet")
+	ErrNotFound           = errors.New("not found")
+	ErrNameTaken          = errors.New("a database with this name already exists on the instance")
+	ErrNoContainer        = errors.New("database has no container; re-provision it")
+	ErrInstanceInUse      = errors.New("a database on this instance is attached to an application; detach it first")
+	ErrInstanceRunning    = errors.New("stop the database before deleting it")
+	ErrNoWorkspaceNetwork = errors.New("could not resolve this workspace's network; the database was not created")
+	ErrInstanceOwned      = errors.New("database is owned by another resource")
 	// Upgrade errors.
 	ErrInvalidVersion        = errors.New("invalid target version")
 	ErrAlreadyOnVersion      = errors.New("instance is already on this version")
@@ -293,19 +295,22 @@ func (s *Service) ensureNetwork(ctx context.Context, dc docker.Client, clusterID
 	return err
 }
 
-// defaultNetwork resolves the workspace's default network record (where databases
-// live alongside the workspace's apps), or nil if no provider is wired or the
-// lookup fails — callers fall back to the gateway network.
-func (s *Service) defaultNetwork(ctx context.Context, workspaceID uint) *models.Network {
+// defaultNetwork resolves the workspace's default network record — where databases live alongside
+// the workspace's own apps. It returns an error rather than nil: the caller pins this network for the
+// instance's lifetime, and the old fallback to the shared proxy network was a silent, permanent loss
+// of isolation.
+func (s *Service) defaultNetwork(ctx context.Context, workspaceID uint) (*models.Network, error) {
 	if s.networks == nil {
-		return nil
+		return nil, ErrNoWorkspaceNetwork
 	}
 	n, err := s.networks.EnsureDefault(ctx, workspaceID)
-	if err != nil || n == nil || n.DockerName == "" {
-		logger.Warn("resolve default network for database; falling back to gateway", "workspace", workspaceID, "error", err)
-		return nil
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrNoWorkspaceNetwork, err)
 	}
-	return n
+	if n == nil || n.DockerName == "" {
+		return nil, ErrNoWorkspaceNetwork
+	}
+	return n, nil
 }
 
 // instanceNetworkNames is the full set of Docker networks the instance's own
@@ -677,20 +682,22 @@ func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, nam
 	// Pin the network the instance runs on (the workspace's default network) so
 	// every consumer — bring-up, DDL, size probes, backups, port-forward — agrees
 	// on where to reach it, for the instance's lifetime.
-	defNet := s.defaultNetwork(ctx, workspaceID)
-	inst.NetworkName = node.AppNetwork
-	if defNet != nil {
-		inst.NetworkName = defNet.DockerName
+	// A database belongs on its workspace's own network. Falling back to the shared proxy network
+	// put it where every tenant's routed containers can reach it — silently, behind a warning, and
+	// for the instance's lifetime, since this pin is permanent. Refuse instead: a database nobody
+	// can isolate is worse than a database that was not created.
+	defNet, nerr := s.defaultNetwork(ctx, workspaceID)
+	if nerr != nil {
+		return nil, nerr
 	}
+	inst.NetworkName = defNet.DockerName
 	if err := s.repo.Update(inst); err != nil {
 		return nil, err
 	}
 	// Record the default network as an attached network (the user can attach more
 	// later); the container joins every attached network at bring-up.
-	if defNet != nil {
-		if err := s.repo.AddNetwork(inst, defNet); err != nil {
-			logger.Warn("attach default network to database", "instance", inst.ID, "error", err)
-		}
+	if err := s.repo.AddNetwork(inst, defNet); err != nil {
+		logger.Warn("attach default network to database", "instance", inst.ID, "error", err)
 	}
 
 	// Create the data volume up front on the target node, so creating a database always creates its volume
@@ -1716,5 +1723,29 @@ func (s *Service) MarkNodeRemoved(serverID uint) {
 		}
 		logger.Info("database instance marked stopped: its node was removed",
 			"server", serverID, "instance", inst.ID, "name", inst.Name, "workspace", inst.WorkspaceID)
+	}
+}
+
+// AuditSharedNetworkInstances reports database instances sitting on the shared proxy network, where
+// every tenant's routed containers can reach them.
+func (s *Service) AuditSharedNetworkInstances() {
+	instances, err := s.repo.ListAllInstances()
+	if err != nil {
+		logger.Warn("shared-network database audit: list failed", "error", err)
+		return
+	}
+	var affected int
+	for i := range instances {
+		inst := instances[i]
+		if inst.NetworkName != "" && inst.NetworkName != node.AppNetwork {
+			continue
+		}
+		affected++
+		logger.Error("database instance is on the shared proxy network and is reachable by other workspaces; recreate it to move it",
+			"instance", inst.ID, "name", inst.Name, "workspace", inst.WorkspaceID,
+			"network", cmp.Or(inst.NetworkName, node.AppNetwork))
+	}
+	if affected > 0 {
+		logger.Error("databases share the proxy network with other tenants", "count", affected)
 	}
 }

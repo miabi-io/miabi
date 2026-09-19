@@ -747,6 +747,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	storageService.SetStorageClasses(storageClassService)
 
 	go storageService.AuditSharedVolumes()
+	go databaseService.AuditSharedNetworkInstances()
 	monitoringService := monitoring.NewService(appRepo, releaseRepo, dbRepo, stackRepo, appEventRepo, repositories.NewMetricRepository(db), nodeClients)
 	monitoringService.SetSwarmManager(clusterService)
 	monitoringService.SetServerInfo(nodeService)
