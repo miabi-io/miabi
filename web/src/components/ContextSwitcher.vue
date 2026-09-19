@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -19,6 +20,7 @@ const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const license = useLicenseStore()
 
@@ -87,7 +89,7 @@ function leaveAdmin() {
         </div>
         <span v-if="!collapsed" class="ws-switcher-name">
           {{ label }}
-          <span v-if="isAdminConsole" class="ws-admin-badge">Admin</span>
+          <span v-if="isAdminConsole" class="ws-admin-badge">{{ t('switcher.adminBadge') }}</span>
         </span>
       </div>
       <span v-if="!collapsed" class="mdi mdi-unfold-more-horizontal ws-switcher-chevron"></span>
@@ -105,18 +107,18 @@ function leaveAdmin() {
           </span>
           <span v-if="w.role" class="ws-role-badge">{{ w.role }}</span>
           <span v-if="auth.user?.default_workspace_id === w.id" class="mdi mdi-pin ws-default-pin"
-            title="Sessions land here by default"></span>
-          <button v-else class="mdi mdi-pin-outline ws-default-set" title="Make this my default workspace"
-            aria-label="Make this my default workspace" @click.stop="makeDefaultWorkspace(w.id)"></button>
+            :title="t('switcher.defaultWorkspace')"></span>
+          <button v-else class="mdi mdi-pin-outline ws-default-set" :title="t('switcher.makeDefault')"
+            :aria-label="t('switcher.makeDefault')" @click.stop="makeDefaultWorkspace(w.id)"></button>
         </div>
-        <div v-if="!ws.workspaces.length" class="ws-switcher-empty">No workspaces yet</div>
+        <div v-if="!ws.workspaces.length" class="ws-switcher-empty">{{ t('switcher.empty') }}</div>
 
         <div class="ws-switcher-divider"></div>
         <div class="ws-switcher-action" @click="go('/workspaces?create=1')">
-          <span class="mdi mdi-plus"></span><span>Create workspace</span>
+          <span class="mdi mdi-plus"></span><span>{{ t('switcher.create') }}</span>
         </div>
         <div class="ws-switcher-action" @click="go('/workspaces')">
-          <span class="mdi mdi-briefcase-outline"></span><span>Manage workspaces…</span>
+          <span class="mdi mdi-briefcase-outline"></span><span>{{ t('switcher.manage') }}</span>
         </div>
 
         <!-- The platform is not a workspace, so it sits below its own rule rather
@@ -125,11 +127,11 @@ function leaveAdmin() {
           <div class="ws-switcher-rule"></div>
           <div v-if="isAdminConsole" class="ws-switcher-action ws-switcher-leave" @click="leaveAdmin">
             <span class="mdi mdi-arrow-left"></span>
-            <span>Back to {{ ws.isWorkspaceContext ? ws.contextLabel : 'workspaces' }}</span>
+            <span>{{ t('switcher.backTo', { where: ws.isWorkspaceContext ? ws.contextLabel : t('switcher.workspaces') }) }}</span>
           </div>
           <div v-else class="ws-switcher-action ws-switcher-enter" @click="enterAdmin">
             <span class="mdi mdi-shield-crown-outline"></span>
-            <span>Platform admin</span>
+            <span>{{ t('switcher.platformAdmin') }}</span>
             <span v-if="adminAttention" class="ws-attention-dot ws-attention-inline"></span>
             <span class="mdi mdi-chevron-right ws-switcher-enter-chevron"></span>
           </div>

@@ -11,6 +11,8 @@ import CommandPalette from '@/components/CommandPalette.vue'
 import ContextSwitcher from '@/components/ContextSwitcher.vue'
 import MiabiWordmark from '@/components/MiabiWordmark.vue'
 import { type NavItem, type NavSection } from '@/data/nav'
+import { label } from '@/i18n'
+import { useI18n } from 'vue-i18n'
 import { infoApi } from '@/api/info'
 import { ADMIN_HOME } from '@/data/console'
 
@@ -32,6 +34,7 @@ const route = useRoute()
 const auth = useAuthStore()
 const theme = useThemeStore()
 const language = useLanguageStore()
+const { t } = useI18n()
 const ws = useWorkspaceStore()
 
 const sidebarCollapsed = ref(localStorage.getItem('mb_sidebar_collapsed') === 'true')
@@ -155,8 +158,8 @@ onBeforeUnmount(() => {
           <span v-if="brand.name" class="sidebar-brand-name">{{ brand.name }}</span>
           <MiabiWordmark v-else />
         </span>
-        <button class="sidebar-collapse-btn" :title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
-          :aria-label="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'" @click="toggleSidebar">
+        <button class="sidebar-collapse-btn" :title="sidebarCollapsed ? t('shell.sidebar.expand') : t('shell.sidebar.collapse')"
+          :aria-label="sidebarCollapsed ? t('shell.sidebar.expand') : t('shell.sidebar.collapse')" @click="toggleSidebar">
           <!-- Panel toggle: a sidebar glyph whose inner chevron points the way it will move. -->
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
@@ -173,22 +176,22 @@ onBeforeUnmount(() => {
         <div v-for="section in visibleSections" :key="section.id" class="nav-section">
           <button v-if="!sidebarCollapsed" class="nav-section-title" :aria-expanded="sectionOpen[section.id]"
             @click="toggleSection(section.id)">
-            <span>{{ section.title }}</span>
+            <span>{{ label(section.key, section.title) }}</span>
             <span class="mdi mdi-chevron-down nav-section-chevron"
               :class="{ collapsed: !sectionOpen[section.id] }"></span>
           </button>
           <div v-show="sidebarCollapsed || sectionOpen[section.id]" class="nav-section-items">
             <template v-for="item in sectionItems(section)">
               <a v-if="item.external" :key="`ext-${item.name}`" class="nav-item" :href="docsUrl" target="_blank"
-                rel="noopener noreferrer" :title="sidebarCollapsed ? item.name : ''" @click="mobileOpen = false">
+                rel="noopener noreferrer" :title="sidebarCollapsed ? label(item.key, item.name) : ''" @click="mobileOpen = false">
                 <span class="mdi nav-icon" :class="item.icon"></span>
-                <span v-if="!sidebarCollapsed" class="nav-label">{{ item.name }}</span>
+                <span v-if="!sidebarCollapsed" class="nav-label">{{ label(item.key, item.name) }}</span>
                 <span v-if="!sidebarCollapsed" class="mdi mdi-open-in-new nav-external-icon"></span>
               </a>
               <router-link v-else :key="item.name" class="nav-item" :class="{ active: isItemActive(item) }"
-                :title="sidebarCollapsed ? item.name : ''" :to="itemTo(item)" @click="mobileOpen = false">
+                :title="sidebarCollapsed ? label(item.key, item.name) : ''" :to="itemTo(item)" @click="mobileOpen = false">
                 <span class="mdi nav-icon" :class="item.icon"></span>
-                <span v-if="!sidebarCollapsed" class="nav-label">{{ item.name }}</span>
+                <span v-if="!sidebarCollapsed" class="nav-label">{{ label(item.key, item.name) }}</span>
               </router-link>
             </template>
           </div>
@@ -199,17 +202,17 @@ onBeforeUnmount(() => {
     <div class="main-wrapper">
       <header class="topbar">
         <div class="topbar-left">
-          <button class="mobile-menu-btn" aria-label="Open menu" @click="mobileOpen = true">
+          <button class="mobile-menu-btn" :aria-label="t('shell.openMenu')" @click="mobileOpen = true">
             <span class="mdi mdi-menu"></span>
           </button>
-          <button class="topbar-search" type="button" aria-label="Search" @click="paletteOpen = true">
+          <button class="topbar-search" type="button" :aria-label="t('shell.search.label')" @click="paletteOpen = true">
             <span class="mdi mdi-magnify"></span>
-            <span class="topbar-search-text">Search or jump to…</span>
+            <span class="topbar-search-text">{{ t('shell.search.placeholder') }}</span>
             <kbd class="topbar-search-kbd">{{ paletteHint }}</kbd>
           </button>
         </div>
         <div class="topbar-right">
-          <button class="topbar-search-icon" type="button" aria-label="Search" @click="paletteOpen = true">
+          <button class="topbar-search-icon" type="button" :aria-label="t('shell.search.label')" @click="paletteOpen = true">
             <span class="mdi mdi-magnify"></span>
           </button>
           <NotificationBell />
@@ -248,24 +251,24 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="user-dropdown-divider"></div>
                 <RouterLink to="/account/profile" class="user-dropdown-item" @click.stop="userMenuOpen = false">
-                  <span class="mdi mdi-account-outline"></span> Profile
+                  <span class="mdi mdi-account-outline"></span> {{ t('shell.menu.profile') }}
                 </RouterLink>
                 <RouterLink to="/account/preferences" class="user-dropdown-item" @click.stop="userMenuOpen = false">
-                  <span class="mdi mdi-tune-variant"></span> Preferences
+                  <span class="mdi mdi-tune-variant"></span> {{ t('shell.menu.preferences') }}
                 </RouterLink>
                 <RouterLink to="/account/security" class="user-dropdown-item" @click.stop="userMenuOpen = false">
-                  <span class="mdi mdi-shield-key-outline"></span> Security
+                  <span class="mdi mdi-shield-key-outline"></span> {{ t('shell.menu.security') }}
                 </RouterLink>
                 <RouterLink to="/about" class="user-dropdown-item" @click.stop="userMenuOpen = false">
-                  <span class="mdi mdi-information-outline"></span> About
+                  <span class="mdi mdi-information-outline"></span> {{ t('shell.menu.about') }}
                 </RouterLink>
                 <div class="user-dropdown-divider"></div>
                 <RouterLink to="/account/cli" class="user-dropdown-item" @click.stop="userMenuOpen = false">
-                  <span class="mdi mdi-console"></span> CLI access
+                  <span class="mdi mdi-console"></span> {{ t('shell.menu.cli') }}
                 </RouterLink>
                 <div class="user-dropdown-divider"></div>
                 <a class="user-dropdown-item user-dropdown-logout" @click.stop="logout">
-                  <span class="mdi mdi-logout"></span> Sign out
+                  <span class="mdi mdi-logout"></span> {{ t('shell.menu.signOut') }}
                 </a>
               </div>
             </Transition>
@@ -286,7 +289,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="footer-right">
           <RouterLink to="/about" class="footer-link">
-            <span class="mdi mdi-information-outline"></span> About
+            <span class="mdi mdi-information-outline"></span> {{ t('shell.menu.about') }}
           </RouterLink>
           <a href="https://github.com/miabi-io/miabi" target="_blank" rel="noopener noreferrer" class="footer-link">
             <span class="mdi mdi-github"></span> GitHub
@@ -307,7 +310,7 @@ onBeforeUnmount(() => {
             <span v-if="brand.name" class="sidebar-brand-name">{{ brand.name }}</span>
             <MiabiWordmark v-else />
           </span>
-          <button class="sidebar-collapse-btn" aria-label="Close" @click="mobileOpen = false">
+          <button class="sidebar-collapse-btn" :aria-label="t('shell.close')" @click="mobileOpen = false">
             <span class="mdi mdi-close"></span>
           </button>
         </div>
@@ -315,7 +318,7 @@ onBeforeUnmount(() => {
         <nav class="sidebar-nav">
           <div v-for="section in visibleSections" :key="section.id" class="nav-section">
             <button class="nav-section-title" @click="toggleSection(section.id)">
-              <span>{{ section.title }}</span>
+              <span>{{ label(section.key, section.title) }}</span>
               <span class="mdi mdi-chevron-down nav-section-chevron"
                 :class="{ collapsed: !sectionOpen[section.id] }"></span>
             </button>
@@ -324,13 +327,13 @@ onBeforeUnmount(() => {
                 <a v-if="item.external" :key="`ext-${item.name}`" class="nav-item" :href="docsUrl" target="_blank"
                   rel="noopener noreferrer" @click="mobileOpen = false">
                   <span class="mdi nav-icon" :class="item.icon"></span>
-                  <span class="nav-label">{{ item.name }}</span>
+                  <span class="nav-label">{{ label(item.key, item.name) }}</span>
                   <span class="mdi mdi-open-in-new nav-external-icon"></span>
                 </a>
                 <router-link v-else :key="item.name" class="nav-item" :class="{ active: isItemActive(item) }"
                   :to="itemTo(item)" @click="mobileOpen = false">
                   <span class="mdi nav-icon" :class="item.icon"></span>
-                  <span class="nav-label">{{ item.name }}</span>
+                  <span class="nav-label">{{ label(item.key, item.name) }}</span>
                 </router-link>
               </template>
             </div>

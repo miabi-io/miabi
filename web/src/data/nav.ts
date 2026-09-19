@@ -1,4 +1,6 @@
 export interface NavItem {
+  /** Catalogue key for the label; `name` is the English fallback. */
+  key: string
   name: string
   path: string
   icon: string
@@ -11,6 +13,7 @@ export interface NavItem {
 
 export interface NavSection {
   id: string
+  key: string
   title: string
   items: NavItem[]
   defaultOpen?: boolean
@@ -21,91 +24,91 @@ export interface NavSection {
 export const navSections: NavSection[] = [
   {
     id: 'overview',
-    title: 'Overview',
-    items: [{ name: 'Dashboard', path: '/', icon: 'mdi-view-dashboard-outline' }],
+    key: 'nav.overview.title', title: 'Overview',
+    items: [{ key: 'nav.overview.dashboard', name: 'Dashboard', path: '/', icon: 'mdi-view-dashboard-outline' }],
   },
   {
     id: 'analytics',
-    title: 'Analytics',
+    key: 'nav.analytics.title', title: 'Analytics',
     items: [
-      { name: 'Overview', path: '/analytics', icon: 'mdi-chart-areaspline', requiresWorkspace: true },
-      { name: 'HTTP Traffic', path: '/analytics/http', icon: 'mdi-earth', requiresWorkspace: true },
-      { name: 'Performance', path: '/analytics/performance', icon: 'mdi-speedometer', requiresWorkspace: true },
-      { name: 'Web Analytics', path: '/analytics/web', icon: 'mdi-account-group-outline', requiresWorkspace: true },
+      { key: 'nav.analytics.overview', name: 'Overview', path: '/analytics', icon: 'mdi-chart-areaspline', requiresWorkspace: true },
+      { key: 'nav.analytics.httpTraffic', name: 'HTTP Traffic', path: '/analytics/http', icon: 'mdi-earth', requiresWorkspace: true },
+      { key: 'nav.analytics.performance', name: 'Performance', path: '/analytics/performance', icon: 'mdi-speedometer', requiresWorkspace: true },
+      { key: 'nav.analytics.webAnalytics', name: 'Web Analytics', path: '/analytics/web', icon: 'mdi-account-group-outline', requiresWorkspace: true },
     ],
   },
   {
     id: 'deploy',
-    title: 'Deploy',
+    key: 'nav.deploy.title', title: 'Deploy',
     items: [
-      { name: 'Applications', path: '/apps', icon: 'mdi-cube-outline', requiresWorkspace: true },
-      { name: 'Stacks', path: '/stacks', icon: 'mdi-layers-outline', requiresWorkspace: true },
-      { name: 'Jobs', path: '/jobs', icon: 'mdi-console-line', requiresWorkspace: true },
-      { name: 'Marketplace', path: '/marketplace', icon: 'mdi-storefront-outline', requiresWorkspace: true },
+      { key: 'nav.deploy.applications', name: 'Applications', path: '/apps', icon: 'mdi-cube-outline', requiresWorkspace: true },
+      { key: 'nav.deploy.stacks', name: 'Stacks', path: '/stacks', icon: 'mdi-layers-outline', requiresWorkspace: true },
+      { key: 'nav.deploy.jobs', name: 'Jobs', path: '/jobs', icon: 'mdi-console-line', requiresWorkspace: true },
+      { key: 'nav.deploy.marketplace', name: 'Marketplace', path: '/marketplace', icon: 'mdi-storefront-outline', requiresWorkspace: true },
     ],
   },
   {
     id: 'data',
-    title: 'Data',
+    key: 'nav.data.title', title: 'Data',
     items: [
-      { name: 'Databases', path: '/databases', icon: 'mdi-database-outline', requiresWorkspace: true },
-      { name: 'Volumes', path: '/volumes', icon: 'mdi-harddisk', requiresWorkspace: true },
+      { key: 'nav.data.databases', name: 'Databases', path: '/databases', icon: 'mdi-database-outline', requiresWorkspace: true },
+      { key: 'nav.data.volumes', name: 'Volumes', path: '/volumes', icon: 'mdi-harddisk', requiresWorkspace: true },
     ],
   },
   {
     id: 'networking',
-    title: 'Networking',
+    key: 'nav.networking.title', title: 'Networking',
     items: [
-      { name: 'Networks', path: '/networks', icon: 'mdi-lan', requiresWorkspace: true },
-      { name: 'Domains', path: '/domains', icon: 'mdi-web', requiresWorkspace: true },
-      { name: 'DNS Providers', path: '/dns-providers', icon: 'mdi-dns', requiresWorkspace: true },
-      { name: 'Routes', path: '/routes', icon: 'mdi-routes', requiresWorkspace: true },
-      { name: 'Middlewares', path: '/middlewares', icon: 'mdi-tune-vertical', requiresWorkspace: true },
-      { name: 'Certificates', path: '/certificates', icon: 'mdi-certificate', requiresWorkspace: true },
+      { key: 'nav.networking.networks', name: 'Networks', path: '/networks', icon: 'mdi-lan', requiresWorkspace: true },
+      { key: 'nav.networking.domains', name: 'Domains', path: '/domains', icon: 'mdi-web', requiresWorkspace: true },
+      { key: 'nav.networking.dnsProviders', name: 'DNS Providers', path: '/dns-providers', icon: 'mdi-dns', requiresWorkspace: true },
+      { key: 'nav.networking.routes', name: 'Routes', path: '/routes', icon: 'mdi-routes', requiresWorkspace: true },
+      { key: 'nav.networking.middlewares', name: 'Middlewares', path: '/middlewares', icon: 'mdi-tune-vertical', requiresWorkspace: true },
+      { key: 'nav.networking.certificates', name: 'Certificates', path: '/certificates', icon: 'mdi-certificate', requiresWorkspace: true },
     ],
   },
   {
     id: 'sources',
-    title: 'Sources',
+    key: 'nav.sources.title', title: 'Sources',
     items: [
-      { name: 'Secrets', path: '/secrets', icon: 'mdi-key-variant', requiresWorkspace: true },
-      { name: 'Configs', path: '/configs', icon: 'mdi-file-cog-outline', requiresWorkspace: true },
-      { name: 'Registries', path: '/registries', icon: 'mdi-database-lock-outline', requiresWorkspace: true },
-      { name: 'Git Repositories', path: '/git-repositories', icon: 'mdi-git', requiresWorkspace: true },
+      { key: 'nav.sources.secrets', name: 'Secrets', path: '/secrets', icon: 'mdi-key-variant', requiresWorkspace: true },
+      { key: 'nav.sources.configs', name: 'Configs', path: '/configs', icon: 'mdi-file-cog-outline', requiresWorkspace: true },
+      { key: 'nav.sources.registries', name: 'Registries', path: '/registries', icon: 'mdi-database-lock-outline', requiresWorkspace: true },
+      { key: 'nav.sources.gitRepositories', name: 'Git Repositories', path: '/git-repositories', icon: 'mdi-git', requiresWorkspace: true },
     ],
   },
   {
     id: 'cicd',
-    title: 'GitOps & CI/CD',
+    key: 'nav.cicd.title', title: 'GitOps & CI/CD',
     items: [
-      { name: 'Pipelines', path: '/pipelines', icon: 'mdi-pipe', requiresWorkspace: true },
-      { name: 'Runners', path: '/runners', icon: 'mdi-cog-transfer-outline', requiresWorkspace: true },
-      { name: 'GitOps', path: '/gitops', icon: 'mdi-source-branch-sync', requiresWorkspace: true },
-      { name: 'Releases', path: '/releases', icon: 'mdi-tag-outline', requiresWorkspace: true },
-      { name: 'Environments', path: '/environments', icon: 'mdi-layers-triple-outline', requiresWorkspace: true },
+      { key: 'nav.cicd.pipelines', name: 'Pipelines', path: '/pipelines', icon: 'mdi-pipe', requiresWorkspace: true },
+      { key: 'nav.cicd.runners', name: 'Runners', path: '/runners', icon: 'mdi-cog-transfer-outline', requiresWorkspace: true },
+      { key: 'nav.cicd.gitops', name: 'GitOps', path: '/gitops', icon: 'mdi-source-branch-sync', requiresWorkspace: true },
+      { key: 'nav.cicd.releases', name: 'Releases', path: '/releases', icon: 'mdi-tag-outline', requiresWorkspace: true },
+      { key: 'nav.cicd.environments', name: 'Environments', path: '/environments', icon: 'mdi-layers-triple-outline', requiresWorkspace: true },
     ],
   },
   {
     id: 'developers',
-    title: 'Developers',
+    key: 'nav.developers.title', title: 'Developers',
     items: [
-      { name: 'API Keys', path: '/api-keys', icon: 'mdi-key-outline', requiresWorkspace: true },
-      { name: 'Container Registry', path: '/registry', icon: 'mdi-cube-outline', requiresWorkspace: true },
-      { name: 'Webhooks', path: '/webhooks', icon: 'mdi-webhook', requiresWorkspace: true },
-      { name: 'Generator', path: '/generator', icon: 'mdi-auto-fix', requiresWorkspace: true },
-      { name: 'API Reference', path: '', icon: 'mdi-book-open-page-variant-outline', external: true, requiresDocs: true },
+      { key: 'nav.developers.apiKeys', name: 'API Keys', path: '/api-keys', icon: 'mdi-key-outline', requiresWorkspace: true },
+      { key: 'nav.developers.containerRegistry', name: 'Container Registry', path: '/registry', icon: 'mdi-cube-outline', requiresWorkspace: true },
+      { key: 'nav.developers.webhooks', name: 'Webhooks', path: '/webhooks', icon: 'mdi-webhook', requiresWorkspace: true },
+      { key: 'nav.developers.generator', name: 'Generator', path: '/generator', icon: 'mdi-auto-fix', requiresWorkspace: true },
+      { key: 'nav.developers.apiReference', name: 'API Reference', path: '', icon: 'mdi-book-open-page-variant-outline', external: true, requiresDocs: true },
     ],
   },
   {
     id: 'workspace',
-    title: 'Workspace',
+    key: 'nav.workspace.title', title: 'Workspace',
     items: [
-      { name: 'All Workspaces', path: '/workspaces', icon: 'mdi-briefcase-outline' },
-      { name: 'Members', path: '', icon: 'mdi-account-group-outline', workspaceTab: 'members', requiresWorkspaceAdmin: true },
-      { name: 'Events', path: '/events', icon: 'mdi-timeline-text-outline', requiresWorkspace: true },
-      { name: 'Audit Log', path: '/audit-log', icon: 'mdi-history', requiresWorkspaceAdmin: true },
-      { name: 'Notifications', path: '', icon: 'mdi-bell-outline', workspaceTab: 'notifications', requiresWorkspaceAdmin: true },
-      { name: 'Settings', path: '', icon: 'mdi-cog-outline', workspaceTab: 'settings', requiresWorkspaceAdmin: true },
+      { key: 'nav.workspace.allWorkspaces', name: 'All Workspaces', path: '/workspaces', icon: 'mdi-briefcase-outline' },
+      { key: 'nav.workspace.members', name: 'Members', path: '', icon: 'mdi-account-group-outline', workspaceTab: 'members', requiresWorkspaceAdmin: true },
+      { key: 'nav.workspace.events', name: 'Events', path: '/events', icon: 'mdi-timeline-text-outline', requiresWorkspace: true },
+      { key: 'nav.workspace.auditLog', name: 'Audit Log', path: '/audit-log', icon: 'mdi-history', requiresWorkspaceAdmin: true },
+      { key: 'nav.workspace.notifications', name: 'Notifications', path: '', icon: 'mdi-bell-outline', workspaceTab: 'notifications', requiresWorkspaceAdmin: true },
+      { key: 'nav.workspace.settings', name: 'Settings', path: '', icon: 'mdi-cog-outline', workspaceTab: 'settings', requiresWorkspaceAdmin: true },
     ],
   },
 ]

@@ -55,3 +55,9 @@ export function t(key: string, named?: Record<string, unknown>): string {
 export function activeLanguage(): LanguageCode {
   return i18n.global.locale.value as LanguageCode
 }
+
+// label translates a nav entry, falling back to its English text. The data files carry
+// both so they stay readable and keep working if a key is ever missed.
+export function label(key: string, fallback: string): string {
+  return i18n.global.te(key) ? i18n.global.t(key) : fallback
+}

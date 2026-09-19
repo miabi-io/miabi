@@ -1,9 +1,205 @@
 {
-  "preferences": {
-    "language": {
-      "label": "Langue",
-      "hint": "Les dates, heures et nombres suivent désormais cette langue. Le texte de la console est traduit vue par vue ; ce qui ne l'est pas encore reste en anglais."
+  "adminNav": {
+    "enterprise": {
+      "license": "Licence",
+      "siemStreaming": "Diffusion SIEM",
+      "title": "Enterprise"
     },
-    "saved": "Préférences enregistrées"
+    "identity": {
+      "ldapAd": "LDAP / AD",
+      "oauthProviders": "Fournisseurs OAuth",
+      "title": "Identité",
+      "users": "Utilisateurs"
+    },
+    "infrastructure": {
+      "clusters": "Clusters",
+      "containerRegistry": "Registre de conteneurs",
+      "domains": "Domaines",
+      "kernelGrants": "Droits noyau",
+      "nodes": "Nœuds",
+      "ports": "Ports",
+      "routes": "Routes",
+      "sharedRunners": "Runners partagés",
+      "storageClasses": "Classes de stockage",
+      "title": "Infrastructure"
+    },
+    "overview": {
+      "dashboard": "Tableau de bord",
+      "events": "Événements",
+      "jobs": "Tâches",
+      "reconciliation": "Réconciliation",
+      "title": "Vue d’ensemble"
+    },
+    "platform": {
+      "branding": "Image de marque",
+      "deploymentConfig": "Configuration de déploiement",
+      "platformBackup": "Sauvegarde de la plateforme",
+      "platformSettings": "Paramètres de la plateforme",
+      "title": "Plateforme"
+    },
+    "tenants": {
+      "announcements": "Annonces",
+      "databaseSizes": "Tailles de base de données",
+      "organizations": "Organisations",
+      "plans": "Forfaits",
+      "title": "Locataires",
+      "workspaces": "Espaces de travail"
+    }
+  },
+  "error": {
+    "status": {
+      "badRequest": "Requête invalide",
+      "conflict": "Conflit",
+      "forbidden": "Action non autorisée",
+      "notFound": "Introuvable",
+      "paymentRequired": "Mise à niveau requise",
+      "requestFailed": "Échec de la requête",
+      "serverError": "Une erreur est survenue",
+      "tooManyRequests": "Trop de requêtes",
+      "unauthorized": "Authentification requise",
+      "validationFailed": "Validation échouée"
+    }
+  },
+  "nav": {
+    "analytics": {
+      "httpTraffic": "Trafic HTTP",
+      "overview": "Vue d’ensemble",
+      "performance": "Performance",
+      "title": "Analytique",
+      "webAnalytics": "Analytique web"
+    },
+    "cicd": {
+      "environments": "Environnements",
+      "gitops": "GitOps",
+      "pipelines": "Pipelines",
+      "releases": "Versions",
+      "runners": "Runners",
+      "title": "GitOps et CI/CD"
+    },
+    "data": {
+      "databases": "Bases de données",
+      "title": "Données",
+      "volumes": "Volumes"
+    },
+    "deploy": {
+      "applications": "Applications",
+      "jobs": "Tâches",
+      "marketplace": "Marketplace",
+      "stacks": "Stacks",
+      "title": "Déploiement"
+    },
+    "developers": {
+      "apiKeys": "Clés API",
+      "apiReference": "Référence API",
+      "containerRegistry": "Registre de conteneurs",
+      "generator": "Générateur",
+      "title": "Développeurs",
+      "webhooks": "Webhooks"
+    },
+    "networking": {
+      "certificates": "Certificats",
+      "dnsProviders": "Fournisseurs DNS",
+      "domains": "Domaines",
+      "middlewares": "Middlewares",
+      "networks": "Réseaux",
+      "routes": "Routes",
+      "title": "Réseau"
+    },
+    "overview": {
+      "dashboard": "Tableau de bord",
+      "title": "Vue d’ensemble"
+    },
+    "palette": {
+      "adminGroup": "Administration",
+      "adminSub": "Admin"
+    },
+    "sources": {
+      "configs": "Configurations",
+      "gitRepositories": "Dépôts Git",
+      "registries": "Registres",
+      "secrets": "Secrets",
+      "title": "Sources"
+    },
+    "workspace": {
+      "allWorkspaces": "Tous les espaces",
+      "auditLog": "Journal d’audit",
+      "events": "Événements",
+      "members": "Membres",
+      "notifications": "Notifications",
+      "settings": "Paramètres",
+      "title": "Espace de travail"
+    }
+  },
+  "preferences": {
+    "accent": {
+      "hint": "Appliqué immédiatement et suit votre compte sur les autres navigateurs. Les couleurs d’état ne changent pas — succès, avertissement et danger gardent leur sens.",
+      "label": "Couleur d’accent",
+      "locked": "Défini par votre organisation pour tous les comptes."
+    },
+    "appearance": {
+      "note": "Appliqué immédiatement et enregistré sur votre compte.",
+      "title": "Apparence"
+    },
+    "defaultWorkspace": {
+      "label": "Espace de travail",
+      "none": "Aucune préférence — utiliser mon espace le plus ancien",
+      "note": "Où atterrit une nouvelle connexion quand vous n’avez pas d’espace en tête — un navigateur neuf, ou la CLI d’une nouvelle machine. Changer d’espace au quotidien ne modifie pas ce réglage.",
+      "title": "Espace de travail par défaut"
+    },
+    "display": {
+      "title": "Affichage"
+    },
+    "landing": {
+      "hint": "La section sur laquelle une nouvelle session s’ouvre dans votre espace par défaut.",
+      "label": "Ouvrir sur",
+      "monitoring": "Supervision"
+    },
+    "language": {
+      "hint": "Les dates, heures et nombres suivent désormais cette langue. Le texte de la console est traduit vue par vue ; ce qui ne l'est pas encore reste en anglais.",
+      "label": "Langue"
+    },
+    "saved": "Préférences enregistrées",
+    "subtitle": "Des réglages qui suivent votre compte, sur chaque navigateur et chaque machine.",
+    "theme": {
+      "dark": "Sombre",
+      "light": "Clair",
+      "system": "Suivre le système"
+    },
+    "timezone": {
+      "hint": "Modifie l’affichage des heures ; elles sont toujours stockées en UTC.",
+      "label": "Fuseau horaire"
+    },
+    "title": "Préférences"
+  },
+  "shell": {
+    "close": "Fermer",
+    "menu": {
+      "about": "À propos",
+      "cli": "Accès CLI",
+      "preferences": "Préférences",
+      "profile": "Profil",
+      "security": "Sécurité",
+      "signOut": "Se déconnecter"
+    },
+    "openMenu": "Ouvrir le menu",
+    "search": {
+      "label": "Rechercher",
+      "placeholder": "Rechercher ou accéder à…"
+    },
+    "sidebar": {
+      "collapse": "Replier la barre latérale",
+      "expand": "Déplier la barre latérale"
+    }
+  },
+  "switcher": {
+    "adminBadge": "Admin",
+    "backTo": "Retour à {where}",
+    "create": "Créer un espace de travail",
+    "defaultWorkspace": "Les sessions démarrent ici par défaut",
+    "empty": "Aucun espace de travail",
+    "makeDefault": "Définir comme espace par défaut",
+    "manage": "Gérer les espaces de travail…",
+    "platformAdmin": "Administration",
+    "workspaces": "mes espaces"
   }
 }

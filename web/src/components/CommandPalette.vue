@@ -5,6 +5,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { searchApi } from '@/api/search'
 import { navSections, type NavItem, type NavSection } from '@/data/nav'
+import { label } from '@/i18n'
+import { useI18n } from 'vue-i18n'
 import { adminNavSections } from '@/data/adminNav'
 import type { SearchKind, SearchResult } from '@/api/types'
 
@@ -13,6 +15,7 @@ const emit = defineEmits<{ (e: 'update:open', value: boolean): void }>()
 
 const router = useRouter()
 const auth = useAuthStore()
+const { t } = useI18n()
 const ws = useWorkspaceStore()
 
 type Entry = {
@@ -72,9 +75,9 @@ const navEntries = computed<Entry[]>(() => {
         if (item.requiresDocs && !props.docsEnabled) continue
         out.push({
           id: `nav:${section.id}:${item.name}`,
-          group: admin ? `Platform admin · ${section.title}` : section.title,
-          label: item.name,
-          sub: admin ? `Admin · ${section.title}` : section.title,
+          group: admin ? `${t('nav.palette.adminGroup')} · ${label(section.key, section.title)}` : label(section.key, section.title),
+          label: label(item.key, item.name),
+          sub: admin ? `${t('nav.palette.adminSub')} · ${label(section.key, section.title)}` : label(section.key, section.title),
           icon: item.icon,
           to: item.external ? undefined : navPath(item),
           href: item.external ? props.docsUrl : undefined,
