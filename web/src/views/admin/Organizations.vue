@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { adminApi } from '@/api/admin'
@@ -10,6 +11,7 @@ import AppModal from '@/components/AppModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const notify = useNotificationStore()
+const { t } = useI18n()
 const router = useRouter()
 // A second organization is Enterprise; the default one exists in every edition and stays editable.
 const entitlement = useEntitlement('organizations')
@@ -72,7 +74,7 @@ const promoteWarning = computed(() => {
   const owned = dedicatedTo.value.get(o.id) ?? []
   if (!owned.length) return ''
   const where = owned.map(clusterLabel).join(', ')
-  return ` ${o.display_name || o.name} runs its own locations (${where}), so new users and workspaces that name no organization will deploy there and nowhere else.`
+  return ' ' + t('confirm.message.organizations.promoteWarning', { name: o.display_name || o.name, where })
 })
 
 function capLabel(o: Organization): string {
@@ -307,7 +309,7 @@ async function remove() {
     <ConfirmDialog
       :open="!!promoteTarget"
       :title="$t('confirm.title.changeTheDefaultOrganization')"
-      :message="`New users and workspaces that name no organization will belong to &quot;${promoteTarget?.display_name ?? ''}&quot;. Existing ones do not move.${promoteWarning}`"
+      :message="$t('confirm.message.organizations.newUsersAndWorkspaces', { display_name: promoteTarget?.display_name ?? '', promoteWarning: promoteWarning })"
       :confirm-label="$t('action.makeDefault')"
       @confirm="promote"
       @cancel="promoteTarget = null"
@@ -316,7 +318,7 @@ async function remove() {
     <ConfirmDialog
       :open="!!confirmTarget"
       :title="$t('confirm.title.deleteOrganization')"
-      :message="`&quot;${confirmTarget?.display_name ?? ''}&quot; will be removed and any cluster dedicated to it returns to shared. Deleting is refused while it still holds workspaces or users — move those first.`"
+      :message="$t('confirm.message.organizations.displayNameWillBe', { display_name: confirmTarget?.display_name ?? '' })"
       :confirm-label="$t('action.delete')"
       variant="danger"
       @confirm="remove"

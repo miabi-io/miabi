@@ -620,7 +620,7 @@ function eventSeverity(e: AdminEvent): string {
     <ConfirmDialog
       :open="showRotateConfirm"
       :title="$t('confirm.title.rotateEncryptionKey')"
-      :message="`Rotate the encryption key for &quot;${ws?.name}&quot;? Its secrets will be re-encrypted under a new key.`"
+      :message="$t('confirm.message.workspaceDetail.rotateTheEncryptionKey', { name: ws?.name })"
       :confirm-label="$t('action.rotateKey')"
       variant="danger"
       :busy="rotating"

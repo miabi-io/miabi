@@ -10,6 +10,10 @@ import { LANGUAGES, DEFAULT_LANGUAGE } from './languages'
 // breaks a build, which is why they need a test.
 const catalogues: Record<string, unknown> = { en, fr }
 
+function valueAt(cat: unknown, key: string): unknown {
+  return key.split('.').reduce<unknown>((o, p) => (o as Record<string, unknown>)?.[p], cat)
+}
+
 function keysOf(obj: unknown, prefix = ''): string[] {
   if (obj === null || typeof obj !== 'object') return [prefix]
   return Object.entries(obj as Record<string, unknown>).flatMap(([k, v]) =>
@@ -39,6 +43,21 @@ describe('translation catalogues', () => {
       })
     })
   }
+
+  // A translation that drops {name} renders "Delete ?" — fluent, and missing the one
+  // detail that tells the user what they are about to destroy.
+  it('keeps every interpolation the reference declares', () => {
+    const placeholders = (s: string) => new Set(s.match(/\{\w+\}/g) ?? [])
+    const mismatched: string[] = []
+    for (const l of LANGUAGES.filter((x) => x.code !== DEFAULT_LANGUAGE)) {
+      for (const k of reference) {
+        const a = placeholders(String(valueAt(en, k) ?? ''))
+        const b = placeholders(String(valueAt(catalogues[l.code], k) ?? ''))
+        if (a.size !== b.size || [...a].some((x) => !b.has(x))) mismatched.push(`${l.code}:${k}`)
+      }
+    }
+    expect(mismatched).toEqual([])
+  })
 
   it('has no empty string, which renders as a blank label', () => {
     for (const [code, cat] of Object.entries(catalogues)) {

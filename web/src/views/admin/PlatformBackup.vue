@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, reactive, onMounted, computed, watch } from 'vue'
 import {
   platformBackupApi,
@@ -19,6 +20,7 @@ import { useEntitlement } from '@/composables/useEntitlement'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const notify = useNotificationStore()
+const { t } = useI18n()
 const licenseStore = useLicenseStore()
 const ent = useEntitlement('platform_backup')
 
@@ -457,12 +459,9 @@ const restoreMessage = computed(() => {
   if (!b) return ''
   const what =
     b.subject === 'database'
-      ? 'the control-plane database (overwrites the running database in place)'
-      : `volume "${b.volume_name}" (overwrites its contents)`
-  return (
-    `Restore ${what}? This is destructive. Put the platform in maintenance mode first. ` +
-    `You also need the original MIABI_ENCRYPTION_KEY to decrypt restored secrets.`
-  )
+      ? t('confirm.message.platformBackup.restoreWhat.database')
+      : t('confirm.message.platformBackup.restoreWhat.volume', { name: b.volume_name })
+  return t('confirm.message.platformBackup.restore', { what })
 })
 async function restore() {
   const b = pendingRestore.value
@@ -1107,7 +1106,7 @@ function fmtSize(n: number): string {
     <ConfirmDialog
       :open="!!pendingRestoreSet"
       :title="$t('confirm.title.restoreTheSelectedArtifacts')"
-      :message="`This overwrites live data. ${selectedCount} artifact(s) will be restored into this platform: databases are dropped and recreated from the backup, and volumes are overwritten. Data written since ${pendingRestoreSet ? fmtDate(pendingRestoreSet.created_at) : 'the backup'} is lost for whatever you selected.`"
+      :message="$t('confirm.message.platformBackup.thisOverwritesLiveData', { selectedCount: selectedCount, created_at: pendingRestoreSet ? fmtDate(pendingRestoreSet.created_at) : 'the backup' })"
       :confirm-label="$t('action.restore')"
       variant="danger"
       :busy="restoring"
@@ -1118,7 +1117,7 @@ function fmtSize(n: number): string {
     <ConfirmDialog
       :open="!!pendingSetDelete"
       :title="$t('confirm.title.deleteThisRecoveryPoint')"
-      message="Deletes the recovery point and its artifacts from the bucket, including the identity envelope. This cannot be undone."
+      :message="$t('confirm.message.platformBackup.deletesTheRecoveryPoint')"
       :confirm-label="$t('action.delete')"
       variant="danger"
       @confirm="removeSet"
@@ -1128,7 +1127,7 @@ function fmtSize(n: number): string {
     <ConfirmDialog
       :open="pendingComplete"
       :title="$t('confirm.title.completeRecovery')"
-      message="Schedules and certificate issuance resume. Do this only once DNS points at this host — otherwise certificate requests will be issued against an address that still resolves elsewhere."
+      :message="$t('confirm.message.platformBackup.schedulesAndCertificateIssuance')"
       :confirm-label="$t('action.completeRecovery')"
       :busy="completing"
       @confirm="completeRecovery"
@@ -1138,7 +1137,7 @@ function fmtSize(n: number): string {
     <ConfirmDialog
       :open="!!pendingDelete"
       :title="$t('confirm.title.deletePlatformBackup')"
-      message="Delete this platform backup?"
+      :message="$t('confirm.message.platformBackup.deleteThisPlatformBackup')"
       :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"

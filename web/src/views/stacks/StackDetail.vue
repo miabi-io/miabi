@@ -649,7 +649,7 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
     <ConfirmDialog
       :open="!!pendingRemove"
       :title="$t('confirm.title.removeApplication')"
-      :message="pendingRemove ? `Remove &quot;${pendingRemove.name}&quot; from this stack?` : ''"
+      :message="pendingRemove ? $t('confirm.message.stackDetail.removeNameFromThis', { name: pendingRemove.name }) : ''"
       :confirm-label="$t('action.remove')"
       variant="danger"
       :busy="removing"

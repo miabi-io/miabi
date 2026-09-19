@@ -1722,9 +1722,7 @@ const gwBadge = computed(() => {
     <ConfirmDialog
       :open="!!pendingDrain"
       :title="`Drain ${pendingDrain?.hostname || 'node'}?`"
-      message="Swarm reschedules this node's service tasks onto other nodes now, and places no new ones here. This is what makes the node safe to reboot.
-
-Note: setting it back to Active does NOT move the tasks back. Swarm never rebalances on its own — they stay where they were rescheduled until a redeploy, a scale, or a drain of their new node moves them again."
+      :message="$t('confirm.message.nodeDetail.swarmReschedulesThisNode')"
       :confirm-label="$t('action.drainNode')"
       variant="danger"
       :busy="availBusy === pendingDrain?.id"
@@ -1735,7 +1733,7 @@ Note: setting it back to Active does NOT move the tasks back. Swarm never rebala
     <ConfirmDialog
       :open="showTeardown"
       :title="$t('confirm.title.tearDownGateway')"
-      message="Remove the Goma Gateway container from this node? Routing through it stops until you redeploy. ACME certs are preserved."
+      :message="$t('confirm.message.nodeDetail.removeTheGomaGateway')"
       :confirm-label="$t('action.teardown')"
       variant="danger"
       :busy="gwBusy"
@@ -1746,7 +1744,7 @@ Note: setting it back to Active does NOT move the tasks back. Swarm never rebala
     <ConfirmDialog
       :open="showDelete"
       :title="$t('confirm.title.removeNode')"
-      :message="`Remove node &quot;${node?.name}&quot;? Its agent tunnel is closed and the edge gateway (if any) is torn down.`"
+      :message="$t('confirm.message.nodeDetail.removeNodeNameIts', { name: node?.name })"
       :confirm-label="$t('action.remove')"
       variant="danger"
       :busy="deleting"
@@ -1757,7 +1755,7 @@ Note: setting it back to Active does NOT move the tasks back. Swarm never rebala
     <ConfirmDialog
       :open="!!toRemoveContainer"
       :title="$t('confirm.title.removeContainer')"
-      :message="`Remove container &quot;${toRemoveContainer ? cname(toRemoveContainer) : ''}&quot;? This cannot be undone.`"
+      :message="$t('confirm.message.nodeDetail.removeContainerToremovecontainerThis', { toRemoveContainer: toRemoveContainer ? cname(toRemoveContainer) : '' })"
       :confirm-label="$t('action.remove')"
       variant="danger"
       @confirm="removeContainer"

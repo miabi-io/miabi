@@ -230,7 +230,7 @@ const STATE_CLASS: Record<string, string> = {
     </p>
 
     <ConfirmDialog :open="!!rejecting" :title="$t('confirm.title.rejectThisRequest')"
-      :message="`Host port ${rejecting?.host_port}/${rejecting?.protocol} will not be published. The requester sees your note.`"
+      :message="$t('confirm.message.ports.hostPortHostPort', { host_port: rejecting?.host_port, protocol: rejecting?.protocol })"
       :confirm-label="$t('action.reject')" variant="danger" :busy="acting !== null" @cancel="rejecting = null"
       @confirm="confirmReject">
       <label class="form-label" for="reject-note">Reason (optional)</label>

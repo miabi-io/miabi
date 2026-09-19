@@ -179,7 +179,7 @@ async function confirmDelete() {
     <ConfirmDialog
       :open="!!pendingDelete"
       :title="$t('confirm.title.deleteEnvironment')"
-      :message="pendingDelete ? `Delete environment &quot;${pendingDelete.name}&quot;?` : ''"
+      :message="pendingDelete ? $t('confirm.message.environments.deleteEnvironmentName', { name: pendingDelete.name }) : ''"
       :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"

@@ -332,7 +332,7 @@ const tlsModes: { value: DomainTLSMode; label: string }[] = [
     <ConfirmDialog
       :open="!!toDelete"
       :title="$t('confirm.title.deleteDomain')"
-      :message="`Delete domain &quot;${toDelete?.name}&quot;? Routes using a host under it can no longer be created until it is re-added.`"
+      :message="$t('confirm.message.domains.deleteDomainNameRoutes', { name: toDelete?.name })"
       :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"
