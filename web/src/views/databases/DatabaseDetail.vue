@@ -37,6 +37,8 @@ const sets = ref<DatabaseBackupSet[]>([])
 // Recovery points require object storage; without it the action is unavailable
 // rather than silently writing somewhere that dies with the host.
 const setsS3Ready = ref(false)
+// Taking a recovery point is Enterprise; existing ones stay restorable in every edition.
+const setsEntitled = ref(false)
 const runningSet = ref(false)
 const discovered = ref<DiscoveredSet[] | null>(null)
 const scanning = ref(false)
@@ -81,16 +83,18 @@ const appsOnNode = computed(() =>
 const hiddenAppCount = computed(() => apps.value.length - appsOnNode.value.length)
 
 // --- Tabs (state mirrored in the URL query, like the app detail page) ---
-type TabKey = 'overview' | 'databases' | 'backups' | 'events' | 'logs' | 'network' | 'settings'
+type TabKey = 'overview' | 'databases' | 'backups' | 'recovery-points' | 'events' | 'logs' | 'network' | 'settings'
 const tabs = computed<{ key: TabKey; label: string }[]>(() => {
   const t: { key: TabKey; label: string }[] = [{ key: 'overview', label: 'Overview' }]
-  if (supportsLogical.value) t.push({ key: 'databases', label: 'Databases' }, { key: 'backups', label: 'Backups' })
+  if (supportsLogical.value) {
+    t.push({ key: 'databases', label: 'Databases' }, { key: 'backups', label: 'Backups' }, { key: 'recovery-points', label: 'Recovery points' })
+  }
   t.push({ key: 'events', label: 'Events' }, { key: 'logs', label: 'Logs' }, { key: 'network', label: 'Network' }, { key: 'settings', label: 'Settings' })
   return t
 })
 function tabFromQuery(): TabKey {
   const q = route.query.tab
-  const valid: TabKey[] = ['overview', 'databases', 'backups', 'events', 'logs', 'network', 'settings']
+  const valid: TabKey[] = ['overview', 'databases', 'backups', 'recovery-points', 'events', 'logs', 'network', 'settings']
   return typeof q === 'string' && valid.includes(q as TabKey) ? (q as TabKey) : 'overview'
 }
 const tab = ref<TabKey>(tabFromQuery())
@@ -100,7 +104,7 @@ watch(tab, (t) => {
   else stopLogs()
   if (t === 'events') startEvents()
   else stopEvents()
-  if (t === 'backups') loadSets()
+  if (t === 'recovery-points') loadSets()
 })
 
 const EVENTS_PAGE = 50
@@ -255,7 +259,7 @@ async function load() {
 }
 watch([instId, wid], async () => {
   await load()
-  if (tab.value === 'backups') loadSets() // the tab may be the one restored from the URL
+  if (tab.value === 'recovery-points') loadSets() // the tab may be the one restored from the URL
   loadUpgradeOptions()
   startStatusStream() // live provisioning/upgrade/start-stop status (SSE)
   startMetricsPoll() // live CPU/memory utilisation while running
@@ -449,6 +453,7 @@ async function loadSets() {
     const res = (await backupApi.sets(wid.value, instId.value)).data.data
     sets.value = res?.sets ?? []
     setsS3Ready.value = res?.s3_configured ?? false
+    setsEntitled.value = res?.entitled ?? false
     setSchedules.value = (await backupApi.setSchedules(wid.value, instId.value)).data.data ?? []
   } catch (e) { notify.apiError(e) }
 }
@@ -1131,200 +1136,6 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
     <template v-else-if="tab === 'backups'">
       <div class="card mb-4">
         <div class="card-header">
-          <h2>Recovery points</h2>
-          <div class="flex items-center gap-2">
-            <button
-              v-if="ws.canEdit && setsS3Ready"
-              class="btn btn-sm btn-secondary"
-              :disabled="scanning"
-              title="List the recovery points in the bucket, including any this install has no record of"
-              @click="scanBucket"
-            >
-              {{ scanning ? 'Scanning…' : 'Scan bucket' }}
-            </button>
-            <button
-              v-if="ws.canEdit"
-              class="btn btn-sm btn-primary"
-              :disabled="runningSet || !databases.length || !setsS3Ready"
-              :title="setsS3Ready ? '' : 'Configure the workspace S3 backup target first'"
-              @click="runSet"
-            >
-              {{ runningSet ? 'Backing up…' : 'Back up all databases' }}
-            </button>
-          </div>
-        </div>
-        <div v-if="!setsS3Ready" class="empty-state">
-          <span class="mdi mdi-cloud-off-outline" style="font-size: 36px; color: var(--text-muted)"></span>
-          <p>
-            Recovery points are stored in object storage, so they survive losing this host.
-            Set the workspace S3 backup target under <strong>Workspace settings → Backups</strong> to use them.
-          </p>
-        </div>
-        <div v-else-if="sets.length === 0" class="empty-state">
-          <span class="mdi mdi-database-lock-outline" style="font-size: 36px; color: var(--text-muted)"></span>
-          <p>No recovery points yet. One backs up every database on this instance together, so they restore as a set.</p>
-        </div>
-        <div v-else class="table-wrapper">
-          <table>
-            <thead><tr><th>Recovery point</th><th>Databases</th><th>Status</th><th></th></tr></thead>
-            <tbody>
-              <template v-for="s in sets" :key="s.id">
-                <tr>
-                  <td>
-                    <span class="cell-title">
-                      <code>{{ s.ref }}</code>
-                      <span
-                        v-if="s.encrypted"
-                        class="badge badge-success"
-                        style="margin-left: 6px"
-                        title="Every artifact in this set is encrypted; the workspace backup passphrase is required to restore it"
-                      >
-                        <span class="mdi mdi-lock-outline"></span> encrypted
-                      </span>
-                    </span>
-                    <div class="cell-sub">
-                      {{ s.trigger }} · {{ s.destination }}<template v-if="s.version"> · {{ s.engine }} {{ s.version }}</template>
-                      <template v-if="s.size_bytes"> · {{ fmtBytes(s.size_bytes) }}</template>
-                    </div>
-                    <div class="cell-sub">
-                      <template v-if="s.verify_status === 'ok'">
-                        <span class="mdi mdi-shield-check-outline"></span> verified {{ relativeTime(s.verified_at) }}
-                      </template>
-                      <template v-else-if="s.verify_status === 'failed'">
-                        <span class="text-danger"><span class="mdi mdi-shield-alert-outline"></span> failed verification: {{ s.verify_error }}</span>
-                      </template>
-                      <template v-else>never verified</template>
-                    </div>
-                    <div v-if="s.error" class="cell-sub text-danger">{{ s.error }}</div>
-                  </td>
-                  <td>
-                    <button class="btn btn-sm btn-secondary" @click="openSet = openSet === s.id ? null : s.id">
-                      {{ s.items?.length ?? 0 }}
-                      <span class="mdi" :class="openSet === s.id ? 'mdi-chevron-up' : 'mdi-chevron-down'"></span>
-                    </button>
-                  </td>
-                  <td><span class="badge badge-dot" :class="badge(s.status)">{{ s.status }}</span></td>
-                  <td class="text-right table-actions">
-                    <button
-                      v-if="ws.canEdit"
-                      class="btn-icon btn-icon-muted"
-                      title="Check this recovery point against the bucket"
-                      aria-label="Verify recovery point"
-                      @click="verifySet(s)"
-                    >
-                      <span class="mdi mdi-shield-search"></span>
-                    </button>
-                    <button
-                      v-if="ws.canEdit"
-                      class="btn-icon btn-icon-muted"
-                      title="Download recovery kit — how to restore this without Miabi"
-                      aria-label="Download recovery kit"
-                      @click="downloadRecoveryKit(s)"
-                    >
-                      <span class="mdi mdi-lifebuoy"></span>
-                    </button>
-                    <button
-                      v-if="ws.canEdit && s.status === 'completed'"
-                      class="btn btn-sm btn-secondary"
-                      title="Restore every database in this recovery point"
-                      @click="askRestoreSet(s)"
-                    >
-                      Restore
-                    </button>
-                    <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete recovery point" @click="askRemoveSet(s)">
-                      <span class="mdi mdi-delete-outline"></span>
-                    </button>
-                  </td>
-                </tr>
-                <tr v-if="openSet === s.id">
-                  <td colspan="4" style="padding-top: 0">
-                    <ul class="set-items">
-                      <li v-for="it in s.items ?? []" :key="it.id">
-                        <span class="badge badge-dot" :class="badge(it.status)">{{ it.status }}</span>
-                        <code>{{ it.filename || '—' }}</code>
-                        <span class="text-muted text-sm">#{{ it.number }}<template v-if="it.size_bytes"> · {{ fmtBytes(it.size_bytes) }}</template></span>
-                        <span v-if="it.error" class="text-danger text-sm">{{ it.error }}</span>
-                      </li>
-                    </ul>
-                  </td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
-        <div v-if="discovered" class="card-body" style="border-top: 1px solid var(--border-primary)">
-          <div class="flex items-center gap-2" style="margin-bottom: 10px">
-            <h3 style="margin: 0; font-size: 0.95rem">In the bucket</h3>
-            <span class="text-muted text-sm">{{ discovered.length }} found</span>
-            <button class="btn-icon btn-icon-muted" title="Hide" aria-label="Hide bucket scan" @click="discovered = null">
-              <span class="mdi mdi-close"></span>
-            </button>
-          </div>
-          <p v-if="discovered.length === 0" class="form-hint">
-            Nothing under this workspace's database backup path.
-          </p>
-          <ul v-else class="set-items">
-            <li v-for="d in discovered" :key="d.ref">
-              <code>{{ d.ref }}</code>
-              <span v-if="d.known" class="badge badge-neutral">known</span>
-              <span v-else class="badge badge-info">not in this install</span>
-              <span v-if="d.encrypted" class="badge badge-success"><span class="mdi mdi-lock-outline"></span> encrypted</span>
-              <span class="text-muted text-sm">
-                {{ d.engine }}<template v-if="d.version"> {{ d.version }}</template> ·
-                {{ d.artifacts.length }} database(s)<template v-if="d.size_bytes"> · {{ fmtBytes(d.size_bytes) }}</template>
-              </span>
-              <span v-if="d.reason" class="text-warning text-sm">{{ d.reason }}</span>
-              <span v-else-if="d.openable" class="text-muted text-sm">ready to restore</span>
-              <button
-                v-if="ws.canEdit && !d.known"
-                class="btn btn-sm btn-secondary"
-                title="Add this recovery point to the history so it can be restored"
-                @click="adoptSet(d)"
-              >
-                Adopt
-              </button>
-            </li>
-          </ul>
-        </div>
-
-        <div v-if="setsS3Ready" class="card-body" style="border-top: 1px solid var(--border-primary)">
-          <form v-if="ws.canEdit" class="flex items-center gap-2" style="flex-wrap: wrap" @submit.prevent="addSetSchedule">
-            <label class="sched-field">
-              <span class="text-muted text-sm">Cron (UTC)</span>
-              <input v-model="setCron" class="form-input" placeholder="0 3 * * *" style="max-width: 160px" />
-            </label>
-            <label class="sched-field">
-              <span class="text-muted text-sm">Keep last (0 = all)</span>
-              <input v-model.number="setMax" type="number" min="0" class="form-input" style="max-width: 120px" />
-            </label>
-            <label class="sched-field">
-              <span class="text-muted text-sm">Max age days (0 = ∞)</span>
-              <input v-model.number="setRetentionDays" type="number" min="0" class="form-input" style="max-width: 130px" />
-            </label>
-            <button class="btn btn-primary" style="align-self: flex-end">Add schedule</button>
-          </form>
-          <p v-if="setSchedules.length === 0" class="form-hint" style="margin-top: 8px">
-            No schedule yet. Retention only runs after a scheduled recovery point, and the newest
-            successful one is never deleted whatever the policy says.
-          </p>
-          <ul v-else class="set-items" style="margin-top: 12px">
-            <li v-for="sc in setSchedules" :key="sc.id">
-              <code>{{ sc.cron }}</code>
-              <span class="text-muted text-sm">
-                keep {{ sc.max_sets || 'all' }}<template v-if="sc.retention_days"> · max {{ sc.retention_days }}d</template>
-                <template v-if="sc.last_run_at"> · last {{ relativeTime(sc.last_run_at) }}</template>
-              </span>
-              <span v-if="!sc.enabled" class="badge badge-neutral">disabled</span>
-              <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete schedule" aria-label="Delete schedule" @click="removeSetSchedule(sc.id)">
-                <span class="mdi mdi-delete-outline"></span>
-              </button>
-            </li>
-          </ul>
-        </div>
-      </div>
-
-      <div class="card mb-4">
-        <div class="card-header">
           <h2>Backups</h2>
           <label class="flex items-center gap-2">
             <span class="text-muted text-sm">Database</span>
@@ -1470,6 +1281,211 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+    </template>
+
+    <!-- RECOVERY POINTS (SQL engines; the whole instance as one set) -->
+    <template v-else-if="tab === 'recovery-points'">
+      <div class="card">
+        <div class="card-header">
+          <h2>
+            Recovery points
+            <span v-if="!setsEntitled" class="badge badge-muted"><span class="mdi mdi-lock-outline"></span> Enterprise</span>
+          </h2>
+          <div class="flex items-center gap-2">
+            <button
+              v-if="ws.canEdit && setsS3Ready"
+              class="btn btn-sm btn-secondary"
+              :disabled="scanning"
+              title="List the recovery points in the bucket, including any this install has no record of"
+              @click="scanBucket"
+            >
+              {{ scanning ? 'Scanning…' : 'Scan bucket' }}
+            </button>
+            <button
+              v-if="ws.canEdit"
+              class="btn btn-sm btn-primary"
+              :disabled="runningSet || !databases.length || !setsS3Ready || !setsEntitled"
+              :title="setsEntitled ? (setsS3Ready ? '' : 'Configure the workspace S3 backup target first') : 'Taking recovery points needs an Enterprise license'"
+              @click="runSet"
+            >
+              {{ runningSet ? 'Backing up…' : 'Back up all databases' }}
+            </button>
+          </div>
+        </div>
+        <div v-if="!setsS3Ready" class="empty-state">
+          <span class="mdi mdi-cloud-off-outline" style="font-size: 36px; color: var(--text-muted)"></span>
+          <p>
+            Recovery points are stored in object storage, so they survive losing this host.
+            Set the workspace S3 backup target under <strong>Workspace settings → Backups</strong> to use them.
+          </p>
+        </div>
+        <div v-else-if="sets.length === 0" class="empty-state">
+          <span class="mdi mdi-database-lock-outline" style="font-size: 36px; color: var(--text-muted)"></span>
+          <p v-if="!setsEntitled">
+            Recovery points back up every database on this instance together, so they restore as a set.
+            Taking and scheduling them needs an Enterprise license; existing ones stay restorable without it.
+          </p>
+          <p v-else>No recovery points yet. One backs up every database on this instance together, so they restore as a set.</p>
+        </div>
+        <div v-else class="table-wrapper">
+          <table>
+            <thead><tr><th>Recovery point</th><th>Databases</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              <template v-for="s in sets" :key="s.id">
+                <tr>
+                  <td>
+                    <span class="cell-title">
+                      <code>{{ s.ref }}</code>
+                      <span
+                        v-if="s.encrypted"
+                        class="badge badge-success"
+                        style="margin-left: 6px"
+                        title="Every artifact in this set is encrypted; the workspace backup passphrase is required to restore it"
+                      >
+                        <span class="mdi mdi-lock-outline"></span> encrypted
+                      </span>
+                    </span>
+                    <div class="cell-sub">
+                      {{ s.trigger }} · {{ s.destination }}<template v-if="s.version"> · {{ s.engine }} {{ s.version }}</template>
+                      <template v-if="s.size_bytes"> · {{ fmtBytes(s.size_bytes) }}</template>
+                    </div>
+                    <div class="cell-sub">
+                      <template v-if="s.verify_status === 'ok'">
+                        <span class="mdi mdi-shield-check-outline"></span> verified {{ relativeTime(s.verified_at) }}
+                      </template>
+                      <template v-else-if="s.verify_status === 'failed'">
+                        <span class="text-danger"><span class="mdi mdi-shield-alert-outline"></span> failed verification: {{ s.verify_error }}</span>
+                      </template>
+                      <template v-else>never verified</template>
+                    </div>
+                    <div v-if="s.error" class="cell-sub text-danger">{{ s.error }}</div>
+                  </td>
+                  <td>
+                    <button class="btn btn-sm btn-secondary" @click="openSet = openSet === s.id ? null : s.id">
+                      {{ s.items?.length ?? 0 }}
+                      <span class="mdi" :class="openSet === s.id ? 'mdi-chevron-up' : 'mdi-chevron-down'"></span>
+                    </button>
+                  </td>
+                  <td><span class="badge badge-dot" :class="badge(s.status)">{{ s.status }}</span></td>
+                  <td class="text-right table-actions">
+                    <button
+                      v-if="ws.canEdit"
+                      class="btn-icon btn-icon-muted"
+                      title="Check this recovery point against the bucket"
+                      aria-label="Verify recovery point"
+                      @click="verifySet(s)"
+                    >
+                      <span class="mdi mdi-shield-search"></span>
+                    </button>
+                    <button
+                      v-if="ws.canEdit"
+                      class="btn-icon btn-icon-muted"
+                      title="Download recovery kit — how to restore this without Miabi"
+                      aria-label="Download recovery kit"
+                      @click="downloadRecoveryKit(s)"
+                    >
+                      <span class="mdi mdi-lifebuoy"></span>
+                    </button>
+                    <button
+                      v-if="ws.canEdit && s.status === 'completed'"
+                      class="btn btn-sm btn-secondary"
+                      title="Restore every database in this recovery point"
+                      @click="askRestoreSet(s)"
+                    >
+                      Restore
+                    </button>
+                    <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete recovery point" @click="askRemoveSet(s)">
+                      <span class="mdi mdi-delete-outline"></span>
+                    </button>
+                  </td>
+                </tr>
+                <tr v-if="openSet === s.id">
+                  <td colspan="4" style="padding-top: 0">
+                    <ul class="set-items">
+                      <li v-for="it in s.items ?? []" :key="it.id">
+                        <span class="badge badge-dot" :class="badge(it.status)">{{ it.status }}</span>
+                        <code>{{ it.filename || '—' }}</code>
+                        <span class="text-muted text-sm">#{{ it.number }}<template v-if="it.size_bytes"> · {{ fmtBytes(it.size_bytes) }}</template></span>
+                        <span v-if="it.error" class="text-danger text-sm">{{ it.error }}</span>
+                      </li>
+                    </ul>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <div v-if="discovered" class="card-body" style="border-top: 1px solid var(--border-primary)">
+          <div class="flex items-center gap-2" style="margin-bottom: 10px">
+            <h3 style="margin: 0; font-size: 0.95rem">In the bucket</h3>
+            <span class="text-muted text-sm">{{ discovered.length }} found</span>
+            <button class="btn-icon btn-icon-muted" title="Hide" aria-label="Hide bucket scan" @click="discovered = null">
+              <span class="mdi mdi-close"></span>
+            </button>
+          </div>
+          <p v-if="discovered.length === 0" class="form-hint">
+            Nothing under this workspace's database backup path.
+          </p>
+          <ul v-else class="set-items">
+            <li v-for="d in discovered" :key="d.ref">
+              <code>{{ d.ref }}</code>
+              <span v-if="d.known" class="badge badge-neutral">known</span>
+              <span v-else class="badge badge-info">not in this install</span>
+              <span v-if="d.encrypted" class="badge badge-success"><span class="mdi mdi-lock-outline"></span> encrypted</span>
+              <span class="text-muted text-sm">
+                {{ d.engine }}<template v-if="d.version"> {{ d.version }}</template> ·
+                {{ d.artifacts.length }} database(s)<template v-if="d.size_bytes"> · {{ fmtBytes(d.size_bytes) }}</template>
+              </span>
+              <span v-if="d.reason" class="text-warning text-sm">{{ d.reason }}</span>
+              <span v-else-if="d.openable" class="text-muted text-sm">ready to restore</span>
+              <button
+                v-if="ws.canEdit && !d.known"
+                class="btn btn-sm btn-secondary"
+                :disabled="!setsEntitled"
+                :title="setsEntitled ? 'Add this recovery point to the history so it can be restored' : 'Adopting a recovery point needs an Enterprise license'"
+                @click="adoptSet(d)"
+              >
+                Adopt
+              </button>
+            </li>
+          </ul>
+        </div>
+
+        <div v-if="setsS3Ready" class="card-body" style="border-top: 1px solid var(--border-primary)">
+          <form v-if="ws.canEdit && (setsEntitled || setSchedules.length)" class="flex items-center gap-2" style="flex-wrap: wrap" @submit.prevent="addSetSchedule">
+            <label class="sched-field">
+              <span class="text-muted text-sm">Cron (UTC)</span>
+              <input v-model="setCron" class="form-input" placeholder="0 3 * * *" style="max-width: 160px" />
+            </label>
+            <label class="sched-field">
+              <span class="text-muted text-sm">Keep last (0 = all)</span>
+              <input v-model.number="setMax" type="number" min="0" class="form-input" style="max-width: 120px" />
+            </label>
+            <label class="sched-field">
+              <span class="text-muted text-sm">Max age days (0 = ∞)</span>
+              <input v-model.number="setRetentionDays" type="number" min="0" class="form-input" style="max-width: 130px" />
+            </label>
+            <button class="btn btn-primary" style="align-self: flex-end" :disabled="!setsEntitled">Add schedule</button>
+          </form>
+          <p v-if="setSchedules.length === 0" class="form-hint" style="margin-top: 8px">
+            No schedule yet. Retention only runs after a scheduled recovery point, and the newest
+            successful one is never deleted whatever the policy says.
+          </p>
+          <ul v-else class="set-items" style="margin-top: 12px">
+            <li v-for="sc in setSchedules" :key="sc.id">
+              <code>{{ sc.cron }}</code>
+              <span class="text-muted text-sm">
+                keep {{ sc.max_sets || 'all' }}<template v-if="sc.retention_days"> · max {{ sc.retention_days }}d</template>
+                <template v-if="sc.last_run_at"> · last {{ relativeTime(sc.last_run_at) }}</template>
+              </span>
+              <span v-if="!sc.enabled" class="badge badge-neutral">disabled</span>
+              <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete schedule" aria-label="Delete schedule" @click="removeSetSchedule(sc.id)">
+                <span class="mdi mdi-delete-outline"></span>
+              </button>
+            </li>
+          </ul>
         </div>
       </div>
     </template>

@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	cronpkg "github.com/miabi-io/miabi/internal/cron"
+	"github.com/miabi-io/miabi/internal/enterprise"
 	"github.com/miabi-io/miabi/internal/logstore"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"strings"
@@ -24,6 +25,7 @@ import (
 
 type BackupHandler struct {
 	svc             *backup.Service
+	ee              enterprise.EE
 	dbs             *repositories.DatabaseRepository
 	repo            *repositories.BackupRepository
 	sets            *repositories.DatabaseBackupSetRepository
@@ -34,8 +36,8 @@ type BackupHandler struct {
 	logs            *logstore.Store
 }
 
-func NewBackupHandler(svc *backup.Service, dbs *repositories.DatabaseRepository, repo *repositories.BackupRepository, sets *repositories.DatabaseBackupSetRepository, settings *backupsettings.Service, cron *cronpkg.Manager, auditLog *audit.Logger, maxRestoreMB int) *BackupHandler {
-	return &BackupHandler{svc: svc, dbs: dbs, repo: repo, sets: sets, settings: settings, cron: cron, audit: auditLog, maxRestoreBytes: int64(maxRestoreMB) * 1024 * 1024}
+func NewBackupHandler(svc *backup.Service, dbs *repositories.DatabaseRepository, repo *repositories.BackupRepository, sets *repositories.DatabaseBackupSetRepository, settings *backupsettings.Service, cron *cronpkg.Manager, ee enterprise.EE, auditLog *audit.Logger, maxRestoreMB int) *BackupHandler {
+	return &BackupHandler{svc: svc, ee: ee, dbs: dbs, repo: repo, sets: sets, settings: settings, cron: cron, audit: auditLog, maxRestoreBytes: int64(maxRestoreMB) * 1024 * 1024}
 }
 
 // SetLogStore wires the shared execution-log store so a backup run's full log

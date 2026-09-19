@@ -4,11 +4,14 @@ import { adminApi } from '@/api/admin'
 import { nodesApi } from '@/api/nodes'
 import type { Server, StorageClass, StorageClassInput } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
+import { useEntitlement } from '@/composables/useEntitlement'
 import { fmtSize } from '@/utils/format'
 import AppModal from '@/components/AppModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const notify = useNotificationStore()
+// Registering a disk is Enterprise; the built-in class stays usable without a license.
+const entitlement = useEntitlement('storage_classes')
 
 const classes = ref<StorageClass[]>([])
 const nodes = ref<Server[]>([])
@@ -109,9 +112,21 @@ const reclaimHint = computed(() =>
           Where on a node the platform creates volumes. Workspaces choose a class by name — they never see or supply a host path.
         </p>
       </div>
-      <button class="btn btn-primary" @click="openCreate">
+      <button v-if="entitlement.has.value" class="btn btn-primary" :disabled="!entitlement.mutable.value" @click="openCreate">
         <span class="mdi mdi-plus"></span> New storage class
       </button>
+      <span v-else class="badge badge-muted"><span class="mdi mdi-lock-outline"></span> Enterprise</span>
+    </div>
+
+    <div v-if="!entitlement.has.value" class="card" style="margin-bottom: 16px">
+      <div class="card-body">
+        <h3 style="margin: 0 0 4px">Bring your own disks with Enterprise</h3>
+        <p class="text-muted" style="margin: 0">
+          Registering storage classes — volumes on operator-managed disks, the way bare-metal and dedicated hosts are used —
+          needs an Enterprise license. The built-in default class keeps working in every edition, and volumes already on a
+          registered class keep running.
+        </p>
+      </div>
     </div>
 
     <div class="card">
@@ -148,7 +163,7 @@ const reclaimHint = computed(() =>
               </td>
               <td>{{ c.builtin ? '—' : c.reclaim_policy }}</td>
               <td style="text-align: right; white-space: nowrap">
-                <button class="btn btn-ghost btn-sm" @click="openEdit(c)">Edit</button>
+                <button class="btn btn-ghost btn-sm" :disabled="!entitlement.mutable.value" @click="openEdit(c)">Edit</button>
                 <button class="btn btn-ghost btn-sm" :disabled="c.builtin" @click="confirmTarget = c">Delete</button>
               </td>
             </tr>
