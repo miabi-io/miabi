@@ -173,6 +173,28 @@ func (r *ClusterRepository) ServerLoads(clusterID uint) (map[uint]ServerLoad, er
 }
 
 // WorkspaceDefault returns the cluster a workspace's new resources land in when a create names none.
+// ListByOrganization returns the clusters dedicated to one organization.
+func (r *ClusterRepository) ListByOrganization(orgID uint) ([]models.Cluster, error) {
+	var out []models.Cluster
+	err := r.db.Where("organization_id = ?", orgID).Order("name ASC").Find(&out).Error
+	return out, err
+}
+
+// CountByOrganization is how many clusters an organization owns. Non-zero confines that organization
+// to them, so this is read on every placement.
+func (r *ClusterRepository) CountByOrganization(orgID uint) (int64, error) {
+	var n int64
+	err := r.db.Model(&models.Cluster{}).Where("organization_id = ?", orgID).Count(&n).Error
+	return n, err
+}
+
+// ReleaseOrganization returns every cluster an organization owns to shared visibility. A cluster left
+// pointing at a deleted organization would be visible to nobody.
+func (r *ClusterRepository) ReleaseOrganization(orgID uint) error {
+	return r.db.Model(&models.Cluster{}).Where("organization_id = ?", orgID).
+		Updates(map[string]any{"organization_id": nil, "visibility": models.ClusterVisibilityAll}).Error
+}
+
 func (r *ClusterRepository) WorkspaceDefault(workspaceID uint) (*models.Cluster, error) {
 	var id *uint
 	if err := r.db.Model(&models.Workspace{}).Select("default_cluster_id").Where("id = ?", workspaceID).Scan(&id).Error; err != nil {

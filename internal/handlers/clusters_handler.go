@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jkaninda/okapi"
+	"github.com/miabi-io/miabi/internal/enterprise"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/cluster"
 	"github.com/miabi-io/miabi/internal/services/node"
@@ -71,7 +72,10 @@ type UpdateClusterRequest struct {
 		// LocationCode is the short region code, e.g. "eu-central". Empty clears it.
 		LocationCode *string `json:"location_code"`
 		// Visibility "restricted" hides the location from tenants; only platform admins place into it.
-		Visibility string `json:"visibility" enum:"all,restricted"`
+		Visibility string `json:"visibility" enum:"all,restricted,organization"`
+		// OrganizationID dedicates the location to one organization: nobody else sees it or may place
+		// in it, and that organization is confined to the clusters it owns. 0 releases it to shared.
+		OrganizationID *uint `json:"organization_id"`
 		// Cordoned stops new placements in the location; running workloads stay.
 		Cordoned *bool `json:"cordoned"`
 		// ExternalBaseDomain is the wildcard domain for generated app URLs here, e.g. "apps.eu-central.example.com".
@@ -103,6 +107,17 @@ func (h *ClusterHandler) UpdateCluster(c *okapi.Context, req *UpdateClusterReque
 	if req.Body.Visibility != "" {
 		v := models.ClusterVisibility(req.Body.Visibility)
 		patch.Visibility = &v
+	}
+	if req.Body.OrganizationID != nil {
+		if *req.Body.OrganizationID != 0 && h.orgs != nil {
+			if _, err := h.orgs.Get(*req.Body.OrganizationID); err != nil {
+				return c.AbortBadRequest("no such organization")
+			}
+		}
+		if err := h.ee.RequireMutable(enterprise.FlagOrganizations); err != nil {
+			return entitlementAbort(c, err)
+		}
+		patch.OrganizationID = req.Body.OrganizationID
 	}
 	patch.ExternalBaseDomain, patch.ExternalCertProvider = req.Body.ExternalBaseDomain, req.Body.ExternalCertProvider
 	patch.IngressIP, patch.IngressHostname = req.Body.IngressIP, req.Body.IngressHostname

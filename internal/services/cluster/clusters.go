@@ -35,6 +35,9 @@ type ClusterPatch struct {
 	// IngressIP and IngressHostname are where the cluster's public DNS records point.
 	IngressIP       *string
 	IngressHostname *string
+	// OrganizationID dedicates the cluster to one organization; 0 releases it back to shared. Set it
+	// together with Visibility "organization" — the handler keeps the two in step.
+	OrganizationID *uint
 }
 
 // Clusters lists every cluster, the default first, with its node count.
@@ -98,6 +101,19 @@ func (s *Service) UpdateCluster(id uint, p ClusterPatch) (*models.Cluster, error
 			return nil, ErrInvalidVisibility
 		}
 		cols["visibility"] = *p.Visibility
+	}
+	if p.OrganizationID != nil {
+		if *p.OrganizationID == 0 {
+			cols["organization_id"] = nil
+			// A cluster left on "organization" visibility with no owner would be visible to nobody,
+			// so releasing it always returns it to shared.
+			if p.Visibility == nil || *p.Visibility == models.ClusterVisibilityOrganization {
+				cols["visibility"] = models.ClusterVisibilityAll
+			}
+		} else {
+			cols["organization_id"] = *p.OrganizationID
+			cols["visibility"] = models.ClusterVisibilityOrganization
+		}
 	}
 	if p.Cordoned != nil {
 		cols["cordoned"] = *p.Cordoned

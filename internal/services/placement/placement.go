@@ -36,6 +36,7 @@ type Service struct {
 	servers  *repositories.ServerRepository
 	online   Online
 	policy   Policy
+	orgs     Orgs
 }
 
 func NewService(clusters *repositories.ClusterRepository, servers *repositories.ServerRepository, online Online) *Service {
@@ -48,8 +49,53 @@ type Policy interface {
 	EffectivePlacement(workspaceID uint) (models.PlanPlacement, bool)
 }
 
+// Orgs resolves the organization a workspace belongs to (0 when unknown) and whether that
+// organization owns clusters of its own. Satisfied by the organization wiring in routes.
+type Orgs interface {
+	OrganizationOfWorkspace(workspaceID uint) uint
+	OwnsClusters(orgID uint) bool
+}
+
+// access is who is asking: a platform admin sees every cluster, a tenant sees the shared ones plus
+// its own organization's. An organization that owns clusters is CONFINED to them — the point of
+// dedicated infrastructure is that a create never quietly lands on shared hardware.
+type access struct {
+	admin    bool
+	orgID    uint
+	confined bool
+}
+
+// allows reports whether the caller may place in this cluster.
+func (a access) allows(c *models.Cluster) bool {
+	if a.admin {
+		return true
+	}
+	if c.OrganizationID != nil {
+		return a.orgID != 0 && *c.OrganizationID == a.orgID
+	}
+	if c.Visibility == models.ClusterVisibilityRestricted {
+		return false
+	}
+	return !a.confined
+}
+
+// accessFor resolves the caller's cluster access. An admin needs no organization lookup.
+func (s *Service) accessFor(workspaceID uint, admin bool) access {
+	if admin || s.orgs == nil {
+		return access{admin: admin}
+	}
+	orgID := s.orgs.OrganizationOfWorkspace(workspaceID)
+	if orgID == 0 {
+		return access{}
+	}
+	return access{orgID: orgID, confined: s.orgs.OwnsClusters(orgID)}
+}
+
 // SetPolicy wires plan placement (nil-safe; nil binds no workspace to locations or pools).
 func (s *Service) SetPolicy(p Policy) { s.policy = p }
+
+// SetOrgs wires organization-dedicated clusters (nil-safe; nil leaves every cluster shared).
+func (s *Service) SetOrgs(o Orgs) { s.orgs = o }
 
 func (s *Service) planPlacement(workspaceID uint) (models.PlanPlacement, bool) {
 	if s.policy == nil {
@@ -91,7 +137,18 @@ func (s *Service) Place(req Request) (Result, error) {
 		return s.onNode(req.ServerID, req.Location)
 	}
 	if req.Colocate != 0 {
-		return s.onNode(req.Colocate, req.Location)
+		res, err := s.onNode(req.Colocate, req.Location)
+		if err != nil {
+			return Result{}, err
+		}
+		// Colocation follows a resource that is already placed, and deliberately reaches restricted
+		// clusters the tenant could not pick itself. It must still not cross into another
+		// organization's dedicated cluster, which a workspace reassigned after its first resource
+		// landed would otherwise do.
+		if err := s.sameOrg(req, res.ClusterID); err != nil {
+			return Result{}, err
+		}
+		return res, nil
 	}
 	c, err := s.resolveCluster(req.WorkspaceID, req.Location, req.Admin)
 	if err != nil {
@@ -103,6 +160,21 @@ func (s *Service) Place(req Request) (Result, error) {
 		return Result{}, err
 	}
 	return Result{ClusterID: c.ID, ServerID: serverID}, nil
+}
+
+// sameOrg refuses a colocation that would cross into another organization's dedicated cluster.
+func (s *Service) sameOrg(req Request, clusterID uint) error {
+	if req.Admin {
+		return nil
+	}
+	c, err := s.clusters.FindByID(clusterID)
+	if err != nil || c.OrganizationID == nil {
+		return nil
+	}
+	if s.accessFor(req.WorkspaceID, false).orgID != *c.OrganizationID {
+		return ErrLocationNotAllowed
+	}
+	return nil
 }
 
 func (s *Service) onNode(serverID uint, location string) (Result, error) {
@@ -128,23 +200,20 @@ func (s *Service) ResolveLocation(workspaceID uint, location string, admin bool)
 	return s.resolveCluster(workspaceID, location, admin)
 }
 
-func allowed(c *models.Cluster, admin bool) bool {
-	return admin || c.Visibility != models.ClusterVisibilityRestricted
-}
-
 // resolveCluster picks the named location, else the workspace's default, else the first location the
 // workspace may use (the default cluster comes first).
 func (s *Service) resolveCluster(workspaceID uint, location string, admin bool) (*models.Cluster, error) {
 	policy, enforced := s.planPlacement(workspaceID)
+	acc := s.accessFor(workspaceID, admin)
 	usable := func(c *models.Cluster) bool {
-		return allowed(c, admin) && !c.Cordoned && permits(policy, enforced, c.ID)
+		return acc.allows(c) && !c.Cordoned && permits(policy, enforced, c.ID)
 	}
 	if name := strings.TrimSpace(location); name != "" {
 		c, err := s.clusters.FindByName(name)
 		if err != nil {
 			return nil, ErrLocationNotFound
 		}
-		if !allowed(c, admin) || !permits(policy, enforced, c.ID) {
+		if !acc.allows(c) || !permits(policy, enforced, c.ID) {
 			return nil, ErrLocationNotAllowed
 		}
 		if c.Cordoned {
@@ -300,10 +369,11 @@ func (s *Service) Locations(workspaceID uint, admin bool) ([]Location, error) {
 	}
 	fallback, _ := s.resolveCluster(workspaceID, "", admin)
 	policy, enforced := s.planPlacement(workspaceID)
+	acc := s.accessFor(workspaceID, admin)
 	out := make([]Location, 0, len(list))
 	for i := range list {
 		c := &list[i]
-		if !allowed(c, admin) || c.Cordoned || !permits(policy, enforced, c.ID) {
+		if !acc.allows(c) || c.Cordoned || !permits(policy, enforced, c.ID) {
 			continue
 		}
 		out = append(out, Location{
@@ -328,7 +398,8 @@ func (s *Service) SetDefaultLocation(workspaceID uint, location string, admin bo
 	if err != nil {
 		return ErrLocationNotFound
 	}
-	if policy, enforced := s.planPlacement(workspaceID); !allowed(c, admin) || !permits(policy, enforced, c.ID) {
+	policy, enforced := s.planPlacement(workspaceID)
+	if !s.accessFor(workspaceID, admin).allows(c) || !permits(policy, enforced, c.ID) {
 		return ErrLocationNotAllowed
 	}
 	return s.clusters.SetWorkspaceDefault(workspaceID, &c.ID)

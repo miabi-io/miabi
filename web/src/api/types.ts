@@ -456,6 +456,53 @@ export interface AdminUser {
   // Enterprise per-user overrides (null = inherit the platform default; -1 = unlimited).
   workspace_limit?: number | null
   workspace_membership_limit?: number | null
+  // The realm the user's NEW workspaces are created in; null = the default organization.
+  organization_id?: number | null
+}
+
+/**
+ * An organization is the tenant boundary: it owns workspaces, caps how many, and may own the
+ * clusters they deploy to. Exactly one is the default — the realm every unassigned workspace, user
+ * and identity provider resolves to.
+ */
+export interface Organization {
+  id: number
+  uid: string
+  /** Globally unique handle; immutable once created. */
+  name: string
+  display_name: string
+  is_default: boolean
+  owner_user_id: number
+  /** -1 = unlimited, 0 = none allowed, N = N. */
+  max_workspaces: number
+  /** The location this organization's new workspaces land in; null = the platform default. */
+  default_cluster_id?: number | null
+  enforce_sso: boolean
+  /** Filled on list; how many workspaces the organization holds. */
+  workspace_count: number
+  created_at?: string
+  updated_at?: string
+}
+
+/** An organization plus the clusters dedicated to it. */
+export interface OrganizationDetail extends Organization {
+  clusters: Array<{ id: number; name: string; display_name?: string }>
+}
+
+export interface OrganizationInput {
+  name?: string
+  display_name: string
+  owner_user_id?: number
+  /** Omitted means unlimited; 0 genuinely means no workspaces allowed. */
+  max_workspaces?: number
+}
+
+export interface OrganizationUpdate {
+  display_name?: string
+  owner_user_id?: number
+  max_workspaces?: number
+  /** 0 clears the default location; omitting the field leaves it unchanged. */
+  default_cluster_id?: number
 }
 
 export interface WorkspaceMemberSummary {
@@ -2152,6 +2199,9 @@ export type ClusterMode = 'standalone' | 'swarm'
 
 // Cluster is a deploy target: nodes that share private networking and one ingress.
 // Tenants see it as a location.
+/** Who may place into a cluster: everyone, platform admins only, or one organization. */
+export type ClusterVisibility = 'all' | 'restricted' | 'organization'
+
 export interface Cluster {
   id: number
   uid: string
@@ -2164,7 +2214,9 @@ export interface Cluster {
   ingress_server_id: number
   ingress_ip?: string
   ingress_hostname?: string
-  visibility: 'all' | 'restricted'
+  visibility: ClusterVisibility
+  // Set together with visibility "organization": the tenant this location is dedicated to.
+  organization_id?: number | null
   cordoned: boolean
   legacy_ingress: boolean
   external_base_domain?: string

@@ -30,6 +30,7 @@ export const adminNavSections: NavSection[] = [
     id: 'admin-tenants',
     title: 'Tenants',
     items: [
+      { name: 'Organizations', path: '/admin/organizations', icon: 'mdi-domain' },
       { name: 'Workspaces', path: '/admin/workspaces', icon: 'mdi-briefcase-outline' },
       { name: 'Plans', path: '/admin/plans', icon: 'mdi-tune-variant' },
       { name: 'Database sizes', path: '/admin/database-sizes', icon: 'mdi-database-cog-outline' },

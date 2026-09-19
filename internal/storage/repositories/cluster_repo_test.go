@@ -27,6 +27,7 @@ type clusterTable struct {
 	IngressIP       string
 	IngressHostname string
 	Visibility      string
+	OrganizationID  *uint
 	Cordoned        bool
 	LegacyIngress   bool
 	CreatedAt       time.Time

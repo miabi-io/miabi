@@ -30,11 +30,14 @@ type ClusterVisibility string
 const (
 	ClusterVisibilityAll        ClusterVisibility = "all"
 	ClusterVisibilityRestricted ClusterVisibility = "restricted"
+	// ClusterVisibilityOrganization dedicates the cluster to OrganizationID: no other tenant sees it
+	// or may place in it, whatever their plan allows.
+	ClusterVisibilityOrganization ClusterVisibility = "organization"
 )
 
 // ValidClusterVisibility reports whether v is a known visibility.
 func ValidClusterVisibility(v ClusterVisibility) bool {
-	return v == ClusterVisibilityAll || v == ClusterVisibilityRestricted
+	return v == ClusterVisibilityAll || v == ClusterVisibilityRestricted || v == ClusterVisibilityOrganization
 }
 
 // ServiceEndpointMode is how a cluster's swarm services are reached by name.
@@ -71,7 +74,10 @@ type Cluster struct {
 	IngressIP       string            `json:"ingress_ip,omitempty"`
 	IngressHostname string            `json:"ingress_hostname,omitempty"`
 	Visibility      ClusterVisibility `json:"visibility" gorm:"not null;default:all"`
-	Cordoned        bool              `json:"cordoned" gorm:"not null;default:false"`
+	// OrganizationID dedicates the cluster to one organization. Set together with
+	// ClusterVisibilityOrganization; nil leaves the cluster shared.
+	OrganizationID *uint `json:"organization_id,omitempty" gorm:"index"`
+	Cordoned       bool  `json:"cordoned" gorm:"not null;default:false"`
 	// ExternalBaseDomain is the wildcard domain generated app URLs in this cluster live under, empty when one-click
 	// external access is off here; ExternalCertProvider is the gateway's certManager provider for them.
 	ExternalBaseDomain   string `json:"external_base_domain,omitempty"`

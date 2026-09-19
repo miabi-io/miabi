@@ -54,6 +54,7 @@ const (
 	FlagDatabaseSizes                = "database_sizes"
 	FlagStorageClasses               = "storage_classes" // admin-registered storage classes (bare-metal disks)
 	FlagRecoveryPoints               = "recovery_points" // instance-wide database recovery points
+	FlagOrganizations                = "organizations"   // more than one organization (tenant realm)
 )
 
 // FlagInfo describes one entitlement flag for tooling and documentation.
@@ -93,6 +94,7 @@ var AllFlags = []FlagInfo{
 	{FlagDatabaseSizes, "named database sizes (CPU and memory), offered per plan"},
 	{FlagStorageClasses, "register storage classes: volumes on operator-managed disks"},
 	{FlagRecoveryPoints, "database recovery points: back up and schedule a whole instance as one set"},
+	{FlagOrganizations, "organizations: tenant realms owning workspaces, with their own limits and clusters"},
 }
 
 const (
@@ -128,7 +130,7 @@ var Tiers = []Tier{
 			FlagUserWorkspaceMembershipLimit,
 			FlagAuditLog, FlagAuditExport, FlagPlatformBackup, FlagAnnouncements,
 			FlagPrivateRegistry, FlagRegistryS3, FlagPlatformRunners, FlagSecurityProfile,
-			FlagStorageClasses, FlagRecoveryPoints,
+			FlagStorageClasses, FlagRecoveryPoints, FlagOrganizations,
 		},
 		Limits: map[string]int{
 			LimitNodeLimit: 25,

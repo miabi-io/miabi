@@ -4,6 +4,10 @@ import type {
   PageableResponse,
   AdminUser,
   AdminUserDetail,
+  Organization,
+  OrganizationDetail,
+  OrganizationInput,
+  OrganizationUpdate,
   OwnershipTransfer,
   AdminWorkspace,
   AdminWorkspaceDetail,
@@ -73,6 +77,8 @@ export interface UpdateUserPayload {
   active?: boolean
   // Optional change to the unique handle (an admin action).
   username?: string
+  /** The realm the user's NEW workspaces are created in; 0 returns them to the default org. */
+  organization_id?: number
 }
 
 export interface SettingInput {
@@ -311,6 +317,19 @@ export const adminApi = {
     api.post<ApiResponse<LdapGroupMapping>>(`/admin/sso/ldap/${id}/mappings`, payload),
   deleteLdapMapping: (id: number, mappingId: number) =>
     api.delete<ApiResponse<{ message: string }>>(`/admin/sso/ldap/${id}/mappings/${mappingId}`),
+
+  // Organizations: the tenant realm a workspace belongs to. Listing is always allowed — one
+  // organization always exists — while creating a second one is Enterprise.
+  listOrganizations: () => api.get<ApiResponse<Organization[]>>('/admin/organizations'),
+  getOrganization: (id: number) => api.get<ApiResponse<OrganizationDetail>>(`/admin/organizations/${id}`),
+  createOrganization: (payload: OrganizationInput) =>
+    api.post<ApiResponse<Organization>>('/admin/organizations', payload),
+  updateOrganization: (id: number, payload: OrganizationUpdate) =>
+    api.put<ApiResponse<Organization>>(`/admin/organizations/${id}`, payload),
+  setDefaultOrganization: (id: number) =>
+    api.post<ApiResponse<{ message: string }>>(`/admin/organizations/${id}/default`),
+  deleteOrganization: (id: number) =>
+    api.delete<ApiResponse<{ message: string }>>(`/admin/organizations/${id}`),
 
   // Plans (per-workspace resource limits & capabilities)
   listPlans: (search = '', page = 0, size = 20) =>

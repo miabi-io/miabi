@@ -31,6 +31,7 @@ type User struct {
 	Active                   bool       `json:"active" gorm:"default:true;not null"`
 	MustChangePassword       bool       `json:"must_change_password" gorm:"not null;default:false"`
 	AuthSource               string     `json:"auth_source" gorm:"not null;default:'local'"`
+	OrganizationID           *uint      `json:"organization_id,omitempty" gorm:"index"`
 	WorkspaceLimit           *int       `json:"workspace_limit,omitempty"`
 	WorkspaceMembershipLimit *int       `json:"workspace_membership_limit,omitempty"`
 	ScheduledDeletionAt      *time.Time `json:"scheduled_deletion_at" gorm:"index"`

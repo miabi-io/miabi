@@ -209,6 +209,15 @@ func Run(db *gorm.DB) error {
 		return fmt.Errorf("failed to create default-cluster uniqueness index: %w", err)
 	}
 
+	// Exactly one default organization. Every nullable organization_id — on workspaces, users and the
+	// identity providers — resolves to it, so two rows carrying the flag would make that resolution
+	// ambiguous across five tables.
+	if err := db.Exec(
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_organization_default ON organizations (is_default) WHERE is_default`,
+	).Error; err != nil {
+		return fmt.Errorf("failed to create default-organization uniqueness index: %w", err)
+	}
+
 	logger.Info("database migrations applied")
 	return nil
 }
