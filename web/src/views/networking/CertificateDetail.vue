@@ -157,7 +157,7 @@ async function confirmDelete() {
     <ConfirmDialog
       :open="showDelete"
       :title="$t('confirm.title.deleteCertificate')"
-      :message="`Delete certificate &quot;${item.name}&quot;? This is blocked while a route still references it.`"
+      :message="$t('confirm.message.certificateDetail.deleteCertificateNameThis', { name: item.name })"
       :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"

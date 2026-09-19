@@ -76,6 +76,179 @@
     }
   },
   "confirm": {
+    "message": {
+      "announcements": {
+        "titleWillBeRemoved": "&quot;{title}&quot; sera retirée de toutes les boîtes de réception où elle a été délivrée."
+      },
+      "apiKeys": {
+        "permanentlyDeleteApiKey": "Supprimer définitivement la clé API &quot;{name}&quot; ? Elle est retirée entièrement et cette action est irréversible.",
+        "revokeApiKeyName": "Révoquer la clé API &quot;{name}&quot; ? Les applications qui l’utilisent perdront l’accès immédiatement. Cette action est irréversible."
+      },
+      "appAccessPanel": {
+        "revokeNameSAccess": "Révoquer l’accès de {name} à cette application ?"
+      },
+      "certificateDetail": {
+        "deleteCertificateNameThis": "Supprimer le certificat &quot;{name}&quot; ? L’opération est bloquée tant qu’une route le référence."
+      },
+      "clusterDetail": {
+        "eachWorkspaceNetworkIs": "Chaque réseau d’espace de travail passe d’un bridge local au nœud à un overlay de cluster, afin que les applications et les bases de données se joignent entre nœuds. Les conteneurs ne sont PAS redémarrés, mais les connexions ouvertes au sein d’un espace de travail sont brièvement interrompues pendant la bascule.",
+        "removeNameFromThe": "Retirer {name} du swarm ? Il devient un cluster autonome.",
+        "theAgentIsRemoved": "L’agent est retiré de tous les nœuds du cluster. Ils continuent d’exécuter leurs tâches — c’est Swarm qui les planifie — mais Miabi perd sa connexion Docker vers eux.\n\nLes applications planifiées sur ces nœuds cesseront d’afficher métriques, statistiques et shell. Les enregistrements des nœuds, eux, sont conservés."
+      },
+      "configs": {
+        "deleteConfigNameAnd": "Supprimer la configuration &quot;{name}&quot; et ses {length} fichier(s) ? La suppression est bloquée si une application la monte encore."
+      },
+      "databaseSizes": {
+        "nameWillNoLonger": "&quot;{name}&quot; ne sera plus proposée. Les bases de données qui l’utilisent déjà conservent leurs limites."
+      },
+      "dnsProviders": {
+        "disconnectNameExistingDns": "Déconnecter &quot;{name}&quot; ? Les enregistrements DNS existants ne sont pas modifiés.",
+        "enterOneOfYour": "Saisissez un de vos domaines sur {type} pour tester {name}."
+      },
+      "domainDetail": {
+        "banNameItsRoutes": "Bannir {name} ? Ses routes seront mises hors ligne et il ne pourra plus être vérifié.",
+        "deleteDomainNameRoutes": "Supprimer le domaine &quot;{name}&quot; ? Plus aucune route utilisant un hôte sous ce domaine ne pourra être créée tant qu’il n’est pas ajouté de nouveau.",
+        "forceMarkNameAs": "Marquer {name} comme vérifié sans contrôle DNS ? Cela contourne la preuve de propriété — à réserver aux DNS privés ou injoignables."
+      },
+      "domains": {
+        "deleteDomainNameRoutes": "Supprimer le domaine &quot;{name}&quot; ? Plus aucune route utilisant un hôte sous ce domaine ne pourra être créée tant qu’il n’est pas ajouté de nouveau."
+      },
+      "envVarModal": {
+        "thisVariableHasUnsaved": "Cette variable a des modifications non enregistrées. Fermer maintenant les perd."
+      },
+      "environments": {
+        "deleteEnvironmentName": "Supprimer l’environnement &quot;{name}&quot; ?"
+      },
+      "gitOps": {
+        "deleteGitSourceName": "Supprimer la source Git &quot;{name}&quot; ?"
+      },
+      "gitOpsDetail": {
+        "deleteAutoSync": "Supprimer le {kind} « {name} » en production. La ressource en cours d’exécution est retirée immédiatement. Ce projet se synchronise automatiquement : elle sera recréée depuis Git à la prochaine réconciliation.",
+        "deleteManualSync": "Supprimer le {kind} « {name} » en production. La ressource en cours d’exécution est retirée immédiatement. Elle reste supprimée jusqu’à ce qu’une synchronisation la réapplique depuis Git."
+      },
+      "gitRepositories": {
+        "deleteGitRepositoryName": "Supprimer le dépôt Git &quot;{name}&quot; ? Les applications qui se construisent depuis ce dépôt échoueront au clonage."
+      },
+      "imageDetail": {
+        "deleteRepoNameThis": "Supprimer {repo}:{name} ? Le manifeste est retiré du registre et cette action est irréversible."
+      },
+      "ldapDirectory": {
+        "deleteNameUsersProvisioned": "Supprimer &quot;{name}&quot; ? Les utilisateurs provisionnés depuis cet annuaire conservent leur compte mais ne pourront plus s’y connecter par ce biais."
+      },
+      "license": {
+        "removeTheLicenseAnd": "Retirer la licence et revenir à l’édition Community ?"
+      },
+      "middlewareDetail": {
+        "deleteMiddlewareNameRoutes": "Supprimer le middleware &quot;{name}&quot; ? Les routes qui le référencent le perdront."
+      },
+      "middlewareFormModal": {
+        "thisPolicyHasUnsaved": "Cette politique a des modifications non enregistrées. Fermer maintenant les perd."
+      },
+      "networks": {
+        "deleteNetworkNameThis": "Supprimer le réseau &quot;{name}&quot; ? Cette action est irréversible."
+      },
+      "nodeDetail": {
+        "removeContainerToremovecontainerThis": "Retirer le conteneur &quot;{toRemoveContainer}&quot; ? Cette action est irréversible.",
+        "removeNodeNameIts": "Retirer le nœud &quot;{name}&quot; ? Son tunnel d’agent est fermé et la passerelle edge, le cas échéant, est démantelée.",
+        "removeTheGomaGateway": "Retirer le conteneur Goma Gateway de ce nœud ? Le routage qui passe par lui s’arrête jusqu’à un nouveau déploiement. Les certificats ACME sont conservés.",
+        "swarmReschedulesThisNode": "Swarm replanifie dès maintenant les tâches de service de ce nœud sur d’autres nœuds, et n’en place plus aucune ici. C’est ce qui rend le nœud sûr à redémarrer.\n\nÀ noter : le repasser en Active ne ramène PAS les tâches. Swarm ne rééquilibre jamais de lui-même — elles restent là où elles ont été replanifiées jusqu’à un redéploiement, une mise à l’échelle, ou le vidage de leur nouveau nœud."
+      },
+      "notifications": {
+        "deleteNotificationChannelName": "Supprimer le canal de notification &quot;{name}&quot; ?"
+      },
+      "oAuthProviders": {
+        "deleteProviderNameThis": "Supprimer le fournisseur &quot;{name}&quot; ? Cette action est irréversible."
+      },
+      "organizationDetail": {
+        "displayNameWillBe": "&quot;{display_name}&quot; sera supprimée, et toute localisation qui lui est dédiée devient réservée aux administrateurs jusqu’à réaffectation. La suppression est refusée tant qu’elle contient des espaces de travail ou des utilisateurs."
+      },
+      "organizations": {
+        "displayNameWillBe": "&quot;{display_name}&quot; sera supprimée et tout cluster qui lui est dédié redevient partagé. La suppression est refusée tant qu’elle contient des espaces de travail ou des utilisateurs — déplacez-les d’abord.",
+        "newUsersAndWorkspaces": "Les nouveaux utilisateurs et espaces de travail qui ne nomment aucune organisation appartiendront à &quot;{display_name}&quot;. Les existants ne sont pas déplacés.{promoteWarning}",
+        "promoteWarning": "{name} dispose de ses propres localisations ({where}) : les nouveaux utilisateurs et espaces de travail qui ne nomment aucune organisation s’y déploieront, et nulle part ailleurs."
+      },
+      "pipelines": {
+        "delete": "Supprimer le pipeline &quot;{name}&quot; ? Son historique d’exécutions est retiré.",
+        "deleteRepoOwned": "Supprimer le pipeline &quot;{name}&quot; ? Son historique d’exécutions est retiré, et son application revient à une construction et un déploiement directs — en ignorant les étapes de {path}."
+      },
+      "planDetail": {
+        "deletePlanNameAny": "Supprimer le forfait &quot;{name}&quot; ? Les espaces de travail qui l’utilisent basculeront sur le forfait par défaut."
+      },
+      "platformBackup": {
+        "deleteThisPlatformBackup": "Supprimer cette sauvegarde de la plateforme ?",
+        "deletesTheRecoveryPoint": "Supprime le point de restauration et ses artefacts du bucket, y compris l’enveloppe d’identité. Cette action est irréversible.",
+        "restore": "Restaurer {what} ? Cette opération est destructrice. Mettez d’abord la plateforme en mode maintenance. Vous avez également besoin de la MIABI_ENCRYPTION_KEY d’origine pour déchiffrer les secrets restaurés.",
+        "restoreWhat": {
+          "database": "la base de données du plan de contrôle (écrase la base en cours d’exécution sur place)",
+          "volume": "le volume « {name} » (écrase son contenu)"
+        },
+        "schedulesAndCertificateIssuance": "Les planifications et l’émission de certificats reprennent. Ne le faites qu’une fois que le DNS pointe vers cet hôte — sinon les demandes de certificat porteront sur une adresse qui résout encore ailleurs.",
+        "thisOverwritesLiveData": "Ceci écrase les données en production. {selectedCount} artefact(s) seront restaurés dans cette plateforme : les bases de données sont supprimées puis recréées depuis la sauvegarde, et les volumes sont écrasés. Les données écrites depuis {created_at} sont perdues pour tout ce que vous avez sélectionné."
+      },
+      "portableBackupPanel": {
+        "thisRemovesDeleterefFrom": "Ceci retire {deleteRef} du bucket — son index, son fichier d’état et tous les dumps et archives qu’il contient. Cette action est irréversible."
+      },
+      "ports": {
+        "hostPortHostPort": "Le port hôte {host_port}/{protocol} ne sera pas publié. Le demandeur verra votre note."
+      },
+      "profile": {
+        "signOutOthers": "Ceci déconnectera tous les autres appareils et navigateurs. Continuer ?",
+        "signOutThis": "Déconnecter cet appareil de votre compte ? Il devra se reconnecter."
+      },
+      "registries": {
+        "deleteRegistryNameApps": "Supprimer le registre &quot;{name}&quot; ? Les applications qui l’utilisent ne pourront plus récupérer d’images privées."
+      },
+      "registry": {
+        "runGarbageCollectionThe": "Lancer le nettoyage ? Le registre passe en lecture seule (les pulls continuent, les pushes sont suspendus) pendant qu’il récupère de l’espace."
+      },
+      "routeDetail": {
+        "deleteRouteNameIts": "Supprimer la route &quot;{name}&quot; ? Ses hôtes cesseront de router vers l’application."
+      },
+      "routeFormModal": {
+        "thisRouteHasUnsaved": "Cette route a des modifications non enregistrées. Fermer maintenant les perd."
+      },
+      "routes": {
+        "deleteRouteNameIts": "Supprimer la route &quot;{name}&quot; ? Ses hôtes cesseront de router vers l’application.",
+        "reRenderEveryWorkspace": "Regénérer la configuration de passerelle de chaque espace de travail depuis la base de données. Les fichiers de configuration existants sont réécrits sur place (sans interruption) ; les routes déjà actives restent en service. Continuer ?"
+      },
+      "runnerDetail": {
+        "deleteRunnerNameIts": "Supprimer le runner « {name} » ? Son conteneur ne pourra plus se connecter, et les builds en file d’attente basculeront sur un autre runner."
+      },
+      "runnersPanel": {
+        "deleteRunnerNameIts": "Supprimer le runner « {name} » ? Son conteneur ne pourra plus se connecter, et les builds en file d’attente basculeront sur un autre runner.",
+        "regenerateNameSToken": "Régénérer le jeton de {name} ? Son conteneur en cours d’exécution doit être redémarré avec le nouveau jeton."
+      },
+      "sIEM": {
+        "deleteSiemTargetName": "Supprimer la cible SIEM &quot;{name}&quot; ?"
+      },
+      "secrets": {
+        "deleteSecretNameApps": "Supprimer le secret &quot;{name}&quot; ? Les applications qui le référencent échoueront au déploiement tant que la référence n’est pas retirée."
+      },
+      "stackDetail": {
+        "removeNameFromThis": "Retirer &quot;{name}&quot; de ce stack ?"
+      },
+      "storageClasses": {
+        "nameWillNoLonger": "&quot;{name}&quot; ne sera plus proposée. La suppression est refusée tant qu’un volume l’utilise — désactivez-la plutôt pour empêcher de nouveaux volumes d’y atterrir."
+      },
+      "volumeDetail": {
+        "deletePathFromThis": "Supprimer &quot;{path}&quot; de ce volume ? Cette action est irréversible.",
+        "deleteTheBackupTaken": "Supprimer la sauvegarde prise {fmtTime} ? L’enregistrement de sauvegarde est retiré ; l’objet archive dans votre bucket S3 n’est pas supprimé.",
+        "deleteVolumeNameThis": "Supprimer le volume &quot;{name}&quot; ? Ceci retire définitivement ses données et cette action est irréversible.",
+        "restoreNameFromThe": "Restaurer &quot;{name}&quot; depuis la sauvegarde prise {fmtTime} ? Ceci écrase le contenu actuel du volume et cette action est irréversible."
+      },
+      "webhooks": {
+        "deleteWebhookUrlDelivery": "Supprimer le webhook &quot;{url}&quot; ? L’historique des livraisons sera supprimé."
+      },
+      "workspaceDetail": {
+        "rotateTheEncryptionKey": "Faire tourner la clé de chiffrement de &quot;{name}&quot; ? Ses secrets seront rechiffrés avec une nouvelle clé."
+      },
+      "workspaceRolesPanel": {
+        "deleteRoleName": "Supprimer le rôle &quot;{name}&quot; ?"
+      },
+      "workspaceSettings": {
+        "removeNameFromThis": "Retirer {name} de cet espace de travail ?"
+      }
+    },
     "title": {
       "applyClusterNetworking": "Appliquer le réseau du cluster ?",
       "banDomain": "Bannir le domaine ?",

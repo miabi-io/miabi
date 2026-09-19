@@ -249,7 +249,7 @@ const reclaimHint = computed(() =>
     <ConfirmDialog
       :open="!!confirmTarget"
       :title="$t('confirm.title.deleteStorageClass')"
-      :message="`&quot;${confirmTarget?.name ?? ''}&quot; will no longer be offered. Deleting is refused while any volume still uses it — disable it instead to stop new volumes landing there.`"
+      :message="$t('confirm.message.storageClasses.nameWillNoLonger', { name: confirmTarget?.name ?? '' })"
       :confirm-label="$t('action.delete')"
       variant="danger"
       @confirm="remove"

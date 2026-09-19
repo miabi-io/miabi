@@ -307,7 +307,7 @@ async function confirmDelete() {
     <ConfirmDialog
       :open="showDelete"
       :title="$t('confirm.title.deleteDomain')"
-      :message="`Delete domain &quot;${item.name}&quot;? Routes using a host under it can no longer be created until it is re-added.`"
+      :message="$t('confirm.message.domainDetail.deleteDomainNameRoutes', { name: item.name })"
       :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"

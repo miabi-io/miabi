@@ -200,7 +200,7 @@ onBeforeUnmount(() => {
     <ConfirmDialog
       :open="confirmResync"
       :title="$t('confirm.title.resyncAllRoutes')"
-      message="Re-render every workspace's gateway config from the database. Existing config files are rewritten in place (no downtime); routes already serving stay up. Continue?"
+      :message="$t('confirm.message.routes.reRenderEveryWorkspace')"
       :confirm-label="$t('action.resync')"
       variant="primary"
       :busy="resyncing"

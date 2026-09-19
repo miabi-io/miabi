@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed, onMounted, ref } from 'vue'
 import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
@@ -7,6 +8,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { Session } from '@/api/types'
 
 const auth = useAuthStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 
 // --- Profile (display name + username handle) ---
@@ -89,8 +91,8 @@ async function confirmAction() {
 const confirmTitle = computed(() => (confirmTarget.value === 'others' ? 'Revoke all other sessions' : 'Revoke session'))
 const confirmMessage = computed(() =>
   confirmTarget.value === 'others'
-    ? 'This will sign out all other devices and browsers. Continue?'
-    : 'Sign this device out of your account? It will need to sign in again.',
+    ? t('confirm.message.profile.signOutOthers')
+    : t('confirm.message.profile.signOutThis'),
 )
 const confirmBusy = computed(() => revokingOthers.value || revokingSession.value !== null)
 

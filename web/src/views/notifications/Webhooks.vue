@@ -344,7 +344,7 @@ function fmtTime(s: string) {
     <ConfirmDialog
       :open="!!pendingDelete"
       :title="$t('confirm.title.deleteWebhook')"
-      :message="`Delete webhook &quot;${pendingDelete?.name || pendingDelete?.url}&quot;? Delivery history will be removed.`"
+      :message="$t('confirm.message.webhooks.deleteWebhookUrlDelivery', { url: pendingDelete?.name || pendingDelete?.url })"
       :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"

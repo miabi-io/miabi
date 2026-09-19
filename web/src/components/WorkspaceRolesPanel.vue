@@ -216,7 +216,7 @@ async function confirmDelete() {
     <ConfirmDialog
       :open="!!pendingDelete"
       :title="$t('confirm.title.deleteRole')"
-      :message="pendingDelete ? `Delete role &quot;${pendingDelete.name}&quot;?` : ''"
+      :message="pendingDelete ? $t('confirm.message.workspaceRolesPanel.deleteRoleName', { name: pendingDelete.name }) : ''"
       :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"

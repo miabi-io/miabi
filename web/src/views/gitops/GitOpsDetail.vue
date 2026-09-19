@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
@@ -28,6 +29,7 @@ import type { GitSource, Topology, TopologyNode, PlanChange, NodeStatus, AppEven
 const PROJECT_ID = '__project__'
 
 const route = useRoute()
+const { t } = useI18n()
 const router = useRouter()
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -353,10 +355,10 @@ async function deleteResource() {
 const deleteMessage = computed(() => {
   const n = selectedNode.value
   if (!n) return ''
-  const base = `Delete the live ${kindOf(n.kind).label} “${n.name}”. This removes the running resource now.`
+  const params = { kind: kindOf(n.kind).label, name: n.name }
   return source.value?.sync_policy === 'auto'
-    ? `${base} This project auto-syncs, so it will be recreated from Git on the next reconcile.`
-    : `${base} It stays gone until the next sync re-applies it from Git.`
+    ? t('confirm.message.gitOpsDetail.deleteAutoSync', params)
+    : t('confirm.message.gitOpsDetail.deleteManualSync', params)
 })
 
 // --- Resource drawer tabs (Overview / Events / Logs) ---

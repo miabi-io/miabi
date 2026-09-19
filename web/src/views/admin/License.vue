@@ -227,7 +227,7 @@ async function remove() {
     <ConfirmDialog
       :open="showRemoveConfirm"
       :title="$t('confirm.title.removeLicense')"
-      :message="`Remove the license and revert to Community Edition?`"
+      :message="$t('confirm.message.license.removeTheLicenseAnd')"
       :confirm-label="$t('action.removeLicense')"
       variant="danger"
       :busy="removing"

@@ -76,6 +76,179 @@
     }
   },
   "confirm": {
+    "message": {
+      "announcements": {
+        "titleWillBeRemoved": "&quot;{title}&quot; will be removed from every inbox it was delivered to."
+      },
+      "apiKeys": {
+        "permanentlyDeleteApiKey": "Permanently delete API key &quot;{name}&quot;? This removes it entirely and cannot be undone.",
+        "revokeApiKeyName": "Revoke API key &quot;{name}&quot;? Applications using it will immediately lose access. This cannot be undone."
+      },
+      "appAccessPanel": {
+        "revokeNameSAccess": "Revoke {name}'s access to this app?"
+      },
+      "certificateDetail": {
+        "deleteCertificateNameThis": "Delete certificate &quot;{name}&quot;? This is blocked while a route still references it."
+      },
+      "clusterDetail": {
+        "eachWorkspaceNetworkIs": "Each workspace network is converted from a node-local bridge to a cluster overlay, so apps and databases reach each other across nodes. Containers are NOT restarted, but connections open inside a workspace drop briefly while it switches over.",
+        "removeNameFromThe": "Remove {name} from the swarm? It becomes a standalone cluster of its own.",
+        "theAgentIsRemoved": "The agent is removed from every cluster node. They keep running their tasks — Swarm schedules those itself — but Miabi loses its Docker connection to them.\n\nApps scheduled on those nodes will stop showing metrics, stats and a shell. The node records themselves are kept."
+      },
+      "configs": {
+        "deleteConfigNameAnd": "Delete config &quot;{name}&quot; and its {length} file(s)? An application still mounting it blocks the delete."
+      },
+      "databaseSizes": {
+        "nameWillNoLonger": "&quot;{name}&quot; will no longer be offered. Databases already on it keep their limits."
+      },
+      "dnsProviders": {
+        "disconnectNameExistingDns": "Disconnect &quot;{name}&quot;? Existing DNS records are left untouched.",
+        "enterOneOfYour": "Enter one of your domains on {type} to test {name}."
+      },
+      "domainDetail": {
+        "banNameItsRoutes": "Ban {name}? Its routes will be forced offline and it cannot be verified.",
+        "deleteDomainNameRoutes": "Delete domain &quot;{name}&quot;? Routes using a host under it can no longer be created until it is re-added.",
+        "forceMarkNameAs": "Force-mark {name} as verified without a DNS check? This bypasses ownership proof — use only for private or unreachable DNS."
+      },
+      "domains": {
+        "deleteDomainNameRoutes": "Delete domain &quot;{name}&quot;? Routes using a host under it can no longer be created until it is re-added."
+      },
+      "envVarModal": {
+        "thisVariableHasUnsaved": "This variable has unsaved changes. Closing now loses them."
+      },
+      "environments": {
+        "deleteEnvironmentName": "Delete environment &quot;{name}&quot;?"
+      },
+      "gitOps": {
+        "deleteGitSourceName": "Delete git source &quot;{name}&quot;?"
+      },
+      "gitOpsDetail": {
+        "deleteAutoSync": "Delete the live {kind} “{name}”. This removes the running resource now. This project auto-syncs, so it will be recreated from Git on the next reconcile.",
+        "deleteManualSync": "Delete the live {kind} “{name}”. This removes the running resource now. It stays gone until the next sync re-applies it from Git."
+      },
+      "gitRepositories": {
+        "deleteGitRepositoryName": "Delete git repository &quot;{name}&quot;? Apps building from it will fail to clone."
+      },
+      "imageDetail": {
+        "deleteRepoNameThis": "Delete {repo}:{name}? This removes the manifest from the registry and cannot be undone."
+      },
+      "ldapDirectory": {
+        "deleteNameUsersProvisioned": "Delete &quot;{name}&quot;? Users provisioned from it keep their accounts but can no longer sign in via this directory."
+      },
+      "license": {
+        "removeTheLicenseAnd": "Remove the license and revert to Community Edition?"
+      },
+      "middlewareDetail": {
+        "deleteMiddlewareNameRoutes": "Delete middleware &quot;{name}&quot;? Routes referencing it will lose it."
+      },
+      "middlewareFormModal": {
+        "thisPolicyHasUnsaved": "This policy has unsaved changes. Closing now loses them."
+      },
+      "networks": {
+        "deleteNetworkNameThis": "Delete network &quot;{name}&quot;? This cannot be undone."
+      },
+      "nodeDetail": {
+        "removeContainerToremovecontainerThis": "Remove container &quot;{toRemoveContainer}&quot;? This cannot be undone.",
+        "removeNodeNameIts": "Remove node &quot;{name}&quot;? Its agent tunnel is closed and the edge gateway (if any) is torn down.",
+        "removeTheGomaGateway": "Remove the Goma Gateway container from this node? Routing through it stops until you redeploy. ACME certs are preserved.",
+        "swarmReschedulesThisNode": "Swarm reschedules this node's service tasks onto other nodes now, and places no new ones here. This is what makes the node safe to reboot.\n\nNote: setting it back to Active does NOT move the tasks back. Swarm never rebalances on its own — they stay where they were rescheduled until a redeploy, a scale, or a drain of their new node moves them again."
+      },
+      "notifications": {
+        "deleteNotificationChannelName": "Delete notification channel &quot;{name}&quot;?"
+      },
+      "oAuthProviders": {
+        "deleteProviderNameThis": "Delete provider &quot;{name}&quot;? This cannot be undone."
+      },
+      "organizationDetail": {
+        "displayNameWillBe": "&quot;{display_name}&quot; will be removed, and any location dedicated to it becomes administrator-only until you reassign it. Deleting is refused while it still holds workspaces or users."
+      },
+      "organizations": {
+        "displayNameWillBe": "&quot;{display_name}&quot; will be removed and any cluster dedicated to it returns to shared. Deleting is refused while it still holds workspaces or users — move those first.",
+        "newUsersAndWorkspaces": "New users and workspaces that name no organization will belong to &quot;{display_name}&quot;. Existing ones do not move.{promoteWarning}",
+        "promoteWarning": "{name} runs its own locations ({where}), so new users and workspaces that name no organization will deploy there and nowhere else."
+      },
+      "pipelines": {
+        "delete": "Delete pipeline &quot;{name}&quot;? Its run history is removed.",
+        "deleteRepoOwned": "Delete pipeline &quot;{name}&quot;? Its run history is removed, and its application goes back to building and deploying directly — skipping the steps in {path}."
+      },
+      "planDetail": {
+        "deletePlanNameAny": "Delete plan &quot;{name}&quot;? Any workspaces using it will fall back to the default plan."
+      },
+      "platformBackup": {
+        "deleteThisPlatformBackup": "Delete this platform backup?",
+        "deletesTheRecoveryPoint": "Deletes the recovery point and its artifacts from the bucket, including the identity envelope. This cannot be undone.",
+        "restore": "Restore {what}? This is destructive. Put the platform in maintenance mode first. You also need the original MIABI_ENCRYPTION_KEY to decrypt restored secrets.",
+        "restoreWhat": {
+          "database": "the control-plane database (overwrites the running database in place)",
+          "volume": "volume \"{name}\" (overwrites its contents)"
+        },
+        "schedulesAndCertificateIssuance": "Schedules and certificate issuance resume. Do this only once DNS points at this host — otherwise certificate requests will be issued against an address that still resolves elsewhere.",
+        "thisOverwritesLiveData": "This overwrites live data. {selectedCount} artifact(s) will be restored into this platform: databases are dropped and recreated from the backup, and volumes are overwritten. Data written since {created_at} is lost for whatever you selected."
+      },
+      "portableBackupPanel": {
+        "thisRemovesDeleterefFrom": "This removes {deleteRef} from the bucket — its index, its state file and every dump and archive under it. It cannot be undone."
+      },
+      "ports": {
+        "hostPortHostPort": "Host port {host_port}/{protocol} will not be published. The requester sees your note."
+      },
+      "profile": {
+        "signOutOthers": "This will sign out all other devices and browsers. Continue?",
+        "signOutThis": "Sign this device out of your account? It will need to sign in again."
+      },
+      "registries": {
+        "deleteRegistryNameApps": "Delete registry &quot;{name}&quot;? Apps using it will fail to pull private images."
+      },
+      "registry": {
+        "runGarbageCollectionThe": "Run garbage collection? The registry switches to read-only (pulls keep working, pushes pause) while it reclaims space."
+      },
+      "routeDetail": {
+        "deleteRouteNameIts": "Delete route &quot;{name}&quot;? Its hosts will stop routing to the app."
+      },
+      "routeFormModal": {
+        "thisRouteHasUnsaved": "This route has unsaved changes. Closing now loses them."
+      },
+      "routes": {
+        "deleteRouteNameIts": "Delete route &quot;{name}&quot;? Its hosts will stop routing to the app.",
+        "reRenderEveryWorkspace": "Re-render every workspace's gateway config from the database. Existing config files are rewritten in place (no downtime); routes already serving stay up. Continue?"
+      },
+      "runnerDetail": {
+        "deleteRunnerNameIts": "Delete runner “{name}”? Its container will no longer be able to connect, and any queued builds fall back to another runner."
+      },
+      "runnersPanel": {
+        "deleteRunnerNameIts": "Delete runner “{name}”? Its container will no longer be able to connect, and any queued builds fall back to another runner.",
+        "regenerateNameSToken": "Regenerate {name}'s token? Its running container must be restarted with the new token."
+      },
+      "sIEM": {
+        "deleteSiemTargetName": "Delete SIEM target &quot;{name}&quot;?"
+      },
+      "secrets": {
+        "deleteSecretNameApps": "Delete secret &quot;{name}&quot;? Apps that reference it will fail to deploy until the reference is removed."
+      },
+      "stackDetail": {
+        "removeNameFromThis": "Remove &quot;{name}&quot; from this stack?"
+      },
+      "storageClasses": {
+        "nameWillNoLonger": "&quot;{name}&quot; will no longer be offered. Deleting is refused while any volume still uses it — disable it instead to stop new volumes landing there."
+      },
+      "volumeDetail": {
+        "deletePathFromThis": "Delete &quot;{path}&quot; from this volume? This cannot be undone.",
+        "deleteTheBackupTaken": "Delete the backup taken {fmtTime}? The backup record is removed; the archive object in your S3 bucket is not deleted.",
+        "deleteVolumeNameThis": "Delete volume &quot;{name}&quot;? This permanently removes its data and cannot be undone.",
+        "restoreNameFromThe": "Restore &quot;{name}&quot; from the backup taken {fmtTime}? This overwrites the volume's current contents and cannot be undone."
+      },
+      "webhooks": {
+        "deleteWebhookUrlDelivery": "Delete webhook &quot;{url}&quot;? Delivery history will be removed."
+      },
+      "workspaceDetail": {
+        "rotateTheEncryptionKey": "Rotate the encryption key for &quot;{name}&quot;? Its secrets will be re-encrypted under a new key."
+      },
+      "workspaceRolesPanel": {
+        "deleteRoleName": "Delete role &quot;{name}&quot;?"
+      },
+      "workspaceSettings": {
+        "removeNameFromThis": "Remove {name} from this workspace?"
+      }
+    },
     "title": {
       "applyClusterNetworking": "Apply cluster networking?",
       "banDomain": "Ban domain?",

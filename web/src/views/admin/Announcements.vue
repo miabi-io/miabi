@@ -443,7 +443,7 @@ onMounted(async () => {
     <ConfirmDialog
       :open="!!confirmTarget"
       :title="$t('confirm.title.retractAnnouncement')"
-      :message="`&quot;${confirmTarget?.title ?? ''}&quot; will be removed from every inbox it was delivered to.`"
+      :message="$t('confirm.message.announcements.titleWillBeRemoved', { title: confirmTarget?.title ?? '' })"
       :confirm-label="$t('action.retract')"
       variant="danger"
       @confirm="retract"
