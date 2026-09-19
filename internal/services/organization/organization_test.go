@@ -269,3 +269,80 @@ func TestPlacementQuestions(t *testing.T) {
 		t.Errorf("unknown organization label = %q, want empty", got)
 	}
 }
+
+// The platform's own workspace belongs to no tenant, so a dedicated default organization must not
+// confine it — platform infrastructure has to be placeable anywhere.
+func TestSystemWorkspaceIsNeverConfined(t *testing.T) {
+	s, _ := newOrgService(t)
+	acme, err := s.Create(CreateInput{DisplayName: "Acme"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.SetClusters(clusterStub{owned: map[uint]int64{acme.ID: 1}})
+	s.SetWorkspaces(systemWS{orgID: acme.ID})
+
+	if got := s.OrganizationOfWorkspace(1); got != acme.ID {
+		t.Errorf("ordinary workspace = org %d, want %d", got, acme.ID)
+	}
+	if got := s.OrganizationOfWorkspace(2); got != 0 {
+		t.Errorf("system workspace = org %d, want 0 (no tenant)", got)
+	}
+}
+
+// systemWS serves workspace 1 as an ordinary member of orgID and workspace 2 as the platform one.
+type systemWS struct{ orgID uint }
+
+func (w systemWS) FindByID(id uint) (*models.Workspace, error) {
+	if id == 2 {
+		return &models.Workspace{ID: 2, System: true, OrganizationID: &w.orgID}, nil
+	}
+	return &models.Workspace{ID: id, OrganizationID: &w.orgID}, nil
+}
+
+// An organization's default location has to be one it can actually place in, or every workspace it
+// creates starts with a default that placement silently skips.
+func TestDefaultClusterMustBeUsable(t *testing.T) {
+	s, _ := newOrgService(t)
+	acme, err := s.Create(CreateInput{DisplayName: "Acme"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := uint(99)
+	shared := models.Cluster{ID: 1}
+	theirs := models.Cluster{ID: 2, OrganizationID: &other}
+	ours := models.Cluster{ID: 3, OrganizationID: &acme.ID}
+
+	// No clusters of its own: a shared location is fine, somebody else's is not.
+	s.SetClusters(lookupStub{byID: map[uint]models.Cluster{1: shared, 2: theirs, 3: ours}})
+	if _, err := s.Update(acme.ID, UpdateInput{DefaultClusterID: &shared.ID}); err != nil {
+		t.Errorf("shared default for an unconfined organization: %v", err)
+	}
+	if _, err := s.Update(acme.ID, UpdateInput{DefaultClusterID: &theirs.ID}); !errors.Is(err, ErrClusterNotOurs) {
+		t.Errorf("another organization's location: err = %v, want ErrClusterNotOurs", err)
+	}
+
+	// Once it runs its own, a shared location is no longer reachable either.
+	s.SetClusters(lookupStub{byID: map[uint]models.Cluster{1: shared, 3: ours}, owned: map[uint]int64{acme.ID: 1}})
+	if _, err := s.Update(acme.ID, UpdateInput{DefaultClusterID: &shared.ID}); !errors.Is(err, ErrClusterNotOurs) {
+		t.Errorf("shared default for a confined organization: err = %v, want ErrClusterNotOurs", err)
+	}
+	if _, err := s.Update(acme.ID, UpdateInput{DefaultClusterID: &ours.ID}); err != nil {
+		t.Errorf("its own location: %v", err)
+	}
+}
+
+type lookupStub struct {
+	byID  map[uint]models.Cluster
+	owned map[uint]int64
+}
+
+func (l lookupStub) FindByID(id uint) (*models.Cluster, error) {
+	c, ok := l.byID[id]
+	if !ok {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return &c, nil
+}
+func (l lookupStub) ListByOrganization(uint) ([]models.Cluster, error) { return nil, nil }
+func (l lookupStub) CountByOrganization(id uint) (int64, error)        { return l.owned[id], nil }
+func (l lookupStub) ReleaseOrganization(uint) error                    { return nil }

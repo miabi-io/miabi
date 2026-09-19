@@ -75,6 +75,15 @@ type access struct {
 	confined bool
 }
 
+// foreign reports that the cluster belongs to a DIFFERENT organization, so the caller should not
+// learn it exists at all. A platform admin is excepted: they can already list every cluster.
+func (a access) foreign(c *models.Cluster) bool {
+	if a.admin || c.OrganizationID == nil {
+		return false
+	}
+	return a.orgID == 0 || *c.OrganizationID != a.orgID
+}
+
 // allows reports whether a create for this workspace may land in the cluster.
 func (a access) allows(c *models.Cluster) bool {
 	// Ownership is checked before the admin bypass on purpose: it binds the workspace, not the
@@ -247,6 +256,13 @@ func (s *Service) resolveCluster(workspaceID uint, location string, admin bool) 
 		if err != nil {
 			return nil, ErrLocationNotFound
 		}
+		// A location dedicated to another organization is not refused but hidden: answering
+		// "forbidden" tells a stranger the name is real, which is how a tenant list gets enumerated.
+		// Being confined to one's OWN locations is different — that is the caller's own arrangement,
+		// and saying so is help rather than disclosure.
+		if acc.foreign(c) {
+			return nil, ErrLocationNotFound
+		}
 		if !acc.allows(c) || !permits(policy, enforced, c.ID, acc.confined) {
 			return nil, ErrLocationNotAllowed
 		}
@@ -273,6 +289,18 @@ func (s *Service) resolveCluster(workspaceID uint, location string, admin bool) 
 		if usable(&list[i]) {
 			return &list[i], nil
 		}
+	}
+	if acc.confined {
+		// "no location is available" is true but unhelpful here: the tenant HAS locations and every
+		// one of them is cordoned or empty. Name the organization so the operator looks at its
+		// clusters rather than at the workspace's plan.
+		who := "this workspace's organization"
+		if s.orgs != nil {
+			if label := s.orgs.OrganizationLabel(acc.orgID); label != "" {
+				who = label
+			}
+		}
+		return nil, fmt.Errorf("%w: %s runs its own locations and none of them is accepting new resources", ErrNoLocation, who)
 	}
 	return nil, ErrNoLocation
 }
@@ -468,6 +496,9 @@ func (s *Service) SetDefaultLocation(workspaceID uint, location string, admin bo
 	}
 	policy, enforced := s.planPlacement(workspaceID)
 	acc := s.accessFor(workspaceID, admin)
+	if acc.foreign(c) {
+		return ErrLocationNotFound
+	}
 	if !acc.allows(c) || !permits(policy, enforced, c.ID, acc.confined) {
 		return ErrLocationNotAllowed
 	}

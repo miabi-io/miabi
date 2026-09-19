@@ -1242,7 +1242,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			oauthPublic:         handlers.NewOAuthHandler(oauthService, oauthRepo, authService, sessionRepo, auditLogger, cfg),
 			license:             handlers.NewLicenseHandler(ee, licenseNodeCount, func() int64 { n, _ := planRepo.Count(); return n }, installID, auditLogger),
 			ssoAdmin:            handlers.NewSSOAdminHandler(orgRepo, samlConfigRepo, scimTokenRepo, ee, auditLogger),
-			adminOrganization:   handlers.NewAdminOrganizationHandler(organizationService, userRepo, clusterRepo, ee, auditLogger),
+			adminOrganization:   handlers.NewAdminOrganizationHandler(organizationService, userRepo, clusterRepo, workspaceRepo, ee, auditLogger),
 			ldapAdmin:           handlers.NewLDAPAdminHandler(ldapRepo, ee, auditLogger),
 			permission:          handlers.NewPermissionHandler(),
 			customRole:          handlers.NewCustomRoleHandler(customRoleService, workspaceRepo, ee, auditLogger),

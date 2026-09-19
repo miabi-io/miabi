@@ -26,6 +26,8 @@ var (
 	ErrDefaultProtected = errors.New("the default organization cannot be deleted")
 	ErrNotEmpty         = errors.New("the organization still holds workspaces or users")
 	ErrInvalidMax       = errors.New("max_workspaces is -1 (unlimited) or a count of 0 or more")
+	// ErrClusterNotOurs guards a default location the organization cannot place in.
+	ErrClusterNotOurs = errors.New("that location is not one this organization can place in")
 )
 
 // Clusters is the slice of the cluster store this service needs: resolving a dedicated cluster and
@@ -194,10 +196,8 @@ func (s *Service) Update(id uint, in UpdateInput) (*models.Organization, error) 
 	case in.ClearDefaultCluster:
 		org.DefaultClusterID = nil
 	case in.DefaultClusterID != nil:
-		if s.clusters != nil {
-			if _, err := s.clusters.FindByID(*in.DefaultClusterID); err != nil {
-				return nil, err
-			}
+		if err := s.usableCluster(org.ID, *in.DefaultClusterID); err != nil {
+			return nil, err
 		}
 		org.DefaultClusterID = in.DefaultClusterID
 	}
@@ -205,6 +205,29 @@ func (s *Service) Update(id uint, in UpdateInput) (*models.Organization, error) 
 		return nil, err
 	}
 	return org, nil
+}
+
+// usableCluster refuses a default location the organization could never place in: one dedicated to
+// somebody else, or a shared one while this organization runs clusters of its own. Either would seed
+// every new workspace with a default that placement silently skips.
+func (s *Service) usableCluster(orgID, clusterID uint) error {
+	if s.clusters == nil {
+		return nil
+	}
+	c, err := s.clusters.FindByID(clusterID)
+	if err != nil {
+		return err
+	}
+	if c.OrganizationID != nil {
+		if *c.OrganizationID != orgID {
+			return ErrClusterNotOurs
+		}
+		return nil
+	}
+	if s.OwnsClusters(orgID) {
+		return ErrClusterNotOurs
+	}
+	return nil
 }
 
 // SetDefault promotes an organization to the default one. Demoting the previous default and
@@ -273,6 +296,15 @@ func (s *Service) HomeOrganization(u *models.User) uint {
 	return s.Resolve(u.OrganizationID)
 }
 
+// UserCount is how many users call the organization home. 0 when it cannot be read.
+func (s *Service) UserCount(orgID uint) int64 {
+	n, err := s.repo.CountUsers(orgID)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
 // The three methods below answer the placement engine's organization questions. They satisfy
 // placement.Orgs structurally, so neither package imports the other.
 
@@ -285,6 +317,12 @@ func (s *Service) OrganizationOfWorkspace(workspaceID uint) uint {
 	}
 	ws, err := s.workspaces.FindByID(workspaceID)
 	if err != nil {
+		return 0
+	}
+	// The platform's own workspace belongs to no tenant. It is already pinned to the Unlimited plan
+	// so platform infrastructure is never constrained by tenant quotas, and confining it to whichever
+	// organization happens to be the default would constrain it by tenant geography instead.
+	if ws.System {
 		return 0
 	}
 	return s.Resolve(ws.OrganizationID)

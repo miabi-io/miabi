@@ -242,11 +242,11 @@ func (r *ClusterRepository) CountByOrganization(orgID uint) (int64, error) {
 	return n, err
 }
 
-// ReleaseOrganization returns every cluster an organization owns to shared visibility. A cluster left
-// pointing at a deleted organization would be visible to nobody.
+// ReleaseOrganization detaches every cluster an organization owns, when that organization is deleted.
+// A cluster left pointing at a row that is gone would be visible to nobody.
 func (r *ClusterRepository) ReleaseOrganization(orgID uint) error {
 	return r.db.Model(&models.Cluster{}).Where("organization_id = ?", orgID).
-		Updates(map[string]any{"organization_id": nil, "visibility": models.ClusterVisibilityAll}).Error
+		Updates(map[string]any{"organization_id": nil, "visibility": models.ClusterVisibilityRestricted}).Error
 }
 
 func (r *ClusterRepository) WorkspaceDefault(workspaceID uint) (*models.Cluster, error) {

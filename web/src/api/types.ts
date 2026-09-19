@@ -484,9 +484,13 @@ export interface Organization {
   updated_at?: string
 }
 
-/** An organization plus the clusters dedicated to it. */
+/** Everything the organization detail page shows, in one call. */
 export interface OrganizationDetail extends Organization {
-  clusters: Array<{ id: number; name: string; display_name?: string }>
+  clusters: Array<{ id: number; name: string; display_name?: string; cordoned: boolean }>
+  workspaces: Array<{ id: number; name: string; display_name?: string; owner_id: number }>
+  user_count: number
+  owner_name?: string
+  owner_email?: string
 }
 
 export interface OrganizationInput {

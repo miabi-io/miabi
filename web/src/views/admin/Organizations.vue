@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { adminApi } from '@/api/admin'
 import { clustersApi } from '@/api/clusters'
 import type { Cluster, Organization, OrganizationInput, OrganizationUpdate } from '@/api/types'
@@ -9,6 +10,7 @@ import AppModal from '@/components/AppModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const notify = useNotificationStore()
+const router = useRouter()
 // A second organization is Enterprise; the default one exists in every edition and stays editable.
 const entitlement = useEntitlement('organizations')
 
@@ -60,6 +62,18 @@ const dedicatedTo = computed(() => {
 })
 
 const clusterLabel = (c: Cluster) => c.display_name || c.name
+
+// Promoting an organization that runs its own clusters confines every future unassigned user and
+// workspace to them. Existing rows keep the organization they already carry, so nothing moves — but
+// the next workspace someone makes lands somewhere they did not choose.
+const promoteWarning = computed(() => {
+  const o = promoteTarget.value
+  if (!o) return ''
+  const owned = dedicatedTo.value.get(o.id) ?? []
+  if (!owned.length) return ''
+  const where = owned.map(clusterLabel).join(', ')
+  return ` ${o.display_name || o.name} runs its own locations (${where}), so new users and workspaces that name no organization will deploy there and nowhere else.`
+})
 
 function capLabel(o: Organization): string {
   if (o.max_workspaces < 0) return `${o.workspace_count} workspaces`
@@ -182,7 +196,7 @@ async function remove() {
               <td>
                 <span class="cell-text">
                   <span class="cell-title">
-                    {{ o.display_name || o.name }}
+                    <RouterLink :to="`/admin/organizations/${o.id}`">{{ o.display_name || o.name }}</RouterLink>
                     <span v-if="o.is_default" class="badge badge-info">default</span>
                     <span v-if="o.enforce_sso" class="badge">SSO enforced</span>
                   </span>
@@ -201,6 +215,7 @@ async function remove() {
                 <span v-else class="text-muted">Shared locations</span>
               </td>
               <td style="text-align: right; white-space: nowrap">
+                <button class="btn btn-ghost btn-sm" @click="router.push(`/admin/organizations/${o.id}`)">Open</button>
                 <button class="btn btn-ghost btn-sm" :disabled="!entitlement.mutable.value" @click="openEdit(o)">Edit</button>
                 <button
                   v-if="!o.is_default"
@@ -292,7 +307,7 @@ async function remove() {
     <ConfirmDialog
       :open="!!promoteTarget"
       title="Change the default organization"
-      :message="`New users and workspaces that name no organization will belong to &quot;${promoteTarget?.display_name ?? ''}&quot;. Existing ones do not move.`"
+      :message="`New users and workspaces that name no organization will belong to &quot;${promoteTarget?.display_name ?? ''}&quot;. Existing ones do not move.${promoteWarning}`"
       confirm-label="Make default"
       @confirm="promote"
       @cancel="promoteTarget = null"
