@@ -31,18 +31,15 @@ import (
 )
 
 var (
-	ErrUnsupportedEngine = errors.New("unsupported database engine")
-	ErrSlugTaken         = errors.New("database name already taken in workspace")
-	ErrNoLogicalDBs      = errors.New("this engine does not support multiple databases")
-	ErrInstanceNotReady  = errors.New("database instance is not running yet")
-	ErrNotFound          = errors.New("not found")
-	ErrNameTaken         = errors.New("a database with this name already exists on the instance")
-	ErrNoContainer       = errors.New("database has no container; re-provision it")
-	ErrInstanceInUse     = errors.New("a database on this instance is attached to an application; detach it first")
-	ErrInstanceRunning   = errors.New("stop the database before deleting it")
-	// ErrNoWorkspaceNetwork refuses to provision a database when its workspace network cannot be
-	// resolved. It used to fall back to the shared proxy network, where every tenant's routed
-	// containers can reach it, and the choice was permanent.
+	ErrUnsupportedEngine  = errors.New("unsupported database engine")
+	ErrSlugTaken          = errors.New("database name already taken in workspace")
+	ErrNoLogicalDBs       = errors.New("this engine does not support multiple databases")
+	ErrInstanceNotReady   = errors.New("database instance is not running yet")
+	ErrNotFound           = errors.New("not found")
+	ErrNameTaken          = errors.New("a database with this name already exists on the instance")
+	ErrNoContainer        = errors.New("database has no container; re-provision it")
+	ErrInstanceInUse      = errors.New("a database on this instance is attached to an application; detach it first")
+	ErrInstanceRunning    = errors.New("stop the database before deleting it")
 	ErrNoWorkspaceNetwork = errors.New("could not resolve this workspace's network; the database was not created")
 	ErrInstanceOwned      = errors.New("database is owned by another resource")
 	// Upgrade errors.

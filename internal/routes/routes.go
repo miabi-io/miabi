@@ -747,8 +747,6 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	storageService.SetStorageClasses(storageClassService)
 
 	go storageService.AuditSharedVolumes()
-	// Databases placed on the shared proxy network by the old provisioning fallback: reachable by
-	// every tenant's routed containers, and only a recreate moves them.
 	go databaseService.AuditSharedNetworkInstances()
 	monitoringService := monitoring.NewService(appRepo, releaseRepo, dbRepo, stackRepo, appEventRepo, repositories.NewMetricRepository(db), nodeClients)
 	monitoringService.SetSwarmManager(clusterService)
