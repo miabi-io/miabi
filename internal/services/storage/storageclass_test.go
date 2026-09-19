@@ -8,6 +8,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/miabi-io/miabi/internal/docker"
+
 	"github.com/miabi-io/miabi/internal/models"
 )
 
@@ -117,5 +119,43 @@ func TestReclaimRemovesAManagedClassDirectory(t *testing.T) {
 	})
 	if len(f.removed) != 1 || f.removed[0] != "ssd-fast:mb-vol-1-data" {
 		t.Fatalf("expected the volume directory to be reclaimed, got %v", f.removed)
+	}
+}
+
+// fakeServerInfo answers the node-existence question; a node not in the set has been deleted.
+type fakeServerInfo struct{ exists map[uint]bool }
+
+func (f fakeServerInfo) Get(id uint) (*models.Server, error) {
+	if f.exists[id] {
+		return &models.Server{ID: id}, nil
+	}
+	return nil, errors.New("node not found")
+}
+
+type localOnlyClients struct{ local uint }
+
+func (l localOnlyClients) For(uint) (docker.Client, error) { return nil, errors.New("offline") }
+func (l localOnlyClients) LocalID() uint                   { return l.local }
+
+// A volume on a deleted node used to be undeletable: removing it went through that node's Docker
+// engine, and there is no engine left to ask.
+func TestVolumeNodeGone(t *testing.T) {
+	s := &Service{
+		clients:    localOnlyClients{local: 1},
+		serverInfo: fakeServerInfo{exists: map[uint]bool{1: true, 2: true}},
+	}
+
+	if s.nodeGone(&models.Volume{ServerID: 2}) {
+		t.Error("a node that still exists must not read as gone")
+	}
+	if !s.nodeGone(&models.Volume{ServerID: 9}) {
+		t.Error("a deleted node must read as gone, so its volumes can be cleaned up")
+	}
+	if s.nodeGone(&models.Volume{ServerID: 1}) {
+		t.Error("the local node must never read as gone")
+	}
+	// Unwired: assume the node is fine rather than drop a row on a guess.
+	if (&Service{}).nodeGone(&models.Volume{ServerID: 9}) {
+		t.Error("with no server lookup wired, nothing may be declared orphaned")
 	}
 }

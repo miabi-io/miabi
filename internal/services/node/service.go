@@ -99,7 +99,11 @@ type Service struct {
 	clusters  *repositories.ClusterRepository
 	docker    docker.Client
 	nodeLimit func() int // resolved edition node cap (-1 = unlimited); nil = unlimited
+	orphaned  func(serverID uint)
 }
+
+// SetOrphanHandler wires the reconciler run after a node is deleted (nil-safe).
+func (s *Service) SetOrphanHandler(fn func(serverID uint)) { s.orphaned = fn }
 
 func NewService(repo *repositories.ServerRepository, dockerClient docker.Client) *Service {
 	return &Service{repo: repo, docker: dockerClient}
@@ -863,6 +867,10 @@ func (s *Service) DeleteNode(id uint) error {
 	}
 	if err := s.repo.Delete(srv.ID); err != nil {
 		return err
+	}
+
+	if s.orphaned != nil {
+		s.orphaned(srv.ID)
 	}
 	if s.clusters != nil && srv.ClusterID != models.DefaultClusterID {
 		if err := s.clusters.DeleteIfEmpty(srv.ClusterID); err != nil {

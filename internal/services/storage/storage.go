@@ -509,7 +509,7 @@ func (s *Service) Delete(ctx context.Context, v *models.Volume) error {
 	// A host-path volume is a bind to an operator-managed directory — there is no
 	// Docker volume to remove, and Miabi must never delete the host data. Just drop
 	// the record.
-	if v.Driver != models.VolumeDriverHost {
+	if v.Driver != models.VolumeDriverHost && !s.nodeGone(v) {
 		dc, err := s.clients.For(v.ServerID)
 		if err != nil {
 			return err
@@ -547,6 +547,18 @@ func (s *Service) Resize(workspaceID, id uint, sizeBytes int64) error {
 	}
 	v.SizeBytes = sizeBytes
 	return s.repo.Update(v)
+}
+
+// nodeGone reports whether the node a volume lived on has been deleted.
+func (s *Service) nodeGone(v *models.Volume) bool {
+	if v == nil || s.serverInfo == nil {
+		return false // unwired: assume the node is fine rather than drop a row on a guess
+	}
+	if s.clients != nil && v.ServerID == s.clients.LocalID() {
+		return false // the control-plane node is never deleted
+	}
+	srv, err := s.serverInfo.Get(v.ServerID)
+	return err != nil || srv == nil
 }
 
 // reclaim removes a class-backed volume's directory when the class says to. Best-effort and never

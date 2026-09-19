@@ -114,7 +114,7 @@ func nameCoveredByVerified(name string, domains []certDomainRow) bool {
 func init() {
 	steps = append(steps, Step{
 		Name:    "certificate_verified_domains",
-		Version: "1.10.1",
+		Version: "1.10.2",
 		Run:     certVerifiedDomainsStep,
 	})
 }

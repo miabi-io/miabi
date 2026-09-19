@@ -2615,3 +2615,30 @@ func (s *Service) SetName(app *models.Application, newName string) error {
 
 // IDByUID resolves an application's portable uid to its numeric id.
 func (s *Service) IDByUID(uid string) (uint, error) { return s.apps.IDByUID(uid) }
+
+// MarkNodeRemoved records that every application on a deleted node has stopped. Deleting a node
+// leaves its apps pointing at a server row that no longer exists, holding whatever status they had
+// at that moment — usually "running", for something with no container behind it.
+func (s *Service) MarkNodeRemoved(serverID uint) {
+	if serverID == 0 {
+		return
+	}
+	apps, err := s.apps.ListByServer(serverID)
+	if err != nil {
+		logger.Warn("node removed: could not list applications", "server", serverID, "error", err)
+		return
+	}
+	for i := range apps {
+		app := apps[i]
+		if app.Status == models.AppStatusStopped {
+			continue
+		}
+		if err := s.apps.SetStatus(app.ID, models.AppStatusStopped); err != nil {
+			logger.Warn("node removed: could not mark application stopped",
+				"server", serverID, "app", app.ID, "error", err)
+			continue
+		}
+		logger.Info("application marked stopped: its node was removed",
+			"server", serverID, "app", app.ID, "name", app.Name, "workspace", app.WorkspaceID)
+	}
+}
