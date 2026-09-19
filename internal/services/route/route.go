@@ -908,7 +908,8 @@ func (s *Service) SyncWorkspaceProxy(ctx context.Context, workspaceID uint) erro
 			serve, status, reason := routeServeState(rt, domains, gate, privileged)
 			port := routePort(rt, app)
 			rr := renderedRoute(rt, gatewayBackends(app, port), !serve)
-			if pair, ok := s.certPair(rt); ok {
+			// A cert rides only a route the gateway will actually serve.
+			if pair, ok := s.certPair(rt); ok && serve {
 				rr.Certs = []proxy.CertPair{pair}
 			}
 			renderedRoutes = append(renderedRoutes, rr)
@@ -1267,7 +1268,8 @@ func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.Rend
 			// gateway stops serving them rather than relying on the route vanishing
 			// from the bundle.
 			rr := renderedRoute(rt, gatewayBackends(app, routePort(rt, app)), !serve)
-			if pair, ok := s.certPair(rt); ok {
+			// Only a served route carries its cert.
+			if pair, ok := s.certPair(rt); ok && serve {
 				rr.Certs = []proxy.CertPair{pair}
 			}
 			renderedRoutes = append(renderedRoutes, rr)

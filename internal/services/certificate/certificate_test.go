@@ -46,8 +46,16 @@ type fakeDomains struct{ list []models.Domain }
 
 func (f fakeDomains) ListByWorkspace(uint) ([]models.Domain, error) { return f.list, nil }
 
+// fakeWorkspaces implements WorkspacePrivilege for the import-gate tests.
+type fakeWorkspaces struct{ privileged bool }
+
+func (f fakeWorkspaces) FindByID(id uint) (*models.Workspace, error) {
+	return &models.Workspace{ID: id, Privileged: f.privileged}, nil
+}
+
 func TestValidateAgainstDomains(t *testing.T) {
 	meta := &certMeta{commonName: "example.com", dnsNames: []string{"example.com", "*.example.com"}}
+	verified := []models.Domain{{Name: "example.com", Verified: true}}
 
 	// No domain registered → blocked.
 	s := &Service{domains: fakeDomains{}}
@@ -55,8 +63,8 @@ func TestValidateAgainstDomains(t *testing.T) {
 		t.Errorf("no domains: got %v, want ErrNoDomains", err)
 	}
 
-	// Cert names all covered by a registered domain → ok.
-	s = &Service{domains: fakeDomains{list: []models.Domain{{Name: "example.com"}}}}
+	// Cert names all covered by a verified domain → ok.
+	s = &Service{domains: fakeDomains{list: verified}}
 	if err := s.validateAgainstDomains(1, meta); err != nil {
 		t.Errorf("covered cert should pass, got %v", err)
 	}
@@ -73,8 +81,47 @@ func TestValidateAgainstDomains(t *testing.T) {
 	}
 }
 
-func TestNameUnderDomain(t *testing.T) {
-	domains := []models.Domain{{Name: "Example.com"}}
+// The hijack: registering a domain proves nothing — anyone can register "console.example.com" — and
+// Goma loads every inline cert into one global map where an exact match beats ACME. A certificate on
+// an unverified name therefore takes that hostname's TLS from whoever really serves it.
+func TestValidateAgainstDomainsRequiresAVerifiedDomain(t *testing.T) {
+	meta := &certMeta{commonName: "console.example.com", dnsNames: []string{"console.example.com"}}
+	unverified := []models.Domain{{Name: "example.com"}}
+
+	s := &Service{domains: fakeDomains{list: unverified}}
+	if err := s.validateAgainstDomains(1, meta); !errors.Is(err, ErrDomainUnverified) {
+		t.Fatalf("unverified domain: got %v, want ErrDomainUnverified", err)
+	}
+
+	// A privileged workspace may SERVE an unverified domain (routeServeState says so), so it may
+	// hold a certificate for one too — the two rules have to agree.
+	s = &Service{domains: fakeDomains{list: unverified}, workspaces: fakeWorkspaces{privileged: true}}
+	if err := s.validateAgainstDomains(1, meta); err != nil {
+		t.Fatalf("privileged workspace should be allowed, got %v", err)
+	}
+
+	// Unwired privilege check means not privileged: this gate fails closed.
+	s = &Service{domains: fakeDomains{list: unverified}}
+	if err := s.validateAgainstDomains(1, meta); err == nil {
+		t.Fatal("an unwired privilege check must not grant the exemption")
+	}
+}
+
+// A ban outranks verification — that is the point of banning a name.
+func TestValidateAgainstDomainsRefusesABannedDomain(t *testing.T) {
+	meta := &certMeta{commonName: "app.example.com", dnsNames: []string{"app.example.com"}}
+	banned := []models.Domain{{Name: "example.com", Verified: true, Banned: true}}
+
+	for _, privileged := range []bool{false, true} {
+		s := &Service{domains: fakeDomains{list: banned}, workspaces: fakeWorkspaces{privileged: privileged}}
+		if err := s.validateAgainstDomains(1, meta); !errors.Is(err, ErrDomainBanned) {
+			t.Fatalf("banned domain (privileged=%v): got %v, want ErrDomainBanned", privileged, err)
+		}
+	}
+}
+
+func TestCoveringDomain(t *testing.T) {
+	domains := []models.Domain{{Name: "Example.com", Verified: true}}
 	for _, c := range []struct {
 		name string
 		want bool
@@ -85,9 +132,14 @@ func TestNameUnderDomain(t *testing.T) {
 		{"example.org", false},
 		{"notexample.com", false},
 	} {
-		if got := nameUnderDomain(c.name, domains); got != c.want {
-			t.Errorf("nameUnderDomain(%q) = %v, want %v", c.name, got, c.want)
+		got := coveringDomain(c.name, domains) != nil
+		if got != c.want {
+			t.Errorf("coveringDomain(%q) matched = %v, want %v", c.name, got, c.want)
 		}
+	}
+	// The caller needs the domain itself, not a yes/no, so it can check verified and banned.
+	if d := coveringDomain("app.example.com", domains); d == nil || !d.Verified {
+		t.Errorf("coveringDomain returned %+v, want the matched domain with its flags", d)
 	}
 }
 
