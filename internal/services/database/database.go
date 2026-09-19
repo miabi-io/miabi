@@ -546,6 +546,25 @@ func (s *Service) dockerFor(inst *models.DatabaseInstance) (docker.Client, error
 	return s.clients.For(inst.ServerID)
 }
 
+// nodeGone reports whether the node this instance lived on has been deleted. Deleting a node leaves
+// its workloads pointing at a server row that no longer exists, and an instance in that state used to
+// be stuck: Stop needed a Docker client it could never get, and Delete refused because the instance
+// was still marked running — so neither could ever succeed.
+//
+// This is deliberately narrower than "unreachable". A node that is merely offline may well still be
+// running the container, and saying otherwise would be a lie; a node that no longer exists is not
+// coming back.
+func (s *Service) nodeGone(inst *models.DatabaseInstance) bool {
+	if inst == nil || s.serverInfo == nil {
+		return false // unwired: assume the node is fine rather than destroy on a guess
+	}
+	if s.clients != nil && inst.ServerID == s.clients.LocalID() {
+		return false // the control-plane node is never deleted
+	}
+	srv, err := s.serverInfo.Get(inst.ServerID)
+	return err != nil || srv == nil
+}
+
 // guardData refuses to start an instance whose data volume is gone. Docker would create an empty one and
 // the engine would initialize a fresh, empty database over the data it should have kept, so the way forward
 // is a restore — which Miabi never performs by itself. The upgrade paths deliberately create and drop
@@ -947,19 +966,22 @@ func (s *Service) Get(workspaceID, id uint) (*models.DatabaseInstance, error) {
 // when a container exists, its live Docker state and a stats snapshot. The detail page polls this so a
 // user sees provisioning finish — or a crash — without a manual refresh.
 type LiveStatus struct {
-	Status         string                  `json:"status"` // headline: stored lifecycle, or live-derived when running
-	StoredStatus   models.DBStatus         `json:"stored_status"`
-	ContainerState string                  `json:"container_state,omitempty"`
-	Health         string                  `json:"health,omitempty"`
-	Running        bool                    `json:"running"`
-	Restarting     bool                    `json:"restarting"`
-	RestartCount   int                     `json:"restart_count"`
-	ExitCode       int                     `json:"exit_code"`
-	StartedAt      string                  `json:"started_at,omitempty"`
-	UptimeSeconds  int64                   `json:"uptime_seconds"`
-	HasContainer   bool                    `json:"has_container"`
-	Upgrade        *models.UpgradeProgress `json:"upgrade,omitempty"`
-	Stats          *docker.StatsSample     `json:"stats,omitempty"`
+	Status         string          `json:"status"` // headline: stored lifecycle, or live-derived when running
+	StoredStatus   models.DBStatus `json:"stored_status"`
+	ContainerState string          `json:"container_state,omitempty"`
+	Health         string          `json:"health,omitempty"`
+	Running        bool            `json:"running"`
+	Restarting     bool            `json:"restarting"`
+	RestartCount   int             `json:"restart_count"`
+	ExitCode       int             `json:"exit_code"`
+	StartedAt      string          `json:"started_at,omitempty"`
+	UptimeSeconds  int64           `json:"uptime_seconds"`
+	HasContainer   bool            `json:"has_container"`
+	// NodeMissing marks an instance whose node has been deleted: nothing is running, and the UI says
+	// so rather than showing a status nobody can act on.
+	NodeMissing bool                    `json:"node_missing,omitempty"`
+	Upgrade     *models.UpgradeProgress `json:"upgrade,omitempty"`
+	Stats       *docker.StatsSample     `json:"stats,omitempty"`
 }
 
 // LiveStatus inspects the instance's container and returns its real-time status.
@@ -967,6 +989,15 @@ type LiveStatus struct {
 // it was removed, or the node is unreachable — so polling always gets an answer.
 func (s *Service) LiveStatus(ctx context.Context, inst *models.DatabaseInstance) LiveStatus {
 	ls := LiveStatus{Status: string(inst.Status), StoredStatus: inst.Status, Upgrade: inst.Upgrade}
+	// The stored status is the fallback for an unreachable node, on the theory that it is probably
+	// still running. That theory does not survive the node being deleted.
+	if s.nodeGone(inst) {
+		ls.NodeMissing = true
+		ls.Running = false
+		ls.HasContainer = false
+		ls.Status = string(models.DBStatusStopped)
+		return ls
+	}
 	if inst.ContainerID == "" {
 		return ls // not brought up yet (provisioning) or no container — stored status is authoritative
 	}
@@ -1158,6 +1189,11 @@ func (s *Service) Stop(ctx context.Context, inst *models.DatabaseInstance) error
 	if inst.Status == models.DBStatusUpgrading {
 		return ErrUpgradeInProgress
 	}
+	// A container on a node that no longer exists cannot be running, and there is no engine left to
+	// ask. Record the truth rather than failing forever on a client that will never come back.
+	if s.nodeGone(inst) {
+		return s.markStoppedOrphan(inst)
+	}
 	if inst.ContainerID == "" {
 		return ErrNoContainer
 	}
@@ -1174,6 +1210,25 @@ func (s *Service) Stop(ctx context.Context, inst *models.DatabaseInstance) error
 	}
 	s.publishStatus(inst)
 	s.emit(inst, models.EventDatabaseStopped, models.SeverityInfo, "Instance stopped", nil)
+	return nil
+}
+
+// runningBlocksDelete reports whether the "stop it first" guard applies. It is sound advice only
+// while something is actually running: on a deleted node nothing is, and the guard would otherwise
+// make the instance undeletable for good.
+func (s *Service) runningBlocksDelete(inst *models.DatabaseInstance) bool {
+	return inst.Status == models.DBStatusRunning && !s.nodeGone(inst)
+}
+
+// markStoppedOrphan records that an instance on a deleted node is not running, without touching an
+// engine that no longer exists.
+func (s *Service) markStoppedOrphan(inst *models.DatabaseInstance) error {
+	inst.Status = models.DBStatusStopped
+	if err := s.repo.Update(inst); err != nil {
+		return err
+	}
+	s.publishStatus(inst)
+	s.emit(inst, models.EventDatabaseStopped, models.SeverityWarning, "Instance stopped: its node was removed", nil)
 	return nil
 }
 
@@ -1213,7 +1268,7 @@ func (s *Service) Delete(ctx context.Context, inst *models.DatabaseInstance) err
 	if inst.Status == models.DBStatusUpgrading {
 		return ErrUpgradeInProgress
 	}
-	if inst.Status == models.DBStatusRunning {
+	if s.runningBlocksDelete(inst) {
 		return ErrInstanceRunning
 	}
 	if dbs, err := s.repo.ListDatabases(inst.ID); err == nil {
@@ -1633,3 +1688,33 @@ func token(nBytes int) string {
 
 // IDByUID resolves a database instance's portable uid to its numeric id.
 func (s *Service) IDByUID(uid string) (uint, error) { return s.repo.IDByUID(uid) }
+
+// MarkNodeRemoved records that every instance on a deleted node has stopped. Called after the node
+// is gone, so the console shows something an operator can act on instead of a status frozen at the
+// moment the node vanished.
+//
+// It records, it does not destroy: the rows, their volumes' names and their credentials survive, so
+// an operator can still delete them deliberately or point them somewhere else.
+func (s *Service) MarkNodeRemoved(serverID uint) {
+	if serverID == 0 {
+		return
+	}
+	instances, err := s.repo.ListAllInstances()
+	if err != nil {
+		logger.Warn("node removed: could not list database instances", "server", serverID, "error", err)
+		return
+	}
+	for i := range instances {
+		inst := &instances[i]
+		if inst.ServerID != serverID || inst.Status == models.DBStatusStopped {
+			continue
+		}
+		if err := s.markStoppedOrphan(inst); err != nil {
+			logger.Warn("node removed: could not mark instance stopped",
+				"server", serverID, "instance", inst.ID, "error", err)
+			continue
+		}
+		logger.Info("database instance marked stopped: its node was removed",
+			"server", serverID, "instance", inst.ID, "name", inst.Name, "workspace", inst.WorkspaceID)
+	}
+}

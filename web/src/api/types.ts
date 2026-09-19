@@ -1041,6 +1041,9 @@ export interface DBLiveStatus {
   started_at?: string
   uptime_seconds: number
   has_container: boolean
+  // True when the instance's node has been deleted: nothing is running, whatever the stored status
+  // says, and the instance can be stopped or deleted despite it.
+  node_missing?: boolean
   upgrade?: UpgradeProgress
   stats?: StatsSample
 }

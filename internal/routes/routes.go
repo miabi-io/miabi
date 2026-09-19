@@ -524,6 +524,11 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	databaseService.SetEventRecorder(eventsService)
 	databaseService.SetNodeGuard(nodeService)
 	databaseService.SetServerInfo(nodeService)
+
+	nodeService.SetOrphanHandler(func(serverID uint) {
+		databaseService.MarkNodeRemoved(serverID)
+		appService.MarkNodeRemoved(serverID)
+	})
 	databaseService.SetQuota(quotaService)
 	databaseSizeRepo := repositories.NewDatabaseSizeRepository(db)
 	databaseService.SetSizeCatalog(databaseSizeRepo)
