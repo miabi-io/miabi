@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { workspaceApi, type DeletionJob } from '@/api/workspaces'
-import { locationApi, type Location } from '@/api/locations'
+import { locationApi, type Location, type LocationSet } from '@/api/locations'
 import { locationLabel } from '@/utils/locations'
 import { memberApi, usageApi } from '@/api/resources'
 import { workspaceBackupApi, type UpdateBackupSettingsInput, type BackupTestResult } from '@/api/workspaceBackup'
@@ -263,13 +263,23 @@ async function testBackup() {
 const locations = ref<Location[]>([])
 const defaultLocation = ref('')
 const savingLocation = ref(false)
+// Set when the workspace's organization runs its own clusters: the default follows the
+// organization, so the field is shown locked with the reason rather than as a picker.
+const locationPinned = ref(false)
+const locationPinnedTo = ref('')
+
+function applyLocations(set: LocationSet | null | undefined) {
+  locations.value = set?.locations ?? []
+  locationPinned.value = !!set?.pinned
+  locationPinnedTo.value = set?.pinned_to ?? ''
+  defaultLocation.value = locations.value.find((l) => l.default)?.name ?? ''
+}
 
 async function loadLocations() {
   try {
-    locations.value = (await locationApi.list(wsId.value)).data.data ?? []
-    defaultLocation.value = locations.value.find((l) => l.default)?.name ?? ''
+    applyLocations((await locationApi.list(wsId.value)).data.data)
   } catch {
-    locations.value = []
+    applyLocations(null)
   }
 }
 
@@ -277,7 +287,7 @@ async function saveDefaultLocation() {
   if (!isAdmin.value) return
   savingLocation.value = true
   try {
-    locations.value = (await locationApi.setDefault(wsId.value, defaultLocation.value)).data.data ?? []
+    applyLocations((await locationApi.setDefault(wsId.value, defaultLocation.value)).data.data)
     notify.success('Default location updated')
   } catch (e) {
     notify.apiError(e)
@@ -563,7 +573,20 @@ watch(activeTab, (t) => loadTab(t))
             <template v-if="isSystemWs"> The system workspace name is reserved and cannot be changed.</template>
           </p>
         </div>
-        <div v-if="locations.length > 1" class="form-group">
+        <div v-if="locationPinned" class="form-group">
+          <label class="form-label">Default location</label>
+          <div class="slug-row">
+            <select class="form-select" disabled aria-label="Default location" style="max-width: 420px">
+              <option>{{ locations.length ? locationLabel(locations.find((l) => l.default) ?? locations[0]) : '—' }}</option>
+            </select>
+            <span class="badge badge-muted"><span class="mdi mdi-lock-outline"></span> set by your organization</span>
+          </div>
+          <p class="form-hint">
+            {{ locationPinnedTo || 'Your organization' }} runs its own locations, so this workspace's resources always
+            land there. Only a platform administrator can change it, from the organization.
+          </p>
+        </div>
+        <div v-else-if="locations.length > 1" class="form-group">
           <label class="form-label">Default location</label>
           <div class="slug-row">
             <select v-model="defaultLocation" class="form-select" :disabled="!isAdmin" aria-label="Default location" style="max-width: 420px">

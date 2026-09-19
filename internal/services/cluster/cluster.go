@@ -40,6 +40,9 @@ var (
 	ErrClusterHasWorkloads = errors.New("the cluster still has apps, databases or volumes; move or delete them before disabling Swarm")
 	// ErrNodeInOtherSwarm is returned for a node whose engine already belongs to another swarm.
 	ErrNodeInOtherSwarm = errors.New("the node is already in another swarm; remove it from that swarm first")
+	// ErrClusterHasForeignWorkloads is returned when dedicating a cluster that still runs other
+	// tenants' apps, databases or volumes.
+	ErrClusterHasForeignWorkloads = errors.New("this location still runs workloads belonging to other organizations; move or delete them before dedicating it")
 )
 
 const (
@@ -76,6 +79,8 @@ type Store interface {
 	UpdateColumns(id uint, cols map[string]any) error
 	CountWorkloads(clusterID uint) (int64, error)
 	CountExternalApps(clusterID uint) (int64, error)
+	CountForeignWorkloads(clusterID, orgID uint) (int64, error)
+	ClearUnusableWorkspaceDefaults() (int64, error)
 	CountServerWorkloadsByKind(serverID uint) (apps, databases, volumes int64, err error)
 	CreateStandalone(srv *models.Server, name string) (*models.Cluster, error)
 	AssignServer(serverID, clusterID uint) error

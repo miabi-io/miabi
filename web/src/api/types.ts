@@ -574,6 +574,13 @@ export interface AdminWorkspaceDetail {
   privileged: boolean
   system: boolean
   plan_id?: number | null
+  organization_id?: number | null
+  organization_name?: string
+  /**
+   * The workspace's organization runs its own clusters, so its placement is fixed: the plan's
+   * location list is ignored (it would intersect to nothing) and the console shows it locked.
+   */
+  placement_pinned?: boolean
   created_at: string
   owner_name: string
   owner_email: string

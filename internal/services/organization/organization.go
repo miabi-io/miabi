@@ -33,13 +33,21 @@ var (
 type Clusters interface {
 	FindByID(id uint) (*models.Cluster, error)
 	ListByOrganization(orgID uint) ([]models.Cluster, error)
+	CountByOrganization(orgID uint) (int64, error)
 	ReleaseOrganization(orgID uint) error
+}
+
+// Workspaces resolves a workspace to the organization that owns it. Satisfied by
+// repositories.WorkspaceRepository.
+type Workspaces interface {
+	FindByID(id uint) (*models.Workspace, error)
 }
 
 // Service manages organizations.
 type Service struct {
-	repo     *repositories.OrganizationRepository
-	clusters Clusters
+	repo       *repositories.OrganizationRepository
+	clusters   Clusters
+	workspaces Workspaces
 }
 
 func NewService(repo *repositories.OrganizationRepository) *Service {
@@ -49,6 +57,10 @@ func NewService(repo *repositories.OrganizationRepository) *Service {
 // SetClusters wires the cluster store (nil-safe; without it an organization cannot be given a
 // dedicated cluster and deleting one leaves its clusters to the caller).
 func (s *Service) SetClusters(c Clusters) { s.clusters = c }
+
+// SetWorkspaces wires the workspace store (nil-safe; without it a workspace cannot be resolved to
+// its organization, which leaves placement on the shared clusters).
+func (s *Service) SetWorkspaces(w Workspaces) { s.workspaces = w }
 
 func (s *Service) List() ([]models.Organization, error) { return s.repo.List() }
 
@@ -259,6 +271,47 @@ func (s *Service) HomeOrganization(u *models.User) uint {
 		return s.DefaultID()
 	}
 	return s.Resolve(u.OrganizationID)
+}
+
+// The three methods below answer the placement engine's organization questions. They satisfy
+// placement.Orgs structurally, so neither package imports the other.
+
+// OrganizationOfWorkspace resolves the realm a workspace belongs to, mapping an unassigned
+// workspace to the default organization. 0 when it cannot be read, which leaves the caller on the
+// shared clusters.
+func (s *Service) OrganizationOfWorkspace(workspaceID uint) uint {
+	if s.workspaces == nil {
+		return 0
+	}
+	ws, err := s.workspaces.FindByID(workspaceID)
+	if err != nil {
+		return 0
+	}
+	return s.Resolve(ws.OrganizationID)
+}
+
+// OwnsClusters reports whether the organization runs clusters of its own, which confines it to
+// them. It fails open — a read error must not strand every create — because the per-cluster
+// ownership check still refuses another tenant's cluster on its own.
+func (s *Service) OwnsClusters(orgID uint) bool {
+	if orgID == 0 || s.clusters == nil {
+		return false
+	}
+	n, err := s.clusters.CountByOrganization(orgID)
+	return err == nil && n > 0
+}
+
+// OrganizationLabel names the organization for the message shown where a workspace's own placement
+// choice used to be.
+func (s *Service) OrganizationLabel(orgID uint) string {
+	org, err := s.Get(orgID)
+	if err != nil {
+		return ""
+	}
+	if org.DisplayName != "" {
+		return org.DisplayName
+	}
+	return org.Name
 }
 
 // IsNotFound reports a missing row, so callers can map a repository error without importing gorm.

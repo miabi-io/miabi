@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 
@@ -26,13 +27,13 @@ func NewLocationHandler(placer *Placer, auditLog *audit.Logger) *LocationHandler
 // List returns the locations the workspace may place new resources in.
 func (h *LocationHandler) List(c *okapi.Context) error {
 	if h.placer == nil || h.placer.svc == nil {
-		return ok(c, []placement.Location{})
+		return ok(c, placement.LocationSet{Locations: []placement.Location{}})
 	}
-	locs, err := h.placer.svc.Locations(middlewares.WorkspaceID(c), h.placer.admin(c))
+	set, err := h.placer.svc.LocationsFor(middlewares.WorkspaceID(c), h.placer.admin(c))
 	if err != nil {
 		return c.AbortInternalServerError("failed to list locations", err)
 	}
-	return ok(c, locs)
+	return ok(c, set)
 }
 
 // SetDefaultLocationRequest sets where the workspace's new resources land when a create names no location.
@@ -51,6 +52,9 @@ func (h *LocationHandler) SetDefault(c *okapi.Context, req *SetDefaultLocationRe
 	wsID := middlewares.WorkspaceID(c)
 	location := strings.TrimSpace(req.Body.Location)
 	if err := h.placer.svc.SetDefaultLocation(wsID, location, h.placer.admin(c)); err != nil {
+		if errors.Is(err, placement.ErrLocationPinned) {
+			return c.AbortWithError(409, err)
+		}
 		if a := placementAbort(c, err); a != nil {
 			return a
 		}

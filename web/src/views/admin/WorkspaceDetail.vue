@@ -135,6 +135,9 @@ async function clearOverride() {
 }
 
 const placementPolicy = useEntitlement('placement_policy')
+// The organization runs its own clusters, so its workspaces have no location left to choose and a
+// plan override would be inert. Shown locked rather than accepted and ignored.
+const placementPinned = computed(() => !!ws.value?.placement_pinned)
 const clusters = ref<Cluster[]>([])
 async function loadClusters() {
   try {
@@ -486,7 +489,20 @@ function eventSeverity(e: AdminEvent): string {
               </select>
             </div>
           </div>
-          <div class="form-group" style="margin: 14px 0 0; max-width: 360px">
+          <div v-if="placementPinned" class="form-group" style="margin: 14px 0 0; max-width: 480px">
+            <label class="form-label form-label-sm">
+              Placement
+              <span class="badge badge-muted" style="margin-left: 6px">
+                <span class="mdi mdi-lock-outline"></span> set by the organization
+              </span>
+            </label>
+            <p class="form-hint" style="margin-top: 6px">
+              {{ ws?.organization_name || 'This workspace\'s organization' }} runs its own locations, so this
+              workspace deploys there and nowhere else. A plan location list would have nothing left to choose from, so
+              it is ignored — the node pool still applies. Release the organization's clusters to hand placement back.
+            </p>
+          </div>
+          <div v-else class="form-group" style="margin: 14px 0 0; max-width: 360px">
             <label class="form-label form-label-sm">
               Placement
               <span v-if="!placementPolicy.has.value" class="badge badge-neutral" style="margin-left: 6px" title="Plan placement requires an Enterprise license">
@@ -498,7 +514,7 @@ function eventSeverity(e: AdminEvent): string {
               <option value="override" :disabled="!placementPolicy.mutable.value">Override locations and pool</option>
             </select>
           </div>
-          <template v-if="override.placement">
+          <template v-if="override.placement && !placementPinned">
             <label v-for="c in clusters" :key="c.id" class="checkbox-label" style="display: block; margin-top: 8px">
               <input type="checkbox" :checked="(override.placement.locations ?? []).includes(c.id)" @change="toggleOverrideLocation(c.id)" />
               {{ c.display_name || c.name }}

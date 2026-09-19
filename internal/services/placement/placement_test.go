@@ -5,6 +5,7 @@ package placement
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -287,6 +288,7 @@ type fakeOrgs struct {
 
 func (f fakeOrgs) OrganizationOfWorkspace(id uint) uint { return f.ofWorkspace[id] }
 func (f fakeOrgs) OwnsClusters(orgID uint) bool         { return f.owners[orgID] }
+func (f fakeOrgs) OrganizationLabel(orgID uint) string  { return fmt.Sprintf("org-%d", orgID) }
 
 // A cluster dedicated to an organization is invisible to every other tenant, and an organization that
 // owns one is CONFINED to it — a dedicated tenant must never quietly land on shared hardware.
@@ -339,9 +341,31 @@ func TestPlacementIsolatesOrganizationClusters(t *testing.T) {
 		t.Errorf("colocation into another organization's cluster: err = %v, want ErrLocationNotAllowed", err)
 	}
 
-	// A platform admin still sees and places everywhere.
-	if got, err := s.Place(Request{WorkspaceID: 6, Location: "gpu", Admin: true}); err != nil || got.ClusterID != 3 {
-		t.Errorf("admin in a dedicated cluster: %+v (%v), want cluster 3", got, err)
+	// Confinement binds the WORKSPACE, not the caller: a platform admin deploying into workspace 6
+	// still cannot put it in Acme's cluster, and still cannot take workspace 5 off Acme's.
+	if _, err := s.Place(Request{WorkspaceID: 6, Location: "gpu", Admin: true}); !errors.Is(err, ErrLocationNotAllowed) {
+		t.Errorf("admin placing an outsider in a dedicated cluster: err = %v, want ErrLocationNotAllowed", err)
+	}
+	if _, err := s.Place(Request{WorkspaceID: 5, Location: "default", Admin: true}); !errors.Is(err, ErrLocationNotAllowed) {
+		t.Errorf("admin placing a confined workspace on shared hardware: err = %v, want ErrLocationNotAllowed", err)
+	}
+	if got, err := s.Place(Request{WorkspaceID: 5, Location: "gpu", Admin: true}); err != nil || got.ClusterID != 3 {
+		t.Errorf("admin inside the owning organization: %+v (%v), want cluster 3", got, err)
+	}
+	// A node pin is the admin's own privilege, but it cannot cross a realm either.
+	if _, err := s.Place(Request{WorkspaceID: 6, ServerID: 20, Admin: true}); !errors.Is(err, ErrLocationNotAllowed) {
+		t.Errorf("admin pinning a node in another organization's cluster: err = %v, want ErrLocationNotAllowed", err)
+	}
+	// The admin's own locations view is unchanged for an unconfined workspace: restricted clusters
+	// stay visible to them.
+	locs6, err := s.Locations(6, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range locs6 {
+		if l.Name == "gpu" {
+			t.Error("a dedicated cluster must not appear for an admin acting in another realm")
+		}
 	}
 }
 

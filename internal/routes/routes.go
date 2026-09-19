@@ -491,6 +491,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	appService.SetSettings(settingsProvider)
 	nodeService.SetNodeLimit(func() int { return ee.Entitlements().NodeLimit() })
 	organizationService.SetClusters(clusterRepo)
+	organizationService.SetWorkspaces(workspaceRepo)
 	workspaceService.SetOrgs(organizationService)
 	// A cordon binds Miabi's placement; Swarm schedules service tasks itself and has to be told too.
 	nodeService.SetSwarmCordon(clusterService.MirrorCordon)
@@ -772,9 +773,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	monitoringService.SetServerInfo(nodeService)
 	placementService := placement.NewService(clusterRepo, serverRepo, nodeClients.Connected)
 	placementService.SetPolicy(quotaService)
-	// Dedicated clusters: a tenant sees the shared locations plus its own organization's, and an
-	// organization that owns clusters is confined to them.
-	placementService.SetOrgs(orgPlacement{orgs: organizationService, workspaces: workspaceRepo, clusters: clusterRepo})
+
+	placementService.SetOrgs(organizationService)
 	placer := handlers.NewPlacer(placementService, userRepo)
 	marketplaceService := marketplace.NewService(appService, databaseService, storageService, stackService, repositories.NewTemplateInstallRepository(db), repositories.NewTemplateRepository(db))
 	marketplaceService.SetPlacer(placementService)
@@ -1338,6 +1338,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.cluster.SetCapacityStore(serverRepo)
 	r.h.cluster.SetOrganizations(organizationService, ee)
 	r.h.adminUser.SetOrganizations(organizationService)
+	r.h.adminWorkspace.SetOrganizations(organizationService, organizationService.OwnsClusters)
 	r.h.node.SetNodeStats(nodeStatsService)
 
 	// Restrict browser WebSocket upgrades (exec/log/node/runner tunnels) to

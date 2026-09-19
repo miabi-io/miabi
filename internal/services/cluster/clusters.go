@@ -6,10 +6,12 @@ package cluster
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"regexp"
 	"strings"
 
+	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/models"
 )
 
@@ -38,6 +40,31 @@ type ClusterPatch struct {
 	// OrganizationID dedicates the cluster to one organization; 0 releases it back to shared. Set it
 	// together with Visibility "organization" — the handler keeps the two in step.
 	OrganizationID *uint
+}
+
+// clearStaleDefaults drops workspace default locations that dedicating a cluster just invalidated.
+// Best-effort: placement already skips a default it may not use, so a failure here leaves a stale
+// row rather than a broken deploy.
+func (s *Service) clearStaleDefaults() {
+	if s.store == nil {
+		return
+	}
+	n, err := s.store.ClearUnusableWorkspaceDefaults()
+	if err != nil {
+		logger.Warn("could not clear workspace default locations invalidated by the dedication", "error", err)
+		return
+	}
+	if n > 0 {
+		logger.Info("cleared workspace default locations the organization can no longer place in", "workspaces", n)
+	}
+}
+
+// foreignWorkloads counts what other organizations still run in a cluster.
+func (s *Service) foreignWorkloads(clusterID, orgID uint) (int64, error) {
+	if s.store == nil {
+		return 0, nil
+	}
+	return s.store.CountForeignWorkloads(clusterID, orgID)
 }
 
 // Clusters lists every cluster, the default first, with its node count.
@@ -103,6 +130,16 @@ func (s *Service) UpdateCluster(id uint, p ClusterPatch) (*models.Cluster, error
 		cols["visibility"] = *p.Visibility
 	}
 	if p.OrganizationID != nil {
+		if *p.OrganizationID != 0 && c.OrganizationID == nil {
+			// Dedicating hides the cluster from every other tenant. Their workloads would keep
+			// running here while their workspace could no longer see, scale or place beside them —
+			// so refuse rather than strand them.
+			if n, err := s.foreignWorkloads(c.ID, *p.OrganizationID); err != nil {
+				return nil, err
+			} else if n > 0 {
+				return nil, fmt.Errorf("%w: %d still here", ErrClusterHasForeignWorkloads, n)
+			}
+		}
 		if *p.OrganizationID == 0 {
 			cols["organization_id"] = nil
 			// A cluster left on "organization" visibility with no owner would be visible to nobody,
@@ -154,6 +191,12 @@ func (s *Service) UpdateCluster(id uint, p ClusterPatch) (*models.Cluster, error
 		if err := s.store.UpdateColumns(c.ID, cols); err != nil {
 			return nil, err
 		}
+	}
+	if p.OrganizationID != nil {
+		// Dedicating a location invalidates the default location of every workspace that may no
+		// longer place there — the ones outside the organization, and the organization's own if it
+		// was pointing at shared hardware. Left alone they are skipped silently at every deploy.
+		s.clearStaleDefaults()
 	}
 	if len(external) > 0 {
 		s.externalChanged(c.ID)
