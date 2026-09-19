@@ -175,8 +175,9 @@ func (s *Service) resolveCluster(workspaceID uint, location string, admin bool) 
 }
 
 // pickNode chooses the node inside a cluster: its only node when standalone, the manager for a service,
-// and otherwise the online, uncordoned node with the least container memory already placed on it. With a
-// pooled plan only nodes in the plan's pool count, and a cluster with none of them refuses the create.
+// and otherwise the online, uncordoned node with the least container memory already placed on it. A
+// cordoned node is refused wherever it would host the workload. With a pooled plan only nodes in the
+// plan's pool count, and a cluster with none of them refuses the create.
 func (s *Service) pickNode(c *models.Cluster, service bool, pool string, pooled bool) (uint, error) {
 	if pooled && (c.Mode != models.ClusterModeSwarm || service) {
 		servers, err := s.servers.List()
@@ -190,12 +191,20 @@ func (s *Service) pickNode(c *models.Cluster, service bool, pool string, pooled 
 		}
 	}
 	if c.Mode != models.ClusterModeSwarm || service {
+
+		hostsWorkload := c.Mode != models.ClusterModeSwarm
 		if c.IsDefault {
 			local, err := s.servers.FindLocal()
 			if err != nil {
 				return 0, ErrNoSchedulableNode
 			}
+			if hostsWorkload && local.Cordoned {
+				return 0, ErrNoSchedulableNode
+			}
 			return local.ID, nil
+		}
+		if hostsWorkload && s.cordoned(c.ManagerServerID) {
+			return 0, ErrNoSchedulableNode
 		}
 		return c.ManagerServerID, nil
 	}
@@ -229,6 +238,14 @@ func (s *Service) pickNode(c *models.Cluster, service bool, pool string, pooled 
 		return 0, ErrNoSchedulableNode
 	}
 	return best, nil
+}
+
+// cordoned reports whether a node is positively known to be cordoned. A node that cannot be read is
+// not treated as cordoned: refusing on a lookup error would turn a transient database fault into a
+// failed create.
+func (s *Service) cordoned(serverID uint) bool {
+	srv, err := s.servers.FindByID(serverID)
+	return err == nil && srv.Cordoned
 }
 
 func poolUnavailable(pool string) error {

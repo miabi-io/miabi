@@ -251,4 +251,31 @@ func TestPlacementHonorsThePlanLocations(t *testing.T) {
 	}
 }
 
+// A cordoned node is refused wherever it would host the workload — the standalone default cluster
+// (the control plane's own node) and a standalone cluster's single node alike. A swarm cluster's
+// manager is exempt: it is only the engine a service create is issued through.
+func TestPlacementRefusesACordonedHostNode(t *testing.T) {
+	s, db := newPlacement(t, map[uint]bool{10: true, 11: true})
+
+	if err := db.Model(&serverTable{}).Where("id IN ?", []uint{1, 20}).
+		Update("cordoned", true).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.Place(Request{WorkspaceID: 5}); !errors.Is(err, ErrNoSchedulableNode) {
+		t.Errorf("default cluster with its node cordoned: err = %v, want ErrNoSchedulableNode", err)
+	}
+	if _, err := s.Place(Request{WorkspaceID: 5, Location: "gpu", Admin: true}); !errors.Is(err, ErrNoSchedulableNode) {
+		t.Errorf("standalone cluster with its node cordoned: err = %v, want ErrNoSchedulableNode", err)
+	}
+
+	if err := db.Model(&serverTable{}).Where("id = ?", 10).Update("cordoned", true).Error; err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Place(Request{WorkspaceID: 5, Location: "eu-east", Service: true})
+	if err != nil || got.ServerID != 10 {
+		t.Errorf("service on a swarm cluster whose manager is cordoned: node %d (%v), want node 10", got.ServerID, err)
+	}
+}
+
 var _ = models.DefaultClusterID
