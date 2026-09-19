@@ -36,7 +36,10 @@ var (
 	// reachability settings without the caller acknowledging the impact.
 	ErrConnectivityAckRequired = &connectivityAckError{}
 	ErrInvalidPool             = errors.New("a pool name is lowercase letters, digits and hyphens (max 32), e.g. pro")
-	ErrInvalidConnectivity     = errors.New("a node either runs its own gateway (edge-gateway) or, as a swarm member, is served by its cluster's gateway (cluster)")
+	// ErrSwarmNotMirrored reports a cordon that was saved but not passed on to the swarm scheduler.
+	// Not a failure of the cordon itself, so it is surfaced as a warning rather than an abort.
+	ErrSwarmNotMirrored    = errors.New("the node was updated, but its swarm scheduling availability could not be changed — Swarm may still place service tasks on it")
+	ErrInvalidConnectivity = errors.New("a node either runs its own gateway (edge-gateway) or, as a swarm member, is served by its cluster's gateway (cluster)")
 )
 
 // NodeLimitError is returned when registering a node would exceed the edition's node cap. It exposes a
@@ -100,10 +103,19 @@ type Service struct {
 	docker    docker.Client
 	nodeLimit func() int // resolved edition node cap (-1 = unlimited); nil = unlimited
 	orphaned  func(serverID uint)
+	// swarmCordon mirrors a cordon onto the node's swarm availability. Satisfied by
+	// cluster.Service.MirrorCordon, passed as a closure to keep the cluster service out of this
+	// package's imports (it already depends on this one).
+	swarmCordon func(ctx context.Context, serverID uint, cordoned bool) error
 }
 
 // SetOrphanHandler wires the reconciler run after a node is deleted (nil-safe).
 func (s *Service) SetOrphanHandler(fn func(serverID uint)) { s.orphaned = fn }
+
+// SetSwarmCordon wires the swarm-availability mirror (nil-safe; nil leaves the cordon Miabi-side only).
+func (s *Service) SetSwarmCordon(fn func(ctx context.Context, serverID uint, cordoned bool) error) {
+	s.swarmCordon = fn
+}
 
 func NewService(repo *repositories.ServerRepository, dockerClient docker.Client) *Service {
 	return &Service{repo: repo, docker: dockerClient}
@@ -846,14 +858,29 @@ func (s *Service) NameBySwarmNodeID(swarmNodeID string) string {
 	return ""
 }
 
-// SetCordoned toggles a node's drain flag (no new placements when cordoned).
-func (s *Service) SetCordoned(id uint, cordoned bool) error {
+// SetCordoned toggles a node's drain flag (no new placements when cordoned). On a swarm member the
+// flag is mirrored onto the node's swarm availability, since Miabi's own placement decisions bind
+// only container apps — Swarm schedules service tasks itself and would ignore the cordon.
+//
+// The flag is saved even when the mirror fails, and ErrSwarmNotMirrored reports that: the caller must
+// surface it, because a cordon Swarm never heard about still takes work.
+func (s *Service) SetCordoned(ctx context.Context, id uint, cordoned bool) error {
 	srv, err := s.repo.FindByID(id)
 	if err != nil {
 		return ErrNodeNotFound
 	}
 	srv.Cordoned = cordoned
-	return s.repo.Update(srv)
+	if err := s.repo.Update(srv); err != nil {
+		return err
+	}
+	if s.swarmCordon == nil {
+		return nil
+	}
+	if err := s.swarmCordon(ctx, srv.ID, cordoned); err != nil {
+		logger.Warn("node cordon was not mirrored to the swarm scheduler", "node", srv.ID, "cordoned", cordoned, "error", err)
+		return fmt.Errorf("%w: %v", ErrSwarmNotMirrored, err)
+	}
+	return nil
 }
 
 // DeleteNode removes a remote node record.

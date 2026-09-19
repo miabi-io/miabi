@@ -484,6 +484,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Enforce platform CPU/memory caps on app create/update.
 	appService.SetSettings(settingsProvider)
 	nodeService.SetNodeLimit(func() int { return ee.Entitlements().NodeLimit() })
+	// A cordon binds Miabi's placement; Swarm schedules service tasks itself and has to be told too.
+	nodeService.SetSwarmCordon(clusterService.MirrorCordon)
 	if cronManager != nil {
 		cronManager.SetRecoveryPointGate(func() error { return ee.Require(enterprise.FlagRecoveryPoints) })
 	}

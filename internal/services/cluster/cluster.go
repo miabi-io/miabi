@@ -976,6 +976,35 @@ func (s *Service) SetAvailability(ctx context.Context, clusterID uint, swarmNode
 	return nil
 }
 
+func (s *Service) MirrorCordon(ctx context.Context, serverID uint, cordoned bool) error {
+	srv, err := s.nodes.Get(serverID)
+	if err != nil || !s.IsSwarm(srv.ClusterID) {
+		return nil
+	}
+	nodeID := s.swarmNodeIDOf(srv)
+	if nodeID == "" {
+		return nil
+	}
+	want := "active"
+	if cordoned {
+		if s.state(srv.ClusterID).nodes[nodeID].Availability == "drain" {
+			return nil
+		}
+		want = "pause"
+	}
+	return s.SetAvailability(ctx, srv.ClusterID, nodeID, want)
+}
+
+func (s *Service) swarmNodeIDOf(srv *models.Server) string {
+	if srv.SwarmNodeID != "" {
+		return srv.SwarmNodeID
+	}
+	if srv.IsLocal {
+		return s.state(srv.ClusterID).info.NodeID
+	}
+	return ""
+}
+
 // Tasks lists the service tasks the scheduler placed on a swarm node, or on all nodes when swarmNodeID is
 // empty. Only a manager can answer this, which is the only way to see an unmanaged node's workload.
 func (s *Service) Tasks(ctx context.Context, clusterID uint, swarmNodeID string) ([]docker.SwarmTask, error) {
