@@ -49,6 +49,8 @@ export interface CreateUserPayload {
   role: 'admin' | 'user'
   // notify emails the new user a welcome with a sign-in link (needs system SMTP).
   notify?: boolean
+  /** The realm the user belongs to, and so the one their workspaces are created in. */
+  organization_id?: number
 }
 
 // Deployment Config — platform image catalog.

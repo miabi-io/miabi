@@ -3,15 +3,14 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
 import { useLicenseStore } from '@/stores/license'
-import { adminApi } from '@/api/admin'
 import { clustersApi } from '@/api/clusters'
 import { clusterApi } from '@/api/cluster'
 import { nodesApi } from '@/api/nodes'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AppModal from '@/components/AppModal.vue'
+import OrganizationPicker from '@/components/OrganizationPicker.vue'
 import { copyText } from '@/utils/clipboard'
 import type {
-  Organization,
   Cluster, Server, ClusterStatus, ClusterJoinInstructions,
   ClusterPreflight, NetCheck, NetCheckResult, ControlPlaneCert,
 } from '@/api/types'
@@ -62,17 +61,8 @@ const editForm = ref({
   ingress_ip: '', ingress_hostname: '', organization_id: 0,
 })
 
-// Organizations a location can be dedicated to. Loaded lazily: the picker only appears once the
-// visibility is set to "organization", and the page is useful without it.
-const orgs = ref<Organization[]>([])
+// Dedicating a location is entitled; the picker loads the organizations itself.
 const eeOrgs = computed(() => license.has('organizations'))
-async function loadOrgs() {
-  try {
-    orgs.value = (await adminApi.listOrganizations()).data.data ?? []
-  } catch {
-    // no-op: the select simply stays empty
-  }
-}
 function openEdit() {
   editForm.value = {
     display_name: cluster.value?.display_name ?? '',
@@ -86,7 +76,6 @@ function openEdit() {
     ingress_hostname: cluster.value?.ingress_hostname ?? '',
     organization_id: cluster.value?.organization_id ?? 0,
   }
-  void loadOrgs()
   showEdit.value = true
 }
 
@@ -719,11 +708,12 @@ function swarmClass(n: Server): string {
               </select>
             </div>
             <div v-if="editForm.visibility === 'organization'" class="form-group">
-              <label class="form-label">Organization</label>
-              <select v-model.number="editForm.organization_id" class="form-select" :disabled="!eeOrgs">
-                <option :value="0">Select an organization…</option>
-                <option v-for="o in orgs" :key="o.id" :value="o.id">{{ o.display_name || o.name }}</option>
-              </select>
+              <OrganizationPicker
+                v-model="editForm.organization_id"
+                label="Organization"
+                default-label="Select an organization…"
+                :disabled="!eeOrgs"
+              />
               <p class="form-hint">
                 Only this organization sees the location and may place in it — and it is then confined to the locations
                 it owns, so its workloads never land on shared hardware. Resources already here do not move.

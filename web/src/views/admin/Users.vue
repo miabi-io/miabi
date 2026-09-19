@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onBeforeUnmount } from 'vue'
+import { computed, ref, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { adminApi } from '@/api/admin'
 import type { AdminUser } from '@/api/types'
@@ -8,9 +8,14 @@ import { useAuthStore } from '@/stores/auth'
 import { usePagination } from '@/composables/usePagination'
 import Pagination from '@/components/Pagination.vue'
 import AppModal from '@/components/AppModal.vue'
+import OrganizationPicker from '@/components/OrganizationPicker.vue'
+import { useLicenseStore } from '@/stores/license'
 
 const notify = useNotificationStore()
 const auth = useAuthStore()
+const license = useLicenseStore()
+license.load().catch(() => {})
+const eeOrgs = computed(() => license.has('organizations'))
 const router = useRouter()
 
 const users = ref<AdminUser[]>([])
@@ -49,17 +54,26 @@ function fmtDate(s?: string | null): string {
 // --- Create modal ---
 const showCreate = ref(false)
 const creating = ref(false)
-const createForm = ref<{ name: string; username: string; email: string; password: string; role: 'admin' | 'user'; notify: boolean }>({
+const createForm = ref<{
+  name: string
+  username: string
+  email: string
+  password: string
+  role: 'admin' | 'user'
+  notify: boolean
+  organization_id: number
+}>({
   name: '',
   username: '',
   email: '',
   password: '',
   role: 'user',
   notify: true,
+  organization_id: 0,
 })
 
 function openCreate() {
-  createForm.value = { name: '', username: '', email: '', password: '', role: 'user', notify: true }
+  createForm.value = { name: '', username: '', email: '', password: '', role: 'user', notify: true, organization_id: 0 }
   showCreate.value = true
 }
 
@@ -74,6 +88,9 @@ async function submitCreate() {
       password: createForm.value.password,
       role: createForm.value.role,
       notify: createForm.value.notify,
+      // Only sent when one was chosen: the field is entitled, so a Community install creating an
+      // ordinary user must not be refused for a value it never set.
+      ...(createForm.value.organization_id ? { organization_id: createForm.value.organization_id } : {}),
     })
     notify.success('User created')
     showCreate.value = false
@@ -208,6 +225,12 @@ onBeforeUnmount(() => {
                 <option value="user">User</option>
                 <option value="admin">Admin</option>
               </select>
+            </div>
+            <div v-if="eeOrgs" class="form-group">
+              <OrganizationPicker v-model="createForm.organization_id" />
+              <p class="form-hint">
+                The tenant this user belongs to. Workspaces they create are made in it and count against its limit.
+              </p>
             </div>
             <div class="form-group" style="margin-bottom: 0">
               <label class="checkbox-row">
