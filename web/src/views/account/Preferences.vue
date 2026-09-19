@@ -7,9 +7,13 @@ import { useThemeStore, type ThemeMode } from '@/stores/theme'
 import { ACCENTS as accents } from '@/theme/accents'
 import { LANGUAGES as languages, resolveLanguage } from '@/i18n/languages'
 import { useNotificationStore } from '@/stores/notification'
+import { useLanguageStore } from '@/stores/language'
+import { useI18n } from 'vue-i18n'
 import { authApi } from '@/api/auth'
 
 const auth = useAuthStore()
+const language = useLanguageStore()
+const { t } = useI18n()
 const ws = useWorkspaceStore()
 const theme = useThemeStore()
 const notify = useNotificationStore()
@@ -81,7 +85,10 @@ async function saveDisplay() {
       landing_view: landingView.value,
     })).data.data
     if (auth.user) auth.setUser({ ...auth.user, preferences: prefs })
-    notify.success('Preferences saved')
+    // The save already persisted it, so this only switches the catalogue in place —
+    // adopt() would push it back up a second time.
+    await language.adopt(prefs.locale)
+    notify.success(t('preferences.saved'))
   } catch (e) {
     notify.apiError(e)
   } finally {
@@ -191,11 +198,11 @@ async function saveDisplay() {
           </p>
         </div>
         <div class="form-group" style="margin-bottom: 0">
-          <label class="form-label" for="locale">Language</label>
+          <label class="form-label" for="locale">{{ t('preferences.language.label') }}</label>
           <select id="locale" v-model="locale" class="form-select">
             <option v-for="l in languages" :key="l.code" :value="l.code" :lang="l.code">{{ l.label }}</option>
           </select>
-          <p class="form-hint">Translations are on the way; until they land, the console stays in English.</p>
+          <p class="form-hint">{{ t('preferences.language.hint') }}</p>
         </div>
       </div>
       <div class="card-footer">

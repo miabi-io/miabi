@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
+import { useLanguageStore } from '@/stores/language'
 import { useBrandStore } from '@/stores/brand'
 import { useWorkspaceStore } from '@/stores/workspace'
 import NotificationBell from '@/components/NotificationBell.vue'
@@ -30,6 +31,7 @@ const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 const theme = useThemeStore()
+const language = useLanguageStore()
 const ws = useWorkspaceStore()
 
 const sidebarCollapsed = ref(localStorage.getItem('mb_sidebar_collapsed') === 'true')
@@ -133,6 +135,7 @@ onMounted(() => {
   document.addEventListener('keydown', onPaletteShortcut)
   const prefs = auth.user?.preferences
   theme.adopt(prefs?.theme, prefs?.accent, prefs?.accent_locked)
+  void language.adopt(prefs?.locale)
   infoApi.get().then((res) => { docsEnabled.value = res.data.data.openapi_docs }).catch(() => { })
   brand.load()
 })

@@ -1,0 +1,9 @@
+{
+  "preferences": {
+    "language": {
+      "label": "Langue",
+      "hint": "Les dates, heures et nombres suivent désormais cette langue. Le texte de la console est traduit vue par vue ; ce qui ne l'est pas encore reste en anglais."
+    },
+    "saved": "Préférences enregistrées"
+  }
+}

@@ -1,4 +1,7 @@
-// Small, dependency-free time formatters shared across views.
+// Small time formatters shared across views. The relative strings are still English —
+// they are UI text, for the catalogue in Phase 2.
+
+import { fmtDate } from './datetime'
 
 // relativeTime renders an ISO timestamp as a short "2h ago" / "in 3m" string.
 // Pass a `now` (e.g. a ticking ref value) to make it update live. Falls back to
@@ -18,7 +21,7 @@ export function relativeTime(iso?: string | null, now: number = Date.now()): str
   if (hrs < 24) return past ? `${hrs}h ago` : `in ${hrs}h`
   const days = Math.round(abs / 86400)
   if (days < 30) return past ? `${days}d ago` : `in ${days}d`
-  return new Date(iso).toLocaleDateString()
+  return fmtDate(iso)
 }
 
 // formatDuration renders the span between two timestamps as "45s" / "1m 5s" /
