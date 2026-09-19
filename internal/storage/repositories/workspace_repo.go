@@ -146,6 +146,13 @@ func (r *WorkspaceRepository) FindByID(id uint) (*models.Workspace, error) {
 }
 
 // FindSystem returns the built-in platform system workspace, if it exists.
+// ListByOrganization returns the workspaces an organization holds, for its detail page.
+func (r *WorkspaceRepository) ListByOrganization(orgID uint) ([]models.Workspace, error) {
+	var out []models.Workspace
+	err := r.db.Where("organization_id = ?", orgID).Order("name ASC").Find(&out).Error
+	return out, err
+}
+
 func (r *WorkspaceRepository) FindSystem() (*models.Workspace, error) {
 	var ws models.Workspace
 	if err := r.db.Where("system = ?", true).First(&ws).Error; err != nil {

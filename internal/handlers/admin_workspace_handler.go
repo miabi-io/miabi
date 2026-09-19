@@ -14,6 +14,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/keyring"
+	"github.com/miabi-io/miabi/internal/services/organization"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 	"gorm.io/gorm"
 )
@@ -30,6 +31,15 @@ type AdminWorkspaceHandler struct {
 	workspaces *repositories.WorkspaceRepository
 	audit      *audit.Logger
 	keys       KeyRotator
+	orgs       *organization.Service
+	// ownsClusters reports whether an organization runs clusters of its own.
+	ownsClusters func(orgID uint) bool
+}
+
+// SetOrganizations wires the realm a workspace belongs to and whether that realm pins placement
+// (nil-safe; without it the detail simply omits both).
+func (h *AdminWorkspaceHandler) SetOrganizations(svc *organization.Service, ownsClusters func(orgID uint) bool) {
+	h.orgs, h.ownsClusters = svc, ownsClusters
 }
 
 func NewAdminWorkspaceHandler(db *gorm.DB, workspaces *repositories.WorkspaceRepository, auditLog *audit.Logger) *AdminWorkspaceHandler {
@@ -98,6 +108,12 @@ type AdminWorkspaceDetail struct {
 	MembersCount   int64                    `json:"members_count"`
 	Members        []models.WorkspaceMember `json:"members"`
 	RecentEvents   []models.AuditLog        `json:"recent_events"`
+	// OrganizationName labels the realm the workspace belongs to.
+	OrganizationName string `json:"organization_name,omitempty"`
+	// PlacementPinned reports that the workspace's organization runs its own clusters. Its plan's
+	// location list is then ignored — a tenant on dedicated hardware has left that question behind
+	// — so the console shows the override locked rather than accepting a value with no effect.
+	PlacementPinned bool `json:"placement_pinned"`
 }
 
 // Get returns a single workspace with owner, counts, members, and recent activity.
@@ -132,6 +148,16 @@ func (h *AdminWorkspaceHandler) Get(c *okapi.Context) error {
 	var events []models.AuditLog
 	if err := h.db.Where("workspace_id = ?", ws.ID).Order("created_at DESC").Limit(20).Find(&events).Error; err == nil && len(events) > 0 {
 		detail.RecentEvents = events
+	}
+	if h.orgs != nil {
+		orgID := h.orgs.Resolve(ws.OrganizationID)
+		if org, err := h.orgs.Get(orgID); err == nil {
+			detail.OrganizationName = org.DisplayName
+			if detail.OrganizationName == "" {
+				detail.OrganizationName = org.Name
+			}
+		}
+		detail.PlacementPinned = h.ownsClusters != nil && h.ownsClusters(orgID)
 	}
 	return ok(c, detail)
 }

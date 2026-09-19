@@ -18,6 +18,8 @@ type memStore struct {
 	others    map[uint]models.Cluster
 	workloads map[uint]int64 // by server id
 	assigned  map[uint]uint  // server id -> cluster id
+	foreign   map[uint]int64 // other organizations' workloads, by cluster id
+	cleared   int            // calls to ClearUnusableWorkspaceDefaults
 }
 
 func (m *memStore) all() []models.Cluster {
@@ -89,6 +91,13 @@ func (m *memStore) UpdateColumns(id uint, cols map[string]any) error {
 			c.IngressHostname = v.(string)
 		case "visibility":
 			c.Visibility = v.(models.ClusterVisibility)
+		case "organization_id":
+			if v == nil {
+				c.OrganizationID = nil
+			} else {
+				id := v.(uint)
+				c.OrganizationID = &id
+			}
 		case "cordoned":
 			c.Cordoned = v.(bool)
 		case "external_base_domain":
@@ -108,6 +117,18 @@ func (m *memStore) UpdateColumns(id uint, cols map[string]any) error {
 }
 
 func (m *memStore) CountExternalApps(uint) (int64, error) { return 0, nil }
+
+// cleared counts calls to ClearUnusableWorkspaceDefaults, so a test can assert that dedicating a
+// location tidies the defaults it invalidated.
+func (m *memStore) ClearUnusableWorkspaceDefaults() (int64, error) {
+	m.cleared++
+	return 0, nil
+}
+
+// foreignWorkloads lets a test stage other tenants' workloads in a cluster, keyed by cluster id.
+func (m *memStore) CountForeignWorkloads(clusterID, _ uint) (int64, error) {
+	return m.foreign[clusterID], nil
+}
 
 func (m *memStore) CountWorkloads(clusterID uint) (int64, error) {
 	var n int64

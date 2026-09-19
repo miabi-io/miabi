@@ -14,7 +14,7 @@ watch(currentWorkspaceId, async (id) => {
   locations.value = []
   if (!id) return
   try {
-    locations.value = (await locationApi.list(id)).data.data ?? []
+    locations.value = (await locationApi.list(id)).data.data?.locations ?? []
   } catch {
     locations.value = []
   }

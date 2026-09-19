@@ -5,6 +5,7 @@ package placement
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -287,6 +288,7 @@ type fakeOrgs struct {
 
 func (f fakeOrgs) OrganizationOfWorkspace(id uint) uint { return f.ofWorkspace[id] }
 func (f fakeOrgs) OwnsClusters(orgID uint) bool         { return f.owners[orgID] }
+func (f fakeOrgs) OrganizationLabel(orgID uint) string  { return fmt.Sprintf("org-%d", orgID) }
 
 // A cluster dedicated to an organization is invisible to every other tenant, and an organization that
 // owns one is CONFINED to it — a dedicated tenant must never quietly land on shared hardware.
@@ -317,9 +319,10 @@ func TestPlacementIsolatesOrganizationClusters(t *testing.T) {
 		t.Errorf("acme with no location named: %+v (%v), want its own cluster 3, never a shared fallback", got, err)
 	}
 
-	// Another tenant cannot reach it, by name or through the location list.
-	if _, err := s.Place(Request{WorkspaceID: 6, Location: "gpu"}); !errors.Is(err, ErrLocationNotAllowed) {
-		t.Errorf("outsider naming a dedicated cluster: err = %v, want ErrLocationNotAllowed", err)
+	// Another tenant cannot reach it, by name or through the location list. Naming it reads as "no
+	// such location" rather than "forbidden", so a stranger cannot confirm the name exists.
+	if _, err := s.Place(Request{WorkspaceID: 6, Location: "gpu"}); !errors.Is(err, ErrLocationNotFound) {
+		t.Errorf("outsider naming a dedicated cluster: err = %v, want ErrLocationNotFound", err)
 	}
 	locs, err := s.Locations(6, false)
 	if err != nil {
@@ -330,7 +333,7 @@ func TestPlacementIsolatesOrganizationClusters(t *testing.T) {
 			t.Error("a dedicated cluster must not appear in another tenant's locations")
 		}
 	}
-	if err := s.SetDefaultLocation(6, "gpu", false); !errors.Is(err, ErrLocationNotAllowed) {
+	if err := s.SetDefaultLocation(6, "gpu", false); !errors.Is(err, ErrLocationNotFound) {
 		t.Errorf("outsider defaulting to a dedicated cluster: err = %v", err)
 	}
 
@@ -339,9 +342,54 @@ func TestPlacementIsolatesOrganizationClusters(t *testing.T) {
 		t.Errorf("colocation into another organization's cluster: err = %v, want ErrLocationNotAllowed", err)
 	}
 
-	// A platform admin still sees and places everywhere.
-	if got, err := s.Place(Request{WorkspaceID: 6, Location: "gpu", Admin: true}); err != nil || got.ClusterID != 3 {
-		t.Errorf("admin in a dedicated cluster: %+v (%v), want cluster 3", got, err)
+	// Confinement binds the WORKSPACE, not the caller: a platform admin deploying into workspace 6
+	// still cannot put it in Acme's cluster, and still cannot take workspace 5 off Acme's.
+	// An admin already lists every cluster, so hiding it from them buys nothing: they get the
+	// accurate refusal instead.
+	if _, err := s.Place(Request{WorkspaceID: 6, Location: "gpu", Admin: true}); !errors.Is(err, ErrLocationNotAllowed) {
+		t.Errorf("admin placing an outsider in a dedicated cluster: err = %v, want ErrLocationNotAllowed", err)
+	}
+	if _, err := s.Place(Request{WorkspaceID: 5, Location: "default", Admin: true}); !errors.Is(err, ErrLocationNotAllowed) {
+		t.Errorf("admin placing a confined workspace on shared hardware: err = %v, want ErrLocationNotAllowed", err)
+	}
+	if got, err := s.Place(Request{WorkspaceID: 5, Location: "gpu", Admin: true}); err != nil || got.ClusterID != 3 {
+		t.Errorf("admin inside the owning organization: %+v (%v), want cluster 3", got, err)
+	}
+	// A node pin is the admin's own privilege, but it cannot cross a realm either.
+	if _, err := s.Place(Request{WorkspaceID: 6, ServerID: 20, Admin: true}); !errors.Is(err, ErrLocationNotAllowed) {
+		t.Errorf("admin pinning a node in another organization's cluster: err = %v, want ErrLocationNotAllowed", err)
+	}
+	// The admin's own locations view is unchanged for an unconfined workspace: restricted clusters
+	// stay visible to them.
+	locs6, err := s.Locations(6, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range locs6 {
+		if l.Name == "gpu" {
+			t.Error("a dedicated cluster must not appear for an admin acting in another realm")
+		}
+	}
+}
+
+// A confined tenant whose own locations are all cordoned gets an error naming the organization:
+// "no location is available" would send the operator to the workspace's plan instead of to the
+// organization's clusters, which is where the problem is.
+func TestConfinedDeadEndNamesTheOrganization(t *testing.T) {
+	s, db := newPlacement(t, map[uint]bool{})
+	acme := uint(7)
+	if err := db.Model(&clusterTable{}).Where("id = ?", 3).
+		Updates(map[string]any{"organization_id": acme, "visibility": "organization", "cordoned": true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	s.SetOrgs(fakeOrgs{ofWorkspace: map[uint]uint{5: acme}, owners: map[uint]bool{acme: true}})
+
+	_, err := s.Place(Request{WorkspaceID: 5})
+	if !errors.Is(err, ErrNoLocation) {
+		t.Fatalf("err = %v, want ErrNoLocation", err)
+	}
+	if !strings.Contains(err.Error(), "org-7") {
+		t.Errorf("err = %q, want it to name the organization", err)
 	}
 }
 

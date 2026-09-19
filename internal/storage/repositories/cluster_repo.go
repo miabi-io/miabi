@@ -87,6 +87,60 @@ func (r *ClusterRepository) CountWorkloads(clusterID uint) (int64, error) {
 	return r.countPlaced("cluster_id", clusterID)
 }
 
+// CountForeignWorkloads counts the apps, database instances and volumes in a cluster that belong to
+// a workspace OUTSIDE the given organization. Dedicating a cluster hides it from everyone else, so
+// their running workloads would be stranded there — visible in the cluster, unreachable from the
+// workspace that owns them.
+func (r *ClusterRepository) CountForeignWorkloads(clusterID, orgID uint) (int64, error) {
+	var total int64
+	for _, table := range []string{"applications", "database_instances", "volumes"} {
+		var n int64
+		err := r.db.Table(table).
+			Joins("JOIN workspaces ON workspaces.id = "+table+".workspace_id").
+			Where(table+".cluster_id = ?", clusterID).
+			Where("workspaces.organization_id IS DISTINCT FROM ?", orgID).
+			Count(&n).Error
+		if err != nil {
+			return 0, err
+		}
+		total += n
+	}
+	return total, nil
+}
+
+// clearUnusableDefaultsSQL clears a workspace's default location when its organization can no longer
+// place there. Two ways that happens, and both arise from dedicating a cluster rather than from
+// anything the workspace did:
+//
+//   - its default belongs to another organization, or
+//   - its own organization now runs clusters, which confines it to them, and its default is shared.
+//
+// Clearing rather than repointing: placement then resolves to the first location the workspace may
+// use, which is the same answer without guessing at one. COALESCE instead of IS DISTINCT FROM keeps
+// it portable to the sqlite the upgrade tests run on.
+const clearUnusableDefaultsSQL = `
+UPDATE workspaces SET default_cluster_id = NULL
+WHERE default_cluster_id IS NOT NULL
+  AND EXISTS (
+    SELECT 1 FROM clusters c
+    WHERE c.id = workspaces.default_cluster_id
+      AND (
+        (c.organization_id IS NOT NULL
+           AND COALESCE(c.organization_id, 0) <> COALESCE(workspaces.organization_id, 0))
+        OR (c.organization_id IS NULL
+           AND EXISTS (SELECT 1 FROM clusters o
+                       WHERE o.organization_id IS NOT NULL
+                         AND COALESCE(o.organization_id, 0) = COALESCE(workspaces.organization_id, 0)))
+      )
+  )`
+
+// ClearUnusableWorkspaceDefaults drops default locations their workspace may no longer place in, and
+// reports how many it cleared. Idempotent: a second run touches nothing.
+func (r *ClusterRepository) ClearUnusableWorkspaceDefaults() (int64, error) {
+	res := r.db.Exec(clearUnusableDefaultsSQL)
+	return res.RowsAffected, res.Error
+}
+
 // CountExternalApps counts the apps in a cluster holding generated external-access routes.
 func (r *ClusterRepository) CountExternalApps(clusterID uint) (int64, error) {
 	var n int64
@@ -188,11 +242,11 @@ func (r *ClusterRepository) CountByOrganization(orgID uint) (int64, error) {
 	return n, err
 }
 
-// ReleaseOrganization returns every cluster an organization owns to shared visibility. A cluster left
-// pointing at a deleted organization would be visible to nobody.
+// ReleaseOrganization detaches every cluster an organization owns, when that organization is deleted.
+// A cluster left pointing at a row that is gone would be visible to nobody.
 func (r *ClusterRepository) ReleaseOrganization(orgID uint) error {
 	return r.db.Model(&models.Cluster{}).Where("organization_id = ?", orgID).
-		Updates(map[string]any{"organization_id": nil, "visibility": models.ClusterVisibilityAll}).Error
+		Updates(map[string]any{"organization_id": nil, "visibility": models.ClusterVisibilityRestricted}).Error
 }
 
 func (r *ClusterRepository) WorkspaceDefault(workspaceID uint) (*models.Cluster, error) {

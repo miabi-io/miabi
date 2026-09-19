@@ -20,27 +20,41 @@ import (
 // the cluster they are dedicated to. Reading is always allowed — a Community install has exactly one
 // organization and the page should still show it — while creating a SECOND one is the gated action.
 type AdminOrganizationHandler struct {
-	svc      *organization.Service
-	users    *repositories.UserRepository
-	clusters *repositories.ClusterRepository
-	ee       enterprise.EE
-	audit    *audit.Logger
+	svc        *organization.Service
+	users      *repositories.UserRepository
+	clusters   *repositories.ClusterRepository
+	workspaces *repositories.WorkspaceRepository
+	ee         enterprise.EE
+	audit      *audit.Logger
 }
 
-func NewAdminOrganizationHandler(svc *organization.Service, users *repositories.UserRepository, clusters *repositories.ClusterRepository, ee enterprise.EE, auditLog *audit.Logger) *AdminOrganizationHandler {
-	return &AdminOrganizationHandler{svc: svc, users: users, clusters: clusters, ee: ee, audit: auditLog}
+func NewAdminOrganizationHandler(svc *organization.Service, users *repositories.UserRepository, clusters *repositories.ClusterRepository, workspaces *repositories.WorkspaceRepository, ee enterprise.EE, auditLog *audit.Logger) *AdminOrganizationHandler {
+	return &AdminOrganizationHandler{svc: svc, users: users, clusters: clusters, workspaces: workspaces, ee: ee, audit: auditLog}
 }
 
-// organizationView is an org plus the clusters dedicated to it, so the admin page renders in one call.
+// organizationView is everything the detail page shows, in one call: the organization, the clusters
+// dedicated to it, and the workspaces it holds against its cap.
 type organizationView struct {
 	*models.Organization
-	Clusters []clusterRef `json:"clusters"`
+	Clusters   []clusterRef   `json:"clusters"`
+	Workspaces []workspaceRef `json:"workspaces"`
+	UserCount  int64          `json:"user_count"`
+	OwnerName  string         `json:"owner_name,omitempty"`
+	OwnerEmail string         `json:"owner_email,omitempty"`
 }
 
 type clusterRef struct {
 	ID          uint   `json:"id"`
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name,omitempty"`
+	Cordoned    bool   `json:"cordoned"`
+}
+
+type workspaceRef struct {
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name,omitempty"`
+	OwnerID     uint   `json:"owner_id"`
 }
 
 // List returns every organization with its workspace count. Never gated: one organization always
@@ -58,14 +72,33 @@ func (h *AdminOrganizationHandler) Get(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortNotFound("organization not found")
 	}
-	view := organizationView{Organization: org, Clusters: []clusterRef{}}
+	view := organizationView{Organization: org, Clusters: []clusterRef{}, Workspaces: []workspaceRef{}}
 	if h.clusters != nil {
 		list, err := h.clusters.ListByOrganization(org.ID)
 		if err != nil {
 			return c.AbortInternalServerError("failed to read the organization's clusters", err)
 		}
 		for i := range list {
-			view.Clusters = append(view.Clusters, clusterRef{ID: list[i].ID, Name: list[i].Name, DisplayName: list[i].DisplayName})
+			view.Clusters = append(view.Clusters, clusterRef{
+				ID: list[i].ID, Name: list[i].Name, DisplayName: list[i].DisplayName, Cordoned: list[i].Cordoned,
+			})
+		}
+	}
+	if h.workspaces != nil {
+		list, err := h.workspaces.ListByOrganization(org.ID)
+		if err != nil {
+			return c.AbortInternalServerError("failed to read the organization's workspaces", err)
+		}
+		for i := range list {
+			view.Workspaces = append(view.Workspaces, workspaceRef{
+				ID: list[i].ID, Name: list[i].Name, DisplayName: list[i].DisplayName, OwnerID: list[i].OwnerID,
+			})
+		}
+	}
+	view.UserCount = h.svc.UserCount(org.ID)
+	if org.OwnerUserID != 0 {
+		if u, err := h.users.FindByID(org.OwnerUserID); err == nil {
+			view.OwnerName, view.OwnerEmail = u.Name, u.Email
 		}
 	}
 	return ok(c, view)
@@ -194,6 +227,8 @@ func (h *AdminOrganizationHandler) mapErr(c *okapi.Context, err error) error {
 		return c.AbortWithError(409, err)
 	case errors.Is(err, organization.ErrDefaultProtected), errors.Is(err, organization.ErrNotEmpty):
 		return c.AbortWithError(409, err)
+	case errors.Is(err, organization.ErrClusterNotOurs):
+		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, organization.ErrNameInvalid), errors.Is(err, organization.ErrNameReserved),
 		errors.Is(err, organization.ErrInvalidMax), errors.Is(err, organization.ErrNameImmutable):
 		return c.AbortBadRequest(err.Error())

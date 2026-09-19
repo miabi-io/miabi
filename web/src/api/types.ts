@@ -484,9 +484,13 @@ export interface Organization {
   updated_at?: string
 }
 
-/** An organization plus the clusters dedicated to it. */
+/** Everything the organization detail page shows, in one call. */
 export interface OrganizationDetail extends Organization {
-  clusters: Array<{ id: number; name: string; display_name?: string }>
+  clusters: Array<{ id: number; name: string; display_name?: string; cordoned: boolean }>
+  workspaces: Array<{ id: number; name: string; display_name?: string; owner_id: number }>
+  user_count: number
+  owner_name?: string
+  owner_email?: string
 }
 
 export interface OrganizationInput {
@@ -574,6 +578,13 @@ export interface AdminWorkspaceDetail {
   privileged: boolean
   system: boolean
   plan_id?: number | null
+  organization_id?: number | null
+  organization_name?: string
+  /**
+   * The workspace's organization runs its own clusters, so its placement is fixed: the plan's
+   * location list is ignored (it would intersect to nothing) and the console shows it locked.
+   */
+  placement_pinned?: boolean
   created_at: string
   owner_name: string
   owner_email: string

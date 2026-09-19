@@ -166,6 +166,9 @@ type AdminCreateUserRequest struct {
 		// Notify, when true, emails the new user a welcome with a sign-in link
 		// (requires a configured system SMTP server).
 		Notify bool `json:"notify"`
+		// OrganizationID is the realm the user belongs to, and so the one their workspaces are
+		// created in. 0 or omitted leaves them in the default organization.
+		OrganizationID uint `json:"organization_id"`
 	} `json:"body"`
 }
 
@@ -323,6 +326,19 @@ func (h *AdminUserHandler) Create(c *okapi.Context, req *AdminCreateUserRequest)
 	if req.Body.Role == string(models.SystemRoleAdmin) {
 		role = models.SystemRoleAdmin
 	}
+	var orgID *uint
+	if req.Body.OrganizationID != 0 {
+		if err := h.ee.RequireMutable(enterprise.FlagOrganizations); err != nil {
+			return entitlementAbort(c, err)
+		}
+		if h.orgs == nil {
+			return c.AbortBadRequest("organizations are not available")
+		}
+		if _, err := h.orgs.Get(req.Body.OrganizationID); err != nil {
+			return c.AbortBadRequest("no such organization")
+		}
+		orgID = &req.Body.OrganizationID
+	}
 	now := time.Now()
 	user := &models.User{
 		Name:            strings.TrimSpace(req.Body.Name),
@@ -332,6 +348,7 @@ func (h *AdminUserHandler) Create(c *okapi.Context, req *AdminCreateUserRequest)
 		Role:            role,
 		Active:          true,
 		EmailVerifiedAt: &now,
+		OrganizationID:  orgID,
 		// Admin-set password is temporary — force the user to set their own on first
 		// login.
 		MustChangePassword: true,
@@ -339,7 +356,7 @@ func (h *AdminUserHandler) Create(c *okapi.Context, req *AdminCreateUserRequest)
 	if err := h.users.Create(user); err != nil {
 		return c.AbortInternalServerError("failed to create user", err)
 	}
-	h.record(c, "admin.user.create", user.ID, map[string]any{"email": user.Email, "role": string(role), "notified": req.Body.Notify})
+	h.record(c, "admin.user.create", user.ID, map[string]any{"email": user.Email, "role": string(role), "notified": req.Body.Notify, "organization_id": req.Body.OrganizationID})
 	// Optionally email the new user a welcome (best-effort, async).
 	if req.Body.Notify {
 		h.mailer.SendWelcome(user.Email, user.Name)

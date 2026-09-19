@@ -10,9 +10,22 @@ export interface Location {
   default: boolean
 }
 
+/**
+ * The locations a workspace may use, and whether the choice is still its own.
+ *
+ * `pinned` means the workspace's organization runs its own clusters: the set is fixed and the
+ * default follows the organization, so the UI explains that instead of offering a picker whose
+ * every other value the API would refuse.
+ */
+export interface LocationSet {
+  locations: Location[]
+  pinned: boolean
+  pinned_to?: string
+}
+
 export const locationApi = {
-  list: (ws: number) => api.get<ApiResponse<Location[]>>(`/workspaces/${ws}/locations`),
+  list: (ws: number) => api.get<ApiResponse<LocationSet>>(`/workspaces/${ws}/locations`),
   // An empty location clears the workspace default.
   setDefault: (ws: number, location: string) =>
-    api.put<ApiResponse<Location[]>>(`/workspaces/${ws}/default-location`, { location }),
+    api.put<ApiResponse<LocationSet>>(`/workspaces/${ws}/default-location`, { location }),
 }

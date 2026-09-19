@@ -54,41 +54,63 @@ type Policy interface {
 type Orgs interface {
 	OrganizationOfWorkspace(workspaceID uint) uint
 	OwnsClusters(orgID uint) bool
+	// OrganizationLabel names the organization for the explanation shown in place of a picker the
+	// workspace no longer controls. Empty when it cannot be read.
+	OrganizationLabel(orgID uint) string
 }
 
-// access is who is asking: a platform admin sees every cluster, a tenant sees the shared ones plus
-// its own organization's. An organization that owns clusters is CONFINED to them — the point of
-// dedicated infrastructure is that a create never quietly lands on shared hardware.
+// access is which clusters a create may land in. Two different things decide it:
+//
+//   - Visibility is about the CALLER. A restricted cluster is for platform admins, and an admin
+//     pinning a node is exercising their own privilege.
+//   - Organization ownership is about the WORKSPACE. The resource belongs to the workspace, so a
+//     dedicated tenant's workloads stay on their own hardware no matter who clicked deploy — an
+//     admin included. Nothing else would be worth calling dedicated.
+//
+// An organization that owns clusters is therefore CONFINED to them, and that confinement binds
+// every caller.
 type access struct {
 	admin    bool
 	orgID    uint
 	confined bool
 }
 
-// allows reports whether the caller may place in this cluster.
-func (a access) allows(c *models.Cluster) bool {
-	if a.admin {
-		return true
+// foreign reports that the cluster belongs to a DIFFERENT organization, so the caller should not
+// learn it exists at all. A platform admin is excepted: they can already list every cluster.
+func (a access) foreign(c *models.Cluster) bool {
+	if a.admin || c.OrganizationID == nil {
+		return false
 	}
+	return a.orgID == 0 || *c.OrganizationID != a.orgID
+}
+
+// allows reports whether a create for this workspace may land in the cluster.
+func (a access) allows(c *models.Cluster) bool {
+	// Ownership is checked before the admin bypass on purpose: it binds the workspace, not the
+	// caller. An admin who needs a workspace somewhere else moves the cluster or the organization.
 	if c.OrganizationID != nil {
 		return a.orgID != 0 && *c.OrganizationID == a.orgID
 	}
-	if c.Visibility == models.ClusterVisibilityRestricted {
+	if a.confined {
 		return false
 	}
-	return !a.confined
+	if a.admin {
+		return true
+	}
+	return c.Visibility != models.ClusterVisibilityRestricted
 }
 
-// accessFor resolves the caller's cluster access. An admin needs no organization lookup.
+// accessFor resolves the access for a create in workspaceID. The organization is resolved even for
+// an admin, because confinement follows the workspace.
 func (s *Service) accessFor(workspaceID uint, admin bool) access {
-	if admin || s.orgs == nil {
+	if s.orgs == nil {
 		return access{admin: admin}
 	}
 	orgID := s.orgs.OrganizationOfWorkspace(workspaceID)
 	if orgID == 0 {
-		return access{}
+		return access{admin: admin}
 	}
-	return access{orgID: orgID, confined: s.orgs.OwnsClusters(orgID)}
+	return access{admin: admin, orgID: orgID, confined: s.orgs.OwnsClusters(orgID)}
 }
 
 // SetPolicy wires plan placement (nil-safe; nil binds no workspace to locations or pools).
@@ -104,8 +126,15 @@ func (s *Service) planPlacement(workspaceID uint) (models.PlanPlacement, bool) {
 	return s.policy.EffectivePlacement(workspaceID)
 }
 
-func permits(p models.PlanPlacement, enforced bool, clusterID uint) bool {
-	return !enforced || len(p.Locations) == 0 || slices.Contains(p.Locations, clusterID)
+// permits reports whether the plan's location policy allows this cluster.
+//
+// A confined organization is exempt. The plan's location list is a commercial statement about which
+// SHARED locations a tier may use; a tenant running on its own hardware has left that question
+// behind, and applying both would intersect to nothing — a plan pinned to location A and an
+// organization owning location B leaves no cluster at all, and every create fails with a message
+// naming neither. The plan's pool still applies: that is about node class, not geography.
+func permits(p models.PlanPlacement, enforced bool, clusterID uint, confined bool) bool {
+	return confined || !enforced || len(p.Locations) == 0 || slices.Contains(p.Locations, clusterID)
 }
 
 // Request describes a resource to place.
@@ -134,7 +163,16 @@ func (s *Service) Place(req Request) (Result, error) {
 		return Result{}, ErrNodePinAdminOnly
 	}
 	if req.ServerID != 0 {
-		return s.onNode(req.ServerID, req.Location)
+		res, err := s.onNode(req.ServerID, req.Location)
+		if err != nil {
+			return Result{}, err
+		}
+		// An admin may pin a node, but not into another organization's cluster: the resource would
+		// belong to a workspace that cannot otherwise reach it.
+		if err := s.sameOrg(req, res.ClusterID); err != nil {
+			return Result{}, err
+		}
+		return res, nil
 	}
 	if req.Colocate != 0 {
 		res, err := s.onNode(req.Colocate, req.Location)
@@ -162,16 +200,21 @@ func (s *Service) Place(req Request) (Result, error) {
 	return Result{ClusterID: c.ID, ServerID: serverID}, nil
 }
 
-// sameOrg refuses a colocation that would cross into another organization's dedicated cluster.
+// sameOrg refuses a placement that would put a workspace's resource in another organization's
+// dedicated cluster. It applies to admins too — see the access doc comment.
 func (s *Service) sameOrg(req Request, clusterID uint) error {
-	if req.Admin {
-		return nil
-	}
 	c, err := s.clusters.FindByID(clusterID)
-	if err != nil || c.OrganizationID == nil {
+	if err != nil {
 		return nil
 	}
-	if s.accessFor(req.WorkspaceID, false).orgID != *c.OrganizationID {
+	acc := s.accessFor(req.WorkspaceID, req.Admin)
+	if c.OrganizationID == nil {
+		if acc.confined {
+			return ErrLocationNotAllowed
+		}
+		return nil
+	}
+	if acc.orgID != *c.OrganizationID {
 		return ErrLocationNotAllowed
 	}
 	return nil
@@ -206,14 +249,21 @@ func (s *Service) resolveCluster(workspaceID uint, location string, admin bool) 
 	policy, enforced := s.planPlacement(workspaceID)
 	acc := s.accessFor(workspaceID, admin)
 	usable := func(c *models.Cluster) bool {
-		return acc.allows(c) && !c.Cordoned && permits(policy, enforced, c.ID)
+		return acc.allows(c) && !c.Cordoned && permits(policy, enforced, c.ID, acc.confined)
 	}
 	if name := strings.TrimSpace(location); name != "" {
 		c, err := s.clusters.FindByName(name)
 		if err != nil {
 			return nil, ErrLocationNotFound
 		}
-		if !acc.allows(c) || !permits(policy, enforced, c.ID) {
+		// A location dedicated to another organization is not refused but hidden: answering
+		// "forbidden" tells a stranger the name is real, which is how a tenant list gets enumerated.
+		// Being confined to one's OWN locations is different — that is the caller's own arrangement,
+		// and saying so is help rather than disclosure.
+		if acc.foreign(c) {
+			return nil, ErrLocationNotFound
+		}
+		if !acc.allows(c) || !permits(policy, enforced, c.ID, acc.confined) {
 			return nil, ErrLocationNotAllowed
 		}
 		if c.Cordoned {
@@ -239,6 +289,18 @@ func (s *Service) resolveCluster(workspaceID uint, location string, admin bool) 
 		if usable(&list[i]) {
 			return &list[i], nil
 		}
+	}
+	if acc.confined {
+		// "no location is available" is true but unhelpful here: the tenant HAS locations and every
+		// one of them is cordoned or empty. Name the organization so the operator looks at its
+		// clusters rather than at the workspace's plan.
+		who := "this workspace's organization"
+		if s.orgs != nil {
+			if label := s.orgs.OrganizationLabel(acc.orgID); label != "" {
+				who = label
+			}
+		}
+		return nil, fmt.Errorf("%w: %s runs its own locations and none of them is accepting new resources", ErrNoLocation, who)
 	}
 	return nil, ErrNoLocation
 }
@@ -373,7 +435,7 @@ func (s *Service) Locations(workspaceID uint, admin bool) ([]Location, error) {
 	out := make([]Location, 0, len(list))
 	for i := range list {
 		c := &list[i]
-		if !acc.allows(c) || c.Cordoned || !permits(policy, enforced, c.ID) {
+		if !acc.allows(c) || c.Cordoned || !permits(policy, enforced, c.ID, acc.confined) {
 			continue
 		}
 		out = append(out, Location{
@@ -387,9 +449,43 @@ func (s *Service) Locations(workspaceID uint, admin bool) ([]Location, error) {
 	return out, nil
 }
 
+// LocationSet is the locations a workspace may use, and whether the choice is still its own.
+type LocationSet struct {
+	Locations []Location `json:"locations"`
+	// Pinned reports that the workspace's organization runs its own clusters, so the set is fixed
+	// and the default is not the workspace's to choose. The UI shows the reason rather than a
+	// picker that would refuse every value but one.
+	Pinned bool `json:"pinned"`
+	// PinnedTo is the organization's label, named in that explanation.
+	PinnedTo string `json:"pinned_to,omitempty"`
+}
+
+// LocationsFor is Locations plus whether the organization has taken the choice over.
+func (s *Service) LocationsFor(workspaceID uint, admin bool) (LocationSet, error) {
+	locs, err := s.Locations(workspaceID, admin)
+	if err != nil {
+		return LocationSet{}, err
+	}
+	set := LocationSet{Locations: locs}
+	if acc := s.accessFor(workspaceID, admin); acc.confined {
+		set.Pinned = true
+		if s.orgs != nil {
+			set.PinnedTo = s.orgs.OrganizationLabel(acc.orgID)
+		}
+	}
+	return set, nil
+}
+
+// ErrLocationPinned is returned when a workspace's organization runs its own clusters: the default
+// location follows the organization, so there is nothing for the workspace to set.
+var ErrLocationPinned = errors.New("this workspace's organization runs its own locations; the default follows the organization")
+
 // SetDefaultLocation sets the location a workspace's new resources land in when a create names none.
 // An empty name clears it.
 func (s *Service) SetDefaultLocation(workspaceID uint, location string, admin bool) error {
+	if s.accessFor(workspaceID, admin).confined {
+		return ErrLocationPinned
+	}
 	name := strings.TrimSpace(location)
 	if name == "" {
 		return s.clusters.SetWorkspaceDefault(workspaceID, nil)
@@ -399,7 +495,11 @@ func (s *Service) SetDefaultLocation(workspaceID uint, location string, admin bo
 		return ErrLocationNotFound
 	}
 	policy, enforced := s.planPlacement(workspaceID)
-	if !s.accessFor(workspaceID, admin).allows(c) || !permits(policy, enforced, c.ID) {
+	acc := s.accessFor(workspaceID, admin)
+	if acc.foreign(c) {
+		return ErrLocationNotFound
+	}
+	if !acc.allows(c) || !permits(policy, enforced, c.ID, acc.confined) {
 		return ErrLocationNotAllowed
 	}
 	return s.clusters.SetWorkspaceDefault(workspaceID, &c.ID)
