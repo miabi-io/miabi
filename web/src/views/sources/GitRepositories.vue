@@ -278,9 +278,9 @@ const authTypes: { value: GitAuthType; label: string }[] = [
 
     <ConfirmDialog
       :open="!!pendingDelete"
-      title="Delete git repository"
+      :title="$t('confirm.title.deleteGitRepository')"
       :message="`Delete git repository &quot;${pendingDelete?.name}&quot;? Apps building from it will fail to clone.`"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"
       @confirm="confirmDelete"

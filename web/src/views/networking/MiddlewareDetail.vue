@@ -155,9 +155,9 @@ async function confirmDelete() {
 
     <ConfirmDialog
       :open="showDelete"
-      title="Delete middleware"
+      :title="$t('confirm.title.deleteMiddleware')"
       :message="`Delete middleware &quot;${item.name}&quot;? Routes referencing it will lose it.`"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"
       @confirm="confirmDelete"

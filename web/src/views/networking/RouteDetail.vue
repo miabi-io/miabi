@@ -665,9 +665,9 @@ Content-Type: {{ previewContentType }}
 
     <ConfirmDialog
       :open="showDelete"
-      title="Delete route"
+      :title="$t('confirm.title.deleteRoute')"
       :message="`Delete route &quot;${item?.name}&quot;? Its hosts will stop routing to the app.`"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"
       @confirm="removeRoute"

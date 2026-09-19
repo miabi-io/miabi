@@ -352,9 +352,9 @@ async function confirmDelete() {
 
     <ConfirmDialog
       :open="!!toDelete"
-      title="Delete config"
+      :title="$t('confirm.title.deleteConfig')"
       :message="`Delete config &quot;${toDelete?.name}&quot; and its ${toDelete?.keys.length ?? 0} file(s)? An application still mounting it blocks the delete.`"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"
       @confirm="confirmDelete"

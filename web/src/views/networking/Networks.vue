@@ -160,9 +160,9 @@ async function confirmRemove() {
 
     <ConfirmDialog
       :open="!!toDelete"
-      title="Delete network"
+      :title="$t('confirm.title.deleteNetwork')"
       :message="`Delete network &quot;${toDelete?.name}&quot;? This cannot be undone.`"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"
       @confirm="confirmRemove"

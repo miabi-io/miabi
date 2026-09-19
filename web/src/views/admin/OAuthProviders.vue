@@ -483,9 +483,9 @@ onMounted(() => {
 
     <ConfirmDialog
       :open="!!pendingDelete"
-      title="Delete provider"
+      :title="$t('confirm.title.deleteProvider')"
       :message="`Delete provider &quot;${pendingDelete?.name}&quot;? This cannot be undone.`"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"
       @confirm="confirmDelete"

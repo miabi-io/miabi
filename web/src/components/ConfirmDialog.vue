@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
 import AppModal from '@/components/AppModal.vue'
+import { useI18n } from 'vue-i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -15,8 +16,10 @@ const props = withDefaults(
   }>(),
   {
     message: '',
-    confirmLabel: 'Confirm',
-    cancelLabel: 'Cancel',
+    // Empty rather than English: the fallback is translated at render, where t() is
+    // reactive and a language change updates an open dialog.
+    confirmLabel: '',
+    cancelLabel: '',
     variant: 'primary',
     busy: false,
     confirmDisabled: false,
@@ -24,6 +27,7 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{ (e: 'confirm'): void; (e: 'cancel'): void }>()
+const { t } = useI18n()
 
 // A stable id ties the dialog to its heading for aria-labelledby.
 let seq = 0
@@ -61,7 +65,7 @@ watch(
           <slot></slot>
         </div>
         <div class="modal-footer">
-          <button ref="cancelBtn" type="button" class="btn btn-secondary" :disabled="busy" @click="emit('cancel')">{{ cancelLabel }}</button>
+          <button ref="cancelBtn" type="button" class="btn btn-secondary" :disabled="busy" @click="emit('cancel')">{{ cancelLabel || t('action.cancel') }}</button>
           <button
             ref="confirmBtn"
             type="button"
@@ -70,7 +74,7 @@ watch(
             :disabled="busy || confirmDisabled"
             @click="emit('confirm')"
           >
-            {{ busy ? 'Working…' : confirmLabel }}
+            {{ busy ? t('action.working') : (confirmLabel || t('action.confirm')) }}
           </button>
         </div>
     </AppModal>

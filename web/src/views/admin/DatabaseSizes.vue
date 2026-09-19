@@ -177,9 +177,9 @@ async function remove() {
 
     <ConfirmDialog
       :open="!!confirmTarget"
-      title="Delete size"
+      :title="$t('confirm.title.deleteSize')"
       :message="`&quot;${confirmTarget?.name ?? ''}&quot; will no longer be offered. Databases already on it keep their limits.`"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       @confirm="remove"
       @cancel="confirmTarget = null"

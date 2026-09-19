@@ -140,9 +140,9 @@ async function confirmRevoke() {
 
     <ConfirmDialog
       :open="!!pendingRevoke"
-      title="Revoke access"
+      :title="$t('confirm.title.revokeAccess')"
       :message="pendingRevoke ? `Revoke ${memberName(pendingRevoke.user_id)}'s access to this app?` : ''"
-      confirm-label="Revoke"
+      :confirm-label="$t('action.revoke')"
       variant="danger"
       :busy="revoking"
       @confirm="confirmRevoke"

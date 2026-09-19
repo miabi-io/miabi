@@ -273,9 +273,9 @@ load()
 
     <ConfirmDialog
       :open="showForceVerify"
-      title="Force-verify domain?"
+      :title="$t('confirm.title.forceVerifyDomain')"
       :message="`Force-mark ${domain?.name} as verified without a DNS check? This bypasses ownership proof — use only for private or unreachable DNS.`"
-      confirm-label="Force verify"
+      :confirm-label="$t('action.forceVerify')"
       variant="danger"
       :busy="forcing"
       @confirm="forceVerify"
@@ -284,9 +284,9 @@ load()
 
     <ConfirmDialog
       :open="showBan"
-      title="Ban domain?"
+      :title="$t('confirm.title.banDomain')"
       :message="`Ban ${domain?.name}? Its routes will be forced offline and it cannot be verified.`"
-      confirm-label="Ban"
+      :confirm-label="$t('action.ban')"
       variant="danger"
       :busy="banning"
       @confirm="ban"

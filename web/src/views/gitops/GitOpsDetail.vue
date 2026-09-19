@@ -890,9 +890,9 @@ const policyFlags = computed(() => {
 
     <ConfirmDialog
       :open="confirmDelete"
-      title="Delete this resource?"
+      :title="$t('confirm.title.deleteThisResource')"
       :message="deleteMessage"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="resourceBusy"
       @confirm="deleteResource"

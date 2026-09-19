@@ -16,6 +16,8 @@ export const i18n = createI18n({
   messages: { en },
   datetimeFormats,
   numberFormats,
+  // $t/$d/$n in templates without a useI18n() call in every component.
+  globalInjection: true,
   missingWarn: false,
   fallbackWarn: false,
 })

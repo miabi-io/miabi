@@ -416,9 +416,9 @@ function tlsLabel(m: string) {
 
     <ConfirmDialog
       :open="!!toDelete"
-      title="Delete LDAP connection?"
+      :title="$t('confirm.title.deleteLdapConnection')"
       :message="`Delete &quot;${toDelete?.display_name || toDelete?.name}&quot;? Users provisioned from it keep their accounts but can no longer sign in via this directory.`"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"
       @confirm="confirmDelete"

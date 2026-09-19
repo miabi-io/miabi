@@ -306,18 +306,18 @@ async function remove() {
 
     <ConfirmDialog
       :open="!!promoteTarget"
-      title="Change the default organization"
+      :title="$t('confirm.title.changeTheDefaultOrganization')"
       :message="`New users and workspaces that name no organization will belong to &quot;${promoteTarget?.display_name ?? ''}&quot;. Existing ones do not move.${promoteWarning}`"
-      confirm-label="Make default"
+      :confirm-label="$t('action.makeDefault')"
       @confirm="promote"
       @cancel="promoteTarget = null"
     />
 
     <ConfirmDialog
       :open="!!confirmTarget"
-      title="Delete organization"
+      :title="$t('confirm.title.deleteOrganization')"
       :message="`&quot;${confirmTarget?.display_name ?? ''}&quot; will be removed and any cluster dedicated to it returns to shared. Deleting is refused while it still holds workspaces or users — move those first.`"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       @confirm="remove"
       @cancel="confirmTarget = null"

@@ -443,7 +443,7 @@ const noApps = computed(() => apps.value.length === 0)
       :open="!!confirm"
       :title="confirm?.title ?? ''"
       :message="confirm?.message ?? ''"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="confirmBusy"
       @confirm="runConfirm"

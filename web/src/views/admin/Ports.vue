@@ -229,9 +229,9 @@ const STATE_CLASS: Record<string, string> = {
       request on the same port will collide with.
     </p>
 
-    <ConfirmDialog :open="!!rejecting" title="Reject this request?"
+    <ConfirmDialog :open="!!rejecting" :title="$t('confirm.title.rejectThisRequest')"
       :message="`Host port ${rejecting?.host_port}/${rejecting?.protocol} will not be published. The requester sees your note.`"
-      confirm-label="Reject" variant="danger" :busy="acting !== null" @cancel="rejecting = null"
+      :confirm-label="$t('action.reject')" variant="danger" :busy="acting !== null" @cancel="rejecting = null"
       @confirm="confirmReject">
       <label class="form-label" for="reject-note">Reason (optional)</label>
       <input id="reject-note" v-model="rejectNote" class="form-input"
