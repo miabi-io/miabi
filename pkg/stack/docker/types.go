@@ -207,6 +207,8 @@ type NetworkSpec struct {
 	Subnet     string
 	Gateway    string
 	Labels     map[string]string
+	EnableIPv6 *bool
+	IPv6Subnet string
 }
 
 // Volume summarizes a Docker volume.

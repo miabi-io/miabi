@@ -157,8 +157,9 @@ type NetworkingSpec struct {
 // so its own small default pools cannot exhaust. It must not overlap the proxy network, your LAN or
 // a VPN.
 type PoolSpec struct {
-	CIDR         string `yaml:"cidr,omitempty"`
-	SubnetPrefix int    `yaml:"subnetPrefix,omitempty"`
+	CIDR          string `yaml:"cidr,omitempty"`
+	SubnetPrefix  int    `yaml:"subnetPrefix,omitempty"`
+	IPv6ULAPrefix string `yaml:"ipv6UlaPrefix,omitempty"`
 }
 
 // HostPortsSpec bounds the host ports an application may ask to publish.

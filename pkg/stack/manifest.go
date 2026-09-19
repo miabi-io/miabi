@@ -100,6 +100,7 @@ type Manifest struct {
 type NetworkConfig struct {
 	Name   string `yaml:"name"`
 	Subnet string `yaml:"subnet"`
+	IPv6   *bool  `yaml:"ipv6,omitempty"`
 }
 
 // Gateway configures Goma: its config file and its environment. The config is a FILE ON THE HOST,

@@ -36,12 +36,15 @@ type NetworkProvisioner interface {
 
 // Service allocates subnets from the configured pool.
 type Service struct {
-	repo   *repositories.NetworkAllocationRepository
-	base   uint32 // pool network address, as a big-endian uint32
-	total  uint32 // number of subnets of `prefix` size that fit in the pool
-	step   uint32 // addresses per subnet (2^(32-prefix))
-	prefix int    // per-network subnet prefix length
-	mu     sync.Mutex
+	// IPv6 policy for every managed network; see SetIPv6.
+	ipv6Enabled   bool
+	ipv6ULAPrefix string
+	repo          *repositories.NetworkAllocationRepository
+	base          uint32 // pool network address, as a big-endian uint32
+	total         uint32 // number of subnets of `prefix` size that fit in the pool
+	step          uint32 // addresses per subnet (2^(32-prefix))
+	prefix        int    // per-network subnet prefix length
+	mu            sync.Mutex
 }
 
 // NewService builds the allocator for an IPv4 pool CIDR and a per-network subnet prefix. Returns an error
@@ -166,6 +169,7 @@ func (s *Service) EnsureManaged(ctx context.Context, dc NetworkProvisioner, spec
 	// or a redeploy) so the subnet is stable across nodes and restarts.
 	if a, ferr := s.repo.FindByDockerName(spec.Name); ferr == nil {
 		spec.Subnet, spec.Gateway = a.Subnet, a.Gateway
+		s.applyIPv6(&spec)
 		nid, cerr := dc.EnsureNetworkSpec(ctx, spec)
 		return nid, a.Subnet, cerr
 	}
@@ -177,6 +181,7 @@ func (s *Service) EnsureManaged(ctx context.Context, dc NetworkProvisioner, spec
 			return "", "", aerr
 		}
 		spec.Subnet, spec.Gateway = a.Subnet, a.Gateway
+		s.applyIPv6(&spec)
 		nid, cerr := dc.EnsureNetworkSpec(ctx, spec)
 		if cerr == nil {
 			return nid, a.Subnet, nil

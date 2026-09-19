@@ -216,6 +216,9 @@
     "NetworkConfig": {
       "additionalProperties": false,
       "properties": {
+        "ipv6": {
+          "type": "boolean"
+        },
         "name": {
           "type": "string"
         },
@@ -259,6 +262,9 @@
       "description": "PoolSpec is the CIDR Miabi carves every managed network out of, handed to Docker as explicit IPAM so its own small default pools cannot exhaust. It must not overlap the proxy network, your LAN or a VPN.",
       "properties": {
         "cidr": {
+          "type": "string"
+        },
+        "ipv6UlaPrefix": {
           "type": "string"
         },
         "subnetPrefix": {

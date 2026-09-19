@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -349,6 +350,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		// hand out an overlapping one (best-effort; skipped when Docker is offline).
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		_ = subnetAllocator.ImportExisting(ctx, dockerClient, 0)
+		subnetAllocator.SetIPv6(ipv6Enabled(ctx, dockerClient, cfg), cfg.NetworkIPv6ULAPrefix)
 		cancel()
 	}
 	networkService := network.NewService(networkRepo, dockerClient)
@@ -1641,3 +1643,36 @@ type ingestMetrics struct{}
 
 func (ingestMetrics) IngestAccepted(node string, n int) { metrics.IngestAccepted(node, n) }
 func (ingestMetrics) IngestRejected(node string, n int) { metrics.IngestRejected(node, n) }
+
+// ipv6Enabled resolves whether Miabi-created networks are dual-stack. It refuses to enable on an
+// engine that cannot assign an IPv6 range itself, because every network create would fail and take
+// deploys with it — unless the operator pinned a ULA prefix, in which case Miabi supplies the subnet
+// and the engine's own support is enough.
+func ipv6Enabled(ctx context.Context, dc docker.Client, cfg *config.Config) bool {
+	if !cfg.NetworkIPv6 {
+		return false
+	}
+	if strings.TrimSpace(cfg.NetworkIPv6ULAPrefix) != "" {
+		return true // Miabi pins the subnet; no daemon-side assignment needed
+	}
+	info, err := dc.Info(ctx)
+	if err != nil {
+		logger.Warn("could not read the engine version; leaving IPv6 off", "error", err)
+		return false
+	}
+	if engineSupportsAutoIPv6(info.Version) {
+		return true
+	}
+	logger.Error("MIABI_NETWORK_IPV6 is on but this Docker Engine cannot assign an IPv6 range itself; "+
+		"upgrade to Engine 26+ or set MIABI_NETWORK_IPV6_ULA_PREFIX. Leaving IPv6 off",
+		"engine", info.Version)
+	return false
+}
+
+// engineSupportsAutoIPv6 reports whether the engine assigns a ULA /64 to an IPv6-enabled network on
+// its own — Docker 26 and later. Below that a network created without an explicit v6 subnet fails.
+func engineSupportsAutoIPv6(version string) bool {
+	major := strings.SplitN(strings.TrimSpace(version), ".", 2)[0]
+	n, err := strconv.Atoi(major)
+	return err == nil && n >= 26
+}
