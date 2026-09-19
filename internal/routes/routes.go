@@ -483,10 +483,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	appService.SetRouteSyncer(routeService)
 	// Enforce platform CPU/memory caps on app create/update.
 	appService.SetSettings(settingsProvider)
-	// Cap node registrations to the edition limit (Community = 3; lifted by a
-	// Enterprise license). Re-read per registration so a license change
-	// applies without a restart.
 	nodeService.SetNodeLimit(func() int { return ee.Entitlements().NodeLimit() })
+	if cronManager != nil {
+		cronManager.SetRecoveryPointGate(func() error { return ee.Require(enterprise.FlagRecoveryPoints) })
+	}
 	// Refuse new placements on cordoned/unknown nodes.
 	appService.SetNodeGuard(nodeService)
 	appService.SetServerInfo(nodeService)
@@ -1180,7 +1180,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			search:          handlers.NewSearchHandler(searchService),
 			certificate:     handlers.NewCertificateHandler(certificateService, auditLogger),
 			volume:          handlers.NewVolumeHandler(storageService, userRepo, auditLogger),
-			backup:          handlers.NewBackupHandler(backupService, dbRepo, backupRepo, backupSetRepo, backupSettingsService, cronManager, auditLogger, cfg.RestoreMaxMB),
+			backup:          handlers.NewBackupHandler(backupService, dbRepo, backupRepo, backupSetRepo, backupSettingsService, cronManager, ee, auditLogger, cfg.RestoreMaxMB),
 			backupSettings:  handlers.NewWorkspaceBackupSettingsHandler(backupSettingsService, auditLogger),
 			volumeBackup:    handlers.NewVolumeBackupHandler(volumeBackupService, volumeRepo, volumeBackupRepo, auditLogger),
 			workspaceBundle: handlers.NewWorkspaceBundleHandler(wsBundleService, auditLogger),
@@ -1237,7 +1237,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			siemAdmin:           handlers.NewSIEMAdminHandler(siemConfigRepo, siemStreamer, ee, auditLogger),
 			adminAnnouncement:   handlers.NewAdminAnnouncementHandler(announcementService, announcementRepo, userRepo, ee, auditLogger),
 			adminDatabaseSize:   handlers.NewAdminDatabaseSizeHandler(databaseSizeRepo, ee, auditLogger),
-			adminStorageClass:   handlers.NewAdminStorageClassHandler(storageClassService, auditLogger),
+			adminStorageClass:   handlers.NewAdminStorageClassHandler(storageClassService, ee, auditLogger),
 			adminRunner:         handlers.NewAdminRunnerHandler(runnerService, ee, auditLogger),
 		},
 	}

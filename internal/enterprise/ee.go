@@ -52,6 +52,8 @@ const (
 	FlagAdvancedCanary               = "advanced_canary"
 	FlagAnnouncements                = "announcements" // platform-wide announcements to user inboxes
 	FlagDatabaseSizes                = "database_sizes"
+	FlagStorageClasses               = "storage_classes" // admin-registered storage classes (bare-metal disks)
+	FlagRecoveryPoints               = "recovery_points" // instance-wide database recovery points
 )
 
 // FlagInfo describes one entitlement flag for tooling and documentation.
@@ -89,6 +91,8 @@ var AllFlags = []FlagInfo{
 	{FlagAdvancedCanary, "manual canary control + attribute-based canary routing"},
 	{FlagAnnouncements, "platform announcements broadcast to user inboxes"},
 	{FlagDatabaseSizes, "named database sizes (CPU and memory), offered per plan"},
+	{FlagStorageClasses, "register storage classes: volumes on operator-managed disks"},
+	{FlagRecoveryPoints, "database recovery points: back up and schedule a whole instance as one set"},
 }
 
 const (
@@ -109,9 +113,9 @@ var Tiers = []Tier{
 	{
 		Name:  TierProfessional,
 		Desc:  "Freelancers & solo builders",
-		Flags: []string{FlagMultiSSO, FlagSSOHiddenProvider, FlagAuditLog, FlagRegistryS3},
+		Flags: []string{FlagMultiSSO, FlagSSOHiddenProvider, FlagAuditLog, FlagRegistryS3, FlagStorageClasses, FlagRecoveryPoints},
 		Limits: map[string]int{
-			LimitNodeLimit: 3,
+			LimitNodeLimit: 10,
 			LimitPlanLimit: 5,
 		},
 	},
@@ -124,9 +128,10 @@ var Tiers = []Tier{
 			FlagUserWorkspaceMembershipLimit,
 			FlagAuditLog, FlagAuditExport, FlagPlatformBackup, FlagAnnouncements,
 			FlagPrivateRegistry, FlagRegistryS3, FlagPlatformRunners, FlagSecurityProfile,
+			FlagStorageClasses, FlagRecoveryPoints,
 		},
 		Limits: map[string]int{
-			LimitNodeLimit: 10,
+			LimitNodeLimit: 25,
 			LimitPlanLimit: 15,
 		},
 	},
@@ -184,7 +189,7 @@ const LimitAnalyticsRetentionDays = "analytics_retention_days"
 const CommunityAnalyticsRetentionDays = 7
 
 const CommunityPlanLimit = 3
-const CommunityNodeLimit = -1
+const CommunityNodeLimit = 3
 const CommunityRunnerLimit = 2
 
 // Entitlements is the resolved, point-in-time view of the installed license.

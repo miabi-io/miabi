@@ -8,19 +8,24 @@ import (
 	"strconv"
 
 	"github.com/jkaninda/okapi"
+	"github.com/miabi-io/miabi/internal/enterprise"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/storageclass"
 )
 
+// AdminStorageClassHandler manages the disks a platform offers. Registering a class is Enterprise
+// (gated storage_classes); the seeded built-in class stays available in every edition, so volumes
+// keep working without a license.
 type AdminStorageClassHandler struct {
 	svc   *storageclass.Service
+	ee    enterprise.EE
 	audit *audit.Logger
 }
 
-func NewAdminStorageClassHandler(svc *storageclass.Service, auditLog *audit.Logger) *AdminStorageClassHandler {
-	return &AdminStorageClassHandler{svc: svc, audit: auditLog}
+func NewAdminStorageClassHandler(svc *storageclass.Service, ee enterprise.EE, auditLog *audit.Logger) *AdminStorageClassHandler {
+	return &AdminStorageClassHandler{svc: svc, ee: ee, audit: auditLog}
 }
 
 type storageClassBody struct {
@@ -67,6 +72,9 @@ func (h *AdminStorageClassHandler) Get(c *okapi.Context) error {
 // Create registers a class. The node is probed for the path before the row is written, so a class
 // whose disk is not mounted fails here instead of at a tenant's first deploy.
 func (h *AdminStorageClassHandler) Create(c *okapi.Context, req *CreateStorageClassRequest) error {
+	if err := h.ee.RequireMutable(enterprise.FlagStorageClasses); err != nil {
+		return entitlementAbort(c, err)
+	}
 	sc, err := h.svc.Create(c.Request().Context(), storageClassInput(req.Body))
 	if err != nil {
 		return storageClassAbort(c, err)
@@ -78,6 +86,9 @@ func (h *AdminStorageClassHandler) Create(c *okapi.Context, req *CreateStorageCl
 // Update changes the editable fields. A name or path change is refused: volumes and GitOps
 // manifests dereference both, so rewriting one breaks the references instead of moving anything.
 func (h *AdminStorageClassHandler) Update(c *okapi.Context, req *UpdateStorageClassRequest) error {
+	if err := h.ee.RequireMutable(enterprise.FlagStorageClasses); err != nil {
+		return entitlementAbort(c, err)
+	}
 	id, err := uintParam(c, "id")
 	if err != nil {
 		return c.AbortBadRequest("invalid storage class id")
@@ -90,8 +101,8 @@ func (h *AdminStorageClassHandler) Update(c *okapi.Context, req *UpdateStorageCl
 	return ok(c, sc)
 }
 
-// Delete removes a class no volume references. Disabling is the way to stop new volumes landing on
-// a disk without touching the ones already there.
+// Delete removes a class no volume references. Ungated, so a lapsed license can still clean up.
+// Disabling is the way to stop new volumes landing on a disk without touching the ones already there.
 func (h *AdminStorageClassHandler) Delete(c *okapi.Context) error {
 	id, err := uintParam(c, "id")
 	if err != nil {

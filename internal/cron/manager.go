@@ -50,6 +50,7 @@ type Manager struct {
 	sets     *repositories.DatabaseBackupSetRepository
 	settings *backupsettings.Service
 	leader   Leader
+	setGate  func() error
 
 	mu      sync.Mutex
 	entries map[string]cron.EntryID
@@ -76,6 +77,8 @@ func NewManager(backups *backup.Service, dbs *repositories.DatabaseRepository, s
 	}
 	return m
 }
+
+func (m *Manager) SetRecoveryPointGate(fn func() error) { m.setGate = fn }
 
 // Leader reports whether this process leads the control plane. Satisfied by *leader.Elector.
 type Leader interface {
@@ -250,6 +253,11 @@ func (m *Manager) RegisterSet(s models.DatabaseBackupSetSchedule) {
 func (m *Manager) UnregisterSet(scheduleID uint) { m.UnregisterTask("backup-set", scheduleID) }
 
 func (m *Manager) runBackupSet(scheduleID, workspaceID, instanceID uint) error {
+	if m.setGate != nil {
+		if err := m.setGate(); err != nil {
+			return err
+		}
+	}
 	inst, err := m.dbs.FindInWorkspace(workspaceID, instanceID)
 	if err != nil {
 		return fmt.Errorf("instance not found: %w", err)

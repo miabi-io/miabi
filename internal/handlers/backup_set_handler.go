@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/jkaninda/okapi"
+	"github.com/miabi-io/miabi/internal/enterprise"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/backup"
@@ -38,6 +39,10 @@ type BackupSetsResponse struct {
 	// S3Configured reports that the workspace has an object-storage target. Sets
 	// require one: see backup.ErrS3Required.
 	S3Configured bool `json:"s3_configured"`
+	// Entitled reports that this edition may take a recovery point. It rides along
+	// for the same reason S3Configured does, and because a workspace member cannot
+	// read the license view the admin pages gate on.
+	Entitled bool `json:"entitled"`
 }
 
 // ListSets returns an instance's recovery points, newest first.
@@ -50,7 +55,11 @@ func (h *BackupHandler) ListSets(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortInternalServerError("failed to list backup sets", err)
 	}
-	return ok(c, BackupSetsResponse{Sets: sets, S3Configured: h.s3Configured(inst.WorkspaceID)})
+	return ok(c, BackupSetsResponse{
+		Sets:         sets,
+		S3Configured: h.s3Configured(inst.WorkspaceID),
+		Entitled:     h.ee.Has(enterprise.FlagRecoveryPoints),
+	})
 }
 
 // s3Configured reports whether the workspace has a usable object-storage target.
@@ -62,8 +71,12 @@ func (h *BackupHandler) s3Configured(workspaceID uint) bool {
 	return err == nil && cfg != nil
 }
 
-// RunSet backs up every database on the instance as one recovery point.
+// RunSet backs up every database on the instance as one recovery point (Enterprise; gated
+// recovery_points).
 func (h *BackupHandler) RunSet(c *okapi.Context, req *RunBackupSetRequest) error {
+	if err := h.ee.Require(enterprise.FlagRecoveryPoints); err != nil {
+		return entitlementAbort(c, err)
+	}
 	inst, err := h.loadInstance(c)
 	if err != nil {
 		return c.AbortNotFound("database instance not found")
@@ -166,6 +179,9 @@ type AdoptSetRequest struct {
 // AdoptSet writes a recovery point found in the bucket into this instance's
 // history. It creates rows and touches no data.
 func (h *BackupHandler) AdoptSet(c *okapi.Context, req *AdoptSetRequest) error {
+	if err := h.ee.Require(enterprise.FlagRecoveryPoints); err != nil {
+		return entitlementAbort(c, err)
+	}
 	inst, err := h.loadInstance(c)
 	if err != nil {
 		return c.AbortNotFound("database instance not found")
@@ -312,6 +328,9 @@ func (h *BackupHandler) ListSetSchedules(c *okapi.Context) error {
 
 // CreateSetSchedule schedules recovery points for the instance.
 func (h *BackupHandler) CreateSetSchedule(c *okapi.Context, req *SetScheduleRequest) error {
+	if err := h.ee.RequireMutable(enterprise.FlagRecoveryPoints); err != nil {
+		return entitlementAbort(c, err)
+	}
 	inst, err := h.loadInstance(c)
 	if err != nil {
 		return c.AbortNotFound("database instance not found")

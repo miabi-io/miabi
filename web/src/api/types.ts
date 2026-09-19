@@ -1902,6 +1902,8 @@ export interface VerifyResult {
 export interface BackupSetsResponse {
   sets: DatabaseBackupSet[]
   s3_configured: boolean
+  // Whether this edition may take a recovery point (Enterprise: recovery_points).
+  entitled: boolean
 }
 
 // An instance-level schedule: one recovery point per tick, then retention.
