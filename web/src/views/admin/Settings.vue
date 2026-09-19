@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { adminApi } from '@/api/admin'
 import type { SettingInput } from '@/api/admin'
-import type { AuthAccessStatus, PlatformSetting } from '@/api/types'
+import type { AuthAccessStatus, NetworkingInfo, PlatformSetting } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
 
 const notify = useNotificationStore()
@@ -32,6 +32,8 @@ const saving = ref(false)
 
 // Read-only encryption posture (per-workspace keys + auto-rotation + gateway config encryption).
 const encryption = ref<{ encryption_enabled: boolean; per_workspace_keys: boolean; auto_rotate: boolean; rotate_months: number; gateway_config_encryption: boolean } | null>(null)
+// Read-only networking posture (IPv6, the managed subnet pool, the shared proxy network).
+const networking = ref<NetworkingInfo | null>(null)
 
 // Edited values, keyed by setting key.
 const values = ref<Record<string, string>>({})
@@ -161,6 +163,7 @@ async function load() {
     const res = await adminApi.listSettings()
     applySettings(res.data.data ?? [])
     encryption.value = (await adminApi.getEncryptionInfo()).data.data
+    networking.value = (await adminApi.getNetworkingInfo().catch(() => null))?.data.data ?? null
   } catch (e) {
     notify.apiError(e)
   } finally {
@@ -236,6 +239,46 @@ function setBool(key: string, checked: boolean) {
               <span class="text-muted" title="Encryption of the config Miabi sends to Goma Gateway (middleware rules &amp; TLS), via GOMA_CONFIG_ENCRYPTION_KEY">Gateway config encryption</span>
               <span class="badge" :class="encryption.gateway_config_encryption ? 'badge-success' : 'badge-neutral'">{{ encryption.gateway_config_encryption ? 'enabled' : 'disabled (no key)' }}</span>
             </div>
+          </div>
+        </div>
+
+        <!-- Networking posture (read-only; operator-configured via env or the install manifest) -->
+        <div v-if="networking" class="card">
+          <div class="card-body">
+            <h2 class="card-title">Networking</h2>
+            <p class="text-muted text-sm" style="margin-bottom: 12px">
+              Address families and ranges for the networks Miabi creates. Set through the environment
+              or the install manifest and applied at boot.
+            </p>
+            <div class="enc-grid">
+              <span class="text-muted" title="MIABI_NETWORK_IPV6">IPv6</span>
+              <span>
+                <span class="badge" :class="networking.ipv6_active ? 'badge-success' : 'badge-neutral'">
+                  {{ networking.ipv6_active ? 'enabled' : 'disabled' }}
+                </span>
+                <!-- Asked for but not in force: say why rather than showing a switch that looks stuck. -->
+                <span v-if="networking.ipv6_enabled && !networking.ipv6_active" class="badge badge-warning" style="margin-left: 6px">
+                  requested
+                </span>
+              </span>
+              <template v-if="networking.ipv6_active || networking.ipv6_ula_prefix">
+                <span class="text-muted" title="MIABI_NETWORK_IPV6_ULA_PREFIX">IPv6 addressing</span>
+                <span class="mono text-sm">
+                  {{ networking.ipv6_ula_prefix
+                    ? `${networking.ipv6_ula_prefix} · derived from each IPv4 subnet`
+                    : 'assigned by Docker' }}
+                </span>
+              </template>
+              <span class="text-muted" title="MIABI_NETWORK_POOL_CIDR">Workspace subnet pool</span>
+              <span class="mono text-sm">
+                {{ networking.pool_cidr || '—' }}<template v-if="networking.subnet_prefix"> in /{{ networking.subnet_prefix }}s</template>
+              </span>
+              <span class="text-muted" title="MIABI_PROXY_NETWORK">Shared proxy network</span>
+              <span class="mono text-sm">{{ networking.proxy_network || '—' }}</span>
+            </div>
+            <p v-if="networking.ipv6_enabled && !networking.ipv6_active" class="form-hint text-warning" style="margin-top: 10px">
+              IPv6 is requested but not in force: {{ networking.ipv6_reason }}
+            </p>
           </div>
         </div>
 

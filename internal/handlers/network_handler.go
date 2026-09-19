@@ -51,6 +51,19 @@ func (h *NetworkHandler) List(c *okapi.Context) error {
 	return ok(c, nets)
 }
 
+// Get returns one network with the addressing the engine actually gave it, including the IPv6 half.
+func (h *NetworkHandler) Get(c *okapi.Context) error {
+	id, err := h.id(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid network id")
+	}
+	d, err := h.svc.Detail(c.Request().Context(), middlewares.WorkspaceID(c), id)
+	if err != nil {
+		return h.mapErr(c, err)
+	}
+	return ok(c, d)
+}
+
 func (h *NetworkHandler) Delete(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {

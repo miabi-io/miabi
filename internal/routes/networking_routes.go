@@ -39,6 +39,14 @@ func (r *Router) networkRoutes() []okapi.RouteDefinition {
 			Request:     &handlers.CreateNetworkRequest{},
 		},
 		{
+			Method:      http.MethodGet,
+			Path:        base + "/{networkID}",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.network.Get,
+			Summary:     "Get a network with its live addressing (IPv4, IPv6, gateways)",
+		},
+		{
 			Method:      http.MethodDelete,
 			Path:        base + "/{networkID}",
 			Group:       g,

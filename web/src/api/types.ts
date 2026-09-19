@@ -1053,6 +1053,9 @@ export interface DBLiveStatus {
 export interface ContainerNetwork {
   name: string
   ip_address: string
+  // Absent on a single-stack network. The network detail shows the v6 subnet; this shows whether the
+  // container was actually given an address out of it.
+  ipv6_address?: string
   gateway?: string
 }
 
@@ -1346,6 +1349,33 @@ export interface Network {
   internal: boolean
   is_default: boolean
   created_at?: string
+}
+
+// NetworkDetail is a workspace network with the addressing the ENGINE actually gave it. The stored
+// row says what Miabi asked for; these fields say what exists, and are the only place the IPv6 half
+// is visible.
+export interface NetworkDetail extends Network {
+  // False when the network is recorded but absent from the engine — an overlay no local container
+  // has attached yet, or an offline node. The addressing fields are then empty rather than stale.
+  exists: boolean
+  subnet?: string
+  gateway?: string
+  ipv6_subnet?: string
+  ipv6_gateway?: string
+  enable_ipv6: boolean
+  scope?: string
+}
+
+// NetworkingInfo is the platform networking posture on the admin Settings page. ipv6_enabled is what
+// the operator asked for; ipv6_active is what Miabi could actually apply.
+export interface NetworkingInfo {
+  ipv6_enabled: boolean
+  ipv6_active: boolean
+  ipv6_ula_prefix?: string
+  ipv6_reason?: string
+  pool_cidr?: string
+  subnet_prefix?: number
+  proxy_network?: string
 }
 
 export interface StackStatusCounts {

@@ -197,8 +197,13 @@ func (e *engineClient) InspectContainer(ctx context.Context, id string) (Contain
 			if ep.Gateway.IsValid() {
 				gateway = ep.Gateway.String()
 			}
+			ipv6 := ""
+			if ep.GlobalIPv6Address.IsValid() {
+				ipv6 = ep.GlobalIPv6Address.String()
+			}
 			nets = append(nets, ContainerNetwork{
-				Name: name, IPAddress: ep.IPAddress.String(), Gateway: gateway, Aliases: ep.Aliases,
+				Name: name, IPAddress: ep.IPAddress.String(), IPv6Address: ipv6,
+				Gateway: gateway, Aliases: ep.Aliases,
 			})
 		}
 	}
@@ -1120,13 +1125,35 @@ func (e *engineClient) ListNetworks(ctx context.Context) ([]Network, error) {
 	}
 	out := make([]Network, 0, len(res.Items))
 	for _, n := range res.Items {
-		subnet := ""
-		if len(n.IPAM.Config) > 0 && n.IPAM.Config[0].Subnet.IsValid() {
-			subnet = n.IPAM.Config[0].Subnet.String()
+		net := Network{ID: n.ID, Name: n.Name, Driver: n.Driver, Scope: n.Scope, Labels: n.Labels}
+		net.EnableIPv6 = n.EnableIPv6
+		// A dual-stack network carries both families in IPAM, in no guaranteed order, so each entry
+		// is placed by what it actually is rather than by position.
+		for _, cfg := range n.IPAM.Config {
+			if !cfg.Subnet.IsValid() {
+				continue
+			}
+			if cfg.Subnet.Addr().Is4() {
+				if net.Subnet == "" {
+					net.Subnet, net.Gateway = cfg.Subnet.String(), gatewayString(cfg.Gateway)
+				}
+				continue
+			}
+			if net.IPv6Subnet == "" {
+				net.IPv6Subnet, net.IPv6Gateway = cfg.Subnet.String(), gatewayString(cfg.Gateway)
+			}
 		}
-		out = append(out, Network{ID: n.ID, Name: n.Name, Driver: n.Driver, Scope: n.Scope, Labels: n.Labels, Subnet: subnet})
+		out = append(out, net)
 	}
 	return out, nil
+}
+
+// gatewayString renders an IPAM gateway, which is optional and often unset.
+func gatewayString(gw netip.Addr) string {
+	if !gw.IsValid() {
+		return ""
+	}
+	return gw.String()
 }
 
 func (e *engineClient) CreateVolume(ctx context.Context, name string, labels map[string]string, sizeBytes int64) (Volume, error) {

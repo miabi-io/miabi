@@ -21,6 +21,7 @@ import ResourceIcon from '@/components/ResourceIcon.vue'
 import ShellTerminal from '@/components/ShellTerminal.vue'
 import ContainerProcesses from '@/components/ContainerProcesses.vue'
 import LogViewer from '@/components/LogViewer.vue'
+import NetworkDetailModal from '@/components/NetworkDetailModal.vue'
 import LogSizeControl from '@/components/LogSizeControl.vue'
 import { useLogSize, isLogSize, logHeight } from '@/composables/useLogSize'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -458,6 +459,11 @@ const metrics = ref<StatsSample | null>(null)
 const registries = ref<Registry[]>([])
 const gitRepos = ref<GitRepository[]>([])
 const networks = ref<Network[]>([])
+// Which network's addressing (IPv4, IPv6, gateways) the detail modal is showing.
+const netDetailFor = ref<Network | null>(null)
+// The IPv6 column appears only when a container actually has an address: on a single-stack install
+// it would otherwise be a dash on every row.
+const anyContainerIPv6 = computed(() => (liveStatus.value?.networks ?? []).some((n) => !!n.ipv6_address))
 const stacks = ref<Stack[]>([])
 // The workspace networks the app is attached to (always including the workspace
 // default). In cluster mode these are Swarm overlays, which is what lets the app
@@ -2306,7 +2312,7 @@ async function detachDatabase(d: AppDatabase) {
         </div>
         <div v-else class="table-wrapper">
           <table>
-            <thead><tr><th>Network</th><th>Docker name</th><th>Driver</th></tr></thead>
+            <thead><tr><th>Network</th><th>Docker name</th><th>Driver</th><th></th></tr></thead>
             <tbody>
               <tr v-for="n in attachedNets" :key="n.id">
                 <td class="cell-title">
@@ -2317,6 +2323,11 @@ async function detachDatabase(d: AppDatabase) {
                 <td class="cell-sub">
                   {{ n.driver }}<span v-if="n.internal"> · internal</span>
                   <span v-if="n.driver === 'overlay'" class="text-muted"> · spans nodes</span>
+                </td>
+                <td class="text-right">
+                  <button class="btn-icon btn-icon-sm btn-icon-accent" title="Network details" aria-label="Network details" @click="netDetailFor = n">
+                    <span class="mdi mdi-ip-network-outline"></span>
+                  </button>
                 </td>
               </tr>
             </tbody>
@@ -2344,11 +2355,23 @@ async function detachDatabase(d: AppDatabase) {
         </div>
         <div v-else-if="liveStatus?.networks?.length" class="table-wrapper">
           <table>
-            <thead><tr><th>Network</th><th>IP address</th><th>Gateway</th><th></th></tr></thead>
+            <thead>
+              <tr>
+                <th>Network</th><th>IP address</th>
+                <!-- Only when something actually has one: on a single-stack install this column
+                     would be a dash on every row, for every user. -->
+                <th v-if="anyContainerIPv6">IPv6 address</th>
+                <th>Gateway</th><th></th>
+              </tr>
+            </thead>
             <tbody>
               <tr v-for="n in liveStatus.networks" :key="n.name">
                 <td class="cell-sub">{{ n.name }}</td>
                 <td class="mono"><code>{{ n.ip_address }}</code></td>
+                <td v-if="anyContainerIPv6" class="mono">
+                  <code v-if="n.ipv6_address">{{ n.ipv6_address }}</code>
+                  <span v-else class="text-muted">—</span>
+                </td>
                 <td class="cell-sub mono">{{ n.gateway || '—' }}</td>
                 <td class="text-right">
                   <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(n.ip_address)"><span class="mdi mdi-content-copy" style="font-size: 13px"></span></button>
@@ -3629,6 +3652,15 @@ async function detachDatabase(d: AppDatabase) {
     </div>
 
     <!-- Delete application -->
+    <Teleport to="body">
+      <NetworkDetailModal
+        v-if="netDetailFor"
+        :workspace-id="wid"
+        :network="netDetailFor"
+        @close="netDetailFor = null"
+      />
+    </Teleport>
+
     <Teleport to="body">
       <RouteFormModal
         :open="showRouteModal"
