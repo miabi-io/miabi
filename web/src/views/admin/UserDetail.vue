@@ -5,7 +5,7 @@ import { adminApi } from '@/api/admin'
 import { useNotificationStore } from '@/stores/notification'
 import { useAuthStore } from '@/stores/auth'
 import { useLicenseStore } from '@/stores/license'
-import type { AdminUserDetail, AdminEvent } from '@/api/types'
+import type { AdminUserDetail, AdminEvent, Organization } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { copyText } from '@/utils/clipboard'
 import AppModal from '@/components/AppModal.vue'
@@ -45,6 +45,34 @@ const canManage = computed(() => auth.isAdmin && !!user.value && !isSelf.value)
 // Editable override strings: '' = inherit (null); a number overrides; -1 = unlimited.
 const ownedLimit = ref('')
 const memberLimit = ref('')
+// --- Organization (the realm the user's NEW workspaces are created in) ------
+const orgs = ref<Organization[]>([])
+const orgId = ref(0)
+const eeOrgs = computed(() => license.has('organizations'))
+const orgDirty = computed(() => !!user.value && orgId.value !== (user.value.organization_id ?? 0))
+
+async function loadOrgs() {
+  try {
+    orgs.value = (await adminApi.listOrganizations()).data.data ?? []
+  } catch {
+    // The page is useful without the picker; a failure here must not blank the user.
+  }
+}
+
+async function saveOrg() {
+  if (!user.value) return
+  busy.value = true
+  try {
+    await adminApi.updateUser(user.value.id, { organization_id: orgId.value })
+    notify.success('Organization updated')
+    await load()
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    busy.value = false
+  }
+}
+
 const eeOwned = computed(() => license.has('user_workspace_limit'))
 const eeMember = computed(() => license.has('user_workspace_membership_limit'))
 
@@ -93,6 +121,7 @@ async function load() {
   try {
     const res = await adminApi.getUser(userId.value)
     user.value = res.data.data
+    orgId.value = user.value?.organization_id ?? 0
   } catch (e) {
     notify.apiError(e)
     router.replace('/admin/users')
@@ -104,6 +133,7 @@ async function load() {
 watch(userId, load, { immediate: true })
 // Entitlement flags gate the limit inputs; load them once (no-op in CE).
 license.load().catch(() => {})
+void loadOrgs()
 
 function back() {
   router.push('/admin/users')
@@ -532,6 +562,34 @@ function eventSeverity(e: AdminEvent): string {
           <div class="detail">
             <span class="text-muted">Created</span>
             <span>{{ fmtDate(user.created_at) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Organization: which realm this user's new workspaces belong to -->
+      <div v-if="canManage" class="card mt-4">
+        <div class="card-header">
+          <h2>Organization <span class="badge badge-info">Enterprise</span></h2>
+        </div>
+        <div class="card-body">
+          <p class="text-muted text-sm" style="margin: 0 0 14px">
+            The tenant this user belongs to. Workspaces they create from now on are made in it, and count against its
+            limit. Workspaces they already own do not move — that would change which clusters their workloads run on.
+          </p>
+          <div class="limit-row">
+            <div class="limit-label">
+              <label class="form-label">Organization</label>
+            </div>
+            <select v-model.number="orgId" class="form-input limit-input" :disabled="!eeOrgs || busy">
+              <option :value="0">Default organization</option>
+              <option v-for="o in orgs" :key="o.id" :value="o.id">{{ o.display_name || o.name }}</option>
+            </select>
+          </div>
+          <div class="limit-actions">
+            <span v-if="!eeOrgs" class="text-muted text-sm">Requires an Enterprise license.</span>
+            <button class="btn btn-primary btn-sm" :disabled="busy || !orgDirty || !eeOrgs" @click="saveOrg">
+              <span class="mdi mdi-content-save"></span> Save organization
+            </button>
           </div>
         </div>
       </div>

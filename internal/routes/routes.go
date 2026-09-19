@@ -1337,6 +1337,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.adminMetrics.SetNodeCapacity(serverRepo)
 	r.h.cluster.SetCapacityStore(serverRepo)
 	r.h.cluster.SetOrganizations(organizationService, ee)
+	r.h.adminUser.SetOrganizations(organizationService)
 	r.h.node.SetNodeStats(nodeStatsService)
 
 	// Restrict browser WebSocket upgrades (exec/log/node/runner tunnels) to

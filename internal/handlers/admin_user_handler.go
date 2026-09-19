@@ -17,6 +17,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/account"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/mailer"
+	"github.com/miabi-io/miabi/internal/services/organization"
 	"github.com/miabi-io/miabi/internal/services/session"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 	"golang.org/x/crypto/bcrypt"
@@ -35,6 +36,7 @@ type AdminUserHandler struct {
 	account    *account.Service
 	mailer     *mailer.Service
 	ee         enterprise.EE
+	orgs       *organization.Service
 	graceDays  int
 }
 
@@ -45,6 +47,10 @@ func (h *AdminUserHandler) SetMailer(m *mailer.Service) { h.mailer = m }
 // SetEnterprise wires the edition gate used to guard the per-user workspace-limit
 // override (the user_workspace_limit entitlement).
 func (h *AdminUserHandler) SetEnterprise(ee enterprise.EE) { h.ee = ee }
+
+// SetOrganizations wires the realm a user may be moved to (nil-safe; without it the organization
+// field on an update is refused).
+func (h *AdminUserHandler) SetOrganizations(svc *organization.Service) { h.orgs = svc }
 
 // AdminSetWorkspaceLimitRequest sets or clears a user's workspace-count override.
 type AdminSetWorkspaceLimitRequest struct {
@@ -169,6 +175,9 @@ type AdminUpdateUserRequest struct {
 		Active *bool  `json:"active"`
 		// Username optionally changes the unique handle (an admin action).
 		Username string `json:"username"`
+		// OrganizationID moves the user to another realm, which is where their NEW workspaces are
+		// created. 0 returns them to the default organization; null leaves the realm unchanged.
+		OrganizationID *uint `json:"organization_id"`
 	} `json:"body"`
 }
 
@@ -370,6 +379,25 @@ func (h *AdminUserHandler) Update(c *okapi.Context, req *AdminUpdateUserRequest)
 			}
 		}
 		target.Active = *req.Body.Active
+	}
+
+	if req.Body.OrganizationID != nil {
+		if err := h.ee.RequireMutable(enterprise.FlagOrganizations); err != nil {
+			return entitlementAbort(c, err)
+		}
+		// Only new workspaces follow the user; the ones they already own stay where they are, since
+		// moving a workspace changes which clusters its workloads may run on.
+		if *req.Body.OrganizationID == 0 {
+			target.OrganizationID = nil
+		} else {
+			if h.orgs == nil {
+				return c.AbortBadRequest("organizations are not available")
+			}
+			if _, err := h.orgs.Get(*req.Body.OrganizationID); err != nil {
+				return c.AbortBadRequest("no such organization")
+			}
+			target.OrganizationID = req.Body.OrganizationID
+		}
 	}
 
 	if username, err := validateUsername(h.users, req.Body.Username, target.ID); err != nil {

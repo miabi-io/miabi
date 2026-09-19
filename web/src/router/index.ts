@@ -97,6 +97,7 @@ const routes = [
       { path: '', redirect: { name: 'admin-dashboard' } },
       { path: 'users', name: 'admin-users', component: () => import('@/views/admin/Users.vue'), meta: { title: 'Users', admin: true } },
       { path: 'users/:id', name: 'admin-user-detail', component: () => import('@/views/admin/UserDetail.vue'), meta: { title: 'User', admin: true } },
+      { path: 'organizations', name: 'admin-organizations', component: () => import('@/views/admin/Organizations.vue'), meta: { title: 'Organizations', admin: true } },
       { path: 'workspaces', name: 'admin-workspaces', component: () => import('@/views/admin/Workspaces.vue'), meta: { title: 'Workspaces', admin: true } },
       { path: 'workspaces/:id', name: 'admin-workspace-detail', component: () => import('@/views/admin/WorkspaceDetail.vue'), meta: { title: 'Workspace', admin: true } },
       { path: 'domains', name: 'admin-domains', component: () => import('@/views/admin/Domains.vue'), meta: { title: 'Domains', admin: true } },

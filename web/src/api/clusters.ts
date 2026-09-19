@@ -5,6 +5,8 @@ export interface ClusterUpdate {
   display_name?: string
   location_code?: string
   visibility?: Cluster['visibility']
+  /** Dedicates the location to one organization; 0 releases it back to shared. */
+  organization_id?: number
   cordoned?: boolean
   external_base_domain?: string
   external_cert_provider?: string

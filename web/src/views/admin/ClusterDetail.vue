@@ -2,6 +2,8 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
+import { useLicenseStore } from '@/stores/license'
+import { adminApi } from '@/api/admin'
 import { clustersApi } from '@/api/clusters'
 import { clusterApi } from '@/api/cluster'
 import { nodesApi } from '@/api/nodes'
@@ -9,11 +11,13 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AppModal from '@/components/AppModal.vue'
 import { copyText } from '@/utils/clipboard'
 import type {
+  Organization,
   Cluster, Server, ClusterStatus, ClusterJoinInstructions,
   ClusterPreflight, NetCheck, NetCheckResult, ControlPlaneCert,
 } from '@/api/types'
 
 const notify = useNotificationStore()
+const license = useLicenseStore()
 const route = useRoute()
 const router = useRouter()
 const id = String(route.params.id)
@@ -55,8 +59,20 @@ const editForm = ref({
   display_name: '', location_code: '', visibility: 'all' as Cluster['visibility'], cordoned: false,
   external_base_domain: '', external_cert_provider: '',
   service_endpoint_mode: 'vip' as NonNullable<Cluster['service_endpoint_mode']>,
-  ingress_ip: '', ingress_hostname: '',
+  ingress_ip: '', ingress_hostname: '', organization_id: 0,
 })
+
+// Organizations a location can be dedicated to. Loaded lazily: the picker only appears once the
+// visibility is set to "organization", and the page is useful without it.
+const orgs = ref<Organization[]>([])
+const eeOrgs = computed(() => license.has('organizations'))
+async function loadOrgs() {
+  try {
+    orgs.value = (await adminApi.listOrganizations()).data.data ?? []
+  } catch {
+    // no-op: the select simply stays empty
+  }
+}
 function openEdit() {
   editForm.value = {
     display_name: cluster.value?.display_name ?? '',
@@ -68,7 +84,9 @@ function openEdit() {
     service_endpoint_mode: cluster.value?.service_endpoint_mode ?? 'vip',
     ingress_ip: cluster.value?.ingress_ip ?? '',
     ingress_hostname: cluster.value?.ingress_hostname ?? '',
+    organization_id: cluster.value?.organization_id ?? 0,
   }
+  void loadOrgs()
   showEdit.value = true
 }
 
@@ -112,6 +130,11 @@ async function persistEdit() {
       service_endpoint_mode: editForm.value.service_endpoint_mode,
       ingress_ip: editForm.value.ingress_ip.trim(),
       ingress_hostname: editForm.value.ingress_hostname.trim(),
+      // Only sent when it changed: the field is entitled, so an unrelated edit must not trip the
+      // licence check on an install that never dedicates a location.
+      ...(editForm.value.organization_id !== (cluster.value.organization_id ?? 0)
+        ? { organization_id: editForm.value.organization_id }
+        : {}),
     })).data.data
     showEdit.value = false
     notify.success('Cluster updated')
@@ -690,7 +713,21 @@ function swarmClass(n: Server): string {
               <select v-model="editForm.visibility" class="form-select">
                 <option value="all">All workspaces</option>
                 <option value="restricted">Platform admins only</option>
+                <option value="organization" :disabled="!eeOrgs">
+                  One organization {{ eeOrgs ? '' : '(Enterprise)' }}
+                </option>
               </select>
+            </div>
+            <div v-if="editForm.visibility === 'organization'" class="form-group">
+              <label class="form-label">Organization</label>
+              <select v-model.number="editForm.organization_id" class="form-select" :disabled="!eeOrgs">
+                <option :value="0">Select an organization…</option>
+                <option v-for="o in orgs" :key="o.id" :value="o.id">{{ o.display_name || o.name }}</option>
+              </select>
+              <p class="form-hint">
+                Only this organization sees the location and may place in it — and it is then confined to the locations
+                it owns, so its workloads never land on shared hardware. Resources already here do not move.
+              </p>
             </div>
             <div class="form-group">
               <label class="form-label"><input v-model="editForm.cordoned" type="checkbox" /> Cordoned</label>
