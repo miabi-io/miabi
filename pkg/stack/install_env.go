@@ -46,6 +46,8 @@ func installEnv(m *Manifest) []string {
 
 	str("MIABI_NETWORK_POOL_CIDR", in.Pool.CIDR)
 	num("MIABI_NETWORK_SUBNET_PREFIX", in.Pool.SubnetPrefix)
+	flag("MIABI_NETWORK_IPV6", m.Network.IPv6)
+	str("MIABI_NETWORK_IPV6_ULA_PREFIX", in.Pool.IPv6ULAPrefix)
 	num("MIABI_HOST_PORT_MIN", in.HostPorts.Min)
 	num("MIABI_HOST_PORT_MAX", in.HostPorts.Max)
 	str("MIABI_EXTERNAL_BASE_DOMAIN", in.External.BaseDomain)

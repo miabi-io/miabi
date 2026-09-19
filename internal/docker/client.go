@@ -1037,6 +1037,7 @@ func createNetworkOptions(spec NetworkSpec) client.NetworkCreateOptions {
 		Internal:   spec.Internal,
 		Attachable: spec.Attachable,
 		Labels:     labels,
+		EnableIPv6: spec.EnableIPv6, // nil = daemon default; see NetworkSpec
 	}
 	if spec.Encrypted {
 		opts.Options = map[string]string{"encrypted": ""}
@@ -1050,6 +1051,16 @@ func createNetworkOptions(spec NetworkSpec) client.NetworkCreateOptions {
 				}
 			}
 			opts.IPAM = &network.IPAM{Config: []network.IPAMConfig{cfg}}
+		}
+	}
+	// A pinned v6 range rides alongside the v4 one in the same IPAM config. Empty leaves it to the
+	// daemon, which assigns a ULA /64 when EnableIPv6 is set.
+	if spec.IPv6Subnet != "" {
+		if prefix, perr := netip.ParsePrefix(spec.IPv6Subnet); perr == nil {
+			if opts.IPAM == nil {
+				opts.IPAM = &network.IPAM{}
+			}
+			opts.IPAM.Config = append(opts.IPAM.Config, network.IPAMConfig{Subnet: prefix})
 		}
 	}
 	return opts

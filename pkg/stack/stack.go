@@ -702,11 +702,15 @@ func (s *Service) ensureNetwork(ctx context.Context, m *Manifest) error {
 		{m.Network, docker.RoleControlPlane},
 		{m.InternalNetwork, docker.RolePlatformInternal},
 	} {
+		// Set explicitly either way: a network that inherits the daemon's default follows a setting
+		// nobody made in the manifest, which is how IPv6 ended up latent here.
+		ipv6 := n.cfg.IPv6 != nil && *n.cfg.IPv6
 		_, err := s.dc.EnsureNetworkSpec(ctx, docker.NetworkSpec{
-			Name:   n.cfg.Name,
-			Driver: "bridge",
-			Subnet: n.cfg.Subnet,
-			Labels: docker.PlatformLabels(n.role, docker.ManagedByMiabi, nil),
+			Name:       n.cfg.Name,
+			Driver:     "bridge",
+			Subnet:     n.cfg.Subnet,
+			EnableIPv6: &ipv6,
+			Labels:     docker.PlatformLabels(n.role, docker.ManagedByMiabi, nil),
 		})
 		if err != nil {
 			return fmt.Errorf("ensure network %q: %w", n.cfg.Name, err)

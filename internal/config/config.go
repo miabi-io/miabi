@@ -273,6 +273,16 @@ type Config struct {
 	// NetworkSubnetPrefix sizes each subnet; the default /12 split into /24s yields 4096 networks.
 	NetworkPoolCIDR     string
 	NetworkSubnetPrefix int
+	// NetworkIPv6 gives every Miabi-created network a dual-stack address space. Off by default, and
+	// set EXPLICITLY either way: a network that inherits the daemon's default silently follows a
+	// setting nobody chose here. Docker assigns the ULA /64 itself, so there is no v6 pool to size.
+	// Needs Docker Engine 26+; on an older engine Miabi refuses to enable it rather than failing
+	// every network create.
+	NetworkIPv6 bool
+	// NetworkIPv6ULAPrefix pins each network's /64 under this ULA prefix, derived from its IPv4
+	// subnet, instead of letting the daemon choose. Empty uses the daemon's own assignment, which
+	// needs Engine 26+. Setting it gives stable, predictable addresses and works on Engine 25.
+	NetworkIPv6ULAPrefix string
 
 	RunnerWaitTimeout time.Duration
 	// JobAPITokenEnabled injects the scoped MIABI_JOB_TOKEN callback credential into runner jobs
@@ -675,6 +685,8 @@ func New() *Config {
 		SecurityInitImage:      goutils.Env("MIABI_SECURITY_INIT_IMAGE", "busybox:latest"),
 		NetworkPoolCIDR:        goutils.Env("MIABI_NETWORK_POOL_CIDR", "10.64.0.0/12"),
 		NetworkSubnetPrefix:    goutils.EnvInt("MIABI_NETWORK_SUBNET_PREFIX", 24),
+		NetworkIPv6:            goutils.EnvBool("MIABI_NETWORK_IPV6", false),
+		NetworkIPv6ULAPrefix:   goutils.Env("MIABI_NETWORK_IPV6_ULA_PREFIX", ""),
 		BuildTimeoutMinutes:    goutils.EnvInt("MIABI_BUILD_TIMEOUT_MINUTES", 30),
 		RunnerWaitTimeout:      time.Duration(goutils.EnvInt("MIABI_RUNNER_WAIT_TIMEOUT_MINUTES", 30)) * time.Minute,
 		JobAPITokenEnabled:     goutils.EnvBool("MIABI_JOB_API_TOKEN_ENABLED", true),
