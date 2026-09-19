@@ -37,6 +37,12 @@ var (
 	// the workspace's registered domains — preventing importing a cert for hosts
 	// the workspace does not control.
 	ErrDomainMismatch = errors.New("certificate name is not covered by a registered domain")
+	// ErrDomainUnverified refuses a certificate for a domain the workspace has registered but not
+	// proven it controls. Registering a name proves nothing, and a certificate for a name someone
+	// else serves takes that hostname's TLS.
+	ErrDomainUnverified = errors.New("certificate name needs a verified domain")
+	// ErrDomainBanned refuses a certificate under a domain an admin has banned.
+	ErrDomainBanned = errors.New("certificate name is under a banned domain")
 )
 
 // RouteRefs reports the routes referencing a certificate (delete-guard + usage).
@@ -52,11 +58,17 @@ type DomainLister interface {
 	ListByWorkspace(workspaceID uint) ([]models.Domain, error)
 }
 
+// WorkspacePrivilege reports whether a workspace holds the platform-admin-granted privileged flag.
+type WorkspacePrivilege interface {
+	FindByID(id uint) (*models.Workspace, error)
+}
+
 type Service struct {
-	repo    *repositories.CertificateRepository
-	routes  RouteRefs
-	domains DomainLister
-	quota   *quota.Service
+	repo       *repositories.CertificateRepository
+	routes     RouteRefs
+	domains    DomainLister
+	workspaces WorkspacePrivilege
+	quota      *quota.Service
 }
 
 func NewService(repo *repositories.CertificateRepository) *Service {
@@ -68,6 +80,9 @@ func (s *Service) SetRouteRefs(r RouteRefs) { s.routes = r }
 
 // SetDomains wires the registered-domain lister used to gate certificate imports.
 func (s *Service) SetDomains(d DomainLister) { s.domains = d }
+
+// SetWorkspacePrivilege wires the privileged-workspace check that mirrors the route serve gate.
+func (s *Service) SetWorkspacePrivilege(w WorkspacePrivilege) { s.workspaces = w }
 
 // SetQuota wires the plan/quota enforcer (nil-safe; gates the custom-TLS capability).
 func (s *Service) SetQuota(q *quota.Service) { s.quota = q }
@@ -376,18 +391,36 @@ func (s *Service) validateAgainstDomains(workspaceID uint, meta *certMeta) error
 		seen[n] = true
 		names = append(names, n)
 	}
+
+	privileged := s.privileged(workspaceID)
 	for _, n := range names {
-		if !nameUnderDomain(n, domains) {
+		d := coveringDomain(n, domains)
+		switch {
+		case d == nil:
 			return fmt.Errorf("%w: %s", ErrDomainMismatch, n)
+		case d.Banned:
+			return fmt.Errorf("%w: %s", ErrDomainBanned, n)
+		case !d.Verified && !privileged:
+			return fmt.Errorf("%w: %s", ErrDomainUnverified, n)
 		}
 	}
 	return nil
 }
 
-// nameUnderDomain reports whether a certificate name (a host or a "*.x" wildcard)
-// is covered by a registered domain: equal to it, a subdomain of it, or the
-// domain's own wildcard.
-func nameUnderDomain(name string, domains []models.Domain) bool {
+// privileged reports whether the workspace may act on an unverified domain, matching the route
+// serve gate. Unwired or unreadable means not privileged.
+func (s *Service) privileged(workspaceID uint) bool {
+	if s.workspaces == nil {
+		return false
+	}
+	ws, err := s.workspaces.FindByID(workspaceID)
+	return err == nil && ws.Privileged
+}
+
+// coveringDomain returns the registered domain a certificate name (a host or a "*.x" wildcard) falls
+// under — equal to it, a subdomain of it, or the domain's own wildcard — or nil when none does. The
+// caller needs the domain itself, not just a yes/no, to check that it is verified and unbanned.
+func coveringDomain(name string, domains []models.Domain) *models.Domain {
 	for i := range domains {
 		d := strings.ToLower(strings.TrimSpace(domains[i].Name))
 		if d == "" {
@@ -395,10 +428,10 @@ func nameUnderDomain(name string, domains []models.Domain) bool {
 		}
 		// "*.example.com" or "app.example.com" or "example.com" all sit under "example.com".
 		if name == d || strings.HasSuffix(name, "."+d) {
-			return true
+			return &domains[i]
 		}
 	}
-	return false
+	return nil
 }
 
 // hostMatches reports whether any SAN covers host, supporting a single-label

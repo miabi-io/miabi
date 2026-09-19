@@ -915,6 +915,9 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	domainService.SetWorkspacePolicy(workspaceRepo)
 	// Gate custom-certificate imports on the workspace's registered domains.
 	certificateService.SetDomains(domainRepo)
+	// Mirrors the route serve gate: a privileged workspace may hold a cert for a domain it has not
+	// verified, because it is allowed to serve one.
+	certificateService.SetWorkspacePrivilege(workspaceRepo)
 	// Declarative apply engine (shared by the one-shot apply API and GitOps).
 	applyService := apply.NewService(appService, storageService, databaseService, stackService, secretService, routeService, domainService, registryService)
 	applyService.SetConfigs(configService)
