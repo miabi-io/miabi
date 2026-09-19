@@ -494,9 +494,9 @@ async function save() {
 
     <ConfirmDialog
       :open="confirmDiscard"
-      title="Discard changes?"
+      :title="$t('confirm.title.discardChanges')"
       message="This route has unsaved changes. Closing now loses them."
-      confirm-label="Discard"
+      :confirm-label="$t('action.discard')"
       cancel-label="Keep editing"
       variant="danger"
       @confirm="discard"

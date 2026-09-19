@@ -181,9 +181,9 @@ async function confirmRemove() {
 
     <ConfirmDialog
       :open="!!toDelete"
-      title="Delete route"
+      :title="$t('confirm.title.deleteRoute')"
       :message="`Delete route &quot;${toDelete?.name}&quot;? Its hosts will stop routing to the app.`"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"
       @confirm="confirmRemove"

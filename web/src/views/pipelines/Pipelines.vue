@@ -462,11 +462,11 @@ function openLastRun(p: PipelineDefinition) {
 
     <ConfirmDialog
       :open="!!toDelete"
-      title="Delete pipeline"
+      :title="$t('confirm.title.deletePipeline')"
       :message="isRepoOwned(toDelete)
         ? `Delete pipeline &quot;${toDelete?.name}&quot;? Its run history is removed, and its application goes back to building and deploying directly — skipping the steps in ${toDelete?.source_path}.`
         : `Delete pipeline &quot;${toDelete?.name}&quot;? Its run history is removed.`"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"
       @confirm="confirmDelete"

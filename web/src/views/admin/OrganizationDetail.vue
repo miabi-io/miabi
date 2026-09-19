@@ -286,18 +286,18 @@ const promoteMessage = computed(() => {
 
     <ConfirmDialog
       :open="confirmPromote"
-      title="Change the default organization"
+      :title="$t('confirm.title.changeTheDefaultOrganization')"
       :message="promoteMessage"
-      confirm-label="Make default"
+      :confirm-label="$t('action.makeDefault')"
       @confirm="promote"
       @cancel="confirmPromote = false"
     />
 
     <ConfirmDialog
       :open="confirmDelete"
-      title="Delete organization"
+      :title="$t('confirm.title.deleteOrganization')"
       :message="`&quot;${org?.display_name ?? ''}&quot; will be removed, and any location dedicated to it becomes administrator-only until you reassign it. Deleting is refused while it still holds workspaces or users.`"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       @confirm="remove"
       @cancel="confirmDelete = false"

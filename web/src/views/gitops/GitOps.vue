@@ -465,9 +465,9 @@ function syncedTitle(s: GitSource) {
 
     <ConfirmDialog
       :open="!!toDelete"
-      title="Delete git source"
+      :title="$t('confirm.title.deleteGitSource')"
       :message="`Delete git source &quot;${toDelete?.name}&quot;?`"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"
       @confirm="confirmDelete"

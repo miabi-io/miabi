@@ -389,9 +389,9 @@ function formatDate(s: string | null): string {
 
     <ConfirmDialog
       :open="!!toRevoke"
-      title="Revoke API key"
+      :title="$t('confirm.title.revokeApiKey')"
       :message="`Revoke API key &quot;${toRevoke?.name}&quot;? Applications using it will immediately lose access. This cannot be undone.`"
-      confirm-label="Revoke"
+      :confirm-label="$t('action.revoke')"
       variant="danger"
       :busy="revoking"
       @confirm="confirmRevoke"
@@ -400,9 +400,9 @@ function formatDate(s: string | null): string {
 
     <ConfirmDialog
       :open="!!toDelete"
-      title="Delete API key"
+      :title="$t('confirm.title.deleteApiKey')"
       :message="`Permanently delete API key &quot;${toDelete?.name}&quot;? This removes it entirely and cannot be undone.`"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"
       @confirm="confirmDelete"

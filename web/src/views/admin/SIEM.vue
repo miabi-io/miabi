@@ -262,9 +262,9 @@ async function test(t: SIEMConfig) {
 
     <ConfirmDialog
       :open="!!pendingDelete"
-      title="Delete SIEM target"
+      :title="$t('confirm.title.deleteSiemTarget')"
       :message="`Delete SIEM target &quot;${pendingDelete?.name}&quot;?`"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"
       @confirm="confirmDelete"

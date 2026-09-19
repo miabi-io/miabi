@@ -1095,9 +1095,9 @@ function fmtSize(n: number): string {
 
     <ConfirmDialog
       :open="!!pendingRestore"
-      title="Restore platform backup?"
+      :title="$t('confirm.title.restorePlatformBackup')"
       :message="restoreMessage"
-      confirm-label="Restore"
+      :confirm-label="$t('action.restore')"
       variant="danger"
       :busy="restoringId !== null"
       @confirm="restore"
@@ -1106,9 +1106,9 @@ function fmtSize(n: number): string {
 
     <ConfirmDialog
       :open="!!pendingRestoreSet"
-      title="Restore the selected artifacts?"
+      :title="$t('confirm.title.restoreTheSelectedArtifacts')"
       :message="`This overwrites live data. ${selectedCount} artifact(s) will be restored into this platform: databases are dropped and recreated from the backup, and volumes are overwritten. Data written since ${pendingRestoreSet ? fmtDate(pendingRestoreSet.created_at) : 'the backup'} is lost for whatever you selected.`"
-      confirm-label="Restore"
+      :confirm-label="$t('action.restore')"
       variant="danger"
       :busy="restoring"
       @confirm="runSelectiveRestore"
@@ -1117,9 +1117,9 @@ function fmtSize(n: number): string {
 
     <ConfirmDialog
       :open="!!pendingSetDelete"
-      title="Delete this recovery point?"
+      :title="$t('confirm.title.deleteThisRecoveryPoint')"
       message="Deletes the recovery point and its artifacts from the bucket, including the identity envelope. This cannot be undone."
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       @confirm="removeSet"
       @cancel="pendingSetDelete = null"
@@ -1127,9 +1127,9 @@ function fmtSize(n: number): string {
 
     <ConfirmDialog
       :open="pendingComplete"
-      title="Complete recovery?"
+      :title="$t('confirm.title.completeRecovery')"
       message="Schedules and certificate issuance resume. Do this only once DNS points at this host — otherwise certificate requests will be issued against an address that still resolves elsewhere."
-      confirm-label="Complete recovery"
+      :confirm-label="$t('action.completeRecovery')"
       :busy="completing"
       @confirm="completeRecovery"
       @cancel="pendingComplete = false"
@@ -1137,9 +1137,9 @@ function fmtSize(n: number): string {
 
     <ConfirmDialog
       :open="!!pendingDelete"
-      title="Delete platform backup?"
+      :title="$t('confirm.title.deletePlatformBackup')"
       message="Delete this platform backup?"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"
       @confirm="remove"

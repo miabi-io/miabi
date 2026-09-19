@@ -160,9 +160,9 @@ async function remove() {
 
     <ConfirmDialog
       :open="confirmingDelete"
-      title="Delete runner"
+      :title="$t('confirm.title.deleteRunner')"
       :message="runner ? `Delete runner “${runner.name}”? Its container will no longer be able to connect, and any queued builds fall back to another runner.` : ''"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"
       @confirm="remove"

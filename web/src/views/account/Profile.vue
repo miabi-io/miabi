@@ -225,7 +225,7 @@ onMounted(loadSessions)
       :open="!!confirmTarget"
       :title="confirmTitle"
       :message="confirmMessage"
-      confirm-label="Revoke"
+      :confirm-label="$t('action.revoke')"
       variant="danger"
       :busy="confirmBusy"
       @confirm="confirmAction"

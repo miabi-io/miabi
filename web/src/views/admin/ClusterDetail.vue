@@ -1048,11 +1048,11 @@ function swarmClass(n: Server): string {
 
     <ConfirmDialog
       :open="showRemoveAgents"
-      title="Remove cluster agents?"
+      :title="$t('confirm.title.removeClusterAgents')"
       message="The agent is removed from every cluster node. They keep running their tasks — Swarm schedules those itself — but Miabi loses its Docker connection to them.
 
 Apps scheduled on those nodes will stop showing metrics, stats and a shell. The node records themselves are kept."
-      confirm-label="Remove agents"
+      :confirm-label="$t('action.removeAgents')"
       variant="danger"
       :busy="busy"
       @confirm="removeAgents"
@@ -1061,9 +1061,9 @@ Apps scheduled on those nodes will stop showing metrics, stats and a shell. The 
 
     <ConfirmDialog
       :open="showApplyNetworking"
-      title="Apply cluster networking?"
+      :title="$t('confirm.title.applyClusterNetworking')"
       message="Each workspace network is converted from a node-local bridge to a cluster overlay, so apps and databases reach each other across nodes. Containers are NOT restarted, but connections open inside a workspace drop briefly while it switches over."
-      confirm-label="Apply"
+      :confirm-label="$t('action.apply')"
       :busy="busy"
       @confirm="applyNetworking"
       @cancel="showApplyNetworking = false"
@@ -1071,11 +1071,11 @@ Apps scheduled on those nodes will stop showing metrics, stats and a shell. The 
 
     <ConfirmDialog
       :open="showDisable"
-      title="Disable Docker Swarm?"
+      :title="$t('confirm.title.disableDockerSwarm')"
       :message="isDefault
         ? 'The manager and all member nodes will leave the swarm. Workspace networks are moved back to node-local bridges first, so apps and databases stop being reachable across nodes — anything relying on that will break. Containers are not restarted.'
         : 'Every node leaves the swarm and becomes a standalone cluster of its own. The cluster must have no apps, databases or volumes left.'"
-      confirm-label="Disable Swarm"
+      :confirm-label="$t('action.disableSwarm')"
       variant="danger"
       :busy="busy"
       @confirm="disableSwarm"
@@ -1084,9 +1084,9 @@ Apps scheduled on those nodes will stop showing metrics, stats and a shell. The 
 
     <ConfirmDialog
       :open="!!pendingLeave"
-      title="Remove node from the swarm?"
+      :title="$t('confirm.title.removeNodeFromTheSwarm')"
       :message="`Remove ${pendingLeave?.display_name || pendingLeave?.name} from the swarm? It becomes a standalone cluster of its own.`"
-      confirm-label="Remove"
+      :confirm-label="$t('action.remove')"
       variant="danger"
       :busy="busy"
       @confirm="leaveNode"

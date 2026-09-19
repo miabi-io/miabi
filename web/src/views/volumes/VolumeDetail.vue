@@ -615,9 +615,9 @@ function isFileVisible(file: VolumeFile): boolean {
 
     <ConfirmDialog
       :open="deleteConfirmOpen"
-      title="Delete backup"
+      :title="$t('confirm.title.deleteBackup')"
       :message="`Delete the backup taken ${fmtTime(pendingDeleteBackup?.created_at)}? The backup record is removed; the archive object in your S3 bucket is not deleted.`"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deletingBackup"
       @confirm="doDeleteBackup"
@@ -626,9 +626,9 @@ function isFileVisible(file: VolumeFile): boolean {
 
     <ConfirmDialog
       :open="restoreConfirmOpen"
-      title="Restore volume"
+      :title="$t('confirm.title.restoreVolume')"
       :message="`Restore &quot;${vol.name}&quot; from the backup taken ${fmtTime(pendingRestore?.created_at)}? This overwrites the volume's current contents and cannot be undone.`"
-      confirm-label="Restore"
+      :confirm-label="$t('action.restore')"
       variant="danger"
       :busy="restoring"
       @confirm="doRestore"
@@ -637,9 +637,9 @@ function isFileVisible(file: VolumeFile): boolean {
 
     <ConfirmDialog
       :open="fileConfirmOpen"
-      title="Delete file"
+      :title="$t('confirm.title.deleteFile')"
       :message="`Delete &quot;${pendingDelete?.path}&quot; from this volume? This cannot be undone.`"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deletingFile"
       @confirm="removeFile"
@@ -648,9 +648,9 @@ function isFileVisible(file: VolumeFile): boolean {
 
     <ConfirmDialog
       :open="confirmOpen"
-      title="Delete volume"
+      :title="$t('confirm.title.deleteVolume')"
       :message="`Delete volume &quot;${vol.name}&quot;? This permanently removes its data and cannot be undone.`"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"
       @confirm="remove"

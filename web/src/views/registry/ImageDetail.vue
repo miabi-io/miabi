@@ -379,9 +379,9 @@ async function confirmDelete() {
 
     <ConfirmDialog
       :open="!!confirmTarget"
-      title="Delete tag"
+      :title="$t('confirm.title.deleteTag')"
       :message="confirmTarget ? `Delete ${repo}:${confirmTarget.name}? This removes the manifest from the registry and cannot be undone.` : ''"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting !== null"
       @confirm="confirmDelete"

@@ -188,9 +188,9 @@ async function confirmDelete() {
 
     <ConfirmDialog
       :open="!!pendingDelete"
-      title="Delete registry"
+      :title="$t('confirm.title.deleteRegistry')"
       :message="`Delete registry &quot;${pendingDelete?.name}&quot;? Apps using it will fail to pull private images.`"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"
       @confirm="confirmDelete"

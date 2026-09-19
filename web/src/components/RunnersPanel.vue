@@ -299,9 +299,9 @@ function platform(r: Runner): string {
 
     <ConfirmDialog
       :open="!!pendingRegenerate"
-      title="Regenerate token"
+      :title="$t('confirm.title.regenerateToken')"
       :message="pendingRegenerate ? `Regenerate ${pendingRegenerate.name}'s token? Its running container must be restarted with the new token.` : ''"
-      confirm-label="Regenerate"
+      :confirm-label="$t('action.regenerate')"
       variant="danger"
       :busy="regenerating"
       @confirm="confirmRegenerate"
@@ -310,9 +310,9 @@ function platform(r: Runner): string {
 
     <ConfirmDialog
       :open="!!pendingDelete"
-      title="Delete runner"
+      :title="$t('confirm.title.deleteRunner')"
       :message="pendingDelete ? `Delete runner “${pendingDelete.name}”? Its container will no longer be able to connect, and any queued builds fall back to another runner.` : ''"
-      confirm-label="Delete"
+      :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"
       @confirm="confirmRemove"

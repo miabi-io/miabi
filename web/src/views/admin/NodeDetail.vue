@@ -1725,7 +1725,7 @@ const gwBadge = computed(() => {
       message="Swarm reschedules this node's service tasks onto other nodes now, and places no new ones here. This is what makes the node safe to reboot.
 
 Note: setting it back to Active does NOT move the tasks back. Swarm never rebalances on its own — they stay where they were rescheduled until a redeploy, a scale, or a drain of their new node moves them again."
-      confirm-label="Drain node"
+      :confirm-label="$t('action.drainNode')"
       variant="danger"
       :busy="availBusy === pendingDrain?.id"
       @confirm="confirmDrain"
@@ -1734,9 +1734,9 @@ Note: setting it back to Active does NOT move the tasks back. Swarm never rebala
 
     <ConfirmDialog
       :open="showTeardown"
-      title="Tear down gateway"
+      :title="$t('confirm.title.tearDownGateway')"
       message="Remove the Goma Gateway container from this node? Routing through it stops until you redeploy. ACME certs are preserved."
-      confirm-label="Teardown"
+      :confirm-label="$t('action.teardown')"
       variant="danger"
       :busy="gwBusy"
       @confirm="teardownGateway"
@@ -1745,9 +1745,9 @@ Note: setting it back to Active does NOT move the tasks back. Swarm never rebala
 
     <ConfirmDialog
       :open="showDelete"
-      title="Remove node"
+      :title="$t('confirm.title.removeNode')"
       :message="`Remove node &quot;${node?.name}&quot;? Its agent tunnel is closed and the edge gateway (if any) is torn down.`"
-      confirm-label="Remove"
+      :confirm-label="$t('action.remove')"
       variant="danger"
       :busy="deleting"
       @confirm="confirmDelete"
@@ -1756,9 +1756,9 @@ Note: setting it back to Active does NOT move the tasks back. Swarm never rebala
 
     <ConfirmDialog
       :open="!!toRemoveContainer"
-      title="Remove container"
+      :title="$t('confirm.title.removeContainer')"
       :message="`Remove container &quot;${toRemoveContainer ? cname(toRemoveContainer) : ''}&quot;? This cannot be undone.`"
-      confirm-label="Remove"
+      :confirm-label="$t('action.remove')"
       variant="danger"
       @confirm="removeContainer"
       @cancel="toRemoveContainer = null"

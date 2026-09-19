@@ -457,9 +457,9 @@ onBeforeUnmount(() => { if (poll) clearInterval(poll) })
 
     <ConfirmDialog
       :open="!!pendingConfirm"
-      title="Confirm this change"
+      :title="$t('confirm.title.confirmThisChange')"
       :message="pendingConfirm"
-      confirm-label="Change it anyway"
+      :confirm-label="$t('action.changeItAnyway')"
       variant="danger"
       :busy="saving"
       @confirm="save(true)"
@@ -468,9 +468,9 @@ onBeforeUnmount(() => { if (poll) clearInterval(poll) })
 
     <ConfirmDialog
       :open="showGcConfirm"
-      title="Run garbage collection"
+      :title="$t('confirm.title.runGarbageCollection')"
       message="Run garbage collection? The registry switches to read-only (pulls keep working, pushes pause) while it reclaims space."
-      confirm-label="Run garbage collection"
+      :confirm-label="$t('action.runGarbageCollection')"
       variant="primary"
       :busy="runningGc"
       @confirm="runGc"
