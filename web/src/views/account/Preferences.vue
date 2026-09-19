@@ -7,9 +7,13 @@ import { useThemeStore, type ThemeMode } from '@/stores/theme'
 import { ACCENTS as accents } from '@/theme/accents'
 import { LANGUAGES as languages, resolveLanguage } from '@/i18n/languages'
 import { useNotificationStore } from '@/stores/notification'
+import { useLanguageStore } from '@/stores/language'
+import { useI18n } from 'vue-i18n'
 import { authApi } from '@/api/auth'
 
 const auth = useAuthStore()
+const language = useLanguageStore()
+const { t } = useI18n()
 const ws = useWorkspaceStore()
 const theme = useThemeStore()
 const notify = useNotificationStore()
@@ -21,23 +25,25 @@ const timezone = ref(auth.user?.preferences?.timezone || 'UTC')
 const locale = ref(resolveLanguage(auth.user?.preferences?.locale))
 const landingView = ref(auth.user?.preferences?.landing_view || 'dashboard')
 
-const themeModes: { value: ThemeMode; label: string; icon: string }[] = [
-  { value: 'system', label: 'Match system', icon: 'mdi-monitor' },
-  { value: 'light', label: 'Light', icon: 'mdi-white-balance-sunny' },
-  { value: 'dark', label: 'Dark', icon: 'mdi-weather-night' },
-]
+const themeModes = computed<{ value: ThemeMode; label: string; icon: string }[]>(() => [
+  { value: 'system', label: t('preferences.theme.system'), icon: 'mdi-monitor' },
+  { value: 'light', label: t('preferences.theme.light'), icon: 'mdi-white-balance-sunny' },
+  { value: 'dark', label: t('preferences.theme.dark'), icon: 'mdi-weather-night' },
+])
 
-const landingViews = [
-  { value: 'dashboard', label: 'Dashboard' },
-  { value: 'apps', label: 'Applications' },
-  { value: 'databases', label: 'Databases' },
-  { value: 'routes', label: 'Routes' },
-  { value: 'domains', label: 'Domains' },
-  { value: 'volumes', label: 'Volumes' },
-  { value: 'jobs', label: 'Jobs' },
-  { value: 'pipelines', label: 'Pipelines' },
-  { value: 'monitoring', label: 'Monitoring' },
-]
+// Each entry names a nav destination, so it reuses that label rather than keeping a
+// second copy to translate.
+const landingViews = computed(() => [
+  { value: 'dashboard', label: t('nav.overview.dashboard') },
+  { value: 'apps', label: t('nav.deploy.applications') },
+  { value: 'databases', label: t('nav.data.databases') },
+  { value: 'routes', label: t('nav.networking.routes') },
+  { value: 'domains', label: t('nav.networking.domains') },
+  { value: 'volumes', label: t('nav.data.volumes') },
+  { value: 'jobs', label: t('nav.deploy.jobs') },
+  { value: 'pipelines', label: t('nav.cicd.pipelines') },
+  { value: 'monitoring', label: t('preferences.landing.monitoring') },
+])
 
 // The browser's own zone, offered as the obvious choice rather than making people
 // recall an IANA name.
@@ -81,7 +87,10 @@ async function saveDisplay() {
       landing_view: landingView.value,
     })).data.data
     if (auth.user) auth.setUser({ ...auth.user, preferences: prefs })
-    notify.success('Preferences saved')
+    // The save already persisted it, so this only switches the catalogue in place —
+    // adopt() would push it back up a second time.
+    await language.adopt(prefs.locale)
+    notify.success(t('preferences.saved'))
   } catch (e) {
     notify.apiError(e)
   } finally {
@@ -94,20 +103,19 @@ async function saveDisplay() {
   <div>
     <div class="page-header">
       <div>
-        <h1>Preferences</h1>
-        <p class="page-sub">Settings that follow your account, on every browser and machine.</p>
+        <h1>{{ t('preferences.title') }}</h1>
+        <p class="page-sub">{{ t('preferences.subtitle') }}</p>
       </div>
     </div>
 
     <div class="card mb-4">
-      <div class="card-header"><h2>Default workspace</h2></div>
+      <div class="card-header"><h2>{{ t('preferences.defaultWorkspace.title') }}</h2></div>
       <div class="card-body">
         <p class="note">
-          Where a new sign-in lands when you have no workspace in mind — a fresh browser, or a new
-          machine's CLI. Switching workspaces day to day does not change this.
+{{ t('preferences.defaultWorkspace.note') }}
         </p>
         <div class="form-group" style="margin-bottom: 0">
-          <label class="form-label" for="default-ws">Workspace</label>
+          <label class="form-label" for="default-ws">{{ t('preferences.defaultWorkspace.label') }}</label>
           <select
             id="default-ws"
             class="form-select"
@@ -115,7 +123,7 @@ async function saveDisplay() {
             :disabled="saving"
             @change="saveDefaultWorkspace(($event.target as HTMLSelectElement).value)"
           >
-            <option value="">No preference — use my oldest workspace</option>
+            <option value="">{{ t('preferences.defaultWorkspace.none') }}</option>
             <option v-for="w in workspaces" :key="w.id" :value="String(w.id)">
               {{ w.display_name || w.name }}
             </option>
@@ -125,9 +133,9 @@ async function saveDisplay() {
     </div>
 
     <div class="card mb-4">
-      <div class="card-header"><h2>Appearance</h2></div>
+      <div class="card-header"><h2>{{ t('preferences.appearance.title') }}</h2></div>
       <div class="card-body">
-        <p class="note">Applied immediately and saved to your account.</p>
+        <p class="note">{{ t('preferences.appearance.note') }}</p>
         <div class="theme-grid">
           <button
             v-for="m in themeModes"
@@ -145,10 +153,10 @@ async function saveDisplay() {
     </div>
 
     <div class="card">
-      <div class="card-header"><h2>Display</h2></div>
+      <div class="card-header"><h2>{{ t('preferences.display.title') }}</h2></div>
       <div class="card-body">
         <div class="form-group">
-          <label class="form-label">Accent</label>
+          <label class="form-label">{{ t('preferences.accent.label') }}</label>
           <div class="accent-grid">
             <button
               v-for="a in accents"
@@ -165,25 +173,24 @@ async function saveDisplay() {
             </button>
           </div>
           <p v-if="theme.accentLocked" class="form-hint">
-            <span class="mdi mdi-lock-outline"></span> Set by your organization for every account.
+            <span class="mdi mdi-lock-outline"></span> {{ t('preferences.accent.locked') }}
           </p>
           <p v-else class="form-hint">
-            Applies immediately and follows your account to other browsers. Status colours
-            are unaffected — success, warning and danger keep their own meaning.
+{{ t('preferences.accent.hint') }}
           </p>
         </div>
         <div class="form-group">
-          <label class="form-label" for="landing">Open on</label>
+          <label class="form-label" for="landing">{{ t('preferences.landing.label') }}</label>
           <select id="landing" v-model="landingView" class="form-select">
             <option v-for="v in landingViews" :key="v.value" :value="v.value">{{ v.label }}</option>
           </select>
-          <p class="form-hint">The section a new session opens on inside your default workspace.</p>
+          <p class="form-hint">{{ t('preferences.landing.hint') }}</p>
         </div>
         <div class="form-group">
-          <label class="form-label" for="tz">Time zone</label>
+          <label class="form-label" for="tz">{{ t('preferences.timezone.label') }}</label>
           <input id="tz" v-model="timezone" class="form-input mono" placeholder="UTC" />
           <p class="form-hint">
-            Affects how times are displayed; they are always stored in UTC.
+{{ t('preferences.timezone.hint') }}
             <template v-if="detectedTimezone && detectedTimezone !== timezone">
               This browser reports
               <a href="#" @click.prevent="timezone = detectedTimezone"><code>{{ detectedTimezone }}</code></a>.
@@ -191,11 +198,11 @@ async function saveDisplay() {
           </p>
         </div>
         <div class="form-group" style="margin-bottom: 0">
-          <label class="form-label" for="locale">Language</label>
+          <label class="form-label" for="locale">{{ t('preferences.language.label') }}</label>
           <select id="locale" v-model="locale" class="form-select">
             <option v-for="l in languages" :key="l.code" :value="l.code" :lang="l.code">{{ l.label }}</option>
           </select>
-          <p class="form-hint">Translations are on the way; until they land, the console stays in English.</p>
+          <p class="form-hint">{{ t('preferences.language.hint') }}</p>
         </div>
       </div>
       <div class="card-footer">

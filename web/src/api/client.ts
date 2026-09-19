@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
+import { t } from '@/i18n'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
@@ -39,20 +40,27 @@ export function apiErrorMessage(err: unknown, fallback = 'Something went wrong')
 // statusTitle maps an HTTP status to a friendly toast heading, so the title
 // reflects what went wrong instead of a constant "Error".
 export function statusTitle(status?: number): string {
+  const key = statusKey(status)
+  return t(`error.status.${key}`)
+}
+
+// The heading is ours, not the server's — the API's own message stays underneath as the
+// English detail line.
+function statusKey(status?: number): string {
   switch (status) {
-    case 400: return 'Invalid request'
-    case 401: return 'Authentication required'
-    case 402: return 'Upgrade required'
-    case 403: return 'Not allowed'
-    case 404: return 'Not found'
-    case 405: return 'Not allowed'
-    case 409: return 'Conflict'
-    case 422: return 'Validation failed'
-    case 429: return 'Too many requests'
+    case 400: return 'badRequest'
+    case 401: return 'unauthorized'
+    case 402: return 'paymentRequired'
+    case 403: return 'forbidden'
+    case 404: return 'notFound'
+    case 405: return 'forbidden'
+    case 409: return 'conflict'
+    case 422: return 'validationFailed'
+    case 429: return 'tooManyRequests'
   }
-  if (status && status >= 500) return 'Something went wrong'
-  if (status && status >= 400) return 'Request failed'
-  return 'Something went wrong'
+  if (status && status >= 500) return 'serverError'
+  if (status && status >= 400) return 'requestFailed'
+  return 'serverError'
 }
 
 // ApiError is the decomposed envelope error: the HTTP `status`, a status-derived

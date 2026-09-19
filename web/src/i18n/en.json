@@ -1,0 +1,205 @@
+{
+  "adminNav": {
+    "enterprise": {
+      "license": "License",
+      "siemStreaming": "SIEM Streaming",
+      "title": "Enterprise"
+    },
+    "identity": {
+      "ldapAd": "LDAP / AD",
+      "oauthProviders": "OAuth Providers",
+      "title": "Identity",
+      "users": "Users"
+    },
+    "infrastructure": {
+      "clusters": "Clusters",
+      "containerRegistry": "Container Registry",
+      "domains": "Domains",
+      "kernelGrants": "Kernel grants",
+      "nodes": "Nodes",
+      "ports": "Ports",
+      "routes": "Routes",
+      "sharedRunners": "Shared Runners",
+      "storageClasses": "Storage classes",
+      "title": "Infrastructure"
+    },
+    "overview": {
+      "dashboard": "Dashboard",
+      "events": "Events",
+      "jobs": "Jobs",
+      "reconciliation": "Reconciliation",
+      "title": "Overview"
+    },
+    "platform": {
+      "branding": "Branding",
+      "deploymentConfig": "Deployment Config",
+      "platformBackup": "Platform Backup",
+      "platformSettings": "Platform Settings",
+      "title": "Platform"
+    },
+    "tenants": {
+      "announcements": "Announcements",
+      "databaseSizes": "Database sizes",
+      "organizations": "Organizations",
+      "plans": "Plans",
+      "title": "Tenants",
+      "workspaces": "Workspaces"
+    }
+  },
+  "error": {
+    "status": {
+      "badRequest": "Invalid request",
+      "conflict": "Conflict",
+      "forbidden": "Not allowed",
+      "notFound": "Not found",
+      "paymentRequired": "Upgrade required",
+      "requestFailed": "Request failed",
+      "serverError": "Something went wrong",
+      "tooManyRequests": "Too many requests",
+      "unauthorized": "Authentication required",
+      "validationFailed": "Validation failed"
+    }
+  },
+  "nav": {
+    "analytics": {
+      "httpTraffic": "HTTP Traffic",
+      "overview": "Overview",
+      "performance": "Performance",
+      "title": "Analytics",
+      "webAnalytics": "Web Analytics"
+    },
+    "cicd": {
+      "environments": "Environments",
+      "gitops": "GitOps",
+      "pipelines": "Pipelines",
+      "releases": "Releases",
+      "runners": "Runners",
+      "title": "GitOps & CI/CD"
+    },
+    "data": {
+      "databases": "Databases",
+      "title": "Data",
+      "volumes": "Volumes"
+    },
+    "deploy": {
+      "applications": "Applications",
+      "jobs": "Jobs",
+      "marketplace": "Marketplace",
+      "stacks": "Stacks",
+      "title": "Deploy"
+    },
+    "developers": {
+      "apiKeys": "API Keys",
+      "apiReference": "API Reference",
+      "containerRegistry": "Container Registry",
+      "generator": "Generator",
+      "title": "Developers",
+      "webhooks": "Webhooks"
+    },
+    "networking": {
+      "certificates": "Certificates",
+      "dnsProviders": "DNS Providers",
+      "domains": "Domains",
+      "middlewares": "Middlewares",
+      "networks": "Networks",
+      "routes": "Routes",
+      "title": "Networking"
+    },
+    "overview": {
+      "dashboard": "Dashboard",
+      "title": "Overview"
+    },
+    "palette": {
+      "adminGroup": "Platform admin",
+      "adminSub": "Admin"
+    },
+    "sources": {
+      "configs": "Configs",
+      "gitRepositories": "Git Repositories",
+      "registries": "Registries",
+      "secrets": "Secrets",
+      "title": "Sources"
+    },
+    "workspace": {
+      "allWorkspaces": "All Workspaces",
+      "auditLog": "Audit Log",
+      "events": "Events",
+      "members": "Members",
+      "notifications": "Notifications",
+      "settings": "Settings",
+      "title": "Workspace"
+    }
+  },
+  "preferences": {
+    "accent": {
+      "hint": "Applies immediately and follows your account to other browsers. Status colours are unaffected — success, warning and danger keep their own meaning.",
+      "label": "Accent",
+      "locked": "Set by your organization for every account."
+    },
+    "appearance": {
+      "note": "Applied immediately and saved to your account.",
+      "title": "Appearance"
+    },
+    "defaultWorkspace": {
+      "label": "Workspace",
+      "none": "No preference — use my oldest workspace",
+      "note": "Where a new sign-in lands when you have no workspace in mind — a fresh browser, or a new machine's CLI. Switching workspaces day to day does not change this.",
+      "title": "Default workspace"
+    },
+    "display": {
+      "title": "Display"
+    },
+    "landing": {
+      "hint": "The section a new session opens on inside your default workspace.",
+      "label": "Open on",
+      "monitoring": "Monitoring"
+    },
+    "language": {
+      "hint": "Dates, times and numbers follow this language now. The console's own text is being translated view by view — anything not yet translated stays in English.",
+      "label": "Language"
+    },
+    "saved": "Preferences saved",
+    "subtitle": "Settings that follow your account, on every browser and machine.",
+    "theme": {
+      "dark": "Dark",
+      "light": "Light",
+      "system": "Match system"
+    },
+    "timezone": {
+      "hint": "Affects how times are displayed; they are always stored in UTC.",
+      "label": "Time zone"
+    },
+    "title": "Preferences"
+  },
+  "shell": {
+    "close": "Close",
+    "menu": {
+      "about": "About",
+      "cli": "CLI access",
+      "preferences": "Preferences",
+      "profile": "Profile",
+      "security": "Security",
+      "signOut": "Sign out"
+    },
+    "openMenu": "Open menu",
+    "search": {
+      "label": "Search",
+      "placeholder": "Search or jump to…"
+    },
+    "sidebar": {
+      "collapse": "Collapse sidebar",
+      "expand": "Expand sidebar"
+    }
+  },
+  "switcher": {
+    "adminBadge": "Admin",
+    "backTo": "Back to {where}",
+    "create": "Create workspace",
+    "defaultWorkspace": "Sessions land here by default",
+    "empty": "No workspaces yet",
+    "makeDefault": "Make this my default workspace",
+    "manage": "Manage workspaces…",
+    "platformAdmin": "Platform admin",
+    "workspaces": "workspaces"
+  }
+}

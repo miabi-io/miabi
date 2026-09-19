@@ -1,9 +1,8 @@
 // Shared display helpers for stored TLS certificates.
 import type { Certificate } from '@/api/types'
 
-export function fmtDate(s?: string): string {
-  return s ? new Date(s).toLocaleDateString() : '—'
-}
+// Re-exported so its callers keep one import while the formatting follows the language.
+export { fmtDate } from './datetime'
 
 export function daysLeft(c: Certificate): number {
   return Math.floor((new Date(c.not_after).getTime() - Date.now()) / 86400000)
