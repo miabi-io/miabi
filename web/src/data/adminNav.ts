@@ -32,7 +32,7 @@ export const adminNavSections: NavSection[] = [
     items: [
       { key: 'adminNav.tenants.organizations', name: 'Organizations', path: '/admin/organizations', icon: 'mdi-domain' },
       { key: 'adminNav.tenants.workspaces', name: 'Workspaces', path: '/admin/workspaces', icon: 'mdi-briefcase-outline' },
-      { key: 'adminNav.tenants.plans', name: 'Plans', path: '/admin/plans', icon: 'mdi-tune-variant' },
+      { key: 'adminNav.tenants.plans', name: 'Plans & Quotas', path: '/admin/plans', icon: 'mdi-tune-variant' },
       { key: 'adminNav.tenants.databaseSizes', name: 'Database sizes', path: '/admin/database-sizes', icon: 'mdi-database-cog-outline' },
       { key: 'adminNav.tenants.announcements', name: 'Announcements', path: '/admin/announcements', icon: 'mdi-bullhorn-outline' },
     ],

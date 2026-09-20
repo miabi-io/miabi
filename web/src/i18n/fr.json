@@ -7,25 +7,31 @@
     "completeRecovery": "Terminer la restauration",
     "confirm": "Confirmer",
     "delete": "Supprimer",
+    "demote": "Rétrograder",
+    "disable": "Désactiver",
     "disableSwarm": "Désactiver Swarm",
     "discard": "Abandonner",
     "disconnect": "Déconnecter",
     "drainNode": "Vider le nœud",
     "forceVerify": "Forcer la vérification",
     "makeDefault": "Définir par défaut",
+    "promote": "Promouvoir",
     "regenerate": "Régénérer",
     "reject": "Rejeter",
     "remove": "Retirer",
     "removeAgents": "Retirer les agents",
     "removeLicense": "Retirer la licence",
+    "restart": "Redémarrer",
     "restore": "Restaurer",
     "resync": "Resynchroniser",
     "retract": "Retirer",
     "revoke": "Révoquer",
     "rotateKey": "Faire tourner la clé",
     "runGarbageCollection": "Lancer le nettoyage",
+    "stop": "Arrêter",
     "teardown": "Démanteler",
     "test": "Tester",
+    "upgrade": "Mettre à niveau",
     "working": "En cours…"
   },
   "adminNav": {
@@ -70,12 +76,29 @@
       "announcements": "Annonces",
       "databaseSizes": "Tailles de base de données",
       "organizations": "Organisations",
-      "plans": "Forfaits",
+      "plans": "Forfaits et quotas",
       "title": "Locataires",
       "workspaces": "Espaces de travail"
     }
   },
   "confirm": {
+    "label": {
+      "appDetail": {
+        "abortCanary": "Abandonner le canari",
+        "cancelRequest": "Annuler la demande",
+        "changeAnyway": "Modifier quand même",
+        "keep": "Conserver",
+        "keepRollingOut": "Poursuivre le déploiement",
+        "later": "Plus tard",
+        "promoteNow": "Promouvoir maintenant",
+        "redeployNow": "Redéployer maintenant",
+        "release": "Libérer"
+      },
+      "userDetail": {
+        "deleteNow": "Supprimer maintenant",
+        "resetPassword": "Réinitialiser le mot de passe"
+      }
+    },
     "message": {
       "announcements": {
         "titleWillBeRemoved": "&quot;{title}&quot; sera retirée de toutes les boîtes de réception où elle a été délivrée."
@@ -87,6 +110,21 @@
       "appAccessPanel": {
         "revokeNameSAccess": "Révoquer l’accès de {name} à cette application ?"
       },
+      "appDetail": {
+        "anyHostBindingFor": "Toute liaison de port hôte associée doit être libérée au préalable. S’applique au prochain déploiement.",
+        "deleteReleaseVThis": "Supprimer la version v{version} ? Ceci retire son conteneur retiré du service ainsi que son historique.",
+        "itStaysPublishedUntil": "Il reste publié jusqu’au redéploiement de l’application.",
+        "redeployNowToFree": "Redéployer maintenant pour libérer le port hôte ?",
+        "removeVar": "La variable est retirée de {name}.",
+        "removeVarDeployed": "La variable est retirée de {name}. S’applique au prochain déploiement.",
+        "templateImage": "{name} a été installée depuis le modèle « {template} ». Changer son image ici signifie qu’elle ne correspond plus au modèle, et une future mise à niveau du modèle pourrait écraser votre modification. Préférez une mise à niveau via la place de marché quand c’est possible.",
+        "templateImageVersioned": "{name} a été installée depuis le modèle « {template} » (v{version}). Changer son image ici signifie qu’elle ne correspond plus au modèle, et une future mise à niveau du modèle pourrait écraser votre modification. Préférez une mise à niveau via la place de marché quand c’est possible.",
+        "theApp": "l’application",
+        "theCanaryContainerIs": "Le conteneur canari est arrêté et supprimé, et tout le trafic revient à la version stable actuelle de {name}.",
+        "theCanaryReleaseWill": "La version canari prendra 100 % du trafic et deviendra la version stable de {name}. La version stable précédente est retirée du service.",
+        "thePortOnlyPublishes": "Le port n’est publié qu’au prochain déploiement. Redéployer maintenant pour le publier ?",
+        "withdrawThisPendingHost": "Retirer cette demande de port hôte en attente."
+      },
       "certificateDetail": {
         "deleteCertificateNameThis": "Supprimer le certificat &quot;{name}&quot; ? L’opération est bloquée tant qu’une route le référence."
       },
@@ -97,6 +135,15 @@
       },
       "configs": {
         "deleteConfigNameAnd": "Supprimer la configuration &quot;{name}&quot; et ses {length} fichier(s) ? La suppression est bloquée si une application la monte encore."
+      },
+      "databaseDetail": {
+        "appsUsingThisDatabase": "Les applications qui utilisent cette base de données perdront la connectivité jusqu’à son redémarrage.",
+        "deleteAllItsDatabases": "Supprimer « {name} », toutes ses bases de données et son volume de données ? Cette action est irréversible.",
+        "deleteBackupTheArtifact": "Supprimer la sauvegarde n° {number} ? L’artefact sera retiré.",
+        "deleteDatabaseAndIts": "Supprimer la base de données « {name} » et son utilisateur ? Cette action est irréversible.",
+        "deleteItsDatabaseBackup": "Supprimer {ref} ? Ses {length} sauvegarde(s) de base de données et leurs artefacts sont retirés.",
+        "restoreAllDatabaseS": "Restaurer les {length} base(s) de données depuis {ref} ? Leur contenu actuel sera écrasé.",
+        "theContainerWillBe": "Le conteneur {engine} sera redémarré. Une brève interruption est à prévoir."
       },
       "databaseSizes": {
         "nameWillNoLonger": "&quot;{name}&quot; ne sera plus proposée. Les bases de données qui l’utilisent déjà conservent leurs limites."
@@ -131,6 +178,10 @@
       },
       "imageDetail": {
         "deleteRepoNameThis": "Supprimer {repo}:{name} ? Le manifeste est retiré du registre et cette action est irréversible."
+      },
+      "jobs": {
+        "deleteCronjobScheduledRuns": "Supprimer la tâche planifiée « {name} » ? Les exécutions programmées s’arrêteront.",
+        "deleteJobRunThis": "Supprimer l’exécution n° {id} ? Cette action est irréversible."
       },
       "ldapDirectory": {
         "deleteNameUsersProvisioned": "Supprimer &quot;{name}&quot; ? Les utilisateurs provisionnés depuis cet annuaire conservent leur compte mais ne pourront plus s’y connecter par ce biais."
@@ -230,6 +281,15 @@
       "storageClasses": {
         "nameWillNoLonger": "&quot;{name}&quot; ne sera plus proposée. La suppression est refusée tant qu’un volume l’utilise — désactivez-la plutôt pour empêcher de nouveaux volumes d’y atterrir."
       },
+      "userDetail": {
+        "demote": "Rétrograder {name} au rang d’utilisateur ?",
+        "disableSAccountThey": "Désactiver le compte de {name} ? La personne sera déconnectée et ne pourra plus se connecter, et toutes ses applications et bases de données seront arrêtées.",
+        "disableTwoFactorAuthentication": "Désactiver l’authentification à deux facteurs pour {name} ? À réserver à la récupération de compte.",
+        "generateANewPassword": "Générer un nouveau mot de passe pour {name} ? Cette action est irréversible : son mot de passe actuel cesse de fonctionner immédiatement, toutes les sessions actives sont déconnectées, et le nouveau mot de passe n’est affiché qu’une seule fois.",
+        "permanentlyDeleteAndAll": "Supprimer définitivement {name} et toutes ses données restantes dès maintenant ? Ceci ignore le délai de grâce et cette action est irréversible.",
+        "promote": "Promouvoir {name} au rang d’administrateur ?",
+        "revokeAllActiveSessions": "Révoquer toutes les sessions actives de {name} ?"
+      },
       "volumeDetail": {
         "deletePathFromThis": "Supprimer &quot;{path}&quot; de ce volume ? Cette action est irréversible.",
         "deleteTheBackupTaken": "Supprimer la sauvegarde prise {fmtTime} ? L’enregistrement de sauvegarde est retiré ; l’objet archive dans votre bucket S3 n’est pas supprimé.",
@@ -250,11 +310,34 @@
       }
     },
     "title": {
+      "appDetail": {
+        "abortCanaryRollout": "Abandonner le déploiement canari ?",
+        "bindingReleased": "Liaison libérée",
+        "cancelPortBinding": "Annuler la liaison de port ?",
+        "changeATemplateManaged": "Modifier une image gérée par un modèle ?",
+        "delete": "Supprimer {key} ?",
+        "deleteRelease": "Supprimer la version",
+        "hostPortBound": "Port hôte lié",
+        "promoteCanaryToStable": "Promouvoir le canari en stable ?",
+        "releaseHostPort": "Libérer le port hôte {host_port} ?",
+        "removeContainerPort": "Retirer le port de conteneur {container_port}/{protocol} ?"
+      },
       "applyClusterNetworking": "Appliquer le réseau du cluster ?",
       "banDomain": "Bannir le domaine ?",
       "changeTheDefaultOrganization": "Changer l’organisation par défaut",
       "completeRecovery": "Terminer la restauration ?",
       "confirmThisChange": "Confirmer cette modification",
+      "databaseDetail": {
+        "admin": "{name} (admin)",
+        "deleteBackup": "Supprimer la sauvegarde",
+        "deleteDatabase": "Supprimer la base de données",
+        "deleteDatabaseInstance": "Supprimer l’instance de base de données",
+        "deleteRecoveryPoint": "Supprimer le point de restauration",
+        "restartDatabase": "Redémarrer la base de données",
+        "restoreRecoveryPoint": "Restaurer le point de restauration",
+        "stopDatabase": "Arrêter la base de données",
+        "upgradeDatabaseVersion": "Mettre à niveau la version de la base de données"
+      },
       "deleteApiKey": "Supprimer la clé API",
       "deleteBackup": "Supprimer la sauvegarde",
       "deleteBundle": "Supprimer le bundle",
@@ -291,6 +374,10 @@
       "discardChanges": "Abandonner les modifications ?",
       "disconnectDnsProvider": "Déconnecter le fournisseur DNS ?",
       "forceVerifyDomain": "Forcer la vérification du domaine ?",
+      "jobs": {
+        "deleteCronjob": "Supprimer la tâche planifiée",
+        "deleteJobRun": "Supprimer l’exécution"
+      },
       "regenerateToken": "Régénérer le jeton",
       "rejectThisRequest": "Rejeter cette demande ?",
       "removeApplication": "Retirer l’application",
@@ -310,7 +397,16 @@
       "rotateEncryptionKey": "Faire tourner la clé de chiffrement",
       "runGarbageCollection": "Lancer le nettoyage",
       "tearDownGateway": "Démanteler la passerelle",
-      "testDnsProvider": "Tester le fournisseur DNS"
+      "testDnsProvider": "Tester le fournisseur DNS",
+      "userDetail": {
+        "demote": "Rétrograder l’utilisateur ?",
+        "disableAccount": "Désactiver le compte ?",
+        "disableTwoFactor": "Désactiver la double authentification ?",
+        "permanentlyDeleteAccount": "Supprimer définitivement le compte ?",
+        "promote": "Promouvoir l’utilisateur ?",
+        "resetPassword": "Réinitialiser le mot de passe ?",
+        "revokeSessions": "Révoquer les sessions ?"
+      }
     }
   },
   "error": {
