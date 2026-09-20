@@ -235,19 +235,16 @@ const previewLabel = computed(() => {
 <template>
   <div class="card">
     <div class="card-header">
-      <h2>Canary routing</h2>
-      <span v-if="!advanced.has.value" class="badge badge-muted">Enterprise</span>
+      <h2>{{ $t('canary.canaryRouting') }}</h2>
+      <span v-if="!advanced.has.value" class="badge badge-muted">{{ $t('canary.enterprise') }}</span>
     </div>
 
     <!-- Community / unlicensed: the automatic ramp still works, this is the upsell. -->
     <div v-if="!advanced.has.value" class="card-body locked">
       <span class="mdi mdi-lock-outline"></span>
       <div>
-        <p>
-          Hold the canary at a weight you choose instead of watching an automatic ramp, and send only the requests you
-          pick — a header, a cookie, a query parameter, an IP — to the new release.
-        </p>
-        <router-link to="/admin/license" class="btn btn-secondary btn-sm">Upgrade</router-link>
+        <p>{{ $t('canary.manualHint') }}</p>
+        <router-link to="/admin/license" class="btn btn-secondary btn-sm">{{ $t('canary.upgrade') }}</router-link>
       </div>
     </div>
 
@@ -256,28 +253,25 @@ const previewLabel = computed(() => {
            keeps serving, and only changes are refused. -->
       <div v-if="readOnlyNotice" class="banner banner-warning">
         <span class="mdi mdi-lock-clock"></span>
-        <span>
-          This canary keeps routing exactly as configured, but the licence has expired, so the rules are read-only.
-          <router-link to="/admin/license">Renew</router-link> to change them.
-        </span>
+        <i18n-t keypath="canary.readOnlyNotice" tag="span"><template #link><router-link to="/admin/license">{{ $t('canary.renew') }}</router-link></template></i18n-t>
       </div>
 
       <!-- Mode -->
       <div class="field">
-        <label class="form-label">Mode</label>
+        <label class="form-label">{{ $t('canary.mode') }}</label>
         <div class="mode-choices">
           <label class="mode-choice" :class="{ active: mode === 'auto' }">
             <input v-model="mode" type="radio" value="auto" :disabled="!editable" />
             <div>
-              <span class="mode-name">Automatic ramp</span>
-              <span class="mode-hint">The platform raises the weight on a timer and promotes at 100%.</span>
+              <span class="mode-name">{{ $t('canary.automaticRamp') }}</span>
+              <span class="mode-hint">{{ $t('canary.rampHint') }}</span>
             </div>
           </label>
           <label class="mode-choice" :class="{ active: mode === 'manual' }">
             <input v-model="mode" type="radio" value="manual" :disabled="!editable" />
             <div>
-              <span class="mode-name">Manual</span>
-              <span class="mode-hint">The weight stays where you put it, and match rules can steer who reaches the canary.</span>
+              <span class="mode-name">{{ $t('canary.manual') }}</span>
+              <span class="mode-hint">{{ $t('canary.manualModeHint') }}</span>
             </div>
           </label>
         </div>
@@ -285,10 +279,9 @@ const previewLabel = computed(() => {
 
       <!-- Weight: honest about which mode it is in. -->
       <div class="field">
-        <label class="form-label">
-          Traffic to canary
+        <label class="form-label">{{ $t('canary.trafficToCanary') }}
           <span class="text-muted">
-            · {{ mode === 'manual' ? 'the only thing that moves traffic' : 'where the ramp has reached' }}
+            · {{ mode === 'manual' ? $t('canary.weightHintManual') : $t('canary.weightHintRamp') }}
           </span>
         </label>
         <div v-if="canaryActive" class="weight-row">
@@ -314,9 +307,7 @@ const previewLabel = computed(() => {
             class="btn btn-secondary btn-sm"
             :disabled="!canEdit || weightBusy || weightDraft === weight"
             @click="applyWeight"
-          >
-            Apply
-          </button>
+          >{{ $t('canary.apply') }}</button>
         </div>
         <p v-else class="hint">
           No canary is running. Rules saved now apply to the next rollout, which starts at {{ projectedWeight }}%.
@@ -326,16 +317,13 @@ const previewLabel = computed(() => {
       <!-- Rule builder -->
       <template v-if="mode === 'manual'">
         <div class="field">
-          <label class="form-label">Match rules</label>
-          <p class="hint">
-            A request reaches the canary only when <strong>every</strong> rule holds. With no rules, the weight alone
-            decides.
-          </p>
+          <label class="form-label">{{ $t('canary.matchRules') }}</label>
+          <i18n-t keypath="canary.rulesHint" tag="p" class="hint"><template #every><strong>{{ $t('canary.every') }}</strong></template></i18n-t>
           <div v-if="rules.length" class="kv-head">
-            <span>Source</span><span>Name</span><span>Operator</span><span>Value</span>
+            <span>{{ $t('canary.source') }}</span><span>{{ $t('apps.form.name') }}</span><span>{{ $t('canary.operator') }}</span><span>{{ $t('canary.value') }}</span>
           </div>
           <div v-for="(r, i) in rules" :key="i" class="rule-row">
-            <select v-model="r.source" class="form-input" :disabled="!editable" aria-label="Source">
+            <select v-model="r.source" class="form-input" :disabled="!editable" :aria-label="$t('canary.source')">
               <option v-for="s in SOURCES" :key="s.value" :value="s.value">{{ s.label }}</option>
             </select>
             <input
@@ -343,17 +331,17 @@ const previewLabel = computed(() => {
               class="form-input"
               :disabled="!editable || r.source === 'ip'"
               :placeholder="r.source === 'ip' ? '—' : 'X-Canary-User'"
-              aria-label="Name"
+              :aria-label="$t('apps.form.name')"
             />
-            <select v-model="r.operator" class="form-input" :disabled="!editable" aria-label="Operator">
+            <select v-model="r.operator" class="form-input" :disabled="!editable" :aria-label="$t('canary.operator')">
               <option v-for="o in OPERATORS" :key="o.value" :value="o.value">{{ o.label }}</option>
             </select>
-            <input v-model="r.value" class="form-input" :disabled="!editable" placeholder="true" aria-label="Value" />
+            <input v-model="r.value" class="form-input" :disabled="!editable" placeholder="true" :aria-label="$t('canary.value')" />
             <button
               type="button"
               class="btn-icon btn-icon-danger"
-              title="Remove"
-              aria-label="Remove"
+              :title="$t('action.remove')"
+              :aria-label="$t('action.remove')"
               :disabled="!editable"
               @click="removeRule(i)"
             >
@@ -361,14 +349,13 @@ const previewLabel = computed(() => {
             </button>
           </div>
           <button type="button" class="btn btn-sm btn-secondary" :disabled="!editable" @click="addRule">
-            <span class="mdi mdi-plus"></span> Add rule
-          </button>
+            <span class="mdi mdi-plus"></span>{{ $t('canary.addRule') }}</button>
         </div>
 
         <div class="field">
           <label class="check-row">
             <input v-model="exclusive" type="checkbox" :disabled="!editable" />
-            <span>Exclusive — matching requests go entirely to the canary, ignoring the weight</span>
+            <span>{{ $t('canary.exclusiveLabel') }}</span>
           </label>
           <p class="hint">
             Off, a matching request instead joins the weighted pool and reaches the canary
@@ -377,19 +364,16 @@ const previewLabel = computed(() => {
         </div>
 
         <div v-if="exclusive" class="field">
-          <label class="form-label">Priority</label>
+          <label class="form-label">{{ $t('canary.priority') }}</label>
           <input v-model.number="priority" type="number" min="0" max="1000" class="form-input priority-input" :disabled="!editable" />
-          <p class="hint">Breaks ties when several exclusive backends match. One canary per app today, so this is reserved.</p>
+          <p class="hint">{{ $t('canary.priorityHint') }}</p>
         </div>
 
         <div v-if="ipWarning" class="banner banner-warning">
           <span class="mdi mdi-alert-outline"></span>
           <span>
-            This rule set routes on client IP. Unless the gateway has <code>proxy.trustedProxies</code> configured, the
-            client address is whatever the caller claims — anyone could put themselves in the canary.
-            <a href="https://goma.jkaninda.dev/usermanual/running-behind-a-proxy.html" target="_blank" rel="noopener">
-              Configuring trusted proxies
-            </a>
+            <i18n-t keypath="canary.ipWarning" tag="span"><template #setting><code>proxy.trustedProxies</code></template></i18n-t>
+            <a href="https://goma.jkaninda.dev/usermanual/running-behind-a-proxy.html" target="_blank" rel="noopener">{{ $t('canary.configuringTrustedProxies') }}</a>
           </span>
         </div>
       </template>
@@ -405,39 +389,33 @@ const previewLabel = computed(() => {
       </div>
 
       <div class="actions">
-        <button class="btn btn-primary btn-sm" :disabled="!editable || saving || !dirty || !!problem" @click="save">
-          Save routing
-        </button>
-        <button class="btn btn-secondary btn-sm" :disabled="!dirty || saving" @click="syncFromApp">Reset</button>
+        <button class="btn btn-primary btn-sm" :disabled="!editable || saving || !dirty || !!problem" @click="save">{{ $t('canary.saveRouting') }}</button>
+        <button class="btn btn-secondary btn-sm" :disabled="!dirty || saving" @click="syncFromApp">{{ $t('canary.reset') }}</button>
       </div>
 
       <!-- Which backend would serve this? -->
       <div class="field preview">
-        <label class="form-label">Which backend would serve this?</label>
-        <p class="hint">
-          Resolves a request against the <strong>saved</strong> rules. Nothing is deployed and no traffic moves — save
-          your changes first to preview them.
-        </p>
+        <label class="form-label">{{ $t('canary.previewLabel') }}</label>
+        <i18n-t keypath="canary.previewHint" tag="p" class="hint"><template #saved><strong>{{ $t('canary.saved') }}</strong></template></i18n-t>
         <div class="probe-grid">
           <div class="probe-pair">
-            <input v-model="probe.headerName" class="form-input" placeholder="Header name" aria-label="Header name" />
-            <input v-model="probe.headerValue" class="form-input" placeholder="Header value" aria-label="Header value" />
+            <input v-model="probe.headerName" class="form-input" :placeholder="$t('canary.headerName')" :aria-label="$t('canary.headerName')" />
+            <input v-model="probe.headerValue" class="form-input" :placeholder="$t('canary.headerValue')" :aria-label="$t('canary.headerValue')" />
           </div>
           <div class="probe-pair">
-            <input v-model="probe.queryName" class="form-input" placeholder="Query param" aria-label="Query parameter" />
-            <input v-model="probe.queryValue" class="form-input" placeholder="Query value" aria-label="Query value" />
+            <input v-model="probe.queryName" class="form-input" :placeholder="$t('canary.queryParam')" :aria-label="$t('canary.queryParameter')" />
+            <input v-model="probe.queryValue" class="form-input" :placeholder="$t('canary.queryValue')" :aria-label="$t('canary.queryValue')" />
           </div>
           <div class="probe-pair">
-            <input v-model="probe.cookieName" class="form-input" placeholder="Cookie name" aria-label="Cookie name" />
-            <input v-model="probe.cookieValue" class="form-input" placeholder="Cookie value" aria-label="Cookie value" />
+            <input v-model="probe.cookieName" class="form-input" :placeholder="$t('canary.cookieName')" :aria-label="$t('canary.cookieName')" />
+            <input v-model="probe.cookieValue" class="form-input" :placeholder="$t('canary.cookieValue')" :aria-label="$t('canary.cookieValue')" />
           </div>
           <div class="probe-pair">
-            <input v-model="probe.ip" class="form-input" placeholder="Client IP" aria-label="Client IP" />
+            <input v-model="probe.ip" class="form-input" :placeholder="$t('canary.clientIp')" :aria-label="$t('canary.clientIp')" />
           </div>
         </div>
         <button class="btn btn-secondary btn-sm" :disabled="previewBusy" @click="runPreview">
-          <span class="mdi mdi-play-outline"></span> Preview
-        </button>
+          <span class="mdi mdi-play-outline"></span>{{ $t('canary.preview') }}</button>
 
         <div v-if="preview" class="preview-result" :class="`preview-${preview.backend}`">
           <div class="preview-verdict">
