@@ -66,6 +66,9 @@ type CreateDatabaseRequest struct {
 		// ServerID pins a node; platform admins only.
 		ServerID uint `json:"server_id"`
 		SizeMB   int  `json:"size_mb"` // data-volume capacity in MB (0 = unspecified)
+		// StorageClass is the operator-registered disk the data volume lands on; empty uses the
+		// workspace's default class. Fixed at creation, like a volume's.
+		StorageClass string `json:"storage_class"`
 		// MemoryMB and CPUCores limit the container (0 = unlimited, or the engine's default size when the
 		// plan caps the database budget).
 		MemoryMB int     `json:"memory_mb" min:"0"`
@@ -115,7 +118,7 @@ func (h *DatabaseHandler) Create(c *okapi.Context, req *CreateDatabaseRequest) e
 		}
 		return c.AbortInternalServerError("failed to place the database", err)
 	}
-	inst, err := h.svc.Provision(c.Request().Context(), wsID, placed.ServerID, req.Body.Name, models.DBEngine(req.Body.Engine), req.Body.Version, sizeBytes,
+	inst, err := h.svc.Provision(c.Request().Context(), wsID, placed.ServerID, req.Body.Name, models.DBEngine(req.Body.Engine), req.Body.Version, sizeBytes, req.Body.StorageClass,
 		databaseResources(req.Body.MemoryMB, req.Body.CPUCores, req.Body.Size), selfOwnerMeta(h.users, c), nil)
 	if err != nil {
 		if a := quotaAbort(c, err); a != nil {

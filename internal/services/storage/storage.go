@@ -175,6 +175,45 @@ func (s *Service) resolveClass(workspaceID, serverID uint, requested string) (*m
 	return s.classes.Resolve(serverID, binding.Allowed[0])
 }
 
+// PlaceVolume resolves which operator-registered disk a volume should land on and prepares its
+// directory there, returning the class name to record and the host path to bind. It is how a
+// resource that manages its own Docker volume — a database's data volume — gets the same placement
+// a workspace volume gets, including the plan's storage-class binding.
+//
+// An empty device path means the default class: Docker's own data root, nothing to prepare.
+func (s *Service) PlaceVolume(ctx context.Context, workspaceID, serverID uint, requested, dockerName string) (className, devicePath string, err error) {
+	class, err := s.resolveClass(workspaceID, serverID, requested)
+	if err != nil {
+		return "", "", err
+	}
+	if class == nil {
+		return models.DefaultStorageClassName, "", nil
+	}
+	// The directory must exist before a container mounts the volume: Docker accepts a bind-backed
+	// volume whose device is missing and only fails at container start.
+	if err := s.classes.EnsureDir(ctx, class, dockerName); err != nil {
+		return "", "", err
+	}
+	return class.Name, class.VolumePath(dockerName), nil
+}
+
+// ReclaimVolumeDir removes a class-backed directory for a volume this service does not own the row
+// for. Best-effort, like the volume reclaim it mirrors: a leftover directory is a reclaimable
+// orphan, while a failed delete would leave a resource that cannot be removed.
+func (s *Service) ReclaimVolumeDir(ctx context.Context, serverID uint, className, dockerName string) {
+	if s.classes == nil || className == "" || className == models.DefaultStorageClassName {
+		return
+	}
+	class, err := s.classes.Resolve(serverID, className)
+	if err != nil {
+		logger.Warn("reclaim: class lookup failed", "class", className, "volume", dockerName, "error", err)
+		return
+	}
+	if err := s.classes.RemoveDir(ctx, class, dockerName); err != nil {
+		logger.Warn("reclaim: remove directory failed", "class", className, "volume", dockerName, "error", err)
+	}
+}
+
 // SetNodeGuard wires the placement guard consulted when creating a volume on a node.
 func (s *Service) SetNodeGuard(g NodeGuard) { s.nodeGuard = g }
 

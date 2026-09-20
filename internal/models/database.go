@@ -71,8 +71,11 @@ type DatabaseInstance struct {
 	// Image is the resolved server image ref (repo:tag), pinned at provision time
 	// from the deployment-config catalog. Empty on legacy rows (falls back to the
 	// engine default).
-	Image      string `json:"image,omitempty"`
-	VolumeName string `json:"volume_name,omitempty"`
+	Image string `json:"image,omitempty"`
+	// StorageClassName is the operator-registered disk the data volume was created on. Fixed at
+	// provision time like a volume's: the data is already there, so it cannot be moved by an edit.
+	StorageClassName string `json:"storage_class" gorm:"not null;default:default"`
+	VolumeName       string `json:"volume_name,omitempty"`
 	// VolumeEngineCreatedAt is the creation timestamp Docker reported for the data volume. A timestamp that
 	// moved means the volume was deleted and recreated, so the instance's data is gone even though the row
 	// and the volume name are intact.

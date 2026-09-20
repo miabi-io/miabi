@@ -190,15 +190,18 @@ type Service struct {
 	enqueuer   Enqueuer
 	nodeGuard  NodeGuard
 	serverInfo ServerInfo
-	secrets    SecretWriter
-	images     ImageResolver
-	networks   NetworkProvider
-	swarm      SwarmNetworks
-	quota      *quota.Service
-	sizes      SizeCatalog
-	ownerOf    OwnerExister
-	apps       AppController
-	backups    LogicalBackup
+	// storage places the data volume on an operator-registered disk. nil keeps every database on
+	// Docker's own data root, which is where they were before classes reached them.
+	storage  StorageClassPlacer
+	secrets  SecretWriter
+	images   ImageResolver
+	networks NetworkProvider
+	swarm    SwarmNetworks
+	quota    *quota.Service
+	sizes    SizeCatalog
+	ownerOf  OwnerExister
+	apps     AppController
+	backups  LogicalBackup
 	// bus fans out live instance status (provisioning, upgrade phases, start/stop)
 	// to SSE subscribers. Shared with the embedded worker so worker-driven phase
 	// changes reach an open detail-page stream. Nil-safe (no-op when unwired).
@@ -245,6 +248,44 @@ func (s *Service) SetQuota(q *quota.Service) { s.quota = q }
 
 // SetNodeGuard wires the placement guard consulted when provisioning on a node.
 func (s *Service) SetNodeGuard(g NodeGuard) { s.nodeGuard = g }
+
+// StorageClassPlacer decides which operator-registered disk a data volume lands on, and cleans up
+// after it. Satisfied by *storage.Service, so a database is placed by the same rules — and the same
+// plan binding — as a workspace volume.
+type StorageClassPlacer interface {
+	PlaceVolume(ctx context.Context, workspaceID, serverID uint, requested, dockerName string) (className, devicePath string, err error)
+	ReclaimVolumeDir(ctx context.Context, serverID uint, className, dockerName string)
+}
+
+// SetStorageClasses wires storage-class placement for data volumes (nil-safe; without it every
+// database lands on Docker's data root).
+func (s *Service) SetStorageClasses(p StorageClassPlacer) { s.storage = p }
+
+// dataVolumeSpec is how a database's data volume is created, class-backed or not. Shared by the
+// pre-create at provision time and the idempotent re-ensure at bring-up, so both land on the same
+// disk — a class applied in only one of them would put a recreated volume somewhere else.
+func (s *Service) dataVolumeSpec(inst *models.DatabaseInstance) docker.VolumeSpec {
+	spec := docker.VolumeSpec{
+		Name: inst.VolumeName,
+		Labels: map[string]string{
+			docker.LabelDatabase:  fmt.Sprint(inst.ID),
+			docker.LabelWorkspace: fmt.Sprint(inst.WorkspaceID),
+		},
+		SizeBytes: inst.VolumeSizeBytes,
+	}
+	if s.storage != nil && inst.StorageClassName != "" && inst.StorageClassName != models.DefaultStorageClassName {
+		// Re-derives the path rather than storing it: the class owns where it puts a volume.
+		if _, devicePath, err := s.storage.PlaceVolume(
+			context.Background(), inst.WorkspaceID, inst.ServerID, inst.StorageClassName, inst.VolumeName,
+		); err == nil {
+			spec.DevicePath = devicePath
+		} else {
+			logger.Warn("database volume: storage class unavailable, falling back to the data root",
+				"instance", inst.ID, "class", inst.StorageClassName, "error", err)
+		}
+	}
+	return spec
+}
 
 // SetSecrets wires the Vault writer that auto-provisions a database's connection
 // secrets and cascades their deletion. Optional (request-side only).
@@ -590,7 +631,7 @@ type ConnectionInfo struct {
 
 // Provision creates the instance record (admin credentials and connection
 // details known up front) and enqueues the container bring-up to the worker.
-func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, name string, engine models.DBEngine, version string, volumeSizeBytes int64, res Resources, meta, annotations models.Metadata) (*models.DatabaseInstance, error) {
+func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, name string, engine models.DBEngine, version string, volumeSizeBytes int64, storageClass string, res Resources, meta, annotations models.Metadata) (*models.DatabaseInstance, error) {
 	if volumeSizeBytes < 0 {
 		volumeSizeBytes = 0
 	}
@@ -679,6 +720,16 @@ func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, nam
 	// into apps stay valid for the instance's lifetime.
 	inst.Host = fmt.Sprintf("mb-db-%s-%d", slug.Token(8), inst.ID)
 	inst.VolumeName = inst.Host + "-data"
+	// The volume name is only known now (it carries the id), and the class's directory is named
+	// after it — so placement happens here, once the instance has its identity.
+	if s.storage != nil {
+		className, _, perr := s.storage.PlaceVolume(ctx, workspaceID, serverID, storageClass, inst.VolumeName)
+		if perr != nil {
+			_ = s.repo.Delete(inst.ID)
+			return nil, perr
+		}
+		inst.StorageClassName = className
+	}
 	// Pin the network the instance runs on (the workspace's default network) so
 	// every consumer — bring-up, DDL, size probes, backups, port-forward — agrees
 	// on where to reach it, for the instance's lifetime.
@@ -704,7 +755,7 @@ func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, nam
 	// immediately — independent of the async container bring-up (which, for heavier engines, may lag or fail
 	// to pull). bringUp re-ensures it idempotently.
 	if dc, derr := s.clients.For(serverID); derr == nil {
-		dv, err := dc.CreateVolume(ctx, inst.VolumeName, map[string]string{docker.LabelDatabase: fmt.Sprint(inst.ID), docker.LabelWorkspace: fmt.Sprint(inst.WorkspaceID)}, inst.VolumeSizeBytes)
+		dv, err := dc.CreateVolumeWith(ctx, s.dataVolumeSpec(inst))
 		if err != nil {
 			logger.Warn("failed to pre-create database volume", "id", inst.ID, "volume", inst.VolumeName, "error", err)
 		} else {
@@ -864,7 +915,7 @@ func (s *Service) bringUp(ctx context.Context, inst *models.DatabaseInstance, sp
 	if err != nil {
 		return err
 	}
-	dv, err := dc.CreateVolume(ctx, inst.VolumeName, map[string]string{docker.LabelDatabase: fmt.Sprint(inst.ID), docker.LabelWorkspace: fmt.Sprint(inst.WorkspaceID)}, inst.VolumeSizeBytes)
+	dv, err := dc.CreateVolumeWith(ctx, s.dataVolumeSpec(inst))
 	if err != nil {
 		return fmt.Errorf("create volume: %w", err)
 	}
@@ -1304,6 +1355,11 @@ func (s *Service) Delete(ctx context.Context, inst *models.DatabaseInstance) err
 		if inst.VolumeName != "" {
 			_ = dc.RemoveVolume(ctx, inst.VolumeName, true)
 		}
+	}
+	// A class-backed volume's data lives behind a bind, so removing the Docker volume leaves the
+	// directory. Best-effort, after the volume: a leftover directory is a reclaimable orphan.
+	if s.storage != nil && inst.VolumeName != "" {
+		s.storage.ReclaimVolumeDir(ctx, inst.ServerID, inst.StorageClassName, inst.VolumeName)
 	}
 	if err := s.repo.Delete(inst.ID); err != nil {
 		return err

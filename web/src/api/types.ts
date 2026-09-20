@@ -1640,6 +1640,8 @@ export interface DatabaseInstance {
   display_name: string
   engine: DBEngine
   version: string
+  /** The storage class the data volume was created on; "default" is the engine's own data root. */
+  storage_class?: string
   status: DBStatus
   host: string
   port: number
