@@ -110,7 +110,7 @@ async function confirmRemove() {
   deleting.value = true
   try {
     await routeApi.remove(currentWorkspaceId.value, toDelete.value.id)
-    notify.success('Route deleted')
+    notify.success(t('routes.deleted'))
     toDelete.value = null
     load(currentWorkspaceId.value)
   } catch (e) {
@@ -125,11 +125,11 @@ async function confirmRemove() {
   <div>
     <div class="page-header">
       <div>
-        <h1>Routes</h1>
-        <p class="subtitle">Goma Gateway routes for your applications.</p>
+        <h1>{{ $t('nav.networking.routes') }}</h1>
+        <p class="subtitle">{{ $t('routes.subtitle') }}</p>
       </div>
       <button v-if="ws.canEdit" class="btn btn-primary" :disabled="apps.length === 0" @click="openCreate()">
-        <span class="mdi mdi-plus"></span> New route
+        <span class="mdi mdi-plus"></span> {{ $t('routes.new') }}
       </button>
     </div>
 
@@ -137,21 +137,21 @@ async function confirmRemove() {
       <div v-if="loading && items.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="items.length === 0" class="empty-state">
         <span class="mdi mdi-routes" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No routes</h3>
+        <h3>{{ $t('routes.empty') }}</h3>
         <p>{{ apps.length === 0 ? 'Create an application first, then expose it with a route.' : 'Expose an application on a hostname and path.' }}</p>
-        <button v-if="ws.canEdit && apps.length" class="btn btn-primary mt-4" @click="openCreate()">Create a route</button>
+        <button v-if="ws.canEdit && apps.length" class="btn btn-primary mt-4" @click="openCreate()">{{ $t('routes.create') }}</button>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Route</th><th>Application</th><th>Hosts</th><th>Status</th><th>TLS</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('routes.col.route') }}</th><th>{{ $t('dashboard.col.application') }}</th><th>{{ $t('routes.col.hosts') }}</th><th>Status</th><th>TLS</th><th></th></tr></thead>
           <tbody>
             <tr v-for="r in items" :key="r.id" class="row-clickable" @click="router.push(`/routes/${r.id}`)">
               <td>
                 <span class="cell-title">
                   {{ r.name }}
-                  <span v-if="r.generated" class="badge badge-info" style="margin-left: 8px" title="Auto-generated for external access; managed from the app's External Access">auto</span>
+                  <span v-if="r.generated" class="badge badge-info" style="margin-left: 8px" :title="$t('routes.generatedHint')">auto</span>
                   <span v-if="!r.enabled" class="badge badge-neutral" style="margin-left: 8px">disabled</span>
-                  <span v-if="r.maintenance?.enabled" class="badge badge-warning" style="margin-left: 8px" title="The gateway answers this route itself; the backend is never reached">maintenance</span>
+                  <span v-if="r.maintenance?.enabled" class="badge badge-warning" style="margin-left: 8px" :title="$t('routes.maintenanceHint')">maintenance</span>
                 </span>
                 <div class="cell-sub">{{ r.path }}</div>
               </td>
@@ -161,9 +161,9 @@ async function confirmRemove() {
               <td><span class="badge badge-neutral">{{ r.tls_mode }}</span></td>
               <td class="text-right table-actions" @click.stop>
                 <!-- Generated external-access routes are managed from the app's External Access, not here. -->
-                <button v-if="ws.canEdit && !r.generated" class="btn-icon btn-icon-muted" title="Edit" aria-label="Edit" @click="openEdit(r)"><span class="mdi mdi-pencil-outline"></span></button>
-                <button v-if="ws.canEdit && !r.generated" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="toDelete = r"><span class="mdi mdi-delete-outline"></span></button>
-                <span v-if="r.generated" class="mdi mdi-lock-outline cell-sub" title="Managed from the app's External Access"></span>
+                <button v-if="ws.canEdit && !r.generated" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEdit(r)"><span class="mdi mdi-pencil-outline"></span></button>
+                <button v-if="ws.canEdit && !r.generated" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="toDelete = r"><span class="mdi mdi-delete-outline"></span></button>
+                <span v-if="r.generated" class="mdi mdi-lock-outline cell-sub" :title="$t('routes.managedHint')"></span>
               </td>
             </tr>
           </tbody>

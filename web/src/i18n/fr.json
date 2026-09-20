@@ -6,6 +6,7 @@
     "changeItAnyway": "Modifier quand même",
     "completeRecovery": "Terminer la restauration",
     "confirm": "Confirmer",
+    "copy": "Copier",
     "delete": "Supprimer",
     "demote": "Rétrograder",
     "disable": "Désactiver",
@@ -13,6 +14,7 @@
     "discard": "Abandonner",
     "disconnect": "Déconnecter",
     "drainNode": "Vider le nœud",
+    "edit": "Modifier",
     "forceVerify": "Forcer la vérification",
     "makeDefault": "Définir par défaut",
     "promote": "Promouvoir",
@@ -584,6 +586,75 @@
     "viewAll": "Tout voir",
     "viewApplications": "Voir les applications"
   },
+  "databases": {
+    "col": {
+      "database": "Base de données",
+      "engine": "Moteur",
+      "size": "Taille"
+    },
+    "empty": "Aucune base de données",
+    "emptyHint": "Provisionnez PostgreSQL, MySQL, MariaDB, Redis ou MongoDB en un clic.",
+    "form": {
+      "cpu": "Cœurs CPU",
+      "custom": "Personnalisé",
+      "memory": "Mémoire (Mo)",
+      "memoryAria": "Mémoire en Mo",
+      "namePlaceholder": "ex. : app-db",
+      "noLimit": "Laissez vide pour aucune limite déclarée",
+      "resourcesHint": "Limites du conteneur ; le moteur est ajusté à la mémoire. Laissées vides, elles sont illimitées — ou fixées à la taille par défaut du moteur lorsque le forfait de l’espace de travail plafonne les ressources des bases de données. Elles restent modifiables par la suite.",
+      "version": "Version / tag",
+      "versionHint": "Tag d’image pour {tag}. Laissez vide pour la valeur par défaut.",
+      "volumeHint": "Capacité déclarée du volume de données de l’instance, enregistrée pour le calcul des quotas. L’application stricte dépend du backend de stockage du nœud.",
+      "volumeSize": "Taille du volume de données (Mo)"
+    },
+    "provision": "Provisionner une base de données",
+    "provisioning": "Provisionnement de la base de données…"
+  },
+  "domains": {
+    "addOne": "Ajouter un domaine",
+    "addTxt": "Ajoutez cet enregistrement {txt} chez votre fournisseur DNS, puis cliquez sur Vérifier. La propagation peut prendre quelques minutes.",
+    "addTxtTip": "Astuce : connectez un fournisseur DNS (colonne DNS) pour éviter cette étape.",
+    "bannedHint": "Banni par un administrateur de la plateforme",
+    "col": {
+      "dns": "DNS",
+      "domain": "Domaine"
+    },
+    "deleted": "Domaine supprimé",
+    "dns": {
+      "host": "Nom / Hôte",
+      "type": "Type",
+      "value": "Valeur"
+    },
+    "dnsRecords": "Enregistrements DNS",
+    "editTitle": "Modifier le domaine",
+    "empty": "Aucun domaine",
+    "emptyHint": "Enregistrez un domaine dont vous êtes propriétaire, ajoutez un enregistrement TXT, et les routes pourront le servir avec TLS automatique.",
+    "form": {
+      "defaultTls": "TLS par défaut",
+      "name": "Nom de domaine",
+      "nameFixed": "Le nom est figé une fois le domaine ajouté. Pour le changer, supprimez ce domaine et ajoutez le bon.",
+      "nameHint": "L’apex ou un sous-domaine que vous contrôlez. Un {star} en préfixe est traité comme un joker.",
+      "wildcard": "Joker — couvre aussi {host}"
+    },
+    "grantedByAdmin": "Accordé par un administrateur de la plateforme, non prouvé par DNS",
+    "keepRecord": "C’est l’enregistrement qui prouve la propriété. Laissez-le en place — le retirer dévérifie le domaine et met ses routes hors ligne.",
+    "providerConnected": "Un fournisseur DNS est connecté — Miabi crée et maintient cet enregistrement pour vous.",
+    "registered": "Domaine enregistré",
+    "servingHint": "Servi parce que cet espace de travail est privilégié ; la propriété n’est toujours pas prouvée",
+    "servingUnverified": "Servi parce que cet espace de travail est privilégié — la propriété n’est toujours pas prouvée. Ajoutez l’enregistrement ci-dessous pour la vérifier correctement.",
+    "servingUnverifiedBadge": "servi · non vérifié",
+    "subtitle": "Noms d’hôtes possédés — vérifiez la propriété via DNS et définissez une politique TLS par défaut.",
+    "tls": {
+      "acme": "Automatique (Let’s Encrypt)",
+      "custom": "Certificat personnalisé"
+    },
+    "txtFound": "Enregistrement TXT trouvé",
+    "txtMissing": "Enregistrement TXT introuvable",
+    "updated": "Domaine mis à jour",
+    "verified": "{name} vérifié",
+    "verifiedByAdmin": "Vérifié par un administrateur de la plateforme, pas par DNS. Les routes fonctionnent normalement et cela n’est jamais révoqué automatiquement. Publiez l’enregistrement ci-dessous et la preuve DNS prendra le relais d’elle-même.",
+    "verifyNow": "Vérifier maintenant"
+  },
   "error": {
     "status": {
       "badRequest": "Requête invalide",
@@ -687,6 +758,7 @@
     "common": {
       "aDockerEndpointIsRequired": "Un point de terminaison Docker est requis pour ce mode d’accès",
       "anS3BucketIsRequired": "Un bucket S3 est requis lorsque S3 est activé",
+      "copied": "Copié",
       "copyFailedSelectAndCopy": "Échec de la copie — sélectionnez et copiez manuellement",
       "couldNotCopyId": "Impossible de copier l’identifiant",
       "nodeNotFound": "Nœud introuvable",
@@ -803,6 +875,19 @@
       "label": "Fuseau horaire"
     },
     "title": "Préférences"
+  },
+  "routes": {
+    "col": {
+      "hosts": "Hôtes",
+      "route": "Route"
+    },
+    "create": "Créer une route",
+    "deleted": "Route supprimée",
+    "empty": "Aucune route",
+    "generatedHint": "Générée automatiquement pour l’accès externe ; gérée depuis l’accès externe de l’application",
+    "maintenanceHint": "La passerelle répond elle-même à cette route ; le backend n’est jamais atteint",
+    "managedHint": "Gérée depuis l’accès externe de l’application",
+    "subtitle": "Routes Goma Gateway pour vos applications."
   },
   "shell": {
     "close": "Fermer",

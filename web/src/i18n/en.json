@@ -6,6 +6,7 @@
     "changeItAnyway": "Change it anyway",
     "completeRecovery": "Complete recovery",
     "confirm": "Confirm",
+    "copy": "Copy",
     "delete": "Delete",
     "demote": "Demote",
     "disable": "Disable",
@@ -13,6 +14,7 @@
     "discard": "Discard",
     "disconnect": "Disconnect",
     "drainNode": "Drain node",
+    "edit": "Edit",
     "forceVerify": "Force verify",
     "makeDefault": "Make default",
     "promote": "Promote",
@@ -584,6 +586,75 @@
     "viewAll": "View all",
     "viewApplications": "View applications"
   },
+  "databases": {
+    "col": {
+      "database": "Database",
+      "engine": "Engine",
+      "size": "Size"
+    },
+    "empty": "No databases yet",
+    "emptyHint": "Provision PostgreSQL, MySQL, MariaDB, Redis, or MongoDB in one click.",
+    "form": {
+      "cpu": "CPU cores",
+      "custom": "Custom",
+      "memory": "Memory (MB)",
+      "memoryAria": "Memory in MB",
+      "namePlaceholder": "e.g. app-db",
+      "noLimit": "Leave empty for no declared limit",
+      "resourcesHint": "Container limits; the engine is tuned to the memory. Left empty they are unlimited, or the engine's default size when the workspace's plan caps database resources. They can be changed later.",
+      "version": "Version / tag",
+      "versionHint": "Image tag for {tag}. Leave blank for the default.",
+      "volumeHint": "Declared capacity of the instance's data volume, recorded for quota accounting. Hard enforcement depends on the node's storage backend.",
+      "volumeSize": "Data volume size (MB)"
+    },
+    "provision": "Provision a database",
+    "provisioning": "Database provisioning…"
+  },
+  "domains": {
+    "addOne": "Add a domain",
+    "addTxt": "Add this {txt} record at your DNS provider, then click Verify. Propagation can take a few minutes.",
+    "addTxtTip": "Tip: connect a DNS provider (the DNS column) to skip this step.",
+    "bannedHint": "Banned by a platform administrator",
+    "col": {
+      "dns": "DNS",
+      "domain": "Domain"
+    },
+    "deleted": "Domain deleted",
+    "dns": {
+      "host": "Name / Host",
+      "type": "Type",
+      "value": "Value"
+    },
+    "dnsRecords": "DNS records",
+    "editTitle": "Edit domain",
+    "empty": "No domains yet",
+    "emptyHint": "Register a domain you own, add a TXT record, and routes can serve it with automatic TLS.",
+    "form": {
+      "defaultTls": "Default TLS",
+      "name": "Domain name",
+      "nameFixed": "The name is fixed once a domain is added. To change it, delete this domain and add the correct one.",
+      "nameHint": "The apex or a subdomain you control. A leading {star} is treated as wildcard.",
+      "wildcard": "Wildcard — also cover {host}"
+    },
+    "grantedByAdmin": "Granted by a platform administrator, not proven by DNS",
+    "keepRecord": "This is the record that proves ownership. Keep it in place — removing it un-verifies the domain and takes its routes offline.",
+    "providerConnected": "A DNS provider is connected — Miabi creates and maintains this record for you.",
+    "registered": "Domain registered",
+    "servingHint": "Serving because this workspace is privileged; ownership is still unproven",
+    "servingUnverified": "Serving because this workspace is privileged — ownership is still unproven. Add the record below to verify it properly.",
+    "servingUnverifiedBadge": "serving · unverified",
+    "subtitle": "Owned hostnames — verify ownership over DNS and set a default TLS policy.",
+    "tls": {
+      "acme": "Automatic (Let’s Encrypt)",
+      "custom": "Custom certificate"
+    },
+    "txtFound": "TXT record found",
+    "txtMissing": "TXT record not found",
+    "updated": "Domain updated",
+    "verified": "{name} verified",
+    "verifiedByAdmin": "Verified by a platform administrator, not by DNS. Routes serve normally and this is never revoked automatically. Publish the record below and it converts to a DNS proof on its own.",
+    "verifyNow": "Verify now"
+  },
   "error": {
     "status": {
       "badRequest": "Invalid request",
@@ -687,6 +758,7 @@
     "common": {
       "aDockerEndpointIsRequired": "A Docker endpoint is required for this access mode",
       "anS3BucketIsRequired": "An S3 bucket is required when S3 is enabled",
+      "copied": "Copied",
       "copyFailedSelectAndCopy": "Copy failed — select and copy it manually",
       "couldNotCopyId": "Could not copy ID",
       "nodeNotFound": "Node not found",
@@ -803,6 +875,19 @@
       "label": "Time zone"
     },
     "title": "Preferences"
+  },
+  "routes": {
+    "col": {
+      "hosts": "Hosts",
+      "route": "Route"
+    },
+    "create": "Create a route",
+    "deleted": "Route deleted",
+    "empty": "No routes",
+    "generatedHint": "Auto-generated for external access; managed from the app's External Access",
+    "maintenanceHint": "The gateway answers this route itself; the backend is never reached",
+    "managedHint": "Managed from the app's External Access",
+    "subtitle": "Goma Gateway routes for your applications."
   },
   "shell": {
     "close": "Close",
