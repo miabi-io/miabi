@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { onMounted, onBeforeUnmount, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
@@ -27,6 +28,7 @@ import AppModal from '@/components/AppModal.vue'
 const GATEWAY_CONTAINER = 'mb-node-gateway'
 
 const route = useRoute()
+const { t } = useI18n()
 const router = useRouter()
 const notify = useNotificationStore()
 const id = Number(route.params.id)
@@ -208,7 +210,7 @@ async function load() {
     const list = (await nodesApi.list()).data.data ?? []
     node.value = list.find((n) => n.id === id) ?? null
     if (!node.value) {
-      notify.error('Node not found')
+      notify.error(t('notify.common.nodeNotFound'))
       return
     }
     // Membership is a manager-side fact, but every node's page needs it: the full
@@ -593,7 +595,7 @@ function applyGatewayUpdate(u: GatewayUpdateProgress | null) {
   if (gateway.value) gateway.value.update = u ?? undefined
   if (u?.phase === 'failed' && !gwUpdateNotified) {
     gwUpdateNotified = true
-    notify.error(`Gateway update failed: ${u.error ?? 'unknown error'}`)
+    notify.error(t('notify.nodeDetail.gatewayUpdateFailed', { error: u.error ?? 'unknown error' }))
     void loadGateway()
   } else if (u?.phase === 'done' && !gwUpdateNotified) {
     gwUpdateNotified = true
@@ -744,7 +746,7 @@ async function submitEdit() {
   if (!editForm.value.display_name.trim()) return
   const mode = editForm.value.access_mode || 'agent'
   if (mode === 'api' && !editForm.value.docker_endpoint?.trim()) {
-    notify.error('A Docker endpoint is required for this access mode')
+    notify.error(t('notify.common.aDockerEndpointIsRequired'))
     return
   }
   editSaving.value = true
@@ -805,7 +807,7 @@ async function submitConnectivity() {
   if (!connAck.value) return
   const mode = connForm.value.access_mode || 'agent'
   if (!node.value?.is_local && mode === 'api' && !connForm.value.docker_endpoint?.trim()) {
-    notify.error('A Docker endpoint is required for this access mode')
+    notify.error(t('notify.common.aDockerEndpointIsRequired'))
     return
   }
   connSaving.value = true
@@ -854,7 +856,7 @@ async function confirmDelete() {
 
 async function copy(text: string) {
   if (await copyText(text)) notify.success('Copied')
-  else notify.error('Copy failed — select and copy it manually')
+  else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 function fmtBytes(b?: number) { return b ? (b / 1073741824).toFixed(1) + ' GB' : '—' }
 function fmtSize(n?: number): string {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -7,6 +8,7 @@ import { copyText } from '@/utils/clipboard'
 import AppModal from '@/components/AppModal.vue'
 
 const router = useRouter()
+const { t } = useI18n()
 const route = useRoute()
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -48,7 +50,7 @@ function open(id: number) {
 // propagation so the card's navigate-on-click doesn't fire.
 async function copyId(id: number) {
   if (await copyText(String(id))) notify.success('Workspace ID copied')
-  else notify.error('Could not copy ID')
+  else notify.error(t('notify.common.couldNotCopyId'))
 }
 
 function roleBadgeClass(role?: string) {

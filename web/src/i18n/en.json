@@ -493,6 +493,101 @@
       "title": "Workspace"
     }
   },
+  "notify": {
+    "apiKeys": {
+      "copyFailedSelectAndCopy": "Copy failed — select and copy the key manually"
+    },
+    "appDetail": {
+      "alreadyUpToDateWith": "Already up to date with {source_path}.",
+      "copyFailed": "Copy failed",
+      "couldNotCopyTheManifest": "Could not copy the manifest",
+      "enterADatabaseName": "Enter a database name",
+      "isReservedByMiabiAnd": "\"{key}\" is reserved by Miabi and can't be used as a label",
+      "portIsAlreadyDeclared": "Port {container_port}/{protocol} is already declared",
+      "selectADatabase": "Select a database"
+    },
+    "branding": {
+      "imagesMayBeAtMost": "Images may be at most {formatSize}."
+    },
+    "common": {
+      "aDockerEndpointIsRequired": "A Docker endpoint is required for this access mode",
+      "anS3BucketIsRequired": "An S3 bucket is required when S3 is enabled",
+      "copyFailedSelectAndCopy": "Copy failed — select and copy it manually",
+      "couldNotCopyId": "Could not copy ID",
+      "nodeNotFound": "Node not found",
+      "selectAtLeastOneEvent": "Select at least one event"
+    },
+    "databaseDetail": {
+      "artifactSSkippedNoDatabase": "{count} artifact(s) skipped: {join} — no database of that name here",
+      "chooseADumpFile": "Choose a dump file",
+      "databaseFailedToProvision": "Database failed to provision",
+      "noRecoveryPointsFoundIn": "No recovery points found in the bucket",
+      "restoredFailed": "Restored {count}, failed {count2}: {join}",
+      "upgradeFailed": "Upgrade failed: {error}",
+      "wasAlreadyInThisWorkspace": "{ref} was already in this workspace"
+    },
+    "gitOps": {
+      "selectAGitRepository": "Select a git repository",
+      "someResourcesCouldNotBe": "Some resources could not be removed",
+      "syncFailed": "{name}: {message}"
+    },
+    "gitRepositories": {
+      "gitRepositoryButTheConnection": "Git repository {verb}, but the connection failed"
+    },
+    "jobs": {
+      "aCommandIsRequired": "A command is required",
+      "aScheduleIsRequired": "A schedule is required",
+      "selectAnApplication": "Select an application"
+    },
+    "ldapDirectory": {
+      "aGroupDnIsRequired": "A group DN is required",
+      "displayNameAndHostAre": "Display name and host are required"
+    },
+    "marketplace": {
+      "someResourcesCouldNotBe": "{name}: some resources could not be removed"
+    },
+    "nodeDetail": {
+      "gatewayUpdateFailed": "Gateway update failed: {error}"
+    },
+    "nodeImport": {
+      "importedFailed": "Imported {imported}, {failed} failed"
+    },
+    "nodes": {
+      "communityEditionIsLimitedTo": "Community edition is limited to {value} nodes. Upgrade to Enterprise to add more."
+    },
+    "platformBackup": {
+      "couldNotMatchTheSelected": "Could not match the selected artifacts to this recovery point",
+      "encryptingArtifactsAndSealingThe": "Encrypting artifacts and sealing the identity envelope both need a backup passphrase. ",
+      "noRecoveryPointsFoundIn": "No recovery points found in the backup target",
+      "selectTheDatabaseAndOr": "Select the database and/or at least one volume"
+    },
+    "routeDetail": {
+      "couldNotCopy": "Could not copy"
+    },
+    "routes": {
+      "resyncedWorkspaceSFailed": "Resynced {workspaces} workspace(s); {failed} failed",
+      "thatApplicationIsNotIn": "That application is not in this workspace."
+    },
+    "security": {
+      "copyFailedSelectAndCopy": "Copy failed — select and copy them manually"
+    },
+    "stacks": {
+      "theseHostPortsAreAlready": "These host ports are already in use and were left pending: {lines}. Remap the port on the app, or have an admin review."
+    },
+    "templateInstall": {
+      "isRequired": "{key} is required"
+    },
+    "userDetail": {
+      "disableTheAccountBeforeDeleting": "Disable the account before deleting it",
+      "typeDeleteToConfirm": "Type DELETE to confirm"
+    },
+    "workspaceLayout": {
+      "failedToLoadWorkspaces": "Failed to load workspaces"
+    },
+    "workspaceSettings": {
+      "copyFailedSelectAndCopy": "Copy failed — select and copy the token manually"
+    }
+  },
   "preferences": {
     "accent": {
       "hint": "Applies immediately and follows your account to other browsers. Status colours are unaffected — success, warning and danger keep their own meaning.",

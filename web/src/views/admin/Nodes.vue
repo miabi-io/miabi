@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
@@ -14,6 +15,7 @@ import type { Cluster, Server, ServerConnectivity } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 
 const notify = useNotificationStore()
+const { t } = useI18n()
 const router = useRouter()
 const license = useLicenseStore()
 
@@ -96,7 +98,7 @@ async function submit() {
   if (!form.value.display_name.trim()) return
   const mode = form.value.access_mode || 'agent'
   if (mode === 'api' && !form.value.docker_endpoint?.trim()) {
-    notify.error('A Docker endpoint is required for this access mode')
+    notify.error(t('notify.common.aDockerEndpointIsRequired'))
     return
   }
   creating.value = true
@@ -128,8 +130,7 @@ async function submit() {
     // reveal the in-modal upgrade banner rather than a bare error toast.
     if (decodeApiError(e).code === 'NODE_LIMIT_REACHED') {
       license.load(true)
-      notify.error(
-        `Community edition is limited to ${nodeLimit.value} nodes. Upgrade to Enterprise to add more.`,
+      notify.error(t('notify.nodes.communityEditionIsLimitedTo', { value: nodeLimit.value }),
         { title: 'Node limit reached' },
       )
     } else {
@@ -178,7 +179,7 @@ async function loadAgentCommand(nodeId: number, token: string) {
 
 async function copy(text: string) {
   if (await copyText(text)) notify.success('Copied')
-  else notify.error('Copy failed — select and copy it manually')
+  else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 
 function connectivityLabel(c?: ServerConnectivity): string {

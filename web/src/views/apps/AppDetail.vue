@@ -266,7 +266,7 @@ async function openManifest() {
 
 async function copyManifest() {
   if (!(await copyText(manifestYaml.value))) {
-    notify.error('Could not copy the manifest')
+    notify.error(t('notify.appDetail.couldNotCopyTheManifest'))
     return
   }
   manifestCopied.value = true
@@ -589,7 +589,7 @@ async function resyncPipeline() {
     } else if (res.changed) {
       notify.success(`Pipeline updated from ${res.pipeline?.source_path}.`)
     } else {
-      notify.info(`Already up to date with ${res.pipeline?.source_path}.`)
+      notify.info(t('notify.appDetail.alreadyUpToDateWith', { source_path: res.pipeline?.source_path }))
     }
     await loadRepoPipeline()
   } catch (e) {
@@ -1197,7 +1197,7 @@ function openAddPort() {
 async function addContainerPort() {
   if (!app.value || portForm.value.container_port <= 0) return
   const dup = (app.value.ports || []).some((p: AppPort) => p.container_port === portForm.value.container_port && p.protocol === portForm.value.protocol)
-  if (dup) { notify.error(`Port ${portForm.value.container_port}/${portForm.value.protocol} is already declared`); return }
+  if (dup) { notify.error(t('notify.appDetail.portIsAlreadyDeclared', { container_port: portForm.value.container_port, protocol: portForm.value.protocol })); return }
   syncSettingsForm()
   settingsForm.value.ports.push({ container_port: portForm.value.container_port, protocol: portForm.value.protocol, scheme: portForm.value.scheme, name: portForm.value.name.trim() })
   await saveSettings()
@@ -1582,7 +1582,7 @@ async function setLabel() {
   if (!wid.value) return
   const key = newLabel.value.key.trim()
   if (!key) return
-  if (isReservedLabelKey(key)) { notify.error(`"${key}" is reserved by Miabi and can't be used as a label`); return }
+  if (isReservedLabelKey(key)) { notify.error(t('notify.appDetail.isReservedByMiabiAnd', { key: key })); return }
   const next = { ...containerLabels.value, [key]: newLabel.value.value }
   try {
     await appApi.setLabels(wid.value, appId.value, next)
@@ -1926,7 +1926,7 @@ async function copy(text: string) {
     await navigator.clipboard.writeText(text)
     notify.success('Copied')
   } catch {
-    notify.error('Copy failed')
+    notify.error(t('notify.appDetail.copyFailed'))
   }
 }
 
@@ -1983,12 +1983,12 @@ async function confirmLink() {
   linkBusy.value = true
   try {
     if (linkMode.value === 'new') {
-      if (!linkForm.value.new_name.trim()) { notify.error('Enter a database name'); return }
+      if (!linkForm.value.new_name.trim()) { notify.error(t('notify.appDetail.enterADatabaseName')); return }
       // Create unattached, then attach so the prefix is honored uniformly.
       const created = (await databaseApi.createDatabase(wid.value, selInstance.value.id, linkForm.value.new_name.trim(), null)).data.data
       await appApi.attachDatabase(wid.value, appId.value, created.database.id, prefix)
     } else {
-      if (!linkForm.value.database_id) { notify.error('Select a database'); return }
+      if (!linkForm.value.database_id) { notify.error(t('notify.appDetail.selectADatabase')); return }
       await appApi.attachDatabase(wid.value, appId.value, linkForm.value.database_id, prefix)
     }
     notify.success('Database attached' + changeNote())

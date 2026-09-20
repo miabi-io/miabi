@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, onBeforeUnmount } from 'vue'
 import { adminApi } from '@/api/admin'
 import { useNotificationStore } from '@/stores/notification'
@@ -8,6 +9,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { AdminRoute, RouteSyncStatus, ResyncSummary } from '@/api/types'
 
 const notify = useNotificationStore()
+const { t } = useI18n()
 
 const routes = ref<AdminRoute[]>([])
 const loading = ref(false)
@@ -54,7 +56,7 @@ async function runResync() {
     confirmResync.value = false
     const s = lastSummary.value
     if (s.failed > 0) {
-      notify.error(`Resynced ${s.workspaces} workspace(s); ${s.failed} failed`)
+      notify.error(t('notify.routes.resyncedWorkspaceSFailed', { workspaces: s.workspaces, failed: s.failed }))
     } else {
       notify.success(`Resynced ${s.workspaces} workspace(s) · ${s.live} live, ${s.offline} offline`)
     }

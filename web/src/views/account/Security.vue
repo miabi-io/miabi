@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed, onMounted, ref } from 'vue'
 import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
@@ -8,6 +9,7 @@ import type { TwoFactorSetup } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 
 const auth = useAuthStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 
 const loading = ref(false)
@@ -136,7 +138,7 @@ async function confirmRegenerate() {
 // --- Recovery code helpers ---
 async function copyCodes() {
   if (await copyText(recoveryCodes.value.join('\n'))) notify.success('Copied')
-  else notify.error('Copy failed — select and copy them manually')
+  else notify.error(t('notify.security.copyFailedSelectAndCopy'))
 }
 
 function downloadCodes() {

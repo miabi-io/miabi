@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { registryApi, type RegistryInfo, type RegistryRepository } from '@/api/registry'
@@ -9,6 +10,7 @@ import Pagination from '@/components/Pagination.vue'
 import { copyText } from '@/utils/clipboard'
 
 const route = useRoute()
+const { t } = useI18n()
 const router = useRouter()
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -91,7 +93,7 @@ const { pageable, goToPage } = usePagination(async (page) => {
 
 async function copy(text: string) {
   if (await copyText(text)) notify.success('Copied to clipboard')
-  else notify.error('Copy failed — select and copy it manually')
+  else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 
 watch(wsId, async () => {

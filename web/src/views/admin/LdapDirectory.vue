@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, computed, onMounted } from 'vue'
 import { adminApi } from '@/api/admin'
 import type { LdapConfig, LdapConfigPayload, LdapGroupMapping, LdapMappingPayload } from '@/api/admin'
@@ -9,6 +10,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AppModal from '@/components/AppModal.vue'
 
 const notify = useNotificationStore()
+const { t } = useI18n()
 const licenseStore = useLicenseStore()
 
 // LDAP / Active Directory authentication is an Enterprise feature.
@@ -74,7 +76,7 @@ function openEdit(c: LdapConfig) {
 
 async function save() {
   if (!form.value.display_name.trim() || !form.value.host.trim()) {
-    notify.error('Display name and host are required')
+    notify.error(t('notify.ldapDirectory.displayNameAndHostAre'))
     return
   }
   saving.value = true
@@ -138,7 +140,7 @@ function openMappings(c: LdapConfig) {
 }
 async function addMapping() {
   if (!mappingConfig.value || !mapForm.value.group_dn.trim()) {
-    notify.error('A group DN is required')
+    notify.error(t('notify.ldapDirectory.aGroupDnIsRequired'))
     return
   }
   savingMapping.value = true

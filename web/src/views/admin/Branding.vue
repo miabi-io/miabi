@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed, onMounted, ref } from 'vue'
 import { authApi } from '@/api/auth'
 import { brandingApi, type BrandAssetSlot, type BrandingSettings } from '@/api/resources'
@@ -23,6 +24,7 @@ interface BrandForm {
 }
 
 const notify = useNotificationStore()
+const { t } = useI18n()
 const auth = useAuthStore()
 const theme = useThemeStore()
 const brandStore = useBrandStore()
@@ -146,7 +148,7 @@ async function upload(slot: BrandAssetSlot, event: Event) {
   input.value = ''
   if (!file || !brand.value) return
   if (file.size > brand.value.max_asset_bytes) {
-    notify.error(`Images may be at most ${formatSize(brand.value.max_asset_bytes)}.`)
+    notify.error(t('notify.branding.imagesMayBeAtMost', { formatSize: formatSize(brand.value.max_asset_bytes) }))
     return
   }
   busySlot.value = slot

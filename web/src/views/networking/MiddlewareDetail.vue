@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
@@ -14,6 +15,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { Middleware, Route } from '@/api/types'
 
 const route = useRoute()
+const { t } = useI18n()
 const router = useRouter()
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -24,7 +26,7 @@ const mwId = computed(() => Number(route.params.id))
 
 async function copy(text: string) {
   if (await copyText(text)) notify.success('Copied')
-  else notify.error('Copy failed — select and copy it manually')
+  else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 
 // The callback URL an OIDC policy needs registered with the provider. Miabi is

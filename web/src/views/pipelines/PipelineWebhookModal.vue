@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { pipelineApi } from '@/api/pipelines'
@@ -14,6 +15,7 @@ const props = defineProps<{ open: boolean; pipeline: PipelineDefinition | null }
 const emit = defineEmits<{ close: [] }>()
 
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const { currentWorkspaceId } = storeToRefs(ws)
 
@@ -161,7 +163,7 @@ watch(() => [props.open, props.pipeline?.id], () => { if (props.open) load() }, 
 
 async function copy(text: string, what: string) {
   if (await copyText(text)) notify.success(`${what} copied to clipboard`)
-  else notify.error('Copy failed — select and copy it manually')
+  else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 </script>
 

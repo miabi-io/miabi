@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed, ref, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -13,6 +14,7 @@ import { copyText } from '@/utils/clipboard'
 import type { VolumeDetail, VolumeFile, VolumeBackup } from '@/api/types'
 
 const route = useRoute()
+const { t } = useI18n()
 const router = useRouter()
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -63,7 +65,7 @@ watch([volId, wid], load, { immediate: true })
 async function copy(text: string) {
   if (!text) return
   if (await copyText(text)) notify.success('Copied')
-  else notify.error('Copy failed — select and copy it manually')
+  else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 
 async function remove() {

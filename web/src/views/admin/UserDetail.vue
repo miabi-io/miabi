@@ -304,7 +304,7 @@ const transferChoice = ref<Record<number, number>>({})
 
 function openDeleteDialog() {
   if (!user.value || user.value.active) {
-    notify.error('Disable the account before deleting it')
+    notify.error(t('notify.userDetail.disableTheAccountBeforeDeleting'))
     return
   }
   confirmText.value = ''
@@ -316,7 +316,7 @@ function openDeleteDialog() {
 async function scheduleDeletion() {
   if (!user.value) return
   if (confirmText.value !== 'DELETE') {
-    notify.error('Type DELETE to confirm')
+    notify.error(t('notify.userDetail.typeDeleteToConfirm'))
     return
   }
   const transfers = Object.entries(transferChoice.value)

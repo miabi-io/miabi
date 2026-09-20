@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
@@ -16,6 +17,7 @@ import type {
 } from '@/api/types'
 
 const notify = useNotificationStore()
+const { t } = useI18n()
 const license = useLicenseStore()
 const route = useRoute()
 const router = useRouter()
@@ -428,7 +430,7 @@ async function joinSelectedNodes() {
 
 async function copy(text: string) {
   if (await copyText(text)) notify.success('Copied')
-  else notify.error('Copy failed — select and copy it manually')
+  else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 
 function statusClass(n: Server): string {

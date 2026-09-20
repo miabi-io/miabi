@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -12,6 +13,7 @@ import { workspaceApi } from '@/api/workspaces'
 import type { PendingInvitation } from '@/api/types'
 
 const router = useRouter()
+const { t } = useI18n()
 const route = useRoute()
 const auth = useAuthStore()
 const ws = useWorkspaceStore()
@@ -61,7 +63,7 @@ onMounted(async () => {
   try {
     await ws.fetchWorkspaces()
   } catch {
-    notify.error('Failed to load workspaces')
+    notify.error(t('notify.workspaceLayout.failedToLoadWorkspaces'))
   }
   // Only when the empty state is what the user will actually see; with a
   // workspace present the Dashboard fetches these itself.

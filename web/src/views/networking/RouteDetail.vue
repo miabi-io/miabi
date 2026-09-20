@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
@@ -11,6 +12,7 @@ import type { Route, Application, Middleware } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const route = useRoute()
+const { t } = useI18n()
 const router = useRouter()
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -92,7 +94,7 @@ async function copy(text: string) {
     await navigator.clipboard.writeText(text)
     notify.success('Copied to clipboard')
   } catch {
-    notify.error('Could not copy')
+    notify.error(t('notify.routeDetail.couldNotCopy'))
   }
 }
 

@@ -177,12 +177,11 @@ const payload = computed<PlatformBackupSettingsPayload>(() => ({
 
 async function save() {
   if (form.s3_enabled && !form.s3_bucket.trim()) {
-    notify.error('An S3 bucket is required when S3 is enabled')
+    notify.error(t('notify.common.anS3BucketIsRequired'))
     return
   }
   if ((form.encrypt_backups || form.include_identity) && !havePassphrase.value) {
-    notify.error(
-      'Encrypting artifacts and sealing the identity envelope both need a backup passphrase. ' +
+    notify.error(t('notify.platformBackup.encryptingArtifactsAndSealingThe') +
         'Set one, or turn both off — backups work without either.',
     )
     return
@@ -213,7 +212,7 @@ async function test() {
 
 async function runBackup() {
   if (!backupDB.value && backupVolumes.value.length === 0) {
-    notify.error('Select the database and/or at least one volume')
+    notify.error(t('notify.platformBackup.selectTheDatabaseAndOr'))
     return
   }
   running.value = true
@@ -279,7 +278,7 @@ async function discover() {
   try {
     const res = await platformBackupApi.discover()
     discovered.value = res.data.data ?? []
-    if (!discovered.value.length) notify.info('No recovery points found in the backup target')
+    if (!discovered.value.length) notify.info(t('notify.platformBackup.noRecoveryPointsFoundIn'))
   } catch (e) {
     notify.apiError(e)
   } finally {
@@ -342,7 +341,7 @@ async function runSelectiveRestore() {
       .map((i) => i.id)
 
     if (!ids.length) {
-      notify.error('Could not match the selected artifacts to this recovery point')
+      notify.error(t('notify.platformBackup.couldNotMatchTheSelected'))
       return
     }
     const res = await platformBackupApi.restoreSelected(setID!, {

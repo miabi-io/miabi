@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { adminApi } from '@/api/admin'
@@ -8,6 +9,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { AdminDomainDetail, DomainStatus, RouteStatus } from '@/api/types'
 
 const route = useRoute()
+const { t } = useI18n()
 const router = useRouter()
 const notify = useNotificationStore()
 
@@ -106,7 +108,7 @@ async function unban() {
 
 async function copy(text: string) {
   if (await copyText(text)) notify.success('Copied')
-  else notify.error('Copy failed — select and copy it manually')
+  else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 
 function statusBadge(s: DomainStatus): string {

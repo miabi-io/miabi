@@ -87,9 +87,9 @@ function openRun() {
 async function run() {
   const id = currentWorkspaceId.value
   if (!id) return
-  if (!runForm.value.app) { notify.error('Select an application'); return }
+  if (!runForm.value.app) { notify.error(t('notify.jobs.selectAnApplication')); return }
   const command = splitCommand(runForm.value.command)
-  if (command.length === 0) { notify.error('A command is required'); return }
+  if (command.length === 0) { notify.error(t('notify.jobs.aCommandIsRequired')); return }
   running.value = true
   try {
     const image = runForm.value.image.trim()
@@ -149,10 +149,10 @@ function openEditCron(c: CronJob) {
 async function saveCron() {
   const id = currentWorkspaceId.value
   if (!id) return
-  if (!cronForm.value.app) { notify.error('Select an application'); return }
+  if (!cronForm.value.app) { notify.error(t('notify.jobs.selectAnApplication')); return }
   const command = splitCommand(cronCommandStr.value)
-  if (command.length === 0) { notify.error('A command is required'); return }
-  if (!cronForm.value.schedule.trim()) { notify.error('A schedule is required'); return }
+  if (command.length === 0) { notify.error(t('notify.jobs.aCommandIsRequired')); return }
+  if (!cronForm.value.schedule.trim()) { notify.error(t('notify.jobs.aScheduleIsRequired')); return }
   savingCron.value = true
   const image = cronForm.value.image.trim()
   const input: CronJobInput = {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -18,6 +19,7 @@ import { relativeTime } from '@/utils/time'
 import type { Application } from '@/api/types'
 
 const route = useRoute()
+const { t } = useI18n()
 const router = useRouter()
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -152,7 +154,7 @@ function formatBytes(n?: number) {
 
 async function copy(text: string) {
   if (await copyText(text)) notify.success('Copied to clipboard')
-  else notify.error('Copy failed — select and copy it manually')
+  else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 
 // --- Deletion ---

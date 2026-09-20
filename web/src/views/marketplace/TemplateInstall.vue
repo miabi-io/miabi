@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -12,6 +13,7 @@ import AppModal from '@/components/AppModal.vue'
 import LocationPicker from '@/components/LocationPicker.vue'
 
 const route = useRoute()
+const { t } = useI18n()
 const router = useRouter()
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -191,7 +193,7 @@ function review() {
   if (!entry.value) return
   for (const inp of manifest.value?.inputs ?? []) {
     if (inp.required && !inp.generate && !form.value.inputs[inp.key]) {
-      notify.error(`${inp.label || inp.key} is required`)
+      notify.error(t('notify.templateInstall.isRequired', { key: inp.label || inp.key }))
       return
     }
   }
