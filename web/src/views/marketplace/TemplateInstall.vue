@@ -136,7 +136,11 @@ async function confirmUpgrade() {
   try {
     const res = (await marketplaceApi.upgrade(ws.currentWorkspaceId, i.id, upgradePlan.value.to_version, upgradeInputs.value)).data.data
     const bumped = res.apps_bumped?.length ?? 0
-    notify.success(`Upgraded ${i.template_display_name} to ${res.to_version}${bumped ? ` · ${bumped} app(s) redeployed` : ''}${res.warnings?.length ? ` · ${res.warnings.length} item(s) need manual review` : ''}`)
+    const warnings = res.warnings?.length ?? 0
+    const parts = [t('notify.templateInstall.upgraded', { name: i.template_display_name, version: res.to_version })]
+    if (bumped) parts.push(t('notify.templateInstall.appsRedeployed', bumped))
+    if (warnings) parts.push(t('notify.templateInstall.needManualReview', warnings))
+    notify.success(parts.join(' · '))
     upgradeTarget.value = null
     await Promise.all([loadInstalls(), loadDetail()])
   } catch (e) {
@@ -361,7 +365,7 @@ async function saveEdit() {
   saving.value = true
   try {
     await marketplaceApi.updateTemplate(ws.currentWorkspaceId, entry.value.name, editYaml.value)
-    notify.success('Template updated')
+    notify.success(t('notify.templateInstall.updated'))
     editOpen.value = false
     await loadDetail() // refresh metadata / provisions / inputs
   } catch (e) {
@@ -379,7 +383,7 @@ async function confirmDelete() {
   deleting.value = true
   try {
     await marketplaceApi.deleteTemplate(ws.currentWorkspaceId, entry.value.name)
-    notify.success(`Deleted ${entry.value.display_name}`)
+    notify.success(t('notify.templateInstall.deleted', { name: entry.value.display_name }))
     router.push({ name: 'marketplace' })
   } catch (e) {
     notify.apiError(e)
@@ -470,13 +474,13 @@ function startJobStream(id: string) {
 function onJobDone(job: InstallJob) {
   if (job.status === 'succeeded') {
     const r = job.result
-    notify.success(`Installed ${form.value.name || entry.value?.display_name}`)
+    notify.success(t('notify.templateInstall.installed', { name: form.value.name || entry.value?.display_name }))
     if (r?.stack?.id) router.push({ name: 'stack-detail', params: { id: r.stack.id } })
     else if (r?.apps?.length === 1) router.push({ name: 'app-detail', params: { id: r.apps[0].id } })
     else router.push({ name: 'marketplace' })
   } else {
     installing.value = false
-    notify.error(job.error || 'Install failed')
+    notify.error(job.error || t('notify.templateInstall.installFailed'))
   }
 }
 
@@ -495,18 +499,16 @@ onUnmounted(stopJobStream)
   <div>
     <div class="page-header">
       <div class="header-left">
-        <button class="btn-icon btn-icon-muted" title="Back to marketplace" aria-label="Back to marketplace" @click="router.push({ name: 'marketplace' })">
+        <button class="btn-icon btn-icon-muted" :title="$t('marketplace.backToMarketplace')" :aria-label="$t('marketplace.backToMarketplace')" @click="router.push({ name: 'marketplace' })">
           <span class="mdi mdi-arrow-left"></span>
         </button>
         <h1>{{ entry ? entry.display_name : 'Install template' }}</h1>
       </div>
       <div v-if="entry && isCustom && ws.canEdit" class="header-actions">
         <button class="btn btn-secondary" @click="openEdit">
-          <span class="mdi mdi-pencil-outline"></span> Edit
-        </button>
+          <span class="mdi mdi-pencil-outline"></span>{{ $t('action.edit') }}</button>
         <button class="btn btn-danger" @click="deleteOpen = true">
-          <span class="mdi mdi-delete-outline"></span> Delete
-        </button>
+          <span class="mdi mdi-delete-outline"></span>{{ $t('action.delete') }}</button>
       </div>
     </div>
 
@@ -515,8 +517,8 @@ onUnmounted(stopJobStream)
     <div v-else-if="!entry" class="card">
       <div class="empty-state">
         <span class="mdi mdi-help-circle-outline" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>Template not found</h3>
-        <p>It may have been removed. <a href="#" @click.prevent="router.push({ name: 'marketplace' })">Back to marketplace</a></p>
+        <h3>{{ $t('marketplace.templateNotFound') }}</h3>
+        <i18n-t keypath="marketplace.notFoundHint" tag="p"><template #link><a href="#" @click.prevent="router.push({ name: 'marketplace' })">{{ $t('marketplace.backToMarketplace') }}</a></template></i18n-t>
       </div>
     </div>
 
@@ -540,15 +542,15 @@ onUnmounted(stopJobStream)
           <p class="info-desc">{{ entry.description }}</p>
 
           <div class="info-section">
-            <div class="info-label">Version</div>
-            <select v-if="entry.versions.length > 1" class="form-select" :value="version || entry.version" @change="onVersionChange" aria-label="Version">
+            <div class="info-label">{{ $t('marketplace.version') }}</div>
+            <select v-if="entry.versions.length > 1" class="form-select" :value="version || entry.version" @change="onVersionChange" :aria-label="$t('marketplace.version')">
               <option v-for="v in entry.versions" :key="v" :value="v">v{{ v }}</option>
             </select>
             <div v-else class="info-value">v{{ version || entry.version }}</div>
           </div>
 
           <div class="info-section">
-            <div class="info-label">Provisions</div>
+            <div class="info-label">{{ $t('marketplace.provisions') }}</div>
             <ul class="provision-list">
               <li v-for="(p, i) in provisions" :key="i">
                 <span class="mdi" :class="p.icon"></span>
@@ -558,27 +560,22 @@ onUnmounted(stopJobStream)
                 </span>
               </li>
             </ul>
-            <p v-if="provisions.length" class="field-help" style="margin-top: 6px">
-              Named after the install name. A name already in use gets a numeric suffix.
-            </p>
+            <p v-if="provisions.length" class="field-help" style="margin-top: 6px">{{ $t('marketplace.nameHint') }}</p>
           </div>
 
           <div v-if="entry.author" class="info-section">
-            <div class="info-label">Author</div>
+            <div class="info-label">{{ $t('marketplace.author') }}</div>
             <div class="info-value">{{ entry.author.name }}</div>
             <div class="author-links">
               <a v-if="entry.author.website" :href="entry.author.website" target="_blank" rel="noopener" class="info-link">
-                <span class="mdi mdi-web"></span> Website
-              </a>
+                <span class="mdi mdi-web"></span>{{ $t('marketplace.website') }}</a>
               <a v-if="entry.author.email" :href="`mailto:${entry.author.email}`" class="info-link">
-                <span class="mdi mdi-email-outline"></span> Email
-              </a>
+                <span class="mdi mdi-email-outline"></span>{{ $t('marketplace.email') }}</a>
             </div>
           </div>
 
           <a v-if="entry.homepage" :href="entry.homepage" target="_blank" rel="noopener" class="info-link">
-            <span class="mdi mdi-open-in-new"></span> Homepage
-          </a>
+            <span class="mdi mdi-open-in-new"></span>{{ $t('marketplace.homepage') }}</a>
         </div>
       </aside>
 
@@ -586,10 +583,10 @@ onUnmounted(stopJobStream)
       <section v-if="appsUsing.length" class="card apps-card">
         <div class="card-body">
           <div class="apps-head">
-            <h3 class="form-title" style="margin-bottom: 0">In this workspace</h3>
+            <h3 class="form-title" style="margin-bottom: 0">{{ $t('marketplace.inThisWorkspace') }}</h3>
             <span class="badge badge-neutral">{{ appsUsing.length }}</span>
           </div>
-          <p class="field-help" style="margin: 4px 0 12px">Applications using this template.</p>
+          <p class="field-help" style="margin: 4px 0 12px">{{ $t('marketplace.installsHint') }}</p>
           <ul class="apps-list">
             <li v-for="a in appsUsing" :key="a.id">
               <router-link :to="{ name: 'app-detail', params: { id: a.id } }" class="app-link">
@@ -600,12 +597,10 @@ onUnmounted(stopJobStream)
           <div v-if="upgradableInstall" class="apps-upgrade">
             <span class="badge badge-primary">v{{ upgradableInstall.latest_version }} available</span>
             <button v-if="ws.canEdit" class="btn btn-sm btn-primary" @click="openUpgrade(upgradableInstall)">
-              <span class="mdi mdi-arrow-up-bold-circle-outline"></span> Upgrade
-            </button>
+              <span class="mdi mdi-arrow-up-bold-circle-outline"></span>{{ $t('marketplace.upgrade') }}</button>
           </div>
           <p v-else class="field-help" style="margin-top: 10px">
-            <span class="mdi mdi-check-circle-outline" style="color: var(--success-500)"></span> Up to date
-          </p>
+            <span class="mdi mdi-check-circle-outline" style="color: var(--success-500)"></span>{{ $t('marketplace.upToDate') }}</p>
         </div>
       </section>
       </div>
@@ -613,11 +608,11 @@ onUnmounted(stopJobStream)
       <!-- Right: install form -->
       <section class="card form-card">
         <div class="card-body">
-          <h3 class="form-title">Configure & install</h3>
+          <h3 class="form-title">{{ $t('marketplace.configureInstall') }}</h3>
           <form @submit.prevent="review">
             <div class="form-group">
-              <label class="form-label">Name</label>
-              <input v-model="form.name" class="form-input" :placeholder="entry.display_name" aria-label="Name" />
+              <label class="form-label">{{ $t('apps.form.name') }}</label>
+              <input v-model="form.name" class="form-input" :placeholder="entry.display_name" :aria-label="$t('apps.form.name')" />
               <p class="field-help">Display name for the installed {{ entry.applications > 1 ? 'apps' : 'app' }}.</p>
             </div>
 
@@ -633,14 +628,14 @@ onUnmounted(stopJobStream)
               </select>
               <label v-else-if="inp.type === 'bool'" class="checkbox-row">
                 <input type="checkbox" :checked="form.inputs[inp.key] === 'true'" @change="setBool(inp.key, $event)" />
-                <span class="text-sm">Enabled</span>
+                <span class="text-sm">{{ $t('jobs.enabled') }}</span>
               </label>
               <input
                 v-else
                 v-model="form.inputs[inp.key]"
                 class="form-input"
                 :type="inp.type === 'password' ? 'password' : inp.type === 'number' ? 'number' : 'text'"
-                :placeholder="inp.placeholder || (inp.generate ? 'Auto-generated if left blank' : '')"
+                :placeholder="inp.placeholder || (inp.generate ? $t('marketplace.autoGenerated') : '')"
                 :aria-label="inp.label || inp.key"
               />
               <p v-if="inp.help" class="field-help">{{ inp.help }}</p>
@@ -649,8 +644,8 @@ onUnmounted(stopJobStream)
             <div v-for="db in manifest?.databases ?? []" :key="db.name" class="form-group">
               <label class="form-label">{{ db.engine }} database ({{ db.name }})</label>
               <select v-model="form.placement[db.name]" class="form-select" :disabled="db.engine === 'redis'" :aria-label="`${db.engine} database (${db.name})`">
-                <option v-if="db.engine !== 'redis'" value="auto">Automatic (reuse or create)</option>
-                <option value="dedicated">New dedicated instance</option>
+                <option v-if="db.engine !== 'redis'" value="auto">{{ $t('marketplace.automaticReuseOrCreate') }}</option>
+                <option value="dedicated">{{ $t('marketplace.newDedicatedInstance') }}</option>
                 <option v-for="inst in instancesFor(db.engine)" :key="inst.id" :value="String(inst.id)">
                   Use existing: {{ inst.name }}
                 </option>
@@ -659,8 +654,8 @@ onUnmounted(stopJobStream)
             </div>
 
             <div class="form-actions">
-              <button type="button" class="btn btn-secondary" @click="router.push({ name: 'marketplace' })">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="installing || !ws.canEdit">Install…</button>
+              <button type="button" class="btn btn-secondary" @click="router.push({ name: 'marketplace' })">{{ $t('action.cancel') }}</button>
+              <button type="submit" class="btn btn-primary" :disabled="installing || !ws.canEdit">{{ $t('marketplace.install') }}</button>
             </div>
           </form>
         </div>
@@ -673,15 +668,13 @@ onUnmounted(stopJobStream)
       <AppModal v-if="(confirmOpen && entry) && (!installJob)" @close="confirmOpen = false">
         <div class="modal-header">
           <h3>Install {{ form.name || entry.display_name }}?</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="confirmOpen = false"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="confirmOpen = false"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
-          <p class="text-muted text-sm" style="margin-bottom: 14px">
-            This will create the following in <strong>{{ ws.contextLabel }}</strong>:
-          </p>
+          <i18n-t keypath="marketplace.willCreateHint" tag="p" class="text-muted text-sm" style="margin-bottom: 14px"><template #workspace><strong>{{ ws.contextLabel }}</strong></template></i18n-t>
           <dl class="review">
             <div class="review-row">
-              <dt>Template</dt>
+              <dt>{{ $t('marketplace.template') }}</dt>
               <dd>{{ entry.display_name }} <span class="cell-sub">v{{ version || entry.version }}</span></dd>
             </div>
             <div v-for="(group, kind) in reviewGroups" :key="kind" class="review-row">
@@ -696,7 +689,7 @@ onUnmounted(stopJobStream)
           </dl>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="confirmOpen = false" :disabled="installing">Back</button>
+          <button type="button" class="btn btn-secondary" @click="confirmOpen = false" :disabled="installing">{{ $t('marketplace.back') }}</button>
           <button type="button" class="btn btn-primary" :disabled="installing" @click="install">
             {{ installing ? 'Installing…' : 'Confirm & install' }}
           </button>
@@ -706,7 +699,7 @@ onUnmounted(stopJobStream)
       <AppModal v-else-if="(confirmOpen && entry) && installJob" @close="confirmOpen = false">
         <div class="modal-header">
           <h3>{{ installJob.status === 'failed' ? 'Install failed' : `Installing ${form.name || entry.display_name}` }}</h3>
-          <button v-if="installJob.status !== 'running'" class="btn-icon btn-icon-muted" aria-label="Close" @click="closeProgress">
+          <button v-if="installJob.status !== 'running'" class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="closeProgress">
             <span class="mdi mdi-close"></span>
           </button>
         </div>
@@ -726,7 +719,7 @@ onUnmounted(stopJobStream)
           </div>
         </div>
         <div v-if="installJob.status === 'failed'" class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="closeProgress">Back to form</button>
+          <button type="button" class="btn btn-secondary" @click="closeProgress">{{ $t('marketplace.backToForm') }}</button>
         </div>
       </AppModal>
     </Teleport>
@@ -735,20 +728,17 @@ onUnmounted(stopJobStream)
     <Teleport to="body">
       <AppModal v-if="editOpen" @close="editOpen = false">
         <div class="modal-header">
-          <h3>Edit template</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="editOpen = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('marketplace.editTemplate') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="editOpen = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="saveEdit">
           <div class="modal-body">
-            <p class="text-muted text-sm" style="margin-bottom: 12px">
-              Edit the manifest for this custom template. It is re-validated on save. The
-              <code>name</code> cannot be changed.
-            </p>
+            <i18n-t keypath="marketplace.editManifestHint" tag="p" class="text-muted text-sm" style="margin-bottom: 12px"><template #field><code>name</code></template></i18n-t>
             <div v-if="editLoading" class="loading-page"><span class="spinner"></span></div>
             <textarea v-else v-model="editYaml" class="form-input mono" rows="16" spellcheck="false"></textarea>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="editOpen = false" :disabled="saving">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="editOpen = false" :disabled="saving">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="saving || editLoading || !editYaml.trim()">
               {{ saving ? 'Saving…' : 'Save changes' }}
             </button>
@@ -762,19 +752,16 @@ onUnmounted(stopJobStream)
       <AppModal v-if="deleteOpen && entry" dialog-class="modal-sm" @close="deleteOpen = false">
         <div class="modal-header">
           <h3>Delete {{ entry.display_name }}?</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="deleteOpen = false"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="deleteOpen = false"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
           <div class="danger-note">
             <span class="mdi mdi-alert-outline"></span>
-            <div>
-              This removes the custom template from this workspace. Existing installs are not affected. This cannot
-              be undone.
-            </div>
+            <div>{{ $t('marketplace.deleteHint') }}</div>
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="deleteOpen = false" :disabled="deleting">Cancel</button>
+          <button type="button" class="btn btn-secondary" @click="deleteOpen = false" :disabled="deleting">{{ $t('action.cancel') }}</button>
           <button type="button" class="btn btn-danger" :disabled="deleting" @click="confirmDelete">
             {{ deleting ? 'Deleting…' : 'Delete template' }}
           </button>
@@ -787,11 +774,11 @@ onUnmounted(stopJobStream)
       <AppModal v-if="upgradeTarget" @close="upgradeTarget = null">
         <div class="modal-header">
           <h3>Upgrade {{ upgradeTarget.template_display_name }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="upgradeTarget = null"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="upgradeTarget = null"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
           <div v-if="upgradePlanErr" class="danger-note"><span class="mdi mdi-alert-outline"></span><div>{{ upgradePlanErr }}</div></div>
-          <div v-else-if="!upgradePlan" class="text-muted text-sm">Computing changes…</div>
+          <div v-else-if="!upgradePlan" class="text-muted text-sm">{{ $t('marketplace.computingChanges') }}</div>
           <template v-else>
             <p class="text-sm" style="margin-bottom: 12px">
               <code>v{{ upgradePlan.from_version }}</code> → <code>v{{ upgradePlan.to_version }}</code>
@@ -800,22 +787,21 @@ onUnmounted(stopJobStream)
             <div v-for="a in upgradePlan.apps" :key="a.name" class="upg-app">
               <div class="upg-app-name"><span class="mdi mdi-cube-outline"></span> {{ a.name }}</div>
               <ul class="upg-list">
-                <li v-if="a.image_changed">image <code>{{ a.old_image }}</code> → <code>{{ a.new_image }}</code></li>
-                <li v-for="e in a.env" :key="e.key">
-                  env <code>{{ e.key }}</code>
+                <li v-if="a.image_changed">{{ $t('marketplace.image') }}<code>{{ a.old_image }}</code> → <code>{{ a.new_image }}</code></li>
+                <li v-for="e in a.env" :key="e.key">{{ $t('marketplace.env') }}<code>{{ e.key }}</code>
                   <span class="badge" :class="{ 'badge-success': e.kind === 'added', 'badge-warning': e.kind === 'changed', 'badge-neutral': e.kind === 'removed' }">{{ e.kind }}</span>
-                  <span v-if="e.secret" class="text-muted">· secret</span>
+                  <span v-if="e.secret" class="text-muted">{{ $t('marketplace.secret') }}</span>
                 </li>
-                <li v-for="m in a.new_mounts" :key="m">new mount <code>{{ m }}</code></li>
-                <li v-if="!a.image_changed && !a.env?.length && !a.new_mounts?.length" class="text-muted">no changes</li>
+                <li v-for="m in a.new_mounts" :key="m">{{ $t('marketplace.newMount') }}<code>{{ m }}</code></li>
+                <li v-if="!a.image_changed && !a.env?.length && !a.new_mounts?.length" class="text-muted">{{ $t('marketplace.noChanges') }}</li>
               </ul>
             </div>
 
-            <p v-if="upgradePlan.new_volumes?.length" class="text-sm">New volumes: <code v-for="v in upgradePlan.new_volumes" :key="v" style="margin-right: 4px">{{ v }}</code></p>
-            <p v-if="upgradePlan.new_configs?.length" class="text-sm">New configs: <code v-for="c in upgradePlan.new_configs" :key="c" style="margin-right: 4px">{{ c }}</code></p>
+            <p v-if="upgradePlan.new_volumes?.length" class="text-sm">{{ $t('marketplace.newVolumes') }}<code v-for="v in upgradePlan.new_volumes" :key="v" style="margin-right: 4px">{{ v }}</code></p>
+            <p v-if="upgradePlan.new_configs?.length" class="text-sm">{{ $t('marketplace.newConfigs') }}<code v-for="c in upgradePlan.new_configs" :key="c" style="margin-right: 4px">{{ c }}</code></p>
 
             <div v-if="upgradePlan.new_inputs?.length" class="upg-inputs">
-              <p class="text-sm" style="font-weight: 600">New settings to provide</p>
+              <p class="text-sm" style="font-weight: 600">{{ $t('marketplace.newSettingsToProvide') }}</p>
               <div v-for="inp in upgradePlan.new_inputs" :key="inp.key" class="form-group" style="margin-bottom: 8px">
                 <label class="form-label">{{ inp.label || inp.key }}<span v-if="inp.required" style="color: var(--danger-600)"> *</span></label>
                 <input v-model="upgradeInputs[inp.key]" class="form-input" :placeholder="inp.help || ''" :aria-label="inp.label || inp.key" />
@@ -825,7 +811,7 @@ onUnmounted(stopJobStream)
             <div v-if="upgradePlan.warnings?.length" class="danger-note" style="margin-top: 12px">
               <span class="mdi mdi-alert-outline"></span>
               <div>
-                <strong>Applied manually:</strong>
+                <strong>{{ $t('marketplace.appliedManually') }}</strong>
                 <ul class="upg-list">
                   <li v-for="(wn, idx) in upgradePlan.warnings" :key="idx">{{ wn }}</li>
                 </ul>
@@ -834,7 +820,7 @@ onUnmounted(stopJobStream)
           </template>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" :disabled="upgrading" @click="upgradeTarget = null">Cancel</button>
+          <button type="button" class="btn btn-secondary" :disabled="upgrading" @click="upgradeTarget = null">{{ $t('action.cancel') }}</button>
           <button type="button" class="btn btn-primary" :disabled="!upgradePlan || upgrading || upgradeMissingInput" @click="confirmUpgrade">
             {{ upgrading ? 'Upgrading…' : `Upgrade to v${upgradePlan?.to_version ?? ''}` }}
           </button>

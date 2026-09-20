@@ -18,6 +18,7 @@ import { portBindingApi } from '@/api/portBindings'
 import { capabilityApi } from '@/api/capabilities'
 import { eventsApi } from '@/api/events'
 import { sseUrl } from '@/api/client'
+import { fmtDateTime } from '@/utils/datetime'
 import ResourceIcon from '@/components/ResourceIcon.vue'
 import ShellTerminal from '@/components/ShellTerminal.vue'
 import ContainerProcesses from '@/components/ContainerProcesses.vue'
@@ -41,9 +42,9 @@ import { copyText } from '@/utils/clipboard'
 const secretRefHint = '${{ secrets.NAME }}'
 
 const STRATEGIES: { value: DeployStrategy; label: string; hint: string }[] = [
-  { value: 'recreate', label: 'Recreate', hint: 'Stops the old container before starting the new one (brief downtime).' },
-  { value: 'rolling', label: 'Rolling', hint: 'Starts the new container, waits for health, then retires the old one (no downtime).' },
-  { value: 'canary', label: 'Canary', hint: 'Runs the new version alongside the old and shifts traffic to it gradually.' },
+  { value: 'recreate', label: 'appDetail.strategy.recreate', hint: 'appDetail.strategy.recreateHint' },
+  { value: 'rolling', label: 'appDetail.strategy.rolling', hint: 'appDetail.strategy.rollingHint' },
+  { value: 'canary', label: 'appDetail.strategy.canary', hint: 'appDetail.strategy.canaryHint' },
 ]
 function strategyHint(s: DeployStrategy | undefined): string {
   return STRATEGIES.find((x) => x.value === s)?.hint ?? ''
@@ -61,19 +62,19 @@ const base = computed(() => `/workspaces/${wid.value}/apps/${appId.value}`)
 
 const app = ref<Application | null>(null)
 const tabs = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'events', label: 'Events' },
-  { key: 'logs', label: 'Logs' },
-  { key: 'deployments', label: 'Deployments' },
-  { key: 'environment', label: 'Environment' },
-  { key: 'network', label: 'Network' },
-  { key: 'routes', label: 'Routes' },
-  { key: 'ports', label: 'Ports' },
-  { key: 'volumes', label: 'Volumes' },
-  { key: 'databases', label: 'Databases' },
-  { key: 'releases', label: 'Releases' },
-  { key: 'access', label: 'Access' },
-  { key: 'settings', label: 'Settings' },
+  { key: 'overview', label: 'appDetail.tab.overview' },
+  { key: 'events', label: 'appDetail.tab.events' },
+  { key: 'logs', label: 'appDetail.tab.logs' },
+  { key: 'deployments', label: 'appDetail.tab.deployments' },
+  { key: 'environment', label: 'appDetail.tab.environment' },
+  { key: 'network', label: 'appDetail.tab.network' },
+  { key: 'routes', label: 'appDetail.tab.routes' },
+  { key: 'ports', label: 'appDetail.tab.ports' },
+  { key: 'volumes', label: 'appDetail.tab.volumes' },
+  { key: 'databases', label: 'appDetail.tab.databases' },
+  { key: 'releases', label: 'appDetail.tab.releases' },
+  { key: 'access', label: 'appDetail.tab.access' },
+  { key: 'settings', label: 'appDetail.tab.settings' },
 ] as const
 type TabKey = (typeof tabs)[number]['key']
 // The active tab is mirrored in the URL (?tab=…) so refresh, back/forward, and
@@ -122,7 +123,7 @@ async function saveExternalAccess() {
   extSaving.value = true
   try {
     extAccess.value = (await appApi.setExternalAccess(wid.value, appId.value, [...extSelected.value])).data.data ?? null
-    notify.success('External access updated — routes are being applied')
+    notify.success(t('notify.appDetail.extAccessUpdated'))
   } catch (e) {
     notify.apiError(e, 'Failed to update external access')
   } finally {
@@ -498,8 +499,8 @@ const settingsForm = ref<SettingsForm>(emptySettingsForm())
 
 // --- Source editing -------------------------------------------------------
 const SOURCE_TYPES: { value: 'image' | 'git'; label: string; hint: string; icon: string }[] = [
-  { value: 'image', label: 'Docker image', hint: 'Pull a prebuilt image from a registry', icon: 'mdi-docker' },
-  { value: 'git', label: 'Git repository', hint: 'Build the image from source on a runner', icon: 'mdi-git' },
+  { value: 'image', label: 'appDetail.source.image', hint: 'appDetail.source.imageHint', icon: 'mdi-docker' },
+  { value: 'git', label: 'appDetail.source.git', hint: 'appDetail.source.gitHint', icon: 'mdi-git' },
 ]
 
 // The source is edited separately from the rest of settings, because switching image <-> git is a
@@ -557,11 +558,11 @@ async function saveSource() {
     // Say what else moved. None of it is visible in the app record, and a silent pipeline removal
     // would be discovered only at the next deploy.
     const notes: string[] = []
-    if (res.change.pipeline_removed) notes.push('its repository pipeline was removed')
-    if (res.change.redeploy_required) notes.push('a redeploy is required to apply it')
+    if (res.change.pipeline_removed) notes.push(t('notify.appDetail.pipelineRemoved'))
+    if (res.change.redeploy_required) notes.push(t('notify.appDetail.redeployNeededToApply'))
     const what = res.change.switched
-      ? `Source switched to ${res.change.to === 'git' ? 'Git repository' : 'Docker image'}`
-      : 'Source updated'
+      ? t(res.change.to === 'git' ? 'notify.appDetail.sourceSwitchedGit' : 'notify.appDetail.sourceSwitchedImage')
+      : t('notify.appDetail.sourceUpdated')
     notify.success(notes.length ? `${what} — ${notes.join(', ')}.` : what)
 
     await loadRepoPipeline()
@@ -585,9 +586,9 @@ async function resyncPipeline() {
   try {
     const res = (await appApi.resyncPipeline(wid.value, appId.value)).data.data
     if (res.adopted) {
-      notify.success(`Adopted the pipeline from ${res.pipeline?.source_path} — deploys now run through it.`)
+      notify.success(t('notify.appDetail.pipelineAdopted', { path: res.pipeline?.source_path }))
     } else if (res.changed) {
-      notify.success(`Pipeline updated from ${res.pipeline?.source_path}.`)
+      notify.success(t('notify.appDetail.pipelineUpdated', { path: res.pipeline?.source_path }))
     } else {
       notify.info(t('notify.appDetail.alreadyUpToDateWith', { source_path: res.pipeline?.source_path }))
     }
@@ -607,28 +608,28 @@ function splitCommand(s: string): string[] {
 }
 
 const HEALTHCHECK_TYPES: { value: HealthcheckType; label: string }[] = [
-  { value: 'none', label: 'None' },
-  { value: 'http', label: 'HTTP' },
-  { value: 'command', label: 'Command' },
+  { value: 'none', label: 'appDetail.hc.none' },
+  { value: 'http', label: 'appDetail.hc.http' },
+  { value: 'command', label: 'appDetail.hc.command' },
 ]
 const RESTART_POLICIES: { value: RestartPolicy; label: string }[] = [
-  { value: 'unless-stopped', label: 'Unless stopped' },
-  { value: 'always', label: 'Always' },
-  { value: 'on-failure', label: 'On failure' },
-  { value: 'no', label: 'No' },
+  { value: 'unless-stopped', label: 'appDetail.restart.unlessStopped' },
+  { value: 'always', label: 'appDetail.restart.always' },
+  { value: 'on-failure', label: 'appDetail.restart.onFailure' },
+  { value: 'no', label: 'appDetail.restart.no' },
 ]
 const IMAGE_PULL_POLICIES: { value: ImagePullPolicy; label: string }[] = [
-  { value: 'always', label: 'Always' },
-  { value: 'if-not-present', label: 'If not present' },
-  { value: 'never', label: 'Never' },
+  { value: 'always', label: 'appDetail.settings.pullAlways' },
+  { value: 'if-not-present', label: 'appDetail.settings.pullIfNotPresent' },
+  { value: 'never', label: 'appDetail.settings.pullNever' },
 ]
 // What the control manager may do about this app if its container disappears. Set one app to "off" or
 // "observe" when an automatic redeploy would interrupt you, rather than changing the whole platform.
 const RECONCILE_POLICIES: { value: ReconcilePolicy; label: string }[] = [
-  { value: 'inherit', label: 'Platform default' },
-  { value: 'off', label: 'Leave this app alone' },
-  { value: 'observe', label: 'Report only' },
-  { value: 'enforce', label: 'Redeploy in place' },
+  { value: 'inherit', label: 'appDetail.settings.reconcileDefault' },
+  { value: 'off', label: 'appDetail.settings.reconcileIgnore' },
+  { value: 'observe', label: 'appDetail.settings.reconcileReport' },
+  { value: 'enforce', label: 'appDetail.settings.reconcileRedeploy' },
 ]
 const MB = 1024 * 1024
 // Cap guards (0 cap = unlimited). Used to disable Save + show inline errors.
@@ -656,7 +657,7 @@ async function invalidateBuildCache() {
   invalidatingCache.value = true
   try {
     await appApi.invalidateBuildCache(wid.value, appId.value)
-    notify.success('Build cache invalidated', { detail: 'The next build rebuilds every layer.' })
+    notify.success(t('notify.appDetail.cacheInvalidated'), { detail: t('notify.appDetail.cacheInvalidatedDetail') })
   } catch (e) {
     notify.apiError(e, 'Could not invalidate the build cache')
   } finally {
@@ -697,7 +698,7 @@ async function loadRepoPipeline() {
  */
 function followDeploy(res: Deployment | PipelineRunAccepted, message: string) {
   if (isPipelineRun(res)) {
-    notify.success(`${message} — pipeline run #${res.run.number} started`)
+    notify.success(`${message} — ${t('notify.appDetail.pipelineRunStarted', { number: res.run.number })}`)
     router.push({ name: 'pipeline-run', params: { id: res.run.pipeline_id, runId: res.run.id } })
     return
   }
@@ -738,10 +739,10 @@ async function toggleCanaryPause() {
   try {
     if (canaryPaused.value) {
       await appApi.resumeCanary(wid.value, appId.value)
-      notify.success('Canary rollout resumed')
+      notify.success(t('notify.appDetail.canaryResumed'))
     } else {
       await appApi.pauseCanary(wid.value, appId.value)
-      notify.success('Canary rollout paused')
+      notify.success(t('notify.appDetail.canaryPaused'))
     }
     loadApp()
   } catch (e) {
@@ -765,7 +766,7 @@ async function promoteCanary() {
   canaryBusy.value = true
   try {
     const dep = (await appApi.promoteCanary(wid.value, appId.value)).data.data
-    notify.success('Promoting canary…')
+    notify.success(t('notify.appDetail.canaryPromoting'))
     tab.value = 'deployments'
     streamLogs(dep.id)
   } catch (e) { notify.apiError(e) } finally { canaryBusy.value = false }
@@ -782,7 +783,7 @@ async function abortCanary() {
   canaryBusy.value = true
   try {
     await appApi.abortCanary(wid.value, appId.value)
-    notify.success('Canary aborted')
+    notify.success(t('notify.appDetail.canaryAborted'))
     loadApp()
   } catch (e) { notify.apiError(e) } finally { canaryBusy.value = false }
 }
@@ -1059,7 +1060,7 @@ const deployVerb = computed(() => (isDeployed.value ? 'Redeploy' : 'Deploy'))
 // changeNote: config changes no longer auto-deploy — a deployed app is flagged
 // as needing a redeploy, which the user applies manually.
 function changeNote(): string {
-  return isDeployed.value ? ' — redeploy required' : ''
+  return isDeployed.value ? ` — ${t('notify.appDetail.redeployRequired')}` : ''
 }
 
 // startEventsStream loads the event history and opens a single live SSE shared
@@ -1172,7 +1173,7 @@ async function saveSettings() {
       healthcheck_start_period_seconds: settingsForm.value.hc_start_period,
     })).data.data
     syncSettingsForm()
-    notify.success('Settings saved' + changeNote())
+    notify.success(t('notify.appDetail.settingsSaved') + changeNote())
     loadApp() // refresh status + redeploy_required for the header
   } catch (e) {
     notify.apiError(e)
@@ -1221,12 +1222,12 @@ async function requestBind() {
       // Auto-approved (privileged): the port only publishes on the next deploy.
       await loadApp() // refresh the "redeploy required" header indicator
       if (isDeployed.value && await askConfirm({ title: t('confirm.title.appDetail.hostPortBound'), message: t('confirm.message.appDetail.thePortOnlyPublishes'), confirmLabel: t('confirm.label.appDetail.redeployNow'), cancelLabel: t('confirm.label.appDetail.later') })) {
-        followDeploy((await appApi.deploy(wid.value, appId.value, {})).data.data, 'Redeploying to publish the port')
+        followDeploy((await appApi.deploy(wid.value, appId.value, {})).data.data, t('notify.appDetail.redeployToPublish'))
       } else {
-        notify.success(`Host port bound${changeNote()}`)
+        notify.success(t('notify.appDetail.portBound') + changeNote())
       }
     } else {
-      notify.success('Host binding requested — pending admin approval')
+      notify.success(t('notify.appDetail.bindingRequested'))
     }
   } catch (e) {
     notify.apiError(e, 'Failed to request binding')
@@ -1261,9 +1262,9 @@ async function removeBind(b: PortBinding) {
     await portBindingApi.cancel(wid.value, b.id)
     appBindings.value = (await portBindingApi.listByApp(wid.value, appId.value)).data.data ?? []
     if (approved && await askConfirm({ title: t('confirm.title.appDetail.bindingReleased'), message: t('confirm.message.appDetail.redeployNowToFree'), confirmLabel: t('confirm.label.appDetail.redeployNow'), cancelLabel: t('confirm.label.appDetail.later') })) {
-      followDeploy((await appApi.deploy(wid.value, appId.value, {})).data.data, 'Redeploying to free the port')
+      followDeploy((await appApi.deploy(wid.value, appId.value, {})).data.data, t('notify.appDetail.redeployToFree'))
     } else {
-      notify.success(approved ? 'Binding released — redeploy the app to free the port' : 'Binding cancelled')
+      notify.success(t(approved ? 'notify.appDetail.bindingReleased' : 'notify.appDetail.bindingCancelled'))
     }
   } catch (e) {
     notify.apiError(e)
@@ -1464,7 +1465,7 @@ async function confirmDeploy() {
     }
     const res = (await appApi.deploy(wid.value, appId.value, opts)).data.data
     showDeploy.value = false
-    followDeploy(res, 'Deployment started')
+    followDeploy(res, t('notify.appDetail.deploymentStarted'))
   } catch (e) {
     notify.apiError(e, 'Deploy failed')
   } finally {
@@ -1477,7 +1478,7 @@ async function activate(releaseId: number) {
   if (!wid.value) return
   try {
     const dep = (await appApi.rollback(wid.value, appId.value, releaseId)).data.data
-    notify.success('Redeploying release…')
+    notify.success(t('notify.appDetail.redeployingRelease'))
     tab.value = 'deployments'
     streamLogs(dep.id)
   } catch (e) { notify.apiError(e) }
@@ -1488,7 +1489,7 @@ async function togglePin(r: Release) {
   releaseBusy.value = r.id
   try {
     await appApi.pinRelease(wid.value, appId.value, r.id, !r.pinned)
-    notify.success(r.pinned ? 'Release unpinned' : 'Release pinned')
+    notify.success(t(r.pinned ? 'notify.appDetail.releaseUnpinned' : 'notify.appDetail.releasePinned'))
     loadTab()
   } catch (e) {
     notify.apiError(e)
@@ -1508,7 +1509,7 @@ async function deleteRelease(r: Release) {
   releaseBusy.value = r.id
   try {
     await appApi.deleteRelease(wid.value, appId.value, r.id)
-    notify.success('Release deleted')
+    notify.success(t('notify.appDetail.releaseDeleted'))
     if (releaseDetail.value?.id === r.id) releaseDetail.value = null
     loadTab()
   } catch (e) {
@@ -1535,7 +1536,7 @@ async function saveEnv(v: { key: string; value: string; secret: boolean }) {
   savingEnv.value = true
   try {
     await appApi.setEnvVar(wid.value, appId.value, v.key, v.value, v.secret)
-    notify.success((editingEnvKey.value ? 'Variable updated' : 'Variable added') + changeNote())
+    notify.success(t(editingEnvKey.value ? 'notify.appDetail.varUpdated' : 'notify.appDetail.varAdded') + changeNote())
     showEnvModal.value = false
     loadApp()
     loadTab()
@@ -1588,7 +1589,7 @@ async function setLabel() {
     await appApi.setLabels(wid.value, appId.value, next)
     containerLabels.value = next
     newLabel.value = { key: '', value: '' }
-    notify.success('Label set' + changeNote())
+    notify.success(t('notify.appDetail.labelSet') + changeNote())
     loadApp() // refresh the "redeploy required" header badge
   } catch (e) { notify.apiError(e) }
 }
@@ -1600,7 +1601,7 @@ async function delLabel(key: string) {
   try {
     await appApi.setLabels(wid.value, appId.value, next)
     containerLabels.value = next
-    notify.success('Label removed' + changeNote())
+    notify.success(t('notify.appDetail.labelRemoved') + changeNote())
     loadApp()
   } catch (e) { notify.apiError(e) }
 }
@@ -1631,7 +1632,7 @@ async function importEnv() {
   importingEnv.value = true
   try {
     const res = (await appApi.importEnvVars(wid.value, appId.value, envImport.value.content, envImport.value.secret)).data.data
-    notify.success(`Imported ${res?.imported ?? 0} variable(s)` + changeNote())
+    notify.success(t('notify.common.varsImported', res?.imported ?? 0) + changeNote())
     showEnvImport.value = false
     envImport.value = { content: '', secret: false }
     loadApp()
@@ -1644,7 +1645,7 @@ async function attachVolume() {
   if (!wid.value || !mount.value.volume_id || !mount.value.path) return
   try {
     await appApi.attachVolume(wid.value, appId.value, mount.value.volume_id, mount.value.path)
-    notify.success('Volume attached' + changeNote())
+    notify.success(t('notify.appDetail.volumeAttached') + changeNote())
     mount.value = { volume_id: 0, path: '' }
     loadApp()
   } catch (e) { notify.apiError(e) }
@@ -1711,7 +1712,7 @@ async function attachConfig() {
       configMount.value.path.trim(),
       configMount.value.whole ? '' : configMount.value.key,
     )
-    notify.success('Config mounted' + changeNote())
+    notify.success(t('notify.appDetail.configMounted') + changeNote())
     configMount.value = { config_id: null, whole: true, key: '', path: '' }
     loadApp()
   } catch (e) { notify.apiError(e) }
@@ -1722,7 +1723,7 @@ async function detachConfig(configId: number, key: string) {
   if (!wid.value) return
   try {
     await appApi.detachConfig(wid.value, appId.value, configId, key)
-    notify.success('Config mount removed' + changeNote())
+    notify.success(t('notify.appDetail.configUnmounted') + changeNote())
     loadApp()
   } catch (e) { notify.apiError(e) }
 }
@@ -1761,7 +1762,7 @@ async function attachHostMount() {
   if (!wid.value || !hostMount.value.preset) return
   try {
     await appApi.attachHostMount(wid.value, appId.value, hostMount.value.preset, hostMount.value.path, hostMount.value.read_only)
-    notify.success('Host mount attached' + changeNote())
+    notify.success(t('notify.appDetail.hostMountAttached') + changeNote())
     hostMount.value = { preset: '', path: '', read_only: false }
     loadApp()
   } catch (e) { notify.apiError(e) }
@@ -1783,7 +1784,7 @@ async function removeApp() {
   deleting.value = true
   try {
     await appApi.remove(wid.value, appId.value)
-    notify.success('Application deleted')
+    notify.success(t('notify.appDetail.appDeleted'))
     router.push('/apps')
   } catch (e) {
     notify.apiError(e)
@@ -1861,7 +1862,7 @@ async function scaleBy(delta: number) {
   scaleBusy.value = true
   try {
     await appApi.scale(wid.value, appId.value, next)
-    notify.success(`Scaling to ${next} replica(s)`)
+    notify.success(t('notify.appDetail.scaling', next))
     await loadApp()
     await loadLiveStatus()
   } catch (e) {
@@ -1880,15 +1881,15 @@ async function lifecycle(action: 'start' | 'stop' | 'restart') {
     // Start/Restart on an app with pending changes returns a deployment (a
     // redeploy) — follow its logs; otherwise it's a plain lifecycle action.
     if (data && 'id' in data) {
-      notify.success('Redeploying with the latest changes')
+      notify.success(t('notify.appDetail.redeployingLatest'))
       tab.value = 'deployments'
       streamLogs(data.id)
     } else {
-      notify.success(`Application ${action} requested`)
+      notify.success(t(`notify.appDetail.${action}Requested`))
     }
     await loadApp()
   } catch (e) {
-    notify.apiError(e, `Failed to ${action}`)
+    notify.apiError(e, t(`notify.appDetail.${action}Failed`))
   } finally {
     lifecycleBusy.value = ''
   }
@@ -1924,7 +1925,7 @@ async function copy(text: string) {
   if (!text) return
   try {
     await navigator.clipboard.writeText(text)
-    notify.success('Copied')
+    notify.success(t('notify.common.copied'))
   } catch {
     notify.error(t('notify.appDetail.copyFailed'))
   }
@@ -1991,7 +1992,7 @@ async function confirmLink() {
       if (!linkForm.value.database_id) { notify.error(t('notify.appDetail.selectADatabase')); return }
       await appApi.attachDatabase(wid.value, appId.value, linkForm.value.database_id, prefix)
     }
-    notify.success('Database attached' + changeNote())
+    notify.success(t('notify.appDetail.dbAttached') + changeNote())
     linkModal.value = false
     appDatabases.value = (await appApi.databases(wid.value, appId.value)).data.data ?? []
     loadApp()
@@ -2002,7 +2003,7 @@ async function detachDatabase(d: AppDatabase) {
   if (!wid.value) return
   try {
     await appApi.detachDatabase(wid.value, appId.value, d.id)
-    notify.success('Database detached' + changeNote())
+    notify.success(t('notify.appDetail.dbDetached') + changeNote())
     appDatabases.value = (await appApi.databases(wid.value, appId.value)).data.data ?? []
     loadApp()
   } catch (e) { notify.apiError(e) }
@@ -2014,8 +2015,7 @@ async function detachDatabase(d: AppDatabase) {
     <div class="page-header">
       <div>
         <button class="btn btn-ghost btn-sm" @click="router.push('/apps')">
-          <span class="mdi mdi-arrow-left"></span> Applications
-        </button>
+          <span class="mdi mdi-arrow-left"></span>{{ $t('appDetail.applications') }}</button>
         <div class="flex items-center gap-3" style="margin-top: 8px">
           <ResourceIcon :src="app.icon" mdi="mdi-cube-outline" :name="app.name" :size="44" />
           <div>
@@ -2037,16 +2037,15 @@ async function detachDatabase(d: AppDatabase) {
                 >{{ template.name }}<template v-if="template.version"> v{{ template.version }}</template></router-link>
               </template>
               <template v-else-if="managedBy === 'gitops'"> · <span class="mdi mdi-source-branch"></span>
-                <router-link class="prov-link" :to="{ name: 'gitops' }" title="Managed by GitOps">GitOps</router-link>
+                <router-link class="prov-link" :to="{ name: 'gitops' }" :title="$t('appDetail.managedByGitops')">{{ $t('appDetail.gitops') }}</router-link>
               </template>
             </div>
           </div>
         </div>
       </div>
       <div class="flex items-center gap-3 app-header-actions">
-        <span v-if="app.redeploy_required" class="badge badge-warning" title="Configuration changed since the last deploy — click Redeploy (or Restart) to apply it">
-          <span class="mdi mdi-alert-outline"></span> Redeploy required
-        </span>
+        <span v-if="app.redeploy_required" class="badge badge-warning" :title="$t('appDetail.redeployRequired')">
+          <span class="mdi mdi-alert-outline"></span>{{ $t('stacks.redeployRequired') }}</span>
         <span class="status-wrap">
           <span class="badge badge-dot" :class="badge(displayStatus)" :title="liveStatus?.container_state ? `container: ${liveStatus.container_state}` : ''">{{ displayStatus }}</span>
           <span v-if="statusDetail" class="text-muted text-sm status-detail">{{ statusDetail }}</span>
@@ -2054,30 +2053,25 @@ async function detachDatabase(d: AppDatabase) {
         <button
           class="btn btn-secondary btn-sm"
           :disabled="app.status !== 'running'"
-          :title="app.status === 'running' ? 'View live container processes' : 'Start the container to view processes'"
+          :title="$t(app.status === 'running' ? 'appDetail.viewProcesses' : 'appDetail.startToViewProcesses')"
           @click="processesOpen = true"
         >
-          <span class="mdi mdi-format-list-bulleted"></span> Processes
-        </button>
+          <span class="mdi mdi-format-list-bulleted"></span>{{ $t('appDetail.processes') }}</button>
         <template v-if="ws.canEdit">
-          <button v-if="app.status === 'running'" class="btn btn-secondary btn-sm" :disabled="lifecycleBusy !== ''" title="Stop" @click="lifecycle('stop')">
-            <span class="mdi mdi-stop"></span> Stop
-          </button>
-          <button v-else class="btn btn-secondary btn-sm" :disabled="lifecycleBusy !== ''" title="Start" @click="lifecycle('start')">
-            <span class="mdi mdi-play"></span> Start
-          </button>
-          <button class="btn btn-secondary btn-sm" :disabled="lifecycleBusy !== ''" title="Restart" @click="lifecycle('restart')">
-            <span class="mdi" :class="lifecycleBusy === 'restart' ? 'mdi-loading mdi-spin' : 'mdi-restart'"></span> Restart
-          </button>
+          <button v-if="app.status === 'running'" class="btn btn-secondary btn-sm" :disabled="lifecycleBusy !== ''" :title="$t('appDetail.stop')" @click="lifecycle('stop')">
+            <span class="mdi mdi-stop"></span>{{ $t('appDetail.stop') }}</button>
+          <button v-else class="btn btn-secondary btn-sm" :disabled="lifecycleBusy !== ''" :title="$t('appDetail.start')" @click="lifecycle('start')">
+            <span class="mdi mdi-play"></span>{{ $t('appDetail.start') }}</button>
+          <button class="btn btn-secondary btn-sm" :disabled="lifecycleBusy !== ''" :title="$t('appDetail.restartAction')" @click="lifecycle('restart')">
+            <span class="mdi" :class="lifecycleBusy === 'restart' ? 'mdi-loading mdi-spin' : 'mdi-restart'"></span>{{ $t('appDetail.restartAction') }}</button>
           <button
             v-if="ws.isWorkspaceAdmin && shellExecAllowed"
             class="btn btn-secondary btn-sm"
             :disabled="app.status !== 'running'"
-            :title="app.status === 'running' ? 'Open a shell in the container' : 'Start the container to open a shell'"
+            :title="$t(app.status === 'running' ? 'appDetail.openShell' : 'appDetail.startToOpenShell')"
             @click="shellOpen = true"
           >
-            <span class="mdi mdi-console-line"></span> Shell
-          </button>
+            <span class="mdi mdi-console-line"></span>{{ $t('appDetail.shell') }}</button>
         </template>
         <button v-if="ws.canEdit" class="btn btn-primary" @click="openDeploy">
           <span class="mdi mdi-rocket-launch-outline"></span> {{ deployVerb }}
@@ -2087,7 +2081,7 @@ async function detachDatabase(d: AppDatabase) {
 
     <!-- Header strip is a shortcut into the rollout; on the Deployments tab the
          full canary card is already shown, so it would be redundant there. -->
-    <button v-if="canaryActive && tab !== 'deployments'" class="canary-strip" title="Canary rollout in progress — click to manage" @click="tab = 'deployments'">
+    <button v-if="canaryActive && tab !== 'deployments'" class="canary-strip" :title="$t('appDetail.canaryInProgress')" @click="tab = 'deployments'">
       <span class="mdi mdi-rocket-launch-outline"></span>
       <span class="canary-strip-text">Canary {{ canaryWeight }}%</span>
       <span class="split-bar canary-strip-bar">
@@ -2097,42 +2091,42 @@ async function detachDatabase(d: AppDatabase) {
     </button>
 
     <div class="tabs">
-      <button v-for="t in tabs" :key="t.key" class="tab" :class="{ active: tab === t.key }" @click="tab = t.key">{{ t.label }}</button>
+      <button v-for="item in tabs" :key="item.key" class="tab" :class="{ active: tab === item.key }" @click="tab = item.key">{{ $t(item.label) }}</button>
     </div>
 
     <!-- Overview -->
     <div v-if="tab === 'overview'">
       <div v-if="overview" class="card summary mb-4">
         <div class="summary-item">
-          <span class="summary-label">Status</span>
+          <span class="summary-label">{{ $t('dashboard.col.status') }}</span>
           <span class="badge badge-dot" :class="badge(displayStatus)">{{ displayStatus }}</span>
         </div>
         <div v-if="isService" class="summary-item">
-          <span class="summary-label">Replicas</span>
+          <span class="summary-label">{{ $t('appDetail.replicas') }}</span>
           <span class="summary-value" style="display: inline-flex; align-items: center; gap: 6px">
-            <button class="btn-icon btn-icon-muted" :disabled="scaleBusy || replicaTarget <= 1" title="Scale down" aria-label="Scale down" @click="scaleBy(-1)"><span class="mdi mdi-minus"></span></button>
+            <button class="btn-icon btn-icon-muted" :disabled="scaleBusy || replicaTarget <= 1" :title="$t('appDetail.scaleDown')" :aria-label="$t('appDetail.scaleDown')" @click="scaleBy(-1)"><span class="mdi mdi-minus"></span></button>
             <span><span class="mdi mdi-server-network"></span> {{ liveStatus?.service_running_tasks ?? 0 }}/{{ replicaTarget }}</span>
-            <button class="btn-icon btn-icon-muted" :disabled="scaleBusy" title="Scale up" aria-label="Scale up" @click="scaleBy(1)"><span class="mdi mdi-plus"></span></button>
+            <button class="btn-icon btn-icon-muted" :disabled="scaleBusy" :title="$t('appDetail.scaleUp')" :aria-label="$t('appDetail.scaleUp')" @click="scaleBy(1)"><span class="mdi mdi-plus"></span></button>
           </span>
         </div>
         <!-- Real replica placement: where the Swarm scheduler actually put the
              running tasks, not the single node the app was created against. -->
         <div v-if="isService && nodePlacement.length" class="summary-item">
-          <span class="summary-label">Nodes</span>
+          <span class="summary-label">{{ $t('appDetail.nodes') }}</span>
           <span class="summary-value" :title="`Running on ${nodePlacementLabel}`">
             <span class="mdi mdi-server-network"></span> {{ nodePlacementLabel }}
           </span>
         </div>
         <div v-if="liveStatus?.running && liveStatus.uptime_seconds > 0" class="summary-item">
-          <span class="summary-label">Uptime</span>
+          <span class="summary-label">{{ $t('appDetail.uptime') }}</span>
           <span class="summary-value"><span class="mdi mdi-clock-outline"></span> {{ fmtUptime(liveStatus.uptime_seconds) }}</span>
         </div>
         <div v-if="liveStatus?.health" class="summary-item">
-          <span class="summary-label">Health</span>
+          <span class="summary-label">{{ $t('appDetail.health') }}</span>
           <span class="badge" :class="healthBadge(liveStatus.health)">{{ liveStatus.health }}</span>
         </div>
         <div v-if="liveStatus && liveStatus.restart_count > 0" class="summary-item">
-          <span class="summary-label">Restarts</span>
+          <span class="summary-label">{{ $t('appDetail.restarts') }}</span>
           <span class="summary-value">{{ liveStatus.restart_count }}×</span>
         </div>
         <div class="summary-item">
@@ -2147,34 +2141,34 @@ async function detachDatabase(d: AppDatabase) {
           </span>
         </div>
         <div class="summary-item clickable" @click="tab = 'releases'">
-          <span class="summary-label">Current release</span>
+          <span class="summary-label">{{ $t('appDetail.currentRelease') }}</span>
           <span class="summary-value">{{ overview.current_version ? `v${overview.current_version}` : '—' }}</span>
         </div>
         <div class="summary-item clickable" @click="tab = 'volumes'">
-          <span class="summary-label">Volumes</span>
+          <span class="summary-label">{{ $t('appDetail.volumes') }}</span>
           <span class="summary-value">{{ overview.volumes_count }}</span>
         </div>
         <div class="summary-item clickable" @click="tab = 'routes'">
-          <span class="summary-label">Routes</span>
+          <span class="summary-label">{{ $t('appDetail.routes') }}</span>
           <span class="summary-value">{{ overview.routes_count }}</span>
         </div>
         <div class="summary-item clickable" @click="tab = 'network'">
-          <span class="summary-label">Networks</span>
+          <span class="summary-label">{{ $t('appDetail.networks') }}</span>
           <span class="summary-value">{{ overview.networks_count }}</span>
         </div>
         <div class="summary-item clickable" @click="tab = 'environment'">
-          <span class="summary-label">Env vars</span>
+          <span class="summary-label">{{ $t('appDetail.envVars') }}</span>
           <span class="summary-value">{{ overview.env_count }}</span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">Created</span>
+          <span class="summary-label">{{ $t('dashboard.col.created') }}</span>
           <span class="summary-value">{{ overview.created_at ? new Date(overview.created_at).toLocaleDateString() : '—' }}</span>
         </div>
       </div>
 
       <h2 class="section-title">
-        Resource usage
-        <span v-if="metrics" class="live-tag"><span class="live-dot"></span> live</span>
+        {{ $t('appDetail.metrics.resourceUsage') }}
+        <span v-if="metrics" class="live-tag"><span class="live-dot"></span> {{ $t('appDetail.metrics.live') }}</span>
       </h2>
       <div v-if="metrics" class="stats-grid">
         <div class="stat-card">
@@ -2183,7 +2177,7 @@ async function detachDatabase(d: AppDatabase) {
           <div class="usage-bar"><div class="usage-fill" :class="usageTone(metrics.cpu_percent)" :style="{ width: Math.min(100, metrics.cpu_percent) + '%' }"></div></div>
         </div>
         <div class="stat-card">
-          <div class="stat-header"><span class="stat-label">Memory</span><span class="stat-icon stat-icon-info"><span class="mdi mdi-memory"></span></span></div>
+          <div class="stat-header"><span class="stat-label">{{ $t('appDetail.memory') }}</span><span class="stat-icon stat-icon-info"><span class="mdi mdi-memory"></span></span></div>
           <div class="stat-value">{{ fmtSize(metrics.memory_usage_bytes) }}</div>
           <div class="usage-bar"><div class="usage-fill" :class="usageTone(metrics.memory_percent)" :style="{ width: Math.min(100, metrics.memory_percent) + '%' }"></div></div>
           <div class="stat-sub">
@@ -2191,34 +2185,34 @@ async function detachDatabase(d: AppDatabase) {
           </div>
         </div>
         <div class="stat-card">
-          <div class="stat-header"><span class="stat-label">Net in</span><span class="stat-icon stat-icon-success"><span class="mdi mdi-download"></span></span></div>
+          <div class="stat-header"><span class="stat-label">{{ $t('db.netIn') }}</span><span class="stat-icon stat-icon-success"><span class="mdi mdi-download"></span></span></div>
           <div class="stat-value">{{ fmtSize(metrics.network_rx_bytes) }}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-header"><span class="stat-label">Net out</span><span class="stat-icon stat-icon-warning"><span class="mdi mdi-upload"></span></span></div>
+          <div class="stat-header"><span class="stat-label">{{ $t('db.netOut') }}</span><span class="stat-icon stat-icon-warning"><span class="mdi mdi-upload"></span></span></div>
           <div class="stat-value">{{ fmtSize(metrics.network_tx_bytes) }}</div>
         </div>
       </div>
       <div v-else class="card mb-4">
         <div class="empty-state" style="padding: 28px">
           <span class="mdi mdi-chart-line" style="font-size: 32px; color: var(--text-muted)"></span>
-          <p>No live metrics — the app has no running container.</p>
+          <p>{{ $t('appDetail.metrics.noMetrics') }}</p>
         </div>
       </div>
 
       <MetadataCard :metadata="app?.metadata" style="margin-top: 20px" />
 
-      <MetadataCard :metadata="app?.annotations" title="Annotations" :reserved="false" style="margin-top: 20px" />
+      <MetadataCard :metadata="app?.annotations" :title="$t('appDetail.annotations')" :reserved="false" style="margin-top: 20px" />
 
       <div class="card" style="margin-top: 20px">
         <div class="card-header">
-          <h2>Latest events</h2>
-          <button class="btn btn-ghost btn-sm" @click="tab = 'events'">View all</button>
+          <h2>{{ $t('dashboard.events.title') }}</h2>
+          <button class="btn btn-ghost btn-sm" @click="tab = 'events'">{{ $t('dashboard.viewAll') }}</button>
         </div>
         <div v-if="overviewLoading && latestEvents.length === 0" class="card-body"><span class="spinner"></span></div>
         <div v-else-if="latestEvents.length === 0" class="empty-state" style="padding: 28px">
           <span class="mdi mdi-timeline-text-outline" style="font-size: 32px; color: var(--text-muted)"></span>
-          <p>No events yet.</p>
+          <p>{{ $t('gitops.noEventsYet') }}</p>
         </div>
         <ul v-else class="timeline">
           <li v-for="e in latestEvents" :key="e.id" class="event">
@@ -2238,53 +2232,50 @@ async function detachDatabase(d: AppDatabase) {
     <!-- Network -->
     <div v-else-if="tab === 'network'">
       <div class="card mb-4">
-        <div class="card-header"><h2>Internal access</h2></div>
+        <div class="card-header"><h2>{{ $t('appDetail.internalAccess') }}</h2></div>
         <div class="card-body">
-          <p class="text-muted text-sm" style="margin-top: 0">
-            Reach this app from other apps on the same network by its hostname. The hostname is
-            <strong>stable across redeploys</strong> — prefer it over the IP below.
-          </p>
+          <i18n-t keypath="appDetail.net.hostnameHint" tag="p" class="text-muted text-sm" style="margin-top: 0">
+            <template #stable><strong>{{ $t('appDetail.net.stableAcrossRedeploys') }}</strong></template>
+          </i18n-t>
           <div class="net-row">
-            <span class="net-label">Hostname</span>
+            <span class="net-label">{{ $t('appDetail.hostname') }}</span>
             <div class="net-vals">
               <span class="net-chip"><code>{{ hostname }}</code>
-                <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(hostname)"><span class="mdi mdi-content-copy" style="font-size: 13px"></span></button>
+                <button class="btn-icon btn-icon-muted" :title="$t('appDetail.copy')" :aria-label="$t('appDetail.copy')" @click="copy(hostname)"><span class="mdi mdi-content-copy" style="font-size: 13px"></span></button>
               </span>
               <span v-for="p in networkPorts" :key="`h${p}`" class="net-chip"><code>{{ hostname }}:{{ p }}</code>
-                <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(`${hostname}:${p}`)"><span class="mdi mdi-content-copy" style="font-size: 13px"></span></button>
+                <button class="btn-icon btn-icon-muted" :title="$t('appDetail.copy')" :aria-label="$t('appDetail.copy')" @click="copy(`${hostname}:${p}`)"><span class="mdi mdi-content-copy" style="font-size: 13px"></span></button>
               </span>
             </div>
           </div>
           <div v-if="stackHostname" class="net-row">
-            <span class="net-label">Stack hostname</span>
+            <span class="net-label">{{ $t('appDetail.stackHostname') }}</span>
             <div class="net-vals">
               <span class="net-chip"><code>{{ stackHostname }}</code>
-                <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(stackHostname)"><span class="mdi mdi-content-copy" style="font-size: 13px"></span></button>
+                <button class="btn-icon btn-icon-muted" :title="$t('appDetail.copy')" :aria-label="$t('appDetail.copy')" @click="copy(stackHostname)"><span class="mdi mdi-content-copy" style="font-size: 13px"></span></button>
               </span>
               <span v-for="p in networkPorts" :key="`s${p}`" class="net-chip"><code>{{ stackHostname }}:{{ p }}</code>
-                <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(`${stackHostname}:${p}`)"><span class="mdi mdi-content-copy" style="font-size: 13px"></span></button>
+                <button class="btn-icon btn-icon-muted" :title="$t('appDetail.copy')" :aria-label="$t('appDetail.copy')" @click="copy(`${stackHostname}:${p}`)"><span class="mdi mdi-content-copy" style="font-size: 13px"></span></button>
               </span>
             </div>
-            <p class="net-hint">Resolves only for apps in the same stack.</p>
+            <p class="net-hint">{{ $t('appDetail.net.stackHostnameHint') }}</p>
           </div>
         </div>
       </div>
 
       <div class="card mb-4">
-        <div class="card-header"><h2>External access</h2></div>
+        <div class="card-header"><h2>{{ $t('appDetail.externalAccess') }}</h2></div>
         <div class="card-body">
           <template v-if="extAccess && !extAccess.enabled">
-            <p class="text-muted text-sm" style="margin-top: 0">
-              Expose this app on the internet with an auto-generated URL. External access is off in this app's
-              location: a platform admin must first set the location's <strong>external domain</strong> on its cluster.
-            </p>
+            <i18n-t keypath="appDetail.net.extOffHint" tag="p" class="text-muted text-sm" style="margin-top: 0">
+              <template #field><strong>{{ $t('appDetail.net.externalDomain') }}</strong></template>
+            </i18n-t>
           </template>
           <template v-else-if="extAccess">
-            <p class="text-muted text-sm" style="margin-top: 0">
-              Pick the HTTP ports to expose. Miabi generates a public hostname + TLS route for each, under
-              <code>*.{{ extAccess.base_domain }}</code>.
-            </p>
-            <div v-if="networkPorts.length === 0" class="text-muted text-sm">Declare container ports in Settings first.</div>
+            <i18n-t keypath="appDetail.net.extOnHint" tag="p" class="text-muted text-sm" style="margin-top: 0">
+              <template #domain><code>*.{{ extAccess.base_domain }}</code></template>
+            </i18n-t>
+            <div v-if="networkPorts.length === 0" class="text-muted text-sm">{{ $t('appDetail.net.declarePortsFirst') }}</div>
             <div v-else class="ext-ports">
               <div v-for="p in networkPorts" :key="`ext${p}`" class="ext-row">
                 <label class="ext-toggle">
@@ -2292,16 +2283,14 @@ async function detachDatabase(d: AppDatabase) {
                   <code>{{ p }}</code>
                 </label>
                 <a v-if="extUrlFor(p)" class="host-link" :href="extUrlFor(p)" target="_blank" rel="noopener">{{ extUrlFor(p) }}<span class="mdi mdi-open-in-new"></span></a>
-                <span v-else-if="extSelected.has(p)" class="text-muted text-sm">URL generated on save</span>
+                <span v-else-if="extSelected.has(p)" class="text-muted text-sm">{{ $t('appDetail.urlGeneratedOnSave') }}</span>
               </div>
             </div>
             <div v-if="ws.canEdit" class="flex items-center gap-2 mt-4">
               <button class="btn btn-primary btn-sm" :disabled="extSaving || !extDirty" @click="saveExternalAccess">
                 {{ extSaving ? 'Saving…' : 'Save external access' }}
               </button>
-              <button v-if="extExposedCount > 0" class="btn btn-secondary btn-sm" :disabled="extSaving" @click="disableExternalAccess">
-                Disable external access
-              </button>
+              <button v-if="extExposedCount > 0" class="btn btn-secondary btn-sm" :disabled="extSaving" @click="disableExternalAccess">{{ $t('appDetail.disableExternalAccess') }}</button>
             </div>
           </template>
         </div>
@@ -2312,28 +2301,26 @@ async function detachDatabase(d: AppDatabase) {
            what lets the app reach a database on another node. -->
       <div class="card mb-4">
         <div class="card-header">
-          <h2>Networks</h2>
-          <span class="text-muted text-sm">Workspace networks this app is reachable on.</span>
+          <h2>{{ $t('appDetail.networks') }}</h2>
+          <span class="text-muted text-sm">{{ $t('appDetail.net.networksHint') }}</span>
         </div>
-        <div v-if="attachedNets.length === 0" class="card-body text-muted text-sm">
-          Not connected to any network yet.
-        </div>
+        <div v-if="attachedNets.length === 0" class="card-body text-muted text-sm">{{ $t('db.notConnectedToAnyNetwork') }}</div>
         <div v-else class="table-wrapper">
           <table>
-            <thead><tr><th>Network</th><th>Docker name</th><th>Driver</th><th></th></tr></thead>
+            <thead><tr><th>{{ $t('appDetail.network') }}</th><th>{{ $t('db.dockerName') }}</th><th>{{ $t('appDetail.driver') }}</th><th></th></tr></thead>
             <tbody>
               <tr v-for="n in attachedNets" :key="n.id">
                 <td class="cell-title">
                   {{ n.name }}
-                  <span v-if="n.is_default" class="badge badge-info" style="margin-left: 6px">default</span>
+                  <span v-if="n.is_default" class="badge badge-info" style="margin-left: 6px">{{ $t('appDetail.default') }}</span>
                 </td>
                 <td class="cell-sub mono">{{ n.docker_name }}</td>
                 <td class="cell-sub">
-                  {{ n.driver }}<span v-if="n.internal"> · internal</span>
-                  <span v-if="n.driver === 'overlay'" class="text-muted"> · spans nodes</span>
+                  {{ n.driver }}<span v-if="n.internal"> {{ $t('appDetail.net.internal') }}</span>
+                  <span v-if="n.driver === 'overlay'" class="text-muted"> {{ $t('appDetail.net.spansNodes') }}</span>
                 </td>
                 <td class="text-right">
-                  <button class="btn-icon btn-icon-sm btn-icon-accent" title="Network details" aria-label="Network details" @click="netDetailFor = n">
+                  <button class="btn-icon btn-icon-sm btn-icon-accent" :title="$t('appDetail.networkDetails')" :aria-label="$t('appDetail.networkDetails')" @click="netDetailFor = n">
                     <span class="mdi mdi-ip-network-outline"></span>
                   </button>
                 </td>
@@ -2341,35 +2328,31 @@ async function detachDatabase(d: AppDatabase) {
             </tbody>
           </table>
         </div>
-        <div class="card-body text-muted text-sm" style="padding-top: 0">
-          Attach or detach networks in <a class="net-link" @click="tab = 'settings'">Settings</a>.
-        </div>
+        <i18n-t keypath="appDetail.net.attachHint" tag="div" class="card-body text-muted text-sm" style="padding-top: 0">
+          <template #link><a class="net-link" @click="tab = 'settings'">{{ $t('appDetail.tab.settings') }}</a></template>
+        </i18n-t>
       </div>
 
       <div class="card mb-4">
-        <div class="card-header"><h2>Container IP</h2></div>
+        <div class="card-header"><h2>{{ $t('appDetail.containerIp') }}</h2></div>
         <div class="card-body" style="padding-bottom: 4px">
-          <p class="text-muted text-sm" style="margin-top: 0">
-            Live address of the running container. <strong>Ephemeral</strong> — it changes on every
-            redeploy, so use the hostname for anything persistent.
-          </p>
+          <i18n-t keypath="appDetail.net.ipHint" tag="p" class="text-muted text-sm" style="margin-top: 0">
+            <template #ephemeral><strong>{{ $t('appDetail.net.ephemeral') }}</strong></template>
+          </i18n-t>
         </div>
         <!-- A replicated service has no single container IP: Swarm may run its tasks
              on any node, and they are replaced on every update. Say that, rather than
              falling through to "no IP yet", which reads as broken for a healthy app. -->
-        <div v-if="isService" class="card-body text-muted text-sm" style="padding-top: 0">
-          A replicated service has no single container IP — its tasks can run on any node and are
-          replaced on each update. Use the hostname above; Swarm load-balances it across the replicas.
-        </div>
+        <div v-if="isService" class="card-body text-muted text-sm" style="padding-top: 0">{{ $t('appDetail.net.replicatedNoIp') }}</div>
         <div v-else-if="liveStatus?.networks?.length" class="table-wrapper">
           <table>
             <thead>
               <tr>
-                <th>Network</th><th>IP address</th>
+                <th>{{ $t('appDetail.network') }}</th><th>{{ $t('appDetail.ipAddress') }}</th>
                 <!-- Only when something actually has one: on a single-stack install this column
                      would be a dash on every row, for every user. -->
-                <th v-if="anyContainerIPv6">IPv6 address</th>
-                <th>Gateway</th><th></th>
+                <th v-if="anyContainerIPv6">{{ $t('appDetail.ipv6Address') }}</th>
+                <th>{{ $t('appDetail.gateway') }}</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -2382,35 +2365,34 @@ async function detachDatabase(d: AppDatabase) {
                 </td>
                 <td class="cell-sub mono">{{ n.gateway || '—' }}</td>
                 <td class="text-right">
-                  <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(n.ip_address)"><span class="mdi mdi-content-copy" style="font-size: 13px"></span></button>
+                  <button class="btn-icon btn-icon-muted" :title="$t('appDetail.copy')" :aria-label="$t('appDetail.copy')" @click="copy(n.ip_address)"><span class="mdi mdi-content-copy" style="font-size: 13px"></span></button>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
-        <div v-else class="card-body text-muted text-sm" style="padding-top: 0">No IP yet — available once the container is running.</div>
+        <div v-else class="card-body text-muted text-sm" style="padding-top: 0">{{ $t('appDetail.net.noIpYet') }}</div>
       </div>
 
       <div class="card">
-        <div class="card-body text-sm text-muted">
-          Need a public URL or a host port? Use the
-          <a class="net-link" @click="tab = 'routes'">Routes</a> tab for domains and the
-          <a class="net-link" @click="tab = 'ports'">Ports</a> tab for published host ports.
-        </div>
+        <i18n-t keypath="appDetail.net.publicHint" tag="div" class="card-body text-sm text-muted">
+          <template #routes><a class="net-link" @click="tab = 'routes'">{{ $t('appDetail.tab.routes') }}</a></template>
+          <template #ports><a class="net-link" @click="tab = 'ports'">{{ $t('appDetail.tab.ports') }}</a></template>
+        </i18n-t>
       </div>
     </div>
 
     <!-- Events -->
     <div v-else-if="tab === 'events'" class="card">
       <div class="card-header">
-        <h2>Events</h2>
-        <span class="live-dot" title="Live"></span>
+        <h2>{{ $t('appDetail.tab.events') }}</h2>
+        <span class="live-dot" :title="$t('appDetail.logs.liveTab')"></span>
       </div>
       <div v-if="eventsLoading && appEvents.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="appEvents.length === 0" class="empty-state">
         <span class="mdi mdi-timeline-text-outline" style="font-size: 40px; color: var(--text-muted)"></span>
-        <h3>No events yet</h3>
-        <p>Deploys, container lifecycle, and config changes will show up here.</p>
+        <h3>{{ $t('db.noEventsYet') }}</h3>
+        <p>{{ $t('appDetail.events.emptyHint') }}</p>
       </div>
       <template v-else>
         <ul class="timeline">
@@ -2435,7 +2417,7 @@ async function detachDatabase(d: AppDatabase) {
     <div v-else-if="tab === 'logs'" class="card">
       <div class="card-header">
         <div class="log-header-left">
-          <h2>Runtime logs</h2>
+          <h2>{{ $t('appDetail.runtimeLogs') }}</h2>
           <LogSizeControl v-model="logSize" />
         </div>
         <div class="log-toolbar">
@@ -2444,27 +2426,27 @@ async function detachDatabase(d: AppDatabase) {
               v-model="logSearch"
               type="search"
               class="form-input log-search-input"
-              :placeholder="logRegexMode ? 'Search logs (regex)…' : 'Search logs…'"
-              aria-label="Search runtime logs"
+              :placeholder="$t(logRegexMode ? 'appDetail.logs.searchRegex' : 'appDetail.logs.search')"
+              :aria-label="$t('appDetail.searchRuntimeLogs')"
             />
-            <button v-if="logSearch" type="button" class="log-search-clear" @click="logSearch = ''">Clear</button>
+            <button v-if="logSearch" type="button" class="log-search-clear" @click="logSearch = ''">{{ $t('appDetail.clear') }}</button>
           </div>
           <button
             type="button"
             class="log-regex-toggle"
             :class="{ active: logRegexMode }"
             :aria-pressed="logRegexMode"
-            title="Match using a regular expression"
+            :title="$t('appDetail.matchUsingARegularExpression')"
             @click="logRegexMode = !logRegexMode"
           >.*</button>
-          <span v-if="logRegexError" class="text-sm log-regex-err">invalid regex</span>
+          <span v-if="logRegexError" class="text-sm log-regex-err">{{ $t('appDetail.invalidRegex') }}</span>
           <span v-else-if="logSearch.trim()" class="text-muted text-sm log-match-count">{{ filteredRuntimeLogs.length }} / {{ runtimeLogs.length }}</span>
           <button
             type="button"
             class="log-icon-btn"
             :disabled="!filteredRuntimeLogs.length"
-            :title="logSearch.trim() ? 'Copy matching lines' : 'Copy logs'"
-            aria-label="Copy logs"
+            :title="$t(logSearch.trim() ? 'appDetail.logs.copyMatching' : 'appDetail.copyLogs')"
+            :aria-label="$t('appDetail.copyLogs')"
             @click="copyLogs"
           >
             <span class="mdi" :class="logCopied ? 'mdi-check' : 'mdi-content-copy'"></span>
@@ -2473,8 +2455,8 @@ async function detachDatabase(d: AppDatabase) {
             type="button"
             class="log-icon-btn"
             :disabled="!filteredRuntimeLogs.length"
-            :title="logSearch.trim() ? 'Download matching lines' : 'Download logs'"
-            aria-label="Download logs"
+            :title="$t(logSearch.trim() ? 'appDetail.logs.downloadMatching' : 'appDetail.downloadLogs')"
+            :aria-label="$t('appDetail.downloadLogs')"
             @click="downloadLogs"
           >
             <span class="mdi mdi-tray-arrow-down"></span>
@@ -2484,7 +2466,7 @@ async function detachDatabase(d: AppDatabase) {
             class="log-follow-btn"
             :class="{ active: logFollow }"
             :aria-pressed="logFollow"
-            :title="logFollow ? 'Following new output — click to pause' : 'Jump to latest and follow'"
+            :title="$t(logFollow ? 'appDetail.logs.following' : 'appDetail.logs.jumpToLatest')"
             @click="toggleLogFollow"
           >
             <span class="mdi mdi-chevron-double-down"></span>
@@ -2496,8 +2478,8 @@ async function detachDatabase(d: AppDatabase) {
       <div class="card-body">
         <p v-if="logsTrimmed" class="text-muted text-sm log-trim-note">Showing the most recent {{ RUNTIME_LOG_CAP.toLocaleString() }} lines — older output was trimmed.</p>
         <div ref="logViewEl" class="code-block log-view" :style="logViewStyle" @scroll="onLogScroll">
-          <span v-if="!runtimeLogs.length" class="log-placeholder">Waiting for output… (the app must have a running container)</span>
-          <span v-else-if="!filteredRuntimeLogs.length" class="log-placeholder">No lines match your search.</span>
+          <span v-if="!runtimeLogs.length" class="log-placeholder">{{ $t('appDetail.logs.waiting') }}</span>
+          <span v-else-if="!filteredRuntimeLogs.length" class="log-placeholder">{{ $t('appDetail.logs.noMatches') }}</span>
           <template v-else>
             <div v-for="(line, i) in filteredRuntimeLogs" :key="i" class="log-line"><span v-for="(seg, j) in logSegments(line)" :key="j" :class="{ 'log-hit': seg.hit }">{{ seg.text }}</span></div>
           </template>
@@ -2509,7 +2491,7 @@ async function detachDatabase(d: AppDatabase) {
     <div v-else-if="tab === 'deployments'" class="detail-grid">
       <div v-if="canaryActive" class="card canary-card">
         <div class="canary-row">
-          <span class="canary-title"><span class="mdi mdi-call-split"></span> Canary rollout</span>
+          <span class="canary-title"><span class="mdi mdi-call-split"></span>{{ $t('appDetail.canaryRollout') }}</span>
           <div class="canary-meter">
             <div class="split-bar">
               <div class="split-stable" :style="{ width: (100 - canaryWeight) + '%' }"></div>
@@ -2526,14 +2508,14 @@ async function detachDatabase(d: AppDatabase) {
               v-if="!canaryManual"
               class="btn btn-secondary btn-sm"
               :disabled="canaryBusy"
-              :title="canaryPaused ? 'Hand the rollout back to the ramp' : 'Hold traffic at the current split'"
+              :title="$t(canaryPaused ? 'appDetail.canary.resumeHint' : 'appDetail.canary.pauseHint')"
               @click="toggleCanaryPause"
             >
               <span class="mdi" :class="canaryPaused ? 'mdi-play' : 'mdi-pause'"></span>
               {{ canaryPaused ? 'Resume' : 'Pause' }}
             </button>
-            <button class="btn btn-primary btn-sm" :disabled="canaryBusy" @click="promoteCanary">Promote</button>
-            <button class="btn btn-secondary btn-sm" :disabled="canaryBusy" @click="abortCanary">Abort</button>
+            <button class="btn btn-primary btn-sm" :disabled="canaryBusy" @click="promoteCanary">{{ $t('appDetail.promote') }}</button>
+            <button class="btn btn-secondary btn-sm" :disabled="canaryBusy" @click="abortCanary">{{ $t('appDetail.abort') }}</button>
           </div>
         </div>
       </div>
@@ -2541,14 +2523,14 @@ async function detachDatabase(d: AppDatabase) {
         <CanaryPanel :app="app" :ws-id="wid ?? 0" :can-edit="ws.canEdit" @changed="loadApp" />
       </div>
       <div class="card">
-        <div class="card-header"><h2>Deployments</h2></div>
+        <div class="card-header"><h2>{{ $t('appDetail.deployments') }}</h2></div>
         <div v-if="deployments.length === 0" class="empty-state">
           <span class="mdi mdi-rocket-launch-outline" style="font-size: 36px; color: var(--text-muted)"></span>
-          <p>No deployments yet.</p>
+          <p>{{ $t('appDetail.noDeploymentsYet') }}</p>
         </div>
         <div v-else class="table-wrapper">
           <table>
-            <thead><tr><th>Deployment</th><th>Image</th><th>When</th><th class="text-right">Status</th></tr></thead>
+            <thead><tr><th>{{ $t('appDetail.deployment') }}</th><th>{{ $t('appDetail.image') }}</th><th>{{ $t('appDetail.when') }}</th><th class="text-right">{{ $t('dashboard.col.status') }}</th></tr></thead>
             <tbody>
               <tr v-for="d in deployments" :key="d.id" class="row-clickable" :class="{ 'row-selected': streamingId === d.id }" @click="streamLogs(d.id)">
                 <td>
@@ -2557,11 +2539,11 @@ async function detachDatabase(d: AppDatabase) {
                   <div v-if="d.error" class="dep-err" :title="d.error"><span class="mdi mdi-alert-circle-outline"></span> {{ d.error }}</div>
                 </td>
                 <td class="cell-sub mono trunc" :title="d.image">{{ d.image || '—' }}</td>
-                <td class="cell-sub" :title="new Date(d.created_at).toLocaleString()">{{ relTime(d.created_at) }}</td>
+                <td class="cell-sub" :title="fmtDateTime(d.created_at)">{{ relTime(d.created_at) }}</td>
                 <td class="text-right">
-                  <span v-if="d.current" class="badge badge-success badge-dot">live</span>
+                  <span v-if="d.current" class="badge badge-success badge-dot">{{ $t('appDetail.live') }}</span>
                   <span v-else class="badge" :class="depBadge(d.status)">{{ d.status }}</span>
-                  <span v-if="streamingId === d.id" class="cell-sub streaming-tag">viewing logs</span>
+                  <span v-if="streamingId === d.id" class="cell-sub streaming-tag">{{ $t('appDetail.viewingLogs') }}</span>
                 </td>
               </tr>
             </tbody>
@@ -2569,7 +2551,7 @@ async function detachDatabase(d: AppDatabase) {
         </div>
       </div>
       <div class="card">
-        <div class="card-header"><h2>Logs <span v-if="streamingNumber" class="cell-sub">#{{ streamingNumber }}</span></h2></div>
+        <div class="card-header"><h2>{{ $t('appDetail.tab.logs') }} <span v-if="streamingNumber" class="cell-sub">#{{ streamingNumber }}</span></h2></div>
         <div class="card-body">
           <LogViewer
             :lines="logs"
@@ -2577,7 +2559,7 @@ async function detachDatabase(d: AppDatabase) {
             :status-label="deployStatus"
             :status-class="depStatusClass(deployStatus)"
             :trimmed-note="deployLogsTrimmed ? `Showing the most recent ${RUNTIME_LOG_CAP.toLocaleString()} lines — older output was trimmed.` : ''"
-            placeholder="Select a deployment or click Deploy to stream logs."
+            :placeholder="$t('appDetail.logs.selectDeployment')"
             :download-name="`${app?.name || 'app'}-deployment-${streamingNumber ?? ''}`"
             search-label="Search deployment logs"
           />
@@ -2589,12 +2571,15 @@ async function detachDatabase(d: AppDatabase) {
     <div v-else-if="tab === 'environment'" class="card">
       <div class="card-header">
         <div>
-          <h2>Environment variables</h2>
-          <p class="card-subtitle">Injected into the container at runtime. Reference a workspace secret with <code>{{ secretRefHint }}</code> — <RouterLink to="/secrets">manage secrets</RouterLink>.</p>
+          <h2>{{ $t('appDetail.environmentVariables') }}</h2>
+          <i18n-t keypath="appDetail.env.subtitle" tag="p" class="card-subtitle">
+            <template #ref><code>{{ secretRefHint }}</code></template>
+            <template #link><RouterLink to="/secrets">{{ $t('appDetail.env.manageSecrets') }}</RouterLink></template>
+          </i18n-t>
         </div>
         <div v-if="ws.canEdit" class="flex items-center gap-2">
-          <button class="btn btn-secondary btn-sm" @click="showEnvImport = true"><span class="mdi mdi-import"></span> Import .env</button>
-          <button class="btn btn-primary btn-sm" @click="openEnvModal"><span class="mdi mdi-plus"></span> Add variable</button>
+          <button class="btn btn-secondary btn-sm" @click="showEnvImport = true"><span class="mdi mdi-import"></span>{{ $t('stacks.importEnv') }}</button>
+          <button class="btn btn-primary btn-sm" @click="openEnvModal"><span class="mdi mdi-plus"></span>{{ $t('stacks.addVariable') }}</button>
         </div>
       </div>
 
@@ -2607,18 +2592,18 @@ async function detachDatabase(d: AppDatabase) {
         </div>
         <div class="env-search">
           <span class="mdi mdi-magnify env-search-icon"></span>
-          <input v-model="envSearch" class="form-input" type="search" aria-label="Filter variables" placeholder="Filter variables…" />
+          <input v-model="envSearch" class="form-input" type="search" :aria-label="$t('appDetail.filterVariables')" :placeholder="$t('appDetail.env.filterPlaceholder')" />
         </div>
       </div>
 
       <!-- Empty: no variables at all -->
       <div v-if="envVars.length === 0" class="empty-state">
         <span class="mdi mdi-tune-variant" style="font-size: 36px; color: var(--text-muted)"></span>
-        <h3>No environment variables</h3>
-        <p>Add variables to configure your app, or bulk-import an existing .env file.</p>
+        <h3>{{ $t('appDetail.noEnvironmentVariables') }}</h3>
+        <p>{{ $t('appDetail.env.emptyHint') }}</p>
         <div v-if="ws.canEdit" class="flex items-center gap-2 mt-4" style="justify-content: center">
-          <button class="btn btn-secondary" @click="showEnvImport = true"><span class="mdi mdi-import"></span> Import .env</button>
-          <button class="btn btn-primary" @click="openEnvModal"><span class="mdi mdi-plus"></span> Add variable</button>
+          <button class="btn btn-secondary" @click="showEnvImport = true"><span class="mdi mdi-import"></span>{{ $t('stacks.importEnv') }}</button>
+          <button class="btn btn-primary" @click="openEnvModal"><span class="mdi mdi-plus"></span>{{ $t('stacks.addVariable') }}</button>
         </div>
       </div>
 
@@ -2626,22 +2611,22 @@ async function detachDatabase(d: AppDatabase) {
       <div v-else-if="filteredEnvVars.length === 0" class="empty-state">
         <span class="mdi mdi-magnify" style="font-size: 36px; color: var(--text-muted)"></span>
         <p>No variables match “{{ envSearch }}”.</p>
-        <button class="btn btn-ghost btn-sm mt-4" @click="envSearch = ''">Clear filter</button>
+        <button class="btn btn-ghost btn-sm mt-4" @click="envSearch = ''">{{ $t('volumes.clearFilter') }}</button>
       </div>
 
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Key</th><th>Value</th><th class="text-right">Actions</th></tr></thead>
+          <thead><tr><th>{{ $t('appDetail.key') }}</th><th>{{ $t('appDetail.value') }}</th><th class="text-right">{{ $t('volumes.actions') }}</th></tr></thead>
           <tbody>
             <tr v-for="e in filteredEnvVars" :key="e.id" class="env-row">
               <td class="cell-title">
                 <span class="env-key">{{ e.key }}</span>
-                <span v-if="e.is_secret" class="badge badge-neutral env-secret-tag" title="Encrypted at rest"><span class="mdi mdi-lock-outline"></span> secret</span>
+                <span v-if="e.is_secret" class="badge badge-neutral env-secret-tag" :title="$t('stacks.encryptedAtRest')"><span class="mdi mdi-lock-outline"></span>{{ $t('appDetail.secret') }}</span>
               </td>
               <td class="text-muted env-value-cell">
                 <template v-if="e.is_secret">
                   <code v-if="revealedEnv[e.key] !== undefined" class="env-revealed">{{ revealedEnv[e.key] }}</code>
-                  <span v-else class="env-mask" aria-label="Hidden secret value">••••••••••••</span>
+                  <span v-else class="env-mask" :aria-label="$t('stacks.hiddenSecretValue')">••••••••••••</span>
                 </template>
                 <code v-else class="env-revealed">{{ e.value }}</code>
               </td>
@@ -2649,13 +2634,13 @@ async function detachDatabase(d: AppDatabase) {
                 <button
                   v-if="!e.is_secret || revealedEnv[e.key] !== undefined"
                   class="btn-icon btn-icon-muted"
-                  :title="copiedEnvKey === e.key ? 'Copied' : 'Copy value'"
+                  :title="$t(copiedEnvKey === e.key ? 'notify.common.copied' : 'appDetail.copyValue')"
                   :aria-label="copiedEnvKey === e.key ? 'Copied' : 'Copy value'"
                   @click="copyEnvValue(e)"
                 ><span class="mdi" :class="copiedEnvKey === e.key ? 'mdi-check text-success' : 'mdi-content-copy'"></span></button>
-                <button v-if="e.is_secret && ws.isWorkspaceAdmin" class="btn-icon btn-icon-muted" :title="revealedEnv[e.key] !== undefined ? 'Hide value' : 'Reveal value'" :aria-label="revealedEnv[e.key] !== undefined ? 'Hide value' : 'Reveal value'" :disabled="revealingEnv === e.key" @click="toggleReveal(e)"><span class="mdi" :class="revealingEnv === e.key ? 'mdi-loading mdi-spin' : (revealedEnv[e.key] !== undefined ? 'mdi-eye-off-outline' : 'mdi-eye-outline')"></span></button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" title="Edit" aria-label="Edit" @click="openEnvEdit(e)"><span class="mdi mdi-pencil-outline"></span></button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="delEnv(e)"><span class="mdi mdi-delete-outline"></span></button>
+                <button v-if="e.is_secret && ws.isWorkspaceAdmin" class="btn-icon btn-icon-muted" :title="$t(revealedEnv[e.key] !== undefined ? 'appDetail.hideValue' : 'appDetail.revealValue')" :aria-label="revealedEnv[e.key] !== undefined ? 'Hide value' : 'Reveal value'" :disabled="revealingEnv === e.key" @click="toggleReveal(e)"><span class="mdi" :class="revealingEnv === e.key ? 'mdi-loading mdi-spin' : (revealedEnv[e.key] !== undefined ? 'mdi-eye-off-outline' : 'mdi-eye-outline')"></span></button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEnvEdit(e)"><span class="mdi mdi-pencil-outline"></span></button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="delEnv(e)"><span class="mdi mdi-delete-outline"></span></button>
               </td>
             </tr>
           </tbody>
@@ -2666,22 +2651,21 @@ async function detachDatabase(d: AppDatabase) {
     <!-- Routes -->
     <div v-else-if="tab === 'routes'" class="card">
       <div class="card-header">
-        <h2>Routes</h2>
+        <h2>{{ $t('appDetail.routes') }}</h2>
         <div class="flex items-center gap-2">
-          <button class="btn btn-ghost btn-sm" @click="router.push('/routes')">Manage routes</button>
+          <button class="btn btn-ghost btn-sm" @click="router.push('/routes')">{{ $t('appDetail.manageRoutes') }}</button>
           <button v-if="ws.canEdit" class="btn btn-primary btn-sm" @click="addRoute">
-            <span class="mdi mdi-plus"></span> Add route
-          </button>
+            <span class="mdi mdi-plus"></span>{{ $t('dashboard.quick.addRoute.label') }}</button>
         </div>
       </div>
       <div v-if="appRoutes.length === 0" class="empty-state">
         <span class="mdi mdi-routes" style="font-size: 36px; color: var(--text-muted)"></span>
-        <p>No routes for this app.</p>
-        <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="addRoute">Add a route</button>
+        <p>{{ $t('appDetail.noRoutesForThisApp') }}</p>
+        <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="addRoute">{{ $t('appDetail.addARoute') }}</button>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Route</th><th>Hosts</th><th>TLS</th><th class="text-right">Status</th></tr></thead>
+          <thead><tr><th>{{ $t('appDetail.route') }}</th><th>{{ $t('appDetail.hosts') }}</th><th>TLS</th><th class="text-right">{{ $t('dashboard.col.status') }}</th></tr></thead>
           <tbody>
             <tr v-for="r in appRoutes" :key="r.id" class="row-clickable" @click="editRoute(r)">
               <td><span class="cell-title">{{ r.name }}</span><div class="cell-sub">{{ r.path }}</div></td>
@@ -2705,17 +2689,17 @@ async function detachDatabase(d: AppDatabase) {
     <div v-else-if="tab === 'ports'">
       <div class="card mb-4">
         <div class="card-header">
-          <h2>Container ports</h2>
-          <button v-if="ws.canEdit" class="btn btn-ghost btn-sm" @click="openAddPort"><span class="mdi mdi-plus"></span> Add port</button>
+          <h2>{{ $t('apps.form.containerPorts') }}</h2>
+          <button v-if="ws.canEdit" class="btn btn-ghost btn-sm" @click="openAddPort"><span class="mdi mdi-plus"></span>{{ $t('appDetail.addPort') }}</button>
         </div>
         <div v-if="!app.ports || app.ports.length === 0" class="empty-state">
           <span class="mdi mdi-ethernet" style="font-size: 36px; color: var(--text-muted)"></span>
-          <p>No container ports declared.</p>
-          <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="openAddPort">Add a port</button>
+          <p>{{ $t('appDetail.noContainerPortsDeclared') }}</p>
+          <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="openAddPort">{{ $t('appDetail.addAPort') }}</button>
         </div>
         <div v-else class="table-wrapper">
           <table>
-            <thead><tr><th>Port</th><th>Protocol</th><th>Scheme</th><th>Name</th><th></th></tr></thead>
+            <thead><tr><th>{{ $t('appDetail.port') }}</th><th>{{ $t('appDetail.protocol') }}</th><th>{{ $t('appDetail.scheme') }}</th><th>{{ $t('apps.form.name') }}</th><th></th></tr></thead>
             <tbody>
               <tr v-for="p in app.ports" :key="p.id">
                 <td class="cell-title">{{ p.container_port }}</td>
@@ -2723,8 +2707,8 @@ async function detachDatabase(d: AppDatabase) {
                 <td class="cell-sub">{{ p.scheme || 'http' }}</td>
                 <td class="cell-sub">{{ p.name || '—' }}</td>
                 <td class="text-right table-actions">
-                  <button v-if="ws.canEdit" class="btn btn-sm btn-secondary" @click="openBindReq(p)">Request host binding</button>
-                  <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Remove port" aria-label="Remove port" @click="removeContainerPort(p)"><span class="mdi mdi-delete-outline"></span></button>
+                  <button v-if="ws.canEdit" class="btn btn-sm btn-secondary" @click="openBindReq(p)">{{ $t('appDetail.requestHostBinding') }}</button>
+                  <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('apps.form.removePort')" :aria-label="$t('apps.form.removePort')" @click="removeContainerPort(p)"><span class="mdi mdi-delete-outline"></span></button>
                 </td>
               </tr>
             </tbody>
@@ -2734,16 +2718,16 @@ async function detachDatabase(d: AppDatabase) {
 
       <div class="card">
         <div class="card-header">
-          <h2>Host port bindings</h2>
-          <button v-if="ws.canEdit" class="btn btn-ghost btn-sm" @click="openBindReq()"><span class="mdi mdi-plus"></span> Request binding</button>
+          <h2>{{ $t('appDetail.hostPortBindings') }}</h2>
+          <button v-if="ws.canEdit" class="btn btn-ghost btn-sm" @click="openBindReq()"><span class="mdi mdi-plus"></span>{{ $t('appDetail.requestBinding') }}</button>
         </div>
         <div v-if="appBindings.length === 0" class="empty-state">
           <span class="mdi mdi-swap-horizontal" style="font-size: 36px; color: var(--text-muted)"></span>
-          <p>No host bindings. Requests require admin approval before they publish.</p>
+          <p>{{ $t('appDetail.ports.noBindings') }}</p>
         </div>
         <div v-else class="table-wrapper">
           <table>
-            <thead><tr><th>Mapping</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>{{ $t('appDetail.mapping') }}</th><th>{{ $t('dashboard.col.status') }}</th><th></th></tr></thead>
             <tbody>
               <tr v-for="b in appBindings" :key="b.id">
                 <td class="cell-title">
@@ -2754,7 +2738,7 @@ async function detachDatabase(d: AppDatabase) {
                   <span v-if="b.review_note" class="cell-sub" style="margin-left: 8px">{{ b.review_note }}</span>
                 </td>
                 <td class="text-right">
-                  <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="b.status === 'approved' ? 'Release host port' : 'Cancel request'" :aria-label="b.status === 'approved' ? 'Release host port' : 'Cancel request'" @click="removeBind(b)"><span class="mdi" :class="b.status === 'approved' ? 'mdi-delete-outline' : 'mdi-close'"></span></button>
+                  <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t(b.status === 'approved' ? 'appDetail.ports.releasePort' : 'appDetail.ports.cancelRequest')" :aria-label="b.status === 'approved' ? 'Release host port' : 'Cancel request'" @click="removeBind(b)"><span class="mdi" :class="b.status === 'approved' ? 'mdi-delete-outline' : 'mdi-close'"></span></button>
                 </td>
               </tr>
             </tbody>
@@ -2766,8 +2750,8 @@ async function detachDatabase(d: AppDatabase) {
     <!-- Volumes -->
     <div v-else-if="tab === 'volumes'" class="card">
       <div class="card-header">
-        <h2>Attached volumes</h2>
-        <button class="btn btn-ghost btn-sm" @click="router.push('/volumes')">Manage volumes</button>
+        <h2>{{ $t('appDetail.attachedVolumes') }}</h2>
+        <button class="btn btn-ghost btn-sm" @click="router.push('/volumes')">{{ $t('appDetail.manageVolumes') }}</button>
       </div>
       <div v-if="ws.canEdit" class="card-body" style="border-bottom: 1px solid var(--border-primary)">
         <form class="flex items-center gap-2" @submit.prevent="attachVolume">
@@ -2776,17 +2760,17 @@ async function detachDatabase(d: AppDatabase) {
             v-model="volumeSearch"
             class="form-input"
             type="search"
-            aria-label="Filter volumes"
-            placeholder="Filter volumes…"
+            :aria-label="$t('volumes.filterVolumes')"
+            :placeholder="$t('volumes.filterPlaceholder')"
             style="max-width: 180px"
           />
-          <select v-model.number="mount.volume_id" class="form-select" aria-label="Volume to attach" style="max-width: 220px">
-            <option :value="0" disabled>Select volume…</option>
+          <select v-model.number="mount.volume_id" class="form-select" :aria-label="$t('appDetail.volumeToAttach')" style="max-width: 220px">
+            <option :value="0" disabled>{{ $t('appDetail.selectVolume') }}</option>
             <option v-for="v in volumeOptions" :key="v.id" :value="v.id">{{ v.display_name || v.name }}</option>
             <option v-if="volumeSearch && volumeOptions.length === 0" :value="0" disabled>No volume matches “{{ volumeSearch }}”</option>
           </select>
-          <input v-model="mount.path" class="form-input" aria-label="Mount path" placeholder="/data" style="max-width: 200px" />
-          <button class="btn btn-primary">Attach</button>
+          <input v-model="mount.path" class="form-input" :aria-label="$t('volumes.mountPath')" placeholder="/data" style="max-width: 200px" />
+          <button class="btn btn-primary">{{ $t('appDetail.attach') }}</button>
         </form>
         <p v-if="hiddenVolumeCount > 0" class="form-hint" style="margin-top: 8px">
           {{ hiddenVolumeCount }} volume(s) on other nodes are hidden — an app can only mount volumes on its own node.
@@ -2794,16 +2778,16 @@ async function detachDatabase(d: AppDatabase) {
       </div>
       <div v-if="volumeMounts.length === 0" class="empty-state">
         <span class="mdi mdi-harddisk" style="font-size: 36px; color: var(--text-muted)"></span>
-        <p>No volumes attached.</p>
+        <p>{{ $t('appDetail.noVolumesAttached') }}</p>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Volume</th><th>Mount path</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('appDetail.volume') }}</th><th>{{ $t('volumes.mountPath') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="m in volumeMounts" :key="m.volume_id">
               <td class="cell-title">{{ m.docker_name }}</td>
               <td class="text-muted">{{ m.path }}</td>
-              <td class="text-right"><button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Detach" aria-label="Detach" @click="detachVolume(m.volume_id)"><span class="mdi mdi-delete-outline"></span></button></td>
+              <td class="text-right"><button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('appDetail.detach')" :aria-label="$t('appDetail.detach')" @click="detachVolume(m.volume_id)"><span class="mdi mdi-delete-outline"></span></button></td>
             </tr>
           </tbody>
         </table>
@@ -2814,30 +2798,28 @@ async function detachDatabase(d: AppDatabase) {
            is a set of files that can be projected whole or one at a time. -->
       <div class="card mt-4">
         <div class="card-header page-header">
-          <h2>Config files</h2>
-          <span class="text-muted text-sm">Read-only files mounted from workspace configs.</span>
+          <h2>{{ $t('appDetail.configFiles') }}</h2>
+          <span class="text-muted text-sm">{{ $t('appDetail.configs.subtitle') }}</span>
         </div>
         <div class="card-body">
-          <div v-if="configMounts.length === 0" class="text-muted text-sm" style="margin-top: 0">
-            No config files mounted.
-          </div>
+          <div v-if="configMounts.length === 0" class="text-muted text-sm" style="margin-top: 0">{{ $t('appDetail.noConfigFilesMounted') }}</div>
           <div v-else class="table-wrapper">
             <table>
-              <thead><tr><th>Config</th><th>File</th><th>Mount path</th><th></th></tr></thead>
+              <thead><tr><th>{{ $t('appDetail.config') }}</th><th>{{ $t('appDetail.file') }}</th><th>{{ $t('volumes.mountPath') }}</th><th></th></tr></thead>
               <tbody>
                 <tr v-for="m in configMounts" :key="`${m.config_id}:${m.config_key || ''}`">
                   <td><router-link to="/configs">{{ configName(m.config_id) }}</router-link></td>
                   <td>
                     <code v-if="m.config_key">{{ m.config_key }}</code>
-                    <span v-else class="text-muted text-sm">all files</span>
+                    <span v-else class="text-muted text-sm">{{ $t('appDetail.allFiles') }}</span>
                   </td>
                   <td><code>{{ m.path }}</code></td>
                   <td class="text-right">
                     <button
                       v-if="ws.canEdit"
                       class="btn-icon btn-icon-danger"
-                      title="Remove mount"
-                      aria-label="Remove mount"
+                      :title="$t('appDetail.removeMount')"
+                      :aria-label="$t('appDetail.removeMount')"
                       @click="detachConfig(m.config_id!, m.config_key || '')"
                     >
                       <span class="mdi mdi-close"></span>
@@ -2851,7 +2833,7 @@ async function detachDatabase(d: AppDatabase) {
           <div v-if="ws.canEdit" class="config-attach">
             <div class="form-row">
               <div class="form-group">
-                <label class="form-label" for="cfg-select">Config</label>
+                <label class="form-label" for="cfg-select">{{ $t('appDetail.config') }}</label>
                 <select
                   id="cfg-select"
                   v-model="configMount.config_id"
@@ -2859,7 +2841,7 @@ async function detachDatabase(d: AppDatabase) {
                   style="min-width: 300px"
                   @focus="loadWorkspaceConfigs"
                 >
-                  <option :value="null">Select a config…</option>
+                  <option :value="null">{{ $t('appDetail.selectAConfig') }}</option>
                   <option v-for="c in workspaceConfigs" :key="c.id" :value="c.id">
                     {{ c.display_name || c.name }} ({{ c.keys.length }} file{{ c.keys.length === 1 ? '' : 's' }})
                   </option>
@@ -2869,21 +2851,17 @@ async function detachDatabase(d: AppDatabase) {
 
             <template v-if="selectedConfig">
               <div class="form-group">
-                <label class="form-label">Mount</label>
+                <label class="form-label">{{ $t('appDetail.mount') }}</label>
                 <div class="tabs" style="margin-bottom: 0">
-                  <button type="button" class="tab" :class="{ active: configMount.whole }" @click="configMount.whole = true">
-                    All files
-                  </button>
-                  <button type="button" class="tab" :class="{ active: !configMount.whole }" @click="configMount.whole = false">
-                    A single file
-                  </button>
+                  <button type="button" class="tab" :class="{ active: configMount.whole }" @click="configMount.whole = true">{{ $t('appDetail.configs.allFilesTab') }}</button>
+                  <button type="button" class="tab" :class="{ active: !configMount.whole }" @click="configMount.whole = false">{{ $t('appDetail.aSingleFile') }}</button>
                 </div>
               </div>
 
               <div v-if="!configMount.whole" class="form-group">
-                <label class="form-label" for="cfg-key">File</label>
+                <label class="form-label" for="cfg-key">{{ $t('appDetail.file') }}</label>
                 <select id="cfg-key" v-model="configMount.key" class="form-input">
-                  <option value="">Select a file…</option>
+                  <option value="">{{ $t('appDetail.selectAFile') }}</option>
                   <option v-for="k in selectedConfig.keys" :key="k" :value="k">{{ k }}</option>
                 </select>
               </div>
@@ -2903,13 +2881,11 @@ async function detachDatabase(d: AppDatabase) {
               <!-- Path shape is the thing people get wrong, so show the result
                    rather than explaining the rule. -->
               <div v-if="configPathPreview.length" class="cfg-preview">
-                <span class="form-label" style="margin-bottom: 4px; display: block">Files in the container</span>
+                <span class="form-label" style="margin-bottom: 4px; display: block">{{ $t('appDetail.filesInTheContainer') }}</span>
                 <code v-for="p in configPathPreview" :key="p" class="cfg-preview-path">{{ p }}</code>
               </div>
 
-              <p class="form-hint">
-                Mounted read-only. Changes to the config apply on the app's next deploy.
-              </p>
+              <p class="form-hint">{{ $t('appDetail.configs.mountHint') }}</p>
 
               <button class="btn btn-primary btn-sm" :disabled="!canAttachConfig || configAttaching" @click="attachConfig">
                 {{ configAttaching ? 'Mounting…' : 'Mount config' }}
@@ -2922,39 +2898,36 @@ async function detachDatabase(d: AppDatabase) {
       <!-- Privileged host mounts -->
       <template v-if="canHostMount">
         <div class="card-header" style="border-top: 1px solid var(--border-primary)">
-          <h2><span class="mdi mdi-shield-alert-outline" style="color: var(--warning, #d97706)"></span> Host mounts</h2>
+          <h2><span class="mdi mdi-shield-alert-outline" style="color: var(--warning, #d97706)"></span>{{ $t('plans.hostMounts') }}</h2>
         </div>
         <div class="card-body" style="border-bottom: 1px solid var(--border-primary)">
-          <p class="form-hint" style="margin-bottom: 10px">
-            Bind allow-listed host paths into this app. These grant host-level access — attach only what the app truly needs.
-          </p>
+          <p class="form-hint" style="margin-bottom: 10px">{{ $t('appDetail.settings.hostMountsHint') }}</p>
           <form class="flex items-center gap-2" @submit.prevent="attachHostMount">
-            <select v-model="hostMount.preset" class="form-select" aria-label="Host mount capability" style="max-width: 220px" @change="onPresetChange">
-              <option value="" disabled>Select capability…</option>
+            <select v-model="hostMount.preset" class="form-select" :aria-label="$t('appDetail.hostMountCapability')" style="max-width: 220px" @change="onPresetChange">
+              <option value="" disabled>{{ $t('appDetail.selectCapability') }}</option>
               <option v-for="p in hostPresets" :key="p.key" :value="p.key">{{ p.label }}</option>
             </select>
-            <input v-model="hostMount.path" class="form-input" aria-label="Host mount path" :placeholder="selectedPreset?.default_target || '/path'" style="max-width: 220px" />
+            <input v-model="hostMount.path" class="form-input" :aria-label="$t('appDetail.hostMountPath')" :placeholder="selectedPreset?.default_target || '/path'" style="max-width: 220px" />
             <label v-if="selectedPreset?.allow_read_only" class="flex items-center gap-1 text-sm" style="white-space: nowrap">
-              <input v-model="hostMount.read_only" type="checkbox" /> read-only
-            </label>
-            <button class="btn btn-primary" :disabled="!hostMount.preset">Attach</button>
+              <input v-model="hostMount.read_only" type="checkbox" />{{ $t('appDetail.readOnly') }}</label>
+            <button class="btn btn-primary" :disabled="!hostMount.preset">{{ $t('appDetail.attach') }}</button>
           </form>
           <p v-if="selectedPreset?.danger" class="form-hint" style="margin-top: 8px; color: var(--danger, #dc2626)">
             <span class="mdi mdi-alert"></span> {{ selectedPreset.danger }}
           </p>
         </div>
         <div v-if="hostMounts.length === 0" class="empty-state">
-          <p>No host mounts attached.</p>
+          <p>{{ $t('appDetail.noHostMountsAttached') }}</p>
         </div>
         <div v-else class="table-wrapper">
           <table>
-            <thead><tr><th>Capability</th><th>Mount path</th><th>Mode</th><th></th></tr></thead>
+            <thead><tr><th>{{ $t('appDetail.capability') }}</th><th>{{ $t('volumes.mountPath') }}</th><th>{{ $t('appDetail.mode') }}</th><th></th></tr></thead>
             <tbody>
               <tr v-for="m in hostMounts" :key="m.host_preset">
                 <td class="cell-title">{{ presetLabel(m.host_preset) }}</td>
                 <td class="text-muted">{{ m.path }}</td>
                 <td class="text-muted">{{ m.read_only ? 'read-only' : 'read-write' }}</td>
-                <td class="text-right"><button class="btn-icon btn-icon-danger" title="Detach" aria-label="Detach" @click="detachHostMount(m.host_preset)"><span class="mdi mdi-delete-outline"></span></button></td>
+                <td class="text-right"><button class="btn-icon btn-icon-danger" :title="$t('appDetail.detach')" :aria-label="$t('appDetail.detach')" @click="detachHostMount(m.host_preset)"><span class="mdi mdi-delete-outline"></span></button></td>
               </tr>
             </tbody>
           </table>
@@ -2965,19 +2938,19 @@ async function detachDatabase(d: AppDatabase) {
     <!-- Databases -->
     <div v-else-if="tab === 'databases'" class="card">
       <div class="card-header">
-        <h2>Databases</h2>
+        <h2>{{ $t('appDetail.databases') }}</h2>
         <div class="flex items-center gap-2">
-          <button v-if="ws.canEdit" class="btn btn-primary btn-sm" @click="openLink"><span class="mdi mdi-link-variant"></span> Link database</button>
-          <RouterLink to="/databases" class="btn btn-ghost btn-sm">Manage databases</RouterLink>
+          <button v-if="ws.canEdit" class="btn btn-primary btn-sm" @click="openLink"><span class="mdi mdi-link-variant"></span>{{ $t('appDetail.linkDatabase') }}</button>
+          <RouterLink to="/databases" class="btn btn-ghost btn-sm">{{ $t('appDetail.manageDatabases') }}</RouterLink>
         </div>
       </div>
       <div v-if="appDatabases.length === 0" class="empty-state">
         <span class="mdi mdi-database-outline" style="font-size: 36px; color: var(--text-muted)"></span>
-        <p>No databases attached. Link an existing database or create a new one on an instance.</p>
+        <p>{{ $t('appDetail.db.emptyHint') }}</p>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Database</th><th>Engine</th><th>User</th><th>Env</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('appDetail.database') }}</th><th>{{ $t('appDetail.engine') }}</th><th>{{ $t('appDetail.user') }}</th><th>{{ $t('appDetail.tab.env') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="d in appDatabases" :key="d.id">
               <td>
@@ -2988,8 +2961,8 @@ async function detachDatabase(d: AppDatabase) {
               <td class="cell-sub" style="font-family: monospace">{{ d.username }}</td>
               <td class="cell-sub" style="font-family: monospace">{{ d.env_prefix ? d.env_prefix + '_*' : 'DB_*' }}</td>
               <td class="text-right table-actions">
-                <button class="btn btn-secondary btn-sm" @click="revealDatabase(d)"><span class="mdi mdi-key-outline"></span> Connection</button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Detach" aria-label="Detach" @click="detachDatabase(d)"><span class="mdi mdi-link-variant-off"></span></button>
+                <button class="btn btn-secondary btn-sm" @click="revealDatabase(d)"><span class="mdi mdi-key-outline"></span>{{ $t('appDetail.connection') }}</button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('appDetail.detach')" :aria-label="$t('appDetail.detach')" @click="detachDatabase(d)"><span class="mdi mdi-link-variant-off"></span></button>
               </td>
             </tr>
           </tbody>
@@ -2999,28 +2972,28 @@ async function detachDatabase(d: AppDatabase) {
 
     <!-- Releases -->
     <div v-else-if="tab === 'releases'" class="card">
-      <div class="card-header"><h2>Releases</h2></div>
+      <div class="card-header"><h2>{{ $t('appDetail.releases') }}</h2></div>
       <div v-if="releases.length === 0" class="empty-state">
         <span class="mdi mdi-tag-outline" style="font-size: 36px; color: var(--text-muted)"></span>
-        <p>No releases yet.</p>
+        <p>{{ $t('appDetail.noReleasesYet') }}</p>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Version</th><th>Image</th><th>State</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('appDetail.version') }}</th><th>{{ $t('appDetail.image') }}</th><th>{{ $t('appDetail.state') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="r in releases" :key="r.id" class="row-clickable" @click="releaseDetail = r">
               <td class="cell-title">v{{ r.version }}</td>
               <td class="text-muted">{{ r.image }}</td>
               <td>
-                <span v-if="r.active" class="badge badge-success badge-dot">active</span>
-                <span v-if="r.pinned" class="badge badge-info" style="margin-left: 4px"><span class="mdi mdi-pin" style="font-size: 12px"></span> pinned</span>
+                <span v-if="r.active" class="badge badge-success badge-dot">{{ $t('appDetail.active') }}</span>
+                <span v-if="r.pinned" class="badge badge-info" style="margin-left: 4px"><span class="mdi mdi-pin" style="font-size: 12px"></span>{{ $t('appDetail.pinned') }}</span>
               </td>
               <td class="text-right table-actions" @click.stop>
-                <button v-if="!r.active && ws.canEdit" class="btn btn-sm btn-secondary" title="Redeploy this release" @click="activate(r.id)">Activate</button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="r.pinned ? 'Unpin' : 'Pin'" :aria-label="r.pinned ? 'Unpin' : 'Pin'" :disabled="releaseBusy === r.id" @click="togglePin(r)">
+                <button v-if="!r.active && ws.canEdit" class="btn btn-sm btn-secondary" :title="$t('appDetail.redeployThisRelease')" @click="activate(r.id)">{{ $t('appDetail.activate') }}</button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t(r.pinned ? 'appDetail.unpin' : 'appDetail.pin')" :aria-label="r.pinned ? 'Unpin' : 'Pin'" :disabled="releaseBusy === r.id" @click="togglePin(r)">
                   <span class="mdi" :class="r.pinned ? 'mdi-pin-off-outline' : 'mdi-pin-outline'"></span>
                 </button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" :disabled="r.active || r.pinned || releaseBusy === r.id" @click="deleteRelease(r)">
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" :disabled="r.active || r.pinned || releaseBusy === r.id" @click="deleteRelease(r)">
                   <span class="mdi mdi-delete-outline"></span>
                 </button>
               </td>
@@ -3040,8 +3013,8 @@ async function detachDatabase(d: AppDatabase) {
       <div class="card mb-4">
         <div class="card-header source-header">
           <div>
-            <h2>Source</h2>
-            <p class="card-subtitle">Where this application's image comes from.</p>
+            <h2>{{ $t('appDetail.sourceLabel') }}</h2>
+            <p class="card-subtitle">{{ $t('appDetail.settings.sourceHint') }}</p>
           </div>
           <button
             v-if="ws.canEdit && !editingSource && !imageManaged"
@@ -3049,8 +3022,7 @@ async function detachDatabase(d: AppDatabase) {
             class="btn btn-ghost btn-sm"
             @click="beginEditSource"
           >
-            <span class="mdi mdi-pencil-outline"></span> Edit source
-          </button>
+            <span class="mdi mdi-pencil-outline"></span>{{ $t('gitops.editSource') }}</button>
         </div>
 
         <!-- Summary -->
@@ -3066,19 +3038,20 @@ async function detachDatabase(d: AppDatabase) {
           <p v-if="imageManaged && template" class="form-hint source-managed">
             <span class="mdi mdi-lock-outline"></span>
             Managed by the “{{ template.name }}” template — change it through a
-            <button type="button" class="tpl-notice-link" @click="goToUpgrade">marketplace upgrade</button>.
+            <button type="button" class="tpl-notice-link" @click="goToUpgrade">{{ $t('appDetail.marketplaceUpgrade') }}</button>.
           </p>
           <p v-else-if="managedBy === 'gitops'" class="form-hint source-managed">
             <span class="mdi mdi-lock-outline"></span>
-            Managed by GitOps — change it in the Git manifest. Edits here are overwritten on the next
-            <router-link :to="{ name: 'gitops' }">sync</router-link>.
+            <i18n-t keypath="appDetail.settings.gitopsLocked" tag="span">
+              <template #link><router-link :to="{ name: 'gitops' }">{{ $t('appDetail.deploy.sync') }}</router-link></template>
+            </i18n-t>
           </p>
         </div>
 
         <!-- Editor -->
         <div v-else class="card-body" style="max-width: 560px">
           <div class="form-group">
-            <label class="form-label">Source type</label>
+            <label class="form-label">{{ $t('appDetail.sourceType') }}</label>
             <div class="source-choice">
               <label
                 v-for="opt in SOURCE_TYPES"
@@ -3089,8 +3062,8 @@ async function detachDatabase(d: AppDatabase) {
                 <input type="radio" :value="opt.value" v-model="sourceDraft.type" />
                 <span class="mdi" :class="opt.icon"></span>
                 <span class="source-option-text">
-                  <strong>{{ opt.label }}</strong>
-                  <small>{{ opt.hint }}</small>
+                  <strong>{{ $t(opt.label) }}</strong>
+                  <small>{{ $t(opt.hint) }}</small>
                 </span>
               </label>
             </div>
@@ -3101,34 +3074,33 @@ async function detachDatabase(d: AppDatabase) {
           <div v-if="sourceSwitching" class="tpl-notice source-warning">
             <span class="mdi mdi-alert-outline"></span>
             <div class="tpl-notice-text">
-              <strong>Switching to {{ sourceDraft.type === 'git' ? 'a Git repository' : 'a Docker image' }}.</strong>
-              The {{ sourceDraft.type === 'git' ? 'image and registry credential' : 'repository, branch and build settings' }}
-              will be cleared, and the app needs a redeploy to run from the new source.
-              <template v-if="app.source_type === 'git' && deploysViaPipeline">
-                Its repository pipeline (<code>{{ repoPipeline?.source_path }}</code>) will also be removed.
-              </template>
-              Domains, environment variables, volumes and history are kept.
+              <strong>{{ $t(sourceDraft.type === 'git' ? 'appDetail.settings.switchToGitTitle' : 'appDetail.settings.switchToImageTitle') }}</strong>
+              {{ $t(sourceDraft.type === 'git' ? 'appDetail.settings.switchToGitBody' : 'appDetail.settings.switchToImageBody') }}
+              <i18n-t v-if="app.source_type === 'git' && deploysViaPipeline" keypath="appDetail.settings.switchPipelineRemoved" tag="span">
+                <template #path><code>{{ repoPipeline?.source_path }}</code></template>
+              </i18n-t>
+              {{ $t('appDetail.settings.switchKept') }}
             </div>
           </div>
 
           <template v-if="sourceDraft.type === 'image'">
             <div class="form-row">
               <div class="form-group" style="flex: 2">
-                <label class="form-label">Image</label>
+                <label class="form-label">{{ $t('appDetail.image') }}</label>
                 <input v-model="settingsForm.image" class="form-input" placeholder="nginx" />
               </div>
               <div class="form-group" style="flex: 1">
-                <label class="form-label">Tag <span class="text-muted">(optional)</span></label>
+                <label class="form-label">{{ $t('appDetail.tag') }}<span class="text-muted">{{ $t('appDetail.optional') }}</span></label>
                 <input v-model="settingsForm.tag" class="form-input" placeholder="latest" />
               </div>
             </div>
-            <p class="form-hint" style="margin-top: -8px">
-              Deploys <code>{{ settingsForm.image || 'image' }}:{{ settingsForm.tag || 'latest' }}</code>
-            </p>
+            <i18n-t keypath="appDetail.settings.deploysImage" tag="p" class="form-hint" style="margin-top: -8px">
+              <template #image><code>{{ settingsForm.image || 'image' }}:{{ settingsForm.tag || 'latest' }}</code></template>
+            </i18n-t>
             <div class="form-group">
-              <label class="form-label">Registry credential <span class="text-muted">(for private images)</span></label>
+              <label class="form-label">{{ $t('appDetail.registryCredential') }}<span class="text-muted">{{ $t('apps.form.forPrivate') }}</span></label>
               <select v-model="settingsForm.registry_id" class="form-select">
-                <option :value="null">Public / none</option>
+                <option :value="null">{{ $t('apps.form.registryNone') }}</option>
                 <option v-for="r in registries" :key="r.id" :value="r.id">{{ r.name }} ({{ r.server }})</option>
               </select>
             </div>
@@ -3136,50 +3108,51 @@ async function detachDatabase(d: AppDatabase) {
 
           <template v-else>
             <div class="form-group">
-              <label class="form-label">Repository</label>
+              <label class="form-label">{{ $t('appDetail.repository') }}</label>
               <select v-model="settingsForm.git_repository_id" class="form-select" @change="onSettingsRepoSelect">
-                <option :value="null">Public URL (no saved repository)</option>
+                <option :value="null">{{ $t('apps.form.publicUrl') }}</option>
                 <option v-for="r in gitRepos" :key="r.id" :value="r.id">{{ r.name }} — {{ r.url }}</option>
               </select>
               <p class="form-hint">
-                A saved repository supplies the clone URL and credentials.
-                <RouterLink to="/git-repositories">Manage repositories →</RouterLink>
+                {{ $t('appDetail.settings.savedRepoHint') }}
+                <RouterLink to="/git-repositories">{{ $t('apps.form.manageRepos') }}</RouterLink>
               </p>
             </div>
             <div class="form-row">
               <div class="form-group" style="flex: 2">
                 <label class="form-label">
-                  Repository URL
-                  <span v-if="settingsForm.git_repository_id" class="text-muted">(optional — overrides the saved repository)</span>
+                  {{ $t('appDetail.settings.repositoryUrl') }}
+                  <span v-if="settingsForm.git_repository_id" class="text-muted">{{ $t('apps.form.optionalOverrides') }}</span>
                 </label>
                 <input v-model="settingsForm.git_repo" class="form-input" placeholder="https://github.com/user/repo" />
               </div>
               <div class="form-group" style="flex: 1">
-                <label class="form-label">Branch / ref <span class="text-muted">(optional)</span></label>
+                <label class="form-label">{{ $t('appDetail.branchRef') }}<span class="text-muted">{{ $t('appDetail.optional') }}</span></label>
                 <input v-model="settingsForm.git_ref" class="form-input" placeholder="main" />
               </div>
             </div>
             <div v-if="deploysViaPipeline && !sourceSwitching" class="tpl-notice">
               <span class="mdi mdi-pipe"></span>
               <div class="tpl-notice-text">
-                <strong>This app builds through its repository's pipeline.</strong>
-                The steps in <code>{{ repoPipeline?.source_path }}</code> decide how the image is built, so the build
-                method and builder below no longer apply.
+                <strong>{{ $t('appDetail.settings.pipelineBuildsTitle') }}</strong>
+                <i18n-t keypath="appDetail.settings.pipelineBuildsHint" tag="span">
+                  <template #path><code>{{ repoPipeline?.source_path }}</code></template>
+                </i18n-t>
               </div>
             </div>
             <div class="form-group">
-              <label class="form-label">Build method</label>
+              <label class="form-label">{{ $t('apps.form.buildMethod') }}</label>
               <select v-model="settingsForm.build_method" class="form-select" :disabled="deploysViaPipeline && !sourceSwitching">
-                <option value="auto">Auto (recommended)</option>
-                <option value="buildpack">Buildpacks (no Dockerfile)</option>
-                <option value="dockerfile">Dockerfile</option>
+                <option value="auto">{{ $t('apps.form.buildAuto') }}</option>
+                <option value="buildpack">{{ $t('apps.form.buildBuildpacks') }}</option>
+                <option value="dockerfile">{{ $t('appDetail.dockerfile') }}</option>
               </select>
-              <p class="form-hint">Auto builds the repo's Dockerfile when present, otherwise uses Cloud Native Buildpacks.</p>
+              <p class="form-hint">{{ $t('apps.form.buildAutoHint') }}</p>
             </div>
             <div v-if="settingsForm.build_method !== 'dockerfile'" class="form-group">
-              <label class="form-label">Builder image <span class="text-muted">(optional, advanced)</span></label>
+              <label class="form-label">{{ $t('appDetail.builderImage') }}<span class="text-muted">{{ $t('apps.form.optionalAdvanced') }}</span></label>
               <input v-model="settingsForm.builder" class="form-input" placeholder="paketobuildpacks/builder-jammy-base" :disabled="deploysViaPipeline && !sourceSwitching" />
-              <p class="form-hint">Override the Cloud Native Buildpacks builder. Leave empty to use the platform default.</p>
+              <p class="form-hint">{{ $t('apps.form.builderHint') }}</p>
             </div>
           </template>
 
@@ -3187,7 +3160,7 @@ async function detachDatabase(d: AppDatabase) {
             <button class="btn btn-primary" :disabled="savingSource || !sourceValid" @click="saveSource">
               {{ savingSource ? 'Saving…' : sourceSwitching ? 'Switch source' : 'Save source' }}
             </button>
-            <button class="btn btn-ghost" :disabled="savingSource" @click="cancelEditSource">Cancel</button>
+            <button class="btn btn-ghost" :disabled="savingSource" @click="cancelEditSource">{{ $t('action.cancel') }}</button>
             <span v-if="!sourceValid" class="form-error">
               {{ sourceDraft.type === 'image' ? 'An image is required.' : 'A repository URL or a saved repository is required.' }}
             </span>
@@ -3204,14 +3177,12 @@ async function detachDatabase(d: AppDatabase) {
                 {{ deploysViaPipeline ? 'Repository pipeline' : 'No repository pipeline' }}
               </strong>
               <p class="form-hint" style="margin: 4px 0 0">
-                <template v-if="deploysViaPipeline">
-                  Deploys run <code>{{ repoPipeline?.source_path }}</code> from the repository.
-                  Re-sync after editing it to pick the changes up now instead of at the next deploy.
-                </template>
-                <template v-else>
-                  This app builds directly. If you have added a <code>pipelines.yaml</code> to the repository,
-                  re-sync to adopt it.
-                </template>
+                <i18n-t v-if="deploysViaPipeline" keypath="appDetail.settings.repoPipelineHint" tag="span">
+                  <template #path><code>{{ repoPipeline?.source_path }}</code></template>
+                </i18n-t>
+                <i18n-t v-else keypath="appDetail.settings.noRepoPipelineHint" tag="span">
+                  <template #file><code>pipelines.yaml</code></template>
+                </i18n-t>
               </p>
             </div>
             <button
@@ -3233,12 +3204,8 @@ async function detachDatabase(d: AppDatabase) {
           <div class="source-pipeline-row">
             <div>
               <strong class="source-pipeline-title">
-                <span class="mdi mdi-cached"></span> Build cache
-              </strong>
-              <p class="form-hint" style="margin: 4px 0 0">
-                Builds reuse cached layers. Invalidate when a cached layer has gone stale — the next
-                build rebuilds every layer and repopulates the cache. Nothing is deleted.
-              </p>
+                <span class="mdi mdi-cached"></span>{{ $t('appDetail.buildCache') }}</strong>
+              <p class="form-hint" style="margin: 4px 0 0">{{ $t('appDetail.settings.buildCacheHint') }}</p>
             </div>
             <button
               v-if="ws.canEdit"
@@ -3256,59 +3223,59 @@ async function detachDatabase(d: AppDatabase) {
 
       <div class="card mb-4">
         <div class="card-header">
-          <h2>Configuration</h2>
-          <p class="card-subtitle">Runtime settings applied on the next deploy.</p>
+          <h2>{{ $t('appDetail.configuration') }}</h2>
+          <p class="card-subtitle">{{ $t('appDetail.settings.subtitle') }}</p>
         </div>
         <div class="card-body" style="max-width: 460px">
           <div class="form-group">
-            <label class="form-label">Command <span class="text-muted">(optional)</span></label>
-            <input v-model="settingsForm.command" class="form-input mono" placeholder="image default" :disabled="!ws.canEdit" />
-            <p class="form-hint">Overrides the image's default command (CMD). Space-separated args; leave blank to use the image default.</p>
+            <label class="form-label">{{ $t('appDetail.command') }}<span class="text-muted">{{ $t('appDetail.optional') }}</span></label>
+            <input v-model="settingsForm.command" class="form-input mono" :placeholder="$t('appDetail.imageDefault')" :disabled="!ws.canEdit" />
+            <p class="form-hint">{{ $t('appDetail.settings.commandHint') }}</p>
           </div>
           <div class="form-group">
-            <label class="form-label">Container ports</label>
+            <label class="form-label">{{ $t('apps.form.containerPorts') }}</label>
             <div v-for="(p, i) in settingsForm.ports" :key="i" class="port-row">
-              <input v-model.number="p.container_port" type="number" class="form-input" aria-label="Container port" placeholder="8080" :disabled="!ws.canEdit" style="flex: 1" />
-              <select v-model="p.protocol" class="form-select" :disabled="!ws.canEdit" aria-label="Port protocol" style="width: 84px">
+              <input v-model.number="p.container_port" type="number" class="form-input" :aria-label="$t('apps.form.containerPort')" placeholder="8080" :disabled="!ws.canEdit" style="flex: 1" />
+              <select v-model="p.protocol" class="form-select" :disabled="!ws.canEdit" :aria-label="$t('apps.form.portProtocol')" style="width: 84px">
                 <option value="tcp">TCP</option>
                 <option value="udp">UDP</option>
               </select>
-              <select v-model="p.scheme" class="form-select" :disabled="!ws.canEdit" title="Application protocol the container speaks on this port" aria-label="Application protocol the container speaks on this port" style="width: 96px">
+              <select v-model="p.scheme" class="form-select" :disabled="!ws.canEdit" :title="$t('appDetail.ports.schemeHint')" :aria-label="$t('appDetail.ports.schemeHint')" style="width: 96px">
                 <option value="http">http</option>
                 <option value="https">https</option>
               </select>
-              <input v-model="p.name" class="form-input" aria-label="Port name" placeholder="name (opt)" :disabled="!ws.canEdit" style="flex: 1" />
-              <button v-if="ws.canEdit" type="button" class="btn-icon btn-icon-danger" aria-label="Remove port" @click="removeSettingsPort(i)"><span class="mdi mdi-close"></span></button>
+              <input v-model="p.name" class="form-input" :aria-label="$t('apps.form.portName')" :placeholder="$t('apps.form.portNamePlaceholder')" :disabled="!ws.canEdit" style="flex: 1" />
+              <button v-if="ws.canEdit" type="button" class="btn-icon btn-icon-danger" :aria-label="$t('apps.form.removePort')" @click="removeSettingsPort(i)"><span class="mdi mdi-close"></span></button>
             </div>
-            <button v-if="ws.canEdit" type="button" class="btn btn-ghost btn-sm" @click="addSettingsPort"><span class="mdi mdi-plus"></span> Add port</button>
+            <button v-if="ws.canEdit" type="button" class="btn btn-ghost btn-sm" @click="addSettingsPort"><span class="mdi mdi-plus"></span>{{ $t('appDetail.addPort') }}</button>
           </div>
           <div class="form-group">
-            <label class="form-label">Networks</label>
+            <label class="form-label">{{ $t('appDetail.networks') }}</label>
             <label v-for="n in networks" :key="n.id" class="checkbox-label">
               <input type="checkbox" :value="n.id" v-model="settingsForm.network_ids" :disabled="!ws.canEdit || n.is_default" />
-              {{ n.name }} <span v-if="n.is_default" class="text-muted">(default, always attached)</span>
+              {{ n.name }} <span v-if="n.is_default" class="text-muted">{{ $t('appDetail.defaultAlwaysAttached') }}</span>
             </label>
           </div>
           <div class="form-group">
-            <label class="form-label">Stack <span class="text-muted">(optional)</span></label>
+            <label class="form-label">{{ $t('appDetail.stack') }}<span class="text-muted">{{ $t('appDetail.optional') }}</span></label>
             <select v-model="settingsForm.stack_id" class="form-select" :disabled="!ws.canEdit">
-              <option :value="null">None</option>
+              <option :value="null">{{ $t('apps.form.none') }}</option>
               <option v-for="s in stacks" :key="s.id" :value="s.id">{{ s.name }}</option>
             </select>
-            <p class="form-hint">Stack changes take effect on the next deploy.</p>
+            <p class="form-hint">{{ $t('appDetail.settings.stackHint') }}</p>
           </div>
           <button v-if="ws.canEdit" class="btn btn-primary" :disabled="savingSettings" @click="saveSettings">
             {{ savingSettings ? 'Saving…' : 'Save settings' }}
           </button>
-          <p v-else class="text-muted text-sm">You need developer access to edit settings.</p>
+          <p v-else class="text-muted text-sm">{{ $t('appDetail.settings.needsDeveloper') }}</p>
         </div>
       </div>
 
       <div class="card mb-4">
-        <div class="card-header"><h2>Deployment strategy</h2></div>
+        <div class="card-header"><h2>{{ $t('appDetail.deploymentStrategy') }}</h2></div>
         <div class="card-body" style="max-width: 460px">
           <div class="form-group">
-            <label class="form-label">Default strategy</label>
+            <label class="form-label">{{ $t('appDetail.defaultStrategy') }}</label>
             <div class="strategy-options">
               <label
                 v-for="s in STRATEGIES"
@@ -3323,9 +3290,9 @@ async function detachDatabase(d: AppDatabase) {
                   :disabled="!ws.canEdit || (hasHostPorts && s.value === 'rolling')"
                 />
                 <span>
-                  <span class="strategy-name">{{ s.label }}</span>
+                  <span class="strategy-name">{{ $t(s.label) }}</span>
                   <span class="strategy-hint">
-                    {{ hasHostPorts && s.value === 'rolling' ? `Unavailable while host port ${hostPortList} is published — it can only be held by one container at a time.` : s.hint }}
+                    {{ hasHostPorts && s.value === 'rolling' ? $t('appDetail.strategy.rollingBlocked', { ports: hostPortList }) : $t(s.hint) }}
                   </span>
                 </span>
               </label>
@@ -3335,15 +3302,15 @@ async function detachDatabase(d: AppDatabase) {
           <template v-if="settingsForm.deploy_strategy === 'canary'">
             <div class="form-row">
               <div class="form-group" style="flex: 1">
-                <label class="form-label">Initial %</label>
+                <label class="form-label">{{ $t('appDetail.initial') }}</label>
                 <input v-model.number="settingsForm.canary_initial_weight" type="number" min="1" max="99" class="form-input" :disabled="!ws.canEdit" />
               </div>
               <div class="form-group" style="flex: 1">
-                <label class="form-label">Step %</label>
+                <label class="form-label">{{ $t('appDetail.step') }}</label>
                 <input v-model.number="settingsForm.canary_step_weight" type="number" min="1" max="99" class="form-input" :disabled="!ws.canEdit" />
               </div>
               <div class="form-group" style="flex: 1">
-                <label class="form-label">Interval (s)</label>
+                <label class="form-label">{{ $t('appDetail.intervalS') }}</label>
                 <input v-model.number="settingsForm.canary_step_interval_seconds" type="number" min="10" class="form-input" :disabled="!ws.canEdit" />
               </div>
             </div>
@@ -3359,93 +3326,94 @@ async function detachDatabase(d: AppDatabase) {
       </div>
 
       <div class="card mb-4">
-        <div class="card-header"><h2>Resources</h2></div>
+        <div class="card-header"><h2>{{ $t('appDetail.resources') }}</h2></div>
         <div class="card-body" style="max-width: 460px">
           <div class="form-row">
             <div class="form-group" style="flex: 1">
-              <label class="form-label">CPU limit (cores)</label>
+              <label class="form-label">{{ $t('appDetail.cpuLimitCores') }}</label>
               <input v-model.number="settingsForm.cpu_cores" type="number" min="0" step="0.1" class="form-input" :class="{ 'input-error': cpuOverCap }" :disabled="!ws.canEdit" />
               <p class="form-hint" :class="{ 'hint-error': cpuOverCap }">
                 <span v-if="cpuOverCap">Exceeds platform max of {{ limits.max_cpu_cores }} cores.</span>
                 <span v-else-if="limits.max_cpu_cores > 0">Max {{ limits.max_cpu_cores }} cores. 0 = unlimited.</span>
-                <span v-else>0 = unlimited.</span>
+                <span v-else>{{ $t('appDetail.zeroUnlimited') }}</span>
               </p>
             </div>
             <div class="form-group" style="flex: 1">
-              <label class="form-label">Memory limit (MB)</label>
+              <label class="form-label">{{ $t('appDetail.memoryLimitMb') }}</label>
               <input v-model.number="settingsForm.memory_mb" type="number" min="0" step="64" class="form-input" :class="{ 'input-error': memOverCap }" :disabled="!ws.canEdit" />
               <p class="form-hint" :class="{ 'hint-error': memOverCap }">
                 <span v-if="memOverCap">Exceeds platform max of {{ limits.max_memory_mb }} MB.</span>
                 <span v-else-if="limits.max_memory_mb > 0">Max {{ limits.max_memory_mb }} MB. 0 = unlimited.</span>
-                <span v-else>0 = unlimited.</span>
+                <span v-else>{{ $t('appDetail.zeroUnlimited') }}</span>
               </p>
             </div>
           </div>
           <div v-if="gpuAllowed" class="form-row">
             <div class="form-group" style="flex: 1">
-              <label class="form-label">GPUs</label>
+              <label class="form-label">{{ $t('appDetail.gpus') }}</label>
               <input v-model.number="settingsForm.gpu_count" type="number" min="0" step="1" class="form-input" :disabled="!ws.canEdit" />
-              <p class="form-hint">Whole GPU devices to attach. 0 = none. Counts against the plan’s GPU quota while running.</p>
+              <p class="form-hint">{{ $t('appDetail.settings.gpuHint') }}</p>
             </div>
             <div class="form-group" style="flex: 1">
-              <label class="form-label">GPU kind</label>
-              <input v-model="settingsForm.gpu_kind" type="text" placeholder="any" class="form-input" :disabled="!ws.canEdit || settingsForm.gpu_count < 1" />
-              <p class="form-hint">Narrow to a vendor/model (e.g. <code>nvidia</code>). Empty = any enabled GPU on the node.</p>
+              <label class="form-label">{{ $t('appDetail.gpuKind') }}</label>
+              <input v-model="settingsForm.gpu_kind" type="text" :placeholder="$t('appDetail.any')" class="form-input" :disabled="!ws.canEdit || settingsForm.gpu_count < 1" />
+              <i18n-t keypath="appDetail.settings.gpuFilterHint" tag="p" class="form-hint">
+            <template #vendor><code>nvidia</code></template>
+          </i18n-t>
             </div>
           </div>
           <div class="form-group">
-            <label class="form-label">Run as user</label>
+            <label class="form-label">{{ $t('jobs.runAsUser') }}</label>
             <input
               v-model="settingsForm.run_as_user" type="text" class="form-input" style="font-family: monospace"
-              :placeholder="requireNonRoot ? '1000:1000' : 'leave blank to use the image\u2019s user'"
-              :disabled="!ws.canEdit" aria-label="Run as user"
+              :placeholder="requireNonRoot ? '1000:1000' : $t('appDetail.runAsUserPlaceholder')"
+              :disabled="!ws.canEdit" :aria-label="$t('jobs.runAsUser')"
             />
             <p v-if="runAsUserError" class="form-hint" style="color: var(--danger)">{{ runAsUserError }}</p>
             <p v-else class="form-hint">
-              The account the container runs as, like <code>docker run --user</code> — <code>1000</code>,
-              <code>1000:1000</code> or a name from the image (<code>node</code>). Blank keeps the image’s own user.
-              Attached volumes are chowned to it on the next deploy.
-              <span v-if="requireNonRoot"><br />This workspace runs under the restricted security profile: give a non-root
-              numeric uid. A name can’t be used, because the image decides what it maps to.</span>
+              <i18n-t keypath="appDetail.settings.runAsUserHint" tag="span">
+                <template #cmd><code>docker run --user</code></template>
+                <template #a><code>1000</code></template>
+                <template #b><code>1000:1000</code></template>
+                <template #name><code>node</code></template>
+              </i18n-t>
+              <span v-if="requireNonRoot"><br />{{ $t('appDetail.settings.runAsUserRestricted') }}</span>
             </p>
           </div>
           <div class="form-group">
-            <label class="form-label">Hardening</label>
+            <label class="form-label">{{ $t('appDetail.hardening') }}</label>
             <label class="checkbox-label">
-              <input v-model="settingsForm.read_only_root_filesystem" type="checkbox" :disabled="!ws.canEdit" />
-              Read-only root filesystem
-            </label>
-            <p class="form-hint">
-              The container can write only to its volumes. An image that writes elsewhere, such as <code>/tmp</code>,
-              needs a volume mounted there or it fails to start. One-off jobs keep a writable filesystem.
-            </p>
+              <input v-model="settingsForm.read_only_root_filesystem" type="checkbox" :disabled="!ws.canEdit" />{{ $t('appDetail.readOnlyRootFilesystem') }}</label>
+            <i18n-t keypath="appDetail.settings.readOnlyRootHint" tag="p" class="form-hint">
+              <template #path><code>/tmp</code></template>
+            </i18n-t>
             <label class="checkbox-label">
               <input
                 type="checkbox" :checked="settingsForm.no_new_privileges || requireNonRoot" :disabled="!ws.canEdit || requireNonRoot"
                 @change="setNoNewPrivileges"
-              />
-              No new privileges
-            </label>
+              />{{ $t('appDetail.noNewPrivileges') }}</label>
             <p class="form-hint">
-              Stops processes gaining privileges through setuid binaries, like <code>--security-opt no-new-privileges</code>.
-              <span v-if="requireNonRoot">Always on under this workspace’s restricted security profile.</span>
+              <i18n-t keypath="appDetail.settings.noNewPrivilegesHint" tag="span">
+                <template #flag><code>--security-opt no-new-privileges</code></template>
+              </i18n-t>
+              <span v-if="requireNonRoot"> {{ $t('appDetail.settings.alwaysOnRestricted') }}</span>
             </p>
           </div>
           <div class="form-group">
-            <label class="form-label">Drop capabilities</label>
+            <label class="form-label">{{ $t('appDetail.dropCapabilities') }}</label>
             <input
               v-model="settingsForm.drop_capabilities" type="text" class="form-input mono" placeholder="NET_RAW, SYS_CHROOT or ALL"
-              :disabled="!ws.canEdit" aria-label="Capabilities to drop"
+              :disabled="!ws.canEdit" :aria-label="$t('appDetail.capabilitiesToDrop')"
             />
             <p v-if="dropCapabilitiesError" class="form-hint" style="color: var(--danger)">{{ dropCapabilitiesError }}</p>
-            <p v-else class="form-hint">
-              Removed from Docker’s default set, like <code>docker run --cap-drop</code>. <code>ALL</code> drops every one,
-              leaving only the capabilities granted to the app. Applied on the next deploy.
-            </p>
+            <i18n-t v-else keypath="appDetail.settings.dropCapsHint" tag="p" class="form-hint">
+              <template #cmd><code>docker run --cap-drop</code></template>
+              <template #all><code>ALL</code></template>
+            </i18n-t>
           </div>
 
           <div v-if="canGrant && offeredCapabilities.length" class="form-group">
-            <label class="form-label">Kernel capabilities</label>
+            <label class="form-label">{{ $t('appDetail.kernelCapabilities') }}</label>
             <div class="cap-grid">
               <label v-for="c in offeredCapabilities" :key="c.name" class="cap-option"
                 :class="{ 'cap-elevated': c.tier === 1 }">
@@ -3454,72 +3422,68 @@ async function detachDatabase(d: AppDatabase) {
                 <span class="cap-body">
                   <span class="cap-name">
                     {{ c.name }}
-                    <span v-if="c.tier === 1" class="badge badge-warning cap-badge">elevated</span>
+                    <span v-if="c.tier === 1" class="badge badge-warning cap-badge">{{ $t('appDetail.elevated') }}</span>
                   </span>
                   <span class="cap-help">{{ c.help }}</span>
                 </span>
               </label>
             </div>
-            <p class="form-hint">
-              Granted on top of Docker's default set, like <code>docker run --cap-add</code>. Applied on the
-              next deploy. Grant only what the image actually needs — each one widens what a compromise of
-              this container reaches.
-            </p>
+            <i18n-t keypath="appDetail.settings.addCapsHint" tag="p" class="form-hint">
+              <template #cmd><code>docker run --cap-add</code></template>
+            </i18n-t>
           </div>
 
           <div v-if="canGrant && offeredDevices.length" class="form-group">
-            <label class="form-label">Host devices</label>
+            <label class="form-label">{{ $t('appDetail.hostDevices') }}</label>
             <div v-for="(_, i) in settingsForm.devices" :key="i" class="device-row">
               <input v-model="settingsForm.devices[i]" type="text" class="form-input mono"
-                placeholder="/dev/net/tun" :disabled="!ws.canEdit" aria-label="Host device path" />
-              <button class="btn-icon btn-icon-danger" title="Remove" aria-label="Remove device"
+                placeholder="/dev/net/tun" :disabled="!ws.canEdit" :aria-label="$t('appDetail.hostDevicePath')" />
+              <button class="btn-icon btn-icon-danger" :title="$t('action.remove')" :aria-label="$t('appDetail.removeDevice')"
                 :disabled="!ws.canEdit" @click="settingsForm.devices.splice(i, 1)">
                 <span class="mdi mdi-close"></span>
               </button>
             </div>
             <button class="btn btn-sm btn-secondary" :disabled="!ws.canEdit || settingsForm.devices.length >= (capCatalog?.max_devices ?? 8)"
               @click="addDevice">
-              <span class="mdi mdi-plus"></span> Add device
-            </button>
+              <span class="mdi mdi-plus"></span>{{ $t('appDetail.addDevice') }}</button>
             <p class="form-hint">
-              Exposed at the same path inside the container. Allowed:
+              {{ $t('appDetail.settings.devicesAllowed') }}
               <template v-for="(d, i) in offeredDevices" :key="d.path">
                 <code>{{ d.path }}{{ d.exact ? '' : '*' }}</code><span v-if="i < offeredDevices.length - 1">, </span>
-              </template>.
-              Raw block devices are never granted — they are the host's filesystem.
+              </template>
+              {{ $t('appDetail.settings.devicesNoBlock') }}
             </p>
           </div>
 
           <div class="form-group">
-            <label class="form-label">Restart policy</label>
+            <label class="form-label">{{ $t('appDetail.restartPolicy') }}</label>
             <select v-model="settingsForm.restart_policy" class="form-select" :disabled="!ws.canEdit">
-              <option v-for="p in RESTART_POLICIES" :key="p.value" :value="p.value">{{ p.label }}</option>
+              <option v-for="p in RESTART_POLICIES" :key="p.value" :value="p.value">{{ $t(p.label) }}</option>
             </select>
-            <p class="form-hint">When the container should be restarted by Docker. Applied on the next deploy.</p>
+            <p class="form-hint">{{ $t('appDetail.settings.restartPolicyHint') }}</p>
           </div>
           <div class="form-group">
-            <label class="form-label">Image pull policy</label>
+            <label class="form-label">{{ $t('appDetail.imagePullPolicy') }}</label>
             <select v-model="settingsForm.image_pull_policy" class="form-select" :disabled="!ws.canEdit">
-              <option v-for="p in IMAGE_PULL_POLICIES" :key="p.value" :value="p.value">{{ p.label }}</option>
+              <option v-for="p in IMAGE_PULL_POLICIES" :key="p.value" :value="p.value">{{ $t(p.label) }}</option>
             </select>
-            <p class="form-hint">
-              Whether a deploy pulls the image from the registry: <strong>Always</strong> fetches the tag each deploy,
-              <strong>If not present</strong> reuses a locally cached image, <strong>Never</strong> requires it to be present
-              already. Digest-pinned images are never re-pulled.
-            </p>
+            <i18n-t keypath="appDetail.settings.pullPolicyHint" tag="p" class="form-hint">
+              <template #always><strong>{{ $t('appDetail.settings.pullAlways') }}</strong></template>
+              <template #ifNotPresent><strong>{{ $t('appDetail.settings.pullIfNotPresent') }}</strong></template>
+              <template #never><strong>{{ $t('appDetail.settings.pullNever') }}</strong></template>
+            </i18n-t>
           </div>
           <div class="form-group">
-            <label class="form-label">If this app disappears</label>
+            <label class="form-label">{{ $t('appDetail.ifThisAppDisappears') }}</label>
             <select v-model="settingsForm.reconcile_policy" class="form-select" :disabled="!ws.canEdit">
-              <option v-for="p in RECONCILE_POLICIES" :key="p.value" :value="p.value">{{ p.label }}</option>
+              <option v-for="p in RECONCILE_POLICIES" :key="p.value" :value="p.value">{{ $t(p.label) }}</option>
             </select>
-            <p class="form-hint">
-              What the platform's reconciliation does when this app's container is gone from its node:
-              <strong>Platform default</strong> follows the server-wide setting, <strong>Leave this app alone</strong>
-              stops watching it at all, <strong>Report only</strong> records the problem without touching it, and
-              <strong>Redeploy in place</strong> brings it back on the same node. A missing data volume always stops a
-              redeploy — the data has to be restored first.
-            </p>
+            <i18n-t keypath="appDetail.settings.reconcileHint" tag="p" class="form-hint">
+              <template #default><strong>{{ $t('appDetail.settings.reconcileDefault') }}</strong></template>
+              <template #ignore><strong>{{ $t('appDetail.settings.reconcileIgnore') }}</strong></template>
+              <template #report><strong>{{ $t('appDetail.settings.reconcileReport') }}</strong></template>
+              <template #redeploy><strong>{{ $t('appDetail.settings.reconcileRedeploy') }}</strong></template>
+            </i18n-t>
           </div>
           <button v-if="ws.canEdit" class="btn btn-primary" :disabled="savingSettings || !resourcesValid || !!runAsUserError || !!dropCapabilitiesError" @click="saveSettings">
             {{ savingSettings ? 'Saving…' : 'Save resources' }}
@@ -3529,37 +3493,35 @@ async function detachDatabase(d: AppDatabase) {
 
       <!-- Container labels (Traefik &c.) -->
       <div class="card mb-4">
-        <div class="card-header"><h2>Container labels</h2></div>
+        <div class="card-header"><h2>{{ $t('appDetail.containerLabels') }}</h2></div>
         <div class="card-body" style="border-bottom: 1px solid var(--border-primary)">
-          <p class="text-muted text-sm" style="margin: 0 0 8px">
-            Custom Docker labels stamped on this app's container — for label-driven tools like
-            <strong>Traefik</strong>. Reserved keys (<code>io.miabi.*</code>, <code>com.docker.*</code>) are
-            not allowed. Changes apply on the next deploy. Don't put secrets in labels — they're visible via
-            <code>docker inspect</code>.
-          </p>
+          <i18n-t keypath="appDetail.labels.hint" tag="p" class="text-muted text-sm" style="margin: 0 0 8px">
+            <template #tool><strong>Traefik</strong></template>
+            <template #a><code>io.miabi.*</code></template>
+            <template #b><code>com.docker.*</code></template>
+            <template #cmd><code>docker inspect</code></template>
+          </i18n-t>
           <p v-if="!customLabelsAllowed" class="text-muted text-sm" style="margin: 8px 0 0">
-            <span class="mdi mdi-lock-outline"></span>
-            Custom labels aren't available on your current plan, or have been disabled by your administrator.
-          </p>
+            <span class="mdi mdi-lock-outline"></span>{{ $t('appDetail.labels.notAvailable') }}</p>
           <form v-else-if="ws.canEdit" class="flex items-center gap-2" @submit.prevent="setLabel">
-            <input v-model="newLabel.key" class="form-input" aria-label="Label key" placeholder="traefik.enable" style="max-width: 280px" />
-            <input v-model="newLabel.value" class="form-input" aria-label="Label value" placeholder="true" style="max-width: 240px" />
-            <button class="btn btn-primary">Add</button>
+            <input v-model="newLabel.key" class="form-input" :aria-label="$t('appDetail.labelKey')" placeholder="traefik.enable" style="max-width: 280px" />
+            <input v-model="newLabel.value" class="form-input" :aria-label="$t('appDetail.labelValue')" placeholder="true" style="max-width: 240px" />
+            <button class="btn btn-primary">{{ $t('appDetail.add') }}</button>
           </form>
         </div>
         <div v-if="Object.keys(containerLabels).length === 0" class="empty-state">
           <span class="mdi mdi-label-outline" style="font-size: 36px; color: var(--text-muted)"></span>
-          <p>No custom labels.</p>
+          <p>{{ $t('appDetail.noCustomLabels') }}</p>
         </div>
         <div v-else class="table-wrapper">
           <table>
-            <thead><tr><th>Key</th><th>Value</th><th></th></tr></thead>
+            <thead><tr><th>{{ $t('appDetail.key') }}</th><th>{{ $t('appDetail.value') }}</th><th></th></tr></thead>
             <tbody>
               <tr v-for="(value, key) in containerLabels" :key="key">
                 <td class="cell-title">{{ key }}</td>
                 <td class="text-muted">{{ value }}</td>
                 <td class="text-right">
-                  <button v-if="ws.canEdit && customLabelsAllowed" class="btn-icon btn-icon-danger" title="Remove" aria-label="Remove" @click="delLabel(String(key))"><span class="mdi mdi-delete-outline"></span></button>
+                  <button v-if="ws.canEdit && customLabelsAllowed" class="btn-icon btn-icon-danger" :title="$t('action.remove')" :aria-label="$t('action.remove')" @click="delLabel(String(key))"><span class="mdi mdi-delete-outline"></span></button>
                 </td>
               </tr>
             </tbody>
@@ -3568,49 +3530,52 @@ async function detachDatabase(d: AppDatabase) {
       </div>
 
       <div class="card mb-4">
-        <div class="card-header"><h2>Healthcheck</h2></div>
+        <div class="card-header"><h2>{{ $t('appDetail.healthcheck') }}</h2></div>
         <div class="card-body" style="max-width: 460px">
           <div class="form-group">
-            <label class="form-label">Type</label>
+            <label class="form-label">{{ $t('appDetail.type') }}</label>
             <select v-model="settingsForm.hc_type" class="form-select" :disabled="!ws.canEdit">
-              <option v-for="t in HEALTHCHECK_TYPES" :key="t.value" :value="t.value">{{ t.label }}</option>
+              <option v-for="item in HEALTHCHECK_TYPES" :key="item.value" :value="item.value">{{ $t(item.label) }}</option>
             </select>
-            <p class="form-hint">Deploys wait for the container to report healthy before going live.</p>
+            <p class="form-hint">{{ $t('appDetail.settings.waitHealthyHint') }}</p>
           </div>
           <template v-if="settingsForm.hc_type === 'http'">
             <div class="form-row">
               <div class="form-group" style="flex: 2">
-                <label class="form-label">Path</label>
+                <label class="form-label">{{ $t('appDetail.path') }}</label>
                 <input v-model="settingsForm.hc_path" class="form-input" placeholder="/health" :disabled="!ws.canEdit" />
               </div>
               <div class="form-group" style="flex: 1">
-                <label class="form-label">Port <span class="text-muted">(opt)</span></label>
+                <label class="form-label">{{ $t('appDetail.port') }}<span class="text-muted">{{ $t('appDetail.opt') }}</span></label>
                 <input v-model.number="settingsForm.hc_port" type="number" class="form-input" :placeholder="String(app.port || 80)" :disabled="!ws.canEdit" />
               </div>
             </div>
-            <p class="form-hint" style="margin-top: -8px; margin-bottom: 16px">Uses <code>curl</code> (or <code>wget</code>) inside the container — the image must include one.</p>
+            <i18n-t keypath="appDetail.settings.httpProbeHint" tag="p" class="form-hint" style="margin-top: -8px; margin-bottom: 16px">
+              <template #curl><code>curl</code></template>
+              <template #wget><code>wget</code></template>
+            </i18n-t>
           </template>
           <div v-else-if="settingsForm.hc_type === 'command'" class="form-group">
-            <label class="form-label">Command</label>
+            <label class="form-label">{{ $t('appDetail.command') }}</label>
             <input v-model="settingsForm.hc_command" class="form-input mono" placeholder="pg_isready -U postgres" :disabled="!ws.canEdit" />
-            <p class="form-hint">Runs via the shell; non-zero exit = unhealthy.</p>
+            <p class="form-hint">{{ $t('appDetail.settings.cmdProbeHint') }}</p>
           </div>
           <template v-if="settingsForm.hc_type !== 'none'">
             <div class="form-row">
               <div class="form-group" style="flex: 1">
-                <label class="form-label">Interval (s)</label>
+                <label class="form-label">{{ $t('appDetail.intervalS') }}</label>
                 <input v-model.number="settingsForm.hc_interval" type="number" min="1" class="form-input" :disabled="!ws.canEdit" />
               </div>
               <div class="form-group" style="flex: 1">
-                <label class="form-label">Timeout (s)</label>
+                <label class="form-label">{{ $t('jobs.timeoutShort') }}</label>
                 <input v-model.number="settingsForm.hc_timeout" type="number" min="1" class="form-input" :disabled="!ws.canEdit" />
               </div>
               <div class="form-group" style="flex: 1">
-                <label class="form-label">Retries</label>
+                <label class="form-label">{{ $t('appDetail.retries') }}</label>
                 <input v-model.number="settingsForm.hc_retries" type="number" min="1" class="form-input" :disabled="!ws.canEdit" />
               </div>
               <div class="form-group" style="flex: 1">
-                <label class="form-label">Start period (s)</label>
+                <label class="form-label">{{ $t('appDetail.startPeriodS') }}</label>
                 <input v-model.number="settingsForm.hc_start_period" type="number" min="0" class="form-input" :disabled="!ws.canEdit" />
               </div>
             </div>
@@ -3624,37 +3589,33 @@ async function detachDatabase(d: AppDatabase) {
       <!-- Moving this app into Git: render it as the manifest that would recreate it. -->
       <div v-if="canExportManifest" class="card mb-4">
         <div class="card-header">
-          <h2>GitOps manifest</h2>
-          <p class="card-subtitle">
-            Describe this application as a <code>miabi.io/v1</code> manifest — its source, ports,
-            environment and mounted volumes — to commit alongside your code.
-          </p>
+          <h2>{{ $t('appDetail.gitopsManifest') }}</h2>
+          <i18n-t keypath="appDetail.manifest.subtitle" tag="p" class="card-subtitle">
+            <template #kind><code>miabi.io/v1</code></template>
+          </i18n-t>
         </div>
         <div class="card-body">
-          <p class="text-muted text-sm mb-3">
-            Applying the manifest elsewhere recreates the application as it is configured here. Secret
-            values are <strong>not</strong> included: each is listed by name under
-            <code>secretEnv</code>, so the vault stays the only place the value lives.
-          </p>
+          <i18n-t keypath="appDetail.manifest.secretsHint" tag="p" class="text-muted text-sm mb-3">
+            <template #not><strong>{{ $t('appDetail.manifest.not') }}</strong></template>
+            <template #field><code>secretEnv</code></template>
+          </i18n-t>
           <button type="button" class="btn btn-secondary" :disabled="manifestLoading" @click="openManifest">
-            <span class="mdi" :class="manifestLoading ? 'mdi-loading mdi-spin' : 'mdi-file-code-outline'"></span>
-            Generate manifest
-          </button>
+            <span class="mdi" :class="manifestLoading ? 'mdi-loading mdi-spin' : 'mdi-file-code-outline'"></span>{{ $t('appDetail.generateManifest') }}</button>
         </div>
       </div>
 
       <div class="card">
-      <div class="card-header"><h2 style="color: var(--danger-600)">Danger zone</h2></div>
+      <div class="card-header"><h2 style="color: var(--danger-600)">{{ $t('db.dangerZone') }}</h2></div>
       <div class="card-body flex items-center justify-between">
         <div>
-          <div style="font-weight: 600; color: var(--text-primary)">Delete this application</div>
+          <div style="font-weight: 600; color: var(--text-primary)">{{ $t('appDetail.deleteThisApplication') }}</div>
           <div class="text-muted text-sm">
-            Permanently removes the application and its container.
-            <span v-if="liveStatus?.running"> Stop it first — running apps can't be deleted.</span>
+            {{ $t('appDetail.danger.deleteHint') }}
+            <span v-if="liveStatus?.running"> {{ $t('appDetail.danger.stopFirst') }}</span>
           </div>
         </div>
-        <button v-if="ws.canEdit" class="btn btn-danger" :disabled="liveStatus?.running" :title="liveStatus?.running ? 'Stop the application before deleting' : 'Delete application'" @click="openDelete">Delete application</button>
-        <span v-else class="text-muted text-sm">Requires developer access or higher.</span>
+        <button v-if="ws.canEdit" class="btn btn-danger" :disabled="liveStatus?.running" :title="$t(liveStatus?.running ? 'appDetail.danger.stopBeforeDelete' : 'appDetail.deleteApplication')" @click="openDelete">{{ $t('appDetail.deleteApplication') }}</button>
+        <span v-else class="text-muted text-sm">{{ $t('appDetail.needsDeveloper') }}</span>
       </div>
       </div>
     </div>
@@ -3693,19 +3654,19 @@ async function detachDatabase(d: AppDatabase) {
 
       <AppModal v-if="showDelete && app" @close="showDelete = false">
         <div class="modal-header">
-          <h3>Delete application</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDelete = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('appDetail.deleteApplication') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showDelete = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="removeApp">
           <div class="modal-body">
-            <p>This permanently removes <strong>{{ app.name }}</strong>, its running container, env vars, ports, and deployment history. This cannot be undone.</p>
+            <i18n-t keypath="appDetail.danger.deleteWarning" tag="p"><template #name><strong>{{ app.name }}</strong></template></i18n-t>
             <div class="form-group" style="margin-bottom: 0; margin-top: 12px">
-              <label class="form-label">Type <code>{{ app.name }}</code> to confirm</label>
+              <i18n-t keypath="appDetail.danger.typeToConfirm" tag="label" class="form-label"><template #name><code>{{ app.name }}</code></template></i18n-t>
               <input v-model="deleteConfirm" class="form-input" :placeholder="app.name" autofocus autocomplete="off" />
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showDelete = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showDelete = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-danger" :disabled="deleteConfirm !== app.name || deleting">{{ deleting ? 'Deleting…' : 'Delete application' }}</button>
           </div>
         </form>
@@ -3716,15 +3677,13 @@ async function detachDatabase(d: AppDatabase) {
     <Teleport to="body">
       <AppModal v-if="linkModal" max-width="600px" @close="linkModal = false">
         <div class="modal-header">
-          <h3>Link a database</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="linkModal = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('appDetail.linkADatabase') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="linkModal = false"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
           <!-- Step 1: instance -->
-          <label class="form-label">Database instance</label>
-          <div v-if="instancesOnNode.length === 0" class="form-hint" style="margin-bottom: 10px">
-            No database instances on this app's node.
-          </div>
+          <label class="form-label">{{ $t('appDetail.databaseInstance') }}</label>
+          <div v-if="instancesOnNode.length === 0" class="form-hint" style="margin-bottom: 10px">{{ $t('appDetail.db.noInstances') }}</div>
           <div v-else class="instance-grid">
             <button
               v-for="i in instancesOnNode"
@@ -3745,34 +3704,31 @@ async function detachDatabase(d: AppDatabase) {
           <!-- Step 2: database on the instance -->
           <template v-if="selInstance">
             <div class="seg" style="margin-top: 16px">
-              <button type="button" class="seg-btn" :class="{ active: linkMode === 'existing' }" @click="linkMode = 'existing'">Existing database</button>
-              <button type="button" class="seg-btn" :class="{ active: linkMode === 'new' }" @click="linkMode = 'new'">＋ New database</button>
+              <button type="button" class="seg-btn" :class="{ active: linkMode === 'existing' }" @click="linkMode = 'existing'">{{ $t('appDetail.existingDatabase') }}</button>
+              <button type="button" class="seg-btn" :class="{ active: linkMode === 'new' }" @click="linkMode = 'new'">{{ $t('appDetail.newDatabase') }}</button>
             </div>
 
             <div v-if="linkMode === 'existing'" style="margin-top: 12px">
-              <div v-if="freeDatabases.length === 0" class="form-hint">
-                No unattached databases on this instance. Switch to “＋ New database”.
-              </div>
-              <select v-else v-model.number="linkForm.database_id" class="form-select" aria-label="Database to link" style="width: 100%">
-                <option :value="0" disabled>Select database…</option>
+              <div v-if="freeDatabases.length === 0" class="form-hint">{{ $t('appDetail.db.noUnattached') }}</div>
+              <select v-else v-model.number="linkForm.database_id" class="form-select" :aria-label="$t('appDetail.databaseToLink')" style="width: 100%">
+                <option :value="0" disabled>{{ $t('appDetail.selectDatabase') }}</option>
                 <option v-for="d in freeDatabases" :key="d.id" :value="d.id">{{ d.name }}</option>
               </select>
             </div>
 
             <div v-else style="margin-top: 12px">
-              <label class="form-label">New database name</label>
+              <label class="form-label">{{ $t('appDetail.newDatabaseName') }}</label>
               <input v-model="linkForm.new_name" class="form-input" placeholder="myapp" style="width: 100%" />
             </div>
 
-            <label class="form-label" style="margin-top: 14px">Env var prefix <span class="text-muted">(optional)</span></label>
-            <input v-model="linkForm.env_prefix" class="form-input" placeholder="e.g. ANALYTICS → ANALYTICS_DATABASE_URL" style="width: 100%" />
+            <label class="form-label" style="margin-top: 14px">{{ $t('appDetail.envVarPrefix') }}<span class="text-muted">{{ $t('appDetail.optional') }}</span></label>
+            <input v-model="linkForm.env_prefix" class="form-input" :placeholder="$t('appDetail.db.prefixPlaceholder')" style="width: 100%" />
             <p v-if="!linkForm.env_prefix.trim() && hasUnprefixed" class="form-hint" style="color: var(--warning, #d97706); margin-top: 6px">
-              <span class="mdi mdi-alert-outline"></span> This app already has an unprefixed database. Add a prefix to avoid overwriting its DATABASE_URL / DB_* vars.
-            </p>
+              <span class="mdi mdi-alert-outline"></span>{{ $t('appDetail.db.prefixWarning') }}</p>
           </template>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-ghost" @click="linkModal = false">Cancel</button>
+          <button class="btn btn-ghost" @click="linkModal = false">{{ $t('action.cancel') }}</button>
           <button class="btn btn-primary" :disabled="!selInstance || linkBusy" @click="confirmLink">
             {{ linkBusy ? 'Linking…' : 'Attach' }}
           </button>
@@ -3784,21 +3740,21 @@ async function detachDatabase(d: AppDatabase) {
     <Teleport to="body">
       <AppModal v-if="dbConnModal" max-width="560px" @close="dbConnModal = null">
         <div class="modal-header">
-          <h3>Connection · {{ dbConnModal.title }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="dbConnModal = null"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('appDetail.connection') }} · {{ dbConnModal.title }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="dbConnModal = null"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
           <div v-for="f in [
-            { label: 'Host', value: `${dbConnModal.info.host}:${dbConnModal.info.port}` },
-            { label: 'Database', value: dbConnModal.info.database },
-            { label: 'Username', value: dbConnModal.info.username },
-            { label: 'Password', value: dbConnModal.info.password },
-            { label: 'URI', value: dbConnModal.info.uri },
+            { label: 'db.host', value: `${dbConnModal.info.host}:${dbConnModal.info.port}` },
+            { label: 'appDetail.database', value: dbConnModal.info.database },
+            { label: 'db.username', value: dbConnModal.info.username },
+            { label: 'db.password', value: dbConnModal.info.password },
+            { label: 'appDetail.uri', value: dbConnModal.info.uri },
           ]" :key="f.label" class="dns-field">
-            <span class="dns-field-label">{{ f.label }}</span>
+            <span class="dns-field-label">{{ $t(f.label) }}</span>
             <div class="dns-field-row">
               <span class="dns-field-value">{{ f.value || '—' }}</span>
-              <button v-if="f.value" class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(f.value)"><span class="mdi mdi-content-copy"></span></button>
+              <button v-if="f.value" class="btn-icon btn-icon-muted" :title="$t('appDetail.copy')" :aria-label="$t('appDetail.copy')" @click="copy(f.value)"><span class="mdi mdi-content-copy"></span></button>
             </div>
           </div>
         </div>
@@ -3813,20 +3769,20 @@ async function detachDatabase(d: AppDatabase) {
     <Teleport to="body">
       <AppModal v-if="showEnvImport" max-width="560px" @close="showEnvImport = false">
         <div class="modal-header">
-          <h3>Import .env</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showEnvImport = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('stacks.importEnv') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showEnvImport = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="importEnv">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Paste KEY=VALUE lines</label>
+              <label class="form-label">{{ $t('stacks.pasteKeyValueLines') }}</label>
               <textarea v-model="envImport.content" class="form-input" rows="10" spellcheck="false" style="font-family: monospace; font-size: 12px" placeholder="DATABASE_URL=postgres://...&#10;# comments and blank lines are ignored&#10;LOG_LEVEL=info" required></textarea>
             </div>
-            <label class="checkbox-label" style="margin-bottom: 0"><input type="checkbox" v-model="envImport.secret" /> Mark all as secrets (encrypted)</label>
+            <label class="checkbox-label" style="margin-bottom: 0"><input type="checkbox" v-model="envImport.secret" />{{ $t('stacks.markAllSecrets') }}</label>
             <p class="form-hint">Existing keys are overwritten. {{ isDeployed ? 'The app redeploys after import.' : '' }}</p>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showEnvImport = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showEnvImport = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="importingEnv">{{ importingEnv ? 'Importing…' : 'Import' }}</button>
           </div>
         </form>
@@ -3849,33 +3805,33 @@ async function detachDatabase(d: AppDatabase) {
     <Teleport to="body">
       <AppModal v-if="showAddPort" @close="showAddPort = false">
         <div class="modal-header">
-          <h3>Add container port</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showAddPort = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('appDetail.addContainerPort') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showAddPort = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="addContainerPort">
           <div class="modal-body">
             <div class="flex items-center gap-3">
               <div class="form-group" style="flex: 1">
-                <label class="form-label">Container port</label>
+                <label class="form-label">{{ $t('apps.form.containerPort') }}</label>
                 <input v-model.number="portForm.container_port" type="number" min="1" max="65535" class="form-input" placeholder="8080" required autofocus />
               </div>
               <div class="form-group" style="width: 110px">
-                <label class="form-label">Protocol</label>
+                <label class="form-label">{{ $t('appDetail.protocol') }}</label>
                 <select v-model="portForm.protocol" class="form-select"><option value="tcp">tcp</option><option value="udp">udp</option></select>
               </div>
               <div class="form-group" style="width: 120px">
-                <label class="form-label">Scheme</label>
+                <label class="form-label">{{ $t('appDetail.scheme') }}</label>
                 <select v-model="portForm.scheme" class="form-select"><option value="http">http</option><option value="https">https</option></select>
               </div>
             </div>
             <div class="form-group" style="margin-bottom: 0">
-              <label class="form-label">Name <span class="text-muted">(optional)</span></label>
+              <label class="form-label">{{ $t('apps.form.name') }}<span class="text-muted">{{ $t('appDetail.optional') }}</span></label>
               <input v-model="portForm.name" class="form-input" placeholder="http" />
             </div>
-            <p class="form-hint">Declares a port the container listens on. Scheme is how a Gateway route reaches it (use https for TLS-only backends). Applies on the next deploy.</p>
+            <p class="form-hint">{{ $t('appDetail.ports.declareHint') }}</p>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showAddPort = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showAddPort = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="savingSettings || portForm.container_port <= 0">{{ savingSettings ? 'Adding…' : 'Add port' }}</button>
           </div>
         </form>
@@ -3886,31 +3842,31 @@ async function detachDatabase(d: AppDatabase) {
     <Teleport to="body">
       <AppModal v-if="showBindReq" @close="showBindReq = false">
         <div class="modal-header">
-          <h3>Request host binding</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showBindReq = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('appDetail.requestHostBinding') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showBindReq = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="requestBind">
           <div class="modal-body">
-            <p class="text-muted text-sm" style="margin-bottom: 14px">Publishes a container port on a host port. A platform admin must approve it; it takes effect on the next deploy.</p>
+            <p class="text-muted text-sm" style="margin-bottom: 14px">{{ $t('appDetail.ports.bindingHint') }}</p>
             <div class="form-row">
               <div class="form-group" style="flex: 1">
-                <label class="form-label">Container port</label>
+                <label class="form-label">{{ $t('apps.form.containerPort') }}</label>
                 <select v-model.number="bindForm.container_port" class="form-select">
                   <option v-for="p in (app.ports || [])" :key="p.id" :value="p.container_port">{{ p.container_port }}/{{ p.protocol }}</option>
                 </select>
               </div>
               <div class="form-group" style="flex: 1">
-                <label class="form-label">Host port</label>
+                <label class="form-label">{{ $t('appDetail.hostPort') }}</label>
                 <div class="flex items-center gap-2">
                   <input v-model.number="bindForm.host_port" type="number" class="form-input" placeholder="30080" required />
-                  <button type="button" class="btn btn-secondary" :disabled="suggestingPort" title="Pick a free host port on this node" @click="suggestPort">{{ suggestingPort ? '…' : 'Suggest' }}</button>
+                  <button type="button" class="btn btn-secondary" :disabled="suggestingPort" :title="$t('appDetail.pickAFreeHostPort')" @click="suggestPort">{{ suggestingPort ? '…' : 'Suggest' }}</button>
                 </div>
               </div>
             </div>
-            <p class="form-hint">Host ports are shared per node — “Suggest” picks one that’s currently free.</p>
+            <p class="form-hint">{{ $t('appDetail.ports.suggestHint') }}</p>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showBindReq = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showBindReq = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="requestingBind || !bindForm.host_port">{{ requestingBind ? 'Requesting…' : 'Request' }}</button>
           </div>
         </form>
@@ -3922,64 +3878,65 @@ async function detachDatabase(d: AppDatabase) {
       <AppModal v-if="showDeploy" @close="showDeploy = false">
         <div class="modal-header">
           <h3>{{ deployVerb }} {{ app.name }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDeploy = false"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showDeploy = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="confirmDeploy">
           <div class="modal-body">
             <div v-if="template" class="tpl-notice">
               <span class="mdi mdi-store-outline"></span>
               <div class="tpl-notice-text">
-                <strong>Managed by the “{{ template.name }}” template.</strong>
-                Changing the image here means it no longer matches the template, and a future template upgrade may overwrite it.
-                <button type="button" class="tpl-notice-link" @click="goToUpgrade">Upgrade via Marketplace</button>
+                <strong>Managed by the “{{ template.name }}” template.</strong>{{ $t('appDetail.settings.templateImageWarning') }}<button type="button" class="tpl-notice-link" @click="goToUpgrade">{{ $t('appDetail.upgradeViaMarketplace') }}</button>
               </div>
             </div>
             <div v-else-if="managedBy === 'gitops'" class="tpl-notice">
               <span class="mdi mdi-source-branch"></span>
               <div class="tpl-notice-text">
-                <strong>Managed by GitOps.</strong>
-                This app's desired state comes from a Git manifest. A manual redeploy may be reverted on the next
-                <router-link :to="{ name: 'gitops' }">sync</router-link> — deploy from Git to make it stick.
+                <strong>{{ $t('appDetail.deploy.gitopsTitle') }}</strong>
+                <i18n-t keypath="appDetail.deploy.gitopsHint" tag="span">
+                  <template #link><router-link :to="{ name: 'gitops' }">{{ $t('appDetail.deploy.sync') }}</router-link></template>
+                </i18n-t>
               </div>
             </div>
             <template v-if="app.source_type === 'image'">
               <div class="form-group" style="margin-bottom: 8px">
-                <label class="form-label">Image tag</label>
+                <label class="form-label">{{ $t('appDetail.imageTag') }}</label>
                 <input v-model="deployTag" class="form-input" placeholder="latest" autofocus />
               </div>
-              <p class="form-hint" style="margin-bottom: 16px">Deploys <code>{{ app.image }}:{{ deployTag.trim() || 'latest' }}</code> as a new release.</p>
+              <i18n-t keypath="appDetail.deploy.deploysImage" tag="p" class="form-hint" style="margin-bottom: 16px">
+                <template #image><code>{{ app.image }}:{{ deployTag.trim() || 'latest' }}</code></template>
+              </i18n-t>
             </template>
             <div v-else-if="deploysViaPipeline" class="tpl-notice" style="margin-bottom: 16px">
               <span class="mdi mdi-pipe"></span>
               <div class="tpl-notice-text">
-                <strong>Deploys run the “{{ repoPipeline?.display_name || repoPipeline?.name }}” pipeline.</strong>
-                Miabi runs the steps in <code>{{ repoPipeline?.source_path }}</code> on
-                <code>{{ app.git_ref || 'the default branch' }}</code>; the deploy step rolls out the image they build.
-                You'll follow the run's logs, not a deployment's.
+                <strong>{{ $t('appDetail.deploy.pipelineTitle', { name: repoPipeline?.display_name || repoPipeline?.name }) }}</strong>
+                <i18n-t keypath="appDetail.deploy.pipelineHint" tag="span">
+                  <template #path><code>{{ repoPipeline?.source_path }}</code></template>
+                  <template #ref><code>{{ app.git_ref || $t('appDetail.deploy.defaultBranch') }}</code></template>
+                </i18n-t>
               </div>
             </div>
-            <p v-else class="text-muted text-sm" style="margin-bottom: 16px">Builds the latest commit from the configured Git source as a new release.</p>
+            <p v-else class="text-muted text-sm" style="margin-bottom: 16px">{{ $t('appDetail.deploy.buildsLatestCommit') }}</p>
             <div class="form-group" style="margin-bottom: 8px">
-              <label class="form-label">Deployment strategy</label>
+              <label class="form-label">{{ $t('appDetail.deploymentStrategy') }}</label>
               <select v-model="deployStrategy" class="form-select">
-                <option v-for="s in availableStrategies" :key="s.value" :value="s.value">{{ s.label }}</option>
+                <option v-for="item in availableStrategies" :key="item.value" :value="item.value">{{ $t(item.label) }}</option>
               </select>
             </div>
             <p class="form-hint">
-              {{ strategyHint(deployStrategy) }}
-              <span v-if="!isDeployed && deployStrategy === 'canary'"><br />First deploy can't canary — it will run as rolling.</span>
+              {{ $t(strategyHint(deployStrategy)) }}
+              <span v-if="!isDeployed && deployStrategy === 'canary'"><br />{{ $t('appDetail.deploy.firstDeployNoCanary') }}</span>
               <span v-if="hasHostPorts"><br />Rolling isn't available: host port {{ hostPortList }} can only be held by one container at a time.</span>
-              <span v-if="hasHostPorts && deployStrategy === 'canary'"><br />The canary won't publish the host port — only traffic through a route reaches it.</span>
+              <span v-if="hasHostPorts && deployStrategy === 'canary'"><br />{{ $t('appDetail.ports.canaryHint') }}</span>
             </p>
             <div v-if="app.source_type === 'git'" class="form-group" style="margin-top: 16px; margin-bottom: 0">
               <label class="checkbox-label" style="margin-bottom: 0">
-                <input v-model="deployNoCache" type="checkbox" /> Rebuild without cache
-              </label>
-              <p class="form-hint">Rebuilds every layer for this deploy only. Slower — use it when a cached layer has gone stale.</p>
+                <input v-model="deployNoCache" type="checkbox" />{{ $t('appDetail.rebuildWithoutCache') }}</label>
+              <p class="form-hint">{{ $t('appDetail.deploy.noCacheHint') }}</p>
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showDeploy = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showDeploy = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="deploying">
               <span class="mdi mdi-rocket-launch-outline"></span> {{ deploying ? 'Starting…' : deployVerb }}
             </button>
@@ -3993,28 +3950,28 @@ async function detachDatabase(d: AppDatabase) {
       <AppModal v-if="releaseDetail" @close="releaseDetail = null">
         <div class="modal-header">
           <h3>Release v{{ releaseDetail.version }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="releaseDetail = null"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="releaseDetail = null"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
           <div class="dns-field">
-            <span class="dns-field-label">Image</span>
+            <span class="dns-field-label">{{ $t('appDetail.image') }}</span>
             <span class="dns-field-value">{{ releaseDetail.image }}</span>
           </div>
           <div class="dns-field">
-            <span class="dns-field-label">Container</span>
+            <span class="dns-field-label">{{ $t('appDetail.container') }}</span>
             <span class="dns-field-value">{{ releaseDetail.container_id || '—' }}</span>
           </div>
           <div class="rel-meta">
-            <span v-if="releaseDetail.active" class="badge badge-success badge-dot">active</span>
-            <span v-else class="badge badge-neutral">inactive</span>
-            <span v-if="releaseDetail.pinned" class="badge badge-info"><span class="mdi mdi-pin" style="font-size: 12px"></span> pinned</span>
+            <span v-if="releaseDetail.active" class="badge badge-success badge-dot">{{ $t('appDetail.active') }}</span>
+            <span v-else class="badge badge-neutral">{{ $t('appDetail.inactive') }}</span>
+            <span v-if="releaseDetail.pinned" class="badge badge-info"><span class="mdi mdi-pin" style="font-size: 12px"></span>{{ $t('appDetail.pinned') }}</span>
             <span class="text-muted text-sm">Created {{ new Date(releaseDetail.created_at).toLocaleString() }}</span>
           </div>
         </div>
         <div class="modal-footer">
-          <button v-if="!releaseDetail.active && ws.canEdit" class="btn btn-secondary" @click="activate(releaseDetail.id); releaseDetail = null">Activate</button>
+          <button v-if="!releaseDetail.active && ws.canEdit" class="btn btn-secondary" @click="activate(releaseDetail.id); releaseDetail = null">{{ $t('appDetail.activate') }}</button>
           <button v-if="ws.canEdit" class="btn btn-secondary" @click="togglePin(releaseDetail)">{{ releaseDetail.pinned ? 'Unpin' : 'Pin' }}</button>
-          <button v-if="ws.canEdit" class="btn btn-danger" :disabled="releaseDetail.active || releaseDetail.pinned" @click="deleteRelease(releaseDetail)">Delete</button>
+          <button v-if="ws.canEdit" class="btn btn-danger" :disabled="releaseDetail.active || releaseDetail.pinned" @click="deleteRelease(releaseDetail)">{{ $t('action.delete') }}</button>
         </div>
       </AppModal>
     </Teleport>
@@ -4029,9 +3986,8 @@ async function detachDatabase(d: AppDatabase) {
               {{ manifestCopied ? 'Copied' : 'Copy' }}
             </button>
             <button type="button" class="btn btn-ghost btn-sm" @click="downloadManifest">
-              <span class="mdi mdi-download"></span> Download
-            </button>
-            <button class="btn-icon btn-icon-muted" title="Close" aria-label="Close" @click="manifestOpen = false">
+              <span class="mdi mdi-download"></span>{{ $t('appDetail.download') }}</button>
+            <button class="btn-icon btn-icon-muted" :title="$t('shell.close')" :aria-label="$t('shell.close')" @click="manifestOpen = false">
               <span class="mdi mdi-close"></span>
             </button>
           </div>
@@ -4041,11 +3997,11 @@ async function detachDatabase(d: AppDatabase) {
           <pre v-else class="manifest-yaml"><code>{{ manifestYaml }}</code></pre>
         </div>
         <div class="modal-footer manifest-footer">
-          <span class="text-muted text-sm">
-            Commit this as <code>{{ app.name }}.yaml</code> and point a
-            <a href="/gitops">GitOps source</a> at it, or apply it with
-            <code>miabi apply -f {{ app.name }}.yaml</code>.
-          </span>
+          <i18n-t keypath="appDetail.manifest.commitHint" tag="span" class="text-muted text-sm">
+            <template #file><code>{{ app.name }}.yaml</code></template>
+            <template #link><a href="/gitops">{{ $t('appDetail.manifest.gitopsSource') }}</a></template>
+            <template #cmd><code>miabi apply -f {{ app.name }}.yaml</code></template>
+          </i18n-t>
         </div>
       </AppModal>
 

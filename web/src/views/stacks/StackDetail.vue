@@ -290,7 +290,7 @@ async function importEnv() {
     const res = (await stackApi.importEnvVars(wid.value, stackId.value, envImport.value.content, envImport.value.secret)).data.data
     const pending = res?.apps_pending_redeploy ?? 0
     const imported = res?.imported ?? 0
-    const msg = t('notify.stacks.imported', imported)
+    const msg = t('notify.common.varsImported', imported)
     notify.success(pending ? `${msg} — ${t('notify.stacks.appsPendingRedeploy', pending)}` : msg)
     showEnvImport.value = false
     envImport.value = { content: '', secret: false }

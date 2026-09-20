@@ -322,8 +322,8 @@ async function syncResource() {
   try {
     const res = await gitopsApi.syncResource(currentWorkspaceId.value, source.value.id, node.kind, node.name)
     const fail = res.data.data?.failures?.[0]
-    if (fail) notify.error(fail.error || `Failed to sync ${node.name}`)
-    else notify.success(`Synced ${node.name}`)
+    if (fail) notify.error(fail.error || t('notify.gitOpsDetail.syncFailed', { name: node.name }))
+    else notify.success(t('notify.gitOpsDetail.nodeSynced', { name: node.name }))
     await refreshGraph()
   } catch (e) {
     notify.apiError(e, `Could not sync ${node.name}`)
@@ -341,8 +341,8 @@ async function deleteResource() {
   try {
     const res = await gitopsApi.deleteResource(currentWorkspaceId.value, source.value.id, node.kind, node.name)
     const fail = res.data.data?.failures?.[0]
-    if (fail) notify.error(fail.error || `Failed to delete ${node.name}`)
-    else notify.success(`Deleted ${node.name}`)
+    if (fail) notify.error(fail.error || t('notify.gitOpsDetail.deleteFailed', { name: node.name }))
+    else notify.success(t('notify.gitOpsDetail.nodeDeleted', { name: node.name }))
     confirmDelete.value = false
     await refreshGraph()
   } catch (e) {
@@ -538,8 +538,8 @@ async function sync() {
   try {
     const res = await gitopsApi.sync(currentWorkspaceId.value, source.value.id)
     source.value = res.data.data
-    if (source.value.status === 'error') notify.error(source.value.message || 'Sync failed')
-    else notify.success('Synced')
+    if (source.value.status === 'error') notify.error(source.value.message || t('notify.gitOpsDetail.sourceSyncFailed'))
+    else notify.success(t('notify.gitOpsDetail.synced'))
     // Reflect new live state in the graph (degrades gracefully if the sync errored).
     await refreshGraph()
   } catch (e) {
@@ -603,7 +603,7 @@ const policyFlags = computed(() => {
     <!-- Header -->
     <div class="page-header">
       <div class="head-left">
-        <router-link to="/gitops" class="btn-icon btn-icon-muted" title="Back to GitOps"><span class="mdi mdi-arrow-left"></span></router-link>
+        <router-link to="/gitops" class="btn-icon btn-icon-muted" :title="$t('gitops.backToGitops')"><span class="mdi mdi-arrow-left"></span></router-link>
         <span class="avatar"><span class="mdi mdi-git"></span></span>
         <div class="head-title">
           <h1>{{ source?.display_name || source?.name || '…' }}</h1>
@@ -629,23 +629,20 @@ const policyFlags = computed(() => {
         >
           <span class="live-dot"></span>{{ liveOn ? 'Live' : 'Paused' }}
         </button>
-        <button v-if="ws.canEdit" class="btn btn-secondary" title="Preview the plan before syncing" :disabled="syncing" @click="openPreview">
-          <span class="mdi mdi-file-search-outline"></span> Preview
-        </button>
+        <button v-if="ws.canEdit" class="btn btn-secondary" :title="$t('gitops.previewHint')" :disabled="syncing" @click="openPreview">
+          <span class="mdi mdi-file-search-outline"></span>{{ $t('gitops.preview') }}</button>
         <button v-if="ws.canEdit" class="btn btn-secondary" :disabled="syncing" @click="sync">
-          <span class="mdi" :class="syncing ? 'mdi-loading mdi-spin' : 'mdi-sync'"></span> Sync
-        </button>
-        <button v-if="ws.canEdit" class="btn btn-secondary" title="Edit source"
+          <span class="mdi" :class="syncing ? 'mdi-loading mdi-spin' : 'mdi-sync'"></span>{{ $t('gitops.sync') }}</button>
+        <button v-if="ws.canEdit" class="btn btn-secondary" :title="$t('gitops.editSource')"
           @click="router.push({ name: 'gitops', query: { edit: String(sourceId) } })">
-          <span class="mdi mdi-pencil-outline"></span> Edit
-        </button>
+          <span class="mdi mdi-pencil-outline"></span>{{ $t('action.edit') }}</button>
       </div>
     </div>
 
     <!-- Meta bar: operational facts at a glance -->
     <div v-if="source" class="meta-bar">
       <div class="fact">
-        <span class="fact-label">Sync</span>
+        <span class="fact-label">{{ $t('gitops.sync') }}</span>
         <span class="badge" :class="source.sync_policy === 'auto' ? 'badge-info' : 'badge-neutral'">
           <span class="mdi" :class="source.sync_policy === 'auto' ? 'mdi-autorenew' : 'mdi-gesture-tap'"></span>
           {{ source.sync_policy === 'auto' ? 'Automatic' : 'Manual' }}
@@ -658,35 +655,35 @@ const policyFlags = computed(() => {
       <!-- Last sync is the last reconcile that CHANGED something, so it stands still while a healthy
            auto-sync source polls. Last check next to it is what moves. -->
       <div class="fact">
-        <span class="fact-label">Last sync</span>
+        <span class="fact-label">{{ $t('gitops.lastSync') }}</span>
         <span class="fact-value">
           <template v-if="source.last_synced_at">
             <span v-if="source.last_synced_commit" class="mono">{{ shortSha(source.last_synced_commit) }}</span>
             <span class="fact-muted" :title="absDate(source.last_synced_at)"> · {{ relTime(source.last_synced_at) }}</span>
             <span v-if="source.last_synced_author" class="fact-muted"> · by {{ source.last_synced_author }}</span>
           </template>
-          <span v-else class="fact-muted" title="Nothing has been applied from this repository yet">never</span>
+          <span v-else class="fact-muted" :title="$t('gitops.nothingApplied')">{{ $t('gitops.never') }}</span>
         </span>
       </div>
       <span class="meta-sep"></span>
       <div class="fact">
-        <span class="fact-label">Last check</span>
+        <span class="fact-label">{{ $t('gitops.lastCheck') }}</span>
         <span class="fact-value" :title="absDate(source.last_checked_at)">
           {{ relTime(source.last_checked_at) }}
-          <span v-if="checkedBeyondSync" class="fact-muted" :title="`Reconciled ${source.last_checked_commit} — it changed nothing`">
-            · <span class="mono">{{ shortSha(source.last_checked_commit) }}</span>, no changes
+          <span v-if="checkedBeyondSync" class="fact-muted" :title="$t('gitops.reconciledNoop', { commit: source.last_checked_commit })">
+            · <span class="mono">{{ shortSha(source.last_checked_commit) }}</span>{{ $t('gitops.noChanges') }}
           </span>
         </span>
       </div>
       <span class="meta-sep"></span>
       <div class="fact">
-        <span class="fact-label">Created</span>
+        <span class="fact-label">{{ $t('dashboard.col.created') }}</span>
         <span class="fact-value" :title="absDate(source.created_at)">{{ relTime(source.created_at) }}</span>
       </div>
       <!-- The applied commit's subject, on its own row: a commit message is far too long to sit inline
            with the facts above, and truncating it to a tooltip hid the one thing that says WHAT shipped. -->
       <div v-if="source.last_synced_subject" class="fact fact-row">
-        <span class="fact-label">Message</span>
+        <span class="fact-label">{{ $t('gitops.message') }}</span>
         <span class="fact-value fact-subject" :title="source.last_synced_subject">{{ source.last_synced_subject }}</span>
       </div>
     </div>
@@ -699,7 +696,10 @@ const policyFlags = computed(() => {
          deployed state instead of going blank. -->
     <div v-if="topo?.error" class="banner banner-warning">
       <span class="mdi mdi-history"></span>
-      <span><strong>Showing last-synced state.</strong> The latest revision could not be loaded: <span class="mono">{{ topo.error }}</span></span>
+      <span>
+        <strong>{{ $t('gitops.showingLastSyncedState') }}</strong>
+        <i18n-t keypath="gitops.topoErrorHint" tag="span"><template #error><span class="mono">{{ topo.error }}</span></template></i18n-t>
+      </span>
     </div>
 
     <!-- Status legend — click a chip to filter the graph by that status -->
@@ -718,8 +718,7 @@ const policyFlags = computed(() => {
         {{ c.n }} {{ nodeStatusMeta[c.status].label.toLowerCase() }}
       </button>
       <button v-if="statusFilter.size" type="button" class="legend-clear" @click="statusFilter = new Set()">
-        <span class="mdi mdi-close"></span> clear filter
-      </button>
+        <span class="mdi mdi-close"></span>{{ $t('gitops.clearFilter') }}</button>
     </div>
 
     <!-- Graph + side panel -->
@@ -727,8 +726,11 @@ const policyFlags = computed(() => {
       <div v-if="loading" class="graph-placeholder"><span class="spinner"></span></div>
       <div v-else-if="!nodeCount" class="empty-state">
         <span class="mdi mdi-graph-outline" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No resources</h3>
-        <p>This source has no <code>miabi.io/v1</code> resources at <code>{{ source?.ref }}/{{ source?.path }}</code>, or it hasn't been synced yet.</p>
+        <h3>{{ $t('gitops.noResources') }}</h3>
+        <i18n-t keypath="gitops.noResourcesHint" tag="p">
+          <template #kind><code>miabi.io/v1</code></template>
+          <template #path><code>{{ source?.ref }}/{{ source?.path }}</code></template>
+        </i18n-t>
       </div>
       <VueFlow
         v-else
@@ -763,7 +765,7 @@ const policyFlags = computed(() => {
               <span class="side-name">{{ selectedNode.name }}</span>
               <span class="side-kind">{{ kindOf(selectedNode.kind).label }}</span>
             </div>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="selectedKey = null"><span class="mdi mdi-close"></span></button>
+            <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="selectedKey = null"><span class="mdi mdi-close"></span></button>
           </div>
 
           <div v-if="drawerTabs.length > 1" class="side-tabs" role="tablist">
@@ -783,14 +785,14 @@ const policyFlags = computed(() => {
           <!-- Overview tab -->
           <div v-if="activeTab === 'overview'" class="side-body">
             <div class="side-row">
-              <span class="side-label">Sync status</span>
+              <span class="side-label">{{ $t('gitops.syncStatus') }}</span>
               <span class="badge" :class="nodeStatusMeta[selectedNode.status].badge">
                 <span class="mdi" :class="nodeStatusMeta[selectedNode.status].icon"></span>
                 {{ nodeStatusMeta[selectedNode.status].label }}
               </span>
             </div>
             <div v-if="selectedNode.health" class="side-row">
-              <span class="side-label">Health</span>
+              <span class="side-label">{{ $t('gitops.health') }}</span>
               <span class="badge badge-neutral">{{ selectedNode.health }}</span>
             </div>
 
@@ -805,7 +807,7 @@ const policyFlags = computed(() => {
 
             <!-- Field diffs from the plan -->
             <div v-if="selectedChange?.fields?.length" class="side-section">
-              <span class="side-label">Pending changes</span>
+              <span class="side-label">{{ $t('gitops.pendingChanges') }}</span>
               <table class="diff-fields">
                 <tr v-for="(f, j) in selectedChange.fields" :key="j">
                   <td class="mono diff-field">{{ f.field }}</td>
@@ -818,14 +820,14 @@ const policyFlags = computed(() => {
 
             <!-- Relationships -->
             <div v-if="selectedDeps.out.length" class="side-section">
-              <span class="side-label">Depends on</span>
+              <span class="side-label">{{ $t('gitops.dependsOn') }}</span>
               <div v-for="(d, i) in selectedDeps.out" :key="'o' + i" class="rel">
                 <span class="rel-verb">{{ edgeLabel[d.type as keyof typeof edgeLabel] }}</span>
                 <span class="rel-target mono">{{ nameOf(d.key) }}</span>
               </div>
             </div>
             <div v-if="selectedDeps.in.length" class="side-section">
-              <span class="side-label">Used by</span>
+              <span class="side-label">{{ $t('volumes.usedBy') }}</span>
               <div v-for="(d, i) in selectedDeps.in" :key="'i' + i" class="rel">
                 <span class="rel-target mono">{{ nameOf(d.key) }}</span>
                 <span class="rel-verb">{{ edgeLabel[d.type as keyof typeof edgeLabel] }} this</span>
@@ -838,7 +840,7 @@ const policyFlags = computed(() => {
             <div v-if="eventsLoading && drawerEvents.length === 0" class="drawer-empty"><span class="spinner"></span></div>
             <div v-else-if="drawerEvents.length === 0" class="drawer-empty">
               <span class="mdi mdi-timeline-text-outline"></span>
-              <p>No events yet.</p>
+              <p>{{ $t('gitops.noEventsYet') }}</p>
             </div>
             <template v-else>
               <ul class="timeline">
@@ -869,22 +871,19 @@ const policyFlags = computed(() => {
               :status-label="logsConnected ? 'Live' : 'Disconnected'"
               :status-class="logsConnected ? 'badge-success' : 'badge-neutral'"
               :download-name="`${selectedNode.name}-logs`"
-              placeholder="Waiting for log output…"
+              :placeholder="$t('gitops.waitingForLogOutput')"
             />
           </div>
 
           <div class="side-foot">
             <div v-if="ws.canEdit" class="side-actions">
               <button class="btn btn-secondary" :disabled="resourceBusy" @click="syncResource">
-                <span class="mdi" :class="resourceBusy ? 'mdi-loading mdi-spin' : 'mdi-sync'"></span> Sync
-              </button>
+                <span class="mdi" :class="resourceBusy ? 'mdi-loading mdi-spin' : 'mdi-sync'"></span>{{ $t('gitops.sync') }}</button>
               <button class="btn btn-danger" :disabled="resourceBusy" @click="confirmDelete = true">
-                <span class="mdi mdi-delete-outline"></span> Delete
-              </button>
+                <span class="mdi mdi-delete-outline"></span>{{ $t('action.delete') }}</button>
             </div>
             <button class="btn btn-primary btn-block" :disabled="!resourceRoute(selectedNode.kind, selectedNode.live_id)" @click="openResource(selectedNode)">
-              <span class="mdi mdi-open-in-new"></span> Open detail
-            </button>
+              <span class="mdi mdi-open-in-new"></span>{{ $t('gitops.openDetail') }}</button>
           </div>
         </aside>
       </transition>
@@ -904,14 +903,14 @@ const policyFlags = computed(() => {
     <!-- Preview & sync -->
     <AppModal v-if="previewOpen" max-width="560px" @close="previewOpen = false">
       <div class="preview-head">
-        <h3>Sync preview</h3>
-        <button class="btn-icon btn-icon-muted" aria-label="Close" @click="previewOpen = false"><span class="mdi mdi-close"></span></button>
+        <h3>{{ $t('gitops.syncPreview') }}</h3>
+        <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="previewOpen = false"><span class="mdi mdi-close"></span></button>
       </div>
       <div class="preview-body">
         <div v-if="previewLoading" class="drawer-empty"><span class="spinner"></span></div>
         <div v-else-if="previewChanges.length === 0" class="drawer-empty">
           <span class="mdi mdi-check-circle-outline"></span>
-          <p>In sync — nothing to apply.</p>
+          <p>{{ $t('gitops.inSyncHintShort') }}</p>
         </div>
         <ul v-else class="preview-list">
           <li v-for="(c, i) in previewChanges" :key="i" class="preview-change">
@@ -922,10 +921,9 @@ const policyFlags = computed(() => {
         </ul>
       </div>
       <div class="preview-foot">
-        <button class="btn btn-secondary" @click="previewOpen = false">Cancel</button>
+        <button class="btn btn-secondary" @click="previewOpen = false">{{ $t('action.cancel') }}</button>
         <button class="btn btn-primary" :disabled="syncing || previewLoading" @click="previewAndSync">
-          <span class="mdi" :class="syncing ? 'mdi-loading mdi-spin' : 'mdi-sync'"></span>
-          Sync<span v-if="previewChanges.length"> ({{ previewChanges.length }})</span>
+          <span class="mdi" :class="syncing ? 'mdi-loading mdi-spin' : 'mdi-sync'"></span>{{ $t('gitops.sync') }}<span v-if="previewChanges.length"> ({{ previewChanges.length }})</span>
         </button>
       </div>
     </AppModal>

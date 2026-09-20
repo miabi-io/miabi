@@ -98,11 +98,11 @@ async function save() {
   try {
     if (editing.value) {
       await webhookApi.update(currentWorkspaceId.value, editing.value.id, form.value)
-      notify.success('Webhook updated')
+      notify.success(t('notify.webhooks.updated'))
       showModal.value = false
     } else {
       const created = (await webhookApi.create(currentWorkspaceId.value, form.value)).data.data
-      notify.success('Webhook created — copy the signing secret now')
+      notify.success(t('notify.webhooks.created'))
       revealSecret.value = created.secret ?? null
       if (!revealSecret.value) showModal.value = false
     }
@@ -116,7 +116,7 @@ async function save() {
 
 async function copySecret() {
   if (!revealSecret.value) return
-  if (await copyText(revealSecret.value)) notify.success('Copied')
+  if (await copyText(revealSecret.value)) notify.success(t('notify.common.copied'))
   else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 
@@ -125,7 +125,7 @@ async function test(w: Webhook) {
   testing.value = w.id
   try {
     await webhookApi.test(currentWorkspaceId.value, w.id)
-    notify.success(`${w.name || w.url}: test delivery succeeded`)
+    notify.success(t('notify.webhooks.testOk', { name: w.name || w.url }))
   } catch (e) {
     notify.apiError(e, 'Test delivery failed')
   } finally {
@@ -140,7 +140,7 @@ async function confirmDelete() {
   deleting.value = true
   try {
     await webhookApi.remove(currentWorkspaceId.value, pendingDelete.value.id)
-    notify.success('Webhook deleted')
+    notify.success(t('notify.webhooks.deleted'))
     pendingDelete.value = null
     load(currentWorkspaceId.value)
   } catch (e) {
@@ -169,7 +169,7 @@ async function redeliver(d: WebhookDelivery) {
   if (!currentWorkspaceId.value || !deliveriesFor.value) return
   try {
     await webhookApi.redeliver(currentWorkspaceId.value, deliveriesFor.value.id, d.id)
-    notify.success('Delivery re-queued')
+    notify.success(t('notify.webhooks.requeued'))
     openDeliveries(deliveriesFor.value)
   } catch (e) {
     notify.apiError(e, 'Redelivery failed')
@@ -185,25 +185,24 @@ function fmtTime(s: string) {
   <div>
     <div class="page-header">
       <div>
-        <h1>Webhooks</h1>
-        <p class="subtitle">POST a signed JSON payload to your endpoints when app events fire.</p>
+        <h1>{{ $t('webhooks.webhooks') }}</h1>
+        <p class="subtitle">{{ $t('webhooks.subtitle') }}</p>
       </div>
       <button v-if="ws.isWorkspaceAdmin" class="btn btn-primary" @click="openCreate">
-        <span class="mdi mdi-plus"></span> New webhook
-      </button>
+        <span class="mdi mdi-plus"></span>{{ $t('webhooks.newWebhook') }}</button>
     </div>
 
     <div class="card">
       <div v-if="loading && items.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="items.length === 0" class="empty-state">
         <span class="mdi mdi-webhook" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No webhooks yet</h3>
-        <p>Notify external services (CI, chat, automations) on deploy and container events.</p>
-        <button v-if="ws.isWorkspaceAdmin" class="btn btn-primary mt-4" @click="openCreate">Add a webhook</button>
+        <h3>{{ $t('webhooks.noWebhooksYet') }}</h3>
+        <p>{{ $t('webhooks.emptyHint') }}</p>
+        <button v-if="ws.isWorkspaceAdmin" class="btn btn-primary mt-4" @click="openCreate">{{ $t('webhooks.addAWebhook') }}</button>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Webhook</th><th>Events</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('webhooks.webhook') }}</th><th>{{ $t('webhooks.events') }}</th><th>{{ $t('dashboard.col.status') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="w in items" :key="w.id">
               <td>
@@ -222,14 +221,14 @@ function fmtTime(s: string) {
                 </span>
               </td>
               <td class="text-right table-actions">
-                <button class="btn-icon btn-icon-muted" title="Deliveries" aria-label="Deliveries" @click="openDeliveries(w)">
+                <button class="btn-icon btn-icon-muted" :title="$t('webhooks.deliveries')" :aria-label="$t('webhooks.deliveries')" @click="openDeliveries(w)">
                   <span class="mdi mdi-history"></span>
                 </button>
-                <button v-if="ws.isWorkspaceAdmin" class="btn-icon btn-icon-muted" title="Send test" aria-label="Send test" :disabled="testing === w.id" @click="test(w)">
+                <button v-if="ws.isWorkspaceAdmin" class="btn-icon btn-icon-muted" :title="$t('webhooks.sendTest')" :aria-label="$t('webhooks.sendTest')" :disabled="testing === w.id" @click="test(w)">
                   <span class="mdi" :class="testing === w.id ? 'mdi-loading mdi-spin' : 'mdi-send-outline'"></span>
                 </button>
-                <button v-if="ws.isWorkspaceAdmin" class="btn-icon btn-icon-muted" title="Edit" aria-label="Edit" @click="openEdit(w)"><span class="mdi mdi-pencil-outline"></span></button>
-                <button v-if="ws.isWorkspaceAdmin" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="pendingDelete = w"><span class="mdi mdi-delete-outline"></span></button>
+                <button v-if="ws.isWorkspaceAdmin" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEdit(w)"><span class="mdi mdi-pencil-outline"></span></button>
+                <button v-if="ws.isWorkspaceAdmin" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="pendingDelete = w"><span class="mdi mdi-delete-outline"></span></button>
               </td>
             </tr>
           </tbody>
@@ -242,7 +241,7 @@ function fmtTime(s: string) {
       <AppModal v-if="showModal" @close="showModal = false">
         <div class="modal-header">
           <h3>{{ revealSecret ? 'Webhook created' : editing ? 'Edit webhook' : 'New webhook' }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
 
         <template v-if="revealSecret">
@@ -250,31 +249,30 @@ function fmtTime(s: string) {
             <div class="app-banner app-banner--warning">
               <span class="mdi mdi-alert-outline app-banner-icon"></span>
               <div class="app-banner-content">
-                <p class="app-banner-title">Copy your signing secret now</p>
-                <p class="app-banner-text">This is the only time it is shown. Use it to verify the
-                  <code>X-Miabi-Signature</code> header (HMAC-SHA256 of the request body).</p>
+                <p class="app-banner-title">{{ $t('webhooks.copyYourSigningSecretNow') }}</p>
+                <i18n-t keypath="webhooks.secretHint" tag="p" class="app-banner-text"><template #header><code>X-Miabi-Signature</code></template></i18n-t>
               </div>
             </div>
             <div class="code-block" style="margin-top: 14px">{{ revealSecret }}</div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="copySecret">Copy secret</button>
-            <button type="button" class="btn btn-primary" @click="showModal = false">Done</button>
+            <button type="button" class="btn btn-secondary" @click="copySecret">{{ $t('webhooks.copySecret') }}</button>
+            <button type="button" class="btn btn-primary" @click="showModal = false">{{ $t('webhooks.done') }}</button>
           </div>
         </template>
 
         <form v-else @submit.prevent="save">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Name <span class="text-muted">(optional)</span></label>
-              <input v-model="form.name" class="form-input" placeholder="e.g. CI pipeline" aria-label="Name" autofocus />
+              <label class="form-label">{{ $t('apps.form.name') }} <span class="text-muted">{{ $t('webhooks.optional') }}</span></label>
+              <input v-model="form.name" class="form-input" :placeholder="$t('apiKeys.namePlaceholder')" :aria-label="$t('apps.form.name')" autofocus />
             </div>
             <div class="form-group">
-              <label class="form-label">Payload URL</label>
-              <input v-model="form.url" type="url" class="form-input" placeholder="https://example.com/hooks/miabi" aria-label="Payload URL" required />
+              <label class="form-label">{{ $t('webhooks.payloadUrl') }}</label>
+              <input v-model="form.url" type="url" class="form-input" placeholder="https://example.com/hooks/miabi" :aria-label="$t('webhooks.payloadUrl')" required />
             </div>
             <div class="form-group">
-              <label class="form-label">Events</label>
+              <label class="form-label">{{ $t('webhooks.events') }}</label>
               <div class="event-grid">
                 <label v-for="e in NOTIFIABLE_EVENTS" :key="e.value" class="event-option">
                   <input type="checkbox" :checked="form.events.includes(e.value)" @change="toggleEvent(e.value)" />
@@ -283,19 +281,19 @@ function fmtTime(s: string) {
               </div>
             </div>
             <div class="form-group">
-              <label class="form-label">Custom headers <span class="text-muted">(optional)</span></label>
-              <textarea v-model="headersText" class="form-input" rows="3" placeholder="Authorization: Bearer xyz&#10;X-Custom: value" aria-label="Custom headers" style="font-family: monospace; resize: vertical"></textarea>
-              <p class="form-hint">One per line as <code>Key: Value</code>. Content-Type and the signature header are always set.</p>
+              <label class="form-label">{{ $t('webhooks.customHeaders') }}<span class="text-muted">{{ $t('webhooks.optional') }}</span></label>
+              <textarea v-model="headersText" class="form-input" rows="3" placeholder="Authorization: Bearer xyz&#10;X-Custom: value" :aria-label="$t('webhooks.customHeaders')" style="font-family: monospace; resize: vertical"></textarea>
+              <i18n-t keypath="webhooks.headersHint" tag="p" class="form-hint"><template #format><code>Key: Value</code></template></i18n-t>
             </div>
             <div class="form-group" style="margin-bottom: 0">
               <label class="check-row">
                 <input type="checkbox" v-model="form.enabled" />
-                <span>Enabled</span>
+                <span>{{ $t('jobs.enabled') }}</span>
               </label>
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showModal = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="saving">
               {{ saving ? 'Saving…' : editing ? 'Save' : 'Create webhook' }}
             </button>
@@ -308,16 +306,16 @@ function fmtTime(s: string) {
     <Teleport to="body">
       <AppModal v-if="showDeliveries" @close="showDeliveries = false">
         <div class="modal-header">
-          <h3>Recent deliveries</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDeliveries = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('webhooks.recentDeliveries') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showDeliveries = false"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
           <p class="text-muted text-sm" style="margin-top: 0">{{ deliveriesFor?.name || deliveriesFor?.url }}</p>
           <div v-if="deliveriesLoading"><span class="spinner"></span></div>
-          <div v-else-if="deliveries.length === 0" class="text-muted text-sm">No deliveries recorded yet.</div>
+          <div v-else-if="deliveries.length === 0" class="text-muted text-sm">{{ $t('webhooks.noDeliveries') }}</div>
           <div v-else class="table-wrapper">
             <table>
-              <thead><tr><th>Event</th><th>Result</th><th>Attempt</th><th>When</th><th></th></tr></thead>
+              <thead><tr><th>{{ $t('webhooks.event') }}</th><th>{{ $t('webhooks.result') }}</th><th>{{ $t('webhooks.attempt') }}</th><th>{{ $t('webhooks.when') }}</th><th></th></tr></thead>
               <tbody>
                 <tr v-for="d in deliveries" :key="d.id">
                   <td class="cell-sub">{{ eventLabel(d.event) }}</td>
@@ -330,7 +328,7 @@ function fmtTime(s: string) {
                   <td class="cell-sub">#{{ d.attempt }}</td>
                   <td class="cell-sub">{{ fmtTime(d.created_at) }}</td>
                   <td class="text-right">
-                    <button v-if="ws.isWorkspaceAdmin" class="btn-icon btn-icon-muted" title="Redeliver" aria-label="Redeliver" @click="redeliver(d)"><span class="mdi mdi-replay"></span></button>
+                    <button v-if="ws.isWorkspaceAdmin" class="btn-icon btn-icon-muted" :title="$t('webhooks.redeliver')" :aria-label="$t('webhooks.redeliver')" @click="redeliver(d)"><span class="mdi mdi-replay"></span></button>
                   </td>
                 </tr>
               </tbody>
@@ -338,7 +336,7 @@ function fmtTime(s: string) {
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-primary" @click="showDeliveries = false">Close</button>
+          <button type="button" class="btn btn-primary" @click="showDeliveries = false">{{ $t('shell.close') }}</button>
         </div>
       </AppModal>
     </Teleport>

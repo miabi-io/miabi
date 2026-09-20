@@ -58,13 +58,13 @@ async function copy(text: string, key: string) {
 <template>
   <div>
     <div class="page-header">
-      <h1>CLI access</h1>
-      <p class="page-sub">Install the Miabi CLI and sign in to this panel from your terminal.</p>
+      <h1>{{ $t('shell.menu.cli') }}</h1>
+      <p class="page-sub">{{ $t('cli.subtitle') }}</p>
     </div>
 
     <!-- 1. Install -->
     <div class="card">
-      <div class="card-header"><h2><span class="step">1</span> Install the CLI</h2></div>
+      <div class="card-header"><h2><span class="step">1</span>{{ $t('cli.installTheCli') }}</h2></div>
       <div class="card-body">
         <div class="tabs">
           <button
@@ -80,79 +80,73 @@ async function copy(text: string, key: string) {
 
         <div class="snippet">
           <code>{{ installCmd }}</code>
-          <button class="copy-btn" title="Copy" @click="copy(installCmd, 'install')">
+          <button class="copy-btn" :title="$t('cli.copy')" @click="copy(installCmd, 'install')">
             <span class="mdi" :class="copied === 'install' ? 'mdi-check' : 'mdi-content-copy'"></span>
           </button>
         </div>
 
-        <p v-if="tab === 'brew'" class="hint">
-          Homebrew 6 requires third-party taps to be trusted first — if the short form fails, run
-          <code class="inline">brew tap miabi-io/tap &amp;&amp; brew trust miabi-io/tap</code>. Formula:
-          <a :href="TAP_REPO" target="_blank" rel="noopener">miabi-io/homebrew-tap</a>.
-        </p>
-        <p v-else-if="tab === 'binary'" class="hint">
-          Swap <code class="inline">linux_amd64</code> for your platform
-          (<code class="inline">linux_arm64</code>, <code class="inline">darwin_arm64</code>, or the
-          <code class="inline">.zip</code> on Windows) — see
-          <a :href="RELEASES" target="_blank" rel="noopener">all releases</a>.
-        </p>
-        <p v-else-if="tab === 'docker'" class="hint">
-          No install needed — handy in CI. Set <code class="inline">MIABI_SERVER</code> and
-          <code class="inline">MIABI_TOKEN</code> (see step 4).
-        </p>
+        <i18n-t v-if="tab === 'brew'" keypath="cli.brewHint" tag="p" class="hint">
+          <template #cmd><code class="inline">brew tap miabi-io/tap &amp;&amp; brew trust miabi-io/tap</code></template>
+          <template #formula><a :href="TAP_REPO" target="_blank" rel="noopener">miabi-io/homebrew-tap</a></template>
+        </i18n-t>
+        <i18n-t v-else-if="tab === 'binary'" keypath="cli.binaryHint" tag="p" class="hint">
+          <template #target><code class="inline">linux_amd64</code></template>
+          <template #a><code class="inline">linux_arm64</code></template>
+          <template #b><code class="inline">darwin_arm64</code></template>
+          <template #zip><code class="inline">.zip</code></template>
+          <template #releases><a :href="RELEASES" target="_blank" rel="noopener">{{ $t('cli.allReleases') }}</a></template>
+        </i18n-t>
+        <i18n-t v-else-if="tab === 'docker'" keypath="cli.dockerHint" tag="p" class="hint">
+          <template #server><code class="inline">MIABI_SERVER</code></template>
+          <template #token><code class="inline">MIABI_TOKEN</code></template>
+        </i18n-t>
       </div>
     </div>
 
     <!-- 2. Sign in -->
     <div class="card">
-      <div class="card-header"><h2><span class="step">2</span> Sign in</h2></div>
+      <div class="card-header"><h2><span class="step">2</span>{{ $t('cli.signIn') }}</h2></div>
       <div class="card-body">
         <div class="snippet">
           <code>{{ loginCmd }}</code>
-          <button class="copy-btn" title="Copy" @click="copy(loginCmd, 'login')">
+          <button class="copy-btn" :title="$t('cli.copy')" @click="copy(loginCmd, 'login')">
             <span class="mdi" :class="copied === 'login' ? 'mdi-check' : 'mdi-content-copy'"></span>
           </button>
         </div>
-        <p class="hint">
-          This opens your browser to sign in (password or SSO) and captures the token automatically —
-          nothing to copy or paste. On a machine without a browser, use
-          <code class="inline">miabi login --no-browser</code> and paste a token instead.
-        </p>
+        <i18n-t keypath="cli.loginHint" tag="p" class="hint"><template #cmd><code class="inline">miabi login --no-browser</code></template></i18n-t>
       </div>
     </div>
 
     <!-- 3. Verify -->
     <div class="card">
-      <div class="card-header"><h2><span class="step">3</span> Verify</h2></div>
+      <div class="card-header"><h2><span class="step">3</span>{{ $t('cli.verify') }}</h2></div>
       <div class="card-body">
         <div class="snippet">
-          <code>miabi whoami</code>
-          <button class="copy-btn" title="Copy" @click="copy('miabi whoami', 'whoami')">
+          <code>{{ $t('cli.miabiWhoami') }}</code>
+          <button class="copy-btn" :title="$t('cli.copy')" @click="copy('miabi whoami', 'whoami')">
             <span class="mdi" :class="copied === 'whoami' ? 'mdi-check' : 'mdi-content-copy'"></span>
           </button>
         </div>
-        <p class="hint">
-          Then try <code class="inline">miabi apps ls</code> to list your applications, or
-          <code class="inline">miabi --help</code> for everything else.
-        </p>
+        <i18n-t keypath="cli.verifyHint" tag="p" class="hint">
+          <template #list><code class="inline">miabi apps ls</code></template>
+          <template #help><code class="inline">miabi --help</code></template>
+        </i18n-t>
       </div>
     </div>
 
     <!-- 4. CI -->
     <div class="card">
-      <div class="card-header"><h2><span class="step">4</span> CI &amp; automation</h2></div>
+      <div class="card-header"><h2><span class="step">4</span>{{ $t('cli.ciAutomation') }}</h2></div>
       <div class="card-body">
-        <p class="hint" style="margin-top: 0">
-          Pipelines can't open a browser. Mint a token and pass it via the environment instead.
-        </p>
+        <p class="hint" style="margin-top: 0">{{ $t('cli.ciHint') }}</p>
         <div class="snippet">
           <code class="pre">{{ ciEnv }}</code>
-          <button class="copy-btn" title="Copy" @click="copy(ciEnv, 'ci')">
+          <button class="copy-btn" :title="$t('cli.copy')" @click="copy(ciEnv, 'ci')">
             <span class="mdi" :class="copied === 'ci' ? 'mdi-check' : 'mdi-content-copy'"></span>
           </button>
         </div>
         <p class="hint">
-          <a href="/api-keys" target="_blank" rel="noopener">Create a CLI token →</a>
+          <a href="/api-keys" target="_blank" rel="noopener">{{ $t('cli.createACliToken') }}</a>
         </p>
       </div>
     </div>
@@ -162,15 +156,15 @@ async function copy(text: string, key: string) {
       <div class="card-body links">
         <a :href="GITHUB_REPO" target="_blank" rel="noopener" class="link-item">
           <span class="mdi mdi-github"></span>
-          <span><strong>Source &amp; issues</strong><small>miabi-io/cli</small></span>
+          <span><strong>{{ $t('cli.sourceIssues') }}</strong><small>miabi-io/cli</small></span>
         </a>
         <a :href="RELEASES" target="_blank" rel="noopener" class="link-item">
           <span class="mdi mdi-package-variant-closed"></span>
-          <span><strong>Releases</strong><small>Changelog &amp; binaries</small></span>
+          <span><strong>{{ $t('cli.releases') }}</strong><small>{{ $t('cli.changelogBinaries') }}</small></span>
         </a>
         <a :href="TAP_REPO" target="_blank" rel="noopener" class="link-item">
           <span class="mdi mdi-beer-outline"></span>
-          <span><strong>Homebrew tap</strong><small>miabi-io/homebrew-tap</small></span>
+          <span><strong>{{ $t('cli.homebrewTap') }}</strong><small>miabi-io/homebrew-tap</small></span>
         </a>
       </div>
     </div>
