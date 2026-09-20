@@ -30,8 +30,8 @@ const repo = computed(() => decodeURIComponent(String(route.params.repo ?? '')))
 
 type Tab = 'overview' | 'tags'
 const tabs: { id: Tab; label: string; icon: string }[] = [
-  { id: 'overview', label: 'Overview', icon: 'mdi-information-outline' },
-  { id: 'tags', label: 'Tags', icon: 'mdi-tag-multiple-outline' },
+  { id: 'overview', label: 'registry.overview', icon: 'mdi-information-outline' },
+  { id: 'tags', label: 'registry.tags', icon: 'mdi-tag-multiple-outline' },
 ]
 const activeTab = computed<Tab>(() => (route.query.tab as Tab) || 'overview')
 function setTab(t: Tab) {
@@ -153,7 +153,7 @@ function formatBytes(n?: number) {
 }
 
 async function copy(text: string) {
-  if (await copyText(text)) notify.success('Copied to clipboard')
+  if (await copyText(text)) notify.success(t('notify.common.copiedToClipboard'))
   else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 
@@ -168,7 +168,7 @@ async function confirmDelete() {
   deleting.value = tag
   try {
     await registryApi.deleteTag(wsId.value, repo.value, tag)
-    notify.success(`Deleted ${repo.value}:${tag}`)
+    notify.success(t('notify.registry.tagDeleted', { repo: repo.value, tag }))
     confirmTarget.value = null
     // The newest tag may have changed, so refresh the overview too — quietly,
     // without blanking the page the user is looking at.
@@ -185,7 +185,7 @@ async function confirmDelete() {
   <div>
     <div class="page-header">
       <div class="heading">
-        <RouterLink :to="{ name: 'registry' }" class="back" aria-label="Back to the registry">
+        <RouterLink :to="{ name: 'registry' }" class="back" :aria-label="$t('registry.backToRegistry')">
           <span class="mdi mdi-arrow-left"></span>
         </RouterLink>
         <div>
@@ -201,10 +201,10 @@ async function confirmDelete() {
       <div class="card-body empty">
         <span class="mdi mdi-package-variant-closed-remove empty-icon"></span>
         <div>
-          <p class="empty-title">No such image</p>
+          <p class="empty-title">{{ $t('registry.noSuchImage') }}</p>
           <p class="text-muted text-sm">
-            <code class="mono">{{ repo }}</code> isn't in this workspace's registry — it may have been deleted.
-            <RouterLink :to="{ name: 'registry' }">Back to the registry</RouterLink>
+            <i18n-t keypath="registry.noSuchImageHint" tag="span"><template #repo><code class="mono">{{ repo }}</code></template></i18n-t>
+            <RouterLink :to="{ name: 'registry' }">{{ $t('registry.backToRegistry') }}</RouterLink>
           </p>
         </div>
       </div>
@@ -213,7 +213,7 @@ async function confirmDelete() {
     <template v-else-if="overview">
       <div class="tabs">
         <button v-for="t in tabs" :key="t.id" class="tab" :class="{ active: activeTab === t.id }" @click="setTab(t.id)">
-          <span class="mdi" :class="t.icon"></span> {{ t.label }}
+          <span class="mdi" :class="t.icon"></span> {{ $t(t.label) }}
           <span v-if="t.id === 'tags'" class="tab-count">{{ overview.tag_count }}</span>
         </button>
       </div>
@@ -221,36 +221,36 @@ async function confirmDelete() {
       <!-- Overview -->
       <template v-if="activeTab === 'overview'">
         <div class="card mb-4">
-          <div class="card-header"><h2>Newest tag</h2></div>
+          <div class="card-header"><h2>{{ $t('registry.newestTag') }}</h2></div>
           <div v-if="overview.latest_tag" class="card-body">
             <div class="details-grid">
               <div class="detail">
-                <span class="detail-label">Tag</span>
+                <span class="detail-label">{{ $t('registry.tag') }}</span>
                 <span class="detail-value">
                   <code class="mono">{{ overview.latest_tag.name }}</code>
-                  <span v-if="overview.latest_tag.in_use" class="badge badge-success">in use</span>
+                  <span v-if="overview.latest_tag.in_use" class="badge badge-success">{{ $t('registry.inUse') }}</span>
                 </span>
               </div>
               <div class="detail">
-                <span class="detail-label">Size</span>
+                <span class="detail-label">{{ $t('registry.size') }}</span>
                 <span class="detail-value">{{ formatBytes(overview.latest_tag.size_bytes) }}</span>
               </div>
               <div class="detail">
-                <span class="detail-label">Digest</span>
+                <span class="detail-label">{{ $t('registry.digest') }}</span>
                 <code class="mono" :title="overview.latest_tag.digest">{{ shortDigest(overview.latest_tag.digest) || '—' }}</code>
               </div>
               <div v-if="overview.latest_tag.built_at" class="detail">
-                <span class="detail-label">Built</span>
+                <span class="detail-label">{{ $t('registry.built') }}</span>
                 <span class="detail-value" :title="new Date(overview.latest_tag.built_at).toLocaleString()">
                   {{ relativeTime(overview.latest_tag.built_at) }}
                 </span>
               </div>
               <div v-if="overview.latest_tag.commit" class="detail">
-                <span class="detail-label">Commit</span>
+                <span class="detail-label">{{ $t('registry.commit') }}</span>
                 <code class="mono">{{ overview.latest_tag.commit.slice(0, 12) }}</code>
               </div>
               <div v-if="appName(overview.latest_tag.application_id)" class="detail">
-                <span class="detail-label">Built for</span>
+                <span class="detail-label">{{ $t('registry.builtFor') }}</span>
                 <RouterLink :to="{ name: 'app-detail', params: { id: overview.latest_tag.application_id } }">
                   {{ appName(overview.latest_tag.application_id) }}
                 </RouterLink>
@@ -258,26 +258,23 @@ async function confirmDelete() {
             </div>
             <div class="snippet">
               <code>{{ latestPull }}</code>
-              <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(latestPull)">
+              <button class="btn-icon btn-icon-muted" :title="$t('registry.copy')" :aria-label="$t('registry.copy')" @click="copy(latestPull)">
                 <span class="mdi mdi-content-copy"></span>
               </button>
             </div>
-            <p v-if="!overview.latest_tag.built_at" class="text-muted text-sm hint">
-              No build record — this image was pushed directly rather than built by a Miabi pipeline, so there's no
-              commit or provenance to show.
-            </p>
+            <p v-if="!overview.latest_tag.built_at" class="text-muted text-sm hint">{{ $t('registry.noBuildRecord') }}</p>
           </div>
           <div v-else class="card-body empty">
             <span class="mdi mdi-tag-off-outline empty-icon"></span>
             <div>
-              <p class="empty-title">No tags</p>
-              <p class="text-muted text-sm">This repository exists but holds no tags.</p>
+              <p class="empty-title">{{ $t('registry.noTags') }}</p>
+              <p class="text-muted text-sm">{{ $t('registry.noTagsHint') }}</p>
             </div>
           </div>
         </div>
 
         <div class="card">
-          <div class="card-header"><h2>Recent tags</h2></div>
+          <div class="card-header"><h2>{{ $t('registry.recentTags') }}</h2></div>
           <div class="card-body">
             <div v-if="recentTags.length" class="tag-grid">
               <code v-for="t in recentTags" :key="t" class="tag">{{ t }}</code>
@@ -285,7 +282,7 @@ async function confirmDelete() {
                 See all {{ overview.tag_count }} tags →
               </button>
             </div>
-            <p v-else class="text-muted text-sm" style="margin: 0">No tags.</p>
+            <p v-else class="text-muted text-sm" style="margin: 0">{{ $t('registry.noTagsDot') }}</p>
           </div>
         </div>
       </template>
@@ -295,21 +292,20 @@ async function confirmDelete() {
         <div class="card">
           <div class="card-header repos-header">
             <div>
-              <h2>Tags</h2>
+              <h2>{{ $t('registry.tags') }}</h2>
               <p class="text-muted text-sm" style="margin: 2px 0 0">
                 {{ pageable.total_elements }}
                 {{ pageable.total_elements === 1 ? 'tag' : 'tags' }}{{ search ? ' matching' : '' }}
-                <template v-if="deleteDisabledByPlatform"> · deletion is disabled on this platform</template>
+                <template v-if="deleteDisabledByPlatform">{{ $t('registry.deletionDisabled') }}</template>
               </p>
             </div>
             <div class="repos-actions">
               <div class="search">
                 <span class="mdi mdi-magnify"></span>
-                <input v-model="search" class="form-input" type="search" placeholder="Filter tags" aria-label="Filter tags" @input="onSearch" />
+                <input v-model="search" class="form-input" type="search" :placeholder="$t('registry.filterTags')" :aria-label="$t('registry.filterTags')" @input="onSearch" />
               </div>
               <button class="btn btn-secondary btn-sm" :disabled="tagsLoading" @click="goToPage(pageable.current_page)">
-                <span class="mdi mdi-refresh" :class="{ 'mdi-spin': tagsLoading }"></span> Refresh
-              </button>
+                <span class="mdi mdi-refresh" :class="{ 'mdi-spin': tagsLoading }"></span>{{ $t('volumes.refresh') }}</button>
             </div>
           </div>
 
@@ -320,7 +316,7 @@ async function confirmDelete() {
             <div>
               <p class="empty-title">{{ search ? `No tag matches “${search}”` : 'No tags' }}</p>
               <p v-if="search" class="text-muted text-sm">
-                <button class="link-btn" @click="search = ''; goToPage(0)">Clear the filter</button>
+                <button class="link-btn" @click="search = ''; goToPage(0)">{{ $t('registry.clearTheFilter') }}</button>
               </p>
             </div>
           </div>
@@ -329,10 +325,10 @@ async function confirmDelete() {
             <table>
               <thead>
                 <tr>
-                  <th>Tag</th>
-                  <th>Size</th>
-                  <th>Digest</th>
-                  <th>Built</th>
+                  <th>{{ $t('registry.tag') }}</th>
+                  <th>{{ $t('registry.size') }}</th>
+                  <th>{{ $t('registry.digest') }}</th>
+                  <th>{{ $t('registry.built') }}</th>
                   <th></th>
                 </tr>
               </thead>
@@ -341,7 +337,7 @@ async function confirmDelete() {
                   <td>
                     <div class="tag-cell">
                       <code class="mono">{{ t.name }}</code>
-                      <span v-if="t.in_use" class="badge badge-success" title="Held by a live deployment or a pinned release">in use</span>
+                      <span v-if="t.in_use" class="badge badge-success" :title="$t('registry.inUseHint')">{{ $t('registry.inUse') }}</span>
                     </div>
                     <span v-if="appName(t.application_id)" class="cell-sub">
                       built for {{ appName(t.application_id) }}
@@ -355,7 +351,7 @@ async function confirmDelete() {
                     <span v-else class="text-muted">—</span>
                   </td>
                   <td class="text-right table-actions">
-                    <button class="btn-icon btn-icon-muted" title="Copy docker pull command" aria-label="Copy docker pull command" @click="copy(pullCommand(t.name))">
+                    <button class="btn-icon btn-icon-muted" :title="$t('registry.copyDockerPullCommand')" :aria-label="$t('registry.copyDockerPullCommand')" @click="copy(pullCommand(t.name))">
                       <span class="mdi mdi-content-copy"></span>
                     </button>
                     <button
@@ -363,7 +359,7 @@ async function confirmDelete() {
                       class="btn-icon btn-icon-danger"
                       :disabled="t.in_use || deleting === t.name"
                       :title="t.in_use ? 'In use by a live deployment or pinned release — cannot be deleted' : 'Delete tag'"
-                      aria-label="Delete tag"
+                      :aria-label="$t('confirm.title.deleteTag')"
                       @click="confirmTarget = t"
                     >
                       <span class="mdi mdi-trash-can-outline"></span>

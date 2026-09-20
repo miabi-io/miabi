@@ -31,7 +31,7 @@ async function submitCreate() {
   const isFirst = !ws.workspaces.some((w) => !w.system)
   try {
     const created = await ws.create({ display_name: form.value.name.trim(), description: form.value.description.trim() })
-    notify.success('Workspace created')
+    notify.success(t('notify.workspaces.created'))
     showCreate.value = false
     router.push(isFirst ? '/' : `/workspaces/${created.id}?tab=settings`)
   } catch (e) {
@@ -49,7 +49,7 @@ function open(id: number) {
 // Copy the workspace id — handy for API calls and binding an API key. Stops
 // propagation so the card's navigate-on-click doesn't fire.
 async function copyId(id: number) {
-  if (await copyText(String(id))) notify.success('Workspace ID copied')
+  if (await copyText(String(id))) notify.success(t('notify.apiKeys.workspaceIdCopied'))
   else notify.error(t('notify.common.couldNotCopyId'))
 }
 
@@ -75,18 +75,17 @@ onMounted(() => {
 <template>
   <div>
     <div class="page-header">
-      <h1>Workspaces</h1>
+      <h1>{{ $t('workspaces.workspaces') }}</h1>
       <button class="btn btn-primary" @click="openCreate">
-        <span class="mdi mdi-plus"></span> New workspace
-      </button>
+        <span class="mdi mdi-plus"></span>{{ $t('workspaces.newWorkspace') }}</button>
     </div>
 
     <div v-if="ws.workspaces.length === 0" class="card">
       <div class="empty-state">
         <span class="mdi mdi-briefcase-outline" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No workspaces yet</h3>
-        <p>Workspaces group your applications, databases, and team members.</p>
-        <button class="btn btn-primary mt-4" @click="openCreate">Create your first workspace</button>
+        <h3>{{ $t('switcher.empty') }}</h3>
+        <p>{{ $t('workspaces.workspacesGroupYourApplicationsDatabases') }}</p>
+        <button class="btn btn-primary mt-4" @click="openCreate">{{ $t('workspaces.createYourFirstWorkspace') }}</button>
       </div>
     </div>
 
@@ -104,7 +103,7 @@ onMounted(() => {
         </div>
         <div class="ws-card-name">
           {{ w.display_name || w.name }}
-          <span v-if="w.privileged" class="badge badge-info" title="Privileged — host port bindings are auto-approved"><span class="mdi mdi-shield-check-outline"></span> privileged</span>
+          <span v-if="w.privileged" class="badge badge-info" :title="$t('workspaces.privilegedHostPortBindingsAre')"><span class="mdi mdi-shield-check-outline"></span>{{ $t('workspaces.privileged') }}</span>
         </div>
         <div class="ws-card-handle mono">{{ w.name }}</div>
         <div class="ws-card-desc">{{ w.description || 'No description' }}</div>
@@ -112,7 +111,7 @@ onMounted(() => {
           class="ws-card-id"
           role="button"
           tabindex="0"
-          title="Copy workspace ID"
+          :title="$t('workspaces.copyWorkspaceId')"
           @click.stop="copyId(w.id)"
           @keydown.enter.stop.prevent="copyId(w.id)"
         >
@@ -121,8 +120,7 @@ onMounted(() => {
           <span class="mdi mdi-content-copy"></span>
         </div>
         <div v-if="ws.currentWorkspaceId === w.id" class="ws-card-current">
-          <span class="mdi mdi-check-circle"></span> Current
-        </div>
+          <span class="mdi mdi-check-circle"></span>{{ $t('workspaces.current') }}</div>
       </button>
     </div>
 
@@ -130,22 +128,22 @@ onMounted(() => {
     <Teleport to="body">
       <AppModal v-if="showCreate" @close="showCreate = false">
         <div class="modal-header">
-          <h3>Create workspace</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('switcher.create') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="submitCreate">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Name</label>
-              <input v-model="form.name" class="form-input" placeholder="e.g. Production" aria-label="Name" required autofocus />
+              <label class="form-label">{{ $t('apps.form.name') }}</label>
+              <input v-model="form.name" class="form-input" placeholder="e.g. Production" :aria-label="$t('apps.form.name')" required autofocus />
             </div>
             <div class="form-group" style="margin-bottom: 0">
-              <label class="form-label">Description <span class="text-muted">(optional)</span></label>
-              <input v-model="form.description" class="form-input" placeholder="What is this workspace for?" aria-label="Description" />
+              <label class="form-label">{{ $t('plans.description') }}<span class="text-muted">{{ $t('workspaces.optional') }}</span></label>
+              <input v-model="form.description" class="form-input" :placeholder="$t('wsSettings.descriptionPlaceholder')" :aria-label="$t('plans.description')" />
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showCreate = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="saving || !form.name.trim()">
               {{ saving ? 'Creating…' : 'Create workspace' }}
             </button>

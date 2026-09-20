@@ -77,25 +77,25 @@ onMounted(() => load())
   <div>
     <div class="page-header">
       <div>
-        <h1>Notifications</h1>
-        <p class="subtitle">Alerts and updates across your workspaces.</p>
+        <h1>{{ $t('inbox.notifications') }}</h1>
+        <p class="subtitle">{{ $t('inbox.alertsAndUpdatesAcrossYour') }}</p>
       </div>
-      <button v-if="hasUnread" class="btn btn-secondary" @click="markAll">Mark all read</button>
+      <button v-if="hasUnread" class="btn btn-secondary" @click="markAll">{{ $t('inbox.markAllRead') }}</button>
     </div>
 
     <div class="filters">
       <select v-model.number="wsFilter" class="form-select" style="max-width: 220px">
-        <option :value="0">All workspaces</option>
+        <option :value="0">{{ $t('inbox.allWorkspaces') }}</option>
         <option v-for="w in workspaces" :key="w.id" :value="w.id">{{ w.display_name || w.name }}</option>
       </select>
-      <label class="chk"><input v-model="unreadOnly" type="checkbox" /> Unread only</label>
+      <label class="chk"><input v-model="unreadOnly" type="checkbox" />{{ $t('inbox.unreadOnly') }}</label>
     </div>
 
     <div class="card">
       <div v-if="loading && !items.length" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="!items.length" class="empty-state">
         <span class="mdi mdi-bell-check-outline" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>Nothing here</h3>
+        <h3>{{ $t('inbox.nothingHere') }}</h3>
         <p>{{ unreadOnly ? 'No unread notifications.' : 'You have no notifications yet.' }}</p>
       </div>
       <div v-else class="n-list">
@@ -122,7 +122,7 @@ onMounted(() => load())
     </div>
 
     <div v-if="items.length && !done" class="load-more">
-      <button class="btn btn-ghost" :disabled="loading" @click="load(false)">Load more</button>
+      <button class="btn btn-ghost" :disabled="loading" @click="load(false)">{{ $t('inbox.loadMore') }}</button>
     </div>
   </div>
 </template>

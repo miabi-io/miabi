@@ -52,25 +52,24 @@ function open(m: Middleware) { router.push(`/middlewares/${m.id}`) }
   <div>
     <div class="page-header">
       <div>
-        <h1>Middlewares</h1>
-        <p class="subtitle">Goma Gateway middlewares, referenced by routes.</p>
+        <h1>{{ $t('middlewares.middlewares') }}</h1>
+        <p class="subtitle">{{ $t('middlewares.gomaGatewayMiddlewaresReferencedBy') }}</p>
       </div>
       <button v-if="ws.canEdit" class="btn btn-primary" @click="showCreate = true">
-        <span class="mdi mdi-plus"></span> New middleware
-      </button>
+        <span class="mdi mdi-plus"></span>{{ $t('middlewares.newMiddleware') }}</button>
     </div>
 
     <div class="card">
       <div v-if="loading && items.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="items.length === 0" class="empty-state">
         <span class="mdi mdi-tune-vertical" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No middlewares</h3>
-        <p>Add auth, rate-limiting, CORS, and more — then attach them to routes.</p>
-        <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="showCreate = true">Create a middleware</button>
+        <h3>{{ $t('middlewares.noMiddlewares') }}</h3>
+        <p>{{ $t('middlewares.addAuthRateLimitingCors') }}</p>
+        <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="showCreate = true">{{ $t('middlewares.createAMiddleware') }}</button>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Name</th><th>Type</th><th>Paths</th><th>Rule</th></tr></thead>
+          <thead><tr><th>{{ $t('apps.form.name') }}</th><th>{{ $t('middlewares.type') }}</th><th>{{ $t('middlewares.paths') }}</th><th>{{ $t('middlewares.rule') }}</th></tr></thead>
           <tbody>
             <tr v-for="m in items" :key="m.id" class="row-link" @click="open(m)">
               <td>

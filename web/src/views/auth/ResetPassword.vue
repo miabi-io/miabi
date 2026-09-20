@@ -64,29 +64,25 @@ async function submit() {
     :notice="done ? 'Your password has been reset. Redirecting to sign in…' : ''"
   >
     <template v-if="done">
-      <RouterLink :to="{ name: 'login' }" class="btn btn-primary auth-submit">
-        Continue to sign in
-      </RouterLink>
+      <RouterLink :to="{ name: 'login' }" class="btn btn-primary auth-submit">{{ $t('resetPassword.continueToSignIn') }}</RouterLink>
     </template>
 
     <template v-else-if="!token">
-      <RouterLink :to="{ name: 'forgot-password' }" class="btn btn-primary auth-submit">
-        Request a new link
-      </RouterLink>
+      <RouterLink :to="{ name: 'forgot-password' }" class="btn btn-primary auth-submit">{{ $t('resetPassword.requestANewLink') }}</RouterLink>
     </template>
 
     <form v-else class="auth-form" @submit.prevent="submit">
       <div class="form-group">
-        <label class="form-label">New password</label>
+        <label class="form-label">{{ $t('security.newPassword') }}</label>
         <div class="password-wrap">
           <input
             ref="passwordInput"
             v-model="password"
             :type="showPassword ? 'text' : 'password'"
             class="form-input"
-            placeholder="At least 8 characters"
+            :placeholder="$t('resetPassword.atLeast8Characters')"
             autocomplete="new-password"
-            aria-label="New password"
+            :aria-label="$t('security.newPassword')"
             :disabled="loading"
             required
             @keyup="onCaps"
@@ -105,23 +101,22 @@ async function submit() {
         </div>
         <p v-if="tooShort" class="form-hint hint-warn">Use at least {{ MIN_LEN }} characters.</p>
         <p v-else-if="capsOn" class="form-hint hint-warn">
-          <span class="mdi mdi-apple-keyboard-caps"></span> Caps Lock is on
-        </p>
+          <span class="mdi mdi-apple-keyboard-caps"></span>{{ $t('login.capsLockIsOn') }}</p>
       </div>
 
       <div class="form-group">
-        <label class="form-label">Confirm password</label>
+        <label class="form-label">{{ $t('resetPassword.confirmPassword') }}</label>
         <input
           v-model="confirm"
           :type="showPassword ? 'text' : 'password'"
           class="form-input"
-          placeholder="Re-enter your new password"
+          :placeholder="$t('resetPassword.reEnterYourNewPassword')"
           autocomplete="new-password"
-          aria-label="Confirm password"
+          :aria-label="$t('resetPassword.confirmPassword')"
           :disabled="loading"
           required
         />
-        <p v-if="mismatch" class="form-hint hint-warn">Passwords don't match.</p>
+        <p v-if="mismatch" class="form-hint hint-warn">{{ $t('resetPassword.passwordsDonTMatch') }}</p>
       </div>
 
       <button class="btn btn-primary auth-submit" :disabled="loading || !canSubmit">
@@ -132,8 +127,7 @@ async function submit() {
 
     <template #footer>
       <RouterLink :to="{ name: 'login' }" class="auth-back">
-        <span class="mdi mdi-arrow-left"></span> Back to sign in
-      </RouterLink>
+        <span class="mdi mdi-arrow-left"></span>{{ $t('login.backToSignIn') }}</RouterLink>
     </template>
   </AuthShell>
 </template>

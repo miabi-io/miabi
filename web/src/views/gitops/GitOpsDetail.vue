@@ -366,11 +366,11 @@ const deleteMessage = computed(() => {
 // Which tabs the selected resource supports. Events/Logs need a live resource
 // (live_id) and only apply to the kinds that emit them.
 const drawerTabs = computed<{ key: DrawerTab; label: string }[]>(() => {
-  const tabs: { key: DrawerTab; label: string }[] = [{ key: 'overview', label: 'Overview' }]
+  const tabs: { key: DrawerTab; label: string }[] = [{ key: 'overview', label: 'gitops.tab.overview' }]
   const n = selectedNode.value
   if (!n || !n.live_id) return tabs
-  if (n.kind === 'Application') tabs.push({ key: 'events', label: 'Events' })
-  if (n.kind === 'Application' || n.kind === 'Database') tabs.push({ key: 'logs', label: 'Logs' })
+  if (n.kind === 'Application') tabs.push({ key: 'events', label: 'gitops.tab.events' })
+  if (n.kind === 'Application' || n.kind === 'Database') tabs.push({ key: 'logs', label: 'gitops.tab.logs' })
   return tabs
 })
 // Widen the drawer for the data-heavy tabs.
@@ -500,11 +500,11 @@ async function previewAndSync() {
 function planActionMeta(action: string): { label: string; badge: string } {
   switch (action) {
     case 'create':
-      return { label: 'Create', badge: 'badge-success' }
+      return { label: t('gitops.action.create'), badge: 'badge-success' }
     case 'update':
-      return { label: 'Update', badge: 'badge-info' }
+      return { label: t('gitops.action.update'), badge: 'badge-info' }
     case 'delete':
-      return { label: 'Delete', badge: 'badge-danger' }
+      return { label: t('gitops.action.delete'), badge: 'badge-danger' }
     default:
       return { label: action, badge: 'badge-neutral' }
   }
@@ -591,9 +591,9 @@ const policyFlags = computed(() => {
   const s = source.value
   if (!s) return [] as { label: string; icon: string; help: string }[]
   const out: { label: string; icon: string; help: string }[] = []
-  if (s.prune) out.push({ label: 'Prune', icon: 'mdi-broom', help: 'Deletes managed resources removed from Git' })
-  if (s.self_heal) out.push({ label: 'Self-heal', icon: 'mdi-heart-pulse', help: 'Re-applies when live state drifts from Git' })
-  if (s.allow_empty) out.push({ label: 'Allow empty', icon: 'mdi-delete-sweep-outline', help: 'An empty manifest set prunes all managed resources' })
+  if (s.prune) out.push({ label: t('gitops.action.prune'), icon: 'mdi-broom', help: t('gitops.action.pruneHelp') })
+  if (s.self_heal) out.push({ label: t('gitops.action.selfHeal'), icon: 'mdi-heart-pulse', help: t('gitops.action.selfHealHelp') })
+  if (s.allow_empty) out.push({ label: t('gitops.action.allowEmpty'), icon: 'mdi-delete-sweep-outline', help: t('gitops.action.allowEmptyHelp') })
   return out
 })
 </script>
@@ -648,7 +648,7 @@ const policyFlags = computed(() => {
           {{ source.sync_policy === 'auto' ? 'Automatic' : 'Manual' }}
         </span>
         <span v-for="f in policyFlags" :key="f.label" class="badge badge-neutral" :title="f.help">
-          <span class="mdi" :class="f.icon"></span> {{ f.label }}
+          <span class="mdi" :class="f.icon"></span> {{ $t(f.label) }}
         </span>
       </div>
       <span class="meta-sep"></span>
@@ -778,7 +778,7 @@ const policyFlags = computed(() => {
               :aria-selected="activeTab === t.key"
               @click="activeTab = t.key"
             >
-              {{ t.label }}
+              {{ $t(t.label) }}
             </button>
           </div>
 

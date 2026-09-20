@@ -101,10 +101,10 @@ const providerLink = computed(() => {
   const slug = repoSlug(repoUrl.value)
   if (!slug) return null
   if (slug.host.includes('github')) {
-    return { label: 'Open GitHub webhook settings', href: `https://${slug.host}/${slug.path}/settings/hooks/new` }
+    return { label: t('pipelines.openGithubWebhooks'), href: `https://${slug.host}/${slug.path}/settings/hooks/new` }
   }
   if (slug.host.includes('gitlab')) {
-    return { label: 'Open GitLab webhook settings', href: `https://${slug.host}/${slug.path}/-/hooks` }
+    return { label: t('pipelines.openGitlabWebhooks'), href: `https://${slug.host}/${slug.path}/-/hooks` }
   }
   return null
 })

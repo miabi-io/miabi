@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed, nextTick, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -12,6 +13,7 @@ import { statusMeta } from './status'
 import type { Image, PipelineRun, PipelineRunStatus, PipelineStepLogHistory } from '@/api/types'
 
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const route = useRoute()
 const router = useRouter()
@@ -213,7 +215,7 @@ async function rerun(noCache = false) {
   rerunning.value = true
   try {
     const fresh = (await pipelineApi.rerun(wid, run.value.id, noCache)).data.data
-    notify.success(`Run #${fresh.number} queued`, {
+    notify.success(t('notify.pipelines.runNumberQueued', { number: fresh.number }), {
       detail: noCache ? 'Building without cache — expect a slower run.' : 'Re-running the same commit.',
     })
     await router.push({ name: 'pipeline-run', params: { id: pipelineId.value, runId: fresh.id } })
@@ -235,8 +237,7 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
     <div class="page-header">
       <div>
         <router-link :to="{ name: 'pipeline-runs', params: { id: pipelineId } }" class="back-link">
-          <span class="mdi mdi-arrow-left"></span> Runs
-        </router-link>
+          <span class="mdi mdi-arrow-left"></span>{{ $t('pipelines.runs') }}</router-link>
         <h1 v-if="run">Run #{{ run.number }}</h1>
         <p v-if="run" class="subtitle">
           <span class="meta-item"><span class="mdi mdi-source-branch"></span> {{ run.trigger }}</span>
@@ -247,9 +248,8 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
           <span v-if="run.started_at" class="meta-item" :title="new Date(run.started_at).toLocaleString()">
             <span class="mdi mdi-clock-outline"></span> {{ relativeTime(run.started_at, now) }}
           </span>
-          <span v-if="run.no_cache" class="meta-item" title="Every layer was rebuilt; the build cache was ignored">
-            <span class="mdi mdi-cached"></span> no cache
-          </span>
+          <span v-if="run.no_cache" class="meta-item" :title="$t('pipelines.noCacheHint')">
+            <span class="mdi mdi-cached"></span>{{ $t('pipelines.noCache') }}</span>
         </p>
       </div>
       <div class="header-actions">
@@ -257,12 +257,10 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
           <span class="mdi" :class="statusMeta(run.status).icon"></span> {{ statusMeta(run.status).label }}
         </span>
         <template v-if="run && ws.canEdit">
-          <button class="btn btn-secondary" :disabled="rerunning" title="Re-run this commit, rebuilding every layer" @click="rerun(true)">
-            <span class="mdi mdi-cached"></span> Re-run without cache
-          </button>
-          <button class="btn btn-secondary" :disabled="rerunning" title="Re-run this commit" @click="rerun()">
-            <span class="mdi" :class="rerunning ? 'mdi-loading mdi-spin' : 'mdi-replay'"></span> Re-run
-          </button>
+          <button class="btn btn-secondary" :disabled="rerunning" :title="$t('pipelines.reRunNoCacheHint')" @click="rerun(true)">
+            <span class="mdi mdi-cached"></span>{{ $t('pipelines.reRunWithoutCache') }}</button>
+          <button class="btn btn-secondary" :disabled="rerunning" :title="$t('pipelines.reRunThisCommit')" @click="rerun()">
+            <span class="mdi" :class="rerunning ? 'mdi-loading mdi-spin' : 'mdi-replay'"></span>{{ $t('pipelines.reRun') }}</button>
         </template>
       </div>
     </div>
@@ -277,7 +275,7 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
       <div class="detail-grid">
         <!-- Steps as a status stepper -->
         <div class="card steps-card">
-          <div class="card-header"><h3>Steps</h3><span class="muted-count">{{ steps.length }}</span></div>
+          <div class="card-header"><h3>{{ $t('pipelines.steps') }}</h3><span class="muted-count">{{ steps.length }}</span></div>
           <div class="stepper">
             <button
               v-for="s in steps"
@@ -299,12 +297,12 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
                 <span class="step-name">
                   {{ s.name }}
                   <span v-if="s.uses" class="badge badge-neutral step-uses">{{ s.uses }}</span>
-                  <span v-if="s.continue_on_error" class="badge step-allow" title="A failure here doesn't fail the run">continue-on-error</span>
-                  <span v-if="s.no_cache" class="badge badge-neutral step-uses" title="Built without cache">no cache</span>
+                  <span v-if="s.continue_on_error" class="badge step-allow" :title="$t('pipelines.continueOnErrorHint')">{{ $t('pipelines.continueOnError') }}</span>
+                  <span v-if="s.no_cache" class="badge badge-neutral step-uses" :title="$t('pipelines.builtWithoutCache')">{{ $t('pipelines.noCache') }}</span>
                 </span>
                 <span class="step-sub">
                   <span>{{ statusMeta(s.status).label }}</span>
-                  <span v-if="s.status === 'failed' && s.continue_on_error" class="allow-note">· failure ignored</span>
+                  <span v-if="s.status === 'failed' && s.continue_on_error" class="allow-note">{{ $t('pipelines.failureIgnored') }}</span>
                   <span v-if="s.started_at">· {{ stepDuration(s) }}</span>
                   <span v-if="s.status === 'succeeded' || s.status === 'failed'" class="mono">· exit {{ s.exit_code }}</span>
                 </span>
@@ -312,16 +310,15 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
             </button>
           </div>
           <p v-if="canFilterSteps" class="stepper-hint">
-            <span class="mdi mdi-cursor-default-click-outline"></span> Click a step to filter its logs
-          </p>
+            <span class="mdi mdi-cursor-default-click-outline"></span>{{ $t('pipelines.stepFilterHint') }}</p>
         </div>
 
         <!-- Logs -->
         <div class="card logs-card">
           <div class="card-header logs-header">
             <div class="logs-title">
-              <h3>Logs</h3>
-              <span v-if="streaming" class="live"><span class="live-dot"></span> Live</span>
+              <h3>{{ $t('pipelines.logs') }}</h3>
+              <span v-if="streaming" class="live"><span class="live-dot"></span>{{ $t('pipelines.live') }}</span>
               <button v-if="selectedOrdinal != null" class="chip chip-clear" @click="selectStep(null)">
                 {{ steps.find((s) => s.ordinal === selectedOrdinal)?.name }}
                 <span class="mdi mdi-close"></span>
@@ -332,13 +329,13 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
               <button class="btn-icon btn-icon-muted" :class="{ on: wrap }" :title="wrap ? 'Disable wrap' : 'Wrap lines'" @click="wrap = !wrap">
                 <span class="mdi mdi-wrap"></span>
               </button>
-              <button class="btn-icon btn-icon-muted" :class="{ on: autoScroll }" title="Auto-scroll" @click="autoScroll = !autoScroll">
+              <button class="btn-icon btn-icon-muted" :class="{ on: autoScroll }" :title="$t('pipelines.autoScroll')" @click="autoScroll = !autoScroll">
                 <span class="mdi mdi-arrow-down-bold-box-outline"></span>
               </button>
-              <button class="btn-icon btn-icon-muted" title="Copy logs" :disabled="!displayLines.length" @click="copyLogs">
+              <button class="btn-icon btn-icon-muted" :title="$t('appDetail.copyLogs')" :disabled="!displayLines.length" @click="copyLogs">
                 <span class="mdi" :class="copied ? 'mdi-check' : 'mdi-content-copy'"></span>
               </button>
-              <button class="btn-icon btn-icon-muted" title="Download logs" :disabled="!displayLines.length" @click="downloadLogs">
+              <button class="btn-icon btn-icon-muted" :title="$t('appDetail.downloadLogs')" :disabled="!displayLines.length" @click="downloadLogs">
                 <span class="mdi mdi-download"></span>
               </button>
             </div>
@@ -352,7 +349,7 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
                 <span class="ln">{{ i + 1 }}</span><span class="lt">{{ l }}</span>
               </div>
             </div>
-            <button v-if="!atBottom && displayLines.length" class="jump" title="Jump to latest" @click="jumpToBottom">
+            <button v-if="!atBottom && displayLines.length" class="jump" :title="$t('pipelines.jumpToLatest')" @click="jumpToBottom">
               <span class="mdi mdi-arrow-down"></span>
             </button>
           </div>
@@ -360,32 +357,32 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
       </div>
 
       <div v-if="image" class="card mt-4">
-        <div class="card-header"><h3>Built image</h3></div>
+        <div class="card-header"><h3>{{ $t('pipelines.builtImage') }}</h3></div>
         <div class="card-body image-grid">
           <div class="image-field">
-            <span class="image-label">Reference</span>
+            <span class="image-label">{{ $t('pipelines.reference') }}</span>
             <span class="image-val">
               <span class="mono">{{ image.repository }}<template v-if="image.tag">:{{ image.tag }}</template></span>
-              <button class="btn-icon btn-icon-muted copy-inline" title="Copy" @click="copyVal(`${image.repository}${image.tag ? ':' + image.tag : ''}`)"><span class="mdi mdi-content-copy"></span></button>
+              <button class="btn-icon btn-icon-muted copy-inline" :title="$t('pipelines.copy')" @click="copyVal(`${image.repository}${image.tag ? ':' + image.tag : ''}`)"><span class="mdi mdi-content-copy"></span></button>
             </span>
           </div>
           <div class="image-field">
-            <span class="image-label">Digest</span>
+            <span class="image-label">{{ $t('pipelines.digest') }}</span>
             <span class="image-val">
               <span class="mono">{{ image.digest }}</span>
-              <button class="btn-icon btn-icon-muted copy-inline" title="Copy" @click="copyVal(image.digest)"><span class="mdi mdi-content-copy"></span></button>
+              <button class="btn-icon btn-icon-muted copy-inline" :title="$t('pipelines.copy')" @click="copyVal(image.digest)"><span class="mdi mdi-content-copy"></span></button>
             </span>
           </div>
           <div class="image-field">
-            <span class="image-label">Commit</span>
+            <span class="image-label">{{ $t('pipelines.commit') }}</span>
             <span class="mono">{{ image.commit ? image.commit.slice(0, 12) : '—' }}</span>
           </div>
           <div class="image-field">
-            <span class="image-label">Size</span>
+            <span class="image-label">{{ $t('pipelines.size') }}</span>
             <span class="mono">{{ fmtBytes(image.size_bytes) }}</span>
           </div>
           <div class="image-field">
-            <span class="image-label">Runner</span>
+            <span class="image-label">{{ $t('pipelines.runner') }}</span>
             <span class="mono">{{ image.runner || '—' }}</span>
           </div>
         </div>

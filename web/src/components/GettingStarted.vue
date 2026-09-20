@@ -30,7 +30,7 @@ interface Step {
 const steps = computed<Step[]>(() => [
   {
     key: 'workspace',
-    label: 'Create your first workspace',
+    label: 'workspaces.createYourFirstWorkspace',
     desc: 'A workspace groups your applications, databases, domains and team.',
     done: props.hasWorkspace,
     cta: 'Create workspace',
@@ -38,7 +38,7 @@ const steps = computed<Step[]>(() => [
   },
   {
     key: 'app',
-    label: 'Deploy your first application',
+    label: 'apps.deployFirst',
     desc: 'Launch from a Docker image, a Git repository, or the marketplace.',
     done: props.hasApp,
     cta: 'Deploy an app',
@@ -46,7 +46,7 @@ const steps = computed<Step[]>(() => [
   },
   {
     key: 'domain',
-    label: 'Connect a domain',
+    label: 'gettingStarted.connectDomain',
     desc: 'Point a custom domain at your app and get automatic SSL.',
     done: props.hasDomain,
     cta: 'Add a domain',
@@ -111,7 +111,7 @@ function go(to: string) {
             <span v-if="s.done" class="mdi mdi-check-circle"></span>
             <span v-else class="mdi mdi-circle-outline"></span>
           </span>
-          <div class="gs-step-label">{{ s.label }}</div>
+          <div class="gs-step-label">{{ $t(s.label) }}</div>
         </div>
           <div class="gs-step-desc">{{ s.desc }}</div>
         </div>

@@ -17,8 +17,8 @@ const notify = useNotificationStore()
 
 type Tab = 'repositories' | 'connect'
 const tabs: { id: Tab; label: string; icon: string }[] = [
-  { id: 'repositories', label: 'Repositories', icon: 'mdi-cube-outline' },
-  { id: 'connect', label: 'Connect', icon: 'mdi-console-line' },
+  { id: 'repositories', label: 'registry.repositories', icon: 'mdi-cube-outline' },
+  { id: 'connect', label: 'registry.connect', icon: 'mdi-console-line' },
 ]
 const activeTab = computed<Tab>(() => (route.query.tab as Tab) || 'repositories')
 function setTab(t: Tab) {
@@ -92,7 +92,7 @@ const { pageable, goToPage } = usePagination(async (page) => {
 })
 
 async function copy(text: string) {
-  if (await copyText(text)) notify.success('Copied to clipboard')
+  if (await copyText(text)) notify.success(t('notify.common.copiedToClipboard'))
   else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 
@@ -109,7 +109,7 @@ watch(wsId, async () => {
 <template>
   <div>
     <div class="page-header">
-      <h1>Container Registry</h1>
+      <h1>{{ $t('adminNav.infrastructure.containerRegistry') }}</h1>
       <code v-if="info?.enabled" class="host-pill mono">{{ info.host }}</code>
     </div>
 
@@ -120,8 +120,8 @@ watch(wsId, async () => {
       <div class="card-body empty">
         <span class="mdi mdi-cube-off-outline empty-icon"></span>
         <div>
-          <p class="empty-title">The container registry isn't enabled</p>
-          <p class="text-muted text-sm">Ask a platform admin to enable it in <strong>Admin → Container Registry</strong>, then push and pull your images here.</p>
+          <p class="empty-title">{{ $t('registry.disabledTitle') }}</p>
+          <i18n-t keypath="registry.disabledHint" tag="p" class="text-muted text-sm"><template #menu><strong>Admin → Container Registry</strong></template></i18n-t>
         </div>
       </div>
     </div>
@@ -129,7 +129,7 @@ watch(wsId, async () => {
     <template v-else-if="info">
       <div class="tabs">
         <button v-for="t in tabs" :key="t.id" class="tab" :class="{ active: activeTab === t.id }" @click="setTab(t.id)">
-          <span class="mdi" :class="t.icon"></span> {{ t.label }}
+          <span class="mdi" :class="t.icon"></span> {{ $t(t.label) }}
         </button>
       </div>
 
@@ -138,7 +138,7 @@ watch(wsId, async () => {
         <div class="card">
           <div class="card-header repos-header">
             <div>
-              <h2>Repositories</h2>
+              <h2>{{ $t('registry.repositories') }}</h2>
               <p class="text-muted text-sm" style="margin: 2px 0 0">
                 {{ pageable.total_elements }}
                 {{ pageable.total_elements === 1 ? 'repository' : 'repositories' }}{{ search ? ' matching' : '' }}
@@ -147,11 +147,10 @@ watch(wsId, async () => {
             <div class="repos-actions">
               <div class="search">
                 <span class="mdi mdi-magnify"></span>
-                <input v-model="search" class="form-input" type="search" placeholder="Filter images" aria-label="Filter images" @input="onSearch" />
+                <input v-model="search" class="form-input" type="search" :placeholder="$t('registry.filterImages')" :aria-label="$t('registry.filterImages')" @input="onSearch" />
               </div>
               <button class="btn btn-secondary btn-sm" :disabled="reposLoading" @click="goToPage(pageable.current_page)">
-                <span class="mdi mdi-refresh" :class="{ 'mdi-spin': reposLoading }"></span> Refresh
-              </button>
+                <span class="mdi mdi-refresh" :class="{ 'mdi-spin': reposLoading }"></span>{{ $t('volumes.refresh') }}</button>
             </div>
           </div>
 
@@ -162,7 +161,7 @@ watch(wsId, async () => {
             <div>
               <p class="empty-title">No image matches &ldquo;{{ search }}&rdquo;</p>
               <p class="text-muted text-sm">
-                <button class="link-btn" @click="search = ''; goToPage(0)">Clear the filter</button>
+                <button class="link-btn" @click="search = ''; goToPage(0)">{{ $t('registry.clearTheFilter') }}</button>
               </p>
             </div>
           </div>
@@ -170,11 +169,10 @@ watch(wsId, async () => {
           <div v-else-if="repos.length === 0" class="card-body empty">
             <span class="mdi mdi-package-variant empty-icon"></span>
             <div>
-              <p class="empty-title">No images yet</p>
-              <p class="text-muted text-sm">
-                Push your first image &mdash; see the
-                <a href="#" @click.prevent="setTab('connect')">Connect</a> tab for the commands.
-              </p>
+              <p class="empty-title">{{ $t('registry.noImagesYet') }}</p>
+              <i18n-t keypath="registry.emptyHint" tag="p" class="text-muted text-sm">
+                <template #tab><a href="#" @click.prevent="setTab('connect')">{{ $t('registry.connect') }}</a></template>
+              </i18n-t>
             </div>
           </div>
 
@@ -191,9 +189,7 @@ watch(wsId, async () => {
                   +{{ r.tag_count - preview(r).length }} more
                 </button>
               </div>
-              <p v-else class="text-muted text-sm no-tags">
-                No tags — this image was emptied and will be cleaned up by the next garbage collection.
-              </p>
+              <p v-else class="text-muted text-sm no-tags">{{ $t('registry.emptyRepoHint') }}</p>
             </div>
           </div>
         </div>
@@ -204,57 +200,56 @@ watch(wsId, async () => {
       <!-- Connect -->
       <template v-else-if="activeTab === 'connect'">
         <div class="card mb-4">
-          <div class="card-header"><h2>Connection details</h2></div>
+          <div class="card-header"><h2>{{ $t('registry.connectionDetails') }}</h2></div>
           <div class="card-body details-grid">
             <div class="detail">
-              <span class="detail-label">Registry host</span>
+              <span class="detail-label">{{ $t('registry.registryHost') }}</span>
               <code class="mono">{{ info.host }}</code>
             </div>
             <div class="detail">
-              <span class="detail-label">Your namespace</span>
+              <span class="detail-label">{{ $t('registry.yourNamespace') }}</span>
               <code class="mono">{{ info.namespace }}</code>
             </div>
             <div class="detail">
-              <span class="detail-label">Image prefix</span>
+              <span class="detail-label">{{ $t('registry.imagePrefix') }}</span>
               <code class="mono">{{ info.image_prefix }}</code>
             </div>
           </div>
         </div>
 
         <div class="card">
-          <div class="card-header"><h2>Push an image</h2></div>
+          <div class="card-header"><h2>{{ $t('registry.pushAnImage') }}</h2></div>
           <div class="card-body">
             <ol class="steps">
               <li>
-                <div class="step-label">1. Log in</div>
-                <p class="text-muted text-sm">Use your workspace name (or your username) and a Miabi <router-link to="/api-keys">API token</router-link> as the password.</p>
+                <div class="step-label">{{ $t('registry.step1') }}</div>
+                <i18n-t keypath="registry.loginHint" tag="p" class="text-muted text-sm"><template #link><router-link to="/api-keys">{{ $t('registry.apiToken') }}</router-link></template></i18n-t>
                 <div class="snippet">
                   <code>docker login {{ info.host }} -u {{ info.namespace }} -p &lt;api-token&gt;</code>
-                  <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(`docker login ${info.host} -u ${info.namespace} -p `)"><span class="mdi mdi-content-copy"></span></button>
+                  <button class="btn-icon btn-icon-muted" :title="$t('registry.copy')" :aria-label="$t('registry.copy')" @click="copy(`docker login ${info.host} -u ${info.namespace} -p `)"><span class="mdi mdi-content-copy"></span></button>
                 </div>
               </li>
               <li>
-                <div class="step-label">2. Tag your image</div>
+                <div class="step-label">{{ $t('registry.step2') }}</div>
                 <div class="snippet">
                   <code>docker tag myapp {{ info.image_prefix }}/myapp:1.0</code>
-                  <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(`docker tag myapp ${info.image_prefix}/myapp:1.0`)"><span class="mdi mdi-content-copy"></span></button>
+                  <button class="btn-icon btn-icon-muted" :title="$t('registry.copy')" :aria-label="$t('registry.copy')" @click="copy(`docker tag myapp ${info.image_prefix}/myapp:1.0`)"><span class="mdi mdi-content-copy"></span></button>
                 </div>
               </li>
               <li>
-                <div class="step-label">3. Push</div>
+                <div class="step-label">{{ $t('registry.step3') }}</div>
                 <div class="snippet">
                   <code>docker push {{ info.image_prefix }}/myapp:1.0</code>
-                  <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(`docker push ${info.image_prefix}/myapp:1.0`)"><span class="mdi mdi-content-copy"></span></button>
+                  <button class="btn-icon btn-icon-muted" :title="$t('registry.copy')" :aria-label="$t('registry.copy')" @click="copy(`docker push ${info.image_prefix}/myapp:1.0`)"><span class="mdi mdi-content-copy"></span></button>
                 </div>
               </li>
             </ol>
             <div class="app-banner app-banner--info" style="margin-top: 16px">
               <span class="mdi mdi-information-outline app-banner-icon"></span>
               <div class="app-banner-content">
-                <p class="app-banner-text">
-                  Pushed images deploy like any other image-source app — create an application from
-                  <code class="mono">{{ info.image_prefix }}/myapp:1.0</code>.
-                </p>
+                <i18n-t keypath="registry.deployHint" tag="p" class="app-banner-text">
+                  <template #image><code class="mono">{{ info.image_prefix }}/myapp:1.0</code></template>
+                </i18n-t>
               </div>
             </div>
           </div>

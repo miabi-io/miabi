@@ -21,10 +21,10 @@ const order = ref<'desc' | 'asc'>('desc')
 const severity = ref('')
 
 const severities = [
-  { value: '', label: 'All', icon: '', tone: '' },
-  { value: 'info', label: 'Info', icon: 'mdi-information-outline', tone: 'tone-info' },
-  { value: 'warning', label: 'Warning', icon: 'mdi-alert-outline', tone: 'tone-warning' },
-  { value: 'error', label: 'Errors', icon: 'mdi-alert-circle-outline', tone: 'tone-error' },
+  { value: '', label: 'events.severity.all', icon: '', tone: '' },
+  { value: 'info', label: 'events.severity.info', icon: 'mdi-information-outline', tone: 'tone-info' },
+  { value: 'warning', label: 'events.severity.warning', icon: 'mdi-alert-outline', tone: 'tone-warning' },
+  { value: 'error', label: 'events.severity.errors', icon: 'mdi-alert-circle-outline', tone: 'tone-error' },
 ]
 
 const { pageable, goToPage } = usePagination(async (page) => {
@@ -66,16 +66,15 @@ function when(ts: string): string {
   <div>
     <div class="page-header">
       <div>
-        <h1>Events</h1>
+        <h1>{{ $t('events.events') }}</h1>
         <p class="subtitle">Application and database activity in {{ ws.contextLabel }}</p>
       </div>
       <button class="btn btn-ghost btn-sm" :disabled="loading" @click="goToPage(pageable.current_page)">
-        <span class="mdi" :class="loading ? 'mdi-loading mdi-spin' : 'mdi-refresh'"></span> Refresh
-      </button>
+        <span class="mdi" :class="loading ? 'mdi-loading mdi-spin' : 'mdi-refresh'"></span>{{ $t('volumes.refresh') }}</button>
     </div>
 
     <div class="toolbar">
-      <div class="segmented" role="group" aria-label="Filter by severity">
+      <div class="segmented" role="group" :aria-label="$t('events.filterBySeverity')">
         <button
           v-for="s in severities"
           :key="s.value"
@@ -83,12 +82,12 @@ function when(ts: string): string {
           :class="[{ active: severity === s.value }, s.tone]"
           @click="severity = s.value"
         >
-          <span v-if="s.icon" class="mdi" :class="s.icon"></span> {{ s.label }}
+          <span v-if="s.icon" class="mdi" :class="s.icon"></span> {{ $t(s.label) }}
         </button>
       </div>
-      <select v-model="order" class="form-select order-select" style="max-width: 180px;" title="Sort order" aria-label="Sort order">
-        <option value="desc">Recent first</option>
-        <option value="asc">Oldest first</option>
+      <select v-model="order" class="form-select order-select" style="max-width: 180px;" :title="$t('audit.sortOrder')" :aria-label="$t('audit.sortOrder')">
+        <option value="desc">{{ $t('audit.recentFirst') }}</option>
+        <option value="asc">{{ $t('audit.oldestFirst') }}</option>
       </select>
     </div>
 
@@ -96,13 +95,13 @@ function when(ts: string): string {
       <div v-if="loading && events.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="events.length === 0" class="empty-state">
         <span class="mdi mdi-timeline-text-outline" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No events yet</h3>
-        <p>Deploys, database lifecycle, container events, and configuration changes will appear here.</p>
+        <h3>{{ $t('db.noEventsYet') }}</h3>
+        <p>{{ $t('events.deploysDatabaseLifecycleContainerEvents') }}</p>
       </div>
       <div v-else class="table-wrapper">
         <table>
           <thead>
-            <tr><th>Event</th><th>Resource</th><th class="text-right">When</th></tr>
+            <tr><th>{{ $t('events.event') }}</th><th>{{ $t('events.resource') }}</th><th class="text-right">{{ $t('events.when') }}</th></tr>
           </thead>
           <tbody>
             <tr
@@ -123,7 +122,7 @@ function when(ts: string): string {
               <td>
                 <span class="cell-text">
                   <span class="cell-title">{{ eventSubjectLabel(e) }}</span>
-                  <span v-if="e.subject_type === 'database'" class="cell-sub">database</span>
+                  <span v-if="e.subject_type === 'database'" class="cell-sub">{{ $t('events.database') }}</span>
                   <span v-else-if="e.app_name" class="cell-sub">{{ e.app_name }}</span>
                 </span>
               </td>

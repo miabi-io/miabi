@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -11,6 +12,7 @@ const route = useRoute()
 const router = useRouter()
 const ws = useWorkspaceStore()
 const { currentWorkspaceId } = storeToRefs(ws)
+const { t } = useI18n()
 const notify = useNotificationStore()
 
 const isAdmin = computed(() => !!route.meta.admin)
@@ -93,7 +95,7 @@ async function remove() {
   try {
     if (isAdmin.value) await adminRunnerApi.remove(r.id)
     else await runnerApi.remove(currentWorkspaceId.value ?? 0, r.id)
-    notify.success('Runner deleted')
+    notify.success(t('notify.runners.deleted'))
     router.replace(listPath.value)
   } catch (e) {
     notify.apiError(e)
@@ -111,7 +113,7 @@ async function remove() {
     <template v-else-if="runner">
       <div class="page-header">
         <div class="header-left">
-          <button class="btn-icon btn-icon-muted" title="Back to runners" aria-label="Back to runners" @click="router.push(listPath)">
+          <button class="btn-icon btn-icon-muted" :title="$t('runners.backToRunners')" :aria-label="$t('runners.backToRunners')" @click="router.push(listPath)">
             <span class="mdi mdi-arrow-left"></span>
           </button>
           <div class="header-title">
@@ -126,31 +128,31 @@ async function remove() {
           <button class="btn btn-secondary btn-sm" :disabled="busy" @click="toggleCordon">
             {{ runner.cordoned ? 'Resume' : 'Cordon' }}
           </button>
-          <button class="btn btn-danger btn-sm" @click="confirmingDelete = true">Delete</button>
+          <button class="btn btn-danger btn-sm" @click="confirmingDelete = true">{{ $t('action.delete') }}</button>
         </div>
       </div>
 
       <div class="card">
         <div class="card-body">
           <dl class="detail-grid">
-            <div><dt>Status</dt><dd><span class="badge" :class="statusBadge.cls">{{ statusBadge.text }}</span></dd></div>
-            <div><dt>Remote IP</dt><dd><code v-if="runner.remote_ip">{{ runner.remote_ip }}</code><span v-else class="text-muted">—</span></dd></div>
+            <div><dt>{{ $t('dashboard.col.status') }}</dt><dd><span class="badge" :class="statusBadge.cls">{{ statusBadge.text }}</span></dd></div>
+            <div><dt>{{ $t('runners.remoteIp') }}</dt><dd><code v-if="runner.remote_ip">{{ runner.remote_ip }}</code><span v-else class="text-muted">—</span></dd></div>
             <div>
-              <dt>Last connection</dt>
+              <dt>{{ $t('runners.lastConnection') }}</dt>
               <dd>{{ fmtDateTime(runner.last_seen_at) }} <span v-if="runner.last_seen_at" class="text-muted">({{ ago(runner.last_seen_at) }})</span></dd>
             </div>
-            <div><dt>Created</dt><dd>{{ fmtDateTime(runner.created_at) }}</dd></div>
-            <div><dt>Platform</dt><dd>{{ platform }}</dd></div>
-            <div><dt>Version</dt><dd>{{ runner.version || '—' }}</dd></div>
-            <div><dt>Concurrency</dt><dd>{{ runner.concurrency }} job(s)</dd></div>
-            <div><dt>Enabled</dt><dd>{{ runner.enabled ? 'Yes' : 'No' }}</dd></div>
+            <div><dt>{{ $t('dashboard.col.created') }}</dt><dd>{{ fmtDateTime(runner.created_at) }}</dd></div>
+            <div><dt>{{ $t('runners.platform') }}</dt><dd>{{ platform }}</dd></div>
+            <div><dt>{{ $t('runners.version') }}</dt><dd>{{ runner.version || '—' }}</dd></div>
+            <div><dt>{{ $t('runners.concurrency') }}</dt><dd>{{ runner.concurrency }} job(s)</dd></div>
+            <div><dt>{{ $t('jobs.enabled') }}</dt><dd>{{ runner.enabled ? 'Yes' : 'No' }}</dd></div>
             <div class="detail-wide">
-              <dt>Labels</dt>
+              <dt>{{ $t('runners.labels') }}</dt>
               <dd>
                 <template v-if="runner.labels && runner.labels.length">
                   <span v-for="l in runner.labels" :key="l" class="badge badge-neutral" style="margin-right: 4px">{{ l }}</span>
                 </template>
-                <span v-else class="text-muted">none</span>
+                <span v-else class="text-muted">{{ $t('runners.none') }}</span>
               </dd>
             </div>
           </dl>

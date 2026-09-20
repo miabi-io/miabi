@@ -49,7 +49,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
         <button class="btn btn-secondary btn-sm" :title="paused ? 'Resume live updates' : 'Pause live updates'" @click="paused = !paused">
           <span class="mdi" :class="paused ? 'mdi-play' : 'mdi-pause'"></span> {{ paused ? 'Resume' : 'Pause' }}
         </button>
-        <button class="btn-icon btn-icon-muted" title="Close" aria-label="Close" @click="emit('close')"><span class="mdi mdi-close"></span></button>
+        <button class="btn-icon btn-icon-muted" :title="$t('shell.close')" :aria-label="$t('shell.close')" @click="emit('close')"><span class="mdi mdi-close"></span></button>
       </div>
     </div>
     <div class="modal-body proc-body">
@@ -62,14 +62,14 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
             <tr v-for="(row, ri) in data.processes" :key="ri">
               <td v-for="(cell, ci) in row" :key="ci" :class="{ 'proc-cmd': ci === row.length - 1 }">{{ cell }}</td>
             </tr>
-            <tr v-if="data.processes.length === 0"><td :colspan="data.titles.length" class="text-muted" style="text-align: center; padding: 16px">No processes.</td></tr>
+            <tr v-if="data.processes.length === 0"><td :colspan="data.titles.length" class="text-muted" style="text-align: center; padding: 16px">{{ $t('processes.noProcesses') }}</td></tr>
           </tbody>
         </table>
       </div>
     </div>
     <div class="modal-footer" style="justify-content: space-between">
       <span class="text-muted" style="font-size: 12px">{{ paused ? 'Paused' : 'Live' }}<span v-if="updatedAt"> · updated {{ new Date(updatedAt).toLocaleTimeString() }}</span></span>
-      <span class="text-muted" style="font-size: 12px">via docker top (host ps)</span>
+      <span class="text-muted" style="font-size: 12px">{{ $t('processes.viaDockerTopHostPs') }}</span>
     </div>
   </AppModal>
 </template>

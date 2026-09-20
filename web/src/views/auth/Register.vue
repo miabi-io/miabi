@@ -87,23 +87,15 @@ async function submit() {
          sign-up cannot be used to find out who has one. -->
     <template v-if="done">
       <p class="register-done">
-        <template v-if="verificationRequired">
-          If <strong>{{ email }}</strong> can be registered, a verification link is on its way.
-          Verify your address, then sign in.
-        </template>
-        <template v-else>
-          If <strong>{{ email }}</strong> can be registered, your account is ready. You can sign
-          in now.
-        </template>
+        <i18n-t v-if="verificationRequired" keypath="register.sentVerification" tag="span"><template #email><strong>{{ email }}</strong></template></i18n-t>
+        <i18n-t v-else keypath="register.ready" tag="span"><template #email><strong>{{ email }}</strong></template></i18n-t>
       </p>
-      <RouterLink :to="{ name: 'login' }" class="btn btn-primary auth-submit">
-        Go to sign in
-      </RouterLink>
+      <RouterLink :to="{ name: 'login' }" class="btn btn-primary auth-submit">{{ $t('register.goToSignIn') }}</RouterLink>
     </template>
 
     <form v-else class="auth-form" @submit.prevent="submit">
       <div class="form-group">
-        <label class="form-label" for="reg-name">Name</label>
+        <label class="form-label" for="reg-name">{{ $t('apps.form.name') }}</label>
         <input
           id="reg-name"
           ref="nameInput"
@@ -116,7 +108,7 @@ async function submit() {
         />
       </div>
       <div class="form-group">
-        <label class="form-label" for="reg-email">Email</label>
+        <label class="form-label" for="reg-email">{{ $t('register.email') }}</label>
         <input
           id="reg-email"
           v-model="email"
@@ -129,7 +121,7 @@ async function submit() {
         />
       </div>
       <div class="form-group">
-        <label class="form-label" for="reg-password">Password</label>
+        <label class="form-label" for="reg-password">{{ $t('register.password') }}</label>
         <input
           id="reg-password"
           v-model="password"
@@ -150,8 +142,7 @@ async function submit() {
 
     <template #footer>
       <RouterLink :to="{ name: 'login' }" class="auth-back">
-        <span class="mdi mdi-arrow-left"></span> Back to sign in
-      </RouterLink>
+        <span class="mdi mdi-arrow-left"></span>{{ $t('login.backToSignIn') }}</RouterLink>
     </template>
   </AuthShell>
 </template>

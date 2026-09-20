@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
@@ -10,6 +11,7 @@ import CredentialSecretField from '@/components/CredentialSecretField.vue'
 import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const { currentWorkspaceId } = storeToRefs(ws)
 
@@ -52,10 +54,10 @@ async function save() {
   try {
     if (editing.value) {
       await registryApi.update(currentWorkspaceId.value, editing.value.id, form.value)
-      notify.success('Registry updated')
+      notify.success(t('notify.registries.updated'))
     } else {
       await registryApi.create(currentWorkspaceId.value, form.value)
-      notify.success('Registry added')
+      notify.success(t('notify.registries.added'))
     }
     showModal.value = false
     load(currentWorkspaceId.value)
@@ -71,7 +73,7 @@ async function test(r: Registry) {
   testing.value = r.id
   try {
     await registryApi.test(currentWorkspaceId.value, r.id)
-    notify.success(`${r.name}: authentication succeeded`)
+    notify.success(t('notify.registries.authOk', { name: r.name }))
   } catch (e) {
     notify.apiError(e, 'Authentication failed')
   } finally {
@@ -86,7 +88,7 @@ async function confirmDelete() {
   deleting.value = true
   try {
     await registryApi.remove(currentWorkspaceId.value, pendingDelete.value.id)
-    notify.success('Registry deleted')
+    notify.success(t('notify.registries.deleted'))
     pendingDelete.value = null
     load(currentWorkspaceId.value)
   } catch (e) {
@@ -101,25 +103,24 @@ async function confirmDelete() {
   <div>
     <div class="page-header">
       <div>
-        <h1>Registries</h1>
-        <p class="subtitle">Credentials for pulling private container images.</p>
+        <h1>{{ $t('registries.registries') }}</h1>
+        <p class="subtitle">{{ $t('registries.subtitle') }}</p>
       </div>
       <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate">
-        <span class="mdi mdi-plus"></span> New registry
-      </button>
+        <span class="mdi mdi-plus"></span>{{ $t('registries.newRegistry') }}</button>
     </div>
 
     <div class="card">
       <div v-if="loading && items.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="items.length === 0" class="empty-state">
         <span class="mdi mdi-database-lock-outline" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No registries yet</h3>
-        <p>Add Docker Hub, GHCR, GitLab, or any private registry credential.</p>
-        <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="openCreate">Add a registry</button>
+        <h3>{{ $t('registries.noRegistriesYet') }}</h3>
+        <p>{{ $t('registries.emptyHint') }}</p>
+        <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="openCreate">{{ $t('registries.addARegistry') }}</button>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Registry</th><th>Server</th><th>Username</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('registries.registry') }}</th><th>{{ $t('registries.server') }}</th><th>{{ $t('registries.username') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="r in items" :key="r.id">
               <td>
@@ -139,11 +140,11 @@ async function confirmDelete() {
               <td class="cell-sub">{{ r.server }}</td>
               <td class="cell-sub">{{ r.username || '—' }}</td>
               <td class="text-right table-actions">
-                <button class="btn-icon btn-icon-muted" title="Test connection" aria-label="Test connection" :disabled="testing === r.id" @click="test(r)">
+                <button class="btn-icon btn-icon-muted" :title="$t('ldap.testConnection')" :aria-label="$t('ldap.testConnection')" :disabled="testing === r.id" @click="test(r)">
                   <span class="mdi" :class="testing === r.id ? 'mdi-loading mdi-spin' : 'mdi-connection'"></span>
                 </button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" title="Edit" aria-label="Edit" @click="openEdit(r)"><span class="mdi mdi-pencil-outline"></span></button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="pendingDelete = r"><span class="mdi mdi-delete-outline"></span></button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEdit(r)"><span class="mdi mdi-pencil-outline"></span></button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="pendingDelete = r"><span class="mdi mdi-delete-outline"></span></button>
               </td>
             </tr>
           </tbody>
@@ -155,21 +156,21 @@ async function confirmDelete() {
       <AppModal v-if="showModal" @close="showModal = false">
         <div class="modal-header">
           <h3>{{ editing ? 'Edit registry' : 'New registry' }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="save">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Name</label>
-              <input v-model="form.name" class="form-input" placeholder="e.g. GHCR (prod)" required autofocus aria-label="Name" />
+              <label class="form-label">{{ $t('apps.form.name') }}</label>
+              <input v-model="form.name" class="form-input" placeholder="e.g. GHCR (prod)" required autofocus :aria-label="$t('apps.form.name')" />
             </div>
             <div class="form-group">
-              <label class="form-label">Server <span class="text-muted">(optional, defaults to Docker Hub)</span></label>
-              <input v-model="form.server" class="form-input" placeholder="ghcr.io" aria-label="Server" />
+              <label class="form-label">{{ $t('registries.server') }}<span class="text-muted">{{ $t('registries.serverHint') }}</span></label>
+              <input v-model="form.server" class="form-input" placeholder="ghcr.io" :aria-label="$t('registries.server')" />
             </div>
             <div class="form-group">
-              <label class="form-label">Username</label>
-              <input v-model="form.username" class="form-input" placeholder="username" autocomplete="off" aria-label="Username" />
+              <label class="form-label">{{ $t('registries.username') }}</label>
+              <input v-model="form.username" class="form-input" placeholder="username" autocomplete="off" :aria-label="$t('registries.username')" />
             </div>
             <CredentialSecretField
               v-model="form.secret"
@@ -179,7 +180,7 @@ async function confirmDelete() {
             />
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showModal = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Add registry') }}</button>
           </div>
         </form>

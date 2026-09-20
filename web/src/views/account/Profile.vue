@@ -31,7 +31,7 @@ async function saveProfile() {
     await auth.updateProfile(name.value.trim(), usernameChanged.value ? username.value.trim() : undefined)
     name.value = auth.user?.name ?? name.value
     username.value = auth.user?.username ?? username.value
-    notify.success('Profile updated')
+    notify.success(t('notify.profile.updated'))
   } catch (e) {
     notify.apiError(e, 'Could not update profile')
   } finally {
@@ -78,7 +78,7 @@ async function confirmAction() {
   revokingSession.value = s.id
   try {
     await authApi.revokeSession(s.id)
-    notify.success('Session revoked')
+    notify.success(t('notify.profile.sessionRevoked'))
     confirmTarget.value = null
     sessions.value = sessions.value.filter((x) => x.id !== s.id)
   } catch (e) {
@@ -142,29 +142,29 @@ onMounted(loadSessions)
 <template>
   <div>
     <div class="page-header">
-      <h1>Profile</h1>
+      <h1>{{ $t('profile.profile') }}</h1>
     </div>
 
     <div class="profile-grid">
       <!-- My Profile -->
       <div class="card">
-        <div class="card-header"><h2>My Profile</h2></div>
+        <div class="card-header"><h2>{{ $t('profile.myProfile') }}</h2></div>
         <div class="card-body">
-          <p class="sec-desc">Update the name shown across Miabi. Your email is managed by an administrator.</p>
+          <p class="sec-desc">{{ $t('profile.updateTheNameShownAcross') }}</p>
           <form class="profile-form" @submit.prevent="saveProfile">
             <div class="form-group">
-              <label class="form-label" for="profile-name">Display name</label>
+              <label class="form-label" for="profile-name">{{ $t('oauth.displayName') }}</label>
               <input id="profile-name" v-model="name" type="text" class="form-input" maxlength="100" autocomplete="name" required />
             </div>
             <div class="form-group">
-              <label class="form-label" for="profile-username">Username</label>
+              <label class="form-label" for="profile-username">{{ $t('profile.username') }}</label>
               <input id="profile-username" v-model="username" type="text" class="form-input mono" autocomplete="username" spellcheck="false" placeholder="your-handle" />
-              <small class="form-hint">Your unique handle — lowercase letters, digits, and hyphens. Used as a directory identifier.</small>
+              <small class="form-hint">{{ $t('profile.yourUniqueHandleLowercaseLetters') }}</small>
             </div>
             <div class="form-group">
-              <label class="form-label" for="profile-email">Email</label>
+              <label class="form-label" for="profile-email">{{ $t('profile.email') }}</label>
               <input id="profile-email" :value="auth.user?.email" type="email" class="form-input" disabled />
-              <small class="form-hint">Contact an administrator to change your email address.</small>
+              <small class="form-hint">{{ $t('profile.contactAnAdministratorToChange') }}</small>
             </div>
             <button type="submit" class="btn btn-primary" :disabled="!nameValid || !profileChanged || nameBusy">
               {{ nameBusy ? 'Saving…' : 'Save changes' }}
@@ -176,7 +176,7 @@ onMounted(loadSessions)
       <!-- Active Sessions -->
       <div class="card">
         <div class="card-header">
-          <h2>Active Sessions</h2>
+          <h2>{{ $t('profile.activeSessions') }}</h2>
           <button
             v-if="sessions.length > 1"
             class="btn btn-danger btn-sm"
@@ -187,15 +187,13 @@ onMounted(loadSessions)
           </button>
         </div>
         <div class="card-body">
-          <p class="sec-desc">These are the devices and browsers currently logged in to your account.</p>
+          <p class="sec-desc">{{ $t('profile.theseAreTheDevicesAnd') }}</p>
 
           <div v-if="sessionsLoading" style="text-align: center; padding: 20px 0">
             <div class="spinner"></div>
           </div>
 
-          <div v-else-if="sessions.length === 0" class="text-muted" style="text-align: center; padding: 16px 0">
-            No active sessions found.
-          </div>
+          <div v-else-if="sessions.length === 0" class="text-muted" style="text-align: center; padding: 16px 0">{{ $t('profile.noActiveSessionsFound') }}</div>
 
           <div v-else class="session-list">
             <div v-for="s in sessions" :key="s.id" class="session-item" :class="{ 'session-current': s.current }">
@@ -203,7 +201,7 @@ onMounted(loadSessions)
                 <div class="session-browser">
                   {{ sessionLabel(s.user_agent) }}
                   <span v-if="sessionDevice(s.user_agent)" class="badge badge-neutral" style="margin-left: 6px">{{ sessionDevice(s.user_agent) }}</span>
-                  <span v-if="s.current" class="badge badge-success" style="margin-left: 6px">Current</span>
+                  <span v-if="s.current" class="badge badge-success" style="margin-left: 6px">{{ $t('profile.current') }}</span>
                 </div>
                 <div class="session-meta">
                   {{ s.ip_address || 'unknown IP' }} &middot; Created {{ formatSessionDate(s.created_at) }} &middot; Expires {{ formatSessionDate(s.expires_at) }}

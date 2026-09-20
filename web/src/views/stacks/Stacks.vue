@@ -74,7 +74,7 @@ async function create() {
       description: form.value.description.trim() || undefined,
       location: form.value.location || undefined,
     })).data.data
-    notify.success('Stack created')
+    notify.success(t('notify.stacks.created'))
     showCreate.value = false
     if (stack) router.push(`/stacks/${stack.id}`)
     else load(currentWorkspaceId.value)
@@ -100,11 +100,11 @@ async function runImport() {
     const reqs = res?.port_requests ?? 0
     const skipped = res?.skipped.length ?? 0
     const conflicts = res?.port_conflicts ?? []
-    let msg = `Imported ${created} app${created === 1 ? '' : 's'}`
-    if (vols) msg += `, ${vols} volume${vols === 1 ? '' : 's'}`
-    if (reqs) msg += `, ${reqs} port request${reqs === 1 ? '' : 's'}`
-    if (skipped) msg += `, ${skipped} skipped`
-    notify.success(msg)
+    const parts = [t('notify.stacks.importedApps', created)]
+    if (vols) parts.push(t('count.volumes', vols))
+    if (reqs) parts.push(t('notify.stacks.importedPortRequests', reqs))
+    if (skipped) parts.push(t('notify.stacks.importedSkipped', skipped))
+    notify.success(parts.join(', '))
     // Conflicting host ports were filed pending (not published) so the stack
     // still imports — tell the user which ports clashed and with what.
     if (conflicts.length) {
@@ -127,16 +127,14 @@ async function runImport() {
   <div>
     <div class="page-header">
       <div>
-        <h1>Stacks</h1>
+        <h1>{{ $t('stacks.stacks') }}</h1>
         <p class="subtitle">Group related applications for {{ ws.contextLabel }}.</p>
       </div>
       <div class="flex items-center gap-2">
         <button v-if="ws.canEdit" class="btn btn-secondary" @click="openImport">
-          <span class="mdi mdi-import"></span> Import Compose
-        </button>
+          <span class="mdi mdi-import"></span>{{ $t('stacks.importCompose') }}</button>
         <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate">
-          <span class="mdi mdi-plus"></span> New stack
-        </button>
+          <span class="mdi mdi-plus"></span>{{ $t('stacks.newStack') }}</button>
       </div>
     </div>
 
@@ -144,9 +142,9 @@ async function runImport() {
       <div v-if="loading && items.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="items.length === 0" class="empty-state">
         <span class="mdi mdi-layers-outline" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No stacks</h3>
-        <p>Create a stack to group related applications and manage their containers together.</p>
-        <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="openCreate">Create a stack</button>
+        <h3>{{ $t('stacks.noStacks') }}</h3>
+        <p>{{ $t('stacks.emptyHint') }}</p>
+        <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="openCreate">{{ $t('stacks.createAStack') }}</button>
       </div>
       <template v-else>
         <div class="card-body toolbar">
@@ -156,8 +154,8 @@ async function runImport() {
               v-model="search"
               class="form-input"
               type="search"
-              aria-label="Search stacks"
-              placeholder="Search stacks by name, description, or Docker name…"
+              :aria-label="$t('stacks.searchStacks')"
+              :placeholder="$t('stacks.searchPlaceholder')"
             />
           </div>
           <span class="text-muted text-sm">{{ filtered.length }} of {{ items.length }}</span>
@@ -170,7 +168,7 @@ async function runImport() {
 
         <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Stack</th><th>Docker name</th><th>Apps</th><th>Status</th></tr></thead>
+          <thead><tr><th>{{ $t('stacks.stack') }}</th><th>{{ $t('db.dockerName') }}</th><th>{{ $t('stacks.apps') }}</th><th>{{ $t('dashboard.col.status') }}</th></tr></thead>
           <tbody>
             <tr v-for="s in filtered" :key="s.id" class="row-clickable" :title="s.description"
               @click="router.push(`/stacks/${s.id}`)">
@@ -202,23 +200,23 @@ async function runImport() {
     <Teleport to="body">
       <AppModal v-if="showCreate" @close="showCreate = false">
         <div class="modal-header">
-          <h3>New stack</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('stacks.newStack') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="create">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Name</label>
-              <input v-model="form.name" class="form-input" placeholder="e.g. blog" aria-label="Name" required autofocus />
+              <label class="form-label">{{ $t('apps.form.name') }}</label>
+              <input v-model="form.name" class="form-input" :placeholder="$t('db.eGBlog')" :aria-label="$t('apps.form.name')" required autofocus />
             </div>
             <div class="form-group">
-              <label class="form-label">Description <span class="text-muted">(optional)</span></label>
-              <input v-model="form.description" class="form-input" placeholder="WordPress + MySQL + Redis" aria-label="Description" />
+              <label class="form-label">{{ $t('plans.description') }}<span class="text-muted">{{ $t('stacks.optional') }}</span></label>
+              <input v-model="form.description" class="form-input" placeholder="WordPress + MySQL + Redis" :aria-label="$t('plans.description')" />
             </div>
             <LocationPicker v-model="form.location" :allow-pin="false" />
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showCreate = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Creating…' : 'Create stack' }}</button>
           </div>
         </form>
@@ -226,23 +224,23 @@ async function runImport() {
 
       <AppModal v-if="showImport" max-width="640px" @close="showImport = false">
         <div class="modal-header">
-          <h3>Import from docker-compose</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showImport = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('stacks.importFromDockerCompose') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showImport = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="runImport">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Stack name</label>
-              <input v-model="importForm.name" class="form-input" placeholder="e.g. blog" aria-label="Stack name" required autofocus />
+              <label class="form-label">{{ $t('stacks.stackName') }}</label>
+              <input v-model="importForm.name" class="form-input" :placeholder="$t('db.eGBlog')" :aria-label="$t('stacks.stackName')" required autofocus />
             </div>
             <div class="form-group" style="margin-bottom: 0">
               <label class="form-label">docker-compose.yml</label>
-              <textarea v-model="importForm.compose" class="form-input" rows="12" spellcheck="false" style="font-family: monospace; font-size: 12px" placeholder="services:&#10;  web:&#10;    image: nginx:1.25&#10;    ports:&#10;      - 80&#10;    environment:&#10;      FOO: bar" aria-label="docker-compose.yml" required></textarea>
-              <p class="form-hint">One application is created per image-based service (ports, env, command). Named volumes are provisioned and mounted, and apps resolve each other by service name within the stack. Published host ports become pending bindings an admin approves. Build-only services and bind mounts are skipped.</p>
+              <textarea v-model="importForm.compose" class="form-input" rows="12" spellcheck="false" style="font-family: monospace; font-size: 12px" placeholder="services:&#10;  web:&#10;    image: nginx:1.25&#10;    ports:&#10;      - 80&#10;    environment:&#10;      FOO: bar" :aria-label="$t('stacks.dockerComposeYml')" required></textarea>
+              <p class="form-hint">{{ $t('stacks.importHint') }}</p>
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showImport = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showImport = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="importing">{{ importing ? 'Importing…' : 'Import stack' }}</button>
           </div>
         </form>

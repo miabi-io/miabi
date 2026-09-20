@@ -64,7 +64,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="bell">
-    <button class="bell-btn" aria-label="Notifications" @click.stop="toggle">
+    <button class="bell-btn" :aria-label="$t('bell.notifications')" @click.stop="toggle">
       <span class="mdi mdi-bell-outline"></span>
       <span v-if="unread > 0" class="bell-badge">{{ badge }}</span>
     </button>
@@ -76,15 +76,15 @@ onBeforeUnmount(() => {
       <div v-if="open" class="bell-dropdown" @click.stop>
         <div class="bell-drag-handle"></div>
         <div class="bell-head">
-          <span>Notifications</span>
-          <button v-if="unread > 0" class="bell-link" @click="store.markAllRead()">Mark all read</button>
+          <span>{{ $t('bell.notifications') }}</span>
+          <button v-if="unread > 0" class="bell-link" @click="store.markAllRead()">{{ $t('bell.markAllRead') }}</button>
         </div>
 
         <div class="bell-list">
           <div v-if="loading && !items.length" class="bell-empty"><span class="spinner"></span></div>
           <div v-else-if="!items.length" class="bell-empty">
             <span class="mdi mdi-bell-check-outline" style="font-size: 32px; color: var(--text-muted)"></span>
-            <p>You're all caught up.</p>
+            <p>{{ $t('bell.youReAllCaughtUp') }}</p>
           </div>
           <button
             v-for="n in items"
@@ -104,7 +104,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="bell-foot">
-          <RouterLink to="/notifications" class="bell-link" @click="close">View all →</RouterLink>
+          <RouterLink to="/notifications" class="bell-link" @click="close">{{ $t('bell.viewAll') }}</RouterLink>
         </div>
       </div>
     </Transition>

@@ -140,11 +140,11 @@ function expiryLabel(t: LoginTokenResponse): string {
     <!-- Confirm identity (password) -->
     <form v-if="step === 'confirm'" class="auth-form" @submit.prevent="submit">
       <div class="form-group">
-        <label class="form-label">Username or email</label>
+        <label class="form-label">{{ $t('requestToken.usernameOrEmail') }}</label>
         <input v-model="username" type="text" class="form-input" autocomplete="username" required autofocus />
       </div>
       <div class="form-group">
-        <label class="form-label">Password</label>
+        <label class="form-label">{{ $t('requestToken.password') }}</label>
         <input v-model="password" type="password" class="form-input" autocomplete="current-password" required />
       </div>
       <button type="submit" class="btn btn-primary auth-submit" :disabled="loading">
@@ -153,7 +153,7 @@ function expiryLabel(t: LoginTokenResponse): string {
       </button>
 
       <template v-if="providers.length">
-        <div class="auth-divider"><span>or re-authenticate with</span></div>
+        <div class="auth-divider"><span>{{ $t('requestToken.orReAuthenticateWith') }}</span></div>
         <button
           v-for="p in providers"
           :key="p.name"
@@ -169,7 +169,7 @@ function expiryLabel(t: LoginTokenResponse): string {
     <!-- Two-factor -->
     <form v-else-if="step === 'twofactor'" class="auth-form" @submit.prevent="submit">
       <div class="form-group">
-        <label class="form-label">Authentication code</label>
+        <label class="form-label">{{ $t('login.authenticationCode') }}</label>
         <input
           v-model="twoFactorCode"
           type="text"
@@ -190,10 +190,10 @@ function expiryLabel(t: LoginTokenResponse): string {
     <!-- Display token + commands -->
     <div v-else-if="step === 'display' && token" class="token-display">
       <div class="token-field">
-        <div class="token-label">API token <span class="token-once">shown once</span></div>
+        <div class="token-label">{{ $t('requestToken.apiToken') }} <span class="token-once">{{ $t('requestToken.shownOnce') }}</span></div>
         <div class="token-value">
           <code>{{ token.token }}</code>
-          <button type="button" class="copy-btn" title="Copy token" @click="copy(token.token, 'token')">
+          <button type="button" class="copy-btn" :title="$t('runners.copyToken')" @click="copy(token.token, 'token')">
             <span class="mdi" :class="copied === 'token' ? 'mdi-check' : 'mdi-content-copy'"></span>
           </button>
         </div>
@@ -201,30 +201,30 @@ function expiryLabel(t: LoginTokenResponse): string {
       </div>
 
       <div class="token-field">
-        <div class="token-label">Log in with the Miabi CLI</div>
+        <div class="token-label">{{ $t('requestToken.logInWithTheMiabi') }}</div>
         <div class="token-value">
           <code>{{ loginCommand(token) }}</code>
-          <button type="button" class="copy-btn" title="Copy command" @click="copy(loginCommand(token), 'cmd')">
+          <button type="button" class="copy-btn" :title="$t('runners.copyCommand')" @click="copy(loginCommand(token), 'cmd')">
             <span class="mdi" :class="copied === 'cmd' ? 'mdi-check' : 'mdi-content-copy'"></span>
           </button>
         </div>
       </div>
 
       <div class="token-field">
-        <div class="token-label">CI / scripts</div>
+        <div class="token-label">{{ $t('requestToken.ciScripts') }}</div>
         <div class="token-value">
           <code class="pre">{{ envExport(token) }}</code>
-          <button type="button" class="copy-btn" title="Copy" @click="copy(envExport(token), 'env')">
+          <button type="button" class="copy-btn" :title="$t('requestToken.copy')" @click="copy(envExport(token), 'env')">
             <span class="mdi" :class="copied === 'env' ? 'mdi-check' : 'mdi-content-copy'"></span>
           </button>
         </div>
       </div>
 
       <div class="token-field">
-        <div class="token-label">Call the API directly</div>
+        <div class="token-label">{{ $t('requestToken.callTheApiDirectly') }}</div>
         <div class="token-value">
           <code>{{ curlExample(token) }}</code>
-          <button type="button" class="copy-btn" title="Copy" @click="copy(curlExample(token), 'curl')">
+          <button type="button" class="copy-btn" :title="$t('requestToken.copy')" @click="copy(curlExample(token), 'curl')">
             <span class="mdi" :class="copied === 'curl' ? 'mdi-check' : 'mdi-content-copy'"></span>
           </button>
         </div>
@@ -236,8 +236,8 @@ function expiryLabel(t: LoginTokenResponse): string {
       </p>
 
       <div class="token-actions">
-        <button type="button" class="btn btn-secondary" @click="requestAnother">Request another token</button>
-        <RouterLink to="/api-keys" class="btn btn-link">Manage API keys</RouterLink>
+        <button type="button" class="btn btn-secondary" @click="requestAnother">{{ $t('requestToken.requestAnotherToken') }}</button>
+        <RouterLink to="/api-keys" class="btn btn-link">{{ $t('requestToken.manageApiKeys') }}</RouterLink>
       </div>
     </div>
   </AuthShell>

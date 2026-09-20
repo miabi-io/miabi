@@ -7,6 +7,7 @@
 // wrote it, so what the bucket holds is the truth and the runs below are only
 // what this platform remembers doing.
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { portableBackupApi, type BundleInfo, type BundleRun } from '@/api/portableBackup'
 import { useNotificationStore } from '@/stores/notification'
 import { fmtSize } from '@/utils/format'
@@ -16,6 +17,7 @@ import AppModal from '@/components/AppModal.vue'
 
 const props = defineProps<{ wsId: number; canRestore: boolean }>()
 
+const { t } = useI18n()
 const notify = useNotificationStore()
 
 const configured = ref(false)
@@ -87,7 +89,7 @@ async function runExport() {
   exporting.value = true
   try {
     await portableBackupApi.export(props.wsId)
-    notify.success('Export started')
+    notify.success(t('notify.portable.exportStarted'))
     await loadRuns()
   } catch (e) {
     notify.apiError(e)
@@ -123,7 +125,7 @@ async function confirmRestore() {
       restore_data: restoreForm.value.restoreData,
       deploy_apps: restoreForm.value.deployApps,
     })
-    notify.success('Restore started')
+    notify.success(t('notify.portable.restoreStarted'))
     restoreOpen.value = false
     await loadRuns()
   } catch (e) {
@@ -139,7 +141,7 @@ async function confirmDeleteBundle() {
   if (!deleteRef.value) return
   try {
     await portableBackupApi.deleteBundle(props.wsId, deleteRef.value)
-    notify.success('Bundle deleted')
+    notify.success(t('notify.portable.bundleDeleted'))
     await loadBundles()
   } catch (e) {
     notify.apiError(e)
@@ -199,13 +201,9 @@ function failedArtifacts(b: BundleInfo): number {
       <div class="card-body notice">
         <span class="mdi mdi-information-outline"></span>
         <div>
-          <p><strong>Portable backup is not configured.</strong></p>
+          <p><strong>{{ $t('portable.notConfigured') }}</strong></p>
           <p class="text-muted text-sm">{{ reason || 'Set an S3 target and a bundle passphrase under Backup.' }}</p>
-          <p class="text-muted text-sm">
-            A bundle carries this workspace's configuration, its vault and its data. The passphrase
-            seals it, and it is the only thing that opens it again — record it somewhere other than
-            this platform.
-          </p>
+          <p class="text-muted text-sm">{{ $t('portable.passphraseHint') }}</p>
         </div>
       </div>
     </div>
@@ -214,11 +212,8 @@ function failedArtifacts(b: BundleInfo): number {
       <div class="card">
         <div class="card-header">
           <div>
-            <h2>Portable backup</h2>
-            <p class="text-muted text-sm" style="margin: 4px 0 0">
-              Export this workspace — apps, databases, volumes, secrets and routing — to one
-              encrypted bundle in your bucket. Restore it here, or into a new workspace on any Miabi.
-            </p>
+            <h2>{{ $t('portable.portableBackup') }}</h2>
+            <p class="text-muted text-sm" style="margin: 4px 0 0">{{ $t('portable.subtitle') }}</p>
           </div>
           <button class="btn btn-primary" :disabled="exporting || !!activeRun" @click="runExport">
             <span class="mdi mdi-cloud-upload-outline"></span>
@@ -237,23 +232,19 @@ function failedArtifacts(b: BundleInfo): number {
       <!-- Bundles in the bucket -->
       <div class="card">
         <div class="card-header">
-          <h2>Bundles in the bucket</h2>
+          <h2>{{ $t('portable.bundlesInTheBucket') }}</h2>
           <button class="btn btn-secondary btn-sm" @click="loadBundles">
-            <span class="mdi mdi-refresh"></span> Refresh
-          </button>
+            <span class="mdi mdi-refresh"></span>{{ $t('volumes.refresh') }}</button>
         </div>
         <div class="card-body">
-          <p v-if="!bundles.length" class="text-muted text-sm">
-            No bundles yet. The first export writes one, indexed by an XML file you can read with any
-            S3 client.
-          </p>
+          <p v-if="!bundles.length" class="text-muted text-sm">{{ $t('portable.noBundles') }}</p>
           <table v-else class="table">
             <thead>
               <tr>
-                <th>Bundle</th>
-                <th>Contents</th>
-                <th>Size</th>
-                <th>Taken</th>
+                <th>{{ $t('portable.bundle') }}</th>
+                <th>{{ $t('portable.contents') }}</th>
+                <th>{{ $t('portable.size') }}</th>
+                <th>{{ $t('portable.taken') }}</th>
                 <th></th>
               </tr>
             </thead>
@@ -285,9 +276,8 @@ function failedArtifacts(b: BundleInfo): number {
                     :title="canRestore ? 'Restore this bundle' : 'Only an owner can restore'"
                     @click="openRestore(b)"
                   >
-                    <span class="mdi mdi-backup-restore"></span> Restore
-                  </button>
-                  <button class="btn-icon btn-icon-danger" title="Delete from the bucket" @click="deleteRef = b.ref">
+                    <span class="mdi mdi-backup-restore"></span>{{ $t('portable.restore') }}</button>
+                  <button class="btn-icon btn-icon-danger" :title="$t('portable.deleteFromTheBucket')" @click="deleteRef = b.ref">
                     <span class="mdi mdi-delete-outline"></span>
                   </button>
                 </td>
@@ -299,16 +289,16 @@ function failedArtifacts(b: BundleInfo): number {
 
       <!-- History -->
       <div class="card">
-        <div class="card-header"><h2>Recent runs</h2></div>
+        <div class="card-header"><h2>{{ $t('portable.recentRuns') }}</h2></div>
         <div class="card-body">
-          <p v-if="!runs.length" class="text-muted text-sm">Nothing has run yet.</p>
+          <p v-if="!runs.length" class="text-muted text-sm">{{ $t('portable.noRuns') }}</p>
           <table v-else class="table">
             <thead>
               <tr>
-                <th>Kind</th>
-                <th>Bundle</th>
-                <th>Status</th>
-                <th>When</th>
+                <th>{{ $t('portable.kind') }}</th>
+                <th>{{ $t('portable.bundle') }}</th>
+                <th>{{ $t('dashboard.col.status') }}</th>
+                <th>{{ $t('portable.when') }}</th>
                 <th></th>
               </tr>
             </thead>
@@ -322,7 +312,7 @@ function failedArtifacts(b: BundleInfo): number {
                 </td>
                 <td class="text-sm">{{ relativeTime(r.created_at) }}</td>
                 <td class="row-actions">
-                  <button class="btn btn-secondary btn-sm" @click="showRun(r)">Report</button>
+                  <button class="btn btn-secondary btn-sm" @click="showRun(r)">{{ $t('portable.report') }}</button>
                 </td>
               </tr>
             </tbody>
@@ -335,46 +325,40 @@ function failedArtifacts(b: BundleInfo): number {
     <Teleport to="body">
       <AppModal v-if="restoreOpen && restoreTarget" @close="restoreOpen = false">
         <div class="modal-header">
-          <h3>Restore bundle</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="restoreOpen = false">
+          <h3>{{ $t('portable.restoreBundle') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="restoreOpen = false">
             <span class="mdi mdi-close"></span>
           </button>
         </div>
         <div class="modal-body">
           <p class="text-muted text-sm mono">{{ restoreTarget.ref }}</p>
-          <p class="text-muted text-sm">
-            Resources are matched by name: anything already here is left exactly as it is, so a
-            restore never overwrites a live secret or app.
-          </p>
+          <p class="text-muted text-sm">{{ $t('portable.matchByNameHint') }}</p>
 
           <label class="toggle-row">
             <input v-model="restoreForm.intoNew" type="checkbox" />
-            <span>Restore into a new workspace (a clone, beside this one)</span>
+            <span>{{ $t('portable.restoreIntoNew') }}</span>
           </label>
           <div v-if="restoreForm.intoNew" class="form-group">
-            <label class="form-label">New workspace name</label>
+            <label class="form-label">{{ $t('portable.newWorkspaceName') }}</label>
             <input v-model="restoreForm.newWorkspace" class="form-input" placeholder="shop-restored" />
           </div>
 
           <label class="toggle-row">
             <input v-model="restoreForm.restoreData" type="checkbox" />
-            <span>Restore data (database dumps and volume archives)</span>
+            <span>{{ $t('portable.restoreData') }}</span>
           </label>
           <label class="toggle-row">
             <input v-model="restoreForm.deployApps" type="checkbox" />
-            <span>Deploy applications when the restore finishes</span>
+            <span>{{ $t('portable.deployAfterRestore') }}</span>
           </label>
 
           <div class="danger-note">
             <span class="mdi mdi-alert-outline"></span>
-            <div>
-              Restoring data overwrites the contents of any database or volume of the same name.
-              Domains come back unverified and certificates re-issue only once DNS points here.
-            </div>
+            <div>{{ $t('portable.restoreWarning') }}</div>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="restoreOpen = false">Cancel</button>
+          <button class="btn btn-secondary" @click="restoreOpen = false">{{ $t('action.cancel') }}</button>
           <button class="btn btn-primary" :disabled="restoring" @click="confirmRestore">
             {{ restoring ? 'Starting…' : 'Restore' }}
           </button>
@@ -387,7 +371,7 @@ function failedArtifacts(b: BundleInfo): number {
       <AppModal v-if="openRun" max-width="820px" @close="openRun = null">
         <div class="modal-header">
           <h3>{{ openRun.kind === 'export' ? 'Export' : 'Restore' }} report</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="openRun = null">
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="openRun = null">
             <span class="mdi mdi-close"></span>
           </button>
         </div>
@@ -402,7 +386,7 @@ function failedArtifacts(b: BundleInfo): number {
           </ul>
           <table v-if="openRun.report?.items?.length" class="table">
             <thead>
-              <tr><th>Resource</th><th>Name</th><th>Result</th><th>Detail</th></tr>
+              <tr><th>{{ $t('portable.resource') }}</th><th>{{ $t('apps.form.name') }}</th><th>{{ $t('portable.result') }}</th><th>{{ $t('portable.detail') }}</th></tr>
             </thead>
             <tbody>
               <tr v-for="(it, i) in openRun.report.items" :key="i">

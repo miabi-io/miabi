@@ -41,21 +41,21 @@ const inputEl = ref<HTMLInputElement | null>(null)
 const listEl = ref<HTMLElement | null>(null)
 
 const kindMeta: Record<SearchKind, { label: string; icon: string; route: (r: SearchResult) => string }> = {
-  application: { label: 'Applications', icon: 'mdi-cube-outline', route: (r) => `/apps/${r.id}` },
-  stack: { label: 'Stacks', icon: 'mdi-layers-outline', route: (r) => `/stacks/${r.id}` },
-  database: { label: 'Databases', icon: 'mdi-database-outline', route: (r) => `/databases/${r.id}` },
-  volume: { label: 'Volumes', icon: 'mdi-harddisk', route: (r) => `/volumes/${r.id}` },
-  network: { label: 'Networks', icon: 'mdi-lan', route: () => '/networks' },
-  domain: { label: 'Domains', icon: 'mdi-web', route: () => '/domains' },
-  route: { label: 'Routes', icon: 'mdi-routes', route: (r) => `/routes/${r.id}` },
-  certificate: { label: 'Certificates', icon: 'mdi-certificate', route: (r) => `/certificates/${r.id}` },
-  secret: { label: 'Secrets', icon: 'mdi-key-variant', route: () => '/secrets' },
-  config: { label: 'Configs', icon: 'mdi-file-cog-outline', route: () => '/configs' },
-  pipeline: { label: 'Pipelines', icon: 'mdi-pipe', route: (r) => `/pipelines/${r.id}/runs` },
-  gitsource: { label: 'GitOps', icon: 'mdi-source-branch-sync', route: (r) => `/gitops/${r.id}` },
-  environment: { label: 'Environments', icon: 'mdi-layers-triple-outline', route: () => '/environments' },
-  registry: { label: 'Registries', icon: 'mdi-database-lock-outline', route: () => '/registries' },
-  gitrepository: { label: 'Git Repositories', icon: 'mdi-git', route: () => '/git-repositories' },
+  application: { label: 'palette.group.applications', icon: 'mdi-cube-outline', route: (r) => `/apps/${r.id}` },
+  stack: { label: 'palette.group.stacks', icon: 'mdi-layers-outline', route: (r) => `/stacks/${r.id}` },
+  database: { label: 'palette.group.databases', icon: 'mdi-database-outline', route: (r) => `/databases/${r.id}` },
+  volume: { label: 'palette.group.volumes', icon: 'mdi-harddisk', route: (r) => `/volumes/${r.id}` },
+  network: { label: 'palette.group.networks', icon: 'mdi-lan', route: () => '/networks' },
+  domain: { label: 'palette.group.domain', icon: 'mdi-web', route: () => '/domains' },
+  route: { label: 'palette.group.route', icon: 'mdi-routes', route: (r) => `/routes/${r.id}` },
+  certificate: { label: 'palette.group.certificate', icon: 'mdi-certificate', route: (r) => `/certificates/${r.id}` },
+  secret: { label: 'palette.group.secret', icon: 'mdi-key-variant', route: () => '/secrets' },
+  config: { label: 'palette.group.config', icon: 'mdi-file-cog-outline', route: () => '/configs' },
+  pipeline: { label: 'palette.group.pipeline', icon: 'mdi-pipe', route: (r) => `/pipelines/${r.id}/runs` },
+  gitsource: { label: 'palette.group.gitsource', icon: 'mdi-source-branch-sync', route: (r) => `/gitops/${r.id}` },
+  environment: { label: 'palette.group.environment', icon: 'mdi-layers-triple-outline', route: () => '/environments' },
+  registry: { label: 'palette.group.registry', icon: 'mdi-database-lock-outline', route: () => '/registries' },
+  gitrepository: { label: 'palette.group.gitrepository', icon: 'mdi-git', route: () => '/git-repositories' },
 }
 
 // Both consoles are indexed for an admin, so ⌘K reaches platform administration
@@ -145,7 +145,7 @@ const resourceEntries = computed<Entry[]>(() =>
     const meta = kindMeta[r.kind]
     return {
       id: `res:${r.kind}:${r.id}`,
-      group: meta?.label ?? r.kind,
+      group: meta ? t(meta.label) : r.kind,
       label: r.display_name || r.name,
       sub: r.detail || (r.display_name ? r.name : undefined),
       icon: meta?.icon ?? 'mdi-shape-outline',
@@ -332,7 +332,7 @@ const hint = computed(() => {
   <Teleport to="body">
     <Transition name="palette">
       <div v-if="open" class="palette-backdrop" @click.self="close">
-        <div class="palette" role="dialog" aria-modal="true" aria-label="Search">
+        <div class="palette" role="dialog" aria-modal="true" :aria-label="$t('shell.search.label')">
           <div class="palette-input-row">
             <span class="mdi mdi-magnify palette-input-icon"></span>
             <input
@@ -340,7 +340,7 @@ const hint = computed(() => {
               v-model="query"
               class="palette-input"
               type="text"
-              placeholder="Search resources, jump to a page, @ to switch workspace"
+              :placeholder="$t('palette.searchResourcesJumpToA')"
               autocomplete="off"
               spellcheck="false"
               @keydown.down.prevent="move(1)"
@@ -348,7 +348,7 @@ const hint = computed(() => {
               @keydown.enter.prevent="onEnter"
             />
             <span v-if="loading" class="spinner palette-spinner"></span>
-            <button class="palette-esc" type="button" @click="close">esc</button>
+            <button class="palette-esc" type="button" @click="close">{{ $t('palette.esc') }}</button>
           </div>
 
           <div ref="listEl" class="palette-list">
@@ -382,11 +382,11 @@ const hint = computed(() => {
           </div>
 
           <div class="palette-footer">
-            <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
-            <span><kbd>↵</kbd> open</span>
-            <span><kbd>⌘</kbd><kbd>↵</kbd> new tab</span>
+            <span><kbd>↑</kbd><kbd>↓</kbd>{{ $t('palette.navigate') }}</span>
+            <span><kbd>↵</kbd>{{ $t('palette.open') }}</span>
+            <span><kbd>⌘</kbd><kbd>↵</kbd>{{ $t('palette.newTab') }}</span>
             <span class="palette-footer-spacer"></span>
-            <span><kbd>app:</kbd><kbd>db:</kbd><kbd>route:</kbd> filter</span>
+            <span><kbd>app:</kbd><kbd>db:</kbd><kbd>route:</kbd>{{ $t('palette.filter') }}</span>
           </div>
         </div>
       </div>

@@ -35,31 +35,31 @@ function botPct(r: AnalyticsReport): number {
     </div>
 
     <div class="card">
-      <div class="a-card-header"><h3>Human vs bot</h3><span class="a-muted">{{ botPct(report).toFixed(1) }}% automated</span></div>
+      <div class="a-card-header"><h3>{{ $t('analytics.humanVsBot') }}</h3><span class="a-muted">{{ botPct(report).toFixed(1) }}% automated</span></div>
       <div class="card-body">
         <div class="status-bar">
           <div class="seg seg-2xx" :style="{ width: (100 - botPct(report)) + '%' }"></div>
           <div class="seg seg-4xx" :style="{ width: botPct(report) + '%' }"></div>
         </div>
         <div class="status-legend">
-          <span><i class="dot dot-2xx"></i> Human <b>{{ fmtNum(report.web.human_requests) }}</b></span>
-          <span><i class="dot dot-4xx"></i> Bot <b>{{ fmtNum(report.web.bot_requests) }}</b></span>
+          <span><i class="dot dot-2xx"></i> {{ $t('analytics.human') }} <b>{{ fmtNum(report.web.human_requests) }}</b></span>
+          <span><i class="dot dot-4xx"></i> {{ $t('analytics.bot') }} <b>{{ fmtNum(report.web.bot_requests) }}</b></span>
         </div>
       </div>
     </div>
 
     <div class="break-grid">
-      <Breakdown title="Top pages" :items="report.web.top_paths" />
-      <Breakdown title="Referrers" :items="report.web.top_referrers" />
-      <Breakdown title="Countries" :items="report.web.top_countries" kind="country"
+      <Breakdown :title="$t('analytics.topPages')" :items="report.web.top_paths" />
+      <Breakdown :title="$t('analytics.referrers')" :items="report.web.top_referrers" />
+      <Breakdown :title="$t('analytics.countries')" :items="report.web.top_countries" kind="country"
         empty-hint="Country data needs the GeoIP database on the gateway." />
-      <Breakdown title="Browsers" :items="report.web.top_browsers" />
-      <Breakdown title="Operating systems" :items="report.web.top_os" />
-      <Breakdown title="Devices" :items="report.web.top_devices" />
+      <Breakdown :title="$t('analytics.browsers')" :items="report.web.top_browsers" />
+      <Breakdown :title="$t('analytics.operatingSystems')" :items="report.web.top_os" />
+      <Breakdown :title="$t('analytics.devices')" :items="report.web.top_devices" />
     </div>
 
     <div class="ua-grid">
-      <Breakdown title="Top user agents" :items="report.web.top_user_agents"
+      <Breakdown :title="$t('analytics.topUserAgents')" :items="report.web.top_user_agents"
         empty-hint="No requests carried a User-Agent header in this range." />
     </div>
   </AnalyticsShell>

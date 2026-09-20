@@ -194,11 +194,11 @@ async function confirmDelete() {
 }
 
 const statusMeta: Record<GitSourceStatus, { label: string; badge: string; icon: string }> = {
-  synced: { label: 'Synced', badge: 'badge-success', icon: 'mdi-check-circle-outline' },
-  out_of_sync: { label: 'Out of sync', badge: 'badge-warning', icon: 'mdi-alert-circle-outline' },
-  progressing: { label: 'Progressing', badge: 'badge-info', icon: 'mdi-loading mdi-spin' },
-  error: { label: 'Error', badge: 'badge-danger', icon: 'mdi-close-circle-outline' },
-  unknown: { label: 'Never synced', badge: 'badge-neutral', icon: 'mdi-help-circle-outline' },
+  synced: { label: 'gitops.status.synced', badge: 'badge-success', icon: 'mdi-check-circle-outline' },
+  out_of_sync: { label: 'gitops.status.out_of_sync', badge: 'badge-warning', icon: 'mdi-alert-circle-outline' },
+  progressing: { label: 'gitops.status.progressing', badge: 'badge-info', icon: 'mdi-loading mdi-spin' },
+  error: { label: 'gitops.status.error', badge: 'badge-danger', icon: 'mdi-close-circle-outline' },
+  unknown: { label: 'gitops.status.unknown', badge: 'badge-neutral', icon: 'mdi-help-circle-outline' },
 }
 const actionBadge: Record<PlanAction, string> = {
   create: 'badge-success', update: 'badge-warning', delete: 'badge-danger', noop: 'badge-neutral',

@@ -9,7 +9,7 @@ const props = withDefaults(
     title?: string
   }>(),
   {
-    title: 'Generate value',
+    title: '',
   },
 )
 
@@ -32,8 +32,8 @@ function use(val?: string) {
   <Teleport to="body">
     <AppModal v-if="open" elevated max-width="400px" @close="emit('close')">
       <div class="modal-header">
-        <h3>{{ title }}</h3>
-        <button type="button" class="btn-icon btn-icon-muted" aria-label="Close dialog" @click="emit('close')">
+        <h3>{{ title || $t('generator.generateValue') }}</h3>
+        <button type="button" class="btn-icon btn-icon-muted" :aria-label="$t('generator.closeDialog')" @click="emit('close')">
           <span class="mdi mdi-close"></span>
         </button>
       </div>
@@ -47,10 +47,8 @@ function use(val?: string) {
       </div>
 
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" @click="emit('close')">Cancel</button>
-        <button type="button" class="btn btn-primary" :disabled="!currentValue" @click="use()">
-          Use this value
-        </button>
+        <button type="button" class="btn btn-secondary" @click="emit('close')">{{ $t('action.cancel') }}</button>
+        <button type="button" class="btn btn-primary" :disabled="!currentValue" @click="use()">{{ $t('generator.useThisValue') }}</button>
       </div>
     </AppModal>
   </Teleport>

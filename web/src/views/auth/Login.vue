@@ -210,7 +210,7 @@ function providerIcon(type: string): string {
         <!-- Step 2: two-factor code -->
         <form v-if="step === 'twofactor'" class="auth-form" @submit.prevent="submit">
           <div class="form-group">
-            <label class="form-label">Authentication code</label>
+            <label class="form-label">{{ $t('login.authenticationCode') }}</label>
             <input
               ref="twoFactorInput"
               v-model="twoFactorCode"
@@ -219,25 +219,24 @@ function providerIcon(type: string): string {
               class="form-input totp-input"
               placeholder="123456"
               autocomplete="one-time-code"
-              aria-label="Authentication code"
+              :aria-label="$t('login.authenticationCode')"
               :disabled="loading"
               required
             />
-            <p class="form-hint">Enter the 6-digit code from your authenticator app, or a recovery code.</p>
+            <p class="form-hint">{{ $t('login.totpHint') }}</p>
           </div>
           <button class="btn btn-primary auth-submit" :disabled="loading">
             <span v-if="loading" class="mdi mdi-loading mdi-spin"></span>
             {{ loading ? 'Verifying…' : 'Verify' }}
           </button>
           <button type="button" class="auth-link" :disabled="loading" @click="backToCredentials">
-            <span class="mdi mdi-arrow-left"></span> Use a different account
-          </button>
+            <span class="mdi mdi-arrow-left"></span>{{ $t('login.useADifferentAccount') }}</button>
         </form>
 
         <!-- Continue with SSO: email → provider discovery -->
         <form v-else-if="ssoMode" class="auth-form" @submit.prevent="continueWithSSO">
           <div class="form-group">
-            <label class="form-label">Work email</label>
+            <label class="form-label">{{ $t('login.workEmail') }}</label>
             <input
               ref="ssoEmailInput"
               v-model="ssoEmail"
@@ -245,33 +244,32 @@ function providerIcon(type: string): string {
               class="form-input"
               placeholder="you@company.com"
               autocomplete="email"
-              aria-label="Work email"
+              :aria-label="$t('login.workEmail')"
               :disabled="ssoLoading"
               required
             />
-            <p class="form-hint">We'll redirect you to your organization's sign-in provider.</p>
+            <p class="form-hint">{{ $t('login.ssoHint') }}</p>
           </div>
           <button class="btn btn-primary auth-submit" :disabled="ssoLoading">
             <span v-if="ssoLoading" class="mdi mdi-loading mdi-spin"></span>
             {{ ssoLoading ? 'Finding provider…' : 'Continue' }}
           </button>
           <button type="button" class="auth-link" :disabled="ssoLoading" @click="exitSSOMode">
-            <span class="mdi mdi-arrow-left"></span> Back to sign in
-          </button>
+            <span class="mdi mdi-arrow-left"></span>{{ $t('login.backToSignIn') }}</button>
         </form>
 
         <!-- Step 1: credentials -->
         <form v-else class="auth-form" @submit.prevent="submit">
           <div class="form-group">
-            <label class="form-label">Email or username</label>
+            <label class="form-label">{{ $t('login.emailOrUsername') }}</label>
             <input
               ref="identifierInput"
               v-model="identifier"
               type="text"
               class="form-input"
-              placeholder="Email or username"
+              :placeholder="$t('login.emailOrUsername')"
               autocomplete="username"
-              aria-label="Email or username"
+              :aria-label="$t('login.emailOrUsername')"
               :disabled="loading"
               required
             />
@@ -279,23 +277,21 @@ function providerIcon(type: string): string {
 
           <div class="form-group">
             <div class="label-row">
-              <label class="form-label">Password</label>
+              <label class="form-label">{{ $t('login.password') }}</label>
               <RouterLink
                 v-if="passwordResetEnabled"
                 :to="{ name: 'forgot-password' }"
                 class="forgot-link"
-              >
-                Forgot password?
-              </RouterLink>
+              >{{ $t('login.forgotPassword') }}</RouterLink>
             </div>
             <div class="password-wrap">
               <input
                 v-model="password"
                 :type="showPassword ? 'text' : 'password'"
                 class="form-input"
-                placeholder="Enter your password"
+                :placeholder="$t('login.enterYourPassword')"
                 autocomplete="current-password"
-                aria-label="Password"
+                :aria-label="$t('login.password')"
                 :disabled="loading"
                 required
                 @keyup="onCaps"
@@ -314,8 +310,7 @@ function providerIcon(type: string): string {
             </div>
             <Transition name="fade">
               <p v-if="capsOn" class="form-hint caps-hint">
-                <span class="mdi mdi-apple-keyboard-caps"></span> Caps Lock is on
-              </p>
+                <span class="mdi mdi-apple-keyboard-caps"></span>{{ $t('login.capsLockIsOn') }}</p>
             </Transition>
           </div>
 
@@ -326,7 +321,7 @@ function providerIcon(type: string): string {
         </form>
 
         <div v-if="step === 'credentials' && !ssoMode && (providers.length || ssoAvailable)" class="auth-oauth">
-          <div class="auth-divider"><span>or continue with</span></div>
+          <div class="auth-divider"><span>{{ $t('login.orContinueWith') }}</span></div>
           <button
             v-for="p in providers"
             :key="p.name"
@@ -342,21 +337,19 @@ function providerIcon(type: string): string {
             class="btn btn-secondary oauth-btn"
             @click="enterSSOMode"
           >
-            <span class="mdi mdi-shield-key-outline"></span> Continue with SSO
-          </button>
+            <span class="mdi mdi-shield-key-outline"></span>{{ $t('login.continueWithSso') }}</button>
         </div>
 
         <p v-if="step === 'credentials' && !ssoMode" class="auth-footer">
-          <template v-if="registrationEnabled">
-            Don't have an account?
-            <RouterLink :to="{ name: 'register' }">Create one</RouterLink>.
-          </template>
-          <template v-else>Don't have an account? Contact your platform administrator.</template>
+          <i18n-t v-if="registrationEnabled" keypath="login.noAccount" tag="span">
+            <template #link><RouterLink :to="{ name: 'register' }">{{ $t('login.createOne') }}</RouterLink></template>
+          </i18n-t>
+          <template v-else>{{ $t('login.noAccountContactAdmin') }}</template>
         </p>
 
         <!-- Operator links. rel="noopener noreferrer" on every one: these are
              admin-supplied URLs on a page shown to unauthenticated visitors. -->
-        <nav v-if="brandLinks.length" class="auth-links" aria-label="Site links">
+        <nav v-if="brandLinks.length" class="auth-links" :aria-label="$t('login.siteLinks')">
           <a
             v-for="l in brandLinks"
             :key="l.url"

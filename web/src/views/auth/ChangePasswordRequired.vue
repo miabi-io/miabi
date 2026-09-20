@@ -51,22 +51,22 @@ function signOut() {
 
 <template>
   <AuthShell
-    title="Set a new password"
+    :title="$t('changePassword.setANewPassword')"
     subtitle="Your password was set by an administrator. Choose your own to continue."
     :error="error"
   >
     <form class="auth-form" @submit.prevent="submit">
       <div class="form-group">
-        <label class="form-label">New password</label>
+        <label class="form-label">{{ $t('security.newPassword') }}</label>
         <div class="password-wrap">
           <input
             ref="nextInput"
             v-model="next"
             :type="showPassword ? 'text' : 'password'"
             class="form-input"
-            placeholder="At least 8 characters"
+            :placeholder="$t('changePassword.atLeast8Characters')"
             autocomplete="new-password"
-            aria-label="New password"
+            :aria-label="$t('security.newPassword')"
             :disabled="loading"
             required
           />
@@ -83,18 +83,18 @@ function signOut() {
       </div>
 
       <div class="form-group">
-        <label class="form-label">Confirm new password</label>
+        <label class="form-label">{{ $t('security.confirmNewPassword') }}</label>
         <input
           v-model="confirm"
           :type="showPassword ? 'text' : 'password'"
           class="form-input"
-          placeholder="Re-enter your new password"
+          :placeholder="$t('changePassword.reEnterYourNewPassword')"
           autocomplete="new-password"
-          aria-label="Confirm new password"
+          :aria-label="$t('security.confirmNewPassword')"
           :disabled="loading"
           required
         />
-        <p v-if="mismatch" class="form-hint hint-warn">Passwords don't match.</p>
+        <p v-if="mismatch" class="form-hint hint-warn">{{ $t('changePassword.passwordsDonTMatch') }}</p>
       </div>
 
       <button class="btn btn-primary auth-submit" :disabled="loading || !canSubmit">
@@ -105,8 +105,7 @@ function signOut() {
 
     <template #footer>
       <button type="button" class="auth-back" :disabled="loading" @click="signOut">
-        <span class="mdi mdi-logout"></span> Sign out
-      </button>
+        <span class="mdi mdi-logout"></span>{{ $t('shell.menu.signOut') }}</button>
     </template>
   </AuthShell>
 </template>

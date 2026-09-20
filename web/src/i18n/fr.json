@@ -1,4 +1,33 @@
 {
+  "about": {
+    "about": "À propos",
+    "apiReference": "Référence de l’API",
+    "build": "Build",
+    "buildDate": "Date du build",
+    "capabilities": "Déployez des applications, gérez les domaines et le TLS, provisionnez des bases de données, configurez le stockage, surveillez les services, gérez les équipes et passez à l’échelle sur plusieurs nœuds — le tout depuis une seule plateforme.",
+    "commit": "Commit",
+    "eco": {
+      "goma": "Proxy inverse et terminaison TLS",
+      "mongoBkup": "Outil de sauvegarde MongoDB",
+      "mysqlBkup": "Outil de sauvegarde MySQL/MariaDB",
+      "pgBkup": "Outil de sauvegarde PostgreSQL",
+      "posta": "Plateforme e-mail auto-hébergée",
+      "volumeBkup": "Outil de sauvegarde de volumes Docker"
+    },
+    "ecosystem": "Écosystème",
+    "edition": "Édition",
+    "intro": "Miabi est une plateforme en tant que service (PaaS) open source et auto-hébergée pour déployer et exploiter des applications sur Docker.",
+    "licenseTitle": "Licence et droits",
+    "link": {
+      "documentation": "Documentation",
+      "reportIssue": "Signaler un problème",
+      "sourceCode": "Code source",
+      "website": "Site web"
+    },
+    "resources": "Ressources",
+    "tagline": "La plateforme en tant que service (PaaS) open source et auto-hébergée pour Docker.",
+    "version": "Version"
+  },
   "action": {
     "apply": "Appliquer",
     "ban": "Bannir",
@@ -38,6 +67,16 @@
     "test": "Tester",
     "upgrade": "Mettre à niveau",
     "working": "En cours…"
+  },
+  "adminLayout": {
+    "dismissUntilTheNextRelease": "Masquer jusqu’à la prochaine version",
+    "license": {
+      "expired": "Votre licence a expiré. Les fonctionnalités Enterprise sont désormais en lecture seule.",
+      "expiringSoon": "Votre licence expire bientôt. Renouvelez-la pour éviter toute interruption.",
+      "grace": "Votre licence a expiré et se trouve dans sa période de grâce — renouvelez-la pour ne pas perdre l’accès aux fonctionnalités payantes.",
+      "nodeLimit": "Vous avez dépassé votre limite de nœuds sous licence — l’ajout de nœuds est bloqué."
+    },
+    "releaseNotes": "Notes de version →"
   },
   "adminNav": {
     "enterprise": {
@@ -86,6 +125,71 @@
       "workspaces": "Espaces de travail"
     }
   },
+  "analytics": {
+    "allApplications": "Toutes les applications",
+    "analytics": "Analytique",
+    "analyticsAreCollectedFromThe": "Les données analytiques sont collectées depuis la passerelle à mesure que les requêtes atteignent vos applications routées. Essayez une plage plus large.",
+    "average": "Moyenne",
+    "avgBackend": "Backend moyen",
+    "bot": "Robot",
+    "browsers": "Navigateurs",
+    "byP95": "par p95",
+    "clientErrors": "Erreurs client",
+    "clientErrors4xx": "Erreurs client (4xx)",
+    "couldnTLoadAnalytics": "Impossible de charger les données analytiques",
+    "countries": "Pays",
+    "csvExportIsAnEnterprise": "L’export CSV est une fonctionnalité Enterprise",
+    "devices": "Appareils",
+    "errors": "Erreurs",
+    "export": "Exporter",
+    "exportTheAnalyticsTimeSeries": "Exporter la série temporelle analytique au format CSV",
+    "fewer": "Moins",
+    "gatewayOverhead": "Surcoût de la passerelle",
+    "geoipHint": "La résolution des pays nécessite une base GeoIP sur la passerelle. Placez-en une dans {path} et redémarrez la passerelle.",
+    "httpMethods": "Méthodes HTTP",
+    "human": "Humain",
+    "humanVsBot": "Humain vs robot",
+    "inboundRequestsReceived": "Entrant (requêtes reçues)",
+    "live": "en direct",
+    "moreRequests": "Plus de requêtes",
+    "noCountryDataYet": "Aucune donnée par pays",
+    "noRouteData": "Aucune donnée de route.",
+    "noTraffic": "Aucun trafic",
+    "noTrafficInThisWindow": "Aucun trafic sur cette période",
+    "notEnoughDataPointsTo": "Pas assez de points de données pour tracer.",
+    "operatingSystems": "Systèmes d’exploitation",
+    "outboundResponsesSent": "Sortant (réponses envoyées)",
+    "p95LatencyOverTime": "Latence p95 dans le temps",
+    "referrers": "Référents",
+    "requests": "requêtes",
+    "requestsByCountry": "Requêtes par pays",
+    "requestsOverTime": "Requêtes dans le temps",
+    "route": "Route",
+    "serverErrors5xx": "Erreurs serveur (5xx)",
+    "slowestRoutes": "Routes les plus lentes",
+    "status": {
+      "clientErrors": "Erreurs client",
+      "redirects": "Redirections",
+      "serverErrors": "Erreurs serveur",
+      "success": "Succès"
+    },
+    "statusCodes": "Codes de statut",
+    "success": "Succès",
+    "tab": {
+      "httpTraffic": "Trafic HTTP",
+      "overview": "Vue d’ensemble",
+      "performance": "Performance",
+      "webAnalytics": "Analytique web"
+    },
+    "topPages": "Pages les plus vues",
+    "topPaths": "Chemins les plus fréquents",
+    "topUserAgents": "Agents utilisateur les plus fréquents",
+    "totalRequest": "Total des requêtes",
+    "upstreamBackend": "En amont (backend)",
+    "viewMap": "Voir la carte →",
+    "whereTimeGoes": "Où passe le temps",
+    "whereToGetOne": "Où en obtenir une →"
+  },
   "apiKeys": {
     "accountWide": "Compte entier (tous mes espaces de travail)",
     "allowedIps": "IP autorisées",
@@ -101,6 +205,14 @@
     "emptyHint": "Créez une clé pour accéder à l’API Miabi par programmation.",
     "expiration": "Expiration",
     "expires": "Expire le",
+    "expiry": {
+      "d180": "180 jours",
+      "d30": "30 jours",
+      "d365": "365 jours",
+      "d60": "60 jours",
+      "d90": "90 jours",
+      "never": "Jamais"
+    },
     "lastUsed": "Dernière utilisation",
     "namePlaceholder": "ex. pipeline CI",
     "neverHint": "« Jamais » signifie que la clé n’expirera pas.",
@@ -110,12 +222,38 @@
     "optional": "(facultatif)",
     "registryOnlyNote": "Cette clé ne porte que des portées de registre — utilisez-la pour {cmd} / push / pull. Elle est rejetée par le reste de l’API.",
     "revoke": "Révoquer",
+    "scope": {
+      "admin": "Administration",
+      "adminHint": "Opérations d’administration",
+      "deploy": "Déploiement",
+      "deployHint": "Déclencher des déploiements et des actions de cycle de vie",
+      "read": "Lecture",
+      "readHint": "Accès en lecture seule à toutes les ressources",
+      "registry_read": "Registre : pull",
+      "registry_readHint": "Récupérer des images du registre de conteneurs",
+      "registry_write": "Registre : push",
+      "registry_writeHint": "Pousser des images vers le registre de conteneurs",
+      "write": "Écriture",
+      "writeHint": "Créer, mettre à jour et supprimer des ressources"
+    },
     "scopeHint": "Une clé d’espace de travail ne touche que cet espace et ne nécessite aucun identifiant d’espace à l’usage. Les clés couvrant tout le compte atteignent tous vos espaces de travail — à réserver à l’automatisation inter-espaces.",
     "scopes": "Portées",
     "scopesFixed": "Les portées sont fixées à la création. Pour les modifier, créez une nouvelle clé.",
     "workspace": "Espace de travail",
     "workspaceAccess": "Accès aux espaces de travail",
     "workspaceScopedHint": "Cette clé est limitée à l’espace de travail ci-dessus — fournissez cet identifiant d’espace lorsque vous ciblez des ressources via l’API, la CLI ou Terraform."
+  },
+  "appAccess": {
+    "appAccess": "Accès à l’application",
+    "grantAccess": "Accorder l’accès",
+    "member": "Membre",
+    "membersBelowHaveExtraPermissions": "Les membres ci-dessous ont des autorisations supplémentaires sur cette application, en plus de leur rôle dans l’espace de travail.",
+    "noPerAppGrantsYet": "Aucune autorisation propre à l’application.",
+    "perResourceAccessPoliciesLet": "Les politiques d’accès par ressource vous permettent d’accorder à un membre des droits sur cette seule application — même s’il est lecteur dans l’espace de travail.",
+    "permissions": "Autorisations",
+    "revoke": "Révoquer",
+    "selectMember": "Sélectionner un membre…",
+    "upgrade": "Mettre à niveau"
   },
   "appDetail": {
     "aSingleFile": "Un seul fichier",
@@ -571,6 +709,48 @@
     "searchLabel": "Rechercher des applications",
     "searchPlaceholder": "Rechercher par nom, image, dépôt ou nœud…"
   },
+  "audit": {
+    "action": "Action",
+    "actor": "Auteur",
+    "adminsOnly": "Administrateurs uniquement",
+    "anEnterpriseFeature": "Une fonctionnalité Enterprise",
+    "auditEntry": "Entrée d’audit",
+    "backToAuditLog": "Retour au journal d’audit",
+    "clear": "Effacer",
+    "entryId": "Identifiant de l’entrée",
+    "from": "Du",
+    "ip": "IP",
+    "metadata": "Métadonnées",
+    "mutationsInThisWorkspaceWill": "Les modifications dans cet espace de travail apparaîtront ici.",
+    "noActivityYet": "Aucune activité",
+    "noAdditionalMetadataForThis": "Aucune métadonnée supplémentaire pour cette entrée.",
+    "oldestFirst": "Les plus anciennes d’abord",
+    "recentFirst": "Les plus récentes d’abord",
+    "sortOrder": "Ordre de tri",
+    "target": "Cible",
+    "theAuditLogIsAvailable": "Le journal d’audit est disponible avec une licence Miabi Enterprise.",
+    "to": "Au",
+    "when": "Quand",
+    "youNeedOwnerOrAdmin": "Vous devez être propriétaire ou administrateur pour consulter le journal d’audit de cet espace de travail."
+  },
+  "authHero": {
+    "builtInContainerRegistry": "Registre de conteneurs intégré",
+    "deployScaleAndManageApplications": "Déployez, mettez à l’échelle et gérez vos applications depuis une seule plateforme intuitive.",
+    "gitopsCanaryDeployments": "GitOps et déploiements canari",
+    "managedDatabasesBackupsVolumes": "Bases de données, sauvegardes et volumes gérés",
+    "monitoringReleaseHistory": "Surveillance et historique des versions",
+    "multiTenantWorkspacesRbac": "Espaces de travail multi-locataires et RBAC",
+    "openSourceSelfHostedPaas": "Open source · PaaS auto-hébergé pour Docker",
+    "secretsAutomaticTls": "Secrets et TLS automatique",
+    "titleLine1": "L’auto-hébergement,",
+    "titleLine2": "réinventé."
+  },
+  "bell": {
+    "markAllRead": "Tout marquer comme lu",
+    "notifications": "Notifications",
+    "viewAll": "Tout voir →",
+    "youReAllCaughtUp": "Vous êtes à jour."
+  },
   "canary": {
     "addRule": "Ajouter une règle",
     "apply": "Appliquer",
@@ -591,6 +771,16 @@
     "manualModeHint": "Le poids reste là où vous l’avez mis, et les règles de correspondance peuvent orienter qui atteint le canari.",
     "matchRules": "Règles de correspondance",
     "mode": "Mode",
+    "op": {
+      "contains": "contient",
+      "ends_with": "se termine par",
+      "equals": "est égal à",
+      "in": "fait partie de (séparés par des virgules)",
+      "not_contains": "ne contient pas",
+      "not_equals": "n’est pas égal à",
+      "regex": "correspond à la regex",
+      "starts_with": "commence par"
+    },
     "operator": "Opérateur",
     "preview": "Aperçu",
     "previewHint": "Résout une requête contre les règles {saved}. Rien n’est déployé et aucun trafic ne bouge — enregistrez d’abord vos modifications pour les prévisualiser.",
@@ -608,11 +798,58 @@
     "saveRouting": "Enregistrer le routage",
     "saved": "enregistrées",
     "source": "Source",
+    "src": {
+      "cookie": "Cookie",
+      "header": "En-tête",
+      "ip": "IP client",
+      "query": "Paramètre de requête"
+    },
     "trafficToCanary": "Trafic vers le canari",
     "upgrade": "Mettre à niveau",
     "value": "Valeur",
     "weightHintManual": "la seule chose qui déplace le trafic",
     "weightHintRamp": "où la montée est arrivée"
+  },
+  "certificates": {
+    "acme": "ACME",
+    "acmeHint": "Émis par Miabi via ACME DNS-01",
+    "acmeIssueHint": "Miabi résout un défi ACME DNS-01 via votre fournisseur et stocke le certificat ici. Cela peut prendre une minute.",
+    "auto": "auto",
+    "autoRenewBeforeExpiry": "Renouveler automatiquement avant expiration",
+    "back": "Retour",
+    "certPem": "Certificat (PEM) — feuille + intermédiaires",
+    "certificate": "Certificat",
+    "certificates": "Certificats",
+    "commonName": "Nom commun",
+    "domain": "Domaine",
+    "domainsSan": "Domaines (SAN)",
+    "expires": "Expire le",
+    "failed": "échec",
+    "importCertificate": "Importer un certificat",
+    "importHint": "Importez un certificat et une clé privée pour terminer le TLS avec votre propre certificat. Un seul certificat joker peut couvrir de nombreuses routes.",
+    "imported": "Importé",
+    "includeWildcard": "Inclure le joker ({star} + apex)",
+    "issueWithDnsProvider": "Émettre avec un fournisseur DNS",
+    "issuer": "Émetteur",
+    "issuing": "émission…",
+    "keyHint": "La clé est validée par rapport au certificat, chiffrée au repos, et n’est plus jamais affichée.",
+    "namePlaceholder": "joker example.com",
+    "noCertificates": "Aucun certificat",
+    "privateKeyPem": "Clé privée (PEM)",
+    "replaceCertificate": "Remplacer le certificat",
+    "replaceRenew": "Remplacer (renouveler)",
+    "serial": "Numéro de série",
+    "source": "Source",
+    "subtitle": "Importez un certificat TLS une fois et sélectionnez-le sur n’importe quelle route (mode TLS « personnalisé »). Les certificats ACME sont émis automatiquement par la passerelle.",
+    "unusedHint": "Utilisé par aucune route. Le certificat peut être supprimé sans risque.",
+    "validFrom": "Valide à partir du",
+    "verifiedOnlyHint": "Seuls les domaines vérifiés ayant un fournisseur DNS connecté peuvent être émis."
+  },
+  "changePassword": {
+    "atLeast8Characters": "Au moins 8 caractères",
+    "passwordsDonTMatch": "Les mots de passe ne correspondent pas.",
+    "reEnterYourNewPassword": "Ressaisissez votre nouveau mot de passe",
+    "setANewPassword": "Définir un nouveau mot de passe"
   },
   "cli": {
     "allReleases": "toutes les versions",
@@ -622,6 +859,7 @@
     "ciAutomation": "CI et automatisation",
     "ciHint": "Les pipelines ne peuvent pas ouvrir de navigateur. Générez un jeton et transmettez-le via l’environnement.",
     "copy": "Copier",
+    "copyThisCommand": "Copier cette commande",
     "createACliToken": "Créer un jeton CLI →",
     "dockerHint": "Aucune installation nécessaire — pratique en CI. Définissez {server} et {token} (voir l’étape 4).",
     "homebrewTap": "Tap Homebrew",
@@ -634,6 +872,38 @@
     "subtitle": "Installez la CLI Miabi et connectez-vous à ce panneau depuis votre terminal.",
     "verify": "Vérifier",
     "verifyHint": "Essayez ensuite {list} pour lister vos applications, ou {help} pour tout le reste."
+  },
+  "cliAuthorize": {
+    "password": "Mot de passe",
+    "reRunHint": "Relancez {cmd} depuis votre terminal pour démarrer une nouvelle connexion.",
+    "usernameOrEmail": "Nom d’utilisateur ou e-mail",
+    "youCanCloseThisWindow": "Vous pouvez fermer cette fenêtre et retourner à votre terminal."
+  },
+  "configs": {
+    "configs": "Configurations",
+    "contentCarriesCredentials": "Le contenu comporte des identifiants",
+    "contentHint": "Référencez un secret d’espace de travail avec {secret} ou l’environnement de l’application qui le monte avec {env}. Les valeurs sont substituées au déploiement de l’application, la rotation d’un secret met donc le fichier à jour. Un secret l’emporte sur une variable d’application du même nom, et une référence qui ne résout rien fait échouer le déploiement.",
+    "defaultFileMode": "Mode de fichier par défaut",
+    "delimiters": "Délimiteurs",
+    "delimitersHint": "Définissez-les lorsque la syntaxe propre au fichier utilise {syntax}, afin qu’elle ne soit pas interpolée.",
+    "emptyHint": "Créez une configuration pour monter des fichiers comme {a} ou {b} dans une application.",
+    "fileContent": "Contenu du fichier…",
+    "files": "Fichiers",
+    "managed": "géré",
+    "nameHint": "Lettres minuscules, chiffres et tirets.",
+    "newConfig": "Nouvelle configuration",
+    "noConfigs": "Aucune configuration",
+    "noMatches": "Aucune configuration trouvée",
+    "prometheusScrapeConfiguration": "Configuration de collecte Prometheus",
+    "searchConfigs": "Rechercher des configurations",
+    "searchPlaceholder": "Rechercher des configurations par nom ou description…",
+    "sensitive": "sensible",
+    "sensitiveHint": "Masqué dans les réponses et comparé par empreinte uniquement.",
+    "sensitiveLabel": "Sensible",
+    "size": "Taille",
+    "subtitle": "Fichiers de configuration montés dans les applications en lecture seule. Le contenu est chiffré au repos.",
+    "trySearch": "Essayez un autre terme de recherche.",
+    "version": "Version"
   },
   "confirm": {
     "label": {
@@ -963,6 +1233,18 @@
       }
     }
   },
+  "count": {
+    "apps": "aucune application | {n} application | {n} applications",
+    "configs": "aucune configuration | {n} configuration | {n} configurations",
+    "databases": "aucune base de données | {n} base de données | {n} bases de données",
+    "volumes": "aucun volume | {n} volume | {n} volumes"
+  },
+  "credentialField": {
+    "chooseASecretToContinue": "Choisissez un secret pour continuer.",
+    "enterValue": "Saisir une valeur",
+    "readFromTheVaultOn": "Lu depuis le coffre à chaque utilisation — la rotation du secret renouvelle cet identifiant.",
+    "useASecret": "Utiliser un secret"
+  },
   "dashboard": {
     "acceptInvitation": "Acceptez une invitation ci-dessus pour rejoindre un espace de travail.",
     "action": {
@@ -1262,6 +1544,46 @@
     "workspaceNetworksThisDatabaseIs": "Réseaux de l’espace de travail sur lesquels cette base est joignable.",
     "workspaceSettingsBackups": "Paramètres de l’espace de travail → Sauvegardes"
   },
+  "dnsProviders": {
+    "connectAProvider": "Connecter un fournisseur",
+    "connectDnsProvider": "Connecter un fournisseur DNS",
+    "connectProvider": "Connecter le fournisseur",
+    "credentialsDocsLink": "Où créer ces identifiants",
+    "disconnect": "Déconnecter",
+    "domain": "Domaine",
+    "emptyHint": "Connectez Cloudflare, Route 53 ou DigitalOcean pour automatiser le DNS.",
+    "noDnsProviders": "Aucun fournisseur DNS",
+    "notInPlan": "La connexion de fournisseurs DNS n’est pas incluse dans le plan de cet espace de travail.",
+    "optional": "(facultatif)",
+    "rotate": "Renouveler",
+    "rotateHint": "S’il est défini, le nouvel identifiant est vérifié avant de remplacer l’ancien.",
+    "selectAProvider": "Sélectionner un fournisseur…",
+    "test": "Tester",
+    "testZone": "Zone de test",
+    "testZoneHint": "Un domaine chez ce fournisseur ; s’il est renseigné, l’identifiant est vérifié avant l’enregistrement.",
+    "type": "Type"
+  },
+  "domainDetail": {
+    "added": "Ajouté",
+    "adminVerifiedHint": "Vérifié par un administrateur de plateforme, et non par DNS. Cela n’est jamais révoqué automatiquement — publiez l’enregistrement ci-dessous et la vérification devient une preuve DNS d’elle-même.",
+    "back": "Retour",
+    "banned": "banni",
+    "copy": "Copier",
+    "dnsProvider": "Fournisseur DNS",
+    "dnsRecord": "Enregistrement DNS",
+    "lastError": "Dernière erreur",
+    "manualNoProvider": "Manuel (aucun fournisseur)",
+    "noRoutesHint": "Aucune route n’utilise encore un hôte sous ce domaine. Le domaine peut être supprimé sans risque.",
+    "ownership": "Propriété",
+    "pending": "en attente",
+    "routes": "Routes",
+    "settings": "Paramètres",
+    "tlsCustom": "Certificat personnalisé",
+    "txtHint": "Ajoutez cet enregistrement {type} chez votre hébergeur DNS, puis cliquez sur Vérifier. La propagation peut prendre quelques minutes.",
+    "type": "Type",
+    "value": "Valeur",
+    "verifiedAt": "Vérifié le"
+  },
   "domains": {
     "addOne": "Ajouter un domaine",
     "addTxt": "Ajoutez cet enregistrement {txt} chez votre fournisseur DNS, puis cliquez sur Vérifier. La propagation peut prendre quelques minutes.",
@@ -1307,6 +1629,29 @@
     "verifiedByAdmin": "Vérifié par un administrateur de la plateforme, pas par DNS. Les routes fonctionnent normalement et cela n’est jamais révoqué automatiquement. Publiez l’enregistrement ci-dessous et la preuve DNS prendra le relais d’elle-même.",
     "verifyNow": "Vérifier maintenant"
   },
+  "envVar": {
+    "generateLabel": "Générer une valeur pour cette variable",
+    "key": "Clé",
+    "reEnterHint": "— à ressaisir (les valeurs secrètes ne sont pas affichées)",
+    "refHint": "Référencez un secret d’espace de travail avec {ref}.",
+    "secretHint": "Secret — chiffré au repos et masqué dans l’interface",
+    "theKeyCanTBe": "La clé ne peut pas être modifiée. Supprimez-la et rajoutez-la pour la renommer.",
+    "value": "Valeur"
+  },
+  "environments": {
+    "approvalsHint": "Approbations nécessaires avant qu’une version puisse être promue ici.",
+    "createAnEnvironment": "Créer un environnement",
+    "emptyHint": "Définissez des étapes comme staging et production pour encadrer les promotions de versions.",
+    "environment": "Environnement",
+    "environments": "Environnements",
+    "newEnvironment": "Nouvel environnement",
+    "noEnvironmentsYet": "Aucun environnement",
+    "optional": "(facultatif)",
+    "order": "Ordre",
+    "orderHint": "Le plus bas promeut vers le plus haut (dev=0, prod=2).",
+    "requiredApprovals": "Approbations requises",
+    "subtitle": "Étapes de promotion (dev → staging → prod) avec une politique d’approbation."
+  },
   "error": {
     "status": {
       "badRequest": "Requête invalide",
@@ -1321,11 +1666,76 @@
       "validationFailed": "Validation échouée"
     }
   },
+  "events": {
+    "database": "base de données",
+    "deploysDatabaseLifecycleContainerEvents": "Les déploiements, le cycle de vie des bases de données, les événements de conteneur et les changements de configuration apparaîtront ici.",
+    "event": "Événement",
+    "events": "Événements",
+    "filterBySeverity": "Filtrer par gravité",
+    "resource": "Ressource",
+    "severity": {
+      "all": "Tous",
+      "errors": "Erreurs",
+      "info": "Info",
+      "warning": "Avertissement"
+    },
+    "when": "Quand"
+  },
+  "forgotPassword": {
+    "email": "E-mail",
+    "sent": "Si un compte existe pour {email}, un lien de réinitialisation du mot de passe est en route. Le lien expire dans une heure."
+  },
+  "generator": {
+    "base64url": "base64url",
+    "bytes": "Octets",
+    "capitalise": "Majuscule initiale",
+    "closeDialog": "Fermer la boîte de dialogue",
+    "copy": "Copier",
+    "encoding": "Encodage",
+    "entropyHigh": "{range} — la valeur cesse d’être le maillon faible du système.",
+    "entropyLow": "{range} — trop faible pour tout ce qui est accessible depuis un réseau.",
+    "entropyMid": "{range} — confortable pour un mot de passe de service ou un identifiant d’application.",
+    "generateAnother": "En générer une autre",
+    "generateValue": "Générer une valeur",
+    "generatedValue": "Valeur générée",
+    "generator": "Générateur",
+    "generatorType": "Type de générateur",
+    "hex": "hex",
+    "howHint": "Les valeurs proviennent du {api} de votre navigateur, la même source que celle utilisée pour les clés TLS. Rien n’est généré sur le serveur : une valeur que vous écartez n’a donc jamais traversé le réseau, n’est jamais entrée dans un journal d’audit et n’a jamais été en mémoire sur la plateforme.",
+    "howThisWorks": "Comment cela fonctionne",
+    "includeANumber": "Inclure un chiffre",
+    "length": "Longueur",
+    "minDigits": "Chiffres min.",
+    "minSymbols": "Symboles min.",
+    "passwordsPassphrasesAndTokensGenerated": "Mots de passe, phrases secrètes et jetons, générés dans votre navigateur. Rien n’est envoyé au serveur sauf si vous l’enregistrez dans le coffre.",
+    "readingTheBits": "Lire les bits",
+    "separator": "Séparateur",
+    "symbols": "Symboles",
+    "theNumberBesideTheValue": "Le nombre à côté de la valeur est l’entropie : combien de valeurs également probables le générateur aurait pu produire, exprimé en puissance de deux. Chaque bit supplémentaire double le travail nécessaire pour la deviner.",
+    "under45": "Moins de 45",
+    "useThisValue": "Utiliser cette valeur",
+    "whatIsnTKept": "Ce qui n’est pas conservé",
+    "words": "Mots",
+    "yourOptionsAreRememberedBetween": "Vos options sont mémorisées d’une visite à l’autre. Les valeurs, non : un historique du générateur serait une liste de secrets en clair dans le stockage du navigateur, ce qui est pire que l’endroit où vous alliez les mettre."
+  },
+  "gettingStarted": {
+    "connectDomain": "Connectez un domaine"
+  },
   "gitRepos": {
     "addARepository": "Ajouter un dépôt",
     "auth": "Authentification",
+    "authKind": {
+      "public": "Public",
+      "ssh": "Clé SSH",
+      "token": "Jeton HTTPS"
+    },
     "authType": "Type d’authentification",
     "authTypeHint": "Permanent. Choisissez avec soin — pour le modifier ensuite, vous devrez supprimer et recréer le dépôt.",
+    "conn": {
+      "connected": "Connecté",
+      "failed": "Échec de la connexion",
+      "unchecked": "Pas encore vérifié"
+    },
     "connection": "Connexion",
     "displayNameHint": "Le libellé affiché dans la console. Laissez vide pour utiliser le nom.",
     "emptyHint": "Ajoutez un dépôt GitHub, GitLab ou Bitbucket — public, ou privé avec un jeton ou une clé SSH.",
@@ -1340,6 +1750,17 @@
     "username": "Nom d’utilisateur"
   },
   "gitops": {
+    "action": {
+      "allowEmpty": "Autoriser le vide",
+      "allowEmptyHelp": "Un ensemble de manifestes vide élague toutes les ressources gérées",
+      "create": "Créer",
+      "delete": "Supprimer",
+      "prune": "Élaguer",
+      "pruneHelp": "Supprime les ressources gérées retirées de Git",
+      "selfHeal": "Auto-réparation",
+      "selfHealHelp": "Réapplique quand l’état réel dérive de Git",
+      "update": "Mettre à jour"
+    },
     "addOne": "ajoutez-en un",
     "all": "toutes les",
     "allowEmpty": "Autoriser le vide — laisser un dépôt vide élaguer {all} ressources (démantèlement intentionnel)",
@@ -1397,15 +1818,36 @@
     "selfHealTitle": "Réapplique en cas de dérive",
     "showingLastSyncedState": "Affichage du dernier état synchronisé.",
     "source": "Source",
+    "status": {
+      "error": "Erreur",
+      "out_of_sync": "Désynchronisé",
+      "progressing": "En cours",
+      "synced": "Synchronisé",
+      "unknown": "Jamais synchronisé"
+    },
     "subtitle": "Déployez en continu depuis des dépôts Git de manifestes {kind}.",
     "sync": "Synchroniser",
     "syncNow": "Synchroniser maintenant",
     "syncPolicy": "Politique de synchronisation",
     "syncPreview": "Aperçu de la synchronisation",
     "syncStatus": "État de synchronisation",
+    "tab": {
+      "events": "Événements",
+      "logs": "Journaux",
+      "overview": "Vue d’ensemble"
+    },
     "topoErrorHint": "La dernière révision n’a pas pu être chargée : {error}",
     "viewDiff": "Voir les différences",
     "waitingForLogOutput": "En attente des journaux…"
+  },
+  "inbox": {
+    "alertsAndUpdatesAcrossYour": "Alertes et mises à jour de tous vos espaces de travail.",
+    "allWorkspaces": "Tous les espaces de travail",
+    "loadMore": "Charger plus",
+    "markAllRead": "Tout marquer comme lu",
+    "nothingHere": "Rien ici",
+    "notifications": "Notifications",
+    "unreadOnly": "Non lus uniquement"
   },
   "jobs": {
     "allow": "Autoriser",
@@ -1508,7 +1950,39 @@
     "viewer": "Lecteur",
     "workspaceRole": "Rôle dans l’espace de travail"
   },
+  "locationPicker": {
+    "admin": "admin",
+    "anyNodeInTheLocation": "N’importe quel nœud de l’emplacement",
+    "location": "Emplacement",
+    "node": "Nœud",
+    "pinningANodeAlsoDecides": "Épingler un nœud détermine aussi l’emplacement.",
+    "privateNetworksDonTSpan": "Les réseaux privés ne s’étendent pas d’un emplacement à l’autre : gardez une application avec les bases de données et volumes qu’elle utilise."
+  },
+  "logViewer": {
+    "clear": "Effacer",
+    "noOutput": "Aucune sortie."
+  },
+  "login": {
+    "authenticationCode": "Code d’authentification",
+    "backToSignIn": "Retour à la connexion",
+    "capsLockIsOn": "Verr. maj est activé",
+    "continueWithSso": "Continuer avec le SSO",
+    "createOne": "Créez-en un",
+    "emailOrUsername": "E-mail ou nom d’utilisateur",
+    "enterYourPassword": "Saisissez votre mot de passe",
+    "forgotPassword": "Mot de passe oublié ?",
+    "noAccount": "Vous n’avez pas de compte ? {link}.",
+    "noAccountContactAdmin": "Vous n’avez pas de compte ? Contactez l’administrateur de votre plateforme.",
+    "orContinueWith": "ou continuer avec",
+    "password": "Mot de passe",
+    "siteLinks": "Liens du site",
+    "ssoHint": "Nous vous redirigerons vers le fournisseur de connexion de votre organisation.",
+    "totpHint": "Saisissez le code à 6 chiffres de votre application d’authentification, ou un code de récupération.",
+    "useADifferentAccount": "Utiliser un autre compte",
+    "workEmail": "E-mail professionnel"
+  },
   "marketplace": {
+    "applications": "Applications",
     "appliedManually": "Appliqué manuellement :",
     "author": "Auteur",
     "autoGenerated": "Généré automatiquement si laissé vide",
@@ -1518,6 +1992,10 @@
     "backToMarketplace": "Retour au marketplace",
     "computingChanges": "Calcul des changements…",
     "configureInstall": "Configurer et installer",
+    "confirmNameLabel": "Saisissez le nom du modèle pour confirmer",
+    "contribute": "Contribuer",
+    "contributeATemplate": "Contribuer un modèle",
+    "contributeHint": "Ajouter une application au marketplace open source sur GitHub",
     "deleteHint": "Cela retire le modèle personnalisé de cet espace de travail. Les installations existantes ne sont pas affectées. Cette action est irréversible.",
     "editManifestHint": "Modifiez le manifeste de ce modèle personnalisé. Il est revalidé à l’enregistrement. Le {field} ne peut pas être modifié.",
     "editTemplate": "Modifier le modèle",
@@ -1525,26 +2003,90 @@
     "env": "env",
     "homepage": "Page d’accueil",
     "image": "image",
+    "import": "Importer",
+    "importATemplate": "Importer un modèle",
+    "importHint": "Collez un manifeste de modèle Miabi ({kind}). Il est validé puis ajouté à cet espace de travail comme modèle personnalisé.",
     "inThisWorkspace": "Dans cet espace de travail",
-    "install": "Installer…",
+    "install": "Installer",
+    "installed": "Installés",
     "installsHint": "Applications utilisant ce modèle.",
+    "itsResources": "ses ressources",
+    "marketplace": "Marketplace",
     "nameHint": "Nommé d’après le nom d’installation. Un nom déjà utilisé reçoit un suffixe numérique.",
     "newConfigs": "Nouvelles configurations :",
     "newDedicatedInstance": "Nouvelle instance dédiée",
     "newMount": "nouveau montage",
     "newSettingsToProvide": "Nouveaux paramètres à fournir",
     "newVolumes": "Nouveaux volumes :",
+    "nextPage": "Page suivante",
     "noChanges": "aucun changement",
+    "noDependencies": "aucune dépendance | aucune dépendance | aucune dépendance",
+    "noInstallsHint": "Installez un modèle depuis l’onglet Parcourir pour le voir ici.",
+    "noTemplatesFound": "Aucun modèle trouvé",
     "notFoundHint": "Il a peut-être été supprimé. {link}",
+    "nothingInstalledYet": "Rien d’installé",
+    "nothingToRemove": "Cette installation n’avait aucune ressource à supprimer.",
+    "previousPage": "Page précédente",
     "provisions": "Provisionne",
+    "searchLabel": "Rechercher des modèles",
+    "searchPlaceholder": "Rechercher des modèles…",
     "secret": "· secret",
+    "source": {
+      "all": "Tous",
+      "community": "Communauté",
+      "custom": "Personnalisés",
+      "official": "Officiel"
+    },
     "template": "Modèle",
+    "templateManifestYaml": "YAML du manifeste de modèle",
     "templateNotFound": "Modèle introuvable",
+    "typeToConfirm": "Saisissez {name} pour confirmer",
+    "uninstall": "Désinstaller",
+    "uninstallWarning": "Cela supprime définitivement {what} créé par cette installation. Cette action est irréversible.",
     "upToDate": "À jour",
     "upgrade": "Mettre à niveau",
     "version": "Version",
     "website": "Site web",
     "willCreateHint": "Cela créera les éléments suivants dans {workspace} :"
+  },
+  "metadata": {
+    "builtInPlatformManagedRead": "Intégré — géré par la plateforme (lecture seule)",
+    "metadata": "Métadonnées"
+  },
+  "middlewares": {
+    "addAuthRateLimitingCors": "Ajoutez de l’authentification, de la limitation de débit, du CORS, et plus — puis attachez-les aux routes.",
+    "addUser": "Ajouter un utilisateur",
+    "back": "Retour",
+    "commaSeparatedRegularExpressionsDefault": "(expressions régulières séparées par des virgules, /.* par défaut)",
+    "configuration": "Configuration",
+    "copy": "Copier",
+    "createAMiddleware": "Créer un middleware",
+    "default": "(par défaut)",
+    "field": {
+      "from": "De",
+      "key": "Clé",
+      "to": "Vers",
+      "unchanged": "•••• (inchangé)",
+      "value": "Valeur"
+    },
+    "gomaGatewayMiddlewaresReferencedBy": "Middlewares Goma Gateway, référencés par les routes.",
+    "lowercaseLettersDigitsAndHyphens": "Lettres minuscules, chiffres et tirets (ex. basic-auth).",
+    "middlewares": "Middlewares",
+    "newMiddleware": "Nouveau middleware",
+    "noMiddlewares": "Aucun middleware",
+    "noRuleConfiguration": "Aucune configuration de règle.",
+    "notUsedByAnyRoute": "Utilisé par aucune route.",
+    "password": "Mot de passe",
+    "paths": "Chemins",
+    "pathsHint": "Comparé comme expression régulière : un préfixe s’écrit donc {good}, et non {bad}.",
+    "redirectUri": "URI de redirection",
+    "registerTheseWithYourIdentity": "Enregistrez-les auprès de votre fournisseur d’identité. Un fournisseur rejette une connexion dont l’URI de redirection ne lui est pas connue, ce qui est la raison habituelle de l’échec de la première tentative.",
+    "rule": "Règle",
+    "ruleYaml": "Règle (YAML)",
+    "storedEncrypted": "Stocké chiffré",
+    "type": "Type",
+    "username2": "Nom d’utilisateur",
+    "yaml": "(YAML)"
   },
   "nav": {
     "analytics": {
@@ -1616,6 +2158,44 @@
       "title": "Espace de travail"
     }
   },
+  "networks": {
+    "anOverlayAppearsOnA": "Un réseau overlay apparaît sur un nœud dès qu’un de ses conteneurs s’y attache.",
+    "bridge": "bridge",
+    "createANetwork": "Créer un réseau",
+    "createANetworkToGroup": "Créez un réseau pour regrouper et isoler des applications.",
+    "default": "par défaut",
+    "driver": "Pilote",
+    "internal": "interne",
+    "internalNoExternalConnectivity": "Interne (aucune connectivité externe)",
+    "ipv4Gateway": "Passerelle IPv4",
+    "ipv4Subnet": "Sous-réseau IPv4",
+    "ipv6": "IPv6",
+    "ipv6Gateway": "Passerelle IPv6",
+    "ipv6Subnet": "Sous-réseau IPv6",
+    "network": "Réseau",
+    "networks": "Réseaux",
+    "newNetwork": "Nouveau réseau",
+    "noNetworks": "Aucun réseau",
+    "readingTheNetwork": "Lecture du réseau…",
+    "thisNetworkIsNotPresent": "Ce réseau n’est pas présent sur le nœud du plan de contrôle, il n’a donc aucun adressage à afficher ici."
+  },
+  "notifications": {
+    "addAChannel": "Ajouter un canal",
+    "botFatherHint": "Créez un bot avec {bot} et collez son jeton.",
+    "botToken": "Jeton du bot",
+    "channel": "Canal",
+    "chat": "Discussion",
+    "chatId": "Identifiant de discussion",
+    "chatIdHint": "Un identifiant d’utilisateur, de groupe ou de canal. Ajoutez d’abord le bot à la discussion.",
+    "events": "Événements",
+    "namePlaceholder": "ex. Alertes Ops",
+    "newChannel": "Nouveau canal",
+    "noChannels": "Aucun canal de notification",
+    "subtitle": "Envoyez des messages Telegram, Slack ou Discord lorsque des événements d’application se produisent — déploiements, plantages de conteneur, et plus encore.",
+    "telegramHint": "Connectez un bot Telegram pour recevoir les alertes de déploiement et de conteneur dans une discussion.",
+    "type": "Type",
+    "webhookUrl": "URL du webhook"
+  },
   "notify": {
     "apiKeys": {
       "copyFailedSelectAndCopy": "Échec de la copie — sélectionnez et copiez la clé manuellement",
@@ -1623,6 +2203,10 @@
       "deleted": "Clé API supprimée",
       "revoked": "Clé API révoquée",
       "workspaceIdCopied": "Identifiant d’espace de travail copié"
+    },
+    "appAccess": {
+      "granted": "Accès accordé",
+      "revoked": "Accès révoqué"
     },
     "appDetail": {
       "alreadyUpToDateWith": "Déjà à jour avec {source_path}.",
@@ -1683,6 +2267,16 @@
     "branding": {
       "imagesMayBeAtMost": "Les images ne doivent pas dépasser {formatSize}."
     },
+    "canary": {
+      "routingUpdated": "Routage canari mis à jour",
+      "weightSet": "Trafic canari réglé à {weight} %"
+    },
+    "certificates": {
+      "deleted": "Certificat supprimé",
+      "imported": "Certificat importé",
+      "issuanceStarted": "Émission démarrée — le certificat apparaîtra une fois émis",
+      "replaced": "Certificat remplacé"
+    },
     "common": {
       "aDockerEndpointIsRequired": "Un point de terminaison Docker est requis pour ce mode d’accès",
       "anS3BucketIsRequired": "Un bucket S3 est requis lorsque S3 est activé",
@@ -1694,6 +2288,12 @@
       "selectAtLeastOneEvent": "Sélectionnez au moins un événement",
       "varsImported": "Aucune variable importée | {n} variable importée | {n} variables importées"
     },
+    "configs": {
+      "created": "Configuration créée",
+      "deleted": "Configuration supprimée",
+      "redeployingApps": "aucune application à redéployer | redéploiement de {n} application | redéploiement de {n} applications",
+      "updated": "Configuration mise à jour"
+    },
     "databaseDetail": {
       "artifactSSkippedNoDatabase": "{count} artefact(s) ignoré(s) : {join} — aucune base de données de ce nom ici",
       "chooseADumpFile": "Choisissez un fichier de dump",
@@ -1702,6 +2302,24 @@
       "restoredFailed": "{count} restaurée(s), {count2} en échec : {join}",
       "upgradeFailed": "Échec de la mise à niveau : {error}",
       "wasAlreadyInThisWorkspace": "{ref} était déjà dans cet espace de travail"
+    },
+    "dnsProviders": {
+      "connected": "Fournisseur DNS connecté",
+      "connectionOk": "Connexion réussie",
+      "disconnected": "Fournisseur DNS déconnecté",
+      "rotated": "Identifiants renouvelés"
+    },
+    "domainDetail": {
+      "deleted": "Domaine supprimé",
+      "providerCleared": "Retour au DNS manuel",
+      "providerLinked": "Fournisseur DNS lié — la vérification est désormais automatique",
+      "updated": "Domaine mis à jour",
+      "verified": "{name} vérifié"
+    },
+    "environments": {
+      "created": "Environnement créé",
+      "deleted": "Environnement supprimé",
+      "updated": "Environnement mis à jour"
     },
     "gitOps": {
       "created": "Source Git créée",
@@ -1756,7 +2374,18 @@
       "updated": "Connexion LDAP mise à jour"
     },
     "marketplace": {
-      "someResourcesCouldNotBe": "{name} : certaines ressources n’ont pas pu être supprimées"
+      "imported": "{name} importé",
+      "someResourcesCouldNotBe": "{name} : certaines ressources n’ont pas pu être supprimées",
+      "uninstalled": "{name} désinstallé"
+    },
+    "middlewares": {
+      "created": "Politique créée",
+      "deleted": "Middleware supprimé",
+      "updated": "Politique mise à jour"
+    },
+    "networks": {
+      "created": "Réseau créé",
+      "deleted": "Réseau supprimé"
     },
     "nodeDetail": {
       "gatewayUpdateFailed": "Échec de la mise à jour de la passerelle : {error}"
@@ -1767,11 +2396,18 @@
     "nodes": {
       "communityEditionIsLimitedTo": "L’édition Community est limitée à {value} nœuds. Passez à Enterprise pour en ajouter."
     },
+    "notifications": {
+      "channelAdded": "Canal ajouté",
+      "channelDeleted": "Canal supprimé",
+      "channelUpdated": "Canal mis à jour",
+      "testSent": "{name} : message de test envoyé"
+    },
     "pipelines": {
       "created": "Pipeline créé",
       "deleted": "Pipeline supprimé",
       "disabled": "Pipeline désactivé",
       "enabled": "Pipeline activé",
+      "runNumberQueued": "Exécution n° {number} mise en file",
       "runQueued": "{name} : exécution n° {number} mise en file",
       "runQueuedDetail": "Ouvrez l’exécution pour suivre ses journaux.",
       "updated": "Pipeline mis à jour"
@@ -1791,6 +2427,33 @@
       "noRecoveryPointsFoundIn": "Aucun point de restauration trouvé dans la cible de sauvegarde",
       "selectTheDatabaseAndOr": "Sélectionnez la base de données et/ou au moins un volume"
     },
+    "portable": {
+      "bundleDeleted": "Bundle supprimé",
+      "exportStarted": "Export démarré",
+      "restoreStarted": "Restauration démarrée"
+    },
+    "profile": {
+      "sessionRevoked": "Session révoquée",
+      "updated": "Profil mis à jour"
+    },
+    "registries": {
+      "added": "Registre ajouté",
+      "authOk": "{name} : authentification réussie",
+      "deleted": "Registre supprimé",
+      "updated": "Registre mis à jour"
+    },
+    "registry": {
+      "tagDeleted": "{repo}:{tag} supprimé"
+    },
+    "releases": {
+      "approved": "Approbation enregistrée",
+      "promoted": "{name} promue"
+    },
+    "roles": {
+      "created": "Rôle créé",
+      "deleted": "Rôle supprimé",
+      "updated": "Rôle mis à jour"
+    },
     "routeDetail": {
       "attached": "« {name} » attaché",
       "couldNotCopy": "Impossible de copier",
@@ -1804,8 +2467,17 @@
       "securityUpdated": "Sécurité de la route mise à jour"
     },
     "routes": {
+      "created": "Route créée",
       "resyncedWorkspaceSFailed": "{workspaces} espace(s) de travail resynchronisé(s) ; {failed} en échec",
-      "thatApplicationIsNotIn": "Cette application n’appartient pas à cet espace de travail."
+      "thatApplicationIsNotIn": "Cette application n’appartient pas à cet espace de travail.",
+      "updated": "Route mise à jour"
+    },
+    "runners": {
+      "cordoned": "Runner isolé",
+      "deleted": "Runner supprimé",
+      "registered": "Runner enregistré — copiez le jeton maintenant",
+      "resumed": "Runner réactivé",
+      "tokenIssued": "Nouveau jeton émis — copiez-le maintenant"
     },
     "secrets": {
       "created": "Secret créé",
@@ -1814,14 +2486,22 @@
       "updated": "Secret mis à jour"
     },
     "security": {
-      "copyFailedSelectAndCopy": "Échec de la copie — sélectionnez et copiez-les manuellement"
+      "codesRegenerated": "Codes de récupération régénérés",
+      "copyFailedSelectAndCopy": "Échec de la copie — sélectionnez et copiez-les manuellement",
+      "passwordChanged": "Mot de passe modifié",
+      "twoFactorDisabled": "Authentification à deux facteurs désactivée",
+      "twoFactorEnabled": "Authentification à deux facteurs activée"
     },
     "stacks": {
       "appAdded": "Application ajoutée à la stack",
       "appRemoved": "Application retirée de la stack",
       "appsPendingRedeploy": "aucune application à redéployer | {n} application doit être redéployée | {n} applications doivent être redéployées",
+      "created": "Stack créée",
       "deleted": "Stack supprimée",
       "deletedWithApps": "Stack et ses applications supprimées",
+      "importedApps": "Aucune application importée | {n} application importée | {n} applications importées",
+      "importedPortRequests": "aucune demande de port | {n} demande de port | {n} demandes de port",
+      "importedSkipped": "aucun ignoré | {n} ignoré | {n} ignorés",
       "theseHostPortsAreAlready": "Ces ports hôtes sont déjà utilisés et sont restés en attente : {lines}. Remappez le port sur l’application, ou demandez à un administrateur de vérifier.",
       "updated": "Stack mise à jour"
     },
@@ -1862,6 +2542,11 @@
     },
     "workspaceSettings": {
       "copyFailedSelectAndCopy": "Échec de la copie — sélectionnez et copiez le jeton manuellement"
+    },
+    "workspaces": {
+      "created": "Espace de travail créé",
+      "defaultSaved": "Espace de travail par défaut enregistré",
+      "joined": "Vous avez rejoint {name}"
     },
     "wsSettings": {
       "backupSaved": "Paramètres de sauvegarde enregistrés",
@@ -1923,20 +2608,60 @@
     "visible": "Visible",
     "workspaceId": "Identifiant de l’espace de travail"
   },
+  "orgPicker": {
+    "defaultOrganization": "Organisation par défaut",
+    "organization": "Organisation",
+    "searchOrganizations": "Rechercher des organisations…"
+  },
+  "palette": {
+    "esc": "échap",
+    "filter": "filtrer",
+    "group": {
+      "applications": "Applications",
+      "certificate": "Certificats",
+      "config": "Configurations",
+      "databases": "Bases de données",
+      "domain": "Domaines",
+      "environment": "Environnements",
+      "gitrepository": "Dépôts Git",
+      "gitsource": "GitOps",
+      "networks": "Réseaux",
+      "pipeline": "Pipelines",
+      "registry": "Registres",
+      "route": "Routes",
+      "secret": "Secrets",
+      "stacks": "Stacks",
+      "volumes": "Volumes"
+    },
+    "navigate": "naviguer",
+    "newTab": "nouvel onglet",
+    "open": "ouvrir",
+    "searchResourcesJumpToA": "Rechercher des ressources, aller à une page, @ pour changer d’espace de travail"
+  },
   "pipelines": {
     "appHint": "(source, image et cible de déploiement)",
     "appSourceNote": "Construit et déploie cette application",
     "application": "Application",
+    "autoScroll": "Défilement automatique",
     "branch": "Branche",
     "branchHint": "Utilisée par les exécutions manuelles et planifiées. Vide, la branche par défaut du dépôt est utilisée.",
+    "builtImage": "Image construite",
+    "builtWithoutCache": "Construite sans cache",
+    "commit": "Commit",
     "contentType": "Content type",
+    "continueOnError": "continue-on-error",
+    "continueOnErrorHint": "Un échec ici ne fait pas échouer l’exécution",
+    "copy": "Copier",
     "copySecret": "Copier le secret",
     "copyUrl": "Copier l’URL",
     "createAPipeline": "Créer un pipeline",
     "createdAgo": "créé {time}",
     "defaultBranch": "la branche par défaut",
+    "digest": "Empreinte",
+    "duration": "Durée",
     "emptyHint": "Définissez un pipeline-as-code pour transformer un commit en image et en version.",
     "envHint": "{env} s’applique à chaque étape ; le {stepEnv} propre à une étape l’emporte. Les valeurs peuvent référencer un {secret} sous la forme {ref} — résolu au démarrage de l’exécution et masqué dans les journaux.",
+    "failureIgnored": "· échec ignoré",
     "fromRepo": "depuis le dépôt",
     "ghStep1": "Allez dans {menu} du dépôt.",
     "ghStep2": "Collez l’{field} ci-dessus.",
@@ -1952,16 +2677,25 @@
     "glStep4": "Cochez {option} et laissez le reste décoché.",
     "hideSecret": "Masquer le secret",
     "itsApplication": "son application",
+    "jumpToLatest": "Aller à la fin",
     "justThePushEvent": "Just the push event",
+    "lastRunNumber": "dernière exécution n° {number} {ago}",
+    "live": "En direct",
+    "logs": "Journaux",
     "managedByItsRepository": "Géré par son dépôt.",
     "managedByRepository": "géré par le dépôt",
     "namePlaceholder": "ex. web",
     "neverRun": "Jamais exécuté",
     "newPipeline": "Nouveau pipeline",
+    "noCache": "sans cache",
+    "noCacheHint": "Chaque couche a été reconstruite ; le cache de build a été ignoré",
     "noPipelinesYet": "Aucun pipeline",
     "noRepos": "Aucun dépôt enregistré pour l’instant — ajoutez-en un sous {link}.",
+    "noRunsYet": "Aucune exécution",
     "noSourceNote": "Commandes uniquement — rien n’est extrait",
     "noneCommandsOnly": "Aucune (commandes uniquement)",
+    "openGithubWebhooks": "Ouvrir les paramètres de webhook GitHub",
+    "openGitlabWebhooks": "Ouvrir les paramètres de webhook GitLab",
     "optional": "(facultatif)",
     "other": "Autre",
     "otherProviderHint": "Tout fournisseur capable d’envoyer une charge utile de push en POST fonctionne. Miabi accepte l’un ou l’autre schéma d’authentification :",
@@ -1972,11 +2706,23 @@
     "pipelines": "Pipelines",
     "pushEvents": "Push events",
     "pushWebhook": "Webhook de push",
+    "reRun": "Relancer",
+    "reRunNoCacheHint": "Relancer ce commit en reconstruisant chaque couche",
+    "reRunThisCommit": "Relancer ce commit",
+    "reRunWithoutCache": "Relancer sans cache",
     "readOnly": "Lecture seule.",
+    "rebuildEveryLayerIgnoringThe": "Reconstruire chaque couche en ignorant le cache de build. Plus lent — à utiliser lorsqu’une couche en cache est devenue obsolète.",
+    "reference": "Référence",
     "repoNotice": "Miabi relit {path} sur {ref} avant chaque exécution ; ce pipeline ne peut donc pas être modifié ici — modifiez le fichier dans git et poussez. Vous pouvez encore le désactiver, ce qui permet à {app} de construire et déployer directement à nouveau.",
     "repoSourceNote": "Construit et pousse vers {image}. Une étape {step} nécessite une application, elle n’est donc pas disponible ici. Les builds ne sont pas mis en cache pour l’instant.",
     "repository": "Dépôt",
     "revealSecret": "Révéler le secret",
+    "run": "Exécuter",
+    "runCount": "aucune exécution | {n} exécution | {n} exécutions",
+    "runHistory": "Historique des exécutions",
+    "runWithoutCache": "Exécuter sans cache",
+    "runner": "Runner",
+    "runs": "Exécutions",
     "saveEnabledState": "Enregistrer l’état d’activation",
     "schemeHmac": "{header} — un HMAC-SHA256 du corps brut de la requête, avec le secret comme clé (schéma de GitHub).",
     "schemeToken": "{header} — le secret envoyé tel quel (schéma de GitLab).",
@@ -1986,11 +2732,17 @@
     "selectAnApplication": "Sélectionner une application…",
     "settingsWebhooksAddNewWebhook": "Settings → Webhooks → Add new webhook",
     "settingsWebhooksAddWebhook": "Settings → Webhooks → Add webhook",
+    "size": "Taille",
     "source": "Source",
     "specReadFrom": "Spécification lue depuis {path} sur {ref}",
+    "started": "Démarré",
     "state": "État",
+    "stepFilterHint": "Cliquez sur une étape pour filtrer ses journaux",
+    "steps": "Étapes",
     "subtitle": "Construisez, testez et déployez sur le runner interne avec {kind}.",
     "syncedFromCommit": "Synchronisé depuis le commit {commit}.",
+    "trigger": "Déclencheur",
+    "triggerThisPipelineToSee": "Déclenchez ce pipeline pour voir son historique d’exécutions ici.",
     "view": "Voir",
     "viewManaged": "Voir (géré par le dépôt)",
     "viewRuns": "Voir les exécutions",
@@ -1998,6 +2750,11 @@
     "webhookLeadBranch": "Ajoutez ce webhook à votre fournisseur Git et un push vers {branch} lance une exécution de {pipeline}, épinglée au commit poussé.",
     "webhookLoadFailed": "Les détails du webhook n’ont pas pu être chargés.",
     "workspaceSecret": "secret d’espace de travail"
+  },
+  "placement": {
+    "anyNodeTheSchedulerDecides": "N’importe quel nœud — l’ordonnanceur décide",
+    "pinAServiceThatMust": "Épinglez un service qui doit s’exécuter là où vivent ses données, ou pour le placer sur un nœud précis.",
+    "placement": "Placement"
   },
   "planDetail": {
     "active": "actif",
@@ -2152,6 +2909,35 @@
     "systemPlanHint": "Appartient à la plateforme : épinglé à l’espace de travail système, et vous ne pouvez ni le renommer, ni le supprimer, ni en faire le plan par défaut",
     "title": "Plans et quotas"
   },
+  "portable": {
+    "bundle": "Bundle",
+    "bundlesInTheBucket": "Bundles dans le bucket",
+    "contents": "Contenu",
+    "deleteFromTheBucket": "Supprimer du bucket",
+    "deployAfterRestore": "Déployer les applications à la fin de la restauration",
+    "detail": "Détail",
+    "kind": "Type",
+    "matchByNameHint": "Les ressources sont appariées par nom : tout ce qui est déjà présent reste exactement tel quel, une restauration n’écrase donc jamais un secret ou une application en service.",
+    "newWorkspaceName": "Nom du nouvel espace de travail",
+    "noBundles": "Aucun bundle. Le premier export en écrit un, indexé par un fichier XML lisible avec n’importe quel client S3.",
+    "noRuns": "Rien ne s’est encore exécuté.",
+    "notConfigured": "La sauvegarde portable n’est pas configurée.",
+    "passphraseHint": "Un bundle porte la configuration de cet espace de travail, son coffre et ses données. La phrase secrète le scelle, et c’est la seule chose qui permet de le rouvrir — notez-la ailleurs que sur cette plateforme.",
+    "portableBackup": "Sauvegarde portable",
+    "recentRuns": "Exécutions récentes",
+    "report": "Rapport",
+    "resource": "Ressource",
+    "restore": "Restaurer",
+    "restoreBundle": "Restaurer le bundle",
+    "restoreData": "Restaurer les données (dumps de bases de données et archives de volumes)",
+    "restoreIntoNew": "Restaurer dans un nouvel espace de travail (un clone, à côté de celui-ci)",
+    "restoreWarning": "La restauration des données écrase le contenu de toute base de données ou de tout volume portant le même nom. Les domaines reviennent non vérifiés et les certificats ne sont réémis qu’une fois le DNS pointé ici.",
+    "result": "Résultat",
+    "size": "Taille",
+    "subtitle": "Exportez cet espace de travail — applications, bases de données, volumes, secrets et routage — dans un seul bundle chiffré de votre bucket. Restaurez-le ici, ou dans un nouvel espace de travail sur n’importe quel Miabi.",
+    "taken": "Prise le",
+    "when": "Quand"
+  },
   "preferences": {
     "accent": {
       "hint": "Appliqué immédiatement et suit votre compte sur les autres navigateurs. Les couleurs d’état ne changent pas — succès, avertissement et danger gardent leur sens.",
@@ -2188,10 +2974,148 @@
       "system": "Suivre le système"
     },
     "timezone": {
+      "detected": "Ce navigateur indique {zone}.",
       "hint": "Modifie l’affichage des heures ; elles sont toujours stockées en UTC.",
       "label": "Fuseau horaire"
     },
-    "title": "Préférences"
+    "title": "Préférences",
+    "utc": "UTC"
+  },
+  "processes": {
+    "noProcesses": "Aucun processus.",
+    "viaDockerTopHostPs": "via docker top (ps de l’hôte)"
+  },
+  "profile": {
+    "activeSessions": "Sessions actives",
+    "contactAnAdministratorToChange": "Contactez un administrateur pour modifier votre adresse e-mail.",
+    "current": "Actuelle",
+    "email": "E-mail",
+    "myProfile": "Mon profil",
+    "noActiveSessionsFound": "Aucune session active.",
+    "profile": "Profil",
+    "theseAreTheDevicesAnd": "Voici les appareils et navigateurs actuellement connectés à votre compte.",
+    "updateTheNameShownAcross": "Mettez à jour le nom affiché dans Miabi. Votre e-mail est géré par un administrateur.",
+    "username": "Nom d’utilisateur",
+    "yourUniqueHandleLowercaseLetters": "Votre identifiant unique — lettres minuscules, chiffres et tirets. Utilisé comme identifiant d’annuaire."
+  },
+  "register": {
+    "email": "E-mail",
+    "goToSignIn": "Aller à la connexion",
+    "password": "Mot de passe",
+    "ready": "Si {email} peut être enregistré, votre compte est prêt. Vous pouvez vous connecter dès maintenant.",
+    "sentVerification": "Si {email} peut être enregistré, un lien de vérification est en route. Vérifiez votre adresse, puis connectez-vous."
+  },
+  "registries": {
+    "addARegistry": "Ajouter un registre",
+    "emptyHint": "Ajoutez un identifiant Docker Hub, GHCR, GitLab, ou de tout registre privé.",
+    "newRegistry": "Nouveau registre",
+    "noRegistriesYet": "Aucun registre",
+    "registries": "Registres",
+    "registry": "Registre",
+    "server": "Serveur",
+    "serverHint": "(facultatif, Docker Hub par défaut)",
+    "subtitle": "Identifiants pour récupérer des images de conteneur privées.",
+    "username": "Nom d’utilisateur"
+  },
+  "registry": {
+    "apiToken": "jeton API",
+    "backToRegistry": "Retour au registre",
+    "built": "Construit",
+    "builtFor": "Construit pour",
+    "clearTheFilter": "Effacer le filtre",
+    "commit": "Commit",
+    "connect": "Connexion",
+    "connectionDetails": "Détails de connexion",
+    "copy": "Copier",
+    "copyDockerPullCommand": "Copier la commande docker pull",
+    "deletionDisabled": "· la suppression est désactivée sur cette plateforme",
+    "deployHint": "Les images poussées se déploient comme toute autre application à source image — créez une application depuis {image}.",
+    "digest": "Empreinte",
+    "disabledHint": "Demandez à un administrateur de plateforme de l’activer dans {menu}, puis poussez et récupérez vos images ici.",
+    "disabledTitle": "Le registre de conteneurs n’est pas activé",
+    "emptyHint": "Poussez votre première image — voyez l’onglet {tab} pour les commandes.",
+    "emptyRepoHint": "Aucun tag — cette image a été vidée et sera nettoyée lors du prochain ramasse-miettes.",
+    "filterImages": "Filtrer les images",
+    "filterTags": "Filtrer les tags",
+    "imagePrefix": "Préfixe d’image",
+    "inUse": "utilisée",
+    "inUseHint": "Retenue par un déploiement actif ou une version épinglée",
+    "loginHint": "Utilisez le nom de votre espace de travail (ou votre nom d’utilisateur) et un {link} Miabi comme mot de passe.",
+    "newestTag": "Tag le plus récent",
+    "noBuildRecord": "Aucun enregistrement de build — cette image a été poussée directement plutôt que construite par un pipeline Miabi, il n’y a donc ni commit ni provenance à afficher.",
+    "noImagesYet": "Aucune image",
+    "noSuchImage": "Image introuvable",
+    "noSuchImageHint": "{repo} n’est pas dans le registre de cet espace de travail — il a peut-être été supprimé.",
+    "noTags": "Aucun tag",
+    "noTagsDot": "Aucun tag.",
+    "noTagsHint": "Ce dépôt existe mais ne contient aucun tag.",
+    "overview": "Vue d’ensemble",
+    "pushAnImage": "Pousser une image",
+    "recentTags": "Tags récents",
+    "registryHost": "Hôte du registre",
+    "repositories": "Dépôts",
+    "size": "Taille",
+    "step1": "1. Se connecter",
+    "step2": "2. Taguer votre image",
+    "step3": "3. Pousser",
+    "tag": "Tag",
+    "tags": "Tags",
+    "yourNamespace": "Votre espace de noms"
+  },
+  "releases": {
+    "active": "active",
+    "application": "Application",
+    "approvals": "approbations",
+    "approve": "Approuver",
+    "commit": "commit",
+    "digest": "empreinte",
+    "environment": "environnement",
+    "everySuccessfulDeploymentRecordsA": "Chaque déploiement réussi enregistre une version ici, prête à être promue.",
+    "gateSatisfied": "— condition satisfaite",
+    "image": "Image",
+    "needEnvironment": "Créez un {link} pour activer la promotion.",
+    "noApprovalRequired": "— aucune approbation requise",
+    "noReleasesYet": "Aucune version",
+    "pinned": "épinglée",
+    "promotableReleaseArtifactsPromoteAcross": "Artefacts de version promouvables — promouvez-les entre environnements avec des conditions d’approbation.",
+    "promote": "Promouvoir",
+    "promoteNote": "La promotion redirige {app} vers cette version et la déploie.",
+    "provenance": "Provenance",
+    "releases": "Versions",
+    "targetEnvironment": "Environnement cible",
+    "version": "Version"
+  },
+  "requestToken": {
+    "apiToken": "Jeton API",
+    "callTheApiDirectly": "Appeler l’API directement",
+    "ciScripts": "CI / scripts",
+    "copy": "Copier",
+    "logInWithTheMiabi": "Se connecter avec la CLI Miabi",
+    "manageApiKeys": "Gérer les clés API",
+    "orReAuthenticateWith": "ou se réauthentifier avec",
+    "password": "Mot de passe",
+    "requestAnotherToken": "Demander un autre jeton",
+    "shownOnce": "affiché une seule fois",
+    "usernameOrEmail": "Nom d’utilisateur ou e-mail"
+  },
+  "resetPassword": {
+    "atLeast8Characters": "Au moins 8 caractères",
+    "confirmPassword": "Confirmer le mot de passe",
+    "continueToSignIn": "Continuer vers la connexion",
+    "passwordsDonTMatch": "Les mots de passe ne correspondent pas.",
+    "reEnterYourNewPassword": "Ressaisissez votre nouveau mot de passe",
+    "requestANewLink": "Demander un nouveau lien"
+  },
+  "roles": {
+    "baseRole": "Rôle de base",
+    "baseRoleRankFallback": "Rôle de base (rang de repli)",
+    "customRoles": "Rôles personnalisés",
+    "customRolesLetYouDefine": "Les rôles personnalisés vous permettent de définir des ensembles d’autorisations fins, au-delà des rôles intégrés.",
+    "deployer": "Déployeur",
+    "newRole": "Nouveau rôle",
+    "noCustomRolesYetCreate": "Aucun rôle personnalisé. Créez-en un pour accorder un ensemble d’autorisations sur mesure.",
+    "permissions": "Autorisations",
+    "upgrade": "Mettre à niveau"
   },
   "routes": {
     "4xxOr5xx": "4xx ou 5xx",
@@ -2301,6 +3225,58 @@
     "value": "Valeur",
     "whatTheCallerGets": "Ce que reçoit l’appelant"
   },
+  "runners": {
+    "addARunner": "Ajouter un runner",
+    "addRunner": "Ajouter le runner",
+    "backToRunners": "Retour aux runners",
+    "commaSeparated": "(séparés par des virgules)",
+    "concurrency": "Concurrence",
+    "concurrencyHint": "Combien de jobs ce runner peut exécuter simultanément.",
+    "copyCommand": "Copier la commande",
+    "copyToken": "Copier le jeton",
+    "copyTokenNow": "Copiez le jeton d’enregistrement maintenant",
+    "displayNamePlaceholder": "ex. Machine de build de prod",
+    "done": "Terminé",
+    "emptyHint": "Enregistrez une machine de build pour que les builds et les pipelines s’exécutent ici plutôt que sur vos nœuds d’application.",
+    "labels": "Libellés",
+    "labelsHint": "Un job ne s’exécute sur ce runner que si tous ses libellés requis sont présents.",
+    "lastConnection": "Dernière connexion",
+    "namePlaceholder": "ex. amd64-builder",
+    "noRunners": "Aucun runner",
+    "noRunnersHint": "Aucun runner n’a été enregistré.",
+    "noSharedRunners": "Aucun runner partagé de la plateforme n’est disponible pour l’instant.",
+    "none": "aucun",
+    "optional": "(facultatif)",
+    "platform": "Plateforme",
+    "remoteIp": "IP distante",
+    "state": {
+      "cordoned": "isolé",
+      "draining": "en vidange",
+      "offline": "hors ligne",
+      "online": "en ligne"
+    },
+    "token": "Jeton",
+    "tokenHint": "C’est la seule fois où il est affiché. Exécutez le runner sur votre machine de build :",
+    "version": "Version"
+  },
+  "saveAsSecret": {
+    "optional": "(facultatif)",
+    "saveAsSecret": "Enregistrer comme secret",
+    "secretName": "Nom du secret",
+    "storedInThisWorkspaceS": "Stocké dans le coffre de cet espace de travail ; la valeur est écrite une fois et n’est plus jamais affichée."
+  },
+  "secretPicker": {
+    "chooseAnotherSecret": "Choisir un autre secret",
+    "couldNotLoadSecrets": "Impossible de charger les secrets.",
+    "filter": {
+      "all": "Tous",
+      "managed": "Gérés",
+      "unmanaged": "Non gérés"
+    },
+    "managed": "géré",
+    "searchPlaceholder": "Rechercher des secrets par nom ou description…",
+    "searching": "Recherche…"
+  },
   "secrets": {
     "clearFilters": "Effacer les filtres",
     "copy": "Copier",
@@ -2331,6 +3307,37 @@
     "valuePlaceholder": "la valeur du secret\n\nLes valeurs multilignes sont stockées exactement telles que saisies : un certificat PEM ou une clé privée peut être collé en entier.",
     "version": "Version"
   },
+  "security": {
+    "codesRemaining": "Aucun code de récupération restant. | {n} code de récupération restant. | {n} codes de récupération restants.",
+    "confirmNewPassword": "Confirmer le nouveau mot de passe",
+    "copy": "Copier",
+    "currentPassword": "Mot de passe actuel",
+    "disable": "Désactiver",
+    "disabled": "désactivée",
+    "done": "Terminé",
+    "download": "Télécharger",
+    "enabled": "activée",
+    "enterCodeHint": "Saisissez le code à 6 chiffres qu’elle affiche pour confirmer.",
+    "lowOnCodes": "Vos codes de récupération sont presque épuisés",
+    "manualKey": "Impossible de scanner ? Saisissez cette clé manuellement : {key}",
+    "newPassword": "Nouveau mot de passe",
+    "password": "Mot de passe",
+    "passwordHint": "Au moins 8 caractères.",
+    "passwordSubtitle": "Modifiez le mot de passe que vous utilisez pour vous connecter à Miabi.",
+    "recoveryCodesHint": "Chaque code fonctionne une seule fois si vous perdez l’accès à votre application d’authentification. Ils ne seront plus affichés.",
+    "regenerateHint": "Régénérez-en un nouveau lot pour ne pas vous retrouver bloqué.",
+    "regenerateRecoveryCodes": "Régénérer les codes de récupération",
+    "saveCodes": "Enregistrez vos codes de récupération",
+    "scanHint": "Scannez ce QR code avec votre application d’authentification.",
+    "security": "Sécurité",
+    "setUpTwoFactorAuthentication": "Configurer l’authentification à deux facteurs",
+    "storeSafely": "Conservez-les en lieu sûr",
+    "totpQrCode": "QR code TOTP",
+    "twoFactorAuthentication": "Authentification à deux facteurs",
+    "twoFactorHint": "Ajoutez une couche de sécurité supplémentaire à votre compte en exigeant, en plus de votre mot de passe, un code temporaire fourni par une application d’authentification (Google Authenticator, 1Password, Authy…).",
+    "twoFactorOn": "L’authentification à deux facteurs est activée.",
+    "verificationCode": "Code de vérification"
+  },
   "shell": {
     "close": "Fermer",
     "menu": {
@@ -2349,7 +3356,14 @@
     "sidebar": {
       "collapse": "Replier la barre latérale",
       "expand": "Déplier la barre latérale"
-    }
+    },
+    "theme": "Thème"
+  },
+  "shellTerminal": {
+    "compact": "Compact",
+    "escGoesToTheShell": "Échap va au shell · Maj+Tab pour en sortir",
+    "maximize": "Agrandir",
+    "restore": "Restaurer"
   },
   "stacks": {
     "activity": "Activité",
@@ -2360,32 +3374,43 @@
     "annotations": "Annotations",
     "application": "Application",
     "applications": "Applications",
+    "apps": "Applications",
+    "createAStack": "Créer une stack",
     "deleteStack": "Supprimer la stack",
     "displayNameHint": "Le libellé affiché dans la console. Laissez vide pour utiliser le nom de la stack.",
     "dockerProject": "· Projet Docker :",
     "editStack": "Modifier la stack",
+    "emptyHint": "Créez une stack pour regrouper des applications liées et gérer leurs conteneurs ensemble.",
     "encryptedAtRest": "Chiffré au repos",
     "hiddenSecretValue": "Valeur secrète masquée",
+    "importCompose": "Importer un Compose",
     "importEnv": "Importer un .env",
-    "importHint": "Les clés existantes sont écrasées. S’applique à chaque application à son prochain déploiement.",
+    "importFromDockerCompose": "Importer depuis docker-compose",
+    "importHint": "Une application est créée par service basé sur une image (ports, variables, commande). Les volumes nommés sont provisionnés et montés, et les applications se résolvent entre elles par nom de service au sein de la stack. Les ports hôte publiés deviennent des liaisons en attente qu’un administrateur approuve. Les services uniquement de build et les montages bind sont ignorés.",
     "importSharedEnv": "Importer un .env partagé",
     "labelsHint": "Les libellés Compose s’appliquent au prochain déploiement de l’application.",
     "markAllSecrets": "Marquer toutes comme secrètes (chiffrées)",
     "metadata": "Métadonnées",
     "nameHint": "Permanent. Le nom du projet Docker ({project}), le réseau de la stack et son identité GitOps en découlent tous. Pour utiliser un autre nom, créez une nouvelle stack et déplacez-y les applications.",
+    "newStack": "Nouvelle stack",
     "noApps": "Aucune application dans cette stack",
     "noDescription": "Aucune description",
     "noSharedVars": "Aucune variable partagée.",
+    "noStacks": "Aucune stack",
     "optional": "(facultatif)",
     "pasteKeyValueLines": "Collez des lignes CLÉ=VALEUR",
     "redeployHint": "La configuration a changé depuis le dernier déploiement de cette application — redéployez pour l’appliquer",
     "redeployRequired": "Redéploiement requis",
     "removeFromStack": "Retirer de la stack",
     "rollingRestart": "Redémarrer une application à la fois",
+    "searchPlaceholder": "Rechercher des stacks par nom, description ou nom Docker…",
+    "searchStacks": "Rechercher des stacks",
     "secret": "secret",
     "sharedEnvHint": "Injectée dans chaque application de la stack à son prochain déploiement. Une variable propre à une application portant la même clé l’emporte.",
     "sharedEnvironment": "Environnement partagé",
     "source": "Source",
+    "stack": "Stack",
+    "stackName": "Nom de la stack",
     "stacks": "Stacks"
   },
   "switcher": {
@@ -2398,6 +3423,12 @@
     "manage": "Gérer les espaces de travail…",
     "platformAdmin": "Administration",
     "workspaces": "mes espaces"
+  },
+  "verifyEmail": {
+    "checkingYourLink": "Vérification de votre lien.",
+    "goToSignIn": "Aller à la connexion",
+    "verificationLinksExpireAndCan": "Les liens de vérification expirent et ne peuvent être utilisés qu’une fois. Connectez-vous pour en recevoir un nouveau, ou demandez à l’administrateur de votre plateforme de vérifier l’adresse pour vous.",
+    "yourAddressIsConfirmedYou": "Votre adresse est confirmée. Vous pouvez vous connecter dès maintenant."
   },
   "volumes": {
     "actions": "Actions",
@@ -2505,6 +3536,25 @@
     "webhook": "Webhook",
     "webhooks": "Webhooks",
     "when": "Quand"
+  },
+  "workspaceLayout": {
+    "acceptAnInvitationToJoin": "Acceptez une invitation pour rejoindre un espace de travail.",
+    "createYourFirstWorkspaceTo": "Créez votre premier espace de travail pour déployer des applications.",
+    "invitedAs": "Invité en tant que {role}",
+    "invitedBy": "par {name}",
+    "orCreateYourOwnWorkspace": "Ou créez votre propre espace de travail",
+    "youVeBeenInvited": "Vous avez été invité"
+  },
+  "workspaces": {
+    "copyWorkspaceId": "Copier l’identifiant de l’espace de travail",
+    "createYourFirstWorkspace": "Créez votre premier espace de travail",
+    "current": "Actuel",
+    "newWorkspace": "Nouvel espace de travail",
+    "optional": "(facultatif)",
+    "privileged": "privilégié",
+    "privilegedHostPortBindingsAre": "Privilégié — les liaisons de ports hôte sont approuvées automatiquement",
+    "workspaces": "Espaces de travail",
+    "workspacesGroupYourApplicationsDatabases": "Les espaces de travail regroupent vos applications, bases de données et membres d’équipe."
   },
   "wsSettings": {
     "accessKey": "Clé d’accès",

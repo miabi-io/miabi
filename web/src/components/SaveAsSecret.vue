@@ -45,27 +45,26 @@ async function submit() {
 <template>
   <div class="save-secret">
     <button v-if="!open" type="button" class="btn btn-primary btn-sm" :disabled="!value" @click="open = true">
-      <span class="mdi mdi-content-save-outline"></span> Save as secret
-    </button>
+      <span class="mdi mdi-content-save-outline"></span>{{ $t('saveAsSecret.saveAsSecret') }}</button>
 
     <form v-else class="save-form" @submit.prevent="submit">
       <div class="form-group">
-        <label class="form-label">Secret name</label>
+        <label class="form-label">{{ $t('saveAsSecret.secretName') }}</label>
         <input v-model="name" class="form-input" placeholder="db_password" style="font-family: monospace" autofocus
-          aria-label="Secret name" />
+          :aria-label="$t('saveAsSecret.secretName')" />
         <p v-if="nameError" class="form-hint save-error">{{ nameError }}</p>
-        <p v-else class="form-hint">Stored in this workspace's vault; the value is written once and never shown again.</p>
+        <p v-else class="form-hint">{{ $t('saveAsSecret.storedInThisWorkspaceS') }}</p>
       </div>
       <div class="form-group">
-        <label class="form-label">Description <span class="text-muted">(optional)</span></label>
-        <input v-model="description" class="form-input" placeholder="e.g. Postgres app password"
-          aria-label="Description" />
+        <label class="form-label">{{ $t('plans.description') }}<span class="text-muted">{{ $t('saveAsSecret.optional') }}</span></label>
+        <input v-model="description" class="form-input" :placeholder="$t('secrets.descriptionPlaceholder')"
+          :aria-label="$t('plans.description')" />
       </div>
       <div class="save-actions">
         <button type="submit" class="btn btn-primary btn-sm" :disabled="!canSave">
           {{ saving ? 'Saving…' : 'Save' }}
         </button>
-        <button type="button" class="btn btn-secondary btn-sm" :disabled="saving" @click="open = false">Cancel</button>
+        <button type="button" class="btn btn-secondary btn-sm" :disabled="saving" @click="open = false">{{ $t('action.cancel') }}</button>
       </div>
     </form>
   </div>

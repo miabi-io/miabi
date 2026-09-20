@@ -107,9 +107,9 @@ async function test(r: GitRepository) {
 // How the last check is rendered. `unknown` is its own state, not a failure:
 // a credential that has never been checked has not failed anything.
 const CONNECTION: Record<GitConnectionStatus, { icon: string; cls: string; label: string }> = {
-  ok: { icon: 'mdi-check-circle', cls: 'conn-ok', label: 'Connected' },
-  failed: { icon: 'mdi-alert-circle', cls: 'conn-failed', label: 'Connection failed' },
-  unknown: { icon: 'mdi-help-circle-outline', cls: 'conn-unknown', label: 'Not checked yet' },
+  ok: { icon: 'mdi-check-circle', cls: 'conn-ok', label: 'gitRepos.conn.connected' },
+  failed: { icon: 'mdi-alert-circle', cls: 'conn-failed', label: 'gitRepos.conn.failed' },
+  unknown: { icon: 'mdi-help-circle-outline', cls: 'conn-unknown', label: 'gitRepos.conn.unchecked' },
 }
 
 function connection(r: GitRepository) {
@@ -145,9 +145,9 @@ async function confirmDelete() {
 }
 
 const authTypes: { value: GitAuthType; label: string }[] = [
-  { value: 'public', label: 'Public' },
-  { value: 'token', label: 'HTTPS Token' },
-  { value: 'ssh', label: 'SSH Key' },
+  { value: 'public', label: 'gitRepos.authKind.public' },
+  { value: 'token', label: 'gitRepos.authKind.token' },
+  { value: 'ssh', label: 'gitRepos.authKind.ssh' },
 ]
 </script>
 
@@ -247,7 +247,7 @@ const authTypes: { value: GitAuthType; label: string }[] = [
             <div class="form-group">
               <label class="form-label">{{ $t('gitRepos.authType') }}</label>
               <div class="tabs" style="margin-bottom: 0">
-                <button v-for="t in authTypes" :key="t.value" type="button" class="tab" :class="{ active: form.auth_type === t.value }" @click="form.auth_type = t.value">{{ t.label }}</button>
+                <button v-for="t in authTypes" :key="t.value" type="button" class="tab" :class="{ active: form.auth_type === t.value }" @click="form.auth_type = t.value">{{ $t(t.label) }}</button>
               </div>
             </div>
             <template v-if="form.auth_type !== 'public'">

@@ -153,10 +153,10 @@ const summary = computed(() => `p95 latency per ${props.granularity} over ${prop
           <div class="lc-tip-time">{{ bucketLabel(active.at, granularity) }}</div>
           <template v-if="active.v !== null">
             <div class="lc-tip-row"><i class="k"></i><span>p95</span><b>{{ fmtMs(active.v) }}</b></div>
-            <div class="lc-tip-row"><i class="k k-avg"></i><span>Average</span><b>{{ fmtMs(active.point.avg_latency_ms) }}</b></div>
+            <div class="lc-tip-row"><i class="k k-avg"></i><span>{{ $t('analytics.average') }}</span><b>{{ fmtMs(active.point.avg_latency_ms) }}</b></div>
             <div class="lc-tip-foot">{{ fmtNum(active.point.requests) }} requests</div>
           </template>
-          <div v-else class="lc-tip-foot no-top">No traffic</div>
+          <div v-else class="lc-tip-foot no-top">{{ $t('analytics.noTraffic') }}</div>
         </div>
       </div>
 

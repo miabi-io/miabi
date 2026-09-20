@@ -57,7 +57,7 @@ function switchWorkspace(id: number) {
 async function makeDefaultWorkspace(id: number) {
   try {
     await ws.makeDefault(id)
-    notify.success('Default workspace saved')
+    notify.success(t('notify.workspaces.defaultSaved'))
   } catch (e) {
     notify.apiError(e)
   }

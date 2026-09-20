@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useNotificationStore } from '@/stores/notification'
 
 // CLI onboarding: install → sign in → verify. The sign-in command is the whole
@@ -18,6 +19,7 @@ type InstallTab = 'brew' | 'go' | 'binary' | 'docker'
 // Default the install method to the visitor's platform; Homebrew covers
 // macOS + Linux, Windows users get the prebuilt binary.
 const isWindows = /win/i.test(navigator.userAgent)
+const { t } = useI18n()
 const tab = ref<InstallTab>(isWindows ? 'binary' : 'brew')
 const installTabs: { key: InstallTab; label: string }[] = [
   { key: 'brew', label: 'Homebrew' },
@@ -50,7 +52,7 @@ async function copy(text: string, key: string) {
     copied.value = key
     setTimeout(() => (copied.value = ''), 1500)
   } catch {
-    notify.info(text, { title: 'Copy this command' })
+    notify.info(text, { title: t('cli.copyThisCommand') })
   }
 }
 </script>

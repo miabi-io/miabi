@@ -28,9 +28,9 @@ const search = ref('')
 // what's on screen.
 const ownership = ref<SecretOwnership>('all')
 const ownershipFilters: Array<{ value: SecretOwnership; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: 'unmanaged', label: 'Not managed' },
-  { value: 'managed', label: 'Managed' },
+  { value: 'all', label: 'secretPicker.filter.all' },
+  { value: 'unmanaged', label: 'secretPicker.filter.unmanaged' },
+  { value: 'managed', label: 'secretPicker.filter.managed' },
 ]
 
 const { pageable, goToPage } = usePagination(async (page) => {
@@ -220,7 +220,7 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
         <div class="filters" role="group" :aria-label="$t('secrets.filterByOwnership')">
           <button v-for="f in ownershipFilters" :key="f.value" type="button" class="chip"
             :class="{ active: ownership === f.value }" :aria-pressed="ownership === f.value"
-            @click="setOwnership(f.value)">{{ f.label }}</button>
+            @click="setOwnership(f.value)">{{ $t(f.label) }}</button>
         </div>
         <span class="text-muted">{{ pageable.total_elements }} secret{{ pageable.total_elements === 1 ? '' : 's'
           }}</span>

@@ -22,21 +22,19 @@ defineProps<{ brandName?: string }>()
         </div>
 
         <div class="auth-hero-body">
-          <h2 class="auth-hero-title">Self-hosting,<br />reimagined.</h2>
-          <p class="auth-hero-lead">
-            Deploy, scale, and manage applications from one intuitive platform.
-          </p>
+          <h2 class="auth-hero-title">{{ $t('authHero.titleLine1') }}<br />{{ $t('authHero.titleLine2') }}</h2>
+          <p class="auth-hero-lead">{{ $t('authHero.deployScaleAndManageApplications') }}</p>
           <ul class="auth-hero-features">
-            <li><span class="mdi mdi-package-variant-closed"></span> Built-in Container Registry</li>
-            <li><span class="mdi mdi-lock-check-outline"></span> Secrets &amp; Automatic TLS</li>
-            <li><span class="mdi mdi-infinity"></span> GitOps &amp; Canary Deployments</li>
-            <li><span class="mdi mdi-database-outline"></span> Managed databases, backups &amp; volumes</li>
-            <li><span class="mdi mdi-chart-areaspline"></span> Monitoring &amp; Release History</li>
-            <li><span class="mdi mdi-account-group-outline"></span> Multi-tenant Workspaces &amp; RBAC</li>
+            <li><span class="mdi mdi-package-variant-closed"></span>{{ $t('authHero.builtInContainerRegistry') }}</li>
+            <li><span class="mdi mdi-lock-check-outline"></span>{{ $t('authHero.secretsAutomaticTls') }}</li>
+            <li><span class="mdi mdi-infinity"></span>{{ $t('authHero.gitopsCanaryDeployments') }}</li>
+            <li><span class="mdi mdi-database-outline"></span>{{ $t('authHero.managedDatabasesBackupsVolumes') }}</li>
+            <li><span class="mdi mdi-chart-areaspline"></span>{{ $t('authHero.monitoringReleaseHistory') }}</li>
+            <li><span class="mdi mdi-account-group-outline"></span>{{ $t('authHero.multiTenantWorkspacesRbac') }}</li>
           </ul>
         </div>
 
-        <p class="auth-hero-foot">Open-source · Self-hosted PaaS for Docker</p>
+        <p class="auth-hero-foot">{{ $t('authHero.openSourceSelfHostedPaas') }}</p>
       </div>
     </aside>
 </template>

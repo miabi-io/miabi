@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
@@ -12,6 +13,7 @@ import type { DNSProvider, DNSProviderType, WorkspaceUsage } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const { currentWorkspaceId } = storeToRefs(ws)
 
@@ -84,7 +86,7 @@ async function connect() {
       name: name.value.trim(), type: ptype.value, credentials: filled(creds.value),
       test_zone: testZone.value.trim() || undefined,
     })
-    notify.success('DNS provider connected')
+    notify.success(t('notify.dnsProviders.connected'))
     showConnect.value = false
     load(currentWorkspaceId.value)
   } catch (e) {
@@ -120,7 +122,7 @@ async function rotate() {
       credentials: filled(rotateCreds.value),
       test_zone: rotateZone.value.trim() || undefined,
     })
-    notify.success('Credentials rotated')
+    notify.success(t('notify.dnsProviders.rotated'))
     rotating.value = null
     load(currentWorkspaceId.value)
   } catch (e) {
@@ -149,7 +151,7 @@ async function test() {
     const updated = (await dnsProviderApi.test(currentWorkspaceId.value, p.id, zone)).data.data
     const i = providers.value.findIndex(x => x.id === p.id)
     if (i >= 0) providers.value[i] = updated
-    notify.success('Connection OK')
+    notify.success(t('notify.dnsProviders.connectionOk'))
   } catch (e) {
     notify.apiError(e)
     load(currentWorkspaceId.value)
@@ -167,7 +169,7 @@ async function disconnect() {
   disconnecting.value = true
   try {
     await dnsProviderApi.remove(currentWorkspaceId.value, p.id)
-    notify.success('DNS provider disconnected')
+    notify.success(t('notify.dnsProviders.disconnected'))
     load(currentWorkspaceId.value)
   } catch (e) {
     notify.apiError(e)
@@ -181,32 +183,29 @@ async function disconnect() {
   <div>
     <div class="page-header">
       <div>
-        <h1>DNS Providers</h1>
+        <h1>{{ $t('nav.networking.dnsProviders') }}</h1>
         <p class="subtitle">Connect a DNS host so {{ ws.contextLabel }} can automate ownership verification and app records.</p>
       </div>
       <button v-if="ws.canEdit && allowed" class="btn btn-primary" @click="openConnect">
-        <span class="mdi mdi-plus"></span> Connect provider
-      </button>
+        <span class="mdi mdi-plus"></span>{{ $t('dnsProviders.connectProvider') }}</button>
     </div>
 
     <div v-if="!allowed" class="card">
       <div class="card-body" style="color: var(--warning, #d97706)">
-        <span class="mdi mdi-lock-outline"></span>
-        Connecting DNS providers isn't included in this workspace's plan.
-      </div>
+        <span class="mdi mdi-lock-outline"></span>{{ $t('dnsProviders.notInPlan') }}</div>
     </div>
 
     <div class="card">
       <div v-if="loading && providers.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="providers.length === 0" class="empty-state">
         <span class="mdi mdi-dns" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No DNS providers</h3>
-        <p>Connect Cloudflare, Route 53, or DigitalOcean to automate DNS.</p>
-        <button v-if="ws.canEdit && allowed" class="btn btn-primary mt-4" @click="openConnect">Connect a provider</button>
+        <h3>{{ $t('dnsProviders.noDnsProviders') }}</h3>
+        <p>{{ $t('dnsProviders.emptyHint') }}</p>
+        <button v-if="ws.canEdit && allowed" class="btn btn-primary mt-4" @click="openConnect">{{ $t('dnsProviders.connectAProvider') }}</button>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Name</th><th>Type</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('apps.form.name') }}</th><th>{{ $t('dnsProviders.type') }}</th><th>{{ $t('dashboard.col.status') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="p in providers" :key="p.id">
               <td><span class="cell-title">{{ p.display_name || p.name }}</span></td>
@@ -216,9 +215,9 @@ async function disconnect() {
                 <span v-if="p.last_error" class="cell-sub" :title="p.last_error" style="margin-left: 8px">⚠</span>
               </td>
               <td style="text-align: right">
-                <button v-if="ws.canEdit" class="btn btn-secondary btn-sm" @click="openTest(p)">Test</button>
-                <button v-if="ws.canEdit" class="btn btn-secondary btn-sm" style="margin-left: 8px" @click="openRotate(p)">Rotate</button>
-                <button v-if="ws.canEdit" class="btn btn-danger btn-sm" style="margin-left: 8px" @click="pendingDisconnect = p">Disconnect</button>
+                <button v-if="ws.canEdit" class="btn btn-secondary btn-sm" @click="openTest(p)">{{ $t('dnsProviders.test') }}</button>
+                <button v-if="ws.canEdit" class="btn btn-secondary btn-sm" style="margin-left: 8px" @click="openRotate(p)">{{ $t('dnsProviders.rotate') }}</button>
+                <button v-if="ws.canEdit" class="btn btn-danger btn-sm" style="margin-left: 8px" @click="pendingDisconnect = p">{{ $t('dnsProviders.disconnect') }}</button>
               </td>
             </tr>
           </tbody>
@@ -229,24 +228,24 @@ async function disconnect() {
     <Teleport to="body">
       <AppModal v-if="showConnect" @close="showConnect = false">
         <div class="modal-header">
-          <h3>Connect DNS provider</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showConnect = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('dnsProviders.connectDnsProvider') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showConnect = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="connect">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Name</label>
+              <label class="form-label">{{ $t('apps.form.name') }}</label>
               <input v-model="name" class="form-input" placeholder="e.g. cloudflare-prod" required autofocus />
             </div>
             <div class="form-group">
-              <label class="form-label" for="dns-type">Type</label>
+              <label class="form-label" for="dns-type">{{ $t('dnsProviders.type') }}</label>
               <select
                 id="dns-type"
                 class="form-select"
                 :value="ptype"
                 @change="selectType(($event.target as HTMLSelectElement).value)"
               >
-                <option value="" disabled>Select a provider…</option>
+                <option value="" disabled>{{ $t('dnsProviders.selectAProvider') }}</option>
                 <option v-for="d in catalog ?? []" :key="d.type" :value="d.type">{{ d.label }}</option>
               </select>
             </div>
@@ -260,17 +259,17 @@ async function disconnect() {
                 @update:model-value="creds[f.key] = $event"
               />
               <p v-if="descriptor.docs_url" class="form-hint">
-                <a :href="descriptor.docs_url" target="_blank" rel="noopener">Where to create these credentials</a>
+                <a :href="descriptor.docs_url" target="_blank" rel="noopener">{{ $t('dnsProviders.credentialsDocsLink') }}</a>
               </p>
             </template>
             <div class="form-group" style="margin-bottom: 0">
-              <label class="form-label">Test zone <span class="text-muted">(optional)</span></label>
+              <label class="form-label">{{ $t('dnsProviders.testZone') }}<span class="text-muted">{{ $t('dnsProviders.optional') }}</span></label>
               <input v-model="testZone" class="form-input" placeholder="example.com" style="font-family: monospace" />
-              <p class="form-hint">A domain on this provider; if set, the credential is verified before saving.</p>
+              <p class="form-hint">{{ $t('dnsProviders.testZoneHint') }}</p>
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showConnect = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showConnect = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="saving || !ptype || !credsComplete">{{ saving ? 'Connecting…' : 'Connect' }}</button>
           </div>
         </form>
@@ -281,7 +280,7 @@ async function disconnect() {
       <AppModal v-if="rotating" @close="rotating = null">
         <div class="modal-header">
           <h3>Rotate credentials — {{ rotating.display_name || rotating.name }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="rotating = null"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="rotating = null"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="rotate">
           <div class="modal-body">
@@ -299,13 +298,13 @@ async function disconnect() {
               />
             </template>
             <div class="form-group" style="margin-bottom: 0">
-              <label class="form-label" for="rotate-zone">Test zone <span class="text-muted">(optional)</span></label>
+              <label class="form-label" for="rotate-zone">{{ $t('dnsProviders.testZone') }}<span class="text-muted">{{ $t('dnsProviders.optional') }}</span></label>
               <input id="rotate-zone" v-model="rotateZone" class="form-input" placeholder="example.com" style="font-family: monospace" />
-              <p class="form-hint">If set, the new credential is verified before it replaces the old one.</p>
+              <p class="form-hint">{{ $t('dnsProviders.rotateHint') }}</p>
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="rotating = null">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="rotating = null">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="rotateSaving || !rotateComplete">
               {{ rotateSaving ? 'Rotating…' : 'Rotate' }}
             </button>
@@ -326,7 +325,7 @@ async function disconnect() {
       @cancel="testProvider = null"
     >
       <div class="form-group" style="margin-top: 12px; margin-bottom: 0">
-        <label class="form-label" for="probe-zone">Domain</label>
+        <label class="form-label" for="probe-zone">{{ $t('dnsProviders.domain') }}</label>
         <input id="probe-zone" v-model="probeZone" class="form-input" placeholder="example.com" style="font-family: monospace" @keydown.enter.prevent="test" />
       </div>
     </ConfirmDialog>

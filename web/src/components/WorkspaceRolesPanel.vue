@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { permissionApi, roleApi } from '@/api/rbac'
 import type { CustomRoleInput } from '@/api/rbac'
 import type { PermissionInfo, CustomRole, WorkspaceRole } from '@/api/types'
@@ -11,6 +12,7 @@ import AppModal from '@/components/AppModal.vue'
 const props = defineProps<{ wsId: number; myRole: WorkspaceRole | string }>()
 const emit = defineEmits<{ (e: 'changed'): void }>()
 
+const { t } = useI18n()
 const notify = useNotificationStore()
 const customRoles = useEntitlement('custom_roles')
 
@@ -85,7 +87,7 @@ async function save() {
   try {
     if (editing.value) await roleApi.update(props.wsId, editing.value.id, body)
     else await roleApi.create(props.wsId, body)
-    notify.success(editing.value ? 'Role updated' : 'Role created')
+    notify.success(t(editing.value ? 'notify.roles.updated' : 'notify.roles.created'))
     showModal.value = false
     await load()
     emit('changed')
@@ -104,7 +106,7 @@ async function confirmDelete() {
   deleting.value = true
   try {
     await roleApi.remove(props.wsId, pendingDelete.value.id)
-    notify.success('Role deleted')
+    notify.success(t('notify.roles.deleted'))
     pendingDelete.value = null
     await load()
     emit('changed')
@@ -119,22 +121,21 @@ async function confirmDelete() {
 <template>
   <div class="card">
     <div class="card-header">
-      <h2>Custom roles</h2>
+      <h2>{{ $t('roles.customRoles') }}</h2>
       <button
         v-if="customRoles.has.value"
         class="btn btn-primary btn-sm"
         @click="openCreate"
       >
-        <span class="mdi mdi-plus"></span> New role
-      </button>
+        <span class="mdi mdi-plus"></span>{{ $t('roles.newRole') }}</button>
     </div>
 
     <!-- Locked (Community / not entitled) -->
     <div v-if="!customRoles.has.value" class="card-body locked">
       <span class="mdi mdi-lock-outline"></span>
       <div>
-        <p>Custom roles let you define fine-grained permission sets beyond the built-in roles.</p>
-        <router-link to="/admin/license" class="btn btn-secondary btn-sm">Upgrade</router-link>
+        <p>{{ $t('roles.customRolesLetYouDefine') }}</p>
+        <router-link to="/admin/license" class="btn btn-secondary btn-sm">{{ $t('roles.upgrade') }}</router-link>
       </div>
     </div>
 
@@ -142,7 +143,7 @@ async function confirmDelete() {
       <div v-if="loading" class="spinner"></div>
       <table v-else-if="roles.length" class="table">
         <thead>
-          <tr><th>Name</th><th>Base role</th><th>Permissions</th><th></th></tr>
+          <tr><th>{{ $t('apps.form.name') }}</th><th>{{ $t('roles.baseRole') }}</th><th>{{ $t('roles.permissions') }}</th><th></th></tr>
         </thead>
         <tbody>
           <tr v-for="r in roles" :key="r.id">
@@ -150,13 +151,13 @@ async function confirmDelete() {
             <td><span class="badge badge-neutral">{{ r.base_role }}</span></td>
             <td class="text-muted">{{ r.permissions.length }} permission{{ r.permissions.length === 1 ? '' : 's' }}</td>
             <td class="text-right actions">
-              <button class="btn-icon btn-icon-muted" title="Edit" aria-label="Edit" @click="openEdit(r)"><span class="mdi mdi-pencil"></span></button>
-              <button class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="pendingDelete = r"><span class="mdi mdi-delete"></span></button>
+              <button class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEdit(r)"><span class="mdi mdi-pencil"></span></button>
+              <button class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="pendingDelete = r"><span class="mdi mdi-delete"></span></button>
             </td>
           </tr>
         </tbody>
       </table>
-      <p v-else class="text-muted">No custom roles yet. Create one to grant a tailored permission set.</p>
+      <p v-else class="text-muted">{{ $t('roles.noCustomRolesYetCreate') }}</p>
     </div>
 
     <!-- Editor -->
@@ -164,24 +165,24 @@ async function confirmDelete() {
       <AppModal v-if="showModal" max-width="640px" @close="showModal = false">
         <div class="modal-header">
           <h3>{{ editing ? 'Edit role' : 'New role' }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="save">
           <div class="modal-body">
             <div class="form-row">
               <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="form.name" class="form-input" placeholder="Deployer" aria-label="Name" required autofocus />
+                <label class="form-label">{{ $t('apps.form.name') }}</label>
+                <input v-model="form.name" class="form-input" :placeholder="$t('roles.deployer')" :aria-label="$t('apps.form.name')" required autofocus />
               </div>
               <div class="form-group">
-                <label class="form-label">Base role (rank fallback)</label>
-                <select v-model="form.base_role" class="form-select" aria-label="Base role (rank fallback)">
+                <label class="form-label">{{ $t('roles.baseRoleRankFallback') }}</label>
+                <select v-model="form.base_role" class="form-select" :aria-label="$t('roles.baseRoleRankFallback')">
                   <option v-for="r in baseRoles" :key="r" :value="r">{{ r }}</option>
                 </select>
               </div>
             </div>
 
-            <div class="form-label">Permissions</div>
+            <div class="form-label">{{ $t('roles.permissions') }}</div>
             <div class="matrix">
               <div v-for="(list, resource) in grouped" :key="resource" class="matrix-group">
                 <div class="matrix-resource">{{ resource }}</div>
@@ -204,7 +205,7 @@ async function confirmDelete() {
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showModal = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="saving || !form.name.trim() || form.permissions.size === 0">
               {{ saving ? 'Saving…' : editing ? 'Save' : 'Create role' }}
             </button>

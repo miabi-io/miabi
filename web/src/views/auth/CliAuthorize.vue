@@ -119,11 +119,11 @@ function ssoLogin(slug: string) {
     <!-- Confirm identity (password) -->
     <form v-if="step === 'confirm'" class="auth-form" @submit.prevent="submit">
       <div class="form-group">
-        <label class="form-label">Username or email</label>
+        <label class="form-label">{{ $t('cliAuthorize.usernameOrEmail') }}</label>
         <input v-model="username" type="text" class="form-input" autocomplete="username" required autofocus />
       </div>
       <div class="form-group">
-        <label class="form-label">Password</label>
+        <label class="form-label">{{ $t('cliAuthorize.password') }}</label>
         <input v-model="password" type="password" class="form-input" autocomplete="current-password" required />
       </div>
       <button type="submit" class="btn btn-primary auth-submit" :disabled="loading">
@@ -132,7 +132,7 @@ function ssoLogin(slug: string) {
       </button>
 
       <template v-if="providers.length">
-        <div class="auth-divider"><span>or continue with</span></div>
+        <div class="auth-divider"><span>{{ $t('login.orContinueWith') }}</span></div>
         <button
           v-for="p in providers"
           :key="p.name"
@@ -148,7 +148,7 @@ function ssoLogin(slug: string) {
     <!-- Two-factor -->
     <form v-else-if="step === 'twofactor'" class="auth-form" @submit.prevent="submit">
       <div class="form-group">
-        <label class="form-label">Authentication code</label>
+        <label class="form-label">{{ $t('login.authenticationCode') }}</label>
         <input
           v-model="twoFactorCode"
           type="text"
@@ -169,13 +169,13 @@ function ssoLogin(slug: string) {
     <!-- Delivering to the CLI -->
     <div v-else-if="step === 'done'" class="cli-status">
       <span class="mdi mdi-check-circle cli-status-icon"></span>
-      <p>You can close this window and return to your terminal.</p>
+      <p>{{ $t('cliAuthorize.youCanCloseThisWindow') }}</p>
     </div>
 
     <!-- Bad / missing loopback target -->
     <div v-else class="cli-status">
       <span class="mdi mdi-alert-circle-outline cli-status-icon warn"></span>
-      <p>Re-run <code>miabi login</code> from your terminal to start a new sign-in.</p>
+      <i18n-t keypath="cliAuthorize.reRunHint" tag="p"><template #cmd><code>miabi login</code></template></i18n-t>
     </div>
   </AuthShell>
 </template>

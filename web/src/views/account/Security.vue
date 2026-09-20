@@ -49,7 +49,7 @@ async function changePassword() {
   try {
     await authApi.changePassword(pw.value.current, pw.value.next)
     pw.value = { current: '', next: '', confirm: '' }
-    notify.success('Password changed')
+    notify.success(t('notify.security.passwordChanged'))
   } catch (e) {
     notify.apiError(e, 'Could not change password')
   } finally {
@@ -84,7 +84,7 @@ async function confirmSetup() {
   try {
     recoveryCodes.value = (await authApi.verifyTwoFactor(code.value.trim())).data.data.recovery_codes
     await auth.fetchUser()
-    notify.success('Two-factor authentication enabled')
+    notify.success(t('notify.security.twoFactorEnabled'))
     modal.value = 'codes'
   } catch (e) {
     notify.apiError(e, 'Invalid code')
@@ -105,7 +105,7 @@ async function confirmDisable() {
   try {
     await authApi.disableTwoFactor(code.value.trim())
     await auth.fetchUser()
-    notify.success('Two-factor authentication disabled')
+    notify.success(t('notify.security.twoFactorDisabled'))
     closeModal()
   } catch (e) {
     notify.apiError(e, 'Invalid code')
@@ -126,7 +126,7 @@ async function confirmRegenerate() {
   try {
     recoveryCodes.value = (await authApi.regenerateRecoveryCodes(code.value.trim())).data.data.recovery_codes
     await auth.fetchUser()
-    notify.success('Recovery codes regenerated')
+    notify.success(t('notify.security.codesRegenerated'))
     modal.value = 'codes'
   } catch (e) {
     notify.apiError(e, 'Invalid code')
@@ -137,7 +137,7 @@ async function confirmRegenerate() {
 
 // --- Recovery code helpers ---
 async function copyCodes() {
-  if (await copyText(recoveryCodes.value.join('\n'))) notify.success('Copied')
+  if (await copyText(recoveryCodes.value.join('\n'))) notify.success(t('notify.common.copied'))
   else notify.error(t('notify.security.copyFailedSelectAndCopy'))
 }
 
@@ -155,28 +155,28 @@ function downloadCodes() {
 <template>
   <div>
     <div class="page-header">
-      <h1>Security</h1>
+      <h1>{{ $t('security.security') }}</h1>
     </div>
 
     <div class="card">
       <div class="card-header">
-        <h2>Password</h2>
+        <h2>{{ $t('security.password') }}</h2>
       </div>
       <div class="card-body">
-        <p class="sec-desc">Change the password you use to sign in to Miabi.</p>
+        <p class="sec-desc">{{ $t('security.passwordSubtitle') }}</p>
         <form class="pw-form" @submit.prevent="changePassword">
           <div class="form-group">
-            <label class="form-label">Current password</label>
-            <input v-model="pw.current" type="password" class="form-input" autocomplete="current-password" aria-label="Current password" required />
+            <label class="form-label">{{ $t('security.currentPassword') }}</label>
+            <input v-model="pw.current" type="password" class="form-input" autocomplete="current-password" :aria-label="$t('security.currentPassword')" required />
           </div>
           <div class="form-group">
-            <label class="form-label">New password</label>
-            <input v-model="pw.next" type="password" class="form-input" autocomplete="new-password" minlength="8" aria-label="New password" required />
-            <p class="form-hint">At least 8 characters.</p>
+            <label class="form-label">{{ $t('security.newPassword') }}</label>
+            <input v-model="pw.next" type="password" class="form-input" autocomplete="new-password" minlength="8" :aria-label="$t('security.newPassword')" required />
+            <p class="form-hint">{{ $t('security.passwordHint') }}</p>
           </div>
           <div class="form-group">
-            <label class="form-label">Confirm new password</label>
-            <input v-model="pw.confirm" type="password" class="form-input" autocomplete="new-password" aria-label="Confirm new password" required />
+            <label class="form-label">{{ $t('security.confirmNewPassword') }}</label>
+            <input v-model="pw.confirm" type="password" class="form-input" autocomplete="new-password" :aria-label="$t('security.confirmNewPassword')" required />
           </div>
           <p v-if="pwError" class="pw-error"><span class="mdi mdi-alert-circle-outline"></span> {{ pwError }}</p>
           <div>
@@ -190,18 +190,15 @@ function downloadCodes() {
 
     <div class="card">
       <div class="card-header">
-        <h2>Two-factor authentication</h2>
-        <span v-if="enabled" class="badge badge-success badge-dot">enabled</span>
-        <span v-else class="badge badge-neutral">disabled</span>
+        <h2>{{ $t('security.twoFactorAuthentication') }}</h2>
+        <span v-if="enabled" class="badge badge-success badge-dot">{{ $t('security.enabled') }}</span>
+        <span v-else class="badge badge-neutral">{{ $t('security.disabled') }}</span>
       </div>
 
       <div v-if="loading" class="card-body"><span class="spinner"></span></div>
 
       <div v-else class="card-body">
-        <p class="sec-desc">
-          Add an extra layer of security to your account by requiring a time-based code from an
-          authenticator app (Google Authenticator, 1Password, Authy…) in addition to your password.
-        </p>
+        <p class="sec-desc">{{ $t('security.twoFactorHint') }}</p>
 
         <template v-if="!enabled">
           <button class="btn btn-primary" :disabled="busy" @click="startSetup">
@@ -214,24 +211,24 @@ function downloadCodes() {
           <div class="sec-status">
             <span class="mdi mdi-shield-check" style="color: var(--success-600)"></span>
             <span>
-              Two-factor authentication is on.
-              <strong>{{ codesRemaining }}</strong> recovery code{{ codesRemaining === 1 ? '' : 's' }} remaining.
+              {{ $t('security.twoFactorOn') }}
+              <i18n-t keypath="security.codesRemaining" :plural="codesRemaining" tag="span">
+                <template #n><strong>{{ codesRemaining }}</strong></template>
+              </i18n-t>
             </span>
           </div>
           <div v-if="codesRemaining > 0 && codesRemaining <= 3" class="app-banner app-banner--warning sec-low">
             <span class="mdi mdi-alert-outline app-banner-icon"></span>
             <div class="app-banner-content">
-              <p class="app-banner-title">You're running low on recovery codes</p>
-              <p class="app-banner-text">Regenerate a fresh set so you don't get locked out.</p>
+              <p class="app-banner-title">{{ $t('security.lowOnCodes') }}</p>
+              <p class="app-banner-text">{{ $t('security.regenerateHint') }}</p>
             </div>
           </div>
           <div class="sec-actions">
             <button class="btn btn-secondary" @click="openRegenerate">
-              <span class="mdi mdi-refresh"></span> Regenerate recovery codes
-            </button>
+              <span class="mdi mdi-refresh"></span>{{ $t('security.regenerateRecoveryCodes') }}</button>
             <button class="btn btn-danger" @click="openDisable">
-              <span class="mdi mdi-shield-off-outline"></span> Disable
-            </button>
+              <span class="mdi mdi-shield-off-outline"></span>{{ $t('security.disable') }}</button>
           </div>
         </template>
       </div>
@@ -241,38 +238,37 @@ function downloadCodes() {
       <!-- Setup: QR + verify -->
       <AppModal v-if="modal === 'setup'" @close="closeModal">
         <div class="modal-header">
-          <h3>Set up two-factor authentication</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="closeModal"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('security.setUpTwoFactorAuthentication') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="closeModal"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="confirmSetup">
           <div class="modal-body">
             <ol class="sec-steps">
-              <li>Scan this QR code with your authenticator app.</li>
-              <li>Enter the 6-digit code it shows to confirm.</li>
+              <li>{{ $t('security.scanHint') }}</li>
+              <li>{{ $t('security.enterCodeHint') }}</li>
             </ol>
             <div class="sec-qr">
-              <img v-if="setup" :src="setup.qr_code" alt="TOTP QR code" width="200" height="200" />
+              <img v-if="setup" :src="setup.qr_code" :alt="$t('security.totpQrCode')" width="200" height="200" />
             </div>
-            <p class="sec-manual">
-              Can't scan? Enter this key manually:
-              <code class="sec-secret">{{ setup?.secret }}</code>
-            </p>
+            <i18n-t keypath="security.manualKey" tag="p" class="sec-manual">
+              <template #key><code class="sec-secret">{{ setup?.secret }}</code></template>
+            </i18n-t>
             <div class="form-group" style="margin-bottom: 0">
-              <label class="form-label">Verification code</label>
+              <label class="form-label">{{ $t('security.verificationCode') }}</label>
               <input
                 v-model="code"
                 class="form-input totp-input"
                 inputmode="numeric"
                 placeholder="123456"
                 autocomplete="one-time-code"
-                aria-label="Verification code"
+                :aria-label="$t('security.verificationCode')"
                 required
                 autofocus
               />
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="closeModal">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="closeModal">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="busy">
               {{ busy ? 'Verifying…' : 'Verify & enable' }}
             </button>
@@ -283,17 +279,15 @@ function downloadCodes() {
       <!-- Recovery codes display -->
       <AppModal v-if="modal === 'codes'" @close="closeModal">
         <div class="modal-header">
-          <h3>Save your recovery codes</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="closeModal"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('security.saveCodes') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="closeModal"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
           <div class="app-banner app-banner--warning">
             <span class="mdi mdi-alert-outline app-banner-icon"></span>
             <div class="app-banner-content">
-              <p class="app-banner-title">Store these somewhere safe</p>
-              <p class="app-banner-text">
-                Each code works once if you lose access to your authenticator. They won't be shown again.
-              </p>
+              <p class="app-banner-title">{{ $t('security.storeSafely') }}</p>
+              <p class="app-banner-text">{{ $t('security.recoveryCodesHint') }}</p>
             </div>
           </div>
           <div class="sec-codes">
@@ -301,9 +295,9 @@ function downloadCodes() {
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="copyCodes">Copy</button>
-          <button type="button" class="btn btn-secondary" @click="downloadCodes">Download</button>
-          <button type="button" class="btn btn-primary" @click="closeModal">Done</button>
+          <button type="button" class="btn btn-secondary" @click="copyCodes">{{ $t('security.copy') }}</button>
+          <button type="button" class="btn btn-secondary" @click="downloadCodes">{{ $t('security.download') }}</button>
+          <button type="button" class="btn btn-primary" @click="closeModal">{{ $t('security.done') }}</button>
         </div>
       </AppModal>
 
@@ -311,7 +305,7 @@ function downloadCodes() {
       <AppModal v-if="modal === 'disable' || modal === 'regenerate'" max-width="460px" @close="closeModal">
         <div class="modal-header">
           <h3>{{ modal === 'disable' ? 'Disable two-factor' : 'Regenerate recovery codes' }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="closeModal"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="closeModal"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="modal === 'disable' ? confirmDisable() : confirmRegenerate()">
           <div class="modal-body">
@@ -334,7 +328,7 @@ function downloadCodes() {
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="closeModal">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="closeModal">{{ $t('action.cancel') }}</button>
             <button
               type="submit"
               class="btn"

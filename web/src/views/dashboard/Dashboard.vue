@@ -86,7 +86,7 @@ async function accept(inv: PendingInvitation) {
   acceptingId.value = inv.id
   try {
     await workspaceApi.acceptInvitation(inv.id)
-    notify.success(`Joined ${inv.workspace_name}`)
+    notify.success(t('notify.workspaces.joined', { name: inv.workspace_name }))
     await ws.fetchWorkspaces()
     ws.setWorkspace(inv.workspace_id)
     await loadInvitations()

@@ -238,7 +238,7 @@ onBeforeUnmount(() => {
                 <div class="user-dropdown-divider"></div>
                 <div class="user-dropdown-theme">
                   <div class="user-dropdown-theme-label">
-                    <span class="mdi mdi-theme-light-dark"></span> Theme
+                    <span class="mdi mdi-theme-light-dark"></span> {{ $t('shell.theme') }}
                   </div>
                   <div class="theme-switcher">
                     <button v-for="m in themeModes" :key="m" :class="['theme-btn', { active: theme.mode === m }]"

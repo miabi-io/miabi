@@ -38,10 +38,10 @@ const exportHref = computed(() =>
 )
 
 const tabs = [
-  { name: 'Overview', to: '/analytics', icon: 'mdi-view-dashboard-outline' },
-  { name: 'HTTP Traffic', to: '/analytics/http', icon: 'mdi-earth' },
-  { name: 'Performance', to: '/analytics/performance', icon: 'mdi-speedometer' },
-  { name: 'Web Analytics', to: '/analytics/web', icon: 'mdi-account-group-outline' },
+  { name: 'analytics.tab.overview', to: '/analytics', icon: 'mdi-view-dashboard-outline' },
+  { name: 'analytics.tab.httpTraffic', to: '/analytics/http', icon: 'mdi-earth' },
+  { name: 'analytics.tab.performance', to: '/analytics/performance', icon: 'mdi-speedometer' },
+  { name: 'analytics.tab.webAnalytics', to: '/analytics/web', icon: 'mdi-account-group-outline' },
 ]
 
 // Seed the store from ?range=&app= on entry (deep-link / reload), before loading.
@@ -92,7 +92,7 @@ function onAppChange(e: Event) {
   <div class="a-header">
     <div class="a-topline">
       <div class="a-title">
-        <h1>Analytics</h1>
+        <h1>{{ $t('analytics.analytics') }}</h1>
         <span class="a-ns">{{ ws.contextLabel }}</span>
         <span v-if="rangeWindow" class="a-window" :title="`All times shown in your local timezone (${tz})`">
           <span class="mdi mdi-clock-outline"></span> {{ rangeWindow }}
@@ -101,14 +101,13 @@ function onAppChange(e: Event) {
       <div class="a-controls">
         <span v-if="live !== null" class="a-live" :class="{ idle: live === 0 }" :title="liveLabel">
           <i class="a-live-dot"></i>
-          <b>{{ live }}</b> live
-        </span>
+          <b>{{ live }}</b>{{ $t('analytics.live') }}</span>
         <select
           :value="appFilter ?? ''"
           class="form-select a-select" style="max-width: 180px;"
           @change="onAppChange"
         >
-          <option value="">All applications</option>
+          <option value="">{{ $t('analytics.allApplications') }}</option>
           <option v-for="id in appIds" :key="id" :value="id">{{ appNames[id] || `App #${id}` }}</option>
         </select>
         <div class="a-range">
@@ -121,7 +120,7 @@ function onAppChange(e: Event) {
             :title="rangeLocked(r.key) ? `Retention is limited to ${report?.retention_days} days on this plan — upgrade to Enterprise for longer history` : ''"
             @click="store.setRange(r.key)"
           >
-            {{ r.label }}
+            {{ $t(r.label) }}
             <span v-if="rangeLocked(r.key)" class="mdi mdi-lock-outline lock"></span>
           </button>
         </div>
@@ -130,24 +129,22 @@ function onAppChange(e: Event) {
           class="a-export"
           :href="exportHref"
           download="analytics.csv"
-          title="Export the analytics time series as CSV"
+          :title="$t('analytics.exportTheAnalyticsTimeSeries')"
         >
-          <span class="mdi mdi-download"></span> Export
-        </a>
+          <span class="mdi mdi-download"></span>{{ $t('analytics.export') }}</a>
         <button
           v-else
           class="a-export locked"
           disabled
-          title="CSV export is an Enterprise feature"
+          :title="$t('analytics.csvExportIsAnEnterprise')"
         >
-          <span class="mdi mdi-lock-outline"></span> Export
-        </button>
+          <span class="mdi mdi-lock-outline"></span>{{ $t('analytics.export') }}</button>
       </div>
     </div>
 
     <nav class="a-tabs">
-      <RouterLink v-for="t in tabs" :key="t.to" :to="{ path: t.to, query: route.query }" class="a-tab" active-class="active" exact-active-class="active">
-        <span class="mdi" :class="t.icon"></span> {{ t.name }}
+      <RouterLink v-for="item in tabs" :key="item.to" :to="{ path: item.to, query: route.query }" class="a-tab" active-class="active" exact-active-class="active">
+        <span class="mdi" :class="item.icon"></span> {{ $t(item.name) }}
       </RouterLink>
     </nav>
   </div>

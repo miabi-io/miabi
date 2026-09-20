@@ -10,8 +10,11 @@
 // `hole` is the inner radius as a fraction of the outer one; 0 draws a solid
 // pie instead of a ring.
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { AnalyticsStatus } from '@/api/analytics'
 import { fmtNum } from './format'
+
+const { t } = useI18n()
 
 // The legend is a column of percentages, so they all carry the same precision —
 // the shared fmtPct switches decimals below 10% and would set 97.9% next to
@@ -43,10 +46,10 @@ interface Slice {
 }
 
 const slices = computed<Slice[]>(() => [
-  { key: '2xx', label: '2xx', hint: 'Success', count: props.status.s2xx },
-  { key: '3xx', label: '3xx', hint: 'Redirects', count: props.status.s3xx },
-  { key: '4xx', label: '4xx', hint: 'Client errors', count: props.status.s4xx },
-  { key: '5xx', label: '5xx', hint: 'Server errors', count: props.status.s5xx },
+  { key: '2xx', label: '2xx', hint: t('analytics.status.success'), count: props.status.s2xx },
+  { key: '3xx', label: '3xx', hint: t('analytics.status.redirects'), count: props.status.s3xx },
+  { key: '4xx', label: '4xx', hint: t('analytics.status.clientErrors'), count: props.status.s4xx },
+  { key: '5xx', label: '5xx', hint: t('analytics.status.serverErrors'), count: props.status.s5xx },
 ])
 
 const total = computed(() => slices.value.reduce((a, s) => a + s.count, 0))
@@ -145,7 +148,7 @@ const summary = computed(
         </template>
         <template v-else>
           <div class="sp-c-value">{{ fmtNum(total) }}</div>
-          <div class="sp-c-label">requests</div>
+          <div class="sp-c-label">{{ $t('analytics.requests') }}</div>
         </template>
       </div>
     </div>

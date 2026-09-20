@@ -33,12 +33,12 @@ async function copyWorkspaceId(id: number) {
 }
 
 const scopeOptions = [
-  { value: 'read', label: 'Read', hint: 'Read-only access to all resources' },
-  { value: 'write', label: 'Write', hint: 'Create, update, and delete resources' },
-  { value: 'deploy', label: 'Deploy', hint: 'Trigger deployments and lifecycle actions' },
-  { value: 'admin', label: 'Admin', hint: 'Administrative operations' },
-  { value: 'registry_read', label: 'Registry: Pull', hint: 'Pull images from the container registry' },
-  { value: 'registry_write', label: 'Registry: Push', hint: 'Push images to the container registry' },
+  { value: 'read', label: 'apiKeys.scope.read', hint: 'apiKeys.scope.readHint' },
+  { value: 'write', label: 'apiKeys.scope.write', hint: 'apiKeys.scope.writeHint' },
+  { value: 'deploy', label: 'apiKeys.scope.deploy', hint: 'apiKeys.scope.deployHint' },
+  { value: 'admin', label: 'apiKeys.scope.admin', hint: 'apiKeys.scope.adminHint' },
+  { value: 'registry_read', label: 'apiKeys.scope.registry_read', hint: 'apiKeys.scope.registry_readHint' },
+  { value: 'registry_write', label: 'apiKeys.scope.registry_write', hint: 'apiKeys.scope.registry_writeHint' },
 ]
 
 // A key carrying only registry scopes is limited to docker login/push/pull — it
@@ -47,12 +47,12 @@ const registryOnly = computed(
   () => scopes.value.length > 0 && scopes.value.every((s) => s.startsWith('registry_')),
 )
 const expiryOptions = [
-  { label: 'Never', value: 'never' },
-  { label: '30 days', value: '30' },
-  { label: '60 days', value: '60' },
-  { label: '90 days', value: '90' },
-  { label: '180 days', value: '180' },
-  { label: '365 days', value: '365' },
+  { label: 'apiKeys.expiry.never', value: 'never' },
+  { label: 'apiKeys.expiry.d30', value: '30' },
+  { label: 'apiKeys.expiry.d60', value: '60' },
+  { label: 'apiKeys.expiry.d90', value: '90' },
+  { label: 'apiKeys.expiry.d180', value: '180' },
+  { label: 'apiKeys.expiry.d365', value: '365' },
 ]
 
 const showCreate = ref(false)
@@ -303,7 +303,7 @@ function formatDate(s: string | null): string {
               <div class="form-group">
                 <label class="form-label">{{ $t('apiKeys.expiration') }}</label>
                 <select v-model="expiry" class="form-select" :aria-label="$t('apiKeys.expiration')">
-                  <option v-for="opt in expiryOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                  <option v-for="opt in expiryOptions" :key="opt.value" :value="opt.value">{{ $t(opt.label) }}</option>
                 </select>
                 <small class="form-hint">{{ $t('apiKeys.neverHint') }}</small>
               </div>
@@ -314,8 +314,8 @@ function formatDate(s: string | null): string {
                   <label v-for="opt in scopeOptions" :key="opt.value" class="scope-option">
                     <input type="checkbox" :checked="scopes.includes(opt.value)" @change="toggleScope(opt.value)" />
                     <span class="scope-text">
-                      <strong>{{ opt.label }}</strong>
-                      <small>{{ opt.hint }}</small>
+                      <strong>{{ $t(opt.label) }}</strong>
+                      <small>{{ $t(opt.hint) }}</small>
                     </span>
                   </label>
                 </div>
