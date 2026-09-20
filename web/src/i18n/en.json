@@ -35,6 +35,7 @@
     "changeItAnyway": "Change it anyway",
     "completeRecovery": "Complete recovery",
     "confirm": "Confirm",
+    "continue": "Continue",
     "copy": "Copy",
     "create": "Create",
     "delete": "Delete",
@@ -731,6 +732,16 @@
     "when": "When",
     "youNeedOwnerOrAdmin": "You need owner or admin access to view this workspace's audit log."
   },
+  "auth": {
+    "chooseLanguage": "Choose a language",
+    "darkMode": "Dark mode",
+    "hidePassword": "Hide password",
+    "language": "Language",
+    "lightMode": "Light mode",
+    "showPassword": "Show password",
+    "switchToDark": "Switch to dark mode",
+    "switchToLight": "Switch to light mode"
+  },
   "authHero": {
     "builtInContainerRegistry": "Built-in Container Registry",
     "deployScaleAndManageApplications": "Deploy, scale, and manage applications from one intuitive platform.",
@@ -847,7 +858,8 @@
     "atLeast8Characters": "At least 8 characters",
     "passwordsDonTMatch": "Passwords don't match.",
     "reEnterYourNewPassword": "Re-enter your new password",
-    "setANewPassword": "Set a new password"
+    "setANewPassword": "Set a new password",
+    "subtitle": "Your password was set by an administrator. Choose your own to continue."
   },
   "cli": {
     "allReleases": "all releases",
@@ -1651,7 +1663,10 @@
   },
   "forgotPassword": {
     "email": "Email",
-    "sent": "If an account exists for {email}, a password reset link is on its way. The link expires in one hour."
+    "sent": "If an account exists for {email}, a password reset link is on its way. The link expires in one hour.",
+    "sentTitle": "Check your email",
+    "subtitle": "Enter your account email and we'll send you a reset link.",
+    "title": "Reset your password"
   },
   "generator": {
     "base64url": "base64url",
@@ -1881,15 +1896,45 @@
     "createOne": "Create one",
     "emailOrUsername": "Email or username",
     "enterYourPassword": "Enter your password",
+    "findingProvider": "Finding provider…",
     "forgotPassword": "Forgot password?",
+    "invalidCode": "Invalid code",
+    "invalidCredentials": "Invalid credentials",
     "noAccount": "Don't have an account? {link}.",
     "noAccountContactAdmin": "Don't have an account? Contact your platform administrator.",
+    "noSsoProvider": "No single sign-on provider was found for that email.",
+    "oauthError": {
+      "accountDisabled": "Your account has been disabled.",
+      "cancelled": "Single sign-on was cancelled.",
+      "domainNotAllowed": "Your email domain is not allowed for this provider.",
+      "failed": "Single sign-on failed. Please try again.",
+      "generic": "Sign in failed. Please try again.",
+      "invalidState": "Your sign-in session expired. Please try again.",
+      "noEmail": "The provider did not share an email address.",
+      "providerUnavailable": "That sign-in provider is unavailable.",
+      "registrationClosed": "This account does not exist and sign-up is disabled.",
+      "tokenError": "Could not start your session. Please try again."
+    },
     "orContinueWith": "or continue with",
     "password": "Password",
+    "signIn": "Sign in",
+    "signingIn": "Signing in…",
+    "signingYouIn": "Signing you in…",
     "siteLinks": "Site links",
     "ssoHint": "We'll redirect you to your organization's sign-in provider.",
+    "subtitle": {
+      "sso": "Enter your email to find your sign-in provider",
+      "twoFactor": "Enter the code from your authenticator app",
+      "welcome": "Sign in to your {brand} workspace"
+    },
+    "title": {
+      "sso": "Continue with SSO",
+      "welcome": "Welcome to {brand}"
+    },
     "totpHint": "Enter the 6-digit code from your authenticator app, or a recovery code.",
     "useADifferentAccount": "Use a different account",
+    "verify": "Verify",
+    "verifying": "Verifying…",
     "workEmail": "Work email"
   },
   "marketplace": {
@@ -2846,11 +2891,14 @@
     "yourUniqueHandleLowercaseLetters": "Your unique handle — lowercase letters, digits, and hyphens. Used as a directory identifier."
   },
   "register": {
+    "doneTitle": "Account created",
     "email": "Email",
     "goToSignIn": "Go to sign in",
     "password": "Password",
     "ready": "If {email} can be registered, your account is ready. You can sign in now.",
-    "sentVerification": "If {email} can be registered, a verification link is on its way. Verify your address, then sign in."
+    "sentVerification": "If {email} can be registered, a verification link is on its way. Verify your address, then sign in.",
+    "subtitle": "Sign up to get started.",
+    "title": "Create your {brand} account"
   },
   "registries": {
     "addARegistry": "Add a registry",
@@ -2949,9 +2997,12 @@
     "atLeast8Characters": "At least 8 characters",
     "confirmPassword": "Confirm password",
     "continueToSignIn": "Continue to sign in",
+    "doneTitle": "Password updated",
     "passwordsDonTMatch": "Passwords don't match.",
     "reEnterYourNewPassword": "Re-enter your new password",
-    "requestANewLink": "Request a new link"
+    "requestANewLink": "Request a new link",
+    "subtitle": "Enter a new password for your account.",
+    "title": "Choose a new password"
   },
   "roles": {
     "baseRole": "Base role",
@@ -3187,6 +3238,9 @@
   },
   "shell": {
     "close": "Close",
+    "footer": {
+      "poweredBy": "Powered by {miabi}"
+    },
     "menu": {
       "about": "About",
       "cli": "CLI access",
@@ -3273,8 +3327,12 @@
   },
   "verifyEmail": {
     "checkingYourLink": "Checking your link.",
+    "done": "Email verified",
+    "failed": "Could not verify",
     "goToSignIn": "Go to sign in",
+    "oneMoment": "One moment…",
     "verificationLinksExpireAndCan": "Verification links expire and can only be used once. Sign in to have a new one sent, or ask your platform administrator to verify the address for you.",
+    "working": "Verifying your email",
     "yourAddressIsConfirmedYou": "Your address is confirmed. You can sign in now."
   },
   "volumes": {

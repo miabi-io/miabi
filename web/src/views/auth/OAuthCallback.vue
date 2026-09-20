@@ -30,7 +30,7 @@ onMounted(async () => {
 <template>
   <div class="auth-callback">
     <span class="spinner"></span>
-    <p>{{ error || 'Signing you in…' }}</p>
+    <p>{{ error || $t('login.signingYouIn') }}</p>
   </div>
 </template>
 

@@ -285,7 +285,11 @@ onBeforeUnmount(() => {
         <div class="footer-left">
           <span>&copy; {{ currentYear }} Miabi Project</span>
           <span class="footer-sep">·</span>
-          <span>Miabi</span>
+          <i18n-t keypath="shell.footer.poweredBy" tag="span">
+            <template #miabi>
+              <a href="https://miabi.io" target="_blank" rel="noopener noreferrer" class="footer-brand">Miabi</a>
+            </template>
+          </i18n-t>
         </div>
         <div class="footer-right">
           <RouterLink to="/about" class="footer-link">
@@ -1112,6 +1116,8 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
+.footer-brand { color: inherit; font-weight: 600; text-decoration: none; }
+.footer-brand:hover { color: var(--primary-600); text-decoration: underline; }
 .footer-sep {
   opacity: 0.5;
 }

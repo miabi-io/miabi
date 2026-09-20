@@ -35,6 +35,7 @@
     "changeItAnyway": "Modifier quand même",
     "completeRecovery": "Terminer la restauration",
     "confirm": "Confirmer",
+    "continue": "Continuer",
     "copy": "Copier",
     "create": "Créer",
     "delete": "Supprimer",
@@ -731,6 +732,16 @@
     "when": "Quand",
     "youNeedOwnerOrAdmin": "Vous devez être propriétaire ou administrateur pour consulter le journal d’audit de cet espace de travail."
   },
+  "auth": {
+    "chooseLanguage": "Choisir une langue",
+    "darkMode": "Mode sombre",
+    "hidePassword": "Masquer le mot de passe",
+    "language": "Langue",
+    "lightMode": "Mode clair",
+    "showPassword": "Afficher le mot de passe",
+    "switchToDark": "Passer au mode sombre",
+    "switchToLight": "Passer au mode clair"
+  },
   "authHero": {
     "builtInContainerRegistry": "Registre de conteneurs intégré",
     "deployScaleAndManageApplications": "Déployez, mettez à l’échelle et gérez vos applications depuis une seule plateforme intuitive.",
@@ -847,7 +858,8 @@
     "atLeast8Characters": "Au moins 8 caractères",
     "passwordsDonTMatch": "Les mots de passe ne correspondent pas.",
     "reEnterYourNewPassword": "Ressaisissez votre nouveau mot de passe",
-    "setANewPassword": "Définir un nouveau mot de passe"
+    "setANewPassword": "Définir un nouveau mot de passe",
+    "subtitle": "Votre mot de passe a été défini par un administrateur. Choisissez le vôtre pour continuer."
   },
   "cli": {
     "allReleases": "toutes les versions",
@@ -1651,7 +1663,10 @@
   },
   "forgotPassword": {
     "email": "E-mail",
-    "sent": "Si un compte existe pour {email}, un lien de réinitialisation du mot de passe est en route. Le lien expire dans une heure."
+    "sent": "Si un compte existe pour {email}, un lien de réinitialisation du mot de passe est en route. Le lien expire dans une heure.",
+    "sentTitle": "Consultez votre e-mail",
+    "subtitle": "Saisissez l’e-mail de votre compte et nous vous enverrons un lien de réinitialisation.",
+    "title": "Réinitialisez votre mot de passe"
   },
   "generator": {
     "base64url": "base64url",
@@ -1881,15 +1896,45 @@
     "createOne": "Créez-en un",
     "emailOrUsername": "E-mail ou nom d’utilisateur",
     "enterYourPassword": "Saisissez votre mot de passe",
+    "findingProvider": "Recherche du fournisseur…",
     "forgotPassword": "Mot de passe oublié ?",
+    "invalidCode": "Code invalide",
+    "invalidCredentials": "Identifiants invalides",
     "noAccount": "Vous n’avez pas de compte ? {link}.",
     "noAccountContactAdmin": "Vous n’avez pas de compte ? Contactez l’administrateur de votre plateforme.",
+    "noSsoProvider": "Aucun fournisseur d’authentification unique n’a été trouvé pour cet e-mail.",
+    "oauthError": {
+      "accountDisabled": "Votre compte a été désactivé.",
+      "cancelled": "L’authentification unique a été annulée.",
+      "domainNotAllowed": "Votre domaine e-mail n’est pas autorisé pour ce fournisseur.",
+      "failed": "L’authentification unique a échoué. Veuillez réessayer.",
+      "generic": "La connexion a échoué. Veuillez réessayer.",
+      "invalidState": "Votre session de connexion a expiré. Veuillez réessayer.",
+      "noEmail": "Le fournisseur n’a pas communiqué d’adresse e-mail.",
+      "providerUnavailable": "Ce fournisseur de connexion est indisponible.",
+      "registrationClosed": "Ce compte n’existe pas et les inscriptions sont désactivées.",
+      "tokenError": "Impossible de démarrer votre session. Veuillez réessayer."
+    },
     "orContinueWith": "ou continuer avec",
     "password": "Mot de passe",
+    "signIn": "Se connecter",
+    "signingIn": "Connexion…",
+    "signingYouIn": "Connexion en cours…",
     "siteLinks": "Liens du site",
     "ssoHint": "Nous vous redirigerons vers le fournisseur de connexion de votre organisation.",
+    "subtitle": {
+      "sso": "Saisissez votre e-mail pour trouver votre fournisseur de connexion",
+      "twoFactor": "Saisissez le code de votre application d’authentification",
+      "welcome": "Connectez-vous à votre espace de travail {brand}"
+    },
+    "title": {
+      "sso": "Continuer avec le SSO",
+      "welcome": "Bienvenue sur {brand}"
+    },
     "totpHint": "Saisissez le code à 6 chiffres de votre application d’authentification, ou un code de récupération.",
     "useADifferentAccount": "Utiliser un autre compte",
+    "verify": "Vérifier",
+    "verifying": "Vérification…",
     "workEmail": "E-mail professionnel"
   },
   "marketplace": {
@@ -2846,11 +2891,14 @@
     "yourUniqueHandleLowercaseLetters": "Votre identifiant unique — lettres minuscules, chiffres et tirets. Utilisé comme identifiant d’annuaire."
   },
   "register": {
+    "doneTitle": "Compte créé",
     "email": "E-mail",
     "goToSignIn": "Aller à la connexion",
     "password": "Mot de passe",
     "ready": "Si {email} peut être enregistré, votre compte est prêt. Vous pouvez vous connecter dès maintenant.",
-    "sentVerification": "Si {email} peut être enregistré, un lien de vérification est en route. Vérifiez votre adresse, puis connectez-vous."
+    "sentVerification": "Si {email} peut être enregistré, un lien de vérification est en route. Vérifiez votre adresse, puis connectez-vous.",
+    "subtitle": "Inscrivez-vous pour commencer.",
+    "title": "Créez votre compte {brand}"
   },
   "registries": {
     "addARegistry": "Ajouter un registre",
@@ -2949,9 +2997,12 @@
     "atLeast8Characters": "Au moins 8 caractères",
     "confirmPassword": "Confirmer le mot de passe",
     "continueToSignIn": "Continuer vers la connexion",
+    "doneTitle": "Mot de passe mis à jour",
     "passwordsDonTMatch": "Les mots de passe ne correspondent pas.",
     "reEnterYourNewPassword": "Ressaisissez votre nouveau mot de passe",
-    "requestANewLink": "Demander un nouveau lien"
+    "requestANewLink": "Demander un nouveau lien",
+    "subtitle": "Saisissez un nouveau mot de passe pour votre compte.",
+    "title": "Choisissez un nouveau mot de passe"
   },
   "roles": {
     "baseRole": "Rôle de base",
@@ -3187,6 +3238,9 @@
   },
   "shell": {
     "close": "Fermer",
+    "footer": {
+      "poweredBy": "Propulsé par {miabi}"
+    },
     "menu": {
       "about": "À propos",
       "cli": "Accès CLI",
@@ -3273,8 +3327,12 @@
   },
   "verifyEmail": {
     "checkingYourLink": "Vérification de votre lien.",
+    "done": "E-mail vérifié",
+    "failed": "Vérification impossible",
     "goToSignIn": "Aller à la connexion",
+    "oneMoment": "Un instant…",
     "verificationLinksExpireAndCan": "Les liens de vérification expirent et ne peuvent être utilisés qu’une fois. Connectez-vous pour en recevoir un nouveau, ou demandez à l’administrateur de votre plateforme de vérifier l’adresse pour vous.",
+    "working": "Vérification de votre e-mail",
     "yourAddressIsConfirmedYou": "Votre adresse est confirmée. Vous pouvez vous connecter dès maintenant."
   },
   "volumes": {

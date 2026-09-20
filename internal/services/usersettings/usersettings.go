@@ -8,6 +8,7 @@ package usersettings
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/miabi-io/miabi/internal/models"
@@ -17,7 +18,7 @@ var (
 	ErrNotMember          = errors.New("you are not a member of this workspace")
 	ErrInvalidTheme       = errors.New("theme must be one of: system, light, dark")
 	ErrInvalidAccent      = errors.New("accent must be one of: default, blue, indigo, slate, orange, lime")
-	ErrInvalidLocale      = errors.New("locale must be one of: en, fr")
+	ErrInvalidLocale      = fmt.Errorf("locale must be one of: %s", strings.Join(models.Locales(), ", "))
 	ErrInvalidLandingView = errors.New("landing view is not a known console section")
 	ErrAccentLocked       = errors.New("the accent is set by your organization")
 )

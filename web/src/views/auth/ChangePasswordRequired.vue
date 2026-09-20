@@ -52,7 +52,7 @@ function signOut() {
 <template>
   <AuthShell
     :title="$t('changePassword.setANewPassword')"
-    subtitle="Your password was set by an administrator. Choose your own to continue."
+    :subtitle="$t('changePassword.subtitle')"
     :error="error"
   >
     <form class="auth-form" @submit.prevent="submit">
@@ -73,7 +73,7 @@ function signOut() {
           <button
             type="button"
             class="password-toggle"
-            :aria-label="showPassword ? 'Hide password' : 'Show password'"
+            :aria-label="$t(showPassword ? 'auth.hidePassword' : 'auth.showPassword')"
             @click="showPassword = !showPassword"
           >
             <span class="mdi" :class="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"></span>

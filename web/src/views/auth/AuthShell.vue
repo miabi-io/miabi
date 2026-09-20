@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import AuthHero from './AuthHero.vue'
+import AuthLanguagePicker from '@/components/AuthLanguagePicker.vue'
+import AuthFooter from '@/components/AuthFooter.vue'
 
 // Single-card chrome shared by the secondary auth pages. The form and a footer
 // link come from slots; the alert and success notice are props so their styling
@@ -59,8 +61,11 @@ withDefaults(
       <div v-if="$slots.footer" class="auth-footer">
         <slot name="footer" />
       </div>
+
+      <AuthFooter />
     </div>
     </div>
+    <AuthLanguagePicker />
   </div>
 </template>
 
