@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import LocationPicker from '@/components/LocationPicker.vue'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -10,6 +11,7 @@ import type { DatabaseInstance, DatabaseSize, DatabaseSizeOffer, DBEngine, DBSta
 import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const router = useRouter()
 const { currentWorkspaceId } = storeToRefs(ws)
@@ -164,7 +166,7 @@ async function create() {
     await databaseApi.create(currentWorkspaceId.value, f.name.trim(), f.engine, f.version.trim() || undefined, f.server_id || undefined,
       Number(f.size_mb) || undefined, f.location || undefined,
       f.size ? undefined : Number(f.memory_mb) || undefined, f.size ? undefined : Number(f.cpu_cores) || undefined, f.size || undefined)
-    notify.success('Database provisioning…')
+    notify.success(t('databases.provisioning'))
     showCreate.value = false
     reconcile(currentWorkspaceId.value) // pull in the new row; SSE then drives it to running
   } catch (e) {
@@ -190,11 +192,11 @@ function fmtBytes(n?: number): string {
   <div>
     <div class="page-header">
       <div>
-        <h1>Databases</h1>
+        <h1>{{ $t('nav.data.databases') }}</h1>
         <p class="subtitle">Managed database instances Miabi provisions and runs for {{ ws.contextLabel }}.</p>
       </div>
       <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate">
-        <span class="mdi mdi-plus"></span> New database
+        <span class="mdi mdi-plus"></span> {{ $t('dashboard.quick.newDatabase.label') }}
       </button>
     </div>
 
@@ -202,13 +204,13 @@ function fmtBytes(n?: number): string {
       <div v-if="loading && dbs.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="dbs.length === 0" class="empty-state">
         <span class="mdi mdi-database-outline" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No databases yet</h3>
-        <p>Provision PostgreSQL, MySQL, MariaDB, Redis, or MongoDB in one click.</p>
-        <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="openCreate">Provision a database</button>
+        <h3>{{ $t('databases.empty') }}</h3>
+        <p>{{ $t('databases.emptyHint') }}</p>
+        <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="openCreate">{{ $t('databases.provision') }}</button>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Database</th><th>Engine</th><th>Node</th><th>Size</th><th>Status</th></tr></thead>
+          <thead><tr><th>{{ $t('databases.col.database') }}</th><th>{{ $t('databases.col.engine') }}</th><th>{{ $t('dashboard.col.node') }}</th><th>{{ $t('databases.col.size') }}</th><th>{{ $t('dashboard.col.status') }}</th></tr></thead>
           <tbody>
             <tr v-for="d in dbs" :key="d.id" class="row-clickable" @click="router.push(`/databases/${d.id}`)">
               <td>
@@ -236,18 +238,18 @@ function fmtBytes(n?: number): string {
     <Teleport to="body">
       <AppModal v-if="showCreate" @close="showCreate = false">
         <div class="modal-header">
-          <h3>New database</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('dashboard.quick.newDatabase.label') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="create">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Name</label>
-              <input v-model="form.name" class="form-input" placeholder="e.g. app-db" required autofocus />
+              <label class="form-label">{{ $t('apps.form.name') }}</label>
+              <input v-model="form.name" class="form-input" :placeholder="$t('databases.form.namePlaceholder')" required autofocus />
             </div>
             <LocationPicker v-model="form.location" v-model:server-id="form.server_id" />
             <div class="form-group">
-              <label class="form-label">Engine</label>
+              <label class="form-label">{{ $t('databases.col.engine') }}</label>
               <div class="engine-grid">
                 <button
                   v-for="e in engines"
@@ -262,37 +264,36 @@ function fmtBytes(n?: number): string {
               </div>
             </div>
             <div class="form-group">
-              <label class="form-label">Version / tag <span class="text-muted">(optional)</span></label>
+              <label class="form-label">{{ $t('databases.form.version') }} <span class="text-muted">{{ $t('apps.form.optional') }}</span></label>
               <input v-model="form.version" class="form-input" :placeholder="defaultVersion" />
-              <p class="form-hint">Image tag for <code>{{ form.engine }}:{{ form.version.trim() || defaultVersion }}</code>. Leave blank for the default.</p>
+              <p class="form-hint"><i18n-t keypath="databases.form.versionHint" tag="span"><template #tag><code>{{ form.engine }}:{{ form.version.trim() || defaultVersion }}</code></template></i18n-t></p>
             </div>
             <div v-if="sizeOffer.sizes.length" class="form-group">
-              <label class="form-label">Size</label>
+              <label class="form-label">{{ $t('databases.col.size') }}</label>
               <select v-model="form.size" class="form-select">
-                <option v-if="!sizeOffer.bound" value="">Custom</option>
+                <option v-if="!sizeOffer.bound" value="">{{ $t('databases.form.custom') }}</option>
                 <option v-for="s in sizeOffer.sizes" :key="s.id" :value="s.name">{{ sizeLabel(s) }}{{ s.id === sizeOffer.default_id ? ' (default)' : '' }}</option>
               </select>
               <p class="form-hint">{{ sizeOffer.bound ? 'The sizes this workspace’s plan offers.' : 'A named size, or Custom to set memory and CPU yourself.' }}</p>
             </div>
             <div v-if="!form.size" class="form-group">
-              <label class="form-label">Resources <span class="text-muted">(optional)</span></label>
+              <label class="form-label">{{ $t('dashboard.resources.title') }} <span class="text-muted">{{ $t('apps.form.optional') }}</span></label>
               <div class="flex gap-3">
-                <input v-model.number="form.memory_mb" type="number" min="0" class="form-input" placeholder="Memory (MB)" aria-label="Memory in MB" />
-                <input v-model.number="form.cpu_cores" type="number" min="0" step="0.25" class="form-input" placeholder="CPU cores" aria-label="CPU cores" />
+                <input v-model.number="form.memory_mb" type="number" min="0" class="form-input" :placeholder="$t('databases.form.memory')" :aria-label="$t('databases.form.memoryAria')" />
+                <input v-model.number="form.cpu_cores" type="number" min="0" step="0.25" class="form-input" :placeholder="$t('databases.form.cpu')" :aria-label="$t('databases.form.cpu')" />
               </div>
               <p class="form-hint">
-                Container limits; the engine is tuned to the memory. Left empty they are unlimited, or the engine's
-                default size when the workspace's plan caps database resources. They can be changed later.
+                {{ $t('databases.form.resourcesHint') }}
               </p>
             </div>
             <div class="form-group" style="margin-bottom: 0">
-              <label class="form-label">Data volume size (MB) <span class="text-muted">(optional)</span></label>
-              <input v-model.number="form.size_mb" type="number" min="0" class="form-input" placeholder="Leave empty for no declared limit" />
-              <p class="form-hint">Declared capacity of the instance's data volume, recorded for quota accounting. Hard enforcement depends on the node's storage backend.</p>
+              <label class="form-label">{{ $t('databases.form.volumeSize') }} <span class="text-muted">{{ $t('apps.form.optional') }}</span></label>
+              <input v-model.number="form.size_mb" type="number" min="0" class="form-input" :placeholder="$t('databases.form.noLimit')" />
+              <p class="form-hint">{{ $t('databases.form.volumeHint') }}</p>
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showCreate = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="creating">{{ creating ? 'Provisioning…' : 'Create database' }}</button>
           </div>
         </form>
