@@ -173,8 +173,9 @@ Everything in the console is also in the REST API, the CLI, and the Terraform pr
 ### Identity, teams & access
 
 - **Auth** — registration, login with email or username, password reset, JWT sessions with Redis-backed revocation, **API tokens**, and **2FA (TOTP)**
-- **SSO & directory** — OAuth 2.0 / OIDC (GitHub, Google, generic OIDC). Enterprise adds **SAML 2.0**, **SCIM** provisioning, and **LDAP / Active Directory** sign-in on the normal login form, with directory groups mapped onto platform-admin and per-workspace roles
-- **Workspaces & teams** — members, invitations, and organizations; each workspace has a unique **name** handle (its URL and `docker login` namespace) plus a display name, and each user a unique username
+- **SSO & directory** — OAuth 2.0 / OIDC (GitHub, Google, generic OIDC), attachable to an organization so a customer's people land in the customer's realm. Enterprise adds **SAML 2.0**, **SCIM** provisioning, and **LDAP / Active Directory** sign-in on the normal login form, with directory groups mapped onto platform-admin and per-workspace roles
+- **Workspaces & teams** — members and invitations; each workspace has a unique **name** handle (its URL and `docker login` namespace) plus a display name, and each user a unique username
+- **Organizations** — tenant realms that own workspaces and the accounts in them, each with an owner, a workspace cap, its own SSO provider (accounts registered through it land in that realm), and optionally its own **dedicated locations**: nodes nobody else can place on.
 - **RBAC** — **Owner · Admin · Developer · Viewer**, enforced in middleware *and* by `workspace_id` scoping. Enterprise adds custom roles and per-resource policies (a role on a single app, domain, or database)
 - **Container security profiles** — an optional non-root "restricted" profile runs app and job containers as a platform UID with `no-new-privileges`; outbound webhooks are SSRF-guarded
 - **Plans & quotas**, per-workspace **encryption keys** (keyring/DEK), key rotation, and crypto-shred on delete
@@ -185,7 +186,7 @@ Everything in the console is also in the REST API, the CLI, and the Terraform pr
 - **Analytics** — requests/sec, status mix, bandwidth, top routes; p50/p95/p99 latency with a **gateway-vs-upstream split** ("is my app slow, or the gateway?"), error rate, and Apdex; unique visitors, top pages, referrers, countries, and device families. Cookieless, no consent banner, IPs never stored, unique visitors via **HyperLogLog** sketches rather than per-person rows
 - **Log storage** — deployment, pipeline, job, and backup logs externalized from Postgres to a shared filesystem store with a bounded DB tail, retention, size caps, and full-log download; live tailing unchanged
 - Append-only **audit log** of every mutating action, with optional **SIEM streaming** over syslog or webhook (Enterprise)
-- **Admin platform** — nodes and cluster, users, plans, settings, OAuth providers, SSO, license, and SIEM
+- **Admin platform** — nodes and clusters, organizations, users, plans, settings, OAuth providers, SSO, license, and SIEM
 
 ### Marketplace
 
