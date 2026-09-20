@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
@@ -15,6 +16,7 @@ import AppModal from '@/components/AppModal.vue'
 const route = useRoute()
 const router = useRouter()
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 
 const stackId = computed(() => Number(route.params.id))
@@ -179,7 +181,7 @@ async function saveEdit() {
       display_name: editForm.value.displayName.trim(),
       description: editForm.value.description.trim(),
     })
-    notify.success('Stack updated')
+    notify.success(t('notify.stacks.updated'))
     showEdit.value = false
     load()
   } catch (e) {
@@ -196,7 +198,7 @@ async function addApp() {
   if (!wid.value || !selectedAppId.value) return
   try {
     await stackApi.addApp(wid.value, stackId.value, selectedAppId.value)
-    notify.success('Application added to stack')
+    notify.success(t('notify.stacks.appAdded'))
     showAdd.value = false
     load()
   } catch (e) {
@@ -212,7 +214,7 @@ async function confirmRemoveApp() {
   removing.value = true
   try {
     await stackApi.removeApp(wid.value, stackId.value, pendingRemove.value.id)
-    notify.success('Application removed from stack')
+    notify.success(t('notify.stacks.appRemoved'))
     pendingRemove.value = null
     load()
   } catch (e) {
@@ -287,10 +289,9 @@ async function importEnv() {
   try {
     const res = (await stackApi.importEnvVars(wid.value, stackId.value, envImport.value.content, envImport.value.secret)).data.data
     const pending = res?.apps_pending_redeploy ?? 0
-    notify.success(
-      `Imported ${res?.imported ?? 0} variable(s)` +
-      (pending ? ` — ${pending} app${pending === 1 ? '' : 's'} need${pending === 1 ? 's' : ''} a redeploy` : ''),
-    )
+    const imported = res?.imported ?? 0
+    const msg = t('notify.common.varsImported', imported)
+    notify.success(pending ? `${msg} — ${t('notify.stacks.appsPendingRedeploy', pending)}` : msg)
     showEnvImport.value = false
     envImport.value = { content: '', secret: false }
     envVars.value = (await stackApi.envVars(wid.value, stackId.value)).data.data ?? []
@@ -306,7 +307,7 @@ async function confirmDelete() {
   if (!wid.value) return
   try {
     await stackApi.remove(wid.value, stackId.value, deleteWithApps.value)
-    notify.success(deleteWithApps.value ? 'Stack and its applications deleted' : 'Stack deleted')
+    notify.success(t(deleteWithApps.value ? 'notify.stacks.deletedWithApps' : 'notify.stacks.deleted'))
     router.push('/stacks')
   } catch (e) {
     notify.apiError(e)
@@ -342,8 +343,7 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
     <div class="page-header">
       <div>
         <button class="btn btn-ghost btn-sm" @click="router.push('/stacks')">
-          <span class="mdi mdi-arrow-left"></span> Stacks
-        </button>
+          <span class="mdi mdi-arrow-left"></span>{{ $t('stacks.stacks') }}</button>
         <!-- The display name is the editable label; the handle is permanent, so
              both are shown rather than only the one that can change. -->
         <h1 style="margin-top: 8px">
@@ -352,9 +352,9 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
             {{ aggregate.running }}/{{ aggregate.total }} running
           </span>
         </h1>
-        <div class="text-muted text-sm">{{ stack.description || 'No description' }}</div>
+        <div class="text-muted text-sm">{{ stack.description || $t('stacks.noDescription') }}</div>
         <div class="text-muted text-sm">
-          <code>{{ stack.name }}</code> · Docker project: <code>{{ stack.docker_name }}</code>
+          <code>{{ stack.name }}</code> {{ $t('stacks.dockerProject') }} <code>{{ stack.docker_name }}</code>
         </div>
       </div>
       <div class="flex items-center gap-2">
@@ -371,22 +371,21 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
           <button class="btn btn-secondary btn-sm" :disabled="!!busyAction" @click="lifecycle('restart')">
             <span class="mdi mdi-restart"></span> {{ busyAction === 'restart' ? 'Restarting…' : 'Restart' }}
           </button>
-          <button class="btn btn-secondary btn-sm" :disabled="!!busyAction" title="Restart one app at a time" @click="lifecycle('restart', true)">
+          <button class="btn btn-secondary btn-sm" :disabled="!!busyAction" :title="$t('stacks.rollingRestart')" @click="lifecycle('restart', true)">
             <span class="mdi mdi-sync"></span> {{ busyAction === 'rolling' ? 'Rolling…' : 'Rolling' }}
           </button>
           <span class="header-divider"></span>
         </template>
-        <button v-if="ws.canEdit" class="btn btn-secondary btn-sm" @click="openEdit">Edit</button>
-        <button v-if="ws.canEdit" class="btn btn-danger btn-sm" @click="deleteWithApps = false; showDelete = true">Delete</button>
+        <button v-if="ws.canEdit" class="btn btn-secondary btn-sm" @click="openEdit">{{ $t('action.edit') }}</button>
+        <button v-if="ws.canEdit" class="btn btn-danger btn-sm" @click="deleteWithApps = false; showDelete = true">{{ $t('action.delete') }}</button>
       </div>
     </div>
 
     <div class="card">
       <div class="card-header flex items-center justify-between">
-        <h3>Applications</h3>
+        <h3>{{ $t('stacks.applications') }}</h3>
         <button v-if="ws.canEdit" class="btn btn-primary btn-sm" @click="openAdd" :disabled="available.length === 0">
-          <span class="mdi mdi-plus"></span> Add application
-        </button>
+          <span class="mdi mdi-plus"></span>{{ $t('stacks.addApplication') }}</button>
       </div>
       <!-- A shared env var reaches a container only at deploy time, so say plainly
            which members are still running the old values and offer the fix. -->
@@ -410,12 +409,12 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
       <div v-if="loading && !stack.apps" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="!stack.apps || stack.apps.length === 0" class="empty-state">
         <span class="mdi mdi-cube-outline" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No applications in this stack</h3>
-        <p>Add an application to group it under this stack.</p>
+        <h3>{{ $t('stacks.noApps') }}</h3>
+        <p>{{ $t('stacks.addAppHint') }}</p>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Application</th><th>Source</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('stacks.application') }}</th><th>{{ $t('stacks.source') }}</th><th>{{ $t('dashboard.col.status') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="a in stack.apps" :key="a.id" class="row-clickable" @click="router.push(`/apps/${a.id}`)">
               <td>
@@ -427,10 +426,9 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
                       <span
                         v-if="a.redeploy_required"
                         class="badge badge-warning"
-                        title="Configuration changed since this app was last deployed — redeploy to apply it"
+                        :title="$t('stacks.redeployHint')"
                       >
-                        <span class="mdi mdi-alert-outline"></span> Redeploy required
-                      </span>
+                        <span class="mdi mdi-alert-outline"></span>{{ $t('stacks.redeployRequired') }}</span>
                     </span>
                     <span class="cell-sub">{{ a.name }}</span>
                   </span>
@@ -439,7 +437,7 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
               <td class="cell-sub">{{ a.source_type === 'git' ? a.git_repo : `${a.image}:${a.tag || 'latest'}` }}</td>
               <td><span class="badge badge-dot" :class="badge(a.status)">{{ a.status }}</span></td>
               <td class="text-right" @click.stop>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Remove from stack" aria-label="Remove from stack" @click="pendingRemove = a">
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('stacks.removeFromStack')" :aria-label="$t('stacks.removeFromStack')" @click="pendingRemove = a">
                   <span class="mdi mdi-link-variant-off"></span>
                 </button>
               </td>
@@ -452,22 +450,21 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
     <!-- Shared environment variables -->
     <div class="card" style="margin-top: 20px">
       <div class="card-header">
-        <h3>Shared environment</h3>
+        <h3>{{ $t('stacks.sharedEnvironment') }}</h3>
         <div class="flex items-center gap-2">
-          <button v-if="ws.canEdit" class="btn btn-secondary btn-sm" @click="showEnvImport = true"><span class="mdi mdi-import"></span> Import .env</button>
-          <button v-if="ws.canEdit" class="btn btn-primary btn-sm" @click="openEnvModal"><span class="mdi mdi-plus"></span> Add variable</button>
+          <button v-if="ws.canEdit" class="btn btn-secondary btn-sm" @click="showEnvImport = true"><span class="mdi mdi-import"></span>{{ $t('stacks.importEnv') }}</button>
+          <button v-if="ws.canEdit" class="btn btn-primary btn-sm" @click="openEnvModal"><span class="mdi mdi-plus"></span>{{ $t('stacks.addVariable') }}</button>
         </div>
       </div>
       <div class="card-body">
-        <p class="text-muted text-sm" style="margin-top: 0">Injected into every app in the stack on its next deploy. An app's own variable with the same key wins.</p>
+        <p class="text-muted text-sm" style="margin-top: 0">{{ $t('stacks.sharedEnvHint') }}</p>
         <table v-if="envVars.length" style="margin-bottom: 12px">
           <tbody>
             <tr v-for="v in envVars" :key="v.id">
               <td class="cell-title" style="font-family: monospace">
                 {{ v.key }}
-                <span v-if="v.is_secret" class="badge badge-neutral env-tag" title="Encrypted at rest">
-                  <span class="mdi mdi-lock-outline"></span> secret
-                </span>
+                <span v-if="v.is_secret" class="badge badge-neutral env-tag" :title="$t('stacks.encryptedAtRest')">
+                  <span class="mdi mdi-lock-outline"></span>{{ $t('stacks.secret') }}</span>
                 <!-- An app's own variable wins, so a shared value can be set here
                      and never reach the app it was meant for. -->
                 <span
@@ -482,7 +479,7 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
               <td class="cell-sub" style="font-family: monospace">
                 <template v-if="v.is_secret">
                   <code v-if="revealedEnv[v.key] !== undefined">{{ revealedEnv[v.key] }}</code>
-                  <span v-else aria-label="Hidden secret value">••••••••</span>
+                  <span v-else :aria-label="$t('stacks.hiddenSecretValue')">••••••••</span>
                 </template>
                 <code v-else>{{ v.value }}</code>
               </td>
@@ -497,28 +494,26 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
                 >
                   <span class="mdi" :class="revealingEnv === v.key ? 'mdi-loading mdi-spin' : (revealedEnv[v.key] !== undefined ? 'mdi-eye-off-outline' : 'mdi-eye-outline')"></span>
                 </button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" title="Edit" aria-label="Edit" @click="openEnvEdit(v)"><span class="mdi mdi-pencil-outline"></span></button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="deleteEnv(v.key)"><span class="mdi mdi-delete-outline"></span></button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEnvEdit(v)"><span class="mdi mdi-pencil-outline"></span></button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="deleteEnv(v.key)"><span class="mdi mdi-delete-outline"></span></button>
               </td>
             </tr>
           </tbody>
         </table>
-        <p v-if="!envVars.length" class="text-muted text-sm" style="margin-bottom: 0">
-          No shared variables yet.
-        </p>
+        <p v-if="!envVars.length" class="text-muted text-sm" style="margin-bottom: 0">{{ $t('stacks.noSharedVars') }}</p>
       </div>
     </div>
 
-    <MetadataCard :metadata="stack.metadata" title="Metadata" style="margin-top: 20px" />
+    <MetadataCard :metadata="stack.metadata" :title="$t('stacks.metadata')" style="margin-top: 20px" />
 
-    <MetadataCard :metadata="stack.annotations" title="Annotations" :reserved="false" style="margin-top: 20px" />
+    <MetadataCard :metadata="stack.annotations" :title="$t('stacks.annotations')" :reserved="false" style="margin-top: 20px" />
 
     <!-- Activity feed -->
     <div class="card" style="margin-top: 20px">
-      <div class="card-header"><h3>Activity</h3></div>
+      <div class="card-header"><h3>{{ $t('stacks.activity') }}</h3></div>
       <div v-if="events.length === 0" class="empty-state" style="padding: 28px">
         <span class="mdi mdi-timeline-text-outline" style="font-size: 32px; color: var(--text-muted)"></span>
-        <p>No activity yet.</p>
+        <p>{{ $t('dashboard.events.empty') }}</p>
       </div>
       <ul v-else class="timeline">
         <li v-for="e in events" :key="e.id" class="event row-clickable" @click="router.push(`/apps/${e.application_id}`)">
@@ -547,80 +542,76 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
 
       <AppModal v-if="showAdd" @close="showAdd = false">
         <div class="modal-header">
-          <h3>Add application</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showAdd = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('stacks.addApplication') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showAdd = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="addApp">
           <div class="modal-body">
             <div class="form-group" style="margin-bottom: 0">
-              <label class="form-label">Application</label>
-              <select v-model="selectedAppId" class="form-select" aria-label="Application">
+              <label class="form-label">{{ $t('stacks.application') }}</label>
+              <select v-model="selectedAppId" class="form-select" :aria-label="$t('stacks.application')">
                 <option v-for="a in available" :key="a.id" :value="a.id">{{ a.name }}</option>
               </select>
-              <p class="form-hint">Compose labels apply when the application is next deployed.</p>
+              <p class="form-hint">{{ $t('stacks.labelsHint') }}</p>
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showAdd = false">Cancel</button>
-            <button type="submit" class="btn btn-primary" :disabled="!selectedAppId">Add</button>
+            <button type="button" class="btn btn-secondary" @click="showAdd = false">{{ $t('action.cancel') }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="!selectedAppId">{{ $t('stacks.add') }}</button>
           </div>
         </form>
       </AppModal>
 
       <AppModal v-if="showEdit" @close="showEdit = false">
         <div class="modal-header">
-          <h3>Edit stack</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showEdit = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('stacks.editStack') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showEdit = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="saveEdit">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Display name</label>
-              <input v-model="editForm.displayName" class="form-input" aria-label="Display name" autofocus />
-              <p class="form-hint">The label shown in the console. Leave blank to fall back to the stack's name.</p>
+              <label class="form-label">{{ $t('oauth.displayName') }}</label>
+              <input v-model="editForm.displayName" class="form-input" :aria-label="$t('oauth.displayName')" autofocus />
+              <p class="form-hint">{{ $t('stacks.displayNameHint') }}</p>
             </div>
             <!-- The name is the stack's identity, not a label: its Compose project
                  name, its Docker network and the key GitOps matches it by are all
                  derived from it. Shown read-only so it is visible without looking
                  editable. -->
             <div class="form-group">
-              <label class="form-label">Name</label>
-              <input :value="stack.name" class="form-input" aria-label="Name" readonly disabled
+              <label class="form-label">{{ $t('apps.form.name') }}</label>
+              <input :value="stack.name" class="form-input" :aria-label="$t('apps.form.name')" readonly disabled
                 style="font-family: monospace" />
-              <p class="form-hint">
-                Permanent. The Docker project name (<code>{{ stack.docker_name }}</code>), the stack's network and its
-                GitOps identity all derive from it. To use a different name, create a new stack and move the apps
-                across.
-              </p>
+              <i18n-t keypath="stacks.nameHint" tag="p" class="form-hint"><template #project><code>{{ stack.docker_name }}</code></template></i18n-t>
             </div>
             <div class="form-group" style="margin-bottom: 0">
-              <label class="form-label">Description <span class="text-muted">(optional)</span></label>
-              <input v-model="editForm.description" class="form-input" aria-label="Description" />
+              <label class="form-label">{{ $t('plans.description') }}<span class="text-muted">{{ $t('stacks.optional') }}</span></label>
+              <input v-model="editForm.description" class="form-input" :aria-label="$t('plans.description')" />
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showEdit = false">Cancel</button>
-            <button type="submit" class="btn btn-primary">Save</button>
+            <button type="button" class="btn btn-secondary" @click="showEdit = false">{{ $t('action.cancel') }}</button>
+            <button type="submit" class="btn btn-primary">{{ $t('action.save') }}</button>
           </div>
         </form>
       </AppModal>
 
       <AppModal v-if="showEnvImport" max-width="560px" @close="showEnvImport = false">
         <div class="modal-header">
-          <h3>Import shared .env</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showEnvImport = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('stacks.importSharedEnv') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showEnvImport = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="importEnv">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Paste KEY=VALUE lines</label>
-              <textarea v-model="envImport.content" class="form-input" rows="10" spellcheck="false" style="font-family: monospace; font-size: 12px" placeholder="SHARED_SECRET=...&#10;# comments and blank lines are ignored&#10;REGION=eu" aria-label="Paste KEY=VALUE lines" required></textarea>
+              <label class="form-label">{{ $t('stacks.pasteKeyValueLines') }}</label>
+              <textarea v-model="envImport.content" class="form-input" rows="10" spellcheck="false" style="font-family: monospace; font-size: 12px" placeholder="SHARED_SECRET=...&#10;# comments and blank lines are ignored&#10;REGION=eu" :aria-label="$t('stacks.pasteKeyValueLines')" required></textarea>
             </div>
-            <label class="checkbox-label" style="margin-bottom: 0"><input type="checkbox" v-model="envImport.secret" /> Mark all as secrets (encrypted)</label>
-            <p class="form-hint">Existing keys are overwritten. Applies to each app on its next deploy.</p>
+            <label class="checkbox-label" style="margin-bottom: 0"><input type="checkbox" v-model="envImport.secret" />{{ $t('stacks.markAllSecrets') }}</label>
+            <p class="form-hint">{{ $t('stacks.importHint') }}</p>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showEnvImport = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showEnvImport = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="importingEnv">{{ importingEnv ? 'Importing…' : 'Import' }}</button>
           </div>
         </form>
@@ -628,11 +619,11 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
 
       <AppModal v-if="showDelete" @close="showDelete = false">
         <div class="modal-header">
-          <h3>Delete stack</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDelete = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('stacks.deleteStack') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showDelete = false"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
-          <p>Delete <strong>{{ stack.name }}</strong>?</p>
+          <p>{{ $t('action.delete') }}<strong>{{ stack.name }}</strong>?</p>
           <label class="checkbox-label" style="margin-top: 8px">
             <input type="checkbox" v-model="deleteWithApps" />
             Also delete its {{ stack.apps?.length ?? 0 }} application(s) and their containers
@@ -640,7 +631,7 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
           <p class="text-muted text-sm">{{ deleteWithApps ? 'Applications and their containers will be permanently removed.' : 'Applications are detached and keep running.' }}</p>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="showDelete = false">Cancel</button>
+          <button type="button" class="btn btn-secondary" @click="showDelete = false">{{ $t('action.cancel') }}</button>
           <button type="button" class="btn btn-danger" @click="confirmDelete">{{ deleteWithApps ? 'Delete stack & apps' : 'Delete stack' }}</button>
         </div>
       </AppModal>

@@ -67,17 +67,17 @@ async function save() {
     const saved = editing.value
       ? (await gitRepositoryApi.update(currentWorkspaceId.value, editing.value.id, form.value)).data.data
       : (await gitRepositoryApi.create(currentWorkspaceId.value, form.value)).data.data
-    const verb = editing.value ? 'updated' : 'added'
+    const edited = !!editing.value
     if (saved?.connection_status === 'failed') {
       // Saved, but it does not work: an error toast, because it needs fixing —
       // and the repository is on the list either way, with the reason on its row.
-      notify.error(t('notify.gitRepositories.gitRepositoryButTheConnection', { verb: verb }), {
+      notify.error(t(edited ? 'notify.gitRepositories.updatedButFailed' : 'notify.gitRepositories.addedButFailed'), {
         detail: saved.connection_error || undefined,
       })
     } else if (saved?.connection_status === 'ok') {
-      notify.success(`Git repository ${verb} — connection verified`)
+      notify.success(t(edited ? 'notify.gitRepositories.updatedVerified' : 'notify.gitRepositories.addedVerified'))
     } else {
-      notify.success(`Git repository ${verb}`)
+      notify.success(t(edited ? 'notify.gitRepositories.updated' : 'notify.gitRepositories.added'))
     }
     showModal.value = false
     load(currentWorkspaceId.value)
@@ -93,7 +93,7 @@ async function test(r: GitRepository) {
   testing.value = r.id
   try {
     await gitRepositoryApi.test(currentWorkspaceId.value, r.id)
-    notify.success(`${r.name}: connection succeeded`)
+    notify.success(t('notify.gitRepositories.connectionOk', { name: r.name }))
   } catch (e) {
     notify.apiError(e, 'Connection failed')
   } finally {
@@ -134,7 +134,7 @@ async function confirmDelete() {
   deleting.value = true
   try {
     await gitRepositoryApi.remove(currentWorkspaceId.value, pendingDelete.value.id)
-    notify.success('Git repository deleted')
+    notify.success(t('notify.gitRepositories.deleted'))
     pendingDelete.value = null
     load(currentWorkspaceId.value)
   } catch (e) {
@@ -155,25 +155,24 @@ const authTypes: { value: GitAuthType; label: string }[] = [
   <div>
     <div class="page-header">
       <div>
-        <h1>Git Repositories</h1>
-        <p class="subtitle">Public or private repositories used at build time and by GitOps.</p>
+        <h1>{{ $t('nav.sources.gitRepositories') }}</h1>
+        <p class="subtitle">{{ $t('gitRepos.subtitle') }}</p>
       </div>
       <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate">
-        <span class="mdi mdi-plus"></span> New repository
-      </button>
+        <span class="mdi mdi-plus"></span>{{ $t('gitRepos.newRepository') }}</button>
     </div>
 
     <div class="card">
       <div v-if="loading && items.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="items.length === 0" class="empty-state">
         <span class="mdi mdi-git" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No git repositories yet</h3>
-        <p>Add a GitHub, GitLab, or Bitbucket repository — public, or private with a token or SSH key.</p>
-        <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="openCreate">Add a repository</button>
+        <h3>{{ $t('gitRepos.noGitRepositoriesYet') }}</h3>
+        <p>{{ $t('gitRepos.emptyHint') }}</p>
+        <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="openCreate">{{ $t('gitRepos.addARepository') }}</button>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Repository</th><th>URL</th><th>Auth</th><th>Connection</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('gitRepos.repository') }}</th><th>URL</th><th>{{ $t('gitRepos.auth') }}</th><th>{{ $t('gitRepos.connection') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="r in items" :key="r.id">
               <td>
@@ -204,11 +203,11 @@ const authTypes: { value: GitAuthType; label: string }[] = [
                 </span>
               </td>
               <td class="text-right table-actions">
-                <button class="btn-icon btn-icon-muted" title="Test connection" aria-label="Test connection" :disabled="testing === r.id" @click="test(r)">
+                <button class="btn-icon btn-icon-muted" :title="$t('ldap.testConnection')" :aria-label="$t('ldap.testConnection')" :disabled="testing === r.id" @click="test(r)">
                   <span class="mdi" :class="testing === r.id ? 'mdi-loading mdi-spin' : 'mdi-connection'"></span>
                 </button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" title="Edit" aria-label="Edit" @click="openEdit(r)"><span class="mdi mdi-pencil-outline"></span></button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="pendingDelete = r"><span class="mdi mdi-delete-outline"></span></button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEdit(r)"><span class="mdi mdi-pencil-outline"></span></button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="pendingDelete = r"><span class="mdi mdi-delete-outline"></span></button>
               </td>
             </tr>
           </tbody>
@@ -220,44 +219,41 @@ const authTypes: { value: GitAuthType; label: string }[] = [
       <AppModal v-if="showModal" @close="showModal = false">
         <div class="modal-header">
           <h3>{{ editing ? 'Edit repository' : 'New repository' }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="save">
           <div class="modal-body">
             <div v-if="!editing" class="form-group">
-              <label class="form-label">Name</label>
-              <input v-model="form.name" class="form-input" placeholder="e.g. acme/api" required autofocus aria-label="Name" />
-              <p class="form-hint">Permanent. Choose carefully — to change it later you have to delete and recreate the repository.</p>
+              <label class="form-label">{{ $t('apps.form.name') }}</label>
+              <input v-model="form.name" class="form-input" placeholder="e.g. acme/api" required autofocus :aria-label="$t('apps.form.name')" />
+              <p class="form-hint">{{ $t('gitRepos.authTypeHint') }}</p>
             </div>
             <template v-else>
               <div class="form-group">
-                <label class="form-label">Display name</label>
-                <input v-model="form.display_name" class="form-input" autofocus aria-label="Display name" />
-                <p class="form-hint">The label shown in the console. Leave blank to fall back to the name.</p>
+                <label class="form-label">{{ $t('oauth.displayName') }}</label>
+                <input v-model="form.display_name" class="form-input" autofocus :aria-label="$t('oauth.displayName')" />
+                <p class="form-hint">{{ $t('gitRepos.displayNameHint') }}</p>
               </div>
               <div class="form-group">
-                <label class="form-label">Name</label>
-                <input :value="form.name" class="form-input" aria-label="Name" readonly disabled style="font-family: monospace" />
-                <p class="form-hint">
-                  Permanent — applications and pipelines reference this credential by name. To use a different one,
-                  delete this repository and create it again.
-                </p>
+                <label class="form-label">{{ $t('apps.form.name') }}</label>
+                <input :value="form.name" class="form-input" :aria-label="$t('apps.form.name')" readonly disabled style="font-family: monospace" />
+                <p class="form-hint">{{ $t('gitRepos.nameHint') }}</p>
               </div>
             </template>
             <div class="form-group">
-              <label class="form-label">Repository URL</label>
-              <input v-model="form.url" class="form-input" :placeholder="form.auth_type === 'ssh' ? 'git@github.com:acme/api.git' : 'https://github.com/acme/api.git'" required aria-label="Repository URL" />
+              <label class="form-label">{{ $t('gitRepos.repositoryUrl') }}</label>
+              <input v-model="form.url" class="form-input" :placeholder="form.auth_type === 'ssh' ? 'git@github.com:acme/api.git' : 'https://github.com/acme/api.git'" required :aria-label="$t('gitRepos.repositoryUrl')" />
             </div>
             <div class="form-group">
-              <label class="form-label">Auth type</label>
+              <label class="form-label">{{ $t('gitRepos.authType') }}</label>
               <div class="tabs" style="margin-bottom: 0">
                 <button v-for="t in authTypes" :key="t.value" type="button" class="tab" :class="{ active: form.auth_type === t.value }" @click="form.auth_type = t.value">{{ t.label }}</button>
               </div>
             </div>
             <template v-if="form.auth_type !== 'public'">
               <div class="form-group">
-                <label class="form-label">Username <span class="text-muted">(optional)</span></label>
-                <input v-model="form.username" class="form-input" :placeholder="form.auth_type === 'ssh' ? 'git' : 'x-access-token'" autocomplete="off" aria-label="Username" />
+                <label class="form-label">{{ $t('gitRepos.username') }}<span class="text-muted">{{ $t('gitRepos.optional') }}</span></label>
+                <input v-model="form.username" class="form-input" :placeholder="form.auth_type === 'ssh' ? 'git' : 'x-access-token'" autocomplete="off" :aria-label="$t('gitRepos.username')" />
               </div>
               <CredentialSecretField
                 v-model="form.secret"
@@ -268,10 +264,10 @@ const authTypes: { value: GitAuthType; label: string }[] = [
                 :placeholder="form.auth_type === 'ssh' ? '-----BEGIN OPENSSH PRIVATE KEY-----' : 'ghp_…'"
               />
             </template>
-            <p v-else class="text-muted" style="font-size: 12px; margin: 0">No credentials needed — the repository is cloned anonymously.</p>
+            <p v-else class="text-muted" style="font-size: 12px; margin: 0">{{ $t('gitRepos.publicHint') }}</p>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showModal = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Add repository') }}</button>
           </div>
         </form>
