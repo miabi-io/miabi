@@ -11,21 +11,21 @@ const router = useRouter()
 <template>
   <div class="card">
     <div class="card-header">
-      <h2>Applications</h2>
-      <button class="btn btn-ghost btn-sm" @click="router.push('/apps')">View all</button>
+      <h2>{{ $t('nav.deploy.applications') }}</h2>
+      <button class="btn btn-ghost btn-sm" @click="router.push('/apps')">{{ $t('dashboard.viewAll') }}</button>
     </div>
 
     <div v-if="!apps || apps.length === 0" class="empty-state">
       <span class="mdi mdi-cube-outline" style="font-size: 40px; color: var(--text-muted)"></span>
-      <h3>No applications yet</h3>
-      <p>Deploy your first application to get started.</p>
-      <button v-if="canEdit" class="btn btn-primary mt-4" @click="router.push('/apps')">Deploy application</button>
+      <h3>{{ $t('dashboard.apps.empty') }}</h3>
+      <p>{{ $t('dashboard.apps.emptyHint') }}</p>
+      <button v-if="canEdit" class="btn btn-primary mt-4" @click="router.push('/apps')">{{ $t('dashboard.action.deployApplication') }}</button>
     </div>
 
     <div v-else class="table-wrapper">
       <table>
         <thead>
-          <tr><th>Application</th><th>Node</th><th>Created</th><th>Status</th><th class="text-right">Health</th></tr>
+          <tr><th>{{ $t('dashboard.col.application') }}</th><th>{{ $t('dashboard.col.node') }}</th><th>{{ $t('dashboard.col.created') }}</th><th>{{ $t('dashboard.col.status') }}</th><th class="text-right">{{ $t('dashboard.col.health') }}</th></tr>
         </thead>
         <tbody>
           <tr v-for="a in apps" :key="a.id" class="row-clickable" @click="router.push(`/apps/${a.id}`)">

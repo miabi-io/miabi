@@ -6,22 +6,25 @@
 // expose → configure → automate) and the accent colour follows that run. The
 // list is deliberately short: quick actions are for what you *start* often, not
 // everything you can manage — the rest is a sidebar click away.
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 
 const router = useRouter()
+const { t } = useI18n()
 
-const actions = [
-  { to: '/apps', icon: 'mdi-cube-outline', label: 'Deploy application', hint: 'From an image or a Git repository', tone: 'primary' },
-  { to: '/databases', icon: 'mdi-database-plus-outline', label: 'New database', hint: 'Postgres, MySQL, Redis…', tone: 'primary' },
-  { to: '/stacks', icon: 'mdi-layers-outline', label: 'Create stack', hint: 'Compose multiple applications', tone: 'primary' },
-  { to: '/marketplace', icon: 'mdi-storefront-outline', label: 'Marketplace', hint: 'One-click apps and databases', tone: 'primary' },
-  { to: '/routes', icon: 'mdi-routes', label: 'Add route', hint: 'Expose an application on a domain', tone: 'success' },
-  { to: '/domains', icon: 'mdi-web', label: 'Add domain', hint: 'Add and verify a domain you own', tone: 'success' },
-  { to: '/secrets', icon: 'mdi-key-variant', label: 'Add secret', hint: 'Store a reusable value', tone: 'info' },
-  { to: '/gitops', icon: 'mdi-git', label: 'GitOps', hint: 'Deploy from a Git repository on push', tone: 'warning' },
-  { to: '/pipelines', icon: 'mdi-pipe', label: 'Pipeline', hint: 'Build and deploy in stages', tone: 'warning' },
-  { to: '/jobs', icon: 'mdi-clock-outline', label: 'Scheduled job', hint: 'Run a container on a schedule', tone: 'warning' },
-]
+const actions = computed(() => [
+  { to: '/apps', icon: 'mdi-cube-outline', label: t('dashboard.quick.deployApplication.label'), hint: t('dashboard.quick.deployApplication.hint'), tone: 'primary' },
+  { to: '/databases', icon: 'mdi-database-plus-outline', label: t('dashboard.quick.newDatabase.label'), hint: t('dashboard.quick.newDatabase.hint'), tone: 'primary' },
+  { to: '/stacks', icon: 'mdi-layers-outline', label: t('dashboard.quick.createStack.label'), hint: t('dashboard.quick.createStack.hint'), tone: 'primary' },
+  { to: '/marketplace', icon: 'mdi-storefront-outline', label: t('dashboard.quick.marketplace.label'), hint: t('dashboard.quick.marketplace.hint'), tone: 'primary' },
+  { to: '/routes', icon: 'mdi-routes', label: t('dashboard.quick.addRoute.label'), hint: t('dashboard.quick.addRoute.hint'), tone: 'success' },
+  { to: '/domains', icon: 'mdi-web', label: t('dashboard.quick.addDomain.label'), hint: t('dashboard.quick.addDomain.hint'), tone: 'success' },
+  { to: '/secrets', icon: 'mdi-key-variant', label: t('dashboard.quick.addSecret.label'), hint: t('dashboard.quick.addSecret.hint'), tone: 'info' },
+  { to: '/gitops', icon: 'mdi-git', label: t('dashboard.quick.gitops.label'), hint: t('dashboard.quick.gitops.hint'), tone: 'warning' },
+  { to: '/pipelines', icon: 'mdi-pipe', label: t('dashboard.quick.pipeline.label'), hint: t('dashboard.quick.pipeline.hint'), tone: 'warning' },
+  { to: '/jobs', icon: 'mdi-clock-outline', label: t('dashboard.quick.scheduledJob.label'), hint: t('dashboard.quick.scheduledJob.hint'), tone: 'warning' },
+])
 </script>
 
 <template>

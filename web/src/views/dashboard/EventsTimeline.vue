@@ -15,13 +15,13 @@ const router = useRouter()
 <template>
   <div class="card">
     <div class="card-header">
-      <h2>Latest events</h2>
-      <button class="btn btn-ghost btn-sm" @click="router.push('/apps')">View applications</button>
+      <h2>{{ $t('dashboard.events.title') }}</h2>
+      <button class="btn btn-ghost btn-sm" @click="router.push('/apps')">{{ $t('dashboard.viewApplications') }}</button>
     </div>
 
     <div v-if="!events || events.length === 0" class="empty-state" style="padding: 28px">
       <span class="mdi mdi-timeline-text-outline" style="font-size: 32px; color: var(--text-muted)"></span>
-      <p>No activity yet.</p>
+      <p>{{ $t('dashboard.events.empty') }}</p>
     </div>
 
     <ul v-else class="timeline">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 // Traffic at a glance on the workspace dashboard: the last 24 hours of gateway
 // traffic, plus who is on the site right now.
 //
@@ -13,6 +14,7 @@ import { fmtNum, fmtMs, fmtPct, delta, fmtDelta } from '@/views/analytics/format
 
 const props = defineProps<{ workspaceId: number | null }>()
 const router = useRouter()
+const { t } = useI18n()
 
 const report = ref<AnalyticsSummary | null>(null)
 const live = ref<number | null>(null)
@@ -108,24 +110,24 @@ const tiles = computed<Tile[]>(() => {
   if (!r) return []
   return [
     {
-      label: 'Requests',
+      label: t('dashboard.analytics.requests'),
       value: fmtNum(r.totals.requests),
       delta: delta(r.totals.requests, r.compare?.requests),
     },
     {
-      label: 'Visitors',
+      label: t('dashboard.analytics.visitors'),
       value: fmtNum(r.totals.unique_visitors),
       delta: delta(r.totals.unique_visitors, r.compare?.unique_visitors),
     },
     {
-      label: 'Server errors',
+      label: t('dashboard.analytics.serverErrors'),
       value: fmtPct(serverErrorRate.value),
       delta: null,
       invert: true,
       danger: serverErrorRate.value >= 0.01,
     },
     {
-      label: 'p95 latency',
+      label: t('dashboard.analytics.p95'),
       value: fmtMs(r.totals.p95_latency_ms),
       delta: delta(r.totals.p95_latency_ms, r.compare?.p95_latency_ms),
       invert: true,
@@ -144,18 +146,18 @@ function deltaDir(d: number | null): string {
        claim the dashboard is broken when only an optional pillar is. -->
   <div v-if="!failed" class="card traffic-card">
     <div class="card-header">
-      <h2>Traffic</h2>
+      <h2>{{ $t('dashboard.analytics.traffic') }}</h2>
       <div class="tc-actions">
         <span
           v-if="live !== null"
           class="tc-live"
           :class="{ idle: live === 0 }"
-          :title="`${live} visitor${live === 1 ? '' : 's'} active in the last few minutes`"
+          :title="$t('dashboard.analytics.liveVisitors', live ?? 0)"
         >
-          <i class="tc-live-dot"></i><b>{{ live }}</b> live
+          <i class="tc-live-dot"></i><b>{{ live }}</b> {{ $t('dashboard.analytics.live') }}
         </span>
-        <span class="tc-range">Last 24 hours</span>
-        <button class="btn btn-ghost btn-sm" @click="router.push('/analytics')">View analytics</button>
+        <span class="tc-range">{{ $t('dashboard.analytics.last24h') }}</span>
+        <button class="btn btn-ghost btn-sm" @click="router.push('/analytics')">{{ $t('dashboard.analytics.view') }}</button>
       </div>
     </div>
 
@@ -181,7 +183,7 @@ function deltaDir(d: number | null): string {
                 v-if="t.delta !== null && deltaDir(t.delta) !== 'flat'"
                 class="tc-delta"
                 :class="[deltaDir(t.delta), { invert: t.invert }]"
-                title="Change vs the previous 24 hours"
+                :title="$t('dashboard.analytics.deltaHint')"
               >{{ fmtDelta(t.delta) }}</span>
             </span>
           </div>
@@ -190,9 +192,9 @@ function deltaDir(d: number | null): string {
       </div>
 
       <aside v-if="hasCountries" class="tc-aside">
-        <Breakdown title="Top countries" :items="topCountries" kind="country" flat>
+        <Breakdown :title="$t('dashboard.analytics.topCountries')" :items="topCountries" kind="country" flat>
           <template #action>
-            <a class="tc-more" href="#" @click.prevent="router.push('/analytics/http')">Map →</a>
+            <a class="tc-more" href="#" @click.prevent="router.push('/analytics/http')">{{ $t('dashboard.analytics.map') }}</a>
           </template>
         </Breakdown>
       </aside>
@@ -202,8 +204,8 @@ function deltaDir(d: number | null): string {
          state points at the cause rather than just saying "no data". -->
     <div v-else class="empty-state" style="padding: 28px">
       <span class="mdi mdi-chart-line-variant" style="font-size: 32px; color: var(--text-muted)"></span>
-      <p>No traffic in the last 24 hours.</p>
-      <p class="tc-hint">Analytics are collected by the gateway as requests reach your routed applications.</p>
+      <p>{{ $t('dashboard.analytics.noTraffic') }}</p>
+      <p class="tc-hint">{{ $t('dashboard.analytics.hint') }}</p>
     </div>
   </div>
 </template>

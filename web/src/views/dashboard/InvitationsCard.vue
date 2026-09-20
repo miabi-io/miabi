@@ -8,14 +8,14 @@ defineEmits<{ accept: [inv: PendingInvitation] }>()
 <template>
   <div class="card invites-card">
     <div class="card-header">
-      <h2><span class="mdi mdi-email-outline"></span> Workspace invitations</h2>
+      <h2><span class="mdi mdi-email-outline"></span> {{ $t('dashboard.invitations.title') }}</h2>
     </div>
     <ul class="invites">
       <li v-for="inv in invitations" :key="inv.id" class="invite">
         <div class="invite-info">
           <span class="invite-name">{{ inv.workspace_name }}</span>
           <span class="invite-sub">
-            Invited as <strong>{{ inv.role }}</strong>
+            {{ $t('dashboard.invitations.invitedAs') }} <strong>{{ inv.role }}</strong>
             <template v-if="inv.invited_by_name"> by {{ inv.invited_by_name }}</template>
           </span>
         </div>

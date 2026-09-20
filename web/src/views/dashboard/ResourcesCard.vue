@@ -14,30 +14,30 @@ defineProps<{
 <template>
   <div class="card resources-card">
     <div class="card-header">
-      <h2>Resources</h2>
-      <span class="live-pill" :class="{ 'is-live': !!sample }" :title="sample ? 'Live' : 'Connecting…'">
+      <h2>{{ $t('dashboard.resources.title') }}</h2>
+      <span class="live-pill" :class="{ 'is-live': !!sample }" :title="sample ? $t('dashboard.resources.live') : $t('dashboard.resources.connecting')">
         <span class="live-dot"></span>
-        {{ sample ? `${sample.containers} container${sample.containers === 1 ? '' : 's'}` : 'Connecting…' }}
+        {{ sample ? $t('dashboard.resources.containers', sample.containers) : $t('dashboard.resources.connecting') }}
       </span>
     </div>
     <div class="resources-body">
       <div class="resource">
         <div class="resource-head">
           <span class="resource-label"><span class="mdi mdi-chip"></span> CPU</span>
-          <span class="resource-value">{{ (sample?.cpu_cores ?? 0).toFixed(2) }} <small>cores</small></span>
+          <span class="resource-value">{{ (sample?.cpu_cores ?? 0).toFixed(2) }} <small>{{ $t('dashboard.resources.cores') }}</small></span>
         </div>
         <Sparkline :values="cpuSeries" :width="220" :height="40" stroke="var(--primary-500)" />
       </div>
       <div class="resource">
         <div class="resource-head">
-          <span class="resource-label"><span class="mdi mdi-memory"></span> Memory</span>
+          <span class="resource-label"><span class="mdi mdi-memory"></span> {{ $t('dashboard.resources.memory') }}</span>
           <span class="resource-value">{{ fmtBytes(sample?.memory_bytes) }}</span>
         </div>
         <Sparkline :values="memSeries" :width="220" :height="40" stroke="var(--info-500, #0ea5e9)" />
       </div>
       <div class="resource">
         <div class="resource-head">
-          <span class="resource-label"><span class="mdi mdi-swap-vertical"></span> Network</span>
+          <span class="resource-label"><span class="mdi mdi-swap-vertical"></span> {{ $t('dashboard.resources.network') }}</span>
         </div>
         <div class="net-figures">
           <span class="net-figure"><span class="mdi mdi-arrow-down"></span> {{ fmtBytes(sample?.net_rx_bytes) }} <small>RX</small></span>

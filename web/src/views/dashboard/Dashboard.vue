@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 // Workspace dashboard
 import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -23,6 +24,7 @@ import { useWorkspaceStream } from './useWorkspaceStream'
 import type { AppEvent, Overview, PendingInvitation, RecentEvent, Stack } from '@/api/types'
 
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const auth = useAuthStore()
 const router = useRouter()
@@ -59,12 +61,12 @@ const greeting = computed(() => {
 // their own below, so this pill stays quiet and doesn't compete with it.
 const health = computed(() => {
   const o = overview.value
-  if (!o) return { tone: 'neutral', icon: 'mdi-circle-outline', text: 'Loading…' }
+  if (!o) return { tone: 'neutral', icon: 'mdi-circle-outline', text: t('dashboard.health.loading') }
   if (o.failed > 0) {
-    return { tone: 'danger', icon: 'mdi-alert-circle', text: `${o.failed} application${o.failed === 1 ? '' : 's'} failing` }
+    return { tone: 'danger', icon: 'mdi-alert-circle', text: t('dashboard.health.failing', o.failed) }
   }
-  if (o.total_apps === 0) return { tone: 'neutral', icon: 'mdi-information-outline', text: 'No applications yet' }
-  return { tone: 'success', icon: 'mdi-check-circle', text: 'All applications healthy' }
+  if (o.total_apps === 0) return { tone: 'neutral', icon: 'mdi-information-outline', text: t('dashboard.apps.empty') }
+  return { tone: 'success', icon: 'mdi-check-circle', text: t('dashboard.health.allHealthy') }
 })
 
 const failedCount = computed(() => overview.value?.failed ?? 0)
@@ -158,7 +160,7 @@ watch(
       <div>
         <h1>{{ greeting }}</h1>
         <p class="subtitle">
-          Overview of <strong>{{ ws.contextLabel }}</strong>
+          {{ $t('dashboard.overviewOf') }} <strong>{{ ws.contextLabel }}</strong>
           <span v-if="overview" class="health-pill" :class="`health-${health.tone}`">
             <span class="mdi" :class="health.icon"></span> {{ health.text }}
           </span>
@@ -166,7 +168,7 @@ watch(
             v-if="overview"
             class="live-pill"
             :class="{ 'is-live': streamLive }"
-            :title="streamLive ? 'Live — updates as things happen' : 'Reconnecting…'"
+            :title="streamLive ? t('dashboard.stream.live') : t('dashboard.stream.reconnecting')"
           >
             <span class="live-dot"></span>
           </span>
@@ -174,7 +176,7 @@ watch(
       </div>
       <div class="page-header-actions">
         <button v-if="ws.canEdit" class="btn btn-primary" @click="router.push('/apps')">
-          <span class="mdi mdi-plus"></span> New application
+          <span class="mdi mdi-plus"></span> {{ $t('dashboard.newApplication') }}
         </button>
       </div>
     </div>
@@ -184,10 +186,10 @@ watch(
     <div v-if="failedCount > 0" class="alert-banner" role="alert">
       <span class="mdi mdi-alert-circle"></span>
       <span class="ab-text">
-        <strong>{{ failedCount }} application{{ failedCount === 1 ? '' : 's' }} failing.</strong>
-        Check the logs to see what stopped.
+        <strong>{{ $t('dashboard.banner.failing', failedCount) }}</strong>
+        {{ $t('dashboard.banner.checkLogs') }}
       </span>
-      <button class="btn btn-sm btn-danger" @click="router.push('/apps')">View applications</button>
+      <button class="btn btn-sm btn-danger" @click="router.push('/apps')">{{ $t('dashboard.viewApplications') }}</button>
     </div>
 
     <GettingStarted v-if="showOnboarding" :has-workspace="hasWorkspace" :has-app="hasApp" :has-domain="hasDomain" />
@@ -237,10 +239,10 @@ watch(
     <div v-else-if="ws.loaded && !currentWorkspaceId" class="card">
       <div class="empty-state">
         <span class="mdi mdi-briefcase-outline" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No workspace yet</h3>
-        <p v-if="invitations.length">Accept an invitation above to join a workspace.</p>
-        <p v-else>Create a workspace to get started.</p>
-        <button class="btn btn-primary mt-4" @click="router.push('/workspaces')">Create workspace</button>
+        <h3>{{ $t('dashboard.noWorkspace') }}</h3>
+        <p v-if="invitations.length">{{ $t('dashboard.acceptInvitation') }}</p>
+        <p v-else>{{ $t('dashboard.createToStart') }}</p>
+        <button class="btn btn-primary mt-4" @click="router.push('/workspaces')">{{ $t('switcher.create') }}</button>
       </div>
     </div>
 

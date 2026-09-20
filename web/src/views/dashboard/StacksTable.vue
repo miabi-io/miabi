@@ -20,12 +20,12 @@ function stackBadge(s: Stack): string {
 <template>
   <div class="card">
     <div class="card-header">
-      <h2>Stacks</h2>
-      <button class="btn btn-ghost btn-sm" @click="router.push('/stacks')">View all</button>
+      <h2>{{ $t('nav.deploy.stacks') }}</h2>
+      <button class="btn btn-ghost btn-sm" @click="router.push('/stacks')">{{ $t('dashboard.viewAll') }}</button>
     </div>
     <div class="table-wrapper">
       <table>
-        <thead><tr><th>Stack</th><th>Apps</th><th>Created</th><th class="text-right">Status</th></tr></thead>
+        <thead><tr><th>{{ $t('dashboard.col.stack') }}</th><th>{{ $t('dashboard.col.apps') }}</th><th>{{ $t('dashboard.col.created') }}</th><th class="text-right">{{ $t('dashboard.col.status') }}</th></tr></thead>
         <tbody>
           <tr v-for="s in stacks" :key="s.id" class="row-clickable" @click="router.push(`/stacks/${s.id}`)">
             <td>

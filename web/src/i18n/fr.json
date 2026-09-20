@@ -117,8 +117,8 @@
         "redeployNowToFree": "Redéployer maintenant pour libérer le port hôte ?",
         "removeVar": "La variable est retirée de {name}.",
         "removeVarDeployed": "La variable est retirée de {name}. S’applique au prochain déploiement.",
-        "templateImage": "{name} a été installée depuis le modèle « {template} ». Changer son image ici signifie qu’elle ne correspond plus au modèle, et une future mise à niveau du modèle pourrait écraser votre modification. Préférez une mise à niveau via la place de marché quand c’est possible.",
-        "templateImageVersioned": "{name} a été installée depuis le modèle « {template} » (v{version}). Changer son image ici signifie qu’elle ne correspond plus au modèle, et une future mise à niveau du modèle pourrait écraser votre modification. Préférez une mise à niveau via la place de marché quand c’est possible.",
+        "templateImage": "{name} a été installée depuis le modèle « {template} ». Changer son image ici signifie qu’elle ne correspond plus au modèle, et une future mise à niveau du modèle pourrait écraser votre modification. Préférez une mise à niveau via la marketplace quand c’est possible.",
+        "templateImageVersioned": "{name} a été installée depuis le modèle « {template} » (v{version}). Changer son image ici signifie qu’elle ne correspond plus au modèle, et une future mise à niveau du modèle pourrait écraser votre modification. Préférez une mise à niveau via la marketplace quand c’est possible.",
         "theApp": "l’application",
         "theCanaryContainerIs": "Le conteneur canari est arrêté et supprimé, et tout le trafic revient à la version stable actuelle de {name}.",
         "theCanaryReleaseWill": "La version canari prendra 100 % du trafic et deviendra la version stable de {name}. La version stable précédente est retirée du service.",
@@ -408,6 +408,123 @@
         "revokeSessions": "Révoquer les sessions ?"
       }
     }
+  },
+  "dashboard": {
+    "acceptInvitation": "Acceptez une invitation ci-dessus pour rejoindre un espace de travail.",
+    "action": {
+      "deployApplication": "Déployer une application"
+    },
+    "analytics": {
+      "deltaHint": "Évolution par rapport aux 24 heures précédentes",
+      "hint": "L’analytique est collectée par la passerelle à mesure que les requêtes atteignent vos applications routées.",
+      "last24h": "Dernières 24 heures",
+      "live": "en direct",
+      "liveVisitors": "aucun visiteur actif ces dernières minutes | {n} visiteur actif ces dernières minutes | {n} visiteurs actifs ces dernières minutes",
+      "map": "Carte →",
+      "noTraffic": "Aucun trafic ces dernières 24 heures.",
+      "p95": "Latence p95",
+      "requests": "Requêtes",
+      "serverErrors": "Erreurs serveur",
+      "topCountries": "Principaux pays",
+      "traffic": "Trafic",
+      "view": "Voir l’analytique",
+      "visitors": "Visiteurs"
+    },
+    "apps": {
+      "empty": "Aucune application pour l’instant",
+      "emptyHint": "Déployez votre première application pour commencer."
+    },
+    "banner": {
+      "checkLogs": "Consultez les journaux pour voir ce qui s’est arrêté.",
+      "failing": "aucune application en échec. | {n} application en échec. | {n} applications en échec."
+    },
+    "col": {
+      "application": "Application",
+      "apps": "Applis",
+      "created": "Créé le",
+      "health": "Santé",
+      "node": "Nœud",
+      "stack": "Stack",
+      "status": "Statut"
+    },
+    "createToStart": "Créez un espace de travail pour commencer.",
+    "events": {
+      "empty": "Aucune activité pour l’instant.",
+      "title": "Derniers événements"
+    },
+    "health": {
+      "allHealthy": "Toutes les applications sont saines",
+      "failing": "aucune application en échec | {n} application en échec | {n} applications en échec",
+      "loading": "Chargement…"
+    },
+    "invitations": {
+      "invitedAs": "Invité comme",
+      "title": "Invitations aux espaces de travail"
+    },
+    "newApplication": "Nouvelle application",
+    "noWorkspace": "Aucun espace de travail",
+    "overviewOf": "Vue d’ensemble de",
+    "quick": {
+      "addDomain": {
+        "hint": "Ajouter et vérifier un domaine dont vous êtes propriétaire",
+        "label": "Ajouter un domaine"
+      },
+      "addRoute": {
+        "hint": "Exposer une application sur un domaine",
+        "label": "Ajouter une route"
+      },
+      "addSecret": {
+        "hint": "Stocker une valeur réutilisable",
+        "label": "Ajouter un secret"
+      },
+      "createStack": {
+        "hint": "Composer plusieurs applications",
+        "label": "Créer un stack"
+      },
+      "deployApplication": {
+        "hint": "Depuis une image ou un dépôt Git",
+        "label": "Déployer une application"
+      },
+      "gitops": {
+        "hint": "Déployer depuis un dépôt Git à chaque push",
+        "label": "GitOps"
+      },
+      "marketplace": {
+        "hint": "Applications et bases de données en un clic",
+        "label": "Marketplace"
+      },
+      "newDatabase": {
+        "hint": "Postgres, MySQL, Redis…",
+        "label": "Nouvelle base de données"
+      },
+      "pipeline": {
+        "hint": "Construire et déployer par étapes",
+        "label": "Pipeline"
+      },
+      "scheduledJob": {
+        "hint": "Exécuter un conteneur selon une planification",
+        "label": "Tâche planifiée"
+      }
+    },
+    "resources": {
+      "connecting": "Connexion…",
+      "containers": "aucun conteneur | {n} conteneur | {n} conteneurs",
+      "cores": "cœurs",
+      "live": "En direct",
+      "memory": "Mémoire",
+      "network": "Réseau",
+      "title": "Ressources"
+    },
+    "stats": {
+      "failed": "En échec",
+      "running": "En cours"
+    },
+    "stream": {
+      "live": "En direct — mis à jour au fil des événements",
+      "reconnecting": "Reconnexion…"
+    },
+    "viewAll": "Tout voir",
+    "viewApplications": "Voir les applications"
   },
   "error": {
     "status": {

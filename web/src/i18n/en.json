@@ -409,6 +409,123 @@
       }
     }
   },
+  "dashboard": {
+    "acceptInvitation": "Accept an invitation above to join a workspace.",
+    "action": {
+      "deployApplication": "Deploy application"
+    },
+    "analytics": {
+      "deltaHint": "Change vs the previous 24 hours",
+      "hint": "Analytics are collected by the gateway as requests reach your routed applications.",
+      "last24h": "Last 24 hours",
+      "live": "live",
+      "liveVisitors": "no visitors active in the last few minutes | {n} visitor active in the last few minutes | {n} visitors active in the last few minutes",
+      "map": "Map →",
+      "noTraffic": "No traffic in the last 24 hours.",
+      "p95": "p95 latency",
+      "requests": "Requests",
+      "serverErrors": "Server errors",
+      "topCountries": "Top countries",
+      "traffic": "Traffic",
+      "view": "View analytics",
+      "visitors": "Visitors"
+    },
+    "apps": {
+      "empty": "No applications yet",
+      "emptyHint": "Deploy your first application to get started."
+    },
+    "banner": {
+      "checkLogs": "Check the logs to see what stopped.",
+      "failing": "no applications failing. | {n} application failing. | {n} applications failing."
+    },
+    "col": {
+      "application": "Application",
+      "apps": "Apps",
+      "created": "Created",
+      "health": "Health",
+      "node": "Node",
+      "stack": "Stack",
+      "status": "Status"
+    },
+    "createToStart": "Create a workspace to get started.",
+    "events": {
+      "empty": "No activity yet.",
+      "title": "Latest events"
+    },
+    "health": {
+      "allHealthy": "All applications healthy",
+      "failing": "no applications failing | {n} application failing | {n} applications failing",
+      "loading": "Loading…"
+    },
+    "invitations": {
+      "invitedAs": "Invited as",
+      "title": "Workspace invitations"
+    },
+    "newApplication": "New application",
+    "noWorkspace": "No workspace yet",
+    "overviewOf": "Overview of",
+    "quick": {
+      "addDomain": {
+        "hint": "Add and verify a domain you own",
+        "label": "Add domain"
+      },
+      "addRoute": {
+        "hint": "Expose an application on a domain",
+        "label": "Add route"
+      },
+      "addSecret": {
+        "hint": "Store a reusable value",
+        "label": "Add secret"
+      },
+      "createStack": {
+        "hint": "Compose multiple applications",
+        "label": "Create stack"
+      },
+      "deployApplication": {
+        "hint": "From an image or a Git repository",
+        "label": "Deploy application"
+      },
+      "gitops": {
+        "hint": "Deploy from a Git repository on push",
+        "label": "GitOps"
+      },
+      "marketplace": {
+        "hint": "One-click apps and databases",
+        "label": "Marketplace"
+      },
+      "newDatabase": {
+        "hint": "Postgres, MySQL, Redis…",
+        "label": "New database"
+      },
+      "pipeline": {
+        "hint": "Build and deploy in stages",
+        "label": "Pipeline"
+      },
+      "scheduledJob": {
+        "hint": "Run a container on a schedule",
+        "label": "Scheduled job"
+      }
+    },
+    "resources": {
+      "connecting": "Connecting…",
+      "containers": "no containers | {n} container | {n} containers",
+      "cores": "cores",
+      "live": "Live",
+      "memory": "Memory",
+      "network": "Network",
+      "title": "Resources"
+    },
+    "stats": {
+      "failed": "Failed",
+      "running": "Running"
+    },
+    "stream": {
+      "live": "Live — updates as things happen",
+      "reconnecting": "Reconnecting…"
+    },
+    "viewAll": "View all",
+    "viewApplications": "View applications"
+  },
   "error": {
     "status": {
       "badRequest": "Invalid request",
