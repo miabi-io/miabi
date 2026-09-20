@@ -38,7 +38,6 @@
     "copy": "Copy",
     "create": "Create",
     "delete": "Delete",
-    "demote": "Demote",
     "disable": "Disable",
     "disableSwarm": "Disable Swarm",
     "discard": "Discard",
@@ -47,7 +46,6 @@
     "edit": "Edit",
     "forceVerify": "Force verify",
     "makeDefault": "Make default",
-    "promote": "Promote",
     "regenerate": "Regenerate",
     "reject": "Reject",
     "remove": "Remove",
@@ -917,10 +915,6 @@
         "promoteNow": "Promote now",
         "redeployNow": "Redeploy now",
         "release": "Release"
-      },
-      "userDetail": {
-        "deleteNow": "Delete now",
-        "resetPassword": "Reset password"
       }
     },
     "message": {
@@ -1007,9 +1001,6 @@
         "deleteCronjobScheduledRuns": "Delete cronjob \"{name}\"? Scheduled runs will stop.",
         "deleteJobRunThis": "Delete job run #{id}? This cannot be undone."
       },
-      "ldapDirectory": {
-        "deleteNameUsersProvisioned": "Delete \"{name}\"? Users provisioned from it keep their accounts but can no longer sign in via this directory."
-      },
       "license": {
         "removeTheLicenseAnd": "Remove the license and revert to Community Edition?"
       },
@@ -1030,9 +1021,6 @@
       },
       "notifications": {
         "deleteNotificationChannelName": "Delete notification channel \"{name}\"?"
-      },
-      "oAuthProviders": {
-        "deleteProviderNameThis": "Delete provider \"{name}\"? This cannot be undone."
       },
       "organizationDetail": {
         "displayNameWillBe": "\"{display_name}\" will be removed, and any location dedicated to it becomes administrator-only until you reassign it. Deleting is refused while it still holds workspaces or users."
@@ -1105,15 +1093,6 @@
       "storageClasses": {
         "nameWillNoLonger": "\"{name}\" will no longer be offered. Deleting is refused while any volume still uses it — disable it instead to stop new volumes landing there."
       },
-      "userDetail": {
-        "demote": "Demote {name} to user?",
-        "disableSAccountThey": "Disable {name}'s account? They will be signed out and unable to log in, and all their applications and databases will be stopped.",
-        "disableTwoFactorAuthentication": "Disable two-factor authentication for {name}? Use this only for account recovery.",
-        "generateANewPassword": "Generate a new password for {name}? This is irreversible: their current password stops working immediately, every active session is signed out, and the new password is shown only once.",
-        "permanentlyDeleteAndAll": "Permanently delete {name} and all of their remaining data right now? This skips the grace period and cannot be undone.",
-        "promote": "Promote {name} to admin?",
-        "revokeAllActiveSessions": "Revoke all active sessions for {name}?"
-      },
       "volumeDetail": {
         "deletePathFromThis": "Delete \"{path}\" from this volume? This cannot be undone.",
         "deleteTheBackupTaken": "Delete the backup taken {fmtTime}? The backup record is removed; the archive object in your S3 bucket is not deleted.",
@@ -1173,14 +1152,12 @@
       "deleteFile": "Delete file",
       "deleteGitRepository": "Delete git repository",
       "deleteGitSource": "Delete git source",
-      "deleteLdapConnection": "Delete LDAP connection?",
       "deleteMiddleware": "Delete middleware",
       "deleteNetwork": "Delete network",
       "deleteOrganization": "Delete organization",
       "deletePipeline": "Delete pipeline",
       "deletePlan": "Delete plan",
       "deletePlatformBackup": "Delete platform backup?",
-      "deleteProvider": "Delete provider",
       "deleteRegistry": "Delete registry",
       "deleteRole": "Delete role",
       "deleteRoute": "Delete route",
@@ -1221,16 +1198,7 @@
       "rotateEncryptionKey": "Rotate encryption key",
       "runGarbageCollection": "Run garbage collection",
       "tearDownGateway": "Tear down gateway",
-      "testDnsProvider": "Test DNS provider",
-      "userDetail": {
-        "demote": "Demote user?",
-        "disableAccount": "Disable account?",
-        "disableTwoFactor": "Disable two-factor?",
-        "permanentlyDeleteAccount": "Permanently delete account?",
-        "promote": "Promote user?",
-        "resetPassword": "Reset password?",
-        "revokeSessions": "Revoke sessions?"
-      }
+      "testDnsProvider": "Test DNS provider"
     }
   },
   "count": {
@@ -1893,63 +1861,6 @@
     "timeoutLabel": "Timeout (seconds, 0 = default)",
     "timeoutShort": "Timeout (s)"
   },
-  "ldap": {
-    "activeDirectory": "(Active Directory)",
-    "add": "Add",
-    "addAConnection": "Add a connection",
-    "addConnection": "Add connection",
-    "admin": "Admin",
-    "bindDn": "Bind DN",
-    "bindPassword": "Bind password",
-    "caCert": "CA certificate (PEM, optional)",
-    "connection": "Connection",
-    "developer": "Developer",
-    "emailAttr": "Email attr",
-    "emptyHint": "Add an LDAP or Active Directory connection so users can sign in with their directory username and password.",
-    "enterpriseFeature": "Enterprise feature",
-    "expandNestedGroups": "Expand nested groups",
-    "grants": "Grants",
-    "group": "Group",
-    "groupBaseDn": "Group base DN",
-    "groupDnOrCn": "Group DN or CN",
-    "groupDnPlaceholder": "cn=platform-admins,ou=Groups,… (or just platform-admins)",
-    "groupFilter": "Group filter",
-    "groupFilterHint": "(%s = user DN; blank uses member attr)",
-    "groupMappings": "Group mappings",
-    "groups": "Groups",
-    "host": "Host",
-    "insecureNote": "(insecure — dev only)",
-    "ldapActiveDirectory": "LDAP / Active Directory",
-    "mappingHint": "Map a directory group (full DN or bare CN) onto platform-admin and/or a workspace role. Reconciled on each login.",
-    "memberAttr": "Member attr",
-    "nameAttr": "Name attr",
-    "namePlaceholder": "e.g. Corp Active Directory",
-    "noDirectoriesConnected": "No directories connected",
-    "noMappings": "No mappings yet — without any, directory users are provisioned but get no admin or workspace access automatically.",
-    "optional": "(optional)",
-    "optionalDrivesAccessNote": "(optional — drives access)",
-    "owner": "Owner",
-    "platformAdmin": "platform admin",
-    "port": "Port",
-    "removeMapping": "Remove mapping",
-    "server": "Server",
-    "serviceAccountBind": "Service account (bind)",
-    "skipTlsCertificateVerification": "Skip TLS certificate verification",
-    "subtitle": "Connect an LDAP directory or Active Directory to authenticate users against it, with groups mapped onto roles and workspace membership.",
-    "testConnection": "Test connection",
-    "tlsLdaps": "LDAPS (implicit TLS, 636)",
-    "tlsMode": "TLS mode",
-    "tlsNone": "None (plaintext — not recommended)",
-    "tlsStartTls": "StartTLS (upgrade on 389)",
-    "upsell": "Let users sign in with their corporate directory credentials. Groups drive platform-admin and workspace access.",
-    "userBaseDn": "User base DN",
-    "userFilter": "User filter",
-    "userFilterHint": "(%s = login)",
-    "userSearch": "User search",
-    "usernameAttr": "Username attr",
-    "viewer": "Viewer",
-    "workspaceRole": "Workspace role"
-  },
   "locationPicker": {
     "admin": "admin",
     "anyNodeInTheLocation": "Any node in the location",
@@ -2361,18 +2272,6 @@
       "runStarted": "Run started",
       "selectAnApplication": "Select an application"
     },
-    "ldapDirectory": {
-      "aGroupDnIsRequired": "A group DN is required",
-      "connectionFailed": "Connection failed",
-      "connectionOk": "Connection OK",
-      "created": "LDAP connection created",
-      "deleted": "LDAP connection deleted",
-      "displayNameAndHostAre": "Display name and host are required",
-      "mappingAdded": "Mapping added",
-      "mappingRemoved": "Mapping removed",
-      "testFailed": "LDAP test failed",
-      "updated": "LDAP connection updated"
-    },
     "marketplace": {
       "imported": "Imported {name}",
       "someResourcesCouldNotBe": "{name}: some resources could not be removed",
@@ -2515,10 +2414,6 @@
       "updated": "Template updated",
       "upgraded": "Upgraded {name} to {version}"
     },
-    "userDetail": {
-      "disableTheAccountBeforeDeleting": "Disable the account before deleting it",
-      "typeDeleteToConfirm": "Type DELETE to confirm"
-    },
     "volumeDetail": {
       "backupDeleted": "Backup deleted",
       "backupStarted": "Backup started",
@@ -2559,54 +2454,6 @@
       "tokenCopied": "Token copied",
       "updated": "Workspace updated"
     }
-  },
-  "oauth": {
-    "addProvider": "Add provider",
-    "admin": "Admin",
-    "allowedDomains": "Allowed domains",
-    "allowedDomainsHint": "CSV of allowed email domains; blank = any.",
-    "authUrl": "Auth URL",
-    "autoJoinHint": "New SSO users join this workspace with the chosen role. Blank ID = none.",
-    "autoJoinRole": "Auto-join role",
-    "autoJoinWorkspace": "Auto-join workspace",
-    "autoJoinWorkspaceId": "Auto-join workspace ID",
-    "autoRegister": "Auto-register",
-    "autoRegisterUsers": "Auto-register users",
-    "clientId": "Client ID",
-    "clientSecret": "Client Secret",
-    "developer": "Developer",
-    "disabled": "Disabled",
-    "discoveryHint": "Leave blank to use discovery.",
-    "displayName": "Display name",
-    "emailClaim": "Email claim",
-    "emailClaimHint": "Userinfo claim mapped to the user's email. Blank = standard \"email\".",
-    "emptyHint": "Add Google or a generic OIDC provider to enable single sign-on.",
-    "genericOidc": "Generic OIDC",
-    "google": "Google",
-    "googleSlug": "google",
-    "googleWorkspace": "Google Workspace",
-    "hidden": "Hidden",
-    "issuer": "Issuer",
-    "issuerHint": "OIDC discovery base URL, e.g. https://id.example.com",
-    "issuerPlaceholder": "https://id.example.com",
-    "nameClaim": "Name claim",
-    "nameClaimDefault": "name",
-    "nameClaimHint": "Userinfo claim mapped to the display name. Blank = standard \"name\".",
-    "noAutoJoin": "No auto-join",
-    "noSsoProviders": "No SSO providers",
-    "provider": "Provider",
-    "scopes": "Scopes",
-    "scopesHint": "Default: openid email profile",
-    "slugHint": "Auto-generated from name if blank.",
-    "tokenUrl": "Token URL",
-    "type": "Type",
-    "userinfoUrl": "Userinfo URL",
-    "usernameClaim": "Username claim",
-    "usernameClaimHint": "Userinfo claim mapped to the handle. Blank = standard \"preferred_username\"; if the provider sends neither, the handle is derived from the email address.",
-    "viewer": "Viewer",
-    "visibility": "Visibility",
-    "visible": "Visible",
-    "workspaceId": "Workspace ID"
   },
   "orgPicker": {
     "defaultOrganization": "Default organization",

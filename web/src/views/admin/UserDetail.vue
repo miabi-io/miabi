@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useI18n } from 'vue-i18n'
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { adminApi } from '@/api/admin'
@@ -17,7 +16,6 @@ const router = useRouter()
 const notify = useNotificationStore()
 const auth = useAuthStore()
 const license = useLicenseStore()
-const { t } = useI18n()
 
 const userId = computed(() => Number(route.params.id))
 
@@ -140,11 +138,11 @@ function toggleRole() {
   // cannot be slotted into a French sentence and still agree with it.
   const promoting = next === 'admin'
   confirmAction.value = {
-    title: promoting ? t('confirm.title.userDetail.promote') : t('confirm.title.userDetail.demote'),
+    title: promoting ? 'Promote user?' : 'Demote user?',
     message: promoting
-      ? t('confirm.message.userDetail.promote', { name: user.value.name })
-      : t('confirm.message.userDetail.demote', { name: user.value.name }),
-    confirmLabel: promoting ? t('action.promote') : t('action.demote'),
+      ? `Promote ${user.value.name} to admin?`
+      : `Demote ${user.value.name} to user?`,
+    confirmLabel: promoting ? 'Promote' : 'Demote',
     variant: 'primary',
     run: async () => {
       busy.value = true
@@ -165,9 +163,9 @@ function revoke() {
   if (!user.value) return
   const id = user.value.id
   confirmAction.value = {
-    title: t('confirm.title.userDetail.revokeSessions'),
-    message: t('confirm.message.userDetail.revokeAllActiveSessions', { name: user.value.name }),
-    confirmLabel: t('action.revoke'),
+    title: 'Revoke sessions?',
+    message: `Revoke all active sessions for ${user.value.name}?`,
+    confirmLabel: 'Revoke',
     variant: 'danger',
     run: async () => {
       busy.value = true
@@ -187,9 +185,9 @@ function disableTwoFactor() {
   if (!user.value) return
   const id = user.value.id
   confirmAction.value = {
-    title: t('confirm.title.userDetail.disableTwoFactor'),
-    message: t('confirm.message.userDetail.disableTwoFactorAuthentication', { name: user.value.name }),
-    confirmLabel: t('action.disable'),
+    title: 'Disable two-factor?',
+    message: `Disable two-factor authentication for ${user.value.name}? Use this only for account recovery.`,
+    confirmLabel: 'Disable',
     variant: 'danger',
     run: async () => {
       busy.value = true
@@ -216,9 +214,9 @@ function resetPassword() {
   const id = user.value.id
   const name = user.value.name
   confirmAction.value = {
-    title: t('confirm.title.userDetail.resetPassword'),
-    message: t('confirm.message.userDetail.generateANewPassword', { name: name }),
-    confirmLabel: t('confirm.label.userDetail.resetPassword'),
+    title: 'Reset password?',
+    message: `Generate a new password for ${name}? This is irreversible: their current password stops working immediately, every active session is signed out, and the new password is shown only once.`,
+    confirmLabel: 'Reset password',
     variant: 'danger',
     run: async () => {
       busy.value = true
@@ -263,9 +261,9 @@ async function setActive(active: boolean) {
   const u = user.value
   if (!active) {
     confirmAction.value = {
-      title: t('confirm.title.userDetail.disableAccount'),
-      message: t('confirm.message.userDetail.disableSAccountThey', { name: u.name }),
-      confirmLabel: t('action.disable'),
+      title: 'Disable account?',
+      message: `Disable ${u.name}'s account? They will be signed out and unable to log in, and all their applications and databases will be stopped.`,
+      confirmLabel: 'Disable',
       variant: 'danger',
       run: () => applyActive(u.id, false),
     }
@@ -304,7 +302,7 @@ const transferChoice = ref<Record<number, number>>({})
 
 function openDeleteDialog() {
   if (!user.value || user.value.active) {
-    notify.error(t('notify.userDetail.disableTheAccountBeforeDeleting'))
+    notify.error('Disable the account before deleting it')
     return
   }
   confirmText.value = ''
@@ -316,7 +314,7 @@ function openDeleteDialog() {
 async function scheduleDeletion() {
   if (!user.value) return
   if (confirmText.value !== 'DELETE') {
-    notify.error(t('notify.userDetail.typeDeleteToConfirm'))
+    notify.error('Type DELETE to confirm')
     return
   }
   const transfers = Object.entries(transferChoice.value)
@@ -355,9 +353,9 @@ function forceDeletion() {
   if (!user.value) return
   const id = user.value.id
   confirmAction.value = {
-    title: t('confirm.title.userDetail.permanentlyDeleteAccount'),
-    message: t('confirm.message.userDetail.permanentlyDeleteAndAll', { name: user.value.name }),
-    confirmLabel: t('confirm.label.userDetail.deleteNow'),
+    title: 'Permanently delete account?',
+    message: `Permanently delete ${user.value.name} and all of their remaining data right now? This skips the grace period and cannot be undone.`,
+    confirmLabel: 'Delete now',
     variant: 'danger',
     run: async () => {
       busy.value = true
