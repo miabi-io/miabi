@@ -148,7 +148,7 @@ async function setDefault(p: Plan) {
   <div>
     <div class="page-header">
       <div>
-        <h1>Plans</h1>
+        <h1>Plans &amp; Quotas</h1>
         <div class="text-muted text-sm">Per-workspace resource limits and capabilities. Enforced when <code>MIABI_PLAN_ENFORCEMENT</code> is enabled.</div>
       </div>
       <button class="btn btn-primary" :disabled="atPlanCap" :title="capTitle" @click="openCreate"><span class="mdi mdi-plus"></span> New plan</button>

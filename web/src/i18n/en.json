@@ -7,25 +7,31 @@
     "completeRecovery": "Complete recovery",
     "confirm": "Confirm",
     "delete": "Delete",
+    "demote": "Demote",
+    "disable": "Disable",
     "disableSwarm": "Disable Swarm",
     "discard": "Discard",
     "disconnect": "Disconnect",
     "drainNode": "Drain node",
     "forceVerify": "Force verify",
     "makeDefault": "Make default",
+    "promote": "Promote",
     "regenerate": "Regenerate",
     "reject": "Reject",
     "remove": "Remove",
     "removeAgents": "Remove agents",
     "removeLicense": "Remove license",
+    "restart": "Restart",
     "restore": "Restore",
     "resync": "Resync",
     "retract": "Retract",
     "revoke": "Revoke",
     "rotateKey": "Rotate key",
     "runGarbageCollection": "Run garbage collection",
+    "stop": "Stop",
     "teardown": "Teardown",
     "test": "Test",
+    "upgrade": "Upgrade",
     "working": "Working…"
   },
   "adminNav": {
@@ -70,12 +76,29 @@
       "announcements": "Announcements",
       "databaseSizes": "Database sizes",
       "organizations": "Organizations",
-      "plans": "Plans",
+      "plans": "Plans & Quotas",
       "title": "Tenants",
       "workspaces": "Workspaces"
     }
   },
   "confirm": {
+    "label": {
+      "appDetail": {
+        "abortCanary": "Abort canary",
+        "cancelRequest": "Cancel request",
+        "changeAnyway": "Change anyway",
+        "keep": "Keep",
+        "keepRollingOut": "Keep rolling out",
+        "later": "Later",
+        "promoteNow": "Promote now",
+        "redeployNow": "Redeploy now",
+        "release": "Release"
+      },
+      "userDetail": {
+        "deleteNow": "Delete now",
+        "resetPassword": "Reset password"
+      }
+    },
     "message": {
       "announcements": {
         "titleWillBeRemoved": "&quot;{title}&quot; will be removed from every inbox it was delivered to."
@@ -87,6 +110,21 @@
       "appAccessPanel": {
         "revokeNameSAccess": "Revoke {name}'s access to this app?"
       },
+      "appDetail": {
+        "anyHostBindingFor": "Any host binding for it should be released first. Applies on the next deploy.",
+        "deleteReleaseVThis": "Delete release v{version}? This removes its retired container and history.",
+        "itStaysPublishedUntil": "It stays published until the app is redeployed.",
+        "redeployNowToFree": "Redeploy now to free the host port?",
+        "removeVar": "The variable is removed from {name}.",
+        "removeVarDeployed": "The variable is removed from {name}. Applies on the next deploy.",
+        "templateImage": "{name} was installed from the “{template}” template. Changing its image here means it no longer matches the template, and a future template upgrade may overwrite your change. Upgrade through the marketplace when you can.",
+        "templateImageVersioned": "{name} was installed from the “{template}” template (v{version}). Changing its image here means it no longer matches the template, and a future template upgrade may overwrite your change. Upgrade through the marketplace when you can.",
+        "theApp": "the app",
+        "theCanaryContainerIs": "The canary container is stopped and discarded, and all traffic returns to the current stable release of {name}.",
+        "theCanaryReleaseWill": "The canary release will take 100% of traffic and become the stable release of {name}. The previous stable release is retired.",
+        "thePortOnlyPublishes": "The port only publishes on the next deploy. Redeploy now to publish it?",
+        "withdrawThisPendingHost": "Withdraw this pending host-port request."
+      },
       "certificateDetail": {
         "deleteCertificateNameThis": "Delete certificate &quot;{name}&quot;? This is blocked while a route still references it."
       },
@@ -97,6 +135,15 @@
       },
       "configs": {
         "deleteConfigNameAnd": "Delete config &quot;{name}&quot; and its {length} file(s)? An application still mounting it blocks the delete."
+      },
+      "databaseDetail": {
+        "appsUsingThisDatabase": "Apps using this database will lose connectivity until it is started again.",
+        "deleteAllItsDatabases": "Delete \"{name}\", all its databases, and its data volume? This cannot be undone.",
+        "deleteBackupTheArtifact": "Delete backup #{number}? The artifact will be removed.",
+        "deleteDatabaseAndIts": "Delete database \"{name}\" and its user? This cannot be undone.",
+        "deleteItsDatabaseBackup": "Delete {ref}? Its {length} database backup(s) and their artifacts are removed.",
+        "restoreAllDatabaseS": "Restore all {length} database(s) from {ref}? Their current contents are overwritten.",
+        "theContainerWillBe": "The {engine} container will be restarted. Brief downtime is expected."
       },
       "databaseSizes": {
         "nameWillNoLonger": "&quot;{name}&quot; will no longer be offered. Databases already on it keep their limits."
@@ -131,6 +178,10 @@
       },
       "imageDetail": {
         "deleteRepoNameThis": "Delete {repo}:{name}? This removes the manifest from the registry and cannot be undone."
+      },
+      "jobs": {
+        "deleteCronjobScheduledRuns": "Delete cronjob \"{name}\"? Scheduled runs will stop.",
+        "deleteJobRunThis": "Delete job run #{id}? This cannot be undone."
       },
       "ldapDirectory": {
         "deleteNameUsersProvisioned": "Delete &quot;{name}&quot;? Users provisioned from it keep their accounts but can no longer sign in via this directory."
@@ -230,6 +281,15 @@
       "storageClasses": {
         "nameWillNoLonger": "&quot;{name}&quot; will no longer be offered. Deleting is refused while any volume still uses it — disable it instead to stop new volumes landing there."
       },
+      "userDetail": {
+        "demote": "Demote {name} to user?",
+        "disableSAccountThey": "Disable {name}'s account? They will be signed out and unable to log in, and all their applications and databases will be stopped.",
+        "disableTwoFactorAuthentication": "Disable two-factor authentication for {name}? Use this only for account recovery.",
+        "generateANewPassword": "Generate a new password for {name}? This is irreversible: their current password stops working immediately, every active session is signed out, and the new password is shown only once.",
+        "permanentlyDeleteAndAll": "Permanently delete {name} and all of their remaining data right now? This skips the grace period and cannot be undone.",
+        "promote": "Promote {name} to admin?",
+        "revokeAllActiveSessions": "Revoke all active sessions for {name}?"
+      },
       "volumeDetail": {
         "deletePathFromThis": "Delete &quot;{path}&quot; from this volume? This cannot be undone.",
         "deleteTheBackupTaken": "Delete the backup taken {fmtTime}? The backup record is removed; the archive object in your S3 bucket is not deleted.",
@@ -250,11 +310,34 @@
       }
     },
     "title": {
+      "appDetail": {
+        "abortCanaryRollout": "Abort canary rollout?",
+        "bindingReleased": "Binding released",
+        "cancelPortBinding": "Cancel port binding?",
+        "changeATemplateManaged": "Change a template-managed image?",
+        "delete": "Delete {key}?",
+        "deleteRelease": "Delete release",
+        "hostPortBound": "Host port bound",
+        "promoteCanaryToStable": "Promote canary to stable?",
+        "releaseHostPort": "Release host port {host_port}?",
+        "removeContainerPort": "Remove container port {container_port}/{protocol}?"
+      },
       "applyClusterNetworking": "Apply cluster networking?",
       "banDomain": "Ban domain?",
       "changeTheDefaultOrganization": "Change the default organization",
       "completeRecovery": "Complete recovery?",
       "confirmThisChange": "Confirm this change",
+      "databaseDetail": {
+        "admin": "{name} (admin)",
+        "deleteBackup": "Delete backup",
+        "deleteDatabase": "Delete database",
+        "deleteDatabaseInstance": "Delete database instance",
+        "deleteRecoveryPoint": "Delete recovery point",
+        "restartDatabase": "Restart database",
+        "restoreRecoveryPoint": "Restore recovery point",
+        "stopDatabase": "Stop database",
+        "upgradeDatabaseVersion": "Upgrade database version"
+      },
       "deleteApiKey": "Delete API key",
       "deleteBackup": "Delete backup",
       "deleteBundle": "Delete bundle",
@@ -291,6 +374,10 @@
       "discardChanges": "Discard changes?",
       "disconnectDnsProvider": "Disconnect DNS provider?",
       "forceVerifyDomain": "Force-verify domain?",
+      "jobs": {
+        "deleteCronjob": "Delete cronjob",
+        "deleteJobRun": "Delete job run"
+      },
       "regenerateToken": "Regenerate token",
       "rejectThisRequest": "Reject this request?",
       "removeApplication": "Remove application",
@@ -310,7 +397,16 @@
       "rotateEncryptionKey": "Rotate encryption key",
       "runGarbageCollection": "Run garbage collection",
       "tearDownGateway": "Tear down gateway",
-      "testDnsProvider": "Test DNS provider"
+      "testDnsProvider": "Test DNS provider",
+      "userDetail": {
+        "demote": "Demote user?",
+        "disableAccount": "Disable account?",
+        "disableTwoFactor": "Disable two-factor?",
+        "permanentlyDeleteAccount": "Permanently delete account?",
+        "promote": "Promote user?",
+        "resetPassword": "Reset password?",
+        "revokeSessions": "Revoke sessions?"
+      }
     }
   },
   "error": {

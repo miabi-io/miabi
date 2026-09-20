@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -11,6 +12,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const { currentWorkspaceId } = storeToRefs(ws)
 
@@ -182,10 +184,10 @@ async function runCronNow(c: CronJob) {
 const confirm = ref<{ title: string; message: string; run: () => Promise<void> } | null>(null)
 const confirmBusy = ref(false)
 function askDeleteJob(j: Job) {
-  confirm.value = { title: 'Delete job run', message: `Delete job run #${j.id}? This cannot be undone.`, run: () => deleteJob(j) }
+  confirm.value = { title: t('confirm.title.jobs.deleteJobRun'), message: t('confirm.message.jobs.deleteJobRunThis', { id: j.id }), run: () => deleteJob(j) }
 }
 function askDeleteCron(c: CronJob) {
-  confirm.value = { title: 'Delete cronjob', message: `Delete cronjob "${c.name || c.schedule}"? Scheduled runs will stop.`, run: () => delCron(c) }
+  confirm.value = { title: t('confirm.title.jobs.deleteCronjob'), message: t('confirm.message.jobs.deleteCronjobScheduledRuns', { name: c.name || c.schedule }), run: () => delCron(c) }
 }
 async function delCron(c: CronJob) {
   const id = currentWorkspaceId.value

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed, ref, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -21,6 +22,7 @@ import AppModal from '@/components/AppModal.vue'
 import { relativeTime } from '@/utils/time'
 
 const route = useRoute()
+const { t } = useI18n()
 const router = useRouter()
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -400,8 +402,8 @@ async function createDb() {
 }
 function askRemoveDb(d: LogicalDatabase) {
   confirm.value = {
-    kind: 'remove-db', title: 'Delete database', confirmLabel: 'Delete', variant: 'danger',
-    message: `Delete database "${d.name}" and its user? This cannot be undone.`,
+    kind: 'remove-db', title: t('confirm.title.databaseDetail.deleteDatabase'), confirmLabel: t('action.delete'), variant: 'danger',
+    message: t('confirm.message.databaseDetail.deleteDatabaseAndIts', { name: d.name }),
     run: () => removeDb(d),
   }
 }
@@ -510,8 +512,8 @@ async function adoptSet(d: DiscoveredSet) {
 }
 function askRestoreSet(set: DatabaseBackupSet) {
   confirm.value = {
-    kind: 'restore-backup-set', title: 'Restore recovery point', confirmLabel: 'Restore', variant: 'danger',
-    message: `Restore all ${set.items?.length ?? 0} database(s) from ${set.ref}? Their current contents are overwritten.`,
+    kind: 'restore-backup-set', title: t('confirm.title.databaseDetail.restoreRecoveryPoint'), confirmLabel: t('action.restore'), variant: 'danger',
+    message: t('confirm.message.databaseDetail.restoreAllDatabaseS', { length: set.items?.length ?? 0, ref: set.ref }),
     run: () => restoreSet(set),
   }
 }
@@ -561,8 +563,8 @@ async function downloadRecoveryKit(set: DatabaseBackupSet) {
 
 function askRemoveSet(set: DatabaseBackupSet) {
   confirm.value = {
-    kind: 'remove-backup-set', title: 'Delete recovery point', confirmLabel: 'Delete', variant: 'danger',
-    message: `Delete ${set.ref}? Its ${set.items?.length ?? 0} database backup(s) and their artifacts are removed.`,
+    kind: 'remove-backup-set', title: t('confirm.title.databaseDetail.deleteRecoveryPoint'), confirmLabel: t('action.delete'), variant: 'danger',
+    message: t('confirm.message.databaseDetail.deleteItsDatabaseBackup', { ref: set.ref, length: set.items?.length ?? 0 }),
     run: () => removeSet(set),
   }
 }
@@ -675,8 +677,8 @@ async function downloadBackup(b: Backup) {
 }
 function askRemoveBackup(b: Backup) {
   confirm.value = {
-    kind: 'remove-backup', title: 'Delete backup', confirmLabel: 'Delete', variant: 'danger',
-    message: `Delete backup #${b.number}? The artifact will be removed.`,
+    kind: 'remove-backup', title: t('confirm.title.databaseDetail.deleteBackup'), confirmLabel: t('action.delete'), variant: 'danger',
+    message: t('confirm.message.databaseDetail.deleteBackupTheArtifact', { number: b.number }),
     run: () => removeBackup(b),
   }
 }
@@ -735,24 +737,24 @@ const confirmBlocked = computed(() => !!confirm.value?.requireName && deleteConf
 
 function askStop() {
   confirm.value = {
-    kind: 'stop', title: 'Stop database', confirmLabel: 'Stop', variant: 'primary',
-    message: 'Apps using this database will lose connectivity until it is started again.',
+    kind: 'stop', title: t('confirm.title.databaseDetail.stopDatabase'), confirmLabel: t('action.stop'), variant: 'primary',
+    message: t('confirm.message.databaseDetail.appsUsingThisDatabase'),
     run: () => lifecycle('stop'),
   }
 }
 function askRestart() {
   confirm.value = {
-    kind: 'restart', title: 'Restart database', confirmLabel: 'Restart', variant: 'primary',
-    message: `The ${inst.value?.engine ?? 'database'} container will be restarted. Brief downtime is expected.`,
+    kind: 'restart', title: t('confirm.title.databaseDetail.restartDatabase'), confirmLabel: t('action.restart'), variant: 'primary',
+    message: t('confirm.message.databaseDetail.theContainerWillBe', { engine: inst.value?.engine ?? 'database' }),
     run: () => lifecycle('restart'),
   }
 }
 function askDelete() {
   deleteConfirm.value = ''
   confirm.value = {
-    kind: 'delete', title: 'Delete database instance', confirmLabel: 'Delete', variant: 'danger',
+    kind: 'delete', title: t('confirm.title.databaseDetail.deleteDatabaseInstance'), confirmLabel: t('action.delete'), variant: 'danger',
     requireName: true,
-    message: `Delete "${inst.value?.name}", all its databases, and its data volume? This cannot be undone.`,
+    message: t('confirm.message.databaseDetail.deleteAllItsDatabases', { name: inst.value?.name }),
     run: () => removeInstance(),
   }
 }
@@ -772,7 +774,7 @@ async function revealInstance() {
   if (!wid.value) return
   try {
     const info = (await databaseApi.credentials(wid.value, instId.value)).data.data
-    if (info) connModal.value = { title: `${inst.value?.name} (admin)`, info }
+    if (info) connModal.value = { title: t('confirm.title.databaseDetail.admin', { name: inst.value?.name }), info }
   } catch (e) { notify.apiError(e, 'Only admins can reveal credentials') }
 }
 async function removeInstance() {
@@ -864,7 +866,7 @@ function askUpgrade() {
   if (stopApps.value && upgradeAppNames.value.length) lines.push(`These apps will be stopped during the upgrade and restarted after: ${upgradeAppNames.value.join(', ')}.`)
   lines.push('A full backup is taken first.')
   confirm.value = {
-    kind: 'upgrade', title: 'Upgrade database version', confirmLabel: 'Upgrade',
+    kind: 'upgrade', title: t('confirm.title.databaseDetail.upgradeDatabaseVersion'), confirmLabel: t('action.upgrade'),
     variant: p.major ? 'danger' : 'primary',
     message: lines.join(' '),
     run: () => runUpgrade(),

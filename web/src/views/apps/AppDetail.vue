@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -51,6 +52,7 @@ function strategyHint(s: DeployStrategy | undefined): string {
 const route = useRoute()
 const router = useRouter()
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 
 const appId = computed(() => Number(route.params.id))
@@ -754,10 +756,10 @@ const canaryBusy = ref(false)
 async function promoteCanary() {
   if (!wid.value || !app.value) return
   if (!(await askConfirm({
-    title: 'Promote canary to stable?',
-    message: `The canary release will take 100% of traffic and become the stable release of ${app.value.name}. The previous stable release is retired.`,
-    confirmLabel: 'Promote now',
-    cancelLabel: 'Cancel',
+    title: t('confirm.title.appDetail.promoteCanaryToStable'),
+    message: t('confirm.message.appDetail.theCanaryReleaseWill', { name: app.value.name }),
+    confirmLabel: t('confirm.label.appDetail.promoteNow'),
+    cancelLabel: t('action.cancel'),
     variant: 'primary',
   }))) return
   canaryBusy.value = true
@@ -771,10 +773,10 @@ async function promoteCanary() {
 async function abortCanary() {
   if (!wid.value || !app.value) return
   if (!(await askConfirm({
-    title: 'Abort canary rollout?',
-    message: `The canary container is stopped and discarded, and all traffic returns to the current stable release of ${app.value.name}.`,
-    confirmLabel: 'Abort canary',
-    cancelLabel: 'Keep rolling out',
+    title: t('confirm.title.appDetail.abortCanaryRollout'),
+    message: t('confirm.message.appDetail.theCanaryContainerIs', { name: app.value.name }),
+    confirmLabel: t('confirm.label.appDetail.abortCanary'),
+    cancelLabel: t('confirm.label.appDetail.keepRollingOut'),
     variant: 'danger',
   }))) return
   canaryBusy.value = true
@@ -1203,7 +1205,7 @@ async function addContainerPort() {
 }
 async function removeContainerPort(p: AppPort) {
   if (!app.value) return
-  if (!(await askConfirm({ title: `Remove container port ${p.container_port}/${p.protocol}?`, message: 'Any host binding for it should be released first. Applies on the next deploy.', confirmLabel: 'Remove', variant: 'danger' }))) return
+  if (!(await askConfirm({ title: t('confirm.title.appDetail.removeContainerPort', { container_port: p.container_port, protocol: p.protocol }), message: t('confirm.message.appDetail.anyHostBindingFor'), confirmLabel: t('action.remove'), variant: 'danger' }))) return
   syncSettingsForm()
   settingsForm.value.ports = settingsForm.value.ports.filter((x) => !(x.container_port === p.container_port && x.protocol === p.protocol))
   await saveSettings()
@@ -1218,7 +1220,7 @@ async function requestBind() {
     if (b.status === 'approved') {
       // Auto-approved (privileged): the port only publishes on the next deploy.
       await loadApp() // refresh the "redeploy required" header indicator
-      if (isDeployed.value && await askConfirm({ title: 'Host port bound', message: 'The port only publishes on the next deploy. Redeploy now to publish it?', confirmLabel: 'Redeploy now', cancelLabel: 'Later' })) {
+      if (isDeployed.value && await askConfirm({ title: t('confirm.title.appDetail.hostPortBound'), message: t('confirm.message.appDetail.thePortOnlyPublishes'), confirmLabel: t('confirm.label.appDetail.redeployNow'), cancelLabel: t('confirm.label.appDetail.later') })) {
         followDeploy((await appApi.deploy(wid.value, appId.value, {})).data.data, 'Redeploying to publish the port')
       } else {
         notify.success(`Host port bound${changeNote()}`)
@@ -1252,13 +1254,13 @@ async function removeBind(b: PortBinding) {
   if (!wid.value) return
   const approved = b.status === 'approved'
   const ok = await askConfirm(approved
-    ? { title: `Release host port ${b.host_port}?`, message: 'It stays published until the app is redeployed.', confirmLabel: 'Release', variant: 'danger' }
-    : { title: 'Cancel port binding?', message: 'Withdraw this pending host-port request.', confirmLabel: 'Cancel request', cancelLabel: 'Keep', variant: 'danger' })
+    ? { title: t('confirm.title.appDetail.releaseHostPort', { host_port: b.host_port }), message: t('confirm.message.appDetail.itStaysPublishedUntil'), confirmLabel: t('confirm.label.appDetail.release'), variant: 'danger' }
+    : { title: t('confirm.title.appDetail.cancelPortBinding'), message: t('confirm.message.appDetail.withdrawThisPendingHost'), confirmLabel: t('confirm.label.appDetail.cancelRequest'), cancelLabel: t('confirm.label.appDetail.keep'), variant: 'danger' })
   if (!ok) return
   try {
     await portBindingApi.cancel(wid.value, b.id)
     appBindings.value = (await portBindingApi.listByApp(wid.value, appId.value)).data.data ?? []
-    if (approved && await askConfirm({ title: 'Binding released', message: 'Redeploy now to free the host port?', confirmLabel: 'Redeploy now', cancelLabel: 'Later' })) {
+    if (approved && await askConfirm({ title: t('confirm.title.appDetail.bindingReleased'), message: t('confirm.message.appDetail.redeployNowToFree'), confirmLabel: t('confirm.label.appDetail.redeployNow'), cancelLabel: t('confirm.label.appDetail.later') })) {
       followDeploy((await appApi.deploy(wid.value, appId.value, {})).data.data, 'Redeploying to free the port')
     } else {
       notify.success(approved ? 'Binding released — redeploy the app to free the port' : 'Binding cancelled')
@@ -1422,10 +1424,14 @@ function goToUpgrade() {
 async function confirmTemplateImageChange(): Promise<boolean> {
   if (!template.value) return true
   return askConfirm({
-    title: 'Change a template-managed image?',
-    message: `${app.value?.name} was installed from the “${template.value.name}” template${template.value.version ? ` (v${template.value.version})` : ''}. Changing its image here means it no longer matches the template, and a future template upgrade may overwrite your change. Upgrade through the marketplace when you can.`,
-    confirmLabel: 'Change anyway',
-    cancelLabel: 'Cancel',
+    title: t('confirm.title.appDetail.changeATemplateManaged'),
+    // Two keys rather than an optional fragment spliced in: "(v1.2)" sits in a different
+    // place in other languages, and a translator cannot move what arrives pre-assembled.
+    message: template.value.version
+      ? t('confirm.message.appDetail.templateImageVersioned', { name: app.value?.name, template: template.value.name, version: template.value.version })
+      : t('confirm.message.appDetail.templateImage', { name: app.value?.name, template: template.value.name }),
+    confirmLabel: t('confirm.label.appDetail.changeAnyway'),
+    cancelLabel: t('action.cancel'),
     variant: 'danger',
   })
 }
@@ -1494,9 +1500,9 @@ async function togglePin(r: Release) {
 async function deleteRelease(r: Release) {
   if (!wid.value) return
   if (!(await askConfirm({
-    title: 'Delete release',
-    message: `Delete release v${r.version}? This removes its retired container and history.`,
-    confirmLabel: 'Delete',
+    title: t('confirm.title.appDetail.deleteRelease'),
+    message: t('confirm.message.appDetail.deleteReleaseVThis', { version: r.version }),
+    confirmLabel: t('action.delete'),
     variant: 'danger',
   }))) return
   releaseBusy.value = r.id
@@ -1539,9 +1545,11 @@ async function saveEnv(v: { key: string; value: string; secret: boolean }) {
 async function delEnv(e: AppEnvVar) {
   if (!wid.value) return
   if (!(await askConfirm({
-    title: `Delete ${e.key}?`,
-    message: `The variable is removed from ${app.value?.name ?? 'the app'}.${isDeployed.value ? ' Applies on the next deploy.' : ''}`,
-    confirmLabel: 'Delete',
+    title: t('confirm.title.appDetail.delete', { key: e.key }),
+    message: isDeployed.value
+      ? t('confirm.message.appDetail.removeVarDeployed', { name: app.value?.name ?? t('confirm.message.appDetail.theApp') })
+      : t('confirm.message.appDetail.removeVar', { name: app.value?.name ?? t('confirm.message.appDetail.theApp') }),
+    confirmLabel: t('action.delete'),
     variant: 'danger',
   }))) return
   await appApi.deleteEnvVar(wid.value, appId.value, e.key).catch((err: unknown) => notify.apiError(err))
