@@ -1053,7 +1053,7 @@ watch(activeTab, (t) => loadTab(t))
   <ConfirmDialog
     :open="!!pendingRemoveMember"
     :title="$t('confirm.title.removeMember')"
-    :message="`Remove ${pendingRemoveMember?.name} from this workspace?`"
+    :message="$t('confirm.message.workspaceSettings.removeNameFromThis', { name: pendingRemoveMember?.name })"
     :confirm-label="$t('action.remove')"
     variant="danger"
     :busy="removingMember"

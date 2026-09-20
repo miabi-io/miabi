@@ -132,7 +132,7 @@ function submit() {
     <ConfirmDialog
       :open="confirmDiscard"
       :title="$t('confirm.title.discardChanges')"
-      message="This variable has unsaved changes. Closing now loses them."
+      :message="$t('confirm.message.envVarModal.thisVariableHasUnsaved')"
       :confirm-label="$t('action.discard')"
       cancel-label="Keep editing"
       variant="danger"

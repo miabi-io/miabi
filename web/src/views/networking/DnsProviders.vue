@@ -317,7 +317,7 @@ async function disconnect() {
     <ConfirmDialog
       :open="!!testProvider"
       :title="$t('confirm.title.testDnsProvider')"
-      :message="`Enter one of your domains on ${testProvider ? typeLabel(testProvider.type) : ''} to test ${testProvider?.name}.`"
+      :message="$t('confirm.message.dnsProviders.enterOneOfYour', { type: testProvider ? typeLabel(testProvider.type) : '', name: testProvider?.name })"
       :confirm-label="$t('action.test')"
       variant="primary"
       :busy="probing"
@@ -334,7 +334,7 @@ async function disconnect() {
     <ConfirmDialog
       :open="!!pendingDisconnect"
       :title="$t('confirm.title.disconnectDnsProvider')"
-      :message="`Disconnect &quot;${pendingDisconnect?.name}&quot;? Existing DNS records are left untouched.`"
+      :message="$t('confirm.message.dnsProviders.disconnectNameExistingDns', { name: pendingDisconnect?.name })"
       :confirm-label="$t('action.disconnect')"
       variant="danger"
       :busy="disconnecting"

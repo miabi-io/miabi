@@ -248,7 +248,7 @@ async function confirmDelete() {
     <ConfirmDialog
       :open="!!pendingDelete"
       :title="$t('confirm.title.deleteChannel')"
-      :message="`Delete notification channel &quot;${pendingDelete?.name}&quot;?`"
+      :message="$t('confirm.message.notifications.deleteNotificationChannelName', { name: pendingDelete?.name })"
       :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"

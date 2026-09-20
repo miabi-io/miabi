@@ -296,7 +296,7 @@ const promoteMessage = computed(() => {
     <ConfirmDialog
       :open="confirmDelete"
       :title="$t('confirm.title.deleteOrganization')"
-      :message="`&quot;${org?.display_name ?? ''}&quot; will be removed, and any location dedicated to it becomes administrator-only until you reassign it. Deleting is refused while it still holds workspaces or users.`"
+      :message="$t('confirm.message.organizationDetail.displayNameWillBe', { display_name: org?.display_name ?? '' })"
       :confirm-label="$t('action.delete')"
       variant="danger"
       @confirm="remove"

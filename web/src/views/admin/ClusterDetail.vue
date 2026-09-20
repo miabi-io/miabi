@@ -1049,9 +1049,7 @@ function swarmClass(n: Server): string {
     <ConfirmDialog
       :open="showRemoveAgents"
       :title="$t('confirm.title.removeClusterAgents')"
-      message="The agent is removed from every cluster node. They keep running their tasks — Swarm schedules those itself — but Miabi loses its Docker connection to them.
-
-Apps scheduled on those nodes will stop showing metrics, stats and a shell. The node records themselves are kept."
+      :message="$t('confirm.message.clusterDetail.theAgentIsRemoved')"
       :confirm-label="$t('action.removeAgents')"
       variant="danger"
       :busy="busy"
@@ -1062,7 +1060,7 @@ Apps scheduled on those nodes will stop showing metrics, stats and a shell. The 
     <ConfirmDialog
       :open="showApplyNetworking"
       :title="$t('confirm.title.applyClusterNetworking')"
-      message="Each workspace network is converted from a node-local bridge to a cluster overlay, so apps and databases reach each other across nodes. Containers are NOT restarted, but connections open inside a workspace drop briefly while it switches over."
+      :message="$t('confirm.message.clusterDetail.eachWorkspaceNetworkIs')"
       :confirm-label="$t('action.apply')"
       :busy="busy"
       @confirm="applyNetworking"
@@ -1085,7 +1083,7 @@ Apps scheduled on those nodes will stop showing metrics, stats and a shell. The 
     <ConfirmDialog
       :open="!!pendingLeave"
       :title="$t('confirm.title.removeNodeFromTheSwarm')"
-      :message="`Remove ${pendingLeave?.display_name || pendingLeave?.name} from the swarm? It becomes a standalone cluster of its own.`"
+      :message="$t('confirm.message.clusterDetail.removeNameFromThe', { name: pendingLeave?.display_name || pendingLeave?.name })"
       :confirm-label="$t('action.remove')"
       variant="danger"
       :busy="busy"

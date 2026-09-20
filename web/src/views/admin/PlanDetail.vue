@@ -397,7 +397,7 @@ function fmtDate(s?: string): string {
     <ConfirmDialog
       :open="showDelete"
       :title="$t('confirm.title.deletePlan')"
-      :message="`Delete plan &quot;${plan?.name}&quot;? Any workspaces using it will fall back to the default plan.`"
+      :message="$t('confirm.message.planDetail.deletePlanNameAny', { name: plan?.name })"
       :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"

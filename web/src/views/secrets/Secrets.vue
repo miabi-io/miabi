@@ -434,7 +434,7 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
     </Teleport>
 
     <ConfirmDialog :open="!!toDelete" :title="$t('confirm.title.deleteSecret')"
-      :message="`Delete secret &quot;${toDelete?.name}&quot;? Apps that reference it will fail to deploy until the reference is removed.`"
+      :message="$t('confirm.message.secrets.deleteSecretNameApps', { name: toDelete?.name })"
       :confirm-label="$t('action.delete')" variant="danger" :busy="deleting" @confirm="confirmDelete" @cancel="toDelete = null" />
   </div>
 </template>

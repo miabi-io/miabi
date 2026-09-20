@@ -420,7 +420,7 @@ function failedArtifacts(b: BundleInfo): number {
     <ConfirmDialog
       :open="!!deleteRef"
       :title="$t('confirm.title.deleteBundle')"
-      :message="`This removes ${deleteRef} from the bucket — its index, its state file and every dump and archive under it. It cannot be undone.`"
+      :message="$t('confirm.message.portableBackupPanel.thisRemovesDeleterefFrom', { deleteRef: deleteRef })"
       :confirm-label="$t('action.delete')"
       variant="danger"
       @confirm="confirmDeleteBundle"

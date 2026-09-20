@@ -484,7 +484,7 @@ onMounted(() => {
     <ConfirmDialog
       :open="!!pendingDelete"
       :title="$t('confirm.title.deleteProvider')"
-      :message="`Delete provider &quot;${pendingDelete?.name}&quot;? This cannot be undone.`"
+      :message="$t('confirm.message.oAuthProviders.deleteProviderNameThis', { name: pendingDelete?.name })"
       :confirm-label="$t('action.delete')"
       variant="danger"
       :busy="deleting"
