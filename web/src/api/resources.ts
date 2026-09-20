@@ -58,8 +58,8 @@ export const databaseApi = {
   eventsUrl: (ws: number, id: number) => sseUrl(`${w(ws)}/databases/${id}/events`),
   // SSE stream of live status for every instance in the workspace (list page).
   workspaceEventsUrl: (ws: number) => sseUrl(`${w(ws)}/databases/events`),
-  create: (ws: number, name: string, engine: DBEngine, version?: string, serverId?: number, sizeMb?: number, location?: string, memoryMb?: number, cpuCores?: number, size?: string) =>
-    api.post<ApiResponse<DatabaseInstance>>(`${w(ws)}/databases`, { name, engine, version, server_id: serverId, size_mb: sizeMb, location, memory_mb: memoryMb, cpu_cores: cpuCores, size }),
+  create: (ws: number, name: string, engine: DBEngine, version?: string, serverId?: number, sizeMb?: number, location?: string, memoryMb?: number, cpuCores?: number, size?: string, storageClass?: string) =>
+    api.post<ApiResponse<DatabaseInstance>>(`${w(ws)}/databases`, { name, engine, version, server_id: serverId, size_mb: sizeMb, location, memory_mb: memoryMb, cpu_cores: cpuCores, size, storage_class: storageClass }),
   credentials: (ws: number, id: number) => api.get<ApiResponse<ConnectionInfo>>(`${w(ws)}/databases/${id}/credentials`),
   start: (ws: number, id: number) => api.post<ApiResponse<{ message: string }>>(`${w(ws)}/databases/${id}/start`),
   stop: (ws: number, id: number) => api.post<ApiResponse<{ message: string }>>(`${w(ws)}/databases/${id}/stop`),

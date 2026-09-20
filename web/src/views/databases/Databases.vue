@@ -6,8 +6,8 @@ import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
-import { databaseApi } from '@/api/resources'
-import type { DatabaseInstance, DatabaseSize, DatabaseSizeOffer, DBEngine, DBStatus } from '@/api/types'
+import { databaseApi, volumeApi } from '@/api/resources'
+import type { DatabaseInstance, DatabaseSize, DatabaseSizeOffer, DBEngine, DBStatus, StorageClassOption } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
@@ -23,8 +23,9 @@ const creating = ref(false)
 interface CreateForm {
   name: string; engine: DBEngine; version: string; server_id: number; location: string
   size_mb: number | null; memory_mb: number | null; cpu_cores: number | null; size: string
+  storage_class: string
 }
-const emptyForm = (): CreateForm => ({ name: '', engine: 'postgres', version: '', server_id: 0, location: '', size_mb: null, memory_mb: null, cpu_cores: null, size: '' })
+const emptyForm = (): CreateForm => ({ name: '', engine: 'postgres', version: '', server_id: 0, location: '', size_mb: null, memory_mb: null, cpu_cores: null, size: '', storage_class: '' })
 
 const sizeOffer = ref<DatabaseSizeOffer>({ sizes: [], bound: false })
 const defaultSizeName = computed(() => sizeOffer.value.sizes.find((s) => s.id === sizeOffer.value.default_id)?.name ?? '')
@@ -39,6 +40,21 @@ function sizeLabel(s: DatabaseSize): string {
   return `${s.display_name || s.name} · ${+(s.nano_cpus / 1e9).toFixed(2)} CPU · ${Math.round(s.memory_bytes / 1048576)} MB`
 }
 const form = ref<CreateForm>(emptyForm())
+
+// The disks this workspace may put a database's data on, narrowed to its plan. They depend on the
+// node, so they reload when the location changes. A failure is not fatal: the field disappears and
+// the create falls back to the workspace's default class.
+const storageClasses = ref<StorageClassOption[]>([])
+async function loadStorageClasses() {
+  if (!currentWorkspaceId.value) return
+  try {
+    const res = await volumeApi.storageClasses(currentWorkspaceId.value, form.value.location || undefined)
+    storageClasses.value = res.data.data ?? []
+  } catch {
+    storageClasses.value = []
+  }
+}
+watch(() => form.value.location, () => { if (showCreate.value) void loadStorageClasses() })
 
 // Live updates: one SSE connection streams status deltas for the whole workspace
 // (no per-row polling). A slow reconcile is kept only as a safety net — to catch
@@ -156,6 +172,7 @@ onBeforeUnmount(() => {
 function openCreate() {
   form.value = { ...emptyForm(), size: defaultSizeName.value }
   showCreate.value = true
+  void loadStorageClasses()
 }
 
 async function create() {
@@ -165,7 +182,8 @@ async function create() {
     const f = form.value
     await databaseApi.create(currentWorkspaceId.value, f.name.trim(), f.engine, f.version.trim() || undefined, f.server_id || undefined,
       Number(f.size_mb) || undefined, f.location || undefined,
-      f.size ? undefined : Number(f.memory_mb) || undefined, f.size ? undefined : Number(f.cpu_cores) || undefined, f.size || undefined)
+      f.size ? undefined : Number(f.memory_mb) || undefined, f.size ? undefined : Number(f.cpu_cores) || undefined, f.size || undefined,
+      f.storage_class || undefined)
     notify.success(t('databases.provisioning'))
     showCreate.value = false
     reconcile(currentWorkspaceId.value) // pull in the new row; SSE then drives it to running
@@ -286,10 +304,27 @@ function fmtBytes(n?: number): string {
                 {{ $t('databases.form.resourcesHint') }}
               </p>
             </div>
-            <div class="form-group" style="margin-bottom: 0">
+            <div class="form-group" :style="storageClasses.length > 1 ? undefined : 'margin-bottom: 0'">
               <label class="form-label">{{ $t('databases.form.volumeSize') }} <span class="text-muted">{{ $t('apps.form.optional') }}</span></label>
               <input v-model.number="form.size_mb" type="number" min="0" class="form-input" :placeholder="$t('databases.form.noLimit')" />
               <p class="form-hint">{{ $t('databases.form.volumeHint') }}</p>
+            </div>
+            <!-- Only when the operator registered more than one disk: with a single class there is
+                 nothing to choose, and the field would be a question with one answer. -->
+            <div v-if="storageClasses.length > 1" class="form-group" style="margin-bottom: 0">
+              <label class="form-label">{{ $t('databases.form.storage') }}</label>
+              <select v-model="form.storage_class" class="form-select">
+                <option value="">
+                  {{ storageClasses.find(c => c.is_default)?.display_name || 'Default' }} (default)
+                </option>
+                <option v-for="c in storageClasses.filter(c => !c.is_default)" :key="c.name" :value="c.name">
+                  {{ c.display_name || c.name }}
+                </option>
+              </select>
+              <p class="form-hint">
+                {{ storageClasses.find(c => c.name === form.storage_class)?.description
+                  || $t('databases.form.storageHint') }}
+              </p>
             </div>
           </div>
           <div class="modal-footer">

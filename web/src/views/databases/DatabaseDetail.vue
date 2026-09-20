@@ -1027,6 +1027,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
           <div><span class="detail-label">{{ $t('db.inNetworkAddress') }}</span><code>{{ inst.host }}:{{ inst.port }}</code></div>
           <div v-if="inst.server_name"><span class="detail-label">{{ $t('dashboard.col.node') }}</span>{{ inst.server_name }}</div>
           <div v-if="inst.volume_name"><span class="detail-label">{{ $t('db.dataVolume') }}</span><code>{{ inst.volume_name }}</code><template v-if="inst.mount_path"> → <code>{{ inst.mount_path }}</code></template></div>
+          <div v-if="inst.storage_class"><span class="detail-label">{{ $t('volumes.storageClass') }}</span>{{ inst.storage_class }}</div>
           <div v-if="inst.size_synced_at"><span class="detail-label">{{ $t('db.onDiskSize') }}</span>{{ fmtBytes(inst.size_bytes) }}</div>
           <div><span class="detail-label">{{ $t('db.limits') }}</span>{{ fmtLimits(inst) }}</div>
         </div>

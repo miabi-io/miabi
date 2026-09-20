@@ -1361,6 +1361,8 @@
       "namePlaceholder": "e.g. app-db",
       "noLimit": "Leave empty for no declared limit",
       "resourcesHint": "Container limits; the engine is tuned to the memory. Left empty they are unlimited, or the engine's default size when the workspace's plan caps database resources. They can be changed later.",
+      "storage": "Storage",
+      "storageHint": "Which of this node's disks the database's data is created on. It cannot be changed later — the data lives there.",
       "version": "Version / tag",
       "versionHint": "Image tag for {tag}. Leave blank for the default.",
       "volumeHint": "Declared capacity of the instance's data volume, recorded for quota accounting. Hard enforcement depends on the node's storage backend.",

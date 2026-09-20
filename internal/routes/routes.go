@@ -779,6 +779,9 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		logger.Warn("failed to seed the built-in storage class", "error", err)
 	}
 	storageService.SetStorageClasses(storageClassService)
+	// A database's data volume is placed by the same rules as a workspace volume, plan binding and
+	// all, rather than always landing on Docker's data root.
+	databaseService.SetStorageClasses(storageService)
 
 	go storageService.AuditSharedVolumes()
 	go databaseService.AuditSharedNetworkInstances()

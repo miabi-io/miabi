@@ -251,16 +251,19 @@ type Stack struct {
 // deliberately do NOT travel: data crosses as a logical dump restored into a server the target
 // initialized itself. EnvPrefix and App do travel, so consuming apps are re-injected on restore.
 type DatabaseInstance struct {
-	Name        string            `json:"name"`
-	DisplayName string            `json:"display_name,omitempty"`
-	Engine      string            `json:"engine"`
-	Version     string            `json:"version,omitempty"`
-	VolumeSize  int64             `json:"volume_size_bytes,omitempty"`
-	MemoryBytes int64             `json:"memory_bytes,omitempty"`
-	NanoCPUs    int64             `json:"nano_cpus,omitempty"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
-	Annotations map[string]string `json:"annotations,omitempty"`
-	Databases   []LogicalDatabase `json:"logical_databases,omitempty"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name,omitempty"`
+	Engine      string `json:"engine"`
+	Version     string `json:"version,omitempty"`
+	VolumeSize  int64  `json:"volume_size_bytes,omitempty"`
+	// StorageClass is the operator-registered disk the data volume was on. Restoring onto an
+	// install without that class falls back to the default one rather than failing.
+	StorageClass string            `json:"storage_class,omitempty"`
+	MemoryBytes  int64             `json:"memory_bytes,omitempty"`
+	NanoCPUs     int64             `json:"nano_cpus,omitempty"`
+	Metadata     map[string]string `json:"metadata,omitempty"`
+	Annotations  map[string]string `json:"annotations,omitempty"`
+	Databases    []LogicalDatabase `json:"logical_databases,omitempty"`
 }
 
 // LogicalDatabase is one named database on an instance and the app it belongs to.
