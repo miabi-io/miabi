@@ -19,7 +19,8 @@
 # examples/compose/compose.yaml is unchanged. This script simply no longer does it for you, and
 # it refuses to install alongside an existing Compose stack (they do not share volumes).
 #
-# It leaves behind /usr/local/bin/miabi — one tool for the panel API and for this host:
+# It leaves behind the miabi CLI — in /usr/local/bin as root, ~/.local/bin otherwise — one tool for
+# the panel API and for this host:
 #
 #   miabi setup | upgrade | stack {status,restart,uninstall}
 #
@@ -41,7 +42,10 @@
 #   MIABI_INTERNAL_SUBNET       CIDR for the platform's private network — control plane,
 #                               database, cache (default 10.62.0.0/16). Set either one
 #                               where the default collides with an existing route or VPN.
-#   MIABI_ETC                   manifest directory             (default /etc/miabi)
+#   MIABI_ETC                   manifest directory             (default /etc/miabi as root,
+#                               otherwise ~/.miabi)
+#   MIABI_BIN_DIR               where the miabi CLI is installed (default /usr/local/bin as root,
+#                               otherwise ~/.local/bin)
 #   MIABI_VERSION               Miabi release to install       (default: pinned below)
 #   MIABI_CLI_VERSION           miabi CLI release to install   (default: pinned below)
 #   MIABI_CLI_BASE_URL          mirror to fetch the CLI from    (default: the GitHub release)
@@ -81,19 +85,19 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 SKIP_DOCKER_INSTALL="${MIABI_SKIP_DOCKER_INSTALL:-0}"
 
-# ── versions ─────────────────────────────────────────────────────────────────
+# ===================== versions ================================
 #
 # The single place every image is pinned. CI bumps these on release (see
 # .github/workflows/release.yml) and they are passed straight to `miabi setup`, so
 # the manifest it writes records exactly what this release was tested against.
 MIABI_VERSION="${MIABI_VERSION:-v1.10.4}"
-GOMA_VERSION="${GOMA_VERSION:-v0.15.1}"
+GOMA_VERSION="${GOMA_VERSION:-v1.0.0}"
 RUNNER_VERSION="${RUNNER_VERSION:-v0.0.10}"
 
 # The miabi CLI is what installs and then manages the stack, and it releases from its own repo
 # (miabi-io/cli) on its own cadence — a standalone CLI can be older or newer than the stack it
 # manages, so it carries its own pin rather than following MIABI_VERSION.
-MIABI_CLI_VERSION="${MIABI_CLI_VERSION:-v0.13.1}"
+MIABI_CLI_VERSION="${MIABI_CLI_VERSION:-v0.13.2}"
 
 # Docker tags carry no leading "v" (git tag v1.2.3 → image tag 1.2.3) across all
 # three images. The :latest fallback only applies if a caller deliberately blanks
@@ -119,7 +123,7 @@ else
   UPDATE_HINT="curl -fsSL https://get.miabi.io | sudo bash"
 fi
 
-# ── logging ──────────────────────────────────────────────────────────────────
+# ============================ logging ====================
 if [ -t 1 ]; then
   C_RESET='\033[0m'; C_CYAN='\033[1;36m'; C_GREEN='\033[1;32m'
   C_YELLOW='\033[1;33m'; C_RED='\033[1;31m'; C_DIM='\033[2m'
@@ -144,10 +148,32 @@ on_error() {
 }
 trap 'on_error $LINENO' ERR
 
-# ── preflight checks ─────────────────────────────────────────────────────────
+# ====================== preflight checks ==========================
 log "Running preflight checks"
 
-[ "$(id -u)" -eq 0 ] || die "please run as root (or via sudo)."
+# Root is not required — writable locations and a usable Docker are. As root that means
+# /usr/local/bin and /etc/miabi, as anyone else your own home. Docker itself can only be INSTALLED
+# as root, so a rootless run needs it present already; the socket has to be usable by this user
+# either way (the `docker` group, which is root-equivalent — this is convenience, not isolation).
+if [ "$(id -u)" -eq 0 ]; then
+  ROOTLESS=0
+  BIN_DIR="${MIABI_BIN_DIR:-/usr/local/bin}"
+  STACK_ETC_DEFAULT="/etc/miabi"
+else
+  ROOTLESS=1
+  BIN_DIR="${MIABI_BIN_DIR:-${HOME}/.local/bin}"
+  STACK_ETC_DEFAULT="${HOME}/.miabi"
+  [ -n "${HOME:-}" ] || die "running without root needs \$HOME set, to know where to install."
+  command -v docker >/dev/null 2>&1 ||
+    die "Docker is not installed, and installing it needs root. Install Docker, or re-run with sudo."
+  docker info >/dev/null 2>&1 ||
+    die "this user cannot use Docker. Add it to the \`docker\` group (then log in again), or re-run with sudo."
+  warn "Installing without root: binary in ${BIN_DIR}, stack config in ${STACK_ETC_DEFAULT}."
+  # The re-run hint is built above, before privileges are known. Re-running an install that lives
+  # in the user's home under sudo would converge a DIFFERENT install, so drop it.
+  UPDATE_HINT="${UPDATE_HINT#sudo }"
+  UPDATE_HINT="${UPDATE_HINT/| sudo bash/| bash}"
+fi
 
 case "$(uname -s)" in
   Linux) : ;;
@@ -162,7 +188,7 @@ esac
 command -v curl >/dev/null 2>&1 || die "curl is required but not installed."
 ok "Host looks good ($(uname -s)/$(uname -m), root)"
 
-# ── docker ───────────────────────────────────────────────────────────────────
+# docker
 # Read one field out of /etc/os-release without leaking its vars into our shell.
 os_release() { # <field>
   # shellcheck disable=SC1091
@@ -361,7 +387,6 @@ for p in 80 443; do
   fi
 done
 
-# ── prompt (interactive only) ────────────────────────────────────────────────
 #
 # interactive() is the single definition of "there is a human here to answer",
 # used by every prompt AND by the --yes decision below. It tests
@@ -423,7 +448,7 @@ prompt_yn() { # <env-var> <question>
 # So installing the stack here would not adopt the existing database — it would
 # create an empty one beside it, and the operator would think their data had
 # vanished. Refuse, and say what to do instead.
-STACK_ETC="${MIABI_ETC:-/etc/miabi}"
+STACK_ETC="${MIABI_ETC:-$STACK_ETC_DEFAULT}"
 
 compose_miabi_present() {
   command -v docker >/dev/null 2>&1 || return 1
@@ -497,19 +522,21 @@ install_cli() {
   fi
 
   tar -xzf "${tmp}/${archive}" -C "$tmp" miabi || die "could not extract miabi from ${archive}."
-  install -m 0755 "${tmp}/miabi" /usr/local/bin/miabi
-  ok "Installed $(/usr/local/bin/miabi --version 2>/dev/null || echo miabi) to /usr/local/bin/miabi"
+  mkdir -p "$BIN_DIR"
+  install -m 0755 "${tmp}/miabi" "${BIN_DIR}/miabi"
+  ok "Installed $("${BIN_DIR}/miabi" --version 2>/dev/null || echo miabi) to ${BIN_DIR}/miabi"
+
+  case ":${PATH}:" in
+    *":${BIN_DIR}:"*) : ;;
+    *) warn "${BIN_DIR} is not on your PATH — add it, or run ${BIN_DIR}/miabi directly." ;;
+  esac
 }
 
 install_stack() {
   local domain acme admin image
   domain="$(prompt MIABI_DOMAIN 'Panel domain (e.g. miabi.example.com)' '')"
   [ -n "$domain" ] || die "MIABI_DOMAIN is required: pass it as MIABI_DOMAIN=miabi.example.com (answering a prompt over a pipe is unreliable)."
-  # Neither email is defaulted here. `miabi setup` owns the whole rule: the two
-  # addresses fall back to each other, and admin@<domain> is the last resort. Defaulting
-  # either one in shell would defeat that fallback — an operator who set only
-  # MIABI_ADMIN_EMAIL would silently get admin@<domain> as their Let's Encrypt contact,
-  # because we'd have handed the stack a value it has no way to tell from a real choice.
+
   acme="$(prompt MIABI_ACME_EMAIL "Let's Encrypt contact email (blank = admin email)" '')"
   admin="$(prompt MIABI_ADMIN_EMAIL "First admin's email (blank = admin@${domain})" '')"
   image="miabi/miabi:${MIABI_IMAGE_TAG}"
@@ -573,7 +600,7 @@ install_stack() {
   # every image in one place, and the CLI version and the stack version are now independent.
   # MIABI_CONFIG_FILE honours MIABI_ETC, which the old bind mount used to do implicitly.
   # shellcheck disable=SC2086
-  MIABI_CONFIG_FILE="${STACK_ETC}/miabi.yaml" /usr/local/bin/miabi setup \
+  MIABI_CONFIG_FILE="${STACK_ETC}/miabi.yaml" "${BIN_DIR}/miabi" setup \
     --domain "$domain" \
     --image "$image" \
     --gateway-image "jkaninda/goma-gateway:${GOMA_IMAGE_TAG}" \
