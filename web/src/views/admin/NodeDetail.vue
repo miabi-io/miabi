@@ -3,7 +3,8 @@ import { useI18n } from 'vue-i18n'
 import { onMounted, onBeforeUnmount, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
-import { nodesApi, type CreateNodePayload, type NodeWorkloads, type NodeGPUList, type GPUDevice } from '@/api/nodes'
+import { nodesApi, type CreateNodePayload, type NodeWorkloads, type NodeGPUList, type GPUDevice, type NodeStatusEvent } from '@/api/nodes'
+import { useNodeStatusStream } from './useNodeStatusStream'
 import { clusterApi } from '@/api/cluster'
 
 // MIN_ENGINE_VERSION mirrors docker.MinEngineVersion (Go) — the minimum Docker
@@ -242,7 +243,27 @@ async function load() {
     loading.value = false
   }
 }
-onMounted(load)
+
+// Live reachability. The badge flipping is the least of it: a node that was offline when the page
+// opened has no stats, containers or gateway loaded, so coming online reloads the page's data
+// rather than leaving an "offline" shell behind a green badge.
+function applyStatus(e: NodeStatusEvent) {
+  if (e.id !== id || !node.value) return
+  const was = connected.value
+  node.value.agent_connected = e.online
+  node.value.status = e.status as Server['status']
+  if (e.agent_version) node.value.agent_version = e.agent_version
+  if (e.last_seen_at) node.value.last_seen_at = e.last_seen_at
+  if (e.online && !was) { load(); return }
+  if (!e.online && was) {
+    offline.value = true
+    stopStatsPolling()
+  }
+}
+
+const { streaming, open: openStatusStream } = useNodeStatusStream(applyStatus)
+
+onMounted(() => { load(); openStatusStream() })
 
 // --- GPUs ---
 const gpuInfo = ref<NodeGPUList | null>(null)
@@ -911,7 +932,12 @@ const gwBadge = computed(() => {
             <span class="mdi" :class="connected ? 'mdi-check-circle' : 'mdi-alert-circle'"></span>
           </span>
           <div>
-            <div class="hero-title">{{ statusLabel }}</div>
+            <div class="hero-title">
+              {{ statusLabel }}
+              <span class="live-chip" :class="{ 'live-chip--off': !streaming }" :title="streaming ? 'Status updates live' : 'Reconnecting — status may lag'">
+                <span class="live-dot"></span> {{ streaming ? 'live' : 'reconnecting…' }}
+              </span>
+            </div>
             <div class="hero-chips">
               <span class="chip"><span class="mdi mdi-shield-account-outline"></span> {{ roleLabel }}</span>
               <span class="chip"><span class="mdi mdi-transit-connection-variant"></span> {{ connectivityLabel() }}</span>
@@ -1767,6 +1793,10 @@ const gwBadge = computed(() => {
 </template>
 
 <style scoped>
+.live-chip { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; font-size: 11px; font-weight: 400; vertical-align: middle; color: var(--text-muted); }
+.live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success, #22c55e); }
+.live-chip--off .live-dot { background: var(--text-muted); }
+
 .text-muted { color: var(--text-muted); }
 .label-row { display: inline-flex; align-items: center; gap: 6px; }
 .header-actions { display: flex; gap: 8px; }

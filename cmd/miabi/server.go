@@ -283,7 +283,7 @@ func runServer(cli *okapicli.CLI) {
 				e:  alertEngine,
 				ws: repositories.NewWorkspaceRepository(res.db),
 			}
-			nodeManager.SetOnStatusChange(palerter.NodeStatus)
+			nodeManager.AddStatusListener(palerter.NodeStatus)
 			// Runners are scanned, not hooked: their tunnels re-form too often to notify on raw events,
 			// so the engine debounces (offline >=2m fires, back >=2m clears). It needs the system
 			// workspace to scope shared runners to the super-admins.

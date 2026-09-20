@@ -28,12 +28,17 @@ type Manager struct {
 	sessions  map[uint]*yamux.Session
 	onConnect func(ctx context.Context, srv *models.Server, token string, dc docker.Client)
 	onRemove  func(ctx context.Context, srv *models.Server, dc docker.Client)
-	onStatus  func(nodeID uint, name string, online bool)
 	subscribe func(ctx context.Context, nodeID uint, dc docker.Client)
+	// statusHooks are notified on a node's reachability TRANSITIONS. Several things watch for one
+	// (alerting, the console's live stream), so this is a fan-out rather than a single hook.
+	statusHooks []func(nodeID uint, name string, online bool)
+	// online is the last state each node was announced in, so a poller that re-confirms a node every
+	// tick does not announce it every tick. A node with no entry has never been announced.
+	online map[uint]bool
 }
 
 func NewManager(clients *Clients, nodes *node.Service) *Manager {
-	return &Manager{clients: clients, nodes: nodes, sessions: map[uint]*yamux.Session{}}
+	return &Manager{clients: clients, nodes: nodes, sessions: map[uint]*yamux.Session{}, online: map[uint]bool{}}
 }
 
 // SetOnConnect registers a hook run in a goroutine once a node's agent has connected and its
@@ -57,11 +62,53 @@ func (m *Manager) SetOnRemove(fn func(ctx context.Context, srv *models.Server, d
 	m.onRemove = fn
 }
 
-// SetOnStatusChange registers a hook fired when a node comes online (agent
-// connected) or goes offline (tunnel dropped). Used by alerting to raise/resolve
-// a "node offline" alert. Best-effort: run in a goroutine, must not block.
-func (m *Manager) SetOnStatusChange(fn func(nodeID uint, name string, online bool)) {
-	m.onStatus = fn
+// AddStatusListener registers a hook fired when a node comes online (agent connected, or a direct
+// node answering) or goes offline. Used by alerting to raise/resolve a "node offline" alert, and by
+// the console to show a node connecting without a reload. Best-effort: run in a goroutine, must not
+// block. Listeners see transitions only, never a repeat of a state they already hold.
+func (m *Manager) AddStatusListener(fn func(nodeID uint, name string, online bool)) {
+	m.mu.Lock()
+	m.statusHooks = append(m.statusHooks, fn)
+	m.mu.Unlock()
+}
+
+// announce records a node's reachability and notifies the listeners if it changed. The status write
+// happens every time — it carries the last-seen heartbeat — while the notification is a transition,
+// so a poller re-confirming a node every tick does not re-announce it every tick.
+func (m *Manager) announce(nodeID uint, name string, online bool, agentVersion string) {
+	if online {
+		m.nodes.MarkConnected(nodeID, agentVersion)
+	} else {
+		m.nodes.MarkDisconnected(nodeID)
+	}
+	m.notify(nodeID, name, online)
+}
+
+// notify fans a reachability change out to the listeners, and only a change: a node re-confirmed in
+// the state it was last announced in is not announced again.
+func (m *Manager) notify(nodeID uint, name string, online bool) {
+	m.mu.Lock()
+	was, known := m.online[nodeID]
+	m.online[nodeID] = online
+	changed := !known || was != online
+	hooks := make([]func(uint, string, bool), len(m.statusHooks))
+	copy(hooks, m.statusHooks)
+	m.mu.Unlock()
+	if !changed {
+		return
+	}
+	for _, fn := range hooks {
+		go fn(nodeID, name, online)
+	}
+}
+
+// ForgetStatus drops a node's announced state, so it is announced afresh when it next appears.
+// Called when the node record is deleted, not when its tunnel drops: a dropped tunnel is a state
+// listeners still need, while a deleted node's id may be handed to a different machine later.
+func (m *Manager) ForgetStatus(nodeID uint) {
+	m.mu.Lock()
+	delete(m.online, nodeID)
+	m.mu.Unlock()
 }
 
 // Teardown runs the onRemove hook with the node's live Docker client if the node is connected.
@@ -103,11 +150,8 @@ func (m *Manager) Handle(srv *models.Server, token, agentVersion, agentContainer
 	m.replace(nodeID, sess)
 	m.clients.SetRemote(nodeID, dcli)
 	m.clients.SetRemoteSelf(nodeID, agentContainerID) // protect the agent's own container from removal
-	m.nodes.MarkConnected(nodeID, agentVersion)
 	logger.Info("node agent connected", "node", nodeID, "name", srv.Name, "agent", agentVersion)
-	if m.onStatus != nil {
-		go m.onStatus(nodeID, srv.Name, true)
-	}
+	m.announce(nodeID, srv.Name, true, agentVersion)
 
 	// Connection-scoped context: cancelled when the tunnel drops, so per-node
 	// workers (event subscriber) stop with their node.
@@ -132,11 +176,8 @@ func (m *Manager) Handle(srv *models.Server, token, agentVersion, agentContainer
 	// this guard the superseded goroutine would rip out the live client and flip the node offline.
 	if m.forget(nodeID, sess) {
 		m.clients.RemoveRemote(nodeID)
-		m.nodes.MarkDisconnected(nodeID)
 		logger.Info("node agent disconnected", "node", nodeID, "name", srv.Name)
-		if m.onStatus != nil {
-			go m.onStatus(nodeID, srv.Name, false)
-		}
+		m.announce(nodeID, srv.Name, false, "")
 		return
 	}
 	logger.Info("superseded node tunnel closed; keeping the live connection", "node", nodeID, "name", srv.Name)

@@ -467,6 +467,7 @@ func (h *NodeHandler) Delete(c *okapi.Context) error {
 	}
 	h.manager.Disconnect(id)
 	h.manager.DisconnectDirect(id) // drop any direct (socket/api) client
+	h.manager.ForgetStatus(id)
 	if err := h.nodes.DeleteNode(id); err != nil {
 		return h.mapErr(c, err)
 	}
