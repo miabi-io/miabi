@@ -20,6 +20,7 @@ type memStore struct {
 	assigned  map[uint]uint  // server id -> cluster id
 	foreign   map[uint]int64 // other organizations' workloads, by cluster id
 	cleared   int            // calls to ClearUnusableWorkspaceDefaults
+	byOrg     map[uint]int64 // workloads in the cluster, by owning organization
 }
 
 func (m *memStore) all() []models.Cluster {
@@ -31,6 +32,9 @@ func (m *memStore) all() []models.Cluster {
 }
 
 func (m *memStore) List() ([]models.Cluster, error) { return m.all(), nil }
+
+// byOrg is the per-organization workload breakdown, when a test sets one.
+func (m *memStore) WorkloadsByOrganization(uint) (map[uint]int64, error) { return m.byOrg, nil }
 
 func (m *memStore) FindDefault() (*models.Cluster, error) {
 	c := m.def

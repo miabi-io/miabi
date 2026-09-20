@@ -158,7 +158,11 @@ func SeedDefaultOrganization(db *gorm.DB) (*models.Organization, error) {
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
-	org = models.Organization{Name: models.DefaultOrganizationName, DisplayName: "Default", IsDefault: true}
+	org = models.Organization{
+		Name:        models.DefaultOrganizationName,
+		DisplayName: models.DefaultOrganizationLabel,
+		IsDefault:   true,
+	}
 	if err := db.Create(&org).Error; err != nil {
 		return nil, fmt.Errorf("seed default organization: %w", err)
 	}

@@ -108,6 +108,31 @@ func (r *ClusterRepository) CountForeignWorkloads(clusterID, orgID uint) (int64,
 	return total, nil
 }
 
+// WorkloadsByOrganization breaks a cluster's apps, database instances and volumes down by the
+// organization that owns them, keyed by organization id (0 = workspaces in no organization). It is
+// how a change of dedication can be described before it is made rather than discovered after.
+func (r *ClusterRepository) WorkloadsByOrganization(clusterID uint) (map[uint]int64, error) {
+	totals := map[uint]int64{}
+	for _, table := range []string{"applications", "database_instances", "volumes"} {
+		var rows []struct {
+			OrganizationID uint
+			Workloads      int64
+		}
+		err := r.db.Table(table).
+			Select("COALESCE(workspaces.organization_id, 0) AS organization_id, COUNT(*) AS workloads").
+			Joins("JOIN workspaces ON workspaces.id = "+table+".workspace_id").
+			Where(table+".cluster_id = ?", clusterID).
+			Group("workspaces.organization_id").Scan(&rows).Error
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			totals[row.OrganizationID] += row.Workloads
+		}
+	}
+	return totals, nil
+}
+
 // clearUnusableDefaultsSQL clears a workspace's default location when its organization can no longer
 // place there. Two ways that happens, and both arise from dedicating a cluster rather than from
 // anything the workspace did:

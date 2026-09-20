@@ -230,6 +230,56 @@ func (s *Service) usableCluster(orgID, clusterID uint) error {
 	return nil
 }
 
+// AlignDefaultCluster repoints the organization's default location when it names a cluster the
+// organization may no longer place in. usableCluster enforces that on edit, but dedicating a
+// cluster changes the answer without anyone editing the organization: its default goes on naming
+// shared hardware that placement now skips for it. prefer is the cluster that just changed hands
+// and wins when it is one of the organization's own; 0 leaves the choice open.
+func (s *Service) AlignDefaultCluster(orgID, prefer uint) error {
+	if s.clusters == nil || orgID == 0 {
+		return nil
+	}
+	org, err := s.Get(orgID)
+	if err != nil {
+		return err
+	}
+	if org.DefaultClusterID != nil && s.usableCluster(orgID, *org.DefaultClusterID) == nil {
+		return nil
+	}
+	owned, err := s.clusters.ListByOrganization(orgID)
+	if err != nil {
+		return err
+	}
+	next := pickDefault(owned, prefer)
+	if equalClusterID(org.DefaultClusterID, next) {
+		return nil
+	}
+	org.DefaultClusterID = next
+	return s.repo.Update(org)
+}
+
+// pickDefault chooses the organization's default from the clusters it owns: the one that just
+// changed hands, else the first by name, else none — an organization that owns nothing falls back
+// to the platform default, which it is free to use again.
+func pickDefault(owned []models.Cluster, prefer uint) *uint {
+	for i := range owned {
+		if owned[i].ID == prefer {
+			return &owned[i].ID
+		}
+	}
+	if len(owned) > 0 {
+		return &owned[0].ID
+	}
+	return nil
+}
+
+func equalClusterID(a *uint, b *uint) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
+
 // SetDefault promotes an organization to the default one. Demoting the previous default and
 // promoting the new one happen together, so the fallback is never ambiguous or absent.
 func (s *Service) SetDefault(id uint) error {

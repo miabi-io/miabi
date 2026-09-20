@@ -23,12 +23,12 @@ func TestDedicatingRefusesForeignWorkloads(t *testing.T) {
 	s := &Service{store: store, states: map[uint]swarmState{}}
 
 	acme := uint(7)
-	if _, err := s.UpdateCluster(2, ClusterPatch{OrganizationID: &acme}); !errors.Is(err, ErrClusterHasForeignWorkloads) {
+	if _, err := s.UpdateCluster(2, ClusterPatch{OrganizationID: &acme, Acknowledge: true}); !errors.Is(err, ErrClusterHasForeignWorkloads) {
 		t.Fatalf("dedicating a busy location: err = %v, want ErrClusterHasForeignWorkloads", err)
 	}
 
 	store.foreign[2] = 0
-	c, err := s.UpdateCluster(2, ClusterPatch{OrganizationID: &acme})
+	c, err := s.UpdateCluster(2, ClusterPatch{OrganizationID: &acme, Acknowledge: true})
 	if err != nil {
 		t.Fatalf("dedicating an empty location: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestDedicatingRefusesForeignWorkloads(t *testing.T) {
 	// Releasing is never blocked: the workloads it would strand are the owner's own.
 	store.foreign[2] = 5
 	none := uint(0)
-	c, err = s.UpdateCluster(2, ClusterPatch{OrganizationID: &none})
+	c, err = s.UpdateCluster(2, ClusterPatch{OrganizationID: &none, Acknowledge: true})
 	if err != nil {
 		t.Fatalf("releasing: %v", err)
 	}

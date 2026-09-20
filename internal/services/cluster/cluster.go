@@ -43,6 +43,10 @@ var (
 	// ErrClusterHasForeignWorkloads is returned when dedicating a cluster that still runs other
 	// tenants' apps, databases or volumes.
 	ErrClusterHasForeignWorkloads = errors.New("this location still runs workloads belonging to other organizations; move or delete them before dedicating it")
+	// ErrDedicationAckRequired is returned when a change of owner arrives without the caller
+	// confirming it. Who owns a location decides who may see and place in it, so it is not a field
+	// that changes as a side effect of saving the form it happens to sit in.
+	ErrDedicationAckRequired = errors.New("changing which organization a location is dedicated to must be acknowledged")
 )
 
 const (
@@ -80,6 +84,7 @@ type Store interface {
 	CountWorkloads(clusterID uint) (int64, error)
 	CountExternalApps(clusterID uint) (int64, error)
 	CountForeignWorkloads(clusterID, orgID uint) (int64, error)
+	WorkloadsByOrganization(clusterID uint) (map[uint]int64, error)
 	ClearUnusableWorkspaceDefaults() (int64, error)
 	CountServerWorkloadsByKind(serverID uint) (apps, databases, volumes int64, err error)
 	CreateStandalone(srv *models.Server, name string) (*models.Cluster, error)
@@ -133,6 +138,8 @@ type Service struct {
 
 	// orgLabels names a dedicated cluster's organization; nil leaves it unnamed.
 	orgLabels OrgLabels
+	// orgAligner repoints an organization's default location after a cluster changed hands.
+	orgAligner OrgDefaultAligner
 
 	probeImages        NetCheckImages
 	probeImageFallback string

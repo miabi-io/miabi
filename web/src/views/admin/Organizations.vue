@@ -65,6 +65,15 @@ const dedicatedTo = computed(() => {
 
 const clusterLabel = (c: Cluster) => c.display_name || c.name
 
+// An organization that owns clusters is confined to them, so offering a shared one here would only
+// show a location the API refuses and placement skips. Mirrors the organization detail page.
+const editingConfined = computed(() => (dedicatedTo.value.get(editing.value?.id ?? 0) ?? []).length > 0)
+const selectableClusters = computed<Cluster[]>(() =>
+  editingConfined.value
+    ? clusters.value.filter((c) => c.organization_id === editing.value?.id)
+    : clusters.value.filter((c) => !c.organization_id),
+)
+
 // Promoting an organization that runs its own clusters confines every future unassigned user and
 // workspace to them. Existing rows keep the organization they already carry, so nothing moves — but
 // the next workspace someone makes lands somewhere they did not choose.
@@ -288,11 +297,12 @@ async function remove() {
             <div v-if="editing" class="form-group">
               <label class="form-label">Default location <span class="text-muted">(optional)</span></label>
               <select v-model.number="form.default_cluster_id" class="form-input">
-                <option :value="0">Platform default</option>
-                <option v-for="c in clusters" :key="c.id" :value="c.id">{{ clusterLabel(c) }}</option>
+                <option :value="0">{{ editingConfined ? 'First dedicated location' : 'Platform default' }}</option>
+                <option v-for="c in selectableClusters" :key="c.id" :value="c.id">{{ clusterLabel(c) }}</option>
               </select>
               <p class="form-hint">
                 Where this organization's new workspaces put their resources when they name no location.
+                <template v-if="editingConfined"> Only its own locations are offered — a shared one would be refused.</template>
               </p>
             </div>
           </div>

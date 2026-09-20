@@ -44,6 +44,21 @@ func (h *ClusterHandler) ListClusters(c *okapi.Context) error {
 	return ok(c, list)
 }
 
+// Dedication reports what a change of owner would affect in the location: how much runs here and
+// which organizations it belongs to. Pure read, so the console can describe the change before an
+// admin makes it rather than after.
+func (h *ClusterHandler) Dedication(c *okapi.Context) error {
+	id, err := resolveID(c.Param("clusterID"), h.cluster.ClusterIDByUID)
+	if err != nil {
+		return c.AbortBadRequest("invalid cluster id")
+	}
+	impact, err := h.cluster.Dedication(id)
+	if err != nil {
+		return c.AbortInternalServerError("failed to read the location's tenants", err)
+	}
+	return ok(c, impact)
+}
+
 // GetCluster returns one cluster with its node count.
 func (h *ClusterHandler) GetCluster(c *okapi.Context) error {
 	id, err := resolveID(c.Param("clusterID"), h.cluster.ClusterIDByUID)
@@ -90,6 +105,9 @@ type UpdateClusterRequest struct {
 		// balancer in front of it. The hostname is used only when there is no IP. Empty clears them.
 		IngressIP       *string `json:"ingress_ip"`
 		IngressHostname *string `json:"ingress_hostname"`
+		// Acknowledge confirms the caller accepts what a change of organization does to the tenants
+		// already here. Required whenever organization_id actually changes hands.
+		Acknowledge bool `json:"acknowledge"`
 	} `json:"body"`
 }
 
@@ -118,6 +136,7 @@ func (h *ClusterHandler) UpdateCluster(c *okapi.Context, req *UpdateClusterReque
 			return entitlementAbort(c, err)
 		}
 		patch.OrganizationID = req.Body.OrganizationID
+		patch.Acknowledge = req.Body.Acknowledge
 	}
 	patch.ExternalBaseDomain, patch.ExternalCertProvider = req.Body.ExternalBaseDomain, req.Body.ExternalCertProvider
 	patch.IngressIP, patch.IngressHostname = req.Body.IngressIP, req.Body.IngressHostname
@@ -234,7 +253,9 @@ func (h *ClusterHandler) mapClusterErr(c *okapi.Context, err error) error {
 	case errors.Is(err, cluster.ErrInvalidExternalDomain), errors.Is(err, cluster.ErrInvalidCertProvider),
 		errors.Is(err, cluster.ErrExternalAccessPinned), errors.Is(err, cluster.ErrInvalidEndpointMode):
 		return c.AbortBadRequest(err.Error())
-	case errors.Is(err, cluster.ErrExternalDomainTaken):
+	case errors.Is(err, cluster.ErrExternalDomainTaken),
+		errors.Is(err, cluster.ErrDedicationAckRequired),
+		errors.Is(err, cluster.ErrClusterHasForeignWorkloads):
 		return c.AbortWithError(409, err)
 	default:
 		return c.AbortInternalServerError("cluster operation failed", err)
