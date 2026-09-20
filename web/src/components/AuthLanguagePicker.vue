@@ -92,18 +92,34 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   padding: 8px 10px;
-  border: 1px solid var(--border-primary);
+  /* Sits over the hero's dark gradient, so it is white on a white-alpha outline rather than the
+     theme's text and border colours, which are tuned for the page background. */
+  border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: var(--radius);
-  background: var(--bg-primary);
-  color: var(--text-tertiary);
-  box-shadow: var(--shadow-sm);
+  /* Transparent so the picker reads as part of the hero rather than a card on it. No shadow to
+     match: one cast by a fill-less box renders as a glow around the outline. */
+  background: transparent;
+  color: #fff;
   cursor: pointer;
   transition: all var(--transition);
 }
 .auth-lang-btn:hover,
 .auth-lang-btn[aria-expanded='true'] {
-  color: var(--text-primary);
-  border-color: var(--border-input);
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+/* Below 900px the hero is hidden (Login.vue) and this button, being fixed, lands on the form
+   panel instead — where white on a light theme is invisible. Back to the theme's own colours. */
+@media (max-width: 900px) {
+  .auth-lang-btn {
+    border-color: var(--border-primary);
+    color: var(--text-tertiary);
+  }
+  .auth-lang-btn:hover,
+  .auth-lang-btn[aria-expanded='true'] {
+    border-color: var(--border-input);
+    color: var(--text-primary);
+  }
 }
 .auth-lang-btn .mdi {
   font-size: 18px;
