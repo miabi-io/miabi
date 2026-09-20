@@ -17,7 +17,7 @@ const props = withDefaults(
     label?: string
     disabled?: boolean
   }>(),
-  { label: 'Generate a value', disabled: false },
+  { label: '', disabled: false },
 )
 
 const emit = defineEmits<{ (e: 'generated', value: string): void }>()
@@ -33,12 +33,12 @@ function use(value: string) {
 
 <template>
   <span class="gen-btn-wrap">
-    <button type="button" class="btn-icon btn-icon-muted" :title="label" :aria-label="label" :disabled="disabled"
+    <button type="button" class="btn-icon btn-icon-muted" :title="label || $t('generator.generateAValue')" :aria-label="label || $t('generator.generateAValue')" :disabled="disabled"
       :aria-expanded="open" @click="open = true">
       <span class="mdi mdi-auto-fix"></span>
     </button>
 
-    <GeneratorModal :open="open" :title="label" @close="open = false" @use="use" />
+    <GeneratorModal :open="open" :title="label || $t('generator.generateAValue')" @close="open = false" @use="use" />
   </span>
 </template>
 

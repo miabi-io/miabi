@@ -25,7 +25,7 @@ const { ensure: ensureCatalog, typeInfo } = useMiddlewareCatalog()
 const mwId = computed(() => Number(route.params.id))
 
 async function copy(text: string) {
-  if (await copyText(text)) notify.success('Copied')
+  if (await copyText(text)) notify.success(t('notify.common.copied'))
   else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 
@@ -82,7 +82,7 @@ async function confirmDelete() {
   deleting.value = true
   try {
     await middlewareApi.remove(wid, item.value.id)
-    notify.success('Middleware deleted')
+    notify.success(t('notify.middlewares.deleted'))
     router.replace('/middlewares')
   } catch (e) { notify.apiError(e) }
   finally { deleting.value = false }
@@ -93,7 +93,7 @@ async function confirmDelete() {
   <div v-if="item">
     <div class="page-header">
       <div class="title-group">
-        <button class="btn-icon btn-icon-muted" title="Back" aria-label="Back" @click="router.push('/middlewares')">
+        <button class="btn-icon btn-icon-muted" :title="$t('middlewares.back')" :aria-label="$t('middlewares.back')" @click="router.push('/middlewares')">
           <span class="mdi mdi-arrow-left"></span>
         </button>
         <div>
@@ -103,38 +103,35 @@ async function confirmDelete() {
         <span class="badge badge-neutral">{{ item.type }}</span>
       </div>
       <div v-if="ws.canEdit" class="flex items-center gap-2">
-        <button class="btn btn-secondary" @click="showEdit = true"><span class="mdi mdi-pencil-outline"></span> Edit</button>
-        <button class="btn btn-danger" @click="showDelete = true"><span class="mdi mdi-delete-outline"></span> Delete</button>
+        <button class="btn btn-secondary" @click="showEdit = true"><span class="mdi mdi-pencil-outline"></span>{{ $t('action.edit') }}</button>
+        <button class="btn btn-danger" @click="showDelete = true"><span class="mdi mdi-delete-outline"></span>{{ $t('action.delete') }}</button>
       </div>
     </div>
 
     <div class="card mb-4">
-      <div class="card-header"><h2>Configuration</h2></div>
+      <div class="card-header"><h2>{{ $t('middlewares.configuration') }}</h2></div>
       <div class="card-body detail-list">
-        <div class="detail-row"><span class="detail-key">Name</span><span class="mono">{{ item.name }}</span></div>
-        <div class="detail-row"><span class="detail-key">Type</span><span><span class="badge badge-neutral">{{ item.type }}</span></span></div>
-        <div class="detail-row"><span class="detail-key">Paths</span><span class="mono">{{ (item.paths || []).join(', ') || '/.*' }}</span></div>
+        <div class="detail-row"><span class="detail-key">{{ $t('apps.form.name') }}</span><span class="mono">{{ item.name }}</span></div>
+        <div class="detail-row"><span class="detail-key">{{ $t('middlewares.type') }}</span><span><span class="badge badge-neutral">{{ item.type }}</span></span></div>
+        <div class="detail-row"><span class="detail-key">{{ $t('middlewares.paths') }}</span><span class="mono">{{ (item.paths || []).join(', ') || '/.*' }}</span></div>
       </div>
     </div>
 
     <div class="card mb-4">
-      <div class="card-header"><h2>Rule</h2></div>
+      <div class="card-header"><h2>{{ $t('middlewares.rule') }}</h2></div>
       <div class="card-body">
         <pre v-if="ruleYaml" class="rule-block">{{ ruleYaml }}</pre>
-        <p v-else class="text-muted text-sm" style="margin: 0">No rule configuration.</p>
+        <p v-else class="text-muted text-sm" style="margin: 0">{{ $t('middlewares.noRuleConfiguration') }}</p>
       </div>
     </div>
 
     <div v-if="callbackUrls.length" class="card">
-      <div class="card-header"><h2>Redirect URI</h2></div>
+      <div class="card-header"><h2>{{ $t('middlewares.redirectUri') }}</h2></div>
       <div class="card-body">
-        <p class="text-muted text-sm" style="margin: 0 0 12px">
-          Register these with your identity provider. A provider rejects a sign-in whose redirect URI it does
-          not recognise, which is the usual reason the first attempt fails.
-        </p>
+        <p class="text-muted text-sm" style="margin: 0 0 12px">{{ $t('middlewares.registerTheseWithYourIdentity') }}</p>
         <div v-for="url in callbackUrls" :key="url" class="code-box">
           <code>{{ url }}</code>
-          <button type="button" class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(url)">
+          <button type="button" class="btn-icon btn-icon-muted" :title="$t('middlewares.copy')" :aria-label="$t('middlewares.copy')" @click="copy(url)">
             <span class="mdi mdi-content-copy"></span>
           </button>
         </div>
@@ -142,14 +139,14 @@ async function confirmDelete() {
     </div>
 
     <div class="card">
-      <div class="card-header"><h2>Used by</h2></div>
+      <div class="card-header"><h2>{{ $t('volumes.usedBy') }}</h2></div>
       <div class="card-body">
         <div v-if="usedBy.length" class="used-list">
           <router-link v-for="r in usedBy" :key="r.id" :to="`/routes/${r.id}`" class="used-row">
             <span class="mdi mdi-routes"></span> {{ r.name }}
           </router-link>
         </div>
-        <p v-else class="text-muted text-sm" style="margin: 0">Not used by any route.</p>
+        <p v-else class="text-muted text-sm" style="margin: 0">{{ $t('middlewares.notUsedByAnyRoute') }}</p>
       </div>
     </div>
 

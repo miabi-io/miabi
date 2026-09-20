@@ -16,27 +16,27 @@ import { fmtNum, fmtMs, fmtPct, routeLabel } from './format'
 
     <div class="two-col">
       <div class="card">
-        <div class="a-card-header"><h3>p95 latency over time</h3><span class="a-muted">per {{ report.granularity }}</span></div>
+        <div class="a-card-header"><h3>{{ $t('analytics.p95LatencyOverTime') }}</h3><span class="a-muted">per {{ report.granularity }}</span></div>
         <div class="card-body">
           <LatencyChart v-if="report.series.length" :series="report.series" :granularity="report.granularity" :height="150" />
-          <p v-else class="a-muted">Not enough data points to plot.</p>
+          <p v-else class="a-muted">{{ $t('analytics.notEnoughDataPointsTo') }}</p>
         </div>
       </div>
 
       <div class="card">
-        <div class="a-card-header"><h3>Where time goes</h3></div>
+        <div class="a-card-header"><h3>{{ $t('analytics.whereTimeGoes') }}</h3></div>
         <div class="card-body">
           <table class="mini-table">
             <thead><tr><th></th><th>p50</th><th>p95</th><th>p99</th></tr></thead>
             <tbody>
               <tr>
-                <td>Total request</td>
+                <td>{{ $t('analytics.totalRequest') }}</td>
                 <td>{{ fmtMs(report.performance.request_p50_ms) }}</td>
                 <td>{{ fmtMs(report.performance.request_p95_ms) }}</td>
                 <td>{{ fmtMs(report.performance.request_p99_ms) }}</td>
               </tr>
               <tr>
-                <td>Upstream (backend)</td>
+                <td>{{ $t('analytics.upstreamBackend') }}</td>
                 <td>{{ fmtMs(report.performance.upstream_p50_ms) }}</td>
                 <td>{{ fmtMs(report.performance.upstream_p95_ms) }}</td>
                 <td>{{ fmtMs(report.performance.upstream_p99_ms) }}</td>
@@ -44,18 +44,18 @@ import { fmtNum, fmtMs, fmtPct, routeLabel } from './format'
             </tbody>
           </table>
           <div class="overhead">
-            <span>Avg backend <b>{{ fmtMs(report.performance.avg_upstream_ms) }}</b></span>
-            <span>Gateway overhead <b>{{ fmtMs(report.performance.avg_overhead_ms) }}</b></span>
+            <span>{{ $t('analytics.avgBackend') }} <b>{{ fmtMs(report.performance.avg_upstream_ms) }}</b></span>
+            <span>{{ $t('analytics.gatewayOverhead') }} <b>{{ fmtMs(report.performance.avg_overhead_ms) }}</b></span>
           </div>
         </div>
       </div>
     </div>
 
     <div class="card">
-      <div class="a-card-header"><h3>Slowest routes</h3><span class="a-muted">by p95</span></div>
+      <div class="a-card-header"><h3>{{ $t('analytics.slowestRoutes') }}</h3><span class="a-muted">{{ $t('analytics.byP95') }}</span></div>
       <div class="table-wrapper">
         <table>
-          <thead><tr><th>Route</th><th class="text-right">Requests</th><th class="text-right">p95</th><th class="text-right">Errors</th></tr></thead>
+          <thead><tr><th>{{ $t('analytics.route') }}</th><th class="text-right">{{ $t('analytics.requests') }}</th><th class="text-right">p95</th><th class="text-right">{{ $t('analytics.errors') }}</th></tr></thead>
           <tbody>
             <tr v-for="r in report.performance.slow_routes" :key="r.route">
               <td class="cell-title">{{ routeLabel(r.route) }}</td>
@@ -63,7 +63,7 @@ import { fmtNum, fmtMs, fmtPct, routeLabel } from './format'
               <td class="text-right">{{ fmtMs(r.p95_latency_ms) }}</td>
               <td class="text-right" :class="{ 'a-danger': r.error_rate >= 0.05 }">{{ fmtPct(r.error_rate) }}</td>
             </tr>
-            <tr v-if="!report.performance.slow_routes.length"><td colspan="4" class="a-muted">No route data.</td></tr>
+            <tr v-if="!report.performance.slow_routes.length"><td colspan="4" class="a-muted">{{ $t('analytics.noRouteData') }}</td></tr>
           </tbody>
         </table>
       </div>

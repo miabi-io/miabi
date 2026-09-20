@@ -170,7 +170,7 @@ defineExpose({ regenerate, value })
 
 <template>
   <div class="generator" :class="{ compact }">
-    <div class="gen-tabs" role="tablist" aria-label="Generator type">
+    <div class="gen-tabs" role="tablist" :aria-label="$t('generator.generatorType')">
       <button v-for="m in (['password', 'passphrase', 'token'] as GeneratorMode[])" :key="m" type="button" role="tab"
         class="gen-tab" :class="{ active: mode === m }" :aria-selected="mode === m" @click="selectMode(m)">
         {{ m === 'password' ? 'Password' : m === 'passphrase' ? 'Passphrase' : 'Token' }}
@@ -179,13 +179,13 @@ defineExpose({ regenerate, value })
 
     <!-- Output first: it is what the user came for. -->
     <div class="gen-output">
-      <input id="generator-output" class="form-input gen-value" :value="value" readonly aria-label="Generated value"
+      <input id="generator-output" class="form-input gen-value" :value="value" readonly :aria-label="$t('generator.generatedValue')"
         :placeholder="wordlistLoading ? 'Loading wordlist…' : ''" @focus="($event.target as HTMLInputElement).select()" />
-      <button type="button" class="btn btn-icon" title="Generate another" aria-label="Generate another"
+      <button type="button" class="btn btn-icon" :title="$t('generator.generateAnother')" :aria-label="$t('generator.generateAnother')"
         @click="regenerate">
         <span class="mdi mdi-refresh"></span>
       </button>
-      <button type="button" class="btn btn-icon" :title="copied ? 'Copied' : 'Copy'" aria-label="Copy" :disabled="!value"
+      <button type="button" class="btn btn-icon" :title="copied ? 'Copied' : 'Copy'" :aria-label="$t('generator.copy')" :disabled="!value"
         @click="copy">
         <span class="mdi" :class="copied ? 'mdi-check' : 'mdi-content-copy'"></span>
       </button>
@@ -207,23 +207,23 @@ defineExpose({ regenerate, value })
     <!-- Password -->
     <div v-if="mode === 'password'" class="gen-options">
       <label class="gen-range">
-        <span>Length <strong>{{ password.length }}</strong></span>
+        <span>{{ $t('generator.length') }} <strong>{{ password.length }}</strong></span>
         <input v-model.number="password.length" type="range" :min="PASSWORD_MIN_LENGTH" :max="PASSWORD_MAX_LENGTH" />
       </label>
       <div class="gen-checks">
         <label><input v-model="password.upper" type="checkbox" /> A–Z</label>
         <label><input v-model="password.lower" type="checkbox" /> a–z</label>
         <label><input v-model="password.digits" type="checkbox" /> 0–9</label>
-        <label><input v-model="password.symbols" type="checkbox" /> Symbols</label>
+        <label><input v-model="password.symbols" type="checkbox" />{{ $t('generator.symbols') }}</label>
       </div>
       <div class="gen-mins">
         <label>
-          <span class="form-label">Min. digits</span>
+          <span class="form-label">{{ $t('generator.minDigits') }}</span>
           <input v-model.number="password.minDigits" type="number" min="0" :max="password.length" class="form-input"
             :disabled="!password.digits" />
         </label>
         <label>
-          <span class="form-label">Min. symbols</span>
+          <span class="form-label">{{ $t('generator.minSymbols') }}</span>
           <input v-model.number="password.minSymbols" type="number" min="0" :max="password.length" class="form-input"
             :disabled="!password.symbols" />
         </label>
@@ -233,38 +233,36 @@ defineExpose({ regenerate, value })
     <!-- Passphrase -->
     <div v-else-if="mode === 'passphrase'" class="gen-options">
       <label class="gen-range">
-        <span>Words <strong>{{ passphrase.words }}</strong></span>
+        <span>{{ $t('generator.words') }} <strong>{{ passphrase.words }}</strong></span>
         <input v-model.number="passphrase.words" type="range" :min="PASSPHRASE_MIN_WORDS" :max="PASSPHRASE_MAX_WORDS" />
       </label>
       <div class="gen-mins">
         <label>
-          <span class="form-label">Separator</span>
+          <span class="form-label">{{ $t('generator.separator') }}</span>
           <input v-model="passphrase.separator" class="form-input" maxlength="3" />
         </label>
       </div>
       <div class="gen-checks">
-        <label><input v-model="passphrase.capitalize" type="checkbox" /> Capitalise</label>
-        <label><input v-model="passphrase.includeNumber" type="checkbox" /> Include a number</label>
+        <label><input v-model="passphrase.capitalize" type="checkbox" />{{ $t('generator.capitalise') }}</label>
+        <label><input v-model="passphrase.includeNumber" type="checkbox" />{{ $t('generator.includeANumber') }}</label>
       </div>
     </div>
 
     <!-- Token -->
     <div v-else class="gen-options">
       <label class="gen-range">
-        <span>Bytes <strong>{{ token.bytes }}</strong></span>
+        <span>{{ $t('generator.bytes') }} <strong>{{ token.bytes }}</strong></span>
         <input v-model.number="token.bytes" type="range" :min="TOKEN_MIN_BYTES" :max="TOKEN_MAX_BYTES" />
       </label>
-      <div class="gen-radios" role="radiogroup" aria-label="Encoding">
-        <label><input v-model="token.encoding" type="radio" value="base64url" /> base64url</label>
-        <label><input v-model="token.encoding" type="radio" value="hex" /> hex</label>
+      <div class="gen-radios" role="radiogroup" :aria-label="$t('generator.encoding')">
+        <label><input v-model="token.encoding" type="radio" value="base64url" />{{ $t('generator.base64url') }}</label>
+        <label><input v-model="token.encoding" type="radio" value="hex" />{{ $t('generator.hex') }}</label>
       </div>
     </div>
 
     <div class="gen-actions">
       <slot name="actions" :value="value" :regenerate="regenerate">
-        <button type="button" class="btn btn-secondary btn-sm" :disabled="!value" @click="emit('use', value)">
-          Use this value
-        </button>
+        <button type="button" class="btn btn-secondary btn-sm" :disabled="!value" @click="emit('use', value)">{{ $t('generator.useThisValue') }}</button>
       </slot>
     </div>
   </div>

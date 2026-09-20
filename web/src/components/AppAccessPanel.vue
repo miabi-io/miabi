@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { permissionApi, policyApi } from '@/api/rbac'
 import { memberApi } from '@/api/resources'
 import type { PermissionInfo, ResourcePolicy, Member } from '@/api/types'
@@ -9,6 +10,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const props = defineProps<{ wsId: number; appId: number }>()
 
+const { t } = useI18n()
 const notify = useNotificationStore()
 const policies = useEntitlement('resource_policies')
 
@@ -56,7 +58,7 @@ async function grant() {
   granting.value = true
   try {
     await policyApi.grantApp(props.wsId, props.appId, form.value.userId, [...form.value.permissions])
-    notify.success('Access granted')
+    notify.success(t('notify.appAccess.granted'))
     form.value = { userId: null, permissions: new Set() }
     await load()
   } catch (e) {
@@ -74,7 +76,7 @@ async function confirmRevoke() {
   revoking.value = true
   try {
     await policyApi.revokeApp(props.wsId, props.appId, pendingRevoke.value.user_id)
-    notify.success('Access revoked')
+    notify.success(t('notify.appAccess.revoked'))
     pendingRevoke.value = null
     await load()
   } catch (e) {
@@ -87,22 +89,22 @@ async function confirmRevoke() {
 
 <template>
   <div class="card">
-    <div class="card-header"><h2>App access</h2></div>
+    <div class="card-header"><h2>{{ $t('appAccess.appAccess') }}</h2></div>
 
     <div v-if="!policies.has.value" class="card-body locked">
       <span class="mdi mdi-lock-outline"></span>
       <div>
-        <p>Per-resource access policies let you grant a member rights on this app only — even if they're a viewer in the workspace.</p>
-        <router-link to="/admin/license" class="btn btn-secondary btn-sm">Upgrade</router-link>
+        <p>{{ $t('appAccess.perResourceAccessPoliciesLet') }}</p>
+        <router-link to="/admin/license" class="btn btn-secondary btn-sm">{{ $t('appAccess.upgrade') }}</router-link>
       </div>
     </div>
 
     <div v-else class="card-body">
       <div v-if="loading" class="spinner"></div>
       <template v-else>
-        <p class="text-muted hint">Members below have extra permissions on this app, in addition to their workspace role.</p>
+        <p class="text-muted hint">{{ $t('appAccess.membersBelowHaveExtraPermissions') }}</p>
         <table v-if="grants.length" class="table">
-          <thead><tr><th>Member</th><th>Permissions</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('appAccess.member') }}</th><th>{{ $t('appAccess.permissions') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="g in grants" :key="g.id">
               <td class="cell-title">{{ memberName(g.user_id) }}</td>
@@ -110,18 +112,18 @@ async function confirmRevoke() {
                 <span v-for="p in g.permissions" :key="p" class="badge badge-neutral perm-badge">{{ p }}</span>
               </td>
               <td class="text-right">
-                <button class="btn-icon btn-icon-danger" title="Revoke" aria-label="Revoke" @click="pendingRevoke = g"><span class="mdi mdi-delete"></span></button>
+                <button class="btn-icon btn-icon-danger" :title="$t('appAccess.revoke')" :aria-label="$t('appAccess.revoke')" @click="pendingRevoke = g"><span class="mdi mdi-delete"></span></button>
               </td>
             </tr>
           </tbody>
         </table>
-        <p v-else class="text-muted">No per-app grants yet.</p>
+        <p v-else class="text-muted">{{ $t('appAccess.noPerAppGrantsYet') }}</p>
 
         <div class="grant-form">
-          <div class="form-label">Grant access</div>
+          <div class="form-label">{{ $t('appAccess.grantAccess') }}</div>
           <div class="grant-row">
-            <select v-model.number="form.userId" class="form-select" aria-label="Grant access">
-              <option :value="null" disabled>Select member…</option>
+            <select v-model.number="form.userId" class="form-select" :aria-label="$t('appAccess.grantAccess')">
+              <option :value="null" disabled>{{ $t('appAccess.selectMember') }}</option>
               <option v-for="m in grantableMembers" :key="m.user_id" :value="m.user_id">{{ m.user.name }} ({{ m.user.email }})</option>
             </select>
             <div class="perm-checks">

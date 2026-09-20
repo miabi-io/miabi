@@ -10,7 +10,7 @@ const props = withDefaults(
     // reserved-key concept (a "miabi.io/" annotation is just a user key).
     reserved?: boolean
   }>(),
-  { title: 'Metadata', reserved: true },
+  { title: '', reserved: true },
 )
 
 const RESERVED = 'miabi.io/'
@@ -42,13 +42,13 @@ const rows = computed<Row[]>(() => {
 <template>
   <div v-if="rows.length" class="card">
     <div class="card-header">
-      <h3>{{ title }}</h3>
+      <h3>{{ title || $t('metadata.metadata') }}</h3>
     </div>
     <div class="card-body">
       <dl class="meta-list">
         <div v-for="r in rows" :key="r.key" class="meta-row">
           <dt>
-            <span v-if="r.builtin" class="mdi mdi-lock-outline meta-builtin" title="Built-in — platform-managed (read-only)"></span>
+            <span v-if="r.builtin" class="mdi mdi-lock-outline meta-builtin" :title="$t('metadata.builtInPlatformManagedRead')"></span>
             <span class="meta-key">{{ r.display }}</span>
           </dt>
           <dd class="meta-value">{{ r.value }}</dd>

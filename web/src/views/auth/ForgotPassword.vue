@@ -69,19 +69,16 @@ async function submit() {
   >
     <!-- Confirmation state -->
     <template v-if="sent">
-      <p class="forgot-sent">
-        If an account exists for <strong>{{ email }}</strong>, a password reset
-        link is on its way. The link expires in one hour.
-      </p>
-      <RouterLink :to="{ name: 'login' }" class="btn btn-primary auth-submit">
-        Back to sign in
-      </RouterLink>
+      <i18n-t keypath="forgotPassword.sent" tag="p" class="forgot-sent">
+        <template #email><strong>{{ email }}</strong></template>
+      </i18n-t>
+      <RouterLink :to="{ name: 'login' }" class="btn btn-primary auth-submit">{{ $t('login.backToSignIn') }}</RouterLink>
     </template>
 
     <!-- Request form -->
     <form v-else class="auth-form" @submit.prevent="submit">
       <div class="form-group">
-        <label class="form-label">Email</label>
+        <label class="form-label">{{ $t('forgotPassword.email') }}</label>
         <input
           ref="emailInput"
           v-model="email"
@@ -89,7 +86,7 @@ async function submit() {
           class="form-input"
           placeholder="you@example.com"
           autocomplete="email"
-          aria-label="Email"
+          :aria-label="$t('forgotPassword.email')"
           :disabled="loading"
           required
         />
@@ -102,8 +99,7 @@ async function submit() {
 
     <template #footer>
       <RouterLink :to="{ name: 'login' }" class="auth-back">
-        <span class="mdi mdi-arrow-left"></span> Back to sign in
-      </RouterLink>
+        <span class="mdi mdi-arrow-left"></span>{{ $t('login.backToSignIn') }}</RouterLink>
     </template>
   </AuthShell>
 </template>

@@ -30,19 +30,19 @@ const editionLabel = computed(() => {
 })
 
 const resources = [
-  { label: 'Website', icon: 'mdi-web', href: 'https://miabi.io' },
-  { label: 'Documentation', icon: 'mdi-book-open-page-variant-outline', href: 'https://docs.miabi.io' },
-  { label: 'Source code', icon: 'mdi-github', href: 'https://github.com/miabi-io/miabi' },
-  { label: 'Report an issue', icon: 'mdi-bug-outline', href: 'https://github.com/miabi-io/miabi/issues' },
+  { label: 'about.link.website', icon: 'mdi-web', href: 'https://miabi.io' },
+  { label: 'about.link.documentation', icon: 'mdi-book-open-page-variant-outline', href: 'https://docs.miabi.io' },
+  { label: 'about.link.sourceCode', icon: 'mdi-github', href: 'https://github.com/miabi-io/miabi' },
+  { label: 'about.link.reportIssue', icon: 'mdi-bug-outline', href: 'https://github.com/miabi-io/miabi/issues' },
 ]
 
 const ecosystem = [
-  { name: 'Goma Gateway', desc: 'Reverse proxy & TLS termination', href: 'https://github.com/jkaninda/goma-gateway', icon: 'mdi-transit-connection-variant' },
-  { name: 'Posta', desc: 'Self-hosted email platform', href: 'https://github.com/goposta/posta', icon: 'mdi-email-outline' },
-  { name: 'pg-bkup', desc: 'PostgreSQL backup tool', href: 'https://github.com/jkaninda/pg-bkup', icon: 'mdi-database-outline' },
-  { name: 'mysql-bkup', desc: 'MySQL/MariaDB backup tool', href: 'https://github.com/jkaninda/mysql-bkup', icon: 'mdi-database-outline' },
-  { name: 'mongodb-bkup', desc: 'MongoDB backup tool', href: 'https://github.com/jkaninda/mongodb-bkup', icon: 'mdi-leaf' },
-  { name: 'volume-bkup', desc: 'Docker volume backup tool', href: 'https://github.com/jkaninda/volume-bkup', icon: 'mdi-harddisk' },
+  { name: 'Goma Gateway', desc: 'about.eco.goma', href: 'https://github.com/jkaninda/goma-gateway', icon: 'mdi-transit-connection-variant' },
+  { name: 'Posta', desc: 'about.eco.posta', href: 'https://github.com/goposta/posta', icon: 'mdi-email-outline' },
+  { name: 'pg-bkup', desc: 'about.eco.pgBkup', href: 'https://github.com/jkaninda/pg-bkup', icon: 'mdi-database-outline' },
+  { name: 'mysql-bkup', desc: 'about.eco.mysqlBkup', href: 'https://github.com/jkaninda/mysql-bkup', icon: 'mdi-database-outline' },
+  { name: 'mongodb-bkup', desc: 'about.eco.mongoBkup', href: 'https://github.com/jkaninda/mongodb-bkup', icon: 'mdi-leaf' },
+  { name: 'volume-bkup', desc: 'about.eco.volumeBkup', href: 'https://github.com/jkaninda/volume-bkup', icon: 'mdi-harddisk' },
 ]
 
 async function load() {
@@ -88,9 +88,9 @@ function copyVersion() {
   <div class="about">
     <!-- Hero -->
     <section class="hero">
-      <img src="/brand/miabi-mark.svg" alt="Miabi" class="hero-mark" />
+      <img src="/brand/miabi-mark.svg" :alt="$t('about.miabi')" class="hero-mark" />
       <h1 class="hero-title"><MiabiWordmark :height="32" /></h1>
-      <p class="hero-tagline">The open-source, self-hosted Platform-as-a-Service (PaaS) for Docker.</p>
+      <p class="hero-tagline">{{ $t('about.tagline') }}</p>
       <div class="hero-badges">
         <span v-if="info" class="badge badge-neutral">v{{ info.version }}</span>
         <span v-if="editionLabel" class="badge edition" :class="`edition-${edition}`">{{ editionLabel }} Edition</span>
@@ -100,18 +100,18 @@ function copyVersion() {
     <div class="grid">
       <!-- Build info -->
       <div class="card">
-        <div class="card-header"><h2>Build</h2></div>
+        <div class="card-header"><h2>{{ $t('about.build') }}</h2></div>
         <div class="card-body">
-          <div class="kv"><span class="k">Version</span><span class="v">{{ info?.version ?? '—' }}</span></div>
-          <div class="kv"><span class="k">Commit</span><span class="v mono">{{ info?.commit_id ?? '—' }}</span></div>
+          <div class="kv"><span class="k">{{ $t('about.version') }}</span><span class="v">{{ info?.version ?? '—' }}</span></div>
+          <div class="kv"><span class="k">{{ $t('about.commit') }}</span><span class="v mono">{{ info?.commit_id ?? '—' }}</span></div>
           <!-- Absent on a build with no ldflags; showing "—" is honest, where
                "unknown" in a date field reads as a broken value. -->
           <div class="kv">
-            <span class="k">Build date</span>
+            <span class="k">{{ $t('about.buildDate') }}</span>
             <span class="v" :title="buildDate?.exact">{{ buildDate?.label ?? '—' }}</span>
           </div>
           <div class="kv">
-            <span class="k">Edition</span>
+            <span class="k">{{ $t('about.edition') }}</span>
             <span class="v">{{ editionLabel ?? (auth.isAdmin ? '—' : 'Restricted') }}</span>
           </div>
           <button class="btn btn-secondary btn-sm copy-btn" @click="copyVersion">
@@ -123,44 +123,37 @@ function copyVersion() {
 
       <!-- About -->
       <div class="card">
-        <div class="card-header"><h2>About</h2></div>
+        <div class="card-header"><h2>{{ $t('about.about') }}</h2></div>
         <div class="card-body">
-          <p class="prose">
-            Miabi is an open-source, self-hosted Platform-as-a-Service for deploying and operating
-            applications on Docker.
-          </p>
-          <p class="prose">
-            Deploy applications, manage domains and TLS, provision databases, configure storage, monitor
-            services, manage teams, and scale across nodes — all from a single platform.
-          </p>
+          <p class="prose">{{ $t('about.intro') }}</p>
+          <p class="prose">{{ $t('about.capabilities') }}</p>
         </div>
       </div>
 
       <!-- Resources -->
       <div class="card">
-        <div class="card-header"><h2>Resources</h2></div>
+        <div class="card-header"><h2>{{ $t('about.resources') }}</h2></div>
         <div class="card-body link-list">
           <a v-if="info?.openapi_docs" :href="docsUrl" target="_blank" rel="noopener noreferrer" class="link-row">
-            <span class="mdi mdi-api"></span> API Reference <span class="mdi mdi-open-in-new ext"></span>
+            <span class="mdi mdi-api"></span> {{ $t('about.apiReference') }} <span class="mdi mdi-open-in-new ext"></span>
           </a>
           <a v-for="r in resources" :key="r.label" :href="r.href" target="_blank" rel="noopener noreferrer" class="link-row">
-            <span class="mdi" :class="r.icon"></span> {{ r.label }} <span class="mdi mdi-open-in-new ext"></span>
+            <span class="mdi" :class="r.icon"></span> {{ $t(r.label) }} <span class="mdi mdi-open-in-new ext"></span>
           </a>
           <router-link v-if="auth.isAdmin" to="/admin/license" class="link-row">
-            <span class="mdi mdi-license"></span> License &amp; entitlements
-          </router-link>
+            <span class="mdi mdi-license"></span>{{ $t('about.licenseTitle') }}</router-link>
         </div>
       </div>
 
       <!-- Ecosystem -->
       <div class="card ecosystem-card">
-        <div class="card-header"><h2>Ecosystem</h2></div>
+        <div class="card-header"><h2>{{ $t('about.ecosystem') }}</h2></div>
         <div class="card-body ecosystem">
           <a v-for="e in ecosystem" :key="e.name" :href="e.href" target="_blank" rel="noopener noreferrer" class="eco-item">
             <span class="mdi eco-icon" :class="e.icon"></span>
             <span class="eco-text">
               <span class="eco-name">{{ e.name }} <span class="mdi mdi-open-in-new ext"></span></span>
-              <span class="eco-desc">{{ e.desc }}</span>
+              <span class="eco-desc">{{ $t(e.desc) }}</span>
             </span>
           </a>
         </div>

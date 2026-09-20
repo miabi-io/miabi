@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { appApi } from '@/api/apps'
 import type {
   Application,
@@ -15,26 +16,27 @@ import { useEntitlement } from '@/composables/useEntitlement'
 const props = defineProps<{ app: Application; wsId: number; canEdit: boolean }>()
 const emit = defineEmits<{ (e: 'changed'): void }>()
 
+const { t } = useI18n()
 const notify = useNotificationStore()
 // Gate the edit, not the traffic: `has` keeps an already-configured rule set
 // visible and serving, `mutable` is what a change needs.
 const advanced = useEntitlement('advanced_canary')
 
 const SOURCES: { value: CanaryMatchSource; label: string }[] = [
-  { value: 'header', label: 'Header' },
-  { value: 'query', label: 'Query param' },
-  { value: 'cookie', label: 'Cookie' },
-  { value: 'ip', label: 'Client IP' },
+  { value: 'header', label: 'canary.src.header' },
+  { value: 'query', label: 'canary.src.query' },
+  { value: 'cookie', label: 'canary.src.cookie' },
+  { value: 'ip', label: 'canary.src.ip' },
 ]
 const OPERATORS: { value: CanaryMatchOperator; label: string }[] = [
-  { value: 'equals', label: 'equals' },
-  { value: 'not_equals', label: 'does not equal' },
-  { value: 'contains', label: 'contains' },
-  { value: 'not_contains', label: 'does not contain' },
-  { value: 'starts_with', label: 'starts with' },
-  { value: 'ends_with', label: 'ends with' },
-  { value: 'regex', label: 'matches regex' },
-  { value: 'in', label: 'is one of (comma-separated)' },
+  { value: 'equals', label: 'canary.op.equals' },
+  { value: 'not_equals', label: 'canary.op.not_equals' },
+  { value: 'contains', label: 'canary.op.contains' },
+  { value: 'not_contains', label: 'canary.op.not_contains' },
+  { value: 'starts_with', label: 'canary.op.starts_with' },
+  { value: 'ends_with', label: 'canary.op.ends_with' },
+  { value: 'regex', label: 'canary.op.regex' },
+  { value: 'in', label: 'canary.op.in' },
 ]
 
 const mode = ref<CanaryMode>('auto')
@@ -153,7 +155,7 @@ async function save() {
     // What is in the form is now what is stored; adopt it as the baseline so the
     // next fetch doesn't look like an unsaved edit and freeze out later syncs.
     lastSynced.value = formRouting.value
-    notify.success('Canary routing updated')
+    notify.success(t('notify.canary.routingUpdated'))
     emit('changed')
   } catch (e) {
     notify.apiError(e)
@@ -180,7 +182,7 @@ async function applyWeight() {
   weightBusy.value = true
   try {
     await appApi.setCanaryWeight(props.wsId, props.app.id, weightDraft.value)
-    notify.success(`Canary traffic set to ${weightDraft.value}%`)
+    notify.success(t('notify.canary.weightSet', { weight: weightDraft.value }))
     emit('changed')
   } catch (e) {
     notify.apiError(e)
@@ -324,7 +326,7 @@ const previewLabel = computed(() => {
           </div>
           <div v-for="(r, i) in rules" :key="i" class="rule-row">
             <select v-model="r.source" class="form-input" :disabled="!editable" :aria-label="$t('canary.source')">
-              <option v-for="s in SOURCES" :key="s.value" :value="s.value">{{ s.label }}</option>
+              <option v-for="s in SOURCES" :key="s.value" :value="s.value">{{ $t(s.label) }}</option>
             </select>
             <input
               v-model="r.name"
@@ -334,7 +336,7 @@ const previewLabel = computed(() => {
               :aria-label="$t('apps.form.name')"
             />
             <select v-model="r.operator" class="form-input" :disabled="!editable" :aria-label="$t('canary.operator')">
-              <option v-for="o in OPERATORS" :key="o.value" :value="o.value">{{ o.label }}</option>
+              <option v-for="o in OPERATORS" :key="o.value" :value="o.value">{{ $t(o.label) }}</option>
             </select>
             <input v-model="r.value" class="form-input" :disabled="!editable" placeholder="true" :aria-label="$t('canary.value')" />
             <button

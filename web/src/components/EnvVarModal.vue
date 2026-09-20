@@ -74,14 +74,14 @@ function submit() {
     <AppModal v-if="open" max-width="480px" :escapable="!confirmDiscard" @close="requestClose">
         <div class="modal-header">
           <h3 id="envvar-form-title">{{ editingKey ? 'Update variable' : 'Add variable' }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" data-modal-skip-focus @click="requestClose">
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" data-modal-skip-focus @click="requestClose">
             <span class="mdi mdi-close"></span>
           </button>
         </div>
         <form @submit.prevent="submit">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Key</label>
+              <label class="form-label">{{ $t('envVar.key') }}</label>
               <input
                 v-model="form.key"
                 class="form-input mono-input"
@@ -93,15 +93,15 @@ function submit() {
                 required
                 :autofocus="!editingKey"
               />
-              <p v-if="editingKey" class="form-hint">The key can't be changed. Delete and re-add to rename.</p>
+              <p v-if="editingKey" class="form-hint">{{ $t('envVar.theKeyCanTBe') }}</p>
             </div>
             <div class="form-group">
               <label class="form-label">
-                Value
-                <span v-if="editingKey && form.secret" class="text-muted">— re-enter (secret values aren't shown)</span>
+                {{ $t('envVar.value') }}
+                <span v-if="editingKey && form.secret" class="text-muted">{{ $t('envVar.reEnterHint') }}</span>
                 <!-- Only for a value marked secret: generating a plaintext
                      config value would be nonsense. -->
-                <GenerateButton v-if="form.secret" label="Generate a value for this variable"
+                <GenerateButton v-if="form.secret" :label="$t('envVar.generateLabel')"
                   @generated="form.value = $event" />
               </label>
               <textarea
@@ -114,14 +114,14 @@ function submit() {
             </div>
             <label class="checkbox-label" style="margin-bottom: 0">
               <input v-model="form.secret" type="checkbox" />
-              <span><span class="mdi mdi-lock-outline"></span> Secret — encrypted at rest and masked in the UI</span>
+              <span><span class="mdi mdi-lock-outline"></span> {{ $t('envVar.secretHint') }}</span>
             </label>
             <p class="form-hint">
-              Reference a workspace secret with <code>{{ secretRefHint }}</code>.{{ applyNote ? ` ${applyNote}` : '' }}
+              <i18n-t keypath="envVar.refHint" tag="span"><template #ref><code>{{ secretRefHint }}</code></template></i18n-t>{{ applyNote ? ` ${applyNote}` : '' }}
             </p>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="requestClose">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="requestClose">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="saving || !form.key.trim()">
               {{ saving ? 'Saving…' : editingKey ? 'Update' : 'Add variable' }}
             </button>

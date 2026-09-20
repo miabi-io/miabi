@@ -25,8 +25,8 @@ const props = withDefaults(
     searchLabel?: string
   }>(),
   {
-    placeholder: 'No output yet.',
-    emptyMatch: 'No lines match your search.',
+    placeholder: '',
+    emptyMatch: '',
     downloadName: 'logs',
     statusLabel: '',
     statusClass: 'badge-neutral',
@@ -134,20 +134,20 @@ function downloadLogs() {
           v-model="logSearch"
           type="search"
           class="form-input log-search-input"
-          :placeholder="logRegexMode ? 'Search logs (regex)…' : 'Search logs…'"
+          :placeholder="$t(logRegexMode ? 'appDetail.logs.searchRegex' : 'appDetail.logs.search')"
           :aria-label="searchLabel"
         />
-        <button v-if="logSearch" type="button" class="log-search-clear" @click="logSearch = ''">Clear</button>
+        <button v-if="logSearch" type="button" class="log-search-clear" @click="logSearch = ''">{{ $t('logViewer.clear') }}</button>
       </div>
       <button
         type="button"
         class="log-regex-toggle"
         :class="{ active: logRegexMode }"
         :aria-pressed="logRegexMode"
-        title="Match using a regular expression"
+        :title="$t('appDetail.matchUsingARegularExpression')"
         @click="logRegexMode = !logRegexMode"
       >.*</button>
-      <span v-if="logRegexError" class="text-sm log-regex-err">invalid regex</span>
+      <span v-if="logRegexError" class="text-sm log-regex-err">{{ $t('appDetail.invalidRegex') }}</span>
       <span v-else-if="logSearch.trim()" class="text-muted text-sm log-match-count">{{ filtered.length }} / {{ lines.length }}</span>
       <button
         type="button"
@@ -185,8 +185,8 @@ function downloadLogs() {
     </div>
     <p v-if="trimmedNote" class="text-muted text-sm log-trim-note">{{ trimmedNote }}</p>
     <div ref="logViewEl" class="code-block log-view" :style="logViewStyle" @scroll="onScroll">
-      <span v-if="!lines.length" class="log-placeholder">{{ placeholder }}</span>
-      <span v-else-if="!filtered.length" class="log-placeholder">{{ emptyMatch }}</span>
+      <span v-if="!lines.length" class="log-placeholder">{{ placeholder || $t('logViewer.noOutput') }}</span>
+      <span v-else-if="!filtered.length" class="log-placeholder">{{ emptyMatch || $t('appDetail.logs.noMatches') }}</span>
       <template v-else>
         <div v-for="(line, i) in filtered" :key="i" class="log-line"><span v-for="(seg, j) in logSegments(line)" :key="j" :class="{ 'log-hit': seg.hit }">{{ seg.text }}</span></div>
       </template>

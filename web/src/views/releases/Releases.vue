@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
@@ -11,6 +12,7 @@ import type { WorkspaceRelease, Environment, EnvApproval } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const { currentWorkspaceId } = storeToRefs(ws)
 
@@ -89,7 +91,7 @@ async function approve() {
   working.value = true
   try {
     await releaseApi.approve(currentWorkspaceId.value, target.value.id, { environment_id: selectedEnv.value, approved: true })
-    notify.success('Approval recorded')
+    notify.success(t('notify.releases.approved'))
     await refreshStatus()
   } catch (e) {
     notify.apiError(e)
@@ -103,7 +105,7 @@ async function promote() {
   working.value = true
   try {
     await releaseApi.promote(currentWorkspaceId.value, target.value.id, selectedEnv.value)
-    notify.success(`${target.value.application_name} promoted`)
+    notify.success(t('notify.releases.promoted', { name: target.value.application_name }))
     showModal.value = false
     reload()
   } catch (e) {
@@ -120,8 +122,8 @@ function short(s?: string) { return s ? s.replace(/^sha256:/, '').slice(0, 12) :
   <div>
     <div class="page-header">
       <div>
-        <h1>Releases</h1>
-        <p class="subtitle">Promotable release artifacts — promote across environments with approval gates.</p>
+        <h1>{{ $t('releases.releases') }}</h1>
+        <p class="subtitle">{{ $t('releases.promotableReleaseArtifactsPromoteAcross') }}</p>
       </div>
     </div>
 
@@ -129,12 +131,12 @@ function short(s?: string) { return s ? s.replace(/^sha256:/, '').slice(0, 12) :
       <div v-if="loading && items.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="items.length === 0" class="empty-state">
         <span class="mdi mdi-tag-outline" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No releases yet</h3>
-        <p>Every successful deployment records a release here, ready to promote.</p>
+        <h3>{{ $t('releases.noReleasesYet') }}</h3>
+        <p>{{ $t('releases.everySuccessfulDeploymentRecordsA') }}</p>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Application</th><th>Version</th><th>Image</th><th>Provenance</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('releases.application') }}</th><th>{{ $t('releases.version') }}</th><th>{{ $t('releases.image') }}</th><th>{{ $t('releases.provenance') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="r in items" :key="r.id">
               <td>
@@ -148,19 +150,18 @@ function short(s?: string) { return s ? s.replace(/^sha256:/, '').slice(0, 12) :
               </td>
               <td>
                 v{{ r.version }}
-                <span v-if="r.active" class="badge badge-success" style="margin-left:6px">active</span>
-                <span v-if="r.pinned" class="badge badge-neutral" style="margin-left:4px">pinned</span>
+                <span v-if="r.active" class="badge badge-success" style="margin-left:6px">{{ $t('releases.active') }}</span>
+                <span v-if="r.pinned" class="badge badge-neutral" style="margin-left:4px">{{ $t('releases.pinned') }}</span>
               </td>
               <td class="cell-sub mono">{{ r.image }}</td>
               <td class="cell-sub mono">
-                <span v-if="r.digest" title="digest">@{{ short(r.digest) }}</span>
-                <span v-if="r.commit" title="commit"> · {{ r.commit.slice(0, 7) }}</span>
+                <span v-if="r.digest" :title="$t('releases.digest')">@{{ short(r.digest) }}</span>
+                <span v-if="r.commit" :title="$t('releases.commit')"> · {{ r.commit.slice(0, 7) }}</span>
                 <span v-if="!r.digest && !r.commit">—</span>
               </td>
               <td class="text-right">
                 <button v-if="ws.canEdit" class="btn btn-secondary btn-sm" :disabled="environments.length === 0" @click="openPromote(r)">
-                  <span class="mdi mdi-rocket-launch-outline"></span> Promote
-                </button>
+                  <span class="mdi mdi-rocket-launch-outline"></span>{{ $t('releases.promote') }}</button>
               </td>
             </tr>
           </tbody>
@@ -170,19 +171,19 @@ function short(s?: string) { return s ? s.replace(/^sha256:/, '').slice(0, 12) :
 
     <Pagination :pageable="pageable" @page="goToPage" />
 
-    <p v-if="environments.length === 0 && items.length > 0" class="hint-block">
-      Create an <router-link to="/environments">environment</router-link> to enable promotion.
-    </p>
+    <i18n-t v-if="environments.length === 0 && items.length > 0" keypath="releases.needEnvironment" tag="p" class="hint-block">
+      <template #link><router-link to="/environments">{{ $t('releases.environment') }}</router-link></template>
+    </i18n-t>
 
     <Teleport to="body">
       <AppModal v-if="showModal" @close="showModal = false">
         <div class="modal-header">
           <h3>Promote {{ target?.application_name }} v{{ target?.version }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label class="form-label">Target environment</label>
+            <label class="form-label">{{ $t('releases.targetEnvironment') }}</label>
             <select v-model="selectedEnv" class="form-select">
               <option v-for="e in environments" :key="e.id" :value="e.id">{{ e.name }}</option>
             </select>
@@ -192,23 +193,19 @@ function short(s?: string) { return s ? s.replace(/^sha256:/, '').slice(0, 12) :
           <div v-else-if="currentStatus" class="gate" :class="canPromote ? 'gate-ok' : 'gate-block'">
             <span class="mdi" :class="canPromote ? 'mdi-lock-open-check-outline' : 'mdi-lock-outline'"></span>
             <span>
-              <strong>{{ currentStatus.approvals }}/{{ currentStatus.required_approvals }}</strong>
-              approvals
-              <template v-if="currentStatus.required_approvals === 0"> — no approval required</template>
-              <template v-else-if="canPromote"> — gate satisfied</template>
+              <strong>{{ currentStatus.approvals }}/{{ currentStatus.required_approvals }}</strong>{{ $t('releases.approvals') }}<template v-if="currentStatus.required_approvals === 0">{{ $t('releases.noApprovalRequired') }}</template>
+              <template v-else-if="canPromote">{{ $t('releases.gateSatisfied') }}</template>
               <template v-else> — needs {{ currentStatus.required_approvals - currentStatus.approvals }} more</template>
             </span>
           </div>
 
-          <p class="note">Promotion re-points <strong>{{ target?.application_name }}</strong> at this release and deploys it.</p>
+          <i18n-t keypath="releases.promoteNote" tag="p" class="note"><template #app><strong>{{ target?.application_name }}</strong></template></i18n-t>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" :disabled="working || !selectedEnv" @click="approve">
-            <span class="mdi mdi-account-check-outline"></span> Approve
-          </button>
+            <span class="mdi mdi-account-check-outline"></span>{{ $t('releases.approve') }}</button>
           <button type="button" class="btn btn-primary" :disabled="working || !canPromote" @click="promote">
-            <span class="mdi mdi-rocket-launch-outline"></span> Promote
-          </button>
+            <span class="mdi mdi-rocket-launch-outline"></span>{{ $t('releases.promote') }}</button>
         </div>
       </AppModal>
     </Teleport>

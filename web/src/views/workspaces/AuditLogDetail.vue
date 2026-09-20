@@ -66,11 +66,11 @@ const prettyMetadata = computed(() => {
   <div>
     <div class="page-header">
       <div class="header-left">
-        <button class="btn-icon btn-icon-muted" title="Back to audit log" aria-label="Back to audit log" @click="router.push('/audit-log')">
+        <button class="btn-icon btn-icon-muted" :title="$t('audit.backToAuditLog')" :aria-label="$t('audit.backToAuditLog')" @click="router.push('/audit-log')">
           <span class="mdi mdi-arrow-left"></span>
         </button>
         <div class="header-title">
-          <h1>Audit Entry</h1>
+          <h1>{{ $t('audit.auditEntry') }}</h1>
           <span class="subline">Activity in {{ ws.contextLabel }}</span>
         </div>
       </div>
@@ -89,37 +89,37 @@ const prettyMetadata = computed(() => {
         </div>
         <div class="card-body details">
           <div class="detail">
-            <span class="text-muted">Entry ID</span>
+            <span class="text-muted">{{ $t('audit.entryId') }}</span>
             <span><code>{{ entry.id }}</code></span>
           </div>
           <div class="detail">
-            <span class="text-muted">Action</span>
+            <span class="text-muted">{{ $t('audit.action') }}</span>
             <span><code>{{ entry.action }}</code></span>
           </div>
           <div class="detail">
-            <span class="text-muted">Actor</span>
+            <span class="text-muted">{{ $t('audit.actor') }}</span>
             <span>{{ actorLabel }}</span>
           </div>
           <div class="detail">
-            <span class="text-muted">Target</span>
+            <span class="text-muted">{{ $t('audit.target') }}</span>
             <span>{{ entry.target_type || '—' }}<template v-if="entry.target_id"> #{{ entry.target_id }}</template></span>
           </div>
           <div class="detail">
-            <span class="text-muted">IP address</span>
+            <span class="text-muted">{{ $t('appDetail.ipAddress') }}</span>
             <span><code v-if="entry.ip_address">{{ entry.ip_address }}</code><span v-else>—</span></span>
           </div>
           <div class="detail">
-            <span class="text-muted">When</span>
+            <span class="text-muted">{{ $t('audit.when') }}</span>
             <span>{{ when(entry.created_at) }}</span>
           </div>
         </div>
       </div>
 
       <div class="card mt-4">
-        <div class="card-header"><h2>Metadata</h2></div>
+        <div class="card-header"><h2>{{ $t('audit.metadata') }}</h2></div>
         <div v-if="!prettyMetadata" class="empty-state" style="padding: 28px">
           <span class="mdi mdi-code-json" style="font-size: 32px; color: var(--text-muted)"></span>
-          <p>No additional metadata for this entry.</p>
+          <p>{{ $t('audit.noAdditionalMetadataForThis') }}</p>
         </div>
         <div v-else class="card-body">
           <pre class="metadata-block">{{ prettyMetadata }}</pre>

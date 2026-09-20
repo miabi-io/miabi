@@ -66,7 +66,7 @@ function onHover(e: MouseEvent, p: { id: string; name: string }) {
 
 <template>
   <div class="worldmap-wrap" @mouseleave="tip = null">
-    <svg class="worldmap" :viewBox="`0 0 ${W} ${H}`" role="img" aria-label="Requests by country">
+    <svg class="worldmap" :viewBox="`0 0 ${W} ${H}`" role="img" :aria-label="$t('analytics.requestsByCountry')">
       <path
         v-for="p in paths"
         :key="p.id"
@@ -78,6 +78,6 @@ function onHover(e: MouseEvent, p: { id: string; name: string }) {
       />
     </svg>
     <div v-if="tip" class="worldmap-tip" :style="{ left: tip.x + 'px', top: tip.y + 'px' }">{{ tip.text }}</div>
-    <div class="worldmap-legend"><span>Fewer</span><span class="scale"></span><span>More requests</span></div>
+    <div class="worldmap-legend"><span>{{ $t('analytics.fewer') }}</span><span class="scale"></span><span>{{ $t('analytics.moreRequests') }}</span></div>
   </div>
 </template>

@@ -73,21 +73,20 @@ function when(ts: string): string {
   <div>
     <div class="page-header">
       <div>
-        <h1>Audit Log</h1>
+        <h1>{{ $t('nav.workspace.auditLog') }}</h1>
         <p class="subtitle">Activity in {{ ws.contextLabel }}</p>
       </div>
       <button class="btn btn-ghost btn-sm" :disabled="loading" @click="goToPage(pageable.current_page)">
-        <span class="mdi" :class="loading ? 'mdi-loading mdi-spin' : 'mdi-refresh'"></span> Refresh
-      </button>
+        <span class="mdi" :class="loading ? 'mdi-loading mdi-spin' : 'mdi-refresh'"></span>{{ $t('volumes.refresh') }}</button>
     </div>
 
     <div class="toolbar">
-      <label class="range-field">From <input v-model="from" type="date" class="form-input" /></label>
-      <label class="range-field">To <input v-model="to" type="date" class="form-input" /></label>
-      <button v-if="from || to" class="btn btn-ghost btn-sm" @click="clearRange">Clear</button>
-      <select v-model="order" class="order-select form-select " title="Sort order" aria-label="Sort order">
-        <option value="desc">Recent first</option>
-        <option value="asc">Oldest first</option>
+      <label class="range-field">{{ $t('audit.from') }}<input v-model="from" type="date" class="form-input" /></label>
+      <label class="range-field">{{ $t('audit.to') }}<input v-model="to" type="date" class="form-input" /></label>
+      <button v-if="from || to" class="btn btn-ghost btn-sm" @click="clearRange">{{ $t('audit.clear') }}</button>
+      <select v-model="order" class="order-select form-select " :title="$t('audit.sortOrder')" :aria-label="$t('audit.sortOrder')">
+        <option value="desc">{{ $t('audit.recentFirst') }}</option>
+        <option value="asc">{{ $t('audit.oldestFirst') }}</option>
       </select>
     </div>
 
@@ -95,23 +94,23 @@ function when(ts: string): string {
       <div v-if="loading && logs.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="locked" class="empty-state">
         <span class="mdi mdi-shield-star-outline" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>An Enterprise feature</h3>
-        <p>The audit log is available with a Miabi Enterprise license.</p>
+        <h3>{{ $t('audit.anEnterpriseFeature') }}</h3>
+        <p>{{ $t('audit.theAuditLogIsAvailable') }}</p>
       </div>
       <div v-else-if="denied" class="empty-state">
         <span class="mdi mdi-lock-outline" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>Admins only</h3>
-        <p>You need owner or admin access to view this workspace's audit log.</p>
+        <h3>{{ $t('audit.adminsOnly') }}</h3>
+        <p>{{ $t('audit.youNeedOwnerOrAdmin') }}</p>
       </div>
       <div v-else-if="logs.length === 0" class="empty-state">
         <span class="mdi mdi-history" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No activity yet</h3>
-        <p>Mutations in this workspace will appear here.</p>
+        <h3>{{ $t('audit.noActivityYet') }}</h3>
+        <p>{{ $t('audit.mutationsInThisWorkspaceWill') }}</p>
       </div>
       <div v-else class="table-wrapper">
         <table>
           <thead>
-            <tr><th>Action</th><th>Target</th><th>IP</th><th class="text-right">When</th></tr>
+            <tr><th>{{ $t('audit.action') }}</th><th>{{ $t('audit.target') }}</th><th>{{ $t('audit.ip') }}</th><th class="text-right">{{ $t('audit.when') }}</th></tr>
           </thead>
           <tbody>
             <tr v-for="a in logs" :key="a.id" class="row-clickable" @click="router.push(`/audit-log/${a.id}`)">

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -20,6 +21,7 @@ import type { UpdateInfo } from '@/api/types'
 const route = useRoute()
 const auth = useAuthStore()
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const license = useLicenseStore()
 const brand = useBrandStore()
@@ -29,16 +31,16 @@ const brand = useBrandStore()
 const licenseBanner = computed(() => {
   const w = license.warnings
   if (w.includes('license_expired')) {
-    return { level: 'danger', text: 'Your license has expired. Enterprise features are now read-only.' }
+    return { level: 'danger', text: t('adminLayout.license.expired') }
   }
   if (w.includes('license_grace')) {
-    return { level: 'warning', text: 'Your license has expired and is in its grace period — renew to avoid losing access to paid features.' }
+    return { level: 'warning', text: t('adminLayout.license.grace') }
   }
   if (w.includes('nearing_expiry')) {
-    return { level: 'warning', text: 'Your license expires soon. Renew to avoid interruption.' }
+    return { level: 'warning', text: t('adminLayout.license.expiringSoon') }
   }
   if (w.includes('over_node_limit')) {
-    return { level: 'warning', text: 'You have exceeded your licensed node limit — adding nodes is blocked.' }
+    return { level: 'warning', text: t('adminLayout.license.nodeLimit') }
   }
   return null
 })
@@ -103,7 +105,7 @@ onBeforeUnmount(() => {
         :class="`license-banner-${licenseBanner.level}`">
         <span class="mdi mdi-alert-outline"></span>
         <span>{{ licenseBanner.text }}</span>
-        <span class="license-banner-cta">Manage license →</span>
+        <span class="license-banner-cta">{{ $t('plans.manageLicense') }}</span>
       </router-link>
 
       <!-- A newer Miabi release exists. Links to the release notes; it never
@@ -114,11 +116,9 @@ onBeforeUnmount(() => {
           <strong>Miabi {{ update?.latest_version }}</strong> is available — you're running
           {{ update?.current_version }}.
         </span>
-        <a :href="update?.release_url" target="_blank" rel="noopener noreferrer" class="update-banner-cta">
-          Release notes →
-        </a>
-        <button class="update-banner-dismiss" title="Dismiss until the next release"
-          aria-label="Dismiss until the next release" @click="dismissUpdate">
+        <a :href="update?.release_url" target="_blank" rel="noopener noreferrer" class="update-banner-cta">{{ $t('adminLayout.releaseNotes') }}</a>
+        <button class="update-banner-dismiss" :title="$t('adminLayout.dismissUntilTheNextRelease')"
+          :aria-label="$t('adminLayout.dismissUntilTheNextRelease')" @click="dismissUpdate">
           <span class="mdi mdi-close"></span>
         </button>
       </div>

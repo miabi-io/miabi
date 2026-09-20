@@ -18,7 +18,7 @@ const { report, loading, error } = storeToRefs(store)
     <div v-else-if="error" class="card">
       <div class="empty-state">
         <span class="mdi mdi-alert-circle-outline" style="font-size: 40px; color: var(--danger-500)"></span>
-        <h3>Couldn't load analytics</h3>
+        <h3>{{ $t('analytics.couldnTLoadAnalytics') }}</h3>
         <p>{{ error }}</p>
       </div>
     </div>
@@ -26,8 +26,8 @@ const { report, loading, error } = storeToRefs(store)
     <div v-else-if="report && report.totals.requests === 0" class="card">
       <div class="empty-state">
         <span class="mdi mdi-chart-box-outline" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No traffic in this window</h3>
-        <p>Analytics are collected from the gateway as requests reach your routed apps. Try a wider range.</p>
+        <h3>{{ $t('analytics.noTrafficInThisWindow') }}</h3>
+        <p>{{ $t('analytics.analyticsAreCollectedFromThe') }}</p>
       </div>
     </div>
 

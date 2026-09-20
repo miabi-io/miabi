@@ -31,9 +31,9 @@ function latency(r: AnalyticsReport): number[] {
       <StatTile label="Data served" icon="mdi-swap-vertical" :value="fmtBytes(report.totals.bytes_in + report.totals.bytes_out)"
         :delta="delta(report.totals.bytes_out, report.compare?.bytes_out)">
         <template #sub>
-          <span class="mdi mdi-arrow-down-thin io-in" title="Inbound (requests received)"></span>{{ fmtBytes(report.totals.bytes_in) }} in
+          <span class="mdi mdi-arrow-down-thin io-in" :title="$t('analytics.inboundRequestsReceived')"></span>{{ fmtBytes(report.totals.bytes_in) }} in
           <span class="io-dot">·</span>
-          <span class="mdi mdi-arrow-up-thin io-out" title="Outbound (responses sent)"></span>{{ fmtBytes(report.totals.bytes_out) }} out
+          <span class="mdi mdi-arrow-up-thin io-out" :title="$t('analytics.outboundResponsesSent')"></span>{{ fmtBytes(report.totals.bytes_out) }} out
         </template>
       </StatTile>
       <StatTile label="Server errors (5xx)" icon="mdi-alert-octagon-outline"
@@ -44,18 +44,18 @@ function latency(r: AnalyticsReport): number[] {
 
     <div class="card">
       <div class="a-card-header">
-        <h3>Requests over time</h3>
+        <h3>{{ $t('analytics.requestsOverTime') }}</h3>
         <span class="a-muted">{{ fmtNum(report.totals.requests) }} requests · per {{ report.granularity }}</span>
       </div>
       <div class="card-body">
         <RequestsChart v-if="report.series.length" :series="report.series" :granularity="report.granularity" />
-        <p v-else class="a-muted">Not enough data points to plot.</p>
+        <p v-else class="a-muted">{{ $t('analytics.notEnoughDataPointsTo') }}</p>
       </div>
     </div>
 
     <div class="two-col">
       <div class="card">
-        <div class="a-card-header"><h3>Status codes</h3></div>
+        <div class="a-card-header"><h3>{{ $t('analytics.statusCodes') }}</h3></div>
         <div class="card-body">
           <StatusPie :status="report.status" />
           <div class="perf-inline">
@@ -67,14 +67,14 @@ function latency(r: AnalyticsReport): number[] {
       </div>
 
       <Breakdown
-        title="Top countries"
+        :title="$t('dashboard.analytics.topCountries')"
         :items="report.web.top_countries"
         kind="country"
         :limit="7"
         empty-hint="Country data needs the GeoIP database on the gateway."
       >
         <template #action>
-          <a class="a-muted" href="#" @click.prevent="router.push('/analytics/http')">View map →</a>
+          <a class="a-muted" href="#" @click.prevent="router.push('/analytics/http')">{{ $t('analytics.viewMap') }}</a>
         </template>
       </Breakdown>
     </div>

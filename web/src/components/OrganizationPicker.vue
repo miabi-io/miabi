@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { adminApi } from '@/api/admin'
 import type { Organization } from '@/api/types'
 
@@ -14,6 +15,7 @@ import type { Organization } from '@/api/types'
  * v-model is the organization id; 0 means the default organization, which is what a null
  * organization_id resolves to everywhere in the product.
  */
+const { t } = useI18n()
 const props = withDefaults(
   defineProps<{
     modelValue: number
@@ -23,7 +25,7 @@ const props = withDefaults(
      *  prefer to name the actual default org. */
     defaultLabel?: string
   }>(),
-  { label: 'Organization', disabled: false, defaultLabel: 'Default organization' },
+  { label: '', disabled: false, defaultLabel: '' },
 )
 const emit = defineEmits<{ (e: 'update:modelValue', v: number): void }>()
 
@@ -48,14 +50,14 @@ async function load() {
 
 const selected = computed(() => orgs.value.find((o) => o.id === props.modelValue) ?? null)
 const selectedLabel = computed(() =>
-  props.modelValue === 0 ? props.defaultLabel : (selected.value?.display_name || selected.value?.name || `#${props.modelValue}`),
+  props.modelValue === 0 ? (props.defaultLabel || t('orgPicker.defaultOrganization')) : (selected.value?.display_name || selected.value?.name || `#${props.modelValue}`),
 )
 
 // The default organization is offered as a real row so "put them back on the default" is a choice,
 // not an empty field.
 interface Choice { id: number; label: string; hint: string }
 const choices = computed<Choice[]>(() => {
-  const all: Choice[] = [{ id: 0, label: props.defaultLabel, hint: '' }]
+  const all: Choice[] = [{ id: 0, label: props.defaultLabel || t('orgPicker.defaultOrganization'), hint: '' }]
   for (const o of orgs.value) {
     all.push({
       id: o.id,
@@ -117,7 +119,7 @@ watch(() => props.modelValue, (v) => { if (v !== 0) void load() }, { immediate: 
 
 <template>
   <div ref="root" class="org-picker">
-    <label v-if="label" class="form-label">{{ label }}</label>
+    <label class="form-label">{{ label || $t('orgPicker.organization') }}</label>
     <button v-if="!open" type="button" class="form-input org-picker-value" :disabled="disabled" @click="show">
       <span>{{ selectedLabel }}</span>
       <span class="mdi mdi-menu-down"></span>
@@ -128,7 +130,7 @@ watch(() => props.modelValue, (v) => { if (v !== 0) void load() }, { immediate: 
         v-model="query"
         class="form-input"
         type="text"
-        placeholder="Search organizations…"
+        :placeholder="$t('orgPicker.searchOrganizations')"
         @keydown="onKey"
       />
       <ul class="org-picker-list">

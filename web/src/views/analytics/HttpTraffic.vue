@@ -12,7 +12,7 @@ const GEOIP_DOCS = 'https://docs.miabi.io/docs/operations/analytics#geoip-databa
   <AnalyticsShell v-slot="{ report }">
     <div class="card">
       <div class="a-card-header">
-        <h3>Requests by country</h3>
+        <h3>{{ $t('analytics.requestsByCountry') }}</h3>
         <span class="a-muted">{{ fmtNum(report.totals.requests) }} requests · {{ report.web.top_countries.length }} countries</span>
       </div>
       <div class="card-body">
@@ -21,32 +21,31 @@ const GEOIP_DOCS = 'https://docs.miabi.io/docs/operations/analytics#geoip-databa
              empty state IS the setup instructions. Keep it actionable: the path and the link
              are the whole point. -->
         <div v-else class="empty-state">
-          <h3>No country data yet</h3>
+          <h3>{{ $t('analytics.noCountryDataYet') }}</h3>
+          <i18n-t keypath="analytics.geoipHint" tag="p">
+            <template #path><code>/etc/miabi/country.mmdb</code></template>
+          </i18n-t>
           <p>
-            Resolving countries needs a GeoIP database on the gateway. Put one at
-            <code>/etc/miabi/country.mmdb</code> and restart the gateway.
-          </p>
-          <p>
-            <a :href="GEOIP_DOCS" target="_blank" rel="noopener">Where to get one →</a>
+            <a :href="GEOIP_DOCS" target="_blank" rel="noopener">{{ $t('analytics.whereToGetOne') }}</a>
           </p>
         </div>
       </div>
     </div>
 
     <div class="break-grid">
-      <Breakdown title="Top countries" :items="report.web.top_countries" kind="country"
+      <Breakdown :title="$t('dashboard.analytics.topCountries')" :items="report.web.top_countries" kind="country"
         empty-hint="Needs a GeoIP database at /etc/miabi/country.mmdb — see the map above." />
-      <Breakdown title="HTTP methods" :items="report.web.top_methods" />
+      <Breakdown :title="$t('analytics.httpMethods')" :items="report.web.top_methods" />
 
       <div class="card">
-        <div class="a-card-header"><h3>Status codes</h3></div>
+        <div class="a-card-header"><h3>{{ $t('analytics.statusCodes') }}</h3></div>
         <div class="card-body">
           <StatusPie :status="report.status" />
         </div>
       </div>
 
-      <Breakdown title="Top paths" :items="report.web.top_paths" />
-      <Breakdown title="Referrers" :items="report.web.top_referrers" />
+      <Breakdown :title="$t('analytics.topPaths')" :items="report.web.top_paths" />
+      <Breakdown :title="$t('analytics.referrers')" :items="report.web.top_referrers" />
     </div>
   </AnalyticsShell>
 </template>

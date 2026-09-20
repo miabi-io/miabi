@@ -10,6 +10,7 @@ import AppModal from '@/components/AppModal.vue'
 
 const route = useRoute()
 const { t } = useI18n()
+const tc = (key: string, n: number) => t(key, n)
 const router = useRouter()
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -42,11 +43,11 @@ const sourceCounts = computed(() => {
 
 const browseTabs = computed<{ key: BrowseSource; label: string }[]>(() => {
   const out: { key: BrowseSource; label: string }[] = [
-    { key: 'all', label: 'All' },
-    { key: 'official', label: 'Official' },
+    { key: 'all', label: t('marketplace.source.all') },
+    { key: 'official', label: t('marketplace.source.official') },
   ]
-  if (sourceCounts.value.community) out.push({ key: 'community', label: 'Community' })
-  out.push({ key: 'custom', label: 'Custom' })
+  if (sourceCounts.value.community) out.push({ key: 'community', label: t('marketplace.source.community') })
+  out.push({ key: 'custom', label: t('marketplace.source.custom') })
   return out
 })
 
@@ -173,16 +174,16 @@ function fallbackIcon(t: CatalogEntry) {
 }
 function provisionSummary(t: CatalogEntry): string {
   const parts: string[] = []
-  if (t.applications) parts.push(`${t.applications} app${t.applications > 1 ? 's' : ''}`)
-  if (t.databases) parts.push(`${t.databases} database${t.databases > 1 ? 's' : ''}`)
-  if (t.volumes) parts.push(`${t.volumes} volume${t.volumes > 1 ? 's' : ''}`)
-  if (t.configs) parts.push(`${t.configs} config${t.configs > 1 ? 's' : ''}`)
-  return parts.join(' · ') || 'no dependencies'
+  if (t.applications) parts.push(tc('count.apps', t.applications))
+  if (t.databases) parts.push(tc('count.databases', t.databases))
+  if (t.volumes) parts.push(tc('count.volumes', t.volumes))
+  if (t.configs) parts.push(tc('count.configs', t.configs))
+  return parts.join(' · ') || tc('marketplace.noDependencies', 0)
 }
 function sourceBadge(source: string) {
-  if (source === 'custom') return { label: 'Custom', cls: 'badge-warning' }
-  if (source === 'community') return { label: 'Community', cls: 'badge-info' }
-  return { label: 'Official', cls: 'badge-success' }
+  if (source === 'custom') return { label: t('marketplace.source.custom'), cls: 'badge-warning' }
+  if (source === 'community') return { label: t('marketplace.source.community'), cls: 'badge-info' }
+  return { label: t('marketplace.source.official'), cls: 'badge-success' }
 }
 
 function openInstall(t: CatalogEntry) {
@@ -199,7 +200,7 @@ async function doImport() {
   importing.value = true
   try {
     const entry = (await marketplaceApi.import(ws.currentWorkspaceId, importYaml.value)).data.data
-    notify.success(`Imported ${entry?.display_name ?? 'template'}`)
+    notify.success(t('notify.marketplace.imported', { name: entry?.display_name ?? t('marketplace.template') }))
     importOpen.value = false
     importYaml.value = ''
     await loadTemplates()
@@ -233,10 +234,10 @@ function deletionSummary(i: TemplateInstallView): string {
   const apps = i.app_ids?.length ?? 0
   const dbs = i.database_ids?.length ?? 0
   const vols = i.volume_ids?.length ?? 0
-  if (apps) parts.push(`${apps} app${apps > 1 ? 's' : ''}`)
-  if (dbs) parts.push(`${dbs} database${dbs > 1 ? 's' : ''}`)
-  if (vols) parts.push(`${vols} volume${vols > 1 ? 's' : ''}`)
-  return parts.join(', ') || 'its resources'
+  if (apps) parts.push(tc('count.apps', apps))
+  if (dbs) parts.push(tc('count.databases', dbs))
+  if (vols) parts.push(tc('count.volumes', vols))
+  return parts.join(', ') || t('marketplace.itsResources')
 }
 
 // Teardown follow-up: after an uninstall, show which resources were removed (and
@@ -257,9 +258,9 @@ async function confirmUninstall() {
     if (result) {
       teardown.value = { name, result }
       if (result.failed > 0) notify.error(t('notify.marketplace.someResourcesCouldNotBe', { name: name }))
-      else notify.success(`Uninstalled ${name}`)
+      else notify.success(t('notify.marketplace.uninstalled', { name }))
     } else {
-      notify.success(`Uninstalled ${name}`)
+      notify.success(t('notify.marketplace.uninstalled', { name }))
     }
   } catch (e) {
     notify.apiError(e)
@@ -273,26 +274,25 @@ async function confirmUninstall() {
   <div>
     <div class="page-header">
       <div>
-        <h1>Marketplace</h1>
+        <h1>{{ $t('marketplace.marketplace') }}</h1>
         <p class="subtitle">One-click app templates you can deploy into {{ ws.contextLabel }}.</p>
       </div>
       <div class="header-actions">
         <div v-if="isBrowse" class="search-box">
           <span class="mdi mdi-magnify"></span>
-          <input v-model="activeSearch" class="form-input" placeholder="Search templates…" aria-label="Search templates" />
+          <input v-model="activeSearch" class="form-input" :placeholder="$t('marketplace.searchPlaceholder')" :aria-label="$t('marketplace.searchLabel')" />
         </div>
         <a
           class="btn btn-ghost contribute-link"
           href="https://github.com/miabi-io/marketplace/blob/main/CONTRIBUTING.md"
           target="_blank"
           rel="noopener noreferrer"
-          title="Add an app to the open-source marketplace on GitHub"
+          :title="$t('marketplace.contributeHint')"
         >
-          <span class="mdi mdi-github"></span> <span class="contribute-label">Contribute</span>
+          <span class="mdi mdi-github"></span> <span class="contribute-label">{{ $t('marketplace.contribute') }}</span>
         </a>
         <button v-if="ws.canEdit" class="btn btn-secondary" @click="importOpen = true">
-          <span class="mdi mdi-upload"></span> Import
-        </button>
+          <span class="mdi mdi-upload"></span>{{ $t('marketplace.import') }}</button>
       </div>
     </div>
 
@@ -307,9 +307,7 @@ async function confirmUninstall() {
         {{ bt.label }}
         <span class="tab-count">{{ sourceCounts[bt.key] }}</span>
       </button>
-      <button class="tab" :class="{ active: tab === 'installed' }" @click="tab = 'installed'">
-        Installed
-        <span v-if="installs.length" class="tab-count">{{ installs.length }}</span>
+      <button class="tab" :class="{ active: tab === 'installed' }" @click="tab = 'installed'">{{ $t('marketplace.installed') }}<span v-if="installs.length" class="tab-count">{{ installs.length }}</span>
       </button>
     </div>
 
@@ -320,11 +318,10 @@ async function confirmUninstall() {
       <div v-if="activeList.length === 0" class="card">
         <div class="empty-state">
           <span class="mdi mdi-storefront-outline" style="font-size: 44px; color: var(--text-muted)"></span>
-          <h3>No templates found</h3>
+          <h3>{{ $t('marketplace.noTemplatesFound') }}</h3>
           <p>{{ emptyMessage }}</p>
           <button v-if="tab === 'custom' && ws.canEdit" class="btn btn-secondary" style="margin-top: 12px" @click="importOpen = true">
-            <span class="mdi mdi-upload"></span> Import a template
-          </button>
+            <span class="mdi mdi-upload"></span>{{ $t('marketplace.importATemplate') }}</button>
           <a
             v-if="tab === 'community'"
             class="btn btn-secondary"
@@ -333,8 +330,7 @@ async function confirmUninstall() {
             target="_blank"
             rel="noopener noreferrer"
           >
-            <span class="mdi mdi-github"></span> Contribute a template
-          </a>
+            <span class="mdi mdi-github"></span>{{ $t('marketplace.contributeATemplate') }}</a>
         </div>
       </div>
 
@@ -360,7 +356,7 @@ async function confirmUninstall() {
                   <span class="cell-sub">v{{ t.version }}</span>
                   <span v-if="t.author" class="cell-sub template-author">by {{ t.author.name }}</span>
                 </div>
-                <button v-if="ws.canEdit" class="btn btn-sm btn-primary" @click.stop="openInstall(t)">Install</button>
+                <button v-if="ws.canEdit" class="btn btn-sm btn-primary" @click.stop="openInstall(t)">{{ $t('marketplace.install') }}</button>
               </div>
             </div>
           </div>
@@ -371,7 +367,7 @@ async function confirmUninstall() {
             <button
               class="page-btn"
               :disabled="clampedPage <= 1"
-              aria-label="Previous page"
+              :aria-label="$t('marketplace.previousPage')"
               @click="setPage(clampedPage - 1)"
             >
               <span class="mdi mdi-chevron-left"></span>
@@ -390,7 +386,7 @@ async function confirmUninstall() {
             <button
               class="page-btn"
               :disabled="clampedPage >= totalPages"
-              aria-label="Next page"
+              :aria-label="$t('marketplace.nextPage')"
               @click="setPage(clampedPage + 1)"
             >
               <span class="mdi mdi-chevron-right"></span>
@@ -406,17 +402,17 @@ async function confirmUninstall() {
       <div v-if="installs.length === 0" class="card">
         <div class="empty-state">
           <span class="mdi mdi-package-variant" style="font-size: 44px; color: var(--text-muted)"></span>
-          <h3>Nothing installed yet</h3>
-          <p>Install a template from the Browse tab to see it here.</p>
+          <h3>{{ $t('marketplace.nothingInstalledYet') }}</h3>
+          <p>{{ $t('marketplace.noInstallsHint') }}</p>
         </div>
       </div>
       <div v-else class="card">
         <table class="table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Applications</th>
-              <th>Version</th>
+              <th>{{ $t('apps.form.name') }}</th>
+              <th>{{ $t('marketplace.applications') }}</th>
+              <th>{{ $t('marketplace.version') }}</th>
               <th></th>
             </tr>
           </thead>
@@ -454,16 +450,14 @@ async function confirmUninstall() {
                   class="btn btn-sm btn-secondary"
                   :to="{ name: 'template-install', params: { slug: i.template_name }, query: { upgrade: '1' } }"
                 >
-                  <span class="mdi mdi-arrow-up-bold-circle-outline"></span> Upgrade
-                </router-link>
+                  <span class="mdi mdi-arrow-up-bold-circle-outline"></span>{{ $t('marketplace.upgrade') }}</router-link>
                 <button
                   v-if="ws.isWorkspaceAdmin"
                   class="btn btn-sm btn-danger"
                   :disabled="busyInstall === i.id"
                   @click="openUninstall(i)"
                 >
-                  <span class="mdi mdi-delete-outline"></span> Uninstall
-                </button>
+                  <span class="mdi mdi-delete-outline"></span>{{ $t('marketplace.uninstall') }}</button>
               </td>
             </tr>
           </tbody>
@@ -476,26 +470,25 @@ async function confirmUninstall() {
       <AppModal v-if="uninstallTarget" dialog-class="modal-sm" @close="uninstallTarget = null">
         <div class="modal-header">
           <h3>Uninstall {{ uninstallTarget.template_display_name }}?</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="uninstallTarget = null"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="uninstallTarget = null"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="confirmUninstall">
           <div class="modal-body">
             <div class="danger-note">
               <span class="mdi mdi-alert-outline"></span>
-              <div>
-                This permanently deletes <strong>{{ deletionSummary(uninstallTarget) }}</strong> created by this
-                install. This cannot be undone.
-              </div>
+              <i18n-t keypath="marketplace.uninstallWarning" tag="div">
+                <template #what><strong>{{ deletionSummary(uninstallTarget) }}</strong></template>
+              </i18n-t>
             </div>
             <div class="form-group" style="margin-bottom: 0; margin-top: 12px">
-              <label class="form-label">Type <code>{{ uninstallTarget.template_display_name }}</code> to confirm</label>
-              <input v-model="uninstallConfirm" class="form-input" :placeholder="uninstallTarget.template_display_name" autofocus autocomplete="off" aria-label="Type template name to confirm" />
+              <i18n-t keypath="marketplace.typeToConfirm" tag="label" class="form-label">
+                <template #name><code>{{ uninstallTarget.template_display_name }}</code></template>
+              </i18n-t>
+              <input v-model="uninstallConfirm" class="form-input" :placeholder="uninstallTarget.template_display_name" autofocus autocomplete="off" :aria-label="$t('marketplace.confirmNameLabel')" />
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="uninstallTarget = null" :disabled="busyInstall === uninstallTarget.id">
-              Cancel
-            </button>
+            <button type="button" class="btn btn-secondary" @click="uninstallTarget = null" :disabled="busyInstall === uninstallTarget.id">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-danger" :disabled="uninstallConfirm !== uninstallTarget.template_display_name || busyInstall === uninstallTarget.id">
               {{ busyInstall === uninstallTarget.id ? 'Uninstalling…' : 'Uninstall' }}
             </button>
@@ -509,7 +502,7 @@ async function confirmUninstall() {
       <AppModal v-if="teardown" @close="teardown = null">
         <div class="modal-header">
           <h3>Resources removed — {{ teardown.name }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="teardown = null"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="teardown = null"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
           <p v-if="teardownFailed" class="teardown-summary failed">
@@ -520,7 +513,7 @@ async function confirmUninstall() {
             <span class="mdi mdi-check-circle-outline"></span>
             {{ teardownItems.length }} resource{{ teardownItems.length === 1 ? '' : 's' }} removed.
           </p>
-          <p v-if="teardownItems.length === 0" class="text-muted text-sm">This install had no resources to remove.</p>
+          <p v-if="teardownItems.length === 0" class="text-muted text-sm">{{ $t('marketplace.nothingToRemove') }}</p>
           <ul v-else class="teardown-list">
             <li v-for="(it, i) in teardownItems" :key="i">
               <span class="badge" :class="it.error ? 'badge-danger' : 'badge-neutral'">{{ it.error ? 'failed' : 'removed' }}</span>
@@ -531,7 +524,7 @@ async function confirmUninstall() {
           </ul>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="teardown = null">Close</button>
+          <button type="button" class="btn btn-secondary" @click="teardown = null">{{ $t('shell.close') }}</button>
         </div>
       </AppModal>
     </Teleport>
@@ -540,25 +533,24 @@ async function confirmUninstall() {
     <Teleport to="body">
       <AppModal v-if="importOpen" @close="importOpen = false">
         <div class="modal-header">
-          <h3>Import a template</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="importOpen = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('marketplace.importATemplate') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="importOpen = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="doImport">
           <div class="modal-body">
-            <p class="text-muted text-sm" style="margin-bottom: 12px">
-              Paste a Miabi template manifest (<code>apiVersion: miabi.io/v1</code>). It is validated and
-              added to this workspace as a custom template.
-            </p>
+            <i18n-t keypath="marketplace.importHint" tag="p" class="text-muted text-sm" style="margin-bottom: 12px">
+              <template #kind><code>apiVersion: miabi.io/v1</code></template>
+            </i18n-t>
             <textarea
               v-model="importYaml"
               class="form-input mono"
               rows="14"
-              aria-label="Template manifest YAML"
+              :aria-label="$t('marketplace.templateManifestYaml')"
               placeholder="apiVersion: miabi.io/v1&#10;kind: Template&#10;metadata:&#10;  name: my-app&#10;  displayName: My App&#10;  version: 1.0.0&#10;applications:&#10;  - name: app&#10;    image: nginx"
             ></textarea>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="importOpen = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="importOpen = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="importing || !importYaml.trim()">
               {{ importing ? 'Importing…' : 'Import' }}
             </button>

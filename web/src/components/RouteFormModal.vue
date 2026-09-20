@@ -7,6 +7,7 @@
 // selected app's ports), so a host only has to pass the workspace and the apps
 // that may be chosen.
 import { computed, nextTick, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useNotificationStore } from '@/stores/notification'
 import { routeApi } from '@/api/routes'
 import { middlewareApi } from '@/api/middlewares'
@@ -36,6 +37,7 @@ const emit = defineEmits<{ close: []; saved: [] }>()
 
 const confirmDiscard = ref(false)
 
+const { t } = useI18n()
 const notify = useNotificationStore()
 
 const middlewares = ref<Middleware[]>([])
@@ -337,10 +339,10 @@ async function save() {
     }
     if (props.editing) {
       await routeApi.update(props.workspaceId, props.editing.id, input)
-      notify.success('Route updated')
+      notify.success(t('notify.routes.updated'))
     } else {
       await routeApi.create(props.workspaceId, input)
-      notify.success('Route created')
+      notify.success(t('notify.routes.created'))
     }
     emit('saved')
   } catch (e) {

@@ -161,20 +161,20 @@ const summary = computed(
           <div class="rc-tip-time">{{ bucketLabel(active.at, granularity) }}</div>
           <template v-if="!active.col.empty">
             <div class="rc-tip-row">
-              <i class="k k-ok"></i><span>Success</span><b>{{ fmtNum(active.col.ok) }}</b>
+              <i class="k k-ok"></i><span>{{ $t('analytics.success') }}</span><b>{{ fmtNum(active.col.ok) }}</b>
             </div>
             <div class="rc-tip-row">
-              <i class="k k-4xx"></i><span>Client errors</span><b>{{ fmtNum(active.col.e4) }}</b>
+              <i class="k k-4xx"></i><span>{{ $t('analytics.clientErrors') }}</span><b>{{ fmtNum(active.col.e4) }}</b>
             </div>
             <div class="rc-tip-row">
-              <i class="k k-5xx"></i><span>Server errors</span><b>{{ fmtNum(active.col.e5) }}</b>
+              <i class="k k-5xx"></i><span>{{ $t('dashboard.analytics.serverErrors') }}</span><b>{{ fmtNum(active.col.e5) }}</b>
             </div>
             <div class="rc-tip-foot">
               {{ fmtNum(active.point.requests) }} requests · p95 {{ fmtMs(active.point.p95_latency_ms) }}
             </div>
           </template>
           <!-- A quiet bucket has no percentiles to report — zeroes would read as data. -->
-          <div v-else class="rc-tip-foot no-top">No traffic</div>
+          <div v-else class="rc-tip-foot no-top">{{ $t('analytics.noTraffic') }}</div>
         </div>
       </div>
 
@@ -190,9 +190,9 @@ const summary = computed(
     </div>
 
     <div class="a-legend">
-      <span><i class="dot dot-ok"></i> Success</span>
-      <span><i class="dot dot-4xx"></i> Client errors (4xx)</span>
-      <span><i class="dot dot-5xx"></i> Server errors (5xx)</span>
+      <span><i class="dot dot-ok"></i>{{ $t('analytics.success') }}</span>
+      <span><i class="dot dot-4xx"></i>{{ $t('analytics.clientErrors4xx') }}</span>
+      <span><i class="dot dot-5xx"></i>{{ $t('analytics.serverErrors5xx') }}</span>
     </div>
   </div>
 </template>

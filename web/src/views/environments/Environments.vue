@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
@@ -9,6 +10,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const { currentWorkspaceId } = storeToRefs(ws)
 
@@ -55,10 +57,10 @@ async function save() {
   try {
     if (editing.value) {
       await environmentApi.update(currentWorkspaceId.value, editing.value.id, form.value)
-      notify.success('Environment updated')
+      notify.success(t('notify.environments.updated'))
     } else {
       await environmentApi.create(currentWorkspaceId.value, form.value)
-      notify.success('Environment created')
+      notify.success(t('notify.environments.created'))
     }
     showModal.value = false
     load(currentWorkspaceId.value)
@@ -77,7 +79,7 @@ async function confirmDelete() {
   deleting.value = true
   try {
     await environmentApi.remove(currentWorkspaceId.value, pendingDelete.value.id)
-    notify.success('Environment deleted')
+    notify.success(t('notify.environments.deleted'))
     pendingDelete.value = null
     load(currentWorkspaceId.value)
   } catch (e2) {
@@ -92,25 +94,24 @@ async function confirmDelete() {
   <div>
     <div class="page-header">
       <div>
-        <h1>Environments</h1>
-        <p class="subtitle">Promotion stages (dev → staging → prod) with an approval policy.</p>
+        <h1>{{ $t('environments.environments') }}</h1>
+        <p class="subtitle">{{ $t('environments.subtitle') }}</p>
       </div>
       <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate">
-        <span class="mdi mdi-plus"></span> New environment
-      </button>
+        <span class="mdi mdi-plus"></span>{{ $t('environments.newEnvironment') }}</button>
     </div>
 
     <div class="card">
       <div v-if="loading && items.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="items.length === 0" class="empty-state">
         <span class="mdi mdi-layers-triple-outline" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No environments yet</h3>
-        <p>Define stages like staging and production to gate release promotions.</p>
-        <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="openCreate">Create an environment</button>
+        <h3>{{ $t('environments.noEnvironmentsYet') }}</h3>
+        <p>{{ $t('environments.emptyHint') }}</p>
+        <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="openCreate">{{ $t('environments.createAnEnvironment') }}</button>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Environment</th><th>Order</th><th>Required approvals</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('environments.environment') }}</th><th>{{ $t('environments.order') }}</th><th>{{ $t('environments.requiredApprovals') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="e in items" :key="e.id">
               <td>
@@ -130,8 +131,8 @@ async function confirmDelete() {
                 </span>
               </td>
               <td class="text-right table-actions">
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" title="Edit" aria-label="Edit" @click="openEdit(e)"><span class="mdi mdi-pencil-outline"></span></button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="pendingDelete = e"><span class="mdi mdi-delete-outline"></span></button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEdit(e)"><span class="mdi mdi-pencil-outline"></span></button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="pendingDelete = e"><span class="mdi mdi-delete-outline"></span></button>
               </td>
             </tr>
           </tbody>
@@ -143,33 +144,33 @@ async function confirmDelete() {
       <AppModal v-if="showModal" @close="showModal = false">
         <div class="modal-header">
           <h3>{{ editing ? 'Edit environment' : 'New environment' }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="save">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Name</label>
-              <input v-model="form.name" class="form-input" placeholder="e.g. production" aria-label="Name" required autofocus />
+              <label class="form-label">{{ $t('apps.form.name') }}</label>
+              <input v-model="form.name" class="form-input" :placeholder="$t('gitops.namePlaceholder')" :aria-label="$t('apps.form.name')" required autofocus />
             </div>
             <div class="form-group">
-              <label class="form-label">Description <span class="text-muted">(optional)</span></label>
-              <input v-model="form.description" class="form-input" placeholder="Customer-facing production stage" aria-label="Description" />
+              <label class="form-label">{{ $t('plans.description') }}<span class="text-muted">{{ $t('environments.optional') }}</span></label>
+              <input v-model="form.description" class="form-input" placeholder="Customer-facing production stage" :aria-label="$t('plans.description')" />
             </div>
             <div class="form-row">
               <div class="form-group">
-                <label class="form-label">Order</label>
-                <input v-model.number="form.rank" type="number" min="0" class="form-input" aria-label="Order" />
-                <p class="hint">Lower promotes into higher (dev=0, prod=2).</p>
+                <label class="form-label">{{ $t('environments.order') }}</label>
+                <input v-model.number="form.rank" type="number" min="0" class="form-input" :aria-label="$t('environments.order')" />
+                <p class="hint">{{ $t('environments.orderHint') }}</p>
               </div>
               <div class="form-group">
-                <label class="form-label">Required approvals</label>
-                <input v-model.number="form.required_approvals" type="number" min="0" class="form-input" aria-label="Required approvals" />
-                <p class="hint">Approvals needed before a release can be promoted here.</p>
+                <label class="form-label">{{ $t('environments.requiredApprovals') }}</label>
+                <input v-model.number="form.required_approvals" type="number" min="0" class="form-input" :aria-label="$t('environments.requiredApprovals')" />
+                <p class="hint">{{ $t('environments.approvalsHint') }}</p>
               </div>
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showModal = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Create') }}</button>
           </div>
         </form>

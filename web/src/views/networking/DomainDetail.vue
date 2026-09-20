@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -14,6 +15,7 @@ import AppModal from '@/components/AppModal.vue'
 const route = useRoute()
 const router = useRouter()
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const { currentWorkspaceId } = storeToRefs(ws)
 
@@ -79,7 +81,7 @@ async function verify() {
   verifying.value = true
   try {
     await domainApi.verify(wid, item.value.id)
-    notify.success(`${item.value.name} verified`)
+    notify.success(t('notify.domainDetail.verified', { name: item.value.name }))
     load() // the routes this domain gates may have just gone live
   } catch (e) {
     notify.apiError(e, 'Verification failed — check the TXT record and try again')
@@ -94,14 +96,14 @@ async function setProvider(raw: string) {
   const pid = raw === '' ? null : Number(raw)
   try {
     await domainApi.setDnsProvider(wid, item.value.id, pid)
-    notify.success(pid ? 'DNS provider linked — verification is now automatic' : 'Reverted to manual DNS')
+    notify.success(t(pid ? 'notify.domainDetail.providerLinked' : 'notify.domainDetail.providerCleared'))
     load()
   } catch (e) { notify.apiError(e) }
 }
 
 async function copy(v: string) {
   await copyText(v)
-  notify.success('Copied')
+  notify.success(t('notify.common.copied'))
 }
 
 // --- Edit ---
@@ -109,8 +111,8 @@ const showEdit = ref(false)
 const saving = ref(false)
 const form = ref<DomainInput>({ name: '', tls_mode: 'acme', wildcard: false })
 const tlsModes: { value: DomainTLSMode; label: string }[] = [
-  { value: 'acme', label: 'Automatic (Let’s Encrypt)' },
-  { value: 'custom', label: 'Custom certificate' },
+  { value: 'acme', label: t('domains.tls.acme') },
+  { value: 'custom', label: t('domainDetail.tlsCustom') },
 ]
 function openEdit() {
   if (!item.value) return
@@ -124,7 +126,7 @@ async function save() {
   try {
     // The name round-trips unchanged: the API rejects a rename, and omitting it fails validation.
     await domainApi.update(wid, item.value.id, form.value)
-    notify.success('Domain updated')
+    notify.success(t('notify.domainDetail.updated'))
     showEdit.value = false
     load()
   } catch (e) { notify.apiError(e) }
@@ -140,7 +142,7 @@ async function confirmDelete() {
   deleting.value = true
   try {
     await domainApi.remove(wid, item.value.id)
-    notify.success('Domain deleted')
+    notify.success(t('notify.domainDetail.deleted'))
     router.replace('/domains')
   } catch (e) { notify.apiError(e) }
   finally { deleting.value = false }
@@ -151,32 +153,30 @@ async function confirmDelete() {
   <div v-if="item">
     <div class="page-header">
       <div class="title-group">
-        <button class="btn-icon btn-icon-muted" title="Back" aria-label="Back" @click="router.push('/domains')">
+        <button class="btn-icon btn-icon-muted" :title="$t('domainDetail.back')" :aria-label="$t('domainDetail.back')" @click="router.push('/domains')">
           <span class="mdi mdi-arrow-left"></span>
         </button>
         <div>
           <h1>{{ item.name }}</h1>
           <span class="cell-sub">{{ item.wildcard ? `also covers *.${item.name}` : 'apex / subdomain only' }}</span>
         </div>
-        <span v-if="item.banned" class="badge badge-danger" title="Banned by a platform administrator">
-          <span class="mdi mdi-cancel"></span> banned
-        </span>
+        <span v-if="item.banned" class="badge badge-danger" :title="$t('domains.bannedHint')">
+          <span class="mdi mdi-cancel"></span>{{ $t('domainDetail.banned') }}</span>
         <span v-else-if="item.verified" class="badge" :class="item.verified_via === 'admin' ? 'badge-info' : 'badge-success'">
           <span class="mdi" :class="item.verified_via === 'admin' ? 'mdi-shield-account-outline' : 'mdi-check-decagram'"></span>
           {{ verifiedLabel(item) }}
         </span>
         <span v-else-if="item.serving_unverified" class="badge badge-info">
-          <span class="mdi mdi-shield-star-outline"></span> serving · unverified
-        </span>
-        <span v-else class="badge badge-warning"><span class="mdi mdi-clock-alert-outline"></span> pending</span>
+          <span class="mdi mdi-shield-star-outline"></span>{{ $t('domains.servingUnverifiedBadge') }}</span>
+        <span v-else class="badge badge-warning"><span class="mdi mdi-clock-alert-outline"></span>{{ $t('domainDetail.pending') }}</span>
       </div>
       <div v-if="ws.canEdit" class="flex items-center gap-2">
         <button v-if="!item.banned" class="btn btn-secondary" :disabled="verifying" @click="verify">
           <span class="mdi" :class="verifying ? 'mdi-loading mdi-spin' : 'mdi-shield-check-outline'"></span>
           {{ item.verified ? 'Re-check' : 'Verify' }}
         </button>
-        <button class="btn btn-secondary" @click="openEdit"><span class="mdi mdi-pencil-outline"></span> Edit</button>
-        <button class="btn btn-danger" @click="showDelete = true"><span class="mdi mdi-delete-outline"></span> Delete</button>
+        <button class="btn btn-secondary" @click="openEdit"><span class="mdi mdi-pencil-outline"></span>{{ $t('action.edit') }}</button>
+        <button class="btn btn-danger" @click="showDelete = true"><span class="mdi mdi-delete-outline"></span>{{ $t('action.delete') }}</button>
       </div>
     </div>
 
@@ -186,36 +186,36 @@ async function confirmDelete() {
     </div>
     <div v-else-if="item.verified && item.verified_via === 'admin'" class="gate gate-warn mb-4">
       <span class="mdi mdi-shield-account-outline"></span>
-      <span>Verified by a platform administrator, not by DNS. This is never revoked automatically — publish the record below and it converts to a DNS proof on its own.</span>
+      <span>{{ $t('domainDetail.adminVerifiedHint') }}</span>
     </div>
     <div v-else-if="item.serving_unverified" class="gate gate-warn mb-4">
       <span class="mdi mdi-shield-star-outline"></span>
-      <span>Serving because this workspace is privileged — ownership is still unproven. Add the record below to verify it properly.</span>
+      <span>{{ $t('domains.servingUnverified') }}</span>
     </div>
 
     <div class="card mb-4">
-      <div class="card-header"><h2>Ownership</h2></div>
+      <div class="card-header"><h2>{{ $t('domainDetail.ownership') }}</h2></div>
       <div class="card-body detail-list">
         <div class="detail-row">
-          <span class="detail-key">Last check</span>
+          <span class="detail-key">{{ $t('gitops.lastCheck') }}</span>
           <span>
             <span class="mdi" :class="proofPresent(item) ? 'mdi-check-circle-outline check-ok' : 'mdi-alert-circle-outline check-bad'"></span>
             {{ proofPresent(item) ? 'TXT record found' : 'TXT record not found' }} · {{ lastChecked(item) }}
           </span>
         </div>
-        <div class="detail-row"><span class="detail-key">Verified at</span><span>{{ fmtDate(item.verified_at) }}</span></div>
+        <div class="detail-row"><span class="detail-key">{{ $t('domainDetail.verifiedAt') }}</span><span>{{ fmtDate(item.verified_at) }}</span></div>
         <div v-if="item.verification_error" class="detail-row">
-          <span class="detail-key">Last error</span><span class="check-bad">{{ item.verification_error }}</span>
+          <span class="detail-key">{{ $t('domainDetail.lastError') }}</span><span class="check-bad">{{ item.verification_error }}</span>
         </div>
         <div class="detail-row">
-          <span class="detail-key">DNS provider</span>
+          <span class="detail-key">{{ $t('domainDetail.dnsProvider') }}</span>
           <select
             v-if="ws.canEdit && dnsProviders.length"
             class="form-input form-input-sm"
             :value="item.dns_provider_id == null ? '' : String(item.dns_provider_id)"
             @change="setProvider(($event.target as HTMLSelectElement).value)"
           >
-            <option value="">Manual (no provider)</option>
+            <option value="">{{ $t('domainDetail.manualNoProvider') }}</option>
             <option v-for="p in dnsProviders" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
           </select>
           <span v-else>{{ item.automated ? 'Connected — Miabi maintains the records' : 'Manual' }}</span>
@@ -226,30 +226,30 @@ async function confirmDelete() {
     <!-- The record stays visible after verification: this is the panel people read
          when a domain breaks, not a one-time setup wizard. -->
     <div class="card mb-4">
-      <div class="card-header"><h2>DNS record</h2></div>
+      <div class="card-header"><h2>{{ $t('domainDetail.dnsRecord') }}</h2></div>
       <div class="card-body">
-        <p v-if="item.automated" class="note"><span class="mdi mdi-auto-fix"></span> A DNS provider is connected — Miabi creates and maintains this record for you.</p>
-        <p v-else-if="!item.verified" class="note">Add this <strong>TXT</strong> record at your DNS host, then click Verify. Propagation can take a few minutes.</p>
-        <p v-else class="note">This is the record that proves ownership. Keep it in place — removing it un-verifies the domain and takes its routes offline.</p>
+        <p v-if="item.automated" class="note"><span class="mdi mdi-auto-fix"></span>{{ $t('domains.providerConnected') }}</p>
+        <i18n-t v-else-if="!item.verified" keypath="domainDetail.txtHint" tag="p" class="note"><template #type><strong>TXT</strong></template></i18n-t>
+        <p v-else class="note">{{ $t('domains.keepRecord') }}</p>
         <div class="dns-field">
-          <span class="dns-label">Type</span>
+          <span class="dns-label">{{ $t('domainDetail.type') }}</span>
           <code class="dns-value">TXT</code>
         </div>
         <div class="dns-field">
-          <span class="dns-label">Name / Host</span>
+          <span class="dns-label">{{ $t('domains.dns.host') }}</span>
           <code class="dns-value">{{ item.challenge_host }}</code>
-          <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(item.challenge_host)"><span class="mdi mdi-content-copy"></span></button>
+          <button class="btn-icon btn-icon-muted" :title="$t('domainDetail.copy')" :aria-label="$t('domainDetail.copy')" @click="copy(item.challenge_host)"><span class="mdi mdi-content-copy"></span></button>
         </div>
         <div class="dns-field">
-          <span class="dns-label">Value</span>
+          <span class="dns-label">{{ $t('domainDetail.value') }}</span>
           <code class="dns-value">{{ item.challenge_value }}</code>
-          <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(item.challenge_value)"><span class="mdi mdi-content-copy"></span></button>
+          <button class="btn-icon btn-icon-muted" :title="$t('domainDetail.copy')" :aria-label="$t('domainDetail.copy')" @click="copy(item.challenge_value)"><span class="mdi mdi-content-copy"></span></button>
         </div>
       </div>
     </div>
 
     <div class="card mb-4">
-      <div class="card-header"><h2>Routes</h2></div>
+      <div class="card-header"><h2>{{ $t('domainDetail.routes') }}</h2></div>
       <div class="card-body">
         <div v-if="item.routes.length" class="used-list">
           <router-link v-for="r in item.routes" :key="r.id" :to="`/routes/${r.id}`" class="used-row">
@@ -259,45 +259,43 @@ async function confirmDelete() {
             <span class="badge" :class="routeStatusClass[r.status] || 'badge-neutral'" :title="r.status_reason || ''">{{ r.status }}</span>
           </router-link>
         </div>
-        <p v-else class="text-muted text-sm" style="margin: 0">
-          No route uses a host under this domain yet. The domain can be safely deleted.
-        </p>
+        <p v-else class="text-muted text-sm" style="margin: 0">{{ $t('domainDetail.noRoutesHint') }}</p>
       </div>
     </div>
 
     <div class="card">
-      <div class="card-header"><h2>Settings</h2></div>
+      <div class="card-header"><h2>{{ $t('domainDetail.settings') }}</h2></div>
       <div class="card-body detail-list">
-        <div class="detail-row"><span class="detail-key">Default TLS</span><span>{{ item.tls_mode === 'acme' ? 'Automatic (Let’s Encrypt)' : 'Custom certificate' }}</span></div>
-        <div class="detail-row"><span class="detail-key">Wildcard</span><span>{{ item.wildcard ? 'Yes' : 'No' }}</span></div>
-        <div class="detail-row"><span class="detail-key">Added</span><span>{{ fmtDate(item.created_at) }}</span></div>
-        <div class="detail-row"><span class="detail-key">Updated</span><span>{{ fmtDate(item.updated_at) }}</span></div>
+        <div class="detail-row"><span class="detail-key">{{ $t('domains.form.defaultTls') }}</span><span>{{ item.tls_mode === 'acme' ? t('domains.tls.acme') : t('domainDetail.tlsCustom') }}</span></div>
+        <div class="detail-row"><span class="detail-key">{{ $t('domainDetail.wildcard') }}</span><span>{{ item.wildcard ? 'Yes' : 'No' }}</span></div>
+        <div class="detail-row"><span class="detail-key">{{ $t('domainDetail.added') }}</span><span>{{ fmtDate(item.created_at) }}</span></div>
+        <div class="detail-row"><span class="detail-key">{{ $t('planDetail.updated') }}</span><span>{{ fmtDate(item.updated_at) }}</span></div>
       </div>
     </div>
 
     <Teleport to="body">
       <AppModal v-if="showEdit" @close="showEdit = false">
         <div class="modal-header">
-          <h3>Edit domain</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showEdit = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('domains.editTitle') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showEdit = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="save">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Domain name</label>
+              <label class="form-label">{{ $t('domains.form.name') }}</label>
               <input v-model="form.name" class="form-input mono" disabled />
-              <p class="form-hint">The name is fixed once a domain is added. To change it, delete this domain and add the correct one.</p>
+              <p class="form-hint">{{ $t('domains.form.nameFixed') }}</p>
             </div>
             <div class="form-group">
-              <label class="form-label">Default TLS</label>
+              <label class="form-label">{{ $t('domains.form.defaultTls') }}</label>
               <div class="tabs" style="margin-bottom: 0">
                 <button v-for="t in tlsModes" :key="t.value" type="button" class="tab" :class="{ active: form.tls_mode === t.value }" @click="form.tls_mode = t.value">{{ t.label }}</button>
               </div>
             </div>
-            <label class="check"><input type="checkbox" v-model="form.wildcard" /> <span>Wildcard — also cover <code>*.{{ item.name }}</code></span></label>
+            <label class="check"><input type="checkbox" v-model="form.wildcard" /> <span><i18n-t keypath="domains.form.wildcard" tag="span"><template #host><code>*.{{ item.name }}</code></template></i18n-t></span></label>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showEdit = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showEdit = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : 'Save' }}</button>
           </div>
         </form>

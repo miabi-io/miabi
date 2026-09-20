@@ -32,7 +32,7 @@ const visiblePages = computed<(number | null)[]>(() => {
       Page {{ currentPage + 1 }} of {{ totalPages }} · {{ pageable.total_elements }} total
     </span>
     <div class="pagination-buttons">
-      <button class="btn btn-secondary btn-sm" :disabled="currentPage === 0" aria-label="Previous page" @click="emit('page', currentPage - 1)">
+      <button class="btn btn-secondary btn-sm" :disabled="currentPage === 0" :aria-label="$t('marketplace.previousPage')" @click="emit('page', currentPage - 1)">
         <span class="mdi mdi-chevron-left"></span>
       </button>
       <template v-for="(p, idx) in visiblePages" :key="idx">
@@ -46,7 +46,7 @@ const visiblePages = computed<(number | null)[]>(() => {
           {{ p + 1 }}
         </button>
       </template>
-      <button class="btn btn-secondary btn-sm" :disabled="currentPage >= totalPages - 1" aria-label="Next page" @click="emit('page', currentPage + 1)">
+      <button class="btn btn-secondary btn-sm" :disabled="currentPage >= totalPages - 1" :aria-label="$t('marketplace.nextPage')" @click="emit('page', currentPage + 1)">
         <span class="mdi mdi-chevron-right"></span>
       </button>
     </div>

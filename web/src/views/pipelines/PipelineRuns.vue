@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -8,6 +9,7 @@ import { pipelineApi } from '@/api/pipelines'
 import { usePagination } from '@/composables/usePagination'
 import Pagination from '@/components/Pagination.vue'
 import { relativeTime, formatDuration } from '@/utils/time'
+import { fmtDateTime } from '@/utils/datetime'
 import { statusMeta } from './status'
 import PipelineWebhookModal from './PipelineWebhookModal.vue'
 import type { PipelineDefinition, PipelineRun, PipelineRunEvent } from '@/api/types'
@@ -15,6 +17,7 @@ import type { PipelineDefinition, PipelineRun, PipelineRunEvent } from '@/api/ty
 const ws = useWorkspaceStore()
 const isTerminal = (s: string) => ['succeeded', 'failed', 'canceled'].includes(s)
 
+const { t } = useI18n()
 const notify = useNotificationStore()
 const route = useRoute()
 const router = useRouter()
@@ -66,7 +69,7 @@ async function trigger(noCache = false) {
     const run = (await pipelineApi.trigger(wid, pipeline.value.id, { no_cache: noCache })).data.data
     // Prepend and stay on the list; the stream drives it from pending onwards.
     if (!runs.value.some((r) => r.id === run.id)) runs.value.unshift(run)
-    notify.success(`Run #${run.number} queued`, {
+    notify.success(t('notify.pipelines.runNumberQueued', { number: run.number }), {
       detail: noCache ? 'Building without cache — expect a slower run.' : 'Open it to follow the logs.',
     })
   } catch (e) {
@@ -118,7 +121,7 @@ onBeforeUnmount(() => {
   <div>
     <div class="page-header">
       <div>
-        <router-link to="/pipelines" class="back-link"><span class="mdi mdi-arrow-left"></span> Pipelines</router-link>
+        <router-link to="/pipelines" class="back-link"><span class="mdi mdi-arrow-left"></span>{{ $t('pipelines.pipelines') }}</router-link>
         <div class="title-row">
           <h1>{{ pipeline?.display_name || pipeline?.name || 'Pipeline' }}</h1>
           <span v-if="pipeline?.last_run" class="badge" :class="statusMeta(pipeline.last_run.status).badge">
@@ -126,29 +129,26 @@ onBeforeUnmount(() => {
           </span>
         </div>
         <p class="subtitle">
-          Run history
-          <span v-if="pageable.total_elements"> · {{ pageable.total_elements }} run{{ pageable.total_elements === 1 ? '' : 's' }}</span>
-          <span v-if="pipeline?.last_run" :title="pipeline.last_run.started_at ? new Date(pipeline.last_run.started_at).toLocaleString() : ''">
-            · last run #{{ pipeline.last_run.number }} {{ relativeTime(pipeline.last_run.started_at || pipeline.last_run.created_at, now) }}
+          {{ $t('pipelines.runHistory') }}
+          <span v-if="pageable.total_elements"> · {{ $t('pipelines.runCount', pageable.total_elements) }}</span>
+          <span v-if="pipeline?.last_run" :title="pipeline.last_run.started_at ? fmtDateTime(pipeline.last_run.started_at) : ''">
+            · {{ $t('pipelines.lastRunNumber', { number: pipeline.last_run.number, ago: relativeTime(pipeline.last_run.started_at || pipeline.last_run.created_at, now) }) }}
           </span>
         </p>
       </div>
       <div class="header-actions">
         <button v-if="ws.canEdit" class="btn btn-secondary" @click="showWebhook = true">
-          <span class="mdi mdi-webhook"></span> Push webhook
-        </button>
+          <span class="mdi mdi-webhook"></span>{{ $t('pipelines.pushWebhook') }}</button>
         <button
           v-if="ws.canEdit && pipeline?.enabled"
           class="btn btn-secondary"
           :disabled="triggering"
-          title="Rebuild every layer, ignoring the build cache. Slower — use it when a cached layer has gone stale."
+          :title="$t('pipelines.rebuildEveryLayerIgnoringThe')"
           @click="trigger(true)"
         >
-          <span class="mdi mdi-cached"></span> Run without cache
-        </button>
+          <span class="mdi mdi-cached"></span>{{ $t('pipelines.runWithoutCache') }}</button>
         <button v-if="ws.canEdit && pipeline?.enabled" class="btn btn-primary" :disabled="triggering" @click="trigger()">
-          <span class="mdi" :class="triggering ? 'mdi-loading mdi-spin' : 'mdi-play'"></span> Run now
-        </button>
+          <span class="mdi" :class="triggering ? 'mdi-loading mdi-spin' : 'mdi-play'"></span>{{ $t('jobs.runNow') }}</button>
       </div>
     </div>
 
@@ -158,18 +158,18 @@ onBeforeUnmount(() => {
       <div v-if="loading && runs.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="runs.length === 0" class="empty-state">
         <span class="mdi mdi-history" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No runs yet</h3>
-        <p>Trigger this pipeline to see its run history here.</p>
-        <button v-if="ws.canEdit && pipeline?.enabled" class="btn btn-primary mt-4" :disabled="triggering" @click="trigger()">Run now</button>
+        <h3>{{ $t('pipelines.noRunsYet') }}</h3>
+        <p>{{ $t('pipelines.triggerThisPipelineToSee') }}</p>
+        <button v-if="ws.canEdit && pipeline?.enabled" class="btn btn-primary mt-4" :disabled="triggering" @click="trigger()">{{ $t('jobs.runNow') }}</button>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Run</th><th>Status</th><th>Commit</th><th>Trigger</th><th>Duration</th><th>Started</th></tr></thead>
+          <thead><tr><th>{{ $t('pipelines.run') }}</th><th>{{ $t('dashboard.col.status') }}</th><th>{{ $t('pipelines.commit') }}</th><th>{{ $t('pipelines.trigger') }}</th><th>{{ $t('pipelines.duration') }}</th><th>{{ $t('pipelines.started') }}</th></tr></thead>
           <tbody>
             <tr v-for="r in runs" :key="r.id" class="row-link" :class="`rail-${statusMeta(r.status).badge}`" @click="openRun(r)">
               <td class="cell-title">
                 #{{ r.number }}
-                <span v-if="r.no_cache" class="badge badge-neutral no-cache" title="Built without cache">no cache</span>
+                <span v-if="r.no_cache" class="badge badge-neutral no-cache" :title="$t('pipelines.builtWithoutCache')">{{ $t('pipelines.noCache') }}</span>
               </td>
               <td>
                 <span class="badge" :class="statusMeta(r.status).badge">

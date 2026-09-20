@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -13,6 +14,7 @@ import AppModal from '@/components/AppModal.vue'
 const route = useRoute()
 const router = useRouter()
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const { currentWorkspaceId } = storeToRefs(ws)
 
@@ -53,7 +55,7 @@ async function save() {
   const input: CertificateInput = { name: form.value.name.trim(), cert_pem: form.value.cert_pem, key_pem: form.value.key_pem }
   try {
     await certificateApi.replace(wid, item.value.id, input)
-    notify.success('Certificate replaced')
+    notify.success(t('notify.certificates.replaced'))
     showReplace.value = false
     load()
   } catch (e) { notify.apiError(e) }
@@ -69,7 +71,7 @@ async function confirmDelete() {
   deleting.value = true
   try {
     await certificateApi.remove(wid, item.value.id)
-    notify.success('Certificate deleted')
+    notify.success(t('notify.certificates.deleted'))
     router.replace('/certificates')
   } catch (e) { notify.apiError(e, 'Delete failed (certificate may be in use)') }
   finally { deleting.value = false }
@@ -80,7 +82,7 @@ async function confirmDelete() {
   <div v-if="item">
     <div class="page-header">
       <div class="title-group">
-        <button class="btn-icon btn-icon-muted" title="Back" aria-label="Back" @click="router.push('/certificates')">
+        <button class="btn-icon btn-icon-muted" :title="$t('certificates.back')" :aria-label="$t('certificates.back')" @click="router.push('/certificates')">
           <span class="mdi mdi-arrow-left"></span>
         </button>
         <div>
@@ -90,64 +92,64 @@ async function confirmDelete() {
         <span class="badge badge-dot" :class="expiryBadge(item).cls">{{ expiryBadge(item).text }}</span>
       </div>
       <div v-if="ws.canEdit" class="flex items-center gap-2">
-        <button class="btn btn-secondary" @click="openReplace"><span class="mdi mdi-autorenew"></span> Replace (renew)</button>
-        <button class="btn btn-danger" @click="showDelete = true"><span class="mdi mdi-delete-outline"></span> Delete</button>
+        <button class="btn btn-secondary" @click="openReplace"><span class="mdi mdi-autorenew"></span>{{ $t('certificates.replaceRenew') }}</button>
+        <button class="btn btn-danger" @click="showDelete = true"><span class="mdi mdi-delete-outline"></span>{{ $t('action.delete') }}</button>
       </div>
     </div>
 
     <div class="card mb-4">
-      <div class="card-header"><h2>Certificate</h2></div>
+      <div class="card-header"><h2>{{ $t('certificates.certificate') }}</h2></div>
       <div class="card-body detail-list">
-        <div class="detail-row"><span class="detail-key">Common name</span><span class="mono">{{ item.common_name || '—' }}</span></div>
-        <div class="detail-row"><span class="detail-key">Domains (SAN)</span><span class="mono">{{ (item.dns_names || []).join(', ') || '—' }}</span></div>
-        <div class="detail-row"><span class="detail-key">Issuer</span><span>{{ item.issuer || '—' }}</span></div>
-        <div class="detail-row"><span class="detail-key">Serial</span><span class="mono">{{ item.serial_hex || '—' }}</span></div>
-        <div class="detail-row"><span class="detail-key">Valid from</span><span>{{ fmtDate(item.not_before) }}</span></div>
+        <div class="detail-row"><span class="detail-key">{{ $t('certificates.commonName') }}</span><span class="mono">{{ item.common_name || '—' }}</span></div>
+        <div class="detail-row"><span class="detail-key">{{ $t('certificates.domainsSan') }}</span><span class="mono">{{ (item.dns_names || []).join(', ') || '—' }}</span></div>
+        <div class="detail-row"><span class="detail-key">{{ $t('certificates.issuer') }}</span><span>{{ item.issuer || '—' }}</span></div>
+        <div class="detail-row"><span class="detail-key">{{ $t('certificates.serial') }}</span><span class="mono">{{ item.serial_hex || '—' }}</span></div>
+        <div class="detail-row"><span class="detail-key">{{ $t('certificates.validFrom') }}</span><span>{{ fmtDate(item.not_before) }}</span></div>
         <div class="detail-row">
-          <span class="detail-key">Expires</span>
+          <span class="detail-key">{{ $t('certificates.expires') }}</span>
           <span><span class="badge badge-dot" :class="expiryBadge(item).cls">{{ expiryBadge(item).text }}</span> <span class="text-muted">{{ fmtDate(item.not_after) }}</span></span>
         </div>
-        <div class="detail-row"><span class="detail-key">Imported</span><span>{{ fmtDate(item.created_at) }}</span></div>
-        <div class="detail-row"><span class="detail-key">Updated</span><span>{{ fmtDate(item.updated_at) }}</span></div>
+        <div class="detail-row"><span class="detail-key">{{ $t('certificates.imported') }}</span><span>{{ fmtDate(item.created_at) }}</span></div>
+        <div class="detail-row"><span class="detail-key">{{ $t('planDetail.updated') }}</span><span>{{ fmtDate(item.updated_at) }}</span></div>
       </div>
     </div>
 
     <div class="card">
-      <div class="card-header"><h2>Used by</h2></div>
+      <div class="card-header"><h2>{{ $t('volumes.usedBy') }}</h2></div>
       <div class="card-body">
         <div v-if="usedBy.length" class="used-list">
           <router-link v-for="r in usedBy" :key="r.id" :to="`/routes/${r.id}`" class="used-row">
             <span class="mdi mdi-routes"></span> {{ r.name }}
           </router-link>
         </div>
-        <p v-else class="text-muted text-sm" style="margin: 0">Not used by any route. The certificate can be safely deleted.</p>
+        <p v-else class="text-muted text-sm" style="margin: 0">{{ $t('certificates.unusedHint') }}</p>
       </div>
     </div>
 
     <Teleport to="body">
       <AppModal v-if="showReplace" max-width="640px" @close="showReplace = false">
         <div class="modal-header">
-          <h3>Replace certificate</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showReplace = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('certificates.replaceCertificate') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showReplace = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="save">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Name</label>
+              <label class="form-label">{{ $t('apps.form.name') }}</label>
               <input v-model="form.name" class="form-input" disabled />
             </div>
             <div class="form-group">
-              <label class="form-label">Certificate (PEM) — leaf + intermediates</label>
+              <label class="form-label">{{ $t('certificates.certPem') }}</label>
               <textarea v-model="form.cert_pem" class="form-input" rows="5" required placeholder="-----BEGIN CERTIFICATE-----" style="font-family: monospace; font-size: 12px"></textarea>
             </div>
             <div class="form-group" style="margin-bottom: 0">
-              <label class="form-label">Private key (PEM)</label>
+              <label class="form-label">{{ $t('certificates.privateKeyPem') }}</label>
               <textarea v-model="form.key_pem" class="form-input" rows="4" required placeholder="-----BEGIN PRIVATE KEY-----" style="font-family: monospace; font-size: 12px"></textarea>
-              <p class="form-hint">The key is validated against the certificate, encrypted at rest, and never shown again.</p>
+              <p class="form-hint">{{ $t('certificates.keyHint') }}</p>
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showReplace = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showReplace = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : 'Replace' }}</button>
           </div>
         </form>

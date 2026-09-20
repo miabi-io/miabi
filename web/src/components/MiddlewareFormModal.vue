@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { middlewareApi } from '@/api/middlewares'
 import { useNotificationStore } from '@/stores/notification'
 import { parseYaml, toYaml } from '@/utils/yaml'
@@ -18,6 +19,7 @@ const emit = defineEmits<{ (e: 'close'): void; (e: 'saved', m: Middleware): void
 
 const confirmDiscard = ref(false)
 
+const { t } = useI18n()
 const notify = useNotificationStore()
 
 // Catalog is static across workspaces; fetch once and cache for the session.
@@ -174,7 +176,7 @@ async function save() {
     const res = props.editing
       ? await middlewareApi.update(props.workspaceId, props.editing.id, input)
       : await middlewareApi.create(props.workspaceId, input)
-    notify.success(props.editing ? 'Policy updated' : 'Policy created')
+    notify.success(t(props.editing ? 'notify.middlewares.updated' : 'notify.middlewares.created'))
     emit('saved', res.data.data)
   } catch (e) {
     notify.apiError(e)
@@ -189,7 +191,7 @@ async function save() {
     <AppModal v-if="open" dialog-class="modal-lg" auto-focus :escapable="!confirmDiscard" @close="requestClose">
       <div class="modal-header">
         <h3 id="mw-form-title">{{ editing ? 'Edit policy' : 'New security policy' }}</h3>
-        <button class="btn-icon btn-icon-muted" aria-label="Close" data-modal-skip-focus @click="requestClose"><span class="mdi mdi-close"></span></button>
+        <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" data-modal-skip-focus @click="requestClose"><span class="mdi mdi-close"></span></button>
       </div>
       <form @submit.prevent="save">
         <div class="modal-body">
@@ -208,14 +210,14 @@ async function save() {
           </div>
 
           <div class="form-group">
-            <label class="form-label">Name</label>
-            <input v-model="form.name" class="form-input" placeholder="e.g. basic-auth" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" title="Lowercase letters, digits and hyphens" aria-label="Name" required autofocus />
-            <p class="form-hint">Lowercase letters, digits and hyphens (e.g. basic-auth).</p>
+            <label class="form-label">{{ $t('apps.form.name') }}</label>
+            <input v-model="form.name" class="form-input" placeholder="e.g. basic-auth" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" :title="$t('routes.nameTitle')" :aria-label="$t('apps.form.name')" required autofocus />
+            <p class="form-hint">{{ $t('middlewares.lowercaseLettersDigitsAndHyphens') }}</p>
           </div>
 
           <div class="form-group">
-            <label class="form-label">Type</label>
-            <select v-model="form.type" class="form-select" :disabled="!!editing" aria-label="Type" @change="onTypeChange">
+            <label class="form-label">{{ $t('middlewares.type') }}</label>
+            <select v-model="form.type" class="form-select" :disabled="!!editing" :aria-label="$t('middlewares.type')" @change="onTypeChange">
               <optgroup v-for="g in typesByCategory" :key="g.cat" :label="g.cat">
                 <option v-for="d in g.items" :key="d.type" :value="d.type">{{ d.display_name }}</option>
               </optgroup>
@@ -233,13 +235,14 @@ async function save() {
           </div>
 
           <div class="form-group">
-            <label class="form-label">Paths <span class="text-muted">(comma-separated regular expressions, default /.*)</span></label>
-            <input v-model="form.paths" class="form-input" placeholder="/.*" aria-label="Paths" />
+            <label class="form-label">{{ $t('middlewares.paths') }}<span class="text-muted">{{ $t('middlewares.commaSeparatedRegularExpressionsDefault') }}</span></label>
+            <input v-model="form.paths" class="form-input" placeholder="/.*" :aria-label="$t('middlewares.paths')" />
             <!-- Regexes, not globs: "/admin/*" reads as "zero or more slashes"
                  after /admin and would not scope the rule the way it looks. -->
-            <small class="form-hint">
-              Matched as regular expressions, so a prefix is written <code>/admin/.*</code> — not <code>/admin/*</code>.
-            </small>
+            <i18n-t keypath="middlewares.pathsHint" tag="small" class="form-hint">
+              <template #good><code>/admin/.*</code></template>
+              <template #bad><code>/admin/*</code></template>
+            </i18n-t>
           </div>
 
           <!-- Schema-driven fields (recursive: scalars, maps, groups, lists) -->
@@ -251,13 +254,13 @@ async function save() {
                form schema exists). Not user-selectable — the type picker only
                offers catalogued types. -->
           <div v-else class="form-group" style="margin-bottom: 0">
-            <label class="form-label">Rule <span class="text-muted">(YAML)</span></label>
-            <textarea v-model="ruleText" class="form-textarea mono" rows="8" spellcheck="false" placeholder="requestsPerUnit: 100&#10;unit: minute" aria-label="Rule (YAML)"></textarea>
+            <label class="form-label">{{ $t('middlewares.rule') }}<span class="text-muted">{{ $t('middlewares.yaml') }}</span></label>
+            <textarea v-model="ruleText" class="form-textarea mono" rows="8" spellcheck="false" placeholder="requestsPerUnit: 100&#10;unit: minute" :aria-label="$t('middlewares.ruleYaml')"></textarea>
             <p v-if="ruleError" class="form-error">{{ ruleError }}</p>
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="requestClose">Cancel</button>
+          <button type="button" class="btn btn-secondary" @click="requestClose">{{ $t('action.cancel') }}</button>
           <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Create') }}</button>
         </div>
       </form>

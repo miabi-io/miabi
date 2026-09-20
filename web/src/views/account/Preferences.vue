@@ -188,13 +188,12 @@ async function saveDisplay() {
         </div>
         <div class="form-group">
           <label class="form-label" for="tz">{{ t('preferences.timezone.label') }}</label>
-          <input id="tz" v-model="timezone" class="form-input mono" placeholder="UTC" />
+          <input id="tz" v-model="timezone" class="form-input mono" :placeholder="$t('preferences.utc')" />
           <p class="form-hint">
 {{ t('preferences.timezone.hint') }}
-            <template v-if="detectedTimezone && detectedTimezone !== timezone">
-              This browser reports
-              <a href="#" @click.prevent="timezone = detectedTimezone"><code>{{ detectedTimezone }}</code></a>.
-            </template>
+            <i18n-t v-if="detectedTimezone && detectedTimezone !== timezone" keypath="preferences.timezone.detected" tag="span">
+              <template #zone><a href="#" @click.prevent="timezone = detectedTimezone"><code>{{ detectedTimezone }}</code></a></template>
+            </i18n-t>
           </p>
         </div>
         <div class="form-group" style="margin-bottom: 0">

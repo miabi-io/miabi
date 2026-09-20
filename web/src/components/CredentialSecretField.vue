@@ -51,16 +51,12 @@ const required = computed(() => !props.editing)
   <div class="form-group" style="margin-bottom: 0">
     <label class="form-label">
       {{ label }}
-      <span v-if="editing" class="text-muted">(leave blank to keep current)</span>
+      <span v-if="editing" class="text-muted">{{ $t('secrets.keepCurrent') }}</span>
     </label>
 
     <div class="tabs source-tabs">
-      <button type="button" class="tab" :class="{ active: mode === 'value' }" @click="mode = 'value'">
-        Enter value
-      </button>
-      <button type="button" class="tab" :class="{ active: mode === 'secret' }" @click="mode = 'secret'">
-        Use a secret
-      </button>
+      <button type="button" class="tab" :class="{ active: mode === 'value' }" @click="mode = 'value'">{{ $t('credentialField.enterValue') }}</button>
+      <button type="button" class="tab" :class="{ active: mode === 'secret' }" @click="mode = 'secret'">{{ $t('credentialField.useASecret') }}</button>
     </div>
 
     <template v-if="mode === 'value'">
@@ -90,10 +86,8 @@ const required = computed(() => !props.editing)
 
     <template v-else>
       <SecretPicker v-model="selected" :label="label" default-ownership="unmanaged" />
-      <p v-if="required && !selected" class="form-hint">Choose a secret to continue.</p>
-      <p v-else class="form-hint">
-        Read from the vault on every use — rotating the secret rotates this credential.
-      </p>
+      <p v-if="required && !selected" class="form-hint">{{ $t('credentialField.chooseASecretToContinue') }}</p>
+      <p v-else class="form-hint">{{ $t('credentialField.readFromTheVaultOn') }}</p>
     </template>
   </div>
 </template>

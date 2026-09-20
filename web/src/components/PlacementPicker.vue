@@ -48,17 +48,15 @@ function optionLabel(n: PlaceableNode): string {
 
 <template>
   <div v-if="hasChoice" class="form-group">
-    <label class="form-label">Placement</label>
-    <select v-model="pinned" class="form-select" aria-label="Placement">
-      <option value="">Any node — the scheduler decides</option>
+    <label class="form-label">{{ $t('placement.placement') }}</label>
+    <select v-model="pinned" class="form-select" :aria-label="$t('placement.placement')">
+      <option value="">{{ $t('placement.anyNodeTheSchedulerDecides') }}</option>
       <option v-for="n in pinnable" :key="n.id" :value="n.swarm_node_id">Pin to {{ optionLabel(n) }}</option>
     </select>
     <p v-if="pinned && (replicas ?? 1) > 1" class="form-hint form-hint-warn">
       All {{ replicas }} replicas will run on this one node — it stops being a spread across the cluster.
     </p>
-    <p v-else class="form-hint">
-      Pin a service that must run where its data lives, or to place it on a specific node.
-    </p>
+    <p v-else class="form-hint">{{ $t('placement.pinAServiceThatMust') }}</p>
   </div>
 </template>
 

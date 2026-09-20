@@ -68,20 +68,20 @@ function nodeLabel(n: PlaceableNode): string {
 
 <template>
   <div v-if="locations.length > 1 && !pinned" class="form-group">
-    <label class="form-label">Location</label>
-    <select v-model="location" class="form-select" aria-label="Location">
+    <label class="form-label">{{ $t('locationPicker.location') }}</label>
+    <select v-model="location" class="form-select" :aria-label="$t('locationPicker.location')">
       <option value="">{{ defaultLocation ? `Workspace default — ${locationLabel(defaultLocation)}` : 'Workspace default' }}</option>
       <option v-for="l in locations" :key="l.id" :value="l.name">{{ locationLabel(l) }}</option>
     </select>
-    <p class="form-hint">Private networks don't span locations: keep an app with the databases and volumes it uses.</p>
+    <p class="form-hint">{{ $t('locationPicker.privateNetworksDonTSpan') }}</p>
   </div>
   <div v-if="canPin && nodes.length > 1" class="form-group">
-    <label class="form-label">Node <span class="badge badge-muted">admin</span></label>
-    <select v-model="node" class="form-select" aria-label="Node">
-      <option :value="0">Any node in the location</option>
+    <label class="form-label">{{ $t('locationPicker.node') }} <span class="badge badge-muted">{{ $t('locationPicker.admin') }}</span></label>
+    <select v-model="node" class="form-select" :aria-label="$t('locationPicker.node')">
+      <option :value="0">{{ $t('locationPicker.anyNodeInTheLocation') }}</option>
       <option v-for="n in nodes" :key="n.id" :value="n.id" :disabled="!placeable(n)">{{ nodeLabel(n) }}</option>
     </select>
-    <p class="form-hint">Pinning a node also decides the location.</p>
+    <p class="form-hint">{{ $t('locationPicker.pinningANodeAlsoDecides') }}</p>
   </div>
 </template>
 

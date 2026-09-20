@@ -112,14 +112,14 @@ onBeforeUnmount(() => {
         <span class="mdi mdi-console-line"></span>
         Shell — {{ appName }}
         <span class="shell-status" :class="status">{{ status }}</span>
-        <span v-if="status !== 'closed'" class="shell-hint">Esc goes to the shell · Shift+Tab to leave it</span>
+        <span v-if="status !== 'closed'" class="shell-hint">{{ $t('shellTerminal.escGoesToTheShell') }}</span>
       </h3>
       <div class="shell-controls">
         <button
           class="btn-icon btn-icon-muted"
           :class="{ active: size === 'compact' }"
-          title="Compact"
-          aria-label="Compact"
+          :title="$t('shellTerminal.compact')"
+          :aria-label="$t('shellTerminal.compact')"
           @click="setSize('compact')"
         >
           <span class="mdi mdi-window-minimize"></span>
@@ -127,8 +127,8 @@ onBeforeUnmount(() => {
         <button
           class="btn-icon btn-icon-muted"
           :class="{ active: size === 'normal' }"
-          title="Restore"
-          aria-label="Restore"
+          :title="$t('shellTerminal.restore')"
+          :aria-label="$t('shellTerminal.restore')"
           @click="setSize('normal')"
         >
           <span class="mdi mdi-window-restore"></span>
@@ -136,13 +136,13 @@ onBeforeUnmount(() => {
         <button
           class="btn-icon btn-icon-muted"
           :class="{ active: size === 'full' }"
-          title="Maximize"
-          aria-label="Maximize"
+          :title="$t('shellTerminal.maximize')"
+          :aria-label="$t('shellTerminal.maximize')"
           @click="setSize('full')"
         >
           <span class="mdi mdi-window-maximize"></span>
         </button>
-        <button class="btn-icon btn-icon-muted" title="Close" aria-label="Close" @click="emit('close')">
+        <button class="btn-icon btn-icon-muted" :title="$t('shell.close')" :aria-label="$t('shell.close')" @click="emit('close')">
           <span class="mdi mdi-close"></span>
         </button>
       </div>

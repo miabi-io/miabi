@@ -40,18 +40,14 @@ onMounted(async () => {
     :error="state === 'failed' ? error : ''"
   >
     <p v-if="state === 'working'" class="verify-note">
-      <span class="mdi mdi-loading mdi-spin"></span> Checking your link.
-    </p>
+      <span class="mdi mdi-loading mdi-spin"></span>{{ $t('verifyEmail.checkingYourLink') }}</p>
     <template v-else-if="state === 'done'">
-      <p class="verify-note">Your address is confirmed. You can sign in now.</p>
-      <RouterLink :to="{ name: 'login' }" class="btn btn-primary auth-submit">Go to sign in</RouterLink>
+      <p class="verify-note">{{ $t('verifyEmail.yourAddressIsConfirmedYou') }}</p>
+      <RouterLink :to="{ name: 'login' }" class="btn btn-primary auth-submit">{{ $t('verifyEmail.goToSignIn') }}</RouterLink>
     </template>
     <template v-else>
-      <p class="verify-note">
-        Verification links expire and can only be used once. Sign in to have a new one sent, or ask
-        your platform administrator to verify the address for you.
-      </p>
-      <RouterLink :to="{ name: 'login' }" class="btn btn-primary auth-submit">Back to sign in</RouterLink>
+      <p class="verify-note">{{ $t('verifyEmail.verificationLinksExpireAndCan') }}</p>
+      <RouterLink :to="{ name: 'login' }" class="btn btn-primary auth-submit">{{ $t('login.backToSignIn') }}</RouterLink>
     </template>
   </AuthShell>
 </template>

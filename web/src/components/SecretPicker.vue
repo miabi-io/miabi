@@ -26,7 +26,7 @@ const props = withDefaults(
     defaultOwnership?: SecretOwnership
     disabled?: boolean
   }>(),
-  { modelValue: '', label: 'Secret', defaultOwnership: 'all', disabled: false },
+  { modelValue: '', label: '', defaultOwnership: 'all', disabled: false },
 )
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 
@@ -113,9 +113,9 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 const filters: Array<{ value: SecretOwnership; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: 'unmanaged', label: 'Not managed' },
-  { value: 'managed', label: 'Managed' },
+  { value: 'all', label: 'secretPicker.filter.all' },
+  { value: 'unmanaged', label: 'secretPicker.filter.unmanaged' },
+  { value: 'managed', label: 'secretPicker.filter.managed' },
 ]
 </script>
 
@@ -126,8 +126,8 @@ const filters: Array<{ value: SecretOwnership; label: string }> = [
     <div v-if="selected" class="chosen">
       <span class="mdi mdi-key-variant"></span>
       <span class="chosen-name">{{ selected }}</span>
-      <button v-if="!disabled" type="button" class="btn-icon btn-icon-muted" title="Choose another secret"
-        aria-label="Choose another secret" @click="clear">
+      <button v-if="!disabled" type="button" class="btn-icon btn-icon-muted" :title="$t('secretPicker.chooseAnotherSecret')"
+        :aria-label="$t('secretPicker.chooseAnotherSecret')" @click="clear">
         <span class="mdi mdi-close"></span>
       </button>
     </div>
@@ -137,7 +137,7 @@ const filters: Array<{ value: SecretOwnership; label: string }> = [
         v-model="query"
         type="text"
         class="form-input"
-        :placeholder="`Search ${label.toLowerCase()}s by name or description…`"
+        :placeholder="$t('secretPicker.searchPlaceholder')"
         :aria-label="label"
         :disabled="disabled"
         autocomplete="off"
@@ -151,11 +151,11 @@ const filters: Array<{ value: SecretOwnership; label: string }> = [
       <div v-if="open" class="results">
         <div class="filters">
           <button v-for="f in filters" :key="f.value" type="button" class="chip"
-            :class="{ active: ownership === f.value }" @click="ownership = f.value">{{ f.label }}</button>
+            :class="{ active: ownership === f.value }" @click="ownership = f.value">{{ $t(f.label) }}</button>
         </div>
 
-        <div v-if="loading" class="note"><span class="spinner spinner-sm"></span> Searching…</div>
-        <div v-else-if="failed" class="note">Could not load secrets.</div>
+        <div v-if="loading" class="note"><span class="spinner spinner-sm"></span>{{ $t('secretPicker.searching') }}</div>
+        <div v-else-if="failed" class="note">{{ $t('secretPicker.couldNotLoadSecrets') }}</div>
         <div v-else-if="results.length === 0" class="note">
           {{ query.trim() ? `No secrets match “${query.trim()}”.` : 'No secrets in this workspace yet.' }}
         </div>
@@ -164,7 +164,7 @@ const filters: Array<{ value: SecretOwnership; label: string }> = [
             class="option" :class="{ active: i === activeIndex }"
             @mouseenter="activeIndex = i" @click="choose(s)">
             <span class="option-name">{{ s.name }}</span>
-            <span v-if="s.managed" class="badge badge-muted">managed</span>
+            <span v-if="s.managed" class="badge badge-muted">{{ $t('secretPicker.managed') }}</span>
             <span v-if="s.description" class="option-desc">{{ s.description }}</span>
           </li>
         </ul>

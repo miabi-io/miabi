@@ -163,20 +163,20 @@ function removeTag(i: number) {
   <div class="mw-field">
     <label v-if="f.type !== 'bool'" class="form-label">
       {{ f.label }}<span v-if="f.required" class="req">*</span>
-      <span v-if="f.secret" class="mdi mdi-lock-outline secret-ico" title="Stored encrypted"></span>
+      <span v-if="f.secret" class="mdi mdi-lock-outline secret-ico" :title="$t('middlewares.storedEncrypted')"></span>
     </label>
 
     <!-- key/value map (setHeaders, jwt forwardHeaders) -->
     <template v-if="f.type === 'map'">
       <div v-if="pairs.length" class="kv-head">
-        <span>{{ f.key_label || 'Key' }}</span>
-        <span>{{ f.value_label || 'Value' }}</span>
+        <span>{{ f.key_label || $t('middlewares.field.key') }}</span>
+        <span>{{ f.value_label || $t('middlewares.field.value') }}</span>
       </div>
       <div v-for="(p, i) in pairs" :key="i" class="kv-row">
-        <input v-model="p.k" class="form-input" :placeholder="f.key_placeholder || ''" :aria-label="f.key_label || 'Key'" />
+        <input v-model="p.k" class="form-input" :placeholder="f.key_placeholder || ''" :aria-label="f.key_label || $t('middlewares.field.key')" />
         <span class="kv-arrow mdi mdi-arrow-right" aria-hidden="true"></span>
-        <input v-model="p.v" class="form-input" :placeholder="f.value_placeholder || ''" :aria-label="f.value_label || 'Value'" />
-        <button type="button" class="btn-icon btn-icon-danger" title="Remove" aria-label="Remove" @click="removePair(i)"><span class="mdi mdi-close"></span></button>
+        <input v-model="p.v" class="form-input" :placeholder="f.value_placeholder || ''" :aria-label="f.value_label || $t('middlewares.field.value')" />
+        <button type="button" class="btn-icon btn-icon-danger" :title="$t('action.remove')" :aria-label="$t('action.remove')" @click="removePair(i)"><span class="mdi mdi-close"></span></button>
       </div>
       <button type="button" class="btn btn-sm btn-secondary" @click="addPair"><span class="mdi mdi-plus"></span> Add {{ addNoun }}</button>
     </template>
@@ -184,19 +184,19 @@ function removeTag(i: number) {
     <!-- "source: target" mapping list (forwardAuth response headers/params) -->
     <template v-else-if="f.type === 'pairs'">
       <div v-if="maps.length" class="kv-head">
-        <span>{{ f.key_label || 'From' }}</span>
-        <span>{{ f.value_label || 'To' }}</span>
+        <span>{{ f.key_label || $t('middlewares.field.from') }}</span>
+        <span>{{ f.value_label || $t('middlewares.field.to') }}</span>
       </div>
       <div v-for="(m, i) in maps" :key="i" class="kv-row">
-        <input v-model="m.from" class="form-input" :placeholder="f.key_placeholder || ''" :aria-label="f.key_label || 'From'" />
+        <input v-model="m.from" class="form-input" :placeholder="f.key_placeholder || ''" :aria-label="f.key_label || $t('middlewares.field.from')" />
         <span class="kv-arrow mdi mdi-arrow-right" aria-hidden="true"></span>
         <input
           v-model="m.to"
           class="form-input"
           :placeholder="f.value_optional ? `${f.value_placeholder || ''} (same name)` : f.value_placeholder || ''"
-          :aria-label="f.value_label || 'To'"
+          :aria-label="f.value_label || $t('middlewares.field.to')"
         />
-        <button type="button" class="btn-icon btn-icon-danger" title="Remove" aria-label="Remove" @click="removeMapping(i)"><span class="mdi mdi-close"></span></button>
+        <button type="button" class="btn-icon btn-icon-danger" :title="$t('action.remove')" :aria-label="$t('action.remove')" @click="removeMapping(i)"><span class="mdi mdi-close"></span></button>
       </div>
       <button type="button" class="btn btn-sm btn-secondary" @click="addMapping"><span class="mdi mdi-plus"></span> Add {{ addNoun }}</button>
     </template>
@@ -211,7 +211,7 @@ function removeTag(i: number) {
       <div v-for="(row, i) in rows()" :key="i" class="mw-list-item">
         <div class="mw-list-head">
           <span class="mw-list-idx">#{{ i + 1 }}</span>
-          <button type="button" class="btn-icon btn-icon-danger" title="Remove" aria-label="Remove" @click="removeRow(i)"><span class="mdi mdi-close"></span></button>
+          <button type="button" class="btn-icon btn-icon-danger" :title="$t('action.remove')" :aria-label="$t('action.remove')" @click="removeRow(i)"><span class="mdi mdi-close"></span></button>
         </div>
         <MiddlewareField v-for="sub in f.fields" :key="sub.key" :field="sub" :model="row" :editing="editing" />
       </div>
@@ -221,23 +221,23 @@ function removeTag(i: number) {
     <!-- users editor (basicAuth) -->
     <template v-else-if="f.type === 'users'">
       <div v-for="(u, i) in userRows()" :key="i" class="kv-row">
-        <input v-model="u.username" class="form-input" placeholder="username" aria-label="Username" />
-        <input v-model="u.password" class="form-input" type="password" :placeholder="editing ? '•••• (unchanged)' : 'password'" aria-label="Password" />
-        <button type="button" class="btn-icon btn-icon-danger" title="Remove" aria-label="Remove" @click="removeUser(i)"><span class="mdi mdi-close"></span></button>
+        <input v-model="u.username" class="form-input" :placeholder="$t('middlewares.username')" :aria-label="$t('middlewares.username2')" />
+        <input v-model="u.password" class="form-input" type="password" :placeholder="editing ? $t('middlewares.field.unchanged') : 'password'" :aria-label="$t('middlewares.password')" />
+        <button type="button" class="btn-icon btn-icon-danger" :title="$t('action.remove')" :aria-label="$t('action.remove')" @click="removeUser(i)"><span class="mdi mdi-close"></span></button>
       </div>
-      <button type="button" class="btn btn-sm btn-secondary" @click="addUser"><span class="mdi mdi-plus"></span> Add user</button>
+      <button type="button" class="btn btn-sm btn-secondary" @click="addUser"><span class="mdi mdi-plus"></span>{{ $t('middlewares.addUser') }}</button>
     </template>
 
     <!-- enum -->
     <select v-else-if="f.type === 'enum'" v-model="model[f.key]" class="form-select" :aria-label="f.label">
-      <option v-if="!f.required" :value="undefined">(default)</option>
+      <option v-if="!f.required" :value="undefined">{{ $t('middlewares.default') }}</option>
       <option v-for="o in f.options" :key="o" :value="o">{{ o }}</option>
     </select>
 
     <!-- bool -->
     <label v-else-if="f.type === 'bool'" class="check-row">
       <input v-model="model[f.key]" type="checkbox" /> <span>{{ f.label }}</span>
-      <span v-if="f.secret" class="mdi mdi-lock-outline secret-ico" title="Stored encrypted"></span>
+      <span v-if="f.secret" class="mdi mdi-lock-outline secret-ico" :title="$t('middlewares.storedEncrypted')"></span>
     </label>
 
     <!-- int -->
@@ -269,7 +269,7 @@ function removeTag(i: number) {
         v-model="model[f.key]"
         class="form-input"
         :type="f.secret ? 'password' : 'text'"
-        :placeholder="f.secret && editing ? '•••• (unchanged)' : f.placeholder || ''"
+        :placeholder="f.secret && editing ? $t('middlewares.field.unchanged') : f.placeholder || ''"
         :aria-label="f.label"
       />
       <GenerateButton v-if="f.secret" :label="`Generate a value for ${f.label}`"

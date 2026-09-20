@@ -37,52 +37,48 @@ watch(
   <AppModal @close="emit('close')">
     <div class="modal-header">
       <h3>{{ detail?.display_name || detail?.name || network?.name || 'Network' }}</h3>
-      <button class="btn-icon btn-icon-muted" aria-label="Close" @click="emit('close')">
+      <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="emit('close')">
         <span class="mdi mdi-close"></span>
       </button>
     </div>
     <div class="modal-body">
-      <div v-if="loading" class="text-muted text-sm"><span class="spinner"></span> Reading the network…</div>
+      <div v-if="loading" class="text-muted text-sm"><span class="spinner"></span>{{ $t('networks.readingTheNetwork') }}</div>
       <template v-else-if="detail">
         <div class="detail-grid">
-          <span class="text-muted">Docker name</span>
+          <span class="text-muted">{{ $t('db.dockerName') }}</span>
           <span class="mono text-sm">{{ detail.docker_name }}</span>
-          <span class="text-muted">Driver</span>
+          <span class="text-muted">{{ $t('networks.driver') }}</span>
           <span class="text-sm">
-            {{ detail.driver }}<span v-if="detail.internal"> · internal</span>
+            {{ detail.driver }}<span v-if="detail.internal">{{ $t('appDetail.net.internal') }}</span>
             <span v-if="detail.scope"> · {{ detail.scope }}</span>
           </span>
           <template v-if="detail.exists">
-            <span class="text-muted">IPv4 subnet</span>
+            <span class="text-muted">{{ $t('networks.ipv4Subnet') }}</span>
             <span class="mono text-sm">{{ detail.subnet || '—' }}</span>
-            <span class="text-muted">IPv4 gateway</span>
+            <span class="text-muted">{{ $t('networks.ipv4Gateway') }}</span>
             <span class="mono text-sm">{{ detail.gateway || '—' }}</span>
-            <span class="text-muted">IPv6</span>
+            <span class="text-muted">{{ $t('networks.ipv6') }}</span>
             <span>
               <span class="badge" :class="detail.enable_ipv6 ? 'badge-success' : 'badge-neutral'">
                 {{ detail.enable_ipv6 ? 'enabled' : 'disabled' }}
               </span>
             </span>
             <template v-if="detail.enable_ipv6">
-              <span class="text-muted">IPv6 subnet</span>
+              <span class="text-muted">{{ $t('networks.ipv6Subnet') }}</span>
               <span class="mono text-sm">{{ detail.ipv6_subnet || '—' }}</span>
-              <span class="text-muted">IPv6 gateway</span>
+              <span class="text-muted">{{ $t('networks.ipv6Gateway') }}</span>
               <span class="mono text-sm">{{ detail.ipv6_gateway || '—' }}</span>
             </template>
           </template>
         </div>
         <!-- An overlay exists on a node only once one of its containers attaches there, so "not on
              this node" is ordinary rather than an error. -->
-        <p v-if="!detail.exists" class="form-hint text-muted" style="margin-top: 10px">
-          This network is not present on the control-plane node, so it has no addressing to show here.
-          <template v-if="detail.driver === 'overlay'">
-            An overlay appears on a node once one of its containers attaches there.
-          </template>
+        <p v-if="!detail.exists" class="form-hint text-muted" style="margin-top: 10px">{{ $t('networks.thisNetworkIsNotPresent') }}<template v-if="detail.driver === 'overlay'">{{ $t('networks.anOverlayAppearsOnA') }}</template>
         </p>
       </template>
     </div>
     <div class="modal-footer">
-      <button type="button" class="btn btn-secondary" @click="emit('close')">Close</button>
+      <button type="button" class="btn btn-secondary" @click="emit('close')">{{ $t('shell.close') }}</button>
     </div>
   </AppModal>
 </template>

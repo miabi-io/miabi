@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
@@ -10,6 +11,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const { currentWorkspaceId } = storeToRefs(ws)
 
@@ -140,12 +142,12 @@ async function save() {
         data, description: input.description, mode: input.mode, delimiters,
       })
       notify.success(affected.value.length
-        ? `Config updated — redeploying ${affected.value.length} app(s)`
-        : 'Config updated')
+        ? `${t('notify.configs.updated')} — ${t('notify.configs.redeployingApps', affected.value.length)}`
+        : t('notify.configs.updated'))
       reload()
     } else {
       await configApi.create(id, input)
-      notify.success('Config created')
+      notify.success(t('notify.configs.created'))
       goToPage(0)
     }
     showForm.value = false
@@ -163,7 +165,7 @@ async function confirmDelete() {
   deleting.value = true
   try {
     await configApi.remove(id, toDelete.value.id)
-    notify.success('Config deleted')
+    notify.success(t('notify.configs.deleted'))
     toDelete.value = null
     reload()
   } catch (e) {
@@ -176,22 +178,19 @@ async function confirmDelete() {
   <div>
     <div class="page-header">
       <div>
-        <h1>Configs</h1>
-        <div class="text-muted text-sm subtitle">
-          Configuration files mounted into applications as read-only files. Content is encrypted at rest.
-        </div>
+        <h1>{{ $t('configs.configs') }}</h1>
+        <div class="text-muted text-sm subtitle">{{ $t('configs.subtitle') }}</div>
       </div>
       <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate">
-        <span class="mdi mdi-plus"></span> New config
-      </button>
+        <span class="mdi mdi-plus"></span>{{ $t('configs.newConfig') }}</button>
     </div>
 
     <div class="card">
       <div class="card-body toolbar">
         <div class="search">
           <span class="mdi mdi-magnify"></span>
-          <input v-model="search" class="form-input" type="search" placeholder="Search configs by name or description…"
-            aria-label="Search configs" @input="onSearchInput" />
+          <input v-model="search" class="form-input" type="search" :placeholder="$t('configs.searchPlaceholder')"
+            :aria-label="$t('configs.searchConfigs')" @input="onSearchInput" />
         </div>
         <span class="text-muted">{{ pageable.total_elements }} config{{ pageable.total_elements === 1 ? '' : 's' }}</span>
       </div>
@@ -200,12 +199,13 @@ async function confirmDelete() {
 
       <div v-else-if="configs.length === 0" class="empty-state">
         <span class="mdi mdi-file-cog-outline" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No configs {{ search.trim() ? 'found' : '' }}</h3>
-        <p v-if="search.trim()">Try a different search term.</p>
-        <p v-else>
-          Create a config to mount files like <code>prometheus.yml</code> or <code>redis.conf</code> into an app.
-        </p>
-        <button v-if="ws.canEdit && !search.trim()" class="btn btn-primary mt-4" @click="openCreate">New config</button>
+        <h3>{{ $t(search.trim() ? 'configs.noMatches' : 'configs.noConfigs') }}</h3>
+        <p v-if="search.trim()">{{ $t('configs.trySearch') }}</p>
+        <i18n-t v-else keypath="configs.emptyHint" tag="p">
+          <template #a><code>prometheus.yml</code></template>
+          <template #b><code>redis.conf</code></template>
+        </i18n-t>
+        <button v-if="ws.canEdit && !search.trim()" class="btn btn-primary mt-4" @click="openCreate">{{ $t('configs.newConfig') }}</button>
       </div>
 
       <template v-else>
@@ -213,10 +213,10 @@ async function confirmDelete() {
           <table>
             <thead>
               <tr>
-                <th>Name</th>
-              <th>Files</th>
-              <th>Size</th>
-              <th>Version</th>
+                <th>{{ $t('apps.form.name') }}</th>
+              <th>{{ $t('configs.files') }}</th>
+              <th>{{ $t('configs.size') }}</th>
+              <th>{{ $t('configs.version') }}</th>
               <th></th>
             </tr>
           </thead>
@@ -225,8 +225,8 @@ async function confirmDelete() {
               <td>
                 <div class="cell-title">
                   {{ c.name }}
-                  <span v-if="c.sensitive" class="badge badge-warning">sensitive</span>
-                  <span v-if="c.managed" class="badge badge-neutral">managed</span>
+                  <span v-if="c.sensitive" class="badge badge-warning">{{ $t('configs.sensitive') }}</span>
+                  <span v-if="c.managed" class="badge badge-neutral">{{ $t('configs.managed') }}</span>
                 </div>
                 <div v-if="c.description" class="cell-sub">{{ c.description }}</div>
               </td>
@@ -238,8 +238,7 @@ async function confirmDelete() {
               <td>v{{ c.version }}</td>
               <td class="text-right">
                 <button v-if="ws.canEdit" class="btn btn-sm btn-secondary" @click="openEdit(c)">
-                  <span class="mdi mdi-pencil"></span> Edit
-                </button>
+                  <span class="mdi mdi-pencil"></span>{{ $t('action.edit') }}</button>
                 <button v-if="ws.canEdit" class="btn btn-sm btn-danger" @click="toDelete = c">
                   <span class="mdi mdi-delete-outline"></span>
                 </button>
@@ -256,41 +255,41 @@ async function confirmDelete() {
     <AppModal v-if="showForm" max-width="860px" @close="showForm = false">
       <div class="modal-header">
         <h3>{{ editingId ? 'Edit config' : 'New config' }}</h3>
-        <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showForm = false"><span class="mdi mdi-close"></span></button>
+        <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showForm = false"><span class="mdi mdi-close"></span></button>
       </div>
       <div class="modal-body">
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Name</label>
+            <label class="form-label">{{ $t('apps.form.name') }}</label>
             <input v-model="form.name" class="form-input" :disabled="editingId !== null" placeholder="prometheus-conf" />
-            <p class="form-hint">Lowercase letters, digits and dashes.</p>
+            <p class="form-hint">{{ $t('configs.nameHint') }}</p>
           </div>
           <div class="form-group">
-            <label class="form-label">Default file mode</label>
+            <label class="form-label">{{ $t('configs.defaultFileMode') }}</label>
             <input v-model="form.mode" class="form-input" placeholder="0644" />
           </div>
         </div>
 
         <div class="form-group">
-          <label class="form-label">Description</label>
-          <input v-model="form.description" class="form-input" placeholder="Prometheus scrape configuration" />
+          <label class="form-label">{{ $t('plans.description') }}</label>
+          <input v-model="form.description" class="form-input" :placeholder="$t('configs.prometheusScrapeConfiguration')" />
         </div>
 
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Delimiters</label>
+            <label class="form-label">{{ $t('configs.delimiters') }}</label>
             <input v-model="form.delimiters" class="form-input" placeholder="<<,>>" />
-            <p class="form-hint">
-              Set these when the file's own syntax uses <code>{{ mustache }}</code>, so it is not interpolated.
-            </p>
+            <i18n-t keypath="configs.delimitersHint" tag="p" class="form-hint">
+              <template #syntax><code>{{ mustache }}</code></template>
+            </i18n-t>
           </div>
           <div class="form-group">
-            <label class="form-label">Sensitive</label>
+            <label class="form-label">{{ $t('configs.sensitiveLabel') }}</label>
             <label class="checkbox">
               <input v-model="form.sensitive" type="checkbox" :disabled="editingId !== null" />
-              <span>Content carries credentials</span>
+              <span>{{ $t('configs.contentCarriesCredentials') }}</span>
             </label>
-            <p class="form-hint">Redacted in responses and diffed by digest only.</p>
+            <p class="form-hint">{{ $t('configs.sensitiveHint') }}</p>
           </div>
         </div>
 
@@ -330,19 +329,17 @@ async function confirmDelete() {
               class="form-input code-area"
               spellcheck="false"
               rows="16"
-              placeholder="File content…"
+              :placeholder="$t('configs.fileContent')"
             ></textarea>
-            <p class="form-hint">
-              Reference a workspace secret with <code v-pre>${{ secrets.NAME }}</code> or the mounting app's
-              environment with <code v-pre>${{ env.NAME }}</code>. Values are substituted when the app deploys,
-              so rotating a secret updates the file. A secret wins over an app variable of the same name, and a
-              reference that resolves to nothing fails the deploy.
-            </p>
+            <i18n-t keypath="configs.contentHint" tag="p" class="form-hint">
+              <template #secret><code v-pre>${{ secrets.NAME }}</code></template>
+              <template #env><code v-pre>${{ env.NAME }}</code></template>
+            </i18n-t>
           </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" @click="showForm = false">Cancel</button>
+        <button class="btn btn-secondary" @click="showForm = false">{{ $t('action.cancel') }}</button>
         <button class="btn btn-primary" :disabled="!formValid || saving" @click="save">
           <span v-if="saving" class="spinner spinner-sm"></span>
           {{ editingId ? 'Save changes' : 'Create config' }}

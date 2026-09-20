@@ -39,7 +39,7 @@ async function acceptInvitation(inv: PendingInvitation) {
   acceptingId.value = inv.id
   try {
     await workspaceApi.acceptInvitation(inv.id)
-    notify.success(`Joined ${inv.workspace_name}`)
+    notify.success(t('notify.workspaces.joined', { name: inv.workspace_name }))
     await ws.fetchWorkspaces()
     ws.setWorkspace(inv.workspace_id)
     await loadInvitations()
@@ -82,15 +82,15 @@ onMounted(async () => {
       <!-- An invitee has somewhere to go that isn't "create a workspace". -->
       <template v-if="invitations.length">
         <span class="mdi mdi-email-outline" style="font-size: 48px; color: var(--text-muted)"></span>
-        <h3>You've been invited</h3>
-        <p>Accept an invitation to join a workspace.</p>
+        <h3>{{ $t('workspaceLayout.youVeBeenInvited') }}</h3>
+        <p>{{ $t('workspaceLayout.acceptAnInvitationToJoin') }}</p>
         <ul class="empty-invites">
           <li v-for="inv in invitations" :key="inv.id" class="empty-invite">
             <div class="empty-invite-info">
               <span class="empty-invite-name">{{ inv.workspace_name }}</span>
               <span class="empty-invite-sub">
-                Invited as <strong>{{ inv.role }}</strong>
-                <template v-if="inv.invited_by_name"> by {{ inv.invited_by_name }}</template>
+                <i18n-t keypath="workspaceLayout.invitedAs" tag="span"><template #role><strong>{{ inv.role }}</strong></template></i18n-t>
+                <template v-if="inv.invited_by_name"> {{ $t('workspaceLayout.invitedBy', { name: inv.invited_by_name }) }}</template>
               </span>
             </div>
             <button class="btn btn-primary btn-sm" :disabled="acceptingId === inv.id" @click="acceptInvitation(inv)">
@@ -98,15 +98,13 @@ onMounted(async () => {
             </button>
           </li>
         </ul>
-        <button class="btn btn-secondary mt-4" @click="createWorkspace">
-          Or create your own workspace
-        </button>
+        <button class="btn btn-secondary mt-4" @click="createWorkspace">{{ $t('workspaceLayout.orCreateYourOwnWorkspace') }}</button>
       </template>
       <template v-else>
         <span class="mdi mdi-briefcase-plus-outline" style="font-size: 48px; color: var(--text-muted)"></span>
-        <h3>No workspaces yet</h3>
-        <p>Create your first workspace to deploy applications.</p>
-        <button class="btn btn-primary mt-4" @click="createWorkspace">Create workspace</button>
+        <h3>{{ $t('switcher.empty') }}</h3>
+        <p>{{ $t('workspaceLayout.createYourFirstWorkspaceTo') }}</p>
+        <button class="btn btn-primary mt-4" @click="createWorkspace">{{ $t('switcher.create') }}</button>
       </template>
     </div>
     <router-view v-else />
