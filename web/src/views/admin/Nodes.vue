@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
 import { useLicenseStore } from '@/stores/license'
 import { apiError as decodeApiError } from '@/api/client'
-import { nodesApi, type CreateNodePayload } from '@/api/nodes'
+import { nodesApi, type CreateNodePayload, type NodeStatusEvent } from '@/api/nodes'
 import { clustersApi } from '@/api/clusters'
 import { adminApi } from '@/api/admin'
 import { ACCESS_MODES, CONNECTIVITY_TYPES, nodeOptionDescription } from '@/constants/node'
@@ -13,6 +13,7 @@ import FieldInfo from '@/components/FieldInfo.vue'
 import { copyText } from '@/utils/clipboard'
 import type { Cluster, Server, ServerConnectivity } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
+import { useNodeStatusStream } from './useNodeStatusStream'
 
 const notify = useNotificationStore()
 const { t } = useI18n()
@@ -45,16 +46,51 @@ function clusterNodeCount(clusterID: number): number {
   return nodes.value.filter((n) => n.cluster_id === clusterID).length
 }
 
-async function load() {
-  loading.value = true
+// mergeList folds an incoming list into nodes while keeping the existing row objects, so a
+// reconcile patches only what changed rather than re-rendering — and flickering — every row.
+function mergeList(incoming: Server[]) {
+  const byId = new Map(nodes.value.map((n) => [n.id, n]))
+  nodes.value = incoming.map((item) => {
+    const existing = byId.get(item.id)
+    if (existing) { Object.assign(existing, item); return existing }
+    return item
+  })
+}
+
+// A status event for a node the list does not hold yet pulls the list in, debounced: the stream
+// opens with a snapshot of every node, which would otherwise mean one list call per node while the
+// first load is still in flight.
+let unknownNodeTimer: ReturnType<typeof setTimeout> | null = null
+
+async function load(quiet = false) {
+  if (!quiet) loading.value = true
+  if (unknownNodeTimer) { clearTimeout(unknownNodeTimer); unknownNodeTimer = null }
   try {
-    nodes.value = (await nodesApi.list()).data.data ?? []
+    mergeList((await nodesApi.list()).data.data ?? [])
   } catch (e) {
-    notify.apiError(e)
+    if (!quiet) notify.apiError(e)
   } finally {
     loading.value = false
   }
 }
+
+// applyStatus patches one row from a live transition. A status for a node we do not have yet — added
+// from another session — pulls the list in rather than inventing a row from a status event.
+function reconcileSoon() {
+  if (unknownNodeTimer) clearTimeout(unknownNodeTimer)
+  unknownNodeTimer = setTimeout(() => load(true), 400)
+}
+
+function applyStatus(e: NodeStatusEvent) {
+  const row = nodes.value.find((n) => n.id === e.id)
+  if (!row) { reconcileSoon(); return }
+  row.agent_connected = e.online
+  row.status = e.status as Server['status']
+  if (e.agent_version) row.agent_version = e.agent_version
+  if (e.last_seen_at) row.last_seen_at = e.last_seen_at
+}
+
+const { streaming, open: openStatusStream } = useNodeStatusStream(applyStatus, () => load(true))
 
 async function loadClusters() {
   try {
@@ -69,7 +105,7 @@ async function loadAgentImage() {
     if (agent?.effective) agentImage.value = agent.effective
   } catch { /* fall back to the default ref */ }
 }
-onMounted(() => { load(); loadClusters(); loadAgentImage(); license.load() })
+onMounted(() => { load(); loadClusters(); loadAgentImage(); license.load(); openStatusStream() })
 
 // --- Add node ---
 const showCreate = ref(false)
@@ -80,10 +116,18 @@ const blankForm = (): CreateNodePayload => ({
 })
 const form = ref<CreateNodePayload>(blankForm())
 const createdToken = ref<string | null>(null)
+// The node the dialog is showing a join command for, so the same live stream that drives the list
+// can tell the operator their agent dialled back — the minutes right after pasting the command are
+// exactly when there was nothing to watch but a static page.
+const createdNodeId = ref<number | null>(null)
+const createdNodeOnline = computed(
+  () => !!createdNodeId.value && !!nodes.value.find((n) => n.id === createdNodeId.value)?.agent_connected,
+)
 
 function openCreate() {
   form.value = blankForm()
   createdToken.value = null
+  createdNodeId.value = null
   showCreate.value = true
 }
 
@@ -119,6 +163,7 @@ async function submit() {
     license.load(true) // refresh node usage so the cap chip stays accurate
     if (mode === 'agent') {
       createdToken.value = res.data.data.token
+      createdNodeId.value = res.data.data.node.id
       await loadAgentCommand(res.data.data.node.id, res.data.data.token)
       notify.success('Node added — copy the join token now')
     } else {
@@ -223,6 +268,9 @@ function swarmClass(n: Server): string {
     <div class="page-header">
       <h1>Nodes</h1>
       <div class="header-actions">
+        <span class="live-chip" :class="{ 'live-chip--off': !streaming }" :title="streaming ? 'Status updates live' : 'Reconnecting — statuses may lag'">
+          <span class="live-dot"></span> {{ streaming ? 'Live' : 'Reconnecting…' }}
+        </span>
         <span v-if="limited" class="node-usage" :class="{ 'node-usage--full': atNodeLimit }" :title="atNodeLimit ? 'Node limit reached — upgrade to add more' : 'Nodes used of your edition limit'">
           <span class="mdi mdi-server"></span> {{ nodeCount }} / {{ nodeLimit }} nodes
         </span>
@@ -380,6 +428,11 @@ function swarmClass(n: Server): string {
               </div>
             </div>
             <div class="code-block" style="margin-top: 14px; white-space: pre">{{ agentCommand }}</div>
+            <p class="join-wait" :class="{ 'join-wait--up': createdNodeOnline }">
+              <span v-if="createdNodeOnline" class="mdi mdi-check-circle"></span>
+              <span v-else class="spinner spinner-sm"></span>
+              {{ createdNodeOnline ? 'Agent connected — the node is online.' : 'Waiting for the agent to connect…' }}
+            </p>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="copy(createdToken!)">Copy token</button>
@@ -393,6 +446,13 @@ function swarmClass(n: Server): string {
 </template>
 
 <style scoped>
+.live-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success, #22c55e); }
+.live-chip--off .live-dot { background: var(--text-muted); }
+.join-wait { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; font-size: 13px; color: var(--text-muted); }
+.join-wait--up { color: var(--success, #22c55e); }
+.spinner-sm { width: 14px; height: 14px; }
+
 .label-row {
   display: inline-flex;
   align-items: center;

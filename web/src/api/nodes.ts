@@ -86,6 +86,17 @@ export interface NodeGatewayConfig {
   is_default: boolean
 }
 
+// NodeStatusEvent is a node's live reachability, pushed as it changes. `online` is what the status
+// badge renders; the rest fills in the row beside it without a refetch.
+export interface NodeStatusEvent {
+  id: number
+  name: string
+  online: boolean
+  status: string
+  agent_version?: string
+  last_seen_at?: string
+}
+
 // --- housekeeping (reclaim, drift & sync) ---
 
 export interface DiskUsageCategory {
@@ -322,6 +333,9 @@ export const nodesApi = {
   gateway: (id: number) => api.get<ApiResponse<GatewayStatus>>(`/admin/nodes/${id}/gateway`),
   deployGateway: (id: number) => api.post<ApiResponse<{ message: string }>>(`/admin/nodes/${id}/gateway/deploy`),
   updateGateway: (id: number) => api.post<ApiResponse<GatewayUpdateProgress>>(`/admin/nodes/${id}/gateway/update`),
+  // Every node's connect/disconnect on one stream: the list watches all of them, a detail page
+  // filters by id.
+  statusEventsUrl: () => sseUrl('/admin/nodes/events'),
   gatewayEventsUrl: (id: number) => sseUrl(`/admin/nodes/${id}/gateway/events`),
   gatewayCandidates: (id: number) => api.get<ApiResponse<GatewayCandidate[]>>(`/admin/nodes/${id}/gateway/candidates`),
   importGateway: (id: number, container?: string) => api.post<ApiResponse<GatewayStatus>>(`/admin/nodes/${id}/gateway/import`, { container: container ?? '' }),

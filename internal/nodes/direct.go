@@ -112,22 +112,18 @@ func (m *Manager) refreshDirect(ctx context.Context) {
 		if !m.clients.Connected(srv.ID) {
 			if err := m.ConnectDirect(srv); err != nil {
 				logger.Warn("failed to connect node", "node", srv.ID, "mode", srv.AccessMode, "error", err)
-				m.nodes.MarkDisconnected(srv.ID)
+				m.announce(srv.ID, srv.Name, false, "")
 				continue
 			}
 		}
 		dc, err := m.clients.For(srv.ID)
 		if err != nil {
-			m.nodes.MarkDisconnected(srv.ID)
+			m.announce(srv.ID, srv.Name, false, "")
 			continue
 		}
 		pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		err = dc.Ping(pingCtx)
 		cancel()
-		if err != nil {
-			m.nodes.MarkDisconnected(srv.ID)
-		} else {
-			m.nodes.MarkConnected(srv.ID, "")
-		}
+		m.announce(srv.ID, srv.Name, err == nil, "")
 	}
 }

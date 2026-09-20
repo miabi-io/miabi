@@ -27,6 +27,14 @@ func (r *Router) nodeRoutes() []okapi.RouteDefinition {
 		},
 		{
 			Method:      http.MethodGet,
+			Path:        "/events",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.node.StatusEvents,
+			Summary:     "Stream node connect/disconnect (SSE)",
+		},
+		{
+			Method:      http.MethodGet,
 			Path:        "/{nodeID}/stats",
 			Group:       g,
 			Middlewares: admin,

@@ -1262,6 +1262,9 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 
 	r.h.auth.SetUserSettings(userSettingsService)
 	r.h.adminSetting.SetAuthAccess(registrationService, cfg.PasswordResetEnabled)
+	// A node's connect/disconnect reaches the console as it happens: adding a node no longer means
+	// reloading the page to find out whether the agent came up.
+	nodeManager.AddStatusListener(r.h.node.PublishStatus)
 
 	// Edge gateways buffer their events on the node's own Redis; the agent forwards
 	// them here, so they land in the same stream the consumer already reads.
