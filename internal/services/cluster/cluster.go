@@ -131,6 +131,9 @@ type Service struct {
 	networkRollback func(context.Context) error
 	networkPending  func() int
 
+	// orgLabels names a dedicated cluster's organization; nil leaves it unnamed.
+	orgLabels OrgLabels
+
 	probeImages        NetCheckImages
 	probeImageFallback string
 
@@ -546,9 +549,11 @@ func (s *Service) RefreshLoop(ctx context.Context, interval time.Duration) {
 	}
 }
 
-// Enrich annotates each server's transient swarm fields from its cluster's last refresh. A node outside
-// every swarm shows as standalone while any cluster runs one.
+// Enrich annotates each server's transient fields from its cluster: the swarm role and availability
+// of its last refresh, and whether the cluster is dedicated to an organization. A node outside every
+// swarm shows as standalone while any cluster runs one.
 func (s *Service) Enrich(servers []models.Server) {
+	s.markNodeDedication(servers)
 	s.mu.RLock()
 	states := s.states
 	s.mu.RUnlock()

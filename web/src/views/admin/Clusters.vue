@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import DedicatedBadge from '@/components/DedicatedBadge.vue'
 import { useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
 import { clustersApi } from '@/api/clusters'
@@ -48,6 +49,7 @@ onMounted(load)
                     <span class="cell-title">
                       {{ c.display_name || c.name }}
                       <span v-if="c.is_default" class="badge badge-info" style="margin-left: 8px">default</span>
+                      <DedicatedBadge :dedicated="c.dedicated" :organization="c.organization_name" style="margin-left: 8px" />
                       <span
                         v-if="c.legacy_ingress"
                         class="badge badge-warning"

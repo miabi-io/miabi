@@ -92,6 +92,11 @@ type Cluster struct {
 	// admin confirms that gateway or joins the node to a swarm.
 	LegacyIngress bool  `json:"legacy_ingress" gorm:"not null;default:false"`
 	NodeCount     int64 `json:"node_count" gorm:"-"`
+	// Dedicated reports that the cluster belongs to one organization and nothing outside it may be
+	// placed here. Derived from OrganizationID rather than stored, so it cannot disagree with the
+	// field placement enforces. OrganizationName labels it for the console.
+	Dedicated        bool   `json:"dedicated" gorm:"-"`
+	OrganizationName string `json:"organization_name,omitempty" gorm:"-"`
 	// Capacity is the sum of the cluster's nodes, derived on read rather than stored: a second copy
 	// of a figure the nodes already carry is a copy that can drift.
 	Capacity  *ClusterCapacity `json:"capacity,omitempty" gorm:"-"`

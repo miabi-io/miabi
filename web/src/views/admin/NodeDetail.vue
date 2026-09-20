@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import DedicatedBadge from '@/components/DedicatedBadge.vue'
 import { onMounted, onBeforeUnmount, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
@@ -939,6 +940,7 @@ const gwBadge = computed(() => {
               </span>
             </div>
             <div class="hero-chips">
+              <DedicatedBadge :dedicated="node.dedicated" :organization="node.organization_name" :via="node.cluster_name" />
               <span class="chip"><span class="mdi mdi-shield-account-outline"></span> {{ roleLabel }}</span>
               <span class="chip"><span class="mdi mdi-transit-connection-variant"></span> {{ connectivityLabel() }}</span>
               <button type="button" class="chip" :title="pool ? 'Change the node pool' : 'Put the node in a pool'" @click="openPool">

@@ -1527,6 +1527,12 @@
     "workspaceNetworksThisDatabaseIs": "Workspace networks this database is reachable on.",
     "workspaceSettingsBackups": "Workspace settings → Backups"
   },
+  "dedicated": {
+    "anOrganization": "one organization",
+    "badge": "Dedicated",
+    "clusterTitle": "Dedicated to {org}. Nothing outside it can be placed here, not even by a platform administrator.",
+    "nodeTitle": "Dedicated to {org} through cluster {cluster}. Nothing outside it can be placed here, not even by a platform administrator."
+  },
   "dnsProviders": {
     "connectAProvider": "Connect a provider",
     "connectDnsProvider": "Connect DNS provider",

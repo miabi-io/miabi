@@ -130,6 +130,12 @@ type Server struct {
 	GatewayImported         bool                   `json:"gateway_imported" gorm:"not null;default:false"`
 	GatewayRedisPasswordEnc string                 `json:"-"`
 	GatewayUpdate           *GatewayUpdateProgress `json:"gateway_update,omitempty" gorm:"serializer:json"`
+	// Dedicated reports that the node's CLUSTER belongs to one organization, so the node does too.
+	// A node holds no organization of its own — it would be stale the moment the node moved cluster.
+	// ClusterName names that cluster, so the console can say where the dedication comes from.
+	Dedicated        bool   `json:"dedicated" gorm:"-"`
+	OrganizationName string `json:"organization_name,omitempty" gorm:"-"`
+	ClusterName      string `json:"cluster_name,omitempty" gorm:"-"`
 	// AgentConnected reflects a live agent tunnel (transient; set by the
 	// connection manager).
 	AgentConnected bool              `json:"agent_connected" gorm:"-"`

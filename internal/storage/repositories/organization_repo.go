@@ -102,6 +102,31 @@ func (r *OrganizationRepository) List() ([]models.Organization, error) {
 	return orgs, nil
 }
 
+// Labels names the given organizations, display name first, in one query. Used where a list is
+// annotated with the organization each row belongs to.
+func (r *OrganizationRepository) Labels(ids []uint) (map[uint]string, error) {
+	out := map[uint]string{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []struct {
+		ID                uint
+		Name, DisplayName string
+	}
+	if err := r.db.Model(&models.Organization{}).
+		Select("id", "name", "display_name").Where("id IN ?", ids).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if row.DisplayName != "" {
+			out[row.ID] = row.DisplayName
+			continue
+		}
+		out[row.ID] = row.Name
+	}
+	return out, nil
+}
+
 func (r *OrganizationRepository) workspaceCounts() (map[uint]int64, error) {
 	var rows []struct {
 		OrganizationID uint
