@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
@@ -7,6 +8,7 @@ import { adminApi } from '@/api/admin'
 import type { AdminWorkspace } from '@/api/types'
 
 const route = useRoute()
+const { t } = useI18n()
 const router = useRouter()
 const notify = useNotificationStore()
 const id = Number(route.params.id)
@@ -130,7 +132,7 @@ async function doImport() {
     results.value = res.data.data?.items ?? []
     const failed = results.value.filter((r) => r.status === 'failed').length
     const imported = results.value.filter((r) => r.status === 'imported').length
-    if (failed) notify.error(`Imported ${imported}, ${failed} failed`)
+    if (failed) notify.error(t('notify.nodeImport.importedFailed', { imported: imported, failed: failed }))
     else notify.success(`Imported ${imported} resource${imported === 1 ? '' : 's'}`)
   } catch (e) {
     notify.apiError(e)

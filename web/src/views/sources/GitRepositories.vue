@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -10,6 +11,7 @@ import CredentialSecretField from '@/components/CredentialSecretField.vue'
 import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const { currentWorkspaceId } = storeToRefs(ws)
 
@@ -69,7 +71,7 @@ async function save() {
     if (saved?.connection_status === 'failed') {
       // Saved, but it does not work: an error toast, because it needs fixing —
       // and the repository is on the list either way, with the reason on its row.
-      notify.error(`Git repository ${verb}, but the connection failed`, {
+      notify.error(t('notify.gitRepositories.gitRepositoryButTheConnection', { verb: verb }), {
         detail: saved.connection_error || undefined,
       })
     } else if (saved?.connection_status === 'ok') {

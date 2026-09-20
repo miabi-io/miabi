@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
@@ -10,6 +11,7 @@ import AppModal from '@/components/AppModal.vue'
 import LocationPicker from '@/components/LocationPicker.vue'
 
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const router = useRouter()
 const { currentWorkspaceId } = storeToRefs(ws)
@@ -107,7 +109,7 @@ async function runImport() {
     // still imports — tell the user which ports clashed and with what.
     if (conflicts.length) {
       const lines = conflicts.map((c) => `${c.host_port}/${c.protocol} (in use by ${c.used_by})`).join(', ')
-      notify.error(`These host ports are already in use and were left pending: ${lines}. Remap the port on the app, or have an admin review.`, 'Port conflicts')
+      notify.error(t('notify.stacks.theseHostPortsAreAlready', { lines: lines }), 'Port conflicts')
     }
     showImport.value = false
     if (res?.stack) router.push(`/stacks/${res.stack.id}`)

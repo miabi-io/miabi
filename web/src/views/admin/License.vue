@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed, onMounted, ref } from 'vue'
 import { adminApi } from '@/api/admin'
 import { useNotificationStore } from '@/stores/notification'
@@ -8,13 +9,14 @@ import { copyText } from '@/utils/clipboard'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const notify = useNotificationStore()
+const { t } = useI18n()
 const licenseStore = useLicenseStore()
 
 async function copyInstallID() {
   const id = view.value?.instance_install_id
   if (!id) return
   if (await copyText(id)) notify.success('Install ID copied')
-  else notify.error('Copy failed — select and copy it manually')
+  else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 
 const loading = ref(false)

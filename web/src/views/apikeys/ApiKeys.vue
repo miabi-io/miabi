@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useNotificationStore } from '@/stores/notification'
@@ -11,6 +12,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AppModal from '@/components/AppModal.vue'
 
 const notify = useNotificationStore()
+const { t } = useI18n()
 const ws = useWorkspaceStore()
 const { workspaces, currentWorkspaceId } = storeToRefs(ws)
 const keys = ref<ApiKey[]>([])
@@ -27,7 +29,7 @@ function workspaceName(id?: number | null): string {
 }
 async function copyWorkspaceId(id: number) {
   if (await copyText(String(id))) notify.success('Workspace ID copied')
-  else notify.error('Could not copy ID')
+  else notify.error(t('notify.common.couldNotCopyId'))
 }
 
 const scopeOptions = [
@@ -169,7 +171,7 @@ async function copyKey() {
     notify.success('Copied')
     setTimeout(() => (copied.value = false), 2000)
   } else {
-    notify.error('Copy failed — select and copy the key manually')
+    notify.error(t('notify.apiKeys.copyFailedSelectAndCopy'))
   }
 }
 

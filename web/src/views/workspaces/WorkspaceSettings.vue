@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -19,6 +20,7 @@ import Sparkline from '@/components/Sparkline.vue'
 import { copyText } from '@/utils/clipboard'
 
 const route = useRoute()
+const { t } = useI18n()
 const router = useRouter()
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -223,7 +225,7 @@ async function loadBackup() {
 async function saveBackup() {
   if (!isAdmin.value) return
   if (backup.value.s3_enabled && !backup.value.s3_bucket.trim()) {
-    notify.error('An S3 bucket is required when S3 is enabled')
+    notify.error(t('notify.common.anS3BucketIsRequired'))
     return
   }
   savingBackup.value = true
@@ -490,7 +492,7 @@ async function confirmRemoveMember() {
 async function copyToken() {
   if (!inviteToken.value) return
   if (await copyText(inviteToken.value)) notify.success('Token copied')
-  else notify.error('Copy failed — select and copy the token manually')
+  else notify.error(t('notify.workspaceSettings.copyFailedSelectAndCopy'))
 }
 
 function loadTab(tab: Tab) {

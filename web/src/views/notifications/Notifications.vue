@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -10,6 +11,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const { currentWorkspaceId } = storeToRefs(ws)
 
@@ -75,7 +77,7 @@ function toggleEvent(value: string) {
 async function save() {
   if (!currentWorkspaceId.value) return
   if (form.value.events.length === 0) {
-    notify.error('Select at least one event')
+    notify.error(t('notify.common.selectAtLeastOneEvent'))
     return
   }
   saving.value = true

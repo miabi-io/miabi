@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
@@ -11,6 +12,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import RouteFormModal from '@/components/RouteFormModal.vue'
 
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const router = useRouter()
 const route = useRoute()
@@ -75,7 +77,7 @@ function openFromQuery() {
   // would be worse than not opening it.
   if (Number.isFinite(wanted) && wanted > 0) {
     if (!apps.value.some((a) => a.id === wanted)) {
-      notify.error('That application is not in this workspace.', 'Route not started')
+      notify.error(t('notify.routes.thatApplicationIsNotIn'), 'Route not started')
       return
     }
     openCreate(wanted)

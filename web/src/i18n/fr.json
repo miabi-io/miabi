@@ -493,6 +493,101 @@
       "title": "Espace de travail"
     }
   },
+  "notify": {
+    "apiKeys": {
+      "copyFailedSelectAndCopy": "Échec de la copie — sélectionnez et copiez la clé manuellement"
+    },
+    "appDetail": {
+      "alreadyUpToDateWith": "Déjà à jour avec {source_path}.",
+      "copyFailed": "Échec de la copie",
+      "couldNotCopyTheManifest": "Impossible de copier le manifeste",
+      "enterADatabaseName": "Saisissez un nom de base de données",
+      "isReservedByMiabiAnd": "« {key} » est réservé par Miabi et ne peut pas servir d’étiquette",
+      "portIsAlreadyDeclared": "Le port {container_port}/{protocol} est déjà déclaré",
+      "selectADatabase": "Sélectionnez une base de données"
+    },
+    "branding": {
+      "imagesMayBeAtMost": "Les images ne doivent pas dépasser {formatSize}."
+    },
+    "common": {
+      "aDockerEndpointIsRequired": "Un point de terminaison Docker est requis pour ce mode d’accès",
+      "anS3BucketIsRequired": "Un bucket S3 est requis lorsque S3 est activé",
+      "copyFailedSelectAndCopy": "Échec de la copie — sélectionnez et copiez manuellement",
+      "couldNotCopyId": "Impossible de copier l’identifiant",
+      "nodeNotFound": "Nœud introuvable",
+      "selectAtLeastOneEvent": "Sélectionnez au moins un événement"
+    },
+    "databaseDetail": {
+      "artifactSSkippedNoDatabase": "{count} artefact(s) ignoré(s) : {join} — aucune base de données de ce nom ici",
+      "chooseADumpFile": "Choisissez un fichier de dump",
+      "databaseFailedToProvision": "Échec du provisionnement de la base de données",
+      "noRecoveryPointsFoundIn": "Aucun point de restauration trouvé dans le bucket",
+      "restoredFailed": "{count} restaurée(s), {count2} en échec : {join}",
+      "upgradeFailed": "Échec de la mise à niveau : {error}",
+      "wasAlreadyInThisWorkspace": "{ref} était déjà dans cet espace de travail"
+    },
+    "gitOps": {
+      "selectAGitRepository": "Sélectionnez un dépôt Git",
+      "someResourcesCouldNotBe": "Certaines ressources n’ont pas pu être supprimées",
+      "syncFailed": "{name} : {message}"
+    },
+    "gitRepositories": {
+      "gitRepositoryButTheConnection": "Dépôt Git {verb}, mais la connexion a échoué"
+    },
+    "jobs": {
+      "aCommandIsRequired": "Une commande est requise",
+      "aScheduleIsRequired": "Une planification est requise",
+      "selectAnApplication": "Sélectionnez une application"
+    },
+    "ldapDirectory": {
+      "aGroupDnIsRequired": "Un DN de groupe est requis",
+      "displayNameAndHostAre": "Le nom affiché et l’hôte sont requis"
+    },
+    "marketplace": {
+      "someResourcesCouldNotBe": "{name} : certaines ressources n’ont pas pu être supprimées"
+    },
+    "nodeDetail": {
+      "gatewayUpdateFailed": "Échec de la mise à jour de la passerelle : {error}"
+    },
+    "nodeImport": {
+      "importedFailed": "{imported} importé(s), {failed} en échec"
+    },
+    "nodes": {
+      "communityEditionIsLimitedTo": "L’édition Community est limitée à {value} nœuds. Passez à Enterprise pour en ajouter."
+    },
+    "platformBackup": {
+      "couldNotMatchTheSelected": "Impossible de faire correspondre les artefacts sélectionnés à ce point de restauration",
+      "encryptingArtifactsAndSealingThe": "Le chiffrement des artefacts et le scellement de l’enveloppe d’identité nécessitent tous deux une phrase secrète de sauvegarde. ",
+      "noRecoveryPointsFoundIn": "Aucun point de restauration trouvé dans la cible de sauvegarde",
+      "selectTheDatabaseAndOr": "Sélectionnez la base de données et/ou au moins un volume"
+    },
+    "routeDetail": {
+      "couldNotCopy": "Impossible de copier"
+    },
+    "routes": {
+      "resyncedWorkspaceSFailed": "{workspaces} espace(s) de travail resynchronisé(s) ; {failed} en échec",
+      "thatApplicationIsNotIn": "Cette application n’appartient pas à cet espace de travail."
+    },
+    "security": {
+      "copyFailedSelectAndCopy": "Échec de la copie — sélectionnez et copiez-les manuellement"
+    },
+    "stacks": {
+      "theseHostPortsAreAlready": "Ces ports hôtes sont déjà utilisés et sont restés en attente : {lines}. Remappez le port sur l’application, ou demandez à un administrateur de vérifier."
+    },
+    "templateInstall": {
+      "isRequired": "{key} est requis"
+    },
+    "userDetail": {
+      "disableTheAccountBeforeDeleting": "Désactivez le compte avant de le supprimer",
+      "typeDeleteToConfirm": "Saisissez DELETE pour confirmer"
+    },
+    "workspaceLayout": {
+      "failedToLoadWorkspaces": "Échec du chargement des espaces de travail"
+    },
+    "workspaceSettings": {
+      "copyFailedSelectAndCopy": "Échec de la copie — sélectionnez et copiez le jeton manuellement"
+    }
+  },
   "preferences": {
     "accent": {
       "hint": "Appliqué immédiatement et suit votre compte sur les autres navigateurs. Les couleurs d’état ne changent pas — succès, avertissement et danger gardent leur sens.",

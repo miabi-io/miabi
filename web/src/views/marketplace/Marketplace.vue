@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { onMounted, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -8,6 +9,7 @@ import type { CatalogEntry, TemplateInstallView, UninstallResult } from '@/api/m
 import AppModal from '@/components/AppModal.vue'
 
 const route = useRoute()
+const { t } = useI18n()
 const router = useRouter()
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -254,7 +256,7 @@ async function confirmUninstall() {
     await loadInstalls()
     if (result) {
       teardown.value = { name, result }
-      if (result.failed > 0) notify.error(`${name}: some resources could not be removed`)
+      if (result.failed > 0) notify.error(t('notify.marketplace.someResourcesCouldNotBe', { name: name }))
       else notify.success(`Uninstalled ${name}`)
     } else {
       notify.success(`Uninstalled ${name}`)

@@ -59,6 +59,22 @@ describe('translation catalogues', () => {
     expect(mismatched).toEqual([])
   })
 
+  // The same sentence under two keys gets translated twice and drifts. Shared text lives
+  // under a common namespace instead; this catches the next copy before it is translated.
+  it('does not repeat a string across feature namespaces', () => {
+    const seen = new Map<string, string>()
+    const dupes: string[] = []
+    for (const k of reference) {
+      const v = String(valueAt(en, k) ?? '')
+      // Short labels legitimately repeat: "Delete" is a title, a button and a menu item.
+      if (v.length < 25) continue
+      const first = seen.get(v)
+      if (first && first.split('.')[1] !== k.split('.')[1]) dupes.push(`${first} / ${k}`)
+      else if (!first) seen.set(v, k)
+    }
+    expect(dupes).toEqual([])
+  })
+
   it('has no empty string, which renders as a blank label', () => {
     for (const [code, cat] of Object.entries(catalogues)) {
       const empties = keysOf(cat).filter((k) => {

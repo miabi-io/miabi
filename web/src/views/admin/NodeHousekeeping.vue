@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
@@ -7,6 +8,7 @@ import type { Server } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 
 const route = useRoute()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const id = Number(route.params.id)
 
@@ -33,7 +35,7 @@ async function load() {
     const list = (await nodesApi.list()).data.data ?? []
     node.value = list.find((n) => n.id === id) ?? null
     if (!node.value) {
-      notify.error('Node not found')
+      notify.error(t('notify.common.nodeNotFound'))
       return
     }
     if (!connected.value) {

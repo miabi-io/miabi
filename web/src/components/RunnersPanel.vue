@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed, onMounted, ref } from 'vue'
 import { useNotificationStore } from '@/stores/notification'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -24,6 +25,7 @@ const props = defineProps<{
 }>()
 
 const notify = useNotificationStore()
+const { t } = useI18n()
 
 const runners = ref<Runner[]>([])
 // atCreateLimit: the pool has reached its allowed size, so registering is blocked
@@ -152,7 +154,7 @@ async function confirmRemove() {
 
 async function copy(text: string) {
   if (await copyText(text)) notify.success('Copied')
-  else notify.error('Copy failed — select and copy it manually')
+  else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 
 function statusBadge(r: Runner): { text: string; cls: string } {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
@@ -11,6 +12,7 @@ import type { GitSource, GitSourceStatus, GitRepository, ApplyPlan, PlanAction, 
 import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const router = useRouter()
 const route = useRoute()
@@ -92,7 +94,7 @@ function openEdit(s: GitSource) {
 async function save() {
   if (!currentWorkspaceId.value) return
   if (!form.value.git_repository_id) {
-    notify.error('Select a git repository')
+    notify.error(t('notify.gitOps.selectAGitRepository'))
     return
   }
   saving.value = true
@@ -121,7 +123,7 @@ async function sync(s: GitSource) {
     const updated = res.data.data
     const idx = items.value.findIndex((i) => i.id === s.id)
     if (idx >= 0) items.value[idx] = updated
-    if (updated.status === 'error') notify.error(`${s.name}: ${updated.message || 'sync failed'}`)
+    if (updated.status === 'error') notify.error(t('notify.gitOps.syncFailed', { name: s.name, message: updated.message || 'sync failed' }))
     else notify.success(`${s.name}: synced`)
   } catch (e) {
     notify.apiError(e, 'Sync failed')
@@ -179,7 +181,7 @@ async function confirmDelete() {
     if (cascade && res?.teardown) {
       // Surface the per-resource outcome in a follow-up dialog.
       teardown.value = { name, result: res.teardown }
-      if ((res.teardown.failures?.length ?? 0) > 0) notify.error('Some resources could not be removed')
+      if ((res.teardown.failures?.length ?? 0) > 0) notify.error(t('notify.gitOps.someResourcesCouldNotBe'))
       else notify.success(res.message || 'Git source and its resources deleted')
     } else {
       notify.success(res?.message || 'Git source deleted')

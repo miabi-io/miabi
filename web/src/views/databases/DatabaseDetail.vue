@@ -482,7 +482,7 @@ async function scanBucket() {
   scanning.value = true
   try {
     discovered.value = (await backupApi.discoverSets(wid.value)).data.data ?? []
-    if (discovered.value.length === 0) notify.info('No recovery points found in the bucket')
+    if (discovered.value.length === 0) notify.info(t('notify.databaseDetail.noRecoveryPointsFoundIn'))
   } catch (e) { notify.apiError(e) }
   finally { scanning.value = false }
 }
@@ -502,10 +502,10 @@ async function adoptSet(d: DiscoveredSet) {
   if (!wid.value) return
   try {
     const res = (await backupApi.adoptSet(wid.value, instId.value, d.ref)).data.data
-    if (res.already_known) notify.info(`${d.ref} was already in this workspace`)
+    if (res.already_known) notify.info(t('notify.databaseDetail.wasAlreadyInThisWorkspace', { ref: d.ref }))
     else notify.success(`Adopted ${d.ref} — ${res.adopted} database(s)`)
     if (res.skipped?.length) {
-      notify.error(`${res.skipped.length} artifact(s) skipped: ${res.skipped.map((k) => k.database).join(', ')} — no database of that name here`)
+      notify.error(t('notify.databaseDetail.artifactSSkippedNoDatabase', { count: res.skipped.length, join: res.skipped.map((k) => k.database).join(', ') }))
     }
     loadSets()
   } catch (e) { notify.apiError(e) }
@@ -522,7 +522,7 @@ async function restoreSet(set: DatabaseBackupSet) {
   try {
     const res = (await backupApi.restoreSet(wid.value, instId.value, set.id)).data.data
     if (res.failed?.length) {
-      notify.error(`Restored ${res.restored.length}, failed ${res.failed.length}: ${res.failed.join('; ')}`)
+      notify.error(t('notify.databaseDetail.restoredFailed', { count: res.restored.length, count2: res.failed.length, join: res.failed.join('; ') }))
     } else {
       notify.success(`Restored ${res.restored.length} database(s) from ${set.ref}`)
     }
@@ -652,7 +652,7 @@ async function runRestore() {
     if (restoreModal.value.backupId != null) {
       await backupApi.restore(wid.value, instId.value, selected.value.id, restoreModal.value.backupId, restoreMethod.value)
     } else {
-      if (!restoreFile.value) { notify.error('Choose a dump file'); restoring.value = false; return }
+      if (!restoreFile.value) { notify.error(t('notify.databaseDetail.chooseADumpFile')); restoring.value = false; return }
       await backupApi.restoreFile(wid.value, instId.value, selected.value.id, restoreFile.value, restoreMethod.value)
     }
     notify.success('Database restored')
@@ -785,7 +785,7 @@ async function removeInstance() {
 
 async function copy(text: string) {
   if (await copyText(text)) notify.success('Copied')
-  else notify.error('Copy failed — select and copy it manually')
+  else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 function badge(s: string) {
   return s === 'running' || s === 'completed' ? 'badge-success' : s === 'failed' ? 'badge-danger' : 'badge-warning'
@@ -933,7 +933,7 @@ function applyStatus(s: { status: DBStatus; upgrade?: UpgradeProgress }) {
   if (s.upgrade?.phase === 'failed') {
     if (!upgradeFailNotified) {
       upgradeFailNotified = true
-      notify.error(`Upgrade failed: ${s.upgrade.error ?? 'unknown error'}`)
+      notify.error(t('notify.databaseDetail.upgradeFailed', { error: s.upgrade.error ?? 'unknown error' }))
       void load()
     }
     return
@@ -948,7 +948,7 @@ function applyStatus(s: { status: DBStatus; upgrade?: UpgradeProgress }) {
     notify.success('Database is ready')
     void load()
   } else if (s.status === 'failed') {
-    notify.error('Database failed to provision')
+    notify.error(t('notify.databaseDetail.databaseFailedToProvision'))
     void load()
   } else {
     void load() // running <-> stopped, etc. — pull fresh details
