@@ -2528,7 +2528,7 @@
     "navigate": "navigate",
     "newTab": "new tab",
     "open": "open",
-    "searchResourcesJumpToA": "Search resources, jump to a page, @ to switch workspace"
+    "searchResourcesJumpToA": "Search resources, jump to a page, {'@'} to switch workspace"
   },
   "pipelines": {
     "appHint": "(source, image and deploy target)",

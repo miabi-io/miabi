@@ -2528,7 +2528,7 @@
     "navigate": "naviguer",
     "newTab": "nouvel onglet",
     "open": "ouvrir",
-    "searchResourcesJumpToA": "Rechercher des ressources, aller à une page, @ pour changer d’espace de travail"
+    "searchResourcesJumpToA": "Rechercher des ressources, aller à une page, {'@'} pour changer d’espace de travail"
   },
   "pipelines": {
     "appHint": "(source, image et cible de déploiement)",
