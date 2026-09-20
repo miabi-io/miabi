@@ -75,6 +75,18 @@ describe('translation catalogues', () => {
     expect(dupes).toEqual([])
   })
 
+  // Catalogue values reach the page through {{ }}, not v-html, so an entity carried over
+  // from the original template renders as the literal "&quot;" rather than a quote.
+  it('has no HTML entity, which text interpolation would not decode', () => {
+    for (const [code, cat] of Object.entries(catalogues)) {
+      const offenders = keysOf(cat).filter((k) => {
+        const v = k.split('.').reduce<unknown>((o, part) => (o as Record<string, unknown>)?.[part], cat)
+        return typeof v === 'string' && /&(?:#\d+|[a-z]+);/.test(v)
+      })
+      expect(offenders, `HTML entities in ${code}`).toEqual([])
+    }
+  })
+
   it('has no empty string, which renders as a blank label', () => {
     for (const [code, cat] of Object.entries(catalogues)) {
       const empties = keysOf(cat).filter((k) => {

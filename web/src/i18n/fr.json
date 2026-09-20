@@ -90,7 +90,7 @@
     "accountWide": "Compte entier (tous mes espaces de travail)",
     "allowedIps": "IP autorisées",
     "allowedIpsHint": "Restreindre cette clé à des IP ou plages CIDR précises. Laissez vide pour tout autoriser.",
-    "allowedIpsPlaceholder": "Séparées par des virgules ou des retours à la ligne, ex.&#10;192.168.1.1&#10;10.0.0.0/24",
+    "allowedIpsPlaceholder": "Séparées par des virgules ou des retours à la ligne, ex.\n192.168.1.1\n10.0.0.0/24",
     "any": "Toutes",
     "apiDocsHint": "Authentifiez-vous avec votre clé API et explorez toute l’API HTTP.",
     "copyId": "Copier l’ID",
@@ -238,11 +238,11 @@
     },
     "message": {
       "announcements": {
-        "titleWillBeRemoved": "&quot;{title}&quot; sera retirée de toutes les boîtes de réception où elle a été délivrée."
+        "titleWillBeRemoved": "\"{title}\" sera retirée de toutes les boîtes de réception où elle a été délivrée."
       },
       "apiKeys": {
-        "permanentlyDeleteApiKey": "Supprimer définitivement la clé API &quot;{name}&quot; ? Elle est retirée entièrement et cette action est irréversible.",
-        "revokeApiKeyName": "Révoquer la clé API &quot;{name}&quot; ? Les applications qui l’utilisent perdront l’accès immédiatement. Cette action est irréversible."
+        "permanentlyDeleteApiKey": "Supprimer définitivement la clé API \"{name}\" ? Elle est retirée entièrement et cette action est irréversible.",
+        "revokeApiKeyName": "Révoquer la clé API \"{name}\" ? Les applications qui l’utilisent perdront l’accès immédiatement. Cette action est irréversible."
       },
       "appAccessPanel": {
         "revokeNameSAccess": "Révoquer l’accès de {name} à cette application ?"
@@ -263,7 +263,7 @@
         "withdrawThisPendingHost": "Retirer cette demande de port hôte en attente."
       },
       "certificateDetail": {
-        "deleteCertificateNameThis": "Supprimer le certificat &quot;{name}&quot; ? L’opération est bloquée tant qu’une route le référence."
+        "deleteCertificateNameThis": "Supprimer le certificat \"{name}\" ? L’opération est bloquée tant qu’une route le référence."
       },
       "clusterDetail": {
         "eachWorkspaceNetworkIs": "Chaque réseau d’espace de travail passe d’un bridge local au nœud à un overlay de cluster, afin que les applications et les bases de données se joignent entre nœuds. Les conteneurs ne sont PAS redémarrés, mais les connexions ouvertes au sein d’un espace de travail sont brièvement interrompues pendant la bascule.",
@@ -271,7 +271,7 @@
         "theAgentIsRemoved": "L’agent est retiré de tous les nœuds du cluster. Ils continuent d’exécuter leurs tâches — c’est Swarm qui les planifie — mais Miabi perd sa connexion Docker vers eux.\n\nLes applications planifiées sur ces nœuds cesseront d’afficher métriques, statistiques et shell. Les enregistrements des nœuds, eux, sont conservés."
       },
       "configs": {
-        "deleteConfigNameAnd": "Supprimer la configuration &quot;{name}&quot; et ses {length} fichier(s) ? La suppression est bloquée si une application la monte encore."
+        "deleteConfigNameAnd": "Supprimer la configuration \"{name}\" et ses {length} fichier(s) ? La suppression est bloquée si une application la monte encore."
       },
       "databaseDetail": {
         "appsUsingThisDatabase": "Les applications qui utilisent cette base de données perdront la connectivité jusqu’à son redémarrage.",
@@ -283,35 +283,35 @@
         "theContainerWillBe": "Le conteneur {engine} sera redémarré. Une brève interruption est à prévoir."
       },
       "databaseSizes": {
-        "nameWillNoLonger": "&quot;{name}&quot; ne sera plus proposée. Les bases de données qui l’utilisent déjà conservent leurs limites."
+        "nameWillNoLonger": "\"{name}\" ne sera plus proposée. Les bases de données qui l’utilisent déjà conservent leurs limites."
       },
       "dnsProviders": {
-        "disconnectNameExistingDns": "Déconnecter &quot;{name}&quot; ? Les enregistrements DNS existants ne sont pas modifiés.",
+        "disconnectNameExistingDns": "Déconnecter \"{name}\" ? Les enregistrements DNS existants ne sont pas modifiés.",
         "enterOneOfYour": "Saisissez un de vos domaines sur {type} pour tester {name}."
       },
       "domainDetail": {
         "banNameItsRoutes": "Bannir {name} ? Ses routes seront mises hors ligne et il ne pourra plus être vérifié.",
-        "deleteDomainNameRoutes": "Supprimer le domaine &quot;{name}&quot; ? Plus aucune route utilisant un hôte sous ce domaine ne pourra être créée tant qu’il n’est pas ajouté de nouveau.",
+        "deleteDomainNameRoutes": "Supprimer le domaine \"{name}\" ? Plus aucune route utilisant un hôte sous ce domaine ne pourra être créée tant qu’il n’est pas ajouté de nouveau.",
         "forceMarkNameAs": "Marquer {name} comme vérifié sans contrôle DNS ? Cela contourne la preuve de propriété — à réserver aux DNS privés ou injoignables."
       },
       "domains": {
-        "deleteDomainNameRoutes": "Supprimer le domaine &quot;{name}&quot; ? Plus aucune route utilisant un hôte sous ce domaine ne pourra être créée tant qu’il n’est pas ajouté de nouveau."
+        "deleteDomainNameRoutes": "Supprimer le domaine \"{name}\" ? Plus aucune route utilisant un hôte sous ce domaine ne pourra être créée tant qu’il n’est pas ajouté de nouveau."
       },
       "envVarModal": {
         "thisVariableHasUnsaved": "Cette variable a des modifications non enregistrées. Fermer maintenant les perd."
       },
       "environments": {
-        "deleteEnvironmentName": "Supprimer l’environnement &quot;{name}&quot; ?"
+        "deleteEnvironmentName": "Supprimer l’environnement \"{name}\" ?"
       },
       "gitOps": {
-        "deleteGitSourceName": "Supprimer la source Git &quot;{name}&quot; ?"
+        "deleteGitSourceName": "Supprimer la source Git \"{name}\" ?"
       },
       "gitOpsDetail": {
         "deleteAutoSync": "Supprimer le {kind} « {name} » en production. La ressource en cours d’exécution est retirée immédiatement. Ce projet se synchronise automatiquement : elle sera recréée depuis Git à la prochaine réconciliation.",
         "deleteManualSync": "Supprimer le {kind} « {name} » en production. La ressource en cours d’exécution est retirée immédiatement. Elle reste supprimée jusqu’à ce qu’une synchronisation la réapplique depuis Git."
       },
       "gitRepositories": {
-        "deleteGitRepositoryName": "Supprimer le dépôt Git &quot;{name}&quot; ? Les applications qui se construisent depuis ce dépôt échoueront au clonage."
+        "deleteGitRepositoryName": "Supprimer le dépôt Git \"{name}\" ? Les applications qui se construisent depuis ce dépôt échoueront au clonage."
       },
       "imageDetail": {
         "deleteRepoNameThis": "Supprimer {repo}:{name} ? Le manifeste est retiré du registre et cette action est irréversible."
@@ -321,46 +321,46 @@
         "deleteJobRunThis": "Supprimer l’exécution n° {id} ? Cette action est irréversible."
       },
       "ldapDirectory": {
-        "deleteNameUsersProvisioned": "Supprimer &quot;{name}&quot; ? Les utilisateurs provisionnés depuis cet annuaire conservent leur compte mais ne pourront plus s’y connecter par ce biais."
+        "deleteNameUsersProvisioned": "Supprimer \"{name}\" ? Les utilisateurs provisionnés depuis cet annuaire conservent leur compte mais ne pourront plus s’y connecter par ce biais."
       },
       "license": {
         "removeTheLicenseAnd": "Retirer la licence et revenir à l’édition Community ?"
       },
       "middlewareDetail": {
-        "deleteMiddlewareNameRoutes": "Supprimer le middleware &quot;{name}&quot; ? Les routes qui le référencent le perdront."
+        "deleteMiddlewareNameRoutes": "Supprimer le middleware \"{name}\" ? Les routes qui le référencent le perdront."
       },
       "middlewareFormModal": {
         "thisPolicyHasUnsaved": "Cette politique a des modifications non enregistrées. Fermer maintenant les perd."
       },
       "networks": {
-        "deleteNetworkNameThis": "Supprimer le réseau &quot;{name}&quot; ? Cette action est irréversible."
+        "deleteNetworkNameThis": "Supprimer le réseau \"{name}\" ? Cette action est irréversible."
       },
       "nodeDetail": {
-        "removeContainerToremovecontainerThis": "Retirer le conteneur &quot;{toRemoveContainer}&quot; ? Cette action est irréversible.",
-        "removeNodeNameIts": "Retirer le nœud &quot;{name}&quot; ? Son tunnel d’agent est fermé et la passerelle edge, le cas échéant, est démantelée.",
+        "removeContainerToremovecontainerThis": "Retirer le conteneur \"{toRemoveContainer}\" ? Cette action est irréversible.",
+        "removeNodeNameIts": "Retirer le nœud \"{name}\" ? Son tunnel d’agent est fermé et la passerelle edge, le cas échéant, est démantelée.",
         "removeTheGomaGateway": "Retirer le conteneur Goma Gateway de ce nœud ? Le routage qui passe par lui s’arrête jusqu’à un nouveau déploiement. Les certificats ACME sont conservés.",
         "swarmReschedulesThisNode": "Swarm replanifie dès maintenant les tâches de service de ce nœud sur d’autres nœuds, et n’en place plus aucune ici. C’est ce qui rend le nœud sûr à redémarrer.\n\nÀ noter : le repasser en Active ne ramène PAS les tâches. Swarm ne rééquilibre jamais de lui-même — elles restent là où elles ont été replanifiées jusqu’à un redéploiement, une mise à l’échelle, ou le vidage de leur nouveau nœud."
       },
       "notifications": {
-        "deleteNotificationChannelName": "Supprimer le canal de notification &quot;{name}&quot; ?"
+        "deleteNotificationChannelName": "Supprimer le canal de notification \"{name}\" ?"
       },
       "oAuthProviders": {
-        "deleteProviderNameThis": "Supprimer le fournisseur &quot;{name}&quot; ? Cette action est irréversible."
+        "deleteProviderNameThis": "Supprimer le fournisseur \"{name}\" ? Cette action est irréversible."
       },
       "organizationDetail": {
-        "displayNameWillBe": "&quot;{display_name}&quot; sera supprimée, et toute localisation qui lui est dédiée devient réservée aux administrateurs jusqu’à réaffectation. La suppression est refusée tant qu’elle contient des espaces de travail ou des utilisateurs."
+        "displayNameWillBe": "\"{display_name}\" sera supprimée, et toute localisation qui lui est dédiée devient réservée aux administrateurs jusqu’à réaffectation. La suppression est refusée tant qu’elle contient des espaces de travail ou des utilisateurs."
       },
       "organizations": {
-        "displayNameWillBe": "&quot;{display_name}&quot; sera supprimée et tout cluster qui lui est dédié redevient partagé. La suppression est refusée tant qu’elle contient des espaces de travail ou des utilisateurs — déplacez-les d’abord.",
-        "newUsersAndWorkspaces": "Les nouveaux utilisateurs et espaces de travail qui ne nomment aucune organisation appartiendront à &quot;{display_name}&quot;. Les existants ne sont pas déplacés.{promoteWarning}",
+        "displayNameWillBe": "\"{display_name}\" sera supprimée et tout cluster qui lui est dédié redevient partagé. La suppression est refusée tant qu’elle contient des espaces de travail ou des utilisateurs — déplacez-les d’abord.",
+        "newUsersAndWorkspaces": "Les nouveaux utilisateurs et espaces de travail qui ne nomment aucune organisation appartiendront à \"{display_name}\". Les existants ne sont pas déplacés.{promoteWarning}",
         "promoteWarning": "{name} dispose de ses propres localisations ({where}) : les nouveaux utilisateurs et espaces de travail qui ne nomment aucune organisation s’y déploieront, et nulle part ailleurs."
       },
       "pipelines": {
-        "delete": "Supprimer le pipeline &quot;{name}&quot; ? Son historique d’exécutions est retiré.",
-        "deleteRepoOwned": "Supprimer le pipeline &quot;{name}&quot; ? Son historique d’exécutions est retiré, et son application revient à une construction et un déploiement directs — en ignorant les étapes de {path}."
+        "delete": "Supprimer le pipeline \"{name}\" ? Son historique d’exécutions est retiré.",
+        "deleteRepoOwned": "Supprimer le pipeline \"{name}\" ? Son historique d’exécutions est retiré, et son application revient à une construction et un déploiement directs — en ignorant les étapes de {path}."
       },
       "planDetail": {
-        "deletePlanNameAny": "Supprimer le forfait &quot;{name}&quot; ? Les espaces de travail qui l’utilisent basculeront sur le forfait par défaut."
+        "deletePlanNameAny": "Supprimer le forfait \"{name}\" ? Les espaces de travail qui l’utilisent basculeront sur le forfait par défaut."
       },
       "platformBackup": {
         "deleteThisPlatformBackup": "Supprimer cette sauvegarde de la plateforme ?",
@@ -384,19 +384,19 @@
         "signOutThis": "Déconnecter cet appareil de votre compte ? Il devra se reconnecter."
       },
       "registries": {
-        "deleteRegistryNameApps": "Supprimer le registre &quot;{name}&quot; ? Les applications qui l’utilisent ne pourront plus récupérer d’images privées."
+        "deleteRegistryNameApps": "Supprimer le registre \"{name}\" ? Les applications qui l’utilisent ne pourront plus récupérer d’images privées."
       },
       "registry": {
         "runGarbageCollectionThe": "Lancer le nettoyage ? Le registre passe en lecture seule (les pulls continuent, les pushes sont suspendus) pendant qu’il récupère de l’espace."
       },
       "routeDetail": {
-        "deleteRouteNameIts": "Supprimer la route &quot;{name}&quot; ? Ses hôtes cesseront de router vers l’application."
+        "deleteRouteNameIts": "Supprimer la route \"{name}\" ? Ses hôtes cesseront de router vers l’application."
       },
       "routeFormModal": {
         "thisRouteHasUnsaved": "Cette route a des modifications non enregistrées. Fermer maintenant les perd."
       },
       "routes": {
-        "deleteRouteNameIts": "Supprimer la route &quot;{name}&quot; ? Ses hôtes cesseront de router vers l’application.",
+        "deleteRouteNameIts": "Supprimer la route \"{name}\" ? Ses hôtes cesseront de router vers l’application.",
         "reRenderEveryWorkspace": "Regénérer la configuration de passerelle de chaque espace de travail depuis la base de données. Les fichiers de configuration existants sont réécrits sur place (sans interruption) ; les routes déjà actives restent en service. Continuer ?"
       },
       "runnerDetail": {
@@ -407,16 +407,16 @@
         "regenerateNameSToken": "Régénérer le jeton de {name} ? Son conteneur en cours d’exécution doit être redémarré avec le nouveau jeton."
       },
       "sIEM": {
-        "deleteSiemTargetName": "Supprimer la cible SIEM &quot;{name}&quot; ?"
+        "deleteSiemTargetName": "Supprimer la cible SIEM \"{name}\" ?"
       },
       "secrets": {
-        "deleteSecretNameApps": "Supprimer le secret &quot;{name}&quot; ? Les applications qui le référencent échoueront au déploiement tant que la référence n’est pas retirée."
+        "deleteSecretNameApps": "Supprimer le secret \"{name}\" ? Les applications qui le référencent échoueront au déploiement tant que la référence n’est pas retirée."
       },
       "stackDetail": {
-        "removeNameFromThis": "Retirer &quot;{name}&quot; de ce stack ?"
+        "removeNameFromThis": "Retirer \"{name}\" de ce stack ?"
       },
       "storageClasses": {
-        "nameWillNoLonger": "&quot;{name}&quot; ne sera plus proposée. La suppression est refusée tant qu’un volume l’utilise — désactivez-la plutôt pour empêcher de nouveaux volumes d’y atterrir."
+        "nameWillNoLonger": "\"{name}\" ne sera plus proposée. La suppression est refusée tant qu’un volume l’utilise — désactivez-la plutôt pour empêcher de nouveaux volumes d’y atterrir."
       },
       "userDetail": {
         "demote": "Rétrograder {name} au rang d’utilisateur ?",
@@ -428,19 +428,19 @@
         "revokeAllActiveSessions": "Révoquer toutes les sessions actives de {name} ?"
       },
       "volumeDetail": {
-        "deletePathFromThis": "Supprimer &quot;{path}&quot; de ce volume ? Cette action est irréversible.",
+        "deletePathFromThis": "Supprimer \"{path}\" de ce volume ? Cette action est irréversible.",
         "deleteTheBackupTaken": "Supprimer la sauvegarde prise {fmtTime} ? L’enregistrement de sauvegarde est retiré ; l’objet archive dans votre bucket S3 n’est pas supprimé.",
-        "deleteVolumeNameThis": "Supprimer le volume &quot;{name}&quot; ? Ceci retire définitivement ses données et cette action est irréversible.",
-        "restoreNameFromThe": "Restaurer &quot;{name}&quot; depuis la sauvegarde prise {fmtTime} ? Ceci écrase le contenu actuel du volume et cette action est irréversible."
+        "deleteVolumeNameThis": "Supprimer le volume \"{name}\" ? Ceci retire définitivement ses données et cette action est irréversible.",
+        "restoreNameFromThe": "Restaurer \"{name}\" depuis la sauvegarde prise {fmtTime} ? Ceci écrase le contenu actuel du volume et cette action est irréversible."
       },
       "webhooks": {
-        "deleteWebhookUrlDelivery": "Supprimer le webhook &quot;{url}&quot; ? L’historique des livraisons sera supprimé."
+        "deleteWebhookUrlDelivery": "Supprimer le webhook \"{url}\" ? L’historique des livraisons sera supprimé."
       },
       "workspaceDetail": {
-        "rotateTheEncryptionKey": "Faire tourner la clé de chiffrement de &quot;{name}&quot; ? Ses secrets seront rechiffrés avec une nouvelle clé."
+        "rotateTheEncryptionKey": "Faire tourner la clé de chiffrement de \"{name}\" ? Ses secrets seront rechiffrés avec une nouvelle clé."
       },
       "workspaceRolesPanel": {
-        "deleteRoleName": "Supprimer le rôle &quot;{name}&quot; ?"
+        "deleteRoleName": "Supprimer le rôle \"{name}\" ?"
       },
       "workspaceSettings": {
         "removeNameFromThis": "Retirer {name} de cet espace de travail ?"
@@ -990,6 +990,63 @@
     "timeoutLabel": "Délai d’expiration (secondes, 0 = par défaut)",
     "timeoutShort": "Délai (s)"
   },
+  "ldap": {
+    "activeDirectory": "(Active Directory)",
+    "add": "Ajouter",
+    "addAConnection": "Ajouter une connexion",
+    "addConnection": "Ajouter la connexion",
+    "admin": "Administrateur",
+    "bindDn": "DN de connexion",
+    "bindPassword": "Mot de passe de connexion",
+    "caCert": "Certificat d’AC (PEM, facultatif)",
+    "connection": "Connexion",
+    "developer": "Développeur",
+    "emailAttr": "Attribut e-mail",
+    "emptyHint": "Ajoutez une connexion LDAP ou Active Directory pour que les utilisateurs puissent se connecter avec leur identifiant et mot de passe d’annuaire.",
+    "enterpriseFeature": "Fonctionnalité Enterprise",
+    "expandNestedGroups": "Développer les groupes imbriqués",
+    "grants": "Droits accordés",
+    "group": "Groupe",
+    "groupBaseDn": "DN de base des groupes",
+    "groupDnOrCn": "DN ou CN du groupe",
+    "groupDnPlaceholder": "cn=platform-admins,ou=Groups,… (ou simplement platform-admins)",
+    "groupFilter": "Filtre de groupe",
+    "groupFilterHint": "(%s = DN de l’utilisateur ; vide, l’attribut membre est utilisé)",
+    "groupMappings": "Correspondances de groupes",
+    "groups": "Groupes",
+    "host": "Hôte",
+    "insecureNote": "(non sécurisé — développement uniquement)",
+    "ldapActiveDirectory": "LDAP / Active Directory",
+    "mappingHint": "Associez un groupe d’annuaire (DN complet ou CN simple) au statut d’administrateur de plateforme et/ou à un rôle d’espace de travail. Réconcilié à chaque connexion.",
+    "memberAttr": "Attribut membre",
+    "nameAttr": "Attribut nom",
+    "namePlaceholder": "ex. Active Directory de l’entreprise",
+    "noDirectoriesConnected": "Aucun annuaire connecté",
+    "noMappings": "Aucune correspondance — sans aucune, les utilisateurs de l’annuaire sont provisionnés mais n’obtiennent automatiquement aucun accès administrateur ni espace de travail.",
+    "optional": "(facultatif)",
+    "optionalDrivesAccessNote": "(facultatif — détermine l’accès)",
+    "owner": "Propriétaire",
+    "platformAdmin": "administrateur de plateforme",
+    "port": "Port",
+    "removeMapping": "Supprimer la correspondance",
+    "server": "Serveur",
+    "serviceAccountBind": "Compte de service (bind)",
+    "skipTlsCertificateVerification": "Ignorer la vérification du certificat TLS",
+    "subtitle": "Connectez un annuaire LDAP ou Active Directory pour y authentifier les utilisateurs, avec les groupes associés aux rôles et à l’appartenance aux espaces de travail.",
+    "testConnection": "Tester la connexion",
+    "tlsLdaps": "LDAPS (TLS implicite, 636)",
+    "tlsMode": "Mode TLS",
+    "tlsNone": "Aucun (texte clair — déconseillé)",
+    "tlsStartTls": "StartTLS (mise à niveau sur 389)",
+    "upsell": "Laissez les utilisateurs se connecter avec les identifiants de l’annuaire de l’entreprise. Les groupes déterminent le statut d’administrateur de plateforme et l’accès aux espaces de travail.",
+    "userBaseDn": "DN de base des utilisateurs",
+    "userFilter": "Filtre d’utilisateur",
+    "userFilterHint": "(%s = identifiant de connexion)",
+    "userSearch": "Recherche d’utilisateurs",
+    "usernameAttr": "Attribut nom d’utilisateur",
+    "viewer": "Lecteur",
+    "workspaceRole": "Rôle dans l’espace de travail"
+  },
   "nav": {
     "analytics": {
       "httpTraffic": "Trafic HTTP",
@@ -1125,7 +1182,15 @@
     },
     "ldapDirectory": {
       "aGroupDnIsRequired": "Un DN de groupe est requis",
-      "displayNameAndHostAre": "Le nom affiché et l’hôte sont requis"
+      "connectionFailed": "Échec de la connexion",
+      "connectionOk": "Connexion réussie",
+      "created": "Connexion LDAP créée",
+      "deleted": "Connexion LDAP supprimée",
+      "displayNameAndHostAre": "Le nom affiché et l’hôte sont requis",
+      "mappingAdded": "Correspondance ajoutée",
+      "mappingRemoved": "Correspondance supprimée",
+      "testFailed": "Échec du test LDAP",
+      "updated": "Connexion LDAP mise à jour"
     },
     "marketplace": {
       "someResourcesCouldNotBe": "{name} : certaines ressources n’ont pas pu être supprimées"
@@ -1147,6 +1212,10 @@
       "runQueued": "{name} : exécution n° {number} mise en file",
       "runQueuedDetail": "Ouvrez l’exécution pour suivre ses journaux.",
       "updated": "Pipeline mis à jour"
+    },
+    "planDetail": {
+      "deleted": "Plan supprimé",
+      "saved": "Plan enregistré"
     },
     "plans": {
       "created": "Plan créé",
@@ -1277,6 +1346,96 @@
     "viewManaged": "Voir (géré par le dépôt)",
     "viewRuns": "Voir les exécutions",
     "workspaceSecret": "secret d’espace de travail"
+  },
+  "planDetail": {
+    "active": "actif",
+    "activeNote": "(attribuable aux espaces de travail)",
+    "backToPlans": "Retour aux plans",
+    "capGpu": "Autoriser l’accès GPU (passage de périphérique) — définissez aussi la limite de GPU ci-dessus",
+    "capabilities": "Capacités",
+    "computeStorageTitle": "Calcul et stockage",
+    "counts": "Quantités",
+    "databaseSizes2": "tailles de base de données",
+    "databaseSizesHint": "Les {link} parmi lesquelles les espaces de travail de ce plan choisissent. Une base de données créée avec une mémoire et un CPU obtient à la place la plus petite taille cochée qui les couvre. Appliqué uniquement lorsque l’application des plans est activée.",
+    "databaseSizesOptional": "Si rien n’est coché, les tailles restent facultatives : les espaces de travail peuvent choisir n’importe quelle taille, ou définir eux-mêmes mémoire et CPU.",
+    "databaseSizesRequireEE": "Les tailles de base de données requièrent une licence Enterprise",
+    "default": "par défaut",
+    "defaultNote": "(appliqué aux espaces de travail non attribués)",
+    "defaultStorageClass": "Classe de stockage par défaut",
+    "defaultStorageClassHint": "Utilisée quand un volume ne nomme aucune classe, avant celle par défaut du nœud.",
+    "details": "Détails",
+    "disabled": "désactivé",
+    "enterprise": "Enterprise",
+    "field": {
+      "apiKeys": "Clés API",
+      "apiKeysDesc": "Clés API limitées à l’espace de travail.",
+      "apps": "Applications",
+      "appsDesc": "Applications déployables dans l’espace de travail.",
+      "cpu": "CPU",
+      "cpuDesc": "CPU cumulé sur toutes les applications.",
+      "cronJobs": "Tâches cron",
+      "cronJobsDesc": "Jobs planifiés.",
+      "dbCpu": "CPU des bases de données",
+      "dbCpuDesc": "Limites de CPU cumulées sur toutes les instances de base de données, indépendamment des applications.",
+      "dbInstanceSize": "Taille d’instance de BD",
+      "dbInstanceSizeDesc": "Taille déclarée du volume de données d’une instance.",
+      "dbInstances": "Instances de base de données",
+      "dbInstancesDesc": "Serveurs de base de données provisionnés.",
+      "dbMemory": "Mémoire des bases de données",
+      "dbMemoryDesc": "Limites de mémoire cumulées sur toutes les instances de base de données, indépendamment des applications.",
+      "dbsPerInstance": "Bases de données par instance",
+      "dbsPerInstanceDesc": "Bases de données logiques au sein d’une instance.",
+      "gpus": "GPU",
+      "gpusDesc": "Unités GPU cumulées que les applications en cours d’exécution de l’espace de travail peuvent détenir. Nécessite la capacité GPU ci-dessous.",
+      "members": "Membres",
+      "membersDesc": "Membres de l’espace de travail (propriétaire + invités).",
+      "memory": "Mémoire",
+      "memoryDesc": "Mémoire cumulée sur toutes les applications.",
+      "networks": "Réseaux",
+      "networksDesc": "Réseaux Docker personnalisés.",
+      "runners": "Runners",
+      "runnersDesc": "Runners de build/pipeline que l’espace de travail peut enregistrer.",
+      "storage": "Stockage total",
+      "storageDesc": "Volumes cumulés + volumes de données des instances de BD.",
+      "volumes": "Volumes",
+      "volumesDesc": "Volumes persistants gérés."
+    },
+    "general": "Général",
+    "inactive": "inactif",
+    "limitsHint": "−1 = illimité · 0 = aucun",
+    "locations": "Emplacements",
+    "locationsHint": "Si rien n’est coché, tous les emplacements sont autorisés. L’emplacement par défaut est celui où atterrissent les ressources d’un espace de travail qui n’en nomme aucun.",
+    "namePlaceholder": "ex. pro",
+    "noDatabaseSizes": "Aucune taille de base de données n’existe encore.",
+    "noStorageClasses": "Aucune classe de stockage n’est encore enregistrée.",
+    "nodeDefault": "Celle par défaut du nœud",
+    "nodePool": "Pool de nœuds",
+    "nodePoolHint": "Les espaces de travail ne s’exécutent que sur les nœuds de ce pool. Vide, ils restent sur les nœuds qui n’appartiennent à aucun pool.",
+    "none": "Aucun",
+    "official": "officiel",
+    "officialExemptHint": "En mode Restreint, les applications installées depuis un modèle {official} du marketplace s’exécutent quand même avec l’utilisateur propre à l’image, afin de ne pas casser les images curées qui en ont besoin. Seules les installations officielles y ont droit ; les applications propres à l’utilisateur restent non root.",
+    "optional": "facultatif",
+    "placement": "Placement",
+    "placementHint": "Où les espaces de travail de ce plan peuvent s’exécuter. Appliqué uniquement lorsque l’application des plans est activée.",
+    "placementRequiresEE": "Le placement par plan requiert une licence Enterprise",
+    "placementRequiresEEHint": "Requiert une licence Enterprise ; sans elle, les espaces de travail peuvent utiliser n’importe quel emplacement et n’importe quel nœud.",
+    "planId": "Identifiant du plan",
+    "requiresAnEnterpriseLicense": "Requiert une licence Enterprise.",
+    "resourceLimits": "Limites de ressources",
+    "restrictedHint": "Le mode Restreint exécute les conteneurs d’application et de job sous un UID de plateforme non root (comme la SCC restricted d’OpenShift). Peut casser les images qui exigent root.",
+    "slugFixed": "Fixe — la plateforme résout ce plan par son nom.",
+    "storageClassRequiresEE": "Requiert une licence Enterprise ; Community utilise toujours Default.",
+    "storageClasses2": "classes de stockage",
+    "storageClassesHint": "Les {link} sur lesquelles les espaces de travail de ce plan peuvent créer des volumes — sur lesquels des disques de l’opérateur leurs données atterrissent. Ne rien cocher propose toutes les classes et laisse le choix à celle par défaut du nœud. Appliqué uniquement lorsque l’application des plans est activée.",
+    "system": "système",
+    "systemNotDefault": "Un plan système ne peut pas être le plan par défaut — les espaces de travail non attribués obtiendraient des ressources illimitées.",
+    "unit": {
+      "cores": "cœurs",
+      "gpus": "GPU",
+      "mb": "Mo"
+    },
+    "unlimited": "Illimité",
+    "updated": "Mis à jour"
   },
   "plans": {
     "active": "actif",

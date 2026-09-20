@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { adminApi } from '@/api/admin'
 import { clustersApi } from '@/api/clusters'
@@ -10,6 +11,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const notify = useNotificationStore()
 
 // The restricted security profile is an Enterprise-only policy; in Community the
@@ -37,30 +39,30 @@ type LimitKey = keyof Pick<PlanInput,
 
 interface LimitField { key: LimitKey; label: string; desc: string; unit?: string }
 const countFields: LimitField[] = [
-  { key: 'max_apps', label: 'Applications', desc: 'Deployable apps in the workspace.' },
-  { key: 'max_database_instances', label: 'Database instances', desc: 'Provisioned database servers.' },
-  { key: 'max_databases_per_instance', label: 'Databases per instance', desc: 'Logical databases inside one instance.' },
-  { key: 'max_cron_jobs', label: 'Cron jobs', desc: 'Scheduled jobs.' },
-  { key: 'max_volumes', label: 'Volumes', desc: 'Managed persistent volumes.' },
-  { key: 'max_networks', label: 'Networks', desc: 'Custom Docker networks.' },
-  { key: 'max_api_keys', label: 'API keys', desc: 'Workspace-scoped API keys.' },
-  { key: 'max_members', label: 'Members', desc: 'Workspace members (owner + invited).' },
-  { key: 'max_runners', label: 'Runners', desc: 'Build/pipeline runners the workspace may register.' },
+  { key: 'max_apps', label: 'planDetail.field.apps', desc: 'planDetail.field.appsDesc' },
+  { key: 'max_database_instances', label: 'planDetail.field.dbInstances', desc: 'planDetail.field.dbInstancesDesc' },
+  { key: 'max_databases_per_instance', label: 'planDetail.field.dbsPerInstance', desc: 'planDetail.field.dbsPerInstanceDesc' },
+  { key: 'max_cron_jobs', label: 'planDetail.field.cronJobs', desc: 'planDetail.field.cronJobsDesc' },
+  { key: 'max_volumes', label: 'planDetail.field.volumes', desc: 'planDetail.field.volumesDesc' },
+  { key: 'max_networks', label: 'planDetail.field.networks', desc: 'planDetail.field.networksDesc' },
+  { key: 'max_api_keys', label: 'planDetail.field.apiKeys', desc: 'planDetail.field.apiKeysDesc' },
+  { key: 'max_members', label: 'planDetail.field.members', desc: 'planDetail.field.membersDesc' },
+  { key: 'max_runners', label: 'planDetail.field.runners', desc: 'planDetail.field.runnersDesc' },
 ]
 const computeFields: LimitField[] = [
-  { key: 'max_cpu_cores', label: 'CPU', desc: 'Aggregate CPU across all apps.', unit: 'cores' },
-  { key: 'max_memory_mb', label: 'Memory', desc: 'Aggregate memory across all apps.', unit: 'MB' },
-  { key: 'max_database_cpu_cores', label: 'Database CPU', desc: 'Aggregate CPU limits across all database instances, apart from the apps.', unit: 'cores' },
-  { key: 'max_database_memory_mb', label: 'Database memory', desc: 'Aggregate memory limits across all database instances, apart from the apps.', unit: 'MB' },
-  { key: 'max_database_instance_size_mb', label: 'DB instance size', desc: 'Declared data-volume size of one instance.', unit: 'MB' },
-  { key: 'max_storage_mb', label: 'Total storage', desc: 'Aggregate volumes + DB instance data volumes.', unit: 'MB' },
-  { key: 'max_gpus', label: 'GPUs', desc: 'Aggregate GPU units the workspace’s running apps may hold. Requires the GPU capability below.', unit: 'GPUs' },
+  { key: 'max_cpu_cores', label: 'planDetail.field.cpu', desc: 'planDetail.field.cpuDesc', unit: 'planDetail.unit.cores' },
+  { key: 'max_memory_mb', label: 'planDetail.field.memory', desc: 'planDetail.field.memoryDesc', unit: 'planDetail.unit.mb' },
+  { key: 'max_database_cpu_cores', label: 'planDetail.field.dbCpu', desc: 'planDetail.field.dbCpuDesc', unit: 'planDetail.unit.cores' },
+  { key: 'max_database_memory_mb', label: 'planDetail.field.dbMemory', desc: 'planDetail.field.dbMemoryDesc', unit: 'planDetail.unit.mb' },
+  { key: 'max_database_instance_size_mb', label: 'planDetail.field.dbInstanceSize', desc: 'planDetail.field.dbInstanceSizeDesc', unit: 'planDetail.unit.mb' },
+  { key: 'max_storage_mb', label: 'planDetail.field.storage', desc: 'planDetail.field.storageDesc', unit: 'planDetail.unit.mb' },
+  { key: 'max_gpus', label: 'planDetail.field.gpus', desc: 'planDetail.field.gpusDesc', unit: 'planDetail.unit.gpus' },
 ]
 
 function describe(v: number, unit?: string): string {
-  if (v < 0) return 'Unlimited'
-  if (v === 0) return 'None'
-  return unit ? `${v} ${unit}` : String(v)
+  if (v < 0) return t('planDetail.unlimited')
+  if (v === 0) return t('planDetail.none')
+  return unit ? `${v} ${t(unit)}` : String(v)
 }
 
 async function load() {
@@ -130,7 +132,7 @@ async function save() {
   saving.value = true
   try {
     plan.value = (await adminApi.updatePlan(plan.value.id, { ...form.value, name: form.value.name.trim() })).data.data
-    notify.success('Plan saved')
+    notify.success(t('notify.planDetail.saved'))
   } catch (e) {
     notify.apiError(e)
   } finally {
@@ -143,7 +145,7 @@ async function makeDefault() {
   try {
     plan.value = (await adminApi.setDefaultPlan(plan.value.id)).data.data
     if (form.value) form.value.is_default = true
-    notify.success(`"${plan.value.name}" is now the default plan`)
+    notify.success(t('notify.plans.defaultSet', { name: plan.value.name }))
   } catch (e) {
     notify.apiError(e)
   }
@@ -156,7 +158,7 @@ async function confirmDelete() {
   deleting.value = true
   try {
     await adminApi.deletePlan(plan.value.id, true)
-    notify.success('Plan deleted')
+    notify.success(t('notify.planDetail.deleted'))
     router.replace('/admin/plans')
   } catch (e) {
     notify.apiError(e)
@@ -177,52 +179,52 @@ function fmtDate(s?: string): string {
     <template v-else-if="plan && form">
       <div class="page-header">
         <div class="header-left">
-          <button class="btn-icon btn-icon-muted" title="Back to plans" aria-label="Back to plans" @click="router.push('/admin/plans')">
+          <button class="btn-icon btn-icon-muted" :title="$t('planDetail.backToPlans')" :aria-label="$t('planDetail.backToPlans')" @click="router.push('/admin/plans')">
             <span class="mdi mdi-arrow-left"></span>
           </button>
           <div class="header-title">
             <h1>
               {{ plan.name }}
-              <span v-if="plan.is_default" class="badge badge-success">default</span>
+              <span v-if="plan.is_default" class="badge badge-success">{{ $t('planDetail.default') }}</span>
               <span v-if="plan.system" class="badge badge-info"
-                title="Owned by the platform: pinned to the system workspace, and not yours to rename, delete or make the default">system</span>
-              <span v-if="plan.is_active" class="badge badge-dot badge-success">active</span>
-              <span v-else class="badge badge-dot badge-danger">inactive</span>
+                :title="$t('plans.systemPlanHint')">{{ $t('planDetail.system') }}</span>
+              <span v-if="plan.is_active" class="badge badge-dot badge-success">{{ $t('planDetail.active') }}</span>
+              <span v-else class="badge badge-dot badge-danger">{{ $t('planDetail.inactive') }}</span>
             </h1>
             <span class="subline">{{ plan.description || 'No description' }}</span>
           </div>
         </div>
         <div class="header-actions">
-          <button v-if="!plan.is_default && !plan.system" class="btn btn-secondary" @click="makeDefault">Set as default</button>
+          <button v-if="!plan.is_default && !plan.system" class="btn btn-secondary" @click="makeDefault">{{ $t('plans.setAsDefault') }}</button>
           <!-- The system plan is the platform's own: deleting it would drop the
                system workspace onto the default plan's limits, silently. The API
                refuses it too — this only keeps the console from offering it. -->
-          <button v-if="!plan.system" class="btn btn-danger" @click="showDelete = true">Delete</button>
+          <button v-if="!plan.system" class="btn btn-danger" @click="showDelete = true">{{ $t('action.delete') }}</button>
         </div>
       </div>
 
       <!-- General -->
       <div class="card">
-        <div class="card-header"><h2>General</h2></div>
+        <div class="card-header"><h2>{{ $t('planDetail.general') }}</h2></div>
         <div class="card-body">
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label">Name</label>
+              <label class="form-label">{{ $t('apps.form.name') }}</label>
               <!-- The system plan is resolved by name when it is pinned to the
                    system workspace, so renaming it would quietly unpin it. Its
                    limits stay editable. -->
               <input v-model="form.name" class="form-input" required :disabled="plan.system" />
-              <p v-if="plan.system" class="form-hint">Fixed — the platform resolves this plan by name.</p>
+              <p v-if="plan.system" class="form-hint">{{ $t('planDetail.slugFixed') }}</p>
             </div>
             <div class="form-group">
-              <label class="form-label">Description</label>
-              <input v-model="form.description" class="form-input" placeholder="optional" />
+              <label class="form-label">{{ $t('plans.description') }}</label>
+              <input v-model="form.description" class="form-input" :placeholder="$t('planDetail.optional')" />
             </div>
           </div>
           <div class="toggles">
-            <label class="checkbox-label"><input v-model="form.is_active" type="checkbox" /> Active <span class="text-muted">(assignable to workspaces)</span></label>
-            <label class="checkbox-label"><input v-model="form.is_default" type="checkbox" :disabled="plan.system" /> Default plan <span class="text-muted">(applied to unassigned workspaces)</span></label>
-            <p v-if="plan.system" class="form-hint">A system plan cannot be the default — unassigned workspaces would get unlimited resources.</p>
+            <label class="checkbox-label"><input v-model="form.is_active" type="checkbox" />{{ $t('plans.activeToggle') }}<span class="text-muted">{{ $t('planDetail.activeNote') }}</span></label>
+            <label class="checkbox-label"><input v-model="form.is_default" type="checkbox" :disabled="plan.system" />{{ $t('plans.defaultPlan') }}<span class="text-muted">{{ $t('planDetail.defaultNote') }}</span></label>
+            <p v-if="plan.system" class="form-hint">{{ $t('planDetail.systemNotDefault') }}</p>
           </div>
         </div>
       </div>
@@ -230,25 +232,25 @@ function fmtDate(s?: string): string {
       <!-- Resource limits -->
       <div class="card mt-4">
         <div class="card-header">
-          <h2>Resource limits</h2>
-          <span class="text-muted text-sm">−1 = unlimited · 0 = none</span>
+          <h2>{{ $t('planDetail.resourceLimits') }}</h2>
+          <span class="text-muted text-sm">{{ $t('planDetail.limitsHint') }}</span>
         </div>
         <div class="card-body">
-          <h3 class="section-label">Counts</h3>
+          <h3 class="section-label">{{ $t('planDetail.counts') }}</h3>
           <div class="limit-grid">
             <div v-for="f in countFields" :key="f.key" class="limit-cell">
-              <label class="form-label">{{ f.label }}</label>
+              <label class="form-label">{{ $t(f.label) }}</label>
               <input v-model.number="form[f.key]" type="number" min="-1" class="form-input" />
-              <p class="form-hint">{{ f.desc }} <strong>{{ describe(form[f.key], f.unit) }}</strong></p>
+              <p class="form-hint">{{ $t(f.desc) }} <strong>{{ describe(form[f.key], f.unit) }}</strong></p>
             </div>
           </div>
 
-          <h3 class="section-label" style="margin-top: 24px">Compute &amp; storage</h3>
+          <h3 class="section-label" style="margin-top: 24px">{{ $t('planDetail.computeStorageTitle') }}</h3>
           <div class="limit-grid">
             <div v-for="f in computeFields" :key="f.key" class="limit-cell">
-              <label class="form-label">{{ f.label }} <span v-if="f.unit" class="text-muted">({{ f.unit }})</span></label>
+              <label class="form-label">{{ $t(f.label) }} <span v-if="f.unit" class="text-muted">({{ $t(f.unit) }})</span></label>
               <input v-model.number="form[f.key]" type="number" min="-1" class="form-input" />
-              <p class="form-hint">{{ f.desc }} <strong>{{ describe(form[f.key], f.unit) }}</strong></p>
+              <p class="form-hint">{{ $t(f.desc) }} <strong>{{ describe(form[f.key], f.unit) }}</strong></p>
             </div>
           </div>
         </div>
@@ -256,140 +258,126 @@ function fmtDate(s?: string): string {
 
       <!-- Capabilities -->
       <div class="card mt-4">
-        <div class="card-header"><h2>Capabilities</h2></div>
+        <div class="card-header"><h2>{{ $t('planDetail.capabilities') }}</h2></div>
         <div class="card-body">
-          <label class="checkbox-label"><input v-model="form.allow_custom_tls" type="checkbox" /> Allow custom TLS certificates</label>
-          <label class="checkbox-label"><input v-model="form.allow_privileged_host_mounts" type="checkbox" /> Allow privileged host mounts</label>
-          <label class="checkbox-label"><input v-model="form.allow_shell_exec" type="checkbox" /> Allow shell access into containers</label>
-          <label class="checkbox-label"><input v-model="form.allow_shared_storage" type="checkbox" /> Allow shared storage (NFS / CIFS-SMB)</label>
-          <label class="checkbox-label"><input v-model="form.allow_dns_providers" type="checkbox" /> Allow connecting DNS providers</label>
-          <label class="checkbox-label"><input v-model="form.allow_custom_labels" type="checkbox" /> Allow custom container labels (Traefik &c.)</label>
-          <label class="checkbox-label"><input v-model="form.allow_platform_runners" type="checkbox" /> Allow using the platform-shared runner pool</label>
-          <label class="checkbox-label"><input v-model="form.allow_gpu" type="checkbox" /> Allow GPU access (device passthrough) — set the GPUs limit above too</label>
+          <label class="checkbox-label"><input v-model="form.allow_custom_tls" type="checkbox" />{{ $t('plans.capTls') }}</label>
+          <label class="checkbox-label"><input v-model="form.allow_privileged_host_mounts" type="checkbox" />{{ $t('plans.capHostMounts') }}</label>
+          <label class="checkbox-label"><input v-model="form.allow_shell_exec" type="checkbox" />{{ $t('plans.capShell') }}</label>
+          <label class="checkbox-label"><input v-model="form.allow_shared_storage" type="checkbox" />{{ $t('plans.capSharedStorage') }}</label>
+          <label class="checkbox-label"><input v-model="form.allow_dns_providers" type="checkbox" />{{ $t('plans.capDns') }}</label>
+          <label class="checkbox-label"><input v-model="form.allow_custom_labels" type="checkbox" />{{ $t('plans.capLabels') }}</label>
+          <label class="checkbox-label"><input v-model="form.allow_platform_runners" type="checkbox" />{{ $t('plans.capSharedRunners') }}</label>
+          <label class="checkbox-label"><input v-model="form.allow_gpu" type="checkbox" />{{ $t('planDetail.capGpu') }}</label>
           <div class="form-group" style="margin-top: 12px; max-width: 360px">
-            <label class="form-label">
-              Container security profile
-              <span v-if="!securityProfile.has.value" class="badge badge-neutral" style="margin-left: 6px" title="The restricted profile requires an Enterprise license">
-                <span class="mdi mdi-lock-outline"></span> Enterprise
-              </span>
+            <label class="form-label">{{ $t('plans.containerSecurityProfile') }}<span v-if="!securityProfile.has.value" class="badge badge-neutral" style="margin-left: 6px" :title="$t('plans.restrictedRequiresEE')">
+                <span class="mdi mdi-lock-outline"></span>{{ $t('planDetail.enterprise') }}</span>
             </label>
             <select v-model="form.security_profile" class="form-select" :disabled="!securityProfile.mutable.value">
-              <option value="default">Default — image's user (may be root)</option>
-              <option value="restricted">Restricted — force non-root UID</option>
+              <option value="default">{{ $t('plans.profileDefault') }}</option>
+              <option value="restricted">{{ $t('plans.profileRestricted') }}</option>
             </select>
-            <p class="form-hint">Restricted runs application &amp; job containers as a non-root platform UID (like OpenShift's restricted SCC). May break images that require root.<template v-if="!securityProfile.has.value"> Requires an Enterprise license; Community always uses Default.</template></p>
+            <p class="form-hint">{{ $t('planDetail.restrictedHint') }}<template v-if="!securityProfile.has.value">{{ $t('planDetail.storageClassRequiresEE') }}</template></p>
             <label class="checkbox-label" style="margin-top: 10px" :class="{ 'is-disabled': form.security_profile !== 'restricted' }">
-              <input v-model="form.allow_official_image_user" type="checkbox" :disabled="form.security_profile !== 'restricted'" />
-              Exempt official marketplace apps (keep the image's default user)
-            </label>
-            <p class="form-hint">When Restricted, apps installed from an <strong>official</strong> marketplace template still run as the image's own user, so curated images that need it aren't broken. Only official installs qualify; the user's own apps stay non-root.</p>
+              <input v-model="form.allow_official_image_user" type="checkbox" :disabled="form.security_profile !== 'restricted'" />{{ $t('plans.exemptMarketplace') }}</label>
+            <i18n-t keypath="planDetail.officialExemptHint" tag="p" class="form-hint"><template #official><strong>{{ $t('planDetail.official') }}</strong></template></i18n-t>
           </div>
         </div>
       </div>
 
       <div class="card mt-4">
         <div class="card-header">
-          <h2>Placement</h2>
-          <span v-if="!placementPolicy.has.value" class="badge badge-neutral" title="Plan placement requires an Enterprise license">
-            <span class="mdi mdi-lock-outline"></span> Enterprise
-          </span>
+          <h2>{{ $t('planDetail.placement') }}</h2>
+          <span v-if="!placementPolicy.has.value" class="badge badge-neutral" :title="$t('planDetail.placementRequiresEE')">
+            <span class="mdi mdi-lock-outline"></span>{{ $t('planDetail.enterprise') }}</span>
         </div>
         <div class="card-body">
-          <p class="form-hint" style="margin-top: 0">
-            Where this plan's workspaces may run. Enforced only while plan enforcement is on.
-            <template v-if="!placementPolicy.has.value"> Requires an Enterprise license; without one, workspaces may use any location and any node.</template>
+          <p class="form-hint" style="margin-top: 0">{{ $t('planDetail.placementHint') }}<template v-if="!placementPolicy.has.value">{{ $t('planDetail.placementRequiresEEHint') }}</template>
           </p>
-          <label class="form-label" style="margin-top: 12px">Locations</label>
+          <label class="form-label" style="margin-top: 12px">{{ $t('planDetail.locations') }}</label>
           <label v-for="c in clusters" :key="c.id" class="checkbox-label">
             <input type="checkbox" :checked="placementLocations.includes(c.id)" :disabled="!placementPolicy.mutable.value" @change="toggleLocation(c.id)" />
             {{ c.display_name || c.name }}<span v-if="c.location_code" class="text-muted"> ({{ c.location_code }})</span>
-            <span v-if="placementLocations[0] === c.id" class="badge badge-info" style="margin-left: 6px">default</span>
+            <span v-if="placementLocations[0] === c.id" class="badge badge-info" style="margin-left: 6px">{{ $t('planDetail.default') }}</span>
             <button
               v-else-if="placementLocations.includes(c.id) && placementPolicy.mutable.value"
               type="button"
               class="btn btn-ghost btn-sm"
               @click.prevent="makeDefaultLocation(c.id)"
-            >Make default</button>
+            >{{ $t('action.makeDefault') }}</button>
           </label>
-          <p class="form-hint">None checked allows every location. The default is where a workspace's resources land when it names no location.</p>
+          <p class="form-hint">{{ $t('planDetail.locationsHint') }}</p>
           <div class="form-group" style="margin-top: 12px; max-width: 360px">
-            <label class="form-label">Node pool</label>
-            <input v-model.trim="placementPool" class="form-input mono" placeholder="e.g. pro" :disabled="!placementPolicy.mutable.value" />
-            <p class="form-hint">Workspaces run only on nodes in this pool. Empty keeps them on nodes that are in no pool.</p>
+            <label class="form-label">{{ $t('planDetail.nodePool') }}</label>
+            <input v-model.trim="placementPool" class="form-input mono" :placeholder="$t('planDetail.namePlaceholder')" :disabled="!placementPolicy.mutable.value" />
+            <p class="form-hint">{{ $t('planDetail.nodePoolHint') }}</p>
           </div>
         </div>
       </div>
 
       <div class="card mt-4">
         <div class="card-header">
-          <h2>Database sizes</h2>
-          <span v-if="!databaseSizesPolicy.has.value" class="badge badge-neutral" title="Database sizes require an Enterprise license">
-            <span class="mdi mdi-lock-outline"></span> Enterprise
-          </span>
+          <h2>{{ $t('adminNav.tenants.databaseSizes') }}</h2>
+          <span v-if="!databaseSizesPolicy.has.value" class="badge badge-neutral" :title="$t('planDetail.databaseSizesRequireEE')">
+            <span class="mdi mdi-lock-outline"></span>{{ $t('planDetail.enterprise') }}</span>
         </div>
         <div class="card-body">
           <p class="form-hint" style="margin-top: 0">
-            The <router-link to="/admin/database-sizes">database sizes</router-link> this plan's workspaces pick from. A database
-            created with memory and CPU instead gets the smallest checked size covering them. Enforced only while plan enforcement is on.
-            <template v-if="!databaseSizesPolicy.has.value"> Requires an Enterprise license.</template>
+            <i18n-t keypath="planDetail.databaseSizesHint" tag="span"><template #link><router-link to="/admin/database-sizes">{{ $t('planDetail.databaseSizes2') }}</router-link></template></i18n-t>
+            <template v-if="!databaseSizesPolicy.has.value"> {{ $t('planDetail.requiresAnEnterpriseLicense') }}</template>
           </p>
-          <p v-if="databaseSizesPolicy.has.value && !databaseSizes.length" class="text-muted text-sm">No database sizes exist yet.</p>
+          <p v-if="databaseSizesPolicy.has.value && !databaseSizes.length" class="text-muted text-sm">{{ $t('planDetail.noDatabaseSizes') }}</p>
           <label v-for="s in databaseSizes" :key="s.id" class="checkbox-label">
             <input type="checkbox" :checked="planSizes.includes(s.id)" :disabled="!databaseSizesPolicy.mutable.value" @change="toggleSize(s.id)" />
             {{ s.display_name || s.name }} <span class="text-muted">({{ sizeSummary(s) }})</span>
-            <span v-if="planSizes[0] === s.id" class="badge badge-info" style="margin-left: 6px">default</span>
+            <span v-if="planSizes[0] === s.id" class="badge badge-info" style="margin-left: 6px">{{ $t('planDetail.default') }}</span>
             <button
               v-else-if="planSizes.includes(s.id) && databaseSizesPolicy.mutable.value"
               type="button"
               class="btn btn-ghost btn-sm"
               @click.prevent="makeDefaultSize(s.id)"
-            >Make default</button>
+            >{{ $t('action.makeDefault') }}</button>
           </label>
-          <p class="form-hint">None checked leaves sizes optional: workspaces may pick any size, or set memory and CPU themselves.</p>
+          <p class="form-hint">{{ $t('planDetail.databaseSizesOptional') }}</p>
         </div>
       </div>
 
       <div class="card mt-4">
-        <div class="card-header"><h2>Storage classes</h2></div>
+        <div class="card-header"><h2>{{ $t('adminNav.infrastructure.storageClasses') }}</h2></div>
         <div class="card-body">
-          <p class="form-hint" style="margin-top: 0">
-            The <router-link to="/admin/storage-classes">storage classes</router-link> this plan's workspaces may create volumes on —
-            which of the operator's disks their data lands on. Checking none offers every class, leaving the choice to the node's
-            default. Enforced only while plan enforcement is on.
-          </p>
-          <p v-if="!storageClasses.length" class="text-muted text-sm">No storage classes are registered yet.</p>
+          <i18n-t keypath="planDetail.storageClassesHint" tag="p" class="form-hint" style="margin-top: 0"><template #link><router-link to="/admin/storage-classes">{{ $t('planDetail.storageClasses2') }}</router-link></template></i18n-t>
+          <p v-if="!storageClasses.length" class="text-muted text-sm">{{ $t('planDetail.noStorageClasses') }}</p>
           <label v-for="c in storageClasses" :key="c.id" class="checkbox-label">
             <input type="checkbox" :checked="planClasses.includes(c.name)" @change="toggleClass(c.name)" />
             {{ c.display_name || c.name }} <span class="text-muted mono">{{ c.name }}</span>
-            <span v-if="!c.enabled" class="badge" style="margin-left: 6px">disabled</span>
+            <span v-if="!c.enabled" class="badge" style="margin-left: 6px">{{ $t('planDetail.disabled') }}</span>
           </label>
           <div v-if="form" class="form-group" style="margin-top: 12px; max-width: 360px">
-            <label class="form-label">Default storage class</label>
+            <label class="form-label">{{ $t('planDetail.defaultStorageClass') }}</label>
             <select v-model="form.default_storage_class" class="form-select">
-              <option value="">The node's own default</option>
+              <option value="">{{ $t('planDetail.nodeDefault') }}</option>
               <option
                 v-for="c in storageClasses.filter((c) => !planClasses.length || planClasses.includes(c.name))"
                 :key="c.id"
                 :value="c.name"
               >{{ c.display_name || c.name }}</option>
             </select>
-            <p class="form-hint">Used when a volume names no class, before the node's default.</p>
+            <p class="form-hint">{{ $t('planDetail.defaultStorageClassHint') }}</p>
           </div>
         </div>
       </div>
 
       <!-- Metadata -->
       <div class="card mt-4">
-        <div class="card-header"><h2>Details</h2></div>
+        <div class="card-header"><h2>{{ $t('planDetail.details') }}</h2></div>
         <div class="card-body details">
-          <div class="detail"><span class="text-muted">Plan ID</span><span><code>{{ plan.id }}</code></span></div>
-          <div class="detail"><span class="text-muted">Created</span><span>{{ fmtDate(plan.created_at) }}</span></div>
-          <div class="detail"><span class="text-muted">Updated</span><span>{{ fmtDate(plan.updated_at) }}</span></div>
+          <div class="detail"><span class="text-muted">{{ $t('planDetail.planId') }}</span><span><code>{{ plan.id }}</code></span></div>
+          <div class="detail"><span class="text-muted">{{ $t('dashboard.col.created') }}</span><span>{{ fmtDate(plan.created_at) }}</span></div>
+          <div class="detail"><span class="text-muted">{{ $t('planDetail.updated') }}</span><span>{{ fmtDate(plan.updated_at) }}</span></div>
         </div>
       </div>
 
       <div class="save-bar">
-        <button class="btn btn-secondary" @click="router.push('/admin/plans')">Cancel</button>
+        <button class="btn btn-secondary" @click="router.push('/admin/plans')">{{ $t('action.cancel') }}</button>
         <button class="btn btn-primary" :disabled="saving || !form.name.trim()" @click="save">{{ saving ? 'Saving…' : 'Save changes' }}</button>
       </div>
     </template>
