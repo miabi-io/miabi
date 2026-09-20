@@ -92,6 +92,26 @@ func SeedAdmin(db *gorm.DB, email, password string) (*models.User, error) {
 	return admin, nil
 }
 
+// AdoptDefaultOrganizationOwner makes the platform admin the owner of the default organization when
+// it has none. The default organization is seeded before any user exists, so it cannot take an owner
+// at creation the way a later one does — and the first platform admin is a deterministic answer,
+// unlike "whoever signs in first". Idempotent: an organization that already has an owner keeps it.
+func AdoptDefaultOrganizationOwner(db *gorm.DB, adminID uint) error {
+	if adminID == 0 {
+		return nil
+	}
+	res := db.Model(&models.Organization{}).
+		Where("is_default = ? AND owner_user_id = ?", true, 0).
+		Update("owner_user_id", adminID)
+	if res.Error != nil {
+		return fmt.Errorf("adopt default organization owner: %w", res.Error)
+	}
+	if res.RowsAffected > 0 {
+		logger.Info("the platform admin now owns the default organization", "user", adminID)
+	}
+	return nil
+}
+
 // SeedPlans creates the built-in plan catalog on first boot if no plans exist.
 // Idempotent — a no-op once any plan is present (so admin edits are preserved).
 // Limits use -1 for unlimited, 0 for none.

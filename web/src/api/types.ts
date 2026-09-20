@@ -857,6 +857,8 @@ export interface OAuthProvider {
   username_claim?: string
   default_workspace_id?: number | null
   default_role?: string
+  /** The organization accounts registered through this provider belong to; null = the default one. */
+  organization_id?: number | null
   created_at?: string
 }
 

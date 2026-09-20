@@ -45,6 +45,25 @@ type User struct {
 
 func (u *User) IsAdmin() bool { return u.Role == SystemRoleAdmin }
 
+// AfterCreate makes a user the owner of their organization when it has none.
+//
+// An organization normally gets its owner when an admin creates it; this fills the gap left when
+// nobody was named, so a realm provisioned by SSO is not left accountable to no one. It never
+// overrides a choice: the owner_user_id = 0 predicate is also what stops two users created at once
+// from both claiming it. A user in no organization claims nothing — the default organization's
+// owner is the first platform admin, assigned at seeding.
+//
+// Bookkeeping, not identity: a failure here must not fail the account it was created for.
+func (u *User) AfterCreate(tx *gorm.DB) error {
+	if u.OrganizationID == nil || *u.OrganizationID == 0 {
+		return nil
+	}
+	_ = tx.Model(&Organization{}).
+		Where("id = ? AND owner_user_id = ?", *u.OrganizationID, 0).
+		Update("owner_user_id", u.ID).Error
+	return nil
+}
+
 func (u *User) BeforeCreate(tx *gorm.DB) error {
 	if h := slug.Make(u.Username, ""); h != "" {
 		u.Username = h

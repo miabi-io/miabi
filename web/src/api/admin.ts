@@ -108,6 +108,12 @@ export interface OAuthProviderPayload {
   name_claim?: string
   username_claim?: string
   default_workspace_id?: number
+  /**
+   * The organization accounts this provider registers belong to. Accepted on create only: an
+   * existing account is never moved between organizations by signing in, so changing it later
+   * would split the provider's users across two tenants.
+   */
+  organization_id?: number
   default_role?: string
 }
 
