@@ -61,6 +61,14 @@ func (r *Router) clustersRoutes() []okapi.RouteDefinition {
 			Summary:     "Get a cluster",
 		},
 		{
+			Method:      http.MethodGet,
+			Path:        "/{clusterID}/dedication",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.cluster.Dedication,
+			Summary:     "What a change of owning organization would affect in this location",
+		},
+		{
 			Method:      http.MethodPatch,
 			Path:        "/{clusterID}",
 			Group:       g,

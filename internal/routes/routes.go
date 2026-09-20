@@ -507,6 +507,9 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	appService.SetClusterCap(clusterService) // gate "service" runtime apps on cluster mode
 	// Names the organization a dedicated cluster belongs to, for the console's badge.
 	clusterService.SetOrgLabels(organizationService.Labels)
+	// A cluster changing hands moves the organization's default location with it, so the default
+	// never goes on naming hardware the organization may no longer place in.
+	clusterService.SetOrgDefaultAligner(organizationService.AlignDefaultCluster)
 	housekeepingService.SetSwarmManagers(clusterService)
 	housekeepingService.SetNodes(nodeService) // reach a node's swarm manager, to remove an orphaned service
 	// The referenced-image guard: what apps, rollback-able releases, databases and node gateways name

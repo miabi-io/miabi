@@ -5,7 +5,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
 import { useLicenseStore } from '@/stores/license'
-import { clustersApi } from '@/api/clusters'
+import { clustersApi, type DedicationImpact } from '@/api/clusters'
 import { clusterApi } from '@/api/cluster'
 import { nodesApi } from '@/api/nodes'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -61,7 +61,7 @@ const editForm = ref({
   display_name: '', location_code: '', visibility: 'all' as Cluster['visibility'], cordoned: false,
   external_base_domain: '', external_cert_provider: '',
   service_endpoint_mode: 'vip' as NonNullable<Cluster['service_endpoint_mode']>,
-  ingress_ip: '', ingress_hostname: '', organization_id: 0,
+  ingress_ip: '', ingress_hostname: '',
 })
 
 // Dedicating a location is entitled; the picker loads the organizations itself.
@@ -77,7 +77,6 @@ function openEdit() {
     service_endpoint_mode: cluster.value?.service_endpoint_mode ?? 'vip',
     ingress_ip: cluster.value?.ingress_ip ?? '',
     ingress_hostname: cluster.value?.ingress_hostname ?? '',
-    organization_id: cluster.value?.organization_id ?? 0,
   }
   showEdit.value = true
 }
@@ -122,11 +121,6 @@ async function persistEdit() {
       service_endpoint_mode: editForm.value.service_endpoint_mode,
       ingress_ip: editForm.value.ingress_ip.trim(),
       ingress_hostname: editForm.value.ingress_hostname.trim(),
-      // Only sent when it changed: the field is entitled, so an unrelated edit must not trip the
-      // licence check on an install that never dedicates a location.
-      ...(editForm.value.organization_id !== (cluster.value.organization_id ?? 0)
-        ? { organization_id: editForm.value.organization_id }
-        : {}),
     })).data.data
     showEdit.value = false
     notify.success('Cluster updated')
@@ -134,6 +128,52 @@ async function persistEdit() {
     notify.apiError(e, 'Failed to update the cluster')
   } finally {
     saving.value = false
+  }
+}
+
+// --- Dedication (impactful: it decides who may see and place here, and strands whatever the new
+// owner does not own). Split out of Edit and gated behind an explicit acknowledgement, the same way
+// a node's connectivity is. Visibility follows from it rather than being set beside it. ---
+const showDedication = ref(false)
+const dedicationSaving = ref(false)
+const dedicationAck = ref(false)
+const dedicationImpact = ref<DedicationImpact | null>(null)
+const dedicationTarget = ref(0)
+
+const dedicatedTo = computed(() => cluster.value?.organization_name || '')
+// Whose workloads the incoming owner would not own, and so would strand.
+const strandedBy = computed(() => {
+  const target = dedicationTarget.value
+  return (dedicationImpact.value?.tenants ?? []).filter((t) => target === 0 || t.organization_id !== target)
+})
+const strandedCount = computed(() => strandedBy.value.reduce((n, t) => n + t.workloads, 0))
+const dedicationChanged = computed(() => dedicationTarget.value !== (cluster.value?.organization_id ?? 0))
+
+function openDedication() {
+  if (!cluster.value) return
+  dedicationAck.value = false
+  dedicationTarget.value = cluster.value.organization_id ?? 0
+  dedicationImpact.value = null
+  clustersApi.dedication(cluster.value.id)
+    .then((r) => { dedicationImpact.value = r.data.data })
+    .catch(() => { dedicationImpact.value = null })
+  showDedication.value = true
+}
+
+async function submitDedication() {
+  if (!cluster.value || !dedicationAck.value || !dedicationChanged.value) return
+  dedicationSaving.value = true
+  try {
+    cluster.value = (await clustersApi.update(cluster.value.id, {
+      organization_id: dedicationTarget.value,
+      acknowledge: true,
+    })).data.data
+    showDedication.value = false
+    notify.success(dedicationTarget.value === 0 ? 'Location released to shared' : 'Location dedicated')
+  } catch (e) {
+    notify.apiError(e, 'Failed to change who this location belongs to')
+  } finally {
+    dedicationSaving.value = false
   }
 }
 
@@ -488,6 +528,14 @@ function swarmClass(n: Server): string {
           </dd>
           <dt>Mode</dt>
           <dd>{{ cluster.mode === 'swarm' ? 'Docker Swarm' : 'Standalone (one plain-Docker node)' }}</dd>
+          <dt>Belongs to</dt>
+          <dd>
+            <template v-if="cluster.dedicated">
+              <DedicatedBadge :dedicated="true" :organization="dedicatedTo" />
+            </template>
+            <span v-else>Shared — any workspace may place here</span>
+            <button v-if="eeOrgs" class="btn btn-ghost btn-sm" @click="openDedication">Change</button>
+          </dd>
           <dt>Manager node</dt>
           <dd>
             <router-link v-if="managerNode" :to="`/admin/nodes/${managerNode.id}`">{{ managerNode.display_name || managerNode.name }}</router-link>
@@ -703,25 +751,25 @@ function swarmClass(n: Server): string {
             </div>
             <div class="form-group">
               <label class="form-label">Who can place here</label>
-              <select v-model="editForm.visibility" class="form-select">
-                <option value="all">All workspaces</option>
-                <option value="restricted">Platform admins only</option>
-                <option value="organization" :disabled="!eeOrgs">
-                  One organization {{ eeOrgs ? '' : '(Enterprise)' }}
-                </option>
-              </select>
-            </div>
-            <div v-if="editForm.visibility === 'organization'" class="form-group">
-              <OrganizationPicker
-                v-model="editForm.organization_id"
-                label="Organization"
-                default-label="Select an organization…"
-                :disabled="!eeOrgs"
-              />
-              <p class="form-hint">
-                Only this organization sees the location and may place in it — and it is then confined to the locations
-                it owns, so its workloads never land on shared hardware. Resources already here do not move.
-              </p>
+              <template v-if="cluster?.dedicated">
+                <p class="form-static">
+                  <DedicatedBadge :dedicated="true" :organization="dedicatedTo" />
+                </p>
+                <p class="form-hint">
+                  Only {{ dedicatedTo || 'its organization' }} sees this location and may place in it. Changing that is
+                  its own action — close this and use Change beside “Belongs to”.
+                </p>
+              </template>
+              <template v-else>
+                <select v-model="editForm.visibility" class="form-select">
+                  <option value="all">All workspaces</option>
+                  <option value="restricted">Platform admins only</option>
+                </select>
+                <p class="form-hint">
+                  To give the location to one organization, use Change beside “Belongs to”: it decides who may see and
+                  place here, so it is confirmed on its own rather than saved with the rest of this form.
+                </p>
+              </template>
             </div>
             <div class="form-group">
               <label class="form-label"><input v-model="editForm.cordoned" type="checkbox" /> Cordoned</label>
@@ -789,6 +837,66 @@ function swarmClass(n: Server): string {
     </Teleport>
 
     <Teleport to="body">
+      <AppModal v-if="showDedication" @close="showDedication = false">
+        <div class="modal-header">
+          <h3>Who this location belongs to</h3>
+          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDedication = false"><span class="mdi mdi-close"></span></button>
+        </div>
+        <div class="modal-body">
+          <OrganizationPicker
+            v-model="dedicationTarget"
+            label="Organization"
+            default-label="Shared — any workspace may place here"
+          />
+          <p class="form-hint">
+            A dedicated location is seen only by its organization, and that organization is then confined to the
+            locations it owns, so its workloads never land on shared hardware. Resources already here do not move.
+          </p>
+
+          <div class="ded-impact">
+            <p v-if="!dedicationImpact" class="cell-sub"><span class="spinner spinner-sm"></span> Reading what runs here…</p>
+            <template v-else-if="dedicationImpact.workloads === 0">
+              <p class="cell-sub">Nothing runs here yet, so nothing is affected.</p>
+            </template>
+            <template v-else>
+              <p class="ded-impact-title">{{ dedicationImpact.workloads }} workload(s) run here</p>
+              <ul class="ded-tenants">
+                <li v-for="tnt in dedicationImpact.tenants" :key="tnt.organization_id">
+                  <span>{{ tnt.name || 'Workspaces in no organization' }}</span>
+                  <span class="cell-sub">{{ tnt.workloads }}</span>
+                </li>
+              </ul>
+            </template>
+          </div>
+
+          <div v-if="dedicationChanged && strandedCount > 0" class="app-banner app-banner--warning" style="margin-top: 12px">
+            <span class="mdi mdi-alert-outline app-banner-icon"></span>
+            <div class="app-banner-content">
+              <p class="app-banner-title">{{ strandedCount }} workload(s) would be left behind</p>
+              <p class="app-banner-text">
+                They keep running, but the workspaces that own them can no longer see, scale or place beside them here.
+                Move or delete them first.
+              </p>
+            </div>
+          </div>
+
+          <label v-if="dedicationChanged" class="ded-ack">
+            <input v-model="dedicationAck" type="checkbox" />
+            <span>
+              I understand this changes who may see and place in this location
+              <template v-if="dedicationTarget === 0">, and that its organization loses the guarantee that its
+              workloads run on hardware nobody else shares</template>.
+            </span>
+          </label>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="showDedication = false">Cancel</button>
+          <button class="btn btn-danger" :disabled="dedicationSaving || !dedicationChanged || !dedicationAck" @click="submitDedication">
+            {{ dedicationSaving ? 'Saving…' : dedicationTarget === 0 ? 'Release to shared' : 'Dedicate location' }}
+          </button>
+        </div>
+      </AppModal>
+
       <AppModal v-if="showGateway" @close="showGateway = false">
         <div class="modal-header">
           <h3>Cluster gateway</h3>
@@ -1098,6 +1206,14 @@ function swarmClass(n: Server): string {
 </template>
 
 <style scoped>
+.ded-impact { margin-top: 14px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; }
+.ded-impact-title { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.ded-tenants { margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.ded-tenants li { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+.ded-ack { display: flex; align-items: flex-start; gap: 8px; margin-top: 14px; font-size: 13px; line-height: 1.5; }
+.form-static { margin: 0; }
+.spinner-sm { width: 13px; height: 13px; }
+
 .back-link { display: inline-flex; align-items: center; gap: 4px; color: var(--text-muted); font-size: 13px; text-decoration: none; margin-bottom: 4px; }
 .back-link:hover { color: var(--text); }
 .page-header h1 { display: flex; align-items: center; gap: 8px; }

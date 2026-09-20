@@ -40,6 +40,10 @@ type ClusterPatch struct {
 	// OrganizationID dedicates the cluster to one organization; 0 releases it back to shared. Set it
 	// together with Visibility "organization" — the handler keeps the two in step.
 	OrganizationID *uint
+	// Acknowledge confirms the caller accepts what changing the dedication does to the tenants
+	// already here. Required whenever OrganizationID actually changes hands: it decides who may see
+	// and place in the location, and it strands whatever the new owner does not own.
+	Acknowledge bool
 }
 
 // clearStaleDefaults drops workspace default locations that dedicating a cluster just invalidated.
@@ -130,16 +134,25 @@ func (s *Service) UpdateCluster(id uint, p ClusterPatch) (*models.Cluster, error
 		}
 		cols["visibility"] = *p.Visibility
 	}
-	if p.OrganizationID != nil {
-		if *p.OrganizationID != 0 && c.OrganizationID == nil {
+	previousOrg := uint(0)
+	if c.OrganizationID != nil {
+		previousOrg = *c.OrganizationID
+	}
+	if p.OrganizationID != nil && *p.OrganizationID != previousOrg {
+		if *p.OrganizationID != 0 {
 			// Dedicating hides the cluster from every other tenant. Their workloads would keep
 			// running here while their workspace could no longer see, scale or place beside them —
-			// so refuse rather than strand them.
+			// so refuse rather than strand them. A reassignment strands the previous owner the same
+			// way, which is why this is not limited to a location nobody owns yet. Checked before
+			// the acknowledgement: this one cannot be acknowledged away.
 			if n, err := s.foreignWorkloads(c.ID, *p.OrganizationID); err != nil {
 				return nil, err
 			} else if n > 0 {
 				return nil, fmt.Errorf("%w: %d still here", ErrClusterHasForeignWorkloads, n)
 			}
+		}
+		if !p.Acknowledge {
+			return nil, ErrDedicationAckRequired
 		}
 		if *p.OrganizationID == 0 {
 			cols["organization_id"] = nil
@@ -193,11 +206,12 @@ func (s *Service) UpdateCluster(id uint, p ClusterPatch) (*models.Cluster, error
 			return nil, err
 		}
 	}
-	if p.OrganizationID != nil {
+	if p.OrganizationID != nil && *p.OrganizationID != previousOrg {
 		// Dedicating a location invalidates the default location of every workspace that may no
 		// longer place there — the ones outside the organization, and the organization's own if it
 		// was pointing at shared hardware. Left alone they are skipped silently at every deploy.
 		s.clearStaleDefaults()
+		s.alignOrgDefaults(c.ID, previousOrg, *p.OrganizationID)
 	}
 	if len(external) > 0 {
 		s.externalChanged(c.ID)

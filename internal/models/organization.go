@@ -40,8 +40,12 @@ type Organization struct {
 	WorkspaceCount int64 `json:"workspace_count" gorm:"-"`
 }
 
-// DefaultOrganizationName is the handle of the seeded default organization.
-const DefaultOrganizationName = "default"
+// DefaultOrganizationName is the handle of the seeded default organization, and
+// DefaultOrganizationLabel the label it is seeded with.
+const (
+	DefaultOrganizationName  = "default"
+	DefaultOrganizationLabel = "Miabi Default"
+)
 
 // WorkspacesUnlimited reports whether the org has no workspace cap.
 func (o *Organization) WorkspacesUnlimited() bool { return o != nil && o.MaxWorkspaces < 0 }
