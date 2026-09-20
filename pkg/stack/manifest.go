@@ -32,6 +32,21 @@ const (
 	ManifestPathEnv = "MIABI_STACK_FILE"
 )
 
+// UserConfigDir is the per-user install's directory, under $HOME. It holds the same files an
+// /etc/miabi install does — the manifest and, beside it, the gateway config — because everything
+// else is resolved relative to the manifest.
+const UserConfigDir = ".miabi"
+
+// UserConfigPath is where a non-root install keeps its manifest: ~/.miabi/miabi.yaml. Empty when
+// there is no home directory to put it in, which is the one case the caller must handle.
+func UserConfigPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return ""
+	}
+	return filepath.Join(home, UserConfigDir, "miabi.yaml")
+}
+
 // manifestMode is 0600: the file holds the database password, JWT secret and encryption key in plain text,
 // exactly as .env does today, so anyone who can read it owns the install. This is not weaker than Compose's —
 // both are moot against an attacker who already has the Docker socket, which is root.
@@ -174,16 +189,37 @@ func (m *Manifest) GenerateGatewayConfigKey() error {
 }
 
 // ManifestPath resolves the manifest location: MIABI_CONFIG_FILE, else the older MIABI_STACK_FILE,
-// else /etc/miabi/miabi.yaml. The legacy /etc/miabi/stack.yaml is no longer read implicitly — Load
-// detects it and says how to migrate, which beats silently operating on a path the operator was
-// told is gone.
+// else an install that already exists, else where a new one belongs for this user.
+//
+// Finding an existing manifest wherever it is comes before choosing by privilege on purpose: an
+// operator who installed with sudo and then runs a read-only command without it must not be told
+// "not installed" while a working install sits in /etc/miabi. Only a fresh install picks a side.
 func ManifestPath() string {
 	for _, env := range []string{ConfigPathEnv, ManifestPathEnv} {
 		if p := strings.TrimSpace(os.Getenv(env)); p != "" {
 			return p
 		}
 	}
-	return DefaultConfigPath
+	return pickManifestPath(DefaultConfigPath, UserConfigPath(), fileExists, os.Geteuid() == 0)
+}
+
+// pickManifestPath is the choice itself, with the host's answers passed in so it can be tested: an
+// install that exists wins wherever it is, and only a fresh one is placed by privilege.
+func pickManifestPath(etc, user string, exists func(string) bool, root bool) string {
+	for _, p := range []string{etc, user} {
+		if p != "" && exists(p) {
+			return p
+		}
+	}
+	if root || user == "" {
+		return etc
+	}
+	return user
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }
 
 // Load reads the manifest. A missing file returns ErrNotInstalled, which callers
