@@ -222,21 +222,20 @@ onMounted(() => {
 <template>
   <div>
     <div class="page-header">
-      <h1>OAuth Providers</h1>
+      <h1>{{ $t('adminNav.identity.oauthProviders') }}</h1>
       <button
         class="btn btn-primary"
         :disabled="atProviderCap"
         :title="atProviderCap ? capTitle : ''"
         @click="openCreate"
       >
-        <span class="mdi mdi-plus"></span> Add provider
-      </button>
+        <span class="mdi mdi-plus"></span>{{ $t('oauth.addProvider') }}</button>
     </div>
 
     <div v-if="atProviderCap" class="cap-note">
       <span class="mdi mdi-lock-outline"></span>
       <span>{{ capTitle }}.</span>
-      <router-link to="/admin/license" class="cap-link">Manage license →</router-link>
+      <router-link to="/admin/license" class="cap-link">{{ $t('plans.manageLicense') }}</router-link>
     </div>
 
     <div class="card">
@@ -249,22 +248,20 @@ onMounted(() => {
           class="mdi mdi-shield-key-outline"
           style="font-size: 44px; color: var(--text-muted)"
         ></span>
-        <h3>No SSO providers</h3>
-        <p class="text-muted">
-          Add Google or a generic OIDC provider to enable single sign-on.
-        </p>
-        <button class="btn btn-primary mt-4" @click="openCreate">Add provider</button>
+        <h3>{{ $t('oauth.noSsoProviders') }}</h3>
+        <p class="text-muted">{{ $t('oauth.emptyHint') }}</p>
+        <button class="btn btn-primary mt-4" @click="openCreate">{{ $t('oauth.addProvider') }}</button>
       </div>
 
       <div v-else class="table-wrapper">
         <table>
           <thead>
             <tr>
-              <th>Provider</th>
-              <th>Type</th>
-              <th>Status</th>
-              <th>Visibility</th>
-              <th>Auto-register</th>
+              <th>{{ $t('oauth.provider') }}</th>
+              <th>{{ $t('oauth.type') }}</th>
+              <th>{{ $t('dashboard.col.status') }}</th>
+              <th>{{ $t('oauth.visibility') }}</th>
+              <th>{{ $t('oauth.autoRegister') }}</th>
               <th></th>
             </tr>
           </thead>
@@ -290,19 +287,19 @@ onMounted(() => {
                 <span class="badge">{{ p.type === 'google' ? 'Google' : 'OIDC' }}</span>
               </td>
               <td>
-                <span v-if="p.enabled" class="badge badge-dot badge-success">Enabled</span>
-                <span v-else class="badge badge-dot badge-warning">Disabled</span>
+                <span v-if="p.enabled" class="badge badge-dot badge-success">{{ $t('jobs.enabled') }}</span>
+                <span v-else class="badge badge-dot badge-warning">{{ $t('oauth.disabled') }}</span>
               </td>
               <td>
-                <span v-if="p.hidden" class="text-muted">Hidden</span>
-                <span v-else>Visible</span>
+                <span v-if="p.hidden" class="text-muted">{{ $t('oauth.hidden') }}</span>
+                <span v-else>{{ $t('oauth.visible') }}</span>
               </td>
               <td>{{ p.auto_register ? 'Yes' : 'No' }}</td>
               <td class="text-right actions" @click.stop>
-                <button class="btn-icon btn-icon-muted" title="Edit" aria-label="Edit" @click="openEdit(p)">
+                <button class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEdit(p)">
                   <span class="mdi mdi-pencil"></span>
                 </button>
-                <button class="btn-icon btn-icon-muted" title="Delete" aria-label="Delete" @click="pendingDelete = p">
+                <button class="btn-icon btn-icon-muted" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="pendingDelete = p">
                   <span class="mdi mdi-delete"></span>
                 </button>
               </td>
@@ -317,44 +314,44 @@ onMounted(() => {
       <AppModal v-if="showModal" @close="closeModal">
         <div class="modal-header">
           <h3>{{ editing ? 'Edit provider' : 'Add provider' }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="closeModal">
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="closeModal">
             <span class="mdi mdi-close"></span>
           </button>
         </div>
         <form @submit.prevent="save">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Display name</label>
+              <label class="form-label">{{ $t('oauth.displayName') }}</label>
               <input
                 v-model="form.name"
                 class="form-input"
-                placeholder="Google Workspace"
+                :placeholder="$t('oauth.googleWorkspace')"
                 required
                 autofocus
               />
             </div>
 
             <div class="form-group">
-              <label class="form-label">Type</label>
+              <label class="form-label">{{ $t('oauth.type') }}</label>
               <select v-model="form.type" class="form-select">
-                <option value="google">Google</option>
-                <option value="oidc">Generic OIDC</option>
+                <option value="google">{{ $t('oauth.google') }}</option>
+                <option value="oidc">{{ $t('oauth.genericOidc') }}</option>
               </select>
             </div>
 
             <div class="form-group">
-              <label class="form-label">Name</label>
-              <input v-model="form.slug" class="form-input" placeholder="google" />
-              <span class="form-hint">Auto-generated from name if blank.</span>
+              <label class="form-label">{{ $t('apps.form.name') }}</label>
+              <input v-model="form.slug" class="form-input" :placeholder="$t('oauth.googleSlug')" />
+              <span class="form-hint">{{ $t('oauth.slugHint') }}</span>
             </div>
 
             <div class="form-group">
-              <label class="form-label">Client ID</label>
+              <label class="form-label">{{ $t('oauth.clientId') }}</label>
               <input v-model="form.client_id" class="form-input" required />
             </div>
 
             <div class="form-group">
-              <label class="form-label">Client Secret</label>
+              <label class="form-label">{{ $t('oauth.clientSecret') }}</label>
               <input
                 v-model="form.client_secret"
                 class="form-input"
@@ -366,104 +363,95 @@ onMounted(() => {
 
             <template v-if="form.type === 'oidc'">
               <div class="form-group">
-                <label class="form-label">Issuer</label>
+                <label class="form-label">{{ $t('oauth.issuer') }}</label>
                 <input
                   v-model="form.issuer"
                   class="form-input"
-                  placeholder="https://id.example.com"
+                  :placeholder="$t('oauth.issuerPlaceholder')"
                 />
-                <span class="form-hint">OIDC discovery base URL, e.g. https://id.example.com</span>
+                <span class="form-hint">{{ $t('oauth.issuerHint') }}</span>
               </div>
               <div class="form-group">
-                <label class="form-label">Auth URL</label>
+                <label class="form-label">{{ $t('oauth.authUrl') }}</label>
                 <input v-model="form.auth_url" class="form-input" />
-                <span class="form-hint">Leave blank to use discovery.</span>
+                <span class="form-hint">{{ $t('oauth.discoveryHint') }}</span>
               </div>
               <div class="form-group">
-                <label class="form-label">Token URL</label>
+                <label class="form-label">{{ $t('oauth.tokenUrl') }}</label>
                 <input v-model="form.token_url" class="form-input" />
-                <span class="form-hint">Leave blank to use discovery.</span>
+                <span class="form-hint">{{ $t('oauth.discoveryHint') }}</span>
               </div>
               <div class="form-group">
-                <label class="form-label">Userinfo URL</label>
+                <label class="form-label">{{ $t('oauth.userinfoUrl') }}</label>
                 <input v-model="form.userinfo_url" class="form-input" />
-                <span class="form-hint">Leave blank to use discovery.</span>
+                <span class="form-hint">{{ $t('oauth.discoveryHint') }}</span>
               </div>
               <div class="form-group">
-                <label class="form-label">Email claim</label>
+                <label class="form-label">{{ $t('oauth.emailClaim') }}</label>
                 <input v-model="form.email_claim" class="form-input" placeholder="email" />
-                <span class="form-hint">Userinfo claim mapped to the user's email. Blank = standard "email".</span>
+                <span class="form-hint">{{ $t('oauth.emailClaimHint') }}</span>
               </div>
               <div class="form-group">
-                <label class="form-label">Name claim</label>
-                <input v-model="form.name_claim" class="form-input" placeholder="name" />
-                <span class="form-hint">Userinfo claim mapped to the display name. Blank = standard "name".</span>
+                <label class="form-label">{{ $t('oauth.nameClaim') }}</label>
+                <input v-model="form.name_claim" class="form-input" :placeholder="$t('oauth.nameClaimDefault')" />
+                <span class="form-hint">{{ $t('oauth.nameClaimHint') }}</span>
               </div>
               <div class="form-group">
-                <label class="form-label">Username claim</label>
+                <label class="form-label">{{ $t('oauth.usernameClaim') }}</label>
                 <input v-model="form.username_claim" class="form-input" placeholder="preferred_username" />
-                <span class="form-hint">
-                  Userinfo claim mapped to the handle. Blank = standard "preferred_username"; if the provider
-                  sends neither, the handle is derived from the email address.
-                </span>
+                <span class="form-hint">{{ $t('oauth.usernameClaimHint') }}</span>
               </div>
             </template>
 
             <div class="form-group">
-              <label class="form-label">Scopes</label>
+              <label class="form-label">{{ $t('oauth.scopes') }}</label>
               <input v-model="form.scopes" class="form-input" />
-              <span class="form-hint">Default: openid email profile</span>
+              <span class="form-hint">{{ $t('oauth.scopesHint') }}</span>
             </div>
 
             <div class="form-group">
-              <label class="form-label">Allowed domains</label>
+              <label class="form-label">{{ $t('oauth.allowedDomains') }}</label>
               <input v-model="form.allowed_domains" class="form-input" />
-              <span class="form-hint">CSV of allowed email domains; blank = any.</span>
+              <span class="form-hint">{{ $t('oauth.allowedDomainsHint') }}</span>
             </div>
 
             <div class="form-group">
-              <label class="form-label">Auto-join workspace</label>
+              <label class="form-label">{{ $t('oauth.autoJoinWorkspace') }}</label>
               <div class="autojoin-row">
                 <input
                   v-model="form.default_workspace_id"
                   class="form-input"
                   type="number"
                   min="0"
-                  placeholder="Workspace ID"
-                  aria-label="Auto-join workspace ID"
+                  :placeholder="$t('oauth.workspaceId')"
+                  :aria-label="$t('oauth.autoJoinWorkspaceId')"
                 />
-                <select v-model="form.default_role" class="form-select" aria-label="Auto-join role">
-                  <option value="">No auto-join</option>
-                  <option value="viewer">Viewer</option>
-                  <option value="developer">Developer</option>
-                  <option value="admin">Admin</option>
+                <select v-model="form.default_role" class="form-select" :aria-label="$t('oauth.autoJoinRole')">
+                  <option value="">{{ $t('oauth.noAutoJoin') }}</option>
+                  <option value="viewer">{{ $t('oauth.viewer') }}</option>
+                  <option value="developer">{{ $t('oauth.developer') }}</option>
+                  <option value="admin">{{ $t('oauth.admin') }}</option>
                 </select>
               </div>
-              <span class="form-hint">New SSO users join this workspace with the chosen role. Blank ID = none.</span>
+              <span class="form-hint">{{ $t('oauth.autoJoinHint') }}</span>
             </div>
 
             <div class="form-group toggles" style="margin-bottom: 0">
               <label class="check-row">
-                <input v-model="form.enabled" type="checkbox" />
-                Enabled
-              </label>
+                <input v-model="form.enabled" type="checkbox" />{{ $t('jobs.enabled') }}</label>
               <label class="check-row" :class="{ 'check-disabled': !hiddenCap.has.value && !form.hidden }">
                 <input
                   v-model="form.hidden"
                   type="checkbox"
                   :disabled="!hiddenCap.has.value && !form.hidden"
-                />
-                Hidden
-                <span v-if="!hiddenCap.has.value && !form.hidden" class="mdi mdi-lock-outline cap-lock" :title="hiddenTitle"></span>
+                />{{ $t('oauth.hidden') }}<span v-if="!hiddenCap.has.value && !form.hidden" class="mdi mdi-lock-outline cap-lock" :title="hiddenTitle"></span>
               </label>
               <label class="check-row">
-                <input v-model="form.auto_register" type="checkbox" />
-                Auto-register users
-              </label>
+                <input v-model="form.auto_register" type="checkbox" />{{ $t('oauth.autoRegisterUsers') }}</label>
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="closeModal">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="closeModal">{{ $t('action.cancel') }}</button>
             <button
               type="submit"
               class="btn btn-primary"

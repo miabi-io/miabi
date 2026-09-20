@@ -101,10 +101,10 @@ async function save() {
   try {
     if (editing.value) {
       await gitopsApi.update(currentWorkspaceId.value, editing.value.id, form.value)
-      notify.success('Git source updated')
+      notify.success(t('notify.gitOps.updated'))
     } else {
       await gitopsApi.create(currentWorkspaceId.value, form.value)
-      notify.success('Git source created')
+      notify.success(t('notify.gitOps.created'))
     }
     showModal.value = false
     load(currentWorkspaceId.value)
@@ -123,8 +123,8 @@ async function sync(s: GitSource) {
     const updated = res.data.data
     const idx = items.value.findIndex((i) => i.id === s.id)
     if (idx >= 0) items.value[idx] = updated
-    if (updated.status === 'error') notify.error(t('notify.gitOps.syncFailed', { name: s.name, message: updated.message || 'sync failed' }))
-    else notify.success(`${s.name}: synced`)
+    if (updated.status === 'error') notify.error(t('notify.gitOps.syncFailed', { name: s.name, message: updated.message || t('notify.gitOps.syncFailedFallback') }))
+    else notify.success(t('notify.gitOps.synced', { name: s.name }))
   } catch (e) {
     notify.apiError(e, 'Sync failed')
     load(currentWorkspaceId.value)
@@ -182,9 +182,9 @@ async function confirmDelete() {
       // Surface the per-resource outcome in a follow-up dialog.
       teardown.value = { name, result: res.teardown }
       if ((res.teardown.failures?.length ?? 0) > 0) notify.error(t('notify.gitOps.someResourcesCouldNotBe'))
-      else notify.success(res.message || 'Git source and its resources deleted')
+      else notify.success(res.message || t('notify.gitOps.deletedWithResources'))
     } else {
-      notify.success(res?.message || 'Git source deleted')
+      notify.success(res?.message || t('notify.gitOps.deleted'))
     }
   } catch (e) {
     notify.apiError(e)
@@ -221,25 +221,24 @@ function syncedTitle(s: GitSource) {
   <div>
     <div class="page-header">
       <div>
-        <h1>GitOps</h1>
-        <p class="subtitle">Continuously deploy from Git repositories of <code>miabi.io/v1</code> manifests.</p>
+        <h1>{{ $t('gitops.gitops') }}</h1>
+        <i18n-t keypath="gitops.subtitle" tag="p" class="subtitle"><template #kind><code>miabi.io/v1</code></template></i18n-t>
       </div>
-        <div v-if="items.length" class="view-toggle" role="group" aria-label="Display as">
-          <button class="btn-icon" :class="{ active: view === 'list' }" title="List view" aria-label="List view" @click="view = 'list'"><span class="mdi mdi-format-list-bulleted"></span></button>
-          <button class="btn-icon" :class="{ active: view === 'grid' }" title="Grid view" aria-label="Grid view" @click="view = 'grid'"><span class="mdi mdi-view-grid"></span></button>
+        <div v-if="items.length" class="view-toggle" role="group" :aria-label="$t('gitops.displayAs')">
+          <button class="btn-icon" :class="{ active: view === 'list' }" :title="$t('gitops.listView')" :aria-label="$t('gitops.listView')" @click="view = 'list'"><span class="mdi mdi-format-list-bulleted"></span></button>
+          <button class="btn-icon" :class="{ active: view === 'grid' }" :title="$t('gitops.gridView')" :aria-label="$t('gitops.gridView')" @click="view = 'grid'"><span class="mdi mdi-view-grid"></span></button>
         </div>
         <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate">
-          <span class="mdi mdi-plus"></span> New git source
-        </button>
+          <span class="mdi mdi-plus"></span>{{ $t('gitops.newGitSource') }}</button>
     </div>
 
     <div v-if="loading && items.length === 0" class="card"><div class="card-body"><span class="spinner"></span></div></div>
     <div v-else-if="items.length === 0" class="card">
       <div class="empty-state">
         <span class="mdi mdi-source-branch-sync" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No git sources yet</h3>
-        <p>Point Miabi at a repository of manifests and it will keep your workspace in sync.</p>
-        <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="openCreate">Create a git source</button>
+        <h3>{{ $t('gitops.noGitSourcesYet') }}</h3>
+        <p>{{ $t('gitops.emptyHint') }}</p>
+        <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="openCreate">{{ $t('gitops.createAGitSource') }}</button>
       </div>
     </div>
 
@@ -247,7 +246,7 @@ function syncedTitle(s: GitSource) {
     <div v-else-if="view === 'list'" class="card">
       <div class="table-wrapper">
         <table>
-          <thead><tr><th>Source</th><th>Status</th><th>Revision</th><th>Policy</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('gitops.source') }}</th><th>{{ $t('dashboard.col.status') }}</th><th>{{ $t('gitops.revision') }}</th><th>{{ $t('gitops.policy') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="s in items" :key="s.id" class="row-clickable" @click="openDetail(s)">
               <td>
@@ -271,17 +270,17 @@ function syncedTitle(s: GitSource) {
               </td>
               <td>
                 <span class="badge badge-neutral">{{ s.sync_policy }}</span>
-                <span v-if="s.prune" class="badge badge-neutral" title="Removes resources deleted from Git">prune</span>
-                <span v-if="s.self_heal" class="badge badge-neutral" title="Re-applies on drift">self-heal</span>
+                <span v-if="s.prune" class="badge badge-neutral" :title="$t('gitops.pruneTitle')">{{ $t('gitops.prune') }}</span>
+                <span v-if="s.self_heal" class="badge badge-neutral" :title="$t('gitops.selfHealTitle')">{{ $t('gitops.selfHeal') }}</span>
               </td>
               <td class="text-right table-actions" @click.stop>
-                <button class="btn-icon btn-icon-muted" title="Open topology" aria-label="Open topology" @click="openDetail(s)"><span class="mdi mdi-graph-outline"></span></button>
-                <button class="btn-icon btn-icon-muted" title="View diff" aria-label="View diff" @click="openDiff(s)"><span class="mdi mdi-file-compare"></span></button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" title="Sync now" aria-label="Sync now" :disabled="syncing === s.id" @click="sync(s)">
+                <button class="btn-icon btn-icon-muted" :title="$t('gitops.openTopology')" :aria-label="$t('gitops.openTopology')" @click="openDetail(s)"><span class="mdi mdi-graph-outline"></span></button>
+                <button class="btn-icon btn-icon-muted" :title="$t('gitops.viewDiff')" :aria-label="$t('gitops.viewDiff')" @click="openDiff(s)"><span class="mdi mdi-file-compare"></span></button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('gitops.syncNow')" :aria-label="$t('gitops.syncNow')" :disabled="syncing === s.id" @click="sync(s)">
                   <span class="mdi" :class="syncing === s.id ? 'mdi-loading mdi-spin' : 'mdi-sync'"></span>
                 </button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" title="Edit" aria-label="Edit" @click="openEdit(s)"><span class="mdi mdi-pencil-outline"></span></button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="toDelete = s"><span class="mdi mdi-delete-outline"></span></button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEdit(s)"><span class="mdi mdi-pencil-outline"></span></button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="toDelete = s"><span class="mdi mdi-delete-outline"></span></button>
               </td>
             </tr>
           </tbody>
@@ -309,17 +308,17 @@ function syncedTitle(s: GitSource) {
         </div>
         <div class="gc-badges">
           <span class="badge badge-neutral">{{ s.sync_policy }}</span>
-          <span v-if="s.prune" class="badge badge-neutral" title="Removes resources deleted from Git">prune</span>
-          <span v-if="s.self_heal" class="badge badge-neutral" title="Re-applies on drift">self-heal</span>
+          <span v-if="s.prune" class="badge badge-neutral" :title="$t('gitops.pruneTitle')">{{ $t('gitops.prune') }}</span>
+          <span v-if="s.self_heal" class="badge badge-neutral" :title="$t('gitops.selfHealTitle')">{{ $t('gitops.selfHeal') }}</span>
         </div>
         <div class="gc-actions table-actions" @click.stop>
-          <button class="btn-icon btn-icon-muted" title="Open topology" aria-label="Open topology" @click="openDetail(s)"><span class="mdi mdi-graph-outline"></span></button>
-          <button class="btn-icon btn-icon-muted" title="View diff" aria-label="View diff" @click="openDiff(s)"><span class="mdi mdi-file-compare"></span></button>
-          <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" title="Sync now" aria-label="Sync now" :disabled="syncing === s.id" @click="sync(s)">
+          <button class="btn-icon btn-icon-muted" :title="$t('gitops.openTopology')" :aria-label="$t('gitops.openTopology')" @click="openDetail(s)"><span class="mdi mdi-graph-outline"></span></button>
+          <button class="btn-icon btn-icon-muted" :title="$t('gitops.viewDiff')" :aria-label="$t('gitops.viewDiff')" @click="openDiff(s)"><span class="mdi mdi-file-compare"></span></button>
+          <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('gitops.syncNow')" :aria-label="$t('gitops.syncNow')" :disabled="syncing === s.id" @click="sync(s)">
             <span class="mdi" :class="syncing === s.id ? 'mdi-loading mdi-spin' : 'mdi-sync'"></span>
           </button>
-          <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" title="Edit" aria-label="Edit" @click="openEdit(s)"><span class="mdi mdi-pencil-outline"></span></button>
-          <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="toDelete = s"><span class="mdi mdi-delete-outline"></span></button>
+          <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEdit(s)"><span class="mdi mdi-pencil-outline"></span></button>
+          <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="toDelete = s"><span class="mdi mdi-delete-outline"></span></button>
         </div>
       </div>
     </div>
@@ -329,60 +328,55 @@ function syncedTitle(s: GitSource) {
       <AppModal v-if="showModal" @close="showModal = false">
         <div class="modal-header">
           <h3>{{ editing ? 'Edit git source' : 'New git source' }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="save">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Name</label>
-              <input v-model="form.name" class="form-input" placeholder="e.g. production" required autofocus aria-label="Name" />
+              <label class="form-label">{{ $t('apps.form.name') }}</label>
+              <input v-model="form.name" class="form-input" :placeholder="$t('gitops.namePlaceholder')" required autofocus :aria-label="$t('apps.form.name')" />
             </div>
             <div class="form-group">
-              <label class="form-label">Git repository</label>
-              <select v-model="form.git_repository_id" class="form-select" required aria-label="Git repository">
-                <option :value="null" disabled>Select a repository…</option>
+              <label class="form-label">{{ $t('apps.form.sourceGit') }}</label>
+              <select v-model="form.git_repository_id" class="form-select" required :aria-label="$t('apps.form.sourceGit')">
+                <option :value="null" disabled>{{ $t('gitops.selectARepository') }}</option>
                 <option v-for="c in credentials" :key="c.id" :value="c.id">{{ c.name }} — {{ c.url }}</option>
               </select>
-              <p v-if="credentials.length === 0" class="hint">
-                No git repositories yet — <router-link to="/git-repositories">add one</router-link> (public or private) first.
-              </p>
-              <p v-else class="hint">
-                The repository URL and credentials come from the selected git repository.
-                <router-link to="/git-repositories">Manage repositories →</router-link>
+              <i18n-t v-if="credentials.length === 0" keypath="gitops.noRepos" tag="p" class="hint"><template #link><router-link to="/git-repositories">{{ $t('gitops.addOne') }}</router-link></template></i18n-t>
+              <p v-else class="hint">{{ $t('gitops.repoHint') }}
+                <router-link to="/git-repositories">{{ $t('apps.form.manageRepos') }}</router-link>
               </p>
             </div>
             <div class="form-row">
               <div class="form-group">
-                <label class="form-label">Ref</label>
-                <input v-model="form.ref" class="form-input" placeholder="main" aria-label="Ref" />
+                <label class="form-label">{{ $t('gitops.ref') }}</label>
+                <input v-model="form.ref" class="form-input" placeholder="main" :aria-label="$t('gitops.ref')" />
               </div>
               <div class="form-group">
-                <label class="form-label">Path</label>
-                <input v-model="form.path" class="form-input mono" placeholder="envs/prod" aria-label="Path" />
+                <label class="form-label">{{ $t('gitops.path') }}</label>
+                <input v-model="form.path" class="form-input mono" placeholder="envs/prod" :aria-label="$t('gitops.path')" />
               </div>
             </div>
             <div class="form-group">
-              <label class="form-label">Sync policy</label>
+              <label class="form-label">{{ $t('gitops.syncPolicy') }}</label>
               <div class="tabs" style="margin-bottom: 0">
-                <button type="button" class="tab" :class="{ active: form.sync_policy === 'manual' }" @click="form.sync_policy = 'manual'">Manual</button>
-                <button type="button" class="tab" :class="{ active: form.sync_policy === 'auto' }" @click="form.sync_policy = 'auto'">Automatic</button>
+                <button type="button" class="tab" :class="{ active: form.sync_policy === 'manual' }" @click="form.sync_policy = 'manual'">{{ $t('gitops.manual') }}</button>
+                <button type="button" class="tab" :class="{ active: form.sync_policy === 'auto' }" @click="form.sync_policy = 'auto'">{{ $t('gitops.automatic') }}</button>
               </div>
-              <p class="hint">Automatic sources reconcile on the 3-minute sweep and on push webhook.</p>
+              <p class="hint">{{ $t('gitops.automaticHint') }}</p>
             </div>
-            <label class="check"><input type="checkbox" v-model="form.prune" /> <span>Prune — delete resources removed from Git</span></label>
-            <label class="check"><input type="checkbox" v-model="form.self_heal" /> <span>Self-heal — re-apply when live state drifts</span></label>
+            <label class="check"><input type="checkbox" v-model="form.prune" /> <span>{{ $t('gitops.pruneLabel') }}</span></label>
+            <label class="check"><input type="checkbox" v-model="form.self_heal" /> <span>{{ $t('gitops.selfHealLabel') }}</span></label>
             <label class="check" :class="{ disabled: !form.prune }">
               <input type="checkbox" v-model="form.allow_empty" :disabled="!form.prune" />
-              <span>Allow empty — let an empty repo prune <strong>all</strong> resources (intentional teardown)</span>
+              <i18n-t keypath="gitops.allowEmpty" tag="span"><template #all><strong>{{ $t('gitops.all') }}</strong></template></i18n-t>
             </label>
             <p v-if="form.allow_empty" class="hint warn">
-              <span class="mdi mdi-alert-outline"></span>
-              With this on, a commit that removes every manifest will delete all managed resources. A missing path is still always an error.
-            </p>
+              <span class="mdi mdi-alert-outline"></span>{{ $t('gitops.allowEmptyWarning') }}</p>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showModal = false">Cancel</button>
-            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Create') }}</button>
+            <button type="button" class="btn btn-secondary" @click="showModal = false">{{ $t('action.cancel') }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? $t('action.saving') : (editing ? $t('action.save') : $t('action.create')) }}</button>
           </div>
         </form>
       </AppModal>
@@ -393,14 +387,14 @@ function syncedTitle(s: GitSource) {
       <AppModal v-if="showDiff" dialog-class="modal-lg" @close="showDiff = false">
         <div class="modal-header">
           <h3>Diff — {{ diffSource?.name }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showDiff = false"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showDiff = false"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
           <div v-if="diffLoading" class="card-body"><span class="spinner"></span></div>
           <div v-else-if="planChanges.length === 0" class="empty-state">
             <span class="mdi mdi-check-circle-outline" style="font-size: 40px; color: var(--success-600)"></span>
-            <h3>In sync</h3>
-            <p>The workspace matches the desired state in Git.</p>
+            <h3>{{ $t('gitops.inSync') }}</h3>
+            <p>{{ $t('gitops.inSyncHint') }}</p>
           </div>
           <div v-else class="diff-list">
             <div v-for="(c, i) in planChanges" :key="i" class="diff-item">
@@ -421,11 +415,10 @@ function syncedTitle(s: GitSource) {
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="showDiff = false">Close</button>
+          <button type="button" class="btn btn-secondary" @click="showDiff = false">{{ $t('shell.close') }}</button>
           <button v-if="ws.canEdit && diffSource && planChanges.length" class="btn btn-primary" :disabled="syncing === diffSource.id"
             @click="diffSource && sync(diffSource).then(() => { showDiff = false })">
-            <span class="mdi mdi-sync"></span> Sync now
-          </button>
+            <span class="mdi mdi-sync"></span>{{ $t('gitops.syncNow') }}</button>
         </div>
       </AppModal>
     </Teleport>
@@ -435,7 +428,7 @@ function syncedTitle(s: GitSource) {
       <AppModal v-if="teardown" dialog-class="modal-lg" @close="teardown = null">
         <div class="modal-header">
           <h3>Resources removed — {{ teardown.name }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="teardown = null"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="teardown = null"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
           <p v-if="teardownFailed" class="teardown-summary failed">
@@ -447,7 +440,7 @@ function syncedTitle(s: GitSource) {
             {{ teardownItems.length }} resource{{ teardownItems.length === 1 ? '' : 's' }} removed.
           </p>
           <div v-if="teardownItems.length === 0" class="empty-state">
-            <p>This project had no managed resources to remove.</p>
+            <p>{{ $t('gitops.nothingToRemove') }}</p>
           </div>
           <div v-else class="diff-list">
             <div v-for="(it, i) in teardownItems" :key="i" class="diff-item">
@@ -460,7 +453,7 @@ function syncedTitle(s: GitSource) {
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="teardown = null">Close</button>
+          <button type="button" class="btn btn-secondary" @click="teardown = null">{{ $t('shell.close') }}</button>
         </div>
       </AppModal>
     </Teleport>
@@ -477,9 +470,7 @@ function syncedTitle(s: GitSource) {
     >
       <label class="cascade-option">
         <input type="checkbox" v-model="deleteResources" />
-        <span>
-          Also delete the resources this project created
-          <small>Removes its apps, databases, volumes and stacks. This cannot be undone.</small>
+        <span>{{ $t('gitops.alsoDeleteResources') }}<small>{{ $t('gitops.deleteWarning') }}</small>
         </span>
       </label>
     </ConfirmDialog>

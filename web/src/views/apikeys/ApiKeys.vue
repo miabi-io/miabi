@@ -28,7 +28,7 @@ function workspaceName(id?: number | null): string {
   return workspaces.value.find((w) => w.id === id)?.name ?? `Workspace #${id}`
 }
 async function copyWorkspaceId(id: number) {
-  if (await copyText(String(id))) notify.success('Workspace ID copied')
+  if (await copyText(String(id))) notify.success(t('notify.apiKeys.workspaceIdCopied'))
   else notify.error(t('notify.common.couldNotCopyId'))
 }
 
@@ -121,7 +121,7 @@ async function create() {
         workspace_id: workspaceScope.value === ACCOUNT ? undefined : workspaceScope.value,
       })
     ).data.data
-    notify.success('API key created — copy it now')
+    notify.success(t('notify.apiKeys.created'))
     load()
   } catch (e) {
     notify.apiError(e)
@@ -137,7 +137,7 @@ async function confirmRevoke() {
   revoking.value = true
   try {
     await apiKeyApi.revoke(toRevoke.value.id)
-    notify.success('API key revoked')
+    notify.success(t('notify.apiKeys.revoked'))
     toRevoke.value = null
     load()
   } catch (e) {
@@ -154,7 +154,7 @@ async function confirmDelete() {
   deleting.value = true
   try {
     await apiKeyApi.remove(toDelete.value.id)
-    notify.success('API key deleted')
+    notify.success(t('notify.apiKeys.deleted'))
     toDelete.value = null
     load()
   } catch (e) {
@@ -168,7 +168,7 @@ async function copyKey() {
   if (!createdKey.value) return
   if (await copyText(createdKey.value.key)) {
     copied.value = true
-    notify.success('Copied')
+    notify.success(t('notify.common.copied'))
     setTimeout(() => (copied.value = false), 2000)
   } else {
     notify.error(t('notify.apiKeys.copyFailedSelectAndCopy'))
@@ -197,21 +197,19 @@ function formatDate(s: string | null): string {
 <template>
   <div>
     <div class="page-header">
-      <h1>API Keys</h1>
+      <h1>{{ $t('nav.developers.apiKeys') }}</h1>
       <button class="btn btn-primary" @click="openCreate">
-        <span class="mdi mdi-plus"></span> New API key
-      </button>
+        <span class="mdi mdi-plus"></span>{{ $t('apiKeys.newApiKey') }}</button>
     </div>
 
     <div v-if="appInfo?.openapi_docs" class="card api-docs-callout">
       <div class="api-docs-text">
-        <strong>Developer resources</strong>
-        <span>Authenticate with your API key and explore the full HTTP API.</span>
+        <strong>{{ $t('apiKeys.developerResources') }}</strong>
+        <span>{{ $t('apiKeys.apiDocsHint') }}</span>
       </div>
       <div class="api-docs-links">
         <a class="btn btn-secondary btn-sm" href="/docs" target="_blank" rel="noopener noreferrer">
-          <span class="mdi mdi-book-open-variant"></span> API Reference
-        </a>
+          <span class="mdi mdi-book-open-variant"></span>{{ $t('nav.developers.apiReference') }}</a>
       </div>
     </div>
 
@@ -219,20 +217,20 @@ function formatDate(s: string | null): string {
       <div v-if="loading && keys.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="keys.length === 0" class="empty-state">
         <span class="mdi mdi-key-outline" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No API keys</h3>
-        <p>Create a key to access the Miabi API programmatically.</p>
-        <button class="btn btn-primary mt-4" @click="openCreate">Create an API key</button>
+        <h3>{{ $t('apiKeys.noApiKeys') }}</h3>
+        <p>{{ $t('apiKeys.emptyHint') }}</p>
+        <button class="btn btn-primary mt-4" @click="openCreate">{{ $t('apiKeys.createAnApiKey') }}</button>
       </div>
       <div v-else class="table-wrapper">
         <table>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Scopes</th>
-              <th>Allowed IPs</th>
-              <th>Last used</th>
-              <th>Expires</th>
-              <th>Status</th>
+              <th>{{ $t('apps.form.name') }}</th>
+              <th>{{ $t('apiKeys.scopes') }}</th>
+              <th>{{ $t('apiKeys.allowedIps') }}</th>
+              <th>{{ $t('apiKeys.lastUsed') }}</th>
+              <th>{{ $t('apiKeys.expires') }}</th>
+              <th>{{ $t('dashboard.col.status') }}</th>
               <th></th>
             </tr>
           </thead>
@@ -261,15 +259,15 @@ function formatDate(s: string | null): string {
                   <code v-for="(ip, i) in k.allowed_ips.slice(0, 2)" :key="i" style="margin-right: 4px; font-size: 12px">{{ ip }}</code>
                   <span v-if="k.allowed_ips.length > 2" style="font-size: 12px; color: var(--text-muted)">+{{ k.allowed_ips.length - 2 }}</span>
                 </template>
-                <span v-else style="color: var(--text-muted)">Any</span>
+                <span v-else style="color: var(--text-muted)">{{ $t('apiKeys.any') }}</span>
               </td>
               <td class="cell-sub">{{ k.last_used_at ? formatDate(k.last_used_at) : 'Never' }}</td>
               <td class="cell-sub">{{ formatDate(k.expires_at) }}</td>
               <td><span class="badge" :class="status(k).class">{{ status(k).label }}</span></td>
               <td class="text-right">
                 <div style="display: inline-flex; gap: 6px">
-                  <button v-if="isActive(k)" class="btn btn-sm btn-warning" @click="toRevoke = k">Revoke</button>
-                  <button v-if="canDelete(k)" class="btn btn-sm btn-danger" @click="toDelete = k">Delete</button>
+                  <button v-if="isActive(k)" class="btn btn-sm btn-warning" @click="toRevoke = k">{{ $t('apiKeys.revoke') }}</button>
+                  <button v-if="canDelete(k)" class="btn btn-sm btn-danger" @click="toDelete = k">{{ $t('action.delete') }}</button>
                 </div>
               </td>
             </tr>
@@ -281,40 +279,37 @@ function formatDate(s: string | null): string {
     <Teleport to="body">
       <AppModal v-if="showCreate" @close="showCreate = false">
         <div class="modal-header">
-          <h3>New API key</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('apiKeys.newApiKey') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
         </div>
 
         <template v-if="!createdKey">
           <form @submit.prevent="create">
             <div class="modal-body">
               <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="name" class="form-input" placeholder="e.g. CI pipeline" aria-label="Name" required autofocus />
+                <label class="form-label">{{ $t('apps.form.name') }}</label>
+                <input v-model="name" class="form-input" :placeholder="$t('apiKeys.namePlaceholder')" :aria-label="$t('apps.form.name')" required autofocus />
               </div>
 
               <div class="form-group">
-                <label class="form-label">Workspace access</label>
-                <select v-model="workspaceScope" class="form-select" aria-label="Workspace access">
+                <label class="form-label">{{ $t('apiKeys.workspaceAccess') }}</label>
+                <select v-model="workspaceScope" class="form-select" :aria-label="$t('apiKeys.workspaceAccess')">
                   <option v-for="w in workspaces" :key="w.id" :value="w.id">{{ w.name }}</option>
-                  <option :value="ACCOUNT">Account-wide (all my workspaces)</option>
+                  <option :value="ACCOUNT">{{ $t('apiKeys.accountWide') }}</option>
                 </select>
-                <small class="form-hint">
-                  A workspace key only touches that workspace and needs no workspace id when used.
-                  Account-wide keys reach all your workspaces — use only for cross-workspace automation.
-                </small>
+                <small class="form-hint">{{ $t('apiKeys.scopeHint') }}</small>
               </div>
 
               <div class="form-group">
-                <label class="form-label">Expiration</label>
-                <select v-model="expiry" class="form-select" aria-label="Expiration">
+                <label class="form-label">{{ $t('apiKeys.expiration') }}</label>
+                <select v-model="expiry" class="form-select" :aria-label="$t('apiKeys.expiration')">
                   <option v-for="opt in expiryOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                 </select>
-                <small class="form-hint">"Never" means the key will not expire.</small>
+                <small class="form-hint">{{ $t('apiKeys.neverHint') }}</small>
               </div>
 
               <div class="form-group">
-                <label class="form-label">Scopes</label>
+                <label class="form-label">{{ $t('apiKeys.scopes') }}</label>
                 <div class="scope-list">
                   <label v-for="opt in scopeOptions" :key="opt.value" class="scope-option">
                     <input type="checkbox" :checked="scopes.includes(opt.value)" @change="toggleScope(opt.value)" />
@@ -324,27 +319,26 @@ function formatDate(s: string | null): string {
                     </span>
                   </label>
                 </div>
-                <small class="form-hint">Scopes are fixed at creation. To change them, create a new key.</small>
+                <small class="form-hint">{{ $t('apiKeys.scopesFixed') }}</small>
                 <small v-if="registryOnly" class="form-hint registry-note">
-                  This key carries only registry scopes — use it for <code>docker login</code> /
-                  push / pull. It is rejected by the rest of the API.
+                  <i18n-t keypath="apiKeys.registryOnlyNote" tag="span"><template #cmd><code>docker login</code></template></i18n-t>
                 </small>
               </div>
 
               <div class="form-group" style="margin-bottom: 0">
-                <label class="form-label">Allowed IPs <span style="font-weight: 400; color: var(--text-muted)">(optional)</span></label>
+                <label class="form-label">{{ $t('apiKeys.allowedIps') }}<span style="font-weight: 400; color: var(--text-muted)">{{ $t('apiKeys.optional') }}</span></label>
                 <textarea
                   v-model="allowedIPs"
                   class="form-input"
                   rows="3"
-                  placeholder="Comma or newline separated, e.g.&#10;192.168.1.1&#10;10.0.0.0/24"
-                  aria-label="Allowed IPs"
+                  :placeholder="$t('apiKeys.allowedIpsPlaceholder')"
+                  :aria-label="$t('apiKeys.allowedIps')"
                 ></textarea>
-                <small class="form-hint">Restrict this key to specific IPs or CIDR ranges. Leave empty to allow all.</small>
+                <small class="form-hint">{{ $t('apiKeys.allowedIpsHint') }}</small>
               </div>
             </div>
             <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
+              <button type="button" class="btn btn-secondary" @click="showCreate = false">{{ $t('action.cancel') }}</button>
               <button type="submit" class="btn btn-primary" :disabled="creating || !name.trim() || scopes.length === 0">
                 {{ creating ? 'Creating…' : 'Create key' }}
               </button>
@@ -357,8 +351,8 @@ function formatDate(s: string | null): string {
             <div class="app-banner app-banner--warning">
               <span class="mdi mdi-alert-outline app-banner-icon"></span>
               <div class="app-banner-content">
-                <p class="app-banner-title">Copy your key now</p>
-                <p class="app-banner-text">This is the only time the full key is shown.</p>
+                <p class="app-banner-title">{{ $t('apiKeys.copyYourKeyNow') }}</p>
+                <p class="app-banner-text">{{ $t('apiKeys.onlyTimeShown') }}</p>
               </div>
             </div>
             <div class="code-block" style="margin-top: 14px">{{ createdKey.key }}</div>
@@ -368,22 +362,18 @@ function formatDate(s: string | null): string {
 
             <div v-if="createdKey.workspace_id" class="created-ws">
               <div class="created-ws-info">
-                <span class="created-ws-label">Workspace</span>
+                <span class="created-ws-label">{{ $t('apiKeys.workspace') }}</span>
                 <span class="created-ws-name">{{ workspaceName(createdKey.workspace_id) }}</span>
                 <code>ID {{ createdKey.workspace_id }}</code>
               </div>
               <button type="button" class="btn btn-secondary btn-sm" @click="copyWorkspaceId(createdKey.workspace_id)">
-                <span class="mdi mdi-content-copy"></span> Copy ID
-              </button>
+                <span class="mdi mdi-content-copy"></span>{{ $t('apiKeys.copyId') }}</button>
             </div>
-            <p v-if="createdKey.workspace_id" class="form-hint" style="margin-top: 6px">
-              This key is scoped to the workspace above — supply this workspace ID when targeting
-              resources via the API, CLI, or Terraform.
-            </p>
+            <p v-if="createdKey.workspace_id" class="form-hint" style="margin-top: 6px">{{ $t('apiKeys.workspaceScopedHint') }}</p>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="copyKey">{{ copied ? 'Copied!' : 'Copy key' }}</button>
-            <button type="button" class="btn btn-primary" @click="showCreate = false">Done</button>
+            <button type="button" class="btn btn-primary" @click="showCreate = false">{{ $t('apiKeys.done') }}</button>
           </div>
         </template>
       </AppModal>

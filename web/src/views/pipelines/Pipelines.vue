@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -12,11 +13,13 @@ import Pagination from '@/components/Pagination.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import PipelineWebhookModal from './PipelineWebhookModal.vue'
 import { relativeTime } from '@/utils/time'
+import { fmtDateTime } from '@/utils/datetime'
 import { statusMeta } from './status'
 import type { PipelineDefinition, Application, GitRepository, PipelineRunEvent } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const router = useRouter()
 const { currentWorkspaceId } = storeToRefs(ws)
@@ -192,10 +195,10 @@ async function save() {
         ? { name: editing.value.name, spec: '', enabled: form.value.enabled }
         : form.value
       await pipelineApi.update(currentWorkspaceId.value, editing.value.id, payload)
-      notify.success(editingRepoOwned.value ? (form.value.enabled ? 'Pipeline enabled' : 'Pipeline disabled') : 'Pipeline updated')
+      notify.success(t(editingRepoOwned.value ? (form.value.enabled ? 'notify.pipelines.enabled' : 'notify.pipelines.disabled') : 'notify.pipelines.updated'))
     } else {
       await pipelineApi.create(currentWorkspaceId.value, form.value)
-      notify.success('Pipeline created')
+      notify.success(t('notify.pipelines.created'))
     }
     showModal.value = false
     reload()
@@ -213,7 +216,7 @@ async function trigger(p: PipelineDefinition) {
     const run = (await pipelineApi.trigger(currentWorkspaceId.value, p.id)).data.data
     // Show it immediately and stay put; the stream takes over from here.
     p.last_run = { ...run } as PipelineDefinition['last_run']
-    notify.success(`${p.name}: run #${run.number} queued`, { detail: 'Open the run to follow its logs.' })
+    notify.success(t('notify.pipelines.runQueued', { name: p.name, number: run.number }), { detail: t('notify.pipelines.runQueuedDetail') })
   } catch (e) {
     notify.apiError(e, 'Could not trigger run')
   } finally {
@@ -228,7 +231,7 @@ async function confirmDelete() {
   deleting.value = true
   try {
     await pipelineApi.remove(currentWorkspaceId.value, toDelete.value.id)
-    notify.success('Pipeline deleted')
+    notify.success(t('notify.pipelines.deleted'))
     toDelete.value = null
     reload()
   } catch (e) {
@@ -255,25 +258,24 @@ function openLastRun(p: PipelineDefinition) {
   <div>
     <div class="page-header">
       <div>
-        <h1>Pipelines</h1>
-        <p class="subtitle">Build, test, and deploy on the internal runner with <code>kind: Pipeline</code>.</p>
+        <h1>{{ $t('pipelines.pipelines') }}</h1>
+        <i18n-t keypath="pipelines.subtitle" tag="p" class="subtitle"><template #kind><code>kind: Pipeline</code></template></i18n-t>
       </div>
       <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate">
-        <span class="mdi mdi-plus"></span> New pipeline
-      </button>
+        <span class="mdi mdi-plus"></span>{{ $t('pipelines.newPipeline') }}</button>
     </div>
 
     <div class="card">
       <div v-if="loading && items.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="items.length === 0" class="empty-state">
         <span class="mdi mdi-pipe" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No pipelines yet</h3>
-        <p>Define a pipeline-as-code to turn a commit into an image and a release.</p>
-        <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="openCreate">Create a pipeline</button>
+        <h3>{{ $t('pipelines.noPipelinesYet') }}</h3>
+        <p>{{ $t('pipelines.emptyHint') }}</p>
+        <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="openCreate">{{ $t('pipelines.createAPipeline') }}</button>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Pipeline</th><th>Source</th><th>Last run</th><th>State</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('pipelines.pipeline') }}</th><th>{{ $t('pipelines.source') }}</th><th>{{ $t('jobs.lastRun') }}</th><th>{{ $t('pipelines.state') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="p in items" :key="p.id">
               <td>
@@ -282,18 +284,17 @@ function openLastRun(p: PipelineDefinition) {
                   <span class="cell-text">
                     <span class="cell-title link" @click="openRuns(p)">
                       {{ p.name }}
-                      <span v-if="isRepoOwned(p)" class="repo-chip" :title="`Spec read from ${p.source_path} on ${p.source_ref || 'the default branch'}`">
-                        <span class="mdi mdi-source-branch"></span> from repo
-                      </span>
+                      <span v-if="isRepoOwned(p)" class="repo-chip" :title="$t('pipelines.specReadFrom', { path: p.source_path, ref: p.source_ref || $t('pipelines.defaultBranch') })">
+                        <span class="mdi mdi-source-branch"></span>{{ $t('pipelines.fromRepo') }}</span>
                     </span>
-                    <span class="cell-sub" :title="new Date(p.created_at).toLocaleString()">created {{ relativeTime(p.created_at) }}</span>
+                    <span class="cell-sub" :title="fmtDateTime(p.created_at)">{{ $t('pipelines.createdAgo', { time: relativeTime(p.created_at) }) }}</span>
                   </span>
                 </div>
               </td>
               <td>
                 <!-- Which source the pipeline clones: an application, a
                      repository, or nothing (commands only). -->
-                <span v-if="appName(p.application_id)" class="target-chip" title="Builds and deploys this application">
+                <span v-if="appName(p.application_id)" class="target-chip" :title="$t('pipelines.appSourceNote')">
                   <span class="mdi mdi-application-outline"></span> {{ appName(p.application_id) }}
                 </span>
                 <span
@@ -304,7 +305,7 @@ function openLastRun(p: PipelineDefinition) {
                   <span class="mdi mdi-git"></span> {{ repoLabel(p.git_repository) }}
                   <span v-if="p.branch" class="branch-chip">{{ p.branch }}</span>
                 </span>
-                <span v-else class="cell-sub" title="Commands only — nothing is checked out">—</span>
+                <span v-else class="cell-sub" :title="$t('pipelines.noSourceNote')">—</span>
               </td>
               <td>
                 <button v-if="p.last_run" class="last-run" :title="`Run #${p.last_run.number} · open`" @click="openLastRun(p)">
@@ -313,29 +314,29 @@ function openLastRun(p: PipelineDefinition) {
                   </span>
                   <span class="last-run-time">{{ relativeTime(p.last_run.started_at || p.last_run.created_at) }}</span>
                 </button>
-                <span v-else class="cell-sub">Never run</span>
+                <span v-else class="cell-sub">{{ $t('pipelines.neverRun') }}</span>
               </td>
               <td>
                 <span class="badge" :class="p.enabled ? 'badge-success' : 'badge-neutral'">{{ p.enabled ? 'enabled' : 'disabled' }}</span>
               </td>
               <td class="text-right table-actions">
-                <button class="btn-icon btn-icon-muted" title="View runs" aria-label="View runs" @click="openRuns(p)"><span class="mdi mdi-history"></span></button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" title="Run now" aria-label="Run now" :disabled="triggering === p.id || !p.enabled" @click="trigger(p)">
+                <button class="btn-icon btn-icon-muted" :title="$t('pipelines.viewRuns')" :aria-label="$t('pipelines.viewRuns')" @click="openRuns(p)"><span class="mdi mdi-history"></span></button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('jobs.runNow')" :aria-label="$t('jobs.runNow')" :disabled="triggering === p.id || !p.enabled" @click="trigger(p)">
                   <span class="mdi" :class="triggering === p.id ? 'mdi-loading mdi-spin' : 'mdi-play'"></span>
                 </button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" title="Push webhook" aria-label="Push webhook" @click="webhookFor = p">
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('pipelines.pushWebhook')" :aria-label="$t('pipelines.pushWebhook')" @click="webhookFor = p">
                   <span class="mdi mdi-webhook"></span>
                 </button>
                 <button
                   v-if="ws.canEdit"
                   class="btn-icon btn-icon-muted"
-                  :title="isRepoOwned(p) ? 'View (managed by repository)' : 'Edit'"
-                  :aria-label="isRepoOwned(p) ? 'View' : 'Edit'"
+                  :title="isRepoOwned(p) ? $t('pipelines.viewManaged') : $t('action.edit')"
+                  :aria-label="isRepoOwned(p) ? $t('pipelines.view') : $t('action.edit')"
                   @click="openEdit(p)"
                 >
                   <span class="mdi" :class="isRepoOwned(p) ? 'mdi-eye-outline' : 'mdi-pencil-outline'"></span>
                 </button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="toDelete = p"><span class="mdi mdi-delete-outline"></span></button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="toDelete = p"><span class="mdi mdi-delete-outline"></span></button>
               </td>
             </tr>
           </tbody>
@@ -349,33 +350,32 @@ function openLastRun(p: PipelineDefinition) {
       <AppModal v-if="showModal" dialog-class="modal-lg" @close="showModal = false">
         <div class="modal-header">
           <h3>{{ editing ? (editingRepoOwned ? 'Pipeline' : 'Edit pipeline') : 'New pipeline' }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showModal = false"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="save">
           <div class="modal-body">
             <div v-if="editingRepoOwned" class="repo-notice">
               <span class="mdi mdi-source-branch"></span>
               <div>
-                <strong>Managed by its repository.</strong>
-                Miabi re-reads <code>{{ editing?.source_path }}</code> on
-                <code>{{ editing?.source_ref || 'the default branch' }}</code> before every run, so this pipeline
-                can't be edited here — change the file in git and push. You can still disable it, which makes
-                <template v-if="appName(editing?.application_id)">{{ appName(editing?.application_id) }}</template>
-                <template v-else>its application</template>
-                build and deploy directly again.
+                <strong>{{ $t('pipelines.managedByItsRepository') }}</strong>
+                <i18n-t keypath="pipelines.repoNotice" tag="span">
+                  <template #path><code>{{ editing?.source_path }}</code></template>
+                  <template #ref><code>{{ editing?.source_ref || $t('pipelines.defaultBranch') }}</code></template>
+                  <template #app>{{ appName(editing?.application_id) || $t('pipelines.itsApplication') }}</template>
+                </i18n-t>
               </div>
             </div>
             <div class="form-row">
               <div class="form-group">
-                <label class="form-label">Name</label>
-                <input v-model="form.name" class="form-input" placeholder="e.g. web" required autofocus aria-label="Name" :disabled="editingRepoOwned" />
+                <label class="form-label">{{ $t('apps.form.name') }}</label>
+                <input v-model="form.name" class="form-input" :placeholder="$t('pipelines.namePlaceholder')" required autofocus :aria-label="$t('apps.form.name')" :disabled="editingRepoOwned" />
               </div>
               <div class="form-group">
-                <label class="form-label">Source</label>
-                <select v-model="sourceKind" class="form-select" aria-label="Source" :disabled="editingRepoOwned">
-                  <option value="none">None (commands only)</option>
-                  <option value="application">Application</option>
-                  <option value="repository">Repository</option>
+                <label class="form-label">{{ $t('pipelines.source') }}</label>
+                <select v-model="sourceKind" class="form-select" :aria-label="$t('pipelines.source')" :disabled="editingRepoOwned">
+                  <option value="none">{{ $t('pipelines.noneCommandsOnly') }}</option>
+                  <option value="application">{{ $t('pipelines.application') }}</option>
+                  <option value="repository">{{ $t('pipelines.repository') }}</option>
                 </select>
               </div>
             </div>
@@ -384,9 +384,9 @@ function openLastRun(p: PipelineDefinition) {
                  the image repository and the deploy target; a repository supplies
                  the checkout and the image only. -->
             <div v-if="sourceKind === 'application'" class="form-group">
-              <label class="form-label">Application <span class="text-muted">(source, image and deploy target)</span></label>
-              <select v-model="form.application_id" class="form-select" aria-label="Application" :disabled="editingRepoOwned">
-                <option :value="null">Select an application…</option>
+              <label class="form-label">{{ $t('pipelines.application') }} <span class="text-muted">{{ $t('pipelines.appHint') }}</span></label>
+              <select v-model="form.application_id" class="form-select" :aria-label="$t('pipelines.application')" :disabled="editingRepoOwned">
+                <option :value="null">{{ $t('pipelines.selectAnApplication') }}</option>
                 <option v-for="a in apps" :key="a.id" :value="a.id">{{ a.display_name || a.name }}</option>
               </select>
             </div>
@@ -394,36 +394,31 @@ function openLastRun(p: PipelineDefinition) {
             <template v-else-if="sourceKind === 'repository'">
               <div class="form-row">
                 <div class="form-group">
-                  <label class="form-label">Repository</label>
+                  <label class="form-label">{{ $t('pipelines.repository') }}</label>
                   <!-- Bound by name: the name is immutable and unique per
                        workspace, and it is the form a manifest or a CLI would
                        use — an id means nothing on another install. -->
-                  <select v-model="form.git_repository" class="form-select" aria-label="Repository" :disabled="editingRepoOwned">
-                    <option :value="null">Select a repository…</option>
+                  <select v-model="form.git_repository" class="form-select" :aria-label="$t('pipelines.repository')" :disabled="editingRepoOwned">
+                    <option :value="null">{{ $t('gitops.selectARepository') }}</option>
                     <option v-for="r in repos" :key="r.id" :value="r.name">{{ r.display_name || r.name }}</option>
                   </select>
-                  <p v-if="!repos.length" class="form-hint">
-                    No repositories registered yet — add one under
-                    <RouterLink to="/git-repositories">Git repositories</RouterLink>.
-                  </p>
+                  <i18n-t v-if="!repos.length" keypath="pipelines.noRepos" tag="p" class="form-hint"><template #link><RouterLink to="/git-repositories">{{ $t('pipelines.gitRepositories') }}</RouterLink></template></i18n-t>
                 </div>
                 <div class="form-group">
-                  <label class="form-label">Branch <span class="text-muted">(optional)</span></label>
-                  <input v-model="form.branch" class="form-input" placeholder="main" aria-label="Branch" :disabled="editingRepoOwned" />
-                  <p class="form-hint">Built by manual and scheduled runs. Blank uses the repository's default branch.</p>
+                  <label class="form-label">{{ $t('pipelines.branch') }} <span class="text-muted">{{ $t('pipelines.optional') }}</span></label>
+                  <input v-model="form.branch" class="form-input" placeholder="main" :aria-label="$t('pipelines.branch')" :disabled="editingRepoOwned" />
+                  <p class="form-hint">{{ $t('pipelines.branchHint') }}</p>
                 </div>
               </div>
-              <p class="form-hint source-note">
-                Builds and pushes to <code>{{ pipelineImageHint }}</code>. A <code>uses: deploy</code> step needs an
-                application, so it isn't available here. Builds are uncached for now.
-              </p>
+              <i18n-t keypath="pipelines.repoSourceNote" tag="p" class="form-hint source-note">
+                <template #image><code>{{ pipelineImageHint }}</code></template>
+                <template #step><code>uses: deploy</code></template>
+              </i18n-t>
             </template>
             <div class="form-group" style="margin-bottom: 0">
-              <label class="form-label">
-                Pipeline spec <span class="text-muted">(kind: Pipeline)</span>
+              <label class="form-label">{{ $t('pipelines.pipelineSpec') }} <span class="text-muted">(kind: Pipeline)</span>
                 <span v-if="editingRepoOwned" class="repo-chip">
-                  <span class="mdi mdi-source-branch"></span> managed by repository
-                </span>
+                  <span class="mdi mdi-source-branch"></span>{{ $t('pipelines.managedByRepository') }}</span>
               </label>
               <textarea
                 v-model="form.spec"
@@ -431,27 +426,30 @@ function openLastRun(p: PipelineDefinition) {
                 rows="16"
                 spellcheck="false"
                 required
-                aria-label="Pipeline spec"
+                :aria-label="$t('pipelines.pipelineSpec')"
                 :readonly="editingRepoOwned"
               ></textarea>
               <p v-if="editingRepoOwned" class="form-hint">
-                Read-only.
-                <template v-if="editing?.source_commit">Synced from commit {{ shortCommit(editing.source_commit) }}.</template>
+                {{ $t('pipelines.readOnly') }}
+                <template v-if="editing?.source_commit">{{ $t('pipelines.syncedFromCommit', { commit: shortCommit(editing.source_commit) }) }}</template>
               </p>
               <p v-else class="form-hint">
-                <code>env</code> applies to every step; a step&rsquo;s own <code>env</code> wins. Values may reference a
-                <router-link :to="{ name: 'secrets' }">workspace secret</router-link>
-                as <code>{{ secretRefExample }}</code> &mdash; resolved when the run starts and masked in the logs.
+                <i18n-t keypath="pipelines.envHint" tag="span">
+                  <template #env><code>env</code></template>
+                  <template #stepEnv><code>env</code></template>
+                  <template #secret><router-link :to="{ name: 'secrets' }">{{ $t('pipelines.workspaceSecret') }}</router-link></template>
+                  <template #ref><code>{{ secretRefExample }}</code></template>
+                </i18n-t>
               </p>
             </div>
-            <label class="check"><input type="checkbox" v-model="form.enabled" /> <span>Enabled</span></label>
+            <label class="check"><input type="checkbox" v-model="form.enabled" /> <span>{{ $t('jobs.enabled') }}</span></label>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showModal = false">
-              {{ editingRepoOwned ? 'Close' : 'Cancel' }}
+              {{ editingRepoOwned ? $t('shell.close') : $t('action.cancel') }}
             </button>
             <button type="submit" class="btn btn-primary" :disabled="saving">
-              {{ saving ? 'Saving…' : editingRepoOwned ? 'Save enabled state' : editing ? 'Save' : 'Create' }}
+              {{ saving ? $t('action.saving') : editingRepoOwned ? $t('pipelines.saveEnabledState') : editing ? $t('action.save') : $t('action.create') }}
             </button>
           </div>
         </form>

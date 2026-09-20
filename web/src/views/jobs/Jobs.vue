@@ -102,7 +102,7 @@ async function run() {
       run_as_user: runForm.value.run_as_user.trim() || undefined,
       timeout_secs: runForm.value.timeout > 0 ? runForm.value.timeout : undefined,
     })
-    notify.success('Job started')
+    notify.success(t('notify.jobs.jobStarted'))
     showRun.value = false
     tab.value = 'runs'
     load()
@@ -115,7 +115,7 @@ function viewLogs(j: Job) { logModal.value = j }
 async function cancelJob(j: Job) {
   const id = currentWorkspaceId.value
   if (!id) return
-  try { await jobApi.cancel(id, j.id); notify.success('Job canceled'); load() }
+  try { await jobApi.cancel(id, j.id); notify.success(t('notify.jobs.jobCanceled')); load() }
   catch (e) { notify.apiError(e) }
 }
 async function deleteJob(j: Job) {
@@ -167,7 +167,7 @@ async function saveCron() {
   try {
     if (editingCronId.value) await jobApi.updateCronJob(id, editingCronId.value, input)
     else await jobApi.createCronJob(id, input)
-    notify.success(editingCronId.value ? 'CronJob updated' : 'CronJob created')
+    notify.success(t(editingCronId.value ? 'notify.jobs.cronJobUpdated' : 'notify.jobs.cronJobCreated'))
     showCron.value = false
     load()
   } catch (e) { notify.apiError(e) }
@@ -176,7 +176,7 @@ async function saveCron() {
 async function runCronNow(c: CronJob) {
   const id = currentWorkspaceId.value
   if (!id) return
-  try { await jobApi.runCronJobNow(id, c.id); notify.success('Run started'); tab.value = 'runs'; load() }
+  try { await jobApi.runCronJobNow(id, c.id); notify.success(t('notify.jobs.runStarted')); tab.value = 'runs'; load() }
   catch (e) { notify.apiError(e) }
 }
 
@@ -192,7 +192,7 @@ function askDeleteCron(c: CronJob) {
 async function delCron(c: CronJob) {
   const id = currentWorkspaceId.value
   if (!id) return
-  try { await jobApi.deleteCronJob(id, c.id); notify.success('CronJob deleted'); load() }
+  try { await jobApi.deleteCronJob(id, c.id); notify.success(t('notify.jobs.cronJobDeleted')); load() }
   catch (e) { notify.apiError(e) }
 }
 async function runConfirm() {
@@ -214,46 +214,46 @@ const noApps = computed(() => apps.value.length === 0)
   <div>
     <div class="page-header">
       <div>
-        <h1>Jobs</h1>
-        <div class="text-muted text-sm">Run one-off commands and schedules in your apps' runtime environments.</div>
+        <h1>{{ $t('jobs.jobs') }}</h1>
+        <div class="text-muted text-sm">{{ $t('jobs.subtitle') }}</div>
       </div>
       <div class="flex items-center gap-2">
-        <button v-if="ws.canEdit && tab === 'runs'" class="btn btn-primary" :disabled="noApps" @click="openRun"><span class="mdi mdi-play"></span> Run job</button>
-        <button v-if="ws.canEdit && tab === 'scheduled'" class="btn btn-primary" :disabled="noApps" @click="openCreateCron"><span class="mdi mdi-plus"></span> New cronjob</button>
+        <button v-if="ws.canEdit && tab === 'runs'" class="btn btn-primary" :disabled="noApps" @click="openRun"><span class="mdi mdi-play"></span>{{ $t('jobs.runJob') }}</button>
+        <button v-if="ws.canEdit && tab === 'scheduled'" class="btn btn-primary" :disabled="noApps" @click="openCreateCron"><span class="mdi mdi-plus"></span>{{ $t('jobs.newCronjob') }}</button>
       </div>
     </div>
 
     <div class="tabs">
-      <button class="tab" :class="{ active: tab === 'runs' }" @click="tab = 'runs'">Runs</button>
-      <button class="tab" :class="{ active: tab === 'scheduled' }" @click="tab = 'scheduled'">Scheduled</button>
+      <button class="tab" :class="{ active: tab === 'runs' }" @click="tab = 'runs'">{{ $t('jobs.runs') }}</button>
+      <button class="tab" :class="{ active: tab === 'scheduled' }" @click="tab = 'scheduled'">{{ $t('jobs.scheduled') }}</button>
     </div>
 
     <!-- Runs -->
     <div v-if="tab === 'runs'" class="card">
       <div v-if="jobs.length === 0" class="empty-state">
         <span class="mdi mdi-console-line" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No job runs yet</h3>
-        <p>Run a one-off command in an app's environment — migrations, backfills, scripts.</p>
-        <button v-if="ws.canEdit" class="btn btn-primary mt-4" :disabled="noApps" @click="openRun">Run a job</button>
+        <h3>{{ $t('jobs.noRuns') }}</h3>
+        <p>{{ $t('jobs.runJobHint') }}</p>
+        <button v-if="ws.canEdit" class="btn btn-primary mt-4" :disabled="noApps" @click="openRun">{{ $t('jobs.runAJob') }}</button>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>App</th><th>Command</th><th>Status</th><th>Exit</th><th>Started</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('jobs.app') }}</th><th>{{ $t('jobs.command') }}</th><th>{{ $t('dashboard.col.status') }}</th><th>{{ $t('jobs.exit') }}</th><th>{{ $t('jobs.started') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="j in jobs" :key="j.id">
               <td class="cell-sub">{{ j.app_name || appName(j.application_id) }}</td>
               <td>
                 <span class="cell-title" style="font-family: monospace">{{ j.name || cmd(j.command) }}</span>
                 <div v-if="j.name" class="cell-sub" style="font-family: monospace">{{ cmd(j.command) }}</div>
-                <div v-if="j.source === 'scheduled'" class="cell-sub"><span class="mdi mdi-clock-outline"></span> scheduled</div>
+                <div v-if="j.source === 'scheduled'" class="cell-sub"><span class="mdi mdi-clock-outline"></span>{{ $t('jobs.scheduledTag') }}</div>
               </td>
               <td><span class="badge badge-dot" :class="badge(j.status)">{{ j.status }}</span></td>
               <td class="cell-sub">{{ j.exit_code ?? '—' }}</td>
               <td class="cell-sub">{{ when(j.started_at) }}</td>
               <td class="text-right table-actions">
-                <button class="btn-icon btn-icon-muted" title="Logs" aria-label="Logs" @click="viewLogs(j)"><span class="mdi mdi-text-box-outline"></span></button>
-                <button v-if="ws.canEdit && (j.status === 'running' || j.status === 'pending')" class="btn btn-sm btn-secondary" @click="cancelJob(j)">Cancel</button>
-                <button v-else-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="askDeleteJob(j)"><span class="mdi mdi-delete-outline"></span></button>
+                <button class="btn-icon btn-icon-muted" :title="$t('jobs.logs')" :aria-label="$t('jobs.logs')" @click="viewLogs(j)"><span class="mdi mdi-text-box-outline"></span></button>
+                <button v-if="ws.canEdit && (j.status === 'running' || j.status === 'pending')" class="btn btn-sm btn-secondary" @click="cancelJob(j)">{{ $t('action.cancel') }}</button>
+                <button v-else-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="askDeleteJob(j)"><span class="mdi mdi-delete-outline"></span></button>
               </td>
             </tr>
           </tbody>
@@ -265,13 +265,13 @@ const noApps = computed(() => apps.value.length === 0)
     <div v-else class="card">
       <div v-if="cronJobs.length === 0" class="empty-state">
         <span class="mdi mdi-calendar-clock" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No scheduled jobs</h3>
-        <p>A CronJob spawns a job on a schedule (UTC). Missed runs while down are not backfilled.</p>
-        <button v-if="ws.canEdit" class="btn btn-primary mt-4" :disabled="noApps" @click="openCreateCron">New cronjob</button>
+        <h3>{{ $t('jobs.noSchedules') }}</h3>
+        <p>{{ $t('jobs.cronHint') }}</p>
+        <button v-if="ws.canEdit" class="btn btn-primary mt-4" :disabled="noApps" @click="openCreateCron">{{ $t('jobs.newCronjob') }}</button>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>App</th><th>Name</th><th>Schedule</th><th>Command</th><th>Last run</th><th>State</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('jobs.app') }}</th><th>{{ $t('apps.form.name') }}</th><th>{{ $t('db.schedule') }}</th><th>{{ $t('jobs.command') }}</th><th>{{ $t('jobs.lastRun') }}</th><th>{{ $t('jobs.state') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="c in cronJobs" :key="c.id">
               <td class="cell-sub">{{ c.app_name || appName(c.application_id) }}</td>
@@ -281,9 +281,9 @@ const noApps = computed(() => apps.value.length === 0)
               <td class="cell-sub">{{ when(c.last_run_at) }}</td>
               <td><span class="badge badge-dot" :class="c.enabled ? 'badge-success' : 'badge-warning'">{{ c.enabled ? 'enabled' : 'disabled' }}</span></td>
               <td class="text-right table-actions">
-                <button v-if="ws.canEdit" class="btn btn-sm btn-secondary" title="Run now" @click="runCronNow(c)">Run now</button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" title="Edit" aria-label="Edit" @click="openEditCron(c)"><span class="mdi mdi-pencil-outline"></span></button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete" @click="askDeleteCron(c)"><span class="mdi mdi-delete-outline"></span></button>
+                <button v-if="ws.canEdit" class="btn btn-sm btn-secondary" :title="$t('jobs.runNow')" @click="runCronNow(c)">{{ $t('jobs.runNow') }}</button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEditCron(c)"><span class="mdi mdi-pencil-outline"></span></button>
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="askDeleteCron(c)"><span class="mdi mdi-delete-outline"></span></button>
               </td>
             </tr>
           </tbody>
@@ -295,58 +295,58 @@ const noApps = computed(() => apps.value.length === 0)
       <!-- Run job modal -->
       <AppModal v-if="showRun" @close="showRun = false">
         <div class="modal-header">
-          <h3>Run a job</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showRun = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('jobs.runAJob') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showRun = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="run">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Application</label>
-              <select v-model="runForm.app" class="form-select" required aria-label="Application">
+              <label class="form-label">{{ $t('dashboard.col.application') }}</label>
+              <select v-model="runForm.app" class="form-select" required :aria-label="$t('dashboard.col.application')">
                 <option v-for="a in apps" :key="a.id" :value="a.id">{{ a.name }}</option>
               </select>
-              <p class="form-hint">Runs in this app's current image and environment.</p>
+              <p class="form-hint">{{ $t('jobs.imageInheritHint') }}</p>
             </div>
             <div class="form-group">
-              <label class="form-label">Command</label>
-              <input v-model="runForm.command" class="form-input" placeholder="rails db:migrate" required autofocus style="font-family: monospace" aria-label="Command" />
-              <p class="form-hint">Split on spaces (no shell quoting).</p>
+              <label class="form-label">{{ $t('jobs.command') }}</label>
+              <input v-model="runForm.command" class="form-input" placeholder="rails db:migrate" required autofocus style="font-family: monospace" :aria-label="$t('jobs.command')" />
+              <p class="form-hint">{{ $t('jobs.commandHint') }}</p>
             </div>
             <div class="form-group">
-              <label class="form-label">Image <span class="text-muted">(optional)</span></label>
-              <input v-model="runForm.image" class="form-input" placeholder="leave blank to use the app's current image" style="font-family: monospace" aria-label="Image" />
-              <p class="form-hint">Run a different image in this app's environment (env, networks, node).</p>
+              <label class="form-label">{{ $t('jobs.image') }}<span class="text-muted">{{ $t('jobs.optional') }}</span></label>
+              <input v-model="runForm.image" class="form-input" :placeholder="$t('jobs.imagePlaceholder')" style="font-family: monospace" :aria-label="$t('jobs.image')" />
+              <p class="form-hint">{{ $t('jobs.imageHint') }}</p>
             </div>
             <div v-if="runForm.image.trim()" class="form-group">
-              <label class="form-label">Registry <span class="text-muted">(for private images)</span></label>
-              <select v-model="runForm.registry" class="form-select" aria-label="Registry">
-                <option :value="null">App's registry / public</option>
+              <label class="form-label">{{ $t('jobs.registry') }}<span class="text-muted">{{ $t('apps.form.forPrivate') }}</span></label>
+              <select v-model="runForm.registry" class="form-select" :aria-label="$t('jobs.registry')">
+                <option :value="null">{{ $t('jobs.registryPublic') }}</option>
                 <option v-for="r in registries" :key="r.id" :value="r.id">{{ r.name }}</option>
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">Name <span class="text-muted">(optional)</span></label>
-              <input v-model="runForm.name" class="form-input" placeholder="migrate" aria-label="Name" />
+              <label class="form-label">{{ $t('apps.form.name') }}<span class="text-muted">{{ $t('jobs.optional') }}</span></label>
+              <input v-model="runForm.name" class="form-input" placeholder="migrate" :aria-label="$t('apps.form.name')" />
             </div>
             <div class="form-group">
-              <label class="form-label">Run as user <span class="text-muted">(optional)</span></label>
+              <label class="form-label">{{ $t('jobs.runAsUser') }}<span class="text-muted">{{ $t('jobs.optional') }}</span></label>
               <input
                 v-model="runForm.run_as_user" class="form-input" style="font-family: monospace"
-                :placeholder="requireNonRoot ? '1000:1000' : 'leave blank to inherit the app\u2019s user'" aria-label="Run as user"
+                :placeholder="requireNonRoot ? '1000:1000' : $t('jobs.runAsUserPlaceholder')" :aria-label="$t('jobs.runAsUser')"
               />
               <p v-if="runUserError" class="form-hint" style="color: var(--danger)">{{ runUserError }}</p>
               <p v-else class="form-hint">
-                The account this run uses, like <code>docker run --user</code>. Blank inherits the app's.
-                <span v-if="requireNonRoot">This workspace requires a non-root numeric uid.</span>
+                <i18n-t keypath="jobs.runAsUserHint" tag="span"><template #cmd><code>docker run --user</code></template></i18n-t>
+                <span v-if="requireNonRoot"> {{ $t('jobs.nonRootRequired') }}</span>
               </p>
             </div>
             <div class="form-group" style="margin-bottom: 0">
-              <label class="form-label">Timeout (seconds, 0 = default)</label>
-              <input v-model.number="runForm.timeout" type="number" min="0" class="form-input" style="max-width: 160px" aria-label="Timeout (seconds, 0 = default)" />
+              <label class="form-label">{{ $t('jobs.timeoutLabel') }}</label>
+              <input v-model.number="runForm.timeout" type="number" min="0" class="form-input" style="max-width: 160px" :aria-label="$t('jobs.timeoutLabel')" />
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showRun = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showRun = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="running">{{ running ? 'Starting…' : 'Run' }}</button>
           </div>
         </form>
@@ -356,72 +356,71 @@ const noApps = computed(() => apps.value.length === 0)
       <AppModal v-if="showCron" @close="showCron = false">
         <div class="modal-header">
           <h3>{{ editingCronId ? 'Edit cronjob' : 'New cronjob' }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCron = false"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showCron = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="saveCron">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Application</label>
-              <select v-model="cronForm.app" class="form-select" required :disabled="!!editingCronId" aria-label="Application">
+              <label class="form-label">{{ $t('dashboard.col.application') }}</label>
+              <select v-model="cronForm.app" class="form-select" required :disabled="!!editingCronId" :aria-label="$t('dashboard.col.application')">
                 <option v-for="a in apps" :key="a.id" :value="a.id">{{ a.name }}</option>
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">Name <span class="text-muted">(optional)</span></label>
-              <input v-model="cronForm.name" class="form-input" placeholder="nightly-cleanup" aria-label="Name" />
+              <label class="form-label">{{ $t('apps.form.name') }}<span class="text-muted">{{ $t('jobs.optional') }}</span></label>
+              <input v-model="cronForm.name" class="form-input" placeholder="nightly-cleanup" :aria-label="$t('apps.form.name')" />
             </div>
             <div class="form-group">
-              <label class="form-label">Schedule (cron, UTC)</label>
-              <input v-model="cronForm.schedule" class="form-input" placeholder="0 3 * * *" required style="font-family: monospace; max-width: 220px" aria-label="Schedule (cron, UTC)" />
+              <label class="form-label">{{ $t('jobs.scheduleLabel') }}</label>
+              <input v-model="cronForm.schedule" class="form-input" placeholder="0 3 * * *" required style="font-family: monospace; max-width: 220px" :aria-label="$t('jobs.scheduleLabel')" />
             </div>
             <div class="form-group">
-              <label class="form-label">Command</label>
-              <input v-model="cronCommandStr" class="form-input" placeholder="rake cleanup" required style="font-family: monospace" aria-label="Command" />
+              <label class="form-label">{{ $t('jobs.command') }}</label>
+              <input v-model="cronCommandStr" class="form-input" placeholder="rake cleanup" required style="font-family: monospace" :aria-label="$t('jobs.command')" />
             </div>
             <div class="form-group">
-              <label class="form-label">Image <span class="text-muted">(optional)</span></label>
-              <input v-model="cronForm.image" class="form-input" placeholder="leave blank to use the app's current image" style="font-family: monospace" aria-label="Image" />
+              <label class="form-label">{{ $t('jobs.image') }}<span class="text-muted">{{ $t('jobs.optional') }}</span></label>
+              <input v-model="cronForm.image" class="form-input" :placeholder="$t('jobs.imagePlaceholder')" style="font-family: monospace" :aria-label="$t('jobs.image')" />
             </div>
             <div v-if="cronForm.image.trim()" class="form-group">
-              <label class="form-label">Registry <span class="text-muted">(for private images)</span></label>
-              <select v-model="cronForm.registry" class="form-select" aria-label="Registry">
-                <option :value="null">App's registry / public</option>
+              <label class="form-label">{{ $t('jobs.registry') }}<span class="text-muted">{{ $t('apps.form.forPrivate') }}</span></label>
+              <select v-model="cronForm.registry" class="form-select" :aria-label="$t('jobs.registry')">
+                <option :value="null">{{ $t('jobs.registryPublic') }}</option>
                 <option v-for="r in registries" :key="r.id" :value="r.id">{{ r.name }}</option>
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">Run as user <span class="text-muted">(optional)</span></label>
+              <label class="form-label">{{ $t('jobs.runAsUser') }}<span class="text-muted">{{ $t('jobs.optional') }}</span></label>
               <input
                 v-model="cronForm.run_as_user" class="form-input" style="font-family: monospace"
-                :placeholder="requireNonRoot ? '1000:1000' : 'leave blank to inherit the app\u2019s user'" aria-label="Run as user"
+                :placeholder="requireNonRoot ? '1000:1000' : $t('jobs.runAsUserPlaceholder')" :aria-label="$t('jobs.runAsUser')"
               />
               <p v-if="cronUserError" class="form-hint" style="color: var(--danger)">{{ cronUserError }}</p>
-              <p v-else class="form-hint">Applied to every run this schedule spawns. Blank inherits the app's when each run fires.</p>
+              <p v-else class="form-hint">{{ $t('jobs.cronRunAsUserHint') }}</p>
             </div>
             <div class="flex items-center gap-3" style="flex-wrap: wrap">
               <label class="form-group" style="margin-bottom: 0">
-                <span class="form-label">Concurrency</span>
+                <span class="form-label">{{ $t('jobs.concurrency') }}</span>
                 <select v-model="cronForm.concurrency_policy" class="form-select" style="max-width: 160px">
-                  <option value="allow">Allow</option>
-                  <option value="forbid">Forbid</option>
-                  <option value="replace">Replace</option>
+                  <option value="allow">{{ $t('jobs.allow') }}</option>
+                  <option value="forbid">{{ $t('jobs.forbid') }}</option>
+                  <option value="replace">{{ $t('jobs.replace') }}</option>
                 </select>
               </label>
               <label class="form-group" style="margin-bottom: 0">
-                <span class="form-label">Timeout (s)</span>
+                <span class="form-label">{{ $t('jobs.timeoutShort') }}</span>
                 <input v-model.number="cronForm.timeout_secs" type="number" min="0" class="form-input" style="max-width: 120px" />
               </label>
               <label class="form-group" style="margin-bottom: 0">
-                <span class="form-label">Keep last</span>
+                <span class="form-label">{{ $t('jobs.keepLast') }}</span>
                 <input v-model.number="cronForm.history_limit" type="number" min="0" class="form-input" style="max-width: 110px" />
               </label>
               <label class="checkbox-row" style="align-self: flex-end">
-                <input type="checkbox" v-model="cronForm.enabled" /> Enabled
-              </label>
+                <input type="checkbox" v-model="cronForm.enabled" />{{ $t('jobs.enabled') }}</label>
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showCron = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showCron = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="savingCron">{{ savingCron ? 'Saving…' : 'Save' }}</button>
           </div>
         </form>
@@ -431,7 +430,7 @@ const noApps = computed(() => apps.value.length === 0)
       <AppModal v-if="logModal" max-width="720px" @close="logModal = null">
         <div class="modal-header">
           <h3>Job #{{ logModal.id }} · <span class="badge badge-dot" :class="badge(logModal.status)">{{ logModal.status }}</span></h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="logModal = null"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="logModal = null"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
           <div class="text-muted text-sm" style="margin-bottom: 8px; font-family: monospace">{{ logModal.image }} · {{ cmd(logModal.command) }}</div>
