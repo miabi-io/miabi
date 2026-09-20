@@ -87,6 +87,13 @@ describe('translation catalogues', () => {
     }
   })
 
+  // The sign-in picker offers every entry in LANGUAGES. One without a catalogue file
+  // would switch to itself and render English, with nothing to say why.
+  it('ships a catalogue for every language the picker offers', () => {
+    const shipped = Object.keys(catalogues)
+    expect(LANGUAGES.map((l) => l.code).sort()).toEqual(shipped.sort())
+  })
+
   it('has no empty string, which renders as a blank label', () => {
     for (const [code, cat] of Object.entries(catalogues)) {
       const empties = keysOf(cat).filter((k) => {

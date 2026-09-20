@@ -4,6 +4,7 @@
 package models
 
 import (
+	"slices"
 	"strings"
 	"time"
 )
@@ -58,20 +59,27 @@ func ValidAccent(a Accent) bool {
 	return false
 }
 
-// Display languages the console ships. Keep in step with web/src/i18n/languages.ts,
-// which is what the Preferences picker renders.
+// Display languages the console ships.
 const (
 	LocaleEnglish = "en"
 	LocaleFrench  = "fr"
 )
 
+// locales is the display languages the console ships, in menu order. The console
+// renders its own list (web/src/i18n/languages.ts); locale_test.go fails if the two
+// drift, because a language offered there and rejected here cannot be saved.
+var locales = []string{LocaleEnglish, LocaleFrench}
+
+// Locales lists the display languages the console ships.
+func Locales() []string {
+	out := make([]string, len(locales))
+	copy(out, locales)
+	return out
+}
+
 // ValidLocale reports whether l is a display language the console ships.
 func ValidLocale(l string) bool {
-	switch l {
-	case LocaleEnglish, LocaleFrench:
-		return true
-	}
-	return false
+	return slices.Contains(locales, l)
 }
 
 // ResolveLocale maps a stored value onto a shipped language: the code itself, then

@@ -58,8 +58,8 @@ async function submit() {
 
 <template>
   <AuthShell
-    :title="done ? 'Password updated' : 'Choose a new password'"
-    :subtitle="done ? '' : 'Enter a new password for your account.'"
+    :title="$t(done ? 'resetPassword.doneTitle' : 'resetPassword.title')"
+    :subtitle="done ? '' : $t('resetPassword.subtitle')"
     :error="error"
     :notice="done ? 'Your password has been reset. Redirecting to sign in…' : ''"
   >
@@ -91,9 +91,9 @@ async function submit() {
           <button
             type="button"
             class="password-toggle"
-            :aria-label="showPassword ? 'Hide password' : 'Show password'"
+            :aria-label="$t(showPassword ? 'auth.hidePassword' : 'auth.showPassword')"
             :aria-pressed="showPassword"
-            :title="showPassword ? 'Hide password' : 'Show password'"
+            :title="$t(showPassword ? 'auth.hidePassword' : 'auth.showPassword')"
             @click="showPassword = !showPassword"
           >
             <span class="mdi" :class="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"></span>

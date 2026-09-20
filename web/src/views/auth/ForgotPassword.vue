@@ -63,8 +63,8 @@ async function submit() {
     hero
     :brand-name="brand.name ? brandName : undefined"
     :brand-logo="brandLogo"
-    :title="sent ? 'Check your email' : 'Reset your password'"
-    :subtitle="sent ? '' : 'Enter your account email and we\'ll send you a reset link.'"
+    :title="$t(sent ? 'forgotPassword.sentTitle' : 'forgotPassword.title')"
+    :subtitle="sent ? '' : $t('forgotPassword.subtitle')"
     :error="error"
   >
     <!-- Confirmation state -->

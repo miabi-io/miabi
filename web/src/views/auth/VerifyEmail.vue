@@ -35,8 +35,8 @@ onMounted(async () => {
 
 <template>
   <AuthShell
-    :title="state === 'done' ? 'Email verified' : state === 'failed' ? 'Could not verify' : 'Verifying your email'"
-    :subtitle="state === 'working' ? 'One moment…' : ''"
+    :title="$t(state === 'done' ? 'verifyEmail.done' : state === 'failed' ? 'verifyEmail.failed' : 'verifyEmail.working')"
+    :subtitle="state === 'working' ? $t('verifyEmail.oneMoment') : ''"
     :error="state === 'failed' ? error : ''"
   >
     <p v-if="state === 'working'" class="verify-note">

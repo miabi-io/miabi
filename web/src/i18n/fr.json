@@ -35,10 +35,10 @@
     "changeItAnyway": "Modifier quand même",
     "completeRecovery": "Terminer la restauration",
     "confirm": "Confirmer",
+    "continue": "Continuer",
     "copy": "Copier",
     "create": "Créer",
     "delete": "Supprimer",
-    "demote": "Rétrograder",
     "disable": "Désactiver",
     "disableSwarm": "Désactiver Swarm",
     "discard": "Abandonner",
@@ -47,7 +47,6 @@
     "edit": "Modifier",
     "forceVerify": "Forcer la vérification",
     "makeDefault": "Définir par défaut",
-    "promote": "Promouvoir",
     "regenerate": "Régénérer",
     "reject": "Rejeter",
     "remove": "Retirer",
@@ -733,6 +732,16 @@
     "when": "Quand",
     "youNeedOwnerOrAdmin": "Vous devez être propriétaire ou administrateur pour consulter le journal d’audit de cet espace de travail."
   },
+  "auth": {
+    "chooseLanguage": "Choisir une langue",
+    "darkMode": "Mode sombre",
+    "hidePassword": "Masquer le mot de passe",
+    "language": "Langue",
+    "lightMode": "Mode clair",
+    "showPassword": "Afficher le mot de passe",
+    "switchToDark": "Passer au mode sombre",
+    "switchToLight": "Passer au mode clair"
+  },
   "authHero": {
     "builtInContainerRegistry": "Registre de conteneurs intégré",
     "deployScaleAndManageApplications": "Déployez, mettez à l’échelle et gérez vos applications depuis une seule plateforme intuitive.",
@@ -849,7 +858,8 @@
     "atLeast8Characters": "Au moins 8 caractères",
     "passwordsDonTMatch": "Les mots de passe ne correspondent pas.",
     "reEnterYourNewPassword": "Ressaisissez votre nouveau mot de passe",
-    "setANewPassword": "Définir un nouveau mot de passe"
+    "setANewPassword": "Définir un nouveau mot de passe",
+    "subtitle": "Votre mot de passe a été défini par un administrateur. Choisissez le vôtre pour continuer."
   },
   "cli": {
     "allReleases": "toutes les versions",
@@ -917,10 +927,6 @@
         "promoteNow": "Promouvoir maintenant",
         "redeployNow": "Redéployer maintenant",
         "release": "Libérer"
-      },
-      "userDetail": {
-        "deleteNow": "Supprimer maintenant",
-        "resetPassword": "Réinitialiser le mot de passe"
       }
     },
     "message": {
@@ -1007,9 +1013,6 @@
         "deleteCronjobScheduledRuns": "Supprimer la tâche planifiée « {name} » ? Les exécutions programmées s’arrêteront.",
         "deleteJobRunThis": "Supprimer l’exécution n° {id} ? Cette action est irréversible."
       },
-      "ldapDirectory": {
-        "deleteNameUsersProvisioned": "Supprimer \"{name}\" ? Les utilisateurs provisionnés depuis cet annuaire conservent leur compte mais ne pourront plus s’y connecter par ce biais."
-      },
       "license": {
         "removeTheLicenseAnd": "Retirer la licence et revenir à l’édition Community ?"
       },
@@ -1030,9 +1033,6 @@
       },
       "notifications": {
         "deleteNotificationChannelName": "Supprimer le canal de notification \"{name}\" ?"
-      },
-      "oAuthProviders": {
-        "deleteProviderNameThis": "Supprimer le fournisseur \"{name}\" ? Cette action est irréversible."
       },
       "organizationDetail": {
         "displayNameWillBe": "\"{display_name}\" sera supprimée, et toute localisation qui lui est dédiée devient réservée aux administrateurs jusqu’à réaffectation. La suppression est refusée tant qu’elle contient des espaces de travail ou des utilisateurs."
@@ -1105,15 +1105,6 @@
       "storageClasses": {
         "nameWillNoLonger": "\"{name}\" ne sera plus proposée. La suppression est refusée tant qu’un volume l’utilise — désactivez-la plutôt pour empêcher de nouveaux volumes d’y atterrir."
       },
-      "userDetail": {
-        "demote": "Rétrograder {name} au rang d’utilisateur ?",
-        "disableSAccountThey": "Désactiver le compte de {name} ? La personne sera déconnectée et ne pourra plus se connecter, et toutes ses applications et bases de données seront arrêtées.",
-        "disableTwoFactorAuthentication": "Désactiver l’authentification à deux facteurs pour {name} ? À réserver à la récupération de compte.",
-        "generateANewPassword": "Générer un nouveau mot de passe pour {name} ? Cette action est irréversible : son mot de passe actuel cesse de fonctionner immédiatement, toutes les sessions actives sont déconnectées, et le nouveau mot de passe n’est affiché qu’une seule fois.",
-        "permanentlyDeleteAndAll": "Supprimer définitivement {name} et toutes ses données restantes dès maintenant ? Ceci ignore le délai de grâce et cette action est irréversible.",
-        "promote": "Promouvoir {name} au rang d’administrateur ?",
-        "revokeAllActiveSessions": "Révoquer toutes les sessions actives de {name} ?"
-      },
       "volumeDetail": {
         "deletePathFromThis": "Supprimer \"{path}\" de ce volume ? Cette action est irréversible.",
         "deleteTheBackupTaken": "Supprimer la sauvegarde prise {fmtTime} ? L’enregistrement de sauvegarde est retiré ; l’objet archive dans votre bucket S3 n’est pas supprimé.",
@@ -1173,14 +1164,12 @@
       "deleteFile": "Supprimer le fichier",
       "deleteGitRepository": "Supprimer le dépôt Git",
       "deleteGitSource": "Supprimer la source Git",
-      "deleteLdapConnection": "Supprimer la connexion LDAP ?",
       "deleteMiddleware": "Supprimer le middleware",
       "deleteNetwork": "Supprimer le réseau",
       "deleteOrganization": "Supprimer l’organisation",
       "deletePipeline": "Supprimer le pipeline",
       "deletePlan": "Supprimer le forfait",
       "deletePlatformBackup": "Supprimer la sauvegarde de la plateforme ?",
-      "deleteProvider": "Supprimer le fournisseur",
       "deleteRegistry": "Supprimer le registre",
       "deleteRole": "Supprimer le rôle",
       "deleteRoute": "Supprimer la route",
@@ -1221,16 +1210,7 @@
       "rotateEncryptionKey": "Faire tourner la clé de chiffrement",
       "runGarbageCollection": "Lancer le nettoyage",
       "tearDownGateway": "Démanteler la passerelle",
-      "testDnsProvider": "Tester le fournisseur DNS",
-      "userDetail": {
-        "demote": "Rétrograder l’utilisateur ?",
-        "disableAccount": "Désactiver le compte ?",
-        "disableTwoFactor": "Désactiver la double authentification ?",
-        "permanentlyDeleteAccount": "Supprimer définitivement le compte ?",
-        "promote": "Promouvoir l’utilisateur ?",
-        "resetPassword": "Réinitialiser le mot de passe ?",
-        "revokeSessions": "Révoquer les sessions ?"
-      }
+      "testDnsProvider": "Tester le fournisseur DNS"
     }
   },
   "count": {
@@ -1683,7 +1663,10 @@
   },
   "forgotPassword": {
     "email": "E-mail",
-    "sent": "Si un compte existe pour {email}, un lien de réinitialisation du mot de passe est en route. Le lien expire dans une heure."
+    "sent": "Si un compte existe pour {email}, un lien de réinitialisation du mot de passe est en route. Le lien expire dans une heure.",
+    "sentTitle": "Consultez votre e-mail",
+    "subtitle": "Saisissez l’e-mail de votre compte et nous vous enverrons un lien de réinitialisation.",
+    "title": "Réinitialisez votre mot de passe"
   },
   "generator": {
     "base64url": "base64url",
@@ -1893,63 +1876,6 @@
     "timeoutLabel": "Délai d’expiration (secondes, 0 = par défaut)",
     "timeoutShort": "Délai (s)"
   },
-  "ldap": {
-    "activeDirectory": "(Active Directory)",
-    "add": "Ajouter",
-    "addAConnection": "Ajouter une connexion",
-    "addConnection": "Ajouter la connexion",
-    "admin": "Administrateur",
-    "bindDn": "DN de connexion",
-    "bindPassword": "Mot de passe de connexion",
-    "caCert": "Certificat d’AC (PEM, facultatif)",
-    "connection": "Connexion",
-    "developer": "Développeur",
-    "emailAttr": "Attribut e-mail",
-    "emptyHint": "Ajoutez une connexion LDAP ou Active Directory pour que les utilisateurs puissent se connecter avec leur identifiant et mot de passe d’annuaire.",
-    "enterpriseFeature": "Fonctionnalité Enterprise",
-    "expandNestedGroups": "Développer les groupes imbriqués",
-    "grants": "Droits accordés",
-    "group": "Groupe",
-    "groupBaseDn": "DN de base des groupes",
-    "groupDnOrCn": "DN ou CN du groupe",
-    "groupDnPlaceholder": "cn=platform-admins,ou=Groups,… (ou simplement platform-admins)",
-    "groupFilter": "Filtre de groupe",
-    "groupFilterHint": "(%s = DN de l’utilisateur ; vide, l’attribut membre est utilisé)",
-    "groupMappings": "Correspondances de groupes",
-    "groups": "Groupes",
-    "host": "Hôte",
-    "insecureNote": "(non sécurisé — développement uniquement)",
-    "ldapActiveDirectory": "LDAP / Active Directory",
-    "mappingHint": "Associez un groupe d’annuaire (DN complet ou CN simple) au statut d’administrateur de plateforme et/ou à un rôle d’espace de travail. Réconcilié à chaque connexion.",
-    "memberAttr": "Attribut membre",
-    "nameAttr": "Attribut nom",
-    "namePlaceholder": "ex. Active Directory de l’entreprise",
-    "noDirectoriesConnected": "Aucun annuaire connecté",
-    "noMappings": "Aucune correspondance — sans aucune, les utilisateurs de l’annuaire sont provisionnés mais n’obtiennent automatiquement aucun accès administrateur ni espace de travail.",
-    "optional": "(facultatif)",
-    "optionalDrivesAccessNote": "(facultatif — détermine l’accès)",
-    "owner": "Propriétaire",
-    "platformAdmin": "administrateur de plateforme",
-    "port": "Port",
-    "removeMapping": "Supprimer la correspondance",
-    "server": "Serveur",
-    "serviceAccountBind": "Compte de service (bind)",
-    "skipTlsCertificateVerification": "Ignorer la vérification du certificat TLS",
-    "subtitle": "Connectez un annuaire LDAP ou Active Directory pour y authentifier les utilisateurs, avec les groupes associés aux rôles et à l’appartenance aux espaces de travail.",
-    "testConnection": "Tester la connexion",
-    "tlsLdaps": "LDAPS (TLS implicite, 636)",
-    "tlsMode": "Mode TLS",
-    "tlsNone": "Aucun (texte clair — déconseillé)",
-    "tlsStartTls": "StartTLS (mise à niveau sur 389)",
-    "upsell": "Laissez les utilisateurs se connecter avec les identifiants de l’annuaire de l’entreprise. Les groupes déterminent le statut d’administrateur de plateforme et l’accès aux espaces de travail.",
-    "userBaseDn": "DN de base des utilisateurs",
-    "userFilter": "Filtre d’utilisateur",
-    "userFilterHint": "(%s = identifiant de connexion)",
-    "userSearch": "Recherche d’utilisateurs",
-    "usernameAttr": "Attribut nom d’utilisateur",
-    "viewer": "Lecteur",
-    "workspaceRole": "Rôle dans l’espace de travail"
-  },
   "locationPicker": {
     "admin": "admin",
     "anyNodeInTheLocation": "N’importe quel nœud de l’emplacement",
@@ -1970,15 +1896,45 @@
     "createOne": "Créez-en un",
     "emailOrUsername": "E-mail ou nom d’utilisateur",
     "enterYourPassword": "Saisissez votre mot de passe",
+    "findingProvider": "Recherche du fournisseur…",
     "forgotPassword": "Mot de passe oublié ?",
+    "invalidCode": "Code invalide",
+    "invalidCredentials": "Identifiants invalides",
     "noAccount": "Vous n’avez pas de compte ? {link}.",
     "noAccountContactAdmin": "Vous n’avez pas de compte ? Contactez l’administrateur de votre plateforme.",
+    "noSsoProvider": "Aucun fournisseur d’authentification unique n’a été trouvé pour cet e-mail.",
+    "oauthError": {
+      "accountDisabled": "Votre compte a été désactivé.",
+      "cancelled": "L’authentification unique a été annulée.",
+      "domainNotAllowed": "Votre domaine e-mail n’est pas autorisé pour ce fournisseur.",
+      "failed": "L’authentification unique a échoué. Veuillez réessayer.",
+      "generic": "La connexion a échoué. Veuillez réessayer.",
+      "invalidState": "Votre session de connexion a expiré. Veuillez réessayer.",
+      "noEmail": "Le fournisseur n’a pas communiqué d’adresse e-mail.",
+      "providerUnavailable": "Ce fournisseur de connexion est indisponible.",
+      "registrationClosed": "Ce compte n’existe pas et les inscriptions sont désactivées.",
+      "tokenError": "Impossible de démarrer votre session. Veuillez réessayer."
+    },
     "orContinueWith": "ou continuer avec",
     "password": "Mot de passe",
+    "signIn": "Se connecter",
+    "signingIn": "Connexion…",
+    "signingYouIn": "Connexion en cours…",
     "siteLinks": "Liens du site",
     "ssoHint": "Nous vous redirigerons vers le fournisseur de connexion de votre organisation.",
+    "subtitle": {
+      "sso": "Saisissez votre e-mail pour trouver votre fournisseur de connexion",
+      "twoFactor": "Saisissez le code de votre application d’authentification",
+      "welcome": "Connectez-vous à votre espace de travail {brand}"
+    },
+    "title": {
+      "sso": "Continuer avec le SSO",
+      "welcome": "Bienvenue sur {brand}"
+    },
     "totpHint": "Saisissez le code à 6 chiffres de votre application d’authentification, ou un code de récupération.",
     "useADifferentAccount": "Utiliser un autre compte",
+    "verify": "Vérifier",
+    "verifying": "Vérification…",
     "workEmail": "E-mail professionnel"
   },
   "marketplace": {
@@ -2361,18 +2317,6 @@
       "runStarted": "Exécution démarrée",
       "selectAnApplication": "Sélectionnez une application"
     },
-    "ldapDirectory": {
-      "aGroupDnIsRequired": "Un DN de groupe est requis",
-      "connectionFailed": "Échec de la connexion",
-      "connectionOk": "Connexion réussie",
-      "created": "Connexion LDAP créée",
-      "deleted": "Connexion LDAP supprimée",
-      "displayNameAndHostAre": "Le nom affiché et l’hôte sont requis",
-      "mappingAdded": "Correspondance ajoutée",
-      "mappingRemoved": "Correspondance supprimée",
-      "testFailed": "Échec du test LDAP",
-      "updated": "Connexion LDAP mise à jour"
-    },
     "marketplace": {
       "imported": "{name} importé",
       "someResourcesCouldNotBe": "{name} : certaines ressources n’ont pas pu être supprimées",
@@ -2515,10 +2459,6 @@
       "updated": "Modèle mis à jour",
       "upgraded": "{name} mis à niveau vers {version}"
     },
-    "userDetail": {
-      "disableTheAccountBeforeDeleting": "Désactivez le compte avant de le supprimer",
-      "typeDeleteToConfirm": "Saisissez DELETE pour confirmer"
-    },
     "volumeDetail": {
       "backupDeleted": "Sauvegarde supprimée",
       "backupStarted": "Sauvegarde démarrée",
@@ -2559,54 +2499,6 @@
       "tokenCopied": "Jeton copié",
       "updated": "Espace de travail mis à jour"
     }
-  },
-  "oauth": {
-    "addProvider": "Ajouter un fournisseur",
-    "admin": "Administrateur",
-    "allowedDomains": "Domaines autorisés",
-    "allowedDomainsHint": "Liste de domaines d’e-mail autorisés séparés par des virgules ; vide = tous.",
-    "authUrl": "URL d’autorisation",
-    "autoJoinHint": "Les nouveaux utilisateurs SSO rejoignent cet espace de travail avec le rôle choisi. Identifiant vide = aucun.",
-    "autoJoinRole": "Rôle à l’adhésion automatique",
-    "autoJoinWorkspace": "Espace de travail d’adhésion automatique",
-    "autoJoinWorkspaceId": "Identifiant de l’espace de travail d’adhésion automatique",
-    "autoRegister": "Inscription automatique",
-    "autoRegisterUsers": "Inscrire automatiquement les utilisateurs",
-    "clientId": "Identifiant client",
-    "clientSecret": "Secret client",
-    "developer": "Développeur",
-    "disabled": "Désactivé",
-    "discoveryHint": "Laissez vide pour utiliser la découverte.",
-    "displayName": "Nom affiché",
-    "emailClaim": "Claim e-mail",
-    "emailClaimHint": "Claim userinfo associé à l’e-mail de l’utilisateur. Vide = « email » standard.",
-    "emptyHint": "Ajoutez Google ou un fournisseur OIDC générique pour activer l’authentification unique.",
-    "genericOidc": "OIDC générique",
-    "google": "Google",
-    "googleSlug": "google",
-    "googleWorkspace": "Google Workspace",
-    "hidden": "Masqué",
-    "issuer": "Émetteur",
-    "issuerHint": "URL de base de découverte OIDC, ex. https://id.example.com",
-    "issuerPlaceholder": "https://id.example.com",
-    "nameClaim": "Claim nom",
-    "nameClaimDefault": "name",
-    "nameClaimHint": "Claim userinfo associé au nom affiché. Vide = « name » standard.",
-    "noAutoJoin": "Pas d’adhésion automatique",
-    "noSsoProviders": "Aucun fournisseur SSO",
-    "provider": "Fournisseur",
-    "scopes": "Portées",
-    "scopesHint": "Par défaut : openid email profile",
-    "slugHint": "Généré automatiquement depuis le nom si vide.",
-    "tokenUrl": "URL de jeton",
-    "type": "Type",
-    "userinfoUrl": "URL userinfo",
-    "usernameClaim": "Claim nom d’utilisateur",
-    "usernameClaimHint": "Claim userinfo associé à l’identifiant. Vide = « preferred_username » standard ; si le fournisseur n’envoie ni l’un ni l’autre, l’identifiant est déduit de l’adresse e-mail.",
-    "viewer": "Lecteur",
-    "visibility": "Visibilité",
-    "visible": "Visible",
-    "workspaceId": "Identifiant de l’espace de travail"
   },
   "orgPicker": {
     "defaultOrganization": "Organisation par défaut",
@@ -2999,11 +2891,14 @@
     "yourUniqueHandleLowercaseLetters": "Votre identifiant unique — lettres minuscules, chiffres et tirets. Utilisé comme identifiant d’annuaire."
   },
   "register": {
+    "doneTitle": "Compte créé",
     "email": "E-mail",
     "goToSignIn": "Aller à la connexion",
     "password": "Mot de passe",
     "ready": "Si {email} peut être enregistré, votre compte est prêt. Vous pouvez vous connecter dès maintenant.",
-    "sentVerification": "Si {email} peut être enregistré, un lien de vérification est en route. Vérifiez votre adresse, puis connectez-vous."
+    "sentVerification": "Si {email} peut être enregistré, un lien de vérification est en route. Vérifiez votre adresse, puis connectez-vous.",
+    "subtitle": "Inscrivez-vous pour commencer.",
+    "title": "Créez votre compte {brand}"
   },
   "registries": {
     "addARegistry": "Ajouter un registre",
@@ -3102,9 +2997,12 @@
     "atLeast8Characters": "Au moins 8 caractères",
     "confirmPassword": "Confirmer le mot de passe",
     "continueToSignIn": "Continuer vers la connexion",
+    "doneTitle": "Mot de passe mis à jour",
     "passwordsDonTMatch": "Les mots de passe ne correspondent pas.",
     "reEnterYourNewPassword": "Ressaisissez votre nouveau mot de passe",
-    "requestANewLink": "Demander un nouveau lien"
+    "requestANewLink": "Demander un nouveau lien",
+    "subtitle": "Saisissez un nouveau mot de passe pour votre compte.",
+    "title": "Choisissez un nouveau mot de passe"
   },
   "roles": {
     "baseRole": "Rôle de base",
@@ -3340,6 +3238,9 @@
   },
   "shell": {
     "close": "Fermer",
+    "footer": {
+      "poweredBy": "Propulsé par {miabi}"
+    },
     "menu": {
       "about": "À propos",
       "cli": "Accès CLI",
@@ -3426,8 +3327,12 @@
   },
   "verifyEmail": {
     "checkingYourLink": "Vérification de votre lien.",
+    "done": "E-mail vérifié",
+    "failed": "Vérification impossible",
     "goToSignIn": "Aller à la connexion",
+    "oneMoment": "Un instant…",
     "verificationLinksExpireAndCan": "Les liens de vérification expirent et ne peuvent être utilisés qu’une fois. Connectez-vous pour en recevoir un nouveau, ou demandez à l’administrateur de votre plateforme de vérifier l’adresse pour vous.",
+    "working": "Vérification de votre e-mail",
     "yourAddressIsConfirmedYou": "Votre adresse est confirmée. Vous pouvez vous connecter dès maintenant."
   },
   "volumes": {

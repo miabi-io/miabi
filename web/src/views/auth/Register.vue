@@ -78,8 +78,8 @@ async function submit() {
     :brand-name="brand.name ? brandName : undefined"
     :brand-logo="brandLogo"
     :brand-notice="done ? undefined : brand.signin_notice"
-    :title="done ? 'Account created' : `Create your ${brandName} account`"
-    :subtitle="done ? '' : 'Sign up to get started.'"
+    :title="done ? $t('register.doneTitle') : $t('register.title', { brand: brandName })"
+    :subtitle="done ? '' : $t('register.subtitle')"
     :error="error"
   >
     <!-- Confirmation. The wording never says whether the address was already

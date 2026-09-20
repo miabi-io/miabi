@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useBrandStore } from '@/stores/brand'
 import type { Brand } from '@/api/types'
 import AuthHero from './AuthHero.vue'
+import AuthLanguagePicker from '@/components/AuthLanguagePicker.vue'
+import AuthFooter from '@/components/AuthFooter.vue'
 import { apiErrorMessage } from '@/api/client'
 import { authApi } from '@/api/auth'
 import { oauthApi, authorizeUrl } from '@/api/oauth'
 import type { PublicProvider } from '@/api/types'
 
+const { t } = useI18n()
 const auth = useAuthStore()
 const theme = useThemeStore()
 const brandStore = useBrandStore()
@@ -70,22 +74,22 @@ const brandLinks = computed(() => brand.value.links ?? [])
 
 // Friendly messages for error codes handed back by the OAuth callback redirect.
 const oauthErrors: Record<string, string> = {
-  oauth_failed: 'Single sign-on failed. Please try again.',
-  invalid_state: 'Your sign-in session expired. Please try again.',
-  domain_not_allowed: 'Your email domain is not allowed for this provider.',
-  registration_closed: 'This account does not exist and sign-up is disabled.',
-  account_disabled: 'Your account has been disabled.',
-  no_email: 'The provider did not share an email address.',
-  provider_unavailable: 'That sign-in provider is unavailable.',
-  missing_code: 'Single sign-on was cancelled.',
-  token_error: 'Could not start your session. Please try again.',
+  oauth_failed: 'login.oauthError.failed',
+  invalid_state: 'login.oauthError.invalidState',
+  domain_not_allowed: 'login.oauthError.domainNotAllowed',
+  registration_closed: 'login.oauthError.registrationClosed',
+  account_disabled: 'login.oauthError.accountDisabled',
+  no_email: 'login.oauthError.noEmail',
+  provider_unavailable: 'login.oauthError.providerUnavailable',
+  missing_code: 'login.oauthError.cancelled',
+  token_error: 'login.oauthError.tokenError',
 }
 
 onMounted(async () => {
   identifierInput.value?.focus()
 
   const code = route.query.error as string | undefined
-  if (code) error.value = oauthErrors[code] || 'Sign in failed. Please try again.'
+  if (code) error.value = t(oauthErrors[code] ?? 'login.oauthError.generic')
 
   try {
     const { data } = await oauthApi.providers()
@@ -125,7 +129,7 @@ async function submit() {
     }
     router.push('/')
   } catch (e) {
-    error.value = apiErrorMessage(e, step.value === 'twofactor' ? 'Invalid code' : 'Invalid credentials')
+    error.value = apiErrorMessage(e, t(step.value === 'twofactor' ? 'login.invalidCode' : 'login.invalidCredentials'))
   } finally {
     loading.value = false
   }
@@ -166,7 +170,7 @@ async function continueWithSSO() {
     if (!name) throw new Error('no provider')
     window.location.href = authorizeUrl(name)
   } catch (e) {
-    error.value = apiErrorMessage(e, 'No single sign-on provider was found for that email.')
+    error.value = apiErrorMessage(e, t('login.noSsoProvider'))
   } finally {
     ssoLoading.value = false
   }
@@ -188,10 +192,10 @@ function providerIcon(type: string): string {
         <div class="auth-head">
           <img :src="brandLogo" :alt="brandName" class="auth-logo" />
           <h1 class="auth-title">
-            {{ step === 'twofactor' ? 'Two-factor authentication' : ssoMode ? 'Continue with SSO' : `Welcome to ${brandName}` }}
+            {{ step === 'twofactor' ? $t('security.twoFactorAuthentication') : ssoMode ? $t('login.title.sso') : $t('login.title.welcome', { brand: brandName }) }}
           </h1>
           <p class="auth-subtitle">
-            {{ step === 'twofactor' ? 'Enter the code from your authenticator app' : ssoMode ? 'Enter your email to find your sign-in provider' : `Sign in to your ${brandName} workspace` }}
+            {{ step === 'twofactor' ? $t('login.subtitle.twoFactor') : ssoMode ? $t('login.subtitle.sso') : $t('login.subtitle.welcome', { brand: brandName }) }}
           </p>
         </div>
 
@@ -227,7 +231,7 @@ function providerIcon(type: string): string {
           </div>
           <button class="btn btn-primary auth-submit" :disabled="loading">
             <span v-if="loading" class="mdi mdi-loading mdi-spin"></span>
-            {{ loading ? 'Verifying…' : 'Verify' }}
+            {{ loading ? $t('login.verifying') : $t('login.verify') }}
           </button>
           <button type="button" class="auth-link" :disabled="loading" @click="backToCredentials">
             <span class="mdi mdi-arrow-left"></span>{{ $t('login.useADifferentAccount') }}</button>
@@ -252,7 +256,7 @@ function providerIcon(type: string): string {
           </div>
           <button class="btn btn-primary auth-submit" :disabled="ssoLoading">
             <span v-if="ssoLoading" class="mdi mdi-loading mdi-spin"></span>
-            {{ ssoLoading ? 'Finding provider…' : 'Continue' }}
+            {{ ssoLoading ? $t('login.findingProvider') : $t('action.continue') }}
           </button>
           <button type="button" class="auth-link" :disabled="ssoLoading" @click="exitSSOMode">
             <span class="mdi mdi-arrow-left"></span>{{ $t('login.backToSignIn') }}</button>
@@ -300,9 +304,9 @@ function providerIcon(type: string): string {
               <button
                 type="button"
                 class="password-toggle"
-                :aria-label="showPassword ? 'Hide password' : 'Show password'"
+                :aria-label="$t(showPassword ? 'auth.hidePassword' : 'auth.showPassword')"
                 :aria-pressed="showPassword"
-                :title="showPassword ? 'Hide password' : 'Show password'"
+                :title="$t(showPassword ? 'auth.hidePassword' : 'auth.showPassword')"
                 @click="showPassword = !showPassword"
               >
                 <span class="mdi" :class="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"></span>
@@ -316,7 +320,7 @@ function providerIcon(type: string): string {
 
           <button class="btn btn-primary auth-submit" :disabled="loading">
             <span v-if="loading" class="mdi mdi-loading mdi-spin"></span>
-            {{ loading ? 'Signing in…' : 'Sign in' }}
+            {{ loading ? $t('login.signingIn') : $t('login.signIn') }}
           </button>
         </form>
 
@@ -358,18 +362,22 @@ function providerIcon(type: string): string {
             rel="noopener noreferrer"
           >{{ l.label }}</a>
         </nav>
+
+        <AuthFooter />
       </div>
     </main>
 
     <button
       class="auth-theme-btn"
       type="button"
-      :title="theme.isDark ? 'Light mode' : 'Dark mode'"
-      :aria-label="theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+      :title="$t(theme.isDark ? 'auth.lightMode' : 'auth.darkMode')"
+      :aria-label="$t(theme.isDark ? 'auth.switchToLight' : 'auth.switchToDark')"
       @click="theme.toggle()"
     >
       <span class="mdi" :class="theme.isDark ? 'mdi-weather-sunny' : 'mdi-weather-night'"></span>
     </button>
+
+    <AuthLanguagePicker />
   </div>
 </template>
 
