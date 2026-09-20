@@ -112,3 +112,17 @@ func (r *ReleaseRepository) Activate(appID, releaseID uint) error {
 			Update("active", true).Error
 	})
 }
+
+// ImageRefs returns the image and digest of every release. These are the rollback targets, so
+// housekeeping must never reclaim them however long they have sat without a container.
+func (r *ReleaseRepository) ImageRefs() ([]string, error) {
+	var rows []struct{ Image, Digest string }
+	if err := r.db.Model(&models.Release{}).Select("image", "digest").Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	refs := make([]string, 0, len(rows)*2)
+	for _, row := range rows {
+		refs = append(refs, row.Image, row.Digest)
+	}
+	return refs, nil
+}

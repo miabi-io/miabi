@@ -233,3 +233,12 @@ func sumCapacity(servers []models.Server, usageMaxAge time.Duration) Capacity {
 	}
 	return out
 }
+
+// ImageRefs returns the edge-gateway image pinned on each node, so housekeeping never reclaims the
+// image a node's gateway is deployed from.
+func (r *ServerRepository) ImageRefs() ([]string, error) {
+	var refs []string
+	err := r.db.Model(&models.Server{}).
+		Where("gateway_image <> ''").Pluck("gateway_image", &refs).Error
+	return refs, err
+}

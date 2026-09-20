@@ -506,6 +506,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	appService.SetQuota(quotaService)
 	appService.SetClusterCap(clusterService) // gate "service" runtime apps on cluster mode
 	housekeepingService.SetSwarmManagers(clusterService)
+	housekeepingService.SetNodes(nodeService) // reach a node's swarm manager, to remove an orphaned service
+	// The referenced-image guard: what apps, rollback-able releases, databases and node gateways name
+	// is never reclaimable, however long it has sat on the node without a container.
+	housekeepingService.SetImageRefs(appRepo, releaseRepo, dbRepo, serverRepo)
 	// A "missing" row on a node's housekeeping page is now actionable: redeploying goes through the ordinary
 	// deploy path, which refuses an app whose data volume is gone.
 	housekeepingService.SetRedeployer(appService, appRepo)

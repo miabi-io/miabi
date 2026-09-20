@@ -169,6 +169,10 @@ type DiskUsage struct {
 	Containers DiskUsageCategory `json:"containers"`
 	Volumes    DiskUsageCategory `json:"volumes"`
 	BuildCache DiskUsageCategory `json:"build_cache"`
+	// VolumeItems is the per-volume breakdown behind Volumes. The daemon walks the filesystem for
+	// the totals either way, so it is free here; it is not serialized, as callers reporting a node's
+	// disk want the totals, not a row per volume.
+	VolumeItems []VolumeUsage `json:"-"`
 }
 
 // VolumeUsage is one Docker volume's measured on-disk size, keyed by name so it

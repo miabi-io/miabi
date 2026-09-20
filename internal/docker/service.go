@@ -393,7 +393,7 @@ func (e *engineClient) ServiceRestart(ctx context.Context, idOrName string) erro
 func (e *engineClient) ServiceTaskContainerID(ctx context.Context, serviceName string) (string, error) {
 	res, err := e.cli.ContainerList(ctx, client.ContainerListOptions{
 		All:     true,
-		Filters: selectorFilters("label", "com.docker.swarm.service.name="+serviceName),
+		Filters: selectorFilters("label", SwarmServiceNameLabel+"="+serviceName),
 	})
 	if err != nil {
 		return "", err

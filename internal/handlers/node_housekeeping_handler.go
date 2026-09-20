@@ -24,6 +24,8 @@ type HousekeepingSelectionRequest struct {
 		Reclaim struct {
 			DanglingImages bool `json:"dangling_images"`
 			BuildCache     bool `json:"build_cache"`
+			UnusedImages   bool `json:"unused_images"`
+			UnusedVolumes  bool `json:"unused_volumes"`
 		} `json:"reclaim"`
 		Orphans []struct {
 			Kind string `json:"kind"` // container | volume
@@ -42,6 +44,8 @@ func (r *HousekeepingSelectionRequest) selection() housekeeping.Selection {
 		Reclaim: housekeeping.ReclaimSelection{
 			DanglingImages: r.Body.Reclaim.DanglingImages,
 			BuildCache:     r.Body.Reclaim.BuildCache,
+			UnusedImages:   r.Body.Reclaim.UnusedImages,
+			UnusedVolumes:  r.Body.Reclaim.UnusedVolumes,
 		},
 	}
 	for _, o := range r.Body.Orphans {
@@ -104,13 +108,15 @@ func (h *NodeHandler) HousekeepingApply(c *okapi.Context, req *HousekeepingSelec
 func (h *NodeHandler) auditHousekeeping(c *okapi.Context, nodeID uint, res *housekeeping.Result) {
 	actor := middlewares.UserID(c)
 	nodeStr := strconv.Itoa(int(nodeID))
-	if res.ImagesDeleted > 0 || res.BuildCacheBytes > 0 {
+	if res.ImagesDeleted > 0 || res.BuildCacheBytes > 0 || res.VolumesDeleted > 0 {
 		h.audit.Record(audit.Entry{
 			ActorID: &actor, Action: "node.housekeeping.reclaim", TargetType: "node", TargetID: nodeStr, IP: c.RealIP(),
 			Metadata: map[string]any{
 				"images_deleted":              res.ImagesDeleted,
 				"images_reclaimed_bytes":      res.ImagesBytes,
 				"build_cache_reclaimed_bytes": res.BuildCacheBytes,
+				"volumes_deleted":             res.VolumesDeleted,
+				"volumes_reclaimed_bytes":     res.VolumesBytes,
 			},
 		})
 	}
