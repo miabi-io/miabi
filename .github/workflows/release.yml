@@ -239,7 +239,7 @@ jobs:
         if: steps.bump.outputs.changed == 'true'
         run: |
           set -euo pipefail
-          BRANCH="release/bump-${GITHUB_REF_NAME}"
+          BRANCH="release/${GITHUB_REF_NAME}"
           VERSION="${GITHUB_REF_NAME#v}"
 
           git config user.name  "miabi-bot"
@@ -249,7 +249,7 @@ jobs:
           # failing on one that already exists. --force-with-lease is the usual reflex,
           # but on the *first* run there is no remote-tracking ref to lease against and
           # it aborts with "stale info". The branch is workflow-owned (nobody else
-          # pushes to release/bump-*), so a plain force is the safe one here.
+          # pushes to release/*), so a plain force is the safe one here.
           git checkout -B "$BRANCH"
           git add deploy/install.sh
           git commit -m "chore(release): pin the installer to ${GITHUB_REF_NAME}"
