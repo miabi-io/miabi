@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -539,10 +540,16 @@ func Uninstall(ctx context.Context, svc *stack.Service, path string, withVolumes
 // very different things depending on whether Miabi is running.
 func WithInstallHint(err error) error {
 	if errors.Is(err, stack.ErrNotInstalled) {
+		// Only tell a non-root user to use sudo when they would actually need it: they can install
+		// under their own account, and the path they were just told about is in their home.
+		install := "sudo miabi setup --domain miabi.example.com"
+		if os.Geteuid() != 0 {
+			install = "miabi setup --domain miabi.example.com"
+		}
 		return fmt.Errorf("%w\n\n"+
 			"  If you installed with Docker Compose, this is expected — that stack is managed\n"+
 			"  by Compose, not by the CLI. Use `docker compose` in your install directory.\n\n"+
-			"  To install:  sudo miabi setup --domain miabi.example.com", err)
+			"  To install:  %s", err, install)
 	}
 	return err
 }
