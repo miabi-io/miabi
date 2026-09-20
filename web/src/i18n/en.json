@@ -92,14 +92,17 @@
     "infrastructure": {
       "clusters": "Clusters",
       "containerRegistry": "Container Registry",
-      "domains": "Domains",
       "kernelGrants": "Kernel grants",
       "nodes": "Nodes",
       "ports": "Ports",
-      "routes": "Routes",
       "sharedRunners": "Shared Runners",
       "storageClasses": "Storage classes",
       "title": "Infrastructure"
+    },
+    "networking": {
+      "domains": "Domains",
+      "routes": "Routes",
+      "title": "Networking"
     },
     "overview": {
       "dashboard": "Dashboard",
@@ -3480,6 +3483,9 @@
     "databaseBackupPassphrase": "Database backup passphrase",
     "databaseBackupPath": "Database backup path",
     "dbPassphraseHint": "Encrypts every database backup before it is stored. Without one, dumps are written to the bucket in plain text. Record it outside Miabi — a backup cannot be restored without it. Backups already taken stay readable as they are.",
+    "dedicatedNodes": "Dedicated nodes",
+    "dedicatedNodesChip": "Running on {org}'s own nodes in {location} — not shared with any other organization.",
+    "dedicatedNodesHint": "{org} runs its own nodes. This workspace's apps, databases and volumes run there, and no workspace outside {org} can be placed on them — not even by a platform administrator. The location follows the organization rather than this workspace.",
     "defaultLocation": "Default location",
     "defaultLocationHint": "Where new apps, databases, volumes and stacks run when their form names no location.",
     "deleteHint": "Permanently removes the workspace, repositories, and all associated resources. This action cannot be undone.",
@@ -3548,7 +3554,6 @@
     "securityRestricted": "Restricted",
     "securityRestrictedHint": "App and job containers run as a non-root platform UID",
     "sendInvite": "Send invite",
-    "setByYourOrganization": "set by your organization",
     "shellAccess": "Shell access",
     "systemNameLocked": "The built-in platform workspace cannot be renamed.",
     "tab": {
@@ -3570,6 +3575,7 @@
     "usage": "Usage",
     "useSslHttps": "Use SSL (HTTPS)",
     "volumeBackupPath": "Volume backup path",
-    "workspaces": "Workspaces"
+    "workspaces": "Workspaces",
+    "yourOrganization": "Your organization"
   }
 }
