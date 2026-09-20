@@ -28,13 +28,13 @@ const notify = useNotificationStore()
 const roles: WorkspaceRole[] = ['owner', 'admin', 'developer', 'viewer']
 type Tab = 'settings' | 'members' | 'roles' | 'usage' | 'backup' | 'portability' | 'notifications'
 const tabs: { id: Tab; label: string; icon: string }[] = [
-  { id: 'settings', label: 'General', icon: 'mdi-cog-outline' },
-  { id: 'members', label: 'Members', icon: 'mdi-account-group-outline' },
-  { id: 'roles', label: 'Roles', icon: 'mdi-shield-account-outline' },
-  { id: 'usage', label: 'Usage', icon: 'mdi-gauge' },
-  { id: 'backup', label: 'Backup', icon: 'mdi-cloud-upload-outline' },
-  { id: 'portability', label: 'Portability', icon: 'mdi-package-variant-closed' },
-  { id: 'notifications', label: 'Notifications', icon: 'mdi-bell-outline' },
+  { id: 'settings', label: 'wsSettings.tab.general', icon: 'mdi-cog-outline' },
+  { id: 'members', label: 'wsSettings.tab.members', icon: 'mdi-account-group-outline' },
+  { id: 'roles', label: 'wsSettings.tab.roles', icon: 'mdi-shield-account-outline' },
+  { id: 'usage', label: 'wsSettings.tab.usage', icon: 'mdi-gauge' },
+  { id: 'backup', label: 'wsSettings.tab.backup', icon: 'mdi-cloud-upload-outline' },
+  { id: 'portability', label: 'wsSettings.tab.portability', icon: 'mdi-package-variant-closed' },
+  { id: 'notifications', label: 'wsSettings.tab.notifications', icon: 'mdi-bell-outline' },
 ]
 
 // Custom roles (for the member role dropdown); empty/ignored when not entitled.
@@ -58,19 +58,19 @@ const usage = ref<WorkspaceUsage | null>(null)
 const usageLoading = ref(false)
 type UsageKey = keyof Pick<WorkspaceUsage, 'apps' | 'database_instances' | 'cron_jobs' | 'volumes' | 'networks' | 'api_keys' | 'members' | 'runners' | 'cpu_cores' | 'memory_mb' | 'storage_mb' | 'database_cpu_cores' | 'database_memory_mb'>
 const usageRows: { key: UsageKey; label: string; unit?: string }[] = [
-  { key: 'apps', label: 'Applications' },
-  { key: 'database_instances', label: 'Database instances' },
-  { key: 'cron_jobs', label: 'Cron jobs' },
-  { key: 'volumes', label: 'Volumes' },
-  { key: 'networks', label: 'Networks' },
-  { key: 'api_keys', label: 'API keys' },
-  { key: 'members', label: 'Members' },
-  { key: 'runners', label: 'Runners' },
-  { key: 'cpu_cores', label: 'CPU', unit: 'cores' },
-  { key: 'memory_mb', label: 'Memory', unit: 'MB' },
-  { key: 'database_cpu_cores', label: 'Database CPU', unit: 'cores' },
-  { key: 'database_memory_mb', label: 'Database memory', unit: 'MB' },
-  { key: 'storage_mb', label: 'Storage', unit: 'MB' },
+  { key: 'apps', label: 'wsSettings.row.apps' },
+  { key: 'database_instances', label: 'wsSettings.row.dbInstances' },
+  { key: 'cron_jobs', label: 'wsSettings.row.cronJobs' },
+  { key: 'volumes', label: 'wsSettings.row.volumes' },
+  { key: 'networks', label: 'wsSettings.row.networks' },
+  { key: 'api_keys', label: 'wsSettings.row.apiKeys' },
+  { key: 'members', label: 'wsSettings.row.members' },
+  { key: 'runners', label: 'wsSettings.row.runners' },
+  { key: 'cpu_cores', label: 'wsSettings.row.cpu', unit: 'wsSettings.unit.cores' },
+  { key: 'memory_mb', label: 'wsSettings.row.memory', unit: 'wsSettings.unit.mb' },
+  { key: 'database_cpu_cores', label: 'wsSettings.row.dbCpu', unit: 'wsSettings.unit.cores' },
+  { key: 'database_memory_mb', label: 'wsSettings.row.dbMemory', unit: 'wsSettings.unit.mb' },
+  { key: 'storage_mb', label: 'wsSettings.row.storage', unit: 'wsSettings.unit.mb' },
 ]
 async function loadUsage() {
   if (!wsId.value) return
@@ -238,7 +238,7 @@ async function saveBackup() {
     backup.value.bundle_passphrase = ''
     backup.value.backup_passphrase = ''
     backup.value.backup_passphrase_clear = false
-    notify.success('Backup settings saved')
+    notify.success(t('notify.wsSettings.backupSaved'))
   } catch (e) {
     notify.apiError(e)
   } finally {
@@ -290,7 +290,7 @@ async function saveDefaultLocation() {
   savingLocation.value = true
   try {
     applyLocations((await locationApi.setDefault(wsId.value, defaultLocation.value)).data.data)
-    notify.success('Default location updated')
+    notify.success(t('notify.wsSettings.locationUpdated'))
   } catch (e) {
     notify.apiError(e)
   } finally {
@@ -331,7 +331,7 @@ async function saveMeta() {
   try {
     await workspaceApi.update(wsId.value, { display_name: form.value.displayName.trim(), description: form.value.description.trim() })
     await ws.fetchWorkspaces()
-    notify.success('Workspace updated')
+    notify.success(t('notify.wsSettings.updated'))
   } catch (e) {
     notify.apiError(e)
   } finally {
@@ -352,7 +352,7 @@ async function saveName() {
     const updated = (await workspaceApi.updateName(wsId.value, form.value.name.trim())).data.data
     form.value.name = updated.name
     await ws.fetchWorkspaces()
-    notify.success('Workspace name updated')
+    notify.success(t('notify.wsSettings.nameUpdated'))
   } catch (e) {
     notify.apiError(e)
   } finally {
@@ -430,7 +430,7 @@ function startDeletionStream(jobId: string) {
 
 async function onDeletionDone(job: DeletionJob) {
   if (job.status === 'succeeded') {
-    notify.success('Workspace deleted')
+    notify.success(t('notify.wsSettings.deleted'))
     deleteModalOpen.value = false
     await ws.fetchWorkspaces()
     router.push('/workspaces')
@@ -448,7 +448,7 @@ async function sendInvite() {
     const res = (await memberApi.invite(wsId.value, invite.value.email.trim(), invite.value.role)).data.data
     inviteToken.value = res.token
     invite.value.email = ''
-    notify.success('Invitation created — share the token below')
+    notify.success(t('notify.wsSettings.inviteCreated'))
     loadMembers()
   } catch (e) {
     notify.apiError(e)
@@ -462,7 +462,7 @@ async function changeRole(userId: number, value: string) {
     } else {
       await memberApi.updateRole(wsId.value, userId, value)
     }
-    notify.success('Role updated')
+    notify.success(t('notify.wsSettings.roleUpdated'))
     loadMembers()
   } catch (e) {
     notify.apiError(e)
@@ -479,7 +479,7 @@ async function confirmRemoveMember() {
   removingMember.value = true
   try {
     await memberApi.remove(wsId.value, pendingRemoveMember.value.id)
-    notify.success('Member removed')
+    notify.success(t('notify.wsSettings.memberRemoved'))
     pendingRemoveMember.value = null
     loadMembers()
   } catch (e) {
@@ -491,7 +491,7 @@ async function confirmRemoveMember() {
 
 async function copyToken() {
   if (!inviteToken.value) return
-  if (await copyText(inviteToken.value)) notify.success('Token copied')
+  if (await copyText(inviteToken.value)) notify.success(t('notify.wsSettings.tokenCopied'))
   else notify.error(t('notify.workspaceSettings.copyFailedSelectAndCopy'))
 }
 
@@ -518,36 +518,33 @@ watch(activeTab, (t) => loadTab(t))
     <div class="page-header">
       <div>
         <button class="btn btn-ghost btn-sm" @click="router.push('/workspaces')">
-          <span class="mdi mdi-arrow-left"></span> Workspaces
-        </button>
+          <span class="mdi mdi-arrow-left"></span>{{ $t('wsSettings.workspaces') }}</button>
         <h1 style="margin-top: 8px">{{ form.displayName || form.name || 'Workspace' }}</h1>
       </div>
     </div>
 
     <div class="tabs">
-      <button v-for="t in tabs" :key="t.id" class="tab" :class="{ active: activeTab === t.id }" @click="setTab(t.id)">
-        <span class="mdi" :class="t.icon"></span> {{ t.label }}
+      <button v-for="item in tabs" :key="item.id" class="tab" :class="{ active: activeTab === item.id }" @click="setTab(item.id)">
+        <span class="mdi" :class="item.icon"></span> {{ $t(item.label) }}
       </button>
     </div>
 
     <!-- General -->
     <div v-if="activeTab === 'settings'" class="card">
-      <div class="card-header"><h2>General</h2></div>
+      <div class="card-header"><h2>{{ $t('wsSettings.general') }}</h2></div>
       <div class="card-body">
         <div class="form-group">
-          <label class="form-label">Workspace ID</label>
+          <label class="form-label">{{ $t('oauth.workspaceId') }}</label>
           <code class="ws-id mono">{{ wsId }}</code>
         </div>
         <div class="form-group">
-          <label class="form-label">Display name</label>
-          <input v-model="form.displayName" class="form-input" :disabled="!isAdmin || isSystemWs" aria-label="Display name" style="max-width: 420px" />
-          <p class="text-muted text-sm" style="margin-top: 4px">
-            The free-text label shown across the UI.
-            <template v-if="isSystemWs"> The built-in platform workspace cannot be renamed.</template>
+          <label class="form-label">{{ $t('oauth.displayName') }}</label>
+          <input v-model="form.displayName" class="form-input" :disabled="!isAdmin || isSystemWs" :aria-label="$t('oauth.displayName')" style="max-width: 420px" />
+          <p class="text-muted text-sm" style="margin-top: 4px">{{ $t('wsSettings.displayNameHint') }}<template v-if="isSystemWs">{{ $t('wsSettings.systemNameLocked') }}</template>
           </p>
         </div>
         <div class="form-group">
-          <label class="form-label">Name</label>
+          <label class="form-label">{{ $t('apps.form.name') }}</label>
           <div class="slug-row">
             <input
               v-model="form.name"
@@ -556,7 +553,7 @@ watch(activeTab, (t) => loadTab(t))
               placeholder="my-workspace"
               autocomplete="off"
               spellcheck="false"
-              aria-label="Name"
+              :aria-label="$t('apps.form.name')"
               style="max-width: 420px"
             />
             <button
@@ -569,19 +566,20 @@ watch(activeTab, (t) => loadTab(t))
             </button>
           </div>
           <p class="text-muted text-sm" style="margin-top: 4px">
-            The unique handle in the workspace's URLs and its <code>docker login</code> namespace.
-            Lowercase letters, digits, and hyphens. <strong>Changing it updates every URL and the
-            docker handle</strong>, and reserved names are not allowed.
-            <template v-if="isSystemWs"> The system workspace name is reserved and cannot be changed.</template>
+            <i18n-t keypath="wsSettings.handleHint" tag="span">
+              <template #docker><code>docker login</code></template>
+              <template #warning><strong>{{ $t('wsSettings.changingItUpdatesEveryUrl') }}</strong></template>
+            </i18n-t>
+            <template v-if="isSystemWs"> {{ $t('wsSettings.theSystemWorkspaceNameIs') }}</template>
           </p>
         </div>
         <div v-if="locationPinned" class="form-group">
-          <label class="form-label">Default location</label>
+          <label class="form-label">{{ $t('wsSettings.defaultLocation') }}</label>
           <div class="slug-row">
-            <select class="form-select" disabled aria-label="Default location" style="max-width: 420px">
+            <select class="form-select" disabled :aria-label="$t('wsSettings.defaultLocation')" style="max-width: 420px">
               <option>{{ locations.length ? locationLabel(locations.find((l) => l.default) ?? locations[0]) : '—' }}</option>
             </select>
-            <span class="badge badge-muted"><span class="mdi mdi-lock-outline"></span> set by your organization</span>
+            <span class="badge badge-muted"><span class="mdi mdi-lock-outline"></span>{{ $t('wsSettings.setByYourOrganization') }}</span>
           </div>
           <p class="form-hint">
             {{ locationPinnedTo || 'Your organization' }} runs its own locations, so this workspace's resources always
@@ -589,50 +587,43 @@ watch(activeTab, (t) => loadTab(t))
           </p>
         </div>
         <div v-else-if="locations.length > 1" class="form-group">
-          <label class="form-label">Default location</label>
+          <label class="form-label">{{ $t('wsSettings.defaultLocation') }}</label>
           <div class="slug-row">
-            <select v-model="defaultLocation" class="form-select" :disabled="!isAdmin" aria-label="Default location" style="max-width: 420px">
+            <select v-model="defaultLocation" class="form-select" :disabled="!isAdmin" :aria-label="$t('wsSettings.defaultLocation')" style="max-width: 420px">
               <option v-for="l in locations" :key="l.id" :value="l.name">{{ locationLabel(l) }}</option>
             </select>
             <button v-if="isAdmin" class="btn btn-secondary" :disabled="savingLocation" @click="saveDefaultLocation">
               {{ savingLocation ? 'Saving…' : 'Set default' }}
             </button>
           </div>
-          <p class="text-muted text-sm" style="margin-top: 4px">
-            Where new apps, databases, volumes and stacks run when their form names no location.
-          </p>
+          <p class="text-muted text-sm" style="margin-top: 4px">{{ $t('wsSettings.defaultLocationHint') }}</p>
         </div>
         <div class="form-group">
-          <label class="form-label">Description</label>
+          <label class="form-label">{{ $t('plans.description') }}</label>
           <textarea v-model="form.description" class="form-textarea" :disabled="!isAdmin"
-            placeholder="What is this workspace for?" aria-label="Description" style="line-height: 1.5;"></textarea>
+            :placeholder="$t('wsSettings.descriptionPlaceholder')" :aria-label="$t('plans.description')" style="line-height: 1.5;"></textarea>
 
         </div>
         <button v-if="isAdmin" class="btn btn-primary" :disabled="savingMeta" @click="saveMeta">
           {{ savingMeta ? 'Saving…' : 'Save changes' }}
         </button>
-        <p v-else class="text-muted text-sm">You need admin access to edit workspace settings.</p>
+        <p v-else class="text-muted text-sm">{{ $t('wsSettings.needAdminSettings') }}</p>
       </div>
       <template v-if="isOwner && !isSystemWs">
         <div class="card card-danger mt-4">
           <div class="card-header danger-header">
             <div class="flex items-center gap-2">
-              <h2>Danger Zone</h2>
+              <h2>{{ $t('wsSettings.dangerZone') }}</h2>
             </div>
           </div>
 
           <div class="card-body card-body-danger">
             <div class="danger-info">
-              <div class="danger-title">Delete this workspace</div>
-              <div class="text-muted text-sm">
-                Permanently removes the workspace, repositories, and all associated resources. This action cannot be
-                undone.
-              </div>
+              <div class="danger-title">{{ $t('wsSettings.deleteThisWorkspace') }}</div>
+              <div class="text-muted text-sm">{{ $t('wsSettings.deleteHint') }}</div>
             </div>
 
-            <button class="btn btn-danger btn-sm" @click="openDeleteModal">
-              Delete workspace
-            </button>
+            <button class="btn btn-danger btn-sm" @click="openDeleteModal">{{ $t('wsSettings.deleteWorkspace') }}</button>
           </div>
         </div>
       </template>
@@ -641,10 +632,10 @@ watch(activeTab, (t) => loadTab(t))
     <!-- Members -->
     <template v-else-if="activeTab === 'members'">
       <div class="card mb-4">
-        <div class="card-header"><h2>Members</h2></div>
+        <div class="card-header"><h2>{{ $t('wsSettings.members') }}</h2></div>
         <div class="table-wrapper">
           <table>
-            <thead><tr><th>Member</th><th>Role</th><th></th></tr></thead>
+            <thead><tr><th>{{ $t('wsSettings.member') }}</th><th>{{ $t('wsSettings.role') }}</th><th></th></tr></thead>
             <tbody>
               <tr v-for="m in members" :key="m.id">
                 <td>
@@ -657,7 +648,7 @@ watch(activeTab, (t) => loadTab(t))
                   </div>
                 </td>
                 <td>
-                  <select v-if="isAdmin" class="form-select" style="max-width: 170px" aria-label="Member role" :value="m.custom_role_id ? 'custom:' + m.custom_role_id : m.role" @change="changeRole(m.user_id, ($event.target as HTMLSelectElement).value)">
+                  <select v-if="isAdmin" class="form-select" style="max-width: 170px" :aria-label="$t('wsSettings.memberRole')" :value="m.custom_role_id ? 'custom:' + m.custom_role_id : m.role" @change="changeRole(m.user_id, ($event.target as HTMLSelectElement).value)">
                     <option v-for="r in roles" :key="r" :value="r">{{ r }}</option>
                     <optgroup v-if="customRoleList.length" label="Custom roles">
                       <option v-for="cr in customRoleList" :key="cr.id" :value="'custom:' + cr.id">{{ cr.name }}</option>
@@ -666,42 +657,42 @@ watch(activeTab, (t) => loadTab(t))
                   <span v-else class="badge badge-neutral">{{ m.custom_role_id ? (customRoleList.find((c) => c.id === m.custom_role_id)?.name ?? m.role) : m.role }}</span>
                 </td>
                 <td class="text-right">
-                  <button v-if="isAdmin && m.role !== 'owner'" class="btn-icon btn-icon-danger" title="Remove" aria-label="Remove" @click="removeMember(m.user_id, m.user.name)">
+                  <button v-if="isAdmin && m.role !== 'owner'" class="btn-icon btn-icon-danger" :title="$t('action.remove')" :aria-label="$t('action.remove')" @click="removeMember(m.user_id, m.user.name)">
                     <span class="mdi mdi-account-remove-outline"></span>
                   </button>
                 </td>
               </tr>
-              <tr v-if="members.length === 0"><td colspan="3" class="text-center text-muted">No members.</td></tr>
+              <tr v-if="members.length === 0"><td colspan="3" class="text-center text-muted">{{ $t('wsSettings.noMembers') }}</td></tr>
             </tbody>
           </table>
         </div>
       </div>
 
       <div v-if="isAdmin" class="card">
-        <div class="card-header"><h2>Invite a member</h2></div>
+        <div class="card-header"><h2>{{ $t('wsSettings.inviteAMember') }}</h2></div>
         <div class="card-body">
           <form class="invite-form" @submit.prevent="sendInvite">
-            <input v-model="invite.email" type="email" class="form-input" placeholder="email@example.com" aria-label="Invitee email" required />
-            <select v-model="invite.role" class="form-select" aria-label="Invitee role">
+            <input v-model="invite.email" type="email" class="form-input" placeholder="email@example.com" :aria-label="$t('wsSettings.inviteeEmail')" required />
+            <select v-model="invite.role" class="form-select" :aria-label="$t('wsSettings.inviteeRole')">
               <option v-for="r in roles" :key="r" :value="r">{{ r }}</option>
             </select>
-            <button class="btn btn-primary">Send invite</button>
+            <button class="btn btn-primary">{{ $t('wsSettings.sendInvite') }}</button>
           </form>
 
           <div v-if="inviteToken" class="app-banner app-banner--info mb-4" style="margin-top: 16px">
             <span class="mdi mdi-ticket-confirmation-outline app-banner-icon"></span>
             <div class="app-banner-content">
-              <p class="app-banner-title">Invitation token</p>
-              <p class="app-banner-text">Share this token with the invitee — it is shown only once.</p>
+              <p class="app-banner-title">{{ $t('wsSettings.invitationToken') }}</p>
+              <p class="app-banner-text">{{ $t('wsSettings.inviteTokenHint') }}</p>
               <div class="code-block" style="margin-top: 8px">{{ inviteToken }}</div>
             </div>
             <div class="app-banner-actions">
-              <button class="app-banner-btn" @click="copyToken">Copy</button>
+              <button class="app-banner-btn" @click="copyToken">{{ $t('wsSettings.copy') }}</button>
             </div>
           </div>
 
           <div v-if="invitations.length" style="margin-top: 16px">
-            <div class="form-label">Pending invitations</div>
+            <div class="form-label">{{ $t('wsSettings.pendingInvitations') }}</div>
             <div class="table-wrapper">
               <table>
                 <tbody>
@@ -726,36 +717,34 @@ watch(activeTab, (t) => loadTab(t))
       <!-- Live usage: actual consumption across running containers (SSE) -->
       <div class="card" style="margin-bottom: 16px">
         <div class="card-header">
-          <h2>Live usage</h2>
+          <h2>{{ $t('wsSettings.liveUsage') }}</h2>
           <span class="badge" :class="liveConnected ? 'badge-success' : 'badge-neutral'">
             <span class="mdi" :class="liveConnected ? 'mdi-access-point' : 'mdi-access-point-off'"></span>
             {{ liveConnected ? 'Live' : 'Connecting…' }}
           </span>
         </div>
         <div class="card-body">
-          <p class="text-muted text-sm" style="margin-bottom: 16px">
-            Actual consumption right now across the workspace's running app &amp; database containers.
-          </p>
+          <p class="text-muted text-sm" style="margin-bottom: 16px">{{ $t('wsSettings.liveUsageHint') }}</p>
           <div class="live-grid">
             <div class="live-stat">
               <span class="live-value">{{ (live?.cpu_cores ?? 0).toFixed(2) }}</span>
-              <span class="live-label">CPU cores</span>
+              <span class="live-label">{{ $t('databases.form.cpu') }}</span>
               <span class="live-sub" v-if="usage && usage.cpu_cores.limit >= 0">limit {{ usage.cpu_cores.limit }}</span>
               <Sparkline :values="cpuSeries" :width="180" :height="34" stroke="var(--primary-500)" class="live-spark" />
             </div>
             <div class="live-stat">
               <span class="live-value">{{ fmtBytes(live?.memory_bytes ?? 0) }}</span>
-              <span class="live-label">Memory</span>
+              <span class="live-label">{{ $t('wsSettings.memory') }}</span>
               <span class="live-sub" v-if="usage && usage.memory_mb.limit >= 0">limit {{ usage.memory_mb.limit }} MB</span>
               <Sparkline :values="memSeries" :width="180" :height="34" stroke="var(--info-500, #0ea5e9)" class="live-spark" />
             </div>
             <div class="live-stat">
               <span class="live-value">{{ live?.containers ?? 0 }}</span>
-              <span class="live-label">Containers</span>
+              <span class="live-label">{{ $t('wsSettings.containers') }}</span>
             </div>
             <div class="live-stat">
               <span class="live-value">{{ fmtBytes(live?.net_rx_bytes ?? 0) }} / {{ fmtBytes(live?.net_tx_bytes ?? 0) }}</span>
-              <span class="live-label">Net RX / TX</span>
+              <span class="live-label">{{ $t('wsSettings.netRxTx') }}</span>
             </div>
           </div>
         </div>
@@ -763,7 +752,7 @@ watch(activeTab, (t) => loadTab(t))
 
       <div class="card">
         <div class="card-header">
-          <h2>Usage</h2>
+          <h2>{{ $t('wsSettings.usage') }}</h2>
           <span v-if="usage" class="badge" :class="usage.enforced ? 'badge-success' : 'badge-neutral'">
             {{ usage.enforced ? 'Enforced' : 'Not enforced' }}
           </span>
@@ -771,13 +760,13 @@ watch(activeTab, (t) => loadTab(t))
         <div v-if="usageLoading && !usage" class="card-body"><span class="spinner"></span></div>
         <div v-else-if="usage" class="card-body">
           <p class="text-muted text-sm" style="margin-bottom: 16px">
-            Plan: <strong>{{ usage.plan_name || 'None (unlimited)' }}</strong>.
-            <span v-if="!usage.enforced">Limits are shown for reference; enforcement is disabled platform-wide.</span>
+            <i18n-t keypath="wsSettings.planLine" tag="span"><template #plan><strong>{{ usage.plan_name || $t('wsSettings.noPlan') }}</strong></template></i18n-t>
+            <span v-if="!usage.enforced"> {{ $t('wsSettings.limitsAreShownForReference') }}</span>
           </p>
           <div v-for="row in usageRows" :key="row.key" class="meter">
             <div class="meter-head">
-              <span>{{ row.label }}</span>
-              <span class="meter-count">{{ usage[row.key].used }} / {{ usage[row.key].limit < 0 ? '∞' : usage[row.key].limit }}{{ row.unit ? ' ' + row.unit : '' }}</span>
+              <span>{{ $t(row.label) }}</span>
+              <span class="meter-count">{{ usage[row.key].used }} / {{ usage[row.key].limit < 0 ? '∞' : usage[row.key].limit }}{{ row.unit ? ' ' + $t(row.unit) : '' }}</span>
             </div>
             <div class="meter-track">
               <div class="meter-fill" :class="meterClass(usage[row.key])" :style="{ width: meterPct(usage[row.key]) + '%' }"></div>
@@ -786,26 +775,26 @@ watch(activeTab, (t) => loadTab(t))
 
           <div class="meter meter-flat">
             <div class="meter-head">
-              <span>Databases per instance</span>
+              <span>{{ $t('planDetail.field.dbsPerInstance') }}</span>
               <span class="meter-count">{{ usage.limits.max_databases_per_instance < 0 ? '∞' : usage.limits.max_databases_per_instance }}</span>
             </div>
           </div>
 
           <div class="caps">
-            <span class="text-muted text-sm">Capabilities</span>
-            <span class="badge" :class="usage.capabilities.custom_tls ? 'badge-success' : 'badge-neutral'">Custom TLS</span>
-            <span class="badge" :class="usage.capabilities.privileged_host_mounts ? 'badge-success' : 'badge-neutral'">Privileged host mounts</span>
-            <span class="badge" :class="usage.capabilities.shell_exec ? 'badge-success' : 'badge-neutral'">Shell access</span>
-            <span class="badge" :class="usage.capabilities.shared_storage ? 'badge-success' : 'badge-neutral'">Shared storage</span>
-            <span class="badge" :class="usage.capabilities.dns_providers ? 'badge-success' : 'badge-neutral'">DNS providers</span>
+            <span class="text-muted text-sm">{{ $t('wsSettings.capabilities') }}</span>
+            <span class="badge" :class="usage.capabilities.custom_tls ? 'badge-success' : 'badge-neutral'">{{ $t('wsSettings.customTls') }}</span>
+            <span class="badge" :class="usage.capabilities.privileged_host_mounts ? 'badge-success' : 'badge-neutral'">{{ $t('wsSettings.privilegedHostMounts') }}</span>
+            <span class="badge" :class="usage.capabilities.shell_exec ? 'badge-success' : 'badge-neutral'">{{ $t('wsSettings.shellAccess') }}</span>
+            <span class="badge" :class="usage.capabilities.shared_storage ? 'badge-success' : 'badge-neutral'">{{ $t('plans.sharedStorage') }}</span>
+            <span class="badge" :class="usage.capabilities.dns_providers ? 'badge-success' : 'badge-neutral'">{{ $t('wsSettings.dnsProviders') }}</span>
             <span
               class="badge"
               :class="usage.limits.security_profile === 'restricted' ? 'badge-info' : 'badge-neutral'"
               :title="usage.limits.security_profile === 'restricted'
-                ? 'App and job containers run as a non-root platform UID'
-                : 'Containers run as the image default user'"
+                ? $t('wsSettings.securityRestrictedHint')
+                : $t('wsSettings.securityDefaultHint')"
             >
-              Security: {{ usage.limits.security_profile === 'restricted' ? 'Restricted' : 'Default' }}
+              {{ $t('wsSettings.securityBadge', { profile: usage.limits.security_profile === 'restricted' ? $t('wsSettings.securityRestricted') : $t('wsSettings.securityDefault') }) }}
             </span>
           </div>
         </div>
@@ -816,76 +805,71 @@ watch(activeTab, (t) => loadTab(t))
     <template v-else-if="activeTab === 'backup'">
       <div v-if="!isAdmin" class="card">
         <div class="card-body">
-          <p class="text-muted text-sm">You need admin access to manage backup settings.</p>
+          <p class="text-muted text-sm">{{ $t('wsSettings.needAdminBackups') }}</p>
         </div>
       </div>
       <div v-else class="card">
         <div class="card-header">
           <div>
-            <h2>S3 backup target</h2>
-            <p class="text-muted text-sm" style="margin: 4px 0 0">
-              One bucket and credentials shared by database and volume backups. The secret is stored
-              encrypted and never shown again.
-            </p>
+            <h2>{{ $t('wsSettings.s3BackupTarget') }}</h2>
+            <p class="text-muted text-sm" style="margin: 4px 0 0">{{ $t('wsSettings.s3Hint') }}</p>
           </div>
         </div>
         <div class="card-body">
           <label class="toggle-row">
             <input v-model="backup.s3_enabled" type="checkbox" />
-            <span>Enable S3 backups for this workspace</span>
+            <span>{{ $t('wsSettings.enableS3BackupsForThis') }}</span>
           </label>
 
           <fieldset class="backup-fields" :disabled="!backup.s3_enabled">
             <div class="form-grid">
               <div class="form-group">
-                <label class="form-label">Bucket</label>
-                <input v-model="backup.s3_bucket" class="form-input" placeholder="my-backups" aria-label="Bucket" />
+                <label class="form-label">{{ $t('wsSettings.bucket') }}</label>
+                <input v-model="backup.s3_bucket" class="form-input" placeholder="my-backups" :aria-label="$t('wsSettings.bucket')" />
               </div>
               <div class="form-group">
-                <label class="form-label">Region</label>
-                <input v-model="backup.s3_region" class="form-input" placeholder="us-east-1" aria-label="Region" />
+                <label class="form-label">{{ $t('wsSettings.region') }}</label>
+                <input v-model="backup.s3_region" class="form-input" placeholder="us-east-1" :aria-label="$t('wsSettings.region')" />
               </div>
             </div>
 
             <div class="form-group">
-              <label class="form-label">Endpoint <span class="text-muted">(optional, for S3-compatible)</span></label>
-              <input v-model="backup.s3_endpoint" class="form-input" placeholder="https://s3.amazonaws.com" aria-label="Endpoint" />
+              <label class="form-label">{{ $t('wsSettings.endpoint') }}<span class="text-muted">{{ $t('wsSettings.optionalForS3Compatible') }}</span></label>
+              <input v-model="backup.s3_endpoint" class="form-input" placeholder="https://s3.amazonaws.com" :aria-label="$t('wsSettings.endpoint')" />
             </div>
 
             <div class="form-grid">
               <div class="form-group">
-                <label class="form-label">Access key</label>
-                <input v-model="backup.s3_access_key" class="form-input" autocomplete="off" aria-label="Access key" />
+                <label class="form-label">{{ $t('wsSettings.accessKey') }}</label>
+                <input v-model="backup.s3_access_key" class="form-input" autocomplete="off" :aria-label="$t('wsSettings.accessKey')" />
               </div>
               <div class="form-group">
-                <label class="form-label">Secret key</label>
+                <label class="form-label">{{ $t('wsSettings.secretKey') }}</label>
                 <input
                   v-model="backup.s3_secret_key"
                   class="form-input"
                   type="password"
                   autocomplete="new-password"
-                  :placeholder="backupSecretSet ? '••••• (set — leave blank to keep)' : ''"
-                  aria-label="Secret key"
+                  :placeholder="backupSecretSet ? $t('wsSettings.secretSet') : ''"
+                  :aria-label="$t('wsSettings.secretKey')"
                 />
               </div>
             </div>
 
             <div class="form-grid">
               <div class="form-group">
-                <label class="form-label">Database backup path</label>
-                <input v-model="backup.database_backup_path" class="form-input" placeholder="backups/databases" aria-label="Database backup path" />
+                <label class="form-label">{{ $t('wsSettings.databaseBackupPath') }}</label>
+                <input v-model="backup.database_backup_path" class="form-input" placeholder="backups/databases" :aria-label="$t('wsSettings.databaseBackupPath')" />
               </div>
               <div class="form-group">
-                <label class="form-label">Volume backup path</label>
-                <input v-model="backup.volume_backup_path" class="form-input" placeholder="backups/volumes" aria-label="Volume backup path" />
+                <label class="form-label">{{ $t('wsSettings.volumeBackupPath') }}</label>
+                <input v-model="backup.volume_backup_path" class="form-input" placeholder="backups/volumes" :aria-label="$t('wsSettings.volumeBackupPath')" />
               </div>
             </div>
 
             <div class="form-grid">
               <div class="form-group">
-                <label class="form-label">
-                  Database backup passphrase
-                  <span v-if="backupPassphraseSet" class="text-muted">(encryption on)</span>
+                <label class="form-label">{{ $t('wsSettings.databaseBackupPassphrase') }} <span v-if="backupPassphraseSet" class="text-muted">{{ $t('wsSettings.encryptionOn') }}</span>
                 </label>
                 <input
                   v-model="backup.backup_passphrase"
@@ -893,59 +877,51 @@ watch(activeTab, (t) => loadTab(t))
                   type="password"
                   autocomplete="new-password"
                   :disabled="backup.backup_passphrase_clear"
-                  :placeholder="backupPassphraseSet ? '••••• (set — leave blank to keep)' : 'at least 12 characters'"
-                  aria-label="Database backup passphrase"
+                  :placeholder="backupPassphraseSet ? $t('wsSettings.secretSet') : $t('wsSettings.atLeast12')"
+                  :aria-label="$t('wsSettings.databaseBackupPassphrase')"
                 />
-                <p class="text-muted text-sm" style="margin: 6px 0 0">
-                  Encrypts every database backup before it is stored. Without one, dumps are written
-                  to the bucket in plain text. Record it outside Miabi — a backup cannot be restored
-                  without it. Backups already taken stay readable as they are.
-                </p>
+                <p class="text-muted text-sm" style="margin: 6px 0 0">{{ $t('wsSettings.dbPassphraseHint') }}</p>
                 <label v-if="backupPassphraseSet" class="toggle-row" style="margin-top: 8px">
                   <input v-model="backup.backup_passphrase_clear" type="checkbox" />
-                  <span>Turn encryption off — new backups will be stored unencrypted</span>
+                  <span>{{ $t('wsSettings.turnEncryptionOff') }}</span>
                 </label>
               </div>
             </div>
 
             <div class="form-grid">
               <div class="form-group">
-                <label class="form-label">Bundle path <span class="text-muted">(portable backups)</span></label>
-                <input v-model="backup.bundle_path" class="form-input" placeholder="bundles" aria-label="Bundle path" />
+                <label class="form-label">{{ $t('wsSettings.bundlePath') }} <span class="text-muted">{{ $t('wsSettings.portableBackups') }}</span></label>
+                <input v-model="backup.bundle_path" class="form-input" placeholder="bundles" :aria-label="$t('wsSettings.bundlePath')" />
               </div>
               <div class="form-group">
-                <label class="form-label">Bundle passphrase</label>
+                <label class="form-label">{{ $t('wsSettings.bundlePassphrase') }}</label>
                 <input
                   v-model="backup.bundle_passphrase"
                   class="form-input"
                   type="password"
                   autocomplete="new-password"
-                  :placeholder="bundlePassphraseSet ? '\u2022\u2022\u2022\u2022\u2022 (set \u2014 leave blank to keep)' : 'at least 12 characters'"
-                  aria-label="Bundle passphrase"
+                  :placeholder="bundlePassphraseSet ? $t('wsSettings.secretSet') : $t('wsSettings.atLeast12')"
+                  :aria-label="$t('wsSettings.bundlePassphrase')"
                 />
-                <p class="text-muted text-sm" style="margin: 6px 0 0">
-                  Seals a portable bundle's secrets and encrypts its dumps. Record it outside Miabi:
-                  it is the only thing that opens a bundle on another install \u2014 including one
-                  rebuilt after losing this one.
-                </p>
+                <p class="text-muted text-sm" style="margin: 6px 0 0">{{ $t('wsSettings.bundlePassphraseHint') }}</p>
               </div>
             </div>
 
             <div class="toggle-list">
               <label class="toggle-row">
                 <input v-model="backup.s3_use_ssl" type="checkbox" />
-                <span>Use SSL (HTTPS)</span>
+                <span>{{ $t('wsSettings.useSslHttps') }}</span>
               </label>
               <label class="toggle-row">
                 <input v-model="backup.s3_force_path_style" type="checkbox" />
-                <span>Force path-style URLs (required by MinIO and some S3-compatible stores)</span>
+                <span>{{ $t('wsSettings.pathStyle') }}</span>
               </label>
             </div>
           </fieldset>
 
           <div class="backup-actions">
             <button class="btn btn-primary" :disabled="savingBackup" @click="saveBackup">
-              {{ savingBackup ? 'Saving…' : 'Save settings' }}
+              {{ savingBackup ? $t('action.saving') : $t('wsSettings.saveSettings') }}
             </button>
             <button class="btn btn-secondary" :disabled="testingBackup || !backup.s3_enabled" @click="testBackup">
               {{ testingBackup ? 'Testing…' : 'Test connection' }}
@@ -962,10 +938,10 @@ watch(activeTab, (t) => loadTab(t))
             <ul class="test-checks">
               <li v-for="c in backupTest.checks" :key="c.prefix">
                 <span class="mdi" :class="c.error ? 'mdi-close' : 'mdi-check'"></span>
-                <code>{{ c.prefix || '(bucket root)' }}</code>
+                <code>{{ c.prefix || $t('wsSettings.bucketRoot') }}</code>
                 <span v-if="c.error" class="text-muted"> — {{ c.error }}</span>
-                <span v-else-if="!c.removed" class="text-muted"> — written and read back, but not deletable</span>
-                <span v-else class="text-muted"> — written, read back and removed</span>
+                <span v-else-if="!c.removed" class="text-muted"> {{ $t('wsSettings.probeNotDeletable') }}</span>
+                <span v-else class="text-muted"> {{ $t('wsSettings.probeOk') }}</span>
               </li>
             </ul>
           </div>
@@ -977,7 +953,7 @@ watch(activeTab, (t) => loadTab(t))
     <template v-else-if="activeTab === 'portability'">
       <div v-if="!isAdmin" class="card">
         <div class="card-body">
-          <p class="text-muted text-sm">You need admin access to export or restore this workspace.</p>
+          <p class="text-muted text-sm">{{ $t('wsSettings.needAdminExport') }}</p>
         </div>
       </div>
       <PortableBackupPanel v-else :ws-id="wsId" :can-restore="myRole === 'owner'" />
@@ -991,19 +967,19 @@ watch(activeTab, (t) => loadTab(t))
     <!-- Confirm step -->
     <AppModal v-if="deleteModalOpen && (!deletionJob)" @close="closeDeleteModal">
       <div class="modal-header">
-        <h3>Delete workspace</h3>
-        <button class="btn-icon btn-icon-muted" aria-label="Close" @click="closeDeleteModal"><span class="mdi mdi-close"></span></button>
+        <h3>{{ $t('wsSettings.deleteWorkspace') }}</h3>
+        <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="closeDeleteModal"><span class="mdi mdi-close"></span></button>
       </div>
       <div class="modal-body">
         <div class="danger-note">
           <span class="mdi mdi-alert-outline"></span>
-          <div>
-            This permanently removes <strong>{{ form.name }}</strong> and <strong>all its resources</strong> —
-            applications, databases, volumes and stacks. This cannot be undone.
-          </div>
+          <i18n-t keypath="wsSettings.deleteWarning" tag="div">
+            <template #name><strong>{{ form.name }}</strong></template>
+            <template #resources><strong>{{ $t('wsSettings.allItsResources') }}</strong></template>
+          </i18n-t>
         </div>
         <div class="form-group" style="margin-top: 16px">
-          <label class="form-label">Type <strong>{{ form.name }}</strong> to confirm</label>
+          <i18n-t keypath="wsSettings.typeToConfirm" tag="label" class="form-label"><template #name><strong>{{ form.name }}</strong></template></i18n-t>
           <input
             v-model="confirmName"
             class="form-input"
@@ -1011,23 +987,21 @@ watch(activeTab, (t) => loadTab(t))
             autocomplete="off"
             autocapitalize="off"
             spellcheck="false"
-            aria-label="Type workspace name to confirm"
+            :aria-label="$t('wsSettings.confirmNameLabel')"
             @keyup.enter="confirmDelete"
           />
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" @click="closeDeleteModal">Cancel</button>
-        <button type="button" class="btn btn-danger" :disabled="!deleteArmed" @click="confirmDelete">
-          Delete workspace
-        </button>
+        <button type="button" class="btn btn-secondary" @click="closeDeleteModal">{{ $t('action.cancel') }}</button>
+        <button type="button" class="btn btn-danger" :disabled="!deleteArmed" @click="confirmDelete">{{ $t('wsSettings.deleteWorkspace') }}</button>
       </div>
     </AppModal>
     <!-- Progress step -->
     <AppModal v-else-if="deleteModalOpen && deletionJob" @close="closeDeleteModal">
       <div class="modal-header">
         <h3>{{ deletionJob.status === 'failed' ? 'Deletion failed' : `Deleting ${form.name}` }}</h3>
-        <button v-if="deletionJob.status !== 'running'" class="btn-icon btn-icon-muted" aria-label="Close" @click="closeDeleteModal">
+        <button v-if="deletionJob.status !== 'running'" class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="closeDeleteModal">
           <span class="mdi mdi-close"></span>
         </button>
       </div>
@@ -1047,7 +1021,7 @@ watch(activeTab, (t) => loadTab(t))
         </div>
       </div>
       <div v-if="deletionJob.status === 'failed'" class="modal-footer">
-        <button type="button" class="btn btn-secondary" @click="closeDeleteModal">Close</button>
+        <button type="button" class="btn btn-secondary" @click="closeDeleteModal">{{ $t('shell.close') }}</button>
       </div>
     </AppModal>
   </Teleport>
