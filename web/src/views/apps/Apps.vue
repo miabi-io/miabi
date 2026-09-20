@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, computed, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
@@ -16,6 +17,7 @@ import LocationPicker from '@/components/LocationPicker.vue'
 import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
+const { t } = useI18n()
 const notify = useNotificationStore()
 const router = useRouter()
 const { currentWorkspaceId } = storeToRefs(ws)
@@ -204,7 +206,7 @@ async function create() {
       // server_id above, and the Swarm scheduler is not involved.
       placement_constraints: isService.value && form.value.placement_constraints.length ? form.value.placement_constraints : undefined,
     })
-    notify.success('Application created')
+    notify.success(t('apps.created'))
     showCreate.value = false
     await load(currentWorkspaceId.value)
   } catch (e) {
@@ -235,11 +237,11 @@ function formatCreated(ts?: string) {
   <div>
     <div class="page-header">
       <div>
-        <h1>Applications</h1>
+        <h1>{{ $t('nav.deploy.applications') }}</h1>
         <p class="subtitle">Containerized apps Miabi builds, deploys, and runs for {{ ws.contextLabel }}.</p>
       </div>
       <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate">
-        <span class="mdi mdi-plus"></span> New application
+        <span class="mdi mdi-plus"></span> {{ $t('dashboard.newApplication') }}
       </button>
     </div>
 
@@ -247,12 +249,12 @@ function formatCreated(ts?: string) {
       <div v-if="loading && apps.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="apps.length === 0" class="empty-state">
         <span class="mdi mdi-cube-outline" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No applications yet</h3>
-        <p>Deploy from a Docker image or a Git repository — or install a ready-made app from the Marketplace.</p>
+        <h3>{{ $t('dashboard.apps.empty') }}</h3>
+        <p>{{ $t('apps.emptyHint') }}</p>
         <div class="empty-actions mt-4">
-          <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate">Deploy your first application</button>
+          <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate">{{ $t('apps.deployFirst') }}</button>
           <button class="btn btn-secondary" @click="router.push({ name: 'marketplace' })">
-            <span class="mdi mdi-storefront-outline"></span> Browse the Marketplace
+            <span class="mdi mdi-storefront-outline"></span> {{ $t('apps.browseMarketplace') }}
           </button>
         </div>
       </div>
@@ -260,7 +262,7 @@ function formatCreated(ts?: string) {
         <div class="card-body toolbar">
           <div class="search">
             <span class="mdi mdi-magnify"></span>
-            <input v-model="search" class="form-input" type="search" aria-label="Search applications" placeholder="Search applications by name, image, repo, or node…" />
+            <input v-model="search" class="form-input" type="search" :aria-label="$t('apps.searchLabel')" :placeholder="$t('apps.searchPlaceholder')" />
           </div>
           <span class="text-muted text-sm">{{ filteredApps.length }} of {{ apps.length }}</span>
         </div>
@@ -270,7 +272,7 @@ function formatCreated(ts?: string) {
         </div>
         <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Application</th><th>Source</th><th>Node</th><th>Status</th><th class="text-right">Created</th></tr></thead>
+          <thead><tr><th>{{ $t('dashboard.col.application') }}</th><th>{{ $t('apps.col.source') }}</th><th>{{ $t('dashboard.col.node') }}</th><th>{{ $t('dashboard.col.status') }}</th><th class="text-right">{{ $t('dashboard.col.created') }}</th></tr></thead>
           <tbody>
             <tr v-for="a in filteredApps" :key="a.id" class="row-clickable" @click="router.push(`/apps/${a.id}`)">
               <td>
@@ -299,26 +301,26 @@ function formatCreated(ts?: string) {
     <Teleport to="body">
       <AppModal v-if="showCreate" @close="showCreate = false">
         <div class="modal-header">
-          <h3>New application</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
+          <h3>{{ $t('dashboard.newApplication') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showCreate = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="create">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Name</label>
-              <input v-model="form.name" class="form-input" placeholder="e.g. web-api" required autofocus />
+              <label class="form-label">{{ $t('apps.form.name') }}</label>
+              <input v-model="form.name" class="form-input" :placeholder="$t('apps.form.namePlaceholder')" required autofocus />
             </div>
             <!-- Cluster runtime: only offered when cluster mode is enabled. -->
             <div v-if="clusterEnabled" class="form-row">
               <div class="form-group" style="flex: 2; margin-bottom: 0">
-                <label class="form-label">Runtime</label>
+                <label class="form-label">{{ $t('apps.form.runtime') }}</label>
                 <select v-model="form.runtime_kind" class="form-select">
-                  <option value="container">Container (single node)</option>
-                  <option value="service">Service (replicated, cluster)</option>
+                  <option value="container">{{ $t('apps.form.runtimeContainer') }}</option>
+                  <option value="service">{{ $t('apps.form.runtimeService') }}</option>
                 </select>
               </div>
               <div v-if="isService" class="form-group" style="flex: 1; margin-bottom: 0">
-                <label class="form-label">Replicas</label>
+                <label class="form-label">{{ $t('apps.form.replicas') }}</label>
                 <input v-model.number="form.replicas" type="number" min="1" class="form-input" placeholder="1" />
               </div>
             </div>
@@ -329,83 +331,83 @@ function formatCreated(ts?: string) {
               Runs as a Swarm service on the workspace overlay network with {{ Math.max(1, form.replicas) }} replica(s).
             </p>
             <div class="form-group">
-              <label class="form-label">Source</label>
+              <label class="form-label">{{ $t('apps.col.source') }}</label>
               <div class="tabs" style="margin-bottom: 0">
-                <button type="button" class="tab" :class="{ active: form.source_type === 'image' }" @click="form.source_type = 'image'">Docker image</button>
-                <button type="button" class="tab" :class="{ active: form.source_type === 'git' }" @click="form.source_type = 'git'">Git repository</button>
+                <button type="button" class="tab" :class="{ active: form.source_type === 'image' }" @click="form.source_type = 'image'">{{ $t('apps.form.sourceImage') }}</button>
+                <button type="button" class="tab" :class="{ active: form.source_type === 'git' }" @click="form.source_type = 'git'">{{ $t('apps.form.sourceGit') }}</button>
               </div>
             </div>
             <template v-if="form.source_type === 'image'">
               <div class="form-row">
                 <div class="form-group" style="flex: 2; margin-bottom: 0">
-                  <label class="form-label">Image</label>
+                  <label class="form-label">{{ $t('apps.form.image') }}</label>
                   <input v-model="form.image" class="form-input" placeholder="nginx" required />
                 </div>
                 <div class="form-group" style="flex: 1; margin-bottom: 0">
-                  <label class="form-label">Tag <span class="text-muted">(optional)</span></label>
+                  <label class="form-label">{{ $t('apps.form.tag') }} <span class="text-muted">{{ $t('apps.form.optional') }}</span></label>
                   <input v-model="form.tag" class="form-input" placeholder="latest" />
                 </div>
               </div>
-              <p class="form-hint">Deploys <code>{{ form.image || 'image' }}:{{ form.tag || 'latest' }}</code></p>
+              <p class="form-hint">{{ $t('apps.form.deploys') }} <code>{{ form.image || 'image' }}:{{ form.tag || 'latest' }}</code></p>
               <div class="form-group">
-                <label class="form-label">Registry credential <span class="text-muted">(for private images)</span></label>
+                <label class="form-label">{{ $t('apps.form.registryCredential') }} <span class="text-muted">{{ $t('apps.form.forPrivate') }}</span></label>
                 <select v-model="form.registry_id" class="form-select">
-                  <option :value="null">Public / none</option>
+                  <option :value="null">{{ $t('apps.form.registryNone') }}</option>
                   <option v-for="r in registries" :key="r.id" :value="r.id">{{ r.name }} ({{ r.server }})</option>
                 </select>
                 <p v-if="registries.length === 0" class="form-hint">
-                  No registries yet — add one under <RouterLink to="/registries">Registries</RouterLink>.
+                  <i18n-t keypath="apps.form.noRegistries" tag="span"><template #link><RouterLink to="/registries">{{ $t('nav.sources.registries') }}</RouterLink></template></i18n-t>
                 </p>
               </div>
             </template>
             <template v-else>
               <div class="form-group">
-                <label class="form-label">Repository</label>
+                <label class="form-label">{{ $t('apps.form.repository') }}</label>
                 <select v-model="form.git_repository_id" class="form-select" @change="onGitRepoSelect">
-                  <option :value="null">Public URL (no saved repository)</option>
+                  <option :value="null">{{ $t('apps.form.publicUrl') }}</option>
                   <option v-for="r in gitRepos" :key="r.id" :value="r.id">{{ r.name }} — {{ r.url }}</option>
                 </select>
                 <p class="form-hint">
-                  <template v-if="form.git_repository_id">Uses the saved repository's URL and credentials.</template>
-                  <template v-else>Select a saved repository to reuse its URL and credentials.</template>
-                  <RouterLink to="/git-repositories">Manage repositories →</RouterLink>
+                  <template v-if="form.git_repository_id">{{ $t('apps.form.usesSaved') }}</template>
+                  <template v-else>{{ $t('apps.form.selectSaved') }}</template>
+                  <RouterLink to="/git-repositories">{{ $t('apps.form.manageRepos') }}</RouterLink>
                 </p>
               </div>
               <div class="form-group">
                 <label class="form-label">
-                  Repository URL
-                  <span v-if="form.git_repository_id" class="text-muted">(optional — overrides the saved repository)</span>
+                  {{ $t('apps.form.repositoryUrl') }}
+                  <span v-if="form.git_repository_id" class="text-muted">{{ $t('apps.form.optionalOverrides') }}</span>
                 </label>
                 <input v-model="form.git_repo" class="form-input" placeholder="https://github.com/user/repo" :required="!form.git_repository_id" />
               </div>
               <div class="form-group">
-                <label class="form-label">Branch / ref <span class="text-muted">(optional)</span></label>
+                <label class="form-label">{{ $t('apps.form.branch') }} <span class="text-muted">{{ $t('apps.form.optional') }}</span></label>
                 <input v-model="form.git_ref" class="form-input" placeholder="main" />
               </div>
               <div class="form-group">
-                <label class="form-label">Build method</label>
+                <label class="form-label">{{ $t('apps.form.buildMethod') }}</label>
                 <select v-model="form.build_method" class="form-select">
-                  <option value="auto">Auto (recommended)</option>
-                  <option value="buildpack">Buildpacks (no Dockerfile)</option>
-                  <option value="dockerfile">Dockerfile</option>
+                  <option value="auto">{{ $t('apps.form.buildAuto') }}</option>
+                  <option value="buildpack">{{ $t('apps.form.buildBuildpacks') }}</option>
+                  <option value="dockerfile">{{ $t('apps.form.buildDockerfile') }}</option>
                 </select>
                 <p class="form-hint">
-                  Auto builds the repo's Dockerfile when present, otherwise uses Cloud Native Buildpacks.
+                  {{ $t('apps.form.buildAutoHint') }}
                 </p>
               </div>
               <div v-if="form.build_method !== 'dockerfile'" class="form-group">
-                <label class="form-label">Builder image <span class="text-muted">(optional, advanced)</span></label>
+                <label class="form-label">{{ $t('apps.form.builderImage') }} <span class="text-muted">{{ $t('apps.form.optionalAdvanced') }}</span></label>
                 <input v-model="form.builder" class="form-input" placeholder="paketobuildpacks/builder-jammy-base" />
-                <p class="form-hint">Override the Cloud Native Buildpacks builder. Leave empty to use the platform default.</p>
+                <p class="form-hint">{{ $t('apps.form.builderHint') }}</p>
               </div>
               <div class="form-group">
-                <label class="form-label">Repository contents</label>
+                <label class="form-label">{{ $t('apps.form.repoContents') }}</label>
                 <button type="button" class="btn btn-secondary btn-sm" :disabled="!canInspect || inspecting" @click="inspectRepo">
                   <span class="mdi" :class="inspecting ? 'mdi-loading mdi-spin' : 'mdi-magnify'"></span>
                   {{ inspecting ? 'Reading repository…' : 'Check repository' }}
                 </button>
                 <p class="form-hint">
-                  Looks for a Dockerfile and a <code>.miabi/pipeline.yaml</code>. Optional — it also verifies the URL and credentials.
+                  <i18n-t keypath="apps.form.inspectHint" tag="span"><template #file><code>.miabi/pipeline.yaml</code></template></i18n-t>
                 </p>
 
                 <p v-if="inspectError" class="form-hint text-danger">
@@ -426,23 +428,24 @@ function formatCreated(ts?: string) {
                       <li v-for="s in inspected.steps" :key="s.name">
                         <span class="step-name">{{ s.name }}</span>
                         <span class="text-muted">{{ s.uses ? `built-in: ${s.uses}` : s.image }}</span>
-                        <span v-if="s.continue_on_error" class="badge badge-neutral">continue on error</span>
+                        <span v-if="s.continue_on_error" class="badge badge-neutral">{{ $t('apps.form.continueOnError') }}</span>
                       </li>
                     </ol>
                     <p v-if="form.use_pipeline" class="form-hint">
-                      Deploys run these steps instead of building directly. The file in git stays the source of
-                      truth — edit it there and push.
+                      {{ $t('apps.form.pipelineAdopted') }}
                     </p>
                     <p v-else class="form-hint">
-                      The app will build and deploy directly, skipping the steps above.
+                      {{ $t('apps.form.pipelineSkipped') }}
                     </p>
                   </template>
 
                   <!-- A pipeline file exists but is broken: say so rather than silently building. -->
                   <p v-else-if="inspected.pipeline_error" class="form-hint text-danger">
                     <span class="mdi mdi-alert-circle-outline"></span>
-                    Found <code>{{ inspected.pipeline_path }}</code> but it isn't valid: {{ inspected.pipeline_error }}.
-                    The app will build directly until you fix it.
+                    <i18n-t keypath="apps.form.pipelineInvalid" tag="span">
+                      <template #file><code>{{ inspected.pipeline_path }}</code></template>
+                      <template #error>{{ inspected.pipeline_error }}</template>
+                    </i18n-t>
                   </p>
 
                   <p v-else class="form-hint">
@@ -455,42 +458,42 @@ function formatCreated(ts?: string) {
               </div>
             </template>
             <div class="form-group">
-              <label class="form-label">Container ports</label>
+              <label class="form-label">{{ $t('apps.form.containerPorts') }}</label>
               <div v-for="(p, i) in form.ports" :key="i" class="port-row">
-                <input v-model.number="p.container_port" type="number" class="form-input" aria-label="Container port" placeholder="8080" style="flex: 1" />
-                <select v-model="p.protocol" class="form-select" aria-label="Port protocol" style="width: 84px">
+                <input v-model.number="p.container_port" type="number" class="form-input" :aria-label="$t('apps.form.containerPort')" placeholder="8080" style="flex: 1" />
+                <select v-model="p.protocol" class="form-select" :aria-label="$t('apps.form.portProtocol')" style="width: 84px">
                   <option value="tcp">TCP</option>
                   <option value="udp">UDP</option>
                 </select>
-                <select v-model="p.scheme" class="form-select" title="Application protocol (Gateway backend URL)" aria-label="Application protocol (Gateway backend URL)" style="width: 96px">
+                <select v-model="p.scheme" class="form-select" :title="$t('apps.form.appProtocol')" :aria-label="$t('apps.form.appProtocol')" style="width: 96px">
                   <option value="http">http</option>
                   <option value="https">https</option>
                 </select>
-                <input v-model="p.name" class="form-input" aria-label="Port name" placeholder="name (opt)" style="flex: 1" />
-                <button type="button" class="btn-icon btn-icon-danger" aria-label="Remove port" @click="removePort(i)"><span class="mdi mdi-close"></span></button>
+                <input v-model="p.name" class="form-input" :aria-label="$t('apps.form.portName')" :placeholder="$t('apps.form.portNamePlaceholder')" style="flex: 1" />
+                <button type="button" class="btn-icon btn-icon-danger" :aria-label="$t('apps.form.removePort')" @click="removePort(i)"><span class="mdi mdi-close"></span></button>
               </div>
-              <button type="button" class="btn btn-ghost btn-sm" @click="addPort"><span class="mdi mdi-plus"></span> Add port</button>
+              <button type="button" class="btn btn-ghost btn-sm" @click="addPort"><span class="mdi mdi-plus"></span> {{ $t('apps.form.addPort') }}</button>
             </div>
             <div v-if="networks.length" class="form-group">
-              <label class="form-label">Networks <span class="text-muted">(default is always attached)</span></label>
+              <label class="form-label">{{ $t('nav.networking.networks') }} <span class="text-muted">{{ $t('apps.form.defaultAttached') }}</span></label>
               <label v-for="n in networks" :key="n.id" class="checkbox-label">
                 <input type="checkbox" :value="n.id" v-model="form.network_ids" :disabled="n.is_default" />
-                {{ n.name }} <span v-if="n.is_default" class="text-muted">(default)</span>
+                {{ n.name }} <span v-if="n.is_default" class="text-muted">{{ $t('apps.form.isDefault') }}</span>
               </label>
             </div>
             <div class="form-group" style="margin-bottom: 0">
-              <label class="form-label">Stack <span class="text-muted">(optional)</span></label>
+              <label class="form-label">{{ $t('dashboard.col.stack') }} <span class="text-muted">{{ $t('apps.form.optional') }}</span></label>
               <select v-model="form.stack_id" class="form-select">
-                <option :value="null">None</option>
+                <option :value="null">{{ $t('apps.form.none') }}</option>
                 <option v-for="s in stacks" :key="s.id" :value="s.id">{{ s.name }}</option>
               </select>
               <p v-if="stacks.length === 0" class="form-hint">
-                No stacks yet — create one under <RouterLink to="/stacks">Stacks</RouterLink>.
+                <i18n-t keypath="apps.form.noStacks" tag="span"><template #link><RouterLink to="/stacks">{{ $t('nav.deploy.stacks') }}</RouterLink></template></i18n-t>
               </p>
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showCreate = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="creating">{{ creating ? 'Creating…' : 'Create application' }}</button>
           </div>
         </form>
