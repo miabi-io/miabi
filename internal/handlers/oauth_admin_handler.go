@@ -79,13 +79,18 @@ type CreateOAuthProviderRequest struct {
 		UsernameClaim      string `json:"username_claim"`
 		DefaultWorkspaceID *uint  `json:"default_workspace_id"`
 		DefaultRole        string `json:"default_role"`
+		// OrganizationID is the realm accounts this provider registers belong to. Null leaves them
+		// in the default organization. Set once, here: it never moves an account that already
+		// exists, so changing it later would only split the provider's users across two tenants.
+		OrganizationID *uint `json:"organization_id"`
 	} `json:"body"`
 }
 
 type UpdateOAuthProviderRequest struct {
 	Body struct {
 		// DisplayName edits the login-button label. The Name handle is immutable
-		// here because it is part of the provider's OAuth callback URL.
+		// here because it is part of the provider's OAuth callback URL, and so is the
+		// organization, which the accounts it already registered belong to.
 		DisplayName        string  `json:"display_name"`
 		ClientID           string  `json:"client_id"`
 		ClientSecret       string  `json:"client_secret"` // blank keeps the stored secret
@@ -162,6 +167,7 @@ func (h *OAuthAdminHandler) Create(c *okapi.Context, req *CreateOAuthProviderReq
 		UsernameClaim:      strings.TrimSpace(req.Body.UsernameClaim),
 		DefaultWorkspaceID: req.Body.DefaultWorkspaceID,
 		DefaultRole:        models.WorkspaceRole(strings.TrimSpace(req.Body.DefaultRole)),
+		OrganizationID:     normalizeOrgID(req.Body.OrganizationID),
 	}
 	if err := h.oauth.ResolveEndpoints(c.Request().Context(), p); err != nil {
 		return c.AbortBadRequest(err.Error())
@@ -280,4 +286,12 @@ func boolOr(p *bool, def bool) bool {
 		return def
 	}
 	return *p
+}
+
+// normalizeOrgID maps the 0 a form sends for "no organization" onto the nil the column stores.
+func normalizeOrgID(id *uint) *uint {
+	if id == nil || *id == 0 {
+		return nil
+	}
+	return id
 }

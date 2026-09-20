@@ -288,6 +288,10 @@ func (s *Service) Authenticate(ctx context.Context, p *models.OAuthProvider, cod
 		Role:            role,
 		Active:          true,
 		EmailVerifiedAt: &now, // provider asserts the email
+		// The realm the provider registers into; nil leaves the account in the default
+		// organization. Only set here, on an account being created: signing in through a provider
+		// never moves somebody who already exists between tenants.
+		OrganizationID: p.OrganizationID,
 	}
 	if err := s.users.Create(newUser); err != nil {
 		return nil, err

@@ -425,6 +425,11 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		if _, err := workspaceService.EnsureSystem(admin.ID); err != nil {
 			logger.Error("failed to provision Miabi System workspace", "error", err)
 		}
+		// The default organization predates every user, so it takes its owner here rather than at
+		// creation: the first platform admin, not whoever happens to sign in first.
+		if err := dbstorage.AdoptDefaultOrganizationOwner(db, admin.ID); err != nil {
+			logger.Warn("failed to set the default organization's owner", "error", err)
+		}
 	}
 	auditLogger := audit.NewLogger(auditRepo, bus)
 	eventsService := events.NewService(appEventRepo, bus)

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import OrganizationPicker from '@/components/OrganizationPicker.vue'
 import { adminApi } from '@/api/admin'
 import type { OAuthProviderPayload } from '@/api/admin'
 import type { OAuthProvider } from '@/api/types'
@@ -65,6 +66,8 @@ interface ProviderForm {
   // declared one — so this is a string only while it is blank.
   default_workspace_id: number | string
   default_role: string
+  // The realm the provider registers accounts into. Chosen once, when the provider is created.
+  organization_id: number
 }
 
 function emptyForm(): ProviderForm {
@@ -88,6 +91,7 @@ function emptyForm(): ProviderForm {
     username_claim: '',
     default_workspace_id: '',
     default_role: '',
+    organization_id: 0,
   }
 }
 
@@ -124,6 +128,7 @@ function openEdit(p: OAuthProvider) {
     username_claim: p.username_claim ?? '',
     default_workspace_id: p.default_workspace_id ? String(p.default_workspace_id) : '',
     default_role: p.default_role ?? '',
+    organization_id: p.organization_id ?? 0,
   }
   showModal.value = true
 }
@@ -161,6 +166,10 @@ async function save() {
   const wsId = rawWs ? parseInt(rawWs, 10) : NaN
   payload.default_workspace_id = Number.isFinite(wsId) && wsId > 0 ? wsId : 0
   payload.default_role = f.default_role.trim()
+
+  // Create only: the API refuses to move a provider between organizations, because the accounts it
+  // already registered stay where they are.
+  if (!editing.value && f.organization_id > 0) payload.organization_id = f.organization_id
 
   if (f.type === 'oidc') {
     payload.issuer = f.issuer.trim()
@@ -413,6 +422,21 @@ onMounted(() => {
               <label class="form-label">Allowed domains</label>
               <input v-model="form.allowed_domains" class="form-input" />
               <span class="form-hint">CSV of allowed email domains; blank = any.</span>
+            </div>
+
+            <div class="form-group">
+              <!-- Disabled rather than hidden while editing: which realm a provider registers into
+                   is worth seeing, and the API refuses to change it. -->
+              <OrganizationPicker
+                v-model="form.organization_id"
+                label="Organization"
+                default-label="Default organization"
+                :disabled="!!editing"
+              />
+              <span class="form-hint">
+                The realm accounts registered through this provider belong to. Chosen once: signing in never moves an
+                account that already exists, so changing it later would split this provider's users across two tenants.
+              </span>
             </div>
 
             <div class="form-group">

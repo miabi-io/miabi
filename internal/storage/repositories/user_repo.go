@@ -133,7 +133,20 @@ func (r *UserRepository) List(search string, limit, offset int) ([]models.User, 
 }
 
 // Delete removes a user by id.
+// Delete removes the account, first releasing the organizations it owned so none is left
+// accountable to a user that no longer exists. The next user created there adopts it, or an admin
+// names one.
+//
+// The release is best-effort: it is bookkeeping, and an account — often one being purged on the
+// owner's own request — must not survive because of it. An organization left pointing at a deleted
+// user reads as having no owner, which is what it has.
 func (r *UserRepository) Delete(id uint) error {
+	err := r.db.Model(&models.Organization{}).
+		Where("owner_user_id = ?", id).
+		Update("owner_user_id", 0).Error
+	if err != nil {
+		logger.Warn("could not release the organizations owned by a deleted user", "user", id, "error", err)
+	}
 	return r.db.Delete(&models.User{}, id).Error
 }
 
