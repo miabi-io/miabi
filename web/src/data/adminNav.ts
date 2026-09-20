@@ -48,8 +48,17 @@ export const adminNavSections: NavSection[] = [
       { key: 'adminNav.infrastructure.kernelGrants', name: 'Kernel grants', path: '/admin/grants', icon: 'mdi-shield-key-outline' },
       { key: 'adminNav.infrastructure.sharedRunners', name: 'Shared Runners', path: '/admin/runners', icon: 'mdi-cog-transfer-outline' },
       { key: 'adminNav.infrastructure.containerRegistry', name: 'Container Registry', path: '/admin/registry', icon: 'mdi-cube-outline' },
-      { key: 'adminNav.infrastructure.domains', name: 'Domains', path: '/admin/domains', icon: 'mdi-web' },
-      { key: 'adminNav.infrastructure.routes', name: 'Routes', path: '/admin/routes', icon: 'mdi-sitemap-outline' },
+    ],
+  },
+  {
+    // How traffic reaches what the infrastructure runs. Grouped apart from the machines because an
+    // admin arrives here asking about a hostname, not about a node — and because Infrastructure had
+    // grown past a list anyone scans.
+    id: 'admin-networking',
+    key: 'adminNav.networking.title', title: 'Networking',
+    items: [
+      { key: 'adminNav.networking.domains', name: 'Domains', path: '/admin/domains', icon: 'mdi-web' },
+      { key: 'adminNav.networking.routes', name: 'Routes', path: '/admin/routes', icon: 'mdi-sitemap-outline' },
     ],
   },
   {

@@ -92,14 +92,17 @@
     "infrastructure": {
       "clusters": "Clusters",
       "containerRegistry": "Registre de conteneurs",
-      "domains": "Domaines",
       "kernelGrants": "Droits noyau",
       "nodes": "Nœuds",
       "ports": "Ports",
-      "routes": "Routes",
       "sharedRunners": "Runners partagés",
       "storageClasses": "Classes de stockage",
       "title": "Infrastructure"
+    },
+    "networking": {
+      "domains": "Domaines",
+      "routes": "Routes",
+      "title": "Réseau"
     },
     "overview": {
       "dashboard": "Tableau de bord",
@@ -3480,6 +3483,9 @@
     "databaseBackupPassphrase": "Phrase secrète des sauvegardes de base de données",
     "databaseBackupPath": "Chemin des sauvegardes de base de données",
     "dbPassphraseHint": "Chiffre chaque sauvegarde de base de données avant son stockage. Sans elle, les dumps sont écrits en clair dans le bucket. Notez-la en dehors de Miabi — une sauvegarde ne peut pas être restaurée sans elle. Les sauvegardes déjà prises restent lisibles telles quelles.",
+    "dedicatedNodes": "Nœuds dédiés",
+    "dedicatedNodesChip": "Exécution sur les nœuds propres à {org}, dans {location} — partagés avec aucune autre organisation.",
+    "dedicatedNodesHint": "{org} exploite ses propres nœuds. Les applications, bases de données et volumes de cet espace de travail s'y exécutent, et aucun espace de travail extérieur à {org} ne peut y être placé — pas même par un administrateur de la plateforme. L'emplacement suit l'organisation plutôt que cet espace de travail.",
     "defaultLocation": "Emplacement par défaut",
     "defaultLocationHint": "Où s’exécutent les nouvelles applications, bases de données, volumes et stacks lorsque leur formulaire ne nomme aucun emplacement.",
     "deleteHint": "Supprime définitivement l’espace de travail, les dépôts et toutes les ressources associées. Cette action est irréversible.",
@@ -3548,7 +3554,6 @@
     "securityRestricted": "Restreint",
     "securityRestrictedHint": "Les conteneurs d’application et de job s’exécutent sous un UID de plateforme non root",
     "sendInvite": "Envoyer l’invitation",
-    "setByYourOrganization": "défini par votre organisation",
     "shellAccess": "Accès shell",
     "systemNameLocked": "L’espace de travail intégré de la plateforme ne peut pas être renommé.",
     "tab": {
@@ -3570,6 +3575,7 @@
     "usage": "Utilisation",
     "useSslHttps": "Utiliser SSL (HTTPS)",
     "volumeBackupPath": "Chemin des sauvegardes de volumes",
-    "workspaces": "Espaces de travail"
+    "workspaces": "Espaces de travail",
+    "yourOrganization": "Votre organisation"
   }
 }

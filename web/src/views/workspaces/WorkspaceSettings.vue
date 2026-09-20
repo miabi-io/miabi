@@ -265,10 +265,17 @@ async function testBackup() {
 const locations = ref<Location[]>([])
 const defaultLocation = ref('')
 const savingLocation = ref(false)
-// Set when the workspace's organization runs its own clusters: the default follows the
-// organization, so the field is shown locked with the reason rather than as a picker.
+// Set when the workspace's organization runs its own clusters. That is a dedication, not a
+// restriction: the nodes belong to the organization, and no workspace outside it can be placed on
+// them — so the field states what the workspace runs on rather than offering a picker with one value.
 const locationPinned = ref(false)
 const locationPinnedTo = ref('')
+const orgLabel = computed(() => locationPinnedTo.value || t('wsSettings.yourOrganization'))
+// The location a pinned workspace runs in. Its organization may own several; this is the one new
+// resources land in.
+const pinnedLocation = computed(() =>
+  locations.value.length ? locationLabel(locations.value.find((l) => l.default) ?? locations.value[0]) : '—',
+)
 
 function applyLocations(set: LocationSet | null | undefined) {
   locations.value = set?.locations ?? []
@@ -299,7 +306,6 @@ async function saveDefaultLocation() {
 }
 
 async function loadWorkspace() {
-  loadLocations()
   const w = ws.workspaces.find((x) => x.id === wsId.value)
   if (w) {
     form.value = { displayName: w.display_name || w.name, name: w.name, description: w.description || '' }
@@ -498,6 +504,8 @@ async function copyToken() {
 function loadTab(tab: Tab) {
   // Only the usage tab needs the live stream; tear it down when leaving.
   if (tab !== 'usage') stopLiveStream()
+  // Both tabs state where the workspace runs, and a deep link opens either one first.
+  if (tab === 'settings' || tab === 'usage') loadLocations()
   if (tab === 'settings') loadWorkspace()
   else if (tab === 'members') loadMembers()
   else if (tab === 'usage') { loadUsage(); startLiveStream() }
@@ -577,14 +585,11 @@ watch(activeTab, (t) => loadTab(t))
           <label class="form-label">{{ $t('wsSettings.defaultLocation') }}</label>
           <div class="slug-row">
             <select class="form-select" disabled :aria-label="$t('wsSettings.defaultLocation')" style="max-width: 420px">
-              <option>{{ locations.length ? locationLabel(locations.find((l) => l.default) ?? locations[0]) : '—' }}</option>
+              <option>{{ pinnedLocation }}</option>
             </select>
-            <span class="badge badge-muted"><span class="mdi mdi-lock-outline"></span>{{ $t('wsSettings.setByYourOrganization') }}</span>
+            <span class="badge badge-success"><span class="mdi mdi-shield-check"></span>{{ $t('wsSettings.dedicatedNodes') }}</span>
           </div>
-          <p class="form-hint">
-            {{ locationPinnedTo || 'Your organization' }} runs its own locations, so this workspace's resources always
-            land there. Only a platform administrator can change it, from the organization.
-          </p>
+          <p class="form-hint">{{ $t('wsSettings.dedicatedNodesHint', { org: orgLabel }) }}</p>
         </div>
         <div v-else-if="locations.length > 1" class="form-group">
           <label class="form-label">{{ $t('wsSettings.defaultLocation') }}</label>
@@ -714,6 +719,12 @@ watch(activeTab, (t) => loadTab(t))
 
     <!-- Usage vs plan limits -->
     <template v-else-if="activeTab === 'usage'">
+      <!-- What this workspace runs on. Shown only when the organization owns its nodes: on an
+           ordinary install there is no second kind of node to contrast it with. -->
+      <div v-if="locationPinned" class="dedicated-note">
+        <span class="mdi mdi-shield-check"></span>
+        <span>{{ $t('wsSettings.dedicatedNodesChip', { org: orgLabel, location: pinnedLocation }) }}</span>
+      </div>
       <!-- Live usage: actual consumption across running containers (SSE) -->
       <div class="card" style="margin-bottom: 16px">
         <div class="card-header">
@@ -1040,6 +1051,13 @@ watch(activeTab, (t) => loadTab(t))
 </template>
 
 <style scoped>
+.dedicated-note {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 16px;
+  padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px;
+  font-size: 13px; color: var(--text-muted);
+}
+.dedicated-note .mdi { color: var(--success, #22c55e); font-size: 16px; }
+
 .invite-form {
   display: flex;
   gap: 10px;
