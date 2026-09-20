@@ -81,6 +81,64 @@
       "workspaces": "Workspaces"
     }
   },
+  "apps": {
+    "browseMarketplace": "Browse the Marketplace",
+    "col": {
+      "source": "Source"
+    },
+    "created": "Application created",
+    "deployFirst": "Deploy your first application",
+    "emptyHint": "Deploy from a Docker image or a Git repository — or install a ready-made app from the Marketplace.",
+    "form": {
+      "appProtocol": "Application protocol (Gateway backend URL)",
+      "buildAuto": "Auto (recommended)",
+      "buildAutoHint": "Auto builds the repo's Dockerfile when present, otherwise uses Cloud Native Buildpacks.",
+      "buildBuildpacks": "Buildpacks (no Dockerfile)",
+      "buildDockerfile": "Dockerfile",
+      "buildMethod": "Build method",
+      "builderHint": "Override the Cloud Native Buildpacks builder. Leave empty to use the platform default.",
+      "containerPort": "Container port",
+      "containerPorts": "Container ports",
+      "continueOnError": "continue on error",
+      "defaultAttached": "(default is always attached)",
+      "deploys": "Deploys",
+      "forPrivate": "(for private images)",
+      "image": "Image",
+      "inspectHint": "Looks for a Dockerfile and a {file}. Optional — it also verifies the URL and credentials.",
+      "isDefault": "(default)",
+      "manageRepos": "Manage repositories →",
+      "name": "Name",
+      "namePlaceholder": "e.g. web-api",
+      "noRegistries": "No registries yet — add one under {link}.",
+      "noStacks": "No stacks yet — create one under {link}.",
+      "none": "None",
+      "optional": "(optional)",
+      "optionalAdvanced": "(optional, advanced)",
+      "optionalOverrides": "(optional — overrides the saved repository)",
+      "pipelineAdopted": "Deploys run these steps instead of building directly. The file in git stays the source of truth — edit it there and push.",
+      "pipelineInvalid": "Found {file} but it isn't valid: {error}. The app will build directly until you fix it.",
+      "pipelineSkipped": "The app will build and deploy directly, skipping the steps above.",
+      "portName": "Port name",
+      "portNamePlaceholder": "name (opt)",
+      "portProtocol": "Port protocol",
+      "publicUrl": "Public URL (no saved repository)",
+      "registryNone": "Public / none",
+      "removePort": "Remove port",
+      "replicas": "Replicas",
+      "repoContents": "Repository contents",
+      "repository": "Repository",
+      "runtime": "Runtime",
+      "runtimeContainer": "Container (single node)",
+      "runtimeService": "Service (replicated, cluster)",
+      "selectSaved": "Select a saved repository to reuse its URL and credentials.",
+      "sourceGit": "Git repository",
+      "sourceImage": "Docker image",
+      "tag": "Tag",
+      "usesSaved": "Uses the saved repository's URL and credentials."
+    },
+    "searchLabel": "Search applications",
+    "searchPlaceholder": "Search applications by name, image, repo, or node…"
+  },
   "confirm": {
     "label": {
       "appDetail": {
@@ -408,6 +466,123 @@
         "revokeSessions": "Revoke sessions?"
       }
     }
+  },
+  "dashboard": {
+    "acceptInvitation": "Accept an invitation above to join a workspace.",
+    "action": {
+      "deployApplication": "Deploy application"
+    },
+    "analytics": {
+      "deltaHint": "Change vs the previous 24 hours",
+      "hint": "Analytics are collected by the gateway as requests reach your routed applications.",
+      "last24h": "Last 24 hours",
+      "live": "live",
+      "liveVisitors": "no visitors active in the last few minutes | {n} visitor active in the last few minutes | {n} visitors active in the last few minutes",
+      "map": "Map →",
+      "noTraffic": "No traffic in the last 24 hours.",
+      "p95": "p95 latency",
+      "requests": "Requests",
+      "serverErrors": "Server errors",
+      "topCountries": "Top countries",
+      "traffic": "Traffic",
+      "view": "View analytics",
+      "visitors": "Visitors"
+    },
+    "apps": {
+      "empty": "No applications yet",
+      "emptyHint": "Deploy your first application to get started."
+    },
+    "banner": {
+      "checkLogs": "Check the logs to see what stopped.",
+      "failing": "no applications failing. | {n} application failing. | {n} applications failing."
+    },
+    "col": {
+      "application": "Application",
+      "apps": "Apps",
+      "created": "Created",
+      "health": "Health",
+      "node": "Node",
+      "stack": "Stack",
+      "status": "Status"
+    },
+    "createToStart": "Create a workspace to get started.",
+    "events": {
+      "empty": "No activity yet.",
+      "title": "Latest events"
+    },
+    "health": {
+      "allHealthy": "All applications healthy",
+      "failing": "no applications failing | {n} application failing | {n} applications failing",
+      "loading": "Loading…"
+    },
+    "invitations": {
+      "invitedAs": "Invited as",
+      "title": "Workspace invitations"
+    },
+    "newApplication": "New application",
+    "noWorkspace": "No workspace yet",
+    "overviewOf": "Overview of",
+    "quick": {
+      "addDomain": {
+        "hint": "Add and verify a domain you own",
+        "label": "Add domain"
+      },
+      "addRoute": {
+        "hint": "Expose an application on a domain",
+        "label": "Add route"
+      },
+      "addSecret": {
+        "hint": "Store a reusable value",
+        "label": "Add secret"
+      },
+      "createStack": {
+        "hint": "Compose multiple applications",
+        "label": "Create stack"
+      },
+      "deployApplication": {
+        "hint": "From an image or a Git repository",
+        "label": "Deploy application"
+      },
+      "gitops": {
+        "hint": "Deploy from a Git repository on push",
+        "label": "GitOps"
+      },
+      "marketplace": {
+        "hint": "One-click apps and databases",
+        "label": "Marketplace"
+      },
+      "newDatabase": {
+        "hint": "Postgres, MySQL, Redis…",
+        "label": "New database"
+      },
+      "pipeline": {
+        "hint": "Build and deploy in stages",
+        "label": "Pipeline"
+      },
+      "scheduledJob": {
+        "hint": "Run a container on a schedule",
+        "label": "Scheduled job"
+      }
+    },
+    "resources": {
+      "connecting": "Connecting…",
+      "containers": "no containers | {n} container | {n} containers",
+      "cores": "cores",
+      "live": "Live",
+      "memory": "Memory",
+      "network": "Network",
+      "title": "Resources"
+    },
+    "stats": {
+      "failed": "Failed",
+      "running": "Running"
+    },
+    "stream": {
+      "live": "Live — updates as things happen",
+      "reconnecting": "Reconnecting…"
+    },
+    "viewAll": "View all",
+    "viewApplications": "View applications"
   },
   "error": {
     "status": {
