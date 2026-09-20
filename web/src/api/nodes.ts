@@ -129,6 +129,10 @@ export interface HousekeepingReport {
   reclaim: {
     dangling_images: ReclaimCategoryStat
     build_cache: ReclaimCategoryStat
+    // Guarded categories: what housekeeping may actually reclaim, which is less than the
+    // "reclaimable" of `docker system df` — anything a Miabi record still names is excluded.
+    unused_images: ReclaimCategoryStat
+    unused_volumes: ReclaimCategoryStat
   }
   drift: {
     orphans: DriftItem[]
@@ -137,17 +141,29 @@ export interface HousekeepingReport {
   }
 }
 
+export interface ReclaimSelection {
+  dangling_images: boolean
+  build_cache: boolean
+  unused_images: boolean
+  unused_volumes: boolean
+}
+
 export interface HousekeepingSelection {
-  reclaim: { dangling_images: boolean; build_cache: boolean }
+  reclaim: ReclaimSelection
   orphans: { kind: string; ref: string }[]
   // Workloads to redeploy, through the ordinary deploy path.
   missing?: { kind: string; ref: string }[]
 }
 
 export interface HousekeepingPlan {
-  reclaim: { dangling_images: boolean; build_cache: boolean }
+  reclaim: ReclaimSelection
   dangling_images: ReclaimCategoryStat
   build_cache: ReclaimCategoryStat
+  unused_images: ReclaimCategoryStat
+  unused_volumes: ReclaimCategoryStat
+  // Every guarded resource the apply would remove, so the preview can be checked item by item.
+  unused_image_refs?: string[]
+  unused_volume_names?: string[]
   orphans: DriftItem[]
   missing?: DriftItem[]
   estimated_bytes: number
@@ -157,6 +173,8 @@ export interface HousekeepingResult {
   images_deleted: number
   images_reclaimed_bytes: number
   build_cache_reclaimed_bytes: number
+  volumes_deleted: number
+  volumes_reclaimed_bytes: number
   orphans_removed: DriftItem[]
   redeployed?: DriftItem[]
   errors?: string[]

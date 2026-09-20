@@ -442,3 +442,108 @@ func TestApply_RemovesConfigOrphans(t *testing.T) {
 		t.Fatalf("result must report exactly what was removed, got %+v", res.OrphansRemoved)
 	}
 }
+
+// removingSwarm is a cluster manager that records the services removed through it.
+type removingSwarm struct {
+	docker.Client
+	removed []string
+}
+
+func (r *removingSwarm) ServiceRemove(_ context.Context, name string) error {
+	r.removed = append(r.removed, name)
+	return nil
+}
+
+// fakeNodes maps node ids to the cluster they belong to.
+type fakeNodes map[uint]uint
+
+func (f fakeNodes) Get(id uint) (*models.Server, error) {
+	cl, ok := f[id]
+	if !ok {
+		return nil, docker.ErrNotFound
+	}
+	return &models.Server{ClusterID: cl}, nil
+}
+
+func swarmTask(id, name, service string, labels map[string]string) docker.Container {
+	labels[docker.SwarmServiceNameLabel] = service
+	return cont(id, name, "nginx", labels)
+}
+
+// Regression: an orphaned swarm service was reported once per task container, and removing those
+// containers only made Swarm schedule replacements — the report came back unchanged. The service
+// is the orphan, and it is reported once however many tasks it runs here.
+func TestAnalyzeDrift_SwarmTaskOrphanReportsTheService(t *testing.T) {
+	dc := &fakeDocker{containers: []docker.Container{
+		swarmTask("c-t1", "mb-app-bb-99.1.abc", "mb-app-bb-99", map[string]string{labelApp: "99"}),
+		swarmTask("c-t2", "mb-app-bb-99.2.def", "mb-app-bb-99", map[string]string{labelApp: "99"}),
+		swarmTask("c-live", "mb-app-aa-42.1.ghi", "mb-app-aa-42", map[string]string{labelApp: "42"}),
+		cont("c-plain", "ghost", "redis", map[string]string{labelApp: "98"}),
+	}}
+	s := newTestService(dc, nil, existsSet("app:42"))
+
+	summary, err := s.analyzeDrift(context.Background(), dc, 1)
+	if err != nil {
+		t.Fatalf("analyzeDrift: %v", err)
+	}
+	if len(summary.Orphans) != 2 {
+		t.Fatalf("want 2 orphans (1 service + 1 container), got %+v", summary.Orphans)
+	}
+	assertHasOrphan(t, summary.Orphans, "service", "mb-app-bb-99")
+	assertHasOrphan(t, summary.Orphans, "container", "c-plain")
+	for _, o := range summary.Orphans {
+		if o.Kind == "container" && (o.Ref == "c-t1" || o.Ref == "c-t2") {
+			t.Fatalf("a swarm task container must never be an orphan target: %+v", o)
+		}
+	}
+}
+
+// Removing an orphaned service goes through its cluster's manager: the node's own engine may be a
+// worker, and removing the task container leaves the service to reschedule it.
+func TestApply_RemovesOrphanedSwarmService(t *testing.T) {
+	dc := &fakeDocker{
+		containers: []docker.Container{
+			swarmTask("c-t1", "mb-app-bb-99.1.abc", "mb-app-bb-99", map[string]string{labelApp: "99"}),
+		},
+		volumes: []docker.Volume{{Name: "vol-ghost", Labels: map[string]string{labelVolume: "7"}}},
+	}
+	mgr := &removingSwarm{}
+	s := newTestService(dc, nil, existsSet())
+	s.swarms = fakeManagers{4: mgr}
+	s.nodes = fakeNodes{1: 4}
+
+	res, err := s.Apply(context.Background(), 1, Selection{Orphans: []ResourceRef{
+		{Kind: "volume", Ref: "vol-ghost"},     // selected first, but must be removed last
+		{Kind: "service", Ref: "mb-app-bb-99"}, // the workload holding it
+		{Kind: "container", Ref: "c-t1"},       // its task: not an orphan in its own right
+	}})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if len(mgr.removed) != 1 || mgr.removed[0] != "mb-app-bb-99" {
+		t.Fatalf("the service must be removed through its cluster manager, removed: %v", mgr.removed)
+	}
+	if len(dc.removedContainers) != 0 {
+		t.Fatalf("a swarm task container must never be removed directly, removed: %v", dc.removedContainers)
+	}
+	if len(res.OrphansRemoved) != 2 || res.OrphansRemoved[0].Kind != "service" {
+		t.Fatalf("want the service removed before the volume, got %+v", res.OrphansRemoved)
+	}
+}
+
+// Without a way to reach the cluster's manager, the failure is reported rather than swallowed as a
+// removal that never happened.
+func TestApply_OrphanedServiceWithoutManagerErrors(t *testing.T) {
+	dc := &fakeDocker{containers: []docker.Container{
+		swarmTask("c-t1", "mb-app-bb-99.1.abc", "mb-app-bb-99", map[string]string{labelApp: "99"}),
+	}}
+	s := newTestService(dc, nil, existsSet())
+
+	res, err := s.Apply(context.Background(), 1, Selection{Orphans: []ResourceRef{{Kind: "service", Ref: "mb-app-bb-99"}}})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if len(res.OrphansRemoved) != 0 || len(res.Errors) != 1 {
+		t.Fatalf("want no removal and one reported error, got removed=%+v errors=%v", res.OrphansRemoved, res.Errors)
+	}
+}

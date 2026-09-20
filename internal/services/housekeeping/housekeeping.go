@@ -54,10 +54,15 @@ type Service struct {
 	// swarms answers for service apps, whose tasks may run on any node of their
 	// cluster. nil never reports a service app missing.
 	swarms SwarmManagers
+	// nodes resolves which cluster a node belongs to, so an orphaned swarm service is removed
+	// through that cluster's manager rather than the node's own engine, which may be a worker.
+	nodes nodeLookup
 	// redeployer and appsByID turn a reported missing workload into an actionable one. nil leaves the
 	// missing rows report-only.
 	redeployer Redeployer
 	appsByID   appFinder
+	// imageRefs is the referenced-image guard. Empty never offers unused-image reclaim.
+	imageRefs []ImageRefSource
 }
 
 // configLookup resolves a config by name within a workspace.
@@ -70,6 +75,14 @@ func (s *Service) SetConfigs(c configLookup) { s.configs = c }
 
 // SetSwarmManagers wires the cluster manager lookup used to check service apps.
 func (s *Service) SetSwarmManagers(m SwarmManagers) { s.swarms = m }
+
+// nodeLookup resolves a node record, for the cluster it belongs to.
+type nodeLookup interface {
+	Get(id uint) (*models.Server, error)
+}
+
+// SetNodes wires the node lookup used to reach a node's swarm manager.
+func (s *Service) SetNodes(n nodeLookup) { s.nodes = n }
 
 // NewService wires the housekeeping service against the node client registry and
 // the repos it joins live Docker state against. The repos are composed into a
@@ -109,12 +122,14 @@ type Report struct {
 	Drift   DriftSummary     `json:"drift"`
 }
 
-// ReclaimBreakdown is the safe reclaimable set offered in the Reclaim UI. Only
-// always-safe categories are surfaced here; unused (non-dangling) image pruning
-// is gated behind the referenced-image guard and is not offered yet.
+// ReclaimBreakdown is the reclaimable set offered in the Reclaim UI. Dangling images and build cache
+// are always safe and go to the daemon as a category. Unused images and volumes are resolved to an
+// explicit list behind their guards first, so neither can take something a record still needs.
 type ReclaimBreakdown struct {
 	DanglingImages CategoryStat `json:"dangling_images"`
 	BuildCache     CategoryStat `json:"build_cache"`
+	UnusedImages   CategoryStat `json:"unused_images"`
+	UnusedVolumes  CategoryStat `json:"unused_volumes"`
 }
 
 // CategoryStat is a count + reclaimable bytes for one reclaim category.
@@ -132,31 +147,92 @@ type DriftSummary struct {
 
 // Analyze joins live Docker against the DB and builds the full report. Pure read.
 func (s *Service) Analyze(ctx context.Context, nodeID uint) (*Report, error) {
+	rep, _, _, err := s.analyze(ctx, nodeID)
+	return rep, err
+}
+
+// analyze builds the report and also hands back the guarded reclaim sets behind its unused-image
+// and unused-volume counts, so a preview can name them without measuring the node a second time.
+func (s *Service) analyze(ctx context.Context, nodeID uint) (*Report, []docker.Image, []docker.VolumeUsage, error) {
 	dc, err := s.clients.For(nodeID)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	rep := &Report{NodeID: nodeID}
 
-	if du, derr := dc.DiskUsage(ctx); derr == nil {
-		rep.Disk = du
-		rep.Reclaim.BuildCache = CategoryStat{Count: du.BuildCache.Count - du.BuildCache.Active, Bytes: du.BuildCache.Reclaimable}
-	}
-	if imgs, ierr := dc.ListImages(ctx); ierr == nil {
-		for _, im := range imgs {
-			if im.Dangling {
-				rep.Reclaim.DanglingImages.Count++
-				rep.Reclaim.DanglingImages.Bytes += im.Size
-			}
-		}
+	images, volumes, rerr := s.reclaimable(ctx, dc, rep)
+	if rerr != nil {
+		return nil, nil, nil, rerr
 	}
 
 	summary, derr := s.analyzeDrift(ctx, dc, nodeID)
 	if derr != nil {
-		return nil, derr
+		return nil, nil, nil, derr
 	}
 	rep.Drift = *summary
-	return rep, nil
+	return rep, images, volumes, nil
+}
+
+// reclaimable fills the report's disk usage and its four reclaim categories, returning the guarded
+// sets it resolved. Docker failures are tolerated — a report missing one category still beats no
+// report — but a guard that cannot be evaluated is an error: a half-evaluated guard under-protects.
+func (s *Service) reclaimable(ctx context.Context, dc docker.Client, rep *Report) ([]docker.Image, []docker.VolumeUsage, error) {
+	var volumeUsage []docker.VolumeUsage
+	if du, err := dc.DiskUsage(ctx); err == nil {
+		volumeUsage = du.VolumeItems
+		du.VolumeItems = nil // the report carries the totals, not a row per volume
+		rep.Disk = du
+		rep.Reclaim.BuildCache = CategoryStat{Count: du.BuildCache.Count - du.BuildCache.Active, Bytes: du.BuildCache.Reclaimable}
+	}
+
+	if imgs, ierr := dc.ListImages(ctx); ierr == nil {
+		for _, im := range imgs {
+			if im.Dangling {
+				rep.Reclaim.DanglingImages.Count++
+				rep.Reclaim.DanglingImages.Bytes += unsharedBytes(im)
+			}
+		}
+	}
+
+	images, volumes, err := s.resolveUnused(ctx, dc, volumeUsage)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, im := range images {
+		rep.Reclaim.UnusedImages.Count++
+		rep.Reclaim.UnusedImages.Bytes += unsharedBytes(im)
+	}
+	for _, v := range volumes {
+		rep.Reclaim.UnusedVolumes.Count++
+		rep.Reclaim.UnusedVolumes.Bytes += v.Bytes
+	}
+	return images, volumes, nil
+}
+
+// resolveUnused applies the two guards against the node's current state. Both the preview and the
+// apply go through it, so what an admin confirms is what the guard allows at the moment of removal.
+// volumeUsage comes from the caller's disk-usage call, which already paid for the filesystem walk.
+func (s *Service) resolveUnused(ctx context.Context, dc docker.Client, volumeUsage []docker.VolumeUsage) ([]docker.Image, []docker.VolumeUsage, error) {
+	referenced, err := s.referencedImages()
+	if err != nil {
+		return nil, nil, fmt.Errorf("referenced images: %w", err)
+	}
+	var images []docker.Image
+	if imgs, ierr := dc.ListImages(ctx); ierr == nil {
+		images = unusedImages(imgs, referenced)
+	}
+	if len(volumeUsage) == 0 {
+		return images, nil, nil
+	}
+	vols, verr := dc.ListVolumes(ctx)
+	if verr != nil {
+		return nil, nil, fmt.Errorf("list volumes: %w", verr)
+	}
+	volumes, uerr := unusedVolumes(vols, volumeUsage, s.volumeNamed)
+	if uerr != nil {
+		return nil, nil, fmt.Errorf("unused volumes: %w", uerr)
+	}
+	return images, volumes, nil
 }
 
 // analyzeDrift classifies every live container + volume on the node against the
@@ -176,6 +252,8 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 	// app IDs that have at least one live container, so a record with none can be
 	// flagged missing.
 	liveApps := map[uint]bool{}
+	// Swarm services already reported once, so N task containers yield one row.
+	seenServices := map[string]bool{}
 
 	for i := range containers {
 		c := containers[i]
@@ -198,12 +276,26 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 			if eerr != nil {
 				return nil, eerr
 			}
-			if !exists {
+			if exists {
+				continue
+			}
+			// A swarm task's container is disposable: removing it only makes Swarm schedule a
+			// replacement, so the service object is the orphan, and its name the handle.
+			if svc := swarmServiceName(c.Labels); svc != "" {
+				if seenServices[svc] {
+					continue
+				}
+				seenServices[svc] = true
 				out.Orphans = append(out.Orphans, drift.Item{
-					Class: drift.ClassOrphan, Kind: "container", Ref: c.ID, Name: containerName(c),
+					Class: drift.ClassOrphan, Kind: "service", Ref: svc, Name: svc,
 					Image: c.Image, State: c.State, OwnerKind: kind, OwnerID: id, Action: drift.ActionRemove,
 				})
+				continue
 			}
+			out.Orphans = append(out.Orphans, drift.Item{
+				Class: drift.ClassOrphan, Kind: "container", Ref: c.ID, Name: containerName(c),
+				Image: c.Image, State: c.State, OwnerKind: kind, OwnerID: id, Action: drift.ActionRemove,
+			})
 		}
 	}
 
@@ -291,6 +383,19 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 		})
 	}
 	return out, nil
+}
+
+// swarmManagerFor resolves the manager that drives the swarm the node belongs to. A node may be a
+// worker, which cannot act on services at all, so the node's own engine is never a fallback here.
+func (s *Service) swarmManagerFor(ctx context.Context, nodeID uint) (docker.Client, error) {
+	if s.swarms == nil || s.nodes == nil {
+		return nil, errors.New("swarm service removal is not available on this build")
+	}
+	srv, err := s.nodes.Get(nodeID)
+	if err != nil {
+		return nil, err
+	}
+	return s.swarms.Manager(ctx, srv.ClusterID)
 }
 
 // serviceMissing reports whether a service app's swarm service is gone. Its tasks run wherever Swarm

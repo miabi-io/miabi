@@ -44,6 +44,11 @@ const (
 	ManagedLabel           = stackdocker.ManagedLabel
 )
 
+// SwarmServiceNameLabel is Docker's own label on a swarm task's container, naming the service that
+// owns it. Swarm recreates such a container the moment it is removed, so it is the handle onto the
+// only thing that can actually be reclaimed: the service.
+const SwarmServiceNameLabel = "com.docker.swarm.service.name"
+
 var (
 	PlatformLabels     = stackdocker.PlatformLabels
 	IsPlatformStack    = stackdocker.IsPlatformStack

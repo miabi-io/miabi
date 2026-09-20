@@ -51,12 +51,13 @@ func isDanglingImage(repoTags []string) bool {
 // this is a direct projection.
 func (e *engineClient) DiskUsage(ctx context.Context) (DiskUsage, error) {
 	du, err := e.cli.DiskUsage(ctx, client.DiskUsageOptions{
-		Containers: true, Images: true, Volumes: true, BuildCache: true,
+		Containers: true, Images: true, Volumes: true, BuildCache: true, Verbose: true,
 	})
 	if err != nil {
 		return DiskUsage{}, err
 	}
 	return DiskUsage{
+		VolumeItems: volumeUsageFrom(du.Volumes.Items),
 		Images: DiskUsageCategory{
 			Count:       int(du.Images.TotalCount),
 			Active:      int(du.Images.ActiveCount),
@@ -87,7 +88,9 @@ func (e *engineClient) DiskUsage(ctx context.Context) (DiskUsage, error) {
 // VolumeUsage returns measured on-disk bytes per Docker volume name. Runs the
 // daemon's `system df` filesystem walk, so it is sweep-only — never per read.
 func (e *engineClient) VolumeUsage(ctx context.Context) ([]VolumeUsage, error) {
-	du, err := e.cli.DiskUsage(ctx, client.DiskUsageOptions{Volumes: true})
+	// Without Verbose the daemon returns the category totals and an empty item list, which read as
+	// "this node has no volumes" rather than as an error.
+	du, err := e.cli.DiskUsage(ctx, client.DiskUsageOptions{Volumes: true, Verbose: true})
 	if err != nil {
 		return nil, err
 	}
@@ -137,10 +140,11 @@ func (e *engineClient) PruneImages(ctx context.Context, opts PruneImagesOptions)
 	return out, nil
 }
 
-// PruneBuildCache reclaims the BuildKit build cache. It removes only unused
-// records (no All flag), so an in-progress or referenced build is never touched.
+// PruneBuildCache reclaims the BuildKit build cache. BuildKit never touches a record an
+// in-progress or referenced build holds, so All only widens this from dangling records to every
+// unused one — the figure `docker system df` calls reclaimable, and the figure the report promises.
 func (e *engineClient) PruneBuildCache(ctx context.Context) (PruneReport, error) {
-	rep, err := e.cli.BuildCachePrune(ctx, client.BuildCachePruneOptions{})
+	rep, err := e.cli.BuildCachePrune(ctx, client.BuildCachePruneOptions{All: true})
 	if err != nil {
 		return PruneReport{}, err
 	}

@@ -6,6 +6,7 @@ package housekeeping
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 
 	"github.com/miabi-io/miabi/internal/docker"
@@ -26,16 +27,18 @@ type Selection struct {
 	Missing []ResourceRef `json:"missing"`
 }
 
-// ReclaimSelection picks which safe reclaim categories to run.
+// ReclaimSelection picks which reclaim categories to run.
 type ReclaimSelection struct {
 	DanglingImages bool `json:"dangling_images"`
 	BuildCache     bool `json:"build_cache"`
+	UnusedImages   bool `json:"unused_images"`
+	UnusedVolumes  bool `json:"unused_volumes"`
 }
 
 // ResourceRef identifies a drift item to act on.
 type ResourceRef struct {
-	Kind string `json:"kind"` // container | volume | config
-	Ref  string `json:"ref"`  // container ID, volume name or config ID
+	Kind string `json:"kind"` // container | service | volume | config
+	Ref  string `json:"ref"`  // container ID, service name, volume name or config ID
 }
 
 // Plan is the dry-run preview of a Selection: exactly what would be reclaimed
@@ -44,7 +47,13 @@ type Plan struct {
 	Reclaim        ReclaimSelection `json:"reclaim"`
 	DanglingImages CategoryStat     `json:"dangling_images"`
 	BuildCache     CategoryStat     `json:"build_cache"`
-	Orphans        []drift.Item     `json:"orphans"`
+	UnusedImages   CategoryStat     `json:"unused_images"`
+	UnusedVolumes  CategoryStat     `json:"unused_volumes"`
+	// UnusedImageRefs and UnusedVolumeNames name every guarded resource the apply would remove, so
+	// the preview can be checked item by item rather than trusted as a count.
+	UnusedImageRefs   []string     `json:"unused_image_refs,omitempty"`
+	UnusedVolumeNames []string     `json:"unused_volume_names,omitempty"`
+	Orphans           []drift.Item `json:"orphans"`
 	// Missing are the workloads that would be redeployed.
 	Missing        []drift.Item `json:"missing"`
 	EstimatedBytes int64        `json:"estimated_bytes"`
@@ -56,6 +65,8 @@ type Result struct {
 	ImagesDeleted   int          `json:"images_deleted"`
 	ImagesBytes     int64        `json:"images_reclaimed_bytes"`
 	BuildCacheBytes int64        `json:"build_cache_reclaimed_bytes"`
+	VolumesDeleted  int          `json:"volumes_deleted"`
+	VolumesBytes    int64        `json:"volumes_reclaimed_bytes"`
 	OrphansRemoved  []drift.Item `json:"orphans_removed"`
 	// Redeployed are the missing workloads a deploy was queued for.
 	Redeployed []drift.Item `json:"redeployed"`
@@ -82,7 +93,7 @@ func (s *Service) SetRedeployer(r Redeployer, apps appFinder) {
 // Plan re-analyzes the node and intersects the selection with what is actually
 // present and safe, returning the itemized dry-run. Nothing is mutated.
 func (s *Service) Plan(ctx context.Context, nodeID uint, sel Selection) (*Plan, error) {
-	rep, err := s.Analyze(ctx, nodeID)
+	rep, unusedImgs, unusedVols, err := s.analyze(ctx, nodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -94,6 +105,18 @@ func (s *Service) Plan(ctx context.Context, nodeID uint, sel Selection) (*Plan, 
 	if sel.Reclaim.BuildCache {
 		p.BuildCache = rep.Reclaim.BuildCache
 		p.EstimatedBytes += rep.Reclaim.BuildCache.Bytes
+	}
+	if sel.Reclaim.UnusedImages {
+		p.UnusedImages = rep.Reclaim.UnusedImages
+		p.EstimatedBytes += rep.Reclaim.UnusedImages.Bytes
+		p.UnusedImageRefs = imageRefsOf(unusedImgs)
+	}
+	if sel.Reclaim.UnusedVolumes {
+		p.UnusedVolumes = rep.Reclaim.UnusedVolumes
+		p.EstimatedBytes += rep.Reclaim.UnusedVolumes.Bytes
+		for _, v := range unusedVols {
+			p.UnusedVolumeNames = append(p.UnusedVolumeNames, v.DockerName)
+		}
 	}
 	confirmed := orphanIndex(rep.Drift.Orphans)
 	for _, ref := range sel.Orphans {
@@ -135,6 +158,9 @@ func (s *Service) Apply(ctx context.Context, nodeID uint, sel Selection) (*Resul
 			res.BuildCacheBytes = rep.SpaceReclaimed
 		}
 	}
+	if sel.Reclaim.UnusedImages || sel.Reclaim.UnusedVolumes {
+		s.reclaimUnused(ctx, dc, sel.Reclaim, res)
+	}
 
 	if len(sel.Missing) > 0 {
 		s.redeployMissing(ctx, dc, nodeID, sel, res)
@@ -148,12 +174,17 @@ func (s *Service) Apply(ctx context.Context, nodeID uint, sel Selection) (*Resul
 			return nil, derr
 		}
 		confirmed := orphanIndex(summary.Orphans)
+		items := make([]drift.Item, 0, len(sel.Orphans))
 		for _, ref := range sel.Orphans {
-			item, ok := confirmed[refKey(ref.Kind, ref.Ref)]
-			if !ok {
-				continue // not an orphan anymore; silently skip
+			if item, ok := confirmed[refKey(ref.Kind, ref.Ref)]; ok {
+				items = append(items, item) // anything else is no longer an orphan: silently skip
 			}
-			if rmErr := s.removeOrphan(ctx, dc, item); rmErr != nil {
+		}
+		// A volume Docker still considers in use cannot be removed, so whatever holds it has to go
+		// first: the service, then the container it scheduled, then the volume and its config.
+		sort.SliceStable(items, func(i, j int) bool { return removalOrder(items[i].Kind) < removalOrder(items[j].Kind) })
+		for _, item := range items {
+			if rmErr := s.removeOrphan(ctx, dc, nodeID, item); rmErr != nil {
 				res.Errors = append(res.Errors, item.Kind+" "+item.Ref+": "+rmErr.Error())
 				continue
 			}
@@ -161,6 +192,64 @@ func (s *Service) Apply(ctx context.Context, nodeID uint, sel Selection) (*Resul
 		}
 	}
 	return res, nil
+}
+
+// reclaimUnused re-resolves the guarded sets against fresh state and removes them one by one. It
+// never hands the category to the daemon's prune: the guard, not Docker's idea of "unused", is what
+// decides, and a failure on one resource does not take the rest of the batch with it.
+func (s *Service) reclaimUnused(ctx context.Context, dc docker.Client, sel ReclaimSelection, res *Result) {
+	du, err := dc.DiskUsage(ctx)
+	if err != nil {
+		res.Errors = append(res.Errors, "measure node: "+err.Error())
+		return
+	}
+	images, volumes, err := s.resolveUnused(ctx, dc, du.VolumeItems)
+	if err != nil {
+		res.Errors = append(res.Errors, err.Error())
+		return
+	}
+	if sel.UnusedImages {
+		if len(s.imageRefs) == 0 {
+			res.Errors = append(res.Errors, "reclaiming unused images is not available on this build")
+		}
+		for _, im := range images {
+			// Never force: an image Docker finds a reference for between the guard and here is one
+			// the guard would have kept, so let Docker refuse it rather than override.
+			if rmErr := dc.RemoveImage(ctx, im.ID, false); rmErr != nil {
+				res.Errors = append(res.Errors, "image "+imageName(im)+": "+rmErr.Error())
+				continue
+			}
+			res.ImagesDeleted++
+			res.ImagesBytes += unsharedBytes(im)
+		}
+	}
+	if sel.UnusedVolumes {
+		for _, v := range volumes {
+			// Never force either: force would remove a volume a container picked up since the guard ran.
+			if rmErr := dc.RemoveVolume(ctx, v.DockerName, false); rmErr != nil {
+				res.Errors = append(res.Errors, "volume "+v.DockerName+": "+rmErr.Error())
+				continue
+			}
+			res.VolumesDeleted++
+			res.VolumesBytes += v.Bytes
+		}
+	}
+}
+
+// imageRefsOf names each image by its first tag, falling back to its id.
+func imageRefsOf(imgs []docker.Image) []string {
+	out := make([]string, 0, len(imgs))
+	for _, im := range imgs {
+		out = append(out, imageName(im))
+	}
+	return out
+}
+
+func imageName(im docker.Image) string {
+	if len(im.RepoTags) > 0 {
+		return im.RepoTags[0]
+	}
+	return im.ID
 }
 
 // redeployMissing queues a deploy for each selected workload that re-confirms as missing. It goes through the
@@ -197,10 +286,18 @@ func (s *Service) redeployMissing(ctx context.Context, dc docker.Client, nodeID 
 
 // removeOrphan deletes a confirmed orphan. Force is used because an orphan's DB
 // record is already gone, so the admin's reclaim is the authoritative intent.
-func (s *Service) removeOrphan(ctx context.Context, dc docker.Client, item drift.Item) error {
+func (s *Service) removeOrphan(ctx context.Context, dc docker.Client, nodeID uint, item drift.Item) error {
 	switch item.Kind {
 	case "container":
 		return dc.RemoveContainer(ctx, item.Ref, true)
+	case "service":
+		// Only a manager can act on a service, and removing it is what actually stops the
+		// workload — Swarm reschedules a task whose container is removed under it.
+		mgr, err := s.swarmManagerFor(ctx, nodeID)
+		if err != nil {
+			return err
+		}
+		return mgr.ServiceRemove(ctx, item.Ref)
 	case "volume":
 		return dc.RemoveVolume(ctx, item.Ref, true)
 	case "config":
@@ -209,6 +306,20 @@ func (s *Service) removeOrphan(ctx context.Context, dc docker.Client, item drift
 		return dc.RemoveConfig(ctx, item.Ref)
 	default:
 		return fmt.Errorf("unsupported orphan kind %q", item.Kind)
+	}
+}
+
+// removalOrder ranks orphan kinds so an owner is always removed before what it holds.
+func removalOrder(kind string) int {
+	switch kind {
+	case "service":
+		return 0
+	case "container":
+		return 1
+	case "volume":
+		return 2
+	default:
+		return 3
 	}
 }
 

@@ -321,3 +321,18 @@ func (r *ApplicationRepository) EnvKeyOwners(appIDs []uint) (map[string][]uint, 
 func (r *ApplicationRepository) IDByUID(uid string) (uint, error) {
 	return idByUID[models.Application](r.db, uid)
 }
+
+// ImageRefs returns the image reference every application names, whatever its state. Housekeeping's
+// unused-image reclaim treats these as referenced: a stopped app must still be able to start.
+func (r *ApplicationRepository) ImageRefs() ([]string, error) {
+	var rows []struct{ Image, Tag string }
+	if err := r.db.Model(&models.Application{}).
+		Select("image", "tag").Where("image <> ''").Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	refs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		refs = append(refs, row.Image, models.ComposeImageRef(row.Image, row.Tag))
+	}
+	return refs, nil
+}

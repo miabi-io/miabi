@@ -179,3 +179,12 @@ func (r *DatabaseRepository) ExistsDatabaseByName(instanceID uint, name string) 
 func (r *DatabaseRepository) IDByUID(uid string) (uint, error) {
 	return idByUID[models.DatabaseInstance](r.db, uid)
 }
+
+// ImageRefs returns the server image every database instance was provisioned with, so housekeeping
+// never reclaims the image a stopped instance needs to come back up.
+func (r *DatabaseRepository) ImageRefs() ([]string, error) {
+	var refs []string
+	err := r.db.Model(&models.DatabaseInstance{}).
+		Where("image <> ''").Pluck("image", &refs).Error
+	return refs, err
+}

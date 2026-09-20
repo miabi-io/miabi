@@ -39,6 +39,13 @@ func isPlatformInfra(labels map[string]string) bool {
 	return docker.IsPlatformInfra(labels)
 }
 
+// swarmServiceName returns the swarm service a container is a task of, or "" when it is a plain
+// container. Swarm reconciles its own tasks, so this decides whether the reclaimable resource is
+// the container or the service above it.
+func swarmServiceName(labels map[string]string) string {
+	return labels[docker.SwarmServiceNameLabel]
+}
+
 // isMiabiVolumeName reports whether name is the Docker name storage gives a volume,
 // mb-vol-<workspaceID>-<name>. Keep in step with storage.CreateWith.
 func isMiabiVolumeName(name string) bool {

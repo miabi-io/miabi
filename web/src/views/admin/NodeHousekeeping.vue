@@ -3,7 +3,7 @@ import { useI18n } from 'vue-i18n'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
-import { nodesApi, type HousekeepingReport, type HousekeepingPlan, type DriftItem } from '@/api/nodes'
+import { nodesApi, type HousekeepingReport, type HousekeepingPlan, type DriftItem, type ReclaimSelection } from '@/api/nodes'
 import type { Server } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 
@@ -18,8 +18,11 @@ const housekeeping = ref<HousekeepingReport | null>(null)
 const hkLoading = ref(false)
 
 // Selection state.
-const hkReclaim = ref({ dangling_images: false, build_cache: false })
+const hkReclaim = ref<ReclaimSelection>({ dangling_images: false, build_cache: false, unused_images: false, unused_volumes: false })
 const hkOrphans = ref<Set<string>>(new Set()) // selected orphan keys "kind:ref"
+// Missing workloads are selectable too: redeploying goes through the ordinary deploy path, which refuses an
+// app whose data volume is gone rather than starting it on an empty one.
+const hkMissing = ref<Set<string>>(new Set())
 const hkPlan = ref<HousekeepingPlan | null>(null)
 const hkBusy = ref(false)
 const showHkPlan = ref(false)
@@ -56,9 +59,11 @@ async function loadHousekeeping() {
   hkLoading.value = true
   try {
     housekeeping.value = (await nodesApi.housekeeping(id)).data.data
-    // Drop selections that no longer correspond to current orphans.
+    // Drop selections that no longer correspond to current drift.
     const live = new Set((housekeeping.value?.drift.orphans ?? []).map(orphanKey))
     hkOrphans.value = new Set([...hkOrphans.value].filter((k) => live.has(k)))
+    const liveMissing = new Set((housekeeping.value?.drift.missing ?? []).map(orphanKey))
+    hkMissing.value = new Set([...hkMissing.value].filter((k) => liveMissing.has(k)))
   } catch (e) {
     notify.apiError(e)
   } finally {
@@ -72,10 +77,6 @@ function toggleOrphan(o: DriftItem) {
   next.has(k) ? next.delete(k) : next.add(k)
   hkOrphans.value = next
 }
-
-// Missing workloads are selectable too: redeploying goes through the ordinary deploy path, which refuses an
-// app whose data volume is gone rather than starting it on an empty one.
-const hkMissing = ref<Set<string>>(new Set())
 
 function toggleMissing(m: DriftItem) {
   const k = orphanKey(m)
@@ -105,13 +106,20 @@ const driftCount = computed(() => {
   const dr = housekeeping.value?.drift
   return dr ? dr.orphans.length + dr.missing.length + dr.untracked.length : 0
 })
-const hkHasSelection = computed(() =>
-  hkReclaim.value.dangling_images || hkReclaim.value.build_cache || hkOrphans.value.size > 0 || hkMissing.value.size > 0,
-)
+const hkAnyReclaim = computed(() => Object.values(hkReclaim.value).some(Boolean))
+const hkHasSelection = computed(() => hkAnyReclaim.value || hkOrphans.value.size > 0 || hkMissing.value.size > 0)
+
+// What housekeeping can actually reclaim, as opposed to what `docker system df` calls reclaimable:
+// an image a stopped app or a rollback still needs, and any volume Miabi owns, are excluded.
+const hkReclaimable = computed(() => {
+  const r = housekeeping.value?.reclaim
+  if (!r) return 0
+  return r.dangling_images.bytes + r.build_cache.bytes + r.unused_images.bytes + r.unused_volumes.bytes
+})
 
 function hkSelection() {
   return {
-    reclaim: { dangling_images: hkReclaim.value.dangling_images, build_cache: hkReclaim.value.build_cache },
+    reclaim: { ...hkReclaim.value },
     orphans: hkSelectedOrphanList.value.map((o) => ({ kind: o.kind, ref: o.ref })),
     missing: hkSelectedMissingList.value.map((m) => ({ kind: m.kind, ref: m.ref })),
   }
@@ -136,15 +144,21 @@ async function applyHousekeeping() {
   hkBusy.value = true
   try {
     const res = (await nodesApi.housekeepingApply(id, hkSelection())).data.data
-    const freed = (res.images_reclaimed_bytes || 0) + (res.build_cache_reclaimed_bytes || 0)
+    const freed =
+      (res.images_reclaimed_bytes || 0) + (res.build_cache_reclaimed_bytes || 0) + (res.volumes_reclaimed_bytes || 0)
     const parts: string[] = []
     if (freed > 0) parts.push(`freed ${fmtSize(freed)}`)
     if (res.orphans_removed?.length) parts.push(`removed ${res.orphans_removed.length} orphan(s)`)
-    notify.success(parts.length ? `Housekeeping: ${parts.join(', ')}` : 'Nothing to reclaim')
+    if (res.redeployed?.length) parts.push(`redeployed ${res.redeployed.length}`)
+    // A selection that changed nothing is not a success: say so rather than let the toast imply the
+    // node was cleaned while the report comes back identical.
+    if (parts.length) notify.success(`Housekeeping: ${parts.join(', ')}`)
+    else if (!res.errors?.length) notify.info('Housekeeping made no changes — nothing selected was still reclaimable.')
     if (res.errors?.length) res.errors.forEach((m: string) => notify.error(m))
     showHkPlan.value = false
-    hkReclaim.value = { dangling_images: false, build_cache: false }
+    hkReclaim.value = { dangling_images: false, build_cache: false, unused_images: false, unused_volumes: false }
     hkOrphans.value = new Set()
+    hkMissing.value = new Set()
     await loadHousekeeping()
   } catch (e) {
     notify.apiError(e)
@@ -186,14 +200,20 @@ function fmtSize(n?: number): string {
           <div v-for="cat in diskCats" :key="cat.key" class="hk-disk">
             <span class="hk-disk-label">{{ cat.label }}</span>
             <span class="hk-disk-value">{{ fmtSize(cat.total) }}</span>
-            <span class="hk-disk-sub">{{ fmtSize(cat.reclaimable) }} reclaimable · {{ cat.count }} item(s)</span>
+            <span class="hk-disk-sub">{{ fmtSize(cat.reclaimable) }} unused · {{ cat.count }} item(s)</span>
           </div>
         </div>
+        <p class="hk-note" style="padding: 0 20px 16px">
+          "Unused" is Docker's own count — it includes images and volumes that stopped apps, rollbacks
+          and databases still need. Of it, {{ fmtSize(hkReclaimable) }} is safe for housekeeping to reclaim below.
+        </p>
       </div>
 
       <!-- Reclaim -->
       <div class="card mb-4">
-        <div class="card-header"><h2>Reclaim disk</h2></div>
+        <div class="card-header">
+          <h2>Reclaim disk <span class="text-muted" style="font-weight: 400">{{ fmtSize(hkReclaimable) }} available</span></h2>
+        </div>
         <div class="hk-section">
           <label class="hk-check">
             <input v-model="hkReclaim.dangling_images" type="checkbox" :disabled="!housekeeping.reclaim.dangling_images.count" />
@@ -205,6 +225,18 @@ function fmtSize(n?: number): string {
             Build cache
             <span class="text-muted">{{ fmtSize(housekeeping.reclaim.build_cache.bytes) }}</span>
           </label>
+          <label class="hk-check">
+            <input v-model="hkReclaim.unused_images" type="checkbox" :disabled="!housekeeping.reclaim.unused_images.count" />
+            Unused images
+            <span class="text-muted">{{ housekeeping.reclaim.unused_images.count }} · {{ fmtSize(housekeeping.reclaim.unused_images.bytes) }}</span>
+          </label>
+          <p class="hk-note">No container holds these, no app, release, database or gateway names them, and each can be pulled again. Images built here and never pushed are never reclaimed.</p>
+          <label class="hk-check">
+            <input v-model="hkReclaim.unused_volumes" type="checkbox" :disabled="!housekeeping.reclaim.unused_volumes.count" />
+            Unused volumes
+            <span class="text-muted">{{ housekeeping.reclaim.unused_volumes.count }} · {{ fmtSize(housekeeping.reclaim.unused_volumes.bytes) }}</span>
+          </label>
+          <p class="hk-note">Volumes nothing mounts that Miabi does not own. A stopped app's data volume is never in here — it is Miabi's, however idle it looks.</p>
         </div>
       </div>
 
@@ -221,7 +253,10 @@ function fmtSize(n?: number): string {
                 <td class="trunc mono" :title="o.name">{{ o.name }}<div v-if="o.image" class="cell-sub">{{ o.image }}</div></td>
                 <td class="cell-sub">{{ o.kind }}</td>
                 <td><span class="badge badge-danger">orphan</span></td>
-                <td class="cell-sub">remove <span class="text-muted" v-if="o.owner_kind">({{ o.owner_kind }}{{ o.owner_id ? ' #' + o.owner_id : '' }} deleted in Miabi)</span></td>
+                <td class="cell-sub">
+                  {{ o.kind === 'service' ? 'remove the swarm service' : 'remove' }}
+                  <span class="text-muted" v-if="o.owner_kind">({{ o.owner_kind }}{{ o.owner_id ? ' #' + o.owner_id : '' }} deleted in Miabi)</span>
+                </td>
               </tr>
               <tr v-for="o in housekeeping.drift.missing" :key="'m-' + o.ref">
                 <td><input type="checkbox" :checked="hkMissing.has(orphanKey(o))" @change="toggleMissing(o)" /></td>
@@ -262,12 +297,26 @@ function fmtSize(n?: number): string {
           <ul class="hk-plan">
             <li v-if="hkPlan.reclaim.dangling_images">Prune {{ hkPlan.dangling_images.count }} dangling image(s) — {{ fmtSize(hkPlan.dangling_images.bytes) }}</li>
             <li v-if="hkPlan.reclaim.build_cache">Prune build cache — {{ fmtSize(hkPlan.build_cache.bytes) }}</li>
+            <li v-if="hkPlan.reclaim.unused_images">
+              Remove {{ hkPlan.unused_images.count }} unused image(s) — {{ fmtSize(hkPlan.unused_images.bytes) }}
+              <details v-if="hkPlan.unused_image_refs?.length" class="hk-details">
+                <summary>show them</summary>
+                <ul class="hk-refs"><li v-for="r in hkPlan.unused_image_refs" :key="r">{{ r }}</li></ul>
+              </details>
+            </li>
+            <li v-if="hkPlan.reclaim.unused_volumes">
+              Remove {{ hkPlan.unused_volumes.count }} unused volume(s) — {{ fmtSize(hkPlan.unused_volumes.bytes) }}
+              <details v-if="hkPlan.unused_volume_names?.length" class="hk-details">
+                <summary>show them</summary>
+                <ul class="hk-refs"><li v-for="n in hkPlan.unused_volume_names" :key="n">{{ n }}</li></ul>
+              </details>
+            </li>
             <li v-for="o in hkPlan.orphans" :key="'p-' + o.kind + o.ref">Remove orphan {{ o.kind }} <strong>{{ o.name }}</strong></li>
             <li v-for="m in hkPlan.missing ?? []" :key="'r-' + m.kind + m.ref">Redeploy <strong>{{ m.name }}</strong> ({{ m.kind }})</li>
-            <li v-if="!hkPlan.reclaim.dangling_images && !hkPlan.reclaim.build_cache && hkPlan.orphans.length === 0 && !(hkPlan.missing ?? []).length" class="text-muted">Nothing selected.</li>
+            <li v-if="!hkPlan.reclaim.dangling_images && !hkPlan.reclaim.build_cache && !hkPlan.reclaim.unused_images && !hkPlan.reclaim.unused_volumes && hkPlan.orphans.length === 0 && !(hkPlan.missing ?? []).length" class="text-muted">Nothing selected.</li>
           </ul>
           <p style="margin-top: 12px; font-weight: 600">Estimated reclaim: {{ fmtSize(hkPlan.estimated_bytes) }}</p>
-          <p class="text-muted" style="font-size: 12px; margin-top: 6px">Orphan removal is irreversible. Platform-managed apps, databases and the gateway are never affected.</p>
+          <p class="text-muted" style="font-size: 12px; margin-top: 6px">Orphan and volume removal is irreversible. Platform-managed apps, databases and the gateway are never affected.</p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" @click="showHkPlan = false">Cancel</button>
@@ -300,6 +349,10 @@ function fmtSize(n?: number): string {
 .hk-section { padding: 12px 20px 16px; }
 .hk-check { display: flex; align-items: center; gap: 8px; font-size: 14px; padding: 4px 0; cursor: pointer; }
 .hk-check input:disabled { cursor: not-allowed; }
+.hk-note { margin: 0 0 10px 24px; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
+.hk-details { margin-top: 4px; }
+.hk-details summary { cursor: pointer; color: var(--text-muted); font-size: 12px; }
+.hk-refs { margin: 4px 0 0; padding-left: 18px; max-height: 180px; overflow-y: auto; font-family: monospace; font-size: 12px; }
 .hk-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--border); }
 .hk-plan { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.7; }
 </style>
