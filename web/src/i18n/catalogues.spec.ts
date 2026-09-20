@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { describe, it, expect } from 'vitest'
+import { createI18n } from 'vue-i18n'
 import en from './en.json'
 import fr from './fr.json'
 import { LANGUAGES, DEFAULT_LANGUAGE } from './languages'
@@ -85,6 +86,26 @@ describe('translation catalogues', () => {
       })
       expect(offenders, `HTML entities in ${code}`).toEqual([])
     }
+  })
+
+  // vue-i18n compiles a message the first time it renders, and its syntax reserves
+  // '@' (linked messages), '|' (plural branches) and braces. A value carrying one of
+  // those throws a SyntaxError at render — the search placeholder shipped a literal
+  // '@' and took the whole command palette down with it. Compiling every message
+  // here catches the next one at the cost of a few milliseconds.
+  it('compiles every message', () => {
+    const broken: string[] = []
+    for (const [code, cat] of Object.entries(catalogues)) {
+      const probe = createI18n({ legacy: false, locale: code, messages: { [code]: cat as never }, missingWarn: false, fallbackWarn: false })
+      for (const key of keysOf(cat)) {
+        try {
+          probe.global.t(key)
+        } catch (e) {
+          broken.push(`${code}:${key} — ${(e as Error).message.split('\n')[0]}`)
+        }
+      }
+    }
+    expect(broken).toEqual([])
   })
 
   // The sign-in picker offers every entry in LANGUAGES. One without a catalogue file
