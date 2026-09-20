@@ -30,13 +30,13 @@ const deleting = ref(false)
 // --- Tabs (state mirrored in the URL query) ---
 type TabKey = 'overview' | 'files' | 'backups' | 'settings'
 const tabs = computed<{ key: TabKey; label: string; icon: string }[]>(() => {
-  const t: { key: TabKey; label: string; icon: string }[] = [
-    { key: 'overview', label: 'Overview', icon: 'mdi-information-outline' },
-    { key: 'files', label: 'Files', icon: 'mdi-folder-outline' },
-    { key: 'backups', label: 'Backups', icon: 'mdi-cloud-outline' },
+  const list: { key: TabKey; label: string; icon: string }[] = [
+    { key: 'overview', label: 'volumes.overview', icon: 'mdi-information-outline' },
+    { key: 'files', label: 'volumes.files', icon: 'mdi-folder-outline' },
+    { key: 'backups', label: 'volumes.backups', icon: 'mdi-cloud-outline' },
   ]
-  if (ws.canEdit) t.push({ key: 'settings', label: 'Settings', icon: 'mdi-cog-outline' })
-  return t
+  if (ws.canEdit) list.push({ key: 'settings', label: 'volumes.settings', icon: 'mdi-cog-outline' })
+  return list
 })
 function tabFromQuery(): TabKey {
   const q = route.query.tab
@@ -64,7 +64,7 @@ watch([volId, wid], load, { immediate: true })
 
 async function copy(text: string) {
   if (!text) return
-  if (await copyText(text)) notify.success('Copied')
+  if (await copyText(text)) notify.success(t('notify.common.copied'))
   else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 
@@ -73,7 +73,7 @@ async function remove() {
   deleting.value = true
   try {
     await volumeApi.remove(wid.value, vol.value.id)
-    notify.success('Volume deleted')
+    notify.success(t('notify.volumeDetail.deleted'))
     router.push('/volumes')
   } catch (e) {
     notify.apiError(e, 'Failed to delete (volume may be in use)')
@@ -116,7 +116,7 @@ async function onUpload(e: Event) {
   uploading.value = true
   try {
     await volumeApi.uploadFile(wid.value, volId.value, file, uploadPath.value.trim() || undefined)
-    notify.success(`Uploaded ${file.name}`)
+    notify.success(t('notify.volumeDetail.uploaded', { name: file.name }))
     uploadPath.value = ''
     await loadFiles()
   } catch (err) {
@@ -147,7 +147,7 @@ async function removeFile() {
   deletingFile.value = true
   try {
     await volumeApi.deleteFile(wid.value, volId.value, pendingDelete.value.path)
-    notify.success('Deleted')
+    notify.success(t('notify.volumeDetail.fileDeleted'))
     fileConfirmOpen.value = false
     pendingDelete.value = null
     await loadFiles()
@@ -208,7 +208,7 @@ async function runBackup() {
   backingUp.value = true
   try {
     await volumeApi.runBackup(wid.value, volId.value)
-    notify.success('Backup started')
+    notify.success(t('notify.volumeDetail.backupStarted'))
     await loadBackups()
     pollBackups()
   } catch (e) {
@@ -240,7 +240,7 @@ async function doRestore() {
   restoring.value = true
   try {
     await volumeApi.restoreBackup(wid.value, volId.value, pendingRestore.value.id)
-    notify.success('Volume restored')
+    notify.success(t('notify.volumeDetail.restored'))
     restoreConfirmOpen.value = false
     pendingRestore.value = null
   } catch (e) {
@@ -259,7 +259,7 @@ async function doDeleteBackup() {
   deletingBackup.value = true
   try {
     await volumeApi.deleteBackup(wid.value, volId.value, pendingDeleteBackup.value.id)
-    notify.success('Backup deleted')
+    notify.success(t('notify.volumeDetail.backupDeleted'))
     deleteConfirmOpen.value = false
     pendingDeleteBackup.value = null
     await loadBackups()
@@ -339,8 +339,7 @@ function isFileVisible(file: VolumeFile): boolean {
     <div class="page-header">
       <div>
         <button class="btn btn-ghost btn-sm" @click="router.push('/volumes')">
-          <span class="mdi mdi-arrow-left"></span> Volumes
-        </button>
+          <span class="mdi mdi-arrow-left"></span>{{ $t('volumes.volumes') }}</button>
         <div class="flex items-center gap-3" style="margin-top: 8px">
           <ResourceIcon mdi="mdi-harddisk" :name="vol.name" :size="44" />
           <div>
@@ -357,13 +356,13 @@ function isFileVisible(file: VolumeFile): boolean {
         <span class="badge badge-dot" :class="vol.in_use ? 'badge-success' : 'badge-neutral'">
           {{ vol.in_use ? `in use · ${vol.used_by.length} app${vol.used_by.length === 1 ? '' : 's'}` : 'unused' }}
         </span>
-        <span v-if="!vol.exists" class="badge badge-danger" title="The underlying Docker volume was not found">missing</span>
+        <span v-if="!vol.exists" class="badge badge-danger" :title="$t('volumes.missingHint')">{{ $t('volumes.missing') }}</span>
       </div>
     </div>
 
     <div class="tabs">
-      <button v-for="t in tabs" :key="t.key" class="tab" :class="{ active: tab === t.key }" @click="tab = t.key">
-        <span class="mdi" :class="t.icon"></span> {{ t.label }}
+      <button v-for="item in tabs" :key="item.key" class="tab" :class="{ active: tab === item.key }" @click="tab = item.key">
+        <span class="mdi" :class="item.icon"></span> {{ $t(item.label) }}
       </button>
     </div>
 
@@ -371,55 +370,55 @@ function isFileVisible(file: VolumeFile): boolean {
     <template v-if="tab === 'overview'">
       <div class="stats-grid">
         <div class="stat-card">
-          <div class="stat-header"><span class="stat-label">Size on disk</span><span class="stat-icon stat-icon-primary"><span class="mdi mdi-database"></span></span></div>
+          <div class="stat-header"><span class="stat-label">{{ $t('volumes.sizeOnDisk') }}</span><span class="stat-icon stat-icon-primary"><span class="mdi mdi-database"></span></span></div>
           <div class="stat-value">{{ fmtBytes(vol.size_bytes ?? 0) }}</div>
           <div class="stat-sub">{{ vol.exists ? 'reported by Docker' : 'volume not found' }}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-header"><span class="stat-label">Mounted by</span><span class="stat-icon stat-icon-info"><span class="mdi mdi-application-outline"></span></span></div>
+          <div class="stat-header"><span class="stat-label">{{ $t('volumes.mountedBy') }}</span><span class="stat-icon stat-icon-info"><span class="mdi mdi-application-outline"></span></span></div>
           <div class="stat-value">{{ vol.used_by.length }}</div>
           <div class="stat-sub">{{ vol.used_by.length === 1 ? 'application' : 'applications' }}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-header"><span class="stat-label">Files</span><span class="stat-icon stat-icon-secondary"><span class="mdi mdi-folder-outline"></span></span></div>
+          <div class="stat-header"><span class="stat-label">{{ $t('volumes.files') }}</span><span class="stat-icon stat-icon-secondary"><span class="mdi mdi-folder-outline"></span></span></div>
           <div class="stat-value">{{ filesLoading ? '…' : files.length }}</div>
-          <div class="stat-sub">top-level entries</div>
+          <div class="stat-sub">{{ $t('volumes.topLevelEntries') }}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-header"><span class="stat-label">Backups</span><span class="stat-icon stat-icon-success"><span class="mdi mdi-cloud-outline"></span></span></div>
+          <div class="stat-header"><span class="stat-label">{{ $t('volumes.backups') }}</span><span class="stat-icon stat-icon-success"><span class="mdi mdi-cloud-outline"></span></span></div>
           <div class="stat-value">{{ backupsLoading ? '…' : backups.length }}</div>
           <div class="stat-sub">
-            <span v-if="lastBackup">last: <span class="badge badge-dot" :class="backupBadge[lastBackup.status] || 'badge-neutral'">{{ lastBackup.status }}</span></span>
-            <span v-else>none yet</span>
+            <span v-if="lastBackup">{{ $t('volumes.last') }} <span class="badge badge-dot" :class="backupBadge[lastBackup.status] || 'badge-neutral'">{{ lastBackup.status }}</span></span>
+            <span v-else>{{ $t('volumes.noneYet') }}</span>
           </div>
         </div>
       </div>
 
       <!-- Details -->
       <div class="card mb-4">
-        <div class="card-header"><h2>Details</h2></div>
+        <div class="card-header"><h2>{{ $t('volumes.details') }}</h2></div>
         <div class="detail-grid">
-          <div><span class="detail-label">Status</span><span class="badge badge-dot" :class="vol.in_use ? 'badge-success' : 'badge-neutral'">{{ vol.in_use ? 'in use' : 'unused' }}</span></div>
-          <div><span class="detail-label">Owner</span><OwnerChip :metadata="vol.metadata" /></div>
-          <div><span class="detail-label">Driver</span>{{ vol.driver || 'local' }}</div>
-          <div v-if="vol.storage_class"><span class="detail-label">Storage class</span>{{ vol.storage_class }}</div>
-          <div v-if="vol.host_path"><span class="detail-label">Host path</span><code class="copyable" title="Copy" @click="copy(vol.host_path || '')">{{ vol.host_path }} <span class="mdi mdi-content-copy"></span></code></div>
-          <div><span class="detail-label">Docker name</span><code class="copyable" title="Copy" @click="copy(vol.docker_name)">{{ vol.docker_name }} <span class="mdi mdi-content-copy"></span></code></div>
-          <div v-if="vol.server_name"><span class="detail-label">Node</span>{{ vol.server_name }}</div>
-          <div><span class="detail-label">Created</span>{{ fmtTime(vol.created_at) }}</div>
+          <div><span class="detail-label">{{ $t('dashboard.col.status') }}</span><span class="badge badge-dot" :class="vol.in_use ? 'badge-success' : 'badge-neutral'">{{ vol.in_use ? 'in use' : 'unused' }}</span></div>
+          <div><span class="detail-label">{{ $t('volumes.owner') }}</span><OwnerChip :metadata="vol.metadata" /></div>
+          <div><span class="detail-label">{{ $t('volumes.driver') }}</span>{{ vol.driver || 'local' }}</div>
+          <div v-if="vol.storage_class"><span class="detail-label">{{ $t('volumes.storageClass') }}</span>{{ vol.storage_class }}</div>
+          <div v-if="vol.host_path"><span class="detail-label">{{ $t('volumes.hostPath') }}</span><code class="copyable" :title="$t('volumes.copy')" @click="copy(vol.host_path || '')">{{ vol.host_path }} <span class="mdi mdi-content-copy"></span></code></div>
+          <div><span class="detail-label">{{ $t('db.dockerName') }}</span><code class="copyable" :title="$t('volumes.copy')" @click="copy(vol.docker_name)">{{ vol.docker_name }} <span class="mdi mdi-content-copy"></span></code></div>
+          <div v-if="vol.server_name"><span class="detail-label">{{ $t('volumes.node') }}</span>{{ vol.server_name }}</div>
+          <div><span class="detail-label">{{ $t('dashboard.col.created') }}</span>{{ fmtTime(vol.created_at) }}</div>
         </div>
       </div>
 
       <!-- Used by -->
       <div class="card">
-        <div class="card-header"><h2>Used by</h2></div>
+        <div class="card-header"><h2>{{ $t('volumes.usedBy') }}</h2></div>
         <div v-if="vol.used_by.length === 0" class="empty-state">
           <span class="mdi mdi-application-outline" style="font-size: 36px; color: var(--text-muted)"></span>
-          <p>No applications mount this volume. It can be safely deleted.</p>
+          <p>{{ $t('volumes.noMounts') }}</p>
         </div>
         <div v-else class="table-wrapper">
           <table>
-            <thead><tr><th>Application</th><th>Mount path</th></tr></thead>
+            <thead><tr><th>{{ $t('volumes.application') }}</th><th>{{ $t('volumes.mountPath') }}</th></tr></thead>
             <tbody>
               <tr v-for="u in vol.used_by" :key="u.app_id">
                 <td>
@@ -435,15 +434,15 @@ function isFileVisible(file: VolumeFile): boolean {
 
       <MetadataCard :metadata="vol.metadata" class="mt-4" />
 
-      <MetadataCard :metadata="vol.annotations" title="Annotations" :reserved="false" class="mt-4" />
+      <MetadataCard :metadata="vol.annotations" :title="$t('volumes.annotations')" :reserved="false" class="mt-4" />
     </template>
 
     <!-- FILES -->
     <div v-else-if="tab === 'files'" class="card">
       <div class="card-header flex items-center justify-between">
-        <h2>Files</h2>
+        <h2>{{ $t('volumes.files') }}</h2>
         <div class="flex items-center gap-2">
-          <button class="btn btn-ghost btn-sm" :disabled="filesLoading" title="Refresh" aria-label="Refresh" @click="loadFiles">
+          <button class="btn btn-ghost btn-sm" :disabled="filesLoading" :title="$t('volumes.refresh')" :aria-label="$t('volumes.refresh')" @click="loadFiles">
             <span class="mdi mdi-refresh"></span>
           </button>
           <template v-if="ws.canEdit">
@@ -451,10 +450,10 @@ function isFileVisible(file: VolumeFile): boolean {
               v-model="uploadPath"
               class="form-input input-sm"
               style="width: 160px"
-              aria-label="Upload subdirectory"
-              placeholder="sub/dir (optional)"
+              :aria-label="$t('volumes.uploadSubdirectory')"
+              :placeholder="$t('volumes.subdirPlaceholder')"
             />
-            <input ref="fileInput" type="file" class="hidden-file" aria-label="Choose file to upload" @change="onUpload" />
+            <input ref="fileInput" type="file" class="hidden-file" :aria-label="$t('volumes.chooseFileToUpload')" @change="onUpload" />
             <button class="btn btn-primary btn-sm" :disabled="uploading || !vol.exists" @click="fileInput?.click()">
               <span class="mdi" :class="uploading ? 'mdi-loading mdi-spin' : 'mdi-upload'"></span>
               {{ uploading ? 'Uploading…' : 'Upload file' }}
@@ -465,16 +464,16 @@ function isFileVisible(file: VolumeFile): boolean {
       <div v-if="filesLoading" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="files.length === 0" class="empty-state">
         <span class="mdi mdi-folder-open-outline" style="font-size: 36px; color: var(--text-muted)"></span>
-        <p>This volume is empty. Upload a file to import config or data.</p>
+        <p>{{ $t('volumes.emptyHint') }}</p>
       </div>
       <div v-else class="table-wrapper">
         <table class="file-table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Size</th>
-              <th>Modified</th>
-              <th class="text-right">Actions</th>
+              <th>{{ $t('apps.form.name') }}</th>
+              <th>{{ $t('volumes.size') }}</th>
+              <th>{{ $t('volumes.modified') }}</th>
+              <th class="text-right">{{ $t('volumes.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -501,11 +500,11 @@ function isFileVisible(file: VolumeFile): boolean {
               <td class="cell-sub">{{ fmtEpoch(f.mod_time) }}</td>
               <td class="text-right" @click.stop>
                 <div class="table-actions">
-                  <button v-if="!f.is_dir" class="btn-icon btn-icon-muted" title="Download" aria-label="Download"
+                  <button v-if="!f.is_dir" class="btn-icon btn-icon-muted" :title="$t('volumes.download')" :aria-label="$t('volumes.download')"
                     @click="download(f)">
                     <span class="mdi mdi-download"></span>
                   </button>
-                  <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" title="Delete" aria-label="Delete"
+                  <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')"
                     @click="pendingDelete = f; fileConfirmOpen = true">
                     <span class="mdi mdi-trash-can-outline"></span>
                   </button>
@@ -521,18 +520,18 @@ function isFileVisible(file: VolumeFile): boolean {
     <div v-else-if="tab === 'backups'" class="card">
       <div class="card-header flex items-center justify-between">
         <div>
-          <h2>Backups</h2>
-          <div class="text-muted text-sm">Compressed archives stored in the workspace S3 target.</div>
+          <h2>{{ $t('volumes.backups') }}</h2>
+          <div class="text-muted text-sm">{{ $t('volumes.backupsHint') }}</div>
         </div>
         <div class="flex items-center gap-2">
-          <button class="btn btn-ghost btn-sm" :disabled="backupsLoading" title="Refresh" aria-label="Refresh" @click="loadBackups">
+          <button class="btn btn-ghost btn-sm" :disabled="backupsLoading" :title="$t('volumes.refresh')" :aria-label="$t('volumes.refresh')" @click="loadBackups">
             <span class="mdi mdi-refresh"></span>
           </button>
           <button
             v-if="ws.canEdit"
             class="btn btn-primary btn-sm"
             :disabled="backingUp || !vol.exists || !backupConfigured"
-            :title="!backupConfigured ? 'Enable S3 in workspace backup settings first' : 'Back up this volume to S3'"
+            :title="!backupConfigured ? $t('volumes.backupNeedsS3') : $t('volumes.backupNow')"
             @click="runBackup"
           >
             <span class="mdi" :class="backingUp ? 'mdi-loading mdi-spin' : 'mdi-cloud-upload-outline'"></span>
@@ -543,20 +542,17 @@ function isFileVisible(file: VolumeFile): boolean {
       <div v-if="!backupConfigured && !backupsLoading" class="app-banner app-banner--info" style="margin: 12px 16px 0">
         <span class="mdi mdi-information-outline app-banner-icon"></span>
         <div class="app-banner-content">
-          <p class="app-banner-text">
-            Volume backups are disabled — no S3 target is configured for this workspace. Enable one in
-            <RouterLink :to="{ name: 'workspace-detail', params: { id: wid }, query: { tab: 'backup' } }">workspace backup settings</RouterLink>.
-          </p>
+          <i18n-t keypath="volumes.backupsDisabledHint" tag="p" class="app-banner-text"><template #link><RouterLink :to="{ name: 'workspace-detail', params: { id: wid }, query: { tab: 'backup' } }">{{ $t('volumes.workspaceBackupSettings') }}</RouterLink></template></i18n-t>
         </div>
       </div>
       <div v-if="backupsLoading" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="backups.length === 0" class="empty-state">
         <span class="mdi mdi-cloud-outline" style="font-size: 36px; color: var(--text-muted)"></span>
-        <p>No backups yet. Configure S3 in workspace backup settings, then back up this volume.</p>
+        <p>{{ $t('volumes.noBackups') }}</p>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>Created</th><th>Status</th><th>Archive</th><th>Trigger</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('dashboard.col.created') }}</th><th>{{ $t('dashboard.col.status') }}</th><th>{{ $t('volumes.archive') }}</th><th>{{ $t('volumes.trigger') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="b in backups" :key="b.id">
               <td class="cell-sub">{{ fmtTime(b.created_at) }}</td>
@@ -571,17 +567,16 @@ function isFileVisible(file: VolumeFile): boolean {
                   v-if="ws.canEdit"
                   class="btn btn-ghost btn-sm"
                   :disabled="b.status !== 'completed' || !vol.exists"
-                  title="Restore this backup into the volume"
+                  :title="$t('volumes.restoreHint')"
                   @click="pendingRestore = b; restoreConfirmOpen = true"
                 >
-                  <span class="mdi mdi-backup-restore"></span> Restore
-                </button>
+                  <span class="mdi mdi-backup-restore"></span>{{ $t('volumes.restore') }}</button>
                 <button
                   v-if="ws.canEdit"
                   class="btn-icon btn-icon-danger"
                   :disabled="b.status === 'pending' || b.status === 'running'"
-                  title="Delete this backup"
-                  aria-label="Delete this backup"
+                  :title="$t('volumes.deleteThisBackup')"
+                  :aria-label="$t('volumes.deleteThisBackup')"
                   @click="pendingDeleteBackup = b; deleteConfirmOpen = true"
                 >
                   <span class="mdi mdi-trash-can-outline"></span>
@@ -596,21 +591,19 @@ function isFileVisible(file: VolumeFile): boolean {
     <!-- SETTINGS -->
     <template v-else-if="tab === 'settings'">
       <div class="card danger-card">
-        <div class="card-header"><h2>Danger zone</h2></div>
+        <div class="card-header"><h2>{{ $t('db.dangerZone') }}</h2></div>
         <div class="card-body flex items-center justify-between gap-3">
           <div>
-            <div class="cell-title">Delete this volume</div>
-            <div class="cell-sub">
-              Permanently removes the volume and all its data. This cannot be undone.
-              <template v-if="vol.in_use"> Detach it from every application first.</template>
+            <div class="cell-title">{{ $t('volumes.deleteThisVolume') }}</div>
+            <div class="cell-sub">{{ $t('volumes.deleteHint') }}<template v-if="vol.in_use">{{ $t('volumes.detachFirst') }}</template>
             </div>
           </div>
           <button
             class="btn btn-danger"
             :disabled="vol.in_use"
-            :title="vol.in_use ? 'Detach from all apps first' : 'Delete volume'"
+            :title="vol.in_use ? $t('volumes.detachFirstShort') : $t('volumes.deleteThisVolume')"
             @click="confirmOpen = true"
-          >Delete</button>
+          >{{ $t('action.delete') }}</button>
         </div>
       </div>
     </template>
@@ -660,7 +653,7 @@ function isFileVisible(file: VolumeFile): boolean {
     />
   </div>
   <div v-else-if="loading" class="loading-page"><span class="spinner"></span></div>
-  <div v-else class="empty-state"><p>Volume not found.</p></div>
+  <div v-else class="empty-state"><p>{{ $t('volumes.volumeNotFound') }}</p></div>
 </template>
 
 <style scoped>

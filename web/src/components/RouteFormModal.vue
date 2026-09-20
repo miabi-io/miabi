@@ -356,73 +356,73 @@ async function save() {
     <AppModal v-if="open" auto-focus :escapable="!confirmDiscard" @close="requestClose">
       <div class="modal-header">
         <h3 id="route-form-title">{{ editing ? 'Edit route' : 'New route' }}</h3>
-        <button class="btn-icon btn-icon-muted" aria-label="Close" data-modal-skip-focus @click="requestClose"><span class="mdi mdi-close"></span></button>
+        <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" data-modal-skip-focus @click="requestClose"><span class="mdi mdi-close"></span></button>
       </div>
     <form @submit.prevent="save">
       <div class="modal-body">
         <div class="form-row">
           <div class="form-group" style="flex: 1">
-            <label class="form-label">Name</label>
-            <input v-model="form.name" class="form-input" placeholder="e.g. web" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" title="Lowercase letters, digits and hyphens" required autofocus />
-            <p class="form-hint">Lowercase letters, digits and hyphens (e.g. my-api).</p>
+            <label class="form-label">{{ $t('apps.form.name') }}</label>
+            <input v-model="form.name" class="form-input" placeholder="e.g. web" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" :title="$t('routes.nameTitle')" required autofocus />
+            <p class="form-hint">{{ $t('routes.nameHint') }}</p>
           </div>
           <div class="form-group" style="flex: 1">
-            <label class="form-label">Application</label>
+            <label class="form-label">{{ $t('routes.application') }}</label>
             <!-- Opened from an application's own page the app is a given, not
                  a choice — a picker there invites routing the wrong app. -->
-            <input v-if="lockApp" class="form-input" :value="lockedAppName" disabled aria-label="Application" />
+            <input v-if="lockApp" class="form-input" :value="lockedAppName" disabled :aria-label="$t('routes.application')" />
             <select v-else v-model="form.application_id" class="form-select" required @change="onAppChange">
               <option v-for="a in apps" :key="a.id" :value="a.id">{{ a.name }}</option>
             </select>
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">Target port <span class="text-muted">(optional — defaults to the app's port)</span></label>
+          <label class="form-label">{{ $t('routes.targetPort') }} <span class="text-muted">{{ $t('routes.optionalDefaultsToTheApp') }}</span></label>
           <select v-if="appPorts.length" v-model="form.target_port" class="form-select">
-            <option :value="undefined">App default port</option>
+            <option :value="undefined">{{ $t('routes.appDefaultPort') }}</option>
             <option v-for="p in appPorts" :key="p.id" :value="p.container_port">{{ p.container_port }}/{{ p.protocol }} · {{ p.scheme || 'http' }}{{ p.name ? ` — ${p.name}` : '' }}</option>
           </select>
-          <input v-else v-model.number="form.target_port" type="number" class="form-input" placeholder="app port" />
-          <p v-if="selectedPortHttps" class="form-hint"><span class="mdi mdi-lock-outline"></span> Backend served over HTTPS; TLS verification is skipped for the internal address.</p>
+          <input v-else v-model.number="form.target_port" type="number" class="form-input" :placeholder="$t('routes.appPort')" />
+          <p v-if="selectedPortHttps" class="form-hint"><span class="mdi mdi-lock-outline"></span>{{ $t('routes.backendHttpsHint') }}</p>
         </div>
 
         <!-- Routing config: Simple / Advanced -->
         <div class="mode-tabs">
-          <button type="button" :class="['mode-tab', { active: formMode === 'simple' }]" @click="switchMode('simple')">Simple</button>
-          <button type="button" :class="['mode-tab', { active: formMode === 'advanced' }]" @click="switchMode('advanced')">Advanced</button>
+          <button type="button" :class="['mode-tab', { active: formMode === 'simple' }]" @click="switchMode('simple')">{{ $t('routes.simple') }}</button>
+          <button type="button" :class="['mode-tab', { active: formMode === 'advanced' }]" @click="switchMode('advanced')">{{ $t('routes.advanced') }}</button>
         </div>
 
         <template v-if="formMode === 'simple'">
           <div class="form-group">
-            <label class="form-label">Hosts</label>
+            <label class="form-label">{{ $t('routes.hosts') }}</label>
             <template v-if="domains.length">
               <div v-for="(row, i) in hostRows" :key="row.id" class="host-row">
-                <input v-model="row.sub" class="form-input host-sub" placeholder="subdomain (blank = root)" aria-label="Subdomain" />
+                <input v-model="row.sub" class="form-input host-sub" :placeholder="$t('routes.subdomainPlaceholder')" :aria-label="$t('routes.subdomain')" />
                 <span class="host-dot">.</span>
-                <select v-model="row.domain" class="form-select host-domain" aria-label="Domain">
+                <select v-model="row.domain" class="form-select host-domain" :aria-label="$t('routes.domain')">
                   <option v-for="d in domains" :key="d.id" :value="d.name">{{ d.name }}{{ d.verified ? '' : ' — unverified' }}</option>
                 </select>
-                <button type="button" class="btn-icon btn-icon-danger" title="Remove host" aria-label="Remove host" @click="removeHostRow(i)"><span class="mdi mdi-close"></span></button>
+                <button type="button" class="btn-icon btn-icon-danger" :title="$t('routes.removeHost')" :aria-label="$t('routes.removeHost')" @click="removeHostRow(i)"><span class="mdi mdi-close"></span></button>
               </div>
               <div v-for="(h, i) in extraHosts" :key="'x' + i" class="host-row">
-                <input :value="h" class="form-input mono" disabled title="Its domain is no longer registered" aria-label="Host" />
-                <button type="button" class="btn-icon btn-icon-danger" title="Remove host" aria-label="Remove host" @click="removeExtraHost(i)"><span class="mdi mdi-close"></span></button>
+                <input :value="h" class="form-input mono" disabled :title="$t('routes.domainUnregistered')" :aria-label="$t('routes.host')" />
+                <button type="button" class="btn-icon btn-icon-danger" :title="$t('routes.removeHost')" :aria-label="$t('routes.removeHost')" @click="removeExtraHost(i)"><span class="mdi mdi-close"></span></button>
               </div>
-              <button type="button" class="btn btn-secondary btn-sm" @click="addHostRow"><span class="mdi mdi-plus"></span> Add host</button>
-              <p v-if="!hostRows.length && !extraHosts.length" class="hint">No hosts — this route will match all hosts (catch-all).</p>
-              <p v-else class="hint">Leave a subdomain blank to serve the domain at its root. Routes: <code>{{ form.hosts || '(catch-all)' }}</code></p>
+              <button type="button" class="btn btn-secondary btn-sm" @click="addHostRow"><span class="mdi mdi-plus"></span>{{ $t('routes.addHost') }}</button>
+              <p v-if="!hostRows.length && !extraHosts.length" class="hint">{{ $t('routes.noHostsHint') }}</p>
+              <i18n-t v-else keypath="routes.rootDomainHint" tag="p" class="hint"><template #host><code>{{ form.hosts || $t('routes.catchAll') }}</code></template></i18n-t>
             </template>
             <template v-else>
               <input v-model="form.hosts" class="form-input" placeholder="app.example.com" />
-              <p class="hint">No domains registered. Enter a host manually, <router-link to="/domains">add a domain</router-link> to pick from a list, or leave blank to match all hosts.</p>
+              <i18n-t keypath="routes.noDomainsHint" tag="p" class="hint"><template #link><router-link to="/domains">{{ $t('routes.addADomain') }}</router-link></template></i18n-t>
             </template>
           </div>
           <div class="form-group">
-            <label class="form-label">Path</label>
+            <label class="form-label">{{ $t('routes.path') }}</label>
             <input v-model="form.path" class="form-input" placeholder="/" />
           </div>
           <div class="form-group">
-            <label class="form-label">Methods <span class="text-muted">(blank = all)</span></label>
+            <label class="form-label">{{ $t('routes.methods') }} <span class="text-muted">{{ $t('routes.blankAll') }}</span></label>
             <div class="methods-grid">
               <label v-for="m in allMethods" :key="m" class="method-chip" :class="{ active: form.methods.includes(m) }">
                 <input type="checkbox" :value="m" v-model="form.methods" /> {{ m }}
@@ -430,8 +430,7 @@ async function save() {
             </div>
           </div>
           <div class="form-group">
-            <label class="form-label">
-              Rewrite <span class="text-muted">(optional)</span>
+            <label class="form-label">{{ $t('routes.rewrite') }}<span class="text-muted">{{ $t('routes.optional') }}</span>
               <span
                 class="mdi mdi-information-outline info-icon"
                 :title="'Rewrites the request path before forwarding it to the app.\n\nExample:\n  path:    /api/v1\n  rewrite: /\n\nA request to /api/v1/users is forwarded as /users.'"
@@ -440,8 +439,8 @@ async function save() {
             <input v-model="form.rewrite" class="form-input" placeholder="/new-prefix/" />
           </div>
           <div class="form-group">
-            <label class="form-label">Middlewares <span class="text-muted">({{ form.middlewares.length }} selected)</span></label>
-            <div v-if="middlewares.length === 0" class="text-muted text-sm">No middlewares defined yet.</div>
+            <label class="form-label">{{ $t('routes.middlewares') }}<span class="text-muted">({{ form.middlewares.length }} selected)</span></label>
+            <div v-if="middlewares.length === 0" class="text-muted text-sm">{{ $t('routes.noMiddlewaresDefinedYet') }}</div>
             <div v-else class="middleware-select">
               <label v-for="m in middlewares" :key="m.id" class="middleware-option" :class="{ active: form.middlewares.includes(m.name) }">
                 <input type="checkbox" :value="m.name" v-model="form.middlewares" />
@@ -454,39 +453,41 @@ async function save() {
         <template v-else>
           <div class="form-warning">
             <span class="mdi mdi-alert-outline"></span>
-            <span>Enter advanced configuration at your own risk!</span>
+            <span>{{ $t('routes.advancedWarning') }}</span>
           </div>
           <div class="form-group">
-            <label class="form-label">Configuration (YAML)</label>
+            <label class="form-label">{{ $t('routes.configurationYaml') }}</label>
             <textarea v-model="advancedConfig" class="form-input yaml-editor" rows="14" spellcheck="false" placeholder="path: /&#10;hosts: []&#10;methods: []"></textarea>
-            <p class="text-muted text-sm"><code>name</code> and <code>backends</code> are managed by Miabi; everything else (path, hosts, methods, middlewares, rewrite, cors, rateLimit, …) comes from here.</p>
+            <i18n-t keypath="routes.overridesHint" tag="p" class="text-muted text-sm">
+              <template #name><code>name</code></template>
+              <template #backends><code>backends</code></template>
+            </i18n-t>
           </div>
         </template>
         <p v-if="yamlError" class="form-error">{{ yamlError }}</p>
         <div class="form-group">
           <label class="form-label">TLS</label>
           <select v-model="form.tls_mode" class="form-select">
-            <option value="acme">ACME (automatic)</option>
-            <option value="custom">Custom certificate</option>
-            <option value="none">None</option>
+            <option value="acme">{{ $t('routes.acmeAutomatic') }}</option>
+            <option value="custom">{{ $t('domains.tls.custom') }}</option>
+            <option value="none">{{ $t('apps.form.none') }}</option>
           </select>
         </div>
         <div v-if="form.tls_mode === 'custom'" class="form-group">
-          <label class="form-label">Certificate</label>
+          <label class="form-label">{{ $t('routes.certificate') }}</label>
           <select v-model="form.certificate_id" class="form-select" required>
-            <option :value="null" disabled>Select a stored certificate…</option>
+            <option :value="null" disabled>{{ $t('routes.selectAStoredCertificate') }}</option>
             <option v-for="c in certificates" :key="c.id" :value="c.id">
               {{ c.name }} — {{ (c.dns_names || [c.common_name]).join(', ') }}
             </option>
           </select>
-          <p class="form-hint">Pick a stored certificate, or <router-link to="/certificates">import one</router-link>.</p>
+          <i18n-t keypath="routes.certificateHint" tag="p" class="form-hint"><template #link><router-link to="/certificates">{{ $t('routes.importOne') }}</router-link></template></i18n-t>
         </div>
         <label class="checkbox-label" style="margin-bottom: 0">
-          <input type="checkbox" v-model="form.enabled" /> Enabled
-        </label>
+          <input type="checkbox" v-model="form.enabled" />{{ $t('jobs.enabled') }}</label>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" @click="requestClose">Cancel</button>
+        <button type="button" class="btn btn-secondary" @click="requestClose">{{ $t('action.cancel') }}</button>
         <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Create') }}</button>
       </div>
     </form>

@@ -95,7 +95,7 @@ async function save() {
   try {
     if (editingId.value) await secretApi.update(id, editingId.value, { value: form.value.value, description: form.value.description })
     else await secretApi.create(id, input)
-    notify.success(editingId.value ? 'Secret updated' : 'Secret created')
+    notify.success(t(editingId.value ? 'notify.secrets.updated' : 'notify.secrets.created'))
     showForm.value = false
     if (editingId.value) reload()
     else goToPage(0)
@@ -148,7 +148,7 @@ async function confirmDelete() {
   deleting.value = true
   try {
     await secretApi.remove(id, toDelete.value.id)
-    notify.success('Secret deleted')
+    notify.success(t('notify.secrets.deleted'))
     toDelete.value = null
     // Step back a page if we just removed the last row on a non-first page.
     const page = secrets.value.length === 1 && pageable.value.current_page > 0
@@ -160,7 +160,7 @@ async function confirmDelete() {
 }
 
 async function copy(text: string) {
-  if (await copyText(text)) notify.success('Copied')
+  if (await copyText(text)) notify.success(t('notify.common.copied'))
   else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 function reference(s: Secret) {
@@ -179,7 +179,7 @@ async function saveGenerated(name: string, description: string, value: string): 
   generatorSaving.value = true
   try {
     await secretApi.create(id, { name, value, description })
-    notify.success(`Secret “${name}” created.`)
+    notify.success(t('notify.secrets.namedCreated', { name }))
     showGenerator.value = false
     reload()
     return true
@@ -200,15 +200,13 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
   <div>
     <div class="page-header">
       <div>
-        <h1>Secrets</h1>
-        <div class="text-muted text-sm subtitle">Reference these from any app's env, e.g. <code>{{ refExample }}</code>
-          Values are resolved at deploy time and never shown unless revealed.</div>
+        <h1>{{ $t('secrets.secrets') }}</h1>
+        <i18n-t keypath="secrets.subtitle" tag="div" class="text-muted text-sm subtitle"><template #ref><code>{{ refExample }}</code></template></i18n-t>
       </div>
       <div class="header-actions">
         <button v-if="ws.canEdit" class="btn btn-secondary" @click="showGenerator = true"><span
-            class="mdi mdi-auto-fix"></span> Generator</button>
-        <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate"><span class="mdi mdi-plus"></span> New
-          secret</button>
+            class="mdi mdi-auto-fix"></span>{{ $t('secrets.generator') }}</button>
+        <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate"><span class="mdi mdi-plus"></span>{{ $t('secrets.newSecret') }}</button>
       </div>
     </div>
 
@@ -216,10 +214,10 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
       <div class="card-body toolbar">
         <div class="search">
           <span class="mdi mdi-magnify"></span>
-          <input v-model="search" class="form-input" type="search" placeholder="Search secrets by name or description…"
-            aria-label="Search secrets" style="max-width: 320px" @input="onSearchInput" />
+          <input v-model="search" class="form-input" type="search" :placeholder="$t('secrets.searchPlaceholder')"
+            :aria-label="$t('secrets.searchSecrets')" style="max-width: 320px" @input="onSearchInput" />
         </div>
-        <div class="filters" role="group" aria-label="Filter by ownership">
+        <div class="filters" role="group" :aria-label="$t('secrets.filterByOwnership')">
           <button v-for="f in ownershipFilters" :key="f.value" type="button" class="chip"
             :class="{ active: ownership === f.value }" :aria-pressed="ownership === f.value"
             @click="setOwnership(f.value)">{{ f.label }}</button>
@@ -234,20 +232,19 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
         <h3>No secrets {{ narrowed ? 'found' : '' }}</h3>
         <!-- An empty result under a filter is not an empty vault: offering
              "New secret" here would answer a question the user didn't ask. -->
-        <p v-if="narrowed">No secrets match the current search and filter.</p>
-        <p v-else>Store a secret once and reference it from many apps. Rotating it updates every consumer on next
-          deploy.</p>
-        <button v-if="narrowed" class="btn btn-secondary mt-4" @click="clearFilters">Clear filters</button>
-        <button v-else-if="ws.canEdit" class="btn btn-primary mt-4" @click="openCreate">New secret</button>
+        <p v-if="narrowed">{{ $t('secrets.noMatches') }}</p>
+        <p v-else>{{ $t('secrets.emptyHint') }}</p>
+        <button v-if="narrowed" class="btn btn-secondary mt-4" @click="clearFilters">{{ $t('secrets.clearFilters') }}</button>
+        <button v-else-if="ws.canEdit" class="btn btn-primary mt-4" @click="openCreate">{{ $t('secrets.newSecret') }}</button>
       </div>
       <template v-else>
         <div class="table-wrapper">
           <table>
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Reference</th>
-                <th>Version</th>
+                <th>{{ $t('apps.form.name') }}</th>
+                <th>{{ $t('secrets.reference') }}</th>
+                <th>{{ $t('secrets.version') }}</th>
                 <th></th>
               </tr>
             </thead>
@@ -256,12 +253,12 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
                 <td class="cell-title" style="font-family: monospace">
                   {{ s.name }}
                   <span v-if="s.managed" class="badge badge-muted"
-                    title="Auto-created and managed by a database; rotate or remove via that database"
-                    style="margin-left: 6px"><span class="mdi mdi-database-outline"></span> managed</span>
+                    :title="$t('secrets.managedHint')"
+                    style="margin-left: 6px"><span class="mdi mdi-database-outline"></span>{{ $t('secrets.managed') }}</span>
                 </td>
                 <td class="cell-sub" style="font-family: monospace">
                   {{ reference(s) }}
-                  <button class="btn-icon btn-icon-muted" title="Copy reference" aria-label="Copy reference"
+                  <button class="btn-icon btn-icon-muted" :title="$t('secrets.copyReference')" :aria-label="$t('secrets.copyReference')"
                     @click.stop="copy(reference(s))"><span class="mdi mdi-content-copy"></span></button>
                 </td>
                 <td class="cell-sub">v{{ s.version }}</td>
@@ -274,13 +271,13 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
                       <span v-else class="mdi"
                         :class="revealed?.name === s.name ? 'mdi-lock-open-outline' : 'mdi-lock-outline'"></span>
                     </button>
-                    <button v-if="ws.isWorkspaceAdmin" class="btn-icon btn-icon-muted" title="Reveal value"
-                      aria-label="Reveal value" @click.stop="openDetails(s)"><span
+                    <button v-if="ws.isWorkspaceAdmin" class="btn-icon btn-icon-muted" :title="$t('secrets.revealValue')"
+                      :aria-label="$t('secrets.revealValue')" @click.stop="openDetails(s)"><span
                         class="mdi mdi-eye-outline"></span></button>
-                    <button v-if="ws.canEdit && !s.managed" class="btn-icon btn-icon-muted" title="Edit"
-                      aria-label="Edit" @click.stop="openEdit(s)"><span class="mdi mdi-pencil-outline"></span></button>
-                    <button v-if="ws.canEdit && !s.managed" class="btn-icon btn-icon-danger" title="Delete"
-                      aria-label="Delete" @click.stop="toDelete = s"><span
+                    <button v-if="ws.canEdit && !s.managed" class="btn-icon btn-icon-muted" :title="$t('action.edit')"
+                      :aria-label="$t('action.edit')" @click.stop="openEdit(s)"><span class="mdi mdi-pencil-outline"></span></button>
+                    <button v-if="ws.canEdit && !s.managed" class="btn-icon btn-icon-danger" :title="$t('action.delete')"
+                      :aria-label="$t('action.delete')" @click.stop="toDelete = s"><span
                         class="mdi mdi-delete-outline"></span></button>
                   </div>
                 </td>
@@ -297,8 +294,8 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
       <!-- Generator -->
       <AppModal v-if="showGenerator" @close="showGenerator = false">
         <div class="modal-header">
-          <h3>Generate a value</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showGenerator = false"><span
+          <h3>{{ $t('secrets.generateAValue') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showGenerator = false"><span
               class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
@@ -314,37 +311,39 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
       <AppModal v-if="showForm" @close="showForm = false">
         <div class="modal-header">
           <h3>{{ editingId ? 'Edit secret' : 'New secret' }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close" @click="showForm = false"><span
+          <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showForm = false"><span
               class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="save">
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Name</label>
+              <label class="form-label">{{ $t('apps.form.name') }}</label>
               <input v-model="form.name" class="form-input" placeholder="db_password" :disabled="!!editingId"
-                aria-label="Name" required autofocus style="font-family: monospace" />
-              <p class="form-hint">Letters, digits, <code>_</code> or <code>-</code>. Referenced as <code>{{ refForName
-              }}</code>.</p>
+                :aria-label="$t('apps.form.name')" required autofocus style="font-family: monospace" />
+              <i18n-t keypath="secrets.nameHint" tag="p" class="form-hint">
+                <template #underscore><code>_</code></template>
+                <template #hyphen><code>-</code></template>
+                <template #ref><code>{{ refForName }}</code></template>
+              </i18n-t>
             </div>
             <div class="form-group">
-              <label class="form-label">
-                Value <span v-if="editingId" class="text-muted">(leave blank to keep current)</span>
-                <GenerateButton v-if="ws.canEdit" label="Generate a value for this secret"
+              <label class="form-label">{{ $t('secrets.value') }} <span v-if="editingId" class="text-muted">{{ $t('secrets.keepCurrent') }}</span>
+                <GenerateButton v-if="ws.canEdit" :label="$t('secrets.generateValueLabel')"
                   @generated="form.value = $event" />
               </label>
               <textarea v-model="form.value" class="form-input" rows="8" :required="!editingId"
-                placeholder="the secret value&#10;&#10;Multi-line values are stored exactly as entered, so a PEM certificate or private key can be pasted whole."
-                aria-label="Value" style="font-family: monospace; white-space: pre"></textarea>
-              <p class="form-hint">Stored verbatim — line breaks and trailing newlines are preserved.</p>
+                :placeholder="$t('secrets.valuePlaceholder')"
+                :aria-label="$t('secrets.value')" style="font-family: monospace; white-space: pre"></textarea>
+              <p class="form-hint">{{ $t('secrets.valueHint') }}</p>
             </div>
             <div class="form-group" style="margin-bottom: 0">
-              <label class="form-label">Description <span class="text-muted">(optional)</span></label>
-              <input v-model="form.description" class="form-input" placeholder="e.g. Postgres app password"
-                aria-label="Description" />
+              <label class="form-label">{{ $t('plans.description') }}<span class="text-muted">{{ $t('secrets.optional') }}</span></label>
+              <input v-model="form.description" class="form-input" :placeholder="$t('secrets.descriptionPlaceholder')"
+                :aria-label="$t('plans.description')" />
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showForm = false">Cancel</button>
+            <button type="button" class="btn btn-secondary" @click="showForm = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editingId ?
               'Save' :
               'Create') }}</button>
@@ -357,14 +356,14 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
         <div class="modal" style="max-width: 560px; width: 100%">
           <div class="modal-header">
             <h3>{{ revealed.name }}</h3>
-            <button class="btn-icon btn-icon-muted" aria-label="Close" @click="revealed = null"><span class="mdi mdi-close"></span></button>
+            <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="revealed = null"><span class="mdi mdi-close"></span></button>
           </div>
           <div class="modal-body">
             <div class="dns-field">
-              <span class="dns-field-label">Value</span>
+              <span class="dns-field-label">{{ $t('secrets.value') }}</span>
               <div class="dns-field-row">
                 <span class="dns-field-value secret-text">{{ revealed.value }}</span>
-                <button class="btn-icon btn-icon-muted" title="Copy" aria-label="Copy" @click="copy(revealed.value)"><span class="mdi mdi-content-copy"></span></button>
+                <button class="btn-icon btn-icon-muted" :title="$t('secrets.copy')" :aria-label="$t('secrets.copy')" @click="copy(revealed.value)"><span class="mdi mdi-content-copy"></span></button>
               </div>
             </div>
           </div>
@@ -372,28 +371,28 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
       </div> -->
       <AppModal v-if="showDetails && selectedSecret" @close="closeDetails">
         <div class="modal-header">
-          <h3>Secret details</h3>
-          <button type="button" class="btn-icon btn-icon-muted" aria-label="Close" @click="closeDetails">
+          <h3>{{ $t('secrets.secretDetails') }}</h3>
+          <button type="button" class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="closeDetails">
             <span class="mdi mdi-close"></span>
           </button>
         </div>
 
         <div class="modal-body">
           <div class="detail-group">
-            <label class="form-label">Name</label>
+            <label class="form-label">{{ $t('apps.form.name') }}</label>
             <div class="code-box">
               <code>{{ selectedSecret.name }}</code>
-              <button type="button" class="btn-icon btn-icon-muted" title="Copy key" @click="copy(selectedSecret.name)">
+              <button type="button" class="btn-icon btn-icon-muted" :title="$t('secrets.copyKey')" @click="copy(selectedSecret.name)">
                 <span class="mdi mdi-content-copy"></span>
               </button>
             </div>
           </div>
 
           <div class="detail-group">
-            <label class="form-label">Reference</label>
+            <label class="form-label">{{ $t('secrets.reference') }}</label>
             <div class="code-box">
               <code>{{ reference(selectedSecret) }}</code>
-              <button type="button" class="btn-icon btn-icon-muted" title="Copy reference"
+              <button type="button" class="btn-icon btn-icon-muted" :title="$t('secrets.copyReference')"
                 @click="copy(reference(selectedSecret))">
                 <span class="mdi mdi-content-copy"></span>
               </button>
@@ -401,7 +400,7 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
           </div>
 
           <div class="detail-group">
-            <label class="form-label">Value</label>
+            <label class="form-label">{{ $t('secrets.value') }}</label>
             <div class="code-box code-box-block">
               <code class="secret-text">{{ revealed?.name === selectedSecret.name ? revealed.value : '••••••••••••••••' }}</code>
               <div class="code-actions">
@@ -413,7 +412,7 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
                 </button>
 
                 <button v-if="revealed?.name === selectedSecret.name" type="button" class="btn-icon btn-icon-muted"
-                  title="Copy value" @click="copy(revealed.value)">
+                  :title="$t('routes.copyValue')" @click="copy(revealed.value)">
                   <span class="mdi mdi-content-copy"></span>
                 </button>
               </div>
@@ -421,16 +420,15 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
           </div>
 
           <div class="detail-group" style="margin-bottom: 0">
-            <label class="form-label">Description</label>
+            <label class="form-label">{{ $t('plans.description') }}</label>
             <p class="detail-text">{{ selectedSecret.description || 'No description provided.' }}</p>
           </div>
         </div>
 
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="closeDetails">Close</button>
+          <button type="button" class="btn btn-secondary" @click="closeDetails">{{ $t('shell.close') }}</button>
           <button type="button" class="btn btn-primary" @click="closeDetails(); openEdit(selectedSecret)">
-            <span class="mdi mdi-pencil"></span> Edit
-          </button>
+            <span class="mdi mdi-pencil"></span>{{ $t('action.edit') }}</button>
         </div>
       </AppModal>
     </Teleport>
