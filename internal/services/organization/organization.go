@@ -352,6 +352,19 @@ func (s *Service) OrganizationLabel(orgID uint) string {
 	return org.Name
 }
 
+// Labels names several organizations at once, for a list annotated with the organization each row
+// belongs to. A read error yields an empty map: a missing label costs a name, not the list.
+func (s *Service) Labels(ids []uint) map[uint]string {
+	if s.repo == nil || len(ids) == 0 {
+		return map[uint]string{}
+	}
+	labels, err := s.repo.Labels(ids)
+	if err != nil {
+		return map[uint]string{}
+	}
+	return labels
+}
+
 // IsNotFound reports a missing row, so callers can map a repository error without importing gorm.
 func IsNotFound(err error) bool {
 	return errors.Is(err, ErrNotFound) || errors.Is(err, gorm.ErrRecordNotFound)

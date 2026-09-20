@@ -77,6 +77,7 @@ func (s *Service) Clusters() ([]models.Cluster, error) {
 		return nil, err
 	}
 	s.markExternalPins(list)
+	s.markDedication(list)
 	return list, nil
 }
 

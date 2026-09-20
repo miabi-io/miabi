@@ -1527,6 +1527,12 @@
     "workspaceNetworksThisDatabaseIs": "Réseaux de l’espace de travail sur lesquels cette base est joignable.",
     "workspaceSettingsBackups": "Paramètres de l’espace de travail → Sauvegardes"
   },
+  "dedicated": {
+    "anOrganization": "une organisation",
+    "badge": "Dédié",
+    "clusterTitle": "Dédié à {org}. Rien d'extérieur ne peut y être placé, pas même par un administrateur de la plateforme.",
+    "nodeTitle": "Dédié à {org} via le cluster {cluster}. Rien d'extérieur ne peut y être placé, pas même par un administrateur de la plateforme."
+  },
   "dnsProviders": {
     "connectAProvider": "Connecter un fournisseur",
     "connectDnsProvider": "Connecter un fournisseur DNS",

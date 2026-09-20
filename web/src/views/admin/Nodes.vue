@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import DedicatedBadge from '@/components/DedicatedBadge.vue'
 import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
@@ -327,6 +328,12 @@ function swarmClass(n: Server): string {
               <td>
                 <router-link v-if="n.cluster_id" :to="`/admin/clusters/${n.cluster_id}`" @click.stop>{{ clusterLabel(n.cluster_id) }}</router-link>
                 <span v-else class="cell-sub">—</span>
+                <DedicatedBadge
+                  :dedicated="n.dedicated"
+                  :organization="n.organization_name"
+                  :via="n.cluster_name"
+                  style="margin-left: 6px"
+                />
               </td>
               <td><span class="badge" :class="roleLabel(n) === 'manager' ? 'badge-info' : 'badge-muted'">{{ roleLabel(n) }}</span></td>
               <td>

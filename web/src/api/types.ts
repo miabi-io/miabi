@@ -2183,6 +2183,11 @@ export interface Server {
   address?: string
   agent_connected?: boolean
   agent_version?: string
+  /** The node's CLUSTER belongs to one organization, so the node does too. A node holds none itself. */
+  dedicated?: boolean
+  organization_name?: string
+  /** The cluster the dedication comes from; set alongside it. */
+  cluster_name?: string
   engine_version?: string
   cordoned?: boolean
   labels?: Record<string, string>
@@ -2228,6 +2233,13 @@ export interface Cluster {
   visibility: ClusterVisibility
   // Set together with visibility "organization": the tenant this location is dedicated to.
   organization_id?: number | null
+  /**
+   * The cluster belongs to one organization and nothing outside it can be placed here, not even by
+   * a platform admin. Derived from organization_id server-side; `restricted` visibility is a
+   * different thing (admin-only placement) and is never dedicated.
+   */
+  dedicated?: boolean
+  organization_name?: string
   cordoned: boolean
   legacy_ingress: boolean
   external_base_domain?: string

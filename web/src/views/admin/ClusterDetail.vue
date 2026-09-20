@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import DedicatedBadge from '@/components/DedicatedBadge.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
@@ -464,6 +465,7 @@ function swarmClass(n: Server): string {
           {{ label }}
           <code v-if="cluster?.name" class="handle" title="Name (fixed at creation)">{{ cluster.name }}</code>
           <span v-if="isDefault" class="badge badge-info">default</span>
+          <DedicatedBadge :dedicated="cluster?.dedicated" :organization="cluster?.organization_name" />
           <span v-if="cluster?.visibility === 'restricted'" class="badge badge-muted">admins only</span>
           <span v-if="cluster?.cordoned" class="badge badge-warning">cordoned</span>
         </h1>

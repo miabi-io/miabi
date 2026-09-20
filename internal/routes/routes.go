@@ -505,6 +505,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	appService.SetWorkspaceInfo(workspaceRepo) // gate privileged host mounts
 	appService.SetQuota(quotaService)
 	appService.SetClusterCap(clusterService) // gate "service" runtime apps on cluster mode
+	// Names the organization a dedicated cluster belongs to, for the console's badge.
+	clusterService.SetOrgLabels(organizationService.Labels)
 	housekeepingService.SetSwarmManagers(clusterService)
 	housekeepingService.SetNodes(nodeService) // reach a node's swarm manager, to remove an orphaned service
 	// The referenced-image guard: what apps, rollback-able releases, databases and node gateways name
