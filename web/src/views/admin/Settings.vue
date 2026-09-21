@@ -51,6 +51,8 @@ interface SectionDef {
   title: string
   keys: string[]
   labels: Record<string, string>
+  /** Explains the section where its fields need context the labels cannot carry. */
+  note?: string
 }
 
 const SECTIONS: SectionDef[] = [
@@ -80,10 +82,13 @@ const SECTIONS: SectionDef[] = [
     title: 'Limits & retention',
     keys: ['max_workspaces_per_user', 'max_workspace_memberships_per_user', 'audit_log_retention_days'],
     labels: {
-      max_workspaces_per_user: 'Max workspaces per user — owned (0 = unlimited)',
-      max_workspace_memberships_per_user: 'Max workspaces per user — joined as member (0 = unlimited)',
+      max_workspaces_per_user: 'Default max workspaces per user — owned (−1 = unlimited, 0 = none)',
+      max_workspace_memberships_per_user: 'Default max workspaces per user — joined as member (−1 = unlimited, 0 = none)',
       audit_log_retention_days: 'Audit log retention (days)',
     },
+    // Say which policy is in force, because an operator who changes a limit and sees no effect
+    // would otherwise assume it is broken.
+    note: 'The workspace limits apply install-wide. With an Enterprise licence each organization can carry its own instead, set on the organization —',
   },
   {
     id: 'resources',
@@ -305,6 +310,10 @@ function setBool(key: string, checked: boolean) {
               {{ section.title }}
               <span v-if="sectionDirty(section.keys)" class="text-muted unsaved">unsaved</span>
             </div>
+            <p v-if="section.note" class="form-hint" style="margin: -4px 0 14px">
+              {{ section.note }}
+              <router-link to="/admin/organizations">Organizations</router-link>
+            </p>
 
             <template v-if="section.id === 'access' && authAccess">
               <div v-for="item in ENV_ACCESS" :key="item.key" class="setting-row">
@@ -359,6 +368,8 @@ function setBool(key: string, checked: boolean) {
                   :id="`set-${key}`"
                   v-model="values[key]"
                   type="number"
+                  min="-1"
+                  step="1"
                   class="form-input"
                   :disabled="pinned.has(key)"
                 />

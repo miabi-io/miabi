@@ -81,6 +81,8 @@ type Service struct {
 	// per-user override). Nil-safe — unset leaves membership uncapped.
 	memberGlobalLimit      func() int
 	memberOverrideEntitled func() bool
+	// orgLimitsEntitled reports whether organization-scoped limits are licensed.
+	orgLimitsEntitled func() bool
 }
 
 func NewService(repo *repositories.WorkspaceRepository, users *repositories.UserRepository, nets NetworkEnsurer) *Service {
@@ -107,7 +109,7 @@ func (s *Service) SetKeyShredder(k KeyShredder) { s.keys = k }
 // SetMiddlewareSeeder wires the default-policy seeder used at workspace creation.
 func (s *Service) SetMiddlewareSeeder(m MiddlewareSeeder) { s.seeder = m }
 
-// Orgs resolves a user's home organization and that organization's workspace cap. Satisfied by the
+// Orgs resolves a user's home organization and that organization's caps. Satisfied by the
 // organization service.
 type Orgs interface {
 	HomeOrganization(u *models.User) uint
@@ -118,6 +120,21 @@ type Orgs interface {
 // SetOrgs wires organization ownership of workspaces (nil-safe; without it a workspace is created
 // with no organization, which resolves to the default one).
 func (s *Service) SetOrgs(o Orgs) { s.orgs = o }
+
+// SetOrgLimitsEntitled wires the licence check for organization-scoped limits. Without the
+// entitlement an org's stored caps are ignored and the platform defaults decide, because an
+// unlicensed operator cannot edit those caps — enforcing a value they cannot change would strand
+// them. Nil-safe: unset means org limits never apply.
+func (s *Service) SetOrgLimitsEntitled(entitled func() bool) { s.orgLimitsEntitled = entitled }
+
+// orgLimits returns the organization whose caps govern a user, or nil when organizations are
+// unlicensed, unwired or unreadable — in which case the platform defaults are in sole charge.
+func (s *Service) orgLimits(userID uint) *models.Organization {
+	if s.orgLimitsEntitled == nil || !s.orgLimitsEntitled() {
+		return nil
+	}
+	return s.homeOrg(userID)
+}
 
 // organizationFor is the organization a user's new workspace belongs to, and the default location it
 // should land in. Both are zero when organizations are not wired.
@@ -145,33 +162,63 @@ func (s *Service) organizationFor(ownerID uint) (orgID uint, defaultCluster *uin
 func (s *Service) SetQuota(q *quota.Service) { s.quota = q }
 
 // SetLimits wires per-user workspace-count enforcement. globalLimit returns the platform-wide
-// max_workspaces_per_user (0 or negative means unlimited); overrideEntitled reports whether the Enterprise
-// per-user override is licensed. Nil-safe: leaving this unset means workspace ownership is uncapped.
+// max_workspaces_per_user default (-1 means unlimited, 0 none); overrideEntitled reports whether the
+// Enterprise per-user override is licensed. An organization's own cap takes precedence over the
+// platform value — see effectiveWorkspaceLimit. Nil-safe: unset means ownership is uncapped.
 func (s *Service) SetLimits(globalLimit func() int, overrideEntitled func() bool) {
 	s.globalLimit = globalLimit
 	s.overrideEntitled = overrideEntitled
 }
 
-// effectiveWorkspaceLimit resolves how many workspaces userID may own: the Enterprise per-user override
-// when set and entitled, else the platform global. Returns (limit, unlimited). Override convention: -1 =
-// unlimited, 0 = none, N = N. Global: <= 0 = unlimited (legacy), N = N.
+// effectiveWorkspaceLimit resolves how many workspaces userID may own, in order: the Enterprise
+// per-user override, then their organization's cap, then the platform default. Returns
+// (limit, unlimited).
+//
+// One convention throughout: -1 (models.Unlimited) or lower means unlimited, 0 means none, N means N.
+// The organization is the authority for its own tenants; the platform value is what an org that sets
+// nothing falls back to.
 func (s *Service) effectiveWorkspaceLimit(userID uint) (limit int, unlimited bool) {
 	if s.overrideEntitled != nil && s.overrideEntitled() {
 		if u, err := s.users.FindByID(userID); err == nil && u.WorkspaceLimit != nil {
-			if *u.WorkspaceLimit < 0 {
-				return 0, true
-			}
-			return *u.WorkspaceLimit, false
+			return bound(*u.WorkspaceLimit)
 		}
 	}
-	g := 0
-	if s.globalLimit != nil {
-		g = s.globalLimit()
+	if org := s.orgLimits(userID); org != nil && org.MaxWorkspacesPerUser != nil {
+		return bound(*org.MaxWorkspacesPerUser)
 	}
-	if g <= 0 {
+	if s.globalLimit != nil {
+		return bound(s.globalLimit())
+	}
+	return 0, true
+}
+
+// bound reads a stored limit under the shared convention.
+func bound(n int) (limit int, unlimited bool) {
+	if n < 0 {
 		return 0, true
 	}
-	return g, false
+	return n, false
+}
+
+// homeOrg is the organization whose caps apply to a user — their own, else the default one. nil when
+// organizations are not wired or unreadable, which leaves the platform value in charge.
+func (s *Service) homeOrg(userID uint) *models.Organization {
+	if s.orgs == nil || s.users == nil {
+		return nil
+	}
+	u, err := s.users.FindByID(userID)
+	if err != nil {
+		return nil
+	}
+	orgID := s.orgs.HomeOrganization(u)
+	if orgID == 0 {
+		return nil
+	}
+	org, err := s.orgs.Get(orgID)
+	if err != nil {
+		return nil
+	}
+	return org
 }
 
 // canOwnAnother returns ErrWorkspaceLimitReached when userID is already at their effective
@@ -196,8 +243,8 @@ func (s *Service) canOwnAnother(userID uint) error {
 }
 
 // SetMembershipLimits wires per-user membership-count enforcement — the join counterpart of SetLimits.
-// globalLimit returns max_workspace_memberships_per_user (0 or negative means unlimited); overrideEntitled
-// reports whether the Enterprise per-user override is licensed. Nil-safe.
+// globalLimit returns the max_workspace_memberships_per_user default (-1 unlimited, 0 none);
+// overrideEntitled reports whether the Enterprise per-user override is licensed. Nil-safe.
 func (s *Service) SetMembershipLimits(globalLimit func() int, overrideEntitled func() bool) {
 	s.memberGlobalLimit = globalLimit
 	s.memberOverrideEntitled = overrideEntitled
@@ -209,20 +256,16 @@ func (s *Service) SetMembershipLimits(globalLimit func() int, overrideEntitled f
 func (s *Service) effectiveMembershipLimit(userID uint) (limit int, unlimited bool) {
 	if s.memberOverrideEntitled != nil && s.memberOverrideEntitled() {
 		if u, err := s.users.FindByID(userID); err == nil && u.WorkspaceMembershipLimit != nil {
-			if *u.WorkspaceMembershipLimit < 0 {
-				return 0, true
-			}
-			return *u.WorkspaceMembershipLimit, false
+			return bound(*u.WorkspaceMembershipLimit)
 		}
 	}
-	g := 0
+	if org := s.orgLimits(userID); org != nil && org.MaxWorkspaceMembershipsPerUser != nil {
+		return bound(*org.MaxWorkspaceMembershipsPerUser)
+	}
 	if s.memberGlobalLimit != nil {
-		g = s.memberGlobalLimit()
+		return bound(s.memberGlobalLimit())
 	}
-	if g <= 0 {
-		return 0, true
-	}
-	return g, false
+	return 0, true
 }
 
 // CanJoinAnother returns ErrMembershipLimitReached when userID is already at their effective membership
@@ -267,7 +310,9 @@ func (s *Service) Create(ownerID uint, displayName, handle, description string) 
 		return nil, err
 	}
 	orgID, orgCluster := s.organizationFor(ownerID)
-	if orgID != 0 && s.orgs.CapReached(orgID) {
+	// The realm cap is part of the organizations feature, so it applies only with the licence that
+	// lets an operator set it. Unlicensed, the platform defaults above are the whole policy.
+	if orgID != 0 && s.orgLimitsEntitled != nil && s.orgLimitsEntitled() && s.orgs.CapReached(orgID) {
 		return nil, ErrOrgWorkspaceLimitReached
 	}
 	base := strings.TrimSpace(handle)

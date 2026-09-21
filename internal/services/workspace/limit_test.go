@@ -87,10 +87,14 @@ func TestGlobalLimitEnforced(t *testing.T) {
 	}
 }
 
-func TestGlobalZeroIsUnlimited(t *testing.T) {
-	// Legacy convention: global 0 = unlimited.
-	if err := seed(t, 9, nil, 0, false).canOwnAnother(1); err != nil {
-		t.Errorf("global 0 (unlimited): got %v, want nil", err)
+// One convention across every limit: -1 unlimited, 0 none. A stored 0 used to mean unlimited here;
+// the workspace_limit_sentinel upgrade step rewrites those rows to -1 so no install changes meaning.
+func TestGlobalNegativeIsUnlimitedAndZeroIsNone(t *testing.T) {
+	if err := seed(t, 9, nil, -1, false).canOwnAnother(1); err != nil {
+		t.Errorf("global -1 (unlimited): got %v, want nil", err)
+	}
+	if err := seed(t, 0, nil, 0, false).canOwnAnother(1); err == nil {
+		t.Error("global 0 must allow none, even for a user owning nothing")
 	}
 }
 

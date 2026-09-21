@@ -102,6 +102,10 @@ type CreateInput struct {
 	DisplayName   string
 	OwnerUserID   uint
 	MaxWorkspaces *int
+	// MaxWorkspacesPerUser and MaxWorkspaceMembershipsPerUser cap the org's individual users; nil
+	// inherits the platform default.
+	MaxWorkspacesPerUser           *int
+	MaxWorkspaceMembershipsPerUser *int
 }
 
 // Create makes an organization. Unlike a workspace handle it is not auto-suffixed on collision: an
@@ -122,9 +126,19 @@ func (s *Service) Create(in CreateInput) (*models.Organization, error) {
 	if display == "" {
 		display = name
 	}
+	perUser, err := validPerUser(in.MaxWorkspacesPerUser)
+	if err != nil {
+		return nil, err
+	}
+	perUserJoined, err := validPerUser(in.MaxWorkspaceMembershipsPerUser)
+	if err != nil {
+		return nil, err
+	}
 	org := &models.Organization{
 		Name: name, DisplayName: display,
 		OwnerUserID: in.OwnerUserID, MaxWorkspaces: max,
+		MaxWorkspacesPerUser:           perUser,
+		MaxWorkspaceMembershipsPerUser: perUserJoined,
 	}
 	if err := s.repo.Create(org); err != nil {
 		return nil, err
@@ -161,6 +175,19 @@ func validMax(n int) error {
 	return nil
 }
 
+// validPerUser normalizes a per-user cap: nil stays nil (inherit the platform default) and anything
+// below -1 is refused, so the only negative that reaches the database is the unlimited sentinel.
+func validPerUser(n *int) (*int, error) {
+	if n == nil {
+		return nil, nil
+	}
+	if err := validMax(*n); err != nil {
+		return nil, err
+	}
+	v := *n
+	return &v, nil
+}
+
 // UpdateInput carries the editable fields. A nil field is left as it is; the handle is not editable
 // (ErrNameImmutable) because it is what admins and the API address the org by.
 type UpdateInput struct {
@@ -168,6 +195,12 @@ type UpdateInput struct {
 	OwnerUserID      *uint
 	MaxWorkspaces    *int
 	DefaultClusterID *uint
+	// Per-user caps. A nil field is left alone; Inherit*PerUser clears one back to the platform
+	// default, which a nil pointer cannot express on its own.
+	MaxWorkspacesPerUser               *int
+	MaxWorkspaceMembershipsPerUser     *int
+	InheritWorkspacesPerUser           bool
+	InheritWorkspaceMembershipsPerUser bool
 	// ClearDefaultCluster releases the org's default location, which a nil DefaultClusterID cannot
 	// express on its own.
 	ClearDefaultCluster bool
@@ -191,6 +224,26 @@ func (s *Service) Update(id uint, in UpdateInput) (*models.Organization, error) 
 			return nil, err
 		}
 		org.MaxWorkspaces = *in.MaxWorkspaces
+	}
+	switch {
+	case in.InheritWorkspacesPerUser:
+		org.MaxWorkspacesPerUser = nil
+	case in.MaxWorkspacesPerUser != nil:
+		v, err := validPerUser(in.MaxWorkspacesPerUser)
+		if err != nil {
+			return nil, err
+		}
+		org.MaxWorkspacesPerUser = v
+	}
+	switch {
+	case in.InheritWorkspaceMembershipsPerUser:
+		org.MaxWorkspaceMembershipsPerUser = nil
+	case in.MaxWorkspaceMembershipsPerUser != nil:
+		v, err := validPerUser(in.MaxWorkspaceMembershipsPerUser)
+		if err != nil {
+			return nil, err
+		}
+		org.MaxWorkspaceMembershipsPerUser = v
 	}
 	switch {
 	case in.ClearDefaultCluster:

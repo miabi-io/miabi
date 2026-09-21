@@ -479,6 +479,9 @@ export interface Organization {
   owner_user_id: number
   /** -1 = unlimited, 0 = none allowed, N = N. */
   max_workspaces: number
+  /** Per-user caps for this org's users; null inherits the platform default. -1 = unlimited, 0 = none. */
+  max_workspaces_per_user?: number | null
+  max_workspace_memberships_per_user?: number | null
   /** The location this organization's new workspaces land in; null = the platform default. */
   default_cluster_id?: number | null
   enforce_sso: boolean
@@ -509,6 +512,11 @@ export interface OrganizationUpdate {
   display_name?: string
   owner_user_id?: number
   max_workspaces?: number
+  /** Per-user caps: -1 unlimited, 0 none. Use inherit_* to fall back to the platform default. */
+  max_workspaces_per_user?: number
+  max_workspace_memberships_per_user?: number
+  inherit_workspaces_per_user?: boolean
+  inherit_workspace_memberships_per_user?: boolean
   /** 0 clears the default location; omitting the field leaves it unchanged. */
   default_cluster_id?: number
 }

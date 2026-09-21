@@ -121,7 +121,11 @@ async function save() {
       const payload: OrganizationUpdate = {
         display_name: form.value.display_name.trim(),
         max_workspaces: cap,
-        default_cluster_id: form.value.default_cluster_id,
+      }
+      // The location is the one field still gated on the organizations entitlement, so send it only
+      // when it changed — otherwise an edit Community is allowed to make would be refused.
+      if (form.value.default_cluster_id !== (editing.value.default_cluster_id ?? 0)) {
+        payload.default_cluster_id = form.value.default_cluster_id
       }
       await adminApi.updateOrganization(editing.value.id, payload)
     } else {

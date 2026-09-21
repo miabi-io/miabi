@@ -27,6 +27,15 @@ type Organization struct {
 	// MaxWorkspaces caps how many workspaces the org may hold. Unlimited (-1) means no cap and 0
 	// means none allowed, matching Plan's convention.
 	MaxWorkspaces int `json:"max_workspaces" gorm:"not null;default:-1"`
+	// MaxWorkspacesPerUser caps how many workspaces one of this org's users may own; nil inherits the
+	// platform default (Platform Settings). MaxWorkspaceMembershipsPerUser is the same for workspaces
+	// they join as a non-owner member. Both follow Plan's convention: -1 unlimited, 0 none, N = N.
+	//
+	// The org is the authority for its own tenants, which is why these live here rather than only as a
+	// platform-wide number: one realm can be generous and another tight, and the platform value is
+	// what an org that sets nothing falls back to.
+	MaxWorkspacesPerUser           *int `json:"max_workspaces_per_user,omitempty"`
+	MaxWorkspaceMembershipsPerUser *int `json:"max_workspace_memberships_per_user,omitempty"`
 	// DefaultClusterID is the location the org's new workspaces default to; nil leaves them on the
 	// platform default. An org that owns clusters is confined to them (see Cluster.OrganizationID).
 	DefaultClusterID *uint `json:"default_cluster_id,omitempty" gorm:"index"`

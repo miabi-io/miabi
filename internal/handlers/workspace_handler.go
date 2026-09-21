@@ -105,7 +105,7 @@ func (h *WorkspaceHandler) Create(c *okapi.Context, req *CreateWorkspaceRequest)
 	}
 	ws, err := h.svc.Create(userID, display, handle, req.Body.Description)
 	if err != nil {
-		if errors.Is(err, workspace.ErrWorkspaceLimitReached) {
+		if errors.Is(err, workspace.ErrWorkspaceLimitReached) || errors.Is(err, workspace.ErrOrgWorkspaceLimitReached) {
 			return c.AbortWithError(403, err)
 		}
 		return c.AbortInternalServerError("failed to create workspace", err)
@@ -438,7 +438,7 @@ func (h *WorkspaceHandler) mapWorkspaceErr(c *okapi.Context, err error) error {
 	switch {
 	case errors.Is(err, workspace.ErrLastOwner):
 		return c.AbortWithError(409, err)
-	case errors.Is(err, workspace.ErrWorkspaceLimitReached):
+	case errors.Is(err, workspace.ErrWorkspaceLimitReached), errors.Is(err, workspace.ErrOrgWorkspaceLimitReached):
 		return c.AbortWithError(403, err)
 	case errors.Is(err, workspace.ErrAlreadyMember), errors.Is(err, workspace.ErrInvitePending):
 		return c.AbortWithError(409, err)
