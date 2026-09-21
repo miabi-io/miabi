@@ -21,22 +21,65 @@ const saving = ref(false)
 const confirmDelete = ref(false)
 const confirmPromote = ref(false)
 
-const form = ref({ display_name: '', max_workspaces: 0, unlimited: true, default_cluster_id: 0 })
+type LimitMode = 'inherit' | 'unlimited' | 'custom'
+
+const form = ref({
+  display_name: '',
+  max_workspaces: 0,
+  unlimited: true,
+  default_cluster_id: 0,
+  // Per-user caps are tri-state: inherit the platform default, unlimited, or a number. A plain
+  // number field cannot express "inherit", and an empty one would read as 0 — which means none.
+  per_user_mode: 'inherit' as LimitMode,
+  per_user: 10,
+  joined_mode: 'inherit' as LimitMode,
+  joined: 10,
+})
+
+// The platform defaults, shown in the Inherit labels so an admin can see what they are inheriting.
+const platformDefaults = ref({ owned: null as number | null, joined: null as number | null })
+function defaultLabel(n: number | null): string {
+  if (n === null) return 'the platform default'
+  return n < 0 ? 'unlimited' : String(n)
+}
+
+function modeOf(v: number | null | undefined): LimitMode {
+  if (v === null || v === undefined) return 'inherit'
+  return v < 0 ? 'unlimited' : 'custom'
+}
+function limitValue(mode: LimitMode, n: number): number | undefined {
+  if (mode === 'inherit') return undefined
+  return mode === 'unlimited' ? -1 : Math.max(0, Number(n) || 0)
+}
 
 async function load() {
   loading.value = true
   try {
-    const [detail, clusterList] = await Promise.all([
+    const [detail, clusterList, settingList] = await Promise.all([
       adminApi.getOrganization(orgId.value),
       clustersApi.list().catch(() => ({ data: { data: [] as Cluster[] } })),
+      adminApi.listSettings().catch(() => ({ data: { data: [] as { key: string; value: string }[] } })),
     ])
     org.value = detail.data.data
     clusters.value = clusterList.data.data ?? []
+    const setting = (key: string): number | null => {
+      const row = (settingList.data.data ?? []).find((r) => r.key === key)
+      const n = row ? Number(row.value) : NaN
+      return Number.isFinite(n) ? n : null
+    }
+    platformDefaults.value = {
+      owned: setting('max_workspaces_per_user'),
+      joined: setting('max_workspace_memberships_per_user'),
+    }
     form.value = {
       display_name: org.value.display_name,
       max_workspaces: org.value.max_workspaces < 0 ? 0 : org.value.max_workspaces,
       unlimited: org.value.max_workspaces < 0,
       default_cluster_id: org.value.default_cluster_id ?? 0,
+      per_user_mode: modeOf(org.value.max_workspaces_per_user),
+      per_user: Math.max(0, org.value.max_workspaces_per_user ?? platformDefaults.value.owned ?? 10),
+      joined_mode: modeOf(org.value.max_workspace_memberships_per_user),
+      joined: Math.max(0, org.value.max_workspace_memberships_per_user ?? 10),
     }
   } catch (e) {
     notify.apiError(e)
@@ -66,20 +109,55 @@ const dirty = computed(() => {
   const o = org.value
   if (!o) return false
   const cap = form.value.unlimited ? -1 : Math.max(0, Number(form.value.max_workspaces) || 0)
+  const perUser = limitValue(form.value.per_user_mode, form.value.per_user)
+  const joined = limitValue(form.value.joined_mode, form.value.joined)
   return (
     form.value.display_name.trim() !== o.display_name ||
     cap !== o.max_workspaces ||
-    form.value.default_cluster_id !== (o.default_cluster_id ?? 0)
+    form.value.default_cluster_id !== (o.default_cluster_id ?? 0) ||
+    perUser !== (o.max_workspaces_per_user ?? undefined) ||
+    joined !== (o.max_workspace_memberships_per_user ?? undefined)
+  )
+})
+
+// The default org's label stays editable in Community; its limits do not, so a label-only change
+// must still be saveable without sending a single gated field.
+const labelOnlyChange = computed(() => {
+  const o = org.value
+  if (!o) return false
+  const cap = form.value.unlimited ? -1 : Math.max(0, Number(form.value.max_workspaces) || 0)
+  return (
+    form.value.display_name.trim() !== o.display_name &&
+    cap === o.max_workspaces &&
+    limitValue(form.value.per_user_mode, form.value.per_user) === (o.max_workspaces_per_user ?? undefined) &&
+    limitValue(form.value.joined_mode, form.value.joined) === (o.max_workspace_memberships_per_user ?? undefined) &&
+    form.value.default_cluster_id === (o.default_cluster_id ?? 0)
   )
 })
 
 async function save() {
   saving.value = true
   try {
-    const payload: OrganizationUpdate = {
-      display_name: form.value.display_name.trim(),
-      max_workspaces: form.value.unlimited ? -1 : Math.max(0, Number(form.value.max_workspaces) || 0),
-      default_cluster_id: form.value.default_cluster_id,
+    const o = org.value
+    const payload: OrganizationUpdate = { display_name: form.value.display_name.trim() }
+    const cap = form.value.unlimited ? -1 : Math.max(0, Number(form.value.max_workspaces) || 0)
+    // Every limit is sent only when it changed: they are gated on the organizations entitlement, and
+    // resending an unchanged one would refuse an edit Community is allowed to make.
+    if (o && cap !== o.max_workspaces) payload.max_workspaces = cap
+    const perUser = limitValue(form.value.per_user_mode, form.value.per_user)
+    if (o && perUser !== (o.max_workspaces_per_user ?? undefined)) {
+      if (form.value.per_user_mode === 'inherit') payload.inherit_workspaces_per_user = true
+      else payload.max_workspaces_per_user = perUser
+    }
+    const joined = limitValue(form.value.joined_mode, form.value.joined)
+    if (o && joined !== (o.max_workspace_memberships_per_user ?? undefined)) {
+      if (form.value.joined_mode === 'inherit') payload.inherit_workspace_memberships_per_user = true
+      else payload.max_workspace_memberships_per_user = joined
+    }
+    // Only send the location when it actually changed: it is the one field still gated on the
+    // organizations entitlement, and sending it unchanged would refuse an otherwise allowed edit.
+    if (o && form.value.default_cluster_id !== (o.default_cluster_id ?? 0)) {
+      payload.default_cluster_id = form.value.default_cluster_id
     }
     await adminApi.updateOrganization(orgId.value, payload)
     notify.success('Organization updated')
@@ -185,10 +263,21 @@ const promoteMessage = computed(() => {
         <div class="card-body">
           <div class="form-group">
             <label class="form-label">Display name</label>
-            <input v-model="form.display_name" class="form-input" :disabled="!entitlement.mutable.value" style="max-width: 420px" />
+            <input v-model="form.display_name" class="form-input" style="max-width: 420px" />
+          </div>
+          <div v-if="!entitlement.has.value" class="form-hint" style="margin-bottom: 16px">
+            <span class="mdi mdi-lock-outline"></span>
+            Workspace limits come from
+            <router-link to="/admin/settings">Platform Settings</router-link> in this edition. With an
+            Enterprise licence this organization's own limits take over.
           </div>
           <div class="form-group">
-            <label class="form-label">Workspace limit</label>
+            <label class="form-label">
+              Workspace limit
+              <span v-if="!entitlement.has.value" class="badge badge-neutral" style="margin-left: 6px" title="Organization limits require an Enterprise license">
+                <span class="mdi mdi-lock-outline"></span> Enterprise
+              </span>
+            </label>
             <label class="checkbox-row">
               <input v-model="form.unlimited" type="checkbox" :disabled="!entitlement.mutable.value" />
               <span>Unlimited</span>
@@ -203,11 +292,60 @@ const promoteMessage = computed(() => {
               style="max-width: 200px; margin-top: 8px"
             />
             <p class="form-hint">
-              Workspaces already created stay; only the next one is refused. A limit of 0 allows none at all.
+              How many workspaces this organization may hold in total. Workspaces already created stay;
+              only the next one is refused. A limit of 0 allows none at all.
             </p>
           </div>
           <div class="form-group">
-            <label class="form-label">Default location</label>
+            <label class="form-label">Workspaces per user — owned</label>
+            <select v-model="form.per_user_mode" class="form-select" :disabled="!entitlement.mutable.value" style="max-width: 420px">
+              <option value="inherit">Inherit the platform default ({{ defaultLabel(platformDefaults.owned) }})</option>
+              <option value="unlimited">Unlimited</option>
+              <option value="custom">Limit to…</option>
+            </select>
+            <input
+              v-if="form.per_user_mode === 'custom'"
+              v-model.number="form.per_user"
+              type="number"
+              min="0"
+              class="form-input"
+              :disabled="!entitlement.mutable.value"
+              style="max-width: 200px; margin-top: 8px"
+            />
+            <p class="form-hint">
+              How many workspaces one of this organization's users may own. With a licence this is where
+              it is set; <router-link to="/admin/settings">Platform Settings</router-link> supplies the
+              default for organizations that inherit, and governs outright without one.
+            </p>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Workspaces per user — joined as member</label>
+            <select v-model="form.joined_mode" class="form-select" :disabled="!entitlement.mutable.value" style="max-width: 420px">
+              <option value="inherit">Inherit the platform default ({{ defaultLabel(platformDefaults.joined) }})</option>
+              <option value="unlimited">Unlimited</option>
+              <option value="custom">Limit to…</option>
+            </select>
+            <input
+              v-if="form.joined_mode === 'custom'"
+              v-model.number="form.joined"
+              type="number"
+              min="0"
+              class="form-input"
+              :disabled="!entitlement.mutable.value"
+              style="max-width: 200px; margin-top: 8px"
+            />
+            <p class="form-hint">
+              How many other workspaces one of its users may be a member of. Workspaces they own are
+              counted by the limit above, not this one.
+            </p>
+          </div>
+          <div class="form-group">
+            <label class="form-label">
+              Default location
+              <span v-if="!entitlement.has.value" class="badge badge-neutral" style="margin-left: 6px" title="Choosing where an organization's workspaces land requires an Enterprise license">
+                <span class="mdi mdi-lock-outline"></span> Enterprise
+              </span>
+            </label>
             <select v-model.number="form.default_cluster_id" class="form-select" :disabled="!entitlement.mutable.value" style="max-width: 420px">
               <option :value="0">{{ confined ? 'First dedicated location' : 'Platform default' }}</option>
               <option v-for="c in selectableClusters" :key="c.id" :value="c.id">{{ clusterLabel(c) }}</option>
@@ -220,7 +358,7 @@ const promoteMessage = computed(() => {
             </p>
           </div>
           <div style="display: flex; justify-content: flex-end">
-            <button class="btn btn-primary" :disabled="saving || !dirty || !entitlement.mutable.value" @click="save">
+            <button class="btn btn-primary" :disabled="saving || !dirty || (!entitlement.mutable.value && !labelOnlyChange)" @click="save">
               {{ saving ? 'Saving…' : 'Save changes' }}
             </button>
           </div>

@@ -4,6 +4,8 @@
 package handlers
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/jkaninda/okapi"
@@ -106,6 +108,16 @@ func (h *AdminSettingHandler) List(c *okapi.Context) error {
 }
 
 // Update upserts the supplied settings and refreshes the cache.
+// savedKeys names what an update touched, so the audit trail can answer which setting changed
+// rather than only how many did.
+func savedKeys(rows []models.Setting) []string {
+	out := make([]string, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, r.Key)
+	}
+	return out
+}
+
 func (h *AdminSettingHandler) Update(c *okapi.Context, req *UpdateSettingsRequest) error {
 	if len(req.Body.Settings) == 0 {
 		return c.AbortBadRequest("no settings supplied")
@@ -128,7 +140,15 @@ func (h *AdminSettingHandler) Update(c *okapi.Context, req *UpdateSettingsReques
 		if t == "" {
 			t = models.SettingTypeString
 		}
-		toSave = append(toSave, models.Setting{Key: key, Value: s.Value, Type: t})
+		// A value that does not parse is worse than a rejected one: Provider.Int falls back to the
+		// code default, so a typo in a limit silently re-imposes the default while the console keeps
+		// displaying what was typed.
+		if t == models.SettingTypeInt && strings.TrimSpace(s.Value) != "" {
+			if _, err := strconv.Atoi(strings.TrimSpace(s.Value)); err != nil {
+				return c.AbortBadRequest(fmt.Sprintf("%s must be a whole number", key))
+			}
+		}
+		toSave = append(toSave, models.Setting{Key: key, Value: strings.TrimSpace(s.Value), Type: t})
 	}
 	if err := h.repo.BulkUpsert(toSave); err != nil {
 		return c.AbortInternalServerError("failed to save settings", err)
@@ -138,7 +158,7 @@ func (h *AdminSettingHandler) Update(c *okapi.Context, req *UpdateSettingsReques
 	actor := middlewares.UserID(c)
 	h.audit.Record(audit.Entry{
 		ActorID: &actor, Action: "admin.settings.update", TargetType: "settings",
-		IP: c.RealIP(), Metadata: map[string]any{"count": len(toSave)},
+		IP: c.RealIP(), Metadata: map[string]any{"count": len(toSave), "keys": savedKeys(toSave)},
 	})
 	return h.List(c)
 }

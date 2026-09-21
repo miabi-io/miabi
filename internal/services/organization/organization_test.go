@@ -17,17 +17,20 @@ import (
 // orgRow is the organizations stand-in: the real model's uid column defaults to the Postgres-only
 // gen_random_uuid(), which sqlite cannot parse.
 type orgRow struct {
-	ID               uint `gorm:"primaryKey"`
-	UID              string
-	Name             string
-	DisplayName      string
-	IsDefault        bool
-	OwnerUserID      uint
-	MaxWorkspaces    int
-	DefaultClusterID *uint
-	EnforceSSO       bool
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID            uint `gorm:"primaryKey"`
+	UID           string
+	Name          string
+	DisplayName   string
+	IsDefault     bool
+	OwnerUserID   uint
+	MaxWorkspaces int
+	// Per-user caps; nil inherits the platform default.
+	MaxWorkspacesPerUser           *int
+	MaxWorkspaceMembershipsPerUser *int
+	DefaultClusterID               *uint
+	EnforceSSO                     bool
+	CreatedAt                      time.Time
+	UpdatedAt                      time.Time
 }
 
 func (orgRow) TableName() string { return "organizations" }

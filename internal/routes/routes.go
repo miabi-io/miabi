@@ -387,18 +387,23 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 
 	workspaceService.SetPlans(planRepo)
 	workspaceService.SetQuota(quotaService)
-	// Per-user workspace-count limit: the platform-global max_workspaces_per_user
-	// is always enforced (OSS); the per-user override (User.WorkspaceLimit) applies
-	// only with the Enterprise user_workspace_limit entitlement.
+	// Per-user workspace-count limit. The platform value is the default an organization that sets
+	// none falls back to; the org's own cap wins, and the per-user override (User.WorkspaceLimit)
+	// wins over both but only with the Enterprise user_workspace_limit entitlement. The fallback
+	// mirrors the seeded default so a missing row behaves like a fresh install.
 	workspaceService.SetLimits(
-		func() int { return settingsProvider.Int(settings.KeyMaxWorkspacesPerUser, 3) },
+		func() int {
+			return settingsProvider.Int(settings.KeyMaxWorkspacesPerUser, settings.DefaultMaxWorkspacesPerUser)
+		},
 		func() bool { return ee.Has(enterprise.FlagUserWorkspaceLimit) },
 	)
 	// Per-user membership limit (workspaces JOINED as a non-owner member): global
 	// max_workspace_memberships_per_user is OSS; the per-user override is gated by
 	// the Enterprise user_workspace_membership_limit entitlement.
 	workspaceService.SetMembershipLimits(
-		func() int { return settingsProvider.Int(settings.KeyMaxWorkspaceMembershipsPerUser, 3) },
+		func() int {
+			return settingsProvider.Int(settings.KeyMaxWorkspaceMembershipsPerUser, settings.DefaultMaxWorkspaceMembershipsPerUser)
+		},
 		func() bool { return ee.Has(enterprise.FlagUserWorkspaceMembershipLimit) },
 	)
 	// SSO auto-join respects the same membership limit (over-limit users just
@@ -498,6 +503,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	organizationService.SetClusters(clusterRepo)
 	organizationService.SetWorkspaces(workspaceRepo)
 	workspaceService.SetOrgs(organizationService)
+	// Organization-scoped workspace limits are Enterprise: with the licence the org's own caps
+	// decide, without it the platform defaults do. A stored cap goes inert rather than binding an
+	// operator who can no longer edit it.
+	workspaceService.SetOrgLimitsEntitled(func() bool { return ee.Has(enterprise.FlagOrganizations) })
 	// A cordon binds Miabi's placement; Swarm schedules service tasks itself and has to be told too.
 	nodeService.SetSwarmCordon(clusterService.MirrorCordon)
 	if cronManager != nil {

@@ -110,6 +110,9 @@ type AdminCreateOrganizationRequest struct {
 		DisplayName   string `json:"display_name" required:"true" max:"120"`
 		OwnerUserID   uint   `json:"owner_user_id"`
 		MaxWorkspaces *int   `json:"max_workspaces"`
+		// Per-user caps for this org's users; null inherits the platform default.
+		MaxWorkspacesPerUser           *int `json:"max_workspaces_per_user"`
+		MaxWorkspaceMembershipsPerUser *int `json:"max_workspace_memberships_per_user"`
 	} `json:"body"`
 }
 
@@ -125,10 +128,12 @@ func (h *AdminOrganizationHandler) Create(c *okapi.Context, req *AdminCreateOrga
 		}
 	}
 	org, err := h.svc.Create(organization.CreateInput{
-		Handle:        req.Body.Name,
-		DisplayName:   req.Body.DisplayName,
-		OwnerUserID:   req.Body.OwnerUserID,
-		MaxWorkspaces: req.Body.MaxWorkspaces,
+		Handle:                         req.Body.Name,
+		DisplayName:                    req.Body.DisplayName,
+		OwnerUserID:                    req.Body.OwnerUserID,
+		MaxWorkspaces:                  req.Body.MaxWorkspaces,
+		MaxWorkspacesPerUser:           req.Body.MaxWorkspacesPerUser,
+		MaxWorkspaceMembershipsPerUser: req.Body.MaxWorkspaceMembershipsPerUser,
 	})
 	if err != nil {
 		return h.mapErr(c, err)
@@ -142,6 +147,12 @@ type AdminUpdateOrganizationRequest struct {
 		DisplayName   *string `json:"display_name" max:"120"`
 		OwnerUserID   *uint   `json:"owner_user_id"`
 		MaxWorkspaces *int    `json:"max_workspaces"`
+		// Per-user caps. Null leaves one as it is; -1 is unlimited and 0 none. Inherit* clears one
+		// back to the platform default, which a null cannot express.
+		MaxWorkspacesPerUser               *int  `json:"max_workspaces_per_user"`
+		MaxWorkspaceMembershipsPerUser     *int  `json:"max_workspace_memberships_per_user"`
+		InheritWorkspacesPerUser           *bool `json:"inherit_workspaces_per_user"`
+		InheritWorkspaceMembershipsPerUser *bool `json:"inherit_workspace_memberships_per_user"`
 		// DefaultClusterID is the location the org's new workspaces land in. Sending 0 clears it,
 		// which a null cannot express — null means "leave as it is".
 		DefaultClusterID *uint `json:"default_cluster_id"`
@@ -154,15 +165,25 @@ func (h *AdminOrganizationHandler) Update(c *okapi.Context, req *AdminUpdateOrga
 		return c.AbortNotFound("organization not found")
 	}
 	// Editing the default org's own label is not a multi-tenancy feature, so it stays available in
-	// Community; anything else is a change to how tenants are separated.
-	if !org.IsDefault || req.Body.MaxWorkspaces != nil || req.Body.DefaultClusterID != nil {
+	// Community. Its limits are: with a licence an organization's caps govern its tenants, and
+	// without one the platform defaults do — so an unlicensed operator has nothing to set here, and
+	// letting them store a value that would never apply would be the misleading option.
+	if !org.IsDefault || touchesOrgLimits(req) || req.Body.DefaultClusterID != nil {
 		if err := h.ee.RequireMutable(enterprise.FlagOrganizations); err != nil {
 			return entitlementAbort(c, err)
 		}
 	}
 	in := organization.UpdateInput{
 		DisplayName: req.Body.DisplayName, OwnerUserID: req.Body.OwnerUserID,
-		MaxWorkspaces: req.Body.MaxWorkspaces,
+		MaxWorkspaces:                  req.Body.MaxWorkspaces,
+		MaxWorkspacesPerUser:           req.Body.MaxWorkspacesPerUser,
+		MaxWorkspaceMembershipsPerUser: req.Body.MaxWorkspaceMembershipsPerUser,
+	}
+	if req.Body.InheritWorkspacesPerUser != nil {
+		in.InheritWorkspacesPerUser = *req.Body.InheritWorkspacesPerUser
+	}
+	if req.Body.InheritWorkspaceMembershipsPerUser != nil {
+		in.InheritWorkspaceMembershipsPerUser = *req.Body.InheritWorkspaceMembershipsPerUser
 	}
 	if req.Body.DefaultClusterID != nil {
 		if *req.Body.DefaultClusterID == 0 {
@@ -175,7 +196,7 @@ func (h *AdminOrganizationHandler) Update(c *okapi.Context, req *AdminUpdateOrga
 	if err != nil {
 		return h.mapErr(c, err)
 	}
-	h.record(c, "admin.organization.update", org.ID, nil)
+	h.record(c, "admin.organization.update", org.ID, limitChanges(org, updated))
 	return ok(c, updated)
 }
 
@@ -217,6 +238,41 @@ func (h *AdminOrganizationHandler) org(c *okapi.Context) (*models.Organization, 
 		return nil, organization.ErrNotFound
 	}
 	return h.svc.Get(uint(id))
+}
+
+// touchesOrgLimits reports whether an update tries to set any organization-scoped limit.
+func touchesOrgLimits(req *AdminUpdateOrganizationRequest) bool {
+	return req.Body.MaxWorkspaces != nil ||
+		req.Body.MaxWorkspacesPerUser != nil ||
+		req.Body.MaxWorkspaceMembershipsPerUser != nil ||
+		req.Body.InheritWorkspacesPerUser != nil ||
+		req.Body.InheritWorkspaceMembershipsPerUser != nil
+}
+
+// limitChanges records which caps an update moved, and from what. "Who lowered this limit" is the
+// first question asked when a tenant hits one, and a nil metadata blob cannot answer it.
+func limitChanges(before, after *models.Organization) map[string]any {
+	out := map[string]any{}
+	if before.MaxWorkspaces != after.MaxWorkspaces {
+		out["max_workspaces"] = []int{before.MaxWorkspaces, after.MaxWorkspaces}
+	}
+	if !samePtr(before.MaxWorkspacesPerUser, after.MaxWorkspacesPerUser) {
+		out["max_workspaces_per_user"] = []any{before.MaxWorkspacesPerUser, after.MaxWorkspacesPerUser}
+	}
+	if !samePtr(before.MaxWorkspaceMembershipsPerUser, after.MaxWorkspaceMembershipsPerUser) {
+		out["max_workspace_memberships_per_user"] = []any{before.MaxWorkspaceMembershipsPerUser, after.MaxWorkspaceMembershipsPerUser}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func samePtr(a, b *int) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 func (h *AdminOrganizationHandler) mapErr(c *okapi.Context, err error) error {

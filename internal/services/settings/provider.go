@@ -59,13 +59,22 @@ const (
 
 // defaults seeds first-boot values. Keys absent here can still be created by the
 // admin via the API.
+// Defaults for the per-user workspace limits, shared by the seed and the read fallback so a missing
+// row behaves exactly like a fresh install. Owned is a generous anti-abuse bound rather than a
+// product limit; joins are unlimited because a user cannot join unasked — an owner must invite them,
+// and each workspace's own member quota already bounds that.
+const (
+	DefaultMaxWorkspacesPerUser           = 10
+	DefaultMaxWorkspaceMembershipsPerUser = -1
+)
+
 var defaults = []models.Setting{
 	{Key: KeyMaintenanceMode, Value: "false", Type: models.SettingTypeBool},
 	{Key: KeyRequireEmailVerification, Value: "false", Type: models.SettingTypeBool},
 	{Key: KeyAllowedSignupDomains, Value: "", Type: models.SettingTypeString},
 	{Key: KeyDefaultWorkspaceRole, Value: "viewer", Type: models.SettingTypeString},
-	{Key: KeyMaxWorkspacesPerUser, Value: "3", Type: models.SettingTypeInt},
-	{Key: KeyMaxWorkspaceMembershipsPerUser, Value: "3", Type: models.SettingTypeInt},
+	{Key: KeyMaxWorkspacesPerUser, Value: strconv.Itoa(DefaultMaxWorkspacesPerUser), Type: models.SettingTypeInt},
+	{Key: KeyMaxWorkspaceMembershipsPerUser, Value: strconv.Itoa(DefaultMaxWorkspaceMembershipsPerUser), Type: models.SettingTypeInt},
 	{Key: KeyAuditLogRetentionDays, Value: "90", Type: models.SettingTypeInt},
 	{Key: KeyMaxCPUCores, Value: "0", Type: models.SettingTypeInt},
 	{Key: KeyMaxMemoryMB, Value: "0", Type: models.SettingTypeInt},
