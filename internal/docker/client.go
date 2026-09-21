@@ -329,15 +329,23 @@ func hostBindMounts(mounts []BindMount) []mount.Mount {
 func containerVolumeMounts(spec RunSpec) ([]string, []mount.Mount) {
 	binds := make([]string, 0, len(spec.Mounts)+len(spec.Binds))
 	var volMounts []mount.Mount
+	readOnly := make(map[string]bool, len(spec.ReadOnlyMounts))
+	for _, vol := range spec.ReadOnlyMounts {
+		readOnly[vol] = true
+	}
 	for vol, path := range spec.Mounts {
 		if spec.NoCopyVolumes {
 			volMounts = append(volMounts, mount.Mount{
-				Type: mount.TypeVolume, Source: vol, Target: path,
+				Type: mount.TypeVolume, Source: vol, Target: path, ReadOnly: readOnly[vol],
 				VolumeOptions: &mount.VolumeOptions{NoCopy: true},
 			})
 			continue
 		}
-		binds = append(binds, vol+":"+path)
+		b := vol + ":" + path
+		if readOnly[vol] {
+			b += ":ro"
+		}
+		binds = append(binds, b)
 	}
 	binds = append(binds, hostBinds(spec.Binds)...)
 	volMounts = append(volMounts, hostBindMounts(spec.Binds)...)

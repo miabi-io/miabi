@@ -123,6 +123,9 @@ type RunSpec struct {
 	// Set under the restricted profile, where volumes are already seeded and chowned: copy-up would
 	// re-apply the image mount-dir's ownership on every start, leaving the process unable to write.
 	NoCopyVolumes bool
+	// ReadOnlyMounts names volumes in Mounts to mount read-only. Backup helpers set it: a container
+	// that only reads the data it archives should not hold a writable handle to the one copy of it.
+	ReadOnlyMounts []string
 	// Binds are host path -> container path bind mounts. Used only for
 	// allow-listed privileged host mounts (e.g. the Docker socket); the source
 	// is a server-resolved host path, never client input.

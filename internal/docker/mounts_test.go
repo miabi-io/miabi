@@ -3,7 +3,10 @@
 
 package docker
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 // By default named volumes are plain bind strings (Docker copy-up seeds them).
 func TestContainerVolumeMountsDefault(t *testing.T) {
@@ -40,5 +43,35 @@ func TestContainerVolumeMountsNoCopy(t *testing.T) {
 	// The named volume must NOT also appear as a bind; host binds still do.
 	if len(binds) != 1 || binds[0] != "/var/run/docker.sock:/var/run/docker.sock" {
 		t.Errorf("binds = %v, want only the host bind", binds)
+	}
+}
+
+// A volume named in ReadOnlyMounts must render read-only, so a backup helper cannot write to the
+// data it archives. Both rendering paths matter: bind strings normally, and the Mount API when
+// copy-up is disabled.
+func TestReadOnlyMountsRenderReadOnly(t *testing.T) {
+	spec := RunSpec{Mounts: map[string]string{"mb-vol-1-data": "/data", "scratch": "/tmp/work"}, ReadOnlyMounts: []string{"mb-vol-1-data"}}
+
+	binds, _ := containerVolumeMounts(spec)
+	if !slices.Contains(binds, "mb-vol-1-data:/data:ro") {
+		t.Errorf("bind strings = %v, want the archived volume mounted :ro", binds)
+	}
+	if !slices.Contains(binds, "scratch:/tmp/work") {
+		t.Errorf("bind strings = %v, want the unlisted volume left writable", binds)
+	}
+
+	spec.NoCopyVolumes = true
+	_, mounts := containerVolumeMounts(spec)
+	for _, m := range mounts {
+		switch m.Source {
+		case "mb-vol-1-data":
+			if !m.ReadOnly {
+				t.Error("the archived volume must be read-only on the Mount API path too")
+			}
+		case "scratch":
+			if m.ReadOnly {
+				t.Error("an unlisted volume must stay writable")
+			}
+		}
 	}
 }
