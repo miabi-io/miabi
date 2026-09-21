@@ -4,19 +4,21 @@ import { useLicenseStore } from '@/stores/license'
 import RunnersPanel from '@/components/RunnersPanel.vue'
 import { adminRunnerApi, type RunnerAdapter } from '@/api/runners'
 
-// Platform-shared runners: the shared pool is available without a cap. Managing
-// the pool (edit/cordon/token/delete) is always available to admins.
+// Platform-shared runners. The cap comes from the license view rather than a constant mirrored
+// from the backend: the mirror drifted to -1 while the backend enforced 2, so the register button
+// stayed enabled and the third runner failed at submit. Managing the pool (edit/cordon/token/
+// delete) is always available to admins.
 const license = useLicenseStore()
 onMounted(() => license.load())
 
-// Mirror of enterprise.CommunityRunnerLimit (-1 = unlimited).
-const COMMUNITY_SHARED_RUNNER_LIMIT = -1
-const unlimited = computed(() => COMMUNITY_SHARED_RUNNER_LIMIT < 0 || license.mutable('platform_runners'))
-const createLimit = computed(() => (unlimited.value ? -1 : COMMUNITY_SHARED_RUNNER_LIMIT))
+const usage = computed(() => license.view?.shared_runner_usage)
+const limit = computed(() => usage.value?.limit ?? -1)
+const unlimited = computed(() => limit.value < 0)
+const createLimit = computed(() => limit.value)
 const limitNote = computed(() =>
   unlimited.value
     ? ''
-    : `Community includes ${COMMUNITY_SHARED_RUNNER_LIMIT} platform-shared runner. Upgrade to Enterprise for an unlimited shared pool.`,
+    : `Your edition allows ${limit.value} platform-shared runners. Upgrade your license for an unlimited shared pool.`,
 )
 
 const adapter: RunnerAdapter = {
@@ -38,9 +40,10 @@ const adapter: RunnerAdapter = {
         <span class="mdi mdi-information-outline" style="font-size: 22px; color: var(--text-muted)"></span>
         <div>
           <p style="margin: 0">
-            Community includes <strong>one</strong> platform-shared runner — a single shared build pool
-            any capable workspace can use. Enterprise unlocks an <strong>unlimited</strong> shared pool.
-            Workspace-owned runners are always unlimited.
+            Your edition includes <strong>{{ limit }}</strong> platform-shared runners — a shared build
+            pool any capable workspace can use ({{ usage?.used ?? 0 }} registered). Enterprise unlocks an
+            <strong>unlimited</strong> shared pool. Workspace-owned runners are bounded by each
+            workspace's plan, not by this cap.
           </p>
           <router-link to="/admin/license" class="btn btn-secondary btn-sm" style="margin-top: 8px">Manage license</router-link>
         </div>

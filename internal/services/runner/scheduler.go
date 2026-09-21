@@ -37,7 +37,7 @@ type Job struct {
 	RequiredLabels []string
 }
 
-// SelectRunner picks the least-loaded eligible runner for job, or ErrNoRunner when none can take it right
+// SelectRunner picks the best eligible runner for job, or ErrNoRunner when none can take it right
 // now. Eligible means connected, enabled, not cordoned, labels superset of required, in scope (owned by the
 // workspace or shared with plan permission), and active leases below declared concurrency.
 func (s *Service) SelectRunner(job Job) (*models.Runner, error) {
@@ -53,26 +53,56 @@ func (s *Service) SelectRunner(job Job) (*models.Runner, error) {
 	if err != nil {
 		return nil, err
 	}
+	best := pick(candidates, job.WorkspaceID, job.RequiredLabels, loads, s.connected)
+	if best == nil {
+		return nil, ErrNoRunner
+	}
+	return best, nil
+}
+
+// pick is the selection policy: the eligible runner with spare capacity that outranks every other.
+// Pure, so the policy is covered without a database or a live tunnel.
+func pick(candidates []models.Runner, workspaceID uint, required []string, loads map[uint]int, connected func(uint) bool) *models.Runner {
 	var best *models.Runner
 	bestLoad := 0
 	for i := range candidates {
 		r := &candidates[i]
-		if !eligible(r, job.WorkspaceID, job.RequiredLabels, s.connected(r.ID)) {
+		if !eligible(r, workspaceID, required, connected(r.ID)) {
 			continue
 		}
 		load := loads[r.ID]
 		if load >= r.Concurrency { // no spare capacity
 			continue
 		}
-		if best == nil || load < bestLoad || (load == bestLoad && r.ID < best.ID) {
+		if outranks(r, load, best, bestLoad) {
 			best, bestLoad = r, load
 		}
 	}
-	if best == nil {
-		return nil, ErrNoRunner
-	}
-	return best, nil
+	return best
 }
+
+// outranks reports whether r should displace best.
+//
+// A workspace's own runner beats the shared pool outright, ahead of load: a tenant registers a
+// runner for its warm layer cache, the private network it sits on, or simply its size, and a job
+// that lands on the shared pool instead loses all three. Queueing on the machine someone chose is
+// more predictable than relocating the build. Within a tier the least-loaded wins, and the lowest
+// id breaks the remaining tie so selection is deterministic.
+func outranks(r *models.Runner, load int, best *models.Runner, bestLoad int) bool {
+	if best == nil {
+		return true
+	}
+	if owned(r) != owned(best) {
+		return owned(r)
+	}
+	if load != bestLoad {
+		return load < bestLoad
+	}
+	return r.ID < best.ID
+}
+
+// owned reports whether the runner belongs to a workspace rather than the platform pool.
+func owned(r *models.Runner) bool { return r.WorkspaceID != nil }
 
 // AvailabilityReason explains why SelectRunner couldn't place job, so a waiting
 // deploy/pipeline can tell the user what to fix instead of an opaque "waiting…".

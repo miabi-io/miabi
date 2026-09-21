@@ -27,21 +27,16 @@ func NewAdminRunnerHandler(svc *runner.Service, ee enterprise.EE, auditLog *audi
 	return &AdminRunnerHandler{svc: svc, base: NewRunnerHandler(svc, auditLog), ee: ee, audit: auditLog}
 }
 
-func (h *AdminRunnerHandler) requireCreateCapacity(c *okapi.Context) error {
-	if h.ee.Mutable(enterprise.FlagPlatformRunners) {
-		return nil // unlimited shared pool
-	}
-	if enterprise.CommunityRunnerLimit < 0 {
-		return nil
+// overCreateLimit reports whether the shared pool is already at the edition's cap. It writes no
+// response: entitlementAbort returns nil once it has written one, so the refusal has to be the
+// handler's own return or the runner is registered anyway. A failed count does not block a create.
+func (h *AdminRunnerHandler) overCreateLimit() bool {
+	lim := h.ee.Entitlements().SharedRunnerLimit()
+	if lim < 0 {
+		return false // unlimited shared pool
 	}
 	runners, err := h.svc.ListShared()
-	if err != nil {
-		return c.AbortInternalServerError("failed to count runners", err)
-	}
-	if len(runners) >= enterprise.CommunityRunnerLimit {
-		return entitlementAbort(c, enterprise.ErrRunnerLimitReached)
-	}
-	return nil
+	return err == nil && len(runners) >= lim
 }
 
 // SetConnRegistry wires the live-tunnel lookup used to annotate the shared
@@ -70,8 +65,8 @@ func (h *AdminRunnerHandler) Get(c *okapi.Context) error {
 
 // Create registers a platform-shared runner and returns the one-time token.
 func (h *AdminRunnerHandler) Create(c *okapi.Context, req *RunnerRequest) error {
-	if err := h.requireCreateCapacity(c); err != nil {
-		return err
+	if h.overCreateLimit() {
+		return entitlementAbort(c, enterprise.ErrRunnerLimitReached)
 	}
 	r, token, err := h.svc.CreateShared(middlewares.UserID(c), req.input())
 	if err != nil {

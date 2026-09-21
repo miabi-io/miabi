@@ -74,27 +74,6 @@ func TestEligible(t *testing.T) {
 	}
 }
 
-// pickLeastLoaded mirrors SelectRunner's choice logic over an in-memory
-// candidate set + load map, so the selection policy is covered without a DB.
-func pickLeastLoaded(candidates []models.Runner, workspaceID uint, required []string, loads map[uint]int, connected func(uint) bool) *models.Runner {
-	var best *models.Runner
-	bestLoad := 0
-	for i := range candidates {
-		r := &candidates[i]
-		if !eligible(r, workspaceID, required, connected(r.ID)) {
-			continue
-		}
-		load := loads[r.ID]
-		if load >= r.Concurrency {
-			continue
-		}
-		if best == nil || load < bestLoad || (load == bestLoad && r.ID < best.ID) {
-			best, bestLoad = r, load
-		}
-	}
-	return best
-}
-
 func TestSelectionPrefersLeastLoadedWithCapacity(t *testing.T) {
 	runners := []models.Runner{
 		{ID: 1, WorkspaceID: ptr(1), Scope: models.ScopeWorkspace, Enabled: true, Concurrency: 2, Labels: []string{"buildkit"}},
@@ -103,28 +82,73 @@ func TestSelectionPrefersLeastLoadedWithCapacity(t *testing.T) {
 	}
 	always := func(uint) bool { return true }
 
-	// #2 has the fewest active leases → chosen.
+	// #2 has the fewest active leases → chosen. #3 is also at 0, so the lower id breaks the tie.
 	loads := map[uint]int{1: 1, 2: 0, 3: 0}
-	// #3 is also at 0 but ties break to the lower id... #2 (0) vs #3 (0): equal,
-	// lower id 2 wins over 3; #1 at 1 loses. So #2.
-	if got := pickLeastLoaded(runners, 1, []string{"buildkit"}, loads, always); got == nil || got.ID != 2 {
+	if got := pick(runners, 1, []string{"buildkit"}, loads, always); got == nil || got.ID != 2 {
 		t.Fatalf("least-loaded selection = %v, want runner 2", got)
 	}
 
 	// Saturate #1 and #2; only #3 has spare capacity (0 < 1).
 	full := map[uint]int{1: 2, 2: 2, 3: 0}
-	if got := pickLeastLoaded(runners, 1, []string{"buildkit"}, full, always); got == nil || got.ID != 3 {
+	if got := pick(runners, 1, []string{"buildkit"}, full, always); got == nil || got.ID != 3 {
 		t.Fatalf("with 1&2 saturated, selection = %v, want runner 3", got)
 	}
 
 	// Everyone saturated → no runner (caller queues, "waiting for a runner").
 	saturated := map[uint]int{1: 2, 2: 2, 3: 1}
-	if got := pickLeastLoaded(runners, 1, []string{"buildkit"}, saturated, always); got != nil {
+	if got := pick(runners, 1, []string{"buildkit"}, saturated, always); got != nil {
 		t.Fatalf("all saturated: selection = %v, want none", got)
 	}
 
 	// A required label no runner has → no match.
-	if got := pickLeastLoaded(runners, 1, []string{"gpu"}, loads, always); got != nil {
+	if got := pick(runners, 1, []string{"gpu"}, loads, always); got != nil {
 		t.Fatalf("unmatched label: selection = %v, want none", got)
+	}
+}
+
+// A workspace that registered its own runner must get it, even when a shared runner is idle and
+// has a lower id. This was decided by primary-key order before: operators register the platform
+// pool first, so the shared runner won every tie and the tenant's machine sat idle.
+func TestSelectionPrefersTheWorkspacesOwnRunner(t *testing.T) {
+	shared := models.Runner{ID: 1, Scope: models.ScopeShared, Enabled: true, Concurrency: 2}
+	own := models.Runner{ID: 9, WorkspaceID: ptr(1), Scope: models.ScopeWorkspace, Enabled: true, Concurrency: 2}
+	candidates := []models.Runner{shared, own}
+	always := func(uint) bool { return true }
+
+	if got := pick(candidates, 1, nil, map[uint]int{}, always); got == nil || got.ID != 9 {
+		t.Fatalf("both idle: selection = %v, want the workspace's own runner 9", got)
+	}
+
+	// Busier, but still theirs: a build on a warm cache beats relocating to the shared pool.
+	if got := pick(candidates, 1, nil, map[uint]int{1: 0, 9: 1}, always); got == nil || got.ID != 9 {
+		t.Fatalf("own runner busier: selection = %v, want 9 (own beats shared ahead of load)", got)
+	}
+
+	// Saturated, not merely busy → the shared pool takes it rather than the job waiting forever.
+	if got := pick(candidates, 1, nil, map[uint]int{1: 0, 9: 2}, always); got == nil || got.ID != 1 {
+		t.Fatalf("own runner saturated: selection = %v, want the shared runner 1", got)
+	}
+
+	// Offline own runner → the shared pool, so a dead runner does not block every build.
+	onlyShared := func(id uint) bool { return id == 1 }
+	if got := pick(candidates, 1, nil, map[uint]int{}, onlyShared); got == nil || got.ID != 1 {
+		t.Fatalf("own runner offline: selection = %v, want the shared runner 1", got)
+	}
+
+	// With no runner of their own, the shared pool is still used.
+	if got := pick([]models.Runner{shared}, 1, nil, map[uint]int{}, always); got == nil || got.ID != 1 {
+		t.Fatalf("no own runner: selection = %v, want the shared runner 1", got)
+	}
+}
+
+// Two owned runners rank against each other by load, not by scope.
+func TestSelectionRanksWithinTheOwnedTierByLoad(t *testing.T) {
+	candidates := []models.Runner{
+		{ID: 4, WorkspaceID: ptr(1), Scope: models.ScopeWorkspace, Enabled: true, Concurrency: 3},
+		{ID: 5, WorkspaceID: ptr(1), Scope: models.ScopeWorkspace, Enabled: true, Concurrency: 3},
+	}
+	always := func(uint) bool { return true }
+	if got := pick(candidates, 1, nil, map[uint]int{4: 2, 5: 1}, always); got == nil || got.ID != 5 {
+		t.Fatalf("selection = %v, want the least-loaded owned runner 5", got)
 	}
 }
