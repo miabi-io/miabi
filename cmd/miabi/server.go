@@ -525,8 +525,11 @@ func runServer(cli *okapicli.CLI) {
 			backupService.SetImageResolver(imageResolver)
 			backupService.SetLogStore(logStore)
 			backupService.SetAlerter(backupAlerter{alertEngine})
-			// Scheduled backups run through this service and never touch a handler, so this is
-			// the only place their outcomes become visible.
+
+			backupService.SetReporter(backupReporter{alerting.NewWorkspaceNotifier(
+				repositories.NewWorkspaceRepository(res.db),
+				repositories.NewNotificationInboxRepository(res.db), bus)})
+
 			backupService.SetEventRecorder(eventsSvc)
 			res.cron = cronpkg.NewManager(backupService, dbRepo, backupRepo, repositories.NewDatabaseBackupSetRepository(res.db), backupsettings.NewService(repositories.NewWorkspaceBackupSettingsRepository(res.db)))
 			res.cron.SetLeader(elector)

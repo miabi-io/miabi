@@ -59,6 +59,9 @@ var signalRules = map[string]signalRule{
 	"backup_overdue": {category: models.CategoryDatabase, minRole: models.WorkspaceRoleDeveloper},
 	"backup_ok":      {resolves: []string{"backup_failed", "backup_overdue"}},
 
+	"backup_set_failed": {category: models.CategoryDatabase, minRole: models.WorkspaceRoleDeveloper},
+	"backup_set_ok":     {resolves: []string{"backup_set_failed"}},
+
 	// TLS / ACME (workspace-scoped: a workspace's certificates).
 	"cert_expiring": {category: models.CategoryTLS, minRole: models.WorkspaceRoleDeveloper},
 	"cert_failed":   {category: models.CategoryTLS, minRole: models.WorkspaceRoleDeveloper},

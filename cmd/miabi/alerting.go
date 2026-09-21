@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/alerting"
+	"github.com/miabi-io/miabi/internal/services/backup"
 	"github.com/miabi-io/miabi/internal/services/quota"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
@@ -35,6 +37,91 @@ func (a backupAlerter) BackupSucceeded(ws, dbID uint) {
 	})
 }
 
+func (a backupAlerter) BackupSetFailed(ws, instanceID uint, instanceName, ref, errMsg string) {
+	title := "Recovery point failed"
+	switch {
+	case instanceName != "":
+		title += " — " + instanceName
+	case ref != "":
+		title += " — " + ref
+	}
+	body := errMsg
+	if ref != "" && instanceName != "" {
+		body = ref + ": " + errMsg
+	}
+	a.e.Emit(alerting.Signal{
+		WorkspaceID: ws, Kind: "backup_set_failed", SubjectType: "database",
+		SubjectRef: fmt.Sprintf("instance:%d", instanceID), SubjectLink: fmt.Sprintf("/databases/%d", instanceID),
+		Severity: models.AlertCritical, Title: title, Body: body,
+	})
+}
+
+func (a backupAlerter) BackupSetSucceeded(ws, instanceID uint) {
+	a.e.Emit(alerting.Signal{
+		WorkspaceID: ws, Kind: "backup_set_ok", Resolve: true,
+		SubjectRef: fmt.Sprintf("instance:%d", instanceID),
+	})
+}
+
+type backupReporter struct{ n *alerting.WorkspaceNotifier }
+
+func (r backupReporter) ScheduledBackupFinished(ws uint, rep backup.BackupReport) {
+	item := models.Notification{
+		Category:    models.CategoryDatabase,
+		SubjectLink: rep.Link,
+		ActionText:  "View backups",
+	}
+	what := "Backup"
+	if rep.Ref != "" {
+		what = "Recovery point"
+	}
+	switch {
+	case rep.OK && rep.Databases > 0:
+		item.Severity = models.AlertInfo
+		item.Title = fmt.Sprintf("%s completed — %s", what, rep.Subject)
+		item.Body = fmt.Sprintf("%s covered %s and stored %s.",
+			rep.Ref, pluralDatabases(rep.Databases), humanBytes(rep.SizeBytes))
+	case rep.OK:
+		item.Severity = models.AlertInfo
+		item.Title = fmt.Sprintf("%s completed — %s", what, rep.Subject)
+		item.Body = fmt.Sprintf("The scheduled backup stored %s.", humanBytes(rep.SizeBytes))
+	default:
+
+		item.Severity = models.AlertWarning
+		item.Title = fmt.Sprintf("%s failed — %s", what, rep.Subject)
+		item.Body = rep.Err
+		if rep.Ref != "" {
+			item.Body = rep.Ref + ": " + rep.Err
+		}
+	}
+	// Developer and up, matching who receives the backup_failed alert: a viewer cannot act on either.
+	if err := r.n.NotifyWorkspace(ws, models.WorkspaceRoleDeveloper, item); err != nil {
+		logger.Warn("could not report a scheduled backup to the workspace inbox", "workspace", ws, "error", err)
+	}
+}
+
+func pluralDatabases(n int) string {
+	if n == 1 {
+		return "1 database"
+	}
+	return fmt.Sprintf("%d databases", n)
+}
+
+// humanBytes renders a size for an inbox line. Deliberately coarse: the exact byte count belongs on
+// the backup row, not in a sentence.
+func humanBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	val, exp := float64(b), 0
+	for val >= unit && exp < 4 {
+		val /= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %sB", val, [...]string{"", "Ki", "Mi", "Gi", "Ti"}[exp])
+}
+
 // quotaScanner implements alerting.QuotaLister over plan quotas and per-workspace counts.
 type quotaScanner struct {
 	ws   *repositories.WorkspaceRepository
@@ -54,7 +141,6 @@ func (s quotaScanner) NearQuota(threshold float64) ([]alerting.QuotaBreach, erro
 		w := &workspaces[i]
 		lim := s.q.EffectiveLimits(w.ID)
 		add := func(resource string, used int64, max int) {
-			// max <= 0 is unlimited; only a real, finite limit can be "near".
 			if max > 0 && float64(used)/float64(max) >= threshold {
 				out = append(out, alerting.QuotaBreach{WorkspaceID: w.ID, Resource: resource, Used: int(used), Limit: max})
 			}

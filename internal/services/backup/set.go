@@ -37,10 +37,8 @@ const defaultSetConcurrency = 1
 
 // SetOptions tunes a set run.
 type SetOptions struct {
-	Trigger string // manual | scheduled
-	Comment string
-	// Concurrency caps how many databases are dumped at once. Zero uses
-	// defaultSetConcurrency.
+	Trigger     string // manual | scheduled
+	Comment     string
 	Concurrency int
 }
 
@@ -236,6 +234,19 @@ func (s *Service) finishSet(set *models.DatabaseBackupSet, inst *models.Database
 	}
 	s.emit(set.WorkspaceID, inst.ID, inst.Name, evt, sev, msg,
 		map[string]string{"set": set.Ref, "databases": fmt.Sprint(len(items))})
+
+	ok := set.Status == models.BackupCompleted
+	if s.alerter != nil {
+		if ok {
+			s.alerter.BackupSetSucceeded(set.WorkspaceID, inst.ID)
+		} else {
+			s.alerter.BackupSetFailed(set.WorkspaceID, inst.ID, inst.Name, set.Ref, set.Error)
+		}
+	}
+	s.report(set.WorkspaceID, set.Trigger, BackupReport{
+		Subject: inst.Name, Ref: set.Ref, Link: fmt.Sprintf("/databases/%d", inst.ID),
+		OK: ok, Databases: len(items), SizeBytes: set.SizeBytes, Err: set.Error,
+	})
 	return set
 }
 

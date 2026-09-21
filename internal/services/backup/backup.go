@@ -78,10 +78,46 @@ type NodeDocker interface {
 // BackupAlerter receives database-backup outcomes so the alert engine can raise a "backup failed" alert
 // and auto-resolve it on the next success. Kept as a local interface so the backup service stays
 // decoupled from the alerting package; the wiring bridges it to the engine.
+//
+// The set methods are deliberately separate rather than reusing the per-database pair with an
+// instance id in the database slot. That is what the code did for verification failures, and it gave
+// a set and a logical database that happen to share a numeric id the same dedup key — so a retried
+// database silently resolved a still-broken recovery point.
 type BackupAlerter interface {
 	BackupFailed(workspaceID, databaseID uint, dbName, errMsg string)
 	BackupSucceeded(workspaceID, databaseID uint)
+	BackupSetFailed(workspaceID, instanceID uint, instanceName, ref, errMsg string)
+	BackupSetSucceeded(workspaceID, instanceID uint)
 }
+
+// BackupReport is one finished scheduled run — a single database's, or a whole recovery point's.
+type BackupReport struct {
+	// Subject is the instance name for a set, the logical database's name otherwise.
+	Subject string
+	// Ref names the recovery point. Empty for a single-database backup.
+	Ref  string
+	Link string
+	OK   bool
+	// Databases is how many artifacts a set carries. Zero for a single-database backup.
+	Databases int
+	SizeBytes int64
+	Err       string
+}
+
+// BackupReporter posts a finished SCHEDULED run to the workspace inbox.
+//
+// Scheduled only, and that is the point: a 03:00 run has nobody watching it, which is the whole
+// reason its outcome has to go somewhere. A manual backup reports itself in the row the operator who
+// clicked it is already looking at, so notifying them as well would be noise.
+//
+// Distinct from BackupAlerter because the two carry different things. A failure is a condition that
+// stays open until a later run clears it; a completion is a fact with nothing to clear.
+type BackupReporter interface {
+	ScheduledBackupFinished(workspaceID uint, rep BackupReport)
+}
+
+// scheduledTrigger is the Trigger value the cron manager stamps on a run.
+const scheduledTrigger = "scheduled"
 
 // EventRecorder writes backup and restore outcomes to the owning instance's timeline. The
 // subject is the instance, not the logical database, so one timeline covers the whole
@@ -91,15 +127,16 @@ type EventRecorder interface {
 }
 
 type Service struct {
-	repo    *repositories.BackupRepository
-	dbs     *repositories.DatabaseRepository
-	clients NodeDocker
-	images  ImageResolver
-	ddl     DDLRunner
-	logs    *logstore.Store
-	alerter BackupAlerter
-	events  EventRecorder
-	sets    *repositories.DatabaseBackupSetRepository
+	repo     *repositories.BackupRepository
+	dbs      *repositories.DatabaseRepository
+	clients  NodeDocker
+	images   ImageResolver
+	ddl      DDLRunner
+	logs     *logstore.Store
+	alerter  BackupAlerter
+	reporter BackupReporter
+	events   EventRecorder
+	sets     *repositories.DatabaseBackupSetRepository
 }
 
 func NewService(repo *repositories.BackupRepository, dbs *repositories.DatabaseRepository, clients NodeDocker) *Service {
@@ -127,6 +164,18 @@ func (s *Service) SetLogStore(store *logstore.Store) { s.logs = store }
 
 // SetAlerter wires backup-outcome alerting (optional; nil = no alerts).
 func (s *Service) SetAlerter(a BackupAlerter) { s.alerter = a }
+
+// SetReporter wires scheduled-run inbox reporting (optional; nil = no inbox items).
+func (s *Service) SetReporter(r BackupReporter) { s.reporter = r }
+
+// report posts a finished scheduled run to the workspace inbox. Best-effort and trigger-gated in
+// one place, so no call site has to remember which runs are worth reporting.
+func (s *Service) report(workspaceID uint, trigger string, rep BackupReport) {
+	if s.reporter == nil || trigger != scheduledTrigger {
+		return
+	}
+	s.reporter.ScheduledBackupFinished(workspaceID, rep)
+}
 
 // externalizeLog moves a terminal backup's full output into the shared log store and trims the row to a
 // bounded tail + a reference. No-op when the store is disabled or already externalized; on any error the
@@ -324,6 +373,14 @@ func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *mo
 	s.externalizeLog(b)
 	if s.alerter != nil {
 		s.alerter.BackupSucceeded(b.WorkspaceID, b.DatabaseID)
+	}
+	// A set member reports nothing: the set posts one item covering every database it took, so
+	// reporting here as well would put N+1 notices in the inbox for one recovery point.
+	if opts.SetID == nil {
+		s.report(b.WorkspaceID, opts.Trigger, BackupReport{
+			Subject: db.Name, Link: fmt.Sprintf("/databases/%d", inst.ID),
+			OK: true, SizeBytes: b.SizeBytes,
+		})
 	}
 	s.emit(b.WorkspaceID, inst.ID, inst.Name, models.EventDatabaseBackupSucceeded, models.SeverityInfo,
 		fmt.Sprintf("Backup #%d of %q completed", b.Number, db.Name),
@@ -776,6 +833,12 @@ func (s *Service) fail(b *models.Backup, cause error) *models.Backup {
 		if inst, err := s.dbs.FindByID(instanceID); err == nil && inst != nil {
 			instanceName = inst.Name
 		}
+	}
+	if b.SetID == nil {
+		s.report(b.WorkspaceID, b.Trigger, BackupReport{
+			Subject: name, Link: fmt.Sprintf("/databases/%d", instanceID),
+			OK: false, Err: cause.Error(),
+		})
 	}
 	s.emit(b.WorkspaceID, instanceID, instanceName, models.EventDatabaseBackupFailed, models.SeverityError,
 		fmt.Sprintf("Backup #%d of %q failed: %s", b.Number, name, cause.Error()),
