@@ -53,7 +53,7 @@ const (
 	FlagAnnouncements                = "announcements" // platform-wide announcements to user inboxes
 	FlagDatabaseSizes                = "database_sizes"
 	FlagStorageClasses               = "storage_classes" // admin-registered storage classes (bare-metal disks)
-	FlagRecoveryPoints               = "recovery_points" // instance-wide database recovery points
+	FlagRecoveryPoints               = "recovery_points" // recovery points over a database instance or a volume
 	FlagOrganizations                = "organizations"   // more than one organization (tenant realm)
 )
 
@@ -93,7 +93,7 @@ var AllFlags = []FlagInfo{
 	{FlagAnnouncements, "platform announcements broadcast to user inboxes"},
 	{FlagDatabaseSizes, "named database sizes (CPU and memory), offered per plan"},
 	{FlagStorageClasses, "register storage classes: volumes on operator-managed disks"},
-	{FlagRecoveryPoints, "database recovery points: back up and schedule a whole instance as one set"},
+	{FlagRecoveryPoints, "recovery points: back up, schedule and verify a database instance or a volume as one sealed set"},
 	{FlagOrganizations, "organizations: tenant realms owning workspaces, with their own limits and clusters"},
 }
 
