@@ -186,6 +186,10 @@ async function remove() {
               <span class="detail-k">Plans</span>
               <span>{{ view?.plan_usage.used ?? 0 }} / {{ fmtLimit(view?.plan_usage.limit ?? -1) }}</span>
             </div>
+            <div class="detail">
+              <span class="detail-k">Storage classes</span>
+              <span>{{ view?.storage_class_usage.used ?? 0 }} / {{ fmtLimit(view?.storage_class_usage.limit ?? -1) }}</span>
+            </div>
           </div>
         </div>
       </div>

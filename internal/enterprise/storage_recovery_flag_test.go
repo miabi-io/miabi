@@ -41,3 +41,37 @@ func TestPaidTiersLiftTheCommunityNodeCap(t *testing.T) {
 		}
 	}
 }
+
+// Community may hold CommunityStorageClassLimit classes, the seeded built-in one included, and the
+// storage_classes entitlement lifts the cap outright rather than raising it by a number.
+func TestStorageClassLimitResolution(t *testing.T) {
+	cases := []struct {
+		name string
+		ent  Entitlements
+		want int
+	}{
+		{"community keeps the built-in class plus one", Entitlements{Edition: EditionCommunity}, CommunityStorageClassLimit},
+		{"empty edition treated as community", Entitlements{}, CommunityStorageClassLimit},
+		{"the entitlement lifts the cap",
+			Entitlements{Edition: EditionEnterprise, Flags: map[string]bool{FlagStorageClasses: true}}, -1},
+		{"a paid edition without the flag is still unlimited by count",
+			Entitlements{Edition: EditionEnterprise}, -1},
+		{"community with the flag (tiered license on a CE label)",
+			Entitlements{Edition: EditionCommunity, Flags: map[string]bool{FlagStorageClasses: true}}, -1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.ent.StorageClassLimit(); got != tc.want {
+				t.Errorf("StorageClassLimit() = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+// The Community cap must leave room for a disk of the operator's own beside the seeded class,
+// otherwise registering one is impossible and the feature reads as absent.
+func TestCommunityStorageClassCapLeavesRoomForOneDisk(t *testing.T) {
+	if CommunityStorageClassLimit < 2 {
+		t.Errorf("CommunityStorageClassLimit = %d, leaves no room beside the built-in class", CommunityStorageClassLimit)
+	}
+}

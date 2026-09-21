@@ -3,15 +3,17 @@ import { computed, onMounted, ref } from 'vue'
 import { adminApi } from '@/api/admin'
 import { nodesApi } from '@/api/nodes'
 import type { Server, StorageClass, StorageClassInput } from '@/api/types'
+import { apiError as decodeApiError } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
-import { useEntitlement } from '@/composables/useEntitlement'
+import { useLicenseStore } from '@/stores/license'
 import { fmtSize } from '@/utils/format'
 import AppModal from '@/components/AppModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const notify = useNotificationStore()
-// Registering a disk is Enterprise; the built-in class stays usable without a license.
-const entitlement = useEntitlement('storage_classes')
+// Every edition may register disks, up to an edition cap on the catalog that counts the built-in
+// class. Enterprise lifts the cap.
+const license = useLicenseStore()
 
 const classes = ref<StorageClass[]>([])
 const nodes = ref<Server[]>([])
@@ -41,7 +43,21 @@ async function load() {
     loading.value = false
   }
 }
-onMounted(load)
+onMounted(() => {
+  void load()
+  // Idempotent; drives the class-cap gate.
+  void license.load()
+})
+
+const usage = computed(() => license.view?.storage_class_usage)
+const limited = computed(() => (usage.value?.limit ?? -1) >= 0)
+const atCap = computed(() => {
+  const u = usage.value
+  return !!u && u.limit >= 0 && u.used >= u.limit
+})
+const capTitle = computed(() =>
+  atCap.value ? `Your edition allows ${usage.value?.limit} storage classes — upgrade your license to add more disks` : '',
+)
 
 function usedPercent(c: StorageClass): number | null {
   if (!c.capacity_bytes || c.available_bytes === undefined) return null
@@ -77,7 +93,16 @@ async function save() {
     showModal.value = false
     await load()
   } catch (e) {
-    notify.apiError(e)
+    if (decodeApiError(e).code === 'STORAGE_CLASS_LIMIT_REACHED') {
+      // The count is read from the license view, so refresh it: the cap was hit with a
+      // stale one.
+      void license.load(true)
+      notify.error(`Your edition allows ${usage.value?.limit ?? 2} storage classes, the built-in one included.`, {
+        title: 'Storage class limit reached',
+      })
+    } else {
+      notify.apiError(e)
+    }
   } finally {
     saving.value = false
   }
@@ -112,21 +137,28 @@ const reclaimHint = computed(() =>
           Where on a node the platform creates volumes. Workspaces choose a class by name — they never see or supply a host path.
         </p>
       </div>
-      <button v-if="entitlement.has.value" class="btn btn-primary" :disabled="!entitlement.mutable.value" @click="openCreate">
-        <span class="mdi mdi-plus"></span> New storage class
-      </button>
-      <span v-else class="badge badge-muted"><span class="mdi mdi-lock-outline"></span> Enterprise</span>
+      <div class="header-actions">
+        <span
+          v-if="limited"
+          class="class-usage"
+          :class="{ 'class-usage--full': atCap }"
+          :title="atCap ? capTitle : 'Storage classes used of your edition limit, the built-in one included'"
+        >
+          <span class="mdi mdi-harddisk"></span> {{ usage?.used ?? 0 }} / {{ usage?.limit }} classes
+        </span>
+        <button class="btn btn-primary" :disabled="atCap" :title="capTitle" @click="openCreate">
+          <span class="mdi mdi-plus"></span> New storage class
+        </button>
+      </div>
     </div>
 
-    <div v-if="!entitlement.has.value" class="card" style="margin-bottom: 16px">
-      <div class="card-body">
-        <h3 style="margin: 0 0 4px">Bring your own disks with Enterprise</h3>
-        <p class="text-muted" style="margin: 0">
-          Registering storage classes — volumes on operator-managed disks, the way bare-metal and dedicated hosts are used —
-          needs an Enterprise license. The built-in default class keeps working in every edition, and volumes already on a
-          registered class keep running.
-        </p>
-      </div>
+    <div v-if="atCap" class="cap-note">
+      <span class="mdi mdi-lock-outline"></span>
+      <span>
+        Your edition includes <strong>{{ usage?.limit }}</strong> storage classes, the built-in one included. Enterprise
+        lifts the cap; classes already registered keep working either way.
+      </span>
+      <router-link to="/admin/license" class="cap-link">Manage license</router-link>
     </div>
 
     <div class="card">
@@ -163,7 +195,7 @@ const reclaimHint = computed(() =>
               </td>
               <td>{{ c.builtin ? '—' : c.reclaim_policy }}</td>
               <td style="text-align: right; white-space: nowrap">
-                <button class="btn btn-ghost btn-sm" :disabled="!entitlement.mutable.value" @click="openEdit(c)">Edit</button>
+                <button class="btn btn-ghost btn-sm" @click="openEdit(c)">Edit</button>
                 <button class="btn btn-ghost btn-sm" :disabled="c.builtin" @click="confirmTarget = c">Delete</button>
               </td>
             </tr>
@@ -257,3 +289,22 @@ const reclaimHint = computed(() =>
     />
   </div>
 </template>
+
+<style scoped>
+.header-actions { display: flex; align-items: center; gap: 10px; }
+.class-usage {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--surface-2, rgba(127, 127, 127, 0.1));
+}
+.class-usage--full { color: var(--warning, #b7791f); background: var(--warning-bg, rgba(183, 121, 31, 0.12)); }
+.cap-note { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding: 10px 14px; border-radius: 8px; font-size: 13px; background: var(--warning-bg, rgba(245, 158, 11, 0.1)); color: var(--warning, #b45309); }
+.cap-note .mdi { font-size: 16px; }
+.cap-link { margin-left: auto; font-weight: 600; white-space: nowrap; color: inherit; text-decoration: none; }
+</style>

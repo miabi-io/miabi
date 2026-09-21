@@ -83,6 +83,14 @@ func (r *StorageClassRepository) ExistsByName(name string) (bool, error) {
 	return count > 0, err
 }
 
+// Count reports how many classes exist, built-in included: an edition cap bounds the
+// whole catalog, not just the registered part of it.
+func (r *StorageClassRepository) Count() (int64, error) {
+	var count int64
+	err := r.db.Model(&models.StorageClass{}).Count(&count).Error
+	return count, err
+}
+
 // CountVolumes reports how many volumes reference a class, so Delete can refuse one still in use.
 func (r *StorageClassRepository) CountVolumes(name string) (int64, error) {
 	var count int64

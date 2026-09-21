@@ -194,6 +194,10 @@ const CommunityPlanLimit = 3
 const CommunityNodeLimit = 3
 const CommunityRunnerLimit = 2
 
+// CommunityStorageClassLimit counts the seeded built-in class, so Community can
+// register one disk of its own.
+const CommunityStorageClassLimit = 2
+
 // Entitlements is the resolved, point-in-time view of the installed license.
 // State is one of "valid" | "grace" | "degraded" | "none" (community).
 type Entitlements struct {
@@ -231,6 +235,20 @@ func (e Entitlements) PlanLimit() int {
 	}
 	if e.Edition == "" || e.Edition == EditionCommunity {
 		return CommunityPlanLimit
+	}
+	return -1
+}
+
+// StorageClassLimit bounds how many classes may exist, counting the built-in one. It is
+// the whole of the Community limit — shared classes are not gated separately, because a
+// Community fleet is already node-capped. The storage_classes entitlement lifts the cap;
+// there is no license limit key for it, so a paid edition is always unlimited.
+func (e Entitlements) StorageClassLimit() int {
+	if e.Flags[FlagStorageClasses] {
+		return -1
+	}
+	if e.Edition == "" || e.Edition == EditionCommunity {
+		return CommunityStorageClassLimit
 	}
 	return -1
 }
@@ -387,6 +405,7 @@ var (
 	ErrCommunityEdition       = &gateError{code: "COMMUNITY_EDITION", msg: "license management requires the Enterprise build", status: 402}
 	ErrPlanLimitReached       = &gateError{code: "PLAN_LIMIT_REACHED", msg: "the plan-catalog limit for your edition has been reached; upgrade your license to add more plans", status: 402}
 	ErrRunnerLimitReached     = &gateError{code: "RUNNER_LIMIT_REACHED", msg: "the platform-shared runner limit for your edition has been reached; upgrade your license to add more", status: 402}
+	ErrStorageClassLimit      = &gateError{code: "STORAGE_CLASS_LIMIT_REACHED", msg: "the storage-class limit for your edition has been reached; upgrade your license to add more disks", status: 402}
 	ErrLicenseBindingMismatch = &gateError{code: "LICENSE_BINDING_MISMATCH", msg: "this license is bound to a different deployment (Install ID or URL)", status: 402}
 )
 
