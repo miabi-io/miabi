@@ -736,14 +736,10 @@
     "youNeedOwnerOrAdmin": "You need owner or admin access to view this workspace's audit log."
   },
   "auth": {
-    "chooseLanguage": "Choose a language",
-    "darkMode": "Dark mode",
+    "displayOptions": "Display options",
     "hidePassword": "Hide password",
     "language": "Language",
-    "lightMode": "Light mode",
-    "showPassword": "Show password",
-    "switchToDark": "Switch to dark mode",
-    "switchToLight": "Switch to light mode"
+    "showPassword": "Show password"
   },
   "authHero": {
     "builtInContainerRegistry": "Built-in Container Registry",

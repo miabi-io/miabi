@@ -1,16 +1,9 @@
 <script setup lang="ts">
 import AuthHero from './AuthHero.vue'
-import AuthLanguagePicker from '@/components/AuthLanguagePicker.vue'
+import AuthOptionsMenu from '@/components/AuthOptionsMenu.vue'
 import AuthFooter from '@/components/AuthFooter.vue'
 
-// Single-card chrome shared by the secondary auth pages. The form and a footer
-// link come from slots; the alert and success notice are props so their styling
-// lives in one place.
-//
-// `hero` opts into Login's two-column layout with the marketing panel. It is
-// opt-in rather than the default because most pages here are arrived at from a
-// link in an email — a reset, a CLI authorisation — where a marketing panel is
-// noise. Sign-up is the exception: it is a front door, like signing in.
+
 withDefaults(
   defineProps<{
     title: string
@@ -65,7 +58,7 @@ withDefaults(
       <AuthFooter />
     </div>
     </div>
-    <AuthLanguagePicker />
+    <AuthOptionsMenu />
   </div>
 </template>
 
