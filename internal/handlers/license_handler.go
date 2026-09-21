@@ -25,14 +25,15 @@ type LicenseHandler struct {
 	nodeCount         func() int64
 	planCount         func() int64
 	storageClassCount func() int64
+	sharedRunnerCount func() int64
 	installID         string // this deployment's stable Install ID ("Your Install ID")
 	audit             *audit.Logger
 }
 
-func NewLicenseHandler(ee enterprise.EE, nodeCount, planCount, storageClassCount func() int64, installID string, auditLog *audit.Logger) *LicenseHandler {
+func NewLicenseHandler(ee enterprise.EE, nodeCount, planCount, storageClassCount, sharedRunnerCount func() int64, installID string, auditLog *audit.Logger) *LicenseHandler {
 	return &LicenseHandler{
 		ee: ee, nodeCount: nodeCount, planCount: planCount, storageClassCount: storageClassCount,
-		installID: installID, audit: auditLog,
+		sharedRunnerCount: sharedRunnerCount, installID: installID, audit: auditLog,
 	}
 }
 
@@ -55,6 +56,13 @@ type StorageClassUsage struct {
 	Limit int   `json:"limit"`
 }
 
+// SharedRunnerUsage reports the platform-shared runner pool against the edition cap
+// (-1 = unlimited). Workspace-owned runners are bounded by the workspace plan, not here.
+type SharedRunnerUsage struct {
+	Used  int64 `json:"used"`
+	Limit int   `json:"limit"`
+}
+
 // LicenseView is the API representation of the current license: the resolved
 // entitlements plus node/plan usage, this instance's Install ID, and any operator
 // warnings.
@@ -67,6 +75,7 @@ type LicenseView struct {
 	NodeUsage         NodeUsage         `json:"node_usage"`
 	PlanUsage         PlanUsage         `json:"plan_usage"`
 	StorageClassUsage StorageClassUsage `json:"storage_class_usage"`
+	SharedRunnerUsage SharedRunnerUsage `json:"shared_runner_usage"`
 	Warnings          []string          `json:"warnings"`
 }
 
@@ -90,12 +99,17 @@ func (h *LicenseHandler) view() LicenseView {
 	if h.storageClassCount != nil {
 		classes = h.storageClassCount()
 	}
+	runners := int64(0)
+	if h.sharedRunnerCount != nil {
+		runners = h.sharedRunnerCount()
+	}
 	return LicenseView{
 		Entitlements:      ent,
 		InstanceInstallID: h.installID,
 		NodeUsage:         NodeUsage{Used: used, Limit: ent.NodeLimit()},
 		PlanUsage:         PlanUsage{Used: plans, Limit: ent.PlanLimit()},
 		StorageClassUsage: StorageClassUsage{Used: classes, Limit: ent.StorageClassLimit()},
+		SharedRunnerUsage: SharedRunnerUsage{Used: runners, Limit: ent.SharedRunnerLimit()},
 		Warnings:          warnings(ent, used),
 	}
 }

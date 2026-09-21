@@ -74,6 +74,13 @@ func (r *RunnerRepository) ListShared() ([]models.Runner, error) {
 	return out, err
 }
 
+// CountShared reports the size of the platform-shared pool, for the edition cap.
+func (r *RunnerRepository) CountShared() (int64, error) {
+	var count int64
+	err := r.db.Model(&models.Runner{}).Where("workspace_id IS NULL").Count(&count).Error
+	return count, err
+}
+
 // ListAll returns every runner across all scopes — the alert scanner's view,
 // which has to reason about reachability platform-wide rather than per workspace.
 func (r *RunnerRepository) ListAll() ([]models.Runner, error) {

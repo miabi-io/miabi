@@ -239,6 +239,16 @@ func (e Entitlements) PlanLimit() int {
 	return -1
 }
 
+func (e Entitlements) SharedRunnerLimit() int {
+	if e.Flags[FlagPlatformRunners] {
+		return -1
+	}
+	if e.Edition == "" || e.Edition == EditionCommunity {
+		return CommunityRunnerLimit
+	}
+	return -1
+}
+
 // StorageClassLimit bounds how many classes may exist, counting the built-in one. It is
 // the whole of the Community limit — shared classes are not gated separately, because a
 // Community fleet is already node-capped. The storage_classes entitlement lifts the cap;

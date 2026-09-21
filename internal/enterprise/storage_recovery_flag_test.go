@@ -75,3 +75,25 @@ func TestCommunityStorageClassCapLeavesRoomForOneDisk(t *testing.T) {
 		t.Errorf("CommunityStorageClassLimit = %d, leaves no room beside the built-in class", CommunityStorageClassLimit)
 	}
 }
+
+func TestSharedRunnerLimitResolution(t *testing.T) {
+	cases := []struct {
+		name string
+		ent  Entitlements
+		want int
+	}{
+		{"community", Entitlements{Edition: EditionCommunity}, CommunityRunnerLimit},
+		{"empty edition treated as community", Entitlements{}, CommunityRunnerLimit},
+		{"the entitlement lifts the cap",
+			Entitlements{Edition: EditionEnterprise, Flags: map[string]bool{FlagPlatformRunners: true}}, -1},
+		{"a paid edition without the flag is still unlimited by count",
+			Entitlements{Edition: EditionEnterprise}, -1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.ent.SharedRunnerLimit(); got != tc.want {
+				t.Errorf("SharedRunnerLimit() = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
