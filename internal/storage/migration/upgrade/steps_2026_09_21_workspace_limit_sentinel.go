@@ -20,10 +20,7 @@ var workspaceLimitSentinelKeys = []string{"max_workspaces_per_user", "max_worksp
 // Without this an install that had deliberately set 0 to lift the cap would wake up with the cap set
 // to "no workspaces at all" — the exact opposite of what its operator asked for.
 func workspaceLimitSentinelStep(ctx context.Context, db *gorm.DB) error {
-	// Matched as strings, never CAST: Postgres raises "invalid input syntax for type integer" on a
-	// non-numeric value, and until this release nothing validated what was stored — a step that
-	// errors here would block the boot it was meant to upgrade. A value that is neither a count nor
-	// a sentinel is left alone; the provider already falls back to the default for it.
+
 	err := db.WithContext(ctx).
 		Exec(`UPDATE settings SET value = '-1'
 		      WHERE key IN ? AND value <> '-1' AND (trim(value) = '0' OR trim(value) LIKE '-%')`,
