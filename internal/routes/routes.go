@@ -1249,7 +1249,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			capability:          handlers.NewCapabilityHandler(cfg.ContainerGrantsEnabled, appRepo, workspaceRepo),
 			register:            handlers.NewRegisterHandler(registrationService, authService, userRepo, platformMailer, auditLogger),
 			update:              handlers.NewUpdateHandler(updateService),
-			adminPlan:           handlers.NewPlanHandler(planRepo, quotaOverrideRepo, workspaceRepo, databaseSizeRepo, ee, auditLogger),
+			adminPlan:           handlers.NewPlanHandler(planRepo, quotaOverrideRepo, workspaceRepo, databaseSizeRepo, repositories.NewRunnerRepository(db), ee, auditLogger),
 			deploymentCfg:       handlers.NewDeploymentConfigHandler(imageResolver, settingRepo, settingsProvider, auditLogger, ee),
 			adminJob:            handlers.NewAdminJobHandler(cronManager),
 			adminControlManager: handlers.NewAdminControlManagerHandler(controlManager),

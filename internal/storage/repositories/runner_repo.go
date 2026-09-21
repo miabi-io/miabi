@@ -4,6 +4,8 @@
 package repositories
 
 import (
+	"slices"
+
 	"github.com/miabi-io/miabi/internal/models"
 	"gorm.io/gorm"
 )
@@ -72,6 +74,33 @@ func (r *RunnerRepository) ListShared() ([]models.Runner, error) {
 	var out []models.Runner
 	err := r.db.Where("workspace_id IS NULL").Order("id DESC").Find(&out).Error
 	return out, err
+}
+
+// FindSharedByName looks a platform-shared runner up by its slug. Plans bind runners by name
+// because the name is the stable handle an operator quotes and it survives a re-register.
+func (r *RunnerRepository) FindSharedByName(name string) (*models.Runner, error) {
+	var m models.Runner
+	if err := r.db.Where("workspace_id IS NULL AND name = ?", name).First(&m).Error; err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+// BoundBy returns the plans that offer the named shared runner, so removing one still bound to a
+// plan can be refused instead of silently narrowing that plan to nothing. The lists are JSON
+// columns, so membership is matched here rather than in SQL.
+func (r *RunnerRepository) BoundBy(name string) ([]models.Plan, error) {
+	var plans []models.Plan
+	if err := r.db.Find(&plans).Error; err != nil {
+		return nil, err
+	}
+	var out []models.Plan
+	for _, p := range plans {
+		if slices.Contains(p.PlatformRunners, name) {
+			out = append(out, p)
+		}
+	}
+	return out, nil
 }
 
 // CountShared reports the size of the platform-shared pool, for the edition cap.

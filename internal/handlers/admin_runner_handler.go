@@ -4,11 +4,14 @@
 package handlers
 
 import (
+	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/enterprise"
 	"github.com/miabi-io/miabi/internal/middlewares"
+	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/runner"
 )
@@ -113,11 +116,26 @@ func (h *AdminRunnerHandler) RegenerateToken(c *okapi.Context) error {
 
 // Delete removes a shared runner.
 func (h *AdminRunnerHandler) Delete(c *okapi.Context) error {
+	if plans, err := h.svc.BoundBy(h.id(c)); err == nil && len(plans) > 0 {
+		return c.AbortWithError(409, fmt.Errorf("the runner is offered by %s; remove it there first", boundByText(plans)))
+	}
 	if err := h.svc.DeleteShared(h.id(c)); err != nil {
 		return h.base.mapErr(c, err)
 	}
 	h.record(c, "runner.delete", h.id(c))
 	return message(c, "runner deleted")
+}
+
+// boundByText names the plans blocking a delete, so the operator knows where to look.
+func boundByText(plans []models.Plan) string {
+	names := make([]string, 0, len(plans))
+	for _, p := range plans {
+		names = append(names, strconv.Quote(p.Name))
+	}
+	if len(names) == 1 {
+		return "plan " + names[0]
+	}
+	return "plans " + strings.Join(names, ", ")
 }
 
 func (h *AdminRunnerHandler) id(c *okapi.Context) uint {

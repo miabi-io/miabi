@@ -97,3 +97,20 @@ func TestSharedRunnerLimitResolution(t *testing.T) {
 		})
 	}
 }
+
+// A plan may narrow which platform runners it offers, so the flag that gates the pool must be
+// grantable and must reach the tiers that sell it.
+func TestPlatformRunnersEntitlement(t *testing.T) {
+	if !IsKnownFlag(FlagPlatformRunners) {
+		t.Fatalf("%s is missing from AllFlags, so no license can grant it", FlagPlatformRunners)
+	}
+	for _, tier := range []string{TierBusiness, TierEnterprise} {
+		p, ok := TierByName(tier)
+		if !ok {
+			t.Fatalf("tier %q is not defined", tier)
+		}
+		if !slices.Contains(p.Flags, FlagPlatformRunners) {
+			t.Errorf("tier %q does not grant %s", tier, FlagPlatformRunners)
+		}
+	}
+}
