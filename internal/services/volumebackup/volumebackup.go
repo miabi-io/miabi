@@ -8,9 +8,14 @@ package volumebackup
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"path"
 	"regexp"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/jkaninda/logger"
@@ -19,6 +24,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/backup"
 	"github.com/miabi-io/miabi/internal/services/platformimage"
+	"github.com/miabi-io/miabi/internal/storage/blob"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
@@ -28,8 +34,10 @@ var (
 	// ErrNoArchive is returned when restoring a backup that has no archive.
 	ErrNoArchive = errors.New("volume backup has no archive to restore")
 
-	// volume-bkup names archives like <name>_YYYYMMDD_HHMMSS.tar.gz.
-	archiveRe = regexp.MustCompile(`[\w.\-]+\.tar\.gz`)
+	// volume-bkup names archives "<name>_YYYYMMDD_HHMMSS.tar.gz", plus ".gpg" when a passphrase is
+	// supplied. The encrypted form has to match: without it the plain prefix matches instead and the
+	// row names an object that was never written.
+	archiveRe = regexp.MustCompile(`[\w.\-]+\.tar\.gz(?:\.gpg)?`)
 )
 
 const (
@@ -68,10 +76,16 @@ type Service struct {
 	s3       S3Provider
 	enqueuer Enqueuer
 	logs     *logstore.Store
+	// networks the helper is attached to so it can reach the object store from inside Docker.
+	network         string
+	internalNetwork string
 }
 
-func NewService(repo *repositories.VolumeBackupRepository, volumes *repositories.VolumeRepository, clients NodeDocker) *Service {
-	return &Service{repo: repo, volumes: volumes, clients: clients}
+// NewService builds the volume backup service. network is the shared proxy network: it is a
+// constructor argument, not a setter, because the helper uploads for itself and an install whose
+// object store is only reachable inside Docker fails without it — a new call site must decide.
+func NewService(repo *repositories.VolumeBackupRepository, volumes *repositories.VolumeRepository, clients NodeDocker, network string) *Service {
+	return &Service{repo: repo, volumes: volumes, clients: clients, network: network}
 }
 
 // SetImageResolver wires the deployment-config resolver for the volume-bkup image.
@@ -106,6 +120,10 @@ func (s *Service) externalizeLog(b *models.VolumeBackup) {
 // SetS3Provider wires the workspace S3 settings provider.
 func (s *Service) SetS3Provider(p S3Provider) { s.s3 = p }
 
+// SetInternalNetwork names the platform's private network, where a self-hosted object store lives on
+// a split install. The helper is attached to it as well as the proxy network.
+func (s *Service) SetInternalNetwork(name string) { s.internalNetwork = name }
+
 // SetEnqueuer wires the background worker producer. When unset, Create runs the
 // backup synchronously (used in tests / no-redis setups).
 func (s *Service) SetEnqueuer(e Enqueuer) { s.enqueuer = e }
@@ -132,11 +150,108 @@ func (s *Service) Configured(workspaceID uint) bool {
 	return err == nil && cfg != nil
 }
 
-// Delete removes a volume backup record. The S3 archive object is left in place
-// (mirrors database backup deletion — Miabi has no S3 client and volume-bkup
-// has no delete command); reclaim S3 storage with a bucket lifecycle rule.
-func (s *Service) Delete(b *models.VolumeBackup) error {
+// Delete removes a volume backup: the archive object first, then the record. That order leaves no
+// object a retry cannot reach, since the row is what names it. An object that is already gone counts
+// as deleted; any other failure is logged and the row is removed anyway, because a backup whose
+// bucket credentials have since been rotated must not become undeletable.
+func (s *Service) Delete(ctx context.Context, b *models.VolumeBackup) error {
+	s.deleteArchive(ctx, b)
 	return s.repo.Delete(b.ID)
+}
+
+func (s *Service) deleteArchive(ctx context.Context, b *models.VolumeBackup) {
+	if b.Filename == "" {
+		return
+	}
+	store, err := s.store(b.WorkspaceID)
+	if err != nil {
+		logger.Error("volume backup: open object store to delete archive", "volume_backup", b.ID, "error", err)
+		return
+	}
+	key := archiveKey(b.S3Path, b.Filename)
+	if err := store.Delete(ctx, key); err != nil && !errors.Is(err, blob.ErrNotFound) {
+		logger.Error("volume backup: delete archive object", "object", key, "error", err)
+	}
+}
+
+// store opens the workspace's object store for direct bucket work — sizing and deleting archives,
+// which volume-bkup itself cannot do (it has no list or delete command).
+func (s *Service) store(workspaceID uint) (*blob.Store, error) {
+	cfg, _, err := s.target(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	return blob.New(blob.Config{
+		Endpoint:       cfg.Endpoint,
+		Bucket:         cfg.Bucket,
+		Region:         cfg.Region,
+		AccessKey:      cfg.AccessKey,
+		SecretKey:      cfg.SecretKey,
+		UseSSL:         cfg.UseSSL,
+		ForcePathStyle: cfg.ForcePathStyle,
+	})
+}
+
+// archiveKey is the object key an archive was uploaded under: the remote prefix the run used, plus
+// the name the helper reported.
+func archiveKey(prefix, filename string) string {
+	prefix = strings.Trim(strings.TrimSpace(prefix), "/")
+	if prefix == "" {
+		return filename
+	}
+	return path.Join(prefix, filename)
+}
+
+// recordSize looks the uploaded archive up in the bucket and records its size. The bucket is the
+// authority — the helper's output does not report a size — and finding the object also confirms the
+// row names something that exists. A lookup failure never fails a backup that succeeded.
+func (s *Service) recordSize(ctx context.Context, b *models.VolumeBackup) {
+	store, err := s.store(b.WorkspaceID)
+	if err != nil {
+		logger.Warn("volume backup: open object store to size archive", "volume_backup", b.ID, "error", err)
+		return
+	}
+	key := archiveKey(b.S3Path, b.Filename)
+	objs, err := store.List(ctx, key)
+	if err != nil {
+		logger.Warn("volume backup: size archive", "object", key, "error", err)
+		return
+	}
+	for _, o := range objs {
+		if o.Key == key {
+			b.SizeBytes = o.Size
+			return
+		}
+	}
+	logger.Warn("volume backup: the archive is not in the bucket", "object", key, "volume_backup", b.ID)
+}
+
+// oneShotName builds a unique container name for a helper run. The random suffix is what keeps a
+// retry from colliding with the container its predecessor left behind; a timestamp is not enough,
+// since two runs in the same clock tick would produce the same name and Docker refuses the second.
+func oneShotName(prefix string, id uint) string {
+	buf := make([]byte, 4)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Sprintf("%s-%d-%d", prefix, id, time.Now().UnixNano())
+	}
+	return fmt.Sprintf("%s-%d-%s", prefix, id, hex.EncodeToString(buf))
+}
+
+// helperNetworks attaches the archive helper to the networks the object store may live on. The proxy
+// network comes first: Docker picks the default route from the first attachment, and the archive
+// still has to reach an S3 endpoint that is off-box.
+func (s *Service) helperNetworks(ctx context.Context, dc docker.Client) ([]string, error) {
+	var out []string
+	for _, name := range []string{s.network, s.internalNetwork} {
+		if name == "" || slices.Contains(out, name) {
+			continue
+		}
+		if _, err := dc.EnsureNetwork(ctx, name); err != nil {
+			return nil, fmt.Errorf("attach the volume backup container to network %q (it reaches the object store there): %w", name, err)
+		}
+		out = append(out, name)
+	}
+	return out, nil
 }
 
 // Create records a pending volume backup and enqueues it for the background
@@ -203,12 +318,21 @@ func (s *Service) RunBackup(ctx context.Context, backupID uint) error {
 		s.fail(b, fmt.Errorf("pull image: %w", err))
 		return nil
 	}
+	nets, err := s.helperNetworks(ctx, dc)
+	if err != nil {
+		s.fail(b, err)
+		return nil
+	}
 	exit, out, err := dc.RunOneShot(ctx, docker.RunSpec{
-		Name:   fmt.Sprintf("mb-volbkup-%d", b.ID),
-		Image:  image,
-		Env:    backup.S3Env(cfg),
-		Cmd:    []string{"backup", "--storage", "s3", "--remote-path", b.S3Path, "--name", vol.Name},
-		Mounts: map[string]string{vol.DockerName: volumeMount},
+		Name:  oneShotName("mb-volbkup", b.ID),
+		Image: image,
+		Env:   backup.S3Env(cfg),
+		Cmd:   []string{"backup", "--storage", "s3", "--remote-path", b.S3Path, "--name", vol.Name},
+		// Read-only: the archiver reads the volume and uploads it, and must not be able to write to
+		// the data it is protecting.
+		Mounts:         map[string]string{vol.DockerName: volumeMount},
+		ReadOnlyMounts: []string{vol.DockerName},
+		Networks:       nets,
 		Labels: map[string]string{
 			docker.LabelWorkspace: fmt.Sprintf("%d", vol.WorkspaceID),
 			docker.LabelVolume:    fmt.Sprintf("%d", vol.ID),
@@ -224,7 +348,13 @@ func (s *Service) RunBackup(ctx context.Context, backupID uint) error {
 		return nil
 	}
 
-	b.Filename = archiveRe.FindString(out)
+	name, _, err := backup.ArtifactName(out, archiveRe)
+	if err != nil {
+		s.fail(b, err)
+		return nil
+	}
+	b.Filename = name
+	s.recordSize(ctx, b)
 	fin := time.Now()
 	b.Status = models.BackupCompleted
 	b.FinishedAt = &fin
@@ -254,12 +384,17 @@ func (s *Service) Restore(ctx context.Context, vol *models.Volume, b *models.Vol
 	if err := dc.PullImage(ctx, image, nil); err != nil {
 		return fmt.Errorf("pull image: %w", err)
 	}
+	nets, err := s.helperNetworks(ctx, dc)
+	if err != nil {
+		return err
+	}
 	exit, out, err := dc.RunOneShot(ctx, docker.RunSpec{
-		Name:   fmt.Sprintf("mb-volrestore-%d", b.ID),
-		Image:  image,
-		Env:    backup.S3Env(cfg),
-		Cmd:    []string{"restore", "--storage", "s3", "--remote-path", b.S3Path, "--file", b.Filename},
-		Mounts: map[string]string{vol.DockerName: volumeMount},
+		Name:     oneShotName("mb-volrestore", b.ID),
+		Image:    image,
+		Env:      backup.S3Env(cfg),
+		Cmd:      []string{"restore", "--storage", "s3", "--remote-path", b.S3Path, "--file", b.Filename},
+		Mounts:   map[string]string{vol.DockerName: volumeMount},
+		Networks: nets,
 	})
 	if err != nil {
 		return fmt.Errorf("restore: %w", err)

@@ -251,10 +251,11 @@ func runWorker() error {
 	registryDistributor.SetEntitlements(edition)
 	deployHandler.SetDistributor(registryDistributor)
 
-	volumeBackupSvc := volumebackup.NewService(repositories.NewVolumeBackupRepository(db), repositories.NewVolumeRepository(db), nodeClients)
+	volumeBackupSvc := volumebackup.NewService(repositories.NewVolumeBackupRepository(db), repositories.NewVolumeRepository(db), nodeClients, cfg.ProxyNetwork)
 	volumeBackupSvc.SetImageResolver(imageResolver) // honor admin override for the volume-bkup image
 	volumeBackupSvc.SetS3Provider(backupsettings.NewService(repositories.NewWorkspaceBackupSettingsRepository(db)))
 	volumeBackupSvc.SetLogStore(logStore)
+	volumeBackupSvc.SetInternalNetwork(cfg.InternalNetwork)
 	volumeBackupHandler := worker.NewVolumeBackupHandler(volumeBackupSvc)
 
 	pbHost, pbPort, pbName, pbUser, pbPass, pbSSL := cfg.Database.PostgresConn()

@@ -125,7 +125,7 @@ func (h *VolumeBackupHandler) Delete(c *okapi.Context) error {
 	if b.Status == models.BackupPending || b.Status == models.BackupRunning {
 		return c.AbortBadRequest("cannot delete a backup that is still running")
 	}
-	if err := h.svc.Delete(b); err != nil {
+	if err := h.svc.Delete(c.Request().Context(), b); err != nil {
 		return c.AbortInternalServerError("failed to delete backup", err)
 	}
 	h.record(c, v.WorkspaceID, "volume.backup_delete", b.ID)

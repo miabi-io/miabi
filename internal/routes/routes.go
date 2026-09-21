@@ -734,10 +734,11 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	backupService.SetSetRepository(backupSetRepo)           // instance-wide recovery points
 	backupSettingsService.SetEnvelopeRotator(backupService) // rotate set envelopes when the passphrase changes
 	// Volume backup: archives a volume to the workspace S3 target (volume-bkup).
-	volumeBackupService := volumebackup.NewService(volumeBackupRepo, volumeRepo, nodeClients)
+	volumeBackupService := volumebackup.NewService(volumeBackupRepo, volumeRepo, nodeClients, cfg.ProxyNetwork)
 	volumeBackupService.SetImageResolver(imageResolver)
 	volumeBackupService.SetS3Provider(backupSettingsService)
 	volumeBackupService.SetEnqueuer(producer) // run backups on the background worker
+	volumeBackupService.SetInternalNetwork(cfg.InternalNetwork)
 	volumeBackupService.SetLogStore(logStore)
 	// Platform (control-plane) backup: Enterprise, admin-only disaster recovery for
 	// Miabi's own database and platform volumes. Draws its DB connection from the
