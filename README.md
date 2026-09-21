@@ -257,6 +257,7 @@ All four projects are self-hosted, open source, and deploy from Git or a Docker 
 | Official CLI | ✅ | ❌ | ❌ | ❌ |
 | Terraform provider | ✅ | ❌ | ❌ | ❌ |
 | Multi-node deployments | ✅ | Partial | Partial | Partial |
+| Multiple clusters & regions | ✅ | ❌ | ❌ | ❌ |
 | Docker import (adopt existing containers) | ✅ | ❌ | ❌ | ❌ |
 | Scheduled backups | ✅ | Partial | Partial | ❌ |
 | SAML / LDAP | ✅ (Enterprise) | ❌ | ❌ | ❌ |
