@@ -736,14 +736,10 @@
     "youNeedOwnerOrAdmin": "Vous devez être propriétaire ou administrateur pour consulter le journal d’audit de cet espace de travail."
   },
   "auth": {
-    "chooseLanguage": "Choisir une langue",
-    "darkMode": "Mode sombre",
+    "displayOptions": "Options d'affichage",
     "hidePassword": "Masquer le mot de passe",
     "language": "Langue",
-    "lightMode": "Mode clair",
-    "showPassword": "Afficher le mot de passe",
-    "switchToDark": "Passer au mode sombre",
-    "switchToLight": "Passer au mode clair"
+    "showPassword": "Afficher le mot de passe"
   },
   "authHero": {
     "builtInContainerRegistry": "Registre de conteneurs intégré",

@@ -7,7 +7,7 @@ import { useThemeStore } from '@/stores/theme'
 import { useBrandStore } from '@/stores/brand'
 import type { Brand } from '@/api/types'
 import AuthHero from './AuthHero.vue'
-import AuthLanguagePicker from '@/components/AuthLanguagePicker.vue'
+import AuthOptionsMenu from '@/components/AuthOptionsMenu.vue'
 import AuthFooter from '@/components/AuthFooter.vue'
 import { apiErrorMessage } from '@/api/client'
 import { authApi } from '@/api/auth'
@@ -367,17 +367,7 @@ function providerIcon(type: string): string {
       </div>
     </main>
 
-    <button
-      class="auth-theme-btn"
-      type="button"
-      :title="$t(theme.isDark ? 'auth.lightMode' : 'auth.darkMode')"
-      :aria-label="$t(theme.isDark ? 'auth.switchToLight' : 'auth.switchToDark')"
-      @click="theme.toggle()"
-    >
-      <span class="mdi" :class="theme.isDark ? 'mdi-weather-sunny' : 'mdi-weather-night'"></span>
-    </button>
-
-    <AuthLanguagePicker />
+    <AuthOptionsMenu />
   </div>
 </template>
 
@@ -387,32 +377,6 @@ function providerIcon(type: string): string {
   display: grid;
   grid-template-columns: 1.05fr 1fr;
   background: var(--bg-primary);
-}
-
-/* Sits over the form panel, and stays put once the hero collapses. */
-.auth-theme-btn {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  padding: 9px;
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius);
-  background: var(--bg-primary);
-  color: var(--text-tertiary);
-  box-shadow: var(--shadow-sm);
-  cursor: pointer;
-  transition: all var(--transition);
-}
-.auth-theme-btn:hover {
-  color: var(--text-primary);
-  border-color: var(--border-input);
-}
-.auth-theme-btn .mdi {
-  font-size: 18px;
-  line-height: 1;
 }
 
 /* ─── Brand / marketing panel ─── */
