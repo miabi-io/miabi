@@ -113,6 +113,9 @@ type Service struct {
 	providersVolume string
 	// attach joins a live gateway to networks beyond the node's app network, right after it starts.
 	attach GatewayAttacher
+	// agentContainer resolves the node agent's own container id, so the gateway network can be
+	// extended to it (see attachAgent).
+	agentContainer func(serverID uint) string
 }
 
 // GatewayAttacher joins a freshly started live gateway container to further networks, such as a swarm cluster's
@@ -160,6 +163,11 @@ const (
 // SetAnalytics wires the Redis stream the gateway publishes request events to. Pass "" when the
 // platform's analytics consumer is not running: a gateway writing to a stream nobody reads would fill
 // Redis to maxLen and be discarded.
+// SetAgentContainer wires how the node's agent container is identified, so the control plane can
+// attach it to the gateway network itself. Satisfied by nodes.Clients.SelfContainerID. Nil-safe:
+// without it the agent is left where the operator put it.
+func (s *Service) SetAgentContainer(fn func(serverID uint) string) { s.agentContainer = fn }
+
 func (s *Service) SetAnalytics(stream string) { s.analyticsStream = strings.TrimSpace(stream) }
 
 func (s *Service) analyticsEnabledFor(srv *models.Server) bool {
@@ -544,6 +552,12 @@ func (s *Service) Ensure(ctx context.Context, dc docker.Client, srv *models.Serv
 	// A gateway already running the spec and config we would deploy needs nothing done to it. Without this,
 	// every agent reconnect pulled the image and recreated the node's only ingress — an outage per reconnect,
 	// and on a swarm cluster's ingress node an outage for every app in the cluster.
+	// Ahead of the short-circuit below: the agent's network membership is not part of the gateway
+	// spec, so an unchanged gateway must still get this. It is how an install that predates
+	// analytics forwarding is repaired, without recreating the node's only ingress.
+	if !isManager(srv) {
+		s.attachAgent(ctx, dc, srv)
+	}
 	want := hashSpec(s.gatewaySpec(srv, token, redisPassword, ContainerName, gw, cfg, true))
 	if cur, ierr := dc.InspectContainer(ctx, ContainerName); ierr == nil &&
 		cur.Labels[docker.LabelSpecHash] == want && cur.State == "running" {
@@ -657,6 +671,7 @@ func (s *Service) prepareWith(ctx context.Context, dc docker.Client, srv *models
 		if err := s.ensureNodeRedis(ctx, dc, srv, redisPassword); err != nil {
 			return fmt.Errorf("ensure gateway redis: %w", err)
 		}
+		s.attachAgent(ctx, dc, srv)
 	}
 
 	// Seed the config volume with goma.yml via a short-lived helper container
@@ -680,6 +695,23 @@ func (s *Service) prepareWith(ctx context.Context, dc docker.Client, srv *models
 		return fmt.Errorf("seed gateway config: helper exited %d: %s", code, out)
 	}
 	return nil
+}
+
+// attachAgent puts the node's agent container on the gateway network.
+func (s *Service) attachAgent(ctx context.Context, dc docker.Client, srv *models.Server) {
+	if s.agentContainer == nil {
+		return
+	}
+	id := s.agentContainer(srv.ID)
+	if id == "" {
+		return
+	}
+	if err := dc.NetworkConnect(ctx, s.network, id, nil); err != nil {
+		logger.Warn("could not attach the node agent to the gateway network; analytics from this node will not be forwarded",
+			"node", srv.Name, "network", s.network, "container", id, "error", err)
+		return
+	}
+	logger.Info("node agent attached to the gateway network", "node", srv.Name, "network", s.network)
 }
 
 // runGateway creates and starts a gateway container named name from image, stamping the spec fingerprint so a
