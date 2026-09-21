@@ -274,6 +274,11 @@ func (s *Service) List() ([]models.StorageClass, error) {
 	return out, nil
 }
 
+// Count reports the size of the class catalog, for the edition cap.
+func (s *Service) Count() (int64, error) {
+	return s.repo.Count()
+}
+
 // ListForNode returns the classes usable on a node: its own, plus every shared one.
 func (s *Service) ListForNode(serverID uint) ([]models.StorageClass, error) {
 	out, err := s.repo.ListByServer(serverID)

@@ -2878,10 +2878,18 @@ export interface LicensePlanUsage {
   limit: number // -1 = unlimited
 }
 
+// LicenseStorageClassUsage reports the class catalog, built-in included, against the
+// edition cap.
+export interface LicenseStorageClassUsage {
+  used: number
+  limit: number // -1 = unlimited
+}
+
 export interface LicenseView extends LicenseEntitlements {
   instance_install_id: string // THIS deployment's Install ID ("Your Install ID")
   node_usage: LicenseNodeUsage
   plan_usage: LicensePlanUsage
+  storage_class_usage: LicenseStorageClassUsage
   warnings: string[]
 }
 

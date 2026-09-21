@@ -21,15 +21,19 @@ const nearingExpiryWindow = 30 * 24 * time.Hour
 // driving the web banner. It works in both editions — in Community the injected enterprise.EE
 // is the deny-all stub, so install returns 402 and the view reports edition "community".
 type LicenseHandler struct {
-	ee        enterprise.EE
-	nodeCount func() int64
-	planCount func() int64
-	installID string // this deployment's stable Install ID ("Your Install ID")
-	audit     *audit.Logger
+	ee                enterprise.EE
+	nodeCount         func() int64
+	planCount         func() int64
+	storageClassCount func() int64
+	installID         string // this deployment's stable Install ID ("Your Install ID")
+	audit             *audit.Logger
 }
 
-func NewLicenseHandler(ee enterprise.EE, nodeCount, planCount func() int64, installID string, auditLog *audit.Logger) *LicenseHandler {
-	return &LicenseHandler{ee: ee, nodeCount: nodeCount, planCount: planCount, installID: installID, audit: auditLog}
+func NewLicenseHandler(ee enterprise.EE, nodeCount, planCount, storageClassCount func() int64, installID string, auditLog *audit.Logger) *LicenseHandler {
+	return &LicenseHandler{
+		ee: ee, nodeCount: nodeCount, planCount: planCount, storageClassCount: storageClassCount,
+		installID: installID, audit: auditLog,
+	}
 }
 
 // NodeUsage reports active nodes against the licensed cap (-1 = unlimited).
@@ -44,6 +48,13 @@ type PlanUsage struct {
 	Limit int   `json:"limit"`
 }
 
+// StorageClassUsage reports the class catalog, built-in included, against the edition cap
+// (-1 = unlimited).
+type StorageClassUsage struct {
+	Used  int64 `json:"used"`
+	Limit int   `json:"limit"`
+}
+
 // LicenseView is the API representation of the current license: the resolved
 // entitlements plus node/plan usage, this instance's Install ID, and any operator
 // warnings.
@@ -52,10 +63,11 @@ type LicenseView struct {
 	// InstanceInstallID is THIS deployment's stable Install ID ("Your Install ID"),
 	// shown so a customer can copy it when purchasing a license. Distinct from the
 	// embedded Entitlements.InstallID (the id a license is bound to).
-	InstanceInstallID string    `json:"instance_install_id"`
-	NodeUsage         NodeUsage `json:"node_usage"`
-	PlanUsage         PlanUsage `json:"plan_usage"`
-	Warnings          []string  `json:"warnings"`
+	InstanceInstallID string            `json:"instance_install_id"`
+	NodeUsage         NodeUsage         `json:"node_usage"`
+	PlanUsage         PlanUsage         `json:"plan_usage"`
+	StorageClassUsage StorageClassUsage `json:"storage_class_usage"`
+	Warnings          []string          `json:"warnings"`
 }
 
 type InstallLicenseRequest struct {
@@ -74,11 +86,16 @@ func (h *LicenseHandler) view() LicenseView {
 	if h.planCount != nil {
 		plans = h.planCount()
 	}
+	classes := int64(0)
+	if h.storageClassCount != nil {
+		classes = h.storageClassCount()
+	}
 	return LicenseView{
 		Entitlements:      ent,
 		InstanceInstallID: h.installID,
 		NodeUsage:         NodeUsage{Used: used, Limit: ent.NodeLimit()},
 		PlanUsage:         PlanUsage{Used: plans, Limit: ent.PlanLimit()},
+		StorageClassUsage: StorageClassUsage{Used: classes, Limit: ent.StorageClassLimit()},
 		Warnings:          warnings(ent, used),
 	}
 }
