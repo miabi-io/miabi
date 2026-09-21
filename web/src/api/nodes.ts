@@ -1,5 +1,5 @@
 import api, { sseUrl } from './client'
-import type { ApiResponse, Server, ServerConnectivity, Container, ContainerStat, NodeStats, NodeHostMetrics, NodePortUsage, DockerVolume, DockerNetwork, GatewayStatus, GatewayCandidate, GatewayUpdateProgress } from './types'
+import type { AgentState, ApiResponse, Server, ServerConnectivity, Container, ContainerStat, NodeStats, NodeHostMetrics, NodePortUsage, DockerVolume, DockerNetwork, GatewayStatus, GatewayCandidate, GatewayUpdateProgress } from './types'
 
 // --- import of existing Docker resources ---
 
@@ -95,6 +95,8 @@ export interface NodeStatusEvent {
   status: string
   agent_version?: string
   last_seen_at?: string
+  agent_state?: AgentState
+  agent_latest_version?: string
 }
 
 // --- housekeeping (reclaim, drift & sync) ---
@@ -197,6 +199,11 @@ export interface JoinCommand {
   control_url: string
   command: string
   token_hint: string
+  /** Replaces a running agent in place, carrying its existing token over. */
+  upgrade_command: string
+  upgrade_hint: string
+  /** The oldest agent this control plane supports, so the console need not hardcode it twice. */
+  agent_min_version: string
 }
 
 export type ServerAccessMode = 'socket' | 'agent' | 'api'

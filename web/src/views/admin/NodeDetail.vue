@@ -18,7 +18,7 @@ function engineTooOld(v?: string): boolean {
   if (isNaN(maj)) return false
   return maj < 25
 }
-import { ACCESS_MODES, CONNECTIVITY_TYPES, nodeOptionDescription } from '@/constants/node'
+import { ACCESS_MODES, CONNECTIVITY_TYPES, MIN_AGENT_VERSION, nodeOptionDescription } from '@/constants/node'
 import type { Server, NodeStats, NodeHostMetrics, GatewayStatus, GatewayCandidate, GatewayUpdateProgress, StatsSample, Container, ContainerStat, DockerVolume, DockerNetwork, NodePortUsage, ClusterMember, SwarmTask } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import FieldInfo from '@/components/FieldInfo.vue'
@@ -255,6 +255,9 @@ function applyStatus(e: NodeStatusEvent) {
   node.value.status = e.status as Server['status']
   if (e.agent_version) node.value.agent_version = e.agent_version
   if (e.last_seen_at) node.value.last_seen_at = e.last_seen_at
+  // An agent upgrade IS a reconnect, so this is what clears the badge once one lands.
+  node.value.agent_state = e.agent_state
+  node.value.agent_latest_version = e.agent_latest_version
   if (e.online && !was) { load(); return }
   if (!e.online && was) {
     offline.value = true
@@ -853,13 +856,40 @@ async function submitConnectivity() {
 }
 
 // --- Agent join command ---
-const joinCmd = ref<{ command: string; token_hint: string } | null>(null)
-async function showJoinCommand() {
+// The same modal serves a fresh join and an in-place upgrade; they differ only in which command the
+// server built and what the footnote warns about.
+const joinCmd = ref<{ command: string; hint: string; upgrade: boolean } | null>(null)
+async function showJoinCommand(upgrade = false) {
   try {
     const c = (await nodesApi.joinCommand(id)).data.data
-    joinCmd.value = { command: c.command, token_hint: c.token_hint }
+    joinCmd.value = upgrade
+      ? { command: c.upgrade_command, hint: c.upgrade_hint, upgrade: true }
+      : { command: c.command, hint: c.token_hint, upgrade: false }
   } catch (e) { notify.apiError(e) }
 }
+
+// agentBadge describes how this node's agent stands, or null when there is nothing to say. The
+// unsupported case is decided locally against MIN_AGENT_VERSION, so it survives an install that
+// cannot reach GitHub; outdated needs the release check and is only ever a hint.
+const agentBadge = computed(() => {
+  const st = node.value?.agent_state
+  const to = node.value?.agent_latest_version
+  if (st === 'unsupported') {
+    return {
+      label: `Unsupported — below ${MIN_AGENT_VERSION}`,
+      cls: 'badge-danger',
+      title: `Miabi supports node agents from ${MIN_AGENT_VERSION}. An older one still connects and deploys, but it does not forward its gateway's request events, so this node contributes nothing to Workspace Analytics.${to ? ` Upgrade to ${to}.` : ''}`,
+    }
+  }
+  if (st === 'outdated') {
+    return {
+      label: to ? `Update to ${to}` : 'Update available',
+      cls: 'badge-info',
+      title: 'A newer node agent has been released. Upgrading is not urgent; this one is supported.',
+    }
+  }
+  return null
+})
 
 const showDelete = ref(false)
 const deleting = ref(false)
@@ -915,7 +945,7 @@ const gwBadge = computed(() => {
         <button class="btn btn-secondary" @click="openEdit"><span class="mdi mdi-pencil-outline"></span> Edit</button>
         <button class="btn btn-secondary" @click="openConnectivity"><span class="mdi mdi-lan-connect"></span> Change connectivity</button>
         <template v-if="!node.is_local">
-          <button v-if="node.access_mode === 'agent'" class="btn btn-secondary" @click="showJoinCommand"><span class="mdi mdi-console"></span> Join command</button>
+          <button v-if="node.access_mode === 'agent'" class="btn btn-secondary" @click="showJoinCommand()"><span class="mdi mdi-console"></span> Join command</button>
           <button class="btn btn-secondary" @click="toggleCordon">{{ node.cordoned ? 'Uncordon' : 'Cordon' }}</button>
           <button class="btn btn-secondary" @click="regenerate">Regenerate token</button>
           <button class="btn btn-danger" @click="showDelete = true">Remove</button>
@@ -1106,7 +1136,16 @@ const gwBadge = computed(() => {
           </div>
           <div v-if="!node.is_local" class="detail">
             <span class="text-muted">Agent version</span>
-            <span>{{ node.agent_version || '—' }}</span>
+            <span>
+              {{ node.agent_version || '—' }}
+              <span v-if="agentBadge" class="badge" :class="agentBadge.cls" :title="agentBadge.title">{{ agentBadge.label }}</span>
+              <button
+                v-if="agentBadge"
+                type="button"
+                class="agent-upgrade-link"
+                @click="showJoinCommand(true)"
+              >Upgrade</button>
+            </span>
           </div>
           <div v-if="node.engine_version" class="detail">
             <span class="text-muted">Docker engine</span>
@@ -1729,13 +1768,13 @@ const gwBadge = computed(() => {
     <Teleport to="body">
       <AppModal v-if="joinCmd" max-width="680px" @close="joinCmd = null">
         <div class="modal-header">
-          <h3>Agent join command</h3>
+          <h3>{{ joinCmd.upgrade ? 'Upgrade the agent' : 'Agent join command' }}</h3>
           <button class="btn-icon btn-icon-muted" aria-label="Close" @click="joinCmd = null"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
-          <p class="text-muted" style="font-size: 13px; margin-bottom: 10px">Run this on the node host to start the agent and connect it to this manager.</p>
+          <p class="text-muted" style="font-size: 13px; margin-bottom: 10px">{{ joinCmd.upgrade ? 'Run this on the node host to replace the running agent with the current image.' : 'Run this on the node host to start the agent and connect it to this manager.' }}</p>
           <pre class="code-block cmd">{{ joinCmd.command }}</pre>
-          <p class="text-muted" style="font-size: 12px; margin-top: 10px"><span class="mdi mdi-information-outline"></span> {{ joinCmd.token_hint }}</p>
+          <p class="text-muted" style="font-size: 12px; margin-top: 10px"><span class="mdi mdi-information-outline"></span> {{ joinCmd.hint }}</p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" @click="copy(joinCmd.command)">Copy</button>
@@ -1941,5 +1980,19 @@ code { font-family: 'JetBrains Mono', monospace; font-size: 12px; background: va
 }
 .mono {
   font-family: var(--font-mono, monospace);
+}
+
+.agent-upgrade-link {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary, #3182ce);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.agent-upgrade-link:hover {
+  text-decoration: underline;
 }
 </style>

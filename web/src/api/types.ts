@@ -2180,6 +2180,15 @@ export type ServerConnectivity = 'edge-gateway' | 'cluster'
 
 export type ServerRole = 'manager' | 'node'
 
+/**
+ * How a node's agent stands against this control plane.
+ *
+ * `unsupported` is decided locally against a supported floor, so it stays true on an install that
+ * cannot reach GitHub; `outdated` needs the daily release check and is only ever a hint. An absent
+ * value is unknown — no badge, because absence of evidence must not read as "out of date".
+ */
+export type AgentState = 'current' | 'outdated' | 'unsupported'
+
 export interface Server {
   id: number
   /** Unique URL-safe handle — the same vocabulary Application uses. Stable for
@@ -2199,6 +2208,14 @@ export interface Server {
   address?: string
   agent_connected?: boolean
   agent_version?: string
+  /**
+   * How this node's agent stands against the control plane. Computed server-side per request, never
+   * stored: it depends on the node's build and on the newest release, which move independently.
+   * Absent means unknown — render nothing rather than guessing.
+   */
+  agent_state?: AgentState
+  /** The version to upgrade to; set only when this node is behind it. */
+  agent_latest_version?: string
   /** The node's CLUSTER belongs to one organization, so the node does too. A node holds none itself. */
   dedicated?: boolean
   organization_name?: string

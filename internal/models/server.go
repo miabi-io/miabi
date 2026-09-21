@@ -87,10 +87,7 @@ type Server struct {
 	DisplayName  string             `json:"display_name"`
 	ClusterID    uint               `json:"cluster_id" gorm:"index;not null;default:0"`
 	Connectivity ServerConnectivity `json:"connectivity" gorm:"not null;default:cluster"`
-	// AccessMode is how the control plane reaches this node's Docker engine.
-	// Existing rows backfill to "agent" (column default); the local node is set
-	// to "socket" at bootstrap.
-	AccessMode ServerAccessMode `json:"access_mode" gorm:"not null;default:agent"`
+	AccessMode   ServerAccessMode   `json:"access_mode" gorm:"not null;default:agent"`
 	// DockerEndpoint is the Docker host for non-agent modes: unix://… (socket) or
 	// tcp://host:2376 (api). Unused for agent.
 	DockerEndpoint string `json:"docker_endpoint"`
@@ -119,33 +116,26 @@ type Server struct {
 	TokenHash       string `json:"-" gorm:"index"`
 	GatewayTokenEnc string `json:"-"`
 	// GatewayDeployedAt is when the node's gateway was last deployed (display).
-	GatewayDeployedAt *time.Time `json:"gateway_deployed_at,omitempty"`
-	GatewayConfigYAML string     `json:"-" gorm:"type:text"`
-	// GatewayImage overrides the edge-gateway image/tag for this node; empty =
-	// the resolved catalog/default image.
-	GatewayImage     string `json:"gateway_image,omitempty"`
-	GatewayContainer string `json:"gateway_container,omitempty"`
-	// GatewayImported marks that the node's gateway was adopted from a pre-existing
-	// container rather than deployed by Miabi.
+	GatewayDeployedAt       *time.Time             `json:"gateway_deployed_at,omitempty"`
+	GatewayConfigYAML       string                 `json:"-" gorm:"type:text"`
+	GatewayImage            string                 `json:"gateway_image,omitempty"`
+	GatewayContainer        string                 `json:"gateway_container,omitempty"`
 	GatewayImported         bool                   `json:"gateway_imported" gorm:"not null;default:false"`
 	GatewayRedisPasswordEnc string                 `json:"-"`
 	GatewayUpdate           *GatewayUpdateProgress `json:"gateway_update,omitempty" gorm:"serializer:json"`
-	// Dedicated reports that the node's CLUSTER belongs to one organization, so the node does too.
-	// A node holds no organization of its own — it would be stale the moment the node moved cluster.
-	// ClusterName names that cluster, so the console can say where the dedication comes from.
-	Dedicated        bool   `json:"dedicated" gorm:"-"`
-	OrganizationName string `json:"organization_name,omitempty" gorm:"-"`
-	ClusterName      string `json:"cluster_name,omitempty" gorm:"-"`
-	// AgentConnected reflects a live agent tunnel (transient; set by the
-	// connection manager).
-	AgentConnected bool              `json:"agent_connected" gorm:"-"`
-	AgentVersion   string            `json:"agent_version,omitempty"`
-	EngineVersion  string            `json:"engine_version,omitempty"`
-	Cordoned       bool              `json:"cordoned" gorm:"not null;default:false"`
-	Labels         map[string]string `json:"labels,omitempty" gorm:"serializer:json"`
-	SwarmNodeID    string            `json:"swarm_node_id,omitempty" gorm:"index"`
-	AutoJoined     bool              `json:"auto_joined" gorm:"not null;default:false"`
-	SwarmRole      string            `json:"swarm_role,omitempty" gorm:"-"`
+	Dedicated               bool                   `json:"dedicated" gorm:"-"`
+	OrganizationName        string                 `json:"organization_name,omitempty" gorm:"-"`
+	ClusterName             string                 `json:"cluster_name,omitempty" gorm:"-"`
+	AgentConnected          bool                   `json:"agent_connected" gorm:"-"`
+	AgentVersion            string                 `json:"agent_version,omitempty"`
+	AgentState              string                 `json:"agent_state,omitempty" gorm:"-"`
+	AgentLatestVersion      string                 `json:"agent_latest_version,omitempty" gorm:"-"`
+	EngineVersion           string                 `json:"engine_version,omitempty"`
+	Cordoned                bool                   `json:"cordoned" gorm:"not null;default:false"`
+	Labels                  map[string]string      `json:"labels,omitempty" gorm:"serializer:json"`
+	SwarmNodeID             string                 `json:"swarm_node_id,omitempty" gorm:"index"`
+	AutoJoined              bool                   `json:"auto_joined" gorm:"not null;default:false"`
+	SwarmRole               string                 `json:"swarm_role,omitempty" gorm:"-"`
 	// SwarmAvailability is the scheduling availability: active | pause | drain.
 	SwarmAvailability string `json:"swarm_availability,omitempty" gorm:"-"`
 	// SwarmState is the swarm-reported reachability: ready | down | unknown |
