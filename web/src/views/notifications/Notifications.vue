@@ -5,7 +5,7 @@ import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { channelApi, type ChannelInput } from '@/api/notifications'
-import { NOTIFIABLE_EVENTS } from '@/constants/notifiableEvents'
+import { NOTIFIABLE_EVENT_GROUPS } from '@/constants/notifiableEvents'
 import type { NotificationChannel } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AppModal from '@/components/AppModal.vue'
@@ -222,11 +222,14 @@ async function confirmDelete() {
             </template>
             <div class="form-group">
               <label class="form-label">{{ $t('notifications.events') }}</label>
-              <div class="event-grid">
-                <label v-for="e in NOTIFIABLE_EVENTS" :key="e.value" class="event-option">
-                  <input type="checkbox" :checked="form.events.includes(e.value)" @change="toggleEvent(e.value)" />
-                  <span>{{ e.label }}</span>
-                </label>
+              <div v-for="g in NOTIFIABLE_EVENT_GROUPS" :key="g.label" class="event-group">
+                <div class="event-group-label">{{ g.label }}</div>
+                <div class="event-grid">
+                  <label v-for="e in g.events" :key="e.value" class="event-option">
+                    <input type="checkbox" :checked="form.events.includes(e.value)" @change="toggleEvent(e.value)" />
+                    <span>{{ e.label }}</span>
+                  </label>
+                </div>
               </div>
             </div>
             <div class="form-group" style="margin-bottom: 0">
@@ -268,4 +271,16 @@ async function confirmDelete() {
 .event-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
 .event-option, .check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
 .event-option input, .check-row input { width: 15px; height: 15px; }
+
+.event-group + .event-group {
+  margin-top: 12px;
+}
+.event-group-label {
+  margin-bottom: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 </style>

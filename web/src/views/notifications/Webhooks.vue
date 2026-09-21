@@ -5,7 +5,7 @@ import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { webhookApi, type WebhookInput } from '@/api/webhooks'
-import { NOTIFIABLE_EVENTS, eventLabel } from '@/constants/notifiableEvents'
+import { NOTIFIABLE_EVENT_GROUPS, eventLabel } from '@/constants/notifiableEvents'
 import { copyText } from '@/utils/clipboard'
 import type { Webhook, WebhookDelivery } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -273,11 +273,14 @@ function fmtTime(s: string) {
             </div>
             <div class="form-group">
               <label class="form-label">{{ $t('webhooks.events') }}</label>
-              <div class="event-grid">
-                <label v-for="e in NOTIFIABLE_EVENTS" :key="e.value" class="event-option">
-                  <input type="checkbox" :checked="form.events.includes(e.value)" @change="toggleEvent(e.value)" />
-                  <span>{{ e.label }}</span>
-                </label>
+              <div v-for="g in NOTIFIABLE_EVENT_GROUPS" :key="g.label" class="event-group">
+                <div class="event-group-label">{{ g.label }}</div>
+                <div class="event-grid">
+                  <label v-for="e in g.events" :key="e.value" class="event-option">
+                    <input type="checkbox" :checked="form.events.includes(e.value)" @change="toggleEvent(e.value)" />
+                    <span>{{ e.label }}</span>
+                  </label>
+                </div>
               </div>
             </div>
             <div class="form-group">
@@ -362,4 +365,16 @@ function fmtTime(s: string) {
 .event-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
 .event-option, .check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
 .event-option input, .check-row input { width: 15px; height: 15px; }
+
+.event-group + .event-group {
+  margin-top: 12px;
+}
+.event-group-label {
+  margin-bottom: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 </style>

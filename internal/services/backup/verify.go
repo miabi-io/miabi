@@ -138,9 +138,8 @@ func (s *Service) recordVerification(set *models.DatabaseBackupSet, res *VerifyR
 	}
 	logger.Warn("recovery point failed verification", "set", set.Ref, "error", res.Error)
 	if s.alerter != nil {
-		// Raised against the instance, not a logical database: a set spans all of
-		// them and no single one is at fault.
-		s.alerter.BackupFailed(set.WorkspaceID, set.InstanceID, set.Ref, "verification: "+res.Error)
+
+		s.alerter.BackupSetFailed(set.WorkspaceID, set.InstanceID, "", set.Ref, "verification: "+res.Error)
 	}
 	s.emit(set.WorkspaceID, set.InstanceID, set.Ref, models.EventDatabaseBackupFailed, models.SeverityWarning,
 		fmt.Sprintf("Recovery point %s failed verification: %s", set.Ref, res.Error),
