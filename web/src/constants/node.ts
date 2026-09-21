@@ -36,3 +36,7 @@ export const CONNECTIVITY_TYPES: NodeOption[] = [
 export function nodeOptionDescription(options: NodeOption[], value?: string): string {
   return options.find((o) => o.value === value)?.description ?? ''
 }
+
+// MIN_AGENT_VERSION mirrors updatecheck.MinAgentVersion (Go) — the oldest node agent this control
+// plane supports, and the threshold the Nodes page paints red. Keep the two in step.
+export const MIN_AGENT_VERSION = '0.4.0'

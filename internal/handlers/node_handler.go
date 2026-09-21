@@ -25,12 +25,24 @@ import (
 	"github.com/miabi-io/miabi/internal/services/housekeeping"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/nodestats"
+	"github.com/miabi-io/miabi/internal/services/updatecheck"
 )
 
 // ImageRef resolves a platform-image catalog key to an image ref (implemented
 // by platformimage.Resolver).
 type ImageRef interface {
 	Ref(key string) string
+}
+
+// agentContainerName is the container the agent runs as on a node host. Fixed, because the join
+// command creates it and the upgrade command has to find it again.
+const agentContainerName = "miabi-agent"
+
+// AgentReleases reports the newest node-agent release the platform knows of. Implemented by
+// updatecheck.Service. nil (or a check that has never succeeded) leaves nodes classified against the
+// locally-known supported floor alone, which is the verdict that matters and needs no network.
+type AgentReleases interface {
+	LatestVersion() string
 }
 
 // SwarmEnricher annotates servers with their transient swarm role/availability
@@ -56,6 +68,7 @@ type NodeHandler struct {
 	importer    *dockerimport.Service
 	housekeeper *housekeeping.Service
 	cluster     SwarmEnricher
+	agentRel    AgentReleases
 	images      ImageRef
 	controlURL  string
 	audit       *audit.Logger
@@ -82,6 +95,30 @@ type WorkspaceMembership interface {
 // SetMembership wires the workspace-membership lookup used to gate foreign
 // container-log streaming (nil-safe).
 func (h *NodeHandler) SetMembership(m WorkspaceMembership) { h.members = m }
+
+// SetAgentReleases wires the node-agent release check (nil-safe).
+func (h *NodeHandler) SetAgentReleases(r AgentReleases) { h.agentRel = r }
+
+// annotateAgentVersions marks each agent-mode node against the supported floor and the newest known
+// release. Computed here rather than stored: the verdict depends on the node's build and on the
+// release list, which move independently, so a persisted one is wrong as soon as either does.
+func (h *NodeHandler) annotateAgentVersions(servers []models.Server) {
+	latest := ""
+	if h.agentRel != nil {
+		latest = h.agentRel.LatestVersion()
+	}
+	for i := range servers {
+		s := &servers[i]
+		if s.AccessMode != models.AccessAgent {
+			continue
+		}
+		state := updatecheck.ClassifyAgent(s.AgentVersion, latest)
+		s.AgentState = string(state)
+		if state == updatecheck.AgentOutdated || state == updatecheck.AgentUnsupported {
+			s.AgentLatestVersion = latest
+		}
+	}
+}
 
 // SetSecurityEnforcement toggles blocking of stop/remove on managed containers
 // from the admin node view (MIABI_SECURITY_ENFORCEMENT; default on).
@@ -224,6 +261,7 @@ func (h *NodeHandler) List(c *okapi.Context) error {
 	if h.cluster != nil {
 		h.cluster.Enrich(servers)
 	}
+	h.annotateAgentVersions(servers)
 	return ok(c, servers)
 }
 
@@ -278,25 +316,51 @@ func (h *NodeHandler) JoinCommand(c *okapi.Context) error {
 		controlURL = "https://<your-control-plane-url>"
 	}
 	const tokenPlaceholder = "<JOIN_TOKEN>"
-	// The labels give the agent a platform identity on a node whose engine Miabi can only reach
-	// through that very agent: they keep it out of the import list and block stop/remove from the
-	// containers page. managed-by=external, since it is installed by hand and must not be recreated.
-	command := "docker run -d --name miabi-agent --restart unless-stopped \\\n" +
+	return ok(c, map[string]any{
+		"node":              srv.Name,
+		"image":             image,
+		"control_url":       controlURL,
+		"command":           agentRunCommand(image, controlURL, tokenPlaceholder),
+		"upgrade_command":   agentUpgradeCommand(image, controlURL),
+		"token_hint":        "Replace " + tokenPlaceholder + " with the node's join token (shown once at creation; use Regenerate token to mint a new one).",
+		"upgrade_hint":      "Reads the running agent's own token, so it needs no new one. Pulls before it removes anything: a pull that fails after the old agent is gone would leave the node with no way back.",
+		"agent_min_version": updatecheck.MinAgentVersion,
+	})
+}
+
+// agentRunCommand is the docker run an operator pastes on the node host. token is either the
+// placeholder (a fresh join) or a shell expansion (an in-place upgrade).
+//
+// The labels give the agent a platform identity on a node whose engine Miabi can only reach through
+// that very agent: they keep it out of the import list and block stop/remove from the containers
+// page. managed-by=external, since it is installed by hand and must not be recreated.
+func agentRunCommand(image, controlURL, token string) string {
+	return "docker run -d --name " + agentContainerName + " --restart unless-stopped \\\n" +
 		"  -v /var/run/docker.sock:/var/run/docker.sock \\\n" +
 		"  --label " + docker.LabelPartOf + "=" + docker.PartOfMiabi + " \\\n" +
 		"  --label " + docker.LabelRole + "=" + docker.RoleAgent + " \\\n" +
 		"  --label " + docker.LabelManagedBy + "=" + docker.ManagedByExternal + " \\\n" +
 		"  --label " + docker.LabelProtected + "=true \\\n" +
 		"  -e MIABI_CONTROL_URL=" + controlURL + " \\\n" +
-		"  -e MIABI_NODE_TOKEN=" + tokenPlaceholder + " \\\n" +
+		"  -e MIABI_NODE_TOKEN=" + token + " \\\n" +
 		"  " + image
-	return ok(c, map[string]any{
-		"node":        srv.Name,
-		"image":       image,
-		"control_url": controlURL,
-		"command":     command,
-		"token_hint":  "Replace " + tokenPlaceholder + " with the node's join token (shown once at creation; use Regenerate token to mint a new one).",
-	})
+}
+
+// agentUpgradeCommand replaces a running agent with a newer image in place.
+//
+// Two things make this more than "pull and restart". The join token is hashed on this side and
+// unrecoverable, and the only copy lives in the container the upgrade is about to destroy — so it is
+// read back out of the running container first, and the chain stops if it comes back empty rather
+// than starting an agent that cannot authenticate. And the pull happens BEFORE the removal: an agent
+// is the only remote path to its host, so a pull that failed after the old one was gone would cost
+// the operator the node.
+func agentUpgradeCommand(image, controlURL string) string {
+	return "TOKEN=$(docker inspect " + agentContainerName +
+		" --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^MIABI_NODE_TOKEN=//p') \\\n" +
+		"  && [ -n \"$TOKEN\" ] \\\n" +
+		"  && docker pull " + image + " \\\n" +
+		"  && docker rm -f " + agentContainerName + " \\\n" +
+		"  && " + agentRunCommand(image, controlURL, "\"$TOKEN\"")
 }
 
 // Update edits a node's reachability settings and reconnects its direct client.

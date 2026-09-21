@@ -9,7 +9,7 @@ import { apiError as decodeApiError } from '@/api/client'
 import { nodesApi, type CreateNodePayload, type NodeStatusEvent } from '@/api/nodes'
 import { clustersApi } from '@/api/clusters'
 import { adminApi } from '@/api/admin'
-import { ACCESS_MODES, CONNECTIVITY_TYPES, nodeOptionDescription } from '@/constants/node'
+import { ACCESS_MODES, CONNECTIVITY_TYPES, MIN_AGENT_VERSION, nodeOptionDescription } from '@/constants/node'
 import FieldInfo from '@/components/FieldInfo.vue'
 import { copyText } from '@/utils/clipboard'
 import type { Cluster, Server, ServerConnectivity } from '@/api/types'
@@ -89,6 +89,9 @@ function applyStatus(e: NodeStatusEvent) {
   row.status = e.status as Server['status']
   if (e.agent_version) row.agent_version = e.agent_version
   if (e.last_seen_at) row.last_seen_at = e.last_seen_at
+  // An agent upgrade IS a reconnect, so this is the event that clears a stale badge.
+  row.agent_state = e.agent_state
+  row.agent_latest_version = e.agent_latest_version
 }
 
 const { streaming, open: openStatusStream } = useNodeStatusStream(applyStatus, () => load(true))
@@ -249,6 +252,22 @@ function agentLabel(n: Server): string {
   return n.agent_version || (n.agent_connected ? 'connected' : '—')
 }
 
+// An agent badge per row is invisible on a fleet, so the count goes in the header and the rows
+// explain it. Unsupported is listed separately: it is a different problem with a deadline.
+const outdatedAgents = computed(() => nodes.value.filter((n) => n.agent_state === 'outdated').length)
+const unsupportedAgents = computed(() => nodes.value.filter((n) => n.agent_state === 'unsupported').length)
+
+function agentBadgeClass(n: Server): string {
+  return n.agent_state === 'unsupported' ? 'badge-danger' : 'badge-info'
+}
+function agentBadgeTitle(n: Server): string {
+  const to = n.agent_latest_version ? ` Upgrade to ${n.agent_latest_version}.` : ''
+  if (n.agent_state === 'unsupported') {
+    return `This agent is older than ${MIN_AGENT_VERSION}, which is the oldest this control plane supports. It still connects and deploys, but it does not forward request events, so this node contributes nothing to Workspace Analytics.${to}`
+  }
+  return `A newer node agent is available.${to}`
+}
+
 function swarmLabel(n: Server): string {
   const role = n.swarm_role || 'standalone'
   if (n.in_swarm && n.swarm_availability && n.swarm_availability !== 'active') {
@@ -271,6 +290,16 @@ function swarmClass(n: Server): string {
       <div class="header-actions">
         <span class="live-chip" :class="{ 'live-chip--off': !streaming }" :title="streaming ? 'Status updates live' : 'Reconnecting — statuses may lag'">
           <span class="live-dot"></span> {{ streaming ? 'Live' : 'Reconnecting…' }}
+        </span>
+        <span
+          v-if="unsupportedAgents > 0"
+          class="agent-rollup agent-rollup--danger"
+          :title="`Oldest supported agent is ${MIN_AGENT_VERSION}`"
+        >
+          <span class="mdi mdi-alert-outline"></span> {{ unsupportedAgents }} unsupported {{ unsupportedAgents === 1 ? 'agent' : 'agents' }}
+        </span>
+        <span v-else-if="outdatedAgents > 0" class="agent-rollup" title="A newer node agent is available">
+          <span class="mdi mdi-arrow-up-bold-circle-outline"></span> {{ outdatedAgents }} {{ outdatedAgents === 1 ? 'agent' : 'agents' }} outdated
         </span>
         <span v-if="limited" class="node-usage" :class="{ 'node-usage--full': atNodeLimit }" :title="atNodeLimit ? 'Node limit reached — upgrade to add more' : 'Nodes used of your edition limit'">
           <span class="mdi mdi-server"></span> {{ nodeCount }} / {{ nodeLimit }} nodes
@@ -343,7 +372,15 @@ function swarmClass(n: Server): string {
               <td><span class="badge badge-muted">{{ connectivityLabel(n.connectivity) }}</span></td>
               <td><span class="badge" :class="statusClass(n)">{{ statusLabel(n) }}</span></td>
               <td v-if="anyInSwarm"><span class="badge" :class="swarmClass(n)">{{ swarmLabel(n) }}</span></td>
-              <td class="cell-sub">{{ agentLabel(n) }}</td>
+              <td class="cell-sub">
+                {{ agentLabel(n) }}
+                <span
+                  v-if="n.agent_state === 'outdated' || n.agent_state === 'unsupported'"
+                  class="badge agent-badge"
+                  :class="agentBadgeClass(n)"
+                  :title="agentBadgeTitle(n)"
+                >{{ n.agent_state === 'unsupported' ? 'Unsupported' : 'Update' }}</span>
+              </td>
               <td class="cell-sub">{{ fmtDate(n.created_at) }}</td>
             </tr>
           </tbody>
@@ -511,5 +548,24 @@ function swarmClass(n: Server): string {
 .node-usage--full {
   color: var(--warning, #b7791f);
   background: var(--warning-bg, rgba(183, 121, 31, 0.12));
+}
+
+.agent-rollup {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--info, #2b6cb0);
+  background: var(--info-bg, rgba(43, 108, 176, 0.12));
+}
+.agent-rollup--danger {
+  color: var(--danger, #c53030);
+  background: var(--danger-bg, rgba(197, 48, 48, 0.12));
+}
+.agent-badge {
+  margin-left: 6px;
 }
 </style>

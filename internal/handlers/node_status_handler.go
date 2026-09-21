@@ -28,6 +28,11 @@ type NodeStatusEvent struct {
 	Status       string     `json:"status"`
 	AgentVersion string     `json:"agent_version,omitempty"`
 	LastSeenAt   *time.Time `json:"last_seen_at,omitempty"`
+	// AgentState rides along because an agent that reconnects is the moment its version can have
+	// changed — an upgrade is a restart. Without it the badge would keep the old verdict until the
+	// page was reloaded, which is exactly when an operator is watching.
+	AgentState         string `json:"agent_state,omitempty"`
+	AgentLatestVersion string `json:"agent_latest_version,omitempty"`
 }
 
 // PublishStatus fans a node's connect/disconnect out to the console. Registered as a listener on
@@ -54,6 +59,9 @@ func (h *NodeHandler) statusOf(nodeID uint, name string, online bool) NodeStatus
 		ev.Name = srv.DisplayName
 	}
 	ev.AgentVersion, ev.LastSeenAt = srv.AgentVersion, srv.LastSeenAt
+	one := []models.Server{*srv}
+	h.annotateAgentVersions(one)
+	ev.AgentState, ev.AgentLatestVersion = one[0].AgentState, one[0].AgentLatestVersion
 	return ev
 }
 
@@ -90,6 +98,7 @@ func (h *NodeHandler) sendStatusSnapshot(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortInternalServerError("failed to list nodes", err)
 	}
+	h.annotateAgentVersions(servers)
 	events := make([]NodeStatusEvent, 0, len(servers))
 	for i := range servers {
 		s := &servers[i]
@@ -97,6 +106,7 @@ func (h *NodeHandler) sendStatusSnapshot(c *okapi.Context) error {
 		events = append(events, NodeStatusEvent{
 			ID: s.ID, Name: s.DisplayName, Online: online, Status: string(s.Status),
 			AgentVersion: s.AgentVersion, LastSeenAt: s.LastSeenAt,
+			AgentState: s.AgentState, AgentLatestVersion: s.AgentLatestVersion,
 		})
 	}
 	return c.SSESendJSON(eventbus.Event{Type: "snapshot", Data: events})

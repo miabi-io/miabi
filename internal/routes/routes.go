@@ -589,33 +589,14 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		logger.Error("failed to register account purge job", "error", err)
 	}
 
-	// Daily release check. The minute is arbitrary but not :00 — every Miabi in
-	// the world sharing one cron minute would stampede the GitHub API.
+	// Daily release checks. The minute is arbitrary but not :00 — every Miabi in
+	// the world sharing one cron minute would stampede the GitHub API — and the two
+	// components are minutes apart rather than together, for the same reason.
 	updateService := updatecheck.NewService(db, config.Version, cfg.UpdateCheck)
-	if updateService.Enabled() && cronManager != nil {
-		if err := cronManager.RegisterTask("update-check", 0, "Check for a new Miabi release", "37 4 * * *", func() error {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			// Check records its own failures on the status row; returning nil keeps a
-			// permanently offline host (air-gapped, egress-blocked) from painting the
-			// jobs page red every single day.
-			if err := updateService.Check(ctx); err != nil {
-				logger.Warn("update check failed", "error", err)
-			}
-			return nil
-		}); err != nil {
-			logger.Error("failed to register update check job", "error", err)
-		}
-		// Seed the cache shortly after boot so a fresh install does not wait a day
-		// for its first answer. Off the startup path: never block serving on GitHub.
-		go func() {
-			time.Sleep(30 * time.Second)
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			if err := updateService.Check(ctx); err != nil {
-				logger.Warn("initial update check failed", "error", err)
-			}
-		}()
+	agentUpdateService := updatecheck.NewAgentService(db, cfg.UpdateCheck)
+	if cronManager != nil {
+		registerUpdateCheck(cronManager, updateService, "update-check", "Check for a new Miabi release", "37 4 * * *")
+		registerUpdateCheck(cronManager, agentUpdateService, "agent-update-check", "Check for a new node agent release", "43 4 * * *")
 	}
 	databaseService.SetNetworkProvider(networkService) // DBs run on the workspace's default network, alongside its apps
 	databaseService.SetSwarmNetworks(clusterService)
@@ -1518,6 +1499,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Block stop/remove of managed containers from the admin node view unless the
 	// operator has explicitly disabled security enforcement (break-glass).
 	r.h.node.SetSecurityEnforcement(r.cfg.SecurityEnforcement)
+	r.h.node.SetAgentReleases(agentUpdateService)
 	// GPU inventory + admin device policy on the node detail page.
 	r.h.node.SetGPU(gpuService)
 
@@ -1739,4 +1721,32 @@ func engineSupportsAutoIPv6(version string) bool {
 	major := strings.SplitN(strings.TrimSpace(version), ".", 2)[0]
 	n, err := strconv.Atoi(major)
 	return err == nil && n >= 26
+}
+
+// registerUpdateCheck schedules one component's daily release check and seeds its cache shortly
+// after boot, so a fresh install does not wait a day for its first answer.
+func registerUpdateCheck(cronManager *cronpkg.Manager, svc *updatecheck.Service, kind, name, spec string) {
+	if !svc.Enabled() {
+		return
+	}
+	if err := cronManager.RegisterTask(kind, 0, name, spec, func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if err := svc.Check(ctx); err != nil {
+			logger.Warn("update check failed", "component", svc.Component(), "error", err)
+		}
+		return nil
+	}); err != nil {
+		logger.Error("failed to register update check job", "component", svc.Component(), "error", err)
+	}
+	// Off the startup path: never block serving on GitHub.
+	go func() {
+		time.Sleep(30 * time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := svc.Check(ctx); err != nil {
+			logger.Warn("initial update check failed", "component", svc.Component(), "error", err)
+		}
+	}()
 }
