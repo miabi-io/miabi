@@ -89,10 +89,65 @@ func (s *Service) ListShared() ([]models.Runner, error) {
 }
 
 // ListUsable returns the runners a workspace's jobs may target: its own runners
-// plus, when its plan grants the platform-runners capability, the shared pool.
+// plus, when its plan grants the platform-runners capability, the shared runners
+// that plan offers.
 func (s *Service) ListUsable(workspaceID uint) ([]models.Runner, error) {
+	return s.schedulable(workspaceID)
+}
+
+// UsableShared returns just the shared runners a workspace may build on — its plan's slice of the
+// pool. The tenant-facing list, so a workspace is never shown a runner its plan refuses.
+func (s *Service) UsableShared(workspaceID uint) ([]models.Runner, error) {
+	all, err := s.schedulable(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]models.Runner, 0, len(all))
+	for _, r := range all {
+		if r.WorkspaceID == nil {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+// schedulable is the single candidate-set choke point: a workspace's own runners, plus the shared
+// runners its plan both permits (the capability) and offers (the per-plan list). Every consumer —
+// selection, the availability explanation and the tenant-facing lists — goes through here, so a
+// plan cannot be enforced in one of them and forgotten in another.
+func (s *Service) schedulable(workspaceID uint) ([]models.Runner, error) {
 	includeShared := s.quota.Require(workspaceID, quota.CapPlatformRunners) == nil
-	return s.repo.ListSchedulable(workspaceID, includeShared)
+	all, err := s.repo.ListSchedulable(workspaceID, includeShared)
+	if err != nil || !includeShared {
+		return all, err
+	}
+	binding, bound := s.quota.EffectivePlatformRunners(workspaceID)
+	if !bound {
+		return all, nil
+	}
+	return offeredByPlan(all, binding), nil
+}
+
+// offeredByPlan drops the shared runners a plan does not offer. Owned runners pass untouched: they
+// are the tenant's own machines, and a plan describes what the platform lends out.
+func offeredByPlan(all []models.Runner, binding quota.RunnerBinding) []models.Runner {
+	out := make([]models.Runner, 0, len(all))
+	for _, r := range all {
+		if r.WorkspaceID != nil || binding.Allows(r.Name) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// BoundBy returns the plans that offer a shared runner, so deleting one a plan still names can be
+// refused rather than silently narrowing that plan's pool.
+func (s *Service) BoundBy(id uint) ([]models.Plan, error) {
+	r, err := s.repo.FindShared(id)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.BoundBy(r.Name)
 }
 
 // GetWorkspace fetches one of a workspace's own runners.

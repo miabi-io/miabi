@@ -41,11 +41,7 @@ type Job struct {
 // now. Eligible means connected, enabled, not cordoned, labels superset of required, in scope (owned by the
 // workspace or shared with plan permission), and active leases below declared concurrency.
 func (s *Service) SelectRunner(job Job) (*models.Runner, error) {
-	// Shared runners are only in scope when the workspace's plan grants the
-	// platform-runners capability; ListSchedulable narrows the candidate set to
-	// owned (+ shared when allowed) accordingly.
-	includeShared := s.quota.Require(job.WorkspaceID, quota.CapPlatformRunners) == nil
-	candidates, err := s.repo.ListSchedulable(job.WorkspaceID, includeShared)
+	candidates, err := s.schedulable(job.WorkspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -109,16 +105,18 @@ func owned(r *models.Runner) bool { return r.WorkspaceID != nil }
 // Returns "" when a runner is in fact schedulable (the caller shouldn't be here).
 func (s *Service) AvailabilityReason(job Job) string {
 	includeShared := s.quota.Require(job.WorkspaceID, quota.CapPlatformRunners) == nil
-	candidates, err := s.repo.ListSchedulable(job.WorkspaceID, includeShared)
+	candidates, err := s.schedulable(job.WorkspaceID)
 	if err != nil {
 		return "could not check runner availability: " + err.Error()
 	}
 	if len(candidates) == 0 {
-		// A platform (shared) runner may exist but be gated by the workspace plan.
-		if !includeShared {
-			if shared, _ := s.repo.ListSchedulable(job.WorkspaceID, true); len(shared) > 0 {
+		// A platform (shared) runner may exist but be gated by the workspace plan — either the
+		// capability as a whole, or the plan's list of the runners it offers.
+		if shared, _ := s.repo.ListSchedulable(job.WorkspaceID, true); len(shared) > 0 {
+			if !includeShared {
 				return "a platform (shared) runner exists but this workspace's plan doesn't include platform runners"
 			}
+			return "the platform (shared) runners this workspace's plan offers are not registered"
 		}
 		return "no runner is registered for this workspace — add one in Settings → Runners"
 	}

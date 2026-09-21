@@ -24,12 +24,13 @@ type PlanHandler struct {
 	overrides  *repositories.WorkspaceQuotaRepository
 	workspaces *repositories.WorkspaceRepository
 	sizes      *repositories.DatabaseSizeRepository
+	runners    *repositories.RunnerRepository
 	ee         enterprise.EE
 	audit      *audit.Logger
 }
 
-func NewPlanHandler(repo *repositories.PlanRepository, overrides *repositories.WorkspaceQuotaRepository, workspaces *repositories.WorkspaceRepository, sizes *repositories.DatabaseSizeRepository, ee enterprise.EE, auditLog *audit.Logger) *PlanHandler {
-	return &PlanHandler{repo: repo, overrides: overrides, workspaces: workspaces, sizes: sizes, ee: ee, audit: auditLog}
+func NewPlanHandler(repo *repositories.PlanRepository, overrides *repositories.WorkspaceQuotaRepository, workspaces *repositories.WorkspaceRepository, sizes *repositories.DatabaseSizeRepository, runners *repositories.RunnerRepository, ee enterprise.EE, auditLog *audit.Logger) *PlanHandler {
+	return &PlanHandler{repo: repo, overrides: overrides, workspaces: workspaces, sizes: sizes, runners: runners, ee: ee, audit: auditLog}
 }
 
 // PlanBody carries every settable plan field. Limits use -1 = unlimited, 0 = none.
@@ -76,6 +77,9 @@ type PlanBody struct {
 	// stored values.
 	StorageClasses      *[]string `json:"storage_classes"`
 	DefaultStorageClass *string   `json:"default_storage_class"`
+	// PlatformRunners are the shared runners, by name, the plan may build on; empty offers the whole
+	// pool (Enterprise platform_runners). Omitted keeps the stored list.
+	PlatformRunners *[]string `json:"platform_runners"`
 }
 
 type CreatePlanRequest struct {
@@ -182,6 +186,9 @@ func (b PlanBody) apply(p *models.Plan) {
 	if b.DefaultStorageClass != nil {
 		p.DefaultStorageClass = strings.TrimSpace(*b.DefaultStorageClass)
 	}
+	if b.PlatformRunners != nil {
+		p.PlatformRunners = *b.PlatformRunners
+	}
 }
 
 var errUnknownDatabaseSize = errors.New("the list names a database size that does not exist")
@@ -198,6 +205,30 @@ func (h *PlanHandler) checkDatabaseSizes(c *okapi.Context, prev []uint, next *[]
 	for _, id := range *next {
 		if _, err := h.sizes.FindByID(id); err != nil {
 			return c.AbortBadRequest(errUnknownDatabaseSize.Error())
+		}
+	}
+	return nil
+}
+
+var errUnknownPlatformRunner = errors.New("the list names a platform runner that does not exist")
+
+// checkPlatformRunners refuses unknown or workspace-owned runners, and narrowing the pool without
+// platform_runners. Clearing or resending an unchanged list is always allowed, so a lapsed license
+// never strands one.
+func (h *PlanHandler) checkPlatformRunners(c *okapi.Context, prev []string, next *[]string) error {
+	if next == nil || len(*next) == 0 || slices.Equal(prev, *next) {
+		return nil
+	}
+	if err := h.ee.RequireMutable(enterprise.FlagPlatformRunners); err != nil {
+		return entitlementAbort(c, err)
+	}
+	if h.runners == nil {
+		return nil
+	}
+	for _, name := range *next {
+		// By name, and shared only: a plan offers the platform's pool, never a tenant's own runner.
+		if _, err := h.runners.FindSharedByName(name); err != nil {
+			return c.AbortBadRequest(errUnknownPlatformRunner.Error())
 		}
 	}
 	return nil
@@ -258,6 +289,9 @@ func (h *PlanHandler) Create(c *okapi.Context, req *CreatePlanRequest) error {
 	if a := h.checkDatabaseSizes(c, nil, body.DatabaseSizes); a != nil {
 		return a
 	}
+	if a := h.checkPlatformRunners(c, nil, body.PlatformRunners); a != nil {
+		return a
+	}
 	if body.IsDefault {
 		_ = h.repo.ClearDefault(nil)
 	}
@@ -282,6 +316,9 @@ func (h *PlanHandler) Update(c *okapi.Context, req *UpdatePlanRequest) error {
 		return a
 	}
 	if a := h.checkDatabaseSizes(c, p.DatabaseSizes, req.Body.DatabaseSizes); a != nil {
+		return a
+	}
+	if a := h.checkPlatformRunners(c, p.PlatformRunners, req.Body.PlatformRunners); a != nil {
 		return a
 	}
 	if err := systemPlanEdit(p, req.Body.Name, req.Body.IsDefault); err != nil {
@@ -429,6 +466,15 @@ func (h *PlanHandler) SetWorkspaceQuota(c *okapi.Context, req *SetWorkspaceQuota
 			prev = *o.DatabaseSizes
 		}
 		if a := h.checkDatabaseSizes(c, prev, req.Body.DatabaseSizes); a != nil {
+			return a
+		}
+	}
+	if req.Body.PlatformRunners != nil {
+		var prev []string
+		if o, err := h.overrides.FindByWorkspace(wsID); err == nil && o.PlatformRunners != nil {
+			prev = *o.PlatformRunners
+		}
+		if a := h.checkPlatformRunners(c, prev, req.Body.PlatformRunners); a != nil {
 			return a
 		}
 	}

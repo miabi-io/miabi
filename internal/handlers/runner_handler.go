@@ -92,11 +92,11 @@ func (h *RunnerHandler) List(c *okapi.Context) error {
 	return ok(c, runners)
 }
 
-// ListShared returns the platform-shared runner pool (read-only) so a workspace
-// can see which platform runners exist alongside its own. Managing them stays an
-// admin concern; this is informational for workspace members.
+// ListShared returns the platform runners this workspace may build on — the pool narrowed to what
+// its plan offers, so a member is never shown a runner their builds would be refused. Managing them
+// stays an admin concern; this is read-only for workspace members.
 func (h *RunnerHandler) ListShared(c *okapi.Context) error {
-	runners, err := h.svc.ListShared()
+	runners, err := h.svc.UsableShared(middlewares.WorkspaceID(c))
 	if err != nil {
 		return c.AbortInternalServerError("failed to list platform runners", err)
 	}

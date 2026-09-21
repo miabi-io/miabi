@@ -7,6 +7,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { useLicenseStore } from '@/stores/license'
 import { useEntitlement } from '@/composables/useEntitlement'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import { adminRunnerApi, type Runner } from '@/api/runners'
 import type { AdminWorkspaceDetail, AdminEvent, AdminWorkspaceMember, Cluster, DatabaseSize, Plan, WorkspaceQuotaOverride } from '@/api/types'
 
 const route = useRoute()
@@ -159,6 +160,8 @@ function toggleOverrideLocation(clusterId: number) {
 
 const databaseSizesPolicy = useEntitlement('database_sizes')
 const databaseSizes = ref<DatabaseSize[]>([])
+const platformRunnersPolicy = useEntitlement('platform_runners')
+const sharedRunners = ref<Runner[]>([])
 async function loadDatabaseSizes() {
   try {
     databaseSizes.value = (await adminApi.listDatabaseSizes()).data.data ?? []
@@ -176,7 +179,24 @@ function toggleOverrideSize(id: number) {
   override.value.database_sizes = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]
 }
 
-watch(wsId, () => { load(); loadOverride(); loadClusters(); loadDatabaseSizes(); licenseStore.load() }, { immediate: true })
+async function loadSharedRunners() {
+  try {
+    sharedRunners.value = (await adminRunnerApi.list()).data.data ?? []
+  } catch {
+    sharedRunners.value = []
+  }
+}
+function setRunnersMode(raw: string) {
+  if (!override.value) return
+  override.value.platform_runners = raw === 'override' ? [] : null
+}
+function toggleOverrideRunner(name: string) {
+  const names = override.value?.platform_runners
+  if (!override.value || !names) return
+  override.value.platform_runners = names.includes(name) ? names.filter((n) => n !== name) : [...names, name]
+}
+
+watch(wsId, () => { load(); loadOverride(); loadClusters(); loadDatabaseSizes(); loadSharedRunners(); licenseStore.load() }, { immediate: true })
 
 function back() {
   router.push('/admin/workspaces')
@@ -545,6 +565,25 @@ function eventSeverity(e: AdminEvent): string {
               <span v-if="override.database_sizes[0] === s.id" class="badge badge-info" style="margin-left: 6px">default</span>
             </label>
             <p class="form-hint">None checked leaves sizes optional; the first checked is the default.</p>
+          </template>
+          <div class="form-group" style="margin: 14px 0 0; max-width: 360px">
+            <label class="form-label form-label-sm">
+              Platform runners
+              <span v-if="!platformRunnersPolicy.has.value" class="badge badge-neutral" style="margin-left: 6px" title="Narrowing the platform runners a workspace may use requires an Enterprise license">
+                <span class="mdi mdi-lock-outline"></span> Enterprise
+              </span>
+            </label>
+            <select class="form-select" :value="override.platform_runners ? 'override' : ''" @change="setRunnersMode(($event.target as HTMLSelectElement).value)">
+              <option value="">Inherit the plan</option>
+              <option value="override" :disabled="!platformRunnersPolicy.mutable.value">Override the runners offered</option>
+            </select>
+          </div>
+          <template v-if="override.platform_runners">
+            <label v-for="r in sharedRunners" :key="r.id" class="checkbox-label" style="display: block; margin-top: 8px">
+              <input type="checkbox" :checked="override.platform_runners.includes(r.name)" @change="toggleOverrideRunner(r.name)" />
+              {{ r.display_name || r.name }} <span class="text-muted mono">{{ r.name }}</span>
+            </label>
+            <p class="form-hint">None checked offers the whole shared pool. The workspace's own runners are unaffected.</p>
           </template>
           <div style="display: flex; gap: 10px; margin-top: 20px">
             <button

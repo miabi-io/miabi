@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { adminApi } from '@/api/admin'
 import { clustersApi } from '@/api/clusters'
+import { adminRunnerApi, type Runner } from '@/api/runners'
 import type { Cluster, DatabaseSize, Plan, PlanInput, StorageClass } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
 import { useEntitlement } from '@/composables/useEntitlement'
@@ -25,6 +26,11 @@ const databaseSizes = ref<DatabaseSize[]>([])
 adminApi.listDatabaseSizes().then((r) => { databaseSizes.value = r.data.data ?? [] }).catch(() => { databaseSizes.value = [] })
 const storageClasses = ref<StorageClass[]>([])
 adminApi.listStorageClasses().then((r) => { storageClasses.value = r.data.data ?? [] }).catch(() => { storageClasses.value = [] })
+// Which shared runners a plan offers. The pool is the platform's to lend; a workspace's own
+// runners are never bound by its plan, so only shared runners are listed here.
+const platformRunnersPolicy = useEntitlement('platform_runners')
+const sharedRunners = ref<Runner[]>([])
+adminRunnerApi.list().then((r) => { sharedRunners.value = r.data.data ?? [] }).catch(() => { sharedRunners.value = [] })
 
 const planId = computed(() => Number(route.params.id))
 const plan = ref<Plan | null>(null)
@@ -120,6 +126,13 @@ function toggleClass(name: string) {
     form.value.default_storage_class = ''
   }
 }
+const planRunners = computed(() => form.value?.platform_runners ?? [])
+function toggleRunner(name: string) {
+  if (!form.value) return
+  const names = planRunners.value
+  form.value.platform_runners = names.includes(name) ? names.filter((n) => n !== name) : [...names, name]
+}
+
 function makeDefaultSize(id: number) {
   setPlanSizes([id, ...planSizes.value.filter((x) => x !== id)])
 }
@@ -363,6 +376,27 @@ function fmtDate(s?: string): string {
             </select>
             <p class="form-hint">{{ $t('planDetail.defaultStorageClassHint') }}</p>
           </div>
+        </div>
+      </div>
+
+      <div class="card mt-4">
+        <div class="card-header">
+          <h2>{{ $t('adminNav.infrastructure.sharedRunners') }}</h2>
+          <span v-if="!platformRunnersPolicy.has.value" class="badge badge-neutral" :title="$t('planDetail.platformRunnersRequireEE')">
+            <span class="mdi mdi-lock-outline"></span>{{ $t('planDetail.enterprise') }}</span>
+        </div>
+        <div class="card-body">
+          <p class="form-hint" style="margin-top: 0">
+            <i18n-t keypath="planDetail.platformRunnersHint" tag="span"><template #link><router-link to="/admin/runners">{{ $t('planDetail.platformRunners2') }}</router-link></template></i18n-t>
+            <template v-if="!platformRunnersPolicy.has.value"> {{ $t('planDetail.requiresAnEnterpriseLicense') }}</template>
+          </p>
+          <p v-if="!sharedRunners.length" class="text-muted text-sm">{{ $t('planDetail.noPlatformRunners') }}</p>
+          <label v-for="r in sharedRunners" :key="r.id" class="checkbox-label">
+            <input type="checkbox" :checked="planRunners.includes(r.name)" :disabled="!platformRunnersPolicy.mutable.value" @change="toggleRunner(r.name)" />
+            {{ r.display_name || r.name }} <span class="text-muted mono">{{ r.name }}</span>
+            <span v-if="r.cordoned" class="badge" style="margin-left: 6px">{{ $t('planDetail.disabled') }}</span>
+          </label>
+          <p class="form-hint">{{ $t('planDetail.platformRunnersOptional') }}</p>
         </div>
       </div>
 

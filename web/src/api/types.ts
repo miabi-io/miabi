@@ -66,6 +66,9 @@ export interface Plan {
   database_sizes?: number[] | null
   // Storage classes, by name, the plan's workspaces may create volumes on; empty offers every one.
   storage_classes?: string[] | null
+  // platform_runners names the shared runners the plan may build on; empty offers the
+  // whole pool. A workspace's own runners are never bound by its plan.
+  platform_runners?: string[] | null
   // The class a volume naming none gets, before the node's own default.
   default_storage_class?: string | null
   created_at?: string
@@ -143,6 +146,7 @@ export interface WorkspaceQuotaOverride {
   database_sizes?: number[] | null
   storage_classes?: string[] | null
   default_storage_class?: string | null
+  platform_runners?: string[] | null
 }
 
 export interface ResourceUsage {

@@ -102,8 +102,13 @@ type Plan struct {
 	DatabaseSizes             []uint        `json:"database_sizes" gorm:"type:text;serializer:json"`
 	StorageClasses            []string      `json:"storage_classes" gorm:"type:text;serializer:json"`
 	DefaultStorageClass       string        `json:"default_storage_class"`
-	CreatedAt                 time.Time     `json:"created_at"`
-	UpdatedAt                 time.Time     `json:"updated_at"`
+	// PlatformRunners names the shared runners this plan may build on. Empty offers every shared
+	// runner, so an existing plan keeps the whole pool. It refines AllowPlatformRunners rather than
+	// replacing it: without that capability no shared runner is in scope at all. A workspace's own
+	// runners are never bound by it — they are the tenant's machines, not the platform's.
+	PlatformRunners []string  `json:"platform_runners" gorm:"type:text;serializer:json"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // WorkspaceQuota holds per-workspace overrides applied on top of the assigned
@@ -141,6 +146,7 @@ type WorkspaceQuota struct {
 	DatabaseSizes             *[]uint        `json:"database_sizes,omitempty" gorm:"type:text;serializer:json"` // nil = inherit plan
 	StorageClasses            *[]string      `json:"storage_classes,omitempty" gorm:"type:text;serializer:json"`
 	DefaultStorageClass       *string        `json:"default_storage_class,omitempty"`
+	PlatformRunners           *[]string      `json:"platform_runners,omitempty" gorm:"type:text;serializer:json"`
 
 	UpdatedAt time.Time `json:"updated_at"`
 }
