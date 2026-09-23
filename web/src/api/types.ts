@@ -292,6 +292,8 @@ export interface PageableResponse<T> {
   pageable: Pageable
 }
 
+export type AuthSource = 'local' | 'oauth' | 'ldap' | 'saml' | 'scim'
+
 export interface User {
   id: number
   name: string
@@ -302,6 +304,10 @@ export interface User {
   two_factor_enabled?: boolean
   // True once the user dismissed or completed the getting-started checklist.
   onboarding_dismissed?: boolean
+  /** The system that owns the identity: 'local', or the provider that created it. */
+  auth_source?: AuthSource
+  // True when an identity provider owns the account, so name and username are read-only.
+  profile_managed?: boolean
   recovery_codes_remaining?: number
   // Populated on /me only: the credential behind the request. For a
   // workspace-bound API key, auth.workspace_id is the workspace the token manages.

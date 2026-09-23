@@ -205,6 +205,7 @@ func (p *Provider) createUser(c *okapi.Context) error {
 	u := models.User{
 		Name: nameOf(in, email), Email: email, PasswordHash: randomPassword(),
 		Role: models.SystemRoleUser, Active: in.Active, EmailVerifiedAt: &now,
+		AuthSource: models.AuthSourceSCIM,
 	}
 	if err := p.db.Create(&u).Error; err != nil {
 		return scimError(c, http.StatusConflict, "could not create user")

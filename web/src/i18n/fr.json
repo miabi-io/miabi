@@ -2891,9 +2891,16 @@
   },
   "profile": {
     "activeSessions": "Sessions actives",
+    "authSource": {
+      "oauth": "votre fournisseur d’authentification unique",
+      "saml": "votre fournisseur d’authentification unique (SAML)",
+      "ldap": "votre annuaire (LDAP)",
+      "scim": "votre fournisseur d’identité (SCIM)"
+    },
     "contactAnAdministratorToChange": "Contactez un administrateur pour modifier votre adresse e-mail.",
     "current": "Actuelle",
     "email": "E-mail",
+    "managedByProvider": "Votre nom et votre identifiant sont gérés par {provider}. Modifiez-les depuis ce fournisseur — ce formulaire est en lecture seule.",
     "myProfile": "Mon profil",
     "noActiveSessionsFound": "Aucune session active.",
     "profile": "Profil",

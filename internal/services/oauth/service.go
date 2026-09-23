@@ -288,6 +288,7 @@ func (s *Service) Authenticate(ctx context.Context, p *models.OAuthProvider, cod
 		Role:            role,
 		Active:          true,
 		EmailVerifiedAt: &now, // provider asserts the email
+		AuthSource:      models.AuthSourceOAuth,
 		// The realm the provider registers into; nil leaves the account in the default
 		// organization. Only set here, on an account being created: signing in through a provider
 		// never moves somebody who already exists between tenants.
@@ -332,9 +333,12 @@ func (s *Service) autoJoinWorkspace(p *models.OAuthProvider, userID uint) {
 	}
 }
 
-// ProvisionSSOUser finds a user by email or creates one from a trusted identity provider. Mirrors the OAuth
+// ProvisionSSOUser finds a user by email or creates one from a SAML assertion. Mirrors the OAuth
 // auto-register policy: the first user is the platform admin, the asserted email is treated as verified, and
 // the account uses an unusable password. Returns ErrAccountDisabled for a disabled user.
+//
+// An account that already exists keeps its auth source: an email match is account linking, and a
+// local account that also signs in through SSO is still the user's own to edit.
 func (s *Service) ProvisionSSOUser(ctx context.Context, email, name, username string) (*models.User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if email == "" {
@@ -359,6 +363,7 @@ func (s *Service) ProvisionSSOUser(ctx context.Context, email, name, username st
 		Name: name, Email: email, Username: s.availableUsername(username),
 		PasswordHash: unusablePassword(),
 		Role:         role, Active: true, EmailVerifiedAt: &now,
+		AuthSource: models.AuthSourceSAML,
 	}
 	if err := s.users.Create(user); err != nil {
 		return nil, err

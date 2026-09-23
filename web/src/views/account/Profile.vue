@@ -16,6 +16,21 @@ const name = ref(auth.user?.name ?? '')
 const username = ref(auth.user?.username ?? '')
 const nameBusy = ref(false)
 const nameValid = computed(() => name.value.trim().length > 0)
+// An externally provisioned account is the provider's to rename: the API refuses the
+// edit, so the form reads it back instead of offering a button that always fails.
+const managed = computed(() => auth.user?.profile_managed === true)
+const providerLabel = computed(() => {
+  switch (auth.user?.auth_source) {
+    case 'ldap':
+      return t('profile.authSource.ldap')
+    case 'saml':
+      return t('profile.authSource.saml')
+    case 'scim':
+      return t('profile.authSource.scim')
+    default:
+      return t('profile.authSource.oauth')
+  }
+})
 // A blank username means "leave unchanged"; the API derives/keeps the handle.
 const usernameChanged = computed(
   () => username.value.trim() !== '' && username.value.trim() !== (auth.user?.username ?? ''),
@@ -25,7 +40,7 @@ const profileChanged = computed(
 )
 
 async function saveProfile() {
-  if (!nameValid.value || !profileChanged.value || nameBusy.value) return
+  if (managed.value || !nameValid.value || !profileChanged.value || nameBusy.value) return
   nameBusy.value = true
   try {
     await auth.updateProfile(name.value.trim(), usernameChanged.value ? username.value.trim() : undefined)
@@ -150,15 +165,18 @@ onMounted(loadSessions)
       <div class="card">
         <div class="card-header"><h2>{{ $t('profile.myProfile') }}</h2></div>
         <div class="card-body">
-          <p class="sec-desc">{{ $t('profile.updateTheNameShownAcross') }}</p>
+          <p v-if="!managed" class="sec-desc">{{ $t('profile.updateTheNameShownAcross') }}</p>
+          <div v-else class="managed-note">
+            {{ $t('profile.managedByProvider', { provider: providerLabel }) }}
+          </div>
           <form class="profile-form" @submit.prevent="saveProfile">
             <div class="form-group">
               <label class="form-label" for="profile-name">{{ $t('oauth.displayName') }}</label>
-              <input id="profile-name" v-model="name" type="text" class="form-input" maxlength="100" autocomplete="name" required />
+              <input id="profile-name" v-model="name" type="text" class="form-input" maxlength="100" autocomplete="name" :disabled="managed" required />
             </div>
             <div class="form-group">
               <label class="form-label" for="profile-username">{{ $t('profile.username') }}</label>
-              <input id="profile-username" v-model="username" type="text" class="form-input mono" autocomplete="username" spellcheck="false" placeholder="your-handle" />
+              <input id="profile-username" v-model="username" type="text" class="form-input mono" autocomplete="username" spellcheck="false" placeholder="your-handle" :disabled="managed" />
               <small class="form-hint">{{ $t('profile.yourUniqueHandleLowercaseLetters') }}</small>
             </div>
             <div class="form-group">
@@ -166,7 +184,7 @@ onMounted(loadSessions)
               <input id="profile-email" :value="auth.user?.email" type="email" class="form-input" disabled />
               <small class="form-hint">{{ $t('profile.contactAnAdministratorToChange') }}</small>
             </div>
-            <button type="submit" class="btn btn-primary" :disabled="!nameValid || !profileChanged || nameBusy">
+            <button v-if="!managed" type="submit" class="btn btn-primary" :disabled="!nameValid || !profileChanged || nameBusy">
               {{ nameBusy ? 'Saving…' : 'Save changes' }}
             </button>
           </form>
@@ -250,6 +268,16 @@ onMounted(loadSessions)
   font-size: 12px;
   color: var(--text-muted);
   margin-top: 4px;
+}
+
+.managed-note {
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 1rem;
 }
 
 .mono {

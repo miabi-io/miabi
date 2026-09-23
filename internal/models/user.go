@@ -18,6 +18,17 @@ const (
 	SystemRoleUser  SystemRole = "user"
 )
 
+// Auth sources name the system that owns an account's identity. Anything other than
+// local was provisioned by an external provider, which stays the source of truth for
+// the account's name and handle.
+const (
+	AuthSourceLocal = "local"
+	AuthSourceOAuth = "oauth"
+	AuthSourceLDAP  = "ldap"
+	AuthSourceSAML  = "saml"
+	AuthSourceSCIM  = "scim"
+)
+
 // User is a global identity.
 type User struct {
 	ID                       uint       `json:"id" gorm:"primaryKey"`
@@ -44,6 +55,14 @@ type User struct {
 }
 
 func (u *User) IsAdmin() bool { return u.Role == SystemRoleAdmin }
+
+// IsExternal reports whether an identity provider owns this account. Such a profile is
+// not the user's to edit: the provider re-asserts name and handle on every sign-in, so
+// a local edit would either be silently reverted or drift from the directory.
+func (u *User) IsExternal() bool {
+	src := strings.ToLower(strings.TrimSpace(u.AuthSource))
+	return src != "" && src != AuthSourceLocal
+}
 
 // AfterCreate makes a user the owner of their organization when it has none.
 //
