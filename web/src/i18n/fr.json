@@ -883,6 +883,7 @@
     "verifyHint": "Essayez ensuite {list} pour lister vos applications, ou {help} pour tout le reste."
   },
   "cliAuthorize": {
+    "limitedToScopes": "Cette connexion sera limitée aux portées demandées par la CLI :",
     "password": "Mot de passe",
     "reRunHint": "Relancez {cmd} depuis votre terminal pour démarrer une nouvelle connexion.",
     "usernameOrEmail": "Nom d’utilisateur ou e-mail",

@@ -883,6 +883,7 @@
     "verifyHint": "Then try {list} to list your applications, or {help} for everything else."
   },
   "cliAuthorize": {
+    "limitedToScopes": "This sign-in will be limited to the scopes the CLI asked for:",
     "password": "Password",
     "reRunHint": "Re-run {cmd} from your terminal to start a new sign-in.",
     "usernameOrEmail": "Username or email",

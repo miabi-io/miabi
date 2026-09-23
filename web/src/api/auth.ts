@@ -41,7 +41,7 @@ export const authApi = {
     identifier: string,
     password: string,
     twoFactorCode?: string,
-    opts?: { expiresInHours?: number; redirectUri?: string; state?: string },
+    opts?: { expiresInHours?: number; redirectUri?: string; state?: string; scopes?: string[] },
   ) {
     return api.post<ApiResponse<LoginTokenResponse>>('/auth/login-token', {
       username: identifier,
@@ -50,6 +50,8 @@ export const authApi = {
       expires_in_hours: opts?.expiresInHours,
       redirect_uri: opts?.redirectUri,
       state: opts?.state,
+      // Omitted means the server's default grant; a narrowed list comes from `miabi login --scopes`.
+      scopes: opts?.scopes?.length ? opts.scopes : undefined,
     })
   },
   // Exchange a single-use hand-off reference (from the SSO login-token flow) for

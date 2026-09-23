@@ -47,7 +47,8 @@ const intentLoginToken = "login_token"
 
 // intentCliLogin is the SSO intent behind `miabi login`'s loopback flow: like intentLoginToken it
 // mints a CLI token on callback, but redirects the browser to the CLI's local callback with a
-// single-use code. The loopback target and CLI state ride in the intent value, joined by intentSep.
+// single-use code. The loopback target, CLI state and any narrowed scopes ride in the intent
+// value, joined by intentSep.
 const intentCliLogin = "cli_login"
 
 // intentSep joins the intent kind with its loopback redirect and CLI state in
@@ -122,6 +123,9 @@ func (h *OAuthHandler) Authorize(c *okapi.Context) error {
 	case intentLoginToken:
 		if h.loginTokens != nil {
 			intent = intentLoginToken
+			if sc := strings.TrimSpace(c.Query("cli_scopes")); sc != "" {
+				intent += intentSep + sc
+			}
 		}
 	case intentCliLogin:
 		// `miabi login` loopback: carry the CLI's local callback + state through the
@@ -129,7 +133,11 @@ func (h *OAuthHandler) Authorize(c *okapi.Context) error {
 		// non-loopback targets here, before we ever start the flow.
 		cliRedirect := strings.TrimSpace(c.Query("cli_redirect"))
 		if h.loginTokens != nil && isLoopbackRedirect(cliRedirect) {
-			intent = intentCliLogin + intentSep + cliRedirect + intentSep + strings.TrimSpace(c.Query("cli_state"))
+			intent = strings.Join([]string{
+				intentCliLogin, cliRedirect,
+				strings.TrimSpace(c.Query("cli_state")),
+				strings.TrimSpace(c.Query("cli_scopes")),
+			}, intentSep)
 		}
 	}
 	redirectURI := h.callbackURI(c, p.Name)
@@ -170,12 +178,14 @@ func (h *OAuthHandler) Callback(c *okapi.Context) error {
 	// CLI login intents: the fresh SSO login just proved identity, so mint a
 	// short-lived token instead of a console session. login_token hands off to the
 	// display page; cli_login redirects straight to the CLI's loopback callback.
-	if intent := h.oauth.ConsumeIntent(c.Request().Context(), state); h.loginTokens != nil && intent != "" {
-		if intent == intentLoginToken {
-			return h.issueLoginToken(c, user, slug)
-		}
-		if kind, redirect, cliState, ok := parseIntent(intent); ok && kind == intentCliLogin {
-			return h.issueCliLoginToken(c, user, slug, redirect, cliState)
+	if raw := h.oauth.ConsumeIntent(c.Request().Context(), state); h.loginTokens != nil && raw != "" {
+		if kind, redirect, cliState, scopes, ok := parseIntent(raw); ok {
+			switch kind {
+			case intentLoginToken:
+				return h.issueLoginToken(c, user, slug, scopes)
+			case intentCliLogin:
+				return h.issueCliLoginToken(c, user, slug, redirect, cliState, scopes)
+			}
 		}
 	}
 
@@ -206,9 +216,8 @@ func (h *OAuthHandler) Callback(c *okapi.Context) error {
 
 // issueLoginToken mints a CLI login token for a user who just re-authenticated via SSO, stashes
 // it under a single-use hand-off reference, and redirects to the display page with that reference
-// — never the token itself, so the secret never rides in the redirect URL.
-func (h *OAuthHandler) issueLoginToken(c *okapi.Context, user *models.User, slug string) error {
-	tok, err := h.loginTokens.Issue(user.ID, nil, nil)
+func (h *OAuthHandler) issueLoginToken(c *okapi.Context, user *models.User, slug string, scopes []string) error {
+	tok, err := h.loginTokens.Issue(user.ID, scopes, nil)
 	if err != nil {
 		return h.fail(c, "token_error")
 	}
@@ -229,8 +238,8 @@ func (h *OAuthHandler) issueLoginToken(c *okapi.Context, user *models.User, slug
 // issueCliLoginToken is the SSO half of `miabi login`'s loopback flow: after a fresh IdP login it
 // mints a CLI token, stashes it behind a single-use code, and redirects the browser to the CLI's
 // local callback with that code. redirect was validated as loopback when the flow started.
-func (h *OAuthHandler) issueCliLoginToken(c *okapi.Context, user *models.User, slug, redirect, cliState string) error {
-	tok, err := h.loginTokens.Issue(user.ID, nil, nil)
+func (h *OAuthHandler) issueCliLoginToken(c *okapi.Context, user *models.User, slug, redirect, cliState string, scopes []string) error {
+	tok, err := h.loginTokens.Issue(user.ID, scopes, nil)
 	if err != nil {
 		return h.fail(c, "token_error")
 	}
@@ -247,18 +256,39 @@ func (h *OAuthHandler) issueCliLoginToken(c *okapi.Context, user *models.User, s
 	return nil
 }
 
-// parseIntent splits a stored intent value into its kind and (for CLI-login) the
-// loopback redirect and CLI state. ok is false when the value is malformed.
-func parseIntent(intent string) (kind, redirect, cliState string, ok bool) {
+// parseIntent splits a stored intent value into its kind and (for CLI-login) the loopback
+// redirect, CLI state and requested scopes. The 3-part form is accepted so an intent stored before
+// scopes were carried still completes after an upgrade. ok is false when the value is malformed.
+func parseIntent(intent string) (kind, redirect, cliState string, scopes []string, ok bool) {
 	parts := strings.Split(intent, intentSep)
 	switch len(parts) {
 	case 1:
-		return parts[0], "", "", true
+		return parts[0], "", "", nil, true
+	case 2:
+		return parts[0], "", "", splitScopes(parts[1]), true
 	case 3:
-		return parts[0], parts[1], parts[2], true
+		return parts[0], parts[1], parts[2], nil, true
+	case 4:
+		return parts[0], parts[1], parts[2], splitScopes(parts[3]), true
 	default:
-		return "", "", "", false
+		return "", "", "", nil, false
 	}
+}
+
+// splitScopes turns the comma-joined scope list the CLI sent into the slice the token service
+// takes. Empty means "no narrowing requested", which the service reads as its own default.
+func splitScopes(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func (h *OAuthHandler) callbackURI(c *okapi.Context, slug string) string {
