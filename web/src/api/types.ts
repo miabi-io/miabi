@@ -550,6 +550,8 @@ export interface OwnershipTransfer {
 }
 
 export interface AdminUserDetail extends AdminUser {
+  /** The realm the user belongs to, resolved to a label. Read-only: fixed at registration. */
+  organization_name?: string
   workspaces_owned: number
   workspaces_member: number
   apps_total: number

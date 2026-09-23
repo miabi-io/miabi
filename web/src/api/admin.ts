@@ -79,8 +79,6 @@ export interface UpdateUserPayload {
   active?: boolean
   // Optional change to the unique handle (an admin action).
   username?: string
-  /** The realm the user's NEW workspaces are created in; 0 returns them to the default org. */
-  organization_id?: number
 }
 
 export interface SettingInput {

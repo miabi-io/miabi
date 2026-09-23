@@ -178,9 +178,6 @@ type AdminUpdateUserRequest struct {
 		Active *bool  `json:"active"`
 		// Username optionally changes the unique handle (an admin action).
 		Username string `json:"username"`
-		// OrganizationID moves the user to another realm, which is where their NEW workspaces are
-		// created. 0 returns them to the default organization; null leaves the realm unchanged.
-		OrganizationID *uint `json:"organization_id"`
 	} `json:"body"`
 }
 
@@ -228,6 +225,7 @@ type AdminUserDetail struct {
 	Stacks           int64              `json:"stacks"`
 	OwnedWorkspaces  []WorkspaceSummary `json:"owned_workspaces"`
 	RecentEvents     []models.AuditLog  `json:"recent_events"`
+	OrganizationName string             `json:"organization_name,omitempty"`
 }
 
 // Get returns a single user with aggregate counts over the workspaces they own.
@@ -252,6 +250,14 @@ func (h *AdminUserHandler) Get(c *okapi.Context) error {
 		WorkspacesMember: memberships,
 		OwnedWorkspaces:  []WorkspaceSummary{},
 		RecentEvents:     []models.AuditLog{},
+	}
+	if h.orgs != nil {
+		if org, oerr := h.orgs.Get(h.orgs.HomeOrganization(user)); oerr == nil {
+			detail.OrganizationName = org.DisplayName
+			if detail.OrganizationName == "" {
+				detail.OrganizationName = org.Name
+			}
+		}
 	}
 	if len(ownedIDs) > 0 {
 		detail.AppsTotal = h.countIn(&models.Application{}, ownedIDs, "")
@@ -364,7 +370,11 @@ func (h *AdminUserHandler) Create(c *okapi.Context, req *AdminCreateUserRequest)
 	return created(c, user)
 }
 
-// Update changes a user's role, active flag, and/or email-verified state.
+// Update changes a user's role, active flag, username and/or email-verified state.
+//
+// Not the organization: a realm is decided at registration and never changes afterwards, the same
+// rule SSO follows. Moving an account would leave the workspaces it already owns behind in the old
+// realm, on clusters the new one cannot see.
 func (h *AdminUserHandler) Update(c *okapi.Context, req *AdminUpdateUserRequest) error {
 	target, err := h.targetUser(c)
 	if err != nil {
@@ -396,25 +406,6 @@ func (h *AdminUserHandler) Update(c *okapi.Context, req *AdminUpdateUserRequest)
 			}
 		}
 		target.Active = *req.Body.Active
-	}
-
-	if req.Body.OrganizationID != nil {
-		if err := h.ee.RequireMutable(enterprise.FlagOrganizations); err != nil {
-			return entitlementAbort(c, err)
-		}
-		// Only new workspaces follow the user; the ones they already own stay where they are, since
-		// moving a workspace changes which clusters its workloads may run on.
-		if *req.Body.OrganizationID == 0 {
-			target.OrganizationID = nil
-		} else {
-			if h.orgs == nil {
-				return c.AbortBadRequest("organizations are not available")
-			}
-			if _, err := h.orgs.Get(*req.Body.OrganizationID); err != nil {
-				return c.AbortBadRequest("no such organization")
-			}
-			target.OrganizationID = req.Body.OrganizationID
-		}
 	}
 
 	if username, err := validateUsername(h.users, req.Body.Username, target.ID); err != nil {
