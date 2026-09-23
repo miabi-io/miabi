@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -95,7 +96,7 @@ func (c *Client) Tags(ctx context.Context, repo string) ([]string, error) {
 	var out struct {
 		Tags []string `json:"tags"`
 	}
-	if _, err := c.getJSON(ctx, "/v2/"+repo+"/tags/list", &out); err != nil {
+	if _, err := c.getJSON(ctx, "/v2/"+escapePath(repo)+"/tags/list", &out); err != nil {
 		return nil, err
 	}
 	return out.Tags, nil
@@ -103,7 +104,7 @@ func (c *Client) Tags(ctx context.Context, repo string) ([]string, error) {
 
 // ManifestDigest resolves a tag to its content digest (needed to delete it).
 func (c *Client) ManifestDigest(ctx context.Context, repo, ref string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/v2/"+repo+"/manifests/"+ref, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/v2/"+escapePath(repo)+"/manifests/"+url.PathEscape(ref), nil)
 	if err != nil {
 		return "", err
 	}
@@ -128,7 +129,7 @@ func (c *Client) ManifestDigest(ctx context.Context, repo, ref string) (string, 
 // digest's manifest and re-PUTs the identical bytes under the tag. Used to add a human-readable release
 // tag to an already-pushed build image. repo is the internal storage path (ws_<id>/<app-name>).
 func (c *Client) TagManifest(ctx context.Context, repo, digest, tag string) error {
-	get, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/v2/"+repo+"/manifests/"+digest, nil)
+	get, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/v2/"+escapePath(repo)+"/manifests/"+url.PathEscape(digest), nil)
 	if err != nil {
 		return err
 	}
@@ -144,7 +145,7 @@ func (c *Client) TagManifest(ctx context.Context, repo, digest, tag string) erro
 	}
 	ct := resp.Header.Get("Content-Type")
 
-	put, err := http.NewRequestWithContext(ctx, http.MethodPut, c.base+"/v2/"+repo+"/manifests/"+tag, bytes.NewReader(body))
+	put, err := http.NewRequestWithContext(ctx, http.MethodPut, c.base+"/v2/"+escapePath(repo)+"/manifests/"+url.PathEscape(tag), bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -203,7 +204,7 @@ func (c *Client) ManifestInfo(ctx context.Context, repo, ref string) (digest str
 // deduplicated sizes of every blob it references (recursing into an index's
 // child manifests, so a multi-arch image counts each shared layer once).
 func (c *Client) manifestBlobs(ctx context.Context, repo, ref string) (string, map[string]int64, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/v2/"+repo+"/manifests/"+ref, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/v2/"+escapePath(repo)+"/manifests/"+url.PathEscape(ref), nil)
 	if err != nil {
 		return "", nil, err
 	}
@@ -248,7 +249,7 @@ func (c *Client) manifestBlobs(ctx context.Context, repo, ref string) (string, m
 // requires REGISTRY_STORAGE_DELETE_ENABLED). Deleting the manifest untags every
 // tag pointing at it.
 func (c *Client) DeleteManifest(ctx context.Context, repo, digest string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.base+"/v2/"+repo+"/manifests/"+digest, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.base+"/v2/"+escapePath(repo)+"/manifests/"+url.PathEscape(digest), nil)
 	if err != nil {
 		return err
 	}

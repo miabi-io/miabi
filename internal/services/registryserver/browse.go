@@ -134,7 +134,10 @@ func nonNil(s []string) []string {
 // Overview returns a repository's summary: its tag count, a preview of the
 // newest tags, and the newest tag enriched with digest, size, and provenance.
 func (s *Service) Overview(ctx context.Context, workspaceID uint, image string) (*RepositoryOverview, error) {
-	repo := Namespace(workspaceID) + "/" + strings.Trim(image, "/")
+	repo, err := repoPath(workspaceID, image)
+	if err != nil {
+		return nil, err
+	}
 	tags, err := s.reg.Tags(ctx, repo)
 	if err != nil {
 		return nil, err
@@ -161,7 +164,10 @@ func (s *Service) Overview(ctx context.Context, workspaceID uint, image string) 
 // enriched with digest, size, in-use state, and build provenance, plus the total
 // number of tags matching q.
 func (s *Service) ListTagsPage(ctx context.Context, workspaceID uint, image, q string, offset, limit int) ([]TagInfo, int, error) {
-	repo := Namespace(workspaceID) + "/" + strings.Trim(image, "/")
+	repo, err := repoPath(workspaceID, image)
+	if err != nil {
+		return nil, 0, err
+	}
 	tags, err := s.reg.Tags(ctx, repo)
 	if err != nil {
 		return nil, 0, err
