@@ -430,19 +430,31 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 			h.log(dep, "authenticating to registry "+auth.Server)
 		}
 		// Decide whether to pull, honoring the app's image pull policy. A digest-pinned ref is immutable,
-		// so an already-present one is never re-pulled regardless of policy.
+		// so an already-present one is never re-pulled regardless of policy — but only where this
+		// workspace is entitled to the cached copy in the first place (see mayReuseCachedImage).
 		present := h.imagePresent(ctx, app, image)
 		pinned := strings.Contains(image, "@")
+		internal := h.distributor != nil && h.distributor.IsBuildRef(image)
+		reusable := mayReuseCachedImage(image, internal, auth)
 		switch {
-		case present && (pinned || app.ImagePullPolicy == models.PullIfNotPresent):
+		case present && reusable && (pinned || app.ImagePullPolicy == models.PullIfNotPresent):
 			h.log(dep, "image "+image+" already present — skipping pull")
 		case app.ImagePullPolicy == models.PullNever:
 			if !present {
 				_ = h.fail(dep, fmt.Errorf("image %s is not present locally and pull policy is 'never'", image))
 				return
 			}
+			// 'never' is the one policy with no pull to fall back on, so an unauthorized cached image
+			// has to be refused outright rather than fetched.
+			if !reusable {
+				_ = h.fail(dep, fmt.Errorf("%s: %w", image, ErrCachedImageUnauthorized))
+				return
+			}
 			h.log(dep, "image "+image+" present — skipping pull (policy: never)")
-		default: // always, or if-not-present with the image absent
+		default: // always, if-not-present with the image absent, or a cached image this workspace cannot claim
+			if present && !reusable {
+				h.log(dep, "image "+image+" is present but cached by another workload — pulling to verify access")
+			}
 			h.log(dep, "pulling image "+image)
 			if err := h.eng(app).PullImage(ctx, image, auth); err != nil {
 				_ = h.fail(dep, fmt.Errorf("pull image: %w", err))
