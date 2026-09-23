@@ -87,10 +87,23 @@ func (r *ProxyNetworkReconciler) applyAttachment(ctx context.Context, eng docker
 	}
 }
 
-// reconcileServiceIngress ensures the central gateway can reach a cluster app's service VIP for
-// public ingress. The app's service is already on the shared ingress overlay; this joins the central
-// gateway to the same overlay. Attach-only and best-effort.
+// reconcileServiceIngress puts a cluster app's service on the shared ingress overlay while it is
+// routed, and takes it off when it is not, so the central gateway can reach its VIP for public
+// ingress. Best-effort: a route change must not fail because an engine is unreachable.
+//
+// Swarm has no live network connect for a service, so an actual change is a rolling update and the
+// tasks restart. ServiceSetIngressNetwork does nothing when the service is already in the wanted
+// state, which is the common case — this runs on every route change.
 func (r *ProxyNetworkReconciler) reconcileServiceIngress(ctx context.Context, app *models.Application, attached bool) error {
+	if r.cluster != nil {
+		if mgr, err := r.cluster.Manager(ctx, app.ClusterID); err == nil {
+			alias := node.AppAlias(app)
+			if err := mgr.ServiceSetIngressNetwork(ctx, alias, node.IngressOverlay, alias, attached); err != nil {
+				logger.Warn("failed to reconcile service ingress attachment",
+					"app", app.ID, "service", alias, "attached", attached, "error", err)
+			}
+		}
+	}
 	if !attached {
 		// A single app losing its route must not detach the shared gateway — every
 		// other clustered app still needs it, and it being attached is harmless (the

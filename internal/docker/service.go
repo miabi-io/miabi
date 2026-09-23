@@ -296,6 +296,61 @@ func (e *engineClient) ServiceSetEndpointMode(ctx context.Context, idOrName, mod
 	return err
 }
 
+// ServiceSetIngressNetwork attaches or detaches a service from the shared ingress overlay in place,
+// registering only alias on it. Idempotent by design: a service already in the wanted state is left
+// untouched, because swarm has no live network connect for a service — an actual change is a
+// rolling update, and its tasks restart. Callers reconcile on every route change, so doing nothing
+// when nothing differs is what keeps that cheap.
+func (e *engineClient) ServiceSetIngressNetwork(ctx context.Context, idOrName, network, alias string, attached bool) error {
+	res, err := e.cli.ServiceInspect(ctx, idOrName, client.ServiceInspectOptions{})
+	if err != nil {
+		return wrapNotFound(err)
+	}
+	cur := res.Service
+
+	// Docker may report an attachment by network id rather than by the name it was created with,
+	// so resolve the id too — matching on the name alone would re-add a network already present.
+	id := ""
+	if n, ierr := e.cli.NetworkInspect(ctx, network, client.NetworkInspectOptions{}); ierr == nil {
+		id = n.Network.ID
+	}
+	next, changed := ingressAttachments(cur.Spec.TaskTemplate.Networks, network, id, alias, attached)
+	if !changed {
+		return nil
+	}
+	cur.Spec.TaskTemplate.Networks = next
+	_, err = e.cli.ServiceUpdate(ctx, cur.ID, client.ServiceUpdateOptions{Version: cur.Version, Spec: cur.Spec})
+	return err
+}
+
+// ingressAttachments returns the task network list with `network` added or removed, and whether it
+// differs from what was passed in. Separated from the API call because the "no change" answer is
+// what keeps a route change from restarting tasks needlessly, and that deserves a test.
+func ingressAttachments(nets []swarm.NetworkAttachmentConfig, network, id, alias string, attached bool) ([]swarm.NetworkAttachmentConfig, bool) {
+	idx := -1
+	for i, n := range nets {
+		if n.Target == network || (id != "" && n.Target == id) {
+			idx = i
+			break
+		}
+	}
+	if attached == (idx >= 0) {
+		return nets, false
+	}
+	next := make([]swarm.NetworkAttachmentConfig, 0, len(nets)+1)
+	if attached {
+		var aliases []string
+		if alias != "" {
+			aliases = []string{alias}
+		}
+		next = append(append(next, nets...), swarm.NetworkAttachmentConfig{Target: network, Aliases: aliases})
+	} else {
+		next = append(next, nets[:idx]...)
+		next = append(next, nets[idx+1:]...)
+	}
+	return next, true
+}
+
 func endpointMode(mode string) swarm.ResolutionMode {
 	if mode == string(swarm.ResolutionModeDNSRR) {
 		return swarm.ResolutionModeDNSRR
