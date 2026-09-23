@@ -22,7 +22,7 @@ import (
 )
 
 // AuthSourceLDAP marks accounts provisioned/managed by a directory.
-const AuthSourceLDAP = "ldap"
+const AuthSourceLDAP = models.AuthSourceLDAP
 
 var (
 	// ErrAccountDisabled is returned when the matched local account is disabled.

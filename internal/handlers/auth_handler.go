@@ -216,6 +216,12 @@ type UserProfile struct {
 	// OnboardingDismissed is true once the user has dismissed or completed the
 	// getting-started checklist; the web hides onboarding guidance when set.
 	OnboardingDismissed bool `json:"onboarding_dismissed"`
+	// AuthSource names the system that owns the identity: local, or the provider that
+	// provisioned it (oauth, ldap, saml, scim).
+	AuthSource string `json:"auth_source"`
+	// ProfileManaged is true when AuthSource is external, i.e. name and username are
+	// the provider's to change and self-service edits are refused.
+	ProfileManaged bool `json:"profile_managed"`
 	// RecoveryCodesRemaining is populated on the profile (/me) endpoint only.
 	RecoveryCodesRemaining *int `json:"recovery_codes_remaining,omitempty"`
 	// Auth describes the credential the request authenticated with. Populated on
@@ -301,7 +307,28 @@ type AuthStatus struct {
 }
 
 func profileOf(u *models.User) UserProfile {
-	return UserProfile{ID: u.ID, Name: u.Name, Username: u.Username, Email: u.Email, Role: u.Role, TwoFactorEnabled: u.TwoFactorEnabled, OnboardingDismissed: u.OnboardingDismissedAt != nil}
+	src := u.AuthSource
+	if strings.TrimSpace(src) == "" {
+		src = models.AuthSourceLocal
+	}
+	return UserProfile{ID: u.ID, Name: u.Name, Username: u.Username, Email: u.Email, Role: u.Role, TwoFactorEnabled: u.TwoFactorEnabled, OnboardingDismissed: u.OnboardingDismissedAt != nil, AuthSource: src, ProfileManaged: u.IsExternal()}
+}
+
+// authSourceLabel names an auth source for an end user, who knows the provider by
+// what they sign in with, not by the column value.
+func authSourceLabel(src string) string {
+	switch strings.ToLower(strings.TrimSpace(src)) {
+	case models.AuthSourceLDAP:
+		return "your directory (LDAP)"
+	case models.AuthSourceOAuth:
+		return "your single sign-on provider"
+	case models.AuthSourceSAML:
+		return "your single sign-on provider (SAML)"
+	case models.AuthSourceSCIM:
+		return "your identity provider (SCIM)"
+	default:
+		return "your identity provider"
+	}
 }
 
 // Status reports which auth features are enabled (public). Registration is
@@ -732,12 +759,16 @@ func (h *AuthHandler) ChangePassword(c *okapi.Context, req *ChangePasswordReques
 
 // UpdateProfile lets an authenticated user edit their own profile — the display
 // name and (optionally) the username handle. Email and role are managed by an
-// admin, not self-service.
+// admin, not self-service, and an externally provisioned account is managed by its
+// identity provider.
 func (h *AuthHandler) UpdateProfile(c *okapi.Context, req *UpdateProfileRequest) error {
 	uid := middlewares.UserID(c)
 	user, err := h.users.FindByID(uid)
 	if err != nil {
 		return c.AbortNotFound("user not found")
+	}
+	if user.IsExternal() {
+		return c.AbortForbidden("your profile is managed by " + authSourceLabel(user.AuthSource) + "; update it there")
 	}
 	name := strings.TrimSpace(req.Body.Name)
 	if name == "" {

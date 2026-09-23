@@ -2891,9 +2891,16 @@
   },
   "profile": {
     "activeSessions": "Active Sessions",
+    "authSource": {
+      "oauth": "your single sign-on provider",
+      "saml": "your single sign-on provider (SAML)",
+      "ldap": "your directory (LDAP)",
+      "scim": "your identity provider (SCIM)"
+    },
     "contactAnAdministratorToChange": "Contact an administrator to change your email address.",
     "current": "Current",
     "email": "Email",
+    "managedByProvider": "Your name and username are managed by {provider}. Change them there — this form is read-only.",
     "myProfile": "My Profile",
     "noActiveSessionsFound": "No active sessions found.",
     "profile": "Profile",

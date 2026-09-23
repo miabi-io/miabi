@@ -77,7 +77,7 @@ func SeedAdmin(db *gorm.DB, email, password string) (*models.User, error) {
 	}
 	now := time.Now()
 	admin := &models.User{
-		Name:            "Admin",
+		Name:            "Platform Admin",
 		Username:        "admin",
 		Email:           email,
 		PasswordHash:    string(hash),
