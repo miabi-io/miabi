@@ -187,23 +187,6 @@ func ipAllowed(allowed []string, clientIP string) bool {
 	return false
 }
 
-// RequireScope guards a route for API-key callers, demanding the presented key
-// carry the given scope (or "*"). JWT/session callers are unaffected — their
-// access is governed by the workspace RBAC middleware instead.
-func RequireScope(scope string) okapi.Middleware {
-	return func(c *okapi.Context) error {
-		if c.GetString(CtxAuthMethod) != "api_key" {
-			return c.Next()
-		}
-		for _, s := range strings.Split(c.GetString(CtxAPIKeyScopes), ",") {
-			if s == models.ScopeAll || s == scope {
-				return c.Next()
-			}
-		}
-		return c.AbortForbidden("API key missing required scope: " + scope)
-	}
-}
-
 // APIKeyEphemeral reports whether the caller presented a machine-minted job credential.
 func APIKeyEphemeral(c *okapi.Context) bool { return c.GetBool(CtxAPIKeyEphemeral) }
 

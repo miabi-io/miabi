@@ -29,6 +29,15 @@ const twoFactorCode = ref('')
 const providers = ref<PublicProvider[]>([])
 const token = ref<LoginTokenResponse | null>(null)
 
+// `miabi login --no-browser --scopes read` opens this page with the narrowed grant it wants.
+// Unknown names are dropped rather than forwarded: the server would refuse the whole request and
+// the user would see only a failed sign-in.
+const GRANTABLE = ['read', 'write', 'deploy'] as const
+const requestedScopes = ((route.query.scopes as string | undefined) || '')
+  .split(',')
+  .map((s) => s.trim().toLowerCase())
+  .filter((s) => (GRANTABLE as readonly string[]).includes(s))
+
 const title = computed(() =>
   step.value === 'display'
     ? 'Your CLI login token'
@@ -73,7 +82,9 @@ async function submit() {
   error.value = ''
   loading.value = true
   try {
-    const res = await authApi.loginToken(username.value.trim(), password.value, twoFactorCode.value || undefined)
+    const res = await authApi.loginToken(username.value.trim(), password.value, twoFactorCode.value || undefined, {
+      scopes: requestedScopes,
+    })
     const data = res.data.data
     if (data.two_factor_required) {
       step.value = 'twofactor'
@@ -90,7 +101,7 @@ async function submit() {
 
 function ssoLogin(slug: string) {
   // Full-page redirect into the IdP with intent=login_token (forces fresh auth).
-  window.location.href = authorizeUrl(slug, 'login_token')
+  window.location.href = authorizeUrl(slug, 'login_token', requestedScopes)
 }
 
 function requestAnother() {

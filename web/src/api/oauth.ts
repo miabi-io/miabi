@@ -15,19 +15,26 @@ export const oauthApi = {
 // provider. The browser navigates here directly (full page load), so it must hit
 // the API origin, not the SPA router. Pass intent='login_token' to force a fresh
 // IdP login and mint a CLI token instead of a console session.
-export function authorizeUrl(slug: string, intent?: string): string {
+export function authorizeUrl(slug: string, intent?: string, scopes: string[] = []): string {
   const base = (import.meta.env.VITE_API_URL || '/api/v1') as string
   const origin = base.startsWith('http') ? '' : window.location.origin
-  const q = intent ? `?intent=${encodeURIComponent(intent)}` : ''
-  return `${origin}${base}/auth/oauth/${slug}/authorize${q}`
+  const q = new URLSearchParams()
+  if (intent) q.set('intent', intent)
+  // A narrowed grant requested by `miabi login --scopes` has to survive the IdP round-trip too.
+  if (intent && scopes.length) q.set('cli_scopes', scopes.join(','))
+  const qs = q.toString()
+  return `${origin}${base}/auth/oauth/${slug}/authorize${qs ? '?' + qs : ''}`
 }
 
 // cliAuthorizeUrl begins the SSO redirect for `miabi login`'s loopback flow: a
 // fresh IdP login that, on callback, hands a single-use code straight to the
 // CLI's local callback (redirectUri) with state echoed back for its CSRF check.
-export function cliAuthorizeUrl(slug: string, redirectUri: string, state: string): string {
+export function cliAuthorizeUrl(slug: string, redirectUri: string, state: string, scopes: string[] = []): string {
   const base = (import.meta.env.VITE_API_URL || '/api/v1') as string
   const origin = base.startsWith('http') ? '' : window.location.origin
   const q = new URLSearchParams({ intent: 'cli_login', cli_redirect: redirectUri, cli_state: state })
+  // Carried through the IdP round-trip so an SSO sign-in honours `miabi login --scopes` too,
+  // rather than quietly handing back a broader token than the CLI asked for.
+  if (scopes.length) q.set('cli_scopes', scopes.join(','))
   return `${origin}${base}/auth/oauth/${slug}/authorize?${q.toString()}`
 }

@@ -118,10 +118,14 @@ type Router struct {
 	cfg *config.Config
 	// netInfo is the networking posture the admin Settings page reports. Resolved at boot because
 	// the IPv6 answer depends on the engine, not only on the environment.
-	netInfo          handlers.NetworkingInfo
-	v1               *okapi.Group
-	authenticate     okapi.Middleware
-	scope            okapi.Middleware
+	netInfo      handlers.NetworkingInfo
+	v1           *okapi.Group
+	authenticate okapi.Middleware
+	scope        okapi.Middleware
+	// scopeMode is the API-key scope enforcement posture applied to every route by register().
+	scopeMode middlewares.ScopeMode
+	// audit records scope violations so warn mode leaves evidence an operator can act on.
+	audit            *audit.Logger
 	systemAdmin      okapi.Middleware
 	authRateLimit    okapi.Middleware
 	ee               enterprise.EE
@@ -1172,6 +1176,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		v1:           app.Group("/api/v1"),
 		authenticate: middlewares.Authenticate(jwtAuth, apiKeyService, userRepo, appRepo),
 		scope:        middlewares.WorkspaceScope(workspaceRepo, customRoleRepo),
+		scopeMode:    middlewares.ParseScopeMode(cfg.APIKeyScopeEnforcement),
+		audit:        auditLogger,
 		systemAdmin:  middlewares.RequireSystemAdmin(userRepo),
 		// Auth endpoints fall back to a local limiter if Redis is down (brute-force
 		// stays throttled); agent tunnels fail open (availability over throttling).
@@ -1523,63 +1529,63 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		r.app.Get("/metrics", metrics.Handler(), okapi.DocHide())
 	}
 
-	r.app.Register(r.healthRoutes()...)
-	r.app.Register(r.infoRoute())
-	r.app.Register(r.permissionRoute())
-	r.app.Register(r.authRoutes()...)
-	r.app.Register(r.apiKeyRoutes()...)
-	r.app.Register(r.workspaceRoutes()...)
-	r.app.Register(r.roleRoutes()...)
-	r.app.Register(r.applicationRoutes()...)
-	r.app.Register(r.jobRoutes()...)
-	r.app.Register(r.secretRoutes()...)
-	r.app.Register(r.configRoutes()...)
-	r.app.Register(r.searchRoutes()...)
-	r.app.Register(r.certificateRoutes()...)
-	r.app.Register(r.networkRoutes()...)
-	r.app.Register(r.stackRoutes()...)
-	r.app.Register(r.routeRoutes()...)
-	r.app.Register(r.domainRoutes()...)
-	r.app.Register(r.dnsProviderRoutes()...)
-	r.app.Register(r.middlewareRoutes()...)
-	r.app.Register(r.portBindingRoutes()...)
-	r.app.Register(r.capabilityRoutes()...)
-	r.app.Register(r.databaseRoutes()...)
-	r.app.Register(r.volumeRoutes()...)
-	r.app.Register(r.volumeBackupRoutes()...)
-	r.app.Register(r.backupRoutes()...)
-	r.app.Register(r.workspaceBackupSettingsRoutes()...)
-	r.app.Register(r.workspaceBundleRoutes()...)
-	r.app.Register(r.monitoringRoutes()...)
-	r.app.Register(r.marketplaceRoutes()...)
-	r.app.Register(r.registryRoutes()...)
-	r.app.Register(r.gitRepositoryRoutes()...)
-	r.app.Register(r.applyRoutes()...)
-	r.app.Register(r.gitOpsRoutes()...)
-	r.app.Register(r.pipelineRoutes()...)
-	r.app.Register(r.imageRoutes()...)
-	r.app.Register(r.environmentRoutes()...)
-	r.app.Register(r.releaseRoutes()...)
-	r.app.Register(r.webhookRoutes()...)
-	r.app.Register(r.notificationRoutes()...)
-	r.app.Register(r.inboxRoutes()...)
-	r.app.Register(r.alertRoutes()...)
-	r.app.Register(r.nodeRoutes()...)
-	r.app.Register(r.clusterRoutes()...)
-	r.app.Register(r.clustersRoutes()...)
-	r.app.Register(r.locationRoutes()...)
-	r.app.Register(r.runnerRoutes()...)
-	r.app.Register(r.adminRunnerRoutes()...)
-	r.app.Register(r.runnerGatewayRoutes()...)
-	r.app.Register(r.placeableNodeRoutes()...)
-	r.app.Register(r.agentRoutes()...)
-	r.app.Register(r.providerRoutes()...)
-	r.app.Register(r.adminRoutes()...)
-	r.app.Register(r.registryServerRoutes()...)
-	r.app.Register(r.oauthPublicRoutes()...)
-	r.app.Register(r.ssoAdminRoutes()...)
-	r.app.Register(r.samlPublicRoutes()...)
-	r.app.Register(r.scimRoutes()...)
+	r.register(r.healthRoutes()...)
+	r.register(r.infoRoute())
+	r.register(r.permissionRoute())
+	r.register(r.authRoutes()...)
+	r.register(r.apiKeyRoutes()...)
+	r.register(r.workspaceRoutes()...)
+	r.register(r.roleRoutes()...)
+	r.register(r.applicationRoutes()...)
+	r.register(r.jobRoutes()...)
+	r.register(r.secretRoutes()...)
+	r.register(r.configRoutes()...)
+	r.register(r.searchRoutes()...)
+	r.register(r.certificateRoutes()...)
+	r.register(r.networkRoutes()...)
+	r.register(r.stackRoutes()...)
+	r.register(r.routeRoutes()...)
+	r.register(r.domainRoutes()...)
+	r.register(r.dnsProviderRoutes()...)
+	r.register(r.middlewareRoutes()...)
+	r.register(r.portBindingRoutes()...)
+	r.register(r.capabilityRoutes()...)
+	r.register(r.databaseRoutes()...)
+	r.register(r.volumeRoutes()...)
+	r.register(r.volumeBackupRoutes()...)
+	r.register(r.backupRoutes()...)
+	r.register(r.workspaceBackupSettingsRoutes()...)
+	r.register(r.workspaceBundleRoutes()...)
+	r.register(r.monitoringRoutes()...)
+	r.register(r.marketplaceRoutes()...)
+	r.register(r.registryRoutes()...)
+	r.register(r.gitRepositoryRoutes()...)
+	r.register(r.applyRoutes()...)
+	r.register(r.gitOpsRoutes()...)
+	r.register(r.pipelineRoutes()...)
+	r.register(r.imageRoutes()...)
+	r.register(r.environmentRoutes()...)
+	r.register(r.releaseRoutes()...)
+	r.register(r.webhookRoutes()...)
+	r.register(r.notificationRoutes()...)
+	r.register(r.inboxRoutes()...)
+	r.register(r.alertRoutes()...)
+	r.register(r.nodeRoutes()...)
+	r.register(r.clusterRoutes()...)
+	r.register(r.clustersRoutes()...)
+	r.register(r.locationRoutes()...)
+	r.register(r.runnerRoutes()...)
+	r.register(r.adminRunnerRoutes()...)
+	r.register(r.runnerGatewayRoutes()...)
+	r.register(r.placeableNodeRoutes()...)
+	r.register(r.agentRoutes()...)
+	r.register(r.providerRoutes()...)
+	r.register(r.adminRoutes()...)
+	r.register(r.registryServerRoutes()...)
+	r.register(r.oauthPublicRoutes()...)
+	r.register(r.ssoAdminRoutes()...)
+	r.register(r.samlPublicRoutes()...)
+	r.register(r.scimRoutes()...)
 
 	// Serve the built web UI as an SPA. Registered last so API routes win; Okapi auto-excludes their
 	// top-level segments (/api, /healthz) so those keep returning JSON. The UI is embedded in the

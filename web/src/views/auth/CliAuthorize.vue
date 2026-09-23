@@ -31,6 +31,16 @@ const providers = ref<PublicProvider[]>([])
 const redirectUri = (route.query.redirect_uri as string | undefined)?.trim() || ''
 const state = (route.query.state as string | undefined)?.trim() || ''
 
+// The CLI may ask for a narrowed token (`miabi login --scopes read`). Unknown names are dropped
+// rather than forwarded: the server would reject the whole request and the user would see only a
+// failed sign-in. admin and * are not offered on this flow at all — the server refuses them.
+const GRANTABLE = ['read', 'write', 'deploy'] as const
+const requestedScopes = ((route.query.scopes as string | undefined) || '')
+  .split(',')
+  .map((s) => s.trim().toLowerCase())
+  .filter((s) => (GRANTABLE as readonly string[]).includes(s))
+const scopeLabel = computed(() => requestedScopes.join(', '))
+
 // isLoopback mirrors the server's check: only an http URL pointing at the local
 // machine may receive the login code. A mismatched target here means the link
 // wasn't produced by the CLI — refuse rather than send credentials anywhere.
@@ -93,6 +103,7 @@ async function submit() {
     const res = await authApi.loginToken(username.value.trim(), password.value, twoFactorCode.value || undefined, {
       redirectUri,
       state,
+      scopes: requestedScopes,
     })
     const data = res.data.data
     if (data.two_factor_required) {
@@ -110,7 +121,7 @@ async function submit() {
 function ssoLogin(slug: string) {
   // Full-page redirect into the IdP; the callback delivers the code to the CLI's
   // loopback callback directly (no return to this page).
-  window.location.href = cliAuthorizeUrl(slug, redirectUri, state)
+  window.location.href = cliAuthorizeUrl(slug, redirectUri, state, requestedScopes)
 }
 </script>
 
@@ -118,6 +129,9 @@ function ssoLogin(slug: string) {
   <AuthShell :title="title" :subtitle="subtitle" :error="error">
     <!-- Confirm identity (password) -->
     <form v-if="step === 'confirm'" class="auth-form" @submit.prevent="submit">
+      <p v-if="requestedScopes.length" class="scope-note">
+        {{ $t('cliAuthorize.limitedToScopes') }} <code>{{ scopeLabel }}</code>
+      </p>
       <div class="form-group">
         <label class="form-label">{{ $t('cliAuthorize.usernameOrEmail') }}</label>
         <input v-model="username" type="text" class="form-input" autocomplete="username" required autofocus />
@@ -181,6 +195,21 @@ function ssoLogin(slug: string) {
 </template>
 
 <style scoped>
+.scope-note {
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  margin: 0;
+}
+
+.scope-note code {
+  font-family: monospace;
+  color: var(--text-primary);
+}
+
 .auth-submit {
   width: 100%;
   display: inline-flex;
