@@ -24,17 +24,51 @@ var manifestAccept = strings.Join([]string{
 	"application/vnd.oci.image.index.v1+json",
 }, ", ")
 
-// Client is a minimal client for the auth-less internal registry (reached over
-// the platform's private network at http://mb-registry:5000). Used for the
-// workspace repository view and tag deletion, never exposed to tenants directly.
+// Client is a minimal client for the internal registry (reached over the platform's private network
+// at http://mb-registry:5000). Used for the workspace repository view and tag deletion, never
+// exposed to tenants directly.
+//
+// The registry requires Basic auth even on that network, so the control plane is a credentialed
+// client like the gateway. The credential is resolved per request rather than captured, because it
+// derives from the master key and this client is built before crypto.Init has run.
 type Client struct {
 	base string
 	http *http.Client
 }
 
-// NewClient builds a registry client for baseURL (e.g. http://mb-registry:5000).
-func NewClient(baseURL string) *Client {
-	return &Client{base: strings.TrimRight(baseURL, "/"), http: &http.Client{Timeout: 30 * time.Second}}
+// NewClient builds a registry client for baseURL (e.g. http://mb-registry:5000). authHeader
+// supplies the Authorization value on every request; nil or an empty result sends none.
+func NewClient(baseURL string, authHeader func() string) *Client {
+	return &Client{
+		base: strings.TrimRight(baseURL, "/"),
+		http: &http.Client{
+			Timeout: 30 * time.Second,
+			// A transport rather than a header set per call site: the client builds requests in a
+			// dozen places, and one that forgot the header would fail only at run time.
+			Transport: &basicAuthTransport{header: authHeader},
+		},
+	}
+}
+
+// basicAuthTransport stamps the registry credential on every outgoing request.
+type basicAuthTransport struct {
+	header func() string
+	base   http.RoundTripper
+}
+
+func (t *basicAuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	rt := t.base
+	if rt == nil {
+		rt = http.DefaultTransport
+	}
+	if t.header != nil {
+		if h := t.header(); h != "" {
+			// Clone: RoundTrip must not modify the request it is given.
+			req = req.Clone(req.Context())
+			req.Header.Set("Authorization", h)
+		}
+	}
+	return rt.RoundTrip(req)
 }
 
 // Catalog returns every repository in the registry (all namespaces), following

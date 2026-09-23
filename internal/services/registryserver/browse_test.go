@@ -156,7 +156,7 @@ func emptyRepoSvc(t *testing.T) *Service {
 	})
 	s := httptest.NewServer(mux)
 	t.Cleanup(s.Close)
-	return &Service{reg: NewClient(s.URL)}
+	return &Service{reg: NewClient(s.URL, nil)}
 }
 
 func TestEmptyRepositorySerializesTagsAsArray(t *testing.T) {

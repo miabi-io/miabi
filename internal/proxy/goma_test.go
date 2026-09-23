@@ -542,3 +542,71 @@ func TestSyncRegistryWritesAndRemoves(t *testing.T) {
 		t.Errorf("expected registry file removed, stat err = %v", err)
 	}
 }
+
+// The registry requires Basic auth even on the private network, so the gateway presents a
+// credential upstream. It must be the LAST middleware: mb-registry-auth authenticates the tenant
+// from the header their docker client sent, and replacing that header earlier would hand every
+// request the gateway's own identity before anyone had been checked.
+func TestSyncRegistryUpstreamAuthRunsLast(t *testing.T) {
+	dir := t.TempDir()
+	g := &Goma{dir: dir}
+	if err := g.SyncRegistry(context.Background(), RegistryProxy{
+		Enabled: true, Host: "registry.example.com",
+		Upstream: "http://mb-registry:5000", AuthURL: "http://miabi:9000/internal/registry/auth",
+		UpstreamAuth: "Basic c2VjcmV0",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(g.registryPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(out)
+
+	authIdx := strings.Index(body, "mb-registry-auth")
+	upIdx := strings.LastIndex(body, "mb-registry-upstream-auth")
+	if authIdx < 0 || upIdx < 0 {
+		t.Fatalf("expected both auth middlewares in:\n%s", body)
+	}
+
+	var file struct {
+		Routes []struct {
+			Middlewares []string `yaml:"middlewares"`
+		} `yaml:"routes"`
+	}
+	if err := yaml.Unmarshal(out, &file); err != nil {
+		t.Fatal(err)
+	}
+	if len(file.Routes) != 1 {
+		t.Fatalf("routes = %d, want 1", len(file.Routes))
+	}
+	mws := file.Routes[0].Middlewares
+	if len(mws) == 0 || mws[len(mws)-1] != "mb-registry-upstream-auth" {
+		t.Errorf("middleware order = %v, want the upstream credential last", mws)
+	}
+	for i, m := range mws {
+		if m == "mb-registry-auth" && i > len(mws)-2 {
+			t.Errorf("forwardAuth at %d of %v — it must run before the header is replaced", i, mws)
+		}
+	}
+	if !strings.Contains(body, "Basic c2VjcmV0") {
+		t.Error("the credential is not rendered into the gateway config")
+	}
+}
+
+// An install with no credential renders no such middleware, rather than an empty Authorization
+// header that would strip the tenant's own.
+func TestSyncRegistryWithoutUpstreamAuth(t *testing.T) {
+	dir := t.TempDir()
+	g := &Goma{dir: dir}
+	if err := g.SyncRegistry(context.Background(), RegistryProxy{
+		Enabled: true, Host: "registry.example.com",
+		Upstream: "http://mb-registry:5000", AuthURL: "http://miabi:9000/internal/registry/auth",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(g.registryPath())
+	if strings.Contains(string(out), "mb-registry-upstream-auth") {
+		t.Error("an upstream-auth middleware was rendered with no credential configured")
+	}
+}

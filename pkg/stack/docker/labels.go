@@ -117,6 +117,17 @@ func IsPlatformStack(labels map[string]string) bool {
 	return v == PartOfMiabi
 }
 
+// IsPlatformNetwork reports whether a Docker network belongs to Miabi itself — the private network
+// its own components talk over, the shared proxy fabric, or anything else carrying a platform role.
+//
+// The LABELS are the test, never the name: a network's name is the operator's to choose in the
+// stack manifest, and a renamed one must stay just as closed. Callers that hold only a name resolve
+// it against the engine first, matching the id as well — Docker reports an attachment either way,
+// and a guard that compares names alone is bypassed by passing the id.
+func IsPlatformNetwork(labels map[string]string) bool {
+	return IsPlatformStack(labels) || IsPlatformInfra(labels)
+}
+
 // IsProtected reports whether destructive operations (stop/restart/remove) must be
 // refused on a resource. Distinct from IsPlatformInfra: infra is "do not reclaim as
 // an orphan", protected is "do not let a human break the platform by accident".

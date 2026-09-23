@@ -122,12 +122,16 @@ func NewService(
 	controlURL string,
 	cfg config.RegistryConfig,
 ) *Service {
-	return &Service{
+	s := &Service{
 		repo: repo, images: images, external: external, keys: keys, ws: ws,
-		proxy: proxyMgr, reg: NewClient(fmt.Sprintf("http://%s:%d", Alias, Port)),
+		proxy:   proxyMgr,
 		usage:   newUsageCache(),
 		network: network, controlURL: controlURL, cfg: cfg,
 	}
+	// Built after the struct so the client can close over s: the credential derives from the master
+	// key, which crypto.Init may not have set yet.
+	s.reg = NewClient(fmt.Sprintf("http://%s:%d", Alias, Port), s.upstreamAuthHeader)
+	return s
 }
 
 // SetInternalNetwork names the platform's private network: the only network the registry joins, and how
@@ -582,6 +586,12 @@ func (s *Service) startContainer(ctx context.Context, dc docker.Client, st *mode
 	if err := dc.PullImage(ctx, img, nil); err != nil {
 		return fmt.Errorf("pull registry image %q: %w", img, err)
 	}
+	// Written before the container starts: distribution reads the htpasswd file at boot.
+	if err := s.ensureUpstreamAuth(ctx, dc, img); err != nil {
+		return err
+	}
+	env = append(env, upstreamAuthEnv()...)
+	mounts[authVolume] = authPath
 	_ = dc.RemoveContainer(ctx, ContainerName, true)
 	if _, err := dc.RunContainer(ctx, docker.RunSpec{
 		Name:           ContainerName,
@@ -598,27 +608,51 @@ func (s *Service) startContainer(ctx context.Context, dc docker.Client, st *mode
 	return nil
 }
 
+// ErrNoInternalNetwork refuses to start the registry when the platform has no private network to put
+// it on. It used to fall back to the shared proxy network with a warning, which meant every app
+// container could pull any workspace's images from http://mb-registry:5000 with no credential —
+// the warning was the only thing standing between a Compose install and a cross-tenant image leak.
+var ErrNoInternalNetwork = errors.New(
+	"refusing to start the internal registry: it has no private network to join, and the shared proxy " +
+		"network would let every app container pull any workspace's images. Add the platform's private " +
+		"network to your stack (labelled " + docker.LabelRole + "=" + docker.RolePlatformInternal + "), or " +
+		"name it explicitly with MIABI_INTERNAL_NETWORK")
+
 // networks is the one fabric the registry container joins: the platform's private network. The registry
-// serves auth-less — the token and namespace checks live in the gateway's forwardAuth middleware — so an
-// attachment to the shared proxy network would let any app container pull any workspace's images from
-// http://mb-registry:5000 with no credential at all.
+// serves auth-less on it — the token and namespace checks live in the gateway's forwardAuth middleware —
+// so nothing else may be on that network.
 //
-// A stack that declares no private network falls back to the proxy network, the only fabric it has, and
-// is warned every time the registry starts.
+// The name is discovered from the engine by LABEL when MIABI_INTERNAL_NETWORK is unset, because the
+// variable defaults to empty and most installs never edit it. Nothing to discover means nothing to
+// start: see ErrNoInternalNetwork.
 func (s *Service) networks(ctx context.Context, dc docker.Client) ([]string, error) {
 	name := s.internalNetwork
 	if name == "" {
-		if s.network == "" {
-			return nil, errors.New("no Docker network is configured for the registry: set MIABI_INTERNAL_NETWORK")
-		}
-		name = s.network
-		logger.Warn("internal registry is on the shared proxy network, where every app container can reach it and pull any workspace's images — move the platform onto its private network and set MIABI_INTERNAL_NETWORK",
-			"network", name, "endpoint", fmt.Sprintf("http://%s:%d", Alias, Port))
+		name = discoverInternalNetwork(ctx, dc)
+	}
+	if name == "" {
+		return nil, ErrNoInternalNetwork
 	}
 	if _, err := dc.EnsureNetwork(ctx, name); err != nil {
 		return nil, fmt.Errorf("ensure network %q: %w", name, err)
 	}
 	return []string{name}, nil
+}
+
+// discoverInternalNetwork finds the platform's private network by its role label, so an install that
+// has one gets it without configuring anything. Returns "" when the engine has none — including when
+// it cannot be listed, which is treated as "no" rather than falling back to a shared fabric.
+func discoverInternalNetwork(ctx context.Context, dc docker.Client) string {
+	nets, err := dc.ListNetworks(ctx)
+	if err != nil {
+		return ""
+	}
+	for _, n := range nets {
+		if role, _ := docker.LabelValue(n.Labels, docker.LabelRole); role == docker.RolePlatformInternal {
+			return n.Name
+		}
+	}
+	return ""
 }
 
 // GarbageCollect reclaims storage from deleted or overwritten manifests. To run safely it flips the
@@ -722,11 +756,12 @@ func (s *Service) certProvider() string {
 
 func (s *Service) proxyConfig(st *models.RegistrySettings, enabled bool) proxy.RegistryProxy {
 	return proxy.RegistryProxy{
-		Enabled:     enabled,
-		Host:        s.HostFor(st),
-		Upstream:    fmt.Sprintf("http://%s:%d", Alias, Port),
-		AuthURL:     s.authURL(),
-		TLSProvider: s.certProvider(),
+		Enabled:      enabled,
+		Host:         s.HostFor(st),
+		Upstream:     fmt.Sprintf("http://%s:%d", Alias, Port),
+		AuthURL:      s.authURL(),
+		TLSProvider:  s.certProvider(),
+		UpstreamAuth: s.upstreamAuthHeader(),
 		// Off only for an install behind a TLS terminator with no trusted proxies
 		// configured on the gateway, where the redirect would loop.
 		HTTPSRedirect: s.cfg.HTTPSRedirect,

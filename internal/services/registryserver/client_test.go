@@ -67,7 +67,7 @@ func fakeRegistry(t *testing.T) *httptest.Server {
 }
 
 func listSvc(t *testing.T) *Service {
-	return &Service{reg: NewClient(fakeRegistry(t).URL)}
+	return &Service{reg: NewClient(fakeRegistry(t).URL, nil)}
 }
 
 func TestListRepositoriesFiltersNamespace(t *testing.T) {
