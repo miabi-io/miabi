@@ -83,9 +83,8 @@ Nothing about deploying or exposing apps changes — your containers still join
 to your `.env` before `docker compose up -d`. Miabi reads it to place the helper
 containers it runs out of process (platform backups, the built-in registry); left
 empty, those stay on `miabi` alone — where the database no longer is, and where the
-registry (which serves auth-less, behind the gateway's authentication) would answer
-any app container that pulls from it. Compose recreates the containers onto their
-new networks for you.
+registry would be reachable by every app container. Compose recreates the containers
+onto their new networks for you.
 
 ### Prefer Traefik as the edge proxy?
 

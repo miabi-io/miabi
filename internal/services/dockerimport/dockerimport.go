@@ -368,7 +368,7 @@ func (s *Service) importNetwork(ctx context.Context, wsID, serverID uint, name s
 	// Discovery already hides Miabi's own networks, but the import call takes a name straight from
 	// the request — so re-check here. Importing the platform's private network as a workspace
 	// network would put tenant containers on the fabric the control plane, its database and the
-	// auth-less registry share.
+	// registry share.
 	driver := "bridge"
 	if nets, lerr := dc.ListNetworks(ctx); lerr == nil {
 		for _, n := range nets {

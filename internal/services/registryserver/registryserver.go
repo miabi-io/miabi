@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package registryserver runs and authorizes the platform's built-in, multi-tenant Docker registry. The
-// registry container runs auth-less on the platform's private network; authentication is enforced at the edge by a
-// Goma forwardAuth middleware calling Authorize. Distinct from services/registry (external credentials).
+// registry runs on the platform's private network and requires Basic auth there, which only the gateway
+// holds; a TENANT's request is authorized at the edge by a Goma forwardAuth middleware calling Authorize.
+// Distinct from services/registry (external credentials).
 package registryserver
 
 import (
@@ -614,13 +615,12 @@ func (s *Service) startContainer(ctx context.Context, dc docker.Client, st *mode
 // the warning was the only thing standing between a Compose install and a cross-tenant image leak.
 var ErrNoInternalNetwork = errors.New(
 	"refusing to start the internal registry: it has no private network to join, and the shared proxy " +
-		"network would let every app container pull any workspace's images. Add the platform's private " +
+		"network is not a substitute — it is reachable by every app container. Add the platform's private " +
 		"network to your stack (labelled " + docker.LabelRole + "=" + docker.RolePlatformInternal + "), or " +
 		"name it explicitly with MIABI_INTERNAL_NETWORK")
 
-// networks is the one fabric the registry container joins: the platform's private network. The registry
-// serves auth-less on it — the token and namespace checks live in the gateway's forwardAuth middleware —
-// so nothing else may be on that network.
+// networks is the one fabric the registry container joins: the platform's private network, which only
+// the platform's own components share.
 //
 // The name is discovered from the engine by LABEL when MIABI_INTERNAL_NETWORK is unset, because the
 // variable defaults to empty and most installs never edit it. Nothing to discover means nothing to

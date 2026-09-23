@@ -36,10 +36,9 @@ func internalNet(name string) docker.Network {
 	}
 }
 
-// The registry serves auth-less: every token and namespace check happens in the gateway's forwardAuth
-// middleware. On the shared proxy network, any app container could therefore pull any workspace's images
-// straight from http://mb-registry:5000 — `docker pull mb-registry:5000/ws_<id>/<app>` with no credential
-// — so the registry must not be attached to it.
+// Tenant authorization happens in the gateway's forwardAuth middleware, so the registry belongs on the
+// platform's private network and nowhere else. It also requires Basic auth there (see upstreamauth.go);
+// the network is the first boundary, not the only one.
 func TestRegistryIsNotOnTheSharedNetwork(t *testing.T) {
 	s := &Service{network: "miabi", internalNetwork: "miabi-internal"}
 	dc := &netDocker{}
@@ -89,9 +88,9 @@ func TestRegistryDiscoveryIgnoresNamesWithoutTheLabel(t *testing.T) {
 	}
 }
 
-// The fix itself: with no private network the registry REFUSES TO START rather than falling back to
-// the shared proxy network, where every app container could pull any workspace's images with no
-// credential at all. A registry that will not start is a visible failure; the fallback was a silent leak.
+// The fix itself: with no private network the registry REFUSES TO START rather than falling back to the
+// shared proxy network, which every app container can reach. A registry that will not start is a visible
+// failure; the fallback was a silent one.
 func TestRegistryRefusesTheSharedNetworkFallback(t *testing.T) {
 	for _, tc := range []struct {
 		name string
