@@ -118,7 +118,13 @@ func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 // the manifest (the registry has no delete-by-tag). image is the user-facing name. A tag a live deployment
 // or pinned release still holds is refused with ErrTagInUse, since the breakage would surface on a node.
 func (s *Service) DeleteTag(ctx context.Context, workspaceID uint, image, tag string) error {
-	repo := Namespace(workspaceID) + "/" + strings.Trim(image, "/")
+	repo, err := repoPath(workspaceID, image)
+	if err != nil {
+		return err
+	}
+	if err := validateTag(tag); err != nil {
+		return err
+	}
 	digest, err := s.reg.ManifestDigest(ctx, repo, tag)
 	if err != nil {
 		return err

@@ -160,6 +160,9 @@ func (h *RegistryServerHandler) RepositoryOverview(c *okapi.Context) error {
 	}
 	ov, err := h.svc.Overview(c.Request().Context(), middlewares.WorkspaceID(c), name)
 	if err != nil {
+		if errors.Is(err, registryserver.ErrInvalidRepository) {
+			return c.AbortBadRequest(err.Error())
+		}
 		if errors.Is(err, registryserver.ErrNotFound) {
 			return c.AbortNotFound("repository not found")
 		}
@@ -181,6 +184,9 @@ func (h *RegistryServerHandler) RepositoryTags(c *okapi.Context) error {
 		c.Request().Context(), middlewares.WorkspaceID(c), name, c.Query("q"), offset, size,
 	)
 	if err != nil {
+		if errors.Is(err, registryserver.ErrInvalidRepository) {
+			return c.AbortBadRequest(err.Error())
+		}
 		if errors.Is(err, registryserver.ErrNotFound) {
 			return c.AbortNotFound("repository not found")
 		}
@@ -203,6 +209,8 @@ func (h *RegistryServerHandler) DeleteTag(c *okapi.Context) error {
 		return message(c, "tag deleted")
 	case errors.Is(err, registryserver.ErrDeleteDisabled), errors.Is(err, registryserver.ErrTagInUse):
 		return c.AbortWithError(http.StatusConflict, err)
+	case errors.Is(err, registryserver.ErrInvalidRepository), errors.Is(err, registryserver.ErrInvalidTag):
+		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, registryserver.ErrNotFound):
 		return c.AbortNotFound("tag not found")
 	default:
