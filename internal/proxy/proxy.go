@@ -94,6 +94,11 @@ type RegistryProxy struct {
 	Upstream    string // http://mb-registry:5000
 	AuthURL     string // forwardAuth target, e.g. http://miabi:9000/internal/registry/auth
 	TLSProvider string // certManager provider ("" = gateway default)
+	// UpstreamAuth is the Authorization header the gateway presents to the registry, which requires
+	// Basic auth even on the private network. It REPLACES the tenant's own header on the way
+	// upstream — by then forwardAuth has already decided whether that tenant may proceed. Empty
+	// renders no such middleware, which is the pre-credential behaviour.
+	UpstreamAuth string
 	// HTTPSRedirect adds the redirectScheme middleware. Off is for an install
 	// behind a TLS terminator whose gateway has no trusted proxies configured:
 	// Goma would see the plaintext hop, decide the request is not HTTPS, and

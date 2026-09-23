@@ -130,21 +130,21 @@ func (h *NodeHandler) guardContainerOp(c *okapi.Context, dc docker.Client, nodeI
 	return true
 }
 
-// isPlatformInternalNetwork reports whether name is the network Miabi's own components talk over. The
-// LABEL is the test, not the name: the network's name is the operator's to choose in the stack manifest,
-// and a renamed one must stay just as closed. A network the engine cannot list is treated as ordinary —
-// this guard exists to stop a mistake, and the platform stack is protected at the container level too.
-func (h *NodeHandler) isPlatformInternalNetwork(ctx context.Context, dc docker.Client, name string) bool {
+// isPlatformInternalNetwork reports whether ref — a network name OR id — is one of Miabi's own. The
+// LABELS are the test, not the name: the network's name is the operator's to choose in the stack
+// manifest, and a renamed one must stay just as closed. A network the engine cannot list is treated
+// as ordinary — this guard exists to stop a mistake, and the platform stack is protected at the
+// container level too.
+func (h *NodeHandler) isPlatformInternalNetwork(ctx context.Context, dc docker.Client, ref string) bool {
 	nets, err := dc.ListNetworks(ctx)
 	if err != nil {
 		return false
 	}
 	for _, n := range nets {
-		if n.Name != name {
+		if !docker.NetworkRefMatches(n, ref) {
 			continue
 		}
-		role, _ := docker.LabelValue(n.Labels, docker.LabelRole)
-		return role == docker.RolePlatformInternal
+		return docker.IsPlatformNetwork(n.Labels)
 	}
 	return false
 }

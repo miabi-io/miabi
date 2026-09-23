@@ -73,7 +73,7 @@ func TestRequireScope_WarnPassesButReports(t *testing.T) {
 	}
 }
 
-// Off is the pre-1.11 behaviour, kept so an operator can get out of the way of a bad classification
+// Off is the earlier behaviour, kept so an operator can get out of the way of a bad classification
 // without downgrading.
 func TestRequireScope_OffIsSilent(t *testing.T) {
 	code, reached, hdr, seen := call(t, ScopeModeOff, models.ScopeAdmin, "api_key", "read")

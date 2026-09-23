@@ -6,7 +6,11 @@
 
 package docker
 
-import stackdocker "github.com/miabi-io/miabi/pkg/stack/docker"
+import (
+	"strings"
+
+	stackdocker "github.com/miabi-io/miabi/pkg/stack/docker"
+)
 
 const (
 	LabelPrefix            = stackdocker.LabelPrefix
@@ -57,7 +61,18 @@ var (
 	LabelValue         = stackdocker.LabelValue
 	IsManaged          = stackdocker.IsManaged
 	IsPlatformInfra    = stackdocker.IsPlatformInfra
+	IsPlatformNetwork  = stackdocker.IsPlatformNetwork
 	IsReservedLabelKey = stackdocker.IsReservedLabelKey
 	SanitizeUserLabels = stackdocker.SanitizeUserLabels
 	WorkspaceID        = stackdocker.WorkspaceID
 )
+
+// NetworkRefMatches reports whether ref names this network: its name, its full id, or the short id
+// Docker prints. A guard that compares the name alone is bypassed by passing the id, which the
+// engine accepts everywhere a name is accepted.
+func NetworkRefMatches(n Network, ref string) bool {
+	if ref == "" {
+		return false
+	}
+	return n.Name == ref || n.ID == ref || (len(n.ID) >= 12 && len(ref) >= 12 && strings.HasPrefix(n.ID, ref))
+}

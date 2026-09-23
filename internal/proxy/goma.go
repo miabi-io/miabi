@@ -558,6 +558,18 @@ func (g *Goma) SyncRegistry(_ context.Context, cfg RegistryProxy) error {
 	// reads it next.
 	mwNames := []string{"mb-registry-nomount", "mb-registry-auth", "mb-registry-ns-rewrite"}
 	var mws []gomaMiddleware
+	// LAST in the chain, and it has to be: mb-registry-auth authenticates the tenant from the
+	// header their docker client sent, so replacing it any earlier would authenticate the gateway
+	// to itself and let anyone through.
+	if cfg.UpstreamAuth != "" {
+		mwNames = append(mwNames, "mb-registry-upstream-auth")
+		mws = append(mws, gomaMiddleware{
+			Name:  "mb-registry-upstream-auth",
+			Type:  "requestHeaders",
+			Paths: []string{"/.*"},
+			Rule:  map[string]any{"setHeaders": map[string]string{"Authorization": cfg.UpstreamAuth}},
+		})
+	}
 	if cfg.HTTPSRedirect {
 		mwNames = append([]string{"mb-registry-https"}, mwNames...)
 		mws = append(mws, gomaMiddleware{

@@ -40,7 +40,7 @@ func TestTagManifest(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if err := NewClient(srv.URL).TagManifest(context.Background(), repo, digest, tag); err != nil {
+	if err := NewClient(srv.URL, nil).TagManifest(context.Background(), repo, digest, tag); err != nil {
 		t.Fatalf("TagManifest: %v", err)
 	}
 	if !putCalled {
