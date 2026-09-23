@@ -731,9 +731,17 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 	// Shared ingress overlay (attachable, encrypted) the central gateway joins to reach this service's
 	// VIP for public ingress. A single network for the whole install, so a plain create-or-reuse is
 	// enough — no per-workspace subnet.
-	if _, err := mgr.CreateOverlayNetwork(ctx, node.IngressOverlay); err != nil {
-		_ = h.fail(dep, fmt.Errorf("ensure ingress overlay network: %w", err))
-		return
+	//
+	// Joined only while the app is exposed by a route, mirroring the container path: an app nobody
+	// can reach from outside has no reason to sit on a network shared with every other tenant's
+	// routed app. ProxyNetworkReconciler attaches it live when a route is added later.
+	ingressNet := ""
+	if h.appHasRoutes(app.ID) {
+		if _, err := mgr.CreateOverlayNetwork(ctx, node.IngressOverlay); err != nil {
+			_ = h.fail(dep, fmt.Errorf("ensure ingress overlay network: %w", err))
+			return
+		}
+		ingressNet = node.IngressOverlay
 	}
 
 	// Resolved env (reused from the shared builder); buildpack images read $PORT
@@ -822,7 +830,7 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 		Replicas:        replicas,
 		Networks:        svcNets,
 		NetworkAliases:  []string{alias, app.Name},
-		IngressNetwork:  node.IngressOverlay,
+		IngressNetwork:  ingressNet,
 		IngressAlias:    alias,
 		EndpointMode:    h.endpointMode(app),
 		Mounts:          mounts,

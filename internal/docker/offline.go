@@ -141,6 +141,9 @@ func (o offlineClient) ServiceScale(context.Context, string, uint64) error      
 func (o offlineClient) ServiceSetEndpointMode(context.Context, string, string) error {
 	return o.err
 }
+func (o offlineClient) ServiceSetIngressNetwork(context.Context, string, string, string, bool) error {
+	return o.err
+}
 func (o offlineClient) ServiceInspect(context.Context, string) (ServiceStatus, error) {
 	return ServiceStatus{}, o.err
 }

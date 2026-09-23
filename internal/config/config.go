@@ -187,9 +187,6 @@ type Config struct {
 	InternalNetwork string
 
 	// APIKeyScopeEnforcement is how strictly API-key scopes are checked: off, warn or enforce.
-	// Defaults to warn, because scopes went unenforced until 1.11 — a key created with the default
-	// `read` scope may have been writing for months, and enforcing without notice would break it.
-	// Warn records every violation so an operator can see what would break before flipping it.
 	APIKeyScopeEnforcement string
 
 	// ControlURL is the public base URL remote nodes reach the control plane at
