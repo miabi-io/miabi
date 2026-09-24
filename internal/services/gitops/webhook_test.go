@@ -34,3 +34,22 @@ func TestVerifyWebhook(t *testing.T) {
 		t.Error("empty signature accepted")
 	}
 }
+
+// A source with no secret configured must reject every signature, including one
+// the caller computed under the empty key.
+func TestVerifyWebhookRejectsAnUnconfiguredSecret(t *testing.T) {
+	s := &Service{}
+	src := &models.GitSource{}
+	body := []byte(`{"ref":"refs/heads/main"}`)
+
+	mac := hmac.New(sha256.New, nil)
+	mac.Write(body)
+	forged := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+
+	if s.VerifyWebhook(src, forged, body) {
+		t.Error("HMAC under the empty key accepted")
+	}
+	if s.VerifyWebhook(src, "", body) {
+		t.Error("empty signature accepted against an empty secret")
+	}
+}

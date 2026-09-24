@@ -8,9 +8,6 @@ package gitops
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -29,6 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/gitrepo"
 	"github.com/miabi-io/miabi/internal/slug"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
+	"github.com/miabi-io/miabi/internal/webhooksig"
 )
 
 var (
@@ -466,21 +464,9 @@ func (s *Service) auth(src *models.GitSource) (transport.AuthMethod, string, err
 	return auth, url, nil
 }
 
-// VerifyWebhook checks an inbound push webhook's HMAC-SHA256 signature against
-// the source's secret (GitHub's X-Hub-Signature-256 scheme). A bare secret
-// match (GitLab's X-Gitlab-Token) is also accepted.
+// VerifyWebhook checks an inbound push webhook against the source's secret.
 func (s *Service) VerifyWebhook(src *models.GitSource, signature string, body []byte) bool {
-	signature = strings.TrimSpace(signature)
-	if signature == "" {
-		return false
-	}
-	if signature == src.WebhookSecret { // GitLab token style
-		return true
-	}
-	mac := hmac.New(sha256.New, []byte(src.WebhookSecret))
-	mac.Write(body)
-	expected := "sha256=" + hex.EncodeToString(mac.Sum(nil))
-	return hmac.Equal([]byte(expected), []byte(signature))
+	return webhooksig.Verify(src.WebhookSecret, signature, body)
 }
 
 func (in *Input) normalize() {

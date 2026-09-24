@@ -4,8 +4,10 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"io"
+	"net/http"
 	"strconv"
 
 	"github.com/jkaninda/okapi"
@@ -14,6 +16,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/apply"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/gitops"
+	"github.com/miabi-io/miabi/internal/webhooksig"
 )
 
 // GitOpsDeleteResult is the response to a project delete. Teardown carries the
@@ -255,15 +258,21 @@ func (h *GitOpsHandler) Webhook(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortNotFound("git source not found")
 	}
-	body, _ := io.ReadAll(c.Request().Body)
-	sig := c.Header("X-Hub-Signature-256")
+	body, err := io.ReadAll(http.MaxBytesReader(c.Response(), c.Request().Body, webhooksig.MaxBodyBytes))
+	if err != nil {
+		return c.AbortWithError(http.StatusRequestEntityTooLarge, err)
+	}
+	sig := c.Header(webhooksig.SignatureHeader)
 	if sig == "" {
-		sig = c.Header("X-Gitlab-Token")
+		sig = c.Header(webhooksig.TokenHeader)
 	}
 	if !h.svc.VerifyWebhook(src, sig, body) {
 		return c.AbortUnauthorized("invalid webhook signature")
 	}
-	go func() { _ = h.svc.SyncByID(c.Request().Context(), src.ID) }()
+	// The sync outlives the response, so it must not inherit the request context:
+	// that is cancelled the moment the handler returns, killing the sync it starts.
+	ctx := context.WithoutCancel(c.Request().Context())
+	go func() { _ = h.svc.SyncByID(ctx, src.ID) }()
 	return message(c, "sync triggered")
 }
 
