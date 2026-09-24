@@ -24,6 +24,7 @@
       "sourceCode": "Code source",
       "website": "Site web"
     },
+    "miabi": "Miabi",
     "resources": "Ressources",
     "tagline": "La plateforme en tant que service (PaaS) open source et auto-hébergée pour Docker.",
     "version": "Version"
@@ -662,13 +663,16 @@
     "deployFirst": "Déployer votre première application",
     "emptyHint": "Déployez depuis une image Docker ou un dépôt Git — ou installez une application prête à l’emploi depuis la marketplace.",
     "form": {
+      "addPort": "Ajouter un port",
       "appProtocol": "Protocole applicatif (URL backend de la passerelle)",
+      "branch": "Branche",
       "buildAuto": "Auto (recommandé)",
       "buildAutoHint": "Auto construit le Dockerfile du dépôt s’il existe, sinon utilise Cloud Native Buildpacks.",
       "buildBuildpacks": "Buildpacks (sans Dockerfile)",
       "buildDockerfile": "Dockerfile",
       "buildMethod": "Méthode de construction",
       "builderHint": "Remplace le builder Cloud Native Buildpacks. Laissez vide pour utiliser celui de la plateforme.",
+      "builderImage": "Image du builder",
       "containerPort": "Port du conteneur",
       "containerPorts": "Ports du conteneur",
       "continueOnError": "continuer en cas d’erreur",
@@ -694,11 +698,13 @@
       "portNamePlaceholder": "nom (opt.)",
       "portProtocol": "Protocole du port",
       "publicUrl": "URL publique (aucun dépôt enregistré)",
+      "registryCredential": "Identifiants du registre",
       "registryNone": "Public / aucun",
       "removePort": "Retirer le port",
       "replicas": "Réplicas",
       "repoContents": "Contenu du dépôt",
       "repository": "Dépôt",
+      "repositoryUrl": "URL du dépôt",
       "runtime": "Runtime",
       "runtimeContainer": "Conteneur (nœud unique)",
       "runtimeService": "Service (répliqué, cluster)",
@@ -1570,7 +1576,8 @@
     "txtHint": "Ajoutez cet enregistrement {type} chez votre hébergeur DNS, puis cliquez sur Vérifier. La propagation peut prendre quelques minutes.",
     "type": "Type",
     "value": "Valeur",
-    "verifiedAt": "Vérifié le"
+    "verifiedAt": "Vérifié le",
+    "wildcard": "Joker"
   },
   "domains": {
     "addOne": "Ajouter un domaine",
@@ -1686,6 +1693,7 @@
     "entropyHigh": "{range} — la valeur cesse d’être le maillon faible du système.",
     "entropyLow": "{range} — trop faible pour tout ce qui est accessible depuis un réseau.",
     "entropyMid": "{range} — confortable pour un mot de passe de service ou un identifiant d’application.",
+    "generateAValue": "Générer une valeur",
     "generateAnother": "En générer une autre",
     "generateValue": "Générer une valeur",
     "generatedValue": "Valeur générée",
@@ -1884,6 +1892,9 @@
     "timeoutLabel": "Délai d’expiration (secondes, 0 = par défaut)",
     "timeoutShort": "Délai (s)"
   },
+  "ldap": {
+    "testConnection": "Tester la connexion"
+  },
   "locationPicker": {
     "admin": "admin",
     "anyNodeInTheLocation": "N’importe quel nœud de l’emplacement",
@@ -2049,6 +2060,7 @@
     "ruleYaml": "Règle (YAML)",
     "storedEncrypted": "Stocké chiffré",
     "type": "Type",
+    "username": "Nom d'utilisateur",
     "username2": "Nom d’utilisateur",
     "yaml": "(YAML)"
   },
@@ -2507,6 +2519,10 @@
       "tokenCopied": "Jeton copié",
       "updated": "Espace de travail mis à jour"
     }
+  },
+  "oauth": {
+    "displayName": "Nom d'affichage",
+    "workspaceId": "ID de l'espace de travail"
   },
   "orgPicker": {
     "defaultOrganization": "Organisation par défaut",
@@ -3109,6 +3125,7 @@
     "moveLater": "Déplacer après",
     "nameHint": "Lettres minuscules, chiffres et tirets (ex. mon-api).",
     "nameTitle": "Lettres minuscules, chiffres et tirets",
+    "new": "Nouvelle route",
     "noDomainsHint": "Aucun domaine enregistré. Saisissez un hôte manuellement, {link} pour choisir dans une liste, ou laissez vide pour correspondre à tous les hôtes.",
     "noHostsHint": "Aucun hôte — cette route correspondra à tous les hôtes (attrape-tout).",
     "noMiddlewaresAttached": "Aucun middleware attaché.",
@@ -3299,6 +3316,7 @@
     "createAStack": "Créer une stack",
     "deleteStack": "Supprimer la stack",
     "displayNameHint": "Le libellé affiché dans la console. Laissez vide pour utiliser le nom de la stack.",
+    "dockerComposeYml": "docker-compose.yml",
     "dockerProject": "· Projet Docker :",
     "editStack": "Modifier la stack",
     "emptyHint": "Créez une stack pour regrouper des applications liées et gérer leurs conteneurs ensemble.",
@@ -3343,6 +3361,10 @@
     "makeDefault": "Définir comme espace par défaut",
     "manage": "Gérer les espaces de travail…",
     "platformAdmin": "Administration",
+    "privilegedBadge": "Privilégié",
+    "privilegedTitle": "Espace de travail privilégié : les montages hôte et les liaisons de ports hôte sont autorisés sans approbation, et le profil de sécurité restreint ne s’applique pas.",
+    "systemBadge": "Système",
+    "systemTitle": "L’espace de travail intégré de la plateforme. Il contient les ressources gérées par la plateforme et ne peut être ni renommé ni supprimé.",
     "workspaces": "mes espaces"
   },
   "verifyEmail": {

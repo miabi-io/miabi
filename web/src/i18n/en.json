@@ -24,6 +24,7 @@
       "sourceCode": "Source code",
       "website": "Website"
     },
+    "miabi": "Miabi",
     "resources": "Resources",
     "tagline": "The open-source, self-hosted Platform-as-a-Service (PaaS) for Docker.",
     "version": "Version"
@@ -662,13 +663,16 @@
     "deployFirst": "Deploy your first application",
     "emptyHint": "Deploy from a Docker image or a Git repository — or install a ready-made app from the Marketplace.",
     "form": {
+      "addPort": "Add port",
       "appProtocol": "Application protocol (Gateway backend URL)",
+      "branch": "Branch",
       "buildAuto": "Auto (recommended)",
       "buildAutoHint": "Auto builds the repo's Dockerfile when present, otherwise uses Cloud Native Buildpacks.",
       "buildBuildpacks": "Buildpacks (no Dockerfile)",
       "buildDockerfile": "Dockerfile",
       "buildMethod": "Build method",
       "builderHint": "Override the Cloud Native Buildpacks builder. Leave empty to use the platform default.",
+      "builderImage": "Builder image",
       "containerPort": "Container port",
       "containerPorts": "Container ports",
       "continueOnError": "continue on error",
@@ -694,11 +698,13 @@
       "portNamePlaceholder": "name (opt)",
       "portProtocol": "Port protocol",
       "publicUrl": "Public URL (no saved repository)",
+      "registryCredential": "Registry credential",
       "registryNone": "Public / none",
       "removePort": "Remove port",
       "replicas": "Replicas",
       "repoContents": "Repository contents",
       "repository": "Repository",
+      "repositoryUrl": "Repository URL",
       "runtime": "Runtime",
       "runtimeContainer": "Container (single node)",
       "runtimeService": "Service (replicated, cluster)",
@@ -1570,7 +1576,8 @@
     "txtHint": "Add this {type} record at your DNS host, then click Verify. Propagation can take a few minutes.",
     "type": "Type",
     "value": "Value",
-    "verifiedAt": "Verified at"
+    "verifiedAt": "Verified at",
+    "wildcard": "Wildcard"
   },
   "domains": {
     "addOne": "Add a domain",
@@ -1686,6 +1693,7 @@
     "entropyHigh": "{range} — the value stops being the weakest part of the system.",
     "entropyLow": "{range} — too weak for anything reachable from a network.",
     "entropyMid": "{range} — comfortable for a service password or an app credential.",
+    "generateAValue": "Generate a value",
     "generateAnother": "Generate another",
     "generateValue": "Generate value",
     "generatedValue": "Generated value",
@@ -1884,6 +1892,9 @@
     "timeoutLabel": "Timeout (seconds, 0 = default)",
     "timeoutShort": "Timeout (s)"
   },
+  "ldap": {
+    "testConnection": "Test connection"
+  },
   "locationPicker": {
     "admin": "admin",
     "anyNodeInTheLocation": "Any node in the location",
@@ -2049,6 +2060,7 @@
     "ruleYaml": "Rule (YAML)",
     "storedEncrypted": "Stored encrypted",
     "type": "Type",
+    "username": "Username",
     "username2": "Username",
     "yaml": "(YAML)"
   },
@@ -2507,6 +2519,10 @@
       "tokenCopied": "Token copied",
       "updated": "Workspace updated"
     }
+  },
+  "oauth": {
+    "displayName": "Display name",
+    "workspaceId": "Workspace ID"
   },
   "orgPicker": {
     "defaultOrganization": "Default organization",
@@ -3109,6 +3125,7 @@
     "moveLater": "Move later",
     "nameHint": "Lowercase letters, digits and hyphens (e.g. my-api).",
     "nameTitle": "Lowercase letters, digits and hyphens",
+    "new": "New route",
     "noDomainsHint": "No domains registered. Enter a host manually, {link} to pick from a list, or leave blank to match all hosts.",
     "noHostsHint": "No hosts — this route will match all hosts (catch-all).",
     "noMiddlewaresAttached": "No middlewares attached.",
@@ -3299,6 +3316,7 @@
     "createAStack": "Create a stack",
     "deleteStack": "Delete stack",
     "displayNameHint": "The label shown in the console. Leave blank to fall back to the stack's name.",
+    "dockerComposeYml": "docker-compose.yml",
     "dockerProject": "· Docker project:",
     "editStack": "Edit stack",
     "emptyHint": "Create a stack to group related applications and manage their containers together.",
@@ -3343,6 +3361,10 @@
     "makeDefault": "Make this my default workspace",
     "manage": "Manage workspaces…",
     "platformAdmin": "Platform admin",
+    "privilegedBadge": "Privileged",
+    "privilegedTitle": "A privileged workspace: host mounts and host-port bindings are allowed without approval, and the restricted security profile does not apply.",
+    "systemBadge": "System",
+    "systemTitle": "The built-in platform workspace. It holds platform-managed resources and cannot be renamed or deleted.",
     "workspaces": "workspaces"
   },
   "verifyEmail": {
