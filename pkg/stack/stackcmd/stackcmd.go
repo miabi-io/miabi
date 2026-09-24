@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -179,6 +180,10 @@ func applySetupOptions(m *stack.Manifest, o SetupOptions) {
 func printPlan(ui UI, m *stack.Manifest, path string) {
 	ui.Printf("\nMiabi will install:\n\n")
 	ui.Printf("  domain      %s  (%s)\n", m.Domain, m.WebURL)
+	// Only when it is a second address.
+	if cu := strings.TrimSpace(m.ControlURL); cu != "" && cu != m.WebURL {
+		ui.Printf("  nodes       %s  — where agents and runners dial back\n", cu)
+	}
 	ui.Printf("  control     %s\n", m.Images.Miabi)
 	ui.Printf("  gateway     %s\n", m.Images.Gateway)
 	ui.Printf("  database    %s\n", m.Images.Postgres)
@@ -199,24 +204,52 @@ func printPlan(ui UI, m *stack.Manifest, path string) {
 func printResult(ui UI, m *stack.Manifest, path string, newInstall bool) {
 	ui.Printf("\n")
 	ui.Success("Miabi is up at %s", m.WebURL)
+
+	if cu := strings.TrimSpace(m.ControlURL); cu != "" && cu != m.WebURL {
+		ui.Printf("\n  Nodes and runners reach it at %s\n", cu)
+	}
 	if newInstall {
-		ui.Printf("\n  Sign in with:\n    %s\n    %s\n", m.Secrets.AdminEmail, m.Secrets.AdminPassword)
+
+		ui.Printf("\n  Sign in with:\n    Email      %s\n    Password   %s\n",
+			m.Secrets.AdminEmail, m.Secrets.AdminPassword)
 		ui.Printf("\n  This password is shown only now. It lives in %s (mode 0600),\n"+
 			"  together with the database password and the encryption key — BACK THAT FILE UP.\n"+
 			"  Without it the encrypted secrets in the database cannot be read back.\n", path)
 	}
-	// The registry is served on its OWN hostname with its own certificate, so it needs its own DNS
-	// record. Without one it simply never works, and the failure surfaces far from here — as a
-	// docker push that cannot resolve the host.
+
 	names := m.Domain
 	if m.Registry.Enabled {
 		names = fmt.Sprintf("%s and %s", m.Domain, m.Registry.Host)
 	}
 	ui.Printf("\n  Point %s at this host's public IP; the gateway obtains a certificate\n"+
 		"  from Let's Encrypt on the first request.\n", names)
+
+	if h := controlHost(m); h != "" {
+		ui.Printf("\n  %s only has to resolve from your NODES — it is where agents and runners dial\n"+
+			"  back, and it may be a private address the panel's own hostname never reaches.\n", h)
+	}
 	if m.Registry.Enabled {
 		ui.Printf("\n  Registry: docker login %s   (use a Miabi account or an API token)\n", m.Registry.Host)
 	}
+}
+
+// controlHost is the host operators must make reachable for nodes, or "" when there is nothing
+// extra to say: no separate control URL, or one on the very name the domain line already covers.
+func controlHost(m *stack.Manifest) string {
+	cu := strings.TrimSpace(m.ControlURL)
+	if cu == "" || cu == m.WebURL {
+		return ""
+	}
+	u, err := url.Parse(cu)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	// Same name on another port or scheme: the DNS advice is already given, and repeating the name
+	// would read as a second record to create.
+	if u.Hostname() == m.Domain {
+		return ""
+	}
+	return u.Host
 }
 
 // UpgradeOptions is the flag surface of upgrade/update, already parsed.

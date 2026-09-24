@@ -47,11 +47,15 @@ const concurrency = ref(1)
 // Default image for the preview; replaced by the server-configured image
 // (MIABI_RUNNER_IMAGE) returned in the create response once a runner is registered.
 const image = ref('miabi/runner:latest')
-const controlUrl = computed(() => window.location.origin)
+// The address THIS user reaches Miabi at, which is what their runner must dial. Deliberately the
+// browser's own origin and not the platform's configured control URL: that one is an operator
+// detail, often a private address only nodes can route to, and it is not a workspace member's to
+// see. A runner enrolled from the console talks to the console's host.
+const enrollUrl = computed(() => window.location.origin)
 const runCommand = computed(
   () =>
     `docker run -d --name miabi-runner --restart unless-stopped \\\n` +
-    `  -e MIABI_CONTROL_URL=${controlUrl.value} \\\n` +
+    `  -e MIABI_CONTROL_URL=${enrollUrl.value} \\\n` +
     `  -e MIABI_RUNNER_TOKEN=${createdToken.value ?? '<token>'} \\\n` +
     `  -v /var/run/docker.sock:/var/run/docker.sock \\\n` +
     `  ${image.value}`,
