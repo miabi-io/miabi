@@ -16,7 +16,7 @@
     },
     "ecosystem": "Ecosystem",
     "edition": "Edition",
-    "intro": "Miabi is an open-source, self-hosted Platform-as-a-Service for deploying and operating applications on Docker.",
+    "intro": "Miabi is an open-source, self-hosted PaaS for deploying and operating containerized applications.",
     "licenseTitle": "License & entitlements",
     "link": {
       "documentation": "Documentation",
@@ -26,7 +26,7 @@
     },
     "miabi": "Miabi",
     "resources": "Resources",
-    "tagline": "The open-source, self-hosted Platform-as-a-Service (PaaS) for Docker.",
+    "tagline": "The open-source, self-hosted PaaS for shipping apps, not infrastructure.",
     "version": "Version"
   },
   "action": {
@@ -768,7 +768,6 @@
     "managedDatabasesBackupsVolumes": "Managed databases, backups & volumes",
     "monitoringReleaseHistory": "Monitoring & Release History",
     "multiTenantWorkspacesRbac": "Multi-tenant Workspaces & RBAC",
-    "openSourceSelfHostedPaas": "Open-source · Self-hosted PaaS for Docker",
     "secretsAutomaticTls": "Secrets & Automatic TLS",
     "titleLine1": "Self-hosting,",
     "titleLine2": "reimagined."

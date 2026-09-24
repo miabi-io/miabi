@@ -35,7 +35,7 @@
 
 **Miabi** is a self-hosted, developer-first Platform-as-a-Service for containerized apps. Push an app — from a **Git repo**, a **Docker image**, or a **marketplace template** — and Miabi handles build, deploy, domains, TLS, databases, scaling, backups, monitoring, and analytics. One web console, one binary, no Docker commands and no Kubernetes cluster.
 
-It is a fully self-hostable alternative to Heroku, Render, and Railway: your VPS, dedicated box, homelab, or cloud VM, with complete ownership of the infrastructure, the data, and the runtime.
+It runs wherever you already have a server — a VPS, a dedicated server, bare metal, a homelab, or a cloud VM — and everything stays there: the control plane, the data, and the runtime are yours to own, move, and inspect. There is no managed service in the middle and no vendor to leave.
 
 > **The name.** *Miabi* is Tshiluba (Kasai, DR Congo 🇨🇩) for the **muabi trees**, traditionally associated with blessing and growth. It joins the same family as its siblings [Goma Gateway](https://github.com/jkaninda/goma-gateway) and [Posta](https://github.com/goposta/posta).
 

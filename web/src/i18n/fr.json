@@ -16,7 +16,7 @@
     },
     "ecosystem": "Écosystème",
     "edition": "Édition",
-    "intro": "Miabi est une plateforme en tant que service (PaaS) open source et auto-hébergée pour déployer et exploiter des applications sur Docker.",
+    "intro": "Miabi est un PaaS open source et auto-hébergé pour déployer et exploiter des applications conteneurisées.",
     "licenseTitle": "Licence et droits",
     "link": {
       "documentation": "Documentation",
@@ -26,7 +26,7 @@
     },
     "miabi": "Miabi",
     "resources": "Ressources",
-    "tagline": "La plateforme en tant que service (PaaS) open source et auto-hébergée pour Docker.",
+    "tagline": "Le PaaS open source et auto-hébergé pour livrer des applications, pas de l’infrastructure.",
     "version": "Version"
   },
   "action": {
@@ -768,7 +768,6 @@
     "managedDatabasesBackupsVolumes": "Bases de données, sauvegardes et volumes gérés",
     "monitoringReleaseHistory": "Surveillance et historique des versions",
     "multiTenantWorkspacesRbac": "Espaces de travail multi-locataires et RBAC",
-    "openSourceSelfHostedPaas": "Open source · PaaS auto-hébergé pour Docker",
     "secretsAutomaticTls": "Secrets et TLS automatique",
     "titleLine1": "L’auto-hébergement,",
     "titleLine2": "réinventé."
