@@ -1155,7 +1155,30 @@ export interface AppOverview {
   networks_count: number
   env_count: number
   created_at: string
+  /** The last deployment that SHIPPED — absent for an app never deployed. */
+  last_deploy?: LastDeploy
+  /** The last start/stop/restart. Distinct from last_deploy: a restart runs the SAME release. */
+  last_lifecycle?: LastLifecycle
   recent_events: AppEvent[]
+}
+
+export interface LastLifecycle {
+  action: 'start' | 'stop' | 'restart'
+  at: string
+  by_user_id?: number
+  /** Empty when the acting user has since been deleted. */
+  by_name?: string
+}
+
+/** Enough of a deployment to say when the running code last changed, and who asked for it. */
+export interface LastDeploy {
+  id: number
+  number: number
+  at: string
+  trigger?: string
+  by_user_id?: number
+  /** Empty for a machine trigger, and for a user who has since been deleted. */
+  by_name?: string
 }
 
 export interface AppMount {
@@ -1374,6 +1397,9 @@ export interface Deployment {
   error?: string
   current?: boolean
   created_at: string
+  triggered_by_id?: number
+  /** Resolved by a join; empty for a machine trigger or a deleted user. */
+  triggered_by_name?: string
 }
 
 export interface Release {

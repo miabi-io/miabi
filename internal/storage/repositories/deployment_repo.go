@@ -43,6 +43,39 @@ func (r *DeploymentRepository) ListByApp(appID uint, limit int) ([]models.Deploy
 	return deployments, err
 }
 
+// ListByAppWithActor is ListByApp with each deployment's triggering user resolved to a name. A LEFT
+// join, so a machine trigger or a deleted user yields an empty name rather than dropping the row.
+func (r *DeploymentRepository) ListByAppWithActor(appID uint, limit int) ([]models.DeploymentWithActor, error) {
+	var out []models.DeploymentWithActor
+	q := r.db.Model(&models.Deployment{}).
+		Select("deployments.*, users.name AS triggered_by_name").
+		Joins("LEFT JOIN users ON users.id = deployments.triggered_by_id").
+		Where("deployments.application_id = ?", appID).
+		Order("deployments.created_at DESC")
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+	err := q.Find(&out).Error
+	return out, err
+}
+
+// LatestSucceededByApp is the app's most recent deployment that actually shipped, with its actor
+// resolved. Succeeded rather than most-recent: a deploy that failed five minutes ago must not read
+// as "deployed five minutes ago" when the code still running is older than that.
+func (r *DeploymentRepository) LatestSucceededByApp(appID uint) (*models.DeploymentWithActor, error) {
+	var out models.DeploymentWithActor
+	err := r.db.Model(&models.Deployment{}).
+		Select("deployments.*, users.name AS triggered_by_name").
+		Joins("LEFT JOIN users ON users.id = deployments.triggered_by_id").
+		Where("deployments.application_id = ? AND deployments.status = ?", appID, models.DeploymentSucceeded).
+		Order("deployments.number DESC").
+		First(&out).Error
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // LatestNumberByApp returns the highest deployment Number for an app (0 when it
 // has none). A pending deploy whose Number is below this has been superseded by a
 // newer one, so it should step aside rather than keep waiting.

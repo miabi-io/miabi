@@ -485,6 +485,17 @@ type Application struct {
 	// of reusing the old container, and any successful deploy clears it.
 	RedeployRequired bool `json:"redeploy_required" gorm:"not null;default:false"`
 
+	// Last lifecycle action — start, stop or restart — and who asked for it. One triple rather than
+	// a timestamp per verb: they answer the same question ("has this been bounced lately, by whom"),
+	// and the one that matters is always the most recent. Deploys are NOT recorded here; they have
+	// their own history, and folding them in would make a restart look like a release.
+	//
+	// Nil on an app nothing has been done to since the columns existed, which reads as "unknown"
+	// rather than "never" — there is no backfill for actions already taken.
+	LastLifecycleAt     *time.Time `json:"last_lifecycle_at,omitempty" gorm:"index"`
+	LastLifecycleAction string     `json:"last_lifecycle_action,omitempty"`
+	LastLifecycleByID   *uint      `json:"last_lifecycle_by_id,omitempty" gorm:"index"`
+
 	// DeployStrategy is the app's default rollout method, applied when a deploy
 	// does not specify one. See DeployStrategy constants.
 	DeployStrategy DeployStrategy `json:"deploy_strategy" gorm:"not null;default:rolling"`
@@ -636,24 +647,37 @@ type Deployment struct {
 	ApplicationID uint             `json:"application_id" gorm:"index:idx_deploy_app_number,unique;index;not null"`
 	Status        DeploymentStatus `json:"status" gorm:"not null;default:pending"`
 	Image         string           `json:"image"`
-	Trigger       string           `json:"trigger"`                                  // manual | rollback | auto | pipeline | reconcile
-	Strategy      DeployStrategy   `json:"strategy" gorm:"not null;default:rolling"` // rollout method for this deploy
-	Commit        string           `json:"commit,omitempty"`
-	ImageID       *uint            `json:"image_id,omitempty"`
-	RegistryID    *uint            `json:"registry_id,omitempty"`
-	NoCache       bool             `json:"no_cache,omitempty" gorm:"not null;default:false"`
-	RunnerID      *uint            `json:"runner_id,omitempty"`
-	ContainerID   string           `json:"container_id,omitempty"`
-	Logs          string           `json:"logs,omitempty" gorm:"type:text"`
-	LogRef        string           `json:"log_ref,omitempty"`
-	LogBytes      int64            `json:"log_bytes,omitempty"`
-	LogLines      int              `json:"log_lines,omitempty"`
-	LogTruncated  bool             `json:"log_truncated,omitempty"`
-	Error         string           `json:"error,omitempty" gorm:"type:text"`
-	StartedAt     *time.Time       `json:"started_at"`
-	FinishedAt    *time.Time       `json:"finished_at"`
-	CreatedAt     time.Time        `json:"created_at"`
-	Current       bool             `json:"current" gorm:"-"`
+	Trigger       string           `json:"trigger"` // manual | rollback | auto | pipeline | reconcile
+	// TriggeredByID is the user who asked for this deploy, nil for the machine triggers (auto,
+	// reconcile, pipeline, gitops). Kept per deployment rather than only on the application: "who
+	// deployed this" is a question about one rollout, and the answer for the one before it does not
+	// change when a newer one lands.
+	TriggeredByID *uint          `json:"triggered_by_id,omitempty" gorm:"index"`
+	Strategy      DeployStrategy `json:"strategy" gorm:"not null;default:rolling"` // rollout method for this deploy
+	Commit        string         `json:"commit,omitempty"`
+	ImageID       *uint          `json:"image_id,omitempty"`
+	RegistryID    *uint          `json:"registry_id,omitempty"`
+	NoCache       bool           `json:"no_cache,omitempty" gorm:"not null;default:false"`
+	RunnerID      *uint          `json:"runner_id,omitempty"`
+	ContainerID   string         `json:"container_id,omitempty"`
+	Logs          string         `json:"logs,omitempty" gorm:"type:text"`
+	LogRef        string         `json:"log_ref,omitempty"`
+	LogBytes      int64          `json:"log_bytes,omitempty"`
+	LogLines      int            `json:"log_lines,omitempty"`
+	LogTruncated  bool           `json:"log_truncated,omitempty"`
+	Error         string         `json:"error,omitempty" gorm:"type:text"`
+	StartedAt     *time.Time     `json:"started_at"`
+	FinishedAt    *time.Time     `json:"finished_at"`
+	CreatedAt     time.Time      `json:"created_at"`
+	Current       bool           `json:"current" gorm:"-"`
+}
+
+// DeploymentWithActor is a deployment plus the display name of whoever asked for it, resolved by a
+// join so the list does not need a second lookup per row. Empty for the machine triggers, and also
+// for a user who has since been deleted — the Trigger field is what still names the cause there.
+type DeploymentWithActor struct {
+	Deployment
+	TriggeredByName string `json:"triggered_by_name,omitempty"`
 }
 
 func (d *Deployment) BeforeCreate(tx *gorm.DB) error {

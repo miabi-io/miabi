@@ -189,6 +189,30 @@ func (r *ApplicationRepository) SetStatus(id uint, status models.AppStatus) erro
 	return r.db.Model(&models.Application{}).Where("id = ?", id).Update("status", status).Error
 }
 
+// SetLastLifecycle records the most recent start/stop/restart and who asked for it. A targeted
+// UPDATE rather than a read-modify-write on the row, so two people acting at once cannot lose each
+// other's action — last writer wins, which for "most recent" is the right answer anyway.
+func (r *ApplicationRepository) SetLastLifecycle(id uint, action string, at time.Time, by *uint) error {
+	return r.db.Model(&models.Application{}).Where("id = ?", id).Updates(map[string]any{
+		"last_lifecycle_at":     at,
+		"last_lifecycle_action": action,
+		"last_lifecycle_by_id":  by,
+	}).Error
+}
+
+// LifecycleActorName resolves the display name of whoever performed the app's last lifecycle
+// action. Empty when nobody did, or when that user has since been deleted — the action and its
+// time still stand on their own.
+func (r *ApplicationRepository) LifecycleActorName(appID uint) (string, error) {
+	var name string
+	err := r.db.Model(&models.Application{}).
+		Select("COALESCE(users.name, '')").
+		Joins("LEFT JOIN users ON users.id = applications.last_lifecycle_by_id").
+		Where("applications.id = ?", appID).
+		Scan(&name).Error
+	return name, err
+}
+
 func (r *ApplicationRepository) SetRedeployRequired(id uint, v bool) error {
 	return r.db.Model(&models.Application{}).Where("id = ?", id).Update("redeploy_required", v).Error
 }

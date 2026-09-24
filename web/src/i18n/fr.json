@@ -261,6 +261,11 @@
   "appDetail": {
     "aSingleFile": "Un seul fichier",
     "abort": "Abandonner",
+    "action": {
+      "start": "Démarré",
+      "stop": "Arrêté",
+      "restart": "Redémarré"
+    },
     "activate": "Activer",
     "active": "actif",
     "add": "Ajouter",
@@ -278,6 +283,8 @@
     "branchRef": "Branche / réf.",
     "buildCache": "Cache de build",
     "builderImage": "Image de build",
+    "by": "Par",
+    "byName": "par {name}",
     "canary": {
       "pauseHint": "Maintenir le trafic à la répartition actuelle",
       "resumeHint": "Rendre le déploiement à la montée automatique"
@@ -412,6 +419,8 @@
       "hint": "Libellés Docker personnalisés apposés sur le conteneur de cette application — pour les outils pilotés par libellés comme {tool}. Les clés réservées ({a}, {b}) ne sont pas autorisées. Les changements s’appliquent au prochain déploiement. Ne mettez pas de secrets dans les libellés — ils sont visibles via {cmd}.",
       "notAvailable": "Les libellés personnalisés ne sont pas disponibles dans votre plan actuel, ou ont été désactivés par votre administrateur."
     },
+    "lastAction": "Dernière action",
+    "lastDeploy": "Dernier déploiement",
     "linkADatabase": "Lier une base de données",
     "linkDatabase": "Lier la base de données",
     "live": "en direct",

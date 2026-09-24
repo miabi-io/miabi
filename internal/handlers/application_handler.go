@@ -900,6 +900,10 @@ func (h *ApplicationHandler) lifecycle(c *okapi.Context, action string) error {
 		return c.AbortInternalServerError("failed to "+action+" application", err)
 	}
 	h.record(c, app.WorkspaceID, "app."+action, app.ID)
+	// Stamped for every successful start/stop/restart, including one that turned into a redeploy:
+	// the user asked for a restart, and that is what the app detail should say happened to it. The
+	// deployment it produced keeps its own row and its own actor.
+	h.svc.RecordLifecycle(app.ID, action, userIDPtr(c))
 	// A start/restart that applied pending changes returns the deployment so the
 	// client can follow its logs; a plain lifecycle action returns a message.
 	if dep != nil {
@@ -937,7 +941,7 @@ func (h *ApplicationHandler) Rollback(c *okapi.Context, req *RollbackRequest) er
 	if err != nil {
 		return c.AbortNotFound("application not found")
 	}
-	dep, err := h.svc.Rollback(app, req.Body.ReleaseID)
+	dep, err := h.svc.Rollback(app, req.Body.ReleaseID, userIDPtr(c))
 	if err != nil {
 		return c.AbortBadRequest(err.Error())
 	}
@@ -1049,7 +1053,7 @@ func (h *ApplicationHandler) PromoteCanary(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortNotFound("application not found")
 	}
-	dep, err := h.svc.PromoteCanary(app)
+	dep, err := h.svc.PromoteCanary(app, userIDPtr(c))
 	if err != nil {
 		return h.mapCanaryErr(c, err)
 	}

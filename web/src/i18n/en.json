@@ -261,6 +261,11 @@
   "appDetail": {
     "aSingleFile": "A single file",
     "abort": "Abort",
+    "action": {
+      "start": "Started",
+      "stop": "Stopped",
+      "restart": "Restarted"
+    },
     "activate": "Activate",
     "active": "active",
     "add": "Add",
@@ -278,6 +283,8 @@
     "branchRef": "Branch / ref",
     "buildCache": "Build cache",
     "builderImage": "Builder image",
+    "by": "By",
+    "byName": "by {name}",
     "canary": {
       "pauseHint": "Hold traffic at the current split",
       "resumeHint": "Hand the rollout back to the ramp"
@@ -412,6 +419,8 @@
       "hint": "Custom Docker labels stamped on this app's container — for label-driven tools like {tool}. Reserved keys ({a}, {b}) are not allowed. Changes apply on the next deploy. Don't put secrets in labels — they're visible via {cmd}.",
       "notAvailable": "Custom labels aren't available on your current plan, or have been disabled by your administrator."
     },
+    "lastAction": "Last action",
+    "lastDeploy": "Last deploy",
     "linkADatabase": "Link a database",
     "linkDatabase": "Link database",
     "live": "live",
