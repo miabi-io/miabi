@@ -28,6 +28,33 @@ const open = ref(false)
 const isAdminConsole = computed(() => props.mode === 'admin')
 
 const label = computed(() => (isAdminConsole.value ? 'Platform' : ws.contextLabel))
+
+// An icon, not a word: the sidebar is 240px and the workspace name has to survive. The name each
+// icon stands for is on its tooltip and its aria-label, which is also what a screen reader reads.
+//
+// The system workspace is always privileged too, so it gets the one badge that says the most:
+// "system" already implies the relaxed rules that "privileged" names.
+type WorkspaceTrait = { key: 'system' | 'privileged'; icon: string; label: string; title: string }
+function traitOf(w: { system?: boolean; privileged?: boolean }): WorkspaceTrait | null {
+  if (w.system) {
+    return {
+      key: 'system',
+      icon: 'mdi-cog',
+      label: t('switcher.systemBadge'),
+      title: t('switcher.systemTitle'),
+    }
+  }
+  if (w.privileged) {
+    return {
+      key: 'privileged',
+      icon: 'mdi-shield-alert-outline',
+      label: t('switcher.privilegedBadge'),
+      title: t('switcher.privilegedTitle'),
+    }
+  }
+  return null
+}
+const currentTrait = computed(() => (ws.currentWorkspace ? traitOf(ws.currentWorkspace) : null))
 const initial = computed(() => {
   if (isAdminConsole.value) return 'P'
   const name = ws.currentWorkspace?.display_name || ws.currentWorkspace?.name
@@ -91,6 +118,16 @@ function leaveAdmin() {
           {{ label }}
           <span v-if="isAdminConsole" class="ws-admin-badge">{{ t('switcher.adminBadge') }}</span>
         </span>
+        <!-- Outside the name, which truncates with an ellipsis: a long workspace name must lose its
+             own tail, never the badge that says what kind of workspace it is. -->
+        <span
+          v-if="!collapsed && !isAdminConsole && currentTrait"
+          class="mdi ws-trait-icon"
+          :class="[currentTrait.icon, `ws-trait-${currentTrait.key}`]"
+          :title="currentTrait.title"
+          :aria-label="currentTrait.label"
+          role="img"
+        ></span>
       </div>
       <span v-if="!collapsed" class="mdi mdi-unfold-more-horizontal ws-switcher-chevron"></span>
       <span v-if="!isAdminConsole && adminAttention && collapsed" class="ws-attention-dot"></span>
@@ -110,6 +147,14 @@ function leaveAdmin() {
             :title="t('switcher.defaultWorkspace')"></span>
           <button v-else class="mdi mdi-pin-outline ws-default-set" :title="t('switcher.makeDefault')"
             :aria-label="t('switcher.makeDefault')" @click.stop="makeDefaultWorkspace(w.id)"></button>
+          <span
+            v-if="traitOf(w)"
+            class="mdi ws-trait-icon"
+            :class="[traitOf(w)!.icon, `ws-trait-${traitOf(w)!.key}`]"
+            :title="traitOf(w)!.title"
+            :aria-label="traitOf(w)!.label"
+            role="img"
+          ></span>
         </div>
         <div v-if="!ws.workspaces.length" class="ws-switcher-empty">{{ t('switcher.empty') }}</div>
 
@@ -358,6 +403,35 @@ function leaveAdmin() {
   vertical-align: middle;
   background: rgba(255, 255, 255, 0.16);
   color: #fff;
+}
+
+/* Says what a workspace IS, next to the role badge that says what you are in it. Privileged
+   relaxes the security profile, so it reads as a caution rather than as decoration. */
+/* A bare glyph rather than a pill: it costs the name ~20px instead of a word's worth, and the
+   sidebar's text colour differs per theme, so it inherits rather than naming one. */
+/* Sized and padded like the make-default pin it sits beside, so the two line up on the row. */
+.ws-trait-icon {
+  flex-shrink: 0;
+  padding: 2px;
+  font-size: 14px;
+  line-height: 1;
+  vertical-align: middle;
+  opacity: 0.75;
+}
+
+/* Last on the row, after the make-default pin. On the dropdown's panel surface semantic colour
+   reads properly, and privileged is the one worth flagging: it relaxes the security profile, where
+   system merely names the platform's own. */
+.ws-switcher-dropdown .ws-trait-icon {
+  opacity: 1;
+}
+
+.ws-switcher-dropdown .ws-trait-system {
+  color: var(--text-muted);
+}
+
+.ws-switcher-dropdown .ws-trait-privileged {
+  color: var(--warning-600);
 }
 
 .ws-switcher-rule {

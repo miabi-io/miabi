@@ -115,6 +115,36 @@ describe('translation catalogues', () => {
     expect(LANGUAGES.map((l) => l.code).sort()).toEqual(shipped.sort())
   })
 
+  // Parity above proves the catalogues agree with EACH OTHER; it says nothing about whether a key
+  // the app asks for exists at all. A missing one renders as the raw key — the user sees
+  // "apps.form.addPort" on a button — and no test caught it, because both catalogues lacked it
+  // equally. This walks the source instead of the catalogues.
+  it('defines every key the app asks for', () => {
+    // Vite reads the sources, so this needs no node types in the app's tsconfig.
+    const sources = import.meta.glob('../**/*.{vue,ts}', {
+      eager: true,
+      query: '?raw',
+      import: 'default',
+    }) as Record<string, string>
+
+    // $t('a.b') or t("a.b") with a literal, dotted key — the form that can be checked statically.
+    // A computed key (t(someVar)) is invisible here and stays the author's responsibility.
+    const used = new Map<string, string>()
+    for (const [file, src] of Object.entries(sources)) {
+      if (file.endsWith('.spec.ts')) continue
+      for (const m of src.matchAll(/\$?\bt\(\s*(['"])([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)+)\1/g)) {
+        if (!used.has(m[2])) used.set(m[2], file.replace(/^\.\.\//, ''))
+      }
+    }
+    expect(Object.keys(sources).length, 'no sources were scanned').toBeGreaterThan(50)
+
+    const missing = [...used]
+      .filter(([key]) => typeof valueAt(en, key) !== 'string')
+      .map(([key, file]) => `${key} (${file})`)
+      .sort()
+    expect(missing, 'used in the app but absent from en.json').toEqual([])
+  })
+
   it('has no empty string, which renders as a blank label', () => {
     for (const [code, cat] of Object.entries(catalogues)) {
       const empties = keysOf(cat).filter((k) => {
