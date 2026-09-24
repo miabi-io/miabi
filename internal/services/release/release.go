@@ -174,7 +174,7 @@ func (s *Service) Promote(workspaceID, releaseID, environmentID, userID uint) (*
 			return nil, ErrApprovalsNeeded
 		}
 	}
-	dep, err := s.appSvc.Rollback(app, rel.ID)
+	dep, err := s.appSvc.Rollback(app, rel.ID, &userID)
 	if err != nil {
 		return nil, err
 	}

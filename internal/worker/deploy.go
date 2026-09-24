@@ -452,9 +452,6 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 			}
 			h.log(dep, "image "+image+" present — skipping pull (policy: never)")
 		default: // always, if-not-present with the image absent, or a cached image this workspace cannot claim
-			if present && !reusable {
-				h.log(dep, "image "+image+" is present but cached by another workload — pulling to verify access")
-			}
 			h.log(dep, "pulling image "+image)
 			if err := h.eng(app).PullImage(ctx, image, auth); err != nil {
 				_ = h.fail(dep, fmt.Errorf("pull image: %w", err))

@@ -32,7 +32,7 @@ import EnvVarModal from '@/components/EnvVarModal.vue'
 import RouteFormModal from '@/components/RouteFormModal.vue'
 import CanaryPanel from '@/components/CanaryPanel.vue'
 import AppAccessPanel from '@/components/AppAccessPanel.vue'
-import type { Application, AppOverview, Deployment, Release, AppEnvVar, Route, Network, Stack, Volume, StatsSample, Registry, GitRepository, AppEvent, AppPort, PortBinding, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, ReconcilePolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, DatabaseInstance, LogicalDatabase, NodePlacement, PipelineDefinition, CapabilityCatalog } from '@/api/types'
+import type { Application, AppOverview, Deployment, Release, AppEnvVar, Route, Network, Stack, Volume, StatsSample, Registry, GitRepository, AppEvent, AppPort, LastDeploy, PortBinding, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, ReconcilePolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, DatabaseInstance, LogicalDatabase, NodePlacement, PipelineDefinition, CapabilityCatalog } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 import { fmtSize } from '@/utils/format'
 import { copyText } from '@/utils/clipboard'
@@ -1909,6 +1909,13 @@ function eventIcon(type: string): string {
   return 'mdi-circle-small'
 }
 
+
+// "by Jonas" when a person asked for it, otherwise the machine cause — pipeline, auto, reconcile.
+// A deleted user leaves no name, so the trigger is what still answers "what caused this".
+function deployedBy(d: LastDeploy): string {
+  if (d.by_name) return t('appDetail.byName', { name: d.by_name })
+  return d.trigger ? `· ${d.trigger}` : ''
+}
 function relTime(ts: string): string {
   const d = new Date(ts).getTime()
   const diff = Date.now() - d
@@ -2129,6 +2136,15 @@ async function detachDatabase(d: AppDatabase) {
           <span class="summary-label">{{ $t('appDetail.restarts') }}</span>
           <span class="summary-value">{{ liveStatus.restart_count }}×</span>
         </div>
+        <!-- Beside the container's own restart count, which counts crashes: this one is a person
+             acting on the app. Kept away from Last deploy, which is a different release. -->
+        <div v-if="overview.last_lifecycle" class="summary-item">
+          <span class="summary-label">{{ $t('appDetail.lastAction') }}</span>
+          <span class="summary-value" :title="fmtDateTime(overview.last_lifecycle.at)">
+            {{ $t('appDetail.action.' + overview.last_lifecycle.action) }} {{ relTime(overview.last_lifecycle.at) }}
+            <span v-if="overview.last_lifecycle.by_name" class="summary-by">{{ $t('appDetail.byName', { name: overview.last_lifecycle.by_name }) }}</span>
+          </span>
+        </div>
         <div class="summary-item">
           <span class="summary-label">{{ overview.source_type === 'git' ? 'Source' : 'Image tag' }}</span>
           <span class="summary-value">
@@ -2159,6 +2175,16 @@ async function detachDatabase(d: AppDatabase) {
         <div class="summary-item clickable" @click="tab = 'environment'">
           <span class="summary-label">{{ $t('appDetail.envVars') }}</span>
           <span class="summary-value">{{ overview.env_count }}</span>
+        </div>
+        <!-- Beside Created, the other lifecycle date: when the running code last changed, and who
+             asked for it. Clicks through to the deployment itself. -->
+        <div class="summary-item" :class="{ clickable: overview.last_deploy }" @click="overview.last_deploy && (tab = 'deployments')">
+          <span class="summary-label">{{ $t('appDetail.lastDeploy') }}</span>
+          <span v-if="overview.last_deploy" class="summary-value" :title="fmtDateTime(overview.last_deploy.at)">
+            {{ relTime(overview.last_deploy.at) }}
+            <span class="summary-by">{{ deployedBy(overview.last_deploy) }}</span>
+          </span>
+          <span v-else class="summary-value">—</span>
         </div>
         <div class="summary-item">
           <span class="summary-label">{{ $t('dashboard.col.created') }}</span>
@@ -2530,15 +2556,19 @@ async function detachDatabase(d: AppDatabase) {
         </div>
         <div v-else class="table-wrapper">
           <table>
-            <thead><tr><th>{{ $t('appDetail.deployment') }}</th><th>{{ $t('appDetail.image') }}</th><th>{{ $t('appDetail.when') }}</th><th class="text-right">{{ $t('dashboard.col.status') }}</th></tr></thead>
+            <thead><tr><th>{{ $t('appDetail.deployment') }}</th><th>{{ $t('appDetail.image') }}</th><th>{{ $t('appDetail.by') }}</th><th>{{ $t('appDetail.when') }}</th><th class="text-right">{{ $t('dashboard.col.status') }}</th></tr></thead>
             <tbody>
               <tr v-for="d in deployments" :key="d.id" class="row-clickable" :class="{ 'row-selected': streamingId === d.id }" @click="streamLogs(d.id)">
                 <td>
                   <span class="cell-title">#{{ d.number }}</span>
-                  <div class="cell-sub">{{ d.trigger }}</div>
                   <div v-if="d.error" class="dep-err" :title="d.error"><span class="mdi mdi-alert-circle-outline"></span> {{ d.error }}</div>
                 </td>
                 <td class="cell-sub mono trunc" :title="d.image">{{ d.image || '—' }}</td>
+                <!-- A person when one asked for it, otherwise what did: pipeline, auto, reconcile. -->
+                <td class="cell-sub trunc" :title="d.triggered_by_name || d.trigger">
+                  <template v-if="d.triggered_by_name">{{ d.triggered_by_name }}</template>
+                  <span v-else class="text-muted">{{ d.trigger || '—' }}</span>
+                </td>
                 <td class="cell-sub" :title="fmtDateTime(d.created_at)">{{ relTime(d.created_at) }}</td>
                 <td class="text-right">
                   <span v-if="d.current" class="badge badge-success badge-dot">{{ $t('appDetail.live') }}</span>
@@ -4165,6 +4195,12 @@ async function detachDatabase(d: AppDatabase) {
   gap: 4px 24px;
   padding: 18px 24px;
 }
+.summary-by {
+  margin-left: 4px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
 .summary-item { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 6px 8px; margin: -6px -8px; border-radius: var(--radius-sm); }
 .summary-item.clickable { cursor: pointer; transition: background 0.12s; }
 .summary-item.clickable:hover { background: var(--bg-hover, var(--bg-tertiary)); }

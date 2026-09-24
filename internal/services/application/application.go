@@ -608,15 +608,40 @@ type Overview struct {
 	// Hostname is the app's stable internal DNS name, reachable from other
 	// managed containers on the shared network across redeploys. StackHostname
 	// is its service name within its stack network (empty when ungrouped).
-	Hostname         string            `json:"hostname"`
-	StackHostname    string            `json:"stack_hostname,omitempty"`
-	RedeployRequired bool              `json:"redeploy_required"`
-	VolumesCount     int               `json:"volumes_count"`
-	RoutesCount      int               `json:"routes_count"`
-	NetworksCount    int               `json:"networks_count"`
-	EnvCount         int               `json:"env_count"`
-	CreatedAt        time.Time         `json:"created_at"`
-	RecentEvents     []models.AppEvent `json:"recent_events"`
+	Hostname         string    `json:"hostname"`
+	StackHostname    string    `json:"stack_hostname,omitempty"`
+	RedeployRequired bool      `json:"redeploy_required"`
+	VolumesCount     int       `json:"volumes_count"`
+	RoutesCount      int       `json:"routes_count"`
+	NetworksCount    int       `json:"networks_count"`
+	EnvCount         int       `json:"env_count"`
+	CreatedAt        time.Time `json:"created_at"`
+	// LastDeploy is the most recent deployment that SHIPPED, so the summary reads as when the
+	// running code last changed rather than when someone last tried. Nil for an app never deployed.
+	LastDeploy *LastDeploy `json:"last_deploy,omitempty"`
+	// LastLifecycle is the last start/stop/restart. Separate from LastDeploy on purpose: a restart
+	// runs the SAME release, and showing the two as one date would read as a new rollout.
+	LastLifecycle *LastLifecycle    `json:"last_lifecycle,omitempty"`
+	RecentEvents  []models.AppEvent `json:"recent_events"`
+}
+
+// LastLifecycle is the last start, stop or restart, and who asked for it.
+type LastLifecycle struct {
+	Action   string    `json:"action"` // start | stop | restart
+	At       time.Time `json:"at"`
+	ByUserID *uint     `json:"by_user_id,omitempty"`
+	ByName   string    `json:"by_name,omitempty"`
+}
+
+// LastDeploy is the summary-strip view of a deployment: enough to render "2h ago by Jonas" and
+// link to the full record, without copying the whole row into the overview.
+type LastDeploy struct {
+	ID       uint      `json:"id"`
+	Number   int       `json:"number"`
+	At       time.Time `json:"at"`
+	Trigger  string    `json:"trigger,omitempty"`
+	ByUserID *uint     `json:"by_user_id,omitempty"`
+	ByName   string    `json:"by_name,omitempty"`
 }
 
 // Overview aggregates summary fields and resource counts for an application.
@@ -647,6 +672,23 @@ func (s *Service) Overview(app *models.Application) *Overview {
 	}
 	if n, err := s.apps.CountNetworks(app.ID); err == nil {
 		ov.NetworksCount = int(n)
+	}
+	if dep, err := s.deployments.LatestSucceededByApp(app.ID); err == nil && dep != nil {
+		at := dep.CreatedAt
+		if dep.FinishedAt != nil {
+			at = *dep.FinishedAt
+		}
+		ov.LastDeploy = &LastDeploy{
+			ID: dep.ID, Number: dep.Number, At: at, Trigger: dep.Trigger,
+			ByUserID: dep.TriggeredByID, ByName: dep.TriggeredByName,
+		}
+	}
+	if app.LastLifecycleAt != nil && app.LastLifecycleAction != "" {
+		ll := &LastLifecycle{Action: app.LastLifecycleAction, At: *app.LastLifecycleAt, ByUserID: app.LastLifecycleByID}
+		if app.LastLifecycleByID != nil {
+			ll.ByName, _ = s.apps.LifecycleActorName(app.ID)
+		}
+		ov.LastLifecycle = ll
 	}
 	if evts, err := s.appEvents.ListByApp(app.ID, 6, 0); err == nil {
 		ov.RecentEvents = evts
@@ -1697,6 +1739,19 @@ func (s *Service) Restart(ctx context.Context, app *models.Application) (*models
 	return nil, nil
 }
 
+// RecordLifecycle stamps the app with the start/stop/restart just performed and who asked for it.
+// Called by the handler rather than by Start/Stop/Restart themselves: those have several early
+// returns (a redeploy, a service scale, a container restart) and the actor only exists at the HTTP
+// edge, so one call at the one place that knows both beats four that each know half.
+//
+// Best-effort — this is a display fact, and failing a restart the user already got because a
+// bookkeeping write failed would be the worse outcome.
+func (s *Service) RecordLifecycle(appID uint, action string, by *uint) {
+	if err := s.apps.SetLastLifecycle(appID, action, time.Now(), by); err != nil {
+		logger.Warn("could not record the app lifecycle action", "app", appID, "action", action, "error", err)
+	}
+}
+
 // Scale sets the replica count of a cluster (service) app and applies it to the
 // live Swarm service immediately (no redeploy). Rejected for container apps or
 // when cluster mode is off.
@@ -2106,13 +2161,15 @@ func (s *Service) RevealEnvVar(appID uint, key string) (string, error) {
 // Deploy creates a deployment for the current app config and enqueues it. registryOverride, when
 // non-nil, uses a different registry credential for this one deploy; tagOverride, when non-empty,
 // deploys a specific image tag for an image-source app.
+// Its callers are the machine paths — declarative apply, stacks, workspace restore — so no actor is
+// recorded. A person's deploy comes through RequestDeploy, which carries theirs.
 func (s *Service) Deploy(app *models.Application, registryOverride *uint, tagOverride string, strategy models.DeployStrategy) (*models.Deployment, error) {
-	return s.deploy(app, registryOverride, tagOverride, strategy, false)
+	return s.deploy(app, registryOverride, tagOverride, strategy, false, nil)
 }
 
 // deploy is Deploy plus the per-deploy build cache override, which only the user-facing entry
 // point offers: an internal redeploy must not silently pay for a cold build.
-func (s *Service) deploy(app *models.Application, registryOverride *uint, tagOverride string, strategy models.DeployStrategy, noCache bool) (*models.Deployment, error) {
+func (s *Service) deploy(app *models.Application, registryOverride *uint, tagOverride string, strategy models.DeployStrategy, noCache bool, triggeredBy *uint) (*models.Deployment, error) {
 
 	s.reconcileAutoRuntime(app.ID)
 	regID := app.RegistryID
@@ -2124,7 +2181,7 @@ func (s *Service) deploy(app *models.Application, registryOverride *uint, tagOve
 	if app.SourceType != models.AppSourceGit {
 		image = app.ImageRef(tagOverride)
 	}
-	return s.enqueue(app.ID, app.ServerID, image, "manual", regID, s.resolveStrategy(app, strategy), noCache)
+	return s.enqueue(app.ID, app.ServerID, image, "manual", regID, s.resolveStrategy(app, strategy), noCache, triggeredBy)
 }
 
 // InvalidateBuildCache names a new build cache generation for the app. The next build of it runs
@@ -2156,7 +2213,7 @@ func (s *Service) RequestDeploy(app *models.Application, registryOverride *uint,
 		}
 		return &DeployResult{Run: run}, nil
 	}
-	dep, err := s.deploy(app, registryOverride, tagOverride, strategy, noCache)
+	dep, err := s.deploy(app, registryOverride, tagOverride, strategy, noCache, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -2178,7 +2235,7 @@ func (s *Service) Redeploy(app *models.Application) (*models.Deployment, error) 
 	if app.SourceType != models.AppSourceGit {
 		image = app.ImageRef("")
 	}
-	return s.enqueue(app.ID, app.ServerID, image, "auto", app.RegistryID, models.DeployRolling, false)
+	return s.enqueue(app.ID, app.ServerID, image, "auto", app.RegistryID, models.DeployRolling, false, nil)
 }
 
 // ReconcileRedeploy brings an app back where it already runs, after the control manager found its container
@@ -2193,7 +2250,7 @@ func (s *Service) ReconcileRedeploy(app *models.Application, reason string) (*mo
 	}
 	logger.Info("control manager: redeploying an app whose workload disappeared",
 		"app", app.Name, "app_id", app.ID, "node", app.ServerID, "reason", reason)
-	return s.enqueue(app.ID, app.ServerID, image, "reconcile", app.RegistryID, models.DeployRolling, false)
+	return s.enqueue(app.ID, app.ServerID, image, "reconcile", app.RegistryID, models.DeployRolling, false, nil)
 }
 
 func (s *Service) AutoRedeploy(app *models.Application) (*models.Deployment, error) {
@@ -2348,12 +2405,12 @@ func (s *Service) SetContainerLabels(app *models.Application, labels map[string]
 }
 
 // Rollback re-deploys a previous release's image.
-func (s *Service) Rollback(app *models.Application, releaseID uint) (*models.Deployment, error) {
+func (s *Service) Rollback(app *models.Application, releaseID uint, triggeredBy *uint) (*models.Deployment, error) {
 	rel, err := s.releases.FindByID(releaseID)
 	if err != nil || rel.ApplicationID != app.ID {
 		return nil, fmt.Errorf("release not found")
 	}
-	return s.enqueue(app.ID, app.ServerID, rel.Image, "rollback", app.RegistryID, models.DeployRolling, false)
+	return s.enqueue(app.ID, app.ServerID, rel.Image, "rollback", app.RegistryID, models.DeployRolling, false, triggeredBy)
 }
 
 var (
@@ -2436,7 +2493,7 @@ func (s *Service) ResumeCanary(app *models.Application) error {
 // PromoteCanary makes the canary the new stable release. It enqueues a normal
 // deploy of the canary's image; the deploy pipeline retires the old stable and
 // the in-progress canary, leaving a single full-traffic release.
-func (s *Service) PromoteCanary(app *models.Application) (*models.Deployment, error) {
+func (s *Service) PromoteCanary(app *models.Application, triggeredBy *uint) (*models.Deployment, error) {
 	if app.CanaryReleaseID == nil {
 		return nil, ErrNoCanary
 	}
@@ -2449,7 +2506,7 @@ func (s *Service) PromoteCanary(app *models.Application) (*models.Deployment, er
 		image = rel.Image
 	}
 	s.emit(app, models.EventDeployStarted, "Promoting canary to stable")
-	return s.enqueue(app.ID, app.ServerID, image, "manual", app.RegistryID, models.DeployRolling, false)
+	return s.enqueue(app.ID, app.ServerID, image, "manual", app.RegistryID, models.DeployRolling, false, triggeredBy)
 }
 
 // AbortCanary stops the canary container, discards its release, and returns all
@@ -2497,7 +2554,7 @@ func (s *Service) finalizeCanaryDeployment(deploymentID uint, line string) {
 	_ = s.deployments.Update(dep)
 }
 
-func (s *Service) enqueue(appID, serverID uint, image, trigger string, registryID *uint, strategy models.DeployStrategy, noCache bool) (*models.Deployment, error) {
+func (s *Service) enqueue(appID, serverID uint, image, trigger string, registryID *uint, strategy models.DeployStrategy, noCache bool, triggeredBy *uint) (*models.Deployment, error) {
 	// Every deploy, redeploy, rollback and canary passes through here, and each of them starts a container
 	// that would mount the app's volumes — so this is where a lost one has to stop them.
 	if app, err := s.apps.FindByID(appID); err == nil {
@@ -2508,7 +2565,7 @@ func (s *Service) enqueue(appID, serverID uint, image, trigger string, registryI
 	if !models.ValidDeployStrategy(strategy) {
 		strategy = models.DeployRolling
 	}
-	dep := &models.Deployment{ApplicationID: appID, Image: image, Trigger: trigger, Strategy: strategy, RegistryID: registryID, Status: models.DeploymentPending, NoCache: noCache}
+	dep := &models.Deployment{ApplicationID: appID, Image: image, Trigger: trigger, Strategy: strategy, RegistryID: registryID, Status: models.DeploymentPending, NoCache: noCache, TriggeredByID: triggeredBy}
 	if err := s.deployments.Create(dep); err != nil {
 		return nil, err
 	}
@@ -2518,8 +2575,8 @@ func (s *Service) enqueue(appID, serverID uint, image, trigger string, registryI
 	return dep, nil
 }
 
-func (s *Service) ListDeployments(appID uint, limit int) ([]models.Deployment, error) {
-	deps, err := s.deployments.ListByApp(appID, limit)
+func (s *Service) ListDeployments(appID uint, limit int) ([]models.DeploymentWithActor, error) {
+	deps, err := s.deployments.ListByAppWithActor(appID, limit)
 	if err != nil {
 		return nil, err
 	}

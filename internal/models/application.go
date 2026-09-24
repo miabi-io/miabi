@@ -485,6 +485,17 @@ type Application struct {
 	// of reusing the old container, and any successful deploy clears it.
 	RedeployRequired bool `json:"redeploy_required" gorm:"not null;default:false"`
 
+	// Last lifecycle action — start, stop or restart — and who asked for it. One triple rather than
+	// a timestamp per verb: they answer the same question ("has this been bounced lately, by whom"),
+	// and the one that matters is always the most recent. Deploys are NOT recorded here; they have
+	// their own history, and folding them in would make a restart look like a release.
+	//
+	// Nil on an app nothing has been done to since the columns existed, which reads as "unknown"
+	// rather than "never" — there is no backfill for actions already taken.
+	LastLifecycleAt     *time.Time `json:"last_lifecycle_at,omitempty" gorm:"index"`
+	LastLifecycleAction string     `json:"last_lifecycle_action,omitempty"`
+	LastLifecycleByID   *uint      `json:"last_lifecycle_by_id,omitempty" gorm:"index"`
+
 	// DeployStrategy is the app's default rollout method, applied when a deploy
 	// does not specify one. See DeployStrategy constants.
 	DeployStrategy DeployStrategy `json:"deploy_strategy" gorm:"not null;default:rolling"`
@@ -628,15 +639,13 @@ func (s DeploymentStatus) IsTerminal() bool {
 
 // Deployment is a single attempt to deploy an application.
 type Deployment struct {
-	ID uint `json:"id" gorm:"primaryKey"`
-	// Number is the per-application sequential deployment number, independent of the global ID
-	// and mirroring Release.Version. Assigned in BeforeCreate; the composite unique index keeps
-	// it gap-free per app and prevents duplicates.
+	ID            uint             `json:"id" gorm:"primaryKey"`
 	Number        int              `json:"number" gorm:"index:idx_deploy_app_number,unique;not null;default:0"`
 	ApplicationID uint             `json:"application_id" gorm:"index:idx_deploy_app_number,unique;index;not null"`
 	Status        DeploymentStatus `json:"status" gorm:"not null;default:pending"`
 	Image         string           `json:"image"`
-	Trigger       string           `json:"trigger"`                                  // manual | rollback | auto | pipeline | reconcile
+	Trigger       string           `json:"trigger"` // manual | rollback | auto | pipeline | reconcile
+	TriggeredByID *uint            `json:"triggered_by_id,omitempty" gorm:"index"`
 	Strategy      DeployStrategy   `json:"strategy" gorm:"not null;default:rolling"` // rollout method for this deploy
 	Commit        string           `json:"commit,omitempty"`
 	ImageID       *uint            `json:"image_id,omitempty"`
@@ -654,6 +663,11 @@ type Deployment struct {
 	FinishedAt    *time.Time       `json:"finished_at"`
 	CreatedAt     time.Time        `json:"created_at"`
 	Current       bool             `json:"current" gorm:"-"`
+}
+
+type DeploymentWithActor struct {
+	Deployment
+	TriggeredByName string `json:"triggered_by_name,omitempty"`
 }
 
 func (d *Deployment) BeforeCreate(tx *gorm.DB) error {
