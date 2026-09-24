@@ -1218,16 +1218,14 @@ func (s *Service) SyncCluster(ctx context.Context, clusterID uint) {
 	}
 }
 
-// NodeBundle renders the Goma config a remote node's Gateway pulls over the HTTP
-// provider: every middleware (routes reference them by name) plus only the
-// routes for apps that node's gateway serves (see gatewayServer).
+// NodeBundle renders the Goma config a remote node's Gateway pulls over the HTTP provider: the
+// routes for apps that node's gateway serves (see gatewayServer), plus ONLY the middlewares those
+// routes reference.
+//
+// Only those: a middleware's rule is rendered with its secrets decrypted — a forwardAuth bearer, a
+// basicAuth user list — so shipping the whole install's middlewares to every edge node handed each
+// one every other workspace's credentials, for routes it does not serve and cannot serve.
 func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.RenderedMiddleware, error) {
-	mws, err := s.middlewares.ListAll()
-	if err != nil {
-		return nil, nil, err
-	}
-	renderedMw := renderMiddlewares(mws)
-
 	apps, err := s.bundleApps(serverID)
 	if err != nil {
 		return nil, nil, err
@@ -1277,7 +1275,40 @@ func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.Rend
 			s.persistRouteStatus(rt, status, reason, now)
 		}
 	}
+
+	// Rendered last, from what the routes above actually named. A disabled route still carries its
+	// references, so its middlewares ship too — Goma rejects a config naming a middleware it has no
+	// definition for, and the route has to stay defined in order to be switched off.
+	mws, err := s.middlewares.ListAll()
+	if err != nil {
+		return nil, nil, err
+	}
+	renderedMw := renderMiddlewares(referencedMiddlewares(mws, renderedRoutes))
 	return renderedRoutes, renderedMw, nil
+}
+
+// referencedMiddlewares keeps the middlewares named by at least one of these routes. Matching is per
+// workspace as well as by name, because two workspaces may each define "auth" and they are not the
+// same middleware.
+func referencedMiddlewares(mws []models.Middleware, routes []proxy.RenderedRoute) []models.Middleware {
+	wanted := make(map[uint]map[string]bool, len(routes))
+	for i := range routes {
+		for _, name := range routes[i].Middlewares {
+			ws := wanted[routes[i].WorkspaceID]
+			if ws == nil {
+				ws = map[string]bool{}
+				wanted[routes[i].WorkspaceID] = ws
+			}
+			ws[name] = true
+		}
+	}
+	out := make([]models.Middleware, 0, len(wanted))
+	for i := range mws {
+		if wanted[mws[i].WorkspaceID][mws[i].Name] {
+			out = append(out, mws[i])
+		}
+	}
+	return out
 }
 
 // bundleApps lists the apps a node's gateway may serve: its own, or the whole cluster's on a remote swarm's

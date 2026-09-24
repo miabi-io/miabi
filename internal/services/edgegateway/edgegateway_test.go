@@ -102,7 +102,7 @@ func TestRenderConfigRedis(t *testing.T) {
 }
 
 func TestGatewayEnvConfigEncryptionKey(t *testing.T) {
-	srv := &models.Server{Name: "edge-1"}
+	srv := &models.Server{ID: 7, Name: "edge-1"}
 
 	// No key configured: the env var is absent.
 	s := NewService(nil, "https://miabi.example.com", "img", "miabi", "ops@example.com")
@@ -112,16 +112,18 @@ func TestGatewayEnvConfigEncryptionKey(t *testing.T) {
 		}
 	}
 
-	// Key configured: injected verbatim into the gateway env.
+	// Key configured: a NODE's gateway gets its own derived key, never the central passphrase —
+	// that is what stops one compromised edge host reading every other node's config.
 	s.SetConfigEncryptionKey("  s3cr3t-key  ") // trimmed
-	found := false
-	for _, e := range s.gatewayEnv(srv, "tok", "") {
-		if e == "GOMA_CONFIG_ENCRYPTION_KEY=s3cr3t-key" {
-			found = true
-		}
+	got := envValue(s.gatewayEnv(srv, "tok", ""), "GOMA_CONFIG_ENCRYPTION_KEY")
+	if got == "" {
+		t.Fatalf("gateway env has no GOMA_CONFIG_ENCRYPTION_KEY\n%v", s.gatewayEnv(srv, "tok", ""))
 	}
-	if !found {
-		t.Errorf("gateway env missing GOMA_CONFIG_ENCRYPTION_KEY=s3cr3t-key\n%v", s.gatewayEnv(srv, "tok", ""))
+	if got == "s3cr3t-key" {
+		t.Fatal("the node's gateway was handed the central passphrase")
+	}
+	if want := ConfigKey(srv, "s3cr3t-key"); got != want {
+		t.Errorf("key = %q, want the derived %q — the provider renders its bundle under that one", got, want)
 	}
 }
 

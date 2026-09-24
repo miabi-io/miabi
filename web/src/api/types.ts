@@ -2576,6 +2576,10 @@ export interface GatewayStatus {
   // gateway reuses the platform Redis (manager) vs a per-node Redis (edge nodes).
   redis_enabled?: boolean
   redis_shared?: boolean
+  /** Middleware rules and inline TLS are encrypted rather than served in the clear. */
+  config_encrypted?: boolean
+  /** Which key: 'node' = this node's own (derived), 'shared' = the central passphrase. */
+  config_key_scope?: 'node' | 'shared' 
   // In-flight safe-update progress, if any.
   update?: GatewayUpdateProgress
 }

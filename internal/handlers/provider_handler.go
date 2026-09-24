@@ -12,6 +12,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/proxy"
 	"github.com/miabi-io/miabi/internal/services/analytics"
+	"github.com/miabi-io/miabi/internal/services/edgegateway"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/route"
 )
@@ -70,7 +71,9 @@ func (h *ProviderHandler) serve(c *okapi.Context, withRoutes, withMiddlewares bo
 	if !withMiddlewares {
 		mws = nil
 	}
-	body, err := proxy.RenderBundle(routes, mws)
+	// Under THIS node's key: the bundle is for its gateway alone, and no other node's gateway
+	// should be able to read it if it ever ends up somewhere it should not.
+	body, err := proxy.RenderBundle(routes, mws, edgegateway.ConfigKey(srv, proxy.CentralConfigKey()))
 	if err != nil {
 		return c.AbortInternalServerError("failed to render node config", err)
 	}

@@ -16,6 +16,7 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/proxy"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/edgegateway"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
@@ -563,6 +564,12 @@ type GatewayStatus struct {
 	// than a per-node Redis (remote edge nodes).
 	RedisEnabled bool `json:"redis_enabled"`
 	RedisShared  bool `json:"redis_shared"`
+	// ConfigEncrypted: the gateway's config — middleware rules and inline TLS material — is
+	// encrypted rather than served in the clear. ConfigKeyScope says under WHICH key: "node" is
+	// this node's own, "shared" the central passphrase the control plane's gateway uses, which an
+	// imported gateway also falls back to because Miabi never redeploys it.
+	ConfigEncrypted bool   `json:"config_encrypted"`
+	ConfigKeyScope  string `json:"config_key_scope,omitempty"` // node | shared
 	// Update is the in-flight safe-update progress, if any.
 	Update *models.GatewayUpdateProgress `json:"update,omitempty"`
 }
@@ -611,6 +618,13 @@ func (h *NodeHandler) GatewayState(c *okapi.Context) error {
 		RedisEnabled:   h.gateway.RedisEnabled(srv),
 		RedisShared:    srv.IsLocal,
 		Update:         srv.GatewayUpdate,
+	}
+	if key := edgegateway.ConfigKey(srv, proxy.CentralConfigKey()); key != "" {
+		out.ConfigEncrypted = true
+		out.ConfigKeyScope = "shared"
+		if key != proxy.CentralConfigKey() {
+			out.ConfigKeyScope = "node"
+		}
 	}
 	dc, derr := h.manager.Clients().For(id)
 	if derr != nil {
