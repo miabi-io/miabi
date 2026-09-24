@@ -34,7 +34,6 @@ defineProps<{ brandName?: string }>()
           </ul>
         </div>
 
-        <!-- Positioning line, deliberately not translated: it is the product's own wording. -->
         <p class="auth-hero-foot">Open-source, self-hosted PaaS</p>
       </div>
     </aside>
