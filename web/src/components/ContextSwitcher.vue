@@ -7,6 +7,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { useLicenseStore } from '@/stores/license'
 import { ADMIN_HOME, rememberConsoleRoute, workspaceReturnPath } from '@/data/console'
+import { workspaceTrait } from '@/data/workspaceTrait'
 
 const props = defineProps<{
   // 'admin' renders the platform identity and offers the way back; 'workspace'
@@ -31,29 +32,7 @@ const label = computed(() => (isAdminConsole.value ? 'Platform' : ws.contextLabe
 
 // An icon, not a word: the sidebar is 240px and the workspace name has to survive. The name each
 // icon stands for is on its tooltip and its aria-label, which is also what a screen reader reads.
-//
-// The system workspace is always privileged too, so it gets the one badge that says the most:
-// "system" already implies the relaxed rules that "privileged" names.
-type WorkspaceTrait = { key: 'system' | 'privileged'; icon: string; label: string; title: string }
-function traitOf(w: { system?: boolean; privileged?: boolean }): WorkspaceTrait | null {
-  if (w.system) {
-    return {
-      key: 'system',
-      icon: 'mdi-cog',
-      label: t('switcher.systemBadge'),
-      title: t('switcher.systemTitle'),
-    }
-  }
-  if (w.privileged) {
-    return {
-      key: 'privileged',
-      icon: 'mdi-shield-alert-outline',
-      label: t('switcher.privilegedBadge'),
-      title: t('switcher.privilegedTitle'),
-    }
-  }
-  return null
-}
+const traitOf = (w: { system?: boolean; privileged?: boolean }) => workspaceTrait(w, t)
 const currentTrait = computed(() => (ws.currentWorkspace ? traitOf(ws.currentWorkspace) : null))
 const initial = computed(() => {
   if (isAdminConsole.value) return 'P'
@@ -400,16 +379,11 @@ function leaveAdmin() {
   color: #fff;
 }
 
-/* Says what a workspace IS, next to the role badge that says what you are in it. Privileged
-   relaxes the security profile, so it reads as a caution rather than as decoration. */
-/* A bare glyph rather than a pill: it costs the name ~20px instead of a word's worth, and the
-   sidebar's text colour differs per theme, so it inherits rather than naming one. */
-/* The trait recolours the avatar it replaces the initial in, the way the admin console's own avatar
-   already does. Privileged is the one worth flagging — it relaxes the security profile — where
-   system merely names the platform's own. */
+/* The trait recolours the avatar it replaces the initial in. Both are off the brand accent on
+   purpose: system means the platform's own workspace, privileged relaxes the security profile. */
 .ws-avatar-system,
 .ws-avatar-system.ws-avatar-sm {
-  background: var(--text-muted);
+  background: var(--danger-600, #dc2626);
 }
 
 .ws-avatar-privileged,

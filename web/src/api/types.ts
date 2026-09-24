@@ -573,6 +573,8 @@ export interface AdminWorkspace {
   owner_name: string
   owner_email: string
   privileged: boolean
+  /** The built-in platform workspace, which cannot be renamed or deleted. */
+  system: boolean
   apps_count: number
   databases_count: number
   stacks_count: number

@@ -5,10 +5,14 @@ import { adminApi } from '@/api/admin'
 import { useNotificationStore } from '@/stores/notification'
 import { usePagination } from '@/composables/usePagination'
 import Pagination from '@/components/Pagination.vue'
+import { useI18n } from 'vue-i18n'
 import type { AdminWorkspace } from '@/api/types'
+import { workspaceTrait } from '@/data/workspaceTrait'
 
 const notify = useNotificationStore()
 const router = useRouter()
+const { t } = useI18n()
+const traitOf = (w: AdminWorkspace) => workspaceTrait(w, t)
 
 const workspaces = ref<AdminWorkspace[]>([])
 const loading = ref(false)
@@ -99,9 +103,18 @@ onBeforeUnmount(() => {
             <tr v-for="w in workspaces" :key="w.id" class="row-clickable" @click="router.push(`/admin/workspaces/${w.id}`)">
               <td>
                 <div class="cell-id">
-                  <span class="avatar avatar-sm">{{ (w.display_name || w.name).charAt(0).toUpperCase() }}</span>
+                  <span class="avatar avatar-sm" :class="traitOf(w) ? `avatar-${traitOf(w)!.key}` : ''"
+                    :title="traitOf(w)?.title">
+                    <span v-if="traitOf(w)" class="mdi" :class="traitOf(w)!.icon" role="img"
+                      :aria-label="traitOf(w)!.label"></span>
+                    <template v-else>{{ (w.display_name || w.name).charAt(0).toUpperCase() }}</template>
+                  </span>
                   <span class="cell-text">
-                    <span class="cell-title">{{ w.display_name || w.name }}</span>
+                    <span class="cell-title">
+                      {{ w.display_name || w.name }}
+                      <span v-if="traitOf(w)" class="badge" :class="traitOf(w)!.badgeClass"
+                        :title="traitOf(w)!.title">{{ traitOf(w)!.label }}</span>
+                    </span>
                     <span class="cell-sub">{{ w.name }}</span>
                   </span>
                 </div>

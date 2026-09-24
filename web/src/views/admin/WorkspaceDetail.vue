@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, toRaw, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { adminApi } from '@/api/admin'
 import { clustersApi } from '@/api/clusters'
 import { useNotificationStore } from '@/stores/notification'
 import { useLicenseStore } from '@/stores/license'
 import { useEntitlement } from '@/composables/useEntitlement'
+import { useI18n } from 'vue-i18n'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import { workspaceTrait } from '@/data/workspaceTrait'
 import { adminRunnerApi, type Runner } from '@/api/runners'
 import type { AdminWorkspaceDetail, AdminEvent, AdminWorkspaceMember, Cluster, DatabaseSize, Plan, WorkspaceQuotaOverride } from '@/api/types'
 
@@ -22,6 +24,8 @@ const notify = useNotificationStore()
 
 const wsId = computed(() => Number(route.params.id))
 const ws = ref<AdminWorkspaceDetail | null>(null)
+const { t } = useI18n()
+const trait = computed(() => workspaceTrait(ws.value, t))
 const loading = ref(false)
 const busy = ref(false)
 
@@ -53,8 +57,13 @@ async function load() {
   }
 }
 
+const showPlanConfirm = ref(false)
+const selectedPlanName = computed(
+  () => assignablePlans.value.find((p) => p.id === selectedPlanId.value)?.name ?? '',
+)
 async function assignPlan() {
   if (!ws.value) return
+  showPlanConfirm.value = false
   busy.value = true
   try {
     await adminApi.assignWorkspacePlan(ws.value.id, selectedPlanId.value)
@@ -91,17 +100,42 @@ const overrideFields: { key: NumKey; label: string }[] = [
   { key: 'max_gpus', label: 'GPUs' },
 ]
 const override = ref<WorkspaceQuotaOverride | null>(null)
+const overrideBaseline = ref<WorkspaceQuotaOverride | null>(null)
 async function loadOverride() {
   if (!wsId.value) return
   try {
     override.value = (await adminApi.getWorkspaceQuota(wsId.value)).data.data
+    overrideBaseline.value = structuredClone(toRaw(override.value))
   } catch { /* none set */ }
 }
 function setNum(key: NumKey, raw: string) {
   if (!override.value) return
   override.value[key] = raw.trim() === '' ? null : Number(raw)
 }
-function setCap(key: 'allow_custom_tls' | 'allow_privileged_host_mounts' | 'allow_shell_exec' | 'allow_shared_storage' | 'allow_dns_providers' | 'allow_custom_labels' | 'allow_platform_runners' | 'allow_gpu', raw: string) {
+type CapKey =
+  | 'allow_custom_tls'
+  | 'allow_privileged_host_mounts'
+  | 'allow_shell_exec'
+  | 'allow_shared_storage'
+  | 'allow_dns_providers'
+  | 'allow_custom_labels'
+  | 'allow_platform_runners'
+  | 'allow_gpu'
+
+// Capabilities whose "Allow" widens what a workspace may do to the host or to other tenants.
+// Granting one is worth a confirmation; raising a quota number is not, and allow_gpu is a
+// resource grant rather than a security one.
+const securityCaps: { key: CapKey; label: string }[] = [
+  { key: 'allow_privileged_host_mounts', label: 'Privileged host mounts' },
+  { key: 'allow_shell_exec', label: 'Shell access' },
+  { key: 'allow_shared_storage', label: 'Shared storage' },
+  { key: 'allow_custom_tls', label: 'Custom TLS' },
+  { key: 'allow_dns_providers', label: 'DNS providers' },
+  { key: 'allow_custom_labels', label: 'Custom labels' },
+  { key: 'allow_platform_runners', label: 'Platform runners' },
+]
+
+function setCap(key: CapKey, raw: string) {
   if (!override.value) return
   override.value[key] = raw === '' ? null : raw === 'true'
 }
@@ -109,11 +143,36 @@ function setSecProfile(raw: string) {
   if (!override.value) return
   override.value.security_profile = raw === '' ? null : (raw as 'default' | 'restricted')
 }
+// Compared against what was loaded, so a save that only touches quotas stays a plain save.
+const relaxations = computed(() => {
+  const cur = override.value
+  if (!cur) return []
+  const base = overrideBaseline.value
+  const out = securityCaps
+    .filter((c) => cur[c.key] === true && base?.[c.key] !== true)
+    .map((c) => c.label)
+  if (cur.security_profile === 'default' && base?.security_profile !== 'default') {
+    out.push('Security profile: default')
+  }
+  return out
+})
+
+const showOverrideConfirm = ref(false)
+function requestSaveOverride() {
+  if (relaxations.value.length) {
+    showOverrideConfirm.value = true
+    return
+  }
+  void saveOverride()
+}
+
 async function saveOverride() {
   if (!ws.value || !override.value) return
+  showOverrideConfirm.value = false
   busy.value = true
   try {
     await adminApi.setWorkspaceQuota(ws.value.id, override.value)
+    overrideBaseline.value = structuredClone(toRaw(override.value))
     notify.success('Overrides saved')
   } catch (e) {
     notify.apiError(e)
@@ -121,8 +180,10 @@ async function saveOverride() {
     busy.value = false
   }
 }
+const showClearConfirm = ref(false)
 async function clearOverride() {
   if (!ws.value) return
+  showClearConfirm.value = false
   busy.value = true
   try {
     await adminApi.clearWorkspaceQuota(ws.value.id)
@@ -202,9 +263,11 @@ function back() {
   router.push('/admin/workspaces')
 }
 
+const showPrivilegedConfirm = ref(false)
 async function togglePrivileged() {
   if (!ws.value) return
   const next = !ws.value.privileged
+  showPrivilegedConfirm.value = false
   busy.value = true
   try {
     await adminApi.setWorkspacePrivileged(ws.value.id, next)
@@ -293,12 +356,15 @@ function eventSeverity(e: AdminEvent): string {
           <button class="btn-icon btn-icon-muted" title="Back to workspaces" aria-label="Back to workspaces" @click="back">
             <span class="mdi mdi-arrow-left"></span>
           </button>
-          <span class="avatar avatar-lg">{{ (ws.display_name || ws.name).charAt(0).toUpperCase() }}</span>
+          <span class="avatar avatar-lg" :class="trait ? `avatar-${trait.key}` : ''" :title="trait?.title">
+            <span v-if="trait" class="mdi" :class="trait.icon" role="img" :aria-label="trait.label"></span>
+            <template v-else>{{ (ws.display_name || ws.name).charAt(0).toUpperCase() }}</template>
+          </span>
           <div class="header-title">
             <h1>
               {{ ws.display_name || ws.name }}
-              <span v-if="ws.system" class="badge badge-info">system</span>
-              <span v-if="ws.privileged" class="badge badge-success">privileged</span>
+              <span v-if="trait" class="badge" :class="trait.badgeClass" :title="trait.title">
+                <span class="mdi" :class="trait.icon"></span>{{ trait.label }}</span>
             </h1>
             <span class="subline">{{ ws.name }}</span>
           </div>
@@ -309,10 +375,10 @@ function eventSeverity(e: AdminEvent): string {
             v-if="!ws.system"
             class="btn btn-secondary btn-sm"
             :disabled="busy"
-            @click="togglePrivileged"
+            @click="showPrivilegedConfirm = true"
           >
-            <span class="mdi" :class="ws.privileged ? 'mdi-shield-off-outline' : 'mdi-shield-check-outline'"></span>
-            {{ ws.privileged ? 'Revoke privileged' : 'Make privileged' }}
+            <span class="mdi" :class="ws.privileged ? 'mdi-shield-check-outline' : 'mdi-shield-alert-outline'"></span>
+            {{ ws.privileged ? $t('action.revokePrivileged') : $t('action.makePrivileged') }}
           </button>
           <button
             class="btn btn-secondary btn-sm"
@@ -389,7 +455,7 @@ function eventSeverity(e: AdminEvent): string {
           </div>
           <div class="detail">
             <span class="text-muted">Privileged</span>
-            <span class="badge" :class="ws.privileged ? 'badge-success' : 'badge-neutral'">
+            <span class="badge" :class="ws.privileged ? 'badge-warning' : 'badge-neutral'">
               {{ ws.privileged ? 'Yes' : 'No' }}
             </span>
           </div>
@@ -419,7 +485,7 @@ function eventSeverity(e: AdminEvent): string {
             </p>
             <p v-else class="form-hint">Caps this workspace's resources. Enforced only when plan enforcement is enabled platform-wide.</p>
           </div>
-          <button class="btn btn-primary" :disabled="busy || onSystemPlan || selectedPlanId === (ws.plan_id ?? null)" @click="assignPlan">Save</button>
+          <button class="btn btn-primary" :disabled="busy || onSystemPlan || selectedPlanId === (ws.plan_id ?? null)" @click="showPlanConfirm = true">{{ $t('action.save') }}</button>
         </div>
       </div>
 
@@ -590,11 +656,12 @@ function eventSeverity(e: AdminEvent): string {
               class="btn btn-primary"
               :disabled="busy || !quotaOverride.has.value"
               :title="quotaOverride.has.value ? '' : 'Per-workspace overrides require an Enterprise license'"
-              @click="saveOverride"
+              @click="requestSaveOverride"
             >
-              Save overrides
+              {{ $t('action.saveOverrides') }}
             </button>
-            <button class="btn btn-secondary" :disabled="busy" @click="clearOverride">Clear all</button>
+            <button class="btn btn-secondary" :disabled="busy" @click="showClearConfirm = true">
+              {{ $t('action.clearAll') }}</button>
           </div>
         </div>
       </div>
@@ -655,6 +722,51 @@ function eventSeverity(e: AdminEvent): string {
         </ul>
       </div>
     </template>
+
+    <ConfirmDialog
+      :open="showPlanConfirm"
+      :title="$t('confirm.title.changePlan')"
+      :message="$t('confirm.message.workspaceDetail.changePlan', { name: ws?.name, plan: selectedPlanName })"
+      :confirm-label="$t('action.changePlan')"
+      :busy="busy"
+      @confirm="assignPlan"
+      @cancel="showPlanConfirm = false"
+    />
+
+    <ConfirmDialog
+      :open="showOverrideConfirm"
+      :title="$t('confirm.title.relaxRestrictions')"
+      :message="$t('confirm.message.workspaceDetail.relaxRestrictions', { name: ws?.name, caps: relaxations.join(', ') })"
+      :confirm-label="$t('action.saveOverrides')"
+      variant="danger"
+      :busy="busy"
+      @confirm="saveOverride"
+      @cancel="showOverrideConfirm = false"
+    />
+
+    <ConfirmDialog
+      :open="showClearConfirm"
+      :title="$t('confirm.title.clearOverrides')"
+      :message="$t('confirm.message.workspaceDetail.clearOverrides', { name: ws?.name })"
+      :confirm-label="$t('action.clearAll')"
+      variant="danger"
+      :busy="busy"
+      @confirm="clearOverride"
+      @cancel="showClearConfirm = false"
+    />
+
+    <ConfirmDialog
+      :open="showPrivilegedConfirm"
+      :title="ws?.privileged ? $t('confirm.title.revokePrivileged') : $t('confirm.title.makePrivileged')"
+      :message="ws?.privileged
+        ? $t('confirm.message.workspaceDetail.revokePrivileged', { name: ws?.name })
+        : $t('confirm.message.workspaceDetail.makePrivileged', { name: ws?.name })"
+      :confirm-label="ws?.privileged ? $t('action.revokePrivileged') : $t('action.makePrivileged')"
+      :variant="ws?.privileged ? 'primary' : 'danger'"
+      :busy="busy"
+      @confirm="togglePrivileged"
+      @cancel="showPrivilegedConfirm = false"
+    />
 
     <ConfirmDialog
       :open="showRotateConfirm"

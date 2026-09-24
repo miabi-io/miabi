@@ -18,6 +18,7 @@ import PortableBackupPanel from '@/components/PortableBackupPanel.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import Sparkline from '@/components/Sparkline.vue'
 import { copyText } from '@/utils/clipboard'
+import { workspaceTrait } from '@/data/workspaceTrait'
 
 const route = useRoute()
 const { t } = useI18n()
@@ -161,6 +162,10 @@ const form = ref({ displayName: '', name: '', description: '' })
 const savingMeta = ref(false)
 // The built-in platform workspace cannot be renamed or deleted.
 const isSystemWs = ref(false)
+const isPrivilegedWs = ref(false)
+const wsTrait = computed(() =>
+  workspaceTrait({ system: isSystemWs.value, privileged: isPrivilegedWs.value }, t),
+)
 
 // Members + invitations
 const members = ref<Member[]>([])
@@ -310,11 +315,13 @@ async function loadWorkspace() {
   if (w) {
     form.value = { displayName: w.display_name || w.name, name: w.name, description: w.description || '' }
     isSystemWs.value = !!w.system
+    isPrivilegedWs.value = !!w.privileged
   } else {
     try {
       const res = (await workspaceApi.get(wsId.value)).data.data
       form.value = { displayName: res.display_name || res.name, name: res.name, description: res.description || '' }
       isSystemWs.value = !!res.system
+      isPrivilegedWs.value = !!res.privileged
     } catch (e) {
       notify.apiError(e)
     }
@@ -527,7 +534,21 @@ watch(activeTab, (t) => loadTab(t))
       <div>
         <button class="btn btn-ghost btn-sm" @click="router.push('/workspaces')">
           <span class="mdi mdi-arrow-left"></span>{{ $t('wsSettings.workspaces') }}</button>
-        <h1 style="margin-top: 8px">{{ form.displayName || form.name || 'Workspace' }}</h1>
+        <div class="ws-title">
+          <div class="ws-title-avatar" :class="wsTrait ? `ws-title-avatar-${wsTrait.key}` : ''"
+            :title="wsTrait?.title">
+            <span v-if="wsTrait" class="mdi" :class="wsTrait.icon" role="img" :aria-label="wsTrait.label"></span>
+            <template v-else>{{ (form.displayName || form.name || 'W').charAt(0).toUpperCase() }}</template>
+          </div>
+          <div class="ws-title-text">
+            <h1>
+              {{ form.displayName || form.name || 'Workspace' }}
+              <span v-if="wsTrait" class="badge" :class="wsTrait.badgeClass" :title="wsTrait.title">
+                <span class="mdi" :class="wsTrait.icon"></span>{{ wsTrait.label }}</span>
+            </h1>
+            <div v-if="form.name" class="ws-title-handle mono">{{ form.name }}</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1051,6 +1072,43 @@ watch(activeTab, (t) => loadTab(t))
 </template>
 
 <style scoped>
+.ws-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+.ws-title h1 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ws-title-handle {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.ws-title-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
+  background: var(--primary-600);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+/* The trait recolours the avatar it replaces the initial in. Both are off the brand accent on
+   purpose: system means the platform's own workspace, privileged relaxes the security profile. */
+.ws-title-avatar-system {
+  background: var(--danger-600, #dc2626);
+}
+.ws-title-avatar-privileged {
+  background: var(--warning-600, #d97706);
+}
 .dedicated-note {
   display: flex; align-items: center; gap: 8px; margin-bottom: 16px;
   padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px;
