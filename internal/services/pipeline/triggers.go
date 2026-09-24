@@ -4,13 +4,11 @@
 package pipeline
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"strings"
 
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/webhooksig"
 )
 
 // Scheduler registers and unregisters a pipeline's `on.schedule` cron. A cron
@@ -70,20 +68,9 @@ func (s *Service) TriggerScheduled(pipelineID uint) (*models.PipelineRun, error)
 	return s.Trigger(p.WorkspaceID, p.ID, TriggerInput{Trigger: "schedule", Branch: p.SourceRef})
 }
 
-// VerifyWebhook checks an inbound push webhook's signature against the pipeline's
-// secret: GitHub's X-Hub-Signature-256 HMAC scheme, or GitLab's bare-token style.
+// VerifyWebhook checks an inbound push webhook against the pipeline's secret.
 func (s *Service) VerifyWebhook(p *models.PipelineDefinition, signature string, body []byte) bool {
-	signature = strings.TrimSpace(signature)
-	if signature == "" || p.WebhookSecret == "" {
-		return false
-	}
-	if signature == p.WebhookSecret { // GitLab X-Gitlab-Token
-		return true
-	}
-	mac := hmac.New(sha256.New, []byte(p.WebhookSecret))
-	mac.Write(body)
-	expected := "sha256=" + hex.EncodeToString(mac.Sum(nil))
-	return hmac.Equal([]byte(expected), []byte(signature))
+	return webhooksig.Verify(p.WebhookSecret, signature, body)
 }
 
 // pushPayload is the subset of a GitHub/GitLab push event we read: the pushed

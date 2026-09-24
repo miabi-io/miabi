@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 	"github.com/miabi-io/miabi/internal/services/pipeline"
+	"github.com/miabi-io/miabi/internal/webhooksig"
 	"github.com/miabi-io/miabi/internal/worker"
 )
 
@@ -221,10 +223,13 @@ func (h *PipelineHandler) Webhook(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortBadRequest("invalid pipeline id")
 	}
-	body, _ := io.ReadAll(c.Request().Body)
-	sig := c.Header("X-Hub-Signature-256")
+	body, err := io.ReadAll(http.MaxBytesReader(c.Response(), c.Request().Body, webhooksig.MaxBodyBytes))
+	if err != nil {
+		return c.AbortWithError(http.StatusRequestEntityTooLarge, err)
+	}
+	sig := c.Header(webhooksig.SignatureHeader)
 	if sig == "" {
-		sig = c.Header("X-Gitlab-Token")
+		sig = c.Header(webhooksig.TokenHeader)
 	}
 	run, fired, err := h.svc.TriggerPush(wsID, id, sig, body)
 	switch {
