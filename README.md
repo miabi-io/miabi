@@ -33,7 +33,7 @@
 
 ---
 
-**Miabi** is a self-hosted, developer-first Platform-as-a-Service for containerized apps. Push an app — from a **Git repo**, a **Docker image**, or a **marketplace template** — and Miabi handles build, deploy, domains, TLS, databases, scaling, backups, monitoring, and analytics. One web console, one binary, no Docker commands and no Kubernetes cluster.
+**Miabi** is a developer-first PaaS for deploying and operating containerized applications on your own infrastructure. Push an app — from a **Git repo**, a **Docker image**, or a **marketplace template** — and Miabi handles build, deploy, domains, TLS, databases, scaling, backups, monitoring, and analytics. One web console, one binary, no Docker commands and no Kubernetes cluster.
 
 It runs wherever you already have a server — a VPS, a dedicated server, bare metal, a homelab, or a cloud VM — and everything stays there: the control plane, the data, and the runtime are yours to own, move, and inspect. There is no managed service in the middle and no vendor to leave.
 
