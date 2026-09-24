@@ -110,24 +110,17 @@ function leaveAdmin() {
   <div class="ws-switcher" :class="{ 'ws-switcher-admin': isAdminConsole }">
     <div class="ws-switcher-toggle" @click.stop="open = !open">
       <div class="ws-switcher-current">
-        <div class="ws-avatar">
+        <div class="ws-avatar" :class="currentTrait && !isAdminConsole ? `ws-avatar-${currentTrait.key}` : ''"
+          :title="!isAdminConsole ? currentTrait?.title : undefined">
           <span v-if="isAdminConsole" class="mdi mdi-shield-crown-outline"></span>
+          <span v-else-if="currentTrait" class="mdi" :class="currentTrait.icon" role="img"
+            :aria-label="currentTrait.label"></span>
           <template v-else>{{ initial }}</template>
         </div>
         <span v-if="!collapsed" class="ws-switcher-name">
           {{ label }}
           <span v-if="isAdminConsole" class="ws-admin-badge">{{ t('switcher.adminBadge') }}</span>
         </span>
-        <!-- Outside the name, which truncates with an ellipsis: a long workspace name must lose its
-             own tail, never the badge that says what kind of workspace it is. -->
-        <span
-          v-if="!collapsed && !isAdminConsole && currentTrait"
-          class="mdi ws-trait-icon"
-          :class="[currentTrait.icon, `ws-trait-${currentTrait.key}`]"
-          :title="currentTrait.title"
-          :aria-label="currentTrait.label"
-          role="img"
-        ></span>
       </div>
       <span v-if="!collapsed" class="mdi mdi-unfold-more-horizontal ws-switcher-chevron"></span>
       <span v-if="!isAdminConsole && adminAttention && collapsed" class="ws-attention-dot"></span>
@@ -137,7 +130,14 @@ function leaveAdmin() {
       <div v-if="open" class="ws-switcher-dropdown">
         <div v-for="w in ws.workspaces" :key="w.id" class="ws-switcher-option"
           :class="{ active: !isAdminConsole && ws.currentWorkspaceId === w.id }" @click="switchWorkspace(w.id)">
-          <div class="ws-avatar-sm">{{ (w.display_name || w.name).charAt(0).toUpperCase() }}</div>
+          <!-- The trait rides the avatar rather than taking a column of its own: the row already
+               carries a name, a handle, a role and a pin, and 210px does not stretch. -->
+          <div class="ws-avatar-sm" :class="traitOf(w) ? `ws-avatar-${traitOf(w)!.key}` : ''"
+            :title="traitOf(w)?.title">
+            <span v-if="traitOf(w)" class="mdi" :class="traitOf(w)!.icon" role="img"
+              :aria-label="traitOf(w)!.label"></span>
+            <template v-else>{{ (w.display_name || w.name).charAt(0).toUpperCase() }}</template>
+          </div>
           <span class="ws-switcher-option-name">
             {{ w.display_name || w.name }}
             <span class="ws-switcher-option-handle">{{ w.name }}</span>
@@ -147,14 +147,6 @@ function leaveAdmin() {
             :title="t('switcher.defaultWorkspace')"></span>
           <button v-else class="mdi mdi-pin-outline ws-default-set" :title="t('switcher.makeDefault')"
             :aria-label="t('switcher.makeDefault')" @click.stop="makeDefaultWorkspace(w.id)"></button>
-          <span
-            v-if="traitOf(w)"
-            class="mdi ws-trait-icon"
-            :class="[traitOf(w)!.icon, `ws-trait-${traitOf(w)!.key}`]"
-            :title="traitOf(w)!.title"
-            :aria-label="traitOf(w)!.label"
-            role="img"
-          ></span>
         </div>
         <div v-if="!ws.workspaces.length" class="ws-switcher-empty">{{ t('switcher.empty') }}</div>
 
@@ -299,6 +291,9 @@ function leaveAdmin() {
 .ws-switcher-option-name {
   display: flex;
   flex-direction: column;
+  /* Takes the row's free space and truncates into it, so the role badge and pin land in the same
+     place on every row whatever the name's length. */
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -409,29 +404,17 @@ function leaveAdmin() {
    relaxes the security profile, so it reads as a caution rather than as decoration. */
 /* A bare glyph rather than a pill: it costs the name ~20px instead of a word's worth, and the
    sidebar's text colour differs per theme, so it inherits rather than naming one. */
-/* Sized and padded like the make-default pin it sits beside, so the two line up on the row. */
-.ws-trait-icon {
-  flex-shrink: 0;
-  padding: 2px;
-  font-size: 14px;
-  line-height: 1;
-  vertical-align: middle;
-  opacity: 0.75;
-}
-
-/* Last on the row, after the make-default pin. On the dropdown's panel surface semantic colour
-   reads properly, and privileged is the one worth flagging: it relaxes the security profile, where
+/* The trait recolours the avatar it replaces the initial in, the way the admin console's own avatar
+   already does. Privileged is the one worth flagging — it relaxes the security profile — where
    system merely names the platform's own. */
-.ws-switcher-dropdown .ws-trait-icon {
-  opacity: 1;
+.ws-avatar-system,
+.ws-avatar-system.ws-avatar-sm {
+  background: var(--text-muted);
 }
 
-.ws-switcher-dropdown .ws-trait-system {
-  color: var(--text-muted);
-}
-
-.ws-switcher-dropdown .ws-trait-privileged {
-  color: var(--warning-600);
+.ws-avatar-privileged,
+.ws-avatar-privileged.ws-avatar-sm {
+  background: var(--warning-600, #d97706);
 }
 
 .ws-switcher-rule {
