@@ -128,6 +128,36 @@ gateway:
         # Optional: throttle and auto-ban credential guessing against the auth
         # endpoints. Uncomment to enable; tune it in miabi-auth-ratelimit below.
         #- miabi-auth-ratelimit
+        # Optional: serve workspaces only on this hostname and move platform
+        # administration to the control route below. Enable BOTH or neither —
+        # see miabi-block-admin.
+        #- miabi-block-admin
+
+    # Optional second route, for an install whose CONTROL URL is a different hostname from the
+    # panel's — the address remote nodes, agents and runners dial back on (MIABI_CONTROL_URL).
+    #
+    # This gateway serves only the hosts named on a route, and the control plane deliberately
+    # publishes no port of its own, so without a route here that hostname reaches nothing. One
+    # public name needs none of this: the control URL defaults to the panel's and the route above
+    # already covers it.
+    #
+    # Uncomment and set the hostname. It is a real name the gateway answers on, so:
+    #   - it must resolve from your NODES (it may be private — it does not have to be public);
+    #   - reaching it over HTTPS means a certificate, which Let's Encrypt can only issue for a
+    #     name it can validate from the internet. For a private name: serve it over the `web`
+    #     entrypoint, or give the route a certificate of your own — see the certManager notes at
+    #     the bottom of this file for `tls.provider: none`, an inline cert, and private-CA issuers.
+    #
+    # Nodes call the API, not the console, so this route carries no HTTPS redirect: an agent
+    # dialling http:// would be redirected rather than answered.
+    #
+    # This is also the hostname platform administration moves to if you enable miabi-block-admin
+    # on the panel route above — so reach it from a browser too, not only from your nodes.
+    #- name: miabi-control
+    #  path: /
+    #  hosts: ["control.example.com"]
+    #  backends:
+    #    - endpoint: http://miabi:9000
 
 # Middlewares for the Miabi control-plane route above. Routes for user
 # applications are written separately under /etc/goma/providers and are not
@@ -159,6 +189,33 @@ middlewares:
         - 192.0.2.15         # an admin's static IPv4 address
         - 2001:db8:1234::/48 # office / home LAN (an IPv6 /48 prefix)
         - 2001:db8::1        # an admin's static IPv6 address
+
+  # Optional: refuse platform administration on the PANEL hostname, so the public URL serves
+  # workspaces only and admin lives on the control hostname instead.
+  #
+  # Enable it together with the miabi-control route above, never on its own: this gateway serves
+  # only the hosts its routes name, so with no second route there is nowhere left to administer
+  # from and the recovery is editing this file on the host.
+  #
+  # Both paths are listed, because either alone is not a boundary:
+  #
+  #   /api/v1/admin/*  is what actually enforces it — every admin action goes through it.
+  #   /admin*          only stops a deep link or a refresh; the console is a single-page app, so
+  #                    navigating there from an already-loaded page never asks the server for it.
+  #                    The page would render and then fail on its first API call.
+  #
+  # An IP allowlist (miabi-ip-allowlist) is the gentler option, and needs no second hostname: it
+  # keeps administration where you work rather than moving it elsewhere.
+  # Ref: https://goma.jkaninda.dev/middlewares/access
+  #- name: miabi-block-admin
+  #  type: access
+  #  paths:
+  #    - /admin
+  #    - /admin/.*
+  #    - /api/v1/admin/.*
+  #  rule:
+  #    # 404 hides that there is anything there at all; 403 says "not from here".
+  #    statusCode: 404
 
   # Optional brute-force protection for the sign-in surface. Only the endpoints
   # that accept credentials are limited, so the panel and the rest of the API
@@ -192,6 +249,46 @@ middlewares:
 # Multi-provider certManager: named providers, selected per-route via
 # `tls.provider: <name>` (or `none` to opt out). defaultProvider serves routes
 # that don't name one.
+#
+# Ref: https://goma.jkaninda.dev/usermanual/tls
+#
+# Two ways to depart from the Let's Encrypt default:
+#
+# 1. A CERTIFICATE YOU ALREADY HAVE — a wildcard, or one from your own CA. Drop the cert+key pair
+#    into the certsDir named at the top of this file and Goma serves it by SNI, no provider needed.
+#    Tell the route not to ask ACME for one as well:
+#
+#      - name: my-route
+#        hosts: ["app.example.com"]
+#        tls:
+#          provider: none          # serve from certsDir; never order a certificate
+#
+#    Or inline it on the route instead of using the directory (cert and key are PEM, base64 or a
+#    file path):
+#
+#        tls:
+#          certificate:
+#            cert: /etc/goma/certs/app.crt
+#            key:  /etc/goma/certs/app.key
+#
+# 2. ANOTHER ISSUER — a private ACME CA (step-ca, Smallstep, ZeroSSL, Certio, an internal one). Add it as a
+#    second named provider and point routes at it with `tls.provider: <name>`, or make it the
+#    default. A CA that requires external account binding takes eab; one whose own TLS certificate
+#    your gateway does not trust needs insecureSkipVerify, which is for a private CA only:
+#
+#    internal:
+#      type: acme
+#      acme:
+#        email: "${MIABI_ACME_EMAIL}"
+#        directoryUrl: https://ca.example.com/acme/directory
+#        storageFile: /etc/letsencrypt/internal.json   # keep providers in separate files
+#        insecureSkipVerify: true                      # private CA whose cert is not publicly trusted
+#        eab:
+#          kid: <key-id-from-your-CA>
+#          hmacKey: <hmac-key-from-your-CA>
+#
+#    A private name is not reachable by a public CA's HTTP-01 challenge, so either the CA has to
+#    reach the gateway, or use DNS-01 (acme.challengeType + dnsProvider) — see the reference above.
 certManager:
   defaultProvider: acme
   providers:
