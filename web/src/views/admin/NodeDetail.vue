@@ -582,6 +582,18 @@ async function deployGateway() {
 // validating the new image as a throwaway test container, then promoting it.
 // Progress streams over SSE and is mirrored to gateway.update.
 const gwUpdate = ref<GatewayUpdateProgress | null>(null)
+
+// The badge says whether the config is encrypted; the tooltip says what that buys, because "shared
+// key" and "this node's own" are not the same guarantee and the difference is the whole point.
+const configEncryptionTitle = computed(() => {
+  if (!gateway.value?.config_encrypted) {
+    return 'Middleware rules and inline TLS material are served to this gateway in plain text. Set GOMA_CONFIG_ENCRYPTION_KEY on the control plane to encrypt them.'
+  }
+  if (gateway.value.config_key_scope === 'shared') {
+    return 'Encrypted with the central passphrase, which every gateway sharing it can read. Gateways Miabi deploys get a key of their own instead; this one keeps the shared key because Miabi does not manage its environment.'
+  }
+  return "Encrypted with this node's own key, derived per node — no other gateway can read this config."
+})
 const GW_PHASE_LABELS: Record<string, string> = {
   queued: 'Queued',
   pulling: 'Pulling new image',
@@ -1339,8 +1351,16 @@ const gwBadge = computed(() => {
             <p class="text-muted" style="margin-bottom: 8px">
               This node terminates TLS and serves its own routes via a Goma Gateway.
             </p>
-            <div v-if="gateway?.image || node.gateway_deployed_at || gateway?.imported || gateway?.redis_enabled" class="gw-meta">
+            <div v-if="gateway?.image || node.gateway_deployed_at || gateway?.imported || gateway?.redis_enabled || gateway" class="gw-meta">
               <span v-if="gateway?.imported" class="badge badge-info" title="Adopted from an existing container">imported</span>
+              <!-- Whether this gateway's config — middleware rules and inline TLS — travels and
+                   rests encrypted, and under whose key. -->
+              <span v-if="gateway?.config_encrypted" class="badge badge-success" :title="configEncryptionTitle">
+                <span class="mdi mdi-lock-outline"></span> encrypted{{ gateway.config_key_scope === 'shared' ? ' · shared key' : '' }}
+              </span>
+              <span v-else-if="gateway" class="badge badge-warning" :title="configEncryptionTitle">
+                <span class="mdi mdi-lock-open-variant-outline"></span> not encrypted
+              </span>
               <span v-if="gateway?.redis_enabled" class="badge badge-neutral" :title="gateway?.redis_shared ? 'Shared cache + rate limiting via the platform Redis' : 'Shared cache + rate limiting via a per-node Redis on this node'"><span class="mdi mdi-database"></span> redis{{ gateway?.redis_shared ? ' · shared' : '' }}</span>
               <span v-if="gateway?.image" class="gw-meta-item" title="Gateway image"><span class="mdi mdi-package-variant-closed"></span> <code>{{ gateway.image }}</code></span>
               <span v-if="gateway?.imported && gateway?.container" class="gw-meta-item" title="Tracked container"><span class="mdi mdi-cube-outline"></span> <code>{{ gateway.container }}</code></span>

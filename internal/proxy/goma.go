@@ -19,10 +19,15 @@ import (
 // global certManager; custom certs are inlined into the route's tls block.
 type Goma struct {
 	dir string
+	// key encrypts the sensitive parts of what is written here. This is the CENTRAL gateway's
+	// passphrase: the provider directory is read by the gateway beside the control plane, never by
+	// a node's. Nodes are served by RenderBundle under their own key instead.
+	key string
 }
 
-// NewGoma returns a Goma file-provider Manager writing into dir.
-func NewGoma(dir string) *Goma { return &Goma{dir: dir} }
+// NewGoma returns a Goma file-provider Manager writing into dir, encrypting sensitive fields under
+// the central gateway's configured key (empty = write plaintext).
+func NewGoma(dir string) *Goma { return &Goma{dir: dir, key: CentralConfigKey()} }
 
 type gomaFile struct {
 	Routes      []gomaRoute      `yaml:"routes,omitempty"`
@@ -162,10 +167,9 @@ type gomaMiddleware struct {
 	Rule interface{} `yaml:"rule,omitempty"`
 }
 
-// newGomaMiddleware builds a middleware definition, encrypting its rule when a
-// shared config-encryption key is configured.
-func newGomaMiddleware(mw RenderedMiddleware) (gomaMiddleware, error) {
-	rule, err := renderRule(mw.Rule)
+// newGomaMiddleware builds a middleware definition, encrypting its rule under key when one is set.
+func newGomaMiddleware(mw RenderedMiddleware, key string) (gomaMiddleware, error) {
+	rule, err := renderRule(mw.Rule, key)
 	if err != nil {
 		return gomaMiddleware{}, fmt.Errorf("middleware %q rule: %w", mw.Name, err)
 	}
@@ -278,7 +282,7 @@ func matchesOf(rules []MatchRule) []gomaMatch {
 // tlsOf returns the route's TLS block: an inline custom certificate when supplied, otherwise a
 // named certManager provider (or nil, leaving the gateway's default). Only the first cert is used,
 // and cert/key are base64-encoded so multi-line PEM never has to be a YAML literal block.
-func tlsOf(route RenderedRoute) (*gomaTLS, error) {
+func tlsOf(route RenderedRoute, cfgKey string) (*gomaTLS, error) {
 	// An explicit opt-out: tell the gateway not to manage a cert for this route.
 	if route.TLSNone {
 		return &gomaTLS{Provider: "none"}, nil
@@ -289,12 +293,12 @@ func tlsOf(route RenderedRoute) (*gomaTLS, error) {
 		key := base64.StdEncoding.EncodeToString([]byte(c.KeyPEM))
 		// Encrypt the inline certificate material so it is never written to the
 		// provider directory in the clear; Goma decrypts it at load.
-		if encryptionEnabled() {
+		if cfgKey != "" {
 			var err error
-			if cert, err = encryptField(cert); err != nil {
+			if cert, err = encryptField(cert, cfgKey); err != nil {
 				return nil, fmt.Errorf("encrypt certificate for route %q: %w", route.Name, err)
 			}
-			if key, err = encryptField(key); err != nil {
+			if key, err = encryptField(key, cfgKey); err != nil {
 				return nil, fmt.Errorf("encrypt key for route %q: %w", route.Name, err)
 			}
 		}
@@ -312,9 +316,9 @@ func tlsOf(route RenderedRoute) (*gomaTLS, error) {
 // gomaRouteValue returns the YAML-marshalable route entry: the structured gomaRoute for a simple
 // route, or the admin's raw YAML with name/backends/tls forced by Miabi, so the route always
 // carries its own identity and points at the app rather than a hand-typed upstream.
-func gomaRouteValue(route RenderedRoute) (any, error) {
+func gomaRouteValue(route RenderedRoute, cfgKey string) (any, error) {
 	backends := backendsOf(route)
-	tls, err := tlsOf(route)
+	tls, err := tlsOf(route, cfgKey)
 	if err != nil {
 		return nil, err
 	}
@@ -421,9 +425,10 @@ func enabledField(route RenderedRoute) *bool {
 	return nil
 }
 
-// RenderRoute produces the YAML file content for a route (exported for tests).
+// RenderRoute produces the YAML file content for a route (exported for tests), under the central
+// gateway's key.
 func RenderRoute(route RenderedRoute) ([]byte, error) {
-	rv, err := gomaRouteValue(route)
+	rv, err := gomaRouteValue(route, CentralConfigKey())
 	if err != nil {
 		return nil, err
 	}
@@ -434,14 +439,17 @@ func RenderRoute(route RenderedRoute) ([]byte, error) {
 	return append([]byte(fileHeader), body...), nil
 }
 
-// RenderBundle produces a combined routes+middlewares Goma config document
-// (the shape Goma's HTTP provider consumes). Used to serve a remote node's Goma
-// over the control plane's HTTP provider endpoint.
-func RenderBundle(routes []RenderedRoute, mws []RenderedMiddleware) ([]byte, error) {
+// RenderBundle produces a combined routes+middlewares Goma config document (the shape Goma's HTTP
+// provider consumes), used to serve a remote node's config over the control plane's provider
+// endpoint.
+//
+// cfgKey is THAT NODE's key, not the central gateway's: every node encrypts under its own, so a
+// bundle that escapes one host is unreadable on any other. Empty writes plaintext.
+func RenderBundle(routes []RenderedRoute, mws []RenderedMiddleware, cfgKey string) ([]byte, error) {
 	doc := map[string]any{}
 	routeList := make([]any, 0, len(routes))
 	for _, route := range routes {
-		rv, err := gomaRouteValue(route)
+		rv, err := gomaRouteValue(route, cfgKey)
 		if err != nil {
 			return nil, err
 		}
@@ -452,7 +460,7 @@ func RenderBundle(routes []RenderedRoute, mws []RenderedMiddleware) ([]byte, err
 	}
 	mwList := make([]gomaMiddleware, 0, len(mws))
 	for _, mw := range mws {
-		m, err := newGomaMiddleware(mw)
+		m, err := newGomaMiddleware(mw, cfgKey)
 		if err != nil {
 			return nil, err
 		}
@@ -477,9 +485,9 @@ func mwPaths(paths []string) []string {
 	return paths
 }
 
-// RenderMiddleware produces the YAML file content for a middleware.
+// RenderMiddleware produces the YAML file content for a middleware, under the central gateway's key.
 func RenderMiddleware(mw RenderedMiddleware) ([]byte, error) {
-	m, err := newGomaMiddleware(mw)
+	m, err := newGomaMiddleware(mw, CentralConfigKey())
 	if err != nil {
 		return nil, err
 	}
@@ -531,7 +539,8 @@ func (g *Goma) SyncWorkspace(_ context.Context, workspaceID uint, routes []Rende
 	if len(routes) == 0 && len(mws) == 0 {
 		return remove(g.workspacePath(workspaceID))
 	}
-	content, err := RenderBundle(routes, mws)
+	// The provider directory is the CENTRAL gateway's, so it is written under its key.
+	content, err := RenderBundle(routes, mws, g.key)
 	if err != nil {
 		return err
 	}

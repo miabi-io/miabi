@@ -372,9 +372,10 @@ const apiKeyEnv = "INSTANCE_API_KEY"
 // traffic is indistinguishable from the manager's.
 const gatewayIDEnv = "GOMA_GATEWAY_ID"
 
-// reloadTokenEnv is the env var Goma reads the reload-endpoint token from
-// (GOMA_RELOAD_TOKEN). Set to the node's gateway token at deploy so Miabi, which
-// holds the same token, can authenticate to the edge gateway's reload endpoint.
+// reloadTokenEnv is the env var Goma reads the reload-endpoint token from (GOMA_RELOAD_TOKEN). Set
+// to ReloadToken(gateway token) at deploy — deliberately NOT the gateway token itself, which would
+// put the provider credential on the wire in plaintext on every reload. Miabi derives the same
+// value when it calls, so the two stay in step with nothing extra stored.
 const reloadTokenEnv = "GOMA_RELOAD_TOKEN"
 
 // configEncryptionKeyEnv is the env var Goma reads to encrypt sensitive parts of
@@ -783,7 +784,7 @@ func (s *Service) gatewayEnv(srv *models.Server, token, redisPassword string) []
 	// by any gateway that polls the HTTP provider — every remote edge node, and a
 	// manager gateway configured to poll instead of watching the volume.
 	if !s.effectiveFileProvider(srv) {
-		env = append(env, reloadTokenEnv+"="+token)
+		env = append(env, reloadTokenEnv+"="+ReloadToken(token))
 	}
 	if s.redisAddrFor(srv) != "" {
 		pw := redisPassword
@@ -792,10 +793,11 @@ func (s *Service) gatewayEnv(srv *models.Server, token, redisPassword string) []
 		}
 		env = append(env, gatewayRedisPasswordEnv+"="+pw)
 	}
-	// When configured, hand the gateway the key it uses to encrypt sensitive
-	// config (middleware rules + TLS) at rest.
-	if s.configEncKey != "" {
-		env = append(env, configEncryptionKeyEnv+"="+s.configEncKey)
+	// The key this gateway decrypts its own config with. ConfigKey derives one per node, so the
+	// value here must be the same one the provider endpoint renders that node's bundle under —
+	// they are computed from the same inputs rather than stored, which is what keeps them in step.
+	if k := ConfigKey(srv, s.configEncKey); k != "" {
+		env = append(env, configEncryptionKeyEnv+"="+k)
 	}
 	return env
 }

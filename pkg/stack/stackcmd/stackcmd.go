@@ -359,6 +359,11 @@ func Upgrade(ctx context.Context, svc *stack.Service, path string, o UpgradeOpti
 			}
 			return convergeRest(ctx, svc, m, path)
 		}
+		// The gateway container being current does not mean the node gateways are: an earlier
+		// gateway-only upgrade may have left the control plane on the old value.
+		if name == stack.ContainerGateway {
+			warnNodeGatewayDrift(ctx, svc, ui, target)
+		}
 		return nil
 	}
 
@@ -396,6 +401,8 @@ func Upgrade(ctx context.Context, svc *stack.Service, path string, o UpgradeOpti
 		if err := convergeRest(ctx, svc, m, path); err != nil {
 			return err
 		}
+	} else if name == stack.ContainerGateway {
+		warnNodeGatewayDrift(ctx, svc, ui, target)
 	}
 	ui.Printf("\n")
 	ui.Success("Upgraded. %s", m.WebURL)
@@ -419,6 +426,24 @@ func convertManifest(path string, m *stack.Manifest, ui UI) error {
 
 // convergeRest reconciles the components the rollout did not touch, so a manifest edit (a new
 // gateway pin, a rotated secret) takes effect without a second command. A no-op when nothing changed.
+// warnNodeGatewayDrift reports node gateways still pinned to an older image than the one just
+// rolled out.
+//
+// The gateway's image is also the image every node gateway runs, but the value nodes follow lives
+// on the CONTROL PLANE as MIABI_NODE_GATEWAY_IMAGE — so a gateway-only upgrade moves the manifest
+// and the one container while leaving every node behind. It says so rather than recreating the
+// control plane on its own: a command asked to roll one component should not restart another, and
+// which version a fleet of nodes runs is the operator's call to make deliberately.
+func warnNodeGatewayDrift(ctx context.Context, svc *stack.Service, ui UI, target string) {
+	stale := svc.NodeGatewayImageDrift(ctx, target)
+	if stale == "" {
+		return
+	}
+	ui.Info("Node gateways still run %s — they follow this image through the control plane, which "+
+		"keeps its own copy until it is recreated. Run `miabi upgrade` to roll the whole stack and "+
+		"propagate it.", stale)
+}
+
 func convergeRest(ctx context.Context, svc *stack.Service, m *stack.Manifest, path string) error {
 	if err := svc.Converge(ctx, m); err != nil {
 		return err

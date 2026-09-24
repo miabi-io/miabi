@@ -144,15 +144,20 @@ func TestReloadTokenFollowsTheProvider(t *testing.T) {
 	}
 }
 
-// The manager's server record carries no address — it is "here" — so a reload
-// must reach its gateway over the shared proxy network by container name rather
-// than failing for want of an address.
+// The manager's server record carries no address — it is "here" — so a reload must reach its
+// gateway over the shared proxy network by container name rather than failing for want of an
+// address. It must be the COMPOSE gateway's name: the manager does not run the per-node gateway
+// Miabi deploys, so ContainerName resolves to nothing there and every manager reload was silently
+// falling through to the poll interval.
 func TestReloadHostForTheManager(t *testing.T) {
 	s := NewService(nil, "https://miabi.example.com", "goma:latest", "miabi", "ops@example.com")
 
 	host, err := s.reloadHost(&models.Server{IsLocal: true})
-	if err != nil || host != ContainerName {
-		t.Errorf("manager reload host = (%q, %v), want the gateway container name", host, err)
+	if err != nil || host != CentralContainerName {
+		t.Errorf("manager reload host = (%q, %v), want %q", host, err, CentralContainerName)
+	}
+	if host == ContainerName {
+		t.Error("the manager was addressed as the per-node gateway, which does not run there")
 	}
 	if host, err = s.reloadHost(&models.Server{Name: "edge-1", Address: "10.0.0.5"}); err != nil || host != "10.0.0.5" {
 		t.Errorf("edge reload host = (%q, %v), want its address", host, err)
