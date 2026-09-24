@@ -81,6 +81,7 @@ type AdminWorkspace struct {
 	OwnerName      string    `json:"owner_name"`
 	OwnerEmail     string    `json:"owner_email"`
 	Privileged     bool      `json:"privileged"`
+	System         bool      `json:"system"`
 	AppsCount      int64     `json:"apps_count"`
 	DatabasesCount int64     `json:"databases_count"`
 	StacksCount    int64     `json:"stacks_count"`
@@ -194,7 +195,7 @@ func (h *AdminWorkspaceHandler) List(c *okapi.Context) error {
 		o := owners[w.OwnerID]
 		out = append(out, AdminWorkspace{
 			ID: w.ID, Name: w.Name, DisplayName: w.DisplayName, OwnerID: w.OwnerID,
-			OwnerName: o.Name, OwnerEmail: o.Email, Privileged: w.Privileged,
+			OwnerName: o.Name, OwnerEmail: o.Email, Privileged: w.Privileged, System: w.System,
 			AppsCount: apps[w.ID], DatabasesCount: dbs[w.ID], StacksCount: stacks[w.ID],
 			MembersCount: members[w.ID], CreatedAt: w.CreatedAt,
 		})

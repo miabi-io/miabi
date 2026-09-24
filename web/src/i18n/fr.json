@@ -34,6 +34,8 @@
     "ban": "Bannir",
     "cancel": "Annuler",
     "changeItAnyway": "Modifier quand même",
+    "changePlan": "Changer de forfait",
+    "clearAll": "Tout effacer",
     "completeRecovery": "Terminer la restauration",
     "confirm": "Confirmer",
     "continue": "Continuer",
@@ -48,6 +50,7 @@
     "edit": "Modifier",
     "forceVerify": "Forcer la vérification",
     "makeDefault": "Définir par défaut",
+    "makePrivileged": "Rendre privilégié",
     "regenerate": "Régénérer",
     "reject": "Rejeter",
     "remove": "Retirer",
@@ -58,9 +61,11 @@
     "resync": "Resynchroniser",
     "retract": "Retirer",
     "revoke": "Révoquer",
+    "revokePrivileged": "Révoquer le privilège",
     "rotateKey": "Faire tourner la clé",
     "runGarbageCollection": "Lancer le nettoyage",
     "save": "Enregistrer",
+    "saveOverrides": "Enregistrer les dérogations",
     "saving": "Enregistrement…",
     "stop": "Arrêter",
     "teardown": "Démanteler",
@@ -1130,6 +1135,11 @@
         "deleteWebhookUrlDelivery": "Supprimer le webhook \"{url}\" ? L’historique des livraisons sera supprimé."
       },
       "workspaceDetail": {
+        "changePlan": "Déplacer « {name} » vers le forfait « {plan} » ? Ses quotas et capacités suivront le nouveau forfait partout où aucune dérogation par espace de travail n’est définie.",
+        "clearOverrides": "Effacer toutes les dérogations de « {name} » ? Il reviendra aux quotas et capacités de son forfait, et les valeurs définies ici seront perdues.",
+        "makePrivileged": "Rendre « {name} » privilégié ? Les montages hôte et les liaisons de ports hôte seront autorisés sans approbation, et le profil de sécurité restreint ne s’appliquera plus à ses charges de travail.",
+        "relaxRestrictions": "Cela accorde à « {name} » des capacités que son forfait refuse : {caps}. Elles s’appliquent à toutes les charges de travail de l’espace de travail.",
+        "revokePrivileged": "Révoquer l’accès privilégié de « {name} » ? Le profil de sécurité restreint s’applique de nouveau, et les charges de travail qui dépendent de montages hôte ou de liaisons de ports hôte peuvent échouer au prochain déploiement.",
         "rotateTheEncryptionKey": "Faire tourner la clé de chiffrement de \"{name}\" ? Ses secrets seront rechiffrés avec une nouvelle clé."
       },
       "workspaceRolesPanel": {
@@ -1154,7 +1164,9 @@
       },
       "applyClusterNetworking": "Appliquer le réseau du cluster ?",
       "banDomain": "Bannir le domaine ?",
+      "changePlan": "Changer le forfait de l’espace de travail ?",
       "changeTheDefaultOrganization": "Changer l’organisation par défaut",
+      "clearOverrides": "Effacer toutes les dérogations ?",
       "completeRecovery": "Terminer la restauration ?",
       "confirmThisChange": "Confirmer cette modification",
       "databaseDetail": {
@@ -1206,8 +1218,10 @@
         "deleteCronjob": "Supprimer la tâche planifiée",
         "deleteJobRun": "Supprimer l’exécution"
       },
+      "makePrivileged": "Rendre l’espace de travail privilégié ?",
       "regenerateToken": "Régénérer le jeton",
       "rejectThisRequest": "Rejeter cette demande ?",
+      "relaxRestrictions": "Assouplir les restrictions de l’espace de travail ?",
       "removeApplication": "Retirer l’application",
       "removeClusterAgents": "Retirer les agents du cluster ?",
       "removeContainer": "Retirer le conteneur",
@@ -1222,6 +1236,7 @@
       "retractAnnouncement": "Retirer l’annonce",
       "revokeAccess": "Révoquer l’accès",
       "revokeApiKey": "Révoquer la clé API",
+      "revokePrivileged": "Révoquer l’accès privilégié ?",
       "rotateEncryptionKey": "Faire tourner la clé de chiffrement",
       "runGarbageCollection": "Lancer le nettoyage",
       "tearDownGateway": "Démanteler la passerelle",
@@ -3507,8 +3522,6 @@
     "current": "Actuel",
     "newWorkspace": "Nouvel espace de travail",
     "optional": "(facultatif)",
-    "privileged": "privilégié",
-    "privilegedHostPortBindingsAre": "Privilégié — les liaisons de ports hôte sont approuvées automatiquement",
     "workspaces": "Espaces de travail",
     "workspacesGroupYourApplicationsDatabases": "Les espaces de travail regroupent vos applications, bases de données et membres d’équipe."
   },

@@ -34,6 +34,8 @@
     "ban": "Ban",
     "cancel": "Cancel",
     "changeItAnyway": "Change it anyway",
+    "changePlan": "Change plan",
+    "clearAll": "Clear all",
     "completeRecovery": "Complete recovery",
     "confirm": "Confirm",
     "continue": "Continue",
@@ -48,6 +50,7 @@
     "edit": "Edit",
     "forceVerify": "Force verify",
     "makeDefault": "Make default",
+    "makePrivileged": "Make privileged",
     "regenerate": "Regenerate",
     "reject": "Reject",
     "remove": "Remove",
@@ -58,9 +61,11 @@
     "resync": "Resync",
     "retract": "Retract",
     "revoke": "Revoke",
+    "revokePrivileged": "Revoke privileged",
     "rotateKey": "Rotate key",
     "runGarbageCollection": "Run garbage collection",
     "save": "Save",
+    "saveOverrides": "Save overrides",
     "saving": "Saving…",
     "stop": "Stop",
     "teardown": "Teardown",
@@ -1130,6 +1135,11 @@
         "deleteWebhookUrlDelivery": "Delete webhook \"{url}\"? Delivery history will be removed."
       },
       "workspaceDetail": {
+        "changePlan": "Move \"{name}\" to the \"{plan}\" plan? Its quotas and capabilities follow the new plan wherever no per-workspace override is set.",
+        "clearOverrides": "Clear every per-workspace override on \"{name}\"? It falls back to its plan’s quotas and capabilities, and the values you set here are lost.",
+        "makePrivileged": "Make \"{name}\" privileged? Host mounts and host-port bindings will be allowed without approval, and the restricted security profile will no longer apply to its workloads.",
+        "relaxRestrictions": "This grants \"{name}\" capabilities its plan withholds: {caps}. They apply to every workload in the workspace.",
+        "revokePrivileged": "Revoke privileged access from \"{name}\"? The restricted security profile applies again, and workloads that rely on host mounts or host-port bindings may fail on their next deploy.",
         "rotateTheEncryptionKey": "Rotate the encryption key for \"{name}\"? Its secrets will be re-encrypted under a new key."
       },
       "workspaceRolesPanel": {
@@ -1154,7 +1164,9 @@
       },
       "applyClusterNetworking": "Apply cluster networking?",
       "banDomain": "Ban domain?",
+      "changePlan": "Change workspace plan?",
       "changeTheDefaultOrganization": "Change the default organization",
+      "clearOverrides": "Clear all overrides?",
       "completeRecovery": "Complete recovery?",
       "confirmThisChange": "Confirm this change",
       "databaseDetail": {
@@ -1206,8 +1218,10 @@
         "deleteCronjob": "Delete cronjob",
         "deleteJobRun": "Delete job run"
       },
+      "makePrivileged": "Make workspace privileged?",
       "regenerateToken": "Regenerate token",
       "rejectThisRequest": "Reject this request?",
+      "relaxRestrictions": "Relax workspace restrictions?",
       "removeApplication": "Remove application",
       "removeClusterAgents": "Remove cluster agents?",
       "removeContainer": "Remove container",
@@ -1222,6 +1236,7 @@
       "retractAnnouncement": "Retract announcement",
       "revokeAccess": "Revoke access",
       "revokeApiKey": "Revoke API key",
+      "revokePrivileged": "Revoke privileged access?",
       "rotateEncryptionKey": "Rotate encryption key",
       "runGarbageCollection": "Run garbage collection",
       "tearDownGateway": "Tear down gateway",
@@ -3507,8 +3522,6 @@
     "current": "Current",
     "newWorkspace": "New workspace",
     "optional": "(optional)",
-    "privileged": "privileged",
-    "privilegedHostPortBindingsAre": "Privileged — host port bindings are auto-approved",
     "workspaces": "Workspaces",
     "workspacesGroupYourApplicationsDatabases": "Workspaces group your applications, databases, and team members."
   },

@@ -6,9 +6,11 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { copyText } from '@/utils/clipboard'
 import AppModal from '@/components/AppModal.vue'
+import { workspaceTrait } from '@/data/workspaceTrait'
 
 const router = useRouter()
 const { t } = useI18n()
+const traitOf = (w: { system?: boolean; privileged?: boolean }) => workspaceTrait(w, t)
 const route = useRoute()
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -98,13 +100,19 @@ onMounted(() => {
         @click="open(w.id)"
       >
         <div class="ws-card-top">
-          <div class="ws-card-avatar">{{ (w.display_name || w.name).charAt(0).toUpperCase() }}</div>
-          <span v-if="w.role" class="badge" :class="roleBadgeClass(w.role)">{{ w.role }}</span>
+          <div class="ws-card-avatar" :class="traitOf(w) ? `ws-card-avatar-${traitOf(w)!.key}` : ''"
+            :title="traitOf(w)?.title">
+            <span v-if="traitOf(w)" class="mdi" :class="traitOf(w)!.icon" role="img"
+              :aria-label="traitOf(w)!.label"></span>
+            <template v-else>{{ (w.display_name || w.name).charAt(0).toUpperCase() }}</template>
+          </div>
+          <div class="ws-card-tags">
+            <span v-if="traitOf(w)" class="badge" :class="traitOf(w)!.badgeClass" :title="traitOf(w)!.title">
+              <span class="mdi" :class="traitOf(w)!.icon"></span>{{ traitOf(w)!.label }}</span>
+            <span v-if="w.role" class="badge" :class="roleBadgeClass(w.role)">{{ w.role }}</span>
+          </div>
         </div>
-        <div class="ws-card-name">
-          {{ w.display_name || w.name }}
-          <span v-if="w.privileged" class="badge badge-info" :title="$t('workspaces.privilegedHostPortBindingsAre')"><span class="mdi mdi-shield-check-outline"></span>{{ $t('workspaces.privileged') }}</span>
-        </div>
+        <div class="ws-card-name">{{ w.display_name || w.name }}</div>
         <div class="ws-card-handle mono">{{ w.name }}</div>
         <div class="ws-card-desc">{{ w.description || 'No description' }}</div>
         <div
@@ -196,6 +204,19 @@ onMounted(() => {
   justify-content: center;
   font-size: 18px;
   font-weight: 700;
+}
+.ws-card-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* The trait recolours the avatar it replaces the initial in. Both are off the brand accent on
+   purpose: system means the platform's own workspace, privileged relaxes the security profile. */
+.ws-card-avatar-system {
+  background: var(--danger-600, #dc2626);
+}
+.ws-card-avatar-privileged {
+  background: var(--warning-600, #d97706);
 }
 .ws-card-name {
   font-size: 15px;

@@ -1125,6 +1125,14 @@ input[type="radio"]:focus-visible {
 [data-theme="dark"] .avatar { background: var(--primary-900); color: var(--primary-200); }
 .avatar-sm { width: 26px; height: 26px; font-size: 11px; }
 
+/* A workspace trait recolours the avatar it replaces the initial in. Both are off the brand accent
+   on purpose: system names the platform's own workspace, privileged relaxes the security profile.
+   The dark rules only restate the tokens, to outrank `[data-theme="dark"] .avatar` above. */
+.avatar-system { background: var(--danger-50); color: var(--danger-600); }
+.avatar-privileged { background: var(--warning-50); color: var(--warning-600); }
+[data-theme="dark"] .avatar-system { background: var(--danger-50); color: var(--danger-600); }
+[data-theme="dark"] .avatar-privileged { background: var(--warning-50); color: var(--warning-600); }
+
 /* Right-aligned row action cluster — keeps icon buttons from wrapping oddly. */
 .table-actions { display: inline-flex; align-items: center; gap: 4px; justify-content: flex-end; }
 
