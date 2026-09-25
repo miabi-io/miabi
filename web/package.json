@@ -27,7 +27,7 @@
     "dagre": "^0.8.5",
     "pinia": "^4.0.3",
     "topojson-client": "^3.1.0",
-    "vue": "^3.5.42",
+    "vue": "^3.5.43",
     "vue-i18n": "^11.4.12",
     "vue-router": "^5.3.1",
     "world-atlas": "^2.0.2",
@@ -35,13 +35,13 @@
   },
   "devDependencies": {
     "@types/d3-geo": "^3.1.1",
-    "@types/node": "^26.5.1",
+    "@types/node": "^26.6.2",
     "@types/topojson-client": "^3.1.5",
     "@vitejs/plugin-vue": "^6.0.9",
     "@vue/tsconfig": "^0.9.1",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
-    "vitest": "^5.0.0",
+    "vitest": "^5.0.1",
     "vue-tsc": "^3.3.11"
   }
 }
