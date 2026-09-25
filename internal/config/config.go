@@ -172,6 +172,9 @@ type Config struct {
 	// Defaults to /host/proc (the usual read-only bind); if absent the local /proc is used, which
 	// already reflects host stats. Host metrics are unavailable when neither is readable.
 	HostProcPath string
+	// NodeStatsAgent uses the host CPU/memory node agents push (MIABI_NODE_STATS_AGENT, default on).
+	// Off, every remote node is measured by a helper container as before.
+	NodeStatsAgent bool
 
 	// ProxyNetwork is the shared Docker network that Goma Gateway and all
 	// managed app containers join so the proxy can reach app backends. Goma must
@@ -598,6 +601,7 @@ func New() *Config {
 		MarketplaceURL:             goutils.Env("MIABI_MARKETPLACE_URL", marketplaceURL),
 		GomaProviderDir:            goutils.Env("MIABI_GOMA_PROVIDER_DIR", "/etc/goma/providers"),
 		HostProcPath:               goutils.Env("MIABI_HOST_PROC", "/host/proc"),
+		NodeStatsAgent:             goutils.EnvBool("MIABI_NODE_STATS_AGENT", true),
 		DeletionGraceDays:          goutils.EnvInt("MIABI_DELETION_GRACE_DAYS", 7),
 		DNSReconcileMinutes:        goutils.EnvInt("MIABI_DNS_RECONCILE_MINUTES", 30),
 		StorageUsageEnabled:        goutils.EnvBool("MIABI_STORAGE_USAGE_ENABLED", true),

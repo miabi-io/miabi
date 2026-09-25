@@ -357,8 +357,7 @@ async function pollStats() {
     netRate.value = rate
     statsUpdatedAt.value = now
   } catch { /* node may have gone offline */ }
-  // Real host metrics (local node only); leaves the container-aggregate fallback
-  // in place when unavailable.
+  // Real host metrics; leaves the container-aggregate fallback in place when unavailable.
   try {
     hostMetrics.value = (await nodesApi.hostMetrics(id)).data.data
   } catch { /* host metrics unavailable */ }
@@ -462,8 +461,15 @@ const nodeUsage = computed(() => {
 // reports its physical host, which is worth seeing but must not be read as the node's own.
 function hostUsageNote(h: NodeHostMetrics): string {
   if (h.physical_host) return 'Physical host this node runs on'
-  if (h.sampled) return 'Sampled on the node (up to 1 min old)'
+  if (h.source === 'agent') return `Reported by the node agent, ${formatAge(h.age_seconds ?? 0)}`
+  if (h.source === 'sampled' || h.sampled) return 'Sampled on the node (up to 1 min old)'
   return 'Real host usage'
+}
+
+function formatAge(seconds: number): string {
+  if (seconds < 1) return 'just now'
+  if (seconds < 60) return `${seconds}s ago`
+  return `${Math.floor(seconds / 60)}m ago`
 }
 
 // Unified resource usage for the card: prefer real host metrics (procfs) when the

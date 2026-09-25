@@ -464,6 +464,16 @@ func (r *Router) agentRoutes() []okapi.RouteDefinition {
 			Tags:        []string{"Nodes"},
 			Summary:     "Agent tunnel (WebSocket; token-authenticated)",
 		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/api/v1/agent/stats",
+			Middlewares: []okapi.Middleware{r.agentStatsRateLimit},
+			Handler:     r.h.node.AgentStats,
+			Tags:        []string{"Nodes"},
+			Summary:     "Host CPU/memory pushed by a node agent (token-authenticated)",
+			Request:     &handlers.AgentStatsRequest{},
+			Response:    &dto.Response[handlers.AgentStatsResponse]{},
+		},
 	}
 }
 

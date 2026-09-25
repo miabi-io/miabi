@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 package hoststats
 
@@ -12,12 +12,12 @@ import (
 
 func TestCPUPercent(t *testing.T) {
 	// Between samples: total +1000 jiffies, idle +250 → 75% busy.
-	got := cpuPercent(cpuTimes{total: 1000, idle: 500}, cpuTimes{total: 2000, idle: 750})
+	got := CPUPercent(CPUTimes{Total: 1000, Idle: 500}, CPUTimes{Total: 2000, Idle: 750})
 	if got != 75 {
-		t.Fatalf("cpuPercent = %v, want 75", got)
+		t.Fatalf("CPUPercent = %v, want 75", got)
 	}
 	// No movement (or counter reset) → 0, never negative.
-	if got := cpuPercent(cpuTimes{total: 2000, idle: 750}, cpuTimes{total: 2000, idle: 750}); got != 0 {
+	if got := CPUPercent(CPUTimes{Total: 2000, Idle: 750}, CPUTimes{Total: 2000, Idle: 750}); got != 0 {
 		t.Fatalf("idle delta = 0 case = %v, want 0", got)
 	}
 }
@@ -26,7 +26,7 @@ func TestReadMem(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "meminfo"),
 		"MemTotal:       16384000 kB\nMemFree:         1000000 kB\nMemAvailable:    4096000 kB\nBuffers:          200000 kB\n")
-	total, avail, err := readMem(dir)
+	total, avail, err := ReadMem(dir)
 	if err != nil {
 		t.Fatal(err)
 	}

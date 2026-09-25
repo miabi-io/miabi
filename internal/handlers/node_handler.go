@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/jkaninda/okapi"
@@ -80,6 +81,8 @@ type NodeHandler struct {
 	secEnforce bool
 	hostProc   string          // procfs dir for local-node host metrics (default /host/proc)
 	nodeStats  NodeHostSampler // nil = remote nodes report no host metrics
+	// clusterAuth caches cluster-token agents resolved by the stats push endpoint.
+	clusterAuth clusterAgentAuthCache
 	// poolLabeler mirrors a node's pool onto its Swarm node label; nil leaves it to the cluster refresh.
 	poolLabeler func(context.Context, *models.Server) error
 	upgrader    websocket.Upgrader
@@ -128,8 +131,8 @@ func (h *NodeHandler) SetSecurityEnforcement(on bool) { h.secEnforce = on }
 // disabled, so the GPU endpoints report it off).
 func (h *NodeHandler) SetGPU(g *gpu.Service) { h.gpu = g }
 
-// NodeHostSampler reads a node's real host CPU/memory by sampling it on the node. Satisfied by
-// nodestats.Service.
+// NodeHostSampler reads a node's real host CPU/memory, from its agent's pushes or by sampling it on
+// the node. Satisfied by nodestats.Service, which also implements NodeStatsIngester.
 type NodeHostSampler interface {
 	Get(ctx context.Context, serverID uint) (nodestats.Sample, error)
 }
@@ -598,10 +601,18 @@ func (h *NodeHandler) Stats(c *okapi.Context) error {
 // HostMetricsResponse reports real host CPU/memory for a node. Available is false when the stats
 // cannot be read: no readable procfs locally, or a remote node that could not be sampled.
 type HostMetricsResponse struct {
-	Available    bool   `json:"available"`
-	Reason       string `json:"reason,omitempty"`
-	Sampled      bool   `json:"sampled,omitempty"`
-	PhysicalHost bool   `json:"physical_host,omitempty"`
+	Available bool   `json:"available"`
+	Reason    string `json:"reason,omitempty"`
+	// Source is "local" (this process's procfs), "agent" (pushed by the node's agent) or "sampled"
+	// (a helper container on the node).
+	Source string `json:"source,omitempty"`
+	// Sampled is true for any remote reading. Deprecated: read Source.
+	Sampled      bool `json:"sampled,omitempty"`
+	PhysicalHost bool `json:"physical_host,omitempty"`
+	// AgeSeconds is how old a remote reading is.
+	AgeSeconds    int     `json:"age_seconds"`
+	Load1         float64 `json:"load1,omitempty"`
+	UptimeSeconds uint64  `json:"uptime_s,omitempty"`
 	hoststats.Stats
 }
 
@@ -617,8 +628,6 @@ func (h *NodeHandler) HostMetrics(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortNotFound("node not found")
 	}
-	// A remote node is sampled on the node itself: a container's /proc is the host's, so this reads
-	// its real CPU and memory without an agent change or any bound host path.
 	if !srv.IsLocal {
 		if h.nodeStats == nil {
 			return ok(c, HostMetricsResponse{Available: false, Reason: "host metrics are only available for the local node"})
@@ -629,8 +638,13 @@ func (h *NodeHandler) HostMetrics(c *okapi.Context) error {
 		}
 		// /proc is not cgroup-aware, so a node that is itself a container or a limited VM reports the
 		// machine underneath it. Still worth showing — but say whose numbers these are.
+		age := 0
+		if !st.MeasuredAt.IsZero() {
+			age = int(time.Since(st.MeasuredAt).Seconds())
+		}
 		return ok(c, HostMetricsResponse{
-			Available: true, Sampled: true, PhysicalHost: !st.DescribesNode, Stats: st.Stats,
+			Available: true, Source: st.Source, Sampled: true, PhysicalHost: !st.DescribesNode,
+			AgeSeconds: age, Load1: st.Load1, UptimeSeconds: st.UptimeSeconds, Stats: st.Stats,
 		})
 	}
 	// Prefer the configured path (default /host/proc); fall back to /proc, which
@@ -643,7 +657,7 @@ func (h *NodeHandler) HostMetrics(c *okapi.Context) error {
 	if err != nil {
 		return ok(c, HostMetricsResponse{Available: false, Reason: "host procfs is not readable"})
 	}
-	return ok(c, HostMetricsResponse{Available: true, Stats: st})
+	return ok(c, HostMetricsResponse{Available: true, Source: "local", Stats: st})
 }
 
 // Connect is the agent WebSocket endpoint: authenticated by join token (not the
