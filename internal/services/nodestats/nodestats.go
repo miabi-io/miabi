@@ -1,14 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package nodestats reads real host CPU and memory for remote nodes. A node whose agent pushes its
-// own readings (POST /api/v1/agent/stats) is served from those; any other node — no agent, an older
-// agent, or one whose pushes went stale — is sampled by a short-lived container on the node, whose
-// /proc is the host's.
+// Package nodestats reads real host CPU and memory for every node. The local node is read from the
+// control plane's own procfs; a node whose agent pushes its readings (POST /api/v1/agent/stats) is
+// served from those; any other node — no agent, an older agent, or one whose pushes went stale — is
+// sampled by a short-lived container on the node, whose /proc is the host's.
 package nodestats
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -22,6 +23,8 @@ const (
 	// ttl bounds how often a node is sampled. Each sample costs a container start plus the one
 	// second SampleCommand spends measuring, so this is a dashboard figure, not a live graph.
 	ttl = 60 * time.Second
+	// localTTL is short because reading the local procfs costs nothing: the node page polls it.
+	localTTL = 5 * time.Second
 	// runTimeout covers image pull, container start and the sample window.
 	runTimeout = 45 * time.Second
 	// probeTimeout keeps one unreachable node from stalling a sweep.
@@ -32,6 +35,14 @@ const (
 // NodeDocker resolves the Docker client for a node id (0 = local).
 type NodeDocker interface {
 	For(serverID uint) (docker.Client, error)
+}
+
+// ErrLXCFS means the local node is an LXC guest whose procfs reports only the reading container.
+var ErrLXCFS = errors.New("this node is an LXC guest: its /proc is served by lxcfs, which reports the control plane container's own usage rather than the node's")
+
+// localNodes is implemented by clients that know which node is the control plane's own.
+type localNodes interface {
+	IsLocal(serverID uint) bool
 }
 
 // ImageResolver resolves a deployment-config catalog key to an image ref.
@@ -60,6 +71,7 @@ type Sample struct {
 
 // Where a Sample came from.
 const (
+	SourceLocal   = "local"
 	SourceAgent   = "agent"
 	SourceSampled = "sampled"
 )
@@ -68,6 +80,13 @@ type entry struct {
 	at     time.Time
 	sample Sample
 	err    error
+}
+
+func (e entry) ttl() time.Duration {
+	if e.err == nil && e.sample.Source == SourceLocal {
+		return localTTL
+	}
+	return ttl
 }
 
 // memTolerancePct is how far the sampled MemTotal may sit from Docker's before the sample is
@@ -102,6 +121,8 @@ type Service struct {
 	persisted map[uint]Sample
 	agentOn   bool
 	now       func() time.Time
+	// hostProc is the procfs the local node is read from (MIABI_HOST_PROC); /proc when unreadable.
+	hostProc string
 	// inflight keeps concurrent readers of the same node behind one sample rather than starting a
 	// container each: the dashboard and the node page can ask at the same moment.
 	inflight map[uint]*sync.WaitGroup
@@ -113,6 +134,9 @@ func NewService(clients NodeDocker) *Service {
 		pushed: map[uint]Sample{}, persisted: map[uint]Sample{}, agentOn: true, now: time.Now,
 	}
 }
+
+// SetHostProc sets the procfs directory the local node is read from.
+func (s *Service) SetHostProc(path string) { s.hostProc = path }
 
 // SetImageResolver wires the deployment-config resolver for the helper image.
 func (s *Service) SetImageResolver(r ImageResolver) { s.images = r }
@@ -135,7 +159,7 @@ func (s *Service) Get(ctx context.Context, serverID uint) (Sample, error) {
 		s.mu.Unlock()
 		return p, nil
 	}
-	if e, ok := s.cache[serverID]; ok && time.Since(e.at) < ttl {
+	if e, ok := s.cache[serverID]; ok && time.Since(e.at) < e.ttl() {
 		s.mu.Unlock()
 		return e.sample, e.err
 	}
@@ -182,6 +206,16 @@ func (s *Service) sample(ctx context.Context, serverID uint) (Sample, error) {
 	if err != nil {
 		return Sample{}, err
 	}
+	if s.isLocal(serverID) {
+		if proc := s.localProc(); proc != "" {
+			// A container on an LXC guest would read the physical machine instead, so there is
+			// nothing to fall back to: unmeasured beats a figure that looks right and is not.
+			if hoststats.ServedByLXCFS(proc) {
+				return Sample{}, ErrLXCFS
+			}
+			return s.sampleLocal(ctx, dc, proc)
+		}
+	}
 	image := s.helperImage()
 	runCtx, cancel := context.WithTimeout(ctx, runTimeout)
 	defer cancel()
@@ -218,4 +252,40 @@ func (s *Service) sample(ctx context.Context, serverID uint) (Sample, error) {
 		out2.DescribesNode = describesNode(st.MemTotalBytes, info.MemTotal)
 	}
 	return out2, nil
+}
+
+func (s *Service) isLocal(serverID uint) bool {
+	if l, ok := s.clients.(localNodes); ok {
+		return l.IsLocal(serverID)
+	}
+	return serverID == 0
+}
+
+// localProc is the readable procfs for the local node, or "" when neither the configured path nor
+// /proc can be read — then the local node is sampled by container like any other.
+func (s *Service) localProc() string {
+	if s.hostProc != "" && hoststats.Available(s.hostProc) {
+		return s.hostProc
+	}
+	if hoststats.Available("/proc") {
+		return "/proc"
+	}
+	return ""
+}
+
+// sampleLocal reads the control plane's own host. The configured bind is the host's /proc, which on an
+// LXC or lxcfs host is the guest's view — unlike a container's /proc, which shows the physical machine.
+func (s *Service) sampleLocal(ctx context.Context, dc docker.Client, proc string) (Sample, error) {
+	st, err := hoststats.Read(ctx, proc)
+	if err != nil {
+		return Sample{}, err
+	}
+	out := Sample{Stats: st, DescribesNode: true, Source: SourceLocal, MeasuredAt: s.now()}
+	infoCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+	if info, ierr := dc.Info(infoCtx); ierr == nil && info.MemTotal > 0 {
+		out.NodeMemTotalBytes = info.MemTotal
+		out.DescribesNode = describesNode(st.MemTotalBytes, info.MemTotal)
+	}
+	return out, nil
 }

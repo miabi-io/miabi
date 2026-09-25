@@ -616,9 +616,9 @@ type HostMetricsResponse struct {
 	hoststats.Stats
 }
 
-// HostMetrics returns the local node's real host CPU and memory usage, read from
-// procfs (the optional /host/proc bind, else /proc). Remote nodes report
-// Available=false, since this process can only read its own host.
+// HostMetrics returns a node's real host CPU and memory usage through the node stats service: the
+// local node from procfs, a remote one from its agent's pushes or a helper container. Without the
+// service only the local node is reported, read directly.
 func (h *NodeHandler) HostMetrics(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -628,10 +628,7 @@ func (h *NodeHandler) HostMetrics(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortNotFound("node not found")
 	}
-	if !srv.IsLocal {
-		if h.nodeStats == nil {
-			return ok(c, HostMetricsResponse{Available: false, Reason: "host metrics are only available for the local node"})
-		}
+	if h.nodeStats != nil {
 		st, serr := h.nodeStats.Get(c.Request().Context(), srv.ID)
 		if serr != nil {
 			return ok(c, HostMetricsResponse{Available: false, Reason: "could not sample the node: " + serr.Error()})
@@ -643,9 +640,13 @@ func (h *NodeHandler) HostMetrics(c *okapi.Context) error {
 			age = int(time.Since(st.MeasuredAt).Seconds())
 		}
 		return ok(c, HostMetricsResponse{
-			Available: true, Source: st.Source, Sampled: true, PhysicalHost: !st.DescribesNode,
-			AgeSeconds: age, Load1: st.Load1, UptimeSeconds: st.UptimeSeconds, Stats: st.Stats,
+			Available: true, Source: st.Source, Sampled: st.Source != nodestats.SourceLocal,
+			PhysicalHost: !st.DescribesNode, AgeSeconds: age, Load1: st.Load1, UptimeSeconds: st.UptimeSeconds,
+			Stats: st.Stats,
 		})
+	}
+	if !srv.IsLocal {
+		return ok(c, HostMetricsResponse{Available: false, Reason: "host metrics are only available for the local node"})
 	}
 	// Prefer the configured path (default /host/proc); fall back to /proc, which
 	// already reflects host CPU/memory even from inside a container.
