@@ -59,7 +59,7 @@ func TestBundleLayoutRoundTrip_Integration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("seal: %v", err)
 	}
-	stateKey := wsbundle.StateObject(prefix, ref)
+	stateKey := wsbundle.StateObject(prefix, ref, true)
 	infoKey := wsbundle.InfoObject(prefix, ref)
 	t.Cleanup(func() {
 		_ = store.Delete(context.Background(), stateKey)

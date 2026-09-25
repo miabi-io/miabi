@@ -114,12 +114,16 @@ func (s *Service) inheritSettings(from, to uint) error {
 	if err != nil {
 		return err
 	}
+	var bundlePass *string
+	if pass != "" {
+		bundlePass = &pass
+	}
 	_, err = s.Settings.Save(to, backupsettings.SaveInput{
 		S3Enabled: true, S3Endpoint: cfg.Endpoint, S3Bucket: cfg.Bucket, S3Region: cfg.Region,
 		S3AccessKey: cfg.AccessKey, S3SecretKey: &cfg.SecretKey,
 		S3UseSSL: cfg.UseSSL, S3ForcePathStyle: cfg.ForcePathStyle,
 		DatabaseBackupPath: src.DatabaseBackupPath, VolumeBackupPath: src.VolumeBackupPath,
-		BundlePath: src.BundlePath, BundlePassphrase: &pass,
+		BundlePath: src.BundlePath, BundlePassphrase: bundlePass,
 	})
 	return err
 }
@@ -153,7 +157,7 @@ func (s *Service) runRestore(ctx context.Context, b *models.WorkspaceBundle) err
 		s.fail(b, fmt.Errorf("read bundle state: %w", err))
 		return nil
 	}
-	state, err := wsbundle.Open(sealed, passphrase)
+	state, err := wsbundle.Decode(sealed, passphrase)
 	if err != nil {
 		s.fail(b, err)
 		return nil
@@ -943,6 +947,15 @@ func (r *restoreRun) applyMembers() {
 	}
 }
 
+// passphraseFor is the passphrase an artifact was written with: none for a cleartext one, even when the
+// workspace now has a passphrase set.
+func (r *restoreRun) passphraseFor(art wsbundle.Artifact) string {
+	if !art.Encrypted {
+		return ""
+	}
+	return r.passphrase
+}
+
 func (r *restoreRun) restoreDatabases(ctx context.Context) {
 	for _, art := range r.info.BySubject(wsbundle.SubjectDatabase) {
 		name := art.Instance + "/" + art.Database
@@ -984,7 +997,7 @@ func (r *restoreRun) restoreDatabases(ctx context.Context) {
 			Destination:   "s3",
 			S3:            withPath(r.cfg, art.Path),
 			S3Path:        art.Path,
-			GPGPassphrase: r.passphrase,
+			GPGPassphrase: r.passphraseFor(art),
 		})
 		if err != nil {
 			r.add("database-data", name, "failed", err.Error())
@@ -1007,7 +1020,7 @@ func (r *restoreRun) restoreVolumes(ctx context.Context) {
 			r.add("volume-data", art.Volume, "skipped", "the volume was not restored")
 			continue
 		}
-		if err := r.svc.restoreVolumeArchive(ctx, vol, r.cfg, art.Path, art.File, r.passphrase); err != nil {
+		if err := r.svc.restoreVolumeArchive(ctx, vol, r.cfg, art.Path, art.File, r.passphraseFor(art)); err != nil {
 			r.add("volume-data", art.Volume, "failed", err.Error())
 			continue
 		}

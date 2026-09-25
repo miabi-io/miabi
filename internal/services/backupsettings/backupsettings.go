@@ -24,10 +24,6 @@ import (
 var (
 	// ErrS3NotConfigured means the workspace has no usable S3 target.
 	ErrS3NotConfigured = errors.New("workspace S3 backup settings are not configured")
-	// ErrNoPassphrase means no bundle passphrase is stored. A bundle without one
-	// would either refuse to seal or, worse, write a workspace's whole vault to a
-	// bucket in the clear — so it is a hard stop, not a degraded mode.
-	ErrNoPassphrase = errors.New("no bundle passphrase is set for this workspace")
 )
 
 // EnvelopeRotator re-seals recovery-point envelopes when the backup passphrase
@@ -72,9 +68,9 @@ func (s *Service) Get(workspaceID uint) (*models.WorkspaceBackupSettings, error)
 	return st, nil
 }
 
-// SaveInput carries the desired settings. S3SecretKey and BundlePassphrase are
-// nil/empty to keep the stored value unchanged (so the UI never needs to
-// round-trip a secret it is not allowed to read back).
+// SaveInput carries the desired settings. S3SecretKey is nil/empty to keep the stored value unchanged
+// (so the UI never needs to round-trip a secret it is not allowed to read back). The two passphrases
+// are nil to keep them and an explicit "" to remove encryption.
 type SaveInput struct {
 	S3Enabled        bool
 	S3Endpoint       string
@@ -122,15 +118,21 @@ func (s *Service) Save(workspaceID uint, in SaveInput) (*models.WorkspaceBackupS
 		}
 		st.S3SecretKeyEnc = enc
 	}
-	if in.BundlePassphrase != nil && *in.BundlePassphrase != "" {
-		if err := wsbundle.ValidatePassphrase(*in.BundlePassphrase); err != nil {
-			return nil, err
+	if in.BundlePassphrase != nil {
+		// Bundles already in the bucket keep their encryption and still need the old passphrase to
+		// restore; the UI says so before the user confirms.
+		if *in.BundlePassphrase == "" {
+			st.BundlePassphraseEnc = ""
+		} else {
+			if err := wsbundle.ValidatePassphrase(*in.BundlePassphrase); err != nil {
+				return nil, err
+			}
+			enc, err := crypto.EncryptWS(workspaceID, *in.BundlePassphrase)
+			if err != nil {
+				return nil, err
+			}
+			st.BundlePassphraseEnc = enc
 		}
-		enc, err := crypto.EncryptWS(workspaceID, *in.BundlePassphrase)
-		if err != nil {
-			return nil, err
-		}
-		st.BundlePassphraseEnc = enc
 	}
 	if in.BackupPassphrase != nil {
 		// An explicit empty string clears it — the only way back to cleartext backups.
@@ -272,8 +274,8 @@ func defaultRegion(region string) string {
 }
 
 // BundleTarget returns the workspace's S3 config, the bundle prefix and the bundle passphrase, or
-// ErrBundleNotConfigured when the pieces a bundle needs are missing. It is the one place that decides a
-// workspace is ready to produce or read a portable bundle.
+// ErrS3NotConfigured when there is no target. It is the one place that decides a workspace is ready to
+// produce or read a portable bundle. An empty passphrase means bundles are written unencrypted.
 func (s *Service) BundleTarget(workspaceID uint) (*backup.S3Config, string, string, error) {
 	cfg, err := s.S3ConfigFor(workspaceID)
 	if err != nil {
@@ -287,7 +289,7 @@ func (s *Service) BundleTarget(workspaceID uint) (*backup.S3Config, string, stri
 		return nil, "", "", err
 	}
 	if st.BundlePassphraseEnc == "" {
-		return nil, "", "", ErrNoPassphrase
+		return cfg, st.BundlePrefix(), "", nil
 	}
 	pass, err := crypto.Decrypt(st.BundlePassphraseEnc)
 	if err != nil {

@@ -23,7 +23,7 @@ export interface BackupSettings {
 
 // UpdateBackupSettingsInput mirrors the backend body. Leave s3_secret_key,
 // bundle_passphrase or backup_passphrase empty to keep the stored value unchanged;
-// backup_passphrase_clear is the only way to turn database encryption back off.
+// the *_passphrase_clear flags are the only way to turn encryption back off.
 export interface UpdateBackupSettingsInput {
   s3_enabled: boolean
   s3_endpoint: string
@@ -37,6 +37,7 @@ export interface UpdateBackupSettingsInput {
   volume_backup_path: string
   bundle_path: string
   bundle_passphrase: string
+  bundle_passphrase_clear: boolean
   backup_passphrase: string
   backup_passphrase_clear: boolean
 }

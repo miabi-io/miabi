@@ -187,6 +187,7 @@ const backup = ref<UpdateBackupSettingsInput>({
   volume_backup_path: '',
   bundle_path: '',
   bundle_passphrase: '',
+  bundle_passphrase_clear: false,
   backup_passphrase: '',
   backup_passphrase_clear: false,
 })
@@ -216,6 +217,7 @@ async function loadBackup() {
       volume_backup_path: s.volume_backup_path ?? '',
       bundle_path: s.bundle_path ?? '',
       bundle_passphrase: '', // never returned; left blank keeps the stored one
+      bundle_passphrase_clear: false,
       backup_passphrase: '', // never returned; left blank keeps the stored one
       backup_passphrase_clear: false,
     }
@@ -224,6 +226,17 @@ async function loadBackup() {
     backupPassphraseSet.value = s.backup_passphrase_set
   } catch (e) {
     notify.apiError(e)
+  }
+}
+
+// Removing encryption is staged, not immediate: it takes effect on Save, and Undo backs out of it.
+function removeEncryption(which: 'bundle' | 'backup') {
+  if (which === 'bundle') {
+    backup.value.bundle_passphrase = ''
+    backup.value.bundle_passphrase_clear = true
+  } else {
+    backup.value.backup_passphrase = ''
+    backup.value.backup_passphrase_clear = true
   }
 }
 
@@ -241,6 +254,7 @@ async function saveBackup() {
     backupPassphraseSet.value = s.backup_passphrase_set
     backup.value.s3_secret_key = ''
     backup.value.bundle_passphrase = ''
+    backup.value.bundle_passphrase_clear = false
     backup.value.backup_passphrase = ''
     backup.value.backup_passphrase_clear = false
     notify.success(t('notify.wsSettings.backupSaved'))
@@ -901,22 +915,32 @@ watch(activeTab, (t) => loadTab(t))
 
             <div class="form-grid">
               <div class="form-group">
-                <label class="form-label">{{ $t('wsSettings.databaseBackupPassphrase') }} <span v-if="backupPassphraseSet" class="text-muted">{{ $t('wsSettings.encryptionOn') }}</span>
+                <label class="form-label">{{ $t('wsSettings.databaseBackupPassphrase') }} <span class="text-muted">{{ backupPassphraseSet ? $t('wsSettings.encryptionOn') : $t('wsSettings.encryptionOff') }}</span>
                 </label>
-                <input
-                  v-model="backup.backup_passphrase"
-                  class="form-input"
-                  type="password"
-                  autocomplete="new-password"
-                  :disabled="backup.backup_passphrase_clear"
-                  :placeholder="backupPassphraseSet ? $t('wsSettings.secretSet') : $t('wsSettings.atLeast12')"
-                  :aria-label="$t('wsSettings.databaseBackupPassphrase')"
-                />
-                <p class="text-muted text-sm" style="margin: 6px 0 0">{{ $t('wsSettings.dbPassphraseHint') }}</p>
-                <label v-if="backupPassphraseSet" class="toggle-row" style="margin-top: 8px">
-                  <input v-model="backup.backup_passphrase_clear" type="checkbox" />
-                  <span>{{ $t('wsSettings.turnEncryptionOff') }}</span>
-                </label>
+                <template v-if="!backup.backup_passphrase_clear">
+                  <input
+                    v-model="backup.backup_passphrase"
+                    class="form-input"
+                    type="password"
+                    autocomplete="new-password"
+                    :placeholder="backupPassphraseSet ? $t('wsSettings.secretSet') : $t('wsSettings.optionalAtLeast12')"
+                    :aria-label="$t('wsSettings.databaseBackupPassphrase')"
+                  />
+                  <p class="text-muted text-sm" style="margin: 6px 0 0">{{ $t('wsSettings.dbPassphraseHint') }}</p>
+                  <button
+                    v-if="backupPassphraseSet"
+                    type="button"
+                    class="btn btn-ghost btn-sm remove-encryption"
+                    @click="removeEncryption('backup')"
+                  >
+                    <span class="mdi mdi-lock-open-variant-outline"></span>{{ $t('wsSettings.removeEncryption') }}
+                  </button>
+                </template>
+                <div v-else class="encryption-removed" role="status">
+                  <span class="mdi mdi-alert-outline"></span>
+                  <span>{{ $t('wsSettings.dbEncryptionWillBeRemoved') }}</span>
+                  <button type="button" class="btn btn-ghost btn-sm" @click="backup.backup_passphrase_clear = false">{{ $t('wsSettings.undo') }}</button>
+                </div>
               </div>
             </div>
 
@@ -926,16 +950,31 @@ watch(activeTab, (t) => loadTab(t))
                 <input v-model="backup.bundle_path" class="form-input" placeholder="bundles" :aria-label="$t('wsSettings.bundlePath')" />
               </div>
               <div class="form-group">
-                <label class="form-label">{{ $t('wsSettings.bundlePassphrase') }}</label>
-                <input
-                  v-model="backup.bundle_passphrase"
-                  class="form-input"
-                  type="password"
-                  autocomplete="new-password"
-                  :placeholder="bundlePassphraseSet ? $t('wsSettings.secretSet') : $t('wsSettings.atLeast12')"
-                  :aria-label="$t('wsSettings.bundlePassphrase')"
-                />
-                <p class="text-muted text-sm" style="margin: 6px 0 0">{{ $t('wsSettings.bundlePassphraseHint') }}</p>
+                <label class="form-label">{{ $t('wsSettings.bundlePassphrase') }} <span class="text-muted">{{ bundlePassphraseSet ? $t('wsSettings.encryptionOn') : $t('wsSettings.encryptionOff') }}</span></label>
+                <template v-if="!backup.bundle_passphrase_clear">
+                  <input
+                    v-model="backup.bundle_passphrase"
+                    class="form-input"
+                    type="password"
+                    autocomplete="new-password"
+                    :placeholder="bundlePassphraseSet ? $t('wsSettings.secretSet') : $t('wsSettings.optionalAtLeast12')"
+                    :aria-label="$t('wsSettings.bundlePassphrase')"
+                  />
+                  <p class="text-muted text-sm" style="margin: 6px 0 0">{{ $t('wsSettings.bundlePassphraseHint') }}</p>
+                  <button
+                    v-if="bundlePassphraseSet"
+                    type="button"
+                    class="btn btn-ghost btn-sm remove-encryption"
+                    @click="removeEncryption('bundle')"
+                  >
+                    <span class="mdi mdi-lock-open-variant-outline"></span>{{ $t('wsSettings.removeEncryption') }}
+                  </button>
+                </template>
+                <div v-else class="encryption-removed" role="status">
+                  <span class="mdi mdi-alert-outline"></span>
+                  <span>{{ $t('wsSettings.bundleEncryptionWillBeRemoved') }}</span>
+                  <button type="button" class="btn btn-ghost btn-sm" @click="backup.bundle_passphrase_clear = false">{{ $t('wsSettings.undo') }}</button>
+                </div>
               </div>
             </div>
 
@@ -1297,5 +1336,20 @@ watch(activeTab, (t) => loadTab(t))
   to {
     transform: rotate(360deg);
   }
+}
+.remove-encryption {
+  margin-top: 8px;
+}
+.encryption-removed {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--warning-200);
+  background: var(--warning-50);
+  color: var(--warning-700);
+  font-size: 13px;
 }
 </style>

@@ -17,8 +17,11 @@ import (
 // argument fails fast instead of listing a whole bucket.
 const RefPrefix = "mbwb_"
 
-// StateExt is the sealed state file's extension.
-const StateExt = ".mbws"
+// StateExt is the sealed state file's extension; PlainStateExt the unencrypted one's.
+const (
+	StateExt      = ".mbws"
+	PlainStateExt = ".json"
+)
 
 // NewRef builds a bundle's stable name from the workspace it came from and the
 // moment it started: "mbwb_shop_20260731T020000Z".
@@ -63,10 +66,18 @@ func DatabasePath(prefix, ref string) string { return Root(prefix, ref) + "/data
 // VolumePath is where a bundle's volume archives live.
 func VolumePath(prefix, ref string) string { return Root(prefix, ref) + "/volumes" }
 
-// StateObject is the sealed state file's object key. It sits inside the bundle's
+// StateObject is the state file's object key. It sits inside the bundle's
 // own branch, next to the data it describes.
-func StateObject(prefix, ref string) string {
-	return Root(prefix, ref) + "/state-" + ref + StateExt
+func StateObject(prefix, ref string, encrypted bool) string {
+	return Root(prefix, ref) + "/" + StateFile(ref, encrypted)
+}
+
+// StateFile is the state file's name within the bundle's branch.
+func StateFile(ref string, encrypted bool) string {
+	if encrypted {
+		return "state-" + ref + StateExt
+	}
+	return "state-" + ref + PlainStateExt
 }
 
 // InfoObject is the info file's object key. Unlike everything else it sits at the TOP of the

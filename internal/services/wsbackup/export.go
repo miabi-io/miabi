@@ -74,7 +74,7 @@ func (s *Service) runExport(ctx context.Context, b *models.WorkspaceBundle) erro
 		Ref:           b.Ref,
 		SourceInstall: s.InstallID,
 		MiabiVersion:  s.Version,
-		Encrypted:     true,
+		Encrypted:     passphrase != "",
 		Bucket:        cfg.Bucket,
 		Prefix:        prefix,
 		CreatedAt:     time.Now().UTC(),
@@ -99,7 +99,7 @@ func (s *Service) runExport(ctx context.Context, b *models.WorkspaceBundle) erro
 	info.Pipelines = len(state.Pipelines)
 	info.GitOpsSources = len(state.GitSources)
 
-	sealed, err := wsbundle.Seal(state, passphrase)
+	sealed, err := wsbundle.Encode(state, passphrase)
 	if err != nil {
 		b.Report = *report
 		s.fail(b, err)
@@ -113,7 +113,7 @@ func (s *Service) runExport(ctx context.Context, b *models.WorkspaceBundle) erro
 	info.Artifacts = append(info.Artifacts, s.exportVolumes(ctx, b, cfg, prefix, passphrase, report)...)
 
 	s.phase(b, models.BundlePhaseUpload)
-	stateKey := wsbundle.StateObject(prefix, b.Ref)
+	stateKey := wsbundle.StateObject(prefix, b.Ref, info.Encrypted)
 	if err := store.Put(ctx, stateKey, sealed); err != nil {
 		b.Report = *report
 		s.fail(b, fmt.Errorf("upload state file: %w", err))
@@ -121,10 +121,10 @@ func (s *Service) runExport(ctx context.Context, b *models.WorkspaceBundle) erro
 	}
 	info.Artifacts = append(info.Artifacts, wsbundle.Artifact{
 		Subject:   wsbundle.SubjectState,
-		File:      "state-" + b.Ref + wsbundle.StateExt,
+		File:      wsbundle.StateFile(b.Ref, info.Encrypted),
 		Path:      wsbundle.Root(prefix, b.Ref),
 		SizeBytes: int64(len(sealed)),
-		Encrypted: true,
+		Encrypted: info.Encrypted,
 	})
 	report.Add("state", state.Workspace.Name, "captured", "")
 

@@ -18,7 +18,10 @@ const InfoSchema = 1
 // InfoNotice is stamped into every info file so whoever finds one in a bucket can tell what it is.
 // The file is deliberately readable: it is the index a restore consults before it has opened
 // anything. It carries no secret — those live in the sealed state file beside it.
-const InfoNotice = "Miabi portable workspace bundle index. The state file beside it is encrypted with the backup passphrase."
+const (
+	InfoNotice      = "Miabi portable workspace bundle index. The state file beside it is encrypted with the backup passphrase."
+	PlainInfoNotice = "Miabi portable workspace bundle index. This bundle is NOT encrypted: the state file beside it holds the workspace's secrets in cleartext."
+)
 
 // Artifact subjects.
 const (
@@ -51,10 +54,7 @@ type Info struct {
 	// a bundle is portable by design, so a restore never requires a match.
 	SourceInstall string `json:"source_install,omitempty" xml:"sourceInstall,omitempty"`
 	MiabiVersion  string `json:"miabi_version,omitempty" xml:"miabiVersion,omitempty"`
-
-	// Encrypted records that the state file (and, when the backup helpers support
-	// it, the data artifacts) are sealed with a passphrase.
-	Encrypted bool `json:"encrypted" xml:"encrypted"`
+	Encrypted     bool   `json:"encrypted" xml:"encrypted"`
 
 	Bucket string `json:"bucket,omitempty" xml:"bucket,omitempty"`
 	// Prefix is the object prefix the bundle's own branch lives under.
@@ -159,6 +159,9 @@ func (i *Info) Validate() error {
 func EncodeInfo(i *Info) ([]byte, error) {
 	i.Schema = InfoSchema
 	i.Notice = InfoNotice
+	if !i.Encrypted {
+		i.Notice = PlainInfoNotice
+	}
 	body, err := xml.MarshalIndent(i, "", "  ")
 	if err != nil {
 		return nil, err

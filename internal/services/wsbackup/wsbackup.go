@@ -125,15 +125,15 @@ func NewService(d Deps) *Service { return &Service{Deps: d} }
 // inline — correct for tests, and for a single-process deployment with no queue.
 func (s *Service) SetEnqueuer(e Enqueuer) { s.enqueuer = e }
 
-// Configured reports whether the workspace has everything a bundle needs. The UI
-// asks before offering the action, so an operator is told what is missing instead
-// of triggering a run that immediately fails.
-func (s *Service) Configured(workspaceID uint) error {
-	_, _, _, err := s.Settings.BundleTarget(workspaceID)
+// Configured reports whether the workspace has everything a bundle needs, and whether its bundles
+// will be encrypted. The UI asks before offering the action, so an operator is told what is missing
+// instead of triggering a run that immediately fails.
+func (s *Service) Configured(workspaceID uint) (encrypted bool, err error) {
+	_, _, pass, err := s.Settings.BundleTarget(workspaceID)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrNotConfigured, err)
+		return false, fmt.Errorf("%w: %v", ErrNotConfigured, err)
 	}
-	return nil
+	return pass != "", nil
 }
 
 func (s *Service) store(cfg *backup.S3Config) (*blob.Store, error) {

@@ -156,7 +156,7 @@ func TestLayoutSeparatesIndexFromArtifacts(t *testing.T) {
 	if strings.HasPrefix(info, root) {
 		t.Fatalf("the index %q lives inside the branch %q it indexes", info, root)
 	}
-	for _, p := range []string{StateObject("bundles", ref), DatabasePath("bundles", ref), VolumePath("bundles", ref)} {
+	for _, p := range []string{StateObject("bundles", ref, true), StateObject("bundles", ref, false), DatabasePath("bundles", ref), VolumePath("bundles", ref)} {
 		if !strings.HasPrefix(p, root+"/") {
 			t.Fatalf("%q is outside the bundle's branch %q", p, root)
 		}
