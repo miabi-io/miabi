@@ -2514,12 +2514,17 @@ export interface ContainerStat extends StatsSample {
 }
 
 // NodeHostMetrics is a node's real host CPU/memory usage. The local node is read from procfs; a
-// remote node is sampled by a short-lived container on the node, which sets `sampled` and means the
-// figure can be up to a minute old.
+// remote node reports through its agent every few seconds, or is sampled by a short-lived container
+// on the node when it has no agent that pushes (up to a minute old).
 export interface NodeHostMetrics {
   available: boolean
   reason?: string
+  source?: 'local' | 'agent' | 'sampled'
+  // Deprecated: true for any remote reading; read `source`.
   sampled?: boolean
+  age_seconds?: number
+  load1?: number
+  uptime_s?: number
   // True when the reading describes the machine the node runs on rather than the node itself: /proc
   // is not cgroup-aware, so a containerised or memory-limited node reports its host.
   physical_host?: boolean

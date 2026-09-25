@@ -99,6 +99,11 @@ func (s *Service) measureNode(ctx context.Context, srv models.Server) {
 		}
 	}
 
+	// Usage from a pushing agent is already written by Ingest; sampling here would only start a
+	// container for a figure we have.
+	if s.HasFreshPush(srv.ID) {
+		return
+	}
 	sample, err := s.Get(ctx, srv.ID)
 	if err != nil || !sample.DescribesNode {
 		return

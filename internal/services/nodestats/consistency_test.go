@@ -5,19 +5,6 @@ package nodestats
 
 import "testing"
 
-// describesNode is the rule the sampler applies: Docker's MemTotal is cgroup-aware and is the
-// authority on what a node has; /proc's is not and reports the machine underneath.
-func describesNode(sampledTotal uint64, dockerTotal int64) bool {
-	if dockerTotal <= 0 {
-		return true
-	}
-	delta := dockerTotal - int64(sampledTotal)
-	if delta < 0 {
-		delta = -delta
-	}
-	return delta*100/dockerTotal <= memTolerancePct
-}
-
 func TestSampleConsistency(t *testing.T) {
 	const gb = int64(1) << 30
 

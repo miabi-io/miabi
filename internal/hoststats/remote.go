@@ -6,13 +6,14 @@ package hoststats
 import (
 	"fmt"
 	"strings"
+
+	"github.com/miabi-io/miabi/pkg/hoststats"
 )
 
 // SampleCommand is run inside a short-lived container on a node to produce one sample. A container's
 // /proc/stat and /proc/meminfo are the HOST's — they are not namespaced — so this reads the node's
-// real CPU and memory without binding anything and without the agent's help. That matters because
-// the agent tunnel carries Docker API traffic only (it has no request type that could return stats),
-// and because this works on nodes reached without an agent at all.
+// real CPU and memory without binding anything. It is the fallback for nodes whose agent does not
+// push stats (no agent at all, or an older one).
 //
 // The two cpu lines a second apart are the CPU sample window; the meminfo keys cover kernels with
 // and without MemAvailable.
@@ -37,7 +38,7 @@ func ParseSample(out string) (Stats, error) {
 		case strings.HasPrefix(line, "cpu "):
 			cpuLines = append(cpuLines, line)
 		case strings.Contains(line, ":"):
-			if key, kb, ok := parseMemLine(line); ok {
+			if key, kb, ok := hoststats.ParseMemLine(line); ok {
 				vals[key] = kb * 1024 // kB -> bytes
 			}
 		}
@@ -45,17 +46,17 @@ func ParseSample(out string) (Stats, error) {
 	if len(cpuLines) < 2 {
 		return Stats{}, fmt.Errorf("hoststats: sample has %d cpu lines, want 2", len(cpuLines))
 	}
-	c1, err := parseCPULine(cpuLines[0])
+	c1, err := hoststats.ParseCPULine(cpuLines[0])
 	if err != nil {
 		return Stats{}, err
 	}
-	c2, err := parseCPULine(cpuLines[1])
+	c2, err := hoststats.ParseCPULine(cpuLines[1])
 	if err != nil {
 		return Stats{}, err
 	}
-	memTotal, memAvail, err := memFromVals(vals)
+	memTotal, memAvail, err := hoststats.MemFromVals(vals)
 	if err != nil {
 		return Stats{}, err
 	}
-	return statsFrom(c1, c2, memTotal, memAvail), nil
+	return hoststats.StatsFrom(c1, c2, memTotal, memAvail), nil
 }

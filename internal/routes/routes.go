@@ -134,7 +134,10 @@ type Router struct {
 	// is a token-authenticated, long-lived WebSocket, and reconnect storms or several nodes behind
 	// one NAT must not lock agents out. The long random join token makes brute force a non-issue.
 	agentRateLimit okapi.Middleware
-	h              routerHandlers
+	// agentStatsRateLimit is per IP like agentRateLimit, but every node pushes 4 times a minute and a
+	// swarm's nodes usually share one egress IP.
+	agentStatsRateLimit okapi.Middleware
+	h                   routerHandlers
 }
 
 type routerHandlers struct {
@@ -760,11 +763,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	platformBackupService.SetAppStopper(platformbackup.NewMountAppStopper(appRepo, appService))
 	forwardService.SetImageResolver(imageResolver)
 	storageService.SetImageResolver(imageResolver)
-	// Real host CPU/memory for ANY node, sampled by a short-lived container on the node itself: a
-	// container's /proc is the host's, so this needs no agent support and no bound host path.
 	nodeStatsService := nodestats.NewService(nodeClients)
 	nodeStatsService.SetImageResolver(imageResolver)
 	nodeStatsService.SetServers(serverRepo)
+	nodeStatsService.SetAgentStats(cfg.NodeStatsAgent)
 	// Storage classes decide WHERE on a node a volume's data lands. The built-in "default" class is
 	// seeded here so every install — and every pre-existing volume, which backfills to it — has one.
 	storageClassService := storageclass.NewService(repositories.NewStorageClassRepository(db), nodeClients)
@@ -1181,10 +1183,11 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		systemAdmin:  middlewares.RequireSystemAdmin(userRepo),
 		// Auth endpoints fall back to a local limiter if Redis is down (brute-force
 		// stays throttled); agent tunnels fail open (availability over throttling).
-		authRateLimit:    middlewares.RateLimit(redisClient, 10, time.Minute, true),
-		agentRateLimit:   middlewares.RateLimit(redisClient, 120, time.Minute, false),
-		ee:               ee,
-		resourcePolicies: resourcePolicyRepo,
+		authRateLimit:       middlewares.RateLimit(redisClient, 10, time.Minute, true),
+		agentRateLimit:      middlewares.RateLimit(redisClient, 120, time.Minute, false),
+		agentStatsRateLimit: middlewares.RateLimit(redisClient, 2400, time.Minute, false),
+		ee:                  ee,
+		resourcePolicies:    resourcePolicyRepo,
 		h: routerHandlers{
 			health:          handlers.NewHealthHandler(db, redisClient, dockerClient),
 			auth:            handlers.NewAuthHandler(authService, userRepo, sessionRepo, auditLogger, settingsProvider, cfg.DevMode, cfg.PasswordResetEnabled),

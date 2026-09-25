@@ -1,11 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Jonas Kaninda
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package nodestats reads real host CPU and memory from any node, including remote ones, by running
-// a short-lived container there and parsing its /proc. It exists because the agent tunnel proxies
-// the Docker API and nothing else: there is no message a node could answer "what is your CPU" with.
-// Running a container needs no agent change, works on nodes that have no agent at all, and needs no
-// host path bound anywhere, since a container's /proc is the host's.
+// Package nodestats reads real host CPU and memory for remote nodes. A node whose agent pushes its
+// own readings (POST /api/v1/agent/stats) is served from those; any other node — no agent, an older
+// agent, or one whose pushes went stale — is sampled by a short-lived container on the node, whose
+// /proc is the host's.
 package nodestats
 
 import (
@@ -51,7 +50,19 @@ type Sample struct {
 	DescribesNode bool
 	// NodeMemTotalBytes is what Docker says this node has, which IS cgroup-aware.
 	NodeMemTotalBytes int64
+	// Source is SourceAgent or SourceSampled.
+	Source string
+	// MeasuredAt is when the control plane took or received the reading, never the node's clock.
+	MeasuredAt    time.Time
+	Load1         float64
+	UptimeSeconds uint64
 }
+
+// Where a Sample came from.
+const (
+	SourceAgent   = "agent"
+	SourceSampled = "sampled"
+)
 
 type entry struct {
 	at     time.Time
@@ -64,6 +75,19 @@ type entry struct {
 // needs to absorb rounding.
 const memTolerancePct = 5
 
+// describesNode applies the rule above: Docker's MemTotal is the authority on what a node has, and
+// with no figure from Docker there is nothing to contradict the reading.
+func describesNode(readTotal uint64, nodeTotal int64) bool {
+	if nodeTotal <= 0 {
+		return true
+	}
+	delta := nodeTotal - int64(readTotal)
+	if delta < 0 {
+		delta = -delta
+	}
+	return delta*100/nodeTotal <= memTolerancePct
+}
+
 // Service samples nodes on demand and caches the result per node.
 type Service struct {
 	clients NodeDocker
@@ -73,13 +97,21 @@ type Service struct {
 
 	mu    sync.Mutex
 	cache map[uint]entry
+	// pushed holds the latest agent report per node; persisted is what was last written from one.
+	pushed    map[uint]Sample
+	persisted map[uint]Sample
+	agentOn   bool
+	now       func() time.Time
 	// inflight keeps concurrent readers of the same node behind one sample rather than starting a
 	// container each: the dashboard and the node page can ask at the same moment.
 	inflight map[uint]*sync.WaitGroup
 }
 
 func NewService(clients NodeDocker) *Service {
-	return &Service{clients: clients, cache: map[uint]entry{}, inflight: map[uint]*sync.WaitGroup{}}
+	return &Service{
+		clients: clients, cache: map[uint]entry{}, inflight: map[uint]*sync.WaitGroup{},
+		pushed: map[uint]Sample{}, persisted: map[uint]Sample{}, agentOn: true, now: time.Now,
+	}
 }
 
 // SetImageResolver wires the deployment-config resolver for the helper image.
@@ -94,10 +126,15 @@ func (s *Service) helperImage() string {
 	return defaultHelperImg
 }
 
-// Get returns a node's host stats, sampling it at most once per ttl. A failed sample is cached too,
-// so an unreachable node is not retried on every dashboard tick.
+// Get returns a node's host stats: its agent's latest push when fresh, otherwise a container sample
+// taken at most once per ttl. A failed sample is cached too, so an unreachable node is not retried
+// on every dashboard tick.
 func (s *Service) Get(ctx context.Context, serverID uint) (Sample, error) {
 	s.mu.Lock()
+	if p, ok := s.freshPushLocked(serverID); ok {
+		s.mu.Unlock()
+		return p, nil
+	}
 	if e, ok := s.cache[serverID]; ok && time.Since(e.at) < ttl {
 		s.mu.Unlock()
 		return e.sample, e.err
@@ -130,6 +167,9 @@ func (s *Service) Get(ctx context.Context, serverID uint) (Sample, error) {
 func (s *Service) Cached(serverID uint) (Sample, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if p, ok := s.freshPushLocked(serverID); ok {
+		return p, true
+	}
 	e, ok := s.cache[serverID]
 	if !ok || e.err != nil {
 		return Sample{}, false
@@ -172,16 +212,10 @@ func (s *Service) sample(ctx context.Context, serverID uint) (Sample, error) {
 
 	// Docker's MemTotal IS cgroup-aware, so it is the authority on what this node has. When the two
 	// disagree, /proc is describing the machine the node runs on rather than the node.
-	out2 := Sample{Stats: st, DescribesNode: true}
+	out2 := Sample{Stats: st, DescribesNode: true, Source: SourceSampled, MeasuredAt: s.now()}
 	if info, ierr := dc.Info(runCtx); ierr == nil && info.MemTotal > 0 {
 		out2.NodeMemTotalBytes = info.MemTotal
-		delta := info.MemTotal - int64(st.MemTotalBytes)
-		if delta < 0 {
-			delta = -delta
-		}
-		if delta*100/info.MemTotal > memTolerancePct {
-			out2.DescribesNode = false
-		}
+		out2.DescribesNode = describesNode(st.MemTotalBytes, info.MemTotal)
 	}
 	return out2, nil
 }
