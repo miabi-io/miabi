@@ -2854,6 +2854,9 @@
     "title": "Plans et quotas"
   },
   "portable": {
+    "notEncrypted": "non chiffré",
+    "notEncryptedWarning": "Aucune phrase secrète de bundle n’est définie : les nouveaux bundles sont écrits non chiffrés, et toute personne ayant accès au bucket peut lire les secrets de cet espace de travail. Définissez-en une dans Paramètres → Sauvegarde.",
+    "setTarget": "Définissez une cible S3 dans Paramètres → Sauvegarde.",
     "bundle": "Bundle",
     "bundlesInTheBucket": "Bundles dans le bucket",
     "contents": "Contenu",
@@ -3531,7 +3534,7 @@
     "bucket": "Bucket",
     "bucketRoot": "(racine du bucket)",
     "bundlePassphrase": "Phrase secrète du bundle",
-    "bundlePassphraseHint": "Scelle les secrets d’un bundle portable et chiffre ses dumps. Notez-la en dehors de Miabi : c’est la seule chose qui ouvre un bundle sur une autre installation — y compris une reconstruite après avoir perdu celle-ci.",
+    "bundlePassphraseHint": "Facultative. Scelle les secrets d’un bundle portable et chiffre ses dumps ; sans elle, les bundles sont écrits non chiffrés dans le bucket. Notez-la en dehors de Miabi : c’est la seule chose qui ouvre un bundle sur une autre installation — y compris une reconstruite après avoir perdu celle-ci.",
     "bundlePath": "Chemin du bundle",
     "capabilities": "Capacités",
     "changingItUpdatesEveryUrl": "Le modifier met à jour chaque URL et l’identifiant docker",
@@ -3556,6 +3559,12 @@
     "displayNameHint": "Le libellé libre affiché dans toute l’interface.",
     "dnsProviders": "Fournisseurs DNS",
     "enableS3BackupsForThis": "Activer les sauvegardes S3 pour cet espace de travail",
+    "encryptionOff": "(non chiffré)",
+    "optionalAtLeast12": "facultatif — au moins 12 caractères",
+    "removeEncryption": "Retirer le chiffrement",
+    "undo": "Annuler",
+    "dbEncryptionWillBeRemoved": "Le chiffrement sera retiré à l’enregistrement : les nouvelles sauvegardes de base de données seront stockées non chiffrées. Les points de restauration existants doivent d’abord être supprimés.",
+    "bundleEncryptionWillBeRemoved": "Le chiffrement sera retiré à l’enregistrement : les nouveaux bundles contiendront les secrets de cet espace de travail en clair dans le bucket. Les bundles déjà créés restent chiffrés et nécessitent toujours l’ancienne phrase secrète pour être restaurés.",
     "encryptionOn": "(chiffrement activé)",
     "endpoint": "Point de terminaison",
     "general": "Général",
@@ -3626,7 +3635,6 @@
       "usage": "Utilisation"
     },
     "theSystemWorkspaceNameIs": "Le nom de l’espace de travail système est réservé et ne peut pas être modifié.",
-    "turnEncryptionOff": "Désactiver le chiffrement — les nouvelles sauvegardes seront stockées non chiffrées",
     "typeToConfirm": "Saisissez {name} pour confirmer",
     "unit": {
       "cores": "cœurs",

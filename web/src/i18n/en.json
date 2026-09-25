@@ -2854,6 +2854,9 @@
     "title": "Plans & Quotas"
   },
   "portable": {
+    "notEncrypted": "not encrypted",
+    "notEncryptedWarning": "No bundle passphrase is set: new bundles are written unencrypted, and anyone with access to the bucket can read this workspace’s secrets. Set one under Settings → Backup.",
+    "setTarget": "Set an S3 target under Settings → Backup.",
     "bundle": "Bundle",
     "bundlesInTheBucket": "Bundles in the bucket",
     "contents": "Contents",
@@ -3531,7 +3534,7 @@
     "bucket": "Bucket",
     "bucketRoot": "(bucket root)",
     "bundlePassphrase": "Bundle passphrase",
-    "bundlePassphraseHint": "Seals a portable bundle's secrets and encrypts its dumps. Record it outside Miabi: it is the only thing that opens a bundle on another install — including one rebuilt after losing this one.",
+    "bundlePassphraseHint": "Optional. Seals a portable bundle's secrets and encrypts its dumps; without one, bundles are written to the bucket unencrypted. Record it outside Miabi: it is the only thing that opens a bundle on another install — including one rebuilt after losing this one.",
     "bundlePath": "Bundle path",
     "capabilities": "Capabilities",
     "changingItUpdatesEveryUrl": "Changing it updates every URL and the docker handle",
@@ -3556,6 +3559,12 @@
     "displayNameHint": "The free-text label shown across the UI.",
     "dnsProviders": "DNS providers",
     "enableS3BackupsForThis": "Enable S3 backups for this workspace",
+    "encryptionOff": "(not encrypted)",
+    "optionalAtLeast12": "optional — at least 12 characters",
+    "removeEncryption": "Remove encryption",
+    "undo": "Undo",
+    "dbEncryptionWillBeRemoved": "Encryption will be removed when you save: new database backups will be stored unencrypted. Existing recovery points must be deleted first.",
+    "bundleEncryptionWillBeRemoved": "Encryption will be removed when you save: new bundles will hold this workspace’s secrets in cleartext in the bucket. Bundles already taken stay encrypted and still need the old passphrase to restore.",
     "encryptionOn": "(encryption on)",
     "endpoint": "Endpoint",
     "general": "General",
@@ -3626,7 +3635,6 @@
       "usage": "Usage"
     },
     "theSystemWorkspaceNameIs": "The system workspace name is reserved and cannot be changed.",
-    "turnEncryptionOff": "Turn encryption off — new backups will be stored unencrypted",
     "typeToConfirm": "Type {name} to confirm",
     "unit": {
       "cores": "cores",

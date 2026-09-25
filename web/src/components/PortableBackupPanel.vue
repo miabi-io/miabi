@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Portable backup: export this workspace to an encrypted bundle on its S3
-// target, and restore one back — here, or into a fresh workspace.
+// Portable backup: export this workspace to a bundle on its S3 target (encrypted when a bundle
+// passphrase is set), and restore one back — here, or into a fresh workspace.
 //
 // The bundle list comes from the bucket, not from this platform's run history:
 // the whole point of the feature is that a bundle outlives the install that
@@ -21,6 +21,7 @@ const { t } = useI18n()
 const notify = useNotificationStore()
 
 const configured = ref(false)
+const encrypted = ref(true)
 const reason = ref('')
 const loading = ref(false)
 const bundles = ref<BundleInfo[]>([])
@@ -36,6 +37,7 @@ async function loadStatus() {
   try {
     const s = (await portableBackupApi.status(props.wsId)).data.data
     configured.value = s.configured
+    encrypted.value = s.encrypted
     reason.value = s.reason ?? ''
   } catch (e) {
     notify.apiError(e)
@@ -202,7 +204,7 @@ function failedArtifacts(b: BundleInfo): number {
         <span class="mdi mdi-information-outline"></span>
         <div>
           <p><strong>{{ $t('portable.notConfigured') }}</strong></p>
-          <p class="text-muted text-sm">{{ reason || 'Set an S3 target and a bundle passphrase under Backup.' }}</p>
+          <p class="text-muted text-sm">{{ reason || $t('portable.setTarget') }}</p>
           <p class="text-muted text-sm">{{ $t('portable.passphraseHint') }}</p>
         </div>
       </div>
@@ -219,6 +221,10 @@ function failedArtifacts(b: BundleInfo): number {
             <span class="mdi mdi-cloud-upload-outline"></span>
             {{ activeRun ? 'Run in progress…' : exporting ? 'Starting…' : 'Back up now' }}
           </button>
+        </div>
+        <div v-if="!encrypted" class="card-body unencrypted-note" role="status">
+          <span class="mdi mdi-lock-open-alert-outline"></span>
+          <span>{{ $t('portable.notEncryptedWarning') }}</span>
         </div>
         <div v-if="activeRun" class="card-body">
           <div class="progress-row">
@@ -255,6 +261,7 @@ function failedArtifacts(b: BundleInfo): number {
                   <div class="text-muted text-sm">
                     {{ b.workspace }}
                     <span v-if="b.miabi_version"> · v{{ b.miabi_version }}</span>
+                    <span v-if="!b.encrypted" class="badge badge-warning">{{ $t('portable.notEncrypted') }}</span>
                     <span v-if="failedArtifacts(b)" class="badge badge-warning">
                       {{ failedArtifacts(b) }} artifact(s) missing
                     </span>
@@ -476,5 +483,13 @@ function failedArtifacts(b: BundleInfo): number {
   align-items: center;
   gap: 8px;
   margin-top: 12px;
+}
+.unencrypted-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--warning-700);
+  background: var(--warning-50);
+  font-size: 13px;
 }
 </style>

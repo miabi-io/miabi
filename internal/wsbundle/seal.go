@@ -35,8 +35,10 @@ var (
 	// ErrBadPassphrase means the state file did not authenticate: a wrong
 	// passphrase, or a tampered file. The two are indistinguishable by design.
 	ErrBadPassphrase = errors.New("bundle state did not decrypt: wrong passphrase or corrupt file")
-	// ErrNotState means the bytes are not a sealed bundle state file at all.
+	// ErrNotState means the bytes are not a bundle state file at all.
 	ErrNotState = errors.New("not a Miabi workspace bundle state file")
+	// ErrPassphraseRequired means the state file is sealed but no passphrase was given.
+	ErrPassphraseRequired = errors.New("this bundle is encrypted: set the bundle passphrase it was created with to restore it")
 	// ErrWeakPassphrase is returned when a passphrase is too weak to protect a
 	// workspace's entire vault.
 	ErrWeakPassphrase = fmt.Errorf("backup passphrase must be at least %d characters and mix letters with digits or symbols", minPassLen)
@@ -138,6 +140,38 @@ func Open(sealed []byte, passphrase string) (*State, error) {
 	var st State
 	if err := json.Unmarshal(plaintext, &st); err != nil {
 		return nil, fmt.Errorf("decode state: %w", err)
+	}
+	if err := st.Validate(); err != nil {
+		return nil, err
+	}
+	return &st, nil
+}
+
+// Encode renders a state document for upload: sealed under passphrase, or as plain JSON when the
+// passphrase is empty. The plain form carries the workspace's secrets in the clear.
+func Encode(st *State, passphrase string) ([]byte, error) {
+	if passphrase != "" {
+		return Seal(st, passphrase)
+	}
+	if st == nil {
+		return nil, errors.New("nil state")
+	}
+	st.Schema = StateSchema
+	return json.MarshalIndent(st, "", "  ")
+}
+
+// Decode reads a state file in either form. The form is taken from the bytes, not from the bundle's
+// index, so a bundle is read correctly whatever the workspace's current setting is.
+func Decode(data []byte, passphrase string) (*State, error) {
+	if len(data) >= len(magic) && string(data[:len(magic)]) == magic {
+		if passphrase == "" {
+			return nil, ErrPassphraseRequired
+		}
+		return Open(data, passphrase)
+	}
+	var st State
+	if err := json.Unmarshal(data, &st); err != nil {
+		return nil, ErrNotState
 	}
 	if err := st.Validate(); err != nil {
 		return nil, err

@@ -275,3 +275,45 @@ func TestSaveAllowsClearingWithNoSealedSets(t *testing.T) {
 }
 
 func ptr(s string) *string { return &s }
+
+// Removing the bundle passphrase leaves a usable target that writes cleartext bundles.
+func TestBundlePassphraseCanBeRemoved(t *testing.T) {
+	svc := newSettingsService(t)
+	in := s3Input()
+	in.BundlePassphrase = ptr(goodPass)
+	if _, err := svc.Save(1, in); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	in = s3Input()
+	st, err := svc.Save(1, in)
+	if err != nil || !st.BundlePassphraseSet {
+		t.Fatalf("omitting the passphrase must keep it: set=%v err=%v", st != nil && st.BundlePassphraseSet, err)
+	}
+
+	in.BundlePassphrase = ptr("")
+	st, err = svc.Save(1, in)
+	if err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	if st.BundlePassphraseSet {
+		t.Fatal("an explicit empty passphrase must remove it")
+	}
+	_, _, pass, err := svc.BundleTarget(1)
+	if err != nil {
+		t.Fatalf("a workspace without a bundle passphrase must still have a bundle target: %v", err)
+	}
+	if pass != "" {
+		t.Fatalf("pass = %q, want empty", pass)
+	}
+}
+
+func TestBundleTargetStillNeedsS3(t *testing.T) {
+	svc := newSettingsService(t)
+	if _, err := svc.Save(1, SaveInput{BundlePassphrase: ptr(goodPass)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := svc.BundleTarget(1); !errors.Is(err, ErrS3NotConfigured) {
+		t.Fatalf("err = %v, want ErrS3NotConfigured", err)
+	}
+}

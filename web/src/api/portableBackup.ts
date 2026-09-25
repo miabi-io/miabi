@@ -81,7 +81,7 @@ const base = (workspaceId: number) => `/workspaces/${workspaceId}/portable-backu
 
 export const portableBackupApi = {
   status(workspaceId: number) {
-    return api.get<ApiResponse<{ configured: boolean; reason?: string }>>(`${base(workspaceId)}/status`)
+    return api.get<ApiResponse<{ configured: boolean; encrypted: boolean; reason?: string }>>(`${base(workspaceId)}/status`)
   },
   runs(workspaceId: number) {
     return api.get<ApiResponse<BundleRun[]>>(`${base(workspaceId)}/runs`)

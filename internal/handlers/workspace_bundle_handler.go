@@ -29,8 +29,8 @@ func NewWorkspaceBundleHandler(svc *wsbackup.Service, auditLog *audit.Logger) *W
 // what is missing instead of offering an action that fails.
 func (h *WorkspaceBundleHandler) Status(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
-	err := h.svc.Configured(wsID)
-	res := map[string]any{"configured": err == nil}
+	encrypted, err := h.svc.Configured(wsID)
+	res := map[string]any{"configured": err == nil, "encrypted": encrypted}
 	if err != nil {
 		res["reason"] = err.Error()
 	}

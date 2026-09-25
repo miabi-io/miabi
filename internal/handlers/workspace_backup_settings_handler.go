@@ -44,12 +44,12 @@ type UpdateBackupSettingsRequest struct {
 		DatabaseBackupPath string `json:"database_backup_path"`
 		VolumeBackupPath   string `json:"volume_backup_path"`
 
-		BundlePath       string `json:"bundle_path"`
-		BundlePassphrase string `json:"bundle_passphrase"`
-
-		// BackupPassphrase encrypts database backups. Omitted keeps the stored value;
-		// BackupPassphraseClear is the only way to go back to cleartext, so that
-		// clearing it is always deliberate and never an empty field submitted by accident.
+		// BundlePassphrase encrypts portable bundles and BackupPassphrase database backups.
+		// Omitted keeps the stored value; the *Clear flags are the only way back to cleartext,
+		// so removing encryption is always deliberate and never an empty field submitted by accident.
+		BundlePath            string `json:"bundle_path"`
+		BundlePassphrase      string `json:"bundle_passphrase"`
+		BundlePassphraseClear bool   `json:"bundle_passphrase_clear"`
 		BackupPassphrase      string `json:"backup_passphrase"`
 		BackupPassphraseClear bool   `json:"backup_passphrase_clear"`
 	} `json:"body"`
@@ -75,18 +75,8 @@ func (h *WorkspaceBackupSettingsHandler) Update(c *okapi.Context, req *UpdateBac
 	if b.S3SecretKey != "" {
 		secret = &b.S3SecretKey
 	}
-	var passphrase *string
-	if b.BundlePassphrase != "" {
-		passphrase = &b.BundlePassphrase
-	}
-	var backupPass *string
-	switch {
-	case b.BackupPassphraseClear:
-		empty := ""
-		backupPass = &empty
-	case b.BackupPassphrase != "":
-		backupPass = &b.BackupPassphrase
-	}
+	passphrase := passphraseChange(b.BundlePassphrase, b.BundlePassphraseClear)
+	backupPass := passphraseChange(b.BackupPassphrase, b.BackupPassphraseClear)
 	st, err := h.svc.Save(wsID, backupsettings.SaveInput{
 		S3Enabled:          b.S3Enabled,
 		S3Endpoint:         b.S3Endpoint,
@@ -115,6 +105,19 @@ func (h *WorkspaceBackupSettingsHandler) Update(c *okapi.Context, req *UpdateBac
 	}
 	h.record(c, wsID, "backup.settings_update")
 	return ok(c, st)
+}
+
+// passphraseChange maps a form's passphrase field to the service's input: nil keeps the stored value,
+// "" removes encryption, anything else replaces it.
+func passphraseChange(value string, clear bool) *string {
+	switch {
+	case clear:
+		empty := ""
+		return &empty
+	case value != "":
+		return &value
+	}
+	return nil
 }
 
 // Test proves the supplied (or stored) S3 target works, by using it: under every
