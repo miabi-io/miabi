@@ -723,7 +723,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		nodeService,
 		cfg.ControlURL,
 		imageResolver,
-		"miabi/agent:latest", // fallback only; the image catalog is the source of truth
+		"miabi/agent:latest",
 	)
 	backupService.SetImageResolver(imageResolver)
 	backupService.SetLogStore(logStore) // externalize backup run logs to the shared store
@@ -737,9 +737,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	volumeBackupService.SetEnqueuer(producer) // run backups on the background worker
 	volumeBackupService.SetInternalNetwork(cfg.InternalNetwork)
 	volumeBackupService.SetLogStore(logStore)
-	// Platform (control-plane) backup: Enterprise, admin-only disaster recovery for
-	// Miabi's own database and platform volumes. Draws its DB connection from the
-	// control-plane config and runs on the manager node.
+
 	pbHost, pbPort, pbName, pbUser, pbPass, pbSSL := cfg.Database.PostgresConn()
 	platformBackupService := platformbackup.NewService(
 		repositories.NewPlatformBackupRepository(db),
@@ -766,6 +764,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	nodeStatsService := nodestats.NewService(nodeClients)
 	nodeStatsService.SetImageResolver(imageResolver)
 	nodeStatsService.SetServers(serverRepo)
+	nodeStatsService.SetHostProc(cfg.HostProcPath)
 	nodeStatsService.SetAgentStats(cfg.NodeStatsAgent)
 	// Storage classes decide WHERE on a node a volume's data lands. The built-in "default" class is
 	// seeded here so every install — and every pre-existing volume, which backfills to it — has one.
