@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/websocket"
 	"github.com/jkaninda/okapi"
@@ -37,6 +38,28 @@ func (h *ApplicationHandler) Processes(c *okapi.Context) error {
 	return ok(c, list)
 }
 
+// allowedShells are the only programs the interactive exec may start. The parameter used to be
+// passed straight to docker exec, so any binary in the image could be opened as a TTY.
+var allowedShells = []string{"/bin/sh", "/bin/bash"}
+
+// execShell resolves the requested shell: empty means /bin/sh, and a bare "sh" or "bash" is
+// accepted for its /bin path.
+func execShell(requested string) (string, bool) {
+	requested = strings.TrimSpace(requested)
+	if requested == "" {
+		return allowedShells[0], true
+	}
+	if !strings.HasPrefix(requested, "/") {
+		requested = "/bin/" + requested
+	}
+	for _, s := range allowedShells {
+		if requested == s {
+			return s, true
+		}
+	}
+	return "", false
+}
+
 // execClientMessage is a control/input frame sent by the browser terminal.
 // Text frames carry JSON; binary frames are treated as raw stdin.
 type execClientMessage struct {
@@ -53,6 +76,10 @@ func (h *ApplicationHandler) ExecShell(c *okapi.Context) error {
 	app, err := h.load(c)
 	if err != nil {
 		return c.AbortNotFound("application not found")
+	}
+	shell, ok := execShell(c.Query("shell"))
+	if !ok {
+		return c.AbortBadRequest("shell must be one of: " + strings.Join(allowedShells, ", "))
 	}
 	// Capability gate (before the upgrade, so the client gets a real status).
 	if err := h.svc.EnsureExecAllowed(app.WorkspaceID); err != nil {
@@ -74,10 +101,6 @@ func (h *ApplicationHandler) ExecShell(c *okapi.Context) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	shell := c.Query("shell")
-	if shell == "" {
-		shell = "/bin/sh"
-	}
 	stream, err := h.svc.Exec(ctx, app, docker.ExecOptions{
 		Cmd: []string{shell},
 		Tty: true,
