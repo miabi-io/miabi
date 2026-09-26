@@ -39,6 +39,7 @@ const (
 	RoleNodeGateway        = stackdocker.RoleNodeGateway
 	RoleNodeGatewayRedis   = stackdocker.RoleNodeGatewayRedis
 	RolePlatformInternal   = stackdocker.RolePlatformInternal
+	RoleMetadataGuard      = stackdocker.RoleMetadataGuard
 	RoleRegistry           = stackdocker.RoleRegistry
 	RoleRegistryGC         = stackdocker.RoleRegistryGC
 	ManagedByCompose       = stackdocker.ManagedByCompose

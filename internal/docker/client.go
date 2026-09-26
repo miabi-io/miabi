@@ -407,11 +407,12 @@ func (e *engineClient) RunContainer(ctx context.Context, spec RunSpec) (string, 
 			DeviceRequests: toDeviceRequests(spec.GPUs),
 		},
 		RestartPolicy: restartPolicy(spec.RestartPolicy),
+		NetworkMode:   container.NetworkMode(spec.NetworkMode),
 	}
 	applyContainerSecurity(cfg, hostCfg, spec)
 
 	var netCfg *network.NetworkingConfig
-	if len(spec.Networks) > 0 {
+	if len(spec.Networks) > 0 && spec.NetworkMode != "host" {
 		endpoints := map[string]*network.EndpointSettings{}
 		for _, n := range spec.Networks {
 			aliases := spec.NetworkAliases
@@ -565,11 +566,12 @@ func (e *engineClient) createOneShot(ctx context.Context, spec RunSpec) (string,
 			NanoCPUs:       spec.NanoCPUs,
 			DeviceRequests: toDeviceRequests(spec.GPUs), // used by the GPU inventory probe
 		},
+		NetworkMode: container.NetworkMode(spec.NetworkMode),
 	}
 	applyContainerSecurity(cfg, hostCfg, spec)
 
 	var netCfg *network.NetworkingConfig
-	if len(spec.Networks) > 0 {
+	if len(spec.Networks) > 0 && spec.NetworkMode != "host" {
 		endpoints := map[string]*network.EndpointSettings{}
 		for _, n := range spec.Networks {
 			aliases := spec.NetworkAliases

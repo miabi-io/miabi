@@ -104,6 +104,9 @@ type RunSpec struct {
 	WorkingDir string
 	Labels     map[string]string
 	Networks   []string // networks to attach
+	// NetworkMode is the container's network mode; "host" shares the node's network namespace and
+	// ignores Networks. Blank = Docker's default.
+	NetworkMode string
 	// NetworkAliases are DNS aliases applied on each attached network, giving
 	// the container a stable name the reverse proxy can target across deploys.
 	NetworkAliases []string

@@ -67,6 +67,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/managedcert"
 	"github.com/miabi-io/miabi/internal/services/marketplace"
 	marketremote "github.com/miabi-io/miabi/internal/services/marketplace/remote"
+	"github.com/miabi-io/miabi/internal/services/metadataguard"
 	mwservice "github.com/miabi-io/miabi/internal/services/middleware"
 	"github.com/miabi-io/miabi/internal/services/monitoring"
 	"github.com/miabi-io/miabi/internal/services/netalloc"
@@ -765,6 +766,21 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	nodeStatsService.SetImageResolver(imageResolver)
 	nodeStatsService.SetServers(serverRepo)
 	nodeStatsService.SetHostProc(cfg.HostProcPath)
+	metadataGuard := metadataguard.NewService(nodeClients, serverRepo, cfg.MetadataGuard)
+	metadataGuard.SetImageResolver(imageResolver)
+	nodeManager.SetOnConnect(metadataGuard.OnConnect)
+	if cronManager != nil {
+		if err := cronManager.RegisterTask("metadata_guard", 0, "Keep containers off the cloud metadata service", "@every 30m", func() error {
+			return metadataGuard.Sweep(context.Background())
+		}); err != nil {
+			logger.Warn("failed to register metadata guard task", "error", err)
+		}
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			_ = metadataGuard.Sweep(ctx)
+		}()
+	}
 	nodeStatsService.SetAgentStats(cfg.NodeStatsAgent)
 	// Storage classes decide WHERE on a node a volume's data lands. The built-in "default" class is
 	// seeded here so every install — and every pre-existing volume, which backfills to it — has one.
