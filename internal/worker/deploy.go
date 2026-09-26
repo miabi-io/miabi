@@ -18,6 +18,7 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/logstore"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/services/secpolicy"
 	"github.com/miabi-io/miabi/internal/runners"
 	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
@@ -54,6 +55,7 @@ type DeployHandler struct {
 	registries    *repositories.RegistryRepository
 	gitRepos      *repositories.GitRepoRepository
 	portBindings  *repositories.PortBindingRepository
+	portPolicy    PortPublishPolicy
 	volumes       *repositories.VolumeRepository
 	clients       NodeDocker
 	bus           *eventbus.Bus
@@ -94,6 +96,16 @@ type GPUScheduler interface {
 // SetGPU wires the GPU scheduler (optional). Without it, a GPU request on an app
 // is ignored at deploy (the request-time capability gate still applies).
 func (h *DeployHandler) SetGPU(g GPUScheduler) { h.gpu = g }
+
+// PortPublishPolicy re-checks approved host-port bindings at publish time. Satisfied by
+// *secpolicy.Service.
+type PortPublishPolicy interface {
+	CheckPortPublish(p secpolicy.PortPublish) secpolicy.PublishDecision
+}
+
+// SetPortPolicy wires the Security Center's deploy-time host-port check. Unset publishes every
+// approved binding on all interfaces, as Community does.
+func (h *DeployHandler) SetPortPolicy(p PortPublishPolicy) { h.portPolicy = p }
 
 // ErrGPUWithCluster and ErrGPUWithRestrictedProfile are the deploy-time refusals for GPU requests
 // that conflict with an incompatible runtime or security posture. Both fail the deploy clearly
@@ -526,10 +538,25 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 	// Publish admin-approved host port bindings. A canary shares the host with the stable container,
 	// so it must not re-publish the same host ports; the canary is reachable over the proxy weight only.
 	ports := map[string]string{}
+	portIPs := map[string]string{}
 	if h.portBindings != nil && !canary {
 		if approved, err := h.portBindings.ListApprovedByApp(app.ID); err == nil {
 			for _, b := range approved {
-				ports[fmt.Sprintf("%d/%s", b.ContainerPort, b.Protocol)] = fmt.Sprintf("%d", b.HostPort)
+				key := fmt.Sprintf("%d/%s", b.ContainerPort, b.Protocol)
+				if h.portPolicy != nil {
+					d := h.portPolicy.CheckPortPublish(secpolicy.PortPublish{
+						WorkspaceID: app.WorkspaceID, Binding: b,
+						Resource: fmt.Sprintf("app:%d %d/%s", app.ID, b.HostPort, b.Protocol),
+					})
+					if !d.Allowed {
+						h.log(dep, d.Reason)
+						continue
+					}
+					if d.BindAddress != "" {
+						portIPs[key] = d.BindAddress
+					}
+				}
+				ports[key] = fmt.Sprintf("%d", b.HostPort)
 			}
 		}
 	}
@@ -611,6 +638,7 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 		Binds:            rc.Binds,
 		Networks:         rc.Networks,
 		Ports:            ports,
+		PortBindIPs:      portIPs,
 		NetworkAliases:   []string{upstreamAlias}, // upstream alias for the proxy (stable or canary)
 		AliasesByNetwork: aliasesByNet,
 		MemoryBytes:      rc.MemoryBytes,

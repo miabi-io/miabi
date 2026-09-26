@@ -250,6 +250,7 @@ func runWorker() error {
 	registryDistributor.SetInternalNetwork(cfg.InternalNetwork)
 	registryDistributor.SetEntitlements(edition)
 	deployHandler.SetDistributor(registryDistributor)
+	wireDeployPortPolicy(deployHandler, db, edition, cfg)
 
 	volumeBackupSvc := volumebackup.NewService(repositories.NewVolumeBackupRepository(db), repositories.NewVolumeRepository(db), nodeClients, cfg.ProxyNetwork)
 	volumeBackupSvc.SetImageResolver(imageResolver) // honor admin override for the volume-bkup image

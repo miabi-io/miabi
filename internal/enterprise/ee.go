@@ -52,9 +52,10 @@ const (
 	FlagAdvancedCanary               = "advanced_canary"
 	FlagAnnouncements                = "announcements" // platform-wide announcements to user inboxes
 	FlagDatabaseSizes                = "database_sizes"
-	FlagStorageClasses               = "storage_classes" // admin-registered storage classes (bare-metal disks)
-	FlagRecoveryPoints               = "recovery_points" // recovery points over a database instance or a volume
-	FlagOrganizations                = "organizations"   // more than one organization (tenant realm)
+	FlagStorageClasses               = "storage_classes"   // admin-registered storage classes (bare-metal disks)
+	FlagRecoveryPoints               = "recovery_points"   // recovery points over a database instance or a volume
+	FlagOrganizations                = "organizations"     // more than one organization (tenant realm)
+	FlagSecurityPolicies             = "security_policies" // Security Center: scoped, audited platform security policies
 )
 
 // FlagInfo describes one entitlement flag for tooling and documentation.
@@ -95,6 +96,7 @@ var AllFlags = []FlagInfo{
 	{FlagStorageClasses, "register storage classes: volumes on operator-managed disks"},
 	{FlagRecoveryPoints, "recovery points: back up, schedule and verify a database instance or a volume as one sealed set"},
 	{FlagOrganizations, "organizations: tenant realms owning workspaces, with their own limits and clusters"},
+	{FlagSecurityPolicies, "Security Center: platform security policies with audit mode, scoped overrides and a decision log"},
 }
 
 const (

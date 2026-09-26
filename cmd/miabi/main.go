@@ -34,6 +34,8 @@ func main() {
 	// point. Also a host command — the machine it runs on has no Miabi yet.
 	registerRestoreCommands(cli)
 
+	registerAdminCommands(cli)
+
 	cli.DefaultCommand("server")
 
 	if err := cli.Execute(); err != nil {

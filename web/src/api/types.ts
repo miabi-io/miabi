@@ -1081,7 +1081,119 @@ export interface PortBinding {
   requested_by: number
   reviewed_by?: number
   review_note?: string
+  admin_adopted: boolean
   created_at: string
+}
+
+export type SecurityPolicyKind = 'ports' | 'admin_access'
+
+// AdminAccessSpec gates the platform console behind a second factor; durations are Go duration strings.
+export interface AdminAccessSpec {
+  v: 1
+  required: boolean
+  factors: 'totp'[]
+  ttl: string
+  idle_timeout: string
+  sensitive_window: string
+  max_attempts: number
+  lockout: string
+  allowed_ips?: string[]
+}
+export type SecurityScopeType = 'platform' | 'plan' | 'organization' | 'workspace'
+export type SecurityPolicyMode = 'off' | 'audit' | 'enforce'
+
+// SecurityPolicy is one rule at one scope; spec is the kind's JSON document as a string.
+export interface SecurityPolicy {
+  id: number
+  kind: SecurityPolicyKind
+  scope_type: SecurityScopeType
+  scope_id: number
+  mode: SecurityPolicyMode
+  allow_exceptions: boolean
+  spec: string
+  version: number
+  updated_by?: number
+  created_at: string
+  updated_at: string
+}
+
+export interface PortRange {
+  from: number
+  to: number
+  protocols?: ('tcp' | 'udp')[]
+}
+
+export type PortsSpecMode = 'approval' | 'auto_approve_in_range' | 'reject_all'
+export type PortsExisting = 'keep' | 'report' | 'revoke'
+
+export interface PortsSpec {
+  v: 1
+  mode: PortsSpecMode
+  allowed_ranges?: PortRange[]
+  bind_address?: string
+  // Absent means true: privileged workspaces skip the rule unless told otherwise.
+  privileged_bypass?: boolean
+  existing?: PortsExisting
+}
+
+export type ApprovedBinding = PortBinding & { app_name: string }
+
+export interface SecurityStatus {
+  entitled: boolean
+  mutable: boolean
+  enabled: boolean
+}
+
+export type SecurityDecision = 'deny' | 'would_deny' | 'change'
+
+export interface SecurityEventCount {
+  kind: string
+  decision: SecurityDecision
+  count: number
+}
+
+export interface SecurityOverview extends SecurityStatus {
+  events_24h: SecurityEventCount[]
+  privileged_workspaces: number
+  ports: {
+    policy?: SecurityPolicy
+    spec?: PortsSpec
+    approved: number
+    all_interfaces: number
+    pending: number
+    grandfathered: number
+    bindings?: ApprovedBinding[]
+  }
+}
+
+export interface SecurityEvent {
+  id: number
+  created_at: string
+  kind: 'ports' | 'policy'
+  action: string
+  decision: SecurityDecision
+  user_id?: number
+  workspace_id?: number
+  resource?: string
+  policy_id?: number
+  scope?: string
+  reason?: string
+}
+
+export interface SavePolicyInput {
+  kind: SecurityPolicyKind
+  scope_type: SecurityScopeType
+  scope_id: number
+  mode: SecurityPolicyMode
+  allow_exceptions: boolean
+  spec: string
+}
+
+export interface WorkspacePortPolicy {
+  requests_allowed: boolean
+  mode: string
+  auto_approve_ranges?: PortRange[]
+  reason?: string
 }
 
 export type AppStatus = 'created' | 'deploying' | 'running' | 'stopped' | 'failed'
@@ -3251,4 +3363,16 @@ export interface GrantedApp {
   elevated: boolean
   add_capabilities?: string[]
   devices?: string[]
+}
+
+export interface ElevationState {
+  required: boolean
+  active: boolean
+  has_two_factor: boolean
+  ip_allowed: boolean
+  expires_at?: string
+  idle_expires_at?: string
+  locked_until?: string
+  ttl_seconds: number
+  idle_seconds: number
 }

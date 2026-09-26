@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { useLicenseStore } from '@/stores/license'
 import { useBrandStore } from '@/stores/brand'
+import { useElevationStore } from '@/stores/elevation'
 import AnnouncementBanner from '@/components/AnnouncementBanner.vue'
 import ConsoleShell from './ConsoleShell.vue'
 import { adminNavSections } from '@/data/adminNav'
@@ -93,6 +94,20 @@ onBeforeUnmount(() => {
   // Leaving the console hands the title back to the router's own handling.
   brand.setTitle(route.meta.title as string | undefined)
 })
+
+const router = useRouter()
+const elevation = useElevationStore()
+const unlockedUntil = computed(() => {
+  const st = elevation.state
+  if (!st?.expires_at) return ''
+  return new Date(st.expires_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+})
+
+// Locking leaves the console: every admin page needs the unlock it just dropped.
+async function lockConsole() {
+  await elevation.lock()
+  await router.push({ name: 'dashboard' })
+}
 </script>
 
 <template>
@@ -100,6 +115,13 @@ onBeforeUnmount(() => {
     :home="ADMIN_HOME">
     <template #banners>
       <AnnouncementBanner />
+
+      <div v-if="elevation.state?.active" class="unlock-banner" :class="{ 'unlock-banner-warn': elevation.expiringSoon }">
+        <span class="mdi" :class="elevation.expiringSoon ? 'mdi-timer-sand' : 'mdi-lock-open-variant-outline'"></span>
+        <span>{{ elevation.expiringSoon ? $t('adminUnlock.expiringSoon') : $t('adminUnlock.unlockedUntil', { time: unlockedUntil }) }}</span>
+        <button v-if="elevation.expiringSoon" class="btn btn-sm btn-secondary" @click="elevation.requestUnlock()">{{ $t('adminUnlock.extend') }}</button>
+        <button class="btn btn-sm btn-ghost" @click="lockConsole">{{ $t('adminUnlock.lockNow') }}</button>
+      </div>
 
       <router-link v-if="licenseBanner" to="/admin/license" class="license-banner"
         :class="`license-banner-${licenseBanner.level}`">
@@ -261,5 +283,18 @@ onBeforeUnmount(() => {
     top: 8px;
     right: 8px;
   }
+}
+.unlock-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-primary);
+}
+.unlock-banner-warn {
+  color: var(--text-primary);
+  background: var(--warning-bg, rgba(245, 158, 11, 0.12));
 }
 </style>

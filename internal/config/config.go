@@ -165,6 +165,9 @@ type Config struct {
 	// SecurityPolicies is the Security Center kill switch: false ignores stored policies (Community
 	// behaviour) without deleting them. MIABI_SECURITY_POLICIES.
 	SecurityPolicies bool
+	// AdminUnlock is Community's switch for the admin console unlock (TOTP, default timings). The
+	// Enterprise admin_access policy supersedes it. MIABI_ADMIN_UNLOCK.
+	AdminUnlock bool
 	// KeyAutoRotate enables the per-workspace encryption-key auto-rotation cron;
 	// KeyRotateMonths is how old an active key may get before it is rotated
 	// (re-encrypting the workspace's secrets). Off by default.
@@ -624,6 +627,7 @@ func New() *Config {
 		CertRenewDays:              goutils.EnvInt("MIABI_CERT_RENEW_DAYS", 30),
 		KeyAutoRotate:              goutils.EnvBool("MIABI_KEY_AUTO_ROTATE", false),
 		SecurityPolicies:           goutils.EnvBool("MIABI_SECURITY_POLICIES", true),
+		AdminUnlock:                goutils.EnvBool("MIABI_ADMIN_UNLOCK", false),
 		KeyRotateMonths:            goutils.EnvInt("MIABI_KEY_ROTATE_MONTHS", 6),
 		ProxyNetwork:               goutils.Env("MIABI_PROXY_NETWORK", goutils.Env("MIABI_GOMA_NETWORK", "miabi")),
 		InternalNetwork:            goutils.Env("MIABI_INTERNAL_NETWORK", ""),

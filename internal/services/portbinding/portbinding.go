@@ -15,6 +15,7 @@ import (
 
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/services/secpolicy"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
@@ -29,7 +30,14 @@ var (
 	ErrHostPortRange  = errors.New("host port is outside the allowed range")
 	ErrHostPortTaken  = errors.New("host port is already in use")
 	ErrNotPending     = errors.New("binding is not pending review")
+	// ErrPolicyDenied is returned when the platform's host-port policy refuses a request.
+	ErrPolicyDenied = secpolicy.ErrPortsDenied
 )
+
+// Policy decides host-port requests against the Security Center. Satisfied by *secpolicy.Service.
+type Policy interface {
+	CheckPortRequest(req secpolicy.PortRequest) secpolicy.PortDecision
+}
 
 // DockerClients resolves a node's Docker client so host-port conflicts can be
 // checked against the ports actually published on the node — including
@@ -46,12 +54,32 @@ type Service struct {
 	docker     DockerClients
 	servers    ServerLister
 	notify     ReviewNotifier
+	policy     Policy
 	minPort    int
 	maxPort    int
 }
 
 func NewService(repo *repositories.PortBindingRepository, apps *repositories.ApplicationRepository, ports *repositories.AppPortRepository, workspaces *repositories.WorkspaceRepository, minPort, maxPort int) *Service {
 	return &Service{repo: repo, apps: apps, ports: ports, workspaces: workspaces, minPort: minPort, maxPort: maxPort}
+}
+
+// SetPolicy wires the Security Center host-port policy. Unset keeps Community behaviour.
+func (s *Service) SetPolicy(p Policy) { s.policy = p }
+
+// decide asks the policy about a request; with none wired, privileged workspaces skip review.
+func (s *Service) decide(b *models.PortBinding, userID uint, privileged bool, action string) secpolicy.PortDecision {
+	if s.policy == nil {
+		d := secpolicy.PortDecision{Allowed: true, AutoApprove: privileged}
+		if privileged {
+			d.AutoApproveNote = "Auto-approved (privileged workspace)"
+		}
+		return d
+	}
+	return s.policy.CheckPortRequest(secpolicy.PortRequest{
+		WorkspaceID: b.WorkspaceID, UserID: userID, HostPort: b.HostPort, Protocol: b.Protocol,
+		Privileged: privileged, Action: action,
+		Resource: fmt.Sprintf("app:%d %d/%s", b.ApplicationID, b.HostPort, b.Protocol),
+	})
 }
 
 // SetDocker wires the per-node Docker client registry so conflict checks also
@@ -82,13 +110,17 @@ func (s *Service) Request(workspaceID, userID uint, in RequestInput) (*models.Po
 	if err != nil {
 		return nil, err
 	}
+	dec := s.decide(b, userID, privileged, "request")
+	if !dec.Allowed {
+		return nil, ErrPolicyDenied
+	}
 
-	if privileged {
+	if dec.AutoApprove {
 		inUse, owner, cerr := s.hostPortConflict(b.ServerID, b.HostPort, b.Protocol, 0)
 		if cerr != nil {
 			return nil, cerr
 		}
-		if aerr := autoApprove(b, userID, inUse); aerr != nil {
+		if aerr := autoApprove(b, userID, inUse, dec.AutoApproveNote); aerr != nil {
 			if owner != "" {
 				return nil, fmt.Errorf("%w (in use by %s)", aerr, owner)
 			}
@@ -113,6 +145,11 @@ func (s *Service) RequestImport(workspaceID, userID uint, in RequestInput) (bind
 	if err != nil {
 		return nil, "", err
 	}
+	// A refusal skips this port in the import summary rather than failing the whole import.
+	dec := s.decide(b, userID, privileged, "import")
+	if !dec.Allowed {
+		return nil, "", ErrPolicyDenied
+	}
 	inUse, owner, cerr := s.hostPortConflict(b.ServerID, b.HostPort, b.Protocol, 0)
 	if cerr != nil {
 		return nil, "", cerr
@@ -121,8 +158,8 @@ func (s *Service) RequestImport(workspaceID, userID uint, in RequestInput) (bind
 	case inUse:
 		conflict = owner
 		b.ReviewNote = fmt.Sprintf("host port %d/%s already in use on the node by %s — remap or have an admin review", b.HostPort, b.Protocol, owner)
-	case privileged:
-		_ = autoApprove(b, userID, false)
+	case dec.AutoApprove:
+		_ = autoApprove(b, userID, false, dec.AutoApproveNote)
 	}
 	if err := s.repo.Create(b); err != nil {
 		return nil, "", err
@@ -321,16 +358,15 @@ func containerName(ct docker.Container) string {
 	return "another container"
 }
 
-// autoApprove marks a privileged workspace's binding approved, or returns
-// ErrHostPortTaken when the host port is already claimed. Pure (no DB) so it can
-// be unit-tested.
-func autoApprove(b *models.PortBinding, reviewer uint, hostPortInUse bool) error {
+// autoApprove marks a binding approved without review, or returns ErrHostPortTaken when the host
+// port is already claimed. Pure (no DB) so it can be unit-tested.
+func autoApprove(b *models.PortBinding, reviewer uint, hostPortInUse bool, note string) error {
 	if hostPortInUse {
 		return ErrHostPortTaken
 	}
 	b.Status = models.PortBindingApproved
 	b.ReviewedBy = &reviewer
-	b.ReviewNote = "Auto-approved (privileged workspace)"
+	b.ReviewNote = note
 	return nil
 }
 
@@ -440,4 +476,51 @@ func exposes(ports []models.AppPort, containerPort int, proto string) bool {
 		}
 	}
 	return false
+}
+
+// ApprovedBinding is a published binding with the app it belongs to, for the Security Center.
+type ApprovedBinding struct {
+	models.PortBinding
+	AppName string `json:"app_name"`
+}
+
+// ListApproved returns every approved binding with its app name.
+func (s *Service) ListApproved() ([]ApprovedBinding, error) {
+	list, err := s.repo.ListByStatus(models.PortBindingApproved)
+	if err != nil {
+		return nil, err
+	}
+	names := map[uint]string{}
+	out := make([]ApprovedBinding, 0, len(list))
+	for _, b := range list {
+		name, ok := names[b.ApplicationID]
+		if !ok {
+			if app, aerr := s.apps.FindByID(b.ApplicationID); aerr == nil {
+				name = app.Name
+			}
+			names[b.ApplicationID] = name
+		}
+		out = append(out, ApprovedBinding{PortBinding: b, AppName: name})
+	}
+	return out, nil
+}
+
+// RevokeApproved rejects every approved binding and flags each app for redeploy, which is when
+// the port stops being published. dryRun lists what would be revoked and changes nothing.
+func (s *Service) RevokeApproved(reviewerID uint, dryRun bool) ([]ApprovedBinding, error) {
+	list, err := s.ListApproved()
+	if err != nil || dryRun {
+		return list, err
+	}
+	for i := range list {
+		b := list[i].PortBinding
+		b.Status = models.PortBindingRejected
+		b.ReviewedBy = &reviewerID
+		b.ReviewNote = "Revoked by platform policy"
+		if err := s.repo.Update(&b); err != nil {
+			return list[:i], err
+		}
+		s.markAppRedeploy(b.ApplicationID)
+	}
+	return list, nil
 }

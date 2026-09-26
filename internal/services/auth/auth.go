@@ -416,3 +416,15 @@ func normalizeRecoveryCode(code string) string {
 	r := strings.NewReplacer("-", "", " ", "")
 	return strings.ToLower(strings.TrimSpace(r.Replace(code)))
 }
+
+// VerifySecondFactor checks a TOTP code, or consumes a recovery code, for a user with two-factor
+// enabled. Used by step-up checks such as the admin console unlock.
+func (s *Service) VerifySecondFactor(user *models.User, code string) error {
+	if !user.TwoFactorEnabled {
+		return ErrTwoFactorNotEnabled
+	}
+	if s.validateTOTP(user, code) || s.consumeRecoveryCode(user, code) {
+		return nil
+	}
+	return ErrInvalidTwoFactorCode
+}

@@ -14,7 +14,7 @@ import (
 func TestAutoApprove(t *testing.T) {
 	// Free host port → approved, reviewer + note set.
 	b := &models.PortBinding{Status: models.PortBindingPending, HostPort: 30080}
-	if err := autoApprove(b, 7, false); err != nil {
+	if err := autoApprove(b, 7, false, "Auto-approved (privileged workspace)"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if b.Status != models.PortBindingApproved {
@@ -29,7 +29,7 @@ func TestAutoApprove(t *testing.T) {
 
 	// Host port already taken → ErrHostPortTaken, status unchanged.
 	taken := &models.PortBinding{Status: models.PortBindingPending, HostPort: 30080}
-	if err := autoApprove(taken, 7, true); !errors.Is(err, ErrHostPortTaken) {
+	if err := autoApprove(taken, 7, true, "note"); !errors.Is(err, ErrHostPortTaken) {
 		t.Errorf("expected ErrHostPortTaken, got %v", err)
 	}
 	if taken.Status != models.PortBindingPending {

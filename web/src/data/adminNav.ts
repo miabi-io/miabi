@@ -43,7 +43,6 @@ export const adminNavSections: NavSection[] = [
     items: [
       { key: 'adminNav.infrastructure.clusters', name: 'Clusters', path: '/admin/clusters', icon: 'mdi-lan' },
       { key: 'adminNav.infrastructure.nodes', name: 'Nodes', path: '/admin/nodes', icon: 'mdi-server-network' },
-      { key: 'adminNav.infrastructure.ports', name: 'Ports', path: '/admin/ports', icon: 'mdi-lan-connect' },
       { key: 'adminNav.infrastructure.storageClasses', name: 'Storage classes', path: '/admin/storage-classes', icon: 'mdi-harddisk' },
       { key: 'adminNav.infrastructure.kernelGrants', name: 'Kernel grants', path: '/admin/grants', icon: 'mdi-shield-key-outline' },
       { key: 'adminNav.infrastructure.sharedRunners', name: 'Shared Runners', path: '/admin/runners', icon: 'mdi-cog-transfer-outline' },
@@ -65,6 +64,7 @@ export const adminNavSections: NavSection[] = [
     id: 'admin-platform',
     key: 'adminNav.platform.title', title: 'Platform',
     items: [
+      { key: 'adminNav.platform.security', name: 'Security', path: '/admin/security', icon: 'mdi-shield-lock-outline' },
       { key: 'adminNav.platform.platformSettings', name: 'Platform Settings', path: '/admin/settings', icon: 'mdi-cog-outline' },
       { key: 'adminNav.platform.branding', name: 'Branding', path: '/admin/branding', icon: 'mdi-palette-outline' },
       { key: 'adminNav.platform.deploymentConfig', name: 'Deployment Config', path: '/admin/deployment-config', icon: 'mdi-package-variant-closed' },
