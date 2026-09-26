@@ -220,15 +220,12 @@ func checkPoint(b *models.VolumeBackup, found bool, size int64, passphrase strin
 	res.EnvelopeOK = b.Envelope == ""
 	envelopeErr := ""
 	if b.Envelope != "" {
-		switch {
-		case passphrase == "":
+		if passphrase == "" {
 			envelopeErr = "encrypted, and no workspace backup passphrase is set to check it with"
-		default:
-			if _, err := dbenvelope.Open(b.Envelope, passphrase); err != nil {
-				envelopeErr = "the workspace passphrase no longer opens this recovery point"
-			} else {
-				res.EnvelopeOK = true
-			}
+		} else if _, err := dbenvelope.Open(b.Envelope, passphrase); err != nil {
+			envelopeErr = "the workspace passphrase no longer opens this recovery point"
+		} else {
+			res.EnvelopeOK = true
 		}
 	}
 	switch {
