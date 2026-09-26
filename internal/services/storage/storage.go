@@ -28,9 +28,12 @@ var ErrInvalidDriver = errors.New("invalid volume driver")
 // created without a backing device (the export/share path).
 var ErrDriverDeviceRequired = errors.New("shared volume requires a 'device' driver option (the NFS export or CIFS share)")
 
-// ErrVolumeShrink is returned when a declared capacity is lowered below what the volume already
-// holds on disk.
-var ErrVolumeShrink = errors.New("declared size is below the volume's measured usage")
+// ErrVolumeShrink refuses lowering a volume's declared capacity; ErrVolumeBelowUsage refuses a
+// capacity smaller than what the volume already holds on disk.
+var (
+	ErrVolumeShrink     = errors.New("a volume's capacity can only be expanded")
+	ErrVolumeBelowUsage = errors.New("declared size is below the volume's measured usage")
+)
 
 // ErrVolumeInUse is returned when deleting a volume still mounted by an app.
 var ErrVolumeInUse = errors.New("volume is in use by one or more applications; detach it first")
@@ -566,8 +569,8 @@ func (s *Service) Delete(ctx context.Context, v *models.Volume) error {
 
 // Resize changes a volume's DECLARED capacity. That number drives quota accounting and the UI, not
 // the filesystem: hard enforcement depends on the node's storage backend, so nothing on disk moves
-// and the engine's create-time size label keeps its original value. Shrinking below what the volume
-// already holds is refused — the number would be a lie the moment it was saved.
+// and the engine's create-time size label keeps its original value. Capacity only grows: a smaller
+// number, or one below what the volume already holds, is refused.
 func (s *Service) Resize(workspaceID, id uint, sizeBytes int64) error {
 	v, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -576,8 +579,11 @@ func (s *Service) Resize(workspaceID, id uint, sizeBytes int64) error {
 	if sizeBytes < 0 {
 		sizeBytes = 0
 	}
+	if v.SizeBytes > 0 && sizeBytes < v.SizeBytes {
+		return fmt.Errorf("%w: %s has %d bytes, %d requested", ErrVolumeShrink, v.Name, v.SizeBytes, sizeBytes)
+	}
 	if sizeBytes > 0 && sizeBytes < v.UsedBytes {
-		return fmt.Errorf("%w: %s already holds %d bytes", ErrVolumeShrink, v.Name, v.UsedBytes)
+		return fmt.Errorf("%w: %s already holds %d bytes", ErrVolumeBelowUsage, v.Name, v.UsedBytes)
 	}
 	if delta := sizeBytes - v.SizeBytes; delta > 0 && s.quota.Enabled() {
 		if err := s.quota.CheckStorageAdd(workspaceID, delta); err != nil {

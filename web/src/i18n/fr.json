@@ -1130,7 +1130,8 @@
         "deletePathFromThis": "Supprimer \"{path}\" de ce volume ? Cette action est irréversible.",
         "deleteTheBackupTaken": "Supprimer la sauvegarde prise {fmtTime} ? L’enregistrement de sauvegarde est retiré ; l’objet archive dans votre bucket S3 n’est pas supprimé.",
         "deleteVolumeNameThis": "Supprimer le volume \"{name}\" ? Ceci retire définitivement ses données et cette action est irréversible.",
-        "restoreNameFromThe": "Restaurer \"{name}\" depuis la sauvegarde prise {fmtTime} ? Ceci écrase le contenu actuel du volume et cette action est irréversible."
+        "restoreNameFromThe": "Restaurer \"{name}\" depuis la sauvegarde prise {fmtTime} ? Ceci écrase le contenu actuel du volume et cette action est irréversible.",
+        "expandVolume": "Étendre « {name} » de {from} à {to} ? La nouvelle capacité compte dans le quota de stockage de l’espace de travail et ne pourra plus être réduite."
       },
       "webhooks": {
         "deleteWebhookUrlDelivery": "Supprimer le webhook \"{url}\" ? L’historique des livraisons sera supprimé."
@@ -1241,7 +1242,8 @@
       "rotateEncryptionKey": "Faire tourner la clé de chiffrement",
       "runGarbageCollection": "Lancer le nettoyage",
       "tearDownGateway": "Démanteler la passerelle",
-      "testDnsProvider": "Tester le fournisseur DNS"
+      "testDnsProvider": "Tester le fournisseur DNS",
+      "expandVolume": "Étendre le volume"
     }
   },
   "count": {
@@ -2510,7 +2512,8 @@
       "deleted": "Volume supprimé",
       "fileDeleted": "Supprimé",
       "restored": "Volume restauré",
-      "uploaded": "{name} téléversé"
+      "uploaded": "{name} téléversé",
+      "expanded": "Volume étendu à {capacity}"
     },
     "volumes": {
       "created": "Volume créé"
@@ -3704,7 +3707,19 @@
       "pause": "Suspendre la planification",
       "resume": "Reprendre la planification",
       "deleteSchedule": "Supprimer la planification"
-    }
+    },
+    "notFound": "volume introuvable",
+    "ofCapacity": "sur {capacity}",
+    "measured": "mesuré {when}",
+    "notMeasuredYet": "pas encore mesuré",
+    "capacity": "Capacité",
+    "capacityCurrent": "Capacité actuelle : {capacity}",
+    "capacityUsed": "{used} utilisés",
+    "newCapacityMb": "Nouvelle capacité (Mo)",
+    "expand": "Étendre",
+    "expanding": "Extension…",
+    "expandHint": "La capacité ne peut qu’augmenter. Elle compte dans le quota de stockage de l’espace de travail ; l’application stricte dépend du backend de stockage du nœud.",
+    "noCapacity": "Ce volume a été créé sans capacité déclarée : il n’a pas de limite à étendre."
   },
   "webhooks": {
     "addAWebhook": "Ajouter un webhook",

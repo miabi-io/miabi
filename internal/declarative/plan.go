@@ -302,8 +302,9 @@ var optionalWhenUnsetByKind = map[Kind]map[string]bool{
 	KindDatabase: {"resources.memory": true, "resources.cpu": true, "resources.size": true},
 	// A manifest silent about the storage class takes this install's default, so the same repository
 	// stays portable across installs whose disks differ. Only a class named in the manifest is
-	// enforced — and then it is immutable, so it is refused rather than converged.
-	KindVolume: {"storage.class": true},
+	// enforced — and then it is immutable, so it is refused rather than converged. A silent size
+	// likewise leaves a capacity set or expanded in the console alone.
+	KindVolume: {"storage.class": true, "size": true},
 }
 
 // normalizedList compares a set the way the app service stores it, so CAP_NET_ADMIN in a manifest does not

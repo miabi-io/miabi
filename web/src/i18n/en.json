@@ -1130,7 +1130,8 @@
         "deletePathFromThis": "Delete \"{path}\" from this volume? This cannot be undone.",
         "deleteTheBackupTaken": "Delete the backup taken {fmtTime}? The backup record is removed; the archive object in your S3 bucket is not deleted.",
         "deleteVolumeNameThis": "Delete volume \"{name}\"? This permanently removes its data and cannot be undone.",
-        "restoreNameFromThe": "Restore \"{name}\" from the backup taken {fmtTime}? This overwrites the volume's current contents and cannot be undone."
+        "restoreNameFromThe": "Restore \"{name}\" from the backup taken {fmtTime}? This overwrites the volume's current contents and cannot be undone.",
+        "expandVolume": "Expand \"{name}\" from {from} to {to}? The new capacity counts against the workspace storage quota, and it cannot be reduced afterwards."
       },
       "webhooks": {
         "deleteWebhookUrlDelivery": "Delete webhook \"{url}\"? Delivery history will be removed."
@@ -1241,7 +1242,8 @@
       "rotateEncryptionKey": "Rotate encryption key",
       "runGarbageCollection": "Run garbage collection",
       "tearDownGateway": "Tear down gateway",
-      "testDnsProvider": "Test DNS provider"
+      "testDnsProvider": "Test DNS provider",
+      "expandVolume": "Expand volume"
     }
   },
   "count": {
@@ -2510,7 +2512,8 @@
       "deleted": "Volume deleted",
       "fileDeleted": "Deleted",
       "restored": "Volume restored",
-      "uploaded": "Uploaded {name}"
+      "uploaded": "Uploaded {name}",
+      "expanded": "Volume expanded to {capacity}"
     },
     "volumes": {
       "created": "Volume created"
@@ -3704,7 +3707,19 @@
       "pause": "Pause schedule",
       "resume": "Resume schedule",
       "deleteSchedule": "Delete schedule"
-    }
+    },
+    "notFound": "volume not found",
+    "ofCapacity": "of {capacity}",
+    "measured": "measured {when}",
+    "notMeasuredYet": "not measured yet",
+    "capacity": "Capacity",
+    "capacityCurrent": "Current capacity: {capacity}",
+    "capacityUsed": "{used} used",
+    "newCapacityMb": "New capacity (MB)",
+    "expand": "Expand",
+    "expanding": "Expanding…",
+    "expandHint": "Capacity can only grow. It counts against the workspace storage quota; hard enforcement depends on the node's storage backend.",
+    "noCapacity": "This volume was created without a declared capacity, so it has no limit to expand."
   },
   "webhooks": {
     "addAWebhook": "Add a webhook",

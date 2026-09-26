@@ -327,6 +327,15 @@ func (r *Router) volumeRoutes() []okapi.RouteDefinition {
 			Summary:     "Delete a volume",
 		},
 		{
+			Method:      http.MethodPost,
+			Path:        base + "/{volumeID}/expand",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     okapi.H(r.h.volume.Expand),
+			Summary:     "Expand a volume's declared capacity",
+			Request:     &handlers.VolumeExpandRequest{},
+		},
+		{
 			Method:      http.MethodGet,
 			Path:        base + "/{volumeID}/files",
 			Group:       g,
