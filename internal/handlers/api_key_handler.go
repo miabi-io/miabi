@@ -12,6 +12,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/auth"
+	"github.com/miabi-io/miabi/internal/services/elevation"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
@@ -19,7 +20,15 @@ type APIKeyHandler struct {
 	keys       *auth.APIKeyService
 	repo       *repositories.APIKeyRepository
 	workspaces *repositories.WorkspaceRepository
+	users      *repositories.UserRepository
+	gate       *elevation.Service
 	audit      *audit.Logger
+}
+
+// SetElevation requires a platform admin to hold a fresh console unlock before minting an
+// admin-scope key, which would otherwise be a way around the unlock.
+func (h *APIKeyHandler) SetElevation(users *repositories.UserRepository, gate *elevation.Service) {
+	h.users, h.gate = users, gate
 }
 
 func NewAPIKeyHandler(keys *auth.APIKeyService, repo *repositories.APIKeyRepository, workspaces *repositories.WorkspaceRepository, auditLog *audit.Logger) *APIKeyHandler {
@@ -65,6 +74,13 @@ func (h *APIKeyHandler) Create(c *okapi.Context, req *CreateAPIKeyRequest) error
 	if err != nil {
 		return c.AbortBadRequest("invalid scope", err)
 	}
+	if h.gate != nil && h.users != nil && req.Body.WorkspaceID == nil && grantsAdmin(scopes) {
+		if u, uerr := h.users.FindByID(userID); uerr == nil && u.Role == models.SystemRoleAdmin {
+			if ferr := middlewares.FreshUnlock(c, h.gate); ferr != nil {
+				return c.AbortForbidden(ferr.Error(), ferr)
+			}
+		}
+	}
 
 	var expiresAt *time.Time
 	if req.Body.ExpiresInDays != nil && *req.Body.ExpiresInDays > 0 {
@@ -91,6 +107,15 @@ func (h *APIKeyHandler) Create(c *okapi.Context, req *CreateAPIKeyRequest) error
 		ExpiresAt:   key.ExpiresAt,
 		Message:     "Save this key securely. It will not be shown again.",
 	})
+}
+
+func grantsAdmin(scopes []string) bool {
+	for _, s := range scopes {
+		if s == models.ScopeAdmin || s == models.ScopeAll {
+			return true
+		}
+	}
+	return false
 }
 
 // List returns the authenticated user's API keys (without secrets).

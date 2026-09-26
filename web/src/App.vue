@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useThemeStore } from '@/stores/theme'
 import { useNotificationStore } from '@/stores/notification'
+import AdminUnlockDialog from '@/components/AdminUnlockDialog.vue'
 
 useThemeStore() // apply theme on boot
 const notify = useNotificationStore()
@@ -9,6 +10,7 @@ const notify = useNotificationStore()
 <template>
   <div>
     <router-view />
+    <AdminUnlockDialog />
     <div class="toast-container" role="region" aria-label="Notifications" aria-live="polite">
       <div
         v-for="n in notify.notifications"

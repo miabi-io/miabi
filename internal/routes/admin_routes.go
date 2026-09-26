@@ -17,6 +17,7 @@ import (
 func (r *Router) adminRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/admin").WithTagInfo(okapi.GroupTag{Name: "Admin", Description: "Platform administration: users, settings, events, metrics, jobs."})
 	admin := []okapi.Middleware{r.authenticate, r.systemAdmin}
+	sensitive := []okapi.Middleware{r.authenticate, r.systemAdmin, r.freshElevation}
 
 	return []okapi.RouteDefinition{
 		{
@@ -808,7 +809,7 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Method:      http.MethodPost,
 			Path:        "/license",
 			Group:       g,
-			Middlewares: admin,
+			Middlewares: sensitive,
 			Handler:     okapi.H(r.h.license.Install),
 			Summary:     "Install a license token",
 			Request:     &handlers.InstallLicenseRequest{},
@@ -817,7 +818,7 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Method:      http.MethodDelete,
 			Path:        "/license",
 			Group:       g,
-			Middlewares: admin,
+			Middlewares: sensitive,
 			Handler:     r.h.license.Delete,
 			Summary:     "Remove the license (revert to Community)",
 			Response:    &dto.Response[dto.MessageData]{},
@@ -964,7 +965,7 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Method:      http.MethodDelete,
 			Path:        "/organizations/{id}",
 			Group:       g,
-			Middlewares: admin,
+			Middlewares: sensitive,
 			Handler:     r.h.adminOrganization.Delete,
 			Summary:     "Delete an empty organization",
 		},

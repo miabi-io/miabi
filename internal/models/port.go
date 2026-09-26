@@ -42,10 +42,13 @@ type PortBinding struct {
 	// ServerID is the node the host port is published on. Host ports are a
 	// per-host resource, so conflict checks + allocation are scoped to it
 	// (0 = the local/manager node). Backfilled from the owning app.
-	ServerID    uint      `json:"server_id" gorm:"index;not null;default:0"`
-	RequestedBy uint      `json:"requested_by"`
-	ReviewedBy  *uint     `json:"reviewed_by,omitempty"`
-	ReviewNote  string    `json:"review_note,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ServerID    uint   `json:"server_id" gorm:"index;not null;default:0"`
+	RequestedBy uint   `json:"requested_by"`
+	ReviewedBy  *uint  `json:"reviewed_by,omitempty"`
+	ReviewNote  string `json:"review_note,omitempty"`
+	// AdminAdopted marks a binding recorded when an admin imported a container that already
+	// published it. The host-port policy exempts these: the admin chose to adopt the port.
+	AdminAdopted bool      `json:"admin_adopted" gorm:"not null;default:false"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }

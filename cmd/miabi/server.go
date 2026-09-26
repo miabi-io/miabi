@@ -441,6 +441,7 @@ func runServer(cli *okapicli.CLI) {
 			registryDistributor.SetInternalNetwork(cfg.InternalNetwork)
 			registryDistributor.SetEntitlements(edition)
 			deployHandler.SetDistributor(registryDistributor)
+			wireDeployPortPolicy(deployHandler, res.db, edition, cfg)
 			volumeBackupSvc := volumebackup.NewService(repositories.NewVolumeBackupRepository(res.db), repositories.NewVolumeRepository(res.db), nodeClients, cfg.ProxyNetwork)
 			volumeBackupSvc.SetImageResolver(imageResolver) // honor admin override for the volume-bkup image
 			volumeBackupSvc.SetS3Provider(backupsettings.NewService(repositories.NewWorkspaceBackupSettingsRepository(res.db)))

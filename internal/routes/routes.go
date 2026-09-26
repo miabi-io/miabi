@@ -52,6 +52,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/dockerimport"
 	"github.com/miabi-io/miabi/internal/services/domain"
 	"github.com/miabi-io/miabi/internal/services/edgegateway"
+	"github.com/miabi-io/miabi/internal/services/elevation"
 	"github.com/miabi-io/miabi/internal/services/environment"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 	"github.com/miabi-io/miabi/internal/services/events"
@@ -92,6 +93,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/route"
 	"github.com/miabi-io/miabi/internal/services/runner"
 	"github.com/miabi-io/miabi/internal/services/search"
+	"github.com/miabi-io/miabi/internal/services/secpolicy"
 	"github.com/miabi-io/miabi/internal/services/secret"
 	"github.com/miabi-io/miabi/internal/services/session"
 	"github.com/miabi-io/miabi/internal/services/settings"
@@ -128,6 +130,8 @@ type Router struct {
 	// audit records scope violations so warn mode leaves evidence an operator can act on.
 	audit            *audit.Logger
 	systemAdmin      okapi.Middleware
+	systemAdminRole  okapi.Middleware
+	freshElevation   okapi.Middleware
 	authRateLimit    okapi.Middleware
 	ee               enterprise.EE
 	resourcePolicies *repositories.ResourcePolicyRepository
@@ -155,6 +159,8 @@ type routerHandlers struct {
 	dnsProvider     *handlers.DNSProviderHandler
 	middleware      *handlers.MiddlewareHandler
 	portBinding     *handlers.PortBindingHandler
+	security        *handlers.SecurityHandler
+	elevation       *handlers.ElevationHandler
 	capability      *handlers.CapabilityHandler
 	database        *handlers.DatabaseHandler
 	job             *handlers.JobHandler
@@ -464,13 +470,23 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Check host-port conflicts against ports actually published on the node
 	// (incl. non-Miabi containers), not just the binding table.
 	portBindingService.SetDocker(nodeClients)
+	securityService := secpolicy.NewService(repositories.NewSecurityPolicyRepository(db), workspaceRepo, ee, cfg.SecurityPolicies)
+	securityService.SetAudit(auditLogger)
+	securityService.SetRedis(redisClient)
+	go securityService.Listen(context.Background())
+	portBindingService.SetPolicy(securityService)
 	portBindingService.SetServers(serverRepo)
 	// A pending request nobody is told about waits until somebody thinks to look.
 	portBindingService.SetReviewNotifier(alerting.NewAdminNotifier(
 		userRepo, repositories.NewNotificationInboxRepository(db), bus))
+	elevationService := elevation.NewService(redisClient, securityService, authService, cfg.AdminUnlock)
+	elevationService.SetNotifier(alerting.NewAdminNotifier(userRepo, repositories.NewNotificationInboxRepository(db), bus))
+	apiKeyHandler := handlers.NewAPIKeyHandler(apiKeyService, apiKeyRepo, workspaceRepo, auditLogger)
+	apiKeyHandler.SetElevation(userRepo, elevationService)
 	stackService := stack.NewService(stackRepo, appRepo, stackEnvRepo, appEventRepo, appService, storageService, dockerClient, portBindingService)
 	stackService.SetAllocator(subnetAllocator)
 	dockerImportService := dockerimport.NewService(nodeClients, appService, stackService, appRepo, releaseRepo, deploymentRepo, volumeRepo, networkRepo, stackRepo, portBindingRepo)
+	dockerImportService.SetPortPolicy(securityService)
 	// Node housekeeping: reclaim disk + reconcile drift between Docker and the DB.
 	housekeepingService := housekeeping.NewService(nodeClients, appRepo, dbRepo, stackRepo, volumeRepo)
 	routeService := route.NewService(routeRepo, middlewareRepo, appRepo, releaseRepo, serverRepo, proxyMgr)
@@ -671,6 +687,17 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			}
 		}
 
+		// Decisions are also in the audit log, which has its own retention; this table only feeds the
+		// Security Center's recent-activity views.
+		if err := cronManager.RegisterTask("security_events_prune", 0, "Security Center event prune", "15 3 * * *", func() error {
+			n, err := securityService.PruneEvents(180 * 24 * time.Hour)
+			if err == nil && n > 0 {
+				logger.Info("pruned security events", "count", n)
+			}
+			return err
+		}); err != nil {
+			logger.Warn("failed to schedule the security event prune", "error", err)
+		}
 		if err := cronManager.RegisterTask("audit_prune", 0, "Audit log retention prune", "0 3 * * *", func() error {
 			days := settingsProvider.Int(settings.KeyAuditLogRetentionDays, 0)
 			if days <= 0 {
@@ -1193,12 +1220,14 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			SubnetPrefix:  cfg.NetworkSubnetPrefix,
 			ProxyNetwork:  cfg.ProxyNetwork,
 		},
-		v1:           app.Group("/api/v1"),
-		authenticate: middlewares.Authenticate(jwtAuth, apiKeyService, userRepo, appRepo),
-		scope:        middlewares.WorkspaceScope(workspaceRepo, customRoleRepo),
-		scopeMode:    middlewares.ParseScopeMode(cfg.APIKeyScopeEnforcement),
-		audit:        auditLogger,
-		systemAdmin:  middlewares.RequireSystemAdmin(userRepo),
+		v1:              app.Group("/api/v1"),
+		authenticate:    middlewares.Authenticate(jwtAuth, apiKeyService, userRepo, appRepo),
+		scope:           middlewares.WorkspaceScope(workspaceRepo, customRoleRepo),
+		scopeMode:       middlewares.ParseScopeMode(cfg.APIKeyScopeEnforcement),
+		audit:           auditLogger,
+		systemAdmin:     middlewares.RequireSystemAdmin(userRepo, elevationService),
+		systemAdminRole: middlewares.RequireSystemAdmin(userRepo, nil),
+		freshElevation:  middlewares.RequireFreshElevation(elevationService),
 		// Auth endpoints fall back to a local limiter if Redis is down (brute-force
 		// stays throttled); agent tunnels fail open (availability over throttling).
 		authRateLimit:       middlewares.RateLimit(redisClient, 10, time.Minute, true),
@@ -1209,7 +1238,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		h: routerHandlers{
 			health:          handlers.NewHealthHandler(db, redisClient, dockerClient),
 			auth:            handlers.NewAuthHandler(authService, userRepo, sessionRepo, auditLogger, settingsProvider, cfg.DevMode, cfg.PasswordResetEnabled),
-			apiKey:          handlers.NewAPIKeyHandler(apiKeyService, apiKeyRepo, workspaceRepo, auditLogger),
+			apiKey:          apiKeyHandler,
 			usage:           handlers.NewUsageHandler(quotaService, appRepo, dbRepo, volumeRepo, networkRepo, jobRepo, apiKeyRepo, workspaceRepo, repositories.NewRunnerRepository(db)),
 			workspace:       handlers.NewWorkspaceHandler(workspaceService, accountService, auditRepo, userRepo, auditLogger, ee),
 			location:        handlers.NewLocationHandler(placer, auditLogger),
@@ -1221,6 +1250,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			dnsProvider:     handlers.NewDNSProviderHandler(dnsProviderService, auditLogger),
 			middleware:      handlers.NewMiddlewareHandler(middlewareService, auditLogger),
 			portBinding:     handlers.NewPortBindingHandler(portBindingService, auditLogger),
+			security:        handlers.NewSecurityHandler(securityService, portBindingService, workspaceRepo, userRepo, ee),
+			elevation:       handlers.NewElevationHandler(elevationService, userRepo, auditLogger),
 			database:        handlers.NewDatabaseHandler(databaseService, appService, forwardService, secretService, userRepo, auditLogger, clusterService),
 			job:             handlers.NewJobHandler(jobService, auditLogger),
 			secret:          handlers.NewSecretHandler(secretService, auditLogger),
@@ -1574,6 +1605,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.register(r.databaseRoutes()...)
 	r.register(r.volumeRoutes()...)
 	r.register(r.volumeBackupRoutes()...)
+	r.register(r.securityRoutes()...)
 	r.register(r.backupRoutes()...)
 	r.register(r.workspaceBackupSettingsRoutes()...)
 	r.register(r.workspaceBundleRoutes()...)

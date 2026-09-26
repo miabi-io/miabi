@@ -8,6 +8,8 @@ import type { PortEntry, PortNodeOverview, PortOverview } from '@/api/types'
 // Host ports are a node-wide shared resource, so publishing one needs an admin's
 // approval. This is where that decision is made — and where the ports already
 // open on each node are visible, which the binding table alone cannot show.
+defineProps<{ embedded?: boolean }>()
+
 const notify = useNotificationStore()
 
 const overview = ref<PortOverview | null>(null)
@@ -109,7 +111,7 @@ const STATE_CLASS: Record<string, string> = {
 
 <template>
   <div>
-    <div class="page-header">
+    <div v-if="!embedded" class="page-header">
       <h1>Ports</h1>
       <button class="btn btn-secondary" :disabled="loading" @click="load">
         <span class="mdi" :class="loading ? 'mdi-loading mdi-spin' : 'mdi-refresh'"></span> Refresh

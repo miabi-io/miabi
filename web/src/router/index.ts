@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useElevationStore } from '@/stores/elevation'
 import { useBrandStore } from '@/stores/brand'
 
 const routes = [
@@ -108,7 +109,8 @@ const routes = [
       { path: 'clusters/:id', name: 'admin-cluster-detail', component: () => import('@/views/admin/ClusterDetail.vue'), meta: { title: 'Cluster', admin: true } },
       { path: 'nodes', name: 'admin-nodes', component: () => import('@/views/admin/Nodes.vue'), meta: { title: 'Nodes', admin: true } },
       { path: 'grants', name: 'admin-grants', component: () => import('@/views/admin/Grants.vue'), meta: { title: 'Kernel grants', admin: true } },
-      { path: 'ports', name: 'admin-ports', component: () => import('@/views/admin/Ports.vue'), meta: { title: 'Ports', admin: true } },
+      { path: 'ports', redirect: { name: 'admin-security', query: { tab: 'ports' } } },
+      { path: 'security', name: 'admin-security', component: () => import('@/views/admin/Security.vue'), meta: { title: 'Security Center', admin: true } },
       { path: 'runners', name: 'admin-runners', component: () => import('@/views/admin/Runners.vue'), meta: { title: 'Shared Runners', admin: true } },
       { path: 'runners/:id', name: 'admin-runner-detail', component: () => import('@/views/runners/RunnerDetail.vue'), meta: { title: 'Runner', admin: true } },
       { path: 'nodes/:id', name: 'admin-node-detail', component: () => import('@/views/admin/NodeDetail.vue'), meta: { title: 'Node', admin: true } },
@@ -144,7 +146,7 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to, from) => {
   const auth = useAuthStore()
   // A pending forced password change holds only a short-lived reset token (no
   // session): the change-password screen is the only route reachable until it's
@@ -156,6 +158,10 @@ router.beforeEach((to) => {
   if (to.meta.auth && !auth.isAuthenticated) return { name: 'login' }
   if (to.meta.guest && auth.isAuthenticated) return { name: 'dashboard' }
   if (to.meta.admin && !auth.isAdmin) return { name: 'dashboard' }
+  if (to.meta.admin && !(await useElevationStore().ensure())) {
+    // Declined the unlock: stay where they were, or land on the workspace side on a fresh load.
+    return from.name ? false : { name: 'dashboard' }
+  }
   useBrandStore().setTitle(to.meta.title as string | undefined)
   return true
 })

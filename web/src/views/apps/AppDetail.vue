@@ -32,7 +32,7 @@ import EnvVarModal from '@/components/EnvVarModal.vue'
 import RouteFormModal from '@/components/RouteFormModal.vue'
 import CanaryPanel from '@/components/CanaryPanel.vue'
 import AppAccessPanel from '@/components/AppAccessPanel.vue'
-import type { Application, AppOverview, Deployment, Release, AppEnvVar, Route, Network, Stack, Volume, StatsSample, Registry, GitRepository, AppEvent, AppPort, LastDeploy, PortBinding, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, ReconcilePolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, DatabaseInstance, LogicalDatabase, NodePlacement, PipelineDefinition, CapabilityCatalog } from '@/api/types'
+import type { Application, AppOverview, Deployment, Release, AppEnvVar, Route, Network, Stack, Volume, StatsSample, Registry, GitRepository, AppEvent, AppPort, LastDeploy, PortBinding, WorkspacePortPolicy, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, ReconcilePolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, DatabaseInstance, LogicalDatabase, NodePlacement, PipelineDefinition, CapabilityCatalog } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 import { fmtSize } from '@/utils/format'
 import { copyText } from '@/utils/clipboard'
@@ -405,6 +405,22 @@ async function loadBindings() {
   try {
     appBindings.value = (await portBindingApi.listByApp(wid.value, appId.value)).data.data ?? []
   } catch { /* the strategy guard just stays off */ }
+}
+const portPolicy = ref<WorkspacePortPolicy | null>(null)
+const bindBlocked = computed(() => portPolicy.value?.requests_allowed === false)
+const bindBlockedReason = computed(() => bindBlocked.value ? (portPolicy.value?.reason || t('appDetail.ports.policyBlocked')) : '')
+const autoApproveRanges = computed(() =>
+  portPolicy.value?.mode === 'auto_approve_in_range'
+    ? (portPolicy.value.auto_approve_ranges ?? [])
+        .map((r) => `${r.from === r.to ? r.from : `${r.from}–${r.to}`}${r.protocols?.length ? `/${r.protocols.join('+')}` : ''}`)
+        .join(', ')
+    : '',
+)
+async function loadPortPolicy() {
+  if (!wid.value) return
+  try {
+    portPolicy.value = (await portBindingApi.portPolicy(wid.value)).data.data ?? null
+  } catch { portPolicy.value = null }
 }
 const showBindReq = ref(false)
 const requestingBind = ref(false)
@@ -987,7 +1003,7 @@ async function loadTab() {
     }
     else if (tab.value === 'environment') { envVars.value = (await appApi.envVars(wid.value, appId.value)).data.data ?? []; revealedEnv.value = {} }
     else if (tab.value === 'routes') appRoutes.value = (await routeApi.listByApp(wid.value, appId.value)).data.data ?? []
-    else if (tab.value === 'ports') appBindings.value = (await portBindingApi.listByApp(wid.value, appId.value)).data.data ?? []
+    else if (tab.value === 'ports') { loadPortPolicy(); appBindings.value = (await portBindingApi.listByApp(wid.value, appId.value)).data.data ?? [] }
     else if (tab.value === 'volumes') { volumes.value = (await volumeApi.list(wid.value)).data.data ?? []; await loadHostPresets() }
     else if (tab.value === 'databases') appDatabases.value = (await appApi.databases(wid.value, appId.value)).data.data ?? []
     else if (tab.value === 'releases') releases.value = (await appApi.releases(wid.value, appId.value)).data.data ?? []
@@ -1231,6 +1247,8 @@ async function requestBind() {
     }
   } catch (e) {
     notify.apiError(e, 'Failed to request binding')
+    // A refusal may mean the platform rule changed since the tab loaded.
+    loadPortPolicy()
   } finally {
     requestingBind.value = false
   }
@@ -2737,7 +2755,7 @@ async function detachDatabase(d: AppDatabase) {
                 <td class="cell-sub">{{ p.scheme || 'http' }}</td>
                 <td class="cell-sub">{{ p.name || '—' }}</td>
                 <td class="text-right table-actions">
-                  <button v-if="ws.canEdit" class="btn btn-sm btn-secondary" @click="openBindReq(p)">{{ $t('appDetail.requestHostBinding') }}</button>
+                  <button v-if="ws.canEdit" class="btn btn-sm btn-secondary" :disabled="bindBlocked" :title="bindBlockedReason" @click="openBindReq(p)">{{ $t('appDetail.requestHostBinding') }}</button>
                   <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('apps.form.removePort')" :aria-label="$t('apps.form.removePort')" @click="removeContainerPort(p)"><span class="mdi mdi-delete-outline"></span></button>
                 </td>
               </tr>
@@ -2749,8 +2767,15 @@ async function detachDatabase(d: AppDatabase) {
       <div class="card">
         <div class="card-header">
           <h2>{{ $t('appDetail.hostPortBindings') }}</h2>
-          <button v-if="ws.canEdit" class="btn btn-ghost btn-sm" @click="openBindReq()"><span class="mdi mdi-plus"></span>{{ $t('appDetail.requestBinding') }}</button>
+          <button v-if="ws.canEdit && !bindBlocked" class="btn btn-ghost btn-sm" @click="openBindReq()"><span class="mdi mdi-plus"></span>{{ $t('appDetail.requestBinding') }}</button>
         </div>
+        <div v-if="bindBlocked" class="card-body">
+          <div class="app-banner app-banner--warning">
+            <span class="mdi mdi-shield-lock-outline app-banner-icon"></span>
+            <div class="app-banner-content"><p class="app-banner-text">{{ bindBlockedReason }}</p></div>
+          </div>
+        </div>
+        <p v-else-if="autoApproveRanges" class="card-body form-hint">{{ $t('appDetail.ports.autoApproveHint', { ranges: autoApproveRanges }) }}</p>
         <div v-if="appBindings.length === 0" class="empty-state">
           <span class="mdi mdi-swap-horizontal" style="font-size: 36px; color: var(--text-muted)"></span>
           <p>{{ $t('appDetail.ports.noBindings') }}</p>
@@ -3894,10 +3919,11 @@ async function detachDatabase(d: AppDatabase) {
               </div>
             </div>
             <p class="form-hint">{{ $t('appDetail.ports.suggestHint') }}</p>
+            <p v-if="autoApproveRanges" class="form-hint">{{ $t('appDetail.ports.autoApproveHint', { ranges: autoApproveRanges }) }}</p>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showBindReq = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="requestingBind || !bindForm.host_port">{{ requestingBind ? 'Requesting…' : 'Request' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="requestingBind || !bindForm.host_port || bindBlocked" :title="bindBlockedReason">{{ requestingBind ? 'Requesting…' : 'Request' }}</button>
           </div>
         </form>
       </AppModal>

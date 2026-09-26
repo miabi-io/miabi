@@ -100,7 +100,6 @@
       "containerRegistry": "Container Registry",
       "kernelGrants": "Kernel grants",
       "nodes": "Nodes",
-      "ports": "Ports",
       "sharedRunners": "Shared Runners",
       "storageClasses": "Storage classes",
       "title": "Infrastructure"
@@ -122,7 +121,8 @@
       "deploymentConfig": "Deployment Config",
       "platformBackup": "Platform Backup",
       "platformSettings": "Platform Settings",
-      "title": "Platform"
+      "title": "Platform",
+      "security": "Security"
     },
     "tenants": {
       "announcements": "Announcements",
@@ -515,7 +515,9 @@
       "noBindings": "No host bindings. Requests require admin approval before they publish.",
       "releasePort": "Release host port",
       "schemeHint": "Application protocol the container speaks on this port",
-      "suggestHint": "Host ports are shared per node — “Suggest” picks one that’s currently free."
+      "suggestHint": "Host ports are shared per node — “Suggest” picks one that’s currently free.",
+      "policyBlocked": "Host ports are disabled by platform policy",
+      "autoApproveHint": "Requests in {ranges} are approved automatically."
     },
     "processes": "Processes",
     "promote": "Promote",
@@ -3297,7 +3299,184 @@
     "twoFactorAuthentication": "Two-factor authentication",
     "twoFactorHint": "Add an extra layer of security to your account by requiring a time-based code from an authenticator app (Google Authenticator, 1Password, Authy…) in addition to your password.",
     "twoFactorOn": "Two-factor authentication is on.",
-    "verificationCode": "Verification code"
+    "verificationCode": "Verification code",
+    "center": {
+      "title": "Security Center",
+      "subtitle": "Platform-wide rules for what workspaces may expose, and a log of every decision they make.",
+      "refresh": "Refresh",
+      "tab": {
+        "overview": "Overview",
+        "ports": "Host ports",
+        "events": "Events",
+        "adminAccess": "Admin access"
+      },
+      "upgradeHint": "Security policies are an Enterprise feature. Posture and the decision log stay visible; saving a policy needs a licence.",
+      "manageLicense": "Manage license",
+      "lockedEnterprise": "Requires an Enterprise licence",
+      "lockedFrozen": "Licence expired: policies still apply, editing is frozen",
+      "killSwitchTitle": "Security policies are switched off",
+      "killSwitchText": "MIABI_SECURITY_POLICIES=off is set on the server, so stored policies are ignored: nothing is enforced or audited.",
+      "posture": "Posture",
+      "last24h": "Last 24 hours",
+      "noEvents24h": "No policy decisions in the last 24 hours.",
+      "review": "Review",
+      "check": {
+        "noPolicy": "No host-port policy: every request waits for an admin's approval.",
+        "policy": "Host-port policy: {mode}, {spec}",
+        "allInterfaces": "{n} host port published on all interfaces | {n} host ports published on all interfaces",
+        "bound": "Approved host ports publish on {address} only",
+        "noApproved": "No approved host ports",
+        "privileged": "{n} privileged workspace | {n} privileged workspaces",
+        "noPrivileged": "No privileged workspaces",
+        "pending": "{n} host-port request awaiting review | {n} host-port requests awaiting review",
+        "noPending": "No host-port requests awaiting review",
+        "grandfathered": "{n} host port approved before reject_all is still published | {n} host ports approved before reject_all are still published",
+        "unlock": "Admin console unlock: {state}",
+        "unlockState": {
+          "off": "off",
+          "community": "Community TOTP",
+          "policy": "enforced by policy"
+        }
+      },
+      "bindingsTitle": "Approved host ports",
+      "bindingsHint": "Listed because the platform rule reports or revokes existing bindings.",
+      "adopted": "Adopted by admin",
+      "adoptedHint": "Recorded when an admin imported a container that already published this port.",
+      "col": {
+        "kind": "Kind",
+        "decision": "Decision",
+        "count": "Count",
+        "app": "Application",
+        "hostPort": "Host port",
+        "workspace": "Workspace",
+        "scope": "Scope",
+        "mode": "Mode",
+        "rule": "Rule",
+        "time": "Time",
+        "action": "Action",
+        "resource": "Resource",
+        "reason": "Reason"
+      },
+      "mode": {
+        "off": "Off",
+        "audit": "Audit",
+        "enforce": "Enforce"
+      },
+      "modeHint": {
+        "off": "The rule is stored but not evaluated.",
+        "audit": "Audit records what would be denied, without denying anything.",
+        "enforce": "Requests the rule forbids are denied."
+      },
+      "specMode": {
+        "approval": "Approval",
+        "auto_approve_in_range": "Auto-approve in range",
+        "reject_all": "Reject all"
+      },
+      "specHint": {
+        "approval": "Every request waits for an admin in the approval queue below.",
+        "auto_approve_in_range": "Requests inside an allowed range are approved at once; the rest wait for review.",
+        "reject_all": "No new host port can be requested."
+      },
+      "boundTo": "bound to {address}",
+      "noBypass": "no privileged bypass",
+      "policyTitle": "Platform host-port rule",
+      "version": "Version {v}, updated {when}",
+      "notSet": "Not set yet: saving creates it.",
+      "enforcement": "Enforcement",
+      "requests": "Requests",
+      "ranges": "Allowed ranges",
+      "from": "From",
+      "to": "To",
+      "addRange": "Add range",
+      "removeRange": "Remove range",
+      "noRanges": "Add at least one range to auto-approve.",
+      "bindAddress": "Bind address",
+      "bindAddressHint": "Publish approved ports on this address only, which closes publishing on 0.0.0.0. Leave empty for every interface.",
+      "existing": "Existing host ports",
+      "existingMode": {
+        "keep": "Keep",
+        "report": "Report",
+        "revoke": "Revoke"
+      },
+      "existingHint": "What happens to host ports approved before a reject_all rule: keep them, list them on the Overview, or allow revoking them.",
+      "privilegedBypass": "Privileged workspaces bypass this rule",
+      "allowExceptions": "Allow narrower scopes to loosen this rule",
+      "allowExceptionsHint": "When off, plan, organization and workspace overrides may only tighten it.",
+      "save": "Save rule",
+      "saving": "Saving…",
+      "saved": "Host-port rule saved",
+      "overridesTitle": "Overrides",
+      "overridesHint": "Rules for one plan, organization or workspace. The narrowest scope wins.",
+      "noOverrides": "No overrides.",
+      "scope": {
+        "platform": "Platform",
+        "plan": "Plan",
+        "organization": "Organization",
+        "workspace": "Workspace"
+      },
+      "scopeId": "ID",
+      "addOverride": "Add override",
+      "overrideSaved": "Override saved",
+      "overrideDeleted": "Override deleted",
+      "deleteOverride": "Delete override",
+      "deleteOverrideTitle": "Delete this override?",
+      "deleteOverrideMessage": "{scope} falls back to the broader rule.",
+      "revoke": "Revoke",
+      "revokeTitle": "Revoke existing host ports",
+      "revokeHint": "Every approved host-port binding below is rejected.",
+      "revokeConfirmTitle": "Revoke {n} host port? | Revoke {n} host ports?",
+      "revokeNone": "No approved host ports to revoke.",
+      "revoked": "{n} host port revoked | {n} host ports revoked",
+      "queueTitle": "Approval queue",
+      "allKinds": "All kinds",
+      "allDecisions": "All decisions",
+      "kind": {
+        "ports": "Host ports",
+        "policy": "Policy"
+      },
+      "decision": {
+        "deny": "Denied",
+        "would_deny": "Would deny",
+        "change": "Change"
+      },
+      "export": "Export CSV",
+      "loadMore": "Load more",
+      "noEvents": "No policy decisions recorded.",
+      "admin": {
+        "howTitle": "How the admin console unlock works",
+        "howSignIn": "Signing in gives access to the workspace side. The platform console additionally asks for a TOTP code, then stays unlocked for the TTL (or until the idle timeout passes without activity).",
+        "howSensitive": "Sensitive actions (the licence, security policies, deleting an organization) need an unlock younger than the sensitive window, so an older one asks for the code again.",
+        "howApiKeys": "Admin API keys don't need the code, but they are subject to the allowed IPs.",
+        "howThreats": "It protects against an unattended browser, a stolen session cookie or a phished password. It does not protect against XSS on the same origin.",
+        "howCommunity": "Without Enterprise, Community can turn on the TOTP unlock with the default timings by setting MIABI_ADMIN_UNLOCK=true.",
+        "policyTitle": "Platform admin access rule",
+        "notSet": "Not set: Community behaviour applies. Saving creates the rule.",
+        "noAudit": "Audit mode does not apply to admin access: the rule is either off or enforced.",
+        "required": "Require a second factor to unlock the platform console",
+        "factors": "Factors",
+        "factor": {
+          "totp": "Authenticator code (TOTP)",
+          "passkey": "Passkey",
+          "pin": "PIN",
+          "sso": "SSO step-up"
+        },
+        "notAvailable": "not available yet",
+        "ttl": "Unlock lasts",
+        "idle": "Idle timeout",
+        "sensitive": "Sensitive window",
+        "attempts": "Max attempts",
+        "lockout": "Lockout",
+        "allowedIps": "Allowed IPs",
+        "allowedIpsHint": "One IP or CIDR per line; empty allows any. This uses the client IP Miabi resolves: make sure trusted proxies are configured, or you can lock yourself out.",
+        "idleExceedsTtl": "The idle timeout cannot be longer than the unlock duration.",
+        "attemptsRange": "Max attempts must be between 1 and 50.",
+        "saved": "Admin access rule saved",
+        "deleted": "Admin access rule removed",
+        "delete": "Remove rule",
+        "deleteTitle": "Remove the admin access rule?",
+        "deleteMessage": "The console falls back to Community behaviour: the unlock applies only when MIABI_ADMIN_UNLOCK=true."
+      }
+    }
   },
   "shell": {
     "close": "Close",
@@ -3689,5 +3868,21 @@
     "volumeBackupPath": "Volume backup path",
     "workspaces": "Workspaces",
     "yourOrganization": "Your organization"
+  },
+  "adminUnlock": {
+    "title": "Unlock the admin console",
+    "hint": "Enter the code from your authenticator app to open the platform console. It stays unlocked for a while, then asks again.",
+    "staleHint": "This action needs a recent unlock. Enter a fresh code from your authenticator app.",
+    "codeLabel": "Authentication code",
+    "recoveryHint": "Lost your device? A recovery code works here too.",
+    "setupNeeded": "The admin console requires two-factor authentication, and your account doesn't have it yet. Set it up under Account → Security, then come back.",
+    "setUp": "Set up two-factor",
+    "unlock": "Unlock",
+    "unlocking": "Unlocking…",
+    "locked": "Too many wrong codes. The unlock is locked until {until}; your account is not.",
+    "expiringSoon": "The admin console locks in about a minute.",
+    "unlockedUntil": "Admin console unlocked until {time}",
+    "extend": "Extend",
+    "lockNow": "Lock now"
   }
 }

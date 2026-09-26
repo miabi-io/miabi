@@ -3,6 +3,7 @@ import type {
   ApiResponse, DatabaseInstance, DatabaseSizeOffer, DBLiveStatus, LogicalDatabase, ConnectionInfo, ForwardSession, DBEngine, EngineDefault, UpgradeOptions, UpgradePlan,
   Volume, VolumeDetail, VolumeFile, VolumeBackup, VolumeBackupStatus, VolumeBackupSchedule, WorkspaceStorage, StorageClassOption, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, BackupSetsResponse, DiscoveredSet, AdoptResult, SetRestoreResult, VerifyResult, AccentCode, AccentPolicy, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput,
   Member, Invitation, AuditLog, AuditLogDetail, RecentEvent, PageableResponse, Job, CronJob, WorkspaceUsage, WorkspaceLiveSample, WorkspaceHistoryPoint,
+  SecurityStatus, SecurityOverview, SecurityPolicy, SavePolicyInput, SecurityEvent, ApprovedBinding,
 } from './types'
 
 const w = (ws: number) => `/workspaces/${ws}`
@@ -306,4 +307,33 @@ export const brandingApi = {
   },
   deleteAsset: (slot: BrandAssetSlot) =>
     api.delete<ApiResponse<BrandingSettings>>(`/admin/branding/assets/${slot}`),
+}
+
+export interface SecurityEventFilter {
+  kind?: string
+  decision?: string
+  workspace_id?: number
+  before?: number
+  limit?: number
+}
+
+function eventQuery(f: SecurityEventFilter): string {
+  const q = new URLSearchParams()
+  for (const [k, v] of Object.entries(f)) if (v !== undefined && v !== '' && v !== 0) q.set(k, String(v))
+  const s = q.toString()
+  return s ? `?${s}` : ''
+}
+
+// Security Center (platform admin).
+export const securityApi = {
+  status: () => api.get<ApiResponse<SecurityStatus>>('/admin/security/status'),
+  overview: () => api.get<ApiResponse<SecurityOverview>>('/admin/security/overview'),
+  policies: () => api.get<ApiResponse<SecurityPolicy[]>>('/admin/security/policies'),
+  savePolicy: (input: SavePolicyInput) => api.put<ApiResponse<SecurityPolicy>>('/admin/security/policies', input),
+  deletePolicy: (id: number) => api.delete<ApiResponse<{ deleted: boolean }>>(`/admin/security/policies/${id}`),
+  revokePorts: (dryRun: boolean) =>
+    api.post<ApiResponse<{ dry_run: boolean; bindings: ApprovedBinding[] | null }>>('/admin/security/ports/revoke', { dry_run: dryRun }),
+  events: (f: SecurityEventFilter = {}) => api.get<ApiResponse<SecurityEvent[]>>(`/admin/security/events${eventQuery(f)}`),
+  exportEvents: (f: Pick<SecurityEventFilter, 'kind' | 'decision'> = {}) =>
+    api.get<Blob>(`/admin/security/events/export${eventQuery(f)}`, { responseType: 'blob' }),
 }

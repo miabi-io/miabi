@@ -1,5 +1,5 @@
 import api from './client'
-import type { ApiResponse, PortBinding, PortBindingStatus, PortOverview } from './types'
+import type { ApiResponse, PortBinding, PortBindingStatus, PortOverview, WorkspacePortPolicy } from './types'
 
 export interface PortBindingRequest {
   application_id: number
@@ -18,6 +18,7 @@ export const portBindingApi = {
   suggest: (ws: number, appId: number, protocol: 'tcp' | 'udp' = 'tcp', preferred = 0) =>
     api.get<ApiResponse<{ host_port: number }>>(`${base(ws)}/suggest?application_id=${appId}&protocol=${protocol}&preferred=${preferred}`),
   cancel: (ws: number, id: number) => api.delete<ApiResponse<{ message: string }>>(`${base(ws)}/${id}`),
+  portPolicy: (ws: number) => api.get<ApiResponse<WorkspacePortPolicy>>(`/workspaces/${ws}/port-policy`),
 
   // Platform-admin review queue.
   overview: () => api.get<ApiResponse<PortOverview>>('/system/ports'),

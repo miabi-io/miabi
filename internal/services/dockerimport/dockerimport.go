@@ -17,6 +17,7 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/application"
+	"github.com/miabi-io/miabi/internal/services/secpolicy"
 	"github.com/miabi-io/miabi/internal/services/stack"
 	"github.com/miabi-io/miabi/internal/slug"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
@@ -45,8 +46,18 @@ type Service struct {
 	networks     *repositories.NetworkRepository
 	stackRepo    *repositories.StackRepository
 	portBindings *repositories.PortBindingRepository
+	portPolicy   PortsPolicy
 	now          func() time.Time
 }
+
+// PortsPolicy tells an import whether the platform's host-port policy would have denied the ports
+// it adopts. Satisfied by *secpolicy.Service.
+type PortsPolicy interface {
+	PortsView(workspaceID uint) secpolicy.PortsPolicyView
+}
+
+// SetPortPolicy wires the host-port policy, used only to warn: admin import is exempt.
+func (s *Service) SetPortPolicy(p PortsPolicy) { s.portPolicy = p }
 
 func NewService(
 	clients Clients,
@@ -510,16 +521,18 @@ func (s *Service) importContainer(ctx context.Context, actorID, wsID, serverID u
 
 	// Published host ports already serve traffic, so record them as approved
 	// PortBindings (not pending) to reflect reality.
+	adoptedPorts := 0
 	for _, p := range cfg.Ports {
 		if p.HostPort <= 0 {
 			continue
 		}
+		adoptedPorts++
 		reviewer := actorID
 		_ = s.portBindings.Create(&models.PortBinding{
 			WorkspaceID: wsID, ApplicationID: app.ID,
 			ContainerPort: p.ContainerPort, Protocol: p.Protocol, HostPort: p.HostPort,
 			Status: models.PortBindingApproved, RequestedBy: actorID, ReviewedBy: &reviewer,
-			ReviewNote: "imported (already published)",
+			ReviewNote: "imported (already published)", AdminAdopted: true,
 		})
 	}
 
@@ -555,6 +568,13 @@ func (s *Service) importContainer(ctx context.Context, actorID, wsID, serverID u
 
 	r.Status, r.AppID = statusImported, app.ID
 	r.Message = "adopted (running)"
+	warning := ""
+	if adoptedPorts > 0 && s.portPolicy != nil {
+		if v := s.portPolicy.PortsView(wsID); !v.RequestsAllowed {
+			warning = fmt.Sprintf(" — warning: %d host port(s) adopted although the platform policy would deny them (%s)", adoptedPorts, v.Reason)
+		}
+	}
+	defer func() { r.Message += warning }()
 
 	// Reconcile-now: enqueue a native deploy that retires the adopted container
 	// (the active release) and replaces it under Miabi conventions.

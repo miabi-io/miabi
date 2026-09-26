@@ -1,6 +1,13 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
+import { useElevationStore, ELEVATION_CODES, type ElevationCode } from '@/stores/elevation'
 import { t } from '@/i18n'
+
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    _elevationRetry?: boolean
+  }
+}
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
@@ -12,7 +19,18 @@ const api = axios.create({
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const code = error.response?.data?.error?.code
+    const cfg = error.config
+    // A locked admin console answers 403 with a code, never 401 (which signs the user out). Ask for
+    // the unlock and replay the request once, so nothing the admin was doing is lost.
+    if (error.response?.status === 403 && (ELEVATION_CODES as readonly string[]).includes(code)
+      && cfg && !cfg._elevationRetry && !String(cfg.url ?? '').includes('/admin/elevat')) {
+      const ok = await useElevationStore().requestUnlock(code as ElevationCode)
+      if (ok && code !== 'ADMIN_2FA_SETUP_REQUIRED') {
+        return api({ ...cfg, _elevationRetry: true })
+      }
+    }
     if (error.response?.status === 401) {
       const auth = useAuthStore()
       // Clear local state only — never call logout() here: it POSTs /auth/logout,

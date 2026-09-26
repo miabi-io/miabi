@@ -100,7 +100,6 @@
       "containerRegistry": "Registre de conteneurs",
       "kernelGrants": "Droits noyau",
       "nodes": "Nœuds",
-      "ports": "Ports",
       "sharedRunners": "Runners partagés",
       "storageClasses": "Classes de stockage",
       "title": "Infrastructure"
@@ -122,7 +121,8 @@
       "deploymentConfig": "Configuration de déploiement",
       "platformBackup": "Sauvegarde de la plateforme",
       "platformSettings": "Paramètres de la plateforme",
-      "title": "Plateforme"
+      "title": "Plateforme",
+      "security": "Sécurité"
     },
     "tenants": {
       "announcements": "Annonces",
@@ -515,7 +515,9 @@
       "noBindings": "Aucune liaison hôte. Les demandes requièrent l’approbation d’un administrateur avant publication.",
       "releasePort": "Libérer le port hôte",
       "schemeHint": "Protocole applicatif parlé par le conteneur sur ce port",
-      "suggestHint": "Les ports hôte sont partagés par nœud — « Suggérer » en choisit un actuellement libre."
+      "suggestHint": "Les ports hôte sont partagés par nœud — « Suggérer » en choisit un actuellement libre.",
+      "policyBlocked": "Les ports hôte sont désactivés par la politique de la plateforme",
+      "autoApproveHint": "Les demandes dans {ranges} sont approuvées automatiquement."
     },
     "processes": "Processus",
     "promote": "Promouvoir",
@@ -3297,7 +3299,184 @@
     "twoFactorAuthentication": "Authentification à deux facteurs",
     "twoFactorHint": "Ajoutez une couche de sécurité supplémentaire à votre compte en exigeant, en plus de votre mot de passe, un code temporaire fourni par une application d’authentification (Google Authenticator, 1Password, Authy…).",
     "twoFactorOn": "L’authentification à deux facteurs est activée.",
-    "verificationCode": "Code de vérification"
+    "verificationCode": "Code de vérification",
+    "center": {
+      "title": "Centre de sécurité",
+      "subtitle": "Règles de la plateforme sur ce que les espaces de travail peuvent exposer, et journal de chaque décision.",
+      "refresh": "Actualiser",
+      "tab": {
+        "overview": "Vue d'ensemble",
+        "ports": "Ports hôte",
+        "events": "Événements",
+        "adminAccess": "Accès admin"
+      },
+      "upgradeHint": "Les politiques de sécurité sont une fonctionnalité Enterprise. La posture et le journal des décisions restent visibles ; enregistrer une politique nécessite une licence.",
+      "manageLicense": "Gérer la licence",
+      "lockedEnterprise": "Nécessite une licence Enterprise",
+      "lockedFrozen": "Licence expirée : les politiques s'appliquent toujours, la modification est gelée",
+      "killSwitchTitle": "Les politiques de sécurité sont désactivées",
+      "killSwitchText": "MIABI_SECURITY_POLICIES=off est défini sur le serveur : les politiques enregistrées sont ignorées, rien n'est appliqué ni audité.",
+      "posture": "Posture",
+      "last24h": "Dernières 24 heures",
+      "noEvents24h": "Aucune décision de politique au cours des dernières 24 heures.",
+      "review": "Examiner",
+      "check": {
+        "noPolicy": "Aucune politique de ports hôte : chaque demande attend l'approbation d'un administrateur.",
+        "policy": "Politique de ports hôte : {mode}, {spec}",
+        "allInterfaces": "{n} port hôte publié sur toutes les interfaces | {n} ports hôte publiés sur toutes les interfaces",
+        "bound": "Les ports hôte approuvés ne sont publiés que sur {address}",
+        "noApproved": "Aucun port hôte approuvé",
+        "privileged": "{n} espace de travail privilégié | {n} espaces de travail privilégiés",
+        "noPrivileged": "Aucun espace de travail privilégié",
+        "pending": "{n} demande de port hôte en attente | {n} demandes de port hôte en attente",
+        "noPending": "Aucune demande de port hôte en attente",
+        "grandfathered": "{n} port hôte approuvé avant reject_all est toujours publié | {n} ports hôte approuvés avant reject_all sont toujours publiés",
+        "unlock": "Déverrouillage de la console admin : {state}",
+        "unlockState": {
+          "off": "désactivé",
+          "community": "TOTP Community",
+          "policy": "imposé par une politique"
+        }
+      },
+      "bindingsTitle": "Ports hôte approuvés",
+      "bindingsHint": "Affichés car la règle de la plateforme signale ou révoque les liaisons existantes.",
+      "adopted": "Adopté par un admin",
+      "adoptedHint": "Enregistré lorsqu'un administrateur a importé un conteneur qui publiait déjà ce port.",
+      "col": {
+        "kind": "Type",
+        "decision": "Décision",
+        "count": "Nombre",
+        "app": "Application",
+        "hostPort": "Port hôte",
+        "workspace": "Espace de travail",
+        "scope": "Portée",
+        "mode": "Mode",
+        "rule": "Règle",
+        "time": "Date",
+        "action": "Action",
+        "resource": "Ressource",
+        "reason": "Raison"
+      },
+      "mode": {
+        "off": "Désactivé",
+        "audit": "Audit",
+        "enforce": "Appliquer"
+      },
+      "modeHint": {
+        "off": "La règle est enregistrée mais n'est pas évaluée.",
+        "audit": "L'audit enregistre ce qui serait refusé, sans rien refuser.",
+        "enforce": "Les demandes interdites par la règle sont refusées."
+      },
+      "specMode": {
+        "approval": "Approbation",
+        "auto_approve_in_range": "Approbation auto. dans la plage",
+        "reject_all": "Tout refuser"
+      },
+      "specHint": {
+        "approval": "Chaque demande attend un administrateur dans la file d'approbation ci-dessous.",
+        "auto_approve_in_range": "Les demandes dans une plage autorisée sont approuvées immédiatement ; les autres attendent un examen.",
+        "reject_all": "Aucun nouveau port hôte ne peut être demandé."
+      },
+      "boundTo": "lié à {address}",
+      "noBypass": "sans contournement privilégié",
+      "policyTitle": "Règle de ports hôte de la plateforme",
+      "version": "Version {v}, mise à jour le {when}",
+      "notSet": "Pas encore définie : l'enregistrement la crée.",
+      "enforcement": "Application",
+      "requests": "Demandes",
+      "ranges": "Plages autorisées",
+      "from": "De",
+      "to": "À",
+      "addRange": "Ajouter une plage",
+      "removeRange": "Retirer la plage",
+      "noRanges": "Ajoutez au moins une plage à approuver automatiquement.",
+      "bindAddress": "Adresse d'écoute",
+      "bindAddressHint": "Publie les ports approuvés sur cette adresse uniquement, ce qui ferme la publication sur 0.0.0.0. Laissez vide pour toutes les interfaces.",
+      "existing": "Ports hôte existants",
+      "existingMode": {
+        "keep": "Conserver",
+        "report": "Signaler",
+        "revoke": "Révoquer"
+      },
+      "existingHint": "Ce qui arrive aux ports hôte approuvés avant une règle reject_all : les conserver, les lister dans la vue d'ensemble, ou permettre de les révoquer.",
+      "privilegedBypass": "Les espaces de travail privilégiés contournent cette règle",
+      "allowExceptions": "Autoriser les portées plus étroites à assouplir cette règle",
+      "allowExceptionsHint": "Si désactivé, les dérogations de plan, d'organisation et d'espace de travail ne peuvent que la renforcer.",
+      "save": "Enregistrer la règle",
+      "saving": "Enregistrement…",
+      "saved": "Règle de ports hôte enregistrée",
+      "overridesTitle": "Dérogations",
+      "overridesHint": "Règles pour un plan, une organisation ou un espace de travail. La portée la plus étroite l'emporte.",
+      "noOverrides": "Aucune dérogation.",
+      "scope": {
+        "platform": "Plateforme",
+        "plan": "Plan",
+        "organization": "Organisation",
+        "workspace": "Espace de travail"
+      },
+      "scopeId": "ID",
+      "addOverride": "Ajouter une dérogation",
+      "overrideSaved": "Dérogation enregistrée",
+      "overrideDeleted": "Dérogation supprimée",
+      "deleteOverride": "Supprimer la dérogation",
+      "deleteOverrideTitle": "Supprimer cette dérogation ?",
+      "deleteOverrideMessage": "{scope} revient à la règle plus large.",
+      "revoke": "Révoquer",
+      "revokeTitle": "Révoquer les ports hôte existants",
+      "revokeHint": "Chaque liaison de port hôte approuvée ci-dessous est rejetée.",
+      "revokeConfirmTitle": "Révoquer {n} port hôte ? | Révoquer {n} ports hôte ?",
+      "revokeNone": "Aucun port hôte approuvé à révoquer.",
+      "revoked": "{n} port hôte révoqué | {n} ports hôte révoqués",
+      "queueTitle": "File d'approbation",
+      "allKinds": "Tous les types",
+      "allDecisions": "Toutes les décisions",
+      "kind": {
+        "ports": "Ports hôte",
+        "policy": "Politique"
+      },
+      "decision": {
+        "deny": "Refusé",
+        "would_deny": "Serait refusé",
+        "change": "Modification"
+      },
+      "export": "Exporter en CSV",
+      "loadMore": "Charger plus",
+      "noEvents": "Aucune décision de politique enregistrée.",
+      "admin": {
+        "howTitle": "Fonctionnement du déverrouillage de la console admin",
+        "howSignIn": "La connexion donne accès aux espaces de travail. La console de la plateforme demande en plus un code TOTP, puis reste déverrouillée pendant la durée de validité (ou jusqu'à l'expiration du délai d'inactivité).",
+        "howSensitive": "Les actions sensibles (la licence, les politiques de sécurité, la suppression d'une organisation) exigent un déverrouillage plus récent que la fenêtre sensible ; au-delà, le code est redemandé.",
+        "howApiKeys": "Les clés d'API admin n'ont pas besoin du code, mais elles sont soumises aux IP autorisées.",
+        "howThreats": "Il protège contre un navigateur laissé sans surveillance, un cookie de session volé ou un mot de passe hameçonné. Il ne protège pas contre une faille XSS sur la même origine.",
+        "howCommunity": "Sans Enterprise, l'édition Community peut activer le déverrouillage TOTP avec les délais par défaut en définissant MIABI_ADMIN_UNLOCK=true.",
+        "policyTitle": "Règle d'accès admin de la plateforme",
+        "notSet": "Non définie : le comportement Community s'applique. L'enregistrement crée la règle.",
+        "noAudit": "Le mode audit ne s'applique pas à l'accès admin : la règle est désactivée ou appliquée.",
+        "required": "Exiger un second facteur pour déverrouiller la console de la plateforme",
+        "factors": "Facteurs",
+        "factor": {
+          "totp": "Code d'authentification (TOTP)",
+          "passkey": "Clé d'accès",
+          "pin": "Code PIN",
+          "sso": "Réauthentification SSO"
+        },
+        "notAvailable": "pas encore disponible",
+        "ttl": "Durée du déverrouillage",
+        "idle": "Délai d'inactivité",
+        "sensitive": "Fenêtre sensible",
+        "attempts": "Tentatives max.",
+        "lockout": "Blocage",
+        "allowedIps": "IP autorisées",
+        "allowedIpsHint": "Une IP ou un CIDR par ligne ; vide autorise tout. Cela utilise l'IP client résolue par Miabi : vérifiez que les proxys de confiance sont configurés, sinon vous risquez de vous bloquer.",
+        "idleExceedsTtl": "Le délai d'inactivité ne peut pas dépasser la durée du déverrouillage.",
+        "attemptsRange": "Le nombre de tentatives doit être compris entre 1 et 50.",
+        "saved": "Règle d'accès admin enregistrée",
+        "deleted": "Règle d'accès admin supprimée",
+        "delete": "Supprimer la règle",
+        "deleteTitle": "Supprimer la règle d'accès admin ?",
+        "deleteMessage": "La console revient au comportement Community : le déverrouillage ne s'applique que si MIABI_ADMIN_UNLOCK=true."
+      }
+    }
   },
   "shell": {
     "close": "Fermer",
@@ -3689,5 +3868,21 @@
     "volumeBackupPath": "Chemin des sauvegardes de volumes",
     "workspaces": "Espaces de travail",
     "yourOrganization": "Votre organisation"
+  },
+  "adminUnlock": {
+    "title": "Déverrouiller la console d’administration",
+    "hint": "Saisissez le code de votre application d’authentification pour ouvrir la console de la plateforme. Elle reste déverrouillée un moment, puis le redemande.",
+    "staleHint": "Cette action nécessite un déverrouillage récent. Saisissez un nouveau code de votre application d’authentification.",
+    "codeLabel": "Code d’authentification",
+    "recoveryHint": "Appareil perdu ? Un code de récupération fonctionne aussi ici.",
+    "setupNeeded": "La console d’administration exige l’authentification à deux facteurs, et votre compte ne l’a pas encore. Configurez-la dans Compte → Sécurité, puis revenez.",
+    "setUp": "Configurer la double authentification",
+    "unlock": "Déverrouiller",
+    "unlocking": "Déverrouillage…",
+    "locked": "Trop de codes erronés. Le déverrouillage est bloqué jusqu’à {until} ; votre compte ne l’est pas.",
+    "expiringSoon": "La console d’administration se verrouille dans environ une minute.",
+    "unlockedUntil": "Console d’administration déverrouillée jusqu’à {time}",
+    "extend": "Prolonger",
+    "lockNow": "Verrouiller"
   }
 }
