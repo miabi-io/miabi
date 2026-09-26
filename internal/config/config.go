@@ -73,11 +73,8 @@ type Config struct {
 	MetricsRetentionHours int
 
 	CORSOrigins string
-	// TrustedProxies lists the CIDRs or IPs allowed to set X-Forwarded-For and X-Real-IP.
-	// Empty trusts those headers from any peer, which lets a client that reaches the API directly spoof its IP.
-	TrustedProxies string
-	AppWebURL      string
-	ApiBaseURL     string
+	AppWebURL   string
+	ApiBaseURL  string
 	// LoginTokenTTLHours is the default lifetime of a CLI "login command" token
 	// (the OpenShift-style short-lived personal API token). LoginTokenMaxTTLHours
 	// is the hard ceiling a caller may request. Kept short by design.
@@ -591,7 +588,6 @@ func New() *Config {
 		MetricsScrapeSeconds:  goutils.EnvInt("MIABI_METRICS_SCRAPE_SECONDS", 60),
 		MetricsRetentionHours: goutils.EnvInt("MIABI_METRICS_RETENTION_HOURS", 24),
 		CORSOrigins:           goutils.Env("MIABI_CORS_ORIGINS", goutils.Env("MIABI_WEB_URL", "*")),
-		TrustedProxies:        goutils.Env("MIABI_TRUSTED_PROXIES", ""),
 		AppWebURL:             goutils.Env("MIABI_WEB_URL", ""),
 		ApiBaseURL:            goutils.Env("MIABI_API_URL", ""),
 		LoginTokenTTLHours:    goutils.EnvInt("MIABI_LOGIN_TOKEN_TTL_HOURS", 24),
@@ -738,11 +734,6 @@ func (c *Config) validate() error {
 	if err := c.validateRegistry(); err != nil {
 		return err
 	}
-	// Okapi answers an invalid entry by trusting no proxy at all, which would silently
-	// collapse every client onto the gateway's IP for rate limits and allowlists.
-	if _, err := parseTrustedProxies(c.TrustedProxies); err != nil {
-		return err
-	}
 	if c.Env == "dev" {
 		return nil
 	}
@@ -801,62 +792,6 @@ func (c *Config) AllowedBrowserOrigins() []string {
 		out = append(out, w)
 	}
 	return out
-}
-
-// parseTrustedProxies splits MIABI_TRUSTED_PROXIES into its CIDR or IP entries.
-func parseTrustedProxies(v string) ([]*net.IPNet, error) {
-	var out []*net.IPNet
-	for _, p := range strings.Split(v, ",") {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		if _, n, err := net.ParseCIDR(p); err == nil {
-			out = append(out, n)
-			continue
-		}
-		ip := net.ParseIP(p)
-		if ip == nil {
-			return nil, fmt.Errorf("MIABI_TRUSTED_PROXIES entry %q is not a valid CIDR or IP address", p)
-		}
-		bits := 8 * net.IPv4len
-		if ip.To4() == nil {
-			bits = 8 * net.IPv6len
-		}
-		out = append(out, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
-	}
-	return out, nil
-}
-
-// preferProxyRealIP makes RealIP take a trusted proxy's X-Real-IP over its X-Forwarded-For.
-// Goma sends the client IP it resolved (honouring its own proxy.trustedProxies) as X-Real-IP,
-// while its reverse proxy appends its TCP peer to X-Forwarded-For; behind a load balancer that
-// peer is the balancer, which a right-to-left walk would take for the client.
-func preferProxyRealIP(proxies []*net.IPNet) okapi.Middleware {
-	return func(c *okapi.Context) error {
-		r := c.Request()
-		if net.ParseIP(strings.TrimSpace(r.Header.Get("X-Real-IP"))) != nil && peerIn(r.RemoteAddr, proxies) {
-			r.Header.Del("X-Forwarded-For")
-		}
-		return c.Next()
-	}
-}
-
-func peerIn(remoteAddr string, nets []*net.IPNet) bool {
-	host, _, err := net.SplitHostPort(remoteAddr)
-	if err != nil {
-		host = remoteAddr
-	}
-	ip := net.ParseIP(host)
-	if ip == nil {
-		return false
-	}
-	for _, n := range nets {
-		if n.Contains(ip) {
-			return true
-		}
-	}
-	return false
 }
 
 func hasWildcardOrigin(origins string) bool {
@@ -944,14 +879,6 @@ func (c *Config) Initialize(app *okapi.Okapi) error {
 	}
 	app.WithPort(c.Port)
 	app.WithLogger(l.Logger)
-	if proxies, _ := parseTrustedProxies(c.TrustedProxies); len(proxies) > 0 {
-		cidrs := make([]string, len(proxies))
-		for i, n := range proxies {
-			cidrs[i] = n.String()
-		}
-		app.WithTrustedProxies(cidrs...)
-		app.Use(preferProxyRealIP(proxies))
-	}
 	_ = goutils.SetEnv("ENV", c.Env)
 
 	// Only reachable in dev without an encryption key (validate() blocks this in
