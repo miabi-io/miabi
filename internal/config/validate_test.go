@@ -108,3 +108,20 @@ func TestValidateRegistryStorageDriver(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateTrustedProxies(t *testing.T) {
+	for _, v := range []string{"", "10.62.0.0/16", "10.62.0.0/16, 192.0.2.7", "fd00::/8"} {
+		c := prodConfig()
+		c.TrustedProxies = v
+		if err := c.validate(); err != nil {
+			t.Errorf("MIABI_TRUSTED_PROXIES=%q rejected: %v", v, err)
+		}
+	}
+	for _, v := range []string{"10.62.0.0/33", "gateway", "10.62.0.0/16,nope"} {
+		c := prodConfig()
+		c.TrustedProxies = v
+		if err := c.validate(); err == nil {
+			t.Errorf("MIABI_TRUSTED_PROXIES=%q accepted", v)
+		}
+	}
+}

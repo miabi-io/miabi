@@ -17,16 +17,17 @@ var requestBodies = []any{
 	CreateAPIKeyRequest{},
 	CreateDomainRequest{},
 	UpdateDomainRequest{},
+	CreateOAuthProviderRequest{},
+	UpdateOAuthProviderRequest{},
+	UpdateRegistrySettingsRequest{},
+	CreatePlanRequest{},
+	UpdatePlanRequest{},
+	SetWorkspaceQuotaRequest{},
 }
 
 // TestEnumTagsAreValidatable pins a framework rule that fails loudly at runtime and
-// silently at compile time: okapi's enum validator accepts a string field, or a slice
-// of them, and rejects anything else — including a *string — on its KIND, before it
-// ever looks at the value. So an enum tag on a pointer 400s every request to that
-// endpoint, whether or not the field was sent.
-//
-// Optional fields still need pointers for partial-update semantics, so the rule is
-// "no enum tag on a pointer"; validate those values in the service instead.
+// silently at compile time: okapi's enum validator dereferences a pointer field but not
+// the elements of a slice, so an enum tag on []*string 400s every request that sends it.
 func TestEnumTagsAreValidatable(t *testing.T) {
 	for _, req := range requestBodies {
 		typ := reflect.TypeOf(req)
@@ -34,19 +35,30 @@ func TestEnumTagsAreValidatable(t *testing.T) {
 		if !ok {
 			continue
 		}
-		for i := 0; i < body.Type.NumField(); i++ {
-			f := body.Type.Field(i)
-			if f.Tag.Get("enum") == "" {
-				continue
-			}
-			kind := f.Type.Kind()
-			if kind == reflect.Slice {
-				kind = f.Type.Elem().Kind()
-			}
-			if kind != reflect.String {
-				t.Errorf("%s.Body.%s has an enum tag on a %s; okapi rejects it on kind, so every request to this endpoint returns 400. Drop the tag and validate in the service.",
-					typ.Name(), f.Name, f.Type.Kind())
-			}
+		checkEnumFields(t, typ.Name()+".Body", body.Type)
+	}
+}
+
+func checkEnumFields(t *testing.T, path string, typ reflect.Type) {
+	for i := 0; i < typ.NumField(); i++ {
+		f := typ.Field(i)
+		if f.Anonymous && f.Type.Kind() == reflect.Struct {
+			checkEnumFields(t, path, f.Type)
+			continue
+		}
+		if f.Tag.Get("enum") == "" {
+			continue
+		}
+		ft := f.Type
+		for ft.Kind() == reflect.Pointer {
+			ft = ft.Elem()
+		}
+		if ft.Kind() == reflect.Slice {
+			ft = ft.Elem()
+		}
+		if ft.Kind() != reflect.String {
+			t.Errorf("%s.%s has an enum tag on %s; okapi only validates enums on string, *string or []string, so every request sending it returns 400.",
+				path, f.Name, f.Type)
 		}
 	}
 }

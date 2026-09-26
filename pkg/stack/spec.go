@@ -129,6 +129,8 @@ func controlPlaneSpec(m *Manifest, name, image string) docker.RunSpec {
 			// helper above all — can still reach Postgres by name. Unset on a Compose install, which has no
 			// private network; every consumer treats empty as "the proxy network is all there is".
 			"MIABI_INTERNAL_NETWORK=" + m.InternalNetwork.Name,
+			// Only the gateway reaches the control plane over the private network, so its forwarded client IP is believed.
+			"MIABI_TRUSTED_PROXIES=" + m.InternalNetwork.Subnet,
 			"MIABI_ACME_EMAIL=" + m.ACMEEmail,
 			"MIABI_GOMA_PROVIDER_DIR=" + gomaProviders,
 			// Gateways Miabi provisions on remote nodes run the same Goma image as the

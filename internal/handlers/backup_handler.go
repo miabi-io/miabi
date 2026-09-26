@@ -85,7 +85,7 @@ type RunBackupRequest struct {
 	Body struct {
 		Destination string  `json:"destination" enum:"local,s3"`
 		S3          *S3Body `json:"s3"`
-		Comment     string  `json:"comment" max:"200"`
+		Comment     string  `json:"comment" maxLength:"200"`
 	} `json:"body"`
 }
 
@@ -93,7 +93,7 @@ type RunBackupRequest struct {
 // pointers so omitting one leaves it untouched.
 type UpdateBackupRequest struct {
 	Body struct {
-		Comment *string `json:"comment" max:"200"`
+		Comment *string `json:"comment" maxLength:"200"`
 		Pinned  *bool   `json:"pinned"`
 	} `json:"body"`
 }
