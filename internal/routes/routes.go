@@ -98,6 +98,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/stack"
 	"github.com/miabi-io/miabi/internal/services/storage"
 	"github.com/miabi-io/miabi/internal/services/storageclass"
+	"github.com/miabi-io/miabi/internal/services/twofactor"
 	"github.com/miabi-io/miabi/internal/services/updatecheck"
 	"github.com/miabi-io/miabi/internal/services/usersettings"
 	"github.com/miabi-io/miabi/internal/services/volumebackup"
@@ -1347,6 +1348,14 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.pipeline.SetLogStore(logStore)
 	r.h.backup.SetLogStore(logStore)
 	r.h.auth.SetBranding(brandingService, ee) // the sign-in page's operator identity
+	// Read on every setup, so a later rename or domain change applies to the next enrolment.
+	authService.SetTOTPIssuer(func() string {
+		name := ""
+		if ee.Has(enterprise.FlagWhiteLabel) {
+			name = brandingService.Get().Name
+		}
+		return twofactor.Issuer(name, cfg.DeploymentURL())
+	})
 	r.h.auth.SetRegistration(registrationService)
 	authService.SetEmailVerifications(repositories.NewEmailVerificationRepository(db))
 	// An account that never picked an accent follows the operator's; an enforced

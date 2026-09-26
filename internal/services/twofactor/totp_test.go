@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 )
 
@@ -59,5 +60,42 @@ func TestQRDataURI(t *testing.T) {
 	}
 	if !strings.HasPrefix(uri, "data:image/png;base64,") {
 		t.Fatal("expected a PNG data URI")
+	}
+}
+
+func TestIssuer(t *testing.T) {
+	cases := []struct{ name, url, want string }{
+		{"", "https://miabi.example.com", "Miabi (miabi.example.com)"},
+		{"Acme Cloud", "https://cloud.acme.com/", "Acme Cloud (cloud.acme.com)"},
+		{"", "https://miabi.example.com:8443/app", "Miabi (miabi.example.com)"},
+		{"", "miabi.example.com", "Miabi (miabi.example.com)"},
+		{"", "", "Miabi"},
+		{"", "https://[2001:db8::1]:8443", "Miabi"},
+		{"Acme: Cloud", "https://a.example", "Acme Cloud (a.example)"},
+		{"  ", "https://a.example", "Miabi (a.example)"},
+	}
+	for _, tc := range cases {
+		got := Issuer(tc.name, tc.url)
+		if got != tc.want {
+			t.Errorf("Issuer(%q, %q) = %q, want %q", tc.name, tc.url, got, tc.want)
+		}
+		if strings.Contains(got, ":") {
+			t.Errorf("Issuer(%q, %q) = %q contains a colon, which splits the otpauth label", tc.name, tc.url, got)
+		}
+	}
+}
+
+// The otpauth URL must carry the full issuer, both as the label prefix and the issuer parameter.
+func TestGenerateCarriesIssuer(t *testing.T) {
+	_, u, err := Generate("Miabi (miabi.example.com)", "jonas@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := otp.NewKeyFromURL(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if key.Issuer() != "Miabi (miabi.example.com)" || key.AccountName() != "jonas@example.com" {
+		t.Errorf("issuer %q account %q", key.Issuer(), key.AccountName())
 	}
 }
