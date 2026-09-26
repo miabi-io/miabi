@@ -6,6 +6,7 @@ package marketplace
 import (
 	"context"
 	"fmt"
+	"github.com/miabi-io/miabi/internal/services/placement"
 	"strings"
 
 	"github.com/jkaninda/logger"
@@ -160,10 +161,16 @@ func (s *Service) PlanUpgrade(workspaceID, installID uint, target string) (*Upgr
 }
 
 // upgradeNode is the node an install's apps run on, so a volume an upgrade adds lands where it is mounted.
+// With none of them left it is placed like any create, rather than on the control-plane node.
 func (s *Service) upgradeNode(workspaceID uint, appIDs []uint) uint {
 	for _, id := range appIDs {
 		if app, err := s.apps.Get(workspaceID, id); err == nil {
 			return app.ServerID
+		}
+	}
+	if s.placer != nil {
+		if res, err := s.placer.Place(placement.Request{WorkspaceID: workspaceID}); err == nil {
+			return res.ServerID
 		}
 	}
 	return 0

@@ -36,7 +36,7 @@ const showImport = ref(false)
 const saving = ref(false)
 const importing = ref(false)
 const form = ref({ name: '', description: '', location: '' })
-const importForm = ref({ name: '', compose: '' })
+const importForm = ref({ name: '', compose: '', location: '' })
 
 function stackBadge(s: Stack) {
   const total = s.status?.total ?? 0
@@ -86,7 +86,7 @@ async function create() {
 }
 
 function openImport() {
-  importForm.value = { name: '', compose: '' }
+  importForm.value = { name: '', compose: '', location: '' }
   showImport.value = true
 }
 
@@ -94,7 +94,7 @@ async function runImport() {
   if (!currentWorkspaceId.value) return
   importing.value = true
   try {
-    const res = (await stackApi.import(currentWorkspaceId.value, importForm.value.name.trim(), importForm.value.compose)).data.data
+    const res = (await stackApi.import(currentWorkspaceId.value, importForm.value.name.trim(), importForm.value.compose, importForm.value.location)).data.data
     const created = res?.created.length ?? 0
     const vols = res?.volumes.length ?? 0
     const reqs = res?.port_requests ?? 0
@@ -233,6 +233,7 @@ async function runImport() {
               <label class="form-label">{{ $t('stacks.stackName') }}</label>
               <input v-model="importForm.name" class="form-input" :placeholder="$t('db.eGBlog')" :aria-label="$t('stacks.stackName')" required autofocus />
             </div>
+            <LocationPicker v-model="importForm.location" :allow-pin="false" />
             <div class="form-group" style="margin-bottom: 0">
               <label class="form-label">docker-compose.yml</label>
               <textarea v-model="importForm.compose" class="form-input" rows="12" spellcheck="false" style="font-family: monospace; font-size: 12px" placeholder="services:&#10;  web:&#10;    image: nginx:1.25&#10;    ports:&#10;      - 80&#10;    environment:&#10;      FOO: bar" :aria-label="$t('stacks.dockerComposeYml')" required></textarea>

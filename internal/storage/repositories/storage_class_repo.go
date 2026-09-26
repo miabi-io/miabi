@@ -53,7 +53,8 @@ func (r *StorageClassRepository) List() ([]models.StorageClass, error) {
 // (an operator assertion that the path exists identically everywhere).
 func (r *StorageClassRepository) ListByServer(serverID uint) ([]models.StorageClass, error) {
 	var out []models.StorageClass
-	err := r.db.Where("server_id = ? OR shared = ?", serverID, true).Order("name ASC").Find(&out).Error
+	// The builtin class is the engine's own volume directory, present on every node.
+	err := r.db.Where("server_id = ? OR shared = ? OR builtin = ?", serverID, true, true).Order("name ASC").Find(&out).Error
 	return out, err
 }
 

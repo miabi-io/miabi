@@ -63,6 +63,8 @@ type ImportStackRequest struct {
 	Body struct {
 		Name    string `json:"name" required:"true"`
 		Compose string `json:"compose" required:"true"`
+		// Location is where the stack and everything it imports run; empty uses the workspace's default.
+		Location string `json:"location"`
 	} `json:"body"`
 }
 
@@ -343,7 +345,15 @@ func (h *StackHandler) DeleteEnvVar(c *okapi.Context) error {
 // Import creates a stack and its apps from a docker-compose file.
 func (h *StackHandler) Import(c *okapi.Context, req *ImportStackRequest) error {
 	wsID := middlewares.WorkspaceID(c)
-	result, err := h.svc.ImportCompose(c.Request().Context(), wsID, middlewares.UserID(c), req.Body.Name, req.Body.Compose)
+	placed, err := h.placer.place(c, placement.Request{Location: req.Body.Location})
+	if err != nil {
+		if a := placementAbort(c, err); a != nil {
+			return a
+		}
+		return c.AbortInternalServerError("failed to place the stack", err)
+	}
+	result, err := h.svc.ImportCompose(c.Request().Context(), wsID, middlewares.UserID(c), req.Body.Name, req.Body.Compose,
+		stack.ImportPlacement{ClusterID: placed.ClusterID, ServerID: placed.ServerID})
 	if err != nil {
 		return h.mapErr(c, err)
 	}

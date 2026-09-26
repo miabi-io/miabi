@@ -446,9 +446,17 @@ function resolveConfirm(ok: boolean) {
 
 // Volumes
 const volumes = ref<Volume[]>([])
-// Co-location: an app can only mount volumes on its own node.
+// Only volumes the API would accept: the app's location, and for node-local storage the app's node. A
+// service is pinned to its volumes' node at deploy, and host-path and shared volumes mount anywhere.
+// A cluster id of 0 predates locations, so it is left to the API to judge.
 const volumesOnNode = computed(() =>
-  volumes.value.filter((v) => (v.server_id ?? 0) === (app.value?.server_id ?? 0)),
+  volumes.value.filter((v) => {
+    const a = app.value
+    if (!a) return false
+    if (v.cluster_id && a.cluster_id && v.cluster_id !== a.cluster_id) return false
+    if (v.driver === 'host' || v.access_mode === 'rwx' || a.runtime_kind === 'service') return true
+    return (v.server_id ?? 0) === (a.server_id ?? 0)
+  }),
 )
 const hiddenVolumeCount = computed(() => volumes.value.length - volumesOnNode.value.length)
 // Narrows the attach dropdown. The selected volume always stays in the list so
@@ -2828,7 +2836,7 @@ async function detachDatabase(d: AppDatabase) {
           <button class="btn btn-primary">{{ $t('appDetail.attach') }}</button>
         </form>
         <p v-if="hiddenVolumeCount > 0" class="form-hint" style="margin-top: 8px">
-          {{ hiddenVolumeCount }} volume(s) on other nodes are hidden — an app can only mount volumes on its own node.
+          {{ $t('appDetail.volumesHidden', { n: hiddenVolumeCount }) }}
         </p>
       </div>
       <div v-if="volumeMounts.length === 0" class="empty-state">

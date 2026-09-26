@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"errors"
+	"github.com/miabi-io/miabi/internal/services/storageclass"
 	"math"
 	"strconv"
 	"strings"
@@ -134,6 +135,12 @@ func (h *DatabaseHandler) Create(c *okapi.Context, req *CreateDatabaseRequest) e
 			return c.AbortWithError(402, err)
 		}
 		if errors.Is(err, nodes.ErrNodeOffline) || errors.Is(err, node.ErrNodeCordoned) || errors.Is(err, node.ErrNodeNotFound) {
+			return c.AbortWithError(409, err)
+		}
+		if errors.Is(err, storageclass.ErrNotFound) || errors.Is(err, storageclass.ErrDisabled) || errors.Is(err, storageclass.ErrNotOnNode) {
+			return c.AbortBadRequest(err.Error())
+		}
+		if errors.Is(err, storageclass.ErrPathMissing) {
 			return c.AbortWithError(409, err)
 		}
 		return c.AbortInternalServerError("failed to provision database", err)

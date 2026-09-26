@@ -11,6 +11,7 @@ import { registryApi } from '@/api/registries'
 import { gitRepositoryApi, type GitInspectResult } from '@/api/gitRepositories'
 import { networkApi } from '@/api/networks'
 import { stackApi } from '@/api/stacks'
+import { locationApi, type Location } from '@/api/locations'
 import type { Application, Registry, GitRepository, Network, Stack, AppPort, BuildMethod, RuntimeKind } from '@/api/types'
 import PlacementPicker from '@/components/PlacementPicker.vue'
 import LocationPicker from '@/components/LocationPicker.vue'
@@ -43,8 +44,9 @@ const stacks = ref<Stack[]>([])
 const loading = ref(false)
 const showCreate = ref(false)
 const creating = ref(false)
-// Cluster mode availability — when on, apps may run as replicated Swarm services.
-const clusterEnabled = ref(false)
+// Whether any location the workspace may use runs a swarm; the fallback when locations cannot be read.
+const anySwarm = ref(false)
+const locations = ref<Location[]>([])
 
 interface AppForm {
   name: string
@@ -105,6 +107,14 @@ const pipelineTriggerLabel = computed(() => {
 // A service is placed by the Swarm scheduler, which ignores server_id; a container
 // is placed by server_id. The two are never both meaningful, so the form shows one
 // control or the other.
+// The service runtime needs a swarm in the location the app will land in, not merely somewhere.
+const clusterEnabled = computed(() => {
+  const selected = locations.value.find((l) => (form.value.location ? l.name === form.value.location : l.default))
+  return selected ? !!selected.swarm : anySwarm.value
+})
+watch(clusterEnabled, (on) => {
+  if (!on && form.value.runtime_kind === 'service') form.value.runtime_kind = 'container'
+})
 const isService = computed(() => clusterEnabled.value && form.value.runtime_kind === 'service')
 function addPort() {
   form.value.ports.push({ container_port: 0, protocol: 'tcp', scheme: 'http', name: '' })
@@ -154,7 +164,8 @@ async function load(id: number | null) {
     stacks.value = (await stackApi.list(id)).data.data ?? []
     // Whether the "service" runtime is offerable comes from the workspace usage
     // capabilities (readable by any member), not the platform-admin cluster status.
-    try { clusterEnabled.value = (await usageApi.get(id)).data.data?.capabilities?.cluster_enabled === true } catch { clusterEnabled.value = false }
+    try { anySwarm.value = (await usageApi.get(id)).data.data?.capabilities?.cluster_enabled === true } catch { anySwarm.value = false }
+    try { locations.value = (await locationApi.list(id)).data.data?.locations ?? [] } catch { locations.value = [] }
   } catch (e) {
     notify.apiError(e)
   } finally {
@@ -326,7 +337,7 @@ function formatCreated(ts?: string) {
             </div>
             <!-- The Swarm scheduler ignores server_id, so only a container can pin a node. -->
             <LocationPicker v-model="form.location" v-model:server-id="form.server_id" :allow-pin="!isService" />
-            <PlacementPicker v-if="isService" v-model="form.placement_constraints" :replicas="form.replicas" />
+            <PlacementPicker v-if="isService" v-model="form.placement_constraints" :replicas="form.replicas" :location="form.location" />
             <p v-if="isService" class="form-hint">
               Runs as a Swarm service on the workspace overlay network with {{ Math.max(1, form.replicas) }} replica(s).
             </p>

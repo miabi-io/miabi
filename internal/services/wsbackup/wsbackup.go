@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/miabi-io/miabi/internal/services/placement"
 	"sort"
 	"time"
 
@@ -109,8 +110,16 @@ type Deps struct {
 	Backup      *backup.Service
 	Clients     NodeDocker
 	Images      ImageResolver
-	InstallID   string
-	Version     string
+	// Placer puts the restored resources in a location the target workspace may use. Nil places
+	// everything on the control-plane node, as before locations existed.
+	Placer    Placer
+	InstallID string
+	Version   string
+}
+
+// Placer resolves where a restore lands. Satisfied by the placement service.
+type Placer interface {
+	Place(req placement.Request) (placement.Result, error)
 }
 
 // Service runs workspace bundle exports and restores.

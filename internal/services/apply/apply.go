@@ -176,6 +176,90 @@ func (s *Service) placeApp(ctx context.Context, workspaceID uint, name string, s
 	return res, nil
 }
 
+// placeVolume puts a new volume where the app mounting it runs: in its location, and on the node of that
+// app or of the app's other volumes, since node-local data is only reachable from one node. Placed on its
+// own, a volume takes the least-loaded node, and the app mounting it then fails half-applied.
+func (s *Service) placeVolume(ctx context.Context, workspaceID uint, ch declarative.Change, spec *declarative.VolumeSpec, set *declarative.ResourceSet) (placement.Result, error) {
+	location := spec.Location()
+	if s.placer == nil || set == nil {
+		return s.place(ctx, workspaceID, ch, location, false)
+	}
+	app, appName := mountingApp(set, ch.Name)
+	if app == nil {
+		return s.place(ctx, workspaceID, ch, location, false)
+	}
+	appLocation := s.appLocation(workspaceID, app, set)
+	switch {
+	case location == "":
+		location = appLocation
+	case appLocation != "" && appLocation != location:
+		return placement.Result{}, volumeLocationError(appName, appLocation, ch.Name, location)
+	}
+	req := placement.Request{WorkspaceID: workspaceID, Location: location, Admin: isAdmin(ctx)}
+	if existing, err := s.findApp(workspaceID, appName); err == nil {
+		if existing.RuntimeKind != models.RuntimeService {
+			req.Colocate = existing.ServerID
+		}
+		if req.Location == "" {
+			req.Location = s.placer.LocationName(existing.ClusterID)
+		}
+	}
+	if req.Colocate == 0 {
+		for _, m := range app.Mounts {
+			if m.Volume == "" || m.Volume == ch.Name {
+				continue
+			}
+			if v, err := s.findVolume(workspaceID, m.Volume); err == nil && v.Driver != models.VolumeDriverHost && v.AccessMode != models.AccessRWX {
+				req.Colocate = v.ServerID
+				break
+			}
+		}
+	}
+	res, err := s.placer.Place(req)
+	switch {
+	case errors.Is(err, placement.ErrLocationMismatch):
+		return res, volumeLocationError(appName, s.placer.LocationName(res.ClusterID), ch.Name, location)
+	case err != nil:
+		return res, fmt.Errorf("%w: volume %q: %v", ErrInvalidManifest, ch.Name, err)
+	}
+	return res, nil
+}
+
+// mountingApp is the first application in the bundle that mounts the named volume.
+func mountingApp(set *declarative.ResourceSet, volume string) (*declarative.ApplicationSpec, string) {
+	for _, r := range set.ByKind(declarative.KindApplication) {
+		if r.Application == nil {
+			continue
+		}
+		for _, m := range r.Application.Mounts {
+			if m.Volume == volume {
+				return r.Application, r.Metadata.Name
+			}
+		}
+	}
+	return nil, ""
+}
+
+// appLocation is where an app declared in the bundle runs: its own location, else its stack's, whether
+// that stack is declared alongside it or already exists. Empty when neither says.
+func (s *Service) appLocation(workspaceID uint, app *declarative.ApplicationSpec, set *declarative.ResourceSet) string {
+	if l := app.Location(); l != "" || app.Stack == "" {
+		return l
+	}
+	if st, ok := set.Get(string(declarative.KindStack) + "/" + app.Stack); ok && st.Stack.Location() != "" {
+		return st.Stack.Location()
+	}
+	if st, err := s.findStack(workspaceID, app.Stack); err == nil {
+		return s.placer.LocationName(st.ClusterID)
+	}
+	return ""
+}
+
+func volumeLocationError(app, appLocation, volume, volumeLocation string) error {
+	return fmt.Errorf("%w: application %q runs in %q but mounts volume %q in %q, and an app can only mount a volume in its own location. "+
+		"Declare the same location on both", ErrInvalidManifest, app, appLocation, volume, volumeLocation)
+}
+
 // sharedCluster is the one cluster every known referenced resource sits in, or 0 when they span several
 // or none is known.
 func sharedCluster(refs map[string]bool, nodes map[string]appPlacement) uint {
@@ -205,6 +289,14 @@ func (s *Service) checkLocations(workspaceID uint, plan *declarative.Plan, desir
 		return nil
 	}
 	for _, ch := range plan.Changes {
+		// A move is refused at apply time too; refusing it here keeps the rest of the bundle from applying
+		// around a change that was never going to happen.
+		if ch.Action == declarative.ActionUpdate {
+			if err := refuseImmutable(ch); err != nil {
+				return err
+			}
+			continue
+		}
 		if ch.Action != declarative.ActionCreate {
 			continue
 		}
@@ -231,6 +323,57 @@ func (s *Service) checkLocations(workspaceID uint, plan *declarative.Plan, desir
 		if st, ok := desired.Get(string(declarative.KindStack) + "/" + a.Stack); ok && a.Stack != "" &&
 			st.Stack.Location() != "" && st.Stack.Location() != location {
 			return stackLocationError(ch.Name, location, a.Stack, st.Stack.Location())
+		}
+	}
+	return s.checkMountLocations(workspaceID, desired)
+}
+
+// checkMountLocations fails the plan when an app cannot mount a volume it names, before anything is
+// created: found at apply time, the volume and whatever preceded it would already exist. The app and the
+// volume must share a location, and a replicated service cannot mount node-local storage.
+func (s *Service) checkMountLocations(workspaceID uint, desired *declarative.ResourceSet) error {
+	for _, r := range desired.ByKind(declarative.KindApplication) {
+		a := r.Application
+		if a == nil {
+			continue
+		}
+		existing, _ := s.findApp(workspaceID, r.Metadata.Name)
+		appLocation := s.appLocation(workspaceID, a, desired)
+		if appLocation == "" && existing != nil {
+			appLocation = s.placer.LocationName(existing.ClusterID)
+		}
+		runtime, replicas := a.Runtime(), a.Replicas()
+		if existing != nil {
+			if runtime == "" {
+				runtime = string(existing.RuntimeKind)
+			}
+			if replicas == 0 {
+				replicas = existing.Replicas
+			}
+		}
+		replicated := runtime == string(models.RuntimeService) && replicas > 1
+		for _, m := range a.Mounts {
+			if m.Volume == "" {
+				continue
+			}
+			volLocation, nodeLocal := "", false
+			if vr, ok := desired.Get(string(declarative.KindVolume) + "/" + m.Volume); ok {
+				// A volume created from a manifest is always node-local.
+				volLocation, nodeLocal = vr.Volume.Location(), true
+			}
+			if v, err := s.findVolume(workspaceID, m.Volume); err == nil {
+				if v.Driver == models.VolumeDriverHost {
+					continue
+				}
+				volLocation, nodeLocal = s.placer.LocationName(v.ClusterID), v.AccessMode != models.AccessRWX
+			}
+			if appLocation != "" && volLocation != "" && volLocation != appLocation {
+				return volumeLocationError(r.Metadata.Name, appLocation, m.Volume, volLocation)
+			}
+			if replicated && nodeLocal {
+				return fmt.Errorf("%w: application %q runs %d replicas but mounts node-local volume %q, which exists on one node only. "+
+					"Run one replica, or mount shared storage", ErrInvalidManifest, r.Metadata.Name, replicas, m.Volume)
+			}
 		}
 	}
 	return nil
@@ -1715,7 +1858,7 @@ func (s *Service) execute(ctx context.Context, workspaceID uint, ch declarative.
 	case declarative.KindApplication:
 		return s.applyApplication(ctx, workspaceID, ch, desired, set)
 	case declarative.KindVolume:
-		return s.applyVolume(ctx, workspaceID, ch, desired)
+		return s.applyVolume(ctx, workspaceID, ch, desired, set)
 	case declarative.KindDatabase:
 		return s.applyDatabase(ctx, workspaceID, ch, desired)
 	case declarative.KindStack:
@@ -2174,11 +2317,11 @@ func routeSpecOf(r models.Route, app, path string, certNameByID map[uint]string)
 	return spec
 }
 
-func (s *Service) applyVolume(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource) error {
+func (s *Service) applyVolume(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource, set *declarative.ResourceSet) error {
 	switch ch.Action {
 	case declarative.ActionCreate:
 		meta := tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, ManagedByGitOps))
-		target, err := s.place(ctx, workspaceID, ch, desired.Volume.Location(), false)
+		target, err := s.placeVolume(ctx, workspaceID, ch, desired.Volume, set)
 		if err != nil {
 			return err
 		}
@@ -2760,6 +2903,9 @@ func (s *Service) findConfig(workspaceID uint, name string) (*models.Config, err
 }
 
 func (s *Service) findApp(workspaceID uint, slug string) (*models.Application, error) {
+	if s.apps == nil {
+		return nil, fmt.Errorf("application %q not found", slug)
+	}
 	apps, err := s.apps.List(workspaceID)
 	if err != nil {
 		return nil, err
@@ -2773,6 +2919,9 @@ func (s *Service) findApp(workspaceID uint, slug string) (*models.Application, e
 }
 
 func (s *Service) findVolume(workspaceID uint, name string) (*models.Volume, error) {
+	if s.storage == nil {
+		return nil, fmt.Errorf("volume %q not found", name)
+	}
 	vols, err := s.storage.List(workspaceID)
 	if err != nil {
 		return nil, err
@@ -2799,6 +2948,9 @@ func (s *Service) findInstance(workspaceID uint, name string) (*models.DatabaseI
 }
 
 func (s *Service) findStack(workspaceID uint, name string) (*models.Stack, error) {
+	if s.stacks == nil {
+		return nil, fmt.Errorf("stack %q not found", name)
+	}
 	stacks, err := s.stacks.List(workspaceID)
 	if err != nil {
 		return nil, err

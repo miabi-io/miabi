@@ -30,6 +30,7 @@ type UsageHandler struct {
 	workspaces *repositories.WorkspaceRepository
 	runners    *repositories.RunnerRepository
 	cluster    ClusterCap
+	placer     *Placer
 }
 
 func NewUsageHandler(q *quota.Service, apps *repositories.ApplicationRepository, dbs *repositories.DatabaseRepository, volumes *repositories.VolumeRepository, networks *repositories.NetworkRepository, jobs *repositories.JobRepository, apiKeys *repositories.APIKeyRepository, workspaces *repositories.WorkspaceRepository, runners *repositories.RunnerRepository) *UsageHandler {
@@ -38,6 +39,9 @@ func NewUsageHandler(q *quota.Service, apps *repositories.ApplicationRepository,
 
 // SetClusterCap wires the cluster-capability check surfaced to workspace members.
 func (h *UsageHandler) SetClusterCap(c ClusterCap) { h.cluster = c }
+
+// SetPlacer narrows cluster_enabled to the locations the workspace may use (nil-safe; nil reports every cluster).
+func (h *UsageHandler) SetPlacer(p *Placer) { h.placer = p }
 
 // ResourceUsage pairs the live count with the effective limit (-1 = unlimited).
 type ResourceUsage struct {
@@ -138,6 +142,27 @@ func (h *UsageHandler) Get(c *okapi.Context) error {
 	u.Capabilities.CustomBuilder = l.AllowCustomBuilder
 	u.Capabilities.OfficialImageUser = l.AllowOfficialImageUser
 	u.Capabilities.RequireNonRoot = h.quota.RequireNonRootUser(wsID, false)
-	u.Capabilities.ClusterEnabled = h.cluster != nil && h.cluster.AnySwarm()
+	u.Capabilities.ClusterEnabled = h.swarmAvailable(c, wsID)
 	return ok(c, u)
+}
+
+// swarmAvailable reports whether a location this workspace may use runs a swarm. A swarm elsewhere, such as
+// another organization's dedicated cluster, is none of its business and offers it nothing.
+func (h *UsageHandler) swarmAvailable(c *okapi.Context, wsID uint) bool {
+	if h.cluster == nil {
+		return false
+	}
+	if h.placer == nil || h.placer.svc == nil {
+		return h.cluster.AnySwarm()
+	}
+	locs, err := h.placer.svc.Locations(wsID, h.placer.admin(c))
+	if err != nil {
+		return false
+	}
+	for _, l := range locs {
+		if h.cluster.IsSwarm(l.ID) {
+			return true
+		}
+	}
+	return false
 }

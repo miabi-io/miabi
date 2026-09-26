@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/miabi-io/miabi/internal/services/placement"
 	"strconv"
 	"strings"
 	"time"
@@ -171,6 +172,16 @@ func (s *Service) runRestore(ctx context.Context, b *models.WorkspaceBundle) err
 		svc: s, bundle: b, target: target, state: state, info: info,
 		cfg: cfg, passphrase: passphrase, report: &models.BundleReport{},
 	}
+	if s.Placer != nil {
+		// Resolved before anything is created: a workspace with no usable location would otherwise restore
+		// half its resources before the first one failed to place.
+		at, err := s.Placer.Place(placement.Request{WorkspaceID: target})
+		if err != nil {
+			s.fail(b, fmt.Errorf("no location to restore into: %w", err))
+			return nil
+		}
+		r.at = at
+	}
 
 	s.phase(b, models.BundlePhaseState)
 	r.apply(ctx)
@@ -215,6 +226,9 @@ type restoreRun struct {
 	passphrase string
 	report     *models.BundleReport
 	restored   int
+	// at is where every restored resource lands: the target workspace's location, on one node, so apps can
+	// mount the volumes and reach the databases restored with them.
+	at placement.Result
 
 	// appIDs and instanceIDs are the remap table: a natural key from the bundle to the id this platform minted for
 	// it. Every cross-reference resolves through them, which is the whole reason nothing in a bundle carries an
@@ -512,7 +526,7 @@ func (r *restoreRun) applyVolumes(ctx context.Context) {
 				"driver "+driver+" is not portable; create it on the target and restore its archive by hand")
 			continue
 		}
-		vol, err := r.svc.Volume.Create(ctx, r.target, 0, v.Name, v.SizeBytes, v.Metadata, v.Annotations)
+		vol, err := r.svc.Volume.Create(ctx, r.target, r.at.ServerID, v.Name, v.SizeBytes, v.Metadata, v.Annotations)
 		if err != nil {
 			r.add("volume", v.Name, "failed", err.Error())
 			continue
@@ -536,7 +550,7 @@ func (r *restoreRun) applyStacks(ctx context.Context) {
 		}
 		created, err := r.svc.Stack.Create(ctx, r.target, stack.Input{
 			Name: k.Name, DisplayName: k.DisplayName, Description: k.Description,
-			Metadata: k.Metadata, Annotations: k.Annotations,
+			Metadata: k.Metadata, Annotations: k.Annotations, ClusterID: r.at.ClusterID,
 		})
 		if err != nil {
 			r.add("stack", k.Name, "failed", err.Error())
@@ -567,7 +581,7 @@ func (r *restoreRun) applyDatabases(ctx context.Context) {
 			r.add("database", d.Name, "skipped", "already exists")
 			continue
 		}
-		inst, err := r.svc.Database.Provision(ctx, r.target, 0, d.Name,
+		inst, err := r.svc.Database.Provision(ctx, r.target, r.at.ServerID, d.Name,
 			models.DBEngine(d.Engine), d.Version, d.VolumeSize, d.StorageClass,
 			database.Resources{MemoryBytes: d.MemoryBytes, NanoCPUs: d.NanoCPUs}, d.Metadata, d.Annotations)
 		if err != nil {

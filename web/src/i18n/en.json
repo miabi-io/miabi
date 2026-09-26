@@ -668,7 +668,8 @@
     "volumeToAttach": "Volume to attach",
     "volumes": "Volumes",
     "when": "When",
-    "zeroUnlimited": "0 = unlimited."
+    "zeroUnlimited": "0 = unlimited.",
+    "volumesHidden": "{n} volume(s) in another location or on another node are hidden — an app mounts node-local volumes from its own node only."
   },
   "apps": {
     "browseMarketplace": "Browse the Marketplace",
@@ -1927,7 +1928,7 @@
     "anyNodeInTheLocation": "Any node in the location",
     "location": "Location",
     "node": "Node",
-    "pinningANodeAlsoDecides": "Pinning a node also decides the location.",
+    "nodesOfTheChosenLocation": "Only nodes in the chosen location are listed.",
     "privateNetworksDonTSpan": "Private networks don't span locations: keep an app with the databases and volumes it uses."
   },
   "logViewer": {
