@@ -25,9 +25,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// totpIssuer labels the account in authenticator apps (the QR code label).
-const totpIssuer = "Miabi"
-
 // recoveryCodeCount is the number of backup codes issued when 2FA is enabled.
 const recoveryCodeCount = 10
 
@@ -59,6 +56,19 @@ type Service struct {
 	store         *session.Store
 	jwtKey        []byte
 	aud           string
+	totpIssuer    func() string
+}
+
+// SetTOTPIssuer wires the name authenticator apps show for this instance. Unset shows "Miabi".
+func (s *Service) SetTOTPIssuer(fn func() string) { s.totpIssuer = fn }
+
+func (s *Service) issuer() string {
+	if s.totpIssuer != nil {
+		if v := s.totpIssuer(); v != "" {
+			return v
+		}
+	}
+	return twofactor.DefaultIssuer
 }
 
 // SetEmailVerifications wires the verification token store (nil-safe).
@@ -277,7 +287,7 @@ func (s *Service) BeginTwoFactorSetup(user *models.User) (secret, url string, er
 	if user.TwoFactorEnabled {
 		return "", "", ErrTwoFactorAlreadyEnabled
 	}
-	secret, url, err = twofactor.Generate(totpIssuer, user.Email)
+	secret, url, err = twofactor.Generate(s.issuer(), user.Email)
 	if err != nil {
 		return "", "", err
 	}

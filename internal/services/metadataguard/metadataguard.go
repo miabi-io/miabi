@@ -151,7 +151,7 @@ func (s *Service) spec() docker.RunSpec {
 
 func specHash(spec docker.RunSpec) string {
 	h := sha256.New()
-	fmt.Fprintf(h, "%s\x00%q\x00%q\x00%q\x00%q\x00%v", spec.Image, spec.Entrypoint, spec.Cmd, spec.Env, spec.CapAdd, spec.Binds)
+	_, _ = fmt.Fprintf(h, "%s\x00%q\x00%q\x00%q\x00%q\x00%v", spec.Image, spec.Entrypoint, spec.Cmd, spec.Env, spec.CapAdd, spec.Binds)
 	return hex.EncodeToString(h.Sum(nil))[:24]
 }
 

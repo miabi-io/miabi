@@ -10,10 +10,35 @@ import (
 	"bytes"
 	"encoding/base64"
 	"image/png"
+	"net/url"
+	"strings"
 
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 )
+
+// DefaultIssuer names the platform in authenticator apps when nothing better is known.
+const DefaultIssuer = "Miabi"
+
+// Issuer builds the name an authenticator app shows for this instance
+func Issuer(name, publicURL string) string {
+	name = strings.TrimSpace(strings.ReplaceAll(name, ":", ""))
+	if name == "" {
+		name = DefaultIssuer
+	}
+	var host string
+	raw := strings.TrimSpace(publicURL)
+	if raw != "" && !strings.Contains(raw, "://") {
+		raw = "https://" + raw
+	}
+	if u, err := url.Parse(raw); err == nil {
+		host = u.Hostname()
+	}
+	if host == "" || strings.Contains(host, ":") {
+		return name
+	}
+	return name + " (" + host + ")"
+}
 
 // Generate creates a fresh TOTP secret bound to issuer/account. It returns the
 // base32 secret (to persist, encrypted) and the otpauth:// URL the client turns
