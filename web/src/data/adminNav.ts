@@ -64,7 +64,7 @@ export const adminNavSections: NavSection[] = [
     id: 'admin-platform',
     key: 'adminNav.platform.title', title: 'Platform',
     items: [
-      { key: 'adminNav.platform.security', name: 'Security', path: '/admin/security', icon: 'mdi-shield-lock-outline' },
+      { key: 'adminNav.platform.security', name: 'Security Center', path: '/admin/security', icon: 'mdi-shield-lock-outline' },
       { key: 'adminNav.platform.platformSettings', name: 'Platform Settings', path: '/admin/settings', icon: 'mdi-cog-outline' },
       { key: 'adminNav.platform.branding', name: 'Branding', path: '/admin/branding', icon: 'mdi-palette-outline' },
       { key: 'adminNav.platform.deploymentConfig', name: 'Deployment Config', path: '/admin/deployment-config', icon: 'mdi-package-variant-closed' },
