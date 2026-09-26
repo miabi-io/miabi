@@ -299,6 +299,7 @@ func refuseImmutable(ch declarative.Change) error {
 
 // resizeVolume converges the one volume field that can change in place. The declared size is a
 // soft number used for quota accounting, so growing it is a row update rather than a data move.
+// Shrinking is refused: a manifest behind a capacity expanded in the console must catch up, not undo it.
 func (s *Service) resizeVolume(workspaceID uint, ch declarative.Change) error {
 	for _, f := range ch.Fields {
 		if f.Field != "size" {
@@ -312,7 +313,13 @@ func (s *Service) resizeVolume(workspaceID uint, ch declarative.Change) error {
 		if err != nil {
 			return err
 		}
-		return s.storage.Resize(workspaceID, v.ID, size)
+		if err := s.storage.Resize(workspaceID, v.ID, size); err != nil {
+			if errors.Is(err, storage.ErrVolumeShrink) || errors.Is(err, storage.ErrVolumeBelowUsage) {
+				return fmt.Errorf("%w: volume %q: %s", ErrInvalidManifest, ch.Name, err)
+			}
+			return err
+		}
+		return nil
 	}
 	return nil
 }

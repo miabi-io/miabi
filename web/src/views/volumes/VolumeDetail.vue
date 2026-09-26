@@ -12,6 +12,7 @@ import OwnerChip from '@/components/OwnerChip.vue'
 import LocationName from '@/components/LocationName.vue'
 import { copyText } from '@/utils/clipboard'
 import { relativeTime } from '@/utils/time'
+import { fmtSize } from '@/utils/format'
 import type { VolumeDetail, VolumeFile, VolumeBackup, VolumeBackupSchedule } from '@/api/types'
 
 const route = useRoute()
@@ -62,6 +63,35 @@ async function load() {
   }
 }
 watch([volId, wid], load, { immediate: true })
+
+const usedPct = computed(() => {
+  const v = vol.value
+  if (!v?.size_bytes || !v.used_measured_at) return null
+  return Math.round(((v.used_bytes ?? 0) / v.size_bytes) * 100)
+})
+
+const MB = 1024 * 1024
+const currentMb = computed(() => Math.ceil((vol.value?.size_bytes ?? 0) / MB))
+const expandMb = ref<number | null>(null)
+const expanding = ref(false)
+const expandConfirmOpen = ref(false)
+const expandValid = computed(() => !!expandMb.value && expandMb.value > currentMb.value)
+watch(vol, (v) => { if (v?.size_bytes) expandMb.value = currentMb.value * 2 })
+
+async function expand() {
+  if (!wid.value || !vol.value || !expandValid.value) return
+  expanding.value = true
+  try {
+    const updated = (await volumeApi.expand(wid.value, vol.value.id, expandMb.value!)).data.data
+    vol.value = { ...vol.value, size_bytes: updated.size_bytes }
+    notify.success(t('notify.volumeDetail.expanded', { capacity: fmtSize(updated.size_bytes) }))
+    expandConfirmOpen.value = false
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    expanding.value = false
+  }
+}
 
 async function copy(text: string) {
   if (!text) return
@@ -457,8 +487,14 @@ function isFileVisible(file: VolumeFile): boolean {
       <div class="stats-grid">
         <div class="stat-card">
           <div class="stat-header"><span class="stat-label">{{ $t('volumes.sizeOnDisk') }}</span><span class="stat-icon stat-icon-primary"><span class="mdi mdi-database"></span></span></div>
-          <div class="stat-value">{{ fmtBytes(vol.size_bytes ?? 0) }}</div>
-          <div class="stat-sub">{{ vol.exists ? 'reported by Docker' : 'volume not found' }}</div>
+          <div class="stat-value">{{ vol.used_measured_at ? fmtSize(vol.used_bytes) : '—' }}</div>
+          <div class="stat-sub">
+            <template v-if="!vol.exists">{{ $t('volumes.notFound') }}</template>
+            <template v-else>
+              <span v-if="vol.size_bytes">{{ $t('volumes.ofCapacity', { capacity: fmtSize(vol.size_bytes) }) }}<template v-if="usedPct !== null"> ({{ usedPct }}%)</template> · </span>
+              <span>{{ vol.used_measured_at ? $t('volumes.measured', { when: relativeTime(vol.used_measured_at) }) : $t('volumes.notMeasuredYet') }}</span>
+            </template>
+          </div>
         </div>
         <div class="stat-card">
           <div class="stat-header"><span class="stat-label">{{ $t('volumes.mountedBy') }}</span><span class="stat-icon stat-icon-info"><span class="mdi mdi-application-outline"></span></span></div>
@@ -777,6 +813,27 @@ function isFileVisible(file: VolumeFile): boolean {
 
     <!-- SETTINGS -->
     <template v-else-if="tab === 'settings'">
+      <div class="card mb-4">
+        <div class="card-header"><h2>{{ $t('volumes.capacity') }}</h2></div>
+        <div class="card-body">
+          <template v-if="vol.size_bytes">
+            <div class="cell-sub mb-3">
+              {{ $t('volumes.capacityCurrent', { capacity: fmtSize(vol.size_bytes) }) }}<template v-if="vol.used_measured_at"> · {{ $t('volumes.capacityUsed', { used: fmtSize(vol.used_bytes) }) }}</template>
+            </div>
+            <div class="flex items-end gap-3">
+              <div class="form-group" style="margin: 0">
+                <label class="form-label">{{ $t('volumes.newCapacityMb') }}</label>
+                <input v-model.number="expandMb" type="number" :min="currentMb + 1" class="form-input" />
+              </div>
+              <button class="btn btn-primary" :disabled="!expandValid || expanding" @click="expandConfirmOpen = true">
+                {{ expanding ? $t('volumes.expanding') : $t('volumes.expand') }}
+              </button>
+            </div>
+            <p class="form-hint">{{ $t('volumes.expandHint') }}</p>
+          </template>
+          <div v-else class="cell-sub">{{ $t('volumes.noCapacity') }}</div>
+        </div>
+      </div>
       <div class="card danger-card">
         <div class="card-header"><h2>{{ $t('db.dangerZone') }}</h2></div>
         <div class="card-body flex items-center justify-between gap-3">
@@ -794,6 +851,17 @@ function isFileVisible(file: VolumeFile): boolean {
         </div>
       </div>
     </template>
+
+    <ConfirmDialog
+      :open="expandConfirmOpen"
+      :title="$t('confirm.title.expandVolume')"
+      :message="$t('confirm.message.volumeDetail.expandVolume', { name: vol?.name, from: fmtSize(vol?.size_bytes), to: fmtSize((expandMb ?? 0) * MB) })"
+      :confirm-label="$t('volumes.expand')"
+      variant="primary"
+      :busy="expanding"
+      @confirm="expand"
+      @cancel="expandConfirmOpen = false"
+    />
 
     <ConfirmDialog
       :open="deleteConfirmOpen"

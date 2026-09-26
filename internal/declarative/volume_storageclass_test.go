@@ -95,6 +95,15 @@ func TestVolumeSizeComparesAsBytes(t *testing.T) {
 	}
 }
 
+// A manifest silent about size leaves the volume's capacity alone, so expanding it in the console does
+// not turn every later apply into a change.
+func TestUnstatedVolumeSizeDoesNotDrift(t *testing.T) {
+	ch := volumeChange(t, &d.VolumeSpec{}, &d.VolumeSpec{Size: "20Gi"})
+	if ch.Action != d.ActionNoop {
+		t.Fatalf("action = %s, want noop (fields: %+v)", ch.Action, ch.Fields)
+	}
+}
+
 func TestVolumeSizeBytes(t *testing.T) {
 	cases := map[string]int64{"": 0, "0": 0, "5Gi": 5 << 30, "512Mi": 512 << 20}
 	for in, want := range cases {

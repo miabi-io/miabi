@@ -153,6 +153,41 @@ func (h *VolumeHandler) Delete(c *okapi.Context) error {
 	return message(c, "volume deleted")
 }
 
+// VolumeExpandRequest raises a volume's declared capacity.
+type VolumeExpandRequest struct {
+	Body struct {
+		SizeMB int `json:"size_mb" required:"true" min:"1"`
+	} `json:"body"`
+}
+
+// Expand raises a volume's declared capacity. Only a volume created with a size can grow: one without
+// is uncapped, and giving it a size would be a limit, not an expansion.
+func (h *VolumeHandler) Expand(c *okapi.Context, req *VolumeExpandRequest) error {
+	v, err := h.load(c)
+	if err != nil {
+		return c.AbortNotFound("volume not found")
+	}
+	if v.SizeBytes <= 0 {
+		return c.AbortBadRequest("this volume has no declared capacity to expand")
+	}
+	sizeBytes := int64(req.Body.SizeMB) * 1024 * 1024
+	if sizeBytes <= v.SizeBytes {
+		return c.AbortBadRequest("the new capacity must be larger than the current one")
+	}
+	if err := h.svc.Resize(v.WorkspaceID, v.ID, sizeBytes); err != nil {
+		if a := quotaAbort(c, err); a != nil {
+			return a
+		}
+		return c.AbortInternalServerError("failed to expand volume", err)
+	}
+	h.record(c, v.WorkspaceID, "volume.expand", v.ID)
+	updated, err := h.svc.Get(v.WorkspaceID, v.ID)
+	if err != nil {
+		return c.AbortInternalServerError("failed to load volume", err)
+	}
+	return ok(c, updated)
+}
+
 const maxVolumeUploadBytes = 512 << 20 // 512 MiB
 
 // ListFiles returns the files stored in a volume.

@@ -110,6 +110,7 @@ export const volumeApi = {
   storageClasses: (ws: number, location?: string) =>
     api.get<ApiResponse<StorageClassOption[]>>(`${w(ws)}/storage-classes${location ? `?location=${encodeURIComponent(location)}` : ''}`),
   remove: (ws: number, id: number) => api.delete<ApiResponse<{ message: string }>>(`${w(ws)}/volumes/${id}`),
+  expand: (ws: number, id: number, sizeMb: number) => api.post<ApiResponse<Volume>>(`${w(ws)}/volumes/${id}/expand`, { size_mb: sizeMb }),
 
   // Files stored inside a volume.
   listFiles: (ws: number, id: number) => api.get<ApiResponse<VolumeFile[]>>(`${w(ws)}/volumes/${id}/files`),
