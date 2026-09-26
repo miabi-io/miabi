@@ -650,7 +650,7 @@ func (h *AuthHandler) Me(c *okapi.Context) error {
 type UpdatePreferencesRequest struct {
 	Body struct {
 		Theme       *string `json:"theme,omitempty"`
-		Timezone    *string `json:"timezone,omitempty"`
+		Timezone    *string `json:"timezone,omitempty" format:"timezone"`
 		Accent      *string `json:"accent,omitempty"`
 		Locale      *string `json:"locale,omitempty"`
 		LandingView *string `json:"landing_view,omitempty"`

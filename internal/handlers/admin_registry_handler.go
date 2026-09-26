@@ -84,7 +84,7 @@ type RegistrySettingsBody struct {
 
 	Enabled     *bool   `json:"enabled"`
 	Host        *string `json:"host"`
-	StorageType *string `json:"storage_type"`
+	StorageType *string `json:"storage_type" enum:"filesystem,s3"`
 
 	S3Endpoint       *string `json:"s3_endpoint"`
 	S3Bucket         *string `json:"s3_bucket"`

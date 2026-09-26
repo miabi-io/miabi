@@ -115,22 +115,22 @@ type Plan struct {
 // plan. Any non-nil field overrides the plan for that workspace; nil inherits.
 type WorkspaceQuota struct {
 	WorkspaceID               uint           `json:"workspace_id" gorm:"primaryKey"`
-	MaxApps                   *int           `json:"max_apps,omitempty"`
-	MaxDatabaseInstances      *int           `json:"max_database_instances,omitempty"`
-	MaxCronJobs               *int           `json:"max_cron_jobs,omitempty"`
-	MaxVolumes                *int           `json:"max_volumes,omitempty"`
-	MaxNetworks               *int           `json:"max_networks,omitempty"`
-	MaxAPIKeys                *int           `json:"max_api_keys,omitempty"`
-	MaxMembers                *int           `json:"max_members,omitempty"`
-	MaxDatabasesPerInstance   *int           `json:"max_databases_per_instance,omitempty"`
-	MaxCPUCores               *int           `json:"max_cpu_cores,omitempty"`
-	MaxMemoryMB               *int           `json:"max_memory_mb,omitempty"`
-	MaxDatabaseInstanceSizeMB *int           `json:"max_database_instance_size_mb,omitempty"`
-	MaxStorageMB              *int           `json:"max_storage_mb,omitempty"`
-	MaxRunners                *int           `json:"max_runners,omitempty"`
-	MaxGPUs                   *int           `json:"max_gpus,omitempty"`
-	MaxDatabaseCPUCores       *int           `json:"max_database_cpu_cores,omitempty"`
-	MaxDatabaseMemoryMB       *int           `json:"max_database_memory_mb,omitempty"`
+	MaxApps                   *int           `json:"max_apps,omitempty" min:"-1"`
+	MaxDatabaseInstances      *int           `json:"max_database_instances,omitempty" min:"-1"`
+	MaxCronJobs               *int           `json:"max_cron_jobs,omitempty" min:"-1"`
+	MaxVolumes                *int           `json:"max_volumes,omitempty" min:"-1"`
+	MaxNetworks               *int           `json:"max_networks,omitempty" min:"-1"`
+	MaxAPIKeys                *int           `json:"max_api_keys,omitempty" min:"-1"`
+	MaxMembers                *int           `json:"max_members,omitempty" min:"-1"`
+	MaxDatabasesPerInstance   *int           `json:"max_databases_per_instance,omitempty" min:"-1"`
+	MaxCPUCores               *int           `json:"max_cpu_cores,omitempty" min:"-1"`
+	MaxMemoryMB               *int           `json:"max_memory_mb,omitempty" min:"-1"`
+	MaxDatabaseInstanceSizeMB *int           `json:"max_database_instance_size_mb,omitempty" min:"-1"`
+	MaxStorageMB              *int           `json:"max_storage_mb,omitempty" min:"-1"`
+	MaxRunners                *int           `json:"max_runners,omitempty" min:"-1"`
+	MaxGPUs                   *int           `json:"max_gpus,omitempty" min:"-1"`
+	MaxDatabaseCPUCores       *int           `json:"max_database_cpu_cores,omitempty" min:"-1"`
+	MaxDatabaseMemoryMB       *int           `json:"max_database_memory_mb,omitempty" min:"-1"`
 	AllowCustomTLS            *bool          `json:"allow_custom_tls,omitempty"`
 	AllowPrivilegedHostMounts *bool          `json:"allow_privileged_host_mounts,omitempty"`
 	AllowShellExec            *bool          `json:"allow_shell_exec,omitempty"`
@@ -140,7 +140,7 @@ type WorkspaceQuota struct {
 	AllowPlatformRunners      *bool          `json:"allow_platform_runners,omitempty"`
 	AllowCustomBuilder        *bool          `json:"allow_custom_builder,omitempty"`
 	AllowGPU                  *bool          `json:"allow_gpu,omitempty"`
-	SecurityProfile           *string        `json:"security_profile,omitempty"`                                // nil = inherit plan
+	SecurityProfile           *string        `json:"security_profile,omitempty" enum:"default,restricted"`      // nil = inherit plan
 	AllowOfficialImageUser    *bool          `json:"allow_official_image_user,omitempty"`                       // nil = inherit plan
 	Placement                 *PlanPlacement `json:"placement,omitempty" gorm:"type:text;serializer:json"`      // nil = inherit plan
 	DatabaseSizes             *[]uint        `json:"database_sizes,omitempty" gorm:"type:text;serializer:json"` // nil = inherit plan

@@ -37,10 +37,10 @@ func NewAdminAnnouncementHandler(svc *announcement.Service, repo *repositories.A
 // rather than Body because okapi resolves a request's body by looking for a field
 // named Body, and applies that rule again to the body's own fields.
 type announcementBody struct {
-	Title        string `json:"title" required:"true" max:"200"`
-	Message      string `json:"message" max:"4000"`
-	Link         string `json:"link" max:"500"`
-	ActionText   string `json:"action_text" max:"60"`
+	Title        string `json:"title" required:"true" maxLength:"200"`
+	Message      string `json:"message" maxLength:"4000"`
+	Link         string `json:"link" maxLength:"500"`
+	ActionText   string `json:"action_text" maxLength:"60"`
 	Severity     string `json:"severity" enum:"info,warning,critical"`
 	Audience     string `json:"audience" enum:"all,admins,owners,workspaces"`
 	WorkspaceIDs []uint `json:"workspace_ids"`

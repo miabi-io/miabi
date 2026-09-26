@@ -78,7 +78,7 @@ type CreateOAuthProviderRequest struct {
 		NameClaim          string `json:"name_claim"`
 		UsernameClaim      string `json:"username_claim"`
 		DefaultWorkspaceID *uint  `json:"default_workspace_id"`
-		DefaultRole        string `json:"default_role"`
+		DefaultRole        string `json:"default_role" enum:"owner,admin,developer,viewer"`
 		// OrganizationID is the realm accounts this provider registers belong to. Null leaves them
 		// in the default organization. Set once, here: it never moves an account that already
 		// exists, so changing it later would only split the provider's users across two tenants.
@@ -107,7 +107,7 @@ type UpdateOAuthProviderRequest struct {
 		NameClaim          *string `json:"name_claim"`
 		UsernameClaim      *string `json:"username_claim"`
 		DefaultWorkspaceID *uint   `json:"default_workspace_id"`
-		DefaultRole        *string `json:"default_role"`
+		DefaultRole        *string `json:"default_role" enum:"owner,admin,developer,viewer"`
 	} `json:"body"`
 }
 
