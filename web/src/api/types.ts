@@ -2100,6 +2100,33 @@ export interface VolumeBackup {
   started_at?: string | null
   finished_at?: string | null
   created_at: string
+  // Recovery point fields (Enterprise). A backup without a ref is a plain archive.
+  ref?: string
+  schedule_id?: number | null
+  consistency?: string
+  encrypted: boolean
+  pinned: boolean
+  verified_at?: string | null
+  verify_status?: 'ok' | 'failed' | ''
+  verify_error?: string
+}
+
+export interface VolumeBackupStatus {
+  s3_configured: boolean
+  entitled: boolean
+  mutable: boolean
+  sealing: boolean
+}
+
+export interface VolumeBackupSchedule {
+  id: number
+  volume_id: number
+  cron: string
+  enabled: boolean
+  max_points: number
+  retention_days: number
+  last_run_at?: string | null
+  created_at: string
 }
 
 

@@ -56,10 +56,17 @@ type ImageResolver interface {
 	Ref(key string) string
 }
 
-// S3Provider yields a workspace's S3 target plus the volume backup path prefix.
-// Satisfied by backupsettings.Service.
+// S3Provider yields a workspace's S3 target plus the volume backup path prefix, and the
+// passphrase recovery points are sealed under. Satisfied by backupsettings.Service.
 type S3Provider interface {
 	VolumeBackupTarget(workspaceID uint) (*backup.S3Config, string, error)
+	BackupPassphrase(workspaceID uint) (string, error)
+}
+
+// Alerter raises and resolves the backup_failed alert for a volume's recovery points.
+type Alerter interface {
+	VolumeBackupFailed(workspaceID, volumeID uint, volumeName, ref, errMsg string)
+	VolumeBackupSucceeded(workspaceID, volumeID uint)
 }
 
 // Enqueuer schedules a volume backup to run in the background worker. Satisfied
@@ -75,6 +82,7 @@ type Service struct {
 	images   ImageResolver
 	s3       S3Provider
 	enqueuer Enqueuer
+	alerter  Alerter
 	logs     *logstore.Store
 	// networks the helper is attached to so it can reach the object store from inside Docker.
 	network         string
@@ -124,6 +132,9 @@ func (s *Service) SetS3Provider(p S3Provider) { s.s3 = p }
 // a split install. The helper is attached to it as well as the proxy network.
 func (s *Service) SetInternalNetwork(name string) { s.internalNetwork = name }
 
+// SetAlerter wires failure alerts for recovery points (nil-safe).
+func (s *Service) SetAlerter(a Alerter) { s.alerter = a }
+
 // SetEnqueuer wires the background worker producer. When unset, Create runs the
 // backup synchronously (used in tests / no-redis setups).
 func (s *Service) SetEnqueuer(e Enqueuer) { s.enqueuer = e }
@@ -168,9 +179,14 @@ func (s *Service) deleteArchive(ctx context.Context, b *models.VolumeBackup) {
 		logger.Error("volume backup: open object store to delete archive", "volume_backup", b.ID, "error", err)
 		return
 	}
-	key := archiveKey(b.S3Path, b.Filename)
-	if err := store.Delete(ctx, key); err != nil && !errors.Is(err, blob.ErrNotFound) {
-		logger.Error("volume backup: delete archive object", "object", key, "error", err)
+	keys := []string{archiveKey(b.S3Path, b.Filename)}
+	if b.IsPoint() {
+		keys = append(keys, archiveKey(b.S3Path, backup.SetInfoObject))
+	}
+	for _, key := range keys {
+		if err := store.Delete(ctx, key); err != nil && !errors.Is(err, blob.ErrNotFound) {
+			logger.Error("volume backup: delete archive object", "object", key, "error", err)
+		}
 	}
 }
 
@@ -254,10 +270,21 @@ func (s *Service) helperNetworks(ctx context.Context, dc docker.Client) ([]strin
 	return out, nil
 }
 
-// Create records a pending volume backup and enqueues it for the background
+// Create records a pending plain archive and enqueues it for the background
 // worker, returning the pending record immediately. With no enqueuer wired it
 // runs the backup synchronously. Validates that S3 is configured.
 func (s *Service) Create(ctx context.Context, vol *models.Volume, trigger string) (*models.VolumeBackup, error) {
+	return s.create(ctx, vol, trigger, false, nil)
+}
+
+// CreatePoint is Create for a recovery point: a ref, its own prefix and descriptor, sealing
+// under the workspace passphrase, and verification once it lands. The caller owns the licence
+// check. scheduleID, when set, has the schedule's retention applied after a successful run.
+func (s *Service) CreatePoint(ctx context.Context, vol *models.Volume, trigger string, scheduleID *uint) (*models.VolumeBackup, error) {
+	return s.create(ctx, vol, trigger, true, scheduleID)
+}
+
+func (s *Service) create(ctx context.Context, vol *models.Volume, trigger string, point bool, scheduleID *uint) (*models.VolumeBackup, error) {
 	cfg, path, err := s.target(vol.WorkspaceID)
 	if err != nil {
 		return nil, err
@@ -266,6 +293,12 @@ func (s *Service) Create(ctx context.Context, vol *models.Volume, trigger string
 		WorkspaceID: vol.WorkspaceID, VolumeID: vol.ID, ServerID: vol.ServerID,
 		VolumeName: vol.DockerName, Status: models.BackupPending, Trigger: trigger,
 		S3Bucket: cfg.Bucket, S3Path: path,
+	}
+	if point {
+		b.Ref = models.NewVolumeBackupRef(vol.Name, time.Now())
+		b.S3Path = PointPrefix(path, vol.Name, b.Ref)
+		b.Consistency = models.VolumeConsistencyHot
+		b.ScheduleID = scheduleID
 	}
 	if err := s.repo.Create(b); err != nil {
 		return nil, err
@@ -307,6 +340,23 @@ func (s *Service) RunBackup(ctx context.Context, backupID uint) error {
 		s.fail(b, err)
 		return nil
 	}
+	env := backup.S3Env(cfg)
+	var passphrase string
+	if b.IsPoint() {
+		if passphrase, err = s.passphrase(b.WorkspaceID); err != nil {
+			s.fail(b, fmt.Errorf("read the workspace backup passphrase: %w", err))
+			return nil
+		}
+		if passphrase != "" {
+			dataKey, sealed, err := newSealedKey(passphrase)
+			if err != nil {
+				s.fail(b, err)
+				return nil
+			}
+			b.Envelope = sealed
+			env = append(env, "GPG_PASSPHRASE="+dataKey)
+		}
+	}
 
 	now := time.Now()
 	b.Status = models.BackupRunning
@@ -326,7 +376,7 @@ func (s *Service) RunBackup(ctx context.Context, backupID uint) error {
 	exit, out, err := dc.RunOneShot(ctx, docker.RunSpec{
 		Name:  oneShotName("mb-volbkup", b.ID),
 		Image: image,
-		Env:   backup.S3Env(cfg),
+		Env:   env,
 		Cmd:   []string{"backup", "--storage", "s3", "--remote-path", b.S3Path, "--name", vol.Name},
 		// Read-only: the archiver reads the volume and uploads it, and must not be able to write to
 		// the data it is protecting.
@@ -348,12 +398,20 @@ func (s *Service) RunBackup(ctx context.Context, backupID uint) error {
 		return nil
 	}
 
-	name, _, err := backup.ArtifactName(out, archiveRe)
+	name, encrypted, err := backup.ArtifactName(out, archiveRe)
 	if err != nil {
 		s.fail(b, err)
 		return nil
 	}
 	b.Filename = name
+	b.Encrypted = encrypted
+	if b.Envelope != "" && !encrypted {
+		// An envelope over a cleartext archive seals nothing, and would still block clearing the
+		// passphrase as if it did.
+		logger.Warn("volume recovery point stored UNENCRYPTED despite a passphrase: the volume-bkup image does not support encryption — upgrade it",
+			"volume", vol.ID, "artifact", name)
+		b.Envelope = ""
+	}
 	s.recordSize(ctx, b)
 	fin := time.Now()
 	b.Status = models.BackupCompleted
@@ -363,6 +421,9 @@ func (s *Service) RunBackup(ctx context.Context, backupID uint) error {
 	}
 	s.externalizeLog(b)
 	logger.Info("volume backup completed", "volume", vol.ID, "file", b.Filename)
+	if b.IsPoint() {
+		s.finishPoint(ctx, vol, b, passphrase)
+	}
 	return nil
 }
 
@@ -388,10 +449,18 @@ func (s *Service) Restore(ctx context.Context, vol *models.Volume, b *models.Vol
 	if err != nil {
 		return err
 	}
+	env := backup.S3Env(cfg)
+	key, err := s.archiveKeyPassphrase(b)
+	if err != nil {
+		return err
+	}
+	if key != "" {
+		env = append(env, "GPG_PASSPHRASE="+key)
+	}
 	exit, out, err := dc.RunOneShot(ctx, docker.RunSpec{
 		Name:     oneShotName("mb-volrestore", b.ID),
 		Image:    image,
-		Env:      backup.S3Env(cfg),
+		Env:      env,
 		Cmd:      []string{"restore", "--storage", "s3", "--remote-path", b.S3Path, "--file", b.Filename},
 		Mounts:   map[string]string{vol.DockerName: volumeMount},
 		Networks: nets,
@@ -427,8 +496,15 @@ func (s *Service) fail(b *models.VolumeBackup, cause error) *models.VolumeBackup
 	b.Status = models.BackupFailed
 	b.Error = cause.Error()
 	b.FinishedAt = &fin
+	if b.Filename == "" {
+		// Nothing was stored under it, and a live envelope would block clearing the passphrase.
+		b.Envelope = ""
+	}
 	_ = s.repo.Update(b)
 	s.externalizeLog(b)
 	logger.Error("volume backup failed", "volume", b.VolumeID, "error", cause)
+	if b.IsPoint() && s.alerter != nil {
+		s.alerter.VolumeBackupFailed(b.WorkspaceID, b.VolumeID, b.VolumeName, b.Ref, b.Error)
+	}
 	return b
 }

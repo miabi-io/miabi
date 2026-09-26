@@ -182,7 +182,7 @@ func newTestDB(t *testing.T) *gorm.DB {
 		"app_env_vars": "application_id", "app_ports": "application_id", "deployments": "application_id",
 		"releases": "application_id", "app_events": "application_id", "metric_samples": "application_id",
 		"port_bindings": "workspace_id", "jobs": "workspace_id", "backups": "database_id",
-		"backup_schedules": "workspace_id", "volume_backups": "volume_id", "dns_records": "domain_id",
+		"backup_schedules": "workspace_id", "volume_backups": "volume_id", "volume_backup_schedules": "workspace_id", "dns_records": "domain_id",
 		"pipeline_step_runs": "pipeline_run_id", "pipeline_runs": "workspace_id", "images": "workspace_id",
 		"stack_env_vars": "stack_id", "webhook_deliveries": "workspace_id", "release_approvals": "workspace_id",
 		"environments":      "workspace_id",

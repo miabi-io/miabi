@@ -729,8 +729,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	backupService.SetImageResolver(imageResolver)
 	backupService.SetLogStore(logStore) // externalize backup run logs to the shared store
 	backupService.SetEventRecorder(eventsService)
-	backupService.SetSetRepository(backupSetRepo)           // instance-wide recovery points
-	backupSettingsService.SetEnvelopeRotator(backupService) // rotate set envelopes when the passphrase changes
+	backupService.SetSetRepository(backupSetRepo) // instance-wide recovery points
 	// Volume backup: archives a volume to the workspace S3 target (volume-bkup).
 	volumeBackupService := volumebackup.NewService(volumeBackupRepo, volumeRepo, nodeClients, cfg.ProxyNetwork)
 	volumeBackupService.SetImageResolver(imageResolver)
@@ -738,6 +737,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	volumeBackupService.SetEnqueuer(producer) // run backups on the background worker
 	volumeBackupService.SetInternalNetwork(cfg.InternalNetwork)
 	volumeBackupService.SetLogStore(logStore)
+	backupSettingsService.SetEnvelopeRotator(backupService, volumeBackupService)
+	if cronManager != nil {
+		cronManager.SetVolumeBackups(volumeBackupService)
+	}
 
 	pbHost, pbPort, pbName, pbUser, pbPass, pbSSL := cfg.Database.PostgresConn()
 	platformBackupService := platformbackup.NewService(
@@ -1227,7 +1230,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			volume:          handlers.NewVolumeHandler(storageService, userRepo, auditLogger),
 			backup:          handlers.NewBackupHandler(backupService, dbRepo, backupRepo, backupSetRepo, backupSettingsService, cronManager, ee, auditLogger, cfg.RestoreMaxMB),
 			backupSettings:  handlers.NewWorkspaceBackupSettingsHandler(backupSettingsService, auditLogger),
-			volumeBackup:    handlers.NewVolumeBackupHandler(volumeBackupService, volumeRepo, volumeBackupRepo, auditLogger),
+			volumeBackup:    handlers.NewVolumeBackupHandler(volumeBackupService, volumeRepo, volumeBackupRepo, cronManager, ee, auditLogger),
 			workspaceBundle: handlers.NewWorkspaceBundleHandler(wsBundleService, auditLogger),
 			monitoring:      handlers.NewMonitoringHandler(monitoringService),
 			analytics:       handlers.NewAnalyticsHandler(repositories.NewAnalyticsRepository(db), ee, analytics.NewLiveTracker(redisClient, time.Duration(cfg.AnalyticsLiveWindowSeconds)*time.Second)),

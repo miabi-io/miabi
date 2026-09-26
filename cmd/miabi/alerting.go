@@ -63,6 +63,32 @@ func (a backupAlerter) BackupSetSucceeded(ws, instanceID uint) {
 	})
 }
 
+// volumeAlerter raises backup_failed for a volume recovery point and resolves it on the next good one.
+type volumeAlerter struct{ e *alerting.Engine }
+
+func (a volumeAlerter) VolumeBackupFailed(ws, volumeID uint, volumeName, ref, errMsg string) {
+	title := "Volume recovery point failed"
+	if volumeName != "" {
+		title += " — " + volumeName
+	}
+	body := errMsg
+	if ref != "" {
+		body = ref + ": " + errMsg
+	}
+	a.e.Emit(alerting.Signal{
+		WorkspaceID: ws, Kind: "backup_failed", SubjectType: "volume",
+		SubjectRef: fmt.Sprintf("volume:%d", volumeID), SubjectLink: fmt.Sprintf("/volumes/%d", volumeID),
+		Severity: models.AlertCritical, Title: title, Body: body,
+	})
+}
+
+func (a volumeAlerter) VolumeBackupSucceeded(ws, volumeID uint) {
+	a.e.Emit(alerting.Signal{
+		WorkspaceID: ws, Kind: "backup_ok", Resolve: true,
+		SubjectRef: fmt.Sprintf("volume:%d", volumeID),
+	})
+}
+
 type backupReporter struct{ n *alerting.WorkspaceNotifier }
 
 func (r backupReporter) ScheduledBackupFinished(ws uint, rep backup.BackupReport) {

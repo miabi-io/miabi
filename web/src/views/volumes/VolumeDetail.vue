@@ -11,7 +11,8 @@ import MetadataCard from '@/components/MetadataCard.vue'
 import OwnerChip from '@/components/OwnerChip.vue'
 import LocationName from '@/components/LocationName.vue'
 import { copyText } from '@/utils/clipboard'
-import type { VolumeDetail, VolumeFile, VolumeBackup } from '@/api/types'
+import { relativeTime } from '@/utils/time'
+import type { VolumeDetail, VolumeFile, VolumeBackup, VolumeBackupSchedule } from '@/api/types'
 
 const route = useRoute()
 const { t } = useI18n()
@@ -172,6 +173,11 @@ function fmtEpoch(s: number) {
 // --- Backups (to the workspace S3 target) ---
 const backups = ref<VolumeBackup[]>([])
 const backupConfigured = ref(false)
+// Recovery points (Enterprise): read from the API, since a member cannot read the licence view.
+const rpEntitled = ref(false)
+const rpMutable = ref(false)
+const rpSealing = ref(false)
+const schedules = ref<VolumeBackupSchedule[]>([])
 const backupsLoading = ref(false)
 const backingUp = ref(false)
 const restoreConfirmOpen = ref(false)
@@ -189,12 +195,18 @@ async function loadBackups() {
   if (!wid.value) return
   backupsLoading.value = true
   try {
-    const [list, status] = await Promise.all([
+    const [list, status, scheds] = await Promise.all([
       volumeApi.listBackups(wid.value, volId.value),
       volumeApi.backupStatus(wid.value, volId.value),
+      volumeApi.backupSchedules(wid.value, volId.value),
     ])
     backups.value = list.data.data ?? []
-    backupConfigured.value = status.data.data.s3_configured
+    const st = status.data.data
+    backupConfigured.value = st.s3_configured
+    rpEntitled.value = st.entitled
+    rpMutable.value = st.mutable
+    rpSealing.value = st.sealing
+    schedules.value = scheds.data.data ?? []
   } catch (e) {
     notify.apiError(e, 'Failed to list backups')
   } finally {
@@ -247,6 +259,80 @@ async function doRestore() {
     notify.apiError(e, 'Restore failed')
   } finally {
     restoring.value = false
+  }
+}
+
+const restoreMessage = computed(() => {
+  const b = pendingRestore.value
+  const base = t('confirm.message.volumeDetail.restoreNameFromThe', { name: vol.value?.name, fmtTime: fmtTime(b?.created_at) })
+  return b?.consistency === 'hot' ? `${base} ${t('volumes.rp.takenHotWarning')}` : base
+})
+
+const verifyingId = ref<number | null>(null)
+async function verifyBackup(b: VolumeBackup) {
+  if (!wid.value) return
+  verifyingId.value = b.id
+  try {
+    const res = (await volumeApi.verifyBackup(wid.value, volId.value, b.id)).data.data
+    if (res.ok) notify.success(t('volumes.rp.verifiedOk'))
+    else notify.error(t('volumes.rp.verifyFailed', { error: res.error }))
+    await loadBackups()
+  } catch (e) {
+    notify.apiError(e, 'Verification failed')
+  } finally {
+    verifyingId.value = null
+  }
+}
+
+async function togglePin(b: VolumeBackup) {
+  if (!wid.value) return
+  try {
+    await volumeApi.pinBackup(wid.value, volId.value, b.id, !b.pinned)
+    await loadBackups()
+  } catch (e) {
+    notify.apiError(e, 'Failed to update the recovery point')
+  }
+}
+
+const schedCron = ref('0 3 * * *')
+const schedMax = ref(7)
+const schedDays = ref(0)
+const savingSchedule = ref(false)
+async function addSchedule() {
+  if (!wid.value) return
+  savingSchedule.value = true
+  try {
+    await volumeApi.createBackupSchedule(wid.value, volId.value, {
+      cron: schedCron.value.trim(), enabled: true, max_points: schedMax.value || 0, retention_days: schedDays.value || 0,
+    })
+    notify.success(t('volumes.rp.scheduleAdded'))
+    await loadBackups()
+  } catch (e) {
+    notify.apiError(e, 'Failed to add the schedule')
+  } finally {
+    savingSchedule.value = false
+  }
+}
+
+async function toggleSchedule(sc: VolumeBackupSchedule) {
+  if (!wid.value) return
+  try {
+    await volumeApi.updateBackupSchedule(wid.value, volId.value, sc.id, {
+      cron: sc.cron, enabled: !sc.enabled, max_points: sc.max_points, retention_days: sc.retention_days,
+    })
+    await loadBackups()
+  } catch (e) {
+    notify.apiError(e, 'Failed to update the schedule')
+  }
+}
+
+async function removeSchedule(sc: VolumeBackupSchedule) {
+  if (!wid.value) return
+  try {
+    await volumeApi.deleteBackupSchedule(wid.value, volId.value, sc.id)
+    await loadBackups()
+  } catch (e) {
+    notify.apiError(e, 'Failed to delete the schedule')
   }
 }
 
@@ -517,11 +603,12 @@ function isFileVisible(file: VolumeFile): boolean {
     </div>
 
     <!-- BACKUPS -->
-    <div v-else-if="tab === 'backups'" class="card">
+    <template v-else-if="tab === 'backups'">
+    <div class="card">
       <div class="card-header flex items-center justify-between">
         <div>
           <h2>{{ $t('volumes.backups') }}</h2>
-          <div class="text-muted text-sm">{{ $t('volumes.backupsHint') }}</div>
+          <div class="text-muted text-sm">{{ rpEntitled ? $t('volumes.rp.historyHint') : $t('volumes.backupsHint') }}</div>
         </div>
         <div class="flex items-center gap-2">
           <button class="btn btn-ghost btn-sm" :disabled="backupsLoading" :title="$t('volumes.refresh')" :aria-label="$t('volumes.refresh')" @click="loadBackups">
@@ -535,7 +622,7 @@ function isFileVisible(file: VolumeFile): boolean {
             @click="runBackup"
           >
             <span class="mdi" :class="backingUp ? 'mdi-loading mdi-spin' : 'mdi-cloud-upload-outline'"></span>
-            {{ backingUp ? 'Backing up…' : 'Back up now' }}
+            {{ backingUp ? $t('volumes.rp.backingUp') : (rpEntitled ? $t('volumes.rp.takePoint') : $t('volumes.rp.backUpNow')) }}
           </button>
         </div>
       </div>
@@ -545,14 +632,14 @@ function isFileVisible(file: VolumeFile): boolean {
           <i18n-t keypath="volumes.backupsDisabledHint" tag="p" class="app-banner-text"><template #link><RouterLink :to="{ name: 'workspace-detail', params: { id: wid }, query: { tab: 'backup' } }">{{ $t('volumes.workspaceBackupSettings') }}</RouterLink></template></i18n-t>
         </div>
       </div>
-      <div v-if="backupsLoading" class="card-body"><span class="spinner"></span></div>
+      <div v-if="backupsLoading && backups.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="backups.length === 0" class="empty-state">
         <span class="mdi mdi-cloud-outline" style="font-size: 36px; color: var(--text-muted)"></span>
         <p>{{ $t('volumes.noBackups') }}</p>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>{{ $t('dashboard.col.created') }}</th><th>{{ $t('dashboard.col.status') }}</th><th>{{ $t('volumes.archive') }}</th><th>{{ $t('volumes.trigger') }}</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('dashboard.col.created') }}</th><th>{{ $t('dashboard.col.status') }}</th><th>{{ $t('volumes.archive') }}</th><th>{{ $t('volumes.size') }}</th><th>{{ $t('volumes.trigger') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="b in backups" :key="b.id">
               <td class="cell-sub">{{ fmtTime(b.created_at) }}</td>
@@ -560,9 +647,45 @@ function isFileVisible(file: VolumeFile): boolean {
                 <span class="badge badge-dot" :class="backupBadge[b.status] || 'badge-neutral'">{{ b.status }}</span>
                 <span v-if="b.status === 'failed' && b.error" class="cell-sub" :title="b.error" style="margin-left: 6px">⚠</span>
               </td>
-              <td class="mono">{{ b.filename || '—' }}</td>
+              <td>
+                <div class="flex items-center gap-2" style="flex-wrap: wrap">
+                  <code v-if="b.ref">{{ b.ref }}</code>
+                  <span v-else class="mono">{{ b.filename || '—' }}</span>
+                  <span v-if="b.encrypted" class="badge badge-success" :title="$t('volumes.rp.encryptedHint')"><span class="mdi mdi-lock-outline"></span>{{ $t('volumes.rp.encrypted') }}</span>
+                  <span v-if="b.pinned" class="badge badge-info" :title="$t('volumes.rp.pinnedHint')"><span class="mdi mdi-pin-outline"></span>{{ $t('volumes.rp.pinned') }}</span>
+                  <span v-if="b.consistency === 'hot'" class="badge badge-neutral" :title="$t('volumes.rp.hotHint')">{{ $t('volumes.rp.hot') }}</span>
+                </div>
+                <div v-if="b.status === 'completed'" class="cell-sub">
+                  <template v-if="b.verify_status === 'ok'">
+                    <span class="mdi mdi-shield-check-outline"></span> {{ $t('volumes.rp.verifiedAgo', { when: relativeTime(b.verified_at) }) }}
+                  </template>
+                  <span v-else-if="b.verify_status === 'failed'" class="text-danger"><span class="mdi mdi-shield-alert-outline"></span> {{ $t('volumes.rp.failedVerification', { error: b.verify_error }) }}</span>
+                  <template v-else>{{ $t('volumes.rp.neverVerified') }}</template>
+                </div>
+                <div v-if="b.status === 'failed' && b.error" class="cell-sub text-danger">{{ b.error }}</div>
+              </td>
+              <td class="cell-sub cell-num">{{ b.size_bytes ? fmtBytes(b.size_bytes) : '—' }}</td>
               <td class="cell-sub">{{ b.trigger }}</td>
-              <td class="text-right">
+              <td class="text-right table-actions">
+                <button
+                  v-if="ws.canEdit && b.status === 'completed'"
+                  class="btn-icon btn-icon-muted"
+                  :disabled="verifyingId === b.id"
+                  :title="$t('volumes.rp.verifyHint')"
+                  :aria-label="$t('volumes.rp.verify')"
+                  @click="verifyBackup(b)"
+                >
+                  <span class="mdi" :class="verifyingId === b.id ? 'mdi-loading mdi-spin' : 'mdi-shield-search'"></span>
+                </button>
+                <button
+                  v-if="ws.canEdit && b.ref"
+                  class="btn-icon btn-icon-muted"
+                  :title="b.pinned ? $t('volumes.rp.unpin') : $t('volumes.rp.pinHint')"
+                  :aria-label="b.pinned ? $t('volumes.rp.unpin') : $t('volumes.rp.pin')"
+                  @click="togglePin(b)"
+                >
+                  <span class="mdi" :class="b.pinned ? 'mdi-pin-off-outline' : 'mdi-pin-outline'"></span>
+                </button>
                 <button
                   v-if="ws.canEdit"
                   class="btn btn-ghost btn-sm"
@@ -587,6 +710,70 @@ function isFileVisible(file: VolumeFile): boolean {
         </table>
       </div>
     </div>
+
+    <div class="card" style="margin-top: 16px">
+      <div class="card-header">
+        <div>
+          <h2>{{ $t('volumes.rp.policy') }}<span v-if="!rpEntitled" class="badge badge-muted" style="margin-left: 8px"><span class="mdi mdi-lock-outline"></span>{{ $t('adminNav.enterprise.title') }}</span></h2>
+          <div class="text-muted text-sm">{{ $t('volumes.rp.policyHint') }}</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <p v-if="!rpEntitled" class="form-hint">{{ $t('volumes.rp.needsEnterprise') }}</p>
+        <template v-else>
+          <p class="form-hint">
+            <span class="mdi" :class="rpSealing ? 'mdi-lock-outline' : 'mdi-lock-open-variant-outline'"></span>
+            {{ rpSealing ? $t('volumes.rp.sealingOn') : $t('volumes.rp.sealingOff') }}
+          </p>
+          <p class="form-hint">{{ $t('volumes.rp.hotExplained') }}</p>
+        </template>
+        <form v-if="ws.canEdit && rpEntitled && backupConfigured" class="flex items-center gap-2" style="flex-wrap: wrap; margin-top: 8px" @submit.prevent="addSchedule">
+          <label class="sched-field">
+            <span class="text-muted text-sm">{{ $t('volumes.rp.cronUtc') }}</span>
+            <input v-model="schedCron" class="form-input" placeholder="0 3 * * *" style="max-width: 160px" />
+          </label>
+          <label class="sched-field">
+            <span class="text-muted text-sm">{{ $t('volumes.rp.keepLast') }}</span>
+            <input v-model.number="schedMax" type="number" min="0" class="form-input" style="max-width: 120px" />
+          </label>
+          <label class="sched-field">
+            <span class="text-muted text-sm">{{ $t('volumes.rp.maxAgeDays') }}</span>
+            <input v-model.number="schedDays" type="number" min="0" class="form-input" style="max-width: 130px" />
+          </label>
+          <button
+            class="btn btn-primary"
+            style="align-self: flex-end"
+            :disabled="savingSchedule || !rpMutable"
+            :title="rpMutable ? '' : $t('volumes.rp.licenceReadOnly')"
+          >{{ $t('volumes.rp.addSchedule') }}</button>
+        </form>
+        <p v-if="schedules.length === 0" class="form-hint" style="margin-top: 8px">{{ $t('volumes.rp.noSchedule') }}</p>
+        <ul v-else class="sched-list">
+          <li v-for="sc in schedules" :key="sc.id">
+            <code>{{ sc.cron }}</code>
+            <span class="text-muted text-sm">
+              {{ $t('volumes.rp.keepSummary', { n: sc.max_points || $t('volumes.rp.all') }) }}<template v-if="sc.retention_days"> · {{ $t('volumes.rp.maxAgeSummary', { n: sc.retention_days }) }}</template>
+              <template v-if="sc.last_run_at"> · {{ $t('volumes.rp.lastRun', { when: relativeTime(sc.last_run_at) }) }}</template>
+            </span>
+            <span v-if="!sc.enabled" class="badge badge-neutral">{{ $t('volumes.rp.paused') }}</span>
+            <button
+              v-if="ws.canEdit"
+              class="btn-icon btn-icon-muted"
+              :disabled="!sc.enabled && !rpMutable"
+              :title="sc.enabled ? $t('volumes.rp.pause') : (rpMutable ? $t('volumes.rp.resume') : $t('volumes.rp.licenceReadOnly'))"
+              :aria-label="sc.enabled ? $t('volumes.rp.pause') : $t('volumes.rp.resume')"
+              @click="toggleSchedule(sc)"
+            >
+              <span class="mdi" :class="sc.enabled ? 'mdi-pause' : 'mdi-play'"></span>
+            </button>
+            <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('volumes.rp.deleteSchedule')" :aria-label="$t('volumes.rp.deleteSchedule')" @click="removeSchedule(sc)">
+              <span class="mdi mdi-delete-outline"></span>
+            </button>
+          </li>
+        </ul>
+      </div>
+    </div>
+    </template>
 
     <!-- SETTINGS -->
     <template v-else-if="tab === 'settings'">
@@ -622,7 +809,7 @@ function isFileVisible(file: VolumeFile): boolean {
     <ConfirmDialog
       :open="restoreConfirmOpen"
       :title="$t('confirm.title.restoreVolume')"
-      :message="$t('confirm.message.volumeDetail.restoreNameFromThe', { name: vol.name, fmtTime: fmtTime(pendingRestore?.created_at) })"
+      :message="restoreMessage"
       :confirm-label="$t('action.restore')"
       variant="danger"
       :busy="restoring"
@@ -658,6 +845,9 @@ function isFileVisible(file: VolumeFile): boolean {
 
 <style scoped>
 .text-muted { color: var(--text-muted); }
+.sched-field { display: flex; flex-direction: column; gap: 4px; }
+.sched-list { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-direction: column; gap: 8px; }
+.sched-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; background: var(--bg-tertiary); padding: 2px 8px; border-radius: 4px; }
 .hidden-file { display: none; }
 .text-right { text-align: right; white-space: nowrap; }

@@ -51,6 +51,7 @@ type Manager struct {
 	settings *backupsettings.Service
 	leader   Leader
 	setGate  func() error
+	volumes  VolumeScheduler
 
 	mu      sync.Mutex
 	entries map[string]cron.EntryID
@@ -79,6 +80,59 @@ func NewManager(backups *backup.Service, dbs *repositories.DatabaseRepository, s
 }
 
 func (m *Manager) SetRecoveryPointGate(fn func() error) { m.setGate = fn }
+
+// VolumeScheduler runs volume recovery-point schedules. Satisfied by *volumebackup.Service.
+type VolumeScheduler interface {
+	ListEnabledSchedules() ([]models.VolumeBackupSchedule, error)
+	RunSchedule(ctx context.Context, workspaceID, scheduleID uint) error
+}
+
+// SetVolumeBackups wires volume recovery-point schedules and registers every enabled one. It
+// is a setter rather than a NewManager argument because the volume service is built after the
+// manager; the scheduler is already running by then, which robfig/cron allows.
+func (m *Manager) SetVolumeBackups(v VolumeScheduler) {
+	m.volumes = v
+	if v == nil {
+		return
+	}
+	schedules, err := v.ListEnabledSchedules()
+	if err != nil {
+		logger.Error("failed to load volume backup schedules", "error", err)
+		return
+	}
+	for _, s := range schedules {
+		m.RegisterVolumeBackup(s)
+	}
+	logger.Info("volume backup schedules loaded", "count", len(schedules))
+}
+
+// RegisterVolumeBackup adds (or replaces) a volume recovery-point schedule.
+func (m *Manager) RegisterVolumeBackup(s models.VolumeBackupSchedule) {
+	id, ws, volID := s.ID, s.WorkspaceID, s.VolumeID
+	name := fmt.Sprintf("Recovery point: volume #%d", volID)
+	if err := m.RegisterTask("volume-backup", id, name, s.Cron, func() error { return m.runVolumeBackup(id, ws) }); err != nil {
+		logger.Error("invalid volume backup cron", "schedule", s.ID, "cron", s.Cron, "error", err)
+	}
+}
+
+// UnregisterVolumeBackup removes a volume recovery-point schedule from the running cron.
+func (m *Manager) UnregisterVolumeBackup(scheduleID uint) {
+	m.UnregisterTask("volume-backup", scheduleID)
+}
+
+func (m *Manager) runVolumeBackup(scheduleID, workspaceID uint) error {
+	if m.volumes == nil {
+		return fmt.Errorf("volume backups are not wired")
+	}
+	// Same flag as database recovery points: an expired licence stops new points, never
+	// restores of existing ones.
+	if m.setGate != nil {
+		if err := m.setGate(); err != nil {
+			return err
+		}
+	}
+	return m.volumes.RunSchedule(context.Background(), workspaceID, scheduleID)
+}
 
 // Leader reports whether this process leads the control plane. Satisfied by *leader.Elector.
 type Leader interface {

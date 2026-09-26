@@ -27,20 +27,56 @@ var (
 )
 
 // EnvelopeRotator re-seals recovery-point envelopes when the backup passphrase
-// changes, and reports how many are sealed. Implemented by the backup service;
-// nil-safe, so a build without it simply cannot rotate.
+// changes, and reports how many are sealed. Implemented by the database and volume
+// backup services; a build without one simply cannot rotate.
 type EnvelopeRotator interface {
 	RewrapSets(workspaceID uint, oldPassphrase, newPassphrase string) (int, error)
 	SealedSetCount(workspaceID uint) (int, error)
 }
 
 type Service struct {
-	repo    *repositories.WorkspaceBackupSettingsRepository
-	rotator EnvelopeRotator
+	repo     *repositories.WorkspaceBackupSettingsRepository
+	rotators []EnvelopeRotator
 }
 
-// SetEnvelopeRotator wires recovery-point rotation (nil-safe).
-func (s *Service) SetEnvelopeRotator(r EnvelopeRotator) { s.rotator = r }
+// SetEnvelopeRotator wires recovery-point rotation. Every service that seals points under the
+// workspace passphrase must be listed, or a rotation strands the ones it missed.
+func (s *Service) SetEnvelopeRotator(rs ...EnvelopeRotator) {
+	s.rotators = s.rotators[:0]
+	for _, r := range rs {
+		if r != nil {
+			s.rotators = append(s.rotators, r)
+		}
+	}
+}
+
+func (s *Service) sealedCount(workspaceID uint) (int, error) {
+	total := 0
+	for _, r := range s.rotators {
+		n, err := r.SealedSetCount(workspaceID)
+		if err != nil {
+			return 0, err
+		}
+		total += n
+	}
+	return total, nil
+}
+
+// rewrapAll rotates every rotator's envelopes, undoing the ones already moved when a later one
+// fails: the stored passphrase is only replaced on success, so every envelope has to stay under it.
+func (s *Service) rewrapAll(workspaceID uint, old, next string) error {
+	for i, r := range s.rotators {
+		if _, err := r.RewrapSets(workspaceID, old, next); err != nil {
+			for j := i - 1; j >= 0; j-- {
+				if _, uerr := s.rotators[j].RewrapSets(workspaceID, next, old); uerr != nil {
+					return fmt.Errorf("%w (and undoing an earlier rotation failed: %v)", err, uerr)
+				}
+			}
+			return err
+		}
+	}
+	return nil
+}
 
 // ErrSealedSetsExist refuses to discard a passphrase that recovery points are
 // still sealed with. Clearing it does not destroy them — it makes Miabi forget the
@@ -145,14 +181,12 @@ func (s *Service) Save(workspaceID uint, in SaveInput) (*models.WorkspaceBackupS
 		}
 		switch *in.BackupPassphrase {
 		case "":
-			if s.rotator != nil {
-				n, cerr := s.rotator.SealedSetCount(workspaceID)
-				if cerr != nil {
-					return nil, cerr
-				}
-				if n > 0 {
-					return nil, ErrSealedSetsExist
-				}
+			n, cerr := s.sealedCount(workspaceID)
+			if cerr != nil {
+				return nil, cerr
+			}
+			if n > 0 {
+				return nil, ErrSealedSetsExist
 			}
 			st.BackupPassphraseEnc = ""
 		default:
@@ -162,8 +196,8 @@ func (s *Service) Save(workspaceID uint, in SaveInput) (*models.WorkspaceBackupS
 			// Rotate the envelopes BEFORE storing the new passphrase. If rewrapping
 			// fails the stored passphrase still opens every set, which is recoverable;
 			// the reverse would leave sets sealed with a secret nobody has.
-			if old != "" && s.rotator != nil {
-				if _, rerr := s.rotator.RewrapSets(workspaceID, old, *in.BackupPassphrase); rerr != nil {
+			if old != "" {
+				if rerr := s.rewrapAll(workspaceID, old, *in.BackupPassphrase); rerr != nil {
 					return nil, fmt.Errorf("rotate recovery point envelopes: %w", rerr)
 				}
 			}
@@ -357,10 +391,15 @@ func (s *Service) DatabaseBackupTarget(workspaceID uint) (*backup.S3Config, stri
 	return cfg, st.DatabaseBackupPath, nil
 }
 
-// DatabaseBackupPassphrase returns the workspace's database-backup passphrase, or ""
-// when none is set. Empty is a valid answer, not an error: a workspace that has not
-// chosen one keeps taking cleartext backups.
+// DatabaseBackupPassphrase returns the workspace's backup passphrase for database backups.
 func (s *Service) DatabaseBackupPassphrase(workspaceID uint) (string, error) {
+	return s.BackupPassphrase(workspaceID)
+}
+
+// BackupPassphrase returns the workspace's backup passphrase, which seals database and volume
+// recovery points alike, or "" when none is set. Empty is a valid answer, not an error: a
+// workspace that has not chosen one keeps taking cleartext backups.
+func (s *Service) BackupPassphrase(workspaceID uint) (string, error) {
 	st, err := s.repo.FindByWorkspace(workspaceID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", nil
