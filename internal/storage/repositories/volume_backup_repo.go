@@ -60,3 +60,61 @@ func (r *VolumeBackupRepository) ListByVolume(volumeID uint) ([]models.VolumeBac
 	err := r.db.Where("volume_id = ?", volumeID).Order("created_at DESC").Find(&backups).Error
 	return backups, err
 }
+
+// ListPointsByVolume returns a volume's recovery points (rows with a ref), newest first.
+func (r *VolumeBackupRepository) ListPointsByVolume(volumeID uint) ([]models.VolumeBackup, error) {
+	var out []models.VolumeBackup
+	err := r.db.Where("volume_id = ? AND ref <> ''", volumeID).Order("created_at DESC").Find(&out).Error
+	return out, err
+}
+
+// ListSealed returns the workspace's points that carry an envelope, which are the ones a
+// passphrase rotation has to re-wrap.
+func (r *VolumeBackupRepository) ListSealed(workspaceID uint) ([]models.VolumeBackup, error) {
+	var out []models.VolumeBackup
+	err := r.db.Where("workspace_id = ? AND envelope <> ''", workspaceID).Find(&out).Error
+	return out, err
+}
+
+func (r *VolumeBackupRepository) CreateSchedule(s *models.VolumeBackupSchedule) error {
+	return r.db.Create(s).Error
+}
+
+func (r *VolumeBackupRepository) UpdateSchedule(s *models.VolumeBackupSchedule) error {
+	return r.db.Save(s).Error
+}
+
+func (r *VolumeBackupRepository) DeleteSchedule(id uint) error {
+	return r.db.Delete(&models.VolumeBackupSchedule{}, id).Error
+}
+
+// FindScheduleInWorkspace scopes the lookup so a schedule id from another tenant reads as not
+// found.
+func (r *VolumeBackupRepository) FindScheduleInWorkspace(workspaceID, id uint) (*models.VolumeBackupSchedule, error) {
+	var s models.VolumeBackupSchedule
+	if err := r.db.Where("workspace_id = ? AND id = ?", workspaceID, id).First(&s).Error; err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+func (r *VolumeBackupRepository) FindScheduleByID(id uint) (*models.VolumeBackupSchedule, error) {
+	var s models.VolumeBackupSchedule
+	if err := r.db.First(&s, id).Error; err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+func (r *VolumeBackupRepository) ListSchedulesByVolume(volumeID uint) ([]models.VolumeBackupSchedule, error) {
+	var out []models.VolumeBackupSchedule
+	err := r.db.Where("volume_id = ?", volumeID).Order("id ASC").Find(&out).Error
+	return out, err
+}
+
+// ListEnabledSchedules feeds the cron manager at startup.
+func (r *VolumeBackupRepository) ListEnabledSchedules() ([]models.VolumeBackupSchedule, error) {
+	var out []models.VolumeBackupSchedule
+	err := r.db.Where("enabled = ?", true).Find(&out).Error
+	return out, err
+}

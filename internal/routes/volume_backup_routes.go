@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/jkaninda/okapi"
+	"github.com/miabi-io/miabi/internal/handlers"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
 )
@@ -17,6 +18,7 @@ func (r *Router) volumeBackupRoutes() []okapi.RouteDefinition {
 		return []okapi.Middleware{r.authenticate, r.scope, middlewares.RequireRole(min)}
 	}
 	const base = "/{workspace}/volumes/{volumeID}/backups"
+	const schedules = "/{workspace}/volumes/{volumeID}/backup-schedules"
 
 	return []okapi.RouteDefinition{
 		{
@@ -58,6 +60,57 @@ func (r *Router) volumeBackupRoutes() []okapi.RouteDefinition {
 			Middlewares: scoped(models.WorkspaceRoleViewer),
 			Handler:     r.h.volumeBackup.LogsDownload,
 			Summary:     "Download a volume-backup run's full logs",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        base + "/{backupID}/verify",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     r.h.volumeBackup.Verify,
+			Summary:     "Verify a volume backup against the bucket",
+		},
+		{
+			Method:      http.MethodPatch,
+			Path:        base + "/{backupID}",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     okapi.H(r.h.volumeBackup.Update),
+			Request:     &handlers.UpdateVolumeBackupRequest{},
+			Summary:     "Pin or unpin a volume recovery point",
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        schedules,
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.volumeBackup.ListSchedules,
+			Summary:     "List a volume's recovery-point schedules",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        schedules,
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     okapi.H(r.h.volumeBackup.CreateSchedule),
+			Request:     &handlers.VolumeBackupScheduleRequest{},
+			Summary:     "Schedule volume recovery points (Enterprise)",
+		},
+		{
+			Method:      http.MethodPut,
+			Path:        schedules + "/{scheduleID}",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     okapi.H(r.h.volumeBackup.UpdateSchedule),
+			Request:     &handlers.VolumeBackupScheduleRequest{},
+			Summary:     "Update a volume recovery-point schedule (Enterprise)",
+		},
+		{
+			Method:      http.MethodDelete,
+			Path:        schedules + "/{scheduleID}",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     r.h.volumeBackup.DeleteSchedule,
+			Summary:     "Delete a volume recovery-point schedule",
 		},
 		{
 			Method:      http.MethodDelete,

@@ -24,6 +24,9 @@ func (r *VolumeRepository) Delete(id uint) error {
 		if err := tx.Where("volume_id = ?", id).Delete(&models.VolumeBackup{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("volume_id = ?", id).Delete(&models.VolumeBackupSchedule{}).Error; err != nil {
+			return err
+		}
 		return tx.Delete(&models.Volume{}, id).Error
 	})
 }

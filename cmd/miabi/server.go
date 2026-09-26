@@ -446,6 +446,7 @@ func runServer(cli *okapicli.CLI) {
 			volumeBackupSvc.SetS3Provider(backupsettings.NewService(repositories.NewWorkspaceBackupSettingsRepository(res.db)))
 			volumeBackupSvc.SetLogStore(logStore)
 			volumeBackupSvc.SetInternalNetwork(cfg.InternalNetwork)
+			volumeBackupSvc.SetAlerter(volumeAlerter{alertEngine})
 			volumeBackupHandler := worker.NewVolumeBackupHandler(volumeBackupSvc)
 
 			pbHost, pbPort, pbName, pbUser, pbPass, pbSSL := cfg.Database.PostgresConn()

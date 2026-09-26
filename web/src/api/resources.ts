@@ -1,7 +1,7 @@
 import api, { sseUrl } from './client'
 import type {
   ApiResponse, DatabaseInstance, DatabaseSizeOffer, DBLiveStatus, LogicalDatabase, ConnectionInfo, ForwardSession, DBEngine, EngineDefault, UpgradeOptions, UpgradePlan,
-  Volume, VolumeDetail, VolumeFile, VolumeBackup, WorkspaceStorage, StorageClassOption, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, BackupSetsResponse, DiscoveredSet, AdoptResult, SetRestoreResult, VerifyResult, AccentCode, AccentPolicy, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput,
+  Volume, VolumeDetail, VolumeFile, VolumeBackup, VolumeBackupStatus, VolumeBackupSchedule, WorkspaceStorage, StorageClassOption, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, BackupSetsResponse, DiscoveredSet, AdoptResult, SetRestoreResult, VerifyResult, AccentCode, AccentPolicy, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput,
   Member, Invitation, AuditLog, AuditLogDetail, RecentEvent, PageableResponse, Job, CronJob, WorkspaceUsage, WorkspaceLiveSample, WorkspaceHistoryPoint,
 } from './types'
 
@@ -127,7 +127,7 @@ export const volumeApi = {
 
   // Volume backups to the workspace S3 target.
   backupStatus: (ws: number, id: number) =>
-    api.get<ApiResponse<{ s3_configured: boolean }>>(`${w(ws)}/volumes/${id}/backups/status`),
+    api.get<ApiResponse<VolumeBackupStatus>>(`${w(ws)}/volumes/${id}/backups/status`),
   listBackups: (ws: number, id: number) =>
     api.get<ApiResponse<VolumeBackup[]>>(`${w(ws)}/volumes/${id}/backups`),
   runBackup: (ws: number, id: number) =>
@@ -136,6 +136,18 @@ export const volumeApi = {
     api.post<ApiResponse<{ message: string }>>(`${w(ws)}/volumes/${id}/backups/${backupId}/restore`),
   deleteBackup: (ws: number, id: number, backupId: number) =>
     api.delete<ApiResponse<{ message: string }>>(`${w(ws)}/volumes/${id}/backups/${backupId}`),
+  verifyBackup: (ws: number, id: number, backupId: number) =>
+    api.post<ApiResponse<VerifyResult>>(`${w(ws)}/volumes/${id}/backups/${backupId}/verify`),
+  pinBackup: (ws: number, id: number, backupId: number, pinned: boolean) =>
+    api.patch<ApiResponse<VolumeBackup>>(`${w(ws)}/volumes/${id}/backups/${backupId}`, { pinned }),
+  backupSchedules: (ws: number, id: number) =>
+    api.get<ApiResponse<VolumeBackupSchedule[]>>(`${w(ws)}/volumes/${id}/backup-schedules`),
+  createBackupSchedule: (ws: number, id: number, body: Omit<VolumeBackupSchedule, 'id' | 'volume_id' | 'last_run_at' | 'created_at'>) =>
+    api.post<ApiResponse<VolumeBackupSchedule>>(`${w(ws)}/volumes/${id}/backup-schedules`, body),
+  updateBackupSchedule: (ws: number, id: number, scheduleId: number, body: Omit<VolumeBackupSchedule, 'id' | 'volume_id' | 'last_run_at' | 'created_at'>) =>
+    api.put<ApiResponse<VolumeBackupSchedule>>(`${w(ws)}/volumes/${id}/backup-schedules/${scheduleId}`, body),
+  deleteBackupSchedule: (ws: number, id: number, scheduleId: number) =>
+    api.delete<ApiResponse<{ deleted: boolean }>>(`${w(ws)}/volumes/${id}/backup-schedules/${scheduleId}`),
 }
 
 // Backups belong to a logical database on an instance.
