@@ -75,13 +75,17 @@ type access struct {
 	confined bool
 }
 
-// foreign reports that the cluster belongs to a DIFFERENT organization, so the caller should not
-// learn it exists at all. A platform admin is excepted: they can already list every cluster.
-func (a access) foreign(c *models.Cluster) bool {
-	if a.admin || c.OrganizationID == nil {
+// hidden reports that the caller should not learn the cluster exists at all: it belongs to a DIFFERENT
+// organization, or it is restricted to platform admins. A platform admin is excepted: they can already
+// list every cluster.
+func (a access) hidden(c *models.Cluster) bool {
+	if a.admin {
 		return false
 	}
-	return a.orgID == 0 || *c.OrganizationID != a.orgID
+	if c.OrganizationID != nil {
+		return a.orgID == 0 || *c.OrganizationID != a.orgID
+	}
+	return c.Visibility == models.ClusterVisibilityRestricted
 }
 
 // allows reports whether a create for this workspace may land in the cluster.
@@ -162,8 +166,15 @@ func (s *Service) Place(req Request) (Result, error) {
 	if req.ServerID != 0 && !req.Admin {
 		return Result{}, ErrNodePinAdminOnly
 	}
+	if (req.ServerID != 0 || req.Colocate != 0) && strings.TrimSpace(req.Location) != "" {
+		// The named location is checked before the node, or a mismatch would confirm that a hidden
+		// location exists.
+		if c, err := s.clusters.FindByName(strings.TrimSpace(req.Location)); err == nil && s.accessFor(req.WorkspaceID, req.Admin).hidden(c) {
+			return Result{}, ErrLocationNotFound
+		}
+	}
 	if req.ServerID != 0 {
-		res, err := s.onNode(req.ServerID, req.Location)
+		res, err := s.onNode(req.ServerID, req.Location, true)
 		if err != nil {
 			return Result{}, err
 		}
@@ -175,7 +186,7 @@ func (s *Service) Place(req Request) (Result, error) {
 		return res, nil
 	}
 	if req.Colocate != 0 {
-		res, err := s.onNode(req.Colocate, req.Location)
+		res, err := s.onNode(req.Colocate, req.Location, false)
 		if err != nil {
 			return Result{}, err
 		}
@@ -203,7 +214,7 @@ func (s *Service) Place(req Request) (Result, error) {
 // sameOrg refuses a placement that would put a workspace's resource in another organization's
 // dedicated cluster. It applies to admins too — see the access doc comment.
 func (s *Service) sameOrg(req Request, clusterID uint) error {
-	c, err := s.clusters.FindByID(clusterID)
+	c, err := s.clusters.FindByID(s.resolveID(clusterID))
 	if err != nil {
 		return nil
 	}
@@ -220,21 +231,27 @@ func (s *Service) sameOrg(req Request, clusterID uint) error {
 	return nil
 }
 
-func (s *Service) onNode(serverID uint, location string) (Result, error) {
+// onNode places on a given node. A pin is a new choice and refuses a cordoned node, as pickNode does;
+// colocation follows a resource already there, so it does not.
+func (s *Service) onNode(serverID uint, location string, pin bool) (Result, error) {
 	srv, err := s.servers.FindByID(serverID)
 	if err != nil {
 		return Result{}, node.ErrNodeNotFound
+	}
+	if pin && srv.Cordoned {
+		return Result{}, ErrNoSchedulableNode
 	}
 	if name := strings.TrimSpace(location); name != "" {
 		c, err := s.clusters.FindByName(name)
 		if err != nil {
 			return Result{}, ErrLocationNotFound
 		}
-		if c.ID != srv.ClusterID {
+		// The control-plane node may carry cluster id 0, which stands for the default cluster.
+		if c.ID != s.resolveID(srv.ClusterID) {
 			return Result{}, ErrLocationMismatch
 		}
 	}
-	return Result{ClusterID: srv.ClusterID, ServerID: serverID}, nil
+	return Result{ClusterID: s.resolveID(srv.ClusterID), ServerID: serverID}, nil
 }
 
 // ResolveLocation is the cluster a create naming location lands in: that location, else the workspace
@@ -256,11 +273,11 @@ func (s *Service) resolveCluster(workspaceID uint, location string, admin bool) 
 		if err != nil {
 			return nil, ErrLocationNotFound
 		}
-		// A location dedicated to another organization is not refused but hidden: answering
-		// "forbidden" tells a stranger the name is real, which is how a tenant list gets enumerated.
+		// A location dedicated to another organization, or restricted to admins, is not refused but hidden:
+		// answering "forbidden" tells a stranger the name is real, which is how a tenant list gets enumerated.
 		// Being confined to one's OWN locations is different — that is the caller's own arrangement,
 		// and saying so is help rather than disclosure.
-		if acc.foreign(c) {
+		if acc.hidden(c) {
 			return nil, ErrLocationNotFound
 		}
 		if !acc.allows(c) || !permits(policy, enforced, c.ID, acc.confined) {
@@ -413,6 +430,65 @@ func (s *Service) PoolConstraints(workspaceID, clusterID uint) []string {
 	return out
 }
 
+// Node is a node as a create form sees it: enough to pin a resource, never its address or capacity.
+type Node struct {
+	ID       uint   `json:"id"`
+	Name     string `json:"name"`
+	IsLocal  bool   `json:"is_local"`
+	Online   bool   `json:"online"`
+	Cordoned bool   `json:"cordoned"`
+	// SwarmNodeID is what a service pin names: Swarm schedules a service, so pinning one is a
+	// `node.id==` constraint rather than a server id.
+	SwarmNodeID string `json:"swarm_node_id,omitempty"`
+}
+
+// Nodes lists the nodes of the location a create naming location would land in, resolved exactly as
+// Place resolves it, so a location the workspace cannot use is refused the same way. With a pooled plan
+// only the plan's pool is listed.
+func (s *Service) Nodes(workspaceID uint, location string, admin bool) ([]Node, error) {
+	c, err := s.resolveCluster(workspaceID, location, admin)
+	if err != nil {
+		return nil, err
+	}
+	servers, err := s.servers.List()
+	if err != nil {
+		return nil, err
+	}
+	policy, enforced := s.planPlacement(workspaceID)
+	out := []Node{}
+	for i := range servers {
+		srv := &servers[i]
+		if s.resolveID(srv.ClusterID) != c.ID || (enforced && models.PoolOf(srv) != policy.Pool) {
+			continue
+		}
+		out = append(out, Node{
+			ID:          srv.ID,
+			Name:        srv.Label(),
+			IsLocal:     srv.IsLocal,
+			Online:      srv.IsLocal || (s.online != nil && s.online(srv.ID)),
+			Cordoned:    srv.Cordoned,
+			SwarmNodeID: srv.SwarmNodeID,
+		})
+	}
+	return out, nil
+}
+
+// NodeConstraint is the Swarm constraint pinning a service to a node, or "" when the node is not a swarm
+// member. Server id 0 is the control-plane node.
+func (s *Service) NodeConstraint(serverID uint) string {
+	var srv *models.Server
+	var err error
+	if serverID == 0 {
+		srv, err = s.servers.FindLocal()
+	} else {
+		srv, err = s.servers.FindByID(serverID)
+	}
+	if err != nil || srv.SwarmNodeID == "" {
+		return ""
+	}
+	return "node.id==" + srv.SwarmNodeID
+}
+
 // Location is a cluster as a workspace sees it: no nodes, addresses or capacity.
 type Location struct {
 	ID           uint   `json:"id"`
@@ -421,6 +497,8 @@ type Location struct {
 	LocationCode string `json:"location_code,omitempty"`
 	// Default marks the location a create lands in when it names none.
 	Default bool `json:"default"`
+	// Swarm reports that the location runs a swarm, so an app there may run as a replicated service.
+	Swarm bool `json:"swarm"`
 }
 
 // Locations lists the locations a workspace may place new resources in.
@@ -444,6 +522,7 @@ func (s *Service) Locations(workspaceID uint, admin bool) ([]Location, error) {
 			DisplayName:  c.Label(),
 			LocationCode: c.LocationCode,
 			Default:      fallback != nil && fallback.ID == c.ID,
+			Swarm:        c.Mode == models.ClusterModeSwarm,
 		})
 	}
 	return out, nil
@@ -496,7 +575,7 @@ func (s *Service) SetDefaultLocation(workspaceID uint, location string, admin bo
 	}
 	policy, enforced := s.planPlacement(workspaceID)
 	acc := s.accessFor(workspaceID, admin)
-	if acc.foreign(c) {
+	if acc.hidden(c) {
 		return ErrLocationNotFound
 	}
 	if !acc.allows(c) || !permits(policy, enforced, c.ID, acc.confined) {

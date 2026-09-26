@@ -40,12 +40,14 @@ type clusterTable struct {
 func (clusterTable) TableName() string { return "clusters" }
 
 type serverTable struct {
-	ID        uint `gorm:"primaryKey"`
-	Name      string
-	ClusterID uint
-	IsLocal   bool
-	Cordoned  bool
-	Labels    map[string]string `gorm:"serializer:json"`
+	ID          uint `gorm:"primaryKey"`
+	Name        string
+	DisplayName string
+	SwarmNodeID string
+	ClusterID   uint
+	IsLocal     bool
+	Cordoned    bool
+	Labels      map[string]string `gorm:"serializer:json"`
 }
 
 func (serverTable) TableName() string { return "servers" }
@@ -156,6 +158,9 @@ func TestPlacementFallsBackToTheWorkspaceDefaultThenTheDefaultCluster(t *testing
 		if l.Default != (l.Name == "eu-east") {
 			t.Errorf("location %s default = %v", l.Name, l.Default)
 		}
+		if l.Swarm != (l.Name == "eu-east") {
+			t.Errorf("location %s swarm = %v", l.Name, l.Swarm)
+		}
 	}
 	if len(names) != 2 {
 		t.Errorf("locations = %v, want default and eu-east (gpu is restricted, closing is cordoned)", names)
@@ -171,7 +176,7 @@ func TestPlacementRefusals(t *testing.T) {
 		want error
 	}{
 		{"unknown location", Request{WorkspaceID: 5, Location: "mars"}, ErrLocationNotFound},
-		{"restricted location", Request{WorkspaceID: 5, Location: "gpu"}, ErrLocationNotAllowed},
+		{"restricted location reads as unknown", Request{WorkspaceID: 5, Location: "gpu"}, ErrLocationNotFound},
 		{"cordoned location", Request{WorkspaceID: 5, Location: "closing"}, ErrLocationCordoned},
 		{"no reachable node", Request{WorkspaceID: 5, Location: "eu-east"}, ErrNoSchedulableNode},
 		{"node pin by a tenant", Request{WorkspaceID: 5, ServerID: 10}, ErrNodePinAdminOnly},
@@ -189,7 +194,7 @@ func TestPlacementRefusals(t *testing.T) {
 	if got, err := s.Place(Request{WorkspaceID: 5, Colocate: 20}); err != nil || got.ClusterID != 3 {
 		t.Errorf("colocation: %+v (%v), want the database's node and cluster", got, err)
 	}
-	if err := s.SetDefaultLocation(5, "gpu", false); !errors.Is(err, ErrLocationNotAllowed) {
+	if err := s.SetDefaultLocation(5, "gpu", false); !errors.Is(err, ErrLocationNotFound) {
 		t.Errorf("tenant default in a restricted location err = %v", err)
 	}
 }
@@ -407,3 +412,105 @@ func TestPlacementUnaffectedWithoutOrganizationClusters(t *testing.T) {
 }
 
 var _ = models.DefaultClusterID
+
+func nodeIDs(nodes []Node) []uint {
+	var out []uint
+	for _, n := range nodes {
+		out = append(out, n.ID)
+	}
+	return out
+}
+
+func TestNodesListsOnlyTheLocationsNodes(t *testing.T) {
+	s, db := newPlacement(t, map[uint]bool{10: true})
+	db.Model(&serverTable{}).Where("id = ?", 10).Update("swarm_node_id", "sw-10")
+
+	got, err := s.Nodes(5, "eu-east", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ids := nodeIDs(got); fmt.Sprint(ids) != "[10 11 12 13]" {
+		t.Fatalf("eu-east nodes = %v, want 10-13", ids)
+	}
+	if !got[0].Online || got[1].Online || !got[3].Cordoned || got[0].SwarmNodeID != "sw-10" {
+		t.Errorf("node state not reported: %+v", got)
+	}
+
+	if def, err := s.Nodes(5, "", false); err != nil || fmt.Sprint(nodeIDs(def)) != "[1]" {
+		t.Errorf("unstated location = %v (%v), want the default cluster's node", nodeIDs(def), err)
+	}
+	if _, err := s.Nodes(5, "gpu", false); !errors.Is(err, ErrLocationNotFound) {
+		t.Errorf("restricted location err = %v, want ErrLocationNotFound", err)
+	}
+	if got, err := s.Nodes(5, "gpu", true); err != nil || fmt.Sprint(nodeIDs(got)) != "[20]" {
+		t.Errorf("restricted location for an admin = %v (%v)", nodeIDs(got), err)
+	}
+
+	s.SetPolicy(fakePolicy{placement: models.PlanPlacement{Pool: "pro"}})
+	if got, err := s.Nodes(5, "eu-east", false); err != nil || fmt.Sprint(nodeIDs(got)) != "[12]" {
+		t.Errorf("pooled plan = %v (%v), want only the pro node", nodeIDs(got), err)
+	}
+}
+
+func TestNodePin(t *testing.T) {
+	s, db := newPlacement(t, map[uint]bool{})
+	// The control-plane node may carry cluster id 0, which stands for the default cluster.
+	db.Model(&serverTable{}).Where("id = ?", 1).Update("cluster_id", 0)
+
+	if _, err := s.Place(Request{WorkspaceID: 5, ServerID: 1, Location: "default", Admin: true}); err != nil {
+		t.Errorf("pin to the control-plane node in the default location: %v", err)
+	}
+	if _, err := s.Place(Request{WorkspaceID: 5, ServerID: 13, Admin: true}); !errors.Is(err, ErrNoSchedulableNode) {
+		t.Errorf("pin to a cordoned node err = %v, want ErrNoSchedulableNode", err)
+	}
+	if _, err := s.Place(Request{WorkspaceID: 5, Colocate: 13}); err != nil {
+		t.Errorf("colocation follows a resource already on a cordoned node: %v", err)
+	}
+}
+
+func TestNodeConstraint(t *testing.T) {
+	s, db := newPlacement(t, map[uint]bool{})
+	db.Model(&serverTable{}).Where("id IN ?", []uint{1, 10}).Update("swarm_node_id", "sw")
+
+	if got := s.NodeConstraint(10); got != "node.id==sw" {
+		t.Errorf("swarm member = %q", got)
+	}
+	if got := s.NodeConstraint(0); got != "node.id==sw" {
+		t.Errorf("server id 0 = %q, want the control-plane node's", got)
+	}
+	if got := s.NodeConstraint(11); got != "" {
+		t.Errorf("non-member = %q, want none", got)
+	}
+}
+
+// The control-plane node may carry cluster id 0. The organization check must resolve it to the default
+// cluster, or a pin or colocation onto that node skips it.
+func TestOrganizationCheckCoversTheControlPlaneNode(t *testing.T) {
+	s, db := newPlacement(t, map[uint]bool{})
+	db.Model(&serverTable{}).Where("id = ?", 1).Update("cluster_id", 0)
+	acme := uint(7)
+	db.Model(&clusterTable{}).Where("id = ?", 3).Updates(map[string]any{"organization_id": acme, "visibility": "organization"})
+	s.SetOrgs(fakeOrgs{ofWorkspace: map[uint]uint{5: acme}, owners: map[uint]bool{acme: true}})
+
+	if _, err := s.Place(Request{WorkspaceID: 5, ServerID: 1, Admin: true}); !errors.Is(err, ErrLocationNotAllowed) {
+		t.Errorf("confined workspace pinned to the control-plane node: err = %v, want ErrLocationNotAllowed", err)
+	}
+	if _, err := s.Place(Request{WorkspaceID: 5, Colocate: 1}); !errors.Is(err, ErrLocationNotAllowed) {
+		t.Errorf("confined workspace colocated on the control-plane node: err = %v, want ErrLocationNotAllowed", err)
+	}
+}
+
+// Following an existing resource while naming a location must not confirm that another organization's
+// location exists: it reads as no such location, exactly like naming it directly.
+func TestColocationDoesNotConfirmForeignLocations(t *testing.T) {
+	s, db := newPlacement(t, map[uint]bool{})
+	db.Model(&clusterTable{}).Where("id = ?", 3).Updates(map[string]any{"organization_id": 7, "visibility": "organization"})
+	s.SetOrgs(fakeOrgs{ofWorkspace: map[uint]uint{5: 2}})
+
+	if _, err := s.Place(Request{WorkspaceID: 5, Colocate: 10, Location: "gpu"}); !errors.Is(err, ErrLocationNotFound) {
+		t.Errorf("colocation naming a foreign location: err = %v, want ErrLocationNotFound", err)
+	}
+	if _, err := s.Place(Request{WorkspaceID: 5, Colocate: 10, Location: "default"}); !errors.Is(err, ErrLocationMismatch) {
+		t.Errorf("colocation naming another shared location: err = %v, want ErrLocationMismatch", err)
+	}
+}

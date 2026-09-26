@@ -75,6 +75,9 @@ func (h *NodeHandler) Import(c *okapi.Context, req *ImportResourcesRequest) erro
 		WorkspaceID: req.Body.WorkspaceID, StackName: req.Body.StackName, Items: items,
 	})
 	if err != nil {
+		if a := placementAbort(c, err); a != nil {
+			return a
+		}
 		return c.AbortInternalServerError("import failed", err)
 	}
 	h.record(c, "node.import", id)

@@ -1921,8 +1921,6 @@ func (s *Service) emitForApp(appID uint, t models.AppEventType, message string) 
 	s.emit(app, t, message)
 }
 
-// AttachVolume mounts a workspace volume into the app at path. Takes effect on
-// the next deploy.
 // AttachConfig mounts a workspace config into the app. Projection is per file, so
 // this never becomes a directory bind and the mount is always read-only.
 func (s *Service) AttachConfig(app *models.Application, configID uint, key, path, mode string) error {
@@ -2010,6 +2008,7 @@ func removeConfigMount(mounts []models.AppMount, configID uint, key string) ([]m
 	return out, removed
 }
 
+// AttachVolume mounts a workspace volume into the app at path. Takes effect on the next deploy.
 func (s *Service) AttachVolume(app *models.Application, volumeID uint, path string) error {
 	vol, err := s.resolveMountVolume(app.WorkspaceID, volumeID)
 	if err != nil {
@@ -2018,11 +2017,16 @@ func (s *Service) AttachVolume(app *models.Application, volumeID uint, path stri
 	if !s.sameLocation(vol.ClusterID, app.ClusterID) {
 		return ErrVolumeLocation
 	}
-	// A host-path volume binds an operator-managed path present on every node, so
-	// it is node-agnostic (unlike a node-local Docker volume, which must co-locate
-	// with the app). Other drivers must live on the app's node.
-	if vol.Driver != models.VolumeDriverHost && vol.ServerID != app.ServerID {
-		return ErrNodeMismatch
+	if nodeLocal(vol) {
+		if app.RuntimeKind == models.RuntimeService {
+			// Swarm schedules a service, and deploy pins its task to the node its node-local volumes are
+			// on, so those volumes must all be on one node; the app's own node is only the manager.
+			if n := s.localMountNode(app, vol.ID); n != 0 && n != vol.ServerID {
+				return ErrNodeMismatch
+			}
+		} else if vol.ServerID != app.ServerID {
+			return ErrNodeMismatch
+		}
 	}
 	if path == "" {
 		return ErrMountPathRequired
@@ -2045,6 +2049,25 @@ func (s *Service) AttachVolume(app *models.Application, volumeID uint, path stri
 	}
 	s.emit(app, models.EventVolumeAttached, "Volume attached at "+path)
 	return nil
+}
+
+// nodeLocal reports whether a volume's data exists on a single node. A host-path volume binds a path
+// present on every node, and a shared (rwx) one is mounted from its backend wherever the task runs.
+func nodeLocal(v *models.Volume) bool {
+	return v.Driver != models.VolumeDriverHost && v.AccessMode != models.AccessRWX
+}
+
+// localMountNode is the node of the app's other node-local volumes, or 0 when it mounts none.
+func (s *Service) localMountNode(app *models.Application, except uint) uint {
+	for _, m := range app.Mounts {
+		if m.VolumeID == 0 || m.VolumeID == except {
+			continue
+		}
+		if v, err := s.volumes.FindInWorkspace(app.WorkspaceID, m.VolumeID); err == nil && nodeLocal(v) {
+			return v.ServerID
+		}
+	}
+	return 0
 }
 
 // DetachVolume removes a volume mount from the app.

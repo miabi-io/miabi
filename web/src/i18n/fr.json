@@ -668,7 +668,8 @@
     "volumeToAttach": "Volume à attacher",
     "volumes": "Volumes",
     "when": "Quand",
-    "zeroUnlimited": "0 = illimité."
+    "zeroUnlimited": "0 = illimité.",
+    "volumesHidden": "{n} volume(s) situé(s) dans un autre emplacement ou sur un autre nœud sont masqués — une application ne monte les volumes locaux que depuis son propre nœud."
   },
   "apps": {
     "browseMarketplace": "Parcourir la marketplace",
@@ -1927,7 +1928,7 @@
     "anyNodeInTheLocation": "N’importe quel nœud de l’emplacement",
     "location": "Emplacement",
     "node": "Nœud",
-    "pinningANodeAlsoDecides": "Épingler un nœud détermine aussi l’emplacement.",
+    "nodesOfTheChosenLocation": "Seuls les nœuds de l’emplacement choisi sont proposés.",
     "privateNetworksDonTSpan": "Les réseaux privés ne s’étendent pas d’un emplacement à l’autre : gardez une application avec les bases de données et volumes qu’elle utilise."
   },
   "logViewer": {

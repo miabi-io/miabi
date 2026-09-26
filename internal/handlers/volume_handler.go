@@ -92,7 +92,7 @@ func (h *VolumeHandler) Create(c *okapi.Context, req *VolumeCreateRequest) error
 		if errors.Is(err, storage.ErrInvalidDriver) || errors.Is(err, storage.ErrDriverDeviceRequired) || errors.Is(err, storage.ErrHostPathRequired) || errors.Is(err, hostmount.ErrInvalidHostPath) {
 			return c.AbortBadRequest(err.Error())
 		}
-		if errors.Is(err, storageclass.ErrNotFound) || errors.Is(err, storageclass.ErrDisabled) {
+		if errors.Is(err, storageclass.ErrNotFound) || errors.Is(err, storageclass.ErrDisabled) || errors.Is(err, storageclass.ErrNotOnNode) {
 			return c.AbortBadRequest(err.Error())
 		}
 		if errors.Is(err, storageclass.ErrPathMissing) {

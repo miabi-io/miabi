@@ -30,6 +30,14 @@ func (r *Router) locationRoutes() []okapi.RouteDefinition {
 			Summary:     "List the locations this workspace can place resources in",
 		},
 		{
+			Method:      http.MethodGet,
+			Path:        "/{workspace}/location-nodes",
+			Group:       ws,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.location.Nodes,
+			Summary:     "List the nodes of a location (query: location; empty = where a create would land)",
+		},
+		{
 			Method:      http.MethodPut,
 			Path:        "/{workspace}/default-location",
 			Group:       ws,

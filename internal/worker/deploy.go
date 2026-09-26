@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -18,7 +19,6 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/logstore"
 	"github.com/miabi-io/miabi/internal/models"
-	"github.com/miabi-io/miabi/internal/services/secpolicy"
 	"github.com/miabi-io/miabi/internal/runners"
 	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
@@ -29,6 +29,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/platformimage"
 	runnersvc "github.com/miabi-io/miabi/internal/services/runner"
+	"github.com/miabi-io/miabi/internal/services/secpolicy"
 	storagesvc "github.com/miabi-io/miabi/internal/services/storage"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 	"github.com/miabi-io/runner/proto"
@@ -203,9 +204,11 @@ type BuilderPolicy interface {
 // revoked, e.g. a plan downgrade). Optional; nil honors the app's builder.
 func (h *DeployHandler) SetBuilderPolicy(p BuilderPolicy) { h.builderPolicy = p }
 
-// PoolPolicy resolves the Swarm constraints that keep a workspace's services in its plan's node pool.
+// PoolPolicy resolves the Swarm constraints that keep a workspace's services in its plan's node pool, and
+// the one pinning a service to a node.
 type PoolPolicy interface {
 	PoolConstraints(workspaceID, clusterID uint) []string
+	NodeConstraint(serverID uint) string
 }
 
 // SetPoolPolicy wires plan node pools into service placement (nil adds no pool constraints).
@@ -215,7 +218,34 @@ func (h *DeployHandler) serviceConstraints(app *models.Application) []string {
 	if h.poolPolicy == nil {
 		return app.PlacementConstraints
 	}
-	return append(append([]string{}, app.PlacementConstraints...), h.poolPolicy.PoolConstraints(app.WorkspaceID, app.ClusterID)...)
+	out := append(append([]string{}, app.PlacementConstraints...), h.poolPolicy.PoolConstraints(app.WorkspaceID, app.ClusterID)...)
+	// A node-local volume exists on one node: a task scheduled anywhere else would start on a new, empty one.
+	for _, pin := range h.volumePins(app) {
+		if !slices.Contains(out, pin) {
+			out = append(out, pin)
+		}
+	}
+	return out
+}
+
+func (h *DeployHandler) volumePins(app *models.Application) []string {
+	if h.volumes == nil {
+		return nil
+	}
+	var out []string
+	for _, m := range app.Mounts {
+		if m.VolumeID == 0 || m.HostPath != "" {
+			continue
+		}
+		v, err := h.volumes.FindInWorkspace(app.WorkspaceID, m.VolumeID)
+		if err != nil || v.Driver == models.VolumeDriverHost || v.AccessMode == models.AccessRWX {
+			continue
+		}
+		if pin := h.poolPolicy.NodeConstraint(v.ServerID); pin != "" && !slices.Contains(out, pin) {
+			out = append(out, pin)
+		}
+	}
+	return out
 }
 
 // NodeDocker resolves the Docker client for a node id (0 = local).

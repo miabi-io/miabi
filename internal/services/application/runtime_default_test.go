@@ -185,3 +185,41 @@ func TestHasNodeLocalStorageFailsClosed(t *testing.T) {
 		t.Fatal("a missing volume repository must count as node-local")
 	}
 }
+
+// TestAttachVolumeNodeRules pins where a volume may be mounted from. An empty path is the check that
+// follows placement, so ErrMountPathRequired means the placement checks passed.
+func TestAttachVolumeNodeRules(t *testing.T) {
+	vols := fakeVolumes{byID: map[uint]*models.Volume{
+		1: {ID: 1, ClusterID: 2, ServerID: 10, AccessMode: models.AccessRWO},
+		2: {ID: 2, ClusterID: 2, ServerID: 11, AccessMode: models.AccessRWO},
+		3: {ID: 3, ClusterID: 2, ServerID: 11, AccessMode: models.AccessRWX, Driver: models.VolumeDriverNFS},
+		4: {ID: 4, ClusterID: 2, ServerID: 11, AccessMode: models.AccessRWX, Driver: models.VolumeDriverHost},
+		5: {ID: 5, ClusterID: 3, ServerID: 30, AccessMode: models.AccessRWX, Driver: models.VolumeDriverNFS},
+	}}
+	s := &Service{volumes: vols}
+	container := &models.Application{WorkspaceID: 1, ClusterID: 2, ServerID: 10}
+	service := &models.Application{WorkspaceID: 1, ClusterID: 2, ServerID: 10, RuntimeKind: models.RuntimeService, Replicas: 1}
+	pinned := &models.Application{WorkspaceID: 1, ClusterID: 2, ServerID: 10, RuntimeKind: models.RuntimeService, Replicas: 1,
+		Mounts: []models.AppMount{{VolumeID: 1, Path: "/a"}}}
+
+	cases := []struct {
+		name   string
+		app    *models.Application
+		volume uint
+		want   error
+	}{
+		{"container, local volume on its node", container, 1, ErrMountPathRequired},
+		{"container, local volume on another node", container, 2, ErrNodeMismatch},
+		{"container, shared volume on another node", container, 3, ErrMountPathRequired},
+		{"container, host-path volume", container, 4, ErrMountPathRequired},
+		{"another location", container, 5, ErrVolumeLocation},
+		{"service, local volume on a worker", service, 2, ErrMountPathRequired},
+		{"service, second local volume on another node", pinned, 2, ErrNodeMismatch},
+		{"service, shared volume beside a local one", pinned, 3, ErrMountPathRequired},
+	}
+	for _, tc := range cases {
+		if err := s.AttachVolume(tc.app, tc.volume, ""); !errors.Is(err, tc.want) {
+			t.Errorf("%s: err = %v, want %v", tc.name, err, tc.want)
+		}
+	}
+}

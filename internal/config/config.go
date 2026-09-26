@@ -4,6 +4,7 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -941,7 +942,18 @@ func (c *Config) Initialize(app *okapi.Okapi) error {
 	}
 
 	app.WithErrorHandler(errorhandlers.CustomErrorHandler())
+	app.Use(ignoreClientGone)
 	return nil
+}
+
+// ignoreClientGone drops the error a handler returns because its client went away, such as an SSE stream
+// the browser closed. It is how every stream ends, and okapi would otherwise log each one as a failure.
+func ignoreClientGone(c *okapi.Context) error {
+	err := c.Next()
+	if err != nil && errors.Is(err, context.Canceled) && c.Request().Context().Err() != nil {
+		return nil
+	}
+	return err
 }
 
 // InitWorker prepares configuration for the worker process. It honours MIABI_LOG_LEVEL exactly

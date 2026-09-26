@@ -36,6 +36,23 @@ func (h *LocationHandler) List(c *okapi.Context) error {
 	return ok(c, set)
 }
 
+// Nodes lists the nodes of a location, for pinning a create to one. The location query names it; empty
+// takes the location a create naming none would land in. A location the workspace cannot use is answered
+// as Place answers it.
+func (h *LocationHandler) Nodes(c *okapi.Context) error {
+	if h.placer == nil || h.placer.svc == nil {
+		return ok(c, []placement.Node{})
+	}
+	nodes, err := h.placer.svc.Nodes(middlewares.WorkspaceID(c), c.Query("location"), h.placer.admin(c))
+	if err != nil {
+		if a := placementAbort(c, err); a != nil {
+			return a
+		}
+		return c.AbortInternalServerError("failed to list nodes", err)
+	}
+	return ok(c, nodes)
+}
+
 // SetDefaultLocationRequest sets where the workspace's new resources land when a create names no location.
 type SetDefaultLocationRequest struct {
 	Body struct {

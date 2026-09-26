@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/miabi-io/miabi/internal/services/placement"
 	"sort"
 	"strings"
 	"time"
@@ -47,8 +48,18 @@ type Service struct {
 	stackRepo    *repositories.StackRepository
 	portBindings *repositories.PortBindingRepository
 	portPolicy   PortsPolicy
+	placer       Placer
 	now          func() time.Time
 }
+
+// Placer checks that the target workspace may hold resources on the node being imported from. Satisfied by
+// the placement service.
+type Placer interface {
+	Place(req placement.Request) (placement.Result, error)
+}
+
+// SetPlacer wires the location check (nil-safe; nil imports into any workspace, as before locations existed).
+func (s *Service) SetPlacer(p Placer) { s.placer = p }
 
 // PortsPolicy tells an import whether the platform's host-port policy would have denied the ports
 // it adopts. Satisfied by *secpolicy.Service.
@@ -297,6 +308,13 @@ const (
 func (s *Service) Import(ctx context.Context, actorID, serverID uint, req ImportRequest) (*ImportResult, error) {
 	if _, err := s.clients.For(serverID); err != nil {
 		return nil, err
+	}
+	if s.placer != nil {
+		// The containers already run on this node, so the import follows them: it must not hand a workspace
+		// resources in a location its organization does not own. A cordoned node is fine; nothing new is started.
+		if _, err := s.placer.Place(placement.Request{WorkspaceID: req.WorkspaceID, Colocate: serverID, Admin: true}); err != nil {
+			return nil, err
+		}
 	}
 	res := &ImportResult{}
 

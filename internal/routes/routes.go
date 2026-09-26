@@ -838,6 +838,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	placer := handlers.NewPlacer(placementService, userRepo)
 	marketplaceService := marketplace.NewService(appService, databaseService, storageService, stackService, repositories.NewTemplateInstallRepository(db), repositories.NewTemplateRepository(db))
 	marketplaceService.SetPlacer(placementService)
+	dockerImportService.SetPlacer(placementService)
 	marketplaceService.SetConfigs(configService)
 	marketplaceService.SetEventBus(bus) // live install-progress SSE
 	marketplaceRemote := marketremote.New(cfg.MarketplaceURL, marketremote.NewRedisCache(redisClient))
@@ -1128,6 +1129,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		Images:      imageResolver,
 		InstallID:   installID,
 		Version:     config.Version,
+		Placer:      placementService,
 	})
 	wsBundleService.SetEnqueuer(producer) // export/restore runs on the worker
 
@@ -1368,6 +1370,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Surface cluster-mode availability as a workspace capability, so any member — not just a
 	// platform admin — can be offered the replicated "service" runtime when creating an app.
 	r.h.usage.SetClusterCap(clusterService)
+	r.h.usage.SetPlacer(placer)
 	r.h.app.SetPlacer(placer)
 	r.h.database.SetPlacer(placer)
 	r.h.volume.SetPlacer(placer)
@@ -1639,7 +1642,6 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.register(r.runnerRoutes()...)
 	r.register(r.adminRunnerRoutes()...)
 	r.register(r.runnerGatewayRoutes()...)
-	r.register(r.placeableNodeRoutes()...)
 	r.register(r.agentRoutes()...)
 	r.register(r.providerRoutes()...)
 	r.register(r.adminRoutes()...)

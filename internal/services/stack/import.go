@@ -97,7 +97,14 @@ type ImportResult struct {
 // ImportCompose creates a stack and one application per Compose service (image-source only). Named volumes
 // are provisioned and mounted; published host ports become pending port-binding requests an admin approves.
 // Apps join the stack network and resolve each other by service name. Bind mounts and builds are skipped.
-func (s *Service) ImportCompose(ctx context.Context, workspaceID, userID uint, name, composeYAML string) (*ImportResult, error) {
+// ImportPlacement is where an imported stack runs: its location, and the one node its apps and volumes
+// share, as they would on a single Compose host.
+type ImportPlacement struct {
+	ClusterID uint
+	ServerID  uint
+}
+
+func (s *Service) ImportCompose(ctx context.Context, workspaceID, userID uint, name, composeYAML string, at ImportPlacement) (*ImportResult, error) {
 	var cf composeFile
 	if err := yaml.Unmarshal([]byte(composeYAML), &cf); err != nil {
 		return nil, ErrComposeInvalid
@@ -107,8 +114,9 @@ func (s *Service) ImportCompose(ctx context.Context, workspaceID, userID uint, n
 	}
 
 	st, err := s.Create(ctx, workspaceID, Input{
-		Name:     name,
-		Metadata: models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, models.ManagedByStackImport),
+		Name:      name,
+		Metadata:  models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, models.ManagedByStackImport),
+		ClusterID: at.ClusterID,
 	})
 	if err != nil {
 		return nil, err
@@ -137,6 +145,7 @@ func (s *Service) ImportCompose(ctx context.Context, workspaceID, userID uint, n
 			SourceType:  models.AppSourceImage,
 			Image:       strings.TrimSpace(def.Image),
 			StackID:     &st.ID,
+			ServerID:    at.ServerID,
 			Ports:       portSpecs(mappings),
 			Command:     def.Command,
 			Metadata: models.SetBuiltin(models.Metadata{},
@@ -150,7 +159,7 @@ func (s *Service) ImportCompose(ctx context.Context, workspaceID, userID uint, n
 		for _, kv := range def.Environment {
 			_ = s.app.SetEnvVar(app.ID, kv.Key, kv.Value, false)
 		}
-		s.importVolumes(ctx, workspaceID, st, svc, app, def.Volumes, volumes, result)
+		s.importVolumes(ctx, workspaceID, at.ServerID, st, svc, app, def.Volumes, volumes, result)
 		s.importPorts(workspaceID, userID, svc, app, mappings, result)
 		result.Created = append(result.Created, app.Name)
 	}
@@ -185,7 +194,7 @@ func (s *Service) importPorts(workspaceID, userID uint, svc string, app *models.
 }
 
 // importVolumes provisions and attaches the named volumes a service declares.
-func (s *Service) importVolumes(ctx context.Context, workspaceID uint, st *models.Stack, svc string, app *models.Application, decls []string, volumes map[string]*models.Volume, result *ImportResult) {
+func (s *Service) importVolumes(ctx context.Context, workspaceID, serverID uint, st *models.Stack, svc string, app *models.Application, decls []string, volumes map[string]*models.Volume, result *ImportResult) {
 	for _, raw := range decls {
 		m, ok := parseComposeVolume(raw)
 		if !ok {
@@ -206,7 +215,7 @@ func (s *Service) importVolumes(ctx context.Context, workspaceID uint, st *model
 			volMeta := models.SetOwner(
 				models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, models.ManagedByStackImport, models.MetaStack, st.DockerName),
 				models.OwnerStack, st.ID, st.Name)
-			v, err := s.volumes.Create(ctx, workspaceID, 0, volumeName(st.Name, m.Source, svc), 0, volMeta, nil)
+			v, err := s.volumes.Create(ctx, workspaceID, serverID, volumeName(st.Name, m.Source, svc), 0, volMeta, nil)
 			if err != nil {
 				result.Skipped = append(result.Skipped, ImportSkip{Service: svc, Reason: "volume " + raw + ": " + err.Error()})
 				continue

@@ -207,46 +207,6 @@ func (r *CreateNodeRequest) input() node.NodeInput {
 	}
 }
 
-// PlaceableNode is the minimal node info any workspace member needs to choose
-// where to place a resource. It deliberately omits admin-only fields (token
-// hash, address) — node names are not secret, but credentials are.
-type PlaceableNode struct {
-	ID           uint   `json:"id"`
-	Name         string `json:"name"`
-	Connectivity string `json:"connectivity"`
-	IsLocal      bool   `json:"is_local"`
-	Online       bool   `json:"online"`
-	Cordoned     bool   `json:"cordoned"`
-	// SwarmNodeID is the node's id within the swarm, empty when it is not a member. A container app
-	// is placed by server_id, but a *service* app is placed by the Swarm scheduler, so pinning one
-	// means emitting a `node.id==<SwarmNodeID>` constraint — the picker needs this to offer it.
-	SwarmNodeID string `json:"swarm_node_id,omitempty"`
-}
-
-// ListPlaceable returns the nodes a resource can be placed on, for the create
-// forms' node picker. Available to any authenticated user (not just platform
-// admins), since developers choose placement when creating apps/databases.
-func (h *NodeHandler) ListPlaceable(c *okapi.Context) error {
-	servers, err := h.nodes.List(c.Request().Context())
-	if err != nil {
-		return c.AbortInternalServerError("failed to list nodes", err)
-	}
-	out := make([]PlaceableNode, 0, len(servers))
-	for i := range servers {
-		s := &servers[i]
-		out = append(out, PlaceableNode{
-			ID:           s.ID,
-			Name:         s.DisplayName,
-			Connectivity: string(s.Connectivity),
-			IsLocal:      s.IsLocal,
-			Online:       s.IsLocal || h.manager.Connected(s.ID),
-			Cordoned:     s.Cordoned,
-			SwarmNodeID:  s.SwarmNodeID,
-		})
-	}
-	return ok(c, out)
-}
-
 // List returns all nodes, annotating live agent connectivity.
 func (h *NodeHandler) List(c *okapi.Context) error {
 	servers, err := h.nodes.List(c.Request().Context())

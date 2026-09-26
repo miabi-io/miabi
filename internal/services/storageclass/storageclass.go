@@ -37,6 +37,8 @@ var (
 	ErrNameTaken = errors.New("a storage class with this name already exists")
 	// ErrDisabled is returned when creating a volume on a class an admin has turned off.
 	ErrDisabled = errors.New("storage class is disabled")
+	// ErrNotOnNode is returned when a class belongs to another node than the one a volume is placed on.
+	ErrNotOnNode = errors.New("storage class is not available on this node")
 	// ErrPathMissing is returned when the class path does not exist on its node.
 	ErrPathMissing = errors.New("storage class path does not exist on the node")
 	// ErrNotFound is returned when no class matches a name.
@@ -328,7 +330,7 @@ func (s *Service) Resolve(serverID uint, name string) (*models.StorageClass, err
 	}
 	// A class belongs to one node unless the operator asserted the path is identical everywhere.
 	if c.Managed() && !c.Shared && c.ServerID != serverID {
-		return nil, fmt.Errorf("storage class %q is not available on this node", name)
+		return nil, fmt.Errorf("%w: %q", ErrNotOnNode, name)
 	}
 	return c, nil
 }

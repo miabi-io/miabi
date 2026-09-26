@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -116,7 +117,7 @@ func (s *Service) Request(workspaceID, userID uint, in RequestInput) (*models.Po
 	}
 
 	if dec.AutoApprove {
-		inUse, owner, cerr := s.hostPortConflict(b.ServerID, b.HostPort, b.Protocol, 0)
+		inUse, owner, cerr := s.tenantPortConflict(workspaceID, b.ServerID, b.HostPort, b.Protocol)
 		if cerr != nil {
 			return nil, cerr
 		}
@@ -150,7 +151,7 @@ func (s *Service) RequestImport(workspaceID, userID uint, in RequestInput) (bind
 	if !dec.Allowed {
 		return nil, "", ErrPolicyDenied
 	}
-	inUse, owner, cerr := s.hostPortConflict(b.ServerID, b.HostPort, b.Protocol, 0)
+	inUse, owner, cerr := s.tenantPortConflict(workspaceID, b.ServerID, b.HostPort, b.Protocol)
 	if cerr != nil {
 		return nil, "", cerr
 	}
@@ -285,6 +286,44 @@ func (s *Service) hostPortConflict(serverID uint, hostPort int, proto string, ex
 		return true, owner, nil
 	}
 	return false, "", nil
+}
+
+// tenantPortConflict is hostPortConflict as a workspace may see it: the owner is named only when it is one
+// of the workspace's own containers. Anything else on a shared node is another tenant's or the platform's.
+func (s *Service) tenantPortConflict(workspaceID, serverID uint, hostPort int, proto string) (bool, string, error) {
+	inUse, owner, err := s.hostPortConflict(serverID, hostPort, proto, 0)
+	if err != nil || !inUse {
+		return inUse, owner, err
+	}
+	return true, tenantOwner(s.nodeContainers(serverID), owner, workspaceID), nil
+}
+
+// tenantOwner names owner only when it is a container labelled with workspaceID.
+func tenantOwner(conts []docker.Container, owner string, workspaceID uint) string {
+	for _, ct := range conts {
+		if containerName(ct) == owner && ct.Labels[docker.LabelWorkspace] == strconv.FormatUint(uint64(workspaceID), 10) {
+			return owner
+		}
+	}
+	return "another workload on the node"
+}
+
+// nodeContainers lists the node's running containers; nil when it cannot be reached.
+func (s *Service) nodeContainers(serverID uint) []docker.Container {
+	if s.docker == nil {
+		return nil
+	}
+	dc, err := s.docker.For(serverID)
+	if err != nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conts, err := dc.ListContainers(ctx, false)
+	if err != nil {
+		return nil
+	}
+	return conts
 }
 
 // livePublishedPorts returns host:proto -> owner for every port published by a

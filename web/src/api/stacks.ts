@@ -73,6 +73,6 @@ export const stackApi = {
     api.delete<ApiResponse<{ message: string }>>(`${base(ws)}/${id}/env/${encodeURIComponent(key)}`),
   remove: (ws: number, id: number, withApps = false) =>
     api.delete<ApiResponse<{ message: string }>>(`${base(ws)}/${id}${withApps ? '?with_apps=true' : ''}`),
-  import: (ws: number, name: string, compose: string) =>
-    api.post<ApiResponse<StackImportResult>>(`${base(ws)}/import`, { name, compose }),
+  import: (ws: number, name: string, compose: string, location?: string) =>
+    api.post<ApiResponse<StackImportResult>>(`${base(ws)}/import`, { name, compose, location: location || undefined }),
 }

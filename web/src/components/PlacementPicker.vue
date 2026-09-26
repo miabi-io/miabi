@@ -1,24 +1,36 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
-import { nodesApi, type PlaceableNode } from '@/api/nodes'
+import { ref, computed, watch } from 'vue'
+import { storeToRefs } from 'pinia'
+import { locationApi, type LocationNode } from '@/api/locations'
+import { useWorkspaceStore } from '@/stores/workspace'
 
 // A container app is placed by `server_id`. A *service* app is placed by the
 // Swarm scheduler, which ignores `server_id` entirely — so offering a node picker
 // there would silently discard the choice. Pinning a service to a node instead
 // means emitting a Swarm placement constraint, which is what this v-models:
-// [] (let the scheduler decide) or ["node.id==<swarm node id>"].
-const props = defineProps<{ modelValue: string[]; replicas?: number }>()
+// [] (let the scheduler decide) or ["node.id==<swarm node id>"]. Only the nodes of `location` (the
+// workspace default when empty) are offered: a pin to another location's node would never schedule.
+const props = defineProps<{ modelValue: string[]; replicas?: number; location?: string }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: string[]): void }>()
 
-const nodes = ref<PlaceableNode[]>([])
+const { currentWorkspaceId } = storeToRefs(useWorkspaceStore())
+const nodes = ref<LocationNode[]>([])
 
-onMounted(async () => {
-  try {
-    nodes.value = (await nodesApi.placeable()).data.data ?? []
-  } catch {
-    nodes.value = []
+let request = 0
+watch([currentWorkspaceId, () => props.location], async ([ws, loc]) => {
+  const req = ++request
+  let list: LocationNode[] = []
+  if (ws) {
+    try {
+      list = (await locationApi.nodes(ws, loc)).data.data ?? []
+    } catch {
+      list = []
+    }
   }
-})
+  if (req !== request) return
+  nodes.value = list
+  if (pinned.value && !list.some((n) => n.swarm_node_id === pinned.value)) pinned.value = ''
+}, { immediate: true })
 
 // Only swarm members can be pinned: a node outside the swarm has no node.id for a
 // constraint to name, and the scheduler would never place a task there anyway.
@@ -41,7 +53,7 @@ const pinned = computed({
   },
 })
 
-function optionLabel(n: PlaceableNode): string {
+function optionLabel(n: LocationNode): string {
   return n.is_local ? `${n.name} (manager)` : n.name
 }
 </script>

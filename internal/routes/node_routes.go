@@ -435,22 +435,6 @@ func (r *Router) nodeRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// placeableNodeRoutes exposes a minimal node list to any authenticated user so
-// the create forms can offer a placement picker. Read-only; no admin fields.
-func (r *Router) placeableNodeRoutes() []okapi.RouteDefinition {
-	g := r.v1.Group("/nodes").WithTagInfo(okapi.GroupTag{Name: "Nodes", Description: "Cluster nodes (control plane + agents)."})
-	return []okapi.RouteDefinition{
-		{
-			Method:      http.MethodGet,
-			Path:        "",
-			Group:       g,
-			Middlewares: []okapi.Middleware{r.authenticate},
-			Handler:     r.h.node.ListPlaceable,
-			Summary:     "List nodes available for placement",
-		},
-	}
-}
-
 // agentRoutes registers the agent connect endpoint. It authenticates by join
 // token (not the user JWT) and is registered directly on the app so it bypasses
 // the v1 group's auth/maintenance middleware; it is rate-limited per IP.

@@ -237,21 +237,6 @@ export interface NodeCreated {
   token: string
 }
 
-// PlaceableNode is the minimal node info the create-form picker needs (no admin
-// fields). Returned by GET /nodes, available to any authenticated user.
-export interface PlaceableNode {
-  id: number
-  name: string
-  connectivity: ServerConnectivity
-  is_local: boolean
-  online: boolean
-  cordoned: boolean
-  // The node's id within the swarm; empty when it is not a member. A service app
-  // is placed by the Swarm scheduler (which ignores server_id), so pinning one to
-  // a node means emitting a `node.id==<swarm_node_id>` placement constraint.
-  swarm_node_id?: string
-}
-
 // A physical GPU discovered on a node. Admin policy (enabled, shared) is applied
 // per device; UUID/model/memory are read-only hardware facts.
 export interface GPUDevice {
@@ -278,7 +263,6 @@ export interface NodeGPUList {
 export const nodesApi = {
   list: () => api.get<ApiResponse<Server[]>>('/admin/nodes'),
   // Workspace-accessible placement list (any authenticated user).
-  placeable: () => api.get<ApiResponse<PlaceableNode[]>>('/nodes'),
   create: (payload: CreateNodePayload) =>
     api.post<ApiResponse<NodeCreated>>('/admin/nodes', payload),
   update: (id: number, payload: CreateNodePayload) =>

@@ -107,6 +107,7 @@ func (r *restoreRun) applyApps(ctx context.Context) {
 			})
 		}
 
+		in.ServerID = r.at.ServerID
 		app, err := r.svc.App.Create(r.target, in)
 		if err != nil {
 			r.add("app", a.Name, "failed", err.Error())
