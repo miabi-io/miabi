@@ -31,12 +31,12 @@ func NewAdminStorageClassHandler(svc *storageclass.Service, ee enterprise.EE, au
 }
 
 type storageClassBody struct {
-	Name          string `json:"name" max:"32"`
-	DisplayName   string `json:"display_name" max:"120"`
-	Description   string `json:"description" max:"500"`
+	Name          string `json:"name" maxLength:"32"`
+	DisplayName   string `json:"display_name" maxLength:"120"`
+	Description   string `json:"description" maxLength:"500"`
 	ServerID      uint   `json:"server_id"`
 	ClusterID     uint   `json:"cluster_id"`
-	Path          string `json:"path" max:"512"`
+	Path          string `json:"path" maxLength:"512"`
 	Shared        bool   `json:"shared"`
 	IsDefault     bool   `json:"is_default"`
 	Enabled       bool   `json:"enabled"`

@@ -39,23 +39,23 @@ type PlanBody struct {
 	Description               string `json:"description"`
 	IsDefault                 bool   `json:"is_default"`
 	IsActive                  bool   `json:"is_active"`
-	MaxApps                   int    `json:"max_apps"`
-	MaxDatabaseInstances      int    `json:"max_database_instances"`
-	MaxCronJobs               int    `json:"max_cron_jobs"`
-	MaxVolumes                int    `json:"max_volumes"`
-	MaxNetworks               int    `json:"max_networks"`
-	MaxAPIKeys                int    `json:"max_api_keys"`
-	MaxMembers                int    `json:"max_members"`
-	MaxDatabasesPerInstance   int    `json:"max_databases_per_instance"`
-	MaxCPUCores               int    `json:"max_cpu_cores"`
-	MaxMemoryMB               int    `json:"max_memory_mb"`
-	MaxDatabaseInstanceSizeMB int    `json:"max_database_instance_size_mb"`
-	MaxStorageMB              int    `json:"max_storage_mb"`
-	MaxRunners                int    `json:"max_runners"`
+	MaxApps                   int    `json:"max_apps" min:"-1"`
+	MaxDatabaseInstances      int    `json:"max_database_instances" min:"-1"`
+	MaxCronJobs               int    `json:"max_cron_jobs" min:"-1"`
+	MaxVolumes                int    `json:"max_volumes" min:"-1"`
+	MaxNetworks               int    `json:"max_networks" min:"-1"`
+	MaxAPIKeys                int    `json:"max_api_keys" min:"-1"`
+	MaxMembers                int    `json:"max_members" min:"-1"`
+	MaxDatabasesPerInstance   int    `json:"max_databases_per_instance" min:"-1"`
+	MaxCPUCores               int    `json:"max_cpu_cores" min:"-1"`
+	MaxMemoryMB               int    `json:"max_memory_mb" min:"-1"`
+	MaxDatabaseInstanceSizeMB int    `json:"max_database_instance_size_mb" min:"-1"`
+	MaxStorageMB              int    `json:"max_storage_mb" min:"-1"`
+	MaxRunners                int    `json:"max_runners" min:"-1"`
 	// The database budget. Omitted keeps the stored value, or unlimited on create, so older clients leave it alone.
-	MaxDatabaseCPUCores       *int   `json:"max_database_cpu_cores"`
-	MaxDatabaseMemoryMB       *int   `json:"max_database_memory_mb"`
-	MaxGPUs                   int    `json:"max_gpus"`
+	MaxDatabaseCPUCores       *int   `json:"max_database_cpu_cores" min:"-1"`
+	MaxDatabaseMemoryMB       *int   `json:"max_database_memory_mb" min:"-1"`
+	MaxGPUs                   int    `json:"max_gpus" min:"-1"`
 	AllowCustomTLS            bool   `json:"allow_custom_tls"`
 	AllowPrivilegedHostMounts bool   `json:"allow_privileged_host_mounts"`
 	AllowShellExec            bool   `json:"allow_shell_exec"`
@@ -65,7 +65,7 @@ type PlanBody struct {
 	AllowPlatformRunners      bool   `json:"allow_platform_runners"`
 	AllowCustomBuilder        bool   `json:"allow_custom_builder"`
 	AllowGPU                  bool   `json:"allow_gpu"`
-	SecurityProfile           string `json:"security_profile"`          // "default" | "restricted"
+	SecurityProfile           string `json:"security_profile" enum:"default,restricted"`
 	AllowOfficialImageUser    bool   `json:"allow_official_image_user"` // exempt official-template apps from the restricted UID
 	// Placement binds the plan to locations and a node pool (Enterprise placement_policy).
 	Placement models.PlanPlacement `json:"placement"`

@@ -43,7 +43,7 @@ func (h *SSOAdminHandler) GetOrganization(c *okapi.Context) error {
 
 type UpdateOrganizationRequest struct {
 	Body struct {
-		DisplayName *string `json:"display_name"`
+		DisplayName *string `json:"display_name" maxLength:"120"`
 		EnforceSSO  *bool   `json:"enforce_sso"`
 	} `json:"body"`
 }

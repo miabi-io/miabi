@@ -58,7 +58,7 @@ type AdminSetWorkspaceLimitRequest struct {
 		// Limit overrides how many workspaces the user may own. null clears the
 		// override (inherit the platform max_workspaces_per_user); -1 = unlimited;
 		// 0 = none; N = at most N.
-		Limit *int `json:"limit"`
+		Limit *int `json:"limit" min:"-1"`
 	} `json:"body"`
 }
 
@@ -106,7 +106,7 @@ type AdminSetWorkspaceMembershipLimitRequest struct {
 		// Limit overrides how many workspaces the user may join as a non-owner
 		// member. null clears the override (inherit max_workspace_memberships_per_user);
 		// -1 = unlimited; 0 = none; N = at most N.
-		Limit *int `json:"limit"`
+		Limit *int `json:"limit" min:"-1"`
 	} `json:"body"`
 }
 

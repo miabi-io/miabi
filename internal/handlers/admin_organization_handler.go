@@ -106,13 +106,13 @@ func (h *AdminOrganizationHandler) Get(c *okapi.Context) error {
 
 type AdminCreateOrganizationRequest struct {
 	Body struct {
-		Name          string `json:"name" max:"32"`
-		DisplayName   string `json:"display_name" required:"true" max:"120"`
+		Name          string `json:"name" maxLength:"32"`
+		DisplayName   string `json:"display_name" required:"true" maxLength:"120"`
 		OwnerUserID   uint   `json:"owner_user_id"`
-		MaxWorkspaces *int   `json:"max_workspaces"`
+		MaxWorkspaces *int   `json:"max_workspaces" min:"-1"`
 		// Per-user caps for this org's users; null inherits the platform default.
-		MaxWorkspacesPerUser           *int `json:"max_workspaces_per_user"`
-		MaxWorkspaceMembershipsPerUser *int `json:"max_workspace_memberships_per_user"`
+		MaxWorkspacesPerUser           *int `json:"max_workspaces_per_user" min:"-1"`
+		MaxWorkspaceMembershipsPerUser *int `json:"max_workspace_memberships_per_user" min:"-1"`
 	} `json:"body"`
 }
 
@@ -144,13 +144,13 @@ func (h *AdminOrganizationHandler) Create(c *okapi.Context, req *AdminCreateOrga
 
 type AdminUpdateOrganizationRequest struct {
 	Body struct {
-		DisplayName   *string `json:"display_name" max:"120"`
+		DisplayName   *string `json:"display_name" maxLength:"120"`
 		OwnerUserID   *uint   `json:"owner_user_id"`
-		MaxWorkspaces *int    `json:"max_workspaces"`
+		MaxWorkspaces *int    `json:"max_workspaces" min:"-1"`
 		// Per-user caps. Null leaves one as it is; -1 is unlimited and 0 none. Inherit* clears one
 		// back to the platform default, which a null cannot express.
-		MaxWorkspacesPerUser               *int  `json:"max_workspaces_per_user"`
-		MaxWorkspaceMembershipsPerUser     *int  `json:"max_workspace_memberships_per_user"`
+		MaxWorkspacesPerUser               *int  `json:"max_workspaces_per_user" min:"-1"`
+		MaxWorkspaceMembershipsPerUser     *int  `json:"max_workspace_memberships_per_user" min:"-1"`
 		InheritWorkspacesPerUser           *bool `json:"inherit_workspaces_per_user"`
 		InheritWorkspaceMembershipsPerUser *bool `json:"inherit_workspace_memberships_per_user"`
 		// DefaultClusterID is the location the org's new workspaces land in. Sending 0 clears it,

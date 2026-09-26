@@ -31,9 +31,9 @@ func NewAdminDatabaseSizeHandler(repo *repositories.DatabaseSizeRepository, ee e
 
 // databaseSizeBody is the create/update payload. Name is read on create only: instances carry it as a label.
 type databaseSizeBody struct {
-	Name        string  `json:"name" max:"32"`
-	DisplayName string  `json:"display_name" max:"80"`
-	Description string  `json:"description" max:"500"`
+	Name        string  `json:"name" maxLength:"32"`
+	DisplayName string  `json:"display_name" maxLength:"80"`
+	Description string  `json:"description" maxLength:"500"`
 	MemoryMB    int     `json:"memory_mb" required:"true"`
 	CPUCores    float64 `json:"cpu_cores" required:"true"`
 }

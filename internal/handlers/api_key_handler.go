@@ -40,7 +40,7 @@ type CreateAPIKeyRequest struct {
 		Name          string   `json:"name" required:"true"`
 		Scopes        []string `json:"scopes" enum:"read,write,deploy,admin,*,registry_read,registry_write" default:"read"`
 		AllowedIPs    []string `json:"allowed_ips"`
-		ExpiresInDays *int     `json:"expires_in_days"`
+		ExpiresInDays *int     `json:"expires_in_days" min:"0"`
 		WorkspaceID   *uint    `json:"workspace_id"`
 	} `json:"body"`
 }
