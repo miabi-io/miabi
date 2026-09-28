@@ -315,5 +315,5 @@ func runWorker() error {
 
 	logger.Info("Miabi worker started", "version", config.Version, "concurrency", cfg.WorkerConcurrency)
 
-	return srv.Run(worker.NewMux(deployHandler, provisionHandler, upgradeHandler, fanoutHandler, webhookHandler, channelHandler, jobHandler, volumeBackupHandler, pipelineHandler, platformBackupHandler, nil))
+	return srv.Run(worker.NewMux(deployHandler, provisionHandler, upgradeHandler, fanoutHandler, webhookHandler, channelHandler, jobHandler, volumeBackupHandler, pipelineHandler, platformBackupHandler, nil, nil))
 }

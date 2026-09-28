@@ -11,6 +11,7 @@ import { registryApi } from '@/api/registries'
 import { gitRepositoryApi } from '@/api/gitRepositories'
 import { networkApi } from '@/api/networks'
 import LocationName from '@/components/LocationName.vue'
+import LocationMigrationPanel from '@/components/LocationMigrationPanel.vue'
 import { stackApi } from '@/api/stacks'
 import { routeApi } from '@/api/routes'
 import { configApi, type Config } from '@/api/configs'
@@ -3648,6 +3649,16 @@ async function detachDatabase(d: AppDatabase) {
           </button>
         </div>
       </div>
+
+      <LocationMigrationPanel
+        v-if="wid"
+        :ws-id="wid"
+        :app-id="app.id"
+        :app-name="app.name"
+        :cluster-id="app.cluster_id"
+        :can-manage="ws.isWorkspaceAdmin"
+        @changed="loadApp"
+      />
 
       <!-- Moving this app into Git: render it as the manifest that would recreate it. -->
       <div v-if="canExportManifest" class="card mb-4">

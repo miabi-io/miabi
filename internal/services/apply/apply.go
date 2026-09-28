@@ -417,8 +417,12 @@ func (s *Service) locationName(clusterID uint) string {
 func refuseMove(ch declarative.Change) error {
 	for _, f := range ch.Fields {
 		if f.Field == "placement.location" {
-			return fmt.Errorf("%w: %s %q is in %q; moving it to %q is not supported. Delete it and apply again",
-				ErrInvalidManifest, strings.ToLower(string(ch.Kind)), ch.Name, f.From, f.To)
+			hint := ""
+			if ch.Kind == declarative.KindApplication {
+				hint = " An application can be moved with its data by a location migration (Enterprise); update the manifest after it."
+			}
+			return fmt.Errorf("%w: %s %q is in %q; moving it to %q is not supported. Delete it and apply again.%s",
+				ErrInvalidManifest, strings.ToLower(string(ch.Kind)), ch.Name, f.From, f.To, hint)
 		}
 	}
 	return nil

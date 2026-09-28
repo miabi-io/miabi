@@ -53,6 +53,7 @@ func (o offlineClient) CopyToVolume(context.Context, string, string, string, io.
 func (o offlineClient) DialNetwork(context.Context, string, string, string, int) (net.Conn, error) {
 	return nil, o.err
 }
+func (o offlineClient) RunAttached(context.Context, RunSpec) (Attached, error) { return nil, o.err }
 func (o offlineClient) PullImage(context.Context, string, *RegistryAuth) error { return o.err }
 func (o offlineClient) TagImage(context.Context, string, string) error         { return o.err }
 func (o offlineClient) PushImage(context.Context, string, *RegistryAuth) error { return o.err }

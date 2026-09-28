@@ -88,6 +88,10 @@ type Client interface {
 	// the same locally and tunneled, with no published host port. Closing the conn removes the relay.
 	DialNetwork(ctx context.Context, network, image, host string, port int) (net.Conn, error)
 
+	// RunAttached starts a container with its stdin, stdout and stderr wired to the returned stream, for
+	// piping data between engines without buffering it. Close removes the container.
+	RunAttached(ctx context.Context, spec RunSpec) (Attached, error)
+
 	// Images. auth may be nil for anonymous (public) pulls.
 	PullImage(ctx context.Context, ref string, auth *RegistryAuth) error
 	// TagImage adds target as an additional tag for the local source image.

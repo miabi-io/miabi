@@ -42,6 +42,7 @@ const (
 	TypeRunPipeline    = "pipeline:run"
 	TypePlatformBackup = "platform:backup"
 	TypeWSBundle       = "workspace:bundle"
+	TypeMigration      = "location:migration"
 )
 
 // DeployPayload identifies the deployment to process.
@@ -112,6 +113,12 @@ type RunPipelinePayload struct {
 // written to the queue.
 type WorkspaceBundlePayload struct {
 	WorkspaceBundleID uint `json:"workspace_bundle_id"`
+}
+
+// LocationMigrationPayload identifies the location migration to run. The run reads everything else from
+// its row, so a resumed run and a first run are the same task.
+type LocationMigrationPayload struct {
+	MigrationID uint `json:"migration_id"`
 }
 
 // PlatformBackupPayload identifies the platform backup record to execute.
@@ -355,6 +362,16 @@ func (p *Producer) EnqueueWorkspaceBundle(bundleID uint) error {
 		return err
 	}
 	task := asynq.NewTask(TypeWSBundle, payload, asynq.Queue(QueueControl), asynq.MaxRetry(0))
+	_, err = p.client.Enqueue(task)
+	return err
+}
+
+func (p *Producer) EnqueueLocationMigration(migrationID uint) error {
+	payload, err := json.Marshal(LocationMigrationPayload{MigrationID: migrationID})
+	if err != nil {
+		return err
+	}
+	task := asynq.NewTask(TypeMigration, payload, asynq.Queue(QueueControl), asynq.MaxRetry(0), asynq.Timeout(72*time.Hour))
 	_, err = p.client.Enqueue(task)
 	return err
 }

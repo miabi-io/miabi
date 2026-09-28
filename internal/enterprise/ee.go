@@ -56,6 +56,7 @@ const (
 	FlagRecoveryPoints               = "recovery_points"   // recovery points over a database instance or a volume
 	FlagOrganizations                = "organizations"     // more than one organization (tenant realm)
 	FlagSecurityPolicies             = "security_policies" // Security Center: scoped, audited platform security policies
+	FlagLiveMigration                = "live_migration"    // move an app, its volumes and databases to another location
 )
 
 // FlagInfo describes one entitlement flag for tooling and documentation.
@@ -97,6 +98,7 @@ var AllFlags = []FlagInfo{
 	{FlagRecoveryPoints, "recovery points: back up, schedule and verify a database instance or a volume as one sealed set"},
 	{FlagOrganizations, "organizations: tenant realms owning workspaces, with their own limits and clusters"},
 	{FlagSecurityPolicies, "Security Center: platform security policies with audit mode, scoped overrides and a decision log"},
+	{FlagLiveMigration, "live location migration: move an application with its volumes and databases to another location"},
 }
 
 const (
@@ -132,7 +134,7 @@ var Tiers = []Tier{
 			FlagUserWorkspaceMembershipLimit,
 			FlagAuditLog, FlagAuditExport, FlagPlatformBackup, FlagAnnouncements,
 			FlagPrivateRegistry, FlagRegistryS3, FlagPlatformRunners, FlagSecurityProfile,
-			FlagStorageClasses, FlagRecoveryPoints, FlagOrganizations,
+			FlagStorageClasses, FlagRecoveryPoints, FlagOrganizations, FlagLiveMigration,
 		},
 		Limits: map[string]int{
 			LimitNodeLimit: 25,

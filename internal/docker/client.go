@@ -548,7 +548,7 @@ func applyContainerSecurity(cfg *container.Config, hostCfg *container.HostConfig
 	}
 }
 
-func (e *engineClient) createOneShot(ctx context.Context, spec RunSpec) (string, error) {
+func (e *engineClient) createOneShot(ctx context.Context, spec RunSpec, tweaks ...func(*container.Config)) (string, error) {
 	labels := spec.Labels
 	if labels == nil {
 		labels = map[string]string{}
@@ -569,6 +569,9 @@ func (e *engineClient) createOneShot(ctx context.Context, spec RunSpec) (string,
 		NetworkMode: container.NetworkMode(spec.NetworkMode),
 	}
 	applyContainerSecurity(cfg, hostCfg, spec)
+	for _, t := range tweaks {
+		t(cfg)
+	}
 
 	var netCfg *network.NetworkingConfig
 	if len(spec.Networks) > 0 && spec.NetworkMode != "host" {

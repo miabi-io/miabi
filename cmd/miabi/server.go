@@ -39,6 +39,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/gpu"
 	"github.com/miabi-io/miabi/internal/services/image"
 	"github.com/miabi-io/miabi/internal/services/keyring"
+	"github.com/miabi-io/miabi/internal/services/locationmigration"
 	"github.com/miabi-io/miabi/internal/services/monitoring"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/notify"
@@ -558,7 +559,8 @@ func runServer(cli *okapicli.CLI) {
 			var runnerDispatcher *runners.Dispatcher
 
 			var wsBundleSvc *wsbackup.Service
-			res.forward, runnerDispatcher, _, wsBundleSvc = routes.InitRoutes(app, res.db, res.redis, cfg, res.producer, dockerClient, nodeService, nodeManager, nodeGateway, clusterService, bus, proxyMgr, res.cron, logStore)
+			var migrationSvc *locationmigration.Service
+			res.forward, runnerDispatcher, _, wsBundleSvc, migrationSvc = routes.InitRoutes(app, res.db, res.redis, cfg, res.producer, dockerClient, nodeService, nodeManager, nodeGateway, clusterService, bus, proxyMgr, res.cron, logStore)
 
 			// This process holds the runner tunnels, so its worker dispatches builds to runners for
 			// both pipelines and git-source deploys. A run with none available waits up to
@@ -583,7 +585,7 @@ func runServer(cli *okapicli.CLI) {
 			// The embedded worker shares a process with the agent + runner tunnels, so it is the only
 			// worker that consumes the remote-node queue and dispatches to runners.
 			res.worker = worker.NewServer(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB, cfg.WorkerConcurrency, true)
-			if err := res.worker.Start(worker.NewMux(deployHandler, provisionHandler, upgradeHandler, fanoutHandler, webhookHandler, channelHandler, jobHandler, volumeBackupHandler, pipelineHandler, platformBackupHandler, worker.NewWorkspaceBundleHandler(wsBundleSvc))); err != nil {
+			if err := res.worker.Start(worker.NewMux(deployHandler, provisionHandler, upgradeHandler, fanoutHandler, webhookHandler, channelHandler, jobHandler, volumeBackupHandler, pipelineHandler, platformBackupHandler, worker.NewWorkspaceBundleHandler(wsBundleSvc), worker.NewLocationMigrationHandler(migrationSvc))); err != nil {
 				logger.Fatal("failed to start embedded worker", "error", err)
 			}
 

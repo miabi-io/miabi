@@ -63,6 +63,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/image"
 	"github.com/miabi-io/miabi/internal/services/job"
 	"github.com/miabi-io/miabi/internal/services/keyring"
+	"github.com/miabi-io/miabi/internal/services/locationmigration"
 	"github.com/miabi-io/miabi/internal/services/logintoken"
 	"github.com/miabi-io/miabi/internal/services/mailer"
 	"github.com/miabi-io/miabi/internal/services/managedcert"
@@ -100,6 +101,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/stack"
 	"github.com/miabi-io/miabi/internal/services/storage"
 	"github.com/miabi-io/miabi/internal/services/storageclass"
+	"github.com/miabi-io/miabi/internal/services/transfer"
 	"github.com/miabi-io/miabi/internal/services/twofactor"
 	"github.com/miabi-io/miabi/internal/services/updatecheck"
 	"github.com/miabi-io/miabi/internal/services/usersettings"
@@ -174,6 +176,7 @@ type routerHandlers struct {
 	backupSettings  *handlers.WorkspaceBackupSettingsHandler
 	volumeBackup    *handlers.VolumeBackupHandler
 	workspaceBundle *handlers.WorkspaceBundleHandler
+	migration       *handlers.LocationMigrationHandler
 	monitoring      *handlers.MonitoringHandler
 	analytics       *handlers.AnalyticsHandler
 	inbox           *handlers.NotificationInboxHandler
@@ -235,7 +238,7 @@ type routerHandlers struct {
 
 // InitRoutes wires repositories, services, handlers, and routes onto the app. It
 // returns the port-forward service so the caller can release its live sessions on shutdown.
-func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *config.Config, producer *worker.Producer, dockerClient docker.Client, nodeService *node.Service, nodeManager *nodes.Manager, nodeGateway *edgegateway.Service, clusterService *cluster.Service, bus *eventbus.Bus, proxyMgr proxy.Manager, cronManager *cronpkg.Manager, logStore *logstore.Store) (*portforward.Service, *runners.Dispatcher, *runners.Manager, *wsbackup.Service) {
+func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *config.Config, producer *worker.Producer, dockerClient docker.Client, nodeService *node.Service, nodeManager *nodes.Manager, nodeGateway *edgegateway.Service, clusterService *cluster.Service, bus *eventbus.Bus, proxyMgr proxy.Manager, cronManager *cronpkg.Manager, logStore *logstore.Store) (*portforward.Service, *runners.Dispatcher, *runners.Manager, *wsbackup.Service, *locationmigration.Service) {
 	metrics.SetBuildInfo(config.Version, config.CommitID)
 
 	userRepo := repositories.NewUserRepository(db)
@@ -1133,6 +1136,36 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	})
 	wsBundleService.SetEnqueuer(producer) // export/restore runs on the worker
 
+	// Live location migration (EE): moves an app with its volumes and databases to another location,
+	// streaming the data engine to engine through the control plane.
+	transferService := transfer.New(nodeClients,
+		func() string { return imageResolver.Ref(platformimage.KeySync) },
+		func() string { return imageResolver.Ref(platformimage.KeyRelay) })
+	migrationService := locationmigration.NewService(locationmigration.Deps{
+		Repo:        repositories.NewLocationMigrationRepository(db),
+		Apps:        appRepo,
+		VolumeRepo:  volumeRepo,
+		ClusterRepo: clusterRepo,
+		App:         appService,
+		Volumes:     storageService,
+		Databases:   databaseService,
+		Routes:      routeService,
+		Placer:      placementService,
+		Clusters:    clusterService,
+		Transfer:    transferService,
+		Clients:     nodeClients,
+		Bus:         bus,
+	})
+	migrationService.SetEnqueuer(producer)
+	if cronManager != nil {
+		if err := cronManager.RegisterTask("location_migration_sweep", 0, "Location migration sweep", "* * * * *", func() error {
+			migrationService.Sweep(context.Background())
+			return nil
+		}); err != nil {
+			logger.Warn("failed to schedule the location migration sweep", "error", err)
+		}
+	}
+
 	// GitOps auto-sync sweep for sources set to automatic reconciliation.
 	if cronManager != nil {
 		if err := cronManager.RegisterTask("gitops_sync", 0, "GitOps auto-sync sweep", "*/3 * * * *", func() error {
@@ -1266,6 +1299,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			backupSettings:  handlers.NewWorkspaceBackupSettingsHandler(backupSettingsService, auditLogger),
 			volumeBackup:    handlers.NewVolumeBackupHandler(volumeBackupService, volumeRepo, volumeBackupRepo, cronManager, ee, auditLogger),
 			workspaceBundle: handlers.NewWorkspaceBundleHandler(wsBundleService, auditLogger),
+			migration:       handlers.NewLocationMigrationHandler(migrationService, userRepo, ee, auditLogger),
 			monitoring:      handlers.NewMonitoringHandler(monitoringService),
 			analytics:       handlers.NewAnalyticsHandler(repositories.NewAnalyticsRepository(db), ee, analytics.NewLiveTracker(redisClient, time.Duration(cfg.AnalyticsLiveWindowSeconds)*time.Second)),
 			inbox:           handlers.NewNotificationInboxHandler(inboxRepo, bus, announcementService),
@@ -1621,6 +1655,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.register(r.backupRoutes()...)
 	r.register(r.workspaceBackupSettingsRoutes()...)
 	r.register(r.workspaceBundleRoutes()...)
+	r.register(r.locationMigrationRoutes()...)
 	r.register(r.monitoringRoutes()...)
 	r.register(r.marketplaceRoutes()...)
 	r.register(r.registryRoutes()...)
@@ -1678,7 +1713,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// The bundle service goes back to the caller so the embedded worker can run
 	// export/restore tasks against this exact service graph — the one with every
 	// guard, quota and provisioning path wired.
-	return forwardService, runnerDispatcher, runnerManager, wsBundleService
+	return forwardService, runnerDispatcher, runnerManager, wsBundleService, migrationService
 }
 
 // RegisterFallbacks wires NoRoute/NoMethod handlers so router-level errors use

@@ -28,7 +28,7 @@ func NewServer(redisAddr, redisPassword string, redisDB, concurrency int, embedd
 }
 
 // NewMux registers task handlers and returns the asynq mux.
-func NewMux(deploy *DeployHandler, provision *ProvisionDBHandler, upgrade *UpgradeDBHandler, fanout *FanoutHandler, webhook *WebhookDeliverHandler, channel *ChannelSendHandler, job *JobHandler, volumeBackup *VolumeBackupHandler, pipeline *PipelineHandler, platformBackup *PlatformBackupHandler, wsBundle *WorkspaceBundleHandler) *asynq.ServeMux {
+func NewMux(deploy *DeployHandler, provision *ProvisionDBHandler, upgrade *UpgradeDBHandler, fanout *FanoutHandler, webhook *WebhookDeliverHandler, channel *ChannelSendHandler, job *JobHandler, volumeBackup *VolumeBackupHandler, pipeline *PipelineHandler, platformBackup *PlatformBackupHandler, wsBundle *WorkspaceBundleHandler, migration *LocationMigrationHandler) *asynq.ServeMux {
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(TypeDeploy, deploy.ProcessTask)
 	mux.HandleFunc(TypeCanaryStep, deploy.ProcessCanaryStep)
@@ -46,6 +46,9 @@ func NewMux(deploy *DeployHandler, provision *ProvisionDBHandler, upgrade *Upgra
 	// its server does not consume QueueControl either, so nothing is stranded.
 	if wsBundle != nil {
 		mux.HandleFunc(TypeWSBundle, wsBundle.ProcessTask)
+	}
+	if migration != nil {
+		mux.HandleFunc(TypeMigration, migration.ProcessTask)
 	}
 	return mux
 }

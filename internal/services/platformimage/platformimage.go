@@ -30,6 +30,9 @@ const (
 	KeyHelper   = "util.helper"
 	KeyAgent    = "agent"
 	KeyRegistry = "util.registry"
+	// KeySync carries rsync, which location migration runs on both ends of a volume copy. Built from
+	// github.com/miabi-io/sync.
+	KeySync = "util.sync"
 
 	// KeyPack is the one-shot helper image that runs the `pack` CLI to build an
 	// app from source with Cloud Native Buildpacks. KeyBuildpackBuilder is the
@@ -70,6 +73,7 @@ func baseCatalog() []Entry {
 		{KeyRelay, "Port-forward relay (socat)", "Internal", "alpine/socat:latest", "Bridges on-demand database port-forwards"},
 		{KeyRegistry, "Docker registry (distribution)", "Internal", "registry:3", "Built-in multi-tenant container registry"},
 		{KeyHelper, "Volume helper (busybox)", "Internal", "busybox:1.36", "Seeds config/data volumes"},
+		{KeySync, "Volume sync (rsync)", "Internal", "miabi/sync:latest", "Copies volume data between locations during a migration"},
 		{KeyPack, "Buildpacks (pack CLI)", "Build", "miabi/pack:latest", "Builds apps from source with Cloud Native Buildpacks"},
 		{KeyBuildpackBuilder, "Buildpacks builder", "Build", "paketobuildpacks/builder-jammy-base", "Default CNB builder image used by pack"},
 		{KeyAgent, "Node agent", "Agent", "miabi/agent:latest", "Shown in the node join command"},
