@@ -125,12 +125,12 @@ func (s *Service) SyncVolume(ctx context.Context, src, dst VolumeEnd, opts SyncO
 	if err != nil {
 		return SyncStats{}, fmt.Errorf("start target relay: %w", err)
 	}
-	defer lis.Close()
+	defer func() { _ = lis.Close() }()
 	conn, err := sdc.DialNetwork(ctx, name, relayImage, daemon, rsyncPort)
 	if err != nil {
 		return SyncStats{}, fmt.Errorf("dial rsync daemon: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	var streamed atomic.Int64
 	spliced := make(chan struct{})

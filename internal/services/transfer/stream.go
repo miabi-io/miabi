@@ -45,12 +45,12 @@ func (s *Service) Stream(ctx context.Context, producer, consumer StreamEnd, prog
 	if err != nil {
 		return 0, fmt.Errorf("start restore: %w", err)
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	out, err := pdc.RunAttached(ctx, producer.Spec)
 	if err != nil {
 		return 0, fmt.Errorf("start dump: %w", err)
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 	_ = out.CloseWrite()
 
 	// Whatever the consumer prints must be drained, or a chatty client blocks on a full pipe.
