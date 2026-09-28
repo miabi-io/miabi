@@ -88,8 +88,15 @@ func Discover(ctx context.Context, url, ref string, auth transport.AuthMethod) (
 	}
 	defer cleanup()
 
+	// os.Root, not os.DirFS: a committed symlink must not read files outside the checkout.
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, fmt.Errorf("open probe dir: %w", err)
+	}
+	defer root.Close()
+
 	f := &Found{Ref: ref, Commit: commit}
-	fsys := os.DirFS(dir)
+	fsys := root.FS()
 	if st, err := fs.Stat(fsys, "Dockerfile"); err == nil && !st.IsDir() {
 		f.HasDockerfile = true
 	}

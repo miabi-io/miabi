@@ -50,6 +50,9 @@ var (
 	// ErrRepositoriesUnavailable reports that repository bindings are not wired
 	// up (no git credential service).
 	ErrRepositoriesUnavailable = errors.New("git repositories are not available")
+	// ErrApplicationNotFound reports an application_id that names nothing in
+	// this workspace.
+	ErrApplicationNotFound = errors.New("no application with that id in this workspace")
 	// ErrAdoptionUnavailable reports that repository adoption is not wired up
 	// (no git credential service), so nothing can be discovered.
 	ErrAdoptionUnavailable = errors.New("repository pipeline adoption is not available")
@@ -133,6 +136,9 @@ func (s *Service) Create(workspaceID uint, in Input) (*models.PipelineDefinition
 	if err := validateStepsAgainstBinding(spec, in.ApplicationID, in.GitRepositoryID); err != nil {
 		return nil, err
 	}
+	if err := s.checkBindingsInWorkspace(workspaceID, in.ApplicationID, in.GitRepositoryID); err != nil {
+		return nil, err
+	}
 	if taken, _ := s.repo.ExistsByName(workspaceID, name); taken {
 		return nil, ErrNameTaken
 	}
@@ -184,9 +190,15 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.PipelineDefini
 	// Partial update: only touch the bindings / enabled flag when the caller
 	// actually supplied them, so a spec-only update can't unbind or disable.
 	if in.SetApplicationID {
+		if err := s.checkBindingsInWorkspace(workspaceID, in.ApplicationID, nil); err != nil {
+			return nil, err
+		}
 		p.ApplicationID = in.ApplicationID
 	}
 	if in.SetGitRepositoryID {
+		if err := s.checkBindingsInWorkspace(workspaceID, nil, in.GitRepositoryID); err != nil {
+			return nil, err
+		}
 		p.GitRepositoryID = in.GitRepositoryID
 	}
 	if in.SetBranch {
@@ -217,6 +229,28 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.PipelineDefini
 	s.applySchedule(p)
 	s.decorateRepository(p)
 	return p, nil
+}
+
+// checkBindingsInWorkspace rejects an application or repository id that belongs to another workspace.
+// It fails closed when the lookup isn't wired: the run would otherwise clone with the owner's credential.
+func (s *Service) checkBindingsInWorkspace(workspaceID uint, appID, repoID *uint) error {
+	if appID != nil {
+		if s.apps == nil {
+			return ErrApplicationNotFound
+		}
+		if _, err := s.apps.FindInWorkspace(workspaceID, *appID); err != nil {
+			return ErrApplicationNotFound
+		}
+	}
+	if repoID != nil {
+		if s.gitRepos == nil {
+			return ErrRepositoriesUnavailable
+		}
+		if _, err := s.gitRepos.Get(workspaceID, *repoID); err != nil {
+			return ErrRepositoryNotFound
+		}
+	}
+	return nil
 }
 
 // repoOwnedEditRequested reports whether an update asks to change something a repository-owned pipeline

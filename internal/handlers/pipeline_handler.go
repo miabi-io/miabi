@@ -455,6 +455,7 @@ func (h *PipelineHandler) mapErr(c *okapi.Context, err error) error {
 	case errors.Is(err, pipeline.ErrInvalidSpec), errors.Is(err, pipeline.ErrNameRequired), errors.Is(err, pipeline.ErrDisabled),
 		errors.Is(err, pipeline.ErrSourceConflict), errors.Is(err, pipeline.ErrDeployNeedsApp),
 		errors.Is(err, pipeline.ErrBuildNeedsSource), errors.Is(err, pipeline.ErrRepositoryNotFound),
+		errors.Is(err, pipeline.ErrApplicationNotFound),
 		errors.Is(err, pipeline.ErrRepositoriesUnavailable):
 		return c.AbortBadRequest(err.Error())
 	default:

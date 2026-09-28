@@ -5,6 +5,7 @@ package runners
 
 import (
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/miabi-io/miabi/internal/models"
@@ -36,6 +37,24 @@ func (c *JobCredentials) Secrets() []string {
 		if v != "" {
 			out = append(out, v)
 		}
+	}
+	return out
+}
+
+// sourceURLSecrets returns the password embedded in a clone URL, raw and as it appears
+// percent-encoded, so a step that prints the remote or .git/config shows ••••.
+func sourceURLSecrets(sourceURL string) []string {
+	u, err := url.Parse(sourceURL)
+	if err != nil || u.User == nil {
+		return nil
+	}
+	pw, ok := u.User.Password()
+	if !ok || pw == "" {
+		return nil
+	}
+	out := []string{pw}
+	if enc := url.UserPassword("", pw).String()[1:]; enc != pw {
+		out = append(out, enc)
 	}
 	return out
 }

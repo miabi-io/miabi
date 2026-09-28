@@ -404,7 +404,13 @@ func (s *Service) fetch(ctx context.Context, src *models.GitSource) ([]byte, com
 
 	// Parse all manifests under the source path into a single set, then
 	// re-serialize so the apply engine consumes one canonical bundle.
-	set, err := declarative.ParseFS(os.DirFS(dir), src.Path)
+	// os.Root, not os.DirFS: a committed symlink must not read files outside the checkout.
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, commitInfo{}, fmt.Errorf("open checkout: %w", err)
+	}
+	defer root.Close()
+	set, err := declarative.ParseFS(root.FS(), src.Path)
 	if err != nil {
 		switch {
 		case errors.Is(err, fs.ErrNotExist):

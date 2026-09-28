@@ -132,7 +132,7 @@ func buildOnlyJobSpec(in BuildInputs, creds *JobCredentials, deadline time.Time)
 	if creds != nil {
 		secrets = creds.Secrets()
 	}
-	return spec, secrets
+	return spec, append(secrets, sourceURLSecrets(in.SourceURL)...)
 }
 
 // processBuildFrames reads the runner's report stream for a build job: it streams redacted log

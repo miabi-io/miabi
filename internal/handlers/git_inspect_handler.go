@@ -68,7 +68,7 @@ type InspectGitResponse struct {
 	TriggersPush  bool             `json:"triggers_push,omitempty"`
 	Manual        bool             `json:"manual,omitempty"`
 	Schedule      string           `json:"schedule,omitempty"`
-	// Spec is the document verbatim, for the preview pane.
+	// Spec is the document verbatim, for the preview pane; only set when it parsed.
 	Spec string `json:"spec,omitempty"`
 }
 
@@ -106,9 +106,9 @@ func (h *GitInspectHandler) Inspect(c *okapi.Context, req *InspectGitRequest) er
 		HasPipeline:   found.HasPipeline(),
 		PipelinePath:  found.Path,
 		PipelineError: found.SpecError,
-		Spec:          found.Raw,
 	}
 	if s := found.Spec; s != nil {
+		resp.Spec = found.Raw
 		resp.PipelineName = s.Metadata.Name
 		resp.Manual = s.On.Manual
 		resp.Schedule = s.On.Schedule

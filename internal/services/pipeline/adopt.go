@@ -141,7 +141,7 @@ func (s *Service) SyncFromRepo(ctx context.Context, p *models.PipelineDefinition
 	if !p.IsRepoOwned() || s.gitRepos == nil || p.ApplicationID == nil || s.apps == nil {
 		return false, nil
 	}
-	app, err := s.apps.FindByID(*p.ApplicationID)
+	app, err := s.apps.FindInWorkspace(p.WorkspaceID, *p.ApplicationID)
 	if err != nil {
 		logger.Warn("pipeline re-sync skipped: bound app not found",
 			"pipeline", p.Name, "app", *p.ApplicationID, "error", err)

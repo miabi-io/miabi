@@ -266,22 +266,24 @@ func (h *PipelineHandler) jobInputs(run *models.PipelineRun, def *models.Pipelin
 	switch def.Checkout() {
 	case models.CheckoutApplication:
 		in.AppID = def.ApplicationID
-		if app, err := h.apps.FindByID(*def.ApplicationID); err == nil {
-			in.AppName = app.Name
-			su, err := h.sourceURL(app)
-			if err != nil {
-				return runners.JobInputs{}, err
-			}
-			in.SourceURL = su
-			// The cache is the app's, so a pipeline run and a direct deploy of the same app share it.
-			in.CacheGeneration = app.CacheGeneration
-			in.CacheTrunk = app.GitRef
-			in.CacheCold = app.CacheBuiltGeneration != app.CacheGeneration
-			if reg != "" {
-				// Push under <host>/ws_<id>/<app-name> so the deploy path recognizes it as a build ref, and the
-				// ownership check on the pull resolves the namespace back to this workspace.
-				in.Repository = fmt.Sprintf("%s/%s/%s", strings.TrimRight(reg, "/"), ns, app.Name)
-			}
+		app, err := h.apps.FindInWorkspace(run.WorkspaceID, *def.ApplicationID)
+		if err != nil {
+			return runners.JobInputs{}, fmt.Errorf("pipeline application %d: %w", *def.ApplicationID, err)
+		}
+		in.AppName = app.Name
+		su, err := h.sourceURL(app)
+		if err != nil {
+			return runners.JobInputs{}, err
+		}
+		in.SourceURL = su
+		// The cache is the app's, so a pipeline run and a direct deploy of the same app share it.
+		in.CacheGeneration = app.CacheGeneration
+		in.CacheTrunk = app.GitRef
+		in.CacheCold = app.CacheBuiltGeneration != app.CacheGeneration
+		if reg != "" {
+			// Push under <host>/ws_<id>/<app-name> so the deploy path recognizes it as a build ref, and the
+			// ownership check on the pull resolves the namespace back to this workspace.
+			in.Repository = fmt.Sprintf("%s/%s/%s", strings.TrimRight(reg, "/"), ns, app.Name)
 		}
 
 	case models.CheckoutRepository:

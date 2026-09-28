@@ -4,6 +4,7 @@
 package runners
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -123,3 +124,25 @@ func TestEphemeralKeysHiddenAndSwept(t *testing.T) {
 }
 
 func ptrWS(u uint) *uint { return &u }
+
+func TestSourceURLSecretsMasksTheCloneToken(t *testing.T) {
+	got := sourceURLSecrets("https://x-access-token:ghp_a%2Fb@github.com/acme/app.git")
+	want := map[string]bool{"ghp_a/b": true, "ghp_a%2Fb": true}
+	if len(got) != len(want) {
+		t.Fatalf("got %q", got)
+	}
+	for _, s := range got {
+		if !want[s] {
+			t.Fatalf("unexpected secret %q in %q", s, got)
+		}
+	}
+	line := redact("remote: https://x-access-token:ghp_a%2Fb@github.com/acme/app.git", got)
+	if strings.Contains(line, "ghp_") {
+		t.Fatalf("token survived redaction: %q", line)
+	}
+	for _, u := range []string{"", "https://github.com/acme/app.git", "https://user@github.com/a.git", "::"} {
+		if s := sourceURLSecrets(u); s != nil {
+			t.Fatalf("%q: got %q, want none", u, s)
+		}
+	}
+}

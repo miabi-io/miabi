@@ -116,7 +116,7 @@ func BuildJobSpec(in JobInputs) (proto.JobSpec, []string) {
 		Env:         env,
 		Deadline:    in.Deadline,
 	}
-	return spec, in.Creds.Secrets()
+	return spec, append(in.Creds.Secrets(), sourceURLSecrets(in.SourceURL)...)
 }
 
 func buildConfig(s *models.PipelineStepRun, in JobInputs) *proto.BuildConfig {
