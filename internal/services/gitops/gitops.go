@@ -409,7 +409,7 @@ func (s *Service) fetch(ctx context.Context, src *models.GitSource) ([]byte, com
 	if err != nil {
 		return nil, commitInfo{}, fmt.Errorf("open checkout: %w", err)
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	set, err := declarative.ParseFS(root.FS(), src.Path)
 	if err != nil {
 		switch {
