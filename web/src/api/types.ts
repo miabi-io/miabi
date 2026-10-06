@@ -1905,7 +1905,7 @@ export interface ConnectionInfo {
   uri: string
 }
 
-export type JobRunStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
+export type JobRunStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled' | 'skipped'
 
 export interface Job {
   id: number
@@ -1913,6 +1913,9 @@ export interface Job {
   application_id: number
   server_id: number
   cronjob_id?: number
+  job_definition_id?: number
+  wait_deployment_id?: number
+  attempt?: number
   app_name?: string
   name: string
   command: string[]
@@ -1939,7 +1942,11 @@ export interface CronJob {
   workspace_id: number
   application_id: number
   app_name?: string
+  uid?: string
   name: string
+  display_name?: string
+  metadata?: Record<string, string>
+  annotations?: Record<string, string>
   schedule: string
   command: string[]
   entrypoint?: string[]
@@ -1954,6 +1961,30 @@ export interface CronJob {
   history_limit: number
   last_run_at?: string
   created_at: string
+}
+
+// A declared Job (kind: Job), created by apply/GitOps; each run is a Job row.
+export interface JobDefinition {
+  id: number
+  uid?: string
+  workspace_id: number
+  application_id: number
+  app_name?: string
+  name: string
+  command: string[]
+  entrypoint?: string[]
+  image?: string
+  run_as_user?: string
+  timeout_secs: number
+  run_policy: 'onChange' | 'once' | 'onRelease'
+  wait_for_deploy: boolean
+  history_limit: number
+  backoff_limit: number
+  last_job_id?: number
+  last_status?: JobRunStatus
+  metadata?: Record<string, string>
+  created_at: string
+  updated_at: string
 }
 
 export interface Secret {
@@ -2786,7 +2817,7 @@ export interface GatewayCandidate {
 // --- GitOps & CI/CD ---
 
 export type GitSyncPolicy = 'manual' | 'auto'
-export type GitSourceStatus = 'unknown' | 'synced' | 'out_of_sync' | 'progressing' | 'error'
+export type GitSourceStatus = 'unknown' | 'synced' | 'out_of_sync' | 'progressing' | 'error' | 'degraded'
 
 export interface GitSource {
   id: number
@@ -2845,7 +2876,7 @@ export interface GitOpsDeleteResult {
 
 // Resource topology graph for a GitOps project (project-detail view).
 export type NodeStatus = 'synced' | 'out_of_sync' | 'missing' | 'orphaned'
-export type EdgeType = 'mount' | 'stack' | 'route' | 'domain' | 'database' | 'secret' | 'app-ref'
+export type EdgeType = 'mount' | 'stack' | 'route' | 'domain' | 'database' | 'secret' | 'app-ref' | 'schedule' | 'run'
 
 export interface TopologyNode {
   key: string // "<Kind>/<name>" — matches edge endpoints

@@ -69,6 +69,7 @@ type DeployHandler struct {
 	distributor   Distributor
 	logs          *logstore.Store
 	deployLock    DeployLock
+	releaseHook   ReleaseHook
 	builderPolicy BuilderPolicy
 	poolPolicy    PoolPolicy
 	clusterSlots  *clusterSlots
@@ -138,6 +139,19 @@ func (h *DeployHandler) SetBuildDispatch(d BuildDispatcher, registryHost string,
 // SetDeployLock wires the per-app deploy serialization lock (optional; nil runs
 // deploys without cross-worker serialization).
 func (h *DeployHandler) SetDeployLock(l DeployLock) { h.deployLock = l }
+
+// ReleaseHook is told each time a release becomes an app's active one. It must
+// not block the deploy: the job service only enqueues runs.
+type ReleaseHook func(appID, releaseID uint)
+
+// SetReleaseHook wires what runs on release activation (onRelease Jobs).
+func (h *DeployHandler) SetReleaseHook(fn ReleaseHook) { h.releaseHook = fn }
+
+func (h *DeployHandler) releaseActivated(appID, releaseID uint) {
+	if h.releaseHook != nil {
+		h.releaseHook(appID, releaseID)
+	}
+}
 
 // SetClusterConcurrency caps how many deploys run at once per cluster (0 disables the cap).
 func (h *DeployHandler) SetClusterConcurrency(limit int) {
@@ -1037,6 +1051,7 @@ func (h *DeployHandler) releaseService(app *models.Application, dep *models.Depl
 		return
 	}
 	_ = h.releases.Activate(app.ID, rel.ID)
+	h.releaseActivated(app.ID, rel.ID)
 
 	finished := time.Now()
 	dep.Status = models.DeploymentSucceeded
@@ -1805,6 +1820,7 @@ func (h *DeployHandler) swapAndRelease(app *models.Application, dep *models.Depl
 		return
 	}
 	_ = h.releases.Activate(app.ID, rel.ID)
+	h.releaseActivated(app.ID, rel.ID)
 
 	finished := time.Now()
 	dep.Status = models.DeploymentSucceeded

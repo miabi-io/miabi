@@ -28,6 +28,24 @@ type JobHandler struct {
 	registries *repositories.RegistryRepository
 	clients    NodeDocker
 	logs       *logstore.Store
+	// deployments and releases let a run wait for a deploy and take the image
+	// of the release it activated (declared Jobs with waitForDeploy).
+	deployments *repositories.DeploymentRepository
+	releases    *repositories.ReleaseRepository
+	waitPoll    time.Duration
+	waitMax     time.Duration
+	// onFailed hears about a declared Job's failed run, to retry it.
+	onFailed func(jobID uint)
+}
+
+// SetFailureHook wires what a declared Job's failed run reports to (backoffLimit retries).
+func (h *JobHandler) SetFailureHook(fn func(jobID uint)) { h.onFailed = fn }
+
+// SetDeployWait wires what a run held for a deploy needs. Without it such a run
+// starts straight away on the image it was enqueued with.
+func (h *JobHandler) SetDeployWait(deployments *repositories.DeploymentRepository, releases *repositories.ReleaseRepository) {
+	h.deployments, h.releases = deployments, releases
+	h.waitPoll, h.waitMax = 5*time.Second, 2*time.Hour
 }
 
 // SetLogStore wires the shared execution-log store. When set, a job's full
@@ -57,6 +75,11 @@ func (h *JobHandler) ProcessTask(ctx context.Context, task *asynq.Task) error {
 }
 
 func (h *JobHandler) run(ctx context.Context, j *models.Job) {
+	if j.WaitDeploymentID != nil && h.deployments != nil {
+		if !h.awaitDeploy(ctx, j) {
+			return
+		}
+	}
 	app, err := h.apps.FindByID(j.ApplicationID)
 	if err != nil {
 		h.fail(j, fmt.Errorf("application %d not found: %w", j.ApplicationID, err))
@@ -196,6 +219,9 @@ func (h *JobHandler) finish(j *models.Job, status models.JobStatus, exit *int, e
 		logger.Error("failed to record job result", "job", j.ID, "error", err)
 	}
 	h.externalizeLog(j)
+	if status == models.JobFailed && j.JobDefinitionID != nil && h.onFailed != nil {
+		h.onFailed(j.ID)
+	}
 }
 
 // externalizeLog moves a terminal job's full output into the shared log store and trims the row to a
@@ -218,6 +244,52 @@ func (h *JobHandler) externalizeLog(j *models.Job) {
 	if err := h.jobs.SetLogMeta(cur.ID, res.Ref, res.Tail, res.Bytes, res.Lines, res.Truncated); err != nil {
 		logger.Error("log store: record job log ref failed", "job", cur.ID, "error", err)
 	}
+}
+
+// awaitDeploy holds a run until the deployment it waits for ends, then points it
+// at the release that deploy activated. It reports whether the run should go on:
+// a failed deploy skips it, and a cancel while waiting ends it.
+func (h *JobHandler) awaitDeploy(ctx context.Context, j *models.Job) bool {
+	deadline := time.Now().Add(h.waitMax)
+	for {
+		dep, err := h.deployments.FindByID(*j.WaitDeploymentID)
+		if err != nil {
+			break // gone: nothing left to wait for
+		}
+		if dep.Status == models.DeploymentFailed {
+			h.finish(j, models.JobSkipped, nil, fmt.Sprintf("deployment #%d failed; run skipped", dep.Number))
+			return false
+		}
+		// A canary leaves the stable release active, which is what the run uses.
+		if dep.Status.IsTerminal() || dep.Status == models.DeploymentCanary {
+			break
+		}
+		if time.Now().After(deadline) {
+			h.finish(j, models.JobSkipped, nil, fmt.Sprintf("deployment #%d still running after %s; run skipped", dep.Number, h.waitMax))
+			return false
+		}
+		select {
+		case <-ctx.Done():
+			h.fail(j, fmt.Errorf("worker stopped while waiting for deployment #%d", dep.Number))
+			return false
+		case <-time.After(h.waitPoll):
+		}
+		if cur, err := h.jobs.FindByID(j.ID); err == nil && cur.Status.IsTerminal() {
+			return false // canceled while waiting
+		}
+	}
+	if !j.Pull && h.releases != nil {
+		rel, err := h.releases.FindActive(j.ApplicationID)
+		if err != nil || rel.Image == "" {
+			if j.Image == "" {
+				h.fail(j, fmt.Errorf("application has no active release to run on"))
+				return false
+			}
+			return true
+		}
+		j.Image = rel.Image
+	}
+	return true
 }
 
 func (h *JobHandler) fail(j *models.Job, cause error) {

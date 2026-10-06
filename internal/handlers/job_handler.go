@@ -5,6 +5,8 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
+	"net/http"
 	"strconv"
 
 	"github.com/jkaninda/okapi"
@@ -116,13 +118,16 @@ func (h *JobHandler) Delete(c *okapi.Context) error {
 
 type CronJobRequest struct {
 	Body struct {
-		ApplicationID uint     `json:"application_id"`
-		Name          string   `json:"name"`
-		Schedule      string   `json:"schedule" required:"true"`
-		Command       []string `json:"command" required:"true"`
-		Entrypoint    []string `json:"entrypoint"`
-		Image         string   `json:"image"`
-		RegistryID    *uint    `json:"registry_id"`
+		ApplicationID uint `json:"application_id"`
+		// Name is the workspace-unique slug (free text is slugified); DisplayName
+		// is the label shown in the UI.
+		Name        string   `json:"name"`
+		DisplayName string   `json:"display_name"`
+		Schedule    string   `json:"schedule" required:"true"`
+		Command     []string `json:"command" required:"true"`
+		Entrypoint  []string `json:"entrypoint"`
+		Image       string   `json:"image"`
+		RegistryID  *uint    `json:"registry_id"`
 		// RunAsUser pins spawned runs to an account; empty inherits the app's when
 		// each run fires. See RunJobRequest.
 		RunAsUser         string `json:"run_as_user"`
@@ -136,6 +141,7 @@ type CronJobRequest struct {
 func (r *CronJobRequest) input() job.CronJobInput {
 	return job.CronJobInput{
 		Name:              r.Body.Name,
+		DisplayName:       r.Body.DisplayName,
 		Schedule:          r.Body.Schedule,
 		Command:           r.Body.Command,
 		Entrypoint:        r.Body.Entrypoint,
@@ -180,7 +186,13 @@ func (h *JobHandler) GetCronJob(c *okapi.Context) error {
 
 func (h *JobHandler) UpdateCronJob(c *okapi.Context, req *CronJobRequest) error {
 	wsID := middlewares.WorkspaceID(c)
-	cj, err := h.svc.UpdateCronJob(wsID, h.cronJobID(c), req.input())
+	in := req.input()
+	if cur, err := h.svc.GetCronJob(wsID, h.cronJobID(c)); err == nil {
+		if owner, owned := models.SourceOwnedElsewhere(cur.Metadata); owned && !in.OnlyToggles(cur) {
+			return c.AbortWithError(http.StatusConflict, ownedErr("cronjob", owner))
+		}
+	}
+	cj, err := h.svc.UpdateCronJob(wsID, h.cronJobID(c), in)
 	if err != nil {
 		return h.mapErr(c, err)
 	}
@@ -201,11 +213,50 @@ func (h *JobHandler) RunCronJobNow(c *okapi.Context) error {
 
 func (h *JobHandler) DeleteCronJob(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
+	if cur, err := h.svc.GetCronJob(wsID, h.cronJobID(c)); err == nil {
+		if owner, owned := models.SourceOwnedElsewhere(cur.Metadata); owned {
+			return c.AbortWithError(http.StatusConflict, ownedErr("cronjob", owner))
+		}
+	}
 	if err := h.svc.DeleteCronJob(wsID, h.cronJobID(c)); err != nil {
 		return h.mapErr(c, err)
 	}
 	h.record(c, wsID, "cronjob.delete", h.cronJobID(c))
 	return message(c, "cronjob deleted")
+}
+
+// ownedErr explains a refused console edit: the next sync would revert it.
+func ownedErr(kind, owner string) error {
+	return fmt.Errorf("this %s is managed by %s; change it in its manifest (run now, pause and resume stay available here)", kind, owner)
+}
+
+// ListJobDefinitions lists the workspace's declared Jobs (optionally ?app_id=),
+// with their last run status.
+func (h *JobHandler) ListJobDefinitions(c *okapi.Context) error {
+	list, err := h.svc.ListDefinitions(middlewares.WorkspaceID(c), queryUint(c, "app_id"))
+	if err != nil {
+		return c.AbortInternalServerError("failed to list job definitions", err)
+	}
+	return ok(c, list)
+}
+
+// RunJobDefinition runs a declared Job again by hand. The next sync doesn't run
+// it a second time: its fingerprint is unchanged.
+func (h *JobHandler) RunJobDefinition(c *okapi.Context) error {
+	wsID := middlewares.WorkspaceID(c)
+	actor := middlewares.UserID(c)
+	id := h.definitionID(c)
+	j, err := h.svc.RunDefinitionNow(c.Request().Context(), wsID, id, &actor)
+	if err != nil {
+		return h.mapErr(c, err)
+	}
+	h.record(c, wsID, "job_definition.run", id)
+	return created(c, j)
+}
+
+func (h *JobHandler) definitionID(c *okapi.Context) uint {
+	id, _ := strconv.Atoi(c.Param("definitionID"))
+	return uint(id)
 }
 
 func (h *JobHandler) jobID(c *okapi.Context) uint {
@@ -243,6 +294,10 @@ func (h *JobHandler) mapErr(c *okapi.Context, err error) error {
 		return c.AbortBadRequest("invalid cron schedule")
 	case errors.Is(err, job.ErrCronNotFound):
 		return c.AbortNotFound("cronjob not found")
+	case errors.Is(err, job.ErrCronNameTaken):
+		return c.AbortWithError(409, err)
+	case errors.Is(err, job.ErrDefinitionNotFound):
+		return c.AbortNotFound("job definition not found")
 	case errors.Is(err, job.ErrNotTerminal):
 		return c.AbortWithError(409, err)
 	case errors.Is(err, job.ErrAlreadyDone):

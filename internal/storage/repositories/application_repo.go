@@ -43,6 +43,7 @@ func (r *ApplicationRepository) Delete(id uint) error {
 		for _, child := range []any{
 			&models.AppEnvVar{}, &models.AppPort{},
 			&models.Deployment{}, &models.Release{}, &models.AppEvent{}, &models.MetricSample{},
+			&models.Job{}, &models.CronJob{}, &models.JobDefinition{},
 		} {
 			if err := tx.Where("application_id = ?", id).Delete(child).Error; err != nil {
 				return err

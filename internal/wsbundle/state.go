@@ -50,13 +50,16 @@ type State struct {
 	Certificates []Certificate      `json:"certificates,omitempty"`
 	Apps         []Application      `json:"apps,omitempty"`
 	CronJobs     []CronJob          `json:"cron_jobs,omitempty"`
-	Middlewares  []Middleware       `json:"middlewares,omitempty"`
-	Routes       []Route            `json:"routes,omitempty"`
-	Domains      []Domain           `json:"domains,omitempty"`
-	Environments []Environment      `json:"environments,omitempty"`
-	Pipelines    []Pipeline         `json:"pipelines,omitempty"`
-	GitSources   []GitSource        `json:"gitops_sources,omitempty"`
-	Members      []Member           `json:"members,omitempty"`
+	// JobDefinitions travel so a restored GitOps source re-syncs them as
+	// unchanged rather than running every declared Job again.
+	JobDefinitions []JobDefinition `json:"job_definitions,omitempty"`
+	Middlewares    []Middleware    `json:"middlewares,omitempty"`
+	Routes         []Route         `json:"routes,omitempty"`
+	Domains        []Domain        `json:"domains,omitempty"`
+	Environments   []Environment   `json:"environments,omitempty"`
+	Pipelines      []Pipeline      `json:"pipelines,omitempty"`
+	GitSources     []GitSource     `json:"gitops_sources,omitempty"`
+	Members        []Member        `json:"members,omitempty"`
 }
 
 // Source is the bundle's provenance.
@@ -138,17 +141,40 @@ type Middleware struct {
 // CronJob is a scheduled command in an application's runtime context. The
 // schedule travels; the runs it produced do not.
 type CronJob struct {
-	Name              string   `json:"name"`
-	App               string   `json:"app"`
-	Schedule          string   `json:"schedule"`
-	Command           []string `json:"command,omitempty"`
-	Entrypoint        []string `json:"entrypoint,omitempty"`
-	Image             string   `json:"image,omitempty"`
-	Registry          string   `json:"registry,omitempty"`
-	TimeoutSecs       int      `json:"timeout_secs,omitempty"`
-	Enabled           bool     `json:"enabled"`
-	ConcurrencyPolicy string   `json:"concurrency_policy,omitempty"`
-	HistoryLimit      int      `json:"history_limit,omitempty"`
+	Name              string            `json:"name"`
+	App               string            `json:"app"`
+	Schedule          string            `json:"schedule"`
+	Command           []string          `json:"command,omitempty"`
+	Entrypoint        []string          `json:"entrypoint,omitempty"`
+	Image             string            `json:"image,omitempty"`
+	Registry          string            `json:"registry,omitempty"`
+	TimeoutSecs       int               `json:"timeout_secs,omitempty"`
+	Enabled           bool              `json:"enabled"`
+	ConcurrencyPolicy string            `json:"concurrency_policy,omitempty"`
+	HistoryLimit      int               `json:"history_limit,omitempty"`
+	DisplayName       string            `json:"display_name,omitempty"`
+	RunAsUser         string            `json:"run_as_user,omitempty"`
+	Metadata          map[string]string `json:"metadata,omitempty"`
+	Annotations       map[string]string `json:"annotations,omitempty"`
+}
+
+// JobDefinition is a declared Job. Its fingerprint travels with it; its runs do not.
+type JobDefinition struct {
+	Name          string            `json:"name"`
+	App           string            `json:"app"`
+	Command       []string          `json:"command,omitempty"`
+	Entrypoint    []string          `json:"entrypoint,omitempty"`
+	Image         string            `json:"image,omitempty"`
+	Registry      string            `json:"registry,omitempty"`
+	RunAsUser     string            `json:"run_as_user,omitempty"`
+	TimeoutSecs   int               `json:"timeout_secs,omitempty"`
+	RunPolicy     string            `json:"run_policy,omitempty"`
+	WaitForDeploy bool              `json:"wait_for_deploy"`
+	HistoryLimit  int               `json:"history_limit,omitempty"`
+	BackoffLimit  int               `json:"backoff_limit,omitempty"`
+	SpecHash      string            `json:"spec_hash,omitempty"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
+	Annotations   map[string]string `json:"annotations,omitempty"`
 }
 
 // Environment is a promotion stage. Approvals recorded against releases do not

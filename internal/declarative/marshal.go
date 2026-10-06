@@ -58,6 +58,10 @@ func (r Resource) spec() any {
 		return r.Config
 	case r.Middleware != nil:
 		return r.Middleware
+	case r.CronJob != nil:
+		return r.CronJob
+	case r.Job != nil:
+		return r.Job
 	case r.Domain != nil:
 		return r.Domain
 	case r.Registry != nil:

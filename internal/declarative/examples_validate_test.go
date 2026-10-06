@@ -121,6 +121,33 @@ func TestExamplesParse(t *testing.T) {
 		}
 	}
 
+	// Job examples: every policy shown, and every schedule/job bound to a declared app.
+	for f, kinds := range map[string]d.Kind{"cronjob.yaml": d.KindCronJob, "job.yaml": d.KindJob} {
+		b, err := os.ReadFile(filepath.Join(examplesDir, "apply", f))
+		if err != nil {
+			t.Fatalf("read %s: %v", f, err)
+		}
+		set, err := d.Parse(b)
+		if err != nil {
+			t.Fatalf("parse apply/%s: %v", f, err)
+		}
+		if len(set.ByKind(kinds)) == 0 {
+			t.Errorf("%s should declare a %s", f, kinds)
+		}
+		if err := d.CheckReferences(set.References(), d.KnownNames{"applications": appNames(set)}); err != nil {
+			t.Errorf("%s: %v", f, err)
+		}
+		if kinds == d.KindJob {
+			policies := map[string]bool{}
+			for _, j := range set.ByKind(d.KindJob) {
+				policies[j.Job.Policy()] = true
+			}
+			if len(policies) != 3 {
+				t.Errorf("job.yaml should show all three run policies, shows %v", policies)
+			}
+		}
+	}
+
 	// GitOps env folders via ParseFS.
 	for _, env := range []string{"dev", "prod"} {
 		dir := filepath.Join(examplesDir, "gitops", "envs", env)
@@ -144,4 +171,12 @@ func TestExamplesParse(t *testing.T) {
 			t.Errorf("parse pipeline/%s: %v", f, err)
 		}
 	}
+}
+
+func appNames(set *d.ResourceSet) map[string]bool {
+	out := map[string]bool{}
+	for _, a := range set.ByKind(d.KindApplication) {
+		out[a.Metadata.Name] = true
+	}
+	return out
 }

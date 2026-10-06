@@ -27,6 +27,10 @@ const (
 	// middleware declared in the same bundle: a route may just as well name one the
 	// workspace already has, and that is not a dangling reference.
 	EdgeMiddleware EdgeType = "middleware"
+	// EdgeSchedule is CronJob -> Application (spec.app).
+	EdgeSchedule EdgeType = "schedule"
+	// EdgeRun is Job -> Application (spec.app).
+	EdgeRun EdgeType = "run"
 )
 
 // Edge is a directed dependency from one resource to another, keyed by Resource
@@ -101,6 +105,12 @@ func Edges(set *ResourceSet) []Edge {
 					}
 				}
 			}
+		case r.CronJob != nil:
+			add(KindCronJob, name, KindApplication, r.CronJob.App, EdgeSchedule)
+			add(KindCronJob, name, KindRegistry, r.CronJob.Registry, EdgeRegistry)
+		case r.Job != nil:
+			add(KindJob, name, KindApplication, r.Job.App, EdgeRun)
+			add(KindJob, name, KindRegistry, r.Job.Registry, EdgeRegistry)
 		case r.Route != nil:
 			add(KindRoute, name, KindApplication, r.Route.App, EdgeRoute)
 			for _, mw := range r.Route.Middlewares {

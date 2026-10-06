@@ -169,6 +169,10 @@ func (r *Resource) validate() error {
 		return r.validateConfig()
 	case KindMiddleware:
 		return r.validateMiddleware()
+	case KindCronJob:
+		return r.validateCronJob()
+	case KindJob:
+		return r.validateJob()
 	case KindVolume, KindStack, KindSecret, KindProject:
 		return nil
 	default:

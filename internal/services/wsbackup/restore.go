@@ -924,9 +924,10 @@ func (r *restoreRun) applyDelivery() {
 			continue
 		}
 		in := job.CronJobInput{
-			Name: c.Name, Schedule: c.Schedule, Command: c.Command, Entrypoint: c.Entrypoint,
-			Image: c.Image, TimeoutSecs: c.TimeoutSecs, Enabled: c.Enabled,
+			Name: c.Name, DisplayName: c.DisplayName, Schedule: c.Schedule, Command: c.Command, Entrypoint: c.Entrypoint,
+			Image: c.Image, RunAsUser: c.RunAsUser, TimeoutSecs: c.TimeoutSecs, Enabled: c.Enabled,
 			ConcurrencyPolicy: c.ConcurrencyPolicy, HistoryLimit: c.HistoryLimit,
+			Metadata: c.Metadata, Annotations: c.Annotations,
 		}
 		if id := regIDs[c.Registry]; c.Registry != "" && id != 0 {
 			in.RegistryID = &id
@@ -936,6 +937,34 @@ func (r *restoreRun) applyDelivery() {
 			continue
 		}
 		r.add("cron-job", c.Name, "created", "")
+	}
+
+	// Restored without running: they ran on the source platform, and the
+	// fingerprint they carry keeps the next GitOps sync from running them again.
+	for _, d := range r.state.JobDefinitions {
+		if _, err := r.svc.Jobs.GetDefinitionByName(r.target, d.Name); err == nil {
+			r.add("job", d.Name, "skipped", "already exists")
+			continue
+		}
+		appID := r.appIDs[d.App]
+		if appID == 0 {
+			r.add("job", d.Name, "failed", "its application "+d.App+" was not restored")
+			continue
+		}
+		in := job.DefinitionInput{
+			Name: d.Name, ApplicationID: appID, Command: d.Command, Entrypoint: d.Entrypoint, Image: d.Image,
+			RunAsUser: d.RunAsUser, TimeoutSecs: d.TimeoutSecs, RunPolicy: d.RunPolicy,
+			WaitForDeploy: d.WaitForDeploy, HistoryLimit: d.HistoryLimit, BackoffLimit: d.BackoffLimit, SpecHash: d.SpecHash,
+			Metadata: d.Metadata, Annotations: d.Annotations,
+		}
+		if id := regIDs[d.Registry]; d.Registry != "" && id != 0 {
+			in.RegistryID = &id
+		}
+		if _, _, err := r.svc.Jobs.SaveDefinition(context.Background(), r.target, in, false); err != nil {
+			r.add("job", d.Name, "failed", err.Error())
+			continue
+		}
+		r.add("job", d.Name, "created", "")
 	}
 }
 

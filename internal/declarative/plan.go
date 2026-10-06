@@ -115,7 +115,8 @@ func applyRank(k Kind) int {
 		return 1
 	case KindApplication:
 		return 2
-	case KindRoute:
+	case KindRoute, KindCronJob, KindJob:
+		// Jobs run in an existing app and may pull through a declared Registry.
 		return 3
 	default:
 		return 9
@@ -259,6 +260,9 @@ func diffFields(actual, desired Resource) []FieldDiff {
 	if desired.Kind == KindMiddleware {
 		return diffMiddleware(actual, desired)
 	}
+	if desired.Kind == KindJob {
+		return diffJob(actual, desired)
+	}
 	av := specFields(actual)
 	dv := specFields(desired)
 
@@ -308,6 +312,8 @@ var optionalWhenUnsetByKind = map[Kind]map[string]bool{
 	// enforced — and then it is immutable, so it is refused rather than converged. A silent size
 	// likewise leaves a capacity set or expanded in the console alone.
 	KindVolume: {"storage.class": true, "size": true},
+	// A pause made in the console survives a manifest that doesn't state suspend.
+	KindCronJob: {"suspend": true},
 }
 
 // normalizedList compares a set the way the app service stores it, so CAP_NET_ADMIN in a manifest does not
@@ -637,6 +643,8 @@ func specFields(r Resource) map[string]string {
 	case r.Domain != nil:
 		f["tls"] = r.Domain.TLS
 		f["wildcard"] = fmt.Sprintf("%t", r.Domain.Wildcard)
+	case r.CronJob != nil:
+		cronJobFields(r.CronJob, f)
 	}
 	return f
 }

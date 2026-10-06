@@ -59,6 +59,8 @@ func JSONSchema() ([]byte, error) {
 		KindProject:     ProjectSpec{},
 		KindConfig:      ConfigSpec{},
 		KindMiddleware:  MiddlewareSpec{},
+		KindCronJob:     CronJobSpec{},
+		KindJob:         JobSpec{},
 	}
 	branches := make([]any, 0, len(kinds))
 	for _, k := range kinds {

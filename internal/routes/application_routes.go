@@ -704,5 +704,22 @@ func (r *Router) jobRoutes() []okapi.RouteDefinition {
 			Handler:     r.h.job.DeleteCronJob,
 			Summary:     "Delete a cronjob",
 		},
+		// Job definitions: declared Jobs, created by apply/GitOps.
+		{
+			Method:      http.MethodGet,
+			Path:        base + "/job-definitions",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.job.ListJobDefinitions,
+			Summary:     "List declared jobs (optionally ?app_id=)",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        base + "/job-definitions/{definitionID}/run",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     r.h.job.RunJobDefinition,
+			Summary:     "Run a declared job again",
+		},
 	}
 }

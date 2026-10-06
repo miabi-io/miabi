@@ -55,7 +55,8 @@ func (h *ApplyHandler) ExportApplication(c *okapi.Context) error {
 			"this application is managed by %s, so its manifest is owned there — exporting a second copy "+
 				"would leave two documents claiming the same app", owner))
 	}
-	bundle, err := h.svc.ExportApplication(c.Request().Context(), wsID, app.Name)
+	includeJobs := c.Query("include_jobs") == "true"
+	bundle, err := h.svc.ExportApplication(c.Request().Context(), wsID, app.Name, includeJobs)
 	if err != nil {
 		return h.mapErr(c, err)
 	}

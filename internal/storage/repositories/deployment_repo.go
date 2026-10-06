@@ -119,3 +119,16 @@ func (r *DeploymentRepository) SetLogMeta(id uint, ref, tail string, bytes int64
 			"log_truncated": truncated,
 		}).Error
 }
+
+// InProgressByApp returns the app's newest deployment still pending, building or
+// deploying, or gorm.ErrRecordNotFound when none is.
+func (r *DeploymentRepository) InProgressByApp(appID uint) (*models.Deployment, error) {
+	var d models.Deployment
+	err := r.db.Where("application_id = ? AND status IN ?", appID,
+		[]models.DeploymentStatus{models.DeploymentPending, models.DeploymentBuilding, models.DeploymentDeploying}).
+		Order("id DESC").First(&d).Error
+	if err != nil {
+		return nil, err
+	}
+	return &d, nil
+}

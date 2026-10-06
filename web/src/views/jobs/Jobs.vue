@@ -7,7 +7,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { jobApi, usageApi, type CronJobInput } from '@/api/resources'
 import { appApi } from '@/api/apps'
 import { registryApi } from '@/api/registries'
-import type { Job, CronJob, Application, Registry } from '@/api/types'
+import type { Job, CronJob, JobDefinition, Application, Registry } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AppModal from '@/components/AppModal.vue'
 
@@ -16,9 +16,12 @@ const { t } = useI18n()
 const notify = useNotificationStore()
 const { currentWorkspaceId } = storeToRefs(ws)
 
-const tab = ref<'runs' | 'scheduled'>('runs')
+const tab = ref<'runs' | 'scheduled' | 'declared'>('runs')
 const jobs = ref<Job[]>([])
 const cronJobs = ref<CronJob[]>([])
+const definitions = ref<JobDefinition[]>([])
+// GitOps owns these: the console may run them, pause and resume a schedule, nothing else.
+function managedBy(m?: Record<string, string>) { return m?.['miabi.io/managed-by'] || '' }
 const apps = ref<Application[]>([])
 const registries = ref<Registry[]>([])
 let poll: ReturnType<typeof setInterval> | null = null
@@ -44,16 +47,18 @@ const cronUserError = computed(() => runAsUserError(cronForm.value.run_as_user))
 
 async function load() {
   const id = currentWorkspaceId.value
-  if (!id) { jobs.value = []; cronJobs.value = []; return }
+  if (!id) { jobs.value = []; cronJobs.value = []; definitions.value = []; return }
   try {
-    const [j, c, a, r] = await Promise.all([
+    const [j, c, d, a, r] = await Promise.all([
       jobApi.list(id),
       jobApi.cronJobs(id),
+      jobApi.definitions(id),
       appApi.list(id),
       registryApi.list(id),
     ])
     jobs.value = j.data.data ?? []
     cronJobs.value = c.data.data ?? []
+    definitions.value = d.data.data ?? []
     apps.value = a.data.data ?? []
     registries.value = r.data.data ?? []
     // Separate + best-effort: a usage error must not blank the jobs list.
@@ -129,20 +134,26 @@ async function deleteJob(j: Job) {
 const showCron = ref(false)
 const savingCron = ref(false)
 const editingCronId = ref<number | null>(null)
-const cronForm = ref<{ app: number | null; name: string; schedule: string; image: string; registry: number | null; run_as_user: string; concurrency_policy: 'allow' | 'forbid' | 'replace'; enabled: boolean; timeout_secs: number; history_limit: number }>(
-  { app: null, name: '', schedule: '0 3 * * *', image: '', registry: null, run_as_user: '', concurrency_policy: 'allow', enabled: true, timeout_secs: 0, history_limit: 0 },
+const cronManaged = ref('')
+const editingCron = ref<CronJob | null>(null)
+const cronForm = ref<{ app: number | null; name: string; display_name: string; schedule: string; image: string; registry: number | null; run_as_user: string; concurrency_policy: 'allow' | 'forbid' | 'replace'; enabled: boolean; timeout_secs: number; history_limit: number }>(
+  { app: null, name: '', display_name: '', schedule: '0 3 * * *', image: '', registry: null, run_as_user: '', concurrency_policy: 'allow', enabled: true, timeout_secs: 0, history_limit: 0 },
 )
 const cronCommandStr = ref('')
 
 function openCreateCron() {
   editingCronId.value = null
-  cronForm.value = { app: apps.value[0]?.id ?? null, name: '', schedule: '0 3 * * *', image: '', registry: null, run_as_user: '', concurrency_policy: 'allow', enabled: true, timeout_secs: 0, history_limit: 0 }
+  editingCron.value = null
+  cronManaged.value = ''
+  cronForm.value = { app: apps.value[0]?.id ?? null, name: '', display_name: '', schedule: '0 3 * * *', image: '', registry: null, run_as_user: '', concurrency_policy: 'allow', enabled: true, timeout_secs: 0, history_limit: 0 }
   cronCommandStr.value = ''
   showCron.value = true
 }
 function openEditCron(c: CronJob) {
   editingCronId.value = c.id
-  cronForm.value = { app: c.application_id, name: c.name, schedule: c.schedule, image: c.image || '', registry: c.registry_id ?? null, run_as_user: c.run_as_user || '', concurrency_policy: c.concurrency_policy, enabled: c.enabled, timeout_secs: c.timeout_secs, history_limit: c.history_limit }
+  editingCron.value = c
+  cronManaged.value = managedBy(c.metadata)
+  cronForm.value = { app: c.application_id, name: c.name, display_name: c.display_name || '', schedule: c.schedule, image: c.image || '', registry: c.registry_id ?? null, run_as_user: c.run_as_user || '', concurrency_policy: c.concurrency_policy, enabled: c.enabled, timeout_secs: c.timeout_secs, history_limit: c.history_limit }
   cronCommandStr.value = (c.command || []).join(' ')
   showCron.value = true
 }
@@ -155,9 +166,17 @@ async function saveCron() {
   if (!cronForm.value.schedule.trim()) { notify.error(t('notify.jobs.aScheduleIsRequired')); return }
   savingCron.value = true
   const image = cronForm.value.image.trim()
-  const input: CronJobInput = {
+  const orig = editingCron.value
+  // A managed schedule only takes a pause or resume: resend what is stored, so a
+  // command re-split from the text field can't read as an edit.
+  const input: CronJobInput = cronManaged.value && orig ? {
+    application_id: orig.application_id, name: orig.name, display_name: orig.display_name, schedule: orig.schedule,
+    command: orig.command, entrypoint: orig.entrypoint, image: orig.image, registry_id: orig.registry_id ?? null,
+    run_as_user: orig.run_as_user || '', concurrency_policy: orig.concurrency_policy, enabled: cronForm.value.enabled,
+    timeout_secs: orig.timeout_secs, history_limit: orig.history_limit,
+  } : {
     application_id: cronForm.value.app,
-    name: cronForm.value.name, schedule: cronForm.value.schedule, command,
+    name: cronForm.value.name, display_name: cronForm.value.display_name.trim(), schedule: cronForm.value.schedule, command,
     image: image || undefined,
     registry_id: image ? cronForm.value.registry : null,
     run_as_user: cronForm.value.run_as_user.trim(),
@@ -173,6 +192,15 @@ async function saveCron() {
   } catch (e) { notify.apiError(e) }
   finally { savingCron.value = false }
 }
+async function runDefinition(d: JobDefinition) {
+  const id = currentWorkspaceId.value
+  if (!id) return
+  try { await jobApi.runDefinition(id, d.id); notify.success(t('notify.jobs.runStarted')); tab.value = 'runs'; load() }
+  catch (e) { notify.apiError(e) }
+}
+function definitionName(defId?: number) {
+  return definitions.value.find((d) => d.id === defId)?.name
+}
 async function runCronNow(c: CronJob) {
   const id = currentWorkspaceId.value
   if (!id) return
@@ -187,7 +215,7 @@ function askDeleteJob(j: Job) {
   confirm.value = { title: t('confirm.title.jobs.deleteJobRun'), message: t('confirm.message.jobs.deleteJobRunThis', { id: j.id }), run: () => deleteJob(j) }
 }
 function askDeleteCron(c: CronJob) {
-  confirm.value = { title: t('confirm.title.jobs.deleteCronjob'), message: t('confirm.message.jobs.deleteCronjobScheduledRuns', { name: c.name || c.schedule }), run: () => delCron(c) }
+  confirm.value = { title: t('confirm.title.jobs.deleteCronjob'), message: t('confirm.message.jobs.deleteCronjobScheduledRuns', { name: c.display_name || c.name || c.schedule }), run: () => delCron(c) }
 }
 async function delCron(c: CronJob) {
   const id = currentWorkspaceId.value
@@ -204,7 +232,7 @@ async function runConfirm() {
 
 function cmd(c: string[]) { return (c || []).join(' ') }
 function badge(s: string) {
-  return s === 'succeeded' ? 'badge-success' : s === 'failed' ? 'badge-danger' : s === 'canceled' ? 'badge-warning' : 'badge-info'
+  return s === 'succeeded' ? 'badge-success' : s === 'failed' ? 'badge-danger' : s === 'canceled' || s === 'skipped' ? 'badge-warning' : 'badge-info'
 }
 function when(iso?: string) { return iso ? new Date(iso).toLocaleString() : '—' }
 const noApps = computed(() => apps.value.length === 0)
@@ -226,6 +254,7 @@ const noApps = computed(() => apps.value.length === 0)
     <div class="tabs">
       <button class="tab" :class="{ active: tab === 'runs' }" @click="tab = 'runs'">{{ $t('jobs.runs') }}</button>
       <button class="tab" :class="{ active: tab === 'scheduled' }" @click="tab = 'scheduled'">{{ $t('jobs.scheduled') }}</button>
+      <button class="tab" :class="{ active: tab === 'declared' }" @click="tab = 'declared'">{{ $t('jobs.declared') }}</button>
     </div>
 
     <!-- Runs -->
@@ -246,6 +275,12 @@ const noApps = computed(() => apps.value.length === 0)
                 <span class="cell-title" style="font-family: monospace">{{ j.name || cmd(j.command) }}</span>
                 <div v-if="j.name" class="cell-sub" style="font-family: monospace">{{ cmd(j.command) }}</div>
                 <div v-if="j.source === 'scheduled'" class="cell-sub"><span class="mdi mdi-clock-outline"></span>{{ $t('jobs.scheduledTag') }}</div>
+                <div v-else-if="j.source === 'gitops' || j.source === 'release'" class="cell-sub">
+                  <span class="mdi mdi-source-branch"></span>{{ $t(j.source === 'release' ? 'jobs.releaseTag' : 'jobs.gitopsTag', { name: definitionName(j.job_definition_id) || j.name }) }}
+                </div>
+                <div v-if="j.status === 'pending' && j.wait_deployment_id" class="cell-sub">{{ $t('jobs.waitingForDeploy') }}</div>
+                <div v-if="(j.attempt ?? 1) > 1" class="cell-sub">{{ $t('jobs.attempt', { n: j.attempt }) }}</div>
+                <div v-if="j.status === 'skipped' && j.error" class="cell-sub">{{ j.error }}</div>
               </td>
               <td><span class="badge badge-dot" :class="badge(j.status)">{{ j.status }}</span></td>
               <td class="cell-sub">{{ j.exit_code ?? '—' }}</td>
@@ -254,6 +289,35 @@ const noApps = computed(() => apps.value.length === 0)
                 <button class="btn-icon btn-icon-muted" :title="$t('jobs.logs')" :aria-label="$t('jobs.logs')" @click="viewLogs(j)"><span class="mdi mdi-text-box-outline"></span></button>
                 <button v-if="ws.canEdit && (j.status === 'running' || j.status === 'pending')" class="btn btn-sm btn-secondary" @click="cancelJob(j)">{{ $t('action.cancel') }}</button>
                 <button v-else-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="askDeleteJob(j)"><span class="mdi mdi-delete-outline"></span></button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Declared (kind: Job) -->
+    <div v-else-if="tab === 'declared'" class="card">
+      <div v-if="definitions.length === 0" class="empty-state">
+        <span class="mdi mdi-source-branch" style="font-size: 44px; color: var(--text-muted)"></span>
+        <h3>{{ $t('jobs.noDeclared') }}</h3>
+        <p>{{ $t('jobs.declaredHint') }}</p>
+      </div>
+      <div v-else class="table-wrapper">
+        <table>
+          <thead><tr><th>{{ $t('jobs.app') }}</th><th>{{ $t('apps.form.name') }}</th><th>{{ $t('jobs.runPolicy') }}</th><th>{{ $t('jobs.command') }}</th><th>{{ $t('jobs.lastRun') }}</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="d in definitions" :key="d.id">
+              <td class="cell-sub">{{ d.app_name || appName(d.application_id) }}</td>
+              <td class="cell-title" style="font-family: monospace">{{ d.name }}</td>
+              <td class="cell-sub">{{ $t('jobs.policy.' + d.run_policy) }}</td>
+              <td class="cell-sub" style="font-family: monospace">{{ cmd(d.command) }}</td>
+              <td>
+                <span v-if="d.last_status" class="badge badge-dot" :class="badge(d.last_status)">{{ d.last_status }}</span>
+                <span v-else class="cell-sub">—</span>
+              </td>
+              <td class="text-right table-actions">
+                <button v-if="ws.canEdit" class="btn btn-sm btn-secondary" :title="$t('jobs.runAgainHint')" @click="runDefinition(d)">{{ $t('jobs.runAgain') }}</button>
               </td>
             </tr>
           </tbody>
@@ -275,7 +339,11 @@ const noApps = computed(() => apps.value.length === 0)
           <tbody>
             <tr v-for="c in cronJobs" :key="c.id">
               <td class="cell-sub">{{ c.app_name || appName(c.application_id) }}</td>
-              <td class="cell-title">{{ c.name || '—' }}</td>
+              <td>
+                <span class="cell-title">{{ c.display_name || c.name }}</span>
+                <span v-if="managedBy(c.metadata)" class="badge badge-neutral" style="margin-left: 6px" :title="$t('jobs.managedHint')"><span class="mdi mdi-source-branch"></span>{{ managedBy(c.metadata) }}</span>
+                <div v-if="c.display_name" class="cell-sub" style="font-family: monospace">{{ c.name }}</div>
+              </td>
               <td class="cell-sub" style="font-family: monospace">{{ c.schedule }}</td>
               <td class="cell-sub" style="font-family: monospace">{{ cmd(c.command) }}</td>
               <td class="cell-sub">{{ when(c.last_run_at) }}</td>
@@ -283,7 +351,7 @@ const noApps = computed(() => apps.value.length === 0)
               <td class="text-right table-actions">
                 <button v-if="ws.canEdit" class="btn btn-sm btn-secondary" :title="$t('jobs.runNow')" @click="runCronNow(c)">{{ $t('jobs.runNow') }}</button>
                 <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEditCron(c)"><span class="mdi mdi-pencil-outline"></span></button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="askDeleteCron(c)"><span class="mdi mdi-delete-outline"></span></button>
+                <button v-if="ws.canEdit && !managedBy(c.metadata)" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="askDeleteCron(c)"><span class="mdi mdi-delete-outline"></span></button>
               </td>
             </tr>
           </tbody>
@@ -360,6 +428,8 @@ const noApps = computed(() => apps.value.length === 0)
         </div>
         <form @submit.prevent="saveCron">
           <div class="modal-body">
+            <p v-if="cronManaged" class="form-hint" style="margin-bottom: 12px"><span class="mdi mdi-source-branch"></span>{{ $t('jobs.managedHint') }}</p>
+            <fieldset :disabled="!!cronManaged" style="border: 0; padding: 0; margin: 0; min-width: 0">
             <div class="form-group">
               <label class="form-label">{{ $t('dashboard.col.application') }}</label>
               <select v-model="cronForm.app" class="form-select" required :disabled="!!editingCronId" :aria-label="$t('dashboard.col.application')">
@@ -368,7 +438,12 @@ const noApps = computed(() => apps.value.length === 0)
             </div>
             <div class="form-group">
               <label class="form-label">{{ $t('apps.form.name') }}<span class="text-muted">{{ $t('jobs.optional') }}</span></label>
-              <input v-model="cronForm.name" class="form-input" placeholder="nightly-cleanup" :aria-label="$t('apps.form.name')" />
+              <input v-model="cronForm.name" class="form-input" placeholder="nightly-cleanup" style="font-family: monospace" :aria-label="$t('apps.form.name')" />
+              <p class="form-hint">{{ $t('jobs.nameHint') }}</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label">{{ $t('jobs.displayName') }}<span class="text-muted">{{ $t('jobs.optional') }}</span></label>
+              <input v-model="cronForm.display_name" class="form-input" placeholder="Nightly cleanup" :aria-label="$t('jobs.displayName')" />
             </div>
             <div class="form-group">
               <label class="form-label">{{ $t('jobs.scheduleLabel') }}</label>
@@ -415,9 +490,10 @@ const noApps = computed(() => apps.value.length === 0)
                 <span class="form-label">{{ $t('jobs.keepLast') }}</span>
                 <input v-model.number="cronForm.history_limit" type="number" min="0" class="form-input" style="max-width: 110px" />
               </label>
-              <label class="checkbox-row" style="align-self: flex-end">
-                <input type="checkbox" v-model="cronForm.enabled" />{{ $t('jobs.enabled') }}</label>
             </div>
+            </fieldset>
+            <label class="checkbox-row" style="margin-top: 12px">
+              <input type="checkbox" v-model="cronForm.enabled" />{{ $t('jobs.enabled') }}</label>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showCron = false">{{ $t('action.cancel') }}</button>

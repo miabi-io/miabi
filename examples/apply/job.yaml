@@ -1,0 +1,51 @@
+# Declared one-off runs. A Job is a run definition plus a fingerprint: syncing
+# the same manifest twice never runs it twice, and a failed run is not retried
+# by the next sync.
+#
+#   runPolicy: onChange (default)  runs when command, entrypoint, image,
+#                                  registry, runAsUser or timeout change
+#   runPolicy: once                runs once per name; rename it to run again
+#   runPolicy: onRelease           runs each time a new release of the app
+#                                  becomes active, however it was deployed
+#
+# onRelease runs after the new release is live, so for a moment the new code
+# runs against the old schema: fine for additive migrations.
+#
+#   miabi apply -f job.yaml
+---
+apiVersion: miabi.io/v1
+kind: Application
+metadata:
+  name: shop-api
+spec:
+  image: ghcr.io/acme/shop-api
+  tag: "2.4.0"
+---
+apiVersion: miabi.io/v1
+kind: Job
+metadata:
+  name: migrate
+spec:
+  app: shop-api
+  command: ["./shop-api", "migrate", "up"]
+  runPolicy: onRelease
+  timeoutSeconds: 600
+---
+apiVersion: miabi.io/v1
+kind: Job
+metadata:
+  name: seed-catalog
+spec:
+  app: shop-api
+  command: ["./shop-api", "seed", "catalog"]
+  runPolicy: once
+---
+apiVersion: miabi.io/v1
+kind: Job
+metadata:
+  name: reindex-search
+spec:
+  app: shop-api
+  # Applied in the same sync as an image bump, this waits for that deploy and
+  # runs on the new release (waitForDeploy defaults to true for onChange).
+  command: ["./shop-api", "search", "reindex"]

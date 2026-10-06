@@ -181,6 +181,68 @@
       ],
       "type": "object"
     },
+    "CronJobSpec": {
+      "additionalProperties": false,
+      "description": "CronJobSpec is a schedule bound to an Application. Each fire runs Command in the app's runtime context, on the app's active release unless Image overrides it.",
+      "properties": {
+        "app": {
+          "description": "App is the Application the command runs in. Immutable: moving a schedule to another app is a delete and a create.",
+          "type": "string"
+        },
+        "command": {
+          "description": "Command is the command to run, as a list of arguments (no shell).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "concurrencyPolicy": {
+          "description": "ConcurrencyPolicy decides what a fire does while the previous run is still active: allow (start another), forbid (skip this fire) or replace (cancel the running one). Default allow.",
+          "type": "string"
+        },
+        "entrypoint": {
+          "description": "Entrypoint overrides the image's entrypoint.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "historyLimit": {
+          "description": "HistoryLimit is how many finished runs to keep; 0 keeps the default 20.",
+          "type": "integer"
+        },
+        "image": {
+          "description": "Image runs a different image in the app's runtime context; omitted runs the app's active release.",
+          "type": "string"
+        },
+        "registry": {
+          "description": "Registry names the Registry credential that pulls Image. Only valid with image.",
+          "type": "string"
+        },
+        "schedule": {
+          "description": "Schedule is a standard 5-field cron expression, evaluated in UTC.",
+          "type": "string"
+        },
+        "security": {
+          "$ref": "#/$defs/SecuritySpec",
+          "description": "Security pins the account runs use; omitted inherits the app's when each run fires."
+        },
+        "suspend": {
+          "description": "Suspend pauses the schedule. Omitted leaves the live value alone, so a pause made in the console survives a sync.",
+          "type": "boolean"
+        },
+        "timeoutSeconds": {
+          "description": "TimeoutSeconds stops a run that takes longer; 0 uses the platform default.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "app",
+        "command",
+        "schedule"
+      ],
+      "type": "object"
+    },
     "DatabasePlacementSpec": {
       "additionalProperties": false,
       "description": "DatabasePlacementSpec is where a database is created. It also reads the string this field held before it became a block (placement: dedicated) as the old spelling of instance.",
@@ -348,6 +410,67 @@
       },
       "required": [
         "type"
+      ],
+      "type": "object"
+    },
+    "JobSpec": {
+      "additionalProperties": false,
+      "description": "JobSpec is a declared one-off run in an Application's runtime context. Syncing the same commit twice never runs it twice; a failed run is not retried by the next sync.",
+      "properties": {
+        "app": {
+          "description": "App is the Application the command runs in. Immutable.",
+          "type": "string"
+        },
+        "backoffLimit": {
+          "description": "BackoffLimit is how many times a failed run is retried before the Job counts as failed; 0 (default) never retries. Retries start a new run; a sync never does.",
+          "type": "integer"
+        },
+        "command": {
+          "description": "Command is the command to run, as a list of arguments (no shell).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "entrypoint": {
+          "description": "Entrypoint overrides the image's entrypoint.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "historyLimit": {
+          "description": "HistoryLimit is how many finished runs to keep; 0 keeps the default 20.",
+          "type": "integer"
+        },
+        "image": {
+          "description": "Image runs a different image in the app's runtime context; omitted runs the app's active release.",
+          "type": "string"
+        },
+        "registry": {
+          "description": "Registry names the Registry credential that pulls Image. Only valid with image.",
+          "type": "string"
+        },
+        "runPolicy": {
+          "description": "RunPolicy decides when the Job runs: onChange (default) when its fingerprint changes, once per name, or onRelease each time a new release of the app becomes active.",
+          "type": "string"
+        },
+        "security": {
+          "$ref": "#/$defs/SecuritySpec",
+          "description": "Security pins the account runs use; omitted inherits the app's."
+        },
+        "timeoutSeconds": {
+          "description": "TimeoutSeconds stops a run that takes longer; 0 uses the platform default.",
+          "type": "integer"
+        },
+        "waitForDeploy": {
+          "description": "WaitForDeploy (onChange only, default true) holds a run while the app has a deploy in flight, so it runs on the new release; a failed deploy marks the run skipped.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "app",
+        "command"
       ],
       "type": "object"
     },
@@ -862,6 +985,25 @@
       "if": {
         "properties": {
           "kind": {
+            "const": "CronJob"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/CronJobSpec"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
             "const": "Database"
           }
         },
@@ -892,6 +1034,25 @@
         "properties": {
           "spec": {
             "$ref": "#/$defs/DomainSpec"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "Job"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/JobSpec"
           }
         }
       }
@@ -1041,8 +1202,10 @@
       "enum": [
         "Application",
         "Config",
+        "CronJob",
         "Database",
         "Domain",
+        "Job",
         "Middleware",
         "Project",
         "Registry",

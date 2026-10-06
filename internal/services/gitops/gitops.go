@@ -325,6 +325,10 @@ func (s *Service) Reconcile(ctx context.Context, src *models.GitSource) error {
 
 	src.Status = models.GitSourceSynced
 	src.Message = ""
+	if len(res.FailedJobs) > 0 {
+		src.Status = models.GitSourceDegraded
+		src.Message = fmt.Sprintf("last run failed for job %s", strings.Join(res.FailedJobs, ", "))
+	}
 	recordSync(src, commit, res.Applied, time.Now())
 	return s.repo.Update(src)
 }

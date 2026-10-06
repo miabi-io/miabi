@@ -1884,7 +1884,8 @@
       "out_of_sync": "Désynchronisé",
       "progressing": "En cours",
       "synced": "Synchronisé",
-      "unknown": "Jamais synchronisé"
+      "unknown": "Jamais synchronisé",
+      "degraded": "Dégradé"
     },
     "subtitle": "Déployez en continu depuis des dépôts Git de manifestes {kind}.",
     "sync": "Synchroniser",
@@ -1952,7 +1953,25 @@
     "state": "État",
     "subtitle": "Exécutez des commandes ponctuelles et des planifications dans l’environnement d’exécution de vos applications.",
     "timeoutLabel": "Délai d’expiration (secondes, 0 = par défaut)",
-    "timeoutShort": "Délai (s)"
+    "timeoutShort": "Délai (s)",
+    "nameHint": "Unique dans l’espace de travail ; minuscules, chiffres et tirets. Vide : généré automatiquement.",
+    "displayName": "Nom affiché",
+    "declared": "Déclarés",
+    "noDeclared": "Aucun job déclaré",
+    "declaredHint": "Les jobs déclarés avec kind: Job dans des manifestes apply ou GitOps apparaissent ici.",
+    "runPolicy": "Exécution",
+    "runAgain": "Relancer",
+    "runAgainHint": "Lance maintenant ; la prochaine synchro ne le relancera pas sauf si son manifeste change.",
+    "gitopsTag": "job déclaré {name}",
+    "releaseTag": "{name}, à la release",
+    "waitingForDeploy": "en attente du déploiement de l’application",
+    "managedHint": "Géré par GitOps : modifiez-le dans son manifeste. Exécuter, suspendre et reprendre restent disponibles.",
+    "policy": {
+      "onChange": "quand sa spec change",
+      "once": "une fois",
+      "onRelease": "à chaque release"
+    },
+    "attempt": "tentative {n}"
   },
   "ldap": {
     "testConnection": "Tester la connexion"

@@ -87,14 +87,15 @@ func TestStateCarriesEveryResourceClass(t *testing.T) {
 				{Config: "nginx", Key: "nginx.conf", Path: "/etc/nginx/nginx.conf"},
 			},
 		}},
-		CronJobs:     []CronJob{{Name: "nightly", App: "api", Schedule: "0 2 * * *", Command: []string{"rake"}}},
-		Middlewares:  []Middleware{{Name: "auth", Type: "basicAuth", Rule: map[string]any{"users": "admin:pw"}}},
-		Routes:       []Route{{Name: "shop", App: "api", Hosts: []string{"shop.example.com"}, Middlewares: []string{"auth"}, Certificate: "shop-tls"}},
-		Domains:      []Domain{{Name: "example.com", DNSProvider: "cf", Wildcard: true}},
-		Environments: []Environment{{Name: "prod", Rank: 2, GitSource: "manifests"}},
-		Pipelines:    []Pipeline{{Name: "ci", App: "api", Spec: "kind: Pipeline", Enabled: true}},
-		GitSources:   []GitSource{{Name: "manifests", RepoURL: "https://github.com/acme/ops", GitRepository: "app-repo", Prune: true}},
-		Members:      []Member{{Email: "dev@acme.test", Role: "developer"}},
+		CronJobs:       []CronJob{{Name: "nightly", App: "api", Schedule: "0 2 * * *", Command: []string{"rake"}}},
+		JobDefinitions: []JobDefinition{{Name: "migrate", App: "api", Command: []string{"migrate"}, RunPolicy: "onRelease", SpecHash: "abc"}},
+		Middlewares:    []Middleware{{Name: "auth", Type: "basicAuth", Rule: map[string]any{"users": "admin:pw"}}},
+		Routes:         []Route{{Name: "shop", App: "api", Hosts: []string{"shop.example.com"}, Middlewares: []string{"auth"}, Certificate: "shop-tls"}},
+		Domains:        []Domain{{Name: "example.com", DNSProvider: "cf", Wildcard: true}},
+		Environments:   []Environment{{Name: "prod", Rank: 2, GitSource: "manifests"}},
+		Pipelines:      []Pipeline{{Name: "ci", App: "api", Spec: "kind: Pipeline", Enabled: true}},
+		GitSources:     []GitSource{{Name: "manifests", RepoURL: "https://github.com/acme/ops", GitRepository: "app-repo", Prune: true}},
+		Members:        []Member{{Email: "dev@acme.test", Role: "developer"}},
 	}
 
 	sealed, err := Seal(in, goodPass)

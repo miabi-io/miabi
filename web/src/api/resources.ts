@@ -2,7 +2,7 @@ import api, { sseUrl } from './client'
 import type {
   ApiResponse, DatabaseInstance, DatabaseSizeOffer, DBLiveStatus, LogicalDatabase, ConnectionInfo, ForwardSession, DBEngine, EngineDefault, UpgradeOptions, UpgradePlan,
   Volume, VolumeDetail, VolumeFile, VolumeBackup, VolumeBackupStatus, VolumeBackupSchedule, WorkspaceStorage, StorageClassOption, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, BackupSetsResponse, DiscoveredSet, AdoptResult, SetRestoreResult, VerifyResult, AccentCode, AccentPolicy, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput, CreateServiceAccountKeyInput, User,
-  Member, Invitation, AuditLog, AuditLogDetail, RecentEvent, PageableResponse, Job, CronJob, WorkspaceUsage, WorkspaceLiveSample, WorkspaceHistoryPoint,
+  Member, Invitation, AuditLog, AuditLogDetail, RecentEvent, PageableResponse, Job, CronJob, JobDefinition, WorkspaceUsage, WorkspaceLiveSample, WorkspaceHistoryPoint,
   SecurityStatus, SecurityOverview, SecurityPolicy, SavePolicyInput, SecurityEvent, ApprovedBinding,
 } from './types'
 
@@ -11,7 +11,9 @@ const w = (ws: number) => `/workspaces/${ws}`
 // Create/update payload for a CronJob (targets an app via application_id).
 export interface CronJobInput {
   application_id?: number
+  // Slugified into the workspace-unique name; blank generates one.
   name?: string
+  display_name?: string
   schedule: string
   command: string[]
   entrypoint?: string[]
@@ -43,6 +45,10 @@ export const jobApi = {
   updateCronJob: (ws: number, cronId: number, input: CronJobInput) => api.put<ApiResponse<CronJob>>(`${w(ws)}/cronjobs/${cronId}`, input),
   runCronJobNow: (ws: number, cronId: number) => api.post<ApiResponse<Job>>(`${w(ws)}/cronjobs/${cronId}/run`),
   deleteCronJob: (ws: number, cronId: number) => api.delete<ApiResponse<{ message: string }>>(`${w(ws)}/cronjobs/${cronId}`),
+
+  definitions: (ws: number, appId?: number) =>
+    api.get<ApiResponse<JobDefinition[]>>(`${w(ws)}/job-definitions${appId ? `?app_id=${appId}` : ''}`),
+  runDefinition: (ws: number, defId: number) => api.post<ApiResponse<Job>>(`${w(ws)}/job-definitions/${defId}/run`),
 }
 
 export const databaseApi = {
