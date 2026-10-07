@@ -198,6 +198,7 @@ const statusMeta: Record<GitSourceStatus, { label: string; badge: string; icon: 
   out_of_sync: { label: 'gitops.status.out_of_sync', badge: 'badge-warning', icon: 'mdi-alert-circle-outline' },
   progressing: { label: 'gitops.status.progressing', badge: 'badge-info', icon: 'mdi-loading mdi-spin' },
   error: { label: 'gitops.status.error', badge: 'badge-danger', icon: 'mdi-close-circle-outline' },
+  degraded: { label: 'gitops.status.degraded', badge: 'badge-warning', icon: 'mdi-alert-outline' },
   unknown: { label: 'gitops.status.unknown', badge: 'badge-neutral', icon: 'mdi-help-circle-outline' },
 }
 const actionBadge: Record<PlanAction, string> = {

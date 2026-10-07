@@ -740,8 +740,14 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	jobRepo := repositories.NewJobRepository(db)
 	jobService := job.NewService(jobRepo, appRepo, releaseRepo, nodeClients, producer, 3600)
 	jobService.SetQuota(quotaService)
+	jobService.SetDeployments(deploymentRepo)
 	jobService.SetScheduler(cronManager)
 	jobService.LoadCronJobs()
+	if cronManager != nil {
+		if err := cronManager.RegisterTask("cronjob_sync", 0, "CronJob schedule sync", "@every 1m", jobService.SyncSchedules); err != nil {
+			logger.Warn("failed to schedule cronjob sync", "error", err)
+		}
+	}
 	backupService := backup.NewService(backupRepo, dbRepo, nodeClients)
 	backupService.SetDDLRunner(databaseService) // force restore drops & recreates the DB
 
@@ -1026,6 +1032,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	applyService := apply.NewService(appService, storageService, databaseService, stackService, secretService, routeService, domainService, registryService)
 	applyService.SetConfigs(configService)
 	applyService.SetMiddlewares(middlewareService)
+	applyService.SetJobs(jobService)
 	applyService.SetCluster(clusterService)
 	applyService.SetPlacer(placementService)
 	applyService.SetCertificates(certificateService)

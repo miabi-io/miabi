@@ -252,5 +252,23 @@ func (s *Service) resolveLive(workspaceID uint, kind declarative.Kind, name stri
 		if reg, err := s.registries.FindByName(workspaceID, name); err == nil {
 			node.LiveID, node.Slug = reg.ID, reg.Name
 		}
+	case declarative.KindCronJob:
+		if s.jobs == nil {
+			return
+		}
+		if cj, err := s.jobs.GetCronJobByName(workspaceID, name); err == nil {
+			node.LiveID, node.Slug, node.Health = cj.ID, cj.Name, "scheduled"
+			if !cj.Enabled {
+				node.Health = "suspended"
+			}
+		}
+	case declarative.KindJob:
+		if s.jobs == nil {
+			return
+		}
+		if def, err := s.jobs.GetDefinitionByName(workspaceID, name); err == nil {
+			node.LiveID, node.Slug = def.ID, def.Name
+			node.Health = string(s.jobs.LastRunStatus(def))
+		}
 	}
 }

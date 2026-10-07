@@ -44,6 +44,13 @@ const (
 	// normally shared: writing the rate limit once and naming it from five routes is
 	// the point, and inlining it would make five copies to keep in step.
 	KindMiddleware Kind = "Middleware"
+	// KindCronJob is a schedule that runs a command in an Application's runtime
+	// context (same image, env, networks and volumes) on a cron expression.
+	KindCronJob Kind = "CronJob"
+	// KindJob is a declared one-off run in an Application's runtime context. It is
+	// a run definition plus a fingerprint: a sync runs it only when its runPolicy
+	// says so, never again for an unchanged spec.
+	KindJob Kind = "Job"
 )
 
 // knownKinds is the set of recognized kinds, used by the parser to route a
@@ -60,6 +67,8 @@ var knownKinds = map[Kind]bool{
 	KindProject:     true,
 	KindConfig:      true,
 	KindMiddleware:  true,
+	KindCronJob:     true,
+	KindJob:         true,
 }
 
 // Meta is the identity block shared by every kind. Labels are short and identifying (for selection
@@ -93,6 +102,8 @@ type Resource struct {
 	Project     *ProjectSpec     `yaml:"-" json:"project,omitempty"`
 	Config      *ConfigSpec      `yaml:"-" json:"config,omitempty"`
 	Middleware  *MiddlewareSpec  `yaml:"-" json:"middleware,omitempty"`
+	CronJob     *CronJobSpec     `yaml:"-" json:"cronJob,omitempty"`
+	Job         *JobSpec         `yaml:"-" json:"job,omitempty"`
 }
 
 // Key is the stable identity of a resource within a workspace: "<kind>/<name>".
@@ -416,6 +427,81 @@ type MiddlewareSpec struct {
 	// Rule is the type's configuration, passed through to the gateway.
 	Rule   map[string]any `yaml:"rule,omitempty" json:"rule,omitempty"`
 	RuleFP string         `yaml:"-" json:"-"`
+}
+
+// CronJobSpec is a schedule bound to an Application. Each fire runs Command in the app's runtime
+// context, on the app's active release unless Image overrides it.
+type CronJobSpec struct {
+	// App is the Application the command runs in. Immutable: moving a schedule to another app is a
+	// delete and a create.
+	App string `yaml:"app" json:"app"`
+	// Schedule is a standard 5-field cron expression, evaluated in UTC.
+	Schedule string `yaml:"schedule" json:"schedule"`
+	// Command is the command to run, as a list of arguments (no shell).
+	Command []string `yaml:"command" json:"command"`
+	// Entrypoint overrides the image's entrypoint.
+	Entrypoint []string `yaml:"entrypoint,omitempty" json:"entrypoint,omitempty"`
+	// Image runs a different image in the app's runtime context; omitted runs the app's active release.
+	Image string `yaml:"image,omitempty" json:"image,omitempty"`
+	// Registry names the Registry credential that pulls Image. Only valid with image.
+	Registry string `yaml:"registry,omitempty" json:"registry,omitempty"`
+	// TimeoutSeconds stops a run that takes longer; 0 uses the platform default.
+	TimeoutSeconds int `yaml:"timeoutSeconds,omitempty" json:"timeoutSeconds,omitempty"`
+	// ConcurrencyPolicy decides what a fire does while the previous run is still active: allow
+	// (start another), forbid (skip this fire) or replace (cancel the running one). Default allow.
+	ConcurrencyPolicy string `yaml:"concurrencyPolicy,omitempty" json:"concurrencyPolicy,omitempty"`
+	// HistoryLimit is how many finished runs to keep; 0 keeps the default 20.
+	HistoryLimit int `yaml:"historyLimit,omitempty" json:"historyLimit,omitempty"`
+	// Suspend pauses the schedule. Omitted leaves the live value alone, so a pause made in the
+	// console survives a sync.
+	Suspend *bool `yaml:"suspend,omitempty" json:"suspend,omitempty"`
+	// Security pins the account runs use; omitted inherits the app's when each run fires.
+	Security *SecuritySpec `yaml:"security,omitempty" json:"security,omitempty"`
+}
+
+// Job run policies.
+const (
+	// RunOnChange runs the Job when its fingerprint (command, entrypoint, image, registry, runAsUser,
+	// timeout) changes. Edit the command to run it again.
+	RunOnChange = "onChange"
+	// RunOnce runs the Job exactly once per name; later spec edits are refused. Rename it to run again.
+	RunOnce = "once"
+	// RunOnRelease runs the Job each time a new release of its app becomes active, however that
+	// deploy started (GitOps, console, pipeline, rollback).
+	RunOnRelease = "onRelease"
+)
+
+// JobSpec is a declared one-off run in an Application's runtime context. Syncing the same commit
+// twice never runs it twice; a failed run is not retried by the next sync.
+type JobSpec struct {
+	// App is the Application the command runs in. Immutable.
+	App string `yaml:"app" json:"app"`
+	// Command is the command to run, as a list of arguments (no shell).
+	Command []string `yaml:"command" json:"command"`
+	// Entrypoint overrides the image's entrypoint.
+	Entrypoint []string `yaml:"entrypoint,omitempty" json:"entrypoint,omitempty"`
+	// Image runs a different image in the app's runtime context; omitted runs the app's active release.
+	Image string `yaml:"image,omitempty" json:"image,omitempty"`
+	// Registry names the Registry credential that pulls Image. Only valid with image.
+	Registry string `yaml:"registry,omitempty" json:"registry,omitempty"`
+	// TimeoutSeconds stops a run that takes longer; 0 uses the platform default.
+	TimeoutSeconds int `yaml:"timeoutSeconds,omitempty" json:"timeoutSeconds,omitempty"`
+	// RunPolicy decides when the Job runs: onChange (default) when its fingerprint changes, once per
+	// name, or onRelease each time a new release of the app becomes active.
+	RunPolicy string `yaml:"runPolicy,omitempty" json:"runPolicy,omitempty"`
+	// WaitForDeploy (onChange only, default true) holds a run while the app has a deploy in flight,
+	// so it runs on the new release; a failed deploy marks the run skipped.
+	WaitForDeploy *bool `yaml:"waitForDeploy,omitempty" json:"waitForDeploy,omitempty"`
+	// HistoryLimit is how many finished runs to keep; 0 keeps the default 20.
+	HistoryLimit int `yaml:"historyLimit,omitempty" json:"historyLimit,omitempty"`
+	// BackoffLimit is how many times a failed run is retried before the Job counts as failed; 0
+	// (default) never retries. Retries start a new run; a sync never does.
+	BackoffLimit int `yaml:"backoffLimit,omitempty" json:"backoffLimit,omitempty"`
+	// Security pins the account runs use; omitted inherits the app's.
+	Security *SecuritySpec `yaml:"security,omitempty" json:"security,omitempty"`
+	// SpecFP is the fingerprint of the spec the platform last applied, filled by the apply engine on
+	// the live side. Derived state, never serialized.
+	SpecFP string `yaml:"-" json:"-"`
 }
 
 // DomainSpec declares an owned hostname/zone; the hostname is the resource's metadata.name (a real

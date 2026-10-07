@@ -254,12 +254,37 @@ func (s *Service) collectDelivery(workspaceID uint, st *wsbundle.State, report *
 			Name: c.Name, App: app, Schedule: c.Schedule, Command: c.Command,
 			Entrypoint: c.Entrypoint, Image: c.Image, TimeoutSecs: c.TimeoutSecs,
 			Enabled: c.Enabled, ConcurrencyPolicy: c.ConcurrencyPolicy, HistoryLimit: c.HistoryLimit,
+			DisplayName: c.DisplayName, RunAsUser: c.RunAsUser, Metadata: c.Metadata, Annotations: c.Annotations,
 		}
 		if c.RegistryID != nil {
 			entry.Registry = regName[*c.RegistryID]
 		}
 		st.CronJobs = append(st.CronJobs, entry)
 		report.Add("cron-job", c.Name, "captured", "")
+	}
+
+	defs, err := s.Jobs.ListDefinitions(workspaceID, 0)
+	if err != nil {
+		logger.Warn("bundle: list job definitions", "workspace", workspaceID, "error", err)
+	}
+	for i := range defs {
+		d := &defs[i]
+		app := appName[d.ApplicationID]
+		if app == "" {
+			report.Add("job", d.Name, "skipped", "its application is not in this workspace")
+			continue
+		}
+		entry := wsbundle.JobDefinition{
+			Name: d.Name, App: app, Command: d.Command, Entrypoint: d.Entrypoint, Image: d.Image,
+			RunAsUser: d.RunAsUser, TimeoutSecs: d.TimeoutSecs, RunPolicy: d.RunPolicy,
+			WaitForDeploy: d.WaitForDeploy, HistoryLimit: d.HistoryLimit, BackoffLimit: d.BackoffLimit, SpecHash: d.SpecHash,
+			Metadata: d.Metadata, Annotations: d.Annotations,
+		}
+		if d.RegistryID != nil {
+			entry.Registry = regName[*d.RegistryID]
+		}
+		st.JobDefinitions = append(st.JobDefinitions, entry)
+		report.Add("job", d.Name, "captured", "")
 	}
 }
 

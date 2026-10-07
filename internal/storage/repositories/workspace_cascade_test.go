@@ -16,7 +16,7 @@ import (
 // Every table the cascade touches must exist, or its DELETE would error.
 var wsScoped = []string{
 	"applications", "database_instances", "database_instance_links", "volumes", "domains", "stacks",
-	"pipeline_runs", "pipeline_definitions", "images", "port_bindings", "jobs",
+	"pipeline_runs", "pipeline_definitions", "images", "port_bindings", "jobs", "cron_jobs", "job_definitions",
 	"backup_schedules", "volume_backup_schedules", "webhooks", "webhook_deliveries", "environments",
 	"release_approvals", "template_sources", "template_installs", "routes", "certificates",
 	"dns_providers", "registries", "git_repositories", "git_sources", "networks",

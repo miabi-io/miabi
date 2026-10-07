@@ -24,6 +24,8 @@ const (
 	GitSourceOutOfSync   GitSourceStatus = "out_of_sync"
 	GitSourceProgressing GitSourceStatus = "progressing"
 	GitSourceError       GitSourceStatus = "error"
+	// GitSourceDegraded is synced, but a Job it declares failed its last run.
+	GitSourceDegraded GitSourceStatus = "degraded"
 )
 
 // GitSource binds a Git path of miabi.io/v1 manifests to a workspace as a

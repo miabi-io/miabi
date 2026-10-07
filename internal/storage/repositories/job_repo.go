@@ -4,6 +4,8 @@
 package repositories
 
 import (
+	"time"
+
 	"github.com/miabi-io/miabi/internal/models"
 	"gorm.io/gorm"
 )
@@ -111,8 +113,7 @@ func (r *JobRepository) PruneCronJobHistory(cronJobID uint, keep int) error {
 	}
 	var ids []uint
 	if err := r.db.Model(&models.Job{}).
-		Where("cron_job_id = ? AND status IN ?", cronJobID,
-			[]models.JobStatus{models.JobSucceeded, models.JobFailed, models.JobCanceled}).
+		Where("cron_job_id = ? AND status IN ?", cronJobID, models.TerminalJobStatuses).
 		Order("created_at DESC").Offset(keep).Pluck("id", &ids).Error; err != nil {
 		return err
 	}
@@ -124,6 +125,21 @@ func (r *JobRepository) PruneCronJobHistory(cronJobID uint, keep int) error {
 
 func (r *JobRepository) CreateCronJob(c *models.CronJob) error { return r.db.Create(c).Error }
 func (r *JobRepository) UpdateCronJob(c *models.CronJob) error { return r.db.Save(c).Error }
+
+// UpdateCronJobLastRun writes only last_run_at, so a tick can't revert a
+// concurrent edit to the rest of the row.
+func (r *JobRepository) UpdateCronJobLastRun(id uint, at time.Time) error {
+	return r.db.Model(&models.CronJob{}).Where("id = ?", id).Update("last_run_at", at).Error
+}
+
+// FindCronJobByName loads a cronjob by its workspace-unique name.
+func (r *JobRepository) FindCronJobByName(workspaceID uint, name string) (*models.CronJob, error) {
+	var c models.CronJob
+	if err := r.db.Where("workspace_id = ? AND name = ?", workspaceID, name).First(&c).Error; err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
 
 func (r *JobRepository) FindCronJobByID(id uint) (*models.CronJob, error) {
 	var c models.CronJob
@@ -165,4 +181,112 @@ func (r *JobRepository) ListEnabledCronJobs() ([]models.CronJob, error) {
 
 func (r *JobRepository) DeleteCronJob(id uint) error {
 	return r.db.Delete(&models.CronJob{}, id).Error
+}
+
+func (r *JobRepository) CreateJobDefinition(d *models.JobDefinition) error {
+	return r.db.Create(d).Error
+}
+func (r *JobRepository) UpdateJobDefinition(d *models.JobDefinition) error { return r.db.Save(d).Error }
+
+func (r *JobRepository) FindJobDefinitionByName(workspaceID uint, name string) (*models.JobDefinition, error) {
+	var d models.JobDefinition
+	if err := r.db.Where("workspace_id = ? AND name = ?", workspaceID, name).First(&d).Error; err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
+
+func (r *JobRepository) FindJobDefinitionInWorkspace(workspaceID, id uint) (*models.JobDefinition, error) {
+	var d models.JobDefinition
+	if err := r.db.Where("workspace_id = ? AND id = ?", workspaceID, id).First(&d).Error; err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
+
+// ListJobDefinitions returns a workspace's job definitions (optionally one app's), by name.
+func (r *JobRepository) ListJobDefinitions(workspaceID, appID uint) ([]models.JobDefinition, error) {
+	var out []models.JobDefinition
+	q := r.db.Where("workspace_id = ?", workspaceID).Order("name ASC")
+	if appID > 0 {
+		q = q.Where("application_id = ?", appID)
+	}
+	return out, q.Find(&out).Error
+}
+
+// ListOnReleaseDefinitions returns an app's onRelease job definitions.
+func (r *JobRepository) ListOnReleaseDefinitions(appID uint) ([]models.JobDefinition, error) {
+	var out []models.JobDefinition
+	err := r.db.Where("application_id = ? AND run_policy = ?", appID, models.JobRunOnRelease).Find(&out).Error
+	return out, err
+}
+
+// DeleteJobDefinition removes a definition and detaches its runs, which stay as history.
+func (r *JobRepository) DeleteJobDefinition(id uint) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.Job{}).Where("job_definition_id = ?", id).
+			Update("job_definition_id", nil).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&models.JobDefinition{}, id).Error
+	})
+}
+
+// ClaimRelease records that an onRelease definition runs against releaseID, and
+// reports whether this caller won: one release triggers one run even when two
+// processes see the activation.
+func (r *JobRepository) ClaimRelease(defID, releaseID uint) (bool, error) {
+	res := r.db.Model(&models.JobDefinition{}).
+		Where("id = ? AND (last_release_id IS NULL OR last_release_id <> ?)", defID, releaseID).
+		Update("last_release_id", releaseID)
+	return res.RowsAffected == 1, res.Error
+}
+
+// SetDefinitionLastJob records a definition's latest run without touching the rest of the row.
+func (r *JobRepository) SetDefinitionLastJob(defID, jobID uint) error {
+	return r.db.Model(&models.JobDefinition{}).Where("id = ?", defID).Update("last_job_id", jobID).Error
+}
+
+// ActiveByDefinition returns a definition's pending or running runs.
+func (r *JobRepository) ActiveByDefinition(defID uint) ([]models.Job, error) {
+	var jobs []models.Job
+	err := r.db.Where("job_definition_id = ? AND status IN ?", defID,
+		[]models.JobStatus{models.JobPending, models.JobRunning}).Find(&jobs).Error
+	return jobs, err
+}
+
+// PruneDefinitionHistory deletes a definition's oldest finished runs beyond keep.
+func (r *JobRepository) PruneDefinitionHistory(defID uint, keep int) error {
+	if keep <= 0 {
+		return nil
+	}
+	var ids []uint
+	if err := r.db.Model(&models.Job{}).
+		Where("job_definition_id = ? AND status IN ?", defID, models.TerminalJobStatuses).
+		Order("created_at DESC").Offset(keep).Pluck("id", &ids).Error; err != nil {
+		return err
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.db.Delete(&models.Job{}, ids).Error
+}
+
+// StatusOf returns the statuses of the given jobs, by id.
+func (r *JobRepository) StatusOf(ids []uint) (map[uint]models.JobStatus, error) {
+	out := map[uint]models.JobStatus{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []struct {
+		ID     uint
+		Status models.JobStatus
+	}
+	if err := r.db.Model(&models.Job{}).Select("id, status").Where("id IN ?", ids).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.ID] = row.Status
+	}
+	return out, nil
 }

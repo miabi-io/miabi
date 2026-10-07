@@ -48,6 +48,10 @@ func (s *ResourceSet) References() []Reference {
 			out = append(out, refsIn(fmt.Sprintf("registry %q password", r.Metadata.Name), r.Registry.Password, actionPattern)...)
 		case r.Middleware != nil:
 			out = append(out, ruleRefs(fmt.Sprintf("middleware %q rule", r.Metadata.Name), r.Middleware.Rule)...)
+		case r.CronJob != nil:
+			out = append(out, Reference{Where: fmt.Sprintf("cronjob %q app", r.Metadata.Name), Collection: "applications", Name: r.CronJob.App})
+		case r.Job != nil:
+			out = append(out, Reference{Where: fmt.Sprintf("job %q app", r.Metadata.Name), Collection: "applications", Name: r.Job.App})
 		case r.Config != nil:
 			action := actionPattern
 			if d := r.Config.Delimiters; len(d) == 2 && (d[0] != "{{" || d[1] != "}}") {

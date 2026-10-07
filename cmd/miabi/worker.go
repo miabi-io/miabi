@@ -29,6 +29,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/events"
 	"github.com/miabi-io/miabi/internal/services/gpu"
 	"github.com/miabi-io/miabi/internal/services/image"
+	"github.com/miabi-io/miabi/internal/services/job"
 	"github.com/miabi-io/miabi/internal/services/keyring"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/notify"
@@ -190,6 +191,13 @@ func runWorker() error {
 		repositories.NewDatabaseRepository(db),
 		cfg.PlanEnforcement,
 	)
+	// Declared Jobs: a run waits for its app's deploy, and onRelease Jobs run when a release activates.
+	jobHandler.SetDeployWait(repositories.NewDeploymentRepository(db), repositories.NewReleaseRepository(db))
+	releaseJobs := job.NewService(repositories.NewJobRepository(db), appRepo, repositories.NewReleaseRepository(db), nodeClients, producer, 3600)
+	releaseJobs.SetQuota(securityQuota)
+	releaseJobs.SetDeployments(repositories.NewDeploymentRepository(db))
+	deployHandler.SetReleaseHook(releaseJobs.ReleaseActivated)
+	jobHandler.SetFailureHook(releaseJobs.RunFailed)
 	// The restricted profile is an Enterprise entitlement; without it the resolver clamps every
 	// workspace back to the image's user. The same edition governs analytics retention below.
 	edition := enterprise.New(db, cfg.LicenseFile, cfg.DeploymentURL(), installIDOf(db))

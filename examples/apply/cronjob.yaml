@@ -1,0 +1,40 @@
+# A schedule that runs a command in an application's runtime context: the same
+# image, env, networks and volumes as the app, on its active release.
+#
+# The schedule is standard 5-field cron in UTC; missed fires while the control
+# plane is down are not backfilled. `suspend` is optional: leave it out and a
+# pause made in the console survives the next sync.
+#
+#   miabi apply -f cronjob.yaml
+---
+apiVersion: miabi.io/v1
+kind: Application
+metadata:
+  name: shop-api
+spec:
+  image: ghcr.io/acme/shop-api
+  tag: "2.4.0"
+---
+apiVersion: miabi.io/v1
+kind: CronJob
+metadata:
+  name: nightly-report
+spec:
+  app: shop-api
+  schedule: "0 2 * * *"
+  command: ["./shop-api", "report", "send"]
+  timeoutSeconds: 900
+  # Skip a fire while yesterday's report is still running.
+  concurrencyPolicy: forbid
+  historyLimit: 10
+---
+apiVersion: miabi.io/v1
+kind: CronJob
+metadata:
+  name: purge-carts
+spec:
+  app: shop-api
+  schedule: "*/30 * * * *"
+  command: ["./shop-api", "carts", "purge", "--older-than=24h"]
+  security:
+    runAsUser: "1000"

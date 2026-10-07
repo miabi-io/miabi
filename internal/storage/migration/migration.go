@@ -5,9 +5,11 @@ package migration
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/slug"
 	"gorm.io/gorm"
 )
 
@@ -56,6 +58,60 @@ func backfillBackupNumbers(db *gorm.DB) error {
 	return nil
 }
 
+// slugifyCronJobNames turns cron job names into unique per-workspace slugs, keeping the
+// original as the display name. It runs BEFORE AutoMigrate, which adds the
+// (workspace_id, name) unique index that free-text and duplicate names would violate.
+func slugifyCronJobNames(db *gorm.DB) error {
+	m := db.Migrator()
+	if !m.HasTable("cron_jobs") || m.HasIndex(&models.CronJob{}, "idx_cronjob_workspace_name") {
+		return nil
+	}
+	if !m.HasColumn(&models.CronJob{}, "display_name") {
+		if err := m.AddColumn(&models.CronJob{}, "DisplayName"); err != nil {
+			return fmt.Errorf("add cron_jobs.display_name: %w", err)
+		}
+	}
+	var rows []struct {
+		ID          uint
+		WorkspaceID uint
+		Name        string
+		DisplayName string
+	}
+	if err := db.Table("cron_jobs").Select("id, workspace_id, name, display_name").
+		Order("workspace_id, id").Scan(&rows).Error; err != nil {
+		return fmt.Errorf("read cron job names: %w", err)
+	}
+	taken := map[uint]map[string]bool{}
+	renamed := 0
+	for _, r := range rows {
+		if taken[r.WorkspaceID] == nil {
+			taken[r.WorkspaceID] = map[string]bool{}
+		}
+		base := slug.Make(r.Name, "cronjob")
+		name := base
+		for i := 2; taken[r.WorkspaceID][name]; i++ {
+			name = fmt.Sprintf("%s-%d", base, i)
+		}
+		taken[r.WorkspaceID][name] = true
+		if name == r.Name {
+			continue
+		}
+		display := r.DisplayName
+		if display == "" {
+			display = strings.TrimSpace(r.Name)
+		}
+		if err := db.Table("cron_jobs").Where("id = ?", r.ID).
+			Updates(map[string]any{"name": name, "display_name": display}).Error; err != nil {
+			return fmt.Errorf("rename cron job %d: %w", r.ID, err)
+		}
+		renamed++
+	}
+	if renamed > 0 {
+		logger.Info("migration: gave cron jobs unique slug names", "renamed", renamed)
+	}
+	return nil
+}
+
 // Run executes all schema migrations via GORM AutoMigrate.
 func Run(db *gorm.DB) error {
 	// Fixups that must happen BEFORE AutoMigrate, because AutoMigrate is what
@@ -64,6 +120,9 @@ func Run(db *gorm.DB) error {
 		return err
 	}
 	if err := backfillBackupNumbers(db); err != nil {
+		return err
+	}
+	if err := slugifyCronJobNames(db); err != nil {
 		return err
 	}
 
@@ -130,6 +189,7 @@ func Run(db *gorm.DB) error {
 		&models.NotificationChannel{},
 		&models.Job{},
 		&models.CronJob{},
+		&models.JobDefinition{},
 		&models.Secret{},
 		&models.Certificate{},
 		&models.Plan{},

@@ -1884,7 +1884,8 @@
       "out_of_sync": "Out of sync",
       "progressing": "Progressing",
       "synced": "Synced",
-      "unknown": "Never synced"
+      "unknown": "Never synced",
+      "degraded": "Degraded"
     },
     "subtitle": "Continuously deploy from Git repositories of {kind} manifests.",
     "sync": "Sync",
@@ -1952,7 +1953,25 @@
     "state": "State",
     "subtitle": "Run one-off commands and schedules in your apps' runtime environments.",
     "timeoutLabel": "Timeout (seconds, 0 = default)",
-    "timeoutShort": "Timeout (s)"
+    "timeoutShort": "Timeout (s)",
+    "nameHint": "Unique in the workspace; lowercase letters, digits and hyphens. Blank generates one.",
+    "displayName": "Display name",
+    "declared": "Declared",
+    "noDeclared": "No declared jobs",
+    "declaredHint": "Jobs declared with kind: Job in apply or GitOps manifests show up here.",
+    "runPolicy": "Runs",
+    "runAgain": "Run again",
+    "runAgainHint": "Run now; the next sync won’t run it again unless its manifest changes.",
+    "gitopsTag": "declared job {name}",
+    "releaseTag": "{name}, on release",
+    "waitingForDeploy": "waiting for the app’s deploy",
+    "managedHint": "Managed by GitOps: change it in its manifest. Run now, pause and resume stay available.",
+    "policy": {
+      "onChange": "when its spec changes",
+      "once": "once",
+      "onRelease": "on every release"
+    },
+    "attempt": "attempt {n}"
   },
   "ldap": {
     "testConnection": "Test connection"

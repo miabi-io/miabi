@@ -17,6 +17,8 @@ export const kindMeta: Record<string, KindMeta> = {
   Stack: { label: 'Stack', icon: 'mdi-layers-outline' },
   Secret: { label: 'Secret', icon: 'mdi-key-variant' },
   Domain: { label: 'Domain', icon: 'mdi-web' },
+  CronJob: { label: 'CronJob', icon: 'mdi-calendar-clock' },
+  Job: { label: 'Job', icon: 'mdi-play-circle-outline' },
 }
 
 export function kindOf(kind: string): KindMeta {
@@ -45,6 +47,7 @@ export const gitSourceStatusMeta: Record<GitSourceStatus, StatusMeta> = {
   out_of_sync: { label: 'Out of sync', badge: 'badge-warning', icon: 'mdi-alert-circle-outline', color: 'var(--warning-600)' },
   progressing: { label: 'Progressing', badge: 'badge-info', icon: 'mdi-loading mdi-spin', color: 'var(--info-600, #3b82f6)' },
   error: { label: 'Error', badge: 'badge-danger', icon: 'mdi-close-circle-outline', color: 'var(--danger-600)' },
+  degraded: { label: 'Degraded', badge: 'badge-warning', icon: 'mdi-alert-outline', color: 'var(--warning-600)' },
   unknown: { label: 'Never synced', badge: 'badge-neutral', icon: 'mdi-help-circle-outline', color: 'var(--text-muted)' },
 }
 
@@ -65,6 +68,12 @@ const healthMeta: Record<string, HealthMeta> = {
   provisioning: { label: 'Provisioning', color: 'var(--warning-600)', pulse: true },
   upgrading: { label: 'Upgrading', color: 'var(--warning-600)', pulse: true },
   created: { label: 'Created', color: 'var(--text-muted)' },
+  scheduled: { label: 'Scheduled', color: 'var(--success-600)' },
+  suspended: { label: 'Suspended', color: 'var(--text-muted)' },
+  pending: { label: 'Pending', color: 'var(--warning-600)', pulse: true },
+  succeeded: { label: 'Succeeded', color: 'var(--success-600)' },
+  skipped: { label: 'Skipped', color: 'var(--warning-600)' },
+  canceled: { label: 'Canceled', color: 'var(--text-muted)' },
 }
 
 // healthOf returns the display meta for a runtime status, or null when the
@@ -83,6 +92,8 @@ export const edgeLabel: Record<EdgeType, string> = {
   database: 'connects to',
   secret: 'reads secret',
   'app-ref': 'links to',
+  schedule: 'runs on schedule in',
+  run: 'runs in',
 }
 
 // Deep-link target for a live resource of the given kind. Kinds with a detail
@@ -103,6 +114,9 @@ export function resourceRoute(kind: string, liveId?: number): RouteLocationRaw |
       return { name: 'domains' }
     case 'Secret':
       return { name: 'secrets' }
+    case 'CronJob':
+    case 'Job':
+      return { name: 'jobs' }
     default:
       return null
   }

@@ -84,6 +84,8 @@ func (r *WorkspaceRepository) Delete(id uint) error {
 			{&models.MetricSample{}, "application_id IN (?)", []any{appIDs()}},
 			{&models.PortBinding{}, "workspace_id = ?", []any{id}},
 			{&models.Job{}, "workspace_id = ?", []any{id}},
+			{&models.CronJob{}, "workspace_id = ?", []any{id}},
+			{&models.JobDefinition{}, "workspace_id = ?", []any{id}},
 			{&models.Backup{}, "database_id IN (?)", []any{dbIDs()}},
 			{&models.BackupSchedule{}, "workspace_id = ?", []any{id}},
 			{&models.Database{}, "instance_id IN (?)", []any{instIDs()}},

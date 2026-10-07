@@ -38,6 +38,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/events"
 	"github.com/miabi-io/miabi/internal/services/gpu"
 	"github.com/miabi-io/miabi/internal/services/image"
+	"github.com/miabi-io/miabi/internal/services/job"
 	"github.com/miabi-io/miabi/internal/services/keyring"
 	"github.com/miabi-io/miabi/internal/services/locationmigration"
 	"github.com/miabi-io/miabi/internal/services/monitoring"
@@ -380,6 +381,12 @@ func runServer(cli *okapicli.CLI) {
 				dbRepo,
 				cfg.PlanEnforcement,
 			)
+			jobHandler.SetDeployWait(repositories.NewDeploymentRepository(res.db), repositories.NewReleaseRepository(res.db))
+			releaseJobs := job.NewService(repositories.NewJobRepository(res.db), repositories.NewApplicationRepository(res.db), repositories.NewReleaseRepository(res.db), nodeClients, res.producer, 3600)
+			releaseJobs.SetQuota(securityQuota)
+			releaseJobs.SetDeployments(repositories.NewDeploymentRepository(res.db))
+			deployHandler.SetReleaseHook(releaseJobs.ReleaseActivated)
+			jobHandler.SetFailureHook(releaseJobs.RunFailed)
 			// The restricted profile is an Enterprise entitlement; without it the resolver
 			// clamps every workspace back to the default (image's user).
 			edition := enterprise.New(res.db, cfg.LicenseFile, cfg.DeploymentURL(), installIDOf(res.db))

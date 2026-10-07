@@ -86,3 +86,57 @@ func TestBackfillBackupNumbersNoTable(t *testing.T) {
 		t.Fatalf("fresh install: %v", err)
 	}
 }
+
+type legacyCronJob struct {
+	ID          uint `gorm:"primaryKey"`
+	WorkspaceID uint
+	Name        string
+}
+
+func (legacyCronJob) TableName() string { return "cron_jobs" }
+
+// Free-text and duplicate names become unique slugs per workspace, keeping the
+// original as the display name, so the unique index AutoMigrate adds next holds.
+func TestSlugifyCronJobNames(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&legacyCronJob{}); err != nil {
+		t.Fatalf("migrate legacy: %v", err)
+	}
+	seed := []legacyCronJob{
+		{WorkspaceID: 1, Name: "Nightly Report"},
+		{WorkspaceID: 1, Name: "nightly-report"},
+		{WorkspaceID: 1, Name: ""},
+		{WorkspaceID: 2, Name: "Nightly Report"},
+		{WorkspaceID: 1, Name: "cleanup"},
+	}
+	if err := db.Create(&seed).Error; err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := slugifyCronJobNames(db); err != nil {
+		t.Fatal(err)
+	}
+	var got []struct {
+		ID          uint
+		Name        string
+		DisplayName string
+	}
+	db.Table("cron_jobs").Select("id, name, display_name").Order("id").Scan(&got)
+	want := []struct{ name, display string }{
+		{"nightly-report", "Nightly Report"},
+		{"nightly-report-2", "nightly-report"},
+		{"cronjob", ""},
+		{"nightly-report", "Nightly Report"},
+		{"cleanup", ""},
+	}
+	for i, w := range want {
+		if got[i].Name != w.name || got[i].DisplayName != w.display {
+			t.Errorf("row %d = %q/%q, want %q/%q", got[i].ID, got[i].Name, got[i].DisplayName, w.name, w.display)
+		}
+	}
+	if err := slugifyCronJobNames(db); err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+}

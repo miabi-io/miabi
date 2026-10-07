@@ -27,6 +27,7 @@ import (
 	configsvc "github.com/miabi-io/miabi/internal/services/config"
 	"github.com/miabi-io/miabi/internal/services/database"
 	"github.com/miabi-io/miabi/internal/services/domain"
+	"github.com/miabi-io/miabi/internal/services/job"
 	middlewaresvc "github.com/miabi-io/miabi/internal/services/middleware"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/placement"
@@ -91,6 +92,8 @@ type Service struct {
 	// Nil for the same reason as configs: a manifest declaring one must fail loudly
 	// rather than have the resource its routes depend on quietly disappear.
 	middlewares *middlewaresvc.Service
+	// jobs converges kinds CronJob and Job.
+	jobs *job.Service
 }
 
 // SetConfigs wires the config service (kind: Config).
@@ -435,6 +438,9 @@ func refuseImmutable(ch declarative.Change) error {
 	if err := refuseMove(ch); err != nil {
 		return err
 	}
+	if err := refuseRunMove(ch); err != nil {
+		return err
+	}
 	for _, f := range ch.Fields {
 		if f.Field == "storage.class" {
 			return fmt.Errorf("%w: %s %q is on storage class %q; moving it to %q would relocate its data. Delete it and apply again, or migrate it",
@@ -564,6 +570,9 @@ type Result struct {
 	DryRun      bool              `json:"dry_run"`
 	Failures    []Failure         `json:"failures,omitempty"`
 	WorkspaceID uint              `json:"workspace_id"`
+	// FailedJobs names the declared Jobs of the run's source whose last run
+	// failed or was skipped; a sync that converged is still degraded by them.
+	FailedJobs []string `json:"failed_jobs,omitempty"`
 }
 
 // Failure records one change that could not be applied.
@@ -633,6 +642,7 @@ func (s *Service) Apply(ctx context.Context, workspaceID uint, manifests []byte,
 	if raw, perr := declarative.Parse(manifests); perr == nil {
 		s.linkDatabasesToApps(workspaceID, raw)
 	}
+	res.FailedJobs = s.failedJobs(workspaceID, opts.OwnerSource)
 	return res, nil
 }
 
@@ -1404,7 +1414,7 @@ var ErrNotExportable = errors.New("this application cannot be exported as a mani
 //
 // Only the volumes this app mounts are included. A workspace's other resources are not this app's to
 // describe, and a bundle that carried them would prune them if applied elsewhere with --prune.
-func (s *Service) ExportApplication(ctx context.Context, workspaceID uint, name string) ([]byte, error) {
+func (s *Service) ExportApplication(ctx context.Context, workspaceID uint, name string, includeJobs bool) ([]byte, error) {
 	set, err := s.snapshot(ctx, workspaceID)
 	if err != nil {
 		return nil, err
@@ -1433,6 +1443,9 @@ func (s *Service) ExportApplication(ctx context.Context, workspaceID uint, name 
 	// another install and bind this document to a resource that is not the same resource.
 	app.Metadata = declarative.Meta{Name: app.Metadata.Name, Annotations: app.Metadata.Annotations}
 	out.Add(app)
+	if includeJobs {
+		exportJobs(set, out, name)
+	}
 	return declarative.Marshal(out)
 }
 
@@ -1762,6 +1775,9 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 			Domain:   &declarative.DomainSpec{TLS: string(d.TLSMode), Wildcard: d.Wildcard},
 		})
 	}
+	if err := s.snapshotJobs(workspaceID, set, appSlugByID, regNameByID); err != nil {
+		return nil, err
+	}
 	// Both sides of the diff must carry the fingerprint or it reads as drift.
 	s.stampConfigFP(workspaceID, set)
 	return set, nil
@@ -1936,6 +1952,10 @@ func (s *Service) execute(ctx context.Context, workspaceID uint, ch declarative.
 		return s.applyConfig(workspaceID, ch, desired)
 	case declarative.KindMiddleware:
 		return s.applyMiddleware(ctx, workspaceID, ch, desired)
+	case declarative.KindCronJob:
+		return s.applyCronJob(ctx, workspaceID, ch, desired)
+	case declarative.KindJob:
+		return s.applyJob(ctx, workspaceID, ch, desired)
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedKind, ch.Kind)
 	}

@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/models"
@@ -38,16 +39,26 @@ type NodeDocker interface {
 }
 
 type Service struct {
-	repo      *repositories.JobRepository
-	apps      *repositories.ApplicationRepository
-	releases  *repositories.ReleaseRepository
-	clients   NodeDocker
-	enqueuer  Enqueuer
-	scheduler Scheduler
-	quota     *quota.Service
+	repo *repositories.JobRepository
+	// deployments finds an app's in-flight deploy, which a declared run waits for.
+	deployments *repositories.DeploymentRepository
+	apps        *repositories.ApplicationRepository
+	releases    *repositories.ReleaseRepository
+	clients     NodeDocker
+	enqueuer    Enqueuer
+	scheduler   Scheduler
+	quota       *quota.Service
+	// registered is what this process has registered with the scheduler, per
+	// cronjob id, so SyncSchedules can see what changed elsewhere.
+	regMu      sync.Mutex
+	registered map[uint]string
 	// defaultTimeoutSecs caps a job's runtime when the request leaves it unset.
 	defaultTimeoutSecs int
 }
+
+// SetDeployments wires the deployment lookup a waitForDeploy run needs; nil runs
+// declared Jobs straight away.
+func (s *Service) SetDeployments(d *repositories.DeploymentRepository) { s.deployments = d }
 
 // SetQuota wires the plan/quota enforcer (nil-safe; nil skips checks).
 func (s *Service) SetQuota(q *quota.Service) { s.quota = q }
@@ -78,6 +89,13 @@ type RunRequest struct {
 	Source      string // manual | api | scheduled
 	TriggeredBy *uint  // user id (nil for scheduled)
 	CronJobID   *uint  // set when spawned by a cronjob
+	// JobDefinitionID is set for a run of a declared Job.
+	JobDefinitionID *uint
+	// WaitDeploymentID holds the run until that deployment ends; the image is
+	// then resolved from the release it activated.
+	WaitDeploymentID *uint
+	// Attempt numbers a retry of a declared Job's run; 0 means the first.
+	Attempt int
 }
 
 // Run creates a Job in the app's runtime context and enqueues it. The image is
@@ -106,7 +124,8 @@ func (s *Service) Run(_ context.Context, workspaceID, appID uint, req RunRequest
 		if registryID == nil {
 			registryID = app.RegistryID
 		}
-	} else if image, err = s.resolveImage(app); err != nil {
+	} else if image, err = s.resolveImage(app); err != nil && req.WaitDeploymentID == nil {
+		// A run waiting on a deploy takes its image from the release that deploy activates.
 		return nil, err
 	}
 	// Snapshot the account this run is pinned to (the request's, else the app's) so history shows
@@ -124,21 +143,24 @@ func (s *Service) Run(_ context.Context, workspaceID, appID uint, req RunRequest
 		source = models.JobSourceManual
 	}
 	j := &models.Job{
-		WorkspaceID:   workspaceID,
-		ApplicationID: appID,
-		ServerID:      app.ServerID,
-		CronJobID:     req.CronJobID,
-		Name:          req.Name,
-		Command:       req.Command,
-		Entrypoint:    req.Entrypoint,
-		Image:         image,
-		RegistryID:    registryID,
-		Pull:          pull,
-		RunAsUser:     runAsUser,
-		Status:        models.JobPending,
-		TimeoutSecs:   timeout,
-		Source:        source,
-		TriggeredByID: req.TriggeredBy,
+		WorkspaceID:      workspaceID,
+		ApplicationID:    appID,
+		ServerID:         app.ServerID,
+		CronJobID:        req.CronJobID,
+		JobDefinitionID:  req.JobDefinitionID,
+		WaitDeploymentID: req.WaitDeploymentID,
+		Attempt:          max(req.Attempt, 1),
+		Name:             req.Name,
+		Command:          req.Command,
+		Entrypoint:       req.Entrypoint,
+		Image:            image,
+		RegistryID:       registryID,
+		Pull:             pull,
+		RunAsUser:        runAsUser,
+		Status:           models.JobPending,
+		TimeoutSecs:      timeout,
+		Source:           source,
+		TriggeredByID:    req.TriggeredBy,
 	}
 	if err := s.repo.Create(j); err != nil {
 		return nil, err

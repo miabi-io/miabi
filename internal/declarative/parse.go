@@ -216,6 +216,18 @@ func parseNode(node *yaml.Node) ([]Resource, error) {
 			return nil, specErr(head.Kind, meta.Name, err)
 		}
 		r.Middleware = &s
+	case KindCronJob:
+		var s CronJobSpec
+		if err := decodeSpec(&head.Spec, &s); err != nil {
+			return nil, specErr(head.Kind, meta.Name, err)
+		}
+		r.CronJob = &s
+	case KindJob:
+		var s JobSpec
+		if err := decodeSpec(&head.Spec, &s); err != nil {
+			return nil, specErr(head.Kind, meta.Name, err)
+		}
+		r.Job = &s
 	case KindDomain:
 		var s DomainSpec
 		if err := decodeSpec(&head.Spec, &s); err != nil {
