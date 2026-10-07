@@ -2,7 +2,7 @@
 #
 # Same layout as compose.yaml, but swaps the Goma gateway for Traefik as the
 # edge proxy. Traefik terminates TLS (ACME/Let's Encrypt) and routes by reading
-# Docker labels off containers on the shared `miabi` network.
+# Docker labels off containers on the shared `miabi-proxy` network.
 #
 # Quick start:
 #   cp .env.example .env         # then edit: domains + secrets (openssl rand -hex 32)
@@ -12,9 +12,9 @@
 # DNS: point your panel domain at this host. (One-click wildcard app URLs need
 # Goma — on Traefik you expose each app via labels; see note 1 below.)
 #
-# TWO NETWORKS, same as compose.yaml: `miabi` is shared with every routed app,
+# TWO NETWORKS, same as compose.yaml: `miabi-proxy` is shared with every routed app,
 # `miabi-internal` is private to the platform, and Traefik is the one service on
-# both. Traefik's Docker provider defaults to `miabi` for backend discovery, so
+# both. Traefik's Docker provider defaults to `miabi-proxy` for backend discovery, so
 # the control plane carries an explicit `traefik.docker.network` label pointing at
 # the private one — see the miabi service below.
 #
@@ -23,6 +23,9 @@
 # will not know the private network exists and the helper containers it runs out
 # of process (platform backups) stay on `miabi` alone — where the database no
 # longer is.
+#
+# A stack created before the proxy network was renamed keeps `miabi`: see
+# "Created before miabi-proxy" in README.md for the override it needs.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # Trade-offs vs. the default Goma stack (compose.yaml) — read before choosing:
@@ -101,7 +104,7 @@ services:
       retries: 10
 
   # Edge proxy: terminates TLS (ACME/Let's Encrypt) and routes by Docker labels.
-  # Only containers with traefik.enable=true are exposed, reached over `miabi`.
+  # Only containers with traefik.enable=true are exposed, reached over `miabi-proxy`.
   traefik:
     image: traefik:v3.3
     labels:
@@ -113,7 +116,7 @@ services:
     command:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
-      - "--providers.docker.network=miabi"
+      - "--providers.docker.network=${MIABI_PROXY_NETWORK:-miabi-proxy}"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
@@ -132,9 +135,9 @@ services:
       # in front instead of mounting the socket directly.
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik-certs:/letsencrypt
-    # The one service on both: `miabi` to reach your labelled app containers,
+    # The one service on both: `miabi-proxy` to reach your labelled app containers,
     # `miabi-internal` to reach the control plane it fronts.
-    networks: [miabi, miabi-internal]
+    networks: [miabi-proxy, miabi-internal]
 
   # Control plane: single binary serving the API + web UI, with the background
   # worker embedded by default (see the optional `miabi-worker` below).
@@ -169,7 +172,7 @@ services:
     labels:
       - "traefik.enable=true"
       # Which network Traefik reads this container's backend IP from. The provider
-      # default is `miabi` (--providers.docker.network above), and the control plane
+      # default is `miabi-proxy` (--providers.docker.network above), and the control plane
       # is deliberately not on it — without this label Traefik finds no address for
       # the panel and the router 502s. Your apps stay on the provider default.
       - "traefik.docker.network=${MIABI_INTERNAL_NETWORK:-miabi-internal}"
@@ -213,13 +216,13 @@ volumes:
 
 networks:
   # Shared: Traefik plus every app container you expose with traefik.* labels.
-  miabi:
+  miabi-proxy:
     labels:
       io.miabi.part-of: miabi
       io.miabi.role: control-plane
       io.miabi.managed-by: compose
       io.miabi.protected: "true"
-    name: miabi
+    name: ${MIABI_PROXY_NETWORK:-miabi-proxy}
 
   # Private: the platform talking to itself. The name comes from the same variable
   # Miabi reads, so the network and the control plane can never disagree about it.

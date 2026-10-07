@@ -23,6 +23,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/slug"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
+	"github.com/miabi-io/miabi/pkg/stack"
 	"gorm.io/gorm"
 )
 
@@ -60,7 +61,7 @@ const tokenPrefix = "mbn_"
 // AppNetwork is the shared Docker network Goma Gateway and managed app
 // containers join (the proxy gateway network). Configurable via
 // MIABI_PROXY_NETWORK; set once at startup with SetAppNetwork.
-var AppNetwork = "miabi"
+var AppNetwork = stack.DefaultNetwork
 
 // SetAppNetwork overrides the gateway network name (call once at startup,
 // before Bootstrap or any deploy).

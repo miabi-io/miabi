@@ -189,7 +189,8 @@ type Config struct {
 
 	// ProxyNetwork is the shared Docker network that Goma Gateway and all
 	// managed app containers join so the proxy can reach app backends. Goma must
-	// also be attached to this network.
+	// also be attached to this network. Empty until startup resolves it with
+	// node.ResolveAppNetwork when MIABI_PROXY_NETWORK is unset.
 	ProxyNetwork string
 
 	// InternalNetwork is the PRIVATE Docker network the platform's own components share — the control
@@ -632,7 +633,7 @@ func New() *Config {
 		SecurityPolicies:           goutils.EnvBool("MIABI_SECURITY_POLICIES", true),
 		AdminUnlock:                goutils.EnvBool("MIABI_ADMIN_UNLOCK", false),
 		KeyRotateMonths:            goutils.EnvInt("MIABI_KEY_ROTATE_MONTHS", 6),
-		ProxyNetwork:               goutils.Env("MIABI_PROXY_NETWORK", goutils.Env("MIABI_GOMA_NETWORK", "miabi")),
+		ProxyNetwork:               goutils.Env("MIABI_PROXY_NETWORK", goutils.Env("MIABI_GOMA_NETWORK", "")),
 		InternalNetwork:            goutils.Env("MIABI_INTERNAL_NETWORK", ""),
 		APIKeyScopeEnforcement:     goutils.Env("MIABI_API_KEY_SCOPE_ENFORCEMENT", ""),
 		ControlURL:                 goutils.Env("MIABI_CONTROL_URL", goutils.Env("MIABI_API_URL", "")),

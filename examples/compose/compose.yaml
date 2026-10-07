@@ -17,7 +17,7 @@
 # DNS: point your panel domain AND *.<apps base domain> at this host, so Goma
 # can issue certs and serve one-click app URLs.
 #
-# TWO NETWORKS. `miabi` is the shared one every routed app joins; `miabi-internal`
+# TWO NETWORKS. `miabi-proxy` is the shared one every routed app joins; `miabi-internal`
 # is private to the platform — PostgreSQL, Redis and the control plane sit only
 # there, and the gateway is the one service on both. Everything on a Docker network
 # can dial everything else on it by name, and the control-plane database holds a
@@ -30,6 +30,9 @@
 # (platform backups, the built-in registry) stay on `miabi` alone — where the
 # database no longer is, and where the registry serves every workspace's images
 # to any app container that asks.
+#
+# A stack created before the proxy network was renamed keeps `miabi`: see
+# "Created before miabi-proxy" in README.md for the override it needs.
 
 services:
   miabi-postgres:
@@ -120,11 +123,11 @@ services:
       # uncomment. Without it the "Top countries" panels stay empty.
       # - ./country.mmdb:/etc/goma/country.mmdb:ro
     # The one service on both, deliberately: `miabi-internal` to reach Miabi and
-    # Redis, `miabi` to reach your apps and the internet for ACME. Being the only
+    # Redis, `miabi-proxy` to reach your apps and the internet for ACME. Being the only
     # bridge is what keeps the shared network ingress-only — traffic crosses into
     # the platform at a proxy that terminates TLS and applies your middlewares,
     # not at a flat Docker bridge.
-    networks: [miabi-internal, miabi]
+    networks: [miabi-internal, miabi-proxy]
 
   # Control plane: single binary serving the API + web UI. The background worker
   # runs embedded here by default (see the optional `miabi-worker` below to scale
@@ -194,13 +197,13 @@ volumes:
 
 networks:
   # Shared: the gateway plus every app container Miabi exposes with a route.
-  miabi:
+  miabi-proxy:
     labels:
       io.miabi.part-of: miabi
       io.miabi.role: control-plane
       io.miabi.managed-by: compose
       io.miabi.protected: "true"
-    name: miabi
+    name: ${MIABI_PROXY_NETWORK:-miabi-proxy}
 
   # Private: the platform talking to itself. The name comes from the same variable
   # Miabi reads, so the network and the control plane can never disagree about it.

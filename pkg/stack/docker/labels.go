@@ -75,8 +75,11 @@ const (
 	// the label, not the name, that guards it: an operator who renames the network in the manifest
 	// must not thereby make it attachable from the app-facing APIs.
 	RolePlatformInternal = "platform-internal"
-	RoleRegistry         = "registry"
-	RoleRegistryGC       = "registry-gc" // transient: deliberately NOT protected
+	// RoleProxyNetwork marks the shared proxy network. It reuses the control-plane value because
+	// networks were labelled that way before the role existed, and Docker cannot relabel a network.
+	RoleProxyNetwork = RoleControlPlane
+	RoleRegistry     = "registry"
+	RoleRegistryGC   = "registry-gc" // transient: deliberately NOT protected
 )
 
 // Lifecycle owners for LabelManagedBy.

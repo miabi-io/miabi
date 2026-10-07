@@ -17,19 +17,19 @@ save APPS_DOMAIN "$APPS_DOMAIN"
 save REDIS_PW "$REDIS_PW"
 
 log "Network and data stores"
-docker network create miabi >/dev/null
-docker run -d --name miabi-postgres --network miabi \
+docker network create miabi-proxy >/dev/null
+docker run -d --name miabi-postgres --network miabi-proxy \
   -e POSTGRES_USER=miabi -e POSTGRES_PASSWORD="$DB_PW" -e POSTGRES_DB=miabi \
   --health-cmd 'pg_isready -U miabi' --health-interval 2s \
   -v mb-platform-pgdata:/var/lib/postgresql/data postgres:17-alpine >/dev/null
-docker run -d --name miabi-redis --network miabi \
+docker run -d --name miabi-redis --network miabi-proxy \
   --health-cmd "redis-cli -a $REDIS_PW ping" --health-interval 2s \
   -v mb-platform-redisdata:/data redis:7-alpine redis-server --requirepass "$REDIS_PW" >/dev/null
 wait_until "postgres healthy" 90 healthy miabi-postgres
 wait_until "redis healthy" 60 healthy miabi-redis
 
 log "Control plane ($IMAGE)"
-docker run -d --name miabi --network miabi -p 9000:9000 \
+docker run -d --name miabi --network miabi-proxy -p 9000:9000 \
   -e MIABI_ENV=production -e MIABI_PORT=9000 \
   -e MIABI_DB_HOST=miabi-postgres -e MIABI_DB_USER=miabi \
   -e MIABI_DB_PASSWORD="$DB_PW" -e MIABI_DB_NAME=miabi \
@@ -38,7 +38,7 @@ docker run -d --name miabi --network miabi -p 9000:9000 \
   -e MIABI_ADMIN_EMAIL="$ADMIN_EMAIL" -e MIABI_ADMIN_PASSWORD="$ADMIN_PW" \
   -e MIABI_WEB_URL="$MIABI_URL" -e MIABI_CORS_ORIGINS="$MIABI_URL" \
   -e MIABI_CONTROL_URL="$MIABI_URL" \
-  -e MIABI_PROXY_NETWORK=miabi \
+  -e MIABI_PROXY_NETWORK=miabi-proxy \
   -e MIABI_EXTERNAL_BASE_DOMAIN="$APPS_DOMAIN" \
   -e MIABI_GOMA_PROVIDER_DIR=/etc/goma/providers \
   -v /var/run/docker.sock:/var/run/docker.sock \
