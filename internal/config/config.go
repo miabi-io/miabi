@@ -74,8 +74,11 @@ type Config struct {
 	MetricsRetentionHours int
 
 	CORSOrigins string
-	AppWebURL   string
-	ApiBaseURL  string
+	// TrustedProxies are the CIDRs or addresses allowed to set X-Forwarded-For and X-Real-IP
+	// (MIABI_TRUSTED_PROXIES, comma-separated). Empty trusts those headers from any peer.
+	TrustedProxies []string
+	AppWebURL      string
+	ApiBaseURL     string
 	// LoginTokenTTLHours is the default lifetime of a CLI "login command" token
 	// (the OpenShift-style short-lived personal API token). LoginTokenMaxTTLHours
 	// is the hard ceiling a caller may request. Kept short by design.
@@ -592,6 +595,7 @@ func New() *Config {
 		MetricsScrapeSeconds:  goutils.EnvInt("MIABI_METRICS_SCRAPE_SECONDS", 60),
 		MetricsRetentionHours: goutils.EnvInt("MIABI_METRICS_RETENTION_HOURS", 24),
 		CORSOrigins:           goutils.Env("MIABI_CORS_ORIGINS", goutils.Env("MIABI_WEB_URL", "*")),
+		TrustedProxies:        splitList(goutils.Env("MIABI_TRUSTED_PROXIES", "")),
 		AppWebURL:             goutils.Env("MIABI_WEB_URL", ""),
 		ApiBaseURL:            goutils.Env("MIABI_API_URL", ""),
 		LoginTokenTTLHours:    goutils.EnvInt("MIABI_LOGIN_TOKEN_TTL_HOURS", 24),
@@ -898,6 +902,11 @@ func (c *Config) Initialize(app *okapi.Okapi) error {
 		logger.Warn("MIABI_ENCRYPTION_KEY is shorter than the recommended 32 characters; use `openssl rand -hex 32` for new installs")
 	}
 
+	// The client IP feeds rate limits, admin IP allowlists and the audit log.
+	if len(c.TrustedProxies) > 0 {
+		app.WithTrustedProxies(c.TrustedProxies...)
+	}
+
 	corsOrigins := strings.Split(c.CORSOrigins, ",")
 	for i := range corsOrigins {
 		corsOrigins[i] = strings.TrimSpace(corsOrigins[i])
@@ -998,4 +1007,15 @@ func (c *Config) InitStorage() {
 		logger.Fatal("failed to connect to redis", "error", err)
 	}
 	c.Redis.Client = rdb
+}
+
+// splitList parses a comma-separated setting, dropping blanks so "a, ,b," is [a b].
+func splitList(v string) []string {
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
