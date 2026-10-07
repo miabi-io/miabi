@@ -50,10 +50,10 @@ openssl rand -hex 32          # use for MIABI_JWT_SECRET and MIABI_ENCRYPTION_KE
 echo "DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)" >> .env
 
 # Optional but recommended on a busy multi-tenant host: pre-create the shared
-# `miabi` bridge with a roomy CIDR so it isn't capped by Docker's small default
+# `miabi-proxy` bridge with a roomy CIDR so it isn't capped by Docker's small default
 # pool. (Compose here creates it for you otherwise; the production deploy/ stack
 # and install.sh always pre-create it as an external network.)
-docker network create --driver bridge --subnet 10.63.0.0/16 miabi || true
+docker network create --driver bridge --subnet 10.63.0.0/16 miabi-proxy || true
 
 docker compose up -d
 ```
@@ -64,27 +64,39 @@ The stack comes up on **two** Docker networks, and this is load-bearing:
 
 | Network | Who is on it |
 |---|---|
-| `miabi` | the gateway, and every app container Miabi exposes with a route |
+| `miabi-proxy` | the gateway, and every app container Miabi exposes with a route |
 | `miabi-internal` | PostgreSQL, Redis, the control plane — and the gateway |
 
 Everything on a Docker network can resolve and dial everything else on it by name.
 The control-plane database has a **single superuser password** covering every
 workspace and every stored secret, and Redis holds the background job queue — so
 an application being compromised must not put them one DNS lookup away. The
-gateway is the only service on both, which is what keeps `miabi` ingress-only:
+gateway is the only service on both, which is what keeps `miabi-proxy` ingress-only:
 traffic crosses into the platform at a proxy that terminates TLS and applies your
 [routes and middlewares](https://miabi.io/docs/networking/routing-and-middlewares),
 not at a flat bridge.
 
 Nothing about deploying or exposing apps changes — your containers still join
-`miabi` when they have a route.
+`miabi-proxy` when they have a route.
 
 **Upgrading a stack that predates this?** Add `MIABI_INTERNAL_NETWORK=miabi-internal`
 to your `.env` before `docker compose up -d`. Miabi reads it to place the helper
 containers it runs out of process (platform backups, the built-in registry); left
-empty, those stay on `miabi` alone — where the database no longer is, and where the
+empty, those stay on the proxy network alone — where the database no longer is, and where the
 registry would be reachable by every app container. Compose recreates the containers
 onto their new networks for you.
+
+**Created before miabi-proxy?** The shared network used to be `miabi`, and your
+routed apps are attached to it. Keep `MIABI_PROXY_NETWORK=miabi` in your `.env`, and
+add a `compose.override.yaml` next to `compose.yaml` that adopts the existing network
+(compose otherwise refuses it, since it was created under the old key):
+
+```yaml
+networks:
+  miabi-proxy:
+    name: miabi
+    external: true
+```
 
 ### Prefer Traefik as the edge proxy?
 

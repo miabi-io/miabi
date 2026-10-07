@@ -132,6 +132,7 @@ func runServer(cli *okapicli.CLI) {
 				logger.Fatal("failed to create docker client", "error", err)
 			}
 			res.docker = dockerClient
+			cfg.ProxyNetwork = node.ResolveAppNetwork(context.Background(), dockerClient, cfg.ProxyNetwork)
 			node.SetAppNetwork(cfg.ProxyNetwork)
 			serverRepo := repositories.NewServerRepository(res.db)
 			nodeService := node.NewService(serverRepo, dockerClient)

@@ -45,7 +45,7 @@ func registerStackCommands(cli *okapicli.CLI) {
 		Bool("registry", "", false, "Enable the built-in container registry").
 		Bool("no-host-proc", "", false, "Do not bind the host's /proc into the control plane (for hosts that refuse the bind; host metrics fall back to the container's /proc)").
 		String("registry-host", "", "", "Registry hostname (default registry.<domain>); implies --registry").
-		String("subnet", "", "", "CIDR for the shared `miabi` network — apps and the gateway (default "+stack.DefaultSubnet+")").
+		String("subnet", "", "", "CIDR for the shared `"+stack.DefaultNetwork+"` network — apps and the gateway (default "+stack.DefaultSubnet+")").
 		String("internal-subnet", "", "", "CIDR for the private `"+stack.DefaultInternalNetwork+"` network — control plane, database, cache (default "+stack.DefaultInternalSubnet+")").
 		String("file", "f", "", "Manifest path (default "+stack.DefaultConfigPath+")").
 		Bool("yes", "y", false, "Do not prompt")

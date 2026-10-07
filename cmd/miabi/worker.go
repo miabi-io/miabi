@@ -55,8 +55,6 @@ func runWorker() error {
 	crypto.Init(cfg.EncryptionKey)
 	netguard.Configure(cfg.WebhookAllowPrivateTargets)
 
-	node.SetAppNetwork(cfg.ProxyNetwork)
-
 	db := cfg.Database.DB
 	crypto.SetKeyring(keyring.NewService(repositories.NewWorkspaceKeyRepository(db)))
 	defer func() {
@@ -70,6 +68,8 @@ func runWorker() error {
 		logger.Fatal("failed to create docker client", "error", err)
 	}
 	defer func() { _ = dockerClient.Close() }()
+	cfg.ProxyNetwork = node.ResolveAppNetwork(context.Background(), dockerClient, cfg.ProxyNetwork)
+	node.SetAppNetwork(cfg.ProxyNetwork)
 
 	var proxyMgr proxy.Manager = proxy.NewMemory()
 	if cfg.GomaProviderDir != "" {

@@ -70,8 +70,11 @@ const (
 	// the stack does not RUN — it only names what a CI runner should be enrolled with — so it carries none
 	// of the reproducibility weight, and install.sh passes the version this release was tested against.
 	DefaultRunnerImage = "miabi/runner:latest"
-	DefaultNetwork     = "miabi"
-	DefaultSubnet      = "10.63.0.0/16"
+	DefaultNetwork     = "miabi-proxy"
+	// LegacyNetwork is the proxy network's name before it became DefaultNetwork. Installs created
+	// before the rename keep it: their app containers are attached to it by name.
+	LegacyNetwork = "miabi"
+	DefaultSubnet = "10.63.0.0/16"
 	// DefaultInternalNetwork carries the platform's own traffic. It is separate from DefaultNetwork
 	// because that one is the shared proxy fabric: every routed app joins it, so anything reachable
 	// there is reachable from a tenant container — and Postgres holds one superuser password for the
@@ -699,7 +702,7 @@ func (s *Service) ensureNetwork(ctx context.Context, m *Manifest) error {
 		cfg  NetworkConfig
 		role string
 	}{
-		{m.Network, docker.RoleControlPlane},
+		{m.Network, docker.RoleProxyNetwork},
 		{m.InternalNetwork, docker.RolePlatformInternal},
 	} {
 		// Set explicitly either way: a network that inherits the daemon's default follows a setting
