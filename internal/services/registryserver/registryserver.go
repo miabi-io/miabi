@@ -655,6 +655,10 @@ func discoverInternalNetwork(ctx context.Context, dc docker.Client) string {
 	return ""
 }
 
+// gcScript runs the collector against whichever default config the image ships:
+// Distribution v3 (registry:3) moved it from /etc/docker/registry to /etc/distribution.
+const gcScript = `cfg=/etc/distribution/config.yml; [ -f "$cfg" ] || cfg=/etc/docker/registry/config.yml; exec registry garbage-collect "$cfg"`
+
 // GarbageCollect reclaims storage from deleted or overwritten manifests. To run safely it flips the
 // registry read-only (pulls keep working, pushes pause), runs `registry garbage-collect` as a one-shot
 // against the same storage, then restores read-write. A no-op unless the registry is enabled with deletes on.
@@ -690,8 +694,8 @@ func (s *Service) GarbageCollect(ctx context.Context, dc docker.Client) error {
 	code, out, err := dc.RunOneShot(ctx, docker.RunSpec{
 		Name:       ContainerName + "-gc",
 		Image:      s.image(),
-		Entrypoint: []string{"registry"},
-		Cmd:        []string{"garbage-collect", "/etc/docker/registry/config.yml"},
+		Entrypoint: []string{"/bin/sh", "-c"},
+		Cmd:        []string{gcScript},
 		Env:        env,
 		Mounts:     s.volumeMounts(st),
 		Labels:     map[string]string{docker.LabelRole: docker.RoleRegistryGC}, // transient: deliberately not protected

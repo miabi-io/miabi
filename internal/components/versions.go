@@ -11,7 +11,7 @@ const (
 	GitOpsVersion         = "1.0.0"
 	PipelineVersion       = "1.0.0"
 	MarketplaceVersion    = "1.0.0"
-	RegistryVersion       = "1.0.0"
+	RegistryVersion       = "1.0.1"
 	StorageClassesVersion = "1.0.0"
 	AnalyticsVersion      = "1.0.0"
 	HealthProbeVersion    = "1.0.0"
