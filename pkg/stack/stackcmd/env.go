@@ -17,9 +17,10 @@ import (
 type EnvOptions struct {
 	// Gateway edits the gateway's environment instead of the control plane's.
 	Gateway bool
-	// NoApply saves the manifest without converging, for batching several edits.
-	NoApply bool
-	Yes     bool
+	// Apply converges right after saving. Off by default, so several edits cost one recreate
+	// through Apply rather than one each.
+	Apply bool
+	Yes   bool
 }
 
 // EnvList returns the environment the manifest carries, and the name of the block it came from.
@@ -42,7 +43,7 @@ func EnvGet(path, key string, o EnvOptions) (value string, found bool, err error
 	return v, ok, nil
 }
 
-// EnvSet writes KEY=VALUE pairs into the manifest and converges. Validation is Normalize's: invalid
+// EnvSet writes KEY=VALUE pairs into the manifest, converging only with o.Apply. Validation is Normalize's: invalid
 // names, variables Miabi sets itself, and settings that belong to their own spec section are all
 // refused there, with an error that names where the value really lives.
 func EnvSet(ctx context.Context, svc *stack.Service, path string, assignments []string, o EnvOptions, ui UI) error {
@@ -86,7 +87,7 @@ func EnvUnset(ctx context.Context, svc *stack.Service, path string, keys []strin
 }
 
 // editEnv is the shared body: load, mutate, normalize (which validates), show what changes, save, and
-// converge. Saving before converging matches the rest of stackcmd — the file must describe what was
+// converge when asked. Saving before converging matches the rest of stackcmd — the file must describe what was
 // asked for even if bringing the stack to it fails.
 func editEnv(ctx context.Context, svc *stack.Service, path string, o EnvOptions, ui UI, removed []string, mutate func(map[string]string) error) error {
 	m, err := stack.Load(path)
@@ -127,20 +128,36 @@ func editEnv(ctx context.Context, svc *stack.Service, path string, o EnvOptions,
 	ui.Printf("\n")
 	reportReseeded(ui, removed, after)
 
-	if !o.Yes && !ui.Confirm("Apply?") {
+	prompt := "Save?"
+	if o.Apply {
+		prompt = "Save and apply?"
+	}
+	if !o.Yes && !ui.Confirm(prompt) {
 		return errors.New("cancelled")
 	}
 	if err := stack.Save(path, m); err != nil {
 		return err
 	}
-	if o.NoApply {
-		ui.Warn("Saved, not applied — the running stack still has the old values. `miabi setup` converges it.")
+	if !o.Apply {
+		reportPending(ctx, svc, m, ui)
 		return nil
 	}
 	if err := svc.Converge(ctx, m); err != nil {
 		return err
 	}
 	return stack.Save(path, m)
+}
+
+// reportPending says the edit is saved but not live, and which components applying it will recreate.
+// Best-effort: svc is nil when there is no engine to ask, and the hint is still worth printing.
+func reportPending(ctx context.Context, svc *stack.Service, m *stack.Manifest, ui UI) {
+	ui.Warn("Saved, not applied — the running stack still has the old values.")
+	if svc != nil {
+		if pending, err := svc.Pending(ctx, m); err == nil && len(pending) > 0 {
+			ui.Info("Pending: %s", strings.Join(pending, ", "))
+		}
+	}
+	ui.Info("Run `sudo miabi stack apply` when you are done editing.")
 }
 
 // reportReseeded explains a variable that is still present after being unset: Normalize seeds a small

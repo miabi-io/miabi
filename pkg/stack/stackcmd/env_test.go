@@ -47,8 +47,8 @@ func installedManifest(t *testing.T) string {
 	return path
 }
 
-// NoApply returns before Converge, so these exercise the whole edit path without a Docker engine.
-func batch() EnvOptions { return EnvOptions{NoApply: true, Yes: true} }
+// Without Apply the edit returns before Converge, so these exercise the whole path without a Docker engine.
+func batch() EnvOptions { return EnvOptions{Yes: true} }
 
 func TestEnvSetWritesTheVariable(t *testing.T) {
 	path := installedManifest(t)
@@ -68,8 +68,8 @@ func TestEnvSetWritesTheVariable(t *testing.T) {
 	if !ui.said("MIABI_SMTP_HOST") {
 		t.Error("the change was applied without showing the operator what changed")
 	}
-	if !ui.said("still has the old values") {
-		t.Error("--no-apply did not warn that the file and the running stack now disagree")
+	if !ui.said("still has the old values") || !ui.said("miabi stack apply") {
+		t.Error("a saved-only edit did not say the stack still has the old values and how to apply them")
 	}
 }
 
@@ -133,7 +133,7 @@ func TestUnsettingASeededDefaultRestoresIt(t *testing.T) {
 
 func TestEnvTargetsTheGatewayBlock(t *testing.T) {
 	path := installedManifest(t)
-	gw := EnvOptions{Gateway: true, NoApply: true, Yes: true}
+	gw := EnvOptions{Gateway: true, Yes: true}
 
 	if err := EnvSet(context.Background(), nil, path, []string{"MY_UPSTREAM=https://internal.example.com"}, gw, &recUI{}); err != nil {
 		t.Fatal(err)
