@@ -37,6 +37,31 @@ func TestStrategies(t *testing.T) {
 	}
 }
 
+func TestLinkedBy(t *testing.T) {
+	cases := []struct {
+		name                string
+		apps                []uint
+		wantMine, wantOther bool
+	}{
+		{"unlinked", nil, false, false},
+		{"only this app", []uint{1}, true, false},
+		{"only another app", []uint{2}, false, true},
+		{"shared", []uint{2, 1}, true, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var links []models.DatabaseInstanceLink
+			for _, id := range c.apps {
+				links = append(links, models.DatabaseInstanceLink{InstanceID: 9, ApplicationID: id})
+			}
+			mine, others := linkedBy(links, 1)
+			if mine != c.wantMine || others != c.wantOther {
+				t.Errorf("got (%v, %v), want (%v, %v)", mine, others, c.wantMine, c.wantOther)
+			}
+		})
+	}
+}
+
 func TestEnvMentions(t *testing.T) {
 	env := []models.AppEnvVar{
 		{Key: "DB_HOST", Value: "mb-db-abcd1234-7"},

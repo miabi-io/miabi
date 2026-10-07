@@ -235,7 +235,8 @@ func (p *planner) dependencies() []dependency {
 		}
 		owner, owned := models.Owner(inst.Metadata)
 		ownedByApp := owned && owner.Kind == models.OwnerApp && owner.ID == p.app.ID
-		if len(mine) > 0 || ownedByApp || (inst.Host != "" && envMentions(p.app.EnvVars, inst.Host)) {
+		linked, _ := linkedBy(p.instanceLinks(inst.ID), p.app.ID)
+		if len(mine) > 0 || ownedByApp || linked || (inst.Host != "" && envMentions(p.app.EnvVars, inst.Host)) {
 			deps = append(deps, dependency{inst: inst, dbs: mine})
 		}
 	}
@@ -243,7 +244,7 @@ func (p *planner) dependencies() []dependency {
 }
 
 // exclusive reports whether nothing but the app uses an instance: every logical database on it is the app's,
-// no other app is its owner, and no other app's environment names it.
+// no other app is its owner or links it, and no other app's environment names it.
 func (p *planner) exclusive(inst *models.DatabaseInstance) bool {
 	dbs, _ := p.s.Databases.ListInstanceDatabases(inst.ID)
 	for _, d := range dbs {
@@ -254,12 +255,34 @@ func (p *planner) exclusive(inst *models.DatabaseInstance) bool {
 	if owner, ok := models.Owner(inst.Metadata); ok && owner.Kind == models.OwnerApp && owner.ID != p.app.ID && owner.ID != 0 {
 		return false
 	}
+	if _, others := linkedBy(p.instanceLinks(inst.ID), p.app.ID); others {
+		return false
+	}
 	for i := range p.peers {
 		if inst.Host != "" && envMentions(p.peers[i].EnvVars, inst.Host) {
 			return false
 		}
 	}
 	return true
+}
+
+// instanceLinks lists the apps linked to an instance as a whole (Redis). A link's injected host can be
+// skipped by its env mapping, so the env scan alone would miss it.
+func (p *planner) instanceLinks(instanceID uint) []models.DatabaseInstanceLink {
+	links, _ := p.s.Databases.ListInstanceLinks(instanceID)
+	return links
+}
+
+// linkedBy reports whether appID links the instance, and whether any other app does.
+func linkedBy(links []models.DatabaseInstanceLink, appID uint) (mine, others bool) {
+	for _, l := range links {
+		if l.ApplicationID == appID {
+			mine = true
+		} else {
+			others = true
+		}
+	}
+	return mine, others
 }
 
 func (p *planner) checkDatabases(choices []DBChoice) {
