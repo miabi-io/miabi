@@ -282,7 +282,7 @@ func TestComposeStacksKeepThePlatformOffTheSharedNetwork(t *testing.T) {
 				if len(nets) == 0 {
 					t.Fatalf("%s declares no networks — did the service get renamed?", svc)
 				}
-				if slices.Contains(nets, "miabi") {
+				if slices.Contains(nets, "miabi-proxy") {
 					t.Errorf("%s is on the shared app network (%v) — any container with a route could dial it", svc, nets)
 				}
 				if !slices.Contains(nets, "miabi-internal") {
@@ -291,7 +291,7 @@ func TestComposeStacksKeepThePlatformOffTheSharedNetwork(t *testing.T) {
 			}
 
 			gw := f.Services[tc.gateway].Networks
-			if !slices.Contains(gw, "miabi") || !slices.Contains(gw, "miabi-internal") {
+			if !slices.Contains(gw, "miabi-proxy") || !slices.Contains(gw, "miabi-internal") {
 				t.Errorf("%s is on %v, want both networks — it is the only bridge between them", tc.gateway, gw)
 			}
 		})
