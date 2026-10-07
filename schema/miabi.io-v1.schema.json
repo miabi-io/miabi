@@ -276,7 +276,7 @@
       "description": "DatabaseSpec requests a logical database on a DatabaseInstance.",
       "properties": {
         "engine": {
-          "description": "postgres|mysql|mariadb|redis",
+          "description": "postgres|mysql|mariadb|redis|mongodb|libsql",
           "type": "string"
         },
         "instance": {

@@ -5,6 +5,7 @@ package declarative_test
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"testing"
 	"testing/fstest"
@@ -98,6 +99,32 @@ spec: { engine: oracle }
 `
 	if _, err := d.Parse([]byte(y)); err == nil {
 		t.Fatal("expected error for unsupported engine")
+	}
+}
+
+func TestParseDatabaseEngines(t *testing.T) {
+	cases := []struct {
+		engine, instance string
+		ok               bool
+	}{
+		{"postgres", "shared", true},
+		{"mongodb", "shared", true},
+		{"mongodb", "auto", true},
+		{"libsql", "auto", true},
+		{"libsql", "shared", false},
+		{"redis", "shared", false},
+	}
+	for _, c := range cases {
+		t.Run(c.engine+"/"+c.instance, func(t *testing.T) {
+			y := fmt.Sprintf("apiVersion: miabi.io/v1\nkind: Database\nmetadata: { name: db }\nspec: { engine: %s, instance: %s }\n", c.engine, c.instance)
+			_, err := d.Parse([]byte(y))
+			if c.ok && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !c.ok && err == nil {
+				t.Fatal("expected an error")
+			}
+		})
 	}
 }
 

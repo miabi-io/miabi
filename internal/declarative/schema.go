@@ -334,7 +334,7 @@ type StackSpec struct {
 
 // DatabaseSpec requests a logical database on a DatabaseInstance.
 type DatabaseSpec struct {
-	Engine  string `yaml:"engine" json:"engine"`                       // postgres|mysql|mariadb|redis
+	Engine  string `yaml:"engine" json:"engine"`                       // postgres|mysql|mariadb|redis|mongodb|libsql
 	Version string `yaml:"version,omitempty" json:"version,omitempty"` // e.g. "16-alpine"
 	// Instance decides which instance hosts the database: auto (default) reuses a compatible running one
 	// and provisions one when none exists, dedicated always provisions one, shared requires an existing one.

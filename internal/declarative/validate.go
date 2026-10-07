@@ -32,17 +32,16 @@ var (
 	// labelKeyRe / labelValRe constrain label and annotation keys and values, mirroring the Kubernetes
 	// rules: an optional DNS-subdomain prefix plus a name segment, max 63 chars. Annotation values are
 	// exempt — they hold arbitrary descriptive text.
-	labelKeyRe     = regexp.MustCompile(`^([a-z0-9]([-a-z0-9.]*[a-z0-9])?/)?[a-zA-Z0-9]([-a-zA-Z0-9_.]*[a-zA-Z0-9])?$`)
-	labelValRe     = regexp.MustCompile(`^[a-zA-Z0-9]([-a-zA-Z0-9_.]*[a-zA-Z0-9])?$`)
-	validEngines   = map[string]bool{"postgres": true, "mysql": true, "mariadb": true, "redis": true}
+	labelKeyRe   = regexp.MustCompile(`^([a-z0-9]([-a-z0-9.]*[a-z0-9])?/)?[a-zA-Z0-9]([-a-zA-Z0-9_.]*[a-zA-Z0-9])?$`)
+	labelValRe   = regexp.MustCompile(`^[a-zA-Z0-9]([-a-zA-Z0-9_.]*[a-zA-Z0-9])?$`)
+	validEngines = map[models.DBEngine]bool{
+		models.DBEnginePostgres: true, models.DBEngineMySQL: true, models.DBEngineMariaDB: true,
+		models.DBEngineRedis: true, models.DBEngineMongoDB: true, models.DBEngineLibSQL: true,
+	}
 	validTLS       = map[string]bool{"acme": true, "custom": true, "off": true}
 	validDomainTLS = map[string]bool{"acme": true, "custom": true}
 	placements     = map[string]bool{"auto": true, "dedicated": true, "shared": true}
 )
-
-func engineSupportsLogical(engine string) bool {
-	return engine == "postgres" || engine == "mysql" || engine == "mariadb"
-}
 
 // normalize fills per-kind defaults so downstream code never special-cases
 // empties.
@@ -454,7 +453,7 @@ func (r *Resource) validateDatabase() error {
 	if d == nil {
 		return fmt.Errorf("database %q: spec is required", r.Metadata.Name)
 	}
-	if !validEngines[d.Engine] {
+	if !validEngines[models.DBEngine(d.Engine)] {
 		return fmt.Errorf("database %q: unsupported engine %q", r.Metadata.Name, d.Engine)
 	}
 	if d.Placement != nil && d.Placement.legacyInstance != "" {
@@ -463,7 +462,7 @@ func (r *Resource) validateDatabase() error {
 	if !placements[d.Instance] {
 		return fmt.Errorf("database %q: invalid instance %q", r.Metadata.Name, d.Instance)
 	}
-	if !engineSupportsLogical(d.Engine) && d.Instance == "shared" {
+	if !models.EngineSupportsLogicalDatabases(models.DBEngine(d.Engine)) && d.Instance == "shared" {
 		return fmt.Errorf("database %q: engine %q has no logical databases; instance cannot be 'shared'", r.Metadata.Name, d.Engine)
 	}
 	if res := d.Resources; res != nil {
