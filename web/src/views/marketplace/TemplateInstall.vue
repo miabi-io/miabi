@@ -35,11 +35,18 @@ const form = ref<{ name: string; inputs: Record<string, string>; placement: Reco
   location: '',
 })
 
+// Engines without logical databases always get their own instance; mirrors models.EngineSupportsLogicalDatabases.
+const DEDICATED_ONLY: Record<string, string> = { redis: 'Redis', libsql: 'libSQL' }
+
+function dedicatedOnly(db: ManifestDatabase): boolean {
+  return db.engine in DEDICATED_ONLY
+}
+
 // defaultPlacement seeds the selector from the template's declared placement, so
 // a template that asks for a dedicated instance defaults to "Dedicated" (the user
 // can still switch to Automatic or an existing instance).
 function defaultPlacement(db: ManifestDatabase): string {
-  if (db.engine === 'redis' || db.placement === 'dedicated') return 'dedicated'
+  if (dedicatedOnly(db) || db.placement === 'dedicated') return 'dedicated'
   if (db.placement === 'shared') {
     const existing = instancesFor(db.engine)
     return existing.length ? String(existing[0].id) : 'auto'
@@ -233,7 +240,7 @@ function placementLabel(db: ManifestDatabase): string {
 // do — whether Automatic will reuse an existing instance or provision a new one.
 function placementHint(db: ManifestDatabase): string {
   const size = sizeOf(db) ? ` The template gives it ${sizeOf(db)}.` : ''
-  if (db.engine === 'redis') return 'Redis is always provisioned as a dedicated instance.' + size
+  if (dedicatedOnly(db)) return `${DEDICATED_ONLY[db.engine]} is always provisioned as a dedicated instance.` + size
   const v = form.value.placement[db.name]
   if (v === 'dedicated') return 'A new dedicated instance will be provisioned.' + size
   const inst = pickedInstance(db)
@@ -649,8 +656,8 @@ onUnmounted(stopJobStream)
 
             <div v-for="db in manifest?.databases ?? []" :key="db.name" class="form-group">
               <label class="form-label">{{ db.engine }} database ({{ db.name }})</label>
-              <select v-model="form.placement[db.name]" class="form-select" :disabled="db.engine === 'redis'" :aria-label="`${db.engine} database (${db.name})`">
-                <option v-if="db.engine !== 'redis'" value="auto">{{ $t('marketplace.automaticReuseOrCreate') }}</option>
+              <select v-model="form.placement[db.name]" class="form-select" :disabled="dedicatedOnly(db)" :aria-label="`${db.engine} database (${db.name})`">
+                <option v-if="!dedicatedOnly(db)" value="auto">{{ $t('marketplace.automaticReuseOrCreate') }}</option>
                 <option value="dedicated">{{ $t('marketplace.newDedicatedInstance') }}</option>
                 <option v-for="inst in instancesFor(db.engine)" :key="inst.id" :value="String(inst.id)">
                   Use existing: {{ inst.name }}

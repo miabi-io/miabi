@@ -8,7 +8,7 @@ package components
 // scripts/components/check-component-versions.sh warns when a component's code changes without a bump here.
 // The Web UI ships with Miabi and carries Miabi's own version.
 const (
-	GitOpsVersion         = "1.0.0"
+	GitOpsVersion         = "1.0.1"
 	PipelineVersion       = "1.0.0"
 	MarketplaceVersion    = "1.0.0"
 	RegistryVersion       = "1.0.1"
