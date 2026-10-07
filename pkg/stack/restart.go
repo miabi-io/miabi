@@ -76,7 +76,7 @@ func (s *Service) restartOne(ctx context.Context, m *Manifest, c component) erro
 	spec := c.Build(m, c.Name, *c.Image(m))
 	if want, got := specHash(spec), cur.Labels[docker.LabelSpecHash]; got != "" && got != want {
 		s.log("  %-14s note: the manifest has changed since this container was created — "+
-			"`miabi setup` applies that; a restart cannot", c.Name)
+			"`miabi stack apply` applies that; a restart cannot", c.Name)
 	}
 
 	s.log("  %-14s restarting", c.Name)
@@ -103,4 +103,28 @@ func (s *Service) ValidateGatewayConfig(ctx context.Context, m *Manifest) error 
 	}
 	m.gatewayHostConfig = host
 	return s.validateGatewayConfig(ctx, m, host)
+}
+
+// Pending names the components the next Converge would create or recreate: missing, stopped, or
+// created from a spec the manifest no longer describes.
+func (s *Service) Pending(ctx context.Context, m *Manifest) ([]string, error) {
+	if err := m.Normalize(); err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, c := range s.components(m) {
+		cur, err := s.dc.InspectContainer(ctx, c.Name)
+		if errors.Is(err, docker.ErrNotFound) {
+			out = append(out, c.Name)
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("inspect %s: %w", c.Name, err)
+		}
+		spec := c.Build(m, c.Name, *c.Image(m))
+		if cur.Labels[docker.LabelSpecHash] != specHash(spec) || cur.State != "running" {
+			out = append(out, c.Name)
+		}
+	}
+	return out, nil
 }

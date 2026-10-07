@@ -524,6 +524,35 @@ func Restart(ctx context.Context, svc *stack.Service, path, component string, ye
 	return nil
 }
 
+// Apply converges the stack onto the manifest, recreating only the components whose spec changed.
+// It is the second half of `env set`, so a batch of edits costs one recreate per component.
+func Apply(ctx context.Context, svc *stack.Service, path string, yes bool, ui UI) error {
+	m, err := stack.Load(path)
+	if err != nil {
+		return WithInstallHint(err)
+	}
+	pending, err := svc.Pending(ctx, m)
+	if err != nil {
+		return err
+	}
+	if len(pending) == 0 {
+		ui.Success("The stack already matches the manifest.")
+		return nil
+	}
+	ui.Printf("\nRecreating: %s\n\n", strings.Join(pending, ", "))
+	if !yes && !ui.Confirm("Apply?") {
+		return errors.New("cancelled")
+	}
+	if err := svc.Converge(ctx, m); err != nil {
+		return err
+	}
+	if err := stack.Save(path, m); err != nil {
+		return err
+	}
+	ui.Success("Applied.")
+	return nil
+}
+
 // StatusReport is what status found. The caller renders it: the two front-ends draw different
 // tables, but neither decides what is in one.
 type StatusReport struct {
