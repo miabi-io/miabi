@@ -95,7 +95,9 @@ func (d *Dispatcher) RunnerWaitReason(workspaceID uint) string {
 // WaitReason explains why no runner can take the pipeline run right now, counting what its steps need, such
 // as a runner that builds for several platforms. "" means one is actually available.
 func (d *Dispatcher) WaitReason(in JobInputs) string {
-	return d.runners.AvailabilityReason(runner.Job{WorkspaceID: in.Run.WorkspaceID, RequiredFeatures: requiredFeatures(in.Steps)})
+	return d.runners.AvailabilityReason(runner.Job{
+		WorkspaceID: in.Run.WorkspaceID, RequiredFeatures: requiredFeatures(in.Steps), MinVersion: requiredRunnerVersion(in.Steps),
+	})
 }
 
 // SweepExpiredLeases releases every active lease whose deadline has passed and returns them. A
@@ -125,6 +127,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, in JobInputs, requiredLabels 
 	run := in.Run
 	rn, err := d.runners.SelectRunner(runner.Job{
 		WorkspaceID: run.WorkspaceID, RequiredLabels: requiredLabels, RequiredFeatures: requiredFeatures(in.Steps),
+		MinVersion: requiredRunnerVersion(in.Steps),
 	})
 	if err != nil {
 		return err // ErrNoRunner → caller queues

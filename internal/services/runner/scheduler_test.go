@@ -171,3 +171,27 @@ func TestFeaturesGateEligibility(t *testing.T) {
 		t.Error("a job needing no feature must still run on an older runner")
 	}
 }
+
+// Context and build-args shipped before runners advertised features; an older runner drops them and builds
+// the wrong image, so a job using them waits for a runner new enough.
+func TestMinVersionGatesEligibility(t *testing.T) {
+	always := func(uint) bool { return true }
+	runner := func(id uint, version string) models.Runner {
+		return models.Runner{ID: id, Name: version, Enabled: true, Concurrency: 1, Scope: models.ScopeShared, Version: version}
+	}
+	job := Job{WorkspaceID: 1, MinVersion: "0.0.8"}
+	for _, tc := range []struct {
+		version string
+		ok      bool
+	}{
+		{"0.0.8", true}, {"v0.1.0", true}, {"0.0.10", true}, {"dev", true},
+		{"0.0.7", false}, {"v0.0.8-rc.1", false}, {"", false}, {"garbage", false},
+	} {
+		if got := pick([]models.Runner{runner(1, tc.version)}, job, map[uint]int{}, always) != nil; got != tc.ok {
+			t.Errorf("runner version %q eligible = %v, want %v", tc.version, got, tc.ok)
+		}
+	}
+	if pick([]models.Runner{runner(1, "")}, Job{WorkspaceID: 1}, map[uint]int{}, always) == nil {
+		t.Error("a job with no minimum must still run on a runner that reports no version")
+	}
+}
