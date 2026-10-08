@@ -176,15 +176,6 @@ func ParseSpec(data []byte) (*Spec, error) {
 				return nil, fmt.Errorf("step %q: build-arg name %q is not a valid Dockerfile ARG (letters, digits and underscore; not starting with a digit)", st.Name, k)
 			}
 		}
-		// runner support pending: the wire format gains BuildConfig.Context and BuildArgs in the next runner
-		// release. Refuse both until then instead of accepting a value and dropping it — a build that quietly
-		// ignores its context or its args produces a wrong image and blames nothing.
-		if st.Context != "" {
-			return nil, fmt.Errorf("step %q: 'context' needs a newer runner; upgrade your runners, or move the build so the repository root is the context", st.Name)
-		}
-		if len(st.BuildArgs) > 0 {
-			return nil, fmt.Errorf("step %q: 'build-args' needs a newer runner; upgrade your runners, or bake the values into the Dockerfile", st.Name)
-		}
 		if err := validBuildPath("dockerfile", st.Dockerfile); err != nil {
 			return nil, fmt.Errorf("step %q: %w", st.Name, err)
 		}

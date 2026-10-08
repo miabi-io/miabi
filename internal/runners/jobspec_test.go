@@ -328,3 +328,21 @@ func TestBuildPlatforms(t *testing.T) {
 		t.Errorf("a single-platform build requires %v", got)
 	}
 }
+
+// Context and build-args reach the runner, and the run waits for one that honours them.
+func TestBuildContextAndArgs(t *testing.T) {
+	step := models.PipelineStepRun{Uses: "build", BuildContext: " services/api ", BuildArgs: map[string]string{"APP_ENV": "prod"}}
+	cfg := buildConfig(&step, JobInputs{})
+	if cfg == nil || cfg.Context != "services/api" || cfg.BuildArgs["APP_ENV"] != "prod" {
+		t.Fatalf("build config = %+v, want context and build args carried", cfg)
+	}
+	if cfg.Method != "dockerfile" {
+		t.Errorf("method = %q: a config sent for context or args alone must not switch to auto-detection", cfg.Method)
+	}
+	if got := requiredRunnerVersion([]models.PipelineStepRun{{Uses: "test"}, step}); got != minBuildInputsVersion {
+		t.Errorf("required runner version = %q, want %q", got, minBuildInputsVersion)
+	}
+	if got := requiredRunnerVersion([]models.PipelineStepRun{{Uses: "build", Dockerfile: "Dockerfile"}}); got != "" {
+		t.Errorf("a plain build requires runner %q", got)
+	}
+}

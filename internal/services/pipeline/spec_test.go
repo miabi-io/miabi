@@ -165,17 +165,16 @@ func TestParseSpecRejectsEscapingBuildPaths(t *testing.T) {
 	}
 }
 
-// Until the runner protocol carries it, `context:` must fail loudly rather than
-// be accepted and dropped — silently building from the wrong directory produces a
-// wrong image and blames nothing. Delete this test with the guard it covers.
-func TestParseSpecRejectsContextUntilRunnerSupport(t *testing.T) {
-	y := "apiVersion: miabi.io/v1\nkind: Pipeline\nmetadata: { name: web }\nsteps:\n  - name: build\n    uses: build\n    context: services/api\n"
-	_, err := ParseSpec([]byte(y))
-	if err == nil {
-		t.Fatal("context was accepted, but nothing forwards it to the runner yet")
+func TestParseSpecAcceptsContextAndBuildArgs(t *testing.T) {
+	y := "apiVersion: miabi.io/v1\nkind: Pipeline\nmetadata: { name: web }\nsteps:\n  - name: build\n    uses: build\n" +
+		"    dockerfile: docker/Dockerfile\n    context: services/api\n    build-args:\n      APP_ENV: prod\n"
+	spec, err := ParseSpec([]byte(y))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), "newer runner") {
-		t.Errorf("error should say what to do, got: %v", err)
+	st := spec.Steps[0]
+	if st.Context != "services/api" || st.BuildArgs["APP_ENV"] != "prod" {
+		t.Errorf("context = %q, build-args = %v; want both kept", st.Context, st.BuildArgs)
 	}
 }
 
@@ -190,13 +189,10 @@ func TestParseSpecValidatesBuildArgNames(t *testing.T) {
 	for _, bad := range []string{"1VERSION", "APP ENV", "APP-ENV", "APP=ENV", ""} {
 		if _, err := ParseSpec(spec(bad)); err == nil {
 			t.Errorf("build-arg name %q was accepted", bad)
-		} else if strings.Contains(err.Error(), "newer runner") {
-			t.Errorf("build-arg name %q reached the runner gate; it should fail validation first", bad)
 		}
 	}
-	// A well-formed name gets past validation and stops at the runner gate.
-	if _, err := ParseSpec(spec("APP_ENV2")); err == nil || !strings.Contains(err.Error(), "newer runner") {
-		t.Errorf("valid build-arg name should reach the runner gate, got: %v", err)
+	if _, err := ParseSpec(spec("APP_ENV2")); err != nil {
+		t.Errorf("valid build-arg name was refused: %v", err)
 	}
 }
 

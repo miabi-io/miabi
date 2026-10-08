@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/mod/semver"
+
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/quota"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
@@ -38,6 +40,9 @@ type Job struct {
 	WorkspaceID      uint
 	RequiredLabels   []string
 	RequiredFeatures []string
+	// MinVersion is the oldest runner release that can run the job, for capabilities that shipped before
+	// runners advertised features. Empty means any version.
+	MinVersion string
 }
 
 // SelectRunner picks the best eligible runner for job, or ErrNoRunner when none can take it right
@@ -124,7 +129,7 @@ func (s *Service) AvailabilityReason(job Job) string {
 		return "no runner is registered for this workspace — add one in Settings → Runners"
 	}
 	loads, _ := s.activeCounts()
-	var enabled, connected, withCapacity, labelMatch, featureMatch int
+	var enabled, connected, withCapacity, labelMatch, featureMatch, versionMatch int
 	for i := range candidates {
 		r := &candidates[i]
 		if !r.Enabled || r.Cordoned {
@@ -143,6 +148,10 @@ func (s *Service) AvailabilityReason(job Job) string {
 			continue
 		}
 		featureMatch++
+		if !versionAtLeast(r.Version, job.MinVersion) {
+			continue
+		}
+		versionMatch++
 		if loads[r.ID] < r.Concurrency {
 			withCapacity++
 		}
@@ -156,6 +165,8 @@ func (s *Service) AvailabilityReason(job Job) string {
 		return "no connected runner matches the job's required labels"
 	case featureMatch == 0:
 		return "no connected runner supports " + strings.Join(job.RequiredFeatures, ", ") + " — upgrade the runners to a release that does"
+	case versionMatch == 0:
+		return "no connected runner is at version " + job.MinVersion + " or newer, which this job needs — upgrade the runners"
 	case withCapacity == 0:
 		return "all runners are busy (at their concurrency limit); the build will start when one frees up"
 	}
@@ -218,7 +229,25 @@ func eligible(r *models.Runner, job Job, connected bool) bool {
 	if !inScope(r, job.WorkspaceID) {
 		return false
 	}
-	return labelsSatisfy(r.Labels, job.RequiredLabels) && labelsSatisfy(r.Features, job.RequiredFeatures)
+	return labelsSatisfy(r.Labels, job.RequiredLabels) && labelsSatisfy(r.Features, job.RequiredFeatures) &&
+		versionAtLeast(r.Version, job.MinVersion)
+}
+
+// versionAtLeast reports whether a runner's self-reported version satisfies min. Release builds report
+// "0.1.0" or "v0.1.0"; a source build reports "dev" and is taken to be current. Anything else, including
+// an empty version from a runner too old to send one, is too old.
+func versionAtLeast(have, min string) bool {
+	if min == "" || have == "dev" {
+		return true
+	}
+	canon := func(v string) string {
+		if v = strings.TrimSpace(v); v != "" && !strings.HasPrefix(v, "v") {
+			v = "v" + v
+		}
+		return v
+	}
+	have = canon(have)
+	return semver.IsValid(have) && semver.Compare(have, canon(min)) >= 0
 }
 
 // inScope reports whether a runner may serve the workspace: an owned runner must

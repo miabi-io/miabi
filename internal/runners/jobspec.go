@@ -126,10 +126,14 @@ func buildConfig(s *models.PipelineStepRun, in JobInputs) *proto.BuildConfig {
 	noCache := s.NoCache || in.CacheCold
 	cacheFrom, cacheTo := CacheRefs(in.Repository, in.Branch, in.CacheTrunk, in.CacheGeneration)
 	df := strings.TrimSpace(s.Dockerfile)
-	if df == "" && !noCache && cacheTo == "" && len(s.Platforms) == 0 {
+	buildCtx := strings.TrimSpace(s.BuildContext)
+	if df == "" && buildCtx == "" && len(s.BuildArgs) == 0 && !noCache && cacheTo == "" && len(s.Platforms) == 0 {
 		return nil
 	}
-	cfg := &proto.BuildConfig{Dockerfile: df, NoCache: noCache, CacheFrom: cacheFrom, CacheTo: cacheTo, Platforms: s.Platforms}
+	cfg := &proto.BuildConfig{
+		Dockerfile: df, Context: buildCtx, BuildArgs: s.BuildArgs,
+		NoCache: noCache, CacheFrom: cacheFrom, CacheTo: cacheTo, Platforms: s.Platforms,
+	}
 	if df == "" {
 		// nil already meant "Dockerfile at the source root"; a config sent for the cache or platforms alone
 		// must not flip that to auto-detection and turn a broken build into a silent buildpack one.
@@ -176,6 +180,21 @@ func appendKV(env []string, k, v string) []string {
 }
 
 func utos(u uint) string { return strconv.FormatUint(uint64(u), 10) }
+
+// minBuildInputsVersion is the first runner release that honours BuildConfig.Context and BuildArgs. They
+// predate feature advertising, and an older runner drops both without a word, so it is gated by version.
+const minBuildInputsVersion = "0.0.8"
+
+// requiredRunnerVersion is the oldest runner release the run's steps can run on, or "" for any.
+func requiredRunnerVersion(steps []models.PipelineStepRun) string {
+	for i := range steps {
+		s := &steps[i]
+		if s.Uses == "build" && (strings.TrimSpace(s.BuildContext) != "" || len(s.BuildArgs) > 0) {
+			return minBuildInputsVersion
+		}
+	}
+	return ""
+}
 
 // requiredFeatures are the runner features the run's steps depend on.
 func requiredFeatures(steps []models.PipelineStepRun) []string {
