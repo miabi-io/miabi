@@ -3079,8 +3079,7 @@
       "hint": "Modifie l’affichage des heures ; elles sont toujours stockées en UTC.",
       "label": "Fuseau horaire"
     },
-    "title": "Préférences",
-    "utc": "UTC"
+    "title": "Préférences"
   },
   "processes": {
     "noProcesses": "Aucun processus.",

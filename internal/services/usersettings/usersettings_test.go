@@ -5,6 +5,7 @@ package usersettings
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/miabi-io/miabi/internal/models"
@@ -119,6 +120,24 @@ func TestSaveValidatesEnums(t *testing.T) {
 	view := "../../etc/passwd"
 	if _, err := s.Save(1, Update{LandingView: &view}); !errors.Is(err, ErrInvalidLandingView) {
 		t.Fatalf("landing view %q = %v, want ErrInvalidLandingView", view, err)
+	}
+	for _, tz := range []string{"Local", "Mars/Olympus", "+02:00", "../../etc/passwd"} {
+		if _, err := s.Save(1, Update{Timezone: &tz}); !errors.Is(err, ErrInvalidTimezone) {
+			t.Fatalf("timezone %q = %v, want ErrInvalidTimezone", tz, err)
+		}
+	}
+}
+
+func TestSaveAcceptsIANATimezones(t *testing.T) {
+	s := NewService(&fakeUsers{}, &fakeSettings{}, fakeMembers{})
+	for _, tz := range []string{"UTC", "Africa/Kinshasa", "America/Argentina/Buenos_Aires", " Europe/Paris "} {
+		out, err := s.Save(1, Update{Timezone: &tz})
+		if err != nil {
+			t.Fatalf("timezone %q: %v", tz, err)
+		}
+		if want := strings.TrimSpace(tz); out.Timezone != want {
+			t.Errorf("saved timezone = %q, want %q", out.Timezone, want)
+		}
 	}
 }
 

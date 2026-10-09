@@ -10,6 +10,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { useLanguageStore } from '@/stores/language'
 import { useI18n } from 'vue-i18n'
 import { authApi } from '@/api/auth'
+import { timezoneOptions } from '@/composables/timezones'
 
 const auth = useAuthStore()
 const language = useLanguageStore()
@@ -22,6 +23,7 @@ const { workspaces } = storeToRefs(ws)
 const saving = ref(false)
 const defaultWorkspaceId = ref<number | null>(auth.user?.default_workspace_id ?? null)
 const timezone = ref(auth.user?.preferences?.timezone || 'UTC')
+const timezones = computed(() => timezoneOptions(timezone.value))
 const locale = ref(resolveLanguage(auth.user?.preferences?.locale))
 const landingView = ref(auth.user?.preferences?.landing_view || 'dashboard')
 
@@ -188,7 +190,9 @@ async function saveDisplay() {
         </div>
         <div class="form-group">
           <label class="form-label" for="tz">{{ t('preferences.timezone.label') }}</label>
-          <input id="tz" v-model="timezone" class="form-input mono" :placeholder="$t('preferences.utc')" />
+          <select id="tz" v-model="timezone" class="form-select">
+            <option v-for="tz in timezones" :key="tz.value" :value="tz.value">{{ tz.label }}</option>
+          </select>
           <p class="form-hint">
 {{ t('preferences.timezone.hint') }}
             <i18n-t v-if="detectedTimezone && detectedTimezone !== timezone" keypath="preferences.timezone.detected" tag="span">

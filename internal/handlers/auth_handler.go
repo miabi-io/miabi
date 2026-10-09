@@ -651,7 +651,7 @@ func (h *AuthHandler) Me(c *okapi.Context) error {
 type UpdatePreferencesRequest struct {
 	Body struct {
 		Theme       *string `json:"theme,omitempty"`
-		Timezone    *string `json:"timezone,omitempty" format:"timezone"`
+		Timezone    *string `json:"timezone,omitempty" format:"timezone" minLength:"1" example:"Africa/Kinshasa" description:"IANA time zone name"`
 		Accent      *string `json:"accent,omitempty"`
 		Locale      *string `json:"locale,omitempty"`
 		LandingView *string `json:"landing_view,omitempty"`
@@ -672,7 +672,8 @@ func (h *AuthHandler) UpdatePreferences(c *okapi.Context, req *UpdatePreferences
 			return c.AbortForbidden(err.Error())
 		}
 		if errors.Is(err, usersettings.ErrInvalidTheme) || errors.Is(err, usersettings.ErrInvalidAccent) ||
-			errors.Is(err, usersettings.ErrInvalidLocale) || errors.Is(err, usersettings.ErrInvalidLandingView) {
+			errors.Is(err, usersettings.ErrInvalidLocale) || errors.Is(err, usersettings.ErrInvalidLandingView) ||
+			errors.Is(err, usersettings.ErrInvalidTimezone) {
 			return c.AbortBadRequest(err.Error())
 		}
 		return c.AbortInternalServerError("failed to save preferences", err)

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/miabi-io/miabi/internal/models"
 )
@@ -20,6 +21,7 @@ var (
 	ErrInvalidAccent      = errors.New("accent must be one of: default, blue, indigo, slate, orange, lime")
 	ErrInvalidLocale      = fmt.Errorf("locale must be one of: %s", strings.Join(models.Locales(), ", "))
 	ErrInvalidLandingView = errors.New("landing view is not a known console section")
+	ErrInvalidTimezone    = errors.New("timezone must be an IANA time zone name, such as Europe/Paris")
 	ErrAccentLocked       = errors.New("the accent is set by your organization")
 )
 
@@ -131,6 +133,13 @@ func (s *Service) Save(userID uint, in Update) (*models.UserSetting, error) {
 			return nil, ErrInvalidLocale
 		}
 	}
+	var tz string
+	if in.Timezone != nil {
+		tz = strings.TrimSpace(*in.Timezone)
+		if tz != "" && !ValidTimezone(tz) {
+			return nil, ErrInvalidTimezone
+		}
+	}
 	var view string
 	if in.LandingView != nil {
 		view = strings.ToLower(strings.TrimSpace(*in.LandingView))
@@ -153,10 +162,8 @@ func (s *Service) Save(userID uint, in Update) (*models.UserSetting, error) {
 		cur.LandingView = view
 	}
 
-	if in.Timezone != nil {
-		if tz := strings.TrimSpace(*in.Timezone); tz != "" {
-			cur.Timezone = tz
-		}
+	if tz != "" {
+		cur.Timezone = tz
 	}
 	if locale != "" {
 		cur.Locale = locale
@@ -190,4 +197,14 @@ func (s *Service) AdoptFirstWorkspace(userID, workspaceID uint) {
 		return
 	}
 	_ = s.users.SetDefaultWorkspace(userID, &workspaceID)
+}
+
+// ValidTimezone reports whether tz is an IANA time zone name the server's tz database knows. "Local" is
+// refused: it names the server's zone, not the user's.
+func ValidTimezone(tz string) bool {
+	if tz == "" || tz == "Local" {
+		return false
+	}
+	_, err := time.LoadLocation(tz)
+	return err == nil
 }
