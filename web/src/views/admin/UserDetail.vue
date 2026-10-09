@@ -267,6 +267,8 @@ async function applyActive(id: number, active: boolean) {
 // --- Scheduled deletion (grace period) + ownership transfer ----------------
 
 const pendingDeletion = computed(() => !!user.value?.scheduled_deletion_at)
+// A service account has no password or 2FA and is never a platform admin; the API refuses those actions.
+const isService = computed(() => user.value?.kind === 'service')
 const deletionCountdown = computed(() => {
   const at = user.value?.scheduled_deletion_at
   if (!at) return ''
@@ -396,7 +398,10 @@ function eventSeverity(e: AdminEvent): string {
           <div class="header-title">
             <h1>
               {{ user.name }}
-              <span class="badge" :class="user.role === 'admin' ? 'badge-info' : 'badge-neutral'">
+              <span v-if="isService" class="badge badge-neutral">
+                <span class="mdi mdi-robot-outline"></span> service account
+              </span>
+              <span v-else class="badge" :class="user.role === 'admin' ? 'badge-info' : 'badge-neutral'">
                 {{ user.role }}
               </span>
               <span v-if="pendingDeletion" class="badge badge-danger">Pending deletion</span>
@@ -408,17 +413,17 @@ function eventSeverity(e: AdminEvent): string {
         </div>
 
         <div v-if="canManage" class="header-actions">
-          <button class="btn btn-secondary btn-sm" :disabled="busy" @click="toggleRole">
+          <button v-if="!isService" class="btn btn-secondary btn-sm" :disabled="busy" @click="toggleRole">
             <span class="mdi" :class="user.role === 'admin' ? 'mdi-arrow-down-bold' : 'mdi-shield-account'"></span>
             {{ user.role === 'admin' ? 'Demote to user' : 'Promote to admin' }}
           </button>
           <button class="btn btn-secondary btn-sm" :disabled="busy" @click="revoke">
             <span class="mdi mdi-logout-variant"></span> Revoke sessions
           </button>
-          <button v-if="user.two_factor_enabled" class="btn btn-secondary btn-sm" :disabled="busy" @click="disableTwoFactor">
+          <button v-if="user.two_factor_enabled && !isService" class="btn btn-secondary btn-sm" :disabled="busy" @click="disableTwoFactor">
             <span class="mdi mdi-shield-off-outline"></span> Disable 2FA
           </button>
-          <button class="btn btn-secondary btn-sm" :disabled="busy" @click="resetPassword" title="Generate a new password for this user (irreversible)">
+          <button v-if="!isService" class="btn btn-secondary btn-sm" :disabled="busy" @click="resetPassword" title="Generate a new password for this user (irreversible)">
             <span class="mdi mdi-lock-reset"></span> Reset password
           </button>
           <!-- Pending deletion: cancel it, or force it through now (skip the grace period). -->
@@ -514,7 +519,12 @@ function eventSeverity(e: AdminEvent): string {
         <div class="card-body details">
           <div class="detail">
             <span class="text-muted">Role</span>
-            <span class="badge" :class="user.role === 'admin' ? 'badge-info' : 'badge-neutral'">{{ user.role }}</span>
+            <span v-if="isService" class="text-sm">
+              Service account of
+              <RouterLink :to="{ name: 'admin-workspace-detail', params: { id: user.service_workspace_id } }">workspace #{{ user.service_workspace_id }}</RouterLink>
+              — its role is set there
+            </span>
+            <span v-else class="badge" :class="user.role === 'admin' ? 'badge-info' : 'badge-neutral'">{{ user.role }}</span>
           </div>
           <div class="detail">
             <span class="text-muted">Status</span>

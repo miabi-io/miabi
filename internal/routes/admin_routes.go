@@ -59,8 +59,10 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Path:        "/users",
 			Group:       g,
 			Middlewares: admin,
-			Handler:     r.h.adminUser.List,
+			Handler:     okapi.H(r.h.adminUser.List),
 			Summary:     "List platform users",
+			Request:     &handlers.AdminListUsersRequest{},
+			Response:    &dto.PageableResponse[models.User]{},
 		},
 		{
 			Method:      http.MethodPost,

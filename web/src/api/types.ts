@@ -480,6 +480,9 @@ export interface AdminUser {
   username?: string
   email: string
   role: 'admin' | 'user'
+  // 'service' is a workspace-owned service account: API keys only, never a platform admin.
+  kind?: 'user' | 'service'
+  service_workspace_id?: number | null
   active: boolean
   two_factor_enabled?: boolean
   email_verified_at?: string | null
