@@ -109,6 +109,16 @@ func (r *UserRepository) ListAdminIDs() ([]uint, error) {
 	return ids, err
 }
 
+// FindByIDs returns the users with the given ids, in no particular order; unknown ids are skipped.
+func (r *UserRepository) FindByIDs(ids []uint) ([]models.User, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var users []models.User
+	err := r.db.Where("id IN ?", ids).Find(&users).Error
+	return users, err
+}
+
 // ListServiceAccounts returns the active service accounts a workspace owns, oldest first.
 func (r *UserRepository) ListServiceAccounts(workspaceID uint) ([]models.User, error) {
 	var users []models.User

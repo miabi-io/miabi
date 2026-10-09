@@ -1350,7 +1350,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			adminDomain:         handlers.NewAdminDomainHandler(db, domainRepo, routeRepo, domainService, auditLogger),
 			adminRoute:          handlers.NewAdminRouteHandler(db, routeRepo, workspaceRepo, routeService, auditLogger),
 			adminMetrics:        handlers.NewAdminMetricsHandler(db, dockerClient, redisClient, time.Now()),
-			adminEvent:          handlers.NewAdminEventHandler(auditRepo, bus, ee),
+			adminEvent:          handlers.NewAdminEventHandler(auditRepo, userRepo, bus, ee),
 			adminSetting:        handlers.NewAdminSettingHandler(settingRepo, settingsProvider, auditLogger),
 			adminBranding:       handlers.NewAdminBrandingHandler(brandingService, ee, auditLogger),
 			capability:          handlers.NewCapabilityHandler(cfg.ContainerGrantsEnabled, appRepo, workspaceRepo),

@@ -390,7 +390,7 @@ func (h *WorkspaceHandler) AuditLog(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortInternalServerError("failed to list audit log", err)
 	}
-	return paginated(c, entries, total, page, size)
+	return paginated(c, withActors(h.users, entries), total, page, size)
 }
 
 // AuditLogDetail is a single audit entry enriched with the actor's name/email,
@@ -399,6 +399,8 @@ type AuditLogDetail struct {
 	models.AuditLog
 	ActorName  string `json:"actor_name,omitempty"`
 	ActorEmail string `json:"actor_email,omitempty"`
+	// ActorKind is "service" when a service account performed the action.
+	ActorKind string `json:"actor_kind,omitempty"`
 }
 
 // GetAuditLog returns a single audit entry (admin+), scoped to the workspace and
@@ -423,7 +425,7 @@ func (h *WorkspaceHandler) GetAuditLog(c *okapi.Context) error {
 	detail := AuditLogDetail{AuditLog: *entry}
 	if entry.ActorID != nil {
 		if u, err := h.users.FindByID(*entry.ActorID); err == nil {
-			detail.ActorName, detail.ActorEmail = u.Name, u.Email
+			detail.ActorName, detail.ActorEmail, detail.ActorKind = u.Name, u.Email, u.Kind
 		}
 	}
 	return ok(c, detail)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/enterprise"
+	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
@@ -18,12 +19,13 @@ import (
 // an Enterprise feature, so every endpoint is gated on the audit_log entitlement.
 type AdminEventHandler struct {
 	audit *repositories.AuditLogRepository
+	users *repositories.UserRepository
 	bus   *eventbus.Bus
 	ee    enterprise.EE
 }
 
-func NewAdminEventHandler(auditRepo *repositories.AuditLogRepository, bus *eventbus.Bus, ee enterprise.EE) *AdminEventHandler {
-	return &AdminEventHandler{audit: auditRepo, bus: bus, ee: ee}
+func NewAdminEventHandler(auditRepo *repositories.AuditLogRepository, users *repositories.UserRepository, bus *eventbus.Bus, ee enterprise.EE) *AdminEventHandler {
+	return &AdminEventHandler{audit: auditRepo, users: users, bus: bus, ee: ee}
 }
 
 // List returns recent platform events, paginated and filterable (page/size,
@@ -38,7 +40,7 @@ func (h *AdminEventHandler) List(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortInternalServerError("failed to list events", err)
 	}
-	return paginated(c, entries, total, page, size)
+	return paginated(c, withActors(h.users, entries), total, page, size)
 }
 
 // Get returns a single event.
@@ -54,7 +56,7 @@ func (h *AdminEventHandler) Get(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortNotFound("event not found")
 	}
-	return ok(c, entry)
+	return ok(c, withActors(h.users, []models.AuditLog{*entry})[0])
 }
 
 // Stream pushes live events over SSE as they are recorded.
@@ -73,6 +75,9 @@ func (h *AdminEventHandler) Stream(c *okapi.Context) error {
 		case e, open := <-ch:
 			if !open {
 				return nil
+			}
+			if entry, isLog := e.Data.(*models.AuditLog); isLog && entry != nil {
+				e.Data = withActors(h.users, []models.AuditLog{*entry})[0]
 			}
 			_ = c.SSESendJSON(e)
 		}

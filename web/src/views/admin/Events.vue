@@ -201,7 +201,15 @@ onBeforeUnmount(() => {
                   {{ ev.target_type }}<template v-if="ev.target_id"> {{ ev.target_id }}</template>
                 </span>
               </td>
-              <td class="cell-sub">{{ ev.actor_id ?? '—' }}</td>
+              <td class="cell-sub">
+                <template v-if="ev.actor">
+                  {{ ev.actor.name || ev.actor.email }}
+                  <span v-if="ev.actor.kind === 'service'" class="badge badge-neutral" title="Service account">
+                    <span class="mdi mdi-robot-outline"></span> service account
+                  </span>
+                </template>
+                <template v-else>{{ ev.actor_id ?? '—' }}</template>
+              </td>
               <td class="cell-sub">{{ ev.workspace_id ?? 'platform' }}</td>
               <td class="cell-sub">{{ ev.ip_address || '—' }}</td>
               <td class="cell-sub">{{ fmtDate(ev.created_at) }}</td>
@@ -233,7 +241,15 @@ onBeforeUnmount(() => {
             <dt class="text-muted">Target</dt>
             <dd>{{ selected.target_type }}<template v-if="selected.target_id"> {{ selected.target_id }}</template></dd>
             <dt class="text-muted">Actor</dt>
-            <dd>{{ selected.actor_id ?? '—' }}</dd>
+            <dd>
+              <template v-if="selected.actor">
+                {{ selected.actor.name }} · {{ selected.actor.email }} (#{{ selected.actor.id }})
+                <span v-if="selected.actor.kind === 'service'" class="badge badge-neutral">
+                  <span class="mdi mdi-robot-outline"></span> service account
+                </span>
+              </template>
+              <template v-else>{{ selected.actor_id ?? '—' }}</template>
+            </dd>
             <dt class="text-muted">Workspace</dt>
             <dd>{{ selected.workspace_id ?? 'platform' }}</dd>
             <dt class="text-muted">IP</dt>

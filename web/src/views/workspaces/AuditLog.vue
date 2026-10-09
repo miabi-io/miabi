@@ -110,11 +110,20 @@ function when(ts: string): string {
       <div v-else class="table-wrapper">
         <table>
           <thead>
-            <tr><th>{{ $t('audit.action') }}</th><th>{{ $t('audit.target') }}</th><th>{{ $t('audit.ip') }}</th><th class="text-right">{{ $t('audit.when') }}</th></tr>
+            <tr><th>{{ $t('audit.action') }}</th><th>{{ $t('audit.actor') }}</th><th>{{ $t('audit.target') }}</th><th>{{ $t('audit.ip') }}</th><th class="text-right">{{ $t('audit.when') }}</th></tr>
           </thead>
           <tbody>
             <tr v-for="a in logs" :key="a.id" class="row-clickable" @click="router.push(`/audit-log/${a.id}`)">
               <td><span class="badge" :class="actionBadge(a.action)">{{ a.action }}</span></td>
+              <td class="cell-sub">
+                <template v-if="a.actor">
+                  {{ a.actor.name || a.actor.email }}
+                  <span v-if="a.actor.kind === 'service'" class="badge badge-neutral" :title="$t('audit.serviceAccount')">
+                    <span class="mdi mdi-robot-outline"></span> {{ $t('audit.serviceAccount') }}
+                  </span>
+                </template>
+                <template v-else>{{ a.actor_id ? `#${a.actor_id}` : '—' }}</template>
+              </td>
               <td class="cell-sub">{{ a.target_type }}<template v-if="a.target_id"> #{{ a.target_id }}</template></td>
               <td class="cell-sub">{{ a.ip_address || '—' }}</td>
               <td class="text-right cell-sub">{{ when(a.created_at) }}</td>
