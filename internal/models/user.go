@@ -68,7 +68,9 @@ type User struct {
 	UpdatedAt                time.Time  `json:"updated_at"`
 }
 
-func (u *User) IsAdmin() bool { return u.Role == SystemRoleAdmin }
+// IsAdmin reports whether u is a platform admin. A service account never is, whatever its role
+// column says: its keys would otherwise carry platform-wide power outside its workspace.
+func (u *User) IsAdmin() bool { return u.Role == SystemRoleAdmin && !u.IsService() }
 
 // IsService reports whether this is a service account.
 func (u *User) IsService() bool { return u.Kind == UserKindService }

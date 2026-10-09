@@ -75,7 +75,7 @@ func (h *APIKeyHandler) Create(c *okapi.Context, req *CreateAPIKeyRequest) error
 		return c.AbortBadRequest("invalid scope", err)
 	}
 	if h.gate != nil && h.users != nil && req.Body.WorkspaceID == nil && grantsAdmin(scopes) {
-		if u, uerr := h.users.FindByID(userID); uerr == nil && u.Role == models.SystemRoleAdmin {
+		if u, uerr := h.users.FindByID(userID); uerr == nil && u.IsAdmin() {
 			if ferr := middlewares.FreshUnlock(c, h.gate); ferr != nil {
 				return c.AbortForbidden(ferr.Error(), ferr)
 			}

@@ -46,7 +46,7 @@ func RequireSystemAdmin(users *repositories.UserRepository, gate *elevation.Serv
 			}
 		}
 		user, err := users.FindByID(uid)
-		if err != nil || user.Role != models.SystemRoleAdmin {
+		if err != nil || !user.IsAdmin() {
 			return c.AbortForbidden("platform admin required")
 		}
 		if gate != nil {
