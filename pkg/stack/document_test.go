@@ -99,6 +99,8 @@ func TestTheKindedOnlySettingsSurviveTheRoundTrip(t *testing.T) {
 		External:              ExternalSpec{BaseDomain: "apps.example.com", CertProvider: "cloudflare"},
 		DNS:                   DNSSpec{ReconcileMinutes: 30},
 		License:               LicenseSpec{File: "/etc/miabi/license.jwt"},
+		GatewayTrustedProxies: []string{"173.245.48.0/20", "2400:cb00::/32"},
+		ServerTrustedProxies:  []string{"10.62.0.0/16"},
 		Backup: &BackupSpec{
 			Schedule:    "0 3 * * *",
 			Destination: BackupDestination{Bucket: "b", Region: "eu-west-3", UseSSL: &yes, Path: "prod"},

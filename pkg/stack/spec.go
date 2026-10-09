@@ -188,6 +188,9 @@ func controlPlaneSpec(m *Manifest, name, image string) docker.RunSpec {
 	// already reads, so the manifest pins them through the mechanisms that exist rather than
 	// growing a reconciler of its own.
 	spec.Env = append(spec.Env, installEnv(m)...)
+	if proxies := m.Install.ServerTrustedProxies; len(proxies) > 0 {
+		spec.Env = append(spec.Env, envTrustedProxies+"="+strings.Join(proxies, ","))
+	}
 
 	// The operator's own variables, last. Normalize has already refused any key Miabi sets above, so this can never
 	// shadow one — there are no duplicate keys, and therefore no ordering rule to reason about. Sorted, because Go

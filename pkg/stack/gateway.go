@@ -209,11 +209,19 @@ func (s *Service) hostPath(ctx context.Context, path string) (host string, mappe
 // gatewayConfigEnv is the environment the gateway config interpolates, without the
 // operator's extras — used by the validator, which only needs the file to parse.
 func gatewayConfigEnv(m *Manifest) []string {
-	return []string{
+	env := []string{
 		"MIABI_DOMAIN=" + m.Domain,
 		"MIABI_ACME_EMAIL=" + m.ACMEEmail,
 		"MIABI_REDIS_PASSWORD=" + m.Secrets.RedisPassword,
 	}
+	// Through env rather than goma.yml, which is the operator's file once edited and is never rewritten.
+	if proxies := m.Install.GatewayTrustedProxies; len(proxies) > 0 {
+		env = append(env,
+			"GOMA_PROXY_ENABLED=true",
+			"GOMA_PROXY_TRUSTED_PROXIES="+strings.Join(proxies, ","),
+		)
+	}
+	return env
 }
 
 func writeFile(path string, body []byte) error {

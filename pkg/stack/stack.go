@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"slices"
 	"strings"
@@ -315,7 +316,70 @@ func (m *Manifest) normalizeInstall() error {
 	if d := in.DNS.ReconcileMinutes; d < 0 {
 		return fmt.Errorf("networking.dns.reconcileMinutes cannot be negative (got %d)", d)
 	}
+	proxies, err := normalizeTrustedProxies(in.GatewayTrustedProxies)
+	if err != nil {
+		return fmt.Errorf("gateway.trustedProxies: %w", err)
+	}
+	in.GatewayTrustedProxies = proxies
+	if err := m.normalizeServerTrustedProxies(); err != nil {
+		return err
+	}
 	return m.normalizeBackup()
+}
+
+// normalizeServerTrustedProxies gives the document's server.trustedProxies its value: an older
+// server.env entry moves into it, and an empty one resolves to the private network so Save writes the
+// default back where the operator can see it. The flat schema has no field, so it keeps the env entry.
+func (m *Manifest) normalizeServerTrustedProxies() error {
+	if !m.kinded {
+		return nil
+	}
+	in := &m.Install
+	if raw, ok := m.Env[envTrustedProxies]; ok {
+		if len(in.ServerTrustedProxies) > 0 {
+			return fmt.Errorf("server.trustedProxies and server.env %s are both set — keep only "+
+				"server.trustedProxies", envTrustedProxies)
+		}
+		in.ServerTrustedProxies = strings.Split(raw, ",")
+		delete(m.Env, envTrustedProxies)
+	}
+	proxies, err := normalizeTrustedProxies(in.ServerTrustedProxies)
+	if err != nil {
+		return fmt.Errorf("server.trustedProxies: %w", err)
+	}
+	if len(proxies) == 0 {
+		proxies = m.controlPlaneTrustedProxies()
+	}
+	in.ServerTrustedProxies = proxies
+	return nil
+}
+
+// normalizeTrustedProxies checks each entry is an IP or a CIDR. Goma would otherwise log the bad entry
+// and drop proxy mode entirely, and every request would quietly carry the CDN's address again.
+func normalizeTrustedProxies(in []string) ([]string, error) {
+	var out []string
+	for _, raw := range in {
+		entry := strings.TrimSpace(raw)
+		if entry == "" {
+			continue
+		}
+		var bits int
+		if ip := net.ParseIP(entry); ip == nil {
+			_, ipnet, err := net.ParseCIDR(entry)
+			if err != nil {
+				return nil, fmt.Errorf("%q is neither an IP address nor a CIDR", raw)
+			}
+			bits, _ = ipnet.Mask.Size()
+		} else {
+			bits = -1
+		}
+		if bits == 0 {
+			return nil, fmt.Errorf("%q trusts every address, which lets any client choose its own IP "+
+				"and walk past IP allowlists and rate limits; list your proxy's ranges instead", raw)
+		}
+		out = append(out, entry)
+	}
+	return out, nil
 }
 
 // normalizeBackup enforces the rule the control plane already applies to the destination: it
@@ -357,8 +421,9 @@ const (
 	// writing it down makes it discoverable instead of folklore.
 	DefaultLogLevel = "info"
 
-	envTimezone = "TZ"
-	envLogLevel = "MIABI_LOG_LEVEL"
+	envTimezone       = "TZ"
+	envLogLevel       = "MIABI_LOG_LEVEL"
+	envTrustedProxies = "MIABI_TRUSTED_PROXIES"
 )
 
 // logLevels are the values the control plane accepts. Validating here turns a typo into an instant, precise
@@ -378,6 +443,20 @@ func (m *Manifest) seedEnvDefaults() {
 	if _, ok := m.Env[envLogLevel]; !ok {
 		m.Env[envLogLevel] = DefaultLogLevel
 	}
+	if _, ok := m.Env[envTrustedProxies]; !ok && !m.kinded {
+		m.Env[envTrustedProxies] = strings.Join(m.controlPlaneTrustedProxies(), ",")
+	}
+}
+
+// controlPlaneTrustedProxies is the private network: the control plane sits on nothing else, so the gateway
+// is the only peer whose forwarded headers it should believe. Unset, it would believe them from anyone.
+func (m *Manifest) controlPlaneTrustedProxies() []string {
+	proxies := []string{m.InternalNetwork.Subnet}
+	if m.InternalNetwork.IPv6 != nil && *m.InternalNetwork.IPv6 {
+		// Docker allocates the network's IPv6 subnet from the ULA range when none is configured.
+		proxies = append(proxies, "fc00::/7")
+	}
+	return proxies
 }
 
 // normalizeEnv validates the operator's extra environment variables and refuses any Miabi sets itself. The

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -92,9 +93,13 @@ type ACME struct {
 type ServerSpec struct {
 	Image string `yaml:"image,omitempty"`
 	// HostProc is a pointer because absent must mean on.
-	HostProc  *bool             `yaml:"hostProc,omitempty"`
-	DockerGid string            `yaml:"dockerGid,omitempty"`
-	Env       map[string]string `yaml:"env,omitempty"`
+	HostProc  *bool  `yaml:"hostProc,omitempty"`
+	DockerGid string `yaml:"dockerGid,omitempty"`
+	// TrustedProxies are the IPs or CIDRs the control plane believes X-Forwarded-For and X-Real-IP from.
+	// Defaults to the private network, the only one the gateway reaches it on; change it with that
+	// network's subnet.
+	TrustedProxies []string          `yaml:"trustedProxies,omitempty"`
+	Env            map[string]string `yaml:"env,omitempty"`
 }
 
 // ImageSpec pins a component that has nothing to configure but the image it runs.
@@ -111,6 +116,10 @@ type GatewaySpec struct {
 	// config last written, which is what keeps a customized goma.yml from being overwritten.
 	ConfigSha string            `yaml:"configSha,omitempty"`
 	Env       map[string]string `yaml:"env,omitempty"`
+	// TrustedProxies are the IPs or CIDRs of the proxies in front of the gateway — a CDN such as
+	// Cloudflare, or a TLS-terminating load balancer. Only connections from these may set the client IP
+	// through forwarded headers; leave it unset when the gateway faces the internet directly.
+	TrustedProxies []string `yaml:"trustedProxies,omitempty"`
 }
 
 // RegistrySpec is the built-in OCI registry. The host anchors every image reference Miabi has
@@ -239,6 +248,8 @@ type InstallSettings struct {
 	DNS                   DNSSpec
 	Backup                *BackupSpec
 	License               LicenseSpec
+	GatewayTrustedProxies []string
+	ServerTrustedProxies  []string
 }
 
 // ParseDocument reads an install document. Unknown fields are refused — every other manifest parser
@@ -380,6 +391,8 @@ func (d *Document) Manifest() *Manifest {
 			DNS:                   d.Spec.Networking.DNS,
 			Backup:                copyBackup(d.Spec.Backup),
 			License:               d.Spec.License,
+			GatewayTrustedProxies: slices.Clone(d.Spec.Gateway.TrustedProxies),
+			ServerTrustedProxies:  slices.Clone(d.Spec.Server.TrustedProxies),
 		},
 	}
 	// The document keeps the gateway key with the other secrets; the manifest keeps it where the
@@ -412,18 +425,20 @@ func NewDocument(m *Manifest) *Document {
 			Endpoints: Endpoints{Web: m.WebURL, Control: m.ControlURL},
 			ACME:      ACME{Email: m.ACMEEmail, DirectoryURL: m.Install.ACMEDirectoryURL},
 			Server: ServerSpec{
-				Image:     m.Images.Miabi,
-				HostProc:  copyBool(m.HostProc),
-				DockerGid: m.DockerGID,
-				Env:       copyEnv(m.Env),
+				Image:          m.Images.Miabi,
+				HostProc:       copyBool(m.HostProc),
+				DockerGid:      m.DockerGID,
+				TrustedProxies: slices.Clone(m.Install.ServerTrustedProxies),
+				Env:            copyEnv(m.Env),
 			},
 			Database: ImageSpec{Image: m.Images.Postgres},
 			Cache:    ImageSpec{Image: m.Images.Redis},
 			Gateway: GatewaySpec{
-				Image:     m.Images.Gateway,
-				Config:    m.Gateway.Config,
-				ConfigSha: m.Gateway.ConfigSHA,
-				Env:       gatewayEnv,
+				Image:          m.Images.Gateway,
+				Config:         m.Gateway.Config,
+				ConfigSha:      m.Gateway.ConfigSHA,
+				Env:            gatewayEnv,
+				TrustedProxies: slices.Clone(m.Install.GatewayTrustedProxies),
 			},
 			Registry: RegistrySpec{
 				Enabled: m.Registry.Enabled,
