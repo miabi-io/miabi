@@ -384,6 +384,9 @@ func (h *AdminUserHandler) Update(c *okapi.Context, req *AdminUpdateUserRequest)
 	wasActive := target.Active // captured before the active flag is mutated below
 
 	if req.Body.Role != "" && req.Body.Role != string(target.Role) {
+		if target.IsService() {
+			return c.AbortBadRequest(errServiceAccountManaged.Error())
+		}
 		// Guard: an admin cannot demote themselves, and the last admin must remain.
 		if target.ID == self {
 			return c.AbortBadRequest("you cannot change your own role")
@@ -589,6 +592,9 @@ func (h *AdminUserHandler) DisableTwoFactor(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortNotFound("user not found")
 	}
+	if target.IsService() {
+		return c.AbortBadRequest(errServiceAccountManaged.Error())
+	}
 	if !target.TwoFactorEnabled {
 		return c.AbortBadRequest("two-factor authentication is not enabled for this user")
 	}
@@ -616,6 +622,9 @@ func (h *AdminUserHandler) ResetPassword(c *okapi.Context) error {
 	target, err := h.targetUser(c)
 	if err != nil {
 		return c.AbortNotFound("user not found")
+	}
+	if target.IsService() {
+		return c.AbortBadRequest(errServiceAccountManaged.Error())
 	}
 	pw, err := generatePassword()
 	if err != nil {
@@ -651,6 +660,11 @@ func generatePassword() (string, error) {
 	}
 	return string(buf), nil
 }
+
+// errServiceAccountManaged refuses platform-admin actions that make no sense for a service account: it
+// signs in with API keys only, and holds a role in its workspace, never on the platform.
+var errServiceAccountManaged = errors.New("this is a service account: it has no password or two-factor, " +
+	"and cannot be a platform admin — manage it from its workspace's service accounts")
 
 func (h *AdminUserHandler) targetUser(c *okapi.Context) (*models.User, error) {
 	id, err := strconv.Atoi(c.Param("id"))
