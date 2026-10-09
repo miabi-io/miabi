@@ -84,16 +84,19 @@ func (r *UserRepository) ExistsByUsername(username string) (bool, error) {
 	return count > 0, err
 }
 
+// Count returns the number of people, leaving out service accounts: it decides whether a sign-up is the
+// first, and so the platform admin.
 func (r *UserRepository) Count() (int64, error) {
 	var count int64
-	err := r.db.Model(&models.User{}).Count(&count).Error
+	err := r.db.Model(&models.User{}).Where("kind <> ?", models.UserKindService).Count(&count).Error
 	return count, err
 }
 
-// CountByRole returns the number of users with the given system role.
+// CountByRole returns the number of people with the given system role. A service account is left out
+// even if its role column says admin, since it is never treated as one (see models.User.IsAdmin).
 func (r *UserRepository) CountByRole(role models.SystemRole) (int64, error) {
 	var count int64
-	err := r.db.Model(&models.User{}).Where("role = ?", role).Count(&count).Error
+	err := r.db.Model(&models.User{}).Where("role = ? AND kind <> ?", role, models.UserKindService).Count(&count).Error
 	return count, err
 }
 
@@ -101,7 +104,7 @@ func (r *UserRepository) CountByRole(role models.SystemRole) (int64, error) {
 // of platform-scoped alerts (node offline, engine too old, license).
 func (r *UserRepository) ListAdminIDs() ([]uint, error) {
 	var ids []uint
-	err := r.db.Model(&models.User{}).Where("role = ?", models.SystemRoleAdmin).
+	err := r.db.Model(&models.User{}).Where("role = ? AND kind <> ?", models.SystemRoleAdmin, models.UserKindService).
 		Pluck("id", &ids).Error
 	return ids, err
 }
@@ -121,14 +124,17 @@ func (r *UserRepository) CountActive() (int64, error) {
 	return count, err
 }
 
-// List returns users matching an optional search term (name/username/email),
-// newest first, with the total count for pagination.
-func (r *UserRepository) List(search string, limit, offset int) ([]models.User, int64, error) {
+// List returns users matching an optional search term (name/username/email) and kind (empty for
+// every kind), newest first, with the total count for pagination.
+func (r *UserRepository) List(search, kind string, limit, offset int) ([]models.User, int64, error) {
 	var (
 		users []models.User
 		total int64
 	)
 	q := r.db.Model(&models.User{})
+	if kind != "" {
+		q = q.Where("kind = ?", kind)
+	}
 	if s := strings.TrimSpace(search); s != "" {
 		like := "%" + strings.ToLower(s) + "%"
 		q = q.Where("LOWER(name) LIKE ? OR LOWER(username) LIKE ? OR LOWER(email) LIKE ?", like, like, like)

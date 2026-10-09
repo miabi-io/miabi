@@ -181,10 +181,18 @@ type AdminUpdateUserRequest struct {
 	} `json:"body"`
 }
 
+// AdminListUsersRequest filters and pages the platform user list.
+type AdminListUsersRequest struct {
+	Search string `query:"search" description:"Matches name, username or email"`
+	Kind   string `query:"kind" enum:"user,service" description:"user for people, service for service accounts; omit for both"`
+	Page   int    `query:"page" default:"0"`
+	Size   int    `query:"size" default:"20"`
+}
+
 // List returns a paginated, searchable list of users.
-func (h *AdminUserHandler) List(c *okapi.Context) error {
-	page, size, offset := normalizePageParams(queryInt(c, "page", 0), queryInt(c, "size", 20))
-	users, total, err := h.users.List(c.Query("search"), size, offset)
+func (h *AdminUserHandler) List(c *okapi.Context, req *AdminListUsersRequest) error {
+	page, size, offset := normalizePageParams(req.Page, req.Size)
+	users, total, err := h.users.List(req.Search, req.Kind, size, offset)
 	if err != nil {
 		return c.AbortInternalServerError("failed to list users", err)
 	}

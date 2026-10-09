@@ -193,8 +193,10 @@ export interface LdapTestResult {
 
 export const adminApi = {
   // Users
-  listUsers: (search = '', page = 0, size = 20) =>
-    api.get<PageableResponse<AdminUser>>('/admin/users', { params: { search: search || undefined, page, size } }),
+  listUsers: (search = '', page = 0, size = 20, kind: '' | 'user' | 'service' = '') =>
+    api.get<PageableResponse<AdminUser>>('/admin/users', {
+      params: { search: search || undefined, kind: kind || undefined, page, size },
+    }),
   getUser: (id: number) => api.get<ApiResponse<AdminUserDetail>>(`/admin/users/${id}`),
   createUser: (payload: CreateUserPayload) =>
     api.post<ApiResponse<AdminUser>>('/admin/users', payload),

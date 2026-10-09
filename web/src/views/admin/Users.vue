@@ -21,13 +21,14 @@ const router = useRouter()
 const users = ref<AdminUser[]>([])
 const loading = ref(false)
 const search = ref('')
+const kind = ref<'' | 'user' | 'service'>('')
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 
 const { pageable, goToPage } = usePagination(async (page) => {
   loading.value = true
   try {
-    const res = await adminApi.listUsers(search.value.trim(), page, pageable.value.size)
+    const res = await adminApi.listUsers(search.value.trim(), page, pageable.value.size, kind.value)
     users.value = res.data.data
     pageable.value = res.data.pageable
   } catch (e) {
@@ -133,6 +134,11 @@ onBeforeUnmount(() => {
             @input="onSearchInput"
           />
         </div>
+        <select v-model="kind" class="form-select kind-filter" aria-label="Filter by account type" @change="goToPage(0)">
+          <option value="">All accounts</option>
+          <option value="user">People</option>
+          <option value="service">Service accounts</option>
+        </select>
         <span class="text-muted">{{ pageable.total_elements }} user{{ pageable.total_elements === 1 ? '' : 's' }}</span>
       </div>
 
@@ -168,7 +174,10 @@ onBeforeUnmount(() => {
                 </div>
               </td>
               <td>
-                <span class="badge" :class="u.role === 'admin' ? 'badge-success' : 'badge-warning'">{{ u.role }}</span>
+                <span v-if="u.kind === 'service'" class="badge badge-neutral" title="Workspace service account: signs in with API keys only">
+                  <span class="mdi mdi-robot-outline"></span> service account
+                </span>
+                <span v-else class="badge" :class="u.role === 'admin' ? 'badge-success' : 'badge-warning'">{{ u.role }}</span>
               </td>
               <td>
                 <span v-if="u.scheduled_deletion_at" class="badge badge-danger">Pending deletion</span>
@@ -279,6 +288,10 @@ onBeforeUnmount(() => {
 }
 .search .form-input {
   padding-left: 32px;
+}
+.kind-filter {
+  width: auto;
+  margin-right: auto;
 }
 .actions {
   display: flex;
