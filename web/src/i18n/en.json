@@ -780,6 +780,7 @@
     "noAdditionalMetadataForThis": "No additional metadata for this entry.",
     "oldestFirst": "Oldest first",
     "recentFirst": "Recent first",
+    "serviceAccount": "Service account",
     "sortOrder": "Sort order",
     "target": "Target",
     "theAuditLogIsAvailable": "The audit log is available with a Miabi Enterprise license.",

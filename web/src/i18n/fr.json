@@ -780,6 +780,7 @@
     "noAdditionalMetadataForThis": "Aucune métadonnée supplémentaire pour cette entrée.",
     "oldestFirst": "Les plus anciennes d’abord",
     "recentFirst": "Les plus récentes d’abord",
+    "serviceAccount": "Compte de service",
     "sortOrder": "Ordre de tri",
     "target": "Cible",
     "theAuditLogIsAvailable": "Le journal d’audit est disponible avec une licence Miabi Enterprise.",

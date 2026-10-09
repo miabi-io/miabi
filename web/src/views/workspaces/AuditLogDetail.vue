@@ -98,7 +98,12 @@ const prettyMetadata = computed(() => {
           </div>
           <div class="detail">
             <span class="text-muted">{{ $t('audit.actor') }}</span>
-            <span>{{ actorLabel }}</span>
+            <span>
+              {{ actorLabel }}
+              <span v-if="entry.actor_kind === 'service'" class="badge badge-neutral">
+                <span class="mdi mdi-robot-outline"></span> {{ $t('audit.serviceAccount') }}
+              </span>
+            </span>
           </div>
           <div class="detail">
             <span class="text-muted">{{ $t('audit.target') }}</span>

@@ -763,6 +763,7 @@ export interface WorkerInfo {
 export interface AdminEvent {
   id: number
   actor_id?: number | null
+  actor?: AuditActor
   workspace_id?: number | null
   action: string
   target_type: string
@@ -2402,9 +2403,18 @@ export interface PendingInvitation {
   created_at: string
 }
 
+// AuditActor is who performed an audited action; kind 'service' marks a service account.
+export interface AuditActor {
+  id: number
+  name: string
+  email: string
+  kind: 'user' | 'service'
+}
+
 export interface AuditLog {
   id: number
   actor_id?: number
+  actor?: AuditActor
   action: string
   target_type: string
   target_id: string
@@ -2419,6 +2429,7 @@ export interface AuditLogDetail extends AuditLog {
   metadata?: Record<string, unknown>
   actor_name?: string
   actor_email?: string
+  actor_kind?: 'user' | 'service'
 }
 
 export type ServerConnectivity = 'edge-gateway' | 'cluster'
