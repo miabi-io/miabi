@@ -498,3 +498,33 @@ func titles(rows []models.Notification) []string {
 	}
 	return out
 }
+
+// A service account is an active workspace member, but nobody reads its inbox: neither the broadcast nor
+// the per-user backfill may deliver to it.
+func TestServiceAccountsReceiveNoAnnouncements(t *testing.T) {
+	svc, db, _ := newService(t)
+	seedUsers(t, db)
+	ws := uint(10)
+	sa := models.User{ID: 6, Email: "sa-ci@" + models.ServiceAccountEmailDomain, Username: "sa-ci", Role: models.SystemRoleUser,
+		Active: true, Kind: models.UserKindService, ServiceWorkspaceID: &ws}
+	if err := db.Create(&sa).Error; err != nil {
+		t.Fatalf("create service account: %v", err)
+	}
+	if err := db.Create(&models.WorkspaceMember{WorkspaceID: 10, UserID: 6, Role: models.WorkspaceRoleAdmin}).Error; err != nil {
+		t.Fatalf("add member: %v", err)
+	}
+
+	for _, aud := range []models.AnnouncementAudience{models.AudienceAll, models.AudienceOwners, models.AudienceWorkspaces} {
+		a := &models.Announcement{Title: string(aud), Audience: aud, WorkspaceIDs: []uint{10}}
+		if err := svc.Create(a); err != nil {
+			t.Fatalf("create %s: %v", aud, err)
+		}
+		svc.clearSyncMarks([]uint{6})
+		svc.SyncUser(6)
+		for _, d := range deliveries(t, db, a.ID) {
+			if d.UserID == 6 {
+				t.Errorf("audience %s delivered to the service account", aud)
+			}
+		}
+	}
+}

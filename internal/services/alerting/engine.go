@@ -229,7 +229,7 @@ func (e *Engine) fanOut(workspaceID uint, alert *models.Alert, resurface, platfo
 
 // recipients resolves who should receive an alert: the system admins for a
 // platform alert on the system workspace, otherwise the workspace members whose
-// role meets the alert's minimum.
+// role meets the alert's minimum. Service accounts are members but read no inbox.
 func (e *Engine) recipients(workspaceID uint, minRole models.WorkspaceRole, platform bool) ([]uint, error) {
 	if e.sysAdmins != nil && platform {
 		return e.sysAdmins.ListAdminIDs()
@@ -240,7 +240,7 @@ func (e *Engine) recipients(workspaceID uint, minRole models.WorkspaceRole, plat
 	}
 	out := make([]uint, 0, len(members))
 	for _, m := range members {
-		if m.Role.AtLeast(minRole) {
+		if m.Role.AtLeast(minRole) && !m.User.IsService() {
 			out = append(out, m.UserID)
 		}
 	}

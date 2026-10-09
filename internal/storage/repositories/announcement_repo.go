@@ -83,10 +83,10 @@ func (r *AnnouncementRepository) UndeliveredLive(userID uint, now time.Time) ([]
 	return rows, err
 }
 
-// RecipientIDs resolves an announcement's audience to user ids. Suspended accounts
-// are excluded everywhere: a notice they cannot sign in to read is not a delivery.
+// RecipientIDs resolves an announcement's audience to user ids. Suspended accounts and service
+// accounts are excluded everywhere: a notice nobody can sign in to read is not a delivery.
 func (r *AnnouncementRepository) RecipientIDs(a *models.Announcement) ([]uint, error) {
-	q := r.db.Model(&models.User{}).Where("active = ?", true)
+	q := r.db.Model(&models.User{}).Where("active = ? AND kind <> ?", true, models.UserKindService)
 	switch a.Audience {
 	case models.AudienceAdmins:
 		q = q.Where("role = ?", models.SystemRoleAdmin)
@@ -109,7 +109,7 @@ func (r *AnnouncementRepository) RecipientIDs(a *models.Announcement) ([]uint, e
 // Matches reports whether one user falls inside an announcement's audience. The
 // backfill asks per user, where re-resolving the whole audience would be wasteful.
 func (r *AnnouncementRepository) Matches(a *models.Announcement, userID uint) (bool, error) {
-	q := r.db.Model(&models.User{}).Where("id = ? AND active = ?", userID, true)
+	q := r.db.Model(&models.User{}).Where("id = ? AND active = ? AND kind <> ?", userID, true, models.UserKindService)
 	switch a.Audience {
 	case models.AudienceAdmins:
 		q = q.Where("role = ?", models.SystemRoleAdmin)
