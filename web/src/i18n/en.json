@@ -3079,8 +3079,7 @@
       "hint": "Affects how times are displayed; they are always stored in UTC.",
       "label": "Time zone"
     },
-    "title": "Preferences",
-    "utc": "UTC"
+    "title": "Preferences"
   },
   "processes": {
     "noProcesses": "No processes.",
