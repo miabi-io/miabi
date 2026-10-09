@@ -53,7 +53,7 @@ require (
 	github.com/miabi-io/runner v0.1.0
 	github.com/miekg/dns v1.1.73
 	github.com/moby/go-archive v0.3.3
-	github.com/moby/moby/api v1.56.0
+	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.0
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.24.1
