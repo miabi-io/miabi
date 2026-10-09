@@ -282,7 +282,7 @@ func (h *WorkspaceHandler) notifyRoleChange(c *okapi.Context, wsID, userID uint,
 		return
 	}
 	member, err := h.users.FindByID(userID)
-	if err != nil {
+	if err != nil || member.IsService() {
 		return
 	}
 	ws, err := h.svc.Get(wsID)

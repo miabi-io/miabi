@@ -47,7 +47,7 @@ func (n *WorkspaceNotifier) NotifyWorkspace(workspaceID uint, minRole models.Wor
 		item.Severity = models.AlertInfo
 	}
 	for _, m := range members {
-		if !m.Role.AtLeast(minRole) {
+		if !m.Role.AtLeast(minRole) || m.User.IsService() {
 			continue
 		}
 		row := item
