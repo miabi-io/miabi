@@ -36,7 +36,7 @@ steps:
   # Container steps see the checked-out repository in /workspace, exactly as they
   # would for an application-bound pipeline.
   - name: test
-    image: golang:1.24
+    image: golang:1.27
     run: "go test ./..."
 
   - name: build

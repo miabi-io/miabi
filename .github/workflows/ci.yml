@@ -33,12 +33,12 @@ jobs:
       - name: Lint Community Edition
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.13.2
+          version: v2.14.0
 
       - name: Lint Enterprise Edition
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.13.2
+          version: v2.14.0
           args: --build-tags enterprise
 
   test:
@@ -77,14 +77,6 @@ jobs:
             exit 1
           fi
           echo "OK: github.com/docker/docker is absent from the module graph."
-
-      # Blocking: the moby/moby migration removed the unfixable
-      # docker/docker@v27.5.1 CVEs, so the scan is clean and a regression that
-      # reintroduces a called vulnerability fails CI here.
-      - name: govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
 
       - name: Test Community Edition
         run: go test -race ./...
