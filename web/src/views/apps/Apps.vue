@@ -13,6 +13,8 @@ import { networkApi } from '@/api/networks'
 import { stackApi } from '@/api/stacks'
 import { locationApi, type Location } from '@/api/locations'
 import type { Application, Registry, GitRepository, Network, Stack, AppPort, BuildMethod, RuntimeKind } from '@/api/types'
+import { apiErrorMessage } from '@/api/client'
+import { looksLikeRepoUrl } from '@/utils/gitUrl'
 import PlacementPicker from '@/components/PlacementPicker.vue'
 import LocationPicker from '@/components/LocationPicker.vue'
 import AppModal from '@/components/AppModal.vue'
@@ -79,17 +81,31 @@ function emptyForm(): AppForm {
 
 // --- Repository inspection ---
 //
-// Probing clones the repo server-side, so it is deliberately manual: the user
-// asks for it once the URL and branch are filled in. The result decides whether
+// Probing is a depth-1 clone server-side, so it runs on its own only once the input
+// settles on something that looks like a whole repository. The result decides whether
 // the pipeline toggle is offered at all.
+const INSPECT_DEBOUNCE_MS = 800
 const inspecting = ref(false)
 const inspected = ref<GitInspectResult | null>(null)
 const inspectError = ref('')
+// What the current result (or error) was probed for, so an unchanged input is never re-probed.
+let inspectedKey = ''
+// Bumped on every probe and reset, so a response for input that has since changed is dropped.
+let inspectSeq = 0
+let inspectTimer: ReturnType<typeof setTimeout> | undefined
+
+function inspectKey() {
+  return `${form.value.git_repository_id ?? ''}|${form.value.git_repo.trim()}|${form.value.git_ref.trim()}`
+}
 
 /** Reset the probe whenever the thing being probed changes. */
 function resetInspection() {
+  clearTimeout(inspectTimer)
+  inspectSeq++
+  inspecting.value = false
   inspected.value = null
   inspectError.value = ''
+  inspectedKey = ''
 }
 
 /** A short human summary of when the discovered pipeline runs. */
@@ -124,32 +140,55 @@ function removePort(i: number) {
 }
 const form = ref<AppForm>(emptyForm())
 
-  watch(() => [form.value.git_repo, form.value.git_ref, form.value.git_repository_id], resetInspection)
-
 const canInspect = computed(
   () => form.value.source_type === 'git' && (!!form.value.git_repo.trim() || !!form.value.git_repository_id),
 )
+const canAutoInspect = computed(
+  () => showCreate.value && canInspect.value && (!!form.value.git_repository_id || looksLikeRepoUrl(form.value.git_repo)),
+)
+
+watch(
+  () => [showCreate.value, form.value.source_type, form.value.git_repository_id, form.value.git_repo, form.value.git_ref] as const,
+  (now, before) => {
+    clearTimeout(inspectTimer)
+    if (inspectKey() === inspectedKey) return
+    resetInspection()
+    if (!canAutoInspect.value) return
+    // Picking a saved repository is a single deliberate choice; typing waits for a pause.
+    const pickedSaved = !!now[2] && now[2] !== before?.[2]
+    inspectTimer = setTimeout(inspectRepo, pickedSaved ? 0 : INSPECT_DEBOUNCE_MS)
+  },
+)
 
 async function inspectRepo() {
+  clearTimeout(inspectTimer)
   if (!currentWorkspaceId.value || !canInspect.value) return
+  const seq = ++inspectSeq
+  const key = inspectKey()
   inspecting.value = true
   inspectError.value = ''
   inspected.value = null
   try {
-    inspected.value = (
+    const result = (
       await gitRepositoryApi.inspect(currentWorkspaceId.value, {
         git_repo: form.value.git_repo.trim() || undefined,
         git_ref: form.value.git_ref.trim() || undefined,
         git_repository_id: form.value.git_repository_id,
       })
     ).data.data ?? null
+    if (seq !== inspectSeq) return
+    inspected.value = result
+    inspectedKey = key
     // Default the toggle on when a pipeline is found, off otherwise, so the
     // create call never claims a pipeline the probe didn't see.
-    form.value.use_pipeline = inspected.value?.has_pipeline === true
-  } catch (e: any) {
-    inspectError.value = e?.response?.data?.message || e?.message || 'Could not read the repository'
+    form.value.use_pipeline = result?.has_pipeline === true
+  } catch (e) {
+    if (seq !== inspectSeq) return
+    inspectError.value = apiErrorMessage(e, t('apps.form.inspectFailed'))
+    // An error is a result too: don't re-probe the same input until it changes.
+    inspectedKey = key
   } finally {
-    inspecting.value = false
+    if (seq === inspectSeq) inspecting.value = false
   }
 }
 async function load(id: number | null) {
@@ -413,17 +452,18 @@ function formatCreated(ts?: string) {
               </div>
               <div class="form-group">
                 <label class="form-label">{{ $t('apps.form.repoContents') }}</label>
-                <button type="button" class="btn btn-secondary btn-sm" :disabled="!canInspect || inspecting" @click="inspectRepo">
-                  <span class="mdi" :class="inspecting ? 'mdi-loading mdi-spin' : 'mdi-magnify'"></span>
-                  {{ inspecting ? 'Reading repository…' : 'Check repository' }}
-                </button>
-                <p class="form-hint">
-                  <i18n-t keypath="apps.form.inspectHint" tag="span"><template #file><code>.miabi/pipeline.yaml</code></template></i18n-t>
+                <p v-if="inspecting" class="form-hint">
+                  <span class="mdi mdi-loading mdi-spin"></span> {{ $t('apps.form.inspecting') }}
                 </p>
 
-                <p v-if="inspectError" class="form-hint text-danger">
-                  <span class="mdi mdi-alert-circle-outline"></span> {{ inspectError }}
-                </p>
+                <div v-else-if="inspectError" class="inspect-error">
+                  <p class="form-hint text-danger">
+                    <span class="mdi mdi-alert-circle-outline"></span> {{ inspectError }}
+                  </p>
+                  <button type="button" class="btn btn-secondary btn-sm" @click="inspectRepo">
+                    <span class="mdi mdi-refresh"></span> {{ $t('apps.form.inspectRetry') }}
+                  </button>
+                </div>
 
                 <div v-else-if="inspected" class="inspect-result">
                   <!-- Found a usable pipeline: offer to adopt it. -->
@@ -466,6 +506,10 @@ function formatCreated(ts?: string) {
                     and deploy.
                   </p>
                 </div>
+
+                <p v-else class="form-hint">
+                  <i18n-t keypath="apps.form.inspectHint" tag="span"><template #file><code>.miabi/pipeline.yaml</code></template></i18n-t>
+                </p>
               </div>
             </template>
             <div class="form-group">
@@ -505,7 +549,7 @@ function formatCreated(ts?: string) {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showCreate = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="creating">{{ creating ? 'Creating…' : 'Create application' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="creating || (form.source_type === 'git' && inspecting)">{{ creating ? 'Creating…' : 'Create application' }}</button>
           </div>
         </form>
       </AppModal>
@@ -525,6 +569,8 @@ function formatCreated(ts?: string) {
 .port-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .form-hint code { background: var(--bg-tertiary); padding: 1px 6px; border-radius: 4px; font-size: 12px; color: var(--text-secondary); }
 .text-danger { color: var(--danger, #dc2626); }
+.inspect-error { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.inspect-error .form-hint { margin: 0; }
 .inspect-result { margin-top: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-secondary); }
 .inspect-toggle { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; cursor: pointer; }
 .inspect-toggle input { margin-top: 3px; flex-shrink: 0; }
