@@ -799,11 +799,13 @@
   },
   "authHero": {
     "builtInContainerRegistry": "Registre de conteneurs intégré",
-    "deployScaleAndManageApplications": "Déployez, mettez à l’échelle et gérez vos applications depuis une seule plateforme intuitive.",
-    "gitopsCanaryDeployments": "GitOps et déploiements canari",
+    "ciCdPipelinesOwnRunners": "Pipelines CI/CD sur vos propres runners",
+    "footer": "PaaS open source et auto-hébergé",
+    "gitopsCanaryRollback": "GitOps, déploiements canari et retour arrière instantané",
+    "lead": "Une plateforme DevOps complète, du commit à la production, sur vos propres serveurs.",
     "managedDatabasesBackupsVolumes": "Bases de données, sauvegardes et volumes gérés",
-    "monitoringReleaseHistory": "Surveillance et historique des versions",
-    "multiTenantWorkspacesRbac": "Espaces de travail multi-locataires et RBAC",
+    "monitoringAnalyticsReleaseHistory": "Surveillance, analytique et historique des versions",
+    "multiTenantWorkspacesRbac": "Espaces d’équipe et contrôle d’accès par rôle",
     "secretsAutomaticTls": "Secrets et TLS automatique",
     "titleLine1": "L’auto-hébergement,",
     "titleLine2": "réinventé."
