@@ -41,9 +41,10 @@ import (
 )
 
 // MetaDigest records, on a converged application, the image digest the apply
-// engine last reconciled to. It lets the live snapshot report the running
-// digest so a digest-pinned manifest converges instead of perpetually drifting.
-const MetaDigest = "miabi.io/digest"
+// engine last reconciled to. Deploys pull image@digest while it is set, and the
+// live snapshot reports it so a digest-pinned manifest converges instead of
+// perpetually drifting.
+const MetaDigest = models.MetaDigest
 
 // ManagedByGitOps marks resources created/managed by the declarative apply
 // engine (GitOps or one-shot apply). Prune only ever deletes these.
