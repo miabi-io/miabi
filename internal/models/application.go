@@ -545,9 +545,13 @@ type Application struct {
 }
 
 // ImageRef composes the effective pull reference from Image and Tag; tagOverride wins when
-// non-empty. An image already carrying a tag or digest is used verbatim, otherwise the tag
-// (or "latest") is appended.
+// non-empty. Without an override, a digest pinned through MetaDigest wins over Tag, so the node
+// runs exactly that image. An image already carrying a tag or digest is used verbatim, otherwise
+// the tag (or "latest") is appended.
 func (a *Application) ImageRef(tagOverride string) string {
+	if d := a.Metadata[MetaDigest]; tagOverride == "" && d != "" && a.Image != "" && !strings.Contains(a.Image, "@") {
+		return a.Image + "@" + d
+	}
 	return ComposeImageRef(a.Image, firstNonEmpty(tagOverride, a.Tag))
 }
 

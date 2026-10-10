@@ -32,6 +32,9 @@ const (
 	// for. A manifest Database may be a dedicated instance or share one, so this maps the name
 	// back to the exact logical database it owns instead of guessing.
 	MetaDeclarativeName = "miabi.io/declarative-name"
+	// MetaDigest is the image digest a manifest pins an application to ("sha256:…"). Deploys pull
+	// image@digest while it is set; see Application.ImageRef.
+	MetaDigest = "miabi.io/digest"
 
 	// Owner reference: the entity this resource belongs to, whose lifecycle it follows. Distinct
 	// from managed-by (the mechanism of creation); owner is the parent, stored as kind+id+name so
