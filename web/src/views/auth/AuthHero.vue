@@ -51,6 +51,19 @@ defineProps<{ brandName?: string }>()
     radial-gradient(90% 70% at 0% 100%, rgba(13, 20, 36, 0.5), transparent 60%),
     linear-gradient(150deg, var(--primary-600) 0%, var(--primary-800) 70%, #2a0f4d 100%);
 }
+.auth-hero::before {
+  content: '';
+  position: absolute;
+  top: -30%;
+  left: -30%;
+  width: 90%;
+  height: 90%;
+  background:
+    radial-gradient(closest-side, rgba(255, 255, 255, 0.14), transparent),
+    radial-gradient(closest-side at 70% 80%, rgba(168, 85, 247, 0.22), transparent);
+  pointer-events: none;
+  animation: auth-hero-drift 26s ease-in-out infinite alternate;
+}
 /* faint glyph watermark */
 .auth-hero::after {
   content: '';
@@ -62,6 +75,21 @@ defineProps<{ brandName?: string }>()
   background: url('/brand/miabi-mark-white.svg') center / contain no-repeat;
   opacity: 0.06;
   pointer-events: none;
+  animation: auth-hero-spin 160s linear infinite;
+}
+@keyframes auth-hero-drift {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(45%, 30%) scale(1.15); }
+  100% { transform: translate(20%, 70%) scale(0.95); }
+}
+@keyframes auth-hero-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-hero::before,
+  .auth-hero::after {
+    animation: none;
+  }
 }
 .auth-hero-inner {
   position: relative;
