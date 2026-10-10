@@ -19,7 +19,7 @@ deploy + schedule), and [pipeline-repository.yaml](pipeline-repository.yaml)
 ```bash
 BASE=https://miabi.example.com   # your Miabi URL
 WS=acme                          # workspace name (its handle) — numeric id also works
-PIPELINE=7                       # pipeline id (or its uid)
+PIPELINE=shop-web                # pipeline name, id or uid
 APP=42                           # the Git-backed application's id (bound to the pipeline)
 TOKEN=mb_xxx                     # API token (Settings → API keys), Developer+ role
 ```
@@ -165,11 +165,12 @@ Repo → **Settings → Webhooks**:
 ### Test it locally (simulate a GitHub push)
 
 ```bash
-SECRET=8f3c...   # the secret from webhook-info
+SECRET=8f3c...                                    # the secret from webhook-info
+HOOK=/api/v1/workspaces/1/pipelines/7/webhook     # the path from webhook-info (numeric ids)
 BODY='{"ref":"refs/heads/main","after":"a1b2c3d4","head_commit":{"id":"a1b2c3d4","message":"feat: ship it"}}'
 SIG="sha256=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
 
-curl -X POST "$BASE/api/v1/workspaces/$WS/pipelines/$PIPELINE/webhook" \
+curl -X POST "$BASE$HOOK" \
   -H "Content-Type: application/json" \
   -H "X-Hub-Signature-256: $SIG" \
   -d "$BODY"

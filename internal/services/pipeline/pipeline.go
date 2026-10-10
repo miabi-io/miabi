@@ -485,6 +485,11 @@ func (s *Service) ListRunsPaged(workspaceID, pipelineID uint, limit, offset int)
 // IDByUID resolves a pipeline's portable uid to its numeric id.
 func (s *Service) IDByUID(uid string) (uint, error) { return s.repo.IDByUID(uid) }
 
+// IDByRef resolves a pipeline in a workspace from its id, uid or name.
+func (s *Service) IDByRef(workspaceID uint, ref string) (uint, error) {
+	return s.repo.IDByRef(workspaceID, ref)
+}
+
 func validateStepsAgainstBinding(spec *Spec, appID, repoID *uint) error {
 	if spec == nil {
 		return nil

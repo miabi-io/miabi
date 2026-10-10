@@ -116,10 +116,15 @@ func (h *PipelineHandler) Create(c *okapi.Context, req *CreatePipelineRequest) e
 	return created(c, p)
 }
 
+// pipelineRef resolves {pipelineID}, an id, uid or name, within the caller's workspace.
+func (h *PipelineHandler) pipelineRef(c *okapi.Context) (uint, error) {
+	return h.svc.IDByRef(middlewares.WorkspaceID(c), c.Param("pipelineID"))
+}
+
 func (h *PipelineHandler) Get(c *okapi.Context) error {
-	id, err := resolveID(c.Param("pipelineID"), h.svc.IDByUID)
+	id, err := h.pipelineRef(c)
 	if err != nil {
-		return c.AbortBadRequest("invalid pipeline id")
+		return c.AbortNotFound("pipeline not found")
 	}
 	p, err := h.svc.GetWithLastRun(middlewares.WorkspaceID(c), id)
 	if err != nil {
@@ -129,9 +134,9 @@ func (h *PipelineHandler) Get(c *okapi.Context) error {
 }
 
 func (h *PipelineHandler) Update(c *okapi.Context, req *UpdatePipelineRequest) error {
-	id, err := resolveID(c.Param("pipelineID"), h.svc.IDByUID)
+	id, err := h.pipelineRef(c)
 	if err != nil {
-		return c.AbortBadRequest("invalid pipeline id")
+		return c.AbortNotFound("pipeline not found")
 	}
 	wsID := middlewares.WorkspaceID(c)
 	in := pipeline.Input{Name: req.Body.Name, Spec: req.Body.Spec, Enabled: req.Body.Enabled}
@@ -161,9 +166,9 @@ func (h *PipelineHandler) Update(c *okapi.Context, req *UpdatePipelineRequest) e
 }
 
 func (h *PipelineHandler) Delete(c *okapi.Context) error {
-	id, err := resolveID(c.Param("pipelineID"), h.svc.IDByUID)
+	id, err := h.pipelineRef(c)
 	if err != nil {
-		return c.AbortBadRequest("invalid pipeline id")
+		return c.AbortNotFound("pipeline not found")
 	}
 	wsID := middlewares.WorkspaceID(c)
 	if err := h.svc.Delete(wsID, id); err != nil {
@@ -175,9 +180,9 @@ func (h *PipelineHandler) Delete(c *okapi.Context) error {
 
 // Trigger starts a manual run.
 func (h *PipelineHandler) Trigger(c *okapi.Context, req *TriggerPipelineRequest) error {
-	id, err := resolveID(c.Param("pipelineID"), h.svc.IDByUID)
+	id, err := h.pipelineRef(c)
 	if err != nil {
-		return c.AbortBadRequest("invalid pipeline id")
+		return c.AbortNotFound("pipeline not found")
 	}
 	wsID := middlewares.WorkspaceID(c)
 	actor := middlewares.UserID(c)
@@ -195,9 +200,9 @@ func (h *PipelineHandler) Trigger(c *okapi.Context, req *TriggerPipelineRequest)
 // WebhookInfo reveals the push-webhook path and secret so a user can configure
 // their Git provider. Role-gated (Developer+) since the secret is sensitive.
 func (h *PipelineHandler) WebhookInfo(c *okapi.Context) error {
-	id, err := resolveID(c.Param("pipelineID"), h.svc.IDByUID)
+	id, err := h.pipelineRef(c)
 	if err != nil {
-		return c.AbortBadRequest("invalid pipeline id")
+		return c.AbortNotFound("pipeline not found")
 	}
 	wsID := middlewares.WorkspaceID(c)
 	p, err := h.svc.Get(wsID, id)
@@ -279,9 +284,9 @@ func (h *PipelineHandler) StreamWorkspaceRuns(c *okapi.Context) error {
 
 // ListRuns returns a page of a pipeline's runs.
 func (h *PipelineHandler) ListRuns(c *okapi.Context) error {
-	id, err := resolveID(c.Param("pipelineID"), h.svc.IDByUID)
+	id, err := h.pipelineRef(c)
 	if err != nil {
-		return c.AbortBadRequest("invalid pipeline id")
+		return c.AbortNotFound("pipeline not found")
 	}
 	page, size, offset := normalizePageParams(queryInt(c, "page", 0), queryInt(c, "size", 20))
 	runs, total, err := h.svc.ListRunsPaged(middlewares.WorkspaceID(c), id, size, offset)
