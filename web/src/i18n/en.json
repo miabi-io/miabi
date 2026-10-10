@@ -4073,9 +4073,7 @@
     "body": {
       "beta": "It works and is supported, but it may still change and some parts are rough.",
       "preview": "Expect missing pieces and changes that may need you to redo some setup."
-    },
-    "feedback": "Report an issue",
-    "dismiss": "Dismiss"
+    }
   },
   "serviceAccounts": {
     "title": "Service accounts",

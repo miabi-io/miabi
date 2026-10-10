@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import BetaBanner from '@/components/BetaBanner.vue'
 import { storeToRefs } from 'pinia'
 import { useAnalyticsStore } from '@/stores/analytics'
 import AnalyticsHeader from './AnalyticsHeader.vue'
@@ -13,7 +12,6 @@ const { report, loading, error } = storeToRefs(store)
 <template>
   <div>
     <AnalyticsHeader />
-    <BetaBanner component="analytics" />
 
     <div v-if="loading && !report" class="card"><div class="card-body"><span class="spinner"></span></div></div>
 

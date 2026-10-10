@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import BetaBanner from '@/components/BetaBanner.vue'
 import BetaBadge from '@/components/BetaBadge.vue'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -266,7 +265,6 @@ function openLastRun(p: PipelineDefinition) {
       <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate">
         <span class="mdi mdi-plus"></span>{{ $t('pipelines.newPipeline') }}</button>
     </div>
-    <BetaBanner component="pipeline" />
 
     <div class="card">
       <div v-if="loading && items.length === 0" class="card-body"><span class="spinner"></span></div>
