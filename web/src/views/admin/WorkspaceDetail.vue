@@ -280,26 +280,6 @@ async function togglePrivileged() {
   }
 }
 
-const rotating = ref(false)
-const showRotateConfirm = ref(false)
-async function rotateKey() {
-  if (!ws.value) return
-  showRotateConfirm.value = false
-  rotating.value = true
-  try {
-    const res = (await adminApi.rotateWorkspaceKey(ws.value.id)).data.data
-    if (res.stale_columns?.length) {
-      notify.info(`Key rotated (v${res.version}), but old key versions were kept: ${res.stale_columns.join(', ')} still use them`)
-    } else {
-      notify.success(`Key rotated (v${res.version}) — re-encrypted ${res.reencrypted} secret${res.reencrypted === 1 ? '' : 's'}`)
-    }
-  } catch (e) {
-    notify.apiError(e)
-  } finally {
-    rotating.value = false
-  }
-}
-
 function fmtDate(s?: string): string {
   if (!s) return '—'
   const d = new Date(s)
@@ -383,15 +363,6 @@ function eventSeverity(e: AdminEvent): string {
           >
             <span class="mdi" :class="ws.privileged ? 'mdi-shield-check-outline' : 'mdi-shield-alert-outline'"></span>
             {{ ws.privileged ? $t('action.revokePrivileged') : $t('action.makePrivileged') }}
-          </button>
-          <button
-            class="btn btn-secondary btn-sm"
-            :disabled="rotating"
-            title="Rotate the workspace's encryption key and re-encrypt its secrets"
-            @click="showRotateConfirm = true"
-          >
-            <span class="mdi" :class="rotating ? 'mdi-loading mdi-spin' : 'mdi-key-change'"></span>
-            {{ rotating ? 'Rotating…' : 'Rotate encryption key' }}
           </button>
         </div>
       </div>
@@ -770,17 +741,6 @@ function eventSeverity(e: AdminEvent): string {
       :busy="busy"
       @confirm="togglePrivileged"
       @cancel="showPrivilegedConfirm = false"
-    />
-
-    <ConfirmDialog
-      :open="showRotateConfirm"
-      :title="$t('confirm.title.rotateEncryptionKey')"
-      :message="$t('confirm.message.workspaceDetail.rotateTheEncryptionKey', { name: ws?.name })"
-      :confirm-label="$t('action.rotateKey')"
-      variant="danger"
-      :busy="rotating"
-      @confirm="rotateKey"
-      @cancel="showRotateConfirm = false"
     />
   </div>
 </template>

@@ -66,7 +66,8 @@ func TestStateCarriesEveryResourceClass(t *testing.T) {
 		GitRepos:     []GitRepository{{Name: "app-repo", URL: "git@github.com:acme/app.git", Secret: "key"}},
 		DNSProviders: []DNSProvider{{Name: "cf", Type: "cloudflare", Credentials: `{"api_token":"t"}`}},
 		Networks:     []Network{{Name: "internal", Driver: "bridge", Internal: true}},
-		Secrets:      []Secret{{Name: "stripe", Value: "sk"}},
+		SealingKeys:  []SealingKey{{Version: 1, Identity: "AGE-SECRET-KEY-1TEST", Active: true}},
+		Secrets:      []Secret{{Name: "stripe", Value: "sk", SealedFP: "ab12", SealedKeyVersion: 1}},
 		Configs:      []Config{{Name: "nginx", Data: map[string]string{"nginx.conf": "server {}"}}},
 		Volumes:      []Volume{{Name: "uploads", SizeBytes: 1 << 30}},
 		Stacks: []Stack{{

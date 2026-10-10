@@ -37,6 +37,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/secret"
 	"github.com/miabi-io/miabi/internal/services/stack"
 	"github.com/miabi-io/miabi/internal/services/storage"
+	"github.com/miabi-io/miabi/pkg/sealed"
 )
 
 // MetaDigest records, on a converged application, the image digest the apply
@@ -51,6 +52,8 @@ const ManagedByGitOps = models.ManagedByGitOps
 var (
 	// ErrInvalidManifest signals a parse/validation failure (HTTP 400).
 	ErrInvalidManifest = errors.New("invalid manifest")
+	// ErrPlainSecret refuses a Secret with a plaintext value where only sealed values are allowed.
+	ErrPlainSecret = errors.New("this source only accepts sealed secrets, but these Secrets carry a plaintext value")
 	// ErrUnsupportedKind is returned when a plan needs a mutation the v1 executor
 	// does not perform. The plan still lists the change.
 	ErrUnsupportedKind = errors.New("kind not yet supported by apply")
@@ -94,7 +97,17 @@ type Service struct {
 	middlewares *middlewaresvc.Service
 	// jobs converges kinds CronJob and Job.
 	jobs *job.Service
+	// unsealer opens a SealedSecret's value; nil makes one fail rather than store nothing.
+	unsealer Unsealer
 }
+
+// Unsealer opens sealed secret values with the workspace's sealing keys. Satisfied by the sealing service.
+type Unsealer interface {
+	Unseal(workspaceID uint, name, value string) (plain string, keyVersion int, err error)
+}
+
+// SetUnsealer wires kind: SealedSecret.
+func (s *Service) SetUnsealer(u Unsealer) { s.unsealer = u }
 
 // SetConfigs wires the config service (kind: Config).
 func (s *Service) SetConfigs(c *configsvc.Service) { s.configs = c }
@@ -520,6 +533,8 @@ type Options struct {
 	// bundle nor in the workspace. For previews: a real apply still converges everything else and
 	// records the app that cannot render as a failure.
 	CheckReferences bool
+	// RequireSealedSecrets refuses the bundle when a Secret carries a plaintext value.
+	RequireSealedSecrets bool
 }
 
 type adminCtxKey struct{}
@@ -589,6 +604,12 @@ func (s *Service) Plan(ctx context.Context, workspaceID uint, manifests []byte, 
 	desired, err := declarative.Parse(manifests)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: %v", ErrInvalidManifest, err)
+	}
+	if opts.RequireSealedSecrets {
+		if names := declarative.PlainSecrets(desired); len(names) > 0 {
+			return nil, nil, fmt.Errorf("%w: %w: %s (seal them with `miabi secrets seal -f <file> --in-place`)",
+				ErrInvalidManifest, ErrPlainSecret, strings.Join(names, ", "))
+		}
 	}
 	// Before rendering, which replaces every reference it can resolve with its value.
 	if opts.CheckReferences {
@@ -872,6 +893,9 @@ func (s *Service) render(workspaceID uint, desired *declarative.ResourceSet) {
 				res.Config.DigestFP = configsvc.Digest(data)
 			}
 			desired.Add(res)
+		case res.SealedSecret != nil:
+			res.SealedSecret.SealedFP = sealed.Fingerprint(res.SealedSecret.Value)
+			desired.Add(res)
 		case res.Middleware != nil:
 			// Lenient for the same reason, and fingerprinted from the RENDERED rule so
 			// a rotated "{{ .secrets.x }}" converges instead of comparing equal.
@@ -901,7 +925,7 @@ func (s *Service) knownNames(workspaceID uint, desired *declarative.ResourceSet)
 		switch r.Kind {
 		case declarative.KindDatabase:
 			known["databases"][r.Metadata.Name] = true
-		case declarative.KindSecret:
+		case declarative.KindSecret, declarative.KindSealedSecret:
 			known["secrets"][r.Metadata.Name] = true
 		case declarative.KindApplication:
 			known["applications"][r.Metadata.Name] = true
@@ -1669,10 +1693,13 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 		return nil, fmt.Errorf("snapshot secrets: %w", err)
 	}
 	for i := range secrets {
-		set.Add(declarative.Resource{
-			APIVersion: declarative.APIVersion, Kind: declarative.KindSecret,
-			Metadata: meta(secrets[i].UID, secrets[i].Name, secrets[i].Metadata), Secret: &declarative.SecretSpec{},
-		})
+		r := declarative.Resource{APIVersion: declarative.APIVersion, Metadata: meta(secrets[i].UID, secrets[i].Name, secrets[i].Metadata)}
+		if secrets[i].SealedFP != "" {
+			r.Kind, r.SealedSecret = declarative.KindSealedSecret, &declarative.SealedSecretSpec{SealedFP: secrets[i].SealedFP}
+		} else {
+			r.Kind, r.Secret = declarative.KindSecret, &declarative.SecretSpec{}
+		}
+		set.Add(r)
 	}
 
 	if s.configs != nil {
@@ -1942,6 +1969,8 @@ func (s *Service) execute(ctx context.Context, workspaceID uint, ch declarative.
 		return s.applyStack(ctx, workspaceID, ch, desired)
 	case declarative.KindSecret:
 		return s.applySecret(workspaceID, ch, desired)
+	case declarative.KindSealedSecret:
+		return s.applySealedSecret(workspaceID, ch, desired)
 	case declarative.KindRoute:
 		return s.applyRoute(ctx, workspaceID, ch, desired)
 	case declarative.KindDomain:
@@ -2063,6 +2092,28 @@ func (s *Service) applySecret(workspaceID uint, ch declarative.Change, desired d
 	}
 	// Secret values are write-only and never diffed, so update is a no-op here.
 	return nil
+}
+
+// applySealedSecret opens the sealed value with the workspace's sealing keys and stores it in the vault.
+// Create and update share a path: an update may be adopting a plain Secret of the same name.
+func (s *Service) applySealedSecret(workspaceID uint, ch declarative.Change, desired declarative.Resource) error {
+	if ch.Action == declarative.ActionDelete {
+		sec, err := s.findSecret(workspaceID, ch.Name)
+		if err != nil {
+			return err
+		}
+		return s.secrets.Delete(workspaceID, sec.ID)
+	}
+	if s.unsealer == nil {
+		return errors.New("sealed secrets are not available on this instance")
+	}
+	spec := desired.SealedSecret
+	value, ver, err := s.unsealer.Unseal(workspaceID, ch.Name, spec.Value)
+	if err != nil {
+		return fmt.Errorf("value: %w", err)
+	}
+	_, err = s.secrets.ApplySealed(workspaceID, ch.Name, value, spec.SealedFP, ver)
+	return err
 }
 
 // applyConfig converges a configuration file set. File content is rendered here

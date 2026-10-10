@@ -51,6 +51,8 @@ type CreateGitSourceRequest struct {
 		Prune           bool   `json:"prune"`
 		SelfHeal        bool   `json:"self_heal"`
 		AllowEmpty      bool   `json:"allow_empty"`
+		// RequireSealedSecrets refuses a sync that carries a Secret with a plaintext value.
+		RequireSealedSecrets bool `json:"require_sealed_secrets"`
 	} `json:"body"`
 }
 
@@ -65,6 +67,8 @@ type UpdateGitSourceRequest struct {
 		Prune           bool   `json:"prune"`
 		SelfHeal        bool   `json:"self_heal"`
 		AllowEmpty      bool   `json:"allow_empty"`
+		// RequireSealedSecrets refuses a sync that carries a Secret with a plaintext value.
+		RequireSealedSecrets bool `json:"require_sealed_secrets"`
 	} `json:"body"`
 }
 
@@ -82,6 +86,7 @@ func (h *GitOpsHandler) Create(c *okapi.Context, req *CreateGitSourceRequest) er
 		Name: req.Body.Name, DisplayName: req.Body.DisplayName, RepoURL: req.Body.RepoURL, Ref: req.Body.Ref, Path: req.Body.Path,
 		GitRepositoryID: req.Body.GitRepositoryID, SyncPolicy: models.GitSyncPolicy(req.Body.SyncPolicy),
 		Prune: req.Body.Prune, SelfHeal: req.Body.SelfHeal, AllowEmpty: req.Body.AllowEmpty,
+		RequireSealedSecrets: req.Body.RequireSealedSecrets,
 	})
 	if err != nil {
 		return h.mapErr(c, err)
@@ -112,6 +117,7 @@ func (h *GitOpsHandler) Update(c *okapi.Context, req *UpdateGitSourceRequest) er
 		Name: req.Body.Name, RepoURL: req.Body.RepoURL, Ref: req.Body.Ref, Path: req.Body.Path,
 		GitRepositoryID: req.Body.GitRepositoryID, SyncPolicy: models.GitSyncPolicy(req.Body.SyncPolicy),
 		Prune: req.Body.Prune, SelfHeal: req.Body.SelfHeal, AllowEmpty: req.Body.AllowEmpty,
+		RequireSealedSecrets: req.Body.RequireSealedSecrets,
 	})
 	if err != nil {
 		return h.mapErr(c, err)

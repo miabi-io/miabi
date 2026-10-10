@@ -196,14 +196,6 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Request:     &handlers.SetWorkspacePrivilegedRequest{},
 		},
 		{
-			Method:      http.MethodPost,
-			Path:        "/workspaces/{id}/rotate-key",
-			Group:       g,
-			Middlewares: admin,
-			Handler:     r.h.adminWorkspace.RotateKey,
-			Summary:     "Rotate a workspace's encryption key (re-encrypts its secrets)",
-		},
-		{
 			Method:      http.MethodGet,
 			Path:        "/networking",
 			Group:       g,

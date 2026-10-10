@@ -39,6 +39,9 @@ func (s *Service) collect(workspaceID uint, report *models.BundleReport) (*wsbun
 
 	s.collectCredentials(workspaceID, st, report)
 	s.collectNetworks(workspaceID, st, report)
+	if err := s.collectSealingKeys(workspaceID, st, report); err != nil {
+		return nil, err
+	}
 	if err := s.collectSecrets(workspaceID, st, report); err != nil {
 		return nil, err
 	}
@@ -196,7 +199,7 @@ func (s *Service) collectDelivery(workspaceID uint, st *wsbundle.State, report *
 		entry := wsbundle.GitSource{
 			Name: g.Name, DisplayName: g.DisplayName, RepoURL: g.RepoURL, Ref: g.Ref, Path: g.Path,
 			SyncPolicy: string(g.SyncPolicy), Prune: g.Prune, SelfHeal: g.SelfHeal,
-			AllowEmpty: g.AllowEmpty, LastSyncedCommit: g.LastCheckedCommit,
+			AllowEmpty: g.AllowEmpty, RequireSealedSecrets: g.RequireSealedSecrets, LastSyncedCommit: g.LastCheckedCommit,
 		}
 		if g.GitRepositoryID != nil {
 			entry.GitRepository = repoName[*g.GitRepositoryID]
@@ -309,6 +312,23 @@ func (s *Service) collectNetworks(workspaceID uint, st *wsbundle.State, report *
 	}
 }
 
+// collectSealingKeys carries the private sealing keys: without them every SealedSecret in the workspace's git
+// repositories would stop opening on the target.
+func (s *Service) collectSealingKeys(workspaceID uint, st *wsbundle.State, report *models.BundleReport) error {
+	if s.Sealing == nil {
+		return nil
+	}
+	keys, err := s.Sealing.Export(workspaceID)
+	if err != nil {
+		return fmt.Errorf("export sealing keys: %w", err)
+	}
+	for _, k := range keys {
+		st.SealingKeys = append(st.SealingKeys, wsbundle.SealingKey{Version: k.Version, Identity: k.Identity, Active: k.Active, CreatedAt: k.CreatedAt})
+		report.Add("sealing_key", fmt.Sprintf("v%d", k.Version), "captured", "")
+	}
+	return nil
+}
+
 // collectSecrets carries the vault, values included — the one part of a bundle that makes the sealed state file
 // non-negotiable. Managed secrets are skipped: they are minted and owned by a managed database, so the target
 // creates its own with the credentials it generated. Carrying them would overwrite live credentials.
@@ -330,7 +350,7 @@ func (s *Service) collectSecrets(workspaceID uint, st *wsbundle.State, report *m
 		}
 		st.Secrets = append(st.Secrets, wsbundle.Secret{
 			Name: sec.Name, DisplayName: sec.DisplayName, Description: sec.Description,
-			Value: val, Metadata: sec.Metadata,
+			Value: val, Metadata: sec.Metadata, SealedFP: sec.SealedFP, SealedKeyVersion: sec.SealedKeyVersion,
 		})
 		report.Add("secret", sec.Name, "captured", "")
 	}

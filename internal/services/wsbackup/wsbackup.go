@@ -34,6 +34,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/pipeline"
 	"github.com/miabi-io/miabi/internal/services/registry"
 	"github.com/miabi-io/miabi/internal/services/route"
+	"github.com/miabi-io/miabi/internal/services/sealing"
 	"github.com/miabi-io/miabi/internal/services/secret"
 	"github.com/miabi-io/miabi/internal/services/stack"
 	"github.com/miabi-io/miabi/internal/services/storage"
@@ -87,12 +88,14 @@ type Deps struct {
 	Users      *repositories.UserRepository
 	Workspaces *repositories.WorkspaceRepository
 
-	Settings    *backupsettings.Service
-	Workspace   *workspace.Service
-	App         *application.Service
-	Volume      *storage.Service
-	Database    *database.Service
-	Secret      *secret.Service
+	Settings  *backupsettings.Service
+	Workspace *workspace.Service
+	App       *application.Service
+	Volume    *storage.Service
+	Database  *database.Service
+	Secret    *secret.Service
+	// Sealing carries the workspace's sealing keys; nil leaves them out of the bundle.
+	Sealing     *sealing.Service
 	Config      *configsvc.Service
 	Route       *route.Service
 	Middleware  *middleware.Service

@@ -594,6 +594,7 @@ const policyFlags = computed(() => {
   if (s.prune) out.push({ label: t('gitops.action.prune'), icon: 'mdi-broom', help: t('gitops.action.pruneHelp') })
   if (s.self_heal) out.push({ label: t('gitops.action.selfHeal'), icon: 'mdi-heart-pulse', help: t('gitops.action.selfHealHelp') })
   if (s.allow_empty) out.push({ label: t('gitops.action.allowEmpty'), icon: 'mdi-delete-sweep-outline', help: t('gitops.action.allowEmptyHelp') })
+  if (s.require_sealed_secrets) out.push({ label: t('gitops.action.sealedOnly'), icon: 'mdi-lock-outline', help: t('gitops.action.sealedOnlyHelp') })
   return out
 })
 </script>

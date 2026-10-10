@@ -2001,6 +2001,7 @@ export interface Secret {
   managed?: boolean
   owner_kind?: string
   owner_id?: number
+  sealed_key_version?: number
   created_at?: string
   updated_at?: string
 }
@@ -2846,6 +2847,7 @@ export interface GitSource {
   prune: boolean
   self_heal: boolean
   allow_empty: boolean
+  require_sealed_secrets: boolean
   status: GitSourceStatus
   message?: string
   // The last reconcile that actually CHANGED something — not the last poll.

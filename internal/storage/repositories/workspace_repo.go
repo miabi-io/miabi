@@ -126,6 +126,7 @@ func (r *WorkspaceRepository) Delete(id uint) error {
 			{&models.Template{}, "source_id IN (?)", []any{srcIDs()}},
 			{&models.TemplateSource{}, "workspace_id = ?", []any{id}},
 			{&models.WorkspaceKey{}, "workspace_id = ?", []any{id}},
+			{&models.WorkspaceSealingKey{}, "workspace_id = ?", []any{id}},
 			{&models.WorkspaceBackupSettings{}, "workspace_id = ?", []any{id}},
 			{&models.WorkspaceMember{}, "workspace_id = ?", []any{id}},
 			{&models.WorkspaceInvitation{}, "workspace_id = ?", []any{id}},

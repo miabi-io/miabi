@@ -3,6 +3,8 @@
 
 package declarative
 
+import "sort"
+
 // ResourceSet is an ordered, key-indexed collection of resources. It is the
 // shape both desired state (parsed manifests) and actual state (a workspace
 // snapshot) take so the plan engine can diff them generically.
@@ -56,4 +58,16 @@ func (s *ResourceSet) ByKind(k Kind) []Resource {
 func (s *ResourceSet) Has(k Kind, name string) bool {
 	_, ok := s.index[string(k)+"/"+name]
 	return ok
+}
+
+// PlainSecrets lists the Secrets in a set that carry a plaintext value. A generated Secret has none.
+func PlainSecrets(set *ResourceSet) []string {
+	var names []string
+	for _, r := range set.All() {
+		if r.Kind == KindSecret && r.Secret != nil && r.Secret.Value != "" {
+			names = append(names, r.Metadata.Name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }

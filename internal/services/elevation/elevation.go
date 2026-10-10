@@ -219,7 +219,7 @@ func (s *Service) fail(ctx context.Context, user *models.User, set secpolicy.Adm
 		// The account itself stays usable; only the console unlock is locked.
 		err := s.notify.NotifyAdmins(models.Notification{
 			Category: models.CategorySecurity, Severity: models.AlertWarning,
-			Title:    "Admin console unlock locked — " + user.Email,
+			Title: "Admin console unlock locked — " + user.Email,
 			Body: fmt.Sprintf("%d wrong codes in a row. The unlock is locked until %s; the account is not.",
 				set.MaxAttempts, until.UTC().Format(time.RFC1123)),
 			SubjectLink: fmt.Sprintf("/admin/users/%d", user.ID),

@@ -8,3 +8,4 @@ registry         RegistryVersion        internal/services/registryserver
 storage-classes  StorageClassesVersion  internal/services/storageclass internal/handlers/admin_storage_class_handler.go
 analytics        AnalyticsVersion       internal/services/analytics internal/worker/analytics.go internal/handlers/analytics_handler.go
 healthprobe      HealthProbeVersion     cmd/healthprobe internal/healthprobe
+sealed-secrets   SealedSecretsVersion   pkg/sealed internal/services/sealing internal/services/workspacekeys internal/handlers/workspace_keys_handler.go

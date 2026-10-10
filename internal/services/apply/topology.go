@@ -244,7 +244,7 @@ func (s *Service) resolveLive(workspaceID uint, kind declarative.Kind, name stri
 		if d, err := s.findDomain(workspaceID, name); err == nil {
 			node.LiveID = d.ID
 		}
-	case declarative.KindSecret:
+	case declarative.KindSecret, declarative.KindSealedSecret:
 		if sec, err := s.findSecret(workspaceID, name); err == nil {
 			node.LiveID = sec.ID
 		}

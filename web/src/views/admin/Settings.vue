@@ -231,8 +231,8 @@ function setBool(key: string, checked: boolean) {
             <h2 class="card-title">Encryption</h2>
             <p class="text-muted text-sm" style="margin-bottom: 12px">
               Secrets are encrypted at rest. Per-workspace keys, auto-rotation, and gateway config
-              encryption are configured via environment variables; rotate a workspace's key on demand
-              from its admin page.
+              encryption are configured via environment variables. A workspace's owners and admins rotate
+              its keys from the workspace settings, at most once every 6 months.
             </p>
             <div class="enc-grid">
               <span class="text-muted">Encryption</span>

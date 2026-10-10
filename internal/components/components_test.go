@@ -21,7 +21,7 @@ func byID(list []Component) map[string]Component {
 
 func TestListOrderAndVersions(t *testing.T) {
 	list := NewService(Probes{}).List()
-	want := []string{"web", "gitops", "pipeline", "marketplace", "analytics", "registry", "storage-classes", "healthprobe"}
+	want := []string{"web", "gitops", "pipeline", "marketplace", "analytics", "registry", "storage-classes", "healthprobe", "sealed-secrets"}
 	if len(list) != len(want) {
 		t.Fatalf("got %d components, want %d", len(list), len(want))
 	}

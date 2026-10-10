@@ -16,6 +16,7 @@ export const kindMeta: Record<string, KindMeta> = {
   Route: { label: 'Route', icon: 'mdi-sitemap-outline' },
   Stack: { label: 'Stack', icon: 'mdi-layers-outline' },
   Secret: { label: 'Secret', icon: 'mdi-key-variant' },
+  SealedSecret: { label: 'SealedSecret', icon: 'mdi-lock-outline' },
   Domain: { label: 'Domain', icon: 'mdi-web' },
   CronJob: { label: 'CronJob', icon: 'mdi-calendar-clock' },
   Job: { label: 'Job', icon: 'mdi-play-circle-outline' },
@@ -113,6 +114,7 @@ export function resourceRoute(kind: string, liveId?: number): RouteLocationRaw |
     case 'Domain':
       return { name: 'domains' }
     case 'Secret':
+    case 'SealedSecret':
       return { name: 'secrets' }
     case 'CronJob':
     case 'Job':

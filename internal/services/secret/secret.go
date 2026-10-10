@@ -144,12 +144,53 @@ func (s *Service) Update(workspaceID, id uint, value, description string, userID
 		}
 		sec.ValueEnc = enc
 		sec.Version++
+		sec.SealedFP, sec.SealedKeyVersion = "", 0
 		rotated = true
 	}
 	if err := s.repo.Update(sec); err != nil {
 		return nil, err
 	}
 	if rotated {
+		s.fanOut(sec)
+	}
+	return sec, nil
+}
+
+// ApplySealed creates or updates the named secret from an opened sealed value and records the sealed value's
+// fingerprint and key version. A re-seal of an unchanged value only moves the fingerprint: no new version, no
+// redeploy of consumers.
+func (s *Service) ApplySealed(workspaceID uint, name, value, fp string, keyVersion int) (*models.Secret, error) {
+	sec, err := s.repo.FindByName(workspaceID, name)
+	if err != nil {
+		created, cerr := s.Create(workspaceID, name, value, "", nil)
+		if cerr != nil {
+			return nil, cerr
+		}
+		created.SealedFP, created.SealedKeyVersion = fp, keyVersion
+		return created, s.repo.Update(created)
+	}
+	if value == "" {
+		return nil, ErrNoValue
+	}
+	if sec.Managed {
+		return nil, ErrManaged
+	}
+	current, derr := crypto.Decrypt(sec.ValueEnc)
+	changed := derr != nil || current != value
+	if changed {
+		enc, eerr := crypto.EncryptWS(workspaceID, value)
+		if eerr != nil {
+			return nil, eerr
+		}
+		sec.ValueEnc = enc
+		sec.Version++
+		sec.UpdatedByID = nil
+	}
+	sec.SealedFP, sec.SealedKeyVersion = fp, keyVersion
+	if err := s.repo.Update(sec); err != nil {
+		return nil, err
+	}
+	if changed {
 		s.fanOut(sec)
 	}
 	return sec, nil
@@ -186,6 +227,7 @@ func (s *Service) UpsertOwned(workspaceID uint, ownerKind string, ownerID uint, 
 		}
 		existing.ValueEnc = enc
 		existing.Version++
+		existing.SealedFP, existing.SealedKeyVersion = "", 0
 		rotated = true
 	}
 	if err := s.repo.Update(existing); err != nil {

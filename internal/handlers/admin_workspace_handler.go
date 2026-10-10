@@ -4,8 +4,6 @@
 package handlers
 
 import (
-	"context"
-	"errors"
 	"strconv"
 	"time"
 
@@ -13,24 +11,16 @@ import (
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
-	"github.com/miabi-io/miabi/internal/services/keyring"
 	"github.com/miabi-io/miabi/internal/services/organization"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 	"gorm.io/gorm"
 )
-
-// KeyRotator rotates a workspace's encryption key (re-encrypting its secrets).
-// Implemented by the keyring service; injected, nil = endpoint returns 501.
-type KeyRotator interface {
-	Rotate(ctx context.Context, workspaceID uint) (keyring.RotateResult, error)
-}
 
 // AdminWorkspaceHandler exposes platform-wide workspace administration.
 type AdminWorkspaceHandler struct {
 	db         *gorm.DB
 	workspaces *repositories.WorkspaceRepository
 	audit      *audit.Logger
-	keys       KeyRotator
 	orgs       *organization.Service
 	// ownsClusters reports whether an organization runs clusters of its own.
 	ownsClusters func(orgID uint) bool
@@ -44,33 +34,6 @@ func (h *AdminWorkspaceHandler) SetOrganizations(svc *organization.Service, owns
 
 func NewAdminWorkspaceHandler(db *gorm.DB, workspaces *repositories.WorkspaceRepository, auditLog *audit.Logger) *AdminWorkspaceHandler {
 	return &AdminWorkspaceHandler{db: db, workspaces: workspaces, audit: auditLog}
-}
-
-// SetKeyRotator wires per-workspace encryption-key rotation (nil-safe).
-func (h *AdminWorkspaceHandler) SetKeyRotator(k KeyRotator) { h.keys = k }
-
-// RotateKey rotates the workspace's encryption key and re-encrypts its secrets.
-func (h *AdminWorkspaceHandler) RotateKey(c *okapi.Context) error {
-	if h.keys == nil {
-		return c.AbortWithError(501, errors.New("key rotation is not enabled"))
-	}
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil || id <= 0 {
-		return c.AbortBadRequest("invalid workspace id")
-	}
-	res, err := h.keys.Rotate(c.Request().Context(), uint(id))
-	// Stale ciphertext means the new key is live and the old ones were kept: a rotation, not a failure.
-	if err != nil && !errors.Is(err, keyring.ErrStaleCiphertext) {
-		return c.AbortInternalServerError("key rotation failed", err)
-	}
-	actor := middlewares.UserID(c)
-	wsID := uint(id)
-	h.audit.Record(audit.Entry{
-		ActorID: &actor, WorkspaceID: &wsID, Action: "admin.workspace.rotate_key",
-		TargetType: "workspace", TargetID: strconv.Itoa(id), IP: c.RealIP(),
-		Metadata: map[string]any{"version": res.Version, "reencrypted": res.Reencrypted, "stale_columns": res.StaleColumns},
-	})
-	return ok(c, res)
 }
 
 // AdminWorkspace is a workspace row for the admin workspaces table.

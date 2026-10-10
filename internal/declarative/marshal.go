@@ -54,6 +54,8 @@ func (r Resource) spec() any {
 		return r.Route
 	case r.Secret != nil:
 		return r.Secret
+	case r.SealedSecret != nil:
+		return r.SealedSecret
 	case r.Config != nil:
 		return r.Config
 	case r.Middleware != nil:

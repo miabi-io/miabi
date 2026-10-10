@@ -84,7 +84,6 @@
     "retract": "Retract",
     "revoke": "Revoke",
     "revokePrivileged": "Revoke privileged",
-    "rotateKey": "Rotate key",
     "runGarbageCollection": "Run garbage collection",
     "save": "Save",
     "saveOverrides": "Save overrides",
@@ -93,7 +92,8 @@
     "teardown": "Teardown",
     "test": "Test",
     "upgrade": "Upgrade",
-    "working": "Working…"
+    "working": "Working…",
+    "rotateKeys": "Rotate keys"
   },
   "adminLayout": {
     "dismissUntilTheNextRelease": "Dismiss until the next release",
@@ -1177,8 +1177,7 @@
         "clearOverrides": "Clear every per-workspace override on \"{name}\"? It falls back to its plan’s quotas and capabilities, and the values you set here are lost.",
         "makePrivileged": "Make \"{name}\" privileged? Host mounts and host-port bindings will be allowed without approval, and the restricted security profile will no longer apply to its workloads.",
         "relaxRestrictions": "This grants \"{name}\" capabilities its plan withholds: {caps}. They apply to every workload in the workspace.",
-        "revokePrivileged": "Revoke privileged access from \"{name}\"? The restricted security profile applies again, and workloads that rely on host mounts or host-port bindings may fail on their next deploy.",
-        "rotateTheEncryptionKey": "Rotate the encryption key for \"{name}\"? Its secrets will be re-encrypted under a new key."
+        "revokePrivileged": "Revoke privileged access from \"{name}\"? The restricted security profile applies again, and workloads that rely on host mounts or host-port bindings may fail on their next deploy."
       },
       "workspaceRolesPanel": {
         "deleteRoleName": "Delete role \"{name}\"?"
@@ -1188,6 +1187,9 @@
       },
       "serviceAccounts": {
         "delete": "Disable \"{name}\"? All of its API keys are revoked immediately and it is removed from every workspace it belongs to, so any automation using it stops working. This cannot be undone."
+      },
+      "wsKeys": {
+        "rotate": "Rotate the keys of \"{name}\"? Every stored secret is re-encrypted under a new data key and a new sealing key becomes active. Values already sealed keep working, and the next rotation is possible in {months} months."
       }
     },
     "title": {
@@ -1278,12 +1280,12 @@
       "revokeAccess": "Revoke access",
       "revokeApiKey": "Revoke API key",
       "revokePrivileged": "Revoke privileged access?",
-      "rotateEncryptionKey": "Rotate encryption key",
       "runGarbageCollection": "Run garbage collection",
       "tearDownGateway": "Tear down gateway",
       "testDnsProvider": "Test DNS provider",
       "expandVolume": "Expand volume",
-      "deleteServiceAccount": "Delete service account"
+      "deleteServiceAccount": "Delete service account",
+      "rotateWorkspaceKeys": "Rotate workspace keys"
     }
   },
   "count": {
@@ -1826,7 +1828,9 @@
       "pruneHelp": "Deletes managed resources removed from Git",
       "selfHeal": "Self-heal",
       "selfHealHelp": "Re-applies when live state drifts from Git",
-      "update": "Update"
+      "update": "Update",
+      "sealedOnly": "Sealed secrets only",
+      "sealedOnlyHelp": "A Secret with a plaintext value fails the sync"
     },
     "addOne": "add one",
     "all": "all",
@@ -1906,7 +1910,9 @@
     },
     "topoErrorHint": "The latest revision could not be loaded: {error}",
     "viewDiff": "View diff",
-    "waitingForLogOutput": "Waiting for log output…"
+    "waitingForLogOutput": "Waiting for log output…",
+    "requireSealedLabel": "Sealed secrets only — refuse a Secret with a plaintext value in the repository",
+    "requireSealedHint": "A sync fails while any Secret carries a value. Use a SealedSecret (miabi secrets seal) or generate: true instead."
   },
   "inbox": {
     "alertsAndUpdatesAcrossYour": "Alerts and updates across your workspaces.",
@@ -2699,6 +2705,10 @@
       "created": "Service account created",
       "deleted": "Service account disabled",
       "idCopied": "Service account ID copied"
+    },
+    "wsKeys": {
+      "rotated": "Keys rotated (data key v{version}), {count} values re-encrypted",
+      "rotatedKeptOld": "Keys rotated (data key v{version}), but older data keys were kept: {columns} still use them"
     }
   },
   "oauth": {
@@ -3425,7 +3435,9 @@
     "value": "Value",
     "valueHint": "Stored verbatim — line breaks and trailing newlines are preserved.",
     "valuePlaceholder": "the secret value\n\nMulti-line values are stored exactly as entered, so a PEM certificate or private key can be pasted whole.",
-    "version": "Version"
+    "version": "Version",
+    "sealed": "Sealed",
+    "sealedHint": "Set from a sealed value in Git (sealing key v{version}). A value set here is replaced at the next apply or sync."
   },
   "security": {
     "codesRemaining": "No recovery codes remaining. | {n} recovery code remaining. | {n} recovery codes remaining.",
@@ -4031,7 +4043,8 @@
       "portability": "Portability",
       "roles": "Roles",
       "usage": "Usage",
-      "serviceAccounts": "Service accounts"
+      "serviceAccounts": "Service accounts",
+      "encryption": "Encryption"
     },
     "theSystemWorkspaceNameIs": "The system workspace name is reserved and cannot be changed.",
     "typeToConfirm": "Type {name} to confirm",
@@ -4100,5 +4113,33 @@
     "never": "Never",
     "neverExpires": "This key never expires.",
     "expiresOn": "Expires {date}"
+  },
+  "wsKeys": {
+    "encryptionKeys": "Encryption keys",
+    "subtitle": "Secrets are encrypted with this workspace's own data key, and sealed values with its sealing key. Owners and admins rotate both, at most once every {months} months.",
+    "nextRotationOn": "Next rotation possible on {date}",
+    "rotating": "Rotating…",
+    "encryptionDisabled": "No master key is configured on this instance, so secrets are stored unencrypted. Ask your platform administrator to set one.",
+    "dataKey": "Data key",
+    "sealingKey": "Sealing key",
+    "notCreatedYet": "Created with the first secret",
+    "lastRotation": "Last rotation",
+    "never": "Never",
+    "nextRotation": "Next rotation",
+    "availableNow": "Available now",
+    "unavailable": "Not available on this instance",
+    "rotationExplained": "Rotating re-encrypts every stored secret with a new data key and activates a new sealing key. Older sealing keys are kept, so sealed values already in Git keep opening.",
+    "sealedSecrets": "Sealed secrets",
+    "sealedSubtitle": "Encrypt a secret to this workspace's public key and commit it to Git: only Miabi can open it, and only for a secret of the same name.",
+    "publicKey": "Public sealing key (v{version})",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyFailed": "Could not copy to the clipboard",
+    "sealFromCli": "Seal a value from the CLI",
+    "sealedCount": "No secret is set from a sealed value yet | 1 secret is set from a sealed value | {count} secrets are set from a sealed value",
+    "outdatedSealed": "1 sealed secret uses an older sealing key. It still opens; re-seal it to move it to the current key. | {count} sealed secrets use an older sealing key. They still open; re-seal them to move them to the current key.",
+    "olderKeys": "Older sealing keys",
+    "created": "Created",
+    "stillInUse": "Secrets still sealed to it"
   }
 }

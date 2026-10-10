@@ -30,6 +30,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/pipeline"
 	"github.com/miabi-io/miabi/internal/services/registry"
 	"github.com/miabi-io/miabi/internal/services/route"
+	"github.com/miabi-io/miabi/internal/services/sealing"
 	"github.com/miabi-io/miabi/internal/services/stack"
 	"github.com/miabi-io/miabi/internal/wsbundle"
 )
@@ -268,6 +269,8 @@ type restoreStep struct {
 // before routing, apps before links/routing/delivery, and delivery last so GitOps sees a built workspace.
 func (r *restoreRun) steps() []restoreStep {
 	return []restoreStep{
+		// Before secrets: a restored GitOps source re-applies sealed values, which must open on the target.
+		{"sealing-keys", func(context.Context) { r.applySealingKeys() }},
 		{"credentials", func(context.Context) { r.applyCredentials() }},
 		{"networks", r.applyNetworks},
 		{"secrets", func(context.Context) { r.applySecrets() }},
@@ -462,12 +465,42 @@ func (r *restoreRun) applySecrets() {
 			r.add("secret", sec.Name, "skipped", "already exists; its current value was kept")
 			continue
 		}
-		if _, err := r.svc.Secret.Create(r.target, sec.Name, sec.Value, sec.Description, r.bundle.CreatedBy); err != nil {
+		created, err := r.svc.Secret.Create(r.target, sec.Name, sec.Value, sec.Description, r.bundle.CreatedBy)
+		if err != nil {
 			r.add("secret", sec.Name, "failed", err.Error())
 			continue
 		}
+		if sec.SealedFP != "" {
+			if _, err := r.svc.Secret.ApplySealed(r.target, created.Name, sec.Value, sec.SealedFP, sec.SealedKeyVersion); err != nil {
+				r.add("secret", sec.Name, "created", "sealed-value fingerprint not kept: "+err.Error())
+				continue
+			}
+		}
 		r.add("secret", sec.Name, "created", "")
 	}
+}
+
+// applySealingKeys imports the source's sealing keys. A target that already has keys keeps its active one and
+// gains the imported ones as older versions, so both its own and the source's sealed values open.
+func (r *restoreRun) applySealingKeys() {
+	if len(r.state.SealingKeys) == 0 {
+		return
+	}
+	if r.svc.Sealing == nil {
+		r.add("sealing_key", "all", "skipped", "sealed secrets are not available on this install")
+		return
+	}
+	keys := make([]sealing.ExportedKey, 0, len(r.state.SealingKeys))
+	for _, k := range r.state.SealingKeys {
+		keys = append(keys, sealing.ExportedKey{Version: k.Version, Identity: k.Identity, Active: k.Active, CreatedAt: k.CreatedAt})
+	}
+	n, err := r.svc.Sealing.Import(r.target, keys)
+	if err != nil {
+		r.add("sealing_key", "all", "failed", err.Error())
+		return
+	}
+	r.restored += n
+	r.add("sealing_key", "all", "imported", fmt.Sprintf("%d of %d keys added", n, len(keys)))
 }
 
 func (r *restoreRun) applyConfigs() {
@@ -835,7 +868,7 @@ func (r *restoreRun) applyDelivery() {
 		in := gitops.Input{
 			Name: g.Name, DisplayName: g.DisplayName, RepoURL: g.RepoURL, Ref: g.Ref, Path: g.Path,
 			SyncPolicy: models.GitSyncPolicy(g.SyncPolicy), Prune: g.Prune,
-			SelfHeal: g.SelfHeal, AllowEmpty: g.AllowEmpty,
+			SelfHeal: g.SelfHeal, AllowEmpty: g.AllowEmpty, RequireSealedSecrets: g.RequireSealedSecrets,
 		}
 		if id := repoIDs[g.GitRepository]; g.GitRepository != "" && id != 0 {
 			in.GitRepositoryID = &id

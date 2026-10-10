@@ -26,8 +26,8 @@ func TestLicenseEntitlementsExposeOnlyGatingFields(t *testing.T) {
 	expires := time.Now().Add(90 * 24 * time.Hour)
 	h := NewLicenseHandler(licensedEE{ent: enterprise.Entitlements{
 		Edition: "enterprise", Tier: "business", State: "valid",
-		Flags:     map[string]bool{enterprise.FlagAdvancedCanary: true},
-		Customer:  "Acme Corp", LicenseID: "lic_secret123", InstallID: "inst_abc",
+		Flags:    map[string]bool{enterprise.FlagAdvancedCanary: true},
+		Customer: "Acme Corp", LicenseID: "lic_secret123", InstallID: "inst_abc",
 		URL: "https://portal.example.com", Limits: map[string]int{"node_limit": 50}, NotAfter: &expires,
 	}}, nil, nil, nil, nil, "inst_this", nil)
 

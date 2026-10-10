@@ -47,6 +47,7 @@ var adminSegments = map[string]bool{
 	"audit":            true,
 	"audit-logs":       true,
 	"portable-backup":  true,
+	"encryption":       true,
 }
 
 // adminSuffixes are reads that hand back a credential, a key or a shell — the GETs the plan calls
