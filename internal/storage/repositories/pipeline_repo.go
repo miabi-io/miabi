@@ -4,6 +4,10 @@
 package repositories
 
 import (
+	"strconv"
+	"strings"
+
+	"github.com/google/uuid"
 	"github.com/miabi-io/miabi/internal/models"
 	"gorm.io/gorm"
 )
@@ -204,4 +208,31 @@ func (r *PipelineRepository) SetStepLogMeta(id uint, ref, tail string, bytes int
 // IDByUID resolves a pipeline's uid to its numeric id.
 func (r *PipelineRepository) IDByUID(uid string) (uint, error) {
 	return idByUID[models.PipelineDefinition](r.db, uid)
+}
+
+// IDByRef resolves a pipeline in a workspace from its id, uid or name. An all-digit ref is tried as
+// an id first and then as a name, since an all-digit name is a valid handle.
+func (r *PipelineRepository) IDByRef(workspaceID uint, ref string) (uint, error) {
+	ref = strings.TrimSpace(ref)
+	find := func(where string, arg any) uint {
+		var got uint
+		r.db.Model(&models.PipelineDefinition{}).Where("workspace_id = ? AND "+where, workspaceID, arg).Limit(1).Pluck("id", &got)
+		return got
+	}
+	var id uint
+	if n, err := strconv.ParseUint(ref, 10, 64); err == nil && n > 0 {
+		id = find("id = ?", n)
+	}
+	if id == 0 {
+		if _, err := uuid.Parse(ref); err == nil {
+			id = find("uid = ?", ref)
+		}
+	}
+	if id == 0 && ref != "" {
+		id = find("name = ?", strings.ToLower(ref))
+	}
+	if id == 0 {
+		return 0, gorm.ErrRecordNotFound
+	}
+	return id, nil
 }

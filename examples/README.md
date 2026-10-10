@@ -68,7 +68,7 @@ the numeric id:
 BASE=https://miabi.example.com   # your Miabi URL
 WS=acme                          # workspace name (handle) — numeric id also works
 TOKEN=mb_xxx                     # API token (Settings → API keys)
-ID=7                             # a pipeline id (section 3; name is not accepted here)
+ID=7                             # a pipeline name, id or uid (section 3)
 ```
 
 ## 1. Apply (imperative, one-shot)
