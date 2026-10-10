@@ -149,6 +149,7 @@ func TestRestoreStepsRunInDependencyOrder(t *testing.T) {
 		{"apps", "routing", "a route names its application"},
 		{"apps", "delivery", "pipelines and cron jobs name their application"},
 		{"secrets", "apps", "an app's environment may reference a vault secret"},
+		{"sealing-keys", "secrets", "a sealed secret's fingerprint is only meaningful once its key is here"},
 		{"configs", "apps", "an app's mounts name configs, which must exist to attach"},
 		{"delivery", "members", "delivery is the last thing that creates resources"},
 	}

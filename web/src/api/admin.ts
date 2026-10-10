@@ -257,10 +257,6 @@ export const adminApi = {
   resyncRoutes: () => api.post<ApiResponse<ResyncSummary>>('/admin/routes/resync'),
   setWorkspacePrivileged: (id: number, privileged: boolean) =>
     api.patch<ApiResponse<AdminWorkspace>>(`/admin/workspaces/${id}`, { privileged }),
-  // Rotate the workspace's encryption key (re-encrypts its secrets under a new
-  // DEK version). Returns { version, reencrypted, stale_columns? }.
-  rotateWorkspaceKey: (id: number) =>
-    api.post<ApiResponse<{ version: number; reencrypted: number; stale_columns?: string[] }>>(`/admin/workspaces/${id}/rotate-key`),
   // Read-only networking posture (IPv6, the managed subnet pool, the shared proxy network).
   getNetworkingInfo: () => api.get<ApiResponse<NetworkingInfo>>('/admin/networking'),
   // Read-only encryption posture (per-workspace keys, auto-rotation, gateway config encryption).

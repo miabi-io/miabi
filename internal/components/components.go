@@ -117,6 +117,11 @@ func (s *Service) List() []Component {
 			Status:       onIf(s.probes.HealthProbeBundled, StatusOff),
 			ChangelogURL: historyURL + "cmd/healthprobe",
 		},
+		{
+			ID: "sealed-secrets", Name: "Sealed secrets", Version: SealedSecretsVersion, Stability: StabilityBeta,
+			FormatVersion: "sealed:v1", Status: StatusOn,
+			ChangelogURL: historyURL + "internal/services/sealing",
+		},
 	}
 }
 

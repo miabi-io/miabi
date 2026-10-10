@@ -42,6 +42,7 @@ func TestScopeFor_SensitiveRoutes(t *testing.T) {
 		{"DELETE", "/api/v1/workspaces/{workspace}"},
 		{"POST", "/api/v1/workspaces/{workspace}/portable-backup/restore"},
 		{"PUT", "/api/v1/workspaces/{workspace}/backup-settings"},
+		{"POST", "/api/v1/workspaces/{workspace}/encryption/rotate"},
 		// Reconfiguring what builds code or what the platform calls out to.
 		{"POST", "/api/v1/workspaces/{workspace}/runners"},
 		{"DELETE", "/api/v1/workspaces/{workspace}/webhooks/{id}"},
@@ -58,6 +59,7 @@ func TestScopeFor_Defaults(t *testing.T) {
 	for _, tc := range []struct{ method, path, want string }{
 		// Ordinary reads.
 		{"GET", "/api/v1/workspaces/{workspace}/apps", models.ScopeRead},
+		{"GET", "/api/v1/workspaces/{workspace}/sealing-key", models.ScopeRead},
 		{"GET", "/api/v1/workspaces/{workspace}/apps/{appID}", models.ScopeRead},
 		{"GET", "/api/v1/workspaces", models.ScopeRead},
 		{"GET", "/api/v1/me", models.ScopeRead},

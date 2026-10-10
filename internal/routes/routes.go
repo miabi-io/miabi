@@ -95,6 +95,7 @@ import (
 	releasesvc "github.com/miabi-io/miabi/internal/services/release"
 	"github.com/miabi-io/miabi/internal/services/route"
 	"github.com/miabi-io/miabi/internal/services/runner"
+	"github.com/miabi-io/miabi/internal/services/sealing"
 	"github.com/miabi-io/miabi/internal/services/search"
 	"github.com/miabi-io/miabi/internal/services/secpolicy"
 	"github.com/miabi-io/miabi/internal/services/secret"
@@ -111,6 +112,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/volumebackup"
 	"github.com/miabi-io/miabi/internal/services/webhook"
 	"github.com/miabi-io/miabi/internal/services/workspace"
+	"github.com/miabi-io/miabi/internal/services/workspacekeys"
 	"github.com/miabi-io/miabi/internal/services/wsbackup"
 	"github.com/miabi-io/miabi/internal/siem"
 	dbstorage "github.com/miabi-io/miabi/internal/storage"
@@ -178,6 +180,7 @@ type routerHandlers struct {
 	volume          *handlers.VolumeHandler
 	backup          *handlers.BackupHandler
 	backupSettings  *handlers.WorkspaceBackupSettingsHandler
+	workspaceKeys   *handlers.WorkspaceKeysHandler
 	volumeBackup    *handlers.VolumeBackupHandler
 	workspaceBundle *handlers.WorkspaceBundleHandler
 	migration       *handlers.LocationMigrationHandler
@@ -670,6 +673,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		TTL:           time.Duration(cfg.ForwardTTLMinutes) * time.Minute,
 	}, nodeClients)
 	secretService := secret.NewService(repositories.NewSecretRepository(db))
+	sealingService := sealing.NewService(repositories.NewWorkspaceSealingKeyRepository(db))
 	secretService.SetConsumers(appService)
 	searchService := search.NewService(repositories.NewSearchRepository(db))
 	configService := configsvc.NewService(repositories.NewConfigRepository(db))
@@ -1030,6 +1034,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	certificateService.SetWorkspacePrivilege(workspaceRepo)
 	// Declarative apply engine (shared by the one-shot apply API and GitOps).
 	applyService := apply.NewService(appService, storageService, databaseService, stackService, secretService, routeService, domainService, registryService)
+	applyService.SetUnsealer(sealingService)
 	applyService.SetConfigs(configService)
 	applyService.SetMiddlewares(middlewareService)
 	applyService.SetJobs(jobService)
@@ -1132,6 +1137,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		Volume:      storageService,
 		Database:    databaseService,
 		Secret:      secretService,
+		Sealing:     sealingService,
 		Config:      configService,
 		Route:       routeService,
 		Middleware:  middlewareService,
@@ -1247,6 +1253,12 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			}
 		}
 	}
+	// A nil *keyring.Service must stay a nil interface, or Rotate would run against it.
+	var deks workspacekeys.DEKs
+	if keyRotator != nil {
+		deks = keyRotator
+	}
+	workspaceKeysService := workspacekeys.NewService(deks, repositories.NewWorkspaceKeyRepository(db), sealingService, repositories.NewSecretRepository(db))
 
 	jwtAuth := middlewares.JWTAuth(cfg, sessionStore, userRepo)
 
@@ -1319,6 +1331,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			volume:          handlers.NewVolumeHandler(storageService, userRepo, auditLogger),
 			backup:          handlers.NewBackupHandler(backupService, dbRepo, backupRepo, backupSetRepo, backupSettingsService, cronManager, ee, auditLogger, cfg.RestoreMaxMB),
 			backupSettings:  handlers.NewWorkspaceBackupSettingsHandler(backupSettingsService, auditLogger),
+			workspaceKeys:   handlers.NewWorkspaceKeysHandler(workspaceKeysService, sealingService, auditLogger),
 			volumeBackup:    handlers.NewVolumeBackupHandler(volumeBackupService, volumeRepo, volumeBackupRepo, cronManager, ee, auditLogger),
 			workspaceBundle: handlers.NewWorkspaceBundleHandler(wsBundleService, auditLogger),
 			migration:       handlers.NewLocationMigrationHandler(migrationService, userRepo, ee, auditLogger),
@@ -1508,11 +1521,6 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.runner.SetConnRegistry(runnerManager)
 	r.h.adminRunner.SetConnRegistry(runnerManager)
 
-	// Wire per-workspace encryption-key rotation into the admin workspace handler.
-	if keyRotator != nil {
-		r.h.adminWorkspace.SetKeyRotator(keyRotator)
-	}
-
 	// Post-restore recovery. `miabi restore` writes a quiesce marker into the database it restores,
 	// so the control plane knows on its first boot that this is a recovery — and holds off on
 	// schedules and redeploys until an operator has read the report and moved DNS.
@@ -1695,6 +1703,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.register(r.securityRoutes()...)
 	r.register(r.backupRoutes()...)
 	r.register(r.workspaceBackupSettingsRoutes()...)
+	r.register(r.workspaceKeysRoutes()...)
 	r.register(r.workspaceBundleRoutes()...)
 	r.register(r.locationMigrationRoutes()...)
 	r.register(r.monitoringRoutes()...)

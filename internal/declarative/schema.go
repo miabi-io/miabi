@@ -24,6 +24,9 @@ const (
 	// ownership and the default TLS policy routes under it inherit.
 	KindRoute  Kind = "Route"
 	KindSecret Kind = "Secret"
+	// KindSealedSecret is a vault secret whose value is sealed to the workspace's public key, so the
+	// manifest is safe to commit. It lands in the same vault as a Secret, under the same name space.
+	KindSealedSecret Kind = "SealedSecret"
 	// KindDomain is an owned hostname (or zone) a workspace controls: its default
 	// TLS policy and (optional) wildcard coverage. DNS-ownership verification is a
 	// runtime action, not a declarable field.
@@ -56,19 +59,20 @@ const (
 // knownKinds is the set of recognized kinds, used by the parser to route a
 // document's spec into the right typed field.
 var knownKinds = map[Kind]bool{
-	KindApplication: true,
-	KindStack:       true,
-	KindDatabase:    true,
-	KindVolume:      true,
-	KindRoute:       true,
-	KindSecret:      true,
-	KindDomain:      true,
-	KindRegistry:    true,
-	KindProject:     true,
-	KindConfig:      true,
-	KindMiddleware:  true,
-	KindCronJob:     true,
-	KindJob:         true,
+	KindApplication:  true,
+	KindStack:        true,
+	KindDatabase:     true,
+	KindVolume:       true,
+	KindRoute:        true,
+	KindSecret:       true,
+	KindSealedSecret: true,
+	KindDomain:       true,
+	KindRegistry:     true,
+	KindProject:      true,
+	KindConfig:       true,
+	KindMiddleware:   true,
+	KindCronJob:      true,
+	KindJob:          true,
 }
 
 // Meta is the identity block shared by every kind. Labels are short and identifying (for selection
@@ -91,19 +95,20 @@ type Resource struct {
 	Kind       Kind   `yaml:"kind" json:"kind"`
 	Metadata   Meta   `yaml:"metadata" json:"metadata"`
 
-	Application *ApplicationSpec `yaml:"-" json:"application,omitempty"`
-	Stack       *StackSpec       `yaml:"-" json:"stack,omitempty"`
-	Database    *DatabaseSpec    `yaml:"-" json:"database,omitempty"`
-	Volume      *VolumeSpec      `yaml:"-" json:"volume,omitempty"`
-	Route       *RouteSpec       `yaml:"-" json:"route,omitempty"`
-	Secret      *SecretSpec      `yaml:"-" json:"secret,omitempty"`
-	Domain      *DomainSpec      `yaml:"-" json:"domain,omitempty"`
-	Registry    *RegistrySpec    `yaml:"-" json:"registry,omitempty"`
-	Project     *ProjectSpec     `yaml:"-" json:"project,omitempty"`
-	Config      *ConfigSpec      `yaml:"-" json:"config,omitempty"`
-	Middleware  *MiddlewareSpec  `yaml:"-" json:"middleware,omitempty"`
-	CronJob     *CronJobSpec     `yaml:"-" json:"cronJob,omitempty"`
-	Job         *JobSpec         `yaml:"-" json:"job,omitempty"`
+	Application  *ApplicationSpec  `yaml:"-" json:"application,omitempty"`
+	Stack        *StackSpec        `yaml:"-" json:"stack,omitempty"`
+	Database     *DatabaseSpec     `yaml:"-" json:"database,omitempty"`
+	Volume       *VolumeSpec       `yaml:"-" json:"volume,omitempty"`
+	Route        *RouteSpec        `yaml:"-" json:"route,omitempty"`
+	Secret       *SecretSpec       `yaml:"-" json:"secret,omitempty"`
+	SealedSecret *SealedSecretSpec `yaml:"-" json:"sealedSecret,omitempty"`
+	Domain       *DomainSpec       `yaml:"-" json:"domain,omitempty"`
+	Registry     *RegistrySpec     `yaml:"-" json:"registry,omitempty"`
+	Project      *ProjectSpec      `yaml:"-" json:"project,omitempty"`
+	Config       *ConfigSpec       `yaml:"-" json:"config,omitempty"`
+	Middleware   *MiddlewareSpec   `yaml:"-" json:"middleware,omitempty"`
+	CronJob      *CronJobSpec      `yaml:"-" json:"cronJob,omitempty"`
+	Job          *JobSpec          `yaml:"-" json:"job,omitempty"`
 }
 
 // Key is the stable identity of a resource within a workspace: "<kind>/<name>".
@@ -543,6 +548,21 @@ type SecretSpec struct {
 	MinNumbers int `yaml:"minNumbers,omitempty" json:"minNumbers,omitempty"`
 	MinSpecial int `yaml:"minSpecial,omitempty" json:"minSpecial,omitempty"`
 }
+
+// SealedSecretSpec is a secret value sealed with `miabi secrets seal`. Only the workspace it was sealed
+// for can open it, and only for a SealedSecret of the same name. Unlike a Secret, it is compared by
+// fingerprint, so changing the sealed value in git updates the secret.
+type SealedSecretSpec struct {
+	// Value is the output of `miabi secrets seal`: sealed:v1:<keyVersion>:<data>. Never plaintext.
+	Value string `yaml:"value" json:"value"`
+	// SealedFP fingerprints Value, stamped by the apply engine on both sides of the diff. Derived
+	// state, never serialized.
+	SealedFP string `yaml:"-" json:"-"`
+}
+
+// IsVaultSecret reports whether a kind is stored in the workspace vault. Secret and SealedSecret share
+// one name space: a name is either, never both.
+func IsVaultSecret(k Kind) bool { return k == KindSecret || k == KindSealedSecret }
 
 // WantSymbols reports whether the generated alphabet includes punctuation:
 // explicitly requested, or implied by asking for a minimum number of them.

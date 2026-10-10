@@ -80,6 +80,8 @@ type Input struct {
 	Prune           bool
 	SelfHeal        bool
 	AllowEmpty      bool
+	// RequireSealedSecrets refuses a plaintext Secret value in the repository.
+	RequireSealedSecrets bool
 }
 
 // Create registers a new GitSource and assigns it a webhook secret.
@@ -111,7 +113,8 @@ func (s *Service) Create(workspaceID uint, in Input) (*models.GitSource, error) 
 		WorkspaceID: workspaceID, Name: name, DisplayName: displayName, RepoURL: in.RepoURL,
 		Ref: in.Ref, Path: in.Path, GitRepositoryID: in.GitRepositoryID,
 		SyncPolicy: in.SyncPolicy, Prune: in.Prune, SelfHeal: in.SelfHeal, AllowEmpty: in.AllowEmpty,
-		WebhookSecret: declarative.RandAlphaNum(40), Status: models.GitSourceUnknown,
+		RequireSealedSecrets: in.RequireSealedSecrets,
+		WebhookSecret:        declarative.RandAlphaNum(40), Status: models.GitSourceUnknown,
 	}
 	if err := s.repo.Create(src); err != nil {
 		return nil, err
@@ -154,6 +157,7 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.GitSource, err
 	src.Prune = in.Prune
 	src.SelfHeal = in.SelfHeal
 	src.AllowEmpty = in.AllowEmpty
+	src.RequireSealedSecrets = in.RequireSealedSecrets
 	if err := s.repo.Update(src); err != nil {
 		return nil, err
 	}
@@ -193,6 +197,13 @@ func sourceLabel(src *models.GitSource) string {
 	return strconv.FormatUint(uint64(src.ID), 10)
 }
 
+func sourceOptions(src *models.GitSource, checkReferences bool) apply.Options {
+	return apply.Options{
+		Prune: src.Prune, OwnerSource: sourceLabel(src), CheckReferences: checkReferences,
+		RequireSealedSecrets: src.RequireSealedSecrets,
+	}
+}
+
 func (s *Service) get(workspaceID, id uint) (*models.GitSource, error) {
 	src, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -212,7 +223,7 @@ func (s *Service) Diff(ctx context.Context, workspaceID, id uint) (*declarative.
 	if err != nil {
 		return nil, err
 	}
-	plan, _, err := s.applier.Plan(ctx, workspaceID, manifests, apply.Options{Prune: src.Prune, OwnerSource: sourceLabel(src), CheckReferences: true})
+	plan, _, err := s.applier.Plan(ctx, workspaceID, manifests, sourceOptions(src, true))
 	return plan, err
 }
 
@@ -263,7 +274,7 @@ func (s *Service) SyncResource(ctx context.Context, workspaceID, id uint, kind, 
 	if err != nil {
 		return nil, fmt.Errorf("fetch: %w", err)
 	}
-	return s.applier.ApplyResource(ctx, workspaceID, manifests, apply.Options{Prune: src.Prune, OwnerSource: sourceLabel(src)}, kind, name)
+	return s.applier.ApplyResource(ctx, workspaceID, manifests, sourceOptions(src, false), kind, name)
 }
 
 // DeleteResource deletes a single live resource (kind/name) managed by a source.
@@ -315,7 +326,7 @@ func (s *Service) Reconcile(ctx context.Context, src *models.GitSource) error {
 	// and this is what Git had" is true even if applying it then fails.
 	markChecked(src, commit.Hash)
 
-	res, err := s.applier.Apply(ctx, src.WorkspaceID, manifests, apply.Options{Prune: src.Prune, OwnerSource: sourceLabel(src)})
+	res, err := s.applier.Apply(ctx, src.WorkspaceID, manifests, sourceOptions(src, false))
 	if err != nil {
 		return s.markError(src, err)
 	}

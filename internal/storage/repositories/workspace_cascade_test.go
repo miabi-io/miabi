@@ -20,7 +20,7 @@ var wsScoped = []string{
 	"backup_schedules", "volume_backup_schedules", "webhooks", "webhook_deliveries", "environments",
 	"release_approvals", "template_sources", "template_installs", "routes", "certificates",
 	"dns_providers", "registries", "git_repositories", "git_sources", "networks",
-	"secrets", "middlewares", "notification_channels", "workspace_keys",
+	"secrets", "middlewares", "notification_channels", "workspace_keys", "workspace_sealing_keys",
 	"workspace_backup_settings", "workspace_members", "workspace_invitations",
 }
 

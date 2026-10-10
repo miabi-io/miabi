@@ -29,6 +29,11 @@ type Secret struct {
 	OwnerKind string `json:"owner_kind,omitempty" gorm:"index:idx_secret_owner"`
 	OwnerID   uint   `json:"owner_id,omitempty" gorm:"index:idx_secret_owner"`
 
+	// SealedFP fingerprints the SealedSecret value a manifest last set, so a changed value in git plans as an
+	// update. SealedKeyVersion is the sealing key that opened it. Both clear when the value is set any other way.
+	SealedFP         string `json:"-" gorm:"column:sealed_fp"`
+	SealedKeyVersion int    `json:"sealed_key_version,omitempty" gorm:"not null;default:0"`
+
 	// Metadata holds free-form labels; "miabi.io/" keys are platform-managed.
 	Metadata  Metadata  `json:"metadata,omitempty" gorm:"serializer:json"`
 	CreatedAt time.Time `json:"created_at"`

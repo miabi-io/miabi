@@ -255,6 +255,9 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
                   <span v-if="s.managed" class="badge badge-muted"
                     :title="$t('secrets.managedHint')"
                     style="margin-left: 6px"><span class="mdi mdi-database-outline"></span>{{ $t('secrets.managed') }}</span>
+                  <span v-if="s.sealed_key_version" class="badge badge-muted"
+                    :title="$t('secrets.sealedHint', { version: s.sealed_key_version })"
+                    style="margin-left: 6px"><span class="mdi mdi-lock-outline"></span>{{ $t('secrets.sealed') }}</span>
                 </td>
                 <td class="cell-sub" style="font-family: monospace">
                   {{ reference(s) }}

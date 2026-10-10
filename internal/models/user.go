@@ -42,20 +42,20 @@ const ServiceAccountEmailDomain = "service-accounts.invalid"
 
 // User is a global identity.
 type User struct {
-	ID                       uint       `json:"id" gorm:"primaryKey"`
-	Name                     string     `json:"name" gorm:"not null;default:''"`
-	Username                 string     `json:"username" gorm:"uniqueIndex;not null"`
-	Email                    string     `json:"email" gorm:"uniqueIndex;not null"`
-	PasswordHash             string     `json:"-" gorm:"not null"`
-	Role                     SystemRole `json:"role" gorm:"default:user;not null"`
-	TwoFactorSecret          string     `json:"-" gorm:"type:text"`
-	TwoFactorEnabled         bool       `json:"two_factor_enabled" gorm:"default:false;not null"`
-	Active                   bool       `json:"active" gorm:"default:true;not null"`
-	MustChangePassword       bool       `json:"must_change_password" gorm:"not null;default:false"`
-	AuthSource               string     `json:"auth_source" gorm:"not null;default:'local'"`
-	Kind                     string     `json:"kind" gorm:"not null;default:'user';index"`
+	ID                 uint       `json:"id" gorm:"primaryKey"`
+	Name               string     `json:"name" gorm:"not null;default:''"`
+	Username           string     `json:"username" gorm:"uniqueIndex;not null"`
+	Email              string     `json:"email" gorm:"uniqueIndex;not null"`
+	PasswordHash       string     `json:"-" gorm:"not null"`
+	Role               SystemRole `json:"role" gorm:"default:user;not null"`
+	TwoFactorSecret    string     `json:"-" gorm:"type:text"`
+	TwoFactorEnabled   bool       `json:"two_factor_enabled" gorm:"default:false;not null"`
+	Active             bool       `json:"active" gorm:"default:true;not null"`
+	MustChangePassword bool       `json:"must_change_password" gorm:"not null;default:false"`
+	AuthSource         string     `json:"auth_source" gorm:"not null;default:'local'"`
+	Kind               string     `json:"kind" gorm:"not null;default:'user';index"`
 	// ServiceWorkspaceID is the workspace that owns a service account; its admins manage it.
-	ServiceWorkspaceID *uint `json:"service_workspace_id,omitempty" gorm:"index"`
+	ServiceWorkspaceID       *uint      `json:"service_workspace_id,omitempty" gorm:"index"`
 	OrganizationID           *uint      `json:"organization_id,omitempty" gorm:"index"`
 	WorkspaceLimit           *int       `json:"workspace_limit,omitempty"`
 	WorkspaceMembershipLimit *int       `json:"workspace_membership_limit,omitempty"`

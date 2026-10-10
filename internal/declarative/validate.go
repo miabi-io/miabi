@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/miabi-io/miabi/internal/models"
+
+	"github.com/miabi-io/miabi/pkg/sealed"
 )
 
 // Config limits and defaults. The per-file cap is what matters against Docker's
@@ -172,6 +174,8 @@ func (r *Resource) validate() error {
 		return r.validateCronJob()
 	case KindJob:
 		return r.validateJob()
+	case KindSealedSecret:
+		return r.validateSealedSecret()
 	case KindVolume, KindStack, KindSecret, KindProject:
 		return nil
 	default:
@@ -315,6 +319,16 @@ func (r *Resource) validateDomain() error {
 // registryServerRe matches a registry authority: a dotted host with an optional
 // port ("ghcr.io", "registry.example.com:5000", "localhost:5000").
 var registryServerRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?$`)
+
+func (r *Resource) validateSealedSecret() error {
+	if r.SealedSecret == nil || r.SealedSecret.Value == "" {
+		return fmt.Errorf("sealed secret %q: value is required (make one with `miabi secrets seal %s`)", r.Metadata.Name, r.Metadata.Name)
+	}
+	if _, _, err := sealed.Parse(r.SealedSecret.Value); err != nil {
+		return fmt.Errorf("sealed secret %q: value must be sealed with `miabi secrets seal`: %w", r.Metadata.Name, err)
+	}
+	return nil
+}
 
 func (r *Resource) validateRegistry() error {
 	reg := r.Registry
@@ -705,6 +719,9 @@ func validateFileMode(mode string) error {
 // app's stack exists.
 func (s *ResourceSet) validateReferences() error {
 	for _, r := range s.list {
+		if r.Kind == KindSealedSecret && s.Has(KindSecret, r.Metadata.Name) {
+			return fmt.Errorf("secret %q is declared both as a Secret and as a SealedSecret; keep one", r.Metadata.Name)
+		}
 		switch {
 		case r.Application != nil:
 			for _, mt := range r.Application.Mounts {

@@ -44,7 +44,7 @@ const diffSource = ref<GitSource | null>(null)
 const diffPlan = ref<ApplyPlan | null>(null)
 
 function emptyForm(): GitSourceInput {
-  return { name: '', repo_url: '', ref: 'main', path: '.', git_repository_id: null, sync_policy: 'manual', prune: false, self_heal: false, allow_empty: false }
+  return { name: '', repo_url: '', ref: 'main', path: '.', git_repository_id: null, sync_policy: 'manual', prune: false, self_heal: false, allow_empty: false, require_sealed_secrets: false }
 }
 
 async function load(id: number | null) {
@@ -86,7 +86,7 @@ function openEdit(s: GitSource) {
   form.value = {
     name: s.name, repo_url: s.repo_url, ref: s.ref, path: s.path,
     git_repository_id: s.git_repository_id ?? null, sync_policy: s.sync_policy,
-    prune: s.prune, self_heal: s.self_heal, allow_empty: s.allow_empty,
+    prune: s.prune, self_heal: s.self_heal, allow_empty: s.allow_empty, require_sealed_secrets: s.require_sealed_secrets,
   }
   showModal.value = true
 }
@@ -374,6 +374,8 @@ function syncedTitle(s: GitSource) {
             </label>
             <p v-if="form.allow_empty" class="hint warn">
               <span class="mdi mdi-alert-outline"></span>{{ $t('gitops.allowEmptyWarning') }}</p>
+            <label class="check"><input type="checkbox" v-model="form.require_sealed_secrets" /> <span>{{ $t('gitops.requireSealedLabel') }}</span></label>
+            <p v-if="form.require_sealed_secrets" class="hint">{{ $t('gitops.requireSealedHint') }}</p>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showModal = false">{{ $t('action.cancel') }}</button>

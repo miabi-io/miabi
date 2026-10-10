@@ -100,6 +100,7 @@ func Edges(set *ResourceSet) []Edge {
 						add(KindApplication, name, KindDatabase, m[2], EdgeDatabase)
 					case "secrets":
 						add(KindApplication, name, KindSecret, m[2], EdgeSecret)
+						add(KindApplication, name, KindSealedSecret, m[2], EdgeSecret)
 					case "applications":
 						add(KindApplication, name, KindApplication, m[2], EdgeAppRef)
 					}

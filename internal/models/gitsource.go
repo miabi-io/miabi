@@ -57,6 +57,9 @@ type GitSource struct {
 	// teardown). Off by default, so a wrong path or a wiped repo cannot tear down a deployment.
 	// A missing path is always an error. Only meaningful together with Prune.
 	AllowEmpty bool `json:"allow_empty" gorm:"not null;default:false"`
+	// RequireSealedSecrets refuses a sync whose manifests carry a Secret with a plaintext value, so a
+	// credential can't land in the repository by mistake. SealedSecret and generated Secrets still pass.
+	RequireSealedSecrets bool `json:"require_sealed_secrets" gorm:"not null;default:false"`
 
 	// WebhookSecret authenticates inbound provider push webhooks. Never serialized.
 	WebhookSecret string `json:"-" gorm:"not null"`

@@ -37,7 +37,7 @@ func multilineTestService(t *testing.T) *Service {
 		uid text, id integer PRIMARY KEY AUTOINCREMENT, workspace_id integer,
 		name text, display_name text, value_enc text, description text,
 		version integer DEFAULT 1, updated_by_id integer, managed integer DEFAULT 0,
-		owner_kind text, owner_id integer, metadata text, created_at datetime, updated_at datetime
+		owner_kind text, owner_id integer, sealed_fp text, sealed_key_version integer DEFAULT 0, metadata text, created_at datetime, updated_at datetime
 	)`).Error; err != nil {
 		t.Fatalf("create table: %v", err)
 	}

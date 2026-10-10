@@ -16,7 +16,8 @@ import (
 //	1  the original document
 //	2  adds configs, and config mounts on an application
 //	3  healthcheck_type "none" disables the image's own HEALTHCHECK; before, it kept it ("image")
-const StateSchema = 3
+//	4  adds sealing keys, and the sealed-value fingerprint on secrets
+const StateSchema = 4
 
 // HealthcheckNoneDisables is the first schema whose "none" healthcheck disables the image's own check.
 const HealthcheckNoneDisables = 3
@@ -38,10 +39,12 @@ type State struct {
 
 	Workspace Workspace `json:"workspace"`
 
-	Registries   []Registry         `json:"registries,omitempty"`
-	GitRepos     []GitRepository    `json:"git_repositories,omitempty"`
-	DNSProviders []DNSProvider      `json:"dns_providers,omitempty"`
-	Networks     []Network          `json:"networks,omitempty"`
+	Registries   []Registry      `json:"registries,omitempty"`
+	GitRepos     []GitRepository `json:"git_repositories,omitempty"`
+	DNSProviders []DNSProvider   `json:"dns_providers,omitempty"`
+	Networks     []Network       `json:"networks,omitempty"`
+	// SealingKeys travel so values sealed to the source workspace keep opening on the target.
+	SealingKeys  []SealingKey       `json:"sealing_keys,omitempty"`
 	Secrets      []Secret           `json:"secrets,omitempty"`
 	Configs      []Config           `json:"configs,omitempty"`
 	Volumes      []Volume           `json:"volumes,omitempty"`
@@ -218,6 +221,8 @@ type GitSource struct {
 	Prune         bool   `json:"prune,omitempty"`
 	SelfHeal      bool   `json:"self_heal,omitempty"`
 	AllowEmpty    bool   `json:"allow_empty,omitempty"`
+	// RequireSealedSecrets keeps the target refusing plaintext Secret values, as the source did.
+	RequireSealedSecrets bool `json:"require_sealed_secrets,omitempty"`
 	// LastSyncedCommit lets the target decide "already at HEAD" instead of
 	// redeploying everything on its first reconcile.
 	LastSyncedCommit string `json:"last_synced_commit,omitempty"`
@@ -239,6 +244,18 @@ type Secret struct {
 	Description string            `json:"description,omitempty"`
 	Value       string            `json:"value"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
+	// SealedFP carries the fingerprint of the sealed value that set it, so a GitOps source re-syncing on the
+	// target sees the secret as unchanged.
+	SealedFP         string `json:"sealed_fp,omitempty"`
+	SealedKeyVersion int    `json:"sealed_key_version,omitempty"`
+}
+
+// SealingKey is a workspace sealing key, private half included.
+type SealingKey struct {
+	Version   int       `json:"version"`
+	Identity  string    `json:"identity"`
+	Active    bool      `json:"active"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type Config struct {

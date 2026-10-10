@@ -103,7 +103,7 @@ func (p *Plan) Counts() (create, update, del, noop int) {
 // from plans entirely.
 func applyRank(k Kind) int {
 	switch k {
-	case KindSecret, KindVolume, KindDomain, KindConfig, KindMiddleware:
+	case KindSecret, KindSealedSecret, KindVolume, KindDomain, KindConfig, KindMiddleware:
 		// Independent, foundational resources. Domains come before the routes that
 		// bind hostnames under them, and so do middlewares: a route naming a chain
 		// is refused until every middleware in it exists.
@@ -134,7 +134,25 @@ func matchActual(actual *ResourceSet, byUID map[string]Resource, d Resource) (Re
 			return r, true
 		}
 	}
-	return actual.Get(d.Key())
+	if r, ok := actual.Get(d.Key()); ok {
+		return r, true
+	}
+	// Switching a name between Secret and SealedSecret updates the one vault entry rather than creating
+	// a second, which the vault's unique name would refuse.
+	if alias, ok := vaultAlias(d.Kind); ok {
+		return actual.Get(string(alias) + "/" + d.Metadata.Name)
+	}
+	return Resource{}, false
+}
+
+func vaultAlias(k Kind) (Kind, bool) {
+	switch k {
+	case KindSecret:
+		return KindSealedSecret, true
+	case KindSealedSecret:
+		return KindSecret, true
+	}
+	return "", false
 }
 
 // BuildPlan diffs desired against actual and returns an ordered convergence
@@ -191,6 +209,9 @@ func BuildPlan(desired, actual *ResourceSet, opts PlanOptions) *Plan {
 			}
 			if _, keep := desired.Get(a.Key()); keep {
 				continue
+			}
+			if alias, ok := vaultAlias(a.Kind); ok && desired.Has(alias, a.Metadata.Name) {
+				continue // the same vault entry, now declared under the other kind
 			}
 			if a.Metadata.UID != "" && desiredUIDs[string(a.Kind)+"/"+a.Metadata.UID] {
 				continue // claimed by a desired resource via uid (a rename, not a delete)
@@ -250,6 +271,9 @@ func group(a Action) int {
 func diffFields(actual, desired Resource) []FieldDiff {
 	if desired.Kind == KindSecret {
 		return nil // opaque: an existing secret is treated as in-sync
+	}
+	if desired.Kind == KindSealedSecret {
+		return diffSealedSecret(actual, desired)
 	}
 	if desired.Kind == KindRegistry {
 		return diffRegistry(actual, desired)
@@ -328,6 +352,22 @@ func normalizedList(in []string, normalize func([]string) ([]string, error)) str
 // diffRegistry compares a registry credential. Server and username are ordinary visible fields;
 // the password is compared through fingerprints stamped on both sides, never the value. It is
 // only compared when the manifest declares one, so an out-of-band token isn't drift every plan.
+// diffSealedSecret compares sealed values by fingerprint, so editing one in git updates the secret, and so
+// does a value later set outside git. The live side may be a plain Secret being adopted.
+func diffSealedSecret(actual, desired Resource) []FieldDiff {
+	d := desired.SealedSecret
+	if d == nil || d.SealedFP == "" {
+		return nil
+	}
+	from := "(current)"
+	if actual.SealedSecret == nil || actual.SealedSecret.SealedFP == "" {
+		from = "(not from a sealed value)"
+	} else if actual.SealedSecret.SealedFP == d.SealedFP {
+		return nil
+	}
+	return []FieldDiff{{Field: "value", From: from, To: "(sealed)"}}
+}
+
 func diffRegistry(actual, desired Resource) []FieldDiff {
 	a, d := actual.Registry, desired.Registry
 	if d == nil {

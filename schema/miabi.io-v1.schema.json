@@ -763,6 +763,20 @@
       ],
       "type": "object"
     },
+    "SealedSecretSpec": {
+      "additionalProperties": false,
+      "description": "SealedSecretSpec is a secret value sealed with `miabi secrets seal`. Only the workspace it was sealed for can open it, and only for a SealedSecret of the same name. Unlike a Secret, it is compared by fingerprint, so changing the sealed value in git updates the secret.",
+      "properties": {
+        "value": {
+          "description": "Value is the output of `miabi secrets seal`: sealed:v1:\u003ckeyVersion\u003e:\u003cdata\u003e. Never plaintext.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "type": "object"
+    },
     "SecretSpec": {
       "additionalProperties": false,
       "description": "SecretSpec is a write-only secret value. Value is never read back; the diff engine treats secrets as opaque (presence/absence only). The generation options mirror the console's generator exactly, so the same policy can be expressed in a manifest and in the UI and mean the same thing. Without them `generate:` could not satisfy a service that requires a symbol, and the two halves of the product would disagree about what generating a secret means.",
@@ -1137,6 +1151,25 @@
       "if": {
         "properties": {
           "kind": {
+            "const": "SealedSecret"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/SealedSecretSpec"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
             "const": "Secret"
           }
         },
@@ -1210,6 +1243,7 @@
         "Project",
         "Registry",
         "Route",
+        "SealedSecret",
         "Secret",
         "Stack",
         "Volume"

@@ -36,6 +36,24 @@ func (r *SecretRepository) FindByName(workspaceID uint, name string) (*models.Se
 	return &s, nil
 }
 
+// CountSealedByKeyVersion counts the workspace's secrets set from a sealed value, by the sealing key version
+// that opened them.
+func (r *SecretRepository) CountSealedByKeyVersion(workspaceID uint) (map[int]int, error) {
+	var rows []struct {
+		SealedKeyVersion int
+		N                int
+	}
+	err := r.db.Model(&models.Secret{}).
+		Select("sealed_key_version, COUNT(*) AS n").
+		Where("workspace_id = ? AND sealed_key_version > 0", workspaceID).
+		Group("sealed_key_version").Scan(&rows).Error
+	out := make(map[int]int, len(rows))
+	for _, r := range rows {
+		out[r.SealedKeyVersion] = r.N
+	}
+	return out, err
+}
+
 func (r *SecretRepository) ListByWorkspace(workspaceID uint) ([]models.Secret, error) {
 	var secrets []models.Secret
 	err := r.db.Where("workspace_id = ?", workspaceID).Order("name ASC").Find(&secrets).Error

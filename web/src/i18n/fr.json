@@ -84,7 +84,6 @@
     "retract": "Retirer",
     "revoke": "Révoquer",
     "revokePrivileged": "Révoquer le privilège",
-    "rotateKey": "Faire tourner la clé",
     "runGarbageCollection": "Lancer le nettoyage",
     "save": "Enregistrer",
     "saveOverrides": "Enregistrer les dérogations",
@@ -93,7 +92,8 @@
     "teardown": "Démanteler",
     "test": "Tester",
     "upgrade": "Mettre à niveau",
-    "working": "En cours…"
+    "working": "En cours…",
+    "rotateKeys": "Faire tourner les clés"
   },
   "adminLayout": {
     "dismissUntilTheNextRelease": "Masquer jusqu’à la prochaine version",
@@ -1177,8 +1177,7 @@
         "clearOverrides": "Effacer toutes les dérogations de « {name} » ? Il reviendra aux quotas et capacités de son forfait, et les valeurs définies ici seront perdues.",
         "makePrivileged": "Rendre « {name} » privilégié ? Les montages hôte et les liaisons de ports hôte seront autorisés sans approbation, et le profil de sécurité restreint ne s’appliquera plus à ses charges de travail.",
         "relaxRestrictions": "Cela accorde à « {name} » des capacités que son forfait refuse : {caps}. Elles s’appliquent à toutes les charges de travail de l’espace de travail.",
-        "revokePrivileged": "Révoquer l’accès privilégié de « {name} » ? Le profil de sécurité restreint s’applique de nouveau, et les charges de travail qui dépendent de montages hôte ou de liaisons de ports hôte peuvent échouer au prochain déploiement.",
-        "rotateTheEncryptionKey": "Faire tourner la clé de chiffrement de \"{name}\" ? Ses secrets seront rechiffrés avec une nouvelle clé."
+        "revokePrivileged": "Révoquer l’accès privilégié de « {name} » ? Le profil de sécurité restreint s’applique de nouveau, et les charges de travail qui dépendent de montages hôte ou de liaisons de ports hôte peuvent échouer au prochain déploiement."
       },
       "workspaceRolesPanel": {
         "deleteRoleName": "Supprimer le rôle \"{name}\" ?"
@@ -1188,6 +1187,9 @@
       },
       "serviceAccounts": {
         "delete": "Désactiver « {name} » ? Toutes ses clés API sont révoquées immédiatement et il est retiré de tous ses espaces de travail : toute automatisation qui l'utilise cessera de fonctionner. Cette action est irréversible."
+      },
+      "wsKeys": {
+        "rotate": "Faire tourner les clés de « {name} » ? Chaque secret stocké est rechiffré avec une nouvelle clé de données et une nouvelle clé de scellement devient active. Les valeurs déjà scellées continuent de fonctionner, et la prochaine rotation sera possible dans {months} mois."
       }
     },
     "title": {
@@ -1278,12 +1280,12 @@
       "revokeAccess": "Révoquer l’accès",
       "revokeApiKey": "Révoquer la clé API",
       "revokePrivileged": "Révoquer l’accès privilégié ?",
-      "rotateEncryptionKey": "Faire tourner la clé de chiffrement",
       "runGarbageCollection": "Lancer le nettoyage",
       "tearDownGateway": "Démanteler la passerelle",
       "testDnsProvider": "Tester le fournisseur DNS",
       "expandVolume": "Étendre le volume",
-      "deleteServiceAccount": "Supprimer le compte de service"
+      "deleteServiceAccount": "Supprimer le compte de service",
+      "rotateWorkspaceKeys": "Faire tourner les clés de l’espace de travail"
     }
   },
   "count": {
@@ -1826,7 +1828,9 @@
       "pruneHelp": "Supprime les ressources gérées retirées de Git",
       "selfHeal": "Auto-réparation",
       "selfHealHelp": "Réapplique quand l’état réel dérive de Git",
-      "update": "Mettre à jour"
+      "update": "Mettre à jour",
+      "sealedOnly": "Secrets scellés uniquement",
+      "sealedOnlyHelp": "Un Secret avec une valeur en clair fait échouer la synchronisation"
     },
     "addOne": "ajoutez-en un",
     "all": "toutes les",
@@ -1906,7 +1910,9 @@
     },
     "topoErrorHint": "La dernière révision n’a pas pu être chargée : {error}",
     "viewDiff": "Voir les différences",
-    "waitingForLogOutput": "En attente des journaux…"
+    "waitingForLogOutput": "En attente des journaux…",
+    "requireSealedLabel": "Secrets scellés uniquement — refuser un Secret avec une valeur en clair dans le dépôt",
+    "requireSealedHint": "Une synchronisation échoue tant qu’un Secret contient une valeur. Utilisez un SealedSecret (miabi secrets seal) ou generate: true."
   },
   "inbox": {
     "alertsAndUpdatesAcrossYour": "Alertes et mises à jour de tous vos espaces de travail.",
@@ -2699,6 +2705,10 @@
       "created": "Compte de service créé",
       "deleted": "Compte de service désactivé",
       "idCopied": "ID du compte de service copié"
+    },
+    "wsKeys": {
+      "rotated": "Clés renouvelées (clé de données v{version}), {count} valeurs rechiffrées",
+      "rotatedKeptOld": "Clés renouvelées (clé de données v{version}), mais d’anciennes clés de données ont été conservées : {columns} les utilisent encore"
     }
   },
   "oauth": {
@@ -3425,7 +3435,9 @@
     "value": "Valeur",
     "valueHint": "Stocké tel quel — les sauts de ligne et les retours à la ligne finaux sont préservés.",
     "valuePlaceholder": "la valeur du secret\n\nLes valeurs multilignes sont stockées exactement telles que saisies : un certificat PEM ou une clé privée peut être collé en entier.",
-    "version": "Version"
+    "version": "Version",
+    "sealed": "Scellé",
+    "sealedHint": "Défini par une valeur scellée dans Git (clé de scellement v{version}). Une valeur définie ici est remplacée au prochain apply ou à la prochaine synchronisation."
   },
   "security": {
     "codesRemaining": "Aucun code de récupération restant. | {n} code de récupération restant. | {n} codes de récupération restants.",
@@ -4031,7 +4043,8 @@
       "portability": "Portabilité",
       "roles": "Rôles",
       "usage": "Utilisation",
-      "serviceAccounts": "Comptes de service"
+      "serviceAccounts": "Comptes de service",
+      "encryption": "Chiffrement"
     },
     "theSystemWorkspaceNameIs": "Le nom de l’espace de travail système est réservé et ne peut pas être modifié.",
     "typeToConfirm": "Saisissez {name} pour confirmer",
@@ -4100,5 +4113,33 @@
     "never": "Jamais",
     "neverExpires": "Cette clé n'expire jamais.",
     "expiresOn": "Expire le {date}"
+  },
+  "wsKeys": {
+    "encryptionKeys": "Clés de chiffrement",
+    "subtitle": "Les secrets sont chiffrés avec la clé de données propre à cet espace de travail, et les valeurs scellées avec sa clé de scellement. Les propriétaires et administrateurs font tourner les deux, au plus une fois tous les {months} mois.",
+    "nextRotationOn": "Prochaine rotation possible le {date}",
+    "rotating": "Rotation…",
+    "encryptionDisabled": "Aucune clé maîtresse n’est configurée sur cette instance : les secrets sont stockés sans chiffrement. Demandez à l’administrateur de la plateforme d’en définir une.",
+    "dataKey": "Clé de données",
+    "sealingKey": "Clé de scellement",
+    "notCreatedYet": "Créée avec le premier secret",
+    "lastRotation": "Dernière rotation",
+    "never": "Jamais",
+    "nextRotation": "Prochaine rotation",
+    "availableNow": "Disponible maintenant",
+    "unavailable": "Indisponible sur cette instance",
+    "rotationExplained": "Une rotation rechiffre chaque secret stocké avec une nouvelle clé de données et active une nouvelle clé de scellement. Les anciennes clés de scellement sont conservées : les valeurs scellées déjà dans Git continuent de s’ouvrir.",
+    "sealedSecrets": "Secrets scellés",
+    "sealedSubtitle": "Chiffrez un secret avec la clé publique de cet espace de travail et commitez-le dans Git : seul Miabi peut l’ouvrir, et uniquement pour un secret du même nom.",
+    "publicKey": "Clé publique de scellement (v{version})",
+    "copy": "Copier",
+    "copied": "Copié",
+    "copyFailed": "Impossible de copier dans le presse-papiers",
+    "sealFromCli": "Sceller une valeur depuis la CLI",
+    "sealedCount": "Aucun secret n’est encore défini par une valeur scellée | 1 secret est défini par une valeur scellée | {count} secrets sont définis par une valeur scellée",
+    "outdatedSealed": "1 secret scellé utilise une ancienne clé de scellement. Il s’ouvre toujours ; scellez-le à nouveau pour le passer sur la clé actuelle. | {count} secrets scellés utilisent une ancienne clé de scellement. Ils s’ouvrent toujours ; scellez-les à nouveau pour les passer sur la clé actuelle.",
+    "olderKeys": "Anciennes clés de scellement",
+    "created": "Créée",
+    "stillInUse": "Secrets encore scellés avec elle"
   }
 }

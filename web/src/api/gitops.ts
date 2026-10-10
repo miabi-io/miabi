@@ -11,6 +11,7 @@ export interface GitSourceInput {
   prune?: boolean
   self_heal?: boolean
   allow_empty?: boolean
+  require_sealed_secrets?: boolean
 }
 
 const base = (ws: number) => `/workspaces/${ws}/gitops`

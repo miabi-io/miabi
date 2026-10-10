@@ -16,6 +16,7 @@ import NotificationChannels from '@/views/notifications/Notifications.vue'
 import WorkspaceRolesPanel from '@/components/WorkspaceRolesPanel.vue'
 import ServiceAccountsPanel from '@/components/ServiceAccountsPanel.vue'
 import PortableBackupPanel from '@/components/PortableBackupPanel.vue'
+import WorkspaceKeysPanel from '@/components/WorkspaceKeysPanel.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import Sparkline from '@/components/Sparkline.vue'
 import { copyText } from '@/utils/clipboard'
@@ -28,7 +29,7 @@ const ws = useWorkspaceStore()
 const notify = useNotificationStore()
 
 const roles: WorkspaceRole[] = ['owner', 'admin', 'developer', 'viewer']
-type Tab = 'settings' | 'members' | 'service-accounts' | 'roles' | 'usage' | 'backup' | 'portability' | 'notifications'
+type Tab = 'settings' | 'members' | 'service-accounts' | 'roles' | 'usage' | 'backup' | 'portability' | 'encryption' | 'notifications'
 const allTabs: { id: Tab; label: string; icon: string; admin?: boolean }[] = [
   { id: 'settings', label: 'wsSettings.tab.general', icon: 'mdi-cog-outline' },
   { id: 'members', label: 'wsSettings.tab.members', icon: 'mdi-account-group-outline' },
@@ -37,6 +38,7 @@ const allTabs: { id: Tab; label: string; icon: string; admin?: boolean }[] = [
   { id: 'usage', label: 'wsSettings.tab.usage', icon: 'mdi-gauge' },
   { id: 'backup', label: 'wsSettings.tab.backup', icon: 'mdi-cloud-upload-outline' },
   { id: 'portability', label: 'wsSettings.tab.portability', icon: 'mdi-package-variant-closed' },
+  { id: 'encryption', label: 'wsSettings.tab.encryption', icon: 'mdi-key-chain-variant', admin: true },
   { id: 'notifications', label: 'wsSettings.tab.notifications', icon: 'mdi-bell-outline' },
 ]
 
@@ -1038,6 +1040,8 @@ watch(activeTab, (t) => loadTab(t))
       </div>
       <PortableBackupPanel v-else :ws-id="wsId" :can-restore="myRole === 'owner'" />
     </template>
+
+    <WorkspaceKeysPanel v-else-if="activeTab === 'encryption' && isAdmin" :ws-id="wsId" :ws-name="form.displayName" />
 
     <!-- Notifications (Telegram channels) -->
     <NotificationChannels v-else-if="activeTab === 'notifications'" />

@@ -211,6 +211,7 @@ func Run(db *gorm.DB) error {
 		&models.DNSRecord{},
 		&models.ACMEAccount{},
 		&models.WorkspaceKey{},
+		&models.WorkspaceSealingKey{},
 		&models.GitSource{},
 		&models.Environment{},
 		&models.ReleaseApproval{},
