@@ -798,13 +798,15 @@
     "showPassword": "Show password"
   },
   "authHero": {
-    "builtInContainerRegistry": "Built-in Container Registry",
-    "deployScaleAndManageApplications": "Deploy, scale, and manage applications from one intuitive platform.",
-    "gitopsCanaryDeployments": "GitOps & Canary Deployments",
+    "builtInContainerRegistry": "Built-in container registry",
+    "ciCdPipelinesOwnRunners": "CI/CD pipelines on your own runners",
+    "footer": "Open-source, self-hosted PaaS",
+    "gitopsCanaryRollback": "GitOps, canary deploys & instant rollback",
+    "lead": "A complete DevOps platform, from commit to production, on servers you own.",
     "managedDatabasesBackupsVolumes": "Managed databases, backups & volumes",
-    "monitoringReleaseHistory": "Monitoring & Release History",
-    "multiTenantWorkspacesRbac": "Multi-tenant Workspaces & RBAC",
-    "secretsAutomaticTls": "Secrets & Automatic TLS",
+    "monitoringAnalyticsReleaseHistory": "Monitoring, analytics & release history",
+    "multiTenantWorkspacesRbac": "Team workspaces & role-based access",
+    "secretsAutomaticTls": "Secrets & automatic TLS",
     "titleLine1": "Self-hosting,",
     "titleLine2": "reimagined."
   },

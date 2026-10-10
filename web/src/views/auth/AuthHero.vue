@@ -23,13 +23,14 @@ defineProps<{ brandName?: string }>()
 
         <div class="auth-hero-body">
           <h2 class="auth-hero-title">{{ $t('authHero.titleLine1') }}<br />{{ $t('authHero.titleLine2') }}</h2>
-          <p class="auth-hero-lead">{{ $t('authHero.deployScaleAndManageApplications') }}</p>
+          <p class="auth-hero-lead">{{ $t('authHero.lead') }}</p>
           <ul class="auth-hero-features">
+            <li><span class="mdi mdi-source-branch"></span>{{ $t('authHero.ciCdPipelinesOwnRunners') }}</li>
             <li><span class="mdi mdi-package-variant-closed"></span>{{ $t('authHero.builtInContainerRegistry') }}</li>
+            <li><span class="mdi mdi-rocket-launch-outline"></span>{{ $t('authHero.gitopsCanaryRollback') }}</li>
             <li><span class="mdi mdi-lock-check-outline"></span>{{ $t('authHero.secretsAutomaticTls') }}</li>
-            <li><span class="mdi mdi-infinity"></span>{{ $t('authHero.gitopsCanaryDeployments') }}</li>
             <li><span class="mdi mdi-database-outline"></span>{{ $t('authHero.managedDatabasesBackupsVolumes') }}</li>
-            <li><span class="mdi mdi-chart-areaspline"></span>{{ $t('authHero.monitoringReleaseHistory') }}</li>
+            <li><span class="mdi mdi-chart-areaspline"></span>{{ $t('authHero.monitoringAnalyticsReleaseHistory') }}</li>
             <li><span class="mdi mdi-account-group-outline"></span>{{ $t('authHero.multiTenantWorkspacesRbac') }}</li>
           </ul>
         </div>
