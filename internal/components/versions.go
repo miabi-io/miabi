@@ -9,7 +9,7 @@ package components
 // The Web UI ships with Miabi and carries Miabi's own version.
 const (
 	GitOpsVersion         = "1.0.1"
-	PipelineVersion       = "1.0.0"
+	PipelineVersion       = "1.1.0"
 	MarketplaceVersion    = "1.0.0"
 	RegistryVersion       = "1.0.1"
 	StorageClassesVersion = "1.0.0"

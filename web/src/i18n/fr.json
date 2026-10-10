@@ -4073,9 +4073,7 @@
     "body": {
       "beta": "Cette fonctionnalité est prise en charge, mais elle peut encore évoluer et certaines parties restent à peaufiner.",
       "preview": "Attendez-vous à des manques et à des changements qui peuvent vous obliger à refaire une partie de la configuration."
-    },
-    "feedback": "Signaler un problème",
-    "dismiss": "Masquer"
+    }
   },
   "serviceAccounts": {
     "title": "Comptes de service",

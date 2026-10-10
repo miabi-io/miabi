@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import BetaBanner from '@/components/BetaBanner.vue'
 import BetaBadge from '@/components/BetaBadge.vue'
 import { computed, onMounted, ref } from 'vue'
 import { adminApi } from '@/api/admin'
@@ -153,7 +152,6 @@ const reclaimHint = computed(() =>
         </button>
       </div>
     </div>
-    <BetaBanner component="storage-classes" />
 
     <div v-if="atCap" class="cap-note">
       <span class="mdi mdi-lock-outline"></span>
