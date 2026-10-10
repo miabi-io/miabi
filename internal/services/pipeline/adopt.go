@@ -191,6 +191,51 @@ func (s *Service) discoverForApp(ctx context.Context, app *models.Application, r
 	return Discover(ctx, url, strings.TrimSpace(ref), auth)
 }
 
+// pinCommitTimeout bounds the ls-remote a trigger makes to pin a run; it runs on the request path.
+const pinCommitTimeout = 15 * time.Second
+
+// pinCommit fills in the branch and commit of a run whose trigger named no commit: an app-bound run
+// builds the app's tracked ref, and the head of that branch is resolved, so the run records what it
+// checks out and steps see it as $MIABI_COMMIT. A failed lookup is logged and leaves the run
+// unpinned; the runner then clones the default branch as before.
+func (s *Service) pinCommit(p *models.PipelineDefinition, in *TriggerInput) {
+	if s.gitRepos == nil {
+		return
+	}
+	var (
+		rawURL       string
+		credentialID *uint
+	)
+	switch {
+	case p.ApplicationID != nil && s.apps != nil:
+		app, err := s.apps.FindInWorkspace(p.WorkspaceID, *p.ApplicationID)
+		if err != nil || app.SourceType != models.AppSourceGit {
+			return
+		}
+		if in.Branch == "" {
+			in.Branch = app.GitRef
+		}
+		rawURL, credentialID = app.GitRepo, app.GitRepositoryID
+	case p.GitRepositoryID != nil:
+		credentialID = p.GitRepositoryID
+	default:
+		return
+	}
+	url, auth, err := s.gitRepos.CloneURLAuth(p.WorkspaceID, rawURL, credentialID)
+	if err != nil {
+		logger.Warn("pipeline run left unpinned: source unresolved", "pipeline", p.Name, "error", err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), pinCommitTimeout)
+	defer cancel()
+	commit, err := gitrepo.RemoteCommit(ctx, url, in.Branch, auth)
+	if err != nil {
+		logger.Warn("pipeline run left unpinned: ref unresolved", "pipeline", p.Name, "ref", in.Branch, "error", err)
+		return
+	}
+	in.Commit = commit
+}
+
 // uniqueName returns base, or the first free base-2, base-3, … suffix. Adoption
 // must not fail because the workspace already has a pipeline by that name, and a
 // numeric suffix reads better in the UI than a random token.
