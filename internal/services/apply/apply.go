@@ -40,10 +40,9 @@ import (
 	"github.com/miabi-io/miabi/pkg/sealed"
 )
 
-// MetaDigest records, on a converged application, the image digest the apply
-// engine last reconciled to. Deploys pull image@digest while it is set, and the
-// live snapshot reports it so a digest-pinned manifest converges instead of
-// perpetually drifting.
+// MetaDigest records the image digest a manifest pins an application to. Deploys
+// pull image@digest while it is set, and the live snapshot reports the digest the
+// active release runs, so a pin whose deploy failed shows as drift.
 const MetaDigest = models.MetaDigest
 
 // ManagedByGitOps marks resources created/managed by the declarative apply
@@ -1624,6 +1623,9 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 		}
 		ext, pub := s.exposedPorts(workspaceID, full.ID)
 		r := appResource(full, ext, pub, volNameByID, regNameByID, cfgNameByID)
+		if r.Application.Digest != "" {
+			r.Application.Digest = s.liveDigest(full)
+		}
 		if full.StackID != nil {
 			r.Application.Stack = stackNameByID[*full.StackID]
 		}
@@ -1836,6 +1838,52 @@ func metaA(uid, name string, m, annotations models.Metadata) declarative.Meta {
 		out.Annotations = annotations
 	}
 	return out
+}
+
+// liveDigest is the digest a pinned application actually runs, so a pin whose deploy failed plans
+// an update instead of reading as converged.
+func (s *Service) liveDigest(app *models.Application) string {
+	var latest *models.Deployment
+	if deps, err := s.apps.ListDeployments(app.ID, 1); err == nil && len(deps) > 0 {
+		latest = &deps[0].Deployment
+	}
+	active, err := s.apps.ActiveRelease(app.ID)
+	if err != nil {
+		active = nil
+	}
+	return runningDigest(app.Metadata[MetaDigest], latest, active)
+}
+
+// runningDigest is the digest to report for a pinned app, from its newest deployment and its
+// active release. When the active release runs the pin, or a deploy towards it is still in flight
+// (else a slow rollout would be enqueued again by every sync), it is the pin. Otherwise it names
+// both, a value no manifest digest equals, so the plan updates the app and redeploys or re-pins it.
+func runningDigest(pin string, latest *models.Deployment, active *models.Release) string {
+	if latest != nil && !latest.Status.IsTerminal() && refDigest(latest.Image) == pin {
+		return pin
+	}
+	running := ""
+	if active != nil {
+		running = active.Digest
+		if running == "" {
+			running = refDigest(active.Image)
+		}
+	}
+	if running == pin {
+		return pin
+	}
+	if running == "" {
+		running = "an unpinned image"
+	}
+	return pin + " (not running; running " + running + ")"
+}
+
+// refDigest returns the "sha256:…" part of an image reference pinned by digest, or "".
+func refDigest(ref string) string {
+	if _, d, ok := strings.Cut(ref, "@"); ok {
+		return d
+	}
+	return ""
 }
 
 // appResource maps a live application to its declarative form for diffing. ext

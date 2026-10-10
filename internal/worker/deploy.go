@@ -1057,7 +1057,7 @@ func (h *DeployHandler) releaseService(app *models.Application, dep *models.Depl
 	dep.Status = models.DeploymentSucceeded
 	dep.FinishedAt = &finished
 	_ = h.deployments.Update(dep)
-	if app.SourceType != models.AppSourceGit && image != "" {
+	if app.SourceType != models.AppSourceGit && image != "" && !isPinnedRef(app, image) {
 		img, tag := models.SplitImageRef(image)
 		_ = h.apps.SetCurrentReleaseImage(app.ID, rel.ID, models.AppStatusRunning, img, tag)
 	} else {
@@ -1423,6 +1423,13 @@ func (h *DeployHandler) authorizedImageRef(app *models.Application, ref string) 
 		return "", fmt.Errorf("%w: %w", ErrForeignImage, err)
 	}
 	return resolved, nil
+}
+
+// isPinnedRef reports whether ref is the digest the app is pinned to. Such a deploy keeps the app's
+// Image and Tag: folding "@sha256:…" into Image would outlive the pin and freeze later deploys on it.
+func isPinnedRef(app *models.Application, ref string) bool {
+	pin := app.Metadata[models.MetaDigest]
+	return pin != "" && strings.HasSuffix(ref, "@"+pin)
 }
 
 // imagePresent reports whether ref is already on the app's node. Errors (e.g. a
@@ -1828,7 +1835,7 @@ func (h *DeployHandler) swapAndRelease(app *models.Application, dep *models.Depl
 	_ = h.deployments.Update(dep)
 	// Persist the deployed image/tag for image apps so the app's stored Image/Tag reflect the active
 	// version and future redeploys use it. Git apps build their own image and keep their source unchanged.
-	if app.SourceType != models.AppSourceGit && image != "" {
+	if app.SourceType != models.AppSourceGit && image != "" && !isPinnedRef(app, image) {
 		img, tag := models.SplitImageRef(image)
 		_ = h.apps.SetCurrentReleaseImage(app.ID, rel.ID, models.AppStatusRunning, img, tag)
 	} else {
