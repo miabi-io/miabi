@@ -552,3 +552,58 @@ func ResolveRef(repo *gogit.Repository, ref string) (*plumbing.Hash, error) {
 	}
 	return nil, err
 }
+
+// RemoteCommit resolves ref to a commit on the remote at url with a single ls-remote, without cloning.
+// An empty ref is the remote's default branch; a branch, a tag or a full ref name are matched in that
+// order, and a full commit hash is returned as is.
+func RemoteCommit(ctx context.Context, url, ref string, auth transport.AuthMethod) (string, error) {
+	ref = strings.TrimSpace(ref)
+	if plumbing.IsHash(ref) {
+		return ref, nil
+	}
+	rem := gogit.NewRemote(memory.NewStorage(), &gitconfig.RemoteConfig{Name: "origin", URLs: []string{url}})
+	refs, err := rem.ListContext(ctx, &gogit.ListOptions{Auth: auth, PeelingOption: gogit.AppendPeeled})
+	if err != nil {
+		return "", fmt.Errorf("git ls-remote: %w", err)
+	}
+	if hash, ok := matchRemoteRef(refs, ref); ok {
+		return hash, nil
+	}
+	return "", fmt.Errorf("ref %q not found on the remote", ref)
+}
+
+// matchRemoteRef finds ref among an ls-remote listing. An annotated tag resolves to the commit it
+// points at (its peeled "^{}" entry), not to the tag object.
+func matchRemoteRef(refs []*plumbing.Reference, ref string) (string, bool) {
+	byName := make(map[plumbing.ReferenceName]*plumbing.Reference, len(refs))
+	for _, r := range refs {
+		byName[r.Name()] = r
+	}
+	if ref == "" {
+		head, ok := byName[plumbing.HEAD]
+		if !ok {
+			return "", false
+		}
+		if head.Type() == plumbing.SymbolicReference {
+			target, ok := byName[head.Target()]
+			if !ok {
+				return "", false
+			}
+			return target.Hash().String(), true
+		}
+		return head.Hash().String(), true
+	}
+	candidates := []plumbing.ReferenceName{
+		plumbing.NewBranchReferenceName(ref),
+		plumbing.NewTagReferenceName(ref + "^{}"),
+		plumbing.NewTagReferenceName(ref),
+		plumbing.ReferenceName(ref + "^{}"),
+		plumbing.ReferenceName(ref),
+	}
+	for _, name := range candidates {
+		if r, ok := byName[name]; ok && r.Type() == plumbing.HashReference {
+			return r.Hash().String(), true
+		}
+	}
+	return "", false
+}

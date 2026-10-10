@@ -409,6 +409,9 @@ func (s *Service) Trigger(workspaceID, pipelineID uint, in TriggerInput) (*model
 	if in.Branch == "" && p.GitRepositoryID != nil {
 		in.Branch = p.Branch
 	}
+	if in.Commit == "" {
+		s.pinCommit(p, &in)
+	}
 	spec, err := ParseSpec([]byte(p.Spec))
 	if err != nil {
 		return nil, errors.Join(ErrInvalidSpec, err)
