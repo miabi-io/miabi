@@ -7,7 +7,7 @@ on:
 permissions:
   contents: read
 
-# Versions of the two images Miabi ships alongside itself. The literal here is
+# Version of the gateway image Miabi ships alongside itself. The literal here is
 # the default and the reviewable record of what this release was tested against;
 # a repository (or environment) variable of the same name overrides it without a
 # code change — useful to re-cut a release against a patched dependency.
@@ -21,9 +21,6 @@ env:
   # otherwise every Goma release silently reaches Miabi users on Goma's schedule,
   # not ours.
   GOMA_VERSION: ${{ vars.GOMA_VERSION || 'v1.1.0' }}
-  # miabi/runner versions independently of the panel (0.0.x vs 1.0.x), so it
-  # cannot inherit ${GITHUB_REF_NAME}: miabi/runner:1.0.0-beta.4 does not exist.
-  RUNNER_VERSION: ${{ vars.RUNNER_VERSION || 'v0.0.7' }}
 
 jobs:
   release:
@@ -157,9 +154,9 @@ jobs:
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"   # docker tags drop the leading "v"
 
-          # GOMA_VERSION/RUNNER_VERSION may come from repository variables, so validate
+          # GOMA_VERSION may come from a repository variable, so validate
           # rather than trust: a typo would open a PR pinning an image nobody published.
-          for v in GOMA_VERSION RUNNER_VERSION; do
+          for v in GOMA_VERSION; do
             case "${!v}" in
               v[0-9]*) ;;
               *) echo "::error::$v must look like v1.2.3, got '${!v}'"; exit 1 ;;
@@ -180,7 +177,6 @@ jobs:
           }
           assert_image "miabi/miabi:${VERSION}"
           assert_image "jkaninda/goma-gateway:${GOMA_VERSION#v}"
-          assert_image "miabi/runner:${RUNNER_VERSION#v}"
 
       - name: Bump the pinned versions
         id: bump
@@ -190,18 +186,16 @@ jobs:
           sed -i \
             -e "s|^MIABI_VERSION=.*|MIABI_VERSION=\"\${MIABI_VERSION:-${GITHUB_REF_NAME}}\"|" \
             -e "s|^GOMA_VERSION=.*|GOMA_VERSION=\"\${GOMA_VERSION:-${GOMA_VERSION}}\"|" \
-            -e "s|^RUNNER_VERSION=.*|RUNNER_VERSION=\"\${RUNNER_VERSION:-${RUNNER_VERSION}}\"|" \
             deploy/install.sh
 
-          # deploy/install-agent.sh is deliberately untouched — see the AGENT_VERSION
-          # note at the top of this file.
+          # miabi/runner and miabi/agent follow :latest, so install.sh's RUNNER_VERSION
+          # and install-agent.sh are deliberately left alone.
 
           # Fail loudly rather than opening a PR that still says :latest.
           # -F (fixed string): the pattern contains `${...}`, and a `$` mid-regex is an
           # anchor in BSD grep, so a plain -q silently never matches.
           grep -qF "MIABI_VERSION=\"\${MIABI_VERSION:-${GITHUB_REF_NAME}}\"" deploy/install.sh
           grep -qF "GOMA_VERSION=\"\${GOMA_VERSION:-${GOMA_VERSION}}\"" deploy/install.sh
-          grep -qF "RUNNER_VERSION=\"\${RUNNER_VERSION:-${RUNNER_VERSION}}\"" deploy/install.sh
           bash -n deploy/install.sh
 
           if git diff --quiet -- deploy/install.sh; then
@@ -248,7 +242,6 @@ jobs:
             echo "|---|---|"
             echo "| \`miabi/miabi\` | \`${VERSION}\` |"
             echo "| \`jkaninda/goma-gateway\` | \`${GOMA_VERSION#v}\` |"
-            echo "| \`miabi/runner\` | \`${RUNNER_VERSION#v}\` |"
             echo
             echo "Every image above was confirmed published before this branch was pushed."
             echo "\`get.miabi.io\` serves \`deploy/install.sh\` from **main**, so until the PR is"

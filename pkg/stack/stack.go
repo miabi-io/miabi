@@ -81,12 +81,9 @@ const helperImage = "busybox:1.36"
 const (
 	DefaultPostgresImage = "postgres:17-alpine"
 	DefaultRedisImage    = "redis:7-alpine"
-	DefaultGatewayImage  = "jkaninda/goma-gateway:1.1.0"
-	// DefaultRunnerImage floats on :latest, unlike every other default here. The runner is the one image
-	// the stack does not RUN — it only names what a CI runner should be enrolled with — so it carries none
-	// of the reproducibility weight, and install.sh passes the version this release was tested against.
-	DefaultRunnerImage = "miabi/runner:latest"
-	DefaultNetwork     = "miabi-proxy"
+	DefaultGatewayImage  = "jkaninda/goma-gateway:1.1.1"
+	DefaultRunnerImage   = "miabi/runner:latest"
+	DefaultNetwork       = "miabi-proxy"
 	// LegacyNetwork is the proxy network's name before it became DefaultNetwork. Installs created
 	// before the rename keep it: their app containers are attached to it by name.
 	LegacyNetwork = "miabi"

@@ -12,7 +12,7 @@
 # Configuration (environment or flags):
 #   MIABI_CONTROL_URL   control plane base URL, e.g. https://miabi.example.com   (--control-url)
 #   MIABI_NODE_TOKEN    the node's join token, mbn_…  (shown once at creation)   (--token)
-#   AGENT_VERSION       agent image tag to pull        (stamped at release; else latest)
+#   AGENT_VERSION       agent image tag to pull        (default: latest)
 #   MIABI_AGENT_IMAGE   full agent image ref           (overrides AGENT_VERSION)     (--image)
 #   MIABI_AGENT_NAME    container name                 (default miabi-agent)         (--name)
 #   MIABI_AGENT_INSECURE_SKIP_VERIFY  skip control-plane TLS verification (default false)  (--insecure)
@@ -33,12 +33,11 @@ ok()   { printf "${C_DIM}%s${C_RESET} ${C_GREEN}✓${C_RESET}   %s\n" "$(_ts)" "
 warn() { printf "${C_DIM}%s${C_RESET} ${C_YELLOW}!${C_RESET}   %s\n" "$(_ts)" "$1" >&2; }
 die()  { printf "${C_DIM}%s${C_RESET} ${C_RED}✗${C_RESET}   %s\n" "$(_ts)" "$1" >&2; exit 1; }
 
-# --- image pin ----------------------------------------------------------------
+# --- image tag ----------------------------------------------------------------
 # The agent versions independently of the panel (agent 0.x while the panel is
-# 1.x), so it carries its own pin rather than inheriting one.
-AGENT_VERSION="${AGENT_VERSION:-v0.6.0}"
-# Docker tags carry no leading "v" (git tag v0.2.0 → image tag 0.2.0). The :latest
-# fallback only applies if a caller deliberately blanks it (AGENT_VERSION= ).
+# 1.x), so it follows :latest rather than the panel's version.
+AGENT_VERSION="${AGENT_VERSION:-latest}"
+# Docker tags carry no leading "v" (git tag v0.2.0 → image tag 0.2.0).
 AGENT_IMAGE_TAG="${AGENT_VERSION#v}"; AGENT_IMAGE_TAG="${AGENT_IMAGE_TAG:-latest}"
 
 # --- config (env with flag overrides) -----------------------------------------

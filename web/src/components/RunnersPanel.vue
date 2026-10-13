@@ -58,6 +58,8 @@ const runCommand = computed(
     `  -e MIABI_CONTROL_URL=${enrollUrl.value} \\\n` +
     `  -e MIABI_RUNNER_TOKEN=${createdToken.value ?? '<token>'} \\\n` +
     `  -v /var/run/docker.sock:/var/run/docker.sock \\\n` +
+    `  -v /srv/miabi/builds:/srv/miabi/builds \\\n` +
+    `  -e MIABI_RUNNER_BUILDS_DIR=/srv/miabi/builds \\\n` +
     `  ${image.value}`,
 )
 

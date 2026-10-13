@@ -50,7 +50,7 @@
 #   MIABI_CLI_VERSION           miabi CLI release to install   (default: pinned below)
 #   MIABI_CLI_BASE_URL          mirror to fetch the CLI from    (default: the GitHub release)
 #   GOMA_VERSION                Goma Gateway release           (default: pinned below)
-#   RUNNER_VERSION              miabi/runner release           (default: pinned below)
+#   RUNNER_VERSION              miabi/runner release           (default: latest)
 #   MIABI_SKIP_DOCKER_INSTALL   1 = never touch the host's packages; Docker must exist
 #   MIABI_FORCE_STACK           1 = install even though a Compose stack is present
 #   ASSUME_YES                  1 = never prompt
@@ -91,8 +91,9 @@ SKIP_DOCKER_INSTALL="${MIABI_SKIP_DOCKER_INSTALL:-0}"
 # .github/workflows/release.yml) and they are passed straight to `miabi setup`, so
 # the manifest it writes records exactly what this release was tested against.
 MIABI_VERSION="${MIABI_VERSION:-v1.10.16}"
-GOMA_VERSION="${GOMA_VERSION:-v1.1.0}"
-RUNNER_VERSION="${RUNNER_VERSION:-v0.1.0}"
+GOMA_VERSION="${GOMA_VERSION:-v1.1.1}"
+# The runner is not part of the stack, only named in its enrollment command, so it follows :latest.
+RUNNER_VERSION="${RUNNER_VERSION:-latest}"
 
 # The miabi CLI is what installs and then manages the stack, and it releases from its own repo
 # (miabi-io/cli) on its own cadence — a standalone CLI can be older or newer than the stack it
