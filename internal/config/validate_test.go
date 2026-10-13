@@ -20,6 +20,7 @@
 package config
 
 import (
+	gormlogger "gorm.io/gorm/logger"
 	"os"
 	"testing"
 )
@@ -173,5 +174,27 @@ func TestValidateAdminSeed(t *testing.T) {
 				t.Fatalf("ValidateAdminSeed() = %v, want ok=%v", err, tt.ok)
 			}
 		})
+	}
+}
+
+func TestDBLogLevelFor(t *testing.T) {
+	for _, tc := range []struct {
+		env, value string
+		want       gormlogger.LogLevel
+		ok         bool
+	}{
+		{"production", "", gormlogger.Error, true},
+		{"dev", "", gormlogger.Warn, true},
+		{"production", "silent", gormlogger.Silent, true},
+		{"production", "OFF", gormlogger.Silent, true},
+		{"production", "warning", gormlogger.Warn, true},
+		{"production", "info", gormlogger.Info, true},
+		{"production", "verbose", 0, false},
+	} {
+		c := &Config{Env: tc.env, DevMode: tc.env == "dev", DBLogLevel: tc.value}
+		got, err := c.DBLogLevelFor()
+		if (err == nil) != tc.ok || (tc.ok && got != tc.want) {
+			t.Errorf("%s %q: got %d, %v; want %d, ok=%v", tc.env, tc.value, got, err, tc.want, tc.ok)
+		}
 	}
 }

@@ -25,11 +25,12 @@ import (
 	"github.com/jkaninda/logger"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 // ConnectPostgres opens a GORM connection to PostgreSQL without running migrations.
-func ConnectPostgres(dsn string) (*gorm.DB, error) {
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+func ConnectPostgres(dsn string, logLevel gormlogger.LogLevel) (*gorm.DB, error) {
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: NewDBLogger(logLevel)})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}

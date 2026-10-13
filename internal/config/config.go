@@ -40,6 +40,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 // Config holds all runtime configuration, loaded from the environment.
@@ -55,6 +56,10 @@ type Config struct {
 	// the environment — debug in dev, info otherwise — which is what it did before
 	// this was configurable.
 	LogLevel string
+
+	// DBLogLevel is MIABI_DB_LOG_LEVEL: silent | error | warn | info. Empty is warn in dev, error
+	// otherwise.
+	DBLogLevel string
 
 	JWTSecret     string
 	EncryptionKey string
@@ -599,6 +604,7 @@ func New() *Config {
 		Port:                  goutils.EnvInt("MIABI_PORT", 9000),
 		DevMode:               goutils.EnvBool("MIABI_DEV_MODE", false),
 		LogLevel:              goutils.Env("MIABI_LOG_LEVEL", ""),
+		DBLogLevel:            goutils.Env("MIABI_DB_LOG_LEVEL", ""),
 		JWTSecret:             goutils.Env("MIABI_JWT_SECRET", defaultJWTSecret),
 		EncryptionKey:         goutils.Env("MIABI_ENCRYPTION_KEY", ""),
 		AdminEmail:            goutils.Env("MIABI_ADMIN_EMAIL", "admin@example.com"),
@@ -767,6 +773,9 @@ func (c *Config) validate() error {
 	if err := c.validateRegistry(); err != nil {
 		return err
 	}
+	if _, err := c.DBLogLevelFor(); err != nil {
+		return err
+	}
 	if c.WorkspaceCreation != "" && !models.ValidWorkspaceCreation(c.WorkspaceCreation) {
 		return fmt.Errorf(`MIABI_WORKSPACE_CREATION must be "anyone", "except_invited" or "admins_only"`)
 	}
@@ -894,6 +903,27 @@ func (c *Config) LogLevelFor() (logger.LogLevel, error) {
 			"Use \"error\" for near-silence", c.LogLevel)
 	}
 	return "", fmt.Errorf("MIABI_LOG_LEVEL=%q is not a log level (use debug, info, warn or error)", c.LogLevel)
+}
+
+// DBLogLevelFor resolves MIABI_DB_LOG_LEVEL to a GORM log level. Empty means warn in dev, which
+// also reports slow queries, and error otherwise; an unrecognized value is an error.
+func (c *Config) DBLogLevelFor() (gormlogger.LogLevel, error) {
+	switch strings.ToLower(strings.TrimSpace(c.DBLogLevel)) {
+	case "":
+		if c.DevMode {
+			return gormlogger.Warn, nil
+		}
+		return gormlogger.Error, nil
+	case "silent", "off", "none":
+		return gormlogger.Silent, nil
+	case "error":
+		return gormlogger.Error, nil
+	case "warn", "warning":
+		return gormlogger.Warn, nil
+	case "info":
+		return gormlogger.Info, nil
+	}
+	return 0, fmt.Errorf("MIABI_DB_LOG_LEVEL=%q is not a database log level (use silent, error, warn or info)", c.DBLogLevel)
 }
 
 // initLogger builds the logger AND installs it as the package default: logger.New
@@ -1033,7 +1063,11 @@ func (c *Config) InitStorage() {
 			c.Database.name, c.Database.port, c.Database.sslMode)
 	}
 
-	db, err := storage.ConnectPostgres(dsn)
+	dbLogLevel, err := c.DBLogLevelFor()
+	if err != nil {
+		logger.Fatal("invalid database log level", "error", err)
+	}
+	db, err := storage.ConnectPostgres(dsn, dbLogLevel)
 	if err != nil {
 		logger.Fatal("failed to connect to database", "error", err)
 	}
