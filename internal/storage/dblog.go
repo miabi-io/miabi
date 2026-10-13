@@ -54,7 +54,8 @@ func emitToLogger(level gormlogger.LogLevel, msg string, args ...any) {
 	case gormlogger.Warn:
 		logger.Warn(msg, args...)
 	default:
-		logger.Info(msg, args...)
+		// Every-query output is only wanted while debugging.
+		logger.Debug(msg, args...)
 	}
 }
 

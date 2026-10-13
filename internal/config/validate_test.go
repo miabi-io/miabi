@@ -177,24 +177,23 @@ func TestValidateAdminSeed(t *testing.T) {
 	}
 }
 
-func TestDBLogLevelFor(t *testing.T) {
+func TestDBLogLevelFollowsLogLevel(t *testing.T) {
 	for _, tc := range []struct {
-		env, value string
-		want       gormlogger.LogLevel
-		ok         bool
+		dev   bool
+		value string
+		want  gormlogger.LogLevel
 	}{
-		{"production", "", gormlogger.Error, true},
-		{"dev", "", gormlogger.Warn, true},
-		{"production", "silent", gormlogger.Silent, true},
-		{"production", "OFF", gormlogger.Silent, true},
-		{"production", "warning", gormlogger.Warn, true},
-		{"production", "info", gormlogger.Info, true},
-		{"production", "verbose", 0, false},
+		{false, "", gormlogger.Warn},
+		{true, "", gormlogger.Info},
+		{false, "debug", gormlogger.Info},
+		{false, "info", gormlogger.Warn},
+		{false, "warn", gormlogger.Warn},
+		{false, "error", gormlogger.Error},
+		{false, "nonsense", gormlogger.Error},
 	} {
-		c := &Config{Env: tc.env, DevMode: tc.env == "dev", DBLogLevel: tc.value}
-		got, err := c.DBLogLevelFor()
-		if (err == nil) != tc.ok || (tc.ok && got != tc.want) {
-			t.Errorf("%s %q: got %d, %v; want %d, ok=%v", tc.env, tc.value, got, err, tc.want, tc.ok)
+		c := &Config{DevMode: tc.dev, LogLevel: tc.value}
+		if got := c.DBLogLevel(); got != tc.want {
+			t.Errorf("dev=%v MIABI_LOG_LEVEL=%q: got %d, want %d", tc.dev, tc.value, got, tc.want)
 		}
 	}
 }
