@@ -130,6 +130,34 @@ jobs:
 
 
 
+  publish-version:
+    runs-on: ubuntu-latest
+    # After the images: versions.miabi.io must never point at a tag nobody can pull.
+    needs: [release, image]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Tested component versions
+        id: bundle
+        run: |
+          set -euo pipefail
+          # Agent and runner follow :latest, so this release was tested with the stable ones live now.
+          index="$(curl -fsSL https://versions.miabi.io/v1/index.json)"
+          agent="$(jq -er '.components.agent.stable.version' <<<"$index")"
+          runner="$(jq -er '.components.runner.stable.version' <<<"$index")"
+          cli="$(grep -oP '^MIABI_CLI_VERSION="\$\{MIABI_CLI_VERSION:-v\K[^}]+' deploy/install.sh)"
+          echo "components=gateway=${GOMA_VERSION#v},agent=${agent},runner=${runner},cli=${cli}" >> "$GITHUB_OUTPUT"
+
+      - uses: miabi-io/versions@main
+        with:
+          component: miabi
+          version: ${{ github.ref_name }}
+          components: ${{ steps.bundle.outputs.components }}
+          also: gateway=${{ env.GOMA_VERSION }}
+          token: ${{ secrets.VERSIONS_TOKEN }}
+
   # Bump deploy/install.sh on main, via a pull request.
   bump-installer:
     runs-on: ubuntu-latest
