@@ -55,8 +55,7 @@ const (
 )
 
 const (
-	httpTimeout = 5 * time.Second
-	// idPrefix domain-separates the hash so the sent id cannot be compared to the raw Install ID by equality.
+	httpTimeout     = 5 * time.Second
 	idPrefix        = "miabi-telemetry:v1:"
 	startupGuardTTL = time.Hour
 	startupGuardKey = "miabi:telemetry:startup:"
