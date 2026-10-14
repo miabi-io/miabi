@@ -255,6 +255,10 @@ type Config struct {
 	// leaves it to Platform Settings.
 	ControlManagerMode string
 
+	// Telemetry sends the anonymous startup/daily event, MIABI_TELEMETRY (default true). Environment only;
+	// a truthy DO_NOT_TRACK also turns it off.
+	Telemetry bool
+
 	// ExternalBaseDomain is the default cluster's wildcard domain for one-click external access (e.g.
 	// "apps.example.com", DNS *.apps.example.com). When set it pins that cluster's external domain on
 	// every boot; leave empty to manage it from the cluster page. Other clusters set their own there.
@@ -670,6 +674,7 @@ func New() *Config {
 		WorkspaceCreation:          goutils.Env("MIABI_WORKSPACE_CREATION", ""),
 		InvitationSignupEnabled:    goutils.Env("MIABI_INVITATION_SIGNUP_ENABLED", ""),
 		ControlManagerMode:         goutils.Env("MIABI_CONTROL_MANAGER_MODE", ""),
+		Telemetry:                  goutils.EnvBool("MIABI_TELEMETRY", true) && !doNotTrack(goutils.Env("DO_NOT_TRACK", "")),
 		ExternalBaseDomain:         goutils.Env("MIABI_EXTERNAL_BASE_DOMAIN", ""),
 		ExternalBaseProvider:       goutils.Env("MIABI_EXTERNAL_BASE_PROVIDER", ""),
 		NodeGatewayImage:           goutils.Env("MIABI_NODE_GATEWAY_IMAGE", DefaultGomaImage),
@@ -1073,4 +1078,13 @@ func splitList(v string) []string {
 		}
 	}
 	return out
+}
+
+// doNotTrack reads the cross-tool DO_NOT_TRACK convention: any value but empty, "0" or "false" opts out.
+func doNotTrack(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "", "0", "false", "no":
+		return false
+	}
+	return true
 }

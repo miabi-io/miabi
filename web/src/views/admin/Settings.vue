@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { adminApi } from '@/api/admin'
 import type { SettingInput } from '@/api/admin'
-import type { AuthAccessStatus, NetworkingInfo, PlatformSetting } from '@/api/types'
+import type { AuthAccessStatus, NetworkingInfo, PlatformSetting, TelemetryPreview } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
 
 const notify = useNotificationStore()
@@ -34,6 +34,8 @@ const saving = ref(false)
 const encryption = ref<{ encryption_enabled: boolean; per_workspace_keys: boolean; auto_rotate: boolean; rotate_months: number; gateway_config_encryption: boolean } | null>(null)
 // Read-only networking posture (IPv6, the managed subnet pool, the shared proxy network).
 const networking = ref<NetworkingInfo | null>(null)
+const telemetry = ref<TelemetryPreview | null>(null)
+const showTelemetryPayload = ref(false)
 
 // Edited values, keyed by setting key.
 const values = ref<Record<string, string>>({})
@@ -172,6 +174,7 @@ async function load() {
     applySettings(res.data.data ?? [])
     encryption.value = (await adminApi.getEncryptionInfo()).data.data
     networking.value = (await adminApi.getNetworkingInfo().catch(() => null))?.data.data ?? null
+    telemetry.value = (await adminApi.telemetryPreview().catch(() => null))?.data.data ?? null
   } catch (e) {
     notify.apiError(e)
   } finally {
@@ -287,6 +290,31 @@ function setBool(key: string, checked: boolean) {
             <p v-if="networking.ipv6_enabled && !networking.ipv6_active" class="form-hint text-warning" style="margin-top: 10px">
               IPv6 is requested but not in force: {{ networking.ipv6_reason }}
             </p>
+          </div>
+        </div>
+
+        <div v-if="telemetry" class="card">
+          <div class="card-body">
+            <h2 class="card-title">Anonymous telemetry</h2>
+            <p class="text-muted text-sm" style="margin-bottom: 12px">
+              Once at startup and once a day, Miabi sends an anonymous event so the project can count
+              installations: a hashed installation ID, version, edition, platform, OS and
+              architecture. No hostnames, IPs, users or workload data. Miabi works the same with it off.
+            </p>
+            <div class="enc-grid">
+              <span class="text-muted" title="MIABI_TELEMETRY, DO_NOT_TRACK">Telemetry</span>
+              <span class="badge" :class="telemetry.enabled ? 'badge-success' : 'badge-neutral'">{{ telemetry.enabled ? 'enabled' : 'disabled' }}</span>
+            </div>
+            <p class="form-hint text-muted" style="margin-top: 10px">
+              Set by environment: <span class="mono">MIABI_TELEMETRY=false</span> or <span class="mono">DO_NOT_TRACK=1</span> turns it off.
+              <a href="https://docs.miabi.io/docs/operations/telemetry" target="_blank" rel="noopener">Learn more</a>
+            </p>
+            <button class="btn btn-ghost btn-sm" style="margin-top: 8px" @click="showTelemetryPayload = !showTelemetryPayload">
+              <span class="mdi" :class="showTelemetryPayload ? 'mdi-chevron-up' : 'mdi-chevron-down'"></span>
+              {{ showTelemetryPayload ? 'Hide' : 'Show' }} what is sent
+            </button>
+            <pre v-if="showTelemetryPayload" class="telemetry-payload mono">POST {{ telemetry.url }}
+{{ JSON.stringify(telemetry.payload, null, 2) }}</pre>
           </div>
         </div>
 
@@ -508,6 +536,15 @@ function setBool(key: string, checked: boolean) {
   width: 18px;
   height: 18px;
   cursor: pointer;
+}
+
+.telemetry-payload {
+  margin: 10px 0 0;
+  padding: 12px;
+  border-radius: 6px;
+  background: var(--bg-secondary, var(--bg-tertiary));
+  overflow-x: auto;
+  white-space: pre;
 }
 
 .space-y {

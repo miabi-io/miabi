@@ -399,6 +399,15 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 		},
 		{
 			Method:      http.MethodGet,
+			Path:        "/telemetry/preview",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.telemetry.Preview,
+			Summary:     "Show the anonymous telemetry event exactly as it is sent",
+			Response:    &dto.Response[handlers.TelemetryPreview]{},
+		},
+		{
+			Method:      http.MethodGet,
 			Path:        "/settings/auth-access",
 			Group:       g,
 			Middlewares: admin,

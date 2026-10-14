@@ -197,3 +197,11 @@ func TestDBLogLevelFollowsLogLevel(t *testing.T) {
 		}
 	}
 }
+
+func TestDoNotTrack(t *testing.T) {
+	for v, want := range map[string]bool{"": false, "0": false, "false": false, "1": true, "true": true, "yes": true} {
+		if got := doNotTrack(v); got != want {
+			t.Errorf("doNotTrack(%q) = %v, want %v", v, got, want)
+		}
+	}
+}

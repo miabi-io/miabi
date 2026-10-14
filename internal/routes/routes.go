@@ -122,6 +122,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/stack"
 	"github.com/miabi-io/miabi/internal/services/storage"
 	"github.com/miabi-io/miabi/internal/services/storageclass"
+	"github.com/miabi-io/miabi/internal/services/telemetry"
 	"github.com/miabi-io/miabi/internal/services/transfer"
 	"github.com/miabi-io/miabi/internal/services/twofactor"
 	"github.com/miabi-io/miabi/internal/services/updatecheck"
@@ -235,6 +236,7 @@ type routerHandlers struct {
 	adminBranding       *handlers.AdminBrandingHandler
 	register            *handlers.RegisterHandler
 	update              *handlers.UpdateHandler
+	telemetry           *handlers.TelemetryHandler
 	adminPlan           *handlers.PlanHandler
 	deploymentCfg       *handlers.DeploymentConfigHandler
 	adminJob            *handlers.AdminJobHandler
@@ -671,6 +673,20 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		registerUpdateCheck(cronManager, updateService, "update-check", "Check for a new Miabi release", "37 4 * * *")
 		registerUpdateCheck(cronManager, agentUpdateService, "agent-update-check", "Check for a new node agent release", "43 4 * * *")
 	}
+	telemetryService := telemetry.New(telemetry.Options{
+		Version:   config.Version,
+		InstallID: installID,
+		Enabled:   cfg.Telemetry,
+		Edition:   func() string { return ee.Entitlements().Edition },
+		Platform: func() string {
+			if clusterService != nil && clusterService.CapCluster() {
+				return telemetry.PlatformSwarm
+			}
+			return telemetry.PlatformStandalone
+		},
+		Redis: redisClient,
+	})
+	registerTelemetry(cronManager, telemetryService)
 	databaseService.SetNetworkProvider(networkService) // DBs run on the workspace's default network, alongside its apps
 	databaseService.SetSwarmNetworks(clusterService)
 	// Delete guard: refuse to orphan a volume/database whose owning app/database/
@@ -1400,6 +1416,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			capability:          handlers.NewCapabilityHandler(cfg.ContainerGrantsEnabled, appRepo, workspaceRepo),
 			register:            handlers.NewRegisterHandler(registrationService, authService, userRepo, platformMailer, auditLogger),
 			update:              handlers.NewUpdateHandler(updateService),
+			telemetry:           handlers.NewTelemetryHandler(telemetryService),
 			adminPlan:           handlers.NewPlanHandler(planRepo, quotaOverrideRepo, workspaceRepo, databaseSizeRepo, repositories.NewRunnerRepository(db), ee, auditLogger),
 			deploymentCfg:       handlers.NewDeploymentConfigHandler(imageResolver, settingRepo, settingsProvider, auditLogger, ee),
 			adminJob:            handlers.NewAdminJobHandler(cronManager),
@@ -1913,6 +1930,30 @@ func engineSupportsAutoIPv6(version string) bool {
 	major := strings.SplitN(strings.TrimSpace(version), ".", 2)[0]
 	n, err := strconv.Atoi(major)
 	return err == nil && n >= 26
+}
+
+// registerTelemetry announces telemetry once at boot, schedules the daily event, and sends the startup event
+// off the startup path.
+func registerTelemetry(cronManager *cronpkg.Manager, svc *telemetry.Service) {
+	if !svc.Enabled() {
+		logger.Debug("anonymous telemetry is disabled")
+		return
+	}
+	logger.Info("Anonymous telemetry is enabled (version, edition, platform, arch; no personal data). Disable with MIABI_TELEMETRY=false: https://docs.miabi.io/docs/operations/telemetry")
+	if cronManager != nil {
+		// Minute offset from the update checks so installs don't converge on one minute.
+		if err := cronManager.RegisterTask("telemetry", 0, "Send the anonymous daily telemetry event", "51 4 * * *", func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := svc.Send(ctx, telemetry.EventDaily); err != nil {
+				logger.Debug("telemetry daily event not sent", "error", err)
+			}
+			return nil
+		}); err != nil {
+			logger.Error("failed to register telemetry job", "error", err)
+		}
+	}
+	go svc.SendStartup(context.Background())
 }
 
 // registerUpdateCheck schedules one component's daily release check and seeds its cache shortly

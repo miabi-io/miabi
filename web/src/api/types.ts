@@ -1659,6 +1659,12 @@ export interface NetworkDetail extends Network {
 
 // NetworkingInfo is the platform networking posture on the admin Settings page. ipv6_enabled is what
 // the operator asked for; ipv6_active is what Miabi could actually apply.
+export interface TelemetryPreview {
+  enabled: boolean
+  url: string
+  payload: Record<string, string | number>
+}
+
 export interface NetworkingInfo {
   ipv6_enabled: boolean
   ipv6_active: boolean

@@ -38,6 +38,7 @@ import type {
   LicenseView,
   LicenseHealth,
   SIEMConfig,
+  TelemetryPreview,
 } from './types'
 
 export interface CreateUserPayload {
@@ -286,6 +287,7 @@ export const adminApi = {
   // Settings
   listSettings: () => api.get<ApiResponse<PlatformSetting[]>>('/admin/settings'),
   authAccess: () => api.get<ApiResponse<AuthAccessStatus>>('/admin/settings/auth-access'),
+  telemetryPreview: () => api.get<ApiResponse<TelemetryPreview>>('/admin/telemetry/preview'),
   updateSettings: (settings: SettingInput[]) =>
     api.put<ApiResponse<PlatformSetting[]>>('/admin/settings', { settings }),
 
