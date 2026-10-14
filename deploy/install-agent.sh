@@ -21,7 +21,7 @@
 #
 set -euo pipefail
 
-# --- pretty output (matches install.sh) ---------------------------------------
+# === pretty output (matches install.sh) =============================
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
   C_RESET='\033[0m'; C_CYAN='\033[1;36m'; C_GREEN='\033[1;32m'
   C_YELLOW='\033[1;33m'; C_RED='\033[1;31m'; C_DIM='\033[2m'
@@ -34,7 +34,7 @@ ok()   { printf "${C_DIM}%s${C_RESET} ${C_GREEN}✓${C_RESET}   %s\n" "$(_ts)" "
 warn() { printf "${C_DIM}%s${C_RESET} ${C_YELLOW}!${C_RESET}   %s\n" "$(_ts)" "$1" >&2; }
 die()  { printf "${C_DIM}%s${C_RESET} ${C_RED}✗${C_RESET}   %s\n" "$(_ts)" "$1" >&2; exit 1; }
 
-# --- config (env with flag overrides) -----------------------------------------
+# === config (env with flag overrides) ===========================
 CONTROL_URL="${MIABI_CONTROL_URL:-${MIABI_API_URL:-}}"
 NODE_TOKEN="${MIABI_NODE_TOKEN:-}"
 AGENT_IMAGE="${MIABI_AGENT_IMAGE:-}"
@@ -71,7 +71,7 @@ done
 
 CONTROL_URL="${CONTROL_URL%/}" # trim trailing slash (the agent does this too)
 
-# --- prompt for anything still missing (interactive only) ---------------------
+# ====== prompt for anything still missing (interactive only) =======================
 if [ -z "$CONTROL_URL" ] && [ -t 0 ]; then
   printf 'Control plane URL (e.g. https://miabi.example.com): '; read -r CONTROL_URL
   CONTROL_URL="${CONTROL_URL%/}"
@@ -108,7 +108,7 @@ if [ -z "$AGENT_IMAGE" ]; then
 fi
 log "agent image ${AGENT_IMAGE}"
 
-# --- Docker: installed when missing, and running ---------------------------------
+# ==== Docker: installed when missing, and running =================================
 # Installing Docker needs root. Without it Docker must already be usable by this user.
 SKIP_DOCKER_INSTALL="${MIABI_SKIP_DOCKER_INSTALL:-0}"
 if [ "$(id -u)" -ne 0 ]; then
