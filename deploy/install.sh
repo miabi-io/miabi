@@ -230,7 +230,7 @@ esac
 command -v curl >/dev/null 2>&1 || die "curl is required but not installed."
 ok "Host looks good ($(uname -s)/$(uname -m), root)"
 
-# docker
+# >>> shared: docker-install — identical in install.sh and install-agent.sh (scripts/check-installers.sh)
 # Read one field out of /etc/os-release without leaking its vars into our shell.
 os_release() { # <field>
   # shellcheck disable=SC1091
@@ -416,6 +416,7 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 ok "Docker daemon is running"
+# <<< shared: docker-install
 
 # Warn (don't block) when the web ports are already taken — Goma binds 80/443.
 port_busy() { # <port>

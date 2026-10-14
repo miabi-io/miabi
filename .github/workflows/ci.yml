@@ -41,6 +41,14 @@ jobs:
           version: v2.14.0
           args: --build-tags enterprise
 
+  installers:
+    name: Installers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Syntax and shared Docker block
+        run: scripts/installers/check-installers.sh
+
   test:
     name: Test
     runs-on: ubuntu-latest
