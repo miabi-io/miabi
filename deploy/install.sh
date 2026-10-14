@@ -477,7 +477,7 @@ prompt_yn() { # <env-var> <question>
   case "$ans" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
 }
 
-# ── an existing Compose install ──────────────────────────────────────────────
+# === an existing Compose install =============================
 #
 # This installer builds the Miabi-managed stack (`miabi setup`, straight against
 # the Docker API). It no longer sets up Docker Compose.
