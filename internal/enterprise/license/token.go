@@ -24,7 +24,6 @@ package license
 
 import (
 	"crypto/ed25519"
-	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -37,30 +36,27 @@ import (
 // token issued for one format can never be replayed under another.
 const tokenPrefix = "miabi-v1"
 
-var (
-	// ErrMalformed is returned for a token that is not three dot-separated parts
-	// with the expected prefix.
-	ErrMalformed = errors.New("license: malformed token")
-	// ErrBadSignature is returned when the signature does not verify against the
-	// public key — a tampered or forged token.
-	ErrBadSignature = errors.New("license: signature verification failed")
-	// ErrBadKey is returned when a supplied key is not a valid base64 Ed25519 key.
-	ErrBadKey = errors.New("license: invalid key")
+type State string
+
+const (
+	StateValid    State = "valid"    // within term: full function
+	StateGrace    State = "grace"    // past expiry, within grace days: full function + warning
+	StateDegraded State = "degraded" // past grace: paid features read-only
+	StateNone     State = "none"     // no/invalid/not-yet-active license: community
 )
 
-// Claims is the signed license payload. Limits use the platform-wide convention
-// (-1 = unlimited, 0 = none, N = N), mirroring the quota engine.
+var (
+	ErrMalformed    = errors.New("license: malformed token")
+	ErrBadSignature = errors.New("license: signature verification failed")
+	ErrBadKey       = errors.New("license: invalid key")
+)
+
 type Claims struct {
-	LicenseID string `json:"license_id"`
-	Customer  string `json:"customer"`
-	Edition   string `json:"edition"`        // "enterprise"
-	Tier      string `json:"tier,omitempty"` // commercial plan label (professional|business|enterprise)
-	// InstallID binds the license to one specific instance by its stable Install ID
-	// (the strong, primary binding — a customer supplies it at purchase). Empty =
-	// not bound by install id.
-	InstallID string `json:"install_id,omitempty"`
-	// URL optionally also binds by deployment host. Empty = not bound by URL. A
-	// license with neither InstallID nor URL is unlimited (any instance).
+	LicenseID string         `json:"license_id"`
+	Customer  string         `json:"customer"`
+	Edition   string         `json:"edition"`        // "enterprise"
+	Tier      string         `json:"tier,omitempty"` // commercial plan label (professional|business|enterprise)
+	InstallID string         `json:"install_id,omitempty"`
 	URL       string         `json:"url,omitempty"`
 	Flags     []string       `json:"flags"`
 	Limits    map[string]int `json:"limits"`
@@ -72,35 +68,8 @@ type Claims struct {
 
 var b64 = base64.RawURLEncoding
 
-// GenerateKey returns a fresh Ed25519 keypair as base64 strings: the private key
-// (kept secret in the issuer) and the public key (embedded in the binary).
-func GenerateKey() (publicKey, privateKey string, err error) {
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		return "", "", err
-	}
-	return base64.StdEncoding.EncodeToString(pub), base64.StdEncoding.EncodeToString(priv), nil
-}
-
-// Sign serializes the claims and returns a signed token of the form
-// "miabi-v1.<b64(claims)>.<b64(sig)>". privateKeyB64 is the issuer's secret key.
-func Sign(privateKeyB64 string, c Claims) (string, error) {
-	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(privateKeyB64))
-	if err != nil || len(raw) != ed25519.PrivateKeySize {
-		return "", ErrBadKey
-	}
-	payload, err := json.Marshal(c)
-	if err != nil {
-		return "", err
-	}
-	body := tokenPrefix + "." + b64.EncodeToString(payload)
-	sig := ed25519.Sign(ed25519.PrivateKey(raw), []byte(body))
-	return body + "." + b64.EncodeToString(sig), nil
-}
-
 // Verify checks the token's signature against publicKeyB64 and returns its
-// claims. It does NOT judge expiry — the caller resolves state via Evaluate, so
-// an expired but authentic token still parses (needed for the grace/degrade UX).
+// claims.
 func Verify(publicKeyB64, token string) (Claims, error) {
 	var c Claims
 	pubRaw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(publicKeyB64))
@@ -129,18 +98,6 @@ func Verify(publicKeyB64, token string) (Claims, error) {
 	return c, nil
 }
 
-// State is the lifecycle position of an installed license, evaluated against the
-// current time. A lapsed license degrades paid features to read-only; it never
-// stops the open-source core.
-type State string
-
-const (
-	StateValid    State = "valid"    // within term: full function
-	StateGrace    State = "grace"    // past expiry, within grace days: full function + warning
-	StateDegraded State = "degraded" // past grace: paid features read-only
-	StateNone     State = "none"     // no/invalid/not-yet-active license: community
-)
-
 // Snapshot is the resolved view of a license at a point in time.
 type Snapshot struct {
 	State     State
@@ -156,8 +113,6 @@ type Snapshot struct {
 	GraceEnds time.Time
 }
 
-// Evaluate resolves claims into a Snapshot at time now. A token whose NotBefore
-// is in the future is treated as not-yet-active (StateNone).
 func Evaluate(c Claims, now time.Time) Snapshot {
 	graceEnds := c.NotAfter.AddDate(0, 0, c.GraceDays)
 	flags := make(map[string]bool, len(c.Flags))

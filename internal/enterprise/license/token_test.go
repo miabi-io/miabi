@@ -20,9 +20,35 @@
 package license
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"testing"
 	"time"
 )
+
+// Issuance lives in the customer portal; these mirror its signer so Verify can be exercised.
+func generateKey() (publicKey, privateKey string, err error) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return "", "", err
+	}
+	return base64.StdEncoding.EncodeToString(pub), base64.StdEncoding.EncodeToString(priv), nil
+}
+
+func sign(privateKeyB64 string, c Claims) (string, error) {
+	raw, err := base64.StdEncoding.DecodeString(privateKeyB64)
+	if err != nil || len(raw) != ed25519.PrivateKeySize {
+		return "", ErrBadKey
+	}
+	payload, err := json.Marshal(c)
+	if err != nil {
+		return "", err
+	}
+	body := tokenPrefix + "." + b64.EncodeToString(payload)
+	return body + "." + b64.EncodeToString(ed25519.Sign(ed25519.PrivateKey(raw), []byte(body))), nil
+}
 
 func sampleClaims(now time.Time) Claims {
 	return Claims{
@@ -35,14 +61,14 @@ func sampleClaims(now time.Time) Claims {
 }
 
 func TestSignVerifyRoundTrip(t *testing.T) {
-	pub, priv, err := GenerateKey()
+	pub, priv, err := generateKey()
 	if err != nil {
-		t.Fatalf("GenerateKey: %v", err)
+		t.Fatalf("generateKey: %v", err)
 	}
 	now := time.Now()
-	tok, err := Sign(priv, sampleClaims(now))
+	tok, err := sign(priv, sampleClaims(now))
 	if err != nil {
-		t.Fatalf("Sign: %v", err)
+		t.Fatalf("sign: %v", err)
 	}
 	got, err := Verify(pub, tok)
 	if err != nil {
@@ -54,8 +80,8 @@ func TestSignVerifyRoundTrip(t *testing.T) {
 }
 
 func TestVerifyTamperFails(t *testing.T) {
-	pub, priv, _ := GenerateKey()
-	tok, _ := Sign(priv, sampleClaims(time.Now()))
+	pub, priv, _ := generateKey()
+	tok, _ := sign(priv, sampleClaims(time.Now()))
 	// Flip one byte in the payload segment.
 	b := []byte(tok)
 	mid := len(b) / 2
@@ -66,16 +92,16 @@ func TestVerifyTamperFails(t *testing.T) {
 }
 
 func TestVerifyWrongKeyFails(t *testing.T) {
-	_, priv, _ := GenerateKey()
-	otherPub, _, _ := GenerateKey()
-	tok, _ := Sign(priv, sampleClaims(time.Now()))
+	_, priv, _ := generateKey()
+	otherPub, _, _ := generateKey()
+	tok, _ := sign(priv, sampleClaims(time.Now()))
 	if _, err := Verify(otherPub, tok); err != ErrBadSignature {
 		t.Fatalf("expected ErrBadSignature, got %v", err)
 	}
 }
 
 func TestVerifyMalformed(t *testing.T) {
-	pub, _, _ := GenerateKey()
+	pub, _, _ := generateKey()
 	for _, tok := range []string{"", "nope", "miabi-v1.onlytwo", "wrong-prefix.a.b"} {
 		if _, err := Verify(pub, tok); err == nil {
 			t.Fatalf("expected error for %q", tok)
