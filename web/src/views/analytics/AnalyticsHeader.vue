@@ -311,7 +311,8 @@ function onAppChange(e: Event) {
 .a-range-btn:disabled { opacity: 0.5; cursor: not-allowed;}
 .a-range-btn .lock { font-size: 12px; margin-left: 4px; opacity: 0.8;}
 .a-range-btn .cal { font-size: 14px; margin-right: 5px; }
-.a-range-wrap { position: relative; display: flex; flex-shrink: 1; min-width: 0; }
+.a-range-wrap { position: relative; flex-shrink: 0; max-width: 100%; }
+.a-range-wrap .a-range { max-width: 100%; }
 .a-custom {
   position: absolute; top: calc(100% + 6px); right: 0; z-index: 10; width: 260px;
   display: flex; flex-direction: column; gap: 10px; padding: 14px;

@@ -33,7 +33,8 @@ const GEOIP_DOCS = 'https://docs.miabi.io/docs/operations/analytics#geoip-databa
     </div>
 
     <div class="break-grid">
-      <Breakdown :title="$t('dashboard.analytics.topCountries')" :items="report.web.top_countries" kind="country"
+      <Breakdown :title="$t('analytics.countries')" :items="report.web.top_countries" kind="country" scroll share searchable
+        :total="report.totals.requests"
         empty-hint="Needs a GeoIP database at /etc/miabi/country.mmdb — see the map above." />
       <Breakdown :title="$t('analytics.httpMethods')" :items="report.web.top_methods" />
 

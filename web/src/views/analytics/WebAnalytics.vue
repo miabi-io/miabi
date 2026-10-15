@@ -51,7 +51,7 @@ function botPct(r: AnalyticsReport): number {
     <div class="break-grid">
       <Breakdown :title="$t('analytics.topPages')" :items="report.web.top_paths" />
       <Breakdown :title="$t('analytics.referrers')" :items="report.web.top_referrers" />
-      <Breakdown :title="$t('analytics.countries')" :items="report.web.top_countries" kind="country"
+      <Breakdown :title="$t('analytics.countries')" :items="report.web.top_countries" kind="country" :limit="15"
         empty-hint="Country data needs the GeoIP database on the gateway." />
       <Breakdown :title="$t('analytics.browsers')" :items="report.web.top_browsers" />
       <Breakdown :title="$t('analytics.operatingSystems')" :items="report.web.top_os" />
