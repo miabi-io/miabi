@@ -9,6 +9,7 @@ import { useLicenseStore } from '@/stores/license'
 import { useBrandStore } from '@/stores/brand'
 import { useElevationStore } from '@/stores/elevation'
 import AnnouncementBanner from '@/components/AnnouncementBanner.vue'
+import SuspensionBanner from '@/components/SuspensionBanner.vue'
 import ConsoleShell from './ConsoleShell.vue'
 import { adminNavSections } from '@/data/adminNav'
 import { adminApi } from '@/api/admin'
@@ -114,6 +115,7 @@ async function lockConsole() {
   <ConsoleShell :sections="adminNavSections" console="admin" section-state-key="mb_admin_nav_sections"
     :home="ADMIN_HOME">
     <template #banners>
+      <SuspensionBanner />
       <AnnouncementBanner />
 
       <div v-if="elevation.state?.active" class="unlock-banner" :class="{ 'unlock-banner-warn': elevation.expiringSoon }">

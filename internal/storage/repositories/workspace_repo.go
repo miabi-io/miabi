@@ -233,6 +233,18 @@ func (r *WorkspaceRepository) SetPrivileged(id uint, v bool) error {
 // IsPrivileged reports whether a workspace is privileged, reading only the flag.
 // A privileged workspace may expose routes under registered-but-unverified
 // domains (the route service's verification gate waives them).
+// SetRestriction writes a workspace's restriction fields as one update.
+func (r *WorkspaceRepository) SetRestriction(id uint, fields map[string]any) error {
+	return r.db.Model(&models.Workspace{}).Where("id = ?", id).Updates(fields).Error
+}
+
+// ListRestrictionsDue lists restricted workspaces whose restriction ended before now.
+func (r *WorkspaceRepository) ListRestrictionsDue(now time.Time) ([]models.Workspace, error) {
+	var out []models.Workspace
+	err := r.db.Where("restriction <> '' AND restriction_until IS NOT NULL AND restriction_until <= ?", now).Find(&out).Error
+	return out, err
+}
+
 func (r *WorkspaceRepository) IsPrivileged(id uint) (bool, error) {
 	var ws models.Workspace
 	if err := r.db.Select("privileged").First(&ws, id).Error; err != nil {
@@ -351,6 +363,19 @@ func (r *WorkspaceRepository) RemoveMember(workspaceID, userID uint) error {
 // RemoveAllMemberships drops a user from every workspace.
 func (r *WorkspaceRepository) RemoveAllMemberships(userID uint) error {
 	return r.db.Where("user_id = ?", userID).Delete(&models.WorkspaceMember{}).Error
+}
+
+// ListManagedBy returns a user's memberships granted by the named SSO provider's group sync.
+func (r *WorkspaceRepository) ListManagedBy(userID uint, manager string) ([]models.WorkspaceMember, error) {
+	var out []models.WorkspaceMember
+	err := r.db.Where("user_id = ? AND managed_by = ?", userID, manager).Find(&out).Error
+	return out, err
+}
+
+// SetMemberManagedBy records which provider governs a membership ("" hands it back to people).
+func (r *WorkspaceRepository) SetMemberManagedBy(workspaceID, userID uint, manager string) error {
+	return r.db.Model(&models.WorkspaceMember{}).Where("workspace_id = ? AND user_id = ?", workspaceID, userID).
+		Update("managed_by", manager).Error
 }
 
 func (r *WorkspaceRepository) CountOwners(workspaceID uint) (int64, error) {

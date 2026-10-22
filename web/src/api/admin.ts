@@ -27,6 +27,8 @@ import type {
   JobStats,
   ControlManagerStatus,
   OAuthProvider,
+  OAuthGroupMapping,
+  Workspace,
   Plan,
   PlanInput,
   DatabaseSize,
@@ -116,6 +118,34 @@ export interface OAuthProviderPayload {
    */
   organization_id?: number
   default_role?: string
+  groups_claim?: string
+  group_prefix?: string
+}
+
+export interface WorkspaceRestrictionInput {
+  state: 'read_only' | 'suspended'
+  reason?: string
+  /** RFC 3339; omitted, the restriction holds until lifted. */
+  until?: string
+}
+
+export interface AdminCreateWorkspacePayload {
+  name: string
+  display_name?: string
+  owner_email: string
+  owner_name?: string
+  plan_id?: number
+}
+
+export interface WorkloadCounts {
+  apps: number
+  databases: number
+  failed?: number
+}
+
+export interface UserSuspensionInput {
+  reason?: string
+  until?: string
 }
 
 // --- LDAP / Active Directory (Enterprise) ---
@@ -264,6 +294,17 @@ export const adminApi = {
     }),
   // Re-render every workspace's gateway config from the database.
   resyncRoutes: () => api.post<ApiResponse<ResyncSummary>>('/admin/routes/resync'),
+  createWorkspace: (payload: AdminCreateWorkspacePayload) =>
+    api.post<ApiResponse<{ workspace: Workspace; owner_id: number; owner_created: boolean }>>('/admin/workspaces', payload),
+  deleteWorkspace: (id: number) => api.delete<ApiResponse<unknown>>(`/admin/workspaces/${id}`),
+  restrictWorkspace: (id: number, payload: WorkspaceRestrictionInput) =>
+    api.post<ApiResponse<Workspace>>(`/admin/workspaces/${id}/restriction`, payload),
+  liftWorkspaceRestriction: (id: number) => api.delete<ApiResponse<Workspace>>(`/admin/workspaces/${id}/restriction`),
+  stopWorkspace: (id: number) => api.post<ApiResponse<WorkloadCounts>>(`/admin/workspaces/${id}/stop`),
+  startWorkspace: (id: number) => api.post<ApiResponse<WorkloadCounts>>(`/admin/workspaces/${id}/start`),
+  suspendUser: (id: number, payload: UserSuspensionInput) =>
+    api.post<ApiResponse<AdminUser>>(`/admin/users/${id}/suspension`, payload),
+  unsuspendUser: (id: number) => api.delete<ApiResponse<AdminUser>>(`/admin/users/${id}/suspension`),
   setWorkspacePrivileged: (id: number, privileged: boolean) =>
     api.patch<ApiResponse<AdminWorkspace>>(`/admin/workspaces/${id}`, { privileged }),
   // Read-only networking posture (IPv6, the managed subnet pool, the shared proxy network).
@@ -314,6 +355,10 @@ export const adminApi = {
     api.post<ApiResponse<OAuthProvider>>('/admin/oauth/providers', payload),
   updateProvider: (id: number, payload: Partial<OAuthProviderPayload>) =>
     api.put<ApiResponse<OAuthProvider>>(`/admin/oauth/providers/${id}`, payload),
+  listGroupMappings: (id: number) =>
+    api.get<ApiResponse<OAuthGroupMapping[]>>(`/admin/oauth/providers/${id}/group-mappings`),
+  replaceGroupMappings: (id: number, mappings: OAuthGroupMapping[]) =>
+    api.put<ApiResponse<OAuthGroupMapping[]>>(`/admin/oauth/providers/${id}/group-mappings`, { mappings }),
   deleteProvider: (id: number) =>
     api.delete<ApiResponse<{ message: string }>>(`/admin/oauth/providers/${id}`),
 

@@ -67,13 +67,18 @@ type Applier interface {
 
 // Service manages GitSource bindings and reconciles them.
 type Service struct {
-	repo     *repositories.GitSourceRepository
-	gitRepos *repositories.GitRepoRepository
-	applier  Applier
-	secrets  gitrepo.Secrets
+	// restricted refuses syncs into a read-only or suspended workspace; nil allows them.
+	restricted func(workspaceID uint) error
+	repo       *repositories.GitSourceRepository
+	gitRepos   *repositories.GitRepoRepository
+	applier    Applier
+	secrets    gitrepo.Secrets
 }
 
 // NewService wires the GitOps service.
+// SetRestriction wires the workspace-restriction check applied to every sync.
+func (s *Service) SetRestriction(f func(workspaceID uint) error) { s.restricted = f }
+
 func NewService(repo *repositories.GitSourceRepository, gitRepos *repositories.GitRepoRepository, applier Applier) *Service {
 	return &Service{repo: repo, gitRepos: gitRepos, applier: applier}
 }
@@ -394,6 +399,11 @@ func (s *Service) ReconcileAuto(ctx context.Context) error {
 // Reconcile clones the source at its ref, applies the manifests, and records
 // the resulting status on the source.
 func (s *Service) Reconcile(ctx context.Context, src *models.GitSource) error {
+	if s.restricted != nil {
+		if err := s.restricted(src.WorkspaceID); err != nil {
+			return err
+		}
+	}
 	src.Status = models.GitSourceProgressing
 	src.Message = ""
 	_ = s.repo.Update(src)

@@ -300,6 +300,8 @@ type Service struct {
 	// forceNonRoot is the server-level non-root mandate (MIABI_FORCE_NON_ROOT_USER). It applies
 	// regardless of plan enforcement, so it is held here rather than resolved per workspace.
 	forceNonRoot bool
+	// restricted refuses creates in a read-only or suspended workspace; nil allows them.
+	restricted func(workspaceID uint) error
 }
 
 func NewService(plans *repositories.PlanRepository, overrides *repositories.WorkspaceQuotaRepository, apps *repositories.ApplicationRepository, volumes *repositories.VolumeRepository, dbs *repositories.DatabaseRepository, enforce bool) *Service {
@@ -314,6 +316,10 @@ func (s *Service) SetEdition(g EditionGate) { s.ee = g }
 // entitled reports whether a paid flag is usable. False when no gate is wired
 // (Community) so the resolver falls back to the permissive default.
 func (s *Service) entitled(flag string) bool { return s.ee != nil && s.ee.Has(flag) }
+
+// SetRestriction wires the workspace-restriction check. It runs whether or not plan enforcement is
+// on, since a restriction is an admin hold, not a plan limit.
+func (s *Service) SetRestriction(f func(workspaceID uint) error) { s.restricted = f }
 
 // Enabled reports whether enforcement is active.
 func (s *Service) Enabled() bool { return s != nil && s.enforce }
@@ -415,6 +421,11 @@ func (s *Service) EffectiveLimits(workspaceID uint) Limits {
 // CheckCreate returns a QuotaError when creating one more of r would exceed the
 // effective limit. currentCount is the live count the caller already has.
 func (s *Service) CheckCreate(workspaceID uint, r Resource, currentCount int) error {
+	if s != nil && s.restricted != nil {
+		if err := s.restricted(workspaceID); err != nil {
+			return err
+		}
+	}
 	if !s.Enabled() {
 		return nil
 	}

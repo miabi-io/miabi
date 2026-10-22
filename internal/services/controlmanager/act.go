@@ -77,6 +77,9 @@ func (s *Service) SetEnforcement(r Redeployer, placement NodePlacement, configs 
 	s.redeployer, s.placement, s.configs, s.auditor = r, placement, configs, auditor
 }
 
+// SetSuspended wires the suspended-workspace check, so enforcement never restarts what a suspension stopped.
+func (s *Service) SetSuspended(f func(workspaceID uint) bool) { s.suspended = f }
+
 // attempt is what enforcement has tried for one item. It outlives the finding by forgetAfter, so a flapping
 // app cannot reset its own backoff.
 type attempt struct {
@@ -214,6 +217,9 @@ func (s *Service) refuse(it *item) string {
 	}
 	if reason, blocked := s.BlockedRedeploy(it.id); blocked {
 		return reason
+	}
+	if s.suspended != nil && it.app != nil && s.suspended(it.app.WorkspaceID) {
+		return "its workspace is suspended by the platform administrator"
 	}
 	if s.placement != nil {
 		if err := s.placement.Placeable(it.nodeID); err != nil {

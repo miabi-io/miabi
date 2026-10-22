@@ -54,19 +54,22 @@ func NewAdminWorkspaceHandler(db *gorm.DB, workspaces *repositories.WorkspaceRep
 
 // AdminWorkspace is a workspace row for the admin workspaces table.
 type AdminWorkspace struct {
-	ID             uint      `json:"id"`
-	Name           string    `json:"name"`
-	DisplayName    string    `json:"display_name"`
-	OwnerID        uint      `json:"owner_id"`
-	OwnerName      string    `json:"owner_name"`
-	OwnerEmail     string    `json:"owner_email"`
-	Privileged     bool      `json:"privileged"`
-	System         bool      `json:"system"`
-	AppsCount      int64     `json:"apps_count"`
-	DatabasesCount int64     `json:"databases_count"`
-	StacksCount    int64     `json:"stacks_count"`
-	MembersCount   int64     `json:"members_count"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	OwnerID     uint   `json:"owner_id"`
+	OwnerName   string `json:"owner_name"`
+	OwnerEmail  string `json:"owner_email"`
+	Privileged  bool   `json:"privileged"`
+	System      bool   `json:"system"`
+	PlanID      *uint  `json:"plan_id"`
+	// Restriction is the admin hold on the workspace ("", read_only or suspended).
+	Restriction    models.WorkspaceRestriction `json:"restriction"`
+	AppsCount      int64                       `json:"apps_count"`
+	DatabasesCount int64                       `json:"databases_count"`
+	StacksCount    int64                       `json:"stacks_count"`
+	MembersCount   int64                       `json:"members_count"`
+	CreatedAt      time.Time                   `json:"created_at"`
 }
 
 type SetWorkspacePrivilegedRequest struct {
@@ -99,11 +102,7 @@ type AdminWorkspaceDetail struct {
 
 // Get returns a single workspace with owner, counts, members, and recent activity.
 func (h *AdminWorkspaceHandler) Get(c *okapi.Context) error {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil || id <= 0 {
-		return c.AbortBadRequest("invalid workspace id")
-	}
-	ws, err := h.workspaces.FindByID(uint(id))
+	ws, err := adminWorkspaceRef(h.workspaces, c.Param("id"))
 	if err != nil {
 		return c.AbortNotFound("workspace not found")
 	}
@@ -175,7 +174,7 @@ func (h *AdminWorkspaceHandler) List(c *okapi.Context) error {
 		o := owners[w.OwnerID]
 		out = append(out, AdminWorkspace{
 			ID: w.ID, Name: w.Name, DisplayName: w.DisplayName, OwnerID: w.OwnerID,
-			OwnerName: o.Name, OwnerEmail: o.Email, Privileged: w.Privileged, System: w.System,
+			OwnerName: o.Name, OwnerEmail: o.Email, Privileged: w.Privileged, System: w.System, PlanID: w.PlanID, Restriction: w.Restriction,
 			AppsCount: apps[w.ID], DatabasesCount: dbs[w.ID], StacksCount: stacks[w.ID],
 			MembersCount: members[w.ID], CreatedAt: w.CreatedAt,
 		})

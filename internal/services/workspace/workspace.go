@@ -248,6 +248,10 @@ func (s *Service) homeOrg(userID uint) *models.Organization {
 // canOwnAnother returns ErrWorkspaceLimitReached when userID is already at their effective
 // workspace-ownership limit. No-op when limits are unwired or the effective limit is unlimited. Fails open
 // on a count error (mirrors checkMemberCapacity), so a transient DB hiccup never blocks legitimate work.
+// CanOwnAnother reports whether userID may become owner of one more workspace (the per-user
+// ownership limit and the service-account rule). Exported for SSO group sync.
+func (s *Service) CanOwnAnother(userID uint) error { return s.canOwnAnother(userID) }
+
 func (s *Service) canOwnAnother(userID uint) error {
 	if u, err := s.users.FindByID(userID); err == nil && u.IsService() {
 		return ErrServiceAccountOwner
@@ -353,6 +357,32 @@ func (s *Service) Create(ownerID uint, displayName, handle, description string) 
 	if err != nil {
 		return nil, err
 	}
+	return s.create(ownerID, name, displayName, description, orgID, orgCluster)
+}
+
+// CreateForOwner is a platform admin's create on a user's behalf. It skips the self-service creation
+// policy and ownership limits, and takes the handle exactly: a taken or invalid handle is an error,
+// never suffixed, so a caller that retries after a lost answer can recognise its own workspace.
+func (s *Service) CreateForOwner(ownerID uint, displayName, handle string) (*models.Workspace, error) {
+	name := slug.Make(handle, "")
+	if name == "" {
+		return nil, ErrNameInvalid
+	}
+	if slug.IsReserved(name) {
+		return nil, ErrNameReserved
+	}
+	exists, err := s.repo.ExistsByName(name)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, ErrNameTaken
+	}
+	orgID, orgCluster := s.organizationFor(ownerID)
+	return s.create(ownerID, name, displayName, "", orgID, orgCluster)
+}
+
+func (s *Service) create(ownerID uint, name, displayName, description string, orgID uint, orgCluster *uint) (*models.Workspace, error) {
 	if strings.TrimSpace(displayName) == "" {
 		displayName = name
 	}

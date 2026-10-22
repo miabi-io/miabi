@@ -70,8 +70,9 @@ func TestRegisterAttachesTheScopeGuard(t *testing.T) {
 	r.register(defs...)
 
 	for i, def := range defs {
-		if len(def.Middlewares) != before[i]+1 {
-			t.Errorf("def %d: middlewares %d → %d, want exactly one appended", i, before[i], len(def.Middlewares))
+		// The scope guard and the suspension guard.
+		if len(def.Middlewares) != before[i]+2 {
+			t.Errorf("def %d: middlewares %d → %d, want exactly two appended", i, before[i], len(def.Middlewares))
 		}
 	}
 }

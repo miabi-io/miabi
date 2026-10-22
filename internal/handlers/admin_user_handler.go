@@ -22,6 +22,7 @@ package handlers
 import (
 	"crypto/rand"
 	"errors"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -810,4 +811,54 @@ func (h *AdminUserHandler) record(c *okapi.Context, action string, targetID uint
 		IP:         c.RealIP(),
 		Metadata:   meta,
 	})
+}
+
+// AdminSuspendUserRequest suspends a user.
+type AdminSuspendUserRequest struct {
+	Body struct {
+		Reason string     `json:"reason" maxLength:"500"`
+		Until  *time.Time `json:"until"`
+	} `json:"body"`
+}
+
+// Suspend puts a hold on a user: they keep read access and see the reason, every write they make is
+// refused until it is lifted or the end date passes. Not a ban: nothing is deleted or disabled.
+func (h *AdminUserHandler) Suspend(c *okapi.Context, req *AdminSuspendUserRequest) error {
+	target, err := h.targetUser(c)
+	if err != nil {
+		return c.AbortNotFound("user not found")
+	}
+	if target.ID == middlewares.UserID(c) {
+		return c.AbortBadRequest("you cannot suspend yourself")
+	}
+	if target.Role == models.SystemRoleAdmin {
+		if last, err := h.isLastAdmin(target.ID); err != nil || last {
+			return c.AbortWithError(http.StatusConflict, errors.New("the last platform admin cannot be suspended"))
+		}
+	}
+	now := time.Now().UTC()
+	if req.Body.Until != nil && !req.Body.Until.After(now) {
+		return c.AbortBadRequest("until must be in the future")
+	}
+	actor := middlewares.UserID(c)
+	target.SuspendedAt, target.SuspendedReason, target.SuspendedUntil, target.SuspendedBy = &now, strings.TrimSpace(req.Body.Reason), req.Body.Until, &actor
+	if err := h.users.Update(target); err != nil {
+		return c.AbortInternalServerError("failed to suspend user", err)
+	}
+	h.record(c, "admin.user.suspend", target.ID, map[string]any{"reason": target.SuspendedReason, "until": req.Body.Until, "request_reason": c.Header("X-Request-Reason")})
+	return ok(c, target)
+}
+
+// Unsuspend lifts a user's suspension.
+func (h *AdminUserHandler) Unsuspend(c *okapi.Context) error {
+	target, err := h.targetUser(c)
+	if err != nil {
+		return c.AbortNotFound("user not found")
+	}
+	target.SuspendedAt, target.SuspendedReason, target.SuspendedUntil, target.SuspendedBy = nil, "", nil, nil
+	if err := h.users.Update(target); err != nil {
+		return c.AbortInternalServerError("failed to lift the suspension", err)
+	}
+	h.record(c, "admin.user.unsuspend", target.ID, map[string]any{"request_reason": c.Header("X-Request-Reason")})
+	return ok(c, target)
 }

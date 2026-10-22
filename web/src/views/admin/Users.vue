@@ -39,6 +39,10 @@ const { pageable, goToPage } = usePagination(async (page) => {
   }
 })
 
+function isSuspended(u: AdminUser): boolean {
+  return !!u.suspended_at && (!u.suspended_until || new Date(u.suspended_until).getTime() > Date.now())
+}
+
 function onSearchInput() {
   if (searchTimer) clearTimeout(searchTimer)
   searchTimer = setTimeout(() => goToPage(0), 300)
@@ -184,6 +188,7 @@ onBeforeUnmount(() => {
                 <span v-if="u.scheduled_deletion_at" class="badge badge-danger">Pending deletion</span>
                 <span v-else-if="u.active" class="badge badge-dot badge-success">Active</span>
                 <span v-else class="badge badge-dot badge-danger">Inactive</span>
+                <span v-if="isSuspended(u)" class="badge badge-danger suspended-badge">{{ $t('operator.suspension.badge') }}</span>
               </td>
               <td class="cell-sub">{{ fmtDate(u.last_login_at) }}</td>
               <td class="cell-sub">{{ fmtDate(u.created_at) }}</td>
@@ -259,6 +264,9 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.suspended-badge {
+  margin-left: 6px;
+}
 .toolbar {
   display: flex;
   align-items: center;

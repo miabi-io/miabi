@@ -7,6 +7,8 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { useLicenseStore } from '@/stores/license'
 import AnnouncementBanner from '@/components/AnnouncementBanner.vue'
+import SuspensionBanner from '@/components/SuspensionBanner.vue'
+import WorkspaceRestrictionBanner from '@/components/WorkspaceRestrictionBanner.vue'
 import ConsoleShell from './ConsoleShell.vue'
 import { navSections } from '@/data/nav'
 import { workspaceApi } from '@/api/workspaces'
@@ -73,6 +75,8 @@ onMounted(async () => {
 <template>
   <ConsoleShell :sections="navSections" console="workspace" section-state-key="mb_nav_sections" home="/">
     <template #banners>
+      <SuspensionBanner />
+      <WorkspaceRestrictionBanner />
       <AnnouncementBanner />
     </template>
 

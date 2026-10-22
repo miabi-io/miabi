@@ -218,6 +218,7 @@ func Run(db *gorm.DB) error {
 		&models.SCIMToken{},
 		&models.LDAPConfig{},
 		&models.LDAPGroupMapping{},
+		&models.OAuthGroupMapping{},
 		&models.CustomRole{},
 		&models.ResourcePolicy{},
 		&models.SIEMConfig{},

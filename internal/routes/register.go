@@ -40,7 +40,7 @@ func (r *Router) register(defs ...okapi.RouteDefinition) {
 		path := routePath(&defs[i])
 		required := scopeFor(strings.ToUpper(defs[i].Method), path)
 		defs[i].Middlewares = append(defs[i].Middlewares,
-			middlewares.RequireScope(r.scopeMode, required, r.recordScopeViolation))
+			middlewares.RequireScope(r.scopeMode, required, r.recordScopeViolation), middlewares.SuspensionGuard())
 	}
 	r.app.Register(defs...)
 }

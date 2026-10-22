@@ -84,11 +84,42 @@ type Workspace struct {
 	// per-workspace resource quotas when plan enforcement is enabled.
 	PlanID *uint `json:"plan_id,omitempty" gorm:"index"`
 	// DefaultClusterID is the location a create lands in when it names none; nil means the default cluster.
-	DefaultClusterID *uint     `json:"default_cluster_id,omitempty" gorm:"index"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	DefaultClusterID *uint `json:"default_cluster_id,omitempty" gorm:"index"`
+	// Restriction is a platform admin's hold on the workspace (empty = none). See WorkspaceRestriction.
+	Restriction       WorkspaceRestriction `json:"restriction" gorm:"type:varchar(20);not null;default:''"`
+	RestrictionReason string               `json:"restriction_reason"`
+	RestrictionUntil  *time.Time           `json:"restriction_until"`
+	RestrictedAt      *time.Time           `json:"restricted_at"`
+	RestrictedBy      *uint                `json:"restricted_by"`
+	// FrozenResources is what was running when the workspace was suspended, so lifting the
+	// suspension restarts exactly that and nothing a user had stopped on purpose.
+	FrozenResources *FrozenResources `json:"-" gorm:"type:text;serializer:json"`
+	CreatedAt       time.Time        `json:"created_at"`
+	UpdatedAt       time.Time        `json:"updated_at"`
 
 	Members []WorkspaceMember `json:"-" gorm:"foreignKey:WorkspaceID"`
+}
+
+// WorkspaceRestriction is a platform admin's hold on a workspace.
+type WorkspaceRestriction string
+
+const (
+	WorkspaceRestrictionNone WorkspaceRestriction = ""
+	// WorkspaceRestrictionReadOnly keeps workloads running but refuses writes and automated deploys.
+	WorkspaceRestrictionReadOnly WorkspaceRestriction = "read_only"
+	// WorkspaceRestrictionSuspended is read-only with apps and databases stopped and CronJobs paused.
+	WorkspaceRestrictionSuspended WorkspaceRestriction = "suspended"
+)
+
+// Valid reports whether r is a restriction an admin can set.
+func (r WorkspaceRestriction) Valid() bool {
+	return r == WorkspaceRestrictionReadOnly || r == WorkspaceRestrictionSuspended
+}
+
+// FrozenResources lists the apps and database instances a suspension stopped.
+type FrozenResources struct {
+	Apps      []uint `json:"apps"`
+	Databases []uint `json:"databases"`
 }
 
 // WorkspaceWithRole is a workspace annotated with the requesting user's role in
@@ -107,9 +138,12 @@ type WorkspaceMember struct {
 	Role        WorkspaceRole `json:"role" gorm:"not null;default:viewer"`
 	// CustomRoleID, when set, overrides Role with an admin-defined permission set
 	// (Enterprise). Role still holds the custom role's BaseRole for rank checks.
-	CustomRoleID *uint     `json:"custom_role_id" gorm:"index"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	CustomRoleID *uint `json:"custom_role_id" gorm:"index"`
+	// ManagedBy names the SSO provider whose groups granted this membership; such a membership is
+	// changed and removed only by that provider's group sync. Empty for memberships made by hand.
+	ManagedBy string    `json:"managed_by" gorm:"type:varchar(64);not null;default:''"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 
 	User User `json:"user" gorm:"foreignKey:UserID"`
 }
