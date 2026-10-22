@@ -78,6 +78,8 @@ type Service struct {
 	attacher    ProxyAttacher
 	domains     DomainLister
 	wsPolicy    WorkspacePolicy
+	// suspended reports a workspace a platform admin suspended; its routes then serve a notice.
+	suspended func(workspaceID uint) bool
 	dnsAddr     DNSAddresser
 	reloader    EdgeReloader
 	cluster     ClusterCap
@@ -140,6 +142,21 @@ func (s *Service) SetWorkspacePolicy(p WorkspacePolicy) { s.wsPolicy = p }
 
 // privileged reports whether a workspace may bypass the domain-verification gate.
 // A missing policy or a lookup error is treated as not privileged (fail closed).
+// SetSuspended wires the suspended-workspace check used when rendering routes.
+func (s *Service) SetSuspended(f func(workspaceID uint) bool) { s.suspended = f }
+
+// suspendedNotice is what visitors of a suspended workspace's sites see. It never carries the
+// admin's reason, which is for the workspace's members, not the public.
+const suspendedNotice = "This site is temporarily unavailable. If you run it, sign in to your Miabi workspace for details."
+
+// applySuspension turns a route of a suspended workspace into a 503 notice, whatever its own
+// maintenance setting, without touching the stored route.
+func (s *Service) applySuspension(rr *proxy.RenderedRoute) {
+	if s.suspended != nil && s.suspended(rr.WorkspaceID) {
+		rr.Maintenance = &proxy.RouteMaintenance{Enabled: true, StatusCode: 503, Message: suspendedNotice}
+	}
+}
+
 func (s *Service) privileged(workspaceID uint) bool {
 	if s.wsPolicy == nil {
 		return false
@@ -942,6 +959,7 @@ func (s *Service) SyncWorkspaceProxy(ctx context.Context, workspaceID uint) erro
 			serve, status, reason := routeServeState(rt, domains, gate, privileged)
 			port := routePort(rt, app)
 			rr := renderedRoute(rt, gatewayBackends(app, port), !serve)
+			s.applySuspension(&rr)
 			// A cert rides only a route the gateway will actually serve.
 			if pair, ok := s.certPair(rt); ok && serve {
 				rr.Certs = []proxy.CertPair{pair}
@@ -1303,6 +1321,7 @@ func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.Rend
 			// gateway stops serving them rather than relying on the route vanishing
 			// from the bundle.
 			rr := renderedRoute(rt, gatewayBackends(app, routePort(rt, app)), !serve)
+			s.applySuspension(&rr)
 			// Only a served route carries its cert.
 			if pair, ok := s.certPair(rt); ok && serve {
 				rr.Certs = []proxy.CertPair{pair}

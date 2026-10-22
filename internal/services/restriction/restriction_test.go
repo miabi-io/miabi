@@ -205,3 +205,19 @@ func TestExpireDueAndCache(t *testing.T) {
 		t.Fatalf("restriction past its end date still applies: %v", err)
 	}
 }
+
+func TestChangeNotifies(t *testing.T) {
+	s, _, _ := newTest()
+	var got []uint
+	s.SetOnChange(func(_ context.Context, ws uint) { got = append(got, ws) })
+	ctx := context.Background()
+	if _, err := s.Set(ctx, 1, 5, SetInput{State: models.WorkspaceRestrictionSuspended}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Lift(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != 1 || got[1] != 1 {
+		t.Fatalf("notified %v, want the workspace twice (set, lift)", got)
+	}
+}

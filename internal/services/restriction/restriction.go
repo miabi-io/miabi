@@ -111,6 +111,19 @@ type Service struct {
 
 	mu    sync.Mutex
 	cache map[uint]entry
+	// changed runs after a restriction is set or lifted (re-rendering the workspace's routes);
+	// nil skips it.
+	changed func(ctx context.Context, wsID uint)
+}
+
+// SetOnChange wires what must follow a restriction change, such as re-syncing the gateway routes
+// that serve the suspended notice.
+func (s *Service) SetOnChange(f func(ctx context.Context, wsID uint)) { s.changed = f }
+
+func (s *Service) notify(ctx context.Context, wsID uint) {
+	if s.changed != nil {
+		s.changed(ctx, wsID)
+	}
 }
 
 // NewService builds the service.
@@ -209,6 +222,7 @@ func (s *Service) Set(ctx context.Context, wsID, actorID uint, in SetInput) (*mo
 			return nil, err
 		}
 	}
+	s.notify(ctx, wsID)
 	return s.repo.FindByID(wsID)
 }
 
@@ -230,6 +244,7 @@ func (s *Service) Lift(ctx context.Context, wsID uint) (*models.Workspace, error
 			return nil, err
 		}
 	}
+	s.notify(ctx, wsID)
 	return s.repo.FindByID(wsID)
 }
 
