@@ -192,6 +192,13 @@ func (r *ClusterRepository) CountExternalApps(clusterID uint) (int64, error) {
 	return n, err
 }
 
+// ListByExternalCertificate returns the clusters serving their generated URLs from a certificate.
+func (r *ClusterRepository) ListByExternalCertificate(certID uint) ([]models.Cluster, error) {
+	var out []models.Cluster
+	err := r.db.Where("external_certificate_id = ?", certID).Find(&out).Error
+	return out, err
+}
+
 // CountServerWorkloadsByKind counts the apps, database instances and volumes placed on a node, each on its own.
 func (r *ClusterRepository) CountServerWorkloadsByKind(serverID uint) (apps, databases, volumes int64, err error) {
 	var counts [3]int64

@@ -107,6 +107,8 @@ func (m *memStore) UpdateColumns(id uint, cols map[string]any) error {
 			c.IngressServerID = v.(uint)
 		case "ingress_ip":
 			c.IngressIP = v.(string)
+		case "external_certificate_id":
+			c.ExternalCertificateID = v.(*uint)
 		case "ingress_hostname":
 			c.IngressHostname = v.(string)
 		case "visibility":

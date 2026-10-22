@@ -23,6 +23,7 @@ import (
 	"net/http"
 
 	"github.com/jkaninda/okapi"
+	"github.com/miabi-io/miabi/internal/dto"
 	"github.com/miabi-io/miabi/internal/handlers"
 )
 
@@ -75,6 +76,15 @@ func (r *Router) clustersRoutes() []okapi.RouteDefinition {
 			Middlewares: admin,
 			Handler:     r.h.cluster.GetCluster,
 			Summary:     "Get a cluster",
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/{clusterID}/external-certificates",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.cluster.ExternalCertificates,
+			Summary:     "System-workspace certificates that could serve this cluster's generated app URLs",
+			Response:    &dto.Response[[]handlers.ExternalCertificateOption]{},
 		},
 		{
 			Method:      http.MethodGet,

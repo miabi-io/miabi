@@ -114,6 +114,9 @@ type UpdateClusterRequest struct {
 		ExternalBaseDomain *string `json:"external_base_domain"`
 		// ExternalCertProvider names the gateway's certManager provider for those URLs; empty uses its default.
 		ExternalCertProvider *string `json:"external_cert_provider"`
+		// ExternalCertificateID serves the generated URLs from a certificate in the system workspace, which
+		// must cover *.<external domain>. 0 goes back to a certificate per app.
+		ExternalCertificateID *uint `json:"external_certificate_id"`
 		// ServiceEndpointMode is how service apps are reached by name: "vip", or "dnsrr" on hosts that cannot run
 		// IPVS, such as LXC containers. Running services switch in place.
 		ServiceEndpointMode string `json:"service_endpoint_mode" enum:"vip,dnsrr"`
@@ -155,6 +158,7 @@ func (h *ClusterHandler) UpdateCluster(c *okapi.Context, req *UpdateClusterReque
 		patch.Acknowledge = req.Body.Acknowledge
 	}
 	patch.ExternalBaseDomain, patch.ExternalCertProvider = req.Body.ExternalBaseDomain, req.Body.ExternalCertProvider
+	patch.ExternalCertificateID = req.Body.ExternalCertificateID
 	patch.IngressIP, patch.IngressHostname = req.Body.IngressIP, req.Body.IngressHostname
 	if req.Body.ServiceEndpointMode != "" {
 		mode := models.ServiceEndpointMode(req.Body.ServiceEndpointMode)
@@ -267,7 +271,9 @@ func (h *ClusterHandler) mapClusterErr(c *okapi.Context, err error) error {
 		errors.Is(err, node.ErrInvalidConnectivity):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, cluster.ErrInvalidExternalDomain), errors.Is(err, cluster.ErrInvalidCertProvider),
-		errors.Is(err, cluster.ErrExternalAccessPinned), errors.Is(err, cluster.ErrInvalidEndpointMode):
+		errors.Is(err, cluster.ErrExternalAccessPinned), errors.Is(err, cluster.ErrInvalidEndpointMode),
+		errors.Is(err, cluster.ErrExternalCertNotFound), errors.Is(err, cluster.ErrExternalCertNeedsDomain),
+		errors.Is(err, cluster.ErrExternalCertMismatch), errors.Is(err, cluster.ErrExternalCertUnusable):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, cluster.ErrExternalDomainTaken),
 		errors.Is(err, cluster.ErrDedicationAckRequired),
@@ -276,4 +282,50 @@ func (h *ClusterHandler) mapClusterErr(c *okapi.Context, err error) error {
 	default:
 		return c.AbortInternalServerError("cluster operation failed", err)
 	}
+}
+
+// ExternalCertificateOption is a system-workspace certificate offered for a cluster's generated URLs.
+// Problem says why it cannot serve them; empty means it can.
+type ExternalCertificateOption struct {
+	ID          uint      `json:"id"`
+	Name        string    `json:"name"`
+	DisplayName string    `json:"display_name,omitempty"`
+	DNSNames    []string  `json:"dns_names"`
+	Source      string    `json:"source"`
+	Status      string    `json:"status"`
+	NotAfter    time.Time `json:"not_after"`
+	Problem     string    `json:"problem,omitempty"`
+}
+
+// ExternalCertificates lists the system workspace's certificates, each checked against the cluster's external
+// domain, for the certificate picker.
+func (h *ClusterHandler) ExternalCertificates(c *okapi.Context) error {
+	id, err := resolveID(c.Param("clusterID"), h.cluster.ClusterIDByUID)
+	if err != nil {
+		return c.AbortBadRequest("invalid cluster id")
+	}
+	cl, err := h.cluster.Cluster(id)
+	if err != nil {
+		return h.mapClusterErr(c, err)
+	}
+	out := []ExternalCertificateOption{}
+	if h.systemCerts == nil {
+		return ok(c, out)
+	}
+	certs, err := h.systemCerts.ListSystem()
+	if err != nil {
+		return c.AbortInternalServerError("failed to list the system workspace's certificates", err)
+	}
+	for i := range certs {
+		cert := &certs[i]
+		opt := ExternalCertificateOption{
+			ID: cert.ID, Name: cert.Name, DisplayName: cert.DisplayName, DNSNames: cert.DNSNames,
+			Source: cert.Source, Status: cert.Status, NotAfter: cert.NotAfter,
+		}
+		if perr := cluster.ExternalCertProblem(cert, cl.ExternalBaseDomain); perr != nil {
+			opt.Problem = perr.Error()
+		}
+		out = append(out, opt)
+	}
+	return ok(c, out)
 }

@@ -141,6 +141,7 @@ type Service struct {
 	nodeJoined        func(ctx context.Context, serverID uint, nodeName string, dc docker.Client)
 	gatewayListener   func(context.Context, uint)
 	externalListener  func(context.Context, uint)
+	externalCerts     ExternalCertificates
 	// externalDomainEnv and externalProviderEnv pin the default cluster's external access from the environment.
 	externalDomainEnv   string
 	externalProviderEnv string

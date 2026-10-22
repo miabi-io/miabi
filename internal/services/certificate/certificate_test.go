@@ -32,6 +32,9 @@ import (
 	"time"
 
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/storage/repositories"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestHostMatches(t *testing.T) {
@@ -213,4 +216,30 @@ func genCert(t *testing.T, cn string, sans []string) (certPEM, keyPEM string) {
 	certPEM = string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
 	keyPEM = string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}))
 	return certPEM, keyPEM
+}
+
+// A certificate serving a cluster's generated URLs can't be deleted out from under them.
+func TestDeleteRefusesACertificateServingGeneratedURLs(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&models.Certificate{}); err != nil {
+		t.Fatal(err)
+	}
+	cert := &models.Certificate{WorkspaceID: 1, Name: "wildcard"}
+	if err := db.Create(cert).Error; err != nil {
+		t.Fatal(err)
+	}
+	s := NewService(repositories.NewCertificateRepository(db))
+	serving := []string{"eu-central"}
+	s.SetClusterRefs(func(uint) ([]string, error) { return serving, nil })
+
+	if err := s.Delete(1, cert.ID); !errors.Is(err, ErrServesExternalAccess) {
+		t.Fatalf("err = %v, want ErrServesExternalAccess", err)
+	}
+	serving = nil
+	if err := s.Delete(1, cert.ID); err != nil {
+		t.Fatalf("delete once no cluster uses it: %v", err)
+	}
 }

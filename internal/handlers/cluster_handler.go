@@ -49,7 +49,17 @@ type ClusterHandler struct {
 	capacity          ClusterCapacityStore
 	ee                enterprise.EE
 	orgs              *organization.Service
+	systemCerts       SystemCertificates
 }
+
+// SystemCertificates lists the system workspace's certificates, the ones a cluster may serve its generated
+// URLs from. Satisfied by certificate.Service.
+type SystemCertificates interface {
+	ListSystem() ([]models.Certificate, error)
+}
+
+// SetSystemCertificates wires the certificate picker for generated URLs (nil-safe: the list is empty).
+func (h *ClusterHandler) SetSystemCertificates(c SystemCertificates) { h.systemCerts = c }
 
 // SetOrganizations wires organization-dedicated clusters and the entitlement that gates them
 // (nil-safe; without it a cluster cannot be assigned to an organization).

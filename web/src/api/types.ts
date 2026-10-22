@@ -2645,6 +2645,9 @@ export interface Cluster {
   legacy_ingress: boolean
   external_base_domain?: string
   external_cert_provider?: string
+  /** A system-workspace certificate serving every generated URL here; absent means one certificate per app. */
+  external_certificate_id?: number
+  external_certificate?: ExternalCertificateInfo
   external_domain_pinned?: boolean
   external_provider_pinned?: boolean
   external_apps?: number
@@ -3584,4 +3587,25 @@ export interface ElevationState {
   locked_until?: string
   ttl_seconds: number
   idle_seconds: number
+}
+
+/** The certificate serving a cluster's generated URLs. Unusable means the gateway falls back to one per app. */
+export interface ExternalCertificateInfo {
+  name: string
+  dns_names: string[]
+  not_after: string
+  usable: boolean
+  problem?: string
+}
+
+/** A system-workspace certificate offered for a cluster's generated URLs; problem says why it can't serve them. */
+export interface ExternalCertificateOption {
+  id: number
+  name: string
+  display_name?: string
+  dns_names: string[]
+  source: string
+  status: string
+  not_after: string
+  problem?: string
 }

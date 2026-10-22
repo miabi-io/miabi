@@ -14,7 +14,7 @@ import OrganizationPicker from '@/components/OrganizationPicker.vue'
 import { copyText } from '@/utils/clipboard'
 import type {
   Cluster, Server, ClusterStatus, ClusterJoinInstructions,
-  ClusterPreflight, NetCheck, NetCheckResult, ControlPlaneCert,
+  ClusterPreflight, NetCheck, NetCheckResult, ControlPlaneCert, ExternalCertificateOption,
 } from '@/api/types'
 
 const notify = useNotificationStore()
@@ -59,7 +59,7 @@ const showEdit = ref(false)
 const saving = ref(false)
 const editForm = ref({
   display_name: '', location_code: '', visibility: 'all' as Cluster['visibility'], cordoned: false,
-  external_base_domain: '', external_cert_provider: '',
+  external_base_domain: '', external_cert_provider: '', external_certificate_id: 0,
   service_endpoint_mode: 'vip' as NonNullable<Cluster['service_endpoint_mode']>,
   ingress_ip: '', ingress_hostname: '',
 })
@@ -74,11 +74,31 @@ function openEdit() {
     cordoned: cluster.value?.cordoned ?? false,
     external_base_domain: cluster.value?.external_base_domain ?? '',
     external_cert_provider: cluster.value?.external_cert_provider ?? '',
+    external_certificate_id: cluster.value?.external_certificate_id ?? 0,
     service_endpoint_mode: cluster.value?.service_endpoint_mode ?? 'vip',
     ingress_ip: cluster.value?.ingress_ip ?? '',
     ingress_hostname: cluster.value?.ingress_hostname ?? '',
   }
   showEdit.value = true
+  void loadCertOptions()
+}
+
+// Certificates in the system workspace that could serve every generated URL here.
+const certOptions = ref<ExternalCertificateOption[]>([])
+async function loadCertOptions() {
+  if (!cluster.value) return
+  try {
+    certOptions.value = (await clustersApi.externalCertificates(cluster.value.id)).data.data ?? []
+  } catch {
+    certOptions.value = []
+  }
+}
+// Re-checked against the domain being typed, since the server's verdict is for the saved one.
+function certProblem(o: ExternalCertificateOption): string {
+  if (!editDomain.value) return 'set the external domain first'
+  if (o.status !== 'active' || new Date(o.not_after) <= new Date()) return 'not active or expired'
+  if (!o.dns_names.some((n) => n.toLowerCase() === `*.${editDomain.value}`)) return `does not cover *.${editDomain.value}`
+  return ''
 }
 
 function normalizeDomain(domain: string) {
@@ -118,6 +138,9 @@ async function persistEdit() {
       cordoned: editForm.value.cordoned,
       external_base_domain: editForm.value.external_base_domain.trim(),
       external_cert_provider: editForm.value.external_cert_provider.trim(),
+      ...(editForm.value.external_certificate_id !== (cluster.value.external_certificate_id ?? 0)
+        ? { external_certificate_id: editForm.value.external_certificate_id }
+        : {}),
       service_endpoint_mode: editForm.value.service_endpoint_mode,
       ingress_ip: editForm.value.ingress_ip.trim(),
       ingress_hostname: editForm.value.ingress_hostname.trim(),
@@ -565,6 +588,21 @@ function swarmClass(n: Server): string {
             <span v-else class="text-muted">Off</span>
             <span v-if="cluster.external_domain_pinned" class="badge badge-muted">set by environment</span>
           </dd>
+          <template v-if="cluster.external_base_domain">
+            <dt>Certificate</dt>
+            <dd>
+              <template v-if="cluster.external_certificate">
+                <span class="mono">{{ cluster.external_certificate.name || 'missing' }}</span>
+                <span v-if="cluster.external_certificate.usable" class="cell-sub">
+                  until {{ new Date(cluster.external_certificate.not_after).toLocaleDateString() }}
+                </span>
+                <span v-else class="badge badge-warning" :title="cluster.external_certificate.problem">
+                  falling back to one per app: {{ cluster.external_certificate.problem }}
+                </span>
+              </template>
+              <span v-else class="text-muted">One per app{{ cluster.external_cert_provider ? ` (${cluster.external_cert_provider})` : '' }}</span>
+            </dd>
+          </template>
           <template v-if="cluster.mode === 'swarm'">
             <dt>Service load balancing</dt>
             <dd>{{ cluster.service_endpoint_mode === 'dnsrr' ? 'DNS round-robin' : 'Virtual IP' }}</dd>
@@ -813,6 +851,20 @@ function swarmClass(n: Server): string {
               <p v-else class="form-hint">Empty turns one-click external access off in this location. Custom domains still work.</p>
               <p v-if="cluster?.external_domain_pinned" class="form-hint">Set by environment (MIABI_EXTERNAL_BASE_DOMAIN).</p>
             </div>
+            <div class="form-group">
+              <label class="form-label">Certificate for generated URLs</label>
+              <select v-model.number="editForm.external_certificate_id" class="form-select" :disabled="!editDomain">
+                <option :value="0">One certificate per app, from the certificate provider</option>
+                <option v-for="o in certOptions" :key="o.id" :value="o.id" :disabled="!!certProblem(o) && o.id !== editForm.external_certificate_id">
+                  {{ o.display_name || o.name }}{{ certProblem(o) ? ` (${certProblem(o)})` : '' }}
+                </option>
+              </select>
+              <p class="form-hint">
+                A wildcard for <code>*.{{ editDomain || 'external-domain' }}</code> serves every app here at once, with no
+                certificate to request per app. Import one, or issue it through a DNS provider, under Certificates in the
+                Miabi System workspace. If it expires or stops matching, apps fall back to a certificate per app.
+              </p>
+            </div>
             <div class="form-group" style="margin-bottom: 0">
               <label class="form-label">Certificate provider</label>
               <input
@@ -824,7 +876,7 @@ function swarmClass(n: Server): string {
               <p class="form-hint">
                 {{ cluster?.external_provider_pinned
                   ? 'Set by environment (MIABI_EXTERNAL_BASE_PROVIDER).'
-                  : 'The gateway certManager provider for generated URLs. Empty uses its default.' }}
+                  : 'The gateway certManager provider for per-app certificates, and the fallback for a wildcard. Empty uses its default.' }}
               </p>
             </div>
           </div>

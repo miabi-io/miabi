@@ -28,6 +28,7 @@ import (
 
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/proxy"
 	"github.com/miabi-io/miabi/internal/slug"
 )
 
@@ -43,6 +44,40 @@ type ExternalDomains interface {
 
 // SetExternalDomains wires per-cluster external access; unset, external access is off everywhere.
 func (s *Service) SetExternalDomains(d ExternalDomains) { s.external = d }
+
+// ExternalCertificates resolves the certificate a cluster serves its generated URLs from, normally a wildcard
+// for its external domain. Implemented by services/cluster.
+type ExternalCertificates interface {
+	ExternalCertificatePair(clusterID uint) (certPEM, keyPEM string, ok bool)
+}
+
+// SetExternalCertificates wires per-cluster certificates for generated URLs; unset, every generated URL
+// gets its own certificate from the cluster's certManager provider.
+func (s *Service) SetExternalCertificates(c ExternalCertificates) { s.externalCerts = c }
+
+type externalCert struct {
+	pair proxy.CertPair
+	ok   bool
+}
+
+// withExternalCert serves a generated route from its cluster's certificate when it has a usable one. The
+// provider is dropped so the gateway presents that certificate instead of requesting one for the host.
+// cache holds one lookup per cluster for a render pass.
+func (s *Service) withExternalCert(rr *proxy.RenderedRoute, rt *models.Route, app *models.Application, cache map[uint]externalCert) {
+	if !rt.Generated || s.externalCerts == nil {
+		return
+	}
+	ec, seen := cache[app.ClusterID]
+	if !seen {
+		cert, key, ok := s.externalCerts.ExternalCertificatePair(app.ClusterID)
+		ec = externalCert{pair: proxy.CertPair{CertPEM: cert, KeyPEM: key}, ok: ok}
+		cache[app.ClusterID] = ec
+	}
+	if ec.ok {
+		rr.Certs = []proxy.CertPair{ec.pair}
+		rr.TLSProvider = ""
+	}
+}
 
 func (s *Service) externalConfig(app *models.Application) (base, provider string) {
 	if s.external == nil {

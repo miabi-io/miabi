@@ -48,6 +48,9 @@ type ClusterPatch struct {
 	// ExternalBaseDomain and ExternalCertProvider set where generated app URLs live; a change re-hosts them.
 	ExternalBaseDomain   *string
 	ExternalCertProvider *string
+	// ExternalCertificateID serves the generated URLs from a system-workspace certificate; 0 goes back to a
+	// certificate per app.
+	ExternalCertificateID *uint
 	// ServiceEndpointMode switches how the cluster's service apps are reached by name; running services follow.
 	ServiceEndpointMode *models.ServiceEndpointMode
 	// IngressIP and IngressHostname are where the cluster's public DNS records point.
@@ -97,6 +100,7 @@ func (s *Service) Clusters() ([]models.Cluster, error) {
 		return nil, err
 	}
 	s.markExternalPins(list)
+	s.describeExternalCerts(list)
 	s.markDedication(list)
 	return list, nil
 }
@@ -190,6 +194,11 @@ func (s *Service) UpdateCluster(id uint, p ClusterPatch) (*models.Cluster, error
 		return nil, err
 	}
 	maps.Copy(cols, external)
+	certCols, err := s.externalCertColumns(c, p)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(cols, certCols)
 	modeChanged := false
 	if p.ServiceEndpointMode != nil {
 		if !models.ValidServiceEndpointMode(*p.ServiceEndpointMode) {
@@ -229,8 +238,11 @@ func (s *Service) UpdateCluster(id uint, p ClusterPatch) (*models.Cluster, error
 		s.clearStaleDefaults()
 		s.alignOrgDefaults(c.ID, previousOrg, *p.OrganizationID)
 	}
+	// A new domain re-hosts the generated URLs, which re-renders them; a new certificate only re-renders.
 	if len(external) > 0 {
 		s.externalChanged(c.ID)
+	} else if len(certCols) > 0 {
+		s.ResyncRoutes(context.Background(), c.ID)
 	}
 	if modeChanged {
 		s.endpointModeChanged(c.ID, *p.ServiceEndpointMode)

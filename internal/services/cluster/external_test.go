@@ -138,3 +138,114 @@ func TestTheEnvironmentPinsTheDefaultClusterExternalAccess(t *testing.T) {
 		}
 	}
 }
+
+type fakeCerts map[uint]*models.Certificate
+
+func (f fakeCerts) SystemCertificate(id uint) (*models.Certificate, error) {
+	if c, ok := f[id]; ok {
+		return c, nil
+	}
+	return nil, errors.New("not found")
+}
+
+func (f fakeCerts) ResolveSystem(id uint) (string, string, error) {
+	if _, ok := f[id]; !ok {
+		return "", "", errors.New("not found")
+	}
+	return "CERT", "KEY", nil
+}
+
+func wildcard(id uint, names ...string) *models.Certificate {
+	return &models.Certificate{ID: id, Name: "wild", DNSNames: names, Status: models.CertStatusActive, NotAfter: time.Now().Add(30 * 24 * time.Hour)}
+}
+
+func resynced(s *Service) <-chan uint {
+	ch := make(chan uint, 4)
+	s.SetGatewayListener(func(_ context.Context, id uint) { ch <- id })
+	return ch
+}
+
+func TestExternalCertificateMustCoverTheWildcard(t *testing.T) {
+	expired := wildcard(4, "*.apps.example.com")
+	expired.NotAfter = time.Now().Add(-time.Hour)
+	issuing := wildcard(5, "*.apps.example.com")
+	issuing.Status = models.CertStatusIssuing
+	store := &memStore{
+		def:    models.Cluster{ID: 1, IsDefault: true, Name: "default", ExternalBaseDomain: "apps.example.com"},
+		others: map[uint]models.Cluster{2: {ID: 2, Name: "bare"}},
+	}
+	s := &Service{store: store}
+	s.SetExternalCertificates(fakeCerts{
+		1: wildcard(1, "*.apps.example.com", "apps.example.com"),
+		2: wildcard(2, "app.apps.example.com"),
+		3: wildcard(3, "*.other.example.com"),
+		4: expired, 5: issuing,
+	})
+	sync := resynced(s)
+
+	one := uint(1)
+	c, err := s.UpdateCluster(1, ClusterPatch{ExternalCertificateID: &one})
+	if err != nil || c.ExternalCertificateID == nil || *c.ExternalCertificateID != 1 {
+		t.Fatalf("set wildcard = %+v, %v", c.ExternalCertificateID, err)
+	}
+	if c.ExternalCertificate == nil || !c.ExternalCertificate.Usable {
+		t.Errorf("certificate info = %+v, want usable", c.ExternalCertificate)
+	}
+	expectRehost(t, sync, 1)
+
+	for id, want := range map[uint]error{
+		2: ErrExternalCertMismatch, 3: ErrExternalCertMismatch,
+		4: ErrExternalCertUnusable, 5: ErrExternalCertUnusable, 9: ErrExternalCertNotFound,
+	} {
+		if _, err := s.UpdateCluster(1, ClusterPatch{ExternalCertificateID: &id}); !errors.Is(err, want) {
+			t.Errorf("certificate %d: err = %v, want %v", id, err, want)
+		}
+	}
+	if _, err := s.UpdateCluster(2, ClusterPatch{ExternalCertificateID: &one}); !errors.Is(err, ErrExternalCertNeedsDomain) {
+		t.Errorf("no external domain: err = %v, want ErrExternalCertNeedsDomain", err)
+	}
+}
+
+// Moving the domain out from under the certificate is refused; moving both together is fine.
+func TestExternalDomainChangeKeepsTheCertificateHonest(t *testing.T) {
+	one := uint(1)
+	store := &memStore{def: models.Cluster{ID: 1, IsDefault: true, Name: "default", ExternalBaseDomain: "apps.example.com", ExternalCertificateID: &one}}
+	s := &Service{store: store}
+	s.SetExternalCertificates(fakeCerts{1: wildcard(1, "*.apps.example.com"), 2: wildcard(2, "*.apps.new.example.com")})
+	_ = rehosted(s)
+
+	moved := "apps.new.example.com"
+	if _, err := s.UpdateCluster(1, ClusterPatch{ExternalBaseDomain: &moved}); !errors.Is(err, ErrExternalCertMismatch) {
+		t.Fatalf("domain change past the certificate: err = %v, want ErrExternalCertMismatch", err)
+	}
+	two := uint(2)
+	if _, err := s.UpdateCluster(1, ClusterPatch{ExternalBaseDomain: &moved, ExternalCertificateID: &two}); err != nil {
+		t.Fatalf("domain and certificate together: %v", err)
+	}
+	zero := uint(0)
+	c, err := s.UpdateCluster(1, ClusterPatch{ExternalCertificateID: &zero})
+	if err != nil || c.ExternalCertificateID != nil || c.ExternalCertificate != nil {
+		t.Fatalf("clearing = %+v, %v; want a certificate per app", c.ExternalCertificateID, err)
+	}
+}
+
+// An unusable certificate is never served: the gateway falls back to a certificate per app.
+func TestExternalCertificatePairFallsBack(t *testing.T) {
+	one := uint(1)
+	expired := wildcard(1, "*.apps.example.com")
+	store := &memStore{def: models.Cluster{ID: 1, IsDefault: true, Name: "default", ExternalBaseDomain: "apps.example.com", ExternalCertificateID: &one}}
+	s := &Service{store: store}
+	s.SetExternalCertificates(fakeCerts{1: expired})
+	if cert, key, ok := s.ExternalCertificatePair(1); !ok || cert != "CERT" || key != "KEY" {
+		t.Fatalf("usable wildcard: got %q %q %v", cert, key, ok)
+	}
+	expired.NotAfter = time.Now().Add(-time.Minute)
+	if _, _, ok := s.ExternalCertificatePair(1); ok {
+		t.Error("an expired wildcard must not be served")
+	}
+	store.def.ExternalBaseDomain = "apps.moved.example.com"
+	expired.NotAfter = time.Now().Add(time.Hour)
+	if _, _, ok := s.ExternalCertificatePair(1); ok {
+		t.Error("a wildcard for another domain must not be served")
+	}
+}

@@ -190,7 +190,7 @@ func (h *CertificateHandler) mapErr(c *okapi.Context, err error) error {
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, certificate.ErrNoDomains), errors.Is(err, certificate.ErrDomainMismatch):
 		return c.AbortBadRequest(err.Error())
-	case errors.Is(err, certificate.ErrInUse):
+	case errors.Is(err, certificate.ErrInUse), errors.Is(err, certificate.ErrServesExternalAccess):
 		return c.AbortWithError(409, err)
 	default:
 		return c.AbortInternalServerError("certificate operation failed", err)

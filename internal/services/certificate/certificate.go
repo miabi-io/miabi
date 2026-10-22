@@ -59,7 +59,14 @@ var (
 	ErrDomainUnverified = errors.New("certificate name needs a verified domain")
 	// ErrDomainBanned refuses a certificate under a domain an admin has banned.
 	ErrDomainBanned = errors.New("certificate name is under a banned domain")
+	// ErrServesExternalAccess refuses deleting a certificate a cluster serves its generated URLs from.
+	ErrServesExternalAccess = errors.New("certificate serves generated app URLs; choose another certificate for the location first")
 )
+
+// SystemWorkspace finds the platform's system workspace, whose certificates may serve generated app URLs.
+type SystemWorkspace interface {
+	FindSystem() (*models.Workspace, error)
+}
 
 // RouteRefs reports the routes referencing a certificate (delete-guard + usage).
 // Implemented by the route service; injected after construction.
@@ -85,6 +92,11 @@ type Service struct {
 	domains    DomainLister
 	workspaces WorkspacePrivilege
 	quota      *quota.Service
+	system     SystemWorkspace
+	// clusterRefs names the clusters serving generated URLs from a certificate; onChange is told when a
+	// certificate's material is replaced or renewed.
+	clusterRefs func(certID uint) ([]string, error)
+	onChange    func(*models.Certificate)
 }
 
 func NewService(repo *repositories.CertificateRepository) *Service {
@@ -102,6 +114,59 @@ func (s *Service) SetWorkspacePrivilege(w WorkspacePrivilege) { s.workspaces = w
 
 // SetQuota wires the plan/quota enforcer (nil-safe; gates the custom-TLS capability).
 func (s *Service) SetQuota(q *quota.Service) { s.quota = q }
+
+// SetSystemWorkspace wires the lookup behind SystemCertificate and ResolveSystem.
+func (s *Service) SetSystemWorkspace(w SystemWorkspace) { s.system = w }
+
+// SetClusterRefs wires the delete guard for certificates serving a cluster's generated URLs.
+func (s *Service) SetClusterRefs(fn func(certID uint) ([]string, error)) { s.clusterRefs = fn }
+
+// SetOnChange wires a callback run after a certificate is replaced or renewed.
+func (s *Service) SetOnChange(fn func(*models.Certificate)) { s.onChange = fn }
+
+func (s *Service) changed(c *models.Certificate) {
+	if s.onChange != nil {
+		s.onChange(c)
+	}
+}
+
+func (s *Service) systemID() (uint, error) {
+	if s.system == nil {
+		return 0, ErrNotFound
+	}
+	ws, err := s.system.FindSystem()
+	if err != nil {
+		return 0, ErrNotFound
+	}
+	return ws.ID, nil
+}
+
+// SystemCertificate returns a certificate kept in the system workspace.
+func (s *Service) SystemCertificate(id uint) (*models.Certificate, error) {
+	wsID, err := s.systemID()
+	if err != nil {
+		return nil, err
+	}
+	return s.Get(wsID, id)
+}
+
+// ListSystem returns the system workspace's certificates.
+func (s *Service) ListSystem() ([]models.Certificate, error) {
+	wsID, err := s.systemID()
+	if err != nil {
+		return nil, err
+	}
+	return s.List(wsID)
+}
+
+// ResolveSystem returns a system-workspace certificate's PEM and decrypted key.
+func (s *Service) ResolveSystem(id uint) (certPEM, keyPEM string, err error) {
+	wsID, err := s.systemID()
+	if err != nil {
+		return "", "", err
+	}
+	return s.Resolve(wsID, id)
+}
 
 func (s *Service) List(workspaceID uint) ([]models.Certificate, error) {
 	return s.repo.ListByWorkspace(workspaceID)
@@ -186,6 +251,7 @@ func (s *Service) Replace(workspaceID, id uint, name, certPEM, keyPEM string) (*
 	if err := s.repo.Update(cert); err != nil {
 		return nil, err
 	}
+	s.changed(cert)
 	return cert, nil
 }
 
@@ -245,6 +311,7 @@ func (s *Service) CompleteManaged(workspaceID, id uint, certPEM, keyPEM string) 
 	if err := s.repo.Update(cert); err != nil {
 		return nil, err
 	}
+	s.changed(cert)
 	return cert, nil
 }
 
@@ -274,6 +341,15 @@ func (s *Service) Delete(workspaceID, id uint) error {
 		return err
 	} else if len(used) > 0 {
 		return ErrInUse
+	}
+	if s.clusterRefs != nil {
+		names, err := s.clusterRefs(cert.ID)
+		if err != nil {
+			return err
+		}
+		if len(names) > 0 {
+			return fmt.Errorf("%w: %s", ErrServesExternalAccess, strings.Join(names, ", "))
+		}
 	}
 	return s.repo.Delete(cert.ID)
 }

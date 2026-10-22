@@ -1077,6 +1077,28 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Mirrors the route serve gate: a privileged workspace may hold a cert for a domain it has not
 	// verified, because it is allowed to serve one.
 	certificateService.SetWorkspacePrivilege(workspaceRepo)
+	// A cluster may serve its generated URLs from one certificate in the system workspace, usually a wildcard.
+	certificateService.SetSystemWorkspace(workspaceRepo)
+	clusterService.SetExternalCertificates(certificateService)
+	routeService.SetExternalCertificates(clusterService)
+	certificateService.SetClusterRefs(func(certID uint) ([]string, error) {
+		list, err := clusterRepo.ListByExternalCertificate(certID)
+		names := make([]string, 0, len(list))
+		for _, c := range list {
+			names = append(names, c.Name)
+		}
+		return names, err
+	})
+	certificateService.SetOnChange(func(cert *models.Certificate) {
+		list, err := clusterRepo.ListByExternalCertificate(cert.ID)
+		if err != nil {
+			logger.Warn("re-rendering generated URLs after a certificate change failed", "certificate", cert.ID, "error", err)
+			return
+		}
+		for _, c := range list {
+			clusterService.ResyncRoutes(context.Background(), c.ID)
+		}
+	})
 	// Declarative apply engine (shared by the one-shot apply API and GitOps).
 	applyService := apply.NewService(appService, storageService, databaseService, stackService, secretService, routeService, domainService, registryService)
 	applyService.SetUnsealer(sealingService)
@@ -1557,6 +1579,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.adminMetrics.SetNodeCapacity(serverRepo)
 	r.h.cluster.SetCapacityStore(serverRepo)
 	r.h.cluster.SetOrganizations(organizationService, ee)
+	r.h.cluster.SetSystemCertificates(certificateService)
 	r.h.adminUser.SetOrganizations(organizationService)
 	r.h.adminWorkspace.SetOrganizations(organizationService, organizationService.OwnsClusters)
 	r.h.node.SetNodeStats(nodeStatsService)

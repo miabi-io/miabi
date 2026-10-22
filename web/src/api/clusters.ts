@@ -1,5 +1,5 @@
 import api from './client'
-import type { ApiResponse, Cluster } from './types'
+import type { ApiResponse, Cluster, ExternalCertificateOption } from './types'
 
 export interface ClusterUpdate {
   display_name?: string
@@ -15,6 +15,8 @@ export interface ClusterUpdate {
   cordoned?: boolean
   external_base_domain?: string
   external_cert_provider?: string
+  /** 0 goes back to one certificate per app. */
+  external_certificate_id?: number
   service_endpoint_mode?: 'vip' | 'dnsrr'
   ingress_ip?: string
   ingress_hostname?: string
@@ -52,6 +54,8 @@ export const clustersApi = {
   list: () => api.get<ApiResponse<Cluster[]>>('/admin/clusters'),
   get: (id: number | string) => api.get<ApiResponse<Cluster>>(`/admin/clusters/${id}`),
   update: (id: number, body: ClusterUpdate) => api.patch<ApiResponse<Cluster>>(`/admin/clusters/${id}`, body),
+  externalCertificates: (id: number) =>
+    api.get<ApiResponse<ExternalCertificateOption[]>>(`/admin/clusters/${id}/external-certificates`),
   // What a change of owning organization would affect here. Read before asking for one.
   dedication: (id: number) => api.get<ApiResponse<DedicationImpact>>(`/admin/clusters/${id}/dedication`),
   setGateway: (id: number, body: ClusterGatewayInput) =>

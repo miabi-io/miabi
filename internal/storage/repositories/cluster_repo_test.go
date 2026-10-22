@@ -49,9 +49,10 @@ type clusterTable struct {
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 
-	ExternalBaseDomain   string
-	ExternalCertProvider string
-	ServiceEndpointMode  string
+	ExternalBaseDomain    string
+	ExternalCertProvider  string
+	ExternalCertificateID *uint
+	ServiceEndpointMode   string
 }
 
 func (clusterTable) TableName() string { return "clusters" }

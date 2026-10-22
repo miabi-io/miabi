@@ -82,6 +82,8 @@ type Service struct {
 	reloader    EdgeReloader
 	cluster     ClusterCap
 	external    ExternalDomains
+	// externalCerts serves a cluster's generated URLs from one certificate; nil leaves each its own.
+	externalCerts ExternalCertificates
 }
 
 // ClusterCap reports whether a gateway of its own serves a cluster. Implemented by services/cluster.
@@ -917,6 +919,7 @@ func (s *Service) SyncWorkspaceProxy(ctx context.Context, workspaceID uint) erro
 	var pending []routeStatus
 
 	edgeServers := map[uint]struct{}{}
+	extCerts := map[uint]externalCert{}
 	for i := range apps {
 
 		app, err := s.apps.FindByID(apps[i].ID)
@@ -942,6 +945,8 @@ func (s *Service) SyncWorkspaceProxy(ctx context.Context, workspaceID uint) erro
 			// A cert rides only a route the gateway will actually serve.
 			if pair, ok := s.certPair(rt); ok && serve {
 				rr.Certs = []proxy.CertPair{pair}
+			} else if serve {
+				s.withExternalCert(&rr, rt, app, extCerts)
 			}
 			renderedRoutes = append(renderedRoutes, rr)
 			pending = append(pending, routeStatus{rt: rt, status: status, reason: reason})
@@ -1266,6 +1271,7 @@ func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.Rend
 	gate := s.domains != nil
 	domainCache := map[uint][]models.Domain{}
 	privCache := map[uint]bool{}
+	extCerts := map[uint]externalCert{}
 	now := time.Now()
 	var renderedRoutes []proxy.RenderedRoute
 	for i := range apps {
@@ -1300,6 +1306,8 @@ func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.Rend
 			// Only a served route carries its cert.
 			if pair, ok := s.certPair(rt); ok && serve {
 				rr.Certs = []proxy.CertPair{pair}
+			} else if serve {
+				s.withExternalCert(&rr, rt, app, extCerts)
 			}
 			renderedRoutes = append(renderedRoutes, rr)
 

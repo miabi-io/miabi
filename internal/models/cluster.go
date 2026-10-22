@@ -40,6 +40,16 @@ const (
 	ClusterModeSwarm ClusterMode = "swarm"
 )
 
+// ExternalCertificateInfo is the certificate serving a cluster's generated URLs. When Usable is false the
+// gateway falls back to a certificate per app, and Problem says why.
+type ExternalCertificateInfo struct {
+	Name     string    `json:"name"`
+	DNSNames []string  `json:"dns_names"`
+	NotAfter time.Time `json:"not_after"`
+	Usable   bool      `json:"usable"`
+	Problem  string    `json:"problem,omitempty"`
+}
+
 // ClusterVisibility decides which workspaces may place resources in a cluster.
 type ClusterVisibility string
 
@@ -98,6 +108,11 @@ type Cluster struct {
 	// external access is off here; ExternalCertProvider is the gateway's certManager provider for them.
 	ExternalBaseDomain   string `json:"external_base_domain,omitempty"`
 	ExternalCertProvider string `json:"external_cert_provider,omitempty"`
+	// ExternalCertificateID serves every generated URL here from one certificate kept in the system
+	// workspace, a wildcard for *.ExternalBaseDomain; nil gets a certificate per app from ExternalCertProvider.
+	ExternalCertificateID *uint `json:"external_certificate_id,omitempty" gorm:"index"`
+	// ExternalCertificate describes that certificate for the console. Filled on read.
+	ExternalCertificate *ExternalCertificateInfo `json:"external_certificate,omitempty" gorm:"-"`
 	// The environment pins the default cluster's external access fields. ExternalApps counts apps with generated URLs.
 	ExternalDomainPinned   bool  `json:"external_domain_pinned,omitempty" gorm:"-"`
 	ExternalProviderPinned bool  `json:"external_provider_pinned,omitempty" gorm:"-"`
