@@ -685,6 +685,12 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	suspended := func(wsID uint) bool { return restrictionService.Allowed(wsID, restriction.ActionRun) != nil }
 	quotaService.SetRestriction(restrictedWrite)
 	controlManager.SetSuspended(suspended)
+	routeService.SetSuspended(suspended)
+	restrictionService.SetOnChange(func(ctx context.Context, wsID uint) {
+		if err := routeService.SyncWorkspaceProxy(ctx, wsID); err != nil {
+			logger.Warn("re-sync routes after a workspace restriction change", "workspace", wsID, "error", err)
+		}
+	})
 	// Daily purge of accounts whose deletion grace period has elapsed.
 	if err := cronManager.RegisterTask("account-purge", 0, "Purge accounts past deletion grace", "0 2 * * *", func() error {
 		accountService.PurgeDue(context.Background())

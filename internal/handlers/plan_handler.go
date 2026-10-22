@@ -583,8 +583,12 @@ func (h *PlanHandler) id(c *okapi.Context) uint {
 
 func (h *PlanHandler) record(c *okapi.Context, action string, targetID uint) {
 	actor := middlewares.UserID(c)
+	var meta map[string]any
+	if why := strings.TrimSpace(c.Header("X-Request-Reason")); why != "" {
+		meta = map[string]any{"request_reason": why}
+	}
 	h.audit.Record(audit.Entry{
 		ActorID: &actor, Action: action, TargetType: "plan",
-		TargetID: strconv.Itoa(int(targetID)), IP: c.RealIP(),
+		TargetID: strconv.Itoa(int(targetID)), IP: c.RealIP(), Metadata: meta,
 	})
 }
