@@ -582,6 +582,8 @@ export interface Organization {
   /** Per-user caps for this org's users; null inherits the platform default. -1 = unlimited, 0 = none. */
   max_workspaces_per_user?: number | null
   max_workspace_memberships_per_user?: number | null
+  /** Replaces the per-user owned cap for the org's owner; null applies the per-user cap to them too. */
+  max_workspaces_per_owner?: number | null
   /** The location this organization's new workspaces land in; null = the platform default. */
   default_cluster_id?: number | null
   /** Who among the org's users may create workspaces; null inherits the platform setting. */
@@ -619,6 +621,9 @@ export interface OrganizationUpdate {
   max_workspace_memberships_per_user?: number
   inherit_workspaces_per_user?: boolean
   inherit_workspace_memberships_per_user?: boolean
+  /** Owner cap (Enterprise): -1 unlimited. owner_same_as_users clears it back to the per-user cap. */
+  max_workspaces_per_owner?: number
+  owner_same_as_users?: boolean
   /** 'inherit' falls back to the platform setting; omitting the field leaves it unchanged. */
   workspace_creation?: WorkspaceCreationMode | 'inherit'
   /** 0 clears the default location; omitting the field leaves it unchanged. */

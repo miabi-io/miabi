@@ -43,6 +43,7 @@ type orgRow struct {
 	// Per-user caps; nil inherits the platform default.
 	MaxWorkspacesPerUser           *int
 	MaxWorkspaceMembershipsPerUser *int
+	MaxWorkspacesPerOwner          *int
 	WorkspaceCreation              *string
 	DefaultClusterID               *uint
 	EnforceSSO                     bool
@@ -366,3 +367,23 @@ func (l lookupStub) FindByID(id uint) (*models.Cluster, error) {
 func (l lookupStub) ListByOrganization(uint) ([]models.Cluster, error) { return nil, nil }
 func (l lookupStub) CountByOrganization(id uint) (int64, error)        { return l.owned[id], nil }
 func (l lookupStub) ReleaseOrganization(uint) error                    { return nil }
+
+// The owner cap is set, survives an update that doesn't mention it, and clears back to the per-user cap.
+func TestOwnerCapSetAndClear(t *testing.T) {
+	s, _ := newOrgService(t)
+	unlimited, tooLow := models.Unlimited, -2
+	org, err := s.Update(1, UpdateInput{MaxWorkspacesPerOwner: &unlimited})
+	if err != nil || org.MaxWorkspacesPerOwner == nil || *org.MaxWorkspacesPerOwner != models.Unlimited {
+		t.Fatalf("set owner cap: %v, %v", org.MaxWorkspacesPerOwner, err)
+	}
+	name := "Renamed"
+	if org, _ = s.Update(1, UpdateInput{DisplayName: &name}); org.MaxWorkspacesPerOwner == nil {
+		t.Error("an unrelated update must keep the owner cap")
+	}
+	if org, _ = s.Update(1, UpdateInput{SameAsUsersForOwner: true}); org.MaxWorkspacesPerOwner != nil {
+		t.Error("SameAsUsersForOwner must clear the owner cap")
+	}
+	if _, err := s.Update(1, UpdateInput{MaxWorkspacesPerOwner: &tooLow}); !errors.Is(err, ErrInvalidMax) {
+		t.Errorf("owner cap of -2: err = %v, want ErrInvalidMax", err)
+	}
+}

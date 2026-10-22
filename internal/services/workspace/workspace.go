@@ -190,8 +190,8 @@ func (s *Service) SetLimits(globalLimit func() int, overrideEntitled func() bool
 }
 
 // effectiveWorkspaceLimit resolves how many workspaces userID may own, in order: the Enterprise
-// per-user override, then their organization's cap, then the platform default. Returns
-// (limit, unlimited).
+// per-user override, then their organization's owner cap when they own it (also Enterprise), then
+// their organization's per-user cap, then the platform default. Returns (limit, unlimited).
 //
 // One convention throughout: -1 (models.Unlimited) or lower means unlimited, 0 means none, N means N.
 // The organization is the authority for its own tenants; the platform value is what an org that sets
@@ -202,8 +202,13 @@ func (s *Service) effectiveWorkspaceLimit(userID uint) (limit int, unlimited boo
 			return bound(*u.WorkspaceLimit)
 		}
 	}
-	if org := s.orgLimits(userID); org != nil && org.MaxWorkspacesPerUser != nil {
-		return bound(*org.MaxWorkspacesPerUser)
+	if org := s.orgLimits(userID); org != nil {
+		if org.OwnerUserID == userID && org.MaxWorkspacesPerOwner != nil && s.overrideEntitled != nil && s.overrideEntitled() {
+			return bound(*org.MaxWorkspacesPerOwner)
+		}
+		if org.MaxWorkspacesPerUser != nil {
+			return bound(*org.MaxWorkspacesPerUser)
+		}
 	}
 	if s.globalLimit != nil {
 		return bound(s.globalLimit())

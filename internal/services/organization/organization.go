@@ -124,6 +124,9 @@ type CreateInput struct {
 	// inherits the platform default.
 	MaxWorkspacesPerUser           *int
 	MaxWorkspaceMembershipsPerUser *int
+	// MaxWorkspacesPerOwner caps the org's owner instead of MaxWorkspacesPerUser; nil applies the
+	// per-user cap to them too.
+	MaxWorkspacesPerOwner *int
 	// WorkspaceCreation is who may create workspaces in the org; nil inherits the platform setting.
 	WorkspaceCreation *string
 }
@@ -154,6 +157,10 @@ func (s *Service) Create(in CreateInput) (*models.Organization, error) {
 	if err != nil {
 		return nil, err
 	}
+	perOwner, err := validPerUser(in.MaxWorkspacesPerOwner)
+	if err != nil {
+		return nil, err
+	}
 	creation, err := validCreation(in.WorkspaceCreation)
 	if err != nil {
 		return nil, err
@@ -163,6 +170,7 @@ func (s *Service) Create(in CreateInput) (*models.Organization, error) {
 		OwnerUserID: in.OwnerUserID, MaxWorkspaces: max,
 		MaxWorkspacesPerUser:           perUser,
 		MaxWorkspaceMembershipsPerUser: perUserJoined,
+		MaxWorkspacesPerOwner:          perOwner,
 		WorkspaceCreation:              creation,
 	}
 	if err := s.repo.Create(org); err != nil {
@@ -226,6 +234,10 @@ type UpdateInput struct {
 	MaxWorkspaceMembershipsPerUser     *int
 	InheritWorkspacesPerUser           bool
 	InheritWorkspaceMembershipsPerUser bool
+	// MaxWorkspacesPerOwner sets the owner's cap; SameAsUsersForOwner clears it so the per-user cap
+	// applies to the owner again.
+	MaxWorkspacesPerOwner *int
+	SameAsUsersForOwner   bool
 	// WorkspaceCreation sets the org's creation mode; InheritWorkspaceCreation clears it back to
 	// the platform setting.
 	WorkspaceCreation        *string
@@ -273,6 +285,16 @@ func (s *Service) Update(id uint, in UpdateInput) (*models.Organization, error) 
 			return nil, err
 		}
 		org.MaxWorkspaceMembershipsPerUser = v
+	}
+	switch {
+	case in.SameAsUsersForOwner:
+		org.MaxWorkspacesPerOwner = nil
+	case in.MaxWorkspacesPerOwner != nil:
+		v, err := validPerUser(in.MaxWorkspacesPerOwner)
+		if err != nil {
+			return nil, err
+		}
+		org.MaxWorkspacesPerOwner = v
 	}
 	switch {
 	case in.InheritWorkspaceCreation:

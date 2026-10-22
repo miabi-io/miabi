@@ -12,6 +12,8 @@ const route = useRoute()
 const router = useRouter()
 const notify = useNotificationStore()
 const entitlement = useEntitlement('organizations')
+const ownerLimit = useEntitlement('user_workspace_limit')
+const ownerCapMutable = computed(() => entitlement.mutable.value && ownerLimit.mutable.value)
 
 const orgId = computed(() => Number(route.params.id))
 const org = ref<OrganizationDetail | null>(null)
@@ -34,6 +36,9 @@ const form = ref({
   per_user: 10,
   joined_mode: 'inherit' as LimitMode,
   joined: 10,
+  // 'inherit' here means the owner gets the per-user cap like everyone else.
+  owner_mode: 'inherit' as LimitMode,
+  owner: 10,
   creation: 'inherit' as 'inherit' | WorkspaceCreationMode,
 })
 
@@ -88,6 +93,8 @@ async function load() {
       per_user: Math.max(0, org.value.max_workspaces_per_user ?? platformDefaults.value.owned ?? 10),
       joined_mode: modeOf(org.value.max_workspace_memberships_per_user),
       joined: Math.max(0, org.value.max_workspace_memberships_per_user ?? 10),
+      owner_mode: modeOf(org.value.max_workspaces_per_owner),
+      owner: Math.max(0, org.value.max_workspaces_per_owner ?? 10),
       creation: org.value.workspace_creation ?? 'inherit',
     }
   } catch (e) {
@@ -126,6 +133,7 @@ const dirty = computed(() => {
     form.value.default_cluster_id !== (o.default_cluster_id ?? 0) ||
     perUser !== (o.max_workspaces_per_user ?? undefined) ||
     joined !== (o.max_workspace_memberships_per_user ?? undefined) ||
+    limitValue(form.value.owner_mode, form.value.owner) !== (o.max_workspaces_per_owner ?? undefined) ||
     form.value.creation !== (o.workspace_creation ?? 'inherit')
   )
 })
@@ -141,6 +149,7 @@ const labelOnlyChange = computed(() => {
     cap === o.max_workspaces &&
     limitValue(form.value.per_user_mode, form.value.per_user) === (o.max_workspaces_per_user ?? undefined) &&
     limitValue(form.value.joined_mode, form.value.joined) === (o.max_workspace_memberships_per_user ?? undefined) &&
+    limitValue(form.value.owner_mode, form.value.owner) === (o.max_workspaces_per_owner ?? undefined) &&
     form.value.creation === (o.workspace_creation ?? 'inherit') &&
     form.value.default_cluster_id === (o.default_cluster_id ?? 0)
   )
@@ -164,6 +173,11 @@ async function save() {
     if (o && joined !== (o.max_workspace_memberships_per_user ?? undefined)) {
       if (form.value.joined_mode === 'inherit') payload.inherit_workspace_memberships_per_user = true
       else payload.max_workspace_memberships_per_user = joined
+    }
+    const owner = limitValue(form.value.owner_mode, form.value.owner)
+    if (o && owner !== (o.max_workspaces_per_owner ?? undefined)) {
+      if (form.value.owner_mode === 'inherit') payload.owner_same_as_users = true
+      else payload.max_workspaces_per_owner = owner
     }
     if (o && form.value.creation !== (o.workspace_creation ?? 'inherit')) {
       payload.workspace_creation = form.value.creation
@@ -344,6 +358,35 @@ const promoteMessage = computed(() => {
               How many workspaces one of this organization's users may own. With a licence this is where
               it is set; <router-link to="/admin/settings">Platform Settings</router-link> supplies the
               default for organizations that inherit, and governs outright without one.
+            </p>
+          </div>
+          <div class="form-group">
+            <label class="form-label">
+              Workspaces owned by the organization owner
+              <span v-if="!ownerLimit.has.value" class="badge badge-neutral" style="margin-left: 6px" title="A separate owner limit requires an Enterprise license">
+                <span class="mdi mdi-lock-outline"></span> Enterprise
+              </span>
+            </label>
+            <select v-model="form.owner_mode" class="form-select" :disabled="!ownerCapMutable" style="max-width: 420px">
+              <option value="inherit">Same as other users</option>
+              <option value="unlimited">Unlimited</option>
+              <option value="custom">Limit to…</option>
+            </select>
+            <input
+              v-if="form.owner_mode === 'custom'"
+              v-model.number="form.owner"
+              type="number"
+              min="0"
+              class="form-input"
+              :disabled="!ownerCapMutable"
+              style="max-width: 200px; margin-top: 8px"
+            />
+            <p class="form-hint">
+              Replaces the per-user limit above for
+              <template v-if="org.owner_name"><strong>{{ org.owner_name }}</strong></template>
+              <template v-else>the owner (none is assigned yet)</template>,
+              and moves with ownership. The organization's workspace limit still applies, and a limit set
+              on the owner's own user page takes precedence.
             </p>
           </div>
           <div class="form-group">

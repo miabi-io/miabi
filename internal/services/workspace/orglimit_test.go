@@ -161,3 +161,45 @@ func TestOrgCapsAreInertWithoutTheLicence(t *testing.T) {
 		t.Error("unlicensed org unlimited: want the platform default to still refuse")
 	}
 }
+
+// withOwnerCap gives user 1's organization a per-user cap and an owner cap, owned by ownerID.
+func withOwnerCap(s *Service, ownerID uint, perUser, perOwner *int) *Service {
+	s.SetOrgs(fakeOrgs{org: &models.Organization{ID: 7, OwnerUserID: ownerID, MaxWorkspacesPerUser: perUser, MaxWorkspacesPerOwner: perOwner}})
+	return s
+}
+
+func TestOwnerCapReplacesThePerUserCapForTheOwner(t *testing.T) {
+	two, unlimited, five := 2, models.Unlimited, 5
+	if err := withOwnerCap(seedOrg(t, 9, 10, nil, nil, true), 1, &two, &unlimited).canOwnAnother(1); err != nil {
+		t.Errorf("owner with an unlimited owner cap over a per-user cap of 2: got %v, want nil", err)
+	}
+	if err := withOwnerCap(seedOrg(t, 5, 10, nil, nil, true), 1, &two, &five).canOwnAnother(1); err == nil {
+		t.Error("owner cap of 5 with 5 owned: want refusal")
+	}
+	if err := withOwnerCap(seedOrg(t, 2, 10, nil, nil, true), 1, &two, nil).canOwnAnother(1); err == nil {
+		t.Error("no owner cap: the per-user cap of 2 must bind the owner too")
+	}
+}
+
+func TestOwnerCapDoesNotApplyToOtherUsers(t *testing.T) {
+	two, unlimited := 2, models.Unlimited
+	if err := withOwnerCap(seedOrg(t, 2, 10, nil, nil, true), 99, &two, &unlimited).canOwnAnother(1); err == nil {
+		t.Error("user 1 is not the owner: want the per-user cap of 2 to refuse")
+	}
+}
+
+// The owner cap is Enterprise (user_workspace_limit); without it the owner is an ordinary user.
+func TestOwnerCapIsInertWithoutTheEntitlement(t *testing.T) {
+	two, unlimited := 2, models.Unlimited
+	if err := withOwnerCap(seedOrg(t, 2, 10, nil, nil, false), 1, &two, &unlimited).canOwnAnother(1); err == nil {
+		t.Error("unlicensed owner cap: want the per-user cap of 2 to refuse")
+	}
+}
+
+// A per-user override on the owner is the finest grain, so it still outranks the owner cap.
+func TestPerUserOverrideBeatsTheOwnerCap(t *testing.T) {
+	one, unlimited := 1, models.Unlimited
+	if err := withOwnerCap(seedOrg(t, 1, 10, nil, &one, true), 1, nil, &unlimited).canOwnAnother(1); err == nil {
+		t.Error("override of 1 with 1 owned: want refusal despite the unlimited owner cap")
+	}
+}

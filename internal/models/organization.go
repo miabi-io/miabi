@@ -52,6 +52,10 @@ type Organization struct {
 	// what an org that sets nothing falls back to.
 	MaxWorkspacesPerUser           *int `json:"max_workspaces_per_user,omitempty"`
 	MaxWorkspaceMembershipsPerUser *int `json:"max_workspace_memberships_per_user,omitempty"`
+	// MaxWorkspacesPerOwner replaces MaxWorkspacesPerUser for the org's owner, so the accountable user
+	// can hold more than the tenants they onboard; nil applies the per-user cap to them too. Enterprise
+	// (user_workspace_limit). The org's total cap, MaxWorkspaces, still binds the owner.
+	MaxWorkspacesPerOwner *int `json:"max_workspaces_per_owner,omitempty"`
 	// WorkspaceCreation is who among the org's users may create workspaces (WorkspaceCreation* modes);
 	// nil inherits the platform setting.
 	WorkspaceCreation *string `json:"workspace_creation,omitempty"`
