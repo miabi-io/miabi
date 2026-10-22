@@ -446,11 +446,12 @@ func (h *PlanHandler) SetDefault(c *okapi.Context) error {
 
 // AssignWorkspace sets (or clears) a workspace's plan.
 func (h *PlanHandler) AssignWorkspace(c *okapi.Context, req *AssignWorkspacePlanRequest) error {
-	wsID, err := strconv.Atoi(c.Param("id"))
-	if err != nil || wsID <= 0 {
-		return c.AbortBadRequest("invalid workspace id")
+	id, valid := h.workspaceID(c)
+	if !valid {
+		return c.AbortNotFound("workspace not found")
 	}
-	if _, err := h.workspaces.FindByID(uint(wsID)); err != nil {
+	wsID := int(id)
+	if _, err := h.workspaces.FindByID(id); err != nil {
 		return c.AbortNotFound("workspace not found")
 	}
 	if req.Body.PlanID != nil {
@@ -563,12 +564,16 @@ func (h *PlanHandler) DeleteWorkspaceQuota(c *okapi.Context) error {
 	return message(c, "overrides cleared")
 }
 
+// workspaceID resolves the {id} parameter, a numeric id or the workspace name.
 func (h *PlanHandler) workspaceID(c *okapi.Context) (uint, bool) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil || id <= 0 {
+	if id, err := strconv.Atoi(c.Param("id")); err == nil && id > 0 {
+		return uint(id), true
+	}
+	ws, err := h.workspaces.FindByName(strings.TrimSpace(c.Param("id")))
+	if err != nil {
 		return 0, false
 	}
-	return uint(id), true
+	return ws.ID, true
 }
 
 func (h *PlanHandler) id(c *okapi.Context) uint {

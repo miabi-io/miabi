@@ -83,15 +83,20 @@ type Enqueuer interface {
 
 // Service manages pipeline definitions and triggers runs.
 type Service struct {
-	repo      *repositories.PipelineRepository
-	enqueuer  Enqueuer
-	scheduler Scheduler
+	// restricted refuses automated runs in a read-only or suspended workspace; nil allows them.
+	restricted func(workspaceID uint) error
+	repo       *repositories.PipelineRepository
+	enqueuer   Enqueuer
+	scheduler  Scheduler
 	// gitRepos and apps back repository-owned pipelines: resolving an app's clone
 	// URL + credential so a spec can be discovered at adoption and re-read at each
 	// run. Both nil-safe — without them a pipeline is manual-only.
 	gitRepos *gitrepo.Service
 	apps     *repositories.ApplicationRepository
 }
+
+// SetRestriction wires the workspace-restriction check applied to pushed and scheduled runs.
+func (s *Service) SetRestriction(f func(workspaceID uint) error) { s.restricted = f }
 
 func NewService(repo *repositories.PipelineRepository, enqueuer Enqueuer) *Service {
 	return &Service{repo: repo, enqueuer: enqueuer}

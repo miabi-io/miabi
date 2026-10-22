@@ -9,6 +9,7 @@ import type { AdminUserDetail, AdminEvent } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import GeneratedPasswordModal from '@/components/GeneratedPasswordModal.vue'
 import AppModal from '@/components/AppModal.vue'
+import { useI18n } from 'vue-i18n'
 
 const route = useRoute()
 const router = useRouter()
@@ -36,6 +37,57 @@ function runConfirmAction() {
   const a = confirmAction.value
   confirmAction.value = null
   void a?.run()
+}
+
+const { t, d } = useI18n()
+
+// --- Suspension: read access kept, writes refused ---
+const suspendForm = ref({ reason: '', until: '' })
+const suspended = computed(() => {
+  const u = user.value
+  if (!u?.suspended_at) return false
+  return !u.suspended_until || new Date(u.suspended_until).getTime() > Date.now()
+})
+
+function askSuspend() {
+  if (!user.value) return
+  const name = user.value.name || user.value.email
+  confirmAction.value = {
+    title: t('operator.suspension.confirmTitle'),
+    message: t('operator.suspension.confirmMessage', { name }),
+    confirmLabel: t('operator.suspension.suspend'),
+    variant: 'danger',
+    run: async () => {
+      if (!user.value) return
+      busy.value = true
+      try {
+        const f = suspendForm.value
+        const until = f.until ? new Date(`${f.until}T23:59:59`).toISOString() : undefined
+        await adminApi.suspendUser(user.value.id, { reason: f.reason.trim() || undefined, until })
+        notify.success(t('operator.suspension.suspended'))
+        suspendForm.value = { reason: '', until: '' }
+        await load()
+      } catch (e) {
+        notify.apiError(e)
+      } finally {
+        busy.value = false
+      }
+    },
+  }
+}
+
+async function liftSuspension() {
+  if (!user.value) return
+  busy.value = true
+  try {
+    await adminApi.unsuspendUser(user.value.id)
+    notify.success(t('operator.suspension.lifted'))
+    await load()
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    busy.value = false
+  }
 }
 
 const isSelf = computed(() => !!user.value && auth.user?.id === user.value.id)
@@ -594,6 +646,34 @@ function eventSeverity(e: AdminEvent): string {
         </div>
       </div>
 
+      <div v-if="canManage" class="card mt-4">
+        <div class="card-header"><h2>{{ t('operator.suspension.card') }}</h2></div>
+        <div class="card-body">
+          <p class="text-muted text-sm" style="margin: 0 0 14px">{{ t('operator.suspension.cardHint') }}</p>
+          <div v-if="suspended" class="suspension-current">
+            <span class="badge badge-danger">{{ t('operator.suspension.badge') }}</span>
+            <span v-if="user.suspended_at" class="text-muted">{{ t('operator.suspension.since', { date: d(new Date(user.suspended_at), 'datetime') }) }}</span>
+            <span v-if="user.suspended_reason">{{ t('operator.restriction.reason', { reason: user.suspended_reason }) }}</span>
+            <span v-if="user.suspended_until" class="text-muted">{{ t('operator.restriction.until', { date: d(new Date(user.suspended_until), 'date') }) }}</span>
+            <button class="btn btn-secondary btn-sm" :disabled="busy" @click="liftSuspension">{{ t('operator.suspension.lift') }}</button>
+          </div>
+          <form v-else class="suspension-form" @submit.prevent="askSuspend">
+            <div class="form-group">
+              <label class="form-label" for="s-reason">{{ t('operator.restriction.reasonLabel') }}</label>
+              <input id="s-reason" v-model="suspendForm.reason" class="form-input" maxlength="500" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="s-until">{{ t('operator.restriction.untilLabel') }}</label>
+              <input id="s-until" v-model="suspendForm.until" class="form-input" type="date" />
+              <span class="form-hint">{{ t('operator.restriction.untilHint') }}</span>
+            </div>
+            <div>
+              <button type="submit" class="btn btn-danger" :disabled="busy">{{ t('operator.suspension.suspend') }}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <!-- Workspace limits (Enterprise per-user overrides) -->
       <div v-if="canManage" class="card mt-4">
         <div class="card-header">
@@ -767,6 +847,14 @@ function eventSeverity(e: AdminEvent): string {
 </template>
 
 <style scoped>
+.suspension-current { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.suspension-current .btn { margin-left: auto; }
+.suspension-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0 16px;
+  align-items: end;
+}
 .del-banner {
   display: flex;
   align-items: center;

@@ -20,19 +20,23 @@
 package middlewares
 
 import (
+	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/services/restriction"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
 // WorkspaceScope resolves the workspace from the {workspace} path parameter, verifies the
 // authenticated user is a member, and stores the workspace id and role in the context. The
-// parameter resolves by shape: all-digits is an id, a uuid is a uid, otherwise the handle.
-func WorkspaceScope(repo *repositories.WorkspaceRepository, customRoles *repositories.CustomRoleRepository, apps ...AppRefResolver) okapi.Middleware {
+// parameter resolves by shape: all-digits is an id, a uuid is a uid, otherwise the handle. With a
+// restriction gate, writes to a read-only or suspended workspace are refused (restrictionExempt aside).
+func WorkspaceScope(repo *repositories.WorkspaceRepository, customRoles *repositories.CustomRoleRepository, gate *restriction.Service, apps ...AppRefResolver) okapi.Middleware {
 	return func(c *okapi.Context) error {
 		userID := UserID(c)
 		if userID == 0 {
@@ -90,8 +94,33 @@ func WorkspaceScope(repo *repositories.WorkspaceRepository, customRoles *reposit
 			}
 			c.Set(CtxAppID, int(id))
 		}
+		if !safeMethod(c.Request().Method) && !restrictionExempt(c.Request().Method, c.Request().URL.Path) {
+			if err := gate.Allowed(uint(wsID), restriction.ActionWrite); err != nil {
+				return c.AbortWithError(http.StatusForbidden, err)
+			}
+		}
 		return c.Next()
 	}
+}
+
+func safeMethod(m string) bool {
+	return m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions
+}
+
+var workspaceRootPath = regexp.MustCompile(`^/api/v1/workspaces/[^/]+/?$`)
+
+// restrictionExempt lists the writes a restricted workspace still accepts: anything that only
+// reduces it (removing a member, stopping a workload, deleting the workspace) or takes data out.
+func restrictionExempt(method, path string) bool {
+	switch {
+	case method == http.MethodDelete && strings.Contains(path, "/members/"):
+		return true
+	case method == http.MethodDelete && workspaceRootPath.MatchString(path):
+		return true
+	case method == http.MethodPost && (strings.HasSuffix(path, "/stop") || strings.HasSuffix(path, "/export") || strings.HasSuffix(path, "/leave")):
+		return true
+	}
+	return false
 }
 
 // RequireRole enforces that the caller's workspace role is at least min.

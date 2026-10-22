@@ -3,7 +3,8 @@ import { ref, computed, onMounted } from 'vue'
 import OrganizationPicker from '@/components/OrganizationPicker.vue'
 import { adminApi } from '@/api/admin'
 import type { OAuthProviderPayload } from '@/api/admin'
-import type { OAuthProvider } from '@/api/types'
+import type { AdminWorkspace, OAuthGroupMapping, OAuthProvider } from '@/api/types'
+import { useI18n } from 'vue-i18n'
 import { useNotificationStore } from '@/stores/notification'
 import { useLicenseStore } from '@/stores/license'
 import { useEntitlement } from '@/composables/useEntitlement'
@@ -17,6 +18,8 @@ const licenseStore = useLicenseStore()
 // multi_sso lifts the count cap, sso_hidden_provider unlocks the Hidden toggle.
 const multiSso = useEntitlement('multi_sso')
 const hiddenCap = useEntitlement('sso_hidden_provider')
+const groupMap = useEntitlement('sso_group_mapping')
+const { t } = useI18n()
 
 const providers = ref<OAuthProvider[]>([])
 const loading = ref(false)
@@ -69,6 +72,8 @@ interface ProviderForm {
   default_role: string
   // The realm the provider registers accounts into. Chosen once, when the provider is created.
   organization_id: number
+  groups_claim: string
+  group_prefix: string
 }
 
 function emptyForm(): ProviderForm {
@@ -94,6 +99,8 @@ function emptyForm(): ProviderForm {
     default_workspace_id: '',
     default_role: '',
     organization_id: 0,
+    groups_claim: '',
+    group_prefix: '',
   }
 }
 
@@ -132,8 +139,52 @@ function openEdit(p: OAuthProvider) {
     default_workspace_id: p.default_workspace_id ? String(p.default_workspace_id) : '',
     default_role: p.default_role ?? '',
     organization_id: p.organization_id ?? 0,
+    groups_claim: p.groups_claim ?? '',
+    group_prefix: p.group_prefix ?? '',
   }
+  mappings.value = []
   showModal.value = true
+  if (p.type === 'oidc' && groupMap.has.value) loadMappings(p.id)
+}
+
+// --- Group mappings (Enterprise) ---
+const mappings = ref<OAuthGroupMapping[]>([])
+const mappingWorkspaces = ref<AdminWorkspace[]>([])
+const savingMappings = ref(false)
+
+async function loadMappings(id: number) {
+  try {
+    const [m, ws] = await Promise.all([adminApi.listGroupMappings(id), adminApi.listWorkspaces(0, 100)])
+    mappings.value = m.data.data.map((x) => ({ ...x, workspace_id: x.workspace_id ?? null, workspace_role: x.workspace_role ?? '' }))
+    mappingWorkspaces.value = ws.data.data.filter((w) => !w.system)
+  } catch (e) {
+    notify.apiError(e)
+  }
+}
+
+function addMapping() {
+  mappings.value.push({ group: '', system_admin: false, workspace_id: null, workspace_role: 'developer' })
+}
+
+async function saveMappings() {
+  if (!editing.value) return
+  savingMappings.value = true
+  try {
+    const payload = mappings.value
+      .filter((m) => m.group.trim())
+      .map((m) => ({
+        group: m.group.trim(),
+        system_admin: m.system_admin,
+        workspace_id: m.workspace_id || null,
+        workspace_role: m.workspace_id ? m.workspace_role : '',
+      }))
+    mappings.value = (await adminApi.replaceGroupMappings(editing.value.id, payload)).data.data
+    notify.success(t('operator.groups.saved'))
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    savingMappings.value = false
+  }
 }
 
 function closeModal() {
@@ -186,6 +237,13 @@ async function save() {
     payload.email_claim = f.email_claim.trim()
     payload.name_claim = f.name_claim.trim()
     payload.username_claim = f.username_claim.trim()
+    // Clearing never needs the licence, so empty values are always sent; set ones only when they can be.
+    const claim = f.groups_claim.trim()
+    const prefix = f.group_prefix.trim()
+    if (groupMap.mutable.value || (!claim && !prefix)) {
+      payload.groups_claim = claim
+      payload.group_prefix = prefix
+    }
   }
 
   const secret = f.client_secret.trim()
@@ -414,6 +472,69 @@ onMounted(() => {
                 <input v-model="form.username_claim" class="form-input" placeholder="preferred_username" />
                 <span class="form-hint">Userinfo claim mapped to the handle. Blank = standard "preferred_username"; if the provider sends neither, the handle is derived from the email address.</span>
               </div>
+
+              <div class="group-section">
+                <h4 class="group-title">
+                  {{ t('operator.groups.section') }} <span class="badge badge-info">Enterprise</span>
+                </h4>
+                <div v-if="!groupMap.has.value" class="cap-note">
+                  <span class="mdi mdi-lock-outline"></span>
+                  <span>{{ t('operator.groups.licenseRequired') }}</span>
+                  <router-link to="/admin/license" class="cap-link">{{ t('operator.groups.manageLicense') }} →</router-link>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="p-groups-claim">{{ t('operator.groups.claim') }}</label>
+                  <input id="p-groups-claim" v-model="form.groups_claim" class="form-input" placeholder="groups"
+                    :disabled="!groupMap.mutable.value && !form.groups_claim" />
+                  <span class="form-hint">{{ t('operator.groups.claimHint') }}</span>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="p-group-prefix">{{ t('operator.groups.prefix') }}</label>
+                  <input id="p-group-prefix" v-model="form.group_prefix" class="form-input" placeholder="miabi"
+                    :disabled="!groupMap.mutable.value && !form.group_prefix" />
+                  <span class="form-hint">{{ t('operator.groups.prefixHint') }}</span>
+                </div>
+
+                <div v-if="groupMap.has.value" class="form-group">
+                  <label class="form-label">{{ t('operator.groups.mappings') }}</label>
+                  <span class="form-hint">{{ t('operator.groups.mappingsHint') }}</span>
+                  <p v-if="!editing" class="text-muted text-sm">{{ t('operator.groups.saveFirst') }}</p>
+                  <template v-else>
+                    <p v-if="!mappings.length" class="text-muted text-sm">{{ t('operator.groups.empty') }}</p>
+                    <div v-for="(m, i) in mappings" :key="i" class="mapping-row">
+                      <input v-model="m.group" class="form-input" :placeholder="t('operator.groups.group')"
+                        :aria-label="t('operator.groups.group')" :disabled="!groupMap.mutable.value" />
+                      <label class="check-row mapping-admin">
+                        <input v-model="m.system_admin" type="checkbox" :disabled="!groupMap.mutable.value" />{{ t('operator.groups.platformAdmin') }}
+                      </label>
+                      <select v-model="m.workspace_id" class="form-select" :aria-label="t('operator.groups.workspace')"
+                        :disabled="!groupMap.mutable.value">
+                        <option :value="null">{{ t('operator.groups.noWorkspace') }}</option>
+                        <option v-for="w in mappingWorkspaces" :key="w.id" :value="w.id">{{ w.display_name || w.name }}</option>
+                      </select>
+                      <select v-model="m.workspace_role" class="form-select" :aria-label="t('operator.groups.role')"
+                        :disabled="!groupMap.mutable.value || !m.workspace_id">
+                        <option value="viewer">viewer</option>
+                        <option value="developer">developer</option>
+                        <option value="admin">admin</option>
+                        <option value="owner">owner</option>
+                      </select>
+                      <button type="button" class="btn-icon btn-icon-muted" :title="t('operator.groups.remove')"
+                        :aria-label="t('operator.groups.remove')" :disabled="!groupMap.mutable.value" @click="mappings.splice(i, 1)">
+                        <span class="mdi mdi-delete"></span>
+                      </button>
+                    </div>
+                    <div class="mapping-actions">
+                      <button type="button" class="btn btn-secondary btn-sm" :disabled="!groupMap.mutable.value" @click="addMapping">
+                        <span class="mdi mdi-plus"></span>{{ t('operator.groups.add') }}
+                      </button>
+                      <button type="button" class="btn btn-primary btn-sm" :disabled="savingMappings || !groupMap.mutable.value" @click="saveMappings">
+                        {{ t('operator.groups.save') }}
+                      </button>
+                    </div>
+                  </template>
+                </div>
+              </div>
             </template>
 
             <div class="form-group">
@@ -570,5 +691,33 @@ onMounted(() => {
 }
 .autojoin-row .form-input {
   flex: 1;
+}
+.group-section {
+  border-top: 1px solid var(--border-secondary);
+  margin-top: 8px;
+  padding-top: 14px;
+}
+.group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+.mapping-row {
+  display: grid;
+  grid-template-columns: 1.4fr auto 1.2fr 0.9fr auto;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.mapping-admin {
+  white-space: nowrap;
+  font-size: 13px;
+}
+.mapping-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
 }
 </style>

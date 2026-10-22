@@ -693,6 +693,7 @@ watch(activeTab, (t) => loadTab(t))
                         {{ m.user.name }}
                         <span v-if="m.user.kind === 'service'" class="badge badge-neutral sa-badge" :title="$t('wsSettings.serviceAccountHint')">
                           <span class="mdi mdi-robot-outline"></span>{{ $t('wsSettings.serviceAccount') }}</span>
+                        <span v-if="m.managed_by" class="badge badge-info sa-badge">{{ $t('operator.managedBy', { provider: m.managed_by }) }}</span>
                       </span>
                       <span class="cell-sub">{{ m.user.kind === 'service' && m.user.username ? '@' + m.user.username : m.user.email }}</span>
                     </span>

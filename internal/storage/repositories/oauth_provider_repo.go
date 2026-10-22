@@ -49,7 +49,34 @@ func (r *OAuthProviderRepository) Delete(id uint) error {
 		if err := tx.Where("provider_id = ?", id).Delete(&models.UserIdentity{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("provider_id = ?", id).Delete(&models.OAuthGroupMapping{}).Error; err != nil {
+			return err
+		}
 		return tx.Delete(&models.OAuthProvider{}, id).Error
+	})
+}
+
+// ListMappings returns a provider's group mappings in creation order.
+func (r *OAuthProviderRepository) ListMappings(providerID uint) ([]models.OAuthGroupMapping, error) {
+	var out []models.OAuthGroupMapping
+	err := r.db.Where("provider_id = ?", providerID).Order("id").Find(&out).Error
+	return out, err
+}
+
+// ReplaceMappings swaps a provider's group mappings for the given set in one transaction.
+func (r *OAuthProviderRepository) ReplaceMappings(providerID uint, mappings []models.OAuthGroupMapping) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("provider_id = ?", providerID).Delete(&models.OAuthGroupMapping{}).Error; err != nil {
+			return err
+		}
+		for i := range mappings {
+			mappings[i].ID = 0
+			mappings[i].ProviderID = providerID
+			if err := tx.Create(&mappings[i]).Error; err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 

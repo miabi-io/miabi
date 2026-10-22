@@ -90,6 +90,8 @@ type UserInfo struct {
 	Username string `json:"preferred_username"`
 	// EmailVerified is the provider's email_verified claim; false when it sends none.
 	EmailVerified bool `json:"email_verified"`
+	// Groups is the provider's GroupsClaim, when it names one.
+	Groups []string `json:"groups,omitempty"`
 }
 
 type Service struct {
@@ -101,8 +103,10 @@ type Service struct {
 	// (the per-user membership limit). Nil-safe; when it returns an error the
 	// best-effort auto-join is skipped rather than failing the sign-in.
 	membershipGate func(userID uint) error
-	redis          *redis.Client
-	http           *http.Client
+	// groupSync applies a provider's group claim after sign-in (Enterprise); nil skips it.
+	groupSync func(p *models.OAuthProvider, user *models.User, groups []string)
+	redis     *redis.Client
+	http      *http.Client
 }
 
 func NewService(providers *repositories.OAuthProviderRepository, users *repositories.UserRepository, identities *repositories.UserIdentityRepository, redisClient *redis.Client) *Service {
@@ -132,6 +136,18 @@ func (s *Service) SetWorkspaces(workspaces *repositories.WorkspaceRepository) {
 
 // SetMembershipGate wires the per-user membership-limit check so SSO auto-join
 // respects it (over-limit users are simply not auto-joined). Optional/nil-safe.
+// SetGroupSync wires the group-claim sync run after every successful sign-in through a provider that
+// names a groups claim.
+func (s *Service) SetGroupSync(f func(p *models.OAuthProvider, user *models.User, groups []string)) {
+	s.groupSync = f
+}
+
+func (s *Service) syncGroups(p *models.OAuthProvider, user *models.User, info *UserInfo) {
+	if s.groupSync != nil && p.GroupsClaim != "" {
+		s.groupSync(p, user, info.Groups)
+	}
+}
+
 func (s *Service) SetMembershipGate(gate func(userID uint) error) {
 	s.membershipGate = gate
 }
@@ -318,6 +334,7 @@ func (s *Service) Authenticate(ctx context.Context, p *models.OAuthProvider, cod
 		if !user.Active || user.IsService() {
 			return nil, ErrAccountDisabled
 		}
+		s.syncGroups(p, user, info)
 		return user, nil
 	}
 
@@ -360,6 +377,7 @@ func (s *Service) Authenticate(ctx context.Context, p *models.OAuthProvider, cod
 		return nil, err
 	}
 	s.autoJoinWorkspace(p, newUser.ID)
+	s.syncGroups(p, newUser, info)
 	return newUser, nil
 }
 
@@ -602,8 +620,32 @@ func (s *Service) exchange(ctx context.Context, p *models.OAuthProvider, code, r
 		Username: firstClaim(claims, p.UsernameClaim, "preferred_username"),
 		// Some providers send the claim as a string.
 		EmailVerified: claims["email_verified"] == true || stringClaim(claims, "email_verified") == "true",
+		Groups:        listClaim(claims, p.GroupsClaim),
 	}
 	return &info, nil
+}
+
+// listClaim reads a claim holding a list of strings, or one comma-separated string.
+func listClaim(claims map[string]any, name string) []string {
+	if name == "" {
+		return nil
+	}
+	var out []string
+	switch v := claims[name].(type) {
+	case []any:
+		for _, x := range v {
+			if s, ok := x.(string); ok && strings.TrimSpace(s) != "" {
+				out = append(out, strings.TrimSpace(s))
+			}
+		}
+	case string:
+		for _, s := range strings.Split(v, ",") {
+			if s = strings.TrimSpace(s); s != "" {
+				out = append(out, s)
+			}
+		}
+	}
+	return out
 }
 
 func firstClaim(claims map[string]any, names ...string) string {

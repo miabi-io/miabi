@@ -322,6 +322,9 @@ func (s *Service) SyncSchedules() error {
 	want := make(map[uint]bool, len(list))
 	for i := range list {
 		cj := &list[i]
+		if s.paused != nil && s.paused(cj.WorkspaceID) {
+			continue
+		}
 		want[cj.ID] = true
 		s.regMu.Lock()
 		current, ok := s.registered[cj.ID]

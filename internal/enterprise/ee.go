@@ -63,8 +63,9 @@ const (
 	FlagPlatformRunners              = "platform_runners"     // admin-managed platform-shared runner pool
 	FlagUserWorkspaceLimit           = "user_workspace_limit" // per-user workspace-count override
 	FlagUserWorkspaceMembershipLimit = "user_workspace_membership_limit"
-	FlagSSOLDAP                      = "sso_ldap"         // LDAP / Active Directory authentication
-	FlagAnalyticsExport              = "analytics_export" // workspace analytics export (CSV) + extended retention
+	FlagSSOLDAP                      = "sso_ldap"          // LDAP / Active Directory authentication
+	FlagSSOGroupMapping              = "sso_group_mapping" // workspace roles from OIDC group claims
+	FlagAnalyticsExport              = "analytics_export"  // workspace analytics export (CSV) + extended retention
 	FlagAdvancedCanary               = "advanced_canary"
 	FlagAnnouncements                = "announcements" // platform-wide announcements to user inboxes
 	FlagDatabaseSizes                = "database_sizes"
@@ -107,6 +108,7 @@ var AllFlags = []FlagInfo{
 	{FlagUserWorkspaceLimit, "per-user workspace-count override"},
 	{FlagUserWorkspaceMembershipLimit, "per-user workspace-membership override"},
 	{FlagSSOLDAP, "LDAP / Active Directory authentication"},
+	{FlagSSOGroupMapping, "workspace roles from OIDC group claims"},
 	{FlagAnalyticsExport, "workspace analytics export (CSV) + extended retention"},
 	{FlagAdvancedCanary, "manual canary control + attribute-based canary routing"},
 	{FlagAnnouncements, "platform announcements broadcast to user inboxes"},
@@ -147,7 +149,7 @@ var Tiers = []Tier{
 		Name: TierBusiness,
 		Desc: "Small businesses & teams",
 		Flags: []string{
-			FlagMultiSSO, FlagSSOHiddenProvider, FlagSSOSAML, FlagSSOLDAP, FlagSCIM,
+			FlagMultiSSO, FlagSSOHiddenProvider, FlagSSOSAML, FlagSSOLDAP, FlagSSOGroupMapping, FlagSCIM,
 			FlagCustomRoles, FlagResourcePolicies, FlagQuotaOverride, FlagPlacementPolicy, FlagDatabaseSizes, FlagUserWorkspaceLimit,
 			FlagUserWorkspaceMembershipLimit,
 			FlagAuditLog, FlagAuditExport, FlagPlatformBackup, FlagAnnouncements,

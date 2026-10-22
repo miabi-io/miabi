@@ -20,6 +20,9 @@
 package handlers
 
 import (
+	"errors"
+	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -47,10 +50,11 @@ func (*ssoProviderLimitError) Code() string { return "SSO_PROVIDER_LIMIT" }
 
 // OAuthAdminHandler manages SSO provider configuration (super-admin only).
 type OAuthAdminHandler struct {
-	repo  *repositories.OAuthProviderRepository
-	oauth *oauth.Service
-	ee    enterprise.EE
-	audit *audit.Logger
+	repo       *repositories.OAuthProviderRepository
+	oauth      *oauth.Service
+	ee         enterprise.EE
+	audit      *audit.Logger
+	workspaces *repositories.WorkspaceRepository
 }
 
 func NewOAuthAdminHandler(repo *repositories.OAuthProviderRepository, oauthSvc *oauth.Service, ee enterprise.EE, auditLog *audit.Logger) *OAuthAdminHandler {
@@ -97,6 +101,9 @@ type CreateOAuthProviderRequest struct {
 		UsernameClaim        string `json:"username_claim"`
 		DefaultWorkspaceID   *uint  `json:"default_workspace_id"`
 		DefaultRole          string `json:"default_role" enum:"owner,admin,developer,viewer"`
+		// GroupsClaim and GroupPrefix turn on group mapping (Enterprise sso_group_mapping).
+		GroupsClaim string `json:"groups_claim"`
+		GroupPrefix string `json:"group_prefix"`
 		// OrganizationID is the realm accounts this provider registers belong to. Null leaves them
 		// in the default organization. Set once, here: it never moves an account that already
 		// exists, so changing it later would only split the provider's users across two tenants.
@@ -128,6 +135,10 @@ type UpdateOAuthProviderRequest struct {
 		UsernameClaim        *string `json:"username_claim"`
 		DefaultWorkspaceID   *uint   `json:"default_workspace_id"`
 		DefaultRole          *string `json:"default_role" enum:"owner,admin,developer,viewer"`
+		// GroupsClaim and GroupPrefix turn on group mapping (Enterprise sso_group_mapping); empty
+		// strings turn it off.
+		GroupsClaim *string `json:"groups_claim"`
+		GroupPrefix *string `json:"group_prefix"`
 	} `json:"body"`
 }
 
@@ -151,6 +162,10 @@ func (h *OAuthAdminHandler) Create(c *okapi.Context, req *CreateOAuthProviderReq
 	// opt-in without the entitlement (the field is otherwise forced false below).
 	if boolOr(req.Body.Hidden, false) && !h.canHide() {
 		return entitlementAbort(c, enterprise.ErrEntitlementDenied)
+	}
+	claim, prefix, err := h.groupSettings(req.Body.GroupsClaim, req.Body.GroupPrefix)
+	if err != nil {
+		return groupSettingsAbort(c, err)
 	}
 
 	s := strings.TrimSpace(req.Body.Name)
@@ -189,6 +204,8 @@ func (h *OAuthAdminHandler) Create(c *okapi.Context, req *CreateOAuthProviderReq
 		DefaultWorkspaceID:   req.Body.DefaultWorkspaceID,
 		DefaultRole:          models.WorkspaceRole(strings.TrimSpace(req.Body.DefaultRole)),
 		OrganizationID:       normalizeOrgID(req.Body.OrganizationID),
+		GroupsClaim:          claim,
+		GroupPrefix:          prefix,
 	}
 	if err := h.oauth.ResolveEndpoints(c.Request().Context(), p); err != nil {
 		return c.AbortBadRequest(err.Error())
@@ -266,6 +283,20 @@ func (h *OAuthAdminHandler) Update(c *okapi.Context, req *UpdateOAuthProviderReq
 	if req.Body.DefaultRole != nil {
 		p.DefaultRole = models.WorkspaceRole(strings.TrimSpace(*req.Body.DefaultRole))
 	}
+	if req.Body.GroupsClaim != nil || req.Body.GroupPrefix != nil {
+		claim, prefix := p.GroupsClaim, p.GroupPrefix
+		if req.Body.GroupsClaim != nil {
+			claim = *req.Body.GroupsClaim
+		}
+		if req.Body.GroupPrefix != nil {
+			prefix = *req.Body.GroupPrefix
+		}
+		claim, prefix, err := h.groupSettings(claim, prefix)
+		if err != nil {
+			return groupSettingsAbort(c, err)
+		}
+		p.GroupsClaim, p.GroupPrefix = claim, prefix
+	}
 	if err := h.oauth.ResolveEndpoints(c.Request().Context(), p); err != nil {
 		return c.AbortBadRequest(err.Error())
 	}
@@ -318,4 +349,110 @@ func normalizeOrgID(id *uint) *uint {
 		return nil
 	}
 	return id
+}
+
+var (
+	groupClaimRe  = regexp.MustCompile(`^[A-Za-z0-9_.:/-]{1,128}$`)
+	groupPrefixRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{0,31}$`)
+)
+
+type groupSettingsError struct{ msg string }
+
+func (e *groupSettingsError) Error() string { return e.msg }
+
+// groupSettings validates a provider's group-mapping settings. Turning mapping on needs the
+// entitlement; clearing it never does, so a downgrade can always switch it off.
+func (h *OAuthAdminHandler) groupSettings(claim, prefix string) (string, string, error) {
+	claim, prefix = strings.TrimSpace(claim), strings.ToLower(strings.TrimSpace(prefix))
+	if claim == "" && prefix == "" {
+		return "", "", nil
+	}
+	if err := h.ee.RequireMutable(enterprise.FlagSSOGroupMapping); err != nil {
+		return "", "", err
+	}
+	if claim == "" || !groupClaimRe.MatchString(claim) {
+		return "", "", &groupSettingsError{"groups_claim must name the claim holding the groups, e.g. groups"}
+	}
+	if prefix != "" && !groupPrefixRe.MatchString(prefix) {
+		return "", "", &groupSettingsError{"group_prefix must be 1-32 lowercase letters, digits, dots, dashes or underscores"}
+	}
+	return claim, prefix, nil
+}
+
+func groupSettingsAbort(c *okapi.Context, err error) error {
+	var bad *groupSettingsError
+	if errors.As(err, &bad) {
+		return c.AbortBadRequest(bad.msg)
+	}
+	return entitlementAbort(c, err)
+}
+
+// SetWorkspaces wires the workspace lookups that validate group mappings.
+func (h *OAuthAdminHandler) SetWorkspaces(ws *repositories.WorkspaceRepository) { h.workspaces = ws }
+
+// ListGroupMappings returns a provider's explicit group mappings.
+func (h *OAuthAdminHandler) ListGroupMappings(c *okapi.Context) error {
+	if err := h.ee.Require(enterprise.FlagSSOGroupMapping); err != nil {
+		return entitlementAbort(c, err)
+	}
+	p, err := h.provider(c)
+	if err != nil {
+		return c.AbortNotFound("provider not found")
+	}
+	list, err := h.repo.ListMappings(p.ID)
+	if err != nil {
+		return c.AbortInternalServerError("failed to list group mappings", err)
+	}
+	if list == nil {
+		list = []models.OAuthGroupMapping{}
+	}
+	return ok(c, list)
+}
+
+// ReplaceGroupMappingsRequest is a provider's full mapping set.
+type ReplaceGroupMappingsRequest struct {
+	Body struct {
+		Mappings []struct {
+			Group         string `json:"group" required:"true"`
+			SystemAdmin   bool   `json:"system_admin"`
+			WorkspaceID   *uint  `json:"workspace_id"`
+			WorkspaceRole string `json:"workspace_role" enum:",owner,admin,developer,viewer"`
+		} `json:"mappings"`
+	} `json:"body"`
+}
+
+// ReplaceGroupMappings swaps a provider's explicit group mappings for the given set.
+func (h *OAuthAdminHandler) ReplaceGroupMappings(c *okapi.Context, req *ReplaceGroupMappingsRequest) error {
+	if err := h.ee.RequireMutable(enterprise.FlagSSOGroupMapping); err != nil {
+		return entitlementAbort(c, err)
+	}
+	p, err := h.provider(c)
+	if err != nil {
+		return c.AbortNotFound("provider not found")
+	}
+	out := make([]models.OAuthGroupMapping, 0, len(req.Body.Mappings))
+	for i, m := range req.Body.Mappings {
+		group := strings.TrimSpace(m.Group)
+		role := models.WorkspaceRole(strings.TrimSpace(m.WorkspaceRole))
+		switch {
+		case group == "":
+			return c.AbortBadRequest(fmt.Sprintf("mapping %d: group is required", i+1))
+		case m.WorkspaceID == nil && !m.SystemAdmin:
+			return c.AbortBadRequest(fmt.Sprintf("mapping %d: grant platform admin, a workspace role, or both", i+1))
+		case m.WorkspaceID != nil && !role.Valid():
+			return c.AbortBadRequest(fmt.Sprintf("mapping %d: workspace_role must be owner, admin, developer or viewer", i+1))
+		}
+		if m.WorkspaceID != nil && h.workspaces != nil {
+			ws, err := h.workspaces.FindByID(*m.WorkspaceID)
+			if err != nil || ws.System {
+				return c.AbortBadRequest(fmt.Sprintf("mapping %d: no such workspace", i+1))
+			}
+		}
+		out = append(out, models.OAuthGroupMapping{Group: group, SystemAdmin: m.SystemAdmin, WorkspaceID: m.WorkspaceID, WorkspaceRole: role})
+	}
+	if err := h.repo.ReplaceMappings(p.ID, out); err != nil {
+		return c.AbortInternalServerError("failed to save group mappings", err)
+	}
+	h.record(c, "admin.oauth.group_mappings", p.ID, map[string]any{"name": p.Name, "count": len(out)})
+	return ok(c, out)
 }

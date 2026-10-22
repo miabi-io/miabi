@@ -30,6 +30,7 @@ type creationMemberRow struct {
 	UserID       uint
 	Role         string
 	CustomRoleID *uint
+	ManagedBy    string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }

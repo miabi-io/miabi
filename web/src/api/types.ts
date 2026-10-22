@@ -357,6 +357,10 @@ export interface User {
   can_create_workspaces?: boolean | null
   /** Populated on /me only: whether the user may create a workspace. */
   workspace_creation?: WorkspaceCreationPolicy
+  /** A platform admin's suspension: reads still work, writes are refused (USER_SUSPENDED). */
+  suspended_at?: string | null
+  suspended_reason?: string
+  suspended_until?: string | null
   created_at?: string
   last_login_at?: string | null
 }
@@ -562,6 +566,10 @@ export interface AdminUser {
   signup_source?: string
   // The realm the user's NEW workspaces are created in; null = the default organization.
   organization_id?: number | null
+  /** A platform admin's suspension: reads still work, writes are refused (USER_SUSPENDED). */
+  suspended_at?: string | null
+  suspended_reason?: string
+  suspended_until?: string | null
 }
 
 /**
@@ -679,6 +687,8 @@ export interface AdminWorkspace {
   privileged: boolean
   /** The built-in platform workspace, which cannot be renamed or deleted. */
   system: boolean
+  plan_id?: number | null
+  restriction?: WorkspaceRestriction
   apps_count: number
   databases_count: number
   stacks_count: number
@@ -691,6 +701,8 @@ export interface AdminWorkspaceMember {
   workspace_id: number
   user_id: number
   role: WorkspaceRole
+  /** The SSO provider whose groups granted this membership; empty when added by hand. */
+  managed_by?: string
   created_at?: string
   user: User
 }
@@ -711,6 +723,11 @@ export interface AdminWorkspaceDetail {
    * location list is ignored (it would intersect to nothing) and the console shows it locked.
    */
   placement_pinned?: boolean
+  /** A platform admin's hold: '' none, read_only, or suspended. */
+  restriction?: WorkspaceRestriction
+  restriction_reason?: string
+  restriction_until?: string | null
+  restricted_at?: string | null
   created_at: string
   owner_name: string
   owner_email: string
@@ -989,7 +1006,19 @@ export interface OAuthProvider {
   default_role?: string
   /** The organization accounts registered through this provider belong to; null = the default one. */
   organization_id?: number | null
+  /** Enterprise group mapping: the userinfo claim holding groups; empty turns it off. */
+  groups_claim?: string
+  /** Enables structured groups "<prefix>:<workspace>:<role>". */
+  group_prefix?: string
   created_at?: string
+}
+
+export interface OAuthGroupMapping {
+  id?: number
+  group: string
+  system_admin: boolean
+  workspace_id?: number | null
+  workspace_role?: '' | WorkspaceRole
 }
 
 export interface PublicProvider {
@@ -1045,8 +1074,16 @@ export interface Workspace {
   system?: boolean
   /** The requesting user's role in this workspace (from the list endpoint). */
   role?: WorkspaceRole
+  /** A platform admin's hold: '' none, read_only, or suspended. */
+  restriction?: WorkspaceRestriction
+  restriction_reason?: string
+  restriction_until?: string | null
+  restricted_at?: string | null
   created_at?: string
 }
+
+export type WorkspaceRestriction = '' | 'read_only' | 'suspended'
+
 
 export interface Registry {
   id: number
@@ -2488,6 +2525,8 @@ export interface Member {
   user_id: number
   role: 'owner' | 'admin' | 'developer' | 'viewer'
   custom_role_id?: number | null
+  /** The SSO provider whose groups granted this membership; empty when added by hand. */
+  managed_by?: string
   user: User
 }
 

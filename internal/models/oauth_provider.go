@@ -80,6 +80,29 @@ type OAuthProvider struct {
 	DefaultWorkspaceID *uint         `json:"default_workspace_id" gorm:"index"`
 	DefaultRole        WorkspaceRole `json:"default_role"`
 
+	// GroupsClaim names the userinfo claim holding the user's groups (Enterprise group mapping).
+	// Empty turns group mapping off for this provider.
+	GroupsClaim string `json:"groups_claim"`
+	// GroupPrefix enables structured groups "<prefix>:<workspace>:<role>", each granting that role in
+	// that workspace. Empty accepts only the explicit Mappings.
+	GroupPrefix string              `json:"group_prefix"`
+	Mappings    []OAuthGroupMapping `json:"mappings,omitempty" gorm:"foreignKey:ProviderID"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// OAuthGroupMapping maps one provider group to Miabi access, applied at every sign-in like
+// LDAPGroupMapping: platform admin, or a role in a fixed workspace.
+type OAuthGroupMapping struct {
+	ID         uint   `json:"id" gorm:"primaryKey"`
+	ProviderID uint   `json:"provider_id" gorm:"index;not null"`
+	Group      string `json:"group" gorm:"not null"`
+	// SystemAdmin grants the platform admin role.
+	SystemAdmin bool `json:"system_admin" gorm:"not null;default:false"`
+	// WorkspaceID + WorkspaceRole grant workspace membership (nil = no grant).
+	WorkspaceID   *uint         `json:"workspace_id"`
+	WorkspaceRole WorkspaceRole `json:"workspace_role"`
+	CreatedAt     time.Time     `json:"created_at"`
+	UpdatedAt     time.Time     `json:"updated_at"`
 }

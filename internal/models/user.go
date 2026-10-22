@@ -58,15 +58,21 @@ const ServiceAccountEmailDomain = "service-accounts.invalid"
 
 // User is a global identity.
 type User struct {
-	ID                 uint       `json:"id" gorm:"primaryKey"`
-	Name               string     `json:"name" gorm:"not null;default:''"`
-	Username           string     `json:"username" gorm:"uniqueIndex;not null"`
-	Email              string     `json:"email" gorm:"uniqueIndex;not null"`
-	PasswordHash       string     `json:"-" gorm:"not null"`
-	Role               SystemRole `json:"role" gorm:"default:user;not null"`
-	TwoFactorSecret    string     `json:"-" gorm:"type:text"`
-	TwoFactorEnabled   bool       `json:"two_factor_enabled" gorm:"default:false;not null"`
-	Active             bool       `json:"active" gorm:"default:true;not null"`
+	ID               uint       `json:"id" gorm:"primaryKey"`
+	Name             string     `json:"name" gorm:"not null;default:''"`
+	Username         string     `json:"username" gorm:"uniqueIndex;not null"`
+	Email            string     `json:"email" gorm:"uniqueIndex;not null"`
+	PasswordHash     string     `json:"-" gorm:"not null"`
+	Role             SystemRole `json:"role" gorm:"default:user;not null"`
+	TwoFactorSecret  string     `json:"-" gorm:"type:text"`
+	TwoFactorEnabled bool       `json:"two_factor_enabled" gorm:"default:false;not null"`
+	Active           bool       `json:"active" gorm:"default:true;not null"`
+	// SuspendedAt marks a platform admin's suspension: the user keeps read access and sees why,
+	// but every write is refused until it is lifted or SuspendedUntil passes.
+	SuspendedAt        *time.Time `json:"suspended_at"`
+	SuspendedReason    string     `json:"suspended_reason"`
+	SuspendedUntil     *time.Time `json:"suspended_until"`
+	SuspendedBy        *uint      `json:"suspended_by"`
 	MustChangePassword bool       `json:"must_change_password" gorm:"not null;default:false"`
 	AuthSource         string     `json:"auth_source" gorm:"not null;default:'local'"`
 	Kind               string     `json:"kind" gorm:"not null;default:'user';index"`
@@ -93,6 +99,11 @@ type User struct {
 func (u *User) IsAdmin() bool { return u.Role == SystemRoleAdmin && !u.IsService() }
 
 // IsService reports whether this is a service account.
+// Suspended reports whether a suspension is in force at now.
+func (u *User) Suspended(now time.Time) bool {
+	return u.SuspendedAt != nil && (u.SuspendedUntil == nil || u.SuspendedUntil.After(now))
+}
+
 func (u *User) IsService() bool { return u.Kind == UserKindService }
 
 // IsExternal reports whether an identity provider owns this account. Such a profile is

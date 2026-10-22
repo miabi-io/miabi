@@ -167,33 +167,107 @@ func (s *Service) StopOwned(ctx context.Context, userID uint) StopResult {
 		return res
 	}
 	for _, wsID := range wsIDs {
-		apps, _ := s.apps.ListByWorkspace(wsID)
-		for i := range apps {
-			if apps[i].Status != models.AppStatusRunning {
-				continue
-			}
-			if err := s.appOps.Stop(ctx, &apps[i]); err != nil {
-				logger.Warn("account stop: stop app", "app", apps[i].ID, "error", err)
-				continue
-			}
-			res.Apps++
-		}
-		insts, _ := s.dbs.ListByWorkspace(wsID)
-		for i := range insts {
-			if insts[i].Status != models.DBStatusRunning {
-				continue
-			}
-			if err := s.dbOps.Stop(ctx, &insts[i]); err != nil {
-				logger.Warn("account stop: stop database", "instance", insts[i].ID, "error", err)
-				continue
-			}
-			res.Databases++
-		}
+		r, _ := s.StopWorkspace(ctx, wsID)
+		res.Apps += r.Apps
+		res.Databases += r.Databases
 	}
 	return res
 }
 
-// DeleteResult counts what DeleteOwned removed.
+// StopWorkspace stops every running app and database instance of one workspace and returns what it
+// stopped, so StartWorkspace can bring back exactly that.
+func (s *Service) StopWorkspace(ctx context.Context, wsID uint) (StopResult, models.FrozenResources) {
+	var res StopResult
+	frozen := models.FrozenResources{Apps: []uint{}, Databases: []uint{}}
+	apps, _ := s.apps.ListByWorkspace(wsID)
+	for i := range apps {
+		if apps[i].Status != models.AppStatusRunning {
+			continue
+		}
+		if err := s.appOps.Stop(ctx, &apps[i]); err != nil {
+			logger.Warn("workspace stop: stop app", "app", apps[i].ID, "error", err)
+			continue
+		}
+		res.Apps++
+		frozen.Apps = append(frozen.Apps, apps[i].ID)
+	}
+	insts, _ := s.dbs.ListByWorkspace(wsID)
+	for i := range insts {
+		if insts[i].Status != models.DBStatusRunning {
+			continue
+		}
+		if err := s.dbOps.Stop(ctx, &insts[i]); err != nil {
+			logger.Warn("workspace stop: stop database", "instance", insts[i].ID, "error", err)
+			continue
+		}
+		res.Databases++
+		frozen.Databases = append(frozen.Databases, insts[i].ID)
+	}
+	return res, frozen
+}
+
+// AppStarter and DBStarter start a stopped workload. Implemented by *application.Service and
+// *database.Service; kept apart from AppOps/DBOps so account deletion does not depend on them.
+type AppStarter interface {
+	Start(ctx context.Context, app *models.Application) (*models.Deployment, error)
+}
+
+type DBStarter interface {
+	Start(ctx context.Context, inst *models.DatabaseInstance) error
+}
+
+// StartResult counts what StartWorkspace brought back and what it could not.
+type StartResult struct {
+	Apps      int `json:"apps"`
+	Databases int `json:"databases"`
+	Failed    int `json:"failed"`
+}
+
+// StartWorkspace starts stopped workloads of a workspace, databases first so apps find them: those
+// in only, or every stopped one when only is nil. Workloads deleted meanwhile, or no longer
+// stopped, are skipped.
+func (s *Service) StartWorkspace(ctx context.Context, wsID uint, only *models.FrozenResources) (StartResult, error) {
+	var res StartResult
+	appStarter, ok1 := s.appOps.(AppStarter)
+	dbStarter, ok2 := s.dbOps.(DBStarter)
+	if !ok1 || !ok2 {
+		return res, errors.New("workspace start is not available")
+	}
+	want := func(ids []uint, id uint) bool {
+		for _, x := range ids {
+			if x == id {
+				return true
+			}
+		}
+		return false
+	}
+	insts, _ := s.dbs.ListByWorkspace(wsID)
+	for i := range insts {
+		if insts[i].Status != models.DBStatusStopped || (only != nil && !want(only.Databases, insts[i].ID)) {
+			continue
+		}
+		if err := dbStarter.Start(ctx, &insts[i]); err != nil {
+			logger.Warn("workspace start: start database", "instance", insts[i].ID, "error", err)
+			res.Failed++
+			continue
+		}
+		res.Databases++
+	}
+	apps, _ := s.apps.ListByWorkspace(wsID)
+	for i := range apps {
+		if apps[i].Status != models.AppStatusStopped || (only != nil && !want(only.Apps, apps[i].ID)) {
+			continue
+		}
+		if _, err := appStarter.Start(ctx, &apps[i]); err != nil {
+			logger.Warn("workspace start: start app", "app", apps[i].ID, "error", err)
+			res.Failed++
+			continue
+		}
+		res.Apps++
+	}
+	return res, nil
+}
+
 type DeleteResult struct {
 	Workspaces int `json:"workspaces"`
 	Apps       int `json:"apps"`

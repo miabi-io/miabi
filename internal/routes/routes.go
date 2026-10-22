@@ -78,6 +78,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/gitops"
 	"github.com/miabi-io/miabi/internal/services/gitrepo"
 	"github.com/miabi-io/miabi/internal/services/gpu"
+	"github.com/miabi-io/miabi/internal/services/groupsync"
 	"github.com/miabi-io/miabi/internal/services/housekeeping"
 	"github.com/miabi-io/miabi/internal/services/image"
 	"github.com/miabi-io/miabi/internal/services/job"
@@ -111,6 +112,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/registry"
 	"github.com/miabi-io/miabi/internal/services/registryserver"
 	releasesvc "github.com/miabi-io/miabi/internal/services/release"
+	"github.com/miabi-io/miabi/internal/services/restriction"
 	"github.com/miabi-io/miabi/internal/services/route"
 	"github.com/miabi-io/miabi/internal/services/runner"
 	"github.com/miabi-io/miabi/internal/services/sealing"
@@ -229,6 +231,7 @@ type routerHandlers struct {
 
 	adminUser           *handlers.AdminUserHandler
 	adminWorkspace      *handlers.AdminWorkspaceHandler
+	adminWorkspaceOps   *handlers.AdminWorkspaceOpsHandler
 	adminDomain         *handlers.AdminDomainHandler
 	adminRoute          *handlers.AdminRouteHandler
 	adminMetrics        *handlers.AdminMetricsHandler
@@ -499,6 +502,29 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}
 	}
 	auditLogger := audit.NewLogger(auditRepo, bus)
+	groupSyncer := groupsync.New(workspaceRepo, userRepo, workspaceService.CanOwnAnother, func(userID uint, e groupsync.Event) {
+		var wsID *uint
+		if e.WorkspaceID != 0 {
+			wsID = &e.WorkspaceID
+		}
+		auditLogger.Record(audit.Entry{ActorID: &userID, WorkspaceID: wsID, Action: e.Action, TargetType: "user",
+			TargetID: strconv.FormatUint(uint64(userID), 10), Metadata: e.Detail})
+	})
+	oauthService.SetGroupSync(func(p *models.OAuthProvider, user *models.User, groups []string) {
+		if !ee.Has(enterprise.FlagSSOGroupMapping) {
+			return
+		}
+		mappings, err := oauthRepo.ListMappings(p.ID)
+		if err != nil {
+			logger.Warn("group sync: load mappings", "provider", p.Name, "error", err)
+			return
+		}
+		rules := make([]groupsync.Rule, 0, len(mappings))
+		for _, m := range mappings {
+			rules = append(rules, groupsync.Rule{Group: m.Group, SystemAdmin: m.SystemAdmin, WorkspaceID: m.WorkspaceID, Role: m.WorkspaceRole})
+		}
+		groupSyncer.Reconcile(groupsync.Input{User: user, Manager: p.Name, Groups: groups, Rules: rules, Prefix: p.GroupPrefix})
+	})
 	eventsService := events.NewService(appEventRepo, bus)
 	nodeClients := nodeManager.Clients()
 	// GPU inventory + scheduling: discovers each node's GPUs via a probe over the
@@ -653,12 +679,23 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	accountService := account.NewService(userRepo, workspaceRepo, appRepo, dbRepo, stackRepo, appService, databaseService, stackService, storageService)
 	accountService.SetEventBus(bus)                        // live workspace-deletion progress SSE
 	accountService.SetWorkspaceFinalizer(workspaceService) // row delete + crypto-shred after teardown
+	restrictionService := restriction.NewService(workspaceRepo, accountService)
+	restrictedWrite := func(wsID uint) error { return restrictionService.Allowed(wsID, restriction.ActionWrite) }
+	restrictedDeploy := func(wsID uint) error { return restrictionService.Allowed(wsID, restriction.ActionDeploy) }
+	suspended := func(wsID uint) bool { return restrictionService.Allowed(wsID, restriction.ActionRun) != nil }
+	quotaService.SetRestriction(restrictedWrite)
+	controlManager.SetSuspended(suspended)
 	// Daily purge of accounts whose deletion grace period has elapsed.
 	if err := cronManager.RegisterTask("account-purge", 0, "Purge accounts past deletion grace", "0 2 * * *", func() error {
 		accountService.PurgeDue(context.Background())
 		return nil
 	}); err != nil {
 		logger.Error("failed to register account purge job", "error", err)
+	}
+	if err := cronManager.RegisterTask("workspace-restriction-expiry", 0, "Lift workspace restrictions past their end date", "*/5 * * * *", func() error {
+		return restrictionService.ExpireDue(context.Background())
+	}); err != nil {
+		logger.Error("failed to register workspace restriction expiry job", "error", err)
 	}
 
 	// Daily release check: one request to versions.miabi.io covers every component. The minute is arbitrary
@@ -785,6 +822,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	}
 	jobRepo := repositories.NewJobRepository(db)
 	jobService := job.NewService(jobRepo, appRepo, releaseRepo, nodeClients, producer, 3600)
+	jobService.SetPaused(suspended)
 	jobService.SetQuota(quotaService)
 	jobService.SetDeployments(deploymentRepo)
 	jobService.SetScheduler(cronManager)
@@ -1125,11 +1163,13 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	}
 	// GitOps: reconcile a repo of miabi.io/v1 manifests via the apply engine.
 	gitopsService := gitops.NewService(repositories.NewGitSourceRepository(db), gitRepoRepo, applyService)
+	gitopsService.SetRestriction(restrictedDeploy)
 	gitopsService.SetSecrets(secretService) // resolve a vault-backed Git credential when fetching
 	applyService.SetGitSources(gitopsService)
 	applyService.SetGitRepositories(gitRepoService)
 	// CI/CD pipelines: definitions + runs on the internal runner (worker).
 	pipelineService := pipeline.NewService(repositories.NewPipelineRepository(db), producer)
+	pipelineService.SetRestriction(restrictedDeploy)
 	// Repository-owned pipelines: adopting a repo's .miabi/pipeline.yaml and
 	// re-reading it before each run needs the app's clone URL and credential.
 	pipelineService.SetGitRepos(gitRepoService)
@@ -1360,7 +1400,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		},
 		v1:              app.Group("/api/v1"),
 		authenticate:    middlewares.Authenticate(jwtAuth, apiKeyService, userRepo, appRepo),
-		scope:           middlewares.WorkspaceScope(workspaceRepo, customRoleRepo, appRepo),
+		scope:           middlewares.WorkspaceScope(workspaceRepo, customRoleRepo, restrictionService, appRepo),
 		scopeMode:       scopeMode,
 		audit:           auditLogger,
 		systemAdmin:     middlewares.RequireSystemAdmin(userRepo, elevationService),
@@ -1429,6 +1469,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 
 			adminUser:           handlers.NewAdminUserHandler(db, userRepo, sessionRepo, workspaceRepo, auditRepo, sessionStore, auditLogger, accountService, cfg.DeletionGraceDays),
 			adminWorkspace:      handlers.NewAdminWorkspaceHandler(db, workspaceRepo, auditLogger),
+			adminWorkspaceOps:   handlers.NewAdminWorkspaceOpsHandler(workspaceRepo, userRepo, planRepo, workspaceService, accountService, restrictionService, auditLogger),
 			adminDomain:         handlers.NewAdminDomainHandler(db, domainRepo, routeRepo, domainService, auditLogger),
 			adminRoute:          handlers.NewAdminRouteHandler(db, routeRepo, workspaceRepo, routeService, auditLogger),
 			adminMetrics:        handlers.NewAdminMetricsHandler(db, dockerClient, redisClient, time.Now()),
@@ -1582,6 +1623,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.cluster.SetSystemCertificates(certificateService)
 	r.h.adminUser.SetOrganizations(organizationService)
 	r.h.adminWorkspace.SetOrganizations(organizationService, organizationService.OwnsClusters)
+	r.h.oauthAdmin.SetWorkspaces(workspaceRepo)
 	r.h.node.SetNodeStats(nodeStatsService)
 
 	// Restrict browser WebSocket upgrades (exec/log/node/runner tunnels) to

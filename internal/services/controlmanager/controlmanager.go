@@ -163,9 +163,11 @@ type Service struct {
 
 	// Enforcement (nil until SetEnforcement): what it takes to put an app back where it was.
 	redeployer Redeployer
-	placement  NodePlacement
-	configs    ConfigStore
-	auditor    Auditor
+	// suspended reports a suspended workspace, whose apps were stopped on purpose and must stay down.
+	suspended func(workspaceID uint) bool
+	placement NodePlacement
+	configs   ConfigStore
+	auditor   Auditor
 
 	mu              sync.Mutex
 	findings        map[string]*Finding // by item key

@@ -24,7 +24,9 @@ package middlewares
 import (
 	"errors"
 	"net"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jkaninda/okapi"
@@ -48,7 +50,9 @@ const (
 	CtxAPIKeyWorkspaceID = "api_key_workspace_id"
 	CtxAPIKeyEphemeral   = "api_key_ephemeral"
 	CtxAPIKeyAppID       = "api_key_app_id"
-	ctxJTI               = "jti"
+	// CtxSuspended holds a suspended caller's suspension reason.
+	CtxSuspended = "user_suspended"
+	ctxJTI       = "jti"
 )
 
 // SessionCookieName holds the user JWT for browser clients. It is HttpOnly (so
@@ -88,7 +92,11 @@ func baseJWT(cfg *config.Config, store *session.Store, users *repositories.UserR
 			}
 		}
 		if users != nil {
-			return checkSessionUser(users, key, mc)
+			user, err := checkSessionUser(users, key, mc)
+			if err != nil {
+				return err
+			}
+			markSuspended(c, user)
 		}
 		return nil
 	}
@@ -97,23 +105,57 @@ func baseJWT(cfg *config.Config, store *session.Store, users *repositories.UserR
 
 // checkSessionUser ends a session whose user is gone, disabled, or has changed password since it was
 // issued: a token alone outlives all three for up to its 24 h lifetime. API keys reload the user too.
-func checkSessionUser(users *repositories.UserRepository, key []byte, mc jwt.MapClaims) error {
+func checkSessionUser(users *repositories.UserRepository, key []byte, mc jwt.MapClaims) (*models.User, error) {
 	sub, ok := mc["sub"].(float64)
 	if !ok || sub <= 0 {
-		return errors.New("invalid token: missing subject")
+		return nil, errors.New("invalid token: missing subject")
 	}
 	user, err := users.FindByID(uint(sub))
 	if err != nil {
-		return errors.New("session is no longer valid")
+		return nil, errors.New("session is no longer valid")
 	}
 	if !user.Active {
-		return errors.New("account is disabled")
+		return nil, errors.New("account is disabled")
 	}
 	// A token minted before the fingerprint existed carries none; it still expires within TokenTTL.
 	if pwf, has := mc[auth.ClaimPasswordFingerprint].(string); has && pwf != auth.SessionFingerprint(key, user.PasswordHash) {
-		return errors.New("session ended by a password change")
+		return nil, errors.New("session ended by a password change")
 	}
-	return nil
+	return user, nil
+}
+
+// markSuspended records a suspended caller for SuspensionGuard, which refuses their writes later in
+// the chain: refusing here would end the session, and a suspended user keeps read access.
+func markSuspended(c *okapi.Context, u *models.User) {
+	if u != nil && u.Suspended(time.Now()) {
+		reason := u.SuspendedReason
+		if reason == "" {
+			reason = "no reason given"
+		}
+		c.Set(CtxSuspended, reason)
+	}
+}
+
+// UserSuspendedError refuses a write by a suspended user.
+type UserSuspendedError struct{ Reason string }
+
+func (e *UserSuspendedError) Error() string {
+	return "your account is suspended by the platform administrator: " + e.Reason
+}
+
+// Code is the stable machine code surfaced in the API error envelope.
+func (e *UserSuspendedError) Code() string { return "USER_SUSPENDED" }
+
+// SuspensionGuard refuses writes by a suspended user. Sign-in and sign-out flows under /auth/ stay
+// open. It is a no-op for anyone not suspended, so it is safe on every route.
+func SuspensionGuard() okapi.Middleware {
+	return func(c *okapi.Context) error {
+		reason := c.GetString(CtxSuspended)
+		if reason == "" || safeMethod(c.Request().Method) || strings.Contains(c.Request().URL.Path, "/auth/") {
+			return c.Next()
+		}
+		return c.AbortWithError(http.StatusForbidden, &UserSuspendedError{Reason: reason})
+	}
 }
 
 // JWTAuth builds user JWT auth (Authorization header or session cookie, per
@@ -166,6 +208,7 @@ func authAPIKey(c *okapi.Context, apiKeys *auth.APIKeyService, users *repositori
 	if !user.Active {
 		return c.AbortForbidden("account is disabled")
 	}
+	markSuspended(c, user)
 	if !ipAllowed(key.AllowedIPs, c.RealIP()) {
 		return c.AbortForbidden("IP address not allowed for this API key")
 	}

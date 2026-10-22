@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, onBeforeUnmount } from 'vue'
+import AppModal from '@/components/AppModal.vue'
+import type { Plan } from '@/api/types'
 import { useRouter } from 'vue-router'
 import { adminApi } from '@/api/admin'
 import { useNotificationStore } from '@/stores/notification'
@@ -42,6 +44,45 @@ function onSearchInput() {
   searchTimer = setTimeout(() => goToPage(0), 300)
 }
 
+const showCreate = ref(false)
+const creating = ref(false)
+const plans = ref<Plan[]>([])
+const createForm = ref({ name: '', display_name: '', owner_email: '', owner_name: '', plan_id: 0 })
+
+async function openCreate() {
+  createForm.value = { name: '', display_name: '', owner_email: '', owner_name: '', plan_id: 0 }
+  showCreate.value = true
+  try {
+    plans.value = (await adminApi.listPlans('', 0, 100)).data.data.filter((p) => p.is_active && !p.system)
+  } catch {
+    plans.value = []
+  }
+}
+
+async function createWorkspace() {
+  const f = createForm.value
+  creating.value = true
+  try {
+    const res = await adminApi.createWorkspace({
+      name: f.name.trim(),
+      display_name: f.display_name.trim() || undefined,
+      owner_email: f.owner_email.trim(),
+      owner_name: f.owner_name.trim() || undefined,
+      plan_id: f.plan_id || undefined,
+    })
+    const created = res.data.data
+    notify.success(created.owner_created
+      ? t('operator.createWorkspace.ownerCreated', { name: created.workspace.name, email: f.owner_email.trim() })
+      : t('operator.createWorkspace.created', { name: created.workspace.name }))
+    showCreate.value = false
+    router.push(`/admin/workspaces/${created.workspace.id}`)
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    creating.value = false
+  }
+}
+
 function fmtDate(s: string): string {
   return new Date(s).toLocaleDateString()
 }
@@ -58,9 +99,14 @@ onBeforeUnmount(() => {
         <h1>Workspaces</h1>
         <p class="text-muted">All workspaces on the platform.</p>
       </div>
-      <button class="btn btn-secondary" :disabled="loading" @click="reload">
-        <span class="mdi mdi-refresh"></span> Refresh
-      </button>
+      <div class="header-actions">
+        <button class="btn btn-secondary" :disabled="loading" @click="reload">
+          <span class="mdi mdi-refresh"></span> Refresh
+        </button>
+        <button class="btn btn-primary" @click="openCreate">
+          <span class="mdi mdi-plus"></span>{{ t('operator.createWorkspace.button') }}
+        </button>
+      </div>
     </div>
 
     <div class="card">
@@ -114,6 +160,10 @@ onBeforeUnmount(() => {
                       {{ w.display_name || w.name }}
                       <span v-if="traitOf(w)" class="badge" :class="traitOf(w)!.badgeClass"
                         :title="traitOf(w)!.title">{{ traitOf(w)!.label }}</span>
+                      <span v-if="w.restriction" class="badge"
+                        :class="w.restriction === 'suspended' ? 'badge-danger' : 'badge-warning'">{{
+                          t(w.restriction === 'suspended' ? 'operator.restriction.badgeSuspended' : 'operator.restriction.badgeReadOnly')
+                        }}</span>
                     </span>
                     <span class="cell-sub">{{ w.name }}</span>
                   </span>
@@ -137,10 +187,61 @@ onBeforeUnmount(() => {
     </div>
 
     <Pagination :pageable="pageable" @page="goToPage" />
+
+    <Teleport to="body">
+      <AppModal v-if="showCreate" @close="showCreate = false">
+        <div class="modal-header">
+          <h3>{{ t('operator.createWorkspace.title') }}</h3>
+          <button class="btn-icon btn-icon-muted" :aria-label="t('shell.close')" @click="showCreate = false">
+            <span class="mdi mdi-close"></span>
+          </button>
+        </div>
+        <form @submit.prevent="createWorkspace">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label" for="cw-name">{{ t('operator.createWorkspace.name') }}</label>
+              <input id="cw-name" v-model="createForm.name" class="form-input" required pattern="[a-z0-9][a-z0-9\-]*" autofocus />
+              <span class="form-hint">{{ t('operator.createWorkspace.nameHint') }}</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="cw-display">{{ t('operator.createWorkspace.displayName') }}</label>
+              <input id="cw-display" v-model="createForm.display_name" class="form-input" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="cw-email">{{ t('operator.createWorkspace.ownerEmail') }}</label>
+              <input id="cw-email" v-model="createForm.owner_email" class="form-input" type="email" required />
+              <span class="form-hint">{{ t('operator.createWorkspace.ownerEmailHint') }}</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="cw-owner">{{ t('operator.createWorkspace.ownerName') }}</label>
+              <input id="cw-owner" v-model="createForm.owner_name" class="form-input" />
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label" for="cw-plan">{{ t('operator.createWorkspace.plan') }}</label>
+              <select id="cw-plan" v-model.number="createForm.plan_id" class="form-select">
+                <option :value="0">{{ t('operator.createWorkspace.noPlan') }}</option>
+                <option v-for="p in plans" :key="p.id" :value="p.id">{{ p.name }}</option>
+              </select>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showCreate = false">{{ t('action.cancel') }}</button>
+            <button type="submit" class="btn btn-primary"
+              :disabled="creating || !createForm.name.trim() || !createForm.owner_email.trim()">
+              {{ t('operator.createWorkspace.create') }}
+            </button>
+          </div>
+        </form>
+      </AppModal>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
 .toolbar {
   display: flex;
   align-items: center;

@@ -56,6 +56,8 @@ type NodeDocker interface {
 
 type Service struct {
 	repo *repositories.JobRepository
+	// paused reports a suspended workspace, whose CronJob schedules are dropped until it is lifted.
+	paused func(workspaceID uint) bool
 	// deployments finds an app's in-flight deploy, which a declared run waits for.
 	deployments *repositories.DeploymentRepository
 	apps        *repositories.ApplicationRepository
@@ -78,6 +80,9 @@ func (s *Service) SetDeployments(d *repositories.DeploymentRepository) { s.deplo
 
 // SetQuota wires the plan/quota enforcer (nil-safe; nil skips checks).
 func (s *Service) SetQuota(q *quota.Service) { s.quota = q }
+
+// SetPaused wires the suspended-workspace check used by SyncSchedules.
+func (s *Service) SetPaused(f func(workspaceID uint) bool) { s.paused = f }
 
 func NewService(repo *repositories.JobRepository, apps *repositories.ApplicationRepository, releases *repositories.ReleaseRepository, clients NodeDocker, enqueuer Enqueuer, defaultTimeoutSecs int) *Service {
 	if defaultTimeoutSecs <= 0 {

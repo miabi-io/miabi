@@ -24,7 +24,7 @@ const notify = useNotificationStore()
 
 const wsId = computed(() => Number(route.params.id))
 const ws = ref<AdminWorkspaceDetail | null>(null)
-const { t } = useI18n()
+const { t, d } = useI18n()
 const trait = computed(() => workspaceTrait(ws.value, t))
 const loading = ref(false)
 const busy = ref(false)
@@ -40,6 +40,77 @@ const onSystemPlan = computed(() => plans.value.some((p) => p.system && p.id ===
 const assignablePlans = computed(() =>
   plans.value.filter((p) => !p.system || p.id === ws.value?.plan_id),
 )
+
+// --- Restriction and workloads ---
+const restrictForm = ref({ state: 'read_only' as 'read_only' | 'suspended', reason: '', until: '' })
+const showSuspendConfirm = ref(false)
+const showLiftConfirm = ref(false)
+const showStopConfirm = ref(false)
+
+function openRestrict() {
+  if (restrictForm.value.state === 'suspended') showSuspendConfirm.value = true
+  else applyRestriction()
+}
+
+async function applyRestriction() {
+  if (!ws.value) return
+  showSuspendConfirm.value = false
+  busy.value = true
+  try {
+    const f = restrictForm.value
+    const until = f.until ? new Date(`${f.until}T23:59:59`).toISOString() : undefined
+    await adminApi.restrictWorkspace(ws.value.id, { state: f.state, reason: f.reason.trim() || undefined, until })
+    notify.success(t('operator.restriction.applied'))
+    await load()
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    busy.value = false
+  }
+}
+
+async function liftRestriction() {
+  if (!ws.value) return
+  showLiftConfirm.value = false
+  busy.value = true
+  try {
+    await adminApi.liftWorkspaceRestriction(ws.value.id)
+    notify.success(t('operator.restriction.lifted'))
+    await load()
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    busy.value = false
+  }
+}
+
+async function stopAll() {
+  if (!ws.value) return
+  showStopConfirm.value = false
+  busy.value = true
+  try {
+    const r = (await adminApi.stopWorkspace(ws.value.id)).data.data
+    notify.success(t('operator.restriction.stopped', { apps: r.apps, databases: r.databases }))
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    busy.value = false
+  }
+}
+
+async function startAll() {
+  if (!ws.value) return
+  busy.value = true
+  try {
+    const r = (await adminApi.startWorkspace(ws.value.id)).data.data
+    notify.success(t('operator.restriction.started', { apps: r.apps, databases: r.databases }))
+    if (r.failed) notify.error(t('operator.restriction.startFailed', { failed: r.failed }))
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    busy.value = false
+  }
+}
 
 async function load() {
   loading.value = true
@@ -418,6 +489,55 @@ function eventSeverity(e: AdminEvent): string {
         </div>
       </div>
 
+      <div v-if="!ws.system" class="card mt-4">
+        <div class="card-header">
+          <h2>{{ t('operator.restriction.card') }}</h2>
+          <div class="header-actions">
+            <button class="btn btn-secondary btn-sm" :disabled="busy || ws.restriction === 'suspended'" @click="startAll">
+              <span class="mdi mdi-play"></span>{{ t('operator.restriction.startAll') }}
+            </button>
+            <button class="btn btn-secondary btn-sm" :disabled="busy" @click="showStopConfirm = true">
+              <span class="mdi mdi-stop"></span>{{ t('operator.restriction.stopAll') }}
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          <p class="text-muted restriction-hint">{{ t('operator.restriction.cardHint') }}</p>
+          <div v-if="ws.restriction" class="restriction-current">
+            <span class="badge" :class="ws.restriction === 'suspended' ? 'badge-danger' : 'badge-warning'">{{
+              t(ws.restriction === 'suspended' ? 'operator.restriction.badgeSuspended' : 'operator.restriction.badgeReadOnly') }}</span>
+            <span v-if="ws.restricted_at" class="text-muted">{{ t('operator.restriction.since', { date: d(new Date(ws.restricted_at), 'datetime') }) }}</span>
+            <span v-if="ws.restriction_reason">{{ t('operator.restriction.reason', { reason: ws.restriction_reason }) }}</span>
+            <span v-if="ws.restriction_until" class="text-muted">{{ t('operator.restriction.until', { date: d(new Date(ws.restriction_until), 'date') }) }}</span>
+            <button class="btn btn-secondary btn-sm" :disabled="busy" @click="showLiftConfirm = true">
+              {{ t('operator.restriction.lift') }}</button>
+          </div>
+          <p v-else class="text-muted">{{ t('operator.restriction.none') }}</p>
+          <form class="restriction-form" @submit.prevent="openRestrict">
+            <div class="form-group">
+              <label class="form-label" for="r-state">{{ t('operator.restriction.state') }}</label>
+              <select id="r-state" v-model="restrictForm.state" class="form-select">
+                <option value="read_only">{{ t('operator.restriction.readOnly') }}</option>
+                <option value="suspended">{{ t('operator.restriction.suspend') }}</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="r-reason">{{ t('operator.restriction.reasonLabel') }}</label>
+              <input id="r-reason" v-model="restrictForm.reason" class="form-input" maxlength="500"
+                :placeholder="t('operator.restriction.reasonPlaceholder')" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="r-until">{{ t('operator.restriction.untilLabel') }}</label>
+              <input id="r-until" v-model="restrictForm.until" class="form-input" type="date" />
+              <span class="form-hint">{{ t('operator.restriction.untilHint') }}</span>
+            </div>
+            <div>
+              <button type="submit" class="btn btn-primary" :disabled="busy">{{ t('operator.restriction.apply') }}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <!-- Details -->
       <div class="card mt-4">
         <div class="card-header"><h2>Details</h2></div>
@@ -677,7 +797,10 @@ function eventSeverity(e: AdminEvent): string {
                   <div class="cell-id">
                     <span class="avatar avatar-sm">{{ memberName(m).charAt(0).toUpperCase() }}</span>
                     <span class="cell-text">
-                      <span class="cell-title">{{ memberName(m) }}</span>
+                      <span class="cell-title">
+                        {{ memberName(m) }}
+                        <span v-if="m.managed_by" class="badge badge-info">{{ t('operator.managedBy', { provider: m.managed_by }) }}</span>
+                      </span>
                       <span class="cell-sub">{{ m.user?.email }}</span>
                     </span>
                   </div>
@@ -714,6 +837,38 @@ function eventSeverity(e: AdminEvent): string {
         </ul>
       </div>
     </template>
+
+    <ConfirmDialog
+      :open="showSuspendConfirm"
+      :title="t('operator.restriction.confirmSuspendTitle')"
+      :message="t('operator.restriction.confirmSuspendMessage', { name: ws?.name })"
+      :confirm-label="t('operator.restriction.apply')"
+      variant="danger"
+      :busy="busy"
+      @confirm="applyRestriction"
+      @cancel="showSuspendConfirm = false"
+    />
+
+    <ConfirmDialog
+      :open="showLiftConfirm"
+      :title="t('operator.restriction.confirmLiftTitle')"
+      :message="t('operator.restriction.confirmLiftMessage', { name: ws?.name })"
+      :confirm-label="t('operator.restriction.lift')"
+      :busy="busy"
+      @confirm="liftRestriction"
+      @cancel="showLiftConfirm = false"
+    />
+
+    <ConfirmDialog
+      :open="showStopConfirm"
+      :title="t('operator.restriction.confirmStopTitle')"
+      :message="t('operator.restriction.confirmStopMessage', { name: ws?.name })"
+      :confirm-label="t('operator.restriction.stopAll')"
+      variant="danger"
+      :busy="busy"
+      @confirm="stopAll"
+      @cancel="showStopConfirm = false"
+    />
 
     <ConfirmDialog
       :open="showPlanConfirm"
@@ -771,6 +926,15 @@ function eventSeverity(e: AdminEvent): string {
 .header-title h1 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .subline { display: block; margin-top: 2px; font-size: 13px; color: var(--text-muted); }
 .header-actions { display: flex; gap: 8px; }
+.restriction-hint { margin: 0 0 12px; font-size: 13px; }
+.restriction-current { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.restriction-current .btn { margin-left: auto; }
+.restriction-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0 16px;
+  align-items: end;
+}
 
 .details {
   display: grid;

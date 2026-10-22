@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/webhooksig"
 )
@@ -81,6 +82,11 @@ func (s *Service) TriggerScheduled(pipelineID uint) (*models.PipelineRun, error)
 	if err != nil {
 		return nil, ErrNotFound
 	}
+	if s.restricted != nil {
+		if err := s.restricted(p.WorkspaceID); err != nil {
+			return nil, err
+		}
+	}
 	return s.Trigger(p.WorkspaceID, p.ID, TriggerInput{Trigger: "schedule", Branch: p.SourceRef})
 }
 
@@ -136,6 +142,13 @@ func (s *Service) TriggerPush(workspaceID, pipelineID uint, signature string, bo
 	branch, commit, message := parsePush(body)
 	if spec.On.Push == nil || !spec.On.FiresOnBranch(branch) {
 		return nil, false, nil // not an error; this push just doesn't apply
+	}
+	if s.restricted != nil {
+		if err := s.restricted(workspaceID); err != nil {
+			// Acknowledged, not failed: the provider would otherwise retry a push that cannot run.
+			logger.Info("pipeline push ignored: workspace restricted", "pipeline", pipelineID, "reason", err)
+			return nil, false, nil
+		}
 	}
 	run, err = s.Trigger(workspaceID, pipelineID, TriggerInput{
 		Trigger: "push", Branch: branch, Commit: commit, CommitMessage: message,
