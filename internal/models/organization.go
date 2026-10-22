@@ -29,47 +29,21 @@ import "time"
 // repository layer, and that stays the isolation mechanism.
 type Organization struct {
 	UIDModel
-	ID uint `json:"id" gorm:"primaryKey"`
-	// Name is the globally unique handle (e.g. "default"). Immutable once created: it is the handle
-	// admins and the API address the org by.
-	Name string `json:"name" gorm:"uniqueIndex;not null"`
-	// DisplayName is the free-text label shown in the UI.
-	DisplayName string `json:"display_name"`
-	// IsDefault marks the org new workspaces, users and providers attach to when they name none.
-	// Exactly one row carries it, enforced by a partial unique index.
-	IsDefault bool `json:"is_default" gorm:"default:false;not null"`
-	// OwnerUserID is the user accountable for the org; 0 when none is assigned.
-	OwnerUserID uint `json:"owner_user_id" gorm:"index"`
-	// MaxWorkspaces caps how many workspaces the org may hold. Unlimited (-1) means no cap and 0
-	// means none allowed, matching Plan's convention.
-	MaxWorkspaces int `json:"max_workspaces" gorm:"not null;default:-1"`
-	// MaxWorkspacesPerUser caps how many workspaces one of this org's users may own; nil inherits the
-	// platform default (Platform Settings). MaxWorkspaceMembershipsPerUser is the same for workspaces
-	// they join as a non-owner member. Both follow Plan's convention: -1 unlimited, 0 none, N = N.
-	//
-	// The org is the authority for its own tenants, which is why these live here rather than only as a
-	// platform-wide number: one realm can be generous and another tight, and the platform value is
-	// what an org that sets nothing falls back to.
-	MaxWorkspacesPerUser           *int `json:"max_workspaces_per_user,omitempty"`
-	MaxWorkspaceMembershipsPerUser *int `json:"max_workspace_memberships_per_user,omitempty"`
-	// MaxWorkspacesPerOwner replaces MaxWorkspacesPerUser for the org's owner, so the accountable user
-	// can hold more than the tenants they onboard; nil applies the per-user cap to them too. Enterprise
-	// (user_workspace_limit). The org's total cap, MaxWorkspaces, still binds the owner.
-	MaxWorkspacesPerOwner *int `json:"max_workspaces_per_owner,omitempty"`
-	// WorkspaceCreation is who among the org's users may create workspaces (WorkspaceCreation* modes);
-	// nil inherits the platform setting.
-	WorkspaceCreation *string `json:"workspace_creation,omitempty"`
-	// DefaultClusterID is the location the org's new workspaces default to; nil leaves them on the
-	// platform default. An org that owns clusters is confined to them (see Cluster.OrganizationID).
-	DefaultClusterID *uint `json:"default_cluster_id,omitempty" gorm:"index"`
-	// EnforceSSO disables local password login for this org's users (Enterprise; writing it is gated
-	// on the sso_saml entitlement). Off by default.
-	EnforceSSO bool      `json:"enforce_sso" gorm:"default:false;not null"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
-
-	// WorkspaceCount is filled on read for the admin list; never persisted.
-	WorkspaceCount int64 `json:"workspace_count" gorm:"-"`
+	ID                             uint      `json:"id" gorm:"primaryKey"`
+	Name                           string    `json:"name" gorm:"uniqueIndex;not null"`
+	DisplayName                    string    `json:"display_name"`
+	IsDefault                      bool      `json:"is_default" gorm:"default:false;not null"`
+	OwnerUserID                    uint      `json:"owner_user_id" gorm:"index"`
+	MaxWorkspaces                  int       `json:"max_workspaces" gorm:"not null;default:-1"`
+	MaxWorkspacesPerUser           *int      `json:"max_workspaces_per_user,omitempty"`
+	MaxWorkspaceMembershipsPerUser *int      `json:"max_workspace_memberships_per_user,omitempty"`
+	MaxWorkspacesPerOwner          *int      `json:"max_workspaces_per_owner,omitempty"`
+	WorkspaceCreation              *string   `json:"workspace_creation,omitempty"`
+	DefaultClusterID               *uint     `json:"default_cluster_id,omitempty" gorm:"index"`
+	EnforceSSO                     bool      `json:"enforce_sso" gorm:"default:false;not null"`
+	CreatedAt                      time.Time `json:"created_at"`
+	UpdatedAt                      time.Time `json:"updated_at"`
+	WorkspaceCount                 int64     `json:"workspace_count" gorm:"-"`
 }
 
 // DefaultOrganizationName is the handle of the seeded default organization, and

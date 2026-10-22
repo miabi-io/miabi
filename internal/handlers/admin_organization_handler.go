@@ -122,18 +122,14 @@ func (h *AdminOrganizationHandler) Get(c *okapi.Context) error {
 
 type AdminCreateOrganizationRequest struct {
 	Body struct {
-		Name          string `json:"name" maxLength:"32"`
-		DisplayName   string `json:"display_name" required:"true" maxLength:"120"`
-		OwnerUserID   uint   `json:"owner_user_id"`
-		MaxWorkspaces *int   `json:"max_workspaces" min:"-1"`
-		// Per-user caps for this org's users; null inherits the platform default.
-		MaxWorkspacesPerUser           *int `json:"max_workspaces_per_user" min:"-1"`
-		MaxWorkspaceMembershipsPerUser *int `json:"max_workspace_memberships_per_user" min:"-1"`
-		// MaxWorkspacesPerOwner caps the owner instead of the per-user cap; null applies the per-user
-		// cap to them too. Enterprise (user_workspace_limit).
-		MaxWorkspacesPerOwner *int `json:"max_workspaces_per_owner" min:"-1"`
-		// WorkspaceCreation is who may create workspaces; null inherits the platform setting.
-		WorkspaceCreation *string `json:"workspace_creation" enum:"anyone,except_invited,admins_only"`
+		Name                           string  `json:"name" maxLength:"32"`
+		DisplayName                    string  `json:"display_name" required:"true" maxLength:"120"`
+		OwnerUserID                    uint    `json:"owner_user_id"`
+		MaxWorkspaces                  *int    `json:"max_workspaces" min:"-1"`
+		MaxWorkspacesPerUser           *int    `json:"max_workspaces_per_user" min:"-1"`
+		MaxWorkspaceMembershipsPerUser *int    `json:"max_workspace_memberships_per_user" min:"-1"`
+		MaxWorkspacesPerOwner          *int    `json:"max_workspaces_per_owner" min:"-1"`
+		WorkspaceCreation              *string `json:"workspace_creation" enum:"anyone,except_invited,admins_only"`
 	} `json:"body"`
 }
 
