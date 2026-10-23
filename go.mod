@@ -52,7 +52,7 @@ require (
 	github.com/libdns/scaleway v0.3.1
 	github.com/libdns/tencentcloud v1.4.3
 	github.com/libdns/transip v1.1.2
-	github.com/miabi-io/runner v0.1.0
+	github.com/miabi-io/runner v0.2.0
 	github.com/miekg/dns v1.1.73
 	github.com/moby/go-archive v0.3.3
 	github.com/moby/moby/api v1.56.1
