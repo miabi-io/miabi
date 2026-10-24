@@ -419,6 +419,38 @@ func SafeNext(raw string) string {
 	return raw
 }
 
+// BackchannelLogout receives an OpenID Connect Back-Channel Logout token from the provider: it
+// re-applies the groups the token carries and ends the named user's sessions.
+func (h *OAuthHandler) BackchannelLogout(c *okapi.Context) error {
+	c.SetHeader("Cache-Control", "no-store")
+	p, err := h.oauth.Get(c.Param("slug"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid_request", "error_description": "unknown provider"})
+	}
+	ctx := c.Request().Context()
+	user, err := h.oauth.BackchannelLogout(ctx, p, c.FormValue("logout_token"))
+	switch {
+	case errors.Is(err, oauth.ErrInvalidLogoutToken), errors.Is(err, oauth.ErrUnsupportedType):
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid_request", "error_description": err.Error()})
+	case err != nil:
+		return c.AbortInternalServerError("logout failed", err)
+	}
+	if user != nil {
+		if sessions, err := h.sessions.ListByUser(user.ID); err == nil {
+			for _, s := range sessions {
+				if !s.Revoked && time.Now().Before(s.ExpiresAt) {
+					h.auth.Revoke(ctx, s.JTI)
+				}
+			}
+		}
+		_ = h.sessions.RevokeAllForUser(user.ID, "")
+		h.audit.Record(audit.Entry{ActorID: &user.ID, Action: "user.logout.backchannel", TargetType: "user",
+			IP: c.RealIP(), Metadata: okapi.M{"provider": p.Name}})
+	}
+	c.WriteStatus(http.StatusOK)
+	return nil
+}
+
 func (h *OAuthHandler) fail(c *okapi.Context, code string) error {
 	base := strings.TrimRight(h.cfg.AppWebURL, "/")
 	c.Redirect(http.StatusFound, base+"/login?error="+url.QueryEscape(code))
