@@ -150,7 +150,7 @@ func (s *Service) sendEvent(ctx context.Context, conn *Connection, secret string
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode/100 != 2 {
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return errors.New(resp.Status + ": " + string(bytes.TrimSpace(msg)))
