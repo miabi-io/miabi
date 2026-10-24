@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { safeNext } from '@/utils/safeNext'
 import { useThemeStore } from '@/stores/theme'
 import { useBrandStore } from '@/stores/brand'
 import type { Brand } from '@/api/types'
@@ -143,7 +144,7 @@ async function submit() {
       router.push({ name: 'change-password' })
       return
     }
-    router.push(pendingInvite() ? { name: 'accept-invitation' } : '/')
+    router.push(pendingInvite() ? { name: 'accept-invitation' } : afterLogin())
   } catch (e) {
     error.value = apiErrorMessage(e, t(step.value === 'twofactor' ? 'login.invalidCode' : 'login.invalidCredentials'))
   } finally {
@@ -172,7 +173,7 @@ async function signInWithPasskey() {
       router.push({ name: 'change-password' })
       return
     }
-    router.push(pendingInvite() ? { name: 'accept-invitation' } : '/')
+    router.push(pendingInvite() ? { name: 'accept-invitation' } : afterLogin())
   } catch (e) {
     if (!(e instanceof PasskeyCancelled)) error.value = apiErrorMessage(e, t('login.passkeyFailed'))
   } finally {
@@ -186,12 +187,18 @@ function backToCredentials() {
   error.value = ''
   if (ssoTwoFactor.value) {
     ssoTwoFactor.value = false
-    router.replace({ query: {} })
+    router.replace({ query: next.value ? { next: next.value } : {} })
   }
 }
 
+// next is where the visitor was going before sign-in (?next=, set by the router guard or a deep link).
+const next = computed(() => safeNext(route.query.next))
+function afterLogin(): string {
+  return next.value || '/'
+}
+
 function signInWith(slug: string) {
-  window.location.href = authorizeUrl(slug)
+  window.location.href = authorizeUrl(slug, undefined, [], next.value)
 }
 
 // Switch to the "Continue with SSO" email step, prefilling the email if the user
@@ -217,7 +224,7 @@ async function continueWithSSO() {
     const res = await oauthApi.discoverSSO(ssoEmail.value.trim())
     const name = res.data.data?.name
     if (!name) throw new Error('no provider')
-    window.location.href = authorizeUrl(name)
+    window.location.href = authorizeUrl(name, undefined, [], next.value)
   } catch (e) {
     error.value = apiErrorMessage(e, t('login.noSsoProvider'))
   } finally {

@@ -20,6 +20,7 @@
 package middlewares
 
 import (
+	"errors"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -96,7 +97,12 @@ func WorkspaceScope(repo *repositories.WorkspaceRepository, customRoles *reposit
 		}
 		if !safeMethod(c.Request().Method) && !restrictionExempt(c.Request().Method, c.Request().URL.Path) {
 			if err := gate.Allowed(uint(wsID), restriction.ActionWrite); err != nil {
-				return c.AbortWithError(http.StatusForbidden, err)
+				status := http.StatusForbidden
+				var re *restriction.Error
+				if errors.As(err, &re) && re.Billing {
+					status = http.StatusPaymentRequired
+				}
+				return c.AbortWithError(status, err)
 			}
 		}
 		return c.Next()

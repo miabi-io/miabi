@@ -61,6 +61,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     loaded.value = true
   }
 
+  // selectByRef switches to the workspace a link names (?workspace=<handle|uid|id>), as the billing
+  // console's "Open in Miabi" does. False when this user cannot open it.
+  async function selectByRef(ref: string): Promise<boolean> {
+    if (!loaded.value) await fetchWorkspaces()
+    const r = ref.trim().toLowerCase()
+    const hit = workspaces.value.find((w) => w.name === r || w.uid?.toLowerCase() === r || String(w.id) === r)
+    if (!hit) return false
+    setWorkspace(hit.id)
+    return true
+  }
+
   // oldestWorkspaceId is the fallback when nothing else names a workspace. The list
   // arrives newest-first for display, which is the wrong guess to land on: a user's
   // oldest workspace is almost always their primary one.
@@ -103,6 +114,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   return {
     workspaces,
     currentWorkspaceId,
+    selectByRef,
     currentWorkspace,
     currentRole,
     contextLabel,

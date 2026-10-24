@@ -108,6 +108,7 @@
   },
   "adminNav": {
     "enterprise": {
+      "billing": "Billing",
       "license": "License",
       "siemStreaming": "SIEM Streaming",
       "title": "Enterprise"
@@ -2502,7 +2503,8 @@
       "couldNotCopyId": "Could not copy ID",
       "nodeNotFound": "Node not found",
       "selectAtLeastOneEvent": "Select at least one event",
-      "varsImported": "No variables imported | Imported {n} variable | Imported {n} variables"
+      "varsImported": "No variables imported | Imported {n} variable | Imported {n} variables",
+      "workspaceLinkNotFound": "The link opens workspace “{name}”, which you are not a member of. Showing your current workspace."
     },
     "configs": {
       "created": "Config created",

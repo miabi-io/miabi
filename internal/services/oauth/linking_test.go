@@ -22,6 +22,7 @@ package oauth
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -190,5 +191,28 @@ func TestTwoFactorChallengeIsDroppedAfterTooManyWrongCodes(t *testing.T) {
 	s.FailTwoFactor(ctx, id)
 	if _, err := s.PendingTwoFactor(ctx, id); !errors.Is(err, ErrTwoFactorExpired) {
 		t.Fatalf("err = %v, want the challenge dropped", err)
+	}
+}
+
+// Only a flow that needs a fresh IdP login asks for one: a landing path rides in the intent but
+// must not make someone already signed in at the IdP sign in again.
+func TestAuthCodeURLPrompt(t *testing.T) {
+	ctx := context.Background()
+	s := twoFactorService(t)
+	p := &models.OAuthProvider{Name: "console", ClientID: "c", AuthURL: "https://idp.example/authorize"}
+	for _, tc := range []struct {
+		intent string
+		force  bool
+	}{{"", false}, {"next\x1f/?workspace=prod", false}, {"login_token", true}} {
+		u, state, err := s.AuthCodeURLWithIntent(ctx, p, "https://paas.example/cb", tc.intent, tc.force)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(u, "prompt=login"); got != tc.force {
+			t.Errorf("intent %q: prompt=login %v, want %v (%s)", tc.intent, got, tc.force, u)
+		}
+		if got := s.ConsumeIntent(ctx, state); got != tc.intent {
+			t.Errorf("intent %q read back as %q", tc.intent, got)
+		}
 	}
 }

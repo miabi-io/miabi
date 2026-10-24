@@ -108,6 +108,7 @@
   },
   "adminNav": {
     "enterprise": {
+      "billing": "Facturation",
       "license": "Licence",
       "siemStreaming": "Diffusion SIEM",
       "title": "Enterprise"
@@ -2502,7 +2503,8 @@
       "couldNotCopyId": "Impossible de copier l’identifiant",
       "nodeNotFound": "Nœud introuvable",
       "selectAtLeastOneEvent": "Sélectionnez au moins un événement",
-      "varsImported": "Aucune variable importée | {n} variable importée | {n} variables importées"
+      "varsImported": "Aucune variable importée | {n} variable importée | {n} variables importées",
+      "workspaceLinkNotFound": "Le lien ouvre l’espace de travail « {name} », dont vous n’êtes pas membre. Votre espace de travail actuel est affiché."
     },
     "configs": {
       "created": "Configuration créée",

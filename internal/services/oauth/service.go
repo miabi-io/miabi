@@ -231,13 +231,14 @@ func (s *Service) Get(name string) (*models.OAuthProvider, error) {
 // AuthCodeURL stores a fresh state token (in Redis) and returns the provider's
 // authorization URL for the redirect, with the state the caller binds to the browser.
 func (s *Service) AuthCodeURL(ctx context.Context, p *models.OAuthProvider, redirectURI string) (string, string, error) {
-	return s.AuthCodeURLWithIntent(ctx, p, redirectURI, "")
+	return s.AuthCodeURLWithIntent(ctx, p, redirectURI, "", false)
 }
 
 // AuthCodeURLWithIntent is AuthCodeURL with an application-level intent bound to the state, read back in the
-// callback via ConsumeIntent. A non-empty intent also sets prompt=login so the IdP forces a fresh
-// authentication — the re-auth property the CLI-token flow depends on, mirroring OpenShift's request-token.
-func (s *Service) AuthCodeURLWithIntent(ctx context.Context, p *models.OAuthProvider, redirectURI, intent string) (string, string, error) {
+// callback via ConsumeIntent. forceLogin sets prompt=login so the IdP forces a fresh authentication — the
+// re-auth property the CLI-token flows depend on, mirroring OpenShift's request-token; an intent that only
+// carries where to land after sign-in leaves an existing IdP session alone.
+func (s *Service) AuthCodeURLWithIntent(ctx context.Context, p *models.OAuthProvider, redirectURI, intent string, forceLogin bool) (string, string, error) {
 	state, err := randomState()
 	if err != nil {
 		return "", "", err
@@ -256,8 +257,8 @@ func (s *Service) AuthCodeURLWithIntent(ctx context.Context, p *models.OAuthProv
 	q.Set("response_type", "code")
 	q.Set("scope", scopesOrDefault(p.Scopes))
 	q.Set("state", state)
-	if intent != "" {
-		q.Set("prompt", "login") // force fresh IdP authentication
+	if forceLogin {
+		q.Set("prompt", "login")
 	}
 	sep := "?"
 	if strings.Contains(p.AuthURL, "?") {

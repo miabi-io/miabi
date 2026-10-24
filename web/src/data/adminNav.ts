@@ -77,6 +77,7 @@ export const adminNavSections: NavSection[] = [
     items: [
       { key: 'adminNav.enterprise.license', name: 'License', path: '/admin/license', icon: 'mdi-license' },
       { key: 'adminNav.enterprise.siemStreaming', name: 'SIEM Streaming', path: '/admin/siem', icon: 'mdi-export-variant' },
+      { key: 'adminNav.enterprise.billing', name: 'Billing', path: '/admin/billing', icon: 'mdi-receipt-text-outline', requiresBillingAPI: true },
     ],
   },
 ]

@@ -64,9 +64,15 @@ type Config struct {
 	AdminPassword        string
 	PasswordResetEnabled bool
 
-	OpenAPIDocs    bool
-	MetricsEnabled bool
-	UpdateCheck    bool
+	OpenAPIDocs bool
+	// BillingAPIEnabled serves the Billing API (/api/v1/billing), MIABI_BILLING_API_ENABLED. Off by
+	// default, even with a licence granting it: an operator turns it on deliberately, at boot only.
+	BillingAPIEnabled bool
+	// BillingHardAfterDays is how long past its grace period an unpaid account turns from read-only
+	// to suspended, MIABI_BILLING_HARD_AFTER_DAYS; 0 never suspends it for non-payment.
+	BillingHardAfterDays int
+	MetricsEnabled       bool
+	UpdateCheck          bool
 	// PlanEnforcement gates per-workspace resource quotas. On by default; set it
 	// false and all plan limits and capabilities become unlimited/allowed.
 	PlanEnforcement bool
@@ -618,6 +624,8 @@ func New() *Config {
 		AdminPassword:         goutils.Env("MIABI_ADMIN_PASSWORD", defaultAdminPassword),
 		PasswordResetEnabled:  goutils.EnvBool("MIABI_PASSWORD_RESET_ENABLED", true),
 		OpenAPIDocs:           goutils.EnvBool("MIABI_OPENAPI_DOCS", true),
+		BillingAPIEnabled:     goutils.EnvBool("MIABI_BILLING_API_ENABLED", false),
+		BillingHardAfterDays:  goutils.EnvInt("MIABI_BILLING_HARD_AFTER_DAYS", 14),
 		UpdateCheck:           goutils.EnvBool("MIABI_UPDATE_CHECK", true),
 		MetricsEnabled:        goutils.EnvBool("MIABI_METRICS_ENABLED", false),
 		PlanEnforcement:       goutils.EnvBool("MIABI_PLAN_ENFORCEMENT", true),

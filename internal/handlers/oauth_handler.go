@@ -68,6 +68,10 @@ const intentLoginToken = "login_token"
 // value, joined by intentSep.
 const intentCliLogin = "cli_login"
 
+// intentNext carries where the browser goes after an ordinary sign-in (?next=, a same-site path),
+// so a deep link such as the billing console's "Open in Miabi" survives the IdP round-trip.
+const intentNext = "next"
+
 // intentSep joins the intent kind with its loopback redirect and CLI state in
 // the Redis-stored intent value. A unit separator never appears in a URL/state.
 const intentSep = "\x1f"
@@ -156,9 +160,14 @@ func (h *OAuthHandler) Authorize(c *okapi.Context) error {
 				strings.TrimSpace(c.Query("cli_scopes")),
 			}, intentSep)
 		}
+	default:
+		if next := SafeNext(c.Query("next")); next != "" {
+			intent = intentNext + intentSep + next
+		}
 	}
 	redirectURI := h.callbackURI(c, p.Name)
-	authURL, state, err := h.oauth.AuthCodeURLWithIntent(c.Request().Context(), p, redirectURI, intent)
+	forceLogin := intent != "" && !strings.HasPrefix(intent, intentNext+intentSep)
+	authURL, state, err := h.oauth.AuthCodeURLWithIntent(c.Request().Context(), p, redirectURI, intent, forceLogin)
 	if err != nil {
 		return c.AbortInternalServerError("failed to start oauth flow", err)
 	}
@@ -263,6 +272,10 @@ func (h *OAuthHandler) CompleteTwoFactor(c *okapi.Context, req *OAuthTwoFactorRe
 // code for the login page. CLI login intents mint a short-lived token instead of a console session:
 // login_token hands off to the display page; cli_login goes straight to the CLI's loopback callback.
 func (h *OAuthHandler) complete(c *okapi.Context, user *models.User, slug, intent string) (string, string) {
+	next := ""
+	if rest, isNext := strings.CutPrefix(intent, intentNext+intentSep); isNext {
+		next, intent = SafeNext(rest), ""
+	}
 	if h.loginTokens != nil && intent != "" {
 		if kind, redirect, cliState, scopes, ok := parseIntent(intent); ok {
 			switch kind {
@@ -295,7 +308,7 @@ func (h *OAuthHandler) complete(c *okapi.Context, user *models.User, slug, inten
 	// Set the session as an HttpOnly cookie and redirect to a clean URL — the
 	// token is never exposed in the address bar / browser history.
 	setSessionCookie(c, token)
-	return h.successURL(), ""
+	return h.successURL(next), ""
 }
 
 // issueLoginToken mints a CLI login token for a user who just re-authenticated via SSO, stashes
@@ -381,11 +394,29 @@ func (h *OAuthHandler) callbackURI(c *okapi.Context, slug string) string {
 	return base + "/auth/oauth/" + slug + "/callback"
 }
 
-// successURL points the browser at the SPA's OAuth callback page. The session is
-// carried by the HttpOnly cookie set on the redirect, not in the URL.
-func (h *OAuthHandler) successURL() string {
+// successURL points the browser at the SPA's OAuth callback page, which continues to next when
+// set. The session is carried by the HttpOnly cookie set on the redirect, not in the URL.
+func (h *OAuthHandler) successURL(next string) string {
 	base := strings.TrimRight(h.cfg.AppWebURL, "/")
+	if next != "" {
+		return base + "/oauth/callback?next=" + url.QueryEscape(next)
+	}
 	return base + "/oauth/callback"
+}
+
+// SafeNext returns raw when it is a path on this site ("/apps?workspace=prod"), else "". It refuses
+// anything a browser could read as another origin: a scheme, "//host", or a backslash.
+func SafeNext(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if len(raw) == 0 || len(raw) > 2048 || raw[0] != '/' || strings.HasPrefix(raw, "//") ||
+		strings.ContainsAny(raw, "\\\r\n\t") {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "" || u.Host != "" {
+		return ""
+	}
+	return raw
 }
 
 func (h *OAuthHandler) fail(c *okapi.Context, code string) error {

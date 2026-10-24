@@ -6,6 +6,7 @@ import { useThemeStore } from '@/stores/theme'
 import { useLanguageStore } from '@/stores/language'
 import { useBrandStore } from '@/stores/brand'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useAdminInfoStore } from '@/stores/adminInfo'
 import NotificationBell from '@/components/NotificationBell.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
 import ContextSwitcher from '@/components/ContextSwitcher.vue'
@@ -37,6 +38,7 @@ const theme = useThemeStore()
 const language = useLanguageStore()
 const { t } = useI18n()
 const ws = useWorkspaceStore()
+const adminInfo = useAdminInfoStore()
 
 const sidebarCollapsed = ref(localStorage.getItem('mb_sidebar_collapsed') === 'true')
 const mobileOpen = ref(false)
@@ -71,6 +73,7 @@ function sectionItems(section: NavSection): NavItem[] {
     if (item.requiresWorkspace && !ws.isWorkspaceContext) return false
     if (item.requiresWorkspaceAdmin && !(ws.isWorkspaceContext && ws.isWorkspaceAdmin)) return false
     if (item.requiresDocs && !docsEnabled.value) return false
+    if (item.requiresBillingAPI && !adminInfo.billingVisible) return false
     return true
   })
 }
@@ -144,6 +147,7 @@ onMounted(() => {
   void language.adopt(prefs?.locale)
   infoApi.get().then((res) => { docsEnabled.value = res.data.data.openapi_docs }).catch(() => { })
   brand.load()
+  if (auth.isAdmin) adminInfo.load()
 })
 onBeforeUnmount(() => {
   document.removeEventListener('click', closeMenus)

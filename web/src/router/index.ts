@@ -2,6 +2,10 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useElevationStore } from '@/stores/elevation'
 import { useBrandStore } from '@/stores/brand'
+import { useWorkspaceStore } from '@/stores/workspace'
+import { useNotificationStore } from '@/stores/notification'
+import { t } from '@/i18n'
+import { safeNext } from '@/utils/safeNext'
 
 const routes = [
   { path: '/login', name: 'login', component: () => import('@/views/auth/Login.vue'), meta: { guest: true, title: 'Sign in' } },
@@ -133,6 +137,7 @@ const routes = [
       { path: 'database-sizes', name: 'admin-database-sizes', component: () => import('@/views/admin/DatabaseSizes.vue'), meta: { title: 'Database sizes', admin: true } },
       { path: 'storage-classes', name: 'admin-storage-classes', component: () => import('@/views/admin/StorageClasses.vue'), meta: { title: 'Storage classes', admin: true } },
       { path: 'license', name: 'admin-license', component: () => import('@/views/admin/License.vue'), meta: { title: 'License', admin: true } },
+      { path: 'billing', name: 'admin-billing', component: () => import('@/views/admin/Billing.vue'), meta: { title: 'Billing', admin: true } },
       { path: 'siem', name: 'admin-siem', component: () => import('@/views/admin/SIEM.vue'), meta: { title: 'SIEM Streaming', admin: true } },
       { path: 'announcements', name: 'admin-announcements', component: () => import('@/views/admin/Announcements.vue'), meta: { title: 'Announcements', admin: true } },
       { path: 'platform-backup', name: 'admin-platform-backup', component: () => import('@/views/admin/PlatformBackup.vue'), meta: { title: 'Platform Backup', admin: true } },
@@ -149,8 +154,33 @@ const router = createRouter({
   routes,
 })
 
+// pendingWorkspaceKey keeps a ?workspace= link across sign-in, which may leave the site for SSO.
+const pendingWorkspaceKey = 'mb_pending_workspace'
+
+function pendingWorkspace(set?: string | null): string {
+  try {
+    if (set === null) sessionStorage.removeItem(pendingWorkspaceKey)
+    else if (set) sessionStorage.setItem(pendingWorkspaceKey, set)
+    return sessionStorage.getItem(pendingWorkspaceKey) ?? ''
+  } catch {
+    return set ?? ''
+  }
+}
+
 router.beforeEach(async (to, from) => {
   const auth = useAuthStore()
+  const linked = typeof to.query.workspace === 'string' ? to.query.workspace.trim() : ''
+  const wanted = pendingWorkspace(linked || undefined)
+  if (wanted && auth.isAuthenticated && !auth.pendingReset) {
+    pendingWorkspace(null)
+    if (!(await useWorkspaceStore().selectByRef(wanted).catch(() => false))) {
+      useNotificationStore().error(t('notify.common.workspaceLinkNotFound', { name: wanted }))
+    }
+    if (linked) {
+      const { workspace: _, ...query } = to.query
+      return { path: to.path, query, hash: to.hash, replace: true }
+    }
+  }
   // A pending forced password change holds only a short-lived reset token (no
   // session): the change-password screen is the only route reachable until it's
   // done, and it's unreachable otherwise.
@@ -158,8 +188,10 @@ router.beforeEach(async (to, from) => {
     return to.name === 'change-password' ? true : { name: 'change-password' }
   }
   if (to.name === 'change-password') return { name: auth.isAuthenticated ? 'dashboard' : 'login' }
-  if (to.meta.auth && !auth.isAuthenticated) return { name: 'login' }
-  if (to.meta.guest && auth.isAuthenticated) return { name: 'dashboard' }
+  if (to.meta.auth && !auth.isAuthenticated) {
+    return { name: 'login', query: to.fullPath !== '/' ? { next: to.fullPath } : {} }
+  }
+  if (to.meta.guest && auth.isAuthenticated) return safeNext(to.query.next) || { name: 'dashboard' }
   if (to.meta.admin && !auth.isAdmin) return { name: 'dashboard' }
   if (to.meta.admin && !(await useElevationStore().ensure())) {
     // Declined the unlock: stay where they were, or land on the workspace side on a fresh load.

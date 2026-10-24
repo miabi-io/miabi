@@ -50,6 +50,7 @@ const (
 	CtxAPIKeyWorkspaceID = "api_key_workspace_id"
 	CtxAPIKeyEphemeral   = "api_key_ephemeral"
 	CtxAPIKeyAppID       = "api_key_app_id"
+	CtxAPIKeyPurpose     = "api_key_purpose"
 	// CtxSuspended holds a suspended caller's suspension reason.
 	CtxSuspended = "user_suspended"
 	ctxJTI       = "jti"
@@ -214,10 +215,16 @@ func authAPIKey(c *okapi.Context, apiKeys *auth.APIKeyService, users *repositori
 	}
 	// A registry-only key (only registry_* scopes) is for docker login/push/pull,
 	// which the gateway authorizes at /internal/registry/auth — it has no business
-	// on the general API, so refuse it here.
-	if key.IsRegistryOnly() {
+	// on the general API, so refuse it here. A billing key is for the Billing API only.
+	switch key.Purpose() {
+	case models.KeyPurposeRegistry:
 		return c.AbortForbidden("this API key is limited to the container registry")
+	case models.KeyPurposeBilling:
+		if !strings.HasPrefix(c.Request().URL.Path, BillingPathPrefix) {
+			return c.AbortForbidden("this API key is limited to the Billing API")
+		}
 	}
+	c.Set(CtxAPIKeyPurpose, key.Purpose())
 
 	scopes := key.Scopes
 	if len(scopes) == 0 {

@@ -51,6 +51,8 @@ const (
 type Error struct {
 	State  models.WorkspaceRestriction
 	Reason string
+	// Billing marks a restriction the billing platform set (the account's payment status).
+	Billing bool
 }
 
 func (e *Error) Error() string {
@@ -58,7 +60,11 @@ func (e *Error) Error() string {
 	if e.State == models.WorkspaceRestrictionSuspended {
 		what = "suspended"
 	}
-	msg := "this workspace is " + what + " by the platform administrator"
+	by := " by the platform administrator"
+	if e.Billing {
+		by = " because of its billing status"
+	}
+	msg := "this workspace is " + what + by
 	if e.Reason != "" {
 		msg += ": " + e.Reason
 	}
@@ -67,6 +73,9 @@ func (e *Error) Error() string {
 
 // Code is the stable machine code surfaced in the API error envelope.
 func (e *Error) Code() string {
+	if e.Billing {
+		return "BILLING_RESTRICTED"
+	}
 	if e.State == models.WorkspaceRestrictionSuspended {
 		return "WORKSPACE_SUSPENDED"
 	}
@@ -98,9 +107,10 @@ type Workloads interface {
 const cacheTTL = 15 * time.Second
 
 type entry struct {
-	state  models.WorkspaceRestriction
-	reason string
-	at     time.Time
+	state   models.WorkspaceRestriction
+	reason  string
+	billing bool
+	at      time.Time
 }
 
 // Service manages workspace restrictions.
@@ -114,7 +124,12 @@ type Service struct {
 	// changed runs after a restriction is set or lifted (re-rendering the workspace's routes);
 	// nil skips it.
 	changed func(ctx context.Context, wsID uint)
+	// billingActor returns the billing service user's id (0 when there is none).
+	billingActor func() uint
 }
+
+// SetBillingActor tells restrictions set by the billing service user apart from an admin's.
+func (s *Service) SetBillingActor(f func() uint) { s.billingActor = f }
 
 // SetOnChange wires what must follow a restriction change, such as re-syncing the gateway routes
 // that serve the suspended notice.
@@ -142,6 +157,10 @@ func (s *Service) lookup(wsID uint) entry {
 	e = entry{at: now}
 	if ws, err := s.repo.FindByID(wsID); err == nil {
 		e.state, e.reason = ws.Restriction, ws.RestrictionReason
+		if ws.RestrictedBy != nil && s.billingActor != nil {
+			id := s.billingActor()
+			e.billing = id != 0 && *ws.RestrictedBy == id
+		}
 	}
 	s.mu.Lock()
 	s.cache[wsID] = e
@@ -170,7 +189,7 @@ func (s *Service) Allowed(wsID uint, a Action) error {
 	default:
 		return nil
 	}
-	return &Error{State: e.state, Reason: e.reason}
+	return &Error{State: e.state, Reason: e.reason, Billing: e.billing}
 }
 
 // SetInput is a restriction to apply.

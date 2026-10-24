@@ -209,6 +209,7 @@ const FEATURE_LABELS: Record<string, string> = {
   organizations: 'Multiple organizations',
   security_policies: 'Security Center policies',
   live_migration: 'Live migration',
+  billing: 'Billing API (add-on)',
   ee_features: 'Enterprise features',
 }
 

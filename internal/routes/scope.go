@@ -22,11 +22,15 @@ package routes
 import (
 	"strings"
 
+	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
 )
 
 // scopeFor derives the API-key scope a route requires from its method and its full template path
 func scopeFor(method, path string) string {
+	if strings.HasPrefix(path, middlewares.BillingPathPrefix) {
+		return models.ScopeBilling
+	}
 	segs := segments(path)
 	if s := adminScope(method, path, segs); s != "" {
 		return s

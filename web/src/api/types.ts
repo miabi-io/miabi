@@ -1063,6 +1063,7 @@ export type WorkspaceRole = 'owner' | 'admin' | 'developer' | 'viewer'
 
 export interface Workspace {
   id: number
+  uid?: string
   /** The unique handle (URL/CLI/docker name). Lowercase [a-z0-9-]. */
   name: string
   /** Free-text label shown in the UI. Prefer this for display. */
@@ -3647,4 +3648,27 @@ export interface ExternalCertificateOption {
   status: string
   not_after: string
   problem?: string
+}
+
+export type BillingAPIState = 'off' | 'unlicensed' | 'on'
+
+export interface AdminInfo {
+  billing_api: BillingAPIState
+}
+
+export interface BillingConnection {
+  connected: boolean
+  console_url?: string
+  console_instance_id?: string
+  notify_url?: string
+  portal_allowed_hosts?: string[]
+  key_prefix?: string
+  key_last_used_at?: string
+  connected_at?: string
+  connected_by?: number
+}
+
+export interface AdminBillingStatus {
+  billing_api: BillingAPIState
+  connection: BillingConnection
 }
