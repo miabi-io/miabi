@@ -94,10 +94,10 @@ func TestTierPresets(t *testing.T) {
 			t.Errorf("TierByName(%q) failed", tier.Name)
 		}
 	}
-	// Enterprise unlocks every flag and is unlimited.
+	// Enterprise unlocks every flag but the add-ons and is unlimited.
 	ent, _ := TierByName(TierEnterprise)
-	if len(ent.Flags) != len(AllFlags) {
-		t.Errorf("enterprise tier has %d flags, want all %d", len(ent.Flags), len(AllFlags))
+	if len(ent.Flags) != len(AllFlags)-len(AddOnFlags) {
+		t.Errorf("enterprise tier has %d flags, want all %d but the %d add-ons", len(ent.Flags), len(AllFlags), len(AddOnFlags))
 	}
 	if ent.Limits[LimitNodeLimit] != -1 || ent.Limits[LimitPlanLimit] != -1 {
 		t.Error("enterprise tier should be unlimited")

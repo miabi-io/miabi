@@ -17,13 +17,15 @@ export const oauthApi = {
 // provider. The browser navigates here directly (full page load), so it must hit
 // the API origin, not the SPA router. Pass intent='login_token' to force a fresh
 // IdP login and mint a CLI token instead of a console session.
-export function authorizeUrl(slug: string, intent?: string, scopes: string[] = []): string {
+export function authorizeUrl(slug: string, intent?: string, scopes: string[] = [], next = ''): string {
   const base = (import.meta.env.VITE_API_URL || '/api/v1') as string
   const origin = base.startsWith('http') ? '' : window.location.origin
   const q = new URLSearchParams()
   if (intent) q.set('intent', intent)
   // A narrowed grant requested by `miabi login --scopes` has to survive the IdP round-trip too.
   if (intent && scopes.length) q.set('cli_scopes', scopes.join(','))
+  // Where to land after an ordinary sign-in; the server validates it again.
+  if (!intent && next) q.set('next', next)
   const qs = q.toString()
   return `${origin}${base}/auth/oauth/${slug}/authorize${qs ? '?' + qs : ''}`
 }

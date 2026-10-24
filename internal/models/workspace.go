@@ -94,8 +94,12 @@ type Workspace struct {
 	// FrozenResources is what was running when the workspace was suspended, so lifting the
 	// suspension restarts exactly that and nothing a user had stopped on purpose.
 	FrozenResources *FrozenResources `json:"-" gorm:"type:text;serializer:json"`
-	CreatedAt       time.Time        `json:"created_at"`
-	UpdatedAt       time.Time        `json:"updated_at"`
+	// BillingAccountID is the billing account the workspace is billed to (nil = not billed).
+	BillingAccountID *uint `json:"billing_account_id,omitempty" gorm:"index"`
+	// BillingPrevPlanID is the plan the workspace had before it was attached, restored on detach.
+	BillingPrevPlanID *uint     `json:"-"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 
 	Members []WorkspaceMember `json:"-" gorm:"foreignKey:WorkspaceID"`
 }

@@ -26,6 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/dto"
 	"github.com/miabi-io/miabi/internal/handlers"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/services/billing"
 	"github.com/miabi-io/miabi/internal/services/controlmanager"
 )
 
@@ -37,6 +38,43 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 	sys := r.v1.Group("/system").WithTagInfo(okapi.GroupTag{Name: "License", Description: "License entitlements visible to every signed-in user."})
 
 	return []okapi.RouteDefinition{
+		{
+			Method:      http.MethodGet,
+			Path:        "/info",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminInfo.Get,
+			Summary:     "Platform information and statuses the admin screens share",
+			Response:    &dto.Response[handlers.AdminInfo]{},
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/billing",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminBilling.Status,
+			Summary:     "The Billing API state and the billing console connection",
+			Response:    &dto.Response[handlers.AdminBillingStatus]{},
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/billing/connect",
+			Group:       g,
+			Middlewares: sensitive,
+			Handler:     okapi.H(r.h.adminBilling.Connect),
+			Summary:     "Connect this Miabi to a billing console with its enrolment code",
+			Request:     &handlers.ConnectBillingRequest{},
+			Response:    &dto.Response[billing.Connection]{},
+		},
+		{
+			Method:      http.MethodDelete,
+			Path:        "/billing/connect",
+			Group:       g,
+			Middlewares: sensitive,
+			Handler:     r.h.adminBilling.Disconnect,
+			Summary:     "Disconnect the billing console and revoke its billing key",
+			Response:    &dto.Response[dto.MessageData]{},
+		},
 		{
 			Method:      http.MethodGet,
 			Path:        "/branding",

@@ -36,7 +36,8 @@ import (
 
 const reservedSettingPrefix = "app."
 
-var reservedSettingPrefixes = []string{reservedSettingPrefix, "image.", "brand."}
+// "billing." holds the console connection (secrets included); only the admin Billing page writes it.
+var reservedSettingPrefixes = []string{reservedSettingPrefix, "image.", "brand.", "billing."}
 
 var reservedSettingKeys = map[string]bool{
 	"cluster_name": true,

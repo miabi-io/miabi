@@ -57,6 +57,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/auth"
 	"github.com/miabi-io/miabi/internal/services/backup"
 	"github.com/miabi-io/miabi/internal/services/backupsettings"
+	"github.com/miabi-io/miabi/internal/services/billing"
 	"github.com/miabi-io/miabi/internal/services/branding"
 	"github.com/miabi-io/miabi/internal/services/certificate"
 	"github.com/miabi-io/miabi/internal/services/cluster"
@@ -237,6 +238,9 @@ type routerHandlers struct {
 	adminMetrics        *handlers.AdminMetricsHandler
 	adminEvent          *handlers.AdminEventHandler
 	adminSetting        *handlers.AdminSettingHandler
+	adminInfo           *handlers.AdminInfoHandler
+	adminBilling        *handlers.AdminBillingHandler
+	billing             *handlers.BillingHandler
 	adminBranding       *handlers.AdminBrandingHandler
 	register            *handlers.RegisterHandler
 	update              *handlers.UpdateHandler
@@ -394,6 +398,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// provides per-runner concurrency accounting + dead-lease requeue.
 	runnerService.SetScheduling(runnerManager, repositories.NewRunnerLeaseRepository(db))
 	apiKeyService := auth.NewAPIKeyService(apiKeyRepo)
+	billingService := billing.NewService(db, userRepo, apiKeyService, planRepo, settingRepo,
+		billing.EnrolmentInfo{MiabiURL: cfg.DeploymentURL(), InstallID: installID, Version: config.Version})
 	apiKeyService.SetQuota(quotaService)
 	// Login-token issuer for the console's "Copy login command": mints a short-lived personal API
 	// key and renders the CLI/curl commands. --url is the panel ROOT, so use the web URL — not
@@ -691,6 +697,22 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			logger.Warn("re-sync routes after a workspace restriction change", "workspace", wsID, "error", err)
 		}
 	})
+	restrictionService.SetBillingActor(billingService.ServiceUserID)
+	if cfg.BillingAPIEnabled {
+		for _, task := range []struct {
+			name, desc, spec string
+			run              func() error
+		}{
+			{"billing-idempotency-purge", "Delete expired Billing API idempotency keys", "17 * * * *", billingService.PurgeIdempotency},
+			{"billing-sweep", "Recompute billing account levels and apply them to workspaces", "*/5 * * * *", func() error { return billingService.Sweep(context.Background()) }},
+			{"billing-events", "Deliver billing events to the console", "* * * * *", func() error { return billingService.DeliverEvents(context.Background()) }},
+			{"billing-events-purge", "Delete delivered billing events past retention", "41 3 * * *", billingService.PurgeEvents},
+		} {
+			if err := cronManager.RegisterTask(task.name, 0, task.desc, task.spec, task.run); err != nil {
+				logger.Error("failed to register billing job", "job", task.name, "error", err)
+			}
+		}
+	}
 	// Daily purge of accounts whose deletion grace period has elapsed.
 	if err := cronManager.RegisterTask("account-purge", 0, "Purge accounts past deletion grace", "0 2 * * *", func() error {
 		accountService.PurgeDue(context.Background())
@@ -1481,6 +1503,9 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			adminMetrics:        handlers.NewAdminMetricsHandler(db, dockerClient, redisClient, time.Now()),
 			adminEvent:          handlers.NewAdminEventHandler(auditRepo, userRepo, bus, ee),
 			adminSetting:        handlers.NewAdminSettingHandler(settingRepo, settingsProvider, auditLogger),
+			adminInfo:           handlers.NewAdminInfoHandler(cfg.BillingAPIEnabled, ee),
+			adminBilling:        handlers.NewAdminBillingHandler(billingService, cfg.BillingAPIEnabled, ee, auditLogger),
+			billing:             handlers.NewBillingHandler(billingService, auditLogger),
 			adminBranding:       handlers.NewAdminBrandingHandler(brandingService, ee, auditLogger),
 			capability:          handlers.NewCapabilityHandler(cfg.ContainerGrantsEnabled, appRepo, workspaceRepo),
 			register:            handlers.NewRegisterHandler(registrationService, authService, userRepo, platformMailer, auditLogger),
@@ -1576,6 +1601,15 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// platform admin — can be offered the replicated "service" runtime when creating an app.
 	r.h.usage.SetClusterCap(clusterService)
 	r.h.usage.SetPlacer(placer)
+	billingService.SetAccountDeps(billing.AccountDeps{Workspaces: workspaceService, EE: ee, Meter: r.h.usage,
+		Restrictions: restrictionService, Deleter: accountService, HardAfter: time.Duration(cfg.BillingHardAfterDays) * 24 * time.Hour,
+		OwnerCreated: func(u *models.User) {
+			raw, owner, err := authService.CreatePasswordReset(u.Email)
+			if err != nil || owner == nil {
+				return
+			}
+			platformMailer.SendPasswordReset(owner.Email, owner.Name, raw, int(auth.PasswordResetTTL/time.Hour))
+		}})
 	r.h.app.SetPlacer(placer)
 	r.h.database.SetPlacer(placer)
 	r.h.volume.SetPlacer(placer)
@@ -1859,6 +1893,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.register(r.agentRoutes()...)
 	r.register(r.providerRoutes()...)
 	r.register(r.adminRoutes()...)
+	r.register(r.billingRoutes()...)
 	r.register(r.registryServerRoutes()...)
 	r.register(r.oauthPublicRoutes()...)
 	r.register(r.ssoAdminRoutes()...)

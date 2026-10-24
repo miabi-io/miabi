@@ -8,6 +8,7 @@ import { navSections, type NavItem, type NavSection } from '@/data/nav'
 import { label } from '@/i18n'
 import { useI18n } from 'vue-i18n'
 import { adminNavSections } from '@/data/adminNav'
+import { useAdminInfoStore } from '@/stores/adminInfo'
 import type { SearchKind, SearchResult } from '@/api/types'
 
 const props = defineProps<{ open: boolean; docsEnabled?: boolean; docsUrl?: string }>()
@@ -15,6 +16,7 @@ const emit = defineEmits<{ (e: 'update:open', value: boolean): void }>()
 
 const router = useRouter()
 const auth = useAuthStore()
+const adminInfo = useAdminInfoStore()
 const { t } = useI18n()
 const ws = useWorkspaceStore()
 
@@ -73,6 +75,7 @@ const navEntries = computed<Entry[]>(() => {
         if (item.requiresWorkspace && !ws.isWorkspaceContext) continue
         if (item.requiresWorkspaceAdmin && !(ws.isWorkspaceContext && ws.isWorkspaceAdmin)) continue
         if (item.requiresDocs && !props.docsEnabled) continue
+        if (item.requiresBillingAPI && !adminInfo.billingVisible) continue
         out.push({
           id: `nav:${section.id}:${item.name}`,
           group: admin ? `${t('nav.palette.adminGroup')} · ${label(section.key, section.title)}` : label(section.key, section.title),

@@ -133,3 +133,17 @@ func TestScopeFor_TenantNamesNeverLower(t *testing.T) {
 		t.Errorf("workspace named `members` = %q, want %q (raising is the safe direction)", got, models.ScopeAdmin)
 	}
 }
+
+func TestScopeFor_Billing(t *testing.T) {
+	for _, tc := range []struct{ method, path string }{
+		{"GET", "/api/v1/billing/plans"},
+		{"PUT", "/api/v1/billing/accounts/cus_1/subscription"},
+	} {
+		if got := scopeFor(tc.method, tc.path); got != models.ScopeBilling {
+			t.Errorf("scopeFor(%s %s) = %q, want billing", tc.method, tc.path, got)
+		}
+	}
+	if got := scopeFor("GET", "/api/v1/billingish"); got == models.ScopeBilling {
+		t.Error("a path merely starting with billing is classified as billing")
+	}
+}

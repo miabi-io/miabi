@@ -7,6 +7,7 @@ export interface NavItem {
   requiresWorkspace?: boolean
   requiresWorkspaceAdmin?: boolean
   requiresDocs?: boolean
+  requiresBillingAPI?: boolean
   external?: boolean
   workspaceTab?: 'settings' | 'members' | 'audit' | 'notifications'
 }

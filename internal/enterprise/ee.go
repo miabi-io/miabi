@@ -25,6 +25,7 @@ package enterprise
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -73,6 +74,7 @@ const (
 	FlagRecoveryPoints               = "recovery_points"   // recovery points over a database instance or a volume
 	FlagOrganizations                = "organizations"     // more than one organization (tenant realm)
 	FlagSecurityPolicies             = "security_policies" // Security Center: scoped, audited platform security policies
+	FlagBilling                      = "billing"           // Billing API for an external billing platform
 	FlagLiveMigration                = "live_migration"    // move an app, its volumes and databases to another location
 	FlagEEFeatures                   = "ee_features"
 )
@@ -117,8 +119,27 @@ var AllFlags = []FlagInfo{
 	{FlagRecoveryPoints, "recovery points: back up, schedule and verify a database instance or a volume as one sealed set"},
 	{FlagOrganizations, "organizations: tenant realms owning workspaces, with their own limits and clusters"},
 	{FlagSecurityPolicies, "Security Center: platform security policies with audit mode, scoped overrides and a decision log"},
+	{FlagBilling, "Billing API: an external billing platform drives plans, quotas and restrictions"},
 	{FlagLiveMigration, "live location migration: move an application with its volumes and databases to another location"},
 	{FlagEEFeatures, "baseline Enterprise features granted by every paid tier"},
+}
+
+// AddOnFlags are sold separately: no tier preset includes them, and a license carries one only when
+// it was granted explicitly (the portal offers billing on Enterprise).
+var AddOnFlags = []string{FlagBilling}
+
+// IsAddOn reports whether flag is an add-on.
+func IsAddOn(flag string) bool { return slices.Contains(AddOnFlags, flag) }
+
+// includedFlags is every flag but the add-ons, in catalog order: what Enterprise grants.
+func includedFlags() []string {
+	var out []string
+	for _, f := range AllFlags {
+		if !IsAddOn(f.Name) {
+			out = append(out, f.Name)
+		}
+	}
+	return out
 }
 
 const (
@@ -164,7 +185,7 @@ var Tiers = []Tier{
 	{
 		Name:  TierEnterprise,
 		Desc:  "Enterprises: everything, unlimited",
-		Flags: FlagNames(),
+		Flags: includedFlags(),
 		Limits: map[string]int{
 			LimitNodeLimit: -1,
 			LimitPlanLimit: -1,

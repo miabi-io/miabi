@@ -53,6 +53,12 @@ func (f *fakeRepo) SetRestriction(id uint, fields map[string]any) error {
 			w.RestrictionReason = v.(string)
 		case "restriction_until":
 			w.RestrictionUntil, _ = v.(*time.Time)
+		case "restricted_by":
+			if id, ok := v.(uint); ok {
+				w.RestrictedBy = &id
+			} else {
+				w.RestrictedBy = nil
+			}
 		case "frozen_resources":
 			if v == nil {
 				w.FrozenResources = nil
@@ -219,5 +225,25 @@ func TestChangeNotifies(t *testing.T) {
 	}
 	if len(got) != 2 || got[0] != 1 || got[1] != 1 {
 		t.Fatalf("notified %v, want the workspace twice (set, lift)", got)
+	}
+}
+
+func TestBillingRestriction(t *testing.T) {
+	repo := &fakeRepo{ws: map[uint]*models.Workspace{1: {ID: 1}, 2: {ID: 2}}}
+	s := NewService(repo, &fakeWorkloads{})
+	s.SetBillingActor(func() uint { return 42 })
+	ctx := context.Background()
+	if _, err := s.Set(ctx, 1, 42, SetInput{State: models.WorkspaceRestrictionReadOnly, Reason: "payment is overdue"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Set(ctx, 2, 7, SetInput{State: models.WorkspaceRestrictionReadOnly}); err != nil {
+		t.Fatal(err)
+	}
+	var re *Error
+	if err := s.Allowed(1, ActionWrite); !errors.As(err, &re) || !re.Billing || re.Code() != "BILLING_RESTRICTED" {
+		t.Errorf("billing hold: %v", err)
+	}
+	if err := s.Allowed(2, ActionWrite); !errors.As(err, &re) || re.Billing || re.Code() != "WORKSPACE_READ_ONLY" {
+		t.Errorf("admin hold: %v", err)
 	}
 }

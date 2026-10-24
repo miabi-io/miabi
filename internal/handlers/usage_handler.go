@@ -171,6 +171,26 @@ func (h *UsageHandler) Get(c *okapi.Context) error {
 	return ok(c, u)
 }
 
+// Limits reports a workspace's effective limits, overrides included.
+func (h *UsageHandler) Limits(wsID uint) any { return h.quota.EffectiveLimits(wsID) }
+
+// Measure reports a workspace's usage under the Billing API's Usage keys.
+func (h *UsageHandler) Measure(wsID uint) map[string]float64 {
+	appN, _ := h.apps.CountByWorkspace(wsID)
+	dbN, _ := h.dbs.CountInstancesByWorkspace(wsID)
+	cronN, _ := h.jobs.CountCronByWorkspace(wsID)
+	volN, _ := h.volumes.CountByWorkspace(wsID)
+	memberN, _ := h.workspaces.CountMembers(wsID)
+	cpuNano, memBytes, _ := h.apps.SumResourcesByWorkspace(wsID, 0)
+	volBytes, _ := h.volumes.SumSizeByWorkspace(wsID)
+	dbBytes, _ := h.dbs.SumVolumeSizeByWorkspace(wsID)
+	return map[string]float64{
+		"apps": float64(appN), "database_instances": float64(dbN), "cron_jobs": float64(cronN), "volumes": float64(volN),
+		"members": float64(memberN), "cpu_cores": float64(cpuNano) / nanoPerCore,
+		"memory_mb": float64(memBytes / bytesPerMB), "storage_mb": float64((volBytes + dbBytes) / bytesPerMB),
+	}
+}
+
 // swarmAvailable reports whether a location this workspace may use runs a swarm. A swarm elsewhere, such as
 // another organization's dedicated cluster, is none of its business and offers it nothing.
 func (h *UsageHandler) swarmAvailable(c *okapi.Context, wsID uint) bool {

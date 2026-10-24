@@ -26,4 +26,5 @@ const (
 	SignupSourceSelf       = "self"
 	SignupSourceInvitation = "invitation"
 	SignupSourceAdmin      = "admin"
+	SignupSourceBilling    = "billing"
 )

@@ -39,6 +39,9 @@ import type {
   WorkspaceQuotaOverride,
   LicenseView,
   LicenseHealth,
+  AdminInfo,
+  AdminBillingStatus,
+  BillingConnection,
   SIEMConfig,
   TelemetryStatus,
 } from './types'
@@ -430,6 +433,13 @@ export const adminApi = {
   installLicense: (token: string) => api.post<ApiResponse<LicenseView>>('/admin/license', { token }),
   removeLicense: () => api.delete<ApiResponse<{ message: string }>>('/admin/license'),
   licenseHealth: () => api.get<ApiResponse<LicenseHealth>>('/admin/license/health'),
+
+  info: () => api.get<ApiResponse<AdminInfo>>('/admin/info'),
+
+  // Billing console connection (Enterprise; gated billing, off unless MIABI_BILLING_API_ENABLED)
+  billingStatus: () => api.get<ApiResponse<AdminBillingStatus>>('/admin/billing'),
+  connectBilling: (code: string) => api.post<ApiResponse<BillingConnection>>('/admin/billing/connect', { code }),
+  disconnectBilling: () => api.delete<ApiResponse<{ message: string }>>('/admin/billing/connect'),
 
   // SIEM audit streaming targets (Enterprise; gated siem_stream)
   listSIEM: () => api.get<ApiResponse<SIEMConfig[]>>('/admin/siem'),
