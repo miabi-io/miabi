@@ -64,12 +64,8 @@ type Config struct {
 	AdminPassword        string
 	PasswordResetEnabled bool
 
-	OpenAPIDocs bool
-	// BillingAPIEnabled serves the Billing API (/api/v1/billing), MIABI_BILLING_API_ENABLED. Off by
-	// default, even with a licence granting it: an operator turns it on deliberately, at boot only.
-	BillingAPIEnabled bool
-	// BillingHardAfterDays is how long past its grace period an unpaid account turns from read-only
-	// to suspended, MIABI_BILLING_HARD_AFTER_DAYS; 0 never suspends it for non-payment.
+	OpenAPIDocs          bool
+	BillingAPIEnabled    bool
 	BillingHardAfterDays int
 	MetricsEnabled       bool
 	UpdateCheck          bool
