@@ -237,7 +237,7 @@ func (s *Service) callConsole(ctx context.Context, code Code, body enrollRequest
 	if err != nil {
 		return nil, coded(http.StatusBadGateway, "BILLING_CONSOLE_UNREACHABLE", "the console could not be reached: "+err.Error())
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	data, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	var env envelope
 	_ = json.Unmarshal(data, &env)
