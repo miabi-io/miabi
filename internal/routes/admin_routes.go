@@ -1244,6 +1244,14 @@ func (r *Router) oauthPublicRoutes() []okapi.RouteDefinition {
 		},
 		{
 			Method:      http.MethodPost,
+			Path:        "/{slug}/backchannel-logout",
+			Group:       g,
+			Handler:     r.h.oauthPublic.BackchannelLogout,
+			Summary:     "OpenID Connect Back-Channel Logout",
+			Description: "Takes a logout_token form field signed by the provider. Re-applies the groups it carries and ends the user's sessions.",
+		},
+		{
+			Method:      http.MethodPost,
 			Path:        "/2fa",
 			Group:       g,
 			Middlewares: []okapi.Middleware{r.authRateLimit},

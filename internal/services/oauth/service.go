@@ -107,6 +107,7 @@ type Service struct {
 	groupSync func(p *models.OAuthProvider, user *models.User, groups []string)
 	redis     *redis.Client
 	http      *http.Client
+	jwks      jwksCache
 }
 
 func NewService(providers *repositories.OAuthProviderRepository, users *repositories.UserRepository, identities *repositories.UserIdentityRepository, redisClient *redis.Client) *Service {
