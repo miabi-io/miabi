@@ -137,6 +137,16 @@ func (r *Router) authRoutes() []okapi.RouteDefinition {
 		},
 		{
 			Method:      http.MethodPost,
+			Path:        "/cli/authorize",
+			Group:       auth,
+			Middlewares: sessionOnly,
+			Handler:     okapi.H(r.h.auth.AuthorizeCLI),
+			Summary:     "Sign the CLI in with the current browser session (loopback flow)",
+			Request:     &handlers.AuthorizeCLIRequest{},
+			Response:    &dto.Response[handlers.LoginTokenResponse]{},
+		},
+		{
+			Method:      http.MethodPost,
 			Path:        "/login-token/claim",
 			Group:       auth,
 			Middlewares: limited,

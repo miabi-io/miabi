@@ -36,7 +36,8 @@ api.interceptors.response.use(
       // Clear local state only — never call logout() here: it POSTs /auth/logout,
       // which would itself 401 and re-enter this handler in an infinite loop.
       auth.clearSession()
-      if (!window.location.pathname.startsWith('/login')) {
+      // /cli/authorize falls back to its own sign-in form; leaving it would lose the CLI's callback.
+      if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/cli/')) {
         window.location.href = '/login'
       }
     }

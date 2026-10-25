@@ -557,6 +557,50 @@ func (h *AuthHandler) LoginToken(c *okapi.Context, req *LoginTokenRequest) error
 	return ok(c, LoginTokenResponse{RedirectTo: buildCliRedirect(redirectURI, ref, req.Body.State)})
 }
 
+// AuthorizeCLIRequest asks to sign `miabi login` in with the browser's current session.
+type AuthorizeCLIRequest struct {
+	Body struct {
+		// RedirectURI is the CLI's loopback callback; State is echoed back as its CSRF check.
+		RedirectURI string   `json:"redirect_uri" required:"true"`
+		State       string   `json:"state"`
+		Scopes      []string `json:"scopes"`
+	} `json:"body"`
+}
+
+// AuthorizeCLI signs the CLI in with the browser's session. The session already passed the account's
+// sign-in, second factor included, so the explicit click on /cli/authorize stands in for entering
+// credentials again. Session-only: an API key must not be able to mint itself more tokens.
+func (h *AuthHandler) AuthorizeCLI(c *okapi.Context, req *AuthorizeCLIRequest) error {
+	if h.loginTokens == nil {
+		return c.AbortWithError(503, errors.New("login tokens are not available"))
+	}
+	redirectURI := strings.TrimSpace(req.Body.RedirectURI)
+	if !isLoopbackRedirect(redirectURI) {
+		return c.AbortBadRequest("redirect_uri must be a loopback (127.0.0.1/localhost) address")
+	}
+	user, err := h.users.FindByID(middlewares.UserID(c))
+	if err != nil {
+		return c.AbortNotFound("user not found")
+	}
+	if user.MustChangePassword {
+		return c.AbortForbidden("set a new password before creating an API token")
+	}
+	tok, err := h.loginTokens.Issue(user.ID, req.Body.Scopes, nil)
+	if err != nil {
+		if errors.Is(err, logintoken.ErrAdminScope) || errors.Is(err, logintoken.ErrInvalidScope) {
+			return c.AbortBadRequest(err.Error())
+		}
+		return c.AbortInternalServerError("failed to issue login token", err)
+	}
+	h.audit.Record(audit.Entry{ActorID: &user.ID, Action: "user.login_token_issued", TargetType: "user", IP: c.RealIP(),
+		Metadata: map[string]any{"scopes": tok.Scopes, "via": "cli_session"}})
+	ref, err := h.loginTokens.Stash(c.Request().Context(), tok)
+	if err != nil {
+		return c.AbortInternalServerError("failed to prepare CLI login", err)
+	}
+	return ok(c, LoginTokenResponse{RedirectTo: buildCliRedirect(redirectURI, ref, req.Body.State)})
+}
+
 // isLoopbackRedirect reports whether raw is an http URL pointing at the local
 // machine — the only redirect target the CLI-login flows may hand a token to.
 func isLoopbackRedirect(raw string) bool {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { authApi } from '@/api/auth'
 import { oauthApi, cliAuthorizeUrl } from '@/api/oauth'
 import { useAuthStore } from '@/stores/auth'
@@ -9,16 +10,17 @@ import AuthShell from './AuthShell.vue'
 import type { PublicProvider } from '@/api/types'
 
 // `miabi login` loopback flow. The CLI opened this page with a local callback
-// (?redirect_uri=http://127.0.0.1:PORT/…&state=…). We re-authenticate the user
-// here — even if a console session exists (the OpenShift request-token property,
-// same as /request-token) — then hand a single-use code back to the CLI's local
-// server via a redirect. The token itself never rides the redirect URL.
-type Step = 'confirm' | 'twofactor' | 'done' | 'invalid'
+// (?redirect_uri=http://127.0.0.1:PORT/…&state=…). A signed-in user authorizes it
+// with one click on the current session; otherwise (or for another account) they
+// sign in here. Either way a single-use code goes back to the CLI's local server
+// via a redirect; the token itself never rides the redirect URL.
+type Step = 'session' | 'confirm' | 'twofactor' | 'done' | 'invalid'
 
 const route = useRoute()
+const { t } = useI18n()
 const auth = useAuthStore()
 
-const step = ref<Step>('confirm')
+const step = ref<Step>(auth.isAuthenticated ? 'session' : 'confirm')
 const loading = ref(false)
 const error = ref('')
 
@@ -58,6 +60,8 @@ const title = computed(() =>
     ? 'Signing you in…'
     : step.value === 'invalid'
       ? 'Invalid CLI login link'
+      : step.value === 'session'
+        ? t('cliAuthorize.sessionTitle')
       : step.value === 'twofactor'
         ? 'Two-factor authentication'
         : 'Authorize CLI login',
@@ -67,6 +71,8 @@ const subtitle = computed(() =>
     ? 'Return to your terminal — the Miabi CLI is finishing sign-in.'
     : step.value === 'invalid'
       ? 'This link is missing a valid local callback. Re-run `miabi login`.'
+      : step.value === 'session'
+        ? t('cliAuthorize.sessionSubtitle')
       : step.value === 'twofactor'
         ? 'Enter the code from your authenticator app'
         : 'Re-authenticate to sign the Miabi CLI in on this machine.',
@@ -93,6 +99,28 @@ function deliver(to: string | undefined) {
   // "you can close this window" page; we show 'done' meanwhile.
   step.value = 'done'
   window.location.href = to
+}
+
+async function authorizeWithSession() {
+  if (loading.value) return
+  error.value = ''
+  loading.value = true
+  try {
+    const res = await authApi.authorizeCli({ redirectUri, state, scopes: requestedScopes })
+    deliver(res.data.data.redirect_to)
+  } catch (e) {
+    // An expired session or a refused grant: signing in on the form still works.
+    error.value = apiErrorMessage(e, t('cliAuthorize.sessionFailed'))
+    step.value = 'confirm'
+  } finally {
+    loading.value = false
+  }
+}
+
+function useAnotherAccount() {
+  error.value = ''
+  username.value = ''
+  step.value = 'confirm'
 }
 
 async function submit() {
@@ -127,8 +155,26 @@ function ssoLogin(slug: string) {
 
 <template>
   <AuthShell :title="title" :subtitle="subtitle" :error="error">
+    <!-- Signed in: authorize with the current session -->
+    <div v-if="step === 'session'" class="auth-form">
+      <p v-if="requestedScopes.length" class="scope-note">
+        {{ $t('cliAuthorize.limitedToScopes') }} <code>{{ scopeLabel }}</code>
+      </p>
+      <p class="session-who">
+        <span class="mdi mdi-account-circle-outline"></span>
+        <i18n-t keypath="cliAuthorize.signedInAs" tag="span"><template #who><strong>{{ auth.user?.username || auth.user?.email }}</strong></template></i18n-t>
+      </p>
+      <button type="button" class="btn btn-primary auth-submit" :disabled="loading" @click="authorizeWithSession">
+        <span v-if="loading" class="mdi mdi-loading mdi-spin"></span>
+        {{ loading ? 'Signing in…' : 'Authorize CLI' }}
+      </button>
+      <button type="button" class="btn btn-secondary auth-submit" :disabled="loading" @click="useAnotherAccount">
+        {{ $t('cliAuthorize.useAnotherAccount') }}
+      </button>
+    </div>
+
     <!-- Confirm identity (password) -->
-    <form v-if="step === 'confirm'" class="auth-form" @submit.prevent="submit">
+    <form v-else-if="step === 'confirm'" class="auth-form" @submit.prevent="submit">
       <p v-if="requestedScopes.length" class="scope-note">
         {{ $t('cliAuthorize.limitedToScopes') }} <code>{{ scopeLabel }}</code>
       </p>
@@ -208,6 +254,19 @@ function ssoLogin(slug: string) {
 .scope-note code {
   font-family: monospace;
   color: var(--text-primary);
+}
+
+.session-who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.session-who .mdi {
+  font-size: 20px;
+  color: var(--text-muted);
 }
 
 .auth-submit {

@@ -60,6 +60,15 @@ export const authApi = {
       scopes: opts?.scopes?.length ? opts.scopes : undefined,
     })
   },
+  // Sign `miabi login` in with the current session: no credentials, the click on /cli/authorize is
+  // the consent. The response's redirect_to is the CLI's loopback callback with a single-use code.
+  authorizeCli(opts: { redirectUri: string; state: string; scopes?: string[] }) {
+    return api.post<ApiResponse<LoginTokenResponse>>('/auth/cli/authorize', {
+      redirect_uri: opts.redirectUri,
+      state: opts.state,
+      scopes: opts.scopes?.length ? opts.scopes : undefined,
+    })
+  },
   // Exchange a single-use hand-off reference (from the SSO login-token flow) for
   // the minted token.
   claimLoginToken(handoff: string) {

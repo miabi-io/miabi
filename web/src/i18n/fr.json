@@ -990,7 +990,12 @@
     "password": "Mot de passe",
     "reRunHint": "Relancez {cmd} depuis votre terminal pour démarrer une nouvelle connexion.",
     "usernameOrEmail": "Nom d’utilisateur ou e-mail",
-    "youCanCloseThisWindow": "Vous pouvez fermer cette fenêtre et retourner à votre terminal."
+    "youCanCloseThisWindow": "Vous pouvez fermer cette fenêtre et retourner à votre terminal.",
+    "sessionTitle": "Autoriser la connexion de la CLI",
+    "sessionSubtitle": "Connectez la CLI Miabi sur cette machine avec votre session actuelle.",
+    "signedInAs": "Connecté en tant que {who}",
+    "useAnotherAccount": "Utiliser un autre compte",
+    "sessionFailed": "Votre session n’a pas pu autoriser la CLI. Connectez-vous ci-dessous."
   },
   "configs": {
     "configs": "Configurations",
