@@ -191,7 +191,9 @@ router.beforeEach(async (to, from) => {
   if (to.meta.auth && !auth.isAuthenticated) {
     return { name: 'login', query: to.fullPath !== '/' ? { next: to.fullPath } : {} }
   }
-  if (to.meta.guest && auth.isAuthenticated) return safeNext(to.query.next) || { name: 'dashboard' }
+  // The SSO second-factor step finishes a sign-in the server parked, which may be a CLI login started
+  // from a browser that is already signed in; bouncing it to the dashboard would strand the CLI.
+  if (to.meta.guest && auth.isAuthenticated && !to.query.sso_two_factor) return safeNext(to.query.next) || { name: 'dashboard' }
   if (to.meta.admin && !auth.isAdmin) return { name: 'dashboard' }
   if (to.meta.admin && !(await useElevationStore().ensure())) {
     // Declined the unlock: stay where they were, or land on the workspace side on a fresh load.

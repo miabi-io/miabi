@@ -990,7 +990,12 @@
     "password": "Password",
     "reRunHint": "Re-run {cmd} from your terminal to start a new sign-in.",
     "usernameOrEmail": "Username or email",
-    "youCanCloseThisWindow": "You can close this window and return to your terminal."
+    "youCanCloseThisWindow": "You can close this window and return to your terminal.",
+    "sessionTitle": "Authorize CLI login",
+    "sessionSubtitle": "Sign the Miabi CLI in on this machine with your current session.",
+    "signedInAs": "Signed in as {who}",
+    "useAnotherAccount": "Use another account",
+    "sessionFailed": "Your session could not authorize the CLI. Sign in below."
   },
   "configs": {
     "configs": "Configs",
