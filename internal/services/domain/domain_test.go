@@ -20,6 +20,8 @@
 package domain
 
 import (
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/miabi-io/miabi/internal/models"
@@ -163,5 +165,35 @@ func TestReverifyDecisionCleanProofSkipsWrite(t *testing.T) {
 	}
 	if out := reverifyDecision(models.VerifiedViaDNS, 2, true, true); !out.Write {
 		t.Fatal("a recovered domain must clear its failure state")
+	}
+}
+
+func TestClaimHolder(t *testing.T) {
+	others := []models.Domain{{ID: 1, WorkspaceID: 7, Name: "other.net"}, {ID: 2, WorkspaceID: 9, Name: "example.com", Wildcard: true}}
+	cases := []struct {
+		name   string
+		domain models.Domain
+		want   uint
+	}{
+		{"subdomain under a wildcard", models.Domain{Name: "mail.example.com"}, 2},
+		{"same name", models.Domain{Name: "other.net"}, 1},
+		{"unrelated", models.Domain{Name: "example.org"}, 0},
+	}
+	for _, c := range cases {
+		got := claimHolder(&c.domain, others)
+		if (got == nil && c.want != 0) || (got != nil && got.ID != c.want) {
+			t.Errorf("%s: claimHolder = %v, want domain %d", c.name, got, c.want)
+		}
+	}
+}
+
+// Workspace handlers match on ErrDomainClaimed and print the message; it must not name the holder.
+func TestClaimedErrorStaysGeneric(t *testing.T) {
+	err := error(&ClaimedError{Holder: models.Domain{Name: "example.com", WorkspaceID: 9}})
+	if !errors.Is(err, ErrDomainClaimed) {
+		t.Fatal("ClaimedError does not match ErrDomainClaimed")
+	}
+	if strings.Contains(err.Error(), "example.com") {
+		t.Fatalf("message leaks the holder: %q", err.Error())
 	}
 }
