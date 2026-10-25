@@ -3010,42 +3010,50 @@ func (s *Service) reconcileExposure(ctx context.Context, workspaceID uint, app *
 // Presence-based: an existing binding for a still-desired port is left as-is, so a possibly auto-allocated
 // host port is not churned; bindings for ports no longer published are cancelled.
 func (s *Service) reconcileBindings(workspaceID, appID uint, spec *declarative.ApplicationSpec) error {
-	desired := map[int]declarative.PortSpec{}
+	// Keyed by port and protocol: DNS-style services publish one port over both udp and tcp.
+	type key struct {
+		port  int
+		proto string
+	}
+	desired := map[key]declarative.PortSpec{}
 	for _, p := range spec.Ports {
 		if p.Publish || p.HostPort > 0 {
-			desired[p.Container] = p
+			desired[key{p.Container, bindingProto(p.Protocol)}] = p
 		}
 	}
 	existing, err := s.bindings.ListByApp(workspaceID, appID)
 	if err != nil {
 		return err
 	}
-	have := map[int]*models.PortBinding{}
+	have := map[key]*models.PortBinding{}
 	for i := range existing {
-		have[existing[i].ContainerPort] = &existing[i]
+		have[key{existing[i].ContainerPort, bindingProto(existing[i].Protocol)}] = &existing[i]
 	}
-	for cport, p := range desired {
-		if _, ok := have[cport]; ok {
+	for k, p := range desired {
+		if _, ok := have[k]; ok {
 			continue // already bound — keep the live host port
 		}
-		proto := p.Protocol
-		if proto == "" {
-			proto = "tcp"
-		}
 		if _, err := s.bindings.Request(workspaceID, 0, portbinding.RequestInput{
-			ApplicationID: appID, ContainerPort: cport, Protocol: proto, HostPort: p.HostPort,
+			ApplicationID: appID, ContainerPort: k.port, Protocol: k.proto, HostPort: p.HostPort,
 		}); err != nil {
-			return fmt.Errorf("bind port %d: %w", cport, err)
+			return fmt.Errorf("bind port %d/%s: %w", k.port, k.proto, err)
 		}
 	}
-	for cport, b := range have {
-		if _, ok := desired[cport]; !ok {
+	for k, b := range have {
+		if _, ok := desired[k]; !ok {
 			if err := s.bindings.Cancel(workspaceID, b.ID); err != nil {
-				return fmt.Errorf("unbind port %d: %w", cport, err)
+				return fmt.Errorf("unbind port %d/%s: %w", k.port, k.proto, err)
 			}
 		}
 	}
 	return nil
+}
+
+func bindingProto(p string) string {
+	if p == "udp" {
+		return "udp"
+	}
+	return "tcp"
 }
 
 // exposedPorts derives an app's live exposure: container ports that have a
