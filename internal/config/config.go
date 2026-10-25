@@ -491,7 +491,9 @@ type RegistryConfig struct {
 	// entitlement, checked both where the driver is selected (the admin API) and
 	// where it is used (container start).
 	StorageType string
-	Image       string // override the registry image (also via the image catalog)
+	// StorageClass places the filesystem driver's volume on a registered storage class.
+	StorageClass string
+	Image        string // override the registry image (also via the image catalog)
 	// AuthURL is the address the gateway's forwardAuth calls to reach Miabi's
 	// /internal/registry/auth (e.g. http://miabi:9000). Falls back to ControlURL.
 	AuthURL string
@@ -586,6 +588,9 @@ func (c *Config) validateRegistry() error {
 	default:
 		return fmt.Errorf("MIABI_REGISTRY_STORAGE %q: expected %q or %q",
 			c.Registry.StorageType, models.RegistryStorageFilesystem, models.RegistryStorageS3)
+	}
+	if sc := strings.TrimSpace(c.Registry.StorageClass); sc != "" && !models.ValidStorageClassName(sc) {
+		return fmt.Errorf("MIABI_REGISTRY_STORAGE_CLASS %q: %w", sc, models.ErrStorageClassName)
 	}
 	return nil
 }
@@ -727,6 +732,7 @@ func New() *Config {
 			Host:          goutils.Env("MIABI_REGISTRY_HOST", ""),
 			HTTPSRedirect: goutils.EnvBool("MIABI_REGISTRY_HTTPS_REDIRECT", true),
 			StorageType:   goutils.Env("MIABI_REGISTRY_STORAGE", ""),
+			StorageClass:  goutils.Env("MIABI_REGISTRY_STORAGE_CLASS", ""),
 			Image:         goutils.Env("MIABI_REGISTRY_IMAGE", ""),
 			AuthURL:       goutils.Env("MIABI_REGISTRY_AUTH_URL", "http://miabi:9000"),
 			PlatformToken: goutils.Env("MIABI_REGISTRY_PLATFORM_TOKEN", ""),

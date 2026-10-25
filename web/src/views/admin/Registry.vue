@@ -7,6 +7,8 @@ import {
   type RegistrySettingsPayload,
 } from '@/api/registry'
 import { apiError as decodeApiError } from '@/api/client'
+import { adminApi } from '@/api/admin'
+import type { StorageClass } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
@@ -32,7 +34,7 @@ const hostSource = ref<'env' | 'stored' | 'base_domain' | 'unset'>('unset')
 const storageSource = ref<'env' | 'stored' | 'default'>('default')
 const storageError = ref('')
 const locks = ref<RegistryLocks>({
-  enabled: false, host: false, storage: false,
+  enabled: false, host: false, storage: false, storage_class: false,
   s3_endpoint: false, s3_bucket: false, s3_region: false,
   s3_access_key: false, s3_secret_key: false, s3_force_path_style: false,
 })
@@ -46,6 +48,7 @@ const form = ref<Required<Omit<RegistrySettingsPayload, 'confirm'>>>({
   enabled: false,
   host: '',
   storage_type: 'filesystem',
+  storage_class: '',
   s3_endpoint: '',
   s3_bucket: '',
   s3_region: '',
@@ -55,6 +58,24 @@ const form = ref<Required<Omit<RegistrySettingsPayload, 'confirm'>>>({
 })
 
 const usesS3 = computed(() => form.value.storage_type === 's3')
+
+const storageClasses = ref<StorageClass[]>([])
+// Disabled classes stay listed only when already selected, so the select can show the current value.
+const classOptions = computed(() =>
+  storageClasses.value.filter(c => !c.builtin && (c.enabled || c.name === form.value.storage_class)),
+)
+const selectedClass = computed(() => storageClasses.value.find(c => c.name === form.value.storage_class))
+const dataVolume = computed(() =>
+  form.value.storage_class ? `mb-registry-data-${form.value.storage_class}` : 'mb-registry-data',
+)
+
+async function loadStorageClasses() {
+  try {
+    storageClasses.value = (await adminApi.listStorageClasses()).data.data ?? []
+  } catch {
+    storageClasses.value = []
+  }
+}
 const envManaged = computed(() => Object.values(locks.value).some(Boolean))
 
 const hostOrigin = computed(() => {
@@ -155,6 +176,7 @@ async function load() {
       // with a value you never set would silently pin the derived name.
       host: s.host ?? '',
       storage_type: s.storage_type,
+      storage_class: s.storage_class ?? '',
       s3_endpoint: s.s3_endpoint ?? '',
       s3_bucket: s.s3_bucket ?? '',
       s3_region: s.s3_region ?? '',
@@ -183,6 +205,7 @@ async function save(confirm = false) {
     storageSource.value = s.storage_source ?? 'default'
     storageError.value = s.storage_error ?? ''
     s3SecretSet.value = s.s3_secret_set
+    volumeName.value = s.volume_name || 'mb-registry-data'
     form.value.s3_secret_key = ''
     pendingConfirm.value = ''
     notify.success('Registry settings saved')
@@ -214,7 +237,7 @@ async function runGc() {
 }
 
 onMounted(async () => {
-  await load()
+  await Promise.all([load(), loadStorageClasses()])
   syncPolling()
 })
 onBeforeUnmount(() => { if (poll) clearInterval(poll) })
@@ -299,6 +322,7 @@ onBeforeUnmount(() => { if (poll) clearInterval(poll) })
           <dl class="facts">
             <div><dt>Host</dt><dd class="mono">{{ effectiveHost || '—' }}</dd></div>
             <div><dt>Storage</dt><dd>{{ usesS3 ? `S3 / MinIO${form.s3_bucket ? ` (${form.s3_bucket})` : ''}` : `Local volume (${volumeName})` }}</dd></div>
+            <div v-if="!usesS3"><dt>Storage class</dt><dd class="mono">{{ form.storage_class || 'default' }}</dd></div>
             <div v-if="runtime?.image"><dt>Image</dt><dd class="mono">{{ runtime.image }}</dd></div>
             <div><dt>Tag deletion</dt><dd>{{ form.delete_enabled ? 'Enabled' : 'Disabled' }}</dd></div>
             <div><dt>Per-workspace quota</dt><dd>{{ form.per_workspace_quota_mb ? `${form.per_workspace_quota_mb} MB` : 'Unlimited' }}</dd></div>
@@ -360,8 +384,8 @@ onBeforeUnmount(() => { if (poll) clearInterval(poll) })
       <div v-else-if="tab === 'storage'" class="card" style="max-width: 720px">
         <div class="card-body">
           <p class="section-note">
-            Blobs <strong>do not migrate</strong> between backends. Switching a registry that already holds images
-            leaves them in the old one — the change asks for confirmation and tells you how much is affected.
+            Blobs <strong>do not migrate</strong> between backends or storage classes. Switching a registry that
+            already holds images leaves them in the old one — the change asks for confirmation and tells you how much is affected.
           </p>
 
           <div class="form-group">
@@ -377,11 +401,31 @@ onBeforeUnmount(() => { if (poll) clearInterval(poll) })
             </small>
           </div>
 
-          <div v-if="!usesS3" class="form-group">
-            <label class="form-label">Data volume</label>
-            <input :value="volumeName" class="form-input mono" style="max-width: 320px" disabled />
-            <small class="form-hint">A fixed platform name, so the data location stays predictable.</small>
-          </div>
+          <template v-if="!usesS3">
+            <div class="form-group">
+              <label class="form-label">Storage class</label>
+              <select v-model="form.storage_class" class="form-select" style="max-width: 320px" :disabled="locks.storage_class">
+                <option value="">Default (Docker data root)</option>
+                <option v-for="c in classOptions" :key="c.id" :value="c.name">
+                  {{ c.display_name || c.name }}{{ c.server_name ? ` — ${c.server_name}` : '' }}{{ c.enabled ? '' : ' (disabled)' }}
+                </option>
+              </select>
+              <small class="form-hint">
+                <template v-if="locks.storage_class">Pinned by <code>MIABI_REGISTRY_STORAGE_CLASS</code>.</template>
+                <template v-else>
+                  The disk the registry's blobs land on. It must be a class on the control-plane node, or a shared one.
+                  Register disks under <router-link to="/admin/storage-classes">Storage classes</router-link>.
+                </template>
+                <template v-if="selectedClass?.path"> Path: <code>{{ selectedClass.path }}/{{ dataVolume }}</code>.</template>
+              </small>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Data volume</label>
+              <input :value="dataVolume" class="form-input mono" style="max-width: 320px" disabled />
+              <small class="form-hint">Derived from the storage class. Each class gets its own volume, and the old one is kept.</small>
+            </div>
+          </template>
 
           <fieldset v-else class="s3-fields">
             <div class="form-grid">

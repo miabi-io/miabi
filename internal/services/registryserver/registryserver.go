@@ -109,6 +109,15 @@ type Service struct {
 	// live deployment or pinned release holds (so a tag delete can't pull an image
 	// out from under a running release), and the build behind a digest. nil-safe.
 	catalog Catalog
+	// classes places the filesystem driver's volume on a storage class. nil keeps it in Docker's data root.
+	classes StorageClasses
+}
+
+// StorageClasses resolves and prepares the storage class the registry's data volume lands on.
+type StorageClasses interface {
+	Resolve(serverID uint, name string) (*models.StorageClass, error)
+	EnsureDir(ctx context.Context, c *models.StorageClass, dockerName string) error
+	LocalID() uint
 }
 
 // platformTokenLabel keys the derived registry platform credential. Changing it
@@ -157,6 +166,9 @@ func (s *Service) SetInternalNetwork(name string) { s.internalNetwork = name }
 
 func (s *Service) SetEntitlements(ee entitlementChecker) { s.ee = ee }
 
+// SetStorageClasses wires storage-class placement for the filesystem driver's data volume.
+func (s *Service) SetStorageClasses(c StorageClasses) { s.classes = c }
+
 // SetApps wires the application lookup used to hold an app-bound job credential to its own
 // repository. Without it such a key is refused on push, not waved through.
 func (s *Service) SetApps(a appNamer) { s.apps = a }
@@ -180,7 +192,7 @@ func (s *Service) Get() (*models.RegistrySettings, error) {
 		err = gorm.ErrRecordNotFound
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		st = &models.RegistrySettings{StorageType: models.RegistryStorageFilesystem, VolumeName: models.DefaultRegistryVolume}
+		st = &models.RegistrySettings{StorageType: models.RegistryStorageFilesystem}
 	} else if err != nil {
 		return nil, err
 	}
@@ -197,9 +209,10 @@ type SaveInput struct {
 	PerWorkspaceQuotaMB int
 
 	// Platform configuration. Written only where the environment is silent.
-	Enabled     *bool
-	Host        *string
-	StorageType *string
+	Enabled      *bool
+	Host         *string
+	StorageType  *string
+	StorageClass *string
 
 	S3Endpoint       *string
 	S3Bucket         *string
@@ -215,9 +228,10 @@ type SaveInput struct {
 // the admin UI renders it as fixed with the variable that owns it, rather than offering an input whose
 // value the server would discard.
 type Locks struct {
-	Enabled bool `json:"enabled"`
-	Host    bool `json:"host"`
-	Storage bool `json:"storage"`
+	Enabled      bool `json:"enabled"`
+	Host         bool `json:"host"`
+	Storage      bool `json:"storage"`
+	StorageClass bool `json:"storage_class"`
 	// S3 is per-field: an install may pin the bucket in the environment and leave
 	// the credentials to the UI, or the reverse.
 	S3Endpoint  bool `json:"s3_endpoint"`
@@ -230,7 +244,7 @@ type Locks struct {
 
 // Any reports whether the environment pins anything at all.
 func (l Locks) Any() bool {
-	return l.Enabled || l.Host || l.Storage || l.S3Endpoint || l.S3Bucket ||
+	return l.Enabled || l.Host || l.Storage || l.StorageClass || l.S3Endpoint || l.S3Bucket ||
 		l.S3Region || l.S3AccessKey || l.S3SecretKey || l.S3ForcePath
 }
 
@@ -238,15 +252,16 @@ func (l Locks) Any() bool {
 func (s *Service) Locks() Locks {
 	c := s.cfg
 	return Locks{
-		Enabled:     c.EnabledSet,
-		Host:        strings.TrimSpace(c.Host) != "",
-		Storage:     strings.TrimSpace(c.StorageType) != "",
-		S3Endpoint:  c.S3Endpoint != "",
-		S3Bucket:    c.S3Bucket != "",
-		S3Region:    c.S3Region != "",
-		S3AccessKey: c.S3AccessKey != "",
-		S3SecretKey: c.S3SecretKey != "",
-		S3ForcePath: c.S3ForcePath,
+		Enabled:      c.EnabledSet,
+		Host:         strings.TrimSpace(c.Host) != "",
+		Storage:      strings.TrimSpace(c.StorageType) != "",
+		StorageClass: strings.TrimSpace(c.StorageClass) != "",
+		S3Endpoint:   c.S3Endpoint != "",
+		S3Bucket:     c.S3Bucket != "",
+		S3Region:     c.S3Region != "",
+		S3AccessKey:  c.S3AccessKey != "",
+		S3SecretKey:  c.S3SecretKey != "",
+		S3ForcePath:  c.S3ForcePath,
 	}
 }
 
@@ -275,6 +290,9 @@ func (s *Service) Save(in SaveInput) (*models.RegistrySettings, error) {
 	if in.StorageType != nil && !locks.Storage {
 		st.StorageType = normalizeStorage(*in.StorageType)
 	}
+	if in.StorageClass != nil && !locks.StorageClass {
+		st.StorageClass = models.NormalizeRegistryStorageClass(*in.StorageClass)
+	}
 	setStr := func(dst *string, src *string, locked bool) {
 		if src != nil && !locked {
 			*dst = strings.TrimSpace(*src)
@@ -297,8 +315,7 @@ func (s *Service) Save(in SaveInput) (*models.RegistrySettings, error) {
 		st.S3SecretKeyEnc = enc
 	}
 
-	// The data volume is a fixed platform name, not admin-configurable.
-	st.VolumeName = models.DefaultRegistryVolume
+	st.VolumeName = st.DataVolume()
 	st.DeleteEnabled = in.DeleteEnabled
 	st.PerWorkspaceQuotaMB = in.PerWorkspaceQuotaMB
 
@@ -376,6 +393,35 @@ func (s *Service) applyEnvConfig(st *models.RegistrySettings) {
 	if c.S3ForcePath {
 		st.S3ForcePathStyle = true
 	}
+	if c.StorageClass != "" {
+		st.StorageClass = c.StorageClass
+	}
+	st.StorageClass = models.NormalizeRegistryStorageClass(st.StorageClass)
+	st.VolumeName = st.DataVolume()
+}
+
+// ValidateStorageClass checks that a class can hold the registry's data: it exists, is enabled, and
+// lives on the control-plane node the registry runs on (or is shared).
+func (s *Service) ValidateStorageClass(name string) error {
+	name = models.NormalizeRegistryStorageClass(name)
+	if name == "" {
+		return nil
+	}
+	if s.classes == nil {
+		return errors.New("storage classes are unavailable")
+	}
+	_, err := s.classes.Resolve(s.classes.LocalID(), name)
+	return err
+}
+
+// StorageClassUser names the registry when it keeps its blobs on the named class, so the class cannot be
+// deleted out from under it. Its volume is not a workspace volume, so the class's own count misses it.
+func (s *Service) StorageClassUser(name string) string {
+	st, err := s.Get()
+	if err != nil || st.UsesS3() || st.StorageClass == "" || st.StorageClass != name {
+		return ""
+	}
+	return "the built-in container registry"
 }
 
 // StorageSource names where the effective storage driver came from, so the admin UI can say why a field is
@@ -569,14 +615,42 @@ func (s *Service) warnIfDisabledByLock() {
 		"the environment wins where it is set. Remove the variable to let the console own the switch, or set it to true.")
 }
 
-// volumeMounts is the registry's data-volume mount (filesystem driver only). The
-// volume name is the fixed platform default — not admin-configurable, so the data
-// location is stable and predictable.
+// volumeMounts is the registry's data-volume mount (filesystem driver only).
 func (s *Service) volumeMounts(st *models.RegistrySettings) map[string]string {
 	if st.UsesS3() {
 		return map[string]string{}
 	}
-	return map[string]string{models.DefaultRegistryVolume: dataPath}
+	return map[string]string{st.DataVolume(): dataPath}
+}
+
+// ensureDataVolume creates the filesystem driver's volume, on its storage class when one is set. An
+// existing volume is reused as-is: a class an admin later disables keeps serving what it already holds.
+func (s *Service) ensureDataVolume(ctx context.Context, dc docker.Client, st *models.RegistrySettings) error {
+	name := st.DataVolume()
+	if _, err := dc.InspectVolume(ctx, name); err == nil {
+		return nil
+	} else if !errors.Is(err, docker.ErrNotFound) {
+		return fmt.Errorf("inspect registry volume %q: %w", name, err)
+	}
+	spec := docker.VolumeSpec{Name: name, Labels: docker.PlatformLabels(docker.RoleRegistry, docker.ManagedByMiabi, nil)}
+	if st.StorageClass != "" {
+		// Refuse rather than fall back: blobs pushed to the data root would vanish once the class returns.
+		if s.classes == nil {
+			return fmt.Errorf("registry storage class %q: storage classes are unavailable", st.StorageClass)
+		}
+		class, err := s.classes.Resolve(s.classes.LocalID(), st.StorageClass)
+		if err != nil {
+			return fmt.Errorf("registry storage class: %w", err)
+		}
+		if err := s.classes.EnsureDir(ctx, class, name); err != nil {
+			return fmt.Errorf("registry storage class %q: %w", class.Name, err)
+		}
+		spec.DevicePath = class.VolumePath(name)
+	}
+	if _, err := dc.CreateVolumeWith(ctx, spec); err != nil {
+		return fmt.Errorf("ensure registry volume %q: %w", name, err)
+	}
+	return nil
 }
 
 // startContainer pulls the image and (re)creates the registry container with the
@@ -588,10 +662,8 @@ func (s *Service) startContainer(ctx context.Context, dc docker.Client, st *mode
 	}
 	mounts := s.volumeMounts(st)
 	if !st.UsesS3() {
-		for vol := range mounts {
-			if _, err := dc.CreateVolume(ctx, vol, docker.PlatformLabels(docker.RoleRegistry, docker.ManagedByMiabi, nil), 0); err != nil {
-				return fmt.Errorf("ensure registry volume %q: %w", vol, err)
-			}
+		if err := s.ensureDataVolume(ctx, dc, st); err != nil {
+			return err
 		}
 	}
 	env, err := s.renderEnv(st, readonly)

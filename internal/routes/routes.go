@@ -1017,6 +1017,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// at an API that can no longer select it.
 	registryServerService.SetInternalNetwork(cfg.InternalNetwork)
 	registryServerService.SetEntitlements(ee)
+	registryServerService.SetStorageClasses(storageClassService)
+	storageClassService.AddPlatformUser(registryServerService)
 	// Holds a pipeline's app-bound registry token to that app's own repository.
 	registryServerService.SetApps(appRepo)
 	gitRepoRepo := repositories.NewGitRepoRepository(db)

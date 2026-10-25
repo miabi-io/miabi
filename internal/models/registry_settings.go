@@ -19,7 +19,10 @@
 
 package models
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Registry storage driver values for RegistrySettings.StorageType.
 const (
@@ -47,8 +50,12 @@ type RegistrySettings struct {
 	// registry_s3 entitlement, enforced at container start.
 	StorageType string `json:"storage_type" gorm:"not null;default:filesystem"`
 
-	// Filesystem driver: the managed data volume. A fixed platform name.
+	// Filesystem driver: the managed data volume, derived from StorageClass (see DataVolume).
 	VolumeName string `json:"volume_name,omitempty"`
+	// StorageClass places the filesystem driver's volume on an admin-registered disk of the
+	// control-plane node. Empty means the built-in class, Docker's data root.
+	// Read-only when MIABI_REGISTRY_STORAGE_CLASS is set.
+	StorageClass string `json:"storage_class,omitempty"`
 
 	// S3 / MinIO driver. Read-only: MIABI_REGISTRY_S3_*.
 	S3Endpoint       string `json:"s3_endpoint,omitempty"`
@@ -73,6 +80,29 @@ type RegistrySettings struct {
 
 // DefaultRegistryVolume is the managed data volume for the filesystem driver.
 const DefaultRegistryVolume = "mb-registry-data"
+
+// DataVolume is the filesystem driver's volume name. A class-backed registry gets its own volume, so
+// choosing a class never re-points the existing data-root volume at an empty directory.
+func (r *RegistrySettings) DataVolume() string {
+	if c := NormalizeRegistryStorageClass(r.StorageClass); c != "" {
+		return DefaultRegistryVolume + "-" + c
+	}
+	return DefaultRegistryVolume
+}
+
+// NormalizeRegistryStorageClass maps the built-in class to "", the form the settings store.
+func NormalizeRegistryStorageClass(name string) string {
+	name = strings.TrimSpace(name)
+	if name == DefaultStorageClassName {
+		return ""
+	}
+	return name
+}
+
+// IsRegistryDataVolume reports whether a Docker volume holds the built-in registry's blobs.
+func IsRegistryDataVolume(name string) bool {
+	return name == DefaultRegistryVolume || strings.HasPrefix(name, DefaultRegistryVolume+"-")
+}
 
 // UsesS3 reports whether the registry is configured for the S3 storage driver.
 func (r *RegistrySettings) UsesS3() bool { return r.StorageType == RegistryStorageS3 }

@@ -401,7 +401,7 @@ func (s *Service) assertBackupable(ctx context.Context, name string) error {
 	if !excludedVolume(name, labels) {
 		return nil
 	}
-	if name == models.DefaultRegistryVolume {
+	if models.IsRegistryDataVolume(name) {
 		return fmt.Errorf("%w: %s holds live registry blob storage — archiving it under concurrent pushes produces an archive that restores but cannot be pulled from. Run the registry on S3 storage so images survive losing this host", ErrVolumeExcluded, name)
 	}
 	return fmt.Errorf("%w: %s", ErrVolumeExcluded, name)
@@ -815,7 +815,7 @@ func excludedVolume(name string, labels map[string]string) bool {
 	if name == legacyLocalVolume || strings.HasPrefix(name, "mb-backups-") {
 		return true
 	}
-	if name == models.DefaultRegistryVolume {
+	if models.IsRegistryDataVolume(name) {
 		return true
 	}
 	if _, ok := docker.LabelValue(labels, docker.LabelWorkspace); ok {
