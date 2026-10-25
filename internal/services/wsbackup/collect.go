@@ -488,7 +488,8 @@ func (s *Service) collectDatabases(workspaceID uint, st *wsbundle.State, report 
 		}
 		for j := range dbs {
 			d := &dbs[j]
-			ld := wsbundle.LogicalDatabase{Name: d.Name, EnvPrefix: d.EnvPrefix, EnvMap: d.EnvMap, Metadata: d.Metadata}
+			ld := wsbundle.LogicalDatabase{Name: d.Name, EnvPrefix: d.EnvPrefix, EnvMap: d.EnvMap, Metadata: d.Metadata,
+				ReadOnlyUser: d.ReadOnlyUsername != ""}
 			if d.ApplicationID != nil {
 				ld.App = appName[*d.ApplicationID]
 			}

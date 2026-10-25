@@ -214,14 +214,19 @@ func (i *DatabaseInstance) SwarmScoped(name string) bool {
 // encrypted at rest. Optionally owned by an application.
 type Database struct {
 	UIDModel
-	ID            uint     `json:"id" gorm:"primaryKey"`
-	WorkspaceID   uint     `json:"workspace_id" gorm:"index;not null"`
-	InstanceID    uint     `json:"instance_id" gorm:"index:idx_db_instance_name,unique;not null"`
-	Name          string   `json:"name" gorm:"index:idx_db_instance_name,unique;not null"` // db name on the server
-	Username      string   `json:"username" gorm:"not null"`
-	PasswordEnc   string   `json:"-" gorm:"column:password_enc"` // encrypted
-	Status        DBStatus `json:"status" gorm:"not null;default:provisioning"`
-	ApplicationID *uint    `json:"application_id,omitempty" gorm:"index"` // optional owner
+	ID          uint   `json:"id" gorm:"primaryKey"`
+	WorkspaceID uint   `json:"workspace_id" gorm:"index;not null"`
+	InstanceID  uint   `json:"instance_id" gorm:"index:idx_db_instance_name,unique;not null"`
+	Name        string `json:"name" gorm:"index:idx_db_instance_name,unique;not null"` // db name on the server
+	Username    string `json:"username" gorm:"not null"`
+	PasswordEnc string `json:"-" gorm:"column:password_enc"` // encrypted
+	// ReadOnlyUsername is the database's optional read-only user (Postgres): SELECT on every table, now
+	// and future, for consumers that must not write. Empty when none. Its password is encrypted like
+	// PasswordEnc.
+	ReadOnlyUsername    string   `json:"readonly_username,omitempty"`
+	ReadOnlyPasswordEnc string   `json:"-" gorm:"column:readonly_password_enc"`
+	Status              DBStatus `json:"status" gorm:"not null;default:provisioning"`
+	ApplicationID       *uint    `json:"application_id,omitempty" gorm:"index"` // optional owner
 	// Application declares the FK so deleting the owning app detaches this
 	// database (ON DELETE SET NULL) instead of dangling. Not serialized.
 	Application *Application `json:"-" gorm:"foreignKey:ApplicationID;constraint:OnDelete:SET NULL"`

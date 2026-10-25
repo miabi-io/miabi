@@ -103,6 +103,11 @@ export const databaseApi = {
     api.get<ApiResponse<ConnectionInfo>>(`${w(ws)}/databases/${id}/databases/${dbId}/connection`),
   removeDatabase: (ws: number, id: number, dbId: number) =>
     api.delete<ApiResponse<{ message: string }>>(`${w(ws)}/databases/${id}/databases/${dbId}`),
+  // Read-only user (PostgreSQL): SELECT on every table, now and future.
+  enableReadOnlyUser: (ws: number, id: number, dbId: number) =>
+    api.post<ApiResponse<LogicalDatabase>>(`${w(ws)}/databases/${id}/databases/${dbId}/readonly-user`),
+  disableReadOnlyUser: (ws: number, id: number, dbId: number) =>
+    api.delete<ApiResponse<LogicalDatabase>>(`${w(ws)}/databases/${id}/databases/${dbId}/readonly-user`),
 }
 
 export const volumeApi = {

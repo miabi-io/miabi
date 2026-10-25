@@ -645,9 +645,18 @@ func (r *restoreRun) applyDatabases(ctx context.Context) {
 			continue
 		}
 		for _, ld := range d.Databases {
-			if _, err := r.svc.Database.PrepareDatabase(r.target, inst.ID, ld.Name, nil); err != nil {
+			created, err := r.svc.Database.PrepareDatabase(r.target, inst.ID, ld.Name, nil)
+			if err != nil {
 				r.add("database", d.Name+"/"+ld.Name, "failed", err.Error())
 				continue
+			}
+			// Reserved now, created with the database when the instance comes up, so its grants
+			// cover the tables the data restore loads.
+			if ld.ReadOnlyUser {
+				if err := r.svc.Database.EnableReadOnly(ctx, created); err != nil {
+					r.add("database", d.Name+"/"+ld.Name, "failed", "read-only user: "+err.Error())
+					continue
+				}
 			}
 			r.add("database", d.Name+"/"+ld.Name, "created", "")
 		}

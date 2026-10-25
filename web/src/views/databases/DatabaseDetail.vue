@@ -416,6 +416,29 @@ async function removeDb(d: LogicalDatabase) {
     load()
   } catch (e) { notify.apiError(e) }
 }
+const isPostgres = computed(() => inst.value?.engine === 'postgres')
+async function enableReadOnly(d: LogicalDatabase) {
+  if (!wid.value) return
+  try {
+    await databaseApi.enableReadOnlyUser(wid.value, instId.value, d.id)
+    notify.success(t('db.toast.readOnlyEnabled'))
+    load()
+  } catch (e) { notify.apiError(e) }
+}
+function askDisableReadOnly(d: LogicalDatabase) {
+  confirm.value = {
+    kind: 'remove-db', title: t('db.readOnlyDisable'), confirmLabel: t('action.delete'), variant: 'danger',
+    message: t('db.readOnlyConfirmDisable', { name: d.name }),
+    run: async () => {
+      if (!wid.value) return
+      try {
+        await databaseApi.disableReadOnlyUser(wid.value, instId.value, d.id)
+        notify.success(t('db.toast.readOnlyDisabled'))
+        load()
+      } catch (e) { notify.apiError(e) }
+    },
+  }
+}
 async function revealDb(d: LogicalDatabase) {
   if (!wid.value) return
   try {
@@ -1117,11 +1140,19 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
         </div>
         <div v-else class="table-wrapper">
           <table>
-            <thead><tr><th>{{ $t('databases.col.database') }}</th><th>{{ $t('db.user') }}</th><th>{{ $t('db.app') }}</th><th>{{ $t('databases.col.size') }}</th><th></th></tr></thead>
+            <thead><tr><th>{{ $t('databases.col.database') }}</th><th>{{ $t('db.user') }}</th><th v-if="isPostgres" :title="$t('db.readOnlyHint')">{{ $t('db.readOnlyUser') }}</th><th>{{ $t('db.app') }}</th><th>{{ $t('databases.col.size') }}</th><th></th></tr></thead>
             <tbody>
               <tr v-for="d in databases" :key="d.id" class="row-clickable" :class="{ selected: selected?.id === d.id }" @click="viewBackups(d)">
                 <td class="cell-title" style="font-family: monospace">{{ d.name }}</td>
                 <td class="cell-sub" style="font-family: monospace">{{ d.username }}</td>
+                <td v-if="isPostgres" class="cell-sub" @click.stop>
+                  <span v-if="d.readonly_username" style="font-family: monospace">{{ d.readonly_username }}</span>
+                  <span v-else>—</span>
+                  <template v-if="ws.canEdit">
+                    <button v-if="d.readonly_username" class="btn-icon btn-icon-danger" :title="$t('db.readOnlyDisable')" :aria-label="$t('db.readOnlyDisable')" @click="askDisableReadOnly(d)"><span class="mdi mdi-close"></span></button>
+                    <button v-else class="btn-icon btn-icon-muted" :title="$t('db.readOnlyEnable')" :aria-label="$t('db.readOnlyEnable')" @click="enableReadOnly(d)"><span class="mdi mdi-eye-plus-outline"></span></button>
+                  </template>
+                </td>
                 <td class="cell-sub">
                   <RouterLink v-if="d.application_id" :to="`/apps/${d.application_id}`" @click.stop>{{ appName(d.application_id) || `app #${d.application_id}` }}</RouterLink>
                   <span v-else>—</span>
@@ -1762,6 +1793,11 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
             { label: 'Username', value: connModal.info.username },
             { label: 'Password', value: connModal.info.password },
             { label: 'URI', value: connModal.info.uri },
+            ...(connModal.info.readonly_username ? [
+              { label: `${$t('db.readOnlyUser')} · Username`, value: connModal.info.readonly_username },
+              { label: `${$t('db.readOnlyUser')} · Password`, value: connModal.info.readonly_password },
+              { label: `${$t('db.readOnlyUser')} · URI`, value: connModal.info.readonly_uri },
+            ] : []),
           ]" :key="f.label" class="dns-field">
             <span class="dns-field-label">{{ f.label }}</span>
             <div class="dns-field-row">

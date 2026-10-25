@@ -1635,7 +1635,9 @@
       "started": "Database started",
       "stopped": "Database stopped",
       "upgradeStarted": "Upgrade started",
-      "upgradeToCompleted": "Upgrade to {to_version} completed"
+      "upgradeToCompleted": "Upgrade to {to_version} completed",
+      "readOnlyEnabled": "Read-only user added.",
+      "readOnlyDisabled": "Read-only user removed."
     },
     "typeToConfirm": "Type {name} to confirm",
     "unlimited": "Unlimited",
@@ -1647,7 +1649,12 @@
     "whatWasThisBackupFor": "What was this backup for?",
     "workspaceNetworksThisDatabaseIs": "Workspace networks this database is reachable on.",
     "workspaceSettingsBackups": "Workspace settings → Backups",
-    "updated": "Updated"
+    "updated": "Updated",
+    "readOnlyUser": "Read-only user",
+    "readOnlyEnable": "Add a read-only user",
+    "readOnlyDisable": "Remove the read-only user",
+    "readOnlyHint": "A second user with SELECT on every table, now and future. Its credentials are shown with the connection.",
+    "readOnlyConfirmDisable": "Remove the read-only user of {name}? Apps using it lose access at once."
   },
   "dedicated": {
     "anOrganization": "one organization",

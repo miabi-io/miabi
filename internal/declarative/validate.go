@@ -571,6 +571,9 @@ func (r *Resource) validateDatabase() error {
 	if !placements[d.Instance] {
 		return fmt.Errorf("database %q: invalid instance %q", r.Metadata.Name, d.Instance)
 	}
+	if d.ReadOnlyUser != nil && *d.ReadOnlyUser && models.DBEngine(d.Engine) != models.DBEnginePostgres {
+		return fmt.Errorf("database %q: readOnlyUser is available for postgres only", r.Metadata.Name)
+	}
 	if !models.EngineSupportsLogicalDatabases(models.DBEngine(d.Engine)) && d.Instance == "shared" {
 		return fmt.Errorf("database %q: engine %q has no logical databases; instance cannot be 'shared'", r.Metadata.Name, d.Engine)
 	}

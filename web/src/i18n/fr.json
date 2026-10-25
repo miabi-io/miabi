@@ -1635,7 +1635,9 @@
       "started": "Base de données démarrée",
       "stopped": "Base de données arrêtée",
       "upgradeStarted": "Mise à niveau démarrée",
-      "upgradeToCompleted": "Mise à niveau vers {to_version} terminée"
+      "upgradeToCompleted": "Mise à niveau vers {to_version} terminée",
+      "readOnlyEnabled": "Utilisateur en lecture seule ajouté.",
+      "readOnlyDisabled": "Utilisateur en lecture seule supprimé."
     },
     "typeToConfirm": "Saisissez {name} pour confirmer",
     "unlimited": "Illimité",
@@ -1647,7 +1649,12 @@
     "whatWasThisBackupFor": "À quoi servait cette sauvegarde ?",
     "workspaceNetworksThisDatabaseIs": "Réseaux de l’espace de travail sur lesquels cette base est joignable.",
     "workspaceSettingsBackups": "Paramètres de l’espace de travail → Sauvegardes",
-    "updated": "Mis à jour le"
+    "updated": "Mis à jour le",
+    "readOnlyUser": "Utilisateur en lecture seule",
+    "readOnlyEnable": "Ajouter un utilisateur en lecture seule",
+    "readOnlyDisable": "Supprimer l'utilisateur en lecture seule",
+    "readOnlyHint": "Un second utilisateur avec SELECT sur toutes les tables, actuelles et futures. Ses identifiants sont affichés avec la connexion.",
+    "readOnlyConfirmDisable": "Supprimer l'utilisateur en lecture seule de {name} ? Les applications qui l'utilisent perdent l'accès immédiatement."
   },
   "dedicated": {
     "anOrganization": "une organisation",

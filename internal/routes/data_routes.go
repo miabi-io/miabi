@@ -275,6 +275,23 @@ func (r *Router) databaseRoutes() []okapi.RouteDefinition {
 			Summary:     "Reveal a database connection (admin)",
 		},
 		{
+			Method:      http.MethodPost,
+			Path:        base + "/{databaseID}/databases/{dbID}/readonly-user",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleAdmin),
+			Handler:     r.h.database.EnableReadOnlyUser,
+			Summary:     "Add a read-only user (PostgreSQL)",
+			Description: "SELECT on every table, now and future. Its credentials are revealed with the connection. Idempotent.",
+		},
+		{
+			Method:      http.MethodDelete,
+			Path:        base + "/{databaseID}/databases/{dbID}/readonly-user",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleAdmin),
+			Handler:     r.h.database.DisableReadOnlyUser,
+			Summary:     "Remove the read-only user",
+		},
+		{
 			Method:      http.MethodDelete,
 			Path:        base + "/{databaseID}/databases/{dbID}",
 			Group:       g,

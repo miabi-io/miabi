@@ -560,6 +560,46 @@ func (h *DatabaseHandler) DeleteDatabase(c *okapi.Context) error {
 	return message(c, "database deleted")
 }
 
+// EnableReadOnlyUser gives a logical database a read-only user (Postgres): SELECT on every table, now
+// and future. Idempotent: on a database that has one it re-applies the grants.
+func (h *DatabaseHandler) EnableReadOnlyUser(c *okapi.Context) error {
+	return h.setReadOnly(c, true)
+}
+
+// DisableReadOnlyUser removes a logical database's read-only user.
+func (h *DatabaseHandler) DisableReadOnlyUser(c *okapi.Context) error {
+	return h.setReadOnly(c, false)
+}
+
+func (h *DatabaseHandler) setReadOnly(c *okapi.Context, on bool) error {
+	inst, err := h.load(c)
+	if err != nil {
+		return c.AbortNotFound("database not found")
+	}
+	db, err := h.svc.GetDatabase(inst.WorkspaceID, h.dbID(c))
+	if err != nil || db.InstanceID != inst.ID {
+		return c.AbortNotFound("logical database not found")
+	}
+	ctx := c.Request().Context()
+	if on {
+		err = h.svc.EnableReadOnly(ctx, db)
+	} else {
+		err = h.svc.DisableReadOnly(ctx, db)
+	}
+	if errors.Is(err, database.ErrReadOnlyUnsupported) {
+		return c.AbortBadRequest(err.Error())
+	}
+	if err != nil {
+		return c.AbortInternalServerError("failed to change the read-only user", err)
+	}
+	action := "database.db_readonly_disable"
+	if on {
+		action = "database.db_readonly_enable"
+	}
+	h.record(c, inst.WorkspaceID, action, db.ID)
+	return ok(c, db)
+}
+
 // ListByApp lists the logical databases attached to an application.
 func (h *DatabaseHandler) ListByApp(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
