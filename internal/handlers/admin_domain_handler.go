@@ -21,6 +21,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -184,10 +185,32 @@ func (h *AdminDomainHandler) ForceVerify(c *okapi.Context) error {
 		if errors.Is(err, domain.ErrDomainBanned) {
 			return c.AbortWithError(409, err)
 		}
+		var claimed *domain.ClaimedError
+		if errors.As(err, &claimed) {
+			return c.AbortWithError(409, errors.New(h.claimedMessage(d, &claimed.Holder)))
+		}
 		return c.AbortInternalServerError("force verify failed", err)
 	}
 	h.record(c, d.WorkspaceID, "admin.domain.force_verify", d.ID)
 	return ok(c, d)
+}
+
+// claimedMessage names the workspace holding a conflicting domain, which only a platform admin may see.
+func (h *AdminDomainHandler) claimedMessage(d, holder *models.Domain) string {
+	var ws models.Workspace
+	where := fmt.Sprintf("workspace %d", holder.WorkspaceID)
+	if h.db.Select("name").First(&ws, holder.WorkspaceID).Error == nil {
+		where = fmt.Sprintf("workspace %q", ws.Name)
+	}
+	return fmt.Sprintf("%s overlaps %s, already verified in %s. Remove it there, or mark this workspace privileged "+
+		"to serve the domain without verification", displayName(d), displayName(holder), where)
+}
+
+func displayName(d *models.Domain) string {
+	if d.Wildcard {
+		return "*." + d.Name
+	}
+	return d.Name
 }
 
 // BanDomainRequest carries the optional reason recorded with a ban.

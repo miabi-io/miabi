@@ -56,8 +56,16 @@ var (
 	// ErrDomainClaimed means the hostname is already verified by another workspace, or overlaps a verified
 	// wildcard elsewhere. At most one workspace may own a verified domain platform-wide, so its routes can't
 	// collide with another tenant's. Registration stays open; only verification is exclusive.
-	ErrDomainClaimed = errors.New("this domain is already verified by another workspace")
+	ErrDomainClaimed = errors.New("another workspace has already verified this domain or a wildcard that covers it. " +
+		"Ask your platform administrator if this workspace needs to serve it")
 )
+
+// ClaimedError is ErrDomainClaimed with the verified domain that blocks the claim. Its message stays
+// generic because workspace users see it; only platform-admin handlers read Holder.
+type ClaimedError struct{ Holder models.Domain }
+
+func (e *ClaimedError) Error() string { return ErrDomainClaimed.Error() }
+func (e *ClaimedError) Unwrap() error { return ErrDomainClaimed }
 
 // hostnameRe is a permissive domain-name check (labels, at least one dot, a
 // 2+ letter TLD). A leading "*." is stripped before matching for wildcards.
@@ -373,9 +381,17 @@ func (s *Service) ensureClaimable(d *models.Domain) error {
 	if err != nil {
 		return err
 	}
+	if holder := claimHolder(d, others); holder != nil {
+		return &ClaimedError{Holder: *holder}
+	}
+	return nil
+}
+
+// claimHolder returns the domain verified elsewhere that would serve the same hostname as d, if any.
+func claimHolder(d *models.Domain, others []models.Domain) *models.Domain {
 	for i := range others {
 		if domainsOverlap(d, &others[i]) {
-			return ErrDomainClaimed
+			return &others[i]
 		}
 	}
 	return nil
