@@ -552,6 +552,13 @@ func (s *Service) restoreOne(ctx context.Context, m *models.LocationMigration, r
 	if err != nil {
 		return err
 	}
+	// The stream carries no ACLs: a source with a read-only user gets one on the destination, its
+	// grants applied to the data just loaded.
+	if srcDB.ReadOnlyUsername != "" {
+		if err := s.Databases.EnableReadOnly(ctx, dstDB); err != nil {
+			return fmt.Errorf("read-only user for %s on %s: %w", r.Name, dst.Name, err)
+		}
+	}
 	item.Bytes, item.Status = n, "done"
 	r.Restored = true
 	s.save(m)

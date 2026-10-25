@@ -349,7 +349,7 @@ var optionalWhenUnset = map[string]bool{
 // come from the console or a plan's default size, so a manifest silent about them leaves them be; an app's
 // resources keep converging to the manifest.
 var optionalWhenUnsetByKind = map[Kind]map[string]bool{
-	KindDatabase: {"resources.memory": true, "resources.cpu": true, "resources.size": true},
+	KindDatabase: {"resources.memory": true, "resources.cpu": true, "resources.size": true, "readOnlyUser": true},
 	// A manifest silent about the storage class takes this install's default, so the same repository
 	// stays portable across installs whose disks differ. Only a class named in the manifest is
 	// enforced — and then it is immutable, so it is refused rather than converged. A silent size
@@ -628,6 +628,9 @@ func specFields(r Resource) map[string]string {
 		f["version"] = r.Database.Version
 		if loc := r.Database.Location(); loc != "" {
 			f["placement.location"] = loc
+		}
+		if ro := r.Database.ReadOnlyUser; ro != nil {
+			f["readOnlyUser"] = strconv.FormatBool(*ro)
 		}
 		// Compared by canonical value, so "1Gi" matches the byte count the snapshot reports. "0" is stated too:
 		// it removes a limit.

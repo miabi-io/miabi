@@ -62,8 +62,14 @@ func (s *Service) Reencrypt(ctx context.Context, workspaceID uint) (int, error) 
 			if rerr != nil {
 				return n, rerr
 			}
-			if changed {
-				dbs[j].PasswordEnc = v
+			ro, roChanged := dbs[j].ReadOnlyPasswordEnc, false
+			if ro != "" {
+				if ro, roChanged, rerr = crypto.Reencrypt(workspaceID, ro); rerr != nil {
+					return n, rerr
+				}
+			}
+			if changed || roChanged {
+				dbs[j].PasswordEnc, dbs[j].ReadOnlyPasswordEnc = v, ro
 				if err := s.repo.UpdateDatabase(&dbs[j]); err != nil {
 					return n, err
 				}

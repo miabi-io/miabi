@@ -346,6 +346,9 @@ type LogicalDatabase struct {
 	EnvMap    map[string]string `json:"env_map,omitempty"`
 	App       string            `json:"app,omitempty"` // owning application, by name
 	Metadata  map[string]string `json:"metadata,omitempty"`
+	// ReadOnlyUser recreates the database's read-only user on restore (with new credentials, like
+	// the owner's: credentials never travel).
+	ReadOnlyUser bool `json:"readonly_user,omitempty"`
 }
 
 // Application is a workload's full spec.

@@ -1391,10 +1391,17 @@ func (s *Service) appConnection(workspaceID uint, inst *models.DatabaseInstance)
 	return connView(conn), nil
 }
 
+// readOnlySpec reports whether a logical database has a read-only user, for the snapshot.
+func readOnlySpec(d *models.Database) *bool {
+	on := d.ReadOnlyUsername != ""
+	return &on
+}
+
 func connView(conn database.ConnectionInfo) declarative.ConnView {
 	return declarative.ConnView{
 		Host: conn.Host, Port: strconv.Itoa(conn.Port), User: conn.Username,
 		Password: conn.Password, Name: conn.Database, URI: conn.URI,
+		ReadOnlyUser: conn.ReadOnlyUsername, ReadOnlyPassword: conn.ReadOnlyPassword, ReadOnlyURI: conn.ReadOnlyURI,
 	}
 }
 
@@ -1739,8 +1746,9 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 					Metadata: metaA(d.UID, d.Metadata[models.MetaDeclarativeName], d.Metadata, nil),
 					Database: &declarative.DatabaseSpec{
 						Engine: string(inst.Engine), Version: inst.Version, Instance: "auto",
-						Placement: databaseLocationSpec(s.locationName(inst.ClusterID)),
-						Resources: databaseResourcesSpec(inst),
+						Placement:    databaseLocationSpec(s.locationName(inst.ClusterID)),
+						Resources:    databaseResourcesSpec(inst),
+						ReadOnlyUser: readOnlySpec(d),
 					},
 				})
 			}
@@ -2631,11 +2639,20 @@ func (s *Service) applyDatabase(ctx context.Context, workspaceID uint, ch declar
 		if err != nil {
 			return err
 		}
-		_, _, _, _, err = s.dbs.ResolveDependency(
+		_, db, _, _, err := s.dbs.ResolveDependency(
 			ctx, workspaceID, target.ServerID, 0, ch.Name, ch.Name,
 			models.DBEngine(spec.Engine), spec.Version, database.Placement(spec.Instance), databaseResources(spec), meta,
 		)
-		return err
+		if err != nil {
+			return err
+		}
+		if spec.ReadOnlyUser != nil && *spec.ReadOnlyUser {
+			if db == nil {
+				return fmt.Errorf("database %q: readOnlyUser needs a logical PostgreSQL database", ch.Name)
+			}
+			return s.dbs.EnableReadOnly(ctx, db)
+		}
+		return nil
 	case declarative.ActionDelete:
 		// A manifest database may be a dedicated instance or a logical database sharing another. Resolve which by its
 		// declarative name and tear down only what we own: drop just the logical database when the instance hosts
@@ -2659,8 +2676,16 @@ func (s *Service) applyDatabase(ctx context.Context, workspaceID uint, ch declar
 		if err := refuseMove(ch); err != nil {
 			return err
 		}
+		resize := false
 		for _, f := range ch.Fields {
 			if strings.HasPrefix(f.Field, "resources.") {
+				resize = true
+				continue
+			}
+			if f.Field == "readOnlyUser" {
+				if err := s.setReadOnly(ctx, workspaceID, ch.Name, f.To == "true"); err != nil {
+					return err
+				}
 				continue
 			}
 			// Engine/version changes are not converged in place: the data would have to be migrated.
@@ -2671,9 +2696,24 @@ func (s *Service) applyDatabase(ctx context.Context, workspaceID uint, ch declar
 			}
 			return fmt.Errorf("database %q: in-place engine/version change is not supported", ch.Name)
 		}
+		if !resize {
+			return nil
+		}
 		return s.resizeDatabase(ctx, workspaceID, ch.Name, desired.Database)
 	}
 	return nil
+}
+
+// setReadOnly adds or removes a manifest database's read-only user in place.
+func (s *Service) setReadOnly(ctx context.Context, workspaceID uint, name string, on bool) error {
+	db, _, ok := s.dbs.FindDatabaseByDeclName(workspaceID, name)
+	if !ok {
+		return fmt.Errorf("database %q: readOnlyUser needs a logical PostgreSQL database", name)
+	}
+	if on {
+		return s.dbs.EnableReadOnly(ctx, db)
+	}
+	return s.dbs.DisableReadOnly(ctx, db)
 }
 
 // resizeDatabase converges a manifest database's limits onto its instance, which has to be its own: an instance

@@ -38,6 +38,21 @@ type ConnView struct {
 	Password string
 	Name     string
 	URI      string
+	// The read-only user, when the database has one (readOnlyUser: true); empty otherwise.
+	ReadOnlyUser     string
+	ReadOnlyPassword string
+	ReadOnlyURI      string
+}
+
+// fields is the view's {{ .databases.<name>.<field> }} map.
+func (c ConnView) fields() map[string]string {
+	return map[string]string{
+		"host": c.Host, "port": c.Port, "user": c.User,
+		"password": c.Password, "name": c.Name, "uri": c.URI,
+		"url":           c.URI, // alias of "uri"
+		"readonly_user": c.ReadOnlyUser, "readonly_password": c.ReadOnlyPassword,
+		"readonly_uri": c.ReadOnlyURI, "readonly_url": c.ReadOnlyURI,
+	}
 }
 
 // AppView is how one application appears to another's manifest. Host is the app's own NAME, which is
@@ -99,11 +114,7 @@ func NewRenderer(ctx RenderContext) *Renderer {
 func (r *Renderer) data() map[string]any {
 	dbs := map[string]map[string]string{}
 	for name, c := range r.ctx.Databases {
-		dbs[name] = map[string]string{
-			"host": c.Host, "port": c.Port, "user": c.User,
-			"password": c.Password, "name": c.Name, "uri": c.URI,
-			"url": c.URI, // alias of "uri"
-		}
+		dbs[name] = c.fields()
 	}
 	apps := map[string]map[string]string{}
 	for name, a := range r.ctx.Apps {
@@ -215,17 +226,16 @@ func (r *Renderer) ref(coll string, keys ...string) (string, error) {
 		if !ok {
 			return "", fmt.Errorf("unknown database %q", name)
 		}
-		fields := map[string]string{
-			"host": c.Host, "port": c.Port, "user": c.User,
-			"password": c.Password, "name": c.Name, "uri": c.URI,
-			"url": c.URI, // alias of "uri"
-		}
+		fields := c.fields()
 		if field == "" {
 			field = "uri" // the most common reference; ".databases.x" alone means its URI
 		}
 		v, ok := fields[field]
 		if !ok {
 			return "", fmt.Errorf("database %q has no field %q", name, field)
+		}
+		if v == "" && strings.HasPrefix(field, "readonly_") {
+			return "", fmt.Errorf("database %q has no read-only user: set readOnlyUser: true on it", name)
 		}
 		return v, nil
 	case "applications":

@@ -644,6 +644,10 @@ type ConnectionInfo struct {
 	Password string `json:"password"`
 	Database string `json:"database"`
 	URI      string `json:"uri"`
+	// The read-only user's credentials, when the database has one (Postgres).
+	ReadOnlyUsername string `json:"readonly_username,omitempty"`
+	ReadOnlyPassword string `json:"readonly_password,omitempty"`
+	ReadOnlyURI      string `json:"readonly_uri,omitempty"`
 }
 
 // Provision creates the instance record (admin credentials and connection
@@ -889,6 +893,9 @@ func (s *Service) applyPendingDatabases(ctx context.Context, inst *models.Databa
 		if err := s.execDDL(ctx, inst, createDDL(inst.Engine, d.Name, d.Username, pass)); err != nil {
 			logger.Error("apply pending database", "database", d.ID, "name", d.Name, "error", err)
 			continue
+		}
+		if err := s.applyReadOnly(ctx, inst, d); err != nil {
+			logger.Error("apply pending read-only user", "database", d.ID, "name", d.Name, "error", err)
 		}
 		d.Status = models.DBStatusRunning
 		if err := s.repo.UpdateDatabase(d); err != nil {
@@ -1655,7 +1662,9 @@ func (s *Service) RecreateDatabase(ctx context.Context, inst *models.DatabaseIns
 	if err := s.execDDL(ctx, inst, createDDL(inst.Engine, db.Name, db.Username, pass)); err != nil {
 		return fmt.Errorf("recreate database: %w", err)
 	}
-	return nil
+	// Its role outlived the dropped database; the new one needs its grants again before a restore loads
+	// data whose dump grants to it.
+	return s.applyReadOnly(ctx, inst, db)
 }
 
 // DeleteDatabase drops a logical database and its user from the instance.
@@ -1673,6 +1682,7 @@ func (s *Service) DeleteDatabase(ctx context.Context, workspaceID, id uint) erro
 		if err := s.execDDL(ctx, inst, dropDDL(inst.Engine, d.Name, d.Username)); err != nil {
 			logger.Error("drop logical database", "id", d.ID, "error", err)
 		}
+		s.dropReadOnlyRole(ctx, inst, d)
 	}
 	if err := s.repo.DeleteDatabase(d.ID); err != nil {
 		return err
@@ -1709,6 +1719,14 @@ func (s *Service) DatabaseConnection(inst *models.DatabaseInstance, d *models.Da
 	switch inst.Engine {
 	case models.DBEnginePostgres:
 		info.URI = fmt.Sprintf("postgres://%s:%s@%s:%d/%s", d.Username, pass, inst.Host, inst.Port, d.Name)
+		if d.ReadOnlyUsername != "" {
+			ro, err := crypto.Decrypt(d.ReadOnlyPasswordEnc)
+			if err != nil {
+				return ConnectionInfo{}, err
+			}
+			info.ReadOnlyUsername, info.ReadOnlyPassword = d.ReadOnlyUsername, ro
+			info.ReadOnlyURI = fmt.Sprintf("postgres://%s:%s@%s:%d/%s", d.ReadOnlyUsername, ro, inst.Host, inst.Port, d.Name)
+		}
 	case models.DBEngineMySQL, models.DBEngineMariaDB:
 		info.URI = fmt.Sprintf("mysql://%s:%s@%s:%d/%s", d.Username, pass, inst.Host, inst.Port, d.Name)
 	case models.DBEngineMongoDB:
@@ -1759,6 +1777,11 @@ func (s *Service) InstanceConnection(inst *models.DatabaseInstance) (ConnectionI
 // execDDL runs SQL statements against the instance as admin, using the engine's
 // own client image as a one-shot container on the instance's networks.
 func (s *Service) execDDL(ctx context.Context, inst *models.DatabaseInstance, statements []string) error {
+	return s.execDDLIn(ctx, inst, "", statements)
+}
+
+// execDDLIn is execDDL connected to database dbName ("" for the admin's own; Postgres only).
+func (s *Service) execDDLIn(ctx context.Context, inst *models.DatabaseInstance, dbName string, statements []string) error {
 	spec := specs[inst.Engine]
 	adminPass, err := crypto.Decrypt(inst.AdminPasswordEnc)
 	if err != nil {
@@ -1776,7 +1799,7 @@ func (s *Service) execDDL(ctx context.Context, inst *models.DatabaseInstance, st
 	if err := dc.PullImage(ctx, image, nil); err != nil {
 		return fmt.Errorf("pull client image: %w", err)
 	}
-	cmd, env := clientInvocation(inst, statements, adminPass)
+	cmd, env := clientInvocationIn(inst, dbName, statements, adminPass)
 	exit, out, err := dc.RunOneShot(ctx, docker.RunSpec{
 		Name:     fmt.Sprintf("mb-dbddl-%d-%d", inst.ID, time.Now().UnixNano()%100000),
 		Image:    image,

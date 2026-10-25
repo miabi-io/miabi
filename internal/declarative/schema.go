@@ -376,6 +376,10 @@ type DatabaseSpec struct {
 	// an instance of its own, since a reused one already runs with another's size. Omitted, the instance keeps
 	// its limits.
 	Resources *DatabaseResourcesSpec `yaml:"resources,omitempty" json:"resources,omitempty"`
+	// ReadOnlyUser gives the database a second, read-only user (PostgreSQL): SELECT on every table, now
+	// and future, referenced as {{ .databases.<name>.readonly_user|readonly_password|readonly_uri }}.
+	// Omitted, the database keeps what it has; false removes it.
+	ReadOnlyUser *bool `yaml:"readOnlyUser,omitempty" json:"readOnlyUser,omitempty"`
 }
 
 // DatabaseResourcesSpec limits a database instance, by memory and CPU or by a named size. Memory accepts Ki/Mi/Gi;

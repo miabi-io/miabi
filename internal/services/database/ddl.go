@@ -103,6 +103,44 @@ func dropDDL(engine models.DBEngine, name, user string) []string {
 	}
 }
 
+// readOnlyServerDDL creates (or, when it exists, re-passwords) a database's read-only user and lets it
+// connect. Run on the admin database; readOnlyGrantDDL then runs inside the target database. Both are
+// idempotent, so a recreate, a restore or a retry simply re-applies them.
+func readOnlyServerDDL(name, user, pass string) []string {
+	return []string{
+		fmt.Sprintf(`DO $$ BEGIN CREATE ROLE "%s" LOGIN PASSWORD '%s'; `+
+			`EXCEPTION WHEN duplicate_object THEN ALTER ROLE "%s" LOGIN PASSWORD '%s'; END $$`, user, pass, user, pass),
+		fmt.Sprintf(`GRANT CONNECT ON DATABASE "%s" TO "%s"`, name, user),
+	}
+}
+
+// readOnlyGrantDDL gives the read-only user SELECT on every table and sequence of the public schema, and,
+// through the owner's default privileges, on those the owner creates later. Run inside the target
+// database. The owner can still narrow it: these grants are recorded as the owner's, so it may revoke
+// them (an application granting column by column does).
+func readOnlyGrantDDL(owner, user string) []string {
+	return []string{
+		fmt.Sprintf(`GRANT USAGE ON SCHEMA public TO "%s"`, user),
+		fmt.Sprintf(`GRANT SELECT ON ALL TABLES IN SCHEMA public TO "%s"`, user),
+		fmt.Sprintf(`GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO "%s"`, user),
+		fmt.Sprintf(`ALTER DEFAULT PRIVILEGES FOR ROLE "%s" IN SCHEMA public GRANT SELECT ON TABLES TO "%s"`, owner, user),
+		fmt.Sprintf(`ALTER DEFAULT PRIVILEGES FOR ROLE "%s" IN SCHEMA public GRANT SELECT ON SEQUENCES TO "%s"`, owner, user),
+	}
+}
+
+// readOnlyRevokeDDL removes the read-only user's privileges inside the target database (grants and default
+// privileges alike); readOnlyDropDDL then drops the user on the admin database.
+func readOnlyRevokeDDL(user string) []string {
+	return []string{fmt.Sprintf(`DROP OWNED BY "%s"`, user)}
+}
+
+func readOnlyDropDDL(name, user string) []string {
+	return []string{
+		fmt.Sprintf(`REVOKE CONNECT ON DATABASE "%s" FROM "%s"`, name, user),
+		fmt.Sprintf(`DROP ROLE IF EXISTS "%s"`, user),
+	}
+}
+
 // queryInvocation builds the engine client command to run a single query and
 // emit raw, parseable output (tuples-only / batch / redis INFO).
 func queryInvocation(inst *models.DatabaseInstance, query, adminPass string) (cmd []string, env []string) {
@@ -129,10 +167,20 @@ func queryInvocation(inst *models.DatabaseInstance, query, adminPass string) (cm
 // clientInvocation builds the engine client command and environment to run the
 // given statements as admin against the instance.
 func clientInvocation(inst *models.DatabaseInstance, statements []string, adminPass string) (cmd []string, env []string) {
+	return clientInvocationIn(inst, "", statements, adminPass)
+}
+
+// clientInvocationIn is clientInvocation against database dbName (Postgres; "" is the admin's own), for
+// statements that act inside one database, such as grants on its schema.
+func clientInvocationIn(inst *models.DatabaseInstance, dbName string, statements []string, adminPass string) (cmd []string, env []string) {
 	port := strconv.Itoa(inst.Port)
 	switch inst.Engine {
 	case models.DBEnginePostgres:
-		cmd = []string{"psql", "-h", inst.Host, "-p", port, "-U", inst.AdminUser, "-d", inst.AdminUser, "-v", "ON_ERROR_STOP=1"}
+		target := inst.AdminUser
+		if dbName != "" {
+			target = dbName
+		}
+		cmd = []string{"psql", "-h", inst.Host, "-p", port, "-U", inst.AdminUser, "-d", target, "-v", "ON_ERROR_STOP=1"}
 		for _, st := range statements {
 			cmd = append(cmd, "-c", st)
 		}

@@ -2026,6 +2026,7 @@ export interface LogicalDatabase {
   instance_id: number
   name: string
   username: string
+  readonly_username?: string
   status: DBStatus
   application_id?: number | null
   env_prefix?: string
@@ -2052,6 +2053,9 @@ export interface ConnectionInfo {
   password: string
   database: string
   uri: string
+  readonly_username?: string
+  readonly_password?: string
+  readonly_uri?: string
 }
 
 export type JobRunStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled' | 'skipped'
