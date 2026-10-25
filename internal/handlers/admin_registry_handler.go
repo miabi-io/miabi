@@ -101,6 +101,9 @@ type RegistrySettingsBody struct {
 	Enabled     *bool   `json:"enabled"`
 	Host        *string `json:"host"`
 	StorageType *string `json:"storage_type" enum:"filesystem,s3"`
+	// StorageClass places the local volume on a storage class of the control-plane node; empty or
+	// "default" is Docker's data root.
+	StorageClass *string `json:"storage_class"`
 
 	S3Endpoint       *string `json:"s3_endpoint"`
 	S3Bucket         *string `json:"s3_bucket"`
@@ -194,6 +197,13 @@ func (h *AdminRegistryHandler) UpdateSettings(c *okapi.Context, req *UpdateRegis
 			"S3/MinIO storage for the built-in registry requires an Enterprise license (the registry_s3 entitlement)"))
 	}
 
+	if b.StorageClass != nil && !locks.StorageClass &&
+		models.NormalizeRegistryStorageClass(*b.StorageClass) != current.StorageClass {
+		if err := h.svc.ValidateStorageClass(*b.StorageClass); err != nil {
+			return c.AbortBadRequest("storage class: " + err.Error())
+		}
+	}
+
 	if msg := h.destructiveChange(c.Request().Context(), current, locks, b); msg != "" && !b.Confirm {
 		// 409: the request is well-formed but conflicts with what is already stored.
 		// The message is the confirmation prompt the UI shows verbatim.
@@ -206,6 +216,7 @@ func (h *AdminRegistryHandler) UpdateSettings(c *okapi.Context, req *UpdateRegis
 		Enabled:             b.Enabled,
 		Host:                b.Host,
 		StorageType:         b.StorageType,
+		StorageClass:        b.StorageClass,
 		S3Endpoint:          b.S3Endpoint,
 		S3Bucket:            b.S3Bucket,
 		S3Region:            b.S3Region,
@@ -259,6 +270,14 @@ func (h *AdminRegistryHandler) destructiveChange(
 				" already pushed: blobs are not migrated between backends, and the images stay in the old one."
 		}
 	}
+	if !current.UsesS3() && b.StorageClass != nil && !locks.StorageClass {
+		want := &models.RegistrySettings{StorageClass: models.NormalizeRegistryStorageClass(*b.StorageClass)}
+		if want.DataVolume() != current.DataVolume() {
+			return "Moving the registry to the " + storageClassLabel(want.StorageClass) + " storage class starts it on an empty volume (" +
+				want.DataVolume() + "). The " + plural(repos, "repository", "repositories") + " already pushed stay in " +
+				current.DataVolume() + " and are not copied."
+		}
+	}
 	if current.UsesS3() && b.S3Bucket != nil && !locks.S3Bucket {
 		if want := strings.TrimSpace(*b.S3Bucket); want != "" && current.S3Bucket != "" && want != current.S3Bucket {
 			return "Pointing the registry at bucket " + want + " abandons the " +
@@ -281,6 +300,13 @@ func (h *AdminRegistryHandler) storedRepoCount(ctx context.Context) int {
 		return 0
 	}
 	return n
+}
+
+func storageClassLabel(name string) string {
+	if name == "" {
+		return models.DefaultStorageClassName
+	}
+	return name
 }
 
 func plural(n int, one, many string) string {

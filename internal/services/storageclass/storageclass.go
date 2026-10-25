@@ -89,12 +89,19 @@ type ServerInfo interface {
 	Get(id uint) (*models.Server, error)
 }
 
+// PlatformUser is a platform component that keeps data on a class outside the volumes table, such
+// as the built-in registry. StorageClassUser names it when it uses the class, or returns "".
+type PlatformUser interface {
+	StorageClassUser(name string) string
+}
+
 // Service manages storage classes and the node-side directories they own.
 type Service struct {
-	repo       *repositories.StorageClassRepository
-	clients    NodeDocker
-	images     ImageResolver
-	serverInfo ServerInfo
+	repo          *repositories.StorageClassRepository
+	clients       NodeDocker
+	images        ImageResolver
+	serverInfo    ServerInfo
+	platformUsers []PlatformUser
 }
 
 func NewService(repo *repositories.StorageClassRepository, clients NodeDocker) *Service {
@@ -106,6 +113,12 @@ func (s *Service) SetImageResolver(r ImageResolver) { s.images = r }
 
 // SetServerInfo wires the resolver used to annotate classes with their node's name.
 func (s *Service) SetServerInfo(si ServerInfo) { s.serverInfo = si }
+
+// AddPlatformUser registers a component whose use of a class blocks its deletion.
+func (s *Service) AddPlatformUser(u PlatformUser) { s.platformUsers = append(s.platformUsers, u) }
+
+// LocalID is the control-plane node's id, the node platform components run on.
+func (s *Service) LocalID() uint { return s.clients.LocalID() }
 
 func (s *Service) helperImage() string {
 	if s.images != nil {
@@ -276,6 +289,11 @@ func (s *Service) Delete(id uint) error {
 	}
 	if n > 0 {
 		return fmt.Errorf("%w: %d volume(s) still use %q — disable it instead", ErrInUse, n, c.Name)
+	}
+	for _, u := range s.platformUsers {
+		if who := u.StorageClassUser(c.Name); who != "" {
+			return fmt.Errorf("%w: %s keeps its data on %q", ErrInUse, who, c.Name)
+		}
 	}
 	return s.repo.Delete(c.ID)
 }

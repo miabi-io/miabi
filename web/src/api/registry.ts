@@ -8,6 +8,8 @@ export interface RegistrySettings {
   host?: string
   storage_type: 'filesystem' | 's3'
   volume_name?: string
+  /** Storage class the local volume lives on; absent means Docker's data root. */
+  storage_class?: string
   s3_endpoint?: string
   s3_bucket?: string
   s3_region?: string
@@ -40,6 +42,7 @@ export interface RegistryLocks {
   enabled: boolean
   host: boolean
   storage: boolean
+  storage_class: boolean
   s3_endpoint: boolean
   s3_bucket: boolean
   s3_region: boolean
@@ -59,6 +62,8 @@ export interface RegistrySettingsPayload {
   enabled?: boolean
   host?: string
   storage_type?: 'filesystem' | 's3'
+  /** Empty moves the local volume back to Docker's data root. */
+  storage_class?: string
   s3_endpoint?: string
   s3_bucket?: string
   s3_region?: string
