@@ -540,7 +540,8 @@ func validCreation(mode *string) (*string, error) {
 		return nil, nil
 	}
 	m := strings.TrimSpace(*mode)
-	if !models.ValidWorkspaceCreation(m) {
+	// Console mode is platform-wide and set only by MIABI_WORKSPACE_CREATION.
+	if !models.ValidWorkspaceCreation(m) || m == models.WorkspaceCreationConsole {
 		return nil, ErrInvalidWorkspaceCreation
 	}
 	return &m, nil

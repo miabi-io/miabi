@@ -102,6 +102,7 @@ type Service struct {
 	orgLimitsEntitled func() bool
 	// creationMode returns the platform workspace creation mode; see SetCreationPolicy.
 	creationMode func() string
+	consoleURL   func() string
 }
 
 func NewService(repo *repositories.WorkspaceRepository, users *repositories.UserRepository, nets NetworkEnsurer) *Service {

@@ -540,6 +540,17 @@ func TestRegistryCannotBeSetThroughEnv(t *testing.T) {
 	}
 }
 
+// Only the registry settings the manifest models are reserved; the rest are ordinary env entries.
+func TestUnmodelledRegistrySettingsGoThroughEnv(t *testing.T) {
+	for _, key := range []string{"MIABI_REGISTRY_STORAGE_CLASS", "MIABI_REGISTRY_S3_BUCKET", "MIABI_REGISTRY_HTTPS_REDIRECT"} {
+		m := testManifest()
+		m.Env = map[string]string{key: "x"}
+		if err := m.Normalize(); err != nil {
+			t.Errorf("%s refused through env: %v", key, err)
+		}
+	}
+}
+
 // GOMA_CONFIG_ENCRYPTION_KEY must hold the same value in TWO containers: Miabi encrypts the gateway
 // config, Goma decrypts it. Set on one side only, Goma reads a config it cannot decrypt and routing
 // breaks with no obvious cause. Its home is gateway.env, and Miabi forwards it to the control plane.

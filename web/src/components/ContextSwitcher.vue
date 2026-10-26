@@ -133,6 +133,9 @@ function leaveAdmin() {
         <div v-if="auth.canCreateWorkspace" class="ws-switcher-action" @click="go('/workspaces?create=1')">
           <span class="mdi mdi-plus"></span><span>{{ t('switcher.create') }}</span>
         </div>
+        <a v-else-if="auth.consoleCreateUrl" class="ws-switcher-action" :href="auth.consoleCreateUrl" target="_blank" rel="noopener">
+          <span class="mdi mdi-open-in-new"></span><span>{{ t('switcher.createInConsole') }}</span>
+        </a>
         <div class="ws-switcher-action" @click="go('/workspaces')">
           <span class="mdi mdi-briefcase-outline"></span><span>{{ t('switcher.manage') }}</span>
         </div>

@@ -173,12 +173,15 @@ func selfOwnerMeta(users *repositories.UserRepository, c *okapi.Context) models.
 
 // Shared error values for admin handlers.
 var (
-	errEmailTaken         = errors.New("email already registered")
-	errInvalidID          = errors.New("invalid id")
-	errSlugTaken          = errors.New("slug already in use")
-	errAccountUnavailable = errors.New("account service unavailable")
-	errUsernameTaken      = errors.New("username already taken")
-	errUsernameInvalid    = errors.New("username must be lowercase letters, digits and hyphens, and not a reserved word")
+	errEmailTaken = errors.New("email already registered")
+	errInvalidID  = errors.New("invalid id")
+	errSlugTaken  = errors.New("slug already in use")
+	// errConsoleManaged refuses a change to something a connected billing console owns.
+	errConsoleManaged          = errors.New("managed by Miabi Console: change it in the console")
+	errConsoleProviderReserved = errors.New("miabi-console is reserved for the provider Miabi Console configures")
+	errAccountUnavailable      = errors.New("account service unavailable")
+	errUsernameTaken           = errors.New("username already taken")
+	errUsernameInvalid         = errors.New("username must be lowercase letters, digits and hyphens, and not a reserved word")
 )
 
 // validateUsername normalizes and validates a user-chosen handle, returning the canonical form.

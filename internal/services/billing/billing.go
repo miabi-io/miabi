@@ -24,6 +24,7 @@
 package billing
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -57,6 +58,29 @@ type Service struct {
 	// http calls the console; nil uses a client that never follows redirects.
 	http *http.Client
 	now  func() time.Time
+	// locked is MIABI_BILLING_CONNECTION_LOCKED.
+	locked bool
+
+	ssoRepo    *repositories.OAuthProviderRepository
+	ssoResolve func(ctx context.Context, p *models.OAuthProvider) error
+	ssoAPIBase string
+
+	consoleOnly func() bool
+}
+
+// SetLocked applies MIABI_BILLING_CONNECTION_LOCKED.
+func (s *Service) SetLocked(locked bool) { s.locked = locked }
+
+// Locked reports whether the console connection is locked.
+func (s *Service) Locked() bool { return s.locked }
+
+// GuardServiceUser refuses to suspend, deactivate or delete the billing service user while the
+// connection is locked: its key is the connection, so losing the user is a disconnect.
+func (s *Service) GuardServiceUser(u *models.User) error {
+	if s.locked && u != nil && strings.EqualFold(u.Email, ServiceUserEmail) {
+		return ErrConnectionLocked
+	}
+	return nil
 }
 
 // NewService builds the service.
@@ -98,7 +122,10 @@ func (s *Service) MintKey(name string, allowedIPs []string) (string, *models.API
 
 // Plan is a Miabi plan as the Billing API reports it (contract "Plan").
 type Plan struct {
-	Name         string           `json:"name"`
+	Name string `json:"name"`
+	// Key is the console's key for a managed plan; empty for a plan made in Miabi.
+	Key          string           `json:"key,omitempty"`
+	Managed      bool             `json:"managed"`
 	Description  string           `json:"description"`
 	IsActive     bool             `json:"is_active"`
 	IsDefault    bool             `json:"is_default"`
@@ -141,7 +168,10 @@ func ToPlan(p *models.Plan) (Plan, error) {
 		return Plan{}, err
 	}
 	out := Plan{Name: p.Name, Description: p.Description, IsActive: p.IsActive, IsDefault: p.IsDefault, UpdatedAt: p.UpdatedAt,
-		Limits: map[string]int64{}, Capabilities: map[string]bool{}}
+		Managed: p.ConsoleManaged(), Limits: map[string]int64{}, Capabilities: map[string]bool{}}
+	if p.ExternalKey != nil {
+		out.Key = *p.ExternalKey
+	}
 	for k, v := range fields {
 		switch {
 		case strings.HasPrefix(k, "max_"):

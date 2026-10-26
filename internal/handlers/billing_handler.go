@@ -57,6 +57,54 @@ func (h *BillingHandler) Plans(c *okapi.Context) error {
 	return ok(c, plans)
 }
 
+// PlanSchema lists the plan fields this Miabi accepts from a console.
+func (h *BillingHandler) PlanSchema(c *okapi.Context) error {
+	sc, err := h.svc.PlanSchema()
+	if err != nil {
+		return c.AbortInternalServerError("failed to describe plans", err)
+	}
+	return ok(c, sc)
+}
+
+// BillingPushPlanRequest is PUT /plans/{key}.
+type BillingPushPlanRequest struct {
+	Key    string           `path:"key" required:"true" doc:"The console's stable plan key"`
+	DryRun bool             `query:"dry_run"`
+	Body   billing.PlanPush `json:"body"`
+}
+
+// PushPlan creates or updates a console-managed plan.
+func (h *BillingHandler) PushPlan(c *okapi.Context, req *BillingPushPlanRequest) error {
+	return h.write(c, req.Body, func() (any, error) {
+		res, dry, err := h.svc.PushPlan(req.Key, req.Body, req.DryRun)
+		if err != nil {
+			return nil, err
+		}
+		if dry != nil {
+			return dry, nil
+		}
+		h.record(c, "billing.plan.push", "", map[string]any{"key": req.Key, "name": req.Body.Name, "created": res.Created, "adopted": res.Adopted, "ignored": res.Ignored})
+		return res, nil
+	})
+}
+
+// BillingPlanRef names a console plan in the path.
+type BillingPlanRef struct {
+	Key string `path:"key" required:"true"`
+}
+
+// RemovePlan withdraws a console-managed plan.
+func (h *BillingHandler) RemovePlan(c *okapi.Context, req *BillingPlanRef) error {
+	return h.write(c, struct{}{}, func() (any, error) {
+		deleted, err := h.svc.RemovePlan(req.Key)
+		if err != nil {
+			return nil, err
+		}
+		h.record(c, "billing.plan.remove", "", map[string]any{"key": req.Key, "deleted": deleted})
+		return map[string]any{"key": req.Key, "deleted": deleted}, nil
+	})
+}
+
 // BillingAccountRef names an account in the path.
 type BillingAccountRef struct {
 	ExternalID string `path:"external_id" required:"true" doc:"The billing platform's customer id"`
@@ -122,6 +170,42 @@ func (h *BillingHandler) PushSubscription(c *okapi.Context, req *BillingPushSubs
 				"event_at": req.Body.EventAt, "limits": req.Body.Limits, "max_workspaces": req.Body.MaxWorkspaces})
 		}
 		return res.Account, nil
+	})
+}
+
+// BillingSSOProviderRequest is PUT /sso-provider.
+type BillingSSOProviderRequest struct {
+	Body billing.SSOProviderInput `json:"body"`
+}
+
+// UpsertSSOProvider creates or updates the console-managed SSO provider (miabi-console).
+func (h *BillingHandler) UpsertSSOProvider(c *okapi.Context, req *BillingSSOProviderRequest) error {
+	return h.write(c, req.Body, func() (any, error) {
+		p, err := h.svc.UpsertSSOProvider(c.Request().Context(), req.Body)
+		if err == nil {
+			h.record(c, "billing.sso_provider.upsert", "", map[string]any{"issuer": p.Issuer, "adopted": p.Adopted, "group_sync": p.GroupSync})
+		}
+		return p, err
+	})
+}
+
+// GetSSOProvider reports the console-managed SSO provider.
+func (h *BillingHandler) GetSSOProvider(c *okapi.Context) error {
+	p, err := h.svc.SSOProvider()
+	if err != nil {
+		return billingErr(c, err, "failed to read the SSO provider")
+	}
+	return ok(c, p)
+}
+
+// DeleteSSOProvider removes the console-managed SSO provider.
+func (h *BillingHandler) DeleteSSOProvider(c *okapi.Context) error {
+	return h.write(c, struct{}{}, func() (any, error) {
+		if err := h.svc.DeleteSSOProvider(); err != nil {
+			return nil, err
+		}
+		h.record(c, "billing.sso_provider.delete", "", nil)
+		return map[string]string{"message": "SSO provider removed"}, nil
 	})
 }
 

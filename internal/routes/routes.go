@@ -318,6 +318,23 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		settings.KeyInvitationSignupEnabled:  cfg.InvitationSignupEnabled,
 		settings.KeyControlManagerMode:       cfg.ControlManagerMode,
 	})
+	// Pinned values are written back to the settings table, so a console mode the environment no
+	// longer sets would otherwise outlive the variable, and no admin could clear it from the UI.
+	if cfg.WorkspaceCreation != models.WorkspaceCreationConsole {
+		if st, err := settingRepo.Get(settings.KeyWorkspaceCreation); err == nil && st.Value == models.WorkspaceCreationConsole {
+			if err := settingRepo.BulkUpsert([]models.Setting{{Key: settings.KeyWorkspaceCreation, Value: settings.DefaultWorkspaceCreation, Type: models.SettingTypeString}}); err != nil {
+				logger.Warn("failed to reset the workspace creation mode left by MIABI_WORKSPACE_CREATION=console", "error", err)
+			}
+			settingsProvider.Invalidate()
+		}
+	}
+	workspaceCreationMode := func() string {
+		m := settingsProvider.String(settings.KeyWorkspaceCreation, settings.DefaultWorkspaceCreation)
+		if m == models.WorkspaceCreationConsole && cfg.WorkspaceCreation != models.WorkspaceCreationConsole {
+			return settings.DefaultWorkspaceCreation
+		}
+		return m
+	}
 	oauthService := oauth.NewService(oauthRepo, userRepo, repositories.NewUserIdentityRepository(db), redisClient)
 	oauthService.SetWorkspaces(workspaceRepo) // auto-join SSO users to a provider's default workspace
 	orgRepo := repositories.NewOrganizationRepository(db)
@@ -400,6 +417,15 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	apiKeyService := auth.NewAPIKeyService(apiKeyRepo)
 	billingService := billing.NewService(db, userRepo, apiKeyService, planRepo, settingRepo,
 		billing.EnrolmentInfo{MiabiURL: cfg.DeploymentURL(), InstallID: installID, Version: config.Version})
+	billingService.SetLocked(cfg.BillingConnectionLocked)
+	billingAPIBase := cfg.ApiBaseURL
+	if billingAPIBase == "" {
+		billingAPIBase = strings.TrimRight(cfg.DeploymentURL(), "/") + "/api/v1"
+	}
+	billingService.SetSSO(oauthRepo, oauthService.ResolveEndpoints, billingAPIBase)
+	billingService.SetConsoleOnly(func() bool {
+		return workspaceCreationMode() == models.WorkspaceCreationConsole
+	})
 	apiKeyService.SetQuota(quotaService)
 	// Login-token issuer for the console's "Copy login command": mints a short-lived personal API
 	// key and renders the CLI/curl commands. --url is the panel ROOT, so use the web URL — not
@@ -462,9 +488,13 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		},
 		func() bool { return ee.Has(enterprise.FlagUserWorkspaceLimit) },
 	)
-	workspaceService.SetCreationPolicy(func() string {
-		return settingsProvider.String(settings.KeyWorkspaceCreation, settings.DefaultWorkspaceCreation)
+	workspaceService.SetConsoleURL(func() string {
+		if conn, err := billingService.Connection(); err == nil {
+			return conn.ConsoleURL
+		}
+		return ""
 	})
+	workspaceService.SetCreationPolicy(workspaceCreationMode)
 	// Per-user membership limit (workspaces JOINED as a non-owner member): global
 	// max_workspace_memberships_per_user is OSS; the per-user override is gated by
 	// the Enterprise user_workspace_membership_limit entitlement.
@@ -683,6 +713,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Account teardown: stop a disabled user's workloads, and cascade-delete all
 	// of a deleted user's owned-workspace resources.
 	accountService := account.NewService(userRepo, workspaceRepo, appRepo, dbRepo, stackRepo, appService, databaseService, stackService, storageService)
+	accountService.SetDeletionGuard(billingService.GuardWorkspaceDeletion)
+	accountService.SetWorkspaceDeletedHook(billingService.WorkspaceDeleted)
 	accountService.SetEventBus(bus)                        // live workspace-deletion progress SSE
 	accountService.SetWorkspaceFinalizer(workspaceService) // row delete + crypto-shred after teardown
 	restrictionService := restriction.NewService(workspaceRepo, accountService)
@@ -1591,6 +1623,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.auth.SetMailer(platformMailer)
 	r.h.workspace.SetMailer(platformMailer)
 	r.h.adminUser.SetMailer(platformMailer)
+	r.h.adminUser.SetUserGuard(billingService.GuardServiceUser)
 	// "Copy login command": the auth handler mints via password re-auth; the OAuth
 	// handler mints via a forced fresh SSO login and hands off through Redis.
 	r.h.auth.SetLoginTokens(loginTokenService)

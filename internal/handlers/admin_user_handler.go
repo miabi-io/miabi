@@ -55,6 +55,22 @@ type AdminUserHandler struct {
 	ee         enterprise.EE
 	orgs       *organization.Service
 	graceDays  int
+	// guard refuses taking away a user the platform depends on, such as the locked billing service user.
+	guard func(*models.User) error
+}
+
+// SetUserGuard wires the check run before an account is deactivated, suspended or deleted.
+func (h *AdminUserHandler) SetUserGuard(fn func(*models.User) error) { h.guard = fn }
+
+// guarded writes a 409 and reports true when the account may not be taken away.
+func (h *AdminUserHandler) guarded(c *okapi.Context, target *models.User) (bool, error) {
+	if h.guard == nil {
+		return false, nil
+	}
+	if err := h.guard(target); err != nil {
+		return true, c.AbortWithError(http.StatusConflict, err)
+	}
+	return false, nil
 }
 
 // SetMailer wires the platform mailer used to email a welcome to admin-created
@@ -485,6 +501,11 @@ func (h *AdminUserHandler) Update(c *okapi.Context, req *AdminUpdateUserRequest)
 		if target.ID == self && !*req.Body.Active {
 			return c.AbortBadRequest("you cannot deactivate your own account")
 		}
+		if !*req.Body.Active {
+			if blocked, err := h.guarded(c, target); blocked {
+				return err
+			}
+		}
 		if !*req.Body.Active && target.Role == models.SystemRoleAdmin {
 			if last, _ := h.isLastAdmin(target.ID); last {
 				return c.AbortBadRequest("cannot deactivate the last remaining admin")
@@ -539,6 +560,9 @@ func (h *AdminUserHandler) ScheduleDeletion(c *okapi.Context, req *AdminSchedule
 	}
 	if target.ID == middlewares.UserID(c) {
 		return c.AbortBadRequest("you cannot delete your own account")
+	}
+	if blocked, err := h.guarded(c, target); blocked {
+		return err
 	}
 	if target.Active {
 		return c.AbortBadRequest("disable the account before scheduling deletion")
@@ -596,6 +620,9 @@ func (h *AdminUserHandler) ForceDeletion(c *okapi.Context) error {
 	}
 	if target.ID == middlewares.UserID(c) {
 		return c.AbortBadRequest("you cannot delete your own account")
+	}
+	if blocked, err := h.guarded(c, target); blocked {
+		return err
 	}
 	if target.ScheduledDeletionAt == nil {
 		return c.AbortBadRequest("force deletion is only available for an account that is pending deletion")
@@ -830,6 +857,9 @@ func (h *AdminUserHandler) Suspend(c *okapi.Context, req *AdminSuspendUserReques
 	}
 	if target.ID == middlewares.UserID(c) {
 		return c.AbortBadRequest("you cannot suspend yourself")
+	}
+	if blocked, err := h.guarded(c, target); blocked {
+		return err
 	}
 	if target.Role == models.SystemRoleAdmin {
 		if last, err := h.isLastAdmin(target.ID); err != nil || last {

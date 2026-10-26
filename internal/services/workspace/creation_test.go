@@ -133,6 +133,12 @@ func TestCreationPolicyResolution(t *testing.T) {
 		"unlicensed user override is ignored": {
 			platform: anyone, override: &no, wantAllow: true, wantSrc: CreationSourcePlatform,
 		},
+		"console refuses a platform admin": {
+			platform: models.WorkspaceCreationConsole, role: models.SystemRoleAdmin, wantSrc: CreationSourcePlatform,
+		},
+		"console outranks a licensed user override": {
+			platform: models.WorkspaceCreationConsole, override: &yes, entitled: true, wantSrc: CreationSourcePlatform,
+		},
 		"an unknown platform mode falls back to anyone": {
 			platform: "bogus", source: models.SignupSourceInvitation, wantAllow: true, wantSrc: CreationSourcePlatform,
 		},
@@ -161,6 +167,23 @@ func TestCreateRefusedByPolicyCarriesTheErrorCode(t *testing.T) {
 	var coded interface{ Code() string }
 	if !errors.As(err, &coded) || coded.Code() != "WORKSPACE_CREATION_NOT_ALLOWED" {
 		t.Errorf("error code: got %v", err)
+	}
+}
+
+func TestConsoleModeErrorCode(t *testing.T) {
+	db := creationDB(t)
+	u := &models.User{Email: "a@example.com", Role: models.SystemRoleAdmin, Active: true}
+	db.Create(u)
+	s := NewService(repositories.NewWorkspaceRepository(db), repositories.NewUserRepository(db), nil)
+	s.SetCreationPolicy(func() string { return models.WorkspaceCreationConsole })
+
+	if !s.ConsoleOnly() {
+		t.Fatal("ConsoleOnly() = false under console mode")
+	}
+	_, err := s.Create(u.ID, "Mine", "", "")
+	var coded interface{ Code() string }
+	if !errors.As(err, &coded) || coded.Code() != "WORKSPACE_CREATION_CONSOLE" {
+		t.Errorf("error = %v, want WORKSPACE_CREATION_CONSOLE", err)
 	}
 }
 

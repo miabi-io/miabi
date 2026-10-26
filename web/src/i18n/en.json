@@ -3043,7 +3043,8 @@
       "require": "Require CPU and memory limits on every app",
       "requireHint": "An app that still has no CPU or memory limit after the defaults are applied is refused.",
       "requireSuggest": "This plan caps CPU or memory, but apps without limits don't count toward those totals. Consider requiring limits or setting defaults."
-    }
+    },
+    "managedByConsole": "Miabi Console manages this plan: its name, limits, capabilities and database sizes are set there, and changes made here to them are discarded. Placement, storage classes and runners stay editable on this instance."
   },
   "plans": {
     "active": "active",
@@ -3908,7 +3909,8 @@
     "privilegedTitle": "A privileged workspace: host mounts and host-port bindings are allowed without approval, and the restricted security profile does not apply.",
     "systemBadge": "System",
     "systemTitle": "The built-in platform workspace. It holds platform-managed resources and cannot be renamed or deleted.",
-    "workspaces": "workspaces"
+    "workspaces": "workspaces",
+    "createInConsole": "Create in Miabi Console"
   },
   "verifyEmail": {
     "checkingYourLink": "Checking your link.",
@@ -4090,7 +4092,8 @@
     "invitedBy": "by {name}",
     "orCreateYourOwnWorkspace": "Or create your own workspace",
     "askForAnInvitation": "You don't have a workspace yet. Ask an administrator to invite you to one.",
-    "youVeBeenInvited": "You've been invited"
+    "youVeBeenInvited": "You've been invited",
+    "createdInConsole": "Workspaces on this instance are created in Miabi Console."
   },
   "workspaces": {
     "copyWorkspaceId": "Copy workspace ID",

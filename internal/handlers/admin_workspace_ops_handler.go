@@ -119,6 +119,9 @@ type AdminCreateWorkspaceResponse struct {
 // Create makes a workspace owned by owner_email. A missing owner account is created without a
 // password: the person signs in with SSO (linked by verified e-mail) or sets one with "forgot password".
 func (h *AdminWorkspaceOpsHandler) Create(c *okapi.Context, req *AdminCreateWorkspaceRequest) error {
+	if h.wsService.ConsoleOnly() {
+		return c.AbortWithError(http.StatusForbidden, &workspace.CreationDeniedError{Mode: models.WorkspaceCreationConsole})
+	}
 	email := strings.ToLower(strings.TrimSpace(req.Body.OwnerEmail))
 	if !strings.Contains(email, "@") {
 		return c.AbortBadRequest("owner_email must be an e-mail address")
@@ -249,6 +252,9 @@ func (h *AdminWorkspaceOpsHandler) Delete(c *okapi.Context) error {
 	ws, err := adminWorkspaceRef(h.workspaces, c.Param("id"))
 	if err != nil {
 		return c.AbortNotFound("workspace not found")
+	}
+	if err := h.account.GuardDeletion(ws.ID); err != nil {
+		return c.AbortWithError(http.StatusConflict, err)
 	}
 	if err := h.account.DeleteWorkspaceNow(c.Request().Context(), ws.ID); err != nil {
 		if errors.Is(err, account.ErrSystemProtected) {

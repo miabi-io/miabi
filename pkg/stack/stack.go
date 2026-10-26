@@ -422,10 +422,16 @@ func (m *Manifest) normalizeBackup() error {
 	return nil
 }
 
-// reservedEnvPrefixes are settings the manifest models with a dedicated field, so setting them through env:
-// would create a second source of truth that can silently disagree with the first. A bare
+// reservedEnv are settings the manifest models with a dedicated field, mapped to that field, so setting them
+// through env: would create a second source of truth that can silently disagree with the first. A bare
 // MIABI_REGISTRY_ENABLED in env: would turn the registry on while `miabi stack status` still said it was off.
-var reservedEnvPrefixes = []string{"MIABI_REGISTRY_"}
+// Registry settings the manifest does not model (storage class, S3, image…) are ordinary env entries.
+var reservedEnv = map[string]string{
+	"MIABI_REGISTRY_ENABLED":        "registry: {enabled: true, host: …}, or --registry on the command line",
+	"MIABI_REGISTRY_HOST":           "registry: {enabled: true, host: …}, or --registry on the command line",
+	"MIABI_REGISTRY_STORAGE":        "spec.registry.storage in the install document",
+	"MIABI_REGISTRY_PLATFORM_TOKEN": "spec.secrets.registryPlatformToken in the install document",
+}
 
 // Seeded env defaults, written into the manifest rather than applied invisibly, so `env:` shows an
 // operator the two knobs they are most likely to want and where to change them. Both stay ordinary
@@ -504,11 +510,8 @@ func (m *Manifest) normalizeEnv() error {
 			return fmt.Errorf("env: %s is set by Miabi itself and cannot be overridden here.\n"+
 				"  It is derived from the manifest (domain, secrets, images, network) — change it there instead", key)
 		}
-		for _, p := range reservedEnvPrefixes {
-			if strings.HasPrefix(key, p) {
-				return fmt.Errorf("env: %s is configured by its own manifest section, not by env "+
-					"(use `registry: {enabled: true, host: …}`, or --registry on the command line)", key)
-			}
+		if field, ok := reservedEnv[key]; ok {
+			return fmt.Errorf("env: %s is configured by its own manifest section, not by env (use %s)", key, field)
 		}
 		// The gateway's config-encryption key must reach BOTH containers (Miabi encrypts what Goma decrypts).
 		// Setting it here would give it to the control plane only, and Goma would read a config it cannot decrypt

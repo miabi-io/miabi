@@ -165,6 +165,9 @@ func (h *AdminSettingHandler) Update(c *okapi.Context, req *UpdateSettingsReques
 				return c.AbortBadRequest(fmt.Sprintf("%s must be a whole number", key))
 			}
 		}
+		if key == settings.KeyWorkspaceCreation && strings.TrimSpace(s.Value) == models.WorkspaceCreationConsole {
+			return c.AbortBadRequest(`workspace_creation "console" is set only with MIABI_WORKSPACE_CREATION=console`)
+		}
 		if key == settings.KeyWorkspaceCreation && !models.ValidWorkspaceCreation(strings.TrimSpace(s.Value)) {
 			return c.AbortBadRequest(`workspace_creation must be "anyone", "except_invited" or "admins_only"`)
 		}

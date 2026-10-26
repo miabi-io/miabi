@@ -88,9 +88,19 @@ type OAuthProvider struct {
 	GroupPrefix string              `json:"group_prefix"`
 	Mappings    []OAuthGroupMapping `json:"mappings,omitempty" gorm:"foreignKey:ProviderID"`
 
+	// ManagedBy names the system that owns this provider's configuration ("console" or empty).
+	ManagedBy string `json:"managed_by,omitempty" gorm:"not null;default:''"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+// ConsoleOAuthProviderName is the fixed handle of the provider a billing console pushes; its
+// back-channel logout URL embeds it, so it never changes.
+const ConsoleOAuthProviderName = "miabi-console"
+
+// ConsoleManaged reports whether a billing console owns this provider's configuration.
+func (p *OAuthProvider) ConsoleManaged() bool { return p != nil && p.ManagedBy == ManagedByConsole }
 
 // OAuthGroupMapping maps one provider group to Miabi access, applied at every sign-in like
 // LDAPGroupMapping: platform admin, or a role in a fixed workspace.

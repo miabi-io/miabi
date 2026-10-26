@@ -173,6 +173,9 @@ func (h *OAuthAdminHandler) Create(c *okapi.Context, req *CreateOAuthProviderReq
 		s = req.Body.DisplayName
 	}
 	s = slug.Make(s, "provider")
+	if s == models.ConsoleOAuthProviderName {
+		return c.AbortWithError(409, errConsoleProviderReserved)
+	}
 	if exists, _ := h.repo.ExistsByName(s); exists {
 		return c.AbortWithError(409, errSlugTaken)
 	}
@@ -222,6 +225,9 @@ func (h *OAuthAdminHandler) Update(c *okapi.Context, req *UpdateOAuthProviderReq
 	p, err := h.provider(c)
 	if err != nil {
 		return c.AbortNotFound("provider not found")
+	}
+	if p.ConsoleManaged() {
+		return h.updateManaged(c, p, req)
 	}
 	if v := strings.TrimSpace(req.Body.DisplayName); v != "" {
 		p.DisplayName = v
@@ -307,11 +313,33 @@ func (h *OAuthAdminHandler) Update(c *okapi.Context, req *UpdateOAuthProviderReq
 	return ok(c, p)
 }
 
+// updateManaged applies the only fields Miabi owns on a console-managed provider: whether it is
+// enabled and whether its button shows. The rest is ignored, so a full form round-trips.
+func (h *OAuthAdminHandler) updateManaged(c *okapi.Context, p *models.OAuthProvider, req *UpdateOAuthProviderRequest) error {
+	if req.Body.Enabled != nil {
+		p.Enabled = *req.Body.Enabled
+	}
+	if req.Body.Hidden != nil {
+		if *req.Body.Hidden && !h.canHide() {
+			return entitlementAbort(c, enterprise.ErrEntitlementDenied)
+		}
+		p.Hidden = *req.Body.Hidden
+	}
+	if err := h.repo.Update(p); err != nil {
+		return c.AbortInternalServerError("failed to update provider", err)
+	}
+	h.record(c, "admin.oauth.update", p.ID, map[string]any{"name": p.Name, "managed_by": p.ManagedBy})
+	return ok(c, p)
+}
+
 // Delete removes a provider.
 func (h *OAuthAdminHandler) Delete(c *okapi.Context) error {
 	p, err := h.provider(c)
 	if err != nil {
 		return c.AbortNotFound("provider not found")
+	}
+	if p.ConsoleManaged() {
+		return c.AbortWithError(409, errConsoleManaged)
 	}
 	if err := h.repo.Delete(p.ID); err != nil {
 		return c.AbortInternalServerError("failed to delete provider", err)
@@ -429,6 +457,9 @@ func (h *OAuthAdminHandler) ReplaceGroupMappings(c *okapi.Context, req *ReplaceG
 	p, err := h.provider(c)
 	if err != nil {
 		return c.AbortNotFound("provider not found")
+	}
+	if p.ConsoleManaged() {
+		return c.AbortWithError(409, errConsoleManaged)
 	}
 	out := make([]models.OAuthGroupMapping, 0, len(req.Body.Mappings))
 	for i, m := range req.Body.Mappings {

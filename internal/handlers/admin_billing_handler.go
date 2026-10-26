@@ -62,19 +62,20 @@ type ConnectBillingRequest struct {
 	} `json:"body"`
 }
 
-// usable refuses while the switch is off or the licence lacks billing.
-func (h *AdminBillingHandler) usable(c *okapi.Context) error {
+// usable writes the refusal and reports false while the switch is off or the licence lacks billing.
+// AbortWithError returns nil once the response is written, so callers must check the bool, not an error.
+func (h *AdminBillingHandler) usable(c *okapi.Context) (bool, error) {
 	switch BillingAPIState(h.enabled, h.ee) {
 	case BillingAPIOff:
-		return c.AbortWithError(errBillingAPIDisabled.Status, errBillingAPIDisabled)
+		return false, c.AbortWithError(errBillingAPIDisabled.Status, errBillingAPIDisabled)
 	case BillingAPIUnlicensed:
 		var err error = enterprise.ErrLicenseRequired
 		if h.ee != nil {
 			err = h.ee.Require(enterprise.FlagBilling)
 		}
-		return middlewares.AbortLicence(c, err)
+		return false, middlewares.AbortLicence(c, err)
 	}
-	return nil
+	return true, nil
 }
 
 // Status reports the Billing API state and the console connection.
@@ -92,7 +93,7 @@ func (h *AdminBillingHandler) Status(c *okapi.Context) error {
 
 // Connect enrols this Miabi with the console that issued the code.
 func (h *AdminBillingHandler) Connect(c *okapi.Context, req *ConnectBillingRequest) error {
-	if err := h.usable(c); err != nil {
+	if ok, err := h.usable(c); !ok {
 		return err
 	}
 	actor := middlewares.UserID(c)
@@ -107,14 +108,17 @@ func (h *AdminBillingHandler) Connect(c *okapi.Context, req *ConnectBillingReque
 
 // Disconnect revokes the billing key and forgets the console.
 func (h *AdminBillingHandler) Disconnect(c *okapi.Context) error {
-	if err := h.usable(c); err != nil {
+	if ok, err := h.usable(c); !ok {
 		return err
 	}
 	before, _ := h.svc.Connection()
-	if err := h.svc.Disconnect(); err != nil {
+	actor := middlewares.UserID(c)
+	if err := h.svc.Disconnect(actor); err != nil {
+		if errors.Is(err, billing.ErrConnectionLocked) {
+			h.audit.Record(audit.Entry{ActorID: &actor, Action: "admin.billing.disconnect_refused", TargetType: "billing", TargetID: strconv.Itoa(int(actor)), IP: c.RealIP()})
+		}
 		return billingErr(c, err, "failed to disconnect the billing console")
 	}
-	actor := middlewares.UserID(c)
 	md := map[string]any{}
 	if before != nil {
 		md["console_url"], md["console_instance_id"] = before.ConsoleURL, before.ConsoleInstanceID

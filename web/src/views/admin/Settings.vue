@@ -427,6 +427,8 @@ function setBool(key: string, checked: boolean) {
                   :disabled="pinned.has(key)"
                 >
                   <option v-for="c in CHOICES[key]" :key="c" :value="c">{{ c }}</option>
+                  <!-- Console mode is env-only; listed so a pinned value displays. -->
+                  <option v-if="values[key] && !CHOICES[key].includes(values[key])" :value="values[key]">{{ values[key] }}</option>
                 </select>
                 <input
                   v-else-if="types[key] === 'int'"

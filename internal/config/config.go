@@ -67,8 +67,10 @@ type Config struct {
 	OpenAPIDocs          bool
 	BillingAPIEnabled    bool
 	BillingHardAfterDays int
-	MetricsEnabled       bool
-	UpdateCheck          bool
+	// BillingConnectionLocked keeps the console connection from being removed from inside Miabi.
+	BillingConnectionLocked bool
+	MetricsEnabled          bool
+	UpdateCheck             bool
 	// PlanEnforcement gates per-workspace resource quotas. On by default; set it
 	// false and all plan limits and capabilities become unlimited/allowed.
 	PlanEnforcement bool
@@ -256,7 +258,7 @@ type Config struct {
 	AllowedSignupDomains     string
 	// Who may create workspaces and whether invitees can sign up, pinned the same way:
 	//
-	//   MIABI_WORKSPACE_CREATION           "anyone" | "except_invited" | "admins_only"
+	//   MIABI_WORKSPACE_CREATION           "anyone" | "except_invited" | "admins_only" | "console"
 	//   MIABI_INVITATION_SIGNUP_ENABLED    "true" | "false"
 	WorkspaceCreation       string
 	InvitationSignupEnabled string
@@ -615,39 +617,40 @@ func New() *Config {
 			Password: goutils.Env("MIABI_REDIS_PASSWORD", ""),
 			DB:       goutils.EnvInt("MIABI_REDIS_DB", 0),
 		},
-		Env:                   goutils.Env("MIABI_ENV", "production"),
-		Port:                  goutils.EnvInt("MIABI_PORT", 9000),
-		DevMode:               goutils.EnvBool("MIABI_DEV_MODE", false),
-		LogLevel:              goutils.Env("MIABI_LOG_LEVEL", "info"),
-		JWTSecret:             goutils.Env("MIABI_JWT_SECRET", defaultJWTSecret),
-		EncryptionKey:         goutils.Env("MIABI_ENCRYPTION_KEY", ""),
-		AdminEmail:            goutils.Env("MIABI_ADMIN_EMAIL", "admin@example.com"),
-		AdminPassword:         goutils.Env("MIABI_ADMIN_PASSWORD", defaultAdminPassword),
-		PasswordResetEnabled:  goutils.EnvBool("MIABI_PASSWORD_RESET_ENABLED", true),
-		OpenAPIDocs:           goutils.EnvBool("MIABI_OPENAPI_DOCS", true),
-		BillingAPIEnabled:     goutils.EnvBool("MIABI_BILLING_API_ENABLED", false),
-		BillingHardAfterDays:  goutils.EnvInt("MIABI_BILLING_HARD_AFTER_DAYS", 14),
-		UpdateCheck:           goutils.EnvBool("MIABI_UPDATE_CHECK", true),
-		MetricsEnabled:        goutils.EnvBool("MIABI_METRICS_ENABLED", false),
-		PlanEnforcement:       goutils.EnvBool("MIABI_PLAN_ENFORCEMENT", true),
-		SecurityEnforcement:   goutils.EnvBool("MIABI_SECURITY_ENFORCEMENT", true),
-		GPUEnabled:            goutils.EnvBool("MIABI_GPU_ENABLED", false),
-		NvidiaRuntime:         goutils.Env("MIABI_NVIDIA_RUNTIME", "nvidia"),
-		GPUProbeImage:         goutils.Env("MIABI_GPU_PROBE_IMAGE", "nvidia/cuda:12.4.1-base-ubuntu22.04"),
-		GPUInventoryMinutes:   goutils.EnvInt("MIABI_GPU_INVENTORY_MINUTES", 30),
-		LicenseFile:           goutils.Env("MIABI_LICENSE_FILE", ""),
-		MetricsScrapeSeconds:  goutils.EnvInt("MIABI_METRICS_SCRAPE_SECONDS", 60),
-		MetricsRetentionHours: goutils.EnvInt("MIABI_METRICS_RETENTION_HOURS", 24),
-		CORSOrigins:           goutils.Env("MIABI_CORS_ORIGINS", goutils.Env("MIABI_WEB_URL", "*")),
-		TrustedProxies:        splitList(goutils.Env("MIABI_TRUSTED_PROXIES", "")),
-		AppWebURL:             goutils.Env("MIABI_WEB_URL", ""),
-		ApiBaseURL:            goutils.Env("MIABI_API_URL", ""),
-		PasskeysEnabled:       goutils.EnvBool("MIABI_PASSKEYS_ENABLED", true),
-		PasskeyRPID:           goutils.Env("MIABI_PASSKEY_RP_ID", ""),
-		PasskeyOrigins:        splitList(goutils.Env("MIABI_PASSKEY_ORIGINS", "")),
-		LoginTokenTTLHours:    goutils.EnvInt("MIABI_LOGIN_TOKEN_TTL_HOURS", 24),
-		LoginTokenMaxTTLHours: goutils.EnvInt("MIABI_LOGIN_TOKEN_MAX_TTL_HOURS", 168),
-		AppName:               goutils.Env("MIABI_APP_NAME", "Miabi"),
+		Env:                     goutils.Env("MIABI_ENV", "production"),
+		Port:                    goutils.EnvInt("MIABI_PORT", 9000),
+		DevMode:                 goutils.EnvBool("MIABI_DEV_MODE", false),
+		LogLevel:                goutils.Env("MIABI_LOG_LEVEL", "info"),
+		JWTSecret:               goutils.Env("MIABI_JWT_SECRET", defaultJWTSecret),
+		EncryptionKey:           goutils.Env("MIABI_ENCRYPTION_KEY", ""),
+		AdminEmail:              goutils.Env("MIABI_ADMIN_EMAIL", "admin@example.com"),
+		AdminPassword:           goutils.Env("MIABI_ADMIN_PASSWORD", defaultAdminPassword),
+		PasswordResetEnabled:    goutils.EnvBool("MIABI_PASSWORD_RESET_ENABLED", true),
+		OpenAPIDocs:             goutils.EnvBool("MIABI_OPENAPI_DOCS", true),
+		BillingAPIEnabled:       goutils.EnvBool("MIABI_BILLING_API_ENABLED", false),
+		BillingHardAfterDays:    goutils.EnvInt("MIABI_BILLING_HARD_AFTER_DAYS", 14),
+		BillingConnectionLocked: goutils.EnvBool("MIABI_BILLING_CONNECTION_LOCKED", false),
+		UpdateCheck:             goutils.EnvBool("MIABI_UPDATE_CHECK", true),
+		MetricsEnabled:          goutils.EnvBool("MIABI_METRICS_ENABLED", false),
+		PlanEnforcement:         goutils.EnvBool("MIABI_PLAN_ENFORCEMENT", true),
+		SecurityEnforcement:     goutils.EnvBool("MIABI_SECURITY_ENFORCEMENT", true),
+		GPUEnabled:              goutils.EnvBool("MIABI_GPU_ENABLED", false),
+		NvidiaRuntime:           goutils.Env("MIABI_NVIDIA_RUNTIME", "nvidia"),
+		GPUProbeImage:           goutils.Env("MIABI_GPU_PROBE_IMAGE", "nvidia/cuda:12.4.1-base-ubuntu22.04"),
+		GPUInventoryMinutes:     goutils.EnvInt("MIABI_GPU_INVENTORY_MINUTES", 30),
+		LicenseFile:             goutils.Env("MIABI_LICENSE_FILE", ""),
+		MetricsScrapeSeconds:    goutils.EnvInt("MIABI_METRICS_SCRAPE_SECONDS", 60),
+		MetricsRetentionHours:   goutils.EnvInt("MIABI_METRICS_RETENTION_HOURS", 24),
+		CORSOrigins:             goutils.Env("MIABI_CORS_ORIGINS", goutils.Env("MIABI_WEB_URL", "*")),
+		TrustedProxies:          splitList(goutils.Env("MIABI_TRUSTED_PROXIES", "")),
+		AppWebURL:               goutils.Env("MIABI_WEB_URL", ""),
+		ApiBaseURL:              goutils.Env("MIABI_API_URL", ""),
+		PasskeysEnabled:         goutils.EnvBool("MIABI_PASSKEYS_ENABLED", true),
+		PasskeyRPID:             goutils.Env("MIABI_PASSKEY_RP_ID", ""),
+		PasskeyOrigins:          splitList(goutils.Env("MIABI_PASSKEY_ORIGINS", "")),
+		LoginTokenTTLHours:      goutils.EnvInt("MIABI_LOGIN_TOKEN_TTL_HOURS", 24),
+		LoginTokenMaxTTLHours:   goutils.EnvInt("MIABI_LOGIN_TOKEN_MAX_TTL_HOURS", 168),
+		AppName:                 goutils.Env("MIABI_APP_NAME", "Miabi"),
 		SystemSMTP: SystemSMTPConfig{
 			Host:       goutils.Env("MIABI_SMTP_HOST", ""),
 			Port:       goutils.EnvInt("MIABI_SMTP_PORT", 587),
@@ -794,8 +797,14 @@ func (c *Config) validate() error {
 	if err := c.validateRegistry(); err != nil {
 		return err
 	}
+	if c.BillingConnectionLocked && !c.BillingAPIEnabled {
+		return errors.New("MIABI_BILLING_CONNECTION_LOCKED=true needs MIABI_BILLING_API_ENABLED=true")
+	}
 	if c.WorkspaceCreation != "" && !models.ValidWorkspaceCreation(c.WorkspaceCreation) {
-		return fmt.Errorf(`MIABI_WORKSPACE_CREATION must be "anyone", "except_invited" or "admins_only"`)
+		return fmt.Errorf(`MIABI_WORKSPACE_CREATION must be "anyone", "except_invited", "admins_only" or "console"`)
+	}
+	if c.WorkspaceCreation == models.WorkspaceCreationConsole && !c.BillingAPIEnabled {
+		return errors.New("MIABI_WORKSPACE_CREATION=console needs MIABI_BILLING_API_ENABLED=true")
 	}
 	if c.Env == "dev" {
 		return nil

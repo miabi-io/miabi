@@ -85,11 +85,15 @@ func NewCodedError(status int, code, msg string) *CodedError { return coded(stat
 
 // Enrolment errors.
 var (
-	ErrMalformedCode    = coded(http.StatusBadRequest, "ENROLL_CODE_INVALID", "this is not a Miabi Console enrolment code (mce1.…)")
-	ErrConsoleURL       = coded(http.StatusBadRequest, "ENROLL_CODE_INVALID", "the console address in the code must be https (http only for localhost)")
-	ErrAlreadyConnected = coded(http.StatusConflict, "BILLING_ALREADY_CONNECTED", "this Miabi is already connected to a billing console; disconnect it first")
-	ErrNotConnected     = coded(http.StatusConflict, "BILLING_NOT_CONNECTED", "this Miabi is not connected to a billing console")
-	ErrInvalidResponse  = coded(http.StatusBadGateway, "BILLING_CONSOLE_INVALID_RESPONSE", "the console answered with addresses outside its own host")
+	ErrMalformedCode     = coded(http.StatusBadRequest, "ENROLL_CODE_INVALID", "this is not a Miabi Console enrolment code (mce1.…)")
+	ErrConsoleURL        = coded(http.StatusBadRequest, "ENROLL_CODE_INVALID", "the console address in the code must be https (http only for localhost)")
+	ErrAlreadyConnected  = coded(http.StatusConflict, "BILLING_ALREADY_CONNECTED", "this Miabi is already connected to a billing console; disconnect it first")
+	ErrNotConnected      = coded(http.StatusConflict, "BILLING_NOT_CONNECTED", "this Miabi is not connected to a billing console")
+	ErrInvalidResponse   = coded(http.StatusBadGateway, "BILLING_CONSOLE_INVALID_RESPONSE", "the console answered with addresses outside its own host")
+	ErrDisconnectLockout = coded(http.StatusConflict, "BILLING_DISCONNECT_LOCKOUT",
+		"you sign in only through Miabi Console, which disconnecting removes; set a password or link another provider first")
+	ErrConnectionLocked = coded(http.StatusConflict, "BILLING_CONNECTION_LOCKED",
+		"the console connection is locked by MIABI_BILLING_CONNECTION_LOCKED; remove the variable and restart to change it")
 )
 
 // Code is a decoded enrolment code.
@@ -148,6 +152,8 @@ type Connection struct {
 	KeyLastUsedAt      *time.Time `json:"key_last_used_at,omitempty"`
 	ConnectedAt        *time.Time `json:"connected_at,omitempty"`
 	ConnectedBy        uint       `json:"connected_by,omitempty"`
+	// Locked reports MIABI_BILLING_CONNECTION_LOCKED: once connected, the connection cannot be removed here.
+	Locked bool `json:"locked"`
 }
 
 // EnrolmentInfo is what this Miabi tells the console about itself.
@@ -196,6 +202,9 @@ func (s *Service) Enroll(ctx context.Context, rawCode string, actorID uint) (*Co
 	if cur, err := s.Connection(); err != nil {
 		return nil, err
 	} else if cur.Connected {
+		if s.locked {
+			return nil, ErrConnectionLocked
+		}
 		return nil, ErrAlreadyConnected
 	}
 	consoleHost := mustHost(code.ConsoleURL)
@@ -326,9 +335,9 @@ func (s *Service) Connection() (*Connection, error) {
 		}
 	}
 	if v[SettingConsoleURL] == "" {
-		return &Connection{}, nil
+		return &Connection{Locked: s.locked}, nil
 	}
-	c := &Connection{Connected: true, ConsoleURL: v[SettingConsoleURL], ConsoleInstanceID: v[SettingConsoleInstanceID], NotifyURL: v[SettingNotifyURL]}
+	c := &Connection{Connected: true, Locked: s.locked, ConsoleURL: v[SettingConsoleURL], ConsoleInstanceID: v[SettingConsoleInstanceID], NotifyURL: v[SettingNotifyURL]}
 	_ = json.Unmarshal([]byte(v[SettingPortalAllowedHosts]), &c.PortalAllowedHosts)
 	if t, err := time.Parse(time.RFC3339, v[SettingConnectedAt]); err == nil {
 		c.ConnectedAt = &t
@@ -356,13 +365,21 @@ func (s *Service) NotifySecret() (string, error) {
 
 // Disconnect revokes the billing key and forgets the console. The console keeps its own record and
 // sees its calls refused; reconnecting needs a new enrolment code.
-func (s *Service) Disconnect() error {
+func (s *Service) Disconnect(actorID uint) error {
 	cur, err := s.Connection()
 	if err != nil {
 		return err
 	}
 	if !cur.Connected {
 		return ErrNotConnected
+	}
+	if s.locked {
+		return ErrConnectionLocked
+	}
+	if locked, err := s.wouldLockOut(actorID); err != nil {
+		return err
+	} else if locked {
+		return ErrDisconnectLockout
 	}
 	if st, err := s.settings.Get(SettingAPIKeyID); err == nil {
 		if id, err := strconv.ParseUint(st.Value, 10, 64); err == nil {
@@ -375,6 +392,9 @@ func (s *Service) Disconnect() error {
 		if err := s.settings.Delete(k); err != nil {
 			return err
 		}
+	}
+	if err := s.DeleteSSOProvider(); err != nil && !errors.Is(err, ErrSSONotConfigured) && !errors.Is(err, ErrSSOUnavailable) {
+		return fmt.Errorf("remove the console SSO provider: %w", err)
 	}
 	return nil
 }

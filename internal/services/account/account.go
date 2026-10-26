@@ -83,6 +83,10 @@ type Service struct {
 	// finalizer removes the workspace row + crypto-shreds its keys after its
 	// resources are torn down. Optional; falls back to a plain repo delete.
 	finalizer WorkspaceFinalizer
+	// deletionGuard refuses a user-initiated workspace delete (console-managed workspaces).
+	deletionGuard func(ws *models.Workspace) error
+	// onWorkspaceDeleted runs after a workspace row is gone, whatever started the delete.
+	onWorkspaceDeleted func(ws *models.Workspace)
 	// Live workspace-deletion jobs (single-node, in-process), streamed over the
 	// event bus to the deletion-progress UI. bus may be nil in tests / unwired.
 	bus       *eventbus.Bus
@@ -96,6 +100,25 @@ func (s *Service) SetEventBus(b *eventbus.Bus) { s.bus = b }
 // SetWorkspaceFinalizer wires the component that deletes the workspace row and
 // crypto-shreds its keys once teardown completes.
 func (s *Service) SetWorkspaceFinalizer(f WorkspaceFinalizer) { s.finalizer = f }
+
+// SetDeletionGuard wires the check GuardDeletion runs for deletes started from Miabi's own API.
+func (s *Service) SetDeletionGuard(fn func(ws *models.Workspace) error) { s.deletionGuard = fn }
+
+// SetWorkspaceDeletedHook wires a callback run after any workspace is deleted.
+func (s *Service) SetWorkspaceDeletedHook(fn func(ws *models.Workspace)) { s.onWorkspaceDeleted = fn }
+
+// GuardDeletion refuses a delete Miabi's own users may not make. The Billing API deletes through
+// DeleteWorkspaceNow directly, so it is not subject to this.
+func (s *Service) GuardDeletion(wsID uint) error {
+	if s.deletionGuard == nil {
+		return nil
+	}
+	ws, err := s.workspaces.FindByID(wsID)
+	if err != nil {
+		return nil
+	}
+	return s.deletionGuard(ws)
+}
 
 // NewService wires the teardown over the existing resource services and repos.
 func NewService(
@@ -398,8 +421,15 @@ func (s *Service) DeleteWorkspaceNow(ctx context.Context, wsID uint) error {
 // finalizeWorkspace removes the workspace row and crypto-shreds its keys via the
 // finalizer, falling back to a plain repo delete when none is wired (tests).
 func (s *Service) finalizeWorkspace(wsID uint) error {
+	ws, _ := s.workspaces.FindByID(wsID)
+	var err error
 	if s.finalizer != nil {
-		return s.finalizer.Delete(wsID)
+		err = s.finalizer.Delete(wsID)
+	} else {
+		err = s.workspaces.Delete(wsID)
 	}
-	return s.workspaces.Delete(wsID)
+	if err == nil && ws != nil && s.onWorkspaceDeleted != nil {
+		s.onWorkspaceDeleted(ws)
+	}
+	return err
 }

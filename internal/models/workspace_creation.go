@@ -9,12 +9,15 @@ const (
 	WorkspaceCreationAnyone        = "anyone"
 	WorkspaceCreationExceptInvited = "except_invited"
 	WorkspaceCreationAdminsOnly    = "admins_only"
+	// WorkspaceCreationConsole leaves creation to a connected billing console: nobody, admins
+	// included, creates a workspace from Miabi itself.
+	WorkspaceCreationConsole = "console"
 )
 
 // ValidWorkspaceCreation reports whether mode is a known workspace creation mode.
 func ValidWorkspaceCreation(mode string) bool {
 	switch mode {
-	case WorkspaceCreationAnyone, WorkspaceCreationExceptInvited, WorkspaceCreationAdminsOnly:
+	case WorkspaceCreationAnyone, WorkspaceCreationExceptInvited, WorkspaceCreationAdminsOnly, WorkspaceCreationConsole:
 		return true
 	}
 	return false
