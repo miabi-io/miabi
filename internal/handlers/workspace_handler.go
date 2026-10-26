@@ -207,6 +207,9 @@ func (h *WorkspaceHandler) UpdateName(c *okapi.Context, req *UpdateWorkspaceName
 // REST endpoint gives CLI / API callers the same full teardown in one call.
 func (h *WorkspaceHandler) Delete(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
+	if err := h.account.GuardDeletion(wsID); err != nil {
+		return c.AbortWithError(409, err)
+	}
 	if err := h.account.DeleteWorkspaceNow(c.Request().Context(), wsID); err != nil {
 		if errors.Is(err, account.ErrSystemProtected) {
 			return c.AbortWithError(409, err)
@@ -222,6 +225,9 @@ func (h *WorkspaceHandler) Delete(c *okapi.Context) error {
 // DeletionJobEvents and navigates away once the job reports success.
 func (h *WorkspaceHandler) StartDeletion(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
+	if err := h.account.GuardDeletion(wsID); err != nil {
+		return c.AbortWithError(409, err)
+	}
 	job, err := h.account.StartWorkspaceDeletion(wsID)
 	if err != nil {
 		if errors.Is(err, account.ErrSystemProtected) {

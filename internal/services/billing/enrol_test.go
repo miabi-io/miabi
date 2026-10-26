@@ -185,7 +185,22 @@ func TestEnrolment(t *testing.T) {
 		t.Fatalf("second connection: %v", err)
 	}
 
-	if err := s.Disconnect(); err != nil {
+	s.SetLocked(true)
+	if c, _ := s.Connection(); !c.Locked {
+		t.Fatalf("locked connection reports %+v", c)
+	}
+	if err := s.Disconnect(0); !errors.Is(err, ErrConnectionLocked) {
+		t.Fatalf("disconnect while locked: %v", err)
+	}
+	if _, err := s.Enroll(t.Context(), code(srv.URL, "inst-2", "tok2"), 42); !errors.Is(err, ErrConnectionLocked) {
+		t.Fatalf("connecting elsewhere while locked: %v", err)
+	}
+	if _, err := keys.Verify(got.APIKey); err != nil {
+		t.Fatalf("the billing key stopped working after a refused disconnect: %v", err)
+	}
+	s.SetLocked(false)
+
+	if err := s.Disconnect(0); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := keys.Verify(got.APIKey); err == nil {
@@ -194,7 +209,7 @@ func TestEnrolment(t *testing.T) {
 	if c, _ := s.Connection(); c.Connected {
 		t.Fatalf("still connected: %+v", c)
 	}
-	if err := s.Disconnect(); !errors.Is(err, ErrNotConnected) {
+	if err := s.Disconnect(0); !errors.Is(err, ErrNotConnected) {
 		t.Fatalf("disconnect twice: %v", err)
 	}
 }

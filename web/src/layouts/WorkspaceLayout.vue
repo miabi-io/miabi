@@ -103,6 +103,13 @@ onMounted(async () => {
         </ul>
         <button v-if="auth.canCreateWorkspace" class="btn btn-secondary mt-4" @click="createWorkspace">{{ $t('workspaceLayout.orCreateYourOwnWorkspace') }}</button>
       </template>
+      <template v-else-if="!auth.canCreateWorkspace && auth.consoleCreateUrl">
+        <span class="mdi mdi-briefcase-outline" style="font-size: 48px; color: var(--text-muted)"></span>
+        <h3>{{ $t('switcher.empty') }}</h3>
+        <p>{{ $t('workspaceLayout.createdInConsole') }}</p>
+        <a class="btn btn-primary mt-4" :href="auth.consoleCreateUrl" target="_blank" rel="noopener">
+          <span class="mdi mdi-open-in-new"></span>{{ $t('switcher.createInConsole') }}</a>
+      </template>
       <template v-else-if="!auth.canCreateWorkspace">
         <span class="mdi mdi-briefcase-outline" style="font-size: 48px; color: var(--text-muted)"></span>
         <h3>{{ $t('switcher.empty') }}</h3>

@@ -38,6 +38,9 @@ export interface AppInfo {
 export interface Plan {
   id: number
   name: string
+  /** "console" when Miabi Console owns the plan's limits and capabilities. */
+  managed_by?: string
+  external_key?: string
   description: string
   is_default: boolean
   is_active: boolean
@@ -367,13 +370,15 @@ export interface User {
 
 export type UserKind = 'user' | 'service'
 
-export type WorkspaceCreationMode = 'anyone' | 'except_invited' | 'admins_only'
+export type WorkspaceCreationMode = 'anyone' | 'except_invited' | 'admins_only' | 'console'
 
 export interface WorkspaceCreationPolicy {
   allowed: boolean
   mode?: WorkspaceCreationMode
   /** Which rule decided: 'admin', 'user', 'organization' or 'platform'. */
   source: string
+  /** In console mode, where workspaces are created. */
+  console_url?: string
 }
 
 export interface InvitationPreview {
@@ -987,6 +992,8 @@ export type OAuthProviderType = 'google' | 'oidc'
 export interface OAuthProvider {
   id: number
   name: string
+  /** "console" when Miabi Console configures this provider. */
+  managed_by?: string
   display_name: string
   type: OAuthProviderType
   issuer?: string
@@ -3670,6 +3677,8 @@ export interface BillingConnection {
   key_last_used_at?: string
   connected_at?: string
   connected_by?: number
+  /** MIABI_BILLING_CONNECTION_LOCKED: once connected, the connection cannot be removed here. */
+  locked: boolean
 }
 
 export interface AdminBillingStatus {

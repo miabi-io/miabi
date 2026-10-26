@@ -94,7 +94,7 @@ async function disconnect() {
         <h1>Billing</h1>
         <p class="text-muted text-sm subtitle">Connect this instance to a Miabi Console that sells and manages its workspaces.</p>
       </div>
-      <div v-if="!loading && state === 'on' && connected" class="header-actions">
+      <div v-if="!loading && state === 'on' && connected && !conn?.locked" class="header-actions">
         <button class="btn btn-danger-outline" :disabled="disconnecting" @click="showDisconnect = true">
           <span class="mdi mdi-link-variant-off"></span> {{ disconnecting ? 'Disconnecting…' : 'Disconnect' }}
         </button>
@@ -129,6 +129,10 @@ async function disconnect() {
           <span class="badge badge-success"><span class="mdi mdi-check"></span> Connected</span>
         </div>
         <div class="card-body">
+          <p v-if="conn.locked" class="locked-note">
+            <span class="mdi mdi-lock-outline"></span>
+            Managed by <code>MIABI_BILLING_CONNECTION_LOCKED</code>: this connection cannot be removed from Miabi.
+          </p>
           <dl class="details">
             <div class="wide">
               <dt>Console</dt>
@@ -153,6 +157,10 @@ async function disconnect() {
           <p class="text-muted form-hint">
             In the console, open the instance and copy its enrolment code, then paste it here.
             Miabi creates a billing-only API key and hands it to that console. Codes expire after a short time.
+          </p>
+          <p v-if="conn?.locked" class="locked-note">
+            <span class="mdi mdi-lock-outline"></span>
+            <code>MIABI_BILLING_CONNECTION_LOCKED</code> is set: once connected, this instance cannot be disconnected from Miabi.
           </p>
           <textarea v-model="code" class="form-input code-input" rows="3" spellcheck="false"
             placeholder="mce1.…" aria-label="Enrolment code"></textarea>
@@ -181,6 +189,7 @@ async function disconnect() {
 </template>
 
 <style scoped>
+.locked-note { display: flex; align-items: center; gap: 6px; margin: 0 0 12px; font-size: 13px; color: var(--text-muted); }
 .billing-page { display: flex; flex-direction: column; gap: 16px; color: var(--text-primary); }
 .billing-page .page-header { margin-bottom: 0; }
 .subtitle { margin-top: 4px; }

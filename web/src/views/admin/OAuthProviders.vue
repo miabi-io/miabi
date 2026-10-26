@@ -108,6 +108,8 @@ const showModal = ref(false)
 const saving = ref(false)
 const editing = ref<OAuthProvider | null>(null)
 const form = ref<ProviderForm>(emptyForm())
+// A provider Miabi Console configures: only Enabled and Hidden are editable here.
+const managed = computed(() => editing.value?.managed_by === 'console')
 
 function openCreate() {
   editing.value = null
@@ -193,6 +195,20 @@ function closeModal() {
 
 async function save() {
   const f = form.value
+  if (managed.value && editing.value) {
+    saving.value = true
+    try {
+      await adminApi.updateProvider(editing.value.id, { enabled: f.enabled, hidden: f.hidden } as OAuthProviderPayload)
+      notify.success('Provider updated')
+      showModal.value = false
+      await load()
+    } catch (e) {
+      notify.apiError(e)
+    } finally {
+      saving.value = false
+    }
+    return
+  }
   if (!f.name.trim() || !f.client_id.trim()) return
   if (!editing.value && !f.client_secret.trim()) return
 
@@ -350,7 +366,7 @@ onMounted(() => {
                   </span>
                   <span class="cell-text">
                     <span class="cell-title">{{ p.display_name || p.name }}</span>
-                    <span class="cell-sub">{{ p.name }}</span>
+                    <span class="cell-sub">{{ p.name }}<span v-if="p.managed_by === 'console'" class="badge badge-sm managed-badge" title="Configured by Miabi Console"><span class="mdi mdi-lock-outline"></span> Miabi Console</span></span>
                   </span>
                 </div>
               </td>
@@ -370,7 +386,7 @@ onMounted(() => {
                 <button class="btn-icon btn-icon-muted" title="Edit" aria-label="Edit" @click="openEdit(p)">
                   <span class="mdi mdi-pencil"></span>
                 </button>
-                <button class="btn-icon btn-icon-muted" title="Delete" aria-label="Delete" @click="pendingDelete = p">
+                <button v-if="p.managed_by !== 'console'" class="btn-icon btn-icon-muted" title="Delete" aria-label="Delete" @click="pendingDelete = p">
                   <span class="mdi mdi-delete"></span>
                 </button>
               </td>
@@ -391,6 +407,20 @@ onMounted(() => {
         </div>
         <form @submit.prevent="save">
           <div class="modal-body">
+            <div v-if="managed">
+              <p class="managed-note">
+                <span class="mdi mdi-lock-outline"></span>
+                Configured by Miabi Console: its client, issuer and group sync are managed there. You can only turn it
+                off or hide its sign-in button here.
+              </p>
+              <div class="form-group toggles" style="margin-bottom: 0">
+                <label class="check-row"><input v-model="form.enabled" type="checkbox" />Enabled</label>
+                <label class="check-row" :class="{ 'check-disabled': !hiddenCap.has.value && !form.hidden }">
+                  <input v-model="form.hidden" type="checkbox" :disabled="!hiddenCap.has.value && !form.hidden" />Hidden
+                </label>
+              </div>
+            </div>
+            <template v-else>
             <div class="form-group">
               <label class="form-label">Display name</label>
               <input
@@ -605,6 +635,7 @@ onMounted(() => {
                 <code>email_verified</code>.
               </p>
             </div>
+            </template>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="closeModal">Cancel</button>
@@ -613,8 +644,8 @@ onMounted(() => {
               class="btn btn-primary"
               :disabled="
                 saving ||
-                !form.name.trim() ||
-                !form.client_id.trim() ||
+                (!managed && !form.name.trim()) ||
+                (!managed && !form.client_id.trim()) ||
                 (!editing && !form.client_secret.trim())
               "
             >
@@ -639,6 +670,8 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.managed-badge { margin-left: 6px; }
+.managed-note { display: flex; gap: 6px; align-items: flex-start; margin: 0 0 14px; font-size: 13px; color: var(--text-muted); }
 .toggles {
   display: flex;
   flex-direction: column;

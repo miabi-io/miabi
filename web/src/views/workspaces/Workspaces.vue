@@ -82,6 +82,8 @@ onMounted(() => {
       <h1>{{ $t('workspaces.workspaces') }}</h1>
       <button v-if="auth.canCreateWorkspace" class="btn btn-primary" @click="openCreate">
         <span class="mdi mdi-plus"></span>{{ $t('workspaces.newWorkspace') }}</button>
+      <a v-else-if="auth.consoleCreateUrl" class="btn btn-primary" :href="auth.consoleCreateUrl" target="_blank" rel="noopener">
+        <span class="mdi mdi-open-in-new"></span>{{ $t('switcher.createInConsole') }}</a>
     </div>
 
     <div v-if="ws.workspaces.length === 0" class="card">
@@ -89,6 +91,7 @@ onMounted(() => {
         <span class="mdi mdi-briefcase-outline" style="font-size: 44px; color: var(--text-muted)"></span>
         <h3>{{ $t('switcher.empty') }}</h3>
         <p v-if="auth.canCreateWorkspace">{{ $t('workspaces.workspacesGroupYourApplicationsDatabases') }}</p>
+        <p v-else-if="auth.consoleCreateUrl">{{ $t('workspaceLayout.createdInConsole') }}</p>
         <p v-else>{{ $t('workspaceLayout.askForAnInvitation') }}</p>
         <button v-if="auth.canCreateWorkspace" class="btn btn-primary mt-4" @click="openCreate">{{ $t('workspaces.createYourFirstWorkspace') }}</button>
       </div>

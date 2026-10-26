@@ -386,10 +386,17 @@ func (h *PlanHandler) Update(c *okapi.Context, req *UpdatePlanRequest) error {
 	}
 	p.IsDefault = req.Body.IsDefault
 	system := p.System
+	before := *p
 	req.Body.PlanBody.apply(p)
 	// apply() writes every settable field. System is not one of them and must not
 	// become one: it is the platform's own bookkeeping, not an operator's choice.
 	p.System = system
+	if before.ConsoleManaged() {
+		p.ManagedBy, p.ExternalKey = before.ManagedBy, before.ExternalKey
+		if err := p.KeepConsoleFields(&before); err != nil {
+			return c.AbortInternalServerError("failed to update plan", err)
+		}
+	}
 	if err := resourceDefaultsError(p); err != nil {
 		return c.AbortBadRequest(err.Error(), err)
 	}
@@ -407,6 +414,8 @@ func (h *PlanHandler) Delete(c *okapi.Context) error {
 	// onto the default plan's limits and stay there.
 	if p, err := h.repo.FindByID(id); err == nil && p.System {
 		return c.AbortWithError(409, errSystemPlanDelete)
+	} else if err == nil && p.ConsoleManaged() {
+		return c.AbortWithError(409, errConsoleManaged)
 	}
 	n, _ := h.repo.CountWorkspaces(id)
 	if n > 0 && c.Query("force") != "true" {

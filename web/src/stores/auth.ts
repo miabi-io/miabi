@@ -15,6 +15,11 @@ export const useAuthStore = defineStore('auth', () => {
   const isAdmin = computed(() => user.value?.role === 'admin')
   // Mirrors the server's creation policy so the console hides an action that would be refused.
   const canCreateWorkspace = computed(() => user.value?.workspace_creation?.allowed ?? true)
+  // Set when workspaces are created in Miabi Console instead (MIABI_WORKSPACE_CREATION=console).
+  const consoleCreateUrl = computed(() => {
+    const p = user.value?.workspace_creation
+    return p?.mode === 'console' ? p.console_url || '' : ''
+  })
 
   // A pending forced password change: the credentials were valid but the account
   // has an admin-set/reset password. We hold the short-lived reset token (in
@@ -128,5 +133,6 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('mb_user', JSON.stringify(res.data.data))
   }
 
-  return { user, isAuthenticated, isAdmin, canCreateWorkspace, pendingReset, login, loginWithPasskey, completeReset, cancelReset, logout, clearSession, fetchUser, setUser, updateName, updateProfile, dismissOnboarding }
+  return { user, isAuthenticated, isAdmin, canCreateWorkspace,
+    consoleCreateUrl, pendingReset, login, loginWithPasskey, completeReset, cancelReset, logout, clearSession, fetchUser, setUser, updateName, updateProfile, dismissOnboarding }
 })

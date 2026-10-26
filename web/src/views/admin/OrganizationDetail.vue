@@ -46,7 +46,10 @@ const CREATION_LABELS: Record<WorkspaceCreationMode, string> = {
   anyone: 'Anyone',
   except_invited: 'Anyone except users who joined from an invitation',
   admins_only: 'Administrators and the organization owner only',
+  console: 'Miabi Console only',
 }
+// Console mode is platform-wide (MIABI_WORKSPACE_CREATION), never an organization's choice.
+const ORG_CREATION_MODES = (Object.keys(CREATION_LABELS) as WorkspaceCreationMode[]).filter((m) => m !== 'console')
 
 // The platform defaults, shown in the Inherit labels so an admin can see what they are inheriting.
 const platformDefaults = ref({ owned: null as number | null, joined: null as number | null, creation: '' })
@@ -330,7 +333,7 @@ const promoteMessage = computed(() => {
               <option value="inherit">
                 Inherit the platform setting{{ platformDefaults.creation ? ` (${CREATION_LABELS[platformDefaults.creation as WorkspaceCreationMode] ?? platformDefaults.creation})` : '' }}
               </option>
-              <option v-for="(label, mode) in CREATION_LABELS" :key="mode" :value="mode">{{ label }}</option>
+              <option v-for="mode in ORG_CREATION_MODES" :key="mode" :value="mode">{{ CREATION_LABELS[mode] }}</option>
             </select>
             <p class="form-hint">
               Applies to this organization's users. Platform admins can always create workspaces, and an

@@ -3043,7 +3043,8 @@
       "require": "Exiger des limites CPU et mémoire sur chaque application",
       "requireHint": "Une application qui n’a toujours pas de limite CPU ou mémoire après application des valeurs par défaut est refusée.",
       "requireSuggest": "Ce plan plafonne le CPU ou la mémoire, mais les applications sans limite ne comptent pas dans ces totaux. Pensez à exiger des limites ou à définir des valeurs par défaut."
-    }
+    },
+    "managedByConsole": "Miabi Console gère ce plan : son nom, ses limites, ses capacités et ses tailles de base de données y sont définis, et les modifications faites ici sont ignorées. Le placement, les classes de stockage et les runners restent modifiables sur cette instance."
   },
   "plans": {
     "active": "actif",
@@ -3908,7 +3909,8 @@
     "privilegedTitle": "Espace de travail privilégié : les montages hôte et les liaisons de ports hôte sont autorisés sans approbation, et le profil de sécurité restreint ne s’applique pas.",
     "systemBadge": "Système",
     "systemTitle": "L’espace de travail intégré de la plateforme. Il contient les ressources gérées par la plateforme et ne peut être ni renommé ni supprimé.",
-    "workspaces": "mes espaces"
+    "workspaces": "mes espaces",
+    "createInConsole": "Créer dans Miabi Console"
   },
   "verifyEmail": {
     "checkingYourLink": "Vérification de votre lien.",
@@ -4090,7 +4092,8 @@
     "invitedBy": "par {name}",
     "orCreateYourOwnWorkspace": "Ou créez votre propre espace de travail",
     "askForAnInvitation": "Vous n’avez pas encore d’espace de travail. Demandez à un administrateur de vous y inviter.",
-    "youVeBeenInvited": "Vous avez été invité"
+    "youVeBeenInvited": "Vous avez été invité",
+    "createdInConsole": "Les espaces de travail de cette instance sont créés dans Miabi Console."
   },
   "workspaces": {
     "copyWorkspaceId": "Copier l’identifiant de l’espace de travail",

@@ -191,7 +191,8 @@ async function setDefault(p: Plan) {
                   <span class="cell-title"><RouterLink :to="`/admin/plans/${p.id}`" @click.stop>{{ p.name }}</RouterLink><span
                     v-if="p.is_default" class="badge badge-success" style="margin-left: 6px">{{ $t('plans.default') }}</span><span
                     v-if="p.system" class="badge badge-info" style="margin-left: 6px"
-                    :title="$t('plans.systemPlanHint')">{{ $t('plans.system') }}</span></span>
+                    :title="$t('plans.systemPlanHint')">{{ $t('plans.system') }}</span><span
+                    v-if="p.managed_by === 'console'" class="badge badge-info" style="margin-left: 6px">Miabi Console</span></span>
                   <span class="cell-sub">{{ p.description || '—' }}</span>
                 </div>
               </td>

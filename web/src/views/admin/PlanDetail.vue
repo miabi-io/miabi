@@ -207,6 +207,7 @@ function fmtDate(s?: string): string {
               <span v-if="plan.is_default" class="badge badge-success">{{ $t('planDetail.default') }}</span>
               <span v-if="plan.system" class="badge badge-info"
                 :title="$t('plans.systemPlanHint')">{{ $t('planDetail.system') }}</span>
+              <span v-if="plan.managed_by === 'console'" class="badge badge-info"><span class="mdi mdi-lock-outline"></span> Miabi Console</span>
               <span v-if="plan.is_active" class="badge badge-dot badge-success">{{ $t('planDetail.active') }}</span>
               <span v-else class="badge badge-dot badge-danger">{{ $t('planDetail.inactive') }}</span>
             </h1>
@@ -218,7 +219,13 @@ function fmtDate(s?: string): string {
           <!-- The system plan is the platform's own: deleting it would drop the
                system workspace onto the default plan's limits, silently. The API
                refuses it too — this only keeps the console from offering it. -->
-          <button v-if="!plan.system" class="btn btn-danger" @click="showDelete = true">{{ $t('action.delete') }}</button>
+          <button v-if="!plan.system && plan.managed_by !== 'console'" class="btn btn-danger" @click="showDelete = true">{{ $t('action.delete') }}</button>
+        </div>
+      </div>
+
+      <div v-if="plan.managed_by === 'console'" class="card managed-note">
+        <div class="card-body">
+          <span class="mdi mdi-lock-outline"></span> {{ $t('planDetail.managedByConsole') }}
         </div>
       </div>
 
@@ -232,7 +239,7 @@ function fmtDate(s?: string): string {
               <!-- The system plan is resolved by name when it is pinned to the
                    system workspace, so renaming it would quietly unpin it. Its
                    limits stay editable. -->
-              <input v-model="form.name" class="form-input" required :disabled="plan.system" />
+              <input v-model="form.name" class="form-input" required :disabled="plan.system || plan.managed_by === 'console'" />
               <p v-if="plan.system" class="form-hint">{{ $t('planDetail.slugFixed') }}</p>
             </div>
             <div class="form-group">
@@ -457,6 +464,7 @@ function fmtDate(s?: string): string {
 </template>
 
 <style scoped>
+.managed-note .card-body { display: flex; gap: 6px; align-items: flex-start; font-size: 13px; color: var(--text-muted); }
 .text-muted { color: var(--text-muted); }
 .text-sm { font-size: 13px; }
 code { background: var(--bg-tertiary); padding: 1px 6px; border-radius: 4px; font-size: 12px; font-family: monospace; }
