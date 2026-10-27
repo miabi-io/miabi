@@ -31,7 +31,7 @@ import (
 func main() {
 	fmt.Println("| Type | Host | Credential fields | Where to create them |")
 	fmt.Println("|---|---|---|---|")
-	for _, d := range dnscatalog.All() {
+	for _, d := range dnscatalog.Selectable() {
 		fields := make([]string, 0, len(d.Fields))
 		for _, f := range d.Fields {
 			s := "`" + f.Key + "`"

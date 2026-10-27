@@ -115,13 +115,20 @@ type ProxyResyncer interface {
 	SyncWorkspaceProxy(ctx context.Context, workspaceID uint) error
 }
 
+// ConsoleDNS names the console-managed DNS provider whose zones cover a domain, if any. Implemented by
+// the dnsprovider service; injected after construction and nil-safe.
+type ConsoleDNS interface {
+	ConsoleProviderFor(workspaceID uint, name string) *uint
+}
+
 // Service manages domains.
 type Service struct {
-	repo      *repositories.DomainRepository
-	lookup    lookupTXT
-	automator DNSAutomator
-	resyncer  ProxyResyncer
-	wsPolicy  WorkspacePolicy
+	repo       *repositories.DomainRepository
+	lookup     lookupTXT
+	automator  DNSAutomator
+	resyncer   ProxyResyncer
+	wsPolicy   WorkspacePolicy
+	consoleDNS ConsoleDNS
 }
 
 // NewService wires the domain service. The default TXT lookup queries the
@@ -134,6 +141,10 @@ func NewService(repo *repositories.DomainRepository) *Service {
 // SetDNSAutomator wires DNS automation for provider-connected domains (nil-safe;
 // nil leaves the manual copy-paste flow as the only path).
 func (s *Service) SetDNSAutomator(a DNSAutomator) { s.automator = a }
+
+// SetConsoleDNS wires the console-managed provider lookup, so a new domain under a console zone is
+// connected and verified without a manual step (nil-safe).
+func (s *Service) SetConsoleDNS(c ConsoleDNS) { s.consoleDNS = c }
 
 // SetProxyResyncer wires the gateway re-sync triggered on a verification change
 // (nil-safe; nil disables the automatic route go-live/offline).
@@ -216,10 +227,64 @@ func (s *Service) Create(workspaceID uint, in Input) (*models.Domain, error) {
 		WorkspaceID: workspaceID, Name: in.Name, TLSMode: in.TLSMode, Wildcard: in.Wildcard,
 		VerificationToken: declarative.RandAlphaNum(32),
 	}
+	if s.consoleDNS != nil && s.automator != nil {
+		d.DNSProviderID = s.consoleDNS.ConsoleProviderFor(workspaceID, in.Name)
+	}
 	if err := s.repo.Create(d); err != nil {
 		return nil, err
 	}
+	if d.DNSProviderID != nil {
+		s.verifyInBackground(workspaceID, []uint{d.ID})
+	}
 	return d, nil
+}
+
+// ConnectToProvider connects every domain of the workspace that has no provider and falls under the
+// provider's zones, and verifies the unverified ones in the background. It returns how many it connected.
+func (s *Service) ConnectToProvider(workspaceID uint, p *models.DNSProvider) (int, error) {
+	domains, err := s.repo.ListByWorkspace(workspaceID)
+	if err != nil {
+		return 0, err
+	}
+	var pending []uint
+	connected := 0
+	for i := range domains {
+		d := &domains[i]
+		if d.DNSProviderID != nil || d.Banned || !p.CoversDomain(d.Name) {
+			continue
+		}
+		d.DNSProviderID = &p.ID
+		if err := s.repo.Update(d); err != nil {
+			return connected, err
+		}
+		connected++
+		if !d.Verified {
+			pending = append(pending, d.ID)
+		}
+	}
+	s.verifyInBackground(workspaceID, pending)
+	return connected, nil
+}
+
+// verifyInBackground verifies domains whose TXT Miabi can now publish itself, off the request path:
+// each one waits for propagation.
+func (s *Service) verifyInBackground(workspaceID uint, ids []uint) {
+	if len(ids) == 0 {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(len(ids))*30*time.Second)
+		defer cancel()
+		for _, id := range ids {
+			if d, err := s.Verify(ctx, workspaceID, id); err != nil {
+				name := ""
+				if d != nil {
+					name = d.Name
+				}
+				logger.Warn("domain: automatic verification failed", "workspace_id", workspaceID, "domain", name, "error", err)
+			}
+		}
+	}()
 }
 
 func (s *Service) Update(workspaceID, id uint, in Input) (*models.Domain, error) {

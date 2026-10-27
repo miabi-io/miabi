@@ -58,6 +58,8 @@ type Descriptor struct {
 	// PropagationTimeout raises the DNS-01 propagation cap for slow hosts. Zero uses the ACME
 	// client's default; it is a ceiling, not a wait.
 	PropagationTimeout time.Duration `json:"-"`
+	// Managed marks a type only the billing console creates; it is never offered to connect by hand.
+	Managed bool `json:"-"`
 }
 
 var registry = []Descriptor{
@@ -175,6 +177,15 @@ var registry = []Descriptor{
 			{Key: "server_url", Label: "API URL", Type: FieldString, Required: true, Placeholder: "http://127.0.0.1:8081"},
 			{Key: "server_id", Label: "Server ID", Type: FieldString, Default: "localhost", Placeholder: "localhost"},
 			{Key: "api_token", Label: "API key", Type: FieldPassword, Required: true, Secret: true, Help: "The api-key from pdns.conf."},
+		},
+	},
+	{
+		Type:    "console",
+		Label:   "Miabi Console",
+		Managed: true,
+		Fields: []Field{
+			{Key: "server_url", Label: "API URL", Type: FieldString, Required: true},
+			{Key: "api_token", Label: "API token", Type: FieldPassword, Required: true, Secret: true},
 		},
 	},
 	{
@@ -309,6 +320,17 @@ func Get(t string) (Descriptor, bool) {
 func All() []Descriptor {
 	out := make([]Descriptor, len(registry))
 	copy(out, registry)
+	return out
+}
+
+// Selectable returns the descriptors a user may connect by hand, in display order.
+func Selectable() []Descriptor {
+	out := make([]Descriptor, 0, len(registry))
+	for _, d := range registry {
+		if !d.Managed {
+			out = append(out, d)
+		}
+	}
 	return out
 }
 

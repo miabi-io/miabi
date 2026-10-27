@@ -1675,6 +1675,7 @@
     "disconnect": "Disconnect",
     "domain": "Domain",
     "emptyHint": "Connect Cloudflare, Route 53, or DigitalOcean to automate DNS.",
+    "managedByConsole": "Created and kept up to date by Miabi Console; it cannot be changed here.",
     "noDnsProviders": "No DNS providers",
     "notInPlan": "Connecting DNS providers isn't included in this workspace's plan.",
     "optional": "(optional)",

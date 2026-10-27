@@ -208,16 +208,20 @@ async function disconnect() {
           <thead><tr><th>{{ $t('apps.form.name') }}</th><th>{{ $t('dnsProviders.type') }}</th><th>{{ $t('dashboard.col.status') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="p in providers" :key="p.id">
-              <td><span class="cell-title">{{ p.display_name || p.name }}</span></td>
-              <td class="cell-sub">{{ typeLabel(p.type) }}</td>
+              <td>
+                <span class="cell-title">{{ p.display_name || p.name }}</span>
+                <span v-if="p.managed_by === 'console'" class="badge badge-sm managed-badge" :title="$t('dnsProviders.managedByConsole')"><span class="mdi mdi-lock-outline"></span> Miabi Console</span>
+                <span v-if="p.zones?.length" class="cell-sub" style="display: block">{{ p.zones.join(', ') }}</span>
+              </td>
+              <td class="cell-sub">{{ p.managed_by === 'console' ? 'Miabi Console' : typeLabel(p.type) }}</td>
               <td>
                 <span class="badge" :class="p.status === 'ok' ? 'badge-success' : 'badge-danger'">{{ p.status }}</span>
                 <span v-if="p.last_error" class="cell-sub" :title="p.last_error" style="margin-left: 8px">⚠</span>
               </td>
               <td style="text-align: right">
                 <button v-if="ws.canEdit" class="btn btn-secondary btn-sm" @click="openTest(p)">{{ $t('dnsProviders.test') }}</button>
-                <button v-if="ws.canEdit" class="btn btn-secondary btn-sm" style="margin-left: 8px" @click="openRotate(p)">{{ $t('dnsProviders.rotate') }}</button>
-                <button v-if="ws.canEdit" class="btn btn-danger btn-sm" style="margin-left: 8px" @click="pendingDisconnect = p">{{ $t('dnsProviders.disconnect') }}</button>
+                <button v-if="ws.canEdit && p.managed_by !== 'console'" class="btn btn-secondary btn-sm" style="margin-left: 8px" @click="openRotate(p)">{{ $t('dnsProviders.rotate') }}</button>
+                <button v-if="ws.canEdit && p.managed_by !== 'console'" class="btn btn-danger btn-sm" style="margin-left: 8px" @click="pendingDisconnect = p">{{ $t('dnsProviders.disconnect') }}</button>
               </td>
             </tr>
           </tbody>
@@ -345,4 +349,5 @@ async function disconnect() {
 
 <style scoped>
 .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+.managed-badge { margin-left: 6px; }
 </style>
