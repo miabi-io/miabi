@@ -132,7 +132,7 @@ func (h *DNSProviderHandler) Update(c *okapi.Context, req *UpdateDNSProviderRequ
 
 // Catalog lists the connectable DNS hosts and the credential fields each needs.
 func (h *DNSProviderHandler) Catalog(c *okapi.Context) error {
-	return ok(c, dnscatalog.All())
+	return ok(c, dnscatalog.Selectable())
 }
 
 func (h *DNSProviderHandler) Test(c *okapi.Context, req *TestDNSProviderRequest) error {
@@ -177,6 +177,8 @@ func (h *DNSProviderHandler) mapErr(c *okapi.Context, err error) error {
 		return c.AbortNotFound("DNS provider not found")
 	case errors.Is(err, dnsprovider.ErrNameTaken):
 		return c.AbortWithError(409, err)
+	case errors.Is(err, dnsprovider.ErrManaged):
+		return c.AbortWithError(409, errConsoleManaged)
 	case errors.Is(err, dnsprovider.ErrNameRequired), errors.Is(err, dnsprovider.ErrInvalidType),
 		errors.Is(err, dnsprovider.ErrInvalidCredentials):
 		return c.AbortBadRequest(err.Error())

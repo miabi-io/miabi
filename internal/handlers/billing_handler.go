@@ -209,6 +209,45 @@ func (h *BillingHandler) DeleteSSOProvider(c *okapi.Context) error {
 	})
 }
 
+// BillingDNSProviderRequest is PUT /accounts/{external_id}/workspaces/{workspace}/dns-provider.
+type BillingDNSProviderRequest struct {
+	ExternalID string                  `path:"external_id" required:"true"`
+	Workspace  string                  `path:"workspace" required:"true" doc:"Workspace uid or handle"`
+	Body       billing.DNSProviderPush `json:"body"`
+}
+
+// PushDNSProvider creates or updates the workspace's console-managed DNS provider.
+func (h *BillingHandler) PushDNSProvider(c *okapi.Context, req *BillingDNSProviderRequest) error {
+	return h.write(c, req.Body, func() (any, error) {
+		v, err := h.svc.PushDNSProvider(c.Request().Context(), req.ExternalID, req.Workspace, req.Body)
+		if err == nil {
+			h.record(c, "billing.dns_provider.upsert", req.ExternalID, map[string]any{"workspace": req.Workspace,
+				"zones": v.Zones, "token_rotated": req.Body.APIToken != ""})
+		}
+		return v, err
+	})
+}
+
+// GetDNSProvider reports the workspace's console-managed DNS provider.
+func (h *BillingHandler) GetDNSProvider(c *okapi.Context, req *BillingWorkspaceRef) error {
+	v, err := h.svc.DNSProvider(req.ExternalID, req.Workspace)
+	if err != nil {
+		return billingErr(c, err, "failed to read the DNS provider")
+	}
+	return ok(c, v)
+}
+
+// DeleteDNSProvider removes the workspace's console-managed DNS provider.
+func (h *BillingHandler) DeleteDNSProvider(c *okapi.Context, req *BillingWorkspaceRef) error {
+	return h.write(c, nil, func() (any, error) {
+		if err := h.svc.DeleteDNSProvider(req.ExternalID, req.Workspace); err != nil {
+			return nil, err
+		}
+		h.record(c, "billing.dns_provider.delete", req.ExternalID, map[string]any{"workspace": req.Workspace})
+		return map[string]string{"message": "DNS provider removed"}, nil
+	})
+}
+
 // BillingSuspendRequest is POST /accounts/{external_id}/suspend.
 type BillingSuspendRequest struct {
 	ExternalID string                 `path:"external_id" required:"true"`

@@ -1062,6 +1062,9 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	dnsProviderService.SetQuota(quotaService)
 	// Automate the ownership TXT (and ledger cleanup) for provider-connected domains.
 	domainService.SetDNSAutomator(dnsProviderService)
+	// Domains under a console-pushed zone connect to that provider and verify themselves.
+	domainService.SetConsoleDNS(dnsProviderService)
+	billingService.SetConsoleDNS(dnsProviderService, domainService)
 	// Re-render a workspace's gateway config when a domain's verification changes,
 	// so its routes go live (on verify) or offline (on drift) automatically.
 	domainService.SetProxyResyncer(routeService)

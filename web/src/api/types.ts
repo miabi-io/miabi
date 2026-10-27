@@ -291,6 +291,9 @@ export interface DNSProvider {
   status: 'ok' | 'error'
   last_error?: string
   credentials_public?: Record<string, string>
+  // managed_by 'console' marks the provider Miabi Console pushes; it cannot be changed here.
+  managed_by?: 'console'
+  zones?: string[]
   created_at?: string
   updated_at?: string
 }

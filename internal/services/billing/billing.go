@@ -66,6 +66,9 @@ type Service struct {
 	ssoAPIBase string
 
 	consoleOnly func() bool
+
+	dns        ConsoleDNS
+	dnsDomains DomainConnector
 }
 
 // SetLocked applies MIABI_BILLING_CONNECTION_LOCKED.

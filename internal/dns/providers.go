@@ -81,6 +81,10 @@ var constructors = map[string]func(Credentials) zoneClient{
 	"powerdns": func(c Credentials) zoneClient {
 		return &powerdns.Provider{ServerURL: c["server_url"], ServerID: c["server_id"], APIToken: c["api_token"]}
 	},
+	// The billing console serves a PowerDNS-compatible API with a single virtual server.
+	"console": func(c Credentials) zoneClient {
+		return &powerdns.Provider{ServerURL: c["server_url"], ServerID: "localhost", APIToken: c["api_token"]}
+	},
 	"acmedns": func(c Credentials) zoneClient {
 		return &acmedns.Provider{
 			ServerURL: c["server_url"], Username: c["username"],

@@ -19,7 +19,10 @@
 
 package models
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // DNS provider types Miabi can connect to. Each maps to a libdns module; the
 // credential shape differs per type (see the dns package). "manual" is the
@@ -68,6 +71,25 @@ type DNSProvider struct {
 	Status    string `json:"status" gorm:"not null;default:ok"` // ok | error
 	LastError string `json:"last_error,omitempty"`
 
+	// ManagedBy is ManagedByConsole for the provider the billing console pushes; it cannot be
+	// changed from Miabi.
+	ManagedBy string `json:"managed_by,omitempty" gorm:"not null;default:''"`
+	// Zones are the zones a console-managed provider may change; new domains under them use it.
+	Zones []string `json:"zones,omitempty" gorm:"serializer:json"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ConsoleManaged reports whether the billing console owns the provider.
+func (p *DNSProvider) ConsoleManaged() bool { return p.ManagedBy == ManagedByConsole }
+
+// CoversDomain reports whether name equals one of the provider's zones or falls under one.
+func (p *DNSProvider) CoversDomain(name string) bool {
+	for _, z := range p.Zones {
+		if name == z || strings.HasSuffix(name, "."+z) {
+			return true
+		}
+	}
+	return false
 }

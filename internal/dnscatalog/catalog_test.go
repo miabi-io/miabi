@@ -89,3 +89,17 @@ func TestGetIsCaseAndSpaceInsensitive(t *testing.T) {
 		t.Fatal("unknown type must not resolve")
 	}
 }
+
+func TestSelectableLeavesOutManagedTypes(t *testing.T) {
+	if d, ok := Get("console"); !ok || !d.Managed {
+		t.Fatal("the console type must be catalogued and managed")
+	}
+	for _, d := range Selectable() {
+		if d.Managed {
+			t.Fatalf("%s is offered to connect by hand", d.Type)
+		}
+	}
+	if len(Selectable()) != len(All())-1 {
+		t.Fatalf("Selectable dropped more than the managed types")
+	}
+}

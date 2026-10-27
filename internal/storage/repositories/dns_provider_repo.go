@@ -76,3 +76,20 @@ func (r *DNSProviderRepository) ExistsByName(workspaceID uint, name string) (boo
 func (r *DNSProviderRepository) Delete(id uint) error {
 	return r.db.Delete(&models.DNSProvider{}, id).Error
 }
+
+// FindByName returns the workspace's provider with that name, or nil when there is none.
+func (r *DNSProviderRepository) FindByName(workspaceID uint, name string) (*models.DNSProvider, error) {
+	var ps []models.DNSProvider
+	if err := r.db.Where("workspace_id = ? AND name = ?", workspaceID, name).Limit(1).Find(&ps).Error; err != nil {
+		return nil, err
+	}
+	if len(ps) == 0 {
+		return nil, nil
+	}
+	return &ps[0], nil
+}
+
+// DeleteManagedBy removes every provider with that ManagedBy marker, in all workspaces.
+func (r *DNSProviderRepository) DeleteManagedBy(managedBy string) error {
+	return r.db.Where("managed_by = ?", managedBy).Delete(&models.DNSProvider{}).Error
+}

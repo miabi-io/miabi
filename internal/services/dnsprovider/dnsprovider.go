@@ -48,7 +48,12 @@ var (
 	ErrInvalidType  = errors.New("unknown DNS provider type")
 	// ErrInvalidCredentials rejects a rotation whose credential cannot build a provider.
 	ErrInvalidCredentials = errors.New("the credentials are not valid for this provider type")
+	// ErrManaged refuses changing, from Miabi, a provider the billing console manages.
+	ErrManaged = errors.New("managed by Miabi Console: change it in the console")
 )
+
+// ConsoleProviderName is the fixed name of the provider the billing console pushes into a workspace.
+const ConsoleProviderName = "miabi-console"
 
 // Service manages DNS provider connections and the records Miabi creates through
 // them (the managed-record ledger).
@@ -96,7 +101,7 @@ func (s *Service) Connect(ctx context.Context, workspaceID uint, in ConnectInput
 	if displayName == "" {
 		displayName = strings.TrimSpace(in.Name)
 	}
-	if _, ok := dnscatalog.Get(in.Type); !ok {
+	if d, ok := dnscatalog.Get(in.Type); !ok || d.Managed {
 		return nil, ErrInvalidType
 	}
 	if s.quota.Enabled() {
@@ -145,6 +150,9 @@ func (s *Service) Update(ctx context.Context, workspaceID, id uint, in UpdateInp
 	p, err := s.get(workspaceID, id)
 	if err != nil {
 		return nil, err
+	}
+	if p.ConsoleManaged() {
+		return nil, ErrManaged
 	}
 	if len(in.Credentials) > 0 {
 		prov, berr := dns.Build(p.Type, in.Credentials)
@@ -241,6 +249,9 @@ func (s *Service) Delete(workspaceID, id uint) error {
 	p, err := s.get(workspaceID, id)
 	if err != nil {
 		return err
+	}
+	if p.ConsoleManaged() {
+		return ErrManaged
 	}
 	return s.repo.Delete(p.ID)
 }

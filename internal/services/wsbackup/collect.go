@@ -129,6 +129,10 @@ func (s *Service) collectCredentials(workspaceID uint, st *wsbundle.State, repor
 	}
 	for i := range providers {
 		p := &providers[i]
+		if p.ConsoleManaged() {
+			report.Add("dns-provider", p.Name, "skipped", "managed by Miabi Console, which pushes it again")
+			continue
+		}
 		creds, err := crypto.Decrypt(p.CredentialsEnc)
 		if err != nil {
 			report.Add("dns-provider", p.Name, "failed", "credential could not be decrypted: "+err.Error())

@@ -396,6 +396,11 @@ func (s *Service) Disconnect(actorID uint) error {
 	if err := s.DeleteSSOProvider(); err != nil && !errors.Is(err, ErrSSONotConfigured) && !errors.Is(err, ErrSSOUnavailable) {
 		return fmt.Errorf("remove the console SSO provider: %w", err)
 	}
+	if s.dns != nil {
+		if err := s.dns.DeleteAllConsole(); err != nil {
+			return fmt.Errorf("remove the console DNS providers: %w", err)
+		}
+	}
 	return nil
 }
 
