@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/url"
 	"os"
@@ -329,6 +330,11 @@ type Config struct {
 	RestrictedUID     int
 	ForceNonRootUser  bool
 	SecurityInitImage string
+
+	// QuotaCPUOvercommit lets a workspace's summed CPU limits reach this multiple of its plan's CPU cores
+	// (MIABI_QUOTA_CPU_OVERCOMMIT, default 1). A CPU limit is a ceiling, not a reservation, so idle apps hold
+	// nothing back; memory is never overcommitted.
+	QuotaCPUOvercommit float64
 
 	// Managed network subnet allocation. Miabi carves a unique subnet from NetworkPoolCIDR for
 	// every network it creates and passes explicit IPAM, instead of Docker's small default pools.
@@ -765,6 +771,7 @@ func New() *Config {
 		RestoreMaxMB:           goutils.EnvInt("MIABI_RESTORE_MAX_MB", 1024),
 		RestrictedUID:          goutils.EnvInt("MIABI_RESTRICTED_UID", 100000),
 		ForceNonRootUser:       goutils.EnvBool("MIABI_FORCE_NON_ROOT_USER", false),
+		QuotaCPUOvercommit:     envRatio("MIABI_QUOTA_CPU_OVERCOMMIT"),
 		SecurityInitImage:      goutils.Env("MIABI_SECURITY_INIT_IMAGE", "busybox:latest"),
 		NetworkPoolCIDR:        goutils.Env("MIABI_NETWORK_POOL_CIDR", "10.64.0.0/12"),
 		NetworkSubnetPrefix:    goutils.EnvInt("MIABI_NETWORK_SUBNET_PREFIX", 24),
@@ -1120,4 +1127,13 @@ func doNotTrack(v string) bool {
 		return false
 	}
 	return true
+}
+
+// envRatio reads a multiplier of at least 1, so an unset, malformed or lower value keeps limits as they are.
+func envRatio(name string) float64 {
+	v, err := strconv.ParseFloat(strings.TrimSpace(os.Getenv(name)), 64)
+	if err != nil || v < 1 || math.IsInf(v, 0) {
+		return 1
+	}
+	return v
 }

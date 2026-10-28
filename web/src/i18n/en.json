@@ -4187,6 +4187,7 @@
     "optionalForS3Compatible": "(optional, for S3-compatible)",
     "pathStyle": "Force path-style URLs (required by MinIO and some S3-compatible stores)",
     "pendingInvitations": "Pending invitations",
+    "cpuShared": "{cores} cores of shared CPU: the limits may add up to {allowance} cores.",
     "planLine": "Plan: {plan}.",
     "portableBackups": "(portable backups)",
     "privilegedHostMounts": "Privileged host mounts",

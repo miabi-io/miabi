@@ -63,6 +63,16 @@ func (h *UsageHandler) SetPlacer(p *Placer) { h.placer = p }
 type ResourceUsage struct {
 	Used  int64 `json:"used"`
 	Limit int   `json:"limit"`
+	// Allowance is what the summed CPU limits may reach when CPU is overcommitted past Limit.
+	Allowance float64 `json:"allowance,omitempty"`
+}
+
+func cpuUsage(l quota.Limits, nanoCPUs int64, cores int) ResourceUsage {
+	u := ResourceUsage{Used: nanoCPUs / nanoPerCore, Limit: cores}
+	if a := l.CPUAllowance(cores); a > float64(cores) {
+		u.Allowance = a
+	}
+	return u
 }
 
 // WorkspaceUsage is the full usage-vs-limits snapshot for a workspace.
@@ -151,10 +161,10 @@ func (h *UsageHandler) Get(c *okapi.Context) error {
 		APIKeys:           ResourceUsage{Used: keyN, Limit: l.MaxAPIKeys},
 		Members:           ResourceUsage{Used: memberN, Limit: l.MaxMembers},
 		Runners:           ResourceUsage{Used: runnerN, Limit: l.MaxRunners},
-		CPUCores:          ResourceUsage{Used: cpuNano / nanoPerCore, Limit: l.MaxCPUCores},
+		CPUCores:          cpuUsage(l, cpuNano, l.MaxCPUCores),
 		MemoryMB:          ResourceUsage{Used: memBytes / bytesPerMB, Limit: l.MaxMemoryMB},
 		StorageMB:         ResourceUsage{Used: (volBytes + dbBytes) / bytesPerMB, Limit: l.MaxStorageMB},
-		DatabaseCPUCores:  ResourceUsage{Used: dbCPUNano / nanoPerCore, Limit: l.MaxDatabaseCPUCores},
+		DatabaseCPUCores:  cpuUsage(l, dbCPUNano, l.MaxDatabaseCPUCores),
 		DatabaseMemoryMB:  ResourceUsage{Used: dbMemBytes / bytesPerMB, Limit: l.MaxDatabaseMemoryMB},
 	}
 	u.Capabilities.CustomTLS = l.AllowCustomTLS

@@ -20,6 +20,7 @@
 package quota
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/miabi-io/miabi/internal/models"
@@ -38,5 +39,30 @@ func TestDatabaseComputeWiring(t *testing.T) {
 	}
 	if u := unlimited(); u.MaxDatabaseCPUCores != models.Unlimited || u.MaxDatabaseMemoryMB != models.Unlimited {
 		t.Errorf("unlimited = %d / %d", u.MaxDatabaseCPUCores, u.MaxDatabaseMemoryMB)
+	}
+}
+
+// Overcommit stretches the summed CPU limits a cap admits, never an unlimited one, and never below the plan.
+func TestCheckCPUOvercommit(t *testing.T) {
+	const core = int64(nanoPerCore)
+	plain := Limits{CPUOvercommit: 1}
+	if err := checkCPU(plain, 2, 2*core, "workspace"); err != nil {
+		t.Errorf("at the cap: %v", err)
+	}
+	if err := checkCPU(plain, 2, 3*core, "workspace"); err == nil || !strings.Contains(err.Error(), "2-core limit") {
+		t.Errorf("past the cap without overcommit: %v", err)
+	}
+	over := Limits{CPUOvercommit: 2.5}
+	if err := checkCPU(over, 2, 5*core, "workspace"); err != nil {
+		t.Errorf("within the allowance: %v", err)
+	}
+	if err := checkCPU(over, 2, 5*core+1, "database"); err == nil || !strings.Contains(err.Error(), "5 cores allowed for a 2-core plan") {
+		t.Errorf("past the allowance: %v", err)
+	}
+	if err := checkCPU(over, -1, 100*core, "workspace"); err != nil {
+		t.Errorf("unlimited: %v", err)
+	}
+	if got := (Limits{CPUOvercommit: 0.5}).CPUAllowance(2); got != 2 {
+		t.Errorf("a ratio below 1 shrank the cap to %v", got)
 	}
 }

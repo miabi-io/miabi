@@ -88,14 +88,17 @@ async function loadUsage() {
     usageLoading.value = false
   }
 }
-function meterPct(u: { used: number; limit: number }): number {
-  if (u.limit < 0 || u.limit === 0) return u.limit === 0 ? 100 : 0
-  return Math.min(100, Math.round((u.used / u.limit) * 100))
+// Overcommitted CPU is measured against what its limits may add up to, not the plan's cores.
+const meterCap = (u: { limit: number; allowance?: number }) => u.allowance ?? u.limit
+function meterPct(u: { used: number; limit: number; allowance?: number }): number {
+  const cap = meterCap(u)
+  if (cap < 0 || cap === 0) return cap === 0 ? 100 : 0
+  return Math.min(100, Math.round((u.used / cap) * 100))
 }
-function meterClass(u: { used: number; limit: number }): string {
+function meterClass(u: { used: number; limit: number; allowance?: number }): string {
   if (u.limit < 0) return ''
   const pct = meterPct(u)
-  if (u.used >= u.limit) return 'meter-full'
+  if (u.used >= meterCap(u)) return 'meter-full'
   if (pct >= 80) return 'meter-warn'
   return ''
 }
@@ -841,8 +844,11 @@ watch(activeTab, (t) => loadTab(t))
           <div v-for="row in usageRows" :key="row.key" class="meter">
             <div class="meter-head">
               <span>{{ $t(row.label) }}</span>
-              <span class="meter-count">{{ usage[row.key].used }} / {{ usage[row.key].limit < 0 ? '∞' : usage[row.key].limit }}{{ row.unit ? ' ' + $t(row.unit) : '' }}</span>
+              <span class="meter-count">{{ usage[row.key].used }} / {{ usage[row.key].limit < 0 ? '∞' : meterCap(usage[row.key]) }}{{ row.unit ? ' ' + $t(row.unit) : '' }}</span>
             </div>
+            <p v-if="usage[row.key].allowance" class="form-hint" style="margin: 2px 0 0">
+              {{ $t('wsSettings.cpuShared', { cores: usage[row.key].limit, allowance: usage[row.key].allowance }) }}
+            </p>
             <div class="meter-track">
               <div class="meter-fill" :class="meterClass(usage[row.key])" :style="{ width: meterPct(usage[row.key]) + '%' }"></div>
             </div>

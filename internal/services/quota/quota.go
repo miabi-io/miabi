@@ -25,6 +25,7 @@ package quota
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/miabi-io/miabi/internal/models"
@@ -150,6 +151,17 @@ type Limits struct {
 	RequireResourceLimits     bool   `json:"require_resource_limits"`
 	SecurityProfile           string `json:"security_profile"`          // "default" | "restricted"
 	AllowOfficialImageUser    bool   `json:"allow_official_image_user"` // exempt official-template apps from the restricted UID
+	// CPUOvercommit is the multiple of MaxCPUCores and MaxDatabaseCPUCores the summed CPU limits may reach
+	// (server-wide, MIABI_QUOTA_CPU_OVERCOMMIT; 1 = none).
+	CPUOvercommit float64 `json:"cpu_overcommit"`
+}
+
+// CPUAllowance is how many cores of summed CPU limits a CPU cap of cores admits; negative stays unlimited.
+func (l Limits) CPUAllowance(cores int) float64 {
+	if cores < 0 {
+		return -1
+	}
+	return float64(cores) * max(1, l.CPUOvercommit)
 }
 
 func unlimited() Limits {
@@ -163,6 +175,7 @@ func unlimited() Limits {
 		AllowPlatformRunners: true, AllowCustomBuilder: true, AllowGPU: true, AllowServiceRuntime: true,
 		SecurityProfile:        models.SecurityProfileDefault, // never restrict the platform workspace
 		AllowOfficialImageUser: true,
+		CPUOvercommit:          1,
 	}
 }
 
@@ -302,6 +315,8 @@ type Service struct {
 	forceNonRoot bool
 	// restricted refuses creates in a read-only or suspended workspace; nil allows them.
 	restricted func(workspaceID uint) error
+	// cpuOvercommit is the server-wide MIABI_QUOTA_CPU_OVERCOMMIT; below 1 counts as 1.
+	cpuOvercommit float64
 }
 
 func NewService(plans *repositories.PlanRepository, overrides *repositories.WorkspaceQuotaRepository, apps *repositories.ApplicationRepository, volumes *repositories.VolumeRepository, dbs *repositories.DatabaseRepository, enforce bool) *Service {
@@ -415,6 +430,7 @@ func (s *Service) EffectiveLimits(workspaceID uint) Limits {
 	if !s.entitled(flagSecurityProfile) {
 		l.SecurityProfile = models.SecurityProfileDefault
 	}
+	l.CPUOvercommit = max(1, s.cpuOvercommit)
 	return l
 }
 
@@ -448,6 +464,9 @@ func (s *Service) RestrictedProfile(workspaceID uint) bool {
 	}
 	return s.EffectiveLimits(workspaceID).SecurityProfile == models.SecurityProfileRestricted
 }
+
+// SetCPUOvercommit sets the multiple of a plan's CPU cores that a workspace's summed CPU limits may reach.
+func (s *Service) SetCPUOvercommit(v float64) { s.cpuOvercommit = v }
 
 // SetForceNonRoot wires the server-level non-root mandate, so RequireNonRootUser
 // is the one place that answers "must this workload drop root?".
@@ -573,11 +592,8 @@ func (s *Service) CheckComputeAdd(workspaceID uint, addNanoCPUs, addMemBytes int
 	if err != nil {
 		return nil // fail open on a count error
 	}
-	if l.MaxCPUCores >= 0 {
-		capNano := int64(l.MaxCPUCores) * nanoPerCore
-		if curCPU+addNanoCPUs > capNano {
-			return quotaExceeded("workspace CPU %.2f cores exceeds the %d-core limit", float64(curCPU+addNanoCPUs)/nanoPerCore, l.MaxCPUCores)
-		}
+	if err := checkCPU(l, l.MaxCPUCores, curCPU+addNanoCPUs, "workspace"); err != nil {
+		return err
 	}
 	if l.MaxMemoryMB >= 0 {
 		capBytes := int64(l.MaxMemoryMB) * bytesPerMB
@@ -586,6 +602,20 @@ func (s *Service) CheckComputeAdd(workspaceID uint, addNanoCPUs, addMemBytes int
 		}
 	}
 	return nil
+}
+
+// checkCPU refuses summed CPU limits (nanoCPUs) past the allowance of a cap of cores. what names the budget.
+func checkCPU(l Limits, cores int, nanoCPUs int64, what string) error {
+	allowance := l.CPUAllowance(cores)
+	if allowance < 0 || float64(nanoCPUs) <= allowance*nanoPerCore {
+		return nil
+	}
+	used := float64(nanoCPUs) / nanoPerCore
+	if allowance == float64(cores) {
+		return quotaExceeded("%s CPU %.2f cores exceeds the %d-core limit", what, used, cores)
+	}
+	return quotaExceeded("%s CPU limits add up to %.2f cores, past the %s cores allowed for a %d-core plan", what, used,
+		strconv.FormatFloat(allowance, 'f', -1, 64), cores)
 }
 
 // CheckGPURequest verifies that granting `requested` GPU units keeps the workspace's aggregate allocation
@@ -661,8 +691,8 @@ func (s *Service) CheckDatabaseComputeAdd(workspaceID uint, addNanoCPUs, addMemB
 	if err != nil {
 		return nil // fail open on a count error, like the app budget
 	}
-	if l.MaxDatabaseCPUCores >= 0 && curCPU+addNanoCPUs > int64(l.MaxDatabaseCPUCores)*nanoPerCore {
-		return quotaExceeded("database CPU %.2f cores exceeds the %d-core limit", float64(curCPU+addNanoCPUs)/nanoPerCore, l.MaxDatabaseCPUCores)
+	if err := checkCPU(l, l.MaxDatabaseCPUCores, curCPU+addNanoCPUs, "database"); err != nil {
+		return err
 	}
 	if l.MaxDatabaseMemoryMB >= 0 && curMem+addMemBytes > int64(l.MaxDatabaseMemoryMB)*bytesPerMB {
 		return quotaExceeded("database memory %d MB exceeds the %d MB limit", (curMem+addMemBytes)/bytesPerMB, l.MaxDatabaseMemoryMB)

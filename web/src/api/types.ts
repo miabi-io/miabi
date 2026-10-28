@@ -181,6 +181,8 @@ export interface WorkspaceQuotaOverride {
 export interface ResourceUsage {
   used: number
   limit: number // -1 = unlimited
+  // What summed CPU limits may reach when the server overcommits CPU past the limit.
+  allowance?: number
 }
 
 // The resolved effective limits (numbers + capability flags; no plan metadata).
@@ -191,7 +193,10 @@ export type WorkspaceLimits = Pick<Plan,
   | 'allow_custom_tls' | 'allow_privileged_host_mounts'
   | 'allow_shell_exec' | 'allow_shared_storage' | 'allow_dns_providers' | 'allow_custom_labels' | 'allow_platform_runners' | 'allow_gpu' | 'security_profile'
   | 'allow_official_image_user' | 'allow_service_runtime'
-  | 'default_cpu_millicores' | 'default_memory_mb' | 'require_resource_limits'>
+  | 'default_cpu_millicores' | 'default_memory_mb' | 'require_resource_limits'> & {
+  // Server-wide multiple of the CPU caps that summed CPU limits may reach (1 = none).
+  cpu_overcommit: number
+}
 
 export interface WorkspaceUsage {
   enforced: boolean
