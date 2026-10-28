@@ -63,11 +63,10 @@ const (
 )
 
 // Default refs of the *-bkup images, pinned per tool: a floating tag would roll every tool
-// release out to every install the moment it is published. mysql-bkup stays on 1.x until its
-// v2 is published; Miabi skips what 1.x cannot do (verification, the index, age).
+// release out to every install the moment it is published.
 const (
-	DefaultPgBkup      = "jkaninda/pg-bkup:v2.0.0"
-	DefaultMySQLBkup   = "jkaninda/mysql-bkup:v2.0.0"
+	DefaultPgBkup      = "jkaninda/pg-bkup:v2.0.1"
+	DefaultMySQLBkup   = "jkaninda/mysql-bkup:v2.0.1"
 	DefaultMongoDBBkup = "jkaninda/mongodb-bkup:v0.1.0"
 	DefaultLibSQLBkup  = "jkaninda/libsql-bkup:v0.2.0"
 	DefaultVolumeBkup  = "jkaninda/volume-bkup:v0.1.0"
