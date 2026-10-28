@@ -1484,6 +1484,7 @@
       "memoryAria": "Mémoire en Mo",
       "namePlaceholder": "ex. : app-db",
       "noLimit": "Laissez vide pour aucune limite déclarée",
+      "engineMinimum": "Ce moteur requiert au moins {memory} Mo de mémoire et {cpu} CPU.",
       "resourcesHint": "Limites du conteneur ; le moteur est ajusté à la mémoire. Laissées vides, elles sont illimitées — ou fixées à la taille par défaut du moteur lorsque le forfait de l’espace de travail plafonne les ressources des bases de données. Elles restent modifiables par la suite.",
       "storage": "Stockage",
       "storageHint": "Sur quel disque de ce nœud les données de la base sont créées. Ce choix est définitif — les données y résident.",

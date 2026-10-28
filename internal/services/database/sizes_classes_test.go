@@ -52,7 +52,9 @@ func TestOfferFrom(t *testing.T) {
 func TestPickSize(t *testing.T) {
 	bound := SizeOffer{Sizes: []models.DatabaseSize{medium, small, large}, DefaultID: medium.ID, Bound: true}
 	unbound := SizeOffer{Sizes: []models.DatabaseSize{small, medium, large}}
-	pg, mysql := specs[models.DBEnginePostgres], specs[models.DBEngineMySQL]
+	pg, mysql, mongo := specs[models.DBEnginePostgres], specs[models.DBEngineMySQL], specs[models.DBEngineMongoDB]
+	lean := models.DatabaseSize{ID: 4, Name: "lean", MemoryBytes: 2 * gib, NanoCPUs: nanosPerCore / 4}
+	tiny := models.DatabaseSize{ID: 5, Name: "tiny", MemoryBytes: gib / 8, NanoCPUs: nanosPerCore / 2}
 	for _, tc := range []struct {
 		name   string
 		offer  SizeOffer
@@ -72,7 +74,9 @@ func TestPickSize(t *testing.T) {
 		{"fit cpu", bound, pg, Resources{NanoCPUs: 3 * nanosPerCore / 2}, false, "large", ""},
 		{"fit the smallest", bound, pg, Resources{MemoryBytes: gib / 4}, false, "small", ""},
 		{"nothing fits", bound, pg, Resources{MemoryBytes: 8 * gib}, false, "", "8192 MB"},
-		{"default too small for the engine", SizeOffer{Sizes: []models.DatabaseSize{small, medium}, DefaultID: small.ID, Bound: true}, mysql, Resources{}, false, "medium", ""},
+		{"default too small for the engine", SizeOffer{Sizes: []models.DatabaseSize{tiny, small}, DefaultID: tiny.ID, Bound: true}, mysql, Resources{}, false, "small", ""},
+		{"too few cores for the engine", SizeOffer{Sizes: []models.DatabaseSize{lean, medium}, DefaultID: lean.ID, Bound: true}, mongo, Resources{}, false, "medium", ""},
+		{"fit raises cpu to the engine's minimum", SizeOffer{Sizes: []models.DatabaseSize{lean, medium}, Bound: true}, mongo, Resources{MemoryBytes: gib}, false, "medium", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := pickSize(tc.offer, tc.spec, tc.req, tc.resize)

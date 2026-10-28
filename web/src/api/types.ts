@@ -1971,6 +1971,10 @@ export interface EngineDefault {
   engine: DBEngine
   image: string
   version: string
+  min_memory_mb: number
+  default_memory_mb: number
+  min_cpu_cores: number
+  default_cpu_cores: number
 }
 
 export interface DatabaseInstance {

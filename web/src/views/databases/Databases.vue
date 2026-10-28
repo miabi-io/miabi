@@ -8,7 +8,7 @@ import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { databaseApi, volumeApi } from '@/api/resources'
-import type { DatabaseInstance, DatabaseSize, DatabaseSizeOffer, DBEngine, DBStatus, StorageClassOption } from '@/api/types'
+import type { DatabaseInstance, DatabaseSize, DatabaseSizeOffer, DBEngine, EngineDefault, DBStatus, StorageClassOption } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
@@ -76,6 +76,8 @@ const engines: { value: DBEngine; label: string; icon: string; default: string }
 // Default versions resolved from the admin deployment-config catalog (overrides
 // the hardcoded fallbacks above so the form reflects the configured tags).
 const engineDefaults = ref<Record<string, string>>({})
+const engineLimits = ref<Record<string, EngineDefault>>({})
+const formLimits = computed(() => engineLimits.value[form.value.engine])
 const defaultVersion = computed(
   () => engineDefaults.value[form.value.engine] || engines.find((e) => e.value === form.value.engine)?.default || 'latest',
 )
@@ -112,6 +114,7 @@ async function loadEngines(id: number) {
   try {
     const defs = (await databaseApi.engines(id)).data.data ?? []
     engineDefaults.value = Object.fromEntries(defs.map((d) => [d.engine, d.version]))
+    engineLimits.value = Object.fromEntries(defs.map((d) => [d.engine, d]))
   } catch {
     // Keep the hardcoded fallbacks.
   }
@@ -301,11 +304,12 @@ function fmtBytes(n?: number): string {
             <div v-if="!form.size" class="form-group">
               <label class="form-label">{{ $t('dashboard.resources.title') }} <span class="text-muted">{{ $t('apps.form.optional') }}</span></label>
               <div class="flex gap-3">
-                <input v-model.number="form.memory_mb" type="number" min="0" class="form-input" :placeholder="$t('databases.form.memory')" :aria-label="$t('databases.form.memoryAria')" />
-                <input v-model.number="form.cpu_cores" type="number" min="0" step="0.25" class="form-input" :placeholder="$t('databases.form.cpu')" :aria-label="$t('databases.form.cpu')" />
+                <input v-model.number="form.memory_mb" type="number" :min="formLimits?.min_memory_mb ?? 0" class="form-input" :placeholder="$t('databases.form.memory')" :aria-label="$t('databases.form.memoryAria')" />
+                <input v-model.number="form.cpu_cores" type="number" :min="formLimits?.min_cpu_cores ?? 0" step="0.25" class="form-input" :placeholder="$t('databases.form.cpu')" :aria-label="$t('databases.form.cpu')" />
               </div>
               <p class="form-hint">
                 {{ $t('databases.form.resourcesHint') }}
+                <template v-if="formLimits">{{ $t('databases.form.engineMinimum', { memory: formLimits.min_memory_mb, cpu: formLimits.min_cpu_cores }) }}</template>
               </p>
             </div>
             <div class="form-group" :style="storageClasses.length > 1 ? undefined : 'margin-bottom: 0'">
