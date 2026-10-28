@@ -22,6 +22,7 @@ package database
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/miabi-io/miabi/internal/models"
@@ -35,6 +36,7 @@ func TestTuningArgs(t *testing.T) {
 		want   []string
 	}{
 		{models.DBEnginePostgres, gb, []string{"-c", "shared_buffers=256MB", "-c", "effective_cache_size=768MB"}},
+		{models.DBEngineMySQL, gb / 4, []string{"--innodb-buffer-pool-size=64M", "--performance-schema=OFF"}},
 		{models.DBEngineMySQL, gb, []string{"--innodb-buffer-pool-size=384M"}},
 		{models.DBEngineMySQL, 2 * gb, []string{"--innodb-buffer-pool-size=1152M"}},
 		{models.DBEngineMariaDB, gb / 4, []string{"--innodb-buffer-pool-size=96M"}},
@@ -63,6 +65,13 @@ func TestResourcesValidate(t *testing.T) {
 			t.Errorf("%+v: err = %v", good, err)
 		}
 	}
+	mongo := specs[models.DBEngineMongoDB]
+	if err := (Resources{MemoryBytes: 512 << 20, NanoCPUs: nanosPerCore / 4}).validate(models.DBEngineMongoDB, mongo); !errors.Is(err, ErrInvalidResources) || !strings.Contains(err.Error(), "0.5 CPU") {
+		t.Errorf("a quarter core for mongodb: err = %v, want a 0.5 CPU minimum", err)
+	}
+	if err := (Resources{MemoryBytes: 512 << 20, NanoCPUs: nanosPerCore / 2}).validate(models.DBEngineMongoDB, mongo); err != nil {
+		t.Errorf("mongodb at its minimum: err = %v", err)
+	}
 }
 
 // An instance created without a size in a capped workspace must still count against the budget.
@@ -73,6 +82,9 @@ func TestResourcesWithDefaults(t *testing.T) {
 	}
 	if got := (Resources{MemoryBytes: 2048 << 20}).withDefaults(mysql, false, true); got != (Resources{MemoryBytes: 2048 << 20}) {
 		t.Errorf("a stated memory limit was replaced: %+v", got)
+	}
+	if got := (Resources{}).withDefaults(specs[models.DBEngineRedis], true, true); got != (Resources{MemoryBytes: 256 << 20, NanoCPUs: nanosPerCore / 4}) {
+		t.Errorf("redis capped defaults = %+v", got)
 	}
 	if got := (Resources{}).withDefaults(mysql, false, false); got != (Resources{}) {
 		t.Errorf("an uncapped workspace got a size: %+v", got)

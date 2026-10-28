@@ -22,7 +22,6 @@ package database
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/miabi-io/miabi/internal/models"
@@ -119,20 +118,20 @@ func pickSize(offer SizeOffer, spec engineSpec, req Resources, resize bool) (Res
 	if !offer.Bound {
 		return req, nil
 	}
-	minMemory := int64(spec.minMemoryMB) * mebibyte
+	minMemory, minCPUs := spec.minMemory(), spec.minNanoCPUs()
 	if req.MemoryBytes == 0 && req.NanoCPUs == 0 {
 		if resize {
 			return req, fmt.Errorf("%w: this workspace's plan offers the database sizes %s; pick one", ErrInvalidResources, sizeNames(offer.Sizes))
 		}
-		if def := offer.Sizes[0]; def.MemoryBytes >= minMemory {
+		if def := offer.Sizes[0]; def.MemoryBytes >= minMemory && def.NanoCPUs >= minCPUs {
 			return fromSize(def), nil
 		}
 	}
-	memory := max(req.MemoryBytes, minMemory)
+	memory, cpus := max(req.MemoryBytes, minMemory), max(req.NanoCPUs, minCPUs)
 	var best *models.DatabaseSize
 	for i := range offer.Sizes {
 		sz := &offer.Sizes[i]
-		if sz.MemoryBytes < memory || sz.NanoCPUs < req.NanoCPUs {
+		if sz.MemoryBytes < memory || sz.NanoCPUs < cpus {
 			continue
 		}
 		if best == nil || sz.MemoryBytes < best.MemoryBytes || (sz.MemoryBytes == best.MemoryBytes && sz.NanoCPUs < best.NanoCPUs) {
@@ -141,7 +140,7 @@ func pickSize(offer SizeOffer, spec engineSpec, req Resources, resize bool) (Res
 	}
 	if best == nil {
 		return req, fmt.Errorf("%w: no database size this workspace's plan offers has %s; it offers %s",
-			ErrInvalidResources, describeRequest(memory, req.NanoCPUs), sizeNames(offer.Sizes))
+			ErrInvalidResources, describeRequest(memory, cpus), sizeNames(offer.Sizes))
 	}
 	return fromSize(*best), nil
 }
@@ -161,7 +160,7 @@ func sizeNames(sizes []models.DatabaseSize) string {
 func describeRequest(memoryBytes, nanoCPUs int64) string {
 	out := fmt.Sprintf("%d MB of memory", memoryBytes/mebibyte)
 	if nanoCPUs > 0 {
-		out += " and " + strconv.FormatFloat(float64(nanoCPUs)/nanosPerCore, 'f', -1, 64) + " CPU"
+		out += " and " + formatCores(nanoCPUs) + " CPU"
 	}
 	return out
 }

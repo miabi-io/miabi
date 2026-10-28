@@ -38,18 +38,24 @@ type Resources struct {
 }
 
 const (
-	mebibyte     = 1 << 20
-	nanosPerCore = 1_000_000_000
+	mebibyte      = 1 << 20
+	nanosPerCore  = 1_000_000_000
+	nanosPerMilli = 1_000_000
 )
 
-// validate refuses negative limits, and memory too small for the engine to start: a limit that low ends with
-// the kernel killing the database rather than with a clear error.
+func (e engineSpec) minMemory() int64   { return int64(e.minMemoryMB) * mebibyte }
+func (e engineSpec) minNanoCPUs() int64 { return int64(e.minMilliCPU) * nanosPerMilli }
+
+// validate refuses negative limits, and limits too small for the engine to run on: memory that low ends with
+// the kernel killing the database, and CPU that low with it timing out on start, rather than a clear error.
 func (r Resources) validate(engine models.DBEngine, spec engineSpec) error {
 	switch {
 	case r.MemoryBytes < 0 || r.NanoCPUs < 0:
 		return fmt.Errorf("%w: memory and CPU cannot be negative", ErrInvalidResources)
-	case r.MemoryBytes > 0 && r.MemoryBytes < int64(spec.minMemoryMB)*mebibyte:
+	case r.MemoryBytes > 0 && r.MemoryBytes < spec.minMemory():
 		return fmt.Errorf("%w: %s needs at least %d MB of memory", ErrInvalidResources, engine, spec.minMemoryMB)
+	case r.NanoCPUs > 0 && r.NanoCPUs < spec.minNanoCPUs():
+		return fmt.Errorf("%w: %s needs at least %s CPU", ErrInvalidResources, engine, formatCores(spec.minNanoCPUs()))
 	}
 	return nil
 }
@@ -61,9 +67,13 @@ func (r Resources) withDefaults(spec engineSpec, cpuCapped, memoryCapped bool) R
 		r.MemoryBytes = int64(spec.defaultMemoryMB) * mebibyte
 	}
 	if cpuCapped && r.NanoCPUs == 0 {
-		r.NanoCPUs = nanosPerCore
+		r.NanoCPUs = int64(spec.defaultMilliCPU) * nanosPerMilli
 	}
 	return r
+}
+
+func formatCores(nanoCPUs int64) string {
+	return strconv.FormatFloat(float64(nanoCPUs)/nanosPerCore, 'f', -1, 64)
 }
 
 // tuningArgs sizes the engine's own memory use to the container limit. Left alone, an engine sizes itself from
@@ -77,8 +87,11 @@ func tuningArgs(engine models.DBEngine, memoryBytes int64) []string {
 	case models.DBEnginePostgres:
 		return []string{"-c", fmt.Sprintf("shared_buffers=%dMB", mb/4), "-c", fmt.Sprintf("effective_cache_size=%dMB", mb*3/4)}
 	case models.DBEngineMySQL:
-		// MySQL needs about 450 MB besides the pool, and rounds the pool up to whole 128 MB chunks, so the pool
-		// leaves it room and is rounded down here instead.
+
+		if mb < 1024 {
+			return []string{fmt.Sprintf("--innodb-buffer-pool-size=%dM", max(32, mb/4)), "--performance-schema=OFF"}
+		}
+
 		return []string{fmt.Sprintf("--innodb-buffer-pool-size=%dM", max(128, min(mb*6/10, mb-640)/128*128))}
 	case models.DBEngineMariaDB:
 		return []string{fmt.Sprintf("--innodb-buffer-pool-size=%dM", max(64, min(mb*6/10, mb-160)))}
@@ -185,7 +198,7 @@ func (s *Service) RunResize(ctx context.Context, instanceID uint, previous Resou
 func describeResources(inst *models.DatabaseInstance) string {
 	cpu, memory := "unlimited CPU", "unlimited memory"
 	if inst.NanoCPUs > 0 {
-		cpu = strconv.FormatFloat(float64(inst.NanoCPUs)/nanosPerCore, 'f', -1, 64) + " CPU"
+		cpu = formatCores(inst.NanoCPUs) + " CPU"
 	}
 	if inst.MemoryBytes > 0 {
 		memory = fmt.Sprintf("%d MB of memory", inst.MemoryBytes/mebibyte)

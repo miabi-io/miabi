@@ -73,23 +73,22 @@ var (
 )
 
 type engineSpec struct {
-	image          func(version string) string
-	defaultVersion string
-	port           int
-	dataDir        string
-	adminUser      string
-	adminEnv       func(adminUser, adminPass string) []string
-	cmd            func(pass string) []string
-	// minMemoryMB is the least memory the engine starts with; defaultMemoryMB sizes an instance created
-	// without a limit in a workspace whose plan caps database memory.
+	image                        func(version string) string
+	defaultVersion               string
+	port                         int
+	dataDir                      string
+	adminUser                    string
+	adminEnv                     func(adminUser, adminPass string) []string
+	cmd                          func(pass string) []string
 	minMemoryMB, defaultMemoryMB int
+	minMilliCPU, defaultMilliCPU int
 }
 
 var specs = map[models.DBEngine]engineSpec{
 	models.DBEnginePostgres: {
 		image:          func(v string) string { return "postgres:" + v },
 		defaultVersion: "17-alpine", port: 5432, dataDir: "/var/lib/postgresql/data",
-		minMemoryMB: 128, defaultMemoryMB: 512,
+		minMemoryMB: 256, defaultMemoryMB: 512, minMilliCPU: 250, defaultMilliCPU: 500,
 		adminUser: "postgres",
 		adminEnv: func(u, p string) []string {
 			return []string{"POSTGRES_USER=" + u, "POSTGRES_PASSWORD=" + p}
@@ -98,32 +97,29 @@ var specs = map[models.DBEngine]engineSpec{
 	models.DBEngineMySQL: {
 		image:          func(v string) string { return "mysql:" + v },
 		defaultVersion: "8.4", port: 3306, dataDir: "/var/lib/mysql",
-		minMemoryMB: 1024, defaultMemoryMB: 1024,
+		minMemoryMB: 256, defaultMemoryMB: 1024, minMilliCPU: 300, defaultMilliCPU: 1000,
 		adminUser: "root",
 		adminEnv:  func(u, p string) []string { return []string{"MYSQL_ROOT_PASSWORD=" + p} },
 	},
 	models.DBEngineMariaDB: {
 		image:          func(v string) string { return "mariadb:" + v },
 		defaultVersion: "11", port: 3306, dataDir: "/var/lib/mysql",
-		minMemoryMB: 256, defaultMemoryMB: 512,
+		minMemoryMB: 256, defaultMemoryMB: 512, minMilliCPU: 300, defaultMilliCPU: 500,
 		adminUser: "root",
 		adminEnv:  func(u, p string) []string { return []string{"MARIADB_ROOT_PASSWORD=" + p} },
 	},
 	models.DBEngineRedis: {
 		image:          func(v string) string { return "redis:" + v },
 		defaultVersion: "7-alpine", port: 6379, dataDir: "/data",
-		minMemoryMB: 64, defaultMemoryMB: 256,
+		minMemoryMB: 64, defaultMemoryMB: 256, minMilliCPU: 100, defaultMilliCPU: 250,
 		adminEnv: func(u, p string) []string { return nil },
 		cmd:      func(p string) []string { return []string{"redis-server", "--requirepass", p} },
 	},
 	models.DBEngineMongoDB: {
 		image:          func(v string) string { return "mongo:" + v },
 		defaultVersion: "7.0", port: 27017, dataDir: "/data/db",
-		minMemoryMB: 1024, defaultMemoryMB: 1024,
+		minMemoryMB: 512, defaultMemoryMB: 1024, minMilliCPU: 500, defaultMilliCPU: 1000,
 		adminUser: "admin",
-		// The official image enables authentication automatically when the root
-		// credentials are set; the user is created in the `admin` database. No cmd
-		// override is needed. mongosh (the DDL/query client) ships in mongo:6.0+.
 		adminEnv: func(u, p string) []string {
 			return []string{"MONGO_INITDB_ROOT_USERNAME=" + u, "MONGO_INITDB_ROOT_PASSWORD=" + p}
 		},
@@ -131,9 +127,7 @@ var specs = map[models.DBEngine]engineSpec{
 	models.DBEngineLibSQL: {
 		image:          func(v string) string { return "ghcr.io/tursodatabase/libsql-server:" + v },
 		defaultVersion: "latest", port: libsqlHTTPPort, dataDir: libsqlDataDir,
-		minMemoryMB: 64, defaultMemoryMB: 256,
-		// libSQL takes no admin user/password; the JWT-auth server env is built in
-		// bringUp from the instance's keypair (it needs the public key).
+		minMemoryMB: 64, defaultMemoryMB: 256, minMilliCPU: 100, defaultMilliCPU: 250,
 		adminEnv: func(u, p string) []string { return nil },
 	},
 }
@@ -440,6 +434,11 @@ type EngineDefault struct {
 	Engine  models.DBEngine `json:"engine"`
 	Image   string          `json:"image"`   // effective default image ref
 	Version string          `json:"version"` // default tag
+	// The least the engine runs on, and what an unsized instance gets in a capped workspace.
+	MinMemoryMB     int     `json:"min_memory_mb"`
+	DefaultMemoryMB int     `json:"default_memory_mb"`
+	MinCPUCores     float64 `json:"min_cpu_cores"`
+	DefaultCPUCores float64 `json:"default_cpu_cores"`
 }
 
 // EngineDefaults returns the resolved default image+version per engine (from the
@@ -453,7 +452,11 @@ func (s *Service) EngineDefaults() []EngineDefault {
 			continue
 		}
 		image, tag := s.resolveEngineImage(spec, engine, "")
-		out = append(out, EngineDefault{Engine: engine, Image: image, Version: tag})
+		out = append(out, EngineDefault{
+			Engine: engine, Image: image, Version: tag,
+			MinMemoryMB: spec.minMemoryMB, DefaultMemoryMB: spec.defaultMemoryMB,
+			MinCPUCores: float64(spec.minMilliCPU) / 1000, DefaultCPUCores: float64(spec.defaultMilliCPU) / 1000,
+		})
 	}
 	return out
 }

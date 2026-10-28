@@ -18,7 +18,7 @@ import ResourceIcon from '@/components/ResourceIcon.vue'
 import { fmtSize } from '@/utils/format'
 import { engineLogo, engineMdi } from '@/utils/resourceIcon'
 import { copyText } from '@/utils/clipboard'
-import type { DatabaseInstance, DBStatus, UpgradeProgress, LogicalDatabase, ConnectionInfo, ForwardSession, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, DiscoveredSet, Application, Network, UpgradeOptions, UpgradePlan, StatsSample, AppEvent, DatabaseSize, DatabaseSizeOffer } from '@/api/types'
+import type { DatabaseInstance, DBStatus, UpgradeProgress, LogicalDatabase, ConnectionInfo, ForwardSession, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, DiscoveredSet, Application, Network, UpgradeOptions, UpgradePlan, StatsSample, AppEvent, DatabaseSize, DatabaseSizeOffer, EngineDefault } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 import { relativeTime } from '@/utils/time'
 import { fmtDateTime } from '@/utils/datetime'
@@ -202,6 +202,8 @@ const showResize = ref(false)
 const resizing = ref(false)
 const resizeForm = ref<{ memory_mb: number | null; cpu_cores: number | null; size: string }>({ memory_mb: null, cpu_cores: null, size: '' })
 const sizeOffer = ref<DatabaseSizeOffer>({ sizes: [], bound: false })
+const engineLimits = ref<EngineDefault | null>(null)
+
 function openResize() {
   if (!inst.value) return
   resizeForm.value = {
@@ -211,6 +213,10 @@ function openResize() {
   }
   showResize.value = true
   if (!wid.value) return
+  const engine = inst.value.engine
+  databaseApi.engines(wid.value).then((r) => {
+    engineLimits.value = (r.data.data ?? []).find((e) => e.engine === engine) ?? null
+  }).catch(() => { engineLimits.value = null })
   databaseApi.sizes(wid.value).then((r) => {
     sizeOffer.value = r.data.data ?? { sizes: [], bound: false }
     const offered = sizeOffer.value.sizes.some((s) => s.name === resizeForm.value.size)
@@ -1742,12 +1748,15 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
             <template v-if="!resizeForm.size">
               <div class="form-group">
                 <label class="form-label">{{ $t('databases.form.memory') }}</label>
-                <input v-model.number="resizeForm.memory_mb" type="number" min="0" class="form-input" :placeholder="$t('db.unlimited')" />
-                <p class="form-hint">{{ $t('db.theEngineIsTunedTo') }}</p>
+                <input v-model.number="resizeForm.memory_mb" type="number" :min="engineLimits?.min_memory_mb ?? 0" class="form-input" :placeholder="$t('db.unlimited')" />
+                <p class="form-hint">
+                  {{ $t('db.theEngineIsTunedTo') }}
+                  <template v-if="engineLimits">{{ $t('databases.form.engineMinimum', { memory: engineLimits.min_memory_mb, cpu: engineLimits.min_cpu_cores }) }}</template>
+                </p>
               </div>
               <div class="form-group">
                 <label class="form-label">{{ $t('databases.form.cpu') }}</label>
-                <input v-model.number="resizeForm.cpu_cores" type="number" min="0" step="0.25" class="form-input" :placeholder="$t('db.unlimited')" />
+                <input v-model.number="resizeForm.cpu_cores" type="number" :min="engineLimits?.min_cpu_cores ?? 0" step="0.25" class="form-input" :placeholder="$t('db.unlimited')" />
               </div>
             </template>
             <p class="form-hint" style="margin-bottom: 0">{{ $t('db.theContainerIsRecreatedOn') }}</p>
