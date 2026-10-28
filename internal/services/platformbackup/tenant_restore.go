@@ -113,7 +113,7 @@ func (s *Service) restoreTenantDatabase(ctx context.Context, st *models.Platform
 		return err
 	}
 	dest := backup.Destination{Type: destS3, S3: withPath(cfg, item.S3Path)}
-	if item.Encrypted || strings.HasSuffix(item.Filename, ".gpg") {
+	if item.Encrypted || backup.IsEncryptedArtifact(item.Filename) {
 		pass, err := s.passphrase(st)
 		if err != nil {
 			return err
@@ -172,7 +172,7 @@ func (s *Service) restoreTenantVolume(ctx context.Context, st *models.PlatformBa
 		return err
 	}
 	env := backup.S3Env(cfg)
-	if item.Encrypted || strings.HasSuffix(filename, ".gpg") {
+	if item.Encrypted || backup.IsEncryptedArtifact(filename) {
 		pass, err := s.passphrase(st)
 		if err != nil {
 			return err

@@ -49,11 +49,6 @@ var (
 	ErrUnsupportedEngine = errors.New("backups are not supported for this engine yet")
 	ErrNoBackupFile      = errors.New("backup has no artifact to restore")
 	ErrDownloadRemote    = errors.New("download is only available for local backups; fetch s3 backups from your bucket")
-
-	// Backup tools name artifacts <db>_YYYYMMDD_...<ext>.gz: pg-bkup/mysql-bkup emit ".sql.gz", mongodb-bkup
-	// (mongodump --archive --gzip) emits ".archive.gz". With GPG_PASSPHRASE set the tools append ".gpg";
-	// without matching it the run would complete with an empty Filename and nothing to restore from.
-	artifactRe = regexp.MustCompile(`[\w.\-]+\.(?:sql|archive)\.gz(?:\.gpg)?`)
 )
 
 // ImageResolver resolves a deployment-config catalog key to an image ref.
@@ -67,13 +62,13 @@ func (s *Service) bkupImage(engine models.DBEngine) (string, bool) {
 	var key, def string
 	switch engine {
 	case models.DBEnginePostgres:
-		key, def = platformimage.KeyBackupPostgres, "jkaninda/pg-bkup:latest"
+		key, def = platformimage.KeyBackupPostgres, platformimage.DefaultPgBkup
 	case models.DBEngineMySQL, models.DBEngineMariaDB:
-		key, def = platformimage.KeyBackupMySQL, "jkaninda/mysql-bkup:latest"
+		key, def = platformimage.KeyBackupMySQL, platformimage.DefaultMySQLBkup
 	case models.DBEngineMongoDB:
-		key, def = platformimage.KeyBackupMongoDB, "jkaninda/mongodb-bkup:latest"
+		key, def = platformimage.KeyBackupMongoDB, platformimage.DefaultMongoDBBkup
 	case models.DBEngineLibSQL:
-		key, def = platformimage.KeyBackupLibSQL, "jkaninda/libsql-bkup:latest"
+		key, def = platformimage.KeyBackupLibSQL, platformimage.DefaultLibSQLBkup
 	default:
 		return "", false
 	}
@@ -238,6 +233,14 @@ type Destination struct {
 	// transparently on restore with the same value. Used by portable workspace bundles and by platform
 	// disaster recovery, which protect every artifact they carry with one passphrase.
 	GPGPassphrase string
+	// AgeRecipients, when set, encrypts the artifact with age to these public keys instead of
+	// GPG ("<name>.age"). Only the matching identity can read it back, so the platform can
+	// take backups it cannot open.
+	AgeRecipients string
+	// AgeIdentity decrypts ".age" artifacts on restore and for the post-backup verification.
+	AgeIdentity string
+	// SkipVerify turns off the full read-back of each artifact after it is written.
+	SkipVerify bool
 }
 
 func workspaceBackupVolume(workspaceID uint) string {
@@ -323,9 +326,8 @@ func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *mo
 	if err != nil {
 		return s.fail(b, err), nil
 	}
-	if dest.GPGPassphrase != "" {
-		env = append(env, "GPG_PASSPHRASE="+dest.GPGPassphrase)
-	}
+	env = append(env, dest.EncryptionEnv()...)
+	env = append(env, IndexEnv(inst.Name))
 	cmd := []string{"backup", "-d", db.Name}
 	var mounts map[string]string
 
@@ -372,15 +374,34 @@ func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *mo
 		// that explains the failure: the tool's own output.
 		return s.fail(b, oneShotFailure(exit, out, err)), nil
 	}
-	name, encrypted, nameErr := ArtifactName(out, artifactRe)
+	name, encrypted, nameErr := ArtifactName(out, DBArtifactRe)
 	if nameErr != nil {
 		return s.fail(b, nameErr), nil
 	}
 	b.Filename = name
 	b.Encrypted = encrypted
-	if dest.GPGPassphrase != "" && !encrypted {
-		logger.Warn("backup stored UNENCRYPTED despite a passphrase being supplied: the backup tool does not support encryption — upgrade the image",
+	if size := ArtifactSize(out); size > 0 {
+		b.SizeBytes = size
+	}
+	if dest.Encrypting() && !encrypted {
+		logger.Warn("backup stored UNENCRYPTED despite encryption being configured: the backup tool does not support it — upgrade the image",
 			"database", db.Name, "artifact", name)
+	}
+	b.Checksum = ArtifactSHA256(out)
+	if !dest.SkipVerify {
+		vcmd := []string{"verify", "-d", db.Name, "-f", name}
+		if dest.Type == "s3" {
+			vcmd = []string{"verify", "--storage", "s3", "-d", db.Name, "-f", name}
+			if dest.S3.Path != "" {
+				vcmd = append(vcmd, "--path", dest.S3.Path)
+			}
+		}
+		venv, _ := s.connEnv(inst, db)
+		if dest.Type == "s3" {
+			venv = append(venv, s3Env(dest.S3)...)
+		}
+		venv = append(venv, IndexEnv(inst.Name))
+		s.verifyBackup(ctx, dc, image, inst, b, dest, venv, vcmd, nets, mounts)
 	}
 	fin := time.Now()
 	b.Status = models.BackupCompleted
@@ -403,6 +424,40 @@ func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *mo
 		map[string]string{"database": db.Name, "backup": fmt.Sprint(b.Number), "trigger": opts.Trigger, "destination": dest.Type})
 	logger.Info("backup completed", "database", db.ID, "destination", dest.Type, "file", b.Filename)
 	return b, nil
+}
+
+// verifyBackup has the tool read b's artifact back (download, decrypt, decompress,
+// checksum) and records the outcome on b. A verification failure does not undo the
+// backup — the artifact exists — but it is the difference between a backup and one
+// that only looks like one, so it is surfaced as a warning on the instance.
+func (s *Service) verifyBackup(ctx context.Context, dc docker.Client, image string, inst *models.DatabaseInstance, b *models.Backup,
+	dest Destination, env, cmd, nets []string, mounts map[string]string) {
+	keys, err := RestoreKeyEnv(b.Filename, dest.GPGPassphrase, dest.AgeIdentity)
+	if err != nil {
+		// age recipients without a stored identity: the platform cannot read its own backups, by design.
+		logger.Info("backup not verified: no age identity to read it back", "backup", b.ID)
+		return
+	}
+	exit, out, rerr := dc.RunOneShot(ctx, docker.RunSpec{
+		Name:     fmt.Sprintf("mb-backup-verify-%d", b.ID),
+		Image:    image,
+		Env:      append(env, keys...),
+		Cmd:      cmd,
+		Networks: nets,
+		Mounts:   mounts,
+	})
+	status, reason := VerifyOutcome(exit, out, rerr)
+	if status == "" {
+		return
+	}
+	now := time.Now()
+	b.VerifiedAt, b.VerifyStatus, b.VerifyError = &now, status, reason
+	if status == VerifyFailed {
+		logger.Warn("backup failed verification", "backup", b.ID, "file", b.Filename, "error", reason)
+		s.emit(b.WorkspaceID, inst.ID, inst.Name, models.EventDatabaseBackupFailed, models.SeverityWarning,
+			fmt.Sprintf("Backup #%d failed verification: %s", b.Number, reason),
+			map[string]string{"backup": fmt.Sprint(b.Number), "check": "verify"})
+	}
 }
 
 // helperImage is the small image used to land an uploaded dump on the volume
@@ -486,6 +541,8 @@ type RestoreSpec struct {
 	Force       bool
 	// GPGPassphrase decrypts a ".gpg" artifact (see Destination.GPGPassphrase).
 	GPGPassphrase string
+	// AgeIdentity decrypts a ".age" artifact (see Destination.AgeIdentity).
+	AgeIdentity string
 }
 
 // artifactPassphrase resolves what actually decrypts b's artifact. A backup taken
@@ -545,8 +602,8 @@ func checkRestoreVersion(instVersion, backupVersion string) error {
 }
 
 // passphraseFor returns pass only when filename names an encrypted artifact. The
-// ".gpg" suffix is what the *-bkup tools append when they encrypt, so it is the
-// record of whether this particular backup needs a passphrase to read back.
+// ".gpg"/".age" suffix is what the *-bkup tools append when they encrypt, so it
+// is the record of whether this particular backup needs a passphrase to read back.
 func passphraseFor(filename, pass string) string {
 	if strings.HasSuffix(filename, ".gpg") {
 		return pass
@@ -579,6 +636,7 @@ func (s *Service) RestoreFromBackup(ctx context.Context, inst *models.DatabaseIn
 		// Keyed off the artifact, not the workspace: a backup taken before a passphrase
 		// was set is still cleartext and must restore without one.
 		GPGPassphrase: passphraseFor(b.Filename, pass),
+		AgeIdentity:   dest.AgeIdentity,
 	})
 }
 
@@ -625,9 +683,11 @@ func (s *Service) restore(ctx context.Context, inst *models.DatabaseInstance, db
 	if err != nil {
 		return err
 	}
-	if spec.GPGPassphrase != "" {
-		env = append(env, "GPG_PASSPHRASE="+spec.GPGPassphrase)
+	keys, err := RestoreKeyEnv(spec.Filename, spec.GPGPassphrase, spec.AgeIdentity)
+	if err != nil {
+		return err
 	}
+	env = append(env, keys...)
 	cmd := []string{"restore", "-d", db.Name, "-f", spec.Filename}
 	var mounts map[string]string
 
@@ -686,20 +746,45 @@ func (s *Service) Delete(ctx context.Context, b *models.Backup) error {
 	if b.Destination == "local" && b.VolumeName != "" && b.Filename != "" {
 		dc, derr := s.clients.For(b.ServerID)
 		if image, ok := s.bkupImage(b.Engine); ok && derr == nil {
-			// The backup tool images are alpine-based, so /bin/sh is available.
-			_, out, err := dc.RunOneShot(ctx, docker.RunSpec{
-				Name:       fmt.Sprintf("mb-backup-rm-%d", b.ID),
-				Image:      image,
-				Entrypoint: []string{"/bin/sh", "-c"},
-				Cmd:        []string{"rm -f " + backupMount + "/" + b.Filename},
-				Mounts:     map[string]string{b.VolumeName: backupMount},
-			})
-			if err != nil {
-				logger.Error("remove backup artifact", "backup", b.ID, "error", err, "out", out)
-			}
+			s.deleteLocalArtifact(ctx, dc, image, b)
 		}
 	}
 	return s.repo.Delete(b.ID)
+}
+
+// deleteLocalArtifact removes the artifact with the tool's delete command, which
+// also drops its sidecar and index entry. Images older than the command fall
+// back to removing the file with the image's shell.
+func (s *Service) deleteLocalArtifact(ctx context.Context, dc docker.Client, image string, b *models.Backup) {
+	env := []string{}
+	cmd := []string{"delete", "-f", b.Filename}
+	if db, err := s.dbs.FindDatabaseByID(b.DatabaseID); err == nil && db != nil {
+		cmd = append(cmd, "-d", db.Name)
+		if inst, err := s.dbs.FindByID(db.InstanceID); err == nil && inst != nil {
+			env = append(env, IndexEnv(inst.Name))
+		}
+	}
+	mounts := map[string]string{b.VolumeName: backupMount}
+	exit, out, err := dc.RunOneShot(ctx, docker.RunSpec{
+		Name: fmt.Sprintf("mb-backup-rm-%d", b.ID), Image: image, Env: env, Cmd: cmd, Mounts: mounts,
+	})
+	if err == nil && exit == 0 {
+		return
+	}
+	if err == nil && !strings.Contains(out, "unknown command") {
+		logger.Error("delete backup artifact", "backup", b.ID, "exit", exit, "out", out)
+		return
+	}
+	_, out, err = dc.RunOneShot(ctx, docker.RunSpec{
+		Name:       fmt.Sprintf("mb-backup-rmsh-%d", b.ID),
+		Image:      image,
+		Entrypoint: []string{"/bin/sh", "-c"},
+		Cmd:        []string{"rm -f " + backupMount + "/" + b.Filename},
+		Mounts:     mounts,
+	})
+	if err != nil {
+		logger.Error("remove backup artifact", "backup", b.ID, "error", err, "out", out)
+	}
 }
 
 // Prune enforces a retention policy on a database's backups: keep at most
@@ -807,7 +892,7 @@ func ArtifactName(out string, re *regexp.Regexp) (name string, encrypted bool, e
 		return "", false, fmt.Errorf("the backup reported success but named no artifact; output: %s", strings.TrimSpace(out))
 	}
 	name = matches[len(matches)-1]
-	return name, strings.HasSuffix(name, ".gpg"), nil
+	return name, IsEncryptedArtifact(name), nil
 }
 
 // oneShotFailure formats a backup helper's failure around its output.

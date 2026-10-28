@@ -36,13 +36,8 @@ import (
 // instance.
 type RunBackupSetRequest struct {
 	Body struct {
-		// Comment is attached to every backup in the set, so the reason a set was
-		// taken is visible on its items too.
-		Comment string `json:"comment"`
-		// Concurrency caps how many databases are dumped at once. Zero uses the
-		// service default, which is deliberately conservative: parallel dumps
-		// against one engine are felt by whatever else is using it.
-		Concurrency int `json:"concurrency"`
+		Comment     string `json:"comment"`
+		Concurrency int    `json:"concurrency"`
 	} `json:"body"`
 }
 
@@ -51,14 +46,9 @@ type RunBackupSetRequest struct {
 // page without being able to read the workspace's backup settings, and a disabled
 // button with no reason is worse than no button.
 type BackupSetsResponse struct {
-	Sets []models.DatabaseBackupSet `json:"sets"`
-	// S3Configured reports that the workspace has an object-storage target. Sets
-	// require one: see backup.ErrS3Required.
-	S3Configured bool `json:"s3_configured"`
-	// Entitled reports that this edition may take a recovery point. It rides along
-	// for the same reason S3Configured does, and because a workspace member cannot
-	// read the license view the admin pages gate on.
-	Entitled bool `json:"entitled"`
+	Sets         []models.DatabaseBackupSet `json:"sets"`
+	S3Configured bool                       `json:"s3_configured"`
+	Entitled     bool                       `json:"entitled"`
 }
 
 // ListSets returns an instance's recovery points, newest first.
@@ -227,6 +217,8 @@ type RestoreSetRequest struct {
 		Method string `json:"method" enum:"normal,force"`
 		// AllowVersionMismatch loads dumps taken from a newer engine anyway.
 		AllowVersionMismatch bool `json:"allow_version_mismatch"`
+		// AgeIdentity reads age-encrypted artifacts when the workspace stores no identity.
+		AgeIdentity string `json:"age_identity"`
 	} `json:"body"`
 }
 
@@ -244,6 +236,9 @@ func (h *BackupHandler) RestoreSet(c *okapi.Context, req *RestoreSetRequest) err
 	dest, err := h.setDestination(wsID)
 	if err != nil {
 		return c.AbortInternalServerError("failed to resolve the backup destination", err)
+	}
+	if req.Body.AgeIdentity != "" {
+		dest.AgeIdentity = req.Body.AgeIdentity
 	}
 	res, err := h.svc.RestoreSet(c.Request().Context(), inst, set, dest,
 		req.Body.Method == "force", req.Body.AllowVersionMismatch)
@@ -318,14 +313,11 @@ func (h *BackupHandler) RecoveryKit(c *okapi.Context) error {
 // SetScheduleRequest creates or replaces an instance's recovery-point schedule.
 type SetScheduleRequest struct {
 	Body struct {
-		Cron string `json:"cron" required:"true"`
-		// MaxSets keeps at most N recovery points; RetentionDays deletes any older
-		// than N days. Zero means unbounded. The newest completed set always
-		// survives regardless.
-		MaxSets       int  `json:"max_sets"`
-		RetentionDays int  `json:"retention_days"`
-		Concurrency   int  `json:"concurrency"`
-		Enabled       bool `json:"enabled"`
+		Cron          string `json:"cron" required:"true"`
+		MaxSets       int    `json:"max_sets"`
+		RetentionDays int    `json:"retention_days"`
+		Concurrency   int    `json:"concurrency"`
+		Enabled       bool   `json:"enabled"`
 	} `json:"body"`
 }
 

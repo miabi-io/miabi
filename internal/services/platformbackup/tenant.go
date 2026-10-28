@@ -308,7 +308,7 @@ func (s *Service) runTenantVolumeBackup(ctx context.Context, item *models.Platfo
 	out, err := s.runHelper(ctx, dc, "tenant volume backup of "+tv.Name, docker.RunSpec{
 		Name:     fmt.Sprintf("mb-tenant-volbkup-%d", item.ID),
 		Image:    image,
-		Env:      append(backup.S3Env(cfg), gpg...),
+		Env:      append(append(backup.S3Env(cfg), gpg...), backup.IndexEnv("tenant-"+volumeArchiveName(tv.Name))),
 		Cmd:      []string{"backup", "--storage", "s3", "--remote-path", path, "--name", volumeArchiveName(tv.Name)},
 		Mounts:   map[string]string{tv.Name: volumeMount},
 		Networks: nets,

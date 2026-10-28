@@ -56,6 +56,8 @@ type VolumeBackup struct {
 	S3Path    string `json:"s3_path,omitempty"`  // remote folder prefix used
 	Filename  string `json:"filename,omitempty"` // archive object name
 	SizeBytes int64  `json:"size_bytes"`
+	// Checksum is the sha256 of the stored archive, as volume-bkup reported it.
+	Checksum string `json:"sha256,omitempty"`
 
 	Logs         string `json:"logs,omitempty" gorm:"type:text"`
 	LogRef       string `json:"log_ref,omitempty"`

@@ -50,6 +50,11 @@ type VerifyResult struct {
 	// Resized are artifacts whose stored size no longer matches what was recorded,
 	// which means the object is not the one this set took.
 	Resized []string `json:"resized,omitempty"`
+	// Changed lists artifacts whose checksum in the backup tool's index differs from the
+	// one recorded when they were taken.
+	Changed []string `json:"changed,omitempty"`
+	// Indexed reports that the backup tool's index was consulted.
+	Indexed bool `json:"indexed,omitempty"`
 	// EnvelopeOK reports that the workspace passphrase still opens the data key. A
 	// set can be perfectly intact in the bucket and unreadable all the same.
 	EnvelopeOK bool   `json:"envelope_ok"`
@@ -82,15 +87,16 @@ func (s *Service) VerifySet(ctx context.Context, cfg *S3Config, set *models.Data
 		sizes[path.Base(o.Key)] = o.Size
 	}
 
-	res := checkSetAgainstBucket(set, sizes, passphrase)
+	idx := ReadIndex(ctx, store.GetBytes, objects, set.S3Path)
+	res := checkSetAgainstBucket(set, sizes, idx, passphrase)
 	s.recordVerification(set, res)
 	return res, nil
 }
 
 // checkSetAgainstBucket is the judgement, separated from the bucket read so it is
 // testable without one.
-func checkSetAgainstBucket(set *models.DatabaseBackupSet, sizes map[string]int64, passphrase string) *VerifyResult {
-	res := &VerifyResult{Ref: set.Ref}
+func checkSetAgainstBucket(set *models.DatabaseBackupSet, sizes map[string]int64, idx map[string]IndexEntry, passphrase string) *VerifyResult {
+	res := &VerifyResult{Ref: set.Ref, Indexed: idx != nil}
 	for i := range set.Items {
 		it := &set.Items[i]
 		if it.Filename == "" {
@@ -103,10 +109,20 @@ func checkSetAgainstBucket(set *models.DatabaseBackupSet, sizes map[string]int64
 			res.Missing = append(res.Missing, it.Filename)
 		case it.SizeBytes > 0 && size != it.SizeBytes:
 			res.Resized = append(res.Resized, it.Filename)
+		default:
+			switch CheckIndexed(idx, it.Filename, size, it.Checksum) {
+			case IndexDeleted:
+				res.Missing = append(res.Missing, it.Filename)
+			case IndexResized:
+				res.Resized = append(res.Resized, it.Filename)
+			case IndexChanged:
+				res.Changed = append(res.Changed, it.Filename)
+			}
 		}
 	}
 	sort.Strings(res.Missing)
 	sort.Strings(res.Resized)
+	sort.Strings(res.Changed)
 
 	res.EnvelopeOK = set.Envelope == ""
 	envelopeErr := ""
@@ -129,6 +145,9 @@ func checkSetAgainstBucket(set *models.DatabaseBackupSet, sizes map[string]int64
 	case len(res.Resized) > 0:
 		res.Error = fmt.Sprintf("%d artifact(s) are not the size they were stored at: %s",
 			len(res.Resized), strings.Join(res.Resized, ", "))
+	case len(res.Changed) > 0:
+		res.Error = fmt.Sprintf("%d artifact(s) no longer match the checksum recorded when they were taken: %s",
+			len(res.Changed), strings.Join(res.Changed, ", "))
 	default:
 		res.Error = envelopeErr
 	}

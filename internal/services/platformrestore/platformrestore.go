@@ -39,14 +39,15 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/backup"
 	"github.com/miabi-io/miabi/internal/services/crypto"
+	"github.com/miabi-io/miabi/internal/services/platformimage"
 	dbstorage "github.com/miabi-io/miabi/internal/storage"
 	"github.com/miabi-io/miabi/internal/storage/blob"
 	"github.com/miabi-io/miabi/pkg/stack"
 )
 
 const (
-	defaultPgImage  = "jkaninda/pg-bkup:latest"
-	defaultVolImage = "jkaninda/volume-bkup:latest"
+	defaultPgImage  = platformimage.DefaultPgBkup
+	defaultVolImage = platformimage.DefaultVolumeBkup
 	volumeMount     = "/data"
 
 	// The control-plane database's name and role, fixed by the installer's
@@ -541,7 +542,7 @@ func (s *Service) restoreDatabase(ctx context.Context, m *stack.Manifest, plan *
 		"DB_PASSWORD=" + m.Secrets.DBPassword,
 	}
 	env = append(env, backup.S3Env(s3Config(opts.S3))...)
-	if plan.Encrypted || strings.HasSuffix(plan.DatabaseFile, ".gpg") {
+	if plan.Encrypted || backup.IsEncryptedArtifact(plan.DatabaseFile) {
 		if opts.Passphrase == "" {
 			return errors.New("this recovery point is encrypted but no passphrase was supplied")
 		}
@@ -578,7 +579,7 @@ func (s *Service) restoreVolume(ctx context.Context, opts Options, volumePrefix 
 		return fmt.Errorf("create volume: %w", err)
 	}
 	env := backup.S3Env(s3Config(opts.S3))
-	if a.Encrypted || strings.HasSuffix(file, ".gpg") {
+	if a.Encrypted || backup.IsEncryptedArtifact(file) {
 		env = append(env, "GPG_PASSPHRASE="+opts.Passphrase)
 	}
 	if err := s.dc.PullImage(ctx, s.volImage, nil); err != nil {

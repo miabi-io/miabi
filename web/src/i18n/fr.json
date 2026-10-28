@@ -1496,6 +1496,11 @@
     "provisioning": "Provisionnement de la base de données…"
   },
   "db": {
+    "ageIdentity": "Identité age",
+    "ageOptional": "(facultatif)",
+    "ageIdentityRestoreHint": "Cette sauvegarde est chiffrée avec age. Collez l'identité (AGE-SECRET-KEY-1…) si l'espace de travail n'en conserve pas. Elle sert uniquement à cette restauration et n'est jamais enregistrée.",
+    "backupReadBack": "relue et vérifiée",
+    "backupReadBackFailed": "échec de la vérification",
     "aDedicatedUserIsCreated": "Un utilisateur dédié est créé, avec un accès limité à cette base de données.",
     "aFullBackupIsTaken": "Une sauvegarde complète est effectuée avant le début de la mise à niveau.",
     "aFullBackupWasTaken": "Une sauvegarde complète a été effectuée au préalable — vos données sont en sécurité en cas de problème.",
@@ -4106,6 +4111,19 @@
     "workspacesGroupYourApplicationsDatabases": "Les espaces de travail regroupent vos applications, bases de données et membres d’équipe."
   },
   "wsSettings": {
+    "backupEncryption": "Chiffrement des sauvegardes",
+    "encryptionGpg": "GPG (phrase secrète de sauvegarde)",
+    "encryptionAge": "age (clés publiques)",
+    "backupEncryptionHint": "Avec age, les sauvegardes de bases de données et de volumes sont chiffrées pour les destinataires ci-dessous : une sauvegarde ne nécessite aucun secret, et seule l'identité correspondante peut la relire. Les sauvegardes existantes gardent leur propre chiffrement.",
+    "verifyAfterBackup": "Vérifier chaque sauvegarde après son écriture",
+    "verifyAfterBackupHint": "L'outil de sauvegarde relit chaque nouvelle sauvegarde (téléchargement, déchiffrement, décompression, somme de contrôle). Cela double le transfert de chaque sauvegarde.",
+    "ageRecipients": "Destinataires age",
+    "ageRecipientsHint": "Une clé publique par ligne : age1… ou ssh-ed25519 …",
+    "ageIdentity": "Identité age",
+    "ageIdentityOptional": "(facultatif)",
+    "ageIdentityHint": "La clé privée (AGE-SECRET-KEY-1…). Stockée chiffrée. Sans elle, chaque restauration demande l'identité et les nouvelles sauvegardes ne peuvent pas être vérifiées. Gardez-en une copie en dehors de Miabi.",
+    "removeAgeIdentity": "Supprimer l'identité enregistrée",
+    "ageIdentityWillBeRemoved": "L'identité age enregistrée sera supprimée à l'enregistrement : chaque restauration d'une sauvegarde age demandera l'identité.",
     "accessKey": "Clé d’accès",
     "allItsResources": "toutes ses ressources",
     "atLeast12": "au moins 12 caractères",

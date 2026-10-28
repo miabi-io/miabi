@@ -195,10 +195,16 @@ const backup = ref<UpdateBackupSettingsInput>({
   bundle_passphrase_clear: false,
   backup_passphrase: '',
   backup_passphrase_clear: false,
+  backup_encryption: '',
+  age_recipients: '',
+  age_identity: '',
+  age_identity_clear: false,
+  skip_backup_verify: false,
 })
 const backupSecretSet = ref(false)
 const bundlePassphraseSet = ref(false)
 const backupPassphraseSet = ref(false)
+const ageIdentitySet = ref(false)
 // The last connection test's result, kept on screen: it names each prefix it
 // wrote to, which is the detail that makes a failure actionable.
 const backupTest = ref<BackupTestResult | null>(null)
@@ -225,10 +231,16 @@ async function loadBackup() {
       bundle_passphrase_clear: false,
       backup_passphrase: '', // never returned; left blank keeps the stored one
       backup_passphrase_clear: false,
+      backup_encryption: s.backup_encryption ?? '',
+      age_recipients: s.age_recipients ?? '',
+      age_identity: '', // never returned; left blank keeps the stored one
+      age_identity_clear: false,
+      skip_backup_verify: s.skip_backup_verify,
     }
     backupSecretSet.value = s.s3_secret_set
     bundlePassphraseSet.value = s.bundle_passphrase_set
     backupPassphraseSet.value = s.backup_passphrase_set
+    ageIdentitySet.value = s.age_identity_set
   } catch (e) {
     notify.apiError(e)
   }
@@ -257,6 +269,9 @@ async function saveBackup() {
     backupSecretSet.value = s.s3_secret_set
     bundlePassphraseSet.value = s.bundle_passphrase_set
     backupPassphraseSet.value = s.backup_passphrase_set
+    ageIdentitySet.value = s.age_identity_set
+    backup.value.age_identity = ''
+    backup.value.age_identity_clear = false
     backup.value.s3_secret_key = ''
     backup.value.bundle_passphrase = ''
     backup.value.bundle_passphrase_clear = false
@@ -958,6 +973,49 @@ watch(activeTab, (t) => loadTab(t))
                   <span class="mdi mdi-alert-outline"></span>
                   <span>{{ $t('wsSettings.dbEncryptionWillBeRemoved') }}</span>
                   <button type="button" class="btn btn-ghost btn-sm" @click="backup.backup_passphrase_clear = false">{{ $t('wsSettings.undo') }}</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">{{ $t('wsSettings.backupEncryption') }}</label>
+                <select v-model="backup.backup_encryption" class="form-input" :aria-label="$t('wsSettings.backupEncryption')">
+                  <option value="">{{ $t('wsSettings.encryptionGpg') }}</option>
+                  <option value="age">{{ $t('wsSettings.encryptionAge') }}</option>
+                </select>
+                <p class="text-muted text-sm" style="margin: 6px 0 0">{{ $t('wsSettings.backupEncryptionHint') }}</p>
+              </div>
+              <div class="form-group">
+                <label class="toggle-row">
+                  <input v-model="backup.skip_backup_verify" type="checkbox" :true-value="false" :false-value="true" />
+                  <span>{{ $t('wsSettings.verifyAfterBackup') }}</span>
+                </label>
+                <p class="text-muted text-sm" style="margin: 6px 0 0">{{ $t('wsSettings.verifyAfterBackupHint') }}</p>
+              </div>
+            </div>
+
+            <div v-if="backup.backup_encryption === 'age'" class="form-grid">
+              <div class="form-group">
+                <label class="form-label">{{ $t('wsSettings.ageRecipients') }}</label>
+                <textarea v-model="backup.age_recipients" class="form-input" rows="3" spellcheck="false"
+                  placeholder="age1…" :aria-label="$t('wsSettings.ageRecipients')"></textarea>
+                <p class="text-muted text-sm" style="margin: 6px 0 0">{{ $t('wsSettings.ageRecipientsHint') }}</p>
+              </div>
+              <div class="form-group">
+                <label class="form-label">{{ $t('wsSettings.ageIdentity') }} <span class="text-muted">{{ ageIdentitySet ? $t('wsSettings.secretSet') : $t('wsSettings.ageIdentityOptional') }}</span></label>
+                <template v-if="!backup.age_identity_clear">
+                  <textarea v-model="backup.age_identity" class="form-input" rows="3" autocomplete="off" spellcheck="false"
+                    placeholder="AGE-SECRET-KEY-1…" :aria-label="$t('wsSettings.ageIdentity')"></textarea>
+                  <p class="text-muted text-sm" style="margin: 6px 0 0">{{ $t('wsSettings.ageIdentityHint') }}</p>
+                  <button v-if="ageIdentitySet" type="button" class="btn btn-ghost btn-sm remove-encryption" @click="backup.age_identity_clear = true">
+                    <span class="mdi mdi-key-remove"></span>{{ $t('wsSettings.removeAgeIdentity') }}
+                  </button>
+                </template>
+                <div v-else class="encryption-removed" role="status">
+                  <span class="mdi mdi-alert-outline"></span>
+                  <span>{{ $t('wsSettings.ageIdentityWillBeRemoved') }}</span>
+                  <button type="button" class="btn btn-ghost btn-sm" @click="backup.age_identity_clear = false">{{ $t('wsSettings.undo') }}</button>
                 </div>
               </div>
             </div>

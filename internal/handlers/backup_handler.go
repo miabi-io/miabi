@@ -25,11 +25,12 @@ import (
 	"net/http"
 	"strconv"
 
+	"strings"
+
 	cronpkg "github.com/miabi-io/miabi/internal/cron"
 	"github.com/miabi-io/miabi/internal/enterprise"
 	"github.com/miabi-io/miabi/internal/logstore"
 	"github.com/miabi-io/miabi/internal/middlewares"
-	"strings"
 
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/models"
@@ -124,6 +125,9 @@ type RestoreRequest struct {
 		// by default: the failure lands mid-restore, over a database a force run has
 		// already dropped.
 		AllowVersionMismatch bool `json:"allow_version_mismatch"`
+		// AgeIdentity reads an age-encrypted backup when the workspace stores no identity.
+		// Used for this restore only, never stored.
+		AgeIdentity string `json:"age_identity"`
 	} `json:"body"`
 }
 
@@ -158,21 +162,13 @@ func (h *BackupHandler) Run(c *okapi.Context, req *RunBackupRequest) error {
 		return c.AbortNotFound("database instance not found")
 	}
 	dest := backup.Destination{Type: req.Body.Destination, S3: req.Body.S3.toConfig()}
-	// Prefer the workspace's centralized S3 target when configured and the request
-	// didn't supply its own S3 config — so manual backups go to S3 whenever the
-	// workspace has backup settings set up, instead of defaulting to local.
 	if h.settings != nil {
-		if dest.S3 == nil {
-			if wd, derr := h.settings.DatabaseDestination(db.WorkspaceID); derr == nil && wd.S3 != nil {
+		if wd, derr := h.settings.DatabaseDestination(db.WorkspaceID); derr == nil {
+			if dest.S3 == nil && wd.S3 != nil {
 				dest = wd
 			}
-		}
-		if dest.GPGPassphrase == "" {
-			// A caller-supplied bucket is still this workspace's data, so it is sealed
-			// with the same passphrase and restores through the same path.
-			if pass, perr := h.settings.DatabaseBackupPassphrase(db.WorkspaceID); perr == nil {
-				dest.GPGPassphrase = pass
-			}
+			dest.GPGPassphrase, dest.AgeRecipients, dest.AgeIdentity, dest.SkipVerify =
+				wd.GPGPassphrase, wd.AgeRecipients, wd.AgeIdentity, wd.SkipVerify
 		}
 	}
 	b, err := h.svc.Run(c.Request().Context(), inst, db,
@@ -221,14 +217,16 @@ func (h *BackupHandler) Restore(c *okapi.Context, req *RestoreRequest) error {
 	}
 	dest := backup.Destination{Type: b.Destination, S3: req.Body.S3.toConfig()}
 	if h.settings != nil {
-		// RestoreFromBackup applies this only to a ".gpg" artifact, so supplying it
-		// unconditionally still restores older cleartext backups.
 		if pass, perr := h.settings.DatabaseBackupPassphrase(db.WorkspaceID); perr == nil {
 			dest.GPGPassphrase = pass
 		}
+		if _, id, aerr := h.settings.BackupAge(db.WorkspaceID); aerr == nil {
+			dest.AgeIdentity = id
+		}
 	}
-	// For an S3 backup with no per-request credentials, fall back to the
-	// workspace's centralized S3 target (how the backup was created).
+	if req.Body.AgeIdentity != "" {
+		dest.AgeIdentity = req.Body.AgeIdentity
+	}
 	if b.Destination == "s3" && dest.S3 == nil && h.settings != nil {
 		if cfg, _, terr := h.settings.DatabaseBackupTarget(db.WorkspaceID); terr == nil && cfg != nil {
 			dest.S3 = cfg
@@ -238,6 +236,9 @@ func (h *BackupHandler) Restore(c *okapi.Context, req *RestoreRequest) error {
 		req.Body.Method == "force", req.Body.AllowVersionMismatch); err != nil {
 		if errors.Is(err, backup.ErrRestoreVersionTooNew) {
 			return c.AbortBadRequest(err.Error() + " — restore into a matching or newer engine, or confirm to override")
+		}
+		if errors.Is(err, backup.ErrAgeIdentityRequired) {
+			return c.AbortBadRequest(err.Error() + " — store one in the workspace backup settings, or provide it with this restore")
 		}
 		return c.AbortInternalServerError("restore failed", err)
 	}
@@ -349,14 +350,10 @@ func (h *BackupHandler) CreateSchedule(c *okapi.Context, req *CreateScheduleRequ
 	if err != nil {
 		return c.AbortNotFound("database not found")
 	}
-	// Reject an invalid cron expression before it reaches the scheduler (where a
-	// bad spec would silently never fire).
+
 	if err := cronpkg.ValidateSpec(req.Body.Cron); err != nil {
 		return c.AbortBadRequest("invalid cron expression")
 	}
-	// Scheduled backups follow the workspace's backup settings: the centralized
-	// S3 target when configured (resolved at run time by the cron manager), else
-	// local. The schedule itself carries no S3 config.
 	s := &models.BackupSchedule{
 		WorkspaceID: db.WorkspaceID, DatabaseID: db.ID,
 		Cron: req.Body.Cron, Destination: "workspace", Enabled: true,

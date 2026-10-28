@@ -47,6 +47,17 @@ type WorkspaceBackupSettings struct {
 	// workspace's data-encryption key. Set means every new database backup leaves the
 	// platform as GPG ciphertext; unset preserves the previous cleartext behaviour.
 	BackupPassphraseEnc string `json:"-" gorm:"column:backup_passphrase_enc"`
+	// BackupEncryption picks how database and volume backups are encrypted: "" or "gpg" uses the
+	// backup passphrase; "age" encrypts to AgeRecipients, so taking a backup needs no secret and
+	// only the holder of the matching identity can read it back.
+	BackupEncryption string `json:"backup_encryption,omitempty"`
+	// AgeRecipients are the age public keys (age1…, ssh-ed25519 …), one per line.
+	AgeRecipients string `json:"age_recipients,omitempty" gorm:"type:text"`
+	// AgeIdentityEnc is the age identity at rest, under the workspace's data-encryption key.
+	// Optional: without it the platform cannot restore or verify age backups on its own.
+	AgeIdentityEnc string `json:"-" gorm:"column:age_identity_enc;type:text"`
+	// SkipBackupVerify turns off reading each backup back right after it is written.
+	SkipBackupVerify bool `json:"skip_backup_verify" gorm:"not null;default:false"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -56,6 +67,7 @@ type WorkspaceBackupSettings struct {
 	S3SecretSet         bool `json:"s3_secret_set" gorm:"-"`
 	BundlePassphraseSet bool `json:"bundle_passphrase_set" gorm:"-"`
 	BackupPassphraseSet bool `json:"backup_passphrase_set" gorm:"-"`
+	AgeIdentitySet      bool `json:"age_identity_set" gorm:"-"`
 }
 
 // DefaultBundlePath is where bundles live when the workspace sets no prefix.

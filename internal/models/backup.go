@@ -46,43 +46,34 @@ type Backup struct {
 	DatabaseID  uint `json:"database_id" gorm:"index:idx_backup_db_number,unique;index;not null"`
 	// SetID names the recovery point this backup belongs to, when it was taken as
 	// part of one. Nil for an ordinary single-database backup.
-	SetID       *uint        `json:"set_id,omitempty" gorm:"index"`
-	Engine      DBEngine     `json:"engine"`
-	ServerID    uint         `json:"server_id" gorm:"index;not null;default:0"` // node the backup ran on
-	Status      BackupStatus `json:"status" gorm:"not null;default:pending"`
-	Trigger     string       `json:"trigger"`               // manual | scheduled
-	Destination string       `json:"destination"`           // local | s3
-	VolumeName  string       `json:"volume_name,omitempty"` // local destination
-	S3Bucket    string       `json:"s3_bucket,omitempty"`   // s3 destination (reference)
-	S3Path      string       `json:"s3_path,omitempty"`
-	Filename    string       `json:"filename,omitempty"`
-	SizeBytes   int64        `json:"size_bytes"`
-	// Encrypted records that the artifact was GPG-encrypted with the workspace's
-	// backup passphrase, so the history can say which backups need it to restore.
-	// Restore still keys off the ".gpg" filename, which is what the tools read.
-	Encrypted bool `json:"encrypted" gorm:"not null;default:false"`
-	// Version is the engine version the dump was taken from. Recorded because a
-	// dump does not always restore into a different major version, and because the
-	// question "what was running when this was taken" is the usual one.
-	Version string `json:"version,omitempty"`
-	// Comment is a free-text note the operator attaches to a backup — "before the
-	// v1.3.0 rollout" — so it can be identified later by why it was taken rather
-	// than only by when.
-	Comment string `json:"comment,omitempty"`
-	// Pinned exempts the backup from retention pruning, as it does for a Release.
-	// Deliberately separate from Comment: pinning is a decision, not a side effect
-	// of writing a note.
-	Pinned bool `json:"pinned" gorm:"not null;default:false"`
-	// Logs is a bounded tail of the backup output for instant display
-	Logs         string     `json:"logs,omitempty" gorm:"type:text"`
-	LogRef       string     `json:"log_ref,omitempty"`
-	LogBytes     int64      `json:"log_bytes,omitempty"`
-	LogLines     int        `json:"log_lines,omitempty"`
-	LogTruncated bool       `json:"log_truncated,omitempty"`
-	Error        string     `json:"error,omitempty" gorm:"type:text"`
-	StartedAt    *time.Time `json:"started_at"`
-	FinishedAt   *time.Time `json:"finished_at"`
-	CreatedAt    time.Time  `json:"created_at"`
+	SetID        *uint        `json:"set_id,omitempty" gorm:"index"`
+	Engine       DBEngine     `json:"engine"`
+	ServerID     uint         `json:"server_id" gorm:"index;not null;default:0"` // node the backup ran on
+	Status       BackupStatus `json:"status" gorm:"not null;default:pending"`
+	Trigger      string       `json:"trigger"`               // manual | scheduled
+	Destination  string       `json:"destination"`           // local | s3
+	VolumeName   string       `json:"volume_name,omitempty"` // local destination
+	S3Bucket     string       `json:"s3_bucket,omitempty"`   // s3 destination (reference)
+	S3Path       string       `json:"s3_path,omitempty"`
+	Filename     string       `json:"filename,omitempty"`
+	SizeBytes    int64        `json:"size_bytes"`
+	Encrypted    bool         `json:"encrypted" gorm:"not null;default:false"`
+	Checksum     string       `json:"sha256,omitempty"`
+	VerifiedAt   *time.Time   `json:"verified_at,omitempty"`
+	VerifyStatus string       `json:"verify_status,omitempty"` // ok | failed
+	VerifyError  string       `json:"verify_error,omitempty" gorm:"type:text"`
+	Version      string       `json:"version,omitempty"`
+	Comment      string       `json:"comment,omitempty"`
+	Pinned       bool         `json:"pinned" gorm:"not null;default:false"`
+	Logs         string       `json:"logs,omitempty" gorm:"type:text"`
+	LogRef       string       `json:"log_ref,omitempty"`
+	LogBytes     int64        `json:"log_bytes,omitempty"`
+	LogLines     int          `json:"log_lines,omitempty"`
+	LogTruncated bool         `json:"log_truncated,omitempty"`
+	Error        string       `json:"error,omitempty" gorm:"type:text"`
+	StartedAt    *time.Time   `json:"started_at"`
+	FinishedAt   *time.Time   `json:"finished_at"`
+	CreatedAt    time.Time    `json:"created_at"`
 }
 
 func (b *Backup) BeforeCreate(tx *gorm.DB) error {

@@ -56,7 +56,7 @@ func intactBucket() map[string]int64 {
 }
 
 func TestVerifyPassesOnAnIntactSet(t *testing.T) {
-	res := checkSetAgainstBucket(setWithItems(t, true), intactBucket(), verifyPass)
+	res := checkSetAgainstBucket(setWithItems(t, true), intactBucket(), nil, verifyPass)
 	if !res.OK || res.Error != "" {
 		t.Errorf("OK=%v error=%q, want a clean pass", res.OK, res.Error)
 	}
@@ -70,7 +70,7 @@ func TestVerifyPassesOnAnIntactSet(t *testing.T) {
 func TestVerifyNamesMissingArtifacts(t *testing.T) {
 	bucket := intactBucket()
 	delete(bucket, "billing.sql.gz.gpg")
-	res := checkSetAgainstBucket(setWithItems(t, true), bucket, verifyPass)
+	res := checkSetAgainstBucket(setWithItems(t, true), bucket, nil, verifyPass)
 	if res.OK {
 		t.Error("a set missing an artifact passed verification")
 	}
@@ -86,7 +86,7 @@ func TestVerifyNamesMissingArtifacts(t *testing.T) {
 func TestVerifyCatchesAResizedArtifact(t *testing.T) {
 	bucket := intactBucket()
 	bucket["orders.sql.gz.gpg"] = 7
-	res := checkSetAgainstBucket(setWithItems(t, true), bucket, verifyPass)
+	res := checkSetAgainstBucket(setWithItems(t, true), bucket, nil, verifyPass)
 	if res.OK {
 		t.Error("a resized artifact passed verification")
 	}
@@ -97,7 +97,7 @@ func TestVerifyCatchesAResizedArtifact(t *testing.T) {
 
 // A set can be perfectly intact in the bucket and still unreadable.
 func TestVerifyFailsWhenThePassphraseNoLongerOpensIt(t *testing.T) {
-	res := checkSetAgainstBucket(setWithItems(t, true), intactBucket(), "a-different-passphrase-2")
+	res := checkSetAgainstBucket(setWithItems(t, true), intactBucket(), nil, "a-different-passphrase-2")
 	if res.OK || res.EnvelopeOK {
 		t.Error("a set sealed with another passphrase passed verification")
 	}
@@ -105,21 +105,21 @@ func TestVerifyFailsWhenThePassphraseNoLongerOpensIt(t *testing.T) {
 		t.Errorf("error = %q", res.Error)
 	}
 
-	res = checkSetAgainstBucket(setWithItems(t, true), intactBucket(), "")
+	res = checkSetAgainstBucket(setWithItems(t, true), intactBucket(), nil, "")
 	if res.OK || !strings.Contains(res.Error, "no workspace backup passphrase") {
 		t.Errorf("with no passphrase: OK=%v error=%q", res.OK, res.Error)
 	}
 }
 
 func TestVerifyUnencryptedSet(t *testing.T) {
-	res := checkSetAgainstBucket(setWithItems(t, false), intactBucket(), "")
+	res := checkSetAgainstBucket(setWithItems(t, false), intactBucket(), nil, "")
 	if !res.OK || !res.EnvelopeOK {
 		t.Errorf("an intact unencrypted set failed: %q", res.Error)
 	}
 }
 
 func TestVerifyEmptySet(t *testing.T) {
-	res := checkSetAgainstBucket(&models.DatabaseBackupSet{Ref: "empty"}, map[string]int64{}, "")
+	res := checkSetAgainstBucket(&models.DatabaseBackupSet{Ref: "empty"}, map[string]int64{}, nil, "")
 	if res.OK || !strings.Contains(res.Error, "no artifacts") {
 		t.Errorf("OK=%v error=%q", res.OK, res.Error)
 	}

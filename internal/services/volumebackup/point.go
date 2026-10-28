@@ -104,7 +104,7 @@ func (s *Service) Sealing(workspaceID uint) bool {
 // cleartext one. Keyed off the artifact, so an archive taken before a passphrase existed still
 // restores without one.
 func (s *Service) archiveKeyPassphrase(b *models.VolumeBackup) (string, error) {
-	if !strings.HasSuffix(b.Filename, ".gpg") {
+	if !backup.IsEncryptedArtifact(b.Filename) {
 		return "", nil
 	}
 	pass, err := s.passphrase(b.WorkspaceID)
@@ -126,7 +126,9 @@ func (s *Service) archiveKeyPassphrase(b *models.VolumeBackup) (string, error) {
 
 // finishPoint runs what makes a completed archive a recovery point: the descriptor, an
 // immediate verification, the owning schedule's retention and the alert resolution.
-func (s *Service) finishPoint(ctx context.Context, vol *models.Volume, b *models.VolumeBackup, passphrase string) {
+// readBack is the outcome of the tool reading the archive back right after the run ("" when
+// not done); a failure there outranks the bucket check, which only sees that the object exists.
+func (s *Service) finishPoint(ctx context.Context, vol *models.Volume, b *models.VolumeBackup, passphrase, readBack, readBackErr string) {
 	// Best-effort: failing here would discard a point whose archive is already safely stored.
 	if err := s.writeInfo(ctx, b, vol); err != nil {
 		logger.Error("write volume recovery point descriptor; the point is stored but will not be discoverable",
@@ -135,6 +137,10 @@ func (s *Service) finishPoint(ctx context.Context, vol *models.Volume, b *models
 	res, err := s.verifyWith(ctx, b, passphrase)
 	if err != nil {
 		logger.Warn("could not verify the new volume recovery point", "ref", b.Ref, "error", err)
+	}
+	if readBack == backup.VerifyFailed {
+		res = &backup.VerifyResult{Ref: b.Ref, Checked: 1, Error: "reading the archive back failed: " + readBackErr}
+		s.recordVerification(b, res)
 	}
 	if s.alerter != nil && res != nil && res.OK {
 		s.alerter.VolumeBackupSucceeded(b.WorkspaceID, b.VolumeID)
@@ -222,14 +228,16 @@ func (s *Service) verifyWith(ctx context.Context, b *models.VolumeBackup, passph
 			break
 		}
 	}
-	res := checkPoint(b, found, size, passphrase)
+	dirObjs, _ := store.List(ctx, strings.Trim(b.S3Path, "/"))
+	idx := backup.ReadIndex(ctx, store.GetBytes, dirObjs, b.S3Path)
+	res := checkPoint(b, found, size, idx, passphrase)
 	s.recordVerification(b, res)
 	return res, nil
 }
 
 // checkPoint is the judgement, separated from the bucket read so it is testable without one.
-func checkPoint(b *models.VolumeBackup, found bool, size int64, passphrase string) *backup.VerifyResult {
-	res := &backup.VerifyResult{Ref: b.Ref, Checked: 1}
+func checkPoint(b *models.VolumeBackup, found bool, size int64, idx map[string]backup.IndexEntry, passphrase string) *backup.VerifyResult {
+	res := &backup.VerifyResult{Ref: b.Ref, Checked: 1, Indexed: idx != nil}
 	if res.Ref == "" {
 		res.Ref = b.Filename
 	}
@@ -251,6 +259,12 @@ func checkPoint(b *models.VolumeBackup, found bool, size int64, passphrase strin
 	case b.SizeBytes > 0 && size != b.SizeBytes:
 		res.Resized = []string{b.Filename}
 		res.Error = fmt.Sprintf("the archive is %d bytes, not the %d it was stored at", size, b.SizeBytes)
+	case backup.CheckIndexed(idx, b.Filename, size, b.Checksum) == backup.IndexDeleted:
+		res.Missing = []string{b.Filename}
+		res.Error = "the backup index marks the archive as deleted: " + b.Filename
+	case backup.CheckIndexed(idx, b.Filename, size, b.Checksum) == backup.IndexChanged:
+		res.Changed = []string{b.Filename}
+		res.Error = "the archive no longer matches the checksum recorded when it was taken"
 	default:
 		res.Error = envelopeErr
 	}

@@ -134,7 +134,7 @@ func TestCheckPoint(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			res := checkPoint(&tc.b, tc.found, tc.size, tc.pass)
+			res := checkPoint(&tc.b, tc.found, tc.size, nil, tc.pass)
 			if res.OK != tc.ok {
 				t.Fatalf("OK = %v (%s), want %v", res.OK, res.Error, tc.ok)
 			}
