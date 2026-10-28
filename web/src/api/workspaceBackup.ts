@@ -17,6 +17,10 @@ export interface BackupSettings {
   s3_secret_set: boolean
   bundle_passphrase_set: boolean
   backup_passphrase_set: boolean
+  backup_encryption?: '' | 'gpg' | 'age'
+  age_recipients?: string
+  age_identity_set: boolean
+  skip_backup_verify: boolean
   created_at?: string
   updated_at?: string
 }
@@ -40,6 +44,13 @@ export interface UpdateBackupSettingsInput {
   bundle_passphrase_clear: boolean
   backup_passphrase: string
   backup_passphrase_clear: boolean
+  // 'age' encrypts new database and volume backups to age_recipients instead of the passphrase.
+  backup_encryption: '' | 'gpg' | 'age'
+  age_recipients: string
+  // Write-only: empty keeps the stored identity, age_identity_clear removes it.
+  age_identity: string
+  age_identity_clear: boolean
+  skip_backup_verify: boolean
 }
 
 // One prefix's result from a connection test: the probe wrote a small object

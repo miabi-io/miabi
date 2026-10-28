@@ -323,7 +323,7 @@ func (s *Service) gpgEnv(st *models.PlatformBackupSettings) ([]string, bool, err
 // written encrypted. It keys off the artifact, not the current setting: turning
 // encryption off must not make yesterday's encrypted backups unrestorable.
 func (s *Service) restoreGPGEnv(b *models.PlatformBackup, st *models.PlatformBackupSettings) ([]string, error) {
-	if !b.Encrypted && !strings.HasSuffix(b.Filename, ".gpg") {
+	if !b.Encrypted && !backup.IsEncryptedArtifact(b.Filename) {
 		return nil, nil
 	}
 	pass, err := s.passphrase(st)

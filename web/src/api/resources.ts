@@ -174,8 +174,8 @@ export const backupApi = {
   // Edit a backup's note and retention pin. Omitted fields are left untouched.
   update: (ws: number, inst: number, db: number, id: number, patch: { comment?: string; pinned?: boolean }) =>
     api.patch<ApiResponse<Backup>>(`${b(ws, inst, db)}/backups/${id}`, patch),
-  restore: (ws: number, inst: number, db: number, id: number, method: 'normal' | 'force' = 'normal') =>
-    api.post<ApiResponse<{ message: string }>>(`${b(ws, inst, db)}/backups/${id}/restore`, { method }),
+  restore: (ws: number, inst: number, db: number, id: number, method: 'normal' | 'force' = 'normal', ageIdentity = '') =>
+    api.post<ApiResponse<{ message: string }>>(`${b(ws, inst, db)}/backups/${id}/restore`, { method, age_identity: ageIdentity }),
   restoreFile: (ws: number, inst: number, db: number, file: File, method: 'normal' | 'force' = 'normal') => {
     const form = new FormData()
     form.append('file', file)

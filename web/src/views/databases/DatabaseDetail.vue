@@ -656,12 +656,15 @@ async function togglePin(b: Backup) {
   }
 }
 // --- Restore dialog (existing backup or uploaded file; normal or force) ---
-const restoreModal = ref<{ backupId: number | null; number: number | null; comment: string; version: string; encrypted: boolean } | null>(null)
+const restoreModal = ref<{ backupId: number | null; number: number | null; comment: string; version: string; encrypted: boolean; age: boolean } | null>(null)
+// Used for this restore only when the workspace stores no age identity; never saved.
+const restoreAgeIdentity = ref('')
 const restoreMethod = ref<'normal' | 'force'>('normal')
 const restoreFile = ref<File | null>(null)
 const restoring = ref(false)
 function openRestore(b: Backup | null) {
-  restoreModal.value = { backupId: b?.id ?? null, number: b?.number ?? null, comment: b?.comment ?? '', version: b?.version ?? '', encrypted: b?.encrypted ?? false }
+  restoreModal.value = { backupId: b?.id ?? null, number: b?.number ?? null, comment: b?.comment ?? '', version: b?.version ?? '', encrypted: b?.encrypted ?? false, age: !!b?.filename?.endsWith('.age') }
+  restoreAgeIdentity.value = ''
   restoreMethod.value = 'normal'
   restoreFile.value = null
 }
@@ -673,7 +676,7 @@ async function runRestore() {
   restoring.value = true
   try {
     if (restoreModal.value.backupId != null) {
-      await backupApi.restore(wid.value, instId.value, selected.value.id, restoreModal.value.backupId, restoreMethod.value)
+      await backupApi.restore(wid.value, instId.value, selected.value.id, restoreModal.value.backupId, restoreMethod.value, restoreAgeIdentity.value.trim())
     } else {
       if (!restoreFile.value) { notify.error(t('notify.databaseDetail.chooseADumpFile')); restoring.value = false; return }
       await backupApi.restoreFile(wid.value, instId.value, selected.value.id, restoreFile.value, restoreMethod.value)
@@ -1227,6 +1230,12 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
                     </span>
                     <div class="cell-sub">
                       {{ b.trigger }} · {{ b.destination }}<template v-if="b.version"> · {{ b.engine }} {{ b.version }}</template><template v-if="b.filename"> · {{ b.filename }}</template>
+                    </div>
+                    <div v-if="b.verify_status" class="cell-sub">
+                      <template v-if="b.verify_status === 'ok'">
+                        <span class="mdi mdi-shield-check-outline"></span> {{ $t('db.backupReadBack') }} {{ relativeTime(b.verified_at) }}
+                      </template>
+                      <span v-else class="text-danger"><span class="mdi mdi-shield-alert-outline"></span> {{ $t('db.backupReadBackFailed') }}: {{ b.verify_error }}</span>
                     </div>
                     <div v-if="editingNote === b.id" class="backup-note-edit">
                       <input
@@ -1822,8 +1831,14 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
             <p v-if="restoreModal.version" class="form-hint" style="margin-bottom: 12px">
               Taken from {{ inst?.engine }} {{ restoreModal.version }}<template v-if="inst?.version && inst.version !== restoreModal.version">; this instance now runs {{ inst.version }}</template>.
             </p>
-            <p v-if="restoreModal.encrypted" class="form-hint" style="margin-bottom: 12px">
+            <p v-if="restoreModal.encrypted && !restoreModal.age" class="form-hint" style="margin-bottom: 12px">
               <span class="mdi mdi-lock-outline"></span>{{ $t('db.encryptedItIsDecryptedWith') }}</p>
+            <div v-if="restoreModal.age" class="form-group">
+              <label class="form-label">{{ $t('db.ageIdentity') }} <span class="text-muted">{{ $t('db.ageOptional') }}</span></label>
+              <textarea v-model="restoreAgeIdentity" class="form-input" rows="2" autocomplete="off" spellcheck="false"
+                placeholder="AGE-SECRET-KEY-1…" :aria-label="$t('db.ageIdentity')"></textarea>
+              <p class="form-hint">{{ $t('db.ageIdentityRestoreHint') }}</p>
+            </div>
             <div v-if="restoreModal.backupId == null" class="form-group">
               <label class="form-label">{{ $t('db.dumpFile') }}</label>
 

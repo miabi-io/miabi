@@ -117,6 +117,7 @@ func (s *Service) Get(workspaceID uint) (*models.WorkspaceBackupSettings, error)
 	st.S3SecretSet = st.S3SecretKeyEnc != ""
 	st.BundlePassphraseSet = st.BundlePassphraseEnc != ""
 	st.BackupPassphraseSet = st.BackupPassphraseEnc != ""
+	st.AgeIdentitySet = st.AgeIdentityEnc != ""
 	return st, nil
 }
 
@@ -138,6 +139,13 @@ type SaveInput struct {
 	BundlePath         string
 	BundlePassphrase   *string
 	BackupPassphrase   *string
+
+	// BackupEncryption is "", "gpg" or "age"; AgeRecipients is required for "age".
+	BackupEncryption string
+	AgeRecipients    string
+	// AgeIdentity is nil to keep the stored identity and "" to remove it.
+	AgeIdentity      *string
+	SkipBackupVerify bool
 }
 
 // Save upserts the workspace's settings, encrypting the secret when a new one is
@@ -225,12 +233,18 @@ func (s *Service) Save(workspaceID uint, in SaveInput) (*models.WorkspaceBackupS
 		}
 	}
 
+	if err := applyAge(workspaceID, st, in); err != nil {
+		return nil, err
+	}
+	st.SkipBackupVerify = in.SkipBackupVerify
+
 	if err := s.repo.Upsert(st); err != nil {
 		return nil, err
 	}
 	st.S3SecretSet = st.S3SecretKeyEnc != ""
 	st.BundlePassphraseSet = st.BundlePassphraseEnc != ""
 	st.BackupPassphraseSet = st.BackupPassphraseEnc != ""
+	st.AgeIdentitySet = st.AgeIdentityEnc != ""
 	return st, nil
 }
 
@@ -441,13 +455,102 @@ func (s *Service) DatabaseDestination(workspaceID uint) (backup.Destination, err
 	if err != nil {
 		return backup.Destination{}, err
 	}
+	recipients, identity, err := s.BackupAge(workspaceID)
+	if err != nil {
+		return backup.Destination{}, err
+	}
 	cfg, path, err := s.DatabaseBackupTarget(workspaceID)
 	if err != nil {
 		return backup.Destination{}, err
 	}
-	if cfg == nil {
-		return backup.Destination{Type: "local", GPGPassphrase: pass}, nil
+	// With age recipients set, new backups use age; the passphrase stays for restoring older ones.
+	dest := backup.Destination{Type: "local", GPGPassphrase: pass, AgeRecipients: recipients, AgeIdentity: identity,
+		SkipVerify: !s.VerifyAfterBackup(workspaceID)}
+	if cfg != nil {
+		cfg.Path = path
+		dest.Type, dest.S3 = "s3", cfg
 	}
-	cfg.Path = path
-	return backup.Destination{Type: "s3", S3: cfg, GPGPassphrase: pass}, nil
+	return dest, nil
+}
+
+// ErrInvalidAge rejects an age configuration that cannot work.
+var ErrInvalidAge = errors.New("invalid age encryption settings")
+
+// applyAge validates and stores the age settings. Recipients are checked here
+// so a typo is a save error rather than backups that silently go out in the clear.
+func applyAge(workspaceID uint, st *models.WorkspaceBackupSettings, in SaveInput) error {
+	mode := strings.ToLower(strings.TrimSpace(in.BackupEncryption))
+	if mode != "" && mode != "gpg" && mode != "age" {
+		return fmt.Errorf("%w: encryption must be gpg or age", ErrInvalidAge)
+	}
+	recipients, err := normalizeAgeRecipients(in.AgeRecipients)
+	if err != nil {
+		return err
+	}
+	if mode == "age" && recipients == "" {
+		return fmt.Errorf("%w: age encryption needs at least one recipient (age1… or ssh-ed25519 …)", ErrInvalidAge)
+	}
+	st.BackupEncryption, st.AgeRecipients = mode, recipients
+	if in.AgeIdentity != nil {
+		id := strings.TrimSpace(*in.AgeIdentity)
+		if id == "" {
+			st.AgeIdentityEnc = ""
+			return nil
+		}
+		if !strings.Contains(id, "AGE-SECRET-KEY-1") && !strings.Contains(id, "PRIVATE KEY") {
+			return fmt.Errorf("%w: the identity must be an age secret key (AGE-SECRET-KEY-1…) or an OpenSSH private key", ErrInvalidAge)
+		}
+		enc, err := crypto.EncryptWS(workspaceID, id)
+		if err != nil {
+			return err
+		}
+		st.AgeIdentityEnc = enc
+	}
+	return nil
+}
+
+// normalizeAgeRecipients accepts recipients separated by newlines or commas,
+// ignoring blank lines and # comments, and returns them one per line.
+func normalizeAgeRecipients(text string) (string, error) {
+	var out []string
+	for _, line := range strings.FieldsFunc(text, func(r rune) bool { return r == '\n' || r == ',' }) {
+		r := strings.TrimSpace(line)
+		if r == "" || strings.HasPrefix(r, "#") {
+			continue
+		}
+		if !strings.HasPrefix(r, "age1") && !strings.HasPrefix(r, "ssh-ed25519 ") && !strings.HasPrefix(r, "ssh-rsa ") {
+			return "", fmt.Errorf("%w: %q is not an age recipient (age1… or ssh-ed25519 …)", ErrInvalidAge, r)
+		}
+		out = append(out, r)
+	}
+	return strings.Join(out, "\n"), nil
+}
+
+// BackupAge returns the age recipients new backups are encrypted to ("" when the
+// workspace uses GPG) and the stored identity that reads age backups back ("" when
+// none is stored). The identity is returned whatever the current mode, so age
+// backups taken before switching back to GPG still restore.
+func (s *Service) BackupAge(workspaceID uint) (recipients, identity string, err error) {
+	st, err := s.repo.FindByWorkspace(workspaceID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", "", nil
+	}
+	if err != nil {
+		return "", "", err
+	}
+	if st.AgeIdentityEnc != "" {
+		if identity, err = crypto.Decrypt(st.AgeIdentityEnc); err != nil {
+			return "", "", err
+		}
+	}
+	if st.BackupEncryption == "age" {
+		recipients = st.AgeRecipients
+	}
+	return recipients, identity, nil
+}
+
+// VerifyAfterBackup reports whether each backup is read back right after it is written.
+func (s *Service) VerifyAfterBackup(workspaceID uint) bool {
+	st, err := s.repo.FindByWorkspace(workspaceID)
+	return err != nil || !st.SkipBackupVerify
 }

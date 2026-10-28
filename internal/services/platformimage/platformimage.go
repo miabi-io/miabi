@@ -23,8 +23,9 @@
 package platformimage
 
 import (
-	"github.com/miabi-io/miabi/pkg/bundled"
 	"strings"
+
+	"github.com/miabi-io/miabi/pkg/bundled"
 )
 
 // Image catalog keys.
@@ -61,6 +62,17 @@ const (
 	keyMirror     = "image.registry_mirror"
 )
 
+// Default refs of the *-bkup images, pinned per tool: a floating tag would roll every tool
+// release out to every install the moment it is published. mysql-bkup stays on 1.x until its
+// v2 is published; Miabi skips what 1.x cannot do (verification, the index, age).
+const (
+	DefaultPgBkup      = "jkaninda/pg-bkup:v2.0.0"
+	DefaultMySQLBkup   = "jkaninda/mysql-bkup:v2.0.0"
+	DefaultMongoDBBkup = "jkaninda/mongodb-bkup:v0.1.0"
+	DefaultLibSQLBkup  = "jkaninda/libsql-bkup:v0.2.0"
+	DefaultVolumeBkup  = "jkaninda/volume-bkup:v0.1.0"
+)
+
 // Entry describes a platform image: a stable key, a human label, a category, the
 // built-in default ref, and what it's used for.
 type Entry struct {
@@ -81,11 +93,11 @@ func baseCatalog() []Entry {
 		{KeyRedis, "Redis", "Databases", "redis:7-alpine", "Managed Redis server"},
 		{KeyMongoDB, "MongoDB", "Databases", "mongo:7.0", "Managed MongoDB server"},
 		{KeyLibSQL, "libSQL", "Databases", "ghcr.io/tursodatabase/libsql-server:latest", "Managed libSQL (sqld) server"},
-		{KeyBackupPostgres, "PostgreSQL backup (pg-bkup)", "Backups", "jkaninda/pg-bkup:latest", "Backup/restore tool for PostgreSQL"},
-		{KeyBackupMySQL, "MySQL/MariaDB backup (mysql-bkup)", "Backups", "jkaninda/mysql-bkup:latest", "Backup/restore tool for MySQL/MariaDB"},
-		{KeyBackupMongoDB, "MongoDB backup (mongodb-bkup)", "Backups", "jkaninda/mongodb-bkup:latest", "Backup/restore tool for MongoDB"},
-		{KeyBackupLibSQL, "libSQL backup (libsql-bkup)", "Backups", "jkaninda/libsql-bkup:latest", "Backup/restore tool for libSQL"},
-		{KeyBackupVolume, "Volume backup (volume-bkup)", "Backups", "jkaninda/volume-bkup:latest", "Backup/restore tool for Docker volumes"},
+		{KeyBackupPostgres, "PostgreSQL backup (pg-bkup)", "Backups", DefaultPgBkup, "Backup/restore tool for PostgreSQL"},
+		{KeyBackupMySQL, "MySQL/MariaDB backup (mysql-bkup)", "Backups", DefaultMySQLBkup, "Backup/restore tool for MySQL/MariaDB"},
+		{KeyBackupMongoDB, "MongoDB backup (mongodb-bkup)", "Backups", DefaultMongoDBBkup, "Backup/restore tool for MongoDB"},
+		{KeyBackupLibSQL, "libSQL backup (libsql-bkup)", "Backups", DefaultLibSQLBkup, "Backup/restore tool for libSQL"},
+		{KeyBackupVolume, "Volume backup (volume-bkup)", "Backups", DefaultVolumeBkup, "Backup/restore tool for Docker volumes"},
 		{KeyGoma, "Goma Gateway", "Gateway", bundled.GatewayImage(), "Reverse proxy / edge gateway"},
 		{KeyRelay, "Port-forward relay (socat)", "Internal", "alpine/socat:latest", "Bridges on-demand database port-forwards"},
 		{KeyRegistry, "Docker registry (distribution)", "Internal", "registry:3", "Built-in multi-tenant container registry"},

@@ -31,6 +31,7 @@ import (
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
+	"github.com/miabi-io/miabi/internal/services/backup"
 	"github.com/miabi-io/miabi/internal/services/volumebackup"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
@@ -152,6 +153,8 @@ func (h *VolumeBackupHandler) Restore(c *okapi.Context) error {
 			return c.AbortBadRequest("this backup has no archive to restore")
 		case errors.Is(err, volumebackup.ErrPassphraseRequired):
 			return c.AbortBadRequest(err.Error())
+		case errors.Is(err, backup.ErrAgeIdentityRequired):
+			return c.AbortBadRequest(err.Error() + " — store one in the workspace backup settings")
 		default:
 			return c.AbortInternalServerError("restore failed", err)
 		}

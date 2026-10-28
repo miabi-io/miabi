@@ -96,7 +96,8 @@ func (s *Service) RunSet(ctx context.Context, inst *models.DatabaseInstance, opt
 	// The artifacts are encrypted with a per-set data key rather than the passphrase
 	// itself; the envelope is what ties that key back to the passphrase. Without a
 	// passphrase the set is unencrypted, exactly as a per-database backup would be.
-	if dest.GPGPassphrase != "" {
+	// age needs no envelope: its recipients are public keys, and only the identity opens the set.
+	if dest.GPGPassphrase != "" && dest.AgeRecipients == "" {
 		dataKey, kerr := dbenvelope.NewDataKey()
 		if kerr != nil {
 			return nil, kerr

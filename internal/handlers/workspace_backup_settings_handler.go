@@ -68,6 +68,16 @@ type UpdateBackupSettingsRequest struct {
 		BundlePassphraseClear bool   `json:"bundle_passphrase_clear"`
 		BackupPassphrase      string `json:"backup_passphrase"`
 		BackupPassphraseClear bool   `json:"backup_passphrase_clear"`
+
+		// BackupEncryption is "gpg" (the backup passphrase, default) or "age". With age, backups are
+		// encrypted to AgeRecipients; AgeIdentity, when given, lets the platform restore and verify
+		// them itself (write-only; AgeIdentityClear removes it).
+		BackupEncryption string `json:"backup_encryption" enum:",gpg,age"`
+		AgeRecipients    string `json:"age_recipients"`
+		AgeIdentity      string `json:"age_identity"`
+		AgeIdentityClear bool   `json:"age_identity_clear"`
+		// SkipBackupVerify turns off reading each backup back right after it is written.
+		SkipBackupVerify bool `json:"skip_backup_verify"`
 	} `json:"body"`
 }
 
@@ -107,11 +117,15 @@ func (h *WorkspaceBackupSettingsHandler) Update(c *okapi.Context, req *UpdateBac
 		BundlePath:         b.BundlePath,
 		BundlePassphrase:   passphrase,
 		BackupPassphrase:   backupPass,
+		BackupEncryption:   b.BackupEncryption,
+		AgeRecipients:      b.AgeRecipients,
+		AgeIdentity:        passphraseChange(b.AgeIdentity, b.AgeIdentityClear),
+		SkipBackupVerify:   b.SkipBackupVerify,
 	})
 	if err != nil {
 		// A rejected passphrase is the user's to fix, not an internal failure. So is
 		// discarding one that recovery points are still sealed with.
-		if errors.Is(err, wsbundle.ErrWeakPassphrase) || errors.Is(err, backupsettings.ErrSealedSetsExist) {
+		if errors.Is(err, wsbundle.ErrWeakPassphrase) || errors.Is(err, backupsettings.ErrSealedSetsExist) || errors.Is(err, backupsettings.ErrInvalidAge) {
 			return c.AbortBadRequest(err.Error())
 		}
 		if errors.Is(err, dbenvelope.ErrBadPassphrase) {

@@ -64,11 +64,8 @@ var (
 	// recovery point.
 	ErrSetNeedsS3 = errors.New("a platform recovery point requires an S3 target: a backup stored only on the host you are recovering from is no disaster recovery at all")
 
-	// pg-bkup emits "<db>_YYYYMMDD_...sql.gz"; volume-bkup emits "<name>_...tar.gz". With GPG_PASSPHRASE set
-	// both append ".gpg", so the artifact regexes must accept the encrypted form or the run completes with an
-	// empty Filename and nothing to restore from.
-	dbArtifactRe  = regexp.MustCompile(`[\w.\-]+\.sql\.gz(?:\.gpg)?`)
-	volArtifactRe = regexp.MustCompile(`[\w.\-]+\.tar\.gz(?:\.gpg)?`)
+	dbArtifactRe  = backup.DBArtifactRe
+	volArtifactRe = backup.VolumeArtifactRe
 )
 
 const (
@@ -84,8 +81,8 @@ const (
 	// platform backup exists for.
 	destS3 = "s3"
 
-	defaultPgImage  = "jkaninda/pg-bkup:latest"
-	defaultVolImage = "jkaninda/volume-bkup:latest"
+	defaultPgImage  = platformimage.DefaultPgBkup
+	defaultVolImage = platformimage.DefaultVolumeBkup
 )
 
 func artifactName(out string, re *regexp.Regexp) (name string, encrypted bool, err error) {
@@ -441,6 +438,7 @@ func (s *Service) runDBBackup(ctx context.Context, b *models.PlatformBackup, st 
 	}
 
 	env := append(append(s.dbEnv(), gpg...), backup.S3Env(cfg)...)
+	env = append(env, backup.IndexEnv("platform"))
 	cmd := []string{"backup", "--storage", "s3", "-d", s.db.Name}
 	if st.DatabaseBackupPath != "" {
 		cmd = append(cmd, "--path", st.DatabaseBackupPath)
@@ -537,7 +535,7 @@ func (s *Service) runVolumeBackup(ctx context.Context, b *models.PlatformBackup,
 	out, err := s.runHelper(ctx, dc, "volume backup of "+b.VolumeName, docker.RunSpec{
 		Name:     fmt.Sprintf("mb-platform-volbkup-%d", b.ID),
 		Image:    image,
-		Env:      append(backup.S3Env(cfg), gpg...),
+		Env:      append(append(backup.S3Env(cfg), gpg...), backup.IndexEnv("platform-"+volumeArchiveName(b.VolumeName))),
 		Cmd:      []string{"backup", "--storage", "s3", "--remote-path", st.VolumeBackupPath, "--name", volumeArchiveName(b.VolumeName)},
 		Mounts:   map[string]string{b.VolumeName: volumeMount},
 		Networks: nets,

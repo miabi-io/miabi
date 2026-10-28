@@ -1496,6 +1496,11 @@
     "provisioning": "Database provisioning…"
   },
   "db": {
+    "ageIdentity": "age identity",
+    "ageOptional": "(optional)",
+    "ageIdentityRestoreHint": "This backup is encrypted with age. Paste the identity (AGE-SECRET-KEY-1…) if the workspace does not store one. It is used for this restore only and never saved.",
+    "backupReadBack": "read back and verified",
+    "backupReadBackFailed": "failed verification",
     "aDedicatedUserIsCreated": "A dedicated user is created with access scoped to this database.",
     "aFullBackupIsTaken": "A full backup is taken before the upgrade begins.",
     "aFullBackupWasTaken": "A full backup was taken first — your data is safe if anything goes wrong.",
@@ -4106,6 +4111,19 @@
     "workspacesGroupYourApplicationsDatabases": "Workspaces group your applications, databases, and team members."
   },
   "wsSettings": {
+    "backupEncryption": "Backup encryption",
+    "encryptionGpg": "GPG (backup passphrase)",
+    "encryptionAge": "age (public keys)",
+    "backupEncryptionHint": "With age, database and volume backups are encrypted to the recipients below: taking a backup needs no secret, and only the matching identity can read it back. Existing backups keep their own encryption.",
+    "verifyAfterBackup": "Verify each backup after it is written",
+    "verifyAfterBackupHint": "The backup tool reads every new backup back (download, decrypt, decompress, checksum). This doubles the transfer for each backup.",
+    "ageRecipients": "age recipients",
+    "ageRecipientsHint": "One public key per line: age1… or ssh-ed25519 …",
+    "ageIdentity": "age identity",
+    "ageIdentityOptional": "(optional)",
+    "ageIdentityHint": "The private key (AGE-SECRET-KEY-1…). Stored encrypted. Without it, restores need the identity each time and new backups cannot be verified. Keep a copy outside Miabi.",
+    "removeAgeIdentity": "Remove stored identity",
+    "ageIdentityWillBeRemoved": "The stored age identity will be removed when you save: restores of age backups will need the identity each time.",
     "accessKey": "Access key",
     "allItsResources": "all its resources",
     "atLeast12": "at least 12 characters",

@@ -22,7 +22,6 @@ package wsbackup
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/jkaninda/logger"
@@ -214,7 +213,7 @@ func (s *Service) exportDatabases(ctx context.Context, b *models.WorkspaceBundle
 			default:
 				art.File = rec.Filename
 				art.SizeBytes = rec.SizeBytes
-				art.Encrypted = strings.HasSuffix(rec.Filename, ".gpg")
+				art.Encrypted = backup.IsEncryptedArtifact(rec.Filename)
 			}
 			if art.OK() {
 				report.Add("database", inst.Name+"/"+db.Name, "captured", "")

@@ -29,7 +29,6 @@ import (
 	"errors"
 	"fmt"
 	"path"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -50,15 +49,12 @@ var (
 	// ErrNoArchive is returned when restoring a backup that has no archive.
 	ErrNoArchive = errors.New("volume backup has no archive to restore")
 
-	// volume-bkup names archives "<name>_YYYYMMDD_HHMMSS.tar.gz", plus ".gpg" when a passphrase is
-	// supplied. The encrypted form has to match: without it the plain prefix matches instead and the
-	// row names an object that was never written.
-	archiveRe = regexp.MustCompile(`[\w.\-]+\.tar\.gz(?:\.gpg)?`)
+	archiveRe = backup.VolumeArtifactRe
 )
 
 const (
 	volumeMount      = "/data"
-	defaultBkupImage = "jkaninda/volume-bkup:latest"
+	defaultBkupImage = platformimage.DefaultVolumeBkup
 )
 
 // NodeDocker resolves the Docker client for a node id (0 = local).
@@ -77,6 +73,11 @@ type ImageResolver interface {
 type S3Provider interface {
 	VolumeBackupTarget(workspaceID uint) (*backup.S3Config, string, error)
 	BackupPassphrase(workspaceID uint) (string, error)
+	// BackupAge returns the age recipients new points are encrypted to ("" for GPG) and the
+	// stored identity that reads age archives back ("" when none is stored).
+	BackupAge(workspaceID uint) (recipients, identity string, err error)
+	// VerifyAfterBackup reports whether each archive is read back right after it is written.
+	VerifyAfterBackup(workspaceID uint) bool
 }
 
 // Alerter raises and resolves the backup_failed alert for a volume's recovery points.
@@ -356,14 +357,26 @@ func (s *Service) RunBackup(ctx context.Context, backupID uint) error {
 		s.fail(b, err)
 		return nil
 	}
-	env := backup.S3Env(cfg)
-	var passphrase string
+	env := append(backup.S3Env(cfg), backup.IndexEnv(vol.Name))
+	var passphrase, recipients, readKey string
 	if b.IsPoint() {
 		if passphrase, err = s.passphrase(b.WorkspaceID); err != nil {
 			s.fail(b, fmt.Errorf("read the workspace backup passphrase: %w", err))
 			return nil
 		}
-		if passphrase != "" {
+		var identity string
+		if recipients, identity, err = s.age(b.WorkspaceID); err != nil {
+			s.fail(b, fmt.Errorf("read the workspace age settings: %w", err))
+			return nil
+		}
+		switch {
+		case recipients != "":
+			// age needs no envelope: the recipients are public keys, only the identity opens the archive.
+			env = append(env, "ENCRYPTION=age", "AGE_RECIPIENTS="+recipients)
+			if identity != "" {
+				readKey = "AGE_IDENTITY=" + identity
+			}
+		case passphrase != "":
 			dataKey, sealed, err := newSealedKey(passphrase)
 			if err != nil {
 				s.fail(b, err)
@@ -371,6 +384,7 @@ func (s *Service) RunBackup(ctx context.Context, backupID uint) error {
 			}
 			b.Envelope = sealed
 			env = append(env, "GPG_PASSPHRASE="+dataKey)
+			readKey = "GPG_PASSPHRASE=" + dataKey
 		}
 	}
 
@@ -421,6 +435,10 @@ func (s *Service) RunBackup(ctx context.Context, backupID uint) error {
 	}
 	b.Filename = name
 	b.Encrypted = encrypted
+	if recipients != "" && !encrypted {
+		logger.Warn("volume recovery point stored UNENCRYPTED despite age encryption: the volume-bkup image does not support it — upgrade it",
+			"volume", vol.ID, "artifact", name)
+	}
 	if b.Envelope != "" && !encrypted {
 		// An envelope over a cleartext archive seals nothing, and would still block clearing the
 		// passphrase as if it did.
@@ -428,7 +446,32 @@ func (s *Service) RunBackup(ctx context.Context, backupID uint) error {
 			"volume", vol.ID, "artifact", name)
 		b.Envelope = ""
 	}
-	s.recordSize(ctx, b)
+	b.Checksum = backup.ArtifactSHA256(out)
+	if size := backup.ArtifactSize(out); size > 0 {
+		b.SizeBytes = size
+	} else {
+		// 1.x images do not report a size: look the archive up instead.
+		s.recordSize(ctx, b)
+	}
+	readBack, readBackErr := "", ""
+	if s.s3 != nil && s.s3.VerifyAfterBackup(b.WorkspaceID) && (!encrypted || readKey != "") {
+		venv := append(backup.S3Env(cfg), backup.IndexEnv(vol.Name))
+		if encrypted {
+			venv = append(venv, readKey)
+		}
+		vexit, vout, verr := dc.RunOneShot(ctx, docker.RunSpec{
+			Name:     oneShotName("mb-volverify", b.ID),
+			Image:    image,
+			Env:      venv,
+			Cmd:      []string{"verify", "--storage", "s3", "--remote-path", b.S3Path, "--file", name},
+			Networks: nets,
+		})
+		readBack, readBackErr = backup.VerifyOutcome(vexit, vout, verr)
+	}
+	if !b.IsPoint() && readBack != "" {
+		vt := time.Now()
+		b.VerifiedAt, b.VerifyStatus, b.VerifyError = &vt, readBack, readBackErr
+	}
 	fin := time.Now()
 	b.Status = models.BackupCompleted
 	b.FinishedAt = &fin
@@ -438,9 +481,16 @@ func (s *Service) RunBackup(ctx context.Context, backupID uint) error {
 	s.externalizeLog(b)
 	logger.Info("volume backup completed", "volume", vol.ID, "file", b.Filename)
 	if b.IsPoint() {
-		s.finishPoint(ctx, vol, b, passphrase)
+		s.finishPoint(ctx, vol, b, passphrase, readBack, readBackErr)
 	}
 	return nil
+}
+
+func (s *Service) age(workspaceID uint) (recipients, identity string, err error) {
+	if s.s3 == nil {
+		return "", "", nil
+	}
+	return s.s3.BackupAge(workspaceID)
 }
 
 // Restore extracts a previously-created archive back into the volume, mounting
@@ -466,13 +516,19 @@ func (s *Service) Restore(ctx context.Context, vol *models.Volume, b *models.Vol
 		return err
 	}
 	env := backup.S3Env(cfg)
-	key, err := s.archiveKeyPassphrase(b)
+	var key, identity string
+	if strings.HasSuffix(b.Filename, ".age") {
+		if _, identity, err = s.age(b.WorkspaceID); err != nil {
+			return err
+		}
+	} else if key, err = s.archiveKeyPassphrase(b); err != nil {
+		return err
+	}
+	keys, err := backup.RestoreKeyEnv(b.Filename, key, identity)
 	if err != nil {
 		return err
 	}
-	if key != "" {
-		env = append(env, "GPG_PASSPHRASE="+key)
-	}
+	env = append(env, keys...)
 	exit, out, err := dc.RunOneShot(ctx, docker.RunSpec{
 		Name:     oneShotName("mb-volrestore", b.ID),
 		Image:    image,

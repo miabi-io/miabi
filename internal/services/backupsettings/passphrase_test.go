@@ -333,3 +333,27 @@ func TestBundleTargetStillNeedsS3(t *testing.T) {
 		t.Fatalf("err = %v, want ErrS3NotConfigured", err)
 	}
 }
+
+func TestAgeSettingsValidation(t *testing.T) {
+	st := &models.WorkspaceBackupSettings{}
+	if err := applyAge(1, st, SaveInput{BackupEncryption: "age"}); !errors.Is(err, ErrInvalidAge) {
+		t.Fatalf("age without recipients must be rejected: %v", err)
+	}
+	if err := applyAge(1, st, SaveInput{BackupEncryption: "age", AgeRecipients: "not-a-key"}); !errors.Is(err, ErrInvalidAge) {
+		t.Fatalf("bad recipient accepted: %v", err)
+	}
+	if err := applyAge(1, st, SaveInput{BackupEncryption: "rot13"}); !errors.Is(err, ErrInvalidAge) {
+		t.Fatalf("unknown mode accepted: %v", err)
+	}
+	in := SaveInput{BackupEncryption: "AGE", AgeRecipients: "# ops key\nage1abc, ssh-ed25519 AAAAC3 user@host\n\n"}
+	if err := applyAge(1, st, in); err != nil {
+		t.Fatal(err)
+	}
+	if st.BackupEncryption != "age" || st.AgeRecipients != "age1abc\nssh-ed25519 AAAAC3 user@host" {
+		t.Fatalf("normalized: %q %q", st.BackupEncryption, st.AgeRecipients)
+	}
+	bad := "hunter2"
+	if err := applyAge(1, st, SaveInput{AgeIdentity: &bad}); !errors.Is(err, ErrInvalidAge) {
+		t.Fatalf("bad identity accepted: %v", err)
+	}
+}

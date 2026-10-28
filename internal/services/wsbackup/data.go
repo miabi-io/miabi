@@ -24,7 +24,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"regexp"
 	"time"
 
 	"github.com/miabi-io/miabi/internal/docker"
@@ -35,13 +34,10 @@ import (
 
 const (
 	volumeMount     = "/data"
-	defaultVolImage = "jkaninda/volume-bkup:latest"
+	defaultVolImage = platformimage.DefaultVolumeBkup
 )
 
-// volume-bkup names archives "<name>_YYYYMMDD_HHMMSS.tar.gz", plus ".gpg" when a
-// passphrase is supplied. Without matching the encrypted form, a run would
-// complete having recorded a filename that was never written.
-var volArtifactRe = regexp.MustCompile(`[\w.\-]+\.tar\.gz(?:\.gpg)?`)
+var volArtifactRe = backup.VolumeArtifactRe
 
 // volImage is the volume archive helper (deployment-config catalog, else the
 // ecosystem default).
@@ -66,7 +62,7 @@ func (s *Service) archiveVolume(ctx context.Context, v *models.Volume, cfg *back
 	if err := dc.PullImage(ctx, image, nil); err != nil {
 		return "", false, fmt.Errorf("pull %s: %w", image, err)
 	}
-	env := backup.S3Env(cfg)
+	env := append(backup.S3Env(cfg), backup.IndexEnv(v.Name))
 	if passphrase != "" {
 		env = append(env, "GPG_PASSPHRASE="+passphrase)
 	}

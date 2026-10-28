@@ -102,10 +102,13 @@ func TestConnEnvLibSQLUsesToken(t *testing.T) {
 	}
 }
 
-func TestArtifactRegexMatchesMongoArchive(t *testing.T) {
-	for _, name := range []string{"shop_20260101_120000.sql.gz", "shop_20260101_120000.archive.gz"} {
-		if got := artifactRe.FindString("backup written to " + name); got != name {
-			t.Errorf("artifactRe on %q = %q, want %q", name, got, name)
+func TestArtifactRegexMatchesEveryToolArtifact(t *testing.T) {
+	for _, name := range []string{
+		"shop_20260101_120000.sql.gz", "shop_20260101_120000.archive.gz", "shop_20260101_120000.sql.gz.gpg",
+		"shop_20260101_120000.sql.zst.age", "shop_20260101_120000.dump.gz", "shop_schema_20260101_120000.sql",
+	} {
+		if got := DBArtifactRe.FindString("backup written to " + name); got != name {
+			t.Errorf("DBArtifactRe on %q = %q, want %q", name, got, name)
 		}
 	}
 }
@@ -146,7 +149,7 @@ func TestArtifactNameTakesTheUploadedFile(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, encrypted, err := ArtifactName(tc.out, artifactRe)
+			got, encrypted, err := ArtifactName(tc.out, DBArtifactRe)
 			if err != nil {
 				t.Fatalf("ArtifactName: %v", err)
 			}
@@ -161,7 +164,7 @@ func TestArtifactNameTakesTheUploadedFile(t *testing.T) {
 }
 
 func TestArtifactNameWithNoMatch(t *testing.T) {
-	if _, _, err := ArtifactName("nothing here names a file", artifactRe); err == nil {
+	if _, _, err := ArtifactName("nothing here names a file", DBArtifactRe); err == nil {
 		t.Fatal("output naming no artifact was accepted")
 	}
 }
