@@ -409,6 +409,7 @@ func runServer(cli *okapicli.CLI) {
 			edition := enterprise.New(res.db, cfg.LicenseFile, cfg.DeploymentURL(), installIDOf(res.db))
 			securityQuota.SetEdition(edition)
 			securityQuota.SetForceNonRoot(cfg.ForceNonRootUser)
+			securityQuota.SetCPUOvercommit(cfg.QuotaCPUOvercommit)
 			res.entitlements = edition.Entitlements()
 			alertEngine.SetQuotaLister(quotaScanner{
 				ws:   repositories.NewWorkspaceRepository(res.db),

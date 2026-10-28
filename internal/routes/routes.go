@@ -403,6 +403,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	quotaService := quota.NewService(planRepo, quotaOverrideRepo, appRepo, volumeRepo, dbRepo, cfg.PlanEnforcement)
 	quotaService.SetEdition(ee)                        // clamps Enterprise-only shell/security policies in CE
 	quotaService.SetForceNonRoot(cfg.ForceNonRootUser) // server-level non-root mandate, on top of the plan
+	quotaService.SetCPUOvercommit(cfg.QuotaCPUOvercommit)
 	// Runners: dedicated build/pipeline machines (workspace-owned + platform-shared).
 	// Quota gates MaxRunners on create and the platform-runners capability on use.
 	runnerService := runner.NewService(repositories.NewRunnerRepository(db))

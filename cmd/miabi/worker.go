@@ -219,6 +219,7 @@ func runWorker() error {
 	edition := enterprise.New(db, cfg.LicenseFile, cfg.DeploymentURL(), installIDOf(db))
 	securityQuota.SetEdition(edition)
 	securityQuota.SetForceNonRoot(cfg.ForceNonRootUser)
+	securityQuota.SetCPUOvercommit(cfg.QuotaCPUOvercommit)
 	securityResolver := newSecurityResolver(cfg, securityQuota)
 	grantGuard := newGrantGuard(cfg.ContainerGrantsEnabled, repositories.NewWorkspaceRepository(db), securityQuota)
 	deployHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
