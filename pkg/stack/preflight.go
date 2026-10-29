@@ -138,7 +138,7 @@ func (s *Service) CheckDaemon(ctx context.Context) error {
 		return fmt.Errorf(`%w.
 
   Use a regular Docker daemon. To install without sudo, add your user to the
-  docker group and run the installer with --non-root.`, ErrRootlessDaemon)
+  docker group and run the installer with --non-root`, ErrRootlessDaemon)
 	}
 	return nil
 }
