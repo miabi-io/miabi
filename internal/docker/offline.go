@@ -118,6 +118,10 @@ func (o offlineClient) EnsureNetworkSpec(context.Context, NetworkSpec) (string, 
 }
 func (o offlineClient) RemoveNetwork(context.Context, string) error     { return o.err }
 func (o offlineClient) ListNetworks(context.Context) ([]Network, error) { return nil, o.err }
+func (o offlineClient) InspectNetwork(context.Context, string) (NetworkState, error) {
+	return NetworkState{}, o.err
+}
+func (o offlineClient) Rootless(context.Context) (bool, error) { return false, o.err }
 func (o offlineClient) NetworkConnect(context.Context, string, string, []string) error {
 	return o.err
 }

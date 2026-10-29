@@ -162,6 +162,10 @@ type Client interface {
 	EnsureNetworkSpec(ctx context.Context, spec NetworkSpec) (string, error)
 	RemoveNetwork(ctx context.Context, name string) error
 	ListNetworks(ctx context.Context) ([]Network, error)
+	// InspectNetwork returns ErrNotFound when the network does not exist.
+	InspectNetwork(ctx context.Context, name string) (NetworkState, error)
+	// Rootless reports whether the daemon runs in rootless mode.
+	Rootless(ctx context.Context) (bool, error)
 	// NetworkConnect attaches a running container to a network with optional DNS aliases;
 	// NetworkDisconnect detaches it. Both are idempotent. Used to keep only route-exposed apps on
 	// the shared reverse-proxy network.

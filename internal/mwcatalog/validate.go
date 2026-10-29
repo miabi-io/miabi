@@ -284,3 +284,18 @@ func contains(opts []string, s string) bool {
 	}
 	return false
 }
+
+// validateRedirectHost mirrors the gateway's rule: exactly one of www and host, and host is a bare hostname.
+func validateRedirectHost(rule map[string]any) error {
+	www, _ := rule["www"].(string)
+	host, _ := rule["host"].(string)
+	switch {
+	case www != "" && host != "":
+		return fmt.Errorf("%w: set either www or host, not both", ErrInvalidRule)
+	case www == "" && host == "":
+		return fmt.Errorf("%w: set www (add or remove) or host", ErrInvalidRule)
+	case strings.ContainsAny(host, "/?#@ "):
+		return fmt.Errorf("%w: host %q must be a hostname such as example.com, not a URL", ErrInvalidRule, host)
+	}
+	return nil
+}

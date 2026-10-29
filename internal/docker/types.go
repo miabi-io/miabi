@@ -42,6 +42,7 @@ type (
 	GPURequest       = stackdocker.GPURequest
 	HealthcheckSpec  = stackdocker.HealthcheckSpec
 	NetworkSpec      = stackdocker.NetworkSpec
+	NetworkState     = stackdocker.NetworkState
 	Volume           = stackdocker.Volume
 	RegistryAuth     = stackdocker.RegistryAuth
 )

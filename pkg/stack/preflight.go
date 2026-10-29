@@ -124,6 +124,25 @@ func (s *Service) CheckOrphanedData(ctx context.Context) error {
         docker volume rm %s`, ErrOrphanedData, VolumePGData, VolumePGData)
 }
 
+// ErrRootlessDaemon is returned by CheckDaemon for a rootless Docker daemon.
+var ErrRootlessDaemon = errors.New("this Docker daemon runs rootless, which Miabi does not support")
+
+// CheckDaemon refuses a rootless daemon. The control plane gives the containers it starts the host's
+// /var/run/docker.sock, a path a rootless daemon does not serve, so the install would come up half-working.
+func (s *Service) CheckDaemon(ctx context.Context) error {
+	rootless, err := s.dc.Rootless(ctx)
+	if err != nil {
+		return fmt.Errorf("read the Docker daemon's info: %w", err)
+	}
+	if rootless {
+		return fmt.Errorf(`%w.
+
+  Use a regular Docker daemon. To install without sudo, add your user to the
+  docker group and run the installer with --non-root.`, ErrRootlessDaemon)
+	}
+	return nil
+}
+
 // portBindable asks Docker to publish the port on a container that exits at once. If
 // something else owns it, Docker refuses at start ("port is already allocated") and
 // we have our answer without ever touching the host's network namespace.

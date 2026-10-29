@@ -101,6 +101,12 @@ func TestValidate(t *testing.T) {
 		{"errorInterceptor empty errors", "errorInterceptor", map[string]any{"enabled": true, "errors": []any{}}, true},
 		{"errorInterceptor error missing statusCode", "errorInterceptor", map[string]any{"enabled": true, "errors": []any{map[string]any{"body": "x"}}}, true},
 		{"errorInterceptor error unknown key", "errorInterceptor", map[string]any{"enabled": true, "errors": []any{map[string]any{"statusCode": float64(1), "bogus": 1}}}, true},
+		{"redirectHost add www", "redirectHost", map[string]any{"www": "add", "permanent": true}, false},
+		{"redirectHost fixed host", "redirectHost", map[string]any{"host": "example.com:8443"}, false},
+		{"redirectHost neither", "redirectHost", map[string]any{"permanent": true}, true},
+		{"redirectHost both", "redirectHost", map[string]any{"www": "add", "host": "example.com"}, true},
+		{"redirectHost bad www", "redirectHost", map[string]any{"www": "strip"}, true},
+		{"redirectHost url as host", "redirectHost", map[string]any{"host": "https://example.com/"}, true},
 		{"uncatalogued passes through", "customThing", map[string]any{"anything": "goes"}, false},
 	}
 	for _, tc := range cases {

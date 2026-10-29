@@ -33,9 +33,18 @@
 #                               panel's own URL)
 #   MIABI_REGISTRY_ENABLED      enable the built-in registry   (skips the prompt)
 #   MIABI_REGISTRY_HOST         its hostname                   (default registry.<domain>)
+#   MIABI_ADMIN_PASSWORD        first admin's password, 12 characters to 72 bytes (default:
+#                               generated and printed once). Not echoed when set here.
+#   MIABI_ADMIN_PASSWORD_FILE   read MIABI_ADMIN_PASSWORD from this file instead, keeping it
+#                               out of the process list and shell history
+#   MIABI_NETWORK_IPV6          true = dual-stack app and workspace networks (Docker 26+
+#                               allocates their IPv6 subnets)
+#   MIABI_NON_ROOT              1 = install without root, into your home (same as --non-root);
+#                               a regular (not rootless) Docker must already be installed
+#                               and usable by your user
 #   MIABI_NO_HOST_PROC          1 = do not bind the host's /proc into Miabi. Set it
-#                               where the bind is refused (a rootless daemon, a
-#                               hardened host, a socket proxy that forbids host binds);
+#                               where the bind is refused (a hardened host, a socket
+#                               proxy that forbids host binds);
 #                               host metrics then fall back to the container's /proc,
 #                               which already reflects host CPU/memory.
 #   MIABI_SUBNET                CIDR for the shared app network (default 10.63.0.0/16)
@@ -68,6 +77,9 @@
 # By default the newest stable release is installed, with the gateway, runner and CLI it was
 # tested with (from versions.miabi.io). Pin a specific release instead:
 #   curl -fsSL https://get.miabi.io | sudo MIABI_VERSION=v1.4.0 bash
+#
+# Root is required unless you opt out; without it everything lives in your home:
+#   curl -fsSL https://get.miabi.io | MIABI_DOMAIN=miabi.example.com bash -s -- --non-root
 
 # This script is bash (pipefail, ERR traps, BASH_SOURCE, local). Invoked as
 # `sh install.sh` the shebang is ignored: under dash that is `set: Illegal option
@@ -86,6 +98,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 SKIP_DOCKER_INSTALL="${MIABI_SKIP_DOCKER_INSTALL:-0}"
+
+NON_ROOT="${MIABI_NON_ROOT:-0}"
+for _arg in "$@"; do
+  case "$_arg" in
+    --non-root) NON_ROOT=1 ;;
+    *) echo "miabi: unknown option '${_arg}' (the only option is --non-root; everything else is an environment variable)." >&2; exit 1 ;;
+  esac
+done
+unset _arg
+case "$NON_ROOT" in 1|true|yes) NON_ROOT=1 ;; *) NON_ROOT=0 ;; esac
 
 # ===================== versions ================================
 #
@@ -193,15 +215,17 @@ trap 'on_error $LINENO' ERR
 # ====================== preflight checks ==========================
 log "Running preflight checks"
 
-# Root is not required — writable locations and a usable Docker are. As root that means
-# /usr/local/bin and /etc/miabi, as anyone else your own home. Docker itself can only be INSTALLED
-# as root, so a rootless run needs it present already; the socket has to be usable by this user
-# either way (the `docker` group, which is root-equivalent — this is convenience, not isolation).
+# Root by default, so an install always lands in /usr/local/bin and /etc/miabi where `miabi upgrade`
+# and the docs expect it. --non-root puts both in your home and needs Docker usable by your user already.
 if [ "$(id -u)" -eq 0 ]; then
   ROOTLESS=0
+  RUN_AS="root"
   BIN_DIR="${MIABI_BIN_DIR:-/usr/local/bin}"
   STACK_ETC_DEFAULT="/etc/miabi"
+elif [ "$NON_ROOT" != "1" ]; then
+  die "the installer needs root. Re-run it with sudo, or pass --non-root (MIABI_NON_ROOT=1) to install into your home with Docker you can already use."
 else
+  RUN_AS="non-root"
   ROOTLESS=1
   BIN_DIR="${MIABI_BIN_DIR:-${HOME}/.local/bin}"
   STACK_ETC_DEFAULT="${HOME}/.miabi"
@@ -214,7 +238,7 @@ else
   # The re-run hint is built above, before privileges are known. Re-running an install that lives
   # in the user's home under sudo would converge a DIFFERENT install, so drop it.
   UPDATE_HINT="${UPDATE_HINT#sudo }"
-  UPDATE_HINT="${UPDATE_HINT/| sudo bash/| bash}"
+  UPDATE_HINT="${UPDATE_HINT/| sudo bash/| bash -s --} --non-root"
 fi
 
 case "$(uname -s)" in
@@ -228,7 +252,22 @@ case "$(uname -m)" in
 esac
 
 command -v curl >/dev/null 2>&1 || die "curl is required but not installed."
-ok "Host looks good ($(uname -s)/$(uname -m), root)"
+ok "Host looks good ($(uname -s)/$(uname -m), ${RUN_AS})"
+
+# Checked before Docker is installed, so a bad password from automation fails in seconds. `miabi setup`
+# applies the same rule, counted in characters; this pre-check counts bytes.
+if [ -n "${MIABI_ADMIN_PASSWORD_FILE:-}" ]; then
+  [ -r "$MIABI_ADMIN_PASSWORD_FILE" ] || die "MIABI_ADMIN_PASSWORD_FILE: cannot read ${MIABI_ADMIN_PASSWORD_FILE}."
+  MIABI_ADMIN_PASSWORD="$(cat "$MIABI_ADMIN_PASSWORD_FILE")"
+fi
+if [ -n "${MIABI_ADMIN_PASSWORD:-}" ]; then
+  _pw_bytes="$(printf '%s' "$MIABI_ADMIN_PASSWORD" | LC_ALL=C wc -c | tr -d ' ')"
+  [ "$_pw_bytes" -ge 12 ] || die "MIABI_ADMIN_PASSWORD must be at least 12 characters."
+  [ "$_pw_bytes" -le 72 ] || die "MIABI_ADMIN_PASSWORD must be at most 72 bytes (the limit of the password hash)."
+  unset _pw_bytes
+  export MIABI_ADMIN_PASSWORD
+  ok "Using the admin password from the environment"
+fi
 
 # >>> shared: docker-install — identical in install.sh and install-agent.sh (scripts/check-installers.sh)
 # Read one field out of /etc/os-release without leaking its vars into our shell.
@@ -417,6 +456,11 @@ fi
 
 ok "Docker daemon is running"
 # <<< shared: docker-install
+
+# `miabi setup` refuses a rootless daemon too; checking here fails before anything is downloaded.
+if docker info --format '{{json .SecurityOptions}}' 2>/dev/null | grep -q 'name=rootless'; then
+  die "this Docker daemon runs rootless, which Miabi does not support. Use a regular Docker daemon; to install without sudo, add your user to the docker group and pass --non-root."
+fi
 
 # Warn (don't block) when the web ports are already taken — Goma binds 80/443.
 port_busy() { # <port>
@@ -618,11 +662,15 @@ install_stack() {
   [ -n "${MIABI_SUBNET:-}" ] && extra+=(--subnet "$MIABI_SUBNET")
   [ -n "${MIABI_INTERNAL_SUBNET:-}" ] && extra+=(--internal-subnet "$MIABI_INTERNAL_SUBNET")
 
-  # Some hosts refuse a bind of /proc: a rootless daemon, a hardened host, a socket
-  # proxy that forbids host binds. Miabi then reads its own /proc, which inside a
+  # Some hosts refuse a bind of /proc: a hardened host, a socket proxy that forbids
+  # host binds. Miabi then reads its own /proc, which inside a
   # container already reflects host CPU/memory, so the Nodes page keeps working.
   case "${MIABI_NO_HOST_PROC:-0}" in
     1|true|yes) extra+=(--no-host-proc) ;;
+  esac
+
+  case "${MIABI_NETWORK_IPV6:-false}" in
+    1|true|yes) extra+=(--ipv6) ;;
   esac
 
   install_cli

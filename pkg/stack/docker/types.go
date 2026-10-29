@@ -21,7 +21,10 @@
 // them from the Docker SDK, so a caller may back this with any implementation.
 package docker
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Container is a summary of a Docker container.
 type Container struct {
@@ -221,6 +224,12 @@ type HealthcheckSpec struct {
 	StartPeriod time.Duration
 }
 
+// NetworkState is the part of an existing network the stack reconciles against its manifest.
+type NetworkState struct {
+	ID         string
+	EnableIPv6 bool
+}
+
 // NetworkSpec describes a managed network to create. An empty Driver defaults to
 // "bridge". Subnet/Gateway, when set, are passed as explicit IPAM so creation
 // does not draw from Docker's built-in default-address-pools.
@@ -251,4 +260,16 @@ type RegistryAuth struct {
 	Server   string // registry host, e.g. registry-1.docker.io, ghcr.io
 	Username string
 	Password string
+}
+
+// IsRootless reports whether a daemon's `docker info` security options mark it rootless.
+func IsRootless(securityOptions []string) bool {
+	for _, o := range securityOptions {
+		for _, kv := range strings.Split(o, ",") {
+			if kv == "name=rootless" {
+				return true
+			}
+		}
+	}
+	return false
 }
