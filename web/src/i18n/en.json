@@ -3440,6 +3440,7 @@
     "noDomainsHint": "No domains registered. Enter a host manually, {link} to pick from a list, or leave blank to match all hosts.",
     "noHostsHint": "No hosts — this route will match all hosts (catch-all).",
     "noMiddlewaresAttached": "No middlewares attached.",
+    "compressionHint": "Responses are compressed for clients that support it. Untick compression, or set excluded paths on it, for pages that show user input next to a secret such as a CSRF token.",
     "noMiddlewaresDefinedYet": "No middlewares defined yet.",
     "noMiddlewaresHint": "No middlewares defined in this workspace yet. {link} to attach it here.",
     "noPublicAddressHint": "No public address is set for the node serving this route. Set its {field} on the node's page so Miabi can show the record to create.",

@@ -276,6 +276,9 @@ function discard() {
 
 function resetForCreate() {
   form.value = emptyForm()
+  // New routes compress by default, through the seeded middleware the user can untick.
+  const compression = middlewares.value.find(m => m.name === 'compression' && m.type === 'compress')
+  if (compression) form.value.middlewares = [compression.name]
   form.value.application_id = props.presetAppId ?? props.apps[0]?.id ?? null
   formMode.value = 'simple'
   advancedConfig.value = ''
@@ -450,6 +453,7 @@ async function save() {
                 <span class="badge badge-neutral middleware-option-type">{{ m.type }}</span>
               </label>
             </div>
+            <p v-if="form.middlewares.includes('compression')" class="form-hint">{{ $t('routes.compressionHint') }}</p>
           </div>
         </template>
         <template v-else>

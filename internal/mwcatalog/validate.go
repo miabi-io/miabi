@@ -22,6 +22,7 @@ package mwcatalog
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -298,4 +299,45 @@ func validateRedirectHost(rule map[string]any) error {
 		return fmt.Errorf("%w: host %q must be a hostname such as example.com, not a URL", ErrInvalidRule, host)
 	}
 	return nil
+}
+
+var minSizePattern = regexp.MustCompile(`(?i)^\s*\d+\s*([kmg]i?b|b)?\s*$`)
+
+// validateCompress mirrors the gateway's own checks, so a bad rule is refused on save instead of
+// taking the route offline: Goma answers 503 on a route whose compress rule it cannot load.
+func validateCompress(rule map[string]any) error {
+	if list, ok := rule["algorithms"].([]any); ok {
+		for _, a := range list {
+			switch strings.ToLower(strings.TrimSpace(a.(string))) {
+			case "zstd", "br", "brotli", "gzip":
+			default:
+				return fmt.Errorf("%w: algorithm %q is not supported (use zstd, br or gzip)", ErrInvalidRule, a)
+			}
+		}
+	}
+	if s, ok := rule["minSize"].(string); ok && !minSizePattern.MatchString(s) {
+		return fmt.Errorf("%w: minSize %q must be bytes (1024) or a size such as 1KiB", ErrInvalidRule, s)
+	}
+	levels, _ := rule["levels"].(map[string]any)
+	for _, l := range []struct {
+		key string
+		max float64
+	}{{"gzip", 9}, {"br", 11}} {
+		if n, ok := number(levels[l.key]); ok && (n < 1 || n > l.max) {
+			return fmt.Errorf("%w: levels.%s must be between 1 and %.0f", ErrInvalidRule, l.key, l.max)
+		}
+	}
+	return nil
+}
+
+func number(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	}
+	return 0, false
 }

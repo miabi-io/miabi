@@ -107,6 +107,17 @@ func TestValidate(t *testing.T) {
 		{"redirectHost both", "redirectHost", map[string]any{"www": "add", "host": "example.com"}, true},
 		{"redirectHost bad www", "redirectHost", map[string]any{"www": "strip"}, true},
 		{"redirectHost url as host", "redirectHost", map[string]any{"host": "https://example.com/"}, true},
+		{"compress defaults", "compress", map[string]any{}, false},
+		{"compress full", "compress", map[string]any{"algorithms": []any{"zstd", "br", "gzip"}, "minSize": "2KiB",
+			"levels": map[string]any{"gzip": float64(6), "br": float64(4), "zstd": "fastest"}, "excludedPaths": []any{"/login"},
+			"excludedContentTypes": []any{"application/pdf"}, "upstream": "identity"}, false},
+		{"compress byte count", "compress", map[string]any{"minSize": "1024"}, false},
+		{"compress unknown algorithm", "compress", map[string]any{"algorithms": []any{"lz4"}}, true},
+		{"compress bad size", "compress", map[string]any{"minSize": "lots"}, true},
+		{"compress gzip level", "compress", map[string]any{"levels": map[string]any{"gzip": float64(42)}}, true},
+		{"compress br level", "compress", map[string]any{"levels": map[string]any{"br": float64(0)}}, true},
+		{"compress bad zstd level", "compress", map[string]any{"levels": map[string]any{"zstd": "max"}}, true},
+		{"compress bad upstream", "compress", map[string]any{"upstream": "sometimes"}, true},
 		{"uncatalogued passes through", "customThing", map[string]any{"anything": "goes"}, false},
 	}
 	for _, tc := range cases {

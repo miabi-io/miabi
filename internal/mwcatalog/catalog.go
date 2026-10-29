@@ -118,6 +118,8 @@ const MinGomaOIDCVersion = "0.14.0"
 
 const MinGomaRedirectHostVersion = "1.2.0"
 
+const MinGomaCompressVersion = "1.2.0"
+
 // secretPath is a secret field and the route to it through nested objects, so a
 // key like session.secret is reachable rather than silently stored in clear.
 type secretPath struct {
@@ -438,6 +440,32 @@ var registry = []Descriptor{
 			{Key: "replacement", Label: "Replacement", Type: FieldString, Required: true, Placeholder: "/new/$1",
 				Help: "Replacement path. Use $1, $2… for the pattern's capture groups."},
 		},
+	},
+	{
+		Type:        "compress",
+		DisplayName: "Compression",
+		Description: "Compress responses with zstd, Brotli or gzip, chosen per client. Text such as HTML, JSON, CSS and JavaScript shrinks to 10–30% of its size.",
+		Category:    CategoryTraffic,
+		Fields: []Field{
+			{Key: "algorithms", Label: "Algorithms", Type: FieldStrings, Placeholder: "zstd", AddLabel: "algorithm",
+				Help: "Codings offered, in order of preference: zstd, br, gzip. Empty offers all three."},
+			{Key: "minSize", Label: "Minimum size", Type: FieldString, Placeholder: "1KiB",
+				Help: "Smaller bodies are sent uncompressed. Bytes (1024) or a size such as 1KiB."},
+			{Key: "levels", Label: "Levels", Type: FieldObject, Fields: []Field{
+				{Key: "gzip", Label: "gzip", Type: FieldInt, Placeholder: "5", Help: "1 (fastest) to 9 (smallest)."},
+				{Key: "br", Label: "Brotli", Type: FieldInt, Placeholder: "2", Help: "1 to 11. Above 4 costs a lot of gateway CPU for little gain."},
+				{Key: "zstd", Label: "zstd", Type: FieldEnum, Options: []string{"fastest", "default", "better", "best"}},
+			}},
+			{Key: "excludedPaths", Label: "Excluded paths", Type: FieldStrings, Placeholder: "/account/*", AddLabel: "path",
+				Help: "Never compressed. Exclude pages that show user input next to a secret such as a CSRF token (BREACH)."},
+			{Key: "excludedContentTypes", Label: "Excluded content types", Type: FieldStrings, Placeholder: "application/pdf", AddLabel: "type"},
+			{Key: "includedContentTypes", Label: "Content types", Type: FieldStrings, Placeholder: "text/*", AddLabel: "type",
+				Help: "Replaces the built-in list of text types. Empty keeps the built-in list."},
+			{Key: "upstream", Label: "Upstream", Type: FieldEnum, Options: []string{"passthrough", "identity"}, Default: "passthrough",
+				Help: "passthrough keeps a body the app already compressed. identity asks the app for an uncompressed body, so the gateway does all the compressing."},
+		},
+		MinGatewayVersion: MinGomaCompressVersion,
+		Validate:          validateCompress,
 	},
 	{
 		Type:        "httpCache",
