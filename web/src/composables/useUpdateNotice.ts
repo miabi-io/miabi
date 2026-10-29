@@ -55,3 +55,21 @@ export function useUpdateNotice() {
     dismiss: () => { dismissed.value = true },
   }
 }
+
+const CHUNK_ERROR = /dynamically imported module|Importing a module script failed|error loading dynamically/i
+
+// isChunkLoadError recognises a lazy page whose file is gone because Miabi was upgraded under the tab.
+export function isChunkLoadError(err: unknown): boolean {
+  return CHUNK_ERROR.test(String((err as Error)?.message ?? err))
+}
+
+// shouldReloadForChunk allows one fresh load per minute, so a chunk that is really broken never loops.
+export function shouldReloadForChunk(lastReload: number, now: number = Date.now()): boolean {
+  return now - lastReload >= 60_000
+}
+
+// markUpdated shows the notice when an upgrade is seen another way, such as a missing page chunk.
+export function markUpdated() {
+  useUpdateNotice()
+  if (shared) shared.available.value = true
+}
