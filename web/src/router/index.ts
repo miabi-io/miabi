@@ -137,6 +137,7 @@ const routes = [
       { path: 'plans/:id', name: 'admin-plan-detail', component: () => import('@/views/admin/PlanDetail.vue'), meta: { title: 'Plan', admin: true } },
       { path: 'database-sizes', name: 'admin-database-sizes', component: () => import('@/views/admin/DatabaseSizes.vue'), meta: { title: 'Database sizes', admin: true } },
       { path: 'storage-classes', name: 'admin-storage-classes', component: () => import('@/views/admin/StorageClasses.vue'), meta: { title: 'Storage classes', admin: true } },
+      { path: 'storage-classes/:id', name: 'admin-storage-class-detail', component: () => import('@/views/admin/StorageClassDetail.vue'), meta: { title: 'Storage class', admin: true } },
       { path: 'license', name: 'admin-license', component: () => import('@/views/admin/License.vue'), meta: { title: 'License', admin: true } },
       { path: 'billing', name: 'admin-billing', component: () => import('@/views/admin/Billing.vue'), meta: { title: 'Billing', admin: true } },
       { path: 'siem', name: 'admin-siem', component: () => import('@/views/admin/SIEM.vue'), meta: { title: 'SIEM Streaming', admin: true } },

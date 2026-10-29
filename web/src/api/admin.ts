@@ -35,6 +35,7 @@ import type {
   DatabaseSizeInput,
   NetworkingInfo,
   StorageClass,
+  StorageClassDetail,
   StorageClassInput,
   WorkspaceQuotaOverride,
   LicenseView,
@@ -413,6 +414,7 @@ export const adminApi = {
   // Storage classes: where on a node the platform creates volumes. A class's name and path are
   // immutable, so update only carries the editable fields.
   listStorageClasses: () => api.get<ApiResponse<StorageClass[]>>('/admin/storage-classes'),
+  getStorageClass: (id: number) => api.get<ApiResponse<StorageClassDetail>>(`/admin/storage-classes/${id}`),
   createStorageClass: (payload: StorageClassInput) =>
     api.post<ApiResponse<StorageClass>>('/admin/storage-classes', payload),
   updateStorageClass: (id: number, payload: Omit<StorageClassInput, 'name' | 'path'>) =>
