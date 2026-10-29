@@ -136,6 +136,13 @@ var presets = []Preset{
 		Rule:        map[string]any{"setHeaders": map[string]any{"X-Robots-Tag": "noindex, nofollow"}},
 	},
 	{
+		Key:         "compression",
+		DisplayName: "Compress responses",
+		Description: "Compress HTML, JSON, CSS and JavaScript with zstd, Brotli or gzip, whichever the client supports.",
+		Type:        "compress",
+		Rule:        map[string]any{},
+	},
+	{
 		Key:         "redirect-to-url",
 		DisplayName: "Redirect to a URL",
 		Description: "Send all matched requests to a fixed destination URL. Set the URL after applying.",
@@ -180,6 +187,12 @@ var defaultSeed = []SeedMiddleware{
 		DisplayName: "Force HTTPS",
 		Type:        "redirectScheme",
 		Rule:        map[string]any{"scheme": "https", "permanent": true},
+	},
+	{
+		Name:        "compression",
+		DisplayName: "Compress responses",
+		Type:        "compress",
+		Rule:        map[string]any{},
 	},
 	{
 		Name:        "redirect-to-www",

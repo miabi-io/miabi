@@ -3440,6 +3440,7 @@
     "noDomainsHint": "Aucun domaine enregistré. Saisissez un hôte manuellement, {link} pour choisir dans une liste, ou laissez vide pour correspondre à tous les hôtes.",
     "noHostsHint": "Aucun hôte — cette route correspondra à tous les hôtes (attrape-tout).",
     "noMiddlewaresAttached": "Aucun middleware attaché.",
+    "compressionHint": "Les réponses sont compressées pour les clients qui le prennent en charge. Décochez compression, ou définissez-y des chemins exclus, pour les pages qui affichent une saisie utilisateur à côté d’un secret comme un jeton CSRF.",
     "noMiddlewaresDefinedYet": "Aucun middleware défini.",
     "noMiddlewaresHint": "Aucun middleware défini dans cet espace de travail. {link} pour l’attacher ici.",
     "noPublicAddressHint": "Aucune adresse publique n’est définie pour le nœud qui sert cette route. Définissez son {field} sur la page du nœud pour que Miabi puisse afficher l’enregistrement à créer.",
