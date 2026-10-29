@@ -6,6 +6,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { t } from '@/i18n'
 import { safeNext } from '@/utils/safeNext'
+import { isChunkLoadError, markUpdated, shouldReloadForChunk } from '@/composables/useUpdateNotice'
 
 const routes = [
   { path: '/login', name: 'login', component: () => import('@/views/auth/Login.vue'), meta: { guest: true, title: 'Sign in' } },
@@ -201,6 +202,17 @@ router.beforeEach(async (to, from) => {
   }
   useBrandStore().setTitle(to.meta.title as string | undefined)
   return true
+})
+
+// After an upgrade the old page's lazy chunks are gone: load the target page fresh instead of failing silently.
+router.onError((err, to) => {
+  if (!isChunkLoadError(err)) return
+  const key = 'miabi.chunk-reload'
+  let last = 0
+  try { last = Number(sessionStorage.getItem(key) ?? 0) } catch { /* storage unavailable */ }
+  if (!shouldReloadForChunk(last)) { markUpdated(); return }
+  try { sessionStorage.setItem(key, String(Date.now())) } catch { /* storage unavailable */ }
+  window.location.assign(to.fullPath)
 })
 
 export default router
