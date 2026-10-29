@@ -115,6 +115,13 @@ func (r *StorageClassRepository) CountVolumes(name string) (int64, error) {
 	return count, err
 }
 
+// CountDatabases reports how many database instances keep their data on a class.
+func (r *StorageClassRepository) CountDatabases(name string) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.DatabaseInstance{}).Where("storage_class_name = ?", name).Count(&count).Error
+	return count, err
+}
+
 // SetCapacity records a class's measured filesystem size, touching only the measurement columns.
 func (r *StorageClassRepository) SetCapacity(id uint, capacityBytes, availableBytes int64, at time.Time) error {
 	return r.db.Model(&models.StorageClass{}).Where("id = ?", id).
@@ -128,4 +135,44 @@ func (r *StorageClassRepository) SetCapacity(id uint, capacityBytes, availableBy
 // IDByUID resolves a storage class's uid to its numeric id.
 func (r *StorageClassRepository) IDByUID(uid string) (uint, error) {
 	return idByUID[models.StorageClass](r.db, uid)
+}
+
+// StorageClassUsage is one volume or database instance whose data lives on a class.
+type StorageClassUsage struct {
+	Kind          string     `json:"kind"`
+	ID            uint       `json:"id"`
+	UID           string     `json:"uid"`
+	Name          string     `json:"name"`
+	DisplayName   string     `json:"display_name"`
+	WorkspaceID   uint       `json:"workspace_id"`
+	WorkspaceName string     `json:"workspace_name"`
+	ServerID      uint       `json:"server_id"`
+	ServerName    string     `json:"server_name,omitempty" gorm:"-"`
+	UsedBytes     int64      `json:"used_bytes"`
+	MeasuredAt    *time.Time `json:"measured_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+}
+
+// Usage lists the volumes and database instances on a class, largest first, from the sizes the
+// usage sweeps last stored; it never measures.
+func (r *StorageClassRepository) Usage(name string) ([]StorageClassUsage, error) {
+	var out []StorageClassUsage
+	err := r.db.Raw(`SELECT * FROM (
+		SELECT 'volume' AS kind, v.id, v.uid, v.name, COALESCE(v.display_name, '') AS display_name, v.workspace_id, COALESCE(NULLIF(w.display_name, ''), w.name, '') AS workspace_name,
+			v.server_id, v.used_bytes, v.used_measured_at AS measured_at, v.created_at
+		FROM volumes v LEFT JOIN workspaces w ON w.id = v.workspace_id WHERE v.storage_class_name = ?
+		UNION ALL
+		SELECT 'database', d.id, d.uid, d.name, COALESCE(d.display_name, ''), d.workspace_id, COALESCE(NULLIF(w.display_name, ''), w.name, ''),
+			d.server_id, COALESCE(d.size_bytes, 0), d.size_synced_at, d.created_at
+		FROM database_instances d LEFT JOIN workspaces w ON w.id = d.workspace_id WHERE d.storage_class_name = ?
+	) u ORDER BY used_bytes DESC, name`, name, name).Scan(&out).Error
+	return out, err
+}
+
+// Servers lists the nodes with the size of the disk behind each one's Docker data root, which is
+// where the built-in class keeps its volumes.
+func (r *StorageClassRepository) Servers() ([]models.Server, error) {
+	var out []models.Server
+	err := r.db.Order("id").Find(&out).Error
+	return out, err
 }

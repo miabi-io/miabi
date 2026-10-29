@@ -47,8 +47,8 @@ var (
 	ErrImmutable = errors.New("a storage class name and path cannot be changed after registration; register a new class instead")
 	// ErrBuiltin is returned when an admin tries to delete or re-path the seeded default class.
 	ErrBuiltin = errors.New("the built-in default storage class cannot be modified or deleted")
-	// ErrInUse is returned when deleting a class that volumes still reference.
-	ErrInUse = errors.New("storage class is in use by one or more volumes")
+	// ErrInUse is returned when deleting a class that volumes or databases still reference.
+	ErrInUse = errors.New("storage class is in use")
 	// ErrNameTaken is returned when registering a class whose name is already taken.
 	ErrNameTaken = errors.New("a storage class with this name already exists")
 	// ErrDisabled is returned when creating a volume on a class an admin has turned off.
@@ -130,7 +130,13 @@ func (s *Service) helperImage() string {
 }
 
 func (s *Service) annotate(c *models.StorageClass) {
-	if c == nil || s.serverInfo == nil {
+	if c == nil {
+		return
+	}
+	if c.Builtin {
+		s.fillBuiltin(c)
+	}
+	if s.serverInfo == nil {
 		return
 	}
 	if srv, err := s.serverInfo.Get(c.ServerID); err == nil && srv != nil {
@@ -273,8 +279,8 @@ func (s *Service) Update(id uint, in Input) (*models.StorageClass, error) {
 	return c, nil
 }
 
-// Delete removes a class. The built-in one is permanent, and a class still referenced by volumes is
-// refused: disabling it is how an admin stops new volumes landing there without touching old ones.
+// Delete removes a class. The built-in one is permanent, and a class still referenced by volumes or
+// database instances is refused: disabling it is how an admin stops new volumes landing there without touching old ones.
 func (s *Service) Delete(id uint) error {
 	c, err := s.repo.FindByID(id)
 	if err != nil {
@@ -289,6 +295,12 @@ func (s *Service) Delete(id uint) error {
 	}
 	if n > 0 {
 		return fmt.Errorf("%w: %d volume(s) still use %q — disable it instead", ErrInUse, n, c.Name)
+	}
+	if n, err = s.repo.CountDatabases(c.Name); err != nil {
+		return err
+	}
+	if n > 0 {
+		return fmt.Errorf("%w: %d database(s) still keep their data on %q — disable it instead", ErrInUse, n, c.Name)
 	}
 	for _, u := range s.platformUsers {
 		if who := u.StorageClassUser(c.Name); who != "" {

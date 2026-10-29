@@ -2235,6 +2235,40 @@ export interface StorageClass {
   updated_at?: string
 }
 
+/** One node's disk under the built-in class: the filesystem holding its Docker data root. */
+export interface StorageClassNodeDisk {
+  server_id: number
+  server_name: string
+  is_local: boolean
+  capacity_bytes: number
+  available_bytes: number
+  measured_at?: string
+}
+
+/** A volume or database instance whose data lives on a storage class. */
+export interface StorageClassUsage {
+  kind: 'volume' | 'database'
+  id: number
+  uid: string
+  name: string
+  display_name: string
+  workspace_id: number
+  workspace_name: string
+  server_id: number
+  server_name?: string
+  used_bytes: number
+  measured_at?: string
+  created_at: string
+}
+
+export interface StorageClassDetail extends StorageClass {
+  nodes?: StorageClassNodeDisk[]
+  usage: StorageClassUsage[]
+  used_bytes: number
+  volumes: number
+  databases: number
+}
+
 export interface StorageClassInput {
   name: string
   display_name: string

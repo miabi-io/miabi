@@ -29,6 +29,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/storageclass"
+	"gorm.io/gorm"
 )
 
 // AdminStorageClassHandler manages the disks a platform offers. Every edition may register classes
@@ -92,9 +93,12 @@ func (h *AdminStorageClassHandler) Get(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortBadRequest("invalid storage class id")
 	}
-	sc, err := h.svc.Get(id)
+	sc, err := h.svc.Detail(id)
 	if err != nil {
-		return c.AbortNotFound("storage class not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return c.AbortNotFound("storage class not found")
+		}
+		return c.AbortInternalServerError("failed to load storage class", err)
 	}
 	return ok(c, sc)
 }
