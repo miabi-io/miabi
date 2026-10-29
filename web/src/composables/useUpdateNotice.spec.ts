@@ -18,7 +18,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { describe, it, expect } from 'vitest'
-import { createUpdateNotice } from './useUpdateNotice'
+import { createUpdateNotice, isChunkLoadError, shouldReloadForChunk } from './useUpdateNotice'
 
 function setup(versions: string[]) {
   let t = 0
@@ -69,5 +69,20 @@ describe('update notice', () => {
     t += 60_000
     await notice.check()
     expect(notice.available.value).toBe(false)
+  })
+})
+
+describe('stale chunk handling', () => {
+  it('recognises the browsers\' failed lazy-import messages', () => {
+    expect(isChunkLoadError(new TypeError('Failed to fetch dynamically imported module: /assets/Apps-1a2b.js'))).toBe(true)
+    expect(isChunkLoadError(new TypeError('Importing a module script failed.'))).toBe(true)
+    expect(isChunkLoadError(new Error('error loading dynamically imported module'))).toBe(true)
+    expect(isChunkLoadError(new Error('Request failed with status code 500'))).toBe(false)
+  })
+
+  it('reloads at most once a minute', () => {
+    expect(shouldReloadForChunk(0, 1_000_000)).toBe(true)
+    expect(shouldReloadForChunk(1_000_000 - 30_000, 1_000_000)).toBe(false)
+    expect(shouldReloadForChunk(1_000_000 - 60_000, 1_000_000)).toBe(true)
   })
 })
