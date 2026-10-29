@@ -265,6 +265,11 @@ func (f *fakeEngine) InspectVolume(context.Context, string) (docker.Volume, erro
 	return docker.Volume{}, docker.ErrNotFound
 }
 func (f *fakeEngine) RemoveVolume(context.Context, string, bool) error { return nil }
+func (f *fakeEngine) InspectNetwork(context.Context, string) (docker.NetworkState, error) {
+	return docker.NetworkState{}, docker.ErrNotFound
+}
+func (f *fakeEngine) RemoveNetwork(context.Context, string) error { return nil }
+func (f *fakeEngine) Rootless(context.Context) (bool, error)      { return false, nil }
 
 // The Compose stacks are the other install path, and they drifted apart once already — which is why
 // the goma.yml drift test exists. The split is worth the same guard: a Compose file that quietly puts

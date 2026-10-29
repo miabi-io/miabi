@@ -61,6 +61,7 @@ func registerStackCommands(cli *okapicli.CLI) {
 		String("goma-config", "", "", "Gateway config file, relative to the manifest's directory (default goma.yml)").
 		Bool("registry", "", false, "Enable the built-in container registry").
 		Bool("no-host-proc", "", false, "Do not bind the host's /proc into the control plane (for hosts that refuse the bind; host metrics fall back to the container's /proc)").
+		Bool("ipv6", "", false, "Give the app network and workspace networks IPv6 (dual-stack)").
 		String("registry-host", "", "", "Registry hostname (default registry.<domain>); implies --registry").
 		String("subnet", "", "", "CIDR for the shared `"+stack.DefaultNetwork+"` network — apps and the gateway (default "+stack.DefaultSubnet+")").
 		String("internal-subnet", "", "", "CIDR for the private `"+stack.DefaultInternalNetwork+"` network — control plane, database, cache (default "+stack.DefaultInternalSubnet+")").
@@ -156,6 +157,8 @@ func runInstall(cmd *okapicli.Command) error {
 		InternalSubnet: cmd.GetString("internal-subnet"),
 		Registry:       cmd.GetBool("registry"),
 		NoHostProc:     cmd.GetBool("no-host-proc"),
+		IPv6:           cmd.GetBool("ipv6"),
+		AdminPassword:  os.Getenv(stack.AdminPasswordEnv),
 		Yes:            cmd.GetBool("yes"),
 		DefaultImage:   imageDefault(dc),
 	}, imageUI{})

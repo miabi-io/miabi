@@ -116,6 +116,8 @@ type Descriptor struct {
 // states its own requirements.
 const MinGomaOIDCVersion = "0.14.0"
 
+const MinGomaRedirectHostVersion = "1.2.0"
+
 // secretPath is a secret field and the route to it through nested objects, so a
 // key like session.secret is reachable rather than silently stored in clear.
 type secretPath struct {
@@ -388,6 +390,21 @@ var registry = []Descriptor{
 			{Key: "port", Label: "Port", Type: FieldInt, Help: "Optional target port (e.g. 443)."},
 			{Key: "permanent", Label: "Permanent (301)", Type: FieldBool, Help: "Use 301 instead of 302."},
 		},
+	},
+	{
+		Type:        "redirectHost",
+		DisplayName: "Redirect host (www)",
+		Description: "Redirect to another host, keeping the path and query — add or remove www, or send aliases to one domain.",
+		Category:    CategoryTransform,
+		Fields: []Field{
+			{Key: "www", Label: "www prefix", Type: FieldEnum, Options: []string{"add", "remove"},
+				Help: "add: example.com → www.example.com. remove: www.example.com → example.com."},
+			{Key: "host", Label: "Canonical host", Type: FieldString, Placeholder: "example.com",
+				Help: "Instead of www: send every other host on the route here."},
+			{Key: "permanent", Label: "Permanent (301)", Type: FieldBool, Help: "Use 301 instead of 302."},
+		},
+		MinGatewayVersion: MinGomaRedirectHostVersion,
+		Validate:          validateRedirectHost,
 	},
 	{
 		Type:        "redirect",

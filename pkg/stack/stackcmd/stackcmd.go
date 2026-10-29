@@ -58,7 +58,11 @@ type SetupOptions struct {
 	Image, GatewayImage, RunnerImage, GomaConfig string
 	RegistryHost, Subnet, InternalSubnet         string
 	Registry, NoHostProc, Yes                    bool
-	DefaultImage                                 func() string
+	// IPv6 gives the shared app network and every workspace network a dual-stack address space.
+	IPv6 bool
+	// AdminPassword is the first admin's password; empty generates one. Only a fresh install uses it.
+	AdminPassword string
+	DefaultImage  func() string
 }
 
 // SetupResult reports what a Setup did, so the caller can print its own next-steps hint — the one
@@ -74,6 +78,11 @@ type SetupResult struct {
 // run against an existing manifest it keeps the stored secrets, because a regenerated database
 // password would lock the new control plane out of its own data.
 func Setup(ctx context.Context, svc *stack.Service, path string, o SetupOptions, ui UI) (*SetupResult, error) {
+	if o.AdminPassword != "" {
+		if err := stack.CheckAdminPassword(o.AdminPassword); err != nil {
+			return nil, err
+		}
+	}
 	m, err := stack.Load(path)
 	newInstall := false
 	switch {
@@ -95,6 +104,14 @@ func Setup(ctx context.Context, svc *stack.Service, path string, o SetupOptions,
 	}
 
 	applySetupOptions(m, o)
+	if o.AdminPassword != "" {
+		if newInstall {
+			m.Secrets.AdminPassword = o.AdminPassword
+		} else if o.AdminPassword != m.Secrets.AdminPassword {
+			// The password only seeds the first admin; the account already exists and keeps its own.
+			ui.Warn("%s is ignored: this install already has an admin. Change the password in the panel.", stack.AdminPasswordEnv)
+		}
+	}
 
 	if m.Domain == "" {
 		return nil, errors.New("--domain is required (the panel's public hostname, e.g. miabi.example.com)")
@@ -111,6 +128,10 @@ func Setup(ctx context.Context, svc *stack.Service, path string, o SetupOptions,
 
 	pctx, pcancel := context.WithTimeout(ctx, 90*time.Second)
 	defer pcancel()
+
+	if err := svc.CheckDaemon(pctx); err != nil {
+		return nil, err
+	}
 
 	// A fresh install onto an EXISTING Postgres volume can never work: Postgres keeps the password
 	// its data dir was created with. Nothing downstream catches it (pg_isready does not check
@@ -136,8 +157,19 @@ func Setup(ctx context.Context, svc *stack.Service, path string, o SetupOptions,
 	for _, ref := range []string{m.Images.Miabi, m.Images.Postgres, m.Images.Redis, m.Images.Gateway} {
 		warnFloatingTag(ui, ref)
 	}
+	recreate, err := svc.IPv6Upgrades(pctx, m)
+	if err != nil {
+		return nil, err
+	}
+	for _, n := range recreate {
+		ui.Warn("Network %s will be recreated to turn IPv6 on. Every container on it is detached for a few seconds,\n"+
+			"  so routed apps briefly stop answering. Existing workspace networks stay IPv4; new ones get IPv6.", n)
+	}
 	if !o.Yes && !ui.Confirm("Proceed?") {
 		return nil, errors.New("cancelled")
+	}
+	if len(recreate) > 0 {
+		svc.AllowNetworkRecreate()
 	}
 
 	// Persist the manifest BEFORE creating anything. The secrets are generated here and exist
@@ -155,7 +187,7 @@ func Setup(ctx context.Context, svc *stack.Service, path string, o SetupOptions,
 		return nil, err
 	}
 
-	printResult(ui, m, path, newInstall)
+	printResult(ui, m, path, newInstall, o.AdminPassword != "")
 	return &SetupResult{Manifest: m, Path: path, NewInstall: newInstall}, nil
 }
 
@@ -185,6 +217,10 @@ func applySetupOptions(m *stack.Manifest, o SetupOptions) {
 		off := false
 		m.HostProc = &off
 	}
+	if o.IPv6 {
+		on := true
+		m.Network.IPv6 = &on
+	}
 	// --registry-host implies --registry: naming the host is only meaningful if the registry runs,
 	// and silently ignoring the flag would be worse than assuming.
 	if o.RegistryHost != "" {
@@ -203,7 +239,11 @@ func printPlan(ui UI, m *stack.Manifest, path string) {
 	ui.Printf("  gateway     %s\n", m.Images.Gateway)
 	ui.Printf("  database    %s\n", m.Images.Postgres)
 	ui.Printf("  cache       %s\n", m.Images.Redis)
-	ui.Printf("  network     %s (%s)  — apps + gateway\n", m.Network.Name, m.Network.Subnet)
+	ipv6 := ""
+	if m.Network.IPv6 != nil && *m.Network.IPv6 {
+		ipv6 = " + IPv6"
+	}
+	ui.Printf("  network     %s (%s%s)  — apps + gateway\n", m.Network.Name, m.Network.Subnet, ipv6)
 	ui.Printf("  private     %s (%s)  — control plane, database, cache\n",
 		m.InternalNetwork.Name, m.InternalNetwork.Subnet)
 	if m.Registry.Enabled {
@@ -216,15 +256,20 @@ func printPlan(ui UI, m *stack.Manifest, path string) {
 	ui.Printf("  ports       80, 443 (free)\n\n")
 }
 
-func printResult(ui UI, m *stack.Manifest, path string, newInstall bool) {
+func printResult(ui UI, m *stack.Manifest, path string, newInstall, suppliedPassword bool) {
 	ui.Printf("\n")
 	ui.Success("Miabi is up at %s", m.WebURL)
 
 	if cu := strings.TrimSpace(m.ControlURL); cu != "" && cu != m.WebURL {
 		ui.Printf("\n  Nodes and runners reach it at %s\n", cu)
 	}
-	if newInstall {
-
+	if newInstall && suppliedPassword {
+		// Automated installs capture this output in CI and provisioning logs, so a chosen password is not echoed.
+		ui.Printf("\n  Sign in with:\n    Email      %s\n    Password   the one set in %s\n",
+			m.Secrets.AdminEmail, stack.AdminPasswordEnv)
+		ui.Printf("\n  %s (mode 0600) holds the database password and the encryption key — BACK THAT FILE UP.\n"+
+			"  Without it the encrypted secrets in the database cannot be read back.\n", path)
+	} else if newInstall {
 		ui.Printf("\n  Sign in with:\n    Email      %s\n    Password   %s\n",
 			m.Secrets.AdminEmail, m.Secrets.AdminPassword)
 		ui.Printf("\n  This password is shown only now. It lives in %s (mode 0600),\n"+

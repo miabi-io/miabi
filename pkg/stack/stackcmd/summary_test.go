@@ -36,7 +36,7 @@ func manifestFor(web, control string) *stack.Manifest {
 // makes that guess wrong, not merely slow.
 func TestPrintResultLabelsTheCredentials(t *testing.T) {
 	ui := &recUI{}
-	printResult(ui, manifestFor("https://example.com", ""), "/etc/miabi/miabi.yaml", true)
+	printResult(ui, manifestFor("https://example.com", ""), "/etc/miabi/miabi.yaml", true, false)
 
 	for _, want := range []string{
 		"Email      admin@example.com",
@@ -48,10 +48,22 @@ func TestPrintResultLabelsTheCredentials(t *testing.T) {
 	}
 }
 
+// A password the operator chose is never echoed: automated installs keep this output in their logs.
+func TestPrintResultHidesSuppliedPassword(t *testing.T) {
+	ui := &recUI{}
+	printResult(ui, manifestFor("https://example.com", ""), "/etc/miabi/miabi.yaml", true, true)
+	if ui.said("p@ssw0rd-with-an-at-sign") {
+		t.Errorf("a supplied password was printed\n%s", strings.Join(ui.lines, "\n"))
+	}
+	if !ui.said("Email      admin@example.com") {
+		t.Errorf("summary is missing the admin email\n%s", strings.Join(ui.lines, "\n"))
+	}
+}
+
 // An existing install is not shown a password it was not issued.
 func TestPrintResultOmitsCredentialsOnUpgrade(t *testing.T) {
 	ui := &recUI{}
-	printResult(ui, manifestFor("https://example.com", ""), "/etc/miabi/miabi.yaml", false)
+	printResult(ui, manifestFor("https://example.com", ""), "/etc/miabi/miabi.yaml", false, false)
 	if ui.said("Password") {
 		t.Errorf("an upgrade printed credentials\n%s", strings.Join(ui.lines, "\n"))
 	}
@@ -62,20 +74,20 @@ func TestPrintResultOmitsCredentialsOnUpgrade(t *testing.T) {
 // distinction they then go looking for.
 func TestControlURLShownOnlyWhenItDiffers(t *testing.T) {
 	same := &recUI{}
-	printResult(same, manifestFor("https://example.com", "https://example.com"), "/p", true)
+	printResult(same, manifestFor("https://example.com", "https://example.com"), "/p", true, false)
 	if strings.Count(strings.Join(same.lines, "\n"), "https://example.com") > 1 {
 		t.Errorf("the panel URL was printed twice under two names\n%s", strings.Join(same.lines, "\n"))
 	}
 
 	diff := &recUI{}
-	printResult(diff, manifestFor("https://example.com", "https://control.internal:9000"), "/p", true)
+	printResult(diff, manifestFor("https://example.com", "https://control.internal:9000"), "/p", true, false)
 	if !diff.said("https://control.internal:9000") {
 		t.Errorf("a distinct control URL was not shown\n%s", strings.Join(diff.lines, "\n"))
 	}
 
 	// Empty means "defaults to the web URL", so it is not a second address either.
 	empty := &recUI{}
-	printResult(empty, manifestFor("https://example.com", ""), "/p", true)
+	printResult(empty, manifestFor("https://example.com", ""), "/p", true, false)
 	if empty.said("dial") || empty.said("reach it at") {
 		t.Errorf("an unset control URL was announced\n%s", strings.Join(empty.lines, "\n"))
 	}
@@ -128,7 +140,7 @@ func TestControlHostAdvice(t *testing.T) {
 // expecting Let's Encrypt to validate it, is the opposite of what it is for.
 func TestControlHostIsNotInTheLetsEncryptLine(t *testing.T) {
 	ui := &recUI{}
-	printResult(ui, manifestFor("https://example.com", "https://control.internal:9000"), "/p", true)
+	printResult(ui, manifestFor("https://example.com", "https://control.internal:9000"), "/p", true, false)
 	out := strings.Join(ui.lines, "\n")
 
 	for _, line := range strings.Split(out, "\n") {

@@ -109,6 +109,8 @@ type Service struct {
 	// manifestPath is where miabi.yaml lives, AS THIS PROCESS SEES IT. The gateway's
 	// config sits beside it, so the Service needs to know the directory.
 	manifestPath string
+	// recreateNetworks permits converge to recreate a network to turn IPv6 on; see AllowNetworkRecreate.
+	recreateNetworks bool
 }
 
 func New(dc docker.Client, log func(string, ...any), manifestPath string) *Service {
@@ -805,13 +807,31 @@ func (s *Service) ensureNetwork(ctx context.Context, m *Manifest) error {
 		// Set explicitly either way: a network that inherits the daemon's default follows a setting
 		// nobody made in the manifest, which is how IPv6 ended up latent here.
 		ipv6 := n.cfg.IPv6 != nil && *n.cfg.IPv6
-		_, err := s.dc.EnsureNetworkSpec(ctx, docker.NetworkSpec{
+		spec := docker.NetworkSpec{
 			Name:       n.cfg.Name,
 			Driver:     "bridge",
 			Subnet:     n.cfg.Subnet,
 			EnableIPv6: &ipv6,
 			Labels:     docker.PlatformLabels(n.role, docker.ManagedByMiabi, nil),
-		})
+		}
+		if ipv6 {
+			st, err := s.dc.InspectNetwork(ctx, n.cfg.Name)
+			switch {
+			case errors.Is(err, docker.ErrNotFound):
+			case err != nil:
+				return fmt.Errorf("inspect network %q: %w", n.cfg.Name, err)
+			case !st.EnableIPv6 && s.recreateNetworks:
+				old, off := spec, false
+				old.EnableIPv6 = &off
+				if err := s.recreateNetwork(ctx, spec, old); err != nil {
+					return err
+				}
+				continue
+			case !st.EnableIPv6:
+				s.log("network %s has no IPv6; run `miabi setup --ipv6` to recreate it with IPv6", n.cfg.Name)
+			}
+		}
+		_, err := s.dc.EnsureNetworkSpec(ctx, spec)
 		if err != nil {
 			return fmt.Errorf("ensure network %q: %w", n.cfg.Name, err)
 		}

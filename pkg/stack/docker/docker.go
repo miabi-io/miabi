@@ -46,6 +46,12 @@ type Client interface {
 	// database. Attaching live first makes any recreate order safe.
 	NetworkConnect(ctx context.Context, name, containerID string, aliases []string) error
 	NetworkDisconnect(ctx context.Context, name, containerID string, force bool) error
+	// InspectNetwork returns ErrNotFound when the network does not exist.
+	InspectNetwork(ctx context.Context, name string) (NetworkState, error)
+	RemoveNetwork(ctx context.Context, name string) error
+
+	// Rootless reports whether the daemon runs in rootless mode, which the stack does not support.
+	Rootless(ctx context.Context) (bool, error)
 
 	CreateVolume(ctx context.Context, name string, labels map[string]string, sizeBytes int64) (Volume, error)
 	InspectVolume(ctx context.Context, name string) (Volume, error)

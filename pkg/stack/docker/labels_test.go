@@ -187,3 +187,18 @@ func TestPlatformStackLabelsAreReservedFromUsers(t *testing.T) {
 		t.Error("sanitization dropped a legitimate user label")
 	}
 }
+
+func TestIsRootless(t *testing.T) {
+	for _, tc := range []struct {
+		opts []string
+		want bool
+	}{
+		{[]string{"name=seccomp,profile=builtin", "name=rootless", "name=cgroupns"}, true},
+		{[]string{"name=seccomp,profile=builtin", "name=cgroupns"}, false},
+		{nil, false},
+	} {
+		if got := IsRootless(tc.opts); got != tc.want {
+			t.Errorf("IsRootless(%v) = %v, want %v", tc.opts, got, tc.want)
+		}
+	}
+}

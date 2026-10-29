@@ -43,6 +43,8 @@ import (
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/api/types/registry"
 	"github.com/moby/moby/client"
+
+	stackdocker "github.com/miabi-io/miabi/pkg/stack/docker"
 )
 
 type engineClient struct {
@@ -1145,6 +1147,25 @@ func (e *engineClient) NetworkDisconnect(ctx context.Context, name, containerID 
 		return nil
 	}
 	return err
+}
+
+func (e *engineClient) InspectNetwork(ctx context.Context, name string) (NetworkState, error) {
+	res, err := e.cli.NetworkInspect(ctx, name, client.NetworkInspectOptions{})
+	if cerrdefs.IsNotFound(err) {
+		return NetworkState{}, ErrNotFound
+	}
+	if err != nil {
+		return NetworkState{}, err
+	}
+	return NetworkState{ID: res.Network.ID, EnableIPv6: res.Network.EnableIPv6}, nil
+}
+
+func (e *engineClient) Rootless(ctx context.Context) (bool, error) {
+	res, err := e.cli.Info(ctx, client.InfoOptions{})
+	if err != nil {
+		return false, err
+	}
+	return stackdocker.IsRootless(res.Info.SecurityOptions), nil
 }
 
 func (e *engineClient) ListNetworks(ctx context.Context) ([]Network, error) {

@@ -108,6 +108,34 @@ var presets = []Preset{
 		Rule:        map[string]any{"userAgents": []any{"AhrefsBot", "SemrushBot", "MJ12bot", "python-requests", "curl"}},
 	},
 	{
+		Key:         "redirect-to-www",
+		DisplayName: "Redirect to www",
+		Description: "Send example.com to www.example.com, keeping the path. The route must serve both names.",
+		Type:        "redirectHost",
+		Rule:        map[string]any{"www": "add", "permanent": true},
+	},
+	{
+		Key:         "redirect-to-apex",
+		DisplayName: "Redirect www to the bare domain",
+		Description: "Send www.example.com to example.com, keeping the path. The route must serve both names.",
+		Type:        "redirectHost",
+		Rule:        map[string]any{"www": "remove", "permanent": true},
+	},
+	{
+		Key:         "hsts",
+		DisplayName: "HSTS",
+		Description: "Tell browsers to use HTTPS only for this host for a year.",
+		Type:        "responseHeaders",
+		Rule:        map[string]any{"setHeaders": map[string]any{"Strict-Transport-Security": "max-age=31536000"}},
+	},
+	{
+		Key:         "noindex",
+		DisplayName: "Hide from search engines",
+		Description: "Ask crawlers not to index or follow the site — for staging and preview hosts.",
+		Type:        "responseHeaders",
+		Rule:        map[string]any{"setHeaders": map[string]any{"X-Robots-Tag": "noindex, nofollow"}},
+	},
+	{
 		Key:         "redirect-to-url",
 		DisplayName: "Redirect to a URL",
 		Description: "Send all matched requests to a fixed destination URL. Set the URL after applying.",
@@ -133,7 +161,7 @@ type SeedMiddleware struct {
 	Rule        map[string]any
 }
 
-// defaultSeed is the curated set of policies a new workspace starts with. Both
+// defaultSeed is the curated set of policies a new workspace starts with. All
 // are safe (no effect until attached to a route) and broadly useful; keeping the
 // set as data makes it trivial to tune.
 var defaultSeed = []SeedMiddleware{
@@ -152,6 +180,36 @@ var defaultSeed = []SeedMiddleware{
 		DisplayName: "Force HTTPS",
 		Type:        "redirectScheme",
 		Rule:        map[string]any{"scheme": "https", "permanent": true},
+	},
+	{
+		Name:        "redirect-to-www",
+		DisplayName: "Redirect to www",
+		Type:        "redirectHost",
+		Rule:        map[string]any{"www": "add", "permanent": true},
+	},
+	{
+		Name:        "redirect-to-apex",
+		DisplayName: "Redirect www to the bare domain",
+		Type:        "redirectHost",
+		Rule:        map[string]any{"www": "remove", "permanent": true},
+	},
+	{
+		Name:        "hsts",
+		DisplayName: "HSTS",
+		Type:        "responseHeaders",
+		Rule:        map[string]any{"setHeaders": map[string]any{"Strict-Transport-Security": "max-age=31536000"}},
+	},
+	{
+		Name:        "rate-limit",
+		DisplayName: "Rate limit (100/min)",
+		Type:        "rateLimit",
+		Rule:        map[string]any{"unit": "minute", "requestsPerUnit": 100, "burst": 50, "banDuration": "10m"},
+	},
+	{
+		Name:        "noindex",
+		DisplayName: "Hide from search engines",
+		Type:        "responseHeaders",
+		Rule:        map[string]any{"setHeaders": map[string]any{"X-Robots-Tag": "noindex, nofollow"}},
 	},
 }
 
