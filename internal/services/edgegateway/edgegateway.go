@@ -35,6 +35,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/platformimage"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
+	"github.com/miabi-io/miabi/pkg/bundled"
 	"github.com/miabi-io/miabi/pkg/stack/selfcontainer"
 	"gopkg.in/yaml.v3"
 )
@@ -62,7 +63,7 @@ const (
 	helperImage = "busybox:1.36"
 	// redisImageDefault is the per-node gateway Redis image (overridable via the
 	// platform image catalog).
-	redisImageDefault = "redis:7-alpine"
+	redisImageDefault = bundled.RedisImage
 	configPath        = "/etc/goma"
 	// DefaultConfigFile is Goma Gateway's default config path inside the container.
 	DefaultConfigFile = configPath + "/goma.yml"

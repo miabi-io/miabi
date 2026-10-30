@@ -16,10 +16,14 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-
 package bundled
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"regexp"
+	"testing"
+)
 
 func TestGatewayVersion(t *testing.T) {
 	defer func(v string) { gatewayVersion = v }(gatewayVersion)
@@ -33,5 +37,29 @@ func TestGatewayVersion(t *testing.T) {
 	gatewayVersion = "v1.2.3"
 	if got := GatewayImage(); got != "jkaninda/goma-gateway:1.2.3" {
 		t.Errorf("GatewayImage() = %q", got)
+	}
+}
+
+// The Compose files cannot import these constants, so they are held to them here.
+func TestComposeFilesPinTheBundledDataStores(t *testing.T) {
+	image := regexp.MustCompile(`(?m)^\s*image:\s*((?:postgres|redis):\S+)`)
+	for _, f := range []string{
+		filepath.Join("..", "..", "compose.dev.yaml"),
+		filepath.Join("..", "..", "examples", "compose", "compose.yaml"),
+		filepath.Join("..", "..", "examples", "compose", "compose.traefik.yaml"),
+	} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := image.FindAllStringSubmatch(string(b), -1)
+		if len(found) != 2 {
+			t.Errorf("%s: want a postgres and a redis image, found %v", f, found)
+		}
+		for _, m := range found {
+			if m[1] != PostgresImage && m[1] != RedisImage {
+				t.Errorf("%s pins %s; pkg/bundled says %s and %s", f, m[1], PostgresImage, RedisImage)
+			}
+		}
 	}
 }
