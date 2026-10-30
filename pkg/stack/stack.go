@@ -25,13 +25,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/miabi-io/miabi/pkg/bundled"
 	"net"
 	"net/url"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/miabi-io/miabi/pkg/bundled"
 	"github.com/miabi-io/miabi/pkg/stack/docker"
 	"github.com/miabi-io/miabi/pkg/stack/saferollout"
 )
@@ -83,8 +83,8 @@ var DefaultGatewayImage = bundled.GatewayImage()
 // rather than tracking whatever :latest happens to be. NOTE the tags carry no leading "v": git tags do
 // (v0.11.0), Docker tags do not — the git form produced an image reference that does not exist.
 const (
-	DefaultPostgresImage = "postgres:17-alpine"
-	DefaultRedisImage    = "redis:7-alpine"
+	DefaultPostgresImage = bundled.PostgresImage
+	DefaultRedisImage    = bundled.RedisImage
 	DefaultRunnerImage   = "miabi/runner:latest"
 	DefaultNetwork       = "miabi-proxy"
 	// LegacyNetwork is the proxy network's name before it became DefaultNetwork. Installs created

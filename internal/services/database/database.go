@@ -44,6 +44,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/quota"
 	"github.com/miabi-io/miabi/internal/slug"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
+	"github.com/miabi-io/miabi/pkg/bundled"
 )
 
 var (
@@ -87,7 +88,7 @@ type engineSpec struct {
 var specs = map[models.DBEngine]engineSpec{
 	models.DBEnginePostgres: {
 		image:          func(v string) string { return "postgres:" + v },
-		defaultVersion: "17-alpine", port: 5432, dataDir: "/var/lib/postgresql/data",
+		defaultVersion: bundled.PostgresVersion, port: 5432, dataDir: "/var/lib/postgresql/data",
 		minMemoryMB: 256, defaultMemoryMB: 512, minMilliCPU: 250, defaultMilliCPU: 500,
 		adminUser: "postgres",
 		adminEnv: func(u, p string) []string {
@@ -110,7 +111,7 @@ var specs = map[models.DBEngine]engineSpec{
 	},
 	models.DBEngineRedis: {
 		image:          func(v string) string { return "redis:" + v },
-		defaultVersion: "7-alpine", port: 6379, dataDir: "/data",
+		defaultVersion: bundled.RedisVersion, port: 6379, dataDir: "/data",
 		minMemoryMB: 64, defaultMemoryMB: 256, minMilliCPU: 100, defaultMilliCPU: 250,
 		adminEnv: func(u, p string) []string { return nil },
 		cmd:      func(p string) []string { return []string{"redis-server", "--requirepass", p} },
@@ -414,7 +415,7 @@ func engineImageKey(engine models.DBEngine) string {
 // from the deployment-config catalog and the tag from the requested version (falling back to the
 // configured default tag). Returns the image ref and the effective tag.
 func (s *Service) resolveEngineImage(spec engineSpec, engine models.DBEngine, version string) (image, tag string) {
-	ref := spec.image(spec.defaultVersion) // built-in default, e.g. "postgres:17-alpine"
+	ref := spec.image(spec.defaultVersion) // built-in default, e.g. bundled.PostgresImage
 	if s.images != nil {
 		if r := s.images.Ref(engineImageKey(engine)); r != "" {
 			ref = r

@@ -16,7 +16,6 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-
 // Package bundled names the component versions a Miabi build provisions. Release builds set them
 // from versions.miabi.io with -ldflags -X, so a component bump needs no code change; the fallbacks
 // here are what a development build uses.
@@ -45,3 +44,11 @@ func GatewayVersion() string {
 
 // GatewayImage is the Goma Gateway image this build provisions.
 func GatewayImage() string { return "jkaninda/goma-gateway:" + GatewayVersion() }
+
+const (
+	PostgresVersion = "17-alpine"
+	RedisVersion    = "7-alpine"
+
+	PostgresImage = "postgres:" + PostgresVersion
+	RedisImage    = "redis:" + RedisVersion
+)

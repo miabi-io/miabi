@@ -86,10 +86,10 @@ type Entry struct {
 // Gateway/relay defaults are seeded from config at construction (see New).
 func baseCatalog() []Entry {
 	return []Entry{
-		{KeyPostgres, "PostgreSQL", "Databases", "postgres:17-alpine", "Managed PostgreSQL server"},
+		{KeyPostgres, "PostgreSQL", "Databases", bundled.PostgresImage, "Managed PostgreSQL server"},
 		{KeyMySQL, "MySQL", "Databases", "mysql:8.4", "Managed MySQL server"},
 		{KeyMariaDB, "MariaDB", "Databases", "mariadb:11", "Managed MariaDB server"},
-		{KeyRedis, "Redis", "Databases", "redis:7-alpine", "Managed Redis server"},
+		{KeyRedis, "Redis", "Databases", bundled.RedisImage, "Managed Redis server"},
 		{KeyMongoDB, "MongoDB", "Databases", "mongo:7.0", "Managed MongoDB server"},
 		{KeyLibSQL, "libSQL", "Databases", "ghcr.io/tursodatabase/libsql-server:latest", "Managed libSQL (sqld) server"},
 		{KeyBackupPostgres, "PostgreSQL backup (pg-bkup)", "Backups", DefaultPgBkup, "Backup/restore tool for PostgreSQL"},
