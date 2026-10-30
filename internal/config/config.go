@@ -694,7 +694,7 @@ func New() *Config {
 		AdminUnlock:                goutils.EnvBool("MIABI_ADMIN_UNLOCK", false),
 		KeyRotateMonths:            goutils.EnvInt("MIABI_KEY_ROTATE_MONTHS", 6),
 		ProxyNetwork:               goutils.Env("MIABI_PROXY_NETWORK", goutils.Env("MIABI_GOMA_NETWORK", "miabi-proxy")),
-		InternalNetwork:            goutils.Env("MIABI_INTERNAL_NETWORK", "miabi-proxy"),
+		InternalNetwork:            goutils.Env("MIABI_INTERNAL_NETWORK", "miabi-internal"),
 		APIKeyScopeEnforcement:     goutils.Env("MIABI_API_KEY_SCOPE_ENFORCEMENT", ""),
 		ControlURL:                 goutils.Env("MIABI_CONTROL_URL", goutils.Env("MIABI_API_URL", "")),
 		RegistrationEnabled:        goutils.EnvBool("MIABI_REGISTRATION_ENABLED", false),
