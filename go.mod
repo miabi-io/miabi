@@ -5,10 +5,10 @@ go 1.27.3
 require (
 	filippo.io/age v1.3.2
 	github.com/alicebob/miniredis/v2 v2.39.0
-	github.com/aws/aws-sdk-go-v2 v1.47.3
+	github.com/aws/aws-sdk-go-v2 v1.47.4
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.9
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.3
-	github.com/aws/smithy-go v1.28.5
+	github.com/aws/smithy-go v1.28.6
 	github.com/axiomhq/hyperloglog v0.3.0
 	github.com/containerd/errdefs v1.0.0
 	github.com/crewjam/saml v0.5.1
