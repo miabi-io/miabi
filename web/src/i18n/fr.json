@@ -1869,7 +1869,9 @@
     "conn": {
       "connected": "Connecté",
       "failed": "Échec de la connexion",
-      "unchecked": "Pas encore vérifié"
+      "unchecked": "Pas encore vérifié",
+      "checkedAt": "vérifié le {when}",
+      "uncheckedHint": "Pas encore vérifié : utilisez Tester pour vérifier cet identifiant."
     },
     "connection": "Connexion",
     "displayNameHint": "Le libellé affiché dans la console. Laissez vide pour utiliser le nom.",
@@ -3443,7 +3445,7 @@
     "compressionHint": "Les réponses sont compressées pour les clients qui le prennent en charge. Décochez compression, ou définissez-y des chemins exclus, pour les pages qui affichent une saisie utilisateur à côté d’un secret comme un jeton CSRF.",
     "noMiddlewaresDefinedYet": "Aucun middleware défini.",
     "noMiddlewaresHint": "Aucun middleware défini dans cet espace de travail. {link} pour l’attacher ici.",
-    "noPublicAddressHint": "Aucune adresse publique n’est définie pour le nœud qui sert cette route. Définissez son {field} sur la page du nœud pour que Miabi puisse afficher l’enregistrement à créer.",
+    "noPublicAddressHint": "Aucune adresse publique n’est définie pour l’emplacement qui sert cette route. Définissez son {field} dans Admin → Clusters pour que Miabi puisse afficher les enregistrements à créer.",
     "openEditor": "Ouvrir l’éditeur",
     "optional": "(facultatif)",
     "optionalDefaultsToTheApp": "(facultatif — le port de l’application par défaut)",
@@ -3451,7 +3453,7 @@
     "overview": "Vue d’ensemble",
     "path": "Chemin",
     "previewTextHint": "Les navigateurs arrivent ici : l’en-tête {header} qu’ils envoient ne correspond à aucun des formats structurés.",
-    "publicIp": "IP publique",
+    "publicIp": "adresse publique",
     "removeHost": "Supprimer l’hôte",
     "responseWhileParked": "Réponse pendant la mise en pause",
     "rewrite": "Réécriture",

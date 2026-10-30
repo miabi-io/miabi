@@ -111,11 +111,13 @@ type Route struct {
 	// HasCustomCert is a transient flag for responses (never persisted).
 	HasCustomCert bool `json:"has_custom_cert" gorm:"-"`
 
-	// DNSTarget / DNSHostname are the public address an A/AAAA (or CNAME) record
-	// for this route's hosts should point to — the gateway that terminates the
-	// route. Transient, populated on read.
-	DNSTarget   string `json:"dns_target,omitempty" gorm:"-"`
-	DNSHostname string `json:"dns_hostname,omitempty" gorm:"-"`
+	// DNSTarget / DNSTargetIPv6 / DNSHostname are the public address this route's hosts should point to — the
+	// gateway that terminates the route. DNSTarget is the IPv4 address, or the IPv6 one when there is none.
+	// DNSRecords are the records that do it, the ones Miabi writes for a managed domain. Transient, populated on read.
+	DNSTarget     string          `json:"dns_target,omitempty" gorm:"-"`
+	DNSTargetIPv6 string          `json:"dns_target_ipv6,omitempty" gorm:"-"`
+	DNSHostname   string          `json:"dns_hostname,omitempty" gorm:"-"`
+	DNSRecords    []AddressRecord `json:"dns_records,omitempty" gorm:"-"`
 
 	// Backends are the actual upstream endpoints (DNS aliases) the gateway uses for this route.
 	// Transient, populated on read so the UI shows the real backend.

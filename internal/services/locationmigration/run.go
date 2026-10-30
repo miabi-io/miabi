@@ -727,9 +727,7 @@ func (s *Service) writeReport(m *models.LocationMigration, app *models.Applicati
 		m.Report.Add("generated-url", u, "created", "")
 	}
 	if len(m.Plan.CustomDomains) > 0 {
-		ip, host := s.Routes.DNSTarget(app)
-		target := firstNonEmpty(host, ip)
-		if target != "" {
+		if target := s.Routes.DNSTarget(app).String(); target != "" {
 			m.Report.Note(fmt.Sprintf("Domains whose DNS Miabi does not manage must now point at %s: %v. Records Miabi manages were updated.", target, m.Plan.CustomDomains))
 		}
 	}

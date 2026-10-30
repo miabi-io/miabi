@@ -23,6 +23,7 @@
 package route
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -80,10 +81,10 @@ type Service struct {
 	wsPolicy    WorkspacePolicy
 	// suspended reports a workspace a platform admin suspended; its routes then serve a notice.
 	suspended func(workspaceID uint) bool
-	dnsAddr     DNSAddresser
-	reloader    EdgeReloader
-	cluster     ClusterCap
-	external    ExternalDomains
+	dnsAddr   DNSAddresser
+	reloader  EdgeReloader
+	cluster   ClusterCap
+	external  ExternalDomains
 	// externalCerts serves a cluster's generated URLs from one certificate; nil leaves each its own.
 	externalCerts ExternalCertificates
 }
@@ -92,7 +93,7 @@ type Service struct {
 type ClusterCap interface {
 	OwnGateway(clusterID uint) (*models.Cluster, bool)
 	// IngressAddress is where a cluster's public DNS records point; id 0 is the default cluster.
-	IngressAddress(clusterID uint) (ip, hostname string)
+	IngressAddress(clusterID uint) models.PublicAddress
 	IsDefaultCluster(clusterID uint) bool
 }
 
@@ -114,7 +115,7 @@ func (s *Service) SetEdgeReloader(r EdgeReloader) { s.reloader = r }
 // under a verified, provider-connected domain. Injected after construction; nil disables app-address
 // automation. Implemented by the dnsprovider service.
 type DNSAddresser interface {
-	ReconcileAppAddresses(ctx context.Context, workspaceID, appID uint, hosts []string, ip, hostname string) error
+	ReconcileAppAddresses(ctx context.Context, workspaceID, appID uint, hosts []string, target models.PublicAddress) error
 }
 
 // SetDNSAddresser wires app-address DNS automation (nil-safe; nil = off).
@@ -849,7 +850,7 @@ func (s *Service) RemoveAppRoutes(ctx context.Context, appID uint) error {
 			wsID = app.WorkspaceID
 		}
 		if wsID != 0 {
-			_ = s.dnsAddr.ReconcileAppAddresses(ctx, wsID, appID, nil, "", "")
+			_ = s.dnsAddr.ReconcileAppAddresses(ctx, wsID, appID, nil, models.PublicAddress{})
 		}
 	}
 	if len(routes) == 0 {
@@ -1077,24 +1078,16 @@ func (s *Service) reconcileAppDNS(ctx context.Context, app *models.Application, 
 	if s.dnsAddr == nil {
 		return
 	}
-	hosts := make([]string, 0)
-	for i := range routes {
-		if !routes[i].Enabled {
-			continue
-		}
-		hosts = append(hosts, routes[i].Hosts...)
-	}
-	ip, hostname := s.dnsTarget(app)
-	if err := s.dnsAddr.ReconcileAppAddresses(ctx, app.WorkspaceID, app.ID, hosts, ip, hostname); err != nil {
+	if err := s.dnsAddr.ReconcileAppAddresses(ctx, app.WorkspaceID, app.ID, routedHosts(routes), s.dnsTarget(app)); err != nil {
 		logger.Warn("dns app-address reconcile failed", "app", app.ID, "error", err)
 	}
 }
 
 // dnsTarget resolves the public address a route's hosts should point at: the address of the cluster whose gateway
 // terminates the route. Apps the control-plane gateway serves use the default cluster's address.
-func (s *Service) dnsTarget(app *models.Application) (ip, hostname string) {
+func (s *Service) dnsTarget(app *models.Application) models.PublicAddress {
 	if s.cluster == nil {
-		return "", ""
+		return models.PublicAddress{}
 	}
 	clusterID := models.DefaultClusterID
 	if c, ok := s.clusterGateway(app.ClusterID); ok {
@@ -1102,11 +1095,22 @@ func (s *Service) dnsTarget(app *models.Application) (ip, hostname string) {
 	} else if id, ok := s.gatewayServer(app); ok {
 		srv, err := s.servers.FindByID(id)
 		if err != nil {
-			return "", ""
+			return models.PublicAddress{}
 		}
 		clusterID = srv.ClusterID
 	}
 	return s.cluster.IngressAddress(clusterID)
+}
+
+// routedHosts are the hosts of an app's enabled routes, the names its public DNS records cover.
+func routedHosts(routes []models.Route) []string {
+	hosts := make([]string, 0)
+	for i := range routes {
+		if routes[i].Enabled {
+			hosts = append(hosts, routes[i].Hosts...)
+		}
+	}
+	return hosts
 }
 
 // enrichDNS populates a route's transient DNS-target + backend fields for
@@ -1116,7 +1120,17 @@ func (s *Service) enrichDNS(rt *models.Route) {
 	if err != nil {
 		return
 	}
-	rt.DNSTarget, rt.DNSHostname = s.dnsTarget(app)
+	addr := s.dnsTarget(app)
+	rt.DNSTarget, rt.DNSTargetIPv6, rt.DNSHostname = cmp.Or(addr.IPv4, addr.IPv6), addr.IPv6, addr.Hostname
+	// A www host's record depends on whether its bare name is routed too, by this route or another of the app.
+	routed := rt.Hosts
+	if siblings, err := s.routes.ListByApp(app.ID); err == nil {
+		routed = append(routedHosts(siblings), rt.Hosts...)
+	}
+	rt.DNSRecords = nil
+	for _, h := range rt.Hosts {
+		rt.DNSRecords = append(rt.DNSRecords, addr.AddressRecords(h, routed, false)...)
+	}
 	rt.Backends = s.displayBackends(app, routePort(rt, app))
 }
 

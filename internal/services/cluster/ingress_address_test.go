@@ -50,8 +50,15 @@ func TestEveryClusterHasAnEditablePublicAddress(t *testing.T) {
 	if _, err := s.UpdateCluster(models.DefaultClusterID, ClusterPatch{IngressIP: &ip, IngressHostname: &host}); err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	if gotIP, gotHost := s.IngressAddress(models.DefaultClusterID); gotIP != "203.0.113.9" || gotHost != "edge.example.com" {
-		t.Errorf("default cluster address = %q, %q; want the normalized IP and hostname", gotIP, gotHost)
+	if got := s.IngressAddress(models.DefaultClusterID); got.IPv4 != "203.0.113.9" || got.Hostname != "edge.example.com" {
+		t.Errorf("default cluster address = %+v; want the normalized IP and hostname", got)
+	}
+	v6 := "2001:DB8::9"
+	if _, err := s.UpdateCluster(models.DefaultClusterID, ClusterPatch{IngressIPv6: &v6}); err != nil {
+		t.Fatalf("update ipv6: %v", err)
+	}
+	if got := s.IngressAddress(models.DefaultClusterID); got.IPv4 != "203.0.113.9" || got.IPv6 != "2001:db8::9" {
+		t.Errorf("setting the IPv6 address = %+v; want it beside the IPv4 one", got)
 	}
 	if store.def.IngressIP != "203.0.113.9" {
 		t.Errorf("stored IP = %q", store.def.IngressIP)
@@ -85,6 +92,11 @@ func TestAClusterLearnsItsAddressOnlyFromItsIngressNode(t *testing.T) {
 	s.LearnIngressIP(32, "203.0.113.32")
 	if got := store.others[3].IngressIP; got != "192.0.2.3" {
 		t.Errorf("a swarm member that is not the ingress node set the address: %q", got)
+	}
+	store.others[2] = models.Cluster{ID: 2, Name: "frankfurt", Mode: models.ClusterModeStandalone, ManagerServerID: 21, IngressServerID: 21}
+	s.LearnIngressIP(21, "[2001:db8::21]:4711")
+	if got := store.others[2]; got.IngressIPv6 != "2001:db8::21" || got.IngressIP != "" {
+		t.Errorf("an IPv6 source address = %q / %q, want it learned as the IPv6 address", got.IngressIP, got.IngressIPv6)
 	}
 	s.LearnIngressIP(1, "203.0.113.1")
 	if store.def.IngressIP != "" {

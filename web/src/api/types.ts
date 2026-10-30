@@ -1859,8 +1859,12 @@ export interface Route {
   status_reason?: string
   synced_at?: string | null
   has_custom_cert: boolean
+  // The IPv4 address, or the IPv6 one when there is none.
   dns_target?: string
+  dns_target_ipv6?: string
   dns_hostname?: string
+  // The records that point this route's hosts at its gateway: what Miabi writes for a managed domain.
+  dns_records?: AddressRecord[]
   // Actual upstream endpoints the gateway uses. Populated on read.
   backends?: string[]
   created_at?: string
@@ -2717,6 +2721,13 @@ export type SwarmRole = 'leader' | 'manager' | 'worker' | 'standalone'
 
 export type ClusterMode = 'standalone' | 'swarm'
 
+/** One DNS record pointing a host at a public address. */
+export interface AddressRecord {
+  type: 'A' | 'AAAA' | 'CNAME'
+  name: string
+  value: string
+}
+
 // Cluster is a deploy target: nodes that share private networking and one ingress.
 // Tenants see it as a location.
 /** Who may place into a cluster: everyone, platform admins only, or one organization. */
@@ -2732,7 +2743,11 @@ export interface Cluster {
   is_default: boolean
   manager_server_id: number
   ingress_server_id: number
+  /** Public IPv4 address DNS records point at (A records). */
   ingress_ip?: string
+  /** Public IPv6 address DNS records point at (AAAA records). */
+  ingress_ipv6?: string
+  /** CNAME target, used only when the cluster has no IP. */
   ingress_hostname?: string
   visibility: ClusterVisibility
   // Set together with visibility "organization": the tenant this location is dedicated to.

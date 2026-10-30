@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -151,17 +152,17 @@ func (s *Service) Reconcile(ctx context.Context) error {
 
 // ReconcileAppAddresses makes an app's A/AAAA/CNAME records match its routed hosts, pointing at the
 // gateway's public address. Only hosts under a verified, provider-connected domain are managed; records
-// for this app no longer in hosts are removed. Passing none removes them all. Best-effort per record.
-func (s *Service) ReconcileAppAddresses(ctx context.Context, workspaceID, appID uint, hosts []string, ip, hostname string) error {
-	// Build the desired set keyed by the ledger key (domainID|name|type).
+// for this app no longer wanted are removed. Passing none removes them all. Best-effort per record.
+func (s *Service) ReconcileAppAddresses(ctx context.Context, workspaceID, appID uint, hosts []string, target models.PublicAddress) error {
 	type want struct {
 		domain *models.Domain
 		rec    dns.Record
 	}
 	desired := map[string]want{}
+	order := make([]string, 0)
 	domByID := map[uint]*models.Domain{}
 	for _, h := range hosts {
-		h = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(h)), ".")
+		h = models.NormalizeHost(h)
 		if h == "" || strings.HasPrefix(h, "*") {
 			continue // skip empty + wildcard hosts (wildcards are a cert concern)
 		}
@@ -169,12 +170,14 @@ func (s *Service) ReconcileAppAddresses(ctx context.Context, workspaceID, appID 
 		if d == nil {
 			continue // not under a managed domain
 		}
-		rec := addressRecord(h, d.Name, ip, hostname)
-		if rec.Type == "" {
-			continue // no usable target (e.g. CNAME at apex, or no public address)
-		}
 		domByID[d.ID] = d
-		desired[ledgerKey(d.ID, rec.Name, rec.Type)] = want{domain: d, rec: rec}
+		for _, rec := range addressRecords(h, d.Name, hosts, target) {
+			key := ledgerKey(d.ID, rec.Name, rec.Type)
+			if _, dup := desired[key]; !dup {
+				order = append(order, key)
+			}
+			desired[key] = want{domain: d, rec: rec}
+		}
 	}
 
 	provByID := map[uint]dns.Provider{}
@@ -193,28 +196,29 @@ func (s *Service) ReconcileAppAddresses(ctx context.Context, workspaceID, appID 
 		return p
 	}
 
-	for _, w := range desired {
-		prov := providerFor(w.domain)
-		if prov == nil {
-			continue
+	// A www alias follows its bare name only when that name will point here: one held by a record Miabi did not
+	// create would carry www away with it, so www keeps address records of its own instead.
+	if target.HasIP() {
+		for _, key := range slices.Clone(order) {
+			w := desired[key]
+			if w.rec.Type != "CNAME" {
+				continue
+			}
+			prov := providerFor(w.domain)
+			bare := strings.TrimSuffix(w.rec.Value, ".")
+			if prov == nil || s.bareNameFree(ctx, prov, w.domain, bare, target) {
+				continue
+			}
+			delete(desired, key)
+			for _, rec := range addressRecords(w.rec.Name, w.domain.Name, nil, target) {
+				k := ledgerKey(w.domain.ID, rec.Name, rec.Type)
+				order = append(order, k)
+				desired[k] = want{domain: w.domain, rec: rec}
+			}
 		}
-		if err := s.guardConflict(ctx, prov, w.domain.ID, w.domain.Name, w.rec); err != nil {
-			logger.Warn("dns app-address: conflict, skipping", "host", w.rec.Name, "error", err)
-			continue
-		}
-		if err := prov.SetRecord(ctx, w.domain.Name, w.rec); err != nil {
-			logger.Warn("dns app-address: set failed", "host", w.rec.Name, "error", err)
-			s.markError(*w.domain.DNSProviderID, err)
-			continue
-		}
-		s.markOK(*w.domain.DNSProviderID)
-		appIDCopy := appID
-		_ = s.records.Upsert(&models.DNSRecord{
-			DomainID: w.domain.ID, Name: w.rec.Name, Type: w.rec.Type, Value: w.rec.Value,
-			Purpose: models.DNSRecordPurposeAppAddress, AppID: &appIDCopy,
-		})
 	}
 
+	// Stale records go first: a name switching between A/AAAA and CNAME cannot hold both at once.
 	existing, err := s.records.ListByApp(appID)
 	if err != nil {
 		return err
@@ -241,7 +245,43 @@ func (s *Service) ReconcileAppAddresses(ctx context.Context, workspaceID, appID 
 		}
 		_ = s.records.Delete(r.ID)
 	}
+
+	for _, key := range order {
+		w, ok := desired[key]
+		if !ok {
+			continue
+		}
+		prov := providerFor(w.domain)
+		if prov == nil {
+			continue
+		}
+		if err := s.guardConflict(ctx, prov, w.domain.ID, w.domain.Name, w.rec); err != nil {
+			logger.Warn("dns app-address: conflict, skipping", "host", w.rec.Name, "type", w.rec.Type, "error", err)
+			continue
+		}
+		if err := prov.SetRecord(ctx, w.domain.Name, w.rec); err != nil {
+			logger.Warn("dns app-address: set failed", "host", w.rec.Name, "type", w.rec.Type, "error", err)
+			s.markError(*w.domain.DNSProviderID, err)
+			continue
+		}
+		s.markOK(*w.domain.DNSProviderID)
+		appIDCopy := appID
+		_ = s.records.Upsert(&models.DNSRecord{
+			DomainID: w.domain.ID, Name: w.rec.Name, Type: w.rec.Type, Value: w.rec.Value,
+			Purpose: models.DNSRecordPurposeAppAddress, AppID: &appIDCopy,
+		})
+	}
 	return nil
+}
+
+// bareNameFree reports whether Miabi may point bare at target: no record it did not create stands in the way.
+func (s *Service) bareNameFree(ctx context.Context, prov dns.Provider, d *models.Domain, bare string, target models.PublicAddress) bool {
+	for _, rec := range addressRecords(bare, d.Name, nil, target) {
+		if s.guardConflict(ctx, prov, d.ID, d.Name, rec) != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // domainForHost returns the longest verified, provider-connected domain that host
@@ -267,22 +307,14 @@ func (s *Service) domainForHost(workspaceID uint, host string) *models.Domain {
 	return best
 }
 
-// addressRecord builds the A/AAAA (preferred, from ip) or CNAME (from hostname)
-// record for a host. CNAME is never used at the zone apex (DNS forbids it). Empty
-// Type means "no usable target".
-func addressRecord(host, zone, ip, hostname string) dns.Record {
-	if ip != "" {
-		typ := "A"
-		if strings.Contains(ip, ":") {
-			typ = "AAAA"
-		}
-		return dns.Record{Type: typ, Name: host, Value: ip, TTL: managedTTL}
+// addressRecords builds the records that point host, under zone, at target; see models.PublicAddress.AddressRecords.
+func addressRecords(host, zone string, routed []string, target models.PublicAddress) []dns.Record {
+	planned := target.AddressRecords(host, routed, strings.EqualFold(host, zone))
+	out := make([]dns.Record, 0, len(planned))
+	for _, r := range planned {
+		out = append(out, dns.Record{Type: r.Type, Name: r.Name, Value: r.Value, TTL: managedTTL})
 	}
-	if hostname != "" && !strings.EqualFold(host, zone) {
-		v := strings.TrimSuffix(hostname, ".") + "."
-		return dns.Record{Type: "CNAME", Name: host, Value: v, TTL: managedTTL}
-	}
-	return dns.Record{}
+	return out
 }
 
 func ledgerKey(domainID uint, name, typ string) string {
@@ -290,8 +322,9 @@ func ledgerKey(domainID uint, name, typ string) string {
 }
 
 // guardConflict refuses to overwrite a record at the managed name that Miabi did not create. A ledgered
-// record (ours) or a matching value is fine; a different value with no ledger entry is a conflict. A
-// provider read error does not block (best-effort — SetRecord still runs).
+// record (ours) or a matching value is fine; a different value with no ledger entry is a conflict, and so
+// is any record beside a CNAME, which DNS lets share its name with nothing. A provider read error does not
+// block (best-effort — SetRecord still runs).
 func (s *Service) guardConflict(ctx context.Context, prov dns.Provider, domainID uint, zone string, want dns.Record) error {
 	if _, err := s.records.Find(domainID, want.Name, want.Type); err == nil {
 		return nil // we already own this record
@@ -302,11 +335,29 @@ func (s *Service) guardConflict(ctx context.Context, prov dns.Provider, domainID
 	}
 	wantRel := relName(want.Name, zone)
 	for _, r := range existing {
-		if strings.EqualFold(relName(r.Name, zone), wantRel) && strings.EqualFold(r.Type, want.Type) && r.Value != want.Value {
-			return fmt.Errorf("%w: a %s record at %q already exists and was not created by Miabi", ErrConflict, want.Type, want.Name)
+		if !strings.EqualFold(relName(r.Name, zone), wantRel) {
+			continue
+		}
+		sameType := strings.EqualFold(r.Type, want.Type)
+		if sameType && (r.Value == want.Value || strings.EqualFold(want.Type, "CNAME") && sameTarget(r.Value, want.Value)) {
+			continue
+		}
+		if sameType || cnameClash(r.Type, want.Type) {
+			return fmt.Errorf("%w: a %s record at %q already exists and was not created by Miabi", ErrConflict, r.Type, want.Name)
 		}
 	}
 	return nil
+}
+
+// cnameClash reports two record types that cannot share a name: a CNAME and an address record.
+func cnameClash(have, want string) bool {
+	isAddr := func(t string) bool { return strings.EqualFold(t, "A") || strings.EqualFold(t, "AAAA") }
+	return (strings.EqualFold(want, "CNAME") && isAddr(have)) || (strings.EqualFold(have, "CNAME") && isAddr(want))
+}
+
+// sameTarget compares CNAME targets the way DNS does: with or without the final dot, in any case.
+func sameTarget(a, b string) bool {
+	return strings.EqualFold(strings.TrimSuffix(a, "."), strings.TrimSuffix(b, "."))
 }
 
 // relName reduces a possibly-FQDN name to its label relative to zone, so a

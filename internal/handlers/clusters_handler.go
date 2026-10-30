@@ -120,9 +120,11 @@ type UpdateClusterRequest struct {
 		// ServiceEndpointMode is how service apps are reached by name: "vip", or "dnsrr" on hosts that cannot run
 		// IPVS, such as LXC containers. Running services switch in place.
 		ServiceEndpointMode string `json:"service_endpoint_mode" enum:"vip,dnsrr"`
-		// IngressIP and IngressHostname are where the location's public DNS records point: its gateway, or a load
-		// balancer in front of it. The hostname is used only when there is no IP. Empty clears them.
+		// IngressIP (IPv4), IngressIPv6 and IngressHostname are where the location's public DNS records point: its
+		// gateway, or a load balancer in front of it. Each IP gets its own A or AAAA record; the hostname is a CNAME
+		// target used only when there is no IP. Empty clears one.
 		IngressIP       *string `json:"ingress_ip"`
+		IngressIPv6     *string `json:"ingress_ipv6"`
 		IngressHostname *string `json:"ingress_hostname"`
 		// Acknowledge confirms the caller accepts what a change of organization does to the tenants
 		// already here. Required whenever organization_id actually changes hands.
@@ -159,7 +161,7 @@ func (h *ClusterHandler) UpdateCluster(c *okapi.Context, req *UpdateClusterReque
 	}
 	patch.ExternalBaseDomain, patch.ExternalCertProvider = req.Body.ExternalBaseDomain, req.Body.ExternalCertProvider
 	patch.ExternalCertificateID = req.Body.ExternalCertificateID
-	patch.IngressIP, patch.IngressHostname = req.Body.IngressIP, req.Body.IngressHostname
+	patch.IngressIP, patch.IngressIPv6, patch.IngressHostname = req.Body.IngressIP, req.Body.IngressIPv6, req.Body.IngressHostname
 	if req.Body.ServiceEndpointMode != "" {
 		mode := models.ServiceEndpointMode(req.Body.ServiceEndpointMode)
 		patch.ServiceEndpointMode = &mode
@@ -178,10 +180,11 @@ type SetClusterGatewayRequest struct {
 	Body struct {
 		// ServerID is an edge-gateway node of the cluster.
 		ServerID uint `json:"server_id" required:"true"`
-		// IngressIP and IngressHostname replace the cluster's public address, what DNS records point at, e.g. a load
-		// balancer in front of the node. Empty leaves the cluster without one.
-		IngressIP       string `json:"ingress_ip"`
-		IngressHostname string `json:"ingress_hostname"`
+		// IngressIP (IPv4), IngressIPv6 and IngressHostname replace the cluster's public address, what DNS records
+		// point at, e.g. a load balancer in front of the node. Omitted fields keep their value; empty clears one.
+		IngressIP       *string `json:"ingress_ip"`
+		IngressIPv6     *string `json:"ingress_ipv6"`
+		IngressHostname *string `json:"ingress_hostname"`
 	} `json:"body"`
 }
 
@@ -191,11 +194,25 @@ func (h *ClusterHandler) SetClusterGateway(c *okapi.Context, req *SetClusterGate
 	if err != nil {
 		return c.AbortBadRequest("invalid cluster id")
 	}
-	cl, err := h.cluster.SetGateway(c.Request().Context(), id, cluster.GatewayPatch{
-		ServerID: req.Body.ServerID,
-		IP:       req.Body.IngressIP,
-		Hostname: req.Body.IngressHostname,
-	})
+	patch := cluster.GatewayPatch{ServerID: req.Body.ServerID}
+	if req.Body.IngressIP != nil || req.Body.IngressIPv6 != nil || req.Body.IngressHostname != nil {
+		cur, err := h.cluster.Cluster(id)
+		if err != nil {
+			return h.mapClusterErr(c, err)
+		}
+		addr := cur.PublicAddress()
+		if req.Body.IngressIP != nil {
+			addr.IPv4 = *req.Body.IngressIP
+		}
+		if req.Body.IngressIPv6 != nil {
+			addr.IPv6 = *req.Body.IngressIPv6
+		}
+		if req.Body.IngressHostname != nil {
+			addr.Hostname = *req.Body.IngressHostname
+		}
+		patch.Address = &addr
+	}
+	cl, err := h.cluster.SetGateway(c.Request().Context(), id, patch)
 	if err != nil {
 		return h.mapClusterErr(c, err)
 	}
@@ -267,7 +284,8 @@ func (h *ClusterHandler) mapClusterErr(c *okapi.Context, err error) error {
 	case errors.Is(err, cluster.ErrNameTooLong), errors.Is(err, cluster.ErrInvalidLocationCode),
 		errors.Is(err, cluster.ErrInvalidVisibility), errors.Is(err, cluster.ErrGatewayNeedsSwarm),
 		errors.Is(err, cluster.ErrGatewayNodeNotInCluster), errors.Is(err, cluster.ErrGatewayNodeNoGateway),
-		errors.Is(err, cluster.ErrInvalidIngressIP), errors.Is(err, cluster.ErrInvalidIngressHostname),
+		errors.Is(err, cluster.ErrInvalidIngressIP), errors.Is(err, cluster.ErrInvalidIngressIPv6),
+		errors.Is(err, cluster.ErrInvalidIngressHostname),
 		errors.Is(err, node.ErrInvalidConnectivity):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, cluster.ErrInvalidExternalDomain), errors.Is(err, cluster.ErrInvalidCertProvider),

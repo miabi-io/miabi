@@ -85,8 +85,12 @@ func TestSetGatewayRefusals(t *testing.T) {
 		{"standalone cluster", 6, GatewayPatch{ServerID: 14}, ErrGatewayNeedsSwarm},
 		{"node of another cluster", 5, GatewayPatch{ServerID: 13}, ErrGatewayNodeNotInCluster},
 		{"node without a gateway", 5, GatewayPatch{ServerID: 12}, ErrGatewayNodeNoGateway},
-		{"bad ip", 5, GatewayPatch{ServerID: 11, IP: "10.0.0"}, ErrInvalidIngressIP},
-		{"url as hostname", 5, GatewayPatch{ServerID: 11, Hostname: "https://lb.example.com"}, ErrInvalidIngressHostname},
+		{"bad ip", 5, GatewayPatch{ServerID: 11, Address: &models.PublicAddress{IPv4: "10.0.0"}}, ErrInvalidIngressIP},
+		{"ipv6 as ipv4", 5, GatewayPatch{ServerID: 11, Address: &models.PublicAddress{IPv4: "2001:db8::1"}}, ErrInvalidIngressIP},
+		{"ipv4 as ipv6", 5, GatewayPatch{ServerID: 11, Address: &models.PublicAddress{IPv6: "192.0.2.1"}}, ErrInvalidIngressIPv6},
+		{"unique-local ipv6", 5, GatewayPatch{ServerID: 11, Address: &models.PublicAddress{IPv6: "fd00::1"}}, ErrInvalidIngressIPv6},
+		{"link-local ipv6", 5, GatewayPatch{ServerID: 11, Address: &models.PublicAddress{IPv6: "fe80::1"}}, ErrInvalidIngressIPv6},
+		{"url as hostname", 5, GatewayPatch{ServerID: 11, Address: &models.PublicAddress{Hostname: "https://lb.example.com"}}, ErrInvalidIngressHostname},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if _, err := s.SetGateway(ctx, tt.cluster, tt.patch); !errors.Is(err, tt.want) {
@@ -98,12 +102,22 @@ func TestSetGatewayRefusals(t *testing.T) {
 
 func TestSetGatewayStoresTheIngress(t *testing.T) {
 	s := newGatewayService()
-	c, err := s.SetGateway(context.Background(), 5, GatewayPatch{ServerID: 11, IP: " 192.0.2.10 ", Hostname: "LB.eu-east.example.com."})
+	c, err := s.SetGateway(context.Background(), 5, GatewayPatch{ServerID: 11, Address: &models.PublicAddress{
+		IPv4: " 192.0.2.10 ", IPv6: "[2001:DB8:0::10]", Hostname: "LB.eu-east.example.com.",
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.IngressServerID != 11 || c.IngressIP != "192.0.2.10" || c.IngressHostname != "lb.eu-east.example.com" {
-		t.Errorf("cluster = node %d, ip %q, hostname %q", c.IngressServerID, c.IngressIP, c.IngressHostname)
+	want := models.PublicAddress{IPv4: "192.0.2.10", IPv6: "2001:db8::10", Hostname: "lb.eu-east.example.com"}
+	if c.IngressServerID != 11 || c.PublicAddress() != want {
+		t.Errorf("cluster = node %d, address %+v, want %+v", c.IngressServerID, c.PublicAddress(), want)
+	}
+	c, err = s.SetGateway(context.Background(), 5, GatewayPatch{ServerID: 11})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.PublicAddress() != want {
+		t.Errorf("moving the gateway without an address changed it: %+v", c.PublicAddress())
 	}
 	if _, ok := s.OwnGateway(1); ok {
 		t.Error("the default cluster reported a gateway of its own")
